@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Sample Clicker</title>
+  <meta name="theme-color" content="#2f3b52" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Sample Clicker" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon.svg" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="../../shared/nav.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="game-area" id="gameArea">
+    <div class="stat">Score<br /><span id="score">0</span></div>
+    <div class="stat">Best<br /><span id="best">0</span></div>
+    <button class="click-btn" id="clickBtn">Tap me!</button>
+    <button class="reset-btn" id="resetBtn">Reset score</button>
+  </main>
+
+  <div class="install-banner" id="installBanner">
+    <img class="install-banner-icon" src="icons/icon.svg" alt="" />
+    <div class="install-banner-text" id="installBannerText">
+      Install this game: tap <span class="share-glyph" aria-label="Share">&#x2B06;&#xFE0E;</span>
+      then <strong>Add to Home Screen</strong>
+    </div>
+    <button class="install-banner-btn" id="installBannerBtn" hidden>Install</button>
+    <button class="install-banner-close" id="installBannerClose" aria-label="Dismiss">&times;</button>
+  </div>
+
+  <script src="../../shared/nav.js"
+          data-game-id="sample-clicker"
+          data-game-name="Sample Clicker"
+          data-version="v1"
+          data-root="../../"></script>
+  <script src="../../shared/storage.js"></script>
+  <script src="app.js"></script>
+  <script src="../../shared/pwa.js" data-sw="sw.js"></script>
+</body>
+</html>
