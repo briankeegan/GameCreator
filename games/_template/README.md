@@ -18,7 +18,12 @@
    ```
    The value can be any JSON-serializable thing — a number, or a big object
    if your game's save data is more complex.
-6. Replace the icons in `icons/` (192, 512, and 180 px PNGs).
+6. Replace `icons/icon.svg` with your own icon. It's SVG (not PNG) because
+   that's what survives being pushed through Claude's GitHub tools intact —
+   if you want real PNG icons for best iOS home-screen support, drag-and-drop
+   upload them via the GitHub web UI (Add file → Upload files), which
+   doesn't have that limitation, and update the `icons/icon.svg` references
+   in `index.html` and `manifest.webmanifest` to point at them.
 7. In `sw.js`, change the cache name and asset list to match your files.
 8. Add your game to the root `games.json` so it shows up on the landing page.
 9. Give it a chat thread — see the root `README.md`, step 5.

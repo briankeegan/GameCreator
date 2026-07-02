@@ -5,7 +5,7 @@
       "name": "Sample Clicker",
       "tagline": "A tiny demo game that proves the shared scaffold works end to end.",
       "themeColor": "#2f3b52",
-      "icon": "games/sample-clicker/icons/icon-192.png"
+      "icon": "games/sample-clicker/icons/icon.svg"
     }
   ]
 }
