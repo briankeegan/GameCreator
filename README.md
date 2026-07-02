@@ -35,7 +35,8 @@ worker/
    value can be anything JSON-serializable (a number, or a big nested object
    — whatever the game needs).
 3. Update `games/<your-game-id>/manifest.webmanifest` (name, colors) and
-   drop in icons (`icons/icon-192.png`, `icon-512.png`, `icon-180.png`).
+   swap in your own `icons/icon.svg` (see that folder's README for why it's
+   SVG instead of PNG, and how to use real PNGs instead if you want them).
 4. Add one entry to root `games.json` (id, name, tagline, icon path). That's
    what makes it show up on the landing page.
 5. Give it a chat thread: create a GitHub Issue in this repo titled after the
