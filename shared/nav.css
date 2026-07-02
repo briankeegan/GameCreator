@@ -1,0 +1,45 @@
+.gc-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: max(8px, env(safe-area-inset-top)) 12px 8px;
+  background: #2f3b52;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 0.85rem;
+}
+
+.gc-nav-home {
+  color: #fff;
+  text-decoration: none;
+  opacity: 0.85;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.gc-nav-title {
+  flex: 1 1 auto;
+  font-weight: 700;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gc-nav-version {
+  font-weight: 400;
+  opacity: 0.6;
+  font-size: 0.75em;
+}
+
+.gc-nav-clubhouse {
+  color: #fff;
+  text-decoration: none;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 1rem;
+  line-height: 1.3;
+}
