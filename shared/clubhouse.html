@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Clubhouse</title>
+  <meta name="robots" content="noindex" />
+  <link rel="stylesheet" href="clubhouse.css" />
+</head>
+<body>
+  <header class="club-header">
+    <a class="game-btn" id="gameBtn" href="../index.html">🎮 Game</a>
+    <div class="logout-wrap">
+      <button class="logout-btn" id="logoutBtn" hidden>Log out</button>
+      <div class="logout-confirm" id="logoutConfirm" hidden>
+        <div class="logout-confirm-text">Log out?</div>
+        <div class="logout-confirm-actions">
+          <button id="logoutYesBtn">Yes</button>
+          <button id="logoutNoBtn">No</button>
+        </div>
+      </div>
+    </div>
+    <h1>🏰 The Clubhouse<span class="version" id="gameTitle"></span></h1>
+    <div class="sub">chat with Claude about this game</div>
+  </header>
+
+  <div class="gate" id="gate">
+    <div class="gate-panel">
+      <h2>Who goes there?</h2>
+      <p>Sign your name and whisper the secret word.</p>
+      <input id="nameInput" type="text" placeholder="Your name" autocomplete="off" maxlength="40" />
+      <div class="secret-field">
+        <input id="secretInput" type="password" placeholder="Secret word" autocomplete="off" maxlength="60" />
+        <button id="peekBtn" type="button" aria-label="Show secret word">
+          <svg id="eyeOpen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <svg id="eyeClosed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden>
+            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a20.66 20.66 0 0 1 5.06-5.94"/>
+            <path d="M9.9 4.24A10.94 10.94 0 0 1 12 5c7 0 11 7 11 7a20.8 20.8 0 0 1-3.22 4.19"/>
+            <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </button>
+      </div>
+      <button id="enterBtn">Enter the clubhouse</button>
+      <div class="gate-error" id="gateError"></div>
+    </div>
+  </div>
+
+  <div class="thread-wrap" id="threadWrap">
+    <div class="thread" id="thread">
+      <div class="thread-status" id="threadStatus">opening the clubhouse door…</div>
+    </div>
+    <div class="send-error" id="sendError" hidden>
+      <div class="send-error-text" id="sendErrorText"></div>
+      <button id="copyErrorBtn" type="button">Copy</button>
+      <button id="dismissErrorBtn" type="button" aria-label="Dismiss">&times;</button>
+    </div>
+    <div class="composer">
+      <textarea id="messageInput" placeholder="Write your ideas here…" maxlength="3900"></textarea>
+      <button id="sendBtn">Send</button>
+    </div>
+  </div>
+
+  <script src="clubhouse.js"></script>
+</body>
+</html>
