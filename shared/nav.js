@@ -36,10 +36,13 @@
 
     const clubhouse = document.createElement("a");
     clubhouse.className = "gc-nav-clubhouse";
+    // clubhouse.html always lives one directory below root (shared/), so the
+    // path back to this game is always "../games/<id>/", regardless of how
+    // deep `root` needed to reach back to get here from the game page.
     clubhouse.href =
       `${root}shared/clubhouse.html?game=${encodeURIComponent(gameId)}` +
       `&name=${encodeURIComponent(gameName)}` +
-      `&back=${encodeURIComponent(root + "games/" + gameId + "/index.html")}`;
+      `&back=${encodeURIComponent("../games/" + gameId + "/index.html")}`;
     clubhouse.textContent = "💬 Chat";
     bar.appendChild(clubhouse);
 
