@@ -1,0 +1,21 @@
+// Cloudflare Workers config for the shared, multi-game clubhouse relay.
+// Deploy from this folder with: npx wrangler deploy
+//
+// One-time setup only (see SETUP.md): create the KV namespace, bind it
+// below as GAMES_KV, and set the GITHUB_TOKEN / ADMIN_TOKEN secrets in the
+// dashboard. After that, every game is added/updated/removed through
+// manage-games.sh — this file and worker.js don't change per game.
+{
+  "name": "gamecreator-clubhouse",
+  "main": "worker.js",
+  "compatibility_date": "2025-01-01",
+  "vars": {
+    "REPO": "briankeegan/GameCreator"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "GAMES_KV",
+      "id": "REPLACE_WITH_KV_NAMESPACE_ID"
+    }
+  ]
+}
