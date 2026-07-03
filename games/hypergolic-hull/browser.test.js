@@ -38,8 +38,10 @@ function serveRepo() {
 
 // Click the hex at axial (q,r) after arming the given action mode, using the
 // app's own geometry (the canvas now resizes itself to fit each board).
+// Sublight has no button of its own — a plain move or route-preview click
+// works regardless of which mode (if any) happens to be armed.
 async function clickHex(page, mode, hex) {
-  await page.click(`[data-mode="${mode}"]`);
+  if (mode !== "sublight") await page.click(`[data-mode="${mode}"]`);
   const box = await page.locator("#board").boundingBox();
   const c = await page.evaluate(({ q, r }) => window.__hhHexCenter(q, r), { q: hex.q, r: hex.r });
   await page.mouse.click(box.x + c.x, box.y + c.y);

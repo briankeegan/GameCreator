@@ -217,33 +217,6 @@ function drawSprite(center, glyph, size, alpha) {
   ctx.restore();
 }
 
-// Every hex the flagship could walk to — not just the current mode's
-// immediate legal targets — so the baseline whitish border can mark
-// "anywhere you could click", including a distant tap-to-preview-route
-// destination. Mirrors findPath's walkability rule (blocked by enemies and
-// hazards) but as a full flood-fill instead of point-to-point, then unions
-// in adjacent legalSublightTargets since those allow stepping onto a hazard
-// tile even though the route-finder won't path through one. The flagship's
-// own hex is included too — it'd be reachable if nobody (i.e. it) were
-// standing there, so it gets the same border as everywhere else.
-function computeReachableHexes(state) {
-  const blocked = (pos) => Engine.enemyAt(state, pos) || Engine.hazardAt(state, pos);
-  const seen = new Set([Engine.hexKey(state.playerPos)]);
-  const queue = [state.playerPos];
-  while (queue.length) {
-    const cur = queue.shift();
-    for (let i = 0; i < 6; i++) {
-      const n = Engine.neighbor(cur, i);
-      const k = Engine.hexKey(n);
-      if (seen.has(k) || !Engine.onBoard(state, n) || blocked(n)) continue;
-      seen.add(k);
-      queue.push(n);
-    }
-  }
-  for (const h of Engine.legalSublightTargets(state)) seen.add(Engine.hexKey(h));
-  return seen;
-}
-
 function draw() {
   const now = performance.now();
   ctx.clearRect(0, 0, geom.w, geom.h);
@@ -258,8 +231,7 @@ function draw() {
 
   const threats = Engine.computeThreatHexes(state);
   const legal = new Set(MODES[mode].targets(state).map((h) => Engine.hexKey(h)));
-  const reachable = computeReachableHexes(state);
-  // Mirrors `reachable`, but for enemies: any enemy an unlocked action could
+  // Mirrors the whitish hex border, but for enemies: any enemy an unlocked action could
   // ever target, regardless of which mode happens to be armed right now —
   // not just the one enemy set belonging to the currently-selected mode.
   const targetable = new Set([
@@ -288,14 +260,16 @@ function draw() {
     // marks them, so the board doesn't turn into a wall of green.
     if (route.has(k)) fill = blend(fill, "#2e5f96", 0.45);
 
-    // Every hex the flagship could walk to always gets a plain whitish
-    // border — anywhere you could click, always visible, info panel or not.
+    // The whitish border marks a tile's own type ("this is normal, walkable
+    // ground") — not whether anyone currently happens to be standing on it,
+    // so an enemy or the flagship sitting on a tile doesn't hide it. Only
+    // hazard tiles (which already read as different via their fill) skip it.
     // While the legend is open (and its checkbox is on), the current mode's
     // specific legal targets get a bold bright outline layered on top, right
     // next to the key explaining it.
     let stroke = "#1a2233";
     let strokeWidth = 1.5;
-    if (reachable.has(k)) {
+    if (!isHazard) {
       stroke = "#c9d6e8";
       strokeWidth = 0.75;
     }

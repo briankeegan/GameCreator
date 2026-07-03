@@ -10,7 +10,9 @@ html, body {
 }
 
 .game-area {
-  padding: 16px 12px 32px;
+  /* Extra bottom padding so page content never sits under the fixed,
+     bottom-left Help button. */
+  padding: 16px 12px calc(64px + var(--banner-space));
   text-align: center;
 }
 
@@ -125,15 +127,22 @@ html, body {
   margin: 14px auto 0;
 }
 
+/* Pinned to the corner so it's always in the same reachable spot, clear of
+   whatever's happening on the board — lifts above the install banner via
+   --banner-space when that's showing. */
 .help-btn {
-  flex: 0 0 auto;
+  position: fixed;
+  left: 12px;
+  bottom: calc(12px + var(--banner-space));
+  z-index: 40;
   background: #1b2436;
   color: #dbe4f2;
   border: 1px solid #2a3652;
-  padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 0.78rem;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 .help-btn.active {
   background: #2f8f5b;
