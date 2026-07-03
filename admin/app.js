@@ -216,18 +216,36 @@ function renderGames(games) {
   }
   for (const g of games) {
     const tr = document.createElement("tr");
+    const prCell = g.prNumber
+      ? `<a href="https://github.com/briankeegan/GameCreator/pull/${g.prNumber}" target="_blank" rel="noopener">#${g.prNumber}</a>`
+      : "?";
+    tr.innerHTML = `<td>${g.game}</td><td>${g.name || ""}</td><td>${prCell}</td>`;
+
+    const fixBtn = document.createElement("button");
+    fixBtn.textContent = "Fix link";
+    fixBtn.addEventListener("click", () => fixThreadLink(g.game, g.prNumber));
     const removeBtn = document.createElement("button");
     removeBtn.textContent = "Remove";
     removeBtn.addEventListener("click", () => removeGame(g.game));
-    const issueCell = g.issueNumber
-      ? `<a href="https://github.com/briankeegan/GameCreator/issues/${g.issueNumber}" target="_blank" rel="noopener">#${g.issueNumber}</a>`
-      : "?";
-    tr.innerHTML = `<td>${g.game}</td><td>${g.name || ""}</td><td>${issueCell}</td>`;
     const actionTd = document.createElement("td");
+    actionTd.appendChild(fixBtn);
     actionTd.appendChild(removeBtn);
     tr.appendChild(actionTd);
     gamesTableBody.appendChild(tr);
   }
+}
+
+// Repoints a game's chat at a different PR without touching its name or
+// secret word (the Worker reuses whatever it already has for fields you
+// don't send) — for when a thread needs to be recreated or migrated.
+function fixThreadLink(gameId, currentPr) {
+  const input = prompt(`PR number for "${gameId}"'s chat thread:`, currentPr || "");
+  if (!input) return;
+  const prNumber = Number(input);
+  if (!prNumber) return setStatus(listStatusEl, "That's not a PR number.", "error");
+  callAdmin({ action: "admin-upsert", game: gameId, prNumber })
+    .then(() => refreshList())
+    .catch((err) => setStatus(listStatusEl, err.message, "error"));
 }
 
 function refreshList() {
@@ -241,7 +259,7 @@ function refreshList() {
 }
 
 function removeGame(gameId) {
-  if (!confirm(`Remove chat config for "${gameId}"? This does not delete the GitHub Issue.`)) return;
+  if (!confirm(`Remove chat config for "${gameId}"? This does not close the GitHub PR.`)) return;
   callAdmin({ action: "admin-remove", game: gameId })
     .then(() => refreshList())
     .catch((err) => setStatus(listStatusEl, err.message, "error"));
@@ -264,7 +282,7 @@ createBtn.addEventListener("click", () => {
     .then((data) => {
       setStatus(
         createStatusEl,
-        `Created "${data.game}" — play it at ${data.path}, chat thread #${data.config.issueNumber}.`,
+        `Created "${data.game}" — play it at ${data.path}, chat thread #${data.config.prNumber}.`,
         "ok"
       );
       createIdInput.value = "";

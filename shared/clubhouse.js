@@ -1,12 +1,13 @@
 // One Clubhouse page shared by every game. ?game=<id> picks which game's
-// chat this is; the shared Worker resolves that id to a GitHub Issue
-// (the thread) and a secret word, dynamically — see worker/worker.js.
+// chat this is; the shared Worker resolves that id to a draft PR (the
+// thread) and a secret word, dynamically — see worker/worker.js.
 var params = new URLSearchParams(location.search);
 var GAME_ID = params.get("game") || "";
 var GAME_NAME = params.get("name") || GAME_ID || "this game";
 var BACK_URL = params.get("back") || "../index.html";
 
-// This repo hosts every game's chat as a GitHub Issue.
+// This repo hosts every game's chat as a standing draft PR (never an
+// Issue — PR activity is what lets Claude get woken up by new messages).
 var REPO = "briankeegan/GameCreator";
 // The one shared relay every game's clubhouse talks to.
 var WORKER_URL = "https://game-creator.bramp-games.workers.dev";
@@ -27,7 +28,7 @@ var sendBtn = document.getElementById("sendBtn");
 
 var visitorName = "";
 var secretWord = "";
-var issueNumber = null;
+var prNumber = null;
 var pollTimer = null;
 var fastPollUntil = 0;
 var lastRenderKey = "";
@@ -82,7 +83,7 @@ function openClubhouse(name, secret) {
   startPolling();
 }
 
-// The issue number that holds this game's thread comes from the Worker
+// The PR number that holds this game's thread comes from the Worker
 // (backed by its dynamic KV config), not a hardcoded value here — so adding
 // a game never means editing this file.
 function resolveThread() {
@@ -92,7 +93,7 @@ function resolveThread() {
       return res.json();
     })
     .then(function (data) {
-      issueNumber = data.issueNumber;
+      prNumber = data.prNumber;
     });
 }
 
@@ -250,7 +251,7 @@ function renderMessages(messages) {
 }
 
 function fetchThread() {
-  var url = "https://api.github.com/repos/" + REPO + "/issues/" + issueNumber +
+  var url = "https://api.github.com/repos/" + REPO + "/issues/" + prNumber +
     "/comments?per_page=100&sort=created&direction=asc";
   var all = [];
   function fetchPage(pageUrl) {
@@ -271,7 +272,7 @@ function fetchThread() {
 }
 
 function refreshThread() {
-  if (!issueNumber) return;
+  if (!prNumber) return;
   fetchThread()
     .then(function (comments) {
       threadStatusEl.style.display = "none";

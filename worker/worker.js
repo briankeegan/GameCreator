@@ -1,31 +1,39 @@
 // Clubhouse relay — the ONE Cloudflare Worker shared by every game's chat.
 //
-// Per-game config (secret word + which GitHub Issue is its thread) lives in
-// a KV namespace, not in this file and not in a dashboard "Variable" — so
+// Per-game config (secret word + which PR is its thread) lives in a KV
+// namespace, not in this file and not in a dashboard "Variable" — so
 // adding, renaming, or re-keying a game's chat is a normal authenticated
 // API call (see manage-games.sh), never a Worker redeploy or dashboard
 // visit. This file only changes if the *behavior* of the relay changes.
 //
+// Each game's thread is a permanently-open DRAFT PULL REQUEST (never an
+// Issue) — its comments are the chat messages. This matters: Claude can
+// subscribe to PR activity and get woken up automatically when a new
+// message lands, the same way it can't for Issues. See games/<id>/'s
+// clubhouse/<id> branch + the "Clubhouse — <name>" PR.
+//
 // Actions:
-//   { action: "resolve", game }                          — public: which Issue is this game's thread?
+//   { action: "resolve", game }                          — public: which PR is this game's thread?
 //   { action: "verify",  game, secret }                  — is the secret word right?
 //   { action: "post",    game, name, secret, message }    — post a message to the thread
 //   { action: "admin-create-game", adminToken, game, name, tagline?, secretWord }
 //     — scaffolds games/<id>/ from games/_template/, lists it in games.json,
-//       creates its chat Issue, and registers it — the whole "add a game" loop
+//       creates its chat PR, and registers it — the whole "add a game" loop
 //       in one call. Fails if the game id already exists.
-//   { action: "admin-upsert", adminToken, game, name, secretWord, issueNumber? }
-//     — add/update just the CHAT config for a game that already exists (e.g.
-//       change its secret word). issueNumber is optional — omit it to create
-//       a new thread, or it reuses whatever thread the game already has.
+//   { action: "admin-upsert", adminToken, game, name?, secretWord?, prNumber? }
+//     — add/update a game's chat config. Any field you omit is left as
+//       whatever the game already has (so you can e.g. repoint just
+//       prNumber without re-supplying the secret word). Creating a brand
+//       new game this way (no existing config) still requires secretWord.
 //   { action: "admin-remove",  adminToken, game }         — remove a game's chat config
 //   { action: "admin-list",    adminToken }               — list configured games (secrets redacted)
 //
 // Required bindings (Worker → Settings → Variables and Secrets / Bindings):
 //   GAMES_KV      (KV namespace binding) — per-game config, written via admin-upsert
-//   GITHUB_TOKEN  (secret)  — fine-grained PAT on REPO with Issues: Read/write
-//                             AND Contents: Read/write (needed for admin-create-game
-//                             to write game files and games.json)
+//   GITHUB_TOKEN  (secret)  — fine-grained PAT on REPO with:
+//                               Contents: Read and write
+//                               Pull requests: Read and write
+//                               Issues: Read and write (legacy threads, comment posting)
 //   ADMIN_TOKEN   (secret)  — a password only you know, gates the admin-* actions
 //   REPO          (text)    — briankeegan/GameCreator
 
@@ -77,17 +85,18 @@ function base64ToUtf8(b64) {
   return new TextDecoder().decode(bytes);
 }
 
-async function ghGetFile(env, path) {
-  const res = await fetch(`https://api.github.com/repos/${env.REPO}/contents/${path}`, {
-    headers: GITHUB_HEADERS(env),
-  });
+async function ghGetFile(env, path, ref) {
+  const url =
+    `https://api.github.com/repos/${env.REPO}/contents/${path}` +
+    (ref ? `?ref=${encodeURIComponent(ref)}` : "");
+  const res = await fetch(url, { headers: GITHUB_HEADERS(env) });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`couldn't read ${path}: ${res.status}`);
   return res.json();
 }
 
-async function ghPutFile(env, path, content, message, sha) {
-  const body = { message, content: utf8ToBase64(content), branch: "main" };
+async function ghPutFile(env, path, content, message, branch, sha) {
+  const body = { message, content: utf8ToBase64(content), branch };
   if (sha) body.sha = sha;
   const res = await fetch(`https://api.github.com/repos/${env.REPO}/contents/${path}`, {
     method: "PUT",
@@ -105,16 +114,20 @@ async function ghPutFile(env, path, content, message, sha) {
   return res.json();
 }
 
-async function ghCreateIssue(env, name) {
-  const res = await fetch(`https://api.github.com/repos/${env.REPO}/issues`, {
+async function ghGetDefaultBranchSha(env) {
+  const res = await fetch(`https://api.github.com/repos/${env.REPO}/git/ref/heads/main`, {
+    headers: GITHUB_HEADERS(env),
+  });
+  if (!res.ok) throw new Error(`couldn't read main branch: ${res.status}`);
+  const data = await res.json();
+  return data.object.sha;
+}
+
+async function ghCreatePR(env, branch, title, body) {
+  const res = await fetch(`https://api.github.com/repos/${env.REPO}/pulls`, {
     method: "POST",
     headers: GITHUB_HEADERS(env),
-    body: JSON.stringify({
-      title: `Clubhouse — ${name}`,
-      body:
-        `This issue IS the chat thread for "${name}" — its comments are the messages, ` +
-        `relayed through the shared Worker.\n\nKeep this issue open — it's infrastructure, not a bug report.`,
-    }),
+    body: JSON.stringify({ title, head: branch, base: "main", body, draft: true }),
   });
   if (!res.ok) {
     let detail = "";
@@ -122,10 +135,48 @@ async function ghCreateIssue(env, name) {
       const b = await res.json();
       detail = b.message ? ` — ${b.message}` : "";
     } catch {}
-    throw new Error(`couldn't create the chat Issue: ${res.status}${detail}`);
+    throw new Error(`couldn't open the chat PR: ${res.status}${detail}`);
   }
   const data = await res.json();
   return data.number;
+}
+
+// A game's chat thread is a standing draft PR: a dedicated branch with one
+// placeholder file, opened as a PR against main and never merged. Unlike an
+// Issue, Claude can subscribe to PR activity, so new messages actually wake
+// it up instead of silently sitting unread until someone mentions them.
+async function ghCreateClubhousePR(env, gameId, name) {
+  const sha = await ghGetDefaultBranchSha(env);
+  const branch = `clubhouse/${gameId}`;
+
+  const refRes = await fetch(`https://api.github.com/repos/${env.REPO}/git/refs`, {
+    method: "POST",
+    headers: GITHUB_HEADERS(env),
+    body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }),
+  });
+  if (!refRes.ok && refRes.status !== 422) {
+    // 422 = branch already exists — fine, reuse it.
+    let detail = "";
+    try {
+      const b = await refRes.json();
+      detail = b.message ? ` — ${b.message}` : "";
+    } catch {}
+    throw new Error(`couldn't create branch ${branch}: ${refRes.status}${detail}`);
+  }
+
+  const path = `games/${gameId}/CLUBHOUSE.md`;
+  const existing = await ghGetFile(env, path, branch);
+  const fileBody =
+    `This branch/PR IS the chat thread for "${name}" — its comments are the messages, ` +
+    `relayed through the shared Worker.\n\nKeep this PR open (draft, never merge) — it's infrastructure, not a real change.\n`;
+  await ghPutFile(env, path, fileBody, `Clubhouse thread for ${name}`, branch, existing ? existing.sha : undefined);
+
+  return ghCreatePR(
+    env,
+    branch,
+    `Clubhouse — ${name}`,
+    `This PR IS the chat thread for "${name}" — its comments are the messages, relayed through the shared Worker.\n\nDraft, never merge — keep it open, it's infrastructure, not a real change.`
+  );
 }
 
 const TEMPLATE_FILES = ["index.html", "style.css", "app.js", "manifest.webmanifest", "sw.js", "icons/icon.svg"];
@@ -137,7 +188,7 @@ export default {
     }
     if (request.method !== "POST") {
       return json(200, {
-        relay: "gc-r3",
+        relay: "gc-r4",
         settings: {
           GAMES_KV: env.GAMES_KV ? "bound" : "MISSING",
           GITHUB_TOKEN: env.GITHUB_TOKEN ? "set" : "MISSING",
@@ -190,7 +241,7 @@ export default {
               .join(name)
               .split("TEMPLATE_GAME_ID")
               .join(gameId);
-            await ghPutFile(env, `games/${gameId}/${file}`, text, `Create game: ${name}`);
+            await ghPutFile(env, `games/${gameId}/${file}`, text, `Create game: ${name}`, "main");
           }
 
           const registry = await ghGetFile(env, "games.json");
@@ -208,11 +259,12 @@ export default {
             "games.json",
             JSON.stringify(data, null, 2) + "\n",
             `List "${name}" on the landing page`,
+            "main",
             registry ? registry.sha : undefined
           );
 
-          const issueNumber = await ghCreateIssue(env, name);
-          const config = { name, secretWord, issueNumber };
+          const prNumber = await ghCreateClubhousePR(env, gameId, name);
+          const config = { name, secretWord, prNumber };
           await env.GAMES_KV.put(`game:${gameId}`, JSON.stringify(config));
 
           return json(200, { ok: true, game: gameId, config, path: `games/${gameId}/index.html` });
@@ -224,28 +276,27 @@ export default {
       if (payload.action === "admin-upsert") {
         const gameId = String(payload.game || "").trim();
         if (!gameId) return json(400, { error: "missing game id" });
-        const name = String(payload.name || gameId);
-        const secretWord = String(payload.secretWord || "");
+        const existing = await loadGame(env, gameId);
+
+        const name = String(payload.name || (existing && existing.name) || gameId);
+        const secretWord = String(payload.secretWord || (existing && existing.secretWord) || "");
         if (!secretWord) return json(400, { error: "secretWord is required" });
 
-        // An explicit issueNumber wins (lets you point at an existing
-        // Issue). Otherwise reuse whatever thread this game already has, so
-        // re-saving to change the secret word doesn't spawn a new Issue
-        // every time. Only a genuinely new game gets one created here.
-        let issueNumber = Number(payload.issueNumber) || 0;
-        if (!issueNumber) {
-          const existing = await loadGame(env, gameId);
-          issueNumber = existing ? existing.issueNumber : 0;
-        }
-        if (!issueNumber) {
+        // An explicit prNumber wins (lets you repoint at a different PR).
+        // Otherwise reuse whatever thread this game already has, so
+        // re-saving to change the secret word doesn't spawn a new PR every
+        // time. Only a genuinely new game gets one created here.
+        let prNumber = Number(payload.prNumber) || 0;
+        if (!prNumber) prNumber = existing ? existing.prNumber : 0;
+        if (!prNumber) {
           try {
-            issueNumber = await ghCreateIssue(env, name);
+            prNumber = await ghCreateClubhousePR(env, gameId, name);
           } catch (err) {
             return json(502, { error: String((err && err.message) || err) });
           }
         }
 
-        const config = { name, secretWord, issueNumber };
+        const config = { name, secretWord, prNumber };
         await env.GAMES_KV.put(`game:${gameId}`, JSON.stringify(config));
         return json(200, { ok: true, game: gameId, config });
       }
@@ -263,7 +314,7 @@ export default {
           list.keys.map(async (k) => {
             const raw = await env.GAMES_KV.get(k.name);
             const config = raw ? JSON.parse(raw) : {};
-            return { game: k.name.slice("game:".length), name: config.name, issueNumber: config.issueNumber };
+            return { game: k.name.slice("game:".length), name: config.name, prNumber: config.prNumber };
           })
         );
         return json(200, { games });
@@ -280,7 +331,7 @@ export default {
     if (!game) return json(404, { error: `no chat configured for game "${gameId}"` });
 
     if (payload.action === "resolve") {
-      return json(200, { issueNumber: game.issueNumber });
+      return json(200, { prNumber: game.prNumber });
     }
 
     if (payload.secret !== game.secretWord) {
@@ -303,8 +354,10 @@ export default {
       }
       const safeName = /^claude$/i.test(name) ? `${name} (visitor)` : name;
 
+      // The comments API is shared between Issues and PRs — posting to
+      // /issues/{n}/comments works whether {n} is an Issue or a PR number.
       const res = await fetch(
-        `https://api.github.com/repos/${env.REPO}/issues/${game.issueNumber}/comments`,
+        `https://api.github.com/repos/${env.REPO}/issues/${game.prNumber}/comments`,
         {
           method: "POST",
           headers: {
@@ -323,7 +376,7 @@ export default {
           detail = body.message ? ` — ${body.message}` : "";
         } catch {}
         return json(502, {
-          error: `github said ${res.status}${detail} [game: ${gameId}] [relay gc-r3]`,
+          error: `github said ${res.status}${detail} [game: ${gameId}] [relay gc-r4]`,
         });
       }
       return json(200, { ok: true });
