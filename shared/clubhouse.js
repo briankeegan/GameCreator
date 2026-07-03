@@ -225,7 +225,7 @@ function renderInline(text) {
   var codeSpans = [];
   s = s.replace(/`([^`]+)`/g, function (_, code) {
     codeSpans.push(code);
-    return " " + (codeSpans.length - 1) + " ";
+    return " " + (codeSpans.length - 1) + " ";
   });
   s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   // Both *asterisk* and _underscore_ delimiters are valid Markdown emphasis
@@ -235,7 +235,7 @@ function renderInline(text) {
   s = s.replace(/__([^_]+)__/g, "<strong>$1</strong>");
   s = s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>");
   s = s.replace(/(^|[^_])_([^_\n]+)_(?!_)/g, "$1<em>$2</em>");
-  s = s.replace(/ (\d+) /g, function (_, i) {
+  s = s.replace(/ (\d+) /g, function (_, i) {
     return "<code>" + codeSpans[Number(i)] + "</code>";
   });
   return s;
@@ -245,7 +245,7 @@ function renderMarkdown(text) {
   var lines = text.replace(/\r\n/g, "\n").split("\n");
   var html = [];
   var paragraphBuf = [];
-  var listBuf = null;
+  var listBuf = null; // { type: "ul"|"ol", items: [{ text, sub: [] }] }
 
   function flushParagraph() {
     if (paragraphBuf.length) {
@@ -258,7 +258,12 @@ function renderMarkdown(text) {
       var tag = listBuf.type;
       html.push(
         "<" + tag + ">" +
-          listBuf.items.map(function (it) { return "<li>" + renderInline(it) + "</li>"; }).join("") +
+          listBuf.items.map(function (it) {
+            var sub = it.sub.length
+              ? "<ul>" + it.sub.map(function (s) { return "<li>" + renderInline(s) + "</li>"; }).join("") + "</ul>"
+              : "";
+            return "<li>" + renderInline(it.text) + sub + "</li>";
+          }).join("") +
         "</" + tag + ">"
       );
       listBuf = null;
@@ -268,6 +273,17 @@ function renderMarkdown(text) {
   var i = 0;
   while (i < lines.length) {
     var line = lines[i];
+
+    // Blank lines don't end a list on their own — design docs commonly put
+    // a blank line between numbered steps without meaning to split them
+    // into two separate lists (which would reset numbering back to 1).
+    // The list only actually ends once something that isn't a list item
+    // follows — handled by the flushList() calls below.
+    if (/^\s*$/.test(line)) {
+      flushParagraph();
+      i++;
+      continue;
+    }
 
     var fence = line.match(/^```(\w*)\s*$/);
     if (fence) {
@@ -332,33 +348,37 @@ function renderMarkdown(text) {
       continue;
     }
 
-    var ul = line.match(/^\s*[-*]\s+(.*)$/);
+    // An indented bullet under an active list is a sub-item of the item
+    // just above it (e.g. "- *Mistake branch:* ..." under a numbered step)
+    // — nest it there instead of splitting the outer list into two <ol>s,
+    // which is what was resetting the visible numbering back to 1.
+    var nestedUl = line.match(/^[ \t]+[-*]\s+(.*)$/);
+    if (nestedUl && listBuf && listBuf.items.length) {
+      listBuf.items[listBuf.items.length - 1].sub.push(nestedUl[1]);
+      i++;
+      continue;
+    }
+
+    var ul = line.match(/^[-*]\s+(.*)$/);
     if (ul) {
       flushParagraph();
       if (!listBuf || listBuf.type !== "ul") {
         flushList();
         listBuf = { type: "ul", items: [] };
       }
-      listBuf.items.push(ul[1]);
+      listBuf.items.push({ text: ul[1], sub: [] });
       i++;
       continue;
     }
 
-    var ol = line.match(/^\s*\d+\.\s+(.*)$/);
+    var ol = line.match(/^\d+\.\s+(.*)$/);
     if (ol) {
       flushParagraph();
       if (!listBuf || listBuf.type !== "ol") {
         flushList();
         listBuf = { type: "ol", items: [] };
       }
-      listBuf.items.push(ol[1]);
-      i++;
-      continue;
-    }
-
-    if (/^\s*$/.test(line)) {
-      flushParagraph();
-      flushList();
+      listBuf.items.push({ text: ol[1], sub: [] });
       i++;
       continue;
     }
