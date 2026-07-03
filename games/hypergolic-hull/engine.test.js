@@ -124,6 +124,42 @@ Engine.applySublight(meleeState, { q: 0, r: 3 }); // step adjacent: interceptor 
 assert.strictEqual(meleeState.hull, 2, "the adjacent interceptor strikes");
 assert.ok(meleeState.events.some((e) => e.type === "attack"), "attacks emit an attack event");
 assert.ok(meleeState.events.some((e) => e.type === "damage"), "damage emits a damage event");
+assert.ok(
+  meleeState.events.some((e) => e.type === "playerMove" && e.to.q === 0 && e.to.r === 3),
+  "player moves emit a playerMove event (drives the flight animation)"
+);
+
+// ---- findPath: quickest-route preview --------------------------------------
+
+const pathState = Engine.createGameState({
+  id: 994,
+  name: "path fixture",
+  board: { type: "rect", cols: 4, rows: 5 },
+  playerStart: { q: 0, r: 4 },
+  exit: { q: 2, r: 0 },
+  outpost: null,
+  enemies: [{ type: "interceptor", q: 1, r: 2 }],
+  hazards: [],
+  exitRule: "all-enemies-dead",
+});
+const route = Engine.findPath(pathState, pathState.playerPos, { q: 2, r: 0 });
+assert.ok(route, "a route to the far corner exists");
+assert.deepStrictEqual(route[0], { q: 0, r: 4 }, "the route starts at the player");
+assert.deepStrictEqual(route[route.length - 1], { q: 2, r: 0 }, "the route ends at the target");
+for (let i = 1; i < route.length; i++) {
+  assert.strictEqual(Engine.isAdjacent(route[i - 1], route[i]), true, "every route step is one hex");
+  assert.ok(!Engine.posEq(route[i], { q: 1, r: 2 }), "the route detours around the enemy");
+}
+assert.strictEqual(
+  Engine.findPath(pathState, pathState.playerPos, { q: 1, r: 2 }),
+  null,
+  "an enemy-occupied hex is not a routable destination"
+);
+assert.strictEqual(
+  Engine.findPath(pathState, pathState.playerPos, { q: 9, r: 9 }),
+  null,
+  "off-board hexes are not routable"
+);
 
 // ---- step 1: Sublight to (1,-1); neither Interceptor is adjacent yet ----
 

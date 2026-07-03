@@ -44,6 +44,12 @@ let state = Engine.createGameState(LEVELS[levelIndex]);
 let mode = "sublight";
 let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
 
+// Tap a far-away hex once to preview the quickest route, tap it again to fly
+// it. plannedPath holds the preview; autoRoute drives the step-by-step flight
+// (each step is a real turn — it aborts the moment the flagship takes damage).
+let plannedPath = null;
+let autoRoute = null;
+
 // ---- geometry: the canvas grows/shrinks (and gets taller) with the board --
 
 let geom = { sx: 32, sy: 28, offX: 0, offY: 0, w: 320, h: 320 };
@@ -99,7 +105,7 @@ function hexRound(q, r) {
   if (xDiff > yDiff && xDiff > zDiff) rx = -ry - rz;
   else if (yDiff > zDiff) ry = -rx - rz;
   else rz = -rx - ry;
-  return { q: rx, r: rz };
+  return { q: rx === 0 ? 0 : rx, r: rz === 0 ? 0 : rz }; // strip -0 so hexes compare cleanly
 }
 
 function hexCorner(center, i) {
@@ -118,6 +124,7 @@ function scheduleAnims(events) {
     else if (ev.type === "attack") anims.push({ kind: "lunge", enemyId: ev.enemyId, start: now, dur: 320 });
     else if (ev.type === "damage") anims.push({ kind: "flash", start: now, dur: 380 });
     else if (ev.type === "enemyMove") anims.push({ kind: "slide", enemyId: ev.enemyId, from: ev.from, to: ev.to, start: now, dur: 220 });
+    else if (ev.type === "playerMove") anims.push({ kind: "pslide", from: ev.from, to: ev.to, start: now, dur: 230 });
     else if (ev.type === "playerDeath") anims.push({ kind: "boom", pos: ev, start: now, dur: 650 });
   }
   if (anims.length) requestAnimationFrame(tickAnims);
@@ -152,7 +159,7 @@ function blend(hexA, hexB, t) {
   return `rgb(${r},${g},${bl})`;
 }
 
-function drawHex(center, fill, stroke) {
+function drawHex(center, fill, stroke, lineWidth) {
   ctx.beginPath();
   for (let i = 0; i < 6; i++) {
     const corner = hexCorner(center, i);
@@ -164,7 +171,7 @@ function drawHex(center, fill, stroke) {
     ctx.fillStyle = fill;
     ctx.fill();
   }
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = lineWidth || 1.5;
   ctx.strokeStyle = stroke || "#1a2233";
   ctx.stroke();
 }
@@ -194,6 +201,8 @@ function draw() {
 
   const threats = Engine.computeThreatHexes(state);
   const legal = new Set(MODES[mode].targets(state).map((h) => Engine.hexKey(h)));
+  const routeHexes = (plannedPath && plannedPath.hexes) || (autoRoute && autoRoute.path) || null;
+  const route = new Set((routeHexes || []).slice(1).map((h) => Engine.hexKey(h)));
 
   for (const hex of state.boardHexes) {
     const center = hexToPixel(hex);
@@ -208,14 +217,37 @@ function draw() {
     else if (isOutpost) fill = "#2a3f4d";
     if (threats.has(k)) fill = blend(fill, "#7a1f2b", 0.55);
     if (legal.has(k)) fill = blend(fill, "#2f8f5b", 0.35);
+    if (route.has(k)) fill = blend(fill, "#2e5f96", 0.45);
 
-    drawHex(center, fill, legal.has(k) ? "#7fe3a8" : "#1a2233");
+    // Movable/targetable hexes get a bold bright border so they pop.
+    drawHex(center, fill, legal.has(k) ? "#7fe3a8" : "#1a2233", legal.has(k) ? 3 : 1.5);
 
     if (isExit) {
       drawSprite(center, state.exitUnlocked ? SPRITES.gateOnline : SPRITES.gateLocked, geom.sx * 0.62);
     } else if (isOutpost) {
       drawSprite(center, SPRITES.outpost, geom.sx * 0.56);
     }
+  }
+
+  // Route preview: a dashed flight line with a ring on the destination.
+  if (routeHexes && routeHexes.length > 1) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.setLineDash([6, 5]);
+    routeHexes.forEach((h, i) => {
+      const c = hexToPixel(h);
+      if (i === 0) ctx.moveTo(c.x, c.y);
+      else ctx.lineTo(c.x, c.y);
+    });
+    ctx.strokeStyle = "#8fc7ff";
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const t = hexToPixel(routeHexes[routeHexes.length - 1]);
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, geom.sx * 0.38, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 
   // Per-enemy pixel overrides while a lunge/slide animation runs.
@@ -253,17 +285,24 @@ function draw() {
     drawSprite(hexToPixel(state.fighterHex), SPRITES.fighters, geom.sx * 0.47);
   }
 
-  // The flagship: red hit-flash ring while taking damage; hidden once destroyed
-  // (the explosion animation takes its place).
+  // The flagship: slides along its move, flashes red on damage, hidden once
+  // destroyed (the explosion animation takes its place).
   if (state.status !== "lost") {
+    let shipCenter = playerCenter;
+    const pslide = anims.find((a) => a.kind === "pslide" && now < a.start + a.dur);
+    if (pslide) {
+      const p = animProgress(pslide, now);
+      const from = hexToPixel(pslide.from), to = hexToPixel(pslide.to);
+      shipCenter = { x: from.x + (to.x - from.x) * p, y: from.y + (to.y - from.y) * p };
+    }
     if (flash) {
       const p = animProgress(flash, now);
       ctx.beginPath();
-      ctx.arc(playerCenter.x, playerCenter.y, geom.sx * 0.56, 0, Math.PI * 2);
+      ctx.arc(shipCenter.x, shipCenter.y, geom.sx * 0.56, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(224, 83, 63, ${0.55 * (1 - p)})`;
       ctx.fill();
     }
-    drawSprite(playerCenter, SPRITES.player, geom.sx * 0.75);
+    drawSprite(shipCenter, SPRITES.player, geom.sx * 0.75);
   }
 
   // Explosions on top of everything.
@@ -346,6 +385,8 @@ function render() {
   draw();
   persist();
   window.__hhState = state; // debug hook: deterministic + serializable, safe to inspect
+  window.__hhPlannedPath = plannedPath;
+  window.__hhAutoRoute = autoRoute;
 }
 
 function pushMessage(message) {
@@ -354,6 +395,7 @@ function pushMessage(message) {
 }
 
 function handleAction(fn) {
+  plannedPath = null;
   try {
     fn();
     mode = "sublight";
@@ -370,34 +412,96 @@ function loadSector(index) {
   state = Engine.createGameState(LEVELS[levelIndex]);
   mode = "sublight";
   anims = [];
+  plannedPath = null;
+  autoRoute = null;
   updateGeometry();
   render();
 }
 
+// First tap on a distant hex: preview the quickest route. Second tap on the
+// same hex: fly it, one real turn per step.
+function planOrFlyRoute(hex) {
+  if (Engine.posEq(hex, state.playerPos)) {
+    plannedPath = null;
+    render();
+    return;
+  }
+  if (plannedPath && Engine.posEq(plannedPath.target, hex)) {
+    autoRoute = { target: plannedPath.target, path: plannedPath.hexes, hullAtStart: state.hull };
+    plannedPath = null;
+    stepRoute();
+    return;
+  }
+  const path = Engine.findPath(state, state.playerPos, hex);
+  plannedPath = path && path.length > 1 ? { target: { q: hex.q, r: hex.r }, hexes: path } : null;
+  render();
+}
+
+function stepRoute() {
+  if (!autoRoute) return;
+  const arrived = Engine.posEq(state.playerPos, autoRoute.target);
+  const hurt = state.hull < autoRoute.hullAtStart;
+  if (arrived || hurt || state.status !== "playing") {
+    if (hurt && !arrived && state.status === "playing") pushMessage("Route aborted — taking fire!");
+    autoRoute = null;
+    render();
+    return;
+  }
+  // Recompute each step: enemies move between turns and can block the way.
+  const path = Engine.findPath(state, state.playerPos, autoRoute.target);
+  if (!path || path.length < 2) {
+    autoRoute = null;
+    pushMessage("Route blocked.");
+    render();
+    return;
+  }
+  autoRoute.path = path;
+  handleAction(() => Engine.applySublight(state, path[1]));
+  if (autoRoute) setTimeout(stepRoute, 300);
+}
+
 canvas.addEventListener("click", (evt) => {
-  if (state.status !== "playing") return;
+  if (state.status !== "playing" || autoRoute) return;
   const rect = canvas.getBoundingClientRect();
   const scale = geom.w / rect.width;
   const x = (evt.clientX - rect.left) * scale;
   const y = (evt.clientY - rect.top) * scale;
   const hex = pixelToHex(x, y);
 
+  // Movement never needs the Sublight button armed: any tap that isn't a
+  // legal target for the armed action falls back to a plain move (adjacent)
+  // or the route preview (further away).
+  const isPlainMove = Engine.legalSublightTargets(state).some((h) => Engine.posEq(h, hex));
+
   if (MODES[mode].kind === "hex") {
     const legal = MODES[mode].targets(state);
-    if (!legal.some((h) => Engine.posEq(h, hex))) return;
-    handleAction(() => {
-      if (mode === "sublight") Engine.applySublight(state, hex);
-      else if (mode === "ramming") Engine.applyRamming(state, hex);
-    });
+    if (legal.some((h) => Engine.posEq(h, hex))) {
+      handleAction(() => {
+        if (mode === "sublight") Engine.applySublight(state, hex);
+        else if (mode === "ramming") Engine.applyRamming(state, hex);
+      });
+      return;
+    }
+    if (isPlainMove) {
+      handleAction(() => Engine.applySublight(state, hex));
+      return;
+    }
+    planOrFlyRoute(hex);
   } else {
     const enemy = Engine.enemyAt(state, hex);
-    if (!enemy) return;
     const legal = MODES[mode].targets(state);
-    if (!legal.some((e) => e.id === enemy.id)) return;
-    handleAction(() => {
-      if (mode === "tractor") Engine.applyTractor(state, enemy.id);
-      else if (mode === "fighter") Engine.applyFighter(state, enemy.id);
-    });
+    if (enemy && legal.some((e) => e.id === enemy.id)) {
+      handleAction(() => {
+        if (mode === "tractor") Engine.applyTractor(state, enemy.id);
+        else if (mode === "fighter") Engine.applyFighter(state, enemy.id);
+      });
+      return;
+    }
+    if (isPlainMove) {
+      handleAction(() => Engine.applySublight(state, hex));
+      return;
+    }
+    if (!enemy) planOrFlyRoute(hex);
   }
 });
 

@@ -197,6 +197,37 @@
     return livingEnemies(state).filter((e) => isAdjacent(e, pos));
   }
 
+  // Shortest walkable path from `from` to `to` (inclusive), avoiding enemies
+  // and hazards. BFS with the fixed direction order, so routes are
+  // deterministic. Returns null when the target is blocked or unreachable.
+  // Drives the tap-twice "fly there" route preview in the UI.
+  function findPath(state, from, to) {
+    const blocked = (pos) => enemyAt(state, pos) || hazardAt(state, pos);
+    if (!onBoard(state, to) || blocked(to)) return null;
+    if (posEq(from, to)) return [{ q: from.q, r: from.r }];
+    const prev = new Map([[hexKey(from), null]]);
+    const queue = [from];
+    while (queue.length) {
+      const cur = queue.shift();
+      for (let i = 0; i < 6; i++) {
+        const n = neighbor(cur, i);
+        if (!onBoard(state, n) || prev.has(hexKey(n)) || blocked(n)) continue;
+        prev.set(hexKey(n), cur);
+        if (posEq(n, to)) {
+          const path = [n];
+          let p = cur;
+          while (p) {
+            path.unshift(p);
+            p = prev.get(hexKey(p));
+          }
+          return path;
+        }
+        queue.push(n);
+      }
+    }
+    return null;
+  }
+
   function pushLog(state, message) {
     state.log.push(message);
     if (state.log.length > 20) state.log.shift();
@@ -340,6 +371,7 @@
     if (!isAdjacent(state.playerPos, to)) throw new Error("Sublight Impulse: destination is not adjacent");
     if (!onBoard(state, to)) throw new Error("Sublight Impulse: destination is off the map");
     if (enemyAt(state, to)) throw new Error("Sublight Impulse: destination is occupied");
+    state.events.push({ type: "playerMove", from: { q: state.playerPos.q, r: state.playerPos.r }, to: { q: to.q, r: to.r } });
     state.playerPos = to;
     handleFighterRetrieval(state);
     checkPlayerHazard(state);
@@ -357,6 +389,7 @@
     if (enemyAt(state, to)) throw new Error("Ramming Speed: destination is occupied");
     const victims = livingEnemiesAdjacentTo(state, to);
     if (victims.length === 0) throw new Error("Ramming Speed: destination is not adjacent to an enemy");
+    state.events.push({ type: "playerMove", from: { q: state.playerPos.q, r: state.playerPos.r }, to: { q: to.q, r: to.r } });
     state.playerPos = to;
     for (const victim of victims) {
       victim.alive = false;
@@ -459,6 +492,7 @@
     inBounds,
     onBoard,
     buildBoardHexes,
+    findPath,
     directionIndex,
     validateLevel,
     createGameState,

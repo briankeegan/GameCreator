@@ -113,8 +113,17 @@ async function freshPage(browser, url, errors) {
   assert.ok(boardBox.height > boardBox.width * 0.95, "the canvas grows tall to fit the Hoplite-style board");
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "run overlay must not show on a fresh board");
 
-  s = await walkToExit(page);
-  assert.strictEqual(s.status, "won", "walking to the online gate clears Sector 1");
+  // The quickest-route preview: tap the far-away gate once to see the path,
+  // tap it again to fly the whole route (one real turn per step).
+  await clickHex(page, "sublight", s.exitPos);
+  await page.waitForFunction(() => window.__hhPlannedPath);
+  const preview = await page.evaluate(() => window.__hhPlannedPath);
+  assert.deepStrictEqual(preview.target, { q: 2, r: 0 }, "the preview targets the tapped hex");
+  assert.ok(preview.hexes.length > 4, "the previewed route spans the board");
+  await clickHex(page, "sublight", s.exitPos);
+  await page.waitForFunction(() => window.__hhState.status === "won", null, { timeout: 20000 });
+  s = await getState(page);
+  assert.strictEqual(s.status, "won", "flying the previewed route clears Sector 1");
   await waitForOverlay(page);
   assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Sector Clear");
 
@@ -126,6 +135,16 @@ async function freshPage(browser, url, errors) {
   assert.deepStrictEqual(s.actions, ["sublight", "ramming"], "Sector 2 unlocks exactly one new action");
   assert.strictEqual(s.enemies.filter((e) => e.alive).length, 1);
   assert.strictEqual(await page.locator('[data-mode="ramming"]').isDisabled(), false, "ramming is usable in Sector 2");
+
+  // Movement never needs Sublight armed: with Ramming selected and no legal
+  // ram destination, tapping a plain hex still moves the flagship.
+  const beforeFallback = s.playerPos;
+  await clickHex(page, "ramming", await pickStepToward(page, "enemy"));
+  s = await getState(page);
+  assert.ok(
+    s.playerPos.q !== beforeFallback.q || s.playerPos.r !== beforeFallback.r,
+    "tapping a movable hex with another action armed falls back to moving"
+  );
 
   // Close in until Ramming Speed has a legal destination, then use it.
   for (let i = 0; i < 12; i++) {
