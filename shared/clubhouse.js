@@ -14,6 +14,9 @@ var WORKER_URL = "https://game-creator.bramp-games.workers.dev";
 
 document.getElementById("gameBtn").href = BACK_URL;
 document.getElementById("gameTitle").textContent = ": " + GAME_NAME;
+// window.APP_VERSION comes from /version.js, stamped fresh by the deploy
+// workflow on every run (404s harmlessly in local dev, where it doesn't exist).
+document.getElementById("versionStamp").textContent = window.APP_VERSION ? " · " + window.APP_VERSION : "";
 
 var gateEl = document.getElementById("gate");
 var gateErrorEl = document.getElementById("gateError");
@@ -201,10 +204,19 @@ function parseComments(comments) {
     var m = comments[i].body.match(MARKER);
     if (!m) continue;
     var text = comments[i].body.slice(m[0].length);
+    // Messages may end with a deploy-version stamp like [v0.57] — pull it
+    // out of the text and show it in the byline instead.
+    var version = null;
+    var vm = text.match(/\s*\[(v[\d.]+)\]\s*$/);
+    if (vm) {
+      version = vm[1];
+      text = text.slice(0, vm.index);
+    }
     messages.push({
       who: m[1],
       fromClaude: m[1].toLowerCase() === "claude",
       text: text,
+      version: version,
       when: comments[i].created_at,
     });
   }
@@ -235,7 +247,8 @@ function renderMessages(messages) {
     bubble.className = "bubble " + (msg.fromClaude ? "claude" : "visitor");
     var who = document.createElement("span");
     who.className = "who";
-    who.textContent = msg.who + " · " + friendlyTime(msg.when);
+    who.textContent =
+      msg.who + (msg.version ? " · " + msg.version : "") + " · " + friendlyTime(msg.when);
     bubble.appendChild(who);
     bubble.appendChild(document.createTextNode(msg.text));
     threadEl.appendChild(bubble);
@@ -306,9 +319,12 @@ function startPolling() {
 sendBtn.addEventListener("click", function () {
   var text = messageInput.value.trim();
   if (!text) return;
+  // Stamp the message with the deploy version this page was sent from, so
+  // the thread records who was on what version when.
+  var stamped = window.APP_VERSION ? text + "\n\n[" + window.APP_VERSION + "]" : text;
   sendBtn.disabled = true;
   sendBtn.textContent = "Sending…";
-  relay({ action: "post", name: visitorName, secret: secretWord, message: text })
+  relay({ action: "post", name: visitorName, secret: secretWord, message: stamped })
     .then(function (res) {
       return res
         .json()
