@@ -16,6 +16,7 @@ html, body {
   padding: max(16px, env(safe-area-inset-top)) 20px 16px;
   background: #2f3b52;
   color: #fff;
+  position: relative;
 }
 .admin-header h1 { margin: 0; font-size: 1.2rem; }
 .admin-back {
@@ -29,6 +30,118 @@ html, body {
   font-size: 0.85rem;
 }
 
+/* ---- gate (mirrors shared/clubhouse.css) ---- */
+.logout-wrap { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); }
+.logout-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 7px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.logout-confirm {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: #fff;
+  color: #2f3b52;
+  border-radius: 10px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+  padding: 10px 12px;
+  min-width: 140px;
+  z-index: 20;
+}
+.logout-confirm[hidden] { display: none; }
+.logout-confirm-text { font-size: 0.8rem; font-weight: 700; text-align: center; margin-bottom: 8px; }
+.logout-confirm-actions { display: flex; gap: 8px; }
+.logout-confirm-actions button {
+  flex: 1 1 auto;
+  border: none;
+  border-radius: 7px;
+  padding: 7px 0;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+#logoutYesBtn { background: #ef5350; color: #fff; }
+#logoutNoBtn { background: #eee4da; color: #2f3b52; }
+
+.secret-field { position: relative; margin: 0 0 12px; }
+.secret-field input { margin: 0; padding-right: 44px; }
+.secret-field button {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #9a8f85;
+  cursor: pointer;
+  padding: 0;
+}
+.secret-field button svg { width: 20px; height: 20px; }
+.secret-field button svg[hidden] { display: none; }
+
+.gate {
+  min-height: calc(100svh - 68px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.gate-panel {
+  background: #bbada0;
+  border-radius: 14px;
+  padding: 26px 22px;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+.gate-panel h2 { margin: 0 0 4px; color: #fff; font-size: 1.2rem; }
+.gate-panel p { margin: 0 0 18px; color: rgba(255, 255, 255, 0.85); font-size: 0.85rem; }
+.gate-panel input {
+  display: block;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 9px;
+  font-size: 1rem;
+  background: #faf8ef;
+  color: #2f3b52;
+}
+.gate-panel > button {
+  width: 100%;
+  background: #f2b179;
+  border: none;
+  color: #3a2a1a;
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 12px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.gate-error {
+  margin-top: 12px;
+  color: #fff;
+  background: #ef5350;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  display: none;
+}
+.gate-error.visible { display: block; }
+
+/* ---- admin tools ---- */
 .admin-main {
   max-width: 640px;
   margin: 0 auto;

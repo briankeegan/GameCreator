@@ -1,13 +1,20 @@
-// Admin room: talks directly to the shared Worker's admin-* actions from
-// the browser. Runs entirely client-side — the admin token never leaves
-// this device except in requests straight to your own Worker.
-const CONN_KEY = "gc_admin_conn";
-const DEFAULT_WORKER_URL = "https://game-creator.bramp-games.workers.dev";
+// Admin room. Same login pattern as the Clubhouse (shared/clubhouse.js): a
+// gate you unlock once, remembered on this device. Here the "secret" is the
+// Worker's ADMIN_TOKEN — checked by calling admin-list, which the Worker
+// rejects with 403 for a wrong token. Runs entirely client-side, straight
+// to the Worker, so it works even when Claude has no network access.
+const WORKER_URL = "https://game-creator.bramp-games.workers.dev";
+const TOKEN_KEY = "gc_admin_token";
 
-const workerUrlInput = document.getElementById("workerUrlInput");
-const adminTokenInput = document.getElementById("adminTokenInput");
-const saveConnBtn = document.getElementById("saveConnBtn");
-const connStatusEl = document.getElementById("connStatus");
+const gateEl = document.getElementById("gate");
+const gateErrorEl = document.getElementById("gateError");
+const passkeyInput = document.getElementById("passkeyInput");
+const enterBtn = document.getElementById("enterBtn");
+const adminMainEl = document.getElementById("adminMain");
+const logoutBtn = document.getElementById("logoutBtn");
+const peekBtn = document.getElementById("peekBtn");
+const eyeOpen = document.getElementById("eyeOpen");
+const eyeClosed = document.getElementById("eyeClosed");
 
 const gameIdInput = document.getElementById("gameIdInput");
 const gameNameInput = document.getElementById("gameNameInput");
@@ -20,25 +27,11 @@ const refreshBtn = document.getElementById("refreshBtn");
 const listStatusEl = document.getElementById("listStatus");
 const gamesTableBody = document.getElementById("gamesTableBody");
 
-function loadConn() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(CONN_KEY) || "null");
-    if (saved) {
-      workerUrlInput.value = saved.workerUrl || DEFAULT_WORKER_URL;
-      adminTokenInput.value = saved.adminToken || "";
-      return;
-    }
-  } catch (e) {}
-  workerUrlInput.value = DEFAULT_WORKER_URL;
-}
+let adminToken = "";
 
-function saveConn() {
-  try {
-    localStorage.setItem(
-      CONN_KEY,
-      JSON.stringify({ workerUrl: workerUrlInput.value.trim(), adminToken: adminTokenInput.value.trim() })
-    );
-  } catch (e) {}
+function showGateError(msg) {
+  gateErrorEl.textContent = msg;
+  gateErrorEl.classList.add("visible");
 }
 
 function setStatus(el, msg, kind) {
@@ -47,20 +40,116 @@ function setStatus(el, msg, kind) {
 }
 
 function callAdmin(body) {
-  const workerUrl = workerUrlInput.value.trim();
-  const adminToken = adminTokenInput.value.trim();
-  if (!workerUrl) throw new Error("Set the Worker URL first.");
-  if (!adminToken) throw new Error("Set the admin token first.");
-  return fetch(workerUrl, {
+  return fetch(WORKER_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...body, adminToken }),
   }).then(async (res) => {
     const data = await res.json().catch(() => ({}));
+    if (res.status === 403) throw new Error("wrong-passkey");
     if (!res.ok) throw new Error(data.error || `relay error ${res.status}`);
     return data;
   });
 }
+
+function setPeekIcons(showing) {
+  if (showing) {
+    eyeOpen.setAttribute("hidden", "");
+    eyeClosed.removeAttribute("hidden");
+  } else {
+    eyeClosed.setAttribute("hidden", "");
+    eyeOpen.removeAttribute("hidden");
+  }
+  peekBtn.setAttribute("aria-label", showing ? "Hide passkey" : "Show passkey");
+}
+
+peekBtn.addEventListener("click", () => {
+  const show = passkeyInput.type === "password";
+  passkeyInput.type = show ? "text" : "password";
+  setPeekIcons(show);
+});
+
+function openAdmin(token) {
+  adminToken = token;
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch (e) {}
+  gateEl.style.display = "none";
+  adminMainEl.hidden = false;
+  logoutBtn.hidden = false;
+  refreshList();
+}
+
+function enterAdmin(token, fromSavedLogin) {
+  enterBtn.disabled = true;
+  enterBtn.textContent = "Checking…";
+  adminToken = token;
+  callAdmin({ action: "admin-list" })
+    .then((data) => {
+      openAdmin(token);
+      renderGames(data.games);
+      setStatus(listStatusEl, `${(data.games || []).length} game(s)`, "ok");
+    })
+    .catch((err) => {
+      if (fromSavedLogin) {
+        if (err.message === "wrong-passkey") {
+          try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+        }
+        return;
+      }
+      showGateError(
+        err.message === "wrong-passkey"
+          ? "That's not the admin passkey."
+          : "Couldn't reach the Worker. Check your internet and try again."
+      );
+    })
+    .finally(() => {
+      enterBtn.disabled = false;
+      enterBtn.textContent = "Enter";
+    });
+}
+
+enterBtn.addEventListener("click", () => {
+  const passkey = passkeyInput.value.trim();
+  gateErrorEl.classList.remove("visible");
+  if (!passkey) return showGateError("Enter the admin passkey.");
+  enterAdmin(passkey, false);
+});
+
+passkeyInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") enterBtn.click();
+});
+
+const logoutConfirmEl = document.getElementById("logoutConfirm");
+const logoutYesBtn = document.getElementById("logoutYesBtn");
+const logoutNoBtn = document.getElementById("logoutNoBtn");
+
+function doLogout() {
+  try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+  adminToken = "";
+  logoutBtn.hidden = true;
+  adminMainEl.hidden = true;
+  gateEl.style.display = "flex";
+  passkeyInput.value = "";
+  passkeyInput.type = "password";
+  setPeekIcons(false);
+}
+
+logoutBtn.addEventListener("click", () => {
+  logoutConfirmEl.hidden = false;
+});
+logoutYesBtn.addEventListener("click", () => {
+  logoutConfirmEl.hidden = true;
+  doLogout();
+});
+logoutNoBtn.addEventListener("click", () => {
+  logoutConfirmEl.hidden = true;
+});
+document.addEventListener("click", (e) => {
+  if (logoutConfirmEl.hidden) return;
+  if (e.target === logoutBtn || logoutConfirmEl.contains(e.target)) return;
+  logoutConfirmEl.hidden = true;
+});
 
 function renderGames(games) {
   gamesTableBody.innerHTML = "";
@@ -100,12 +189,6 @@ function removeGame(gameId) {
     .catch((err) => setStatus(listStatusEl, err.message, "error"));
 }
 
-saveConnBtn.addEventListener("click", () => {
-  saveConn();
-  setStatus(connStatusEl, "Saved.", "ok");
-  refreshList();
-});
-
 refreshBtn.addEventListener("click", refreshList);
 
 upsertBtn.addEventListener("click", () => {
@@ -134,5 +217,8 @@ upsertBtn.addEventListener("click", () => {
     });
 });
 
-loadConn();
-if (adminTokenInput.value) refreshList();
+(function () {
+  let saved = "";
+  try { saved = localStorage.getItem(TOKEN_KEY) || ""; } catch (e) {}
+  if (saved) enterAdmin(saved, true);
+})();

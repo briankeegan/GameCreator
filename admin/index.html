@@ -11,28 +11,43 @@
   <header class="admin-header">
     <a class="admin-back" href="../index.html">‹ All Games</a>
     <h1>⚙️ Admin</h1>
+    <div class="logout-wrap">
+      <button class="logout-btn" id="logoutBtn" hidden>Log out</button>
+      <div class="logout-confirm" id="logoutConfirm" hidden>
+        <div class="logout-confirm-text">Log out?</div>
+        <div class="logout-confirm-actions">
+          <button id="logoutYesBtn">Yes</button>
+          <button id="logoutNoBtn">No</button>
+        </div>
+      </div>
+    </div>
   </header>
 
-  <main class="admin-main">
-    <section class="admin-card">
-      <h2>Worker connection</h2>
-      <p class="admin-hint">
-        Runs entirely in your browser — talks directly to the Worker, so it
-        works even in sessions where Claude has no network access. The admin
-        token is only ever stored on this device.
-      </p>
-      <label>Worker URL
-        <input id="workerUrlInput" type="text" placeholder="https://game-creator.bramp-games.workers.dev" />
-      </label>
-      <label>Admin token
-        <input id="adminTokenInput" type="password" placeholder="the ADMIN_TOKEN secret you set on the Worker" />
-      </label>
-      <div class="admin-actions">
-        <button id="saveConnBtn">Save &amp; load games</button>
-        <span id="connStatus" class="admin-status"></span>
+  <div class="gate" id="gate">
+    <div class="gate-panel">
+      <h2>🔐 Admin passkey</h2>
+      <p>This unlocks game/chat management. Not for kids.</p>
+      <div class="secret-field">
+        <input id="passkeyInput" type="password" placeholder="Admin passkey" autocomplete="off" maxlength="200" />
+        <button id="peekBtn" type="button" aria-label="Show passkey">
+          <svg id="eyeOpen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <svg id="eyeClosed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden>
+            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a20.66 20.66 0 0 1 5.06-5.94"/>
+            <path d="M9.9 4.24A10.94 10.94 0 0 1 12 5c7 0 11 7 11 7a20.8 20.8 0 0 1-3.22 4.19"/>
+            <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </button>
       </div>
-    </section>
+      <button id="enterBtn">Enter</button>
+      <div class="gate-error" id="gateError"></div>
+    </div>
+  </div>
 
+  <main class="admin-main" id="adminMain" hidden>
     <section class="admin-card">
       <h2>Add / update a game's chat</h2>
       <p class="admin-hint">
@@ -69,7 +84,7 @@
           <tr><th>Game id</th><th>Name</th><th>Issue</th><th></th></tr>
         </thead>
         <tbody id="gamesTableBody">
-          <tr><td colspan="4" class="admin-empty">Connect above to load games.</td></tr>
+          <tr><td colspan="4" class="admin-empty">Loading…</td></tr>
         </tbody>
       </table>
     </section>
