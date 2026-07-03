@@ -16,11 +16,33 @@ html, body {
 
 .hud {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   max-width: 520px;
   margin: 0 auto 10px;
   font-size: 0.85rem;
   color: #9fb0c9;
+}
+
+.hull-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hull-bar {
+  display: flex;
+  gap: 3px;
+}
+.hull-pip {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: #1b2436;
+  border: 1px solid #2a3652;
+}
+.hull-pip.filled {
+  background: #e0533f;
+  border-color: #ff8a72;
 }
 
 .board-wrap {
@@ -150,6 +172,15 @@ html, body {
   text-align: left;
 }
 .legend.hidden { display: none; }
+.legend-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.legend-toggle input {
+  cursor: pointer;
+}
 .legend .swatch {
   display: inline-block;
   width: 0.9em;

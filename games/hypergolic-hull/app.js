@@ -15,7 +15,7 @@ const MODES = {
 
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
-const hullEl = document.getElementById("hull");
+const hullBarEl = document.getElementById("hullBar");
 const levelEl = document.getElementById("levelLabel");
 const objectiveEl = document.getElementById("objective");
 const logEl = document.getElementById("log");
@@ -27,6 +27,8 @@ const nextBtn = document.getElementById("nextBtn");
 const modeButtons = Array.from(document.querySelectorAll("[data-mode]"));
 const helpBtn = document.getElementById("helpBtn");
 const legendEl = document.getElementById("legend");
+const toggleThreatEl = document.getElementById("toggleThreat");
+const toggleLegalEl = document.getElementById("toggleLegal");
 
 // Everything on the board is an emoji sprite so the pieces read at a glance
 // (see the legend under the action buttons).
@@ -56,6 +58,13 @@ let autoRoute = null;
 // just unlocked) and steps out of the way after the first move — the ❓ Help
 // button always brings it back.
 let legendVisible = true;
+
+// Each legend key can be independently muted while the legend is open. The
+// bold/colored board overlays they describe only ever show while the legend
+// itself is open — once it's tucked away, legal-move hexes fall back to a
+// plain, always-on whitish border (see draw()) instead of disappearing.
+let showThreatKey = true;
+let showLegalKey = true;
 
 // The flagship's facing, in degrees (canvas convention: 0 = screen-right,
 // increases clockwise). Updated whenever the ship actually moves.
@@ -236,13 +245,30 @@ function draw() {
     if (isHazard) fill = "#3a1030";
     else if (isExit) fill = state.exitUnlocked ? "#1f4d3a" : "#2a2f45";
     else if (isOutpost) fill = "#2a3f4d";
-    if (threats.has(k)) fill = blend(fill, "#7a1f2b", 0.55);
+    // The red strike-range wash is one of the legend's toggleable keys —
+    // like the legal-move outline below, it's only ever drawn while the
+    // legend is open (and its own checkbox is checked).
+    if (threats.has(k) && legendVisible && showThreatKey) fill = blend(fill, "#7a1f2b", 0.55);
     // Movable/targetable hexes keep their normal color — only the border
     // marks them, so the board doesn't turn into a wall of green.
     if (route.has(k)) fill = blend(fill, "#2e5f96", 0.45);
 
-    // Movable/targetable hexes get a bold bright border so they pop.
-    drawHex(center, fill, legal.has(k) ? "#7fe3a8" : "#1a2233", legal.has(k) ? 3 : 1.5);
+    // Movable/targetable hexes get a bold bright border while the legend is
+    // open (and its checkbox is on) so they pop next to the key explaining
+    // them. Once the legend is tucked away, fall back to a plain whitish,
+    // thinner border — an always-on affordance for anywhere you could click.
+    let stroke = "#1a2233";
+    let strokeWidth = 1.5;
+    if (legal.has(k)) {
+      if (legendVisible && showLegalKey) {
+        stroke = "#7fe3a8";
+        strokeWidth = 3;
+      } else if (!legendVisible) {
+        stroke = "#c9d6e8";
+        strokeWidth = 2;
+      }
+    }
+    drawHex(center, fill, stroke, strokeWidth);
 
     if (isExit) {
       drawSprite(center, state.exitUnlocked ? SPRITES.gateOnline : SPRITES.gateLocked, geom.sx * 0.62);
@@ -293,11 +319,16 @@ function draw() {
 
   for (const enemy of Engine.livingEnemies(state)) {
     const base = hexToPixel(enemy);
-    if (legal.has(Engine.hexKey(enemy))) {
+    if (legal.has(Engine.hexKey(enemy)) && (legendVisible ? showLegalKey : true)) {
       ctx.beginPath();
       ctx.arc(base.x, base.y, geom.sx * 0.47, 0, Math.PI * 2);
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = "#7fe3a8";
+      if (legendVisible) {
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = "#7fe3a8";
+      } else {
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#c9d6e8";
+      }
       ctx.stroke();
     }
     drawSprite(overrides.get(enemy.id) || base, SPRITES[enemy.type] || SPRITES.interceptor, geom.sx * 0.69);
@@ -364,7 +395,13 @@ function animsRunning() {
 }
 
 function updateHud() {
-  hullEl.textContent = `Hull ${state.hull}/${state.maxHull}`;
+  hullBarEl.innerHTML = "";
+  hullBarEl.setAttribute("aria-label", `Hull ${state.hull}/${state.maxHull}`);
+  for (let i = 0; i < state.maxHull; i++) {
+    const pip = document.createElement("span");
+    pip.className = "hull-pip" + (i < state.hull ? " filled" : "");
+    hullBarEl.appendChild(pip);
+  }
   levelEl.textContent = `Sector ${state.levelId}: ${state.levelName} · Best ${bestDepth}`;
   logEl.textContent = state.log.slice(-3).join("  ·  ");
 
@@ -456,6 +493,17 @@ function loadSector(index) {
 helpBtn.addEventListener("click", () => {
   legendVisible = !legendVisible;
   updateLegend();
+  draw();
+});
+
+toggleThreatEl.addEventListener("change", () => {
+  showThreatKey = toggleThreatEl.checked;
+  draw();
+});
+
+toggleLegalEl.addEventListener("change", () => {
+  showLegalKey = toggleLegalEl.checked;
+  draw();
 });
 
 // First tap on a distant hex: preview the quickest route. Second tap on the

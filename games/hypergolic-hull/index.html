@@ -20,7 +20,10 @@
 
   <main class="game-area" id="gameArea">
     <div class="hud">
-      <span id="hull">Hull 3/3</span>
+      <div class="hull-wrap">
+        <span class="hull-label">Hull</span>
+        <div class="hull-bar" id="hullBar"></div>
+      </div>
       <span id="levelLabel">Sector 1 · Best 1</span>
     </div>
 
@@ -54,8 +57,8 @@
       <span>👾 Enemy ship</span>
       <span>🌀 Warp Gate (exit)</span>
       <span>🛠️ Outpost</span>
-      <span><i class="swatch swatch-threat"></i> Strike range — an enemy hits you if you end your turn here</span>
-      <span><i class="swatch swatch-legal"></i> Outlined hex — where your selected action can go</span>
+      <label class="legend-toggle"><input type="checkbox" id="toggleThreat" checked /><i class="swatch swatch-threat"></i> Strike range — an enemy hits you if you end your turn here</label>
+      <label class="legend-toggle"><input type="checkbox" id="toggleLegal" checked /><i class="swatch swatch-legal"></i> Outlined hex — where your selected action can go</label>
       <span>✨ Tap a far-away hex to preview the quickest route — tap it again to fly there</span>
     </div>
   </main>
