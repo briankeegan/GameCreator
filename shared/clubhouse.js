@@ -12,14 +12,13 @@ var REPO = "briankeegan/GameCreator";
 // The one shared relay every game's clubhouse talks to.
 var WORKER_URL = "https://game-creator.bramp-games.workers.dev";
 
-// window.APP_VERSION is set by a line the deploy workflow prepends to the
-// very top of this exact file at build time (see .github/workflows/pages.yml).
-// Read directly off window everywhere below — no local variable of the
-// same name — to rule out any var-hoisting/shadowing ambiguity between
-// this file's own declarations and the prepended global assignment.
 document.getElementById("gameBtn").href = BACK_URL;
 document.getElementById("gameTitle").textContent = ": " + GAME_NAME;
-document.getElementById("versionStamp").textContent = " · " + (window.APP_VERSION || "v?");
+// window.APP_VERSION comes from ../version.js, stamped fresh by the deploy
+// workflow on every run (404s harmlessly in local dev, where it doesn't
+// exist) — the exact same mechanism HayleysGame's clubhouse already uses
+// in production.
+document.getElementById("versionStamp").textContent = window.APP_VERSION ? " · " + window.APP_VERSION : "";
 
 var gateEl = document.getElementById("gate");
 var gateErrorEl = document.getElementById("gateError");
@@ -529,7 +528,7 @@ sendBtn.addEventListener("click", function () {
   if (!text) return;
   // Stamp the message with the deploy version this page was sent from, so
   // the thread records who was on what version when.
-  var stamped = text + "\n\n[" + (window.APP_VERSION || "v?") + "]";
+  var stamped = window.APP_VERSION ? text + "\n\n[" + window.APP_VERSION + "]" : text;
   sendBtn.disabled = true;
   sendBtn.textContent = "Sending…";
   relay({ action: "post", name: visitorName, secret: secretWord, message: stamped })
