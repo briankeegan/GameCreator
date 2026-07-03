@@ -30,6 +30,14 @@ design discussion. `shared/` holds the components every game reuses
   `hypergolic-hull` → PR #8. Don't trust this list once it's stale — always
   re-check `admin-list` / open PRs, since games get added and threads get
   repointed via Admin's "Fix link" / "Add existing game's chat".
+- Chat image attachments are committed straight into the repo (`games/<id>/
+  clubhouse-images/` on that game's own `clubhouse/<id>` branch, never
+  `main`) via the relay's `upload-image` action, then referenced by their
+  `raw.githubusercontent.com` URL. Third-party anonymous hosts (imgur,
+  catbox.moe) were tried first and both proved unreliable to hit directly
+  from a browser — imgur's signup flow was broken, catbox.moe's endpoint
+  returned raw XML errors (likely Cloudflare bot protection) instead of
+  its documented plain-text response.
 - Same convention as HayleysGame: every Claude reply ends with a version
   stamp on its own line, `[v0.<run_number>]`, where `<run_number>` is the
   `run_number` of the latest successful "Deploy static site to Pages" run
