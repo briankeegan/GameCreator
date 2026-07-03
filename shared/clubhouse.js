@@ -12,11 +12,18 @@ var REPO = "briankeegan/GameCreator";
 // The one shared relay every game's clubhouse talks to.
 var WORKER_URL = "https://game-creator.bramp-games.workers.dev";
 
+// Baked directly into this file by the deploy workflow (a sed replace over
+// the checked-out copy before archiving — see .github/workflows/pages.yml)
+// rather than fetched at runtime from a second file. A separate version.js
+// <script> load could silently fail (404, slow, blocked) and leave the
+// stamp blank with no visible sign anything was wrong; this way the
+// version is guaranteed correct as long as this script loaded at all,
+// which the rest of the page already depends on regardless.
+var APP_VERSION = "__APP_VERSION__";
+
 document.getElementById("gameBtn").href = BACK_URL;
 document.getElementById("gameTitle").textContent = ": " + GAME_NAME;
-// window.APP_VERSION comes from /version.js, stamped fresh by the deploy
-// workflow on every run (404s harmlessly in local dev, where it doesn't exist).
-document.getElementById("versionStamp").textContent = window.APP_VERSION ? " · " + window.APP_VERSION : "";
+document.getElementById("versionStamp").textContent = " · " + APP_VERSION;
 
 var gateEl = document.getElementById("gate");
 var gateErrorEl = document.getElementById("gateError");
@@ -526,7 +533,7 @@ sendBtn.addEventListener("click", function () {
   if (!text) return;
   // Stamp the message with the deploy version this page was sent from, so
   // the thread records who was on what version when.
-  var stamped = window.APP_VERSION ? text + "\n\n[" + window.APP_VERSION + "]" : text;
+  var stamped = text + "\n\n[" + APP_VERSION + "]";
   sendBtn.disabled = true;
   sendBtn.textContent = "Sending…";
   relay({ action: "post", name: visitorName, secret: secretWord, message: stamped })

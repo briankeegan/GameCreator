@@ -23,8 +23,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      # Baked directly into clubhouse.js (as a real JS constant) instead of
+      # a separate version.js file loaded at runtime via its own <script>
+      # tag — that extra load was a silent single point of failure: if it
+      # 404'd, was slow, or got blocked, the version stamp just went blank
+      # with no visible sign anything was wrong.
       - name: Stamp version
-        run: echo "window.APP_VERSION = \"v0.${GITHUB_RUN_NUMBER}\";" > version.js
+        run: sed -i "s/__APP_VERSION__/v0.${GITHUB_RUN_NUMBER}/" shared/clubhouse.js
       - name: Setup Pages
         uses: actions/configure-pages@v5
       # Archiving manually (same tar command actions/upload-pages-artifact
