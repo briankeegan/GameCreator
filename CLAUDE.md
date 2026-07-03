@@ -1,1 +1,89 @@
-IyBHYW1lQ3JlYXRvciDigJQgc2Vzc2lvbiBjb252ZW50aW9ucwoKQSBtdWx0aS1nYW1lIHN0YXRpYyBzaXRlIChubyBidWlsZCBzeXN0ZW0pLCBkZXBsb3llZCB0bwpicmlhbmtlZWdhbi5naXRodWIuaW8vR2FtZUNyZWF0b3IvLiBMYW5kaW5nIHBhZ2UgbGlzdHMgZXZlcnkgZ2FtZSBmcm9tCmBnYW1lcy5qc29uYDsgZWFjaCBnYW1lIGxpdmVzIGF0IGBnYW1lcy88aWQ+L2AsIGlzIGluZGVwZW5kZW50bHkKaW5zdGFsbGFibGUgYXMgYSBQV0EsIGFuZCBoYXMgaXRzIG93biBwcml2YXRlICJDbHViaG91c2UiIGNoYXQgdGhyZWFkIGZvcgpkZXNpZ24gZGlzY3Vzc2lvbi4gYHNoYXJlZC9gIGhvbGRzIHRoZSBjb21wb25lbnRzIGV2ZXJ5IGdhbWUgcmV1c2VzCihDbHViaG91c2UgVUksIHN0b3JhZ2UsIG5hdiwgUFdBIHBsdW1iaW5nKSDigJQgZG9uJ3QgZm9yayBpdCBwZXItZ2FtZS4KCiMjIFRoZSBDbHViaG91c2UgKGRlc2lnbi1yZXF1ZXN0IHBpcGVsaW5lKQoKLSBFYWNoIGdhbWUncyBjaGF0IHRocmVhZCBpcyBhICoqcGVybWFuZW50bHktb3BlbiBkcmFmdCBQUioqLCBuZXZlciBhCiAgR2l0SHViIElzc3VlLiBJc3N1ZXMgY2FuJ3QgYmUgc3Vic2NyaWJlZCB0byDigJQgbm90aGluZyB3YWtlcyBhIHNlc3Npb24gdXAKICB3aGVuIGEgbmV3IElzc3VlIGNvbW1lbnQgbGFuZHMuIFBScyBjYW4gKGBzdWJzY3JpYmVfcHJfYWN0aXZpdHlgKSwgd2hpY2gKICBpcyB0aGUgZW50aXJlIHBvaW50IG9mIHVzaW5nIHRoZW0gaGVyZS4gTmV2ZXIgbWVyZ2Ugb3IgY2xvc2UgdGhlc2UgUFJzLgotIFRocmVhZCBuYW1pbmc6IGJyYW5jaCBgY2x1YmhvdXNlLzxnYW1lSWQ+YCwgb25lIHBsYWNlaG9sZGVyIGZpbGUKICBgZ2FtZXMvPGdhbWVJZD4vQ0xVQkhPVVNFLm1kYCwgUFIgdGl0bGVkIGBDbHViaG91c2Ug4oCUIDxuYW1lPmAuCi0gTWVzc2FnZXMgYXJlIFBSIGNvbW1lbnRzIHN0YXJ0aW5nIHdpdGggYCoqPG5hbWU+IHNheXM6KipgLiBUaGUKICBDbHViaG91c2UgcGFnZSAoYHNoYXJlZC9jbHViaG91c2UuanNgKSBwYXJzZXMgdGhhdCBtYXJrZXI7IGEgbmFtZSBvZgogICJjbGF1ZGUiIChjYXNlLWluc2Vuc2l0aXZlKSByZW5kZXJzIGFzIENsYXVkZSdzIHNpZGUgb2YgdGhlIGNoYXQuIFJlcGx5CiAgdGhlIHNhbWUgd2F5OiBwb3N0IGEgY29tbWVudCBzdGFydGluZyB3aXRoIGAqKkNsYXVkZSBzYXlzOioqYC4KLSAqKkEgZnJlc2ggc2Vzc2lvbiBpcyBub3QgYXV0b21hdGljYWxseSBzdWJzY3JpYmVkIHRvIGFueXRoaW5nLioqCiAgU3Vic2NyaXB0aW9uIChgc3Vic2NyaWJlX3ByX2FjdGl2aXR5YCkgaXMgcGVyLXNlc3Npb24gYW5kIGRvZXMgbm90CiAgcGVyc2lzdCBhY3Jvc3MgYSBjbGVhcmVkL25ldyBjb252ZXJzYXRpb24uIEF0IHRoZSBzdGFydCBvZiBhIHNlc3Npb24KICB3b3JraW5nIG9uIHRoaXMgcmVwbywgY2FsbCBgYWRtaW4tbGlzdGAgdmlhIHRoZSBXb3JrZXIgKG9yIGNoZWNrCiAgYGdhbWVzLmpzb25gICsgb3BlbiBQUnMpIHRvIGZpbmQgZXZlcnkgZ2FtZSdzIGN1cnJlbnQgUFIgbnVtYmVyLCBhbmQKICBzdWJzY3JpYmUgdG8gZWFjaCBvbmUgc28gbmV3IG1lc3NhZ2VzIGFjdHVhbGx5IHJlYWNoIHlvdSBpbnN0ZWFkIG9mCiAgcmVxdWlyaW5nIHRoZSB1c2VyIHRvIGNvbWUgZXhwbGFpbiB3aGF0IGhhcHBlbmVkLgotIEFzIG9mIHRoaXMgd3JpdGluZywgYWN0aXZlIHRocmVhZHM6IGBzYW1wbGUtY2xpY2tlcmAg4oaSIFBSICM3LAogIGBoeXBlcmdvbGljLWh1bGxgIOKGkiBQUiAjOC4gRG9uJ3QgdHJ1c3QgdGhpcyBsaXN0IG9uY2UgaXQncyBzdGFsZSDigJQgYWx3YXlzCiAgcmUtY2hlY2sgYGFkbWluLWxpc3RgIC8gb3BlbiBQUnMsIHNpbmNlIGdhbWVzIGdldCBhZGRlZCBhbmQgdGhyZWFkcyBnZXQKICByZXBvaW50ZWQgdmlhIEFkbWluJ3MgIkZpeCBsaW5rIiAvICJBZGQgZXhpc3RpbmcgZ2FtZSdzIGNoYXQiLgoKIyMgSGFuZGxpbmcgYSBjbHViaG91c2UgcmVxdWVzdAoKMS4gSWYgaXQncyBhIGNsZWFyIGdhbWUtZGVzaWduIGFzazogaW1wbGVtZW50IGl0IGluIHRoZSByZWxldmFudAogICBgZ2FtZXMvPGlkPi9gIGZpbGVzLCBwdXNoIHRvIGBtYWluYCAoUGFnZXMgZGVwbG95cyBvbmx5IGZyb20gYG1haW5gLAogICBub3RoaW5nIGVsc2Ug4oCUIHNlZSBiZWxvdyksIGFuZCByZXBseSBvbiB0aGUgUFIgY29uZmlybWluZyB3aGF0IHNoaXBwZWQuCjIuIElmIHRoZSByZXF1ZXN0IHRvdWNoZXMgdGhlIHNoYXJlZCByZWxheSdzIGJlaGF2aW9yICh3b3JrZXIuanMpLAogICByZW1lbWJlciB0aGUgQ2xvdWRmbGFyZSByZWRlcGxveSBnb3RjaGEgYmVsb3cgYmVmb3JlIGNsYWltaW5nIGl0J3MgbGl2ZS4KMy4gSWYgdGhlIHJlcXVlc3QgaXMgYW1iaWd1b3VzIG9yIGFyY2hpdGVjdHVyYWxseSBzaWduaWZpY2FudCwgYXNrIGJlZm9yZQogICBidWlsZGluZyDigJQgdGhpcyBwcm9qZWN0IGhhcyBiZWVuIGV4cGxpY2l0bHkgc3RlZXJlZCBhd2F5IGZyb20gc3BlY3VsYXRpdmUKICAgIm1lY2hhbmlzbXMiIGZvciBoeXBvdGhldGljYWwgZWRnZSBjYXNlcy4gRml4IHdoYXQncyBhc2tlZCwKICAgcHJhZ21hdGljYWxseSwgYW5kIG1vdmUgb24uCgojIyBJbmZyYXN0cnVjdHVyZSBub3RlcwoKLSAqKlJlbGF5OioqIG9uZSBzaGFyZWQgQ2xvdWRmbGFyZSBXb3JrZXIgKGB3b3JrZXIvd29ya2VyLmpzYCkgdXNlZCBieQogIGV2ZXJ5IGdhbWUncyBDbHViaG91c2UgYW5kIGJ5IHRoZSBBZG1pbiBwYWdlIOKAlCBub3Qgb25lIFdvcmtlciBwZXIgZ2FtZS4KICBQZXItZ2FtZSBjb25maWcgKHNlY3JldCB3b3JkICsgUFIgbnVtYmVyKSBsaXZlcyBpbiBhIEtWIG5hbWVzcGFjZQogIChgR0FNRVNfS1ZgLCBrZXkgYGdhbWU6PGlkPmApLCBub3QgaW4gdGhlIFdvcmtlciBmaWxlLgotICoqVGhlIFdvcmtlciBkb2VzIE5PVCBhdXRvLWRlcGxveSBmcm9tIGdpdCBwdXNoZXMuKiogRXZlcnkgY2hhbmdlIHRvCiAgYHdvcmtlci93b3JrZXIuanNgIG5lZWRzIHRoZSBvd25lciB0byBtYW51YWxseSBwYXN0ZS1hbmQtZGVwbG95IGl0IGluCiAgdGhlIENsb3VkZmxhcmUgZGFzaGJvYXJkIChXb3JrZXJzICYgUGFnZXMg4oaSIGdhbWUtY3JlYXRvciDihpIgRWRpdCBjb2RlKS4KICBTYXkgc28gZXhwbGljaXRseSB3aGVuZXZlciB5b3UgY2hhbmdlIHRoYXQgZmlsZSDigJQgZG9uJ3QgYXNzdW1lIGEgcHVzaAogIG1hZGUgaXQgbGl2ZS4gVGhlIFdvcmtlcidzIG5vbi1QT1NUIHJlc3BvbnNlIGluY2x1ZGVzIGEgYHJlbGF5OiAiZ2Mtck4iYAogIHZlcnNpb24gbWFya2VyIHNwZWNpZmljYWxseSBzbyB0aGlzIGNhbiBiZSB2ZXJpZmllZCB3aXRob3V0IG5ldHdvcmsKICBhY2Nlc3MgdG8gYCoud29ya2Vycy5kZXZgICh3aGljaCBjbG91ZCBzYW5kYm94ZXMgaGVyZSBjYW4ndCByZWFjaCkuCi0gKipHaXRIdWIgUGFnZXMgZGVwbG95cyBvbmx5IG9uIHB1c2ggdG8gYG1haW5gKiogKGAuZ2l0aHViL3dvcmtmbG93cy9wYWdlcy55bWxgLAogIGBvbjogcHVzaDogYnJhbmNoZXM6IFsibWFpbiJdYCkuIEl0IHdhcyByZXdyaXR0ZW4gdG8gdXBsb2FkIHdpdGgKICBgb3ZlcndyaXRlOiB0cnVlYCBzbyByZS1ydW5uaW5nIGl0IGFmdGVyIGEgcHJpb3IgYXR0ZW1wdCBkb2Vzbid0IGNvbGxpZGUKICB3aXRoICJNdWx0aXBsZSBhcnRpZmFjdHMgbmFtZWQgZ2l0aHViLXBhZ2VzIiDigJQgZG9uJ3QgbWFudWFsbHkgcmUtdHJpZ2dlcgogIHJ1bnMgdmlhIHRoZSBBY3Rpb25zIEFQSTsgcHVzaCBhIGNvbW1pdCBhbmQgbGV0IGl0IHJ1biBmcmVzaCBpbnN0ZWFkLgotICoqR0lUSFVCX1RPS0VOKiogKFdvcmtlciBzZWNyZXQpIGlzIGEgZmluZS1ncmFpbmVkIFBBVCBvbiB0aGlzIHJlcG8gd2l0aAogIENvbnRlbnRzOiBSZWFkL3dyaXRlLCBQdWxsIHJlcXVlc3RzOiBSZWFkL3dyaXRlLCBJc3N1ZXM6IFJlYWQvd3JpdGUuCiAgTmVlZGVkIGZvciBzY2FmZm9sZGluZyBnYW1lIGZpbGVzLCBjcmVhdGluZy93cml0aW5nIHRoZSBDbHViaG91c2UKICBicmFuY2grUFIsIGFuZCBwb3N0aW5nIGNoYXQgY29tbWVudHMuIE5ldmVyIGFzayBmb3Igb3Igc3RvcmUgdGhpcwogIHRva2VuIGluIHRoZSByZXBvIOKAlCBpdCBsaXZlcyBvbmx5IGluIHRoZSBXb3JrZXIncyBkYXNoYm9hcmQgc2VjcmV0cy4KLSAqKkFETUlOX1RPS0VOKiogKFdvcmtlciBzZWNyZXQpIGdhdGVzIHRoZSBgYWRtaW4tKmAgYWN0aW9ucyB1c2VkIGJ5CiAgYGFkbWluL2AgKHNlbGYtc2VydmljZSBnYW1lIGNyZWF0aW9uLCBsaXN0LCByZW1vdmUsIHJlcG9pbnQgYSB0aHJlYWQpLgogIEFsc28gZGFzaGJvYXJkLW9ubHkuCi0gQ2xvdWQgc2FuZGJveGVzIGhlcmUgdXN1YWxseSBjYW4ndCByZWFjaCBgKi53b3JrZXJzLmRldmAsIGAqLmdpdGh1Yi5pb2AsCiAgb3IgYGFwaS5jbG91ZGZsYXJlLmNvbWAgZGlyZWN0bHkg4oCUIHZlcmlmeSBXb3JrZXIvUGFnZXMgY2hhbmdlcyB2aWEgdGhlCiAgR2l0SHViIEFQSSAoY29tbWl0cywgQWN0aW9ucyBydW4gc3RhdHVzLCBmaWxlIGNvbnRlbnRzKSBvciBhc2sgdGhlIG93bmVyCiAgdG8gY2hlY2ssIHJhdGhlciB0aGFuIGFzc3VtaW5nIGEgZmV0Y2ggZmFpbHVyZSBtZWFucyBzb21ldGhpbmcncyBicm9rZW4uCi0gQmluYXJ5IGZpbGVzIChQTkcpIGRvbid0IHN1cnZpdmUgdGhlIENvbnRlbnRzIEFQSSByZWxpYWJseSB0aHJvdWdoIHRoZXNlCiAgdG9vbHMg4oCUIGJhc2U2NCBjb250ZW50IGhhcyBjb21lIGJhY2sgc3RvcmVkIGFzIGxpdGVyYWwgdGV4dCwgbm90IGRlY29kZWQuCiAgVXNlIFNWRyBmb3IgYW55IG5ldyBpY29ucy9pbWFnZXMuCi0gRWFjaCBnYW1lIGlzIGEgUFdBIChgbWFuaWZlc3Qud2VibWFuaWZlc3RgICsgYHN3LmpzYCkgc2hhcmluZwogIGBzaGFyZWQvcHdhLmpzYC1zdHlsZSBwbHVtYmluZyDigJQgc2NhZmZvbGRlZCBhdXRvbWF0aWNhbGx5IGJ5CiAgYGFkbWluLWNyZWF0ZS1nYW1lYCBmcm9tIGBnYW1lcy9fdGVtcGxhdGUvYC4gRG9uJ3QgaGFuZC1jcmVhdGUgYSBnYW1lJ3MKICBmaWxlczsgdXNlIEFkbWluJ3MgIkNyZWF0ZSBhIG5ldyBnYW1lIiAob3IgIkFkZCBleGlzdGluZyBnYW1lJ3MgY2hhdCIgaWYKICBvbmx5IGl0cyBjaGF0IGNvbmZpZyBuZWVkcyByZXN0b3JpbmcsIGUuZy4gYWZ0ZXIgYW4gZW1wdHkvY29ycnVwdGVkIEtWCiAgZW50cnkg4oCUIHRoYXQgcGF0aCBkb2VzIE5PVCByZS1zY2FmZm9sZCBmaWxlcywgdW5saWtlICJDcmVhdGUgYSBuZXcgZ2FtZSIpLgo=
+# GameCreator — session conventions
+
+A multi-game static site (no build system), deployed to
+briankeegan.github.io/GameCreator/. Landing page lists every game from
+`games.json`; each game lives at `games/<id>/`, is independently
+installable as a PWA, and has its own private "Clubhouse" chat thread for
+design discussion. `shared/` holds the components every game reuses
+(Clubhouse UI, storage, nav, PWA plumbing) — don't fork it per-game.
+
+## The Clubhouse (design-request pipeline)
+
+- Each game's chat thread is a **permanently-open draft PR**, never a
+  GitHub Issue. Issues can't be subscribed to — nothing wakes a session up
+  when a new Issue comment lands. PRs can (`subscribe_pr_activity`), which
+  is the entire point of using them here. Never merge or close these PRs.
+- Thread naming: branch `clubhouse/<gameId>`, one placeholder file
+  `games/<gameId>/CLUBHOUSE.md`, PR titled `Clubhouse — <name>`.
+- Messages are PR comments starting with `**<name> says:**`. The
+  Clubhouse page (`shared/clubhouse.js`) parses that marker; a name of
+  "claude" (case-insensitive) renders as Claude's side of the chat. Reply
+  the same way: post a comment starting with `**Claude says:**`.
+- **A fresh session is not automatically subscribed to anything.**
+  Subscription (`subscribe_pr_activity`) is per-session and does not
+  persist across a cleared/new conversation. At the start of a session
+  working on this repo, call `admin-list` via the Worker (or check
+  `games.json` + open PRs) to find every game's current PR number, and
+  subscribe to each one so new messages actually reach you instead of
+  requiring the user to come explain what happened.
+- As of this writing, active threads: `sample-clicker` → PR #7,
+  `hypergolic-hull` → PR #8. Don't trust this list once it's stale — always
+  re-check `admin-list` / open PRs, since games get added and threads get
+  repointed via Admin's "Fix link" / "Add existing game's chat".
+
+## Handling a clubhouse request
+
+1. If it's a clear game-design ask: implement it in the relevant
+   `games/<id>/` files, push to `main` (Pages deploys only from `main`,
+   nothing else — see below), and reply on the PR confirming what shipped.
+2. If the request touches the shared relay's behavior (worker.js),
+   remember the Cloudflare redeploy gotcha below before claiming it's live.
+3. If the request is ambiguous or architecturally significant, ask before
+   building — this project has been explicitly steered away from
+   speculative "mechanisms" for hypothetical edge cases. Fix what's asked,
+   pragmatically, and move on.
+
+## Infrastructure notes
+
+- **Relay:** one shared Cloudflare Worker (`worker/worker.js`) used by
+  every game's Clubhouse and by the Admin page — not one Worker per game.
+  Per-game config (secret word + PR number) lives in a KV namespace
+  (`GAMES_KV`, key `game:<id>`), not in the Worker file.
+- **The Worker does NOT auto-deploy from git pushes.** Every change to
+  `worker/worker.js` needs the owner to manually paste-and-deploy it in
+  the Cloudflare dashboard (Workers & Pages → game-creator → Edit code).
+  Say so explicitly whenever you change that file — don't assume a push
+  made it live. The Worker's non-POST response includes a `relay: "gc-rN"`
+  version marker specifically so this can be verified without network
+  access to `*.workers.dev` (which cloud sandboxes here can't reach).
+- **GitHub Pages deploys only on push to `main`** (`.github/workflows/pages.yml`,
+  `on: push: branches: ["main"]`). It was rewritten to upload with
+  `overwrite: true` so re-running it after a prior attempt doesn't collide
+  with "Multiple artifacts named github-pages" — don't manually re-trigger
+  runs via the Actions API; push a commit and let it run fresh instead.
+- **GITHUB_TOKEN** (Worker secret) is a fine-grained PAT on this repo with
+  Contents: Read/write, Pull requests: Read/write, Issues: Read/write.
+  Needed for scaffolding game files, creating/writing the Clubhouse
+  branch+PR, and posting chat comments. Never ask for or store this token
+  in the repo — it lives only in the Worker's dashboard secrets.
+- **ADMIN_TOKEN** (Worker secret) gates the `admin-*` actions used by
+  `admin/` (self-service game creation, list, remove, repoint a thread).
+  Also dashboard-only.
+- Cloud sandboxes here usually can't reach `*.workers.dev`, `*.github.io`,
+  or `api.cloudflare.com` directly — verify Worker/Pages changes via the
+  GitHub API (commits, Actions run status, file contents) or ask the owner
+  to check, rather than assuming a fetch failure means something's broken.
+- Binary files (PNG) don't survive the Contents API reliably through these
+  tools — base64 content has come back stored as literal text, not decoded.
+  Use SVG for any new icons/images. This applies to `create_or_update_file`-
+  style tools too: pass PLAIN TEXT content, never pre-base64-encode it
+  yourself — the tool encodes internally, so pre-encoding double-encodes
+  and silently corrupts the file (confirmed the hard way: it broke the
+  live Clubhouse page with no error, since the corrupted script couldn't
+  even execute to show one).
+- Each game is a PWA (`manifest.webmanifest` + `sw.js`) sharing
+  `shared/pwa.js`-style plumbing — scaffolded automatically by
+  `admin-create-game` from `games/_template/`. Don't hand-create a game's
+  files; use Admin's "Create a new game" (or "Add existing game's chat" if
+  only its chat config needs restoring, e.g. after an empty/corrupted KV
+  entry — that path does NOT re-scaffold files, unlike "Create a new game").

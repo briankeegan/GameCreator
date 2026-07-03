@@ -147,11 +147,10 @@ function enterAdmin(token, fromSavedLogin) {
       setStatus(listStatusEl, `${(data.games || []).length} game(s)`, "ok");
     })
     .catch((err) => {
-      if (fromSavedLogin) {
-        if (err.message === "wrong-passkey") {
-          try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
-        }
-        return;
+      // A saved-login failure used to fail completely silently — the gate
+      // just sat there with no explanation. Always show what happened now.
+      if (fromSavedLogin && err.message === "wrong-passkey") {
+        try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
       }
       showGateError(
         err.message === "wrong-passkey"
