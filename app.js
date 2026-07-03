@@ -30,7 +30,11 @@ function cardFor(game) {
   return a;
 }
 
-fetch("games.json")
+// no-store: without this, browsers can legitimately serve a cached copy of
+// games.json even after a fresh page load, so a newly-created game wouldn't
+// show up until the cache happened to expire — not a user error, a missing
+// cache directive.
+fetch("games.json", { cache: "no-store" })
   .then((res) => res.json())
   .then((data) => {
     const games = data.games || [];
