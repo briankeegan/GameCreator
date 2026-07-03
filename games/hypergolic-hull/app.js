@@ -217,6 +217,33 @@ function drawSprite(center, glyph, size, alpha) {
   ctx.restore();
 }
 
+// Every hex the flagship could eventually walk to — not just the current
+// mode's immediate legal targets — so the no-help baseline border can mark
+// "anywhere you could click", including a distant tap-to-preview-route
+// destination. Mirrors findPath's walkability rule (blocked by enemies and
+// hazards) but as a full flood-fill instead of point-to-point, then unions
+// in adjacent legalSublightTargets since those allow stepping onto a hazard
+// tile even though the route-finder won't path through one.
+function computeReachableHexes(state) {
+  const blocked = (pos) => Engine.enemyAt(state, pos) || Engine.hazardAt(state, pos);
+  const startKey = Engine.hexKey(state.playerPos);
+  const seen = new Set([startKey]);
+  const queue = [state.playerPos];
+  while (queue.length) {
+    const cur = queue.shift();
+    for (let i = 0; i < 6; i++) {
+      const n = Engine.neighbor(cur, i);
+      const k = Engine.hexKey(n);
+      if (seen.has(k) || !Engine.onBoard(state, n) || blocked(n)) continue;
+      seen.add(k);
+      queue.push(n);
+    }
+  }
+  seen.delete(startKey);
+  for (const h of Engine.legalSublightTargets(state)) seen.add(Engine.hexKey(h));
+  return seen;
+}
+
 function draw() {
   const now = performance.now();
   ctx.clearRect(0, 0, geom.w, geom.h);
@@ -231,6 +258,7 @@ function draw() {
 
   const threats = Engine.computeThreatHexes(state);
   const legal = new Set(MODES[mode].targets(state).map((h) => Engine.hexKey(h)));
+  const reachable = legendVisible ? null : computeReachableHexes(state);
   const routeHexes = (plannedPath && plannedPath.hexes) || (autoRoute && autoRoute.path) || null;
   const route = new Set((routeHexes || []).slice(1).map((h) => Engine.hexKey(h)));
 
@@ -253,20 +281,23 @@ function draw() {
     // marks them, so the board doesn't turn into a wall of green.
     if (route.has(k)) fill = blend(fill, "#2e5f96", 0.45);
 
-    // Movable/targetable hexes get a bold bright border while the legend is
-    // open (and its checkbox is on) so they pop next to the key explaining
-    // them. Once the legend is tucked away, fall back to a plain whitish,
-    // thinner border — an always-on affordance for anywhere you could click.
+    // The current mode's legal targets get a bold bright border while the
+    // legend is open (and its checkbox is on) so they pop next to the key
+    // explaining them. Once the legend is tucked away, every hex the
+    // flagship could actually walk to — the whole reachable region, not
+    // just this mode's immediate targets — gets a plain whitish, thinner
+    // border instead: an always-on affordance for anywhere you could click,
+    // including a distant tap-to-preview-route destination.
     let stroke = "#1a2233";
     let strokeWidth = 1.5;
-    if (legal.has(k)) {
-      if (legendVisible && showLegalKey) {
+    if (legendVisible) {
+      if (legal.has(k) && showLegalKey) {
         stroke = "#7fe3a8";
         strokeWidth = 3;
-      } else if (!legendVisible) {
-        stroke = "#c9d6e8";
-        strokeWidth = 2;
       }
+    } else if (reachable.has(k)) {
+      stroke = "#c9d6e8";
+      strokeWidth = 2;
     }
     drawHex(center, fill, stroke, strokeWidth);
 
