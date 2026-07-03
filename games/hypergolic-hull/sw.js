@@ -4,6 +4,8 @@ GCRegisterServiceWorker("hypergolic-hull-v1", [
   "./",
   "./index.html",
   "./style.css",
+  "./levels.js",
+  "./engine.js",
   "./app.js",
   "./manifest.webmanifest",
   "../../shared/nav.js",

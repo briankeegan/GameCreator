@@ -19,7 +19,29 @@
   <!-- Header (All Games / title / chat) is injected by nav.js below. -->
 
   <main class="game-area" id="gameArea">
-    <p>Your game goes here.</p>
+    <div class="hud">
+      <span id="hull">Hull 3/3</span>
+      <span id="levelLabel">Sector 1 · Best 1</span>
+    </div>
+
+    <div class="board-wrap">
+      <canvas id="board" width="320" height="320"></canvas>
+      <div class="run-overlay" id="runOverlay" hidden>
+        <h2 id="runOverlayTitle"></h2>
+        <p id="runOverlayBody"></p>
+        <button id="restartBtn">New Run</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button data-mode="sublight" class="active">Sublight Impulse</button>
+      <button data-mode="ramming">Ramming Speed</button>
+      <button data-mode="tractor">Tractor Beam</button>
+      <button data-mode="fighter">Fighter Squadron</button>
+      <button disabled title="Post-MVP">Hyperjump</button>
+    </div>
+
+    <p id="log" class="log"></p>
   </main>
 
   <div class="install-banner" id="installBanner">
@@ -38,6 +60,8 @@
           data-version="v1"
           data-root="../../"></script>
   <script src="../../shared/storage.js"></script>
+  <script src="levels.js"></script>
+  <script src="engine.js"></script>
   <script src="app.js"></script>
   <script src="../../shared/pwa.js" data-sw="sw.js"></script>
 </body>
