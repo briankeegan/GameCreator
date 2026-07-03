@@ -554,7 +554,27 @@ function updateEnemyInfo() {
   }
   const def = Engine.ENEMY_TYPES[enemy.type];
   enemyInfoEl.hidden = false;
-  enemyInfoEl.textContent = `${SPRITES[enemy.type] || SPRITES.interceptor} ${enemy.type} — HP ${enemy.hp}/${enemy.maxHp} · ${describeWeapon(def.weapon)}`;
+  enemyInfoEl.innerHTML = "";
+
+  const header = document.createElement("div");
+  header.className = "enemy-info-header";
+  const hpPips = document.createElement("div");
+  hpPips.className = "enemy-info-hp";
+  for (let i = 0; i < enemy.maxHp; i++) {
+    const pip = document.createElement("span");
+    pip.className = "enemy-info-pip" + (i < enemy.hp ? " filled" : "");
+    hpPips.appendChild(pip);
+  }
+  const name = document.createElement("span");
+  name.textContent = `${SPRITES[enemy.type] || SPRITES.interceptor} ${enemy.type.toUpperCase()}`;
+  header.appendChild(name);
+  header.appendChild(hpPips);
+  enemyInfoEl.appendChild(header);
+
+  const stats = document.createElement("div");
+  stats.className = "enemy-info-stats";
+  stats.textContent = describeWeapon(def.weapon);
+  enemyInfoEl.appendChild(stats);
 }
 
 function render() {

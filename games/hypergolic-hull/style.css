@@ -354,6 +354,9 @@ body {
 /* Tap an enemy while Help is open to inspect it — a small floating card
    anchored to the top so it never competes with the legend or Help button
    at the bottom. */
+/* A "target scan" readout — same console-panel language as .systems, but
+   tinted red/hostile instead of green/friendly so the two consoles read as
+   distinct at a glance. */
 .enemy-info {
   position: absolute;
   left: 12px;
@@ -362,16 +365,51 @@ body {
   z-index: 43;
   max-width: 520px;
   margin: 0 auto;
-  padding: 8px 12px;
-  background: #141b2b;
-  border: 1px solid #2a3652;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, #241419, #170f14);
+  border: 1px solid #5a2a33;
   border-radius: 10px;
   font-size: 0.78rem;
   color: #dbe4f2;
   text-align: left;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 .enemy-info[hidden] { display: none; }
+.enemy-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: #ff9d90;
+  margin-bottom: 4px;
+}
+.enemy-info-hp {
+  display: flex;
+  gap: 3px;
+}
+.enemy-info-pip {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: #241419;
+  border: 1px solid #5a2a33;
+}
+.enemy-info-pip.filled {
+  background: #e0533f;
+  border-color: #ff8a72;
+}
+.enemy-info-stats {
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  color: #ff9d90;
+  background: #0b0f18;
+  border: 1px solid #3a2028;
+  border-radius: 6px;
+  padding: 3px 8px;
+}
 
 .legend-toggle {
   display: flex;
