@@ -1,0 +1,25 @@
+// Cloudflare Workers config: this repo is connected as a Cloudflare Pages/
+// Workers build project (Workers & Pages → game-creator → Settings →
+// Build), so every push to main now deploys the Worker automatically —
+// no more manual copy-paste into the dashboard's code editor.
+//
+// Found (and fixed) while setting this up: the Worker's Git connection was
+// previously pointed at the WRONG repo (briankeegan/HayleysGame) — that's
+// why chat messages kept working (HayleysGame's worker has similar
+// post/verify actions) but image uploads always failed with "unknown
+// action" (HayleysGame's worker has no such action at all) no matter how
+// many times worker.js got manually redeployed here.
+{
+  "name": "game-creator",
+  "main": "worker/worker.js",
+  "compatibility_date": "2025-01-01",
+  // Plaintext settings live here because dashboard-entered Text variables
+  // are wiped on every deploy. Secrets (GITHUB_TOKEN, ADMIN_TOKEN) are set
+  // in the dashboard and DO survive deploys — never put those here.
+  "vars": {
+    "REPO": "briankeegan/GameCreator"
+  },
+  "kv_namespaces": [
+    { "binding": "GAMES_KV", "id": "4f9648bbd95c45169e71be69c6a01891" }
+  ]
+}
