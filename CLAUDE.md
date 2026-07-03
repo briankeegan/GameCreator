@@ -51,8 +51,10 @@ design discussion. `shared/` holds the components every game reuses
 1. If it's a clear game-design ask: implement it in the relevant
    `games/<id>/` files, push to `main` (Pages deploys only from `main`,
    nothing else — see below), and reply on the PR confirming what shipped.
-2. If it touches the shared relay's behavior (worker.js), remember the
-   Cloudflare redeploy gotcha below before claiming it's live.
+2. If it touches the shared relay's behavior (worker.js), it now
+   auto-deploys on push — see below — but still verify via the `relay`
+   marker before claiming a change is live, since Cloudflare builds can
+   fail or lag behind the push.
 3. If the request is ambiguous or architecturally significant, ask before
    building — this project has been explicitly steered away from
    speculative "mechanisms" for hypothetical edge cases. Fix what's asked,
@@ -64,13 +66,34 @@ design discussion. `shared/` holds the components every game reuses
   every game's Clubhouse and by the Admin page — not one Worker per game.
   Per-game config (secret word + PR number) lives in a KV namespace
   (`GAMES_KV`, key `game:<id>`), not in the Worker file.
-- **The Worker does NOT auto-deploy from git pushes.** Every change to
-  `worker/worker.js` needs the owner to manually paste-and-deploy it in
-  the Cloudflare dashboard (Workers & Pages → game-creator → Edit code).
-  Say so explicitly whenever you change that file — don't assume a push
-  made it live. The Worker's non-POST response includes a `relay: "gc-rN"`
-  version marker specifically so this can be verified without network
-  access to `*.workers.dev` (which cloud sandboxes here can't reach).
+- **The Worker auto-deploys from git pushes** via Cloudflare's own Git
+  integration (Workers & Pages → game-creator → Settings → Build), not a
+  GitHub Actions workflow — configured with deploy command
+  `npx wrangler deploy` against `wrangler.jsonc` at the repo root. A push
+  to `main` that touches `worker/worker.js` deploys automatically; no
+  manual dashboard paste needed anymore. `wrangler.jsonc` declares the
+  `REPO` var and the `GAMES_KV` namespace binding — both get wiped/reset
+  on deploy if omitted from that file, so don't remove them. Secrets
+  (`GITHUB_TOKEN`, `ADMIN_TOKEN`) stay dashboard-only and are NOT in
+  `wrangler.jsonc` — they survive deploys as long as the file doesn't
+  redeclare them. The Worker's non-POST response includes a
+  `relay: "gc-rN"` version marker — bump it whenever behavior changes, so
+  a stale deploy is visible without needing network access to
+  `*.workers.dev` (which cloud sandboxes here can't reach) or the
+  Cloudflare dashboard.
+  - **History:** this Worker's Git connection was found pointed at the
+    wrong repo (`briankeegan/HayleysGame`) for an unknown period. Every
+    time HayleysGame's repo changed, Cloudflare silently redeployed
+    *HayleysGame's* worker code onto this `game-creator` Worker, wiping
+    out whatever had been manually pasted here. That's why chat messages
+    kept working (HayleysGame's worker has similar post/verify actions)
+    while image uploads always failed with "unknown action" no matter how
+    many times worker.js got manually redeployed — HayleysGame's worker
+    has no such action at all. Fixed by reconnecting Git to the right
+    repo and adding `wrangler.jsonc` here. If a relay-behavior change ever
+    seems to silently not take effect again, check the Git connection
+    (Workers & Pages → game-creator → Settings → Build) before assuming
+    the code itself is wrong.
 - **GitHub Pages deploys only on push to `main`** (`.github/workflows/pages.yml`,
   `on: push: branches: ["main"]`). It was rewritten to upload with
   `overwrite: true` so re-running it after a prior attempt doesn't collide
