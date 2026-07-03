@@ -83,8 +83,16 @@
 
     <section class="admin-card">
       <h2>Configured games</h2>
+      <p class="admin-hint">
+        A game only appears below once it has chat config. If a game's files
+        already exist (it's playable) but it's missing here, use
+        <strong>Add existing game's chat</strong> below instead of
+        "Create a new game" above — that one re-scaffolds files and would
+        overwrite its gameplay code.
+      </p>
       <div class="admin-actions">
         <button id="refreshBtn">Refresh list</button>
+        <button id="addExistingBtn">Add existing game's chat</button>
         <span id="listStatus" class="admin-status"></span>
       </div>
       <table class="admin-table" id="gamesTable">

@@ -24,6 +24,7 @@ const createBtn = document.getElementById("createBtn");
 const createStatusEl = document.getElementById("createStatus");
 
 const refreshBtn = document.getElementById("refreshBtn");
+const addExistingBtn = document.getElementById("addExistingBtn");
 const listStatusEl = document.getElementById("listStatus");
 const gamesTableBody = document.getElementById("gamesTableBody");
 
@@ -266,6 +267,22 @@ function removeGame(gameId) {
 }
 
 refreshBtn.addEventListener("click", refreshList);
+
+// For a game whose files already exist but whose KV chat config is
+// missing/empty (e.g. it got wiped) — sets up just the chat side, without
+// re-scaffolding files the way "Create a new game" would.
+addExistingBtn.addEventListener("click", () => {
+  const game = prompt("Game id (matches its folder in games/):", "");
+  if (!game) return;
+  const secretWord = prompt(`Secret word for "${game}"'s chat login:`, "");
+  if (!secretWord) return;
+  const prInput = prompt("PR number for its chat thread (leave blank to create a new one):", "");
+  const body = { action: "admin-upsert", game: game.trim(), secretWord };
+  if (prInput) body.prNumber = Number(prInput);
+  callAdmin(body)
+    .then(() => refreshList())
+    .catch((err) => setStatus(listStatusEl, err.message, "error"));
+});
 
 createBtn.addEventListener("click", () => {
   const game = createIdInput.value.trim();
