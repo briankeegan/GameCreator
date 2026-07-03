@@ -200,7 +200,7 @@ export default {
           detail = body.message ? ` — ${body.message}` : "";
         } catch {}
         return json(502, {
-          error: `github said ${res.status}${detail} [game: ${gameId}] [relay gc-r1]`,
+          error: `github said ${res.status}${detail} [game: ${gameId}] [relay gc-r2]`,
         });
       }
       return json(200, { ok: true });
