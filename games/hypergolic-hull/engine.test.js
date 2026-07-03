@@ -2,14 +2,14 @@
 // Plain Node, no framework: run with `node games/hypergolic-hull/engine.test.js`.
 //
 // Note on coordinates: this no longer matches the design doc's original §6
-// coordinates. Once the Pulse Cannon became a forward-facing-only weapon
+// coordinates. Once the Impulse Cannon became a forward-facing-only weapon
 // (Clubhouse feedback: "it fires at [dead ahead], relative to ship"), the
 // doc's tight radius-2 board didn't leave enough room to line up a clean
 // shot on one Interceptor before the other closed to attack range — every
 // sequence within reach on that board took unavoidable damage before the
 // mistake/correct branch was even supposed to begin. This fixture widens to
 // radius 3 with the Interceptors spaced further out, which preserves every
-// rule the golden path exists to exercise — Sublight, the Pulse Cannon's
+// rule the golden path exists to exercise — Sublight, the Impulse Cannon's
 // forward-facing auto-fire-before-enemy-phase, Interceptor pursuit AI, the
 // mistake/correct damage branch, Tractor Beam, Fighter Squadron, and the
 // exit-unlock/level-complete flow — just with room for the new aiming rule
@@ -111,7 +111,7 @@ assert.strictEqual(rectState.enemies[0].alive, false, "pushing an enemy off a re
 assert.ok(rectState.events.some((e) => e.type === "kill"), "kills emit a kill event");
 
 // Attacks and damage emit events too (drives the lunge + hit-flash animations).
-// Pulse Cannon locked out (actions: ["sublight"]) so the interceptor survives
+// Impulse Cannon locked out (actions: ["sublight"]) so the interceptor survives
 // to strike back instead of being auto-killed on approach.
 const meleeLevel = {
   id: 995,
@@ -170,7 +170,7 @@ assert.strictEqual(
 );
 
 // ---- steps 1-3: three Sublight moves close in on Interceptor 2 (e1) along
-// a single approach line. The Pulse Cannon only fires dead ahead of the
+// a single approach line. The Impulse Cannon only fires dead ahead of the
 // flagship's current facing (not omnidirectionally), so e1 has to actually
 // end up directly in front after a move, not just anywhere in range —
 // that's what step 3's move achieves. Interceptor 1 (e0) is closing in from
@@ -190,7 +190,7 @@ Engine.applySublight(state, { q: 2, r: -1 });
 assert.deepStrictEqual(state.playerPos, { q: 2, r: -1 });
 assert.strictEqual(state.enemies.find((e) => e.id === "e1").alive, false, "Interceptor 2 should be destroyed once dead ahead of the flagship");
 assert.strictEqual(Engine.livingEnemies(state).length, 1);
-assert.strictEqual(state.hull, 1, "the Pulse Cannon resolves before the enemy phase, so no damage yet");
+assert.strictEqual(state.hull, 1, "the Impulse Cannon resolves before the enemy phase, so no damage yet");
 assert.strictEqual(state.status, "playing");
 
 const interceptor1 = Engine.livingEnemies(state)[0];
@@ -203,7 +203,7 @@ assert.strictEqual(
 
 // ---- step 3a: mistake branch — stay in range and eat the deterministic
 // strike, which is now instantly lethal (permadeath, one hull point).
-// Pulse Cannon toggled off so this reliably demonstrates taking a hit,
+// Impulse Cannon toggled off so this reliably demonstrates taking a hit,
 // regardless of whether the chosen adjacent hex happens to also line up
 // Interceptor 1 dead ahead (which would auto-kill it instead, same as e1
 // above — that's the "correct-ish by accident" case, not what this branch
@@ -227,7 +227,7 @@ Engine.applyFighter(correctState, interceptor1.id);
 assert.strictEqual(Engine.livingEnemies(correctState).length, 0, "Interceptor 1 should be destroyed by the fighter squadron");
 assert.strictEqual(correctState.hull, 1, "the correct branch should take no damage");
 assert.strictEqual(correctState.status, "playing");
-assert.strictEqual(correctState.rammingDisabled, true, "the Pulse Cannon should be disabled while fighters are deployed");
+assert.strictEqual(correctState.rammingDisabled, true, "the Impulse Cannon should be disabled while fighters are deployed");
 assert.deepStrictEqual(correctState.fighterHex, { q: interceptor1.q, r: interceptor1.r });
 
 // ---- step 4: gate unlocks once all enemies are dead; walking onto it wins
@@ -302,23 +302,23 @@ const weaponLevel = {
   exitRule: "all-enemies-dead",
 };
 
-// Moving into range auto-fires the Pulse Cannon — no separate arm-and-aim step.
+// Moving into range auto-fires the Impulse Cannon — no separate arm-and-aim step.
 let weaponState = Engine.createGameState(weaponLevel);
 assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
 assert.deepStrictEqual(weaponState.systems, { warpdrive: true, ram: true }, "both systems default on");
 Engine.applySublight(weaponState, { q: 0, r: 3 }); // steps adjacent to the interceptor
-assert.strictEqual(weaponState.enemies[0].alive, false, "moving into range auto-fires the Pulse Cannon");
+assert.strictEqual(weaponState.enemies[0].alive, false, "moving into range auto-fires the Impulse Cannon");
 assert.ok(weaponState.events.some((e) => e.type === "kill"), "the auto-attack emits a kill event");
 assert.ok(
   weaponState.events.some((e) => e.type === "kill" && e.source === "weapon"),
   "the auto-attack's kill is tagged source:weapon — the renderer uses this to aim the flagship at it, distinct from a Tractor/Fighter kill"
 );
 
-// Toggling the Pulse Cannon off suppresses the auto-attack.
+// Toggling the Impulse Cannon off suppresses the auto-attack.
 weaponState = Engine.createGameState(weaponLevel);
 Engine.setSystem(weaponState, "ram", false);
 Engine.applySublight(weaponState, { q: 0, r: 3 });
-assert.strictEqual(weaponState.enemies[0].alive, true, "Pulse Cannon toggled off does not fire");
+assert.strictEqual(weaponState.enemies[0].alive, true, "Impulse Cannon toggled off does not fire");
 
 // Hold Position resolves the turn — and still auto-fires — without moving.
 weaponState = Engine.createGameState(weaponLevel);
@@ -336,6 +336,16 @@ assert.throws(
   "movement requires Warpdrive to be toggled on"
 );
 
+// But re-aiming (no move, no turn) still works with Warpdrive off — that's
+// how you dial in a forward-only weapon's direction before committing with
+// Hold Position.
+const facingBefore = weaponState.facing;
+Engine.setFacing(weaponState, (facingBefore + 2) % 6);
+assert.strictEqual(weaponState.facing, (facingBefore + 2) % 6, "setFacing re-aims the flagship");
+assert.deepStrictEqual(weaponState.playerPos, weaponLevel.playerStart, "re-aiming never moves the flagship");
+assert.strictEqual(weaponState.turnCount, 0, "re-aiming doesn't consume a turn — no enemy phase runs");
+assert.throws(() => Engine.setFacing(weaponState, 6), /Invalid facing/, "facing must be one of the 6 hex directions");
+
 // Enemies fight through the same WEAPONS/ENEMY_TYPES stat blocks as the
 // flagship — not hardcoded adjacency/damage constants — so the threat
 // overlay, attack range, and damage-per-hit are all read off the
@@ -343,14 +353,14 @@ assert.throws(
 assert.strictEqual(
   Engine.ENEMY_TYPES.interceptor.weapon,
   Engine.WEAPONS.interceptorCannon,
-  "the Interceptor's attack is a WEAPONS entry, same shape as the flagship's Pulse Cannon"
+  "the Interceptor's attack is a WEAPONS entry, same shape as the flagship's Impulse Cannon"
 );
 const interceptorPos = { q: 0, r: 0 };
 const interceptorWeapon = Engine.ENEMY_TYPES.interceptor.weapon;
 assert.deepStrictEqual(
   interceptorWeapon.pattern.slice().sort(),
   [0, 1, 2, 3, 4, 5],
-  "the Interceptor Cannon is omnidirectional (every direction offset), unlike the Pulse Cannon's forward-only pattern"
+  "the Interceptor Cannon is omnidirectional (every direction offset), unlike the Impulse Cannon's forward-only pattern"
 );
 // facing is irrelevant to an omnidirectional pattern — passing 0 here still
 // covers every direction, which is exactly the point.
@@ -362,17 +372,17 @@ assert.ok(
   "every hex an omnidirectional range-1 weapon reaches is exactly 1 hex away"
 );
 
-// The Pulse Cannon's forward-only pattern only ever reaches the single hex
+// The Impulse Cannon's forward-only pattern only ever reaches the single hex
 // directly ahead of the current facing, regardless of range-1 neighbors on
 // every other side.
 const pulseCannon = Engine.WEAPONS.ram;
-assert.deepStrictEqual(pulseCannon.pattern, [0], "the Pulse Cannon fires dead ahead only");
+assert.deepStrictEqual(pulseCannon.pattern, [0], "the Impulse Cannon fires dead ahead only");
 for (let facing = 0; facing < 6; facing++) {
   const forwardHexes = Engine.weaponHexes(interceptorPos, facing, pulseCannon);
   assert.deepStrictEqual(
     forwardHexes,
     [Engine.neighbor(interceptorPos, facing)],
-    `facing ${facing}, the Pulse Cannon only reaches the one hex dead ahead`
+    `facing ${facing}, the Impulse Cannon only reaches the one hex dead ahead`
   );
 }
 

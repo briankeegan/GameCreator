@@ -6,7 +6,7 @@ const Engine = window.HypergolicEngine;
 const HEX_RATIO = 28 / 32; // pixel-art hex proportion: sy = sx * ratio
 const SQRT3 = Math.sqrt(3);
 
-// Sublight and Pulse Cannon aren't manually-armed modes anymore — movement
+// Sublight and Impulse Cannon aren't manually-armed modes anymore — movement
 // always works via a plain tap (see the canvas click handler), and the Pulse
 // Cannon auto-fires as a side effect of that movement (see engine.js). Only
 // Tractor/Fighter still need you to pick a mode and then a target enemy.
@@ -270,7 +270,7 @@ function draw() {
 
   const threats = Engine.computeThreatHexes(state);
   const legal = mode ? new Set(MODES[mode].targets(state).map((h) => Engine.hexKey(h))) : new Set();
-  // The Pulse Cannon isn't a mode you arm anymore, but its current target
+  // The Impulse Cannon isn't a mode you arm anymore, but its current target
   // (dead ahead of facing, or every neighbor for an omnidirectional weapon)
   // is exactly the same kind of thing "outlined hex" already means, so it
   // gets folded into the same highlight instead of a separate one.
@@ -507,7 +507,7 @@ function updateLegend() {
   helpBtn.classList.toggle("active", legendVisible);
 }
 
-// The Warpdrive/Pulse Cannon checkboxes and the Hold Position button —
+// The Warpdrive/Impulse Cannon checkboxes and the Hold Position button —
 // always available (not just when Warpdrive is off), since holding position
 // on purpose to let an armed weapon fire without moving is a legitimate
 // choice any turn, not just a fallback when movement is blocked.
@@ -712,17 +712,27 @@ canvas.addEventListener("click", (evt) => {
     }
   }
 
-  // Warpdrive offline means movement itself is off the table this turn —
-  // Hold Position (see holdBtn below) is the only way to act.
+  // Warpdrive offline means movement itself is off the table this turn, but
+  // tapping an adjacent hex still re-aims the flagship toward it — free,
+  // doesn't end the turn, doesn't move — so you can dial in a forward-only
+  // weapon's direction before actually committing with Hold Position
+  // (always available; see holdBtn below), the only way to end the turn
+  // while Warpdrive's off.
   if (!state.systems.warpdrive) {
-    pushMessage("Warpdrive offline — toggle it on, or use Hold Position.");
+    const dir = Engine.directionIndex(state.playerPos, hex);
+    if (dir >= 0) {
+      Engine.setFacing(state, dir);
+      shipAngle = DIR_ANGLES[dir]; // spin to show the new aim immediately
+    } else {
+      pushMessage("Warpdrive offline — tap an adjacent hex to aim, or Hold Position to act.");
+    }
     render();
     return;
   }
 
   // Movement never needs a mode armed: any tap that isn't a legal target for
   // an armed Tractor/Fighter falls back to a plain move (adjacent) or the
-  // route preview (further away). The Pulse Cannon auto-fires as a side
+  // route preview (further away). The Impulse Cannon auto-fires as a side
   // effect of the move itself — see engine.js — so there's no "ramming"
   // mode to arm either.
   const isPlainMove = Engine.legalSublightTargets(state).some((h) => Engine.posEq(h, hex));

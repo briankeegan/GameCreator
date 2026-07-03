@@ -168,7 +168,7 @@
   // don't need a data-model change to add.
   const ALL_DIRECTIONS_PATTERN = [0, 1, 2, 3, 4, 5];
   const WEAPONS = {
-    ram: { id: "ram", label: "Pulse Cannon", range: 1, damage: 1, targets: "all", speed: 2, energyCost: 0, pattern: [0], slots: 1 },
+    ram: { id: "ram", label: "Impulse Cannon", range: 1, damage: 1, targets: "all", speed: 2, energyCost: 0, pattern: [0], slots: 1 },
     interceptorCannon: { id: "interceptorCannon", label: "Interceptor Cannon", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
   };
 
@@ -231,7 +231,7 @@
       rammingDisabled: false,
       // Pre-turn system toggles: Warpdrive governs whether you can move at
       // all this turn (off means Hold Position is your only option); Ram
-      // governs whether the Pulse Cannon auto-fires. Both default on.
+      // governs whether the Impulse Cannon auto-fires. Both default on.
       systems: { warpdrive: true, ram: true },
       // Direction index (0-5) the flagship is currently facing — gameplay-
       // relevant now, not just cosmetic, since a directional weapon's
@@ -252,6 +252,15 @@
   function setSystem(state, key, enabled) {
     if (!(key in state.systems)) throw new Error(`Unknown system: ${key}`);
     state.systems[key] = Boolean(enabled);
+  }
+
+  // Re-aims the flagship without moving or ending the turn — free to call as
+  // many times as you like (no events, no enemy phase). This is what lets
+  // you dial in a forward-only weapon's direction while Warpdrive is
+  // offline: rotate to face where you want, then commit with Hold Position.
+  function setFacing(state, dir) {
+    if (dir < 0 || dir > 5) throw new Error(`Invalid facing: ${dir}`);
+    state.facing = dir;
   }
 
   function livingEnemies(state) {
@@ -451,7 +460,7 @@
   // any move (or Hold Position), never armed/aimed separately. What it can
   // actually hit is purely a function of the weapon's own pattern and the
   // flagship's current facing (weaponHexes) — a forward-only cannon (today's
-  // Pulse Cannon) only ever threatens the hex directly ahead, so sidestepping
+  // Impulse Cannon) only ever threatens the hex directly ahead, so sidestepping
   // past an enemy without ending up with it dead ahead just doesn't line up
   // a shot, no separate "did you approach it" check needed. Facing carries
   // over from the last move for Hold Position, so holding still only fires
@@ -593,6 +602,7 @@
     validateLevel,
     createGameState,
     setSystem,
+    setFacing,
     computeThreatHexes,
     applySublight,
     applyHoldPosition,

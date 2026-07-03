@@ -39,10 +39,10 @@
       actions: ["sublight"],
       intro: "Sublight Impulse online. Tap an outlined hex to fly.",
     },
-    // Sector 2 — Pulse Cannon. One Interceptor between you and the gate.
+    // Sector 2 — Impulse Cannon. One Interceptor between you and the gate.
     {
       id: 2,
-      name: "Pulse Cannon",
+      name: "Impulse Cannon",
       board: { type: "rect", cols: 6, rows: 11 },
       playerStart: { q: -3, r: 10 },
       exit: { q: 2, r: 0 },
@@ -51,7 +51,7 @@
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming"],
-      intro: "Pulse Cannon online. It auto-fires on any 👾 within 1 hex after you move.",
+      intro: "Impulse Cannon online. It auto-fires on any 👾 within 1 hex after you move.",
     },
     // Sector 3 — Tractor Beam. Two Interceptors; push one off the edge.
     {

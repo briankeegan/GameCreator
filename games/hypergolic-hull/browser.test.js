@@ -1,6 +1,6 @@
 // browser.test.js — the tutorial campaign through the real UI (canvas
 // clicks + action buttons): Sector 1's move-only lesson with locked
-// actions, the Next Sector handoff, Sector 2's Pulse Cannon lesson, the loss
+// actions, the Next Sector handoff, Sector 2's Impulse Cannon lesson, the loss
 // branch, and restart. Complements engine.test.js, which covers the
 // movement/combat rules headlessly on pinned fixture boards.
 //
@@ -111,7 +111,7 @@ async function freshPage(browser, url, errors) {
     assert.strictEqual(await page.locator(`[data-mode="${m}"]`).isDisabled(), true, `${m} is locked in Sector 1`);
     assert.ok((await page.locator(`[data-mode="${m}"]`).textContent()).startsWith("🔒"), `${m} shows its padlock`);
   }
-  assert.strictEqual(await page.locator("#toggleRam").isDisabled(), true, "the Pulse Cannon toggle is locked in Sector 1");
+  assert.strictEqual(await page.locator("#toggleRam").isDisabled(), true, "the Impulse Cannon toggle is locked in Sector 1");
   assert.strictEqual(
     await page.locator("#holdBtn").isVisible(),
     true,
@@ -150,16 +150,16 @@ async function freshPage(browser, url, errors) {
   await waitForOverlay(page);
   assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Sector Clear");
 
-  // ---- Next Sector: Sector 2 unlocks the Pulse Cannon -----------------------
+  // ---- Next Sector: Sector 2 unlocks the Impulse Cannon -----------------------
 
   await page.click("#nextBtn");
   await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2);
   s = await getState(page);
   assert.deepStrictEqual(s.actions, ["sublight", "ramming"], "Sector 2 unlocks exactly one new action");
   assert.strictEqual(s.enemies.filter((e) => e.alive).length, 1);
-  assert.strictEqual(await page.locator("#toggleRam").isDisabled(), false, "the Pulse Cannon toggle is usable in Sector 2");
+  assert.strictEqual(await page.locator("#toggleRam").isDisabled(), false, "the Impulse Cannon toggle is usable in Sector 2");
 
-  // Toggling the Pulse Cannon off stops it auto-firing — walk right up next
+  // Toggling the Impulse Cannon off stops it auto-firing — walk right up next
   // to the Interceptor with it disabled and confirm it survives.
   await page.uncheck("#toggleRam");
   for (let i = 0; i < 20; i++) {
@@ -176,44 +176,52 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(
     s.enemies.filter((e) => e.alive).length,
     1,
-    "Pulse Cannon toggled off does not auto-fire even at point-blank range"
+    "Impulse Cannon toggled off does not auto-fire even at point-blank range"
   );
 
-  // The Pulse Cannon only fires dead ahead of the current facing, and the
+  // The Impulse Cannon only fires dead ahead of the current facing, and the
   // organic walk above doesn't guarantee the Interceptor ended up exactly
-  // there (only that it's adjacent) — face it directly before testing Hold
-  // Position, same "aim" the renderer itself keeps in sync with (see
-  // engine.js's `facing`).
-  await page.evaluate(() => {
-    const E = window.HypergolicEngine;
-    const st = window.__hhState;
-    const enemy = st.enemies.find((e) => e.alive);
-    st.facing = E.directionIndex(st.playerPos, enemy);
-  });
+  // there (only that it's adjacent). With Warpdrive off, tapping an adjacent
+  // hex re-aims the flagship toward it for free — no move, no turn spent —
+  // so line up the shot that way before committing with Hold Position.
+  await page.uncheck("#toggleWarpdrive");
+  const posBeforeAim = (await getState(page)).playerPos;
+  const turnBeforeAim = (await getState(page)).turnCount;
+  const enemyPos = (await getState(page)).enemies.find((e) => e.alive);
+  const enemyCenter = await page.evaluate(({ q, r }) => window.__hhHexCenter(q, r), enemyPos);
+  const aimBox = await page.locator("#board").boundingBox();
+  await page.mouse.click(aimBox.x + enemyCenter.x, aimBox.y + enemyCenter.y);
+  s = await getState(page);
+  assert.deepStrictEqual(s.playerPos, posBeforeAim, "re-aiming with Warpdrive off never moves the flagship");
+  assert.strictEqual(s.turnCount, turnBeforeAim, "re-aiming doesn't spend a turn");
+  assert.strictEqual(
+    s.facing,
+    await page.evaluate(({ q, r }) => window.HypergolicEngine.directionIndex(window.__hhState.playerPos, { q, r }), enemyPos),
+    "the flagship is now facing the Interceptor"
+  );
 
   // Warpdrive off blocks movement — Hold Position is the only option (it's
-  // always available, on top of that). Flip the Pulse Cannon back on and
+  // always available, on top of that). Flip the Impulse Cannon back on and
   // hold position to fire it without moving.
   await page.check("#toggleRam");
-  await page.uncheck("#toggleWarpdrive");
   assert.strictEqual(await page.locator("#holdBtn").isVisible(), true, "Hold Position is available");
   const posBeforeHold = (await getState(page)).playerPos;
   await page.click("#holdBtn");
   s = await getState(page);
   assert.deepStrictEqual(s.playerPos, posBeforeHold, "Hold Position never moves the flagship");
-  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "Hold Position lets the re-enabled Pulse Cannon fire in place");
+  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "Hold Position lets the re-enabled Impulse Cannon fire in place");
   assert.strictEqual(s.exitUnlocked, true);
   await page.check("#toggleWarpdrive");
 
   s = await walkToExit(page);
   assert.strictEqual(s.status, "won", "Sector 2 clears once the gate is reached");
-  assert.ok(s.hull > 0, "the Pulse Cannon line through Sector 2 survives");
+  assert.ok(s.hull > 0, "the Impulse Cannon line through Sector 2 survives");
   await waitForOverlay(page);
   assert.strictEqual(await page.locator("#nextBtn").isVisible(), true, "Sector 3 awaits");
   await page.close();
 
   // ---- loss branch: loiter beside Sector 2's Interceptor until Hull 0 -----
-  // (Pulse Cannon toggled off — with it on, moving adjacent auto-kills the
+  // (Impulse Cannon toggled off — with it on, moving adjacent auto-kills the
   // Interceptor before it can ever strike back, per the Sector 2 test above.)
 
   page = await freshPage(browser, url, errors);
