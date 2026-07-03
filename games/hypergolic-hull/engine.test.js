@@ -1,4 +1,4 @@
-// engine.test.js — headless golden-path test for Level 1 (design doc §6).
+// engine.test.js — headless golden-path test for the design doc's §6 board.
 // Plain Node, no framework: run with `node games/hypergolic-hull/engine.test.js`.
 //
 // Note on coordinates: the design doc's prose narrates the first Sublight
@@ -22,11 +22,41 @@ function clone(state) {
   return JSON.parse(JSON.stringify(state));
 }
 
-const level1 = LEVELS.find((l) => l.id === 1);
+// The golden path is pinned to the design doc's §6 board as an inline
+// fixture. levels.js is live game content that evolves with playtest
+// feedback (Sector 1 is now a gentler one-Interceptor board), and the
+// engine plays any LevelDef, so the rules coverage stays put while the
+// shipped levels are free to change. Shipped levels are validated below.
+const goldenLevel = {
+  id: 999,
+  radius: 2,
+  playerStart: { q: 0, r: 0 },
+  exit: { q: 2, r: 0 },
+  outpost: { q: -2, r: 0 },
+  enemies: [
+    { type: "interceptor", q: -1, r: -1 },
+    { type: "interceptor", q: 1, r: 1 },
+  ],
+  hazards: [],
+  exitRule: "all-enemies-dead",
+};
+
+// ---- every shipped level must pass engine validation --------------------
+
+for (const level of LEVELS) {
+  const s = Engine.createGameState(level); // throws if the level is invalid
+  assert.strictEqual(s.status, "playing", `Level ${level.id} should start playable`);
+}
+assert.ok(LEVELS.length >= 2, "expected at least Sectors 1 and 2");
+assert.strictEqual(LEVELS[0].enemies.length, 1, "Sector 1 is the gentle opener: exactly one enemy");
+assert.ok(
+  LEVELS.every((l) => Engine.hexDistance(l.playerStart, l.enemies[0]) >= 2),
+  "the player never starts next to an enemy"
+);
 
 // ---- step 1: Sublight to (1,-1); neither Interceptor is adjacent yet ----
 
-let state = Engine.createGameState(level1);
+let state = Engine.createGameState(goldenLevel);
 assert.strictEqual(state.hull, 3);
 assert.strictEqual(Engine.livingEnemies(state).length, 2);
 

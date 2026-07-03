@@ -16,10 +16,24 @@
   "use strict";
 
   const LEVELS = [
+    // Sector 1 — the tutorial board: you start on the left edge, one lone
+    // Interceptor waits on the far right (max distance apart), gate past it.
     {
       id: 1,
       radius: 2,
-      playerStart: { q: 0, r: 0 },
+      playerStart: { q: -2, r: 1 },
+      exit: { q: 2, r: 0 },
+      outpost: { q: -2, r: 0 },
+      enemies: [{ type: "interceptor", q: 2, r: -1 }],
+      hazards: [],
+      exitRule: "all-enemies-dead",
+    },
+    // Sector 2 — the design doc's §6 board, with the player start moved from
+    // the center to the left edge so enemies always begin across the board.
+    {
+      id: 2,
+      radius: 2,
+      playerStart: { q: -2, r: 1 },
       exit: { q: 2, r: 0 },
       outpost: { q: -2, r: 0 },
       enemies: [

@@ -98,6 +98,39 @@ html, body {
   color: #8fa0ba;
 }
 
+.objective {
+  max-width: 520px;
+  margin: 0 auto 10px;
+  font-size: 0.9rem;
+  color: #f2d16b;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  max-width: 520px;
+  margin: 16px auto 0;
+  padding: 10px 12px;
+  background: #141b2b;
+  border: 1px solid #2a3652;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  color: #9fb0c9;
+  text-align: left;
+}
+.legend .swatch {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  border-radius: 3px;
+  vertical-align: -0.1em;
+  margin-right: 2px;
+}
+.legend .swatch-threat { background: #7a1f2b; }
+.legend .swatch-legal { background: #2f8f5b; border: 1px solid #7fe3a8; }
+
 /* ---- shared install banner (leave as-is; every game gets this) ---- */
 :root { --banner-space: 0px; }
 .install-banner {

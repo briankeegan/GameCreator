@@ -17,15 +17,29 @@ const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 const hullEl = document.getElementById("hull");
 const levelEl = document.getElementById("levelLabel");
+const objectiveEl = document.getElementById("objective");
 const logEl = document.getElementById("log");
 const overlayEl = document.getElementById("runOverlay");
 const overlayTitleEl = document.getElementById("runOverlayTitle");
 const overlayBodyEl = document.getElementById("runOverlayBody");
 const restartBtn = document.getElementById("restartBtn");
+const nextBtn = document.getElementById("nextBtn");
 const modeButtons = Array.from(document.querySelectorAll("[data-mode]"));
 
-const level = HypergolicLevels.LEVELS[0];
-let state = Engine.createGameState(level);
+// Everything on the board is an emoji sprite so the pieces read at a glance
+// (see the legend under the action buttons).
+const SPRITES = {
+  player: "🚀",
+  interceptor: "👾",
+  fighters: "🛩️",
+  gateLocked: "🔒",
+  gateOnline: "🌀",
+  outpost: "🛠️",
+};
+
+const LEVELS = HypergolicLevels.LEVELS;
+let levelIndex = 0;
+let state = Engine.createGameState(LEVELS[levelIndex]);
 let mode = "sublight";
 let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
 
@@ -122,48 +136,39 @@ function draw() {
     drawHex(center, fill, legal.has(k) ? "#7fe3a8" : "#1a2233");
 
     if (isExit) {
-      ctx.fillStyle = state.exitUnlocked ? "#8ff0c0" : "#8892a8";
-      ctx.font = "11px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("GATE", center.x, center.y + 4);
+      drawSprite(center, state.exitUnlocked ? SPRITES.gateOnline : SPRITES.gateLocked, 20);
     } else if (isOutpost) {
-      ctx.fillStyle = "#bcd8e8";
-      ctx.font = "11px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("OUTPOST", center.x, center.y + 4);
+      drawSprite(center, SPRITES.outpost, 18);
     }
   }
 
   for (const enemy of Engine.livingEnemies(state)) {
     const center = hexToPixel(enemy);
-    const isTarget = legal.has(Engine.hexKey(enemy));
-    ctx.beginPath();
-    ctx.arc(center.x, center.y, 11, 0, Math.PI * 2);
-    ctx.fillStyle = isTarget ? "#ff8f6b" : "#e0533f";
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "#241014";
-    ctx.stroke();
+    if (legal.has(Engine.hexKey(enemy))) {
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, 15, 0, Math.PI * 2);
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "#7fe3a8";
+      ctx.stroke();
+    }
+    drawSprite(center, SPRITES[enemy.type] || SPRITES.interceptor, 22);
   }
 
   if (state.fighterHex) {
-    const center = hexToPixel(state.fighterHex);
-    ctx.beginPath();
-    ctx.arc(center.x, center.y, 6, 0, Math.PI * 2);
-    ctx.fillStyle = "#f2d16b";
-    ctx.fill();
+    drawSprite(hexToPixel(state.fighterHex), SPRITES.fighters, 15);
   }
 
-  const playerCenter = hexToPixel(state.playerPos);
-  ctx.beginPath();
-  ctx.arc(playerCenter.x, playerCenter.y, 12, 0, Math.PI * 2);
-  ctx.fillStyle = "#5bb8f2";
-  ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = "#0d2233";
-  ctx.stroke();
+  drawSprite(hexToPixel(state.playerPos), SPRITES.player, 24);
 
   ctx.restore();
+}
+
+function drawSprite(center, glyph, size) {
+  ctx.font = `${size}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#dbe4f2";
+  ctx.fillText(glyph, center.x, center.y + 1);
 }
 
 function pixelToHex(x, y) {
@@ -202,13 +207,25 @@ function updateHud() {
   levelEl.textContent = `Sector ${state.levelId} · Best ${bestDepth}`;
   logEl.textContent = state.log.slice(-3).join("  ·  ");
 
+  const remaining = Engine.livingEnemies(state).length;
+  if (state.exitUnlocked) {
+    objectiveEl.textContent = "Gate online — fly your 🚀 to the 🌀 to warp out!";
+  } else {
+    objectiveEl.textContent = `Destroy ${remaining} enemy ${remaining === 1 ? "ship" : "ships"} 👾 to power up the Warp Gate`;
+  }
+
   if (state.status === "lost") {
     overlayTitleEl.textContent = "Flagship Destroyed";
     overlayBodyEl.textContent = "Permadeath. Your run ends here.";
+    nextBtn.hidden = true;
     overlayEl.hidden = false;
   } else if (state.status === "won") {
-    overlayTitleEl.textContent = "Level Complete";
-    overlayBodyEl.textContent = "The Warp Gate carries you onward.";
+    const hasNext = levelIndex + 1 < LEVELS.length;
+    overlayTitleEl.textContent = "Sector Clear";
+    overlayBodyEl.textContent = hasNext
+      ? "The Warp Gate carries you onward."
+      : "You've cleared every charted sector. More coming soon!";
+    nextBtn.hidden = !hasNext;
     overlayEl.hidden = false;
   } else {
     overlayEl.hidden = true;
@@ -278,7 +295,16 @@ canvas.addEventListener("click", (evt) => {
 modeButtons.forEach((btn) => btn.addEventListener("click", () => setMode(btn.dataset.mode)));
 
 restartBtn.addEventListener("click", () => {
-  state = Engine.createGameState(level);
+  levelIndex = 0;
+  state = Engine.createGameState(LEVELS[levelIndex]);
+  mode = "sublight";
+  render();
+});
+
+nextBtn.addEventListener("click", () => {
+  if (state.status !== "won" || levelIndex + 1 >= LEVELS.length) return;
+  levelIndex += 1;
+  state = Engine.createGameState(LEVELS[levelIndex]);
   mode = "sublight";
   render();
 });
