@@ -10,10 +10,24 @@ html, body {
 }
 
 .gc-header {
+  position: relative;
   padding: max(24px, env(safe-area-inset-top)) 20px 18px;
   background: #2f3b52;
   color: #fff;
   text-align: center;
+}
+.gc-admin-link {
+  position: absolute;
+  right: 12px;
+  top: max(12px, env(safe-area-inset-top));
+  color: #fff;
+  text-decoration: none;
+  opacity: 0.75;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
 }
 .gc-header h1 { margin: 0 0 4px; font-size: 1.6rem; }
 .gc-tagline { margin: 0; opacity: 0.75; font-size: 0.9rem; }

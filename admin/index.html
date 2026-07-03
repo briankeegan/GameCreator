@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>GameCreator Admin</title>
+  <meta name="robots" content="noindex" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="admin-header">
+    <a class="admin-back" href="../index.html">‹ All Games</a>
+    <h1>⚙️ Admin</h1>
+  </header>
+
+  <main class="admin-main">
+    <section class="admin-card">
+      <h2>Worker connection</h2>
+      <p class="admin-hint">
+        Runs entirely in your browser — talks directly to the Worker, so it
+        works even in sessions where Claude has no network access. The admin
+        token is only ever stored on this device.
+      </p>
+      <label>Worker URL
+        <input id="workerUrlInput" type="text" placeholder="https://game-creator.bramp-games.workers.dev" />
+      </label>
+      <label>Admin token
+        <input id="adminTokenInput" type="password" placeholder="the ADMIN_TOKEN secret you set on the Worker" />
+      </label>
+      <div class="admin-actions">
+        <button id="saveConnBtn">Save &amp; load games</button>
+        <span id="connStatus" class="admin-status"></span>
+      </div>
+    </section>
+
+    <section class="admin-card">
+      <h2>Add / update a game's chat</h2>
+      <p class="admin-hint">
+        Create the game's GitHub Issue first (<a href="https://github.com/briankeegan/GameCreator/issues/new" target="_blank" rel="noopener">new issue</a>),
+        note its number, then fill this in. Re-running with the same game id
+        updates it (e.g. to change the secret word).
+      </p>
+      <label>Game id <span class="admin-note">(matches the folder in games/ and the id in games.json)</span>
+        <input id="gameIdInput" type="text" placeholder="sample-clicker" />
+      </label>
+      <label>Display name
+        <input id="gameNameInput" type="text" placeholder="Sample Clicker" />
+      </label>
+      <label>Secret word
+        <input id="secretWordInput" type="text" placeholder="pinkunicorn" />
+      </label>
+      <label>GitHub Issue number
+        <input id="issueNumberInput" type="number" min="1" placeholder="1" />
+      </label>
+      <div class="admin-actions">
+        <button id="upsertBtn">Save game</button>
+        <span id="upsertStatus" class="admin-status"></span>
+      </div>
+    </section>
+
+    <section class="admin-card">
+      <h2>Configured games</h2>
+      <div class="admin-actions">
+        <button id="refreshBtn">Refresh list</button>
+        <span id="listStatus" class="admin-status"></span>
+      </div>
+      <table class="admin-table" id="gamesTable">
+        <thead>
+          <tr><th>Game id</th><th>Name</th><th>Issue</th><th></th></tr>
+        </thead>
+        <tbody id="gamesTableBody">
+          <tr><td colspan="4" class="admin-empty">Connect above to load games.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
