@@ -293,7 +293,11 @@ export default {
 
     if (payload.action === "post") {
       const name = String(payload.name || "").trim().slice(0, 40);
-      const message = String(payload.message || "").trim().slice(0, 4000);
+      // GitHub caps comment bodies around 65536 chars; stay comfortably
+      // under that (room for the "**name says:**" prefix) instead of the
+      // old 4000-char cap, which silently truncated anything longer with
+      // no warning to the sender.
+      const message = String(payload.message || "").trim().slice(0, 60000);
       if (!name || !message) {
         return json(400, { error: "name and message required" });
       }
