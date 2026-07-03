@@ -7,21 +7,35 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: #0f1420;
   color: #dbe4f2;
+  /* The game is a cockpit, not a web page — it fits the screen and nothing
+     scrolls. Everything below the nav bar sizes to whatever room is left. */
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .game-area {
-  /* Extra bottom padding so page content never sits under the fixed,
-     bottom-left Help button. */
-  padding: 16px 12px calc(64px + var(--banner-space));
+  flex: 1 1 auto;
+  min-height: 0; /* let this flex child shrink below its content's natural size */
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px calc(56px + var(--banner-space));
   text-align: center;
+  overflow: hidden;
 }
 
 .hud {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   max-width: 520px;
-  margin: 0 auto 10px;
+  width: 100%;
+  margin: 0 auto 8px;
   font-size: 0.85rem;
   color: #9fb0c9;
 }
@@ -47,15 +61,40 @@ html, body {
   border-color: #ff8a72;
 }
 
+/* The flex child that gets whatever vertical room is left over once the HUD
+   and the bottom controls take theirs — updateGeometry() in app.js reads
+   its clientWidth/clientHeight to size the canvas, so the board always fits
+   without the page ever needing to scroll. */
 .board-wrap {
-  position: relative;
+  /* flex-basis:0 (not auto) is load-bearing: it makes this item's own size
+     a pure function of the space left over in .game-area's column, instead
+     of being based on its content (the canvas) — which the canvas's own
+     size then circularly depends on via updateGeometry()'s clientHeight
+     read. With flex-basis:auto that loop could size the canvas larger than
+     the box actually has room for and let it spill over neighboring rows. */
+  flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
   max-width: 520px;
   margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Sized tightly to the canvas itself (not the letterboxed board-wrap around
+   it), so the run-overlay below — absolutely positioned inset:0 — frames
+   exactly the board and nothing more. */
+.board-frame {
+  position: relative;
 }
 
 #board {
   display: block;
-  margin: 0 auto;
+  max-width: 100%;
+  max-height: 100%;
   background: #0b0f18;
   border-radius: 12px;
   touch-action: manipulation;
@@ -88,15 +127,26 @@ html, body {
 }
 
 .systems {
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 6px 14px;
   max-width: 520px;
-  margin: 14px auto 0;
+  width: 100%;
+  margin: 8px auto 0;
   font-size: 0.82rem;
   color: #9fb0c9;
+}
+
+.weapon-stats {
+  flex: 0 0 auto;
+  max-width: 520px;
+  width: 100%;
+  margin: 2px auto 0;
+  font-size: 0.72rem;
+  color: #6c7d99;
 }
 .system-toggle {
   display: flex;
@@ -122,12 +172,14 @@ html, body {
 }
 
 .actions {
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
   max-width: 520px;
-  margin: 14px auto 0;
+  width: 100%;
+  margin: 8px auto 0;
 }
 .actions button {
   background: #1b2436;
@@ -154,11 +206,15 @@ html, body {
 }
 
 .belowbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
   max-width: 520px;
-  margin: 14px auto 0;
+  width: 100%;
+  margin: 8px auto 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Pinned to the corner so it's always in the same reachable spot, clear of
@@ -186,26 +242,46 @@ html, body {
 
 .log {
   flex: 1 1 auto;
-  min-height: 1.2em;
+  height: 2.3em; /* fixed — the bottom zone's height must stay predictable
+                    so the board above it never jitters as messages change */
+  overflow: hidden;
   font-size: 0.78rem;
+  line-height: 1.15em;
   color: #8fa0ba;
   text-align: left;
 }
 
 .objective {
+  flex: 0 0 auto;
   max-width: 520px;
-  margin: 0 auto 10px;
-  font-size: 0.9rem;
+  width: 100%;
+  margin: 0 auto 8px;
+  font-size: 0.85rem;
   color: #f2d16b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+/* A floating HUD panel, not part of the page's flow — opening/closing it
+   must never resize (and so never scroll) the cockpit around it. Anchored
+   well clear of the fixed Help button below it, with its own scrollbar if
+   its content ever runs longer than the room available. */
 .legend {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(64px + var(--banner-space));
+  z-index: 42;
+  max-width: 520px;
+  max-height: min(60vh, 60dvh);
+  margin: 0 auto;
+  overflow-y: auto;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  align-content: flex-start;
   gap: 6px 14px;
-  max-width: 520px;
-  margin: 10px auto 0;
   padding: 10px 12px;
   background: #141b2b;
   border: 1px solid #2a3652;
@@ -213,6 +289,7 @@ html, body {
   font-size: 0.78rem;
   color: #9fb0c9;
   text-align: left;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 .legend.hidden { display: none; }
 .legend-toggle {

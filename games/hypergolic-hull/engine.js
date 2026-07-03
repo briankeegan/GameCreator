@@ -156,7 +156,7 @@
   // entries in these tables, not new bespoke code paths. `targets: "all"`
   // hits every target in range at once rather than capping at one.
   const WEAPONS = {
-    ram: { id: "ram", label: "Ram Cannon", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0 },
+    ram: { id: "ram", label: "Pulse Cannon", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0 },
     interceptorCannon: { id: "interceptorCannon", label: "Interceptor Cannon", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0 },
   };
 
@@ -216,7 +216,7 @@
       rammingDisabled: false,
       // Pre-turn system toggles: Warpdrive governs whether you can move at
       // all this turn (off means Hold Position is your only option); Ram
-      // governs whether the Ram Cannon auto-fires. Both default on.
+      // governs whether the Pulse Cannon auto-fires. Both default on.
       systems: { warpdrive: true, ram: true },
       turnCount: 0,
       status: "playing", // "playing" | "won" | "lost"

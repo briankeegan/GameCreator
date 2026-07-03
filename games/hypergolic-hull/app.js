@@ -6,8 +6,8 @@ const Engine = window.HypergolicEngine;
 const HEX_RATIO = 28 / 32; // pixel-art hex proportion: sy = sx * ratio
 const SQRT3 = Math.sqrt(3);
 
-// Sublight and Ram Cannon aren't manually-armed modes anymore — movement
-// always works via a plain tap (see the canvas click handler), and the Ram
+// Sublight and Pulse Cannon aren't manually-armed modes anymore — movement
+// always works via a plain tap (see the canvas click handler), and the Pulse
 // Cannon auto-fires as a side effect of that movement (see engine.js). Only
 // Tractor/Fighter still need you to pick a mode and then a target enemy.
 const MODES = {
@@ -17,6 +17,7 @@ const MODES = {
 
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
+const boardWrapEl = document.getElementById("boardWrap");
 const hullBarEl = document.getElementById("hullBar");
 const levelEl = document.getElementById("levelLabel");
 const objectiveEl = document.getElementById("objective");
@@ -34,6 +35,9 @@ const toggleLegalEl = document.getElementById("toggleLegal");
 const toggleWarpdriveEl = document.getElementById("toggleWarpdrive");
 const toggleRamEl = document.getElementById("toggleRam");
 const holdBtn = document.getElementById("holdBtn");
+const ramLabelEl = document.getElementById("ramLabel");
+const ramLabelLegendEl = document.getElementById("ramLabelLegend");
+const weaponStatsEl = document.getElementById("weaponStats");
 
 // Everything on the board is an emoji sprite so the pieces read at a glance
 // (see the legend under the action buttons).
@@ -82,13 +86,16 @@ const DIR_ANGLES = Engine.DIRECTIONS.map((d) => {
 const ROCKET_BASE_ANGLE = -45; // the 🚀 glyph's own default heading (upper-right) in most fonts
 let shipAngle = -90; // start facing "up", toward the gate
 
-// ---- geometry: the canvas grows/shrinks (and gets taller) with the board --
+// ---- geometry: the canvas grows/shrinks (and gets taller) with the board,
+// bounded by both the available width AND height — the game area is a fixed
+// cockpit that never scrolls, so the board has to letterbox to fit whatever
+// room is actually left rather than just picking a height and hoping.
 
 let geom = { sx: 32, sy: 28, offX: 0, offY: 0, w: 320, h: 320 };
 
 function updateGeometry() {
-  const wrap = canvas.parentElement;
-  const cssW = Math.min(wrap.clientWidth || 320, 520);
+  const availW = Math.min(boardWrapEl.clientWidth || 320, 520);
+  const availH = boardWrapEl.clientHeight || 320;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const h of state.boardHexes) {
     const x = SQRT3 * (h.q + h.r / 2);
@@ -99,7 +106,10 @@ function updateGeometry() {
     if (y > maxY) maxY = y;
   }
   const pad = 10;
-  const sx = (cssW - 2 * pad) / (maxX - minX + SQRT3);
+  const sxFromWidth = (availW - 2 * pad) / (maxX - minX + SQRT3);
+  const sxFromHeight = (availH - 2 * pad) / (maxY - minY + 2 * HEX_RATIO);
+  const sx = Math.min(sxFromWidth, sxFromHeight);
+  const cssW = Math.round((maxX - minX + SQRT3) * sx + 2 * pad);
   const cssH = Math.round((maxY - minY + 2 * HEX_RATIO) * sx + 2 * pad);
   geom = {
     sx,
@@ -465,15 +475,29 @@ function updateLegend() {
   helpBtn.classList.toggle("active", legendVisible);
 }
 
-// The Warpdrive/Ram Cannon checkboxes and the Hold Position button (which
+// The Warpdrive/Pulse Cannon checkboxes and the Hold Position button (which
 // only makes sense — and only shows — once Warpdrive is toggled off, since
 // that's what blocks a plain move).
 function updateSystems() {
   toggleWarpdriveEl.checked = state.systems.warpdrive;
   toggleRamEl.checked = state.systems.ram;
-  toggleRamEl.disabled = !state.actions.includes("ramming");
+  const unlocked = state.actions.includes("ramming");
+  toggleRamEl.disabled = !unlocked;
   holdBtn.hidden = state.systems.warpdrive;
   holdBtn.disabled = state.status !== "playing";
+
+  // Read live off Engine.WEAPONS (rather than hardcoding text here) so the
+  // label/stats can never drift from what the engine actually uses, and so
+  // a future upgrade system that changes these numbers shows up here for
+  // free instead of needing its own display code.
+  const weapon = Engine.WEAPONS.ram;
+  ramLabelEl.textContent = weapon.label;
+  ramLabelLegendEl.textContent = weapon.label;
+  weaponStatsEl.textContent = unlocked
+    ? `${weapon.label} — Range ${weapon.range} · Damage ${weapon.damage} · Targets: ${
+        weapon.targets === "all" ? "all in range" : weapon.targets
+      } · Energy ${weapon.energyCost}`
+    : `${weapon.label} — locked`;
 }
 
 function render() {
@@ -609,7 +633,7 @@ canvas.addEventListener("click", (evt) => {
 
   // Movement never needs a mode armed: any tap that isn't a legal target for
   // an armed Tractor/Fighter falls back to a plain move (adjacent) or the
-  // route preview (further away). The Ram Cannon auto-fires as a side
+  // route preview (further away). The Pulse Cannon auto-fires as a side
   // effect of the move itself — see engine.js — so there's no "ramming"
   // mode to arm either.
   const isPlainMove = Engine.legalSublightTargets(state).some((h) => Engine.posEq(h, hex));

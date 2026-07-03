@@ -29,21 +29,24 @@
 
     <p id="objective" class="objective"></p>
 
-    <div class="board-wrap">
-      <canvas id="board" width="320" height="320"></canvas>
-      <div class="run-overlay" id="runOverlay" hidden>
-        <h2 id="runOverlayTitle"></h2>
-        <p id="runOverlayBody"></p>
-        <button id="nextBtn" hidden>Next Sector</button>
-        <button id="restartBtn">New Run</button>
+    <div class="board-wrap" id="boardWrap">
+      <div class="board-frame">
+        <canvas id="board" width="320" height="320"></canvas>
+        <div class="run-overlay" id="runOverlay" hidden>
+          <h2 id="runOverlayTitle"></h2>
+          <p id="runOverlayBody"></p>
+          <button id="nextBtn" hidden>Next Sector</button>
+          <button id="restartBtn">New Run</button>
+        </div>
       </div>
     </div>
 
     <div class="systems">
       <label class="system-toggle"><input type="checkbox" id="toggleWarpdrive" checked /> ⚡ Warpdrive</label>
-      <label class="system-toggle"><input type="checkbox" id="toggleRam" checked /> 💥 Ram Cannon</label>
+      <label class="system-toggle"><input type="checkbox" id="toggleRam" checked /> 💥 <span id="ramLabel">Pulse Cannon</span></label>
       <button id="holdBtn" class="hold-btn" hidden>Hold Position</button>
     </div>
+    <p class="weapon-stats" id="weaponStats"></p>
 
     <div class="actions">
       <button data-mode="tractor">Tractor Beam</button>
@@ -63,7 +66,7 @@
       <label class="legend-toggle"><input type="checkbox" id="toggleThreat" checked /><i class="swatch swatch-threat"></i> Strike range — an enemy hits you if you end your turn here</label>
       <label class="legend-toggle"><input type="checkbox" id="toggleLegal" checked /><i class="swatch swatch-legal"></i> Outlined hex — where your selected action can go</label>
       <span>✨ Tap a far-away hex to preview the quickest route — tap it again to fly there</span>
-      <span>⚡💥 Warpdrive/Ram Cannon — toggle either off before you act; Ram Cannon auto-fires on any enemy in range after you move (or Hold Position)</span>
+      <span>⚡💥 Warpdrive/<span id="ramLabelLegend">Pulse Cannon</span> — toggle either off before you act; it auto-fires on any enemy in range after you move (or Hold Position)</span>
     </div>
   </main>
 
