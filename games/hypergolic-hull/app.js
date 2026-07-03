@@ -86,6 +86,15 @@ const DIR_ANGLES = Engine.DIRECTIONS.map((d) => {
 const ROCKET_BASE_ANGLE = -45; // the 🚀 glyph's own default heading (upper-right) in most fonts
 let shipAngle = -90; // start facing "up", toward the gate
 
+// Continuous version of the DIR_ANGLES lookup above (which only covers the
+// 6 adjacent-hex directions) — a weapon should aim straight at its actual
+// target regardless of range, not just the direction the flagship walked.
+function angleToward(from, to) {
+  const dx = SQRT3 * (to.q - from.q + (to.r - from.r) / 2);
+  const dy = HEX_RATIO * 1.5 * (to.r - from.r);
+  return (Math.atan2(dy, dx) * 180) / Math.PI;
+}
+
 // ---- geometry: the canvas grows/shrinks (and gets taller) with the board,
 // bounded by both the available width AND height — the game area is a fixed
 // cockpit that never scrolls, so the board has to letterbox to fit whatever
@@ -162,7 +171,16 @@ let anims = [];
 function scheduleAnims(events) {
   const now = performance.now();
   for (const ev of events) {
-    if (ev.type === "kill") anims.push({ kind: "boom", pos: ev, start: now, dur: 450 });
+    if (ev.type === "kill") {
+      anims.push({ kind: "boom", pos: ev, start: now, dur: 450 });
+      // A weapon's kill always comes after any playerMove event this same
+      // turn, so this correctly overrides the movement-direction facing
+      // above with "aim straight at what you just fired on" instead.
+      if (ev.source === "weapon") shipAngle = angleToward(state.playerPos, ev);
+    }
+    else if (ev.type === "hit") {
+      if (ev.source === "weapon") shipAngle = angleToward(state.playerPos, ev);
+    }
     else if (ev.type === "attack") anims.push({ kind: "lunge", enemyId: ev.enemyId, start: now, dur: 320 });
     else if (ev.type === "damage") anims.push({ kind: "flash", start: now, dur: 380 });
     else if (ev.type === "enemyMove") anims.push({ kind: "slide", enemyId: ev.enemyId, from: ev.from, to: ev.to, start: now, dur: 220 });

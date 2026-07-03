@@ -433,10 +433,10 @@
       victim.hp -= weapon.damage;
       if (victim.hp <= 0) {
         victim.alive = false;
-        state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type });
+        state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "weapon" });
         pushLog(state, `${weapon.label} destroyed ${victim.type}.`);
       } else {
-        state.events.push({ type: "hit", q: victim.q, r: victim.r });
+        state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "weapon" });
         pushLog(state, `${weapon.label} hit ${victim.type} (${victim.hp}/${victim.maxHp} HP left).`);
       }
     }

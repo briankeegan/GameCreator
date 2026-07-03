@@ -304,6 +304,10 @@ assert.deepStrictEqual(weaponState.systems, { warpdrive: true, ram: true }, "bot
 Engine.applySublight(weaponState, { q: 0, r: 3 }); // steps adjacent to the interceptor
 assert.strictEqual(weaponState.enemies[0].alive, false, "moving into range auto-fires the Pulse Cannon");
 assert.ok(weaponState.events.some((e) => e.type === "kill"), "the auto-attack emits a kill event");
+assert.ok(
+  weaponState.events.some((e) => e.type === "kill" && e.source === "weapon"),
+  "the auto-attack's kill is tagged source:weapon — the renderer uses this to aim the flagship at it, distinct from a Tractor/Fighter kill"
+);
 
 // Toggling the Pulse Cannon off suppresses the auto-attack.
 weaponState = Engine.createGameState(weaponLevel);
