@@ -8,10 +8,8 @@ var BACK_URL = params.get("back") || "../index.html";
 
 // This repo hosts every game's chat as a GitHub Issue.
 var REPO = "briankeegan/GameCreator";
-// The one shared relay every game's clubhouse talks to. Filled in once,
-// after the Worker is deployed (see worker/SETUP.md) — until then the gate
-// just explains it isn't wired up yet.
-var WORKER_URL = "";
+// The one shared relay every game's clubhouse talks to.
+var WORKER_URL = "https://game-creator.bramp-games.workers.dev";
 
 document.getElementById("gameBtn").href = BACK_URL;
 document.getElementById("gameTitle").textContent = ": " + GAME_NAME;
