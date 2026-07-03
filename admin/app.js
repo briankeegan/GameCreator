@@ -23,12 +23,6 @@ const createSecretInput = document.getElementById("createSecretInput");
 const createBtn = document.getElementById("createBtn");
 const createStatusEl = document.getElementById("createStatus");
 
-const gameIdInput = document.getElementById("gameIdInput");
-const gameNameInput = document.getElementById("gameNameInput");
-const secretWordInput = document.getElementById("secretWordInput");
-const upsertBtn = document.getElementById("upsertBtn");
-const upsertStatusEl = document.getElementById("upsertStatus");
-
 const refreshBtn = document.getElementById("refreshBtn");
 const listStatusEl = document.getElementById("listStatus");
 const gamesTableBody = document.getElementById("gamesTableBody");
@@ -227,30 +221,6 @@ createBtn.addEventListener("click", () => {
     .catch((err) => setStatus(createStatusEl, err.message, "error"))
     .finally(() => {
       createBtn.disabled = false;
-    });
-});
-
-upsertBtn.addEventListener("click", () => {
-  const game = gameIdInput.value.trim();
-  const name = gameNameInput.value.trim();
-  const secretWord = secretWordInput.value.trim();
-  if (!game || !name || !secretWord) {
-    setStatus(upsertStatusEl, "Fill in all three fields.", "error");
-    return;
-  }
-  upsertBtn.disabled = true;
-  setStatus(upsertStatusEl, "Saving… (creating its chat thread if it doesn't have one yet)");
-  callAdmin({ action: "admin-upsert", game, name, secretWord })
-    .then((data) => {
-      setStatus(upsertStatusEl, `Saved "${game}" — thread #${data.config.issueNumber}.`, "ok");
-      gameIdInput.value = "";
-      gameNameInput.value = "";
-      secretWordInput.value = "";
-      refreshList();
-    })
-    .catch((err) => setStatus(upsertStatusEl, err.message, "error"))
-    .finally(() => {
-      upsertBtn.disabled = false;
     });
 });
 
