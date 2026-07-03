@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>GameCreator Admin</title>
+  <meta name="robots" content="noindex" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="admin-header">
+    <a class="admin-back" href="../index.html">‹ All Games</a>
+    <h1>⚙️ Admin</h1>
+    <div class="logout-wrap">
+      <button class="logout-btn" id="logoutBtn" hidden>Log out</button>
+      <div class="logout-confirm" id="logoutConfirm" hidden>
+        <div class="logout-confirm-text">Log out?</div>
+        <div class="logout-confirm-actions">
+          <button id="logoutYesBtn">Yes</button>
+          <button id="logoutNoBtn">No</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="admin-error-banner" id="errorBanner" hidden>
+    <div class="admin-error-text" id="errorBannerText"></div>
+    <button id="errorBannerCopyBtn" type="button">Copy</button>
+    <button id="errorBannerDismissBtn" type="button" aria-label="Dismiss">&times;</button>
+  </div>
+
+  <div class="gate" id="gate">
+    <div class="gate-panel">
+      <h2>🔐 Admin passkey</h2>
+      <p>This unlocks game/chat management.</p>
+      <div class="secret-field">
+        <input id="passkeyInput" type="password" placeholder="Admin passkey" autocomplete="off" maxlength="200" />
+        <button id="peekBtn" type="button" aria-label="Show passkey">
+          <svg id="eyeOpen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <svg id="eyeClosed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden>
+            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a20.66 20.66 0 0 1 5.06-5.94"/>
+            <path d="M9.9 4.24A10.94 10.94 0 0 1 12 5c7 0 11 7 11 7a20.8 20.8 0 0 1-3.22 4.19"/>
+            <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </button>
+      </div>
+      <button id="enterBtn">Enter</button>
+      <div class="gate-error" id="gateError"></div>
+    </div>
+  </div>
+
+  <main class="admin-main" id="adminMain" hidden>
+    <section class="admin-card">
+      <h2>Create a new game</h2>
+      <p class="admin-hint">
+        One click, fully automatic: copies the blank template into
+        <code>games/&lt;id&gt;/</code>, lists it on the landing page, and sets
+        up its chat thread (a draft PR — no GitHub page to create by hand).
+        The result is a blank playable/installable game — build the
+        actual gameplay afterward by editing its <code>app.js</code>.
+      </p>
+      <label>Game id <span class="admin-note">(becomes part of the URL — lowercase-with-dashes)</span>
+        <input id="createIdInput" type="text" placeholder="space-jumper" />
+      </label>
+      <label>Display name
+        <input id="createNameInput" type="text" placeholder="Space Jumper" />
+      </label>
+      <label>Tagline <span class="admin-note">(optional, shown on the landing page card)</span>
+        <input id="createTaglineInput" type="text" placeholder="Jump between planets." />
+      </label>
+      <label>Secret word <span class="admin-note">(for this game's chat login)</span>
+        <input id="createSecretInput" type="text" placeholder="pinkunicorn" />
+      </label>
+      <div class="admin-actions">
+        <button id="createBtn">Create game</button>
+        <span id="createStatus" class="admin-status"></span>
+      </div>
+    </section>
+
+    <section class="admin-card">
+      <h2>Configured games</h2>
+      <div class="admin-actions">
+        <button id="refreshBtn">Refresh list</button>
+        <span id="listStatus" class="admin-status"></span>
+      </div>
+      <table class="admin-table" id="gamesTable">
+        <thead>
+          <tr><th>Game id</th><th>Name</th><th>PR</th><th></th></tr>
+        </thead>
+        <tbody id="gamesTableBody">
+          <tr><td colspan="4" class="admin-empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
