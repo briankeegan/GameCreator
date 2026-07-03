@@ -148,16 +148,28 @@
 
   // ---- weapon systems ---------------------------------------------------
   //
-  // The same stat block (range/damage/targets/speed/energyCost) drives both
-  // the flagship's systems and every enemy type's attack — one combat model
-  // for both sides, not a player-only mechanic plus separately-hardcoded
-  // enemy AI math. That matters because this is meant to grow into a
-  // roguelike: new enemies (and new player weapons) should just be new
-  // entries in these tables, not new bespoke code paths. `targets: "all"`
-  // hits every target in range at once rather than capping at one.
+  // The same stat block (range/damage/targets/speed/energyCost/pattern)
+  // drives both the flagship's systems and every enemy type's attack — one
+  // combat model for both sides, not a player-only mechanic plus
+  // separately-hardcoded enemy AI math. That matters because this is meant
+  // to grow into a roguelike: new enemies (and new player weapons) should
+  // just be new entries in these tables, not new bespoke code paths.
+  // `targets: "all"` hits every enemy the pattern finds in range at once,
+  // rather than capping at one.
+  //
+  // `pattern` is a list of direction offsets (0-5, clockwise) relative to
+  // the shooter's facing — `[0]` means "dead ahead only" (a forward-firing
+  // cannon), `[0,1,2,3,4,5]` means every direction at once (omnidirectional,
+  // facing irrelevant since it covers all six regardless of which one is
+  // "ahead"). `slots` is how many system-loadout slots the weapon occupies
+  // when equipped — not enforced anywhere yet (there's only one player
+  // weapon so far, nothing to compete for a slot), just modeled so a future
+  // capacity limit (and things like shields sharing the same slot pool)
+  // don't need a data-model change to add.
+  const ALL_DIRECTIONS_PATTERN = [0, 1, 2, 3, 4, 5];
   const WEAPONS = {
-    ram: { id: "ram", label: "Pulse Cannon", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0 },
-    interceptorCannon: { id: "interceptorCannon", label: "Interceptor Cannon", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0 },
+    ram: { id: "ram", label: "Pulse Cannon", range: 1, damage: 1, targets: "all", speed: 2, energyCost: 0, pattern: [0], slots: 1 },
+    interceptorCannon: { id: "interceptorCannon", label: "Interceptor Cannon", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
   };
 
   // Each enemy type is its own small data block: how tough it is (hp), what
@@ -167,20 +179,23 @@
     interceptor: { hp: 1, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true },
   };
 
-  // Every hex within `range` of `center` (a filled-in hexagon, not just the
-  // ring) — used to project a weapon's threatened/reachable area for any
-  // range, not just the range-1 case a plain neighbors() list covers.
-  function hexDisk(center, range) {
-    const result = [];
-    for (let dq = -range; dq <= range; dq++) {
-      const rMin = Math.max(-range, -dq - range);
-      const rMax = Math.min(range, -dq + range);
-      for (let dr = rMin; dr <= rMax; dr++) {
-        if (dq === 0 && dr === 0) continue; // exclude the center itself
-        result.push({ q: center.q + dq, r: center.r + dr });
+  // Every hex a weapon's pattern actually reaches, fired from `pos` facing
+  // hex-direction `facing` (0-5) — each pattern offset traces a straight
+  // line out to `range` hexes in that (facing + offset) direction. `facing`
+  // is irrelevant for an omnidirectional pattern (it already covers every
+  // direction regardless of which one is "ahead"), so callers that don't
+  // track a facing (enemies, today) can pass anything, e.g. 0.
+  function weaponHexes(pos, facing, weapon) {
+    const hexes = [];
+    for (const offset of weapon.pattern) {
+      const dir = (facing + offset + 6) % 6;
+      let cur = pos;
+      for (let step = 0; step < weapon.range; step++) {
+        cur = neighbor(cur, dir);
+        hexes.push(cur);
       }
     }
-    return result;
+    return hexes;
   }
 
   function createGameState(level) {
@@ -218,6 +233,12 @@
       // all this turn (off means Hold Position is your only option); Ram
       // governs whether the Pulse Cannon auto-fires. Both default on.
       systems: { warpdrive: true, ram: true },
+      // Direction index (0-5) the flagship is currently facing — gameplay-
+      // relevant now, not just cosmetic, since a directional weapon's
+      // pattern is relative to it. Updated on every Sublight move; starts
+      // facing direction 2 ({q:0,r:-1}), i.e. "up" toward the Warp Gate on
+      // every board's bottom-to-top layout.
+      facing: 2,
       turnCount: 0,
       status: "playing", // "playing" | "won" | "lost"
       log: [],
@@ -287,17 +308,20 @@
 
   // ---- threat overlay: pillar #3, "the board is the UI" -------------------
   //
-  // An enemy attacks instead of moving iff the player is already within its
-  // weapon's range when the enemy phase begins. So any hex within that
-  // range of a living enemy is a hex that will take damage if the player
-  // ends their turn there — generic over any weapon range, not just the
-  // range-1 case a plain neighbors() list would cover.
+  // An enemy attacks instead of moving iff the player is standing somewhere
+  // its weapon's pattern actually reaches when the enemy phase begins. So
+  // any such hex is one that will take damage if the player ends their turn
+  // there — generic over any weapon range/pattern, not just the
+  // range-1-omnidirectional case a plain neighbors() list would cover. The
+  // facing passed in doesn't matter for today's only enemy weapon (it's
+  // omnidirectional), but keeps this correct once a directional enemy
+  // weapon needs a real tracked facing too.
   function computeThreatHexes(state) {
     const threats = new Map(); // hexKey -> damage count
     for (const enemy of livingEnemies(state)) {
       const enemyType = ENEMY_TYPES[enemy.type];
       if (!enemyType) continue;
-      for (const hex of hexDisk(enemy, enemyType.weapon.range)) {
+      for (const hex of weaponHexes(enemy, 0, enemyType.weapon)) {
         if (!onBoard(state, hex)) continue;
         const k = hexKey(hex);
         threats.set(k, (threats.get(k) || 0) + 1);
@@ -311,7 +335,8 @@
   function decideIntent(state, enemy) {
     const enemyType = ENEMY_TYPES[enemy.type];
     if (enemyType && enemyType.movesTowardPlayer) {
-      if (hexDistance(enemy, state.playerPos) <= enemyType.weapon.range) {
+      const inRange = weaponHexes(enemy, 0, enemyType.weapon).some((h) => posEq(h, state.playerPos));
+      if (inRange) {
         return { enemyId: enemy.id, type: "attack" };
       }
       const occupiedNow = new Set(
@@ -423,12 +448,20 @@
   // Fires every currently-enabled, unlocked weapon against any living enemy
   // in its range, in front of the enemy phase — same timing Ramming Speed
   // always resolved on (instant, before enemies get to react). Called after
-  // any move (or Hold Position), never armed/aimed separately.
+  // any move (or Hold Position), never armed/aimed separately. What it can
+  // actually hit is purely a function of the weapon's own pattern and the
+  // flagship's current facing (weaponHexes) — a forward-only cannon (today's
+  // Pulse Cannon) only ever threatens the hex directly ahead, so sidestepping
+  // past an enemy without ending up with it dead ahead just doesn't line up
+  // a shot, no separate "did you approach it" check needed. Facing carries
+  // over from the last move for Hold Position, so holding still only fires
+  // on whatever's ahead of wherever you were already facing.
   function applyWeaponAutoAttacks(state) {
     if (state.rammingDisabled) return; // fighters deployed — weapon offline until retrieved
     if (!state.actions.includes("ramming") || !state.systems.ram) return;
     const weapon = WEAPONS.ram;
-    const targets = livingEnemies(state).filter((e) => hexDistance(e, state.playerPos) <= weapon.range);
+    const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon).map(hexKey));
+    const targets = livingEnemies(state).filter((e) => hexKeys.has(hexKey(e)));
     for (const victim of targets) {
       victim.hp -= weapon.damage;
       if (victim.hp <= 0) {
@@ -449,7 +482,10 @@
     if (!isAdjacent(state.playerPos, to)) throw new Error("Sublight Impulse: destination is not adjacent");
     if (!onBoard(state, to)) throw new Error("Sublight Impulse: destination is off the map");
     if (enemyAt(state, to)) throw new Error("Sublight Impulse: destination is occupied");
-    state.events.push({ type: "playerMove", from: { q: state.playerPos.q, r: state.playerPos.r }, to: { q: to.q, r: to.r } });
+    const from = { q: state.playerPos.q, r: state.playerPos.r };
+    state.events.push({ type: "playerMove", from, to: { q: to.q, r: to.r } });
+    const dir = directionIndex(from, to);
+    if (dir >= 0) state.facing = dir;
     state.playerPos = to;
     handleFighterRetrieval(state);
     applyWeaponAutoAttacks(state);
@@ -570,7 +606,7 @@
     hazardAt,
     WEAPONS,
     ENEMY_TYPES,
-    hexDisk,
+    weaponHexes,
   };
 
   if (typeof module !== "undefined" && module.exports) {

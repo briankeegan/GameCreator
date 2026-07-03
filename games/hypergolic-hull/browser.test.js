@@ -174,6 +174,18 @@ async function freshPage(browser, url, errors) {
     "Pulse Cannon toggled off does not auto-fire even at point-blank range"
   );
 
+  // The Pulse Cannon only fires dead ahead of the current facing, and the
+  // organic walk above doesn't guarantee the Interceptor ended up exactly
+  // there (only that it's adjacent) — face it directly before testing Hold
+  // Position, same "aim" the renderer itself keeps in sync with (see
+  // engine.js's `facing`).
+  await page.evaluate(() => {
+    const E = window.HypergolicEngine;
+    const st = window.__hhState;
+    const enemy = st.enemies.find((e) => e.alive);
+    st.facing = E.directionIndex(st.playerPos, enemy);
+  });
+
   // Warpdrive off blocks movement — Hold Position is the only option. Flip
   // the Pulse Cannon back on and hold position to fire it without moving.
   await page.check("#toggleRam");

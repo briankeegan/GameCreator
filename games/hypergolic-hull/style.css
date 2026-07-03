@@ -19,6 +19,7 @@ body {
 }
 
 .game-area {
+  position: relative; /* anchors .enemy-info to just below the nav bar, not the viewport */
   flex: 1 1 auto;
   min-height: 0; /* let this flex child shrink below its content's natural size */
   display: flex;
@@ -292,6 +293,29 @@ body {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 .legend.hidden { display: none; }
+
+/* Tap an enemy while Help is open to inspect it — a small floating card
+   anchored to the top so it never competes with the legend or Help button
+   at the bottom. */
+.enemy-info {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 8px;
+  z-index: 43;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 8px 12px;
+  background: #141b2b;
+  border: 1px solid #2a3652;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  color: #dbe4f2;
+  text-align: left;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.enemy-info[hidden] { display: none; }
+
 .legend-toggle {
   display: flex;
   align-items: center;

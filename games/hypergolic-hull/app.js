@@ -38,6 +38,7 @@ const holdBtn = document.getElementById("holdBtn");
 const ramLabelEl = document.getElementById("ramLabel");
 const ramLabelLegendEl = document.getElementById("ramLabelLegend");
 const weaponStatsEl = document.getElementById("weaponStats");
+const enemyInfoEl = document.getElementById("enemyInfo");
 
 // Everything on the board is an emoji sprite so the pieces read at a glance
 // (see the legend under the action buttons).
@@ -75,6 +76,10 @@ let legendVisible = GCStorage.get(GAME_ID, "legendVisible", false);
 // plain, always-on whitish border (see draw()) instead of disappearing.
 let showThreatKey = true;
 let showLegalKey = true;
+
+// Tapping an enemy while Help is open inspects it — its stats/weapon/pattern
+// show in a small card up top instead of (or alongside) acting on it.
+let inspectedEnemyId = null;
 
 // The flagship's facing, in degrees (canvas convention: 0 = screen-right,
 // increases clockwise). Updated whenever the ship actually moves.
@@ -511,17 +516,43 @@ function updateSystems() {
   const weapon = Engine.WEAPONS.ram;
   ramLabelEl.textContent = weapon.label;
   ramLabelLegendEl.textContent = weapon.label;
-  weaponStatsEl.textContent = unlocked
-    ? `${weapon.label} — Range ${weapon.range} · Damage ${weapon.damage} · Targets: ${
-        weapon.targets === "all" ? "all in range" : weapon.targets
-      } · Energy ${weapon.energyCost}`
-    : `${weapon.label} — locked`;
+  weaponStatsEl.textContent = unlocked ? describeWeapon(weapon) : `${weapon.label} — locked`;
+}
+
+// Shared by the systems-row stats line and the click-an-enemy-for-info panel
+// below, so both always describe a weapon the same way.
+function describePattern(weapon) {
+  if (weapon.pattern.length >= 6) return "all directions";
+  if (weapon.pattern.length === 1 && weapon.pattern[0] === 0) return "forward only";
+  return `${weapon.pattern.length} directions`;
+}
+
+function describeWeapon(weapon) {
+  return (
+    `${weapon.label} — Range ${weapon.range} · Damage ${weapon.damage} · ` +
+    `Pattern: ${describePattern(weapon)} · Speed ${weapon.speed} · Energy ${weapon.energyCost}`
+  );
+}
+
+// The inspected enemy's card only ever shows while Help is open (it's a
+// learn-the-board aid, same as the legend) and only for as long as that
+// enemy is still alive on the board.
+function updateEnemyInfo() {
+  const enemy = inspectedEnemyId && state.enemies.find((e) => e.id === inspectedEnemyId && e.alive);
+  if (!legendVisible || !enemy) {
+    enemyInfoEl.hidden = true;
+    return;
+  }
+  const def = Engine.ENEMY_TYPES[enemy.type];
+  enemyInfoEl.hidden = false;
+  enemyInfoEl.textContent = `${SPRITES[enemy.type] || SPRITES.interceptor} ${enemy.type} — HP ${enemy.hp}/${enemy.maxHp} · ${describeWeapon(def.weapon)}`;
 }
 
 function render() {
   updateHud();
   updateLegend();
   updateSystems();
+  updateEnemyInfo();
   draw();
   persist();
   window.__hhState = state; // debug hook: deterministic + serializable, safe to inspect
@@ -635,6 +666,23 @@ function stepRoute() {
 canvas.addEventListener("click", (evt) => {
   if (state.status !== "playing" || autoRoute) return;
 
+  const rect = canvas.getBoundingClientRect();
+  const scale = geom.w / rect.width;
+  const x = (evt.clientX - rect.left) * scale;
+  const y = (evt.clientY - rect.top) * scale;
+  const hex = pixelToHex(x, y);
+
+  // Inspecting an enemy (while Help is open) is informational, not an
+  // action — it doesn't consume the turn, so it works even with Warpdrive
+  // offline, and doesn't preempt whatever the tap would otherwise do below.
+  if (legendVisible) {
+    const inspected = Engine.enemyAt(state, hex);
+    if (inspected) {
+      inspectedEnemyId = inspected.id;
+      updateEnemyInfo();
+    }
+  }
+
   // Warpdrive offline means movement itself is off the table this turn —
   // Hold Position (see holdBtn below) is the only way to act.
   if (!state.systems.warpdrive) {
@@ -642,12 +690,6 @@ canvas.addEventListener("click", (evt) => {
     render();
     return;
   }
-
-  const rect = canvas.getBoundingClientRect();
-  const scale = geom.w / rect.width;
-  const x = (evt.clientX - rect.left) * scale;
-  const y = (evt.clientY - rect.top) * scale;
-  const hex = pixelToHex(x, y);
 
   // Movement never needs a mode armed: any tap that isn't a legal target for
   // an armed Tractor/Fighter falls back to a plain move (adjacent) or the
