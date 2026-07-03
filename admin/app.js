@@ -16,6 +16,13 @@ const peekBtn = document.getElementById("peekBtn");
 const eyeOpen = document.getElementById("eyeOpen");
 const eyeClosed = document.getElementById("eyeClosed");
 
+const createIdInput = document.getElementById("createIdInput");
+const createNameInput = document.getElementById("createNameInput");
+const createTaglineInput = document.getElementById("createTaglineInput");
+const createSecretInput = document.getElementById("createSecretInput");
+const createBtn = document.getElementById("createBtn");
+const createStatusEl = document.getElementById("createStatus");
+
 const gameIdInput = document.getElementById("gameIdInput");
 const gameNameInput = document.getElementById("gameNameInput");
 const secretWordInput = document.getElementById("secretWordInput");
@@ -192,6 +199,36 @@ function removeGame(gameId) {
 }
 
 refreshBtn.addEventListener("click", refreshList);
+
+createBtn.addEventListener("click", () => {
+  const game = createIdInput.value.trim();
+  const name = createNameInput.value.trim();
+  const tagline = createTaglineInput.value.trim();
+  const secretWord = createSecretInput.value.trim();
+  if (!game || !name || !secretWord) {
+    setStatus(createStatusEl, "Game id, display name, and secret word are required.", "error");
+    return;
+  }
+  createBtn.disabled = true;
+  setStatus(createStatusEl, "Creating… (scaffolding files, listing it, setting up chat)");
+  callAdmin({ action: "admin-create-game", game, name, tagline, secretWord })
+    .then((data) => {
+      setStatus(
+        createStatusEl,
+        `Created "${data.game}" — play it at ${data.path}, chat thread #${data.config.issueNumber}.`,
+        "ok"
+      );
+      createIdInput.value = "";
+      createNameInput.value = "";
+      createTaglineInput.value = "";
+      createSecretInput.value = "";
+      refreshList();
+    })
+    .catch((err) => setStatus(createStatusEl, err.message, "error"))
+    .finally(() => {
+      createBtn.disabled = false;
+    });
+});
 
 upsertBtn.addEventListener("click", () => {
   const game = gameIdInput.value.trim();

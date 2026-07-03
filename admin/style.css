@@ -150,6 +150,12 @@ html, body {
   flex-direction: column;
   gap: 16px;
 }
+/* The [hidden] attribute's default display:none loses to the class rule
+   above (equal specificity, this stylesheet loads after the UA one) unless
+   restated with a selector that actually wins. */
+.admin-main[hidden] {
+  display: none;
+}
 
 .admin-card {
   background: #fff;

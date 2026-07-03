@@ -49,14 +49,39 @@
 
   <main class="admin-main" id="adminMain" hidden>
     <section class="admin-card">
-      <h2>Add / update a game's chat</h2>
+      <h2>Create a new game</h2>
       <p class="admin-hint">
-        Saving creates the chat thread automatically (a GitHub Issue) the
-        first time — nothing to create by hand. Re-running with the same
-        game id updates it (e.g. to change the secret word) without making
-        a new thread.
+        One click, fully automatic: copies the blank template into
+        <code>games/&lt;id&gt;/</code>, lists it on the landing page, and sets
+        up its chat thread. No file editing, no GitHub Issue to create by
+        hand. The result is a blank playable/installable game — build the
+        actual gameplay afterward by editing its <code>app.js</code>.
       </p>
-      <label>Game id <span class="admin-note">(matches the folder in games/ and the id in games.json)</span>
+      <label>Game id <span class="admin-note">(becomes part of the URL — lowercase-with-dashes)</span>
+        <input id="createIdInput" type="text" placeholder="space-jumper" />
+      </label>
+      <label>Display name
+        <input id="createNameInput" type="text" placeholder="Space Jumper" />
+      </label>
+      <label>Tagline <span class="admin-note">(optional, shown on the landing page card)</span>
+        <input id="createTaglineInput" type="text" placeholder="Jump between planets." />
+      </label>
+      <label>Secret word <span class="admin-note">(for this game's chat login)</span>
+        <input id="createSecretInput" type="text" placeholder="pinkunicorn" />
+      </label>
+      <div class="admin-actions">
+        <button id="createBtn">Create game</button>
+        <span id="createStatus" class="admin-status"></span>
+      </div>
+    </section>
+
+    <section class="admin-card">
+      <h2>Update an existing game's chat</h2>
+      <p class="admin-hint">
+        Only for a game that already exists (e.g. change its secret word).
+        Doesn't touch any files or create a new thread if it already has one.
+      </p>
+      <label>Game id
         <input id="gameIdInput" type="text" placeholder="sample-clicker" />
       </label>
       <label>Display name
