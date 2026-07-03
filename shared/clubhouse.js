@@ -721,7 +721,19 @@ imageInput.addEventListener("change", function () {
     })
     .then(function (r) {
       if (r.res.status === 403) throw new Error("wrong-secret");
-      if (!r.res.ok || !r.data.url) throw new Error(r.data.error || "upload failed");
+      if (!r.res.ok || !r.data.url) {
+        // Temporary: surface the Worker's debug fields (if present) so a
+        // mismatch is visible from the error banner alone, without needing
+        // devtools — useful for diagnosing on a phone.
+        var msg = r.data.error || "upload failed";
+        if (r.data.gotAction !== undefined) {
+          msg +=
+            " [gotAction=" + JSON.stringify(r.data.gotAction) +
+            " type=" + r.data.gotActionType +
+            " keys=" + JSON.stringify(r.data.payloadKeys) + "]";
+        }
+        throw new Error(msg);
+      }
       var markdown = "![image](" + r.data.url + ")";
       var sep = messageInput.value && !/\n$/.test(messageInput.value) ? "\n\n" : "";
       messageInput.value += sep + markdown;
