@@ -54,10 +54,10 @@ let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
 let plannedPath = null;
 let autoRoute = null;
 
-// The legend re-explains itself at the start of every sector (a new action
-// just unlocked) and steps out of the way after the first move — the ❓ Help
-// button always brings it back.
-let legendVisible = true;
+// Whether the legend is open is a remembered player preference, not a
+// per-sector default — it starts closed the first time you ever play, and
+// after that just stays wherever you last left it (see the ❓ Help button).
+let legendVisible = GCStorage.get(GAME_ID, "legendVisible", false);
 
 // Each legend key can be independently muted while the legend is open. The
 // bold/colored board overlays they describe only ever show while the legend
@@ -217,17 +217,18 @@ function drawSprite(center, glyph, size, alpha) {
   ctx.restore();
 }
 
-// Every hex the flagship could eventually walk to — not just the current
-// mode's immediate legal targets — so the no-help baseline border can mark
+// Every hex the flagship could walk to — not just the current mode's
+// immediate legal targets — so the baseline whitish border can mark
 // "anywhere you could click", including a distant tap-to-preview-route
 // destination. Mirrors findPath's walkability rule (blocked by enemies and
 // hazards) but as a full flood-fill instead of point-to-point, then unions
 // in adjacent legalSublightTargets since those allow stepping onto a hazard
-// tile even though the route-finder won't path through one.
+// tile even though the route-finder won't path through one. The flagship's
+// own hex is included too — it'd be reachable if nobody (i.e. it) were
+// standing there, so it gets the same border as everywhere else.
 function computeReachableHexes(state) {
   const blocked = (pos) => Engine.enemyAt(state, pos) || Engine.hazardAt(state, pos);
-  const startKey = Engine.hexKey(state.playerPos);
-  const seen = new Set([startKey]);
+  const seen = new Set([Engine.hexKey(state.playerPos)]);
   const queue = [state.playerPos];
   while (queue.length) {
     const cur = queue.shift();
@@ -239,7 +240,6 @@ function computeReachableHexes(state) {
       queue.push(n);
     }
   }
-  seen.delete(startKey);
   for (const h of Engine.legalSublightTargets(state)) seen.add(Engine.hexKey(h));
   return seen;
 }
@@ -258,7 +258,7 @@ function draw() {
 
   const threats = Engine.computeThreatHexes(state);
   const legal = new Set(MODES[mode].targets(state).map((h) => Engine.hexKey(h)));
-  const reachable = legendVisible ? null : computeReachableHexes(state);
+  const reachable = computeReachableHexes(state);
   const routeHexes = (plannedPath && plannedPath.hexes) || (autoRoute && autoRoute.path) || null;
   const route = new Set((routeHexes || []).slice(1).map((h) => Engine.hexKey(h)));
 
@@ -281,23 +281,17 @@ function draw() {
     // marks them, so the board doesn't turn into a wall of green.
     if (route.has(k)) fill = blend(fill, "#2e5f96", 0.45);
 
-    // The current mode's legal targets get a bold bright border while the
-    // legend is open (and its checkbox is on) so they pop next to the key
-    // explaining them. Once the legend is tucked away, every hex the
-    // flagship could actually walk to — the whole reachable region, not
-    // just this mode's immediate targets — gets a plain whitish, thinner
-    // border instead: an always-on affordance for anywhere you could click,
-    // including a distant tap-to-preview-route destination.
+    // Every hex the flagship could walk to always gets a plain whitish
+    // border — anywhere you could click, always visible, info panel or not.
+    // While the legend is open (and its checkbox is on), the current mode's
+    // specific legal targets get a bold bright outline layered on top, right
+    // next to the key explaining it.
     let stroke = "#1a2233";
     let strokeWidth = 1.5;
-    if (legendVisible) {
-      if (legal.has(k) && showLegalKey) {
-        stroke = "#7fe3a8";
-        strokeWidth = 3;
-      }
-    } else if (reachable.has(k)) {
-      stroke = "#c9d6e8";
-      strokeWidth = 2;
+    if (reachable.has(k)) stroke = "#c9d6e8";
+    if (legendVisible && legal.has(k) && showLegalKey) {
+      stroke = "#7fe3a8";
+      strokeWidth = 3;
     }
     drawHex(center, fill, stroke, strokeWidth);
 
@@ -350,14 +344,14 @@ function draw() {
 
   for (const enemy of Engine.livingEnemies(state)) {
     const base = hexToPixel(enemy);
-    if (legal.has(Engine.hexKey(enemy)) && (legendVisible ? showLegalKey : true)) {
+    if (legal.has(Engine.hexKey(enemy))) {
       ctx.beginPath();
       ctx.arc(base.x, base.y, geom.sx * 0.47, 0, Math.PI * 2);
-      if (legendVisible) {
+      if (legendVisible && showLegalKey) {
         ctx.lineWidth = 2.5;
         ctx.strokeStyle = "#7fe3a8";
       } else {
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.5;
         ctx.strokeStyle = "#c9d6e8";
       }
       ctx.stroke();
@@ -501,7 +495,6 @@ function handleAction(fn) {
     mode = "sublight";
     modeButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.mode === mode));
     scheduleAnims(state.events);
-    legendVisible = false; // the player has the hang of it — get out of the way
   } catch (err) {
     pushMessage(err.message);
   }
@@ -515,7 +508,6 @@ function loadSector(index) {
   anims = [];
   plannedPath = null;
   autoRoute = null;
-  legendVisible = true; // re-explain the board for every newly unlocked action
   shipAngle = -90;
   updateGeometry();
   render();
@@ -523,6 +515,7 @@ function loadSector(index) {
 
 helpBtn.addEventListener("click", () => {
   legendVisible = !legendVisible;
+  GCStorage.set(GAME_ID, "legendVisible", legendVisible);
   updateLegend();
   draw();
 });

@@ -113,18 +113,19 @@ async function freshPage(browser, url, errors) {
   assert.ok(boardBox.height > boardBox.width * 0.95, "the canvas grows tall to fit the Hoplite-style board");
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "run overlay must not show on a fresh board");
 
-  // The legend re-explains itself at the start of a sector, and the ❓ Help
-  // button can bring it back after it steps out of the way. Test this with
-  // one manual step (not the auto-route below, which fires its own actions
-  // on a timer and would race a toggle check).
-  assert.strictEqual(await page.locator("#legend").isVisible(), true, "the legend is visible at the start of a sector");
+  // The legend defaults to closed (not force-shown every sector) and just
+  // remembers whatever the ❓ Help toggle was last set to — it doesn't
+  // auto-hide itself once a move happens. Test the toggle with one manual
+  // step (not the auto-route below, which fires its own actions on a timer
+  // and would race a check).
+  assert.strictEqual(await page.locator("#legend").isVisible(), false, "the legend starts closed by default");
   assert.strictEqual(await page.locator("#helpBtn").isVisible(), true, "the Help toggle is always available");
+  await page.click("#helpBtn");
+  assert.strictEqual(await page.locator("#legend").isVisible(), true, "Help opens the legend");
   await clickHex(page, "sublight", await pickStepToward(page, "exit"));
-  assert.strictEqual(await page.locator("#legend").isVisible(), false, "the legend steps out of the way once the first move happens");
+  assert.strictEqual(await page.locator("#legend").isVisible(), true, "the legend stays open across a move — no auto-hide");
   await page.click("#helpBtn");
-  assert.strictEqual(await page.locator("#legend").isVisible(), true, "Help brings the legend back");
-  await page.click("#helpBtn");
-  assert.strictEqual(await page.locator("#legend").isVisible(), false, "Help hides it again");
+  assert.strictEqual(await page.locator("#legend").isVisible(), false, "Help closes it again");
 
   // The quickest-route preview: tap the far-away gate once to see the path,
   // tap it again to fly the rest of the route (one real turn per step).
