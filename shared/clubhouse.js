@@ -13,20 +13,13 @@ var REPO = "briankeegan/GameCreator";
 var WORKER_URL = "https://game-creator.bramp-games.workers.dev";
 
 // window.APP_VERSION is set by a line the deploy workflow prepends to the
-// very top of this exact file at build time (see .github/workflows/pages.yml)
-// — not a separate version.js file loaded via its own <script> tag (that
-// extra load was a silent single point of failure: 404, slow, or blocked,
-// and the stamp just went blank with no sign anything was wrong), and not
-// a find-and-replace over a placeholder either (that failed silently too —
-// sed exits 0 even when its pattern never matches, so it shipped the
-// literal un-stamped placeholder text with no error). A plain prepend has
-// no pattern to miss: it always writes a real version here. Falls back to
-// "v?" only for local dev, where nothing prepends this line.
-var APP_VERSION = window.APP_VERSION || "v?";
-
+// very top of this exact file at build time (see .github/workflows/pages.yml).
+// Read directly off window everywhere below — no local variable of the
+// same name — to rule out any var-hoisting/shadowing ambiguity between
+// this file's own declarations and the prepended global assignment.
 document.getElementById("gameBtn").href = BACK_URL;
 document.getElementById("gameTitle").textContent = ": " + GAME_NAME;
-document.getElementById("versionStamp").textContent = " · " + APP_VERSION;
+document.getElementById("versionStamp").textContent = " · " + (window.APP_VERSION || "v?");
 
 var gateEl = document.getElementById("gate");
 var gateErrorEl = document.getElementById("gateError");
@@ -536,7 +529,7 @@ sendBtn.addEventListener("click", function () {
   if (!text) return;
   // Stamp the message with the deploy version this page was sent from, so
   // the thread records who was on what version when.
-  var stamped = text + "\n\n[" + APP_VERSION + "]";
+  var stamped = text + "\n\n[" + (window.APP_VERSION || "v?") + "]";
   sendBtn.disabled = true;
   sendBtn.textContent = "Sending…";
   relay({ action: "post", name: visitorName, secret: secretWord, message: stamped })
