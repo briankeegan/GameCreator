@@ -131,42 +131,65 @@ body {
    hard corners (no smooth border-radius), a chunky color-blocked accent
    chip standing in for LCARS's swept panel shapes, blocky offset "pixel"
    drop-shadows instead of soft blurred ones, and a bitmap-y monospace
-   readout instead of ordinary form controls. */
-.systems {
+   readout instead of ordinary form controls.
+   Everything below the board — systems toggles, weapon stats, Hold
+   Position, and the action buttons — lives in ONE bordered console
+   instead of several separately-boxed rows, and uses CSS grid (fixed
+   column counts) rather than flex-wrap so it packs multiple things per
+   row on every phone width instead of only when content happens to fit. */
+.console {
   flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 6px 10px;
   max-width: 520px;
   width: 100%;
   margin: 8px auto 0;
   padding: 8px 10px 8px 18px;
   font-family: "SF Mono", "Menlo", "Consolas", monospace;
-  font-size: 0.78rem;
   color: #ffce8a;
   background: #101724;
   border: 3px solid #2a3652;
   border-left: 10px solid #ff9c4a;
-  border-radius: 0;
   box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4);
 }
 
-/* One inline badge in the same row as the toggles and Hold Position,
-   instead of a whole separate full-width line underneath. */
+.console-grid {
+  display: grid;
+  gap: 6px 8px;
+  align-items: center;
+}
+.systems-grid {
+  grid-template-columns: 1fr 1fr;
+  font-size: 0.76rem;
+}
+.actions-grid {
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 2px solid #2a3652;
+}
+
+/* A compact badge sharing a grid cell with Hold Position, instead of a
+   whole separate full-width line underneath — tap it to expand to the full
+   stat sentence (see .expanded), same "tap a thing to inspect it" pattern
+   as clicking an enemy while Help is open. */
 .weapon-stats {
-  flex: 0 0 auto;
-  padding: 3px 8px;
+  padding: 3px 6px;
   font-family: "SF Mono", "Menlo", "Consolas", monospace;
-  font-size: 0.66rem;
-  letter-spacing: 0.02em;
+  font-size: 0.64rem;
+  letter-spacing: 0.01em;
   text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   color: #7fe3a8;
   background: #0b0f18;
   border: 2px solid #1f2a3d;
-  border-radius: 0;
+  cursor: pointer;
+}
+.weapon-stats.expanded {
+  grid-column: 1 / -1;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .system-toggle {
@@ -174,8 +197,11 @@ body {
   align-items: center;
   gap: 6px;
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
 }
 
 /* A blocky, square-pipped toggle switch instead of a native checkbox or a
@@ -219,17 +245,20 @@ body {
 }
 
 .hold-btn {
-  flex: 0 0 auto;
+  width: 100%;
   background: #1b2436;
   color: #ffce8a;
   border: 2px solid #ff9c4a;
-  padding: 5px 10px;
+  padding: 5px 6px;
   border-radius: 0;
   font-family: "SF Mono", "Menlo", "Consolas", monospace;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
 }
@@ -242,35 +271,29 @@ body {
   box-shadow: none;
 }
 
-.actions {
-  flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  max-width: 520px;
+.actions-grid button {
   width: 100%;
-  margin: 8px auto 0;
-}
-.actions button {
   background: #1b2436;
   color: #dbe4f2;
   border: 1px solid #2a3652;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 0.82rem;
+  padding: 6px 4px;
+  border-radius: 0;
+  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
 }
-.actions button.active {
+.actions-grid button.active {
   background: #2f8f5b;
   border-color: #7fe3a8;
   color: #0d2233;
 }
-.actions button:disabled {
+.actions-grid button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
-.actions button.locked {
+.actions-grid button.locked {
   opacity: 0.45;
   background: #151b28;
   border-style: dashed;

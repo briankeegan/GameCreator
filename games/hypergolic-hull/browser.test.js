@@ -111,7 +111,11 @@ async function freshPage(browser, url, errors) {
     assert.strictEqual(await page.locator(`[data-mode="${m}"]`).isDisabled(), true, `${m} is locked in Sector 1`);
     assert.ok((await page.locator(`[data-mode="${m}"]`).textContent()).startsWith("🔒"), `${m} shows its padlock`);
   }
-  assert.strictEqual(await page.locator("#toggleRam").isDisabled(), true, "the Impulse Cannon toggle is locked in Sector 1");
+  assert.strictEqual(
+    await page.locator("#toggleRam").isDisabled(),
+    false,
+    "the Impulse Cannon toggle is never locked out, even before the weapon itself is unlocked"
+  );
   assert.strictEqual(
     await page.locator("#holdBtn").isVisible(),
     true,
@@ -158,6 +162,16 @@ async function freshPage(browser, url, errors) {
   assert.deepStrictEqual(s.actions, ["sublight", "ramming"], "Sector 2 unlocks exactly one new action");
   assert.strictEqual(s.enemies.filter((e) => e.alive).length, 1);
   assert.strictEqual(await page.locator("#toggleRam").isDisabled(), false, "the Impulse Cannon toggle is usable in Sector 2");
+
+  // Tapping the weapon-stats badge expands it to the full stat sentence —
+  // same "tap a thing to inspect it" pattern as clicking an enemy.
+  const compactText = await page.locator("#weaponStats").textContent();
+  await page.click("#weaponStats");
+  const expandedText = await page.locator("#weaponStats").textContent();
+  assert.ok(expandedText.length > compactText.length, "tapping the weapon-stats badge expands it to the full sentence");
+  assert.ok(/Range 1/i.test(expandedText), "the expanded stats spell out Range");
+  await page.click("#weaponStats");
+  assert.strictEqual(await page.locator("#weaponStats").textContent(), compactText, "tapping it again collapses back to the compact badge");
 
   // Toggling the Impulse Cannon off stops it auto-firing — walk right up next
   // to the Interceptor with it disabled and confirm it survives.

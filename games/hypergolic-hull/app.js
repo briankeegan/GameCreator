@@ -81,6 +81,10 @@ let showLegalKey = true;
 // show in a small card up top instead of (or alongside) acting on it.
 let inspectedEnemyId = null;
 
+// Whether the weapon-stats badge is showing its full sentence (tapped open)
+// or just the compact abbreviation (the default).
+let weaponStatsExpanded = false;
+
 // The flagship's facing, in degrees (canvas convention: 0 = screen-right,
 // increases clockwise). Updated whenever the ship actually moves.
 const DIR_ANGLES = Engine.DIRECTIONS.map((d) => {
@@ -514,8 +518,11 @@ function updateLegend() {
 function updateSystems() {
   toggleWarpdriveEl.checked = state.systems.warpdrive;
   toggleRamEl.checked = state.systems.ram;
+  // The toggle itself is never locked out — you can flip it whether or not
+  // the weapon is unlocked yet this sector; it just has nothing to do until
+  // then (applyWeaponAutoAttacks in engine.js gates on `ramming` being
+  // unlocked regardless of this switch's position).
   const unlocked = state.actions.includes("ramming");
-  toggleRamEl.disabled = !unlocked;
   holdBtn.disabled = state.status !== "playing";
 
   // Read live off Engine.WEAPONS (rather than hardcoding text here) so the
@@ -525,8 +532,14 @@ function updateSystems() {
   const weapon = Engine.WEAPONS.ram;
   ramLabelEl.textContent = weapon.label;
   ramLabelLegendEl.textContent = weapon.label;
-  weaponStatsEl.textContent = unlocked ? describeWeaponCompact(weapon) : "LOCKED";
-  weaponStatsEl.title = unlocked ? describeWeapon(weapon) : `${weapon.label} — locked`;
+  // Tap the badge to inspect it: expands from the compact abbreviation to
+  // the full Range/Damage/Pattern/Speed/Energy sentence, same "tap a thing
+  // to learn about it" pattern as clicking an enemy while Help is open.
+  // Stats are readable either way, locked or not — locked only means the
+  // weapon isn't firing yet, not that you can't go look at its numbers.
+  const lockedPrefix = unlocked ? "" : "🔒 ";
+  weaponStatsEl.textContent = lockedPrefix + (weaponStatsExpanded ? describeWeapon(weapon) : describeWeaponCompact(weapon));
+  weaponStatsEl.classList.toggle("expanded", weaponStatsExpanded);
 }
 
 // Shared by the systems-row stats line and the click-an-enemy-for-info panel
@@ -653,6 +666,11 @@ toggleWarpdriveEl.addEventListener("change", () => {
 toggleRamEl.addEventListener("change", () => {
   Engine.setSystem(state, "ram", toggleRamEl.checked);
   render();
+});
+
+weaponStatsEl.addEventListener("click", () => {
+  weaponStatsExpanded = !weaponStatsExpanded;
+  updateSystems();
 });
 
 holdBtn.addEventListener("click", () => {
