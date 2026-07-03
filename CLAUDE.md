@@ -30,14 +30,21 @@ design discussion. `shared/` holds the components every game reuses
   `hypergolic-hull` → PR #8. Don't trust this list once it's stale — always
   re-check `admin-list` / open PRs, since games get added and threads get
   repointed via Admin's "Fix link" / "Add existing game's chat".
+- Same convention as HayleysGame: every Claude reply ends with a version
+  stamp on its own line, `[v0.<run_number>]`, where `<run_number>` is the
+  `run_number` of the latest successful "Deploy static site to Pages" run
+  (`pages.yml`) at reply time. Since that workflow only triggers on push to
+  `main`, the stamp tells the reader whether the reply is describing code
+  that's actually live yet, without them having to ask. Look it up with
+  `actions_list` / `list_workflow_runs` on `pages.yml`, not by guessing.
 
 ## Handling a clubhouse request
 
 1. If it's a clear game-design ask: implement it in the relevant
    `games/<id>/` files, push to `main` (Pages deploys only from `main`,
    nothing else — see below), and reply on the PR confirming what shipped.
-2. If the request touches the shared relay's behavior (worker.js),
-   remember the Cloudflare redeploy gotcha below before claiming it's live.
+2. If it touches the shared relay's behavior (worker.js), remember the
+   Cloudflare redeploy gotcha below before claiming it's live.
 3. If the request is ambiguous or architecturally significant, ask before
    building — this project has been explicitly steered away from
    speculative "mechanisms" for hypothetical edge cases. Fix what's asked,
