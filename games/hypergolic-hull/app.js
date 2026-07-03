@@ -270,6 +270,15 @@ function draw() {
 
   const threats = Engine.computeThreatHexes(state);
   const legal = mode ? new Set(MODES[mode].targets(state).map((h) => Engine.hexKey(h))) : new Set();
+  // The Pulse Cannon isn't a mode you arm anymore, but its current target
+  // (dead ahead of facing, or every neighbor for an omnidirectional weapon)
+  // is exactly the same kind of thing "outlined hex" already means, so it
+  // gets folded into the same highlight instead of a separate one.
+  if (state.actions.includes("ramming") && state.systems.ram) {
+    for (const h of Engine.weaponHexes(state.playerPos, state.facing, Engine.WEAPONS.ram)) {
+      if (Engine.onBoard(state, h)) legal.add(Engine.hexKey(h));
+    }
+  }
   // Mirrors the whitish hex border, but for enemies: any enemy an unlocked action could
   // ever target, regardless of which mode happens to be armed right now —
   // not just the one enemy set belonging to the currently-selected mode.
