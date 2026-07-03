@@ -16,6 +16,13 @@
 //   { action: "resolve", game }                          — public: which PR is this game's thread?
 //   { action: "verify",  game, secret }                  — is the secret word right?
 //   { action: "post",    game, name, secret, message }    — post a message to the thread
+//   { action: "upload-image", game, name, secret, filename, contentBase64 }
+//     — commits an image straight into the repo (games/<id>/clubhouse-images/
+//       on that game's own clubhouse/<id> branch, which never merges to
+//       main) and returns its raw.githubusercontent.com URL. Third-party
+//       anonymous image hosts (imgur, catbox) turned out to be unreliable
+//       to hit directly from a browser — this avoids that dependency
+//       entirely by reusing the same GITHUB_TOKEN the relay already has.
 //   { action: "admin-create-game", adminToken, game, name, tagline?, secretWord }
 //     — scaffolds games/<id>/ from games/_template/, lists it in games.json,
 //       creates its chat PR, and registers it — the whole "add a game" loop
@@ -95,8 +102,11 @@ async function ghGetFile(env, path, ref) {
   return res.json();
 }
 
-async function ghPutFile(env, path, content, message, branch, sha) {
-  const body = { message, content: utf8ToBase64(content), branch };
+// Takes already-base64 content directly (no UTF-8 re-encoding) so binary
+// files — images — survive intact. ghPutFile (text files) is just this
+// with a UTF-8-encode step in front of it.
+async function ghPutFileBase64(env, path, base64Content, message, branch, sha) {
+  const body = { message, content: base64Content, branch };
   if (sha) body.sha = sha;
   const res = await fetch(`https://api.github.com/repos/${env.REPO}/contents/${path}`, {
     method: "PUT",
@@ -112,6 +122,10 @@ async function ghPutFile(env, path, content, message, branch, sha) {
     throw new Error(`couldn't write ${path}: ${res.status}${detail}`);
   }
   return res.json();
+}
+
+async function ghPutFile(env, path, content, message, branch, sha) {
+  return ghPutFileBase64(env, path, utf8ToBase64(content), message, branch, sha);
 }
 
 async function ghGetDefaultBranchSha(env) {
@@ -181,6 +195,16 @@ async function ghCreateClubhousePR(env, gameId, name) {
 
 const TEMPLATE_FILES = ["index.html", "style.css", "app.js", "manifest.webmanifest", "sw.js", "icons/icon.svg"];
 
+// Chat image attachments land here, never touching main directly.
+function safeImageFilename(name) {
+  const base = String(name || "image")
+    .split(/[\\/]/)
+    .pop()
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .slice(-80);
+  return base || "image";
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") {
@@ -188,7 +212,7 @@ export default {
     }
     if (request.method !== "POST") {
       return json(200, {
-        relay: "gc-r4",
+        relay: "gc-r5",
         settings: {
           GAMES_KV: env.GAMES_KV ? "bound" : "MISSING",
           GITHUB_TOKEN: env.GITHUB_TOKEN ? "set" : "MISSING",
@@ -376,10 +400,30 @@ export default {
           detail = body.message ? ` — ${body.message}` : "";
         } catch {}
         return json(502, {
-          error: `github said ${res.status}${detail} [game: ${gameId}] [relay gc-r4]`,
+          error: `github said ${res.status}${detail} [game: ${gameId}] [relay gc-r5]`,
         });
       }
       return json(200, { ok: true });
+    }
+
+    if (payload.action === "upload-image") {
+      const contentBase64 = String(payload.contentBase64 || "").replace(/\s/g, "");
+      if (!contentBase64) return json(400, { error: "no image data" });
+      // Base64 grows content ~4/3 — cap comfortably under the Contents
+      // API's ~1MB-per-file ceiling so uploads fail fast with a clear
+      // reason instead of a confusing GitHub error.
+      if (contentBase64.length > 1_400_000) {
+        return json(413, { error: "image is too big (max ~1MB) — try a smaller one or crop it" });
+      }
+      const filename = safeImageFilename(payload.filename);
+      const path = `games/${gameId}/clubhouse-images/${Date.now()}-${filename}`;
+      const branch = `clubhouse/${gameId}`;
+      try {
+        await ghPutFileBase64(env, path, contentBase64, `Chat image from ${payload.name || "visitor"}`, branch);
+      } catch (err) {
+        return json(502, { error: String((err && err.message) || err) });
+      }
+      return json(200, { ok: true, url: `https://raw.githubusercontent.com/${env.REPO}/${branch}/${path}` });
     }
 
     return json(400, { error: "unknown action" });

@@ -616,9 +616,12 @@ messageInput.addEventListener("input", function () {
 });
 
 // ---- image attachment ----
-// Uploads straight to catbox.moe's anonymous API from the browser — no
-// server of our own involved (no repo bloat, no Worker changes), and no
-// account or app registration needed at all.
+// Third-party anonymous image hosts (imgur's signup flow, then catbox.moe's
+// direct-from-browser uploads) both turned out to be unreliable. Instead
+// the image is committed straight into this game's own clubhouse/<id>
+// branch (never merged to main) via the relay, which already holds the
+// GITHUB_TOKEN needed to write to the repo — no third party involved.
+var MAX_IMAGE_BYTES = 1 * 1024 * 1024;
 var attachBtn = document.getElementById("attachBtn");
 var imageInput = document.getElementById("imageInput");
 
@@ -630,34 +633,54 @@ imageInput.addEventListener("change", function () {
   var file = imageInput.files && imageInput.files[0];
   imageInput.value = ""; // lets the same file be picked again later
   if (!file) return;
+  if (file.size > MAX_IMAGE_BYTES) {
+    showSendError("That image is too big (max 1MB) — try a smaller one or crop it.");
+    return;
+  }
   attachBtn.disabled = true;
   attachBtn.textContent = "…";
-  var form = new FormData();
-  form.append("reqtype", "fileupload");
-  form.append("fileToUpload", file);
-  fetch("https://catbox.moe/user/api.php", {
-    method: "POST",
-    body: form,
-  })
-    .then(function (res) {
-      return res.text().then(function (body) { return { ok: res.ok, body: body.trim() }; });
+  var reader = new FileReader();
+  reader.onerror = function () {
+    showSendError("Couldn't read that file.");
+    attachBtn.disabled = false;
+    attachBtn.textContent = "📷";
+  };
+  reader.onload = function () {
+    // reader.result is "data:<mime>;base64,<data>" — the relay only wants
+    // the base64 payload, not the data-URL wrapper.
+    var contentBase64 = String(reader.result).split(",")[1] || "";
+    relay({
+      action: "upload-image",
+      name: visitorName,
+      secret: secretWord,
+      filename: file.name,
+      contentBase64: contentBase64,
     })
-    .then(function (r) {
-      // A successful upload's response body IS the URL, no wrapper JSON —
-      // anything that isn't a URL is catbox's plain-text error message.
-      if (!r.ok || !/^https?:\/\//.test(r.body)) {
-        throw new Error(r.body || "upload failed");
-      }
-      var markdown = "![image](" + r.body + ")";
-      var sep = messageInput.value && !/\n$/.test(messageInput.value) ? "\n\n" : "";
-      messageInput.value += sep + markdown;
-      messageInput.dispatchEvent(new Event("input"));
-    })
-    .catch(function (err) {
-      showSendError("Image upload failed: " + err.message);
-    })
-    .finally(function () {
-      attachBtn.disabled = false;
-      attachBtn.textContent = "📷";
-    });
+      .then(function (res) {
+        return res
+          .json()
+          .catch(function () { return {}; })
+          .then(function (data) { return { res: res, data: data }; });
+      })
+      .then(function (r) {
+        if (r.res.status === 403) throw new Error("wrong-secret");
+        if (!r.res.ok || !r.data.url) throw new Error(r.data.error || "upload failed");
+        var markdown = "![image](" + r.data.url + ")";
+        var sep = messageInput.value && !/\n$/.test(messageInput.value) ? "\n\n" : "";
+        messageInput.value += sep + markdown;
+        messageInput.dispatchEvent(new Event("input"));
+      })
+      .catch(function (err) {
+        showSendError(
+          err.message === "wrong-secret"
+            ? "The secret word stopped working — reload the page and try again."
+            : "Image upload failed: " + err.message
+        );
+      })
+      .finally(function () {
+        attachBtn.disabled = false;
+        attachBtn.textContent = "📷";
+      });
+  };
+  reader.readAsDataURL(file);
 });
