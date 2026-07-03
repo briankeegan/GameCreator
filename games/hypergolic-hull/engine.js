@@ -145,6 +145,20 @@
   // ---- game state -----------------------------------------------------------
 
   const START_HULL = 1; // one hit and you're out — permadeath means it, Hoplite-style
+  const ENEMY_HP = 1; // stat-driven now (was a plain alive/dead flag): 1 dmg still one-shots today
+
+  // ---- weapon systems ---------------------------------------------------
+  //
+  // The first of what's meant to become a small roster: each weapon is a
+  // flat stat block (range/damage/targets/speed/energyCost), auto-fires on
+  // any living enemy in range the instant the flagship ends up there (after
+  // a move, or standing pat via Hold Position) — no separate aim-and-fire
+  // action. `targets: "all"` means it hits every enemy in range at once
+  // rather than capping at a single target. Toggleable per-turn via
+  // state.systems, same as Warpdrive.
+  const WEAPONS = {
+    ram: { id: "ram", label: "Ram Cannon", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0 },
+  };
 
   function createGameState(level) {
     validateLevel(level);
@@ -168,9 +182,15 @@
         q: e.q,
         r: e.r,
         alive: true,
+        hp: ENEMY_HP,
+        maxHp: ENEMY_HP,
       })),
       fighterHex: null,
       rammingDisabled: false,
+      // Pre-turn system toggles: Warpdrive governs whether you can move at
+      // all this turn (off means Hold Position is your only option); Ram
+      // governs whether the Ram Cannon auto-fires. Both default on.
+      systems: { warpdrive: true, ram: true },
       turnCount: 0,
       status: "playing", // "playing" | "won" | "lost"
       log: [],
@@ -179,6 +199,11 @@
     if (level.intro) pushLog(state, level.intro);
     checkExitUnlock(state); // an enemy-free tutorial board starts with the gate online
     return state;
+  }
+
+  function setSystem(state, key, enabled) {
+    if (!(key in state.systems)) throw new Error(`Unknown system: ${key}`);
+    state.systems[key] = Boolean(enabled);
   }
 
   function livingEnemies(state) {
@@ -365,8 +390,31 @@
 
   // ---- player actions -----------------------------------------------------
 
+  // Fires every currently-enabled, unlocked weapon against any living enemy
+  // in its range, in front of the enemy phase — same timing Ramming Speed
+  // always resolved on (instant, before enemies get to react). Called after
+  // any move (or Hold Position), never armed/aimed separately.
+  function applyWeaponAutoAttacks(state) {
+    if (state.rammingDisabled) return; // fighters deployed — weapon offline until retrieved
+    if (!state.actions.includes("ramming") || !state.systems.ram) return;
+    const weapon = WEAPONS.ram;
+    const targets = livingEnemies(state).filter((e) => hexDistance(e, state.playerPos) <= weapon.range);
+    for (const victim of targets) {
+      victim.hp -= weapon.damage;
+      if (victim.hp <= 0) {
+        victim.alive = false;
+        state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type });
+        pushLog(state, `${weapon.label} destroyed ${victim.type}.`);
+      } else {
+        state.events.push({ type: "hit", q: victim.q, r: victim.r });
+        pushLog(state, `${weapon.label} hit ${victim.type} (${victim.hp}/${victim.maxHp} HP left).`);
+      }
+    }
+  }
+
   function applySublight(state, to) {
     assertPlaying(state);
+    if (!state.systems.warpdrive) throw new Error("Warpdrive: offline — toggle it on, or use Hold Position instead");
     state.events = [];
     if (!isAdjacent(state.playerPos, to)) throw new Error("Sublight Impulse: destination is not adjacent");
     if (!onBoard(state, to)) throw new Error("Sublight Impulse: destination is off the map");
@@ -374,29 +422,18 @@
     state.events.push({ type: "playerMove", from: { q: state.playerPos.q, r: state.playerPos.r }, to: { q: to.q, r: to.r } });
     state.playerPos = to;
     handleFighterRetrieval(state);
+    applyWeaponAutoAttacks(state);
     checkPlayerHazard(state);
     if (state.status !== "playing") return;
     endPlayerAction(state);
   }
 
-  function applyRamming(state, to) {
+  // Ends the turn in place — the only way to act while Warpdrive is toggled
+  // off, and otherwise just a way to let an armed weapon fire without moving.
+  function applyHoldPosition(state) {
     assertPlaying(state);
-    assertUnlocked(state, "ramming", "Ramming Speed");
     state.events = [];
-    if (state.rammingDisabled) throw new Error("Ramming Speed: fighters are deployed — retrieve them first");
-    if (!isAdjacent(state.playerPos, to)) throw new Error("Ramming Speed: destination is not adjacent");
-    if (!onBoard(state, to)) throw new Error("Ramming Speed: destination is off the map");
-    if (enemyAt(state, to)) throw new Error("Ramming Speed: destination is occupied");
-    const victims = livingEnemiesAdjacentTo(state, to);
-    if (victims.length === 0) throw new Error("Ramming Speed: destination is not adjacent to an enemy");
-    state.events.push({ type: "playerMove", from: { q: state.playerPos.q, r: state.playerPos.r }, to: { q: to.q, r: to.r } });
-    state.playerPos = to;
-    for (const victim of victims) {
-      victim.alive = false;
-      state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type });
-      pushLog(state, `Rammed ${victim.type}.`);
-    }
-    handleFighterRetrieval(state);
+    applyWeaponAutoAttacks(state);
     checkPlayerHazard(state);
     if (state.status !== "playing") return;
     endPlayerAction(state);
@@ -461,13 +498,6 @@
     );
   }
 
-  function legalRammingTargets(state) {
-    if (!state.actions.includes("ramming") || state.rammingDisabled) return [];
-    return neighbors(state.playerPos).filter(
-      (to) => onBoard(state, to) && !enemyAt(state, to) && livingEnemiesAdjacentTo(state, to).length > 0
-    );
-  }
-
   function legalTractorTargets(state) {
     if (!state.actions.includes("tractor")) return [];
     return livingEnemiesAdjacentTo(state, state.playerPos);
@@ -496,18 +526,19 @@
     directionIndex,
     validateLevel,
     createGameState,
+    setSystem,
     computeThreatHexes,
     applySublight,
-    applyRamming,
+    applyHoldPosition,
     applyTractor,
     applyFighter,
     legalSublightTargets,
-    legalRammingTargets,
     legalTractorTargets,
     legalFighterTargets,
     livingEnemies,
     enemyAt,
     hazardAt,
+    WEAPONS,
   };
 
   if (typeof module !== "undefined" && module.exports) {

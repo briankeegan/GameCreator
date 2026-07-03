@@ -1,6 +1,6 @@
 // browser.test.js — the tutorial campaign through the real UI (canvas
 // clicks + action buttons): Sector 1's move-only lesson with locked
-// actions, the Next Sector handoff, Sector 2's ramming lesson, the loss
+// actions, the Next Sector handoff, Sector 2's Ram Cannon lesson, the loss
 // branch, and restart. Complements engine.test.js, which covers the
 // movement/combat rules headlessly on pinned fixture boards.
 //
@@ -107,10 +107,11 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(s.enemies.length, 0, "Sector 1 teaches moving: no enemies");
   assert.strictEqual(s.exitUnlocked, true, "no enemies means the gate starts online");
   assert.deepStrictEqual(s.actions, ["sublight"], "only Sublight is unlocked in Sector 1");
-  for (const m of ["ramming", "tractor", "fighter"]) {
+  for (const m of ["tractor", "fighter"]) {
     assert.strictEqual(await page.locator(`[data-mode="${m}"]`).isDisabled(), true, `${m} is locked in Sector 1`);
     assert.ok((await page.locator(`[data-mode="${m}"]`).textContent()).startsWith("🔒"), `${m} shows its padlock`);
   }
+  assert.strictEqual(await page.locator("#toggleRam").isDisabled(), true, "the Ram Cannon toggle is locked in Sector 1");
   const boardBox = await page.locator("#board").boundingBox();
   assert.ok(boardBox.height > boardBox.width * 0.95, "the canvas grows tall to fit the Hoplite-style board");
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "run overlay must not show on a fresh board");
@@ -144,54 +145,65 @@ async function freshPage(browser, url, errors) {
   await waitForOverlay(page);
   assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Sector Clear");
 
-  // ---- Next Sector: Sector 2 unlocks Ramming Speed ------------------------
+  // ---- Next Sector: Sector 2 unlocks the Ram Cannon -----------------------
 
   await page.click("#nextBtn");
   await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2);
   s = await getState(page);
   assert.deepStrictEqual(s.actions, ["sublight", "ramming"], "Sector 2 unlocks exactly one new action");
   assert.strictEqual(s.enemies.filter((e) => e.alive).length, 1);
-  assert.strictEqual(await page.locator('[data-mode="ramming"]').isDisabled(), false, "ramming is usable in Sector 2");
+  assert.strictEqual(await page.locator("#toggleRam").isDisabled(), false, "the Ram Cannon toggle is usable in Sector 2");
 
-  // Movement never needs Sublight armed: with Ramming selected and no legal
-  // ram destination, tapping a plain hex still moves the flagship.
-  const beforeFallback = s.playerPos;
-  await clickHex(page, "ramming", await pickStepToward(page, "enemy"));
-  s = await getState(page);
-  assert.ok(
-    s.playerPos.q !== beforeFallback.q || s.playerPos.r !== beforeFallback.r,
-    "tapping a movable hex with another action armed falls back to moving"
-  );
-
-  // Close in until Ramming Speed has a legal destination, then use it.
+  // Toggling the Ram Cannon off stops it auto-firing — walk right up next
+  // to the Interceptor with it disabled and confirm it survives.
+  await page.uncheck("#toggleRam");
   for (let i = 0; i < 20; i++) {
-    s = await getState(page);
-    if (s.enemies.every((e) => !e.alive) || s.status !== "playing") break;
-    const ram = await page.evaluate(() => {
-      const targets = window.HypergolicEngine.legalRammingTargets(window.__hhState);
-      return targets.length ? targets[0] : null;
+    const adjacent = await page.evaluate(() => {
+      const E = window.HypergolicEngine;
+      const st = window.__hhState;
+      return st.enemies.some((e) => e.alive && E.isAdjacent(e, st.playerPos));
     });
-    if (ram) await clickHex(page, "ramming", ram);
-    else await clickHex(page, "sublight", await pickStepToward(page, "enemy"));
+    s = await getState(page);
+    if (adjacent || s.status !== "playing") break;
+    await clickHex(page, "sublight", await pickStepToward(page, "enemy"));
   }
   s = await getState(page);
-  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "Ramming Speed vaporizes the Interceptor");
+  assert.strictEqual(
+    s.enemies.filter((e) => e.alive).length,
+    1,
+    "Ram Cannon toggled off does not auto-fire even at point-blank range"
+  );
+
+  // Warpdrive off blocks movement — Hold Position is the only option. Flip
+  // the Ram Cannon back on and hold position to fire it without moving.
+  await page.check("#toggleRam");
+  await page.uncheck("#toggleWarpdrive");
+  assert.strictEqual(await page.locator("#holdBtn").isVisible(), true, "Hold Position appears once Warpdrive is off");
+  const posBeforeHold = (await getState(page)).playerPos;
+  await page.click("#holdBtn");
+  s = await getState(page);
+  assert.deepStrictEqual(s.playerPos, posBeforeHold, "Hold Position never moves the flagship");
+  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "Hold Position lets the re-enabled Ram Cannon fire in place");
   assert.strictEqual(s.exitUnlocked, true);
+  await page.check("#toggleWarpdrive");
 
   s = await walkToExit(page);
   assert.strictEqual(s.status, "won", "Sector 2 clears once the gate is reached");
-  assert.ok(s.hull > 0, "the ramming line through Sector 2 survives");
+  assert.ok(s.hull > 0, "the Ram Cannon line through Sector 2 survives");
   await waitForOverlay(page);
   assert.strictEqual(await page.locator("#nextBtn").isVisible(), true, "Sector 3 awaits");
   await page.close();
 
   // ---- loss branch: loiter beside Sector 2's Interceptor until Hull 0 -----
+  // (Ram Cannon toggled off — with it on, moving adjacent auto-kills the
+  // Interceptor before it can ever strike back, per the Sector 2 test above.)
 
   page = await freshPage(browser, url, errors);
   s = await walkToExit(page); // clear Sector 1 again
   await waitForOverlay(page);
   await page.click("#nextBtn");
   await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2);
+  await page.uncheck("#toggleRam");
 
   s = await getState(page);
   for (let i = 0; i < 20 && s.status === "playing"; i++) {

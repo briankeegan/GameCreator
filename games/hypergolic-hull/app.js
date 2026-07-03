@@ -6,9 +6,11 @@ const Engine = window.HypergolicEngine;
 const HEX_RATIO = 28 / 32; // pixel-art hex proportion: sy = sx * ratio
 const SQRT3 = Math.sqrt(3);
 
+// Sublight and Ram Cannon aren't manually-armed modes anymore — movement
+// always works via a plain tap (see the canvas click handler), and the Ram
+// Cannon auto-fires as a side effect of that movement (see engine.js). Only
+// Tractor/Fighter still need you to pick a mode and then a target enemy.
 const MODES = {
-  sublight: { label: "Sublight Impulse", targets: Engine.legalSublightTargets, kind: "hex" },
-  ramming: { label: "Ramming Speed", targets: Engine.legalRammingTargets, kind: "hex" },
   tractor: { label: "Tractor Beam", targets: Engine.legalTractorTargets, kind: "enemy" },
   fighter: { label: "Fighter Squadron", targets: Engine.legalFighterTargets, kind: "enemy" },
 };
@@ -29,6 +31,9 @@ const helpBtn = document.getElementById("helpBtn");
 const legendEl = document.getElementById("legend");
 const toggleThreatEl = document.getElementById("toggleThreat");
 const toggleLegalEl = document.getElementById("toggleLegal");
+const toggleWarpdriveEl = document.getElementById("toggleWarpdrive");
+const toggleRamEl = document.getElementById("toggleRam");
+const holdBtn = document.getElementById("holdBtn");
 
 // Everything on the board is an emoji sprite so the pieces read at a glance
 // (see the legend under the action buttons).
@@ -45,7 +50,8 @@ const SPRITES = {
 const LEVELS = HypergolicLevels.LEVELS;
 let levelIndex = 0;
 let state = Engine.createGameState(LEVELS[levelIndex]);
-let mode = "sublight";
+// null means no mode armed — plain moves/route-preview work regardless.
+let mode = null;
 let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
 
 // Tap a far-away hex once to preview the quickest route, tap it again to fly
@@ -230,7 +236,7 @@ function draw() {
   }
 
   const threats = Engine.computeThreatHexes(state);
-  const legal = new Set(MODES[mode].targets(state).map((h) => Engine.hexKey(h)));
+  const legal = mode ? new Set(MODES[mode].targets(state).map((h) => Engine.hexKey(h))) : new Set();
   // Mirrors the whitish hex border, but for enemies: any enemy an unlocked action could
   // ever target, regardless of which mode happens to be armed right now —
   // not just the one enemy set belonging to the currently-selected mode.
@@ -450,7 +456,6 @@ function updateHud() {
     btn.disabled =
       locked ||
       state.status !== "playing" ||
-      (m === "ramming" && state.rammingDisabled) ||
       (m === "fighter" && Boolean(state.fighterHex));
   });
 }
@@ -460,9 +465,21 @@ function updateLegend() {
   helpBtn.classList.toggle("active", legendVisible);
 }
 
+// The Warpdrive/Ram Cannon checkboxes and the Hold Position button (which
+// only makes sense — and only shows — once Warpdrive is toggled off, since
+// that's what blocks a plain move).
+function updateSystems() {
+  toggleWarpdriveEl.checked = state.systems.warpdrive;
+  toggleRamEl.checked = state.systems.ram;
+  toggleRamEl.disabled = !state.actions.includes("ramming");
+  holdBtn.hidden = state.systems.warpdrive;
+  holdBtn.disabled = state.status !== "playing";
+}
+
 function render() {
   updateHud();
   updateLegend();
+  updateSystems();
   draw();
   persist();
   window.__hhState = state; // debug hook: deterministic + serializable, safe to inspect
@@ -479,7 +496,7 @@ function handleAction(fn) {
   plannedPath = null;
   try {
     fn();
-    mode = "sublight";
+    mode = null;
     modeButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.mode === mode));
     scheduleAnims(state.events);
   } catch (err) {
@@ -491,7 +508,7 @@ function handleAction(fn) {
 function loadSector(index) {
   levelIndex = index;
   state = Engine.createGameState(LEVELS[levelIndex]);
-  mode = "sublight";
+  mode = null;
   anims = [];
   plannedPath = null;
   autoRoute = null;
@@ -515,6 +532,20 @@ toggleThreatEl.addEventListener("change", () => {
 toggleLegalEl.addEventListener("change", () => {
   showLegalKey = toggleLegalEl.checked;
   draw();
+});
+
+toggleWarpdriveEl.addEventListener("change", () => {
+  Engine.setSystem(state, "warpdrive", toggleWarpdriveEl.checked);
+  render();
+});
+
+toggleRamEl.addEventListener("change", () => {
+  Engine.setSystem(state, "ram", toggleRamEl.checked);
+  render();
+});
+
+holdBtn.addEventListener("click", () => {
+  handleAction(() => Engine.applyHoldPosition(state));
 });
 
 // First tap on a distant hex: preview the quickest route. Second tap on the
@@ -561,32 +592,29 @@ function stepRoute() {
 
 canvas.addEventListener("click", (evt) => {
   if (state.status !== "playing" || autoRoute) return;
+
+  // Warpdrive offline means movement itself is off the table this turn —
+  // Hold Position (see holdBtn below) is the only way to act.
+  if (!state.systems.warpdrive) {
+    pushMessage("Warpdrive offline — toggle it on, or use Hold Position.");
+    render();
+    return;
+  }
+
   const rect = canvas.getBoundingClientRect();
   const scale = geom.w / rect.width;
   const x = (evt.clientX - rect.left) * scale;
   const y = (evt.clientY - rect.top) * scale;
   const hex = pixelToHex(x, y);
 
-  // Movement never needs the Sublight button armed: any tap that isn't a
-  // legal target for the armed action falls back to a plain move (adjacent)
-  // or the route preview (further away).
+  // Movement never needs a mode armed: any tap that isn't a legal target for
+  // an armed Tractor/Fighter falls back to a plain move (adjacent) or the
+  // route preview (further away). The Ram Cannon auto-fires as a side
+  // effect of the move itself — see engine.js — so there's no "ramming"
+  // mode to arm either.
   const isPlainMove = Engine.legalSublightTargets(state).some((h) => Engine.posEq(h, hex));
 
-  if (MODES[mode].kind === "hex") {
-    const legal = MODES[mode].targets(state);
-    if (legal.some((h) => Engine.posEq(h, hex))) {
-      handleAction(() => {
-        if (mode === "sublight") Engine.applySublight(state, hex);
-        else if (mode === "ramming") Engine.applyRamming(state, hex);
-      });
-      return;
-    }
-    if (isPlainMove) {
-      handleAction(() => Engine.applySublight(state, hex));
-      return;
-    }
-    planOrFlyRoute(hex);
-  } else {
+  if (mode) {
     const enemy = Engine.enemyAt(state, hex);
     const legal = MODES[mode].targets(state);
     if (enemy && legal.some((e) => e.id === enemy.id)) {
@@ -596,12 +624,12 @@ canvas.addEventListener("click", (evt) => {
       });
       return;
     }
-    if (isPlainMove) {
-      handleAction(() => Engine.applySublight(state, hex));
-      return;
-    }
-    if (!enemy) planOrFlyRoute(hex);
   }
+  if (isPlainMove) {
+    handleAction(() => Engine.applySublight(state, hex));
+    return;
+  }
+  if (!Engine.enemyAt(state, hex)) planOrFlyRoute(hex);
 });
 
 modeButtons.forEach((btn) => btn.addEventListener("click", () => setMode(btn.dataset.mode)));

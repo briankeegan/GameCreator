@@ -8,7 +8,7 @@
 // slip in §5's "reconciling the source sketch" note). This test uses (1,-1)
 // for that first move instead, which is genuinely distance-2 from both
 // Interceptors and matches the doc's stated intent ("no damage yet"). Every
-// rule below — Sublight, Ramming Speed's instant-kill-before-enemy-phase,
+// rule below — Sublight, the Ram Cannon's auto-fire-before-enemy-phase,
 // Interceptor pursuit AI, the mistake/correct damage branch, Tractor Beam,
 // Fighter Squadron, and the exit-unlock/level-complete flow — is exercised
 // exactly as specified; only the illustrative coordinate changed.
@@ -108,6 +108,8 @@ assert.strictEqual(rectState.enemies[0].alive, false, "pushing an enemy off a re
 assert.ok(rectState.events.some((e) => e.type === "kill"), "kills emit a kill event");
 
 // Attacks and damage emit events too (drives the lunge + hit-flash animations).
+// Ram Cannon locked out (actions: ["sublight"]) so the interceptor survives
+// to strike back instead of being auto-killed on approach.
 const meleeLevel = {
   id: 995,
   name: "melee fixture",
@@ -118,6 +120,7 @@ const meleeLevel = {
   enemies: [{ type: "interceptor", q: 0, r: 2 }],
   hazards: [],
   exitRule: "all-enemies-dead",
+  actions: ["sublight"],
 };
 const meleeState = Engine.createGameState(meleeLevel);
 Engine.applySublight(meleeState, { q: 0, r: 3 }); // step adjacent: interceptor attacks
@@ -175,14 +178,15 @@ assert.deepStrictEqual(state.playerPos, { q: 1, r: -1 });
 assert.strictEqual(state.hull, 1, "no enemy should be adjacent after the first exchange");
 assert.strictEqual(state.status, "playing");
 
-// ---- step 2: Ramming Speed vaporizes Interceptor 2; Interceptor 1 closes in
+// ---- step 2: moving adjacent auto-fires the Ram Cannon on Interceptor 2;
+// Interceptor 1 closes in. No separate arming — the weapon just fires.
 
 const e1Before = state.enemies.find((e) => e.id === "e1" && e.alive);
-assert.ok(e1Before, "Interceptor 2 (e1) should still be alive before ramming");
+assert.ok(e1Before, "Interceptor 2 (e1) should still be alive before the Ram Cannon fires");
 
-Engine.applyRamming(state, { q: 2, r: -1 });
+Engine.applySublight(state, { q: 2, r: -1 });
 
-assert.strictEqual(state.enemies.find((e) => e.id === "e1").alive, false, "Interceptor 2 should be vaporized");
+assert.strictEqual(state.enemies.find((e) => e.id === "e1").alive, false, "Interceptor 2 should be destroyed");
 assert.strictEqual(Engine.livingEnemies(state).length, 1);
 
 const interceptor1 = Engine.livingEnemies(state)[0];
@@ -192,12 +196,16 @@ assert.strictEqual(
   true,
   "Interceptor 1 should have closed to adjacency during the enemy phase"
 );
-assert.strictEqual(state.hull, 1, "ramming resolves before the enemy phase, so no damage yet");
+assert.strictEqual(state.hull, 1, "the Ram Cannon resolves before the enemy phase, so no damage yet");
 
 // ---- step 3a: mistake branch — stay in range and eat the deterministic
-// strike, which is now instantly lethal (permadeath, one hull point)
+// strike, which is now instantly lethal (permadeath, one hull point).
+// Ram Cannon toggled off so this actually demonstrates taking a hit —
+// with it on (the default), moving adjacent auto-kills the Interceptor
+// before it can strike back, per step 2 above.
 
 const mistakeState = clone(state);
+Engine.setSystem(mistakeState, "ram", false);
 const staysAdjacent = Engine.legalSublightTargets(mistakeState).find(
   (to) => Engine.isAdjacent(to, interceptor1)
 );
@@ -214,7 +222,7 @@ Engine.applyFighter(correctState, interceptor1.id);
 assert.strictEqual(Engine.livingEnemies(correctState).length, 0, "Interceptor 1 should be destroyed by the fighter squadron");
 assert.strictEqual(correctState.hull, 1, "the correct branch should take no damage");
 assert.strictEqual(correctState.status, "playing");
-assert.strictEqual(correctState.rammingDisabled, true, "Ramming Speed should be disabled while fighters are deployed");
+assert.strictEqual(correctState.rammingDisabled, true, "the Ram Cannon should be disabled while fighters are deployed");
 assert.deepStrictEqual(correctState.fighterHex, { q: interceptor1.q, r: interceptor1.r });
 
 // ---- step 4: gate unlocks once all enemies are dead; walking onto it wins
@@ -270,5 +278,53 @@ collideState.playerPos = { q: -1, r: 0 }; // adjacent to e0 at (0,0) (bypasses a
 Engine.applyTractor(collideState, "e0");
 assert.strictEqual(collideState.enemies.find((e) => e.id === "e0").alive, false, "the pushed enemy is destroyed on collision");
 assert.strictEqual(collideState.enemies.find((e) => e.id === "e1").alive, false, "the collided-with unit takes lethal damage too");
+
+// ---- Weapon systems: stat-driven, toggleable, auto-firing --------------
+// (Clubhouse feedback: Ramming Speed became a weapon stat block that
+// auto-fires on any move — or Hold Position — instead of a separate
+// aim-and-fire action; Warpdrive is a matching pre-turn toggle that gates
+// movement itself.)
+
+const weaponLevel = {
+  id: 993,
+  name: "weapon fixture",
+  board: { type: "rect", cols: 4, rows: 5 },
+  playerStart: { q: 0, r: 4 },
+  exit: { q: 2, r: 0 },
+  outpost: null,
+  enemies: [{ type: "interceptor", q: 0, r: 2 }],
+  hazards: [],
+  exitRule: "all-enemies-dead",
+};
+
+// Moving into range auto-fires the Ram Cannon — no separate arm-and-aim step.
+let weaponState = Engine.createGameState(weaponLevel);
+assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
+assert.deepStrictEqual(weaponState.systems, { warpdrive: true, ram: true }, "both systems default on");
+Engine.applySublight(weaponState, { q: 0, r: 3 }); // steps adjacent to the interceptor
+assert.strictEqual(weaponState.enemies[0].alive, false, "moving into range auto-fires the Ram Cannon");
+assert.ok(weaponState.events.some((e) => e.type === "kill"), "the auto-attack emits a kill event");
+
+// Toggling the Ram Cannon off suppresses the auto-attack.
+weaponState = Engine.createGameState(weaponLevel);
+Engine.setSystem(weaponState, "ram", false);
+Engine.applySublight(weaponState, { q: 0, r: 3 });
+assert.strictEqual(weaponState.enemies[0].alive, true, "Ram Cannon toggled off does not fire");
+
+// Hold Position resolves the turn — and still auto-fires — without moving.
+weaponState = Engine.createGameState(weaponLevel);
+weaponState.playerPos = { q: 0, r: 3 }; // already adjacent, bypassing a staging move
+Engine.applyHoldPosition(weaponState);
+assert.deepStrictEqual(weaponState.playerPos, { q: 0, r: 3 }, "Hold Position never moves the flagship");
+assert.strictEqual(weaponState.enemies[0].alive, false, "Hold Position still lets an armed weapon auto-fire");
+
+// Warpdrive off blocks movement outright — Hold Position is the only option.
+weaponState = Engine.createGameState(weaponLevel);
+Engine.setSystem(weaponState, "warpdrive", false);
+assert.throws(
+  () => Engine.applySublight(weaponState, { q: 0, r: 3 }),
+  /Warpdrive/,
+  "movement requires Warpdrive to be toggled on"
+);
 
 console.log("All golden-path assertions passed.");

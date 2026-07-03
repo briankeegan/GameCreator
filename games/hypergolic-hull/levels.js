@@ -39,10 +39,10 @@
       actions: ["sublight"],
       intro: "Sublight Impulse online. Tap an outlined hex to fly.",
     },
-    // Sector 2 — Ramming Speed. One Interceptor between you and the gate.
+    // Sector 2 — Ram Cannon. One Interceptor between you and the gate.
     {
       id: 2,
-      name: "Ramming Speed",
+      name: "Ram Cannon",
       board: { type: "rect", cols: 6, rows: 11 },
       playerStart: { q: -3, r: 10 },
       exit: { q: 2, r: 0 },
@@ -51,7 +51,7 @@
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming"],
-      intro: "Ramming Speed online. End a move beside a 👾 to vaporize it.",
+      intro: "Ram Cannon online. It auto-fires on any 👾 within 1 hex after you move.",
     },
     // Sector 3 — Tractor Beam. Two Interceptors; push one off the edge.
     {

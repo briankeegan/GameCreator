@@ -39,8 +39,13 @@
       </div>
     </div>
 
+    <div class="systems">
+      <label class="system-toggle"><input type="checkbox" id="toggleWarpdrive" checked /> ⚡ Warpdrive</label>
+      <label class="system-toggle"><input type="checkbox" id="toggleRam" checked /> 💥 Ram Cannon</label>
+      <button id="holdBtn" class="hold-btn" hidden>Hold Position</button>
+    </div>
+
     <div class="actions">
-      <button data-mode="ramming">Ramming Speed</button>
       <button data-mode="tractor">Tractor Beam</button>
       <button data-mode="fighter">Fighter Squadron</button>
       <button disabled title="Post-MVP">Hyperjump</button>
@@ -58,6 +63,7 @@
       <label class="legend-toggle"><input type="checkbox" id="toggleThreat" checked /><i class="swatch swatch-threat"></i> Strike range — an enemy hits you if you end your turn here</label>
       <label class="legend-toggle"><input type="checkbox" id="toggleLegal" checked /><i class="swatch swatch-legal"></i> Outlined hex — where your selected action can go</label>
       <span>✨ Tap a far-away hex to preview the quickest route — tap it again to fly there</span>
+      <span>⚡💥 Warpdrive/Ram Cannon — toggle either off before you act; Ram Cannon auto-fires on any enemy in range after you move (or Hold Position)</span>
     </div>
   </main>
 

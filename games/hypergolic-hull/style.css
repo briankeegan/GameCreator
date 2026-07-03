@@ -87,6 +87,40 @@ html, body {
   cursor: pointer;
 }
 
+.systems {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 14px;
+  max-width: 520px;
+  margin: 14px auto 0;
+  font-size: 0.82rem;
+  color: #9fb0c9;
+}
+.system-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.system-toggle input {
+  cursor: pointer;
+}
+.hold-btn {
+  background: #1b2436;
+  color: #dbe4f2;
+  border: 1px solid #2a3652;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.hold-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
