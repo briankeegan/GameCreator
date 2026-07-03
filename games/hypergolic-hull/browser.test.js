@@ -1,7 +1,8 @@
-// browser.test.js — full playthrough of Sector 1 through the real UI
-// (canvas clicks + action buttons): win branch + Next Sector handoff into
-// Sector 2, loss branch, and restart. Complements engine.test.js, which
-// covers the movement/combat rules headlessly on a pinned fixture board.
+// browser.test.js — the tutorial campaign through the real UI (canvas
+// clicks + action buttons): Sector 1's move-only lesson with locked
+// actions, the Next Sector handoff, Sector 2's ramming lesson, the loss
+// branch, and restart. Complements engine.test.js, which covers the
+// movement/combat rules headlessly on pinned fixture boards.
 //
 // Needs Playwright + a Chromium binary:
 //   NODE_PATH="$(npm root -g)" node games/hypergolic-hull/browser.test.js
@@ -35,22 +36,19 @@ function serveRepo() {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
 
-// Click the hex at axial (q,r) after arming the given action mode. Mirrors
-// app.js's hexToPixel: the board is drawn centered in the canvas.
+// Click the hex at axial (q,r) after arming the given action mode, using the
+// app's own geometry (the canvas now resizes itself to fit each board).
 async function clickHex(page, mode, hex) {
   await page.click(`[data-mode="${mode}"]`);
   const box = await page.locator("#board").boundingBox();
-  const HEX_SIZE_X = 32, HEX_SIZE_Y = 28;
-  const px = HEX_SIZE_X * Math.sqrt(3) * (hex.q + hex.r / 2);
-  const py = HEX_SIZE_Y * 1.5 * hex.r;
-  await page.mouse.click(box.x + box.width / 2 + px, box.y + box.height / 2 + py);
+  const c = await page.evaluate(({ q, r }) => window.__hhHexCenter(q, r), { q: hex.q, r: hex.r });
+  await page.mouse.click(box.x + c.x, box.y + c.y);
 }
 
 function getState(page) {
   return page.evaluate(() => window.__hhState);
 }
 
-// One greedy sublight step that shrinks the distance to `goalOf(state)`.
 function pickStepToward(page, goalExpr) {
   return page.evaluate((expr) => {
     const E = window.HypergolicEngine;
@@ -66,8 +64,22 @@ function pickStepToward(page, goalExpr) {
   }, goalExpr);
 }
 
+// The end-of-run/sector overlay is held back until animations finish.
+function waitForOverlay(page) {
+  return page.waitForFunction(() => !document.getElementById("runOverlay").hidden);
+}
+
+async function walkToExit(page) {
+  let s = await getState(page);
+  for (let i = 0; i < 12 && s.status === "playing"; i++) {
+    await clickHex(page, "sublight", await pickStepToward(page, "exit"));
+    s = await getState(page);
+  }
+  return s;
+}
+
 async function freshPage(browser, url, errors) {
-  const page = await browser.newPage({ viewport: { width: 420, height: 800 } });
+  const page = await browser.newPage({ viewport: { width: 420, height: 900 } });
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
   page.on("console", (msg) => {
     if (msg.type() === "error") errors.push("console: " + msg.text());
@@ -85,69 +97,68 @@ async function freshPage(browser, url, errors) {
   const browser = await chromium.launch({ executablePath: CHROMIUM });
   const errors = [];
 
-  // ---- win branch: fighters kill the lone Interceptor, walk to the gate,
-  // ---- then Next Sector hands off to the two-Interceptor board
+  // ---- Sector 1: move-only tutorial, everything else visibly locked ------
 
   let page = await freshPage(browser, url, errors);
   let s = await getState(page);
   assert.strictEqual(s.levelId, 1);
-  assert.strictEqual(s.hull, 3);
-  assert.deepStrictEqual({ q: s.playerPos.q, r: s.playerPos.r }, { q: -2, r: 1 }, "the player starts on the left edge, not the middle");
-  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 1, "Sector 1 is the gentle opener: one enemy");
-  assert.strictEqual(
-    await page.evaluate(() => {
-      const E = window.HypergolicEngine;
-      const st = window.__hhState;
-      return E.hexDistance(st.playerPos, st.enemies[0]);
-    }),
-    4,
-    "the enemy starts across the board from the player"
-  );
-  assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "run overlay must not show on a fresh board");
-  assert.ok(
-    (await page.locator("#objective").textContent()).includes("Destroy 1 enemy"),
-    "the objective line tells the player what to do"
-  );
-  assert.strictEqual(await page.locator(".legend").isVisible(), true, "the legend explains the pieces and colors");
-
-  // Fighter Squadron kills the Interceptor at range; ramming locks until retrieval.
-  const target = s.enemies.find((e) => e.alive);
-  await clickHex(page, "fighter", target);
-  s = await getState(page);
-  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0);
-  assert.strictEqual(s.rammingDisabled, true, "Ramming Speed is disabled while fighters are deployed");
-  assert.strictEqual(s.exitUnlocked, true, "gate unlocks once all enemies are dead");
-  assert.strictEqual(await page.locator('[data-mode="ramming"]').isDisabled(), true);
-  assert.ok(
-    (await page.locator("#objective").textContent()).includes("Gate online"),
-    "the objective line flips once the gate is powered"
-  );
-
-  // Walk to the Warp Gate, greedily reducing distance each turn.
-  for (let i = 0; i < 8 && s.status === "playing"; i++) {
-    await clickHex(page, "sublight", await pickStepToward(page, "exit"));
-    s = await getState(page);
+  assert.strictEqual(s.enemies.length, 0, "Sector 1 teaches moving: no enemies");
+  assert.strictEqual(s.exitUnlocked, true, "no enemies means the gate starts online");
+  assert.deepStrictEqual(s.actions, ["sublight"], "only Sublight is unlocked in Sector 1");
+  for (const m of ["ramming", "tractor", "fighter"]) {
+    assert.strictEqual(await page.locator(`[data-mode="${m}"]`).isDisabled(), true, `${m} is locked in Sector 1`);
+    assert.ok((await page.locator(`[data-mode="${m}"]`).textContent()).startsWith("🔒"), `${m} shows its padlock`);
   }
-  assert.strictEqual(s.status, "won", "reaching the unlocked gate should complete the sector");
-  assert.strictEqual(s.hull, 3, "the clean line through Sector 1 takes zero damage");
-  assert.strictEqual(await page.locator("#runOverlay").isVisible(), true);
+  const boardBox = await page.locator("#board").boundingBox();
+  assert.ok(boardBox.height > boardBox.width * 0.95, "the canvas grows tall to fit the Hoplite-style board");
+  assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "run overlay must not show on a fresh board");
+
+  s = await walkToExit(page);
+  assert.strictEqual(s.status, "won", "walking to the online gate clears Sector 1");
+  await waitForOverlay(page);
   assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Sector Clear");
-  assert.strictEqual(await page.locator("#nextBtn").isVisible(), true, "a cleared sector offers Next Sector");
+
+  // ---- Next Sector: Sector 2 unlocks Ramming Speed ------------------------
 
   await page.click("#nextBtn");
   await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2);
   s = await getState(page);
-  assert.strictEqual(s.hull, 3);
-  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 2, "Sector 2 brings the two-Interceptor board");
-  assert.deepStrictEqual({ q: s.playerPos.q, r: s.playerPos.r }, { q: -2, r: 1 }, "Sector 2 also starts the player on the edge");
-  assert.strictEqual(await page.locator("#runOverlay").isVisible(), false);
+  assert.deepStrictEqual(s.actions, ["sublight", "ramming"], "Sector 2 unlocks exactly one new action");
+  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 1);
+  assert.strictEqual(await page.locator('[data-mode="ramming"]').isDisabled(), false, "ramming is usable in Sector 2");
+
+  // Close in until Ramming Speed has a legal destination, then use it.
+  for (let i = 0; i < 12; i++) {
+    s = await getState(page);
+    if (s.enemies.every((e) => !e.alive) || s.status !== "playing") break;
+    const ram = await page.evaluate(() => {
+      const targets = window.HypergolicEngine.legalRammingTargets(window.__hhState);
+      return targets.length ? targets[0] : null;
+    });
+    if (ram) await clickHex(page, "ramming", ram);
+    else await clickHex(page, "sublight", await pickStepToward(page, "enemy"));
+  }
+  s = await getState(page);
+  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "Ramming Speed vaporizes the Interceptor");
+  assert.strictEqual(s.exitUnlocked, true);
+
+  s = await walkToExit(page);
+  assert.strictEqual(s.status, "won", "Sector 2 clears once the gate is reached");
+  assert.ok(s.hull > 0, "the ramming line through Sector 2 survives");
+  await waitForOverlay(page);
+  assert.strictEqual(await page.locator("#nextBtn").isVisible(), true, "Sector 3 awaits");
   await page.close();
 
-  // ---- loss branch: chase the Interceptor and loiter next to it until Hull 0
+  // ---- loss branch: loiter beside Sector 2's Interceptor until Hull 0 -----
 
   page = await freshPage(browser, url, errors);
+  s = await walkToExit(page); // clear Sector 1 again
+  await waitForOverlay(page);
+  await page.click("#nextBtn");
+  await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2);
+
   s = await getState(page);
-  for (let i = 0; i < 10 && s.status === "playing"; i++) {
+  for (let i = 0; i < 14 && s.status === "playing"; i++) {
     const next = await page.evaluate(() => {
       const E = window.HypergolicEngine;
       const st = window.__hhState;
@@ -160,15 +171,15 @@ async function freshPage(browser, url, errors) {
   }
   assert.strictEqual(s.status, "lost", "loitering in threat range must end the run");
   assert.strictEqual(s.hull, 0);
+  await waitForOverlay(page);
   assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Flagship Destroyed");
   assert.strictEqual(await page.locator("#nextBtn").isVisible(), false, "permadeath offers no Next Sector");
 
   await page.click("#restartBtn");
   await page.waitForFunction(() => window.__hhState.status === "playing");
   s = await getState(page);
-  assert.strictEqual(s.levelId, 1, "New Run resets to a fresh Sector 1");
+  assert.strictEqual(s.levelId, 1, "New Run resets the campaign to Sector 1");
   assert.strictEqual(s.hull, 3);
-  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 1);
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false);
   await page.close();
 

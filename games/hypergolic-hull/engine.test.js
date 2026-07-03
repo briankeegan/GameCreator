@@ -47,12 +47,83 @@ for (const level of LEVELS) {
   const s = Engine.createGameState(level); // throws if the level is invalid
   assert.strictEqual(s.status, "playing", `Level ${level.id} should start playable`);
 }
-assert.ok(LEVELS.length >= 2, "expected at least Sectors 1 and 2");
-assert.strictEqual(LEVELS[0].enemies.length, 1, "Sector 1 is the gentle opener: exactly one enemy");
+assert.ok(LEVELS.length >= 5, "expected the five-sector tutorial campaign");
+assert.deepStrictEqual(LEVELS[0].actions, ["sublight"], "Sector 1 teaches moving and nothing else");
+assert.strictEqual(LEVELS[0].enemies.length, 0, "Sector 1 has no enemies");
+assert.strictEqual(
+  Engine.createGameState(LEVELS[0]).exitUnlocked,
+  true,
+  "an enemy-free sector starts with the gate online"
+);
+for (let i = 1; i < LEVELS.length; i++) {
+  const prev = LEVELS[i - 1].actions || Engine.ALL_ACTIONS;
+  const cur = LEVELS[i].actions || Engine.ALL_ACTIONS;
+  assert.ok(
+    prev.every((a) => cur.includes(a)) && cur.length > prev.length - 1,
+    `Sector ${LEVELS[i].id} must keep every action the previous sector unlocked`
+  );
+}
 assert.ok(
-  LEVELS.every((l) => Engine.hexDistance(l.playerStart, l.enemies[0]) >= 2),
+  LEVELS.every((l) => l.enemies.every((e) => Engine.hexDistance(l.playerStart, e) >= 2)),
   "the player never starts next to an enemy"
 );
+const lastBoard = LEVELS[LEVELS.length - 1].board;
+assert.ok(lastBoard.rows > lastBoard.cols, "the campaign grows into taller-than-wide Hoplite-style boards");
+
+// ---- action gating: locked actions throw and offer no targets -----------
+
+const tutorialState = Engine.createGameState(LEVELS[1]); // sublight + ramming only
+assert.deepStrictEqual(Engine.legalTractorTargets(tutorialState), [], "locked tractor offers no targets");
+assert.deepStrictEqual(Engine.legalFighterTargets(tutorialState), [], "locked fighter offers no targets");
+assert.throws(
+  () => Engine.applyFighter(tutorialState, "e0"),
+  /not unlocked/,
+  "locked actions must refuse to run"
+);
+assert.strictEqual(tutorialState.enemies[0].alive, true, "the refused action must not change state");
+
+// ---- rect boards: bounds, edge push-kills, and animation events ----------
+
+const rectLevel = {
+  id: 996,
+  name: "rect fixture",
+  board: { type: "rect", cols: 4, rows: 5 },
+  playerStart: { q: 0, r: 4 }, // bottom row (col 2)
+  exit: { q: 2, r: 0 },
+  outpost: null,
+  enemies: [{ type: "interceptor", q: 2, r: 2 }], // col 3: the right edge of row 2
+  hazards: [],
+  exitRule: "all-enemies-dead",
+};
+const rectState = Engine.createGameState(rectLevel);
+assert.strictEqual(rectState.boardHexes.length, 20, "4x5 rect board has 20 hexes");
+assert.ok(Engine.onBoard(rectState, { q: -2, r: 4 }), "row 4 starts at q=-2");
+assert.ok(!Engine.onBoard(rectState, { q: 2, r: 4 }), "q=2 is past row 4's right edge");
+assert.ok(!Engine.onBoard(rectState, { q: 0, r: 5 }), "row 5 is off a 5-row board");
+
+// Tractor push off a rect edge kills, and emits a kill event for the renderer.
+rectState.playerPos = { q: 1, r: 2 }; // adjacent to the edge enemy at (2,2), pushing right
+Engine.applyTractor(rectState, "e0");
+assert.strictEqual(rectState.enemies[0].alive, false, "pushing an enemy off a rect edge destroys it");
+assert.ok(rectState.events.some((e) => e.type === "kill"), "kills emit a kill event");
+
+// Attacks and damage emit events too (drives the lunge + hit-flash animations).
+const meleeLevel = {
+  id: 995,
+  name: "melee fixture",
+  board: { type: "rect", cols: 4, rows: 5 },
+  playerStart: { q: 0, r: 4 },
+  exit: { q: 2, r: 0 },
+  outpost: null,
+  enemies: [{ type: "interceptor", q: 0, r: 2 }],
+  hazards: [],
+  exitRule: "all-enemies-dead",
+};
+const meleeState = Engine.createGameState(meleeLevel);
+Engine.applySublight(meleeState, { q: 0, r: 3 }); // step adjacent: interceptor attacks
+assert.strictEqual(meleeState.hull, 2, "the adjacent interceptor strikes");
+assert.ok(meleeState.events.some((e) => e.type === "attack"), "attacks emit an attack event");
+assert.ok(meleeState.events.some((e) => e.type === "damage"), "damage emits a damage event");
 
 // ---- step 1: Sublight to (1,-1); neither Interceptor is adjacent yet ----
 

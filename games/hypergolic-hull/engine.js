@@ -58,19 +58,71 @@
     return -1;
   }
 
+  // ---- board shapes ---------------------------------------------------------
+  //
+  // Two shapes: the classic hexagon (`radius`) and Hoplite-style rectangles
+  // (`board: {type: "rect", cols, rows}`) that run taller than wide on a
+  // phone. Rect boards are authored in offset rows: row r spans
+  // q = -floor(r/2) .. cols-1-floor(r/2), r = 0..rows-1 (top to bottom).
+
+  function buildBoardHexes(level) {
+    const hexes = [];
+    if (level.board && level.board.type === "rect") {
+      for (let row = 0; row < level.board.rows; row++) {
+        for (let col = 0; col < level.board.cols; col++) {
+          hexes.push({ q: col - Math.floor(row / 2), r: row });
+        }
+      }
+    } else {
+      for (let q = -level.radius; q <= level.radius; q++) {
+        for (let r = -level.radius; r <= level.radius; r++) {
+          if (hexDistance({ q: 0, r: 0 }, { q, r }) <= level.radius) hexes.push({ q, r });
+        }
+      }
+    }
+    return hexes;
+  }
+
+  function onBoard(state, pos) {
+    return state.boardHexes.some((h) => posEq(h, pos));
+  }
+
+  const ALL_ACTIONS = ["sublight", "ramming", "tractor", "fighter"];
+
   // ---- level validation ---------------------------------------------------
 
   function validateLevel(level) {
-    const origin = { q: 0, r: 0 };
-    if (hexDistance(origin, level.exit) !== level.radius) {
-      throw new Error(`Level ${level.id}: exit is not on the outer ring`);
+    const hexes = buildBoardHexes(level);
+    const keys = new Set(hexes.map(hexKey));
+    const isBorder = (pos) => neighbors(pos).some((n) => !keys.has(hexKey(n)));
+    const mustBeOn = (label, pos) => {
+      if (!keys.has(hexKey(pos))) throw new Error(`Level ${level.id}: ${label} at ${hexKey(pos)} is off the board`);
+    };
+
+    mustBeOn("playerStart", level.playerStart);
+    mustBeOn("exit", level.exit);
+    if (!isBorder(level.exit)) {
+      throw new Error(`Level ${level.id}: exit is not on the board's edge`);
     }
-    if (level.outpost && hexDistance(origin, level.outpost) !== level.radius) {
-      throw new Error(`Level ${level.id}: outpost is not on the outer ring`);
+    if (level.outpost) {
+      mustBeOn("outpost", level.outpost);
+      if (!isBorder(level.outpost)) {
+        throw new Error(`Level ${level.id}: outpost is not on the board's edge`);
+      }
     }
     for (const enemy of level.enemies) {
+      mustBeOn("enemy", enemy);
       if (hexDistance(level.playerStart, enemy) < 2) {
         throw new Error(`Level ${level.id}: enemy at ${hexKey(enemy)} is within 2 hexes of playerStart`);
+      }
+    }
+    for (const hazard of level.hazards || []) mustBeOn("hazard", hazard);
+    if (level.actions) {
+      for (const a of level.actions) {
+        if (!ALL_ACTIONS.includes(a)) throw new Error(`Level ${level.id}: unknown action "${a}"`);
+      }
+      if (!level.actions.includes("sublight")) {
+        throw new Error(`Level ${level.id}: sublight can never be locked`);
       }
     }
     const seen = new Map();
@@ -96,9 +148,12 @@
 
   function createGameState(level) {
     validateLevel(level);
-    return {
+    const state = {
       levelId: level.id,
-      radius: level.radius,
+      levelName: level.name || `Sector ${level.id}`,
+      radius: level.radius || null,
+      boardHexes: buildBoardHexes(level),
+      actions: (level.actions || ALL_ACTIONS).slice(),
       playerPos: { q: level.playerStart.q, r: level.playerStart.r },
       hull: START_HULL,
       maxHull: START_HULL,
@@ -119,7 +174,11 @@
       turnCount: 0,
       status: "playing", // "playing" | "won" | "lost"
       log: [],
+      events: [], // animation cues from the last action, e.g. {type:"kill",q,r}
     };
+    if (level.intro) pushLog(state, level.intro);
+    checkExitUnlock(state); // an enemy-free tutorial board starts with the gate online
+    return state;
   }
 
   function livingEnemies(state) {
@@ -154,7 +213,7 @@
     for (const enemy of livingEnemies(state)) {
       if (enemy.type !== "interceptor") continue;
       for (const hex of neighbors(enemy)) {
-        if (!inBounds(hex, state.radius)) continue;
+        if (!onBoard(state, hex)) continue;
         const k = hexKey(hex);
         threats.set(k, (threats.get(k) || 0) + 1);
       }
@@ -175,7 +234,7 @@
       const candidates = [];
       for (let i = 0; i < 6; i++) {
         const to = neighbor(enemy, i);
-        if (!inBounds(to, state.radius)) continue;
+        if (!onBoard(state, to)) continue;
         if (posEq(to, state.playerPos)) continue;
         if (occupiedNow.has(hexKey(to))) continue;
         candidates.push({ to, dist: hexDistance(to, state.playerPos), dir: i });
@@ -215,18 +274,22 @@
       if (!enemy || !enemy.alive) continue;
       if (intent.type === "attack") {
         totalDamage += 1;
+        state.events.push({ type: "attack", enemyId: enemy.id, q: enemy.q, r: enemy.r });
       } else if (intent.type === "move") {
+        state.events.push({ type: "enemyMove", enemyId: enemy.id, from: { q: enemy.q, r: enemy.r }, to: intent.to });
         enemy.q = intent.to.q;
         enemy.r = intent.to.r;
       }
     }
     if (totalDamage > 0) {
       state.hull = Math.max(0, state.hull - totalDamage);
+      state.events.push({ type: "damage", amount: totalDamage, q: state.playerPos.q, r: state.playerPos.r });
       pushLog(state, `Took ${totalDamage} damage.`);
     }
     state.turnCount += 1;
     if (state.hull <= 0) {
       state.status = "lost";
+      state.events.push({ type: "playerDeath", q: state.playerPos.q, r: state.playerPos.r });
       pushLog(state, "Flagship destroyed.");
     }
   }
@@ -263,12 +326,19 @@
     }
   }
 
+  function assertUnlocked(state, action, label) {
+    if (!state.actions.includes(action)) {
+      throw new Error(`${label}: not unlocked in this sector yet`);
+    }
+  }
+
   // ---- player actions -----------------------------------------------------
 
   function applySublight(state, to) {
     assertPlaying(state);
+    state.events = [];
     if (!isAdjacent(state.playerPos, to)) throw new Error("Sublight Impulse: destination is not adjacent");
-    if (!inBounds(to, state.radius)) throw new Error("Sublight Impulse: destination is off the map");
+    if (!onBoard(state, to)) throw new Error("Sublight Impulse: destination is off the map");
     if (enemyAt(state, to)) throw new Error("Sublight Impulse: destination is occupied");
     state.playerPos = to;
     handleFighterRetrieval(state);
@@ -279,15 +349,18 @@
 
   function applyRamming(state, to) {
     assertPlaying(state);
+    assertUnlocked(state, "ramming", "Ramming Speed");
+    state.events = [];
     if (state.rammingDisabled) throw new Error("Ramming Speed: fighters are deployed — retrieve them first");
     if (!isAdjacent(state.playerPos, to)) throw new Error("Ramming Speed: destination is not adjacent");
-    if (!inBounds(to, state.radius)) throw new Error("Ramming Speed: destination is off the map");
+    if (!onBoard(state, to)) throw new Error("Ramming Speed: destination is off the map");
     if (enemyAt(state, to)) throw new Error("Ramming Speed: destination is occupied");
     const victims = livingEnemiesAdjacentTo(state, to);
     if (victims.length === 0) throw new Error("Ramming Speed: destination is not adjacent to an enemy");
     state.playerPos = to;
     for (const victim of victims) {
       victim.alive = false;
+      state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type });
       pushLog(state, `Rammed ${victim.type}.`);
     }
     handleFighterRetrieval(state);
@@ -298,13 +371,16 @@
 
   function applyTractor(state, targetEnemyId) {
     assertPlaying(state);
+    assertUnlocked(state, "tractor", "Tractor Beam");
+    state.events = [];
     const enemy = state.enemies.find((e) => e.id === targetEnemyId && e.alive);
     if (!enemy) throw new Error("Tractor Beam: no such enemy");
     if (!isAdjacent(state.playerPos, enemy)) throw new Error("Tractor Beam: enemy is not adjacent");
     const dir = directionIndex(state.playerPos, enemy);
     const dest = neighbor(enemy, dir);
-    if (!inBounds(dest, state.radius)) {
+    if (!onBoard(state, dest)) {
       enemy.alive = false;
+      state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
       pushLog(state, `Tractor-pushed ${enemy.type} off the map edge.`);
     } else {
       const blocker = enemyAt(state, dest);
@@ -312,11 +388,15 @@
       if (blocker) {
         enemy.alive = false;
         blocker.alive = false;
+        state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
+        state.events.push({ type: "kill", q: blocker.q, r: blocker.r, victim: blocker.type });
         pushLog(state, `Tractor-pushed ${enemy.type} into ${blocker.type} — both destroyed.`);
       } else if (hazard) {
         enemy.alive = false;
+        state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
         pushLog(state, `Tractor-pushed ${enemy.type} into a hazard.`);
       } else {
+        state.events.push({ type: "enemyMove", enemyId: enemy.id, from: { q: enemy.q, r: enemy.r }, to: dest });
         enemy.q = dest.q;
         enemy.r = dest.r;
         pushLog(state, `Tractor-pushed ${enemy.type}.`);
@@ -327,12 +407,15 @@
 
   function applyFighter(state, targetEnemyId) {
     assertPlaying(state);
+    assertUnlocked(state, "fighter", "Fighter Squadron");
+    state.events = [];
     if (state.fighterHex) throw new Error("Fighter Squadron: already deployed — retrieve them first");
     const enemy = state.enemies.find((e) => e.id === targetEnemyId && e.alive);
     if (!enemy) throw new Error("Fighter Squadron: no such enemy");
     enemy.alive = false;
     state.fighterHex = { q: enemy.q, r: enemy.r };
     state.rammingDisabled = true;
+    state.events.push({ type: "kill", q: enemy.q, r: enemy.r, victim: enemy.type });
     pushLog(state, `Fighter squadron destroyed ${enemy.type}.`);
     endPlayerAction(state);
   }
@@ -341,23 +424,24 @@
 
   function legalSublightTargets(state) {
     return neighbors(state.playerPos).filter(
-      (to) => inBounds(to, state.radius) && !enemyAt(state, to)
+      (to) => onBoard(state, to) && !enemyAt(state, to)
     );
   }
 
   function legalRammingTargets(state) {
-    if (state.rammingDisabled) return [];
+    if (!state.actions.includes("ramming") || state.rammingDisabled) return [];
     return neighbors(state.playerPos).filter(
-      (to) => inBounds(to, state.radius) && !enemyAt(state, to) && livingEnemiesAdjacentTo(state, to).length > 0
+      (to) => onBoard(state, to) && !enemyAt(state, to) && livingEnemiesAdjacentTo(state, to).length > 0
     );
   }
 
   function legalTractorTargets(state) {
+    if (!state.actions.includes("tractor")) return [];
     return livingEnemiesAdjacentTo(state, state.playerPos);
   }
 
   function legalFighterTargets(state) {
-    if (state.fighterHex) return [];
+    if (!state.actions.includes("fighter") || state.fighterHex) return [];
     return livingEnemies(state);
   }
 
@@ -365,6 +449,7 @@
 
   const HypergolicEngine = {
     DIRECTIONS,
+    ALL_ACTIONS,
     hexKey,
     posEq,
     hexDistance,
@@ -372,6 +457,8 @@
     neighbors,
     isAdjacent,
     inBounds,
+    onBoard,
+    buildBoardHexes,
     directionIndex,
     validateLevel,
     createGameState,

@@ -3,8 +3,8 @@
 const GAME_ID = "hypergolic-hull";
 const Engine = window.HypergolicEngine;
 
-const HEX_SIZE_X = 32;
-const HEX_SIZE_Y = 28;
+const HEX_RATIO = 28 / 32; // pixel-art hex proportion: sy = sx * ratio
+const SQRT3 = Math.sqrt(3);
 
 const MODES = {
   sublight: { label: "Sublight Impulse", targets: Engine.legalSublightTargets, kind: "hex" },
@@ -35,6 +35,7 @@ const SPRITES = {
   gateLocked: "🔒",
   gateOnline: "🌀",
   outpost: "🛠️",
+  boom: "💥",
 };
 
 const LEVELS = HypergolicLevels.LEVELS;
@@ -43,39 +44,112 @@ let state = Engine.createGameState(LEVELS[levelIndex]);
 let mode = "sublight";
 let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
 
+// ---- geometry: the canvas grows/shrinks (and gets taller) with the board --
+
+let geom = { sx: 32, sy: 28, offX: 0, offY: 0, w: 320, h: 320 };
+
+function updateGeometry() {
+  const wrap = canvas.parentElement;
+  const cssW = Math.min(wrap.clientWidth || 320, 520);
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const h of state.boardHexes) {
+    const x = SQRT3 * (h.q + h.r / 2);
+    const y = 1.5 * HEX_RATIO * h.r;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const pad = 10;
+  const sx = (cssW - 2 * pad) / (maxX - minX + SQRT3);
+  const cssH = Math.round((maxY - minY + 2 * HEX_RATIO) * sx + 2 * pad);
+  geom = {
+    sx,
+    sy: sx * HEX_RATIO,
+    offX: pad + (SQRT3 / 2 - minX) * sx,
+    offY: pad + (HEX_RATIO - minY) * sx,
+    w: cssW,
+    h: cssH,
+  };
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = `${cssW}px`;
+  canvas.style.height = `${cssH}px`;
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
 function hexToPixel(hex) {
   return {
-    x: HEX_SIZE_X * Math.sqrt(3) * (hex.q + hex.r / 2),
-    y: HEX_SIZE_Y * 1.5 * hex.r,
+    x: geom.offX + geom.sx * SQRT3 * (hex.q + hex.r / 2),
+    y: geom.offY + geom.sy * 1.5 * hex.r,
   };
+}
+
+function pixelToHex(x, y) {
+  const r = (2 / 3) * ((y - geom.offY) / geom.sy);
+  const q = (x - geom.offX) / (geom.sx * SQRT3) - r / 2;
+  return hexRound(q, r);
+}
+
+function hexRound(q, r) {
+  const x = q, z = r, y = -x - z;
+  let rx = Math.round(x), ry = Math.round(y), rz = Math.round(z);
+  const xDiff = Math.abs(rx - x), yDiff = Math.abs(ry - y), zDiff = Math.abs(rz - z);
+  if (xDiff > yDiff && xDiff > zDiff) rx = -ry - rz;
+  else if (yDiff > zDiff) ry = -rx - rz;
+  else rz = -rx - ry;
+  return { q: rx, r: rz };
 }
 
 function hexCorner(center, i) {
   const angle = (Math.PI / 180) * (60 * i - 30);
-  return { x: center.x + HEX_SIZE_X * Math.cos(angle), y: center.y + HEX_SIZE_Y * Math.sin(angle) };
+  return { x: center.x + geom.sx * Math.cos(angle), y: center.y + geom.sy * Math.sin(angle) };
 }
 
-function boardHexes(radius) {
-  const hexes = [];
-  for (let q = -radius; q <= radius; q++) {
-    for (let r = -radius; r <= radius; r++) {
-      const hex = { q, r };
-      if (Engine.inBounds(hex, radius)) hexes.push(hex);
-    }
+// ---- animations: short, non-blocking cues fed by engine events ------------
+
+let anims = [];
+
+function scheduleAnims(events) {
+  const now = performance.now();
+  for (const ev of events) {
+    if (ev.type === "kill") anims.push({ kind: "boom", pos: ev, start: now, dur: 450 });
+    else if (ev.type === "attack") anims.push({ kind: "lunge", enemyId: ev.enemyId, start: now, dur: 320 });
+    else if (ev.type === "damage") anims.push({ kind: "flash", start: now, dur: 380 });
+    else if (ev.type === "enemyMove") anims.push({ kind: "slide", enemyId: ev.enemyId, from: ev.from, to: ev.to, start: now, dur: 220 });
+    else if (ev.type === "playerDeath") anims.push({ kind: "boom", pos: ev, start: now, dur: 650 });
   }
-  return hexes;
+  if (anims.length) requestAnimationFrame(tickAnims);
 }
 
-function resizeCanvas() {
-  const wrap = canvas.parentElement;
-  const cssWidth = Math.min(wrap.clientWidth, 520);
-  const dpr = window.devicePixelRatio || 1;
-  canvas.style.width = `${cssWidth}px`;
-  canvas.style.height = `${cssWidth}px`;
-  canvas.width = cssWidth * dpr;
-  canvas.height = cssWidth * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+function tickAnims() {
   draw();
+  const now = performance.now();
+  const stillRunning = anims.some((a) => now < a.start + a.dur);
+  anims = anims.filter((a) => now < a.start + a.dur);
+  if (stillRunning) requestAnimationFrame(tickAnims);
+  else {
+    draw();
+    updateHud(); // reveal any win/lose overlay held back during the animation
+  }
+}
+
+function animProgress(a, now) {
+  return Math.min(1, Math.max(0, (now - a.start) / a.dur));
+}
+
+// ---- rendering -------------------------------------------------------------
+
+function blend(hexA, hexB, t) {
+  const a = parseInt(hexA.slice(1), 16);
+  const b = parseInt(hexB.slice(1), 16);
+  const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+  const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return `rgb(${r},${g},${bl})`;
 }
 
 function drawHex(center, fill, stroke) {
@@ -95,31 +169,33 @@ function drawHex(center, fill, stroke) {
   ctx.stroke();
 }
 
-function blend(hexA, hexB, t) {
-  const a = parseInt(hexA.slice(1), 16);
-  const b = parseInt(hexB.slice(1), 16);
-  const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
-  const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
-  const r = Math.round(ar + (br - ar) * t);
-  const g = Math.round(ag + (bg - ag) * t);
-  const bl = Math.round(ab + (bb - ab) * t);
-  return `rgb(${r},${g},${bl})`;
+function drawSprite(center, glyph, size, alpha) {
+  ctx.save();
+  if (alpha !== undefined) ctx.globalAlpha = alpha;
+  ctx.font = `${size}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#dbe4f2";
+  ctx.fillText(glyph, center.x, center.y + 1);
+  ctx.restore();
 }
 
 function draw() {
-  const cssWidth = parseFloat(canvas.style.width) || 320;
-  ctx.clearRect(0, 0, cssWidth, cssWidth);
+  const now = performance.now();
+  ctx.clearRect(0, 0, geom.w, geom.h);
   ctx.save();
-  ctx.translate(cssWidth / 2, cssWidth / 2);
+
+  // Screen shake while a damage flash is running.
+  const flash = anims.find((a) => a.kind === "flash" && now < a.start + a.dur);
+  if (flash) {
+    const p = animProgress(flash, now);
+    ctx.translate(Math.sin(p * 30) * 4 * (1 - p), Math.cos(p * 23) * 3 * (1 - p));
+  }
 
   const threats = Engine.computeThreatHexes(state);
-  const legal = new Set(
-    (MODES[mode].kind === "hex" ? MODES[mode].targets(state) : MODES[mode].targets(state)).map((h) =>
-      Engine.hexKey(h)
-    )
-  );
+  const legal = new Set(MODES[mode].targets(state).map((h) => Engine.hexKey(h)));
 
-  for (const hex of boardHexes(state.radius)) {
+  for (const hex of state.boardHexes) {
     const center = hexToPixel(hex);
     const k = Engine.hexKey(hex);
     const isExit = Engine.posEq(hex, state.exitPos);
@@ -136,59 +212,74 @@ function draw() {
     drawHex(center, fill, legal.has(k) ? "#7fe3a8" : "#1a2233");
 
     if (isExit) {
-      drawSprite(center, state.exitUnlocked ? SPRITES.gateOnline : SPRITES.gateLocked, 20);
+      drawSprite(center, state.exitUnlocked ? SPRITES.gateOnline : SPRITES.gateLocked, geom.sx * 0.62);
     } else if (isOutpost) {
-      drawSprite(center, SPRITES.outpost, 18);
+      drawSprite(center, SPRITES.outpost, geom.sx * 0.56);
+    }
+  }
+
+  // Per-enemy pixel overrides while a lunge/slide animation runs.
+  const playerCenter = hexToPixel(state.playerPos);
+  const overrides = new Map();
+  for (const a of anims) {
+    if (now >= a.start + a.dur) continue;
+    const p = animProgress(a, now);
+    if (a.kind === "slide") {
+      const from = hexToPixel(a.from), to = hexToPixel(a.to);
+      overrides.set(a.enemyId, { x: from.x + (to.x - from.x) * p, y: from.y + (to.y - from.y) * p });
+    } else if (a.kind === "lunge") {
+      const enemy = state.enemies.find((e) => e.id === a.enemyId);
+      if (enemy) {
+        const base = hexToPixel(enemy);
+        const t = Math.sin(p * Math.PI) * 0.45; // simple move-into-the-target and back
+        overrides.set(a.enemyId, { x: base.x + (playerCenter.x - base.x) * t, y: base.y + (playerCenter.y - base.y) * t });
+      }
     }
   }
 
   for (const enemy of Engine.livingEnemies(state)) {
-    const center = hexToPixel(enemy);
+    const base = hexToPixel(enemy);
     if (legal.has(Engine.hexKey(enemy))) {
       ctx.beginPath();
-      ctx.arc(center.x, center.y, 15, 0, Math.PI * 2);
+      ctx.arc(base.x, base.y, geom.sx * 0.47, 0, Math.PI * 2);
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = "#7fe3a8";
       ctx.stroke();
     }
-    drawSprite(center, SPRITES[enemy.type] || SPRITES.interceptor, 22);
+    drawSprite(overrides.get(enemy.id) || base, SPRITES[enemy.type] || SPRITES.interceptor, geom.sx * 0.69);
   }
 
   if (state.fighterHex) {
-    drawSprite(hexToPixel(state.fighterHex), SPRITES.fighters, 15);
+    drawSprite(hexToPixel(state.fighterHex), SPRITES.fighters, geom.sx * 0.47);
   }
 
-  drawSprite(hexToPixel(state.playerPos), SPRITES.player, 24);
+  // The flagship: red hit-flash ring while taking damage; hidden once destroyed
+  // (the explosion animation takes its place).
+  if (state.status !== "lost") {
+    if (flash) {
+      const p = animProgress(flash, now);
+      ctx.beginPath();
+      ctx.arc(playerCenter.x, playerCenter.y, geom.sx * 0.56, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(224, 83, 63, ${0.55 * (1 - p)})`;
+      ctx.fill();
+    }
+    drawSprite(playerCenter, SPRITES.player, geom.sx * 0.75);
+  }
+
+  // Explosions on top of everything.
+  for (const a of anims) {
+    if (a.kind !== "boom" || now >= a.start + a.dur) continue;
+    const p = animProgress(a, now);
+    drawSprite(hexToPixel(a.pos), SPRITES.boom, geom.sx * (0.6 + 0.7 * p), 1 - p * p);
+  }
 
   ctx.restore();
 }
 
-function drawSprite(center, glyph, size) {
-  ctx.font = `${size}px sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "#dbe4f2";
-  ctx.fillText(glyph, center.x, center.y + 1);
-}
-
-function pixelToHex(x, y) {
-  const q = (Math.sqrt(3) / 3) * (x / HEX_SIZE_X) - (1 / 3) * (y / HEX_SIZE_Y);
-  const r = (2 / 3) * (y / HEX_SIZE_Y);
-  return hexRound(q, r);
-}
-
-function hexRound(q, r) {
-  const x = q, z = r, y = -x - z;
-  let rx = Math.round(x), ry = Math.round(y), rz = Math.round(z);
-  const xDiff = Math.abs(rx - x), yDiff = Math.abs(ry - y), zDiff = Math.abs(rz - z);
-  if (xDiff > yDiff && xDiff > zDiff) rx = -ry - rz;
-  else if (yDiff > zDiff) ry = -rx - rz;
-  else rz = -rx - ry;
-  return { q: rx, r: rz };
-}
+// ---- HUD / state plumbing ---------------------------------------------------
 
 function setMode(next) {
-  if (state.status !== "playing") return;
+  if (state.status !== "playing" || !state.actions.includes(next)) return;
   mode = next;
   modeButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.mode === mode));
   draw();
@@ -202,9 +293,14 @@ function persist() {
   }
 }
 
+function animsRunning() {
+  const now = performance.now();
+  return anims.some((a) => now < a.start + a.dur);
+}
+
 function updateHud() {
   hullEl.textContent = `Hull ${state.hull}/${state.maxHull}`;
-  levelEl.textContent = `Sector ${state.levelId} · Best ${bestDepth}`;
+  levelEl.textContent = `Sector ${state.levelId}: ${state.levelName} · Best ${bestDepth}`;
   logEl.textContent = state.log.slice(-3).join("  ·  ");
 
   const remaining = Engine.livingEnemies(state).length;
@@ -214,12 +310,13 @@ function updateHud() {
     objectiveEl.textContent = `Destroy ${remaining} enemy ${remaining === 1 ? "ship" : "ships"} 👾 to power up the Warp Gate`;
   }
 
-  if (state.status === "lost") {
+  // Hold the end-of-run overlay back until the death/kill animation finishes.
+  if (state.status === "lost" && !animsRunning()) {
     overlayTitleEl.textContent = "Flagship Destroyed";
     overlayBodyEl.textContent = "Permadeath. Your run ends here.";
     nextBtn.hidden = true;
     overlayEl.hidden = false;
-  } else if (state.status === "won") {
+  } else if (state.status === "won" && !animsRunning()) {
     const hasNext = levelIndex + 1 < LEVELS.length;
     overlayTitleEl.textContent = "Sector Clear";
     overlayBodyEl.textContent = hasNext
@@ -233,11 +330,14 @@ function updateHud() {
 
   modeButtons.forEach((btn) => {
     const m = btn.dataset.mode;
-    const disabled =
+    const locked = !state.actions.includes(m);
+    btn.classList.toggle("locked", locked);
+    btn.textContent = locked ? `🔒 ${MODES[m].label}` : MODES[m].label;
+    btn.disabled =
+      locked ||
       state.status !== "playing" ||
       (m === "ramming" && state.rammingDisabled) ||
       (m === "fighter" && Boolean(state.fighterHex));
-    btn.disabled = disabled;
   });
 }
 
@@ -258,19 +358,28 @@ function handleAction(fn) {
     fn();
     mode = "sublight";
     modeButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.mode === mode));
+    scheduleAnims(state.events);
   } catch (err) {
     pushMessage(err.message);
   }
   render();
 }
 
+function loadSector(index) {
+  levelIndex = index;
+  state = Engine.createGameState(LEVELS[levelIndex]);
+  mode = "sublight";
+  anims = [];
+  updateGeometry();
+  render();
+}
+
 canvas.addEventListener("click", (evt) => {
   if (state.status !== "playing") return;
   const rect = canvas.getBoundingClientRect();
-  const cssWidth = parseFloat(canvas.style.width) || 320;
-  const scale = cssWidth / rect.width;
-  const x = (evt.clientX - rect.left) * scale - cssWidth / 2;
-  const y = (evt.clientY - rect.top) * scale - cssWidth / 2;
+  const scale = geom.w / rect.width;
+  const x = (evt.clientX - rect.left) * scale;
+  const y = (evt.clientY - rect.top) * scale;
   const hex = pixelToHex(x, y);
 
   if (MODES[mode].kind === "hex") {
@@ -294,22 +403,18 @@ canvas.addEventListener("click", (evt) => {
 
 modeButtons.forEach((btn) => btn.addEventListener("click", () => setMode(btn.dataset.mode)));
 
-restartBtn.addEventListener("click", () => {
-  levelIndex = 0;
-  state = Engine.createGameState(LEVELS[levelIndex]);
-  mode = "sublight";
-  render();
-});
+restartBtn.addEventListener("click", () => loadSector(0));
 
 nextBtn.addEventListener("click", () => {
   if (state.status !== "won" || levelIndex + 1 >= LEVELS.length) return;
-  levelIndex += 1;
-  state = Engine.createGameState(LEVELS[levelIndex]);
-  mode = "sublight";
-  render();
+  loadSector(levelIndex + 1);
 });
 
-window.addEventListener("resize", resizeCanvas);
+window.addEventListener("resize", () => {
+  updateGeometry();
+  draw();
+});
 
-resizeCanvas();
-render();
+window.__hhHexCenter = (q, r) => hexToPixel({ q, r }); // debug/test hook: CSS-pixel center of a hex
+
+loadSector(0);

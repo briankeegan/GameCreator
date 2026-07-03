@@ -89,6 +89,11 @@ html, body {
   opacity: 0.4;
   cursor: not-allowed;
 }
+.actions button.locked {
+  opacity: 0.45;
+  background: #151b28;
+  border-style: dashed;
+}
 
 .log {
   max-width: 520px;
