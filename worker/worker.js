@@ -426,6 +426,14 @@ export default {
       return json(200, { ok: true, url: `https://raw.githubusercontent.com/${env.REPO}/${branch}/${path}` });
     }
 
-    return json(400, { error: "unknown action" });
+    // Temporary diagnostic: echo back exactly what was received instead of
+    // just "unknown action", so a mismatch (wrong action string, missing
+    // field, etc.) is visible without needing browser devtools.
+    return json(400, {
+      error: "unknown action",
+      gotAction: payload.action,
+      gotActionType: typeof payload.action,
+      payloadKeys: Object.keys(payload),
+    });
   },
 };
