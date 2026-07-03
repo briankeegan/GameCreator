@@ -40,18 +40,13 @@ worker/
    SVG instead of PNG, and how to use real PNGs instead if you want them).
 4. Add one entry to root `games.json` (id, name, tagline, icon path). That's
    what makes it show up on the landing page.
-5. Give it a chat thread: open the **Admin** page on the live site (linked
-   from the landing page), enter the game id / display name / secret word,
-   and save — the Worker creates the GitHub Issue (the thread) for you
-   automatically the first time. (`worker/manage-games.sh` does the same
-   thing from a terminal if you'd rather.) Either way it's a live API call
-   to the already-deployed shared Worker — **no Cloudflare dashboard visit,
-   no redeploy.** That's the only step that isn't just editing files in this
-   repo.
-6. Commit, push. GitHub Pages serves the new game automatically.
 
-That's the whole add-a-game loop — one new folder, one registry line, one
-form submit.
+Steps 1-4 above are also fully automated: open the **Admin** page on the
+live site (linked from the landing page) and use **"Create a new game"** —
+fill in a game id, display name, and secret word, and it scaffolds
+`games/<id>/` from the template, adds it to `games.json`, and creates its
+chat thread, all in one submit. No manual copying, no files to edit until
+you're ready to build the actual gameplay in that game's `app.js`.
 
 ## Why one shared Worker
 
