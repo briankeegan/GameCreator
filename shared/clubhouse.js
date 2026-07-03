@@ -625,6 +625,69 @@ var MAX_IMAGE_BYTES = 1 * 1024 * 1024;
 var attachBtn = document.getElementById("attachBtn");
 var imageInput = document.getElementById("imageInput");
 
+// Re-encodes an over-the-cap photo down to fit, via <canvas> — no library
+// needed, every browser this page runs in already has one. Only jpeg/png/
+// webp are re-encoded (re-compressing a gif would flatten its animation to
+// one frame; svg is already tiny text). Shrinks resolution and drops JPEG
+// quality together, in small steps, until it's under the cap or clearly
+// not going to get much smaller either way.
+function compressImage(file, maxBytes) {
+  if (file.size <= maxBytes || !/^image\/(jpeg|png|webp)$/.test(file.type)) {
+    return Promise.resolve(file);
+  }
+  return new Promise(function (resolve, reject) {
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () {
+      URL.revokeObjectURL(url);
+      var canvas = document.createElement("canvas");
+      var ctx = canvas.getContext("2d");
+      var baseName = file.name.replace(/\.\w+$/, "") || "image";
+
+      function attempt(scale, quality) {
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          function (blob) {
+            if (!blob) return reject(new Error("couldn't compress that image"));
+            if (blob.size <= maxBytes || (scale <= 0.2 && quality <= 0.4)) {
+              resolve(new File([blob], baseName + ".jpg", { type: "image/jpeg" }));
+            } else if (quality > 0.4) {
+              attempt(scale, quality - 0.15);
+            } else {
+              attempt(scale * 0.75, 0.7);
+            }
+          },
+          "image/jpeg",
+          quality
+        );
+      }
+      attempt(img.naturalWidth > 1600 ? 1600 / img.naturalWidth : 1, 0.82);
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      reject(new Error("couldn't read that image"));
+    };
+    img.src = url;
+  });
+}
+
+function readAsBase64(file) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onerror = function () {
+      reject(new Error("couldn't read that file"));
+    };
+    reader.onload = function () {
+      // reader.result is "data:<mime>;base64,<data>" — the relay only
+      // wants the base64 payload, not the data-URL wrapper.
+      resolve(String(reader.result).split(",")[1] || "");
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 attachBtn.addEventListener("click", function () {
   imageInput.click();
 });
@@ -633,54 +696,46 @@ imageInput.addEventListener("change", function () {
   var file = imageInput.files && imageInput.files[0];
   imageInput.value = ""; // lets the same file be picked again later
   if (!file) return;
-  if (file.size > MAX_IMAGE_BYTES) {
-    showSendError("That image is too big (max 1MB) — try a smaller one or crop it.");
-    return;
-  }
   attachBtn.disabled = true;
   attachBtn.textContent = "…";
-  var reader = new FileReader();
-  reader.onerror = function () {
-    showSendError("Couldn't read that file.");
-    attachBtn.disabled = false;
-    attachBtn.textContent = "📷";
-  };
-  reader.onload = function () {
-    // reader.result is "data:<mime>;base64,<data>" — the relay only wants
-    // the base64 payload, not the data-URL wrapper.
-    var contentBase64 = String(reader.result).split(",")[1] || "";
-    relay({
-      action: "upload-image",
-      name: visitorName,
-      secret: secretWord,
-      filename: file.name,
-      contentBase64: contentBase64,
-    })
-      .then(function (res) {
-        return res
-          .json()
-          .catch(function () { return {}; })
-          .then(function (data) { return { res: res, data: data }; });
-      })
-      .then(function (r) {
-        if (r.res.status === 403) throw new Error("wrong-secret");
-        if (!r.res.ok || !r.data.url) throw new Error(r.data.error || "upload failed");
-        var markdown = "![image](" + r.data.url + ")";
-        var sep = messageInput.value && !/\n$/.test(messageInput.value) ? "\n\n" : "";
-        messageInput.value += sep + markdown;
-        messageInput.dispatchEvent(new Event("input"));
-      })
-      .catch(function (err) {
-        showSendError(
-          err.message === "wrong-secret"
-            ? "The secret word stopped working — reload the page and try again."
-            : "Image upload failed: " + err.message
-        );
-      })
-      .finally(function () {
-        attachBtn.disabled = false;
-        attachBtn.textContent = "📷";
+  compressImage(file, MAX_IMAGE_BYTES)
+    .then(function (outFile) {
+      if (outFile.size > MAX_IMAGE_BYTES) {
+        throw new Error("That image is too big even compressed (max 1MB) — try cropping it smaller.");
+      }
+      return readAsBase64(outFile).then(function (contentBase64) {
+        return relay({
+          action: "upload-image",
+          name: visitorName,
+          secret: secretWord,
+          filename: outFile.name,
+          contentBase64: contentBase64,
+        });
       });
-  };
-  reader.readAsDataURL(file);
+    })
+    .then(function (res) {
+      return res
+        .json()
+        .catch(function () { return {}; })
+        .then(function (data) { return { res: res, data: data }; });
+    })
+    .then(function (r) {
+      if (r.res.status === 403) throw new Error("wrong-secret");
+      if (!r.res.ok || !r.data.url) throw new Error(r.data.error || "upload failed");
+      var markdown = "![image](" + r.data.url + ")";
+      var sep = messageInput.value && !/\n$/.test(messageInput.value) ? "\n\n" : "";
+      messageInput.value += sep + markdown;
+      messageInput.dispatchEvent(new Event("input"));
+    })
+    .catch(function (err) {
+      showSendError(
+        err.message === "wrong-secret"
+          ? "The secret word stopped working — reload the page and try again."
+          : "Image upload failed: " + err.message
+      );
+    })
+    .finally(function () {
+      attachBtn.disabled = false;
+      attachBtn.textContent = "📷";
+    });
 });
