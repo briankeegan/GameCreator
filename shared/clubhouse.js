@@ -52,6 +52,9 @@ function relay(payload) {
 }
 
 var LOGIN_KEY = "clubhouse_login:" + GAME_ID;
+// Scoped per game like LOGIN_KEY — this page is shared by every game, so a
+// draft typed for one game must never bleed into another's composer.
+var DRAFT_KEY = "clubhouse_draft:" + GAME_ID;
 var logoutBtn = document.getElementById("logoutBtn");
 var peekBtn = document.getElementById("peekBtn");
 var eyeOpen = document.getElementById("eyeOpen");
@@ -193,6 +196,177 @@ document.addEventListener("click", function (e) {
   }
 })();
 
+// Restore whatever was mid-typing when the visitor last left this game's
+// Clubhouse (navigated to the game, refreshed, closed the tab). Runs
+// regardless of login state — the composer's just hidden until then.
+(function () {
+  var draft = null;
+  try { draft = localStorage.getItem(DRAFT_KEY); } catch (e) {}
+  if (draft) {
+    messageInput.value = draft;
+    messageInput.style.height = "auto";
+    messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + "px";
+  }
+})();
+
+// ---- minimal Markdown rendering for message bodies ----
+// Not a full CommonMark implementation — just the subset that shows up in
+// design-doc-style messages: headers, bold/italic/code, fenced code blocks,
+// links, tables, lists, and horizontal rules. HTML is escaped first so
+// nothing a visitor (or Claude) types can inject markup.
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function renderInline(text) {
+  var s = escapeHtml(text);
+  // Pull inline code out first so its contents don't get mangled by the
+  // bold/italic/link passes below, then splice it back in afterward.
+  var codeSpans = [];
+  s = s.replace(/`([^`]+)`/g, function (_, code) {
+    codeSpans.push(code);
+    return " " + (codeSpans.length - 1) + " ";
+  });
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>");
+  s = s.replace(/ (\d+) /g, function (_, i) {
+    return "<code>" + codeSpans[Number(i)] + "</code>";
+  });
+  return s;
+}
+
+function renderMarkdown(text) {
+  var lines = text.replace(/\r\n/g, "\n").split("\n");
+  var html = [];
+  var paragraphBuf = [];
+  var listBuf = null;
+
+  function flushParagraph() {
+    if (paragraphBuf.length) {
+      html.push("<p>" + renderInline(paragraphBuf.join(" ")) + "</p>");
+      paragraphBuf = [];
+    }
+  }
+  function flushList() {
+    if (listBuf) {
+      var tag = listBuf.type;
+      html.push(
+        "<" + tag + ">" +
+          listBuf.items.map(function (it) { return "<li>" + renderInline(it) + "</li>"; }).join("") +
+        "</" + tag + ">"
+      );
+      listBuf = null;
+    }
+  }
+
+  var i = 0;
+  while (i < lines.length) {
+    var line = lines[i];
+
+    var fence = line.match(/^```(\w*)\s*$/);
+    if (fence) {
+      flushParagraph();
+      flushList();
+      var lang = fence[1];
+      var codeLines = [];
+      i++;
+      while (i < lines.length && !/^```\s*$/.test(lines[i])) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++;
+      html.push(
+        "<pre><code" + (lang ? ' class="lang-' + lang + '"' : "") + ">" +
+          escapeHtml(codeLines.join("\n")) +
+        "</code></pre>"
+      );
+      continue;
+    }
+
+    if (/^(---+|\*\*\*+)\s*$/.test(line.trim()) && line.trim().length >= 3) {
+      flushParagraph();
+      flushList();
+      html.push("<hr>");
+      i++;
+      continue;
+    }
+
+    var h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      flushParagraph();
+      flushList();
+      var level = h[1].length;
+      html.push("<h" + level + ">" + renderInline(h[2]) + "</h" + level + ">");
+      i++;
+      continue;
+    }
+
+    if (/^\|.*\|\s*$/.test(line) && lines[i + 1] && /^\|?[\s:|-]+\|?\s*$/.test(lines[i + 1])) {
+      flushParagraph();
+      flushList();
+      var headerCells = line.trim().replace(/^\||\|$/g, "").split("|").map(function (c) { return c.trim(); });
+      i += 2;
+      var rows = [];
+      while (i < lines.length && /^\|.*\|\s*$/.test(lines[i])) {
+        rows.push(lines[i].trim().replace(/^\||\|$/g, "").split("|").map(function (c) { return c.trim(); }));
+        i++;
+      }
+      var t = "<table><thead><tr>" +
+        headerCells.map(function (c) { return "<th>" + renderInline(c) + "</th>"; }).join("") +
+        "</tr></thead>";
+      if (rows.length) {
+        t += "<tbody>" +
+          rows.map(function (r) {
+            return "<tr>" + r.map(function (c) { return "<td>" + renderInline(c) + "</td>"; }).join("") + "</tr>";
+          }).join("") +
+          "</tbody>";
+      }
+      t += "</table>";
+      html.push(t);
+      continue;
+    }
+
+    var ul = line.match(/^\s*[-*]\s+(.*)$/);
+    if (ul) {
+      flushParagraph();
+      if (!listBuf || listBuf.type !== "ul") {
+        flushList();
+        listBuf = { type: "ul", items: [] };
+      }
+      listBuf.items.push(ul[1]);
+      i++;
+      continue;
+    }
+
+    var ol = line.match(/^\s*\d+\.\s+(.*)$/);
+    if (ol) {
+      flushParagraph();
+      if (!listBuf || listBuf.type !== "ol") {
+        flushList();
+        listBuf = { type: "ol", items: [] };
+      }
+      listBuf.items.push(ol[1]);
+      i++;
+      continue;
+    }
+
+    if (/^\s*$/.test(line)) {
+      flushParagraph();
+      flushList();
+      i++;
+      continue;
+    }
+
+    flushList();
+    paragraphBuf.push(line.trim());
+    i++;
+  }
+  flushParagraph();
+  flushList();
+  return html.join("");
+}
+
 // Comments are chat messages only if they start with "**<name> says:**".
 // Claude's replies use the name Claude; everything else renders as a
 // visitor bubble. Unmarked comments (issue housekeeping) are skipped.
@@ -250,7 +424,10 @@ function renderMessages(messages) {
     who.textContent =
       msg.who + (msg.version ? " · " + msg.version : "") + " · " + friendlyTime(msg.when);
     bubble.appendChild(who);
-    bubble.appendChild(document.createTextNode(msg.text));
+    var body = document.createElement("div");
+    body.className = "msg-body";
+    body.innerHTML = renderMarkdown(msg.text);
+    bubble.appendChild(body);
     threadEl.appendChild(bubble);
   }
 
@@ -336,6 +513,7 @@ sendBtn.addEventListener("click", function () {
       if (!r.res.ok) throw new Error(r.data.error || "relay error " + r.res.status);
       messageInput.value = "";
       messageInput.style.height = "auto";
+      try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
       sendErrorEl.hidden = true;
       lastRenderKey = "";
       var bubble = document.createElement("div");
@@ -344,7 +522,10 @@ sendBtn.addEventListener("click", function () {
       who.className = "who";
       who.textContent = visitorName + " · just now";
       bubble.appendChild(who);
-      bubble.appendChild(document.createTextNode(text));
+      var body = document.createElement("div");
+      body.className = "msg-body";
+      body.innerHTML = renderMarkdown(text);
+      bubble.appendChild(body);
       var thinkingNote = document.getElementById("thinkingNote");
       threadEl.insertBefore(bubble, thinkingNote);
       thinkingNote.classList.add("visible");
@@ -403,4 +584,5 @@ dismissErrorBtn.addEventListener("click", function () {
 messageInput.addEventListener("input", function () {
   messageInput.style.height = "auto";
   messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + "px";
+  try { localStorage.setItem(DRAFT_KEY, messageInput.value); } catch (e) {}
 });

@@ -155,13 +155,50 @@ body { display: flex; flex-direction: column; height: 100svh; }
   border-radius: 16px;
   font-size: 0.95rem;
   line-height: 1.45;
-  white-space: pre-wrap;
   overflow-wrap: break-word;
 }
 .bubble .who { display: block; font-size: 0.68rem; font-weight: 700; opacity: 0.7; margin-bottom: 2px; }
 .bubble.visitor { margin-left: auto; background: #f2b179; color: #3a2a1a; border-bottom-right-radius: 4px; }
 .bubble.claude { margin-right: auto; background: #2f3b52; color: #fff; border-bottom-left-radius: 4px; }
 .bubble.pending { opacity: 0.65; }
+
+/* ---- rendered Markdown inside a message body ---- */
+.msg-body > *:first-child { margin-top: 0; }
+.msg-body > *:last-child { margin-bottom: 0; }
+.msg-body p { margin: 0 0 8px; }
+.msg-body h1, .msg-body h2, .msg-body h3,
+.msg-body h4, .msg-body h5, .msg-body h6 {
+  margin: 12px 0 6px;
+  line-height: 1.25;
+}
+.msg-body h1 { font-size: 1.25em; }
+.msg-body h2 { font-size: 1.15em; }
+.msg-body h3, .msg-body h4, .msg-body h5, .msg-body h6 { font-size: 1.05em; }
+.msg-body ul, .msg-body ol { margin: 0 0 8px; padding-left: 22px; }
+.msg-body li { margin-bottom: 2px; }
+.msg-body hr { border: none; border-top: 1px solid rgba(127, 127, 127, 0.35); margin: 10px 0; }
+.msg-body a { color: inherit; }
+.msg-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.msg-body pre {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.msg-body pre code { padding: 0; border-radius: 0; }
+.msg-body table { border-collapse: collapse; width: 100%; margin: 0 0 8px; font-size: 0.88em; }
+.msg-body th, .msg-body td { padding: 4px 8px; text-align: left; }
+.bubble.visitor .msg-body code,
+.bubble.visitor .msg-body pre { background: rgba(0, 0, 0, 0.1); }
+.bubble.visitor .msg-body th, .bubble.visitor .msg-body td { border: 1px solid rgba(0, 0, 0, 0.15); }
+.bubble.claude .msg-body code,
+.bubble.claude .msg-body pre { background: rgba(255, 255, 255, 0.12); }
+.bubble.claude .msg-body th, .bubble.claude .msg-body td { border: 1px solid rgba(255, 255, 255, 0.2); }
 .thinking { display: none; margin: 0 0 10px; color: #776e65; font-size: 0.85rem; font-style: italic; }
 .thinking.visible { display: block; }
 .thread-status { text-align: center; color: #bbada0; font-size: 0.75rem; padding: 4px 0 8px; }
