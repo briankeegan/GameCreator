@@ -29,6 +29,60 @@ const gamesTableBody = document.getElementById("gamesTableBody");
 
 let adminToken = "";
 
+// Ported from shared/clubhouse.js's send-error component: any failure shows
+// here with a Copy button, so it can be pasted back verbatim instead of
+// described from memory or screenshotted. Wired to catch truly uncaught
+// errors too (window error / unhandledrejection), not just the ones this
+// file explicitly handles — a silent failure with nothing on screen is
+// itself a bug, not an acceptable outcome.
+const errorBannerEl = document.getElementById("errorBanner");
+const errorBannerTextEl = document.getElementById("errorBannerText");
+const errorBannerCopyBtn = document.getElementById("errorBannerCopyBtn");
+const errorBannerDismissBtn = document.getElementById("errorBannerDismissBtn");
+
+function showError(msg) {
+  errorBannerTextEl.textContent = msg;
+  errorBannerEl.hidden = false;
+  errorBannerCopyBtn.textContent = "Copy";
+}
+
+function fallbackCopy(text, done) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand("copy");
+    done();
+  } catch (e) {}
+  ta.remove();
+}
+
+errorBannerCopyBtn.addEventListener("click", () => {
+  const text = errorBannerTextEl.textContent;
+  const done = () => {
+    errorBannerCopyBtn.textContent = "Copied!";
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+});
+
+errorBannerDismissBtn.addEventListener("click", () => {
+  errorBannerEl.hidden = true;
+});
+
+window.addEventListener("error", (e) => {
+  showError(`Uncaught error: ${e.message} (${e.filename}:${e.lineno}:${e.colno})`);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  showError(`Unhandled rejection: ${(e.reason && e.reason.message) || e.reason}`);
+});
+
 function showGateError(msg) {
   gateErrorEl.textContent = msg;
   gateErrorEl.classList.add("visible");
@@ -37,6 +91,7 @@ function showGateError(msg) {
 function setStatus(el, msg, kind) {
   el.textContent = msg;
   el.className = "admin-status" + (kind ? " " + kind : "");
+  if (kind === "error") showError(msg);
 }
 
 function callAdmin(body) {
