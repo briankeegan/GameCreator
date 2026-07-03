@@ -145,20 +145,43 @@
   // ---- game state -----------------------------------------------------------
 
   const START_HULL = 1; // one hit and you're out — permadeath means it, Hoplite-style
-  const ENEMY_HP = 1; // stat-driven now (was a plain alive/dead flag): 1 dmg still one-shots today
 
   // ---- weapon systems ---------------------------------------------------
   //
-  // The first of what's meant to become a small roster: each weapon is a
-  // flat stat block (range/damage/targets/speed/energyCost), auto-fires on
-  // any living enemy in range the instant the flagship ends up there (after
-  // a move, or standing pat via Hold Position) — no separate aim-and-fire
-  // action. `targets: "all"` means it hits every enemy in range at once
-  // rather than capping at a single target. Toggleable per-turn via
-  // state.systems, same as Warpdrive.
+  // The same stat block (range/damage/targets/speed/energyCost) drives both
+  // the flagship's systems and every enemy type's attack — one combat model
+  // for both sides, not a player-only mechanic plus separately-hardcoded
+  // enemy AI math. That matters because this is meant to grow into a
+  // roguelike: new enemies (and new player weapons) should just be new
+  // entries in these tables, not new bespoke code paths. `targets: "all"`
+  // hits every target in range at once rather than capping at one.
   const WEAPONS = {
     ram: { id: "ram", label: "Ram Cannon", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0 },
+    interceptorCannon: { id: "interceptorCannon", label: "Interceptor Cannon", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0 },
   };
+
+  // Each enemy type is its own small data block: how tough it is (hp), what
+  // it hits back with (a WEAPONS entry), and how it moves. Adding a new
+  // enemy is adding an entry here, not new bespoke combat code.
+  const ENEMY_TYPES = {
+    interceptor: { hp: 1, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true },
+  };
+
+  // Every hex within `range` of `center` (a filled-in hexagon, not just the
+  // ring) — used to project a weapon's threatened/reachable area for any
+  // range, not just the range-1 case a plain neighbors() list covers.
+  function hexDisk(center, range) {
+    const result = [];
+    for (let dq = -range; dq <= range; dq++) {
+      const rMin = Math.max(-range, -dq - range);
+      const rMax = Math.min(range, -dq + range);
+      for (let dr = rMin; dr <= rMax; dr++) {
+        if (dq === 0 && dr === 0) continue; // exclude the center itself
+        result.push({ q: center.q + dq, r: center.r + dr });
+      }
+    }
+    return result;
+  }
 
   function createGameState(level) {
     validateLevel(level);
@@ -176,15 +199,19 @@
       exitRule: level.exitRule,
       exitUnlocked: false,
       hazards: (level.hazards || []).map((h) => ({ type: h.type, q: h.q, r: h.r })),
-      enemies: level.enemies.map((e, i) => ({
-        id: `e${i}`,
-        type: e.type,
-        q: e.q,
-        r: e.r,
-        alive: true,
-        hp: ENEMY_HP,
-        maxHp: ENEMY_HP,
-      })),
+      enemies: level.enemies.map((e, i) => {
+        const def = ENEMY_TYPES[e.type];
+        if (!def) throw new Error(`Unknown enemy type: ${e.type}`);
+        return {
+          id: `e${i}`,
+          type: e.type,
+          q: e.q,
+          r: e.r,
+          alive: true,
+          hp: def.hp,
+          maxHp: def.hp,
+        };
+      }),
       fighterHex: null,
       rammingDisabled: false,
       // Pre-turn system toggles: Warpdrive governs whether you can move at
@@ -260,15 +287,17 @@
 
   // ---- threat overlay: pillar #3, "the board is the UI" -------------------
   //
-  // For M1 (Interceptors only) an interceptor attacks instead of moving iff
-  // it is already adjacent to the player when the enemy phase begins. So any
-  // hex adjacent to a living interceptor is a hex that will take damage if
-  // the player ends their turn there.
+  // An enemy attacks instead of moving iff the player is already within its
+  // weapon's range when the enemy phase begins. So any hex within that
+  // range of a living enemy is a hex that will take damage if the player
+  // ends their turn there — generic over any weapon range, not just the
+  // range-1 case a plain neighbors() list would cover.
   function computeThreatHexes(state) {
     const threats = new Map(); // hexKey -> damage count
     for (const enemy of livingEnemies(state)) {
-      if (enemy.type !== "interceptor") continue;
-      for (const hex of neighbors(enemy)) {
+      const enemyType = ENEMY_TYPES[enemy.type];
+      if (!enemyType) continue;
+      for (const hex of hexDisk(enemy, enemyType.weapon.range)) {
         if (!onBoard(state, hex)) continue;
         const k = hexKey(hex);
         threats.set(k, (threats.get(k) || 0) + 1);
@@ -280,8 +309,9 @@
   // ---- enemy AI -------------------------------------------------------------
 
   function decideIntent(state, enemy) {
-    if (enemy.type === "interceptor") {
-      if (isAdjacent(enemy, state.playerPos)) {
+    const enemyType = ENEMY_TYPES[enemy.type];
+    if (enemyType && enemyType.movesTowardPlayer) {
+      if (hexDistance(enemy, state.playerPos) <= enemyType.weapon.range) {
         return { enemyId: enemy.id, type: "attack" };
       }
       const occupiedNow = new Set(
@@ -329,7 +359,7 @@
       const enemy = state.enemies.find((e) => e.id === intent.enemyId);
       if (!enemy || !enemy.alive) continue;
       if (intent.type === "attack") {
-        totalDamage += 1;
+        totalDamage += ENEMY_TYPES[enemy.type].weapon.damage;
         state.events.push({ type: "attack", enemyId: enemy.id, q: enemy.q, r: enemy.r });
       } else if (intent.type === "move") {
         state.events.push({ type: "enemyMove", enemyId: enemy.id, from: { q: enemy.q, r: enemy.r }, to: intent.to });
@@ -539,6 +569,8 @@
     enemyAt,
     hazardAt,
     WEAPONS,
+    ENEMY_TYPES,
+    hexDisk,
   };
 
   if (typeof module !== "undefined" && module.exports) {

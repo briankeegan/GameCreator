@@ -327,4 +327,22 @@ assert.throws(
   "movement requires Warpdrive to be toggled on"
 );
 
+// Enemies fight through the same WEAPONS/ENEMY_TYPES stat blocks as the
+// flagship — not hardcoded adjacency/damage constants — so the threat
+// overlay, attack range, and damage-per-hit are all read off the
+// Interceptor's own weapon rather than special-cased.
+assert.strictEqual(
+  Engine.ENEMY_TYPES.interceptor.weapon,
+  Engine.WEAPONS.interceptorCannon,
+  "the Interceptor's attack is a WEAPONS entry, same shape as the flagship's Ram Cannon"
+);
+const interceptorPos = { q: 0, r: 0 };
+const disk = Engine.hexDisk(interceptorPos, Engine.ENEMY_TYPES.interceptor.weapon.range);
+assert.strictEqual(disk.length, 6, "a range-1 weapon threatens exactly the 6 neighboring hexes");
+assert.ok(!disk.some((h) => Engine.posEq(h, interceptorPos)), "a weapon never threatens its own hex");
+assert.ok(
+  disk.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
+  "every hex in a range-1 disk is exactly 1 hex away"
+);
+
 console.log("All golden-path assertions passed.");
