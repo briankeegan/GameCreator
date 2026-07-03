@@ -12,14 +12,17 @@ var REPO = "briankeegan/GameCreator";
 // The one shared relay every game's clubhouse talks to.
 var WORKER_URL = "https://game-creator.bramp-games.workers.dev";
 
-// Baked directly into this file by the deploy workflow (a sed replace over
-// the checked-out copy before archiving — see .github/workflows/pages.yml)
-// rather than fetched at runtime from a second file. A separate version.js
-// <script> load could silently fail (404, slow, blocked) and leave the
-// stamp blank with no visible sign anything was wrong; this way the
-// version is guaranteed correct as long as this script loaded at all,
-// which the rest of the page already depends on regardless.
-var APP_VERSION = "__APP_VERSION__";
+// window.APP_VERSION is set by a line the deploy workflow prepends to the
+// very top of this exact file at build time (see .github/workflows/pages.yml)
+// — not a separate version.js file loaded via its own <script> tag (that
+// extra load was a silent single point of failure: 404, slow, or blocked,
+// and the stamp just went blank with no sign anything was wrong), and not
+// a find-and-replace over a placeholder either (that failed silently too —
+// sed exits 0 even when its pattern never matches, so it shipped the
+// literal un-stamped placeholder text with no error). A plain prepend has
+// no pattern to miss: it always writes a real version here. Falls back to
+// "v?" only for local dev, where nothing prepends this line.
+var APP_VERSION = window.APP_VERSION || "v?";
 
 document.getElementById("gameBtn").href = BACK_URL;
 document.getElementById("gameTitle").textContent = ": " + GAME_NAME;

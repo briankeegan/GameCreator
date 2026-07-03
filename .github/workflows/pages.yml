@@ -23,19 +23,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      # Baked directly into clubhouse.js (as a real JS constant) instead of
-      # a separate version.js file loaded at runtime via its own <script>
-      # tag — that extra load was a silent single point of failure: if it
+      # Baked directly into clubhouse.js (as a real JS global) instead of a
+      # separate version.js file loaded at runtime via its own <script> tag
+      # — that extra load was a silent single point of failure: if it
       # 404'd, was slow, or got blocked, the version stamp just went blank
       # with no visible sign anything was wrong.
+      #
+      # This prepends a line to the file rather than find-and-replacing a
+      # placeholder — a sed find/replace was tried first, but sed exits 0
+      # even when its pattern never matches, so that approach silently
+      # shipped the literal, un-stamped placeholder text with no error.
+      # Prepending has no pattern to miss: it unconditionally writes one
+      # line, then the rest of the file, every single time.
       - name: Stamp version
         run: |
-          sed -i "s/__APP_VERSION__/v0.${GITHUB_RUN_NUMBER}/" shared/clubhouse.js
-          if grep -q "__APP_VERSION__" shared/clubhouse.js; then
-            echo "::error::version placeholder was not replaced in shared/clubhouse.js"
-            exit 1
-          fi
-          grep -n "APP_VERSION = " shared/clubhouse.js
+          { printf 'window.APP_VERSION = "v0.%s";\n' "$GITHUB_RUN_NUMBER"; cat shared/clubhouse.js; } > /tmp/clubhouse.stamped.js
+          mv /tmp/clubhouse.stamped.js shared/clubhouse.js
+          head -n 1 shared/clubhouse.js
       - name: Setup Pages
         uses: actions/configure-pages@v5
       # Archiving manually (same tar command actions/upload-pages-artifact
