@@ -29,7 +29,13 @@ jobs:
       # 404'd, was slow, or got blocked, the version stamp just went blank
       # with no visible sign anything was wrong.
       - name: Stamp version
-        run: sed -i "s/__APP_VERSION__/v0.${GITHUB_RUN_NUMBER}/" shared/clubhouse.js
+        run: |
+          sed -i "s/__APP_VERSION__/v0.${GITHUB_RUN_NUMBER}/" shared/clubhouse.js
+          if grep -q "__APP_VERSION__" shared/clubhouse.js; then
+            echo "::error::version placeholder was not replaced in shared/clubhouse.js"
+            exit 1
+          fi
+          grep -n "APP_VERSION = " shared/clubhouse.js
       - name: Setup Pages
         uses: actions/configure-pages@v5
       # Archiving manually (same tar command actions/upload-pages-artifact
