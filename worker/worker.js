@@ -54,7 +54,7 @@ export default {
     }
     if (request.method !== "POST") {
       return json(200, {
-        relay: "gc-r1",
+        relay: "gc-r2",
         settings: {
           GAMES_KV: env.GAMES_KV ? "bound" : "MISSING",
           GITHUB_TOKEN: env.GITHUB_TOKEN ? "set" : "MISSING",
