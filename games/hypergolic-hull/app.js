@@ -259,6 +259,13 @@ function draw() {
   const threats = Engine.computeThreatHexes(state);
   const legal = new Set(MODES[mode].targets(state).map((h) => Engine.hexKey(h)));
   const reachable = computeReachableHexes(state);
+  // Mirrors `reachable`, but for enemies: any enemy an unlocked action could
+  // ever target, regardless of which mode happens to be armed right now —
+  // not just the one enemy set belonging to the currently-selected mode.
+  const targetable = new Set([
+    ...Engine.legalTractorTargets(state).map((e) => e.id),
+    ...Engine.legalFighterTargets(state).map((e) => e.id),
+  ]);
   const routeHexes = (plannedPath && plannedPath.hexes) || (autoRoute && autoRoute.path) || null;
   const route = new Set((routeHexes || []).slice(1).map((h) => Engine.hexKey(h)));
 
@@ -288,7 +295,10 @@ function draw() {
     // next to the key explaining it.
     let stroke = "#1a2233";
     let strokeWidth = 1.5;
-    if (reachable.has(k)) stroke = "#c9d6e8";
+    if (reachable.has(k)) {
+      stroke = "#c9d6e8";
+      strokeWidth = 0.75;
+    }
     if (legendVisible && legal.has(k) && showLegalKey) {
       stroke = "#7fe3a8";
       strokeWidth = 3;
@@ -344,14 +354,17 @@ function draw() {
 
   for (const enemy of Engine.livingEnemies(state)) {
     const base = hexToPixel(enemy);
-    if (legal.has(Engine.hexKey(enemy))) {
+    // Same layering as the hex border: any targetable enemy always gets a
+    // thin ring, regardless of which action mode is currently armed. The
+    // bold ring on top is specific to the currently-armed mode's targets.
+    if (targetable.has(enemy.id)) {
       ctx.beginPath();
       ctx.arc(base.x, base.y, geom.sx * 0.47, 0, Math.PI * 2);
-      if (legendVisible && showLegalKey) {
+      if (legendVisible && showLegalKey && legal.has(Engine.hexKey(enemy))) {
         ctx.lineWidth = 2.5;
         ctx.strokeStyle = "#7fe3a8";
       } else {
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 0.75;
         ctx.strokeStyle = "#c9d6e8";
       }
       ctx.stroke();
