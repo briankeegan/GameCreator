@@ -212,7 +212,7 @@ export default {
     }
     if (request.method !== "POST") {
       return json(200, {
-        relay: "gc-r5",
+        relay: "gc-r6",
         settings: {
           GAMES_KV: env.GAMES_KV ? "bound" : "MISSING",
           GITHUB_TOKEN: env.GITHUB_TOKEN ? "set" : "MISSING",
@@ -400,7 +400,7 @@ export default {
           detail = body.message ? ` — ${body.message}` : "";
         } catch {}
         return json(502, {
-          error: `github said ${res.status}${detail} [game: ${gameId}] [relay gc-r5]`,
+          error: `github said ${res.status}${detail} [game: ${gameId}] [relay gc-r6]`,
         });
       }
       return json(200, { ok: true });
