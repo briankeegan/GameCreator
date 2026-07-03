@@ -20,8 +20,16 @@
 //   ADMIN_TOKEN   (secret)  — a password only you know, gates the admin-* actions
 //   REPO          (text)    — briankeegan/GameCreator
 
+// Only browser requests originating from the real site are allowed to
+// actually do anything — this doesn't hide the Worker's URL (nothing can;
+// any static site's JS is inspectable) but it does stop someone from
+// copy-pasting the URL into their own page and hammering it (e.g.
+// brute-forcing a secret word) from outside GameCreator. Non-browser
+// callers (curl, scripts) send no Origin header at all and are unaffected.
+const ALLOWED_ORIGIN = "https://briankeegan.github.io";
+
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
@@ -53,6 +61,11 @@ export default {
           REPO: env.REPO || "MISSING",
         },
       });
+    }
+
+    const origin = request.headers.get("Origin");
+    if (origin && origin !== ALLOWED_ORIGIN) {
+      return json(403, { error: "forbidden origin" });
     }
 
     let payload;
