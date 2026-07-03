@@ -266,3 +266,10 @@ body { display: flex; flex-direction: column; height: 100svh; }
   cursor: pointer;
 }
 .composer button:disabled { opacity: 0.5; }
+.composer .attach-btn {
+  background: #fff;
+  color: #2f3b52;
+  font-size: 1.1rem;
+  padding: 0 14px;
+}
+.msg-body img { max-width: 100%; border-radius: 10px; display: block; margin: 0 0 8px; }
