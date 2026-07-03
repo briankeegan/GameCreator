@@ -525,7 +525,8 @@ function updateSystems() {
   const weapon = Engine.WEAPONS.ram;
   ramLabelEl.textContent = weapon.label;
   ramLabelLegendEl.textContent = weapon.label;
-  weaponStatsEl.textContent = unlocked ? describeWeapon(weapon) : `${weapon.label} — locked`;
+  weaponStatsEl.textContent = unlocked ? describeWeaponCompact(weapon) : "LOCKED";
+  weaponStatsEl.title = unlocked ? describeWeapon(weapon) : `${weapon.label} — locked`;
 }
 
 // Shared by the systems-row stats line and the click-an-enemy-for-info panel
@@ -541,6 +542,14 @@ function describeWeapon(weapon) {
     `${weapon.label} — Range ${weapon.range} · Damage ${weapon.damage} · ` +
     `Pattern: ${describePattern(weapon)} · Speed ${weapon.speed} · Energy ${weapon.energyCost}`
   );
+}
+
+// Short enough to sit inline in the systems row next to the toggles and
+// Hold Position instead of needing its own full-width line — the full
+// sentence is still one tap/hover away via the title tooltip.
+function describeWeaponCompact(weapon) {
+  const pattern = weapon.pattern.length >= 6 ? "ALL" : "FWD";
+  return `R${weapon.range} · D${weapon.damage} · SPD${weapon.speed} · E${weapon.energyCost} · ${pattern}`;
 }
 
 // The inspected enemy's card only ever shows while Help is open (it's a
