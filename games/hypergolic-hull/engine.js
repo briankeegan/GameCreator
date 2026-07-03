@@ -144,7 +144,7 @@
 
   // ---- game state -----------------------------------------------------------
 
-  const START_HULL = 3;
+  const START_HULL = 1; // one hit and you're out — permadeath means it, Hoplite-style
 
   function createGameState(level) {
     validateLevel(level);

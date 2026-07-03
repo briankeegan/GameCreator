@@ -25,6 +25,8 @@ const overlayBodyEl = document.getElementById("runOverlayBody");
 const restartBtn = document.getElementById("restartBtn");
 const nextBtn = document.getElementById("nextBtn");
 const modeButtons = Array.from(document.querySelectorAll("[data-mode]"));
+const helpBtn = document.getElementById("helpBtn");
+const legendEl = document.getElementById("legend");
 
 // Everything on the board is an emoji sprite so the pieces read at a glance
 // (see the legend under the action buttons).
@@ -49,6 +51,21 @@ let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
 // (each step is a real turn — it aborts the moment the flagship takes damage).
 let plannedPath = null;
 let autoRoute = null;
+
+// The legend re-explains itself at the start of every sector (a new action
+// just unlocked) and steps out of the way after the first move — the ❓ Help
+// button always brings it back.
+let legendVisible = true;
+
+// The flagship's facing, in degrees (canvas convention: 0 = screen-right,
+// increases clockwise). Updated whenever the ship actually moves.
+const DIR_ANGLES = Engine.DIRECTIONS.map((d) => {
+  const dx = SQRT3 * (d.q + d.r / 2);
+  const dy = HEX_RATIO * 1.5 * d.r;
+  return (Math.atan2(dy, dx) * 180) / Math.PI;
+});
+const ROCKET_BASE_ANGLE = -45; // the 🚀 glyph's own default heading (upper-right) in most fonts
+let shipAngle = -90; // start facing "up", toward the gate
 
 // ---- geometry: the canvas grows/shrinks (and gets taller) with the board --
 
@@ -124,7 +141,11 @@ function scheduleAnims(events) {
     else if (ev.type === "attack") anims.push({ kind: "lunge", enemyId: ev.enemyId, start: now, dur: 320 });
     else if (ev.type === "damage") anims.push({ kind: "flash", start: now, dur: 380 });
     else if (ev.type === "enemyMove") anims.push({ kind: "slide", enemyId: ev.enemyId, from: ev.from, to: ev.to, start: now, dur: 220 });
-    else if (ev.type === "playerMove") anims.push({ kind: "pslide", from: ev.from, to: ev.to, start: now, dur: 230 });
+    else if (ev.type === "playerMove") {
+      anims.push({ kind: "pslide", from: ev.from, to: ev.to, start: now, dur: 230 });
+      const dir = Engine.directionIndex(ev.from, ev.to);
+      if (dir >= 0) shipAngle = DIR_ANGLES[dir];
+    }
     else if (ev.type === "playerDeath") anims.push({ kind: "boom", pos: ev, start: now, dur: 650 });
   }
   if (anims.length) requestAnimationFrame(tickAnims);
@@ -216,7 +237,8 @@ function draw() {
     else if (isExit) fill = state.exitUnlocked ? "#1f4d3a" : "#2a2f45";
     else if (isOutpost) fill = "#2a3f4d";
     if (threats.has(k)) fill = blend(fill, "#7a1f2b", 0.55);
-    if (legal.has(k)) fill = blend(fill, "#2f8f5b", 0.35);
+    // Movable/targetable hexes keep their normal color — only the border
+    // marks them, so the board doesn't turn into a wall of green.
     if (route.has(k)) fill = blend(fill, "#2e5f96", 0.45);
 
     // Movable/targetable hexes get a bold bright border so they pop.
@@ -302,7 +324,11 @@ function draw() {
       ctx.fillStyle = `rgba(224, 83, 63, ${0.55 * (1 - p)})`;
       ctx.fill();
     }
-    drawSprite(shipCenter, SPRITES.player, geom.sx * 0.75);
+    ctx.save();
+    ctx.translate(shipCenter.x, shipCenter.y);
+    ctx.rotate(((shipAngle - ROCKET_BASE_ANGLE) * Math.PI) / 180);
+    drawSprite({ x: 0, y: 0 }, SPRITES.player, geom.sx * 0.75);
+    ctx.restore();
   }
 
   // Explosions on top of everything.
@@ -380,8 +406,14 @@ function updateHud() {
   });
 }
 
+function updateLegend() {
+  legendEl.classList.toggle("hidden", !legendVisible);
+  helpBtn.classList.toggle("active", legendVisible);
+}
+
 function render() {
   updateHud();
+  updateLegend();
   draw();
   persist();
   window.__hhState = state; // debug hook: deterministic + serializable, safe to inspect
@@ -401,6 +433,7 @@ function handleAction(fn) {
     mode = "sublight";
     modeButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.mode === mode));
     scheduleAnims(state.events);
+    legendVisible = false; // the player has the hang of it — get out of the way
   } catch (err) {
     pushMessage(err.message);
   }
@@ -414,9 +447,16 @@ function loadSector(index) {
   anims = [];
   plannedPath = null;
   autoRoute = null;
+  legendVisible = true; // re-explain the board for every newly unlocked action
+  shipAngle = -90;
   updateGeometry();
   render();
 }
+
+helpBtn.addEventListener("click", () => {
+  legendVisible = !legendVisible;
+  updateLegend();
+});
 
 // First tap on a distant hex: preview the quickest route. Second tap on the
 // same hex: fly it, one real turn per step.

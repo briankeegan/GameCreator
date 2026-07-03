@@ -95,12 +95,36 @@ html, body {
   border-style: dashed;
 }
 
-.log {
+.belowbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   max-width: 520px;
-  margin: 12px auto 0;
+  margin: 14px auto 0;
+}
+
+.help-btn {
+  flex: 0 0 auto;
+  background: #1b2436;
+  color: #dbe4f2;
+  border: 1px solid #2a3652;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.help-btn.active {
+  background: #2f8f5b;
+  border-color: #7fe3a8;
+  color: #0d2233;
+}
+
+.log {
+  flex: 1 1 auto;
   min-height: 1.2em;
   font-size: 0.78rem;
   color: #8fa0ba;
+  text-align: left;
 }
 
 .objective {
@@ -116,7 +140,7 @@ html, body {
   justify-content: center;
   gap: 6px 14px;
   max-width: 520px;
-  margin: 16px auto 0;
+  margin: 10px auto 0;
   padding: 10px 12px;
   background: #141b2b;
   border: 1px solid #2a3652;
@@ -125,6 +149,7 @@ html, body {
   color: #9fb0c9;
   text-align: left;
 }
+.legend.hidden { display: none; }
 .legend .swatch {
   display: inline-block;
   width: 0.9em;
@@ -134,7 +159,7 @@ html, body {
   margin-right: 2px;
 }
 .legend .swatch-threat { background: #7a1f2b; }
-.legend .swatch-legal { background: #2f8f5b; border: 1px solid #7fe3a8; }
+.legend .swatch-legal { background: transparent; border: 2px solid #7fe3a8; }
 
 /* ---- shared install banner (leave as-is; every game gets this) ---- */
 :root { --banner-space: 0px; }

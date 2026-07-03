@@ -121,9 +121,11 @@ const meleeLevel = {
 };
 const meleeState = Engine.createGameState(meleeLevel);
 Engine.applySublight(meleeState, { q: 0, r: 3 }); // step adjacent: interceptor attacks
-assert.strictEqual(meleeState.hull, 2, "the adjacent interceptor strikes");
+assert.strictEqual(meleeState.hull, 0, "one hull point means the adjacent interceptor's strike is lethal");
+assert.strictEqual(meleeState.status, "lost", "one-hit permadeath: any strike ends the run");
 assert.ok(meleeState.events.some((e) => e.type === "attack"), "attacks emit an attack event");
 assert.ok(meleeState.events.some((e) => e.type === "damage"), "damage emits a damage event");
+assert.ok(meleeState.events.some((e) => e.type === "playerDeath"), "lethal damage emits a playerDeath event");
 assert.ok(
   meleeState.events.some((e) => e.type === "playerMove" && e.to.q === 0 && e.to.r === 3),
   "player moves emit a playerMove event (drives the flight animation)"
@@ -164,13 +166,13 @@ assert.strictEqual(
 // ---- step 1: Sublight to (1,-1); neither Interceptor is adjacent yet ----
 
 let state = Engine.createGameState(goldenLevel);
-assert.strictEqual(state.hull, 3);
+assert.strictEqual(state.hull, 1, "one hull point: the flagship is one hit from permadeath");
 assert.strictEqual(Engine.livingEnemies(state).length, 2);
 
 Engine.applySublight(state, { q: 1, r: -1 });
 
 assert.deepStrictEqual(state.playerPos, { q: 1, r: -1 });
-assert.strictEqual(state.hull, 3, "no enemy should be adjacent after the first exchange");
+assert.strictEqual(state.hull, 1, "no enemy should be adjacent after the first exchange");
 assert.strictEqual(state.status, "playing");
 
 // ---- step 2: Ramming Speed vaporizes Interceptor 2; Interceptor 1 closes in
@@ -190,9 +192,10 @@ assert.strictEqual(
   true,
   "Interceptor 1 should have closed to adjacency during the enemy phase"
 );
-assert.strictEqual(state.hull, 3, "ramming resolves before the enemy phase, so no damage yet");
+assert.strictEqual(state.hull, 1, "ramming resolves before the enemy phase, so no damage yet");
 
-// ---- step 3a: mistake branch — stay in range, eat the deterministic strike
+// ---- step 3a: mistake branch — stay in range and eat the deterministic
+// strike, which is now instantly lethal (permadeath, one hull point)
 
 const mistakeState = clone(state);
 const staysAdjacent = Engine.legalSublightTargets(mistakeState).find(
@@ -200,7 +203,8 @@ const staysAdjacent = Engine.legalSublightTargets(mistakeState).find(
 );
 assert.ok(staysAdjacent, "expected a legal move that stays adjacent to Interceptor 1");
 Engine.applySublight(mistakeState, staysAdjacent);
-assert.strictEqual(mistakeState.hull, 2, "staying adjacent to Interceptor 1 should eat its deterministic strike (Hull 3 -> 2)");
+assert.strictEqual(mistakeState.hull, 0, "staying adjacent to Interceptor 1 eats its deterministic strike — lethal at 1 Hull");
+assert.strictEqual(mistakeState.status, "lost", "the mistake branch is permadeath, not a scratch");
 
 // ---- step 3b: correct branch — Fighter Squadron kills Interceptor 1 outright
 
@@ -208,7 +212,7 @@ const correctState = clone(state);
 Engine.applyFighter(correctState, interceptor1.id);
 
 assert.strictEqual(Engine.livingEnemies(correctState).length, 0, "Interceptor 1 should be destroyed by the fighter squadron");
-assert.strictEqual(correctState.hull, 3, "the correct branch should take no damage");
+assert.strictEqual(correctState.hull, 1, "the correct branch should take no damage");
 assert.strictEqual(correctState.status, "playing");
 assert.strictEqual(correctState.rammingDisabled, true, "Ramming Speed should be disabled while fighters are deployed");
 assert.deepStrictEqual(correctState.fighterHex, { q: interceptor1.q, r: interceptor1.r });

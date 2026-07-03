@@ -71,7 +71,7 @@ function waitForOverlay(page) {
 
 async function walkToExit(page) {
   let s = await getState(page);
-  for (let i = 0; i < 12 && s.status === "playing"; i++) {
+  for (let i = 0; i < 20 && s.status === "playing"; i++) {
     await clickHex(page, "sublight", await pickStepToward(page, "exit"));
     s = await getState(page);
   }
@@ -113,15 +113,29 @@ async function freshPage(browser, url, errors) {
   assert.ok(boardBox.height > boardBox.width * 0.95, "the canvas grows tall to fit the Hoplite-style board");
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "run overlay must not show on a fresh board");
 
+  // The legend re-explains itself at the start of a sector, and the ❓ Help
+  // button can bring it back after it steps out of the way. Test this with
+  // one manual step (not the auto-route below, which fires its own actions
+  // on a timer and would race a toggle check).
+  assert.strictEqual(await page.locator("#legend").isVisible(), true, "the legend is visible at the start of a sector");
+  assert.strictEqual(await page.locator("#helpBtn").isVisible(), true, "the Help toggle is always available");
+  await clickHex(page, "sublight", await pickStepToward(page, "exit"));
+  assert.strictEqual(await page.locator("#legend").isVisible(), false, "the legend steps out of the way once the first move happens");
+  await page.click("#helpBtn");
+  assert.strictEqual(await page.locator("#legend").isVisible(), true, "Help brings the legend back");
+  await page.click("#helpBtn");
+  assert.strictEqual(await page.locator("#legend").isVisible(), false, "Help hides it again");
+
   // The quickest-route preview: tap the far-away gate once to see the path,
-  // tap it again to fly the whole route (one real turn per step).
+  // tap it again to fly the rest of the route (one real turn per step).
+  s = await getState(page);
   await clickHex(page, "sublight", s.exitPos);
   await page.waitForFunction(() => window.__hhPlannedPath);
   const preview = await page.evaluate(() => window.__hhPlannedPath);
   assert.deepStrictEqual(preview.target, { q: 2, r: 0 }, "the preview targets the tapped hex");
-  assert.ok(preview.hexes.length > 4, "the previewed route spans the board");
+  assert.ok(preview.hexes.length > 2, "the previewed route spans the remaining board");
   await clickHex(page, "sublight", s.exitPos);
-  await page.waitForFunction(() => window.__hhState.status === "won", null, { timeout: 20000 });
+  await page.waitForFunction(() => window.__hhState.status === "won", null, { timeout: 30000 });
   s = await getState(page);
   assert.strictEqual(s.status, "won", "flying the previewed route clears Sector 1");
   await waitForOverlay(page);
@@ -147,7 +161,7 @@ async function freshPage(browser, url, errors) {
   );
 
   // Close in until Ramming Speed has a legal destination, then use it.
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 20; i++) {
     s = await getState(page);
     if (s.enemies.every((e) => !e.alive) || s.status !== "playing") break;
     const ram = await page.evaluate(() => {
@@ -177,7 +191,7 @@ async function freshPage(browser, url, errors) {
   await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2);
 
   s = await getState(page);
-  for (let i = 0; i < 14 && s.status === "playing"; i++) {
+  for (let i = 0; i < 20 && s.status === "playing"; i++) {
     const next = await page.evaluate(() => {
       const E = window.HypergolicEngine;
       const st = window.__hhState;
@@ -198,7 +212,7 @@ async function freshPage(browser, url, errors) {
   await page.waitForFunction(() => window.__hhState.status === "playing");
   s = await getState(page);
   assert.strictEqual(s.levelId, 1, "New Run resets the campaign to Sector 1");
-  assert.strictEqual(s.hull, 3);
+  assert.strictEqual(s.hull, 1);
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false);
   await page.close();
 

@@ -44,15 +44,18 @@
       <button disabled title="Post-MVP">Hyperjump</button>
     </div>
 
-    <p id="log" class="log"></p>
+    <div class="belowbar">
+      <button id="helpBtn" class="help-btn" title="Show/hide the legend" aria-label="Help">❓ Help</button>
+      <p id="log" class="log"></p>
+    </div>
 
-    <div class="legend">
+    <div class="legend" id="legend">
       <span>🚀 Your flagship</span>
       <span>👾 Enemy ship</span>
       <span>🌀 Warp Gate (exit)</span>
       <span>🛠️ Outpost</span>
-      <span><i class="swatch swatch-threat"></i> Danger — you take damage if you end your turn here</span>
-      <span><i class="swatch swatch-legal"></i> Where your selected action can go</span>
+      <span><i class="swatch swatch-threat"></i> Strike range — an enemy hits you if you end your turn here</span>
+      <span><i class="swatch swatch-legal"></i> Outlined hex — where your selected action can go</span>
       <span>✨ Tap a far-away hex to preview the quickest route — tap it again to fly there</span>
     </div>
   </main>
