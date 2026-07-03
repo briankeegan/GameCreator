@@ -507,15 +507,15 @@ function updateLegend() {
   helpBtn.classList.toggle("active", legendVisible);
 }
 
-// The Warpdrive/Pulse Cannon checkboxes and the Hold Position button (which
-// only makes sense — and only shows — once Warpdrive is toggled off, since
-// that's what blocks a plain move).
+// The Warpdrive/Pulse Cannon checkboxes and the Hold Position button —
+// always available (not just when Warpdrive is off), since holding position
+// on purpose to let an armed weapon fire without moving is a legitimate
+// choice any turn, not just a fallback when movement is blocked.
 function updateSystems() {
   toggleWarpdriveEl.checked = state.systems.warpdrive;
   toggleRamEl.checked = state.systems.ram;
   const unlocked = state.actions.includes("ramming");
   toggleRamEl.disabled = !unlocked;
-  holdBtn.hidden = state.systems.warpdrive;
   holdBtn.disabled = state.status !== "playing";
 
   // Read live off Engine.WEAPONS (rather than hardcoding text here) so the

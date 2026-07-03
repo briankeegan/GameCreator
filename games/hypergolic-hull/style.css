@@ -127,45 +127,102 @@ body {
   cursor: pointer;
 }
 
+/* Styled like a ship's systems console: a panel with its own bezel, toggle
+   switches instead of plain checkboxes, and an LCD-style readout — not just
+   a row of ordinary web-form controls. */
 .systems {
   flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 6px 14px;
+  gap: 8px 16px;
   max-width: 520px;
   width: 100%;
   margin: 8px auto 0;
+  padding: 8px 14px;
   font-size: 0.82rem;
   color: #9fb0c9;
+  background: linear-gradient(180deg, #17202f, #101724);
+  border: 1px solid #2a3652;
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .weapon-stats {
   flex: 0 0 auto;
   max-width: 520px;
   width: 100%;
-  margin: 2px auto 0;
-  font-size: 0.72rem;
-  color: #6c7d99;
+  margin: 4px auto 0;
+  padding: 3px 10px;
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  color: #7fe3a8;
+  background: #0b0f18;
+  border: 1px solid #1f2a3d;
+  border-radius: 6px;
 }
+
 .system-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   cursor: pointer;
 }
-.system-toggle input {
+
+/* A toggle switch with a glowing "pip" instead of a native checkbox — same
+   underlying <input type=checkbox>, just re-skinned. */
+.system-toggle input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 30px;
+  height: 16px;
+  margin: 0;
+  background: #1b2436;
+  border: 1px solid #2a3652;
+  border-radius: 999px;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
 }
+.system-toggle input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #6c7d99;
+  transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.system-toggle input[type="checkbox"]:checked {
+  background: #1f4d3a;
+  border-color: #7fe3a8;
+}
+.system-toggle input[type="checkbox"]:checked::after {
+  transform: translateX(14px);
+  background: #7fe3a8;
+  box-shadow: 0 0 6px #7fe3a8;
+}
+.system-toggle input[type="checkbox"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .hold-btn {
   background: #1b2436;
   color: #dbe4f2;
   border: 1px solid #2a3652;
-  padding: 6px 10px;
-  border-radius: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
   font-size: 0.8rem;
+  font-weight: 600;
   cursor: pointer;
+}
+.hold-btn:hover:not(:disabled) {
+  border-color: #5bb8f2;
 }
 .hold-btn:disabled {
   opacity: 0.4;

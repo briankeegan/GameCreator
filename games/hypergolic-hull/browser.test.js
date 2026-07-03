@@ -112,6 +112,11 @@ async function freshPage(browser, url, errors) {
     assert.ok((await page.locator(`[data-mode="${m}"]`).textContent()).startsWith("🔒"), `${m} shows its padlock`);
   }
   assert.strictEqual(await page.locator("#toggleRam").isDisabled(), true, "the Pulse Cannon toggle is locked in Sector 1");
+  assert.strictEqual(
+    await page.locator("#holdBtn").isVisible(),
+    true,
+    "Hold Position is always available, not just when Warpdrive is off"
+  );
   const boardBox = await page.locator("#board").boundingBox();
   assert.ok(boardBox.height > boardBox.width * 0.95, "the canvas grows tall to fit the Hoplite-style board");
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "run overlay must not show on a fresh board");
@@ -186,11 +191,12 @@ async function freshPage(browser, url, errors) {
     st.facing = E.directionIndex(st.playerPos, enemy);
   });
 
-  // Warpdrive off blocks movement — Hold Position is the only option. Flip
-  // the Pulse Cannon back on and hold position to fire it without moving.
+  // Warpdrive off blocks movement — Hold Position is the only option (it's
+  // always available, on top of that). Flip the Pulse Cannon back on and
+  // hold position to fire it without moving.
   await page.check("#toggleRam");
   await page.uncheck("#toggleWarpdrive");
-  assert.strictEqual(await page.locator("#holdBtn").isVisible(), true, "Hold Position appears once Warpdrive is off");
+  assert.strictEqual(await page.locator("#holdBtn").isVisible(), true, "Hold Position is available");
   const posBeforeHold = (await getState(page)).playerPos;
   await page.click("#holdBtn");
   s = await getState(page);
