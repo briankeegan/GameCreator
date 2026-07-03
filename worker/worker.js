@@ -10,7 +10,8 @@
 //   { action: "resolve", game }                          — public: which Issue is this game's thread?
 //   { action: "verify",  game, secret }                  — is the secret word right?
 //   { action: "post",    game, name, secret, message }    — post a message to the thread
-//   { action: "admin-upsert", adminToken, game, name, secretWord, issueNumber } — add/update a game
+//   { action: "admin-upsert", adminToken, game, name, secretWord, issueNumber? } — add/update a game;
+//     issueNumber is optional — omit it to have the Worker create the Issue for you
 //   { action: "admin-remove",  adminToken, game }         — remove a game
 //   { action: "admin-list",    adminToken }               — list configured games (secrets redacted)
 //
@@ -84,14 +85,48 @@ export default {
       if (payload.action === "admin-upsert") {
         const gameId = String(payload.game || "").trim();
         if (!gameId) return json(400, { error: "missing game id" });
-        const config = {
-          name: String(payload.name || gameId),
-          secretWord: String(payload.secretWord || ""),
-          issueNumber: Number(payload.issueNumber),
-        };
-        if (!config.secretWord || !config.issueNumber) {
-          return json(400, { error: "secretWord and issueNumber are required" });
+        const name = String(payload.name || gameId);
+        const secretWord = String(payload.secretWord || "");
+        if (!secretWord) return json(400, { error: "secretWord is required" });
+
+        // An explicit issueNumber wins (lets you point at an existing
+        // Issue). Otherwise reuse whatever thread this game already has, so
+        // re-saving to change the secret word doesn't spawn a new Issue
+        // every time. Only a genuinely new game gets one created here.
+        let issueNumber = Number(payload.issueNumber) || 0;
+        if (!issueNumber) {
+          const existing = await loadGame(env, gameId);
+          issueNumber = existing ? existing.issueNumber : 0;
         }
+        if (!issueNumber) {
+          const issueRes = await fetch(`https://api.github.com/repos/${env.REPO}/issues`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+              Accept: "application/vnd.github+json",
+              "User-Agent": "gamecreator-clubhouse-relay",
+              "X-GitHub-Api-Version": "2022-11-28",
+            },
+            body: JSON.stringify({
+              title: `Clubhouse — ${name}`,
+              body:
+                `This issue IS the chat thread for "${name}" — its comments are the messages, ` +
+                `relayed through the shared Worker.\n\nKeep this issue open — it's infrastructure, not a bug report.`,
+            }),
+          });
+          if (!issueRes.ok) {
+            let detail = "";
+            try {
+              const body = await issueRes.json();
+              detail = body.message ? ` — ${body.message}` : "";
+            } catch {}
+            return json(502, { error: `couldn't create the chat Issue: ${issueRes.status}${detail}` });
+          }
+          const issueData = await issueRes.json();
+          issueNumber = issueData.number;
+        }
+
+        const config = { name, secretWord, issueNumber };
         await env.GAMES_KV.put(`game:${gameId}`, JSON.stringify(config));
         return json(200, { ok: true, game: gameId, config });
       }

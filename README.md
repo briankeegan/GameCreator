@@ -20,9 +20,10 @@ shared/                         — the reusable layer every game plugs into, un
 games/
   _template/                    — copy this to start a new game
   sample-clicker/                — a tiny working demo, proves the whole scaffold end to end
+admin/                           — game/chat management UI (passkey-gated, talks to the Worker)
 worker/
   worker.js, wrangler.jsonc      — the one shared Cloudflare Worker that relays chat messages
-  manage-games.sh                — add/update/list games' chat config without touching Cloudflare
+  manage-games.sh                — CLI alternative to the admin page
   SETUP.md                       — one-time setup (only needs doing once, ever)
 ```
 
@@ -39,21 +40,24 @@ worker/
    SVG instead of PNG, and how to use real PNGs instead if you want them).
 4. Add one entry to root `games.json` (id, name, tagline, icon path). That's
    what makes it show up on the landing page.
-5. Give it a chat thread: create a GitHub Issue in this repo titled after the
-   game, then run `worker/manage-games.sh add <your-game-id> "<Display Name>" <secret-word> <issue-number>`.
-   This is a live API call to the already-deployed shared Worker — **no
-   Cloudflare dashboard visit, no redeploy.** That's the only step that isn't
-   just editing files in this repo.
+5. Give it a chat thread: open the **Admin** page on the live site (linked
+   from the landing page), enter the game id / display name / secret word,
+   and save — the Worker creates the GitHub Issue (the thread) for you
+   automatically the first time. (`worker/manage-games.sh` does the same
+   thing from a terminal if you'd rather.) Either way it's a live API call
+   to the already-deployed shared Worker — **no Cloudflare dashboard visit,
+   no redeploy.** That's the only step that isn't just editing files in this
+   repo.
 6. Commit, push. GitHub Pages serves the new game automatically.
 
 That's the whole add-a-game loop — one new folder, one registry line, one
-`manage-games.sh` call.
+form submit.
 
 ## Why one shared Worker
 
 Every game's chat relays through the same Cloudflare Worker. The Worker
 looks up each game's secret word and GitHub Issue number in a small KV
 store, keyed by game id — so adding, renaming, or re-keying a game's chat is
-a single authenticated API call (`manage-games.sh`), not a Worker code
-change. The Worker itself only needs deploying once, ever (see
-`worker/SETUP.md`).
+a single authenticated API call (the admin page, or `manage-games.sh`), not
+a Worker code change. The Worker itself only needs deploying once, ever
+(see `worker/SETUP.md`).

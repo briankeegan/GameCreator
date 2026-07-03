@@ -19,7 +19,6 @@ const eyeClosed = document.getElementById("eyeClosed");
 const gameIdInput = document.getElementById("gameIdInput");
 const gameNameInput = document.getElementById("gameNameInput");
 const secretWordInput = document.getElementById("secretWordInput");
-const issueNumberInput = document.getElementById("issueNumberInput");
 const upsertBtn = document.getElementById("upsertBtn");
 const upsertStatusEl = document.getElementById("upsertStatus");
 
@@ -164,7 +163,10 @@ function renderGames(games) {
     const removeBtn = document.createElement("button");
     removeBtn.textContent = "Remove";
     removeBtn.addEventListener("click", () => removeGame(g.game));
-    tr.innerHTML = `<td>${g.game}</td><td>${g.name || ""}</td><td>#${g.issueNumber || "?"}</td>`;
+    const issueCell = g.issueNumber
+      ? `<a href="https://github.com/briankeegan/GameCreator/issues/${g.issueNumber}" target="_blank" rel="noopener">#${g.issueNumber}</a>`
+      : "?";
+    tr.innerHTML = `<td>${g.game}</td><td>${g.name || ""}</td><td>${issueCell}</td>`;
     const actionTd = document.createElement("td");
     actionTd.appendChild(removeBtn);
     tr.appendChild(actionTd);
@@ -195,20 +197,18 @@ upsertBtn.addEventListener("click", () => {
   const game = gameIdInput.value.trim();
   const name = gameNameInput.value.trim();
   const secretWord = secretWordInput.value.trim();
-  const issueNumber = Number(issueNumberInput.value);
-  if (!game || !name || !secretWord || !issueNumber) {
-    setStatus(upsertStatusEl, "Fill in all four fields.", "error");
+  if (!game || !name || !secretWord) {
+    setStatus(upsertStatusEl, "Fill in all three fields.", "error");
     return;
   }
   upsertBtn.disabled = true;
-  setStatus(upsertStatusEl, "Saving…");
-  callAdmin({ action: "admin-upsert", game, name, secretWord, issueNumber })
-    .then(() => {
-      setStatus(upsertStatusEl, `Saved "${game}".`, "ok");
+  setStatus(upsertStatusEl, "Saving… (creating its chat thread if it doesn't have one yet)");
+  callAdmin({ action: "admin-upsert", game, name, secretWord })
+    .then((data) => {
+      setStatus(upsertStatusEl, `Saved "${game}" — thread #${data.config.issueNumber}.`, "ok");
       gameIdInput.value = "";
       gameNameInput.value = "";
       secretWordInput.value = "";
-      issueNumberInput.value = "";
       refreshList();
     })
     .catch((err) => setStatus(upsertStatusEl, err.message, "error"))

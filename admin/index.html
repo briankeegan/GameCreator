@@ -51,9 +51,10 @@
     <section class="admin-card">
       <h2>Add / update a game's chat</h2>
       <p class="admin-hint">
-        Create the game's GitHub Issue first (<a href="https://github.com/briankeegan/GameCreator/issues/new" target="_blank" rel="noopener">new issue</a>),
-        note its number, then fill this in. Re-running with the same game id
-        updates it (e.g. to change the secret word).
+        Saving creates the chat thread automatically (a GitHub Issue) the
+        first time — nothing to create by hand. Re-running with the same
+        game id updates it (e.g. to change the secret word) without making
+        a new thread.
       </p>
       <label>Game id <span class="admin-note">(matches the folder in games/ and the id in games.json)</span>
         <input id="gameIdInput" type="text" placeholder="sample-clicker" />
@@ -63,9 +64,6 @@
       </label>
       <label>Secret word
         <input id="secretWordInput" type="text" placeholder="pinkunicorn" />
-      </label>
-      <label>GitHub Issue number
-        <input id="issueNumberInput" type="number" min="1" placeholder="1" />
       </label>
       <div class="admin-actions">
         <button id="upsertBtn">Save game</button>
