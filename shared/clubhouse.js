@@ -616,11 +616,9 @@ messageInput.addEventListener("input", function () {
 });
 
 // ---- image attachment ----
-// Uploads straight to imgur's anonymous API from the browser — no server of
-// our own involved, so no repo bloat and no Worker changes. The Client-ID
-// below is a public app identifier (not a secret) and is safe to ship
-// client-side; imgur's anonymous-upload flow is designed around that.
-var IMGUR_CLIENT_ID = "YOUR_IMGUR_CLIENT_ID";
+// Uploads straight to catbox.moe's anonymous API from the browser — no
+// server of our own involved (no repo bloat, no Worker changes), and no
+// account or app registration needed at all.
 var attachBtn = document.getElementById("attachBtn");
 var imageInput = document.getElementById("imageInput");
 
@@ -635,16 +633,22 @@ imageInput.addEventListener("change", function () {
   attachBtn.disabled = true;
   attachBtn.textContent = "…";
   var form = new FormData();
-  form.append("image", file);
-  fetch("https://api.imgur.com/3/image", {
+  form.append("reqtype", "fileupload");
+  form.append("fileToUpload", file);
+  fetch("https://catbox.moe/user/api.php", {
     method: "POST",
-    headers: { Authorization: "Client-ID " + IMGUR_CLIENT_ID },
     body: form,
   })
-    .then(function (res) { return res.json(); })
-    .then(function (data) {
-      if (!data.success) throw new Error((data.data && data.data.error) || "upload failed");
-      var markdown = "![image](" + data.data.link + ")";
+    .then(function (res) {
+      return res.text().then(function (body) { return { ok: res.ok, body: body.trim() }; });
+    })
+    .then(function (r) {
+      // A successful upload's response body IS the URL, no wrapper JSON —
+      // anything that isn't a URL is catbox's plain-text error message.
+      if (!r.ok || !/^https?:\/\//.test(r.body)) {
+        throw new Error(r.body || "upload failed");
+      }
+      var markdown = "![image](" + r.body + ")";
       var sep = messageInput.value && !/\n$/.test(messageInput.value) ? "\n\n" : "";
       messageInput.value += sep + markdown;
       messageInput.dispatchEvent(new Event("input"));
