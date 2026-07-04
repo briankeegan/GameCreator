@@ -40,16 +40,15 @@ const ramLabelLegendEl = document.getElementById("ramLabelLegend");
 const weaponStatsEl = document.getElementById("weaponStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
 
-// Everything on the board is an emoji sprite so the pieces read at a glance
-// (see the legend under the action buttons).
+// The flagship and Interceptors are custom-drawn vector ships (see
+// drawPlayerShip/drawEnemyShip below) — everything else on the board stays
+// a plain emoji sprite so the pieces still read at a glance (see the legend
+// under the action buttons).
 const SPRITES = {
-  player: "🚀",
-  interceptor: "👾",
   fighters: "🛩️",
   gateLocked: "🔒",
   gateOnline: "🌀",
   outpost: "🛠️",
-  boom: "💥",
 };
 
 const LEVELS = HypergolicLevels.LEVELS;
@@ -92,8 +91,7 @@ const DIR_ANGLES = Engine.DIRECTIONS.map((d) => {
   const dy = HEX_RATIO * 1.5 * d.r;
   return (Math.atan2(dy, dx) * 180) / Math.PI;
 });
-const ROCKET_BASE_ANGLE = -45; // the 🚀 glyph's own default heading (upper-right) in most fonts
-let shipAngle = -90; // start facing "up", toward the gate
+let shipAngle = -90; // start facing "up", toward the gate; the custom ship shape is drawn nose-right at angle 0
 
 // Continuous version of the DIR_ANGLES lookup above (which only covers the
 // 6 adjacent-hex directions) — a weapon should aim straight at its actual
@@ -181,7 +179,7 @@ function scheduleAnims(events) {
   const now = performance.now();
   for (const ev of events) {
     if (ev.type === "kill") {
-      anims.push({ kind: "boom", pos: ev, start: now, dur: 450 });
+      anims.push({ kind: "boom", pos: ev, start: now, dur: 450, particles: makeExplosionParticles(9) });
       // A weapon's kill always comes after any playerMove event this same
       // turn, so this correctly overrides the movement-direction facing
       // above with "aim straight at what you just fired on" instead.
@@ -198,7 +196,7 @@ function scheduleAnims(events) {
       const dir = Engine.directionIndex(ev.from, ev.to);
       if (dir >= 0) shipAngle = DIR_ANGLES[dir];
     }
-    else if (ev.type === "playerDeath") anims.push({ kind: "boom", pos: ev, start: now, dur: 650 });
+    else if (ev.type === "playerDeath") anims.push({ kind: "boom", pos: ev, start: now, dur: 650, particles: makeExplosionParticles(16) });
   }
   if (anims.length) requestAnimationFrame(tickAnims);
 }
@@ -258,6 +256,230 @@ function drawSprite(center, glyph, size, alpha) {
   ctx.fillStyle = "#dbe4f2";
   ctx.fillText(glyph, center.x, center.y + 1);
   ctx.restore();
+}
+
+// ---- custom-drawn ships (no emoji) ----------------------------------------
+// Both ships are authored nose-right (pointing along +x) at rotation 0, so
+// callers just ctx.translate to the ship's center and ctx.rotate to its
+// facing in degrees before calling these — no glyph-specific angle offset
+// needed, unlike the emoji sprites these replaced.
+
+// A tiny deterministic PRNG seeded from a string id, so a ship's crack
+// pattern is stable frame-to-frame (Math.random() here would make the
+// cracks flicker into new positions every repaint) but still differs per
+// ship instance.
+function seededRandom(seed) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (Math.imul(h, 31) + seed.charCodeAt(i)) | 0;
+  return function next() {
+    h = (Math.imul(h, 1103515245) + 12345) | 0;
+    return ((h >>> 0) % 100000) / 100000;
+  };
+}
+
+const crackCache = new Map();
+function crackSpecsFor(seed) {
+  if (crackCache.has(seed)) return crackCache.get(seed);
+  const rng = seededRandom(seed);
+  const specs = [];
+  for (let i = 0; i < 6; i++) {
+    specs.push({ angle: rng() * Math.PI * 2, len: 0.22 + rng() * 0.3, spread: 0.4 + rng() * 0.5 });
+  }
+  crackCache.set(seed, specs);
+  return specs;
+}
+
+// Damage cracks fan out from the ship's center, more of them (and darker)
+// the lower hpFrac gets — called inside the same rotated/translated space
+// as the hull itself, so the pattern rides along with the ship.
+function drawCracks(size, hpFrac, seed) {
+  const damage = 1 - hpFrac;
+  if (damage <= 0.02) return;
+  const specs = crackSpecsFor(seed);
+  const visible = Math.max(1, Math.round(damage * specs.length));
+  ctx.save();
+  ctx.strokeStyle = `rgba(10,8,10,${0.45 + 0.4 * damage})`;
+  ctx.lineWidth = Math.max(1, size * 0.035);
+  ctx.lineCap = "round";
+  for (let i = 0; i < visible; i++) {
+    const s = specs[i];
+    const cx = Math.cos(s.angle) * size * 0.12;
+    const cy = Math.sin(s.angle) * size * 0.12;
+    const mx = cx + Math.cos(s.angle + s.spread) * size * s.len;
+    const my = cy + Math.sin(s.angle + s.spread) * size * s.len;
+    const ex = mx + Math.cos(s.angle - s.spread * 0.6) * size * s.len * 0.5;
+    const ey = my + Math.sin(s.angle - s.spread * 0.6) * size * s.len * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(mx, my);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// The flagship: a sleek warm-gold fighter with twin gunmetal wings and a
+// bright cyan engine core (thrustFrac > 0 while it's actually mid-move).
+function drawPlayerShip(size, thrustFrac, hpFrac) {
+  ctx.save();
+
+  if (thrustFrac > 0) {
+    const flame = ctx.createLinearGradient(-size * 0.55, 0, -size * (1.1 + 0.5 * thrustFrac), 0);
+    flame.addColorStop(0, `rgba(200,240,255,${0.85 * thrustFrac})`);
+    flame.addColorStop(1, "rgba(80,180,230,0)");
+    ctx.fillStyle = flame;
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.5, -size * 0.13);
+    ctx.lineTo(-size * (1.1 + 0.5 * thrustFrac), 0);
+    ctx.lineTo(-size * 0.5, size * 0.13);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Wings first (they sit behind the fuselage).
+  ctx.fillStyle = "#3d4756";
+  ctx.beginPath();
+  ctx.moveTo(-size * 0.08, -size * 0.22);
+  ctx.lineTo(-size * 0.78, -size * 0.58);
+  ctx.lineTo(-size * 0.5, -size * 0.15);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-size * 0.08, size * 0.22);
+  ctx.lineTo(-size * 0.78, size * 0.58);
+  ctx.lineTo(-size * 0.5, size * 0.15);
+  ctx.closePath();
+  ctx.fill();
+
+  const bodyGrad = ctx.createLinearGradient(-size * 0.55, -size * 0.3, size * 0.95, size * 0.3);
+  bodyGrad.addColorStop(0, "#8a5a2e");
+  bodyGrad.addColorStop(0.55, "#e08a3e");
+  bodyGrad.addColorStop(1, "#ffd9a0");
+  ctx.beginPath();
+  ctx.moveTo(size * 0.95, 0);
+  ctx.lineTo(size * 0.25, -size * 0.28);
+  ctx.lineTo(-size * 0.35, -size * 0.22);
+  ctx.lineTo(-size * 0.55, -size * 0.09);
+  ctx.lineTo(-size * 0.55, size * 0.09);
+  ctx.lineTo(-size * 0.35, size * 0.22);
+  ctx.lineTo(size * 0.25, size * 0.28);
+  ctx.closePath();
+  ctx.fillStyle = bodyGrad;
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, size * 0.045);
+  ctx.strokeStyle = "#2a1a0d";
+  ctx.stroke();
+
+  // Cockpit.
+  ctx.fillStyle = "#bfe3ff";
+  ctx.beginPath();
+  ctx.ellipse(size * 0.35, 0, size * 0.13, size * 0.085, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Engine glow.
+  const glow = ctx.createRadialGradient(-size * 0.5, 0, 0, -size * 0.5, 0, size * (0.24 + 0.1 * thrustFrac));
+  glow.addColorStop(0, "rgba(190,245,255,0.95)");
+  glow.addColorStop(0.55, "rgba(70,180,230,0.55)");
+  glow.addColorStop(1, "rgba(70,180,230,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(-size * 0.5, 0, size * (0.24 + 0.1 * thrustFrac), 0, Math.PI * 2);
+  ctx.fill();
+
+  drawCracks(size, hpFrac, "player");
+  ctx.restore();
+}
+
+// An Interceptor: a dark, angular hostile drone with a glowing red core and
+// bladed wings, oriented to always point at the flagship.
+function drawEnemyShip(size, hpFrac, crackSeed) {
+  ctx.save();
+
+  ctx.fillStyle = "#5c2f6e";
+  ctx.beginPath();
+  ctx.moveTo(-size * 0.05, -size * 0.16);
+  ctx.lineTo(-size * 0.62, -size * 0.55);
+  ctx.lineTo(-size * 0.35, -size * 0.1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-size * 0.05, size * 0.16);
+  ctx.lineTo(-size * 0.62, size * 0.55);
+  ctx.lineTo(-size * 0.35, size * 0.1);
+  ctx.closePath();
+  ctx.fill();
+
+  const bodyGrad = ctx.createLinearGradient(-size * 0.55, 0, size * 0.7, 0);
+  bodyGrad.addColorStop(0, "#150a1c");
+  bodyGrad.addColorStop(0.55, "#3d2050");
+  bodyGrad.addColorStop(1, "#6b3782");
+  ctx.beginPath();
+  ctx.moveTo(size * 0.7, 0);
+  ctx.lineTo(-size * 0.2, -size * 0.48);
+  ctx.lineTo(-size * 0.55, -size * 0.16);
+  ctx.lineTo(-size * 0.55, size * 0.16);
+  ctx.lineTo(-size * 0.2, size * 0.48);
+  ctx.closePath();
+  ctx.fillStyle = bodyGrad;
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, size * 0.045);
+  ctx.strokeStyle = "#0a0512";
+  ctx.stroke();
+
+  // Glowing hostile core.
+  const core = ctx.createRadialGradient(size * 0.12, 0, 0, size * 0.12, 0, size * 0.22);
+  core.addColorStop(0, "rgba(255,130,100,0.95)");
+  core.addColorStop(0.6, "rgba(200,50,40,0.6)");
+  core.addColorStop(1, "rgba(200,50,40,0)");
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(size * 0.12, 0, size * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+
+  drawCracks(size, hpFrac, crackSeed);
+  ctx.restore();
+}
+
+// A radiating debris + fireball burst, replacing the old scaling 💥 emoji.
+// `particles` is generated once when the anim is scheduled (see
+// scheduleAnims) so the burst pattern is fixed for its whole lifetime
+// instead of reshuffling every frame.
+function drawExplosion(center, p, particles, maxSize) {
+  ctx.save();
+  const coreAlpha = 1 - p * p;
+  const coreR = maxSize * (0.25 + 0.55 * p);
+  const grad = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, coreR);
+  grad.addColorStop(0, `rgba(255,240,200,${coreAlpha})`);
+  grad.addColorStop(0.4, `rgba(255,150,60,${coreAlpha * 0.8})`);
+  grad.addColorStop(1, "rgba(200,40,20,0)");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, coreR, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = `rgba(255,205,130,${1 - p})`;
+  ctx.lineWidth = Math.max(1, maxSize * 0.06 * (1 - p));
+  ctx.lineCap = "round";
+  for (const part of particles) {
+    const dist = maxSize * part.speed * p * 1.6;
+    const x1 = center.x + Math.cos(part.angle) * dist;
+    const y1 = center.y + Math.sin(part.angle) * dist;
+    const x2 = x1 + Math.cos(part.angle) * maxSize * part.len;
+    const y2 = y1 + Math.sin(part.angle) * maxSize * part.len;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function makeExplosionParticles(count) {
+  const particles = [];
+  for (let i = 0; i < count; i++) {
+    particles.push({ angle: Math.random() * Math.PI * 2, speed: 0.4 + Math.random() * 0.5, len: 0.12 + Math.random() * 0.2 });
+  }
+  return particles;
 }
 
 function draw() {
@@ -395,7 +617,12 @@ function draw() {
       }
       ctx.stroke();
     }
-    drawSprite(overrides.get(enemy.id) || base, SPRITES[enemy.type] || SPRITES.interceptor, geom.sx * 0.69);
+    const center = overrides.get(enemy.id) || base;
+    ctx.save();
+    ctx.translate(center.x, center.y);
+    ctx.rotate((angleToward(enemy, state.playerPos) * Math.PI) / 180);
+    drawEnemyShip(geom.sx * 0.62, enemy.hp / enemy.maxHp, enemy.id);
+    ctx.restore();
   }
 
   if (state.fighterHex) {
@@ -421,8 +648,8 @@ function draw() {
     }
     ctx.save();
     ctx.translate(shipCenter.x, shipCenter.y);
-    ctx.rotate(((shipAngle - ROCKET_BASE_ANGLE) * Math.PI) / 180);
-    drawSprite({ x: 0, y: 0 }, SPRITES.player, geom.sx * 0.75);
+    ctx.rotate((shipAngle * Math.PI) / 180);
+    drawPlayerShip(geom.sx * 0.72, pslide ? 1 - Math.abs(animProgress(pslide, now) - 0.5) * 2 : 0, state.hull / state.maxHull);
     ctx.restore();
   }
 
@@ -430,7 +657,7 @@ function draw() {
   for (const a of anims) {
     if (a.kind !== "boom" || now >= a.start + a.dur) continue;
     const p = animProgress(a, now);
-    drawSprite(hexToPixel(a.pos), SPRITES.boom, geom.sx * (0.6 + 0.7 * p), 1 - p * p);
+    drawExplosion(hexToPixel(a.pos), p, a.particles, geom.sx * 0.9);
   }
 
   ctx.restore();
@@ -588,7 +815,7 @@ function updateEnemyInfo() {
     hpPips.appendChild(pip);
   }
   const name = document.createElement("span");
-  name.textContent = `${SPRITES[enemy.type] || SPRITES.interceptor} ${enemy.type.toUpperCase()}`;
+  name.textContent = enemy.type.toUpperCase();
   header.appendChild(name);
   header.appendChild(hpPips);
   enemyInfoEl.appendChild(header);
