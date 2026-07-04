@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("trace-v2", [
+GCRegisterServiceWorker("trace-v3", [
   "./",
   "./index.html",
   "./style.css",
@@ -13,8 +13,9 @@ GCRegisterServiceWorker("trace-v2", [
   "../../shared/storage.js",
   "./icons/icon.svg",
   "./icons/cat.png",
-  "./icons/player.png",
   "./icons/pin-avocado.png",
   "./icons/pin-star.png",
   "./icons/pin-paw.png",
+  "./icons/pin-fish.png",
+  "./icons/pin-yarn.png",
 ]);

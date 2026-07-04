@@ -20,32 +20,47 @@
 
   <main class="game-area" id="gameArea">
     <div class="hud" id="hud">
-      <div class="stat"><span class="stat-label">Level</span><span class="stat-value" id="levelValue">1</span></div>
-      <div class="stat"><span class="stat-label">Pins</span><span class="stat-value" id="pinsValue">0/0</span></div>
-      <div class="stat"><span class="stat-label">Score</span><span class="stat-value" id="scoreValue">0</span></div>
-      <div class="stat"><span class="stat-label">Best</span><span class="stat-value" id="bestValue">0</span></div>
+      <div class="score-card you">
+        <span class="score-who">You</span>
+        <span class="score-num" id="youScore">0</span>
+      </div>
+      <div class="wake">
+        <span class="wake-label">Wake risk</span>
+        <span class="wake-num" id="wakeValue">25%</span>
+        <span class="wake-sub" id="bestLine">Best 0</span>
+      </div>
+      <div class="score-card cat">
+        <span class="score-who">Cat</span>
+        <span class="score-num" id="catScore">0</span>
+      </div>
     </div>
 
-    <p class="ticker" id="ticker">Reach the door — grab your pins, mind the cat.</p>
-
-    <div class="board-wrap">
-      <div class="board" id="board"></div>
-      <div class="level-flash" id="levelFlash" hidden></div>
+    <div class="stage">
+      <div class="cat-perch">
+        <img class="sleeping-cat" id="sleepingCat" src="icons/cat.png" alt="the sleeping cat" draggable="false" />
+        <span class="zzz">z z z</span>
+      </div>
+      <div class="display" id="display"></div>
     </div>
 
-    <div class="controls" id="controls">
-      <button class="dpad-btn dpad-up" id="btnUp" aria-label="Up">▲</button>
-      <button class="dpad-btn dpad-left" id="btnLeft" aria-label="Left">◄</button>
-      <button class="dpad-btn dpad-wait" id="btnWait" aria-label="Wait">WAIT</button>
-      <button class="dpad-btn dpad-right" id="btnRight" aria-label="Right">►</button>
-      <button class="dpad-btn dpad-down" id="btnDown" aria-label="Down">▼</button>
+    <p class="ticker" id="ticker">Draft a pin — the one on the cat is worth double.</p>
+
+    <div class="trays">
+      <div class="tray tray-you">
+        <span class="tray-label">Your collection</span>
+        <div class="tray-pins" id="youPins"></div>
+      </div>
+      <div class="tray tray-cat">
+        <span class="tray-label">Cat's collection</span>
+        <div class="tray-pins" id="catPins"></div>
+      </div>
     </div>
 
     <div class="run-overlay" id="runOverlay" hidden>
       <div class="run-overlay-card">
-        <h2 id="overlayTitle">You stepped on the cat!</h2>
+        <h2 id="overlayTitle"></h2>
         <p id="overlayBody"></p>
-        <button id="restartBtn">New Run</button>
+        <button id="restartBtn">New Game</button>
       </div>
     </div>
   </main>

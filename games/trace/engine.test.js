@@ -1,11 +1,10 @@
-// engine.test.js — headless rules coverage for "Step in the Cat".
-// Plain Node, no framework: `node games/trace/engine.test.js`.
+// engine.test.js — headless rules coverage for the "Step in the Cat" pin
+// draft. Plain Node: `node games/trace/engine.test.js`.
 "use strict";
 
 const assert = require("assert");
 const Engine = require("./engine.js");
 
-// Deterministic rng for reproducible level generation / cat wander.
 function seeded(seed) {
   let s = seed >>> 0;
   return function () {
@@ -14,141 +13,110 @@ function seeded(seed) {
   };
 }
 
-// ---------------------------------------------------------------------
-// A fresh game starts on level 1, playing, with a sensible board.
-// ---------------------------------------------------------------------
+// ---- set scoring is triangular --------------------------------------
+assert.strictEqual(Engine.tri(0), 0);
+assert.strictEqual(Engine.tri(1), 1);
+assert.strictEqual(Engine.tri(2), 3);
+assert.strictEqual(Engine.tri(3), 6);
+assert.strictEqual(Engine.tri(4), 10);
+assert.strictEqual(
+  Engine.score({ avocado: 3, star: 2, paw: 0, fish: 0, yarn: 0 }),
+  6 + 3,
+  "score sums each set's triangular value"
+);
+
+// ---- a fresh game deals a full spread and empty collections ----------
 const g = Engine.createGame(seeded(1));
 assert.strictEqual(g.status, "playing");
-assert.strictEqual(g.level, 1);
-assert.strictEqual(g.score, 0);
-assert.strictEqual(g.W, 5);
-assert.strictEqual(g.H, 6, "level 1 is 6 rows tall");
-assert.deepStrictEqual(g.player, { r: 5, c: 2 }, "player starts bottom-center");
-assert.deepStrictEqual(g.exit, { r: 0, c: 2 }, "exit is top-center");
-assert.ok(g.cats.length === 1, "level 1 has a single cat");
-assert.ok(g.pins.length >= 4, "level 1 has a handful of pins");
-assert.ok(g.pinTarget >= 1 && g.pinTarget <= g.pins.length, "target is collectable");
-assert.ok(
-  g.cats.every((cat) => Engine.manhattan(cat, g.player) >= 3),
-  "no cat opens within pouncing distance of the player"
+assert.strictEqual(g.display.length, Engine.DISPLAY_SIZE, "five pins on show");
+assert.strictEqual(
+  g.deck.length,
+  Engine.PIN_TYPES.length * Engine.COPIES_PER_TYPE - Engine.DISPLAY_SIZE,
+  "the rest are in the deck"
 );
-assert.ok(
-  g.cats.every((cat) => Engine.inBounds(g, cat.next.r, cat.next.c)),
-  "every cat telegraphs an in-bounds next step"
+assert.ok(g.display[0].onCat, "the front pin sits on the cat");
+assert.ok(g.display.slice(1).every((p) => !p.onCat), "only the front pin is on the cat");
+assert.strictEqual(Engine.score(g.you), 0);
+assert.strictEqual(Engine.score(g.cat), 0);
+
+// ---- drafting a plain pin: you gain it, the cat responds, spread refills
+const plain = Engine.createGame(seeded(2));
+const idx = plain.display.findIndex((p) => !p.onCat); // a non-cat pin
+const takenType = plain.display[idx].type;
+const deckBefore = plain.deck.length;
+Engine.draft(plain, idx, seeded(2));
+assert.strictEqual(plain.you[takenType], 1, "you collected the pin you tapped");
+const catTotal = Object.values(plain.cat).reduce((a, b) => a + b, 0);
+assert.ok(catTotal === 1 || catTotal === 2, "the cat drafted one pin (2 count if it grabbed the double)");
+assert.strictEqual(plain.display.length, Engine.DISPLAY_SIZE, "the spread refilled to five");
+assert.strictEqual(plain.deck.length, deckBefore - 2, "two pins left the deck (yours + the cat's)");
+
+// ---- the on-cat pin is worth double ---------------------------------
+const dbl = Engine.createGame(seeded(3));
+const catType = dbl.display[0].type;
+// A seed whose first roll doesn't wake the cat, so we can observe the double.
+Engine.draft(dbl, 0, () => 0.99);
+assert.strictEqual(dbl.you[catType], 2, "the on-cat pin counts as two of its type");
+assert.ok(dbl.napChance > 0, "grabbing it raised the wake risk");
+
+// ---- waking the cat ends the game immediately -----------------------
+const wake = Engine.createGame(seeded(4));
+const wokeType = wake.display[0].type;
+Engine.draft(wake, 0, () => 0); // roll 0 < 0.25 → wakes
+assert.strictEqual(wake.status, "over");
+assert.ok(wake.woke, "the cat woke");
+assert.strictEqual(wake.you[wokeType], 2, "you still keep the double pin you grabbed");
+assert.match(wake.message, /woke the cat/i);
+// No acting after it's over.
+const overType = wake.display.length ? wake.display[0].type : null;
+Engine.draft(wake, 0, () => 0.99);
+assert.strictEqual(wake.status, "over", "the game stays over");
+void overType;
+
+// ---- the cat plays to build its own sets ----------------------------
+// Give the cat a big head start in one type and confirm it stacks it when
+// that pin is on offer.
+const ai = Engine.createGame(seeded(5));
+ai.cat = { avocado: 3, star: 0, paw: 0, fish: 0, yarn: 0 };
+ai.display = [
+  { type: "star", onCat: false },
+  { type: "avocado", onCat: false },
+  { type: "paw", onCat: false },
+];
+assert.strictEqual(
+  ai.display[Engine.catChoose(ai)].type,
+  "avocado",
+  "the cat extends the set it's already deep in"
 );
 
-// ---------------------------------------------------------------------
-// Off-board moves are ignored and never burn a turn.
-// ---------------------------------------------------------------------
-const noop = Engine.createGame(seeded(2));
-const beforeTurn = noop.turn;
-const beforePos = { ...noop.player };
-Engine.move(noop, "down", seeded(2)); // player is on the bottom row already
-assert.strictEqual(noop.turn, beforeTurn, "an illegal move doesn't advance the turn");
-assert.deepStrictEqual(noop.player, beforePos, "an illegal move doesn't move the player");
-
-// ---------------------------------------------------------------------
-// Stepping onto a cat's cell loses immediately.
-// ---------------------------------------------------------------------
-const step = Engine.createGame(seeded(3));
-// Plant a cat directly above the player and walk up into it.
-step.cats = [{ r: step.player.r - 1, c: step.player.c, next: { r: step.player.r - 1, c: step.player.c } }];
-Engine.move(step, "up", seeded(3));
-assert.strictEqual(step.status, "lost");
-assert.match(step.message, /stepped on the cat/i);
-// Once lost, further moves are inert.
-const lostTurn = step.turn;
-Engine.move(step, "left", seeded(3));
-assert.strictEqual(step.turn, lostTurn, "no acting after a loss");
-
-// ---------------------------------------------------------------------
-// A cat that pounces onto your step also loses (telegraph resolves after
-// the player's move).
-// ---------------------------------------------------------------------
-const pounce = Engine.createGame(seeded(4));
-pounce.pins = []; // clear the board so the only event is the cat
-// Cat two above the player, telegraphed to step down onto where the player
-// will be after moving up.
-const px = pounce.player;
-pounce.cats = [{ r: px.r - 2, c: px.c, next: { r: px.r - 1, c: px.c } }];
-Engine.move(pounce, "up", seeded(4)); // player moves to px.r-1; cat steps to px.r-1
-assert.strictEqual(pounce.status, "lost");
-assert.match(pounce.message, /pounced/i);
-
-// ---------------------------------------------------------------------
-// Pins: walking onto one collects it and scores its value.
-// ---------------------------------------------------------------------
-const grab = Engine.createGame(seeded(5));
-grab.cats = []; // isolate pin logic
-const up = { r: grab.player.r - 1, c: grab.player.c };
-grab.pins = [{ r: up.r, c: up.c, type: "avocado", value: 3 }];
-const scoreBefore = grab.score;
-Engine.move(grab, "up", seeded(5));
-assert.strictEqual(grab.collected, 1, "the pin was collected");
-assert.strictEqual(grab.score, scoreBefore + 3, "its value was scored");
-assert.strictEqual(grab.pins.length, 0, "and it left the board");
-
-// ---------------------------------------------------------------------
-// Exit gating: the door is locked until the pin target is met, then
-// reaching it advances the level (score carries, level resets its count).
-// ---------------------------------------------------------------------
-const climb = Engine.createGame(seeded(6));
-climb.cats = [];
-climb.pins = [];
-climb.collected = 0;
-// Stand on the exit without enough pins — should stay put, still level 1.
-climb.player = { r: climb.exit.r + 1, c: climb.exit.c };
-climb.pinTarget = 2;
-Engine.move(climb, "up", seeded(6)); // onto the exit, but 0/2 pins
-assert.strictEqual(climb.level, 1, "locked door does not advance");
-assert.match(climb.message, /locked/i);
-assert.deepStrictEqual(climb.player, climb.exit, "player is standing on the locked door");
-
-// Now satisfy the target and step onto the door again.
-climb.collected = 2;
-climb.pinTarget = 2;
-climb.player = { r: climb.exit.r + 1, c: climb.exit.c };
-const scoreCarried = climb.score;
-Engine.move(climb, "up", seeded(6));
-assert.strictEqual(climb.level, 2, "meeting the target advances a level");
-assert.strictEqual(climb.status, "playing");
-assert.strictEqual(climb.collected, 0, "the new level resets the pin count");
-assert.strictEqual(climb.score, scoreCarried, "score carries across levels");
-assert.strictEqual(climb.H, 7, "level 2 is one row taller");
-assert.ok(climb.justAdvanced, "the advance flag is set for the UI");
-
-// ---------------------------------------------------------------------
-// Difficulty scales: cat count steps up with the level.
-// ---------------------------------------------------------------------
-assert.strictEqual(Engine.generateLevel(1, seeded(7)).cats.length, 1);
-assert.strictEqual(Engine.generateLevel(3, seeded(7)).cats.length, 2);
-assert.strictEqual(Engine.generateLevel(6, seeded(7)).cats.length, 3);
-
-// ---------------------------------------------------------------------
-// "wait" is a real, legal action: the player holds, the cats still move.
-// ---------------------------------------------------------------------
-const hold = Engine.createGame(seeded(8));
-hold.pins = [];
-const holdPos = { ...hold.player };
-const t0 = hold.turn;
-Engine.move(hold, "wait", seeded(8));
-assert.deepStrictEqual(hold.player, holdPos, "waiting keeps the player in place");
-assert.ok(hold.status === "playing", "a safe wait is survivable");
-assert.strictEqual(hold.turn, t0 + 1, "but the turn (and the cats) still advanced");
-
-// ---------------------------------------------------------------------
-// Fuzz: a legal sequence of moves never throws and never leaves a cat or
-// the player off the board.
-// ---------------------------------------------------------------------
-for (let seed = 0; seed < 60; seed++) {
-  const rng = seeded(1000 + seed);
+// ---- a whole game always terminates with a decided result -----------
+for (let seed = 0; seed < 80; seed++) {
+  const rng = seeded(500 + seed);
   const s = Engine.createGame(rng);
-  const dirs = ["up", "down", "left", "right", "wait"];
-  for (let i = 0; i < 200 && s.status === "playing"; i++) {
-    Engine.move(s, dirs[Math.floor(rng() * dirs.length)], rng);
-    assert.ok(Engine.inBounds(s, s.player.r, s.player.c), "player stays on the board");
-    for (const cat of s.cats) assert.ok(Engine.inBounds(s, cat.r, cat.c), "cats stay on the board");
+  let guard = 0;
+  while (s.status === "playing") {
+    if (++guard > 200) throw new Error("draft did not terminate");
+    // Play a "sensible" human: take the on-cat double only while the wake
+    // risk is low, otherwise grab a plain pin that best extends a set.
+    let pick = -1;
+    if (s.display[0] && s.display[0].onCat && s.napChance + 0.25 <= 0.5) pick = 0;
+    if (pick === -1) {
+      let best = -Infinity;
+      for (let i = 0; i < s.display.length; i++) {
+        const t = s.display[i].type;
+        const v = s.you[t];
+        if (v > best) {
+          best = v;
+          pick = i;
+        }
+      }
+    }
+    if (pick === -1) break;
+    Engine.draft(s, pick, rng);
   }
+  assert.strictEqual(s.status, "over", "every game ends");
+  assert.ok(["you", "cat", "tie"].includes(s.result), "with a decided result");
+  assert.strictEqual(s.youScore, Engine.score(s.you), "final score matches the collection");
 }
 
-console.log("All Step-in-the-Cat engine assertions passed.");
+console.log("All Step-in-the-Cat draft-engine assertions passed.");

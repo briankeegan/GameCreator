@@ -1,7 +1,6 @@
-/* Step in the Cat — a carpeted-staircase strategy board. Palette pulled
-   straight from the reference photo: dusty-blue stairwell wall, warm taupe
-   carpet, black iron railing. The header bar and install banner are shared
-   styling (../../shared/nav.css) — leave those alone. */
+/* Step in the Cat — a pin-drafting duel. A cozy pin-collector's board:
+   dusty-blue wall, warm wood shelf, gold enamel accents. The header bar and
+   install banner are shared styling (../../shared/nav.css) — leave those. */
 
 * { box-sizing: border-box; }
 
@@ -19,45 +18,154 @@ html, body {
 
 .game-area {
   position: absolute;
-  top: 52px; /* under the shared nav bar */
+  top: 52px;
   left: 0;
   right: 0;
   bottom: 0;
   display: flex;
   flex-direction: column;
-  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
-  gap: 8px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  gap: 10px;
 }
 
-/* ---- HUD -------------------------------------------------------------- */
+/* ---- HUD: your score, wake risk, cat score --------------------------- */
 .hud {
   flex: 0 0 auto;
   display: flex;
-  gap: 6px;
-  justify-content: space-between;
+  align-items: stretch;
+  gap: 8px;
 }
-.stat {
+.score-card {
   flex: 1 1 0;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  padding: 6px 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.score-card.you { background: linear-gradient(160deg, #2f6d5a, #1f4a3d); }
+.score-card.cat { background: linear-gradient(160deg, #6d3f2f, #4a271f); }
+.score-who { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.8; }
+.score-num { font-size: 1.7rem; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.wake {
+  flex: 0 0 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 1px;
-  padding: 5px 4px;
   background: rgba(20, 30, 36, 0.42);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 9px;
+  border: 1px solid rgba(214, 66, 54, 0.5);
+  border-radius: 12px;
 }
-.stat-label {
-  font-size: 0.6rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  opacity: 0.7;
+.wake-label { font-size: 0.56rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.75; }
+.wake-num { font-size: 1.25rem; font-weight: 800; color: #ff9c8f; }
+.wake-sub { font-size: 0.6rem; opacity: 0.7; }
+
+/* ---- Stage: the sleeping cat + the spread of pins -------------------- */
+.stage {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px 12px;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.12)),
+    linear-gradient(180deg, #7a5a3c 0%, #5f4630 100%);
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.25), 0 8px 20px rgba(0, 0, 0, 0.4);
 }
-.stat-value {
-  font-size: 1.05rem;
+.cat-perch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sleeping-cat {
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.5));
+  transform: rotate(-4deg);
+}
+.sleeping-cat.awake { animation: startle 0.5s ease; transform: rotate(0deg) scale(1.05); }
+@keyframes startle {
+  0%, 100% { transform: rotate(0) scale(1.05); }
+  25% { transform: rotate(3deg) scale(1.12) translateY(-4px); }
+  75% { transform: rotate(-3deg) scale(1.12); }
+}
+.zzz {
+  font-size: 0.9rem;
   font-weight: 800;
-  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.15em;
+  color: #ffe9c9;
+  opacity: 0.85;
+  transform: translateY(-16px);
+  animation: drift 2.6s ease-in-out infinite;
 }
+@keyframes drift {
+  0%, 100% { transform: translateY(-16px); opacity: 0.5; }
+  50% { transform: translateY(-24px); opacity: 0.95; }
+}
+
+.display {
+  display: flex;
+  gap: 7px;
+  width: 100%;
+  justify-content: center;
+  flex-wrap: nowrap;
+}
+.pin-card {
+  position: relative;
+  flex: 1 1 0;
+  max-width: 66px;
+  aspect-ratio: 3 / 4;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f4ead6 0%, #e2d2b4 100%);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4), inset 0 0 0 2px rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  padding: 4px;
+  -webkit-tap-highlight-color: transparent;
+}
+.pin-card:active:not(:disabled) { transform: translateY(2px) scale(0.97); }
+.pin-card:disabled { opacity: 0.55; cursor: default; }
+.pin-card img { width: 100%; height: 100%; object-fit: contain; }
+.pin-card.on-cat {
+  background: linear-gradient(180deg, #ffe9b0 0%, #f0c674 100%);
+  box-shadow: 0 0 0 2px #d64236, 0 3px 10px rgba(214, 66, 54, 0.5);
+}
+.dbl-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #d64236;
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 900;
+  padding: 2px 5px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.oncat-tag {
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: #2a1c18;
+  color: #ffd9a0;
+  font-size: 0.52rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+.display-empty { color: #ffe9c9; opacity: 0.8; padding: 20px; }
 
 .ticker {
   flex: 0 0 auto;
@@ -70,146 +178,64 @@ html, body {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
-/* ---- Board ------------------------------------------------------------ */
-.board-wrap {
+/* ---- Collections ----------------------------------------------------- */
+.trays {
   flex: 1 1 auto;
   min-height: 0;
-  position: relative;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
 }
-.board {
-  display: grid;
-  grid-template-columns: repeat(var(--cols), var(--cell, 48px));
-  grid-template-rows: repeat(var(--rows), var(--cell, 48px));
-  gap: 3px;
-  padding: 6px;
+.tray {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
   border-radius: 12px;
-  background: #2a2320;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45), inset 0 0 0 2px #14100e;
+  background: rgba(20, 30, 36, 0.36);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
-
-/* Each step: warm taupe carpet with a lighter front lip so the grid reads
-   as a flight of stairs seen from above. */
-.cell {
-  position: relative;
-  border-radius: 6px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 22%),
-    linear-gradient(180deg, #b7a894 0%, #a2917c 100%);
-  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  cursor: pointer;
-  overflow: hidden;
-}
-.cell-alt {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 22%),
-    linear-gradient(180deg, #b2a38f 0%, #9c8b76 100%);
-}
-.cell-exit {
-  background: radial-gradient(circle at 50% 42%, #f6d79a 0%, #caa864 60%, #7c6438 100%);
-  box-shadow: inset 0 0 0 2px #f0c674, 0 0 14px rgba(240, 198, 116, 0.5);
-}
-
-/* The cat's telegraph: a red paw-ghost on the step it's about to take,
-   pulsing so it reads as "danger next turn" at a glance. */
-.cell-telegraph { box-shadow: inset 0 0 0 2px rgba(214, 66, 54, 0.9); }
-.telegraph {
-  position: absolute;
-  inset: 14%;
+.tray-you { border-color: rgba(47, 109, 90, 0.7); }
+.tray-cat { border-color: rgba(109, 63, 47, 0.7); }
+.tray-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; }
+.tray-pins {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  animation: pulse 1s ease-in-out infinite;
-}
-.telegraph .paw { width: 100%; height: 100%; fill: rgba(214, 66, 54, 0.55); }
-@keyframes pulse {
-  0%, 100% { opacity: 0.45; transform: scale(0.9); }
-  50% { opacity: 0.9; transform: scale(1.05); }
-}
-
-.door { width: 78%; height: 78%; position: absolute; inset: 11%; }
-
-/* Tokens: generated PNG sprites, isolated on transparent, dropped into the
-   step. Cat looms largest; player and pins a touch smaller. */
-.tok {
-  position: absolute;
-  inset: 8%;
-  width: 84%;
-  height: 84%;
-  object-fit: contain;
-  pointer-events: none;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
-}
-.tok.cat { inset: 2%; width: 96%; height: 96%; z-index: 3; }
-.tok.player { inset: 6%; width: 88%; height: 88%; z-index: 2; }
-.tok.pin { inset: 18%; width: 64%; height: 64%; z-index: 1; animation: bob 2.4s ease-in-out infinite; }
-@keyframes bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8%); }
-}
-
-.board.shake { animation: shake 0.4s ease; }
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-7px) rotate(-1deg); }
-  40% { transform: translateX(7px) rotate(1deg); }
-  60% { transform: translateX(-5px); }
-  80% { transform: translateX(5px); }
-}
-
-.level-flash {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 2rem;
-  font-weight: 900;
-  color: #fff;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7);
-  pointer-events: none;
-}
-.level-flash.show { animation: flash 0.9s ease forwards; }
-@keyframes flash {
-  0% { opacity: 0; transform: scale(0.6); }
-  25% { opacity: 1; transform: scale(1.05); }
-  70% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.1); }
-}
-
-/* ---- Controls: d-pad + wait ------------------------------------------ */
-.controls {
-  flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: repeat(3, 60px);
-  grid-template-rows: repeat(3, 46px);
+  flex-wrap: wrap;
   gap: 6px;
-  justify-content: center;
-  align-self: center;
+  overflow-y: auto;
+  align-content: flex-start;
 }
-.dpad-btn {
-  border: none;
-  border-radius: 12px;
-  background: rgba(20, 30, 36, 0.5);
+.tray-empty { opacity: 0.5; font-size: 1.2rem; }
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px 3px 3px;
+  background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #f4efe6;
-  font-size: 1.2rem;
-  font-weight: 800;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
+  border-radius: 20px;
 }
-.dpad-btn:active { background: rgba(240, 198, 116, 0.35); transform: scale(0.94); }
-.dpad-up { grid-area: 1 / 2; }
-.dpad-left { grid-area: 2 / 1; }
-.dpad-wait { grid-area: 2 / 2; font-size: 0.66rem; letter-spacing: 0.05em; }
-.dpad-right { grid-area: 2 / 3; }
-.dpad-down { grid-area: 3 / 2; }
+.chip img { width: 30px; height: 30px; object-fit: contain; }
+.chip-count { font-size: 0.9rem; font-weight: 800; margin-left: 3px; }
+.chip-val {
+  margin-left: 6px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #f0c674;
+  background: rgba(240, 198, 116, 0.14);
+  border-radius: 8px;
+  padding: 1px 5px;
+}
+.chip-fresh { animation: pop 0.4s ease; }
+@keyframes pop {
+  0% { transform: scale(0.6); }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
 
-/* ---- Game-over overlay ------------------------------------------------ */
+/* ---- Game-over overlay ----------------------------------------------- */
 .run-overlay {
   position: fixed;
   inset: 0;
@@ -223,15 +249,15 @@ html, body {
 .run-overlay[hidden] { display: none; }
 .run-overlay-card {
   width: min(84vw, 340px);
-  padding: 22px 20px;
+  padding: 24px 22px;
   border-radius: 16px;
   background: linear-gradient(160deg, #35505c 0%, #22343c 100%);
   border: 1px solid rgba(255, 255, 255, 0.14);
   text-align: center;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
 }
-.run-overlay-card h2 { margin: 0 0 8px; font-size: 1.3rem; }
-.run-overlay-card p { margin: 0 0 18px; font-size: 0.92rem; opacity: 0.85; }
+.run-overlay-card h2 { margin: 0 0 8px; font-size: 1.35rem; }
+.run-overlay-card p { margin: 0 0 18px; font-size: 0.95rem; opacity: 0.88; }
 .run-overlay-card button {
   background: #f0c674;
   color: #3a2a1a;

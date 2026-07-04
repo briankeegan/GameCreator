@@ -1,6 +1,7 @@
-// app.js — rendering + input for "Step in the Cat". engine.js holds the
-// rules; this file only draws state onto a grid and turns taps / d-pad /
-// arrow keys into Engine.move() calls. GCStorage persists the best run.
+// app.js — rendering + input for "Step in the Cat", the pin-draft duel.
+// engine.js holds the rules; this file draws the spread + collections and
+// turns a tap on a pin into an Engine.draft() call. GCStorage persists the
+// best score and win count.
 "use strict";
 
 (function () {
@@ -11,24 +12,21 @@
     avocado: "icons/pin-avocado.png",
     star: "icons/pin-star.png",
     paw: "icons/pin-paw.png",
+    fish: "icons/pin-fish.png",
+    yarn: "icons/pin-yarn.png",
   };
-  const CAT_IMG = "icons/cat.png";
-  const PLAYER_IMG = "icons/player.png";
+  const PIN_NAME = { avocado: "Avocado", star: "Star", paw: "Paw", fish: "Fish", yarn: "Yarn" };
 
-  // A door for the exit and a paw for the cat's telegraph — the only two
-  // bits of UI that aren't generated art, kept as crisp inline SVG.
-  const DOOR_SVG =
-    '<svg class="door" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17" fill="#3b2a1e" stroke="#c9a26a" stroke-width="1.4"/><rect x="7" y="5" width="10" height="15" rx="1" fill="#5a3d28"/><circle cx="15" cy="13" r="1" fill="#f0c674"/></svg>';
-  const PAW_SVG =
-    '<svg class="paw" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="15" rx="5" ry="4"/><ellipse cx="6" cy="9" rx="2" ry="2.6"/><ellipse cx="12" cy="6.5" rx="2.2" ry="2.8"/><ellipse cx="18" cy="9" rx="2" ry="2.6"/></svg>';
-
-  const boardEl = document.getElementById("board");
-  const levelFlashEl = document.getElementById("levelFlash");
-  const levelValueEl = document.getElementById("levelValue");
-  const pinsValueEl = document.getElementById("pinsValue");
-  const scoreValueEl = document.getElementById("scoreValue");
-  const bestValueEl = document.getElementById("bestValue");
+  const youScoreEl = document.getElementById("youScore");
+  const catScoreEl = document.getElementById("catScore");
+  const wakeValueEl = document.getElementById("wakeValue");
+  const bestLineEl = document.getElementById("bestLine");
+  const displayEl = document.getElementById("display");
+  const youPinsEl = document.getElementById("youPins");
+  const catPinsEl = document.getElementById("catPins");
   const tickerEl = document.getElementById("ticker");
+  const sleepingCatEl = document.getElementById("sleepingCat");
+  const zzzEl = document.querySelector(".zzz");
   const overlayEl = document.getElementById("runOverlay");
   const overlayTitleEl = document.getElementById("overlayTitle");
   const overlayBodyEl = document.getElementById("overlayBody");
@@ -36,200 +34,114 @@
 
   let state = null;
   let bestScore = GCStorage.get(GAME_ID, "bestScore", 0);
-  let bestLevel = GCStorage.get(GAME_ID, "bestLevel", 1);
+  let wins = GCStorage.get(GAME_ID, "wins", 0);
 
-  // Tests pin window.__scRng to a fixed generator for reproducible runs.
   function rng() {
     return (window.__scRng || Math.random)();
   }
 
-  function newRun() {
+  function newGame() {
     state = Engine.createGame(rng);
     overlayEl.hidden = true;
+    sleepingCatEl.classList.remove("awake");
     render();
   }
 
-  function cellKey(r, c) {
-    return r + "," + c;
+  function pinChip(type, count, extraClass) {
+    // A collection chip: the pin sprite, a ×count badge, and the set's
+    // current point value so the triangular scoring is legible.
+    const val = Engine.tri(count);
+    return (
+      `<span class="chip ${extraClass || ""}">` +
+      `<img src="${PIN_IMG[type]}" alt="${PIN_NAME[type]}" draggable="false" />` +
+      `<span class="chip-count">×${count}</span>` +
+      `<span class="chip-val">${val}</span>` +
+      `</span>`
+    );
   }
 
-  // Fit the whole board in the space between the ticker and the controls,
-  // sizing square cells to the tighter of the width/height budget so even a
-  // 10-row late level shows entirely without scrolling.
-  const GAP = 3;
-  function sizeBoard() {
-    if (!state) return;
-    const wrap = boardEl.parentElement;
-    const availW = wrap.clientWidth;
-    const availH = wrap.clientHeight;
-    if (!availW || !availH) return;
-    const cw = (availW - GAP * (state.W - 1)) / state.W;
-    const ch = (availH - GAP * (state.H - 1)) / state.H;
-    const cell = Math.max(24, Math.floor(Math.min(cw, ch)));
-    boardEl.style.setProperty("--cell", cell + "px");
-  }
-  window.addEventListener("resize", () => {
-    if (state) render();
-  });
-
-  function doMove(dir) {
-    if (!state || state.status !== "playing") return;
-    Engine.move(state, dir, rng);
-
-    if (state.justAdvanced) flashLevel();
-    render();
-
-    saveBest();
-    if (state.status === "lost") {
-      shake();
-      showOverlay();
+  function renderTray(el, collection, lastPick) {
+    const owned = Engine.PIN_TYPES.filter((t) => collection[t] > 0);
+    if (owned.length === 0) {
+      el.innerHTML = '<span class="tray-empty">—</span>';
+      return;
     }
-  }
-
-  function saveBest() {
-    if (state.score > bestScore) {
-      bestScore = state.score;
-      GCStorage.set(GAME_ID, "bestScore", bestScore);
-    }
-    if (state.level > bestLevel) {
-      bestLevel = state.level;
-      GCStorage.set(GAME_ID, "bestLevel", bestLevel);
-    }
-  }
-
-  function flashLevel() {
-    levelFlashEl.textContent = "Level " + state.level;
-    levelFlashEl.hidden = false;
-    levelFlashEl.classList.remove("show");
-    void levelFlashEl.offsetWidth;
-    levelFlashEl.classList.add("show");
-    setTimeout(() => {
-      levelFlashEl.hidden = true;
-    }, 900);
-  }
-
-  function shake() {
-    boardEl.classList.remove("shake");
-    void boardEl.offsetWidth;
-    boardEl.classList.add("shake");
-    setTimeout(() => boardEl.classList.remove("shake"), 450);
-  }
-
-  function showOverlay() {
-    overlayTitleEl.textContent = state.message || "Caught!";
-    overlayBodyEl.textContent = `You reached Level ${state.level} and scored ${state.score}. Best: ${bestScore}.`;
-    overlayEl.hidden = false;
+    el.innerHTML = owned
+      .map((t) => pinChip(t, collection[t], lastPick && lastPick.type === t ? "chip-fresh" : ""))
+      .join("");
   }
 
   function render() {
     window.__scState = state; // exposed for tests
 
-    levelValueEl.textContent = state.level;
-    pinsValueEl.textContent = `${state.collected}/${state.pinTarget}`;
-    scoreValueEl.textContent = state.score;
-    bestValueEl.textContent = bestScore;
+    youScoreEl.textContent = Engine.score(state.you);
+    catScoreEl.textContent = Engine.score(state.cat);
+    bestLineEl.textContent = `Best ${bestScore}`;
+
+    const hasCatPin = state.status === "playing" && state.display.length > 0 && state.display[0].onCat;
+    wakeValueEl.textContent = hasCatPin ? Math.round(Engine.nextWakeRisk(state) * 100) + "%" : "—";
+
     tickerEl.textContent = state.message || "";
 
-    boardEl.style.setProperty("--cols", state.W);
-    boardEl.style.setProperty("--rows", state.H);
-    sizeBoard();
+    const woke = state.woke;
+    sleepingCatEl.classList.toggle("awake", woke);
+    if (zzzEl) zzzEl.style.visibility = woke ? "hidden" : "visible";
 
-    // Index everything by cell for a single pass over the grid.
-    const telegraph = new Set(state.cats.map((c) => cellKey(c.next.r, c.next.c)));
-    const catCells = new Map(state.cats.map((c) => [cellKey(c.r, c.c), c]));
-    const pinCells = new Map(state.pins.map((p) => [cellKey(p.r, p.c), p]));
-
-    boardEl.innerHTML = "";
-    for (let r = 0; r < state.H; r++) {
-      for (let c = 0; c < state.W; c++) {
-        const key = cellKey(r, c);
-        const cell = document.createElement("div");
-        cell.className = "cell";
-        cell.dataset.r = r;
-        cell.dataset.c = c;
-        if ((r + c) % 2 === 0) cell.classList.add("cell-alt");
-        if (r === state.exit.r && c === state.exit.c) cell.classList.add("cell-exit");
-        if (telegraph.has(key)) cell.classList.add("cell-telegraph");
-
-        let html = "";
-        if (r === state.exit.r && c === state.exit.c) html += DOOR_SVG;
-        if (telegraph.has(key)) html += `<span class="telegraph">${PAW_SVG}</span>`;
-        const pin = pinCells.get(key);
-        if (pin) html += `<img class="tok pin" src="${PIN_IMG[pin.type]}" alt="${pin.type} pin" draggable="false" />`;
-        const isPlayer = r === state.player.r && c === state.player.c;
-        if (isPlayer) html += `<img class="tok player" src="${PLAYER_IMG}" alt="you" draggable="false" />`;
-        if (catCells.has(key)) html += `<img class="tok cat" src="${CAT_IMG}" alt="cat" draggable="false" />`;
-        cell.innerHTML = html;
-
-        cell.addEventListener("click", () => onCellTap(r, c));
-        boardEl.appendChild(cell);
-      }
+    // The spread of draftable pins. The front pin sits on the cat (×2).
+    displayEl.innerHTML = "";
+    state.display.forEach((pin, i) => {
+      const btn = document.createElement("button");
+      btn.className = "pin-card" + (pin.onCat ? " on-cat" : "");
+      btn.disabled = state.status !== "playing";
+      btn.innerHTML =
+        `<img src="${PIN_IMG[pin.type]}" alt="${PIN_NAME[pin.type]}" draggable="false" />` +
+        (pin.onCat ? '<span class="dbl-badge">×2</span><span class="oncat-tag">on the cat</span>' : "");
+      btn.addEventListener("click", () => onDraft(i));
+      displayEl.appendChild(btn);
+    });
+    if (state.display.length === 0) {
+      displayEl.innerHTML = '<span class="display-empty">The pins are gone.</span>';
     }
+
+    renderTray(youPinsEl, state.you, state.lastYou);
+    renderTray(catPinsEl, state.cat, state.lastCat);
+
+    if (state.status === "over") showOverlay();
   }
 
-  // Tap an orthogonally-adjacent step to move there; tap your own step to
-  // wait. Anything further is ignored.
-  function onCellTap(r, c) {
+  function onDraft(index) {
     if (!state || state.status !== "playing") return;
-    const dr = r - state.player.r;
-    const dc = c - state.player.c;
-    if (dr === 0 && dc === 0) return doMove("wait");
-    if (dr === -1 && dc === 0) return doMove("up");
-    if (dr === 1 && dc === 0) return doMove("down");
-    if (dr === 0 && dc === -1) return doMove("left");
-    if (dr === 0 && dc === 1) return doMove("right");
+    Engine.draft(state, index, rng);
+    if (state.status === "over") saveBest();
+    render();
   }
 
-  // ---- input: d-pad, keyboard, swipe -----------------------------------
-  document.getElementById("btnUp").addEventListener("click", () => doMove("up"));
-  document.getElementById("btnDown").addEventListener("click", () => doMove("down"));
-  document.getElementById("btnLeft").addEventListener("click", () => doMove("left"));
-  document.getElementById("btnRight").addEventListener("click", () => doMove("right"));
-  document.getElementById("btnWait").addEventListener("click", () => doMove("wait"));
-  restartBtn.addEventListener("click", newRun);
-
-  document.addEventListener("keydown", (e) => {
-    const map = {
-      ArrowUp: "up",
-      ArrowDown: "down",
-      ArrowLeft: "left",
-      ArrowRight: "right",
-      w: "up",
-      s: "down",
-      a: "left",
-      d: "right",
-      " ": "wait",
-    };
-    const dir = map[e.key];
-    if (dir) {
-      e.preventDefault();
-      doMove(dir);
+  function saveBest() {
+    const ys = Engine.score(state.you);
+    if (ys > bestScore) {
+      bestScore = ys;
+      GCStorage.set(GAME_ID, "bestScore", bestScore);
     }
-  });
+    if (state.result === "you") {
+      wins += 1;
+      GCStorage.set(GAME_ID, "wins", wins);
+    }
+  }
 
-  let touchStart = null;
-  boardEl.addEventListener(
-    "touchstart",
-    (e) => {
-      const t = e.changedTouches[0];
-      touchStart = { x: t.clientX, y: t.clientY };
-    },
-    { passive: true }
-  );
-  boardEl.addEventListener(
-    "touchend",
-    (e) => {
-      if (!touchStart) return;
-      const t = e.changedTouches[0];
-      const dx = t.clientX - touchStart.x;
-      const dy = t.clientY - touchStart.y;
-      touchStart = null;
-      if (Math.abs(dx) < 24 && Math.abs(dy) < 24) return; // a tap — let the cell handler run
-      if (Math.abs(dx) > Math.abs(dy)) doMove(dx > 0 ? "right" : "left");
-      else doMove(dy > 0 ? "down" : "up");
-    },
-    { passive: true }
-  );
+  function showOverlay() {
+    const ys = state.youScore;
+    const cs = state.catScore;
+    let title;
+    if (state.woke && state.result === "you") title = "You woke the cat — and still won!";
+    else if (state.woke) title = "You woke the cat!";
+    else if (state.result === "you") title = "You win! 🏆";
+    else if (state.result === "cat") title = "The cat wins!";
+    else title = "It's a tie!";
+    overlayTitleEl.textContent = title;
+    overlayBodyEl.textContent = `You ${ys} — Cat ${cs}.  Best ${bestScore}, wins ${wins}.`;
+    overlayEl.hidden = false;
+  }
 
-  newRun();
+  restartBtn.addEventListener("click", newGame);
+  newGame();
 })();

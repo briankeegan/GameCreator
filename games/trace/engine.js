@@ -1,249 +1,167 @@
-// engine.js — all the rules for "Step in the Cat", with zero DOM. Pure
-// functions over a plain state object so the same code runs in the browser
-// (window.StepCatEngine) and under Node for tests (module.exports).
+// engine.js — rules for "Step in the Cat", a pin-drafting duel. No DOM:
+// pure functions over a plain state object so the same code runs in the
+// browser (window.StepCatEngine) and under Node for tests.
 //
-// The game: climb a grid of carpeted steps to the door at the top. Enamel
-// pins are scattered on the steps; you must collect a target number to
-// unlock the exit, so you can't just beeline up. A tuxedo cat (or two, or
-// three) lounges on the stairs and shifts one step each turn — its next
-// move is always telegraphed, so stepping on it is your mistake, never a
-// cheap one. Land on a cat (or let one land on your step) and the run ends.
+// The game: a spread of enamel pins sits on the staircase. You and the Cat
+// take turns DRAFTING one pin each into your own collection. Pins score by
+// SETS — the more of one kind you own, the more each is worth (a triangular
+// payoff: 1→1, 2→3, 3→6, 4→10…), so you commit to a couple of types and
+// fight the Cat for them. The twist that earns the name: the top pin is
+// resting ON the sleeping cat, worth DOUBLE — but every time you lift one,
+// the odds you wake the cat climb, and waking it ends the game where it
+// stands. Best collection when the pins run out wins.
 "use strict";
 
 (function (root) {
-  const DIRS = {
-    up: { dr: -1, dc: 0 },
-    down: { dr: 1, dc: 0 },
-    left: { dr: 0, dc: -1 },
-    right: { dr: 0, dc: 1 },
-    wait: { dr: 0, dc: 0 },
-  };
+  const PIN_TYPES = ["avocado", "star", "paw", "fish", "yarn"];
+  const COPIES_PER_TYPE = 6; // 30-pin draft
+  const DISPLAY_SIZE = 5;
+  const WAKE_STEP = 0.25; // each on-cat grab adds this much wake risk
 
-  // Pin catalog: commons are low value, so the count you must collect and
-  // the score you want to maximize pull in different directions — grab the
-  // rare avocado when the route allows, settle for paws when it doesn't.
-  const PIN_TYPES = [
-    { type: "avocado", value: 3, weight: 1 },
-    { type: "star", value: 2, weight: 2 },
-    { type: "paw", value: 1, weight: 3 },
-  ];
+  function tri(n) {
+    return (n * (n + 1)) / 2; // set value: 1,3,6,10,15,...
+  }
 
-  function randInt(rng, n) {
-    return Math.floor(rng() * n);
+  function score(collection) {
+    return PIN_TYPES.reduce((s, t) => s + tri(collection[t] || 0), 0);
+  }
+
+  function emptyCollection() {
+    const c = {};
+    for (const t of PIN_TYPES) c[t] = 0;
+    return c;
   }
 
   function shuffle(arr, rng) {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
-      const j = randInt(rng, i + 1);
+      const j = Math.floor(rng() * (i + 1));
       [a[i], a[j]] = [a[j], a[i]];
     }
     return a;
   }
 
-  function manhattan(a, b) {
-    return Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
-  }
-
-  function inBounds(state, r, c) {
-    return r >= 0 && r < state.H && c >= 0 && c < state.W;
-  }
-
-  function catAt(cats, r, c, exceptIndex) {
-    return cats.some((cat, i) => i !== exceptIndex && cat.r === r && cat.c === c);
-  }
-
-  function pinIndexAt(pins, r, c) {
-    return pins.findIndex((p) => p.r === r && p.c === c);
-  }
-
-  function chaseProb(level) {
-    // Cats get pushier as the climb goes on, but never fully deterministic —
-    // there's always some wander to route around.
-    return Math.min(0.15 + 0.1 * level, 0.6);
-  }
-
-  // Where a cat telegraphs its next step. Orthogonal, in-bounds, never onto
-  // another cat. With a level-scaled chance it steps toward the player;
-  // otherwise it wanders. Staying put is always a legal fallback.
-  function chooseCatMove(state, catIndex, rng) {
-    const cat = state.cats[catIndex];
-    const options = [{ r: cat.r, c: cat.c }]; // waiting is always allowed
-    for (const key of ["up", "down", "left", "right"]) {
-      const d = DIRS[key];
-      const r = cat.r + d.dr;
-      const c = cat.c + d.dc;
-      if (inBounds(state, r, c) && !catAt(state.cats, r, c, catIndex)) options.push({ r, c });
+  // Refill the spread from the deck and re-mark the on-cat pin (always the
+  // front of the row — the one the cat is sleeping on).
+  function fillDisplay(state) {
+    while (state.display.length < DISPLAY_SIZE && state.deck.length) {
+      state.display.push({ type: state.deck.pop() });
     }
-    if (rng() < chaseProb(state.level)) {
-      let best = options[0];
-      let bestDist = manhattan(best, state.player);
-      for (const o of options) {
-        const dist = manhattan(o, state.player);
-        if (dist < bestDist) {
-          best = o;
-          bestDist = dist;
-        }
-      }
-      return best;
-    }
-    return options[randInt(rng, options.length)];
-  }
-
-  function randPinType(rng) {
-    const total = PIN_TYPES.reduce((s, p) => s + p.weight, 0);
-    let roll = randInt(rng, total);
-    for (const p of PIN_TYPES) {
-      if (roll < p.weight) return p;
-      roll -= p.weight;
-    }
-    return PIN_TYPES[PIN_TYPES.length - 1];
-  }
-
-  // Build a fresh level. Board widens... actually stays 5 wide (phone-
-  // friendly) and grows taller; pins and cats scale with the level number.
-  function generateLevel(level, rng) {
-    const W = 5;
-    const H = 6 + Math.min(level - 1, 4); // 6 → 10
-    const player = { r: H - 1, c: 2 };
-    const exit = { r: 0, c: 2 };
-
-    const free = [];
-    for (let r = 0; r < H; r++) {
-      for (let c = 0; c < W; c++) {
-        if ((r === player.r && c === player.c) || (r === exit.r && c === exit.c)) continue;
-        free.push({ r, c });
-      }
-    }
-    const bag = shuffle(free, rng);
-
-    const pinCount = Math.min(5 + Math.min(level, 5), bag.length - 4);
-    const pins = [];
-    for (let i = 0; i < pinCount; i++) {
-      const cell = bag.pop();
-      const t = randPinType(rng);
-      pins.push({ r: cell.r, c: cell.c, type: t.type, value: t.value });
-    }
-
-    const catCount = level >= 6 ? 3 : level >= 3 ? 2 : 1;
-    const cats = [];
-    // Cats start at least 3 steps from the player so a level never opens
-    // with an unavoidable pounce.
-    const catBag = bag.filter((cell) => manhattan(cell, player) >= 3);
-    for (let i = 0; i < catCount && catBag.length; i++) {
-      const cell = catBag.shift();
-      cats.push({ r: cell.r, c: cell.c, next: { r: cell.r, c: cell.c } });
-    }
-
-    const pinTarget = Math.max(1, Math.ceil(pins.length * 0.6));
-
-    const level_ = { W, H, player, exit, pins, cats, pinTarget, collected: 0 };
-    // First telegraph for each cat.
-    for (let i = 0; i < cats.length; i++) cats[i].next = chooseCatMove(level_, i, rng);
-    return level_;
-  }
-
-  function loadLevel(state, level, rng) {
-    const lvl = generateLevel(level, rng);
-    state.level = level;
-    state.W = lvl.W;
-    state.H = lvl.H;
-    state.player = lvl.player;
-    state.exit = lvl.exit;
-    state.pins = lvl.pins;
-    state.cats = lvl.cats;
-    state.pinTarget = lvl.pinTarget;
-    state.collected = 0;
-    state.turn = 1;
+    for (let i = 0; i < state.display.length; i++) state.display[i].onCat = i === 0;
   }
 
   function createGame(rng = Math.random) {
+    const raw = [];
+    for (const t of PIN_TYPES) for (let i = 0; i < COPIES_PER_TYPE; i++) raw.push(t);
     const state = {
-      status: "playing", // "playing" | "lost"
-      level: 1,
-      score: 0,
-      justAdvanced: false, // UI hint: a level was just cleared this action
-      message: "",
+      status: "playing", // "playing" | "over"
+      deck: shuffle(raw, rng),
+      display: [],
+      you: emptyCollection(),
+      cat: emptyCollection(),
+      napChance: 0,
+      woke: false,
+      result: null, // "you" | "cat" | "tie"
+      youScore: 0,
+      catScore: 0,
+      lastYou: null,
+      lastCat: null,
+      message: "Draft a pin. The one on the cat is worth double — if you dare.",
     };
-    loadLevel(state, 1, rng);
-    state.message = "Reach the door — grab your pins, mind the cat.";
+    fillDisplay(state);
     return state;
   }
 
-  // The one verb: a single player action. dir ∈ up/down/left/right/wait.
-  // Returns the (mutated) state. Illegal moves (off the board) are no-ops
-  // that don't burn a turn, so a mistimed tap never costs you.
-  function move(state, dir, rng = Math.random) {
-    state.justAdvanced = false;
-    if (state.status !== "playing") return state;
-    const d = DIRS[dir];
-    if (!d) return state;
+  // The wake risk the NEXT on-cat grab would face (for the UI to show).
+  function nextWakeRisk(state) {
+    return Math.min(1, state.napChance + WAKE_STEP);
+  }
 
-    const nr = state.player.r + d.dr;
-    const nc = state.player.c + d.dc;
-    if (dir !== "wait" && !inBounds(state, nr, nc)) return state; // off-board: ignored
+  function endGame(state) {
+    state.status = "over";
+    state.youScore = score(state.you);
+    state.catScore = score(state.cat);
+    state.result = state.youScore > state.catScore ? "you" : state.catScore > state.youScore ? "cat" : "tie";
+    if (state.woke) state.message = "You woke the cat! The game ends here.";
+    else if (state.result === "you") state.message = "The pins are gone — your collection wins!";
+    else if (state.result === "cat") state.message = "The pins are gone — the cat out-collected you.";
+    else state.message = "The pins are gone — a dead heat.";
+    return state;
+  }
 
-    state.player = { r: nr, c: nc };
-
-    // Stepped directly onto a lounging cat.
-    if (catAt(state.cats, nr, nc, -1)) {
-      state.status = "lost";
-      state.message = "You stepped on the cat!";
-      return state;
-    }
-
-    // Grab a pin if one's here.
-    const pi = pinIndexAt(state.pins, nr, nc);
-    if (pi >= 0) {
-      const pin = state.pins.splice(pi, 1)[0];
-      state.collected += 1;
-      state.score += pin.value;
-      state.message = `Pin! ${state.collected}/${state.pinTarget} collected.`;
-    } else if (dir === "wait") {
-      state.message = "You wait a beat…";
-    } else {
-      state.message = "";
-    }
-
-    // Reached the door with enough pins → next level.
-    if (nr === state.exit.r && nc === state.exit.c) {
-      if (state.collected >= state.pinTarget) {
-        loadLevel(state, state.level + 1, rng);
-        state.justAdvanced = true;
-        state.message = `Top landing! On to Level ${state.level}.`;
-        return state;
+  // The cat's pick: greedily maximize its own set gain, breaking ties toward
+  // denying whatever you're stacking. It happily takes the double on-cat pin
+  // but never risks waking itself.
+  function catChoose(state) {
+    let bestIdx = 0;
+    let bestVal = -Infinity;
+    for (let i = 0; i < state.display.length; i++) {
+      const pin = state.display[i];
+      const add = pin.onCat ? 2 : 1;
+      const have = state.cat[pin.type];
+      const gain = tri(have + add) - tri(have);
+      const denial = 0.5 * state.you[pin.type];
+      const val = gain + denial;
+      if (val > bestVal) {
+        bestVal = val;
+        bestIdx = i;
       }
-      state.message = `The door's locked — collect ${state.pinTarget - state.collected} more pin(s).`;
+    }
+    return bestIdx;
+  }
+
+  function takePin(collection, pin) {
+    collection[pin.type] += pin.onCat ? 2 : 1;
+  }
+
+  // A full round: you draft display[index], then the cat drafts, then the
+  // spread refills. Returns the mutated state. Taking the on-cat pin may end
+  // the game early by waking the cat.
+  function draft(state, index, rng = Math.random) {
+    if (state.status !== "playing") return state;
+    if (index < 0 || index >= state.display.length) return state;
+
+    const yours = state.display.splice(index, 1)[0];
+    takePin(state.you, yours);
+    state.lastYou = { type: yours.type, onCat: yours.onCat };
+    state.lastCat = null;
+
+    if (yours.onCat) {
+      state.napChance = Math.min(1, state.napChance + WAKE_STEP);
+      if (rng() < state.napChance) {
+        state.woke = true;
+        return endGame(state); // you got the pin, but that's the last move
+      }
     }
 
-    // Now the cats take their telegraphed step.
-    for (let i = 0; i < state.cats.length; i++) {
-      state.cats[i].r = state.cats[i].next.r;
-      state.cats[i].c = state.cats[i].next.c;
-    }
-    if (catAt(state.cats, state.player.r, state.player.c, -1)) {
-      state.status = "lost";
-      state.message = "The cat pounced onto your step!";
-      return state;
+    fillDisplay(state);
+
+    // Cat's response (if any pins remain).
+    if (state.display.length > 0) {
+      const ci = catChoose(state);
+      const theirs = state.display.splice(ci, 1)[0];
+      takePin(state.cat, theirs);
+      state.lastCat = { type: theirs.type, onCat: theirs.onCat };
+      fillDisplay(state);
     }
 
-    // Re-telegraph.
-    for (let i = 0; i < state.cats.length; i++) state.cats[i].next = chooseCatMove(state, i, rng);
-    state.turn += 1;
+    if (state.display.length === 0 && state.deck.length === 0) return endGame(state);
+
+    const risk = Math.round(nextWakeRisk(state) * 100);
+    state.message = `Your sets: ${score(state.you)} · Cat: ${score(state.cat)} · wake risk ${risk}%`;
     return state;
   }
 
   const api = {
-    DIRS,
     PIN_TYPES,
+    COPIES_PER_TYPE,
+    DISPLAY_SIZE,
+    tri,
+    score,
     createGame,
-    move,
-    generateLevel,
-    chooseCatMove,
-    manhattan,
-    inBounds,
-    catAt,
-    pinIndexAt,
+    draft,
+    catChoose,
+    nextWakeRisk,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;
