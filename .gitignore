@@ -1,0 +1,4 @@
+# Autopilot scratch — the Clubhouse autopilot's model step writes its reply and
+# image requests here at runtime. Ignored so it never gets swept into the
+# action's auto-created branch or committed to main.
+.autopilot/

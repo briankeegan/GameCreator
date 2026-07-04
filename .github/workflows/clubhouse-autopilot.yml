@@ -10,12 +10,18 @@ name: Clubhouse autopilot
 # Everything mechanical is a deterministic workflow step around it, so it
 # happens every run regardless of whether the model "remembers" to:
 #   - thread history is fetched and injected INTO the prompt (model can't skip it)
-#   - the model's file edits are committed, pushed, and deployed by the shell
+#   - the model's file edits are landed on main and deployed by the shell
 #   - the reply is wrapped with "**Claude says:**" + the correct "[v0.N]" stamp
 #   - requested images are dispatched to the OpenAI generator by the shell
 #   - a failed run still posts a "something went wrong" reply to the thread
 # The model has NO GitHub token, so a prompt-injection in a chat message can't
 # make it push, comment, or dispatch — those are the shell's job, not its.
+#
+# NOTE on how the model's edits reach main: anthropics/claude-code-action
+# auto-commits Claude's file changes to its own branch (exposed as the
+# `branch_name` output), NOT to the working tree. So the ship step merges that
+# branch into main server-side and deletes it, with a working-tree fallback in
+# case the action's behavior ever changes.
 #
 # Setup (one time): this bills per-token against the Anthropic API — create a
 # key at console.anthropic.com and add it as an ANTHROPIC_API_KEY repo secret.
@@ -28,8 +34,8 @@ on:
   issue_comment:
     types: [created]
 
-# One run at a time per thread, so two quick messages can't race each other
-# pushing to main. A newer message queues behind the in-flight run.
+# One run at a time per thread, so two quick messages can't race each other.
+# A newer message queues behind the in-flight run.
 concurrency:
   group: clubhouse-${{ github.event.issue.number }}
   cancel-in-progress: false
@@ -39,7 +45,7 @@ jobs:
     # Gate hard so this only runs for a real, new Clubhouse message:
     #  - it's a PR comment (only PRs carry .pull_request) on a "Clubhouse — ..."
     #    thread and nothing else;
-    #  - not from a bot (the action's own progress comment is bot-authored);
+    #  - not from a bot (the action's own comments are bot-authored);
     #  - not one of our own "**Claude says:**" replies (loop guard).
     # Belt-and-suspenders: our replies post via GITHUB_TOKEN, and comments made
     # with GITHUB_TOKEN don't trigger workflows at all — so a reply can never
@@ -51,7 +57,7 @@ jobs:
       !startsWith(github.event.comment.body, '**Claude says:**')
     runs-on: ubuntu-latest
     permissions:
-      contents: write        # commit game-file edits and push to main
+      contents: write        # land game-file edits on main
       pull-requests: write   # post the reply comment on the thread
       issues: write          # the comments API is shared between issues and PRs
       actions: write         # dispatch pages.yml / generate-image.yml
@@ -63,8 +69,8 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Prepare scratch dir (model drops its outputs here, outside the repo)
-        run: mkdir -p "${{ runner.temp }}/autopilot"
+      - name: Prepare scratch dir (git-ignored; model drops its outputs here)
+        run: mkdir -p .autopilot
 
       # Deterministic context: pull the whole thread and inject it into the
       # prompt so the model always has it. A run-id-derived heredoc delimiter
@@ -84,9 +90,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # The ONLY model step. No GH_TOKEN in its env on purpose — it must not
-      # touch GitHub; it only reads/edits files and writes its outputs to the
-      # scratch dir. Everything else is deterministic steps below.
-      - name: Handle the Clubhouse message
+      # touch GitHub; it only reads/edits files and writes its outputs to
+      # .autopilot/. Everything else is deterministic steps below.
+      - id: claude
+        name: Handle the Clubhouse message
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -97,9 +104,10 @@ jobs:
 
             You do only the parts that need judgment: understand the request,
             edit game files, decide whether art is needed, and write the reply.
-            You do NOT run git, post comments, dispatch workflows, or look up
-            version numbers — the workflow does all of that deterministically
-            after you finish. Just leave your outputs in the files below.
+            You do NOT commit, push, post comments, dispatch workflows, or look
+            up version numbers — the workflow does all of that deterministically
+            after you finish. Just edit files and leave your outputs in
+            .autopilot/ as described below.
 
             Thread: PR #${{ github.event.issue.number }} — "${{ github.event.issue.title }}"
 
@@ -126,8 +134,7 @@ jobs:
 
               2. If it's a clear design ask, implement it by EDITING FILES under
                  games/<gameId>/ (or worker/worker.js, shared/, games.json as
-                 appropriate). Do NOT commit or push — just leave the edited
-                 files in place; the workflow commits and deploys them. If you
+                 appropriate). Leave the edits in place — do not commit. If you
                  touch worker/worker.js, bump its `relay: "gc-rN"` marker per
                  CLAUDE.md.
                  If the ask is ambiguous or architecturally significant, do NOT
@@ -138,7 +145,7 @@ jobs:
                  texture, photo-like icon), do NOT write a PNG yourself (binary
                  files corrupt) and do NOT hand-draw pixels. Instead append one
                  JSON object per line to:
-                     ${{ runner.temp }}/autopilot/images.jsonl
+                     .autopilot/images.jsonl
                  each shaped: {"prompt": "<vivid description>", "output_path":
                  "games/<gameId>/<name>.png", "size": "1024x1024"}
                  The workflow dispatches each to the OpenAI image generator; they
@@ -149,36 +156,56 @@ jobs:
               4. Write your chat reply as plain Markdown — the message body ONLY,
                  with NO "**Claude says:**" prefix and NO "[v0.N]" stamp (the
                  workflow adds both) — to:
-                     ${{ runner.temp }}/autopilot/reply.md
+                     .autopilot/reply.md
                  If you requested images, tell the requester they're generating
                  and will appear shortly.
 
-              5. Optional: write a one-line commit message (what changed) to
-                     ${{ runner.temp }}/autopilot/commit_msg.txt
-
             Never merge or close this PR — it is a permanently-open chat thread.
 
-      # Deterministic: commit whatever the model edited, push to main, deploy.
-      # A GITHUB_TOKEN push doesn't trigger Pages (recursion prevention), so the
-      # deploy is dispatched explicitly — workflow_dispatch is the exception.
-      - name: Commit, push, and deploy the model's changes
+      # Deterministic: land the model's edits on main and deploy. The action
+      # commits them to its own branch (branch_name); merge that into main
+      # server-side, then delete it. Fall back to the working tree if no branch.
+      - name: Land changes on main and deploy
         if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          CLAUDE_BRANCH: ${{ steps.claude.outputs.branch_name }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Stage only real content paths, never any scratch the action may drop.
-          git add -A -- games shared worker admin games.json app.js style.css index.html 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "No file changes — nothing to ship."
-            exit 0
+          set -uo pipefail
+          CONTENT='games shared worker admin games.json app.js style.css index.html'
+
+          if [ -n "${CLAUDE_BRANCH:-}" ]; then
+            ahead=$(gh api "repos/$REPO/compare/main...$CLAUDE_BRANCH" --jq '.ahead_by' 2>/dev/null || echo 0)
+            if [ "${ahead:-0}" -gt 0 ]; then
+              if gh api "repos/$REPO/merges" -f base=main -f head="$CLAUDE_BRANCH" \
+                   -f commit_message="Clubhouse request (automated)" >/dev/null 2>&1; then
+                # A GITHUB_TOKEN merge doesn't trigger Pages, so dispatch it.
+                gh workflow run pages.yml --ref main
+                gh api -X DELETE "repos/$REPO/git/refs/heads/$CLAUDE_BRANCH" >/dev/null 2>&1 || true
+                echo "Merged $CLAUDE_BRANCH into main and dispatched deploy."
+              else
+                echo "::error::Merge of $CLAUDE_BRANCH into main failed (conflict?) — left for review, not deploying."
+                exit 1
+              fi
+            else
+              echo "Branch $CLAUDE_BRANCH has no changes over main — nothing to ship."
+              gh api -X DELETE "repos/$REPO/git/refs/heads/$CLAUDE_BRANCH" >/dev/null 2>&1 || true
+            fi
+          else
+            # No branch produced — fall back to committing any working-tree edits.
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A -- $CONTENT 2>/dev/null || true
+            if git diff --cached --quiet; then
+              echo "No file changes — nothing to ship."
+            else
+              git commit -m "Clubhouse request (automated)"
+              git push origin HEAD:main
+              gh workflow run pages.yml --ref main
+              echo "Committed working-tree changes to main and dispatched deploy."
+            fi
           fi
-          msg_file="${{ runner.temp }}/autopilot/commit_msg.txt"
-          if [ -s "$msg_file" ]; then msg=$(head -c 200 "$msg_file"); else msg="Clubhouse request (automated)"; fi
-          git commit -m "$msg"
-          git push origin HEAD:main
-          gh workflow run pages.yml --ref main
 
       # Deterministic: dispatch each image the model requested.
       - name: Dispatch image generation (if the model requested any)
@@ -186,7 +213,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          f="${{ runner.temp }}/autopilot/images.jsonl"
+          f=".autopilot/images.jsonl"
           [ -s "$f" ] || { echo "No images requested."; exit 0; }
           while IFS= read -r line; do
             [ -z "$line" ] && continue
@@ -208,7 +235,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          body_file="${{ runner.temp }}/autopilot/reply.md"
+          body_file=".autopilot/reply.md"
           if [ -s "$body_file" ]; then
             body=$(cat "$body_file")
           else
