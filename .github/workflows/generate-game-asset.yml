@@ -89,11 +89,14 @@ jobs:
         run: |
           mkdir -p "$(dirname "$OUTPUT_PATH")"
 
+          # background:transparent → gpt-image-1 returns an alpha PNG with the
+          # subject cut out (no backdrop), so game assets drop cleanly onto the
+          # UI as sprites instead of framed rectangles.
           resp=$(curl -sS https://api.openai.com/v1/images/generations \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
             -H "Content-Type: application/json" \
             -d "$(jq -n --arg prompt "$PROMPT" --arg size "$SIZE" \
-                  '{model: "gpt-image-1", prompt: $prompt, size: $size, quality: "high", n: 1}')")
+                  '{model: "gpt-image-1", prompt: $prompt, size: $size, quality: "high", background: "transparent", n: 1}')")
 
           error=$(echo "$resp" | jq -r '.error.message // empty')
           if [ -n "$error" ]; then
@@ -108,10 +111,26 @@ jobs:
             exit 1
           fi
 
+      # Downscale to a web-friendly sprite size so a set of assets doesn't
+      # bloat the PWA (a raw 1024px PNG is ~1.5MB; 512px trimmed is ~10x
+      # smaller). -trim removes fully-transparent margins so the subject
+      # fills the frame consistently. ImageMagick is preinstalled on the runner.
+      - name: Resize + trim for web
+        env:
+          OUTPUT_PATH: ${{ inputs.output_path }}
+        run: |
+          convert "$OUTPUT_PATH" -trim +repage -resize '512x512>' -background none -gravity center -extent 512x512 "$OUTPUT_PATH"
+
+      # Retry-with-rebase so several asset generations running at once don't
+      # clobber each other pushing to main (each runner does plain commit+push).
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "${{ inputs.output_path }}"
-          git commit -m "Generate game asset (${{ inputs.game }}): ${{ inputs.asset }}" || echo "Nothing to commit"
-          git push
+          git commit -m "Generate game asset (${{ inputs.game }}): ${{ inputs.asset }}" || { echo "Nothing to commit"; exit 0; }
+          for i in 1 2 3 4 5 6; do
+            git pull --rebase origin main && git push && exit 0
+            echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+          done
+          echo "::error::Could not push after retries"; exit 1
