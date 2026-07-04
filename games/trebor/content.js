@@ -19,23 +19,51 @@ const CARDS = {
   alphaStrike: { id: "alphaStrike", name: "Alpha Strike", cost: 2, damage: 14, text: "Deal 14 damage." },
   sniffOut: { id: "sniffOut", name: "Sniff Out", cost: 0, draw: 2, text: "Draw 2 cards." },
   secondWind: { id: "secondWind", name: "Second Wind", cost: 1, block: 8, draw: 1, text: "Gain 8 Block. Draw a card." },
+  // Class signature cards (each dog class opens with copies of its own):
+  digIn: { id: "digIn", name: "Dig In", cost: 0, damage: 4, text: "Deal 4 damage." },
+  riptide: { id: "riptide", name: "Riptide", cost: 1, damage: 5, block: 5, text: "Deal 5 damage. Gain 5 Block." },
+  rally: { id: "rally", name: "Rally", cost: 0, block: 3, draw: 1, text: "Gain 3 Block. Draw a card." },
 };
 
-// The dog's starting deck — just a flat list of card ids, duplicates allowed.
-const STARTER_DECK = [
-  "bite", "bite", "bite", "bite",
-  "growl", "growl", "growl",
-  "fetch", "fetch",
-  "pounce",
-  "guardDog",
-  "goodBoy",
-];
+// The three playable dog classes — Slay the Spire-style, each with its own
+// starting deck and Hull (HP) so it plays distinctly. `deck` is a flat list
+// of card ids (duplicates allowed). Chosen once at the start of a run.
+const CLASSES = {
+  riddle: {
+    id: "riddle",
+    name: "Riddle",
+    breed: "Wire Fox Terrier",
+    blurb: "A relentless digger — cheap, fast attacks and card draw. Fragile but hits early and often.",
+    maxHp: 24,
+    deck: ["bite", "bite", "bite", "digIn", "digIn", "fetch", "fetch", "growl", "growl", "pounce", "goodBoy", "sniffOut"],
+  },
+  koozie: {
+    id: "koozie",
+    name: "Koozie",
+    breed: "Irish Water Spaniel",
+    blurb: "Weathers any storm — heavy Block and counter-punches. Tanky; outlasts the enemy.",
+    maxHp: 32,
+    deck: ["bite", "bite", "bite", "growl", "growl", "growl", "riptide", "riptide", "guardDog", "secondWind", "goodBoy", "fetch"],
+  },
+  bevy: {
+    id: "bevy",
+    name: "Bevy",
+    breed: "Flat-haired Goldendoodle",
+    blurb: "Endlessly adaptable — draws cards and makes energy. Build whatever play the turn needs.",
+    maxHp: 28,
+    deck: ["bite", "bite", "bite", "growl", "growl", "fetch", "fetch", "rally", "rally", "goodBoy", "sniffOut", "pounce"],
+  },
+};
+
+// Fallback starter deck (used only if a run somehow has no class picked).
+const STARTER_DECK = CLASSES.bevy.deck.slice();
 
 // Cards offered as post-combat rewards — every card is fair game, including
-// extra copies of starter cards.
+// the class signature cards and extra copies of starters.
 const REWARD_POOL = [
   "bite", "growl", "fetch", "pounce", "guardDog", "goodBoy",
   "howl", "bigBark", "alphaStrike", "sniffOut", "secondWind",
+  "digIn", "riptide", "rally",
 ];
 
 // Cats fight through a fixed, repeating intent pattern — telegraphed one
@@ -74,6 +102,28 @@ const ENEMY_TYPES = {
       { type: "attack", damage: 14 },
     ],
   },
+  // A small, relentless swarm unit — low HP, never guards, comes in numbers.
+  feralKitten: {
+    id: "feralKitten",
+    name: "Feral Kitten",
+    maxHp: 7,
+    pattern: [
+      { type: "attack", damage: 3 },
+      { type: "attack", damage: 3 },
+      { type: "attack", damage: 5 },
+    ],
+  },
+  // A glass-cannon sniper — winds up behind cover, then a big telegraphed
+  // shot. Kill it or block the wind-up.
+  rooftopSniper: {
+    id: "rooftopSniper",
+    name: "Rooftop Sniper",
+    maxHp: 13,
+    pattern: [
+      { type: "guard", block: 4 },
+      { type: "attack", damage: 13 },
+    ],
+  },
 };
 
 // The dungeon map: a fixed sequence of floors, each offering a few node
@@ -91,21 +141,22 @@ const FLOORS = [
   {
     options: [
       { type: "fight", label: "Junkyard", enemies: ["tabbyGuard"] },
+      { type: "fight", label: "Litter", enemies: ["feralKitten", "feralKitten", "feralKitten"] },
       { type: "elite", label: "Guard Post", enemies: ["tabbyGuard", "alleyCat"] },
       { type: "rest", label: "Sunny Spot" },
     ],
   },
   {
     options: [
-      { type: "fight", label: "Rooftops", enemies: ["alleyCat", "alleyCat"] },
-      { type: "elite", label: "Fire Escape", enemies: ["tabbyGuard", "tabbyGuard"] },
+      { type: "fight", label: "Rooftops", enemies: ["alleyCat", "rooftopSniper"] },
+      { type: "elite", label: "Fire Escape", enemies: ["rooftopSniper", "tabbyGuard"] },
       { type: "rest", label: "Water Bowl" },
     ],
   },
   {
     options: [
       { type: "fight", label: "Back Door", enemies: ["alleyCat", "tabbyGuard"] },
-      { type: "elite", label: "Loading Dock", enemies: ["tabbyGuard", "alleyCat", "alleyCat"] },
+      { type: "elite", label: "Loading Dock", enemies: ["rooftopSniper", "feralKitten", "feralKitten"] },
       { type: "rest", label: "Old Blanket" },
     ],
   },
@@ -122,6 +173,7 @@ const ELITE_REWARD_COUNT = 4;
 
 const CONTENT = {
   CARDS,
+  CLASSES,
   STARTER_DECK,
   REWARD_POOL,
   ENEMY_TYPES,

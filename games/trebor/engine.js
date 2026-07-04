@@ -83,12 +83,15 @@ function advanceFloorOrBoss(state, content, rng = Math.random) {
 }
 
 function createGameState(content, rng = Math.random) {
+  // A run opens on class selection — the deck and Hull aren't set until the
+  // player picks a dog class (see chooseClass).
   const state = {
-    status: "choosing",
+    status: "class-select",
+    classId: null,
     floorIndex: 0,
     turnCount: 1,
     currentNodeType: null,
-    deck: content.STARTER_DECK.slice(),
+    deck: [],
     player: {
       hp: content.STARTING_HP,
       maxHp: content.STARTING_HP,
@@ -100,11 +103,25 @@ function createGameState(content, rng = Math.random) {
     hand: [],
     discardPile: [],
     enemies: [],
-    nodeChoices: content.FLOORS[0].options,
+    nodeChoices: [],
     rewardOptions: [],
-    log: ["Choose your path."],
+    log: ["Choose your dog."],
   };
   return state;
+}
+
+function chooseClass(state, content, classId, rng = Math.random) {
+  if (state.status !== "class-select") throw new Error(`Cannot choose a class while status is ${state.status}`);
+  const cls = content.CLASSES[classId];
+  if (!cls) throw new Error(`Unknown class: ${classId}`);
+  state.classId = classId;
+  state.deck = cls.deck.slice();
+  state.player.maxHp = cls.maxHp;
+  state.player.hp = cls.maxHp;
+  state.floorIndex = 0;
+  state.status = "choosing";
+  state.nodeChoices = content.FLOORS[0].options;
+  state.log = [`${cls.name} the ${cls.breed} sets out.`];
 }
 
 function chooseNode(state, content, optionIndex, rng = Math.random) {
@@ -238,6 +255,7 @@ function describeIntent(intent) {
 
 const Engine = {
   createGameState,
+  chooseClass,
   chooseNode,
   playCard,
   endPlayerTurn,
