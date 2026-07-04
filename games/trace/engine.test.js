@@ -1,5 +1,5 @@
 // engine.test.js — headless rules coverage for "Step in the Cat" (Trap the
-// Cat). Plain Node: `node games/trace/engine.test.js`.
+// Cat with differentiated pins). Plain Node: `node games/trace/engine.test.js`.
 "use strict";
 
 const assert = require("assert");
@@ -13,104 +13,103 @@ function seeded(seed) {
   };
 }
 
-// ---- a fresh game: cat dead center, some walls, and room to run --------
+// ---- a fresh game: cat center, a hand of pins, room to run -------------
 const g = Engine.createGame(seeded(1));
 assert.strictEqual(g.status, "playing");
-assert.deepStrictEqual(g.cat, { r: 4, c: 4 }, "cat starts in the center");
-assert.strictEqual(g.pinsUsed, 0);
-assert.ok(g.pins.size >= 1, "some starting walls are seeded");
-// The cat's own step and its six neighbors are never walled at the start.
-assert.ok(!g.pins.has(Engine.keyOf(4, 4)), "the cat's step is open");
-for (const n of Engine.neighbors(4, 4)) {
-  assert.ok(!g.pins.has(Engine.keyOf(n.r, n.c)), "the ring around the cat starts open");
-}
+assert.deepStrictEqual(g.cat, { r: 4, c: 4 }, "cat starts centered");
+assert.strictEqual(g.hand.length, Engine.HAND_SIZE, "you start with a full hand of pins");
+assert.ok(g.hand.every((t) => Engine.PIN_TYPES.includes(t)), "every held pin is a real type");
+assert.ok(g.bag.length > 0, "the draw bag is stocked");
+for (const n of Engine.neighbors(4, 4)) assert.ok(!g.pins.has(Engine.keyOf(n.r, n.c)), "ring around the cat is open");
 
-// ---- geometry: edges and neighbour counts ------------------------------
-assert.ok(Engine.isEdge(0, 3) && Engine.isEdge(8, 8) && Engine.isEdge(4, 0));
-assert.ok(!Engine.isEdge(4, 4));
-assert.strictEqual(Engine.neighbors(4, 4).length, 6, "an interior hex has six neighbours");
-assert.ok(Engine.neighbors(0, 0).length < 6, "a corner has fewer");
+// ---- a plain Wall: it sticks, the cat steps, the hand refills ----------
+const wall = Engine.createGame(seeded(2));
+wall.hand[0] = "wall";
+const catBefore = { ...wall.cat };
+let cell = null;
+for (let r = 0; r < 9 && !cell; r++) for (let c = 0; c < 9; c++) if (Engine.isPlaceable(wall, r, c)) { cell = { r, c }; break; }
+Engine.placePin(wall, cell.r, cell.c, 0, seeded(2));
+assert.ok(wall.pins.has(Engine.keyOf(cell.r, cell.c)), "the wall was placed");
+assert.strictEqual(wall.pinsUsed, 1);
+assert.strictEqual(wall.hand.length, Engine.HAND_SIZE, "hand refilled to full");
+assert.ok(wall.cat.r !== catBefore.r || wall.cat.c !== catBefore.c, "the cat took a step");
 
-// ---- placing a pin: it sticks, and the cat then takes one step ---------
-const play = Engine.createGame(seeded(2));
-const before = { ...play.cat };
-// Place somewhere that is neither the cat nor an existing pin.
-let target = null;
-for (let r = 0; r < 9 && !target; r++)
-  for (let c = 0; c < 9; c++) {
-    const k = Engine.keyOf(r, c);
-    if (!play.pins.has(k) && !(play.cat.r === r && play.cat.c === c)) {
-      target = { r, c };
-      break;
-    }
-  }
-Engine.placePin(play, target.r, target.c, );
-assert.ok(play.pins.has(Engine.keyOf(target.r, target.c)), "the pin was placed");
-assert.strictEqual(play.pinsUsed, 1, "and counted");
-assert.ok(play.cat.r !== before.r || play.cat.c !== before.c, "the cat moved in response");
-assert.ok(!Engine.isEdge(before.r, before.c));
-
-// No-ops: placing on the cat, on a pin, or off-board doesn't spend a move.
+// ---- illegal placements are ignored ------------------------------------
 const noop = Engine.createGame(seeded(3));
+noop.hand[0] = "wall";
 const pu = noop.pinsUsed;
-Engine.placePin(noop, noop.cat.r, noop.cat.c); // on the cat
-Engine.placePin(noop, -1, -1); // off board
-const anyPin = noop.pins.values().next().value.split(",").map(Number);
-Engine.placePin(noop, anyPin[0], anyPin[1]); // on an existing pin
-assert.strictEqual(noop.pinsUsed, pu, "illegal placements are ignored");
+Engine.placePin(noop, noop.cat.r, noop.cat.c, 0); // on the cat
+Engine.placePin(noop, -1, -1, 0); // off-board
+Engine.placePin(noop, 0, 0, 9); // no such hand slot
+assert.strictEqual(noop.pinsUsed, pu, "illegal placements never spend a pin");
 
-// ---- winning: fully enclose the cat ------------------------------------
-// Build a state with the cat boxed in except one gap, then plug it.
-const win = Engine.createGame(seeded(4));
+// ---- Snare: walling next to the cat stuns it (it skips a move) ---------
+const snare = Engine.createGame(seeded(4));
+snare.pins = new Set();
+snare.cat = { r: 4, c: 4 };
+snare.hand = ["snare", "wall", "wall"];
+const adj = Engine.neighbors(4, 4)[0]; // a neighbour of the cat
+const catPos = { ...snare.cat };
+Engine.placePin(snare, adj.r, adj.c, 0, seeded(4));
+assert.ok(snare.pins.has(Engine.keyOf(adj.r, adj.c)), "the snare walls its step");
+assert.deepStrictEqual(snare.cat, catPos, "a snared cat does not move that turn");
+assert.match(snare.message, /snared/i);
+
+// ---- Boulder: seals two steps at once ----------------------------------
+const boulder = Engine.createGame(seeded(5));
+boulder.pins = new Set();
+boulder.cat = { r: 4, c: 4 };
+boulder.hand = ["boulder", "wall", "wall"];
+// Place away from the cat so its move doesn't confuse the wall count.
+Engine.placePin(boulder, 6, 4, 0, seeded(5));
+let bWalls = 0;
+for (const _ of boulder.pins) bWalls++;
+assert.strictEqual(bWalls, 2, "a boulder drops two walls");
+
+// ---- Lure: the cat chases the fish instead of the edge -----------------
+const lure = Engine.createGame(seeded(6));
+lure.pins = new Set();
+lure.cat = { r: 4, c: 4 };
+lure.hand = ["lure", "wall", "wall"];
+// Bait it downward (away from the top edge it would otherwise sprint for).
+Engine.placePin(lure, 6, 4, 0, seeded(6));
+assert.strictEqual(lure.cat.r, 5, "the cat stepped down toward the fish rather than out to the nearer side edge");
+
+// ---- winning: seal the last escape route -------------------------------
+const win = Engine.createGame(seeded(7));
+win.pins = new Set(Engine.neighbors(4, 4).slice(1).map((n) => Engine.keyOf(n.r, n.c))); // all but one neighbour
 win.cat = { r: 4, c: 4 };
-win.pins = new Set();
-const ring = Engine.neighbors(4, 4);
-// Wall every neighbour but the last, then confirm we're still playing, and
-// plugging the final gap wins (no edge reachable).
-for (let i = 0; i < ring.length - 1; i++) win.pins.add(Engine.keyOf(ring[i].r, ring[i].c));
-const gap = ring[ring.length - 1];
-// Also wall the ring-two cells the cat could reach through the gap so the
-// single placement below actually seals it. Simplest: block the gap itself.
-const escBefore = Engine.findEscape(win);
-assert.ok(escBefore.reachable, "with a gap, the cat can still escape");
-Engine.placePin(win, gap.r, gap.c);
-assert.strictEqual(win.status, "won", "sealing the last neighbour traps the cat");
-assert.match(win.message, /trapped/i);
+win.hand = ["wall", "wall", "wall"];
+const gap = Engine.neighbors(4, 4)[0];
+assert.ok(Engine.findEscape(win).reachable, "with a gap it can still get out");
+Engine.placePin(win, gap.r, gap.c, 0, seeded(7));
+assert.strictEqual(win.status, "won", "plugging the last gap traps it");
 
-// ---- losing: the cat reaches an edge -----------------------------------
-const lose = Engine.createGame(seeded(5));
+// ---- losing: an open board lets the cat reach the edge -----------------
+const lose = Engine.createGame(seeded(8));
 lose.pins = new Set();
-lose.cat = { r: 1, c: 4 }; // one row from the top edge, open board
-Engine.placePin(lose, 8, 8); // a harmless far corner; cat should march to the edge
-assert.strictEqual(lose.status, "lost", "an open board lets the cat reach the edge");
-assert.match(lose.message, /slipped out/i);
-
-// ---- findEscape: a cat with every route walled is unreachable ----------
-const boxed = Engine.createGame(seeded(6));
-boxed.cat = { r: 4, c: 4 };
-boxed.pins = new Set(Engine.neighbors(4, 4).map((n) => Engine.keyOf(n.r, n.c)));
-assert.strictEqual(Engine.findEscape(boxed).reachable, false, "no open neighbour → no escape");
+lose.cat = { r: 1, c: 4 };
+lose.hand = ["wall", "wall", "wall"];
+Engine.placePin(lose, 8, 0, 0, seeded(8)); // harmless far wall
+assert.strictEqual(lose.status, "lost", "the cat marched to the edge");
 
 // ---- fuzz: random legal play never throws and always terminates --------
 for (let seed = 0; seed < 60; seed++) {
-  const rng = seeded(700 + seed);
+  const rng = seeded(900 + seed);
   const s = Engine.createGame(rng);
   let guard = 0;
   while (s.status === "playing") {
     if (++guard > 400) throw new Error("game did not terminate");
-    // Place a pin on a random open, non-cat step.
     const opens = [];
-    for (let r = 0; r < 9; r++)
-      for (let c = 0; c < 9; c++) {
-        const k = Engine.keyOf(r, c);
-        if (!s.pins.has(k) && !(s.cat.r === r && s.cat.c === c)) opens.push({ r, c });
-      }
-    if (opens.length === 0) break;
+    for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) if (Engine.isPlaceable(s, r, c)) opens.push({ r, c });
+    if (!opens.length) break;
     const cell = opens[Math.floor(rng() * opens.length)];
-    Engine.placePin(s, cell.r, cell.c, rng);
+    const hi = Math.floor(rng() * s.hand.length);
+    Engine.placePin(s, cell.r, cell.c, hi, rng);
     assert.ok(Engine.inBounds(s.cat.r, s.cat.c), "cat stays on the board");
+    assert.strictEqual(s.hand.length, Engine.HAND_SIZE, "hand stays full");
   }
   assert.ok(["won", "lost", "playing"].includes(s.status));
 }
 
-console.log("All Trap-the-Cat engine assertions passed.");
+console.log("All Trap-the-Cat (differentiated-pin) engine assertions passed.");

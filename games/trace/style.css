@@ -118,6 +118,45 @@ html, body {
   50% { transform: translateY(-6%) scale(1.03); }
 }
 
+/* ---- Pin hand: pick which pin to place ------------------------------- */
+.pin-hint {
+  flex: 0 0 auto;
+  margin: 0;
+  min-height: 1.1em;
+  text-align: center;
+  font-size: 0.72rem;
+  color: #d8e4ea;
+  opacity: 0.9;
+}
+.pin-hand {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+.pin-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 74px;
+  padding: 6px 4px;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  background: rgba(20, 30, 36, 0.5);
+  color: #f4efe6;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pin-slot img { width: 40px; height: 40px; object-fit: contain; }
+.pin-slot-name { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+.pin-slot-sel {
+  border-color: #f0c674;
+  background: rgba(240, 198, 116, 0.18);
+  box-shadow: 0 0 12px rgba(240, 198, 116, 0.4);
+}
+.pin-slot:active { transform: scale(0.96); }
+
 /* ---- Game-over overlay ----------------------------------------------- */
 .run-overlay {
   position: fixed;

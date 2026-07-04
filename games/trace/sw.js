@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("trace-v4", [
+GCRegisterServiceWorker("trace-v5", [
   "./",
   "./index.html",
   "./style.css",
