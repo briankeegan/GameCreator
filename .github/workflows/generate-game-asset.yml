@@ -1,0 +1,117 @@
+name: Generate game asset
+
+# Manually triggered only (workflow_dispatch) — same never-runs-on-push
+# safety as "Generate image". Use THIS action (not "Generate image") when
+# the asset needs to match a game's established look. It reads
+# games/<game>/art-style.json and locks in that game's camera angle,
+# rendering style, palette, and background treatment on every call —
+# `asset` only has to describe what's different about this one image
+# (subject, pose, ship type, etc). That's what keeps a whole set of
+# sprites/icons for one game visually consistent instead of depending on
+# how thorough one prompt happened to be that day.
+#
+# Use "Generate image" instead for one-off / experimental images that
+# aren't part of a game's established set, or before a game has an
+# art-style.json yet.
+on:
+  workflow_dispatch:
+    inputs:
+      game:
+        description: "Game id — must have games/<id>/art-style.json"
+        required: true
+        type: string
+      asset:
+        description: "What THIS image is, e.g. 'top-down enemy interceptor ship, small and nimble'"
+        required: true
+        type: string
+      output_path:
+        description: "Where to save it in the repo, e.g. games/hypergolic-hull/icons/enemy-interceptor.png"
+        required: true
+        type: string
+      size:
+        description: "Image size"
+        required: false
+        type: choice
+        options:
+          - "1024x1024"
+          - "1024x1536"
+          - "1536x1024"
+        default: "1024x1024"
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Combines the game's fixed style (camera/style/palette/background/
+      # constraints from art-style.json) with the per-image `asset`
+      # description into one prompt. Written to GITHUB_OUTPUT via a
+      # heredoc so it survives being multi-line / containing quotes.
+      - name: Build styled prompt
+        id: style
+        env:
+          GAME: ${{ inputs.game }}
+          ASSET: ${{ inputs.asset }}
+        run: |
+          STYLE_FILE="games/$GAME/art-style.json"
+          if [ ! -f "$STYLE_FILE" ]; then
+            echo "::error::No art-style.json found at $STYLE_FILE — create one first (see CLAUDE.md), or use the 'Generate image' action instead for a one-off."
+            exit 1
+          fi
+
+          camera=$(jq -r '.camera' "$STYLE_FILE")
+          style=$(jq -r '.style' "$STYLE_FILE")
+          palette=$(jq -r '.palette' "$STYLE_FILE")
+          background=$(jq -r '.background' "$STYLE_FILE")
+          constraints=$(jq -r '.constraints' "$STYLE_FILE")
+
+          prompt="${camera} ${ASSET}. ${style} Color palette: ${palette} Background: ${background} ${constraints}"
+
+          {
+            echo "prompt<<PROMPT_EOF"
+            echo "$prompt"
+            echo "PROMPT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # Same OpenAI call as "Generate image" — gpt-image-1, no
+      # response_format (always returns b64_json on this account).
+      - name: Generate image via OpenAI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PROMPT: ${{ steps.style.outputs.prompt }}
+          SIZE: ${{ inputs.size }}
+          OUTPUT_PATH: ${{ inputs.output_path }}
+        run: |
+          mkdir -p "$(dirname "$OUTPUT_PATH")"
+
+          resp=$(curl -sS https://api.openai.com/v1/images/generations \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg prompt "$PROMPT" --arg size "$SIZE" \
+                  '{model: "gpt-image-1", prompt: $prompt, size: $size, quality: "high", n: 1}')")
+
+          error=$(echo "$resp" | jq -r '.error.message // empty')
+          if [ -n "$error" ]; then
+            echo "::error::OpenAI API error: $error"
+            exit 1
+          fi
+
+          echo "$resp" | jq -r '.data[0].b64_json' | base64 -d > "$OUTPUT_PATH"
+
+          if [ ! -s "$OUTPUT_PATH" ]; then
+            echo "::error::Output file is empty — generation likely failed"
+            exit 1
+          fi
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ inputs.output_path }}"
+          git commit -m "Generate game asset (${{ inputs.game }}): ${{ inputs.asset }}" || echo "Nothing to commit"
+          git push

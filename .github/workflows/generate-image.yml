@@ -4,6 +4,12 @@ name: Generate image
 # there's no risk of it firing unexpectedly or costing money on its own.
 # Trigger it from the Actions tab ("Run workflow"), or Claude can trigger
 # it via the GitHub API with the same three inputs.
+#
+# This is the freeform/one-off action: no persisted style, every prompt
+# starts blank. For an asset that should match a game's established look
+# (a whole set of sprites/icons), use "Generate game asset" instead — it
+# reads games/<id>/art-style.json and locks in that game's camera angle,
+# rendering style, palette, and background automatically.
 on:
   workflow_dispatch:
     inputs:

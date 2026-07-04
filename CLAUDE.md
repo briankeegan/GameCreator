@@ -118,7 +118,31 @@ design discussion. `shared/` holds the components every game reuses
   yourself — the tool encodes internally, so pre-encoding double-encodes
   and silently corrupts the file (confirmed the hard way: it broke the
   live Clubhouse page with no error, since the corrupted script couldn't
-  even execute to show one).
+  even execute to show one). The `generate-image.yml`/`generate-game-asset.yml`
+  Actions sidestep this entirely by decoding and `git commit`/`git push`-ing
+  the PNG from inside the runner, never through these Contents-API tools.
+- **Image generation** — two `workflow_dispatch`-only Actions (never run on
+  push, so no accidental cost): `.github/workflows/generate-image.yml`
+  ("Generate image") and `.github/workflows/generate-game-asset.yml`
+  ("Generate game asset"). Both call OpenAI's `/v1/images/generations`
+  directly via curl+jq (model `gpt-image-1` — this account's API rejects
+  `dall-e-3` + `response_format`; gpt-image-1 always returns `b64_json`
+  and uses sizes `1024x1024`/`1024x1536`/`1536x1024`), decode the PNG, and
+  commit it via a normal `git commit`/`git push` inside the runner.
+  - **"Generate image"** is freeform: inputs are just `prompt`,
+    `output_path`, `size`. No persisted style — use it for one-off/
+    experimental images, or for a game that doesn't have an
+    `art-style.json` yet.
+  - **"Generate game asset"** is for a consistent set: inputs are `game`,
+    `asset` (what's different about THIS image), `output_path`, `size`.
+    It reads `games/<game>/art-style.json` (fields: `camera`, `style`,
+    `palette`, `background`, `constraints`) and combines those with
+    `asset` to build the actual prompt sent to OpenAI — so every asset for
+    that game shares the same camera angle, rendering style, palette, and
+    background without retyping them each time. Fails loudly if that game
+    has no `art-style.json` yet (create one first, modeled on
+    `games/hypergolic-hull/art-style.json`).
+  - Requires the `OPENAI_API_KEY` repo secret (already set).
 - Each game is a PWA (`manifest.webmanifest` + `sw.js`) sharing
   `shared/pwa.js`-style plumbing — scaffolded automatically by
   `admin-create-game` from `games/_template/`. Don't hand-create a game's
