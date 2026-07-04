@@ -71,10 +71,38 @@
 
   var guy = { x: 180, targetX: 180, walking: false, bob: 0, pending: null, dir: 1 };
 
+  // ---- generated art (optional). The game plays fine on the hand-drawn
+  // canvas fallback below; once art/room.png (background) and art/hero.png
+  // (transparent character sprite) are generated, it upgrades automatically.
+  var assets = { room: null, hero: null };
+  function loadAsset(key, src) {
+    var img = new Image();
+    img.onload = function () { assets[key] = img; draw(); };
+    img.src = src; // a 404 just leaves the fallback in place
+  }
+
   // ============================================================ RENDERING
   function px(n) { return Math.round(n); }
 
   function draw() {
+    if (assets.room) ctx.drawImage(assets.room, 0, 0, 360, 200);
+    else drawFallbackRoom();
+
+    drawCharacter();
+
+    for (var i = 0; i < SPOTS.length; i++) drawLabel(SPOTS[i]);
+  }
+
+  function drawCharacter() {
+    if (assets.hero) {
+      var h = 56, w = h * (assets.hero.width / assets.hero.height);
+      ctx.drawImage(assets.hero, px(guy.x - w / 2), px(FLOOR_Y + 3 - h + guy.bob), px(w), px(h));
+    } else {
+      drawGuy(guy.x, FLOOR_Y + 2, guy.bob);
+    }
+  }
+
+  function drawFallbackRoom() {
     var W = 360, H = 200;
     ctx.fillStyle = C.wall; ctx.fillRect(0, 0, W, FLOOR_Y);
     ctx.fillStyle = C.wallTop; ctx.fillRect(0, 0, W, 16);
@@ -82,7 +110,6 @@
     ctx.fillStyle = C.floor; ctx.fillRect(0, FLOOR_Y, W, H - FLOOR_Y);
     ctx.fillStyle = C.floor2;
     for (var x = 0; x < W; x += 28) ctx.fillRect(x, FLOOR_Y, 2, H - FLOOR_Y);
-
     drawDoor(6, 70);
     drawTV(58, 96);
     drawBed(126, 108);
@@ -90,10 +117,6 @@
     drawBells(236, 138);
     drawKitchen(300, 84);
     drawPullup(150, 24);
-
-    drawGuy(guy.x, FLOOR_Y + 2, guy.bob);
-
-    for (var i = 0; i < SPOTS.length; i++) drawLabel(SPOTS[i]);
   }
 
   function outline(x, y, w, h) {
@@ -490,4 +513,6 @@
   // ============================================================ BOOT
   updateHUD();
   draw();
+  loadAsset("room", "art/room.png");
+  loadAsset("hero", "art/hero.png");
 })();

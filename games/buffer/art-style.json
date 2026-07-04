@@ -1,0 +1,9 @@
+{
+  "camera": "Side-on view, full body, feet at the bottom edge of the frame, subject centered and filling most of the frame.",
+  "style": "16-bit-era point-and-click adventure pixel art in the LucasArts / Monkey Island / Day of the Tentacle tradition: chunky low-resolution pixels, thick dark outlines, hand-painted warm dithered shading (no soft gradients, no anti-aliasing), exaggerated cartoonish proportions, expressive and full of character.",
+  "palette": "Warm, cozy indoor palette — tans, browns, terracotta, muted reds and blues, warm skin tones. Saturated but not neon. Specific colors per asset given in its description.",
+  "background": "Fully transparent — the subject is an isolated cut-out sprite with no backdrop, no floor, no ground shadow, and no frame.",
+  "constraints": "Single subject only, centered, filling the frame. No text, no logos, no watermarks, no UI, no border.",
+  "pixelArt": true,
+  "pixelGrid": 96
+}
