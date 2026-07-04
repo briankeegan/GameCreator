@@ -7,10 +7,11 @@ name: Clubhouse autopilot
 # thread (a comment on its permanently-open "Clubhouse — <name>" draft PR) and
 # runs Claude to handle it per CLAUDE.md. No session of yours needs to exist.
 #
-# Setup (one time): add an ANTHROPIC_API_KEY repo secret (Settings → Secrets
-# and variables → Actions). To bill against a Claude subscription instead of
-# the API, swap `anthropic_api_key` below for `claude_code_oauth_token` and add
-# that secret instead (generate it locally with `claude setup-token`).
+# Setup (one time): this bills against a Claude subscription via an OAuth
+# token. Generate it locally with `claude setup-token`, then add the result as
+# a CLAUDE_CODE_OAUTH_TOKEN repo secret (Settings → Secrets and variables →
+# Actions). To bill against the API instead, swap `claude_code_oauth_token`
+# below for `anthropic_api_key` and store an ANTHROPIC_API_KEY secret instead.
 
 on:
   issue_comment:
@@ -59,7 +60,7 @@ jobs:
           # this workflow, which is exactly what we want for the reply.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Sonnet 5 is a solid cost/capability default for implementing game
           # tweaks; change to claude-opus-4-8 for harder asks. Bash is allowed
           # broadly because the run needs git, gh, and node (tests) — see the
