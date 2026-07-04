@@ -50,55 +50,76 @@
       '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><path d="M12 3 L19 6 V11 C19 16 16 19.5 12 21 C8 19.5 5 16 5 11 V6 Z"/></svg>',
   };
 
+  // ---- character art: full sitting-animal portraits, built from one shared
+  // template (strong silhouette, dark outline, layered shading, the
+  // signature slit/round eyes) and varied per character so each reads as a
+  // genuinely distinct creature, not a recolor. All inline SVG, no assets.
+  function buildCat(o) {
+    const {
+      base, shadow, belly, ear, eye, pupil = "#0c0808", outline = "#0c0808",
+      eyeShape = "slit", brow = 0, scar = false, collar = null, tornEar = false,
+      fang = false, glow = false, tailSide = 1, stripes = null,
+    } = o;
+    const defs = glow ? '<defs><filter id="tbGlow"><feGaussianBlur stdDeviation="1.6"/></filter></defs>' : "";
+    const gf = glow ? ' filter="url(#tbGlow)"' : "";
+    const tail = `<path d="M${50 + tailSide * 22} 86 C${50 + tailSide * 34} 84 ${50 + tailSide * 36} 66 ${50 + tailSide * 28} 58 C${50 + tailSide * 33} 68 ${50 + tailSide * 28} 80 ${50 + tailSide * 18} 82 Z" fill="${shadow}" stroke="${outline}" stroke-width="2.5" stroke-linejoin="round"/>`;
+    const body = `<path d="M50 40 C34 40 26 54 24 70 C22 82 26 92 34 95 L66 95 C74 92 78 82 76 70 C74 54 66 40 50 40 Z" fill="${base}" stroke="${outline}" stroke-width="3"/><path d="M50 62 C40 62 34 74 34 84 C34 90 38 94 44 95 L56 95 C62 94 66 90 66 84 C66 74 60 62 50 62 Z" fill="${belly}"/><ellipse cx="42" cy="93" rx="7" ry="5" fill="${base}" stroke="${outline}" stroke-width="2"/><ellipse cx="58" cy="93" rx="7" ry="5" fill="${base}" stroke="${outline}" stroke-width="2"/>`;
+    const collarMark = collar ? `<path d="M34 60 Q50 68 66 60 L64 65 Q50 72 36 65 Z" fill="${collar}" stroke="${outline}" stroke-width="1.6"/><circle cx="50" cy="67" r="3" fill="#e6b95c" stroke="${outline}" stroke-width="1.2"/>` : "";
+    const leftEar = tornEar
+      ? `<path d="M30 30 L26 8 L40 16 L38 22 L34 18 Z" fill="${base}" stroke="${outline}" stroke-width="3" stroke-linejoin="round"/>`
+      : `<path d="M30 30 L26 8 L44 22 Z" fill="${base}" stroke="${outline}" stroke-width="3" stroke-linejoin="round"/><path d="M31 24 L30 15 L38 22 Z" fill="${ear}"/>`;
+    const rightEar = `<path d="M70 30 L74 8 L56 22 Z" fill="${base}" stroke="${outline}" stroke-width="3" stroke-linejoin="round"/><path d="M69 24 L70 15 L62 22 Z" fill="${ear}"/>`;
+    const head = `<ellipse cx="50" cy="40" rx="26" ry="23" fill="${base}" stroke="${outline}" stroke-width="3"/>`;
+    const cheeks = `<path d="M24 44 Q20 52 26 56 Q30 52 30 46 Z" fill="${shadow}"/><path d="M76 44 Q80 52 74 56 Q70 52 70 46 Z" fill="${shadow}"/>`;
+    const muzzle = `<ellipse cx="50" cy="49" rx="13" ry="9" fill="${belly}"/>`;
+    let eyes;
+    if (eyeShape === "round") {
+      eyes = `<circle cx="40" cy="38" r="5" fill="${eye}"${gf}/><circle cx="60" cy="38" r="5" fill="${eye}"${gf}/><ellipse cx="40" cy="38" rx="2" ry="4" fill="${pupil}"/><ellipse cx="60" cy="38" rx="2" ry="4" fill="${pupil}"/>`;
+    } else if (eyeShape === "angry") {
+      eyes = `<path d="M32 40 L48 35 L47 40 L34 43 Z" fill="${eye}"${gf}/><path d="M68 40 L52 35 L53 40 L66 43 Z" fill="${eye}"${gf}/><ellipse cx="41" cy="39" rx="1.5" ry="3.2" fill="${pupil}"/><ellipse cx="59" cy="39" rx="1.5" ry="3.2" fill="${pupil}"/>`;
+    } else {
+      eyes = `<path d="M33 38 Q40 33 47 38 Q40 43 33 38 Z" fill="${eye}"${gf}/><path d="M53 38 Q60 33 67 38 Q60 43 53 38 Z" fill="${eye}"${gf}/><ellipse cx="40" cy="38" rx="1.7" ry="4.5" fill="${pupil}"/><ellipse cx="60" cy="38" rx="1.7" ry="4.5" fill="${pupil}"/>`;
+    }
+    const brows = brow ? `<path d="M31 31 L46 34" stroke="${outline}" stroke-width="2.4" stroke-linecap="round"/><path d="M69 31 L54 34" stroke="${outline}" stroke-width="2.4" stroke-linecap="round"/>` : "";
+    const nose = `<path d="M47 47 L53 47 L50 51 Z" fill="#c65a63"/>`;
+    const mouth = fang
+      ? `<path d="M50 51 Q50 55 44 56 M50 51 Q50 55 56 56" stroke="${outline}" stroke-width="1.6" fill="none"/><path d="M46 55 L44 60 L48 56 Z" fill="#f2ede0"/><path d="M54 55 L56 60 L52 56 Z" fill="#f2ede0"/>`
+      : `<path d="M50 51 Q50 55 45 55 M50 51 Q50 55 55 55" stroke="${outline}" stroke-width="1.6" fill="none"/>`;
+    const whisk = `<g stroke="${outline}" stroke-width="1" opacity=".55" stroke-linecap="round"><path d="M37 48 Q26 46 20 48"/><path d="M37 51 Q26 52 21 55"/><path d="M63 48 Q74 46 80 48"/><path d="M63 51 Q74 52 79 55"/></g>`;
+    const stripeMarks = stripes ? `<g stroke="${stripes}" stroke-width="2.4" fill="none" stroke-linecap="round"><path d="M50 18 L50 28"/><path d="M44 20 L46 29"/><path d="M56 20 L54 29"/><path d="M22 62 Q30 60 32 66"/><path d="M78 62 Q70 60 68 66"/></g>` : "";
+    const scarMark = scar ? `<path d="M36 30 L46 46" stroke="#d8b84a" stroke-width="2.2" stroke-linecap="round"/><path d="M35 33 L40 32 M41 40 L46 39" stroke="${outline}" stroke-width="1.4"/>` : "";
+    return `<svg viewBox="0 0 100 100">${defs}${tail}${body}${collarMark}${leftEar}${rightEar}${head}${cheeks}${stripeMarks}${muzzle}${nose}${mouth}${eyes}${brows}${scarMark}${whisk}</svg>`;
+  }
+
+  // The hero: a good boy — golden, floppy-eared, panting happily, sitting alert.
   const DOG_ICON =
-    '<svg viewBox="0 0 32 32" width="30" height="30">' +
-    '<path d="M6 10 C2 6 2 18 8 20 Z" fill="#8a5a2e"/>' +
-    '<path d="M26 10 C30 6 30 18 24 20 Z" fill="#8a5a2e"/>' +
-    '<ellipse cx="16" cy="17" rx="11" ry="9" fill="#e0a45e"/>' +
-    '<ellipse cx="16" cy="21" rx="6" ry="4.5" fill="#f2c98a"/>' +
-    '<circle cx="16" cy="19.3" r="1.6" fill="#3a2410"/>' +
-    '<circle cx="11.3" cy="14.5" r="1.6" fill="#3a2410"/>' +
-    '<circle cx="20.7" cy="14.5" r="1.6" fill="#3a2410"/>' +
+    '<svg viewBox="0 0 100 100">' +
+    '<path d="M28 84 C10 80 8 62 18 58 C14 68 20 78 34 80 Z" fill="#c2842f" stroke="#3a2412" stroke-width="2.5" stroke-linejoin="round"/>' +
+    '<path d="M50 42 C33 42 25 56 24 72 C23 84 28 93 36 95 L64 95 C72 93 77 84 76 72 C75 56 67 42 50 42 Z" fill="#e0a44e" stroke="#3a2412" stroke-width="3"/>' +
+    '<path d="M50 60 C40 60 34 74 35 85 C35 91 39 94 44 95 L56 95 C61 94 65 91 65 85 C66 74 60 60 50 60 Z" fill="#f6d79a"/>' +
+    '<ellipse cx="41" cy="93" rx="7.5" ry="5" fill="#e0a44e" stroke="#3a2412" stroke-width="2"/>' +
+    '<ellipse cx="59" cy="93" rx="7.5" ry="5" fill="#e0a44e" stroke="#3a2412" stroke-width="2"/>' +
+    '<path d="M27 34 C18 34 16 54 24 60 C30 56 32 44 33 38 Z" fill="#b5701f" stroke="#3a2412" stroke-width="2.5"/>' +
+    '<path d="M73 34 C82 34 84 54 76 60 C70 56 68 44 67 38 Z" fill="#b5701f" stroke="#3a2412" stroke-width="2.5"/>' +
+    '<ellipse cx="50" cy="40" rx="25" ry="22" fill="#e0a44e" stroke="#3a2412" stroke-width="3"/>' +
+    '<ellipse cx="50" cy="50" rx="15" ry="11" fill="#f6d79a"/>' +
+    '<circle cx="40" cy="37" r="4.2" fill="#3a2410"/><circle cx="60" cy="37" r="4.2" fill="#3a2410"/>' +
+    '<circle cx="41.4" cy="35.6" r="1.4" fill="#fff"/><circle cx="61.4" cy="35.6" r="1.4" fill="#fff"/>' +
+    '<path d="M35 30 Q40 28 45 30" stroke="#3a2412" stroke-width="1.6" fill="none" stroke-linecap="round"/>' +
+    '<path d="M55 30 Q60 28 65 30" stroke="#3a2412" stroke-width="1.6" fill="none" stroke-linecap="round"/>' +
+    '<ellipse cx="50" cy="46" rx="4.5" ry="3.5" fill="#2a1a10"/><ellipse cx="48.6" cy="44.8" rx="1.4" ry="1" fill="#5c4530"/>' +
+    '<path d="M50 49 Q50 55 43 56 M50 49 Q50 55 57 56" stroke="#3a2412" stroke-width="1.8" fill="none" stroke-linecap="round"/>' +
+    '<path d="M46 55 Q50 64 54 55 Z" fill="#e8788a" stroke="#3a2412" stroke-width="1.2"/>' +
     "</svg>";
 
-  // Every cat gets a genuinely distinct silhouette, not a palette swap: the
-  // Alley Cat is lean with a squint, the Tabby Guard is broad with a spiked
-  // collar, Big Tom is oversized with a scar, glowing eyes and bared fangs.
+  // Three genuinely distinct cats, not palette swaps: a scrappy ginger Alley
+  // Cat with a torn ear and angry green eyes; a stout grey Tabby Guard with a
+  // belled collar and alert amber eyes; a hulking scarred Big Tom with glowing
+  // red eyes and bared fangs.
   const ENEMY_ICONS = {
-    alleyCat:
-      '<svg viewBox="0 0 32 32" width="46" height="46">' +
-      '<path d="M8 8 L4 2 L11 9 Z" fill="#c98a4d"/>' +
-      '<path d="M24 8 L28 3 L21 9 Z" fill="#c98a4d"/>' +
-      '<ellipse cx="16" cy="18" rx="10" ry="8.5" fill="#d69a5c"/>' +
-      '<path d="M16 22.5 L13 25 L19 25 Z" fill="#3a2410"/>' +
-      '<path d="M8 18 Q4 17 2 19 M8 20 Q4 21 2 22" stroke="#3a2410" stroke-width="0.8" fill="none"/>' +
-      '<path d="M24 18 Q28 17 30 19 M24 20 Q28 21 30 22" stroke="#3a2410" stroke-width="0.8" fill="none"/>' +
-      '<path d="M10 16 L13.5 16.5" stroke="#241608" stroke-width="2" stroke-linecap="round"/>' +
-      '<path d="M22 16 L18.5 16.5" stroke="#241608" stroke-width="2" stroke-linecap="round"/>' +
-      "</svg>",
-    tabbyGuard:
-      '<svg viewBox="0 0 32 32" width="52" height="52">' +
-      '<path d="M7 9 L4 2 L12 9 Z" fill="#3d4756"/>' +
-      '<path d="M25 9 L28 2 L20 9 Z" fill="#3d4756"/>' +
-      '<ellipse cx="16" cy="18" rx="12" ry="9" fill="#4a5568"/>' +
-      '<path d="M4 22 L7 26 L9 21 L12 27 L14 20 L16 28 L18 20 L20 27 L23 21 L25 26 L28 22" fill="none" stroke="#2a303c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '<circle cx="11" cy="17" r="2" fill="#e6b95c"/>' +
-      '<circle cx="21" cy="17" r="2" fill="#e6b95c"/>' +
-      '<circle cx="11" cy="17" r="0.9" fill="#12151a"/>' +
-      '<circle cx="21" cy="17" r="0.9" fill="#12151a"/>' +
-      '<path d="M16 22.5 L13.5 25.5 L18.5 25.5 Z" fill="#1a1e26"/>' +
-      "</svg>",
-    bigTom:
-      '<svg viewBox="0 0 32 32" width="62" height="62">' +
-      '<path d="M5 7 L2 -1 L13 8 Z" fill="#150a1c"/>' +
-      '<path d="M27 7 L30 -1 L19 8 Z" fill="#150a1c"/>' +
-      '<ellipse cx="16" cy="18" rx="13" ry="10.5" fill="#1f1220"/>' +
-      '<path d="M7 14.5 L11.5 16" stroke="#7a1f1f" stroke-width="1.4" fill="none"/>' +
-      '<circle cx="11" cy="17" r="2.4" fill="#ff3b30"/>' +
-      '<circle cx="21" cy="17" r="2.4" fill="#ff3b30"/>' +
-      '<path d="M13 24 L10 20 L12.5 22.5 L16 20 L19.5 22.5 L22 20 L19 24 Z" fill="#0c0608"/>' +
-      '<path d="M11.5 21 L12.5 24.5 M20.5 21 L19.5 24.5" stroke="#f2ede0" stroke-width="1.4" stroke-linecap="round"/>' +
-      "</svg>",
+    alleyCat: buildCat({ base: "#d98b3f", shadow: "#b56f2c", belly: "#f0c98a", ear: "#e8a97a", eye: "#8fd14f", eyeShape: "angry", brow: 1, tornEar: true, stripes: "#a15f22", tailSide: 1 }),
+    tabbyGuard: buildCat({ base: "#6f7d8c", shadow: "#55636f", belly: "#c3ccd4", ear: "#9aa6b0", eye: "#e6b95c", eyeShape: "round", stripes: "#4a5560", collar: "#8b2f2f", tailSide: -1 }),
+    bigTom: buildCat({ base: "#241426", shadow: "#160c18", belly: "#3a2540", ear: "#5c2f6e", eye: "#ff4d3d", eyeShape: "slit", brow: 1, scar: true, fang: true, glow: true, tailSide: 1 }),
   };
 
   const gameAreaEl = document.getElementById("gameArea");
@@ -275,6 +296,11 @@
     }
   }
 
+  function listNames(names) {
+    if (names.length <= 1) return names.join("");
+    return names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+  }
+
   function flashClass(el, className, duration) {
     if (!el) return;
     el.classList.remove(className);
@@ -292,7 +318,7 @@
     let detail;
     if (option.type === "rest") {
       const heal = Math.ceil((state.player.maxHp - state.player.hp) * Content.REST_HEAL_FRACTION);
-      detail = state.player.hp >= state.player.maxHp ? "Already at full Hull." : `Heal ${heal} HP`;
+      detail = state.player.hp >= state.player.maxHp ? "Already at full health" : `Heal ${heal} HP`;
     } else {
       const icons = option.enemies.map((id) => `<span class="node-enemy-icon">${ENEMY_ICONS[id]}</span>`).join("");
       const rewardNote = option.type === "elite" ? ` · ${Content.ELITE_REWARD_COUNT} card reward` : "";
@@ -363,7 +389,7 @@
 
     el.innerHTML = `
       <span class="enemy-intent${intentClass}">${enemy.hp > 0 ? intentIcon + intentText : ""}</span>
-      <span class="enemy-portrait">${ENEMY_ICONS[enemy.typeId]}</span>
+      <span class="enemy-portrait enemy-portrait-${enemy.typeId}">${ENEMY_ICONS[enemy.typeId]}</span>
       <span class="enemy-name">${enemy.name}</span>
       <div class="hp-bar hp-bar-small"><div class="hp-fill" style="width:${Math.max(0, (enemy.hp / enemy.maxHp) * 100)}%"></div></div>
       <span class="enemy-hp-text">${Math.max(0, enemy.hp)}/${enemy.maxHp}${blockNote}</span>
@@ -420,7 +446,7 @@
       objectiveEl.textContent =
         selectedHandIndex !== null
           ? "Tap a cat to aim it."
-          : `Defeat ${living.map((e) => e.name).join(" and ")}.`;
+          : `Defeat ${listNames(living.map((e) => e.name))}.`;
 
       for (const enemy of state.enemies) battlefieldEl.appendChild(enemyNode(enemy));
       state.hand.forEach((cardId, i) => handEl.appendChild(cardNode(cardId, i)));

@@ -363,16 +363,17 @@ body {
 
 .enemy-portrait {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  height: 46px;
-  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.7));
+  height: 60px;
+  filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.7));
 }
 
-.enemy-portrait svg {
-  max-width: 62px;
-  max-height: 62px;
-}
+/* Bigger cat = bigger threat: Big Tom looms, the Alley Cat is scrawnier. */
+.enemy-portrait svg { width: 58px; height: 58px; }
+.enemy-portrait-alleyCat svg { width: 52px; height: 52px; }
+.enemy-portrait-tabbyGuard svg { width: 60px; height: 60px; }
+.enemy-portrait-bigTom svg { width: 72px; height: 72px; }
 
 .enemy-name {
   font-size: 0.75rem;
