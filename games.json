@@ -27,6 +27,13 @@
       "tagline": "I dont like A",
       "themeColor": "#2f3b52",
       "icon": "games/trace/icons/icon.svg"
+    },
+    {
+      "id": "buffer",
+      "name": "Buff Up",
+      "tagline": "Get gains while loose tum.",
+      "themeColor": "#2f3b52",
+      "icon": "games/buffer/icons/icon.svg"
     }
   ]
 }
