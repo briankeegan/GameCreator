@@ -57,6 +57,11 @@ var LOGIN_KEY = "clubhouse_login:" + GAME_ID;
 // Scoped per game like LOGIN_KEY — this page is shared by every game, so a
 // draft typed for one game must never bleed into another's composer.
 var DRAFT_KEY = "clubhouse_draft:" + GAME_ID;
+// Same key admin/app.js stores its passkey under. A valid admin passkey
+// works as a universal secret word (see worker.js), so an admin who's
+// already logged into admin/ never has to know — or be told — any
+// individual game's secret word to jump into its Clubhouse.
+var ADMIN_TOKEN_KEY = "gc_admin_token";
 var logoutBtn = document.getElementById("logoutBtn");
 var peekBtn = document.getElementById("peekBtn");
 var eyeOpen = document.getElementById("eyeOpen");
@@ -105,7 +110,10 @@ function resolveThread() {
     });
 }
 
-function enterClubhouse(name, secret, fromSavedLogin) {
+// mode: false/undefined (fresh manual attempt from the form) | "saved"
+// (per-game saved login from localStorage) | "admin" (auto-login using the
+// admin passkey as a universal secret — see ADMIN_TOKEN_KEY above).
+function enterClubhouse(name, secret, mode) {
   enterBtn.disabled = true;
   enterBtn.textContent = "Checking…";
   resolveThread()
@@ -118,11 +126,14 @@ function enterClubhouse(name, secret, fromSavedLogin) {
       openClubhouse(name, secret);
     })
     .catch(function (err) {
-      // A saved-login failure used to fail completely silently here — the
-      // gate just sat there with an empty password field and no
-      // explanation. Always show what happened now, same as a fresh login
-      // attempt; still clear the dead saved login so it doesn't loop.
-      if (fromSavedLogin) {
+      if (mode === "admin") {
+        // Stale or rotated admin passkey — quietly fall back to a normal
+        // per-game login attempt instead of surfacing a scary error to
+        // someone who never manually tried to log in.
+        tryPerGameSavedLogin();
+        return;
+      }
+      if (mode === "saved") {
         if (err.message === "wrong-secret") {
           try { localStorage.removeItem(LOGIN_KEY); } catch (e) {}
         }
@@ -185,17 +196,33 @@ document.addEventListener("click", function (e) {
   logoutConfirmEl.hidden = true;
 });
 
+function tryPerGameSavedLogin() {
+  var saved = null;
+  try { saved = JSON.parse(localStorage.getItem(LOGIN_KEY)); } catch (e) {}
+  if (saved && saved.name && saved.secret && WORKER_URL) {
+    enterClubhouse(saved.name, saved.secret, "saved");
+  }
+}
+
 (function () {
   if (!GAME_ID) {
     showGateError("No game specified — open the clubhouse from inside a game.");
     enterBtn.disabled = true;
     return;
   }
-  var saved = null;
-  try { saved = JSON.parse(localStorage.getItem(LOGIN_KEY)); } catch (e) {}
-  if (saved && saved.name && saved.secret && WORKER_URL) {
-    enterClubhouse(saved.name, saved.secret, true);
+  if (!WORKER_URL) return;
+
+  // Admins (already logged into admin/) skip the gate on every game — the
+  // same passkey they used there doubles as a universal secret, checked
+  // server-side in worker.js.
+  var adminToken = null;
+  try { adminToken = localStorage.getItem(ADMIN_TOKEN_KEY); } catch (e) {}
+  if (adminToken) {
+    enterClubhouse("Admin", adminToken, "admin");
+    return;
   }
+
+  tryPerGameSavedLogin();
 })();
 
 // Restore whatever was mid-typing when the visitor last left this game's
@@ -227,7 +254,7 @@ function renderInline(text) {
   var codeSpans = [];
   s = s.replace(/`([^`]+)`/g, function (_, code) {
     codeSpans.push(code);
-    return " " + (codeSpans.length - 1) + " ";
+    return " " + (codeSpans.length - 1) + " ";
   });
   // Image syntax must run before the plain-link pass below — otherwise the
   // link regex still matches the "[alt](url)" part and leaves a stray "!".
@@ -240,7 +267,7 @@ function renderInline(text) {
   s = s.replace(/__([^_]+)__/g, "<strong>$1</strong>");
   s = s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>");
   s = s.replace(/(^|[^_])_([^_\n]+)_(?!_)/g, "$1<em>$2</em>");
-  s = s.replace(/ (\d+) /g, function (_, i) {
+  s = s.replace(/ (\d+) /g, function (_, i) {
     return "<code>" + codeSpans[Number(i)] + "</code>";
   });
   return s;

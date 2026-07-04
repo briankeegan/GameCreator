@@ -35,6 +35,11 @@
 //   { action: "admin-remove",  adminToken, game }         — remove a game's chat config
 //   { action: "admin-list",    adminToken }               — list configured games (secrets redacted)
 //
+// A valid ADMIN_TOKEN also works as a universal override for the per-game
+// `secret` check on "verify"/"post"/"upload-image" below — so whoever is
+// logged into admin/ can jump into any game's Clubhouse without looking up
+// (or being told) that game's individual secret word.
+//
 // Required bindings (Worker → Settings → Variables and Secrets / Bindings):
 //   GAMES_KV      (KV namespace binding) — per-game config, written via admin-upsert
 //   GITHUB_TOKEN  (secret)  — fine-grained PAT on REPO with:
@@ -212,7 +217,7 @@ export default {
     }
     if (request.method !== "POST") {
       return json(200, {
-        relay: "gc-r6",
+        relay: "gc-r7",
         settings: {
           GAMES_KV: env.GAMES_KV ? "bound" : "MISSING",
           GITHUB_TOKEN: env.GITHUB_TOKEN ? "set" : "MISSING",
@@ -358,7 +363,12 @@ export default {
       return json(200, { prNumber: game.prNumber });
     }
 
-    if (payload.secret !== game.secretWord) {
+    // A valid ADMIN_TOKEN sent as `secret` counts as the right word for
+    // EVERY game — lets whoever's logged into admin/ jump straight into
+    // any game's Clubhouse without knowing (or looking up) its individual
+    // secret word.
+    const isAdminSecret = Boolean(env.ADMIN_TOKEN) && payload.secret === env.ADMIN_TOKEN;
+    if (!isAdminSecret && payload.secret !== game.secretWord) {
       return json(403, { error: "wrong secret word" });
     }
 
@@ -400,7 +410,7 @@ export default {
           detail = body.message ? ` — ${body.message}` : "";
         } catch {}
         return json(502, {
-          error: `github said ${res.status}${detail} [game: ${gameId}] [relay gc-r6]`,
+          error: `github said ${res.status}${detail} [game: ${gameId}] [relay gc-r7]`,
         });
       }
       return json(200, { ok: true });
