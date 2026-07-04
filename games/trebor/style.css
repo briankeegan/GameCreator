@@ -1,8 +1,3 @@
-/* Delete/replace everything below — this is just enough to prove the page
-   works. The header bar and install banner above are shared styling (see
-   ../../shared/nav.css) — leave those alone unless you mean to restyle
-   every game at once. */
-
 * { box-sizing: border-box; }
 
 html, body {
@@ -10,13 +5,355 @@ html, body {
   padding: 0;
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #faf8ef;
-  color: #2f3b52;
+  background: #2b1f14;
+  color: #f6ead9;
+  /* A card table, not a web page — it fits the screen, nothing scrolls
+     except the hand row itself if it ever overflows a narrow phone. */
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .game-area {
-  padding: 24px 16px;
+  position: relative; /* anchors .run-overlay to just below the nav bar */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px calc(10px + var(--banner-space));
+  overflow: hidden;
+}
+
+/* ---- HUD -------------------------------------------------------------- */
+
+.hud {
+  flex: 0 0 auto;
+  max-width: 520px;
+  width: 100%;
+  margin: 0 auto 6px;
+}
+
+.hud-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.room-label {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.best-label {
+  font-size: 0.75rem;
+  color: #c9a97a;
+}
+
+.dog-vitals {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dog-portrait {
+  font-size: 1.4rem;
+  flex: 0 0 auto;
+}
+
+.hp-bar {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 60px;
+  height: 16px;
+  background: #1a120a;
+  border: 2px solid #4a3320;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.hp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7fbf5f, #a6dd7f);
+  transition: width 0.25s ease;
+}
+
+.hp-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+
+.block-chip {
+  flex: 0 0 auto;
+  background: #2f4a63;
+  border: 1px solid #4d7fa3;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.energy-pips {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.energy-pip {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #1a120a;
+  border: 2px solid #4a3320;
+}
+
+.energy-pip-full {
+  background: #f2b179;
+  border-color: #ffcf9e;
+}
+
+.objective {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: #d8c3a3;
+  min-height: 1.1em;
+}
+
+/* ---- Battlefield -------------------------------------------------------- */
+
+.battlefield {
+  flex: 1 1 0%;
+  min-height: 0;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 4px;
+}
+
+.enemy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: #3a2a1a;
+  border: 2px solid #55402a;
+  min-width: 92px;
+  cursor: default;
+}
+
+.enemy-targetable {
+  cursor: pointer;
+  border-color: #e0533f;
+  box-shadow: 0 0 0 3px rgba(224, 83, 63, 0.35);
+  animation: pulse-target 1.1s ease-in-out infinite;
+}
+
+@keyframes pulse-target {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(224, 83, 63, 0.25); }
+  50% { box-shadow: 0 0 0 6px rgba(224, 83, 63, 0.4); }
+}
+
+.enemy-dead {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+
+.enemy-intent {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #f2b179;
+  min-height: 1.2em;
+}
+
+.enemy-portrait {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.enemy-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.hp-bar-small {
+  width: 76px;
+  height: 10px;
+}
+
+.enemy-hp-text {
+  font-size: 0.65rem;
+  color: #d8c3a3;
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+}
+
+/* ---- Console: hand + end turn ------------------------------------------ */
+
+.console {
+  flex: 0 0 auto;
+  max-width: 560px;
+  width: 100%;
+  margin: 6px auto 0;
+}
+
+.hand {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.card {
+  flex: 0 0 auto;
+  width: 96px;
+  min-height: 88px;
+  border-radius: 12px;
+  border: 2px solid #6b4e30;
+  background: #4a3320;
+  color: #f6ead9;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
+  gap: 3px;
+  padding: 8px 6px 6px;
+  position: relative;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.card-attack {
+  border-color: #e0533f;
+}
+
+.card-cost {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f2b179;
+  color: #3a2a1a;
+  font-weight: 800;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #3a2a1a;
+}
+
+.card-name {
+  font-weight: 700;
+  font-size: 0.78rem;
+  margin-top: 6px;
+}
+
+.card-text {
+  font-size: 0.66rem;
+  color: #d8c3a3;
+  line-height: 1.2;
+}
+
+.card-selected {
+  border-color: #ffd27a;
+  box-shadow: 0 0 0 3px rgba(255, 210, 122, 0.45);
+  transform: translateY(-6px);
+}
+
+.card-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.end-turn-btn {
+  width: 100%;
+  padding: 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  border-radius: 10px;
+  border: none;
+  background: #e0533f;
+  color: #fff;
+  cursor: pointer;
+}
+
+.end-turn-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- Overlay ------------------------------------------------------------ */
+
+.run-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 13, 6, 0.82);
+  z-index: 20;
+}
+
+.run-overlay[hidden] {
+  display: none;
+}
+
+.run-overlay-card {
+  background: #3a2a1a;
+  border: 2px solid #6b4e30;
+  border-radius: 16px;
+  padding: 24px 28px;
+  text-align: center;
+  max-width: 320px;
+}
+
+.run-overlay-card h2 {
+  margin: 0 0 8px;
+}
+
+.run-overlay-card p {
+  margin: 0 0 16px;
+  color: #d8c3a3;
+}
+
+.run-overlay-card button {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  border-radius: 10px;
+  border: none;
+  background: #f2b179;
+  color: #3a2a1a;
+  cursor: pointer;
+}
+
+.run-overlay-card button[hidden] {
+  display: none;
 }
 
 /* ---- shared install banner (leave as-is; every game gets this) ---- */

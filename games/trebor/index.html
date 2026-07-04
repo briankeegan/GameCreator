@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>TREEBOAR</title>
-  <meta name="theme-color" content="#2f3b52" />
+  <meta name="theme-color" content="#3a2a1a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -19,7 +19,37 @@
   <!-- Header (All Games / title / chat) is injected by nav.js below. -->
 
   <main class="game-area" id="gameArea">
-    <p>Your game goes here.</p>
+    <div class="hud">
+      <div class="hud-row">
+        <span class="room-label" id="roomLabel">Room 1 · Back Alley</span>
+        <span class="best-label" id="bestLabel"></span>
+      </div>
+      <div class="hud-row">
+        <div class="dog-vitals">
+          <span class="dog-portrait">🐕</span>
+          <div class="hp-bar"><div class="hp-fill" id="dogHpFill"></div><span class="hp-text" id="dogHpText"></span></div>
+          <span class="block-chip" id="dogBlockChip" hidden>🛡️ <span id="dogBlockValue">0</span></span>
+        </div>
+        <div class="energy-pips" id="energyPips"></div>
+      </div>
+      <p class="objective" id="objective"></p>
+    </div>
+
+    <div class="battlefield" id="battlefield"></div>
+
+    <div class="console">
+      <div class="hand" id="hand"></div>
+      <button class="end-turn-btn" id="endTurnBtn">End Turn</button>
+    </div>
+
+    <div class="run-overlay" id="runOverlay" hidden>
+      <div class="run-overlay-card">
+        <h2 id="runOverlayTitle"></h2>
+        <p id="runOverlayBody"></p>
+        <button id="nextBtn" hidden>Next Room</button>
+        <button id="restartBtn">New Run</button>
+      </div>
+    </div>
   </main>
 
   <div class="install-banner" id="installBanner">
@@ -38,6 +68,8 @@
           data-version="v1"
           data-root="../../"></script>
   <script src="../../shared/storage.js"></script>
+  <script src="content.js"></script>
+  <script src="engine.js"></script>
   <script src="app.js"></script>
   <script src="../../shared/pwa.js" data-sw="sw.js"></script>
 </body>
