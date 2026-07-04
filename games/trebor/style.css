@@ -366,7 +366,6 @@ body {
   align-items: flex-end;
   justify-content: center;
   height: 60px;
-  filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.7));
 }
 
 /* Bigger cat = bigger threat: Big Tom looms, the Alley Cat is scrawnier. */
