@@ -20,6 +20,13 @@
       "tagline": "Pretend are small",
       "themeColor": "#2f3b52",
       "icon": "games/trebor/icons/icon.svg"
+    },
+    {
+      "id": "trace",
+      "name": "Trace",
+      "tagline": "I dont like A",
+      "themeColor": "#2f3b52",
+      "icon": "games/trace/icons/icon.svg"
     }
   ]
 }
