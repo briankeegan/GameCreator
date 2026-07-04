@@ -128,7 +128,13 @@ assert.ok(state.nodeChoices.some((o) => o.type === "elite"), "Floor 2 has an eli
 assert.strictEqual(Content.ENEMY_TYPES.feralKitten.maxHp, 7);
 assert.strictEqual(Content.ENEMY_TYPES.rooftopSniper.pattern[1].damage, 13, "the sniper's telegraphed big shot");
 const swarmContent = Object.assign({}, Content, {
-  FLOORS: [{ options: [{ type: "fight", label: "Test Litter", enemies: ["feralKitten", "feralKitten", "feralKitten"] }] }],
+  ACTS: [
+    {
+      name: "Test Act",
+      floors: [{ options: [{ type: "fight", label: "Test Litter", enemies: ["feralKitten", "feralKitten", "feralKitten"] }] }],
+      boss: { label: "Test Boss", enemies: ["bigTom"] },
+    },
+  ],
 });
 const swarm = Engine.createGameState(swarmContent, rng);
 Engine.chooseClass(swarm, swarmContent, "riddle", rng);
@@ -171,9 +177,56 @@ assert.strictEqual(loss.player.hp, 0, "hp clamps at 0");
 assert.throws(() => Engine.playCard(loss, Content, 0, null, rng), /Cannot play a card/);
 
 // ---------------------------------------------------------------------
+// Three acts: content.js declares exactly three, each with its own boss,
+// each boss meaner than the last.
+// ---------------------------------------------------------------------
+assert.strictEqual(Content.ACTS.length, 3, "the dungeon has three acts");
+const bossHps = Content.ACTS.map((a) => Content.ENEMY_TYPES[a.boss.enemies[0]].maxHp);
+assert.ok(bossHps[0] < bossHps[1] && bossHps[1] < bossHps[2], "each act's boss has more Hull than the last");
+assert.strictEqual(Content.ACTS[2].boss.enemies[0], "catKing", "the final boss is the Cat King");
+
+// ---------------------------------------------------------------------
+// Boss reward: felling a non-final act boss opens a boss-reward pick that
+// grants a boss-only card, +max Hull, a full heal, and rolls into the next
+// act's first floor. (Constructed directly at the boss-reward state.)
+// ---------------------------------------------------------------------
+const br = Engine.createGameState(Content, rng);
+Engine.chooseClass(br, Content, "koozie", rng); // 32 Hull
+br.status = "boss-reward";
+br.actIndex = 0;
+br.currentNodeType = "boss";
+br.player.hp = 5;
+br.bossRewardOptions = ["maul", "bulwark", "reserves"];
+assert.throws(() => Engine.chooseBossReward(br, Content, "bite", rng), /was not offered/);
+const deckBefore = br.deck.length;
+Engine.chooseBossReward(br, Content, "maul", rng);
+assert.strictEqual(br.deck.length, deckBefore + 1, "the boss-reward card joins the deck");
+assert.strictEqual(br.deck[br.deck.length - 1], "maul");
+assert.strictEqual(br.player.maxHp, 32 + Content.BOSS_MAX_HULL_BONUS, "boss kill permanently raises max Hull");
+assert.strictEqual(br.player.hp, br.player.maxHp, "boss reward heals to full");
+assert.strictEqual(br.actIndex, 1, "advanced into the next act");
+assert.strictEqual(br.floorIndex, 0);
+assert.strictEqual(br.status, "choosing");
+assert.deepStrictEqual(br.nodeChoices, Content.ACTS[1].floors[0].options, "onto Act 2's first floor");
+
+// Skipping the boss reward still heals and advances, just without a card.
+const brSkip = Engine.createGameState(Content, rng);
+Engine.chooseClass(brSkip, Content, "riddle", rng);
+brSkip.status = "boss-reward";
+brSkip.actIndex = 0;
+brSkip.player.hp = 3;
+brSkip.bossRewardOptions = ["maul"];
+const skipDeck = brSkip.deck.length;
+Engine.chooseBossReward(brSkip, Content, null, rng);
+assert.strictEqual(brSkip.deck.length, skipDeck, "skipping adds no card");
+assert.strictEqual(brSkip.player.hp, brSkip.player.maxHp, "skipping still heals to full");
+assert.strictEqual(brSkip.actIndex, 1);
+
+// ---------------------------------------------------------------------
 // Full-run smoke test per class: a cautious player (rest when hurt, never
-// elite, bank the first reward) should be able to beat the boss with each
-// of the three classes. Balance/regression backstop for content.js.
+// elite, bank the first reward, take the first boss reward) should be able
+// to clear all three acts with each of the three classes. Balance/regression
+// backstop for content.js.
 // ---------------------------------------------------------------------
 for (const id of Object.keys(Content.CLASSES)) {
   const run = Engine.createGameState(Content, rng);
@@ -188,11 +241,13 @@ for (const id of Object.keys(Content.CLASSES)) {
       Engine.chooseNode(run, Content, hurt && restIdx !== -1 ? restIdx : fightIdx, rng);
     } else if (run.status === "reward") {
       Engine.pickReward(run, Content, run.rewardOptions[0], rng);
+    } else if (run.status === "boss-reward") {
+      Engine.chooseBossReward(run, Content, run.bossRewardOptions[0], rng);
     } else if (run.status === "playing") {
       playOutCombat(run, Content);
     }
   }
-  assert.strictEqual(run.status, "victory", `${id} should be able to beat the dungeon`);
+  assert.strictEqual(run.status, "victory", `${id} should be able to clear all three acts`);
 }
 
 console.log("All golden-path assertions passed.");

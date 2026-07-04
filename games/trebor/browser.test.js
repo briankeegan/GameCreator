@@ -83,6 +83,11 @@ async function playUntil(page, targetStatuses) {
       continue;
     }
 
+    if (status === "boss-reward") {
+      await (await page.$$("#bossRewardOptions .reward-card"))[0].click();
+      continue;
+    }
+
     // status === "playing"
     const info = await page.evaluate(() => {
       const st = window.__tbState;

@@ -383,6 +383,8 @@ body {
 .enemy-portrait-rooftopSniper .sprite-img { width: 76px; height: 76px; }
 .enemy-portrait-tabbyGuard .sprite-img { width: 80px; height: 80px; }
 .enemy-portrait-bigTom .sprite-img { width: 92px; height: 92px; }
+.enemy-portrait-warcatCaptain .sprite-img { width: 104px; height: 104px; }
+.enemy-portrait-catKing .sprite-img { width: 116px; height: 116px; }
 
 .enemy-name {
   font-size: 0.75rem;
@@ -609,6 +611,24 @@ body {
 .reward-card {
   width: 118px;
   min-height: 158px;
+}
+
+/* Boss-reward screen: same layout as a normal reward, dressed up as the
+   run-defining prize for felling an act boss. */
+.boss-reward-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #f0c674;
+  text-shadow: 0 0 12px rgba(240, 198, 116, 0.4);
+  text-align: center;
+  margin: 0;
+}
+
+.boss-reward-screen .reward-card {
+  border-color: #f0c674;
+  box-shadow: 0 0 14px rgba(240, 198, 116, 0.25);
 }
 
 .skip-btn {

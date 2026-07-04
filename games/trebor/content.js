@@ -150,13 +150,13 @@ const ENEMY_TYPES = {
   catKing: {
     id: "catKing",
     name: "The Cat King",
-    maxHp: 90,
+    maxHp: 74,
     pattern: [
-      { type: "attack", damage: 14 },
-      { type: "guard", block: 14 },
-      { type: "attack", damage: 20 },
+      { type: "attack", damage: 12 },
       { type: "guard", block: 10 },
-      { type: "attack", damage: 26 },
+      { type: "attack", damage: 17 },
+      { type: "guard", block: 8 },
+      { type: "attack", damage: 22 },
     ],
   },
 };

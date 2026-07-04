@@ -59,6 +59,8 @@
     bigTom: "icons/enemy-big-tom.png",
     feralKitten: "icons/enemy-feral-kitten.png",
     rooftopSniper: "icons/enemy-rooftop-sniper.png",
+    warcatCaptain: "icons/enemy-warcat-captain.png",
+    catKing: "icons/enemy-cat-king.png",
   };
   const DOG_IMG = {
     riddle: "icons/dog-riddle.png",
@@ -92,6 +94,10 @@
   const rewardScreenEl = document.getElementById("rewardScreen");
   const rewardOptionsEl = document.getElementById("rewardOptions");
   const skipRewardBtn = document.getElementById("skipRewardBtn");
+  const bossRewardScreenEl = document.getElementById("bossRewardScreen");
+  const bossRewardTitleEl = document.getElementById("bossRewardTitle");
+  const bossRewardOptionsEl = document.getElementById("bossRewardOptions");
+  const skipBossRewardBtn = document.getElementById("skipBossRewardBtn");
   const battlefieldEl = document.getElementById("battlefield");
   const consoleEl = document.getElementById("combatConsole");
   const handEl = document.getElementById("hand");
@@ -103,7 +109,7 @@
 
   let state = null;
   let selectedHandIndex = null; // hand index currently armed, awaiting an enemy tap
-  let bestFloor = GCStorage.get(GAME_ID, "bestFloor", 0);
+  let bestAct = GCStorage.get(GAME_ID, "bestAct", 0); // furthest act reached (1-based)
 
   // Tests can pin window.__tbRng to a fixed generator (via addInitScript,
   // before this file runs) for a fully reproducible run; real play always
@@ -120,9 +126,10 @@
   }
 
   function saveBest() {
-    if (state.floorIndex > bestFloor) {
-      bestFloor = state.floorIndex;
-      GCStorage.set(GAME_ID, "bestFloor", bestFloor);
+    const reached = state.actIndex + 1;
+    if (reached > bestAct) {
+      bestAct = reached;
+      GCStorage.set(GAME_ID, "bestAct", bestAct);
     }
   }
 
@@ -155,6 +162,21 @@
   function onPickReward(cardId) {
     Engine.pickReward(state, Content, cardId, rng);
     render();
+  }
+
+  function onPickBossReward(cardId) {
+    Engine.chooseBossReward(state, Content, cardId, rng);
+    render();
+  }
+
+  function bossRewardCardNode(cardId) {
+    const card = Content.CARDS[cardId];
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "card reward-card " + cardTypeClass(card);
+    el.innerHTML = cardFrameHtml(card);
+    el.addEventListener("click", () => onPickBossReward(cardId));
+    return el;
   }
 
   function onCardTap(handIndex) {
@@ -392,10 +414,14 @@
 
     dogPortraitEl.innerHTML = state.classId ? dogImg(state.classId) : "";
 
-    const floorNumber = Math.min(state.floorIndex + 1, Content.FLOORS.length);
+    const act = Content.ACTS[state.actIndex];
+    const actNumber = state.actIndex + 1;
+    const floorNumber = Math.min(state.floorIndex + 1, act.floors.length);
     roomLabelEl.textContent =
-      state.currentNodeType === "boss" ? `Boss · ${Content.BOSS.label}` : `Floor ${floorNumber} of ${Content.FLOORS.length}`;
-    bestLabelEl.textContent = bestFloor > 0 ? `Best: Floor ${bestFloor}` : "";
+      state.currentNodeType === "boss"
+        ? `Act ${actNumber} Boss · ${act.boss.label}`
+        : `${act.name} · Floor ${floorNumber}/${act.floors.length}`;
+    bestLabelEl.textContent = bestAct > 0 ? `Best: Act ${bestAct}` : "";
 
     const hpPct = Math.max(0, (state.player.hp / state.player.maxHp) * 100);
     dogHpFillEl.style.width = `${hpPct}%`;
@@ -413,6 +439,7 @@
 
     nodeChoiceEl.hidden = state.status !== "choosing";
     rewardScreenEl.hidden = state.status !== "reward";
+    bossRewardScreenEl.hidden = state.status !== "boss-reward";
     battlefieldEl.hidden = state.status !== "playing";
     consoleEl.hidden = state.status !== "playing";
 
@@ -423,6 +450,7 @@
     // ".card" lookup done later).
     nodeOptionsEl.innerHTML = "";
     rewardOptionsEl.innerHTML = "";
+    bossRewardOptionsEl.innerHTML = "";
     battlefieldEl.innerHTML = "";
     handEl.innerHTML = "";
 
@@ -432,6 +460,10 @@
     } else if (state.status === "reward") {
       objectiveEl.textContent = "Pick a card to add to your deck, or skip.";
       state.rewardOptions.forEach((cardId) => rewardOptionsEl.appendChild(rewardCardNode(cardId)));
+    } else if (state.status === "boss-reward") {
+      objectiveEl.textContent = `Boss down! +${Content.BOSS_MAX_HULL_BONUS} max Hull and a full heal. Claim a spoil of war.`;
+      bossRewardTitleEl.textContent = `${act.boss.label} defeated`;
+      state.bossRewardOptions.forEach((cardId) => bossRewardOptionsEl.appendChild(bossRewardCardNode(cardId)));
     } else if (state.status === "playing") {
       const living = Engine.livingEnemies(state);
       objectiveEl.textContent =
@@ -449,10 +481,11 @@
 
     if (state.status === "victory") {
       saveBest();
-      showOverlay("Victory!", "You cleared the whole dungeon. TREEBOAR is yours.");
+      showOverlay("Victory!", "You dethroned the Cat King and cleared all three acts. TREEBOAR is yours.");
     } else if (state.status === "lost") {
       saveBest();
-      showOverlay("Good Boy, Down", `You made it to Floor ${floorNumber}.`);
+      const where = state.currentNodeType === "boss" ? `to the ${act.boss.label}` : `in ${act.name}`;
+      showOverlay("Good Boy, Down", `You fell ${where}, Act ${actNumber}.`);
     } else {
       overlayEl.hidden = true;
     }
@@ -466,6 +499,7 @@
 
   endTurnBtn.addEventListener("click", endTurn);
   skipRewardBtn.addEventListener("click", () => onPickReward(null));
+  skipBossRewardBtn.addEventListener("click", () => onPickBossReward(null));
   restartBtn.addEventListener("click", newRun);
 
   newRun();
