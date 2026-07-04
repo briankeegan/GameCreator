@@ -46,7 +46,6 @@ const ENEMY_TYPES = {
   alleyCat: {
     id: "alleyCat",
     name: "Alley Cat",
-    emoji: "😾",
     maxHp: 14,
     pattern: [
       { type: "attack", damage: 6 },
@@ -57,7 +56,6 @@ const ENEMY_TYPES = {
   tabbyGuard: {
     id: "tabbyGuard",
     name: "Tabby Guard",
-    emoji: "🐈",
     maxHp: 20,
     pattern: [
       { type: "guard", block: 10 },
@@ -68,7 +66,6 @@ const ENEMY_TYPES = {
   bigTom: {
     id: "bigTom",
     name: "Big Tom",
-    emoji: "🐈‍⬛",
     maxHp: 42,
     pattern: [
       { type: "attack", damage: 9 },

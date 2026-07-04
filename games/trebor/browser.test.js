@@ -214,7 +214,7 @@ async function playUntil(page, targetStatuses) {
   // ---- Rest of the run, tap-driven (elite fight, boss, victory) ---------
   const finalStatus = await playUntil(page, ["victory", "lost"]);
   assert.strictEqual(finalStatus, "victory", "the tap-driven bot should be able to clear the whole dungeon");
-  assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Victory! 🏆");
+  assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Victory!");
 
   // ---- Restart ------------------------------------------------------------
   await page.click("#restartBtn");

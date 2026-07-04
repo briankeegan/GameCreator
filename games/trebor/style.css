@@ -54,6 +54,29 @@ body {
   animation: shake 0.4s ease-in-out;
 }
 
+/* Red vignette that bleeds in from the screen edges when the dog takes a
+   hit — the "you are taking damage" cue, on top of the HP-bar flash and
+   screen shake. */
+.game-area::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 50%, transparent 45%, rgba(200, 20, 20, 0.55) 100%);
+  opacity: 0;
+  z-index: 30;
+}
+
+@keyframes vignette-flash {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.game-area.player-hit::after {
+  animation: vignette-flash 0.5s ease-out;
+}
+
 /* ---- HUD -------------------------------------------------------------- */
 
 .hud {
@@ -92,9 +115,14 @@ body {
 }
 
 .dog-portrait {
-  font-size: 1.4rem;
   flex: 0 0 auto;
+  display: flex;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
+}
+
+.dog-portrait svg {
+  width: 28px;
+  height: 28px;
 }
 
 .hp-bar {
@@ -139,6 +167,9 @@ body {
 
 .block-chip {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 3px;
   background: #16232e;
   border: 1px solid #3f6a8a;
   border-radius: 8px;
@@ -146,6 +177,22 @@ body {
   font-size: 0.75rem;
   font-weight: 700;
   color: #a9d3ef;
+}
+
+.block-chip svg {
+  width: 12px;
+  height: 12px;
+}
+
+.inline-icon {
+  display: inline-flex;
+  vertical-align: middle;
+  margin: 0 2px;
+}
+
+.inline-icon svg {
+  width: 10px;
+  height: 10px;
 }
 
 .energy-pips {
@@ -226,15 +273,43 @@ body {
   filter: grayscale(1);
 }
 
+/* The attack lunge: rear back, then spring up toward the dog's HUD (that's
+   where "you" live on screen) and snap back. */
 @keyframes lunge-attack {
   0% { transform: perspective(700px) rotateX(3deg) translateY(0) scale(1); }
-  30% { transform: perspective(700px) rotateX(3deg) translateY(-8px) scale(1.06); }
-  55% { transform: perspective(700px) rotateX(3deg) translateY(9px) scale(0.96); }
+  20% { transform: perspective(700px) rotateX(3deg) translateY(8px) scale(0.95); }
+  50% { transform: perspective(700px) rotateX(3deg) translateY(-28px) scale(1.14); }
+  75% { transform: perspective(700px) rotateX(3deg) translateY(5px) scale(0.98); }
   100% { transform: perspective(700px) rotateX(3deg) translateY(0) scale(1); }
 }
 
 .enemy-attacking {
-  animation: lunge-attack 0.5s ease-in-out;
+  animation: lunge-attack 0.6s ease-in-out;
+  z-index: 5;
+}
+
+/* Hit reaction: recoil sideways with a hard white flash, then settle. */
+@keyframes enemy-hit-react {
+  0% { transform: perspective(700px) rotateX(3deg) translateX(0); filter: brightness(2.4) saturate(0.4); }
+  25% { transform: perspective(700px) rotateX(3deg) translateX(-7px) rotate(-2deg); }
+  50% { transform: perspective(700px) rotateX(3deg) translateX(6px) rotate(1.5deg); filter: brightness(1.6); }
+  75% { transform: perspective(700px) rotateX(3deg) translateX(-3px); }
+  100% { transform: perspective(700px) rotateX(3deg) translateX(0); filter: none; }
+}
+
+.enemy-hit {
+  animation: enemy-hit-react 0.45s ease-out;
+}
+
+/* Death: flare bright, keel over, fade into the greyed-out dead state. */
+@keyframes enemy-death {
+  0% { opacity: 1; filter: brightness(2.6); transform: perspective(700px) rotateX(3deg) scale(1.12); }
+  60% { opacity: 0.7; filter: brightness(1.2) grayscale(0.6); transform: perspective(700px) rotateX(3deg) scale(0.96) rotate(5deg); }
+  100% { opacity: 0.3; filter: grayscale(1); transform: perspective(700px) rotateX(3deg) scale(1) rotate(3deg); }
+}
+
+.enemy-dying {
+  animation: enemy-death 0.5s ease-out;
 }
 
 .enemy-attacking::after {
@@ -253,18 +328,50 @@ body {
   100% { opacity: 0; }
 }
 
+/* The intent telegraph gets its own bold badge — this is what lets you plan
+   a turn around what's coming, so it needs to read before anything else on
+   the card does. */
 .enemy-intent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   font-size: 0.68rem;
   font-weight: 700;
+  min-height: 1.4em;
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.enemy-intent svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+.enemy-intent-attack {
   color: #ff9f6b;
-  min-height: 1.2em;
+  background: rgba(179, 38, 30, 0.25);
   text-shadow: 0 0 6px rgba(255, 100, 50, 0.5);
 }
 
+.enemy-intent-guard {
+  color: #9fd7f2;
+  background: rgba(47, 106, 138, 0.25);
+  text-shadow: 0 0 6px rgba(80, 170, 220, 0.5);
+}
+
 .enemy-portrait {
-  font-size: 2rem;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 46px;
   filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.7));
+}
+
+.enemy-portrait svg {
+  max-width: 62px;
+  max-height: 62px;
 }
 
 .enemy-name {
@@ -335,9 +442,14 @@ body {
 }
 
 .node-icon {
-  font-size: 1.6rem;
   flex: 0 0 auto;
+  display: flex;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
+}
+
+.node-icon svg {
+  width: 26px;
+  height: 26px;
 }
 
 .node-label {
@@ -350,6 +462,20 @@ body {
   font-size: 0.75rem;
   color: #a8988a;
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.node-enemy-icons {
+  display: flex;
+  gap: 2px;
+}
+
+.node-enemy-icon svg {
+  width: 20px;
+  height: 20px;
+  display: block;
 }
 
 /* ---- Reward screen: pick a card to keep after a fight -------------------- */
@@ -523,6 +649,19 @@ body {
 .card-disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* The cosmetic clone that flies from the hand to the card's target when
+   played (see flyCard in app.js) — position/size are set inline from the
+   real card's rect, then transform/opacity transition to the target. */
+.card-flying {
+  position: fixed;
+  margin: 0;
+  z-index: 60;
+  pointer-events: none;
+  transform: none;
+  opacity: 1;
+  transition: transform 0.42s cubic-bezier(0.5, -0.2, 0.7, 1), opacity 0.42s ease-in;
 }
 
 .end-turn-btn {

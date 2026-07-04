@@ -25,7 +25,6 @@ function makeEnemyInstance(typeId, idx, content) {
     id: `${typeId}-${idx}`,
     typeId,
     name: type.name,
-    emoji: type.emoji,
     maxHp: type.maxHp,
     hp: type.maxHp,
     block: 0,

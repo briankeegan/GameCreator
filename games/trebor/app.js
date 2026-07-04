@@ -8,10 +8,9 @@
   const Engine = window.TreeboarEngine;
   const Content = window.TreeboarContent;
 
-  const NODE_ICON = { fight: "⚔️", elite: "💀", rest: "🔥" };
-
-  // Card art is hand-drawn inline SVG (stroke/fill: currentColor, themed via
-  // the .card-attack/-block/-utility color set in CSS) — no emoji glyphs.
+  // Every icon in the game — cards, node choices, portraits, intents — is
+  // hand-drawn inline SVG (stroke/fill: currentColor so CSS themes each
+  // one). No emoji anywhere.
   const CARD_ICONS = {
     claw: '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 4 L10 20"/><path d="M9 3 L15 21"/><path d="M14 4 L20 18"/></svg>',
     burst:
@@ -32,14 +31,88 @@
     return "claw";
   }
 
+  const NODE_ICON = {
+    fight:
+      '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 L18 6 M14 6 H18 V10"/><path d="M20 20 L6 6 M10 6 H6 V10"/></svg>',
+    elite:
+      '<svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M12 2 C6.5 2 3 6 3 11 C3 14 4.5 16.3 6 17.5 V20 H9 V18 H11 V20 H13 V18 H15 V20 H18 V17.5 C19.5 16.3 21 14 21 11 C21 6 17.5 2 12 2 Z"/><circle cx="8.5" cy="11" r="2" fill="#170e0c"/><circle cx="15.5" cy="11" r="2" fill="#170e0c"/></svg>',
+    rest: '<svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M12 2 C12 6 8 8 8 13 C8 17 10 20 12 22 C14 20 16 17 16 13 C16 10 14 9 14 6 C14 9 12 9 12 6 C12 4 12 3 12 2 Z"/></svg>',
+  };
+
+  // Intent icons — the attack/guard telegraph above an enemy showing exactly
+  // what it's about to do next turn (this has driven the "no surprise hits"
+  // rule since the very first version; the icons themselves used to be
+  // emoji, now they're drawn).
+  const INTENT_ICON = {
+    attack:
+      '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 19 L17 7 M13 7 H17 V11"/></svg>',
+    guard:
+      '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><path d="M12 3 L19 6 V11 C19 16 16 19.5 12 21 C8 19.5 5 16 5 11 V6 Z"/></svg>',
+  };
+
+  const DOG_ICON =
+    '<svg viewBox="0 0 32 32" width="30" height="30">' +
+    '<path d="M6 10 C2 6 2 18 8 20 Z" fill="#8a5a2e"/>' +
+    '<path d="M26 10 C30 6 30 18 24 20 Z" fill="#8a5a2e"/>' +
+    '<ellipse cx="16" cy="17" rx="11" ry="9" fill="#e0a45e"/>' +
+    '<ellipse cx="16" cy="21" rx="6" ry="4.5" fill="#f2c98a"/>' +
+    '<circle cx="16" cy="19.3" r="1.6" fill="#3a2410"/>' +
+    '<circle cx="11.3" cy="14.5" r="1.6" fill="#3a2410"/>' +
+    '<circle cx="20.7" cy="14.5" r="1.6" fill="#3a2410"/>' +
+    "</svg>";
+
+  // Every cat gets a genuinely distinct silhouette, not a palette swap: the
+  // Alley Cat is lean with a squint, the Tabby Guard is broad with a spiked
+  // collar, Big Tom is oversized with a scar, glowing eyes and bared fangs.
+  const ENEMY_ICONS = {
+    alleyCat:
+      '<svg viewBox="0 0 32 32" width="46" height="46">' +
+      '<path d="M8 8 L4 2 L11 9 Z" fill="#c98a4d"/>' +
+      '<path d="M24 8 L28 3 L21 9 Z" fill="#c98a4d"/>' +
+      '<ellipse cx="16" cy="18" rx="10" ry="8.5" fill="#d69a5c"/>' +
+      '<path d="M16 22.5 L13 25 L19 25 Z" fill="#3a2410"/>' +
+      '<path d="M8 18 Q4 17 2 19 M8 20 Q4 21 2 22" stroke="#3a2410" stroke-width="0.8" fill="none"/>' +
+      '<path d="M24 18 Q28 17 30 19 M24 20 Q28 21 30 22" stroke="#3a2410" stroke-width="0.8" fill="none"/>' +
+      '<path d="M10 16 L13.5 16.5" stroke="#241608" stroke-width="2" stroke-linecap="round"/>' +
+      '<path d="M22 16 L18.5 16.5" stroke="#241608" stroke-width="2" stroke-linecap="round"/>' +
+      "</svg>",
+    tabbyGuard:
+      '<svg viewBox="0 0 32 32" width="52" height="52">' +
+      '<path d="M7 9 L4 2 L12 9 Z" fill="#3d4756"/>' +
+      '<path d="M25 9 L28 2 L20 9 Z" fill="#3d4756"/>' +
+      '<ellipse cx="16" cy="18" rx="12" ry="9" fill="#4a5568"/>' +
+      '<path d="M4 22 L7 26 L9 21 L12 27 L14 20 L16 28 L18 20 L20 27 L23 21 L25 26 L28 22" fill="none" stroke="#2a303c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<circle cx="11" cy="17" r="2" fill="#e6b95c"/>' +
+      '<circle cx="21" cy="17" r="2" fill="#e6b95c"/>' +
+      '<circle cx="11" cy="17" r="0.9" fill="#12151a"/>' +
+      '<circle cx="21" cy="17" r="0.9" fill="#12151a"/>' +
+      '<path d="M16 22.5 L13.5 25.5 L18.5 25.5 Z" fill="#1a1e26"/>' +
+      "</svg>",
+    bigTom:
+      '<svg viewBox="0 0 32 32" width="62" height="62">' +
+      '<path d="M5 7 L2 -1 L13 8 Z" fill="#150a1c"/>' +
+      '<path d="M27 7 L30 -1 L19 8 Z" fill="#150a1c"/>' +
+      '<ellipse cx="16" cy="18" rx="13" ry="10.5" fill="#1f1220"/>' +
+      '<path d="M7 14.5 L11.5 16" stroke="#7a1f1f" stroke-width="1.4" fill="none"/>' +
+      '<circle cx="11" cy="17" r="2.4" fill="#ff3b30"/>' +
+      '<circle cx="21" cy="17" r="2.4" fill="#ff3b30"/>' +
+      '<path d="M13 24 L10 20 L12.5 22.5 L16 20 L19.5 22.5 L22 20 L19 24 Z" fill="#0c0608"/>' +
+      '<path d="M11.5 21 L12.5 24.5 M20.5 21 L19.5 24.5" stroke="#f2ede0" stroke-width="1.4" stroke-linecap="round"/>' +
+      "</svg>",
+  };
+
   const gameAreaEl = document.getElementById("gameArea");
   const roomLabelEl = document.getElementById("roomLabel");
   const bestLabelEl = document.getElementById("bestLabel");
   const objectiveEl = document.getElementById("objective");
+  const dogPortraitEl = document.getElementById("dogPortrait");
   const dogHpFillEl = document.getElementById("dogHpFill");
   const dogHpTextEl = document.getElementById("dogHpText");
   const dogBlockChipEl = document.getElementById("dogBlockChip");
+  const dogBlockIconEl = document.getElementById("dogBlockIcon");
   const dogBlockValueEl = document.getElementById("dogBlockValue");
+  dogPortraitEl.innerHTML = DOG_ICON;
+  dogBlockIconEl.innerHTML = CARD_ICONS.shield;
   const energyPipsEl = document.getElementById("energyPips");
   const nodeChoiceEl = document.getElementById("nodeChoice");
   const nodeOptionsEl = document.getElementById("nodeOptions");
@@ -117,13 +190,63 @@
   }
 
   function commitPlay(handIndex, targetId) {
+    // Capture everything the flight animation needs BEFORE the engine call
+    // and re-render tear the tapped card out of the DOM.
+    const cardEl = handEl.children[handIndex];
+    const cardDef = Content.CARDS[state.hand[handIndex]];
+    let targetEl = null;
+    if (cardDef) {
+      if (cardDef.damage) {
+        // Attacks fly at their victim (the whole battlefield for an AoE);
+        // everything else — block, energy, draw — flies back to the dog.
+        targetEl =
+          !cardDef.aoe && targetId ? battlefieldEl.querySelector(`[data-enemy-id="${targetId}"]`) : battlefieldEl;
+      } else {
+        targetEl = dogPortraitEl;
+      }
+    }
+    const targetRect = targetEl ? targetEl.getBoundingClientRect() : null;
+    const hpBefore = new Map(state.enemies.map((e) => [e.id, e.hp]));
+
     try {
       Engine.playCard(state, Content, handIndex, targetId, rng);
     } catch (err) {
       return; // UI already gates legality; a thrown error just means "no-op"
     }
+    if (cardEl && targetRect) flyCard(cardEl, targetRect);
     selectedHandIndex = null;
     render();
+
+    // Hit reactions on whoever the card just damaged (render above rebuilt
+    // the enemy nodes, so query fresh ones).
+    for (const enemy of state.enemies) {
+      if (enemy.hp < hpBefore.get(enemy.id)) {
+        const el = battlefieldEl.querySelector(`[data-enemy-id="${enemy.id}"]`);
+        if (el) flashClass(el, enemy.hp <= 0 ? "enemy-dying" : "enemy-hit", 500);
+      }
+    }
+  }
+
+  // A cosmetic clone of the played card that flies from the hand to its
+  // target and burns out. Lives directly on <body>, so the re-render that
+  // rebuilds the real hand can't cut the flight short.
+  function flyCard(cardEl, targetRect) {
+    const from = cardEl.getBoundingClientRect();
+    const clone = cardEl.cloneNode(true);
+    clone.classList.add("card-flying");
+    clone.classList.remove("card-selected");
+    clone.style.left = `${from.left}px`;
+    clone.style.top = `${from.top}px`;
+    clone.style.width = `${from.width}px`;
+    clone.style.height = `${from.height}px`;
+    document.body.appendChild(clone);
+    const dx = targetRect.left + targetRect.width / 2 - (from.left + from.width / 2);
+    const dy = targetRect.top + targetRect.height / 2 - (from.top + from.height / 2);
+    requestAnimationFrame(() => {
+      clone.style.transform = `translate(${dx}px, ${dy}px) scale(0.25) rotate(10deg)`;
+      clone.style.opacity = "0";
+    });
+    setTimeout(() => clone.remove(), 500);
   }
 
   function endTurn() {
@@ -139,11 +262,16 @@
 
     for (const id of attackerIds) {
       const el = battlefieldEl.querySelector(`[data-enemy-id="${id}"]`);
-      if (el) flashClass(el, "enemy-attacking", 500);
+      if (el) flashClass(el, "enemy-attacking", 600);
     }
     if (state.player.hp < hpBefore) {
-      flashClass(document.querySelector(".hp-bar"), "hp-hit", 500);
-      flashClass(gameAreaEl, "shake", 400);
+      // Land the hurt a beat after the lunge starts, so the cat visibly
+      // reaches you before you feel it.
+      setTimeout(() => {
+        flashClass(document.querySelector(".hp-bar"), "hp-hit", 500);
+        flashClass(gameAreaEl, "shake", 400);
+        flashClass(gameAreaEl, "player-hit", 500);
+      }, 220);
     }
   }
 
@@ -166,8 +294,9 @@
       const heal = Math.ceil((state.player.maxHp - state.player.hp) * Content.REST_HEAL_FRACTION);
       detail = state.player.hp >= state.player.maxHp ? "Already at full Hull." : `Heal ${heal} HP`;
     } else {
-      const emojis = option.enemies.map((id) => Content.ENEMY_TYPES[id].emoji).join(" ");
-      detail = emojis + (option.type === "elite" ? ` · ${Content.ELITE_REWARD_COUNT} card reward` : "");
+      const icons = option.enemies.map((id) => `<span class="node-enemy-icon">${ENEMY_ICONS[id]}</span>`).join("");
+      const rewardNote = option.type === "elite" ? ` · ${Content.ELITE_REWARD_COUNT} card reward` : "";
+      detail = `<span class="node-enemy-icons">${icons}</span>${rewardNote}`;
     }
     el.innerHTML = `
       <span class="node-icon">${NODE_ICON[option.type]}</span>
@@ -222,15 +351,22 @@
     if (enemy.hp <= 0) el.classList.add("enemy-dead");
     if (selectedHandIndex !== null && enemy.hp > 0) el.classList.add("enemy-targetable");
 
+    // The intent telegraph: exactly what this cat is about to do next turn,
+    // shown a full turn ahead so a hit never comes as a surprise — this is
+    // the "no cheap deaths" rule the whole combat design rests on, so it
+    // gets its own bold banner rather than blending into the card.
     const intentText = enemy.hp > 0 ? Engine.describeIntent(enemy.currentIntent) : "Defeated";
-    const intentIcon = enemy.hp > 0 && enemy.currentIntent.type === "attack" ? "⚔️" : "🛡️";
+    const intentIcon = enemy.hp > 0 ? INTENT_ICON[enemy.currentIntent.type] : "";
+    const intentClass = enemy.hp > 0 ? " enemy-intent-" + enemy.currentIntent.type : "";
+    const blockNote =
+      enemy.block > 0 ? `<span class="inline-icon">${CARD_ICONS.shield}</span>${enemy.block}` : "";
 
     el.innerHTML = `
-      <span class="enemy-intent">${enemy.hp > 0 ? intentIcon + " " + intentText : ""}</span>
-      <span class="enemy-portrait">${enemy.emoji}</span>
+      <span class="enemy-intent${intentClass}">${enemy.hp > 0 ? intentIcon + intentText : ""}</span>
+      <span class="enemy-portrait">${ENEMY_ICONS[enemy.typeId]}</span>
       <span class="enemy-name">${enemy.name}</span>
       <div class="hp-bar hp-bar-small"><div class="hp-fill" style="width:${Math.max(0, (enemy.hp / enemy.maxHp) * 100)}%"></div></div>
-      <span class="enemy-hp-text">${Math.max(0, enemy.hp)}/${enemy.maxHp}${enemy.block > 0 ? " · 🛡️" + enemy.block : ""}</span>
+      <span class="enemy-hp-text">${Math.max(0, enemy.hp)}/${enemy.maxHp}${blockNote}</span>
     `;
     el.addEventListener("click", () => onEnemyTap(enemy.id));
     return el;
@@ -284,7 +420,7 @@
       objectiveEl.textContent =
         selectedHandIndex !== null
           ? "Tap a cat to aim it."
-          : `Defeat ${living.map((e) => e.name).join(" and ")}${living.length > 1 ? "" : " " + living[0].emoji}.`;
+          : `Defeat ${living.map((e) => e.name).join(" and ")}.`;
 
       for (const enemy of state.enemies) battlefieldEl.appendChild(enemyNode(enemy));
       state.hand.forEach((cardId, i) => handEl.appendChild(cardNode(cardId, i)));
@@ -296,10 +432,10 @@
 
     if (state.status === "victory") {
       saveBest();
-      showOverlay("Victory! 🏆", "You cleared the whole dungeon. TREEBOAR is yours.");
+      showOverlay("Victory!", "You cleared the whole dungeon. TREEBOAR is yours.");
     } else if (state.status === "lost") {
       saveBest();
-      showOverlay("Good Boy, Down 🐾", `You made it to Floor ${floorNumber}.`);
+      showOverlay("Good Boy, Down", `You made it to Floor ${floorNumber}.`);
     } else {
       overlayEl.hidden = true;
     }
