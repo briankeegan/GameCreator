@@ -121,8 +121,8 @@ body {
 }
 
 .dog-portrait svg {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 31px;
 }
 
 .hp-bar {
@@ -365,14 +365,15 @@ body {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  height: 60px;
+  height: 72px;
 }
 
-/* Bigger cat = bigger threat: Big Tom looms, the Alley Cat is scrawnier. */
-.enemy-portrait svg { width: 58px; height: 58px; }
-.enemy-portrait-alleyCat svg { width: 52px; height: 52px; }
-.enemy-portrait-tabbyGuard svg { width: 60px; height: 60px; }
-.enemy-portrait-bigTom svg { width: 72px; height: 72px; }
+/* Warrior figures use a 100x120 (5:6) viewBox, so height = width * 1.2.
+   Bigger warrior = bigger threat: Big Tom looms, the Alley Cat is scrawnier. */
+.enemy-portrait svg { width: 50px; height: 60px; }
+.enemy-portrait-alleyCat svg { width: 46px; height: 55.2px; }
+.enemy-portrait-tabbyGuard svg { width: 50px; height: 60px; }
+.enemy-portrait-bigTom svg { width: 60px; height: 72px; }
 
 .enemy-name {
   font-size: 0.75rem;
@@ -474,7 +475,7 @@ body {
 
 .node-enemy-icon svg {
   width: 20px;
-  height: 20px;
+  height: 24px;
   display: block;
 }
 

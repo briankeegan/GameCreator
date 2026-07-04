@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("trebor-v9", [
+GCRegisterServiceWorker("trebor-v10", [
   "./",
   "./index.html",
   "./style.css",
