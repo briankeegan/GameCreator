@@ -250,11 +250,17 @@ function escapeHtml(s) {
 function renderInline(text) {
   var s = escapeHtml(text);
   // Pull inline code out first so its contents don't get mangled by the
-  // bold/italic/link passes below, then splice it back in afterward.
+  // bold/italic/link passes below, then splice it back in afterward. The
+  // placeholder uses a Unicode Private-Use-Area marker ("<N>")
+  // that can never occur in real chat text — NOT the bare " N " (space,
+  // index, space) this used to use, which collided with any plain number
+  // a visitor happened to type (e.g. "have 3 acts"): since there was no
+  // actual code span, codeSpans[3] was undefined, and the "3" silently
+  // rendered as the literal word "undefined" in the message.
   var codeSpans = [];
   s = s.replace(/`([^`]+)`/g, function (_, code) {
     codeSpans.push(code);
-    return " " + (codeSpans.length - 1) + " ";
+    return "" + (codeSpans.length - 1) + "";
   });
   // Image syntax must run before the plain-link pass below — otherwise the
   // link regex still matches the "[alt](url)" part and leaves a stray "!".
@@ -267,7 +273,7 @@ function renderInline(text) {
   s = s.replace(/__([^_]+)__/g, "<strong>$1</strong>");
   s = s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>");
   s = s.replace(/(^|[^_])_([^_\n]+)_(?!_)/g, "$1<em>$2</em>");
-  s = s.replace(/ (\d+) /g, function (_, i) {
+  s = s.replace(/(\d+)/g, function (_, i) {
     return "<code>" + codeSpans[Number(i)] + "</code>";
   });
   return s;
