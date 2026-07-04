@@ -91,7 +91,7 @@ Engine.chooseClass(lalaM, Content, "lala", rng);
 Engine.chooseNode(lalaM, Content, 0, rng); // Alley Cat, 14 Hull
 lalaM.hand.unshift("bite"); // a plain 6-damage Bite...
 Engine.playCard(lalaM, Content, 0, lalaM.enemies[0].id, rng);
-assert.strictEqual(lalaM.enemies[0].hp, 14 - 8, "Lock Jaw makes Bite land for 6+2");
+assert.strictEqual(lalaM.enemies[0].hp, 16 - 8, "Lock Jaw makes Bite land for 6+2");
 
 // ---------------------------------------------------------------------
 // Floor 1 fight (as Koozie), traced through the key mechanics.
@@ -100,14 +100,14 @@ const state = Engine.createGameState(Content, rng);
 Engine.chooseClass(state, Content, "koozie", rng);
 assert.deepStrictEqual(
   state.nodeChoices.map((o) => o.type),
-  ["fight", "fight", "rest"],
-  "Floor 1 offers two fights and a rest, no elite yet"
+  ["fight", "fight", "treasure"],
+  "Floor 1 offers two fights and a treasure (no free rest every floor)"
 );
 
 Engine.chooseNode(state, Content, 0, rng); // "Back Alley" — fight an Alley Cat
 assert.strictEqual(state.status, "playing");
 assert.strictEqual(state.enemies[0].typeId, "alleyCat");
-assert.strictEqual(state.enemies[0].hp, 14);
+assert.strictEqual(state.enemies[0].hp, 16);
 assert.deepStrictEqual(
   state.hand,
   ["riptide", "counterSurge", "counterSurge", "brace", "brace"],
@@ -126,7 +126,7 @@ assert.strictEqual(state.player.block, 20);
 assert.strictEqual(state.player.energy, 1);
 
 Engine.playCard(state, Content, 0, null, rng); // Riptide -> 5 dmg + 5 Block
-assert.strictEqual(cat.hp, 9, "Riptide deals 5 (Koozie has no Strength bonus)");
+assert.strictEqual(cat.hp, 11, "Riptide deals 5 (Koozie has no Strength bonus); 16-5");
 assert.strictEqual(state.player.block, 25);
 assert.strictEqual(state.player.energy, 0);
 
@@ -153,7 +153,7 @@ assert.ok(state.nodeChoices.some((o) => o.type === "elite"), "Floor 2 has an eli
 // New enemies: a Feral Kitten swarm and a Rooftop Sniper exist and fight.
 // ---------------------------------------------------------------------
 assert.strictEqual(Content.ENEMY_TYPES.feralKitten.maxHp, 7);
-assert.strictEqual(Content.ENEMY_TYPES.rooftopSniper.pattern[1].damage, 13, "the sniper's telegraphed big shot");
+assert.strictEqual(Content.ENEMY_TYPES.rooftopSniper.pattern[1].damage, 15, "the sniper's telegraphed big shot");
 const swarmContent = Object.assign({}, Content, {
   ACTS: [
     {
@@ -250,6 +250,53 @@ assert.strictEqual(brSkip.player.hp, brSkip.player.maxHp, "skipping still heals 
 assert.strictEqual(brSkip.actIndex, 1);
 
 // ---------------------------------------------------------------------
+// Treasure nodes and rest-site actions (heal / upgrade / remove).
+// ---------------------------------------------------------------------
+// Treasure: choosing it opens a free pick from the strong treasure pool.
+const treas = Engine.createGameState(Content, rng);
+Engine.chooseClass(treas, Content, "koozie", rng);
+const treasureIdx = treas.nodeChoices.findIndex((o) => o.type === "treasure");
+assert.ok(treasureIdx !== -1, "floor 1 offers a treasure node");
+Engine.chooseNode(treas, Content, treasureIdx, rng);
+assert.strictEqual(treas.status, "reward");
+assert.strictEqual(treas.currentNodeType, "treasure");
+assert.ok(treas.rewardOptions.every((id) => Content.TREASURE_POOL.includes(id)), "treasure offers the strong pool");
+const deckBeforeTreasure = treas.deck.length;
+Engine.pickReward(treas, Content, treas.rewardOptions[0], rng);
+assert.strictEqual(treas.deck.length, deckBeforeTreasure + 1, "taking treasure grows the deck");
+
+// Rest site: heal, upgrade, and remove all end the visit and advance.
+const rs = Engine.createGameState(Content, rng);
+Engine.chooseClass(rs, Content, "koozie", rng);
+rs.status = "rest-site";
+rs.currentNodeType = "rest";
+rs.floorIndex = 0;
+rs.player.hp = 10;
+Engine.restSite(rs, Content, "heal", null, rng);
+assert.ok(rs.player.hp > 10, "resting heals");
+assert.strictEqual(rs.status, "choosing", "and moves on to the next floor");
+
+// Upgrade swaps a card for its + version.
+const up = Engine.createGameState(Content, rng);
+Engine.chooseClass(up, Content, "lala", rng);
+up.status = "rest-site";
+up.floorIndex = 0;
+const upIndex = up.deck.findIndex((id) => Content.UPGRADES[id]);
+const baseId = up.deck[upIndex];
+Engine.restSite(up, Content, "upgrade", upIndex, rng);
+assert.strictEqual(up.deck[upIndex], Content.UPGRADES[baseId], "the card became its + version");
+assert.ok(Content.CARDS[Content.UPGRADES[baseId]].upgraded, "and the + card is marked upgraded");
+
+// Remove deletes a card.
+const rm = Engine.createGameState(Content, rng);
+Engine.chooseClass(rm, Content, "bevy", rng);
+rm.status = "rest-site";
+rm.floorIndex = 0;
+const rmLen = rm.deck.length;
+Engine.restSite(rm, Content, "remove", 0, rng);
+assert.strictEqual(rm.deck.length, rmLen - 1, "removing shrinks the deck");
+
+// ---------------------------------------------------------------------
 // Full-run smoke test per class: a cautious player (rest when hurt, never
 // elite, bank the first reward, take the first boss reward) should be able
 // to clear all three acts with each of the three classes. Balance/regression
@@ -268,6 +315,8 @@ for (const id of Object.keys(Content.CLASSES)) {
       Engine.chooseNode(run, Content, hurt && restIdx !== -1 ? restIdx : fightIdx, rng);
     } else if (run.status === "reward") {
       Engine.pickReward(run, Content, run.rewardOptions[0], rng);
+    } else if (run.status === "rest-site") {
+      Engine.restSite(run, Content, "heal", null, rng); // a cautious dog always heals
     } else if (run.status === "boss-reward") {
       Engine.chooseBossReward(run, Content, run.bossRewardOptions[0], rng);
     } else if (run.status === "playing") {

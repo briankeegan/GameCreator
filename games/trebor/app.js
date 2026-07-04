@@ -37,6 +37,8 @@
     elite:
       '<svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M12 2 C6.5 2 3 6 3 11 C3 14 4.5 16.3 6 17.5 V20 H9 V18 H11 V20 H13 V18 H15 V20 H18 V17.5 C19.5 16.3 21 14 21 11 C21 6 17.5 2 12 2 Z"/><circle cx="8.5" cy="11" r="2" fill="#170e0c"/><circle cx="15.5" cy="11" r="2" fill="#170e0c"/></svg>',
     rest: '<svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M12 2 C12 6 8 8 8 13 C8 17 10 20 12 22 C14 20 16 17 16 13 C16 10 14 9 14 6 C14 9 12 9 12 6 C12 4 12 3 12 2 Z"/></svg>',
+    treasure:
+      '<svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M3 9 H21 V20 H3 Z"/><path d="M4 9 C4 5 8 3 12 3 C16 3 20 5 20 9" fill="none" stroke="currentColor" stroke-width="2"/><rect x="10.5" y="7" width="3" height="6" rx="1" fill="#170e0c"/></svg>',
   };
 
   // Intent icons — the attack/guard telegraph above an enemy showing exactly
@@ -112,6 +114,11 @@
   const deckCardsEl = document.getElementById("deckCards");
   const deckCountEl = document.getElementById("deckCount");
   const deckCloseBtn = document.getElementById("deckCloseBtn");
+  const restSiteEl = document.getElementById("restSite");
+  const restHealBtn = document.getElementById("restHealBtn");
+  const restUpgradeBtn = document.getElementById("restUpgradeBtn");
+  const restRemoveBtn = document.getElementById("restRemoveBtn");
+  const restHealDescEl = document.getElementById("restHealDesc");
 
   let state = null;
   let selectedHandIndex = null; // hand index currently armed, awaiting an enemy tap
@@ -319,8 +326,9 @@
     el.className = "node-option node-option-" + option.type;
     let detail;
     if (option.type === "rest") {
-      const heal = Math.ceil((state.player.maxHp - state.player.hp) * Content.REST_HEAL_FRACTION);
-      detail = state.player.hp >= state.player.maxHp ? "Already at full health" : `Heal ${heal} HP`;
+      detail = "Rest · sharpen · remove";
+    } else if (option.type === "treasure") {
+      detail = "A stash of strong gear";
     } else {
       const icons = option.enemies.map((id) => `<span class="node-enemy-icon">${enemyImg(id)}</span>`).join("");
       const rewardNote = option.type === "elite" ? ` · ${Content.ELITE_REWARD_COUNT} card reward` : "";
@@ -449,6 +457,7 @@
     nodeChoiceEl.hidden = state.status !== "choosing";
     rewardScreenEl.hidden = state.status !== "reward";
     bossRewardScreenEl.hidden = state.status !== "boss-reward";
+    restSiteEl.hidden = state.status !== "rest-site";
     battlefieldEl.hidden = state.status !== "playing";
     consoleEl.hidden = state.status !== "playing";
 
@@ -467,8 +476,16 @@
       objectiveEl.textContent = "Choose your next room.";
       state.nodeChoices.forEach((option, idx) => nodeOptionsEl.appendChild(nodeOptionNode(option, idx)));
     } else if (state.status === "reward") {
-      objectiveEl.textContent = "Pick a card to add to your deck, or skip.";
+      objectiveEl.textContent =
+        state.currentNodeType === "treasure"
+          ? "Treasure! Take one of these — no charge."
+          : "Pick a card to add to your deck, or skip.";
       state.rewardOptions.forEach((cardId) => rewardOptionsEl.appendChild(rewardCardNode(cardId)));
+    } else if (state.status === "rest-site") {
+      objectiveEl.textContent = "Rest up, sharpen a card, or drop dead weight.";
+      const heal = Math.ceil((state.player.maxHp - state.player.hp) * Content.REST_HEAL_FRACTION);
+      restHealDescEl.textContent = state.player.hp >= state.player.maxHp ? "Already at full Hull" : `Heal ${heal} Hull`;
+      restHealBtn.disabled = state.player.hp >= state.player.maxHp;
     } else if (state.status === "boss-reward") {
       objectiveEl.textContent = `Boss down! +${Content.BOSS_MAX_HULL_BONUS} max Hull and a full heal. Claim a spoil of war.`;
       bossRewardTitleEl.textContent = `${act.boss.label} defeated`;
@@ -500,23 +517,30 @@
     }
   }
 
-  // Deck viewer: a read-only look at every card you're running, grouped by
-  // card with a ×count, sorted by energy cost then name.
-  function openDeck() {
+  // Deck viewer / card picker. mode: null = read-only view; "upgrade" or
+  // "remove" = a rest-site picker (cards clickable; upgrade only shows cards
+  // that have a + version). Grouped by card with a ×count.
+  function openDeck(mode) {
     if (!state || !state.deck.length) return;
     const counts = {};
     for (const id of state.deck) counts[id] = (counts[id] || 0) + 1;
-    const ids = Object.keys(counts).sort((a, b) => {
+    let ids = Object.keys(counts);
+    if (mode === "upgrade") ids = ids.filter((id) => Content.UPGRADES[id]);
+    ids.sort((a, b) => {
       const ca = Content.CARDS[a];
       const cb = Content.CARDS[b];
       return ca.cost - cb.cost || ca.name.localeCompare(cb.name);
     });
-    deckCountEl.textContent = state.deck.length + " cards";
+    deckCountEl.textContent =
+      mode === "upgrade" ? "Sharpen which card?" : mode === "remove" ? "Drop which card?" : state.deck.length + " cards";
     deckCardsEl.innerHTML = "";
+    if (ids.length === 0) {
+      deckCardsEl.innerHTML = '<span class="deck-empty">Nothing eligible.</span>';
+    }
     for (const id of ids) {
       const card = Content.CARDS[id];
-      const wrap = document.createElement("div");
-      wrap.className = "deck-card-wrap";
+      const wrap = document.createElement(mode ? "button" : "div");
+      wrap.className = "deck-card-wrap" + (mode ? " deck-card-pick" : "");
       const el = document.createElement("div");
       el.className = "card " + cardTypeClass(card);
       el.innerHTML = cardFrameHtml(card);
@@ -527,12 +551,27 @@
         badge.textContent = "×" + counts[id];
         wrap.appendChild(badge);
       }
+      if (mode) wrap.addEventListener("click", () => onPickCard(mode, id));
       deckCardsEl.appendChild(wrap);
     }
     deckOverlayEl.hidden = false;
   }
   function closeDeck() {
     deckOverlayEl.hidden = true;
+  }
+
+  function onPickCard(mode, cardId) {
+    const idx = state.deck.indexOf(cardId);
+    if (idx < 0) return;
+    Engine.restSite(state, Content, mode, idx, rng);
+    closeDeck();
+    render();
+  }
+
+  function onRestHeal() {
+    if (!state || state.status !== "rest-site") return;
+    Engine.restSite(state, Content, "heal", null, rng);
+    render();
   }
 
   function showOverlay(title, body) {
@@ -545,8 +584,11 @@
   skipRewardBtn.addEventListener("click", () => onPickReward(null));
   skipBossRewardBtn.addEventListener("click", () => onPickBossReward(null));
   restartBtn.addEventListener("click", newRun);
-  deckBtn.addEventListener("click", openDeck);
+  deckBtn.addEventListener("click", () => openDeck(null));
   deckCloseBtn.addEventListener("click", closeDeck);
+  restHealBtn.addEventListener("click", onRestHeal);
+  restUpgradeBtn.addEventListener("click", () => openDeck("upgrade"));
+  restRemoveBtn.addEventListener("click", () => openDeck("remove"));
   deckOverlayEl.addEventListener("click", (e) => {
     if (e.target === deckOverlayEl) closeDeck();
   });

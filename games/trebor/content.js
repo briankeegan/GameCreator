@@ -101,6 +101,42 @@ const REWARD_POOL = [
 // pick you can't get anywhere else.
 const BOSS_REWARD_POOL = ["maul", "warCry", "bulwark", "huntersMark", "reserves"];
 
+// Treasure nodes (found instead of a rest on some floors) hand you a pick
+// from a stash of strong cards — better than a normal fight reward.
+const TREASURE_POOL = ["maul", "warCry", "bulwark", "huntersMark", "reserves", "alphaStrike", "bigBark"];
+
+// Regenerate a card's text from its effect fields, so upgraded cards read
+// correctly instead of keeping the base card's numbers.
+function cardTextOf(c) {
+  const parts = [];
+  if (c.damage) parts.push(`Deal ${c.damage}${c.aoe ? " to ALL enemies" : ""}.`);
+  if (c.block) parts.push(`Gain ${c.block} Block.`);
+  if (c.energy) parts.push(`Gain ${c.energy} Energy.`);
+  if (c.draw) parts.push(`Draw ${c.draw} card${c.draw > 1 ? "s" : ""}.`);
+  return parts.join(" ");
+}
+
+// Card upgrades: at a rest site you can sharpen a card into its "+" version
+// (bigger numbers). Generated programmatically so every runnable card has an
+// upgrade without hand-writing each one. UPGRADES maps base id -> upgraded id.
+const UPGRADABLE = [
+  "bite", "growl", "fetch", "pounce", "guardDog", "goodBoy", "howl", "bigBark",
+  "alphaStrike", "sniffOut", "secondWind", "digIn", "riptide", "rally", "lockJaw",
+  "scurry", "brace", "counterSurge", "flurry", "chomp", "bodySlam",
+];
+const UPGRADES = {};
+for (const id of UPGRADABLE) {
+  const base = CARDS[id];
+  const up = Object.assign({}, base, { id: id + "Plus", name: base.name + "+", upgraded: true });
+  if (base.damage) up.damage = base.damage + 3;
+  if (base.block) up.block = base.block + 3;
+  if (base.energy) up.energy = base.energy + 1;
+  if (base.draw && !base.damage && !base.block) up.draw = base.draw + 1; // pure draw cards draw more
+  up.text = cardTextOf(up) || base.text;
+  CARDS[up.id] = up;
+  UPGRADES[id] = up.id;
+}
+
 // Cats fight through a fixed, repeating intent pattern — telegraphed one
 // turn ahead so a loss always traces back to a choice, never a surprise.
 // `attack` damages the dog (after the dog's Block absorbs it); `guard` sets
@@ -109,32 +145,32 @@ const ENEMY_TYPES = {
   alleyCat: {
     id: "alleyCat",
     name: "Alley Cat",
-    maxHp: 14,
+    maxHp: 16,
     pattern: [
-      { type: "attack", damage: 6 },
-      { type: "attack", damage: 6 },
+      { type: "attack", damage: 7 },
+      { type: "attack", damage: 7 },
       { type: "guard", block: 6 },
     ],
   },
   tabbyGuard: {
     id: "tabbyGuard",
     name: "Tabby Guard",
-    maxHp: 20,
+    maxHp: 24,
     pattern: [
-      { type: "guard", block: 10 },
-      { type: "attack", damage: 8 },
-      { type: "attack", damage: 8 },
+      { type: "guard", block: 12 },
+      { type: "attack", damage: 10 },
+      { type: "attack", damage: 10 },
     ],
   },
   bigTom: {
     id: "bigTom",
     name: "Big Tom",
-    maxHp: 42,
+    maxHp: 48,
     pattern: [
-      { type: "attack", damage: 9 },
-      { type: "guard", block: 10 },
-      { type: "attack", damage: 9 },
-      { type: "attack", damage: 14 },
+      { type: "attack", damage: 10 },
+      { type: "guard", block: 12 },
+      { type: "attack", damage: 11 },
+      { type: "attack", damage: 16 },
     ],
   },
   // A small, relentless swarm unit — low HP, never guards, comes in numbers.
@@ -143,9 +179,9 @@ const ENEMY_TYPES = {
     name: "Feral Kitten",
     maxHp: 7,
     pattern: [
-      { type: "attack", damage: 3 },
-      { type: "attack", damage: 3 },
-      { type: "attack", damage: 5 },
+      { type: "attack", damage: 4 },
+      { type: "attack", damage: 4 },
+      { type: "attack", damage: 6 },
     ],
   },
   // A glass-cannon sniper — winds up behind cover, then a big telegraphed
@@ -153,35 +189,35 @@ const ENEMY_TYPES = {
   rooftopSniper: {
     id: "rooftopSniper",
     name: "Rooftop Sniper",
-    maxHp: 13,
+    maxHp: 15,
     pattern: [
       { type: "guard", block: 4 },
-      { type: "attack", damage: 13 },
+      { type: "attack", damage: 15 },
     ],
   },
   // Act 2 boss — a heavy officer cat: hits hard, guards, then a crushing blow.
   warcatCaptain: {
     id: "warcatCaptain",
     name: "Warcat Captain",
-    maxHp: 58,
+    maxHp: 64,
     pattern: [
-      { type: "attack", damage: 12 },
-      { type: "guard", block: 12 },
       { type: "attack", damage: 14 },
-      { type: "attack", damage: 18 },
+      { type: "guard", block: 14 },
+      { type: "attack", damage: 16 },
+      { type: "attack", damage: 21 },
     ],
   },
   // Act 3 boss — the tyrant king: relentless, escalating, ends in a haymaker.
   catKing: {
     id: "catKing",
     name: "The Cat King",
-    maxHp: 74,
+    maxHp: 78,
     pattern: [
-      { type: "attack", damage: 12 },
+      { type: "attack", damage: 13 },
+      { type: "guard", block: 12 },
+      { type: "attack", damage: 18 },
       { type: "guard", block: 10 },
-      { type: "attack", damage: 17 },
-      { type: "guard", block: 8 },
-      { type: "attack", damage: 22 },
+      { type: "attack", damage: 23 },
     ],
   },
 };
@@ -200,7 +236,7 @@ const ACTS = [
         options: [
           { type: "fight", label: "Back Alley", enemies: ["alleyCat"] },
           { type: "fight", label: "Storm Drain", enemies: ["alleyCat"] },
-          { type: "rest", label: "Cardboard Box" },
+          { type: "treasure", label: "Dumpster Score" },
         ],
       },
       {
@@ -221,7 +257,7 @@ const ACTS = [
         options: [
           { type: "fight", label: "Rooftops", enemies: ["alleyCat", "rooftopSniper"] },
           { type: "fight", label: "Gutter Run", enemies: ["tabbyGuard", "feralKitten"] },
-          { type: "rest", label: "Water Bowl" },
+          { type: "treasure", label: "Stashed Crate" },
         ],
       },
       {
@@ -241,7 +277,7 @@ const ACTS = [
         options: [
           { type: "fight", label: "Grand Foyer", enemies: ["tabbyGuard", "alleyCat", "rooftopSniper"] },
           { type: "fight", label: "The Kennels", enemies: ["bigTom"] },
-          { type: "rest", label: "Velvet Cushion" },
+          { type: "treasure", label: "Royal Hoard" },
         ],
       },
       {
@@ -263,6 +299,7 @@ const REST_HEAL_FRACTION = 0.3; // of missing HP, rounded up
 const FIGHT_REWARD_COUNT = 3;
 const ELITE_REWARD_COUNT = 4;
 const BOSS_REWARD_COUNT = 3; // boss-reward cards offered to pick from
+const TREASURE_REWARD_COUNT = 3; // strong cards offered at a treasure node
 const BOSS_MAX_HULL_BONUS = 8; // permanent +maxHull granted on a boss kill
 
 const CONTENT = {
@@ -271,6 +308,8 @@ const CONTENT = {
   STARTER_DECK,
   REWARD_POOL,
   BOSS_REWARD_POOL,
+  TREASURE_POOL,
+  UPGRADES,
   ENEMY_TYPES,
   ACTS,
   STARTING_HP,
@@ -280,6 +319,7 @@ const CONTENT = {
   FIGHT_REWARD_COUNT,
   ELITE_REWARD_COUNT,
   BOSS_REWARD_COUNT,
+  TREASURE_REWARD_COUNT,
   BOSS_MAX_HULL_BONUS,
 };
 

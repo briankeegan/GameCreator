@@ -154,14 +154,45 @@ function chooseNode(state, content, optionIndex, rng = Math.random) {
   if (!option) throw new Error(`No node option at index ${optionIndex}`);
 
   if (option.type === "rest") {
-    const healAmount = Math.ceil((state.player.maxHp - state.player.hp) * content.REST_HEAL_FRACTION);
-    state.player.hp = Math.min(state.player.maxHp, state.player.hp + healAmount);
-    state.log = [`Rested and healed ${healAmount}.`];
-    advanceFloorOrBoss(state, content, rng);
+    // A rest site is now a choice: heal, sharpen a card, or ditch dead weight.
+    state.currentNodeType = "rest";
+    state.status = "rest-site";
+    state.log = ["A safe spot. Rest up, sharpen a card, or drop dead weight."];
+  } else if (option.type === "treasure") {
+    // A stash — a free pick from the strong treasure pool, no fight.
+    state.currentNodeType = "treasure";
+    state.status = "reward";
+    state.rewardOptions = shuffle(content.TREASURE_POOL, rng).slice(0, content.TREASURE_REWARD_COUNT);
+    state.log = ["You found a stash of gear!"];
   } else {
     state.currentNodeType = option.type; // "fight" | "elite"
     startCombat(state, content, option.enemies, rng);
   }
+}
+
+// Rest-site actions: "heal" (recover Hull), "remove" (delete deck[index]), or
+// "upgrade" (swap deck[index] for its + version). Any of them ends the visit.
+function restSite(state, content, action, deckIndex, rng = Math.random) {
+  if (state.status !== "rest-site") throw new Error(`Cannot use a rest site while status is ${state.status}`);
+  if (action === "heal") {
+    const healAmount = Math.ceil((state.player.maxHp - state.player.hp) * content.REST_HEAL_FRACTION);
+    state.player.hp = Math.min(state.player.maxHp, state.player.hp + healAmount);
+    state.log = [`Rested and healed ${healAmount}.`];
+  } else if (action === "remove") {
+    if (deckIndex == null || deckIndex < 0 || deckIndex >= state.deck.length) throw new Error("No such card to remove");
+    const removed = state.deck.splice(deckIndex, 1)[0];
+    state.log = [`Dropped ${content.CARDS[removed].name} from the deck.`];
+  } else if (action === "upgrade") {
+    if (deckIndex == null || deckIndex < 0 || deckIndex >= state.deck.length) throw new Error("No such card to upgrade");
+    const id = state.deck[deckIndex];
+    const up = content.UPGRADES[id];
+    if (!up) throw new Error(`${id} cannot be upgraded`);
+    state.deck[deckIndex] = up;
+    state.log = [`Sharpened ${content.CARDS[id].name} into ${content.CARDS[up].name}.`];
+  } else {
+    throw new Error(`Unknown rest-site action: ${action}`);
+  }
+  advanceFloorOrBoss(state, content, rng);
 }
 
 function cardNeedsTarget(card) {
@@ -312,6 +343,7 @@ const Engine = {
   createGameState,
   chooseClass,
   chooseNode,
+  restSite,
   playCard,
   endPlayerTurn,
   pickReward,

@@ -88,6 +88,11 @@ async function playUntil(page, targetStatuses) {
       continue;
     }
 
+    if (status === "rest-site") {
+      await page.click("#restHealBtn"); // a cautious dog heals
+      continue;
+    }
+
     // status === "playing"
     const info = await page.evaluate(() => {
       const st = window.__tbState;
@@ -166,7 +171,7 @@ async function playUntil(page, targetStatuses) {
   assert.strictEqual(state.status, "choosing");
   assert.strictEqual(state.classId, "koozie");
   assert.strictEqual(state.player.maxHp, 32);
-  assert.deepStrictEqual(state.nodeChoices.map((o) => o.type), ["fight", "fight", "rest"]);
+  assert.deepStrictEqual(state.nodeChoices.map((o) => o.type), ["fight", "fight", "treasure"]);
 
   await (await page.$$(".node-option"))[0].click(); // "Back Alley" — fight
   await page.waitForTimeout(80);
@@ -178,7 +183,7 @@ async function playUntil(page, targetStatuses) {
     "Koozie's deterministic opening hand (its own block-heavy deck)"
   );
   state = await getState(page);
-  assert.strictEqual(state.enemies[0].hp, 14);
+  assert.strictEqual(state.enemies[0].hp, 16);
   assert.strictEqual(state.player.block, 4, "Waterproof opens the turn with 4 Block");
   assert.ok(await page.locator(".enemy-intent").textContent(), "the cat's move is telegraphed up front");
 
@@ -197,7 +202,7 @@ async function playUntil(page, targetStatuses) {
   await (await page.$$("#hand .card"))[0].click(); // Riptide -> 5 dmg + 5 Block, auto-targeted
   await page.waitForTimeout(80);
   state = await getState(page);
-  assert.strictEqual(state.enemies[0].hp, 9);
+  assert.strictEqual(state.enemies[0].hp, 11);
   assert.strictEqual(state.player.block, 25);
   assert.strictEqual(state.player.energy, 0);
 
