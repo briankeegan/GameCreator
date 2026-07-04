@@ -247,20 +247,29 @@ function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// A control character (ASCII STX, code point 2) that can never occur in
+// real chat text — used to delimit the inline-code placeholder below so it
+// can never collide with a plain number a visitor happens to type (e.g.
+// "have 3 acts"). Built at runtime with fromCharCode rather than written
+// as a literal character in this file, so there's nothing for any part of
+// the edit/commit pipeline to mangle.
+var CODE_MARK = String.fromCharCode(2);
+var CODE_MARK_RE = new RegExp(CODE_MARK + "(\\d+)" + CODE_MARK, "g");
+
 function renderInline(text) {
   var s = escapeHtml(text);
   // Pull inline code out first so its contents don't get mangled by the
-  // bold/italic/link passes below, then splice it back in afterward. The
-  // placeholder uses a Unicode Private-Use-Area marker ("<N>")
-  // that can never occur in real chat text — NOT the bare " N " (space,
-  // index, space) this used to use, which collided with any plain number
-  // a visitor happened to type (e.g. "have 3 acts"): since there was no
-  // actual code span, codeSpans[3] was undefined, and the "3" silently
-  // rendered as the literal word "undefined" in the message.
+  // bold/italic/link passes below, then splice it back in afterward.
+  // Previously this used a bare " N " (space, index, space) placeholder,
+  // which collided with any plain number a visitor typed — since there was
+  // no actual code span at that index, codeSpans[N] was undefined, and the
+  // number silently rendered as the literal word "undefined" in the
+  // message. CODE_MARK fixes that by using a delimiter that can't occur in
+  // real text.
   var codeSpans = [];
   s = s.replace(/`([^`]+)`/g, function (_, code) {
     codeSpans.push(code);
-    return "" + (codeSpans.length - 1) + "";
+    return CODE_MARK + (codeSpans.length - 1) + CODE_MARK;
   });
   // Image syntax must run before the plain-link pass below — otherwise the
   // link regex still matches the "[alt](url)" part and leaves a stray "!".
@@ -273,7 +282,7 @@ function renderInline(text) {
   s = s.replace(/__([^_]+)__/g, "<strong>$1</strong>");
   s = s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>");
   s = s.replace(/(^|[^_])_([^_\n]+)_(?!_)/g, "$1<em>$2</em>");
-  s = s.replace(/(\d+)/g, function (_, i) {
+  s = s.replace(CODE_MARK_RE, function (_, i) {
     return "<code>" + codeSpans[Number(i)] + "</code>";
   });
   return s;
