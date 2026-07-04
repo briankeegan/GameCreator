@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("trebor-v10", [
+GCRegisterServiceWorker("trebor-v11", [
   "./",
   "./index.html",
   "./style.css",
@@ -13,4 +13,12 @@ GCRegisterServiceWorker("trebor-v10", [
   "../../shared/pwa.js",
   "../../shared/storage.js",
   "./icons/icon.svg",
+  "./icons/dog-riddle.png",
+  "./icons/dog-koozie.png",
+  "./icons/dog-bevy.png",
+  "./icons/enemy-alley-cat.png",
+  "./icons/enemy-tabby-guard.png",
+  "./icons/enemy-big-tom.png",
+  "./icons/enemy-feral-kitten.png",
+  "./icons/enemy-rooftop-sniper.png",
 ]);

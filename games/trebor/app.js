@@ -50,119 +50,27 @@
       '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><path d="M12 3 L19 6 V11 C19 16 16 19.5 12 21 C8 19.5 5 16 5 11 V6 Z"/></svg>',
   };
 
-  // ---- character art: low-poly ARMORED WARRIOR animals, riffing on the
-  // reference concept art. Standing, combat-ready figures built from angular
-  // facets — each material (fur, metal armor) gets a flat base tone plus
-  // hard-edged lighter (lit) and darker (shadowed) polygon planes for the
-  // faceted low-poly look — with plate armor, a glowing chest core, a coat
-  // pattern, and a weapon. Distinct silhouette + gear per character, no
-  // recolors. All inline SVG, no assets.
-  let iconUid = 0;
-  function poly(pts, fill, stroke, sw) {
-    return `<path d="M${pts.map((p) => p.join(" ")).join(" L")} Z" fill="${fill}"${stroke ? ` stroke="${stroke}" stroke-width="${sw || 1}"` : ""} stroke-linejoin="round"/>`;
-  }
-  function buildWarrior(o) {
-    const {
-      fur, furLt, furDk, patch, belly, eyeCol, metal = "#8a94a2", metalLt = "#c2cad4",
-      metalDk = "#4a5460", weapon = "blade", glow = "#7fe0ff", ink = "#1a1016",
-      coat = "tabby", big = 0, ears = "cat",
-    } = o;
-    const id = "tw" + iconUid++;
-    const s = big ? 1.12 : 1;
-    const P = poly;
-
-    const tail =
-      `<path d="M64 92 C82 90 88 70 80 60 C86 72 78 86 62 88 Z" fill="${furDk}" stroke="${ink}" stroke-width="1.5" stroke-linejoin="round"/>` +
-      `<path d="M64 92 C78 90 84 74 80 64 C82 74 74 84 62 86 Z" fill="${fur}"/>`;
-
-    const legs =
-      P([[40, 88], [44, 72], [50, 72], [48, 92], [42, 100]], fur, ink, 1.6) +
-      P([[40, 88], [44, 72], [46, 74], [43, 90]], furLt) +
-      P([[42, 100], [48, 92], [52, 100], [46, 104], [38, 104]], metal, ink, 1.4) +
-      P([[60, 88], [56, 72], [50, 72], [52, 92], [58, 100]], furDk, ink, 1.6) +
-      P([[58, 100], [52, 92], [48, 100], [54, 104], [62, 104]], metalDk, ink, 1.4);
-
-    const torso =
-      P([[38, 44], [62, 44], [64, 66], [50, 72], [36, 66]], fur, ink, 1.8) +
-      P([[38, 44], [50, 46], [50, 72], [36, 66]], furLt) +
-      P([[50, 46], [62, 44], [64, 66], [50, 72]], furDk) +
-      P([[44, 58], [56, 58], [54, 70], [46, 70]], belly);
-
-    let patches = "";
-    if (coat === "calico") {
-      patches = P([[38, 44], [48, 44], [46, 54], [37, 52]], patch) + P([[54, 60], [64, 58], [63, 66], [52, 68]], patch) + `<path d="M40 30 l6 0 -3 8 Z" fill="${patch}"/>`;
-    } else if (coat === "siamese") {
-      patches = P([[36, 60], [64, 60], [64, 66], [50, 72], [36, 66]], furDk);
-    } else if (coat === "dark") {
-      patches = P([[38, 44], [62, 44], [60, 52], [40, 52]], furDk);
-    }
-
-    const chest =
-      P([[40, 45], [60, 45], [62, 58], [50, 64], [38, 58]], metal, ink, 1.6) +
-      P([[40, 45], [50, 47], [50, 64], [38, 58]], metalLt) +
-      P([[50, 47], [60, 45], [62, 58], [50, 64]], metalDk) +
-      P([[46, 50], [54, 50], [52, 58], [48, 58]], glow === "#7fe0ff" ? "#2a6a8a" : "#6a2a2a") +
-      `<circle cx="50" cy="54" r="2.2" fill="${glow}"/>`;
-
-    const pauldrons =
-      P([[34, 42], [44, 40], [46, 48], [36, 50]], metal, ink, 1.4) + P([[34, 42], [40, 41], [40, 49], [36, 50]], metalLt) +
-      P([[66, 42], [56, 40], [54, 48], [64, 50]], metalDk, ink, 1.4) + P([[66, 42], [60, 41], [60, 49], [64, 50]], metal);
-
-    const armR =
-      P([[64, 48], [72, 52], [74, 64], [68, 64], [62, 54]], fur, ink, 1.5) +
-      P([[68, 62], [76, 62], [76, 68], [68, 68]], metalDk, ink, 1.3);
-    const armL =
-      P([[36, 48], [28, 52], [26, 64], [32, 64], [38, 54]], furDk, ink, 1.5) +
-      P([[24, 62], [32, 62], [32, 68], [24, 68]], metal, ink, 1.3);
-
-    let weaponSvg = "";
-    if (weapon === "blade") {
-      weaponSvg = `<g transform="rotate(-18 76 40)">` +
-        P([[74, 64], [78, 64], [79, 26], [76, 20], [73, 26]], "#dfe8f2", ink, 1) +
-        `<path d="M76 24 L76 60" stroke="${glow}" stroke-width="1.2" opacity="0.8"/>` +
-        P([[72, 64], [80, 64], [80, 68], [72, 68]], metalDk, ink, 1) + `</g>`;
-    } else if (weapon === "rifle") {
-      weaponSvg = `<g>` + P([[70, 58], [92, 52], [93, 57], [72, 64]], "#3a4250", ink, 1) +
-        P([[88, 52], [94, 50], [95, 55], [89, 57]], glow, ink, 0.8) +
-        P([[70, 60], [76, 60], [76, 70], [70, 70]], metalDk, ink, 1) + `</g>`;
-    } else if (weapon === "maul") {
-      weaponSvg = `<g transform="rotate(-14 74 40)">` +
-        `<rect x="73" y="26" width="4" height="40" fill="${metalDk}" stroke="${ink}" stroke-width="1"/>` +
-        P([[66, 20], [84, 20], [86, 32], [64, 32]], metal, ink, 1.4) + P([[66, 20], [75, 21], [75, 31], [64, 32]], metalLt) + `</g>`;
-    }
-
-    const head =
-      P([[40, 22], [38, 10], [47, 18]], fur, ink, 1.4) + P([[40, 22], [39, 13], [44, 17]], furLt) +
-      P([[60, 22], [62, 10], [53, 18]], furDk, ink, 1.4) + P([[60, 22], [61, 13], [56, 17]], fur) +
-      P([[42, 20], [58, 20], [60, 30], [54, 38], [46, 38], [40, 30]], fur, ink, 1.8) +
-      P([[42, 20], [50, 21], [50, 38], [46, 38], [40, 30]], furLt) +
-      P([[50, 21], [58, 20], [60, 30], [54, 38], [50, 38]], furDk) +
-      P([[46, 32], [54, 32], [52, 38], [48, 38]], belly) +
-      (coat === "siamese" ? P([[44, 30], [56, 30], [54, 38], [48, 38], [46, 34]], furDk) : "") +
-      (coat === "calico" ? `<path d="M42 20 l7 1 -2 9 -5 -1 Z" fill="${patch}"/>` : "") +
-      `<path d="M44 27 L48 25 L48 28 L44 29 Z" fill="${eyeCol}" stroke="${ink}" stroke-width="0.6"/>` +
-      `<path d="M56 27 L52 25 L52 28 L56 29 Z" fill="${eyeCol}" stroke="${ink}" stroke-width="0.6"/>` +
-      `<circle cx="46" cy="27" r="0.9" fill="${ink}"/><circle cx="54" cy="27" r="0.9" fill="${ink}"/>` +
-      `<path d="M49 33 L51 33 L50 35 Z" fill="#c25563"/>`;
-
-    return `<svg viewBox="0 0 100 120">` +
-      `<ellipse cx="50" cy="107" rx="26" ry="5" fill="rgba(0,0,0,0.4)"/>` +
-      `<g transform="translate(50 62) scale(${s}) translate(-50 -62)">` +
-      tail + legs + armL + torso + patches + chest + pauldrons + armR + weaponSvg + head +
-      `</g></svg>`;
-  }
-
-  // Hero: an armored good-dog with a glowing blade.
-  const DOG_ICON = buildWarrior({ coat: "tabby", fur: "#e6a445", furLt: "#ffce7a", furDk: "#a9661a", patch: "#f9dea2", belly: "#f9dea2", eyeCol: "#5fd0ff", weapon: "blade", glow: "#ffd24a", metal: "#9aa4b2" });
-
-  // Three distinct warrior cats: a calico blade-fighter, a siamese rifleman,
-  // and a hulking dark maul-wielder (Big Tom), each with its own coat, gear,
-  // weapon and glow color.
-  const ENEMY_ICONS = {
-    alleyCat: buildWarrior({ coat: "calico", fur: "#e0913c", furLt: "#ffc06a", furDk: "#a5601c", patch: "#f4ede0", belly: "#f6d29a", eyeCol: "#a6e84f", weapon: "blade", glow: "#a6e84f" }),
-    tabbyGuard: buildWarrior({ coat: "siamese", fur: "#c9b79a", furLt: "#e8dcc4", furDk: "#5a4636", patch: "#e8dcc4", belly: "#e8dcc4", eyeCol: "#4fc3ff", weapon: "rifle", glow: "#4fc3ff", metal: "#7a8494" }),
-    bigTom: buildWarrior({ coat: "dark", fur: "#4a3a54", furLt: "#6a5678", furDk: "#2a2032", patch: "#2a2032", belly: "#5a4a64", eyeCol: "#ff5236", weapon: "maul", glow: "#ff5236", metal: "#3a3442", metalLt: "#5a5464", metalDk: "#1e1a26", big: 1 }),
+  // ---- character art: generated PNG sprites (via the "Generate game asset"
+  // workflow), rendered as <img>. The roster IS the generated set — no
+  // hand-drawn fallback. Enemy files keyed by type id, dog files by class id.
+  const ENEMY_IMG = {
+    alleyCat: "icons/enemy-alley-cat.png",
+    tabbyGuard: "icons/enemy-tabby-guard.png",
+    bigTom: "icons/enemy-big-tom.png",
+    feralKitten: "icons/enemy-feral-kitten.png",
+    rooftopSniper: "icons/enemy-rooftop-sniper.png",
   };
+  const DOG_IMG = {
+    riddle: "icons/dog-riddle.png",
+    koozie: "icons/dog-koozie.png",
+    bevy: "icons/dog-bevy.png",
+  };
+  function enemyImg(typeId) {
+    return `<img class="sprite-img" src="${ENEMY_IMG[typeId]}" alt="" draggable="false" />`;
+  }
+  function dogImg(classId) {
+    return `<img class="sprite-img" src="${DOG_IMG[classId]}" alt="" draggable="false" />`;
+  }
 
   const gameAreaEl = document.getElementById("gameArea");
   const roomLabelEl = document.getElementById("roomLabel");
@@ -174,8 +82,10 @@
   const dogBlockChipEl = document.getElementById("dogBlockChip");
   const dogBlockIconEl = document.getElementById("dogBlockIcon");
   const dogBlockValueEl = document.getElementById("dogBlockValue");
-  dogPortraitEl.innerHTML = DOG_ICON;
-  dogBlockIconEl.innerHTML = CARD_ICONS.shield;
+  dogBlockIconEl.innerHTML = CARD_ICONS.shield; // the HUD dog portrait is set per chosen class in render()
+  const hudEl = document.getElementById("hud");
+  const classSelectEl = document.getElementById("classSelect");
+  const classOptionsEl = document.getElementById("classOptions");
   const energyPipsEl = document.getElementById("energyPips");
   const nodeChoiceEl = document.getElementById("nodeChoice");
   const nodeOptionsEl = document.getElementById("nodeOptions");
@@ -214,6 +124,27 @@
       bestFloor = state.floorIndex;
       GCStorage.set(GAME_ID, "bestFloor", bestFloor);
     }
+  }
+
+  function onChooseClass(classId) {
+    Engine.chooseClass(state, Content, classId, rng);
+    render();
+  }
+
+  function classOptionNode(classId) {
+    const cls = Content.CLASSES[classId];
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "class-option class-option-" + classId;
+    el.innerHTML = `
+      <span class="class-portrait">${dogImg(classId)}</span>
+      <span class="class-name">${cls.name}</span>
+      <span class="class-hp">${cls.maxHp} Hull</span>
+      <span class="class-breed">${cls.breed}</span>
+      <span class="class-blurb">${cls.blurb}</span>
+    `;
+    el.addEventListener("click", () => onChooseClass(classId));
+    return el;
   }
 
   function onChooseNode(idx) {
@@ -362,7 +293,7 @@
       const heal = Math.ceil((state.player.maxHp - state.player.hp) * Content.REST_HEAL_FRACTION);
       detail = state.player.hp >= state.player.maxHp ? "Already at full health" : `Heal ${heal} HP`;
     } else {
-      const icons = option.enemies.map((id) => `<span class="node-enemy-icon">${ENEMY_ICONS[id]}</span>`).join("");
+      const icons = option.enemies.map((id) => `<span class="node-enemy-icon">${enemyImg(id)}</span>`).join("");
       const rewardNote = option.type === "elite" ? ` · ${Content.ELITE_REWARD_COUNT} card reward` : "";
       detail = `<span class="node-enemy-icons">${icons}</span>${rewardNote}`;
     }
@@ -431,7 +362,7 @@
 
     el.innerHTML = `
       <span class="enemy-intent${intentClass}">${enemy.hp > 0 ? intentIcon + intentText : ""}</span>
-      <span class="enemy-portrait enemy-portrait-${enemy.typeId}">${ENEMY_ICONS[enemy.typeId]}</span>
+      <span class="enemy-portrait enemy-portrait-${enemy.typeId}">${enemyImg(enemy.typeId)}</span>
       <span class="enemy-name">${enemy.name}</span>
       <div class="hp-bar hp-bar-small"><div class="hp-fill" style="width:${Math.max(0, (enemy.hp / enemy.maxHp) * 100)}%"></div></div>
       <span class="enemy-hp-text">${Math.max(0, enemy.hp)}/${enemy.maxHp}${blockNote}</span>
@@ -442,6 +373,24 @@
 
   function render() {
     window.__tbState = state; // exposed for tests
+
+    // Class select: HUD/board are meaningless until a dog is picked, so show
+    // only the picker.
+    const selecting = state.status === "class-select";
+    hudEl.hidden = selecting;
+    classSelectEl.hidden = !selecting;
+    if (selecting) {
+      overlayEl.hidden = true;
+      nodeChoiceEl.hidden = true;
+      rewardScreenEl.hidden = true;
+      battlefieldEl.hidden = true;
+      consoleEl.hidden = true;
+      classOptionsEl.innerHTML = "";
+      Object.keys(Content.CLASSES).forEach((id) => classOptionsEl.appendChild(classOptionNode(id)));
+      return;
+    }
+
+    dogPortraitEl.innerHTML = state.classId ? dogImg(state.classId) : "";
 
     const floorNumber = Math.min(state.floorIndex + 1, Content.FLOORS.length);
     roomLabelEl.textContent =

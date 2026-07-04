@@ -19,7 +19,7 @@
   <!-- Header (All Games / title / chat) is injected by nav.js below. -->
 
   <main class="game-area" id="gameArea">
-    <div class="hud">
+    <div class="hud" id="hud">
       <div class="hud-row">
         <span class="room-label" id="roomLabel"></span>
         <span class="best-label" id="bestLabel"></span>
@@ -33,6 +33,11 @@
         <div class="energy-pips" id="energyPips"></div>
       </div>
       <p class="objective" id="objective"></p>
+    </div>
+
+    <div class="class-select" id="classSelect" hidden>
+      <h2 class="class-select-title">Choose your dog</h2>
+      <div class="class-options" id="classOptions"></div>
     </div>
 
     <div class="node-choice" id="nodeChoice" hidden>
