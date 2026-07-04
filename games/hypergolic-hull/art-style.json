@@ -1,7 +1,7 @@
 {
   "camera": "Straight top-down (bird's-eye) view, ship's nose pointing up toward the top of the frame, centered and filling most of the frame.",
-  "style": "Bold, clean digital illustration style with strong silhouette and clear edges, moderate detail (not photorealistic clutter), dramatic rim lighting, slightly stylized rather than photoreal.",
-  "palette": "Dark navy (#2f3b52) hull plating with warm orange (#f2b179) accent stripes and glowing engine/weapon details.",
-  "background": "Simple, smooth radial gradient from dark navy to near-black — no stars, no nebula, no other objects — so the asset reads clearly as an icon/sprite at small sizes.",
+  "style": "Bold, clean digital illustration style with strong silhouette and clear edges, moderate detail (not photorealistic clutter), dramatic rim lighting, slightly stylized rather than photoreal, visible panel seams/rivets for an industrial sci-fi feel.",
+  "palette": "Exact colors vary per ship/faction — always specified in the asset description below, not fixed here. Keep colors saturated and high-contrast against the dark background so each faction's silhouette and color reads clearly at a glance.",
+  "background": "Simple, smooth radial gradient from dark navy (#2f3b52) to near-black — no stars, no nebula, no other objects — so the asset reads clearly as an icon/sprite at small sizes.",
   "constraints": "Square 1:1 composition. No text, no logos, no watermarks, no UI elements, no drop shadow outside the subject."
 }
