@@ -21,8 +21,8 @@ on:
         type: choice
         options:
           - "1024x1024"
-          - "1024x1792"
-          - "1792x1024"
+          - "1024x1536"
+          - "1536x1024"
         default: "1024x1024"
 
 permissions:
@@ -40,6 +40,11 @@ jobs:
       # PNG straight to disk here means it's a normal git-tracked binary
       # blob, sidestepping the base64-double-encoding corruption this repo
       # hit earlier when pushing binary files through Claude's own tools.
+      #
+      # Model is gpt-image-1, not dall-e-3 — this account's API rejected
+      # dall-e-3's "response_format" param outright ("Unknown parameter"),
+      # and gpt-image-1 (OpenAI's current default) always returns b64_json
+      # without needing to ask, so that param is dropped entirely here.
       - name: Generate image via OpenAI
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -53,7 +58,7 @@ jobs:
             -H "Authorization: Bearer $OPENAI_API_KEY" \
             -H "Content-Type: application/json" \
             -d "$(jq -n --arg prompt "$PROMPT" --arg size "$SIZE" \
-                  '{model: "dall-e-3", prompt: $prompt, size: $size, quality: "standard", n: 1, response_format: "b64_json"}')")
+                  '{model: "gpt-image-1", prompt: $prompt, size: $size, quality: "high", n: 1}')")
 
           error=$(echo "$resp" | jq -r '.error.message // empty')
           if [ -n "$error" ]; then
