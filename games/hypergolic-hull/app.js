@@ -653,6 +653,17 @@ function drawPlayerShip(size, thrustFrac, hpFrac) {
 
 function drawEnemyShip(size, hpFrac, crackSeed) {
   ctx.save();
+  // High-contrast hostile halo: the enemy hull is deliberately dark, which
+  // vanished against the dark board. A red danger glow behind it makes every
+  // enemy pop and instantly reads as "threat" (vs. the player's clean hull).
+  const halo = ctx.createRadialGradient(0, 0, size * 0.15, 0, 0, size * 1.25);
+  halo.addColorStop(0, "rgba(255,110,70,0.55)");
+  halo.addColorStop(0.55, "rgba(255,60,45,0.28)");
+  halo.addColorStop(1, "rgba(255,50,40,0)");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(0, 0, size * 1.25, 0, Math.PI * 2);
+  ctx.fill();
   if (!drawShipImage(interceptorImg, size)) {
     drawEnemyFighter(size, 0);
   }
