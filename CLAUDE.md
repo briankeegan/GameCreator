@@ -45,6 +45,14 @@ design discussion. `shared/` holds the components every game reuses
   `main`, the stamp tells the reader whether the reply is describing code
   that's actually live yet, without them having to ask. Look it up with
   `actions_list` / `list_workflow_runs` on `pages.yml`, not by guessing.
+- **Admin bypasses the gate on every game.** A valid `ADMIN_TOKEN` (the
+  passkey typed into `admin/`, stored as `localStorage["gc_admin_token"]`)
+  works as a universal override for a game's secret word — checked in
+  `worker.js`'s shared `verify`/`post`/`upload-image` gate. `clubhouse.js`
+  auto-detects that stored token on load and logs straight in as "Admin",
+  skipping the name+secret form entirely, on ANY game — no per-game secret
+  lookup needed. Falls back to the normal per-game saved login if the
+  admin token is missing/stale.
 
 ## Handling a clubhouse request
 
@@ -105,8 +113,10 @@ design discussion. `shared/` holds the components every game reuses
   branch+PR, and posting chat comments. Never ask for or store this token
   in the repo — it lives only in the Worker's dashboard secrets.
 - **ADMIN_TOKEN** (Worker secret) gates the `admin-*` actions used by
-  `admin/` (self-service game creation, list, remove, repoint a thread).
-  Also dashboard-only.
+  `admin/` (self-service game creation, list, remove, repoint a thread),
+  AND now doubles as a universal per-game secret-word override so admin
+  can enter any game's Clubhouse without knowing its individual secret
+  word (see "Admin bypasses the gate" above). Also dashboard-only.
 - Cloud sandboxes here usually can't reach `*.workers.dev`, `*.github.io`,
   or `api.cloudflare.com` directly — verify Worker/Pages changes via the
   GitHub API (commits, Actions run status, file contents) or ask the owner
