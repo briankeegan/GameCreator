@@ -20,40 +20,15 @@
 
   <main class="game-area" id="gameArea">
     <div class="hud" id="hud">
-      <div class="score-card you">
-        <span class="score-who">You</span>
-        <span class="score-num" id="youScore">0</span>
-      </div>
-      <div class="wake">
-        <span class="wake-label">Wake risk</span>
-        <span class="wake-num" id="wakeValue">25%</span>
-        <span class="wake-sub" id="bestLine">Best 0</span>
-      </div>
-      <div class="score-card cat">
-        <span class="score-who">Cat</span>
-        <span class="score-num" id="catScore">0</span>
-      </div>
+      <div class="stat"><span class="stat-label">Pins used</span><span class="stat-value" id="pinsValue">0</span></div>
+      <div class="stat"><span class="stat-label">Best trap</span><span class="stat-value" id="bestValue">—</span></div>
+      <div class="stat"><span class="stat-label">Wins</span><span class="stat-value" id="winsValue">0</span></div>
     </div>
 
-    <div class="stage">
-      <div class="cat-perch">
-        <img class="sleeping-cat" id="sleepingCat" src="icons/cat.png" alt="the sleeping cat" draggable="false" />
-        <span class="zzz">z z z</span>
-      </div>
-      <div class="display" id="display"></div>
-    </div>
+    <p class="ticker" id="ticker">Tap a step to drop a pin. Wall the cat in before it reaches the edge.</p>
 
-    <p class="ticker" id="ticker">Draft a pin — the one on the cat is worth double.</p>
-
-    <div class="trays">
-      <div class="tray tray-you">
-        <span class="tray-label">Your collection</span>
-        <div class="tray-pins" id="youPins"></div>
-      </div>
-      <div class="tray tray-cat">
-        <span class="tray-label">Cat's collection</span>
-        <div class="tray-pins" id="catPins"></div>
-      </div>
+    <div class="board-wrap">
+      <div class="board" id="board"></div>
     </div>
 
     <div class="run-overlay" id="runOverlay" hidden>

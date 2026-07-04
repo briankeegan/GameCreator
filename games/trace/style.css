@@ -1,6 +1,6 @@
-/* Step in the Cat — a pin-drafting duel. A cozy pin-collector's board:
-   dusty-blue wall, warm wood shelf, gold enamel accents. The header bar and
-   install banner are shared styling (../../shared/nav.css) — leave those. */
+/* Step in the Cat — Trap the Cat on a hex staircase. Dusty-blue wall, warm
+   carpet hexes, a red-tinted escape edge so the goal reads at a glance. The
+   header bar and install banner are shared styling (../../shared/nav.css). */
 
 * { box-sizing: border-box; }
 
@@ -28,211 +28,94 @@ html, body {
   gap: 10px;
 }
 
-/* ---- HUD: your score, wake risk, cat score --------------------------- */
+/* ---- HUD -------------------------------------------------------------- */
 .hud {
   flex: 0 0 auto;
   display: flex;
-  align-items: stretch;
   gap: 8px;
 }
-.score-card {
+.stat {
   flex: 1 1 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 6px 4px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-}
-.score-card.you { background: linear-gradient(160deg, #2f6d5a, #1f4a3d); }
-.score-card.cat { background: linear-gradient(160deg, #6d3f2f, #4a271f); }
-.score-who { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.8; }
-.score-num { font-size: 1.7rem; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
-.wake {
-  flex: 0 0 96px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   gap: 1px;
+  padding: 6px 4px;
   background: rgba(20, 30, 36, 0.42);
-  border: 1px solid rgba(214, 66, 54, 0.5);
-  border-radius: 12px;
-}
-.wake-label { font-size: 0.56rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.75; }
-.wake-num { font-size: 1.25rem; font-weight: 800; color: #ff9c8f; }
-.wake-sub { font-size: 0.6rem; opacity: 0.7; }
-
-/* ---- Stage: the sleeping cat + the spread of pins -------------------- */
-.stage {
-  flex: 0 0 auto;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 8px 12px;
-  border-radius: 16px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.12)),
-    linear-gradient(180deg, #7a5a3c 0%, #5f4630 100%);
-  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.25), 0 8px 20px rgba(0, 0, 0, 0.4);
-}
-.cat-perch {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.sleeping-cat {
-  width: 88px;
-  height: 88px;
-  object-fit: contain;
-  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.5));
-  transform: rotate(-4deg);
-}
-.sleeping-cat.awake { animation: startle 0.5s ease; transform: rotate(0deg) scale(1.05); }
-@keyframes startle {
-  0%, 100% { transform: rotate(0) scale(1.05); }
-  25% { transform: rotate(3deg) scale(1.12) translateY(-4px); }
-  75% { transform: rotate(-3deg) scale(1.12); }
-}
-.zzz {
-  font-size: 0.9rem;
-  font-weight: 800;
-  letter-spacing: 0.15em;
-  color: #ffe9c9;
-  opacity: 0.85;
-  transform: translateY(-16px);
-  animation: drift 2.6s ease-in-out infinite;
-}
-@keyframes drift {
-  0%, 100% { transform: translateY(-16px); opacity: 0.5; }
-  50% { transform: translateY(-24px); opacity: 0.95; }
-}
-
-.display {
-  display: flex;
-  gap: 7px;
-  width: 100%;
-  justify-content: center;
-  flex-wrap: nowrap;
-}
-.pin-card {
-  position: relative;
-  flex: 1 1 0;
-  max-width: 66px;
-  aspect-ratio: 3 / 4;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
-  background: linear-gradient(180deg, #f4ead6 0%, #e2d2b4 100%);
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4), inset 0 0 0 2px rgba(255, 255, 255, 0.4);
-  cursor: pointer;
-  padding: 4px;
-  -webkit-tap-highlight-color: transparent;
 }
-.pin-card:active:not(:disabled) { transform: translateY(2px) scale(0.97); }
-.pin-card:disabled { opacity: 0.55; cursor: default; }
-.pin-card img { width: 100%; height: 100%; object-fit: contain; }
-.pin-card.on-cat {
-  background: linear-gradient(180deg, #ffe9b0 0%, #f0c674 100%);
-  box-shadow: 0 0 0 2px #d64236, 0 3px 10px rgba(214, 66, 54, 0.5);
-}
-.dbl-badge {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  background: #d64236;
-  color: #fff;
-  font-size: 0.66rem;
-  font-weight: 900;
-  padding: 2px 5px;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-}
-.oncat-tag {
-  position: absolute;
-  bottom: -7px;
-  left: 50%;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  background: #2a1c18;
-  color: #ffd9a0;
-  font-size: 0.52rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 1px 6px;
-  border-radius: 6px;
-}
-.display-empty { color: #ffe9c9; opacity: 0.8; padding: 20px; }
+.stat-label { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.72; }
+.stat-value { font-size: 1.2rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 
 .ticker {
   flex: 0 0 auto;
   margin: 0;
   min-height: 1.2em;
   text-align: center;
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   font-weight: 600;
   color: #ffe9c9;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
-/* ---- Collections ----------------------------------------------------- */
-.trays {
+/* ---- Hex board -------------------------------------------------------- */
+.board-wrap {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.tray {
-  flex: 1 1 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  background: rgba(20, 30, 36, 0.36);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-.tray-you { border-color: rgba(47, 109, 90, 0.7); }
-.tray-cat { border-color: rgba(109, 63, 47, 0.7); }
-.tray-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; }
-.tray-pins {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  overflow-y: auto;
-  align-content: flex-start;
-}
-.tray-empty { opacity: 0.5; font-size: 1.2rem; }
-.chip {
-  position: relative;
-  display: inline-flex;
   align-items: center;
-  padding: 3px 8px 3px 3px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 20px;
+  justify-content: center;
+  overflow: hidden;
 }
-.chip img { width: 30px; height: 30px; object-fit: contain; }
-.chip-count { font-size: 0.9rem; font-weight: 800; margin-left: 3px; }
-.chip-val {
-  margin-left: 6px;
-  font-size: 0.62rem;
-  font-weight: 700;
-  color: #f0c674;
-  background: rgba(240, 198, 116, 0.14);
-  border-radius: 8px;
-  padding: 1px 5px;
+.board {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 6px;
+  border-radius: 14px;
+  background: rgba(20, 30, 36, 0.3);
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.2);
 }
-.chip-fresh { animation: pop 0.4s ease; }
-@keyframes pop {
-  0% { transform: scale(0.6); }
-  60% { transform: scale(1.15); }
-  100% { transform: scale(1); }
+.hex-row { display: flex; }
+.hex-row + .hex-row { margin-top: calc(var(--hex-w, 34px) * -0.288); }
+.hex-row-odd { margin-left: calc(var(--hex-w, 34px) * 0.5); }
+
+.hex {
+  width: var(--hex-w, 34px);
+  height: calc(var(--hex-w, 34px) * 1.1547);
+  margin: 1px;
+  padding: 0;
+  border: none;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: linear-gradient(180deg, #c2b39d 0%, #a89881 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.hex-open:active { background: linear-gradient(180deg, #e7d8bd, #cabb9e); }
+/* The escape ring — where the cat is trying to get. Tinting it teaches the
+   goal without a word of instruction. */
+.hex-edge {
+  background: linear-gradient(180deg, #caa1a0 0%, #b3807f 100%);
+}
+.hex-edge.hex-open:active { background: linear-gradient(180deg, #e6c3c2, #cf9e9d); }
+.hex-pin {
+  background: linear-gradient(180deg, #8a7a66 0%, #6b5d4e 100%);
+  cursor: default;
+}
+.hex-cat {
+  background: radial-gradient(circle at 50% 45%, #ffe6b4 0%, #e6ad64 62%, #b9852f 100%);
+  cursor: default;
+}
+.hex-img { object-fit: contain; pointer-events: none; }
+.hex-img.pin { width: 72%; height: 72%; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4)); }
+.hex-img.cat { width: 94%; height: 94%; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5)); animation: catbob 1.6s ease-in-out infinite; }
+@keyframes catbob {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-6%) scale(1.03); }
 }
 
 /* ---- Game-over overlay ----------------------------------------------- */

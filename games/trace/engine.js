@@ -1,167 +1,152 @@
-// engine.js — rules for "Step in the Cat", a pin-drafting duel. No DOM:
-// pure functions over a plain state object so the same code runs in the
+// engine.js — rules for "Step in the Cat" (a.k.a. Trap the Cat). No DOM:
+// pure functions over a plain state object so the same logic runs in the
 // browser (window.StepCatEngine) and under Node for tests.
 //
-// The game: a spread of enamel pins sits on the staircase. You and the Cat
-// take turns DRAFTING one pin each into your own collection. Pins score by
-// SETS — the more of one kind you own, the more each is worth (a triangular
-// payoff: 1→1, 2→3, 3→6, 4→10…), so you commit to a couple of types and
-// fight the Cat for them. The twist that earns the name: the top pin is
-// resting ON the sleeping cat, worth DOUBLE — but every time you lift one,
-// the odds you wake the cat climb, and waking it ends the game where it
-// stands. Best collection when the pins run out wins.
+// The whole game in one sentence: the cat is loose on a hex grid of steps
+// and bolts for the nearest edge to escape — each turn you drop an enamel
+// pin to wall off one step, and you win by fencing it in before it slips
+// out. You learn it in one move: tap a step, watch the cat run, cut off its
+// exits. The strategy is reading which edge it's making for and walling that
+// route a move ahead.
 "use strict";
 
 (function (root) {
-  const PIN_TYPES = ["avocado", "star", "paw", "fish", "yarn"];
-  const COPIES_PER_TYPE = 6; // 30-pin draft
-  const DISPLAY_SIZE = 5;
-  const WAKE_STEP = 0.25; // each on-cat grab adds this much wake risk
+  const W = 9;
+  const H = 9;
 
-  function tri(n) {
-    return (n * (n + 1)) / 2; // set value: 1,3,6,10,15,...
+  function keyOf(r, c) {
+    return r + "," + c;
   }
 
-  function score(collection) {
-    return PIN_TYPES.reduce((s, t) => s + tri(collection[t] || 0), 0);
+  function inBounds(r, c) {
+    return r >= 0 && r < H && c >= 0 && c < W;
   }
 
-  function emptyCollection() {
-    const c = {};
-    for (const t of PIN_TYPES) c[t] = 0;
-    return c;
+  function isEdge(r, c) {
+    return r === 0 || r === H - 1 || c === 0 || c === W - 1;
   }
 
-  function shuffle(arr, rng) {
-    const a = arr.slice();
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
+  // Odd-r offset hexes (pointy-top; odd rows nudged right). Six neighbors,
+  // and which six depends on the row's parity.
+  function neighbors(r, c) {
+    const deltas =
+      r % 2 === 0
+        ? [[0, -1], [0, 1], [-1, -1], [-1, 0], [1, -1], [1, 0]]
+        : [[0, -1], [0, 1], [-1, 0], [-1, 1], [1, 0], [1, 1]];
+    const out = [];
+    for (const [dr, dc] of deltas) {
+      const nr = r + dr;
+      const nc = c + dc;
+      if (inBounds(nr, nc)) out.push({ r: nr, c: nc });
     }
-    return a;
+    return out;
   }
 
-  // Refill the spread from the deck and re-mark the on-cat pin (always the
-  // front of the row — the one the cat is sleeping on).
-  function fillDisplay(state) {
-    while (state.display.length < DISPLAY_SIZE && state.deck.length) {
-      state.display.push({ type: state.deck.pop() });
+  // Breadth-first from the cat across open (un-pinned) steps toward the
+  // nearest edge. Returns whether any edge is still reachable, the first
+  // step of a shortest route to it, and that route's length.
+  function findEscape(state) {
+    const start = state.cat;
+    if (isEdge(start.r, start.c)) return { reachable: true, next: null, dist: 0 };
+    const seen = new Set([keyOf(start.r, start.c)]);
+    // queue holds {r,c, first} — `first` is the first move made from the cat.
+    let queue = neighbors(start.r, start.c)
+      .filter((n) => !state.pins.has(keyOf(n.r, n.c)))
+      .map((n) => ({ r: n.r, c: n.c, first: n, dist: 1 }));
+    for (const q of queue) seen.add(keyOf(q.r, q.c));
+
+    while (queue.length) {
+      const next = [];
+      for (const node of queue) {
+        if (isEdge(node.r, node.c)) return { reachable: true, next: node.first, dist: node.dist };
+        for (const nb of neighbors(node.r, node.c)) {
+          const k = keyOf(nb.r, nb.c);
+          if (seen.has(k) || state.pins.has(k)) continue;
+          seen.add(k);
+          next.push({ r: nb.r, c: nb.c, first: node.first, dist: node.dist + 1 });
+        }
+      }
+      queue = next;
     }
-    for (let i = 0; i < state.display.length; i++) state.display[i].onCat = i === 0;
+    return { reachable: false, next: null, dist: Infinity };
+  }
+
+  function randInt(rng, n) {
+    return Math.floor(rng() * n);
   }
 
   function createGame(rng = Math.random) {
-    const raw = [];
-    for (const t of PIN_TYPES) for (let i = 0; i < COPIES_PER_TYPE; i++) raw.push(t);
-    const state = {
-      status: "playing", // "playing" | "over"
-      deck: shuffle(raw, rng),
-      display: [],
-      you: emptyCollection(),
-      cat: emptyCollection(),
-      napChance: 0,
-      woke: false,
-      result: null, // "you" | "cat" | "tie"
-      youScore: 0,
-      catScore: 0,
-      lastYou: null,
-      lastCat: null,
-      message: "Draft a pin. The one on the cat is worth double — if you dare.",
+    const cat = { r: (H - 1) / 2, c: (W - 1) / 2 }; // dead center (4,4)
+    const pins = new Set();
+
+    // Seed a few random walls so no two games play the same — but never on
+    // the cat or the ring of steps right around it, so it always has room to
+    // start running.
+    const forbidden = new Set([keyOf(cat.r, cat.c)]);
+    for (const n of neighbors(cat.r, cat.c)) forbidden.add(keyOf(n.r, n.c));
+    const open = [];
+    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) if (!forbidden.has(keyOf(r, c))) open.push({ r, c });
+    const START_WALLS = 13;
+    for (let i = 0; i < START_WALLS && open.length; i++) {
+      const idx = randInt(rng, open.length);
+      const cell = open.splice(idx, 1)[0];
+      pins.add(keyOf(cell.r, cell.c));
+    }
+
+    return {
+      W,
+      H,
+      cat,
+      pins,
+      status: "playing", // "playing" | "won" | "lost"
+      pinsUsed: 0,
+      catMoves: 0,
+      message: "Wall the cat in before it reaches the edge.",
     };
-    fillDisplay(state);
-    return state;
   }
 
-  // The wake risk the NEXT on-cat grab would face (for the UI to show).
-  function nextWakeRisk(state) {
-    return Math.min(1, state.napChance + WAKE_STEP);
-  }
-
-  function endGame(state) {
-    state.status = "over";
-    state.youScore = score(state.you);
-    state.catScore = score(state.cat);
-    state.result = state.youScore > state.catScore ? "you" : state.catScore > state.youScore ? "cat" : "tie";
-    if (state.woke) state.message = "You woke the cat! The game ends here.";
-    else if (state.result === "you") state.message = "The pins are gone — your collection wins!";
-    else if (state.result === "cat") state.message = "The pins are gone — the cat out-collected you.";
-    else state.message = "The pins are gone — a dead heat.";
-    return state;
-  }
-
-  // The cat's pick: greedily maximize its own set gain, breaking ties toward
-  // denying whatever you're stacking. It happily takes the double on-cat pin
-  // but never risks waking itself.
-  function catChoose(state) {
-    let bestIdx = 0;
-    let bestVal = -Infinity;
-    for (let i = 0; i < state.display.length; i++) {
-      const pin = state.display[i];
-      const add = pin.onCat ? 2 : 1;
-      const have = state.cat[pin.type];
-      const gain = tri(have + add) - tri(have);
-      const denial = 0.5 * state.you[pin.type];
-      const val = gain + denial;
-      if (val > bestVal) {
-        bestVal = val;
-        bestIdx = i;
-      }
-    }
-    return bestIdx;
-  }
-
-  function takePin(collection, pin) {
-    collection[pin.type] += pin.onCat ? 2 : 1;
-  }
-
-  // A full round: you draft display[index], then the cat drafts, then the
-  // spread refills. Returns the mutated state. Taking the on-cat pin may end
-  // the game early by waking the cat.
-  function draft(state, index, rng = Math.random) {
+  // Drop a pin on an empty step, then the cat takes its escape step. Placing
+  // on the cat, on an existing pin, or off-board is an ignored no-op.
+  function placePin(state, r, c) {
     if (state.status !== "playing") return state;
-    if (index < 0 || index >= state.display.length) return state;
+    if (!inBounds(r, c)) return state;
+    const k = keyOf(r, c);
+    if (state.pins.has(k)) return state;
+    if (state.cat.r === r && state.cat.c === c) return state;
 
-    const yours = state.display.splice(index, 1)[0];
-    takePin(state.you, yours);
-    state.lastYou = { type: yours.type, onCat: yours.onCat };
-    state.lastCat = null;
+    state.pins.add(k);
+    state.pinsUsed += 1;
 
-    if (yours.onCat) {
-      state.napChance = Math.min(1, state.napChance + WAKE_STEP);
-      if (rng() < state.napChance) {
-        state.woke = true;
-        return endGame(state); // you got the pin, but that's the last move
-      }
+    const esc = findEscape(state);
+    if (!esc.reachable) {
+      state.status = "won";
+      state.message = `Trapped! Fenced in with ${state.pinsUsed} pins.`;
+      return state;
     }
 
-    fillDisplay(state);
+    state.cat = { r: esc.next.r, c: esc.next.c };
+    state.catMoves += 1;
 
-    // Cat's response (if any pins remain).
-    if (state.display.length > 0) {
-      const ci = catChoose(state);
-      const theirs = state.display.splice(ci, 1)[0];
-      takePin(state.cat, theirs);
-      state.lastCat = { type: theirs.type, onCat: theirs.onCat };
-      fillDisplay(state);
+    if (isEdge(state.cat.r, state.cat.c)) {
+      state.status = "lost";
+      state.message = "The cat slipped out the side!";
+      return state;
     }
 
-    if (state.display.length === 0 && state.deck.length === 0) return endGame(state);
-
-    const risk = Math.round(nextWakeRisk(state) * 100);
-    state.message = `Your sets: ${score(state.you)} · Cat: ${score(state.cat)} · wake risk ${risk}%`;
+    state.message = esc.dist <= 1 ? "One step from the edge — cut it off!" : `The cat is ${esc.dist} steps from escaping.`;
     return state;
   }
 
   const api = {
-    PIN_TYPES,
-    COPIES_PER_TYPE,
-    DISPLAY_SIZE,
-    tri,
-    score,
+    W,
+    H,
+    keyOf,
+    inBounds,
+    isEdge,
+    neighbors,
+    findEscape,
     createGame,
-    draft,
-    catChoose,
-    nextWakeRisk,
+    placePin,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;
