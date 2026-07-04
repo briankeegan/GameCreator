@@ -48,6 +48,35 @@ fill in a game id, display name, and secret word, and it scaffolds
 chat thread, all in one submit. No manual copying, no files to edit until
 you're ready to build the actual gameplay in that game's `app.js`.
 
+## Generating art (optional)
+
+A game can look however you like — hand-drawn `<canvas>`, inline SVG, or
+generated pixel art. Two manually-triggered GitHub Actions turn a text
+prompt into a committed PNG (OpenAI `gpt-image-1`), decoding and
+`git`-committing the image from inside the runner so binaries land intact:
+
+- **Generate image** — freeform. Inputs: `prompt`, `output_path`, `size`.
+  Use it for one-off / experimental images, or before a game has a look.
+- **Generate game asset** — a consistent set. Inputs: `game`, `asset`,
+  `output_path`, `size`. It reads `games/<game>/art-style.json` (camera,
+  style, palette, background, constraints) and combines that fixed style
+  with the per-image `asset` description, so every sprite for one game
+  shares a look. Assets come out cut-out on a transparent background,
+  trimmed and downscaled — ready to drop straight onto the UI.
+
+Trigger either from the repo's **Actions** tab → pick the workflow → **Run
+workflow** (or have Claude dispatch it). Both commit to `main`; Pages
+redeploys automatically.
+
+The reliable pattern (worked example: `games/buffer/`) is to reference the
+asset paths in your game with a **fallback** — a simple canvas/vector
+version drawn when the image hasn't loaded — so the game plays before any
+art exists and upgrades to the generated art automatically once it lands.
+Keep a game's style spec in `games/<id>/art-style.json`; images are PNG (see
+a game's `icons/` README for why icons themselves are SVG).
+
+Requires the `OPENAI_API_KEY` repo secret (already configured).
+
 ## Why one shared Worker
 
 Every game's chat relays through the same Cloudflare Worker. The Worker
