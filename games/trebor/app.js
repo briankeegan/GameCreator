@@ -10,6 +10,16 @@
 
   const NODE_ICON = { fight: "⚔️", elite: "💀", rest: "🔥" };
 
+  function cardIcon(card) {
+    if (card.aoe) return "💥";
+    if (card.damage) return "🐾";
+    if (card.block) return "🛡️";
+    if (card.energy) return "⚡";
+    if (card.draw) return "👃";
+    return "❓";
+  }
+
+  const gameAreaEl = document.getElementById("gameArea");
   const roomLabelEl = document.getElementById("roomLabel");
   const bestLabelEl = document.getElementById("bestLabel");
   const objectiveEl = document.getElementById("objective");
@@ -105,9 +115,33 @@
 
   function endTurn() {
     if (!state || state.status !== "playing") return;
+    const attackerIds = Engine.livingEnemies(state)
+      .filter((e) => e.currentIntent.type === "attack")
+      .map((e) => e.id);
+    const hpBefore = state.player.hp;
+
     Engine.endPlayerTurn(state, Content, rng);
     selectedHandIndex = null;
     render();
+
+    for (const id of attackerIds) {
+      const el = battlefieldEl.querySelector(`[data-enemy-id="${id}"]`);
+      if (el) flashClass(el, "enemy-attacking", 500);
+    }
+    if (state.player.hp < hpBefore) {
+      flashClass(document.querySelector(".hp-bar"), "hp-hit", 500);
+      flashClass(gameAreaEl, "shake", 400);
+    }
+  }
+
+  function flashClass(el, className, duration) {
+    if (!el) return;
+    el.classList.remove(className);
+    // Force a reflow so re-adding the class restarts the CSS animation even
+    // if it's still playing (e.g. two attacks landing in quick succession).
+    void el.offsetWidth;
+    el.classList.add(className);
+    setTimeout(() => el.classList.remove(className), duration);
   }
 
   function nodeOptionNode(option, idx) {
@@ -131,16 +165,27 @@
     return el;
   }
 
+  function cardFrameHtml(card) {
+    return `
+      <span class="card-cost">${card.cost}</span>
+      <span class="card-art">${cardIcon(card)}</span>
+      <span class="card-name">${card.name}</span>
+      <span class="card-text">${card.text}</span>
+    `;
+  }
+
+  function cardTypeClass(card) {
+    if (card.damage) return "card-attack";
+    if (card.block) return "card-block";
+    return "card-utility";
+  }
+
   function rewardCardNode(cardId) {
     const card = Content.CARDS[cardId];
     const el = document.createElement("button");
     el.type = "button";
-    el.className = "card reward-card";
-    el.innerHTML = `
-      <span class="card-cost">${card.cost}</span>
-      <span class="card-name">${card.name}</span>
-      <span class="card-text">${card.text}</span>
-    `;
+    el.className = "card reward-card " + cardTypeClass(card);
+    el.innerHTML = cardFrameHtml(card);
     el.addEventListener("click", () => onPickReward(cardId));
     return el;
   }
@@ -149,15 +194,10 @@
     const card = Content.CARDS[cardId];
     const el = document.createElement("button");
     el.type = "button";
-    el.className = "card";
-    if (Engine.cardNeedsTarget(card)) el.classList.add("card-attack");
+    el.className = "card " + cardTypeClass(card);
     if (state.player.energy < card.cost) el.classList.add("card-disabled");
     if (selectedHandIndex === handIndex) el.classList.add("card-selected");
-    el.innerHTML = `
-      <span class="card-cost">${card.cost}</span>
-      <span class="card-name">${card.name}</span>
-      <span class="card-text">${card.text}</span>
-    `;
+    el.innerHTML = cardFrameHtml(card);
     el.addEventListener("click", () => onCardTap(handIndex));
     return el;
   }
