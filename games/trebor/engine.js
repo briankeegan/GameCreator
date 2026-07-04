@@ -17,6 +17,49 @@ function shuffle(arr, rng) {
   return a;
 }
 
+function pickFrom(arr, rng) {
+  return arr[Math.floor(rng() * arr.length)];
+}
+
+// Roll one floor's worth of node choices from an act template. Always at
+// least one fight so the run can always progress; the last floor before a
+// boss always also offers a rest (a breather to heal/sharpen first). The
+// remaining slots are weighted toward fights, with elites, a rest, or a
+// treasure mixed in (at most one rest and one treasure per floor).
+function generateFloorOptions(act, isLastFloor, content, rng) {
+  const options = [makeNode("fight", act, content, rng)];
+  if (isLastFloor) options.push(makeNode("rest", act, content, rng));
+  const bag = ["fight", "fight", "fight", "elite", "elite", "rest", "rest", "treasure"];
+  const used = new Set(options.map((o) => o.type));
+  let guard = 0;
+  while (options.length < 3 && guard++ < 60) {
+    const t = pickFrom(bag, rng);
+    if ((t === "rest" || t === "treasure") && used.has(t)) continue; // one rest, one treasure max
+    used.add(t);
+    options.push(makeNode(t, act, content, rng));
+  }
+  return options;
+}
+
+function makeNode(type, act, content, rng) {
+  const label = pickFrom(content.NODE_LABELS[type], rng);
+  if (type === "fight") return { type, label, enemies: pickFrom(act.fightPool, rng) };
+  if (type === "elite") return { type, label, enemies: pickFrom(act.elitePool, rng) };
+  return { type, label };
+}
+
+// Build a whole run's map from the act templates. Each act keeps its fixed
+// boss but rolls fresh floors, so the route differs every run.
+function generateMap(content, rng) {
+  return content.ACTS.map((act) => ({
+    name: act.name,
+    boss: act.boss,
+    floors: Array.from({ length: act.floorCount }, (_, fi) => ({
+      options: generateFloorOptions(act, fi === act.floorCount - 1, content, rng),
+    })),
+  }));
+}
+
 function makeEnemyInstance(typeId, idx, content) {
   const type = content.ENEMY_TYPES[typeId];
   if (!type) throw new Error(`Unknown enemy type: ${typeId}`);
@@ -89,7 +132,7 @@ function startCombat(state, content, enemyTypeIds, rng = Math.random) {
 function advanceFloorOrBoss(state, content, rng = Math.random) {
   state.floorIndex += 1;
   state.rewardOptions = [];
-  const act = content.ACTS[state.actIndex];
+  const act = state.map[state.actIndex];
   if (state.floorIndex >= act.floors.length) {
     state.currentNodeType = "boss";
     startCombat(state, content, act.boss.enemies, rng);
@@ -110,6 +153,7 @@ function createGameState(content, rng = Math.random) {
     turnCount: 1,
     currentNodeType: null,
     deck: [],
+    map: [],
     player: {
       hp: content.STARTING_HP,
       maxHp: content.STARTING_HP,
@@ -143,8 +187,9 @@ function chooseClass(state, content, classId, rng = Math.random) {
   state.player.energy = state.player.maxEnergy;
   state.actIndex = 0;
   state.floorIndex = 0;
+  state.map = generateMap(content, rng); // a fresh, randomized route every run
   state.status = "choosing";
-  state.nodeChoices = content.ACTS[0].floors[0].options;
+  state.nodeChoices = state.map[0].floors[0].options;
   state.log = [`${cls.name} the ${cls.breed} sets out.`];
 }
 
@@ -291,9 +336,10 @@ function chooseBossReward(state, content, cardId, rng = Math.random) {
   state.floorIndex = 0;
   state.status = "choosing";
   state.currentNodeType = null;
-  state.nodeChoices = content.ACTS[state.actIndex].floors[0].options;
+  state.floorIndex = 0;
+  state.nodeChoices = state.map[state.actIndex].floors[0].options;
   const gained = cardId ? `Took ${content.CARDS[cardId].name}. ` : "";
-  state.log = [`${gained}+${content.BOSS_MAX_HULL_BONUS} max Hull, fully healed. ${content.ACTS[state.actIndex].name} awaits.`];
+  state.log = [`${gained}+${content.BOSS_MAX_HULL_BONUS} max Hull, fully healed. ${state.map[state.actIndex].name} awaits.`];
 }
 
 function resolveEnemyIntent(state, enemy) {
@@ -341,6 +387,7 @@ function describeIntent(intent) {
 
 const Engine = {
   createGameState,
+  generateMap,
   chooseClass,
   chooseNode,
   restSite,

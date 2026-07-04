@@ -42,6 +42,35 @@ body {
   perspective: 900px;
 }
 
+/* Per-act backdrop — each act (Back Alleys / Rooftops / Cathouse) gets its
+   own mood behind the play area. */
+.game-area::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease, background 0.6s ease;
+}
+.game-area.act-1::before {
+  background:
+    radial-gradient(ellipse at 50% 115%, rgba(70, 92, 46, 0.32), transparent 62%),
+    radial-gradient(ellipse at 15% -10%, rgba(120, 100, 60, 0.18), transparent 55%),
+    linear-gradient(180deg, #1a1712 0%, #0d0b08 100%);
+}
+.game-area.act-2::before {
+  background:
+    radial-gradient(ellipse at 50% -12%, rgba(70, 58, 128, 0.42), transparent 58%),
+    radial-gradient(circle at 78% 22%, rgba(180, 190, 230, 0.14), transparent 20%),
+    linear-gradient(180deg, #141527 0%, #090912 100%);
+}
+.game-area.act-3::before {
+  background:
+    radial-gradient(ellipse at 50% -12%, rgba(160, 44, 44, 0.42), transparent 55%),
+    radial-gradient(ellipse at 50% 120%, rgba(120, 92, 30, 0.4), transparent 60%),
+    linear-gradient(180deg, #200f0d 0%, #0c0605 100%);
+}
+
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   20% { transform: translateX(-7px) rotate(-0.4deg); }
@@ -601,6 +630,95 @@ body {
   gap: 10px;
   width: 100%;
 }
+
+/* ---- Run map: Slay-the-Spire-style ladder to the act boss -------------- */
+.run-map {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 0 10px;
+}
+.map-row {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+/* connector line rising to the row above */
+.map-row::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  width: 2px;
+  height: 12px;
+  background: #4a2b28;
+  transform: translateX(-50%);
+}
+.map-row-boss::before { display: none; }
+
+.map-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 42px;
+  min-height: 42px;
+  border-radius: 10px;
+  border: 2px solid #3a2b28;
+  background: #1c1210;
+  color: #6f5f52;
+}
+.map-node-icon { display: flex; }
+.map-node-icon svg { width: 20px; height: 20px; }
+
+/* future floors: visible but muted (the route ahead) */
+.map-future { opacity: 0.7; }
+.map-done .map-node { opacity: 0.4; }
+
+/* current floor: full, tappable node cards with a foe preview */
+.map-current { gap: 8px; }
+.map-node-active {
+  width: auto;
+  min-width: 92px;
+  max-width: 130px;
+  padding: 8px 10px;
+  cursor: pointer;
+  border-color: #6a4b45;
+  background: linear-gradient(160deg, #2a1a17 0%, #170e0c 100%);
+  color: #e9e0d3;
+  font-family: inherit;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+.map-node-active:active { transform: scale(0.97); }
+.map-node-active.map-node-fight { border-color: #b5544a; }
+.map-node-active.map-node-elite { border-color: #d64236; }
+.map-node-active.map-node-rest { border-color: #6bb06b; }
+.map-node-active.map-node-treasure { border-color: #f0c674; }
+.map-node-fight .map-node-icon { color: #ff9f6b; }
+.map-node-elite .map-node-icon { color: #ff6a5a; }
+.map-node-rest .map-node-icon { color: #8fd68f; }
+.map-node-treasure .map-node-icon { color: #f0c674; }
+.map-node-label { font-size: 0.72rem; font-weight: 700; text-align: center; line-height: 1.1; }
+.map-node-tag { font-size: 0.62rem; color: #a8988a; }
+.map-node-foes { display: flex; gap: 2px; margin-top: 2px; }
+.map-node-foes .sprite-img { width: 22px; height: 22px; }
+
+.map-node-boss {
+  width: auto;
+  min-width: 120px;
+  padding: 8px 14px;
+  border-color: #d64236;
+  background: radial-gradient(circle at 50% 40%, #4a1e1a 0%, #1c1210 80%);
+  color: #ffb0a0;
+}
+.map-node-boss .map-node-icon { color: #ff6a5a; }
+.map-node-boss .map-node-label { font-size: 0.78rem; font-weight: 800; color: #ffcabb; }
+.map-row-boss.map-current .map-node-boss { box-shadow: 0 0 14px rgba(214, 66, 54, 0.6); }
 
 .node-option {
   display: flex;

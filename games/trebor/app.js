@@ -343,6 +343,56 @@
     return el;
   }
 
+  const BOSS_ICON =
+    '<svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M3 8 L6 12 L9 6 L12 12 L15 6 L18 12 L21 8 L20 19 H4 Z"/><circle cx="9" cy="15" r="1.1" fill="#170e0c"/><circle cx="15" cy="15" r="1.1" fill="#170e0c"/></svg>';
+
+  // A single map node. Current-floor nodes are full, clickable, and preview
+  // their foes; past/future nodes are compact markers so you can read the
+  // route at a glance.
+  function mapNode(option, idx, isCurrent) {
+    const el = document.createElement(isCurrent ? "button" : "div");
+    el.className = "map-node map-node-" + option.type + (isCurrent ? " map-node-active" : "");
+    let inner = `<span class="map-node-icon">${NODE_ICON[option.type] || ""}</span>`;
+    if (isCurrent) {
+      inner += `<span class="map-node-label">${option.label}</span>`;
+      if (option.enemies) {
+        inner += `<span class="map-node-foes">${option.enemies.map((id) => enemyImg(id)).join("")}</span>`;
+      } else if (option.type === "treasure") {
+        inner += `<span class="map-node-tag">Stash</span>`;
+      } else if (option.type === "rest") {
+        inner += `<span class="map-node-tag">Rest / Sharpen</span>`;
+      }
+    }
+    el.innerHTML = inner;
+    if (isCurrent) el.addEventListener("click", () => onChooseNode(idx));
+    return el;
+  }
+
+  // The run map for the current act: the boss sits at the top, the floors
+  // ladder down to where you're standing. You climb one floor at a time,
+  // picking a node on the current row.
+  function renderMap(act) {
+    const map = document.createElement("div");
+    map.className = "run-map";
+
+    const bossRow = document.createElement("div");
+    bossRow.className = "map-row map-row-boss" + (state.floorIndex >= act.floors.length ? " map-current" : "");
+    const boss = document.createElement("div");
+    boss.className = "map-node map-node-boss";
+    boss.innerHTML = `<span class="map-node-icon">${BOSS_ICON}</span><span class="map-node-label">${act.boss.label}</span>`;
+    bossRow.appendChild(boss);
+    map.appendChild(bossRow);
+
+    for (let fi = act.floors.length - 1; fi >= 0; fi--) {
+      const row = document.createElement("div");
+      const statusCls = fi < state.floorIndex ? "map-done" : fi === state.floorIndex ? "map-current" : "map-future";
+      row.className = "map-row " + statusCls;
+      act.floors[fi].options.forEach((option, idx) => row.appendChild(mapNode(option, idx, fi === state.floorIndex)));
+      map.appendChild(row);
+    }
+    nodeOptionsEl.appendChild(map);
+  }
+
   function cardFrameHtml(card) {
     return `
       <span class="card-cost">${card.cost}</span>
@@ -431,8 +481,11 @@
 
     dogPortraitEl.innerHTML = state.classId ? dogImg(state.classId) : "";
 
-    const act = Content.ACTS[state.actIndex];
+    const act = state.map[state.actIndex];
     const actNumber = state.actIndex + 1;
+    // Per-act backdrop theming (Back Alleys / Rooftops / Cathouse).
+    gameAreaEl.classList.remove("act-1", "act-2", "act-3");
+    gameAreaEl.classList.add("act-" + actNumber);
     const floorNumber = Math.min(state.floorIndex + 1, act.floors.length);
     roomLabelEl.textContent =
       state.currentNodeType === "boss"
@@ -473,8 +526,8 @@
     handEl.innerHTML = "";
 
     if (state.status === "choosing") {
-      objectiveEl.textContent = "Choose your next room.";
-      state.nodeChoices.forEach((option, idx) => nodeOptionsEl.appendChild(nodeOptionNode(option, idx)));
+      objectiveEl.textContent = "Pick your next room — the boss waits at the top.";
+      renderMap(act);
     } else if (state.status === "reward") {
       objectiveEl.textContent =
         state.currentNodeType === "treasure"

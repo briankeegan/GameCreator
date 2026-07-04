@@ -98,13 +98,11 @@ assert.strictEqual(lalaM.enemies[0].hp, 16 - 8, "Lock Jaw makes Bite land for 6+
 // ---------------------------------------------------------------------
 const state = Engine.createGameState(Content, rng);
 Engine.chooseClass(state, Content, "koozie", rng);
-assert.deepStrictEqual(
-  state.nodeChoices.map((o) => o.type),
-  ["fight", "fight", "treasure"],
-  "Floor 1 offers two fights and a treasure (no free rest every floor)"
-);
+assert.strictEqual(state.nodeChoices.length, 3, "a floor offers three rooms to choose from");
+assert.ok(state.nodeChoices.some((o) => o.type === "fight"), "at least one room is always a fight");
+assert.strictEqual(state.map.length, 3, "the run map has three acts");
 
-Engine.chooseNode(state, Content, 0, rng); // "Back Alley" — fight an Alley Cat
+Engine.chooseNode(state, Content, 0, rng); // first room — a lone Alley Cat under the fixed rng
 assert.strictEqual(state.status, "playing");
 assert.strictEqual(state.enemies[0].typeId, "alleyCat");
 assert.strictEqual(state.enemies[0].hp, 16);
@@ -147,7 +145,21 @@ assert.strictEqual(state.deck.length, 13, "picking a reward grows the deck");
 assert.strictEqual(state.deck[state.deck.length - 1], chosen);
 assert.strictEqual(state.status, "choosing");
 assert.strictEqual(state.floorIndex, 1);
-assert.ok(state.nodeChoices.some((o) => o.type === "elite"), "Floor 2 has an elite");
+
+// Randomized routes: a run rolled with a varied rng mixes node types across
+// its floors (not just fights) — that's the run-to-run map variety.
+const seededRng = (seed) => {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+};
+const variedTypes = new Set();
+for (const act of Engine.generateMap(Content, seededRng(7)))
+  for (const fl of act.floors) for (const o of fl.options) variedTypes.add(o.type);
+assert.ok(variedTypes.size >= 2, "a random route mixes node types, not just fights");
+assert.ok([...variedTypes].some((t) => t !== "fight"), "and includes non-fight rooms (elite / rest / treasure)");
 
 // ---------------------------------------------------------------------
 // New enemies: a Feral Kitten swarm and a Rooftop Sniper exist and fight.
@@ -158,8 +170,10 @@ const swarmContent = Object.assign({}, Content, {
   ACTS: [
     {
       name: "Test Act",
-      floors: [{ options: [{ type: "fight", label: "Test Litter", enemies: ["feralKitten", "feralKitten", "feralKitten"] }] }],
+      floorCount: 1,
       boss: { label: "Test Boss", enemies: ["bigTom"] },
+      fightPool: [["feralKitten", "feralKitten", "feralKitten"]],
+      elitePool: [["bigTom"]],
     },
   ],
 });
@@ -234,7 +248,7 @@ assert.strictEqual(br.player.hp, br.player.maxHp, "boss reward heals to full");
 assert.strictEqual(br.actIndex, 1, "advanced into the next act");
 assert.strictEqual(br.floorIndex, 0);
 assert.strictEqual(br.status, "choosing");
-assert.deepStrictEqual(br.nodeChoices, Content.ACTS[1].floors[0].options, "onto Act 2's first floor");
+assert.deepStrictEqual(br.nodeChoices, br.map[1].floors[0].options, "onto Act 2's first floor of the generated map");
 
 // Skipping the boss reward still heals and advances, just without a card.
 const brSkip = Engine.createGameState(Content, rng);
@@ -255,9 +269,8 @@ assert.strictEqual(brSkip.actIndex, 1);
 // Treasure: choosing it opens a free pick from the strong treasure pool.
 const treas = Engine.createGameState(Content, rng);
 Engine.chooseClass(treas, Content, "koozie", rng);
-const treasureIdx = treas.nodeChoices.findIndex((o) => o.type === "treasure");
-assert.ok(treasureIdx !== -1, "floor 1 offers a treasure node");
-Engine.chooseNode(treas, Content, treasureIdx, rng);
+treas.nodeChoices = [{ type: "treasure", label: "Test Stash" }]; // guarantee one to click
+Engine.chooseNode(treas, Content, 0, rng);
 assert.strictEqual(treas.status, "reward");
 assert.strictEqual(treas.currentNodeType, "treasure");
 assert.ok(treas.rewardOptions.every((id) => Content.TREASURE_POOL.includes(id)), "treasure offers the strong pool");

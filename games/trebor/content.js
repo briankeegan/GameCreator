@@ -222,75 +222,71 @@ const ENEMY_TYPES = {
   },
 };
 
-// The dungeon map: three ACTS, each a short run of floors capped by its own
-// boss. Every floor offers a few node choices — fight, elite (tougher fight,
-// bigger card reward), or rest (heal). The player picks one node per floor;
-// each act's boss always follows its last floor with no choice involved, and
-// is meaningfully harder than the last act's. Downing a non-final boss opens
-// a boss-reward pick and heals up before the next act begins.
+// The dungeon: three ACTS, each a difficulty TEMPLATE rather than a fixed
+// map. At the start of a run the engine (generateMap) rolls each act's floors
+// from these pools, so the route — which enemies show up, and whether a floor
+// offers an elite, a rest, or a treasure — differs every run. Each act still
+// ends with its own fixed, escalating boss. `fightPool`/`elitePool` are the
+// enemy line-ups that can appear; the first entry of each is the gentlest
+// (used as the deterministic pick under a fixed test rng).
 const ACTS = [
   {
     name: "The Back Alleys",
-    floors: [
-      {
-        options: [
-          { type: "fight", label: "Back Alley", enemies: ["alleyCat"] },
-          { type: "fight", label: "Storm Drain", enemies: ["alleyCat"] },
-          { type: "treasure", label: "Dumpster Score" },
-        ],
-      },
-      {
-        options: [
-          { type: "fight", label: "Junkyard", enemies: ["tabbyGuard"] },
-          { type: "fight", label: "Litter", enemies: ["feralKitten", "feralKitten", "feralKitten"] },
-          { type: "elite", label: "Guard Post", enemies: ["tabbyGuard", "alleyCat"] },
-          { type: "rest", label: "Sunny Spot" },
-        ],
-      },
-    ],
+    floorCount: 2,
     boss: { label: "Big Tom", enemies: ["bigTom"] },
+    fightPool: [
+      ["alleyCat"],
+      ["alleyCat", "alleyCat"],
+      ["tabbyGuard"],
+      ["feralKitten", "feralKitten", "feralKitten"],
+      ["alleyCat", "feralKitten"],
+    ],
+    elitePool: [
+      ["tabbyGuard", "alleyCat"],
+      ["tabbyGuard", "feralKitten", "feralKitten"],
+    ],
   },
   {
     name: "The Rooftops",
-    floors: [
-      {
-        options: [
-          { type: "fight", label: "Rooftops", enemies: ["alleyCat", "rooftopSniper"] },
-          { type: "fight", label: "Gutter Run", enemies: ["tabbyGuard", "feralKitten"] },
-          { type: "treasure", label: "Stashed Crate" },
-        ],
-      },
-      {
-        options: [
-          { type: "fight", label: "Fire Escape", enemies: ["rooftopSniper", "tabbyGuard"] },
-          { type: "elite", label: "Loading Dock", enemies: ["rooftopSniper", "feralKitten", "feralKitten"] },
-          { type: "rest", label: "Old Blanket" },
-        ],
-      },
-    ],
+    floorCount: 2,
     boss: { label: "The Warcat Captain", enemies: ["warcatCaptain"] },
+    fightPool: [
+      ["alleyCat", "rooftopSniper"],
+      ["tabbyGuard", "feralKitten"],
+      ["rooftopSniper", "alleyCat"],
+      ["tabbyGuard", "tabbyGuard"],
+      ["rooftopSniper", "feralKitten", "feralKitten"],
+    ],
+    elitePool: [
+      ["rooftopSniper", "tabbyGuard"],
+      ["tabbyGuard", "tabbyGuard", "feralKitten"],
+    ],
   },
   {
     name: "The Cathouse",
-    floors: [
-      {
-        options: [
-          { type: "fight", label: "Grand Foyer", enemies: ["tabbyGuard", "alleyCat", "rooftopSniper"] },
-          { type: "fight", label: "The Kennels", enemies: ["bigTom"] },
-          { type: "treasure", label: "Royal Hoard" },
-        ],
-      },
-      {
-        options: [
-          { type: "elite", label: "Royal Guard", enemies: ["tabbyGuard", "tabbyGuard", "rooftopSniper"] },
-          { type: "fight", label: "Courtiers", enemies: ["feralKitten", "feralKitten", "rooftopSniper"] },
-          { type: "rest", label: "Sunbeam Throne" },
-        ],
-      },
-    ],
+    floorCount: 2,
     boss: { label: "The Cat King", enemies: ["catKing"] },
+    fightPool: [
+      ["tabbyGuard", "alleyCat", "rooftopSniper"],
+      ["bigTom"],
+      ["feralKitten", "feralKitten", "rooftopSniper"],
+      ["tabbyGuard", "rooftopSniper"],
+      ["tabbyGuard", "tabbyGuard"],
+    ],
+    elitePool: [
+      ["tabbyGuard", "tabbyGuard", "rooftopSniper"],
+      ["bigTom", "feralKitten", "feralKitten"],
+    ],
   },
 ];
+
+// Flavor names drawn at random for each generated node.
+const NODE_LABELS = {
+  fight: ["Back Alley", "Storm Drain", "Gutter Run", "Fire Escape", "Junkyard", "Dark Stairwell", "Scrap Heap", "Narrow Ledge", "Litter", "Courtyard"],
+  elite: ["Guard Post", "Loading Dock", "Ambush", "Royal Guard", "The Gauntlet"],
+  rest: ["Cardboard Box", "Sunny Spot", "Water Bowl", "Old Blanket", "Velvet Cushion", "Warm Vent"],
+  treasure: ["Dumpster Score", "Stashed Crate", "Hidden Cache", "Royal Hoard", "Lost Satchel"],
+};
 
 const STARTING_HP = 28;
 const STARTING_ENERGY = 3;
@@ -312,6 +308,7 @@ const CONTENT = {
   UPGRADES,
   ENEMY_TYPES,
   ACTS,
+  NODE_LABELS,
   STARTING_HP,
   STARTING_ENERGY,
   HAND_SIZE,

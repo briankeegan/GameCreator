@@ -74,7 +74,7 @@ async function playUntil(page, targetStatuses) {
         const fightIdx = st.nodeChoices.findIndex((o) => o.type === "fight");
         return hurt && restIdx !== -1 ? restIdx : fightIdx;
       });
-      await (await page.$$(".node-option"))[idx].click();
+      await (await page.$$(".map-node-active"))[idx].click();
       continue;
     }
 
@@ -171,9 +171,10 @@ async function playUntil(page, targetStatuses) {
   assert.strictEqual(state.status, "choosing");
   assert.strictEqual(state.classId, "koozie");
   assert.strictEqual(state.player.maxHp, 32);
-  assert.deepStrictEqual(state.nodeChoices.map((o) => o.type), ["fight", "fight", "treasure"]);
+  assert.strictEqual(state.nodeChoices.length, 3, "the floor offers three rooms");
+  assert.ok(state.nodeChoices.some((o) => o.type === "fight"), "at least one is a fight");
 
-  await (await page.$$(".node-option"))[0].click(); // "Back Alley" — fight
+  await (await page.$$(".map-node-active"))[0].click(); // first room — a fight
   await page.waitForTimeout(80);
 
   // ---- Floor 1 combat, traced like engine.test.js's Koozie golden path -
@@ -231,7 +232,7 @@ async function playUntil(page, targetStatuses) {
   await page.waitForTimeout(80);
   state = await getState(page);
   assert.strictEqual(state.player.maxHp, 24);
-  await (await page.$$(".node-option"))[0].click(); // into a fight
+  await (await page.$$(".map-node-active"))[0].click(); // into a fight
   await page.waitForTimeout(80);
   await page.evaluate(() => {
     window.__tbState.player.hp = 1;
