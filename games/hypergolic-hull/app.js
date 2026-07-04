@@ -258,11 +258,30 @@ function drawSprite(center, glyph, size, alpha) {
   ctx.restore();
 }
 
-// ---- custom-drawn ships (no emoji) ----------------------------------------
-// Both ships are authored nose-right (pointing along +x) at rotation 0, so
-// callers just ctx.translate to the ship's center and ctx.rotate to its
-// facing in degrees before calling these — no glyph-specific angle offset
-// needed, unlike the emoji sprites these replaced.
+// ---- ship sprites -----------------------------------------------------------
+// The flagship and Interceptor are pixel-art PNGs generated via the
+// "Generate game asset" pipeline (games/hypergolic-hull/art-style.json),
+// with the old hand-drawn vector shapes (drawHero/drawEnemyFighter, below)
+// kept as a fallback for the brief window before an image finishes loading
+// (or if it 404s). The source art is authored nose-UP; every caller here
+// (shipAngle, DIR_ANGLES, angleToward) assumes nose-RIGHT at rotation 0 —
+// drawShipImage() rotates 90° internally to reconcile the two so nothing
+// else about the rotation math has to change.
+const flagshipImg = new Image();
+flagshipImg.src = "icons/flagship.png";
+flagshipImg.onload = () => draw();
+const interceptorImg = new Image();
+interceptorImg.src = "icons/interceptor.png";
+interceptorImg.onload = () => draw();
+
+function drawShipImage(img, s) {
+  if (!img.complete || !img.naturalWidth) return false;
+  ctx.save();
+  ctx.rotate(Math.PI / 2);
+  ctx.drawImage(img, -s * 1.1, -s * 1.1, s * 2.2, s * 2.2);
+  ctx.restore();
+  return true;
+}
 
 // A tiny deterministic PRNG seeded from a string id, so a ship's crack
 // pattern is stable frame-to-frame (Math.random() here would make the
@@ -625,14 +644,18 @@ function drawEnemyFighter(s, thrust) {
 
 function drawPlayerShip(size, thrustFrac, hpFrac) {
   ctx.save();
-  drawHero(size, thrustFrac);
+  if (!drawShipImage(flagshipImg, size)) {
+    drawHero(size, thrustFrac);
+  }
   drawCracks(size, hpFrac, "player");
   ctx.restore();
 }
 
 function drawEnemyShip(size, hpFrac, crackSeed) {
   ctx.save();
-  drawEnemyFighter(size, 0);
+  if (!drawShipImage(interceptorImg, size)) {
+    drawEnemyFighter(size, 0);
+  }
   drawCracks(size, hpFrac, crackSeed);
   ctx.restore();
 }
