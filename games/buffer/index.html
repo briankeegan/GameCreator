@@ -19,8 +19,43 @@
   <!-- Header (All Games / title / chat) is injected by nav.js below. -->
 
   <main class="game-area" id="gameArea">
-    <p>Your game goes here.</p>
+    <div class="hud" id="hud">
+      <div class="stat"><span class="label">Weight</span><span class="meter weight"><span id="mWeight"></span></span><span class="val" id="vWeight">–</span></div>
+      <div class="stat"><span class="label">Muscle</span><span class="meter muscle"><span id="mMuscle"></span></span><span class="val" id="vMuscle">–</span></div>
+      <div class="stat"><span class="label">Know</span><span class="meter know"><span id="mKnow"></span></span><span class="val" id="vKnow">–</span></div>
+      <div class="stat"><span class="label">Energy</span><span class="meter energy"><span id="mEnergy"></span></span><span class="val" id="vEnergy">–</span></div>
+    </div>
+
+    <div class="progress">
+      <span class="day" id="dayLabel">Day 1</span>
+      <div class="bar" title="Strength-to-weight toward the pull-up">
+        <span id="mProgress"></span>
+        <div class="goal" id="goalMark"></div>
+      </div>
+      <span class="day" id="ratioLabel">0%</span>
+    </div>
+
+    <div class="stage">
+      <canvas id="scene" width="360" height="200" aria-label="The home. Tap something to interact."></canvas>
+    </div>
+
+    <p class="hint" id="hint">Tap a spot to walk over and interact. Get strong enough to nail a <b>pull-up</b> — and never, ever eat the pizza.</p>
   </main>
+
+  <div class="menu-backdrop" id="menuBackdrop">
+    <div class="menu" id="menu" role="dialog" aria-modal="true">
+      <h2 id="menuTitle"></h2>
+      <p class="flavor" id="menuFlavor"></p>
+      <div class="choices" id="menuChoices"></div>
+      <button class="cancel" id="menuCancel">Never mind</button>
+    </div>
+  </div>
+
+  <div class="endscreen" id="endscreen">
+    <h1 id="endTitle"></h1>
+    <p id="endText"></p>
+    <button id="endBtn">Start over</button>
+  </div>
 
   <div class="install-banner" id="installBanner">
     <img class="install-banner-icon" src="icons/icon.svg" alt="" />
