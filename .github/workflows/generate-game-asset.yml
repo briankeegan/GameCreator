@@ -114,11 +114,14 @@ jobs:
       # Downscale to a web-friendly sprite size so a set of assets doesn't
       # bloat the PWA (a raw 1024px PNG is ~1.5MB; 512px trimmed is ~10x
       # smaller). -trim removes fully-transparent margins so the subject
-      # fills the frame consistently. ImageMagick is preinstalled on the runner.
+      # fills the frame consistently. ImageMagick is NOT preinstalled on
+      # ubuntu-latest (confirmed via a failed run: "convert: command not
+      # found") so it's installed explicitly first.
       - name: Resize + trim for web
         env:
           OUTPUT_PATH: ${{ inputs.output_path }}
         run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
           convert "$OUTPUT_PATH" -trim +repage -resize '512x512>' -background none -gravity center -extent 512x512 "$OUTPUT_PATH"
 
       # Retry-with-rebase so several asset generations running at once don't
