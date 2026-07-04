@@ -89,14 +89,20 @@ jobs:
             echo "EOF_${{ github.run_id }}"
           } >> "$GITHUB_OUTPUT"
 
-      # The ONLY model step. No GH_TOKEN in its env on purpose — it must not
-      # touch GitHub; it only reads/edits files and writes its outputs to
-      # .autopilot/. Everything else is deterministic steps below.
+      # The ONLY model step. It edits files and drops its outputs in
+      # .autopilot/; the deterministic steps below do all the real git/deploy/
+      # reply work. github_token is passed explicitly so the action uses the
+      # repo-scoped workflow token instead of trying to mint one via OIDC
+      # (which needs id-token:write + the Anthropic GitHub App installed, and
+      # otherwise fails the whole run before Claude even starts). Note: the
+      # action still provisions this token into Claude's environment, so the
+      # model's GitHub reach is bounded to this repo — not zero.
       - id: claude
         name: Handle the Clubhouse message
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
           claude_args: '--model claude-sonnet-5 --max-turns 50 --allowedTools "Read,Edit,MultiEdit,Write,Glob,Grep,Bash"'
           prompt: |
             A new message just landed in a game's Clubhouse chat thread and you
