@@ -30,9 +30,17 @@ name: Clubhouse autopilot
 # (generated locally with `claude setup-token`). Image generation additionally
 # needs an OPENAI_API_KEY secret (used by generate-image.yml).
 
+# TEMPORARILY DISABLED (auto-trigger off). The ship-to-main step keeps failing
+# because claude-code-action operates on the PR's own branch, not main, so
+# every Clubhouse message posted a "something went wrong" reply and burned a
+# Sonnet build. Auto-trigger is off while that's reworked; the maintainer is
+# handling Clubhouse via a subscribed Claude session for now. To re-enable,
+# restore the `issue_comment` trigger:
+#   on:
+#     issue_comment:
+#       types: [created]
 on:
-  issue_comment:
-    types: [created]
+  workflow_dispatch: {}
 
 # One run at a time per thread, so two quick messages can't race each other.
 # A newer message queues behind the in-flight run.
