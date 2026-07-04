@@ -158,7 +158,7 @@ async function playUntil(page, targetStatuses) {
   // ---- Class select ----------------------------------------------------
   let state = await getState(page);
   assert.strictEqual(state.status, "class-select");
-  assert.strictEqual((await page.$$(".class-option")).length, 3, "three dog classes offered");
+  assert.strictEqual((await page.$$(".class-option")).length, 4, "four dog classes offered");
 
   await page.click(".class-option-koozie"); // Irish Water Spaniel, 32 Hull
   await page.waitForTimeout(80);

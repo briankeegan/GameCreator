@@ -57,7 +57,7 @@ assert.throws(() => Engine.playCard(gate, Content, 0, null, rng), /Cannot play a
 assert.throws(() => Engine.chooseClass(gate, Content, "notADog", rng), /Unknown class/);
 
 // Each class sets its own Hull and 12-card deck.
-const hpByClass = { riddle: 24, koozie: 32, bevy: 28 };
+const hpByClass = { riddle: 24, koozie: 32, bevy: 28, lala: 32 };
 for (const id of Object.keys(Content.CLASSES)) {
   const s = Engine.createGameState(Content, rng);
   Engine.chooseClass(s, Content, id, rng);

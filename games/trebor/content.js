@@ -23,6 +23,7 @@ const CARDS = {
   digIn: { id: "digIn", name: "Dig In", cost: 0, damage: 4, text: "Deal 4 damage." },
   riptide: { id: "riptide", name: "Riptide", cost: 1, damage: 5, block: 5, text: "Deal 5 damage. Gain 5 Block." },
   rally: { id: "rally", name: "Rally", cost: 0, block: 3, draw: 1, text: "Gain 3 Block. Draw a card." },
+  lockJaw: { id: "lockJaw", name: "Lock Jaw", cost: 1, damage: 9, text: "Deal 9 damage." },
   // Boss-reward cards — powerful, only offered after felling an act boss:
   maul: { id: "maul", name: "Maul", cost: 2, damage: 18, text: "Deal 18 damage." },
   warCry: { id: "warCry", name: "War Cry", cost: 2, damage: 10, aoe: true, block: 6, text: "Deal 10 to ALL enemies. Gain 6 Block." },
@@ -59,6 +60,14 @@ const CLASSES = {
     maxHp: 28,
     deck: ["bite", "bite", "bite", "growl", "growl", "fetch", "fetch", "rally", "rally", "goodBoy", "sniffOut", "pounce"],
   },
+  lala: {
+    id: "lala",
+    name: "Lala",
+    breed: "Pit Bull / German Shepherd",
+    blurb: "Loyal powerhouse — hits like a truck and guards her own. Sturdy and forgiving; her Lock Jaw never lets go.",
+    maxHp: 32,
+    deck: ["bite", "bite", "bite", "lockJaw", "lockJaw", "growl", "growl", "guardDog", "pounce", "fetch", "goodBoy", "secondWind"],
+  },
 };
 
 // Fallback starter deck (used only if a run somehow has no class picked).
@@ -69,7 +78,7 @@ const STARTER_DECK = CLASSES.bevy.deck.slice();
 const REWARD_POOL = [
   "bite", "growl", "fetch", "pounce", "guardDog", "goodBoy",
   "howl", "bigBark", "alphaStrike", "sniffOut", "secondWind",
-  "digIn", "riptide", "rally",
+  "digIn", "riptide", "rally", "lockJaw",
 ];
 
 // The elite cards, only offered after downing an act's boss — a run-defining

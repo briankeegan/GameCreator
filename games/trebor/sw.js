@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("trebor-v12", [
+GCRegisterServiceWorker("trebor-v13", [
   "./",
   "./index.html",
   "./style.css",
@@ -16,6 +16,7 @@ GCRegisterServiceWorker("trebor-v12", [
   "./icons/dog-riddle.png",
   "./icons/dog-koozie.png",
   "./icons/dog-bevy.png",
+  "./icons/dog-lala.png",
   "./icons/enemy-alley-cat.png",
   "./icons/enemy-tabby-guard.png",
   "./icons/enemy-big-tom.png",

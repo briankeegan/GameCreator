@@ -66,6 +66,7 @@
     riddle: "icons/dog-riddle.png",
     koozie: "icons/dog-koozie.png",
     bevy: "icons/dog-bevy.png",
+    lala: "icons/dog-lala.png",
   };
   function enemyImg(typeId) {
     return `<img class="sprite-img" src="${ENEMY_IMG[typeId]}" alt="" draggable="false" />`;
