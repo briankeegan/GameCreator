@@ -32,9 +32,13 @@
   if (state.ended) state = freshState(); // never resume a finished run
 
   // ---------------------------------------------------------------- DOM refs
+  // Virtual coordinate space is 360x240 (matches the generated art's 3:2
+  // aspect); the canvas backing is 2x that (720x480) for a crisper picture.
+  var VW = 360, VH = 240;
   var canvas = document.getElementById("scene");
   var ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = false;
+  ctx.scale(2, 2);
+  ctx.imageSmoothingEnabled = true;
   var hintEl = document.getElementById("hint");
   var backdrop = document.getElementById("menuBackdrop");
   var menuTitle = document.getElementById("menuTitle");
@@ -58,15 +62,17 @@
   };
 
   // ------------------------------------------------------------- hotspots
-  var FLOOR_Y = 156;
+  var FLOOR_Y = 196;
+  // Positioned over the generated room (art/room.png). Order matters — the
+  // first matching hotspot wins overlaps, so tighter/front items come first.
   var SPOTS = [
-    { id: "door",    label: "DOOR",        rect: [6, 70, 42, 86],    standX: 62 },
-    { id: "tv",      label: "TV / PHONE",  rect: [58, 96, 62, 60],   standX: 98 },
-    { id: "bed",     label: "BED",         rect: [126, 108, 54, 48], standX: 150 },
-    { id: "squat",   label: "SQUAT MAT",   rect: [186, 146, 44, 12], standX: 208 },
-    { id: "bells",   label: "KETTLEBELLS", rect: [236, 138, 46, 18], standX: 258 },
-    { id: "kitchen", label: "KITCHEN",     rect: [300, 84, 52, 72],  standX: 306 },
-    { id: "pullup",  label: "PULL-UP BAR", rect: [150, 24, 60, 26],  standX: 180 },
+    { id: "pullup",  label: "PULL-UP BAR", rect: [150, 44, 62, 40],  standX: 180 },
+    { id: "door",    label: "DOOR",        rect: [2, 46, 46, 122],   standX: 58 },
+    { id: "tv",      label: "TV / PHONE",  rect: [56, 112, 104, 62], standX: 104 },
+    { id: "squat",   label: "SQUAT MAT",   rect: [138, 206, 56, 30], standX: 166 },
+    { id: "bells",   label: "KETTLEBELLS", rect: [198, 204, 58, 34], standX: 224 },
+    { id: "bed",     label: "BED",         rect: [206, 128, 54, 52], standX: 236 },
+    { id: "kitchen", label: "KITCHEN",     rect: [262, 88, 90, 92],  standX: 300 },
   ];
 
   var guy = { x: 180, targetX: 180, walking: false, bob: 0, pending: null, dir: 1 };
@@ -84,39 +90,40 @@
   // ============================================================ RENDERING
   function px(n) { return Math.round(n); }
 
+  var DEBUG_HOTSPOTS = false; // outline tap regions for calibration
+
   function draw() {
-    if (assets.room) ctx.drawImage(assets.room, 0, 0, 360, 200);
+    if (assets.room) ctx.drawImage(assets.room, 0, 0, VW, VH);
     else drawFallbackRoom();
 
     drawCharacter();
 
     for (var i = 0; i < SPOTS.length; i++) drawLabel(SPOTS[i]);
+
+    if (DEBUG_HOTSPOTS) {
+      ctx.strokeStyle = "rgba(0,255,255,0.9)"; ctx.lineWidth = 1;
+      for (var j = 0; j < SPOTS.length; j++) {
+        var r = SPOTS[j].rect; ctx.strokeRect(r[0], r[1], r[2], r[3]);
+      }
+    }
   }
 
   function drawCharacter() {
     if (assets.hero) {
-      var h = 56, w = h * (assets.hero.width / assets.hero.height);
-      ctx.drawImage(assets.hero, px(guy.x - w / 2), px(FLOOR_Y + 3 - h + guy.bob), px(w), px(h));
+      var h = 104, w = h * (assets.hero.width / assets.hero.height);
+      ctx.drawImage(assets.hero, px(guy.x - w / 2), px(FLOOR_Y + 6 - h + guy.bob), px(w), px(h));
     } else {
       drawGuy(guy.x, FLOOR_Y + 2, guy.bob);
     }
   }
 
   function drawFallbackRoom() {
-    var W = 360, H = 200;
-    ctx.fillStyle = C.wall; ctx.fillRect(0, 0, W, FLOOR_Y);
-    ctx.fillStyle = C.wallTop; ctx.fillRect(0, 0, W, 16);
-    ctx.fillStyle = C.wainscot; ctx.fillRect(0, FLOOR_Y - 14, W, 14);
-    ctx.fillStyle = C.floor; ctx.fillRect(0, FLOOR_Y, W, H - FLOOR_Y);
+    ctx.fillStyle = C.wall; ctx.fillRect(0, 0, VW, FLOOR_Y);
+    ctx.fillStyle = C.wallTop; ctx.fillRect(0, 0, VW, 20);
+    ctx.fillStyle = C.wainscot; ctx.fillRect(0, FLOOR_Y - 16, VW, 16);
+    ctx.fillStyle = C.floor; ctx.fillRect(0, FLOOR_Y, VW, VH - FLOOR_Y);
     ctx.fillStyle = C.floor2;
-    for (var x = 0; x < W; x += 28) ctx.fillRect(x, FLOOR_Y, 2, H - FLOOR_Y);
-    drawDoor(6, 70);
-    drawTV(58, 96);
-    drawBed(126, 108);
-    drawMat(186, 146);
-    drawBells(236, 138);
-    drawKitchen(300, 84);
-    drawPullup(150, 24);
+    for (var x = 0; x < VW; x += 28) ctx.fillRect(x, FLOOR_Y, 2, VH - FLOOR_Y);
   }
 
   function outline(x, y, w, h) {
