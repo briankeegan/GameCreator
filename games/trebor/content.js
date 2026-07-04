@@ -24,6 +24,13 @@ const CARDS = {
   riptide: { id: "riptide", name: "Riptide", cost: 1, damage: 5, block: 5, text: "Deal 5 damage. Gain 5 Block." },
   rally: { id: "rally", name: "Rally", cost: 0, block: 3, draw: 1, text: "Gain 3 Block. Draw a card." },
   lockJaw: { id: "lockJaw", name: "Lock Jaw", cost: 1, damage: 9, text: "Deal 9 damage." },
+  // More class-signature cards, so each dog's deck is its own thing:
+  scurry: { id: "scurry", name: "Scurry", cost: 0, damage: 3, draw: 1, text: "Deal 3 damage. Draw a card." }, // Riddle
+  brace: { id: "brace", name: "Brace", cost: 1, block: 8, text: "Gain 8 Block." }, // Koozie
+  counterSurge: { id: "counterSurge", name: "Counter-Surge", cost: 1, damage: 6, block: 3, text: "Deal 6 damage. Gain 3 Block." }, // Koozie
+  flurry: { id: "flurry", name: "Flurry", cost: 1, damage: 4, draw: 1, text: "Deal 4 damage. Draw a card." }, // Bevy
+  chomp: { id: "chomp", name: "Chomp", cost: 1, damage: 7, text: "Deal 7 damage." }, // Lala
+  bodySlam: { id: "bodySlam", name: "Body Slam", cost: 2, damage: 12, text: "Deal 12 damage." }, // Lala
   // Boss-reward cards — powerful, only offered after felling an act boss:
   maul: { id: "maul", name: "Maul", cost: 2, damage: 18, text: "Deal 18 damage." },
   warCry: { id: "warCry", name: "War Cry", cost: 2, damage: 10, aoe: true, block: 6, text: "Deal 10 to ALL enemies. Gain 6 Block." },
@@ -42,7 +49,9 @@ const CLASSES = {
     breed: "Wire Fox Terrier",
     blurb: "A relentless digger — cheap, fast attacks and card draw. Fragile but hits early and often.",
     maxHp: 24,
-    deck: ["bite", "bite", "bite", "digIn", "digIn", "fetch", "fetch", "growl", "growl", "pounce", "goodBoy", "sniffOut"],
+    // Frenzy: draws an extra card every turn, fuelling a hand of cheap 0-cost attacks.
+    mechanic: { drawBonus: 1, name: "Frenzy", text: "Draw an extra card each turn." },
+    deck: ["digIn", "digIn", "digIn", "scurry", "scurry", "scurry", "bite", "bite", "fetch", "fetch", "sniffOut", "goodBoy"],
   },
   koozie: {
     id: "koozie",
@@ -50,7 +59,9 @@ const CLASSES = {
     breed: "Irish Water Spaniel",
     blurb: "Weathers any storm — heavy Block and counter-punches. Tanky; outlasts the enemy.",
     maxHp: 32,
-    deck: ["bite", "bite", "bite", "growl", "growl", "growl", "riptide", "riptide", "guardDog", "secondWind", "goodBoy", "fetch"],
+    // Waterproof: opens every turn already holding Block, so it out-defends anything.
+    mechanic: { turnBlock: 4, name: "Waterproof", text: "Start each turn with 4 Block." },
+    deck: ["riptide", "riptide", "riptide", "growl", "growl", "growl", "guardDog", "guardDog", "brace", "brace", "counterSurge", "counterSurge"],
   },
   bevy: {
     id: "bevy",
@@ -58,7 +69,9 @@ const CLASSES = {
     breed: "Flat-haired Goldendoodle",
     blurb: "Endlessly adaptable — draws cards and makes energy. Build whatever play the turn needs.",
     maxHp: 28,
-    deck: ["bite", "bite", "bite", "growl", "growl", "fetch", "fetch", "rally", "rally", "goodBoy", "sniffOut", "pounce"],
+    // Boundless: an extra Energy every turn, so it can chain its cheap draw cards.
+    mechanic: { energyBonus: 1, name: "Boundless", text: "+1 Energy every turn (4 total)." },
+    deck: ["rally", "rally", "rally", "fetch", "fetch", "fetch", "flurry", "flurry", "sniffOut", "sniffOut", "bite", "goodBoy"],
   },
   lala: {
     id: "lala",
@@ -66,7 +79,9 @@ const CLASSES = {
     breed: "Pit Bull / German Shepherd",
     blurb: "Loyal powerhouse — hits like a truck and guards her own. Sturdy and forgiving; her Lock Jaw never lets go.",
     maxHp: 32,
-    deck: ["bite", "bite", "bite", "lockJaw", "lockJaw", "growl", "growl", "guardDog", "pounce", "fetch", "goodBoy", "secondWind"],
+    // Lock Jaw: raw Strength — every attack she plays hits for extra.
+    mechanic: { strength: 2, name: "Lock Jaw", text: "+2 damage on every attack." },
+    deck: ["lockJaw", "lockJaw", "lockJaw", "chomp", "chomp", "bodySlam", "bodySlam", "growl", "growl", "guardDog", "guardDog", "goodBoy"],
   },
 };
 
@@ -79,6 +94,7 @@ const REWARD_POOL = [
   "bite", "growl", "fetch", "pounce", "guardDog", "goodBoy",
   "howl", "bigBark", "alphaStrike", "sniffOut", "secondWind",
   "digIn", "riptide", "rally", "lockJaw",
+  "scurry", "brace", "counterSurge", "flurry", "chomp", "bodySlam",
 ];
 
 // The elite cards, only offered after downing an act's boss — a run-defining

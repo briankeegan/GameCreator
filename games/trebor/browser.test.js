@@ -174,34 +174,38 @@ async function playUntil(page, targetStatuses) {
   // ---- Floor 1 combat, traced like engine.test.js's Koozie golden path -
   assert.deepStrictEqual(
     await cardTexts(page),
-    ["Bite", "Fetch", "Good Boy", "Second Wind", "Guard Dog"],
-    "Koozie's deterministic opening hand"
+    ["Riptide", "Counter-Surge", "Counter-Surge", "Brace", "Brace"],
+    "Koozie's deterministic opening hand (its own block-heavy deck)"
   );
   state = await getState(page);
   assert.strictEqual(state.enemies[0].hp, 14);
+  assert.strictEqual(state.player.block, 4, "Waterproof opens the turn with 4 Block");
   assert.ok(await page.locator(".enemy-intent").textContent(), "the cat's move is telegraphed up front");
 
-  await (await page.$$("#hand .card"))[0].click(); // Bite -> the lone cat, auto-targeted
+  await (await page.$$("#hand .card"))[3].click(); // Brace -> +8 Block
   await page.waitForTimeout(80);
   state = await getState(page);
-  assert.strictEqual(state.enemies[0].hp, 8);
+  assert.strictEqual(state.player.block, 12);
   assert.strictEqual(state.player.energy, 2);
 
-  await (await page.$$("#hand .card"))[1].click(); // Good Boy -> +1 energy (hand: Fetch, Good Boy, Second Wind, Guard Dog)
+  await (await page.$$("#hand .card"))[3].click(); // Brace -> +8 Block
   await page.waitForTimeout(80);
   state = await getState(page);
-  assert.strictEqual(state.player.energy, 3);
-
-  await (await page.$$("#hand .card"))[2].click(); // Guard Dog -> +10 Block, costs 2
-  await page.waitForTimeout(80);
-  state = await getState(page);
-  assert.strictEqual(state.player.block, 10);
+  assert.strictEqual(state.player.block, 20);
   assert.strictEqual(state.player.energy, 1);
+
+  await (await page.$$("#hand .card"))[0].click(); // Riptide -> 5 dmg + 5 Block, auto-targeted
+  await page.waitForTimeout(80);
+  state = await getState(page);
+  assert.strictEqual(state.enemies[0].hp, 9);
+  assert.strictEqual(state.player.block, 25);
+  assert.strictEqual(state.player.energy, 0);
 
   await page.click("#endTurnBtn");
   await page.waitForTimeout(80);
   state = await getState(page);
-  assert.strictEqual(state.player.hp, 32, "10 Block fully absorbed the telegraphed Attack 6");
+  assert.strictEqual(state.player.hp, 32, "25 Block swallowed the telegraphed Attack whole");
+  assert.strictEqual(state.player.block, 4, "Block resets, then Waterproof re-applies 4");
   assert.strictEqual(state.turnCount, 2);
 
   // Finish Floor 1 and the rest of the run tap-driven, through elites, the

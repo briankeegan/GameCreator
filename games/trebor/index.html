@@ -23,6 +23,7 @@
       <div class="hud-row">
         <span class="room-label" id="roomLabel"></span>
         <span class="best-label" id="bestLabel"></span>
+        <button class="deck-btn" id="deckBtn" hidden>Deck</button>
       </div>
       <div class="hud-row">
         <div class="dog-vitals">
@@ -60,6 +61,16 @@
     <div class="console" id="combatConsole" hidden>
       <div class="hand" id="hand"></div>
       <button class="end-turn-btn" id="endTurnBtn">End Turn</button>
+    </div>
+
+    <div class="deck-overlay" id="deckOverlay" hidden>
+      <div class="deck-modal">
+        <div class="deck-modal-head">
+          <h3>Your Deck · <span id="deckCount">0</span></h3>
+          <button class="deck-close-btn" id="deckCloseBtn" aria-label="Close">&times;</button>
+        </div>
+        <div class="deck-cards" id="deckCards"></div>
+      </div>
     </div>
 
     <div class="run-overlay" id="runOverlay" hidden>

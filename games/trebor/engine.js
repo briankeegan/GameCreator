@@ -57,6 +57,21 @@ function drawCards(state, content, rng, n) {
   }
 }
 
+// The chosen class's passive (drawBonus / turnBlock / energyBonus / strength),
+// or an empty object before a class is picked.
+function classMechanic(state, content) {
+  const cls = content.CLASSES[state.classId];
+  return (cls && cls.mechanic) || {};
+}
+
+// Applied at the top of every combat turn (the first turn in startCombat and
+// each later turn in endPlayerTurn): the class's per-turn passives.
+function applyTurnStartMechanic(state, content, rng) {
+  const mech = classMechanic(state, content);
+  if (mech.turnBlock) state.player.block += mech.turnBlock;
+  if (mech.drawBonus) drawCards(state, content, rng, mech.drawBonus);
+}
+
 function startCombat(state, content, enemyTypeIds, rng = Math.random) {
   state.status = "playing";
   state.drawPile = shuffle(state.deck, rng);
@@ -68,6 +83,7 @@ function startCombat(state, content, enemyTypeIds, rng = Math.random) {
   state.turnCount = 1;
   state.log = [];
   drawCards(state, content, rng, content.HAND_SIZE);
+  applyTurnStartMechanic(state, content, rng);
 }
 
 function advanceFloorOrBoss(state, content, rng = Math.random) {
@@ -121,6 +137,10 @@ function chooseClass(state, content, classId, rng = Math.random) {
   state.deck = cls.deck.slice();
   state.player.maxHp = cls.maxHp;
   state.player.hp = cls.maxHp;
+  // Boundless-style classes carry extra Energy for the whole run.
+  const energyBonus = (cls.mechanic && cls.mechanic.energyBonus) || 0;
+  state.player.maxEnergy = content.STARTING_ENERGY + energyBonus;
+  state.player.energy = state.player.maxEnergy;
   state.actIndex = 0;
   state.floorIndex = 0;
   state.status = "choosing";
@@ -173,12 +193,14 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
   state.discardPile.push(cardId);
 
   if (card.damage) {
+    // Strength-style mechanics add flat damage to every attack.
+    const dmg = card.damage + (classMechanic(state, content).strength || 0);
     if (card.aoe) {
-      for (const enemy of livingEnemies(state)) applyDamage(enemy, card.damage);
-      state.log.push(`Dog plays ${card.name}, hitting every cat for ${card.damage}.`);
+      for (const enemy of livingEnemies(state)) applyDamage(enemy, dmg);
+      state.log.push(`Dog plays ${card.name}, hitting every cat for ${dmg}.`);
     } else {
-      applyDamage(target, card.damage);
-      state.log.push(`Dog plays ${card.name} on ${target.name} for ${card.damage}.`);
+      applyDamage(target, dmg);
+      state.log.push(`Dog plays ${card.name} on ${target.name} for ${dmg}.`);
     }
   }
   if (card.block) {
@@ -277,6 +299,7 @@ function endPlayerTurn(state, content, rng = Math.random) {
   state.player.block = 0;
   state.player.energy = state.player.maxEnergy;
   drawCards(state, content, rng, content.HAND_SIZE);
+  applyTurnStartMechanic(state, content, rng);
 }
 
 function describeIntent(intent) {

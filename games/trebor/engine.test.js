@@ -70,6 +70,30 @@ for (const id of Object.keys(Content.CLASSES)) {
 }
 
 // ---------------------------------------------------------------------
+// Class mechanics: each dog plays by its own passive.
+// ---------------------------------------------------------------------
+// Bevy — Boundless: an extra Energy every turn.
+const bevyM = Engine.createGameState(Content, rng);
+Engine.chooseClass(bevyM, Content, "bevy", rng);
+assert.strictEqual(bevyM.player.maxEnergy, Content.STARTING_ENERGY + 1, "Bevy runs on +1 Energy");
+Engine.chooseNode(bevyM, Content, 0, rng);
+assert.strictEqual(bevyM.player.energy, Content.STARTING_ENERGY + 1, "and opens combat holding it");
+
+// Riddle — Frenzy: draws an extra card each turn.
+const riddleM = Engine.createGameState(Content, rng);
+Engine.chooseClass(riddleM, Content, "riddle", rng);
+Engine.chooseNode(riddleM, Content, 0, rng);
+assert.strictEqual(riddleM.hand.length, Content.HAND_SIZE + 1, "Frenzy opens with an extra card");
+
+// Lala — Lock Jaw: +2 damage on every attack.
+const lalaM = Engine.createGameState(Content, rng);
+Engine.chooseClass(lalaM, Content, "lala", rng);
+Engine.chooseNode(lalaM, Content, 0, rng); // Alley Cat, 14 Hull
+lalaM.hand.unshift("bite"); // a plain 6-damage Bite...
+Engine.playCard(lalaM, Content, 0, lalaM.enemies[0].id, rng);
+assert.strictEqual(lalaM.enemies[0].hp, 14 - 8, "Lock Jaw makes Bite land for 6+2");
+
+// ---------------------------------------------------------------------
 // Floor 1 fight (as Koozie), traced through the key mechanics.
 // ---------------------------------------------------------------------
 const state = Engine.createGameState(Content, rng);
@@ -86,26 +110,29 @@ assert.strictEqual(state.enemies[0].typeId, "alleyCat");
 assert.strictEqual(state.enemies[0].hp, 14);
 assert.deepStrictEqual(
   state.hand,
-  ["bite", "fetch", "goodBoy", "secondWind", "guardDog"],
-  "Koozie's deterministic opening hand"
+  ["riptide", "counterSurge", "counterSurge", "brace", "brace"],
+  "Koozie's deterministic opening hand (its own block-heavy deck)"
 );
+assert.strictEqual(state.player.block, 4, "Waterproof: Koozie opens the turn already holding 4 Block");
 assert.strictEqual(state.enemies[0].currentIntent.type, "attack", "the cat telegraphs before the player acts");
 
 const cat = state.enemies[0];
-Engine.playCard(state, Content, 0, null, rng); // Bite -> cat
-assert.strictEqual(cat.hp, 8);
+Engine.playCard(state, Content, 3, null, rng); // Brace -> +8 Block (hand: riptide, counterSurge, counterSurge, brace)
+assert.strictEqual(state.player.block, 12);
 assert.strictEqual(state.player.energy, 2);
 
-Engine.playCard(state, Content, 1, null, rng); // Good Boy -> +1 energy (hand: fetch, goodBoy, secondWind, guardDog)
-assert.strictEqual(state.player.energy, 3);
-
-Engine.playCard(state, Content, 2, null, rng); // Guard Dog -> +10 Block, costs 2 (hand: fetch, secondWind, guardDog)
-assert.strictEqual(state.player.block, 10);
+Engine.playCard(state, Content, 3, null, rng); // Brace -> +8 Block (hand: riptide, counterSurge, counterSurge)
+assert.strictEqual(state.player.block, 20);
 assert.strictEqual(state.player.energy, 1);
 
+Engine.playCard(state, Content, 0, null, rng); // Riptide -> 5 dmg + 5 Block
+assert.strictEqual(cat.hp, 9, "Riptide deals 5 (Koozie has no Strength bonus)");
+assert.strictEqual(state.player.block, 25);
+assert.strictEqual(state.player.energy, 0);
+
 Engine.endPlayerTurn(state, Content, rng);
-assert.strictEqual(state.player.hp, 32, "10 Block fully absorbed the telegraphed Attack 6");
-assert.strictEqual(state.player.block, 0, "Block resets at the next turn");
+assert.strictEqual(state.player.hp, 32, "25 Block swallowed the telegraphed Attack whole");
+assert.strictEqual(state.player.block, 4, "Block resets, then Waterproof re-applies its 4 next turn");
 assert.strictEqual(state.player.energy, 3);
 
 playOutCombat(state, Content); // finish the cat
@@ -153,10 +180,10 @@ assert.strictEqual(swarm.status, "reward");
 // Single-target still needs an explicit target with multiple enemies alive.
 // ---------------------------------------------------------------------
 const multi = Engine.createGameState(swarmContent, rng);
-Engine.chooseClass(multi, swarmContent, "koozie", rng);
+Engine.chooseClass(multi, swarmContent, "koozie", rng); // no Strength, so Bite is a clean 6
 Engine.chooseNode(multi, swarmContent, 0, rng);
-const biteIdx = multi.hand.indexOf("bite");
-assert.ok(biteIdx >= 0);
+multi.hand.unshift("bite"); // hand a single-target attack directly, regardless of deck order
+const biteIdx = 0;
 assert.throws(() => Engine.playCard(multi, swarmContent, biteIdx, null, rng), /Must specify a target/);
 const first = multi.enemies[1];
 Engine.playCard(multi, swarmContent, biteIdx, first.id, rng);

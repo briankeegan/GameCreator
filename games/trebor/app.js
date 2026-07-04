@@ -107,6 +107,11 @@
   const overlayTitleEl = document.getElementById("runOverlayTitle");
   const overlayBodyEl = document.getElementById("runOverlayBody");
   const restartBtn = document.getElementById("restartBtn");
+  const deckBtn = document.getElementById("deckBtn");
+  const deckOverlayEl = document.getElementById("deckOverlay");
+  const deckCardsEl = document.getElementById("deckCards");
+  const deckCountEl = document.getElementById("deckCount");
+  const deckCloseBtn = document.getElementById("deckCloseBtn");
 
   let state = null;
   let selectedHandIndex = null; // hand index currently armed, awaiting an enemy tap
@@ -150,6 +155,7 @@
       <span class="class-hp">${cls.maxHp} Hull</span>
       <span class="class-breed">${cls.breed}</span>
       <span class="class-blurb">${cls.blurb}</span>
+      ${cls.mechanic ? `<span class="class-mechanic"><strong>${cls.mechanic.name}</strong> — ${cls.mechanic.text}</span>` : ""}
     `;
     el.addEventListener("click", () => onChooseClass(classId));
     return el;
@@ -402,8 +408,10 @@
     const selecting = state.status === "class-select";
     hudEl.hidden = selecting;
     classSelectEl.hidden = !selecting;
+    deckBtn.hidden = selecting || !state.classId;
     if (selecting) {
       overlayEl.hidden = true;
+      deckOverlayEl.hidden = true;
       nodeChoiceEl.hidden = true;
       rewardScreenEl.hidden = true;
       battlefieldEl.hidden = true;
@@ -492,6 +500,41 @@
     }
   }
 
+  // Deck viewer: a read-only look at every card you're running, grouped by
+  // card with a ×count, sorted by energy cost then name.
+  function openDeck() {
+    if (!state || !state.deck.length) return;
+    const counts = {};
+    for (const id of state.deck) counts[id] = (counts[id] || 0) + 1;
+    const ids = Object.keys(counts).sort((a, b) => {
+      const ca = Content.CARDS[a];
+      const cb = Content.CARDS[b];
+      return ca.cost - cb.cost || ca.name.localeCompare(cb.name);
+    });
+    deckCountEl.textContent = state.deck.length + " cards";
+    deckCardsEl.innerHTML = "";
+    for (const id of ids) {
+      const card = Content.CARDS[id];
+      const wrap = document.createElement("div");
+      wrap.className = "deck-card-wrap";
+      const el = document.createElement("div");
+      el.className = "card " + cardTypeClass(card);
+      el.innerHTML = cardFrameHtml(card);
+      wrap.appendChild(el);
+      if (counts[id] > 1) {
+        const badge = document.createElement("span");
+        badge.className = "deck-card-count";
+        badge.textContent = "×" + counts[id];
+        wrap.appendChild(badge);
+      }
+      deckCardsEl.appendChild(wrap);
+    }
+    deckOverlayEl.hidden = false;
+  }
+  function closeDeck() {
+    deckOverlayEl.hidden = true;
+  }
+
   function showOverlay(title, body) {
     overlayTitleEl.textContent = title;
     overlayBodyEl.textContent = body;
@@ -502,6 +545,11 @@
   skipRewardBtn.addEventListener("click", () => onPickReward(null));
   skipBossRewardBtn.addEventListener("click", () => onPickBossReward(null));
   restartBtn.addEventListener("click", newRun);
+  deckBtn.addEventListener("click", openDeck);
+  deckCloseBtn.addEventListener("click", closeDeck);
+  deckOverlayEl.addEventListener("click", (e) => {
+    if (e.target === deckOverlayEl) closeDeck();
+  });
 
   newRun();
 })();
