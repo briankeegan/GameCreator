@@ -10,13 +10,26 @@
 
   const NODE_ICON = { fight: "⚔️", elite: "💀", rest: "🔥" };
 
-  function cardIcon(card) {
-    if (card.aoe) return "💥";
-    if (card.damage) return "🐾";
-    if (card.block) return "🛡️";
-    if (card.energy) return "⚡";
-    if (card.draw) return "👃";
-    return "❓";
+  // Card art is hand-drawn inline SVG (stroke/fill: currentColor, themed via
+  // the .card-attack/-block/-utility color set in CSS) — no emoji glyphs.
+  const CARD_ICONS = {
+    claw: '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 4 L10 20"/><path d="M9 3 L15 21"/><path d="M14 4 L20 18"/></svg>',
+    burst:
+      '<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor"><path d="M12 2 L14 9 L21 7 L15.5 12 L21 17 L14 15 L12 22 L10 15 L3 17 L8.5 12 L3 7 L10 9 Z"/></svg>',
+    shield:
+      '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 L19 6 V11 C19 16 16 19.5 12 21 C8 19.5 5 16 5 11 V6 Z"/></svg>',
+    bolt: '<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor"><path d="M13 2 L4 14 H11 L10 22 L20 9 H13 Z"/></svg>',
+    search:
+      '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10" cy="10" r="6"/><path d="M15 15 L21 21"/></svg>',
+  };
+
+  function cardIconKey(card) {
+    if (card.aoe) return "burst";
+    if (card.damage) return "claw";
+    if (card.block) return "shield";
+    if (card.energy) return "bolt";
+    if (card.draw) return "search";
+    return "claw";
   }
 
   const gameAreaEl = document.getElementById("gameArea");
@@ -168,7 +181,7 @@
   function cardFrameHtml(card) {
     return `
       <span class="card-cost">${card.cost}</span>
-      <span class="card-art">${cardIcon(card)}</span>
+      <span class="card-art">${CARD_ICONS[cardIconKey(card)]}</span>
       <span class="card-name">${card.name}</span>
       <span class="card-text">${card.text}</span>
     `;
