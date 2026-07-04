@@ -1,7 +1,7 @@
-/* Delete/replace everything below — this is just enough to prove the page
-   works. The header bar and install banner above are shared styling (see
-   ../../shared/nav.css) — leave those alone unless you mean to restyle
-   every game at once. */
+/* Step in the Cat — a carpeted-staircase strategy board. Palette pulled
+   straight from the reference photo: dusty-blue stairwell wall, warm taupe
+   carpet, black iron railing. The header bar and install banner are shared
+   styling (../../shared/nav.css) — leave those alone. */
 
 * { box-sizing: border-box; }
 
@@ -10,13 +10,237 @@ html, body {
   padding: 0;
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #faf8ef;
-  color: #2f3b52;
+  background: linear-gradient(180deg, #6a8a9c 0%, #567685 55%, #45606d 100%);
+  color: #f4efe6;
+  -webkit-user-select: none;
+  user-select: none;
+  overflow: hidden;
 }
 
 .game-area {
-  padding: 24px 16px;
+  position: absolute;
+  top: 52px; /* under the shared nav bar */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  gap: 8px;
+}
+
+/* ---- HUD -------------------------------------------------------------- */
+.hud {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+}
+.stat {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 4px;
+  background: rgba(20, 30, 36, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+}
+.stat-label {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+}
+.stat-value {
+  font-size: 1.05rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.ticker {
+  flex: 0 0 auto;
+  margin: 0;
+  min-height: 1.2em;
   text-align: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #ffe9c9;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* ---- Board ------------------------------------------------------------ */
+.board-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.board {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--cell, 48px));
+  grid-template-rows: repeat(var(--rows), var(--cell, 48px));
+  gap: 3px;
+  padding: 6px;
+  border-radius: 12px;
+  background: #2a2320;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45), inset 0 0 0 2px #14100e;
+}
+
+/* Each step: warm taupe carpet with a lighter front lip so the grid reads
+   as a flight of stairs seen from above. */
+.cell {
+  position: relative;
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 22%),
+    linear-gradient(180deg, #b7a894 0%, #a2917c 100%);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  overflow: hidden;
+}
+.cell-alt {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 22%),
+    linear-gradient(180deg, #b2a38f 0%, #9c8b76 100%);
+}
+.cell-exit {
+  background: radial-gradient(circle at 50% 42%, #f6d79a 0%, #caa864 60%, #7c6438 100%);
+  box-shadow: inset 0 0 0 2px #f0c674, 0 0 14px rgba(240, 198, 116, 0.5);
+}
+
+/* The cat's telegraph: a red paw-ghost on the step it's about to take,
+   pulsing so it reads as "danger next turn" at a glance. */
+.cell-telegraph { box-shadow: inset 0 0 0 2px rgba(214, 66, 54, 0.9); }
+.telegraph {
+  position: absolute;
+  inset: 14%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: pulse 1s ease-in-out infinite;
+}
+.telegraph .paw { width: 100%; height: 100%; fill: rgba(214, 66, 54, 0.55); }
+@keyframes pulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.9); }
+  50% { opacity: 0.9; transform: scale(1.05); }
+}
+
+.door { width: 78%; height: 78%; position: absolute; inset: 11%; }
+
+/* Tokens: generated PNG sprites, isolated on transparent, dropped into the
+   step. Cat looms largest; player and pins a touch smaller. */
+.tok {
+  position: absolute;
+  inset: 8%;
+  width: 84%;
+  height: 84%;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+}
+.tok.cat { inset: 2%; width: 96%; height: 96%; z-index: 3; }
+.tok.player { inset: 6%; width: 88%; height: 88%; z-index: 2; }
+.tok.pin { inset: 18%; width: 64%; height: 64%; z-index: 1; animation: bob 2.4s ease-in-out infinite; }
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8%); }
+}
+
+.board.shake { animation: shake 0.4s ease; }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px) rotate(-1deg); }
+  40% { transform: translateX(7px) rotate(1deg); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(5px); }
+}
+
+.level-flash {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+.level-flash.show { animation: flash 0.9s ease forwards; }
+@keyframes flash {
+  0% { opacity: 0; transform: scale(0.6); }
+  25% { opacity: 1; transform: scale(1.05); }
+  70% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.1); }
+}
+
+/* ---- Controls: d-pad + wait ------------------------------------------ */
+.controls {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 60px);
+  grid-template-rows: repeat(3, 46px);
+  gap: 6px;
+  justify-content: center;
+  align-self: center;
+}
+.dpad-btn {
+  border: none;
+  border-radius: 12px;
+  background: rgba(20, 30, 36, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #f4efe6;
+  font-size: 1.2rem;
+  font-weight: 800;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.dpad-btn:active { background: rgba(240, 198, 116, 0.35); transform: scale(0.94); }
+.dpad-up { grid-area: 1 / 2; }
+.dpad-left { grid-area: 2 / 1; }
+.dpad-wait { grid-area: 2 / 2; font-size: 0.66rem; letter-spacing: 0.05em; }
+.dpad-right { grid-area: 2 / 3; }
+.dpad-down { grid-area: 3 / 2; }
+
+/* ---- Game-over overlay ------------------------------------------------ */
+.run-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 14, 18, 0.72);
+  backdrop-filter: blur(3px);
+}
+.run-overlay[hidden] { display: none; }
+.run-overlay-card {
+  width: min(84vw, 340px);
+  padding: 22px 20px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, #35505c 0%, #22343c 100%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  text-align: center;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+}
+.run-overlay-card h2 { margin: 0 0 8px; font-size: 1.3rem; }
+.run-overlay-card p { margin: 0 0 18px; font-size: 0.92rem; opacity: 0.85; }
+.run-overlay-card button {
+  background: #f0c674;
+  color: #3a2a1a;
+  border: none;
+  font-weight: 800;
+  font-size: 1rem;
+  padding: 11px 26px;
+  border-radius: 10px;
+  cursor: pointer;
 }
 
 /* ---- shared install banner (leave as-is; every game gets this) ---- */

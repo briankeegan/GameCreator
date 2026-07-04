@@ -1,4 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="32" fill="#2f3b52"/>
-  <rect x="48" y="48" width="96" height="96" rx="16" fill="#f2b179"/>
+  <rect width="192" height="192" rx="32" fill="#567685"/>
+  <!-- staircase, seen from the side -->
+  <g fill="#b7a894">
+    <rect x="24" y="128" width="144" height="40"/>
+    <rect x="52" y="104" width="116" height="24"/>
+    <rect x="80" y="80" width="88" height="24"/>
+    <rect x="108" y="56" width="60" height="24"/>
+  </g>
+  <g fill="#9c8b76">
+    <rect x="24" y="128" width="144" height="7"/>
+    <rect x="52" y="104" width="116" height="7"/>
+    <rect x="80" y="80" width="88" height="7"/>
+    <rect x="108" y="56" width="60" height="7"/>
+  </g>
+  <!-- cat paw print on the stairs -->
+  <g fill="#1c1c1c">
+    <ellipse cx="70" cy="150" rx="16" ry="12"/>
+    <ellipse cx="52" cy="132" rx="6.5" ry="8.5"/>
+    <ellipse cx="70" cy="124" rx="7" ry="9"/>
+    <ellipse cx="88" cy="132" rx="6.5" ry="8.5"/>
+  </g>
 </svg>

@@ -23,9 +23,9 @@
     },
     {
       "id": "trace",
-      "name": "Trace",
-      "tagline": "I dont like A",
-      "themeColor": "#2f3b52",
+      "name": "Step in the Cat",
+      "tagline": "Climb the stairs, grab the pins, don't step on the cat.",
+      "themeColor": "#5a7a8c",
       "icon": "games/trace/icons/icon.svg"
     },
     {

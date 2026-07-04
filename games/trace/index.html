@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <title>Trace</title>
-  <meta name="theme-color" content="#2f3b52" />
+  <title>Step in the Cat</title>
+  <meta name="theme-color" content="#5a7a8c" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Trace" />
+  <meta name="apple-mobile-web-app-title" content="Step in the Cat" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon.svg" />
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
@@ -19,7 +19,35 @@
   <!-- Header (All Games / title / chat) is injected by nav.js below. -->
 
   <main class="game-area" id="gameArea">
-    <p>Your game goes here.</p>
+    <div class="hud" id="hud">
+      <div class="stat"><span class="stat-label">Level</span><span class="stat-value" id="levelValue">1</span></div>
+      <div class="stat"><span class="stat-label">Pins</span><span class="stat-value" id="pinsValue">0/0</span></div>
+      <div class="stat"><span class="stat-label">Score</span><span class="stat-value" id="scoreValue">0</span></div>
+      <div class="stat"><span class="stat-label">Best</span><span class="stat-value" id="bestValue">0</span></div>
+    </div>
+
+    <p class="ticker" id="ticker">Reach the door — grab your pins, mind the cat.</p>
+
+    <div class="board-wrap">
+      <div class="board" id="board"></div>
+      <div class="level-flash" id="levelFlash" hidden></div>
+    </div>
+
+    <div class="controls" id="controls">
+      <button class="dpad-btn dpad-up" id="btnUp" aria-label="Up">▲</button>
+      <button class="dpad-btn dpad-left" id="btnLeft" aria-label="Left">◄</button>
+      <button class="dpad-btn dpad-wait" id="btnWait" aria-label="Wait">WAIT</button>
+      <button class="dpad-btn dpad-right" id="btnRight" aria-label="Right">►</button>
+      <button class="dpad-btn dpad-down" id="btnDown" aria-label="Down">▼</button>
+    </div>
+
+    <div class="run-overlay" id="runOverlay" hidden>
+      <div class="run-overlay-card">
+        <h2 id="overlayTitle">You stepped on the cat!</h2>
+        <p id="overlayBody"></p>
+        <button id="restartBtn">New Run</button>
+      </div>
+    </div>
   </main>
 
   <div class="install-banner" id="installBanner">
@@ -34,10 +62,11 @@
 
   <script src="../../shared/nav.js"
           data-game-id="trace"
-          data-game-name="Trace"
+          data-game-name="Step in the Cat"
           data-version="v1"
           data-root="../../"></script>
   <script src="../../shared/storage.js"></script>
+  <script src="engine.js"></script>
   <script src="app.js"></script>
   <script src="../../shared/pwa.js" data-sw="sw.js"></script>
 </body>

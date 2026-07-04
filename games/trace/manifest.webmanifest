@@ -1,11 +1,11 @@
 {
-  "name": "Trace",
-  "short_name": "Trace",
+  "name": "Step in the Cat",
+  "short_name": "Step in Cat",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#faf8ef",
-  "theme_color": "#2f3b52",
+  "background_color": "#567685",
+  "theme_color": "#5a7a8c",
   "icons": [
     { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
   ]
