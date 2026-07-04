@@ -1,0 +1,7 @@
+{
+  "camera": "Single character portrait, standing upright in a confident combat-ready pose, facing the viewer at a slight three-quarter angle, full body centered and filling most of the frame with a little headroom.",
+  "style": "Stylized low-poly 3D render — angular faceted planes of flat color with crisp hard-edged light and shadow, clean strong silhouette, dramatic rim lighting, a game hero-unit / concept-art look (not photoreal, not painterly-soft). Anthropomorphic armored warrior animal wearing sci-fi plate armor (pauldrons, chest plate with a small glowing core, gauntlets, utility belt) and carrying a weapon.",
+  "palette": "Grounded, slightly desaturated fur tones with battle-worn metal armor in cool gunmetal, and one saturated glowing accent color (energy blade / core / eyes). Reads clearly against a dark UI.",
+  "background": "Plain, near-solid very dark charcoal background with only a faint soft radial glow behind the character — no scenery, no props, no ground plane, nothing else — so the character cuts out cleanly as a sprite at small sizes.",
+  "constraints": "Exactly one character, centered. No text, no logos, no watermarks, no UI elements, no labels, no callout lines, no drop shadow outside the subject, no border."
+}
