@@ -318,124 +318,173 @@ function drawCracks(size, hpFrac, seed) {
   ctx.restore();
 }
 
-// The flagship: a sleek warm-gold fighter with twin gunmetal wings and a
-// bright cyan engine core (thrustFrac > 0 while it's actually mid-move).
-function drawPlayerShip(size, thrustFrac, hpFrac) {
-  ctx.save();
+// A detailed top-down fighter, authored nose-right (+x). Layered hull, swept
+// wings with accent stripes and panel lines, a cockpit canopy with a glint,
+// and twin engine nozzles that flare on thrust — styled after the reference
+// sprite art. `pal` is the colorway (flagship gold, Interceptor purple).
+function lgrad(x0, y0, x1, y1, stops) {
+  const g = ctx.createLinearGradient(x0, y0, x1, y1);
+  for (const [o, c] of stops) g.addColorStop(o, c);
+  return g;
+}
 
-  if (thrustFrac > 0) {
-    const flame = ctx.createLinearGradient(-size * 0.55, 0, -size * (1.1 + 0.5 * thrustFrac), 0);
-    flame.addColorStop(0, `rgba(200,240,255,${0.85 * thrustFrac})`);
-    flame.addColorStop(1, "rgba(80,180,230,0)");
-    ctx.fillStyle = flame;
+function drawFighter(size, thrust, pal) {
+  const s = size;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+
+  if (thrust > 0) {
+    ctx.fillStyle = lgrad(-s * 0.7, 0, -s * (1.5 + thrust), 0, [[0, pal.flame], [1, "rgba(0,0,0,0)"]]);
     ctx.beginPath();
-    ctx.moveTo(-size * 0.5, -size * 0.13);
-    ctx.lineTo(-size * (1.1 + 0.5 * thrustFrac), 0);
-    ctx.lineTo(-size * 0.5, size * 0.13);
+    ctx.moveTo(-s * 0.62, -s * 0.18);
+    ctx.lineTo(-s * (1.5 + thrust * 0.7), 0);
+    ctx.lineTo(-s * 0.62, s * 0.18);
     ctx.closePath();
     ctx.fill();
   }
 
-  // Wings first (they sit behind the fuselage).
-  ctx.fillStyle = "#3d4756";
-  ctx.beginPath();
-  ctx.moveTo(-size * 0.08, -size * 0.22);
-  ctx.lineTo(-size * 0.78, -size * 0.58);
-  ctx.lineTo(-size * 0.5, -size * 0.15);
-  ctx.closePath();
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(-size * 0.08, size * 0.22);
-  ctx.lineTo(-size * 0.78, size * 0.58);
-  ctx.lineTo(-size * 0.5, size * 0.15);
-  ctx.closePath();
-  ctx.fill();
+  // Swept wings (behind the fuselage), each with an accent stripe + panel line.
+  const wing = (dir) => {
+    ctx.beginPath();
+    ctx.moveTo(s * 0.34, dir * s * 0.2);
+    ctx.lineTo(-s * 0.5, dir * s * 1.02);
+    ctx.lineTo(-s * 0.74, dir * s * 0.98);
+    ctx.lineTo(-s * 0.45, dir * s * 0.34);
+    ctx.lineTo(-s * 0.05, dir * s * 0.2);
+    ctx.closePath();
+    ctx.fillStyle = pal.wing;
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, s * 0.05);
+    ctx.strokeStyle = pal.outline;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(s * 0.05, dir * s * 0.26);
+    ctx.lineTo(-s * 0.48, dir * s * 0.9);
+    ctx.lineTo(-s * 0.6, dir * s * 0.88);
+    ctx.lineTo(-s * 0.12, dir * s * 0.3);
+    ctx.closePath();
+    ctx.fillStyle = pal.accent;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.02, dir * s * 0.34);
+    ctx.lineTo(-s * 0.5, dir * s * 0.9);
+    ctx.strokeStyle = pal.panel;
+    ctx.lineWidth = Math.max(0.5, s * 0.028);
+    ctx.stroke();
+  };
+  wing(1);
+  wing(-1);
 
-  const bodyGrad = ctx.createLinearGradient(-size * 0.55, -size * 0.3, size * 0.95, size * 0.3);
-  bodyGrad.addColorStop(0, "#8a5a2e");
-  bodyGrad.addColorStop(0.55, "#e08a3e");
-  bodyGrad.addColorStop(1, "#ffd9a0");
+  // Lower hull layer, showing at the edges for depth.
   ctx.beginPath();
-  ctx.moveTo(size * 0.95, 0);
-  ctx.lineTo(size * 0.25, -size * 0.28);
-  ctx.lineTo(-size * 0.35, -size * 0.22);
-  ctx.lineTo(-size * 0.55, -size * 0.09);
-  ctx.lineTo(-size * 0.55, size * 0.09);
-  ctx.lineTo(-size * 0.35, size * 0.22);
-  ctx.lineTo(size * 0.25, size * 0.28);
+  ctx.moveTo(s * 1.02, 0);
+  ctx.lineTo(s * 0.2, -s * 0.42);
+  ctx.lineTo(-s * 0.62, -s * 0.32);
+  ctx.lineTo(-s * 0.62, s * 0.32);
+  ctx.lineTo(s * 0.2, s * 0.42);
   ctx.closePath();
-  ctx.fillStyle = bodyGrad;
+  ctx.fillStyle = pal.underhull;
   ctx.fill();
-  ctx.lineWidth = Math.max(1, size * 0.045);
-  ctx.strokeStyle = "#2a1a0d";
+  ctx.lineWidth = Math.max(1, s * 0.05);
+  ctx.strokeStyle = pal.outline;
   ctx.stroke();
 
-  // Cockpit.
-  ctx.fillStyle = "#bfe3ff";
+  // Main fuselage (top plate).
   ctx.beginPath();
-  ctx.ellipse(size * 0.35, 0, size * 0.13, size * 0.085, 0, 0, Math.PI * 2);
+  ctx.moveTo(s * 0.98, 0);
+  ctx.lineTo(s * 0.28, -s * 0.3);
+  ctx.lineTo(-s * 0.5, -s * 0.24);
+  ctx.lineTo(-s * 0.58, -s * 0.12);
+  ctx.lineTo(-s * 0.58, s * 0.12);
+  ctx.lineTo(-s * 0.5, s * 0.24);
+  ctx.lineTo(s * 0.28, s * 0.3);
+  ctx.closePath();
+  ctx.fillStyle = lgrad(-s * 0.5, -s * 0.3, s, s * 0.3, pal.body);
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, s * 0.045);
+  ctx.strokeStyle = pal.outline;
+  ctx.stroke();
+
+  // Nose accent.
+  ctx.beginPath();
+  ctx.moveTo(s * 0.96, 0);
+  ctx.lineTo(s * 0.45, -s * 0.12);
+  ctx.lineTo(s * 0.45, s * 0.12);
+  ctx.closePath();
+  ctx.fillStyle = pal.accent;
   ctx.fill();
 
-  // Engine glow.
-  const glow = ctx.createRadialGradient(-size * 0.5, 0, 0, -size * 0.5, 0, size * (0.24 + 0.1 * thrustFrac));
-  glow.addColorStop(0, "rgba(190,245,255,0.95)");
-  glow.addColorStop(0.55, "rgba(70,180,230,0.55)");
-  glow.addColorStop(1, "rgba(70,180,230,0)");
-  ctx.fillStyle = glow;
+  // Panel lines.
+  ctx.strokeStyle = pal.panel;
+  ctx.lineWidth = Math.max(0.5, s * 0.028);
   ctx.beginPath();
-  ctx.arc(-size * 0.5, 0, size * (0.24 + 0.1 * thrustFrac), 0, Math.PI * 2);
+  ctx.moveTo(s * 0.2, -s * 0.24);
+  ctx.lineTo(-s * 0.45, -s * 0.18);
+  ctx.moveTo(s * 0.2, s * 0.24);
+  ctx.lineTo(-s * 0.45, s * 0.18);
+  ctx.moveTo(s * 0.05, -s * 0.2);
+  ctx.lineTo(s * 0.05, s * 0.2);
+  ctx.stroke();
+
+  // Cockpit canopy with a glint.
+  ctx.beginPath();
+  ctx.ellipse(s * 0.34, 0, s * 0.2, s * 0.13, 0, 0, Math.PI * 2);
+  ctx.fillStyle = pal.outline;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(s * 0.36, 0, s * 0.15, s * 0.09, 0, 0, Math.PI * 2);
+  ctx.fillStyle = lgrad(s * 0.2, -s * 0.1, s * 0.5, s * 0.1, pal.glass);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(s * 0.4, -s * 0.02, s * 0.06, s * 0.035, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
   ctx.fill();
 
+  // Twin engine nozzles + glow.
+  for (const dy of [-s * 0.16, s * 0.16]) {
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(-s * 0.66, dy - s * 0.08, s * 0.16, s * 0.16, s * 0.03);
+    else ctx.rect(-s * 0.66, dy - s * 0.08, s * 0.16, s * 0.16);
+    ctx.fillStyle = pal.underhull;
+    ctx.fill();
+    ctx.lineWidth = Math.max(0.5, s * 0.03);
+    ctx.strokeStyle = pal.outline;
+    ctx.stroke();
+    const r = s * (0.13 + 0.05 * thrust);
+    const gl = ctx.createRadialGradient(-s * 0.6, dy, 0, -s * 0.6, dy, r);
+    gl.addColorStop(0, pal.glow0);
+    gl.addColorStop(0.5, pal.glow1);
+    gl.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = gl;
+    ctx.beginPath();
+    ctx.arc(-s * 0.6, dy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+const FLAGSHIP_PAL = {
+  body: [[0, "#8a5320"], [0.5, "#e0862e"], [1, "#ffd08a"]],
+  underhull: "#5a3a1c", wing: "#c47526", accent: "#e0533f", panel: "rgba(60,30,8,0.5)",
+  glass: [[0, "#173a5c"], [1, "#8fd3ff"]], outline: "#2a1808",
+  glow0: "rgba(190,245,255,0.95)", glow1: "rgba(70,180,230,0.5)", flame: "rgba(150,220,255,0.9)",
+};
+const ENEMY_PAL = {
+  body: [[0, "#2a1030"], [0.5, "#5c2168"], [1, "#8b3a86"]],
+  underhull: "#1a0a20", wing: "#7a1f4f", accent: "#e0533f", panel: "rgba(10,4,16,0.5)",
+  glass: [[0, "#3a1030"], [1, "#ff8a9a"]], outline: "#0c0512",
+  glow0: "rgba(255,150,120,0.95)", glow1: "rgba(200,50,40,0.55)", flame: "rgba(255,120,90,0.9)",
+};
+
+function drawPlayerShip(size, thrustFrac, hpFrac) {
+  ctx.save();
+  drawFighter(size, thrustFrac, FLAGSHIP_PAL);
   drawCracks(size, hpFrac, "player");
   ctx.restore();
 }
 
-// An Interceptor: a dark, angular hostile drone with a glowing red core and
-// bladed wings, oriented to always point at the flagship.
 function drawEnemyShip(size, hpFrac, crackSeed) {
   ctx.save();
-
-  ctx.fillStyle = "#5c2f6e";
-  ctx.beginPath();
-  ctx.moveTo(-size * 0.05, -size * 0.16);
-  ctx.lineTo(-size * 0.62, -size * 0.55);
-  ctx.lineTo(-size * 0.35, -size * 0.1);
-  ctx.closePath();
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(-size * 0.05, size * 0.16);
-  ctx.lineTo(-size * 0.62, size * 0.55);
-  ctx.lineTo(-size * 0.35, size * 0.1);
-  ctx.closePath();
-  ctx.fill();
-
-  const bodyGrad = ctx.createLinearGradient(-size * 0.55, 0, size * 0.7, 0);
-  bodyGrad.addColorStop(0, "#150a1c");
-  bodyGrad.addColorStop(0.55, "#3d2050");
-  bodyGrad.addColorStop(1, "#6b3782");
-  ctx.beginPath();
-  ctx.moveTo(size * 0.7, 0);
-  ctx.lineTo(-size * 0.2, -size * 0.48);
-  ctx.lineTo(-size * 0.55, -size * 0.16);
-  ctx.lineTo(-size * 0.55, size * 0.16);
-  ctx.lineTo(-size * 0.2, size * 0.48);
-  ctx.closePath();
-  ctx.fillStyle = bodyGrad;
-  ctx.fill();
-  ctx.lineWidth = Math.max(1, size * 0.045);
-  ctx.strokeStyle = "#0a0512";
-  ctx.stroke();
-
-  // Glowing hostile core.
-  const core = ctx.createRadialGradient(size * 0.12, 0, 0, size * 0.12, 0, size * 0.22);
-  core.addColorStop(0, "rgba(255,130,100,0.95)");
-  core.addColorStop(0.6, "rgba(200,50,40,0.6)");
-  core.addColorStop(1, "rgba(200,50,40,0)");
-  ctx.fillStyle = core;
-  ctx.beginPath();
-  ctx.arc(size * 0.12, 0, size * 0.22, 0, Math.PI * 2);
-  ctx.fill();
-
+  drawFighter(size, 0, ENEMY_PAL);
   drawCracks(size, hpFrac, crackSeed);
   ctx.restore();
 }
@@ -621,7 +670,7 @@ function draw() {
     ctx.save();
     ctx.translate(center.x, center.y);
     ctx.rotate((angleToward(enemy, state.playerPos) * Math.PI) / 180);
-    drawEnemyShip(geom.sx * 0.62, enemy.hp / enemy.maxHp, enemy.id);
+    drawEnemyShip(geom.sx * 0.46, enemy.hp / enemy.maxHp, enemy.id);
     ctx.restore();
   }
 
@@ -649,7 +698,7 @@ function draw() {
     ctx.save();
     ctx.translate(shipCenter.x, shipCenter.y);
     ctx.rotate((shipAngle * Math.PI) / 180);
-    drawPlayerShip(geom.sx * 0.72, pslide ? 1 - Math.abs(animProgress(pslide, now) - 0.5) * 2 : 0, state.hull / state.maxHull);
+    drawPlayerShip(geom.sx * 0.52, pslide ? 1 - Math.abs(animProgress(pslide, now) - 0.5) * 2 : 0, state.hull / state.maxHull);
     ctx.restore();
   }
 
