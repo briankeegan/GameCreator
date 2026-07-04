@@ -27,6 +27,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # dispatch pages.yml so the new image actually deploys
 
 jobs:
   generate:
@@ -73,10 +74,19 @@ jobs:
             exit 1
           fi
 
-      - name: Commit and push
+      - name: Commit, push, and deploy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "${{ inputs.output_path }}"
-          git commit -m "Generate image: ${{ inputs.prompt }}" || echo "Nothing to commit"
-          git push
+          if git commit -m "Generate image: ${{ inputs.prompt }}"; then
+            git push
+            # A GITHUB_TOKEN push does not trigger Pages (recursion prevention),
+            # so dispatch the deploy explicitly — workflow_dispatch is the
+            # documented exception that DOES fire from GITHUB_TOKEN.
+            gh workflow run pages.yml --ref main
+          else
+            echo "Nothing to commit — skipping deploy"
+          fi
