@@ -372,17 +372,16 @@ assert.ok(
   "every hex an omnidirectional range-1 weapon reaches is exactly 1 hex away"
 );
 
-// The Impulse Cannon's forward-only pattern only ever reaches the single hex
-// directly ahead of the current facing, regardless of range-1 neighbors on
-// every other side.
+// The Impulse Cannon fires a forward 3-way spread — dead ahead plus the two
+// hexes flanking it (front-left and front-right) — and never the rear arc.
 const pulseCannon = Engine.WEAPONS.ram;
-assert.deepStrictEqual(pulseCannon.pattern, [0], "the Impulse Cannon fires dead ahead only");
+assert.deepStrictEqual(pulseCannon.pattern, [0, 1, 5], "the Impulse Cannon fires front + front-left + front-right");
 for (let facing = 0; facing < 6; facing++) {
   const forwardHexes = Engine.weaponHexes(interceptorPos, facing, pulseCannon);
   assert.deepStrictEqual(
     forwardHexes,
-    [Engine.neighbor(interceptorPos, facing)],
-    `facing ${facing}, the Impulse Cannon only reaches the one hex dead ahead`
+    pulseCannon.pattern.map((off) => Engine.neighbor(interceptorPos, (facing + off) % 6)),
+    `facing ${facing}, the Impulse Cannon reaches the three forward hexes`
   );
 }
 

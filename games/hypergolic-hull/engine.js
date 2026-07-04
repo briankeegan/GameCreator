@@ -168,7 +168,7 @@
   // don't need a data-model change to add.
   const ALL_DIRECTIONS_PATTERN = [0, 1, 2, 3, 4, 5];
   const WEAPONS = {
-    ram: { id: "ram", label: "Impulse Cannon", range: 1, damage: 1, targets: "all", speed: 2, energyCost: 0, pattern: [0], slots: 1 },
+    ram: { id: "ram", label: "Impulse Cannon", range: 1, damage: 1, targets: "all", speed: 2, energyCost: 0, pattern: [0, 1, 5], slots: 1 },
     interceptorCannon: { id: "interceptorCannon", label: "Interceptor Cannon", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
   };
 

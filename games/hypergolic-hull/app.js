@@ -994,6 +994,8 @@ function updateSystems() {
 function describePattern(weapon) {
   if (weapon.pattern.length >= 6) return "all directions";
   if (weapon.pattern.length === 1 && weapon.pattern[0] === 0) return "forward only";
+  const set = new Set(weapon.pattern);
+  if (weapon.pattern.length === 3 && set.has(0) && set.has(1) && set.has(5)) return "forward + both sides";
   return `${weapon.pattern.length} directions`;
 }
 
