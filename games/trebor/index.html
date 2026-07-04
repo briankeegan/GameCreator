@@ -21,7 +21,7 @@
   <main class="game-area" id="gameArea">
     <div class="hud">
       <div class="hud-row">
-        <span class="room-label" id="roomLabel">Room 1 · Back Alley</span>
+        <span class="room-label" id="roomLabel"></span>
         <span class="best-label" id="bestLabel"></span>
       </div>
       <div class="hud-row">
@@ -35,9 +35,18 @@
       <p class="objective" id="objective"></p>
     </div>
 
-    <div class="battlefield" id="battlefield"></div>
+    <div class="node-choice" id="nodeChoice" hidden>
+      <div class="node-options" id="nodeOptions"></div>
+    </div>
 
-    <div class="console">
+    <div class="reward-screen" id="rewardScreen" hidden>
+      <div class="reward-options" id="rewardOptions"></div>
+      <button class="skip-btn" id="skipRewardBtn">Skip Reward</button>
+    </div>
+
+    <div class="battlefield" id="battlefield" hidden></div>
+
+    <div class="console" id="combatConsole" hidden>
       <div class="hand" id="hand"></div>
       <button class="end-turn-btn" id="endTurnBtn">End Turn</button>
     </div>
@@ -46,7 +55,6 @@
       <div class="run-overlay-card">
         <h2 id="runOverlayTitle"></h2>
         <p id="runOverlayBody"></p>
-        <button id="nextBtn" hidden>Next Room</button>
         <button id="restartBtn">New Run</button>
       </div>
     </div>

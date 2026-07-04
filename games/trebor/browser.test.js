@@ -1,8 +1,9 @@
-// browser.test.js — TREEBOAR's touch UI: the exact Room 1 golden path
+// browser.test.js — TREEBOAR's touch UI: the exact Floor 1 golden path
 // (mirroring engine.test.js's hand-traced sequence) driven through real
-// taps, then a generic tap-driven bot finishing the run through Rooms 2-4
-// (including the Room 3 multi-target flow) to confirm the whole loop works
-// end to end, plus loss + restart.
+// taps — node choice, combat, and the card reward screen — then a
+// tap-driven bot finishing the rest of the run (including an elite fight
+// and the boss) to confirm the whole loop works end to end, plus loss and
+// restart.
 //
 // Needs Playwright + a Chromium binary:
 //   NODE_PATH="$(npm root -g)" node games/trebor/browser.test.js
@@ -47,33 +48,57 @@ function getState(page) {
 }
 
 function cardTexts(page) {
-  return page.$$eval(".card .card-name", (els) => els.map((e) => e.textContent));
+  return page.$$eval("#hand .card .card-name", (els) => els.map((e) => e.textContent));
 }
 
-// Drives whatever room is currently active to completion using a simple
-// "play the first affordable card, targeting the first living enemy when a
-// target is required" strategy, then advances past room-clear. Used for
-// Rooms 2-4 once the precise Room 1 trace below has proven the primitives
-// work; this part just proves the whole loop (including multi-target taps)
-// converges to victory.
+// Drives the rest of the run to completion: rests when hurt, otherwise
+// fights (never the riskier elite); blocks when a hit is actually coming,
+// otherwise makes damage progress; always banks the first offered reward.
+// Same "sensible but not omniscient" strategy as engine.test.js's bot,
+// just issued as real taps instead of direct Engine calls.
 async function playUntil(page, targetStatuses) {
-  for (let i = 0; i < 500; i++) {
+  for (let i = 0; i < 800; i++) {
     const status = await page.evaluate(() => window.__tbState.status);
     if (targetStatuses.includes(status)) return status;
-    if (status === "room-clear") {
-      await page.click("#nextBtn");
+
+    if (status === "choosing") {
+      const idx = await page.evaluate(() => {
+        const st = window.__tbState;
+        const hurt = st.player.hp < st.player.maxHp * 0.7;
+        const restIdx = st.nodeChoices.findIndex((o) => o.type === "rest");
+        const fightIdx = st.nodeChoices.findIndex((o) => o.type === "fight");
+        return hurt && restIdx !== -1 ? restIdx : fightIdx;
+      });
+      await (await page.$$(".node-option"))[idx].click();
       continue;
     }
+
+    if (status === "reward") {
+      await (await page.$$("#rewardOptions .reward-card"))[0].click();
+      continue;
+    }
+
+    // status === "playing"
     const info = await page.evaluate(() => {
       const st = window.__tbState;
       const Content = window.TreeboarContent;
       const Engine = window.TreeboarEngine;
-      let idx = -1;
+      const incoming = Engine.livingEnemies(st)
+        .filter((e) => e.currentIntent.type === "attack")
+        .reduce((sum, e) => sum + e.currentIntent.damage, 0);
+      const affordable = [];
       for (let i = 0; i < st.hand.length; i++) {
-        if (st.player.energy >= Content.CARDS[st.hand[i]].cost) {
-          idx = i;
-          break;
+        if (st.player.energy >= Content.CARDS[st.hand[i]].cost) affordable.push(i);
+      }
+      let idx = -1;
+      if (affordable.length > 0) {
+        if (incoming > st.player.block) {
+          idx = affordable.find((i) => Content.CARDS[st.hand[i]].block);
         }
+        if (idx === undefined || idx === -1) {
+          idx = affordable.find((i) => Content.CARDS[st.hand[i]].damage);
+        }
+        if (idx === undefined || idx === -1) idx = affordable[0];
       }
       if (idx === -1) return { action: "end" };
       const card = Content.CARDS[st.hand[idx]];
@@ -84,12 +109,12 @@ async function playUntil(page, targetStatuses) {
     if (info.action === "end") {
       await page.click("#endTurnBtn");
     } else {
-      const cards = await page.$$(".card");
+      const cards = await page.$$("#hand .card");
       await cards[info.idx].click();
       if (info.targetId) await page.click(`[data-enemy-id="${info.targetId}"]`);
     }
   }
-  throw new Error("run did not converge within 500 steps");
+  throw new Error("run did not converge within 800 steps");
 }
 
 (async () => {
@@ -112,45 +137,54 @@ async function playUntil(page, targetStatuses) {
   });
 
   await page.goto(`http://127.0.0.1:${port}/games/trebor/index.html`);
-  await page.waitForSelector(".card");
+  await page.waitForSelector(".node-option");
 
-  // ---- Room 1, traced exactly like engine.test.js's golden path ---------
+  // ---- Floor 1 node choice --------------------------------------------
+  let state = await getState(page);
+  assert.strictEqual(state.status, "choosing");
+  assert.deepStrictEqual(state.nodeChoices.map((o) => o.type), ["fight", "fight", "rest"]);
+  assert.strictEqual((await page.$$(".node-option")).length, 3);
+
+  await (await page.$$(".node-option"))[0].click(); // "Back Alley" — fight
+  await page.waitForTimeout(80);
+
+  // ---- Floor 1 combat, traced exactly like engine.test.js's golden path -
   assert.deepStrictEqual(
     await cardTexts(page),
     ["Bite", "Good Boy", "Guard Dog", "Pounce", "Fetch"],
     "opening hand matches the deterministic shuffle"
   );
-  let state = await getState(page);
+  state = await getState(page);
   assert.strictEqual(state.enemies.length, 1);
   assert.strictEqual(state.enemies[0].hp, 14);
   assert.ok(await page.locator(".enemy-intent").textContent(), "the cat's move is telegraphed up front");
 
-  await (await page.$$(".card"))[0].click(); // Bite -> the lone cat, auto-targeted
+  await (await page.$$("#hand .card"))[0].click(); // Bite -> the lone cat, auto-targeted
   await page.waitForTimeout(80);
   state = await getState(page);
   assert.strictEqual(state.enemies[0].hp, 8);
   assert.strictEqual(state.player.energy, 2);
 
-  await (await page.$$(".card"))[0].click(); // Good Boy -> +1 energy
+  await (await page.$$("#hand .card"))[0].click(); // Good Boy -> +1 energy
   await page.waitForTimeout(80);
   state = await getState(page);
   assert.strictEqual(state.player.energy, 3);
 
-  await (await page.$$(".card"))[0].click(); // Guard Dog -> +10 Block
+  await (await page.$$("#hand .card"))[0].click(); // Guard Dog -> +10 Block
   await page.waitForTimeout(80);
   state = await getState(page);
   assert.strictEqual(state.player.block, 10);
   assert.strictEqual(state.player.energy, 1);
   assert.deepStrictEqual(await cardTexts(page), ["Pounce", "Fetch"]);
 
-  const pounceCard = (await page.$$(".card"))[0];
+  const pounceCard = (await page.$$("#hand .card"))[0];
   assert.ok(await pounceCard.evaluate((el) => el.classList.contains("card-disabled")), "Pounce costs 2, only 1 energy left");
   await pounceCard.click(); // tapping a disabled card is a no-op
   await page.waitForTimeout(80);
   state = await getState(page);
   assert.strictEqual(state.player.energy, 1, "the disabled Pounce tap did nothing");
 
-  await (await page.$$(".card"))[1].click(); // Fetch -> cat for 3, draws a replacement
+  await (await page.$$("#hand .card"))[1].click(); // Fetch -> cat for 3, draws a replacement
   await page.waitForTimeout(80);
   state = await getState(page);
   assert.strictEqual(state.enemies[0].hp, 5);
@@ -159,42 +193,41 @@ async function playUntil(page, targetStatuses) {
   await page.click("#endTurnBtn");
   await page.waitForTimeout(80);
   state = await getState(page);
-  assert.strictEqual(state.player.hp, 25, "10 Block fully absorbed the telegraphed Attack 6");
+  assert.strictEqual(state.player.hp, 28, "10 Block fully absorbed the telegraphed Attack 6");
   assert.strictEqual(state.turnCount, 2);
   assert.deepStrictEqual(await cardTexts(page), ["Growl", "Growl", "Growl", "Bite", "Bite"]);
 
-  await (await page.$$(".card"))[3].click(); // Bite -> lethal
+  await (await page.$$("#hand .card"))[3].click(); // Bite -> lethal
   await page.waitForTimeout(80);
   state = await getState(page);
   assert.strictEqual(state.enemies[0].hp, 0);
-  assert.strictEqual(state.status, "room-clear");
-  assert.strictEqual(await page.locator("#runOverlay").isHidden(), false, "the room-clear overlay is shown");
-  assert.strictEqual(await page.locator("#nextBtn").isHidden(), false, "Next Room is offered (not the last room)");
+  assert.strictEqual(state.status, "reward", "a plain fight win goes straight to a card reward");
+  assert.strictEqual((await page.$$("#rewardOptions .reward-card")).length, 3);
 
-  await page.click("#nextBtn");
+  await (await page.$$("#rewardOptions .reward-card"))[0].click();
   await page.waitForTimeout(80);
   state = await getState(page);
-  assert.strictEqual(state.roomIndex, 1);
-  assert.strictEqual(state.enemies[0].typeId, "tabbyGuard");
-  assert.deepStrictEqual(await cardTexts(page), ["Bite", "Good Boy", "Guard Dog", "Pounce", "Fetch"], "each room reshuffles fresh");
+  assert.strictEqual(state.deck.length, 13, "the picked reward permanently grew the deck");
+  assert.strictEqual(state.status, "choosing");
+  assert.deepStrictEqual(state.nodeChoices.map((o) => o.type), ["fight", "elite", "rest"], "Floor 2 introduces an elite option");
 
-  // ---- Rooms 2-4 (including Room 3's two-cat multi-target flow) ---------
+  // ---- Rest of the run, tap-driven (elite fight, boss, victory) ---------
   const finalStatus = await playUntil(page, ["victory", "lost"]);
   assert.strictEqual(finalStatus, "victory", "the tap-driven bot should be able to clear the whole dungeon");
   assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Victory! 🏆");
-  assert.strictEqual(await page.locator("#nextBtn").isHidden(), true, "no Next Room button once the run is won");
 
-  // ---- Restart -------------------------------------------------------------
+  // ---- Restart ------------------------------------------------------------
   await page.click("#restartBtn");
   await page.waitForTimeout(80);
   state = await getState(page);
-  assert.strictEqual(state.status, "playing");
-  assert.strictEqual(state.roomIndex, 0);
+  assert.strictEqual(state.status, "choosing");
+  assert.strictEqual(state.floorIndex, 0);
   assert.strictEqual(state.player.hp, state.player.maxHp);
-  assert.deepStrictEqual(await cardTexts(page), ["Bite", "Good Boy", "Guard Dog", "Pounce", "Fetch"]);
+  assert.strictEqual(state.deck.length, 12, "restart begins with the plain starter deck again");
 
-  // ---- Loss path -------------------------------------------------------------
-  // Force a quick loss by draining hp directly, then let a turn resolve.
+  // ---- Loss path ------------------------------------------------------------
+  await (await page.$$(".node-option"))[0].click(); // back into a fight
+  await page.waitForTimeout(80);
   await page.evaluate(() => {
     window.__tbState.player.hp = 1;
   });
@@ -208,7 +241,7 @@ async function playUntil(page, targetStatuses) {
   await page.click("#restartBtn");
   await page.waitForTimeout(80);
   state = await getState(page);
-  assert.strictEqual(state.status, "playing");
+  assert.strictEqual(state.status, "choosing");
   assert.strictEqual(state.player.hp, state.player.maxHp, "restart begins a fresh run");
 
   assert.deepStrictEqual(errors, [], `expected zero console/page errors, got: ${errors.map(String)}`);

@@ -1,5 +1,15 @@
 * { box-sizing: border-box; }
 
+/* Every element here is shown/hidden by toggling the `hidden` attribute in
+   app.js. Without this, any rule below that sets `display` on the same
+   element (flex containers, mostly) wins the cascade over the browser's
+   default `[hidden]{display:none}` and the element stays visible/clickable
+   anyway — bit us twice already, so it's a blanket rule, not a per-element
+   patch. */
+[hidden] {
+  display: none !important;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -207,6 +217,104 @@ body {
   font-family: "SF Mono", "Menlo", "Consolas", monospace;
 }
 
+/* ---- Node choice: the branching path between fights --------------------- */
+
+.node-choice {
+  flex: 1 1 0%;
+  min-height: 0;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  overflow-y: auto;
+}
+
+.node-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.node-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 2px solid #6b4e30;
+  background: #4a3320;
+  color: #f6ead9;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.node-option-elite {
+  border-color: #e0533f;
+}
+
+.node-option-rest {
+  border-color: #7fbf5f;
+}
+
+.node-icon {
+  font-size: 1.6rem;
+  flex: 0 0 auto;
+}
+
+.node-label {
+  font-weight: 700;
+  font-size: 0.9rem;
+  flex: 1 1 auto;
+}
+
+.node-detail {
+  font-size: 0.75rem;
+  color: #d8c3a3;
+  flex: 0 0 auto;
+}
+
+/* ---- Reward screen: pick a card to keep after a fight -------------------- */
+
+.reward-screen {
+  flex: 1 1 0%;
+  min-height: 0;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.reward-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.reward-card {
+  width: 110px;
+  min-height: 100px;
+}
+
+.skip-btn {
+  background: transparent;
+  border: 1px solid #6b4e30;
+  color: #d8c3a3;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
 /* ---- Console: hand + end turn ------------------------------------------ */
 
 .console {
@@ -316,10 +424,6 @@ body {
   z-index: 20;
 }
 
-.run-overlay[hidden] {
-  display: none;
-}
-
 .run-overlay-card {
   background: #3a2a1a;
   border: 2px solid #6b4e30;
@@ -350,10 +454,6 @@ body {
   background: #f2b179;
   color: #3a2a1a;
   cursor: pointer;
-}
-
-.run-overlay-card button[hidden] {
-  display: none;
 }
 
 /* ---- shared install banner (leave as-is; every game gets this) ---- */

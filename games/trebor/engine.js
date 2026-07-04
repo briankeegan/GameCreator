@@ -1,5 +1,7 @@
-// engine.js — pure rules for TREEBOAR's dog-vs-cats deck-builder combat.
-// Knows nothing about cards/cats/rooms as concepts beyond the shape handed
+// engine.js — pure rules for TREEBOAR's dog-vs-cats deck-builder combat and
+// its Slay the Spire-style run structure: pick a node each floor (fight,
+// elite, or rest), fight it out, bank a card reward, repeat, then the boss.
+// Knows nothing about cards/cats/floors as concepts beyond the shape handed
 // to it via content.js; content.js is the only place that data lives.
 // Shared between Node tests (`require("./engine.js")`) and the browser
 // (`window.TreeboarEngine`), same pattern as Hypergolic Hull's engine.js.
@@ -56,25 +58,38 @@ function drawCards(state, content, rng, n) {
   }
 }
 
-function startRoom(state, content, rng = Math.random) {
-  const room = content.ROOMS[state.roomIndex];
-  if (!room) throw new Error(`No room at index ${state.roomIndex}`);
-  state.drawPile = shuffle(content.STARTER_DECK, rng);
+function startCombat(state, content, enemyTypeIds, rng = Math.random) {
+  state.status = "playing";
+  state.drawPile = shuffle(state.deck, rng);
   state.discardPile = [];
   state.hand = [];
   state.player.block = 0;
   state.player.energy = state.player.maxEnergy;
-  state.enemies = room.enemies.map((typeId, i) => makeEnemyInstance(typeId, i, content));
+  state.enemies = enemyTypeIds.map((typeId, i) => makeEnemyInstance(typeId, i, content));
   state.turnCount = 1;
-  state.log = [`Room ${state.roomIndex + 1}: ${room.name}`];
+  state.log = [];
   drawCards(state, content, rng, content.HAND_SIZE);
+}
+
+function advanceFloorOrBoss(state, content, rng = Math.random) {
+  state.floorIndex += 1;
+  state.rewardOptions = [];
+  if (state.floorIndex >= content.FLOORS.length) {
+    state.currentNodeType = "boss";
+    startCombat(state, content, content.BOSS.enemies, rng);
+  } else {
+    state.status = "choosing";
+    state.nodeChoices = content.FLOORS[state.floorIndex].options;
+  }
 }
 
 function createGameState(content, rng = Math.random) {
   const state = {
-    status: "playing",
-    roomIndex: 0,
+    status: "choosing",
+    floorIndex: 0,
     turnCount: 1,
+    currentNodeType: null,
+    deck: content.STARTER_DECK.slice(),
     player: {
       hp: content.STARTING_HP,
       maxHp: content.STARTING_HP,
@@ -86,14 +101,31 @@ function createGameState(content, rng = Math.random) {
     hand: [],
     discardPile: [],
     enemies: [],
-    log: [],
+    nodeChoices: content.FLOORS[0].options,
+    rewardOptions: [],
+    log: ["Choose your path."],
   };
-  startRoom(state, content, rng);
   return state;
 }
 
+function chooseNode(state, content, optionIndex, rng = Math.random) {
+  if (state.status !== "choosing") throw new Error(`Cannot choose a node while status is ${state.status}`);
+  const option = state.nodeChoices[optionIndex];
+  if (!option) throw new Error(`No node option at index ${optionIndex}`);
+
+  if (option.type === "rest") {
+    const healAmount = Math.ceil((state.player.maxHp - state.player.hp) * content.REST_HEAL_FRACTION);
+    state.player.hp = Math.min(state.player.maxHp, state.player.hp + healAmount);
+    state.log = [`Rested and healed ${healAmount}.`];
+    advanceFloorOrBoss(state, content, rng);
+  } else {
+    state.currentNodeType = option.type; // "fight" | "elite"
+    startCombat(state, content, option.enemies, rng);
+  }
+}
+
 function cardNeedsTarget(card) {
-  return Boolean(card.damage);
+  return Boolean(card.damage) && !card.aoe;
 }
 
 function playCard(state, content, handIndex, targetId, rng = Math.random) {
@@ -104,7 +136,7 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
   if (state.player.energy < card.cost) throw new Error(`Not enough energy for ${card.name}`);
 
   let target = null;
-  if (card.damage) {
+  if (card.damage && !card.aoe) {
     const living = livingEnemies(state);
     if (living.length === 0) throw new Error("No living enemy to target");
     if (!targetId) {
@@ -121,8 +153,13 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
   state.discardPile.push(cardId);
 
   if (card.damage) {
-    applyDamage(target, card.damage);
-    state.log.push(`Dog plays ${card.name} on ${target.name} for ${card.damage}.`);
+    if (card.aoe) {
+      for (const enemy of livingEnemies(state)) applyDamage(enemy, card.damage);
+      state.log.push(`Dog plays ${card.name}, hitting every cat for ${card.damage}.`);
+    } else {
+      applyDamage(target, card.damage);
+      state.log.push(`Dog plays ${card.name} on ${target.name} for ${card.damage}.`);
+    }
   }
   if (card.block) {
     state.player.block += card.block;
@@ -136,8 +173,26 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
   }
 
   if (livingEnemies(state).length === 0) {
-    state.status = "room-clear";
+    if (state.currentNodeType === "boss") {
+      state.status = "victory";
+    } else {
+      state.status = "reward";
+      const count = state.currentNodeType === "elite" ? content.ELITE_REWARD_COUNT : content.FIGHT_REWARD_COUNT;
+      state.rewardOptions = shuffle(content.REWARD_POOL, rng).slice(0, count);
+    }
   }
+}
+
+function pickReward(state, content, cardId, rng = Math.random) {
+  if (state.status !== "reward") throw new Error(`Cannot pick a reward while status is ${state.status}`);
+  if (cardId) {
+    if (!state.rewardOptions.includes(cardId)) throw new Error(`${cardId} was not offered`);
+    state.deck.push(cardId);
+    state.log = [`Added ${content.CARDS[cardId].name} to the deck.`];
+  } else {
+    state.log = ["Skipped the reward."];
+  }
+  advanceFloorOrBoss(state, content, rng);
 }
 
 function resolveEnemyIntent(state, enemy) {
@@ -176,17 +231,6 @@ function endPlayerTurn(state, content, rng = Math.random) {
   drawCards(state, content, rng, content.HAND_SIZE);
 }
 
-function advanceRoom(state, content, rng = Math.random) {
-  if (state.status !== "room-clear") throw new Error(`Cannot advance room while status is ${state.status}`);
-  state.roomIndex += 1;
-  if (state.roomIndex >= content.ROOMS.length) {
-    state.status = "victory";
-    return;
-  }
-  state.status = "playing";
-  startRoom(state, content, rng);
-}
-
 function describeIntent(intent) {
   if (intent.type === "attack") return `Attack ${intent.damage}`;
   if (intent.type === "guard") return `Guard ${intent.block}`;
@@ -195,9 +239,10 @@ function describeIntent(intent) {
 
 const Engine = {
   createGameState,
+  chooseNode,
   playCard,
   endPlayerTurn,
-  advanceRoom,
+  pickReward,
   livingEnemies,
   cardNeedsTarget,
   describeIntent,

@@ -1,12 +1,12 @@
 // content.js — the only place TREEBOAR's card/enemy/dungeon data lives.
 // engine.js is pure rules and knows nothing about what a "Bite" or an
-// "Alley Cat" is; it just plays whatever CARDS/ENEMY_TYPES/ROOMS say.
+// "Alley Cat" is; it just plays whatever CARDS/ENEMY_TYPES/FLOORS say.
 
 "use strict";
 
-// Card effects: `damage` hits the current target, `block` shields the dog,
-// `draw` pulls extra cards, `energy` refunds energy — all optional, a card
-// can combine them (see Fetch).
+// Card effects: `damage` hits a target (every living enemy at once if
+// `aoe` is set), `block` shields the dog, `draw` pulls extra cards,
+// `energy` refunds energy — a card can combine any of these (see Fetch).
 const CARDS = {
   bite: { id: "bite", name: "Bite", cost: 1, damage: 6, text: "Deal 6 damage." },
   growl: { id: "growl", name: "Growl", cost: 1, block: 5, text: "Gain 5 Block." },
@@ -14,6 +14,11 @@ const CARDS = {
   pounce: { id: "pounce", name: "Pounce", cost: 2, damage: 10, text: "Deal 10 damage." },
   guardDog: { id: "guardDog", name: "Guard Dog", cost: 2, block: 10, text: "Gain 10 Block." },
   goodBoy: { id: "goodBoy", name: "Good Boy", cost: 0, energy: 1, text: "Gain 1 Energy." },
+  howl: { id: "howl", name: "Howl", cost: 1, damage: 4, aoe: true, text: "Deal 4 damage to ALL enemies." },
+  bigBark: { id: "bigBark", name: "Big Bark", cost: 2, damage: 8, aoe: true, text: "Deal 8 damage to ALL enemies." },
+  alphaStrike: { id: "alphaStrike", name: "Alpha Strike", cost: 2, damage: 14, text: "Deal 14 damage." },
+  sniffOut: { id: "sniffOut", name: "Sniff Out", cost: 0, draw: 2, text: "Draw 2 cards." },
+  secondWind: { id: "secondWind", name: "Second Wind", cost: 1, block: 8, draw: 1, text: "Gain 8 Block. Draw a card." },
 };
 
 // The dog's starting deck — just a flat list of card ids, duplicates allowed.
@@ -24,6 +29,13 @@ const STARTER_DECK = [
   "pounce",
   "guardDog",
   "goodBoy",
+];
+
+// Cards offered as post-combat rewards — every card is fair game, including
+// extra copies of starter cards.
+const REWARD_POOL = [
+  "bite", "growl", "fetch", "pounce", "guardDog", "goodBoy",
+  "howl", "bigBark", "alphaStrike", "sniffOut", "secondWind",
 ];
 
 // Cats fight through a fixed, repeating intent pattern — telegraphed one
@@ -67,20 +79,64 @@ const ENEMY_TYPES = {
   },
 };
 
-// The dungeon: one room per encounter, cleared in order. The last room is
-// the boss; beating it wins the run.
-const ROOMS = [
-  { id: 1, name: "Back Alley", enemies: ["alleyCat"] },
-  { id: 2, name: "Junkyard", enemies: ["tabbyGuard"] },
-  { id: 3, name: "Rooftops", enemies: ["alleyCat", "alleyCat"] },
-  { id: 4, name: "The Cathouse", enemies: ["bigTom"], boss: true },
+// The dungeon map: a fixed sequence of floors, each offering a few node
+// choices — fight, elite (tougher fight, bigger card reward), or rest
+// (heal). The player picks one node per floor; the boss always follows
+// the last floor with no choice involved.
+const FLOORS = [
+  {
+    options: [
+      { type: "fight", label: "Back Alley", enemies: ["alleyCat"] },
+      { type: "fight", label: "Storm Drain", enemies: ["alleyCat"] },
+      { type: "rest", label: "Cardboard Box" },
+    ],
+  },
+  {
+    options: [
+      { type: "fight", label: "Junkyard", enemies: ["tabbyGuard"] },
+      { type: "elite", label: "Guard Post", enemies: ["tabbyGuard", "alleyCat"] },
+      { type: "rest", label: "Sunny Spot" },
+    ],
+  },
+  {
+    options: [
+      { type: "fight", label: "Rooftops", enemies: ["alleyCat", "alleyCat"] },
+      { type: "elite", label: "Fire Escape", enemies: ["tabbyGuard", "tabbyGuard"] },
+      { type: "rest", label: "Water Bowl" },
+    ],
+  },
+  {
+    options: [
+      { type: "fight", label: "Back Door", enemies: ["alleyCat", "tabbyGuard"] },
+      { type: "elite", label: "Loading Dock", enemies: ["tabbyGuard", "alleyCat", "alleyCat"] },
+      { type: "rest", label: "Old Blanket" },
+    ],
+  },
 ];
 
-const STARTING_HP = 25;
+const BOSS = { label: "The Cathouse", enemies: ["bigTom"] };
+
+const STARTING_HP = 28;
 const STARTING_ENERGY = 3;
 const HAND_SIZE = 5;
+const REST_HEAL_FRACTION = 0.3; // of missing HP, rounded up
+const FIGHT_REWARD_COUNT = 3;
+const ELITE_REWARD_COUNT = 4;
 
-const CONTENT = { CARDS, STARTER_DECK, ENEMY_TYPES, ROOMS, STARTING_HP, STARTING_ENERGY, HAND_SIZE };
+const CONTENT = {
+  CARDS,
+  STARTER_DECK,
+  REWARD_POOL,
+  ENEMY_TYPES,
+  FLOORS,
+  BOSS,
+  STARTING_HP,
+  STARTING_ENERGY,
+  HAND_SIZE,
+  REST_HEAL_FRACTION,
+  FIGHT_REWARD_COUNT,
+  ELITE_REWARD_COUNT,
+};
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = CONTENT;
