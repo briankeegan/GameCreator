@@ -23,6 +23,12 @@ const CARDS = {
   digIn: { id: "digIn", name: "Dig In", cost: 0, damage: 4, text: "Deal 4 damage." },
   riptide: { id: "riptide", name: "Riptide", cost: 1, damage: 5, block: 5, text: "Deal 5 damage. Gain 5 Block." },
   rally: { id: "rally", name: "Rally", cost: 0, block: 3, draw: 1, text: "Gain 3 Block. Draw a card." },
+  // Boss-reward cards — powerful, only offered after felling an act boss:
+  maul: { id: "maul", name: "Maul", cost: 2, damage: 18, text: "Deal 18 damage." },
+  warCry: { id: "warCry", name: "War Cry", cost: 2, damage: 10, aoe: true, block: 6, text: "Deal 10 to ALL enemies. Gain 6 Block." },
+  bulwark: { id: "bulwark", name: "Bulwark", cost: 1, block: 14, text: "Gain 14 Block." },
+  huntersMark: { id: "huntersMark", name: "Hunter's Mark", cost: 0, damage: 8, text: "Deal 8 damage." },
+  reserves: { id: "reserves", name: "Reserves", cost: 0, draw: 2, energy: 1, text: "Draw 2 cards. Gain 1 Energy." },
 };
 
 // The three playable dog classes — Slay the Spire-style, each with its own
@@ -65,6 +71,10 @@ const REWARD_POOL = [
   "howl", "bigBark", "alphaStrike", "sniffOut", "secondWind",
   "digIn", "riptide", "rally",
 ];
+
+// The elite cards, only offered after downing an act's boss — a run-defining
+// pick you can't get anywhere else.
+const BOSS_REWARD_POOL = ["maul", "warCry", "bulwark", "huntersMark", "reserves"];
 
 // Cats fight through a fixed, repeating intent pattern — telegraphed one
 // turn ahead so a loss always traces back to a choice, never a surprise.
@@ -124,45 +134,102 @@ const ENEMY_TYPES = {
       { type: "attack", damage: 13 },
     ],
   },
+  // Act 2 boss — a heavy officer cat: hits hard, guards, then a crushing blow.
+  warcatCaptain: {
+    id: "warcatCaptain",
+    name: "Warcat Captain",
+    maxHp: 58,
+    pattern: [
+      { type: "attack", damage: 12 },
+      { type: "guard", block: 12 },
+      { type: "attack", damage: 14 },
+      { type: "attack", damage: 18 },
+    ],
+  },
+  // Act 3 boss — the tyrant king: relentless, escalating, ends in a haymaker.
+  catKing: {
+    id: "catKing",
+    name: "The Cat King",
+    maxHp: 90,
+    pattern: [
+      { type: "attack", damage: 14 },
+      { type: "guard", block: 14 },
+      { type: "attack", damage: 20 },
+      { type: "guard", block: 10 },
+      { type: "attack", damage: 26 },
+    ],
+  },
 };
 
-// The dungeon map: a fixed sequence of floors, each offering a few node
-// choices — fight, elite (tougher fight, bigger card reward), or rest
-// (heal). The player picks one node per floor; the boss always follows
-// the last floor with no choice involved.
-const FLOORS = [
+// The dungeon map: three ACTS, each a short run of floors capped by its own
+// boss. Every floor offers a few node choices — fight, elite (tougher fight,
+// bigger card reward), or rest (heal). The player picks one node per floor;
+// each act's boss always follows its last floor with no choice involved, and
+// is meaningfully harder than the last act's. Downing a non-final boss opens
+// a boss-reward pick and heals up before the next act begins.
+const ACTS = [
   {
-    options: [
-      { type: "fight", label: "Back Alley", enemies: ["alleyCat"] },
-      { type: "fight", label: "Storm Drain", enemies: ["alleyCat"] },
-      { type: "rest", label: "Cardboard Box" },
+    name: "The Back Alleys",
+    floors: [
+      {
+        options: [
+          { type: "fight", label: "Back Alley", enemies: ["alleyCat"] },
+          { type: "fight", label: "Storm Drain", enemies: ["alleyCat"] },
+          { type: "rest", label: "Cardboard Box" },
+        ],
+      },
+      {
+        options: [
+          { type: "fight", label: "Junkyard", enemies: ["tabbyGuard"] },
+          { type: "fight", label: "Litter", enemies: ["feralKitten", "feralKitten", "feralKitten"] },
+          { type: "elite", label: "Guard Post", enemies: ["tabbyGuard", "alleyCat"] },
+          { type: "rest", label: "Sunny Spot" },
+        ],
+      },
     ],
+    boss: { label: "Big Tom", enemies: ["bigTom"] },
   },
   {
-    options: [
-      { type: "fight", label: "Junkyard", enemies: ["tabbyGuard"] },
-      { type: "fight", label: "Litter", enemies: ["feralKitten", "feralKitten", "feralKitten"] },
-      { type: "elite", label: "Guard Post", enemies: ["tabbyGuard", "alleyCat"] },
-      { type: "rest", label: "Sunny Spot" },
+    name: "The Rooftops",
+    floors: [
+      {
+        options: [
+          { type: "fight", label: "Rooftops", enemies: ["alleyCat", "rooftopSniper"] },
+          { type: "fight", label: "Gutter Run", enemies: ["tabbyGuard", "feralKitten"] },
+          { type: "rest", label: "Water Bowl" },
+        ],
+      },
+      {
+        options: [
+          { type: "fight", label: "Fire Escape", enemies: ["rooftopSniper", "tabbyGuard"] },
+          { type: "elite", label: "Loading Dock", enemies: ["rooftopSniper", "feralKitten", "feralKitten"] },
+          { type: "rest", label: "Old Blanket" },
+        ],
+      },
     ],
+    boss: { label: "The Warcat Captain", enemies: ["warcatCaptain"] },
   },
   {
-    options: [
-      { type: "fight", label: "Rooftops", enemies: ["alleyCat", "rooftopSniper"] },
-      { type: "elite", label: "Fire Escape", enemies: ["rooftopSniper", "tabbyGuard"] },
-      { type: "rest", label: "Water Bowl" },
+    name: "The Cathouse",
+    floors: [
+      {
+        options: [
+          { type: "fight", label: "Grand Foyer", enemies: ["tabbyGuard", "alleyCat", "rooftopSniper"] },
+          { type: "fight", label: "The Kennels", enemies: ["bigTom"] },
+          { type: "rest", label: "Velvet Cushion" },
+        ],
+      },
+      {
+        options: [
+          { type: "elite", label: "Royal Guard", enemies: ["tabbyGuard", "tabbyGuard", "rooftopSniper"] },
+          { type: "fight", label: "Courtiers", enemies: ["feralKitten", "feralKitten", "rooftopSniper"] },
+          { type: "rest", label: "Sunbeam Throne" },
+        ],
+      },
     ],
-  },
-  {
-    options: [
-      { type: "fight", label: "Back Door", enemies: ["alleyCat", "tabbyGuard"] },
-      { type: "elite", label: "Loading Dock", enemies: ["rooftopSniper", "feralKitten", "feralKitten"] },
-      { type: "rest", label: "Old Blanket" },
-    ],
+    boss: { label: "The Cat King", enemies: ["catKing"] },
   },
 ];
-
-const BOSS = { label: "The Cathouse", enemies: ["bigTom"] };
 
 const STARTING_HP = 28;
 const STARTING_ENERGY = 3;
@@ -170,21 +237,25 @@ const HAND_SIZE = 5;
 const REST_HEAL_FRACTION = 0.3; // of missing HP, rounded up
 const FIGHT_REWARD_COUNT = 3;
 const ELITE_REWARD_COUNT = 4;
+const BOSS_REWARD_COUNT = 3; // boss-reward cards offered to pick from
+const BOSS_MAX_HULL_BONUS = 8; // permanent +maxHull granted on a boss kill
 
 const CONTENT = {
   CARDS,
   CLASSES,
   STARTER_DECK,
   REWARD_POOL,
+  BOSS_REWARD_POOL,
   ENEMY_TYPES,
-  FLOORS,
-  BOSS,
+  ACTS,
   STARTING_HP,
   STARTING_ENERGY,
   HAND_SIZE,
   REST_HEAL_FRACTION,
   FIGHT_REWARD_COUNT,
   ELITE_REWARD_COUNT,
+  BOSS_REWARD_COUNT,
+  BOSS_MAX_HULL_BONUS,
 };
 
 if (typeof module !== "undefined" && module.exports) {

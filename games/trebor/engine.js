@@ -73,12 +73,13 @@ function startCombat(state, content, enemyTypeIds, rng = Math.random) {
 function advanceFloorOrBoss(state, content, rng = Math.random) {
   state.floorIndex += 1;
   state.rewardOptions = [];
-  if (state.floorIndex >= content.FLOORS.length) {
+  const act = content.ACTS[state.actIndex];
+  if (state.floorIndex >= act.floors.length) {
     state.currentNodeType = "boss";
-    startCombat(state, content, content.BOSS.enemies, rng);
+    startCombat(state, content, act.boss.enemies, rng);
   } else {
     state.status = "choosing";
-    state.nodeChoices = content.FLOORS[state.floorIndex].options;
+    state.nodeChoices = act.floors[state.floorIndex].options;
   }
 }
 
@@ -88,6 +89,7 @@ function createGameState(content, rng = Math.random) {
   const state = {
     status: "class-select",
     classId: null,
+    actIndex: 0,
     floorIndex: 0,
     turnCount: 1,
     currentNodeType: null,
@@ -105,6 +107,7 @@ function createGameState(content, rng = Math.random) {
     enemies: [],
     nodeChoices: [],
     rewardOptions: [],
+    bossRewardOptions: [],
     log: ["Choose your dog."],
   };
   return state;
@@ -118,9 +121,10 @@ function chooseClass(state, content, classId, rng = Math.random) {
   state.deck = cls.deck.slice();
   state.player.maxHp = cls.maxHp;
   state.player.hp = cls.maxHp;
+  state.actIndex = 0;
   state.floorIndex = 0;
   state.status = "choosing";
-  state.nodeChoices = content.FLOORS[0].options;
+  state.nodeChoices = content.ACTS[0].floors[0].options;
   state.log = [`${cls.name} the ${cls.breed} sets out.`];
 }
 
@@ -190,7 +194,15 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
 
   if (livingEnemies(state).length === 0) {
     if (state.currentNodeType === "boss") {
-      state.status = "victory";
+      if (state.actIndex >= content.ACTS.length - 1) {
+        // Felled the final act's boss — the run is won.
+        state.status = "victory";
+      } else {
+        // An act boss down: offer the elite boss-reward pick before the
+        // next act. chooseBossReward heals up and advances the act.
+        state.status = "boss-reward";
+        state.bossRewardOptions = shuffle(content.BOSS_REWARD_POOL, rng).slice(0, content.BOSS_REWARD_COUNT);
+      }
     } else {
       state.status = "reward";
       const count = state.currentNodeType === "elite" ? content.ELITE_REWARD_COUNT : content.FIGHT_REWARD_COUNT;
@@ -209,6 +221,26 @@ function pickReward(state, content, cardId, rng = Math.random) {
     state.log = ["Skipped the reward."];
   }
   advanceFloorOrBoss(state, content, rng);
+}
+
+function chooseBossReward(state, content, cardId, rng = Math.random) {
+  if (state.status !== "boss-reward") throw new Error(`Cannot pick a boss reward while status is ${state.status}`);
+  if (cardId) {
+    if (!state.bossRewardOptions.includes(cardId)) throw new Error(`${cardId} was not offered`);
+    state.deck.push(cardId);
+  }
+  // A boss kill permanently raises max Hull and heals to full before the
+  // harder act ahead — the reward for surviving.
+  state.player.maxHp += content.BOSS_MAX_HULL_BONUS;
+  state.player.hp = state.player.maxHp;
+  state.bossRewardOptions = [];
+  state.actIndex += 1;
+  state.floorIndex = 0;
+  state.status = "choosing";
+  state.currentNodeType = null;
+  state.nodeChoices = content.ACTS[state.actIndex].floors[0].options;
+  const gained = cardId ? `Took ${content.CARDS[cardId].name}. ` : "";
+  state.log = [`${gained}+${content.BOSS_MAX_HULL_BONUS} max Hull, fully healed. ${content.ACTS[state.actIndex].name} awaits.`];
 }
 
 function resolveEnemyIntent(state, enemy) {
@@ -260,6 +292,7 @@ const Engine = {
   playCard,
   endPlayerTurn,
   pickReward,
+  chooseBossReward,
   livingEnemies,
   cardNeedsTarget,
   describeIntent,
