@@ -13,6 +13,13 @@
       "tagline": "A hull lot of fun",
       "themeColor": "#2f3b52",
       "icon": "games/hypergolic-hull/icons/icon.svg"
+    },
+    {
+      "id": "trebor",
+      "name": "TREEBOAR",
+      "tagline": "Pretend are small",
+      "themeColor": "#2f3b52",
+      "icon": "games/trebor/icons/icon.svg"
     }
   ]
 }
