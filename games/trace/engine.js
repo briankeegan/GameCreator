@@ -75,19 +75,45 @@
     return Math.floor(rng() * n);
   }
 
-  function createGame(rng = Math.random) {
+  // How many escape cells (edge ring) and interior steps start walled.
+  // Chat-Noir from a fully-open board is brutally hard, so we pre-narrow the
+  // cat's exits — most of the escape ring and a scattering of interior walls
+  // — leaving a game that a thinking player wins comfortably but not for free.
+  const EDGE_FILL = 0.6; // fraction of the border ring pre-walled
+  const INTERIOR_WALLS = 8;
+
+  function createGame(rng = Math.random, opts = {}) {
+    const edgeFill = opts.edgeFill != null ? opts.edgeFill : EDGE_FILL;
+    const interiorWalls = opts.interiorWalls != null ? opts.interiorWalls : INTERIOR_WALLS;
     const cat = { r: (H - 1) / 2, c: (W - 1) / 2 }; // dead center (4,4)
     const pins = new Set();
 
-    // Seed a few random walls so no two games play the same — but never on
-    // the cat or the ring of steps right around it, so it always has room to
-    // start running.
+    // Never wall the cat or the ring of steps right around it, so it always
+    // has room to start running.
     const forbidden = new Set([keyOf(cat.r, cat.c)]);
     for (const n of neighbors(cat.r, cat.c)) forbidden.add(keyOf(n.r, n.c));
-    const open = [];
-    for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) if (!forbidden.has(keyOf(r, c))) open.push({ r, c });
-    const START_WALLS = 13;
-    for (let i = 0; i < START_WALLS && open.length; i++) {
+
+    const edgeCells = [];
+    const interiorCells = [];
+    for (let r = 0; r < H; r++) {
+      for (let c = 0; c < W; c++) {
+        if (forbidden.has(keyOf(r, c))) continue;
+        (isEdge(r, c) ? edgeCells : interiorCells).push({ r, c });
+      }
+    }
+
+    // Pre-wall a chunk of the escape ring...
+    const edgeShuffled = edgeCells.slice();
+    for (let i = edgeShuffled.length - 1; i > 0; i--) {
+      const j = randInt(rng, i + 1);
+      [edgeShuffled[i], edgeShuffled[j]] = [edgeShuffled[j], edgeShuffled[i]];
+    }
+    const edgeCount = Math.round(edgeShuffled.length * edgeFill);
+    for (let i = 0; i < edgeCount; i++) pins.add(keyOf(edgeShuffled[i].r, edgeShuffled[i].c));
+
+    // ...plus a scattering of interior obstacles.
+    const open = interiorCells.slice();
+    for (let i = 0; i < interiorWalls && open.length; i++) {
       const idx = randInt(rng, open.length);
       const cell = open.splice(idx, 1)[0];
       pins.add(keyOf(cell.r, cell.c));
