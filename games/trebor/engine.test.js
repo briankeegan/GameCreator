@@ -57,7 +57,7 @@ assert.throws(() => Engine.playCard(gate, Content, 0, null, rng), /Cannot play a
 assert.throws(() => Engine.chooseClass(gate, Content, "notADog", rng), /Unknown class/);
 
 // Each class sets its own Hull and 12-card deck.
-const hpByClass = { riddle: 24, koozie: 32, bevy: 28, lala: 32 };
+const hpByClass = { riddle: 24, koozie: 32, bevy: 28, lala: 36 };
 for (const id of Object.keys(Content.CLASSES)) {
   const s = Engine.createGameState(Content, rng);
   Engine.chooseClass(s, Content, id, rng);
@@ -85,13 +85,13 @@ Engine.chooseClass(riddleM, Content, "riddle", rng);
 Engine.chooseNode(riddleM, Content, 0, rng);
 assert.strictEqual(riddleM.hand.length, Content.HAND_SIZE + 1, "Frenzy opens with an extra card");
 
-// Lala — Lock Jaw: +2 damage on every attack.
+// Lala — Lock Jaw: +3 damage on every attack.
 const lalaM = Engine.createGameState(Content, rng);
 Engine.chooseClass(lalaM, Content, "lala", rng);
 Engine.chooseNode(lalaM, Content, 0, rng); // Alley Cat, 14 Hull
 lalaM.hand.unshift("bite"); // a plain 6-damage Bite...
 Engine.playCard(lalaM, Content, 0, lalaM.enemies[0].id, rng);
-assert.strictEqual(lalaM.enemies[0].hp, 16 - 8, "Lock Jaw makes Bite land for 6+2");
+assert.strictEqual(lalaM.enemies[0].hp, 16 - 9, "Lock Jaw makes Bite land for 6+3");
 
 // ---------------------------------------------------------------------
 // Floor 1 fight (as Koozie), traced through the key mechanics.
@@ -111,26 +111,26 @@ assert.deepStrictEqual(
   ["riptide", "counterSurge", "counterSurge", "brace", "brace"],
   "Koozie's deterministic opening hand (its own block-heavy deck)"
 );
-assert.strictEqual(state.player.block, 4, "Waterproof: Koozie opens the turn already holding 4 Block");
+assert.strictEqual(state.player.block, 3, "Waterproof: Koozie opens the turn already holding 3 Block");
 assert.strictEqual(state.enemies[0].currentIntent.type, "attack", "the cat telegraphs before the player acts");
 
 const cat = state.enemies[0];
 Engine.playCard(state, Content, 3, null, rng); // Brace -> +8 Block (hand: riptide, counterSurge, counterSurge, brace)
-assert.strictEqual(state.player.block, 12);
+assert.strictEqual(state.player.block, 11);
 assert.strictEqual(state.player.energy, 2);
 
 Engine.playCard(state, Content, 3, null, rng); // Brace -> +8 Block (hand: riptide, counterSurge, counterSurge)
-assert.strictEqual(state.player.block, 20);
+assert.strictEqual(state.player.block, 19);
 assert.strictEqual(state.player.energy, 1);
 
 Engine.playCard(state, Content, 0, null, rng); // Riptide -> 5 dmg + 5 Block
 assert.strictEqual(cat.hp, 11, "Riptide deals 5 (Koozie has no Strength bonus); 16-5");
-assert.strictEqual(state.player.block, 25);
+assert.strictEqual(state.player.block, 24);
 assert.strictEqual(state.player.energy, 0);
 
 Engine.endPlayerTurn(state, Content, rng);
-assert.strictEqual(state.player.hp, 32, "25 Block swallowed the telegraphed Attack whole");
-assert.strictEqual(state.player.block, 4, "Block resets, then Waterproof re-applies its 4 next turn");
+assert.strictEqual(state.player.hp, 32, "24 Block swallowed the telegraphed Attack whole");
+assert.strictEqual(state.player.block, 3, "Block resets, then Waterproof re-applies its 3 next turn");
 assert.strictEqual(state.player.energy, 3);
 
 playOutCombat(state, Content); // finish the cat
@@ -165,7 +165,7 @@ assert.ok([...variedTypes].some((t) => t !== "fight"), "and includes non-fight r
 // New enemies: a Feral Kitten swarm and a Rooftop Sniper exist and fight.
 // ---------------------------------------------------------------------
 assert.strictEqual(Content.ENEMY_TYPES.feralKitten.maxHp, 7);
-assert.strictEqual(Content.ENEMY_TYPES.rooftopSniper.pattern[1].damage, 15, "the sniper's telegraphed big shot");
+assert.strictEqual(Content.ENEMY_TYPES.rooftopSniper.pattern[1].damage, 18, "the sniper's telegraphed big shot");
 const swarmContent = Object.assign({}, Content, {
   ACTS: [
     {
@@ -310,33 +310,86 @@ Engine.restSite(rm, Content, "remove", 0, rng);
 assert.strictEqual(rm.deck.length, rmLen - 1, "removing shrinks the deck");
 
 // ---------------------------------------------------------------------
-// Full-run smoke test per class: a cautious player (rest when hurt, never
-// elite, bank the first reward, take the first boss reward) should be able
-// to clear all three acts with each of the three classes. Balance/regression
-// backstop for content.js.
+// Full-run BALANCE test: over many seeded runs a competent player should
+// clear the dungeon often enough to feel fair but lose often enough that it
+// stays challenging — and every class should land in roughly the same band
+// (no class is a pushover and none is unwinnable). This is the balance
+// backstop for content.js: retune enemies/cards until each class fits.
 // ---------------------------------------------------------------------
-for (const id of Object.keys(Content.CLASSES)) {
-  const run = Engine.createGameState(Content, rng);
-  Engine.chooseClass(run, Content, id, rng);
+const seededPlay = (seed) => {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+};
+
+// A competent bot: block when a hit would land, otherwise deal damage, take
+// treasure, heal at rest sites when hurt else sharpen a card. Bounds card-play
+// per turn so free-draw cards can't spin forever.
+function playCombat(run) {
+  let guard = 0;
+  let turnPlays = 0;
+  let lastTurn = run.turnCount;
+  while (run.status === "playing") {
+    if (++guard > 3000) throw new Error("combat did not converge");
+    if (run.turnCount !== lastTurn) { turnPlays = 0; lastTurn = run.turnCount; }
+    const idx = chooseCardIndex(run, Content);
+    let done = idx === -1;
+    if (!done && turnPlays >= 12) {
+      const c = Content.CARDS[run.hand[idx]];
+      if (!c.damage && !c.block) done = true;
+    }
+    if (done) { Engine.endPlayerTurn(run, Content, run._rng); continue; }
+    const card = Content.CARDS[run.hand[idx]];
+    const targetId = Engine.cardNeedsTarget(card) ? Engine.livingEnemies(run)[0].id : null;
+    Engine.playCard(run, Content, idx, targetId, run._rng);
+    turnPlays++;
+  }
+}
+
+function playFullRun(id, r) {
+  const run = Engine.createGameState(Content, r);
+  run._rng = r;
+  Engine.chooseClass(run, Content, id, r);
   let steps = 0;
   while (run.status !== "victory" && run.status !== "lost") {
-    if (++steps > 4000) throw new Error(`run (${id}) did not converge`);
+    if (++steps > 5000) throw new Error(`run (${id}) did not converge`);
     if (run.status === "choosing") {
-      const hurt = run.player.hp < run.player.maxHp * 0.7;
-      const restIdx = run.nodeChoices.findIndex((o) => o.type === "rest");
-      const fightIdx = run.nodeChoices.findIndex((o) => o.type === "fight");
-      Engine.chooseNode(run, Content, hurt && restIdx !== -1 ? restIdx : fightIdx, rng);
+      let i = run.nodeChoices.findIndex((o) => o.type === "treasure");
+      if (i < 0) i = run.nodeChoices.findIndex((o) => o.type === "fight");
+      if (i < 0) i = 0;
+      Engine.chooseNode(run, Content, i, r);
     } else if (run.status === "reward") {
-      Engine.pickReward(run, Content, run.rewardOptions[0], rng);
+      Engine.pickReward(run, Content, run.rewardOptions[0], r);
     } else if (run.status === "rest-site") {
-      Engine.restSite(run, Content, "heal", null, rng); // a cautious dog always heals
+      if (run.player.hp < run.player.maxHp * 0.75) {
+        Engine.restSite(run, Content, "heal", null, r);
+      } else {
+        const ui = run.deck.findIndex((cid) => Content.UPGRADES[cid]);
+        if (ui >= 0) Engine.restSite(run, Content, "upgrade", ui, r);
+        else Engine.restSite(run, Content, "heal", null, r);
+      }
     } else if (run.status === "boss-reward") {
-      Engine.chooseBossReward(run, Content, run.bossRewardOptions[0], rng);
+      Engine.chooseBossReward(run, Content, run.bossRewardOptions[0], r);
     } else if (run.status === "playing") {
-      playOutCombat(run, Content);
+      playCombat(run);
     }
   }
-  assert.strictEqual(run.status, "victory", `${id} should be able to clear all three acts`);
+  return run.status === "victory";
+}
+
+const RUNS = 120;
+for (const id of Object.keys(Content.CLASSES)) {
+  let wins = 0;
+  for (let i = 0; i < RUNS; i++) if (playFullRun(id, seededPlay(10000 + i * 7))) wins++;
+  const rate = wins / RUNS;
+  // Challenging-but-fair band: a competent player wins roughly a third to
+  // three-quarters of runs. Outside this, the class is a pushover or a wall.
+  assert.ok(
+    rate >= 0.3 && rate <= 0.78,
+    `${id} win rate ${(rate * 100).toFixed(0)}% should be challenging but fair (30-78%)`
+  );
 }
 
 console.log("All golden-path assertions passed.");

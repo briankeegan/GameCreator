@@ -60,7 +60,7 @@ const CLASSES = {
     blurb: "Weathers any storm — heavy Block and counter-punches. Tanky; outlasts the enemy.",
     maxHp: 32,
     // Waterproof: opens every turn already holding Block, so it out-defends anything.
-    mechanic: { turnBlock: 4, name: "Waterproof", text: "Start each turn with 4 Block." },
+    mechanic: { turnBlock: 3, name: "Waterproof", text: "Start each turn with 3 Block." },
     deck: ["riptide", "riptide", "riptide", "growl", "growl", "growl", "guardDog", "guardDog", "brace", "brace", "counterSurge", "counterSurge"],
   },
   bevy: {
@@ -71,17 +71,17 @@ const CLASSES = {
     maxHp: 28,
     // Boundless: an extra Energy every turn, so it can chain its cheap draw cards.
     mechanic: { energyBonus: 1, name: "Boundless", text: "+1 Energy every turn (4 total)." },
-    deck: ["rally", "rally", "rally", "fetch", "fetch", "fetch", "flurry", "flurry", "sniffOut", "sniffOut", "bite", "goodBoy"],
+    deck: ["rally", "rally", "rally", "fetch", "fetch", "fetch", "flurry", "flurry", "sniffOut", "sniffOut", "bite", "bite"],
   },
   lala: {
     id: "lala",
     name: "Lala",
     breed: "Pit Bull / German Shepherd",
     blurb: "Loyal powerhouse — hits like a truck and guards her own. Sturdy and forgiving; her Lock Jaw never lets go.",
-    maxHp: 32,
+    maxHp: 36,
     // Lock Jaw: raw Strength — every attack she plays hits for extra.
-    mechanic: { strength: 2, name: "Lock Jaw", text: "+2 damage on every attack." },
-    deck: ["lockJaw", "lockJaw", "lockJaw", "chomp", "chomp", "bodySlam", "bodySlam", "growl", "growl", "guardDog", "guardDog", "goodBoy"],
+    mechanic: { strength: 3, name: "Lock Jaw", text: "+3 damage on every attack." },
+    deck: ["lockJaw", "lockJaw", "lockJaw", "chomp", "chomp", "bodySlam", "bodySlam", "growl", "growl", "guardDog", "guardDog", "scurry"],
   },
 };
 
@@ -157,30 +157,30 @@ const ENEMY_TYPES = {
     name: "Alley Cat",
     maxHp: 16,
     pattern: [
-      { type: "attack", damage: 7 },
-      { type: "attack", damage: 7 },
+      { type: "attack", damage: 9 },
+      { type: "attack", damage: 9 },
       { type: "guard", block: 6 },
     ],
   },
   tabbyGuard: {
     id: "tabbyGuard",
     name: "Tabby Guard",
-    maxHp: 24,
+    maxHp: 30,
     pattern: [
-      { type: "guard", block: 12 },
-      { type: "attack", damage: 10 },
-      { type: "attack", damage: 10 },
+      { type: "guard", block: 14 },
+      { type: "attack", damage: 13 },
+      { type: "attack", damage: 13 },
     ],
   },
   bigTom: {
     id: "bigTom",
     name: "Big Tom",
-    maxHp: 48,
+    maxHp: 58,
     pattern: [
-      { type: "attack", damage: 10 },
-      { type: "guard", block: 12 },
-      { type: "attack", damage: 11 },
-      { type: "attack", damage: 16 },
+      { type: "attack", damage: 13 },
+      { type: "guard", block: 14 },
+      { type: "attack", damage: 14 },
+      { type: "attack", damage: 21 },
     ],
   },
   // A small, relentless swarm unit — low HP, never guards, comes in numbers.
@@ -189,9 +189,9 @@ const ENEMY_TYPES = {
     name: "Feral Kitten",
     maxHp: 7,
     pattern: [
-      { type: "attack", damage: 4 },
-      { type: "attack", damage: 4 },
-      { type: "attack", damage: 6 },
+      { type: "attack", damage: 5 },
+      { type: "attack", damage: 5 },
+      { type: "attack", damage: 7 },
     ],
   },
   // A glass-cannon sniper — winds up behind cover, then a big telegraphed
@@ -199,35 +199,35 @@ const ENEMY_TYPES = {
   rooftopSniper: {
     id: "rooftopSniper",
     name: "Rooftop Sniper",
-    maxHp: 15,
+    maxHp: 18,
     pattern: [
-      { type: "guard", block: 4 },
-      { type: "attack", damage: 15 },
+      { type: "guard", block: 5 },
+      { type: "attack", damage: 18 },
     ],
   },
   // Act 2 boss — a heavy officer cat: hits hard, guards, then a crushing blow.
   warcatCaptain: {
     id: "warcatCaptain",
     name: "Warcat Captain",
-    maxHp: 64,
+    maxHp: 76,
     pattern: [
-      { type: "attack", damage: 14 },
-      { type: "guard", block: 14 },
-      { type: "attack", damage: 16 },
-      { type: "attack", damage: 21 },
+      { type: "attack", damage: 17 },
+      { type: "guard", block: 16 },
+      { type: "attack", damage: 20 },
+      { type: "attack", damage: 26 },
     ],
   },
   // Act 3 boss — the tyrant king: relentless, escalating, ends in a haymaker.
   catKing: {
     id: "catKing",
     name: "The Cat King",
-    maxHp: 78,
+    maxHp: 94,
     pattern: [
-      { type: "attack", damage: 13 },
+      { type: "attack", damage: 16 },
+      { type: "guard", block: 14 },
+      { type: "attack", damage: 22 },
       { type: "guard", block: 12 },
-      { type: "attack", damage: 18 },
-      { type: "guard", block: 10 },
-      { type: "attack", damage: 23 },
+      { type: "attack", damage: 29 },
     ],
   },
 };
