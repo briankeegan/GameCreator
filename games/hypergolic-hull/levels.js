@@ -42,7 +42,7 @@
     // Sector 2 — Impulse Cannon. One Interceptor between you and the gate.
     {
       id: 2,
-      name: "Impulse Cannon",
+      name: "Shockwave",
       board: { type: "rect", cols: 6, rows: 11 },
       playerStart: { q: -3, r: 10 },
       exit: { q: 2, r: 0 },
@@ -51,7 +51,7 @@
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming"],
-      intro: "Impulse Cannon online. It auto-fires on any 👾 within 1 hex after you move.",
+      intro: "Shockwave online. It auto-fires on any 👾 within 1 hex — in every direction — after you move.",
     },
     // Sector 3 — Tractor Beam. Two Interceptors; push one off the edge.
     {

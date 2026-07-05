@@ -127,11 +127,18 @@ const meleeLevel = {
 };
 const meleeState = Engine.createGameState(meleeLevel);
 Engine.applySublight(meleeState, { q: 0, r: 3 }); // step adjacent: interceptor attacks
-assert.strictEqual(meleeState.hull, 0, "one hull point means the adjacent interceptor's strike is lethal");
-assert.strictEqual(meleeState.status, "lost", "one-hit permadeath: any strike ends the run");
+assert.strictEqual(meleeState.hull, 2, "a strike now costs 1 of 3 Hull — no longer instant death");
+assert.strictEqual(meleeState.status, "playing", "with 3 Hull the run survives a single hit");
 assert.ok(meleeState.events.some((e) => e.type === "attack"), "attacks emit an attack event");
 assert.ok(meleeState.events.some((e) => e.type === "damage"), "damage emits a damage event");
-assert.ok(meleeState.events.some((e) => e.type === "playerDeath"), "lethal damage emits a playerDeath event");
+
+// The killing blow still ends the run and emits playerDeath — it just takes
+// three hits now instead of one.
+const deathState = Engine.createGameState(meleeLevel);
+deathState.hull = 1;
+Engine.applySublight(deathState, { q: 0, r: 3 });
+assert.strictEqual(deathState.status, "lost", "the final hit still ends the run");
+assert.ok(deathState.events.some((e) => e.type === "playerDeath"), "lethal damage emits a playerDeath event");
 assert.ok(
   meleeState.events.some((e) => e.type === "playerMove" && e.to.q === 0 && e.to.r === 3),
   "player moves emit a playerMove event (drives the flight animation)"
@@ -177,12 +184,12 @@ assert.strictEqual(
 // a different angle the whole time and isn't yet adjacent when e1 dies.
 
 let state = Engine.createGameState(goldenLevel);
-assert.strictEqual(state.hull, 1, "one hull point: the flagship is one hit from permadeath");
+assert.strictEqual(state.hull, 3, "the flagship starts a run with 3 Hull");
 assert.strictEqual(Engine.livingEnemies(state).length, 2);
 
 Engine.applySublight(state, { q: 1, r: -1 });
 Engine.applySublight(state, { q: 2, r: -2 });
-assert.strictEqual(state.hull, 1, "no shot has lined up yet — no damage taken closing in");
+assert.strictEqual(state.hull, 3, "no shot has lined up yet — no damage taken closing in");
 assert.strictEqual(Engine.livingEnemies(state).length, 2, "both Interceptors still alive before the lined-up shot");
 
 Engine.applySublight(state, { q: 2, r: -1 });
@@ -190,7 +197,7 @@ Engine.applySublight(state, { q: 2, r: -1 });
 assert.deepStrictEqual(state.playerPos, { q: 2, r: -1 });
 assert.strictEqual(state.enemies.find((e) => e.id === "e1").alive, false, "Interceptor 2 should be destroyed once dead ahead of the flagship");
 assert.strictEqual(Engine.livingEnemies(state).length, 1);
-assert.strictEqual(state.hull, 1, "the Impulse Cannon resolves before the enemy phase, so no damage yet");
+assert.strictEqual(state.hull, 3, "the Shockwave resolves before the enemy phase, so no damage yet");
 assert.strictEqual(state.status, "playing");
 
 const interceptor1 = Engine.livingEnemies(state)[0];
@@ -216,8 +223,8 @@ const staysAdjacent = Engine.legalSublightTargets(mistakeState).find(
 );
 assert.ok(staysAdjacent, "expected a legal move that stays adjacent to Interceptor 1");
 Engine.applySublight(mistakeState, staysAdjacent);
-assert.strictEqual(mistakeState.hull, 0, "staying adjacent to Interceptor 1 eats its deterministic strike — lethal at 1 Hull");
-assert.strictEqual(mistakeState.status, "lost", "the mistake branch is permadeath, not a scratch");
+assert.strictEqual(mistakeState.hull, 2, "staying adjacent to Interceptor 1 eats its deterministic strike — 1 of 3 Hull gone");
+assert.strictEqual(mistakeState.status, "playing", "with 3 Hull a single strike is a scratch, not death");
 
 // ---- step 3b: correct branch — Fighter Squadron kills Interceptor 1 outright
 
@@ -225,7 +232,7 @@ const correctState = clone(state);
 Engine.applyFighter(correctState, interceptor1.id);
 
 assert.strictEqual(Engine.livingEnemies(correctState).length, 0, "Interceptor 1 should be destroyed by the fighter squadron");
-assert.strictEqual(correctState.hull, 1, "the correct branch should take no damage");
+assert.strictEqual(correctState.hull, 3, "the correct branch should take no damage");
 assert.strictEqual(correctState.status, "playing");
 assert.strictEqual(correctState.rammingDisabled, true, "the Impulse Cannon should be disabled while fighters are deployed");
 assert.deepStrictEqual(correctState.fighterHex, { q: interceptor1.q, r: interceptor1.r });
@@ -360,7 +367,7 @@ const interceptorWeapon = Engine.ENEMY_TYPES.interceptor.weapon;
 assert.deepStrictEqual(
   interceptorWeapon.pattern.slice().sort(),
   [0, 1, 2, 3, 4, 5],
-  "the Interceptor Cannon is omnidirectional (every direction offset), unlike the Impulse Cannon's forward-only pattern"
+  "the Interceptor Cannon is omnidirectional (every direction offset)"
 );
 // facing is irrelevant to an omnidirectional pattern — passing 0 here still
 // covers every direction, which is exactly the point.
@@ -372,18 +379,16 @@ assert.ok(
   "every hex an omnidirectional range-1 weapon reaches is exactly 1 hex away"
 );
 
-// The Impulse Cannon fires a forward 3-way spread — dead ahead plus the two
-// hexes flanking it (front-left and front-right) — and never the rear arc.
+// The Shockwave (the free auto-weapon) now fires in ALL six directions — an
+// encircling blast that defends you from every side, no aiming required.
 const pulseCannon = Engine.WEAPONS.ram;
-assert.deepStrictEqual(pulseCannon.pattern, [0, 1, 5], "the Impulse Cannon fires front + front-left + front-right");
-for (let facing = 0; facing < 6; facing++) {
-  const forwardHexes = Engine.weaponHexes(interceptorPos, facing, pulseCannon);
-  assert.deepStrictEqual(
-    forwardHexes,
-    pulseCannon.pattern.map((off) => Engine.neighbor(interceptorPos, (facing + off) % 6)),
-    `facing ${facing}, the Impulse Cannon reaches the three forward hexes`
-  );
-}
+assert.deepStrictEqual(pulseCannon.pattern.slice().sort(), [0, 1, 2, 3, 4, 5], "the Shockwave is omnidirectional");
+const shockHexes = Engine.weaponHexes(interceptorPos, 0, pulseCannon);
+assert.strictEqual(shockHexes.length, 6, "the Shockwave reaches all six neighboring hexes");
+assert.ok(
+  shockHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
+  "every hex the Shockwave reaches is exactly one hex away (range 1, all directions)"
+);
 
 // ---- new enemy classes: Cruiser (heavy) and Sentry (stationary turret) -----
 // Variety beyond the lone Interceptor: a Cruiser takes two hits, and a Sentry
@@ -403,7 +408,7 @@ assert.ok(
 );
 
 // Behavior: a Sentry holds position while the player is out of range, then
-// fires the instant the player steps into its 2-hex ring (lethal at 1 Hull).
+// fires the instant the player steps into its 2-hex ring (costs a Hull).
 const sentryLevel = {
   id: 993,
   name: "sentry fixture",
@@ -425,8 +430,9 @@ assert.deepStrictEqual(
   sentryStart,
   "the Sentry does not move to chase — it holds its hex"
 );
+const hullBeforeBeam = sentryState.hull;
 Engine.applySublight(sentryState, { q: 0, r: 4 }); // distance 2 — into the beam
-assert.strictEqual(sentryState.status, "lost", "entering the Sentry's 2-hex ring is a lethal hit");
+assert.strictEqual(sentryState.hull, hullBeforeBeam - 1, "entering the Sentry's 2-hex ring takes a hit");
 assert.ok(sentryState.events.some((e) => e.type === "attack"), "the Sentry's shot emits an attack event");
 
 console.log("All golden-path assertions passed.");

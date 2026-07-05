@@ -99,7 +99,7 @@ async function freshPage(browser, url, errors) {
   const browser = await chromium.launch({ executablePath: CHROMIUM });
   const errors = [];
 
-  // ---- Sector 1: move-only tutorial, everything else visibly locked ------
+  // ---- Sector 1: move-only tutorial; not-yet-unlocked actions are hidden --
 
   let page = await freshPage(browser, url, errors);
   let s = await getState(page);
@@ -108,8 +108,8 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(s.exitUnlocked, true, "no enemies means the gate starts online");
   assert.deepStrictEqual(s.actions, ["sublight"], "only Sublight is unlocked in Sector 1");
   for (const m of ["tractor", "fighter"]) {
-    assert.strictEqual(await page.locator(`[data-mode="${m}"]`).isDisabled(), true, `${m} is locked in Sector 1`);
-    assert.ok((await page.locator(`[data-mode="${m}"]`).textContent()).startsWith("🔒"), `${m} shows its padlock`);
+    // Locked actions are hidden entirely now — no padlocked ghost buttons.
+    assert.strictEqual(await page.locator(`[data-mode="${m}"]`).isVisible(), false, `${m} is hidden until unlocked in Sector 1`);
   }
   assert.strictEqual(
     await page.locator("#toggleRam").isDisabled(),
@@ -267,7 +267,7 @@ async function freshPage(browser, url, errors) {
   await page.waitForFunction(() => window.__hhState.status === "playing");
   s = await getState(page);
   assert.strictEqual(s.levelId, 1, "New Run resets the campaign to Sector 1");
-  assert.strictEqual(s.hull, 1);
+  assert.strictEqual(s.hull, 3);
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false);
   await page.close();
 

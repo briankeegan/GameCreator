@@ -833,6 +833,58 @@ function makeExplosionParticles(count) {
   return particles;
 }
 
+// The Warp Gate, drawn as real art instead of a 🌀 emoji: concentric rings
+// with a swirling luminous core. Online = live cyan-green portal (spinning arms
+// + a pulsing bright core); not-yet-powered = a dim inert grey ring, so it
+// still reads as "the exit, just not open yet."
+function drawWarpGate(center, r, online, now) {
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  const t = (now || 0) / 1000;
+  if (online) {
+    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.4);
+    glow.addColorStop(0, "rgba(120,255,210,0.5)");
+    glow.addColorStop(0.6, "rgba(60,200,180,0.22)");
+    glow.addColorStop(1, "rgba(40,180,160,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.rotate(t * 0.8);
+    ctx.strokeStyle = "rgba(180,255,235,0.9)";
+    ctx.lineWidth = Math.max(1.5, r * 0.12);
+    ctx.lineCap = "round";
+    for (let i = 0; i < 3; i++) {
+      const a = (i * Math.PI * 2) / 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.62, a, a + Math.PI * 0.68);
+      ctx.stroke();
+    }
+    ctx.restore();
+    const pulse = 0.75 + 0.25 * Math.sin(t * 3);
+    const core = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.42 * pulse);
+    core.addColorStop(0, "rgba(255,255,255,0.95)");
+    core.addColorStop(1, "rgba(120,255,210,0)");
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.42 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.strokeStyle = "rgba(150,170,190,0.5)";
+    ctx.lineWidth = Math.max(1.5, r * 0.14);
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(110,130,150,0.38)";
+    ctx.lineWidth = Math.max(1, r * 0.07);
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.34, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // Each sector gets its own deep-space mood — a tinted nebula wash plus a
 // sparse, sector-specific starfield — so the campaign visibly changes scenery
 // as you advance instead of every board reading identically. Colors are
@@ -958,7 +1010,7 @@ function draw() {
     drawHex(center, fill, stroke, strokeWidth);
 
     if (isExit) {
-      drawSprite(center, state.exitUnlocked ? SPRITES.gateOnline : SPRITES.gateLocked, geom.sx * 0.62);
+      drawWarpGate(center, geom.sx * 0.5, state.exitUnlocked, now);
     } else if (isOutpost) {
       drawSprite(center, SPRITES.outpost, geom.sx * 0.56);
     }
@@ -1132,12 +1184,11 @@ function updateHud() {
   modeButtons.forEach((btn) => {
     const m = btn.dataset.mode;
     const locked = !state.actions.includes(m);
-    btn.classList.toggle("locked", locked);
-    btn.textContent = locked ? `🔒 ${MODES[m].label}` : MODES[m].label;
-    btn.disabled =
-      locked ||
-      state.status !== "playing" ||
-      (m === "fighter" && Boolean(state.fighterHex));
+    // A not-yet-unlocked action is simply hidden — no padlock, no greyed-out
+    // ghost button cluttering the console. It appears the sector it unlocks.
+    btn.hidden = locked;
+    btn.textContent = MODES[m].label;
+    btn.disabled = state.status !== "playing" || (m === "fighter" && Boolean(state.fighterHex));
   });
 }
 
@@ -1172,7 +1223,7 @@ function updateSystems() {
   // to learn about it" pattern as clicking an enemy while Help is open.
   // Stats are readable either way, locked or not — locked only means the
   // weapon isn't firing yet, not that you can't go look at its numbers.
-  const lockedPrefix = unlocked ? "" : "🔒 ";
+  const lockedPrefix = unlocked ? "" : "offline · ";
   weaponStatsEl.textContent = lockedPrefix + (weaponStatsExpanded ? describeWeapon(weapon) : describeWeaponCompact(weapon));
   weaponStatsEl.classList.toggle("expanded", weaponStatsExpanded);
 }

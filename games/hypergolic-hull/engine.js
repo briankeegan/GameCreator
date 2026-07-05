@@ -144,7 +144,11 @@
 
   // ---- game state -----------------------------------------------------------
 
-  const START_HULL = 1; // one hit and you're out — permadeath means it, Hoplite-style
+  // Three Hull to start: a run can now soak a couple of hits, which is what
+  // turns this from a pure-skill puzzle into a luck-and-skill crawl — room to
+  // trade Hull for tempo, recover from a bad roll, and let salvage/repairs
+  // matter. (Was 1: one-hit permadeath.)
+  const START_HULL = 3;
 
   // ---- weapon systems ---------------------------------------------------
   //
@@ -168,7 +172,10 @@
   // don't need a data-model change to add.
   const ALL_DIRECTIONS_PATTERN = [0, 1, 2, 3, 4, 5];
   const WEAPONS = {
-    ram: { id: "ram", label: "Impulse Cannon", range: 1, damage: 1, targets: "all", speed: 2, energyCost: 0, pattern: [0, 1, 5], slots: 1 },
+    // The free auto-weapon now fires in ALL six directions (an encircling
+    // blast), not just the forward three — so it defends you from every side
+    // after a move, no aiming required. Renamed to the Shockwave to match.
+    ram: { id: "ram", label: "Shockwave", range: 1, damage: 1, targets: "all", speed: 2, energyCost: 0, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     interceptorCannon: { id: "interceptorCannon", label: "Interceptor Cannon", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // A Sentry Turret's beam reaches TWO hexes in every direction — it never
     // moves, but it zones off a wide ring you have to route around or kill.
