@@ -62,13 +62,13 @@
       exit: { q: 3, r: 0 },
       outpost: { q: 0, r: 0 },
       enemies: [
-        { type: "interceptor", q: -1, r: 6 },
+        { type: "cruiser", q: -1, r: 6 },
         { type: "interceptor", q: 0, r: 8 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming", "tractor"],
-      intro: "Tractor Beam online. Shove an adjacent 👾 — off the edge destroys it.",
+      intro: "Tractor Beam online. Shove an adjacent 👾 — off the edge destroys it. The Cruiser takes TWO hits, so shove it instead.",
     },
     // Sector 4 — Fighter Squadron. Three Interceptors, full action kit.
     {
@@ -79,14 +79,14 @@
       exit: { q: 3, r: 0 },
       outpost: { q: 7, r: 0 },
       enemies: [
-        { type: "interceptor", q: 0, r: 3 },
-        { type: "interceptor", q: 2, r: 8 },
+        { type: "cruiser", q: 0, r: 3 },
+        { type: "sentry", q: 2, r: 8 },
         { type: "interceptor", q: -3, r: 11 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming", "tractor", "fighter"],
-      intro: "Fighter Squadron online. Strike any 👾 at range, then retrieve your 🛩️.",
+      intro: "Fighter Squadron online. Strike any 👾 at range, then retrieve your 🛩️. The Sentry doesn't move — but its beam covers 2 hexes all around. Route around it or take it out.",
     },
     // Sector 5 — Full Fleet. The biggest, tallest board, everything unlocked.
     {
@@ -97,13 +97,13 @@
       exit: { q: 3, r: 0 },
       outpost: { q: -4, r: 8 },
       enemies: [
-        { type: "interceptor", q: 1, r: 3 },
-        { type: "interceptor", q: 2, r: 6 },
+        { type: "cruiser", q: 1, r: 3 },
+        { type: "sentry", q: 2, r: 6 },
         { type: "interceptor", q: -2, r: 11 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
-      intro: "Full fleet command. Clear the sector however you like.",
+      intro: "Full fleet command — Interceptors, Cruisers, and a Sentry, all at once. Clear the sector however you like.",
     },
   ];
 

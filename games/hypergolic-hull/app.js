@@ -651,20 +651,140 @@ function drawPlayerShip(size, thrustFrac, hpFrac) {
   ctx.restore();
 }
 
-function drawEnemyShip(size, hpFrac, crackSeed) {
+// A Heavy Cruiser: a chunky armored gunship, clearly bulkier than the
+// dagger-like Interceptor, in cold steel-blue with a crimson armor stripe and
+// twin forward guns — reads instantly as "the tanky one." Authored nose-right.
+function drawCruiser(s) {
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  const O = "#0a0a12";
+  for (const dy of [-s * 0.34, s * 0.34]) {
+    const gl = ctx.createRadialGradient(-s * 0.78, dy, 0, -s * 0.78, dy, s * 0.22);
+    gl.addColorStop(0, "rgba(255,210,160,.9)");
+    gl.addColorStop(0.5, "rgba(255,90,50,.5)");
+    gl.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = gl;
+    ctx.beginPath();
+    ctx.arc(-s * 0.78, dy, s * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const hull = () => {
+    ctx.beginPath();
+    ctx.moveTo(s * 1.02, 0);
+    ctx.lineTo(s * 0.52, -s * 0.5);
+    ctx.lineTo(-s * 0.5, -s * 0.62);
+    ctx.lineTo(-s * 0.85, -s * 0.32);
+    ctx.lineTo(-s * 0.85, s * 0.32);
+    ctx.lineTo(-s * 0.5, s * 0.62);
+    ctx.lineTo(s * 0.52, s * 0.5);
+    ctx.closePath();
+  };
+  hull();
+  ctx.fillStyle = lgrad(-s * 0.6, -s * 0.5, s * 0.9, s * 0.5, [[0, "#22303f"], [0.45, "#3b5568"], [0.75, "#5c7d92"], [1, "#8fb0c4"]]);
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, s * 0.06);
+  ctx.strokeStyle = O;
+  ctx.stroke();
   ctx.save();
-  // High-contrast hostile halo: the enemy hull is deliberately dark, which
-  // vanished against the dark board. A red danger glow behind it makes every
-  // enemy pop and instantly reads as "threat" (vs. the player's clean hull).
+  hull();
+  ctx.clip();
+  ctx.fillStyle = "rgba(196,44,52,.9)";
+  ctx.fillRect(-s * 0.22, -s * 0.7, s * 0.26, s * 1.4);
+  ctx.strokeStyle = "rgba(10,14,20,.55)";
+  ctx.lineWidth = Math.max(1, s * 0.03);
+  ctx.beginPath();
+  ctx.moveTo(s * 0.9, 0);
+  ctx.lineTo(-s * 0.8, 0);
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = "#2a3a48";
+  for (const dy of [-s * 0.28, s * 0.28]) ctx.fillRect(s * 0.5, dy - s * 0.05, s * 0.52, s * 0.1);
+  const eye = ctx.createRadialGradient(s * 0.05, 0, 0, s * 0.05, 0, s * 0.24);
+  eye.addColorStop(0, "rgba(220,245,255,1)");
+  eye.addColorStop(0.4, "rgba(90,180,255,.95)");
+  eye.addColorStop(1, "rgba(30,80,160,0)");
+  ctx.fillStyle = eye;
+  ctx.beginPath();
+  ctx.arc(s * 0.05, 0, s * 0.24, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// A Sentry Turret: a stationary hexagonal gun platform (not a ship — no nose),
+// in toxic teal-green with three radiating barrels and a big green sensor eye.
+// Drawn axis-aligned; the caller does NOT rotate it toward the player.
+function drawSentry(s) {
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  const O = "#06120f";
+  const hexPath = (rad) => {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 6 + (i * Math.PI) / 3;
+      const x = Math.cos(a) * rad;
+      const y = Math.sin(a) * rad;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  };
+  ctx.fillStyle = "#0c241f";
+  for (let i = 0; i < 3; i++) {
+    ctx.save();
+    ctx.rotate((i * 2 * Math.PI) / 3);
+    ctx.fillRect(s * 0.35, -s * 0.09, s * 0.78, s * 0.18);
+    ctx.strokeStyle = O;
+    ctx.lineWidth = Math.max(1, s * 0.04);
+    ctx.strokeRect(s * 0.35, -s * 0.09, s * 0.78, s * 0.18);
+    ctx.restore();
+  }
+  hexPath(s * 0.92);
+  ctx.fillStyle = lgrad(-s * 0.7, -s * 0.7, s * 0.7, s * 0.7, [[0, "#0f2a26"], [0.5, "#1c4a41"], [1, "#2f6f60"]]);
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, s * 0.06);
+  ctx.strokeStyle = O;
+  ctx.stroke();
+  hexPath(s * 0.58);
+  ctx.fillStyle = "#123a33";
+  ctx.fill();
+  ctx.stroke();
+  const eye = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 0.32);
+  eye.addColorStop(0, "rgba(230,255,235,1)");
+  eye.addColorStop(0.35, "rgba(70,240,150,.95)");
+  eye.addColorStop(1, "rgba(20,120,80,0)");
+  ctx.fillStyle = eye;
+  ctx.beginPath();
+  ctx.arc(0, 0, s * 0.32, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(0, 0, s * 0.06, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawEnemyShip(size, hpFrac, crackSeed, type) {
+  ctx.save();
+  // High-contrast hostile halo, color-coded per enemy class so each one reads
+  // at a glance even before you clock its silhouette: the enemy hulls are
+  // deliberately dark and vanished against the dark board otherwise.
+  const HALO = {
+    interceptor: ["rgba(255,110,70,0.55)", "rgba(255,60,45,0.28)", "rgba(255,50,40,0)"],
+    cruiser: ["rgba(255,170,60,0.55)", "rgba(240,120,30,0.30)", "rgba(240,110,30,0)"],
+    sentry: ["rgba(70,240,150,0.50)", "rgba(40,200,120,0.26)", "rgba(30,190,110,0)"],
+  };
+  const hc = HALO[type] || HALO.interceptor;
   const halo = ctx.createRadialGradient(0, 0, size * 0.15, 0, 0, size * 1.25);
-  halo.addColorStop(0, "rgba(255,110,70,0.55)");
-  halo.addColorStop(0.55, "rgba(255,60,45,0.28)");
-  halo.addColorStop(1, "rgba(255,50,40,0)");
+  halo.addColorStop(0, hc[0]);
+  halo.addColorStop(0.55, hc[1]);
+  halo.addColorStop(1, hc[2]);
   ctx.fillStyle = halo;
   ctx.beginPath();
   ctx.arc(0, 0, size * 1.25, 0, Math.PI * 2);
   ctx.fill();
-  if (!drawShipImage(interceptorImg, size)) {
+  if (type === "cruiser") {
+    drawCruiser(size * 1.12);
+  } else if (type === "sentry") {
+    drawSentry(size * 1.05);
+  } else if (!drawShipImage(interceptorImg, size)) {
     drawEnemyFighter(size, 0);
   }
   drawCracks(size, hpFrac, crackSeed);
@@ -713,9 +833,62 @@ function makeExplosionParticles(count) {
   return particles;
 }
 
+// Each sector gets its own deep-space mood — a tinted nebula wash plus a
+// sparse, sector-specific starfield — so the campaign visibly changes scenery
+// as you advance instead of every board reading identically. Colors are
+// [core, edge] of a radial gradient; the starfield is seeded per sector so it
+// stays put frame-to-frame rather than twinkling into new positions.
+// [coreTint, edgeTint, nebulaAccent] — the first two are the base wash; the
+// third is a big soft off-center glow layered on top so each sector has its
+// own unmistakable color of deep space, not just a barely-there tint.
+const SECTOR_BG = {
+  1: ["#0b1226", "#05070f", "rgba(60,110,220,0.16)"], // deep blue — the quiet approach
+  2: ["#0a1c2e", "#04090f", "rgba(40,180,200,0.18)"], // steel cyan
+  3: ["#1b1233", "#080510", "rgba(150,70,230,0.22)"], // violet nebula
+  4: ["#0a2622", "#03100e", "rgba(40,220,150,0.20)"], // toxic teal — Sentry country
+  5: ["#2c1024", "#0e0510", "rgba(230,60,110,0.22)"], // crimson-magenta — the final fleet
+};
+const starCache = new Map();
+function starsFor(levelId, w, h) {
+  const key = `${levelId}:${w}x${h}`;
+  if (starCache.has(key)) return starCache.get(key);
+  const rng = seededRandom(`stars-${key}`);
+  const stars = [];
+  for (let i = 0; i < 90; i++) {
+    stars.push({ x: rng() * w, y: rng() * h, r: 0.4 + rng() * 1.3, a: 0.25 + rng() * 0.55 });
+  }
+  starCache.set(key, stars);
+  return stars;
+}
+function drawSectorBackdrop() {
+  const bg = SECTOR_BG[state.levelId] || SECTOR_BG[1];
+  const g = ctx.createRadialGradient(geom.w * 0.5, geom.h * 0.34, geom.w * 0.08, geom.w * 0.5, geom.h * 0.52, geom.h * 0.8);
+  g.addColorStop(0, bg[0]);
+  g.addColorStop(1, bg[1]);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, geom.w, geom.h);
+  // A large soft nebula glow, offset to one corner, in the sector's accent
+  // color — this is what makes each sector read as its own place at a glance.
+  const neb = ctx.createRadialGradient(geom.w * 0.72, geom.h * 0.24, 0, geom.w * 0.72, geom.h * 0.24, geom.h * 0.7);
+  neb.addColorStop(0, bg[2]);
+  neb.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = neb;
+  ctx.fillRect(0, 0, geom.w, geom.h);
+  ctx.save();
+  for (const st of starsFor(state.levelId, Math.round(geom.w), Math.round(geom.h))) {
+    ctx.globalAlpha = st.a;
+    ctx.fillStyle = "#dbe7ff";
+    ctx.beginPath();
+    ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function draw() {
   const now = performance.now();
   ctx.clearRect(0, 0, geom.w, geom.h);
+  drawSectorBackdrop();
   ctx.save();
 
   // Screen shake while a damage flash is running.
@@ -851,8 +1024,12 @@ function draw() {
     const center = overrides.get(enemy.id) || base;
     ctx.save();
     ctx.translate(center.x, center.y);
-    ctx.rotate((angleToward(enemy, state.playerPos) * Math.PI) / 180);
-    drawEnemyShip(geom.sx * 0.46, enemy.hp / enemy.maxHp, enemy.id);
+    // A Sentry is a fixed emplacement — it doesn't pivot to face you; every
+    // other enemy points its nose at the flagship.
+    if (enemy.type !== "sentry") {
+      ctx.rotate((angleToward(enemy, state.playerPos) * Math.PI) / 180);
+    }
+    drawEnemyShip(geom.sx * 0.46, enemy.hp / enemy.maxHp, enemy.id, enemy.type);
     ctx.restore();
   }
 

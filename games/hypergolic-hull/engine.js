@@ -170,13 +170,25 @@
   const WEAPONS = {
     ram: { id: "ram", label: "Impulse Cannon", range: 1, damage: 1, targets: "all", speed: 2, energyCost: 0, pattern: [0, 1, 5], slots: 1 },
     interceptorCannon: { id: "interceptorCannon", label: "Interceptor Cannon", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // A Sentry Turret's beam reaches TWO hexes in every direction — it never
+    // moves, but it zones off a wide ring you have to route around or kill.
+    sentryBeam: { id: "sentryBeam", label: "Sentry Beam", range: 2, damage: 1, targets: "all", speed: 1, energyCost: 0, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
   };
 
   // Each enemy type is its own small data block: how tough it is (hp), what
   // it hits back with (a WEAPONS entry), and how it moves. Adding a new
   // enemy is adding an entry here, not new bespoke combat code.
+  //   interceptor — the basic chaser: 1 Hull, strikes adjacent, closes in.
+  //   cruiser     — a heavy: 2 Hull (takes two hits), otherwise chases like
+  //                 an interceptor. Distinct threat because it survives a ram.
+  //   sentry      — a stationary gun platform: 2 Hull, never moves, but its
+  //                 beam covers a 2-hex ring, controlling space instead of
+  //                 chasing. Approach it wrong and it fires; kill it or go
+  //                 around.
   const ENEMY_TYPES = {
     interceptor: { hp: 1, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true },
+    cruiser: { hp: 2, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true },
+    sentry: { hp: 2, weapon: WEAPONS.sentryBeam, movesTowardPlayer: false },
   };
 
   // Every hex a weapon's pattern actually reaches, fired from `pos` facing
@@ -343,11 +355,16 @@
 
   function decideIntent(state, enemy) {
     const enemyType = ENEMY_TYPES[enemy.type];
-    if (enemyType && enemyType.movesTowardPlayer) {
-      const inRange = weaponHexes(enemy, 0, enemyType.weapon).some((h) => posEq(h, state.playerPos));
-      if (inRange) {
-        return { enemyId: enemy.id, type: "attack" };
-      }
+    if (!enemyType) return { enemyId: enemy.id, type: "wait" };
+    // Any enemy — chaser or emplacement — fires the instant the player is
+    // standing somewhere its weapon reaches.
+    const inRange = weaponHexes(enemy, 0, enemyType.weapon).some((h) => posEq(h, state.playerPos));
+    if (inRange) {
+      return { enemyId: enemy.id, type: "attack" };
+    }
+    // Chasers close the gap; stationary emplacements (a Sentry) just hold and
+    // keep their ring of threatened hexes up.
+    if (enemyType.movesTowardPlayer) {
       const occupiedNow = new Set(
         state.enemies.filter((e) => e.alive && e.id !== enemy.id).map((e) => hexKey(e))
       );
@@ -363,8 +380,6 @@
       if (candidates.length === 0) return { enemyId: enemy.id, type: "wait" };
       return { enemyId: enemy.id, type: "move", to: candidates[0].to };
     }
-    // Other enemy types (Railgun Destroyer, Minelayer, Carrier) implement the
-    // same decide(state)/execute(intent) interface but land in a later pass.
     return { enemyId: enemy.id, type: "wait" };
   }
 

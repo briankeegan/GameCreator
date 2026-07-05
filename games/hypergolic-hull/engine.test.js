@@ -385,4 +385,48 @@ for (let facing = 0; facing < 6; facing++) {
   );
 }
 
+// ---- new enemy classes: Cruiser (heavy) and Sentry (stationary turret) -----
+// Variety beyond the lone Interceptor: a Cruiser takes two hits, and a Sentry
+// never moves but its beam reaches two hexes in every direction.
+assert.strictEqual(Engine.ENEMY_TYPES.cruiser.hp, 2, "the Cruiser is a 2-Hull heavy (survives a single hit)");
+assert.strictEqual(Engine.ENEMY_TYPES.interceptor.hp, 1, "the Interceptor is still a 1-Hull glass cannon");
+assert.strictEqual(Engine.ENEMY_TYPES.sentry.hp, 2, "the Sentry is a 2-Hull emplacement");
+assert.strictEqual(Engine.ENEMY_TYPES.sentry.movesTowardPlayer !== true, true, "the Sentry never chases");
+assert.strictEqual(Engine.ENEMY_TYPES.sentry.weapon, Engine.WEAPONS.sentryBeam, "the Sentry fires the Sentry Beam");
+assert.strictEqual(Engine.WEAPONS.sentryBeam.range, 2, "the Sentry Beam reaches two hexes");
+
+const sentryHexes = Engine.weaponHexes({ q: 0, r: 0 }, 0, Engine.WEAPONS.sentryBeam);
+assert.strictEqual(sentryHexes.length, 12, "a range-2 omnidirectional beam threatens 6 near + 6 far hexes");
+assert.ok(
+  sentryHexes.some((h) => Engine.hexDistance(h, { q: 0, r: 0 }) === 2),
+  "and it genuinely reaches out to distance 2, not just the neighbors"
+);
+
+// Behavior: a Sentry holds position while the player is out of range, then
+// fires the instant the player steps into its 2-hex ring (lethal at 1 Hull).
+const sentryLevel = {
+  id: 993,
+  name: "sentry fixture",
+  board: { type: "rect", cols: 5, rows: 9 },
+  playerStart: { q: 0, r: 6 },
+  exit: { q: 2, r: 0 },
+  outpost: null,
+  enemies: [{ type: "sentry", q: 0, r: 2 }],
+  hazards: [],
+  exitRule: "all-enemies-dead",
+  actions: ["sublight"], // no flagship weapons, so the Sentry lives to fire back
+};
+const sentryState = Engine.createGameState(sentryLevel);
+const sentryStart = { q: sentryState.enemies[0].q, r: sentryState.enemies[0].r };
+Engine.applySublight(sentryState, { q: 0, r: 5 }); // distance 3 — still out of the beam
+assert.strictEqual(sentryState.status, "playing", "stepping to distance 3 is safe — the beam only reaches 2");
+assert.deepStrictEqual(
+  { q: sentryState.enemies[0].q, r: sentryState.enemies[0].r },
+  sentryStart,
+  "the Sentry does not move to chase — it holds its hex"
+);
+Engine.applySublight(sentryState, { q: 0, r: 4 }); // distance 2 — into the beam
+assert.strictEqual(sentryState.status, "lost", "entering the Sentry's 2-hex ring is a lethal hit");
+assert.ok(sentryState.events.some((e) => e.type === "attack"), "the Sentry's shot emits an attack event");
+
 console.log("All golden-path assertions passed.");
