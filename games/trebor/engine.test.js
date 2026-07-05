@@ -57,7 +57,7 @@ assert.throws(() => Engine.playCard(gate, Content, 0, null, rng), /Cannot play a
 assert.throws(() => Engine.chooseClass(gate, Content, "notADog", rng), /Unknown class/);
 
 // Each class sets its own Hull and 12-card deck.
-const hpByClass = { riddle: 24, koozie: 32, bevy: 28, lala: 36 };
+const hpByClass = { riddle: 28, koozie: 32, bevy: 28, lala: 36 };
 for (const id of Object.keys(Content.CLASSES)) {
   const s = Engine.createGameState(Content, rng);
   Engine.chooseClass(s, Content, id, rng);
@@ -79,11 +79,18 @@ assert.strictEqual(bevyM.player.maxEnergy, Content.STARTING_ENERGY + 1, "Bevy ru
 Engine.chooseNode(bevyM, Content, 0, rng);
 assert.strictEqual(bevyM.player.energy, Content.STARTING_ENERGY + 1, "and opens combat holding it");
 
-// Riddle — Frenzy: draws an extra card each turn.
+// Riddle — Frenzy: draws an extra card AND runs on +1 Energy each turn, so the
+// extra draw is a real choice (see 6, play up to 4) instead of free-card spam.
 const riddleM = Engine.createGameState(Content, rng);
 Engine.chooseClass(riddleM, Content, "riddle", rng);
+assert.strictEqual(riddleM.player.maxEnergy, Content.STARTING_ENERGY + 1, "Frenzy also grants +1 Energy");
 Engine.chooseNode(riddleM, Content, 0, rng);
 assert.strictEqual(riddleM.hand.length, Content.HAND_SIZE + 1, "Frenzy opens with an extra card");
+assert.strictEqual(riddleM.player.energy, Content.STARTING_ENERGY + 1, "and opens combat holding the extra Energy");
+// Guard the design intent behind Admin's "half the cards are zero" note: most
+// of Riddle's deck now costs Energy — at most a third of it is free.
+const riddleZero = Content.CLASSES.riddle.deck.filter((id) => Content.CARDS[id].cost === 0).length;
+assert.ok(riddleZero <= 5, `Riddle's deck is mostly costed cards, not free (${riddleZero}/12 are 0-cost)`);
 
 // Lala — Lock Jaw: +3 damage on every attack.
 const lalaM = Engine.createGameState(Content, rng);
@@ -384,11 +391,13 @@ for (const id of Object.keys(Content.CLASSES)) {
   let wins = 0;
   for (let i = 0; i < RUNS; i++) if (playFullRun(id, seededPlay(10000 + i * 7))) wins++;
   const rate = wins / RUNS;
-  // Challenging-but-fair band: a competent player wins roughly a third to
-  // three-quarters of runs. Outside this, the class is a pushover or a wall.
+  // Challenging-but-fair band. The UPPER bound is the point of Admin's "way too
+  // easy" note: a competent bot must NOT faceroll the dungeon — if any class
+  // clears >66% of runs, the content got too soft and needs re-hardening. The
+  // lower bound keeps every class actually winnable (no unwinnable wall).
   assert.ok(
-    rate >= 0.3 && rate <= 0.78,
-    `${id} win rate ${(rate * 100).toFixed(0)}% should be challenging but fair (30-78%)`
+    rate >= 0.3 && rate <= 0.66,
+    `${id} win rate ${(rate * 100).toFixed(0)}% should be challenging but fair (30-66%)`
   );
 }
 

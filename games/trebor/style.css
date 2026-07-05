@@ -57,8 +57,8 @@ body {
    image hasn't loaded, the gradient alone still themes the act. */
 .game-area.act-1::before {
   background:
-    linear-gradient(180deg, rgba(20, 22, 14, 0.72) 0%, rgba(10, 12, 8, 0.82) 100%),
-    radial-gradient(ellipse at 50% 40%, rgba(0, 0, 0, 0) 30%, rgba(10, 12, 8, 0.5) 100%),
+    linear-gradient(180deg, rgba(24, 26, 18, 0.4) 0%, rgba(12, 14, 9, 0.6) 100%),
+    radial-gradient(ellipse at 50% 40%, rgba(0, 0, 0, 0) 42%, rgba(10, 12, 8, 0.34) 100%),
     url("icons/bg-act1.png") center / cover no-repeat,
     linear-gradient(180deg, #1a1712 0%, #0d0b08 100%);
 }

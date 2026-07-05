@@ -24,12 +24,13 @@ function pickFrom(arr, rng) {
 // Roll one floor's worth of node choices from an act template. Always at
 // least one fight so the run can always progress; the last floor before a
 // boss always also offers a rest (a breather to heal/sharpen first). The
-// remaining slots are weighted toward fights, with elites, a rest, or a
-// treasure mixed in (at most one rest and one treasure per floor).
+// remaining slots are weighted heavily toward fights and elites — a rest
+// shows up sometimes, and a treasure stash is deliberately RARE (a real find,
+// not a floor-by-floor handout). At most one rest and one treasure per floor.
 function generateFloorOptions(act, isLastFloor, content, rng) {
   const options = [makeNode("fight", act, content, rng)];
   if (isLastFloor) options.push(makeNode("rest", act, content, rng));
-  const bag = ["fight", "fight", "fight", "elite", "elite", "rest", "rest", "treasure"];
+  const bag = ["fight", "fight", "fight", "fight", "elite", "elite", "elite", "rest", "rest", "treasure"];
   const used = new Set(options.map((o) => o.type));
   let guard = 0;
   while (options.length < 3 && guard++ < 60) {

@@ -47,11 +47,13 @@ const CLASSES = {
     id: "riddle",
     name: "Riddle",
     breed: "Wire Fox Terrier",
-    blurb: "A relentless digger — cheap, fast attacks and card draw. Fragile but hits early and often.",
-    maxHp: 24,
-    // Frenzy: draws an extra card every turn, fuelling a hand of cheap 0-cost attacks.
-    mechanic: { drawBonus: 1, name: "Frenzy", text: "Draw an extra card each turn." },
-    deck: ["digIn", "digIn", "digIn", "scurry", "scurry", "scurry", "bite", "bite", "fetch", "fetch", "sniffOut", "goodBoy"],
+    blurb: "A relentless digger — fast attacks and card draw. Fragile but hits early and often, if you spend your Energy well.",
+    maxHp: 28,
+    // Frenzy: she draws an extra card AND runs on 4 Energy, so the extra draw is
+    // a real choice — see 6 cards, pick the best 4 to play — instead of a pile
+    // of free cards spammed for nothing. Fast and hits hard, but paper-thin.
+    mechanic: { drawBonus: 1, energyBonus: 1, name: "Frenzy", text: "Draw an extra card and gain +1 Energy each turn (4 total)." },
+    deck: ["bite", "bite", "bite", "fetch", "fetch", "growl", "pounce", "scurry", "scurry", "digIn", "digIn", "sniffOut"],
   },
   koozie: {
     id: "koozie",

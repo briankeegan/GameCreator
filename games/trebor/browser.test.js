@@ -238,10 +238,10 @@ async function playUntil(page, targetStatuses) {
   assert.strictEqual(state.classId, null);
 
   // ---- Loss path (as a different class) --------------------------------
-  await page.click(".class-option-riddle"); // Wire Fox Terrier, 24 Hull
+  await page.click(".class-option-riddle"); // Wire Fox Terrier, 28 Hull
   await page.waitForTimeout(80);
   state = await getState(page);
-  assert.strictEqual(state.player.maxHp, 24);
+  assert.strictEqual(state.player.maxHp, 28);
   await (await page.$$(".map-node-active"))[0].click(); // into a fight
   await page.waitForTimeout(80);
   await page.evaluate(() => {
