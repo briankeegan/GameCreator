@@ -167,7 +167,7 @@ const ENEMY_TYPES = {
   tabbyGuard: {
     id: "tabbyGuard",
     name: "Tabby Guard",
-    maxHp: 30,
+    maxHp: 32,
     pattern: [
       { type: "guard", block: 14 },
       { type: "attack", damage: 13 },
@@ -177,7 +177,7 @@ const ENEMY_TYPES = {
   bigTom: {
     id: "bigTom",
     name: "Big Tom",
-    maxHp: 58,
+    maxHp: 60,
     pattern: [
       { type: "attack", damage: 13 },
       { type: "guard", block: 14 },
@@ -211,7 +211,7 @@ const ENEMY_TYPES = {
   warcatCaptain: {
     id: "warcatCaptain",
     name: "Warcat Captain",
-    maxHp: 76,
+    maxHp: 78,
     pattern: [
       { type: "attack", damage: 17 },
       { type: "guard", block: 16 },
@@ -223,7 +223,7 @@ const ENEMY_TYPES = {
   catKing: {
     id: "catKing",
     name: "The Cat King",
-    maxHp: 94,
+    maxHp: 96,
     pattern: [
       { type: "attack", damage: 16 },
       { type: "guard", block: 14 },
