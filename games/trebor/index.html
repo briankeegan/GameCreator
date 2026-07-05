@@ -77,6 +77,16 @@
     <div class="battlefield" id="battlefield" hidden></div>
 
     <div class="console" id="combatConsole" hidden>
+      <div class="pile-row">
+        <button class="pile-badge" id="drawPileBtn" type="button" aria-label="View draw pile">
+          <span class="pile-badge-count" id="drawPileCount">0</span>
+          <span class="pile-badge-label">Draw</span>
+        </button>
+        <button class="pile-badge" id="discardPileBtn" type="button" aria-label="View discard pile">
+          <span class="pile-badge-label">Discard</span>
+          <span class="pile-badge-count" id="discardPileCount">0</span>
+        </button>
+      </div>
       <div class="hand" id="hand"></div>
       <button class="end-turn-btn" id="endTurnBtn">End Turn</button>
     </div>

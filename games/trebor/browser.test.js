@@ -188,6 +188,18 @@ async function playUntil(page, targetStatuses) {
   assert.strictEqual(state.player.block, 3, "Waterproof opens the turn with 3 Block");
   assert.ok(await page.locator(".enemy-intent").textContent(), "the cat's move is telegraphed up front");
 
+  // The draw/discard piles are visible during combat and open a viewer.
+  assert.strictEqual(await page.locator("#drawPileBtn").isVisible(), true, "the draw pile badge shows during combat");
+  assert.strictEqual(
+    await page.locator("#drawPileCount").textContent(),
+    String(state.drawPile.length),
+    "the draw pile badge shows the live draw-pile count"
+  );
+  await page.click("#drawPileBtn");
+  assert.strictEqual(await page.locator("#deckOverlay").isVisible(), true, "tapping the draw pile opens the card viewer");
+  assert.ok((await page.locator("#deckCount").textContent()).startsWith("Draw pile"), "the viewer is titled for the draw pile");
+  await page.click("#deckCloseBtn");
+
   await (await page.$$("#hand .card"))[3].click(); // Brace -> +8 Block
   await page.waitForTimeout(80);
   state = await getState(page);

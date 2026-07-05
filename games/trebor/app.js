@@ -110,6 +110,10 @@
   const overlayBodyEl = document.getElementById("runOverlayBody");
   const restartBtn = document.getElementById("restartBtn");
   const deckBtn = document.getElementById("deckBtn");
+  const drawPileBtn = document.getElementById("drawPileBtn");
+  const drawPileCountEl = document.getElementById("drawPileCount");
+  const discardPileBtn = document.getElementById("discardPileBtn");
+  const discardPileCountEl = document.getElementById("discardPileCount");
   const deckOverlayEl = document.getElementById("deckOverlay");
   const deckCardsEl = document.getElementById("deckCards");
   const deckCountEl = document.getElementById("deckCount");
@@ -589,6 +593,8 @@
       for (const enemy of state.enemies) battlefieldEl.appendChild(enemyNode(enemy));
       state.hand.forEach((cardId, i) => handEl.appendChild(cardNode(cardId, i)));
       animateHand = false;
+      drawPileCountEl.textContent = state.drawPile.length;
+      discardPileCountEl.textContent = state.discardPile.length;
     } else {
       objectiveEl.textContent = "";
     }
@@ -650,6 +656,47 @@
     deckOverlayEl.hidden = true;
   }
 
+  // In-combat pile viewer: shows what's left to draw or what's been used this
+  // fight. The draw pile is shuffled, so — like Slay the Spire — its contents
+  // are shown grouped by card (you know WHAT is coming, not the exact order).
+  function openPile(which) {
+    if (!state) return;
+    const pile = which === "draw" ? state.drawPile : state.discardPile;
+    const counts = {};
+    for (const id of pile) counts[id] = (counts[id] || 0) + 1;
+    const ids = Object.keys(counts).sort((a, b) => {
+      const ca = Content.CARDS[a];
+      const cb = Content.CARDS[b];
+      return ca.cost - cb.cost || ca.name.localeCompare(cb.name);
+    });
+    const noun = which === "draw" ? "Draw pile" : "Discard pile";
+    deckCountEl.textContent = `${noun} · ${pile.length} card${pile.length === 1 ? "" : "s"}`;
+    deckCardsEl.innerHTML = "";
+    if (ids.length === 0) {
+      deckCardsEl.innerHTML =
+        '<span class="deck-empty">' +
+        (which === "draw" ? "Draw pile is empty — it reshuffles from the discard." : "Nothing discarded yet.") +
+        "</span>";
+    }
+    for (const id of ids) {
+      const card = Content.CARDS[id];
+      const wrap = document.createElement("div");
+      wrap.className = "deck-card-wrap";
+      const el = document.createElement("div");
+      el.className = "card " + cardTypeClass(card);
+      el.innerHTML = cardFrameHtml(card);
+      wrap.appendChild(el);
+      if (counts[id] > 1) {
+        const badge = document.createElement("span");
+        badge.className = "deck-card-count";
+        badge.textContent = "×" + counts[id];
+        wrap.appendChild(badge);
+      }
+      deckCardsEl.appendChild(wrap);
+    }
+    deckOverlayEl.hidden = false;
+  }
+
   function onPickCard(mode, cardId) {
     const idx = state.deck.indexOf(cardId);
     if (idx < 0) return;
@@ -681,6 +728,8 @@
   skipBossRewardBtn.addEventListener("click", () => onPickBossReward(null));
   restartBtn.addEventListener("click", newRun);
   deckBtn.addEventListener("click", () => openDeck(null));
+  drawPileBtn.addEventListener("click", () => openPile("draw"));
+  discardPileBtn.addEventListener("click", () => openPile("discard"));
   deckCloseBtn.addEventListener("click", closeDeck);
   restHealBtn.addEventListener("click", onRestHeal);
   restUpgradeBtn.addEventListener("click", () => openDeck("upgrade"));
