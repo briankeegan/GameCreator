@@ -123,6 +123,19 @@
   let state = null;
   let selectedHandIndex = null; // hand index currently armed, awaiting an enemy tap
   let bestAct = GCStorage.get(GAME_ID, "bestAct", 0); // furthest act reached (1-based)
+  let animateHand = false; // deal-in flag, true only on a fresh draw
+  let lastTurnStamp = ""; // detects a new turn / new combat to trigger the deal
+  let newUnlocks = []; // cards unlocked by this run, shown on the end screen
+
+  // Narrow the live reward pool to what's unlocked (base + tiers earned by the
+  // furthest act ever reached). The engine reads Content.REWARD_POOL, so
+  // mutating it here gates what fights can offer.
+  function applyUnlocks() {
+    const pool = Content.BASE_REWARD_POOL.slice();
+    for (const tier of Content.REWARD_UNLOCKS) if (bestAct >= tier.act) pool.push(...tier.cards);
+    Content.REWARD_POOL = pool;
+  }
+  applyUnlocks();
 
   // Tests can pin window.__tbRng to a fixed generator (via addInitScript,
   // before this file runs) for a fully reproducible run; real play always
@@ -134,6 +147,7 @@
   function newRun() {
     state = Engine.createGameState(Content, rng);
     selectedHandIndex = null;
+    newUnlocks = [];
     overlayEl.hidden = true;
     render();
   }
@@ -141,8 +155,12 @@
   function saveBest() {
     const reached = state.actIndex + 1;
     if (reached > bestAct) {
+      const prev = bestAct;
       bestAct = reached;
       GCStorage.set(GAME_ID, "bestAct", bestAct);
+      // Crossing an act threshold unlocks new cards into future runs.
+      newUnlocks = Content.REWARD_UNLOCKS.filter((t) => t.act > prev && t.act <= bestAct).flatMap((t) => t.cards);
+      applyUnlocks();
     }
   }
 
@@ -425,6 +443,12 @@
     el.className = "card " + cardTypeClass(card);
     if (state.player.energy < card.cost) el.classList.add("card-disabled");
     if (selectedHandIndex === handIndex) el.classList.add("card-selected");
+    // Deal the hand in with a staggered flourish on a fresh draw (turn start
+    // or a new combat), so drawing cards actually reads on screen.
+    if (animateHand) {
+      el.classList.add("card-dealt");
+      el.style.animationDelay = handIndex * 0.05 + "s";
+    }
     el.innerHTML = cardFrameHtml(card);
     el.addEventListener("click", () => onCardTap(handIndex));
     return el;
@@ -499,7 +523,13 @@
     dogBlockChipEl.hidden = state.player.block <= 0;
     dogBlockValueEl.textContent = state.player.block;
 
+    // A clear numeric Energy readout alongside the pips, so you can always
+    // see exactly how much Energy you have.
     energyPipsEl.innerHTML = "";
+    const ecount = document.createElement("span");
+    ecount.className = "energy-count";
+    ecount.textContent = "Energy " + state.player.energy + "/" + state.player.maxEnergy;
+    energyPipsEl.appendChild(ecount);
     for (let i = 0; i < state.player.maxEnergy; i++) {
       const pip = document.createElement("span");
       pip.className = "energy-pip" + (i < state.player.energy ? " energy-pip-full" : "");
@@ -550,8 +580,15 @@
           ? "Tap a cat to aim it."
           : `Defeat ${listNames(living.map((e) => e.name))}.`;
 
+      // A fresh draw (new combat = floor/act change, or new turn = turnCount
+      // bump) deals the hand in; playing a card mid-turn does not re-animate.
+      const stamp = state.actIndex + "-" + state.floorIndex + "-" + state.currentNodeType + "-" + state.turnCount;
+      animateHand = stamp !== lastTurnStamp;
+      lastTurnStamp = stamp;
+
       for (const enemy of state.enemies) battlefieldEl.appendChild(enemyNode(enemy));
       state.hand.forEach((cardId, i) => handEl.appendChild(cardNode(cardId, i)));
+      animateHand = false;
     } else {
       objectiveEl.textContent = "";
     }
@@ -560,11 +597,11 @@
 
     if (state.status === "victory") {
       saveBest();
-      showOverlay("Victory!", "You dethroned the Cat King and cleared all three acts. TREEBOAR is yours.");
+      showOverlay("Victory!", "You dethroned the Cat King and cleared all three acts. TREEBOAR is yours." + unlockNote());
     } else if (state.status === "lost") {
       saveBest();
       const where = state.currentNodeType === "boss" ? `to the ${act.boss.label}` : `in ${act.name}`;
-      showOverlay("Good Boy, Down", `You fell ${where}, Act ${actNumber}.`);
+      showOverlay("Good Boy, Down", `You fell ${where}, Act ${actNumber}.` + unlockNote());
     } else {
       overlayEl.hidden = true;
     }
@@ -625,6 +662,12 @@
     if (!state || state.status !== "rest-site") return;
     Engine.restSite(state, Content, "heal", null, rng);
     render();
+  }
+
+  function unlockNote() {
+    if (!newUnlocks.length) return "";
+    const names = newUnlocks.map((id) => Content.CARDS[id].name).join(", ");
+    return `  New cards unlocked for future runs: ${names}!`;
   }
 
   function showOverlay(title, body) {

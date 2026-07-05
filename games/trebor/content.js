@@ -20,12 +20,12 @@ const CARDS = {
   sniffOut: { id: "sniffOut", name: "Sniff Out", cost: 0, draw: 2, text: "Draw 2 cards." },
   secondWind: { id: "secondWind", name: "Second Wind", cost: 1, block: 8, draw: 1, text: "Gain 8 Block. Draw a card." },
   // Class signature cards (each dog class opens with copies of its own):
-  digIn: { id: "digIn", name: "Dig In", cost: 0, damage: 4, text: "Deal 4 damage." },
+  digIn: { id: "digIn", name: "Dig In", cost: 0, damage: 3, text: "Deal 3 damage." },
   riptide: { id: "riptide", name: "Riptide", cost: 1, damage: 5, block: 5, text: "Deal 5 damage. Gain 5 Block." },
   rally: { id: "rally", name: "Rally", cost: 0, block: 3, draw: 1, text: "Gain 3 Block. Draw a card." },
   lockJaw: { id: "lockJaw", name: "Lock Jaw", cost: 1, damage: 9, text: "Deal 9 damage." },
   // More class-signature cards, so each dog's deck is its own thing:
-  scurry: { id: "scurry", name: "Scurry", cost: 0, damage: 3, draw: 1, text: "Deal 3 damage. Draw a card." }, // Riddle
+  scurry: { id: "scurry", name: "Scurry", cost: 0, damage: 2, draw: 1, text: "Deal 2 damage. Draw a card." }, // Riddle
   brace: { id: "brace", name: "Brace", cost: 1, block: 8, text: "Gain 8 Block." }, // Koozie
   counterSurge: { id: "counterSurge", name: "Counter-Surge", cost: 1, damage: 6, block: 3, text: "Deal 6 damage. Gain 3 Block." }, // Koozie
   flurry: { id: "flurry", name: "Flurry", cost: 1, damage: 4, draw: 1, text: "Deal 4 damage. Draw a card." }, // Bevy
@@ -88,14 +88,24 @@ const CLASSES = {
 // Fallback starter deck (used only if a run somehow has no class picked).
 const STARTER_DECK = CLASSES.bevy.deck.slice();
 
-// Cards offered as post-combat rewards — every card is fair game, including
-// the class signature cards and extra copies of starters.
-const REWARD_POOL = [
-  "bite", "growl", "fetch", "pounce", "guardDog", "goodBoy",
-  "howl", "bigBark", "alphaStrike", "sniffOut", "secondWind",
+// Cards you can be offered from the very first run.
+const BASE_REWARD_POOL = [
+  "bite", "growl", "fetch", "pounce", "guardDog", "goodBoy", "sniffOut",
   "digIn", "riptide", "rally", "lockJaw",
   "scurry", "brace", "counterSurge", "flurry", "chomp", "bodySlam",
 ];
+
+// Fancier cards that UNLOCK into the reward pool as you get deeper across
+// runs (gated by the furthest act you've ever reached). `act` is the
+// 1-based act you must have reached before these show up.
+const REWARD_UNLOCKS = [
+  { act: 2, cards: ["howl", "bigBark"] }, // reach the Rooftops → AoE cards
+  { act: 3, cards: ["alphaStrike", "secondWind"] }, // reach the Cathouse → heavy hitters
+];
+
+// The full pool (base + every unlockable), used as the ceiling / fallback.
+// The app narrows the live REWARD_POOL down to what's actually unlocked.
+const REWARD_POOL = BASE_REWARD_POOL.concat(...REWARD_UNLOCKS.map((u) => u.cards));
 
 // The elite cards, only offered after downing an act's boss — a run-defining
 // pick you can't get anywhere else.
@@ -128,8 +138,8 @@ const UPGRADES = {};
 for (const id of UPGRADABLE) {
   const base = CARDS[id];
   const up = Object.assign({}, base, { id: id + "Plus", name: base.name + "+", upgraded: true });
-  if (base.damage) up.damage = base.damage + 3;
-  if (base.block) up.block = base.block + 3;
+  if (base.damage) up.damage = base.damage + 2;
+  if (base.block) up.block = base.block + 2;
   if (base.energy) up.energy = base.energy + 1;
   if (base.draw && !base.damage && !base.block) up.draw = base.draw + 1; // pure draw cards draw more
   up.text = cardTextOf(up) || base.text;
@@ -303,6 +313,8 @@ const CONTENT = {
   CLASSES,
   STARTER_DECK,
   REWARD_POOL,
+  BASE_REWARD_POOL,
+  REWARD_UNLOCKS,
   BOSS_REWARD_POOL,
   TREASURE_POOL,
   UPGRADES,

@@ -48,26 +48,32 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: -1; /* behind all game content, not just the body background */
   pointer-events: none;
   transition: opacity 0.6s ease, background 0.6s ease;
 }
+/* Each act draws a generated scene backdrop, with a dark tinted gradient
+   layered ON TOP so the pieces stay readable and the mood stays heavy. If an
+   image hasn't loaded, the gradient alone still themes the act. */
 .game-area.act-1::before {
   background:
-    radial-gradient(ellipse at 50% 115%, rgba(70, 92, 46, 0.32), transparent 62%),
-    radial-gradient(ellipse at 15% -10%, rgba(120, 100, 60, 0.18), transparent 55%),
+    linear-gradient(180deg, rgba(20, 22, 14, 0.72) 0%, rgba(10, 12, 8, 0.82) 100%),
+    radial-gradient(ellipse at 50% 40%, rgba(0, 0, 0, 0) 30%, rgba(10, 12, 8, 0.5) 100%),
+    url("icons/bg-act1.png") center / cover no-repeat,
     linear-gradient(180deg, #1a1712 0%, #0d0b08 100%);
 }
 .game-area.act-2::before {
   background:
-    radial-gradient(ellipse at 50% -12%, rgba(70, 58, 128, 0.42), transparent 58%),
-    radial-gradient(circle at 78% 22%, rgba(180, 190, 230, 0.14), transparent 20%),
+    linear-gradient(180deg, rgba(16, 18, 34, 0.7) 0%, rgba(8, 8, 16, 0.82) 100%),
+    radial-gradient(ellipse at 50% 40%, rgba(0, 0, 0, 0) 30%, rgba(8, 8, 16, 0.5) 100%),
+    url("icons/bg-act2.png") center / cover no-repeat,
     linear-gradient(180deg, #141527 0%, #090912 100%);
 }
 .game-area.act-3::before {
   background:
-    radial-gradient(ellipse at 50% -12%, rgba(160, 44, 44, 0.42), transparent 55%),
-    radial-gradient(ellipse at 50% 120%, rgba(120, 92, 30, 0.4), transparent 60%),
+    linear-gradient(180deg, rgba(28, 12, 12, 0.72) 0%, rgba(10, 6, 6, 0.84) 100%),
+    radial-gradient(ellipse at 50% 40%, rgba(0, 0, 0, 0) 28%, rgba(10, 6, 6, 0.55) 100%),
+    url("icons/bg-act3.png") center / cover no-repeat,
     linear-gradient(180deg, #200f0d 0%, #0c0605 100%);
 }
 
@@ -233,8 +239,23 @@ body {
 
 .energy-pips {
   display: flex;
+  align-items: center;
   gap: 4px;
   flex: 0 0 auto;
+}
+
+/* Clear numeric Energy readout — a gold pill, hard to miss. */
+.energy-count {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 3px 9px;
+  border-radius: 10px;
+  background: rgba(242, 177, 121, 0.18);
+  border: 1px solid rgba(242, 177, 121, 0.55);
+  color: #ffe0bb;
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .energy-pip {
@@ -907,6 +928,14 @@ body {
 }
 
 /* ---- Cards: real trading-card frames, subtly tilted in 3D --------------- */
+
+/* Deal-in flourish on a fresh draw. Animates the independent `translate`
+   property (not `transform`) so the card's resting 3D tilt is preserved. */
+@keyframes cardDealIn {
+  0% { opacity: 0; translate: 0 30px; }
+  100% { opacity: 1; translate: 0 0; }
+}
+.card-dealt { animation: cardDealIn 0.3s ease both; }
 
 .card {
   flex: 0 0 auto;
