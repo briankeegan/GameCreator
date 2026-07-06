@@ -25,7 +25,7 @@
 
   function cardIconKey(card) {
     if (card.aoe) return "burst";
-    if (card.vulnerable && !card.damage) return "fang";
+    if ((card.vulnerable || card.weak) && !card.damage) return "fang";
     if (card.damage) return "claw";
     if (card.block) return "shield";
     if (card.energy) return "bolt";

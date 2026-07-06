@@ -24,6 +24,14 @@ const CARDS = {
   // raw damage (answering "why would you pick anything but the biggest hit?").
   snarl: { id: "snarl", name: "Snarl", cost: 0, vulnerable: 2, text: "Apply 2 Vulnerable (target takes +50% damage)." },
   rend: { id: "rend", name: "Rend", cost: 1, damage: 5, vulnerable: 1, text: "Deal 5 damage. Apply 1 Vulnerable." },
+  // Weak cards: a Weak enemy deals 25% less damage — a defensive debuff that
+  // trades a card slot for taking the sting out of a big incoming hit.
+  cower: { id: "cower", name: "Cower", cost: 0, weak: 2, text: "Apply 2 Weak (target deals 25% less)." },
+  muzzle: { id: "muzzle", name: "Muzzle", cost: 1, damage: 4, weak: 2, text: "Deal 4 damage. Apply 2 Weak." },
+  // A few more basic cards for deck variety:
+  nip: { id: "nip", name: "Nip", cost: 0, damage: 3, text: "Deal 3 damage." },
+  gnash: { id: "gnash", name: "Gnash", cost: 2, damage: 9, vulnerable: 1, text: "Deal 9 damage. Apply 1 Vulnerable." },
+  hunker: { id: "hunker", name: "Hunker", cost: 1, block: 7, draw: 1, text: "Gain 7 Block. Draw a card." },
   // Class signature cards (each dog class opens with copies of its own):
   digIn: { id: "digIn", name: "Dig In", cost: 0, damage: 2, text: "Deal 2 damage." },
   riptide: { id: "riptide", name: "Riptide", cost: 1, damage: 5, block: 5, text: "Deal 5 damage. Gain 5 Block." },
@@ -61,6 +69,7 @@ const CLASSES = {
     // best turn-one can't quite delete a fresh enemy.
     mechanic: { drawBonus: 1, energyBonus: 1, name: "Frenzy", text: "Draw an extra card and gain +1 Energy each turn (4 total)." },
     deck: ["bite", "bite", "bite", "fetch", "fetch", "growl", "growl", "scurry", "scurry", "digIn", "digIn", "sniffOut"],
+    rewardCards: ["scurry", "digIn", "nip", "fetch"],
   },
   koozie: {
     id: "koozie",
@@ -71,16 +80,18 @@ const CLASSES = {
     // Waterproof: opens every turn already holding Block, so it out-defends anything.
     mechanic: { turnBlock: 3, name: "Waterproof", text: "Start each turn with 3 Block." },
     deck: ["riptide", "riptide", "riptide", "growl", "growl", "growl", "guardDog", "guardDog", "brace", "brace", "counterSurge", "counterSurge"],
+    rewardCards: ["riptide", "brace", "counterSurge", "hunker"],
   },
   bevy: {
     id: "bevy",
     name: "Bevy",
     breed: "Flat-haired Goldendoodle",
     blurb: "Endlessly adaptable — draws cards and makes energy. Build whatever play the turn needs.",
-    maxHp: 28,
+    maxHp: 22,
     // Boundless: an extra Energy every turn, so it can chain its cheap draw cards.
     mechanic: { energyBonus: 1, name: "Boundless", text: "+1 Energy every turn (4 total)." },
     deck: ["rally", "rally", "rally", "fetch", "fetch", "fetch", "flurry", "flurry", "sniffOut", "sniffOut", "bite", "bite"],
+    rewardCards: ["rally", "flurry", "hunker", "reserves"],
   },
   lala: {
     id: "lala",
@@ -91,6 +102,7 @@ const CLASSES = {
     // Lock Jaw: raw Strength — every attack she plays hits for extra.
     mechanic: { strength: 3, name: "Lock Jaw", text: "+3 damage on every attack." },
     deck: ["lockJaw", "lockJaw", "lockJaw", "chomp", "chomp", "bodySlam", "bodySlam", "growl", "growl", "guardDog", "guardDog", "scurry"],
+    rewardCards: ["lockJaw", "chomp", "bodySlam", "pounce"],
   },
 };
 
@@ -105,7 +117,8 @@ const STARTER_DECK = CLASSES.bevy.deck.slice();
 // starting deck); rewards are neutral cards that trade off against each other
 // (raw damage vs. Vulnerable setup vs. block vs. draw), not strict upgrades.
 const BASE_REWARD_POOL = [
-  "bite", "growl", "fetch", "pounce", "guardDog", "goodBoy", "sniffOut", "snarl", "rend",
+  "bite", "growl", "fetch", "pounce", "guardDog", "goodBoy", "sniffOut",
+  "snarl", "rend", "cower", "muzzle", "nip", "gnash", "hunker",
 ];
 
 // Fancier cards that UNLOCK into the reward pool as you get deeper across
@@ -135,6 +148,7 @@ function cardTextOf(c) {
   if (c.damage) parts.push(`Deal ${c.damage}${c.aoe ? " to ALL enemies" : ""}.`);
   if (c.block) parts.push(`Gain ${c.block} Block.`);
   if (c.vulnerable) parts.push(`Apply ${c.vulnerable} Vulnerable${c.aoe ? " to ALL" : ""}.`);
+  if (c.weak) parts.push(`Apply ${c.weak} Weak${c.aoe ? " to ALL" : ""}.`);
   if (c.energy) parts.push(`Gain ${c.energy} Energy.`);
   if (c.draw) parts.push(`Draw ${c.draw} card${c.draw > 1 ? "s" : ""}.`);
   return parts.join(" ");
@@ -145,7 +159,8 @@ function cardTextOf(c) {
 // upgrade without hand-writing each one. UPGRADES maps base id -> upgraded id.
 const UPGRADABLE = [
   "bite", "growl", "fetch", "pounce", "guardDog", "goodBoy", "howl", "bigBark",
-  "alphaStrike", "sniffOut", "secondWind", "snarl", "rend", "digIn", "riptide", "rally", "lockJaw",
+  "alphaStrike", "sniffOut", "secondWind", "snarl", "rend", "cower", "muzzle", "nip",
+  "gnash", "hunker", "digIn", "riptide", "rally", "lockJaw",
   "scurry", "brace", "counterSurge", "flurry", "chomp", "bodySlam",
 ];
 const UPGRADES = {};
@@ -155,6 +170,7 @@ for (const id of UPGRADABLE) {
   if (base.damage) up.damage = base.damage + 2;
   if (base.block) up.block = base.block + 2;
   if (base.vulnerable) up.vulnerable = base.vulnerable + 1;
+  if (base.weak) up.weak = base.weak + 1;
   if (base.energy) up.energy = base.energy + 1;
   if (base.draw && !base.damage && !base.block) up.draw = base.draw + 1; // pure draw cards draw more
   up.text = cardTextOf(up) || base.text;

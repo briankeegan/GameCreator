@@ -80,6 +80,7 @@ function makeEnemyInstance(typeId, idx, content) {
     hp: type.maxHp,
     block: 0,
     vulnerable: 0, // turns of +50% incoming damage (Vulnerable debuff)
+    weak: 0, // turns of -25% dealt damage (Weak debuff)
     strength: 0, // accumulated Enrage Strength (bosses), added to every attack
     patternIndex: 0,
     currentIntent: pattern[0],
@@ -204,6 +205,7 @@ function createGameState(content, rng = Math.random) {
     currentNodeType: null,
     deck: [],
     map: [],
+    classRewardPool: [],
     relics: [],
     relicPool: content.BASE_RELIC_POOL.slice(),
     rewardRelic: null,
@@ -233,6 +235,9 @@ function chooseClass(state, content, classId, rng = Math.random) {
   if (!cls) throw new Error(`Unknown class: ${classId}`);
   state.classId = classId;
   state.deck = cls.deck.slice();
+  // This class's own signature cards, offered as rewards on top of the generic
+  // pool — "cards per character."
+  state.classRewardPool = (cls.rewardCards || []).slice();
   state.player.maxHp = cls.maxHp;
   state.player.hp = cls.maxHp;
   // Boundless-style classes carry extra Energy for the whole run.
@@ -295,7 +300,7 @@ function restSite(state, content, action, deckIndex, rng = Math.random) {
 }
 
 function cardNeedsTarget(card) {
-  return Boolean(card.damage || card.vulnerable) && !card.aoe;
+  return Boolean(card.damage || card.vulnerable || card.weak) && !card.aoe;
 }
 
 // Vulnerable amplifies incoming damage by 50% (rounded down) — the classic
@@ -312,7 +317,7 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
   if (state.player.energy < card.cost) throw new Error(`Not enough energy for ${card.name}`);
 
   let target = null;
-  if ((card.damage || card.vulnerable) && !card.aoe) {
+  if ((card.damage || card.vulnerable || card.weak) && !card.aoe) {
     const living = livingEnemies(state);
     if (living.length === 0) throw new Error("No living enemy to target");
     if (!targetId) {
@@ -350,6 +355,11 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
     for (const e of marked) if (e) e.vulnerable += card.vulnerable;
     state.log.push(`${card.name}: +${card.vulnerable} Vulnerable.`);
   }
+  if (card.weak) {
+    const marked = card.aoe ? livingEnemies(state) : [target];
+    for (const e of marked) if (e) e.weak += card.weak;
+    state.log.push(`${card.name}: +${card.weak} Weak.`);
+  }
   if (card.block) {
     state.player.block += card.block;
     state.log.push(`Dog plays ${card.name}, +${card.block} Block.`);
@@ -375,7 +385,9 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
     } else {
       state.status = "reward";
       const count = state.currentNodeType === "elite" ? content.ELITE_REWARD_COUNT : content.FIGHT_REWARD_COUNT;
-      state.rewardOptions = shuffle(content.REWARD_POOL, rng).slice(0, count);
+      // Generic pool + this character's own signature cards.
+      const pool = content.REWARD_POOL.concat(state.classRewardPool || []);
+      state.rewardOptions = shuffle(pool, rng).slice(0, count);
       // Elites (the optional mini-bosses on the way) drop a relic on top of the
       // richer card reward — the reason to take the harder fight.
       state.rewardRelic = state.currentNodeType === "elite" ? rollRelicDrop(state, content, rng) : null;
@@ -418,16 +430,20 @@ function chooseBossReward(state, content, cardId, rng = Math.random) {
   state.log = [`${gained}${relicNote}+${content.BOSS_MAX_HULL_BONUS} max Hull, fully healed. ${state.map[state.actIndex].name} awaits.`];
 }
 
-// A boss's Enrage Strength adds onto its telegraphed attack — so the number you
-// see is always the real hit (base intent + accumulated Strength).
+// The real damage a telegraphed attack will deal: base intent + Enrage
+// Strength, then -25% if the attacker is Weak. So the number you see is always
+// the true hit, debuffs and all.
 function intentDamage(enemy) {
-  return enemy.currentIntent.type === "attack" ? enemy.currentIntent.damage + (enemy.strength || 0) : 0;
+  if (enemy.currentIntent.type !== "attack") return 0;
+  let dmg = enemy.currentIntent.damage + (enemy.strength || 0);
+  if (enemy.weak > 0) dmg = Math.floor(dmg * 0.75);
+  return Math.max(0, dmg);
 }
 
 function resolveEnemyIntent(state, enemy) {
   const intent = enemy.currentIntent;
   if (intent.type === "attack") {
-    const dmg = intent.damage + (enemy.strength || 0);
+    const dmg = intentDamage(enemy);
     applyDamage(state.player, dmg);
     state.log.push(`${enemy.name} attacks for ${dmg}.`);
   } else if (intent.type === "guard") {
@@ -452,8 +468,9 @@ function endPlayerTurn(state, content, rng = Math.random) {
     enemy.patternIndex = (enemy.patternIndex + 1) % pattern.length;
     enemy.currentIntent = enemy.nextIntent;
     enemy.nextIntent = pattern[(enemy.patternIndex + 1) % pattern.length];
-    // Vulnerable ticks down one turn at the end of the enemy phase.
+    // Debuffs tick down one turn at the end of the enemy phase.
     if (enemy.vulnerable > 0) enemy.vulnerable -= 1;
+    if (enemy.weak > 0) enemy.weak -= 1;
   }
 
   if (state.player.hp <= 0) {

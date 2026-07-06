@@ -57,7 +57,7 @@ assert.throws(() => Engine.playCard(gate, Content, 0, null, rng), /Cannot play a
 assert.throws(() => Engine.chooseClass(gate, Content, "notADog", rng), /Unknown class/);
 
 // Each class sets its own Hull and 12-card deck.
-const hpByClass = { riddle: 36, koozie: 32, bevy: 28, lala: 36 };
+const hpByClass = { riddle: 36, koozie: 32, bevy: 22, lala: 36 };
 for (const id of Object.keys(Content.CLASSES)) {
   const s = Engine.createGameState(Content, rng);
   Engine.chooseClass(s, Content, id, rng);
@@ -377,6 +377,32 @@ assert.strictEqual(relBlk.player.block, 4, "Chew Toy: start combat with 4 Block"
 const mbHp = relBlk.player.maxHp;
 Engine.grantRelic(relBlk, Content, "marrowBone");
 assert.strictEqual(relBlk.player.maxHp, mbHp + 8, "Marrow Bone: +8 max Hull on pickup");
+
+// ---------------------------------------------------------------------
+// Weak: a debuffed enemy deals 25% less. And per-character reward pools.
+// ---------------------------------------------------------------------
+const wk = Engine.createGameState(Content, rng);
+Engine.chooseClass(wk, Content, "bevy", rng);
+Engine.chooseNode(wk, Content, wk.nodeChoices.findIndex((o) => o.type === "fight"), rng);
+const wkEnemy = wk.enemies[0];
+wk.hand.unshift("cower"); // apply 2 Weak
+Engine.playCard(wk, Content, 0, wkEnemy.id, rng);
+assert.strictEqual(wkEnemy.weak, 2, "Cower applies 2 Weak");
+if (wkEnemy.currentIntent.type === "attack") {
+  assert.strictEqual(
+    Engine.intentDamage(wkEnemy),
+    Math.floor(wkEnemy.currentIntent.damage * 0.75),
+    "Weak cuts a telegraphed attack by 25%"
+  );
+}
+
+// Per-character reward pools: a run carries its class's signature cards, so
+// they can be offered as rewards on top of the generic pool ("cards per char").
+const lalaRun = Engine.createGameState(Content, rng);
+Engine.chooseClass(lalaRun, Content, "lala", rng);
+assert.deepStrictEqual(lalaRun.classRewardPool, Content.CLASSES.lala.rewardCards, "the run carries its class reward cards");
+assert.ok(lalaRun.classRewardPool.includes("lockJaw"), "Lala's own Lock Jaw is in her reward pool");
+assert.ok(!Content.BASE_REWARD_POOL.includes("lockJaw"), "but Lock Jaw is NOT in the shared generic pool");
 
 // ---------------------------------------------------------------------
 // Full-run BALANCE test: over many seeded runs a competent player should
