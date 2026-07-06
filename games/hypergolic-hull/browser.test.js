@@ -205,13 +205,12 @@ async function freshPage(browser, url, errors) {
   s = await walkToExit(page);
   assert.strictEqual(s.status, "won", "Sector 1 clears once the gate is reached");
   assert.ok(s.hull > 0, "the Impulse Cannon line through Sector 1 survives");
-  await waitForOverlay(page);
-  assert.strictEqual(await page.locator("#nextBtn").isVisible(), true, "Sector 2 awaits");
 
-  // ---- Next Sector: Sector 2 unlocks the Tractor Beam ---------------------
+  // ---- Sector 2: a routine clear needs no confirmation — it auto-continues --
+  // (the warp-flash plays and the run just carries on into the next sector)
 
-  await page.click("#nextBtn");
-  await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2);
+  assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "a routine sector clear shows no modal");
+  await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2, null, { timeout: 5000 });
   s = await getState(page);
   assert.deepStrictEqual(s.actions, ["sublight", "ramming", "tractor"], "Sector 2 unlocks exactly one new action");
   assert.ok(s.enemies.filter((e) => e.alive).length >= 1);
@@ -240,7 +239,6 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(s.hull, 0);
   await waitForOverlay(page);
   assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Flagship Destroyed");
-  assert.strictEqual(await page.locator("#nextBtn").isVisible(), false, "permadeath offers no Next Sector");
 
   await page.click("#restartBtn");
   await page.waitForFunction(() => window.__hhState.status === "playing");

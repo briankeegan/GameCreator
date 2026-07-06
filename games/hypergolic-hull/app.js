@@ -37,7 +37,6 @@ const overlayEl = document.getElementById("runOverlay");
 const overlayTitleEl = document.getElementById("runOverlayTitle");
 const overlayBodyEl = document.getElementById("runOverlayBody");
 const restartBtn = document.getElementById("restartBtn");
-const nextBtn = document.getElementById("nextBtn");
 const salvageValueEl = document.getElementById("salvageValue");
 const shieldWrapEl = document.getElementById("shieldWrap");
 const shieldValueEl = document.getElementById("shieldValue");
@@ -98,28 +97,16 @@ let showLegalKey = true;
 // show in a small card up top instead of (or alongside) acting on it.
 let inspectedEnemyId = null;
 
-// Clearing a sector now auto-continues after a short beat instead of
-// waiting on a tap every single time (Clubhouse feedback: "why say Next
-// Sector each time... weird" — now that runs go many sectors deep, a modal
-// requiring a click for every routine clear got old fast). The button
-// stays as a "skip the wait" option. Permadeath still waits on a manual
-// New Run tap — that's a weightier moment than a routine sector clear.
-let sectorAdvanceTimer = null;
-function scheduleSectorAdvance() {
-  if (sectorAdvanceTimer) return;
-  sectorAdvanceTimer = setTimeout(() => {
-    sectorAdvanceTimer = null;
-    if (state.status === "won") advanceSector();
-  }, 1400);
-}
-function cancelSectorAdvance() {
-  if (sectorAdvanceTimer) {
-    clearTimeout(sectorAdvanceTimer);
-    sectorAdvanceTimer = null;
-  }
-}
+// Clearing a sector needs no confirmation at all now (Clubhouse feedback:
+// "why say Next Sector each time... weird... there's no reason for a user
+// to confirm as they go") — a warp-flash animation plays (see the "warp"
+// case in draw(), triggered from handleAction) and then the run just
+// continues straight into the next sector on its own. Permadeath still
+// waits on a manual New Run tap — that's a weightier moment than a
+// routine sector clear.
+let sectorAdvancePending = false;
 function advanceSector() {
-  cancelSectorAdvance();
+  sectorAdvancePending = false;
   loadSector(levelIndex + 1, { salvage: state.salvage, maxHull: state.maxHull, shieldCharges: state.shieldCharges });
 }
 
@@ -291,8 +278,16 @@ function drawHex(center, fill, stroke, lineWidth) {
   }
   ctx.closePath();
   if (fill) {
+    // Slightly translucent — an opaque fill would completely paint over the
+    // sector backdrop's stars/nebula (which is clipped to this exact same
+    // hex silhouette), hiding them entirely instead of just keeping them off
+    // the unreachable canvas corners. Clubhouse feedback: "the art
+    // background is missing stars... you missed a lot."
+    ctx.save();
+    ctx.globalAlpha = 0.82;
     ctx.fillStyle = fill;
     ctx.fill();
+    ctx.restore();
   }
   ctx.lineWidth = lineWidth || 1.5;
   ctx.strokeStyle = stroke || "#1a2233";
@@ -1245,6 +1240,33 @@ function draw() {
   }
 
   ctx.restore();
+
+  // Warp-out flash: plays once a sector clears (triggered in handleAction),
+  // then the run just continues into the next sector on its own — no
+  // confirmation needed for a routine clear (see updateHud/advanceSector).
+  const warp = anims.find((a) => a.kind === "warp" && now < a.start + a.dur);
+  if (warp) {
+    const p = animProgress(warp, now);
+    const cx = geom.w / 2, cy = geom.h / 2;
+    ctx.save();
+    const streakAlpha = Math.sin(Math.PI * Math.min(p * 1.4, 1)) * 0.9;
+    ctx.strokeStyle = `rgba(180, 230, 255, ${streakAlpha})`;
+    ctx.lineWidth = 2;
+    const streakCount = 24;
+    const maxLen = Math.max(geom.w, geom.h) * (0.3 + p * 0.9);
+    for (let i = 0; i < streakCount; i++) {
+      const angle = (i / streakCount) * Math.PI * 2;
+      const innerR = maxLen * 0.15;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR);
+      ctx.lineTo(cx + Math.cos(angle) * maxLen, cy + Math.sin(angle) * maxLen);
+      ctx.stroke();
+    }
+    const flashAlpha = Math.max(0, 1 - Math.abs(p - 0.55) * 2.4);
+    ctx.fillStyle = `rgba(210, 235, 255, ${flashAlpha * 0.85})`;
+    ctx.fillRect(0, 0, geom.w, geom.h);
+    ctx.restore();
+  }
 }
 
 // ---- HUD / state plumbing ---------------------------------------------------
@@ -1296,19 +1318,17 @@ function updateHud() {
   if (state.status === "lost" && !animsRunning()) {
     overlayTitleEl.textContent = "Flagship Destroyed";
     overlayBodyEl.textContent = "Permadeath. Your run ends here.";
-    nextBtn.hidden = true;
     overlayEl.hidden = false;
   } else if (state.status === "won" && !animsRunning()) {
-    // The run never hard-stops — every sector past the tutorial campaign is
-    // generated on the fly (see levelForIndex), so there's always a next
-    // one. Auto-continues after a beat (see scheduleSectorAdvance); the
-    // button just skips the wait.
-    overlayTitleEl.textContent = "Sector Clear";
-    overlayBodyEl.textContent = "The Warp Gate carries you onward — deeper, uncharted space awaits.";
-    nextBtn.hidden = false;
-    nextBtn.textContent = "Continue Now";
-    overlayEl.hidden = false;
-    scheduleSectorAdvance();
+    // No confirmation modal for a routine sector clear — the warp-flash
+    // plays (see draw()'s "warp" case, triggered in handleAction), then
+    // the run just continues on its own. Deferred to a fresh call stack
+    // (not called directly here) so this doesn't re-enter render().
+    overlayEl.hidden = true;
+    if (!sectorAdvancePending) {
+      sectorAdvancePending = true;
+      setTimeout(advanceSector, 0);
+    }
   } else {
     overlayEl.hidden = true;
   }
@@ -1467,6 +1487,10 @@ function handleAction(fn) {
     mode = null;
     modeButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.mode === mode));
     scheduleAnims(state.events);
+    if (state.status === "won" && !anims.some((a) => a.kind === "warp")) {
+      anims.push({ kind: "warp", start: performance.now(), dur: 900 });
+      requestAnimationFrame(tickAnims);
+    }
   } catch (err) {
     pushMessage(err.message);
   }
@@ -1474,7 +1498,7 @@ function handleAction(fn) {
 }
 
 function loadSector(index, carryOver) {
-  cancelSectorAdvance();
+  sectorAdvancePending = false;
   levelIndex = index;
   state = Engine.createGameState(levelForIndex(levelIndex), carryOver);
   mode = null;
@@ -1631,11 +1655,6 @@ canvas.addEventListener("click", (evt) => {
 modeButtons.forEach((btn) => btn.addEventListener("click", () => setMode(btn.dataset.mode)));
 
 restartBtn.addEventListener("click", () => loadSector(0));
-
-nextBtn.addEventListener("click", () => {
-  if (state.status !== "won") return;
-  advanceSector();
-});
 
 outpostCloseBtn.addEventListener("click", () => {
   outpostDismissed = true;

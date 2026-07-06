@@ -24,38 +24,43 @@
 (function (root) {
   "use strict";
 
-  // Coordinates below are re-derived for the flat-top board orientation
-  // (see engine.js's buildBoardHexes and app.js's hexToPixel) — each entity
-  // sits at the same logical column/row cell it always did, just expressed
-  // in the new axial scheme. The old Sector 1 (a no-op "learn to move, no
-  // enemies" board) is gone — Clubhouse feedback: "Level one is pointless."
-  // The campaign now opens on the Shockwave lesson.
+  // Board dimensions below are wider than the original pointy-top design
+  // (e.g. Sector 1 was 6 cols — now 9) — Clubhouse feedback: "too tall but
+  // not wide enough." Under flat-top hexes, a board's on-screen WIDTH is a
+  // pure function of `cols` alone (rows only add height — see hexToPixel),
+  // which is the opposite of pointy-top, where rows also widened the
+  // silhouette. The old cols/rows numbers were tuned for that other
+  // relationship and left ~40% of the screen width empty once rotated;
+  // roughly cols ≈ 0.8 × rows now fills the available width while staying
+  // a clearly tall Hoplite-style corridor. The old Sector 1 (a no-op
+  // "learn to move, no enemies" board) is gone too — "Level one is
+  // pointless" — so the campaign now opens on the Shockwave lesson.
   const LEVELS = [
     // Sector 1 — Shockwave. One Interceptor between you and the gate.
     {
       id: 1,
       name: "Shockwave",
-      board: { type: "rect", cols: 6, rows: 11 },
-      playerStart: { q: 2, r: 9 },
-      exit: { q: 2, r: -1 },
+      board: { type: "rect", cols: 9, rows: 11 },
+      playerStart: { q: 4, r: 8 },
+      exit: { q: 8, r: -4 },
       outpost: null,
-      enemies: [{ type: "interceptor", q: 2, r: 4 }],
+      enemies: [{ type: "interceptor", q: 4, r: 3 }],
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming"],
       intro: "Shockwave online. It auto-fires on any enemy within 1 hex — in every direction — after you move.",
     },
-    // Sector 2 — Tractor Beam. Two Interceptors; push one off the edge.
+    // Sector 2 — Tractor Beam. Two enemies; push one off the edge.
     {
       id: 2,
       name: "Tractor Beam",
-      board: { type: "rect", cols: 7, rows: 14 },
-      playerStart: { q: 2, r: 12 },
-      exit: { q: 3, r: -1 },
+      board: { type: "rect", cols: 11, rows: 14 },
+      playerStart: { q: 5, r: 11 },
+      exit: { q: 10, r: -5 },
       outpost: { q: 0, r: 0 },
       enemies: [
-        { type: "cruiser", q: 2, r: 5 },
-        { type: "interceptor", q: 4, r: 6 },
+        { type: "cruiser", q: 5, r: 5 },
+        { type: "interceptor", q: 7, r: 2 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
@@ -66,14 +71,14 @@
     {
       id: 3,
       name: "Fighter Squadron",
-      board: { type: "rect", cols: 8, rows: 15 },
-      playerStart: { q: 3, r: 13 },
-      exit: { q: 3, r: -1 },
-      outpost: { q: 7, r: -3 },
+      board: { type: "rect", cols: 12, rows: 15 },
+      playerStart: { q: 6, r: 11 },
+      exit: { q: 11, r: -5 },
+      outpost: { q: 0, r: 0 },
       enemies: [
-        { type: "cruiser", q: 1, r: 3 },
-        { type: "sentry", q: 6, r: 5 },
-        { type: "interceptor", q: 2, r: 10 },
+        { type: "cruiser", q: 3, r: 8 },
+        { type: "sentry", q: 9, r: 2 },
+        { type: "interceptor", q: 6, r: 0 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
@@ -84,14 +89,14 @@
     {
       id: 4,
       name: "Full Fleet",
-      board: { type: "rect", cols: 8, rows: 17 },
-      playerStart: { q: 3, r: 15 },
-      exit: { q: 3, r: -1 },
-      outpost: { q: 0, r: 8 },
+      board: { type: "rect", cols: 14, rows: 17 },
+      playerStart: { q: 7, r: 13 },
+      exit: { q: 13, r: -6 },
+      outpost: { q: 0, r: 0 },
       enemies: [
-        { type: "cruiser", q: 2, r: 2 },
-        { type: "sentry", q: 5, r: 4 },
-        { type: "interceptor", q: 3, r: 10 },
+        { type: "cruiser", q: 4, r: 8 },
+        { type: "sentry", q: 10, r: 2 },
+        { type: "interceptor", q: 7, r: 0 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
@@ -132,8 +137,11 @@
   }
 
   function generateLevel(depth) {
-    const cols = Math.min(6 + Math.floor(depth / 3), 9);
     const rows = Math.min(11 + depth, 21);
+    // cols ≈ 0.8 × rows fills the available screen width under flat-top
+    // hexes (see the LEVELS comment above) instead of leaving ~40% of it
+    // empty — a wider board than the old pointy-top-tuned formula used.
+    const cols = Math.round(rows * 0.8);
     const rng = seededRandom(depth * 2654435761);
 
     // Flat-top rect board (see engine.js's buildBoardHexes): column c spans
