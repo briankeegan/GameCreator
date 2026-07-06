@@ -103,6 +103,7 @@
   const classSelectEl = document.getElementById("classSelect");
   const classOptionsEl = document.getElementById("classOptions");
   const energyPipsEl = document.getElementById("energyPips");
+  const relicBarEl = document.getElementById("relicBar");
   const nodeChoiceEl = document.getElementById("nodeChoice");
   const nodeOptionsEl = document.getElementById("nodeOptions");
   const rewardScreenEl = document.getElementById("rewardScreen");
@@ -541,6 +542,19 @@
         : `${act.name} · Floor ${floorNumber}/${act.floors.length}`;
     bestLabelEl.textContent = bestAct > 0 ? `Best: Act ${bestAct}` : "";
 
+    // Relic bar: the run's collected passive boons.
+    relicBarEl.innerHTML = "";
+    relicBarEl.hidden = !state.relics || state.relics.length === 0;
+    (state.relics || []).forEach((id) => {
+      const r = Content.RELICS[id];
+      if (!r) return;
+      const chip = document.createElement("span");
+      chip.className = "relic-chip";
+      chip.title = `${r.name} — ${r.desc}`;
+      chip.textContent = r.name;
+      relicBarEl.appendChild(chip);
+    });
+
     const hpPct = Math.max(0, (state.player.hp / state.player.maxHp) * 100);
     dogHpFillEl.style.width = `${hpPct}%`;
     dogHpTextEl.textContent = `${Math.max(0, state.player.hp)}/${state.player.maxHp}`;
@@ -583,10 +597,13 @@
       objectiveEl.textContent = "Pick your next room — the boss waits at the top.";
       renderMap(act);
     } else if (state.status === "reward") {
+      const relicNote = state.rewardRelic
+        ? ` Relic gained: ${Content.RELICS[state.rewardRelic].name} — ${Content.RELICS[state.rewardRelic].desc}`
+        : "";
       objectiveEl.textContent =
-        state.currentNodeType === "treasure"
+        (state.currentNodeType === "treasure"
           ? "Treasure! Take one of these — no charge."
-          : "Pick a card to add to your deck, or skip.";
+          : "Pick a card to add to your deck, or skip.") + relicNote;
       state.rewardOptions.forEach((cardId) => rewardOptionsEl.appendChild(rewardCardNode(cardId)));
     } else if (state.status === "rest-site") {
       objectiveEl.textContent = "Rest up, sharpen a card, or drop dead weight.";

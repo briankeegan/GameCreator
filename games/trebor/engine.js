@@ -116,12 +116,46 @@ function classMechanic(state, content) {
   return (cls && cls.mechanic) || {};
 }
 
+// Sum a numeric relic field across every relic the player is currently holding.
+function relicSum(state, content, field) {
+  let total = 0;
+  for (const id of state.relics || []) {
+    const r = content.RELICS[id];
+    if (r && r[field]) total += r[field];
+  }
+  return total;
+}
+
+// Grant a specific relic (unique — no duplicates). maxHull relics apply the
+// instant you pick them up.
+function grantRelic(state, content, relicId) {
+  if (!content.RELICS[relicId]) return null;
+  state.relics = state.relics || [];
+  if (state.relics.includes(relicId)) return null;
+  state.relics.push(relicId);
+  const r = content.RELICS[relicId];
+  if (r.maxHpBonus) {
+    state.player.maxHp += r.maxHpBonus;
+    state.player.hp += r.maxHpBonus;
+  }
+  return relicId;
+}
+
+// Drop a random not-yet-held relic from the run's unlocked pool (elites/bosses).
+function rollRelicDrop(state, content, rng = Math.random) {
+  const pool = (state.relicPool || content.BASE_RELIC_POOL).filter((id) => !(state.relics || []).includes(id));
+  if (pool.length === 0) return null;
+  const pick = pool[Math.floor(rng() * pool.length)];
+  return grantRelic(state, content, pick);
+}
+
 // Applied at the top of every combat turn (the first turn in startCombat and
 // each later turn in endPlayerTurn): the class's per-turn passives.
 function applyTurnStartMechanic(state, content, rng) {
   const mech = classMechanic(state, content);
   if (mech.turnBlock) state.player.block += mech.turnBlock;
-  if (mech.drawBonus) drawCards(state, content, rng, mech.drawBonus);
+  const draw = (mech.drawBonus || 0) + relicSum(state, content, "drawBonus");
+  if (draw) drawCards(state, content, rng, draw);
 }
 
 function startCombat(state, content, enemyTypeIds, rng = Math.random) {
@@ -129,8 +163,11 @@ function startCombat(state, content, enemyTypeIds, rng = Math.random) {
   state.drawPile = shuffle(state.deck, rng);
   state.discardPile = [];
   state.hand = [];
-  state.player.block = 0;
-  state.player.energy = state.player.maxEnergy;
+  // Relics: open every combat with any Block (Chew Toy), bonus first-turn Energy
+  // (Lucky Ball), and this-combat Strength (Rag Medal).
+  state.player.block = relicSum(state, content, "startBlock");
+  state.player.energy = state.player.maxEnergy + relicSum(state, content, "firstTurnEnergy");
+  state.player.combatStrength = relicSum(state, content, "combatStrength");
   state.enemies = enemyTypeIds.map((typeId, i) => makeEnemyInstance(typeId, i, content));
   state.turnCount = 1;
   state.log = [];
@@ -141,6 +178,9 @@ function startCombat(state, content, enemyTypeIds, rng = Math.random) {
 function advanceFloorOrBoss(state, content, rng = Math.random) {
   state.floorIndex += 1;
   state.rewardOptions = [];
+  // Old Blanket and friends: heal a little on reaching a new floor.
+  const heal = relicSum(state, content, "floorHeal");
+  if (heal) state.player.hp = Math.min(state.player.maxHp, state.player.hp + heal);
   const act = state.map[state.actIndex];
   if (state.floorIndex >= act.floors.length) {
     state.currentNodeType = "boss";
@@ -163,12 +203,16 @@ function createGameState(content, rng = Math.random) {
     currentNodeType: null,
     deck: [],
     map: [],
+    relics: [],
+    relicPool: content.BASE_RELIC_POOL.slice(),
+    rewardRelic: null,
     player: {
       hp: content.STARTING_HP,
       maxHp: content.STARTING_HP,
       block: 0,
       energy: content.STARTING_ENERGY,
       maxEnergy: content.STARTING_ENERGY,
+      combatStrength: 0,
     },
     drawPile: [],
     hand: [],
@@ -284,9 +328,14 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
   state.discardPile.push(cardId);
 
   if (card.damage) {
-    // Strength-style mechanics add flat damage to every attack; Vulnerable then
-    // amplifies the total by 50% per target.
-    const base = card.damage + (classMechanic(state, content).strength || 0);
+    // Strength adds flat damage to every attack — from the class mechanic, from
+    // relics (Spiked Collar), and from this-combat relic Strength (Rag Medal);
+    // Vulnerable then amplifies the total by 50% per target.
+    const strength =
+      (classMechanic(state, content).strength || 0) +
+      relicSum(state, content, "strength") +
+      (state.player.combatStrength || 0);
+    const base = card.damage + strength;
     if (card.aoe) {
       for (const enemy of livingEnemies(state)) applyDamage(enemy, withVulnerable(enemy, base));
       state.log.push(`Dog plays ${card.name}, hitting every cat.`);
@@ -326,6 +375,9 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
       state.status = "reward";
       const count = state.currentNodeType === "elite" ? content.ELITE_REWARD_COUNT : content.FIGHT_REWARD_COUNT;
       state.rewardOptions = shuffle(content.REWARD_POOL, rng).slice(0, count);
+      // Elites (the optional mini-bosses on the way) drop a relic on top of the
+      // richer card reward — the reason to take the harder fight.
+      state.rewardRelic = state.currentNodeType === "elite" ? rollRelicDrop(state, content, rng) : null;
     }
   }
 }
@@ -348,10 +400,11 @@ function chooseBossReward(state, content, cardId, rng = Math.random) {
     if (!state.bossRewardOptions.includes(cardId)) throw new Error(`${cardId} was not offered`);
     state.deck.push(cardId);
   }
-  // A boss kill permanently raises max Hull and heals to full before the
-  // harder act ahead — the reward for surviving.
+  // A boss kill permanently raises max Hull, heals to full, AND drops a relic
+  // before the harder act ahead — the reward for surviving.
   state.player.maxHp += content.BOSS_MAX_HULL_BONUS;
   state.player.hp = state.player.maxHp;
+  const bossRelic = rollRelicDrop(state, content, rng);
   state.bossRewardOptions = [];
   state.actIndex += 1;
   state.floorIndex = 0;
@@ -360,7 +413,8 @@ function chooseBossReward(state, content, cardId, rng = Math.random) {
   state.floorIndex = 0;
   state.nodeChoices = state.map[state.actIndex].floors[0].options;
   const gained = cardId ? `Took ${content.CARDS[cardId].name}. ` : "";
-  state.log = [`${gained}+${content.BOSS_MAX_HULL_BONUS} max Hull, fully healed. ${state.map[state.actIndex].name} awaits.`];
+  const relicNote = bossRelic ? `Relic: ${content.RELICS[bossRelic].name}. ` : "";
+  state.log = [`${gained}${relicNote}+${content.BOSS_MAX_HULL_BONUS} max Hull, fully healed. ${state.map[state.actIndex].name} awaits.`];
 }
 
 function resolveEnemyIntent(state, enemy) {
@@ -422,6 +476,9 @@ const Engine = {
   cardNeedsTarget,
   describeIntent,
   shuffle,
+  grantRelic,
+  relicSum,
+  rollRelicDrop,
 };
 
 if (typeof module !== "undefined" && module.exports) {

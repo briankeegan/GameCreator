@@ -313,6 +313,34 @@ const NODE_LABELS = {
   treasure: ["Dumpster Score", "Stashed Crate", "Hidden Cache", "Royal Hoard", "Lost Satchel"],
 };
 
+// Relics — permanent passive boons you collect across a run (Slay the Spire
+// "relics"). Each is a small data block the engine reads at a specific hook:
+//   maxHpBonus      — +max Hull the moment you pick it up (and heals that much)
+//   strength        — +damage on every attack (stacks with class Strength)
+//   startBlock      — Block gained at the start of every combat
+//   drawBonus       — extra card drawn each turn
+//   firstTurnEnergy — bonus Energy on turn 1 of each combat
+//   floorHeal       — Hull healed when you enter a new floor
+// Owned per RUN (state.relics); which relics are UNLOCKED into the drop pool is
+// a cross-run, cross-character thing (see achievements) — "one character
+// unlocks it, everyone can use it."
+const RELICS = {
+  marrowBone: { id: "marrowBone", name: "Marrow Bone", desc: "+8 max Hull.", maxHpBonus: 8 },
+  spikedCollar: { id: "spikedCollar", name: "Spiked Collar", desc: "+1 damage on every attack.", strength: 1 },
+  chewToy: { id: "chewToy", name: "Chew Toy", desc: "Start each combat with 4 Block.", startBlock: 4 },
+  packWhistle: { id: "packWhistle", name: "Pack Whistle", desc: "Draw 1 extra card each turn.", drawBonus: 1 },
+  luckyBall: { id: "luckyBall", name: "Lucky Ball", desc: "+1 Energy on the first turn of each combat.", firstTurnEnergy: 1 },
+  oldBlanket: { id: "oldBlanket", name: "Old Blanket", desc: "Heal 3 Hull when you reach a new floor.", floorHeal: 3 },
+  ragMedal: { id: "ragMedal", name: "Rag Medal", desc: "Start each combat with 2 Block and +1 Strength that combat.", startBlock: 2, combatStrength: 1 },
+};
+// Relics unlocked from the very first run. Rarer relics unlock via achievements.
+const BASE_RELIC_POOL = ["marrowBone", "spikedCollar", "chewToy", "packWhistle"];
+const RELIC_UNLOCKS = [
+  { achievement: "firstBoss", relics: ["luckyBall"] },
+  { achievement: "clearRun", relics: ["oldBlanket", "ragMedal"] },
+];
+const RELIC_POOL = BASE_RELIC_POOL.concat(...RELIC_UNLOCKS.map((u) => u.relics));
+
 const STARTING_HP = 28;
 const STARTING_ENERGY = 3;
 const HAND_SIZE = 5;
@@ -333,6 +361,10 @@ const CONTENT = {
   BOSS_REWARD_POOL,
   TREASURE_POOL,
   UPGRADES,
+  RELICS,
+  BASE_RELIC_POOL,
+  RELIC_UNLOCKS,
+  RELIC_POOL,
   ENEMY_TYPES,
   ACTS,
   NODE_LABELS,

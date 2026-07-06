@@ -244,6 +244,7 @@ br.status = "boss-reward";
 br.actIndex = 0;
 br.currentNodeType = "boss";
 br.player.hp = 5;
+br.relicPool = []; // isolate the +maxHull assertion from any relic drop
 br.bossRewardOptions = ["maul", "bulwark", "reserves"];
 assert.throws(() => Engine.chooseBossReward(br, Content, "bite", rng), /was not offered/);
 const deckBefore = br.deck.length;
@@ -341,6 +342,41 @@ for (const id of classSignatures) {
   assert.ok(!Content.BASE_REWARD_POOL.includes(id), `${id} (a class signature) must not be in the shared reward pool`);
 }
 assert.ok(Content.BASE_REWARD_POOL.includes("snarl") && Content.BASE_REWARD_POOL.includes("rend"), "the Vulnerable cards are offered as rewards");
+
+// ---------------------------------------------------------------------
+// Relics: collected passives that drop from bosses (and elites) and apply.
+// ---------------------------------------------------------------------
+const relBoss = Engine.createGameState(Content, rng);
+Engine.chooseClass(relBoss, Content, "koozie", rng);
+relBoss.status = "boss-reward";
+relBoss.actIndex = 0;
+relBoss.player.hp = 5;
+relBoss.bossRewardOptions = ["maul"];
+Engine.chooseBossReward(relBoss, Content, null, rng);
+assert.strictEqual(relBoss.relics.length, 1, "a boss kill drops a relic");
+
+// Spiked Collar adds +1 damage to every attack; relics are unique.
+const relFx = Engine.createGameState(Content, rng);
+Engine.chooseClass(relFx, Content, "koozie", rng); // no class Strength
+Engine.grantRelic(relFx, Content, "spikedCollar");
+Engine.chooseNode(relFx, Content, relFx.nodeChoices.findIndex((o) => o.type === "fight"), rng);
+const rfEnemy = relFx.enemies[0];
+relFx.hand.unshift("bite");
+relFx.player.energy = 3;
+const rfHp = rfEnemy.hp;
+Engine.playCard(relFx, Content, 0, rfEnemy.id, rng);
+assert.strictEqual(rfHp - rfEnemy.hp, 7, "Spiked Collar: Bite hits for 6+1");
+assert.strictEqual(Engine.grantRelic(relFx, Content, "spikedCollar"), null, "relics are unique — no duplicate grant");
+
+// Chew Toy opens combat with Block; Marrow Bone raises max Hull on pickup.
+const relBlk = Engine.createGameState(Content, rng);
+Engine.chooseClass(relBlk, Content, "lala", rng); // no turn-Block mechanic
+Engine.grantRelic(relBlk, Content, "chewToy");
+Engine.chooseNode(relBlk, Content, relBlk.nodeChoices.findIndex((o) => o.type === "fight"), rng);
+assert.strictEqual(relBlk.player.block, 4, "Chew Toy: start combat with 4 Block");
+const mbHp = relBlk.player.maxHp;
+Engine.grantRelic(relBlk, Content, "marrowBone");
+assert.strictEqual(relBlk.player.maxHp, mbHp + 8, "Marrow Bone: +8 max Hull on pickup");
 
 // ---------------------------------------------------------------------
 // Full-run BALANCE test: over many seeded runs a competent player should

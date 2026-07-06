@@ -930,6 +930,27 @@ body {
   margin: 6px auto 0;
 }
 
+.relic-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 5px;
+}
+.relic-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 220, 150, 0.28), rgba(180, 120, 60, 0.18));
+  border: 1px solid rgba(242, 190, 130, 0.6);
+  color: #ffe6c2;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: help;
+}
+
 .pile-row {
   display: flex;
   justify-content: space-between;
