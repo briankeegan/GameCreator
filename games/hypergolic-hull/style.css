@@ -62,6 +62,11 @@ body {
   border-color: #ff8a72;
 }
 
+.salvage-wrap {
+  color: #ffce8a;
+  font-weight: 600;
+}
+
 /* The flex child that gets whatever vertical room is left over once the HUD
    and the bottom controls take theirs — updateGeometry() in app.js reads
    its clientWidth/clientHeight to size the canvas, so the board always fits
@@ -125,6 +130,30 @@ body {
   padding: 10px 18px;
   border-radius: 8px;
   cursor: pointer;
+}
+
+.outpost-offers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 260px;
+}
+.outpost-offers button {
+  margin-top: 0;
+  width: 100%;
+  background: #ffce8a;
+  color: #1b2436;
+}
+.outpost-offers button:disabled {
+  background: #2a3652;
+  color: #6b7a94;
+  cursor: not-allowed;
+}
+.outpost-overlay button#outpostCloseBtn {
+  background: transparent;
+  border: 1px solid #2a3652;
+  color: #9fb0c9;
 }
 
 /* Pixel-LCARS: a ship's systems console read through an 8-bit filter —

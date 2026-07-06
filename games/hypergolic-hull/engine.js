@@ -192,10 +192,13 @@
   //                 beam covers a 2-hex ring, controlling space instead of
   //                 chasing. Approach it wrong and it fires; kill it or go
   //                 around.
+  // `salvage` is how much scrap a kill drops, regardless of which action
+  // lands it (weapon, Tractor Beam, or Fighter Squadron) — spendable at a
+  // Sector Outpost. Tougher hulls drop more.
   const ENEMY_TYPES = {
-    interceptor: { hp: 1, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true },
-    cruiser: { hp: 2, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true },
-    sentry: { hp: 2, weapon: WEAPONS.sentryBeam, movesTowardPlayer: false },
+    interceptor: { hp: 1, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true, salvage: 1 },
+    cruiser: { hp: 2, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true, salvage: 2 },
+    sentry: { hp: 2, weapon: WEAPONS.sentryBeam, movesTowardPlayer: false, salvage: 2 },
   };
 
   // Every hex a weapon's pattern actually reaches, fired from `pos` facing
@@ -217,8 +220,18 @@
     return hexes;
   }
 
-  function createGameState(level) {
+  // Spent at a Sector Outpost, standing on its hex — see applyOutpostPurchase.
+  // Repairing costs less than permanently raising the cap, and neither
+  // consumes a turn (shopping happens between turns, not during the enemy
+  // phase loop): a run through the crawl trades kills for scrap for safety.
+  const OUTPOST_OFFERS = [
+    { id: "repair", label: "Repair 1 Hull", cost: 2 },
+    { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 5 },
+  ];
+
+  function createGameState(level, carryOver) {
     validateLevel(level);
+    const maxHull = (carryOver && carryOver.maxHull) || START_HULL;
     const state = {
       levelId: level.id,
       levelName: level.name || `Sector ${level.id}`,
@@ -226,8 +239,9 @@
       boardHexes: buildBoardHexes(level),
       actions: (level.actions || ALL_ACTIONS).slice(),
       playerPos: { q: level.playerStart.q, r: level.playerStart.r },
-      hull: START_HULL,
-      maxHull: START_HULL,
+      hull: maxHull,
+      maxHull: maxHull,
+      salvage: (carryOver && carryOver.salvage) || 0,
       exitPos: { q: level.exit.q, r: level.exit.r },
       outpostPos: level.outpost ? { q: level.outpost.q, r: level.outpost.r } : null,
       exitRule: level.exitRule,
@@ -332,6 +346,16 @@
   function pushLog(state, message) {
     state.log.push(message);
     if (state.log.length > 20) state.log.shift();
+  }
+
+  // Every kill drops scrap, no matter which action lands it — see
+  // ENEMY_TYPES[type].salvage.
+  function awardSalvage(state, enemyType) {
+    const amount = (ENEMY_TYPES[enemyType] || {}).salvage || 0;
+    if (amount <= 0) return;
+    state.salvage += amount;
+    state.events.push({ type: "salvage", amount });
+    pushLog(state, `+${amount} salvage.`);
   }
 
   // ---- threat overlay: pillar #3, "the board is the UI" -------------------
@@ -499,6 +523,7 @@
         victim.alive = false;
         state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "weapon" });
         pushLog(state, `${weapon.label} destroyed ${victim.type}.`);
+        awardSalvage(state, victim.type);
       } else {
         state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "weapon" });
         pushLog(state, `${weapon.label} hit ${victim.type} (${victim.hp}/${victim.maxHp} HP left).`);
@@ -549,6 +574,7 @@
       enemy.alive = false;
       state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
       pushLog(state, `Tractor-pushed ${enemy.type} off the map edge.`);
+      awardSalvage(state, enemy.type);
     } else {
       const blocker = enemyAt(state, dest);
       const hazard = hazardAt(state, dest);
@@ -558,10 +584,13 @@
         state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
         state.events.push({ type: "kill", q: blocker.q, r: blocker.r, victim: blocker.type });
         pushLog(state, `Tractor-pushed ${enemy.type} into ${blocker.type} — both destroyed.`);
+        awardSalvage(state, enemy.type);
+        awardSalvage(state, blocker.type);
       } else if (hazard) {
         enemy.alive = false;
         state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
         pushLog(state, `Tractor-pushed ${enemy.type} into a hazard.`);
+        awardSalvage(state, enemy.type);
       } else {
         state.events.push({ type: "enemyMove", enemyId: enemy.id, from: { q: enemy.q, r: enemy.r }, to: dest });
         enemy.q = dest.q;
@@ -584,7 +613,46 @@
     state.rammingDisabled = true;
     state.events.push({ type: "kill", q: enemy.q, r: enemy.r, victim: enemy.type });
     pushLog(state, `Fighter squadron destroyed ${enemy.type}.`);
+    awardSalvage(state, enemy.type);
     endPlayerAction(state);
+  }
+
+  // ---- Sector Outpost: shop stop, no turn spent -------------------------
+  //
+  // Standing on the outpost hex is enough to shop — buying doesn't move the
+  // enemy phase forward, so there's no risk in browsing. Each offer can be
+  // bought as many times as you can afford it (Repair is only useful while
+  // hurt; Reinforce Hull has no cap).
+
+  function outpostAvailable(state) {
+    return Boolean(state.outpostPos) && posEq(state.playerPos, state.outpostPos);
+  }
+
+  function outpostOffers(state) {
+    if (!outpostAvailable(state)) return [];
+    return OUTPOST_OFFERS.map((offer) => ({
+      ...offer,
+      affordable: state.salvage >= offer.cost,
+      applicable: offer.id !== "repair" || state.hull < state.maxHull,
+    }));
+  }
+
+  function applyOutpostPurchase(state, offerId) {
+    assertPlaying(state);
+    if (!outpostAvailable(state)) throw new Error("Outpost: not docked at an outpost");
+    const offer = OUTPOST_OFFERS.find((o) => o.id === offerId);
+    if (!offer) throw new Error(`Outpost: unknown offer "${offerId}"`);
+    if (state.salvage < offer.cost) throw new Error(`Outpost: not enough salvage for ${offer.label}`);
+    state.events = [];
+    if (offer.id === "repair") {
+      if (state.hull >= state.maxHull) throw new Error("Outpost: Hull is already full");
+      state.hull += 1;
+    } else if (offer.id === "reinforce") {
+      state.maxHull += 1;
+      state.hull += 1;
+    }
+    state.salvage -= offer.cost;
+    pushLog(state, `Outpost: bought ${offer.label} (-${offer.cost} salvage).`);
   }
 
   // ---- legal-target queries (used by the renderer to highlight hexes) -----
@@ -630,6 +698,9 @@
     applyHoldPosition,
     applyTractor,
     applyFighter,
+    outpostAvailable,
+    outpostOffers,
+    applyOutpostPurchase,
     legalSublightTargets,
     legalTractorTargets,
     legalFighterTargets,

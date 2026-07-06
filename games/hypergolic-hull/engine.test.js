@@ -435,4 +435,80 @@ Engine.applySublight(sentryState, { q: 0, r: 4 }); // distance 2 — into the be
 assert.strictEqual(sentryState.hull, hullBeforeBeam - 1, "entering the Sentry's 2-hex ring takes a hit");
 assert.ok(sentryState.events.some((e) => e.type === "attack"), "the Sentry's shot emits an attack event");
 
+// ---- salvage economy + Sector Outpost shop -------------------------------
+// Every kill drops salvage (see ENEMY_TYPES[type].salvage), spendable at an
+// outpost hex without spending a turn. Two offers: repair and a permanent
+// max-Hull bump, both gated on affordability/applicability.
+
+const salvageLevel = {
+  id: 992,
+  name: "salvage fixture",
+  radius: 2,
+  playerStart: { q: 0, r: 0 },
+  exit: { q: 2, r: 0 },
+  outpost: { q: -2, r: 0 },
+  enemies: [{ type: "interceptor", q: 0, r: -2 }],
+  hazards: [],
+  exitRule: "all-enemies-dead",
+};
+const salvageState = Engine.createGameState(salvageLevel);
+assert.strictEqual(salvageState.salvage, 0, "a fresh run starts with zero salvage");
+assert.deepStrictEqual(Engine.outpostOffers(salvageState), [], "not standing on the outpost hex means no offers");
+
+// Fighter Squadron kills the lone Interceptor instantly and drops its salvage.
+Engine.applyFighter(salvageState, salvageState.enemies[0].id);
+assert.strictEqual(salvageState.salvage, Engine.ENEMY_TYPES.interceptor.salvage, "a kill drops its type's salvage value");
+assert.ok(salvageState.events.some((e) => e.type === "salvage"), "a kill emits a salvage event for the UI to animate");
+
+// Walk to the outpost (2 hexes away) — shopping there must not cost a turn.
+Engine.applySublight(salvageState, { q: -1, r: 0 });
+const turnBeforeShop = salvageState.turnCount;
+Engine.applySublight(salvageState, { q: -2, r: 0 });
+assert.ok(Engine.outpostAvailable(salvageState), "standing on the outpost hex makes it available");
+const turnAfterArrival = salvageState.turnCount;
+
+salvageState.hull -= 1; // simulate battle damage so Repair has something to do
+const offersBefore = Engine.outpostOffers(salvageState);
+const repairOffer = offersBefore.find((o) => o.id === "repair");
+const reinforceOffer = offersBefore.find((o) => o.id === "reinforce");
+assert.ok(repairOffer.applicable, "Repair is applicable once Hull is below max");
+assert.strictEqual(reinforceOffer.affordable, salvageState.salvage >= reinforceOffer.cost);
+salvageState.salvage = repairOffer.cost; // guarantee affordability for the purchase below
+
+const hullBeforeRepair = salvageState.hull;
+const salvageBeforeRepair = salvageState.salvage;
+Engine.applyOutpostPurchase(salvageState, "repair");
+assert.strictEqual(salvageState.hull, hullBeforeRepair + 1, "Repair restores 1 Hull");
+assert.strictEqual(salvageState.salvage, salvageBeforeRepair - repairOffer.cost, "Repair costs its listed salvage");
+assert.strictEqual(salvageState.turnCount, turnAfterArrival, "shopping does not advance the turn counter");
+
+salvageState.salvage = repairOffer.cost; // afford another repair, to isolate the "already full" refusal
+assert.throws(
+  () => Engine.applyOutpostPurchase(salvageState, "repair"),
+  /already full/,
+  "Repair refuses once Hull is already at max"
+);
+
+// Reinforce Hull permanently raises the cap — force affordability regardless
+// of how much salvage the fixture happened to earn above.
+salvageState.salvage = reinforceOffer.cost;
+const maxHullBefore = salvageState.maxHull;
+Engine.applyOutpostPurchase(salvageState, "reinforce");
+assert.strictEqual(salvageState.maxHull, maxHullBefore + 1, "Reinforce Hull raises the cap by 1");
+assert.strictEqual(salvageState.salvage, 0, "Reinforce Hull spent all the salvage set aside for it");
+
+assert.throws(
+  () => Engine.applyOutpostPurchase(salvageState, "reinforce"),
+  /not enough salvage/,
+  "an offer refuses when salvage can't cover its cost"
+);
+
+// Salvage and the raised max-Hull both carry into the next sector via
+// createGameState's carryOver — this is how loadSector() in app.js hands a
+// run's progress from one sector to the next.
+const carriedState = Engine.createGameState(LEVELS[0], { salvage: 4, maxHull: salvageState.maxHull });
+assert.strictEqual(carriedState.salvage, 4, "salvage carries over into the next sector");
+assert.strictEqual(carriedState.maxHull, salvageState.maxHull, "a permanent max-Hull upgrade carries over too");
+assert.strictEqual(carriedState.hull, carriedState.maxHull, "the new sector still starts at full (carried-over) Hull");
+
 console.log("All golden-path assertions passed.");

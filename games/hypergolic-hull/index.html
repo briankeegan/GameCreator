@@ -26,6 +26,7 @@
         <span class="hull-label">Hull</span>
         <div class="hull-bar" id="hullBar"></div>
       </div>
+      <span class="salvage-wrap" id="salvageWrap">🔩 <span id="salvageValue">0</span></span>
       <span id="levelLabel">Sector 1 · Best 1</span>
     </div>
 
@@ -39,6 +40,12 @@
           <p id="runOverlayBody"></p>
           <button id="nextBtn" hidden>Next Sector</button>
           <button id="restartBtn">New Run</button>
+        </div>
+        <div class="run-overlay outpost-overlay" id="outpostOverlay" hidden>
+          <h2>🛠️ Sector Outpost</h2>
+          <p>Salvage: <span id="outpostSalvage">0</span></p>
+          <div class="outpost-offers" id="outpostOffers"></div>
+          <button id="outpostCloseBtn">Undock</button>
         </div>
       </div>
     </div>
@@ -64,7 +71,7 @@
       <span>🚀 Your flagship</span>
       <span>👾 Enemy ship</span>
       <span>🌀 Warp Gate (exit)</span>
-      <span>🛠️ Outpost</span>
+      <span>🛠️ Outpost — dock on it to spend 🔩 Salvage (dropped by every kill) on repairs and upgrades</span>
       <label class="legend-toggle"><input type="checkbox" id="toggleThreat" checked /><i class="swatch swatch-threat"></i> Strike range — an enemy hits you if you end your turn here</label>
       <label class="legend-toggle"><input type="checkbox" id="toggleLegal" checked /><i class="swatch swatch-legal"></i> Outlined hex — where your selected action can go</label>
       <span>✨ Tap a far-away hex to preview the quickest route — tap it again to fly there</span>

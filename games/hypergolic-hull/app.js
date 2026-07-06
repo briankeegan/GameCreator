@@ -27,6 +27,11 @@ const overlayTitleEl = document.getElementById("runOverlayTitle");
 const overlayBodyEl = document.getElementById("runOverlayBody");
 const restartBtn = document.getElementById("restartBtn");
 const nextBtn = document.getElementById("nextBtn");
+const salvageValueEl = document.getElementById("salvageValue");
+const outpostOverlayEl = document.getElementById("outpostOverlay");
+const outpostSalvageEl = document.getElementById("outpostSalvage");
+const outpostOffersEl = document.getElementById("outpostOffers");
+const outpostCloseBtn = document.getElementById("outpostCloseBtn");
 const modeButtons = Array.from(document.querySelectorAll("[data-mode]"));
 const helpBtn = document.getElementById("helpBtn");
 const legendEl = document.getElementById("legend");
@@ -79,6 +84,12 @@ let showLegalKey = true;
 // Tapping an enemy while Help is open inspects it — its stats/weapon/pattern
 // show in a small card up top instead of (or alongside) acting on it.
 let inspectedEnemyId = null;
+
+// The outpost shop pops up automatically the moment the flagship is docked
+// on the outpost hex. "Undock" just hides it for as long as you stay parked
+// there — flying off and back re-opens it, so this resets whenever the ship
+// leaves the hex (see updateOutpost).
+let outpostDismissed = false;
 
 // Whether the weapon-stats badge is showing its full sentence (tapped open)
 // or just the compact abbreviation (the default).
@@ -1155,6 +1166,7 @@ function updateHud() {
   }
   levelEl.textContent = `Sector ${state.levelId}: ${state.levelName} · Best ${bestDepth}`;
   logEl.textContent = state.log.slice(-3).join("  ·  ");
+  salvageValueEl.textContent = state.salvage;
 
   const remaining = Engine.livingEnemies(state).length;
   if (state.exitUnlocked) {
@@ -1287,11 +1299,35 @@ function updateEnemyInfo() {
   enemyInfoEl.appendChild(stats);
 }
 
+// Rebuilds the outpost shop's offer buttons from Engine.outpostOffers every
+// render — it's cheap (two offers) and keeps the panel from ever drifting
+// out of sync with actual affordability/applicability as salvage/hull change.
+function updateOutpost() {
+  const docked = state.status === "playing" && Engine.outpostAvailable(state);
+  if (!docked) outpostDismissed = false; // re-arm for the next visit
+  const show = docked && !outpostDismissed;
+  outpostOverlayEl.hidden = !show;
+  if (!show) return;
+
+  outpostSalvageEl.textContent = state.salvage;
+  outpostOffersEl.innerHTML = "";
+  for (const offer of Engine.outpostOffers(state)) {
+    const btn = document.createElement("button");
+    btn.textContent = `${offer.label} — 🔩${offer.cost}`;
+    btn.disabled = !offer.affordable || !offer.applicable;
+    btn.addEventListener("click", () => {
+      handleAction(() => Engine.applyOutpostPurchase(state, offer.id));
+    });
+    outpostOffersEl.appendChild(btn);
+  }
+}
+
 function render() {
   updateHud();
   updateLegend();
   updateSystems();
   updateEnemyInfo();
+  updateOutpost();
   draw();
   persist();
   window.__hhState = state; // debug hook: deterministic + serializable, safe to inspect
@@ -1317,13 +1353,14 @@ function handleAction(fn) {
   render();
 }
 
-function loadSector(index) {
+function loadSector(index, carryOver) {
   levelIndex = index;
-  state = Engine.createGameState(LEVELS[levelIndex]);
+  state = Engine.createGameState(LEVELS[levelIndex], carryOver);
   mode = null;
   anims = [];
   plannedPath = null;
   autoRoute = null;
+  outpostDismissed = false;
   shipAngle = -90;
   updateGeometry();
   render();
@@ -1476,7 +1513,12 @@ restartBtn.addEventListener("click", () => loadSector(0));
 
 nextBtn.addEventListener("click", () => {
   if (state.status !== "won" || levelIndex + 1 >= LEVELS.length) return;
-  loadSector(levelIndex + 1);
+  loadSector(levelIndex + 1, { salvage: state.salvage, maxHull: state.maxHull });
+});
+
+outpostCloseBtn.addEventListener("click", () => {
+  outpostDismissed = true;
+  render();
 });
 
 window.addEventListener("resize", () => {
