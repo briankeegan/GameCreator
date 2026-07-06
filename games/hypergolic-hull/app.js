@@ -1556,7 +1556,7 @@ function planOrFlyRoute(hex) {
     return;
   }
   if (plannedPath && Engine.posEq(plannedPath.target, hex)) {
-    autoRoute = { target: plannedPath.target, path: plannedPath.hexes, hullAtStart: state.hull };
+    autoRoute = { target: plannedPath.target, path: plannedPath.hexes, hullAtStart: state.hull, stepIndex: 0 };
     plannedPath = null;
     stepRoute();
     return;
@@ -1564,6 +1564,17 @@ function planOrFlyRoute(hex) {
   const path = Engine.findPath(state, state.playerPos, hex);
   plannedPath = path && path.length > 1 ? { target: { q: hex.q, r: hex.r }, hexes: path } : null;
   render();
+}
+
+// Starts at a leisurely, easy-to-track pace and ramps up over the first
+// few steps to a much faster cruise speed — Clubhouse feedback: flying a
+// long route "feels like it takes forever" at a flat per-step delay.
+// Floors out fast rather than instant so a kill/damage mid-route is still
+// visible, not just a blur.
+function autoRouteDelay(stepIndex) {
+  const maxDelay = 300, minDelay = 70, rampSteps = 8;
+  const t = Math.min(stepIndex / rampSteps, 1);
+  return Math.round(maxDelay - (maxDelay - minDelay) * t);
 }
 
 function stepRoute() {
@@ -1586,7 +1597,10 @@ function stepRoute() {
   }
   autoRoute.path = path;
   handleAction(() => Engine.applySublight(state, path[1]));
-  if (autoRoute) setTimeout(stepRoute, 300);
+  if (autoRoute) {
+    autoRoute.stepIndex += 1;
+    setTimeout(stepRoute, autoRouteDelay(autoRoute.stepIndex));
+  }
 }
 
 canvas.addEventListener("click", (evt) => {
