@@ -246,7 +246,7 @@ const ENEMY_TYPES = {
 const ACTS = [
   {
     name: "The Back Alleys",
-    floorCount: 2,
+    floorCount: 3,
     boss: { label: "Big Tom", enemies: ["bigTom"] },
     fightPool: [
       ["alleyCat"],
@@ -262,7 +262,7 @@ const ACTS = [
   },
   {
     name: "The Rooftops",
-    floorCount: 2,
+    floorCount: 3,
     boss: { label: "The Warcat Captain", enemies: ["warcatCaptain"] },
     fightPool: [
       ["alleyCat", "rooftopSniper"],
@@ -278,7 +278,7 @@ const ACTS = [
   },
   {
     name: "The Cathouse",
-    floorCount: 2,
+    floorCount: 3,
     boss: { label: "The Cat King", enemies: ["catKing"] },
     fightPool: [
       ["tabbyGuard", "alleyCat", "rooftopSniper"],

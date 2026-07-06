@@ -27,9 +27,9 @@ function pickFrom(arr, rng) {
 // remaining slots are weighted heavily toward fights and elites — a rest
 // shows up sometimes, and a treasure stash is deliberately RARE (a real find,
 // not a floor-by-floor handout). At most one rest and one treasure per floor.
-function generateFloorOptions(act, isLastFloor, content, rng) {
+function generateFloorOptions(act, guaranteeRest, content, rng) {
   const options = [makeNode("fight", act, content, rng)];
-  if (isLastFloor) options.push(makeNode("rest", act, content, rng));
+  if (guaranteeRest) options.push(makeNode("rest", act, content, rng));
   const bag = ["fight", "fight", "fight", "fight", "elite", "elite", "elite", "rest", "rest", "treasure"];
   const used = new Set(options.map((o) => o.type));
   let guard = 0;
@@ -52,13 +52,20 @@ function makeNode(type, act, content, rng) {
 // Build a whole run's map from the act templates. Each act keeps its fixed
 // boss but rolls fresh floors, so the route differs every run.
 function generateMap(content, rng) {
-  return content.ACTS.map((act) => ({
-    name: act.name,
-    boss: act.boss,
-    floors: Array.from({ length: act.floorCount }, (_, fi) => ({
-      options: generateFloorOptions(act, fi === act.floorCount - 1, content, rng),
-    })),
-  }));
+  return content.ACTS.map((act) => {
+    // The floor before the boss always offers a rest; longer acts (3+ floors)
+    // also guarantee a rest option at the midpoint so the extra attrition on
+    // the way to the boss is survivable, not a pure grind.
+    const lastFloor = act.floorCount - 1;
+    const midRestFloor = act.floorCount >= 3 ? Math.floor(lastFloor / 2) : -1;
+    return {
+      name: act.name,
+      boss: act.boss,
+      floors: Array.from({ length: act.floorCount }, (_, fi) => ({
+        options: generateFloorOptions(act, fi === lastFloor || fi === midRestFloor, content, rng),
+      })),
+    };
+  });
 }
 
 function makeEnemyInstance(typeId, idx, content) {
