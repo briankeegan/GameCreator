@@ -107,7 +107,93 @@
     },
   ];
 
-  const HypergolicLevels = { LEVELS };
+  // ---- procedural depth: sectors beyond the hand-authored campaign --------
+  //
+  // LEVELS above is the tutorial campaign (one new action per sector).
+  // Once it's cleared, the run keeps going forever via generateLevel(depth)
+  // — same LevelDef shape as a hand-authored entry, so the engine/renderer/
+  // save system never need to know the difference. Depth scales board size
+  // and enemy count/mix; only enemy PLACEMENT is randomized — every
+  // enemy's actual combat rules stay exactly as deterministic as ever once
+  // the board is dealt (pillar #1 is about combat, not level layout).
+  //
+  // Deliberately duplicates the rect-board hex enumeration from engine.js's
+  // buildBoardHexes rather than importing it — levels.js stays a
+  // dependency-free data module (see the file header), and it's a handful
+  // of lines.
+
+  function hexDist(a, b) {
+    return (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
+  }
+
+  // Small deterministic PRNG (mulberry32) seeded off depth — the SAME depth
+  // always deals the SAME board (reproducible runs), while different depths
+  // still feel distinct from each other.
+  function seededRandom(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function generateLevel(depth) {
+    const cols = Math.min(6 + Math.floor(depth / 3), 9);
+    const rows = Math.min(11 + depth, 21);
+    const rng = seededRandom(depth * 2654435761);
+
+    const startRow = rows - 1;
+    const playerStart = { q: Math.floor(cols / 2) - Math.floor(startRow / 2), r: startRow };
+    const topRow = 0;
+    const exit = { q: cols - 1, r: topRow }; // rightmost hex of the top row
+    const outpost = { q: 0, r: topRow }; // leftmost hex of the top row
+
+    const hexes = [];
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        hexes.push({ q: col - Math.floor(row / 2), r: row });
+      }
+    }
+    const reserved = [playerStart, exit, outpost];
+    const candidates = hexes.filter(
+      (h) => hexDist(h, playerStart) >= 3 && !reserved.some((r2) => r2.q === h.q && r2.r === h.r)
+    );
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      const tmp = candidates[i];
+      candidates[i] = candidates[j];
+      candidates[j] = tmp;
+    }
+
+    const enemyCount = Math.min(3 + Math.floor(depth / 2), 9);
+    const typePool =
+      depth < 8
+        ? ["interceptor", "interceptor", "cruiser", "sentry"]
+        : ["interceptor", "cruiser", "cruiser", "sentry", "sentry"];
+    const enemies = [];
+    for (const hex of candidates) {
+      if (enemies.length >= enemyCount) break;
+      if (enemies.some((e) => hexDist(e, hex) < 2)) continue; // keep fresh spawns from stacking
+      enemies.push({ type: typePool[Math.floor(rng() * typePool.length)], q: hex.q, r: hex.r });
+    }
+
+    return {
+      id: depth,
+      name: `Deep Space — Depth ${depth}`,
+      board: { type: "rect", cols, rows },
+      playerStart,
+      exit,
+      outpost,
+      enemies,
+      hazards: [],
+      exitRule: "all-enemies-dead",
+      intro: `Uncharted sector, depth ${depth}. No map, no mercy — salvage what you can.`,
+    };
+  }
+
+  const HypergolicLevels = { LEVELS, generateLevel };
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = HypergolicLevels;

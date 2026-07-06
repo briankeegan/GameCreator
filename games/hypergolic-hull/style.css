@@ -504,6 +504,18 @@ body {
 .legend .swatch-threat { background: #7a1f2b; }
 .legend .swatch-legal { background: transparent; border: 2px solid #7fe3a8; }
 
+/* Small image-ref swatches standing in for emoji everywhere in the UI chrome
+   (legend, HUD, systems toggles) — each echoes the real in-game art's shape
+   and color instead of a generic icon-font glyph. */
+.swatch-flagship { background: radial-gradient(circle at 35% 30%, #ffe3b0, #ff9c4a 55%, #b5501f); border-radius: 50%; }
+.swatch-enemy { background: linear-gradient(135deg, #c968e8, #6a2fae); clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); border-radius: 0; }
+.swatch-gate { background: transparent; border: 2px solid #7dffcf; border-radius: 50%; }
+.swatch-outpost { background: #3a4358; border: 1px solid #8fa2c2; border-radius: 50%; }
+.swatch-salvage { background: #ffce8a; border-radius: 2px; transform: rotate(45deg); width: 0.7em; height: 0.7em; }
+.swatch-warpdrive { background: #5bb8f2; border-radius: 2px; }
+.swatch-weapon { background: #ff9c4a; border-radius: 2px; }
+.swatch-route { background: transparent; border: 2px dashed #9fb0c9; border-radius: 50%; }
+
 /* ---- shared install banner (leave as-is; every game gets this) ---- */
 :root { --banner-space: 0px; }
 .install-banner {

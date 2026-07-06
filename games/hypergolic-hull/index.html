@@ -26,7 +26,7 @@
         <span class="hull-label">Hull</span>
         <div class="hull-bar" id="hullBar"></div>
       </div>
-      <span class="salvage-wrap" id="salvageWrap">🔩 <span id="salvageValue">0</span></span>
+      <span class="salvage-wrap" id="salvageWrap"><i class="swatch swatch-salvage"></i> <span id="salvageValue">0</span></span>
       <span id="levelLabel">Sector 1 · Best 1</span>
     </div>
 
@@ -42,7 +42,7 @@
           <button id="restartBtn">New Run</button>
         </div>
         <div class="run-overlay outpost-overlay" id="outpostOverlay" hidden>
-          <h2>🛠️ Sector Outpost</h2>
+          <h2><i class="swatch swatch-outpost"></i> Sector Outpost</h2>
           <p>Salvage: <span id="outpostSalvage">0</span></p>
           <div class="outpost-offers" id="outpostOffers"></div>
           <button id="outpostCloseBtn">Undock</button>
@@ -52,8 +52,8 @@
 
     <div class="console">
       <div class="console-grid systems-grid">
-        <label class="system-toggle"><input type="checkbox" id="toggleWarpdrive" checked /> ⚡ Warpdrive</label>
-        <label class="system-toggle"><input type="checkbox" id="toggleRam" checked /> 💥 <span id="ramLabel">Shockwave</span></label>
+        <label class="system-toggle"><input type="checkbox" id="toggleWarpdrive" checked /> <i class="swatch swatch-warpdrive"></i> Warpdrive</label>
+        <label class="system-toggle"><input type="checkbox" id="toggleRam" checked /> <i class="swatch swatch-weapon"></i> <span id="ramLabel">Shockwave</span></label>
         <span class="weapon-stats" id="weaponStats"></span>
         <button id="holdBtn" class="hold-btn">Hold Position</button>
       </div>
@@ -68,18 +68,18 @@
     </div>
 
     <div class="legend" id="legend">
-      <span>🚀 Your flagship</span>
-      <span>👾 Enemy ship</span>
-      <span>🌀 Warp Gate (exit)</span>
-      <span>🛠️ Outpost — dock on it to spend 🔩 Salvage (dropped by every kill) on repairs and upgrades</span>
+      <span><i class="swatch swatch-flagship"></i> Your flagship</span>
+      <span><i class="swatch swatch-enemy"></i> Enemy ship</span>
+      <span><i class="swatch swatch-gate"></i> Warp Gate (exit)</span>
+      <span><i class="swatch swatch-outpost"></i> Outpost — dock on it to spend <i class="swatch swatch-salvage"></i> Salvage (dropped by every kill) on repairs and upgrades</span>
       <label class="legend-toggle"><input type="checkbox" id="toggleThreat" checked /><i class="swatch swatch-threat"></i> Strike range — an enemy hits you if you end your turn here</label>
       <label class="legend-toggle"><input type="checkbox" id="toggleLegal" checked /><i class="swatch swatch-legal"></i> Outlined hex — where your selected action can go</label>
-      <span>✨ Tap a far-away hex to preview the quickest route — tap it again to fly there</span>
-      <span>⚡💥 Warpdrive/<span id="ramLabelLegend">Shockwave</span> — toggle either off before you act; it auto-fires on any enemy in range all around you after you move (or Hold Position)</span>
+      <span><i class="swatch swatch-route"></i> Tap a far-away hex to preview the quickest route — tap it again to fly there</span>
+      <span><i class="swatch swatch-warpdrive"></i>/<i class="swatch swatch-weapon"></i> Warpdrive/<span id="ramLabelLegend">Shockwave</span> — toggle either off before you act; it auto-fires on any enemy in range all around you after you move (or Hold Position)</span>
     </div>
   </main>
 
-  <button id="helpBtn" class="help-btn" title="Show/hide the legend" aria-label="Help">❓ Help</button>
+  <button id="helpBtn" class="help-btn" title="Show/hide the legend" aria-label="Help">Help</button>
 
   <div class="install-banner" id="installBanner">
     <img class="install-banner-icon" src="icons/icon.svg" alt="" />

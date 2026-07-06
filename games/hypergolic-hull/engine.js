@@ -414,13 +414,16 @@
     return { enemyId: enemy.id, type: "wait" };
   }
 
+  // The Warp Gate is always online — clearing enemies is never required to
+  // leave a sector. Combat is opportunistic now: fight for salvage (see
+  // ENEMY_TYPES[type].salvage) or route around a threat and fly straight to
+  // the gate, entirely the player's call. (`exitRule` is kept on LevelDef
+  // for now in case a future level wants a different unlock condition, but
+  // nothing currently reads it to gate anything.)
   function checkExitUnlock(state) {
-    if (state.exitRule === "all-enemies-dead") {
-      const wasUnlocked = state.exitUnlocked;
-      state.exitUnlocked = livingEnemies(state).length === 0;
-      if (state.exitUnlocked && !wasUnlocked) {
-        pushLog(state, "Warp Gate online.");
-      }
+    if (!state.exitUnlocked) {
+      state.exitUnlocked = true;
+      pushLog(state, "Warp Gate online.");
     }
   }
 

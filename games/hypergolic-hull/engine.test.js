@@ -18,7 +18,7 @@
 
 const assert = require("assert");
 const Engine = require("./engine.js");
-const { LEVELS } = require("./levels.js");
+const { LEVELS, generateLevel } = require("./levels.js");
 
 function clone(state) {
   return JSON.parse(JSON.stringify(state));
@@ -49,6 +49,7 @@ const goldenLevel = {
 for (const level of LEVELS) {
   const s = Engine.createGameState(level); // throws if the level is invalid
   assert.strictEqual(s.status, "playing", `Level ${level.id} should start playable`);
+  assert.strictEqual(s.exitUnlocked, true, `Level ${level.id}: the Warp Gate is always online — clearing enemies is optional, never required to leave`);
 }
 assert.ok(LEVELS.length >= 5, "expected the five-sector tutorial campaign");
 assert.deepStrictEqual(LEVELS[0].actions, ["sublight"], "Sector 1 teaches moving and nothing else");
@@ -186,6 +187,7 @@ assert.strictEqual(
 let state = Engine.createGameState(goldenLevel);
 assert.strictEqual(state.hull, 3, "the flagship starts a run with 3 Hull");
 assert.strictEqual(Engine.livingEnemies(state).length, 2);
+assert.strictEqual(state.exitUnlocked, true, "the Warp Gate is online from the start — clearing enemies is optional, for salvage only");
 
 Engine.applySublight(state, { q: 1, r: -1 });
 Engine.applySublight(state, { q: 2, r: -2 });
@@ -237,9 +239,9 @@ assert.strictEqual(correctState.status, "playing");
 assert.strictEqual(correctState.rammingDisabled, true, "the Impulse Cannon should be disabled while fighters are deployed");
 assert.deepStrictEqual(correctState.fighterHex, { q: interceptor1.q, r: interceptor1.r });
 
-// ---- step 4: gate unlocks once all enemies are dead; walking onto it wins
+// ---- step 4: the gate was online the whole time; walking onto it wins ----
 
-assert.strictEqual(correctState.exitUnlocked, true, "Warp Gate should unlock once all enemies are dead");
+assert.strictEqual(correctState.exitUnlocked, true, "the Warp Gate stays online after clearing the last enemy, same as before");
 
 while (!Engine.posEq(correctState.playerPos, correctState.exitPos)) {
   const step = Engine.legalSublightTargets(correctState).reduce((best, cand) => {
@@ -510,5 +512,24 @@ const carriedState = Engine.createGameState(LEVELS[0], { salvage: 4, maxHull: sa
 assert.strictEqual(carriedState.salvage, 4, "salvage carries over into the next sector");
 assert.strictEqual(carriedState.maxHull, salvageState.maxHull, "a permanent max-Hull upgrade carries over too");
 assert.strictEqual(carriedState.hull, carriedState.maxHull, "the new sector still starts at full (carried-over) Hull");
+
+// ---- procedural depth: the run never hard-stops past the campaign -------
+// generateLevel(depth) must produce a valid LevelDef for a wide range of
+// depths — validateLevel (run inside createGameState) throws if anything's
+// off-board, overlapping, or too close to the player start.
+
+for (const depth of [6, 7, 10, 15, 25, 40]) {
+  const level = generateLevel(depth);
+  const s = Engine.createGameState(level); // throws if invalid
+  assert.strictEqual(s.status, "playing", `generated depth ${depth} should start playable`);
+  assert.strictEqual(s.exitUnlocked, true, `generated depth ${depth} starts with the gate online too`);
+  assert.ok(s.enemies.length > 0, `generated depth ${depth} should have at least one enemy`);
+  assert.ok(Boolean(s.outpostPos), `generated depth ${depth} should include an outpost`);
+}
+// Same depth deals the same board every time (reproducible runs).
+assert.deepStrictEqual(generateLevel(12), generateLevel(12), "generateLevel is deterministic per depth");
+// Different depths are not just reskins of each other.
+assert.notDeepStrictEqual(generateLevel(6).enemies, generateLevel(20).enemies, "deeper sectors deal a different board");
+assert.ok(generateLevel(20).enemies.length >= generateLevel(6).enemies.length, "enemy count scales up (or holds) with depth");
 
 console.log("All golden-path assertions passed.");

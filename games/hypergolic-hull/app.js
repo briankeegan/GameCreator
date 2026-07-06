@@ -45,20 +45,20 @@ const ramLabelLegendEl = document.getElementById("ramLabelLegend");
 const weaponStatsEl = document.getElementById("weaponStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
 
-// The flagship and Interceptors are custom-drawn vector ships (see
-// drawPlayerShip/drawEnemyShip below) — everything else on the board stays
-// a plain emoji sprite so the pieces still read at a glance (see the legend
-// under the action buttons).
-const SPRITES = {
-  fighters: "🛩️",
-  gateLocked: "🔒",
-  gateOnline: "🌀",
-  outpost: "🛠️",
-};
+// Every piece on the board is custom-drawn (see drawPlayerShip/
+// drawEnemyShip/drawWarpGate/drawOutpost/drawFighterMarker below) — no emoji
+// sprites anywhere on the actual playfield.
 
 const LEVELS = HypergolicLevels.LEVELS;
+// The hand-authored campaign (LEVELS) is the tutorial; every sector past it
+// is generated on demand — the run never hard-stops. Same LevelDef shape
+// either way, so nothing downstream (engine, renderer, save system) needs
+// to know or care which kind a given sector is.
+function levelForIndex(index) {
+  return index < LEVELS.length ? LEVELS[index] : HypergolicLevels.generateLevel(index + 1);
+}
 let levelIndex = 0;
-let state = Engine.createGameState(LEVELS[levelIndex]);
+let state = Engine.createGameState(levelForIndex(levelIndex));
 // null means no mode armed — plain moves/route-preview work regardless.
 let mode = null;
 let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
@@ -71,7 +71,7 @@ let autoRoute = null;
 
 // Whether the legend is open is a remembered player preference, not a
 // per-sector default — it starts closed the first time you ever play, and
-// after that just stays wherever you last left it (see the ❓ Help button).
+// after that just stays wherever you last left it (see the Help button).
 let legendVisible = GCStorage.get(GAME_ID, "legendVisible", false);
 
 // Each legend key can be independently muted while the legend is open. The
@@ -258,14 +258,26 @@ function drawHex(center, fill, stroke, lineWidth) {
   ctx.stroke();
 }
 
-function drawSprite(center, glyph, size, alpha) {
+// The deployed Fighter Squadron marker: a small drawn craft (not an emoji),
+// in the flagship's own gold/gunmetal colorway since these are your ships.
+function drawFighterMarker(center, size) {
   ctx.save();
-  if (alpha !== undefined) ctx.globalAlpha = alpha;
-  ctx.font = `${size}px sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "#dbe4f2";
-  ctx.fillText(glyph, center.x, center.y + 1);
+  ctx.translate(center.x, center.y);
+  ctx.fillStyle = "#3a4358";
+  ctx.strokeStyle = "#ffce8a";
+  ctx.lineWidth = Math.max(1, size * 0.08);
+  ctx.beginPath();
+  ctx.moveTo(size * 0.55, 0);
+  ctx.lineTo(-size * 0.4, size * 0.42);
+  ctx.lineTo(-size * 0.15, 0);
+  ctx.lineTo(-size * 0.4, -size * 0.42);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#6ee7ff";
+  ctx.beginPath();
+  ctx.arc(-size * 0.32, 0, size * 0.09, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -896,6 +908,42 @@ function drawWarpGate(center, r, online, now) {
   ctx.restore();
 }
 
+// The Sector Outpost: a small drawn space station, not a 🛠️ emoji — matches
+// the vector-art treatment the flagship/Interceptor/Warp Gate already got.
+// A gunmetal hub with two docking struts and a slow amber beacon so it
+// reads as "a place," not a tool icon.
+function drawOutpost(center, r, now) {
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  ctx.fillStyle = "#3a4358";
+  ctx.strokeStyle = "#8fa2c2";
+  ctx.lineWidth = Math.max(1, r * 0.06);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  // Two docking struts, opposite each other.
+  ctx.fillStyle = "#4a5570";
+  for (const angle of [0, Math.PI]) {
+    ctx.save();
+    ctx.rotate(angle);
+    ctx.fillRect(r * 0.42, -r * 0.12, r * 0.5, r * 0.24);
+    ctx.strokeRect(r * 0.42, -r * 0.12, r * 0.5, r * 0.24);
+    ctx.restore();
+  }
+  // A slow-pulsing amber beacon at the hub's core — "open for business."
+  const t = (now || 0) / 1000;
+  const pulse = 0.6 + 0.4 * Math.sin(t * 2);
+  const beacon = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.3 * pulse);
+  beacon.addColorStop(0, "rgba(255,206,138,0.95)");
+  beacon.addColorStop(1, "rgba(255,160,60,0)");
+  ctx.fillStyle = beacon;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.3 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 // Each sector gets its own deep-space mood — a tinted nebula wash plus a
 // sparse, sector-specific starfield — so the campaign visibly changes scenery
 // as you advance instead of every board reading identically. Colors are
@@ -948,10 +996,34 @@ function drawSectorBackdrop() {
   ctx.restore();
 }
 
+// The union of every board hex, as one path — hexes are true regular
+// hexagons, so a rect-shaped Hoplite board still has a jagged (non-
+// rectangular) silhouette. Clipping the starfield/nebula backdrop to this
+// path keeps it from spilling into the canvas's rectangular corners, which
+// otherwise read as reachable space when they're not (Clubhouse feedback:
+// "why do I see the star background [in] areas you can't go?" — Hoplite's
+// own board floats on flat black with no such no-man's-land).
+function boardPath() {
+  const path = new Path2D();
+  for (const hex of state.boardHexes) {
+    const center = hexToPixel(hex);
+    for (let i = 0; i < 6; i++) {
+      const c = hexCorner(center, i);
+      if (i === 0) path.moveTo(c.x, c.y);
+      else path.lineTo(c.x, c.y);
+    }
+    path.closePath();
+  }
+  return path;
+}
+
 function draw() {
   const now = performance.now();
   ctx.clearRect(0, 0, geom.w, geom.h);
+  ctx.save();
+  ctx.clip(boardPath());
   drawSectorBackdrop();
+  ctx.restore();
   ctx.save();
 
   // Screen shake while a damage flash is running.
@@ -1023,7 +1095,7 @@ function draw() {
     if (isExit) {
       drawWarpGate(center, geom.sx * 0.5, state.exitUnlocked, now);
     } else if (isOutpost) {
-      drawSprite(center, SPRITES.outpost, geom.sx * 0.56);
+      drawOutpost(center, geom.sx * 0.56, now);
     }
   }
 
@@ -1097,7 +1169,7 @@ function draw() {
   }
 
   if (state.fighterHex) {
-    drawSprite(hexToPixel(state.fighterHex), SPRITES.fighters, geom.sx * 0.47);
+    drawFighterMarker(hexToPixel(state.fighterHex), geom.sx * 0.47);
   }
 
   // The flagship: slides along its move, flashes red on damage, hidden once
@@ -1168,12 +1240,14 @@ function updateHud() {
   logEl.textContent = state.log.slice(-3).join("  ·  ");
   salvageValueEl.textContent = state.salvage;
 
+  // The Warp Gate is always online — fighting is never mandatory to leave.
+  // Say so, but remind the player that living enemies are still salvage on
+  // the table if they want it.
   const remaining = Engine.livingEnemies(state).length;
-  if (state.exitUnlocked) {
-    objectiveEl.textContent = "Gate online — fly your 🚀 to the 🌀 to warp out!";
-  } else {
-    objectiveEl.textContent = `Destroy ${remaining} enemy ${remaining === 1 ? "ship" : "ships"} 👾 to power up the Warp Gate`;
-  }
+  objectiveEl.textContent =
+    remaining > 0
+      ? `Fly to the Warp Gate to warp out — or destroy ${remaining} enemy ${remaining === 1 ? "ship" : "ships"} first for salvage`
+      : "Fly to the Warp Gate to warp out!";
 
   // Hold the end-of-run overlay back until the death/kill animation finishes.
   if (state.status === "lost" && !animsRunning()) {
@@ -1182,12 +1256,11 @@ function updateHud() {
     nextBtn.hidden = true;
     overlayEl.hidden = false;
   } else if (state.status === "won" && !animsRunning()) {
-    const hasNext = levelIndex + 1 < LEVELS.length;
+    // The run never hard-stops — every sector past the tutorial campaign is
+    // generated on the fly (see levelForIndex), so there's always a next one.
     overlayTitleEl.textContent = "Sector Clear";
-    overlayBodyEl.textContent = hasNext
-      ? "The Warp Gate carries you onward."
-      : "You've cleared every charted sector. More coming soon!";
-    nextBtn.hidden = !hasNext;
+    overlayBodyEl.textContent = "The Warp Gate carries you onward — deeper, uncharted space awaits.";
+    nextBtn.hidden = false;
     overlayEl.hidden = false;
   } else {
     overlayEl.hidden = true;
@@ -1313,7 +1386,7 @@ function updateOutpost() {
   outpostOffersEl.innerHTML = "";
   for (const offer of Engine.outpostOffers(state)) {
     const btn = document.createElement("button");
-    btn.textContent = `${offer.label} — 🔩${offer.cost}`;
+    btn.textContent = `${offer.label} — ${offer.cost} salvage`;
     btn.disabled = !offer.affordable || !offer.applicable;
     btn.addEventListener("click", () => {
       handleAction(() => Engine.applyOutpostPurchase(state, offer.id));
@@ -1355,7 +1428,7 @@ function handleAction(fn) {
 
 function loadSector(index, carryOver) {
   levelIndex = index;
-  state = Engine.createGameState(LEVELS[levelIndex], carryOver);
+  state = Engine.createGameState(levelForIndex(levelIndex), carryOver);
   mode = null;
   anims = [];
   plannedPath = null;
@@ -1512,7 +1585,7 @@ modeButtons.forEach((btn) => btn.addEventListener("click", () => setMode(btn.dat
 restartBtn.addEventListener("click", () => loadSector(0));
 
 nextBtn.addEventListener("click", () => {
-  if (state.status !== "won" || levelIndex + 1 >= LEVELS.length) return;
+  if (state.status !== "won") return;
   loadSector(levelIndex + 1, { salvage: state.salvage, maxHull: state.maxHull });
 });
 
