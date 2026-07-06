@@ -79,6 +79,7 @@ function makeEnemyInstance(typeId, idx, content) {
     maxHp: type.maxHp,
     hp: type.maxHp,
     block: 0,
+    vulnerable: 0, // turns of +50% incoming damage (Vulnerable debuff)
     patternIndex: 0,
     currentIntent: pattern[0],
     nextIntent: pattern[1 % pattern.length],
@@ -249,7 +250,13 @@ function restSite(state, content, action, deckIndex, rng = Math.random) {
 }
 
 function cardNeedsTarget(card) {
-  return Boolean(card.damage) && !card.aoe;
+  return Boolean(card.damage || card.vulnerable) && !card.aoe;
+}
+
+// Vulnerable amplifies incoming damage by 50% (rounded down) — the classic
+// setup-then-hit layer that makes a debuff card worth a slot over raw damage.
+function withVulnerable(enemy, dmg) {
+  return enemy.vulnerable > 0 ? Math.floor(dmg * 1.5) : dmg;
 }
 
 function playCard(state, content, handIndex, targetId, rng = Math.random) {
@@ -260,7 +267,7 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
   if (state.player.energy < card.cost) throw new Error(`Not enough energy for ${card.name}`);
 
   let target = null;
-  if (card.damage && !card.aoe) {
+  if ((card.damage || card.vulnerable) && !card.aoe) {
     const living = livingEnemies(state);
     if (living.length === 0) throw new Error("No living enemy to target");
     if (!targetId) {
@@ -277,15 +284,21 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
   state.discardPile.push(cardId);
 
   if (card.damage) {
-    // Strength-style mechanics add flat damage to every attack.
-    const dmg = card.damage + (classMechanic(state, content).strength || 0);
+    // Strength-style mechanics add flat damage to every attack; Vulnerable then
+    // amplifies the total by 50% per target.
+    const base = card.damage + (classMechanic(state, content).strength || 0);
     if (card.aoe) {
-      for (const enemy of livingEnemies(state)) applyDamage(enemy, dmg);
-      state.log.push(`Dog plays ${card.name}, hitting every cat for ${dmg}.`);
+      for (const enemy of livingEnemies(state)) applyDamage(enemy, withVulnerable(enemy, base));
+      state.log.push(`Dog plays ${card.name}, hitting every cat.`);
     } else {
-      applyDamage(target, dmg);
-      state.log.push(`Dog plays ${card.name} on ${target.name} for ${dmg}.`);
+      applyDamage(target, withVulnerable(target, base));
+      state.log.push(`Dog plays ${card.name} on ${target.name} for ${withVulnerable(target, base)}.`);
     }
+  }
+  if (card.vulnerable) {
+    const marked = card.aoe ? livingEnemies(state) : [target];
+    for (const e of marked) if (e) e.vulnerable += card.vulnerable;
+    state.log.push(`${card.name}: +${card.vulnerable} Vulnerable.`);
   }
   if (card.block) {
     state.player.block += card.block;
@@ -373,6 +386,8 @@ function endPlayerTurn(state, content, rng = Math.random) {
     enemy.patternIndex = (enemy.patternIndex + 1) % pattern.length;
     enemy.currentIntent = enemy.nextIntent;
     enemy.nextIntent = pattern[(enemy.patternIndex + 1) % pattern.length];
+    // Vulnerable ticks down one turn at the end of the enemy phase.
+    if (enemy.vulnerable > 0) enemy.vulnerable -= 1;
   }
 
   if (state.player.hp <= 0) {

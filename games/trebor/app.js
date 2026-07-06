@@ -20,10 +20,12 @@
     bolt: '<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor"><path d="M13 2 L4 14 H11 L10 22 L20 9 H13 Z"/></svg>',
     search:
       '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10" cy="10" r="6"/><path d="M15 15 L21 21"/></svg>',
+    fang: '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 2 V6 M12 18 V22 M2 12 H6 M18 12 H22"/><circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/></svg>',
   };
 
   function cardIconKey(card) {
     if (card.aoe) return "burst";
+    if (card.vulnerable && !card.damage) return "fang";
     if (card.damage) return "claw";
     if (card.block) return "shield";
     if (card.energy) return "bolt";
@@ -474,6 +476,10 @@
     const intentClass = enemy.hp > 0 ? " enemy-intent-" + enemy.currentIntent.type : "";
     const blockNote =
       enemy.block > 0 ? `<span class="inline-icon">${CARD_ICONS.shield}</span>${enemy.block}` : "";
+    const vulnNote =
+      enemy.hp > 0 && enemy.vulnerable > 0
+        ? `<span class="enemy-vuln" title="Vulnerable: takes +50% damage">VULN ${enemy.vulnerable}</span>`
+        : "";
 
     el.innerHTML = `
       <span class="enemy-intent${intentClass}">${enemy.hp > 0 ? intentIcon + intentText : ""}</span>
@@ -481,6 +487,7 @@
       <span class="enemy-name">${enemy.name}</span>
       <div class="hp-bar hp-bar-small"><div class="hp-fill" style="width:${Math.max(0, (enemy.hp / enemy.maxHp) * 100)}%"></div></div>
       <span class="enemy-hp-text">${Math.max(0, enemy.hp)}/${enemy.maxHp}${blockNote}</span>
+      ${vulnNote}
     `;
     el.addEventListener("click", () => onEnemyTap(enemy.id));
     return el;

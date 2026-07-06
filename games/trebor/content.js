@@ -19,6 +19,11 @@ const CARDS = {
   alphaStrike: { id: "alphaStrike", name: "Alpha Strike", cost: 2, damage: 14, text: "Deal 14 damage." },
   sniffOut: { id: "sniffOut", name: "Sniff Out", cost: 0, draw: 2, text: "Draw 2 cards." },
   secondWind: { id: "secondWind", name: "Second Wind", cost: 1, block: 8, draw: 1, text: "Gain 8 Block. Draw a card." },
+  // Vulnerable cards: a target that's Vulnerable takes +50% damage from every
+  // hit while it lasts — a setup layer so a debuff can be worth a card slot over
+  // raw damage (answering "why would you pick anything but the biggest hit?").
+  snarl: { id: "snarl", name: "Snarl", cost: 0, vulnerable: 2, text: "Apply 2 Vulnerable (target takes +50% damage)." },
+  rend: { id: "rend", name: "Rend", cost: 1, damage: 5, vulnerable: 1, text: "Deal 5 damage. Apply 1 Vulnerable." },
   // Class signature cards (each dog class opens with copies of its own):
   digIn: { id: "digIn", name: "Dig In", cost: 0, damage: 2, text: "Deal 2 damage." },
   riptide: { id: "riptide", name: "Riptide", cost: 1, damage: 5, block: 5, text: "Deal 5 damage. Gain 5 Block." },
@@ -92,11 +97,15 @@ const CLASSES = {
 // Fallback starter deck (used only if a run somehow has no class picked).
 const STARTER_DECK = CLASSES.bevy.deck.slice();
 
-// Cards you can be offered from the very first run.
+// Cards you can be offered from the very first run. These are the shared,
+// GENERIC pool — deliberately NOT the class-signature cards (Lock Jaw, Riptide,
+// Rally, Flurry, etc.). Mixing those in meant a class card like Lock Jaw (1E, 9
+// dmg) would show up next to Bite (1E, 6 dmg) and strictly dominate it — no
+// reason to ever take the weaker one. Signatures now stay class identity (your
+// starting deck); rewards are neutral cards that trade off against each other
+// (raw damage vs. Vulnerable setup vs. block vs. draw), not strict upgrades.
 const BASE_REWARD_POOL = [
-  "bite", "growl", "fetch", "pounce", "guardDog", "goodBoy", "sniffOut",
-  "digIn", "riptide", "rally", "lockJaw",
-  "scurry", "brace", "counterSurge", "flurry", "chomp", "bodySlam",
+  "bite", "growl", "fetch", "pounce", "guardDog", "goodBoy", "sniffOut", "snarl", "rend",
 ];
 
 // Fancier cards that UNLOCK into the reward pool as you get deeper across
@@ -125,6 +134,7 @@ function cardTextOf(c) {
   const parts = [];
   if (c.damage) parts.push(`Deal ${c.damage}${c.aoe ? " to ALL enemies" : ""}.`);
   if (c.block) parts.push(`Gain ${c.block} Block.`);
+  if (c.vulnerable) parts.push(`Apply ${c.vulnerable} Vulnerable${c.aoe ? " to ALL" : ""}.`);
   if (c.energy) parts.push(`Gain ${c.energy} Energy.`);
   if (c.draw) parts.push(`Draw ${c.draw} card${c.draw > 1 ? "s" : ""}.`);
   return parts.join(" ");
@@ -135,7 +145,7 @@ function cardTextOf(c) {
 // upgrade without hand-writing each one. UPGRADES maps base id -> upgraded id.
 const UPGRADABLE = [
   "bite", "growl", "fetch", "pounce", "guardDog", "goodBoy", "howl", "bigBark",
-  "alphaStrike", "sniffOut", "secondWind", "digIn", "riptide", "rally", "lockJaw",
+  "alphaStrike", "sniffOut", "secondWind", "snarl", "rend", "digIn", "riptide", "rally", "lockJaw",
   "scurry", "brace", "counterSurge", "flurry", "chomp", "bodySlam",
 ];
 const UPGRADES = {};
@@ -144,6 +154,7 @@ for (const id of UPGRADABLE) {
   const up = Object.assign({}, base, { id: id + "Plus", name: base.name + "+", upgraded: true });
   if (base.damage) up.damage = base.damage + 2;
   if (base.block) up.block = base.block + 2;
+  if (base.vulnerable) up.vulnerable = base.vulnerable + 1;
   if (base.energy) up.energy = base.energy + 1;
   if (base.draw && !base.damage && !base.block) up.draw = base.draw + 1; // pure draw cards draw more
   up.text = cardTextOf(up) || base.text;
