@@ -104,6 +104,7 @@
   const classOptionsEl = document.getElementById("classOptions");
   const energyPipsEl = document.getElementById("energyPips");
   const relicBarEl = document.getElementById("relicBar");
+  const achToastEl = document.getElementById("achToast");
   const nodeChoiceEl = document.getElementById("nodeChoice");
   const nodeOptionsEl = document.getElementById("nodeOptions");
   const rewardScreenEl = document.getElementById("rewardScreen");
@@ -139,19 +140,68 @@
   let state = null;
   let selectedHandIndex = null; // hand index currently armed, awaiting an enemy tap
   let bestAct = GCStorage.get(GAME_ID, "bestAct", 0); // furthest act reached (1-based)
+  let achievements = GCStorage.get(GAME_ID, "achievements", []); // earned achievement ids
   let animateHand = false; // deal-in flag, true only on a fresh draw
   let lastTurnStamp = ""; // detects a new turn / new combat to trigger the deal
   let newUnlocks = []; // cards unlocked by this run, shown on the end screen
 
-  // Narrow the live reward pool to what's unlocked (base + tiers earned by the
-  // furthest act ever reached). The engine reads Content.REWARD_POOL, so
-  // mutating it here gates what fights can offer.
+  // Cards/relics unlocked by the achievements earned so far (shared across all
+  // characters — "one dog unlocks it, everyone can use it").
+  function unlockedAchCards() {
+    return achievements.flatMap((id) => (Content.ACHIEVEMENTS[id] && Content.ACHIEVEMENTS[id].cards) || []);
+  }
+  function unlockedRelics() {
+    const relics = Content.BASE_RELIC_POOL.slice();
+    for (const id of achievements) {
+      for (const r of (Content.ACHIEVEMENTS[id] && Content.ACHIEVEMENTS[id].relics) || []) {
+        if (!relics.includes(r)) relics.push(r);
+      }
+    }
+    return relics;
+  }
+
+  // Narrow the live reward pool to what's unlocked (base + act-gated tiers +
+  // achievement-gated cards). The engine reads Content.REWARD_POOL, so mutating
+  // it here gates what fights can offer.
   function applyUnlocks() {
     const pool = Content.BASE_REWARD_POOL.slice();
     for (const tier of Content.REWARD_UNLOCKS) if (bestAct >= tier.act) pool.push(...tier.cards);
+    for (const c of unlockedAchCards()) if (!pool.includes(c)) pool.push(c);
     Content.REWARD_POOL = pool;
   }
   applyUnlocks();
+
+  // Award an achievement (once): persist it, unlock its cards/relics, toast it.
+  function earnAchievement(id) {
+    if (!Content.ACHIEVEMENTS[id] || achievements.includes(id)) return;
+    achievements.push(id);
+    GCStorage.set(GAME_ID, "achievements", achievements);
+    applyUnlocks();
+    if (state && state.relicPool) state.relicPool = unlockedRelics();
+    showAchToast(Content.ACHIEVEMENTS[id]);
+  }
+
+  let achToastTimer = null;
+  function showAchToast(ach) {
+    achToastEl.innerHTML = `<strong>Achievement — ${ach.name}</strong><span>${ach.desc}</span>`;
+    achToastEl.hidden = false;
+    achToastEl.classList.remove("show");
+    void achToastEl.offsetWidth; // restart the CSS animation
+    achToastEl.classList.add("show");
+    if (achToastTimer) clearTimeout(achToastTimer);
+    achToastTimer = setTimeout(() => {
+      achToastEl.classList.remove("show");
+      achToastEl.hidden = true;
+    }, 3800);
+  }
+
+  // Check run state for any newly-satisfied achievement conditions.
+  function checkAchievements() {
+    if (!state) return;
+    if (state.status === "boss-reward" || state.status === "victory") earnAchievement("firstBoss");
+    if (state.status === "victory") earnAchievement("topDog");
+    if ((state.relics || []).length >= 4) earnAchievement("packLeader");
+  }
 
   // Tests can pin window.__tbRng to a fixed generator (via addInitScript,
   // before this file runs) for a fully reproducible run; real play always
@@ -182,6 +232,8 @@
 
   function onChooseClass(classId) {
     Engine.chooseClass(state, Content, classId, rng);
+    // Seed the run's relic drop pool with everything unlocked by achievements.
+    state.relicPool = unlockedRelics();
     render();
   }
 
@@ -518,6 +570,7 @@
 
   function render() {
     window.__tbState = state; // exposed for tests
+    checkAchievements();
 
     // Class select: HUD/board are meaningless until a dog is picked, so show
     // only the picker.

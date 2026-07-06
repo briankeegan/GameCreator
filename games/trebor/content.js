@@ -361,6 +361,15 @@ const RELIC_UNLOCKS = [
 ];
 const RELIC_POOL = BASE_RELIC_POOL.concat(...RELIC_UNLOCKS.map((u) => u.relics));
 
+// Achievements — earned across runs (persisted in localStorage, shared by all
+// characters) and, per Admin, they UNLOCK new relics and cards into the pools.
+// "one character unlocks it, everyone can use it."
+const ACHIEVEMENTS = {
+  firstBoss: { id: "firstBoss", name: "Boss Dog", desc: "Fell your first act boss.", relics: ["luckyBall"] },
+  packLeader: { id: "packLeader", name: "Pack Leader", desc: "Hold 4 relics in a single run.", cards: ["reserves"] },
+  topDog: { id: "topDog", name: "Top Dog", desc: "Win a full run — clear all three acts.", relics: ["oldBlanket", "ragMedal"], cards: ["huntersMark"] },
+};
+
 const STARTING_HP = 28;
 const STARTING_ENERGY = 3;
 const HAND_SIZE = 5;
@@ -385,6 +394,7 @@ const CONTENT = {
   BASE_RELIC_POOL,
   RELIC_UNLOCKS,
   RELIC_POOL,
+  ACHIEVEMENTS,
   ENEMY_TYPES,
   ACTS,
   NODE_LABELS,

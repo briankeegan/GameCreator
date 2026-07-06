@@ -943,6 +943,39 @@ body {
   margin: 6px auto 0;
 }
 
+.ach-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 84px;
+  transform: translateX(-50%) translateY(20px);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 9px 16px;
+  border-radius: 12px;
+  background: linear-gradient(160deg, #3a2a16, #241608);
+  border: 1px solid rgba(242, 190, 130, 0.7);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.6), 0 0 16px rgba(242, 190, 130, 0.25);
+  color: #ffe6c2;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  max-width: 90vw;
+}
+.ach-toast strong { font-size: 0.82rem; }
+.ach-toast span { font-size: 0.68rem; color: #d8c3a8; }
+.ach-toast.show {
+  animation: achToastIn 3.8s ease both;
+}
+@keyframes achToastIn {
+  0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  8% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  88% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+}
+
 .relic-bar {
   display: flex;
   flex-wrap: wrap;
