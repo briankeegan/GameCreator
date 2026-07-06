@@ -20,12 +20,12 @@ const CARDS = {
   sniffOut: { id: "sniffOut", name: "Sniff Out", cost: 0, draw: 2, text: "Draw 2 cards." },
   secondWind: { id: "secondWind", name: "Second Wind", cost: 1, block: 8, draw: 1, text: "Gain 8 Block. Draw a card." },
   // Class signature cards (each dog class opens with copies of its own):
-  digIn: { id: "digIn", name: "Dig In", cost: 0, damage: 3, text: "Deal 3 damage." },
+  digIn: { id: "digIn", name: "Dig In", cost: 0, damage: 2, text: "Deal 2 damage." },
   riptide: { id: "riptide", name: "Riptide", cost: 1, damage: 5, block: 5, text: "Deal 5 damage. Gain 5 Block." },
   rally: { id: "rally", name: "Rally", cost: 0, block: 3, draw: 1, text: "Gain 3 Block. Draw a card." },
   lockJaw: { id: "lockJaw", name: "Lock Jaw", cost: 1, damage: 9, text: "Deal 9 damage." },
   // More class-signature cards, so each dog's deck is its own thing:
-  scurry: { id: "scurry", name: "Scurry", cost: 0, damage: 2, draw: 1, text: "Deal 2 damage. Draw a card." }, // Riddle
+  scurry: { id: "scurry", name: "Scurry", cost: 0, damage: 1, draw: 1, text: "Deal 1 damage. Draw a card." }, // Riddle
   brace: { id: "brace", name: "Brace", cost: 1, block: 8, text: "Gain 8 Block." }, // Koozie
   counterSurge: { id: "counterSurge", name: "Counter-Surge", cost: 1, damage: 6, block: 3, text: "Deal 6 damage. Gain 3 Block." }, // Koozie
   flurry: { id: "flurry", name: "Flurry", cost: 1, damage: 4, draw: 1, text: "Deal 4 damage. Draw a card." }, // Bevy
@@ -48,12 +48,14 @@ const CLASSES = {
     name: "Riddle",
     breed: "Wire Fox Terrier",
     blurb: "A relentless digger — fast attacks and card draw. Fragile but hits early and often, if you spend your Energy well.",
-    maxHp: 28,
-    // Frenzy: she draws an extra card AND runs on 4 Energy, so the extra draw is
-    // a real choice — see 6 cards, pick the best 4 to play — instead of a pile
-    // of free cards spammed for nothing. Fast and hits hard, but paper-thin.
+    maxHp: 36,
+    // Frenzy: draws an extra card AND runs on 4 Energy — she needs the throughput
+    // to race enemies down before her thin Hull gives out. What got nerfed to
+    // stop her one-shotting the opening fight is her cheap chip: Scurry and Dig In
+    // are near-free cantrips now (1-2 damage + card flow), not free burst, so her
+    // best turn-one can't quite delete a fresh enemy.
     mechanic: { drawBonus: 1, energyBonus: 1, name: "Frenzy", text: "Draw an extra card and gain +1 Energy each turn (4 total)." },
-    deck: ["bite", "bite", "bite", "fetch", "fetch", "growl", "pounce", "scurry", "scurry", "digIn", "digIn", "sniffOut"],
+    deck: ["bite", "bite", "bite", "fetch", "fetch", "growl", "growl", "scurry", "scurry", "digIn", "digIn", "sniffOut"],
   },
   koozie: {
     id: "koozie",
@@ -157,7 +159,7 @@ const ENEMY_TYPES = {
   alleyCat: {
     id: "alleyCat",
     name: "Alley Cat",
-    maxHp: 16,
+    maxHp: 28,
     pattern: [
       { type: "attack", damage: 9 },
       { type: "attack", damage: 9 },

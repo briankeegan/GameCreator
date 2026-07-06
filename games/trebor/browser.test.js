@@ -184,7 +184,7 @@ async function playUntil(page, targetStatuses) {
     "Koozie's deterministic opening hand (its own block-heavy deck)"
   );
   state = await getState(page);
-  assert.strictEqual(state.enemies[0].hp, 16);
+  assert.strictEqual(state.enemies[0].hp, 28);
   assert.strictEqual(state.player.block, 3, "Waterproof opens the turn with 3 Block");
   assert.ok(await page.locator(".enemy-intent").textContent(), "the cat's move is telegraphed up front");
 
@@ -215,7 +215,7 @@ async function playUntil(page, targetStatuses) {
   await (await page.$$("#hand .card"))[0].click(); // Riptide -> 5 dmg + 5 Block, auto-targeted
   await page.waitForTimeout(80);
   state = await getState(page);
-  assert.strictEqual(state.enemies[0].hp, 11);
+  assert.strictEqual(state.enemies[0].hp, 23);
   assert.strictEqual(state.player.block, 24);
   assert.strictEqual(state.player.energy, 0);
 
@@ -250,10 +250,10 @@ async function playUntil(page, targetStatuses) {
   assert.strictEqual(state.classId, null);
 
   // ---- Loss path (as a different class) --------------------------------
-  await page.click(".class-option-riddle"); // Wire Fox Terrier, 28 Hull
+  await page.click(".class-option-riddle"); // Wire Fox Terrier, 36 Hull
   await page.waitForTimeout(80);
   state = await getState(page);
-  assert.strictEqual(state.player.maxHp, 28);
+  assert.strictEqual(state.player.maxHp, 36);
   await (await page.$$(".map-node-active"))[0].click(); // into a fight
   await page.waitForTimeout(80);
   await page.evaluate(() => {

@@ -57,7 +57,7 @@ assert.throws(() => Engine.playCard(gate, Content, 0, null, rng), /Cannot play a
 assert.throws(() => Engine.chooseClass(gate, Content, "notADog", rng), /Unknown class/);
 
 // Each class sets its own Hull and 12-card deck.
-const hpByClass = { riddle: 28, koozie: 32, bevy: 28, lala: 36 };
+const hpByClass = { riddle: 36, koozie: 32, bevy: 28, lala: 36 };
 for (const id of Object.keys(Content.CLASSES)) {
   const s = Engine.createGameState(Content, rng);
   Engine.chooseClass(s, Content, id, rng);
@@ -98,7 +98,7 @@ Engine.chooseClass(lalaM, Content, "lala", rng);
 Engine.chooseNode(lalaM, Content, 0, rng); // Alley Cat, 14 Hull
 lalaM.hand.unshift("bite"); // a plain 6-damage Bite...
 Engine.playCard(lalaM, Content, 0, lalaM.enemies[0].id, rng);
-assert.strictEqual(lalaM.enemies[0].hp, 16 - 9, "Lock Jaw makes Bite land for 6+3");
+assert.strictEqual(lalaM.enemies[0].hp, 28 - 9, "Lock Jaw makes Bite land for 6+3");
 
 // ---------------------------------------------------------------------
 // Floor 1 fight (as Koozie), traced through the key mechanics.
@@ -112,7 +112,7 @@ assert.strictEqual(state.map.length, 3, "the run map has three acts");
 Engine.chooseNode(state, Content, 0, rng); // first room — a lone Alley Cat under the fixed rng
 assert.strictEqual(state.status, "playing");
 assert.strictEqual(state.enemies[0].typeId, "alleyCat");
-assert.strictEqual(state.enemies[0].hp, 16);
+assert.strictEqual(state.enemies[0].hp, 28);
 assert.deepStrictEqual(
   state.hand,
   ["riptide", "counterSurge", "counterSurge", "brace", "brace"],
@@ -131,7 +131,7 @@ assert.strictEqual(state.player.block, 19);
 assert.strictEqual(state.player.energy, 1);
 
 Engine.playCard(state, Content, 0, null, rng); // Riptide -> 5 dmg + 5 Block
-assert.strictEqual(cat.hp, 11, "Riptide deals 5 (Koozie has no Strength bonus); 16-5");
+assert.strictEqual(cat.hp, 23, "Riptide deals 5 (Koozie has no Strength bonus); 28-5");
 assert.strictEqual(state.player.block, 24);
 assert.strictEqual(state.player.energy, 0);
 
