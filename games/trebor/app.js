@@ -413,7 +413,7 @@
     el.className = "node-option node-option-" + option.type;
     let detail;
     if (option.type === "rest") {
-      detail = "Rest · sharpen · remove";
+      detail = option.canRemove ? "Rest · sharpen · let go" : "Rest · sharpen";
     } else if (option.type === "treasure") {
       detail = "A stash of strong gear";
     } else {
@@ -669,10 +669,14 @@
           : "Pick a card to add to your deck, or skip.") + relicNote;
       state.rewardOptions.forEach((cardId) => rewardOptionsEl.appendChild(rewardCardNode(cardId)));
     } else if (state.status === "rest-site") {
-      objectiveEl.textContent = "Rest up, sharpen a card, or drop dead weight.";
+      objectiveEl.textContent = state.restCanRemove
+        ? "Rest up, sharpen a card, or drop dead weight."
+        : "Rest up or sharpen a card.";
       const heal = Math.ceil((state.player.maxHp - state.player.hp) * Content.REST_HEAL_FRACTION);
       restHealDescEl.textContent = state.player.hp >= state.player.maxHp ? "Already at full Hull" : `Heal ${heal} Hull`;
       restHealBtn.disabled = state.player.hp >= state.player.maxHp;
+      // "Let Go" (card removal) is only on the rare safe spots that offer it.
+      restRemoveBtn.hidden = !state.restCanRemove;
     } else if (state.status === "boss-reward") {
       objectiveEl.textContent = `Boss down! +${Content.BOSS_MAX_HULL_BONUS} max Hull and a full heal. Claim a spoil of war.`;
       bossRewardTitleEl.textContent = `${act.boss.label} defeated`;

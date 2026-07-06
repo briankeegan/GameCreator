@@ -21,19 +21,35 @@ function pickFrom(arr, rng) {
   return arr[Math.floor(rng() * arr.length)];
 }
 
-// Roll one floor's worth of node choices from an act template. Always at
-// least one fight so the run can always progress; the last floor before a
-// boss always also offers a rest (a breather to heal/sharpen first). The
-// remaining slots are weighted heavily toward fights and elites — a rest
-// shows up sometimes, and a treasure stash is deliberately RARE (a real find,
-// not a floor-by-floor handout). At most one rest and one treasure per floor.
-function generateFloorOptions(act, guaranteeRest, content, rng) {
+// Roll one floor's worth of node choices (always exactly three rooms) from an
+// act template, Slay-the-Spire-style. The whole point of this function is that
+// rest / elite / treasure are OCCASIONAL, not per-floor handouts — so choosing
+// one is a real routing decision instead of a free option you always have:
+//   * A fight is always available so the run can always progress.
+//   * The very first floor is fights only — no early rest/elite/treasure (you
+//     haven't earned a breather, and an early elite is an unfair spike).
+//   * The floor right before the boss ALWAYS offers a rest — the one reliable
+//     breather each act (StS guarantees exactly this, and only this).
+//   * Elites only appear a couple floors in, and rest/treasure are rare extras
+//     drawn from a fight-dominated bag — at most one rest and one treasure per
+//     floor. Most floors end up fight-or-fight; that's intended.
+function generateFloorOptions(act, floorIndex, floorCount, content, rng) {
+  const isFirst = floorIndex === 0;
+  const isLast = floorIndex === floorCount - 1;
+
   const options = [makeNode("fight", act, content, rng)];
-  if (guaranteeRest) options.push(makeNode("rest", act, content, rng));
-  const bag = ["fight", "fight", "fight", "fight", "elite", "elite", "elite", "rest", "rest", "treasure"];
+  if (isLast) options.push(makeNode("rest", act, content, rng)); // guaranteed pre-boss breather
+
+  // Candidate bag for the remaining slots. Fights dominate; elites unlock a
+  // couple floors in; a lone rest and a lone treasure are the rare finds and
+  // never show on the first or the (already-rest) last floor.
+  const bag = ["fight", "fight", "fight", "fight", "fight", "fight"];
+  if (!isFirst && floorIndex >= 2) bag.push("elite", "elite");
+  if (!isFirst && !isLast) bag.push("rest", "treasure");
+
   const used = new Set(options.map((o) => o.type));
   let guard = 0;
-  while (options.length < 3 && guard++ < 60) {
+  while (options.length < 3 && guard++ < 80) {
     const t = pickFrom(bag, rng);
     if ((t === "rest" || t === "treasure") && used.has(t)) continue; // one rest, one treasure max
     used.add(t);
@@ -46,26 +62,25 @@ function makeNode(type, act, content, rng) {
   const label = pickFrom(content.NODE_LABELS[type], rng);
   if (type === "fight") return { type, label, enemies: pickFrom(act.fightPool, rng) };
   if (type === "elite") return { type, label, enemies: pickFrom(act.elitePool, rng) };
+  if (type === "rest") {
+    // Card removal ("Let Go") is the RARE rest option — a safe spot only
+    // sometimes lets you trim your deck, so thinning it is a plan you route
+    // toward, not a lever on tap every floor. Heal and Sharpen are always here.
+    return { type, label, canRemove: rng() < content.REST_REMOVE_CHANCE };
+  }
   return { type, label };
 }
 
 // Build a whole run's map from the act templates. Each act keeps its fixed
 // boss but rolls fresh floors, so the route differs every run.
 function generateMap(content, rng) {
-  return content.ACTS.map((act) => {
-    // The floor before the boss always offers a rest; longer acts (3+ floors)
-    // also guarantee a rest option at the midpoint so the extra attrition on
-    // the way to the boss is survivable, not a pure grind.
-    const lastFloor = act.floorCount - 1;
-    const midRestFloor = act.floorCount >= 3 ? Math.floor(lastFloor / 2) : -1;
-    return {
-      name: act.name,
-      boss: act.boss,
-      floors: Array.from({ length: act.floorCount }, (_, fi) => ({
-        options: generateFloorOptions(act, fi === lastFloor || fi === midRestFloor, content, rng),
-      })),
-    };
-  });
+  return content.ACTS.map((act) => ({
+    name: act.name,
+    boss: act.boss,
+    floors: Array.from({ length: act.floorCount }, (_, fi) => ({
+      options: generateFloorOptions(act, fi, act.floorCount, content, rng),
+    })),
+  }));
 }
 
 function makeEnemyInstance(typeId, idx, content) {
@@ -209,6 +224,7 @@ function createGameState(content, rng = Math.random) {
     relics: [],
     relicPool: content.BASE_RELIC_POOL.slice(),
     rewardRelic: null,
+    restCanRemove: false,
     player: {
       hp: content.STARTING_HP,
       maxHp: content.STARTING_HP,
@@ -258,10 +274,17 @@ function chooseNode(state, content, optionIndex, rng = Math.random) {
   if (!option) throw new Error(`No node option at index ${optionIndex}`);
 
   if (option.type === "rest") {
-    // A rest site is now a choice: heal, sharpen a card, or ditch dead weight.
+    // A rest site is a single choice: heal OR sharpen a card (you get one
+    // action, then move on) — and, only on the rare safe spots that allow it,
+    // ditch a card. `restCanRemove` tells the UI whether to offer that.
     state.currentNodeType = "rest";
     state.status = "rest-site";
-    state.log = ["A safe spot. Rest up, sharpen a card, or drop dead weight."];
+    state.restCanRemove = Boolean(option.canRemove);
+    state.log = [
+      option.canRemove
+        ? "A safe spot. Rest up, sharpen a card, or drop dead weight."
+        : "A safe spot. Rest up or sharpen a card.",
+    ];
   } else if (option.type === "treasure") {
     // A stash — a free pick from the strong treasure pool, no fight.
     state.currentNodeType = "treasure";
@@ -283,6 +306,7 @@ function restSite(state, content, action, deckIndex, rng = Math.random) {
     state.player.hp = Math.min(state.player.maxHp, state.player.hp + healAmount);
     state.log = [`Rested and healed ${healAmount}.`];
   } else if (action === "remove") {
+    if (state.restCanRemove === false) throw new Error("This safe spot does not offer card removal");
     if (deckIndex == null || deckIndex < 0 || deckIndex >= state.deck.length) throw new Error("No such card to remove");
     const removed = state.deck.splice(deckIndex, 1)[0];
     state.log = [`Dropped ${content.CARDS[removed].name} from the deck.`];

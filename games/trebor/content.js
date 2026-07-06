@@ -277,7 +277,7 @@ const ENEMY_TYPES = {
 const ACTS = [
   {
     name: "The Back Alleys",
-    floorCount: 3,
+    floorCount: 5,
     boss: { label: "Big Tom", enemies: ["bigTom"] },
     fightPool: [
       ["alleyCat"],
@@ -293,7 +293,7 @@ const ACTS = [
   },
   {
     name: "The Rooftops",
-    floorCount: 3,
+    floorCount: 5,
     boss: { label: "The Warcat Captain", enemies: ["warcatCaptain"] },
     fightPool: [
       ["alleyCat", "rooftopSniper"],
@@ -309,7 +309,7 @@ const ACTS = [
   },
   {
     name: "The Cathouse",
-    floorCount: 3,
+    floorCount: 5,
     boss: { label: "The Cat King", enemies: ["catKing"] },
     fightPool: [
       ["tabbyGuard", "alleyCat", "rooftopSniper"],
@@ -374,6 +374,7 @@ const STARTING_HP = 28;
 const STARTING_ENERGY = 3;
 const HAND_SIZE = 5;
 const REST_HEAL_FRACTION = 0.3; // of missing HP, rounded up
+const REST_REMOVE_CHANCE = 0.35; // odds a given rest site also lets you drop a card
 const FIGHT_REWARD_COUNT = 3;
 const ELITE_REWARD_COUNT = 4;
 const BOSS_REWARD_COUNT = 3; // boss-reward cards offered to pick from
@@ -402,6 +403,7 @@ const CONTENT = {
   STARTING_ENERGY,
   HAND_SIZE,
   REST_HEAL_FRACTION,
+  REST_REMOVE_CHANCE,
   FIGHT_REWARD_COUNT,
   ELITE_REWARD_COUNT,
   BOSS_REWARD_COUNT,

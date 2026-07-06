@@ -308,14 +308,39 @@ Engine.restSite(up, Content, "upgrade", upIndex, rng);
 assert.strictEqual(up.deck[upIndex], Content.UPGRADES[baseId], "the card became its + version");
 assert.ok(Content.CARDS[Content.UPGRADES[baseId]].upgraded, "and the + card is marked upgraded");
 
-// Remove deletes a card.
+// Remove deletes a card — but only at a rest site that OFFERS removal (the
+// rare "Let Go" option); a plain safe spot rejects it, so trimming your deck is
+// an occasional routing decision, not a lever you pull every floor.
 const rm = Engine.createGameState(Content, rng);
 Engine.chooseClass(rm, Content, "bevy", rng);
 rm.status = "rest-site";
 rm.floorIndex = 0;
+rm.restCanRemove = false;
+assert.throws(() => Engine.restSite(rm, Content, "remove", 0, rng), /does not offer card removal/);
+rm.status = "rest-site"; // the throw left status untouched; re-enter with removal offered
+rm.restCanRemove = true;
 const rmLen = rm.deck.length;
 Engine.restSite(rm, Content, "remove", 0, rng);
-assert.strictEqual(rm.deck.length, rmLen - 1, "removing shrinks the deck");
+assert.strictEqual(rm.deck.length, rmLen - 1, "removing shrinks the deck when the spot offers it");
+
+// Node frequency: across a full generated map, rest / treasure are OCCASIONAL,
+// not per-floor. Exactly one guaranteed rest per act (the pre-boss floor), the
+// first floor is fights only, and most floors are fight-or-fight.
+const freqMap = Engine.generateMap(Content, seededRng(3));
+for (const act of freqMap) {
+  assert.ok(act.floors[0].options.every((o) => o.type === "fight"), "the first floor of an act is fights only");
+  const lastFloor = act.floors[act.floors.length - 1];
+  assert.ok(lastFloor.options.some((o) => o.type === "rest"), "the pre-boss floor always offers a rest");
+}
+// Rests are rare enough that they never dominate a route: far more fight rooms
+// than rest rooms across the whole map.
+let restRooms = 0;
+let fightRooms = 0;
+for (const act of freqMap) for (const fl of act.floors) for (const o of fl.options) {
+  if (o.type === "rest") restRooms++;
+  if (o.type === "fight") fightRooms++;
+}
+assert.ok(fightRooms > restRooms * 2, "fights vastly outnumber rest rooms on the map");
 
 // ---------------------------------------------------------------------
 // Vulnerable mechanic: a marked enemy takes +50% damage, and it ticks down.
