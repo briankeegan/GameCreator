@@ -224,10 +224,35 @@
   // Repairing costs less than permanently raising the cap, and neither
   // consumes a turn (shopping happens between turns, not during the enemy
   // phase loop): a run through the crawl trades kills for scrap for safety.
-  const OUTPOST_OFFERS = [
+  //
+  // Every outpost always offers Repair (the reliable baseline), plus one
+  // more offer picked deterministically-per-level from the pool below —
+  // Clubhouse feedback: an outpost shop that's identical every single visit
+  // undercuts the "luck and skill" crawler this is meant to be. Same level
+  // id always deals the same second offer (reproducible), but different
+  // levels/depths vary which one you get.
+  const OUTPOST_OFFER_POOL = [
     { id: "repair", label: "Repair 1 Hull", cost: 2 },
     { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 5 },
+    { id: "shield", label: "Emergency Shield (absorb the next hit)", cost: 4 },
   ];
+
+  function seededRandom(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function pickOutpostOfferIds(levelId) {
+    const extras = OUTPOST_OFFER_POOL.filter((o) => o.id !== "repair");
+    const rng = seededRandom(levelId * 7919 + 13);
+    const pick = extras[Math.floor(rng() * extras.length)];
+    return ["repair", pick.id];
+  }
 
   function createGameState(level, carryOver) {
     validateLevel(level);
@@ -242,8 +267,10 @@
       hull: maxHull,
       maxHull: maxHull,
       salvage: (carryOver && carryOver.salvage) || 0,
+      shieldCharges: (carryOver && carryOver.shieldCharges) || 0,
       exitPos: { q: level.exit.q, r: level.exit.r },
       outpostPos: level.outpost ? { q: level.outpost.q, r: level.outpost.r } : null,
+      outpostOfferIds: level.outpost ? pickOutpostOfferIds(level.id) : [],
       exitRule: level.exitRule,
       exitUnlocked: false,
       hazards: (level.hazards || []).map((h) => ({ type: h.type, q: h.q, r: h.r })),
@@ -450,7 +477,11 @@
         enemy.r = intent.to.r;
       }
     }
-    if (totalDamage > 0) {
+    if (totalDamage > 0 && state.shieldCharges > 0) {
+      state.shieldCharges -= 1;
+      state.events.push({ type: "shieldAbsorb", q: state.playerPos.q, r: state.playerPos.r });
+      pushLog(state, `Emergency Shield absorbed ${totalDamage} damage.`);
+    } else if (totalDamage > 0) {
       state.hull = Math.max(0, state.hull - totalDamage);
       state.events.push({ type: "damage", amount: totalDamage, q: state.playerPos.q, r: state.playerPos.r });
       pushLog(state, `Took ${totalDamage} damage.`);
@@ -633,7 +664,7 @@
 
   function outpostOffers(state) {
     if (!outpostAvailable(state)) return [];
-    return OUTPOST_OFFERS.map((offer) => ({
+    return OUTPOST_OFFER_POOL.filter((o) => state.outpostOfferIds.includes(o.id)).map((offer) => ({
       ...offer,
       affordable: state.salvage >= offer.cost,
       applicable: offer.id !== "repair" || state.hull < state.maxHull,
@@ -643,7 +674,8 @@
   function applyOutpostPurchase(state, offerId) {
     assertPlaying(state);
     if (!outpostAvailable(state)) throw new Error("Outpost: not docked at an outpost");
-    const offer = OUTPOST_OFFERS.find((o) => o.id === offerId);
+    if (!state.outpostOfferIds.includes(offerId)) throw new Error(`Outpost: "${offerId}" is not on offer here`);
+    const offer = OUTPOST_OFFER_POOL.find((o) => o.id === offerId);
     if (!offer) throw new Error(`Outpost: unknown offer "${offerId}"`);
     if (state.salvage < offer.cost) throw new Error(`Outpost: not enough salvage for ${offer.label}`);
     state.events = [];
@@ -653,6 +685,8 @@
     } else if (offer.id === "reinforce") {
       state.maxHull += 1;
       state.hull += 1;
+    } else if (offer.id === "shield") {
+      state.shieldCharges += 1;
     }
     state.salvage -= offer.cost;
     pushLog(state, `Outpost: bought ${offer.label} (-${offer.cost} salvage).`);

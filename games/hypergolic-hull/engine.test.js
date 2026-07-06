@@ -454,6 +454,11 @@ const salvageLevel = {
   exitRule: "all-enemies-dead",
 };
 const salvageState = Engine.createGameState(salvageLevel);
+assert.ok(salvageState.outpostOfferIds.includes("repair"), "Repair is always on offer at an outpost");
+// Force the second offer to "reinforce" for the rest of this test — which
+// non-repair offer a given level deals is randomized (see the pool-variety
+// test below), and this fixture just needs a stable one to exercise.
+salvageState.outpostOfferIds = ["repair", "reinforce"];
 assert.strictEqual(salvageState.salvage, 0, "a fresh run starts with zero salvage");
 assert.deepStrictEqual(Engine.outpostOffers(salvageState), [], "not standing on the outpost hex means no offers");
 
@@ -505,13 +510,71 @@ assert.throws(
   "an offer refuses when salvage can't cover its cost"
 );
 
-// Salvage and the raised max-Hull both carry into the next sector via
-// createGameState's carryOver — this is how loadSector() in app.js hands a
-// run's progress from one sector to the next.
-const carriedState = Engine.createGameState(LEVELS[0], { salvage: 4, maxHull: salvageState.maxHull });
+// Salvage, the raised max-Hull, and any banked Shield charges all carry
+// into the next sector via createGameState's carryOver — this is how
+// loadSector() in app.js hands a run's progress from one sector to the next.
+const carriedState = Engine.createGameState(LEVELS[0], { salvage: 4, maxHull: salvageState.maxHull, shieldCharges: 2 });
 assert.strictEqual(carriedState.salvage, 4, "salvage carries over into the next sector");
 assert.strictEqual(carriedState.maxHull, salvageState.maxHull, "a permanent max-Hull upgrade carries over too");
 assert.strictEqual(carriedState.hull, carriedState.maxHull, "the new sector still starts at full (carried-over) Hull");
+assert.strictEqual(carriedState.shieldCharges, 2, "banked Shield charges carry over too");
+
+// ---- outpost offer variety: not the same two things every visit ---------
+// Repair is always offered (the reliable baseline); the second offer is
+// picked deterministically per level id, so different levels vary while a
+// given level always deals the same shop (reproducible runs).
+function outpostFixture(id) {
+  return Engine.createGameState({
+    id,
+    radius: 2,
+    playerStart: { q: 0, r: 0 },
+    exit: { q: 2, r: 0 },
+    outpost: { q: -2, r: 0 },
+    enemies: [],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+  });
+}
+const idsAcrossLevels = new Set();
+for (let id = 900; id < 920; id++) {
+  const offers = outpostFixture(id).outpostOfferIds;
+  assert.strictEqual(offers[0], "repair", `level ${id}: Repair is always the first offer`);
+  assert.strictEqual(offers.length, 2, `level ${id}: exactly one extra offer alongside Repair`);
+  idsAcrossLevels.add(offers[1]);
+}
+assert.ok(idsAcrossLevels.size > 1, "the second offer varies across levels, not the same every time");
+assert.deepStrictEqual(
+  outpostFixture(905).outpostOfferIds,
+  outpostFixture(905).outpostOfferIds,
+  "the same level id always deals the same offers (reproducible)"
+);
+
+// ---- Emergency Shield: absorbs one full hit, then is consumed ------------
+const shieldLevel = {
+  id: 991,
+  name: "shield fixture",
+  board: { type: "rect", cols: 4, rows: 5 },
+  playerStart: { q: 0, r: 4 },
+  exit: { q: 2, r: 0 },
+  outpost: null,
+  enemies: [{ type: "interceptor", q: 0, r: 2 }],
+  hazards: [],
+  exitRule: "all-enemies-dead",
+  actions: ["sublight"], // Impulse Cannon locked out so the interceptor survives to strike back
+};
+const shieldState = Engine.createGameState(shieldLevel);
+shieldState.shieldCharges = 1;
+const hullBeforeShield = shieldState.hull;
+Engine.applySublight(shieldState, { q: 0, r: 3 }); // step adjacent: interceptor attacks
+assert.strictEqual(shieldState.hull, hullBeforeShield, "a banked Shield charge fully absorbs the hit — no Hull lost");
+assert.strictEqual(shieldState.shieldCharges, 0, "absorbing a hit consumes the Shield charge");
+assert.ok(shieldState.events.some((e) => e.type === "shieldAbsorb"), "absorbing emits a shieldAbsorb event for the UI");
+// A separate fixture (no Shield charge banked) confirms the same hit costs
+// Hull normally once there's nothing left to absorb it.
+const noShieldState = Engine.createGameState(shieldLevel);
+const hullBeforeNoShield = noShieldState.hull;
+Engine.applySublight(noShieldState, { q: 0, r: 3 });
+assert.strictEqual(noShieldState.hull, hullBeforeNoShield - 1, "with no Shield charge banked, the hit costs Hull as normal");
 
 // ---- procedural depth: the run never hard-stops past the campaign -------
 // generateLevel(depth) must produce a valid LevelDef for a wide range of

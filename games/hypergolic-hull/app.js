@@ -28,6 +28,8 @@ const overlayBodyEl = document.getElementById("runOverlayBody");
 const restartBtn = document.getElementById("restartBtn");
 const nextBtn = document.getElementById("nextBtn");
 const salvageValueEl = document.getElementById("salvageValue");
+const shieldWrapEl = document.getElementById("shieldWrap");
+const shieldValueEl = document.getElementById("shieldValue");
 const outpostOverlayEl = document.getElementById("outpostOverlay");
 const outpostSalvageEl = document.getElementById("outpostSalvage");
 const outpostOffersEl = document.getElementById("outpostOffers");
@@ -1239,6 +1241,8 @@ function updateHud() {
   levelEl.textContent = `Sector ${state.levelId}: ${state.levelName} · Best ${bestDepth}`;
   logEl.textContent = state.log.slice(-3).join("  ·  ");
   salvageValueEl.textContent = state.salvage;
+  shieldWrapEl.hidden = state.shieldCharges <= 0;
+  shieldValueEl.textContent = state.shieldCharges;
 
   // The Warp Gate is always online — fighting is never mandatory to leave.
   // Say so, but remind the player that living enemies are still salvage on
@@ -1586,7 +1590,7 @@ restartBtn.addEventListener("click", () => loadSector(0));
 
 nextBtn.addEventListener("click", () => {
   if (state.status !== "won") return;
-  loadSector(levelIndex + 1, { salvage: state.salvage, maxHull: state.maxHull });
+  loadSector(levelIndex + 1, { salvage: state.salvage, maxHull: state.maxHull, shieldCharges: state.shieldCharges });
 });
 
 outpostCloseBtn.addEventListener("click", () => {
