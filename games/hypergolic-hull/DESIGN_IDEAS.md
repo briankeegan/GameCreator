@@ -111,6 +111,37 @@ overlay, mode-based targeting for Tractor/Fighter).
   StS-card-style) and a push/pull trade-off offer (e.g. "+1 Max Hull, but
   -1 salvage per future kill this run") to make Outpost visits a real
   build decision, not just a top-up.
+- **Hazard terrain (lava-style blocked tiles)**: the design doc's original
+  `hazards` concept (instant destruction on entry, `hazardAt`/`checkPlayerHazard`
+  already implemented in `engine.js`) has never actually been used by any
+  level — every board today is open floor. This is a real, already-built
+  system sitting unused. Adding hazard tiles to generated/hand-authored
+  levels (visually distinct — the Hoplite reference screenshots used lava)
+  gives boards actual terrain variety and forces real routing decisions
+  (the Tractor Beam pushing an enemy into one becomes a genuine tactic, not
+  just theoretical). Low risk: no engine changes, only level data +
+  rendering a hazard tile distinctly (reuse the outpost/gate custom-art
+  treatment, not an emoji).
+- **Hyperjump**: in the *original* design doc as a stubbed, disabled action
+  ("leap over multiple hexes in a straight line, spending warp energy"),
+  deferred for MVP and never revisited. A real "jump a blocked lane"
+  tool — leap in a straight line over intervening hexes (enemies,
+  hazards, whatever's in the way) to a landing hex beyond them, at an
+  Energy/cooldown cost. Distinct from Warpdrive (adjacent-only) and
+  Tractor Beam (moves the *enemy*, not you) — this is the player's own
+  "skip past" tool, and reuses the existing `facing`/direction-index
+  machinery for aiming the jump.
+- **Randomized modifiers, not just strict upgrades** (Clubhouse feedback:
+  "fun mechanics you could randomly get that would change the game, both
+  improve or make things worse") — Hades' Chaos boons and Risk of Rain 2's
+  mixed-blessing items both use *real trade-offs*, not just numbers going
+  up, to keep runs from converging on one "best" build. Concretely: an
+  Outpost or event offer that's net-positive in one stat and net-negative
+  in another (e.g. "Overcharged Core: Shockwave damage +1, but Max Hull
+  -1" or "Salvage Magnet: +50% salvage from kills, but the Warp Gate
+  takes 1 extra turn to warp through"). Still fits the "randomize the
+  menu, never the outcome" rule — the trade-off's terms are fixed and
+  shown before you commit, only *which* trade-offs are on offer varies.
 
 ## Where randomness belongs vs. must stay deterministic
 
