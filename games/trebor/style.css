@@ -1044,20 +1044,35 @@ body {
 }
 
 .card-art {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 8px 0;
-  margin-bottom: 2px;
+  height: 62px;
+  margin-bottom: 3px;
   border-radius: 6px;
+  overflow: hidden;
   background: radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.06), transparent 70%), rgba(0, 0, 0, 0.35);
   color: #e9e0d3;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.7));
 }
 
+.card-art-glyph {
+  display: flex;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.7));
+}
 .card-art svg {
   display: block;
+}
+/* Real illustration sits on top of the glyph; if it 404s it self-removes
+   (onerror) and the glyph shows through. */
+.card-art-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
 }
 
 .card-cost {

@@ -33,6 +33,15 @@
     return "claw";
   }
 
+  // Cards with real generated illustration art (games/trebor/icons/card-<id>.png).
+  // A card not in this set falls back to its SVG emblem, so the set can grow one
+  // generated image at a time without touching anything else.
+  const CARD_ART = new Set([
+    "bite", "growl", "snarl", "lockJaw", "guardDog", "fetch", "riptide", "sniffOut",
+    "pounce", "chomp", "bodySlam", "scurry", "digIn", "rally", "flurry", "brace",
+    "counterSurge", "goodBoy", "rend", "howl", "bigBark", "alphaStrike", "secondWind",
+  ]);
+
   const NODE_ICON = {
     fight:
       '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 L18 6 M14 6 H18 V10"/><path d="M20 20 L6 6 M10 6 H6 V10"/></svg>',
@@ -418,9 +427,13 @@
   }
 
   function cardFrameHtml(card) {
+    const artBase = card.upgraded ? card.id.replace(/Plus$/, "") : card.id;
+    const artImg = CARD_ART.has(artBase)
+      ? `<img class="card-art-img" src="icons/card-${artBase}.png" alt="" loading="lazy" onerror="this.remove()" />`
+      : "";
     return `
       <span class="card-cost">${card.cost}</span>
-      <span class="card-art">${CARD_ICONS[cardIconKey(card)]}</span>
+      <span class="card-art"><span class="card-art-glyph">${CARD_ICONS[cardIconKey(card)]}</span>${artImg}</span>
       <span class="card-name">${card.name}</span>
       <span class="card-text">${card.text}</span>
     `;
