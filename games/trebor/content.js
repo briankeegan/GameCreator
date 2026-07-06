@@ -191,11 +191,13 @@ const ENEMY_TYPES = {
     id: "bigTom",
     name: "Big Tom",
     maxHp: 60,
+    // Enrage: +1 Strength every turn — starts gentle, snowballs. Race him.
+    enrage: 1,
     pattern: [
-      { type: "attack", damage: 13 },
+      { type: "attack", damage: 10 },
       { type: "guard", block: 14 },
-      { type: "attack", damage: 14 },
-      { type: "attack", damage: 21 },
+      { type: "attack", damage: 12 },
+      { type: "attack", damage: 16 },
     ],
   },
   // A small, relentless swarm unit — low HP, never guards, comes in numbers.
@@ -225,11 +227,12 @@ const ENEMY_TYPES = {
     id: "warcatCaptain",
     name: "Warcat Captain",
     maxHp: 78,
+    enrage: 1, // hits harder every turn — and guards, so break through fast
     pattern: [
-      { type: "attack", damage: 17 },
+      { type: "attack", damage: 14 },
       { type: "guard", block: 16 },
-      { type: "attack", damage: 20 },
-      { type: "attack", damage: 26 },
+      { type: "attack", damage: 16 },
+      { type: "attack", damage: 21 },
     ],
   },
   // Act 3 boss — the tyrant king: relentless, escalating, ends in a haymaker.
@@ -237,12 +240,13 @@ const ENEMY_TYPES = {
     id: "catKing",
     name: "The Cat King",
     maxHp: 96,
+    enrage: 2, // the tyrant escalates fastest — a hard clock on the final fight
     pattern: [
-      { type: "attack", damage: 16 },
+      { type: "attack", damage: 14 },
       { type: "guard", block: 14 },
-      { type: "attack", damage: 22 },
+      { type: "attack", damage: 18 },
       { type: "guard", block: 12 },
-      { type: "attack", damage: 29 },
+      { type: "attack", damage: 22 },
     ],
   },
 };

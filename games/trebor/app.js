@@ -485,7 +485,12 @@
     // shown a full turn ahead so a hit never comes as a surprise — this is
     // the "no cheap deaths" rule the whole combat design rests on, so it
     // gets its own bold banner rather than blending into the card.
-    const intentText = enemy.hp > 0 ? Engine.describeIntent(enemy.currentIntent) : "Defeated";
+    const intentText =
+      enemy.hp > 0
+        ? enemy.currentIntent.type === "attack"
+          ? "Attack " + Engine.intentDamage(enemy)
+          : Engine.describeIntent(enemy.currentIntent)
+        : "Defeated";
     const intentIcon = enemy.hp > 0 ? INTENT_ICON[enemy.currentIntent.type] : "";
     const intentClass = enemy.hp > 0 ? " enemy-intent-" + enemy.currentIntent.type : "";
     const blockNote =
@@ -494,6 +499,10 @@
       enemy.hp > 0 && enemy.vulnerable > 0
         ? `<span class="enemy-vuln" title="Vulnerable: takes +50% damage">VULN ${enemy.vulnerable}</span>`
         : "";
+    const strNote =
+      enemy.hp > 0 && enemy.strength > 0
+        ? `<span class="enemy-str" title="Enraged: +${enemy.strength} damage on every attack">ENRAGED +${enemy.strength}</span>`
+        : "";
 
     el.innerHTML = `
       <span class="enemy-intent${intentClass}">${enemy.hp > 0 ? intentIcon + intentText : ""}</span>
@@ -501,7 +510,7 @@
       <span class="enemy-name">${enemy.name}</span>
       <div class="hp-bar hp-bar-small"><div class="hp-fill" style="width:${Math.max(0, (enemy.hp / enemy.maxHp) * 100)}%"></div></div>
       <span class="enemy-hp-text">${Math.max(0, enemy.hp)}/${enemy.maxHp}${blockNote}</span>
-      ${vulnNote}
+      ${vulnNote}${strNote}
     `;
     el.addEventListener("click", () => onEnemyTap(enemy.id));
     return el;

@@ -80,6 +80,7 @@ function makeEnemyInstance(typeId, idx, content) {
     hp: type.maxHp,
     block: 0,
     vulnerable: 0, // turns of +50% incoming damage (Vulnerable debuff)
+    strength: 0, // accumulated Enrage Strength (bosses), added to every attack
     patternIndex: 0,
     currentIntent: pattern[0],
     nextIntent: pattern[1 % pattern.length],
@@ -417,11 +418,18 @@ function chooseBossReward(state, content, cardId, rng = Math.random) {
   state.log = [`${gained}${relicNote}+${content.BOSS_MAX_HULL_BONUS} max Hull, fully healed. ${state.map[state.actIndex].name} awaits.`];
 }
 
+// A boss's Enrage Strength adds onto its telegraphed attack — so the number you
+// see is always the real hit (base intent + accumulated Strength).
+function intentDamage(enemy) {
+  return enemy.currentIntent.type === "attack" ? enemy.currentIntent.damage + (enemy.strength || 0) : 0;
+}
+
 function resolveEnemyIntent(state, enemy) {
   const intent = enemy.currentIntent;
   if (intent.type === "attack") {
-    applyDamage(state.player, intent.damage);
-    state.log.push(`${enemy.name} attacks for ${intent.damage}.`);
+    const dmg = intent.damage + (enemy.strength || 0);
+    applyDamage(state.player, dmg);
+    state.log.push(`${enemy.name} attacks for ${dmg}.`);
   } else if (intent.type === "guard") {
     enemy.block += intent.block;
     state.log.push(`${enemy.name} guards, +${intent.block} Block.`);
@@ -436,7 +444,11 @@ function endPlayerTurn(state, content, rng = Math.random) {
   for (const enemy of livingEnemies(state)) {
     enemy.block = 0;
     resolveEnemyIntent(state, enemy);
-    const pattern = content.ENEMY_TYPES[enemy.typeId].pattern;
+    const type = content.ENEMY_TYPES[enemy.typeId];
+    // Enrage: bosses gain Strength every turn, so their hits escalate — a race
+    // you have to win before they snowball out of control.
+    if (type.enrage) enemy.strength = (enemy.strength || 0) + type.enrage;
+    const pattern = type.pattern;
     enemy.patternIndex = (enemy.patternIndex + 1) % pattern.length;
     enemy.currentIntent = enemy.nextIntent;
     enemy.nextIntent = pattern[(enemy.patternIndex + 1) % pattern.length];
@@ -475,6 +487,7 @@ const Engine = {
   livingEnemies,
   cardNeedsTarget,
   describeIntent,
+  intentDamage,
   shuffle,
   grantRelic,
   relicSum,

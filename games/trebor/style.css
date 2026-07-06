@@ -463,6 +463,19 @@ body {
   font-weight: 800;
   letter-spacing: 0.04em;
 }
+.enemy-str {
+  display: inline-block;
+  margin-top: 3px;
+  margin-left: 4px;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: rgba(200, 60, 40, 0.26);
+  border: 1px solid rgba(240, 110, 80, 0.65);
+  color: #ffc2ad;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
 
 /* ---- Class select: pick your dog at the start of a run ------------------ */
 
