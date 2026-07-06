@@ -40,6 +40,7 @@
     "bite", "growl", "snarl", "lockJaw", "guardDog", "fetch", "riptide", "sniffOut",
     "pounce", "chomp", "bodySlam", "scurry", "digIn", "rally", "flurry", "brace",
     "counterSurge", "goodBoy", "rend", "howl", "bigBark", "alphaStrike", "secondWind",
+    "cower", "muzzle", "nip", "gnash", "hunker",
   ]);
 
   const NODE_ICON = {
