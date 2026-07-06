@@ -40,6 +40,10 @@ const restartBtn = document.getElementById("restartBtn");
 const salvageValueEl = document.getElementById("salvageValue");
 const shieldWrapEl = document.getElementById("shieldWrap");
 const shieldValueEl = document.getElementById("shieldValue");
+const energyWrapEl = document.getElementById("energyWrap");
+const energyValueEl = document.getElementById("energyValue");
+const energyMaxValueEl = document.getElementById("energyMaxValue");
+const blinkBtn = document.getElementById("blinkBtn");
 const outpostOverlayEl = document.getElementById("outpostOverlay");
 const outpostSalvageEl = document.getElementById("outpostSalvage");
 const outpostOffersEl = document.getElementById("outpostOffers");
@@ -236,6 +240,7 @@ function scheduleAnims(events) {
       if (dir >= 0) shipAngle = DIR_ANGLES[dir];
     }
     else if (ev.type === "playerDeath") anims.push({ kind: "boom", pos: ev, start: now, dur: 650, particles: makeExplosionParticles(16) });
+    else if (ev.type === "blink") anims.push({ kind: "teleport", from: ev.from, to: ev.to, start: now, dur: 400 });
   }
   if (anims.length) requestAnimationFrame(tickAnims);
 }
@@ -1239,6 +1244,22 @@ function draw() {
     drawExplosion(hexToPixel(a.pos), p, a.particles, geom.sx * 0.9);
   }
 
+  // Random Blink: a quick expanding ring at both the departure and arrival
+  // hexes, since the ship just snaps to its new (unpredictable) position.
+  for (const a of anims) {
+    if (a.kind !== "teleport" || now >= a.start + a.dur) continue;
+    const p = animProgress(a, now);
+    const ringAlpha = 1 - p;
+    for (const pos of [a.from, a.to]) {
+      const c = hexToPixel(pos);
+      ctx.beginPath();
+      ctx.strokeStyle = `rgba(200, 160, 255, ${ringAlpha})`;
+      ctx.lineWidth = 2;
+      ctx.arc(c.x, c.y, geom.sx * (0.3 + p * 0.7), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
   ctx.restore();
 
   // Warp-out flash: plays once a sector clears (triggered in handleAction),
@@ -1304,6 +1325,10 @@ function updateHud() {
   salvageValueEl.textContent = state.salvage;
   shieldWrapEl.hidden = state.shieldCharges <= 0;
   shieldValueEl.textContent = state.shieldCharges;
+  const blinkUnlocked = state.actions.includes("blink");
+  energyWrapEl.hidden = !blinkUnlocked;
+  energyValueEl.textContent = state.energy;
+  energyMaxValueEl.textContent = state.maxEnergy;
 
   // The Warp Gate is always online — fighting is never mandatory to leave.
   // Say so, but remind the player that living enemies are still salvage on
@@ -1342,6 +1367,9 @@ function updateHud() {
     btn.textContent = MODES[m].label;
     btn.disabled = state.status !== "playing" || (m === "fighter" && Boolean(state.fighterHex));
   });
+
+  blinkBtn.hidden = !blinkUnlocked;
+  blinkBtn.disabled = state.status !== "playing" || state.energy < Engine.BLINK_ENERGY_COST;
 }
 
 function updateLegend() {
@@ -1545,6 +1573,10 @@ weaponStatsEl.addEventListener("click", () => {
 
 holdBtn.addEventListener("click", () => {
   handleAction(() => Engine.applyHoldPosition(state));
+});
+
+blinkBtn.addEventListener("click", () => {
+  handleAction(() => Engine.applyBlink(state));
 });
 
 // First tap on a distant hex: preview the quickest route. Second tap on the

@@ -93,7 +93,7 @@
     return state.boardHexes.some((h) => posEq(h, pos));
   }
 
-  const ALL_ACTIONS = ["sublight", "ramming", "tractor", "fighter"];
+  const ALL_ACTIONS = ["sublight", "ramming", "tractor", "fighter", "blink"];
 
   // ---- level validation ---------------------------------------------------
 
@@ -155,6 +155,13 @@
   // trade Hull for tempo, recover from a bad roll, and let salvage/repairs
   // matter. (Was 1: one-hit permadeath.)
   const START_HULL = 3;
+
+  // Energy is a second resource, distinct from Hull (permanent damage,
+  // repaired only at an Outpost) and salvage (a currency): it regenerates
+  // on its own, 1 per turn, and pays for active abilities like Random
+  // Blink. ("Energy refills between jumps. Health does not" — long-
+  // standing Clubhouse design intent, unbuilt until now.)
+  const START_ENERGY = 3;
 
   // ---- weapon systems ---------------------------------------------------
   //
@@ -274,6 +281,8 @@
       maxHull: maxHull,
       salvage: (carryOver && carryOver.salvage) || 0,
       shieldCharges: (carryOver && carryOver.shieldCharges) || 0,
+      maxEnergy: (carryOver && carryOver.maxEnergy) || START_ENERGY,
+      energy: (carryOver && carryOver.maxEnergy) || START_ENERGY,
       exitPos: { q: level.exit.q, r: level.exit.r },
       outpostPos: level.outpost ? { q: level.outpost.q, r: level.outpost.r } : null,
       outpostOfferIds: level.outpost ? pickOutpostOfferIds(level.id) : [],
@@ -493,6 +502,7 @@
       pushLog(state, `Took ${totalDamage} damage.`);
     }
     state.turnCount += 1;
+    state.energy = Math.min(state.maxEnergy, state.energy + 1);
     if (state.hull <= 0) {
       state.status = "lost";
       state.events.push({ type: "playerDeath", q: state.playerPos.q, r: state.playerPos.r });
@@ -657,6 +667,34 @@
     endPlayerAction(state);
   }
 
+  // Random Blink: costs Energy, teleports to a random open, non-hazard
+  // hex on the board — deliberately unpredictable ("you don't even know
+  // where you're gonna show up"), a one-off, explicit exception to "zero
+  // randomness in combat." Not a precision tool like Sublight/Tractor —
+  // an emergency escape you can't fully control.
+  const BLINK_ENERGY_COST = 2;
+
+  function applyBlink(state) {
+    assertPlaying(state);
+    assertUnlocked(state, "blink", "Random Blink");
+    if (state.energy < BLINK_ENERGY_COST) throw new Error("Random Blink: not enough Energy");
+    const candidates = state.boardHexes.filter(
+      (h) => !enemyAt(state, h) && !hazardAt(state, h) && !posEq(h, state.playerPos)
+    );
+    if (candidates.length === 0) throw new Error("Random Blink: nowhere to land");
+    state.events = [];
+    const dest = candidates[Math.floor(Math.random() * candidates.length)];
+    const from = { q: state.playerPos.q, r: state.playerPos.r };
+    state.energy -= BLINK_ENERGY_COST;
+    state.playerPos = { q: dest.q, r: dest.r };
+    state.events.push({ type: "blink", from, to: { q: dest.q, r: dest.r } });
+    pushLog(state, "Random Blink — flagship teleported to an unpredictable hex.");
+    handleFighterRetrieval(state);
+    checkPlayerHazard(state);
+    if (state.status !== "playing") return;
+    endPlayerAction(state);
+  }
+
   // ---- Sector Outpost: shop stop, no turn spent -------------------------
   //
   // Standing on the outpost hex is enough to shop — buying doesn't move the
@@ -741,6 +779,8 @@
     applyHoldPosition,
     applyTractor,
     applyFighter,
+    applyBlink,
+    BLINK_ENERGY_COST,
     outpostAvailable,
     outpostOffers,
     applyOutpostPurchase,

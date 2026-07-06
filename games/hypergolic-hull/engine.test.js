@@ -599,4 +599,54 @@ assert.deepStrictEqual(generateLevel(12), generateLevel(12), "generateLevel is d
 assert.notDeepStrictEqual(generateLevel(6).enemies, generateLevel(20).enemies, "deeper sectors deal a different board");
 assert.ok(generateLevel(20).enemies.length >= generateLevel(6).enemies.length, "enemy count scales up (or holds) with depth");
 
+// ---- Energy + Random Blink: a second resource, deliberately random -------
+// Energy regenerates 1/turn (distinct from Hull, which never self-heals)
+// and pays for Random Blink, a genuine exception to "zero randomness in
+// combat" — an unpredictable emergency teleport, not a precision tool.
+
+const blinkLevel = {
+  id: 990,
+  radius: 3,
+  playerStart: { q: 0, r: 0 },
+  exit: { q: 3, r: 0 },
+  outpost: null,
+  enemies: [{ type: "interceptor", q: -3, r: 3 }],
+  hazards: [],
+  exitRule: "all-enemies-dead",
+  actions: ["sublight", "blink"],
+};
+const blinkState = Engine.createGameState(blinkLevel);
+assert.strictEqual(blinkState.energy, 3, "a fresh run starts at full Energy");
+assert.strictEqual(blinkState.maxEnergy, 3);
+
+assert.throws(
+  () => Engine.applyBlink({ ...blinkState, energy: 1 }),
+  /not enough Energy/,
+  "Blink refuses when Energy is below its cost"
+);
+
+const posBeforeBlink = { q: blinkState.playerPos.q, r: blinkState.playerPos.r };
+Engine.applyBlink(blinkState);
+// Blink resolves a full turn (endPlayerAction runs the enemy phase, which
+// regenerates 1 Energy same as any other turn), so the net change is the
+// cost minus that turn's regen tick.
+assert.strictEqual(blinkState.energy, 3 - Engine.BLINK_ENERGY_COST + 1, "Blink spends its Energy cost, net of that turn's regen");
+assert.ok(!Engine.posEq(blinkState.playerPos, posBeforeBlink), "Blink actually moves the flagship");
+assert.ok(Engine.onBoard(blinkState, blinkState.playerPos), "Blink always lands on a valid board hex");
+assert.ok(blinkState.events.some((e) => e.type === "blink"), "Blink emits a blink event for the UI");
+
+// Energy regenerates 1/turn, capped at max — a plain Sublight move (which
+// still runs the enemy phase / turn counter) should tick it back up.
+const energyBefore = blinkState.energy;
+Engine.applyHoldPosition(blinkState);
+assert.strictEqual(
+  blinkState.energy,
+  Math.min(blinkState.maxEnergy, energyBefore + 1),
+  "Energy regenerates by 1 every turn, capped at max"
+);
+
+// Locked out entirely without "blink" unlocked.
+const noBlinkState = Engine.createGameState({ ...blinkLevel, actions: ["sublight"] });
+assert.throws(() => Engine.applyBlink(noBlinkState), /not unlocked/, "Blink refuses when not yet unlocked");
+
 console.log("All golden-path assertions passed.");
