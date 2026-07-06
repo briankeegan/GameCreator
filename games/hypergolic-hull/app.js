@@ -6,6 +6,17 @@ const Engine = window.HypergolicEngine;
 const HEX_RATIO = 28 / 32; // pixel-art hex proportion: sy = sx * ratio
 const SQRT3 = Math.sqrt(3);
 
+// Flat-top hexes: a vertex points left/right, flat edges top/bottom. This
+// (matched by buildBoardHexes' column-offset layout in engine.js) is what
+// makes hex-direction {q:0,r:-1} a true single-step "up" and {q:0,r:1}
+// "down" — Clubhouse feedback: "the board needs to be turned so you can go
+// straight up," which pointy-top hexes genuinely cannot do in one step.
+//
+// pixel(q,r) = (sx * 1.5*q, sy * SQRT3*(r + q/2)) — center-to-center column
+// spacing is 1.5*sx, row spacing (within a column) is SQRT3*sy, and
+// adjacent columns are offset by half that. Corners sit at angles 0°, 60°,
+// …, 300° (a vertex points due right at i=0), vs. pointy-top's -30° start.
+
 // Sublight and Impulse Cannon aren't manually-armed modes anymore — movement
 // always works via a plain tap (see the canvas click handler), and the Pulse
 // Cannon auto-fires as a side effect of that movement (see engine.js). Only
@@ -87,6 +98,31 @@ let showLegalKey = true;
 // show in a small card up top instead of (or alongside) acting on it.
 let inspectedEnemyId = null;
 
+// Clearing a sector now auto-continues after a short beat instead of
+// waiting on a tap every single time (Clubhouse feedback: "why say Next
+// Sector each time... weird" — now that runs go many sectors deep, a modal
+// requiring a click for every routine clear got old fast). The button
+// stays as a "skip the wait" option. Permadeath still waits on a manual
+// New Run tap — that's a weightier moment than a routine sector clear.
+let sectorAdvanceTimer = null;
+function scheduleSectorAdvance() {
+  if (sectorAdvanceTimer) return;
+  sectorAdvanceTimer = setTimeout(() => {
+    sectorAdvanceTimer = null;
+    if (state.status === "won") advanceSector();
+  }, 1400);
+}
+function cancelSectorAdvance() {
+  if (sectorAdvanceTimer) {
+    clearTimeout(sectorAdvanceTimer);
+    sectorAdvanceTimer = null;
+  }
+}
+function advanceSector() {
+  cancelSectorAdvance();
+  loadSector(levelIndex + 1, { salvage: state.salvage, maxHull: state.maxHull, shieldCharges: state.shieldCharges });
+}
+
 // The outpost shop pops up automatically the moment the flagship is docked
 // on the outpost hex. "Undock" just hides it for as long as you stay parked
 // there — flying off and back re-opens it, so this resets whenever the ship
@@ -100,8 +136,8 @@ let weaponStatsExpanded = false;
 // The flagship's facing, in degrees (canvas convention: 0 = screen-right,
 // increases clockwise). Updated whenever the ship actually moves.
 const DIR_ANGLES = Engine.DIRECTIONS.map((d) => {
-  const dx = SQRT3 * (d.q + d.r / 2);
-  const dy = HEX_RATIO * 1.5 * d.r;
+  const dx = 1.5 * d.q;
+  const dy = SQRT3 * HEX_RATIO * (d.r + d.q / 2);
   return (Math.atan2(dy, dx) * 180) / Math.PI;
 });
 let shipAngle = -90; // start facing "up", toward the gate; the custom ship shape is drawn nose-right at angle 0
@@ -110,8 +146,8 @@ let shipAngle = -90; // start facing "up", toward the gate; the custom ship shap
 // 6 adjacent-hex directions) — a weapon should aim straight at its actual
 // target regardless of range, not just the direction the flagship walked.
 function angleToward(from, to) {
-  const dx = SQRT3 * (to.q - from.q + (to.r - from.r) / 2);
-  const dy = HEX_RATIO * 1.5 * (to.r - from.r);
+  const dx = 1.5 * (to.q - from.q);
+  const dy = SQRT3 * HEX_RATIO * (to.r - from.r + (to.q - from.q) / 2);
   return (Math.atan2(dy, dx) * 180) / Math.PI;
 }
 
@@ -127,24 +163,27 @@ function updateGeometry() {
   const availH = boardWrapEl.clientHeight || 320;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const h of state.boardHexes) {
-    const x = SQRT3 * (h.q + h.r / 2);
-    const y = 1.5 * HEX_RATIO * h.r;
+    const x = 1.5 * h.q;
+    const y = SQRT3 * HEX_RATIO * (h.r + h.q / 2);
     if (x < minX) minX = x;
     if (x > maxX) maxX = x;
     if (y < minY) minY = y;
     if (y > maxY) maxY = y;
   }
   const pad = 10;
-  const sxFromWidth = (availW - 2 * pad) / (maxX - minX + SQRT3);
-  const sxFromHeight = (availH - 2 * pad) / (maxY - minY + 2 * HEX_RATIO);
+  // Flat-top full extents (at unit sx=1): width (vertex-to-vertex) is 2,
+  // height (flat-to-flat) is SQRT3*HEX_RATIO — the reverse pairing from
+  // pointy-top, where width used the SQRT3 factor and height used 2.
+  const sxFromWidth = (availW - 2 * pad) / (maxX - minX + 2);
+  const sxFromHeight = (availH - 2 * pad) / (maxY - minY + SQRT3 * HEX_RATIO);
   const sx = Math.min(sxFromWidth, sxFromHeight);
-  const cssW = Math.round((maxX - minX + SQRT3) * sx + 2 * pad);
-  const cssH = Math.round((maxY - minY + 2 * HEX_RATIO) * sx + 2 * pad);
+  const cssW = Math.round((maxX - minX + 2) * sx + 2 * pad);
+  const cssH = Math.round((maxY - minY + SQRT3 * HEX_RATIO) * sx + 2 * pad);
   geom = {
     sx,
     sy: sx * HEX_RATIO,
-    offX: pad + (SQRT3 / 2 - minX) * sx,
-    offY: pad + (HEX_RATIO - minY) * sx,
+    offX: pad + (1 - minX) * sx,
+    offY: pad + ((SQRT3 * HEX_RATIO) / 2 - minY) * sx,
     w: cssW,
     h: cssH,
   };
@@ -158,14 +197,14 @@ function updateGeometry() {
 
 function hexToPixel(hex) {
   return {
-    x: geom.offX + geom.sx * SQRT3 * (hex.q + hex.r / 2),
-    y: geom.offY + geom.sy * 1.5 * hex.r,
+    x: geom.offX + geom.sx * 1.5 * hex.q,
+    y: geom.offY + geom.sy * SQRT3 * (hex.r + hex.q / 2),
   };
 }
 
 function pixelToHex(x, y) {
-  const r = (2 / 3) * ((y - geom.offY) / geom.sy);
-  const q = (x - geom.offX) / (geom.sx * SQRT3) - r / 2;
+  const q = (2 / 3) * ((x - geom.offX) / geom.sx);
+  const r = (y - geom.offY) / (geom.sy * SQRT3) - q / 2;
   return hexRound(q, r);
 }
 
@@ -180,7 +219,7 @@ function hexRound(q, r) {
 }
 
 function hexCorner(center, i) {
-  const angle = (Math.PI / 180) * (60 * i - 30);
+  const angle = (Math.PI / 180) * (60 * i); // flat-top: a vertex points due right at i=0 (no -30° offset)
   return { x: center.x + geom.sx * Math.cos(angle), y: center.y + geom.sy * Math.sin(angle) };
 }
 
@@ -1261,11 +1300,15 @@ function updateHud() {
     overlayEl.hidden = false;
   } else if (state.status === "won" && !animsRunning()) {
     // The run never hard-stops — every sector past the tutorial campaign is
-    // generated on the fly (see levelForIndex), so there's always a next one.
+    // generated on the fly (see levelForIndex), so there's always a next
+    // one. Auto-continues after a beat (see scheduleSectorAdvance); the
+    // button just skips the wait.
     overlayTitleEl.textContent = "Sector Clear";
     overlayBodyEl.textContent = "The Warp Gate carries you onward — deeper, uncharted space awaits.";
     nextBtn.hidden = false;
+    nextBtn.textContent = "Continue Now";
     overlayEl.hidden = false;
+    scheduleSectorAdvance();
   } else {
     overlayEl.hidden = true;
   }
@@ -1431,6 +1474,7 @@ function handleAction(fn) {
 }
 
 function loadSector(index, carryOver) {
+  cancelSectorAdvance();
   levelIndex = index;
   state = Engine.createGameState(levelForIndex(levelIndex), carryOver);
   mode = null;
@@ -1590,7 +1634,7 @@ restartBtn.addEventListener("click", () => loadSector(0));
 
 nextBtn.addEventListener("click", () => {
   if (state.status !== "won") return;
-  loadSector(levelIndex + 1, { salvage: state.salvage, maxHull: state.maxHull, shieldCharges: state.shieldCharges });
+  advanceSector();
 });
 
 outpostCloseBtn.addEventListener("click", () => {

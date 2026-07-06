@@ -1,8 +1,8 @@
 // browser.test.js — the tutorial campaign through the real UI (canvas
-// clicks + action buttons): Sector 1's move-only lesson with locked
-// actions, the Next Sector handoff, Sector 2's Impulse Cannon lesson, the loss
-// branch, and restart. Complements engine.test.js, which covers the
-// movement/combat rules headlessly on pinned fixture boards.
+// clicks + action buttons): Sector 1's Shockwave lesson with locked
+// actions, the Next Sector handoff, Sector 2's unlock, the loss branch, and
+// restart. Complements engine.test.js, which covers the movement/combat
+// rules headlessly on pinned fixture boards.
 //
 // Needs Playwright + a Chromium binary:
 //   NODE_PATH="$(npm root -g)" node games/hypergolic-hull/browser.test.js
@@ -99,22 +99,23 @@ async function freshPage(browser, url, errors) {
   const browser = await chromium.launch({ executablePath: CHROMIUM });
   const errors = [];
 
-  // ---- Sector 1: move-only tutorial; not-yet-unlocked actions are hidden --
+  // ---- Sector 1: the Shockwave lesson (the old no-op move-only Sector 1 -
+  // "Level one is pointless" Clubhouse feedback - was cut) ------------------
 
   let page = await freshPage(browser, url, errors);
   let s = await getState(page);
   assert.strictEqual(s.levelId, 1);
-  assert.strictEqual(s.enemies.length, 0, "Sector 1 teaches moving: no enemies");
-  assert.strictEqual(s.exitUnlocked, true, "no enemies means the gate starts online");
-  assert.deepStrictEqual(s.actions, ["sublight"], "only Sublight is unlocked in Sector 1");
+  assert.strictEqual(s.enemies.length, 1, "Sector 1 has one Interceptor to learn the Shockwave on");
+  assert.strictEqual(s.exitUnlocked, true, "the Warp Gate is always online");
+  assert.deepStrictEqual(s.actions, ["sublight", "ramming"], "Sector 1 unlocks Sublight + the Shockwave together");
   for (const m of ["tractor", "fighter"]) {
     // Locked actions are hidden entirely now — no padlocked ghost buttons.
-    assert.strictEqual(await page.locator(`[data-mode="${m}"]`).isVisible(), false, `${m} is hidden until unlocked in Sector 1`);
+    assert.strictEqual(await page.locator(`[data-mode="${m}"]`).isVisible(), false, `${m} is hidden until unlocked`);
   }
   assert.strictEqual(
     await page.locator("#toggleRam").isDisabled(),
     false,
-    "the Impulse Cannon toggle is never locked out, even before the weapon itself is unlocked"
+    "the Impulse Cannon toggle is never locked out"
   );
   assert.strictEqual(
     await page.locator("#holdBtn").isVisible(),
@@ -126,10 +127,8 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "run overlay must not show on a fresh board");
 
   // The legend defaults to closed (not force-shown every sector) and just
-  // remembers whatever the ❓ Help toggle was last set to — it doesn't
-  // auto-hide itself once a move happens. Test the toggle with one manual
-  // step (not the auto-route below, which fires its own actions on a timer
-  // and would race a check).
+  // remembers whatever the Help toggle was last set to — it doesn't
+  // auto-hide itself once a move happens.
   assert.strictEqual(await page.locator("#legend").isVisible(), false, "the legend starts closed by default");
   assert.strictEqual(await page.locator("#helpBtn").isVisible(), true, "the Help toggle is always available");
   await page.click("#helpBtn");
@@ -138,30 +137,6 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#legend").isVisible(), true, "the legend stays open across a move — no auto-hide");
   await page.click("#helpBtn");
   assert.strictEqual(await page.locator("#legend").isVisible(), false, "Help closes it again");
-
-  // The quickest-route preview: tap the far-away gate once to see the path,
-  // tap it again to fly the rest of the route (one real turn per step).
-  s = await getState(page);
-  await clickHex(page, "sublight", s.exitPos);
-  await page.waitForFunction(() => window.__hhPlannedPath);
-  const preview = await page.evaluate(() => window.__hhPlannedPath);
-  assert.deepStrictEqual(preview.target, { q: 2, r: 0 }, "the preview targets the tapped hex");
-  assert.ok(preview.hexes.length > 2, "the previewed route spans the remaining board");
-  await clickHex(page, "sublight", s.exitPos);
-  await page.waitForFunction(() => window.__hhState.status === "won", null, { timeout: 30000 });
-  s = await getState(page);
-  assert.strictEqual(s.status, "won", "flying the previewed route clears Sector 1");
-  await waitForOverlay(page);
-  assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Sector Clear");
-
-  // ---- Next Sector: Sector 2 unlocks the Impulse Cannon -----------------------
-
-  await page.click("#nextBtn");
-  await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2);
-  s = await getState(page);
-  assert.deepStrictEqual(s.actions, ["sublight", "ramming"], "Sector 2 unlocks exactly one new action");
-  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 1);
-  assert.strictEqual(await page.locator("#toggleRam").isDisabled(), false, "the Impulse Cannon toggle is usable in Sector 2");
 
   // Tapping the weapon-stats badge expands it to the full stat sentence —
   // same "tap a thing to inspect it" pattern as clicking an enemy.
@@ -228,21 +203,25 @@ async function freshPage(browser, url, errors) {
   await page.check("#toggleWarpdrive");
 
   s = await walkToExit(page);
-  assert.strictEqual(s.status, "won", "Sector 2 clears once the gate is reached");
-  assert.ok(s.hull > 0, "the Impulse Cannon line through Sector 2 survives");
+  assert.strictEqual(s.status, "won", "Sector 1 clears once the gate is reached");
+  assert.ok(s.hull > 0, "the Impulse Cannon line through Sector 1 survives");
   await waitForOverlay(page);
-  assert.strictEqual(await page.locator("#nextBtn").isVisible(), true, "Sector 3 awaits");
-  await page.close();
+  assert.strictEqual(await page.locator("#nextBtn").isVisible(), true, "Sector 2 awaits");
 
-  // ---- loss branch: loiter beside Sector 2's Interceptor until Hull 0 -----
-  // (Impulse Cannon toggled off — with it on, moving adjacent auto-kills the
-  // Interceptor before it can ever strike back, per the Sector 2 test above.)
+  // ---- Next Sector: Sector 2 unlocks the Tractor Beam ---------------------
 
-  page = await freshPage(browser, url, errors);
-  s = await walkToExit(page); // clear Sector 1 again
-  await waitForOverlay(page);
   await page.click("#nextBtn");
   await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2);
+  s = await getState(page);
+  assert.deepStrictEqual(s.actions, ["sublight", "ramming", "tractor"], "Sector 2 unlocks exactly one new action");
+  assert.ok(s.enemies.filter((e) => e.alive).length >= 1);
+  await page.close();
+
+  // ---- loss branch: loiter beside Sector 1's Interceptor until Hull 0 -----
+  // (Impulse Cannon toggled off — with it on, moving adjacent auto-kills the
+  // Interceptor before it can ever strike back, per the Sector 1 test above.)
+
+  page = await freshPage(browser, url, errors);
   await page.uncheck("#toggleRam");
 
   s = await getState(page);

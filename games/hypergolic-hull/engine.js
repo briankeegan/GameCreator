@@ -62,15 +62,21 @@
   //
   // Two shapes: the classic hexagon (`radius`) and Hoplite-style rectangles
   // (`board: {type: "rect", cols, rows}`) that run taller than wide on a
-  // phone. Rect boards are authored in offset rows: row r spans
-  // q = -floor(r/2) .. cols-1-floor(r/2), r = 0..rows-1 (top to bottom).
-
+  // phone. Rect boards are flat-top hexes laid out in offset COLUMNS (not
+  // offset rows): column q spans r = -floor(q/2) .. rows-1-floor(q/2),
+  // q = 0..cols-1 (left to right). This — combined with the renderer using
+  // flat-top pixel math (see hexToPixel in app.js) — is what makes
+  // direction {q:0,r:-1} a true single-step "straight up" and {q:0,r:1}
+  // "straight down": under a flat-top layout, two of the six neighbor
+  // directions are purely vertical (Clubhouse feedback: "the board needs to
+  // be turned so you can go straight up" — pointy-top hexes genuinely can't
+  // do this in one step, only flat-top can).
   function buildBoardHexes(level) {
     const hexes = [];
     if (level.board && level.board.type === "rect") {
-      for (let row = 0; row < level.board.rows; row++) {
-        for (let col = 0; col < level.board.cols; col++) {
-          hexes.push({ q: col - Math.floor(row / 2), r: row });
+      for (let col = 0; col < level.board.cols; col++) {
+        for (let row = 0; row < level.board.rows; row++) {
+          hexes.push({ q: col, r: row - Math.floor(col / 2) });
         }
       }
     } else {

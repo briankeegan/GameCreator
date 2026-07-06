@@ -51,14 +51,12 @@ for (const level of LEVELS) {
   assert.strictEqual(s.status, "playing", `Level ${level.id} should start playable`);
   assert.strictEqual(s.exitUnlocked, true, `Level ${level.id}: the Warp Gate is always online — clearing enemies is optional, never required to leave`);
 }
-assert.ok(LEVELS.length >= 5, "expected the five-sector tutorial campaign");
-assert.deepStrictEqual(LEVELS[0].actions, ["sublight"], "Sector 1 teaches moving and nothing else");
-assert.strictEqual(LEVELS[0].enemies.length, 0, "Sector 1 has no enemies");
-assert.strictEqual(
-  Engine.createGameState(LEVELS[0]).exitUnlocked,
-  true,
-  "an enemy-free sector starts with the gate online"
-);
+// Sector 1 used to be a no-op "learn to move, no enemies" board — cut per
+// Clubhouse feedback ("Level one is pointless"). The campaign now opens
+// directly on the Shockwave lesson.
+assert.ok(LEVELS.length >= 4, "expected the four-sector tutorial campaign");
+assert.deepStrictEqual(LEVELS[0].actions, ["sublight", "ramming"], "Sector 1 teaches Sublight + the Shockwave together");
+assert.strictEqual(LEVELS[0].enemies.length, 1, "Sector 1 has exactly one Interceptor to learn the Shockwave on");
 for (let i = 1; i < LEVELS.length; i++) {
   const prev = LEVELS[i - 1].actions || Engine.ALL_ACTIONS;
   const cur = LEVELS[i].actions || Engine.ALL_ACTIONS;
@@ -92,21 +90,27 @@ const rectLevel = {
   id: 996,
   name: "rect fixture",
   board: { type: "rect", cols: 4, rows: 5 },
-  playerStart: { q: 0, r: 4 }, // bottom row (col 2)
-  exit: { q: 2, r: 0 },
+  playerStart: { q: 2, r: 3 }, // column 2
+  exit: { q: 2, r: -1 },
   outpost: null,
-  enemies: [{ type: "interceptor", q: 2, r: 2 }], // col 3: the right edge of row 2
+  enemies: [{ type: "interceptor", q: 3, r: 1 }], // column 3: the rightmost column
   hazards: [],
   exitRule: "all-enemies-dead",
 };
 const rectState = Engine.createGameState(rectLevel);
 assert.strictEqual(rectState.boardHexes.length, 20, "4x5 rect board has 20 hexes");
-assert.ok(Engine.onBoard(rectState, { q: -2, r: 4 }), "row 4 starts at q=-2");
-assert.ok(!Engine.onBoard(rectState, { q: 2, r: 4 }), "q=2 is past row 4's right edge");
-assert.ok(!Engine.onBoard(rectState, { q: 0, r: 5 }), "row 5 is off a 5-row board");
+// Flat-top rect boards are offset by COLUMN, not row (see buildBoardHexes):
+// column c spans r = -floor(c/2) .. rows-1-floor(c/2).
+assert.ok(Engine.onBoard(rectState, { q: 0, r: 0 }) && Engine.onBoard(rectState, { q: 0, r: 4 }), "column 0 spans r=0..4");
+assert.ok(!Engine.onBoard(rectState, { q: 0, r: 5 }), "column 0 is only 5 hexes tall");
+assert.ok(!Engine.onBoard(rectState, { q: 4, r: 0 }), "q=4 is past the board's 4-column width");
+assert.ok(
+  Engine.onBoard(rectState, { q: 3, r: -1 }) && !Engine.onBoard(rectState, { q: 3, r: -2 }),
+  "column 3 (rightmost) is shifted up by one row, per the flat-top column stagger"
+);
 
 // Tractor push off a rect edge kills, and emits a kill event for the renderer.
-rectState.playerPos = { q: 1, r: 2 }; // adjacent to the edge enemy at (2,2), pushing right
+rectState.playerPos = { q: 2, r: 1 }; // adjacent to the edge enemy at (3,1), pushing right off the board
 Engine.applyTractor(rectState, "e0");
 assert.strictEqual(rectState.enemies[0].alive, false, "pushing an enemy off a rect edge destroys it");
 assert.ok(rectState.events.some((e) => e.type === "kill"), "kills emit a kill event");
@@ -118,16 +122,16 @@ const meleeLevel = {
   id: 995,
   name: "melee fixture",
   board: { type: "rect", cols: 4, rows: 5 },
-  playerStart: { q: 0, r: 4 },
-  exit: { q: 2, r: 0 },
+  playerStart: { q: 2, r: 3 },
+  exit: { q: 2, r: -1 },
   outpost: null,
-  enemies: [{ type: "interceptor", q: 0, r: 2 }],
+  enemies: [{ type: "interceptor", q: 1, r: 2 }],
   hazards: [],
   exitRule: "all-enemies-dead",
   actions: ["sublight"],
 };
 const meleeState = Engine.createGameState(meleeLevel);
-Engine.applySublight(meleeState, { q: 0, r: 3 }); // step adjacent: interceptor attacks
+Engine.applySublight(meleeState, { q: 2, r: 2 }); // step adjacent (straight up, direction 2): interceptor attacks
 assert.strictEqual(meleeState.hull, 2, "a strike now costs 1 of 3 Hull — no longer instant death");
 assert.strictEqual(meleeState.status, "playing", "with 3 Hull the run survives a single hit");
 assert.ok(meleeState.events.some((e) => e.type === "attack"), "attacks emit an attack event");
@@ -137,11 +141,11 @@ assert.ok(meleeState.events.some((e) => e.type === "damage"), "damage emits a da
 // three hits now instead of one.
 const deathState = Engine.createGameState(meleeLevel);
 deathState.hull = 1;
-Engine.applySublight(deathState, { q: 0, r: 3 });
+Engine.applySublight(deathState, { q: 2, r: 2 });
 assert.strictEqual(deathState.status, "lost", "the final hit still ends the run");
 assert.ok(deathState.events.some((e) => e.type === "playerDeath"), "lethal damage emits a playerDeath event");
 assert.ok(
-  meleeState.events.some((e) => e.type === "playerMove" && e.to.q === 0 && e.to.r === 3),
+  meleeState.events.some((e) => e.type === "playerMove" && e.to.q === 2 && e.to.r === 2),
   "player moves emit a playerMove event (drives the flight animation)"
 );
 
@@ -151,23 +155,23 @@ const pathState = Engine.createGameState({
   id: 994,
   name: "path fixture",
   board: { type: "rect", cols: 4, rows: 5 },
-  playerStart: { q: 0, r: 4 },
-  exit: { q: 2, r: 0 },
+  playerStart: { q: 2, r: 3 },
+  exit: { q: 2, r: -1 },
   outpost: null,
-  enemies: [{ type: "interceptor", q: 1, r: 2 }],
+  enemies: [{ type: "interceptor", q: 2, r: 1 }],
   hazards: [],
   exitRule: "all-enemies-dead",
 });
-const route = Engine.findPath(pathState, pathState.playerPos, { q: 2, r: 0 });
+const route = Engine.findPath(pathState, pathState.playerPos, { q: 2, r: -1 });
 assert.ok(route, "a route to the far corner exists");
-assert.deepStrictEqual(route[0], { q: 0, r: 4 }, "the route starts at the player");
-assert.deepStrictEqual(route[route.length - 1], { q: 2, r: 0 }, "the route ends at the target");
+assert.deepStrictEqual(route[0], { q: 2, r: 3 }, "the route starts at the player");
+assert.deepStrictEqual(route[route.length - 1], { q: 2, r: -1 }, "the route ends at the target");
 for (let i = 1; i < route.length; i++) {
   assert.strictEqual(Engine.isAdjacent(route[i - 1], route[i]), true, "every route step is one hex");
-  assert.ok(!Engine.posEq(route[i], { q: 1, r: 2 }), "the route detours around the enemy");
+  assert.ok(!Engine.posEq(route[i], { q: 2, r: 1 }), "the route detours around the enemy");
 }
 assert.strictEqual(
-  Engine.findPath(pathState, pathState.playerPos, { q: 1, r: 2 }),
+  Engine.findPath(pathState, pathState.playerPos, { q: 2, r: 1 }),
   null,
   "an enemy-occupied hex is not a routable destination"
 );
@@ -303,10 +307,10 @@ const weaponLevel = {
   id: 993,
   name: "weapon fixture",
   board: { type: "rect", cols: 4, rows: 5 },
-  playerStart: { q: 0, r: 4 },
-  exit: { q: 2, r: 0 },
+  playerStart: { q: 2, r: 3 },
+  exit: { q: 2, r: -1 },
   outpost: null,
-  enemies: [{ type: "interceptor", q: 0, r: 2 }],
+  enemies: [{ type: "interceptor", q: 1, r: 2 }],
   hazards: [],
   exitRule: "all-enemies-dead",
 };
@@ -315,7 +319,7 @@ const weaponLevel = {
 let weaponState = Engine.createGameState(weaponLevel);
 assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
 assert.deepStrictEqual(weaponState.systems, { warpdrive: true, ram: true }, "both systems default on");
-Engine.applySublight(weaponState, { q: 0, r: 3 }); // steps adjacent to the interceptor
+Engine.applySublight(weaponState, { q: 2, r: 2 }); // steps adjacent to the interceptor
 assert.strictEqual(weaponState.enemies[0].alive, false, "moving into range auto-fires the Impulse Cannon");
 assert.ok(weaponState.events.some((e) => e.type === "kill"), "the auto-attack emits a kill event");
 assert.ok(
@@ -326,21 +330,21 @@ assert.ok(
 // Toggling the Impulse Cannon off suppresses the auto-attack.
 weaponState = Engine.createGameState(weaponLevel);
 Engine.setSystem(weaponState, "ram", false);
-Engine.applySublight(weaponState, { q: 0, r: 3 });
+Engine.applySublight(weaponState, { q: 2, r: 2 });
 assert.strictEqual(weaponState.enemies[0].alive, true, "Impulse Cannon toggled off does not fire");
 
 // Hold Position resolves the turn — and still auto-fires — without moving.
 weaponState = Engine.createGameState(weaponLevel);
-weaponState.playerPos = { q: 0, r: 3 }; // already adjacent, bypassing a staging move
+weaponState.playerPos = { q: 2, r: 2 }; // already adjacent, bypassing a staging move
 Engine.applyHoldPosition(weaponState);
-assert.deepStrictEqual(weaponState.playerPos, { q: 0, r: 3 }, "Hold Position never moves the flagship");
+assert.deepStrictEqual(weaponState.playerPos, { q: 2, r: 2 }, "Hold Position never moves the flagship");
 assert.strictEqual(weaponState.enemies[0].alive, false, "Hold Position still lets an armed weapon auto-fire");
 
 // Warpdrive off blocks movement outright — Hold Position is the only option.
 weaponState = Engine.createGameState(weaponLevel);
 Engine.setSystem(weaponState, "warpdrive", false);
 assert.throws(
-  () => Engine.applySublight(weaponState, { q: 0, r: 3 }),
+  () => Engine.applySublight(weaponState, { q: 2, r: 2 }),
   /Warpdrive/,
   "movement requires Warpdrive to be toggled on"
 );
@@ -415,17 +419,17 @@ const sentryLevel = {
   id: 993,
   name: "sentry fixture",
   board: { type: "rect", cols: 5, rows: 9 },
-  playerStart: { q: 0, r: 6 },
-  exit: { q: 2, r: 0 },
+  playerStart: { q: 2, r: 5 }, // same column as the sentry, distance 4 — straight up (direction 2) closes in one step at a time
+  exit: { q: 2, r: -1 },
   outpost: null,
-  enemies: [{ type: "sentry", q: 0, r: 2 }],
+  enemies: [{ type: "sentry", q: 2, r: 1 }],
   hazards: [],
   exitRule: "all-enemies-dead",
   actions: ["sublight"], // no flagship weapons, so the Sentry lives to fire back
 };
 const sentryState = Engine.createGameState(sentryLevel);
 const sentryStart = { q: sentryState.enemies[0].q, r: sentryState.enemies[0].r };
-Engine.applySublight(sentryState, { q: 0, r: 5 }); // distance 3 — still out of the beam
+Engine.applySublight(sentryState, { q: 2, r: 4 }); // distance 3 — still out of the beam
 assert.strictEqual(sentryState.status, "playing", "stepping to distance 3 is safe — the beam only reaches 2");
 assert.deepStrictEqual(
   { q: sentryState.enemies[0].q, r: sentryState.enemies[0].r },
@@ -433,7 +437,7 @@ assert.deepStrictEqual(
   "the Sentry does not move to chase — it holds its hex"
 );
 const hullBeforeBeam = sentryState.hull;
-Engine.applySublight(sentryState, { q: 0, r: 4 }); // distance 2 — into the beam
+Engine.applySublight(sentryState, { q: 2, r: 3 }); // distance 2 — into the beam
 assert.strictEqual(sentryState.hull, hullBeforeBeam - 1, "entering the Sentry's 2-hex ring takes a hit");
 assert.ok(sentryState.events.some((e) => e.type === "attack"), "the Sentry's shot emits an attack event");
 
@@ -554,10 +558,10 @@ const shieldLevel = {
   id: 991,
   name: "shield fixture",
   board: { type: "rect", cols: 4, rows: 5 },
-  playerStart: { q: 0, r: 4 },
-  exit: { q: 2, r: 0 },
+  playerStart: { q: 2, r: 3 },
+  exit: { q: 2, r: -1 },
   outpost: null,
-  enemies: [{ type: "interceptor", q: 0, r: 2 }],
+  enemies: [{ type: "interceptor", q: 1, r: 2 }],
   hazards: [],
   exitRule: "all-enemies-dead",
   actions: ["sublight"], // Impulse Cannon locked out so the interceptor survives to strike back
@@ -565,7 +569,7 @@ const shieldLevel = {
 const shieldState = Engine.createGameState(shieldLevel);
 shieldState.shieldCharges = 1;
 const hullBeforeShield = shieldState.hull;
-Engine.applySublight(shieldState, { q: 0, r: 3 }); // step adjacent: interceptor attacks
+Engine.applySublight(shieldState, { q: 2, r: 2 }); // step adjacent: interceptor attacks
 assert.strictEqual(shieldState.hull, hullBeforeShield, "a banked Shield charge fully absorbs the hit — no Hull lost");
 assert.strictEqual(shieldState.shieldCharges, 0, "absorbing a hit consumes the Shield charge");
 assert.ok(shieldState.events.some((e) => e.type === "shieldAbsorb"), "absorbing emits a shieldAbsorb event for the UI");
@@ -573,7 +577,7 @@ assert.ok(shieldState.events.some((e) => e.type === "shieldAbsorb"), "absorbing 
 // Hull normally once there's nothing left to absorb it.
 const noShieldState = Engine.createGameState(shieldLevel);
 const hullBeforeNoShield = noShieldState.hull;
-Engine.applySublight(noShieldState, { q: 0, r: 3 });
+Engine.applySublight(noShieldState, { q: 2, r: 2 });
 assert.strictEqual(noShieldState.hull, hullBeforeNoShield - 1, "with no Shield charge banked, the hit costs Hull as normal");
 
 // ---- procedural depth: the run never hard-stops past the campaign -------

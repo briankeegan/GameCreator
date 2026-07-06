@@ -24,82 +24,74 @@
 (function (root) {
   "use strict";
 
+  // Coordinates below are re-derived for the flat-top board orientation
+  // (see engine.js's buildBoardHexes and app.js's hexToPixel) — each entity
+  // sits at the same logical column/row cell it always did, just expressed
+  // in the new axial scheme. The old Sector 1 (a no-op "learn to move, no
+  // enemies" board) is gone — Clubhouse feedback: "Level one is pointless."
+  // The campaign now opens on the Shockwave lesson.
   const LEVELS = [
-    // Sector 1 — Moving. No enemies: learn to fly, bottom to top.
+    // Sector 1 — Shockwave. One Interceptor between you and the gate.
     {
       id: 1,
-      name: "Sublight Impulse",
-      board: { type: "rect", cols: 6, rows: 11 },
-      playerStart: { q: -3, r: 10 },
-      exit: { q: 2, r: 0 },
-      outpost: null,
-      enemies: [],
-      hazards: [],
-      exitRule: "all-enemies-dead",
-      actions: ["sublight"],
-      intro: "Sublight Impulse online. Tap an outlined hex to fly.",
-    },
-    // Sector 2 — Impulse Cannon. One Interceptor between you and the gate.
-    {
-      id: 2,
       name: "Shockwave",
       board: { type: "rect", cols: 6, rows: 11 },
-      playerStart: { q: -3, r: 10 },
-      exit: { q: 2, r: 0 },
+      playerStart: { q: 2, r: 9 },
+      exit: { q: 2, r: -1 },
       outpost: null,
-      enemies: [{ type: "interceptor", q: 0, r: 5 }],
+      enemies: [{ type: "interceptor", q: 2, r: 4 }],
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming"],
-      intro: "Shockwave online. It auto-fires on any 👾 within 1 hex — in every direction — after you move.",
+      intro: "Shockwave online. It auto-fires on any enemy within 1 hex — in every direction — after you move.",
     },
-    // Sector 3 — Tractor Beam. Two Interceptors; push one off the edge.
+    // Sector 2 — Tractor Beam. Two Interceptors; push one off the edge.
     {
-      id: 3,
+      id: 2,
       name: "Tractor Beam",
       board: { type: "rect", cols: 7, rows: 14 },
-      playerStart: { q: -4, r: 13 },
-      exit: { q: 3, r: 0 },
+      playerStart: { q: 2, r: 12 },
+      exit: { q: 3, r: -1 },
       outpost: { q: 0, r: 0 },
       enemies: [
-        { type: "cruiser", q: -1, r: 6 },
-        { type: "interceptor", q: 0, r: 8 },
+        { type: "cruiser", q: 2, r: 5 },
+        { type: "interceptor", q: 4, r: 6 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming", "tractor"],
-      intro: "Tractor Beam online. Shove an adjacent 👾 — off the edge destroys it. The Cruiser takes TWO hits, so shove it instead.",
+      intro: "Tractor Beam online. Shove an adjacent enemy — off the edge destroys it. The Cruiser takes TWO hits, so shove it instead.",
     },
-    // Sector 4 — Fighter Squadron. Three Interceptors, full action kit.
+    // Sector 3 — Fighter Squadron. Three enemies, full action kit.
     {
-      id: 4,
+      id: 3,
       name: "Fighter Squadron",
       board: { type: "rect", cols: 8, rows: 15 },
-      playerStart: { q: -4, r: 14 },
-      exit: { q: 3, r: 0 },
-      outpost: { q: 7, r: 0 },
+      playerStart: { q: 3, r: 13 },
+      exit: { q: 3, r: -1 },
+      outpost: { q: 7, r: -3 },
       enemies: [
-        { type: "cruiser", q: 0, r: 3 },
-        { type: "sentry", q: 2, r: 8 },
-        { type: "interceptor", q: -3, r: 11 },
+        { type: "cruiser", q: 1, r: 3 },
+        { type: "sentry", q: 6, r: 5 },
+        { type: "interceptor", q: 2, r: 10 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming", "tractor", "fighter"],
-      intro: "Fighter Squadron online. Strike any 👾 at range, then retrieve your 🛩️. The Sentry doesn't move — but its beam covers 2 hexes all around. Route around it or take it out.",
+      intro: "Fighter Squadron online. Strike any enemy at range, then retrieve your fighters. The Sentry doesn't move — but its beam covers 2 hexes all around. Route around it or take it out.",
     },
-    // Sector 5 — Full Fleet. The biggest, tallest board, everything unlocked.
+    // Sector 4 — Full Fleet. The biggest, tallest board, everything unlocked.
     {
-      id: 5,
+      id: 4,
       name: "Full Fleet",
       board: { type: "rect", cols: 8, rows: 17 },
-      playerStart: { q: -5, r: 16 },
-      exit: { q: 3, r: 0 },
-      outpost: { q: -4, r: 8 },
+      playerStart: { q: 3, r: 15 },
+      exit: { q: 3, r: -1 },
+      outpost: { q: 0, r: 8 },
       enemies: [
-        { type: "cruiser", q: 1, r: 3 },
-        { type: "sentry", q: 2, r: 6 },
-        { type: "interceptor", q: -2, r: 11 },
+        { type: "cruiser", q: 2, r: 2 },
+        { type: "sentry", q: 5, r: 4 },
+        { type: "interceptor", q: 3, r: 10 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
@@ -144,16 +136,19 @@
     const rows = Math.min(11 + depth, 21);
     const rng = seededRandom(depth * 2654435761);
 
-    const startRow = rows - 1;
-    const playerStart = { q: Math.floor(cols / 2) - Math.floor(startRow / 2), r: startRow };
-    const topRow = 0;
-    const exit = { q: cols - 1, r: topRow }; // rightmost hex of the top row
-    const outpost = { q: 0, r: topRow }; // leftmost hex of the top row
+    // Flat-top rect board (see engine.js's buildBoardHexes): column c spans
+    // r = -floor(c/2) .. rows-1-floor(c/2). Player starts at the bottom of
+    // the middle column; exit/outpost sit at the top of the rightmost/
+    // leftmost columns, same layout intent as the hand-authored campaign.
+    const startCol = Math.floor(cols / 2);
+    const playerStart = { q: startCol, r: rows - 1 - Math.floor(startCol / 2) };
+    const exit = { q: cols - 1, r: -Math.floor((cols - 1) / 2) };
+    const outpost = { q: 0, r: 0 };
 
     const hexes = [];
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        hexes.push({ q: col - Math.floor(row / 2), r: row });
+    for (let col = 0; col < cols; col++) {
+      for (let row = 0; row < rows; row++) {
+        hexes.push({ q: col, r: row - Math.floor(col / 2) });
       }
     }
     const reserved = [playerStart, exit, outpost];
