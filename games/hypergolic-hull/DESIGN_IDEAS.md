@@ -70,6 +70,65 @@ overlay, mode-based targeting for Tractor/Fighter).
   with existing enemies (an EMP'd Sentry becomes safely walkable for one
   turn) rather than replacing them, in the RoR2 stacking sense above.
 
+## Loadout economy: slots + Energy (Clubhouse brainstorm, unbuilt)
+
+This is a bigger system than the items below — worth designing properly
+before building, not a quick add. Two currency-like resources, both already
+half-modeled in the data (`WEAPONS[x].slots` and `.energyCost` have existed
+on every weapon entry since the first version, never enforced):
+
+- **Slots**: every equipped system (weapon, Shield, Jump, whatever) costs
+  slots to carry. Total slot capacity starts small and is raised by
+  Outpost/event upgrades — so equipping more things is itself a purchased
+  upgrade, not free, and a full loadout forces "what do I drop to fit the
+  new thing" decisions. This is the natural enforcement point for the
+  `slots` field that's been sitting inert in `WEAPONS` since the start.
+- **Energy**: a per-turn(?) resource that active abilities (Shield, Jump)
+  spend to trigger, distinct from Hull and separate from salvage (a
+  currency vs. a resource that regenerates). Needs its own design pass —
+  regen rate, cap, whether it's per-turn or per-sector — this doesn't
+  exist anywhere yet (the original design doc explicitly scoped
+  "Hyperjump energy economy" out of MVP and it was never revisited).
+
+New item ideas that spend these resources:
+
+- **Shield**: costs Energy to activate (not just a purchased one-shot
+  charge like the current Emergency Shield outpost offer — that stays as
+  the "buy a charge, banked for later" version; this is an *equipped
+  system* you toggle, same pattern as Warpdrive/Shockwave today), absorbs
+  1 hit.
+- **Random Blink**: costs Energy, teleports to a *random* reachable hex —
+  deliberately unpredictable ("you don't even know where you're gonna show
+  up"), a genuine exception to "zero randomness in combat" the Clubhouse
+  explicitly wants: a high-risk emergency escape, not a precision tool.
+  Complements the controlled, straight-line **Hyperjump** logged above —
+  same resource pool, opposite risk profile (aimed-but-costly vs.
+  free-ish-but-unpredictable).
+- **Knockback weapon**: pattern-based like Shockwave/Lance Cannon, but on
+  hit it pushes the target back instead of (or in addition to) damaging
+  it — deliberately a double-edged tool: knocking a threat out of adjacency
+  saves you a hit, but can also shove a low-HP target out of the very
+  range you needed to finish it, or push it into a worse position for
+  *you*. "Make that bad or good" depending on how it's used, per the
+  Clubhouse note — not a strict upgrade over existing weapons, a different
+  shape of tool.
+
+**Two unifying principles from this conversation:**
+- **Enemies should draw from the same pool the player does.** Instead of a
+  separate "enemy design space," a Shielded Interceptor, a Knockback
+  Sentry, or an enemy that Blinks are just the same items/weapons above
+  equipped on the other side — which then makes an item-*theft* mechanic
+  meaningful (a Tractor-Beam-style "steal the equipped item" action lifts
+  something an enemy was using and puts it in your own loadout instead of
+  destroying it outright).
+- **Power should cost proportionally, and synergies should be
+  discoverable, not designed-in explicitly.** The strongest items need the
+  highest salvage/Energy/slot cost — no strictly-free upgrades — and
+  individual items should be simple enough in isolation that their
+  *combinations* are what create depth (Risk of Rain 2's item-stacking
+  model, already cited above), rather than trying to hand-author every
+  interesting combo directly.
+
 ## New enemy types / factions
 
 - **Siege Cruiser** (the ITB-style telegraph enemy): on its turn it *marks*
