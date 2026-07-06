@@ -22,30 +22,37 @@ function pickFrom(arr, rng) {
 }
 
 // Roll one floor's worth of node choices (always exactly three rooms) from an
-// act template, Slay-the-Spire-style. The whole point of this function is that
-// rest / elite / treasure are OCCASIONAL, not per-floor handouts — so choosing
-// one is a real routing decision instead of a free option you always have:
-//   * A fight is always available so the run can always progress.
-//   * The very first floor is fights only — no early rest/elite/treasure (you
-//     haven't earned a breather, and an early elite is an unfair spike).
-//   * The floor right before the boss ALWAYS offers a rest — the one reliable
-//     breather each act (StS guarantees exactly this, and only this).
-//   * Elites only appear a couple floors in, and rest/treasure are rare extras
-//     drawn from a fight-dominated bag — at most one rest and one treasure per
-//     floor. Most floors end up fight-or-fight; that's intended.
-function generateFloorOptions(act, floorIndex, floorCount, content, rng) {
+// act template. Long Slay-the-Spire-style acts (~15 floors) where the WHOLE
+// POINT is that you almost always have to fight — a breather is a rare, mostly
+// pre-PLACED event, not a per-floor option you can always take:
+//   * A fight is always available so the run can always progress, and on the
+//     vast majority of floors EVERY option is a fight (you pick which enemies,
+//     not whether to fight). Skipping combat is the exception, not the rule.
+//   * `forced` is the act's deliberately-placed non-fight floor (a mid-act
+//     treasure, a deep breather, the guaranteed pre-boss rest — see generateMap)
+//     and is the main way rest/treasure appear at all.
+//   * The very first floor is fights only. Elites (harder fights) unlock a few
+//     floors in. A stray extra rest is a RARE random bonus deep in the act, so
+//     routes still vary run to run without handing out breathers freely.
+function generateFloorOptions(act, floorIndex, floorCount, forced, content, rng) {
   const isFirst = floorIndex === 0;
   const isLast = floorIndex === floorCount - 1;
 
   const options = [makeNode("fight", act, content, rng)];
-  if (isLast) options.push(makeNode("rest", act, content, rng)); // guaranteed pre-boss breather
+  if (forced === "rest") options.push(makeNode("rest", act, content, rng));
+  else if (forced === "treasure") options.push(makeNode("treasure", act, content, rng));
 
-  // Candidate bag for the remaining slots. Fights dominate; elites unlock a
-  // couple floors in; a lone rest and a lone treasure are the rare finds and
-  // never show on the first or the (already-rest) last floor.
-  const bag = ["fight", "fight", "fight", "fight", "fight", "fight"];
-  if (!isFirst && floorIndex >= 2) bag.push("elite", "elite");
-  if (!isFirst && !isLast) bag.push("rest", "treasure");
+  if (isFirst) {
+    while (options.length < 3) options.push(makeNode("fight", act, content, rng));
+    return options;
+  }
+
+  // Fights dominate overwhelmingly. Elites are the only common non-plain-fight
+  // option (still a fight, just harder, for a relic). A lone extra rest is a
+  // rare find deep in the act on floors that weren't already given one.
+  const bag = ["fight", "fight", "fight", "fight", "fight", "fight", "fight", "fight", "fight"];
+  if (floorIndex >= 4) bag.push("elite", "elite");
+  if (!forced && !isLast && floorIndex >= 3 && floorIndex <= floorCount - 3) bag.push("rest");
 
   const used = new Set(options.map((o) => o.type));
   let guard = 0;
@@ -72,15 +79,27 @@ function makeNode(type, act, content, rng) {
 }
 
 // Build a whole run's map from the act templates. Each act keeps its fixed
-// boss but rolls fresh floors, so the route differs every run.
+// boss but rolls fresh floors, so the route differs every run. Non-fight floors
+// are deliberately PLACED and spaced out, Slay-the-Spire-style — a mid-act
+// treasure, a breather deep in, and the guaranteed rest right before the boss —
+// so a long act (~15 floors) still only offers a handful of chances to not
+// fight. Everything not placed here is a fight.
 function generateMap(content, rng) {
-  return content.ACTS.map((act) => ({
-    name: act.name,
-    boss: act.boss,
-    floors: Array.from({ length: act.floorCount }, (_, fi) => ({
-      options: generateFloorOptions(act, fi, act.floorCount, content, rng),
-    })),
-  }));
+  return content.ACTS.map((act) => {
+    const n = act.floorCount;
+    const last = n - 1;
+    const forced = {};
+    forced[last] = "rest"; // always a breather right before the boss (StS guarantees this)
+    if (n >= 6) forced[Math.floor(n * 0.45)] = "treasure"; // a mid-act stash
+    if (n >= 9) forced[Math.floor(n * 0.72)] = "rest"; // one more breather deep in a long act
+    return {
+      name: act.name,
+      boss: act.boss,
+      floors: Array.from({ length: n }, (_, fi) => ({
+        options: generateFloorOptions(act, fi, n, forced[fi], content, rng),
+      })),
+    };
+  });
 }
 
 function makeEnemyInstance(typeId, idx, content) {
@@ -407,6 +426,13 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
         state.bossRewardOptions = shuffle(content.BOSS_REWARD_POOL, rng).slice(0, content.BOSS_REWARD_COUNT);
       }
     } else {
+      // Catch your breath: clearing a fight patches you up a little. This is
+      // what makes a long act (~14 floors of mostly fighting) survivable
+      // without handing out rests — the grind chips you down slowly instead of
+      // draining you to zero, while a real rest is still the only big heal.
+      if (content.POST_FIGHT_HEAL) {
+        state.player.hp = Math.min(state.player.maxHp, state.player.hp + content.POST_FIGHT_HEAL);
+      }
       state.status = "reward";
       const count = state.currentNodeType === "elite" ? content.ELITE_REWARD_COUNT : content.FIGHT_REWARD_COUNT;
       // Generic pool + this character's own signature cards.

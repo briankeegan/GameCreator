@@ -57,7 +57,7 @@ assert.throws(() => Engine.playCard(gate, Content, 0, null, rng), /Cannot play a
 assert.throws(() => Engine.chooseClass(gate, Content, "notADog", rng), /Unknown class/);
 
 // Each class sets its own Hull and 12-card deck.
-const hpByClass = { riddle: 36, koozie: 32, bevy: 22, lala: 36 };
+const hpByClass = { riddle: 36, koozie: 32, bevy: 26, lala: 36 };
 for (const id of Object.keys(Content.CLASSES)) {
   const s = Engine.createGameState(Content, rng);
   Engine.chooseClass(s, Content, id, rng);
@@ -172,7 +172,7 @@ assert.ok([...variedTypes].some((t) => t !== "fight"), "and includes non-fight r
 // New enemies: a Feral Kitten swarm and a Rooftop Sniper exist and fight.
 // ---------------------------------------------------------------------
 assert.strictEqual(Content.ENEMY_TYPES.feralKitten.maxHp, 7);
-assert.strictEqual(Content.ENEMY_TYPES.rooftopSniper.pattern[1].damage, 18, "the sniper's telegraphed big shot");
+assert.strictEqual(Content.ENEMY_TYPES.rooftopSniper.pattern[1].damage, 13, "the sniper's telegraphed big shot (dangerous, not a one-shot)");
 const swarmContent = Object.assign({}, Content, {
   ACTS: [
     {

@@ -87,7 +87,7 @@ const CLASSES = {
     name: "Bevy",
     breed: "Flat-haired Goldendoodle",
     blurb: "Endlessly adaptable — draws cards and makes energy. Build whatever play the turn needs.",
-    maxHp: 22,
+    maxHp: 26,
     // Boundless: an extra Energy every turn, so it can chain its cheap draw cards.
     mechanic: { energyBonus: 1, name: "Boundless", text: "+1 Energy every turn (4 total)." },
     deck: ["rally", "rally", "rally", "fetch", "fetch", "fetch", "flurry", "flurry", "sniffOut", "sniffOut", "bite", "bite"],
@@ -228,14 +228,16 @@ const ENEMY_TYPES = {
     ],
   },
   // A glass-cannon sniper — winds up behind cover, then a big telegraphed
-  // shot. Kill it or block the wind-up.
+  // shot. Kill it or block the wind-up. The shot is dangerous but no longer a
+  // near-guaranteed one-shot on a fresh dog: it's a threat you answer, not a
+  // coin-flip death, and snipers are an uncommon pick in the fight pools.
   rooftopSniper: {
     id: "rooftopSniper",
     name: "Rooftop Sniper",
     maxHp: 18,
     pattern: [
       { type: "guard", block: 5 },
-      { type: "attack", damage: 18 },
+      { type: "attack", damage: 13 },
     ],
   },
   // Act 2 boss — a heavy officer cat: hits hard, guards, then a crushing blow.
@@ -277,14 +279,21 @@ const ENEMY_TYPES = {
 const ACTS = [
   {
     name: "The Back Alleys",
-    floorCount: 5,
+    floorCount: 14,
     boss: { label: "Big Tom", enemies: ["bigTom"] },
+    // Weighted: gentle single-enemy fights are common (repeated entries), the
+    // tougher multi-enemy line-ups are the occasional spike. pickFrom is
+    // uniform over this list, so duplicating the easy fights makes them the norm
+    // across a long act instead of a wall of hard rooms.
     fightPool: [
       ["alleyCat"],
-      ["alleyCat", "alleyCat"],
+      ["alleyCat"],
+      ["alleyCat"],
+      ["feralKitten", "feralKitten"],
       ["tabbyGuard"],
-      ["feralKitten", "feralKitten", "feralKitten"],
       ["alleyCat", "feralKitten"],
+      ["alleyCat", "alleyCat"],
+      ["feralKitten", "feralKitten", "feralKitten"],
     ],
     elitePool: [
       ["tabbyGuard", "alleyCat"],
@@ -293,12 +302,16 @@ const ACTS = [
   },
   {
     name: "The Rooftops",
-    floorCount: 5,
+    floorCount: 14,
     boss: { label: "The Warcat Captain", enemies: ["warcatCaptain"] },
+    // Snipers hit hard, so they're the minority here — most rooftop fights are
+    // plain cats and guards, with the sniper line-ups as the occasional threat.
     fightPool: [
-      ["alleyCat", "rooftopSniper"],
+      ["alleyCat", "feralKitten"],
+      ["tabbyGuard"],
+      ["alleyCat", "alleyCat"],
       ["tabbyGuard", "feralKitten"],
-      ["rooftopSniper", "alleyCat"],
+      ["alleyCat", "rooftopSniper"],
       ["tabbyGuard", "tabbyGuard"],
       ["rooftopSniper", "feralKitten", "feralKitten"],
     ],
@@ -309,14 +322,19 @@ const ACTS = [
   },
   {
     name: "The Cathouse",
-    floorCount: 5,
+    floorCount: 14,
     boss: { label: "The Cat King", enemies: ["catKing"] },
+    // The final act's rooms are the meanest on average, but still weighted so a
+    // plain guard/cat fight is the common case and the triple-threat rooms are
+    // the spikes. Big Tom only shows up as an elite here, never a plain fight.
     fightPool: [
-      ["tabbyGuard", "alleyCat", "rooftopSniper"],
-      ["bigTom"],
-      ["feralKitten", "feralKitten", "rooftopSniper"],
+      ["tabbyGuard"],
+      ["tabbyGuard", "alleyCat"],
+      ["alleyCat", "rooftopSniper"],
       ["tabbyGuard", "rooftopSniper"],
       ["tabbyGuard", "tabbyGuard"],
+      ["feralKitten", "feralKitten", "rooftopSniper"],
+      ["tabbyGuard", "alleyCat", "rooftopSniper"],
     ],
     elitePool: [
       ["tabbyGuard", "tabbyGuard", "rooftopSniper"],
@@ -373,7 +391,8 @@ const ACHIEVEMENTS = {
 const STARTING_HP = 28;
 const STARTING_ENERGY = 3;
 const HAND_SIZE = 5;
-const REST_HEAL_FRACTION = 0.3; // of missing HP, rounded up
+const REST_HEAL_FRACTION = 0.5; // of missing HP, rounded up — rests are rare now, so each matters more
+const POST_FIGHT_HEAL = 4; // "catch your breath" — small Hull recovered after clearing a non-boss fight
 const REST_REMOVE_CHANCE = 0.35; // odds a given rest site also lets you drop a card
 const FIGHT_REWARD_COUNT = 3;
 const ELITE_REWARD_COUNT = 4;
@@ -404,6 +423,7 @@ const CONTENT = {
   HAND_SIZE,
   REST_HEAL_FRACTION,
   REST_REMOVE_CHANCE,
+  POST_FIGHT_HEAL,
   FIGHT_REWARD_COUNT,
   ELITE_REWARD_COUNT,
   BOSS_REWARD_COUNT,
