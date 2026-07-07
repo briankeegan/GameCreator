@@ -230,6 +230,30 @@ async function freshPage(browser, url, errors) {
   assert.deepStrictEqual(s.actions, ["sublight", "ramming", "tractor"], "Sector 2 unlocks exactly one new action");
   assert.ok(s.enemies.filter((e) => e.alive).length >= 1);
 
+  // ---- New-unlock pulse: a freshly-appeared action calls attention to ------
+  // itself instead of silently appearing (Clubhouse: "what is tractor beam
+  // that suddenly appears?").
+  assert.strictEqual(
+    await page.locator('[data-mode="tractor"]').evaluate((el) => el.classList.contains("new-unlock")),
+    true,
+    "Tractor Beam pulses the sector it first appears, before it's ever been tapped"
+  );
+  await page.click('[data-mode="tractor"]');
+  assert.strictEqual(
+    await page.locator('[data-mode="tractor"]').evaluate((el) => el.classList.contains("new-unlock")),
+    false,
+    "tapping it once clears the pulse for good"
+  );
+
+  // ---- Run persistence: reloading resumes exactly where you left off ------
+  // ("the levels should be remembered" — a reload used to always restart at
+  // Sector 1, since persist() saved a run but nothing ever read it back.)
+  await page.reload();
+  await page.waitForFunction(() => window.__hhState && window.__hhState.status === "playing");
+  s = await getState(page);
+  assert.strictEqual(s.levelId, 2, "reloading resumes the in-progress sector, not a fresh Sector 1");
+  assert.ok(s.wormholePos, "the wormhole back to Sector 1 survives a reload too (sectorHistory is persisted)");
+
   // ---- Wormhole: sectors aren't one-way ------------------------------------
   // (no button — flying onto the wormhole hex is the return trip; per
   // Clubhouse feedback its position is randomized each time, not fixed)

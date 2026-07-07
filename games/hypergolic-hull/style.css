@@ -327,6 +327,17 @@ body {
   background: #151b28;
   border-style: dashed;
 }
+/* A newly-unlocked action pulses until the player actually taps it once —
+   Clubhouse feedback: it used to just silently appear ("what is tractor
+   beam that suddenly appears?"), explained only in the easy-to-miss log. */
+.actions-grid button.new-unlock {
+  border-color: #ffce8a;
+  animation: new-unlock-pulse 1.4s ease-in-out infinite;
+}
+@keyframes new-unlock-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 156, 74, 0.55); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 156, 74, 0); }
+}
 
 .belowbar {
   flex: 0 0 auto;

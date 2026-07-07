@@ -97,6 +97,19 @@ let legendVisible = GCStorage.get(GAME_ID, "legendVisible", false);
 let showThreatKey = true;
 let showLegalKey = true;
 
+// A not-yet-unlocked action button is simply hidden, then just appears the
+// sector it unlocks (see updateHud) — Clubhouse feedback: "what is tractor
+// beam that suddenly appears?" The sector's intro line explains it, but
+// that's easy to miss in the scrolling log. Every action/ability button
+// pulses the FIRST time it's ever shown unused, across every run (tracked
+// permanently, not just this sector) — see updateHud/markActionUsed.
+let usedActions = new Set(GCStorage.get(GAME_ID, "usedActions", []));
+function markActionUsed(m) {
+  if (usedActions.has(m)) return;
+  usedActions.add(m);
+  GCStorage.set(GAME_ID, "usedActions", Array.from(usedActions));
+}
+
 // Tapping an enemy while Help is open inspects it — its stats/weapon/pattern
 // show in a small card up top instead of (or alongside) acting on it.
 let inspectedEnemyId = null;
@@ -1490,12 +1503,18 @@ function draw() {
 function setMode(next) {
   if (state.status !== "playing" || !state.actions.includes(next)) return;
   mode = next;
-  modeButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.mode === mode));
+  markActionUsed(next);
+  modeButtons.forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.mode === mode);
+    if (btn.dataset.mode === next) btn.classList.remove("new-unlock");
+  });
   draw();
 }
 
 function persist() {
   GCStorage.set(GAME_ID, "run", state);
+  GCStorage.set(GAME_ID, "levelIndex", levelIndex);
+  GCStorage.set(GAME_ID, "sectorHistory", sectorHistory);
   if (state.status === "won") {
     bestDepth = Math.max(bestDepth, state.levelId);
     GCStorage.set(GAME_ID, "bestDepth", bestDepth);
@@ -1555,10 +1574,12 @@ function updateHud() {
     btn.hidden = locked;
     btn.textContent = MODES[m].label;
     btn.disabled = state.status !== "playing" || (m === "fighter" && Boolean(state.fighterHex));
+    btn.classList.toggle("new-unlock", !locked && !usedActions.has(m));
   });
 
   blinkBtn.hidden = !blinkUnlocked;
   blinkBtn.disabled = state.status !== "playing" || state.energy < Engine.BLINK_ENERGY_COST;
+  blinkBtn.classList.toggle("new-unlock", blinkUnlocked && !usedActions.has("blink"));
 }
 
 function updateLegend() {
@@ -1753,6 +1774,35 @@ function loadSector(index, carryOver, opts) {
   render();
 }
 
+// A run used to be write-only — persist() saved it, but nothing ever read
+// it back, so any page reload silently restarted from Sector 1 no matter
+// how deep you'd gotten (Clubhouse feedback: "the levels should be
+// remembered"). Called once at boot instead of an unconditional
+// loadSector(0); falls back to a fresh run if there's nothing saved yet.
+function restoreRun() {
+  const savedState = GCStorage.get(GAME_ID, "run", null);
+  const savedIndex = GCStorage.get(GAME_ID, "levelIndex", null);
+  if (!savedState || savedIndex === null) {
+    loadSector(0);
+    return;
+  }
+  levelIndex = savedIndex;
+  state = savedState;
+  sectorHistory = GCStorage.get(GAME_ID, "sectorHistory", []);
+  // A save can land mid-"won" (captured the instant a warp animation
+  // started) — the animation itself doesn't survive a reload, so just
+  // un-consume it back to "playing", same fix as the wormhole return.
+  if (state.status === "won") state.status = "playing";
+  mode = null;
+  anims = [];
+  plannedPath = null;
+  autoRoute = null;
+  outpostDismissed = false;
+  shipAngle = -90;
+  updateGeometry();
+  render();
+}
+
 helpBtn.addEventListener("click", () => {
   legendVisible = !legendVisible;
   GCStorage.set(GAME_ID, "legendVisible", legendVisible);
@@ -1790,6 +1840,7 @@ holdBtn.addEventListener("click", () => {
 });
 
 blinkBtn.addEventListener("click", () => {
+  markActionUsed("blink");
   handleAction(() => Engine.applyBlink(state));
 });
 
@@ -1931,4 +1982,4 @@ window.addEventListener("resize", () => {
 
 window.__hhHexCenter = (q, r) => hexToPixel({ q, r }); // debug/test hook: CSS-pixel center of a hex
 
-loadSector(0);
+restoreRun();
