@@ -517,6 +517,8 @@ body {
 .swatch-route { background: transparent; border: 2px dashed #9fb0c9; border-radius: 50%; }
 .swatch-shield { background: transparent; border: 2px solid #6ee7ff; border-radius: 50%; }
 .swatch-energy { background: linear-gradient(135deg, #d9b3ff, #8a4fd6); clip-path: polygon(50% 0%, 61% 38%, 100% 38%, 68% 62%, 79% 100%, 50% 76%, 21% 100%, 32% 62%, 0% 38%, 39% 38%); border-radius: 0; }
+.swatch-wormhole { background: radial-gradient(circle, #ffdca8 0%, #d98f2e 55%, #3a2a1c 100%); border-radius: 50%; }
+.swatch-asteroid { background: radial-gradient(circle at 40% 35%, #8a8378, #4a463f 70%); border-radius: 30%; }
 
 /* ---- shared install banner (leave as-is; every game gets this) ---- */
 :root { --banner-space: 0px; }

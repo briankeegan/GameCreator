@@ -282,6 +282,26 @@
     return ["repair", ...shuffled.slice(0, extraCount).map((o) => o.id)];
   }
 
+  // Placed only when carryOver says a previous sector exists to return to
+  // (see createGameState below) — an in-world object, not a UI button
+  // (Clubhouse feedback: "it should be, like... a wormhole sort of thing").
+  // Position is seeded per level id, same pattern as pickOutpostOfferIds,
+  // so it's reproducible but never fixed at one spot — "the wormholes
+  // shouldn't always just end up in the exact same place."
+  function pickWormholePos(state, levelId) {
+    const rng = seededRandom(levelId * 15485863 + 29);
+    const reserved = [state.playerPos, state.exitPos, state.outpostPos].filter(Boolean);
+    const candidates = state.boardHexes.filter(
+      (h) =>
+        !reserved.some((r) => posEq(r, h)) &&
+        !enemyAt(state, h) &&
+        !hazardAt(state, h) &&
+        hexDistance(h, state.playerPos) >= 2
+    );
+    if (!candidates.length) return null;
+    return candidates[Math.floor(rng() * candidates.length)];
+  }
+
   function createGameState(level, carryOver) {
     validateLevel(level);
     const maxHull = (carryOver && carryOver.maxHull) || START_HULL;
@@ -333,7 +353,11 @@
       status: "playing", // "playing" | "won" | "lost"
       log: [],
       events: [], // animation cues from the last action, e.g. {type:"kill",q,r}
+      wormholePos: null,
     };
+    if (carryOver && carryOver.hasPrevious) {
+      state.wormholePos = pickWormholePos(state, level.id);
+    }
     if (level.intro) pushLog(state, level.intro);
     checkExitUnlock(state); // an enemy-free tutorial board starts with the gate online
     return state;
@@ -363,6 +387,16 @@
 
   function hazardAt(state, pos) {
     return state.hazards.find((h) => posEq(h, pos)) || null;
+  }
+
+  // Two flavors of hazard, deliberately different: an "asteroid" field is
+  // genuinely impassable terrain — a wall, not a trap, excluded from legal
+  // moves entirely — while a "blackhole" stays the original design doc's
+  // instant-destruction trap: a legal (if suicidal) destination. Clubhouse
+  // feedback: "places you can't hit... not every square is always the
+  // same... asteroid fields" — real obstacles, not just more damage.
+  function isBlockingHazard(hazard) {
+    return Boolean(hazard) && hazard.type === "asteroid";
   }
 
   function livingEnemiesAdjacentTo(state, pos) {
@@ -603,6 +637,7 @@
     if (!isAdjacent(state.playerPos, to)) throw new Error("Sublight Impulse: destination is not adjacent");
     if (!onBoard(state, to)) throw new Error("Sublight Impulse: destination is off the map");
     if (enemyAt(state, to)) throw new Error("Sublight Impulse: destination is occupied");
+    if (isBlockingHazard(hazardAt(state, to))) throw new Error("Sublight Impulse: blocked by an asteroid field");
     const from = { q: state.playerPos.q, r: state.playerPos.r };
     state.events.push({ type: "playerMove", from, to: { q: to.q, r: to.r } });
     const dir = directionIndex(from, to);
@@ -721,6 +756,13 @@
     return Boolean(state.outpostPos) && posEq(state.playerPos, state.outpostPos);
   }
 
+  // Flying onto the wormhole (when one exists — see pickWormholePos) is the
+  // signal to return to the previous sector; the renderer/app drives the
+  // actual transition, this just reports whether the flagship is on it.
+  function wormholeAvailable(state) {
+    return Boolean(state.wormholePos) && posEq(state.playerPos, state.wormholePos);
+  }
+
   function outpostOffers(state) {
     if (!outpostAvailable(state)) return [];
     return OUTPOST_OFFER_POOL.filter((o) => state.outpostOfferIds.includes(o.id)).map((offer) => ({
@@ -761,7 +803,7 @@
 
   function legalSublightTargets(state) {
     return neighbors(state.playerPos).filter(
-      (to) => onBoard(state, to) && !enemyAt(state, to)
+      (to) => onBoard(state, to) && !enemyAt(state, to) && !isBlockingHazard(hazardAt(state, to))
     );
   }
 
@@ -805,6 +847,7 @@
     outpostAvailable,
     outpostOffers,
     applyOutpostPurchase,
+    wormholeAvailable,
     legalSublightTargets,
     legalTractorTargets,
     legalFighterTargets,

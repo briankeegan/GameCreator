@@ -55,7 +55,7 @@ function pickStepToward(page, goalExpr) {
   return page.evaluate((expr) => {
     const E = window.HypergolicEngine;
     const st = window.__hhState;
-    const goal = expr === "exit" ? st.exitPos : st.enemies.find((e) => e.alive);
+    const goal = expr === "exit" ? st.exitPos : expr === "wormhole" ? st.wormholePos : st.enemies.find((e) => e.alive);
     return E.legalSublightTargets(st).reduce(
       (best, cand) => {
         const d = E.hexDistance(cand, goal);
@@ -78,6 +78,21 @@ async function walkToExit(page) {
     s = await getState(page);
   }
   return s;
+}
+
+// Fly step-by-step onto the wormhole hex (its position is randomized per
+// carryOver.hasPrevious — see Engine.pickWormholePos), then wait out the
+// reverse-warp flash (handleAction's setTimeout(returnToPreviousSector, ...))
+// for levelId to actually rewind.
+async function walkToWormhole(page) {
+  let s = await getState(page);
+  const startLevel = s.levelId;
+  while (s.playerPos.q !== s.wormholePos.q || s.playerPos.r !== s.wormholePos.r) {
+    await clickHex(page, "sublight", await pickStepToward(page, "wormhole"));
+    s = await getState(page);
+  }
+  await page.waitForFunction((lvl) => window.__hhState.levelId !== lvl, startLevel, { timeout: 5000 });
+  return getState(page);
 }
 
 async function freshPage(browser, url, errors) {
@@ -215,18 +230,19 @@ async function freshPage(browser, url, errors) {
   assert.deepStrictEqual(s.actions, ["sublight", "ramming", "tractor"], "Sector 2 unlocks exactly one new action");
   assert.ok(s.enemies.filter((e) => e.alive).length >= 1);
 
-  // ---- Previous Sector: sectors aren't one-way ----------------------------
+  // ---- Wormhole: sectors aren't one-way ------------------------------------
+  // (no button — flying onto the wormhole hex is the return trip; per
+  // Clubhouse feedback its position is randomized each time, not fixed)
 
-  assert.strictEqual(await page.locator("#prevSectorBtn").isVisible(), true, "a cleared sector can be revisited");
-  await page.click("#prevSectorBtn");
-  await page.waitForFunction(() => window.__hhState.levelId === 1);
-  s = await getState(page);
+  assert.ok(s.wormholePos, "a cleared sector leaves a wormhole back, once there's history to return to");
+  s = await walkToWormhole(page);
+  assert.strictEqual(s.levelId, 1, "flying onto the wormhole rewinds to the previous sector");
   // The saved snapshot is un-consumed back to "playing" (it was mid-"won",
   // captured standing on the Warp Gate) so the board is live again, not a
   // frozen dead end — every action asserts status==="playing".
   assert.strictEqual(s.status, "playing", "the board is interactive again, not frozen on the win screen");
   assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "the Interceptor is still dead — it's the saved state, not regenerated");
-  assert.strictEqual(await page.locator("#prevSectorBtn").isVisible(), false, "no further history left to go back to");
+  assert.strictEqual(s.wormholePos, null, "no further history left to go back to from the first sector");
 
   // Still standing on the Warp Gate — Hold Position re-triggers the win
   // check and warps back out through the normal flow.

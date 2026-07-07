@@ -673,4 +673,84 @@ assert.strictEqual(
 const noBlinkState = Engine.createGameState({ ...blinkLevel, actions: ["sublight"] });
 assert.throws(() => Engine.applyBlink(noBlinkState), /not unlocked/, "Blink refuses when not yet unlocked");
 
+// ---- Asteroid fields: genuinely impassable terrain, distinct from a ------
+// blackhole's instant-destruction trap. Clubhouse feedback: "places you
+// can't hit... asteroid fields" — a wall, not just more damage.
+const terrainLevel = {
+  id: 989,
+  radius: 3,
+  playerStart: { q: 0, r: 0 },
+  exit: { q: 3, r: 0 },
+  outpost: null,
+  enemies: [],
+  hazards: [
+    { type: "asteroid", q: 1, r: 0 },
+    { type: "blackhole", q: -1, r: 0 },
+  ],
+  exitRule: "all-enemies-dead",
+};
+const terrainState = Engine.createGameState(terrainLevel);
+assert.ok(
+  !Engine.legalSublightTargets(terrainState).some((h) => Engine.posEq(h, { q: 1, r: 0 })),
+  "an asteroid field is not a legal move target at all"
+);
+assert.throws(
+  () => Engine.applySublight(terrainState, { q: 1, r: 0 }),
+  /blocked by an asteroid field/,
+  "moving into an asteroid field is refused outright, not just punished"
+);
+assert.ok(
+  Engine.legalSublightTargets(terrainState).some((h) => Engine.posEq(h, { q: -1, r: 0 })),
+  "a blackhole IS a legal (if lethal) move target — the original instant-destruction trap"
+);
+const blackholeState = Engine.createGameState(terrainLevel);
+Engine.applySublight(blackholeState, { q: -1, r: 0 });
+assert.strictEqual(blackholeState.status, "lost", "entering a blackhole is still instant destruction");
+
+// ---- Wormhole: an in-world way back, not a UI button --------------------
+// Clubhouse feedback: "it should be, like... a wormhole sort of thing" —
+// only present when there's actually a previous sector to return to, and
+// its position isn't fixed ("shouldn't always just end up in the exact
+// same place").
+const wormholeLevel = {
+  id: 988,
+  radius: 3,
+  playerStart: { q: 0, r: 0 },
+  exit: { q: 3, r: 0 },
+  outpost: null,
+  enemies: [],
+  hazards: [],
+  exitRule: "all-enemies-dead",
+};
+const noHistoryState = Engine.createGameState(wormholeLevel);
+assert.strictEqual(noHistoryState.wormholePos, null, "no wormhole on the very first sector — nothing to go back to");
+assert.strictEqual(Engine.wormholeAvailable(noHistoryState), false);
+
+const withHistoryState = Engine.createGameState(wormholeLevel, { hasPrevious: true });
+assert.ok(withHistoryState.wormholePos, "a wormhole appears once a previous sector exists");
+assert.ok(
+  Engine.onBoard(withHistoryState, withHistoryState.wormholePos),
+  "the wormhole always lands on a valid board hex"
+);
+assert.ok(
+  !Engine.posEq(withHistoryState.wormholePos, withHistoryState.playerPos) &&
+    !Engine.posEq(withHistoryState.wormholePos, withHistoryState.exitPos),
+  "the wormhole doesn't overlap the player start or the Warp Gate"
+);
+assert.strictEqual(Engine.wormholeAvailable(withHistoryState), false, "not available until the flagship is actually on it");
+
+// Different level ids place the wormhole at different spots — deterministic
+// per id (reproducible), but not hardcoded to one fixed hex.
+const positions = new Set();
+for (let id = 500; id < 510; id++) {
+  const s = Engine.createGameState({ ...wormholeLevel, id }, { hasPrevious: true });
+  positions.add(Engine.hexKey(s.wormholePos));
+}
+assert.ok(positions.size > 1, "the wormhole's position varies across levels, not fixed at one spot");
+assert.deepStrictEqual(
+  Engine.createGameState({ ...wormholeLevel, id: 505 }, { hasPrevious: true }).wormholePos,
+  Engine.createGameState({ ...wormholeLevel, id: 505 }, { hasPrevious: true }).wormholePos,
+  "the same level id always places the wormhole at the same spot (reproducible)"
+);
+
 console.log("All golden-path assertions passed.");

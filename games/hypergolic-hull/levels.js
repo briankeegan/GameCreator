@@ -24,17 +24,14 @@
 (function (root) {
   "use strict";
 
-  // Board dimensions below are wider than the original pointy-top design
-  // (e.g. Sector 1 was 6 cols — now 9) — Clubhouse feedback: "too tall but
-  // not wide enough." Under flat-top hexes, a board's on-screen WIDTH is a
-  // pure function of `cols` alone (rows only add height — see hexToPixel),
-  // which is the opposite of pointy-top, where rows also widened the
-  // silhouette. The old cols/rows numbers were tuned for that other
-  // relationship and left ~40% of the screen width empty once rotated;
-  // roughly cols ≈ 0.8 × rows now fills the available width while staying
-  // a clearly tall Hoplite-style corridor. The old Sector 1 (a no-op
-  // "learn to move, no enemies" board) is gone too — "Level one is
-  // pointless" — so the campaign now opens on the Shockwave lesson.
+  // Every sector is the SAME board size, 9×11 — Clubhouse feedback
+  // confirmed this size directly ("the first level size honestly seems
+  // to be perfect") after two earlier attempts at capping growth still
+  // read as "too dense... pretty tiny." Difficulty now comes entirely
+  // from more/tougher enemies, hazards, and unlocked actions — never a
+  // bigger map. The old Sector 1 (a no-op "learn to move, no enemies"
+  // board) is gone too — "Level one is pointless" — so the campaign
+  // opens on the Shockwave lesson.
   const LEVELS = [
     // Sector 1 — Shockwave. One Interceptor between you and the gate.
     {
@@ -54,13 +51,13 @@
     {
       id: 2,
       name: "Tractor Beam",
-      board: { type: "rect", cols: 11, rows: 14 },
-      playerStart: { q: 5, r: 11 },
-      exit: { q: 10, r: -5 },
+      board: { type: "rect", cols: 9, rows: 11 },
+      playerStart: { q: 4, r: 8 },
+      exit: { q: 8, r: -4 },
       outpost: { q: 0, r: 0 },
       enemies: [
-        { type: "cruiser", q: 5, r: 5 },
-        { type: "interceptor", q: 7, r: 2 },
+        { type: "cruiser", q: 4, r: 3 },
+        { type: "interceptor", q: 6, r: 0 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
@@ -71,32 +68,32 @@
     {
       id: 3,
       name: "Fighter Squadron",
-      board: { type: "rect", cols: 12, rows: 15 },
-      playerStart: { q: 6, r: 11 },
-      exit: { q: 11, r: -5 },
+      board: { type: "rect", cols: 9, rows: 11 },
+      playerStart: { q: 4, r: 8 },
+      exit: { q: 8, r: -4 },
       outpost: { q: 0, r: 0 },
       enemies: [
-        { type: "cruiser", q: 3, r: 8 },
-        { type: "sentry", q: 9, r: 2 },
-        { type: "interceptor", q: 6, r: 0 },
+        { type: "cruiser", q: 2, r: 5 },
+        { type: "sentry", q: 6, r: 1 },
+        { type: "interceptor", q: 4, r: 0 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming", "tractor", "fighter"],
       intro: "Fighter Squadron online. Strike any enemy at range, then retrieve your fighters. The Sentry doesn't move — but its beam covers 2 hexes all around. Route around it or take it out.",
     },
-    // Sector 4 — Full Fleet. The biggest, tallest board, everything unlocked.
+    // Sector 4 — Full Fleet. Everything unlocked.
     {
       id: 4,
       name: "Full Fleet",
-      board: { type: "rect", cols: 14, rows: 17 },
-      playerStart: { q: 7, r: 13 },
-      exit: { q: 13, r: -6 },
+      board: { type: "rect", cols: 9, rows: 11 },
+      playerStart: { q: 4, r: 8 },
+      exit: { q: 8, r: -4 },
       outpost: { q: 0, r: 0 },
       enemies: [
-        { type: "cruiser", q: 4, r: 8 },
-        { type: "sentry", q: 10, r: 2 },
-        { type: "interceptor", q: 7, r: 0 },
+        { type: "cruiser", q: 3, r: 5 },
+        { type: "sentry", q: 6, r: 2 },
+        { type: "interceptor", q: 4, r: 0 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
@@ -137,18 +134,14 @@
   }
 
   function generateLevel(depth) {
-    // Capped well below what depth alone would give (was 21 rows, no cap
-    // reached until depth 10) — the on-screen board never grows past this,
-    // so every hex keeps shrinking as more of them are packed in past that
-    // point. Clubhouse feedback: "some of the later maps are way too big
-    // ... the little things look way too tiny." Enemy count keeps scaling
-    // independently past this cap (see enemyCount below), so difficulty
-    // still escalates — just via a denser board, not an ever-bigger one.
-    const rows = Math.min(11 + depth, 17);
-    // cols ≈ 0.8 × rows fills the available screen width under flat-top
-    // hexes (see the LEVELS comment above) instead of leaving ~40% of it
-    // empty — a wider board than the old pointy-top-tuned formula used.
-    const cols = Math.round(rows * 0.8);
+    // Fixed at the exact same size as every hand-authored sector — 9×11,
+    // confirmed directly by the Clubhouse as the right size ("the first
+    // level size honestly seems to be perfect") after two earlier, still
+    // insufficient attempts at capping growth. Board size never grows with
+    // depth anymore; enemy count/mix and hazards (see below) carry
+    // difficulty instead of an ever-bigger or ever-denser map.
+    const rows = 11;
+    const cols = 9;
     const rng = seededRandom(depth * 2654435761);
 
     // Flat-top rect board (see engine.js's buildBoardHexes): column c spans
@@ -181,6 +174,20 @@
       candidates[j] = tmp;
     }
 
+    // Asteroid fields — genuinely impassable terrain (see engine.js's
+    // isBlockingHazard), not just more enemies — so "not every square is
+    // always the same" (Clubhouse feedback). Kept away from the exit and
+    // Outpost so a run can never get its goal fully walled off.
+    const hazardCount = Math.min(1 + Math.floor(depth / 4), 4);
+    const hazards = [];
+    for (const hex of candidates) {
+      if (hazards.length >= hazardCount) break;
+      if (hexDist(hex, exit) < 2 || (outpost && hexDist(hex, outpost) < 2)) continue;
+      if (hazards.some((h) => hexDist(h, hex) < 2)) continue;
+      hazards.push({ type: "asteroid", q: hex.q, r: hex.r });
+    }
+    const hazardKeys = new Set(hazards.map((h) => `${h.q},${h.r}`));
+
     const enemyCount = Math.min(3 + Math.floor(depth / 2), 9);
     const typePool =
       depth < 8
@@ -189,6 +196,7 @@
     const enemies = [];
     for (const hex of candidates) {
       if (enemies.length >= enemyCount) break;
+      if (hazardKeys.has(`${hex.q},${hex.r}`)) continue;
       if (enemies.some((e) => hexDist(e, hex) < 2)) continue; // keep fresh spawns from stacking
       enemies.push({ type: typePool[Math.floor(rng() * typePool.length)], q: hex.q, r: hex.r });
     }
@@ -201,7 +209,7 @@
       exit,
       outpost,
       enemies,
-      hazards: [],
+      hazards,
       exitRule: "all-enemies-dead",
       intro: `Uncharted sector, depth ${depth}. No map, no mercy — salvage what you can.`,
     };

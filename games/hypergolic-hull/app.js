@@ -37,7 +37,6 @@ const overlayEl = document.getElementById("runOverlay");
 const overlayTitleEl = document.getElementById("runOverlayTitle");
 const overlayBodyEl = document.getElementById("runOverlayBody");
 const restartBtn = document.getElementById("restartBtn");
-const prevSectorBtn = document.getElementById("prevSectorBtn");
 const salvageValueEl = document.getElementById("salvageValue");
 const shieldWrapEl = document.getElementById("shieldWrap");
 const shieldValueEl = document.getElementById("shieldValue");
@@ -112,9 +111,13 @@ let inspectedEnemyId = null;
 // manual New Run tap — that's a weightier moment than a routine clear.
 // Sectors aren't one-way — Clubhouse feedback: "the ability to go forward
 // or backwards... you could potentially go back to an area you were at
-// before." Each cleared sector's exact state (enemies dead, salvage spent,
-// Outpost visited) is snapshotted before advancing, so returning to it
-// later shows it exactly as you left it, not a freshly-regenerated board.
+// before," and it "shouldn't just be a button you click... a wormhole
+// sort of thing." Each cleared sector's exact state (enemies dead, salvage
+// spent, Outpost visited) is snapshotted before advancing, so returning to
+// it later shows it exactly as you left it, not a freshly-regenerated
+// board. A wormhole (Engine.wormholeAvailable, drawn as a distinct portal
+// — see drawWormhole) appears somewhere on the new board whenever there's
+// a sector to go back to; flying onto it triggers the return, no button.
 // Going forward again from a rewound sector just re-advances normally —
 // no redo stack, only undo.
 let sectorHistory = [];
@@ -129,8 +132,12 @@ function advanceSector() {
 }
 
 function returnToPreviousSector() {
-  if (!sectorHistory.length || state.status !== "playing") return;
+  if (!sectorHistory.length) return;
   const prev = sectorHistory.pop();
+  // The wormhole-flash anim (if in flight) survives the swap, same as the
+  // forward warp does in loadSector — it keeps covering the screen right
+  // through the moment the map changes underneath it.
+  const keptAnims = anims.filter((a) => a.kind === "wormhole");
   levelIndex = prev.levelIndex;
   state = prev.state;
   // The saved snapshot is mid-"won" (that's the moment it was captured, on
@@ -139,7 +146,7 @@ function returnToPreviousSector() {
   // back out through advanceSector, same as clearing it the first time.
   if (state.status === "won") state.status = "playing";
   mode = null;
-  anims = [];
+  anims = keptAnims;
   plannedPath = null;
   autoRoute = null;
   outpostDismissed = false;
@@ -987,6 +994,87 @@ function drawWarpGate(center, r, online, now) {
   ctx.restore();
 }
 
+// The wormhole back to the previous sector — an in-world object (Clubhouse
+// feedback: "not just a button... a wormhole sort of thing"), deliberately
+// styled as the Warp Gate's opposite: amber instead of cyan, spinning the
+// other way, so "going back" reads as visually distinct from "going on."
+function drawWormhole(center, r, now) {
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  const t = (now || 0) / 1000;
+  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.4);
+  glow.addColorStop(0, "rgba(255,190,110,0.5)");
+  glow.addColorStop(0.6, "rgba(220,130,50,0.22)");
+  glow.addColorStop(1, "rgba(200,110,40,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 1.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();
+  ctx.rotate(-t * 0.8);
+  ctx.strokeStyle = "rgba(255,215,170,0.9)";
+  ctx.lineWidth = Math.max(1.5, r * 0.12);
+  ctx.lineCap = "round";
+  for (let i = 0; i < 3; i++) {
+    const a = (i * Math.PI * 2) / 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.62, a, a + Math.PI * 0.68);
+    ctx.stroke();
+  }
+  ctx.restore();
+  const pulse = 0.75 + 0.25 * Math.sin(t * 3);
+  const core = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.42 * pulse);
+  core.addColorStop(0, "rgba(255,255,255,0.95)");
+  core.addColorStop(1, "rgba(255,190,110,0)");
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.42 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// An asteroid field: genuinely impassable terrain (see engine.js's
+// isBlockingHazard), not just a colored hex — a small cluster of jagged
+// dark rocks reads as "a wall," distinct from the smooth circular Outpost/
+// Warp Gate. Shape is seeded per hex so it doesn't jitter frame to frame,
+// but still varies field to field.
+function drawAsteroidField(center, r, seed) {
+  const rng = seededRandom(`asteroid-${seed}`);
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  const rockCount = 4;
+  for (let i = 0; i < rockCount; i++) {
+    const angle = (i / rockCount) * Math.PI * 2 + rng() * 0.6;
+    const dist = r * (0.18 + rng() * 0.22);
+    const rockR = r * (0.24 + rng() * 0.16);
+    const cx = Math.cos(angle) * dist;
+    const cy = Math.sin(angle) * dist;
+    const points = 6 + Math.floor(rng() * 2);
+    ctx.beginPath();
+    for (let p = 0; p < points; p++) {
+      const pa = (p / points) * Math.PI * 2;
+      const pr = rockR * (0.75 + rng() * 0.35);
+      const px = cx + Math.cos(pa) * pr;
+      const py = cy + Math.sin(pa) * pr;
+      if (p === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = "#4a3d38";
+    ctx.fill();
+    ctx.strokeStyle = "#241c19";
+    ctx.lineWidth = Math.max(1, r * 0.05);
+    ctx.stroke();
+    // A small rim highlight on the upper-left, like sunlit rock.
+    ctx.strokeStyle = "rgba(180,150,120,0.35)";
+    ctx.lineWidth = Math.max(1, r * 0.03);
+    ctx.beginPath();
+    ctx.arc(cx - rockR * 0.15, cy - rockR * 0.15, rockR * 0.7, Math.PI * 0.9, Math.PI * 1.6);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // The Sector Outpost: a small drawn space station, not a 🛠️ emoji — matches
 // the vector-art treatment the flagship/Interceptor/Warp Gate already got.
 // A gunmetal hub with two docking struts and a slow amber beacon so it
@@ -1155,18 +1243,22 @@ function draw() {
     const k = Engine.hexKey(hex);
     const isExit = Engine.posEq(hex, state.exitPos);
     const isOutpost = state.outpostPos && Engine.posEq(hex, state.outpostPos);
+    const isWormhole = state.wormholePos && Engine.posEq(hex, state.wormholePos);
     const isHazard = Engine.hazardAt(state, hex);
 
     let fill = "#182238";
     let fillAlpha = 0.22; // plain floor: mostly transparent, the sector backdrop does the talking
     if (isHazard) {
-      fill = "#3a1030";
+      fill = isHazard.type === "asteroid" ? "#241f1c" : "#3a1030";
       fillAlpha = 0.8;
     } else if (isExit) {
       fill = state.exitUnlocked ? "#1f4d3a" : "#2a2f45";
       fillAlpha = 0.8;
     } else if (isOutpost) {
       fill = "#2a3f4d";
+      fillAlpha = 0.8;
+    } else if (isWormhole) {
+      fill = "#3a2a1c";
       fillAlpha = 0.8;
     }
     // The red strike-range wash is one of the legend's toggleable keys —
@@ -1207,6 +1299,10 @@ function draw() {
       drawWarpGate(center, geom.sx * 0.5, state.exitUnlocked, now);
     } else if (isOutpost) {
       drawOutpost(center, geom.sx * 0.56, now);
+    } else if (isWormhole) {
+      drawWormhole(center, geom.sx * 0.5, now);
+    } else if (isHazard && isHazard.type === "asteroid") {
+      drawAsteroidField(center, geom.sx * 0.56, k);
     }
   }
 
@@ -1358,6 +1454,35 @@ function draw() {
     ctx.fillRect(0, 0, geom.w, geom.h);
     ctx.restore();
   }
+
+  // Wormhole flash: reverse-warp back to a previous sector — same beat as
+  // the forward warp, but streaks pull INWARD (you're retreating through
+  // the wormhole, not blasting out a gate) and amber-tinted to read as
+  // distinct from the cyan forward warp.
+  const wormhole = anims.find((a) => a.kind === "wormhole" && now < a.start + a.dur);
+  if (wormhole) {
+    const p = animProgress(wormhole, now);
+    const cx = geom.w / 2, cy = geom.h / 2;
+    ctx.save();
+    const streakAlpha = Math.sin(Math.PI * Math.min(p * 1.4, 1)) * 0.9;
+    ctx.strokeStyle = `rgba(255, 195, 110, ${streakAlpha})`;
+    ctx.lineWidth = 2;
+    const streakCount = 24;
+    const maxLen = Math.max(geom.w, geom.h) * (0.3 + p * 0.9);
+    for (let i = 0; i < streakCount; i++) {
+      const angle = (i / streakCount) * Math.PI * 2;
+      const outerR = maxLen;
+      const innerR = maxLen * (1 - Math.min(p * 1.4, 1)) * 0.85 + maxLen * 0.15;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(angle) * outerR, cy + Math.sin(angle) * outerR);
+      ctx.lineTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR);
+      ctx.stroke();
+    }
+    const flashAlpha = Math.max(0, 1 - Math.abs(p - 0.55) * 2.4);
+    ctx.fillStyle = `rgba(255, 220, 170, ${flashAlpha * 0.85})`;
+    ctx.fillRect(0, 0, geom.w, geom.h);
+    ctx.restore();
+  }
 }
 
 // ---- HUD / state plumbing ---------------------------------------------------
@@ -1434,9 +1559,6 @@ function updateHud() {
 
   blinkBtn.hidden = !blinkUnlocked;
   blinkBtn.disabled = state.status !== "playing" || state.energy < Engine.BLINK_ENERGY_COST;
-
-  prevSectorBtn.hidden = sectorHistory.length === 0;
-  prevSectorBtn.disabled = state.status !== "playing";
 }
 
 function updateLegend() {
@@ -1591,6 +1713,18 @@ function handleAction(fn) {
       // the screen is fully obscured at that instant, so the map changes
       // underneath the flash instead of after it finishes.
       setTimeout(advanceSector, warpDur * 0.55);
+    } else if (
+      state.status === "playing" &&
+      Engine.wormholeAvailable(state) &&
+      !anims.some((a) => a.kind === "wormhole")
+    ) {
+      // Flying onto the wormhole is the return trip — same peak-opacity
+      // swap timing as the forward warp, tinted differently (see draw()'s
+      // "wormhole" case) so going back reads as distinct from going on.
+      const warpDur = 900;
+      anims.push({ kind: "wormhole", start: performance.now(), dur: warpDur });
+      requestAnimationFrame(tickAnims);
+      setTimeout(returnToPreviousSector, warpDur * 0.55);
     }
   } catch (err) {
     pushMessage(err.message);
@@ -1605,7 +1739,10 @@ function loadSector(index, carryOver, opts) {
   // state being replaced, so it just keeps fading out over the new sector.
   const keptAnims = opts && opts.keepWarpAnim ? anims.filter((a) => a.kind === "warp") : [];
   levelIndex = index;
-  state = Engine.createGameState(levelForIndex(levelIndex), carryOver);
+  // A wormhole back appears whenever there's a previous sector saved to
+  // return to (sectorHistory is empty right after "New Run") — every
+  // caller gets this automatically rather than having to remember it.
+  state = Engine.createGameState(levelForIndex(levelIndex), { ...carryOver, hasPrevious: sectorHistory.length > 0 });
   mode = null;
   anims = keptAnims;
   plannedPath = null;
@@ -1781,8 +1918,6 @@ restartBtn.addEventListener("click", () => {
   sectorHistory = [];
   loadSector(0);
 });
-
-prevSectorBtn.addEventListener("click", returnToPreviousSector);
 
 outpostCloseBtn.addEventListener("click", () => {
   outpostDismissed = true;
