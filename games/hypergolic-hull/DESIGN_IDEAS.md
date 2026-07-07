@@ -153,13 +153,18 @@ New item ideas that spend these resources:
 
 ## Meaningful choices beyond combat
 
-- **Branching sector map**: instead of one `generateLevel(depth)` per
-  depth, generate 2-3 candidate next-sectors with visible tags before the
-  player commits (e.g. "Debris Field — more salvage, more hostiles" vs
-  "Quiet Lane — fewer enemies, no Outpost" vs "Distress Signal — event
-  node, no combat"). This is the StS/FTL structural pattern and the
-  highest-leverage single addition — it turns "keep flying forever" into a
-  run with actual navigation decisions.
+- **Branching sector map — BUILT.** Every procedurally-generated sector now
+  offers 2 Warp Gates (`levels.js`'s `BRANCH_VARIANTS`, `engine.js`'s
+  `exits`/`usedExitVariant`), each consistently biasing enemy count/hazard
+  count/Outpost odds for whatever it leads to. Deliberate departure from
+  the visible-text-tags version originally sketched here: Clubhouse
+  feedback asked for "color coordinated, but maybe not tell people," so
+  the difference is real but never labeled in the legend or anywhere else
+  in the UI — discovered by flying them, not read off a tooltip. Still
+  open: only 2 variants exist (aggressive/quiet); a 3rd (e.g. an FTL-style
+  no-combat event node) is a natural next extension of the same
+  `BRANCH_VARIANTS` array. Branching is scoped to procedural depth only —
+  the hand-authored campaign stays linear on purpose (see below).
 - **Event nodes**: FTL-style non-combat encounters with 2-4 known,
   deterministic outcomes (no hidden dice — pick a branch, get its stated
   result), e.g. "A derelict escort offers to merge crews: +1 Max Hull, but
@@ -236,9 +241,7 @@ hostiles, and gives Outpost/event flavor text somewhere to point.
 2. **Lance Cannon** (forward-only weapon) — low risk, pure data addition
    using the existing `WEAPONS`/`pattern`/`facing` system; reuses
    `setFacing` already built for exactly this purpose.
-3. **Branching sector map** (2-3 tagged next-sector choices) — moderate
-   risk (new inter-sector UI screen) but the single highest-impact change
-   for run variety; doesn't touch the combat engine at all.
+3. ~~**Branching sector map**~~ — BUILT (see above).
 4. **Narrative naming pass** (name the existing enemy faction, add a
    couple of intro/flavor lines) — near-zero risk, pure text/data, and
    makes every other proposal land better.
