@@ -17,7 +17,7 @@ const CARDS = {
   howl: { id: "howl", name: "Howl", cost: 1, damage: 4, aoe: true, text: "Deal 4 damage to ALL enemies." },
   bigBark: { id: "bigBark", name: "Big Bark", cost: 2, damage: 8, aoe: true, text: "Deal 8 damage to ALL enemies." },
   alphaStrike: { id: "alphaStrike", name: "Alpha Strike", cost: 2, damage: 14, text: "Deal 14 damage." },
-  sniffOut: { id: "sniffOut", name: "Sniff Out", cost: 0, draw: 2, text: "Draw 2 cards." },
+  sniffOut: { id: "sniffOut", name: "Sniff Out", cost: 1, draw: 2, text: "Draw 2 cards." },
   secondWind: { id: "secondWind", name: "Second Wind", cost: 1, block: 8, draw: 1, text: "Gain 8 Block. Draw a card." },
   // Vulnerable cards: a target that's Vulnerable takes +50% damage from every
   // hit while it lasts — a setup layer so a debuff can be worth a card slot over
@@ -49,7 +49,7 @@ const CARDS = {
   warCry: { id: "warCry", name: "War Cry", cost: 2, damage: 10, aoe: true, block: 6, text: "Deal 10 to ALL enemies. Gain 6 Block." },
   bulwark: { id: "bulwark", name: "Bulwark", cost: 1, block: 14, text: "Gain 14 Block." },
   huntersMark: { id: "huntersMark", name: "Hunter's Mark", cost: 0, damage: 8, text: "Deal 8 damage." },
-  reserves: { id: "reserves", name: "Reserves", cost: 0, draw: 2, energy: 1, text: "Draw 2 cards. Gain 1 Energy." },
+  reserves: { id: "reserves", name: "Reserves", cost: 1, draw: 2, energy: 1, text: "Draw 2 cards. Gain 1 Energy." },
 };
 
 // The three playable dog classes — Slay the Spire-style, each with its own
@@ -60,8 +60,8 @@ const CLASSES = {
     id: "riddle",
     name: "Riddle",
     breed: "Wire Fox Terrier",
-    blurb: "A relentless digger — fast attacks and card draw. Fragile but hits early and often, if you spend your Energy well.",
-    maxHp: 36,
+    blurb: "A relentless digger — fast attacks and card draw. Genuinely fragile: the thinnest Hull of any dog, so her extra Energy and draw have to end fights fast before she gets hit back.",
+    maxHp: 26,
     // Frenzy: draws an extra card AND runs on 4 Energy — she needs the throughput
     // to race enemies down before her thin Hull gives out. What got nerfed to
     // stop her one-shotting the opening fight is her cheap chip: Scurry and Dig In
@@ -87,7 +87,7 @@ const CLASSES = {
     name: "Bevy",
     breed: "Flat-haired Goldendoodle",
     blurb: "Endlessly adaptable — draws cards and makes energy. Build whatever play the turn needs.",
-    maxHp: 26,
+    maxHp: 30,
     // Boundless: an extra Energy every turn, so it can chain its cheap draw cards.
     mechanic: { energyBonus: 1, name: "Boundless", text: "+1 Energy every turn (4 total)." },
     deck: ["rally", "rally", "rally", "fetch", "fetch", "fetch", "flurry", "flurry", "sniffOut", "sniffOut", "bite", "bite"],

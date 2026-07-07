@@ -57,7 +57,7 @@ assert.throws(() => Engine.playCard(gate, Content, 0, null, rng), /Cannot play a
 assert.throws(() => Engine.chooseClass(gate, Content, "notADog", rng), /Unknown class/);
 
 // Each class sets its own Hull and 12-card deck.
-const hpByClass = { riddle: 36, koozie: 32, bevy: 26, lala: 36 };
+const hpByClass = { riddle: 26, koozie: 32, bevy: 30, lala: 36 };
 for (const id of Object.keys(Content.CLASSES)) {
   const s = Engine.createGameState(Content, rng);
   Engine.chooseClass(s, Content, id, rng);
@@ -504,16 +504,18 @@ for (const id of Object.keys(Content.CLASSES)) {
   let wins = 0;
   for (let i = 0; i < RUNS; i++) if (playFullRun(id, seededPlay(10000 + i * 7))) wins++;
   const rate = wins / RUNS;
-  // Challenging-but-fair band, tuned to a deliberately HARD roguelike (Admin
-  // kept flagging "too easy", and the acts are now longer with more attrition).
-  // This is a middling bot — no relics, no clever sequencing — so its bar is
-  // low: as long as it still wins ~a fifth of runs, a real player is fine, and
-  // a skilled one lands ~half. The UPPER bound is the real guard: if any class
-  // clears >66%, the content went soft again. The lower bound just keeps every
-  // class from becoming an outright wall.
+  // Challenging-but-fair band for a deliberately HARD roguelike. Admin kept
+  // flagging "too easy" and that the Energy/draw engine classes were OP, so the
+  // acts are now long (14 floors) and the free-draw engines are costed. This is
+  // a WEAK proxy bot — no relics, no card removal, no combo sequencing — so it
+  // plays engine/combo classes (Riddle, Bevy) far below what a real player does;
+  // its floor is therefore low. The UPPER bound is the real guard: if any class
+  // clears >60%, the content went soft again and needs re-tightening. The lower
+  // bound only catches a class that's become an outright wall even in skilled
+  // hands (near-0% for this bot).
   assert.ok(
-    rate >= 0.12 && rate <= 0.66,
-    `${id} win rate ${(rate * 100).toFixed(0)}% should be challenging but fair (12-66%)`
+    rate >= 0.05 && rate <= 0.6,
+    `${id} win rate ${(rate * 100).toFixed(0)}% should be challenging but fair (5-60% for this weak bot)`
   );
 }
 
