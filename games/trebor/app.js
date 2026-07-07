@@ -482,9 +482,21 @@
 
   function cardFrameHtml(card) {
     const artBase = card.upgraded ? card.id.replace(/Plus$/, "") : card.id;
-    const artImg = CARD_ART.has(artBase)
-      ? `<img class="card-art-img" src="icons/card-${artBase}.png" alt="" loading="lazy" onerror="this.remove()" />`
-      : "";
+    // Per-class breed art: a card is drawn as the dog you're playing (a wire fox
+    // terrier Bite for Riddle, a pit-bull Bite for Lala, ...). Try the
+    // class-specific image first (icons/card-<id>-<class>.png), fall back to the
+    // generic armored-warrior art (icons/card-<id>.png), then to the SVG glyph —
+    // so breed variants can be added one at a time without breaking any card.
+    const cls = state && state.classId ? state.classId : null;
+    let artImg = "";
+    if (CARD_ART.has(artBase)) {
+      const generic = `icons/card-${artBase}.png`;
+      const src = cls ? `icons/card-${artBase}-${cls}.png` : generic;
+      const onerr = cls
+        ? `if(this.dataset.fb){this.remove()}else{this.dataset.fb=1;this.src='${generic}'}`
+        : "this.remove()";
+      artImg = `<img class="card-art-img" src="${src}" alt="" loading="lazy" onerror="${onerr}" />`;
+    }
     return `
       <span class="card-cost">${card.cost}</span>
       <span class="card-art"><span class="card-art-glyph">${CARD_ICONS[cardIconKey(card)]}</span>${artImg}</span>
