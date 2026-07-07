@@ -69,11 +69,27 @@ const LEVELS = HypergolicLevels.LEVELS;
 // The hand-authored campaign (LEVELS) is the tutorial; every sector past it
 // is generated on demand — the run never hard-stops. Same LevelDef shape
 // either way, so nothing downstream (engine, renderer, save system) needs
-// to know or care which kind a given sector is.
-function levelForIndex(index) {
-  return index < LEVELS.length ? LEVELS[index] : HypergolicLevels.generateLevel(index + 1);
+// to know or care which kind a given sector is. `variantId` picks which of
+// a branching sector's Warp Gates you came through — see BRANCH_TINTS and
+// the "Branching Warp Gates" note near drawWarpGate's call site below.
+function levelForIndex(index, variantId) {
+  return index < LEVELS.length ? LEVELS[index] : HypergolicLevels.generateLevel(index + 1, variantId);
 }
 let levelIndex = 0;
+
+// Every procedurally-generated sector (past the hand-authored campaign)
+// offers 2 Warp Gates instead of 1 — Clubhouse feedback: "different sort of
+// paths you could take and options based on the different portals." Each
+// gate's color is real and consistent (same variant always tends the same
+// way — see generateLevel's BRANCH_VARIANTS in levels.js) but deliberately
+// undocumented anywhere in the UI ("maybe color coordinated, but maybe not
+// tell people") — it's meta-knowledge you pick up by flying them, not a
+// stated rule. Single-exit sectors (the whole hand-authored campaign, plus
+// the first procedural sector) pass no tint and get the original cyan gate.
+const BRANCH_TINTS = {
+  aggressive: [255, 120, 90], // warm — heavier resistance, less likely to have an Outpost
+  quiet: [120, 190, 255], // cool — lighter resistance, more likely to have an Outpost
+};
 let state = Engine.createGameState(levelForIndex(levelIndex));
 // null means no mode armed — plain moves/route-preview work regardless.
 let mode = null;
@@ -140,7 +156,7 @@ function advanceSector() {
   loadSector(
     levelIndex + 1,
     { salvage: state.salvage, maxHull: state.maxHull, shieldCharges: state.shieldCharges, maxEnergy: state.maxEnergy },
-    { keepWarpAnim: true }
+    { keepWarpAnim: true, variantId: state.usedExitVariant }
   );
 }
 
@@ -956,25 +972,32 @@ function makeExplosionParticles(count) {
 }
 
 // The Warp Gate, drawn as real art instead of a 🌀 emoji: concentric rings
-// with a swirling luminous core. Online = live cyan-green portal (spinning arms
-// + a pulsing bright core); not-yet-powered = a dim inert grey ring, so it
-// still reads as "the exit, just not open yet."
-function drawWarpGate(center, r, online, now) {
+// with a swirling luminous core. Online = a live portal (spinning arms + a
+// pulsing bright core), tinted `rgb` (defaults to cyan-green — the plain,
+// unbranched Warp Gate every hand-authored sector and the very first
+// procedural one uses); not-yet-powered = a dim inert grey ring, so it
+// still reads as "the exit, just not open yet." A branching sector's two
+// gates each get a different `rgb` (see BRANCH_TINTS) — Clubhouse feedback:
+// "maybe we could have [them] color coordinated, but maybe not tell
+// people" — so the color is real and consistent, but never spelled out in
+// the legend; you learn what each one tends to mean by flying it.
+function drawWarpGate(center, r, online, now, rgb) {
+  const [cr, cg, cb] = rgb || [120, 255, 210];
   ctx.save();
   ctx.translate(center.x, center.y);
   const t = (now || 0) / 1000;
   if (online) {
     const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.4);
-    glow.addColorStop(0, "rgba(120,255,210,0.5)");
-    glow.addColorStop(0.6, "rgba(60,200,180,0.22)");
-    glow.addColorStop(1, "rgba(40,180,160,0)");
+    glow.addColorStop(0, `rgba(${cr},${cg},${cb},0.5)`);
+    glow.addColorStop(0.6, `rgba(${Math.round(cr * 0.5)},${Math.round(cg * 0.78)},${Math.round(cb * 0.7)},0.22)`);
+    glow.addColorStop(1, `rgba(${Math.round(cr * 0.33)},${Math.round(cg * 0.7)},${Math.round(cb * 0.63)},0)`);
     ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(0, 0, r * 1.4, 0, Math.PI * 2);
     ctx.fill();
     ctx.save();
     ctx.rotate(t * 0.8);
-    ctx.strokeStyle = "rgba(180,255,235,0.9)";
+    ctx.strokeStyle = `rgba(${Math.min(255, cr + 60)},${Math.min(255, cg + 20)},${Math.min(255, cb + 25)},0.9)`;
     ctx.lineWidth = Math.max(1.5, r * 0.12);
     ctx.lineCap = "round";
     for (let i = 0; i < 3; i++) {
@@ -987,7 +1010,7 @@ function drawWarpGate(center, r, online, now) {
     const pulse = 0.75 + 0.25 * Math.sin(t * 3);
     const core = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.42 * pulse);
     core.addColorStop(0, "rgba(255,255,255,0.95)");
-    core.addColorStop(1, "rgba(120,255,210,0)");
+    core.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
     ctx.fillStyle = core;
     ctx.beginPath();
     ctx.arc(0, 0, r * 0.42 * pulse, 0, Math.PI * 2);
@@ -1254,7 +1277,8 @@ function draw() {
   for (const hex of state.boardHexes) {
     const center = hexToPixel(hex);
     const k = Engine.hexKey(hex);
-    const isExit = Engine.posEq(hex, state.exitPos);
+    const exitHere = state.exits.find((e) => Engine.posEq(hex, e));
+    const isExit = Boolean(exitHere);
     const isOutpost = state.outpostPos && Engine.posEq(hex, state.outpostPos);
     const isWormhole = state.wormholePos && Engine.posEq(hex, state.wormholePos);
     const isHazard = Engine.hazardAt(state, hex);
@@ -1309,7 +1333,7 @@ function draw() {
     drawHex(center, fill, stroke, strokeWidth, fillAlpha);
 
     if (isExit) {
-      drawWarpGate(center, geom.sx * 0.5, state.exitUnlocked, now);
+      drawWarpGate(center, geom.sx * 0.5, state.exitUnlocked, now, BRANCH_TINTS[exitHere.variantId]);
     } else if (isOutpost) {
       drawOutpost(center, geom.sx * 0.56, now);
     } else if (isWormhole) {
@@ -1763,7 +1787,13 @@ function loadSector(index, carryOver, opts) {
   // A wormhole back appears whenever there's a previous sector saved to
   // return to (sectorHistory is empty right after "New Run") — every
   // caller gets this automatically rather than having to remember it.
-  state = Engine.createGameState(levelForIndex(levelIndex), { ...carryOver, hasPrevious: sectorHistory.length > 0 });
+  // opts.variantId (which of a branching sector's Warp Gates was used —
+  // see advanceSector) picks which content generateLevel deals for this
+  // depth; omitted for the campaign and for a fresh "New Run".
+  state = Engine.createGameState(levelForIndex(levelIndex, opts && opts.variantId), {
+    ...carryOver,
+    hasPrevious: sectorHistory.length > 0,
+  });
   mode = null;
   anims = keptAnims;
   plannedPath = null;

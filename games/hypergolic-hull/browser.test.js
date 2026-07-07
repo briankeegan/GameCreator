@@ -308,6 +308,26 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false);
   await page.close();
 
+  // ---- Branching Warp Gates: two gates render without errors ---------------
+  // ("different sort of paths... based on the different portals" — the
+  // decision logic is covered in engine.test.js; this just confirms app.js's
+  // renderer doesn't choke on a real two-exit state.) window.__hhState is a
+  // live reference into app.js's internal state (see render()), so mutate it
+  // in place rather than reassigning — a reassignment wouldn't touch what
+  // the renderer actually reads.
+  page = await freshPage(browser, url, errors);
+  await page.evaluate(() => {
+    const branchLevel = window.HypergolicLevels.generateLevel(30);
+    const fresh = window.HypergolicEngine.createGameState(branchLevel);
+    Object.assign(window.__hhState, fresh);
+    window.dispatchEvent(new Event("resize"));
+  });
+  await page.waitForTimeout(50);
+  const branchExits = await page.evaluate(() => window.__hhState.exits);
+  assert.strictEqual(branchExits.length, 2, "a generated sector's state carries both Warp Gates");
+  assert.notStrictEqual(branchExits[0].variantId, branchExits[1].variantId, "the two gates are tagged with different variants");
+  await page.close();
+
   await browser.close();
   server.close();
 

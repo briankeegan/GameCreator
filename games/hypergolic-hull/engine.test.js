@@ -623,6 +623,56 @@ assert.deepStrictEqual(generateLevel(12), generateLevel(12), "generateLevel is d
 assert.notDeepStrictEqual(generateLevel(6).enemies, generateLevel(20).enemies, "deeper sectors deal a different board");
 assert.ok(generateLevel(20).enemies.length >= generateLevel(6).enemies.length, "enemy count scales up (or holds) with depth");
 
+// ---- Branching Warp Gates: "different sort of paths... based on the ------
+// different portals" (Clubhouse feedback) — every generated sector offers
+// 2 exits, each biasing what comes next, deterministically per variant.
+const branchLevel = generateLevel(30);
+assert.strictEqual(branchLevel.exits.length, 2, "a generated sector always offers 2 Warp Gates");
+assert.deepStrictEqual(branchLevel.exit, branchLevel.exits[0], "the singular `exit` field is just the first gate, for single-exit callers");
+const branchIds = branchLevel.exits.map((e) => e.variantId);
+assert.deepStrictEqual(new Set(branchIds).size, 2, "the two gates are tagged with different variant ids");
+
+const branchState = Engine.createGameState(branchLevel);
+assert.strictEqual(branchState.exits.length, 2, "state.exits mirrors the level's two gates");
+assert.ok(Engine.posEq(branchState.exitPos, branchState.exits[0]), "state.exitPos is still the primary/first gate");
+assert.strictEqual(branchState.usedExitVariant, null, "no gate has been used yet");
+
+// "Aggressive" and "quiet" arrivals at the SAME depth deal different boards
+// — the incoming variant is folded into the seed, not just a label.
+const aggressive = generateLevel(31, "aggressive");
+const quiet = generateLevel(31, "quiet");
+assert.notDeepStrictEqual(aggressive.enemies, quiet.enemies, "different incoming variants deal genuinely different boards at the same depth");
+assert.ok(aggressive.enemies.length >= quiet.enemies.length, "the 'aggressive' variant never has fewer enemies than 'quiet' at the same depth");
+assert.deepStrictEqual(generateLevel(31, "aggressive"), generateLevel(31, "aggressive"), "a given depth+variant pair is still fully deterministic");
+
+// Flying through the SECOND gate (not just the first) is what advanceSector
+// reads to pick the next sector's variant — see app.js.
+const secondGateLevel = {
+  id: 989,
+  board: { type: "rect", cols: 5, rows: 5 },
+  playerStart: { q: 2, r: 3 }, // bottom of the middle column (col 2: r ranges -1..3)
+  exits: [
+    { q: 4, r: -2, variantId: "aggressive" }, // top of the rightmost column (col 4: r ranges -2..2)
+    { q: 2, r: -1, variantId: "quiet" }, // top of the middle column
+  ],
+  outpost: null,
+  enemies: [],
+  hazards: [],
+  exitRule: "all-enemies-dead",
+};
+const secondGateState = Engine.createGameState(secondGateLevel);
+let cur = secondGateState.playerPos;
+while (!Engine.posEq(cur, secondGateLevel.exits[1])) {
+  const step = Engine.legalSublightTargets(secondGateState).reduce((best, cand) => {
+    const d = Engine.hexDistance(cand, secondGateLevel.exits[1]);
+    return !best || d < best.d ? { to: cand, d } : best;
+  }, null).to;
+  Engine.applySublight(secondGateState, step);
+  cur = secondGateState.playerPos;
+}
+assert.strictEqual(secondGateState.status, "won", "reaching either gate completes the sector");
+assert.strictEqual(secondGateState.usedExitVariant, "quiet", "usedExitVariant records exactly which gate was actually used");
+
 // ---- Energy + Random Blink: a second resource, deliberately random -------
 // Energy regenerates 1/turn (distinct from Hull, which never self-heals)
 // and pays for Random Blink, a genuine exception to "zero randomness in
@@ -736,6 +786,15 @@ assert.ok(
   !Engine.posEq(withHistoryState.wormholePos, withHistoryState.playerPos) &&
     !Engine.posEq(withHistoryState.wormholePos, withHistoryState.exitPos),
   "the wormhole doesn't overlap the player start or the Warp Gate"
+);
+// "When you go through a portal, you should end up at the portal... to the
+// other side" — the flagship spawns adjacent to the wormhole it arrived
+// through, not somewhere unrelated to it (but not literally ON it either,
+// so the very next action doesn't instantly trip the return trip).
+assert.strictEqual(
+  Engine.hexDistance(withHistoryState.wormholePos, withHistoryState.playerPos),
+  1,
+  "the flagship arrives right beside the portal it came through"
 );
 assert.strictEqual(Engine.wormholeAvailable(withHistoryState), false, "not available until the flagship is actually on it");
 

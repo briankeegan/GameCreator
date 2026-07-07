@@ -133,7 +133,20 @@
     };
   }
 
-  function generateLevel(depth) {
+  // Every procedural sector offers 2 Warp Gates, not 1 — Clubhouse feedback:
+  // "different sort of paths you could take and options based on the
+  // different portals." Each variant consistently biases what its gate
+  // leads to (enemy count, hazard count, Outpost odds) the same way every
+  // time — a real, deterministic difference, not flavor — but nothing in
+  // the game ever states what a variant means ("maybe color coordinated,
+  // but maybe not tell people"); app.js picks a distinct visual tint per
+  // id (see BRANCH_TINTS there) and that's the only signal given.
+  const BRANCH_VARIANTS = [
+    { id: "aggressive", enemyDelta: 2, hazardDelta: 1, outpostChanceDelta: -0.25 },
+    { id: "quiet", enemyDelta: -1, hazardDelta: 0, outpostChanceDelta: 0.25 },
+  ];
+
+  function generateLevel(depth, variantId) {
     // Fixed at the exact same size as every hand-authored sector — 9×11,
     // confirmed directly by the Clubhouse as the right size ("the first
     // level size honestly seems to be perfect") after two earlier, still
@@ -142,19 +155,36 @@
     // difficulty instead of an ever-bigger or ever-denser map.
     const rows = 11;
     const cols = 9;
-    const rng = seededRandom(depth * 2654435761);
+    // `variantId` is which gate got you INTO this sector (see app.js's
+    // advanceSector) — it biases what this sector itself contains. Folded
+    // into the seed too, so "aggressive" and "quiet" arrivals at the same
+    // depth deal genuinely different boards, not just different enemy
+    // counts off the same layout.
+    const variant = BRANCH_VARIANTS.find((v) => v.id === variantId) || null;
+    const variantSeedOffset = variant ? (BRANCH_VARIANTS.indexOf(variant) + 1) * 104729 : 0;
+    const rng = seededRandom(depth * 2654435761 + variantSeedOffset);
 
     // Flat-top rect board (see engine.js's buildBoardHexes): column c spans
     // r = -floor(c/2) .. rows-1-floor(c/2). Player starts at the bottom of
-    // the middle column; exit/outpost sit at the top of the rightmost/
-    // leftmost columns, same layout intent as the hand-authored campaign.
+    // the middle column. This sector's own two OUTGOING gates sit at the
+    // top of the rightmost column (the original single-exit spot) and the
+    // top of the middle column (straight up from playerStart) — same
+    // layout intent as the hand-authored campaign's single exit, just two
+    // of them now.
     const startCol = Math.floor(cols / 2);
     const playerStart = { q: startCol, r: rows - 1 - Math.floor(startCol / 2) };
-    const exit = { q: cols - 1, r: -Math.floor((cols - 1) / 2) };
+    const exits = BRANCH_VARIANTS.map((v, i) => ({
+      q: i === 0 ? cols - 1 : startCol,
+      r: i === 0 ? -Math.floor((cols - 1) / 2) : -Math.floor(startCol / 2),
+      variantId: v.id,
+    }));
+    const exit = exits[0]; // primary/first gate — every non-branching call site reads this
     // Not every sector gets an Outpost — a guaranteed safe restock every
     // single time made the crawl "too easy and not very interesting"
-    // (Clubhouse feedback). ~60% of generated sectors have one.
-    const hasOutpost = rng() < 0.6;
+    // (Clubhouse feedback). ~60% of generated sectors have one, shifted by
+    // the incoming variant's bias.
+    const outpostChance = Math.min(0.9, Math.max(0.1, 0.6 + (variant ? variant.outpostChanceDelta : 0)));
+    const hasOutpost = rng() < outpostChance;
     const outpost = hasOutpost ? { q: 0, r: 0 } : null;
 
     const hexes = [];
@@ -163,7 +193,7 @@
         hexes.push({ q: col, r: row - Math.floor(col / 2) });
       }
     }
-    const reserved = [playerStart, exit, ...(outpost ? [outpost] : [])];
+    const reserved = [playerStart, ...exits, ...(outpost ? [outpost] : [])];
     const candidates = hexes.filter(
       (h) => hexDist(h, playerStart) >= 3 && !reserved.some((r2) => r2.q === h.q && r2.r === h.r)
     );
@@ -176,19 +206,19 @@
 
     // Asteroid fields — genuinely impassable terrain (see engine.js's
     // isBlockingHazard), not just more enemies — so "not every square is
-    // always the same" (Clubhouse feedback). Kept away from the exit and
-    // Outpost so a run can never get its goal fully walled off.
-    const hazardCount = Math.min(1 + Math.floor(depth / 4), 4);
+    // always the same" (Clubhouse feedback). Kept away from both exits and
+    // the Outpost so a run can never get its goal fully walled off.
+    const hazardCount = Math.max(0, Math.min(1 + Math.floor(depth / 4) + (variant ? variant.hazardDelta : 0), 4));
     const hazards = [];
     for (const hex of candidates) {
       if (hazards.length >= hazardCount) break;
-      if (hexDist(hex, exit) < 2 || (outpost && hexDist(hex, outpost) < 2)) continue;
+      if (exits.some((ex) => hexDist(hex, ex) < 2) || (outpost && hexDist(hex, outpost) < 2)) continue;
       if (hazards.some((h) => hexDist(h, hex) < 2)) continue;
       hazards.push({ type: "asteroid", q: hex.q, r: hex.r });
     }
     const hazardKeys = new Set(hazards.map((h) => `${h.q},${h.r}`));
 
-    const enemyCount = Math.min(3 + Math.floor(depth / 2), 9);
+    const enemyCount = Math.max(1, Math.min(3 + Math.floor(depth / 2) + (variant ? variant.enemyDelta : 0), 9));
     const typePool =
       depth < 8
         ? ["interceptor", "interceptor", "cruiser", "sentry"]
@@ -207,6 +237,7 @@
       board: { type: "rect", cols, rows },
       playerStart,
       exit,
+      exits,
       outpost,
       enemies,
       hazards,

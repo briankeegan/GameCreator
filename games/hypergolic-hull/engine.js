@@ -97,6 +97,15 @@
 
   // ---- level validation ---------------------------------------------------
 
+  // A level normally has one Warp Gate (`exit`); a branching sector (see
+  // levels.js's generateLevel) instead lists 2+ in `exits`, each tagged
+  // with a `variantId` — "different sort of paths you could take... based
+  // on the different portals" (Clubhouse feedback). Every other code path
+  // (validation, state, win-check) treats `exit` as just `exits[0]`.
+  function exitList(level) {
+    return level.exits && level.exits.length ? level.exits : [level.exit];
+  }
+
   function validateLevel(level) {
     const hexes = buildBoardHexes(level);
     const keys = new Set(hexes.map(hexKey));
@@ -106,10 +115,12 @@
     };
 
     mustBeOn("playerStart", level.playerStart);
-    mustBeOn("exit", level.exit);
-    if (!isBorder(level.exit)) {
-      throw new Error(`Level ${level.id}: exit is not on the board's edge`);
-    }
+    const exits = exitList(level);
+    exits.forEach((ex, i) => {
+      const label = exits.length > 1 ? `exit${i}` : "exit";
+      mustBeOn(label, ex);
+      if (!isBorder(ex)) throw new Error(`Level ${level.id}: ${label} is not on the board's edge`);
+    });
     if (level.outpost) {
       mustBeOn("outpost", level.outpost);
       if (!isBorder(level.outpost)) {
@@ -134,7 +145,7 @@
     const seen = new Map();
     const entities = [
       { label: "playerStart", pos: level.playerStart },
-      { label: "exit", pos: level.exit },
+      ...exits.map((ex, i) => ({ label: exits.length > 1 ? `exit${i}` : "exit", pos: ex })),
       ...(level.outpost ? [{ label: "outpost", pos: level.outpost }] : []),
       ...level.enemies.map((e, i) => ({ label: `enemy${i}`, pos: e })),
       ...(level.hazards || []).map((h, i) => ({ label: `hazard${i}`, pos: h })),
@@ -287,16 +298,18 @@
   // (Clubhouse feedback: "it should be, like... a wormhole sort of thing").
   // Position is seeded per level id, same pattern as pickOutpostOfferIds,
   // so it's reproducible but never fixed at one spot — "the wormholes
-  // shouldn't always just end up in the exact same place."
-  function pickWormholePos(state, levelId) {
+  // shouldn't always just end up in the exact same place." The flagship
+  // spawns right beside it (see createGameState), not somewhere unrelated —
+  // "when you go through a portal, you should end up at the portal...
+  // to the other side," the same doorway from both directions.
+  function pickPortalPos(state, levelId) {
     const rng = seededRandom(levelId * 15485863 + 29);
-    const reserved = [state.playerPos, state.exitPos, state.outpostPos].filter(Boolean);
+    const reserved = [...state.exits, state.outpostPos].filter(Boolean);
     const candidates = state.boardHexes.filter(
       (h) =>
         !reserved.some((r) => posEq(r, h)) &&
-        !enemyAt(state, h) &&
         !hazardAt(state, h) &&
-        hexDistance(h, state.playerPos) >= 2
+        !state.enemies.some((e) => e.alive && hexDistance(h, e) < 2)
     );
     if (!candidates.length) return null;
     return candidates[Math.floor(rng() * candidates.length)];
@@ -318,7 +331,9 @@
       shieldCharges: (carryOver && carryOver.shieldCharges) || 0,
       maxEnergy: (carryOver && carryOver.maxEnergy) || START_ENERGY,
       energy: (carryOver && carryOver.maxEnergy) || START_ENERGY,
-      exitPos: { q: level.exit.q, r: level.exit.r },
+      exitPos: { q: exitList(level)[0].q, r: exitList(level)[0].r }, // primary/first gate — kept for single-exit callers
+      exits: exitList(level).map((ex) => ({ q: ex.q, r: ex.r, variantId: ex.variantId || null })),
+      usedExitVariant: null, // set on win — see endPlayerAction — which gate you actually flew through
       outpostPos: level.outpost ? { q: level.outpost.q, r: level.outpost.r } : null,
       outpostOfferIds: level.outpost ? pickOutpostOfferIds(level.id) : [],
       exitRule: level.exitRule,
@@ -356,7 +371,26 @@
       wormholePos: null,
     };
     if (carryOver && carryOver.hasPrevious) {
-      state.wormholePos = pickWormholePos(state, level.id);
+      const portalPos = pickPortalPos(state, level.id);
+      if (portalPos) {
+        state.wormholePos = portalPos;
+        // Arrive right beside the portal you came through, not literally on
+        // top of it — otherwise the very next action (e.g. Hold Position)
+        // would instantly trip the return trip, since wormholeAvailable
+        // just checks "standing on it." Mirrors how the Warp Gate always
+        // sits apart from playerStart so its own "on it -> next action
+        // warps" rule never fires by surprise either. Falls back to the
+        // portal hex itself if every neighbor is off-board/blocked.
+        const arrivalCandidates = neighbors(portalPos).filter(
+          (h) =>
+            onBoard(state, h) &&
+            !hazardAt(state, h) &&
+            !state.exits.some((e) => posEq(h, e)) &&
+            !(state.outpostPos && posEq(h, state.outpostPos)) &&
+            !state.enemies.some((e) => e.alive && posEq(e, h))
+        );
+        state.playerPos = arrivalCandidates[0] || portalPos;
+      }
     }
     if (level.intro) pushLog(state, level.intro);
     checkExitUnlock(state); // an enemy-free tutorial board starts with the gate online
@@ -571,8 +605,10 @@
     enemyPhase(state);
     if (state.status !== "playing") return;
     checkExitUnlock(state);
-    if (posEq(state.playerPos, state.exitPos) && state.exitUnlocked) {
+    const usedExit = state.exits.find((e) => posEq(state.playerPos, e));
+    if (usedExit && state.exitUnlocked) {
       state.status = "won";
+      state.usedExitVariant = usedExit.variantId;
       pushLog(state, "Level complete.");
     }
   }
