@@ -508,8 +508,23 @@ Engine.applyOutpostPurchase(salvageState, "reinforce");
 assert.strictEqual(salvageState.maxHull, maxHullBefore + 1, "Reinforce Hull raises the cap by 1");
 assert.strictEqual(salvageState.salvage, 0, "Reinforce Hull spent all the salvage set aside for it");
 
+// Every offer except Repair is one-time per outpost — buying it removes
+// it from what's on offer here, so it can't just be bought over and over.
+assert.ok(
+  !salvageState.outpostOfferIds.includes("reinforce"),
+  "Reinforce Hull is removed from this outpost's offers once bought"
+);
 assert.throws(
   () => Engine.applyOutpostPurchase(salvageState, "reinforce"),
+  /not on offer here/,
+  "a one-time offer refuses a second purchase, even with the salvage to afford it"
+);
+
+// A still-available offer separately refuses when salvage falls short.
+salvageState.outpostOfferIds = ["repair", "shield"];
+salvageState.salvage = 0;
+assert.throws(
+  () => Engine.applyOutpostPurchase(salvageState, "shield"),
   /not enough salvage/,
   "an offer refuses when salvage can't cover its cost"
 );
@@ -523,10 +538,12 @@ assert.strictEqual(carriedState.maxHull, salvageState.maxHull, "a permanent max-
 assert.strictEqual(carriedState.hull, carriedState.maxHull, "the new sector still starts at full (carried-over) Hull");
 assert.strictEqual(carriedState.shieldCharges, 2, "banked Shield charges carry over too");
 
-// ---- outpost offer variety: not the same two things every visit ---------
-// Repair is always offered (the reliable baseline); the second offer is
-// picked deterministically per level id, so different levels vary while a
-// given level always deals the same shop (reproducible runs).
+// ---- outpost offer variety: not the same fixed shop every visit ---------
+// Repair is always offered (the reliable baseline); how many EXTRA offers
+// sit alongside it varies (0-2), picked deterministically per level id, so
+// different levels vary while a given level always deals the same shop
+// (reproducible runs) — a fixed count every time read as "too easy and not
+// very interesting."
 function outpostFixture(id) {
   return Engine.createGameState({
     id,
@@ -539,14 +556,15 @@ function outpostFixture(id) {
     exitRule: "all-enemies-dead",
   });
 }
-const idsAcrossLevels = new Set();
+const lengthsAcrossLevels = new Set();
 for (let id = 900; id < 920; id++) {
   const offers = outpostFixture(id).outpostOfferIds;
   assert.strictEqual(offers[0], "repair", `level ${id}: Repair is always the first offer`);
-  assert.strictEqual(offers.length, 2, `level ${id}: exactly one extra offer alongside Repair`);
-  idsAcrossLevels.add(offers[1]);
+  assert.ok(offers.length >= 1 && offers.length <= 3, `level ${id}: 1-3 total offers (Repair plus 0-2 extras)`);
+  assert.strictEqual(new Set(offers).size, offers.length, `level ${id}: no duplicate offers`);
+  lengthsAcrossLevels.add(offers.length);
 }
-assert.ok(idsAcrossLevels.size > 1, "the second offer varies across levels, not the same every time");
+assert.ok(lengthsAcrossLevels.size > 1, "the offer COUNT varies across levels, not always the same shop size");
 assert.deepStrictEqual(
   outpostFixture(905).outpostOfferIds,
   outpostFixture(905).outpostOfferIds,
@@ -585,14 +603,20 @@ assert.strictEqual(noShieldState.hull, hullBeforeNoShield - 1, "with no Shield c
 // depths — validateLevel (run inside createGameState) throws if anything's
 // off-board, overlapping, or too close to the player start.
 
+// Not every generated sector has an Outpost anymore (~60% do — a
+// guaranteed safe restock every time made runs "too easy and not very
+// interesting"), so check presence varies across a wide depth range
+// instead of asserting every single one has one.
+let outpostCount = 0;
 for (const depth of [6, 7, 10, 15, 25, 40]) {
   const level = generateLevel(depth);
   const s = Engine.createGameState(level); // throws if invalid
   assert.strictEqual(s.status, "playing", `generated depth ${depth} should start playable`);
   assert.strictEqual(s.exitUnlocked, true, `generated depth ${depth} starts with the gate online too`);
   assert.ok(s.enemies.length > 0, `generated depth ${depth} should have at least one enemy`);
-  assert.ok(Boolean(s.outpostPos), `generated depth ${depth} should include an outpost`);
+  if (s.outpostPos) outpostCount += 1;
 }
+assert.ok(outpostCount > 0 && outpostCount < 6, "outposts appear sometimes but not on every generated sector");
 // Same depth deals the same board every time (reproducible runs).
 assert.deepStrictEqual(generateLevel(12), generateLevel(12), "generateLevel is deterministic per depth");
 // Different depths are not just reskins of each other.

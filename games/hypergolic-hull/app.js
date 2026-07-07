@@ -37,6 +37,7 @@ const overlayEl = document.getElementById("runOverlay");
 const overlayTitleEl = document.getElementById("runOverlayTitle");
 const overlayBodyEl = document.getElementById("runOverlayBody");
 const restartBtn = document.getElementById("restartBtn");
+const prevSectorBtn = document.getElementById("prevSectorBtn");
 const salvageValueEl = document.getElementById("salvageValue");
 const shieldWrapEl = document.getElementById("shieldWrap");
 const shieldValueEl = document.getElementById("shieldValue");
@@ -104,14 +105,47 @@ let inspectedEnemyId = null;
 // Clearing a sector needs no confirmation at all now (Clubhouse feedback:
 // "why say Next Sector each time... weird... there's no reason for a user
 // to confirm as they go") — a warp-flash animation plays (see the "warp"
-// case in draw(), triggered from handleAction) and then the run just
-// continues straight into the next sector on its own. Permadeath still
-// waits on a manual New Run tap — that's a weightier moment than a
-// routine sector clear.
-let sectorAdvancePending = false;
+// case in draw(), triggered from handleAction), and the actual sector swap
+// happens AT the flash's peak opacity (see the setTimeout in handleAction)
+// so the map changes while it's fully obscured, not after the animation
+// finishes and drops you into a hard cut. Permadeath still waits on a
+// manual New Run tap — that's a weightier moment than a routine clear.
+// Sectors aren't one-way — Clubhouse feedback: "the ability to go forward
+// or backwards... you could potentially go back to an area you were at
+// before." Each cleared sector's exact state (enemies dead, salvage spent,
+// Outpost visited) is snapshotted before advancing, so returning to it
+// later shows it exactly as you left it, not a freshly-regenerated board.
+// Going forward again from a rewound sector just re-advances normally —
+// no redo stack, only undo.
+let sectorHistory = [];
+
 function advanceSector() {
-  sectorAdvancePending = false;
-  loadSector(levelIndex + 1, { salvage: state.salvage, maxHull: state.maxHull, shieldCharges: state.shieldCharges });
+  sectorHistory.push({ levelIndex, state: JSON.parse(JSON.stringify(state)) });
+  loadSector(
+    levelIndex + 1,
+    { salvage: state.salvage, maxHull: state.maxHull, shieldCharges: state.shieldCharges, maxEnergy: state.maxEnergy },
+    { keepWarpAnim: true }
+  );
+}
+
+function returnToPreviousSector() {
+  if (!sectorHistory.length || state.status !== "playing") return;
+  const prev = sectorHistory.pop();
+  levelIndex = prev.levelIndex;
+  state = prev.state;
+  // The saved snapshot is mid-"won" (that's the moment it was captured, on
+  // the Warp Gate). Un-consume that so the board is live again — moving or
+  // Hold Position on the gate re-triggers the normal win check and warps
+  // back out through advanceSector, same as clearing it the first time.
+  if (state.status === "won") state.status = "playing";
+  mode = null;
+  anims = [];
+  plannedPath = null;
+  autoRoute = null;
+  outpostDismissed = false;
+  shipAngle = -90;
+  updateGeometry();
+  render();
 }
 
 // The outpost shop pops up automatically the moment the flagship is docked
@@ -274,7 +308,7 @@ function blend(hexA, hexB, t) {
   return `rgb(${r},${g},${bl})`;
 }
 
-function drawHex(center, fill, stroke, lineWidth) {
+function drawHex(center, fill, stroke, lineWidth, fillAlpha) {
   ctx.beginPath();
   for (let i = 0; i < 6; i++) {
     const corner = hexCorner(center, i);
@@ -283,13 +317,17 @@ function drawHex(center, fill, stroke, lineWidth) {
   }
   ctx.closePath();
   if (fill) {
-    // Slightly translucent — an opaque fill would completely paint over the
-    // sector backdrop's stars/nebula (which is clipped to this exact same
-    // hex silhouette), hiding them entirely instead of just keeping them off
-    // the unreachable canvas corners. Clubhouse feedback: "the art
-    // background is missing stars... you missed a lot."
+    // Translucent — an opaque fill would completely paint over the sector
+    // backdrop's stars/nebula (which is clipped to this exact same hex
+    // silhouette), hiding them instead of just keeping them off the
+    // unreachable canvas corners. Plain floor defaults to mostly
+    // transparent (Clubhouse feedback: "the blocks... can just be
+    // transparent for the most part... you just have unique backgrounds
+    // that look really cool per sector"); callers pass a higher alpha for
+    // tiles that need to read clearly regardless of the backdrop
+    // (hazards, the exit, the outpost, threat/route highlights).
     ctx.save();
-    ctx.globalAlpha = 0.82;
+    ctx.globalAlpha = fillAlpha === undefined ? 0.22 : fillAlpha;
     ctx.fillStyle = fill;
     ctx.fill();
     ctx.restore();
@@ -987,19 +1025,36 @@ function drawOutpost(center, r, now) {
 
 // Each sector gets its own deep-space mood — a tinted nebula wash plus a
 // sparse, sector-specific starfield — so the campaign visibly changes scenery
-// as you advance instead of every board reading identically. Colors are
-// [core, edge] of a radial gradient; the starfield is seeded per sector so it
-// stays put frame-to-frame rather than twinkling into new positions.
+// as you advance instead of every board reading identically (doubly so now
+// that sectors aren't one-way — a distinct look per sector is how you tell
+// where you are as you go back and forth). Colors are [core, edge] of a
+// radial gradient; the starfield is seeded per sector so it stays put
+// frame-to-frame rather than twinkling into new positions.
 // [coreTint, edgeTint, nebulaAccent] — the first two are the base wash; the
 // third is a big soft off-center glow layered on top so each sector has its
 // own unmistakable color of deep space, not just a barely-there tint.
 const SECTOR_BG = {
-  1: ["#0b1226", "#05070f", "rgba(60,110,220,0.16)"], // deep blue — the quiet approach
-  2: ["#0a1c2e", "#04090f", "rgba(40,180,200,0.18)"], // steel cyan
-  3: ["#1b1233", "#080510", "rgba(150,70,230,0.22)"], // violet nebula
-  4: ["#0a2622", "#03100e", "rgba(40,220,150,0.20)"], // toxic teal — Sentry country
-  5: ["#2c1024", "#0e0510", "rgba(230,60,110,0.22)"], // crimson-magenta — the final fleet
+  1: ["#0a1c2e", "#04090f", "rgba(40,180,200,0.18)"], // steel cyan — Shockwave
+  2: ["#1b1233", "#080510", "rgba(150,70,230,0.22)"], // violet nebula — Tractor Beam
+  3: ["#0a2622", "#03100e", "rgba(40,220,150,0.20)"], // toxic teal — Sentry country
+  4: ["#2c1024", "#0e0510", "rgba(230,60,110,0.22)"], // crimson-magenta — Full Fleet
 };
+// Every sector past the hand-authored campaign gets its OWN deterministic
+// palette too, instead of just repeating Sector 1's blue forever — a
+// rotating hue keeps deep runs visually distinct sector to sector.
+// Clubhouse feedback: "unique backgrounds that look really cool per
+// sector... it's kind of lame background-wise right now [past the start]."
+function backdropForLevel(levelId) {
+  if (SECTOR_BG[levelId]) return SECTOR_BG[levelId];
+  const rng = seededRandom(`bghue-${levelId}`);
+  const hue = Math.floor(rng() * 360);
+  const accentHue = (hue + 35 + Math.floor(rng() * 40)) % 360;
+  return [
+    `hsl(${hue}, 45%, 9%)`,
+    `hsl(${hue}, 55%, 3%)`,
+    `hsla(${accentHue}, 70%, 55%, 0.20)`,
+  ];
+}
 const starCache = new Map();
 function starsFor(levelId, w, h) {
   const key = `${levelId}:${w}x${h}`;
@@ -1013,7 +1068,7 @@ function starsFor(levelId, w, h) {
   return stars;
 }
 function drawSectorBackdrop() {
-  const bg = SECTOR_BG[state.levelId] || SECTOR_BG[1];
+  const bg = backdropForLevel(state.levelId);
   const g = ctx.createRadialGradient(geom.w * 0.5, geom.h * 0.34, geom.w * 0.08, geom.w * 0.5, geom.h * 0.52, geom.h * 0.8);
   g.addColorStop(0, bg[0]);
   g.addColorStop(1, bg[1]);
@@ -1103,16 +1158,31 @@ function draw() {
     const isHazard = Engine.hazardAt(state, hex);
 
     let fill = "#182238";
-    if (isHazard) fill = "#3a1030";
-    else if (isExit) fill = state.exitUnlocked ? "#1f4d3a" : "#2a2f45";
-    else if (isOutpost) fill = "#2a3f4d";
+    let fillAlpha = 0.22; // plain floor: mostly transparent, the sector backdrop does the talking
+    if (isHazard) {
+      fill = "#3a1030";
+      fillAlpha = 0.8;
+    } else if (isExit) {
+      fill = state.exitUnlocked ? "#1f4d3a" : "#2a2f45";
+      fillAlpha = 0.8;
+    } else if (isOutpost) {
+      fill = "#2a3f4d";
+      fillAlpha = 0.8;
+    }
     // The red strike-range wash is one of the legend's toggleable keys —
     // like the legal-move outline below, it's only ever drawn while the
-    // legend is open (and its own checkbox is checked).
-    if (threats.has(k) && legendVisible && showThreatKey) fill = blend(fill, "#7a1f2b", 0.55);
+    // legend is open (and its own checkbox is checked). Safety-critical, so
+    // it stays legible even over an otherwise-transparent floor tile.
+    if (threats.has(k) && legendVisible && showThreatKey) {
+      fill = blend(fill, "#7a1f2b", 0.55);
+      fillAlpha = Math.max(fillAlpha, 0.62);
+    }
     // Movable/targetable hexes keep their normal color — only the border
     // marks them, so the board doesn't turn into a wall of green.
-    if (route.has(k)) fill = blend(fill, "#2e5f96", 0.45);
+    if (route.has(k)) {
+      fill = blend(fill, "#2e5f96", 0.45);
+      fillAlpha = Math.max(fillAlpha, 0.55);
+    }
 
     // The whitish border marks a tile's own type ("this is normal, walkable
     // ground") — not whether anyone currently happens to be standing on it,
@@ -1131,7 +1201,7 @@ function draw() {
       stroke = "#7fe3a8";
       strokeWidth = 3;
     }
-    drawHex(center, fill, stroke, strokeWidth);
+    drawHex(center, fill, stroke, strokeWidth, fillAlpha);
 
     if (isExit) {
       drawWarpGate(center, geom.sx * 0.5, state.exitUnlocked, now);
@@ -1340,20 +1410,14 @@ function updateHud() {
       : "Fly to the Warp Gate to warp out!";
 
   // Hold the end-of-run overlay back until the death/kill animation finishes.
+  // A win never actually reaches this "not animating" state as "won" — the
+  // warp-flash swaps the sector at its peak opacity (see handleAction), so
+  // status has already flipped to "playing" for the new sector well
+  // before its own anim finishes. No modal, no button, for a routine clear.
   if (state.status === "lost" && !animsRunning()) {
     overlayTitleEl.textContent = "Flagship Destroyed";
     overlayBodyEl.textContent = "Permadeath. Your run ends here.";
     overlayEl.hidden = false;
-  } else if (state.status === "won" && !animsRunning()) {
-    // No confirmation modal for a routine sector clear — the warp-flash
-    // plays (see draw()'s "warp" case, triggered in handleAction), then
-    // the run just continues on its own. Deferred to a fresh call stack
-    // (not called directly here) so this doesn't re-enter render().
-    overlayEl.hidden = true;
-    if (!sectorAdvancePending) {
-      sectorAdvancePending = true;
-      setTimeout(advanceSector, 0);
-    }
   } else {
     overlayEl.hidden = true;
   }
@@ -1370,6 +1434,9 @@ function updateHud() {
 
   blinkBtn.hidden = !blinkUnlocked;
   blinkBtn.disabled = state.status !== "playing" || state.energy < Engine.BLINK_ENERGY_COST;
+
+  prevSectorBtn.hidden = sectorHistory.length === 0;
+  prevSectorBtn.disabled = state.status !== "playing";
 }
 
 function updateLegend() {
@@ -1516,8 +1583,14 @@ function handleAction(fn) {
     modeButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.mode === mode));
     scheduleAnims(state.events);
     if (state.status === "won" && !anims.some((a) => a.kind === "warp")) {
-      anims.push({ kind: "warp", start: performance.now(), dur: 900 });
+      const warpDur = 900;
+      anims.push({ kind: "warp", start: performance.now(), dur: warpDur });
       requestAnimationFrame(tickAnims);
+      // Swap to the next sector right at the flash's peak opacity (see the
+      // flashAlpha curve in draw()'s "warp" case, centered at p=0.55) —
+      // the screen is fully obscured at that instant, so the map changes
+      // underneath the flash instead of after it finishes.
+      setTimeout(advanceSector, warpDur * 0.55);
     }
   } catch (err) {
     pushMessage(err.message);
@@ -1525,12 +1598,16 @@ function handleAction(fn) {
   render();
 }
 
-function loadSector(index, carryOver) {
-  sectorAdvancePending = false;
+function loadSector(index, carryOver, opts) {
+  // The warp-flash anim (if any) survives the swap so it keeps covering
+  // the screen through the moment the map actually changes underneath it
+  // — its start/dur are timestamps from the real clock, unaffected by
+  // state being replaced, so it just keeps fading out over the new sector.
+  const keptAnims = opts && opts.keepWarpAnim ? anims.filter((a) => a.kind === "warp") : [];
   levelIndex = index;
   state = Engine.createGameState(levelForIndex(levelIndex), carryOver);
   mode = null;
-  anims = [];
+  anims = keptAnims;
   plannedPath = null;
   autoRoute = null;
   outpostDismissed = false;
@@ -1700,7 +1777,12 @@ canvas.addEventListener("click", (evt) => {
 
 modeButtons.forEach((btn) => btn.addEventListener("click", () => setMode(btn.dataset.mode)));
 
-restartBtn.addEventListener("click", () => loadSector(0));
+restartBtn.addEventListener("click", () => {
+  sectorHistory = [];
+  loadSector(0);
+});
+
+prevSectorBtn.addEventListener("click", returnToPreviousSector);
 
 outpostCloseBtn.addEventListener("click", () => {
   outpostDismissed = true;

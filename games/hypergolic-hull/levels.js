@@ -137,7 +137,14 @@
   }
 
   function generateLevel(depth) {
-    const rows = Math.min(11 + depth, 21);
+    // Capped well below what depth alone would give (was 21 rows, no cap
+    // reached until depth 10) — the on-screen board never grows past this,
+    // so every hex keeps shrinking as more of them are packed in past that
+    // point. Clubhouse feedback: "some of the later maps are way too big
+    // ... the little things look way too tiny." Enemy count keeps scaling
+    // independently past this cap (see enemyCount below), so difficulty
+    // still escalates — just via a denser board, not an ever-bigger one.
+    const rows = Math.min(11 + depth, 17);
     // cols ≈ 0.8 × rows fills the available screen width under flat-top
     // hexes (see the LEVELS comment above) instead of leaving ~40% of it
     // empty — a wider board than the old pointy-top-tuned formula used.
@@ -151,7 +158,11 @@
     const startCol = Math.floor(cols / 2);
     const playerStart = { q: startCol, r: rows - 1 - Math.floor(startCol / 2) };
     const exit = { q: cols - 1, r: -Math.floor((cols - 1) / 2) };
-    const outpost = { q: 0, r: 0 };
+    // Not every sector gets an Outpost — a guaranteed safe restock every
+    // single time made the crawl "too easy and not very interesting"
+    // (Clubhouse feedback). ~60% of generated sectors have one.
+    const hasOutpost = rng() < 0.6;
+    const outpost = hasOutpost ? { q: 0, r: 0 } : null;
 
     const hexes = [];
     for (let col = 0; col < cols; col++) {
@@ -159,7 +170,7 @@
         hexes.push({ q: col, r: row - Math.floor(col / 2) });
       }
     }
-    const reserved = [playerStart, exit, outpost];
+    const reserved = [playerStart, exit, ...(outpost ? [outpost] : [])];
     const candidates = hexes.filter(
       (h) => hexDist(h, playerStart) >= 3 && !reserved.some((r2) => r2.q === h.q && r2.r === h.r)
     );

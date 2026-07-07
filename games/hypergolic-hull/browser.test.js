@@ -214,6 +214,26 @@ async function freshPage(browser, url, errors) {
   s = await getState(page);
   assert.deepStrictEqual(s.actions, ["sublight", "ramming", "tractor"], "Sector 2 unlocks exactly one new action");
   assert.ok(s.enemies.filter((e) => e.alive).length >= 1);
+
+  // ---- Previous Sector: sectors aren't one-way ----------------------------
+
+  assert.strictEqual(await page.locator("#prevSectorBtn").isVisible(), true, "a cleared sector can be revisited");
+  await page.click("#prevSectorBtn");
+  await page.waitForFunction(() => window.__hhState.levelId === 1);
+  s = await getState(page);
+  // The saved snapshot is un-consumed back to "playing" (it was mid-"won",
+  // captured standing on the Warp Gate) so the board is live again, not a
+  // frozen dead end — every action asserts status==="playing".
+  assert.strictEqual(s.status, "playing", "the board is interactive again, not frozen on the win screen");
+  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "the Interceptor is still dead — it's the saved state, not regenerated");
+  assert.strictEqual(await page.locator("#prevSectorBtn").isVisible(), false, "no further history left to go back to");
+
+  // Still standing on the Warp Gate — Hold Position re-triggers the win
+  // check and warps back out through the normal flow.
+  await page.click("#holdBtn");
+  await page.waitForFunction(() => window.__hhState.levelId === 2, null, { timeout: 5000 });
+  s = await getState(page);
+  assert.strictEqual(s.levelId, 2, "going forward again from a rewound sector re-advances normally");
   await page.close();
 
   // ---- loss branch: loiter beside Sector 1's Interceptor until Hull 0 -----

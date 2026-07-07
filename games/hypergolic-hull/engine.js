@@ -244,10 +244,14 @@
   // undercuts the "luck and skill" crawler this is meant to be. Same level
   // id always deals the same second offer (reproducible), but different
   // levels/depths vary which one you get.
+  // Costs are steep on purpose — Clubhouse feedback: "reward saving up...
+  // weapons should be way more expensive... you have to save up for them."
+  // A single kill nets 1-2 salvage, so a permanent upgrade means banking
+  // several sectors' worth of kills, not a casual spend.
   const OUTPOST_OFFER_POOL = [
-    { id: "repair", label: "Repair 1 Hull", cost: 2 },
-    { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 5 },
-    { id: "shield", label: "Emergency Shield (absorb the next hit)", cost: 4 },
+    { id: "repair", label: "Repair 1 Hull", cost: 3 },
+    { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 15 },
+    { id: "shield", label: "Emergency Shield (absorb the next hit)", cost: 10 },
   ];
 
   function seededRandom(seed) {
@@ -260,11 +264,22 @@
     };
   }
 
+  // Repair is always on offer (the reliable baseline), but how many EXTRA
+  // offers sit alongside it varies (0, 1, or all of them) — a guaranteed
+  // fixed shop every visit read as "too easy and not very interesting"
+  // (Clubhouse feedback). Deterministic per level id, same as before.
   function pickOutpostOfferIds(levelId) {
     const extras = OUTPOST_OFFER_POOL.filter((o) => o.id !== "repair");
     const rng = seededRandom(levelId * 7919 + 13);
-    const pick = extras[Math.floor(rng() * extras.length)];
-    return ["repair", pick.id];
+    const shuffled = extras.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      const tmp = shuffled[i];
+      shuffled[i] = shuffled[j];
+      shuffled[j] = tmp;
+    }
+    const extraCount = Math.floor(rng() * (extras.length + 1)); // 0..extras.length
+    return ["repair", ...shuffled.slice(0, extraCount).map((o) => o.id)];
   }
 
   function createGameState(level, carryOver) {
@@ -734,6 +749,12 @@
     }
     state.salvage -= offer.cost;
     pushLog(state, `Outpost: bought ${offer.label} (-${offer.cost} salvage).`);
+    // Every offer except Repair is a one-time purchase per outpost — buying
+    // it removes it from what's on offer here, so a visit is a real choice
+    // instead of "buy everything repeatedly as long as you can afford it."
+    if (offer.id !== "repair") {
+      state.outpostOfferIds = state.outpostOfferIds.filter((id) => id !== offer.id);
+    }
   }
 
   // ---- legal-target queries (used by the renderer to highlight hexes) -----
