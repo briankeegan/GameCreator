@@ -1,0 +1,103 @@
+name: Generate game asset batch
+
+# Batch version of "Generate game asset": generates MANY styled images in a
+# single run and commits them all at once. Same art-style.json styling as the
+# single-image action (camera/style/palette/background/constraints locked in),
+# but you pass a JSON array so one dispatch can render a whole class's worth of
+# per-card breed art without dozens of separate runs, commits, and push races.
+#
+# `assets` input is a JSON array of objects, each:
+#   { "asset": "what THIS image is (subject/pose/breed)", "path": "games/<game>/icons/<file>.png" }
+on:
+  workflow_dispatch:
+    inputs:
+      game:
+        description: "Game id — must have games/<id>/art-style.json"
+        required: true
+        type: string
+      assets:
+        description: 'JSON array: [{"asset":"...","path":"games/<game>/icons/x.png"}, ...]'
+        required: true
+        type: string
+      size:
+        description: "Image size for every item in the batch"
+        required: false
+        type: choice
+        options:
+          - "1024x1024"
+          - "1024x1536"
+          - "1536x1024"
+        default: "1024x1024"
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ImageMagick
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
+
+      - name: Generate every image in the batch
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GAME: ${{ inputs.game }}
+          ASSETS: ${{ inputs.assets }}
+          SIZE: ${{ inputs.size }}
+        run: |
+          set -euo pipefail
+          STYLE_FILE="games/$GAME/art-style.json"
+          if [ ! -f "$STYLE_FILE" ]; then
+            echo "::error::No art-style.json found at $STYLE_FILE"
+            exit 1
+          fi
+          camera=$(jq -r '.camera' "$STYLE_FILE")
+          style=$(jq -r '.style' "$STYLE_FILE")
+          palette=$(jq -r '.palette' "$STYLE_FILE")
+          background=$(jq -r '.background' "$STYLE_FILE")
+          constraints=$(jq -r '.constraints' "$STYLE_FILE")
+
+          count=$(echo "$ASSETS" | jq 'length')
+          echo "Batch of $count image(s)."
+          for i in $(seq 0 $((count - 1))); do
+            asset=$(echo "$ASSETS" | jq -r ".[$i].asset")
+            path=$(echo "$ASSETS" | jq -r ".[$i].path")
+            echo "::group::[$((i + 1))/$count] $path"
+            prompt="${camera} ${asset}. ${style} Color palette: ${palette} Background: ${background} ${constraints}"
+            mkdir -p "$(dirname "$path")"
+            resp=$(curl -sS https://api.openai.com/v1/images/generations \
+              -H "Authorization: Bearer $OPENAI_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n --arg prompt "$prompt" --arg size "$SIZE" \
+                    '{model: "gpt-image-1", prompt: $prompt, size: $size, quality: "high", background: "transparent", n: 1}')")
+            err=$(echo "$resp" | jq -r '.error.message // empty')
+            if [ -n "$err" ]; then
+              echo "::error::OpenAI API error for $path: $err"
+              echo "::endgroup::"
+              continue
+            fi
+            echo "$resp" | jq -r '.data[0].b64_json' | base64 -d > "$path"
+            if [ ! -s "$path" ]; then
+              echo "::warning::Empty output for $path, skipping"
+              echo "::endgroup::"
+              continue
+            fi
+            convert "$path" -trim +repage -resize '512x512>' -background none -gravity center -extent 512x512 "$path"
+            echo "::endgroup::"
+          done
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add games/${{ inputs.game }}/icons
+          git commit -m "Generate game asset batch (${{ inputs.game }})" || { echo "Nothing to commit"; exit 0; }
+          for i in 1 2 3 4 5 6; do
+            git pull --rebase origin main && git push && exit 0
+            echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+          done
+          echo "::error::Could not push after retries"; exit 1
