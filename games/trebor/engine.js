@@ -190,6 +190,15 @@ function rollRelicDrop(state, content, rng = Math.random) {
 function applyTurnStartMechanic(state, content, rng) {
   const mech = classMechanic(state, content);
   if (mech.turnBlock) state.player.block += mech.turnBlock;
+  // Forage (Dolche): heal a little every turn — steady sustain that wins long fights.
+  if (mech.healPerTurn) {
+    state.player.hp = Math.min(state.player.maxHp, state.player.hp + mech.healPerTurn);
+  }
+  // Momentum (Rambo): +Strength every turn, stacking for the whole combat via
+  // combatStrength (which resets each combat in startCombat) — his hits escalate.
+  if (mech.strengthPerTurn) {
+    state.player.combatStrength = (state.player.combatStrength || 0) + mech.strengthPerTurn;
+  }
   const draw = (mech.drawBonus || 0) + relicSum(state, content, "drawBonus");
   if (draw) drawCards(state, content, rng, draw);
 }

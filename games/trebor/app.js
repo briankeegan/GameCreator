@@ -41,6 +41,7 @@
     "pounce", "chomp", "bodySlam", "scurry", "digIn", "rally", "flurry", "brace",
     "counterSurge", "goodBoy", "rend", "howl", "bigBark", "alphaStrike", "secondWind",
     "cower", "muzzle", "nip", "gnash", "hunker",
+    "truffleHunt", "waterlog", "curlUp", "sledCharge", "packHowl", "mush",
   ]);
 
   const NODE_ICON = {
@@ -81,12 +82,14 @@
     koozie: "icons/dog-koozie.png",
     bevy: "icons/dog-bevy.png",
     lala: "icons/dog-lala.png",
+    dolche: "icons/dog-dolche.png",
+    rambo: "icons/dog-rambo.png",
   };
   function enemyImg(typeId) {
     return `<img class="sprite-img" src="${ENEMY_IMG[typeId]}" alt="" draggable="false" />`;
   }
   function dogImg(classId) {
-    return `<img class="sprite-img" src="${DOG_IMG[classId]}" alt="" draggable="false" />`;
+    return `<img class="sprite-img" src="${DOG_IMG[classId]}" alt="" draggable="false" onerror="this.style.display='none'" />`;
   }
 
   const gameAreaEl = document.getElementById("gameArea");

@@ -44,6 +44,12 @@ const CARDS = {
   flurry: { id: "flurry", name: "Flurry", cost: 1, damage: 4, draw: 1, text: "Deal 4 damage. Draw a card." }, // Bevy
   chomp: { id: "chomp", name: "Chomp", cost: 1, damage: 7, text: "Deal 7 damage." }, // Lala
   bodySlam: { id: "bodySlam", name: "Body Slam", cost: 2, damage: 12, text: "Deal 12 damage." }, // Lala
+  truffleHunt: { id: "truffleHunt", name: "Truffle Hunt", cost: 1, block: 6, draw: 1, text: "Gain 6 Block. Draw a card." }, // Dolche
+  waterlog: { id: "waterlog", name: "Waterlog", cost: 1, damage: 3, weak: 1, text: "Deal 3 damage. Apply 1 Weak." }, // Dolche
+  curlUp: { id: "curlUp", name: "Curl Up", cost: 1, block: 9, text: "Gain 9 Block." }, // Dolche
+  sledCharge: { id: "sledCharge", name: "Sled Charge", cost: 1, damage: 6, text: "Deal 6 damage." }, // Rambo
+  packHowl: { id: "packHowl", name: "Pack Howl", cost: 1, damage: 5, aoe: true, text: "Deal 5 damage to ALL enemies." }, // Rambo
+  mush: { id: "mush", name: "Mush", cost: 0, damage: 2, draw: 1, text: "Deal 2 damage. Draw a card." }, // Rambo
   // Boss-reward cards — powerful, only offered after felling an act boss:
   maul: { id: "maul", name: "Maul", cost: 2, damage: 18, text: "Deal 18 damage." },
   warCry: { id: "warCry", name: "War Cry", cost: 2, damage: 10, aoe: true, block: 6, text: "Deal 10 to ALL enemies. Gain 6 Block." },
@@ -104,6 +110,32 @@ const CLASSES = {
     deck: ["lockJaw", "lockJaw", "lockJaw", "chomp", "chomp", "bodySlam", "bodySlam", "growl", "growl", "guardDog", "guardDog", "scurry"],
     rewardCards: ["lockJaw", "chomp", "bodySlam", "pounce"],
   },
+  dolche: {
+    id: "dolche",
+    name: "Dolche",
+    breed: "Lagotto Romagnolo",
+    blurb: "A gentle truffle-hunter who never stops digging. Heavy Block and steady self-healing — she doesn't out-hit you, she outlasts you.",
+    maxHp: 30,
+    // Forage: heals a little every turn, so she grinds out long fights the enemy
+    // can't. Pairs with her block-heavy deck — chip her down and she claws it
+    // right back.
+    mechanic: { healPerTurn: 2, name: "Forage", text: "Heal 2 Hull at the start of each turn." },
+    deck: ["truffleHunt", "truffleHunt", "curlUp", "curlUp", "waterlog", "waterlog", "bite", "bite", "bite", "growl", "guardDog", "hunker"],
+    rewardCards: ["truffleHunt", "waterlog", "curlUp", "hunker"],
+  },
+  rambo: {
+    id: "rambo",
+    name: "Rambo",
+    breed: "Shepski",
+    blurb: "A tireless sled-and-guard dog who only gets meaner. Starts gentle, then snowballs — every turn his hits land harder. Win the long fight.",
+    maxHp: 36,
+    // Momentum: +1 Strength every turn, stacking all combat — the mirror of the
+    // bosses' Enrage. Early he's soft; drag a fight out and he's unstoppable, so
+    // his attack-dense deck wants to keep swinging.
+    mechanic: { strengthPerTurn: 1, name: "Momentum", text: "Gain +1 Strength every turn (stacks all combat)." },
+    deck: ["sledCharge", "sledCharge", "sledCharge", "mush", "mush", "mush", "packHowl", "bite", "bite", "growl", "growl", "guardDog"],
+    rewardCards: ["sledCharge", "packHowl", "mush", "pounce"],
+  },
 };
 
 // Fallback starter deck (used only if a run somehow has no class picked).
@@ -162,6 +194,7 @@ const UPGRADABLE = [
   "alphaStrike", "sniffOut", "secondWind", "snarl", "rend", "cower", "muzzle", "nip",
   "gnash", "hunker", "digIn", "riptide", "rally", "lockJaw",
   "scurry", "brace", "counterSurge", "flurry", "chomp", "bodySlam",
+  "truffleHunt", "waterlog", "curlUp", "sledCharge", "packHowl", "mush",
 ];
 const UPGRADES = {};
 for (const id of UPGRADABLE) {

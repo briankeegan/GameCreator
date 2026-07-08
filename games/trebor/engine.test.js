@@ -57,7 +57,7 @@ assert.throws(() => Engine.playCard(gate, Content, 0, null, rng), /Cannot play a
 assert.throws(() => Engine.chooseClass(gate, Content, "notADog", rng), /Unknown class/);
 
 // Each class sets its own Hull and 12-card deck.
-const hpByClass = { riddle: 26, koozie: 32, bevy: 30, lala: 36 };
+const hpByClass = { riddle: 26, koozie: 32, bevy: 30, lala: 36, dolche: 30, rambo: 36 };
 for (const id of Object.keys(Content.CLASSES)) {
   const s = Engine.createGameState(Content, rng);
   Engine.chooseClass(s, Content, id, rng);
@@ -99,6 +99,27 @@ Engine.chooseNode(lalaM, Content, 0, rng); // Alley Cat, 14 Hull
 lalaM.hand.unshift("bite"); // a plain 6-damage Bite...
 Engine.playCard(lalaM, Content, 0, lalaM.enemies[0].id, rng);
 assert.strictEqual(lalaM.enemies[0].hp, 28 - 9, "Lock Jaw makes Bite land for 6+3");
+
+// Dolche — Forage: heals a set amount at the start of each turn.
+const dolM = Engine.createGameState(Content, rng);
+Engine.chooseClass(dolM, Content, "dolche", rng);
+Engine.chooseNode(dolM, Content, 0, rng);
+dolM.player.hp = 20; // below her 30 max, so the heal has room
+dolM.player.block = 30; // fully absorb the cat's telegraphed hit, isolating the heal
+Engine.endPlayerTurn(dolM, Content, rng);
+assert.strictEqual(dolM.player.hp, 22, "Forage heals 2 at the start of the next turn");
+
+// Rambo — Momentum: +1 Strength every turn, stacking across the combat.
+const ramM = Engine.createGameState(Content, rng);
+Engine.chooseClass(ramM, Content, "rambo", rng);
+Engine.chooseNode(ramM, Content, 0, rng); // combat start applies turn-1 Momentum
+assert.strictEqual(ramM.player.combatStrength, 1, "Momentum grants +1 Strength on turn 1");
+ramM.hand.unshift("bite");
+Engine.playCard(ramM, Content, 0, ramM.enemies[0].id, rng);
+assert.strictEqual(ramM.enemies[0].hp, 28 - 7, "turn-1 Bite lands for 6+1 Momentum Strength");
+const beforeStr = ramM.player.combatStrength;
+Engine.endPlayerTurn(ramM, Content, rng);
+assert.strictEqual(ramM.player.combatStrength, beforeStr + 1, "Momentum stacks another Strength each turn");
 
 // ---------------------------------------------------------------------
 // Floor 1 fight (as Koozie), traced through the key mechanics.
