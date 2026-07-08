@@ -50,6 +50,7 @@ const overlayEl = document.getElementById("runOverlay");
 const overlayTitleEl = document.getElementById("runOverlayTitle");
 const overlayBodyEl = document.getElementById("runOverlayBody");
 const restartBtn = document.getElementById("restartBtn");
+const continueBtnEl = document.getElementById("continueBtn");
 const salvageValueEl = document.getElementById("salvageValue");
 const shieldWrapEl = document.getElementById("shieldWrap");
 const shieldValueEl = document.getElementById("shieldValue");
@@ -1621,13 +1622,22 @@ function updateHud() {
         : "Fly to the Warp Gate to warp out!";
 
   // Hold the end-of-run overlay back until the death/kill animation finishes.
-  // A win never actually reaches this "not animating" state as "won" — the
-  // warp-flash swaps the sector at its peak opacity (see handleAction), so
-  // status has already flipped to "playing" for the new sector well
-  // before its own anim finishes. No modal, no button, for a routine clear.
+  // A routine win never actually reaches this "not animating" state as
+  // "won" — the warp-flash swaps the sector at its peak opacity (see
+  // handleAction), so status has already flipped to "playing" for the new
+  // sector well before its own anim finishes. No modal, no button, for a
+  // routine clear. A BOSS win (isVictory) is the one exception — see
+  // handleAction, which deliberately skips the auto-continue for it — so
+  // this overlay is how "Run Complete" actually gets shown to the player.
   if (state.status === "lost" && !animsRunning()) {
     overlayTitleEl.textContent = "Flagship Destroyed";
     overlayBodyEl.textContent = "Permadeath. Your run ends here.";
+    continueBtnEl.hidden = true;
+    overlayEl.hidden = false;
+  } else if (state.isVictory && !animsRunning()) {
+    overlayTitleEl.textContent = "Run Complete";
+    overlayBodyEl.textContent = `The Bulwark falls at depth ${state.levelId}. Keep flying for a higher depth, or bank the win and start fresh.`;
+    continueBtnEl.hidden = false;
     overlayEl.hidden = false;
   } else {
     overlayEl.hidden = true;
@@ -1808,7 +1818,11 @@ function handleAction(fn) {
     mode = null;
     modeButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.mode === mode));
     scheduleAnims(state.events);
-    if (state.status === "won" && !anims.some((a) => a.kind === "warp")) {
+    // A boss win (isVictory) deliberately skips the auto-continue warp —
+    // "Run Complete" is a real milestone, not a routine clear, and gets a
+    // manual overlay instead (see updateHud). continueBtn triggers the
+    // exact same advanceSector flow, just player-initiated.
+    if (state.status === "won" && !state.isVictory && !anims.some((a) => a.kind === "warp")) {
       const warpDur = 900;
       anims.push({ kind: "warp", start: performance.now(), dur: warpDur });
       requestAnimationFrame(tickAnims);
@@ -2094,6 +2108,10 @@ restartBtn.addEventListener("click", () => {
   loadSector(0);
 });
 
+continueBtnEl.addEventListener("click", () => {
+  advanceSector();
+});
+
 outpostCloseBtn.addEventListener("click", () => {
   outpostDismissed = true;
   render();
@@ -2105,5 +2123,13 @@ window.addEventListener("resize", () => {
 });
 
 window.__hhHexCenter = (q, r) => hexToPixel({ q, r }); // debug/test hook: CSS-pixel center of a hex
+// debug/test hook: sync the internal levelIndex counter after directly
+// mutating window.__hhState (see browser.test.js's boss-milestone test) —
+// levelIndex normally only ever changes via loadSector, which keeps it and
+// state.levelId in lockstep; a synthetic state injection has to update
+// both explicitly or advanceSector's "levelIndex + 1" drifts from reality.
+window.__hhSetLevelIndex = (i) => {
+  levelIndex = i;
+};
 
 restoreRun();

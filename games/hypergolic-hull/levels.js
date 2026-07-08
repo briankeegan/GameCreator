@@ -150,7 +150,50 @@
     { id: "quiet", enemyDelta: -1, hazardDelta: 0, outpostChanceDelta: 0.25 },
   ];
 
+  // "How do you win, or is it just runs?" (Clubhouse) — depth 20 is a
+  // single, fixed boss milestone, not another procedural roll and not a
+  // repeating pattern. Ignores `variantId`/branching entirely (a singular
+  // narrative beat both of the previous sector's gates converge on, not a
+  // choice) — a real, tougher, named encounter with its own guaranteed
+  // Outpost right before it (shop before the fight, genre-standard);
+  // clearing it is a genuine "Run Complete" (see engine.js's
+  // `isBoss`/`isVictory`, app.js's victory overlay), distinct from the
+  // permadeath loss screen. The crawl still continues past it afterward,
+  // purely procedural from depth 21 on, for players chasing a higher
+  // depth — this is the one milestone, not the first of many.
+  const BOSS_DEPTH = 20;
+
+  function bossLevel(depth) {
+    const rows = 11;
+    const cols = 9;
+    const startCol = Math.floor(cols / 2);
+    return {
+      id: depth,
+      name: "The Bulwark",
+      isBoss: true,
+      board: { type: "rect", cols, rows },
+      playerStart: { q: startCol, r: rows - 1 - Math.floor(startCol / 2) },
+      exit: { q: cols - 1, r: -Math.floor((cols - 1) / 2) },
+      outpost: { q: 0, r: 0 },
+      enemies: [
+        { type: "cruiser", q: 2, r: 6 },
+        { type: "cruiser", q: 6, r: 6 },
+        { type: "sentry", q: 2, r: 2 },
+        { type: "sentry", q: 6, r: 2 },
+        { type: "interceptor", q: startCol, r: 3 },
+      ],
+      hazards: [
+        { type: "asteroid", q: 1, r: 4 },
+        { type: "asteroid", q: 7, r: 0 },
+      ],
+      exitRule: "all-enemies-dead",
+      intro:
+        "The Bulwark. A hardened defense line — two Cruisers, two Sentries, and an Interceptor between you and the gate. Stock up at the Outpost first.",
+    };
+  }
+
   function generateLevel(depth, variantId) {
+    if (depth === BOSS_DEPTH) return bossLevel(depth);
     // Fixed at the exact same size as every hand-authored sector — 9×11,
     // confirmed directly by the Clubhouse as the right size ("the first
     // level size honestly seems to be perfect") after two earlier, still

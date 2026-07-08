@@ -680,9 +680,35 @@ for (const depth of [6, 7, 10, 15, 25, 40]) {
 assert.ok(outpostCount > 0 && outpostCount < 6, "outposts appear sometimes but not on every generated sector");
 // Same depth deals the same board every time (reproducible runs).
 assert.deepStrictEqual(generateLevel(12), generateLevel(12), "generateLevel is deterministic per depth");
-// Different depths are not just reskins of each other.
-assert.notDeepStrictEqual(generateLevel(6).enemies, generateLevel(20).enemies, "deeper sectors deal a different board");
-assert.ok(generateLevel(20).enemies.length >= generateLevel(6).enemies.length, "enemy count scales up (or holds) with depth");
+// Different depths are not just reskins of each other. (Depth 20 is the
+// fixed boss milestone — see below — so this compares two purely
+// procedural depths instead.)
+assert.notDeepStrictEqual(generateLevel(6).enemies, generateLevel(21).enemies, "deeper sectors deal a different board");
+assert.ok(generateLevel(21).enemies.length >= generateLevel(6).enemies.length, "enemy count scales up (or holds) with depth");
+
+// ---- Boss milestone: "how do you win, or is it just runs?" --------------
+// Depth 20 is a single, fixed "Run Complete" moment, not another
+// procedural roll and not a repeating pattern.
+const bossLevelDef = generateLevel(20);
+assert.strictEqual(bossLevelDef.isBoss, true, "depth 20 is the boss sector");
+assert.strictEqual(bossLevelDef.name, "The Bulwark");
+assert.ok(bossLevelDef.outpost, "the boss sector has a guaranteed Outpost — shop before the fight");
+assert.deepStrictEqual(generateLevel(20, "aggressive"), generateLevel(20), "the boss ignores variantId — no branching into it");
+assert.notStrictEqual(generateLevel(19).isBoss, true, "depth 19 is still purely procedural");
+assert.notStrictEqual(generateLevel(21).isBoss, true, "depth 21 (past the boss) is purely procedural too — one milestone, not a repeating pattern");
+
+const bossState = Engine.createGameState(bossLevelDef);
+assert.strictEqual(bossState.isBoss, true);
+assert.strictEqual(bossState.isVictory, false, "not won yet");
+// The Warp Gate is always online (combat is optional everywhere, boss
+// sectors included — see checkExitUnlock), so reaching it is enough to
+// win; combat itself is already covered thoroughly elsewhere in this
+// file. This test only cares whether clearing a BOSS sector flips
+// isVictory, not how the fight plays out.
+bossState.playerPos = { q: bossLevelDef.exit.q, r: bossLevelDef.exit.r };
+Engine.applyHoldPosition(bossState);
+assert.strictEqual(bossState.status, "won", "reaching the gate wins, same as any other sector");
+assert.strictEqual(bossState.isVictory, true, "clearing the BOSS sector sets isVictory — a real Run Complete, not a routine clear");
 
 // ---- Branching Warp Gates: "different sort of paths... based on the ------
 // different portals" (Clubhouse feedback) — every generated sector offers

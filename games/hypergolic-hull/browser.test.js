@@ -368,6 +368,34 @@ async function freshPage(browser, url, errors) {
   assert.ok(Array.isArray(s.exits) && s.exits.length >= 1, "the fresh run has a valid, current-shaped state");
   await page.close();
 
+  // ---- Boss milestone: "Run Complete" is a real, manual moment -------------
+  // ("how do you win, or is it just runs?") — clearing the depth-20 boss
+  // shows a distinct overlay instead of silently auto-continuing like a
+  // routine sector clear, and offers a real choice (keep going vs. bank
+  // the win). Simulated directly (playing to depth 20 for real is out of
+  // scope for a test) — the win/isVictory logic itself is covered in
+  // engine.test.js; this confirms app.js's UI reacts to it correctly.
+  page = await freshPage(browser, url, errors);
+  await page.evaluate(() => {
+    const bossLevel = window.HypergolicLevels.generateLevel(20);
+    const fresh = window.HypergolicEngine.createGameState(bossLevel);
+    fresh.playerPos = { q: bossLevel.exit.q, r: bossLevel.exit.r };
+    Object.assign(window.__hhState, fresh);
+    window.__hhSetLevelIndex(19); // depth = index + 1 — keep advanceSector's "levelIndex + 1" in sync
+  });
+  await page.click("#holdBtn"); // standing on an always-online gate: Hold Position alone wins it
+  await page.waitForFunction(() => window.__hhState.isVictory === true);
+  assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "the overlay waits for animations, same as the loss screen");
+  await waitForOverlay(page);
+  assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Run Complete");
+  assert.strictEqual(await page.locator("#continueBtn").isVisible(), true, "Keep Flying is offered on a boss win");
+  await page.click("#continueBtn");
+  await page.waitForFunction(() => window.__hhState.levelId === 21 && window.__hhState.status === "playing");
+  s = await getState(page);
+  assert.strictEqual(s.isBoss, false, "the sector past the boss is purely procedural again");
+  assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "continuing closes the victory overlay");
+  await page.close();
+
   await browser.close();
   server.close();
 

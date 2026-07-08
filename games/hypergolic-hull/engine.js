@@ -356,6 +356,13 @@
       exitPos: { q: exitList(level)[0].q, r: exitList(level)[0].r }, // primary/first gate — kept for single-exit callers
       exits: exitList(level).map((ex) => ({ q: ex.q, r: ex.r, variantId: ex.variantId || null })),
       usedExitVariant: null, // set on win — see endPlayerAction — which gate you actually flew through
+      // "How do you win, or is it just runs?" — a boss sector (see
+      // levels.js's bossLevel) clearing is a real "Run Complete" milestone,
+      // not a routine sector clear. isVictory flips true the instant it's
+      // won (see endPlayerAction) — app.js checks it to show a distinct
+      // overlay instead of silently auto-continuing like every other clear.
+      isBoss: Boolean(level.isBoss),
+      isVictory: false,
       outpostPos: level.outpost ? { q: level.outpost.q, r: level.outpost.r } : null,
       outpostOfferIds: level.outpost ? pickOutpostOfferIds(level.id) : [],
       exitRule: level.exitRule,
@@ -627,7 +634,12 @@
     if (usedExit && state.exitUnlocked) {
       state.status = "won";
       state.usedExitVariant = usedExit.variantId;
-      pushLog(state, "Level complete.");
+      if (state.isBoss) {
+        state.isVictory = true;
+        pushLog(state, "The Bulwark falls. Run Complete.");
+      } else {
+        pushLog(state, "Level complete.");
+      }
     }
   }
 
