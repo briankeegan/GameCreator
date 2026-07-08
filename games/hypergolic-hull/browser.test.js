@@ -132,6 +132,11 @@ async function freshPage(browser, url, errors) {
     // Locked actions are hidden entirely now — no padlocked ghost buttons.
     assert.strictEqual(await page.locator(`[data-mode="${m}"]`).isVisible(), false, `${m} is hidden until unlocked`);
   }
+  // The Lance Cannon toggle is Outpost-purchase-only, hidden until bought
+  // — `.system-toggle` sets `display: flex` unconditionally, which was
+  // found to override the browser's default `[hidden]` behavior and show
+  // it from the very start of a fresh run before this was caught.
+  assert.strictEqual(await page.locator("#lanceToggleWrap").isVisible(), false, "Lance Cannon toggle is hidden until purchased");
   assert.strictEqual(
     await page.locator("#toggleRam").isDisabled(),
     false,

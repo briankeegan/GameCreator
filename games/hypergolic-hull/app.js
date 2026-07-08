@@ -59,6 +59,9 @@ const holdBtn = document.getElementById("holdBtn");
 const ramLabelEl = document.getElementById("ramLabel");
 const ramLabelLegendEl = document.getElementById("ramLabelLegend");
 const weaponStatsEl = document.getElementById("weaponStats");
+const lanceToggleWrapEl = document.getElementById("lanceToggleWrap");
+const toggleLanceEl = document.getElementById("toggleLance");
+const lanceStatsEl = document.getElementById("lanceStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
 
 // Every piece on the board is custom-drawn (see drawPlayerShip/
@@ -166,7 +169,16 @@ function advanceSector() {
   sectorHistory.push({ levelIndex, state: JSON.parse(JSON.stringify(state)) });
   loadSector(
     levelIndex + 1,
-    { salvage: state.salvage, maxHull: state.maxHull, shieldCharges: state.shieldCharges, maxEnergy: state.maxEnergy },
+    {
+      salvage: state.salvage,
+      maxHull: state.maxHull,
+      shieldCharges: state.shieldCharges,
+      maxEnergy: state.maxEnergy,
+      // A purchased weapon (e.g. the Lance Cannon) isn't part of any
+      // level's own baked-in actions list, so it has to be carried
+      // forward explicitly or the next sector would "forget" it.
+      extraActions: state.actions.includes("lance") ? ["lance"] : [],
+    },
     { keepWarpAnim: true, variantId: state.usedExitVariant }
   );
 }
@@ -204,6 +216,7 @@ let outpostDismissed = false;
 // Whether the weapon-stats badge is showing its full sentence (tapped open)
 // or just the compact abbreviation (the default).
 let weaponStatsExpanded = false;
+let lanceStatsExpanded = false;
 
 // The flagship's facing, in degrees (canvas convention: 0 = screen-right,
 // increases clockwise). Updated whenever the ship actually moves.
@@ -1651,6 +1664,20 @@ function updateSystems() {
   const lockedPrefix = unlocked ? "" : "offline · ";
   weaponStatsEl.textContent = lockedPrefix + (weaponStatsExpanded ? describeWeapon(weapon) : describeWeaponCompact(weapon));
   weaponStatsEl.classList.toggle("expanded", weaponStatsExpanded);
+
+  // Lance Cannon is Outpost-purchase-only (see OUTPOST_OFFER_POOL), not
+  // sector-unlocked — hidden entirely until bought, same "simply hidden,
+  // no padlock" convention as Tractor Beam/Fighter Squadron before their
+  // sector.
+  const lanceOwned = state.actions.includes("lance");
+  lanceToggleWrapEl.hidden = !lanceOwned;
+  lanceStatsEl.hidden = !lanceOwned;
+  if (lanceOwned) {
+    toggleLanceEl.checked = state.systems.lance;
+    const lanceWeapon = Engine.WEAPONS.lance;
+    lanceStatsEl.textContent = lanceStatsExpanded ? describeWeapon(lanceWeapon) : describeWeaponCompact(lanceWeapon);
+    lanceStatsEl.classList.toggle("expanded", lanceStatsExpanded);
+  }
 }
 
 // Shared by the systems-row stats line and the click-an-enemy-for-info panel
@@ -1900,6 +1927,16 @@ toggleRamEl.addEventListener("change", () => {
 
 weaponStatsEl.addEventListener("click", () => {
   weaponStatsExpanded = !weaponStatsExpanded;
+  updateSystems();
+});
+
+toggleLanceEl.addEventListener("change", () => {
+  Engine.setSystem(state, "lance", toggleLanceEl.checked);
+  render();
+});
+
+lanceStatsEl.addEventListener("click", () => {
+  lanceStatsExpanded = !lanceStatsExpanded;
   updateSystems();
 });
 

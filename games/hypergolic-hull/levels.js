@@ -82,14 +82,18 @@
       actions: ["sublight", "ramming", "tractor", "fighter"],
       intro: "Fighter Squadron online. Strike any enemy at range, then retrieve your fighters. The Sentry doesn't move — but its beam covers 2 hexes all around. Route around it or take it out.",
     },
-    // Sector 4 — Full Fleet. Everything unlocked.
+    // Sector 4 — Full Fleet. Everything unlocked, no guaranteed Outpost —
+    // Clubhouse feedback: "you shouldn't always have a place to heal."
+    // Sectors 2-3 keep theirs (that's where the Outpost mechanic itself
+    // gets taught); by the toughest campaign fight, that safety net is
+    // gone, same as most generated sectors past it.
     {
       id: 4,
       name: "Full Fleet",
       board: { type: "rect", cols: 9, rows: 11 },
       playerStart: { q: 4, r: 8 },
       exit: { q: 8, r: -4 },
-      outpost: { q: 0, r: 0 },
+      outpost: null,
       enemies: [
         { type: "cruiser", q: 3, r: 5 },
         { type: "sentry", q: 6, r: 2 },

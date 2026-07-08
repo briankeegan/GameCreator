@@ -318,7 +318,7 @@ const weaponLevel = {
 // Moving into range auto-fires the Impulse Cannon — no separate arm-and-aim step.
 let weaponState = Engine.createGameState(weaponLevel);
 assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
-assert.deepStrictEqual(weaponState.systems, { warpdrive: true, ram: true }, "both systems default on");
+assert.deepStrictEqual(weaponState.systems, { warpdrive: true, ram: true, lance: true }, "all systems default on");
 Engine.applySublight(weaponState, { q: 2, r: 2 }); // steps adjacent to the interceptor
 assert.strictEqual(weaponState.enemies[0].alive, false, "moving into range auto-fires the Impulse Cannon");
 assert.ok(weaponState.events.some((e) => e.type === "kill"), "the auto-attack emits a kill event");
@@ -560,7 +560,7 @@ const lengthsAcrossLevels = new Set();
 for (let id = 900; id < 920; id++) {
   const offers = outpostFixture(id).outpostOfferIds;
   assert.strictEqual(offers[0], "repair", `level ${id}: Repair is always the first offer`);
-  assert.ok(offers.length >= 1 && offers.length <= 3, `level ${id}: 1-3 total offers (Repair plus 0-2 extras)`);
+  assert.ok(offers.length >= 1 && offers.length <= 4, `level ${id}: 1-4 total offers (Repair plus 0-3 extras)`);
   assert.strictEqual(new Set(offers).size, offers.length, `level ${id}: no duplicate offers`);
   lengthsAcrossLevels.add(offers.length);
 }
@@ -597,6 +597,67 @@ const noShieldState = Engine.createGameState(shieldLevel);
 const hullBeforeNoShield = noShieldState.hull;
 Engine.applySublight(noShieldState, { q: 2, r: 2 });
 assert.strictEqual(noShieldState.hull, hullBeforeNoShield - 1, "with no Shield charge banked, the hit costs Hull as normal");
+
+// ---- Lance Cannon: bought at an Outpost, not handed out for free --------
+// Clubhouse feedback: "what about different options and different
+// weapons... you have to pay for them" — a new weapon beyond the base kit
+// is a purchase, not another automatic per-sector unlock.
+const lanceLevel = {
+  id: 992,
+  name: "lance fixture",
+  board: { type: "rect", cols: 5, rows: 6 },
+  playerStart: { q: 2, r: 4 },
+  exit: { q: 4, r: -2 },
+  outpost: { q: 0, r: 0 },
+  enemies: [{ type: "interceptor", q: 2, r: 1 }], // 3 hexes straight ahead of playerStart
+  hazards: [],
+  exitRule: "all-enemies-dead",
+};
+const lanceState = Engine.createGameState(lanceLevel);
+assert.strictEqual(lanceState.actions.includes("lance"), false, "Lance Cannon isn't part of the starting kit");
+assert.strictEqual(Engine.outpostOffers(lanceState).length, 0, "not docked yet — no offers visible");
+
+// Dock at the Outpost directly (walking there is already covered by other
+// tests) and force it onto this outpost's menu — offer selection is
+// otherwise seeded per-level and not guaranteed to include Lance Cannon.
+lanceState.playerPos = { q: lanceLevel.outpost.q, r: lanceLevel.outpost.r };
+lanceState.outpostOfferIds = ["repair", "lanceCannon"];
+assert.throws(
+  () => Engine.applyOutpostPurchase(lanceState, "lanceCannon"),
+  /not enough salvage/i,
+  "gated on affordability like every other offer"
+);
+lanceState.salvage = 25;
+Engine.applyOutpostPurchase(lanceState, "lanceCannon");
+assert.strictEqual(lanceState.actions.includes("lance"), true, "purchasing it unlocks the action");
+assert.strictEqual(lanceState.salvage, 0, "the full cost is spent");
+assert.strictEqual(
+  lanceState.outpostOfferIds.includes("lanceCannon"),
+  false,
+  "one-time purchase per outpost, same as every non-Repair offer"
+);
+assert.strictEqual(lanceState.systems.lance, true, "the toggle defaults on once purchased");
+
+// Back at playerStart, face the interceptor (3 hexes dead ahead) and
+// confirm the Lance Cannon actually fires — forward-only (pattern [0])
+// reaches its full range, unlike the omnidirectional Shockwave.
+lanceState.playerPos = { q: lanceLevel.playerStart.q, r: lanceLevel.playerStart.r };
+Engine.setFacing(lanceState, 2); // "up" — toward the interceptor
+Engine.applyHoldPosition(lanceState);
+assert.strictEqual(lanceState.enemies[0].alive, false, "the Lance Cannon hits a target 3 hexes dead ahead");
+assert.ok(
+  lanceState.log.some((line) => line.includes("Lance Cannon destroyed")),
+  "the kill is attributed to the Lance Cannon specifically, not the Shockwave"
+);
+
+// A purchased weapon has to be carried forward explicitly into the next
+// sector (see app.js's advanceSector) — the engine side of that contract
+// is `carryOver.extraActions`.
+const nextSectorState = Engine.createGameState(
+  { ...lanceLevel, id: 993 },
+  { hasPrevious: true, extraActions: ["lance"] }
+);
+assert.strictEqual(nextSectorState.actions.includes("lance"), true, "extraActions carries a purchased weapon into the next sector");
 
 // ---- procedural depth: the run never hard-stops past the campaign -------
 // generateLevel(depth) must produce a valid LevelDef for a wide range of

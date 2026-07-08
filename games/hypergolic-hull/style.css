@@ -232,6 +232,12 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.01em;
 }
+/* Setting `display: flex` unconditionally above overrides the browser's
+   default `[hidden] { display: none }` rule — Lance Cannon's toggle
+   (hidden until purchased) was rendering even while hidden until this
+   was added; every other `[hidden]`-driven element here needs the same
+   treatment if it ever sets its own `display`. */
+.system-toggle[hidden] { display: none; }
 
 /* A blocky, square-pipped toggle switch instead of a native checkbox or a
    smooth rounded one — same underlying <input type=checkbox>, re-skinned. */

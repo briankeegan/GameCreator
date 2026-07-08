@@ -93,7 +93,13 @@
     return state.boardHexes.some((h) => posEq(h, pos));
   }
 
-  const ALL_ACTIONS = ["sublight", "ramming", "tractor", "fighter", "blink"];
+  const ALL_ACTIONS = ["sublight", "ramming", "tractor", "fighter", "blink", "lance"];
+  // Sectors that don't specify `actions` explicitly (Sector 4 "Full Fleet"
+  // and every procedurally-generated sector) default to every action that
+  // unlocks just by playing — NOT the Lance Cannon, which is Outpost-
+  // purchase-only (see OUTPOST_OFFER_POOL/applyOutpostPurchase) and would
+  // otherwise show up for free the moment a level omits `actions`.
+  const DEFAULT_ACTIONS = ALL_ACTIONS.filter((a) => a !== "lance");
 
   // ---- level validation ---------------------------------------------------
 
@@ -204,6 +210,13 @@
     // A Sentry Turret's beam reaches TWO hexes in every direction — it never
     // moves, but it zones off a wide ring you have to route around or kill.
     sentryBeam: { id: "sentryBeam", label: "Sentry Beam", range: 2, damage: 1, targets: "all", speed: 1, energyCost: 0, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // A trade, not a strict upgrade over the Shockwave's omnidirectional
+    // safety: hits harder and at range, but only dead ahead — you have to
+    // manage `facing` to line it up (toggle Warpdrive off, tap an adjacent
+    // hex to aim, Hold Position to fire — infrastructure already built for
+    // exactly this). Purchased at an Outpost (see OUTPOST_OFFER_POOL), not
+    // unlocked for free by reaching a sector.
+    lance: { id: "lance", label: "Lance Cannon", range: 3, damage: 2, targets: "all", speed: 1, energyCost: 0, pattern: [0], slots: 1 },
   };
 
   // Each enemy type is its own small data block: how tough it is (hp), what
@@ -259,10 +272,15 @@
   // weapons should be way more expensive... you have to save up for them."
   // A single kill nets 1-2 salvage, so a permanent upgrade means banking
   // several sectors' worth of kills, not a casual spend.
+  // Weapons beyond the base kit are bought, not handed out for reaching a
+  // sector (Clubhouse feedback: "what about different options and
+  // different weapons... you have to pay for them"). Priced above every
+  // other offer — a whole new permanent weapon, not just a stat bump.
   const OUTPOST_OFFER_POOL = [
     { id: "repair", label: "Repair 1 Hull", cost: 3 },
     { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 15 },
     { id: "shield", label: "Emergency Shield (absorb the next hit)", cost: 10 },
+    { id: "lanceCannon", label: "Lance Cannon (forward-only, 2 dmg, range 3)", cost: 25 },
   ];
 
   function seededRandom(seed) {
@@ -323,7 +341,11 @@
       levelName: level.name || `Sector ${level.id}`,
       radius: level.radius || null,
       boardHexes: buildBoardHexes(level),
-      actions: (level.actions || ALL_ACTIONS).slice(),
+      // `carryOver.extraActions` is how a purchase like the Lance Cannon
+      // (never part of any level's own baked-in `actions` list — see
+      // DEFAULT_ACTIONS) survives into the next sector; app.js's
+      // advanceSector is what actually carries it forward.
+      actions: Array.from(new Set([...(level.actions || DEFAULT_ACTIONS), ...((carryOver && carryOver.extraActions) || [])])),
       playerPos: { q: level.playerStart.q, r: level.playerStart.r },
       hull: maxHull,
       maxHull: maxHull,
@@ -356,8 +378,11 @@
       rammingDisabled: false,
       // Pre-turn system toggles: Warpdrive governs whether you can move at
       // all this turn (off means Hold Position is your only option); Ram
-      // governs whether the Impulse Cannon auto-fires. Both default on.
-      systems: { warpdrive: true, ram: true },
+      // governs whether the Shockwave auto-fires; Lance the Lance Cannon
+      // (inert until purchased — see AUTO_FIRE_WEAPONS — but the toggle key
+      // needs to exist from the start so a later purchase has something to
+      // flip). All default on.
+      systems: { warpdrive: true, ram: true, lance: true },
       // Direction index (0-5) the flagship is currently facing — gameplay-
       // relevant now, not just cosmetic, since a directional weapon's
       // pattern is relative to it. Updated on every Sublight move; starts
@@ -628,33 +653,45 @@
 
   // ---- player actions -----------------------------------------------------
 
+  // Every player weapon that fires automatically (as opposed to Tractor
+  // Beam/Fighter Squadron, which the player arms and aims at a target
+  // directly) — each pairs an `actions` id (permanently unlocked, whether
+  // by campaign progression or an Outpost purchase) with a `state.systems`
+  // toggle key (pre-turn on/off) and its WEAPONS stat block. Adding a new
+  // auto-fire weapon is adding one entry here, not new bespoke firing code.
+  const AUTO_FIRE_WEAPONS = [
+    { action: "ramming", systemKey: "ram", weapon: WEAPONS.ram },
+    { action: "lance", systemKey: "lance", weapon: WEAPONS.lance },
+  ];
+
   // Fires every currently-enabled, unlocked weapon against any living enemy
   // in its range, in front of the enemy phase — same timing Ramming Speed
   // always resolved on (instant, before enemies get to react). Called after
   // any move (or Hold Position), never armed/aimed separately. What it can
   // actually hit is purely a function of the weapon's own pattern and the
-  // flagship's current facing (weaponHexes) — a forward-only cannon (today's
-  // Impulse Cannon) only ever threatens the hex directly ahead, so sidestepping
+  // flagship's current facing (weaponHexes) — a forward-only cannon (the
+  // Lance Cannon) only ever threatens the hex directly ahead, so sidestepping
   // past an enemy without ending up with it dead ahead just doesn't line up
   // a shot, no separate "did you approach it" check needed. Facing carries
   // over from the last move for Hold Position, so holding still only fires
   // on whatever's ahead of wherever you were already facing.
   function applyWeaponAutoAttacks(state) {
-    if (state.rammingDisabled) return; // fighters deployed — weapon offline until retrieved
-    if (!state.actions.includes("ramming") || !state.systems.ram) return;
-    const weapon = WEAPONS.ram;
-    const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon).map(hexKey));
-    const targets = livingEnemies(state).filter((e) => hexKeys.has(hexKey(e)));
-    for (const victim of targets) {
-      victim.hp -= weapon.damage;
-      if (victim.hp <= 0) {
-        victim.alive = false;
-        state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "weapon" });
-        pushLog(state, `${weapon.label} destroyed ${victim.type}.`);
-        awardSalvage(state, victim.type);
-      } else {
-        state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "weapon" });
-        pushLog(state, `${weapon.label} hit ${victim.type} (${victim.hp}/${victim.maxHp} HP left).`);
+    if (state.rammingDisabled) return; // fighters deployed — every weapon offline until retrieved
+    for (const { action, systemKey, weapon } of AUTO_FIRE_WEAPONS) {
+      if (!state.actions.includes(action) || !state.systems[systemKey]) continue;
+      const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon).map(hexKey));
+      const targets = livingEnemies(state).filter((e) => hexKeys.has(hexKey(e)));
+      for (const victim of targets) {
+        victim.hp -= weapon.damage;
+        if (victim.hp <= 0) {
+          victim.alive = false;
+          state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "weapon" });
+          pushLog(state, `${weapon.label} destroyed ${victim.type}.`);
+          awardSalvage(state, victim.type);
+        } else {
+          state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "weapon" });
+          pushLog(state, `${weapon.label} hit ${victim.type} (${victim.hp}/${victim.maxHp} HP left).`);
+        }
       }
     }
   }
@@ -822,6 +859,8 @@
       state.hull += 1;
     } else if (offer.id === "shield") {
       state.shieldCharges += 1;
+    } else if (offer.id === "lanceCannon") {
+      if (!state.actions.includes("lance")) state.actions.push("lance");
     }
     state.salvage -= offer.cost;
     pushLog(state, `Outpost: bought ${offer.label} (-${offer.cost} salvage).`);
