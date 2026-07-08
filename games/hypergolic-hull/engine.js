@@ -299,9 +299,9 @@
   // Position is seeded per level id, same pattern as pickOutpostOfferIds,
   // so it's reproducible but never fixed at one spot — "the wormholes
   // shouldn't always just end up in the exact same place." The flagship
-  // spawns right beside it (see createGameState), not somewhere unrelated —
-  // "when you go through a portal, you should end up at the portal...
-  // to the other side," the same doorway from both directions.
+  // spawns standing directly on it (see createGameState), not somewhere
+  // unrelated — "when you come out the other side of the wormhole, you
+  // start as if you're on top of that wormhole, not next to it."
   function pickPortalPos(state, levelId) {
     const rng = seededRandom(levelId * 15485863 + 29);
     const reserved = [...state.exits, state.outpostPos].filter(Boolean);
@@ -373,23 +373,16 @@
     if (carryOver && carryOver.hasPrevious) {
       const portalPos = pickPortalPos(state, level.id);
       if (portalPos) {
+        // "When you come out the other side of the wormhole, you start as
+        // if you're on top of that wormhole, not next to it" — Clubhouse
+        // feedback overriding an earlier, more cautious version of this
+        // that spawned adjacent instead. Standing on it from turn zero
+        // would otherwise let the very next action (e.g. Hold Position)
+        // instantly trip the return trip — wormholeAvailable's turnCount
+        // guard below is what actually prevents that surprise, not
+        // distance, so literal-same-hex arrival is safe.
         state.wormholePos = portalPos;
-        // Arrive right beside the portal you came through, not literally on
-        // top of it — otherwise the very next action (e.g. Hold Position)
-        // would instantly trip the return trip, since wormholeAvailable
-        // just checks "standing on it." Mirrors how the Warp Gate always
-        // sits apart from playerStart so its own "on it -> next action
-        // warps" rule never fires by surprise either. Falls back to the
-        // portal hex itself if every neighbor is off-board/blocked.
-        const arrivalCandidates = neighbors(portalPos).filter(
-          (h) =>
-            onBoard(state, h) &&
-            !hazardAt(state, h) &&
-            !state.exits.some((e) => posEq(h, e)) &&
-            !(state.outpostPos && posEq(h, state.outpostPos)) &&
-            !state.enemies.some((e) => e.alive && posEq(e, h))
-        );
-        state.playerPos = arrivalCandidates[0] || portalPos;
+        state.playerPos = { q: portalPos.q, r: portalPos.r };
       }
     }
     if (level.intro) pushLog(state, level.intro);
@@ -792,9 +785,14 @@
     return Boolean(state.outpostPos) && posEq(state.playerPos, state.outpostPos);
   }
 
-  // Flying onto the wormhole (when one exists — see pickWormholePos) is the
+  // Flying onto the wormhole (when one exists — see pickPortalPos) is the
   // signal to return to the previous sector; the renderer/app drives the
   // actual transition, this just reports whether the flagship is on it.
+  // The flagship spawns standing directly on it on arrival (see
+  // createGameState) — suppressing the very first action's trigger so
+  // arriving doesn't instantly bounce you back out is a UI-timing concern
+  // (app.js's handleAction owns it), not something this pure query needs
+  // to know about.
   function wormholeAvailable(state) {
     return Boolean(state.wormholePos) && posEq(state.playerPos, state.wormholePos);
   }

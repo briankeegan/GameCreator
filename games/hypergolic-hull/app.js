@@ -151,6 +151,17 @@ let inspectedEnemyId = null;
 // no redo stack, only undo.
 let sectorHistory = [];
 
+// The flagship spawns standing directly ON the wormhole when arriving via
+// portal ("you start as if you're on top of that wormhole, not next to
+// it" — Clubhouse feedback), which means Engine.wormholeAvailable is true
+// from turn zero. Left unguarded, the very first action taken (e.g. Hold
+// Position, without moving off it) would instantly bounce the flagship
+// right back out before the player had done anything. This flag
+// suppresses exactly that one action's trigger — set whenever a sector is
+// (re)loaded, consumed by the first handleAction call afterward, however
+// that first action turns out (move, hold, whatever).
+let justArrived = false;
+
 function advanceSector() {
   sectorHistory.push({ levelIndex, state: JSON.parse(JSON.stringify(state)) });
   loadSector(
@@ -1744,6 +1755,8 @@ function pushMessage(message) {
 
 function handleAction(fn) {
   plannedPath = null;
+  const wasJustArrived = justArrived;
+  justArrived = false;
   try {
     fn();
     mode = null;
@@ -1761,6 +1774,7 @@ function handleAction(fn) {
     } else if (
       state.status === "playing" &&
       Engine.wormholeAvailable(state) &&
+      !wasJustArrived &&
       !anims.some((a) => a.kind === "wormhole")
     ) {
       // Flying onto the wormhole is the return trip — same peak-opacity
@@ -1794,6 +1808,7 @@ function loadSector(index, carryOver, opts) {
     ...carryOver,
     hasPrevious: sectorHistory.length > 0,
   });
+  justArrived = true;
   mode = null;
   anims = keptAnims;
   plannedPath = null;
@@ -1843,6 +1858,9 @@ function restoreRun() {
   // started) — the animation itself doesn't survive a reload, so just
   // un-consume it back to "playing", same fix as the wormhole return.
   if (state.status === "won") state.status = "playing";
+  // Same arrival grace as loadSector — harmless even if the flagship
+  // wasn't actually standing on a wormhole when this was saved.
+  justArrived = true;
   mode = null;
   anims = [];
   plannedPath = null;

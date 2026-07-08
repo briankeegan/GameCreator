@@ -80,18 +80,23 @@ async function walkToExit(page) {
   return s;
 }
 
-// Fly step-by-step onto the wormhole hex (its position is randomized per
-// carryOver.hasPrevious — see Engine.pickWormholePos), then wait out the
-// reverse-warp flash (handleAction's setTimeout(returnToPreviousSector, ...))
-// for levelId to actually rewind.
+// The flagship arrives standing directly ON the wormhole ("you start as
+// if you're on top of that wormhole, not next to it") — but the very
+// first action taken this sector is deliberately suppressed (app.js's
+// `justArrived`) so spawning doesn't instantly bounce the flagship back
+// out before it's done anything. Hold Position once to consume that
+// grace, then again to actually trigger the return, then wait out the
+// reverse-warp flash for levelId to rewind.
 async function walkToWormhole(page) {
-  let s = await getState(page);
-  const startLevel = s.levelId;
-  while (s.playerPos.q !== s.wormholePos.q || s.playerPos.r !== s.wormholePos.r) {
-    await clickHex(page, "sublight", await pickStepToward(page, "wormhole"));
-    s = await getState(page);
-  }
-  await page.waitForFunction((lvl) => window.__hhState.levelId !== lvl, startLevel, { timeout: 5000 });
+  const s0 = await getState(page);
+  assert.ok(
+    s0.playerPos.q === s0.wormholePos.q && s0.playerPos.r === s0.wormholePos.r,
+    "the flagship arrives standing exactly on the wormhole"
+  );
+  await page.click("#holdBtn");
+  assert.strictEqual((await getState(page)).levelId, s0.levelId, "the first action on arrival doesn't trigger the return");
+  await page.click("#holdBtn");
+  await page.waitForFunction((lvl) => window.__hhState.levelId !== lvl, s0.levelId, { timeout: 5000 });
   return getState(page);
 }
 

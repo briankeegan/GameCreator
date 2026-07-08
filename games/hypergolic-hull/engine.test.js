@@ -783,20 +783,26 @@ assert.ok(
   "the wormhole always lands on a valid board hex"
 );
 assert.ok(
-  !Engine.posEq(withHistoryState.wormholePos, withHistoryState.playerPos) &&
-    !Engine.posEq(withHistoryState.wormholePos, withHistoryState.exitPos),
-  "the wormhole doesn't overlap the player start or the Warp Gate"
+  !Engine.posEq(withHistoryState.wormholePos, withHistoryState.exitPos),
+  "the wormhole doesn't overlap the Warp Gate"
 );
-// "When you go through a portal, you should end up at the portal... to the
-// other side" — the flagship spawns adjacent to the wormhole it arrived
-// through, not somewhere unrelated to it (but not literally ON it either,
-// so the very next action doesn't instantly trip the return trip).
+// "When you come out the other side of the wormhole, you start as if
+// you're on top of that wormhole, not next to it" — the flagship spawns
+// standing directly on the portal it arrived through, and it's
+// immediately usable from the engine's point of view (wormholeAvailable
+// is a pure position check). Suppressing an instant bounce-back on the
+// very first action taken after arrival is a UI-timing concern app.js's
+// handleAction owns, not something the engine needs to know about — see
+// the browser.test.js coverage for that.
+assert.ok(
+  Engine.posEq(withHistoryState.wormholePos, withHistoryState.playerPos),
+  "the flagship arrives standing exactly on the portal it came through"
+);
 assert.strictEqual(
-  Engine.hexDistance(withHistoryState.wormholePos, withHistoryState.playerPos),
-  1,
-  "the flagship arrives right beside the portal it came through"
+  Engine.wormholeAvailable(withHistoryState),
+  true,
+  "available immediately on arrival, since the flagship is already standing on it"
 );
-assert.strictEqual(Engine.wormholeAvailable(withHistoryState), false, "not available until the flagship is actually on it");
 
 // Different level ids place the wormhole at different spots — deterministic
 // per id (reproducible), but not hardcoded to one fixed hex.
