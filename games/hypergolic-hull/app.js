@@ -168,7 +168,7 @@ function returnToPreviousSector() {
   // through the moment the map changes underneath it.
   const keptAnims = anims.filter((a) => a.kind === "wormhole");
   levelIndex = prev.levelIndex;
-  state = migrateState(prev.state);
+  state = prev.state;
   // The saved snapshot is mid-"won" (that's the moment it was captured, on
   // the Warp Gate). Un-consume that so the board is live again — moving or
   // Hold Position on the gate re-triggers the normal win check and warps
@@ -1804,45 +1804,41 @@ function loadSector(index, carryOver, opts) {
   render();
 }
 
-// A saved/snapshotted state can predate a schema change the engine made
-// since it was written (e.g. the `exits` array, added for Branching Warp
-// Gates) — restoreRun() and returnToPreviousSector() both load a state
-// object straight out of storage rather than freshly building one via
-// Engine.createGameState, so neither gets that field for free. Without
-// this, a real in-progress run saved before a change like that would hit
-// `state.exits.find(...)` on `undefined` the moment draw() ran, throwing
-// mid-render and silently blanking the whole board (backdrop visible,
-// zero hexes/ships/gate drawn) — confirmed live via a Clubhouse
-// screenshot of exactly that on an existing Sector 3 run. Back-fill
-// anything a current build expects that an older save might be missing,
-// rather than trusting a persisted blob to match today's shape.
-function migrateState(s) {
-  if (!Array.isArray(s.exits)) {
-    s.exits = s.exitPos ? [{ q: s.exitPos.q, r: s.exitPos.r, variantId: null }] : [];
-  }
-  if (s.usedExitVariant === undefined) s.usedExitVariant = null;
-  if (s.wormholePos === undefined) s.wormholePos = null;
-  return s;
+// A saved state can predate an engine change that altered what
+// Engine.createGameState's output looks like (e.g. Branching Warp Gates
+// adding `exits`) — restoreRun() loads a state object straight out of
+// storage rather than freshly building one via createGameState, so it
+// doesn't get a new field for free. Without a check, a stale save would
+// hit `state.exits.find(...)` on `undefined` the instant draw() touched
+// the first board hex, throwing mid-render and silently blanking the
+// whole canvas (confirmed live via a Clubhouse screenshot). This is a
+// single-player save with no install base to migrate forward — rather
+// than maintaining a migration chain for every past shape, just check
+// the save still looks like a currently-valid state, and if not, drop it
+// and start fresh instead of trying to patch it.
+function isValidSave(s) {
+  return Boolean(s) && Array.isArray(s.exits) && s.playerPos && typeof s.levelId === "number";
 }
 
 // A run used to be write-only — persist() saved it, but nothing ever read
 // it back, so any page reload silently restarted from Sector 1 no matter
 // how deep you'd gotten (Clubhouse feedback: "the levels should be
 // remembered"). Called once at boot instead of an unconditional
-// loadSector(0); falls back to a fresh run if there's nothing saved yet.
+// loadSector(0); falls back to a fresh run if there's nothing saved (or
+// nothing valid saved) yet.
 function restoreRun() {
   const savedState = GCStorage.get(GAME_ID, "run", null);
   const savedIndex = GCStorage.get(GAME_ID, "levelIndex", null);
-  if (!savedState || savedIndex === null) {
+  if (!isValidSave(savedState) || savedIndex === null) {
     loadSector(0);
     return;
   }
   levelIndex = savedIndex;
-  state = migrateState(savedState);
-  sectorHistory = GCStorage.get(GAME_ID, "sectorHistory", []).map((entry) => ({
-    ...entry,
-    state: migrateState(entry.state),
-  }));
+  state = savedState;
+  // Same reasoning as isValidSave above, applied per-entry — drop any
+  // stale history snapshot rather than crashing returnToPreviousSector
+  // later when it's popped.
+  sectorHistory = GCStorage.get(GAME_ID, "sectorHistory", []).filter((entry) => entry && isValidSave(entry.state));
   // A save can land mid-"won" (captured the instant a warp animation
   // started) — the animation itself doesn't survive a reload, so just
   // un-consume it back to "playing", same fix as the wormhole return.

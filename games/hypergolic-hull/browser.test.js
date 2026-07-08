@@ -328,27 +328,26 @@ async function freshPage(browser, url, errors) {
   assert.notStrictEqual(branchExits[0].variantId, branchExits[1].variantId, "the two gates are tagged with different variants");
   await page.close();
 
-  // ---- Backward-compat: an old save missing a newer field must not --------
+  // ---- Backward-compat: a stale save missing a newer field must not -------
   // blank the board. A real in-progress Sector 3 run went fully blank
   // (backdrop visible, zero hexes/ships/gate drawn) once `exits` shipped,
   // because restoreRun() loaded the old save as-is and draw() threw on
-  // `state.exits.find(...)` being undefined — see migrateState in app.js.
+  // `state.exits.find(...)` being undefined. Single-player save, no install
+  // base to migrate forward — isValidSave() in app.js just drops anything
+  // that doesn't look current and starts a fresh run instead of crashing.
   page = await freshPage(browser, url, errors);
   await page.evaluate(() => {
-    const legacyState = { ...window.__hhState };
-    delete legacyState.exits;
-    delete legacyState.usedExitVariant;
-    localStorage.setItem("gc:hypergolic-hull:run", JSON.stringify(legacyState));
-    localStorage.setItem("gc:hypergolic-hull:levelIndex", JSON.stringify(0));
+    const staleState = { ...window.__hhState };
+    delete staleState.exits;
+    localStorage.setItem("gc:hypergolic-hull:run", JSON.stringify(staleState));
+    localStorage.setItem("gc:hypergolic-hull:levelIndex", JSON.stringify(3));
     localStorage.setItem("gc:hypergolic-hull:sectorHistory", JSON.stringify([]));
   });
   await page.reload();
   await page.waitForFunction(() => window.__hhState && window.__hhState.status === "playing");
-  const migratedExits = await page.evaluate(() => window.__hhState.exits);
-  assert.ok(
-    Array.isArray(migratedExits) && migratedExits.length >= 1,
-    "an old save missing `exits` is backfilled on load instead of crashing the renderer"
-  );
+  s = await getState(page);
+  assert.strictEqual(s.levelId, 1, "a stale save missing `exits` is dropped for a fresh Sector 1 run, not trusted as-is");
+  assert.ok(Array.isArray(s.exits) && s.exits.length >= 1, "the fresh run has a valid, current-shaped state");
   await page.close();
 
   await browser.close();
