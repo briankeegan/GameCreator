@@ -328,6 +328,29 @@ async function freshPage(browser, url, errors) {
   assert.notStrictEqual(branchExits[0].variantId, branchExits[1].variantId, "the two gates are tagged with different variants");
   await page.close();
 
+  // ---- Backward-compat: an old save missing a newer field must not --------
+  // blank the board. A real in-progress Sector 3 run went fully blank
+  // (backdrop visible, zero hexes/ships/gate drawn) once `exits` shipped,
+  // because restoreRun() loaded the old save as-is and draw() threw on
+  // `state.exits.find(...)` being undefined — see migrateState in app.js.
+  page = await freshPage(browser, url, errors);
+  await page.evaluate(() => {
+    const legacyState = { ...window.__hhState };
+    delete legacyState.exits;
+    delete legacyState.usedExitVariant;
+    localStorage.setItem("gc:hypergolic-hull:run", JSON.stringify(legacyState));
+    localStorage.setItem("gc:hypergolic-hull:levelIndex", JSON.stringify(0));
+    localStorage.setItem("gc:hypergolic-hull:sectorHistory", JSON.stringify([]));
+  });
+  await page.reload();
+  await page.waitForFunction(() => window.__hhState && window.__hhState.status === "playing");
+  const migratedExits = await page.evaluate(() => window.__hhState.exits);
+  assert.ok(
+    Array.isArray(migratedExits) && migratedExits.length >= 1,
+    "an old save missing `exits` is backfilled on load instead of crashing the renderer"
+  );
+  await page.close();
+
   await browser.close();
   server.close();
 
