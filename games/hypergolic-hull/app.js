@@ -22,8 +22,21 @@ const SQRT3 = Math.sqrt(3);
 // Cannon auto-fires as a side effect of that movement (see engine.js). Only
 // Tractor/Fighter still need you to pick a mode and then a target enemy.
 const MODES = {
-  tractor: { label: "Tractor Beam", targets: Engine.legalTractorTargets, kind: "enemy" },
-  fighter: { label: "Fighter Squadron", targets: Engine.legalFighterTargets, kind: "enemy" },
+  tractor: {
+    label: "Tractor Beam",
+    targets: Engine.legalTractorTargets,
+    kind: "enemy",
+    // Shown in the objective line while armed (Clubhouse: "what IS Tractor
+    // Beam... weird that I'm able to click on it" — arming a mode used to
+    // give no in-the-moment hint at all about what to do next).
+    hint: "Tractor Beam armed — tap an adjacent enemy to shove it one hex away. Off the edge, into another ship, or into a hazard = destroyed.",
+  },
+  fighter: {
+    label: "Fighter Squadron",
+    targets: Engine.legalFighterTargets,
+    kind: "enemy",
+    hint: "Fighter Squadron armed — tap any enemy on the board to destroy it at range. Your fighters land on that hex; fly there later to retrieve them and re-enable the Shockwave.",
+  },
 };
 
 const canvas = document.getElementById("board");
@@ -1556,6 +1569,7 @@ function setMode(next) {
     btn.classList.toggle("active", btn.dataset.mode === mode);
     if (btn.dataset.mode === next) btn.classList.remove("new-unlock");
   });
+  updateHud(); // swaps the objective line to this mode's hint immediately
   draw();
 }
 
@@ -1594,12 +1608,17 @@ function updateHud() {
 
   // The Warp Gate is always online — fighting is never mandatory to leave.
   // Say so, but remind the player that living enemies are still salvage on
-  // the table if they want it.
+  // the table if they want it. While a mode is armed, replace this with a
+  // concrete instruction for what tapping the board will actually do —
+  // arming used to give no in-the-moment hint at all (Clubhouse: "what IS
+  // Tractor Beam... weird that I'm able to click on it").
   const remaining = Engine.livingEnemies(state).length;
   objectiveEl.textContent =
-    remaining > 0
-      ? `Fly to the Warp Gate to warp out — or destroy ${remaining} enemy ${remaining === 1 ? "ship" : "ships"} first for salvage`
-      : "Fly to the Warp Gate to warp out!";
+    mode && MODES[mode]
+      ? MODES[mode].hint
+      : remaining > 0
+        ? `Fly to the Warp Gate to warp out — or destroy ${remaining} enemy ${remaining === 1 ? "ship" : "ships"} first for salvage`
+        : "Fly to the Warp Gate to warp out!";
 
   // Hold the end-of-run overlay back until the death/kill animation finishes.
   // A win never actually reaches this "not animating" state as "won" — the

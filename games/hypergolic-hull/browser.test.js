@@ -254,6 +254,14 @@ async function freshPage(browser, url, errors) {
     false,
     "tapping it once clears the pulse for good"
   );
+  // Arming a mode used to leave the objective line on its generic
+  // "Fly to the Warp Gate" text with zero in-the-moment guidance
+  // (Clubhouse: "what IS Tractor Beam... weird that I'm able to click on
+  // it") — it now swaps to a concrete instruction while armed.
+  assert.ok(
+    /tractor beam armed/i.test(await page.locator("#objective").textContent()),
+    "arming Tractor Beam shows a concrete instruction, not the generic objective line"
+  );
 
   // ---- Run persistence: reloading resumes exactly where you left off ------
   // ("the levels should be remembered" — a reload used to always restart at
