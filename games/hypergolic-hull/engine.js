@@ -467,11 +467,55 @@
     }
     if (level.intro) pushLog(state, level.intro);
     checkExitUnlock(state); // an enemy-free tutorial board starts with the gate online
+    // Every weapon system defaults to systems[key] === true (including
+    // Lance/Repulsor before they're even owned — see the comment on the
+    // `systems` field above). Once a flagship actually owns 3+ of them
+    // (Lance and Repulsor both purchased, carried into a new sector via
+    // carryOver.extraActions), that default would silently put every one
+    // of them "active" at once, over the slot cap, without ever going
+    // through setSystem. Clamp it down here too, not just in setSystem.
+    clampWeaponSystems(state);
     return state;
+  }
+
+  // "There should be rules about what you can equip" (Clubhouse) — at most
+  // MAX_ACTIVE_WEAPON_SYSTEMS of the toggle-fired weapons can run at once,
+  // whichever you have unlocked/purchased. Doesn't touch Tractor Beam/
+  // Fighter Squadron/Random Blink — those are one-off actions you take
+  // each turn, not systems you leave running, so "equip" doesn't apply the
+  // same way. Warpdrive is movement, not a weapon, and is exempt too.
+  const WEAPON_SYSTEM_KEYS = ["ram", "lance", "repulsor"];
+  const MAX_ACTIVE_WEAPON_SYSTEMS = 2;
+
+  // Disables active-but-owned weapon systems beyond the cap, keeping the
+  // first MAX_ACTIVE_WEAPON_SYSTEMS in WEAPON_SYSTEM_KEYS order (Shockwave
+  // wins ties over Lance/Repulsor, arbitrary but deterministic). Used
+  // wherever ownership or the default-on systems block can put more than
+  // the cap "active" without ever going through setSystem's own check.
+  function clampWeaponSystems(state) {
+    const owned = WEAPON_SYSTEM_KEYS.filter((k) => k === "ram" || state.actions.includes(k));
+    let activeSlotsLeft = MAX_ACTIVE_WEAPON_SYSTEMS;
+    for (const k of owned) {
+      if (!state.systems[k]) continue;
+      if (activeSlotsLeft > 0) activeSlotsLeft--;
+      else state.systems[k] = false;
+    }
   }
 
   function setSystem(state, key, enabled) {
     if (!(key in state.systems)) throw new Error(`Unknown system: ${key}`);
+    if (enabled && WEAPON_SYSTEM_KEYS.includes(key)) {
+      // Unowned weapons still default to systems[key] === true (see
+      // createGameState) since they simply don't fire until purchased/claimed
+      // — only count ones actually unlocked (ram is always available; the
+      // rest need state.actions to include them) toward the cap.
+      const activeCount = WEAPON_SYSTEM_KEYS.filter(
+        (k) => k !== key && state.systems[k] && (k === "ram" || state.actions.includes(k))
+      ).length;
+      if (activeCount >= MAX_ACTIVE_WEAPON_SYSTEMS) {
+        throw new Error(`Only ${MAX_ACTIVE_WEAPON_SYSTEMS} weapons can run at once — toggle another off first`);
+      }
+    }
     state.systems[key] = Boolean(enabled);
   }
 
@@ -944,8 +988,10 @@
       state.shieldCharges += 1;
     } else if (offer.id === "lanceCannon") {
       if (!state.actions.includes("lance")) state.actions.push("lance");
+      clampWeaponSystems(state); // owning a 3rd weapon system can't put all 3 "active" at once
     } else if (offer.id === "repulsorWeapon") {
       if (!state.actions.includes("repulsor")) state.actions.push("repulsor");
+      clampWeaponSystems(state);
     } else if (offer.id === "tractorBeam") {
       if (!state.actions.includes("tractor")) state.actions.push("tractor");
     }
@@ -986,6 +1032,8 @@
     DIRECTIONS,
     ALL_ACTIONS,
     PURCHASABLE_ACTIONS,
+    WEAPON_SYSTEM_KEYS,
+    MAX_ACTIVE_WEAPON_SYSTEMS,
     hexKey,
     posEq,
     hexDistance,

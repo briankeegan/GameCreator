@@ -366,6 +366,78 @@ assert.deepStrictEqual(weaponState.playerPos, weaponLevel.playerStart, "re-aimin
 assert.strictEqual(weaponState.turnCount, 0, "re-aiming doesn't consume a turn — no enemy phase runs");
 assert.throws(() => Engine.setFacing(weaponState, 6), /Invalid facing/, "facing must be one of the 6 hex directions");
 
+// ---- Weapon-slot cap: "there should be rules about what you can equip" -
+// (Clubhouse feedback) — at most MAX_ACTIVE_WEAPON_SYSTEMS of the
+// toggle-fired weapons (Shockwave/Lance/Repulsor) can run at once. Tractor
+// Beam/Fighter Squadron/Random Blink are one-off actions, not systems left
+// running, so they're exempt; so is Warpdrive (movement, not a weapon).
+assert.deepStrictEqual(Engine.WEAPON_SYSTEM_KEYS, ["ram", "lance", "repulsor"]);
+assert.strictEqual(Engine.MAX_ACTIVE_WEAPON_SYSTEMS, 2);
+
+// Lance and Repulsor default systems[key] === true even before they're
+// purchased (see createGameState) — they simply don't fire until owned.
+// The cap must only count weapons actually unlocked, or a fresh flagship
+// with just the Shockwave would already read as "2 active" and get
+// blocked from re-enabling it.
+let capState = Engine.createGameState(weaponLevel);
+assert.ok(
+  !capState.actions.includes("lance") && !capState.actions.includes("repulsor"),
+  "a fresh flagship hasn't unlocked Lance/Repulsor yet"
+);
+Engine.setSystem(capState, "ram", false);
+Engine.setSystem(capState, "ram", true); // must not throw — lance/repulsor aren't actually owned
+assert.strictEqual(capState.systems.ram, true);
+
+// Once Lance and Repulsor are both owned, the cap bites: Shockwave +
+// Lance is already 2/2 (createGameState itself clamps the 3rd default-on
+// system, Repulsor, back off — see clampWeaponSystems), so arming
+// Repulsor on top must be rejected.
+capState = Engine.createGameState(weaponLevel, { extraActions: ["lance", "repulsor"] });
+assert.ok(
+  capState.actions.includes("lance") && capState.actions.includes("repulsor"),
+  "extraActions carries Lance and Repulsor into the fresh state"
+);
+assert.deepStrictEqual(
+  capState.systems,
+  { warpdrive: true, ram: true, lance: true, repulsor: false },
+  "owning all 3 weapon systems at once starts with only the first 2 (in Shockwave/Lance/Repulsor order) active — the cap is enforced from turn zero, not just on the next toggle"
+);
+assert.throws(
+  () => Engine.setSystem(capState, "repulsor", true),
+  /Only 2 weapons can run at once/,
+  "a 3rd weapon system can't be armed while 2 are already active"
+);
+// Toggling one off first frees a slot.
+Engine.setSystem(capState, "ram", false);
+Engine.setSystem(capState, "repulsor", true); // now Lance + Repulsor, 2/2 — must not throw
+assert.strictEqual(capState.systems.repulsor, true);
+// Disabling a system is always allowed, cap or no cap.
+Engine.setSystem(capState, "lance", false);
+assert.strictEqual(capState.systems.lance, false);
+
+// The cap also has to hold at the moment of purchase, not just on the next
+// toggle — buying a 3rd weapon system while the other 2 are already
+// running must not silently leave all 3 flagged "active".
+const capOutpostLevel = { ...weaponLevel, id: 995, playerStart: { q: 3, r: 3 }, outpost: { q: 2, r: 3 } };
+let purchaseState = Engine.createGameState(capOutpostLevel, { extraActions: ["lance"] });
+assert.deepStrictEqual(
+  purchaseState.systems,
+  { warpdrive: true, ram: true, lance: true, repulsor: true },
+  "Shockwave + Lance is exactly 2/2 already — Repulsor still reads active by default, but it isn't owned yet so it doesn't count"
+);
+purchaseState.playerPos = { q: capOutpostLevel.outpost.q, r: capOutpostLevel.outpost.r };
+purchaseState.outpostOfferIds = ["repair", "repulsorWeapon"];
+purchaseState.salvage = 20;
+Engine.applyOutpostPurchase(purchaseState, "repulsorWeapon");
+assert.strictEqual(purchaseState.actions.includes("repulsor"), true, "the purchase still unlocks the action");
+assert.strictEqual(
+  purchaseState.systems.repulsor,
+  false,
+  "but it doesn't auto-arm — Shockwave and Lance already filled both slots, so the newly-bought Repulsor starts off"
+);
+assert.strictEqual(purchaseState.systems.ram, true, "the 2 systems that were already active are untouched by the purchase");
+assert.strictEqual(purchaseState.systems.lance, true);
+
 // Enemies fight through the same WEAPONS/ENEMY_TYPES stat blocks as the
 // flagship — not hardcoded adjacency/damage constants — so the threat
 // overlay, attack range, and damage-per-hit are all read off the

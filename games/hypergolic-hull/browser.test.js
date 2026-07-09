@@ -456,6 +456,52 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "continuing closes the victory overlay");
   await page.close();
 
+  // ---- Weapon-slot cap in the UI: "there should be rules about what you --
+  // can equip" (Clubhouse) — with Lance and Repulsor both owned, only 2 of
+  // the 3 toggle-fired weapons can run at once. The cap itself is covered
+  // exhaustively in engine.test.js; this just confirms app.js surfaces it —
+  // the label appears, a rejected toggle click reverts the checkbox and
+  // logs why, and freeing a slot lets the next toggle succeed. Owning both
+  // weapons is simulated directly (grinding real salvage for both purchases
+  // is exercised elsewhere) — same state-injection pattern as the boss
+  // milestone test above.
+  page = await freshPage(browser, url, errors);
+  await page.evaluate(() => {
+    const level = window.HypergolicLevels.generateLevel(5);
+    const fresh = window.HypergolicEngine.createGameState(level, { extraActions: ["lance", "repulsor"] });
+    Object.assign(window.__hhState, fresh);
+    window.render(); // resize alone only redraws the canvas — the systems panel needs a full render()
+  });
+  await page.waitForTimeout(50);
+  s = await getState(page);
+  assert.deepStrictEqual(
+    s.systems,
+    { warpdrive: true, ram: true, lance: true, repulsor: false },
+    "owning all 3 weapon systems starts with only the first 2 (Shockwave + Lance) active"
+  );
+  assert.strictEqual(await page.locator("#weaponSlotsLabel").isVisible(), true, "the slot-count reminder shows once 2+ weapon systems are unlocked");
+  assert.strictEqual(await page.locator("#weaponSlotsLabel").textContent(), "Weapons active: 2/2");
+
+  // Trying to arm the 3rd (Repulsor) while Shockwave+Lance already fill
+  // both slots must be rejected — the checkbox reverts, and the log
+  // explains why.
+  await page.check("#toggleRepulsor").catch(() => {}); // Playwright's own "state didn't change" error is expected here — see the reset assertion below
+  s = await getState(page);
+  assert.strictEqual(s.systems.repulsor, false, "the rejected toggle never took effect in state");
+  assert.strictEqual(await page.locator("#toggleRepulsor").isChecked(), false, "and the checkbox visually reverts to match");
+  assert.ok(
+    (await page.locator("#log").textContent()).includes("Only 2 weapons can run at once"),
+    "the rejection reason is logged"
+  );
+
+  // Freeing a slot lets the next toggle through.
+  await page.uncheck("#toggleLance");
+  await page.check("#toggleRepulsor");
+  s = await getState(page);
+  assert.strictEqual(s.systems.repulsor, true, "with a slot free, Repulsor arms successfully");
+  assert.strictEqual(await page.locator("#weaponSlotsLabel").textContent(), "Weapons active: 2/2", "Shockwave + Repulsor is the new 2/2");
+  await page.close();
+
   await browser.close();
   server.close();
 

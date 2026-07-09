@@ -221,6 +221,19 @@ body {
   text-overflow: clip;
 }
 
+/* "There should be rules about what you can equip" — a standing reminder
+   of the weapon-slot cap (see engine.js's setSystem/MAX_ACTIVE_WEAPON_SYSTEMS)
+   so it's discoverable up front, not just via a failed toggle attempt. */
+.weapon-slots-label {
+  grid-column: 1 / -1;
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: #7a8bab;
+}
+.weapon-slots-label[hidden] { display: none; }
+
 .system-toggle {
   display: flex;
   align-items: center;
@@ -306,23 +319,34 @@ body {
   box-shadow: none;
 }
 
+/* Matches .system-toggle's visual language (border weight, uppercase,
+   letter-spacing, the same checked-state green/glow) even though these are
+   arm-then-tap-a-target buttons, not persistent toggles underneath — a
+   Tractor Beam/Fighter Squadron target has to be picked on the board, a
+   plain on/off switch can't express that. Clubhouse feedback: the old plain
+   button read as visually unrelated to Warpdrive/Shockwave's row above it
+   ("can't turn on off... all should work same"). */
 .actions-grid button {
   width: 100%;
   background: #1b2436;
   color: #dbe4f2;
-  border: 1px solid #2a3652;
-  padding: 6px 4px;
+  border: 2px solid #3a4a68;
+  padding: 6px 8px;
   border-radius: 0;
   font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
+  text-align: left;
 }
 .actions-grid button.active {
-  background: #2f8f5b;
+  background: #1f4d3a;
   border-color: #7fe3a8;
-  color: #0d2233;
+  color: #7fe3a8;
+  box-shadow: 0 0 0 2px rgba(127, 227, 168, 0.35);
 }
 .actions-grid button:disabled {
   opacity: 0.4;

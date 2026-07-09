@@ -75,6 +75,7 @@ const ramLabelLegendEl = document.getElementById("ramLabelLegend");
 const weaponStatsEl = document.getElementById("weaponStats");
 const tractorStatsEl = document.getElementById("tractorStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
+const weaponSlotsLabelEl = document.getElementById("weaponSlotsLabel");
 
 // Every purchased weapon beyond the base Shockwave (Lance Cannon,
 // Repulsor, ...) gets the same UI treatment: hidden until bought, a
@@ -1809,6 +1810,16 @@ function updateSystems() {
       cfg.stats.classList.toggle("expanded", cfg.expanded);
     }
   }
+
+  // "There should be rules about what you can equip" — only worth stating
+  // once there's an actual choice to make (2+ weapon systems unlocked);
+  // with just the Shockwave, there's nothing to trade off yet.
+  const unlockedWeaponSystems = Engine.WEAPON_SYSTEM_KEYS.filter((k) => k === "ram" || state.actions.includes(k));
+  weaponSlotsLabelEl.hidden = unlockedWeaponSystems.length < 2;
+  if (!weaponSlotsLabelEl.hidden) {
+    const activeCount = unlockedWeaponSystems.filter((k) => state.systems[k]).length;
+    weaponSlotsLabelEl.textContent = `Weapons active: ${activeCount}/${Engine.MAX_ACTIVE_WEAPON_SYSTEMS}`;
+  }
 }
 
 // Shared by the systems-row stats line and the click-an-enemy-for-info panel
@@ -2064,8 +2075,10 @@ toggleWarpdriveEl.addEventListener("change", () => {
 });
 
 toggleRamEl.addEventListener("change", () => {
-  Engine.setSystem(state, "ram", toggleRamEl.checked);
-  render();
+  // Can throw now (weapon-slot cap — see engine.js's setSystem); handleAction
+  // catches it, logs the message, and render() resets the checkbox back to
+  // the real state either way.
+  handleAction(() => Engine.setSystem(state, "ram", toggleRamEl.checked));
 });
 
 weaponStatsEl.addEventListener("click", () => {
@@ -2080,8 +2093,9 @@ tractorStatsEl.addEventListener("click", () => {
 
 for (const cfg of PURCHASABLE_WEAPON_UI) {
   cfg.toggle.addEventListener("change", () => {
-    Engine.setSystem(state, cfg.action, cfg.toggle.checked);
-    render();
+    // Can throw (weapon-slot cap) — handleAction catches it, logs the
+    // message, and render() resets the checkbox to the real state either way.
+    handleAction(() => Engine.setSystem(state, cfg.action, cfg.toggle.checked));
   });
   cfg.stats.addEventListener("click", () => {
     cfg.expanded = !cfg.expanded;
