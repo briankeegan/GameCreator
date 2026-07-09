@@ -63,7 +63,7 @@ const outpostSalvageEl = document.getElementById("outpostSalvage");
 const outpostOffersEl = document.getElementById("outpostOffers");
 const outpostCloseBtn = document.getElementById("outpostCloseBtn");
 const modeButtons = Array.from(document.querySelectorAll("[data-mode]"));
-const helpBtn = document.getElementById("helpBtn");
+const scanBtn = document.getElementById("scanBtn");
 const legendEl = document.getElementById("legend");
 const toggleThreatEl = document.getElementById("toggleThreat");
 const toggleLegalEl = document.getElementById("toggleLegal");
@@ -71,9 +71,10 @@ const toggleWarpdriveEl = document.getElementById("toggleWarpdrive");
 const toggleRamEl = document.getElementById("toggleRam");
 const holdBtn = document.getElementById("holdBtn");
 const ramLabelEl = document.getElementById("ramLabel");
-const ramLabelLegendEl = document.getElementById("ramLabelLegend");
 const weaponStatsEl = document.getElementById("weaponStats");
 const tractorStatsEl = document.getElementById("tractorStats");
+const fighterStatsEl = document.getElementById("fighterStats");
+const blinkStatsEl = document.getElementById("blinkStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
 const weaponSlotsLabelEl = document.getElementById("weaponSlotsLabel");
 
@@ -140,9 +141,15 @@ let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
 let plannedPath = null;
 let autoRoute = null;
 
-// Whether the legend is open is a remembered player preference, not a
+// Whether Scan mode is open is a remembered player preference, not a
 // per-sector default — it starts closed the first time you ever play, and
-// after that just stays wherever you last left it (see the Help button).
+// after that just stays wherever you last left it (see the Scan button).
+// Scan mode shows the legend AND is a real inspect-only mode: movement and
+// every action lock out while it's open (Clubhouse: restyling Fighter
+// Squadron/Random Blink to look like the toggle rows above them still
+// didn't explain what they did — tapping them to find out mid-game was the
+// only way, and that's a real commitment, not a preview. Scan mode is the
+// no-commitment way to look at anything on the board).
 let legendVisible = GCStorage.get(GAME_ID, "legendVisible", false);
 
 // Each legend key can be independently muted while the legend is open. The
@@ -165,9 +172,11 @@ function markActionUsed(m) {
   GCStorage.set(GAME_ID, "usedActions", Array.from(usedActions));
 }
 
-// Tapping an enemy while Help is open inspects it — its stats/weapon/pattern
-// show in a small card up top instead of (or alongside) acting on it.
-let inspectedEnemyId = null;
+// Tapping anything on the board in Scan mode inspects it — an enemy, the
+// Warp Gate, the Outpost, the Wormhole, or an asteroid field — showing its
+// info in a small card up top. Scan mode is inspect-only (see the canvas
+// click handler below), so this never competes with acting on the tap.
+let inspectedHex = null;
 
 // Clearing a sector needs no confirmation at all now (Clubhouse feedback:
 // "why say Next Sector each time... weird... there's no reason for a user
@@ -257,6 +266,8 @@ let outpostDismissed = false;
 // gets its own flag, same pattern as weaponStatsExpanded.
 let weaponStatsExpanded = false;
 let tractorStatsExpanded = false;
+let fighterStatsExpanded = false;
+let blinkStatsExpanded = false;
 
 // The flagship's facing, in degrees (canvas convention: 0 = screen-right,
 // increases clockwise). Updated whenever the ship actually moves.
@@ -1738,12 +1749,15 @@ function updateHud() {
     // ghost button cluttering the console. It appears the sector it unlocks.
     btn.hidden = locked;
     btn.textContent = MODES[m].label;
-    btn.disabled = state.status !== "playing" || (m === "fighter" && Boolean(state.fighterHex));
+    // Scan mode is inspect-only — every action locks out while it's open
+    // (see the canvas click handler), so the buttons themselves go dead
+    // too instead of sitting there clickable but doing nothing.
+    btn.disabled = state.status !== "playing" || (m === "fighter" && Boolean(state.fighterHex)) || legendVisible;
     btn.classList.toggle("new-unlock", !locked && !usedActions.has(m));
   });
 
   blinkBtn.hidden = !blinkUnlocked;
-  blinkBtn.disabled = state.status !== "playing" || state.energy < Engine.BLINK_ENERGY_COST;
+  blinkBtn.disabled = state.status !== "playing" || state.energy < Engine.BLINK_ENERGY_COST || legendVisible;
   blinkBtn.classList.toggle("new-unlock", blinkUnlocked && !usedActions.has("blink"));
 
   // Tractor Beam gets the same tap-to-expand stats badge as every
@@ -1759,11 +1773,25 @@ function updateHud() {
       : describeWeaponCompact(tractorWeapon);
     tractorStatsEl.classList.toggle("expanded", tractorStatsExpanded);
   }
+
+  // Fighter Squadron/Random Blink: same no-commitment preview — both are
+  // unlocked from the start, so the badge just tracks each one's own
+  // hidden state directly instead of an "owned" gate.
+  fighterStatsEl.hidden = !state.actions.includes("fighter");
+  if (!fighterStatsEl.hidden) {
+    fighterStatsEl.textContent = fighterStatsExpanded ? describeFighter() : describeFighterCompact();
+    fighterStatsEl.classList.toggle("expanded", fighterStatsExpanded);
+  }
+  blinkStatsEl.hidden = !blinkUnlocked;
+  if (!blinkStatsEl.hidden) {
+    blinkStatsEl.textContent = blinkStatsExpanded ? describeBlink() : describeBlinkCompact();
+    blinkStatsEl.classList.toggle("expanded", blinkStatsExpanded);
+  }
 }
 
 function updateLegend() {
   legendEl.classList.toggle("hidden", !legendVisible);
-  helpBtn.classList.toggle("active", legendVisible);
+  scanBtn.classList.toggle("active", legendVisible);
 }
 
 // The Warpdrive/Impulse Cannon checkboxes and the Hold Position button —
@@ -1773,12 +1801,16 @@ function updateLegend() {
 function updateSystems() {
   toggleWarpdriveEl.checked = state.systems.warpdrive;
   toggleRamEl.checked = state.systems.ram;
-  // The toggle itself is never locked out — you can flip it whether or not
-  // the weapon is unlocked yet this sector; it just has nothing to do until
-  // then (applyWeaponAutoAttacks in engine.js gates on `ramming` being
-  // unlocked regardless of this switch's position).
+  // The toggle itself is never locked out by ownership — you can flip it
+  // whether or not the weapon is unlocked yet this sector; it just has
+  // nothing to do until then (applyWeaponAutoAttacks in engine.js gates on
+  // `ramming` being unlocked regardless of this switch's position). Scan
+  // mode is the one thing that does lock it — inspect-only, no changing
+  // your loadout while you're just looking around.
+  toggleWarpdriveEl.disabled = legendVisible;
+  toggleRamEl.disabled = legendVisible;
   const unlocked = state.actions.includes("ramming");
-  holdBtn.disabled = state.status !== "playing";
+  holdBtn.disabled = state.status !== "playing" || legendVisible;
 
   // Read live off Engine.WEAPONS (rather than hardcoding text here) so the
   // label/stats can never drift from what the engine actually uses, and so
@@ -1786,10 +1818,9 @@ function updateSystems() {
   // free instead of needing its own display code.
   const weapon = Engine.WEAPONS.ram;
   ramLabelEl.textContent = weapon.label;
-  ramLabelLegendEl.textContent = weapon.label;
   // Tap the badge to inspect it: expands from the compact abbreviation to
   // the full Range/Damage/Pattern/Speed/Energy sentence, same "tap a thing
-  // to learn about it" pattern as clicking an enemy while Help is open.
+  // to learn about it" pattern as inspecting anything in Scan mode.
   // Stats are readable either way, locked or not — locked only means the
   // weapon isn't firing yet, not that you can't go look at its numbers.
   const lockedPrefix = unlocked ? "" : "offline · ";
@@ -1806,6 +1837,7 @@ function updateSystems() {
     cfg.stats.hidden = !owned;
     if (owned) {
       cfg.toggle.checked = state.systems[cfg.action];
+      cfg.toggle.disabled = legendVisible;
       cfg.stats.textContent = cfg.expanded ? describeWeapon(cfg.weapon) : describeWeaponCompact(cfg.weapon);
       cfg.stats.classList.toggle("expanded", cfg.expanded);
     }
@@ -1855,37 +1887,100 @@ function describeWeaponCompact(weapon) {
   return `R${weapon.range} · ${dmg} · SPD${weapon.speed} · E${weapon.energyCost} · ${pattern}`;
 }
 
-// The inspected enemy's card only ever shows while Help is open (it's a
-// learn-the-board aid, same as the legend) and only for as long as that
-// enemy is still alive on the board.
-function updateEnemyInfo() {
-  const enemy = inspectedEnemyId && state.enemies.find((e) => e.id === inspectedEnemyId && e.alive);
-  if (!legendVisible || !enemy) {
+// Fighter Squadron and Random Blink aren't WEAPONS-table entries (no
+// range/damage/pattern to read off), so they get their own hand-written
+// compact/expanded pair instead of describeWeapon(Compact) — same
+// tap-to-expand badge, just custom text describing what each one actually
+// does. Without this, the only way to find out was to arm/fire it for
+// real (Clubhouse: still confusing what these buttons even do once they
+// visually matched the toggle rows above them).
+function describeFighterCompact() {
+  return "ANY ENEMY · WEAPONS OFFLINE TIL RETRIEVED";
+}
+function describeFighter() {
+  return "Fighter Squadron — destroys any one enemy anywhere on the board instantly. Fighters land on that hex; every weapon system goes offline until you fly back and retrieve them.";
+}
+function describeBlinkCompact() {
+  return `E${Engine.BLINK_ENERGY_COST} · RANDOM HEX`;
+}
+function describeBlink() {
+  return `Random Blink — spends ${Engine.BLINK_ENERGY_COST} Energy to teleport to a random open hex on the board. An emergency escape, not precision movement — you don't choose where you land.`;
+}
+
+// The inspected card only ever shows in Scan mode (it's a learn-the-board
+// aid, same as the legend), and only for as long as whatever's at
+// inspectedHex is still there — an enemy that dies, or a Wormhole that
+// only exists once you've come from a previous sector, both just clear it.
+// Covers everything Scan mode promises you can look at: an enemy, the
+// Warp Gate, the Outpost, the Wormhole, or an asteroid field.
+function updateScanInfo() {
+  if (!legendVisible || !inspectedHex) {
     enemyInfoEl.hidden = true;
     return;
   }
-  const def = Engine.ENEMY_TYPES[enemy.type];
-  enemyInfoEl.hidden = false;
-  enemyInfoEl.innerHTML = "";
+  const enemy = Engine.enemyAt(state, inspectedHex);
+  if (enemy) {
+    const def = Engine.ENEMY_TYPES[enemy.type];
+    enemyInfoEl.hidden = false;
+    enemyInfoEl.classList.remove("neutral");
+    enemyInfoEl.innerHTML = "";
 
+    const header = document.createElement("div");
+    header.className = "enemy-info-header";
+    const hpPips = document.createElement("div");
+    hpPips.className = "enemy-info-hp";
+    for (let i = 0; i < enemy.maxHp; i++) {
+      const pip = document.createElement("span");
+      pip.className = "enemy-info-pip" + (i < enemy.hp ? " filled" : "");
+      hpPips.appendChild(pip);
+    }
+    const name = document.createElement("span");
+    name.textContent = enemy.type.toUpperCase();
+    header.appendChild(name);
+    header.appendChild(hpPips);
+    enemyInfoEl.appendChild(header);
+
+    const stats = document.createElement("div");
+    stats.className = "enemy-info-stats";
+    stats.textContent = describeWeapon(def.weapon);
+    enemyInfoEl.appendChild(stats);
+    return;
+  }
+
+  const isGate = state.exits.some((ex) => Engine.posEq(ex, inspectedHex));
+  const isOutpost = Boolean(state.outpostPos) && Engine.posEq(state.outpostPos, inspectedHex);
+  const isWormhole = Boolean(state.wormholePos) && Engine.posEq(state.wormholePos, inspectedHex);
+  const hazard = Engine.hazardAt(state, inspectedHex);
+  if (!isGate && !isOutpost && !isWormhole && !hazard) {
+    enemyInfoEl.hidden = true; // nothing at this hex to report
+    return;
+  }
+
+  enemyInfoEl.hidden = false;
+  enemyInfoEl.classList.add("neutral");
+  enemyInfoEl.innerHTML = "";
   const header = document.createElement("div");
   header.className = "enemy-info-header";
-  const hpPips = document.createElement("div");
-  hpPips.className = "enemy-info-hp";
-  for (let i = 0; i < enemy.maxHp; i++) {
-    const pip = document.createElement("span");
-    pip.className = "enemy-info-pip" + (i < enemy.hp ? " filled" : "");
-    hpPips.appendChild(pip);
-  }
   const name = document.createElement("span");
-  name.textContent = enemy.type.toUpperCase();
-  header.appendChild(name);
-  header.appendChild(hpPips);
-  enemyInfoEl.appendChild(header);
-
   const stats = document.createElement("div");
   stats.className = "enemy-info-stats";
-  stats.textContent = describeWeapon(def.weapon);
+  if (isGate) {
+    name.textContent = "WARP GATE";
+    stats.textContent = state.exitUnlocked
+      ? "Online — fly here to warp out and clear the sector."
+      : "Offline — clear the sector's objective to unlock it.";
+  } else if (isOutpost) {
+    name.textContent = "OUTPOST";
+    stats.textContent = "Dock here to spend Salvage on repairs and upgrades.";
+  } else if (isWormhole) {
+    name.textContent = "WORMHOLE";
+    stats.textContent = "Fly here to return to the previous sector. It doesn't always land in the same spot.";
+  } else {
+    name.textContent = "ASTEROID FIELD";
+    stats.textContent = "Impassable — route around it.";
+  }
+  header.appendChild(name);
+  enemyInfoEl.appendChild(header);
   enemyInfoEl.appendChild(stats);
 }
 
@@ -1916,7 +2011,7 @@ function render() {
   updateHud();
   updateLegend();
   updateSystems();
-  updateEnemyInfo();
+  updateScanInfo();
   updateOutpost();
   draw();
   persist();
@@ -2052,11 +2147,11 @@ function restoreRun() {
   render();
 }
 
-helpBtn.addEventListener("click", () => {
+scanBtn.addEventListener("click", () => {
   legendVisible = !legendVisible;
   GCStorage.set(GAME_ID, "legendVisible", legendVisible);
-  updateLegend();
-  draw();
+  if (!legendVisible) inspectedHex = null; // closing Scan mode clears whatever was inspected
+  render(); // full refresh — every button/toggle's disabled state depends on legendVisible now
 });
 
 toggleThreatEl.addEventListener("change", () => {
@@ -2088,6 +2183,14 @@ weaponStatsEl.addEventListener("click", () => {
 
 tractorStatsEl.addEventListener("click", () => {
   tractorStatsExpanded = !tractorStatsExpanded;
+  updateHud();
+});
+fighterStatsEl.addEventListener("click", () => {
+  fighterStatsExpanded = !fighterStatsExpanded;
+  updateHud();
+});
+blinkStatsEl.addEventListener("click", () => {
+  blinkStatsExpanded = !blinkStatsExpanded;
   updateHud();
 });
 
@@ -2177,15 +2280,18 @@ canvas.addEventListener("click", (evt) => {
   const y = (evt.clientY - rect.top) * scale;
   const hex = pixelToHex(x, y);
 
-  // Inspecting an enemy (while Help is open) is informational, not an
-  // action — it doesn't consume the turn, so it works even with Warpdrive
-  // offline, and doesn't preempt whatever the tap would otherwise do below.
+  // Scan mode is inspect-only — tapping anything on the board (an enemy,
+  // the Warp Gate, the Outpost, the Wormhole, an asteroid field) shows its
+  // info and nothing else happens: no move, no action, no turn spent.
+  // Clubhouse feedback: restyling Fighter Squadron/Random Blink to match
+  // the toggle rows still didn't explain what they did, and the only way
+  // to find out was to actually arm/fire them for real. Scan mode is the
+  // no-commitment way to look at anything, so it can't also let a tap fall
+  // through into a real move or action underneath it.
   if (legendVisible) {
-    const inspected = Engine.enemyAt(state, hex);
-    if (inspected) {
-      inspectedEnemyId = inspected.id;
-      updateEnemyInfo();
-    }
+    inspectedHex = { q: hex.q, r: hex.r };
+    updateScanInfo();
+    return;
   }
 
   // Warpdrive offline means movement itself is off the table this turn, but

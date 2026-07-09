@@ -190,16 +190,40 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "run overlay must not show on a fresh board");
 
   // The legend defaults to closed (not force-shown every sector) and just
-  // remembers whatever the Help toggle was last set to — it doesn't
-  // auto-hide itself once a move happens.
+  // remembers whatever Scan was last set to. Scan is a real inspect-only
+  // mode now, not just a legend toggle — movement and actions lock out
+  // while it's open (Clubhouse: tapping Fighter Squadron/Random Blink to
+  // find out what they do was a real commitment, not a no-commitment
+  // preview; Scan mode is that preview, for anything on the board).
   assert.strictEqual(await page.locator("#legend").isVisible(), false, "the legend starts closed by default");
-  assert.strictEqual(await page.locator("#helpBtn").isVisible(), true, "the Help toggle is always available");
-  await page.click("#helpBtn");
-  assert.strictEqual(await page.locator("#legend").isVisible(), true, "Help opens the legend");
+  assert.strictEqual(await page.locator("#scanBtn").isVisible(), true, "the Scan toggle is always available");
+  await page.click("#scanBtn");
+  assert.strictEqual(await page.locator("#legend").isVisible(), true, "Scan opens the legend");
+  assert.strictEqual(await page.locator("#holdBtn").isDisabled(), true, "actions lock out while Scan mode is open");
+
+  const posBeforeScanTap = (await getState(page)).playerPos;
+  const turnBeforeScanTap = (await getState(page)).turnCount;
   await clickHex(page, "sublight", await pickStepToward(page, "exit"));
-  assert.strictEqual(await page.locator("#legend").isVisible(), true, "the legend stays open across a move — no auto-hide");
-  await page.click("#helpBtn");
-  assert.strictEqual(await page.locator("#legend").isVisible(), false, "Help closes it again");
+  s = await getState(page);
+  assert.deepStrictEqual(s.playerPos, posBeforeScanTap, "tapping the board in Scan mode never moves the flagship");
+  assert.strictEqual(s.turnCount, turnBeforeScanTap, "and never spends a turn");
+
+  // The tapped hex is inspected instead — an enemy's info card shows up.
+  const scanTargetPos = s.enemies.find((e) => e.alive);
+  const enemyBox = await page.evaluate(({ q, r }) => window.__hhHexCenter(q, r), scanTargetPos);
+  await page.mouse.click(boardBox.x + enemyBox.x, boardBox.y + enemyBox.y);
+  assert.strictEqual(await page.locator("#enemyInfo").isVisible(), true, "tapping an enemy in Scan mode shows its info card");
+  assert.ok((await page.locator("#enemyInfo").textContent()).includes("INTERCEPTOR"), "the card names the inspected enemy");
+
+  // The Warp Gate is inspectable too, not just enemies.
+  const exitCenter = await page.evaluate(() => window.__hhHexCenter(window.__hhState.exitPos.q, window.__hhState.exitPos.r));
+  await page.mouse.click(boardBox.x + exitCenter.x, boardBox.y + exitCenter.y);
+  assert.ok((await page.locator("#enemyInfo").textContent()).includes("WARP GATE"), "the Warp Gate is inspectable in Scan mode");
+
+  await page.click("#scanBtn");
+  assert.strictEqual(await page.locator("#legend").isVisible(), false, "Scan closes it again");
+  assert.strictEqual(await page.locator("#enemyInfo").isVisible(), false, "closing Scan mode clears the inspection card too");
+  assert.strictEqual(await page.locator("#holdBtn").isDisabled(), false, "actions are usable again once Scan mode closes");
 
   // Tapping the weapon-stats badge expands it to the full stat sentence —
   // same "tap a thing to inspect it" pattern as clicking an enemy.

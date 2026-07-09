@@ -189,8 +189,15 @@ body {
   grid-template-columns: 1fr 1fr;
   font-size: 0.76rem;
 }
+/* 2 columns (button, its stats badge), one row per action — 3 equal
+   columns used to squeeze "Fighter Squadron" down to "FIGHTER SQU…"
+   (Clubhouse: restyling to match the toggle rows made that truncation
+   read as broken instead of just tight). Also gives every action a
+   stats badge slot to match Tractor Beam's — before this, tapping
+   Fighter Squadron/Random Blink to find out what they do was the only
+   way to learn it, with no no-commitment preview. */
 .actions-grid {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr 1fr;
   margin-top: 8px;
   padding-top: 8px;
   border-top: 2px solid #2a3652;
@@ -199,7 +206,7 @@ body {
 /* A compact badge sharing a grid cell with Hold Position, instead of a
    whole separate full-width line underneath — tap it to expand to the full
    stat sentence (see .expanded), same "tap a thing to inspect it" pattern
-   as clicking an enemy while Help is open. */
+   as inspecting anything in Scan mode. */
 .weapon-stats {
   padding: 3px 6px;
   font-family: "SF Mono", "Menlo", "Consolas", monospace;
@@ -383,8 +390,10 @@ body {
 
 /* Pinned to the corner so it's always in the same reachable spot, clear of
    whatever's happening on the board — lifts above the install banner via
-   --banner-space when that's showing. */
-.help-btn {
+   --banner-space when that's showing. Renamed from "Help" — it's a real
+   inspect-only mode now (movement/actions lock out while it's open, see
+   app.js), not just a legend toggle. */
+.scan-btn {
   position: fixed;
   left: 12px;
   bottom: calc(12px + var(--banner-space));
@@ -402,7 +411,7 @@ body {
   cursor: pointer;
   box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4);
 }
-.help-btn.active {
+.scan-btn.active {
   background: #1f4d3a;
   border-color: #7fe3a8;
   color: #dbe4f2;
@@ -433,7 +442,7 @@ body {
 
 /* A floating HUD panel, not part of the page's flow — opening/closing it
    must never resize (and so never scroll) the cockpit around it. Anchored
-   well clear of the fixed Help button below it, with its own scrollbar if
+   well clear of the fixed Scan button below it, with its own scrollbar if
    its content ever runs longer than the room available. */
 .legend {
   position: fixed;
@@ -462,12 +471,14 @@ body {
 }
 .legend.hidden { display: none; }
 
-/* Tap an enemy while Help is open to inspect it — a small floating card
-   anchored to the top so it never competes with the legend or Help button
-   at the bottom. */
+/* Tap anything on the board in Scan mode to inspect it — a small floating
+   card anchored to the top so it never competes with the legend or Scan
+   button at the bottom. */
 /* A "target scan" readout — same console-panel language as .systems, but
-   tinted red/hostile instead of green/friendly so the two consoles read as
-   distinct at a glance. */
+   tinted red/hostile by default so an inspected enemy reads as distinct
+   from the friendlier consoles. Non-enemy scans (Warp Gate, Outpost,
+   Wormhole, asteroid field) get the .neutral variant below instead — a
+   hostile-red readout for your own Outpost read wrong. */
 .enemy-info {
   position: absolute;
   left: 12px;
@@ -523,6 +534,23 @@ body {
   border: 2px solid #3a2028;
   border-radius: 0;
   padding: 3px 8px;
+}
+
+/* Neutral/informational tint (blue, matching the Scan button) for
+   inspecting a board feature that isn't hostile — Warp Gate, Outpost,
+   Wormhole, asteroid field. */
+.enemy-info.neutral {
+  border-color: #2a3f52;
+  border-left-color: #5bb8f2;
+}
+.enemy-info.neutral .enemy-info-header,
+.enemy-info.neutral .enemy-info-stats {
+  color: #8fd1ff;
+}
+.enemy-info.neutral .enemy-info-stats {
+  border-color: #1f3245;
+  text-transform: none;
+  letter-spacing: 0.01em;
 }
 
 .legend-toggle {

@@ -66,9 +66,11 @@
       </div>
       <div class="console-grid actions-grid">
         <button data-mode="tractor">Tractor Beam</button>
-        <button data-mode="fighter">Fighter Squadron</button>
-        <button id="blinkBtn" hidden>Random Blink</button>
         <span class="weapon-stats" id="tractorStats" hidden></span>
+        <button data-mode="fighter">Fighter Squadron</button>
+        <span class="weapon-stats" id="fighterStats" hidden></span>
+        <button id="blinkBtn" hidden>Random Blink</button>
+        <span class="weapon-stats" id="blinkStats" hidden></span>
       </div>
     </div>
 
@@ -79,18 +81,18 @@
     <div class="legend" id="legend">
       <span><i class="swatch swatch-flagship"></i> Your flagship</span>
       <span><i class="swatch swatch-enemy"></i> Enemy ship</span>
-      <span><i class="swatch swatch-gate"></i> Warp Gate (exit)</span>
-      <span><i class="swatch swatch-outpost"></i> Outpost — dock on it to spend <i class="swatch swatch-salvage"></i> Salvage (dropped by every kill) on repairs and upgrades</span>
-      <label class="legend-toggle"><input type="checkbox" id="toggleThreat" checked /><i class="swatch swatch-threat"></i> Strike range — an enemy hits you if you end your turn here</label>
-      <label class="legend-toggle"><input type="checkbox" id="toggleLegal" checked /><i class="swatch swatch-legal"></i> Outlined hex — where your selected action can go</label>
-      <span><i class="swatch swatch-route"></i> Tap a far-away hex to preview the quickest route — tap it again to fly there</span>
-      <span><i class="swatch swatch-warpdrive"></i>/<i class="swatch swatch-weapon"></i> Warpdrive/<span id="ramLabelLegend">Shockwave</span> — toggle either off before you act; it auto-fires on any enemy in range all around you after you move (or Hold Position)</span>
-      <span><i class="swatch swatch-wormhole"></i> Wormhole — fly onto it to return to the previous sector; it doesn't always land in the same spot</span>
-      <span><i class="swatch swatch-asteroid"></i> Asteroid field — impassable, route around it</span>
+      <span><i class="swatch swatch-gate"></i> Warp Gate</span>
+      <span><i class="swatch swatch-outpost"></i> Outpost</span>
+      <span><i class="swatch swatch-wormhole"></i> Wormhole</span>
+      <span><i class="swatch swatch-asteroid"></i> Asteroid field</span>
+      <label class="legend-toggle"><input type="checkbox" id="toggleThreat" checked /><i class="swatch swatch-threat"></i> Strike range</label>
+      <label class="legend-toggle"><input type="checkbox" id="toggleLegal" checked /><i class="swatch swatch-legal"></i> Legal move</label>
+      <span><i class="swatch swatch-route"></i> Tap a far hex to preview a route, tap again to fly</span>
+      <span>Scan locks out actions — tap anything above for details</span>
     </div>
   </main>
 
-  <button id="helpBtn" class="help-btn" title="Show/hide the legend" aria-label="Help">Help</button>
+  <button id="scanBtn" class="scan-btn" title="Scan mode — inspect anything on the board; movement and actions are disabled while it's open" aria-label="Scan">Scan</button>
 
   <div class="install-banner" id="installBanner">
     <img class="install-banner-icon" src="icons/icon.svg" alt="" />
