@@ -47,7 +47,11 @@
       actions: ["sublight", "ramming"],
       intro: "Shockwave online. It auto-fires on any enemy within 1 hex — in every direction — after you move.",
     },
-    // Sector 2 — Tractor Beam. Two enemies; push one off the edge.
+    // Sector 2 — Tractor Beam. Two enemies; push one off the edge. Unlike
+    // every other campaign action, Tractor Beam isn't handed out for free
+    // (Clubhouse: "you should not start with it") — it's a free claim at
+    // this sector's Outpost specifically (see engine.js's
+    // pickOutpostOfferIds), the one guaranteed place to get it.
     {
       id: 2,
       name: "Tractor Beam",
@@ -61,8 +65,8 @@
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
-      actions: ["sublight", "ramming", "tractor"],
-      intro: "Tractor Beam online. Shove an adjacent enemy — off the edge destroys it. The Cruiser takes TWO hits, so shove it instead.",
+      actions: ["sublight", "ramming"],
+      intro: "Dock at the Outpost to claim the Tractor Beam — free. Shove an adjacent enemy: off the edge destroys it. The Cruiser takes TWO hits, so shove it instead.",
     },
     // Sector 3 — Fighter Squadron. Three enemies, full action kit.
     {
@@ -79,7 +83,7 @@
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
-      actions: ["sublight", "ramming", "tractor", "fighter"],
+      actions: ["sublight", "ramming", "fighter"],
       intro: "Fighter Squadron online. Strike any enemy at range, then retrieve your fighters. The Sentry doesn't move — but its beam covers 2 hexes all around. Route around it or take it out.",
     },
     // Sector 4 — Full Fleet. Everything unlocked, no guaranteed Outpost —

@@ -97,8 +97,12 @@
   // Purchase-only actions (see OUTPOST_OFFER_POOL/applyOutpostPurchase) —
   // never part of any level's own baked-in `actions` list, and excluded
   // from the default fallback below so they don't show up for free the
-  // moment a level omits `actions`.
-  const PURCHASABLE_ACTIONS = ["lance", "repulsor"];
+  // moment a level omits `actions`. Tractor Beam moved into this bucket
+  // per Clubhouse feedback ("you should not start with it") — it's still
+  // guaranteed claimable (free) at Sector 2's Outpost specifically (see
+  // pickOutpostOfferIds), just no longer handed out automatically for
+  // reaching the sector.
+  const PURCHASABLE_ACTIONS = ["lance", "repulsor", "tractor"];
   // Sectors that don't specify `actions` explicitly (Sector 4 "Full Fleet"
   // and every procedurally-generated sector) default to every action that
   // unlocks just by playing.
@@ -227,6 +231,14 @@
     // a threat out of adjacency, or shove a low-HP target out of the very
     // range you needed to finish it off. Also purchased at an Outpost.
     repulsor: { id: "repulsor", label: "Repulsor", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // Not an auto-fire weapon (see AUTO_FIRE_WEAPONS below) — Tractor Beam
+    // is player-armed-and-aimed (applyTractor), adjacent range in any of
+    // the 6 directions. Modeled here anyway so its stats badge (app.js)
+    // reads off real data instead of a hand-copied duplicate, same as
+    // every other weapon. `damage: 0` because it destroys via collision
+    // physics (pushEnemyInDirection: off the edge, into another unit, or
+    // into a hazard), not a direct hit.
+    tractor: { id: "tractor", label: "Tractor Beam", range: 1, damage: 0, targets: "push", speed: 1, energyCost: 0, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // The original design doc's Railgun Destroyer ("fires a straight-line
     // slug down any of the 6 hex axes, unlimited range... telegraphs the
     // line one turn before firing"), scoped down for a first pass: real
@@ -308,6 +320,11 @@
     { id: "shield", label: "Emergency Shield (absorb the next hit)", cost: 10 },
     { id: "lanceCannon", label: "Lance Cannon (forward-only, 2 dmg, range 3)", cost: 25 },
     { id: "repulsorWeapon", label: "Repulsor (all sides, 1 dmg + knockback)", cost: 20 },
+    // Free — this is a claim, not a purchase. Never part of the general
+    // per-level random pool (see pickOutpostOfferIds); it only ever
+    // appears at Sector 2's Outpost, guaranteed, since that's the
+    // campaign's one intended entry point for it.
+    { id: "tractorBeam", label: "Tractor Beam (adjacent, push to destroy)", cost: 0 },
   ];
 
   function seededRandom(seed) {
@@ -325,7 +342,7 @@
   // fixed shop every visit read as "too easy and not very interesting"
   // (Clubhouse feedback). Deterministic per level id, same as before.
   function pickOutpostOfferIds(levelId) {
-    const extras = OUTPOST_OFFER_POOL.filter((o) => o.id !== "repair");
+    const extras = OUTPOST_OFFER_POOL.filter((o) => o.id !== "repair" && o.id !== "tractorBeam");
     const rng = seededRandom(levelId * 7919 + 13);
     const shuffled = extras.slice();
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -335,7 +352,12 @@
       shuffled[j] = tmp;
     }
     const extraCount = Math.floor(rng() * (extras.length + 1)); // 0..extras.length
-    return ["repair", ...shuffled.slice(0, extraCount).map((o) => o.id)];
+    const picked = ["repair", ...shuffled.slice(0, extraCount).map((o) => o.id)];
+    // Sector 2's Outpost is the one guaranteed place to claim the Tractor
+    // Beam — not left to the same per-level randomization as every other
+    // offer (Clubhouse: "you should not start with it").
+    if (levelId === 2) picked.push("tractorBeam");
+    return picked;
   }
 
   // Placed only when carryOver says a previous sector exists to return to
@@ -924,9 +946,14 @@
       if (!state.actions.includes("lance")) state.actions.push("lance");
     } else if (offer.id === "repulsorWeapon") {
       if (!state.actions.includes("repulsor")) state.actions.push("repulsor");
+    } else if (offer.id === "tractorBeam") {
+      if (!state.actions.includes("tractor")) state.actions.push("tractor");
     }
     state.salvage -= offer.cost;
-    pushLog(state, `Outpost: bought ${offer.label} (-${offer.cost} salvage).`);
+    pushLog(
+      state,
+      offer.cost > 0 ? `Outpost: bought ${offer.label} (-${offer.cost} salvage).` : `Outpost: claimed ${offer.label}.`
+    );
     // Every offer except Repair is a one-time purchase per outpost — buying
     // it removes it from what's on offer here, so a visit is a real choice
     // instead of "buy everything repeatedly as long as you can afford it."

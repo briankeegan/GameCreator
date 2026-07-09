@@ -73,6 +73,7 @@ const holdBtn = document.getElementById("holdBtn");
 const ramLabelEl = document.getElementById("ramLabel");
 const ramLabelLegendEl = document.getElementById("ramLabelLegend");
 const weaponStatsEl = document.getElementById("weaponStats");
+const tractorStatsEl = document.getElementById("tractorStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
 
 // Every purchased weapon beyond the base Shockwave (Lance Cannon,
@@ -250,8 +251,11 @@ let outpostDismissed = false;
 // Whether the weapon-stats badge is showing its full sentence (tapped open)
 // or just the compact abbreviation (the default). Every purchasable
 // weapon's own expanded state lives on its PURCHASABLE_WEAPON_UI entry
-// instead of a matching standalone flag here.
+// instead of a matching standalone flag here. Tractor Beam isn't in that
+// list (no systems toggle — it's armed-and-aimed, not auto-fire), so it
+// gets its own flag, same pattern as weaponStatsExpanded.
 let weaponStatsExpanded = false;
+let tractorStatsExpanded = false;
 
 // The flagship's facing, in degrees (canvas convention: 0 = screen-right,
 // increases clockwise). Updated whenever the ship actually moves.
@@ -1740,6 +1744,20 @@ function updateHud() {
   blinkBtn.hidden = !blinkUnlocked;
   blinkBtn.disabled = state.status !== "playing" || state.energy < Engine.BLINK_ENERGY_COST;
   blinkBtn.classList.toggle("new-unlock", blinkUnlocked && !usedActions.has("blink"));
+
+  // Tractor Beam gets the same tap-to-expand stats badge as every
+  // purchased weapon (see PURCHASABLE_WEAPON_UI) — it just lives in the
+  // actions-grid next to its button instead of a systems-toggle row,
+  // since it's armed-and-aimed rather than an ambient auto-fire.
+  const tractorOwned = state.actions.includes("tractor");
+  tractorStatsEl.hidden = !tractorOwned;
+  if (tractorOwned) {
+    const tractorWeapon = Engine.WEAPONS.tractor;
+    tractorStatsEl.textContent = tractorStatsExpanded
+      ? describeWeapon(tractorWeapon)
+      : describeWeaponCompact(tractorWeapon);
+    tractorStatsEl.classList.toggle("expanded", tractorStatsExpanded);
+  }
 }
 
 function updateLegend() {
@@ -1803,9 +1821,16 @@ function describePattern(weapon) {
   return `${weapon.pattern.length} directions`;
 }
 
+// Tractor Beam's `damage: 0` (it destroys via collision physics — see
+// pushEnemyInDirection — not a direct hit) would otherwise read as "Damage
+// 0", which looks like a bug rather than the intended push-only weapon.
+function describeDamage(weapon) {
+  return weapon.damage > 0 ? `Damage ${weapon.damage}` : "Push";
+}
+
 function describeWeapon(weapon) {
   return (
-    `${weapon.label} — Range ${weapon.range} · Damage ${weapon.damage} · ` +
+    `${weapon.label} — Range ${weapon.range} · ${describeDamage(weapon)} · ` +
     `Pattern: ${describePattern(weapon)} · Speed ${weapon.speed} · Energy ${weapon.energyCost}`
   );
 }
@@ -1815,7 +1840,8 @@ function describeWeapon(weapon) {
 // sentence is still one tap/hover away via the title tooltip.
 function describeWeaponCompact(weapon) {
   const pattern = weapon.pattern.length >= 6 ? "ALL" : "FWD";
-  return `R${weapon.range} · D${weapon.damage} · SPD${weapon.speed} · E${weapon.energyCost} · ${pattern}`;
+  const dmg = weapon.damage > 0 ? `D${weapon.damage}` : "PUSH";
+  return `R${weapon.range} · ${dmg} · SPD${weapon.speed} · E${weapon.energyCost} · ${pattern}`;
 }
 
 // The inspected enemy's card only ever shows while Help is open (it's a
@@ -2045,6 +2071,11 @@ toggleRamEl.addEventListener("change", () => {
 weaponStatsEl.addEventListener("click", () => {
   weaponStatsExpanded = !weaponStatsExpanded;
   updateSystems();
+});
+
+tractorStatsEl.addEventListener("click", () => {
+  tractorStatsExpanded = !tractorStatsExpanded;
+  updateHud();
 });
 
 for (const cfg of PURCHASABLE_WEAPON_UI) {

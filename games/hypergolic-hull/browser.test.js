@@ -55,7 +55,14 @@ function pickStepToward(page, goalExpr) {
   return page.evaluate((expr) => {
     const E = window.HypergolicEngine;
     const st = window.__hhState;
-    const goal = expr === "exit" ? st.exitPos : expr === "wormhole" ? st.wormholePos : st.enemies.find((e) => e.alive);
+    const goal =
+      expr === "exit"
+        ? st.exitPos
+        : expr === "wormhole"
+          ? st.wormholePos
+          : expr === "outpost"
+            ? st.outpostPos
+            : st.enemies.find((e) => e.alive);
     return E.legalSublightTargets(st).reduce(
       (best, cand) => {
         const d = E.hexDistance(cand, goal);
@@ -80,23 +87,54 @@ async function walkToExit(page) {
   return s;
 }
 
-// The flagship arrives standing directly ON the wormhole ("you start as
-// if you're on top of that wormhole, not next to it") — but the very
-// first action taken this sector is deliberately suppressed (app.js's
-// `justArrived`) so spawning doesn't instantly bounce the flagship back
-// out before it's done anything. Hold Position once to consume that
-// grace, then again to actually trigger the return, then wait out the
-// reverse-warp flash for levelId to rewind.
+async function walkToOutpost(page) {
+  let s = await getState(page);
+  // Bounded like walkToExit — a greedy nearest-hex walk has no lookahead,
+  // so a chasing enemy (e.g. Sector 2's Cruiser) repositioning every turn
+  // can stall it against an obstacle indefinitely otherwise.
+  for (let i = 0; i < 20 && s.status === "playing" && !(s.playerPos.q === s.outpostPos.q && s.playerPos.r === s.outpostPos.r); i++) {
+    await clickHex(page, "sublight", await pickStepToward(page, "outpost"));
+    s = await getState(page);
+  }
+  return s;
+}
+
+// Claims an Outpost offer by matching its button text (see updateOutpost —
+// `${offer.label} — ${offer.cost} salvage`), rather than hardcoding a
+// selector, since the offers are built dynamically from Engine.outpostOffers.
+async function claimOutpostOffer(page, labelSubstring) {
+  await page.click(`#outpostOffers button:has-text("${labelSubstring}")`);
+  return getState(page);
+}
+
+// Walks to the wormhole (wherever it is) and returns via it. The flagship
+// arrives standing directly ON it ("you start as if you're on top of that
+// wormhole, not next to it"), but the very first action taken since
+// arriving this sector is deliberately suppressed (app.js's `justArrived`)
+// so spawning doesn't instantly bounce the flagship back out before it's
+// done anything — that exact scenario (landing on the wormhole as the
+// sector's first-ever action) is covered directly in engine.test.js. Once
+// any other action has already happened this sector (e.g. an Outpost
+// visit), simply moving onto the wormhole triggers the return immediately;
+// the fallback Hold Position below only matters for the "first action"
+// case, where landing on it wasn't enough by itself.
 async function walkToWormhole(page) {
-  const s0 = await getState(page);
-  assert.ok(
-    s0.playerPos.q === s0.wormholePos.q && s0.playerPos.r === s0.wormholePos.r,
-    "the flagship arrives standing exactly on the wormhole"
-  );
-  await page.click("#holdBtn");
-  assert.strictEqual((await getState(page)).levelId, s0.levelId, "the first action on arrival doesn't trigger the return");
-  await page.click("#holdBtn");
-  await page.waitForFunction((lvl) => window.__hhState.levelId !== lvl, s0.levelId, { timeout: 5000 });
+  let s = await getState(page);
+  const startLevel = s.levelId;
+  // Bounded for the same reason as walkToOutpost — no lookahead against a
+  // chasing enemy.
+  for (
+    let i = 0;
+    i < 20 && s.status === "playing" && (s.playerPos.q !== s.wormholePos.q || s.playerPos.r !== s.wormholePos.r);
+    i++
+  ) {
+    await clickHex(page, "sublight", await pickStepToward(page, "wormhole"));
+    s = await getState(page);
+  }
+  if (s.levelId === startLevel) {
+    await page.click("#holdBtn");
+  }
+  await page.waitForFunction((lvl) => window.__hhState.levelId !== lvl, startLevel, { timeout: 5000 });
   return getState(page);
 }
 
@@ -237,8 +275,24 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "a routine sector clear shows no modal");
   await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2, null, { timeout: 5000 });
   s = await getState(page);
-  assert.deepStrictEqual(s.actions, ["sublight", "ramming", "tractor"], "Sector 2 unlocks exactly one new action");
+  assert.deepStrictEqual(s.actions, ["sublight", "ramming"], "Sector 2 no longer hands out Tractor Beam automatically");
   assert.ok(s.enemies.filter((e) => e.alive).length >= 1);
+  assert.strictEqual(await page.locator('[data-mode="tractor"]').isVisible(), false, "hidden until claimed, same as any other locked action");
+
+  // ---- Tractor Beam: claimed at the Outpost, not handed out for free -------
+  // (Clubhouse: "you should not start with it") — free (0 salvage), but
+  // you have to actually dock and claim it.
+  s = await walkToOutpost(page);
+  const salvageBeforeClaim = s.salvage;
+  assert.ok(await page.locator("#outpostOverlay").isVisible(), "docking opens the Outpost shop");
+  assert.ok(
+    await page.locator('#outpostOffers button:has-text("Tractor Beam")').textContent(),
+    "the Tractor Beam claim is on offer here"
+  );
+  s = await claimOutpostOffer(page, "Tractor Beam");
+  assert.strictEqual(s.actions.includes("tractor"), true, "claiming it unlocks the action");
+  assert.strictEqual(s.salvage, salvageBeforeClaim, "the claim was free — no salvage spent");
+  await page.click("#outpostCloseBtn");
 
   // ---- New-unlock pulse: a freshly-appeared action calls attention to ------
   // itself instead of silently appearing (Clubhouse: "what is tractor beam
@@ -246,7 +300,7 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(
     await page.locator('[data-mode="tractor"]').evaluate((el) => el.classList.contains("new-unlock")),
     true,
-    "Tractor Beam pulses the sector it first appears, before it's ever been tapped"
+    "Tractor Beam pulses the first time it's shown, before it's ever been tapped"
   );
   await page.click('[data-mode="tractor"]');
   assert.strictEqual(
@@ -262,6 +316,12 @@ async function freshPage(browser, url, errors) {
     /tractor beam armed/i.test(await page.locator("#objective").textContent()),
     "arming Tractor Beam shows a concrete instruction, not the generic objective line"
   );
+
+  // Step away from the Outpost hex before reloading — outpostDismissed
+  // isn't persisted, so reloading while still docked would re-pop the
+  // shop overlay (still standing right there) and block the board clicks
+  // the rest of this test relies on.
+  await clickHex(page, "sublight", await pickStepToward(page, "wormhole"));
 
   // ---- Run persistence: reloading resumes exactly where you left off ------
   // ("the levels should be remembered" — a reload used to always restart at

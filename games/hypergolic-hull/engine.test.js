@@ -96,6 +96,7 @@ const rectLevel = {
   enemies: [{ type: "interceptor", q: 3, r: 1 }], // column 3: the rightmost column
   hazards: [],
   exitRule: "all-enemies-dead",
+  actions: ["sublight", "ramming", "tractor"], // Tractor Beam is purchase-only now (see PURCHASABLE_ACTIONS) — explicit here since this fixture tests the push mechanic itself, not the unlock gate
 };
 const rectState = Engine.createGameState(rectLevel);
 assert.strictEqual(rectState.boardHexes.length, 20, "4x5 rect board has 20 hexes");
@@ -270,6 +271,7 @@ const edgeLevel = {
   enemies: [{ type: "interceptor", q: 2, r: -1 }],
   hazards: [],
   exitRule: "all-enemies-dead",
+  actions: ["sublight", "ramming", "tractor"], // purchase-only now — explicit here, this fixture tests the push mechanic itself
 };
 
 const edgeState = Engine.createGameState(edgeLevel);
@@ -289,6 +291,7 @@ const collideLevel = {
   ],
   hazards: [],
   exitRule: "all-enemies-dead",
+  actions: ["sublight", "ramming", "tractor"], // purchase-only now — explicit here, this fixture tests the push mechanic itself
 };
 
 const collideState = Engine.createGameState(collideLevel);
@@ -759,6 +762,34 @@ assert.ok(
   repulsorState.log.some((line) => line.includes("Repulsor hit") || line.includes("Repulsor-pushed")),
   "both the hit and the push are logged"
 );
+
+// ---- Tractor Beam: no longer free, claimed at Sector 2's Outpost --------
+// Clubhouse feedback: "you should not start with it" — unlike every other
+// campaign action, Tractor Beam isn't in Sector 2's own `actions` list
+// anymore; it's a free (cost 0) claim, guaranteed on offer at that
+// specific sector's Outpost only.
+assert.strictEqual(LEVELS[1].actions.includes("tractor"), false, "Sector 2 no longer hands out Tractor Beam for free");
+assert.strictEqual(LEVELS[2].actions.includes("tractor"), false, "neither does Sector 3");
+const sector2State = Engine.createGameState(LEVELS[1]);
+assert.strictEqual(sector2State.actions.includes("tractor"), false, "not unlocked on arrival");
+assert.strictEqual(sector2State.outpostOfferIds.includes("tractorBeam"), true, "guaranteed on offer at Sector 2's Outpost specifically");
+sector2State.playerPos = { q: LEVELS[1].outpost.q, r: LEVELS[1].outpost.r };
+const salvageBeforeClaim = sector2State.salvage; // 0 on a fresh run — the claim must not require any
+Engine.applyOutpostPurchase(sector2State, "tractorBeam");
+assert.strictEqual(sector2State.actions.includes("tractor"), true, "claiming it unlocks the action");
+assert.strictEqual(sector2State.salvage, salvageBeforeClaim, "the claim costs nothing");
+assert.ok(sector2State.log.some((line) => line.includes("claimed Tractor Beam")), "claiming (not buying) is reflected in the log");
+
+// It's excluded from the general per-level random pool — other outposts
+// never randomly offer it, only Sector 2's does.
+let anyOtherOutpostOffersTractor = false;
+for (let id = 5; id < 60; id++) {
+  if (Engine.createGameState(generateLevel(id)).outpostOfferIds.includes("tractorBeam")) {
+    anyOtherOutpostOffersTractor = true;
+    break;
+  }
+}
+assert.strictEqual(anyOtherOutpostOffersTractor, false, "Tractor Beam never shows up at a random generated outpost — Sector 2 is the one guaranteed source");
 
 // ---- procedural depth: the run never hard-stops past the campaign -------
 // generateLevel(depth) must produce a valid LevelDef for a wide range of
