@@ -318,7 +318,11 @@ const weaponLevel = {
 // Moving into range auto-fires the Impulse Cannon — no separate arm-and-aim step.
 let weaponState = Engine.createGameState(weaponLevel);
 assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
-assert.deepStrictEqual(weaponState.systems, { warpdrive: true, ram: true, lance: true }, "all systems default on");
+assert.deepStrictEqual(
+  weaponState.systems,
+  { warpdrive: true, ram: true, lance: true, repulsor: true },
+  "all systems default on"
+);
 Engine.applySublight(weaponState, { q: 2, r: 2 }); // steps adjacent to the interceptor
 assert.strictEqual(weaponState.enemies[0].alive, false, "moving into range auto-fires the Impulse Cannon");
 assert.ok(weaponState.events.some((e) => e.type === "kill"), "the auto-attack emits a kill event");
@@ -441,6 +445,52 @@ Engine.applySublight(sentryState, { q: 2, r: 3 }); // distance 2 — into the be
 assert.strictEqual(sentryState.hull, hullBeforeBeam - 1, "entering the Sentry's 2-hex ring takes a hit");
 assert.ok(sentryState.events.some((e) => e.type === "attack"), "the Sentry's shot emits an attack event");
 
+// ---- Railgun Destroyer: the original design doc's long-range emplacement,
+// built at last ("what about... basic enemy variety") — stationary like
+// the Sentry, but its shot reaches the length of the board along any of
+// the 6 axes instead of a short ring.
+assert.strictEqual(Engine.ENEMY_TYPES.railgun.hp, 2, "the Railgun is a 2-Hull emplacement, same tier as the Sentry");
+assert.strictEqual(Engine.ENEMY_TYPES.railgun.movesTowardPlayer !== true, true, "the Railgun never chases either");
+assert.strictEqual(Engine.WEAPONS.railgunBeam.range, 20, "the Railgun's shot is effectively board-spanning");
+
+const railgunLevel = {
+  id: 995,
+  name: "railgun fixture",
+  board: { type: "rect", cols: 5, rows: 9 },
+  playerStart: { q: 2, r: 5 }, // same column as the railgun — aligned on its vertical axis
+  exit: { q: 2, r: -1 },
+  outpost: null,
+  enemies: [{ type: "railgun", q: 2, r: 1 }], // distance 4 — well beyond the Sentry's reach, still lethal here
+  hazards: [],
+  exitRule: "all-enemies-dead",
+  actions: ["sublight"], // no flagship weapons, so the Railgun lives to fire back
+};
+const railgunState = Engine.createGameState(railgunLevel);
+const railgunStart = { q: railgunState.enemies[0].q, r: railgunState.enemies[0].r };
+const hullBeforeRailgun = railgunState.hull;
+Engine.applySublight(railgunState, { q: 2, r: 4 }); // still distance 3, but already aligned — the long shot reaches it
+assert.strictEqual(
+  railgunState.hull,
+  hullBeforeRailgun - 1,
+  "aligned on the Railgun's axis at distance 3 is already lethal — its range dwarfs the Sentry's"
+);
+assert.deepStrictEqual(
+  { q: railgunState.enemies[0].q, r: railgunState.enemies[0].r },
+  railgunStart,
+  "the Railgun does not move to chase either — it holds its hex"
+);
+
+// Off-axis, the Railgun's shot never reaches at all, no matter the range.
+const railgunOffAxisLevel = { ...railgunLevel, id: 996, playerStart: { q: 0, r: 5 } };
+const railgunOffAxisState = Engine.createGameState(railgunOffAxisLevel);
+const hullBeforeOffAxis = railgunOffAxisState.hull;
+Engine.applySublight(railgunOffAxisState, { q: 0, r: 4 });
+assert.strictEqual(
+  railgunOffAxisState.hull,
+  hullBeforeOffAxis,
+  "off one of the 6 axes, the Railgun's shot never reaches, however close"
+);
+
 // ---- salvage economy + Sector Outpost shop -------------------------------
 // Every kill drops salvage (see ENEMY_TYPES[type].salvage), spendable at an
 // outpost hex without spending a turn. Two offers: repair and a permanent
@@ -560,7 +610,7 @@ const lengthsAcrossLevels = new Set();
 for (let id = 900; id < 920; id++) {
   const offers = outpostFixture(id).outpostOfferIds;
   assert.strictEqual(offers[0], "repair", `level ${id}: Repair is always the first offer`);
-  assert.ok(offers.length >= 1 && offers.length <= 4, `level ${id}: 1-4 total offers (Repair plus 0-3 extras)`);
+  assert.ok(offers.length >= 1 && offers.length <= 5, `level ${id}: 1-5 total offers (Repair plus 0-4 extras)`);
   assert.strictEqual(new Set(offers).size, offers.length, `level ${id}: no duplicate offers`);
   lengthsAcrossLevels.add(offers.length);
 }
@@ -658,6 +708,57 @@ const nextSectorState = Engine.createGameState(
   { hasPrevious: true, extraActions: ["lance"] }
 );
 assert.strictEqual(nextSectorState.actions.includes("lance"), true, "extraActions carries a purchased weapon into the next sector");
+
+// ---- Repulsor: a second purchasable weapon, knockback instead of just ---
+// damage. Clubhouse feedback: "make that bad or good depending [how it's
+// used]" — every surviving hit gets shoved a hex directly away.
+const repulsorLevel = {
+  id: 994,
+  name: "repulsor fixture",
+  board: { type: "rect", cols: 5, rows: 6 },
+  playerStart: { q: 2, r: 4 },
+  exit: { q: 4, r: -2 },
+  outpost: { q: 0, r: 0 },
+  enemies: [{ type: "cruiser", q: 2, r: 2 }], // >=2 hexes from playerStart, per spawn-safety validation
+  hazards: [],
+  exitRule: "all-enemies-dead",
+};
+const repulsorState = Engine.createGameState(repulsorLevel);
+assert.strictEqual(repulsorState.actions.includes("repulsor"), false, "Repulsor isn't part of the starting kit either");
+repulsorState.playerPos = { q: repulsorLevel.outpost.q, r: repulsorLevel.outpost.r };
+repulsorState.outpostOfferIds = ["repair", "repulsorWeapon"];
+repulsorState.salvage = 20;
+Engine.applyOutpostPurchase(repulsorState, "repulsorWeapon");
+assert.strictEqual(repulsorState.actions.includes("repulsor"), true, "purchasing it unlocks the action");
+assert.strictEqual(repulsorState.systems.repulsor, true, "the toggle defaults on once purchased");
+
+// Reposition the Cruiser adjacent "up" from playerStart to actually fire
+// on it — the level's own spawn position just needs to satisfy authoring
+// validation above, not the exact firing geometry this checks.
+repulsorState.playerPos = { q: repulsorLevel.playerStart.q, r: repulsorLevel.playerStart.r };
+repulsorState.enemies[0].q = repulsorLevel.playerStart.q;
+repulsorState.enemies[0].r = repulsorLevel.playerStart.r - 1;
+repulsorState.systems.ram = false; // isolate the Repulsor — both it and the Shockwave are adjacent/omnidirectional and would otherwise double up on the same hit
+const hullBeforeRepulsor = repulsorState.hull;
+Engine.applyHoldPosition(repulsorState); // omnidirectional (range 1) — no facing management needed, unlike the Lance Cannon
+assert.strictEqual(repulsorState.enemies[0].alive, true, "1 damage isn't enough to kill a 2-HP Cruiser outright");
+assert.strictEqual(repulsorState.enemies[0].hp, 1, "the Repulsor still deals its own damage on top of the knockback");
+// The push happens before the enemy phase, so knocking the Cruiser out of
+// adjacency means it has to close the gap again instead of attacking —
+// the flagship takes no damage this turn purely because of the knockback.
+// (Its own chase AI immediately starts closing that gap again afterward,
+// so the exact landing hex isn't asserted here — a stationary enemy would
+// dodge the "not attacking" signal entirely, e.g. a Sentry's range-2 beam
+// still reaches one hex further out.)
+assert.strictEqual(
+  repulsorState.hull,
+  hullBeforeRepulsor,
+  "the knockback pushed the Cruiser out of strike range before the enemy phase — no counter-attack this turn"
+);
+assert.ok(
+  repulsorState.log.some((line) => line.includes("Repulsor hit") || line.includes("Repulsor-pushed")),
+  "both the hit and the push are logged"
+);
 
 // ---- procedural depth: the run never hard-stops past the campaign -------
 // generateLevel(depth) must produce a valid LevelDef for a wide range of

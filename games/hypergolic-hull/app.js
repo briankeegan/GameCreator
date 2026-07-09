@@ -73,10 +73,30 @@ const holdBtn = document.getElementById("holdBtn");
 const ramLabelEl = document.getElementById("ramLabel");
 const ramLabelLegendEl = document.getElementById("ramLabelLegend");
 const weaponStatsEl = document.getElementById("weaponStats");
-const lanceToggleWrapEl = document.getElementById("lanceToggleWrap");
-const toggleLanceEl = document.getElementById("toggleLance");
-const lanceStatsEl = document.getElementById("lanceStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
+
+// Every purchased weapon beyond the base Shockwave (Lance Cannon,
+// Repulsor, ...) gets the same UI treatment: hidden until bought, a
+// toggle, a tap-to-expand stats badge. Data-driven so adding the next one
+// is adding an entry here, not copy-pasting another whole block.
+const PURCHASABLE_WEAPON_UI = [
+  {
+    action: "lance",
+    toggleWrap: document.getElementById("lanceToggleWrap"),
+    toggle: document.getElementById("toggleLance"),
+    stats: document.getElementById("lanceStats"),
+    weapon: Engine.WEAPONS.lance,
+    expanded: false,
+  },
+  {
+    action: "repulsor",
+    toggleWrap: document.getElementById("repulsorToggleWrap"),
+    toggle: document.getElementById("toggleRepulsor"),
+    stats: document.getElementById("repulsorStats"),
+    weapon: Engine.WEAPONS.repulsor,
+    expanded: false,
+  },
+];
 
 // Every piece on the board is custom-drawn (see drawPlayerShip/
 // drawEnemyShip/drawWarpGate/drawOutpost/drawFighterMarker below) — no emoji
@@ -188,10 +208,10 @@ function advanceSector() {
       maxHull: state.maxHull,
       shieldCharges: state.shieldCharges,
       maxEnergy: state.maxEnergy,
-      // A purchased weapon (e.g. the Lance Cannon) isn't part of any
-      // level's own baked-in actions list, so it has to be carried
-      // forward explicitly or the next sector would "forget" it.
-      extraActions: state.actions.includes("lance") ? ["lance"] : [],
+      // A purchased weapon (Lance Cannon, Repulsor, ...) isn't part of any
+      // level's own baked-in actions list, so it has to be carried forward
+      // explicitly or the next sector would "forget" it.
+      extraActions: Engine.PURCHASABLE_ACTIONS.filter((a) => state.actions.includes(a)),
     },
     { keepWarpAnim: true, variantId: state.usedExitVariant }
   );
@@ -228,9 +248,10 @@ function returnToPreviousSector() {
 let outpostDismissed = false;
 
 // Whether the weapon-stats badge is showing its full sentence (tapped open)
-// or just the compact abbreviation (the default).
+// or just the compact abbreviation (the default). Every purchasable
+// weapon's own expanded state lives on its PURCHASABLE_WEAPON_UI entry
+// instead of a matching standalone flag here.
 let weaponStatsExpanded = false;
-let lanceStatsExpanded = false;
 
 // The flagship's facing, in degrees (canvas convention: 0 = screen-right,
 // increases clockwise). Updated whenever the ship actually moves.
@@ -937,6 +958,64 @@ function drawSentry(s) {
   ctx.fill();
 }
 
+// The Railgun Destroyer — a stationary hexagonal platform like the Sentry,
+// but with a long barrel down all 6 axes instead of 3 short arms (marking
+// it as the long-range unit at a glance) and a cold blue/steel palette
+// instead of the Sentry's green, so the two stationary turrets never read
+// as the same threat from a distance.
+function drawRailgun(s) {
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  const O = "#06101a";
+  const hexPath = (rad) => {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 6 + (i * Math.PI) / 3;
+      const x = Math.cos(a) * rad;
+      const y = Math.sin(a) * rad;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  };
+  ctx.fillStyle = "#0c1b24";
+  ctx.strokeStyle = O;
+  ctx.lineWidth = Math.max(1, s * 0.05);
+  for (let i = 0; i < 6; i++) {
+    ctx.save();
+    ctx.rotate((i * Math.PI) / 3);
+    ctx.fillRect(s * 0.35, -s * 0.06, s * 1.3, s * 0.12);
+    ctx.strokeRect(s * 0.35, -s * 0.06, s * 1.3, s * 0.12);
+    ctx.restore();
+  }
+  hexPath(s * 0.85);
+  ctx.fillStyle = lgrad(-s * 0.7, -s * 0.7, s * 0.7, s * 0.7, [
+    [0, "#0d1e2c"],
+    [0.5, "#1d3d57"],
+    [1, "#2f6f9c"],
+  ]);
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, s * 0.06);
+  ctx.strokeStyle = O;
+  ctx.stroke();
+  hexPath(s * 0.5);
+  ctx.fillStyle = "#12283a";
+  ctx.fill();
+  ctx.stroke();
+  const eye = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 0.3);
+  eye.addColorStop(0, "rgba(220,240,255,1)");
+  eye.addColorStop(0.35, "rgba(90,170,255,.95)");
+  eye.addColorStop(1, "rgba(20,80,160,0)");
+  ctx.fillStyle = eye;
+  ctx.beginPath();
+  ctx.arc(0, 0, s * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(0, 0, s * 0.06, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function drawEnemyShip(size, hpFrac, crackSeed, type) {
   ctx.save();
   // High-contrast hostile halo, color-coded per enemy class so each one reads
@@ -946,6 +1025,7 @@ function drawEnemyShip(size, hpFrac, crackSeed, type) {
     interceptor: ["rgba(255,110,70,0.55)", "rgba(255,60,45,0.28)", "rgba(255,50,40,0)"],
     cruiser: ["rgba(255,170,60,0.55)", "rgba(240,120,30,0.30)", "rgba(240,110,30,0)"],
     sentry: ["rgba(70,240,150,0.50)", "rgba(40,200,120,0.26)", "rgba(30,190,110,0)"],
+    railgun: ["rgba(90,170,255,0.50)", "rgba(50,120,220,0.26)", "rgba(40,100,200,0)"],
   };
   const hc = HALO[type] || HALO.interceptor;
   const halo = ctx.createRadialGradient(0, 0, size * 0.15, 0, 0, size * 1.25);
@@ -960,6 +1040,8 @@ function drawEnemyShip(size, hpFrac, crackSeed, type) {
     drawCruiser(size * 1.12);
   } else if (type === "sentry") {
     drawSentry(size * 1.05);
+  } else if (type === "railgun") {
+    drawRailgun(size * 1.1);
   } else if (!drawShipImage(interceptorImg, size)) {
     drawEnemyFighter(size, 0);
   }
@@ -1441,9 +1523,10 @@ function draw() {
     const center = overrides.get(enemy.id) || base;
     ctx.save();
     ctx.translate(center.x, center.y);
-    // A Sentry is a fixed emplacement — it doesn't pivot to face you; every
-    // other enemy points its nose at the flagship.
-    if (enemy.type !== "sentry") {
+    // Sentry and Railgun are fixed emplacements — they don't pivot to face
+    // you (the Railgun's 6 barrels already cover every direction at once);
+    // every other enemy points its nose at the flagship.
+    if (enemy.type !== "sentry" && enemy.type !== "railgun") {
       ctx.rotate((angleToward(enemy, state.playerPos) * Math.PI) / 180);
     }
     drawEnemyShip(geom.sx * 0.46, enemy.hp / enemy.maxHp, enemy.id, enemy.type);
@@ -1694,18 +1777,19 @@ function updateSystems() {
   weaponStatsEl.textContent = lockedPrefix + (weaponStatsExpanded ? describeWeapon(weapon) : describeWeaponCompact(weapon));
   weaponStatsEl.classList.toggle("expanded", weaponStatsExpanded);
 
-  // Lance Cannon is Outpost-purchase-only (see OUTPOST_OFFER_POOL), not
-  // sector-unlocked — hidden entirely until bought, same "simply hidden,
-  // no padlock" convention as Tractor Beam/Fighter Squadron before their
-  // sector.
-  const lanceOwned = state.actions.includes("lance");
-  lanceToggleWrapEl.hidden = !lanceOwned;
-  lanceStatsEl.hidden = !lanceOwned;
-  if (lanceOwned) {
-    toggleLanceEl.checked = state.systems.lance;
-    const lanceWeapon = Engine.WEAPONS.lance;
-    lanceStatsEl.textContent = lanceStatsExpanded ? describeWeapon(lanceWeapon) : describeWeaponCompact(lanceWeapon);
-    lanceStatsEl.classList.toggle("expanded", lanceStatsExpanded);
+  // Every purchased weapon (Lance Cannon, Repulsor, ...) is Outpost-
+  // purchase-only (see OUTPOST_OFFER_POOL), not sector-unlocked — hidden
+  // entirely until bought, same "simply hidden, no padlock" convention as
+  // Tractor Beam/Fighter Squadron before their sector.
+  for (const cfg of PURCHASABLE_WEAPON_UI) {
+    const owned = state.actions.includes(cfg.action);
+    cfg.toggleWrap.hidden = !owned;
+    cfg.stats.hidden = !owned;
+    if (owned) {
+      cfg.toggle.checked = state.systems[cfg.action];
+      cfg.stats.textContent = cfg.expanded ? describeWeapon(cfg.weapon) : describeWeaponCompact(cfg.weapon);
+      cfg.stats.classList.toggle("expanded", cfg.expanded);
+    }
   }
 }
 
@@ -1963,15 +2047,16 @@ weaponStatsEl.addEventListener("click", () => {
   updateSystems();
 });
 
-toggleLanceEl.addEventListener("change", () => {
-  Engine.setSystem(state, "lance", toggleLanceEl.checked);
-  render();
-});
-
-lanceStatsEl.addEventListener("click", () => {
-  lanceStatsExpanded = !lanceStatsExpanded;
-  updateSystems();
-});
+for (const cfg of PURCHASABLE_WEAPON_UI) {
+  cfg.toggle.addEventListener("change", () => {
+    Engine.setSystem(state, cfg.action, cfg.toggle.checked);
+    render();
+  });
+  cfg.stats.addEventListener("click", () => {
+    cfg.expanded = !cfg.expanded;
+    updateSystems();
+  });
+}
 
 holdBtn.addEventListener("click", () => {
   handleAction(() => Engine.applyHoldPosition(state));

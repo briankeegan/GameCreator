@@ -266,10 +266,14 @@
     const hazardKeys = new Set(hazards.map((h) => `${h.q},${h.r}`));
 
     const enemyCount = Math.max(1, Math.min(3 + Math.floor(depth / 2) + (variant ? variant.enemyDelta : 0), 9));
+    // The Railgun Destroyer (long-range, board-spanning shot along its
+    // axes) joins the roster at the same depth tier Cruiser/Sentry weight
+    // increases — a genuinely new threat shape (line-up-from-across-the-
+    // map instead of adjacent/short-ring), not just another stat bump.
     const typePool =
       depth < 8
         ? ["interceptor", "interceptor", "cruiser", "sentry"]
-        : ["interceptor", "cruiser", "cruiser", "sentry", "sentry"];
+        : ["interceptor", "cruiser", "cruiser", "sentry", "sentry", "railgun"];
     const enemies = [];
     for (const hex of candidates) {
       if (enemies.length >= enemyCount) break;

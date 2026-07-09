@@ -93,13 +93,16 @@
     return state.boardHexes.some((h) => posEq(h, pos));
   }
 
-  const ALL_ACTIONS = ["sublight", "ramming", "tractor", "fighter", "blink", "lance"];
+  const ALL_ACTIONS = ["sublight", "ramming", "tractor", "fighter", "blink", "lance", "repulsor"];
+  // Purchase-only actions (see OUTPOST_OFFER_POOL/applyOutpostPurchase) —
+  // never part of any level's own baked-in `actions` list, and excluded
+  // from the default fallback below so they don't show up for free the
+  // moment a level omits `actions`.
+  const PURCHASABLE_ACTIONS = ["lance", "repulsor"];
   // Sectors that don't specify `actions` explicitly (Sector 4 "Full Fleet"
   // and every procedurally-generated sector) default to every action that
-  // unlocks just by playing — NOT the Lance Cannon, which is Outpost-
-  // purchase-only (see OUTPOST_OFFER_POOL/applyOutpostPurchase) and would
-  // otherwise show up for free the moment a level omits `actions`.
-  const DEFAULT_ACTIONS = ALL_ACTIONS.filter((a) => a !== "lance");
+  // unlocks just by playing.
+  const DEFAULT_ACTIONS = ALL_ACTIONS.filter((a) => !PURCHASABLE_ACTIONS.includes(a));
 
   // ---- level validation ---------------------------------------------------
 
@@ -217,6 +220,23 @@
     // exactly this). Purchased at an Outpost (see OUTPOST_OFFER_POOL), not
     // unlocked for free by reaching a sector.
     lance: { id: "lance", label: "Lance Cannon", range: 3, damage: 2, targets: "all", speed: 1, energyCost: 0, pattern: [0], slots: 1 },
+    // Double-edged on purpose (Clubhouse: "make that bad or good depending
+    // [how it's used]"): weaker than the Shockwave hit-for-hit, but every
+    // surviving target gets shoved a hex directly away from the flagship
+    // (see pushEnemyInDirection) — can save you a follow-up hit by knocking
+    // a threat out of adjacency, or shove a low-HP target out of the very
+    // range you needed to finish it off. Also purchased at an Outpost.
+    repulsor: { id: "repulsor", label: "Repulsor", range: 1, damage: 1, targets: "all", speed: 1, energyCost: 0, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // The original design doc's Railgun Destroyer ("fires a straight-line
+    // slug down any of the 6 hex axes, unlimited range... telegraphs the
+    // line one turn before firing"), scoped down for a first pass: real
+    // long range (effectively board-spanning), no telegraph yet and no
+    // line-of-sight blocking by intervening units — both left for a later
+    // pass if this needs more texture. Reuses the exact same
+    // range-check machinery every other enemy weapon already uses (see
+    // decideIntent's `inRange`), just with a much longer `range` — a pure
+    // data addition, no new engine logic.
+    railgunBeam: { id: "railgunBeam", label: "Railgun", range: 20, damage: 1, targets: "all", speed: 1, energyCost: 0, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
   };
 
   // Each enemy type is its own small data block: how tough it is (hp), what
@@ -229,6 +249,11 @@
   //                 beam covers a 2-hex ring, controlling space instead of
   //                 chasing. Approach it wrong and it fires; kill it or go
   //                 around.
+  //   railgun     — a stationary heavy: 2 Hull, never moves, but its shot
+  //                 reaches the length of the board along any of the 6
+  //                 axes — line up with one from across the map and it
+  //                 fires. Procedural depth only (depth >= 8, see
+  //                 levels.js), not part of the hand-authored campaign.
   // `salvage` is how much scrap a kill drops, regardless of which action
   // lands it (weapon, Tractor Beam, or Fighter Squadron) — spendable at a
   // Sector Outpost. Tougher hulls drop more.
@@ -236,6 +261,7 @@
     interceptor: { hp: 1, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true, salvage: 1 },
     cruiser: { hp: 2, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true, salvage: 2 },
     sentry: { hp: 2, weapon: WEAPONS.sentryBeam, movesTowardPlayer: false, salvage: 2 },
+    railgun: { hp: 2, weapon: WEAPONS.railgunBeam, movesTowardPlayer: false, salvage: 3 },
   };
 
   // Every hex a weapon's pattern actually reaches, fired from `pos` facing
@@ -281,6 +307,7 @@
     { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 15 },
     { id: "shield", label: "Emergency Shield (absorb the next hit)", cost: 10 },
     { id: "lanceCannon", label: "Lance Cannon (forward-only, 2 dmg, range 3)", cost: 25 },
+    { id: "repulsorWeapon", label: "Repulsor (all sides, 1 dmg + knockback)", cost: 20 },
   ];
 
   function seededRandom(seed) {
@@ -384,12 +411,11 @@
       fighterHex: null,
       rammingDisabled: false,
       // Pre-turn system toggles: Warpdrive governs whether you can move at
-      // all this turn (off means Hold Position is your only option); Ram
-      // governs whether the Shockwave auto-fires; Lance the Lance Cannon
-      // (inert until purchased — see AUTO_FIRE_WEAPONS — but the toggle key
-      // needs to exist from the start so a later purchase has something to
-      // flip). All default on.
-      systems: { warpdrive: true, ram: true, lance: true },
+      // all this turn (off means Hold Position is your only option); the
+      // rest gate their matching AUTO_FIRE_WEAPONS entry, inert until
+      // purchased but present from the start so a later purchase has
+      // something to flip. All default on.
+      systems: { warpdrive: true, ram: true, lance: true, repulsor: true },
       // Direction index (0-5) the flagship is currently facing — gameplay-
       // relevant now, not just cosmetic, since a directional weapon's
       // pattern is relative to it. Updated on every Sublight move; starts
@@ -665,15 +691,61 @@
 
   // ---- player actions -----------------------------------------------------
 
+  // Shoves `enemy` one hex in direction `dir` — off the edge, into another
+  // unit, or into a hazard all destroy it (colliding with another unit
+  // destroys both, same as ramming into an enemy); otherwise it just
+  // relocates. Shared by Tractor Beam (direction derived from the
+  // flagship's position, an armed/aimed action) and the Repulsor weapon
+  // (same direction-away-from-the-flagship rule, but auto-fired).
+  function pushEnemyInDirection(state, enemy, dir, sourceLabel) {
+    const dest = neighbor(enemy, dir);
+    if (!onBoard(state, dest)) {
+      enemy.alive = false;
+      state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
+      pushLog(state, `${sourceLabel}-pushed ${enemy.type} off the map edge.`);
+      awardSalvage(state, enemy.type);
+      return;
+    }
+    const blocker = enemyAt(state, dest);
+    const hazard = hazardAt(state, dest);
+    if (blocker) {
+      enemy.alive = false;
+      blocker.alive = false;
+      state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
+      state.events.push({ type: "kill", q: blocker.q, r: blocker.r, victim: blocker.type });
+      pushLog(state, `${sourceLabel}-pushed ${enemy.type} into ${blocker.type} — both destroyed.`);
+      awardSalvage(state, enemy.type);
+      awardSalvage(state, blocker.type);
+    } else if (hazard) {
+      enemy.alive = false;
+      state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
+      pushLog(state, `${sourceLabel}-pushed ${enemy.type} into a hazard.`);
+      awardSalvage(state, enemy.type);
+    } else {
+      state.events.push({ type: "enemyMove", enemyId: enemy.id, from: { q: enemy.q, r: enemy.r }, to: dest });
+      enemy.q = dest.q;
+      enemy.r = dest.r;
+      pushLog(state, `${sourceLabel}-pushed ${enemy.type}.`);
+    }
+  }
+
   // Every player weapon that fires automatically (as opposed to Tractor
   // Beam/Fighter Squadron, which the player arms and aims at a target
   // directly) — each pairs an `actions` id (permanently unlocked, whether
   // by campaign progression or an Outpost purchase) with a `state.systems`
   // toggle key (pre-turn on/off) and its WEAPONS stat block. Adding a new
   // auto-fire weapon is adding one entry here, not new bespoke firing code.
+  // `onHit` is optional — the Repulsor uses it to shove a surviving target
+  // away (see pushEnemyInDirection); most weapons just damage.
   const AUTO_FIRE_WEAPONS = [
     { action: "ramming", systemKey: "ram", weapon: WEAPONS.ram },
     { action: "lance", systemKey: "lance", weapon: WEAPONS.lance },
+    {
+      action: "repulsor",
+      systemKey: "repulsor",
+      weapon: WEAPONS.repulsor,
+      onHit: (state, victim) => pushEnemyInDirection(state, victim, directionIndex(state.playerPos, victim), "Repulsor"),
+    },
   ];
 
   // Fires every currently-enabled, unlocked weapon against any living enemy
@@ -689,11 +761,16 @@
   // on whatever's ahead of wherever you were already facing.
   function applyWeaponAutoAttacks(state) {
     if (state.rammingDisabled) return; // fighters deployed — every weapon offline until retrieved
-    for (const { action, systemKey, weapon } of AUTO_FIRE_WEAPONS) {
+    for (const { action, systemKey, weapon, onHit } of AUTO_FIRE_WEAPONS) {
       if (!state.actions.includes(action) || !state.systems[systemKey]) continue;
       const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon).map(hexKey));
+      // Snapshot targets before firing — an onHit push can move a later
+      // target's hex out from under a hexKeys check made after the fact,
+      // and definitely shouldn't let one weapon's push feed another
+      // target into (or out of) this same volley's hit list.
       const targets = livingEnemies(state).filter((e) => hexKeys.has(hexKey(e)));
       for (const victim of targets) {
+        if (!victim.alive) continue; // an earlier target's push/collision in this same volley already took it out
         victim.hp -= weapon.damage;
         if (victim.hp <= 0) {
           victim.alive = false;
@@ -703,6 +780,7 @@
         } else {
           state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "weapon" });
           pushLog(state, `${weapon.label} hit ${victim.type} (${victim.hp}/${victim.maxHp} HP left).`);
+          if (onHit) onHit(state, victim);
         }
       }
     }
@@ -746,36 +824,7 @@
     const enemy = state.enemies.find((e) => e.id === targetEnemyId && e.alive);
     if (!enemy) throw new Error("Tractor Beam: no such enemy");
     if (!isAdjacent(state.playerPos, enemy)) throw new Error("Tractor Beam: enemy is not adjacent");
-    const dir = directionIndex(state.playerPos, enemy);
-    const dest = neighbor(enemy, dir);
-    if (!onBoard(state, dest)) {
-      enemy.alive = false;
-      state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
-      pushLog(state, `Tractor-pushed ${enemy.type} off the map edge.`);
-      awardSalvage(state, enemy.type);
-    } else {
-      const blocker = enemyAt(state, dest);
-      const hazard = hazardAt(state, dest);
-      if (blocker) {
-        enemy.alive = false;
-        blocker.alive = false;
-        state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
-        state.events.push({ type: "kill", q: blocker.q, r: blocker.r, victim: blocker.type });
-        pushLog(state, `Tractor-pushed ${enemy.type} into ${blocker.type} — both destroyed.`);
-        awardSalvage(state, enemy.type);
-        awardSalvage(state, blocker.type);
-      } else if (hazard) {
-        enemy.alive = false;
-        state.events.push({ type: "kill", q: dest.q, r: dest.r, victim: enemy.type });
-        pushLog(state, `Tractor-pushed ${enemy.type} into a hazard.`);
-        awardSalvage(state, enemy.type);
-      } else {
-        state.events.push({ type: "enemyMove", enemyId: enemy.id, from: { q: enemy.q, r: enemy.r }, to: dest });
-        enemy.q = dest.q;
-        enemy.r = dest.r;
-        pushLog(state, `Tractor-pushed ${enemy.type}.`);
-      }
-    }
+    pushEnemyInDirection(state, enemy, directionIndex(state.playerPos, enemy), "Tractor");
     endPlayerAction(state);
   }
 
@@ -873,6 +922,8 @@
       state.shieldCharges += 1;
     } else if (offer.id === "lanceCannon") {
       if (!state.actions.includes("lance")) state.actions.push("lance");
+    } else if (offer.id === "repulsorWeapon") {
+      if (!state.actions.includes("repulsor")) state.actions.push("repulsor");
     }
     state.salvage -= offer.cost;
     pushLog(state, `Outpost: bought ${offer.label} (-${offer.cost} salvage).`);
@@ -907,6 +958,7 @@
   const HypergolicEngine = {
     DIRECTIONS,
     ALL_ACTIONS,
+    PURCHASABLE_ACTIONS,
     hexKey,
     posEq,
     hexDistance,
