@@ -13,11 +13,13 @@ name: Clubhouse autopilot
 #   - thread history is fetched and injected INTO the prompt (model can't skip it)
 #   - the model's file edits are landed via a fresh PR that the shell auto-merges
 #   - the reply is wrapped with "**Claude says:**" + the correct "[v0.N]" stamp
-#   - requested images are dispatched to the OpenAI generator by the shell
 #   - a failed run still posts a "something went wrong" reply to the thread
 # The model has NO GitHub token in its environment, so a prompt-injection in a
 # chat message can't make it push, comment, or dispatch — those are the shell's
-# job. The CLI authenticates to Anthropic only (ANTHROPIC_API_KEY), nothing else.
+# job. The CLI authenticates to Anthropic only (ANTHROPIC_API_KEY); it has no
+# OpenAI key either — art generation goes through a local broker (see below)
+# that holds the key, so the model can generate + review art without ever being
+# able to spend or leak it.
 #
 # Why a fresh auto-merged PR instead of committing straight to main: it leaves a
 # reviewable record of each automated change, and flipping to human review is a
@@ -146,10 +148,10 @@ jobs:
       # `--bare` skips hooks/MCP/CLAUDE.md for a clean, reproducible CI run;
       # `-p` (print mode) DOES apply file edits to disk; bypassPermissions is
       # safe here because the runner is an ephemeral sandbox with no GitHub
-      # token in the model's env. The model edits game files in place and writes
-      # its reply + any image requests into .autopilot/ — the shell does the
-      # rest. We write the prompt to a file (not an inline arg) so untrusted
-      # message/history text can never be interpreted as shell.
+      # token in the model's env. The model edits game files in place, generates
+      # + reviews any art via the broker, and writes its reply into .autopilot/
+      # — the shell does the rest. We write the prompt to a file (not an inline
+      # arg) so untrusted message/history text can never be interpreted as shell.
       - name: Build the prompt
         env:
           MESSAGE: ${{ steps.ctx.outputs.message }}
@@ -187,21 +189,42 @@ jobs:
                guess — make no file changes and use your reply (step 4) to ask
                for the specific clarification you need.
 
-            3. IMAGES — for a raster image / game asset (sprite, hero art,
-               texture, photo-like icon), do NOT write a PNG yourself (binary
-               files corrupt) and do NOT hand-draw pixels. Instead append one
-               JSON object per line to .autopilot/images.jsonl, each shaped:
-               {"prompt": "<vivid description>", "output_path":
-               "games/<gameId>/<name>.png", "size": "1024x1024"}
-               The workflow dispatches each to the OpenAI image generator; they
-               land in separate runs shortly. For a simple FLAT icon or logo,
-               skip this and just write an inline .svg file (SVG over PNG).
+            3. IMAGES — you can GENERATE art and then REVIEW it in this run.
+               Do NOT write a PNG yourself (binary files corrupt) and do NOT
+               hand-draw pixels. Instead:
+                 a. Trigger a generation by POSTing to the local image service
+                    (it holds the OpenAI key — you do not, and must not try to):
+                      curl -s -X POST http://127.0.0.1:8791/generate \
+                        -H 'content-type: application/json' \
+                        -d '{"prompt":"<vivid description>",
+                             "output_path":"games/<gameId>/<name>.png",
+                             "game":"<gameId>"}'
+                    Include "game":"<gameId>" to match that game's established
+                    art style (needs games/<gameId>/art-style.json; create one
+                    first, modeled on games/hypergolic-hull/art-style.json, if
+                    it's a new set). Omit "game" for a freeform one-off. The
+                    call BLOCKS ~30-60s and returns JSON once the PNG is written
+                    to output_path — that wait is expected, just let it finish.
+                 b. THEN Read that output_path PNG and actually look at it.
+                    Judge whether it matches the request and the game's look.
+                 c. If it's wrong, call /generate again with the SAME
+                    output_path and a revised prompt to replace it. The response
+                    includes "remaining" — you have a limited number of
+                    generations per run; revise deliberately, don't burn them.
+                 d. When it looks good, reference it in the game code WITH a
+                    canvas/vector fallback so the game still plays if the image
+                    is ever missing.
+               For a simple FLAT icon or logo, skip all this and write an inline
+               .svg file (SVG over PNG per CLAUDE.md). If you run out of
+               generations with nothing great, keep the best attempt and SAY SO
+               in your reply so the human can ask for a redo.
 
             4. Write your chat reply as plain Markdown — the message body ONLY,
                with NO "**Claude says:**" prefix and NO "[v0.N]" stamp (the
                workflow adds both) — to .autopilot/reply.md
-               If you requested images, tell the requester they're generating
-               and will appear shortly.
+               Any art you generated is already finalized and will ship with
+               this change — describe what you built, don't say it's "still
+               generating."
 
           Never merge or close this PR — it is a permanently-open chat thread.
           PROMPT_HEADER
@@ -220,6 +243,33 @@ jobs:
             echo "-----END HISTORY-----"
           } >> .autopilot/prompt.txt
 
+      # Start the local image service BEFORE the model runs. It holds the
+      # OpenAI key in ITS OWN environment — the model step below does NOT set
+      # OPENAI_API_KEY, so the model can trigger generations (via localhost) but
+      # can never read, spend, or leak the key directly. MAX_GENERATIONS is the
+      # hard per-run spend ceiling. imagemagick is needed for the trim/resize of
+      # cut-out assets and isn't preinstalled on ubuntu-latest.
+      - name: Start image broker (holds OpenAI key; model never sees it)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MAX_GENERATIONS: '6'
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
+          nohup node .github/autopilot/image-broker.js > .autopilot/broker.log 2>&1 &
+          # Wait until it's listening (or fail loudly) before starting the model.
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:8791/health >/dev/null 2>&1; then
+              echo "Broker up: $(curl -s http://127.0.0.1:8791/health)"; exit 0
+            fi
+            sleep 0.5
+          done
+          echo "::error::Image broker failed to start"; cat .autopilot/broker.log || true; exit 1
+
+      # THE MODEL STEP. Note: NO OPENAI_API_KEY here — art generation goes
+      # through the broker on localhost, so the model's blast radius stays
+      # bounded to file edits. Bash is allowed (it needs curl for the broker)
+      # and Read is how it reviews the generated PNGs.
       - name: Handle the Clubhouse message (headless Claude)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -231,8 +281,9 @@ jobs:
             --max-turns 50 \
             --allowedTools "Read,Edit,MultiEdit,Write,Glob,Grep,Bash" \
             --output-format json > .autopilot/result.json
-          # Surface the model's own summary in the log for debugging.
+          # Surface the model's own summary + broker usage in the log.
           jq -r '.result // "(no result text)"' .autopilot/result.json || true
+          echo "Broker usage: $(curl -s http://127.0.0.1:8791/health || echo 'n/a')"
 
       # Deterministic: land the model's edits on main via a fresh auto-merged
       # PR, then deploy. Only the content paths are staged, so .autopilot/ and
@@ -272,25 +323,9 @@ jobs:
           gh workflow run pages.yml --ref main
           echo "Merged and dispatched Pages deploy."
 
-      # Deterministic: dispatch each image the model requested.
-      - name: Dispatch image generation (if the model requested any)
-        if: success()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          f=".autopilot/images.jsonl"
-          [ -s "$f" ] || { echo "No images requested."; exit 0; }
-          while IFS= read -r line; do
-            [ -z "$line" ] && continue
-            prompt=$(printf '%s' "$line" | jq -r '.prompt // empty')
-            path=$(printf '%s' "$line" | jq -r '.output_path // empty')
-            size=$(printf '%s' "$line" | jq -r '.size // "1024x1024"')
-            if [ -z "$prompt" ] || [ -z "$path" ]; then
-              echo "Skipping malformed image line: $line"
-              continue
-            fi
-            gh workflow run generate-image.yml -f prompt="$prompt" -f output_path="$path" -f size="$size"
-          done < "$f"
+      # (Art is generated + reviewed in-run via the broker and written straight
+      # into games/**, so it's committed alongside the code by "Land changes"
+      # above — no separate image-dispatch step is needed anymore.)
 
       # Deterministic: wrap the model's reply body with the marker + the correct
       # version stamp (latest SUCCESSFUL pages.yml run — the just-dispatched
