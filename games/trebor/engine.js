@@ -190,7 +190,7 @@ function rollRelicDrop(state, content, rng = Math.random) {
 function applyTurnStartMechanic(state, content, rng) {
   const mech = classMechanic(state, content);
   if (mech.turnBlock) state.player.block += mech.turnBlock;
-  // Forage (Dolche): heal a little every turn — steady sustain that wins long fights.
+  // Forage (Dolche): heal a small flat amount each turn — modest steady regen.
   if (mech.healPerTurn) {
     state.player.hp = Math.min(state.player.maxHp, state.player.hp + mech.healPerTurn);
   }
@@ -314,10 +314,15 @@ function chooseNode(state, content, optionIndex, rng = Math.random) {
         : "A safe spot. Rest up or sharpen a card.",
     ];
   } else if (option.type === "treasure") {
-    // A stash — a free pick from the strong treasure pool, no fight.
+    // A stash — a free pick from the strong treasure pool AND a relic, no fight.
+    // Treasure is the reliable relic source (Slay the Spire's chests), so relics
+    // show up on a schedule instead of only from the now-rare elites.
     state.currentNodeType = "treasure";
     state.status = "reward";
     state.rewardOptions = shuffle(content.TREASURE_POOL, rng).slice(0, content.TREASURE_REWARD_COUNT);
+    // Treasure USUALLY carries a relic (the reliable relic source), but not
+    // every single time, so it does not flood the run with power.
+    state.rewardRelic = rng() < content.TREASURE_RELIC_CHANCE ? rollRelicDrop(state, content, rng) : null;
     state.log = ["You found a stash of gear!"];
   } else {
     state.currentNodeType = option.type; // "fight" | "elite"
@@ -419,6 +424,18 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
   if (card.energy) {
     state.player.energy += card.energy;
   }
+  if (card.heal) {
+    // Sustain cards (Dolche's kit): patch up Hull, capped at max — a thing the
+    // plain basic cards never do, so her signatures aren't just bigger basics.
+    state.player.hp = Math.min(state.player.maxHp, state.player.hp + card.heal);
+    state.log.push(`${card.name}: heal ${card.heal}.`);
+  }
+  if (card.combatStrength) {
+    // Momentum cards (Rambo's kit): grant Strength for the rest of the combat,
+    // stacking with his per-turn ramp — his signatures build the snowball.
+    state.player.combatStrength = (state.player.combatStrength || 0) + card.combatStrength;
+    state.log.push(`${card.name}: +${card.combatStrength} Strength this combat.`);
+  }
   if (card.draw) {
     drawCards(state, content, rng, card.draw);
   }
@@ -435,12 +452,15 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
         state.bossRewardOptions = shuffle(content.BOSS_REWARD_POOL, rng).slice(0, content.BOSS_REWARD_COUNT);
       }
     } else {
-      // Catch your breath: clearing a fight patches you up a little. This is
-      // what makes a long act (~14 floors of mostly fighting) survivable
-      // without handing out rests — the grind chips you down slowly instead of
-      // draining you to zero, while a real rest is still the only big heal.
-      if (content.POST_FIGHT_HEAL) {
-        state.player.hp = Math.min(state.player.maxHp, state.player.hp + content.POST_FIGHT_HEAL);
+      // Catch your breath: clearing a fight recovers a FRACTION of MISSING Hull,
+      // never a flat amount. That keeps a long act survivable for a hurt dog
+      // without making a healthy turtle unkillable — a full-blocker at high Hull
+      // heals almost nothing here, so it still has to actually win fights rather
+      // than out-sustain the whole dungeon on chip damage.
+      if (content.POST_FIGHT_HEAL_FRACTION) {
+        const miss = state.player.maxHp - state.player.hp;
+        const heal = Math.floor(miss * content.POST_FIGHT_HEAL_FRACTION);
+        if (heal > 0) state.player.hp += heal;
       }
       state.status = "reward";
       const count = state.currentNodeType === "elite" ? content.ELITE_REWARD_COUNT : content.FIGHT_REWARD_COUNT;
@@ -449,7 +469,7 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
       state.rewardOptions = shuffle(pool, rng).slice(0, count);
       // Elites (the optional mini-bosses on the way) drop a relic on top of the
       // richer card reward — the reason to take the harder fight.
-      state.rewardRelic = state.currentNodeType === "elite" ? rollRelicDrop(state, content, rng) : null;
+      state.rewardRelic = null; // relics come from treasure + bosses now, not elite farming
     }
   }
 }

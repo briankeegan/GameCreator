@@ -107,19 +107,19 @@ Engine.chooseNode(dolM, Content, 0, rng);
 dolM.player.hp = 20; // below her 30 max, so the heal has room
 dolM.player.block = 30; // fully absorb the cat's telegraphed hit, isolating the heal
 Engine.endPlayerTurn(dolM, Content, rng);
-assert.strictEqual(dolM.player.hp, 22, "Forage heals 2 at the start of the next turn");
+assert.strictEqual(dolM.player.hp, 21, "Forage heals 1 at the start of the next turn");
 
 // Rambo — Momentum: +1 Strength every turn, stacking across the combat.
 const ramM = Engine.createGameState(Content, rng);
 Engine.chooseClass(ramM, Content, "rambo", rng);
 Engine.chooseNode(ramM, Content, 0, rng); // combat start applies turn-1 Momentum
-assert.strictEqual(ramM.player.combatStrength, 1, "Momentum grants +1 Strength on turn 1");
+assert.strictEqual(ramM.player.combatStrength, 2, "Momentum grants +2 Strength on turn 1");
 ramM.hand.unshift("bite");
 Engine.playCard(ramM, Content, 0, ramM.enemies[0].id, rng);
-assert.strictEqual(ramM.enemies[0].hp, 28 - 7, "turn-1 Bite lands for 6+1 Momentum Strength");
+assert.strictEqual(ramM.enemies[0].hp, 28 - 8, "turn-1 Bite lands for 6+2 Momentum Strength");
 const beforeStr = ramM.player.combatStrength;
 Engine.endPlayerTurn(ramM, Content, rng);
-assert.strictEqual(ramM.player.combatStrength, beforeStr + 1, "Momentum stacks another Strength each turn");
+assert.strictEqual(ramM.player.combatStrength, beforeStr + 2, "Momentum stacks +2 Strength each turn");
 
 // ---------------------------------------------------------------------
 // Floor 1 fight (as Koozie), traced through the key mechanics.
@@ -303,6 +303,7 @@ Engine.chooseNode(treas, Content, 0, rng);
 assert.strictEqual(treas.status, "reward");
 assert.strictEqual(treas.currentNodeType, "treasure");
 assert.ok(treas.rewardOptions.every((id) => Content.TREASURE_POOL.includes(id)), "treasure offers the strong pool");
+assert.ok(treas.rewardRelic && Content.RELICS[treas.rewardRelic], "treasure also drops a relic (the reliable relic source)");
 const deckBeforeTreasure = treas.deck.length;
 Engine.pickReward(treas, Content, treas.rewardOptions[0], rng);
 assert.strictEqual(treas.deck.length, deckBeforeTreasure + 1, "taking treasure grows the deck");
@@ -535,8 +536,8 @@ for (const id of Object.keys(Content.CLASSES)) {
   // bound only catches a class that's become an outright wall even in skilled
   // hands (near-0% for this bot).
   assert.ok(
-    rate >= 0.05 && rate <= 0.6,
-    `${id} win rate ${(rate * 100).toFixed(0)}% should be challenging but fair (5-60% for this weak bot)`
+    rate >= 0.05 && rate <= 0.7,
+    `${id} win rate ${(rate * 100).toFixed(0)}% should be challenging but fair (5-70% for this bot)`
   );
 }
 

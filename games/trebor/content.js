@@ -44,12 +44,16 @@ const CARDS = {
   flurry: { id: "flurry", name: "Flurry", cost: 1, damage: 4, draw: 1, text: "Deal 4 damage. Draw a card." }, // Bevy
   chomp: { id: "chomp", name: "Chomp", cost: 1, damage: 7, text: "Deal 7 damage." }, // Lala
   bodySlam: { id: "bodySlam", name: "Body Slam", cost: 2, damage: 12, text: "Deal 12 damage." }, // Lala
-  truffleHunt: { id: "truffleHunt", name: "Truffle Hunt", cost: 1, block: 6, draw: 1, text: "Gain 6 Block. Draw a card." }, // Dolche
-  waterlog: { id: "waterlog", name: "Waterlog", cost: 1, damage: 3, weak: 1, text: "Deal 3 damage. Apply 1 Weak." }, // Dolche
-  curlUp: { id: "curlUp", name: "Curl Up", cost: 1, block: 9, text: "Gain 9 Block." }, // Dolche
-  sledCharge: { id: "sledCharge", name: "Sled Charge", cost: 1, damage: 6, text: "Deal 6 damage." }, // Rambo
-  packHowl: { id: "packHowl", name: "Pack Howl", cost: 1, damage: 5, aoe: true, text: "Deal 5 damage to ALL enemies." }, // Rambo
-  mush: { id: "mush", name: "Mush", cost: 0, damage: 2, draw: 1, text: "Deal 2 damage. Draw a card." }, // Rambo
+  // Dolche's signatures HEAL — sustain no basic card offers, so they're their
+  // own thing rather than bigger Growls/Hunkers.
+  truffleHunt: { id: "truffleHunt", name: "Truffle Hunt", cost: 1, block: 6, draw: 1, heal: 2, text: "Gain 6 Block. Draw a card. Heal 2." }, // Dolche
+  waterlog: { id: "waterlog", name: "Waterlog", cost: 1, damage: 3, weak: 1, heal: 2, text: "Deal 3 damage. Apply 1 Weak. Heal 2." }, // Dolche
+  curlUp: { id: "curlUp", name: "Curl Up", cost: 1, block: 8, heal: 3, text: "Gain 8 Block. Heal 3." }, // Dolche
+  // Rambo's signatures grant Strength this combat — they build his Momentum
+  // snowball, which no basic card does.
+  sledCharge: { id: "sledCharge", name: "Sled Charge", cost: 1, damage: 5, combatStrength: 1, text: "Deal 5 damage. Gain +1 Strength this combat." }, // Rambo
+  packHowl: { id: "packHowl", name: "Pack Howl", cost: 1, damage: 4, aoe: true, combatStrength: 1, text: "Deal 4 to ALL. Gain +1 Strength this combat." }, // Rambo
+  mush: { id: "mush", name: "Mush", cost: 1, damage: 3, draw: 1, combatStrength: 1, text: "Deal 3 damage. Draw a card. Gain +1 Strength this combat." }, // Rambo
   // Boss-reward cards — powerful, only offered after felling an act boss:
   maul: { id: "maul", name: "Maul", cost: 2, damage: 18, text: "Deal 18 damage." },
   warCry: { id: "warCry", name: "War Cry", cost: 2, damage: 10, aoe: true, block: 6, text: "Deal 10 to ALL enemies. Gain 6 Block." },
@@ -119,7 +123,7 @@ const CLASSES = {
     // Forage: heals a little every turn, so she grinds out long fights the enemy
     // can't. Pairs with her block-heavy deck — chip her down and she claws it
     // right back.
-    mechanic: { healPerTurn: 2, name: "Forage", text: "Heal 2 Hull at the start of each turn." },
+    mechanic: { healPerTurn: 1, name: "Forage", text: "Heal 1 Hull at the start of each turn." },
     deck: ["truffleHunt", "truffleHunt", "curlUp", "curlUp", "waterlog", "waterlog", "bite", "bite", "bite", "growl", "guardDog", "hunker"],
     rewardCards: ["truffleHunt", "waterlog", "curlUp", "hunker"],
   },
@@ -132,7 +136,7 @@ const CLASSES = {
     // Momentum: +1 Strength every turn, stacking all combat — the mirror of the
     // bosses' Enrage. Early he's soft; drag a fight out and he's unstoppable, so
     // his attack-dense deck wants to keep swinging.
-    mechanic: { strengthPerTurn: 1, name: "Momentum", text: "Gain +1 Strength every turn (stacks all combat)." },
+    mechanic: { strengthPerTurn: 2, name: "Momentum", text: "Gain +2 Strength every turn (stacks all combat)." },
     deck: ["sledCharge", "sledCharge", "sledCharge", "mush", "mush", "mush", "packHowl", "bite", "bite", "growl", "growl", "guardDog"],
     rewardCards: ["sledCharge", "packHowl", "mush", "pounce"],
   },
@@ -182,6 +186,8 @@ function cardTextOf(c) {
   if (c.vulnerable) parts.push(`Apply ${c.vulnerable} Vulnerable${c.aoe ? " to ALL" : ""}.`);
   if (c.weak) parts.push(`Apply ${c.weak} Weak${c.aoe ? " to ALL" : ""}.`);
   if (c.energy) parts.push(`Gain ${c.energy} Energy.`);
+  if (c.heal) parts.push(`Heal ${c.heal}.`);
+  if (c.combatStrength) parts.push(`Gain +${c.combatStrength} Strength this combat.`);
   if (c.draw) parts.push(`Draw ${c.draw} card${c.draw > 1 ? "s" : ""}.`);
   return parts.join(" ");
 }
@@ -403,11 +409,15 @@ const RELICS = {
   luckyBall: { id: "luckyBall", name: "Lucky Ball", desc: "+1 Energy on the first turn of each combat.", firstTurnEnergy: 1 },
   oldBlanket: { id: "oldBlanket", name: "Old Blanket", desc: "Heal 3 Hull when you reach a new floor.", floorHeal: 3 },
   ragMedal: { id: "ragMedal", name: "Rag Medal", desc: "Start each combat with 2 Block and +1 Strength that combat.", startBlock: 2, combatStrength: 1 },
+  thickHide: { id: "thickHide", name: "Thick Hide", desc: "+6 max Hull.", maxHpBonus: 6 },
+  warHorn: { id: "warHorn", name: "War Horn", desc: "Start each combat with +1 Strength that combat.", combatStrength: 1 },
 };
-// Relics unlocked from the very first run. Rarer relics unlock via achievements.
-const BASE_RELIC_POOL = ["marrowBone", "spikedCollar", "chewToy", "packWhistle"];
+// Relics droppable from the very first run — a wide base pool so the regular
+// drops (treasure nodes, elites, act bosses) stay varied. The rarest two unlock
+// via achievements, so there's still something new to earn across runs.
+const BASE_RELIC_POOL = ["marrowBone", "spikedCollar", "chewToy", "packWhistle", "luckyBall"];
 const RELIC_UNLOCKS = [
-  { achievement: "firstBoss", relics: ["luckyBall"] },
+  { achievement: "firstBoss", relics: ["thickHide", "warHorn"] },
   { achievement: "clearRun", relics: ["oldBlanket", "ragMedal"] },
 ];
 const RELIC_POOL = BASE_RELIC_POOL.concat(...RELIC_UNLOCKS.map((u) => u.relics));
@@ -425,12 +435,13 @@ const STARTING_HP = 28;
 const STARTING_ENERGY = 3;
 const HAND_SIZE = 5;
 const REST_HEAL_FRACTION = 0.5; // of missing HP, rounded up — rests are rare now, so each matters more
-const POST_FIGHT_HEAL = 4; // "catch your breath" — small Hull recovered after clearing a non-boss fight
+const POST_FIGHT_HEAL_FRACTION = 0.15; // "catch your breath" after a non-boss fight: heal this fraction of MISSING Hull (healthy turtles heal ~0, so sustain can't make you unkillable)
 const REST_REMOVE_CHANCE = 0.35; // odds a given rest site also lets you drop a card
 const FIGHT_REWARD_COUNT = 3;
 const ELITE_REWARD_COUNT = 4;
 const BOSS_REWARD_COUNT = 3; // boss-reward cards offered to pick from
 const TREASURE_REWARD_COUNT = 3; // strong cards offered at a treasure node
+const TREASURE_RELIC_CHANCE = 0.5; // odds a treasure node also carries a relic
 const BOSS_MAX_HULL_BONUS = 8; // permanent +maxHull granted on a boss kill
 
 const CONTENT = {
@@ -456,11 +467,12 @@ const CONTENT = {
   HAND_SIZE,
   REST_HEAL_FRACTION,
   REST_REMOVE_CHANCE,
-  POST_FIGHT_HEAL,
+  POST_FIGHT_HEAL_FRACTION,
   FIGHT_REWARD_COUNT,
   ELITE_REWARD_COUNT,
   BOSS_REWARD_COUNT,
   TREASURE_REWARD_COUNT,
+  TREASURE_RELIC_CHANCE,
   BOSS_MAX_HULL_BONUS,
 };
 
