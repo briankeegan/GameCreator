@@ -55,6 +55,11 @@ const outpostOffersEl = document.getElementById("outpostOffers");
 const outpostCloseBtn = document.getElementById("outpostCloseBtn");
 const modeButtons = Array.from(document.querySelectorAll("[data-mode]"));
 const scanBtn = document.getElementById("scanBtn");
+const shipBtn = document.getElementById("shipBtn");
+const shipOverlayEl = document.getElementById("shipOverlay");
+const shipStatsEl = document.getElementById("shipStats");
+const shipHardpointsEl = document.getElementById("shipHardpoints");
+const shipCloseBtn = document.getElementById("shipCloseBtn");
 const legendEl = document.getElementById("legend");
 const toggleThreatEl = document.getElementById("toggleThreat");
 const toggleLegalEl = document.getElementById("toggleLegal");
@@ -137,6 +142,10 @@ let autoRoute = null;
 // every action lock out while it's open — the no-commitment way to look at
 // anything on the board without acting on it.
 let legendVisible = GCStorage.get(GAME_ID, "legendVisible", false);
+
+// The full-screen Ship view ("a mode that goes full screen and shows ship
+// and allows you to modify") — session-only, always starts closed.
+let shipVisible = false;
 
 // Each legend key can be independently muted while the legend is open. The
 // bold/colored board overlays they describe only ever show while the legend
@@ -1930,12 +1939,98 @@ function updateOutpost() {
   }
 }
 
+// The full-screen Ship view: the flagship, every gauge, and each owned
+// weapon system as a hardpoint row with its real toggle. Rebuilt from
+// state on every render (same approach as the Outpost shop) — cheap, and
+// it can never drift from what the console toggles say.
+function updateShipOverlay() {
+  shipOverlayEl.hidden = !shipVisible;
+  shipBtn.classList.toggle("active", shipVisible);
+  if (!shipVisible) return;
+
+  shipStatsEl.innerHTML = "";
+  const statRow = (label, build) => {
+    const row = document.createElement("div");
+    row.className = "ship-stat-row";
+    const name = document.createElement("span");
+    name.className = "stat-label";
+    name.textContent = label;
+    row.appendChild(name);
+    row.appendChild(build());
+    shipStatsEl.appendChild(row);
+  };
+  const bar = (filled, max, variant, label) => () => {
+    const b = document.createElement("span");
+    b.className = "stat-bar";
+    renderStatBar(b, label, filled, max, variant);
+    return b;
+  };
+  const text = (value) => () => {
+    const v = document.createElement("span");
+    v.className = "stat-value";
+    v.textContent = value;
+    return v;
+  };
+  statRow("Hull", bar(state.hull, state.maxHull, "hull", "Hull"));
+  statRow("Energy", bar(state.energy, state.maxEnergy, "energy", "Energy"));
+  if (state.shieldCharges > 0) statRow("Shield", bar(state.shieldCharges, state.shieldCharges, "shield", "Shield"));
+  statRow("Salvage", text(state.salvage));
+  statRow("Weapon slots", text(`${Engine.usedWeaponSlots(state)}/${state.weaponSlots} in use`));
+  statRow("Energy regen", text("+1 per turn"));
+
+  shipHardpointsEl.innerHTML = "";
+  const WEAPON_INFO = { ram: Engine.WEAPONS.ram, lance: Engine.WEAPONS.lance, repulsor: Engine.WEAPONS.repulsor };
+  for (const key of Engine.WEAPON_SYSTEM_KEYS) {
+    const owned = key === "ram" || state.actions.includes(key);
+    if (!owned) continue;
+    const weapon = WEAPON_INFO[key];
+    const row = document.createElement("div");
+    row.className = "ship-hardpoint";
+    const head = document.createElement("label");
+    head.className = "system-toggle ship-hardpoint-head";
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.checked = state.systems[key];
+    toggle.addEventListener("change", () => {
+      // The same free pre-turn switch as the console's — can throw on the
+      // weapon-slot cap; handleAction logs it and render() re-syncs the box.
+      handleAction(() => Engine.setSystem(state, key, toggle.checked));
+    });
+    head.appendChild(toggle);
+    head.appendChild(document.createTextNode(` ${weapon.label}`));
+    row.appendChild(head);
+    const statsLine = document.createElement("div");
+    statsLine.className = "ship-hardpoint-stats";
+    statsLine.textContent = describeWeapon(weapon) + ` · ${weapon.slots} slot${weapon.slots === 1 ? "" : "s"}`;
+    row.appendChild(statsLine);
+    shipHardpointsEl.appendChild(row);
+  }
+  if (state.actions.includes("tractor")) {
+    const row = document.createElement("div");
+    row.className = "ship-hardpoint";
+    const head = document.createElement("div");
+    head.className = "ship-hardpoint-head";
+    head.textContent = "TRACTOR BEAM";
+    row.appendChild(head);
+    const statsLine = document.createElement("div");
+    statsLine.className = "ship-hardpoint-stats";
+    statsLine.textContent = describeWeapon(Engine.WEAPONS.tractor) + " · aimed action, no slot";
+    row.appendChild(statsLine);
+    shipHardpointsEl.appendChild(row);
+  }
+  const note = document.createElement("p");
+  note.className = "ship-note";
+  note.textContent = "Loadout changes are free — they never spend a turn. Buy more slots, reactor capacity, and weapons at Outposts.";
+  shipHardpointsEl.appendChild(note);
+}
+
 function render() {
   updateHud();
   updateLegend();
   updateSystems();
   updateScanInfo();
   updateOutpost();
+  updateShipOverlay();
   draw();
   persist();
   window.__hhState = state; // debug hook: deterministic + serializable, safe to inspect
@@ -2084,6 +2179,15 @@ scanBtn.addEventListener("click", () => {
   GCStorage.set(GAME_ID, "legendVisible", legendVisible);
   if (!legendVisible) inspectedHex = null; // closing Scan mode clears whatever was inspected
   render(); // full refresh — every button/toggle's disabled state depends on legendVisible now
+});
+
+shipBtn.addEventListener("click", () => {
+  shipVisible = !shipVisible;
+  render();
+});
+shipCloseBtn.addEventListener("click", () => {
+  shipVisible = false;
+  render();
 });
 
 toggleThreatEl.addEventListener("change", () => {

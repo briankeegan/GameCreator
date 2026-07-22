@@ -232,6 +232,26 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#enemyInfo").isVisible(), false, "closing Scan mode clears the inspection card too");
   assert.strictEqual(await page.locator("#holdBtn").isDisabled(), false, "actions are usable again once Scan mode closes");
 
+  // ---- The Ship screen: a full-screen flagship/loadout view --------------
+  // ("a mode that goes full screen and shows ship and allows you to
+  // modify") — opened from the Ship button next to Scan. Its weapon
+  // toggles are the same free pre-turn switches as the console's.
+  assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "the Ship screen starts closed");
+  await page.click("#shipBtn");
+  assert.strictEqual(await page.locator("#shipOverlay").isVisible(), true, "the Ship button opens the full-screen view");
+  assert.ok((await page.locator("#shipStats").textContent()).includes("Weapon slots"), "the Ship screen lists the slot capacity");
+  const turnBeforeShipToggle = (await getState(page)).turnCount;
+  await page.uncheck('#shipHardpoints input[type="checkbox"]'); // only the Shockwave is owned in Sector 1
+  s = await getState(page);
+  assert.strictEqual(s.systems.ram, false, "the Ship screen's toggle drives the real system state");
+  assert.strictEqual(s.turnCount, turnBeforeShipToggle, "loadout changes on the Ship screen never spend a turn");
+  assert.strictEqual(await page.locator("#toggleRam").isChecked(), false, "the console toggle mirrors it — one state, two views");
+  await page.check('#shipHardpoints input[type="checkbox"]');
+  s = await getState(page);
+  assert.strictEqual(s.systems.ram, true, "toggling back on works the same way");
+  await page.click("#shipCloseBtn");
+  assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Back to the fight closes the Ship screen");
+
   // Tapping the weapon-stats badge expands it to the full stat sentence —
   // same "tap a thing to inspect it" pattern as clicking an enemy.
   const compactText = await page.locator("#weaponStats").textContent();

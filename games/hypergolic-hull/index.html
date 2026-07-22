@@ -99,7 +99,20 @@
     </div>
   </main>
 
-  <button id="scanBtn" class="scan-btn" title="Scan mode — inspect anything on the board; movement and actions are disabled while it's open" aria-label="Scan">Scan</button>
+  <div class="corner-btns">
+    <button id="scanBtn" class="scan-btn" title="Scan mode — inspect anything on the board; movement and actions are disabled while it's open" aria-label="Scan">Scan</button>
+    <button id="shipBtn" class="scan-btn" title="Ship — full-screen view of your flagship, its systems, and upgrades" aria-label="Ship">Ship</button>
+  </div>
+
+  <div class="ship-overlay" id="shipOverlay" hidden>
+    <div class="ship-overlay-inner">
+      <h2>Flagship</h2>
+      <img class="ship-portrait" src="icons/flagship.png" alt="Your flagship" />
+      <div class="ship-section" id="shipStats"></div>
+      <div class="ship-section" id="shipHardpoints"></div>
+      <button id="shipCloseBtn">Back to the fight</button>
+    </div>
+  </div>
 
   <div class="install-banner" id="installBanner">
     <img class="install-banner-icon" src="icons/icon.svg" alt="" />
