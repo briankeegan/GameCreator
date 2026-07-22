@@ -184,9 +184,14 @@ async function freshPage(browser, url, errors) {
     "Hold Position is always available, not just when Warpdrive is off"
   );
   assert.strictEqual(
-    await page.locator("#energyWrap").isVisible(),
+    await page.locator("#energyBar").isVisible(),
     true,
-    "the Energy meter shows from turn one — it pays for every weapon shot now"
+    "the Energy bar shows from turn one — it pays for every weapon shot now"
+  );
+  assert.strictEqual(
+    await page.locator("#energyBar .stat-pip.filled").count(),
+    3,
+    "a fresh run's Energy bar starts with all 3 pips lit"
   );
   const boardBox = await page.locator("#board").boundingBox();
   assert.ok(boardBox.height > boardBox.width * 0.95, "the canvas grows tall to fit the Hoplite-style board");

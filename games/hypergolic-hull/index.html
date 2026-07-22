@@ -22,13 +22,24 @@
     <div class="enemy-info" id="enemyInfo" hidden></div>
 
     <div class="hud">
-      <div class="hull-wrap">
-        <span class="hull-label">Hull</span>
-        <div class="hull-bar" id="hullBar"></div>
+      <div class="hud-stats">
+        <span class="stat-wrap">
+          <span class="stat-label">Hull</span>
+          <span class="stat-bar" id="hullBar"></span>
+        </span>
+        <span class="stat-wrap">
+          <span class="stat-label">Energy</span>
+          <span class="stat-bar" id="energyBar"></span>
+        </span>
+        <span class="stat-wrap" id="shieldWrap" hidden>
+          <span class="stat-label">Shield</span>
+          <span class="stat-bar" id="shieldBar"></span>
+        </span>
+        <span class="stat-wrap">
+          <span class="stat-label">Salvage</span>
+          <span class="stat-value" id="salvageValue">0</span>
+        </span>
       </div>
-      <span class="salvage-wrap" id="salvageWrap"><i class="swatch swatch-salvage"></i> <span id="salvageValue">0</span></span>
-      <span class="salvage-wrap" id="shieldWrap" hidden><i class="swatch swatch-shield"></i> <span id="shieldValue">0</span></span>
-      <span class="salvage-wrap" id="energyWrap" hidden><i class="swatch swatch-energy"></i> <span id="energyValue">0</span>/<span id="energyMaxValue">0</span></span>
       <span id="levelLabel">Sector 1 · Best 1</span>
     </div>
 

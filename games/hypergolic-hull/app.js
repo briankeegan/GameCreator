@@ -47,10 +47,8 @@ const restartBtn = document.getElementById("restartBtn");
 const continueBtnEl = document.getElementById("continueBtn");
 const salvageValueEl = document.getElementById("salvageValue");
 const shieldWrapEl = document.getElementById("shieldWrap");
-const shieldValueEl = document.getElementById("shieldValue");
-const energyWrapEl = document.getElementById("energyWrap");
-const energyValueEl = document.getElementById("energyValue");
-const energyMaxValueEl = document.getElementById("energyMaxValue");
+const shieldBarEl = document.getElementById("shieldBar");
+const energyBarEl = document.getElementById("energyBar");
 const outpostOverlayEl = document.getElementById("outpostOverlay");
 const outpostSalvageEl = document.getElementById("outpostSalvage");
 const outpostOffersEl = document.getElementById("outpostOffers");
@@ -1628,24 +1626,33 @@ function animsRunning() {
   return anims.some((a) => now < a.start + a.dur);
 }
 
-function updateHud() {
-  hullBarEl.innerHTML = "";
-  hullBarEl.setAttribute("aria-label", `Hull ${state.hull}/${state.maxHull}`);
-  for (let i = 0; i < state.maxHull; i++) {
+// One renderer for every HUD gauge — a labeled row of colored pips
+// ("stats (green bars) at top to indicate better what is there"), so
+// Hull/Energy/Shield all read the same way at a glance instead of some
+// being bars and some bare numbers.
+function renderStatBar(el, label, filled, max, variant) {
+  el.innerHTML = "";
+  el.setAttribute("aria-label", `${label} ${filled}/${max}`);
+  for (let i = 0; i < max; i++) {
     const pip = document.createElement("span");
-    pip.className = "hull-pip" + (i < state.hull ? " filled" : "");
-    hullBarEl.appendChild(pip);
+    pip.className = `stat-pip stat-pip-${variant}` + (i < filled ? " filled" : "");
+    el.appendChild(pip);
   }
+}
+
+function updateHud() {
+  renderStatBar(hullBarEl, "Hull", state.hull, state.maxHull, "hull");
+  // Energy pays for every weapon shot now, so its gauge is always up —
+  // the reactor bar, not a niche ability counter.
+  renderStatBar(energyBarEl, "Energy", state.energy, state.maxEnergy, "energy");
+  // Shield charges have no cap — the bar is however many are banked, all
+  // lit. Hidden entirely at zero rather than showing an empty socket for
+  // something you may never buy.
+  shieldWrapEl.hidden = state.shieldCharges <= 0;
+  renderStatBar(shieldBarEl, "Shield", state.shieldCharges, state.shieldCharges, "shield");
   levelEl.textContent = `Sector ${state.levelId}: ${state.levelName} · Best ${bestDepth}`;
   logEl.textContent = state.log.slice(-3).join("  ·  ");
   salvageValueEl.textContent = state.salvage;
-  shieldWrapEl.hidden = state.shieldCharges <= 0;
-  shieldValueEl.textContent = state.shieldCharges;
-  // Energy pays for every weapon shot now, so the meter is always up —
-  // it's the reactor gauge, not a niche ability counter.
-  energyWrapEl.hidden = false;
-  energyValueEl.textContent = state.energy;
-  energyMaxValueEl.textContent = state.maxEnergy;
 
   // The Warp Gate is always online — fighting is never mandatory to leave.
   // Say so, but remind the player that living enemies are still salvage on

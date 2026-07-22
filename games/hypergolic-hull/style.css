@@ -29,40 +29,79 @@ body {
   overflow: hidden;
 }
 
+/* Two rows: labeled stat bars up top, the sector line on its own row —
+   "we need stats (green bars) at top to indicate better what is there...
+   all the stats should be easy to understand." Every gauge is a labeled
+   pip bar in its own color; nothing is a bare unexplained number. */
 .hud {
   flex: 0 0 auto;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
   max-width: 520px;
   width: 100%;
   margin: 0 auto 8px;
   font-size: 0.85rem;
   color: #9fb0c9;
 }
+.hud-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#levelLabel {
+  text-align: left;
+  font-size: 0.72rem;
+  color: #7a8bab;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-.hull-wrap {
+.stat-wrap {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.hull-bar {
+.stat-label {
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7a8bab;
+}
+.stat-bar {
   display: flex;
   gap: 3px;
 }
-.hull-pip {
+.stat-pip {
   width: 13px;
   height: 13px;
   border-radius: 3px;
   background: #1b2436;
   border: 1px solid #2a3652;
 }
-.hull-pip.filled {
+/* Each stat keeps one signature color, matched to how the rest of the UI
+   already talks about it: Hull red (damage), Energy green (the systems
+   panel's active green), Shield blue. An empty pip is the same dark socket
+   for all three, so "how full is it" reads instantly. */
+.stat-pip-hull.filled {
   background: #e0533f;
   border-color: #ff8a72;
 }
+.stat-pip-energy.filled {
+  background: #7fe3a8;
+  border-color: #b1ffd0;
+}
+.stat-pip-shield.filled {
+  background: #5bb8f2;
+  border-color: #9ed9ff;
+}
 
-.salvage-wrap {
+.stat-value {
   color: #ffce8a;
   font-weight: 600;
 }
