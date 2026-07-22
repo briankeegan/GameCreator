@@ -68,10 +68,13 @@
       actions: ["sublight", "ramming"],
       intro: "Dock at the Outpost to claim the Tractor Beam — free. Shove an adjacent enemy: off the edge destroys it. The Cruiser takes TWO hits, so shove it instead.",
     },
-    // Sector 3 — Fighter Squadron. Three enemies, full action kit.
+    // Sector 3 — Sentry Line. Three enemies; the lesson is the Sentry
+    // (stationary, 2-hex beam ring) and shopping for your first upgrades.
+    // (This slot used to teach Fighter Squadron, which was cut — Clubhouse:
+    // "remove Random Blink and Fighter Squadron.")
     {
       id: 3,
-      name: "Fighter Squadron",
+      name: "Sentry Line",
       board: { type: "rect", cols: 9, rows: 11 },
       playerStart: { q: 4, r: 8 },
       exit: { q: 8, r: -4 },
@@ -83,8 +86,8 @@
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
-      actions: ["sublight", "ramming", "fighter"],
-      intro: "Fighter Squadron online. Strike any enemy at range, then retrieve your fighters. The Sentry doesn't move — but its beam covers 2 hexes all around. Route around it or take it out.",
+      actions: ["sublight", "ramming"],
+      intro: "The Sentry doesn't move — but its beam covers 2 hexes all around. Route around it or take it out. Spend salvage at the Outpost while you can.",
     },
     // Sector 4 — Full Fleet. Everything unlocked, no guaranteed Outpost —
     // Clubhouse feedback: "you shouldn't always have a place to heal."

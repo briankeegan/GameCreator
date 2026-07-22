@@ -11,7 +11,7 @@
 // radius 3 with the Interceptors spaced further out, which preserves every
 // rule the golden path exists to exercise — Sublight, the Impulse Cannon's
 // forward-facing auto-fire-before-enemy-phase, Interceptor pursuit AI, the
-// mistake/correct damage branch, Tractor Beam, Fighter Squadron, and the
+// mistake/correct damage branch, Tractor Beam, and the
 // exit-unlock/level-complete flow — just with room for the new aiming rule
 // to actually land a shot.
 "use strict";
@@ -76,9 +76,8 @@ assert.ok(lastBoard.rows > lastBoard.cols, "the campaign grows into taller-than-
 
 const tutorialState = Engine.createGameState(LEVELS[1]); // sublight + ramming only
 assert.deepStrictEqual(Engine.legalTractorTargets(tutorialState), [], "locked tractor offers no targets");
-assert.deepStrictEqual(Engine.legalFighterTargets(tutorialState), [], "locked fighter offers no targets");
 assert.throws(
-  () => Engine.applyFighter(tutorialState, "e0"),
+  () => Engine.applyTractor(tutorialState, "e0"),
   /not unlocked/,
   "locked actions must refuse to run"
 );
@@ -233,16 +232,20 @@ Engine.applySublight(mistakeState, staysAdjacent);
 assert.strictEqual(mistakeState.hull, 2, "staying adjacent to Interceptor 1 eats its deterministic strike — 1 of 3 Hull gone");
 assert.strictEqual(mistakeState.status, "playing", "with 3 Hull a single strike is a scratch, not death");
 
-// ---- step 3b: correct branch — Fighter Squadron kills Interceptor 1 outright
+// ---- step 3b: correct branch — the Shockwave (left armed, unlike the
+// mistake branch) kills Interceptor 1 the moment any move keeps it inside
+// the blast ring: omnidirectional, resolves before the enemy phase, so
+// the strike never lands. (This branch used to be Fighter Squadron,
+// which was cut — everything runs on the weapon systems now.)
 
 const correctState = clone(state);
-Engine.applyFighter(correctState, interceptor1.id);
+const stayInRange = Engine.legalSublightTargets(correctState).find((to) => Engine.isAdjacent(to, interceptor1));
+assert.ok(stayInRange, "expected a legal move that keeps Interceptor 1 in Shockwave range");
+Engine.applySublight(correctState, stayInRange);
 
-assert.strictEqual(Engine.livingEnemies(correctState).length, 0, "Interceptor 1 should be destroyed by the fighter squadron");
+assert.strictEqual(Engine.livingEnemies(correctState).length, 0, "Interceptor 1 should be destroyed by the Shockwave");
 assert.strictEqual(correctState.hull, 3, "the correct branch should take no damage");
 assert.strictEqual(correctState.status, "playing");
-assert.strictEqual(correctState.rammingDisabled, true, "the Impulse Cannon should be disabled while fighters are deployed");
-assert.deepStrictEqual(correctState.fighterHex, { q: interceptor1.q, r: interceptor1.r });
 
 // ---- step 4: the gate was online the whole time; walking onto it wins ----
 
@@ -366,13 +369,15 @@ assert.deepStrictEqual(weaponState.playerPos, weaponLevel.playerStart, "re-aimin
 assert.strictEqual(weaponState.turnCount, 0, "re-aiming doesn't consume a turn — no enemy phase runs");
 assert.throws(() => Engine.setFacing(weaponState, 6), /Invalid facing/, "facing must be one of the 6 hex directions");
 
-// ---- Weapon-slot cap: "there should be rules about what you can equip" -
-// (Clubhouse feedback) — at most MAX_ACTIVE_WEAPON_SYSTEMS of the
-// toggle-fired weapons (Shockwave/Lance/Repulsor) can run at once. Tractor
-// Beam/Fighter Squadron/Random Blink are one-off actions, not systems left
-// running, so they're exempt; so is Warpdrive (movement, not a weapon).
+// ---- Weapon slots: "there should be rules about what you can equip" ----
+// (Clubhouse feedback) — the toggle-fired weapons (Shockwave/Lance/
+// Repulsor) compete for state.weaponSlots, each occupying its
+// WEAPONS[key].slots while armed. Ship data (upgradable via the
+// Hardpoint Expansion Outpost offer), not a hardcoded constant. Tractor
+// Beam is a one-off action (slots: 0), and Warpdrive is movement, not a
+// weapon — neither competes for a slot.
 assert.deepStrictEqual(Engine.WEAPON_SYSTEM_KEYS, ["ram", "lance", "repulsor"]);
-assert.strictEqual(Engine.MAX_ACTIVE_WEAPON_SYSTEMS, 2);
+assert.strictEqual(Engine.WEAPONS.tractor.slots, 0, "the Tractor Beam never occupies a weapon slot");
 
 // Lance and Repulsor default systems[key] === true even before they're
 // purchased (see createGameState) — they simply don't fire until owned.
@@ -384,6 +389,8 @@ assert.ok(
   !capState.actions.includes("lance") && !capState.actions.includes("repulsor"),
   "a fresh flagship hasn't unlocked Lance/Repulsor yet"
 );
+assert.strictEqual(capState.weaponSlots, 2, "a fresh flagship has 2 weapon slots");
+assert.strictEqual(Engine.usedWeaponSlots(capState), 1, "only the owned, armed Shockwave counts against them");
 Engine.setSystem(capState, "ram", false);
 Engine.setSystem(capState, "ram", true); // must not throw — lance/repulsor aren't actually owned
 assert.strictEqual(capState.systems.ram, true);
@@ -404,8 +411,8 @@ assert.deepStrictEqual(
 );
 assert.throws(
   () => Engine.setSystem(capState, "repulsor", true),
-  /Only 2 weapons can run at once/,
-  "a 3rd weapon system can't be armed while 2 are already active"
+  /Weapon slots full/,
+  "a 3rd weapon system can't be armed while both slots are occupied"
 );
 // Toggling one off first frees a slot.
 Engine.setSystem(capState, "ram", false);
@@ -437,6 +444,34 @@ assert.strictEqual(
 );
 assert.strictEqual(purchaseState.systems.ram, true, "the 2 systems that were already active are untouched by the purchase");
 assert.strictEqual(purchaseState.systems.lance, true);
+
+// Hardpoint Expansion raises the ship's slot capacity — after buying it,
+// the third weapon CAN be armed alongside the other two.
+purchaseState.outpostOfferIds = ["repair", "hardpoint"];
+purchaseState.salvage = 20;
+Engine.applyOutpostPurchase(purchaseState, "hardpoint");
+assert.strictEqual(purchaseState.weaponSlots, 3, "Hardpoint Expansion adds a weapon slot");
+Engine.setSystem(purchaseState, "repulsor", true); // must not throw anymore
+assert.strictEqual(purchaseState.systems.repulsor, true, "with 3 slots, all 3 weapon systems can run at once");
+
+// Reactor Upgrade raises the Energy cap (and fills the new capacity
+// immediately, same as Reinforce Hull).
+purchaseState.outpostOfferIds = ["repair", "reactor"];
+purchaseState.salvage = 12;
+const maxEnergyBefore = purchaseState.maxEnergy;
+const energyBeforeUpgrade = purchaseState.energy;
+Engine.applyOutpostPurchase(purchaseState, "reactor");
+assert.strictEqual(purchaseState.maxEnergy, maxEnergyBefore + 1, "Reactor Upgrade raises max Energy by 1");
+assert.strictEqual(purchaseState.energy, energyBeforeUpgrade + 1, "and the new capacity arrives charged");
+
+// Both upgrades carry into the next sector via carryOver, same as
+// maxHull/maxEnergy always have.
+const upgradedCarryState = Engine.createGameState(
+  { ...weaponLevel, id: 994 },
+  { hasPrevious: true, weaponSlots: purchaseState.weaponSlots, maxEnergy: purchaseState.maxEnergy }
+);
+assert.strictEqual(upgradedCarryState.weaponSlots, 3, "weaponSlots carries across sectors");
+assert.strictEqual(upgradedCarryState.maxEnergy, maxEnergyBefore + 1, "maxEnergy carries across sectors");
 
 // Enemies fight through the same WEAPONS/ENEMY_TYPES stat blocks as the
 // flagship — not hardcoded adjacency/damage constants — so the threat
@@ -542,6 +577,10 @@ const railgunLevel = {
 };
 const railgunState = Engine.createGameState(railgunLevel);
 const railgunStart = { q: railgunState.enemies[0].q, r: railgunState.enemies[0].r };
+// Its reactor spawns empty (the charge-up telegraph — see the enemy-
+// reactor section below for the full rhythm), so pre-charge it here to
+// test the range/axis geometry itself.
+railgunState.enemies[0].energy = 3;
 const hullBeforeRailgun = railgunState.hull;
 Engine.applySublight(railgunState, { q: 2, r: 4 }); // still distance 3, but already aligned — the long shot reaches it
 assert.strictEqual(
@@ -558,6 +597,7 @@ assert.deepStrictEqual(
 // Off-axis, the Railgun's shot never reaches at all, no matter the range.
 const railgunOffAxisLevel = { ...railgunLevel, id: 996, playerStart: { q: 0, r: 5 } };
 const railgunOffAxisState = Engine.createGameState(railgunOffAxisLevel);
+railgunOffAxisState.enemies[0].energy = 3; // charged, so the miss below is about geometry, not energy
 const hullBeforeOffAxis = railgunOffAxisState.hull;
 Engine.applySublight(railgunOffAxisState, { q: 0, r: 4 });
 assert.strictEqual(
@@ -591,12 +631,14 @@ salvageState.outpostOfferIds = ["repair", "reinforce"];
 assert.strictEqual(salvageState.salvage, 0, "a fresh run starts with zero salvage");
 assert.deepStrictEqual(Engine.outpostOffers(salvageState), [], "not standing on the outpost hex means no offers");
 
-// Fighter Squadron kills the lone Interceptor instantly and drops its salvage.
-Engine.applyFighter(salvageState, salvageState.enemies[0].id);
+// Stepping into range lets the Shockwave kill the lone Interceptor — the
+// kill drops its salvage.
+Engine.applySublight(salvageState, { q: 0, r: -1 });
+assert.strictEqual(salvageState.enemies[0].alive, false, "the Shockwave kills the adjacent Interceptor");
 assert.strictEqual(salvageState.salvage, Engine.ENEMY_TYPES.interceptor.salvage, "a kill drops its type's salvage value");
 assert.ok(salvageState.events.some((e) => e.type === "salvage"), "a kill emits a salvage event for the UI to animate");
 
-// Walk to the outpost (2 hexes away) — shopping there must not cost a turn.
+// Walk to the outpost — shopping there must not cost a turn.
 Engine.applySublight(salvageState, { q: -1, r: 0 });
 const turnBeforeShop = salvageState.turnCount;
 Engine.applySublight(salvageState, { q: -2, r: 0 });
@@ -685,7 +727,7 @@ const lengthsAcrossLevels = new Set();
 for (let id = 900; id < 920; id++) {
   const offers = outpostFixture(id).outpostOfferIds;
   assert.strictEqual(offers[0], "repair", `level ${id}: Repair is always the first offer`);
-  assert.ok(offers.length >= 1 && offers.length <= 5, `level ${id}: 1-5 total offers (Repair plus 0-4 extras)`);
+  assert.ok(offers.length >= 1 && offers.length <= 7, `level ${id}: 1-7 total offers (Repair plus 0-6 extras, now that Reactor/Hardpoint upgrades joined the pool)`);
   assert.strictEqual(new Set(offers).size, offers.length, `level ${id}: no duplicate offers`);
   lengthsAcrossLevels.add(offers.length);
 }
@@ -964,55 +1006,137 @@ while (!Engine.posEq(cur, secondGateLevel.exits[1])) {
 assert.strictEqual(secondGateState.status, "won", "reaching either gate completes the sector");
 assert.strictEqual(secondGateState.usedExitVariant, "quiet", "usedExitVariant records exactly which gate was actually used");
 
-// ---- Energy + Random Blink: a second resource, deliberately random -------
-// Energy regenerates 1/turn (distinct from Hull, which never self-heals)
-// and pays for Random Blink, a genuine exception to "zero randomness in
-// combat" — an unpredictable emergency teleport, not a precision tool.
+// ---- Energy: one reactor model for everything ----------------------------
+// ("make everything work within the system") — Energy regenerates 1/turn
+// (distinct from Hull, which never self-heals) and pays for EVERY weapon
+// shot, the flagship's and every enemy's. A weapon that would fire but
+// can't afford its cost holds fire, with a log line explaining why.
 
-const blinkLevel = {
+const energyLevel = {
   id: 990,
-  radius: 3,
-  playerStart: { q: 0, r: 0 },
-  exit: { q: 3, r: 0 },
+  name: "energy fixture",
+  board: { type: "rect", cols: 5, rows: 8 },
+  playerStart: { q: 2, r: 5 },
+  exit: { q: 4, r: -2 },
   outpost: null,
-  enemies: [{ type: "interceptor", q: -3, r: 3 }],
+  enemies: [{ type: "cruiser", q: 2, r: 2 }],
   hazards: [],
   exitRule: "all-enemies-dead",
-  actions: ["sublight", "blink"],
 };
-const blinkState = Engine.createGameState(blinkLevel);
-assert.strictEqual(blinkState.energy, 3, "a fresh run starts at full Energy");
-assert.strictEqual(blinkState.maxEnergy, 3);
+let energyState = Engine.createGameState(energyLevel, { extraActions: ["lance"] });
+assert.strictEqual(energyState.energy, 3, "a fresh run starts at full Energy");
+assert.strictEqual(energyState.maxEnergy, 3);
+assert.strictEqual(Engine.WEAPONS.ram.energyCost, 1, "the Shockwave costs exactly the per-turn regen — sustainable alone");
+assert.ok(Engine.WEAPONS.lance.energyCost > 1, "the Lance Cannon costs more than the per-turn regen — a real drain");
 
-assert.throws(
-  () => Engine.applyBlink({ ...blinkState, energy: 1 }),
-  /not enough Energy/,
-  "Blink refuses when Energy is below its cost"
+// A full volley pays for every weapon that fires: Shockwave (1) + Lance
+// (2) against an adjacent dead-ahead Cruiser = 3 spent, +1 regen.
+energyState.enemies[0].q = 2;
+energyState.enemies[0].r = 4; // adjacent, directly up (facing 2)
+Engine.setFacing(energyState, 2);
+Engine.applyHoldPosition(energyState);
+assert.strictEqual(energyState.enemies[0].alive, false, "Shockwave + Lance Cannon volley kills a 2-HP Cruiser");
+assert.strictEqual(energyState.energy, 3 - 1 - 2 + 1, "every shot in the volley was paid for, net of the turn's regen");
+
+// With only 1 Energy left, the Shockwave (first in firing order) claims
+// it and the Lance Cannon holds fire — logged, not silent.
+energyState = Engine.createGameState(energyLevel, { extraActions: ["lance"] });
+energyState.enemies[0].q = 2;
+energyState.enemies[0].r = 4;
+energyState.energy = 1;
+Engine.setFacing(energyState, 2);
+Engine.applyHoldPosition(energyState);
+assert.strictEqual(energyState.enemies[0].alive, true, "1 Shockwave hit alone leaves a 2-HP Cruiser alive");
+assert.strictEqual(energyState.enemies[0].hp, 1, "the Shockwave still fired on the Energy that was left");
+assert.ok(
+  energyState.log.some((line) => /Lance Cannon holds fire/.test(line)),
+  "the unaffordable Lance Cannon holds fire with a log line, not silently"
 );
 
-const posBeforeBlink = { q: blinkState.playerPos.q, r: blinkState.playerPos.r };
-Engine.applyBlink(blinkState);
-// Blink resolves a full turn (endPlayerAction runs the enemy phase, which
-// regenerates 1 Energy same as any other turn), so the net change is the
-// cost minus that turn's regen tick.
-assert.strictEqual(blinkState.energy, 3 - Engine.BLINK_ENERGY_COST + 1, "Blink spends its Energy cost, net of that turn's regen");
-assert.ok(!Engine.posEq(blinkState.playerPos, posBeforeBlink), "Blink actually moves the flagship");
-assert.ok(Engine.onBoard(blinkState, blinkState.playerPos), "Blink always lands on a valid board hex");
-assert.ok(blinkState.events.some((e) => e.type === "blink"), "Blink emits a blink event for the UI");
-
-// Energy regenerates 1/turn, capped at max — a plain Sublight move (which
-// still runs the enemy phase / turn counter) should tick it back up.
-const energyBefore = blinkState.energy;
-Engine.applyHoldPosition(blinkState);
+// No target in range = no shot = no Energy spent.
+energyState = Engine.createGameState(energyLevel);
+const energyBeforeEmptyTurn = energyState.energy;
+Engine.applySublight(energyState, { q: 2, r: 4 }); // cruiser is 2 hexes away — out of Shockwave range
 assert.strictEqual(
-  blinkState.energy,
-  Math.min(blinkState.maxEnergy, energyBefore + 1),
-  "Energy regenerates by 1 every turn, capped at max"
+  energyState.energy,
+  Math.min(energyState.maxEnergy, energyBeforeEmptyTurn + 1),
+  "a turn with nothing in range spends no Energy, just regens"
 );
 
-// Locked out entirely without "blink" unlocked.
-const noBlinkState = Engine.createGameState({ ...blinkLevel, actions: ["sublight"] });
-assert.throws(() => Engine.applyBlink(noBlinkState), /not unlocked/, "Blink refuses when not yet unlocked");
+// The Tractor Beam draws from the same reactor.
+const tractorEnergyState = Engine.createGameState({ ...energyLevel, id: 989 }, { extraActions: ["tractor"] });
+tractorEnergyState.enemies[0].q = 2;
+tractorEnergyState.enemies[0].r = 4;
+Engine.setSystem(tractorEnergyState, "ram", false); // isolate the Tractor's own cost
+tractorEnergyState.energy = 0;
+assert.throws(
+  () => Engine.applyTractor(tractorEnergyState, "e0"),
+  /not enough Energy/,
+  "the Tractor Beam refuses without the Energy to power it"
+);
+tractorEnergyState.energy = 1;
+Engine.applyTractor(tractorEnergyState, "e0");
+assert.strictEqual(
+  tractorEnergyState.energy,
+  1 - Engine.WEAPONS.tractor.energyCost + 1,
+  "a Tractor push costs its listed Energy, net of the turn's regen"
+);
+
+// ---- Enemy reactors: the Railgun's charge-up telegraph -------------------
+// Enemies run the same energy rules. A cost-1 chaser regens its shot every
+// turn (fires exactly as often as before energy existed); the cost-3
+// Railgun spawns EMPTY and visibly charges 3 turns between shots — the
+// design doc's "telegraphs the line" made real through the shared system.
+
+const railgunEnergyLevel = {
+  id: 988,
+  name: "railgun energy fixture",
+  board: { type: "rect", cols: 5, rows: 8 },
+  playerStart: { q: 2, r: 5 },
+  exit: { q: 4, r: -2 },
+  outpost: null,
+  enemies: [{ type: "railgun", q: 2, r: 0 }], // same column: on-axis, in range from spawn
+  hazards: [],
+  exitRule: "all-enemies-dead",
+};
+const railgunEnergyState = Engine.createGameState(railgunEnergyLevel);
+assert.strictEqual(railgunEnergyState.enemies[0].energy, 0, "a Railgun spawns with an empty reactor — it can't snipe on turn 1");
+assert.strictEqual(Engine.computeThreatHexes(railgunEnergyState).size, 0, "a charging Railgun threatens nothing — the overlay shows only what can actually fire next turn");
+
+const hullTimeline = [];
+for (let t = 1; t <= 8; t++) {
+  Engine.applyHoldPosition(railgunEnergyState);
+  hullTimeline.push(railgunEnergyState.hull);
+}
+assert.deepStrictEqual(
+  hullTimeline,
+  [3, 3, 3, 2, 2, 2, 1, 1],
+  "the Railgun fires on turn 4 and every 3rd turn after — a readable rhythm, not a constant beam"
+);
+
+// Once charged, its whole line lights up in the threat overlay again.
+const chargedRailgunState = Engine.createGameState(railgunEnergyLevel);
+chargedRailgunState.enemies[0].energy = 3;
+assert.ok(Engine.computeThreatHexes(chargedRailgunState).size > 0, "a fully-charged Railgun's line is a live threat");
+
+// A cost-1 enemy is unchanged by the energy system: it fires every turn.
+const chaserEnergyLevel = {
+  id: 987,
+  name: "chaser energy fixture",
+  board: { type: "rect", cols: 5, rows: 8 },
+  playerStart: { q: 2, r: 5 },
+  exit: { q: 4, r: -2 },
+  outpost: null,
+  enemies: [{ type: "interceptor", q: 2, r: 3 }],
+  hazards: [],
+  exitRule: "all-enemies-dead",
+  actions: ["sublight"], // no Shockwave — let it survive to attack repeatedly
+};
+const chaserEnergyState = Engine.createGameState(chaserEnergyLevel);
+Engine.applyHoldPosition(chaserEnergyState); // it closes to adjacent
+Engine.applyHoldPosition(chaserEnergyState); // strike 1
+Engine.applyHoldPosition(chaserEnergyState); // strike 2 — no charge gap
+assert.strictEqual(chaserEnergyState.hull, 1, "a cost-1 chaser fires every single turn, same cadence as before energy existed");
 
 // ---- Asteroid fields: genuinely impassable terrain, distinct from a ------
 // blackhole's instant-destruction trap. Clubhouse feedback: "places you

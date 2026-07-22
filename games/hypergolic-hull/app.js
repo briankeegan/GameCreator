@@ -20,7 +20,7 @@ const SQRT3 = Math.sqrt(3);
 // Sublight and Impulse Cannon aren't manually-armed modes anymore — movement
 // always works via a plain tap (see the canvas click handler), and the Pulse
 // Cannon auto-fires as a side effect of that movement (see engine.js). Only
-// Tractor/Fighter still need you to pick a mode and then a target enemy.
+// the Tractor Beam still needs you to pick a mode and then a target enemy.
 const MODES = {
   tractor: {
     label: "Tractor Beam",
@@ -30,12 +30,6 @@ const MODES = {
     // Beam... weird that I'm able to click on it" — arming a mode used to
     // give no in-the-moment hint at all about what to do next).
     hint: "Tractor Beam armed — tap an adjacent enemy to shove it one hex away. Off the edge, into another ship, or into a hazard = destroyed.",
-  },
-  fighter: {
-    label: "Fighter Squadron",
-    targets: Engine.legalFighterTargets,
-    kind: "enemy",
-    hint: "Fighter Squadron armed — tap any enemy on the board to destroy it at range. Your fighters land on that hex; fly there later to retrieve them and re-enable the Shockwave.",
   },
 };
 
@@ -57,7 +51,6 @@ const shieldValueEl = document.getElementById("shieldValue");
 const energyWrapEl = document.getElementById("energyWrap");
 const energyValueEl = document.getElementById("energyValue");
 const energyMaxValueEl = document.getElementById("energyMaxValue");
-const blinkBtn = document.getElementById("blinkBtn");
 const outpostOverlayEl = document.getElementById("outpostOverlay");
 const outpostSalvageEl = document.getElementById("outpostSalvage");
 const outpostOffersEl = document.getElementById("outpostOffers");
@@ -73,8 +66,6 @@ const holdBtn = document.getElementById("holdBtn");
 const ramLabelEl = document.getElementById("ramLabel");
 const weaponStatsEl = document.getElementById("weaponStats");
 const tractorStatsEl = document.getElementById("tractorStats");
-const fighterStatsEl = document.getElementById("fighterStats");
-const blinkStatsEl = document.getElementById("blinkStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
 const weaponSlotsLabelEl = document.getElementById("weaponSlotsLabel");
 
@@ -102,7 +93,7 @@ const PURCHASABLE_WEAPON_UI = [
 ];
 
 // Every piece on the board is custom-drawn (see drawPlayerShip/
-// drawEnemyShip/drawWarpGate/drawOutpost/drawFighterMarker below) — no emoji
+// drawEnemyShip/drawWarpGate/drawOutpost below) — no emoji
 // sprites anywhere on the actual playfield.
 
 const LEVELS = HypergolicLevels.LEVELS;
@@ -145,11 +136,8 @@ let autoRoute = null;
 // per-sector default — it starts closed the first time you ever play, and
 // after that just stays wherever you last left it (see the Scan button).
 // Scan mode shows the legend AND is a real inspect-only mode: movement and
-// every action lock out while it's open (Clubhouse: restyling Fighter
-// Squadron/Random Blink to look like the toggle rows above them still
-// didn't explain what they did — tapping them to find out mid-game was the
-// only way, and that's a real commitment, not a preview. Scan mode is the
-// no-commitment way to look at anything on the board).
+// every action lock out while it's open — the no-commitment way to look at
+// anything on the board without acting on it.
 let legendVisible = GCStorage.get(GAME_ID, "legendVisible", false);
 
 // Each legend key can be independently muted while the legend is open. The
@@ -219,6 +207,7 @@ function advanceSector() {
       maxHull: state.maxHull,
       shieldCharges: state.shieldCharges,
       maxEnergy: state.maxEnergy,
+      weaponSlots: state.weaponSlots, // Hardpoint Expansions are permanent, same as Reactor/Hull upgrades
       // A purchased weapon (Lance Cannon, Repulsor, ...) isn't part of any
       // level's own baked-in actions list, so it has to be carried forward
       // explicitly or the next sector would "forget" it.
@@ -266,8 +255,6 @@ let outpostDismissed = false;
 // gets its own flag, same pattern as weaponStatsExpanded.
 let weaponStatsExpanded = false;
 let tractorStatsExpanded = false;
-let fighterStatsExpanded = false;
-let blinkStatsExpanded = false;
 
 // The flagship's facing, in degrees (canvas convention: 0 = screen-right,
 // increases clockwise). Updated whenever the ship actually moves.
@@ -385,7 +372,6 @@ function scheduleAnims(events) {
       if (dir >= 0) shipAngle = DIR_ANGLES[dir];
     }
     else if (ev.type === "playerDeath") anims.push({ kind: "boom", pos: ev, start: now, dur: 650, particles: makeExplosionParticles(16) });
-    else if (ev.type === "blink") anims.push({ kind: "teleport", from: ev.from, to: ev.to, start: now, dur: 400 });
   }
   if (anims.length) requestAnimationFrame(tickAnims);
 }
@@ -446,29 +432,6 @@ function drawHex(center, fill, stroke, lineWidth, fillAlpha) {
   ctx.lineWidth = lineWidth || 1.5;
   ctx.strokeStyle = stroke || "#1a2233";
   ctx.stroke();
-}
-
-// The deployed Fighter Squadron marker: a small drawn craft (not an emoji),
-// in the flagship's own gold/gunmetal colorway since these are your ships.
-function drawFighterMarker(center, size) {
-  ctx.save();
-  ctx.translate(center.x, center.y);
-  ctx.fillStyle = "#3a4358";
-  ctx.strokeStyle = "#ffce8a";
-  ctx.lineWidth = Math.max(1, size * 0.08);
-  ctx.beginPath();
-  ctx.moveTo(size * 0.55, 0);
-  ctx.lineTo(-size * 0.4, size * 0.42);
-  ctx.lineTo(-size * 0.15, 0);
-  ctx.lineTo(-size * 0.4, -size * 0.42);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "#6ee7ff";
-  ctx.beginPath();
-  ctx.arc(-size * 0.32, 0, size * 0.09, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
 }
 
 // ---- ship sprites -----------------------------------------------------------
@@ -1403,10 +1366,7 @@ function draw() {
   // Mirrors the whitish hex border, but for enemies: any enemy an unlocked action could
   // ever target, regardless of which mode happens to be armed right now —
   // not just the one enemy set belonging to the currently-selected mode.
-  const targetable = new Set([
-    ...Engine.legalTractorTargets(state).map((e) => e.id),
-    ...Engine.legalFighterTargets(state).map((e) => e.id),
-  ]);
+  const targetable = new Set(Engine.legalTractorTargets(state).map((e) => e.id));
   const routeHexes = (plannedPath && plannedPath.hexes) || (autoRoute && autoRoute.path) || null;
   const route = new Set((routeHexes || []).slice(1).map((h) => Engine.hexKey(h)));
 
@@ -1549,10 +1509,6 @@ function draw() {
     ctx.restore();
   }
 
-  if (state.fighterHex) {
-    drawFighterMarker(hexToPixel(state.fighterHex), geom.sx * 0.47);
-  }
-
   // The flagship: slides along its move, flashes red on damage, hidden once
   // destroyed (the explosion animation takes its place).
   if (state.status !== "lost") {
@@ -1582,22 +1538,6 @@ function draw() {
     if (a.kind !== "boom" || now >= a.start + a.dur) continue;
     const p = animProgress(a, now);
     drawExplosion(hexToPixel(a.pos), p, a.particles, geom.sx * 0.9);
-  }
-
-  // Random Blink: a quick expanding ring at both the departure and arrival
-  // hexes, since the ship just snaps to its new (unpredictable) position.
-  for (const a of anims) {
-    if (a.kind !== "teleport" || now >= a.start + a.dur) continue;
-    const p = animProgress(a, now);
-    const ringAlpha = 1 - p;
-    for (const pos of [a.from, a.to]) {
-      const c = hexToPixel(pos);
-      ctx.beginPath();
-      ctx.strokeStyle = `rgba(200, 160, 255, ${ringAlpha})`;
-      ctx.lineWidth = 2;
-      ctx.arc(c.x, c.y, geom.sx * (0.3 + p * 0.7), 0, Math.PI * 2);
-      ctx.stroke();
-    }
   }
 
   ctx.restore();
@@ -1701,8 +1641,9 @@ function updateHud() {
   salvageValueEl.textContent = state.salvage;
   shieldWrapEl.hidden = state.shieldCharges <= 0;
   shieldValueEl.textContent = state.shieldCharges;
-  const blinkUnlocked = state.actions.includes("blink");
-  energyWrapEl.hidden = !blinkUnlocked;
+  // Energy pays for every weapon shot now, so the meter is always up —
+  // it's the reactor gauge, not a niche ability counter.
+  energyWrapEl.hidden = false;
   energyValueEl.textContent = state.energy;
   energyMaxValueEl.textContent = state.maxEnergy;
 
@@ -1752,13 +1693,9 @@ function updateHud() {
     // Scan mode is inspect-only — every action locks out while it's open
     // (see the canvas click handler), so the buttons themselves go dead
     // too instead of sitting there clickable but doing nothing.
-    btn.disabled = state.status !== "playing" || (m === "fighter" && Boolean(state.fighterHex)) || legendVisible;
+    btn.disabled = state.status !== "playing" || legendVisible;
     btn.classList.toggle("new-unlock", !locked && !usedActions.has(m));
   });
-
-  blinkBtn.hidden = !blinkUnlocked;
-  blinkBtn.disabled = state.status !== "playing" || state.energy < Engine.BLINK_ENERGY_COST || legendVisible;
-  blinkBtn.classList.toggle("new-unlock", blinkUnlocked && !usedActions.has("blink"));
 
   // Tractor Beam gets the same tap-to-expand stats badge as every
   // purchased weapon (see PURCHASABLE_WEAPON_UI) — it just lives in the
@@ -1772,20 +1709,6 @@ function updateHud() {
       ? describeWeapon(tractorWeapon)
       : describeWeaponCompact(tractorWeapon);
     tractorStatsEl.classList.toggle("expanded", tractorStatsExpanded);
-  }
-
-  // Fighter Squadron/Random Blink: same no-commitment preview — both are
-  // unlocked from the start, so the badge just tracks each one's own
-  // hidden state directly instead of an "owned" gate.
-  fighterStatsEl.hidden = !state.actions.includes("fighter");
-  if (!fighterStatsEl.hidden) {
-    fighterStatsEl.textContent = fighterStatsExpanded ? describeFighter() : describeFighterCompact();
-    fighterStatsEl.classList.toggle("expanded", fighterStatsExpanded);
-  }
-  blinkStatsEl.hidden = !blinkUnlocked;
-  if (!blinkStatsEl.hidden) {
-    blinkStatsEl.textContent = blinkStatsExpanded ? describeBlink() : describeBlinkCompact();
-    blinkStatsEl.classList.toggle("expanded", blinkStatsExpanded);
   }
 }
 
@@ -1830,7 +1753,7 @@ function updateSystems() {
   // Every purchased weapon (Lance Cannon, Repulsor, ...) is Outpost-
   // purchase-only (see OUTPOST_OFFER_POOL), not sector-unlocked — hidden
   // entirely until bought, same "simply hidden, no padlock" convention as
-  // Tractor Beam/Fighter Squadron before their sector.
+  // the Tractor Beam before its claim.
   for (const cfg of PURCHASABLE_WEAPON_UI) {
     const owned = state.actions.includes(cfg.action);
     cfg.toggleWrap.hidden = !owned;
@@ -1845,12 +1768,13 @@ function updateSystems() {
 
   // "There should be rules about what you can equip" — only worth stating
   // once there's an actual choice to make (2+ weapon systems unlocked);
-  // with just the Shockwave, there's nothing to trade off yet.
+  // with just the Shockwave, there's nothing to trade off yet. Reads the
+  // ship's real slot capacity (upgradable via Hardpoint Expansion), not a
+  // constant.
   const unlockedWeaponSystems = Engine.WEAPON_SYSTEM_KEYS.filter((k) => k === "ram" || state.actions.includes(k));
   weaponSlotsLabelEl.hidden = unlockedWeaponSystems.length < 2;
   if (!weaponSlotsLabelEl.hidden) {
-    const activeCount = unlockedWeaponSystems.filter((k) => state.systems[k]).length;
-    weaponSlotsLabelEl.textContent = `Weapons active: ${activeCount}/${Engine.MAX_ACTIVE_WEAPON_SYSTEMS}`;
+    weaponSlotsLabelEl.textContent = `Weapon slots: ${Engine.usedWeaponSlots(state)}/${state.weaponSlots}`;
   }
 }
 
@@ -1874,7 +1798,7 @@ function describeDamage(weapon) {
 function describeWeapon(weapon) {
   return (
     `${weapon.label} — Range ${weapon.range} · ${describeDamage(weapon)} · ` +
-    `Pattern: ${describePattern(weapon)} · Speed ${weapon.speed} · Energy ${weapon.energyCost}`
+    `Pattern: ${describePattern(weapon)} · Energy ${weapon.energyCost}/shot`
   );
 }
 
@@ -1884,28 +1808,9 @@ function describeWeapon(weapon) {
 function describeWeaponCompact(weapon) {
   const pattern = weapon.pattern.length >= 6 ? "ALL" : "FWD";
   const dmg = weapon.damage > 0 ? `D${weapon.damage}` : "PUSH";
-  return `R${weapon.range} · ${dmg} · SPD${weapon.speed} · E${weapon.energyCost} · ${pattern}`;
+  return `R${weapon.range} · ${dmg} · E${weapon.energyCost} · ${pattern}`;
 }
 
-// Fighter Squadron and Random Blink aren't WEAPONS-table entries (no
-// range/damage/pattern to read off), so they get their own hand-written
-// compact/expanded pair instead of describeWeapon(Compact) — same
-// tap-to-expand badge, just custom text describing what each one actually
-// does. Without this, the only way to find out was to arm/fire it for
-// real (Clubhouse: still confusing what these buttons even do once they
-// visually matched the toggle rows above them).
-function describeFighterCompact() {
-  return "ANY ENEMY · WEAPONS OFFLINE TIL RETRIEVED";
-}
-function describeFighter() {
-  return "Fighter Squadron — destroys any one enemy anywhere on the board instantly. Fighters land on that hex; every weapon system goes offline until you fly back and retrieve them.";
-}
-function describeBlinkCompact() {
-  return `E${Engine.BLINK_ENERGY_COST} · RANDOM HEX`;
-}
-function describeBlink() {
-  return `Random Blink — spends ${Engine.BLINK_ENERGY_COST} Energy to teleport to a random open hex on the board. An emergency escape, not precision movement — you don't choose where you land.`;
-}
 
 // The inspected card only ever shows in Scan mode (it's a learn-the-board
 // aid, same as the legend), and only for as long as whatever's at
@@ -1942,7 +1847,18 @@ function updateScanInfo() {
 
     const stats = document.createElement("div");
     stats.className = "enemy-info-stats";
-    stats.textContent = describeWeapon(def.weapon);
+    // Enemies run their own reactors now — surface the charge state so a
+    // Railgun's multi-turn charge-up is readable ("when does it fire?")
+    // instead of invisible bookkeeping. Only shown when there's a rhythm
+    // to read (cost above what one turn regens); a fires-every-turn
+    // cannon would just say the same thing forever.
+    const charging =
+      def.weapon.energyCost > 1
+        ? enemy.energy >= def.weapon.energyCost
+          ? " · CHARGED — can fire"
+          : ` · CHARGING ${enemy.energy}/${def.weapon.energyCost}`
+        : "";
+    stats.textContent = describeWeapon(def.weapon) + charging;
     enemyInfoEl.appendChild(stats);
     return;
   }
@@ -2108,7 +2024,16 @@ function loadSector(index, carryOver, opts) {
 // the save still looks like a currently-valid state, and if not, drop it
 // and start fresh instead of trying to patch it.
 function isValidSave(s) {
-  return Boolean(s) && Array.isArray(s.exits) && s.playerPos && typeof s.levelId === "number";
+  return (
+    Boolean(s) &&
+    Array.isArray(s.exits) &&
+    s.playerPos &&
+    typeof s.levelId === "number" &&
+    // The systems rework: ships carry weaponSlots, enemies carry their own
+    // reactors. A pre-rework save has neither — drop it, start fresh.
+    typeof s.weaponSlots === "number" &&
+    (s.enemies || []).every((e) => typeof e.energy === "number")
+  );
 }
 
 // A run used to be write-only — persist() saved it, but nothing ever read
@@ -2185,14 +2110,6 @@ tractorStatsEl.addEventListener("click", () => {
   tractorStatsExpanded = !tractorStatsExpanded;
   updateHud();
 });
-fighterStatsEl.addEventListener("click", () => {
-  fighterStatsExpanded = !fighterStatsExpanded;
-  updateHud();
-});
-blinkStatsEl.addEventListener("click", () => {
-  blinkStatsExpanded = !blinkStatsExpanded;
-  updateHud();
-});
 
 for (const cfg of PURCHASABLE_WEAPON_UI) {
   cfg.toggle.addEventListener("change", () => {
@@ -2210,10 +2127,6 @@ holdBtn.addEventListener("click", () => {
   handleAction(() => Engine.applyHoldPosition(state));
 });
 
-blinkBtn.addEventListener("click", () => {
-  markActionUsed("blink");
-  handleAction(() => Engine.applyBlink(state));
-});
 
 // First tap on a distant hex: preview the quickest route. Second tap on the
 // same hex: fly it, one real turn per step.
@@ -2283,11 +2196,8 @@ canvas.addEventListener("click", (evt) => {
   // Scan mode is inspect-only — tapping anything on the board (an enemy,
   // the Warp Gate, the Outpost, the Wormhole, an asteroid field) shows its
   // info and nothing else happens: no move, no action, no turn spent.
-  // Clubhouse feedback: restyling Fighter Squadron/Random Blink to match
-  // the toggle rows still didn't explain what they did, and the only way
-  // to find out was to actually arm/fire them for real. Scan mode is the
-  // no-commitment way to look at anything, so it can't also let a tap fall
-  // through into a real move or action underneath it.
+  // Scan mode is the no-commitment way to look at anything, so it can't
+  // let a tap fall through into a real move or action underneath it.
   if (legendVisible) {
     inspectedHex = { q: hex.q, r: hex.r };
     updateScanInfo();
@@ -2313,7 +2223,7 @@ canvas.addEventListener("click", (evt) => {
   }
 
   // Movement never needs a mode armed: any tap that isn't a legal target for
-  // an armed Tractor/Fighter falls back to a plain move (adjacent) or the
+  // an armed Tractor Beam falls back to a plain move (adjacent) or the
   // route preview (further away). The Impulse Cannon auto-fires as a side
   // effect of the move itself — see engine.js — so there's no "ramming"
   // mode to arm either.
@@ -2325,7 +2235,6 @@ canvas.addEventListener("click", (evt) => {
     if (enemy && legal.some((e) => e.id === enemy.id)) {
       handleAction(() => {
         if (mode === "tractor") Engine.applyTractor(state, enemy.id);
-        else if (mode === "fighter") Engine.applyFighter(state, enemy.id);
       });
       return;
     }

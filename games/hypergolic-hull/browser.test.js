@@ -166,10 +166,8 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(s.enemies.length, 1, "Sector 1 has one Interceptor to learn the Shockwave on");
   assert.strictEqual(s.exitUnlocked, true, "the Warp Gate is always online");
   assert.deepStrictEqual(s.actions, ["sublight", "ramming"], "Sector 1 unlocks Sublight + the Shockwave together");
-  for (const m of ["tractor", "fighter"]) {
-    // Locked actions are hidden entirely now — no padlocked ghost buttons.
-    assert.strictEqual(await page.locator(`[data-mode="${m}"]`).isVisible(), false, `${m} is hidden until unlocked`);
-  }
+  // Locked actions are hidden entirely now — no padlocked ghost buttons.
+  assert.strictEqual(await page.locator('[data-mode="tractor"]').isVisible(), false, "tractor is hidden until unlocked");
   // The Lance Cannon toggle is Outpost-purchase-only, hidden until bought
   // — `.system-toggle` sets `display: flex` unconditionally, which was
   // found to override the browser's default `[hidden]` behavior and show
@@ -185,6 +183,11 @@ async function freshPage(browser, url, errors) {
     true,
     "Hold Position is always available, not just when Warpdrive is off"
   );
+  assert.strictEqual(
+    await page.locator("#energyWrap").isVisible(),
+    true,
+    "the Energy meter shows from turn one — it pays for every weapon shot now"
+  );
   const boardBox = await page.locator("#board").boundingBox();
   assert.ok(boardBox.height > boardBox.width * 0.95, "the canvas grows tall to fit the Hoplite-style board");
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "run overlay must not show on a fresh board");
@@ -192,9 +195,8 @@ async function freshPage(browser, url, errors) {
   // The legend defaults to closed (not force-shown every sector) and just
   // remembers whatever Scan was last set to. Scan is a real inspect-only
   // mode now, not just a legend toggle — movement and actions lock out
-  // while it's open (Clubhouse: tapping Fighter Squadron/Random Blink to
-  // find out what they do was a real commitment, not a no-commitment
-  // preview; Scan mode is that preview, for anything on the board).
+  // while it's open; tapping anything on the board reads its info instead
+  // of acting on it.
   assert.strictEqual(await page.locator("#legend").isVisible(), false, "the legend starts closed by default");
   assert.strictEqual(await page.locator("#scanBtn").isVisible(), true, "the Scan toggle is always available");
   await page.click("#scanBtn");
@@ -504,7 +506,7 @@ async function freshPage(browser, url, errors) {
     "owning all 3 weapon systems starts with only the first 2 (Shockwave + Lance) active"
   );
   assert.strictEqual(await page.locator("#weaponSlotsLabel").isVisible(), true, "the slot-count reminder shows once 2+ weapon systems are unlocked");
-  assert.strictEqual(await page.locator("#weaponSlotsLabel").textContent(), "Weapons active: 2/2");
+  assert.strictEqual(await page.locator("#weaponSlotsLabel").textContent(), "Weapon slots: 2/2");
 
   // Trying to arm the 3rd (Repulsor) while Shockwave+Lance already fill
   // both slots must be rejected — the checkbox reverts, and the log
@@ -514,7 +516,7 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(s.systems.repulsor, false, "the rejected toggle never took effect in state");
   assert.strictEqual(await page.locator("#toggleRepulsor").isChecked(), false, "and the checkbox visually reverts to match");
   assert.ok(
-    (await page.locator("#log").textContent()).includes("Only 2 weapons can run at once"),
+    (await page.locator("#log").textContent()).includes("Weapon slots full"),
     "the rejection reason is logged"
   );
 
@@ -523,7 +525,7 @@ async function freshPage(browser, url, errors) {
   await page.check("#toggleRepulsor");
   s = await getState(page);
   assert.strictEqual(s.systems.repulsor, true, "with a slot free, Repulsor arms successfully");
-  assert.strictEqual(await page.locator("#weaponSlotsLabel").textContent(), "Weapons active: 2/2", "Shockwave + Repulsor is the new 2/2");
+  assert.strictEqual(await page.locator("#weaponSlotsLabel").textContent(), "Weapon slots: 2/2", "Shockwave + Repulsor is the new 2/2");
   await page.close();
 
   await browser.close();
