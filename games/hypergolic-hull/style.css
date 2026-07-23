@@ -564,6 +564,28 @@ body {
 .map-node.ahead { border-style: dashed; }
 .map-node.ahead .map-node-name { color: #7a8bab; font-style: italic; }
 
+/* The Map is truly FULL screen — it's a chart that only grows as the run
+   gets deeper ("definitely have it be full screen... more and more items
+   will be added as you go"), so it takes everything, chart area scrolling,
+   close button pinned at the bottom. */
+.ship-overlay-inner.map-inner {
+  max-width: none;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.map-inner #mapChart {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.map-inner #mapCloseBtn {
+  flex: 0 0 auto;
+}
+
 /* The current node's ring on the starmap breathes. */
 .map-pulse {
   animation: map-pulse 1.8s ease-in-out infinite;
