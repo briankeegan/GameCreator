@@ -49,6 +49,9 @@ const salvageValueEl = document.getElementById("salvageValue");
 const shieldWrapEl = document.getElementById("shieldWrap");
 const shieldBarEl = document.getElementById("shieldBar");
 const energyBarEl = document.getElementById("energyBar");
+const hullWrapEl = document.getElementById("hullWrap");
+const energyWrapEl = document.getElementById("energyWrap");
+const salvageWrapEl = document.getElementById("salvageWrap");
 const outpostOverlayEl = document.getElementById("outpostOverlay");
 const outpostSalvageEl = document.getElementById("outpostSalvage");
 const outpostOffersEl = document.getElementById("outpostOffers");
@@ -60,6 +63,11 @@ const shipOverlayEl = document.getElementById("shipOverlay");
 const shipStatsEl = document.getElementById("shipStats");
 const shipHardpointsEl = document.getElementById("shipHardpoints");
 const shipCloseBtn = document.getElementById("shipCloseBtn");
+const mapBtn = document.getElementById("mapBtn");
+const mapOverlayEl = document.getElementById("mapOverlay");
+const mapChartEl = document.getElementById("mapChart");
+const mapCloseBtn = document.getElementById("mapCloseBtn");
+const targetLockBtn = document.getElementById("targetLockBtn");
 const legendEl = document.getElementById("legend");
 const toggleThreatEl = document.getElementById("toggleThreat");
 const toggleLegalEl = document.getElementById("toggleLegal");
@@ -115,9 +123,11 @@ let autoRoute = null;
 // anything on the board without acting on it.
 let legendVisible = GCStorage.get(GAME_ID, "legendVisible", false);
 
-// The full-screen Ship view ("a mode that goes full screen and shows ship
-// and allows you to modify") — session-only, always starts closed.
+// The full-screen Systems view ("a mode that goes full screen and shows
+// ship and allows you to modify") — session-only, always starts closed.
 let shipVisible = false;
+// The starmap — same deal.
+let mapVisible = false;
 
 // Each legend key can be independently muted while the legend is open. The
 // bold/colored board overlays they describe only ever show while the legend
@@ -1336,6 +1346,18 @@ function draw() {
   }
 
   const threats = Engine.computeThreatHexes(state);
+  // The selected contact in Scan mode gets its PERSONAL strike zone lit up
+  // (regardless of charge state — this is its reach, the INTENT line on
+  // its card says whether it can afford to fire yet), drawn brighter than
+  // the aggregate red wash so "what can THIS thing hit" stands out.
+  const scanTarget = legendVisible && inspectedHex ? Engine.enemyAt(state, inspectedHex) : null;
+  const scanTargetHexes = scanTarget
+    ? new Set(
+        Engine.weaponHexes(scanTarget, 0, Engine.ENEMY_TYPES[scanTarget.type].weapon)
+          .filter((h) => Engine.onBoard(state, h))
+          .map(Engine.hexKey)
+      )
+    : null;
   const legal = mode ? new Set(MODES[mode].targets(state).map((h) => Engine.hexKey(h))) : new Set();
   // The Impulse Cannon isn't a mode you arm anymore, but its current target
   // (dead ahead of facing, or every neighbor for an omnidirectional weapon)
@@ -1384,6 +1406,10 @@ function draw() {
     if (threats.has(k) && legendVisible && showThreatKey) {
       fill = blend(fill, "#7a1f2b", 0.55);
       fillAlpha = Math.max(fillAlpha, 0.62);
+    }
+    if (scanTargetHexes && scanTargetHexes.has(k)) {
+      fill = blend(fill, "#e0533f", 0.6);
+      fillAlpha = Math.max(fillAlpha, 0.75);
     }
     // Movable/targetable hexes keep their normal color — only the border
     // marks them, so the board doesn't turn into a wall of green.
@@ -1639,16 +1665,33 @@ function renderStatBar(el, label, filled, max, variant) {
   }
 }
 
+// The panel is dynamic: a gauge that just changed flashes for a beat, so
+// a drained reactor or a lost hull pip registers even if you weren't
+// staring at that exact spot.
+const lastGauges = {};
+function flashOnChange(key, value, wrapEl) {
+  if (lastGauges[key] !== undefined && lastGauges[key] !== value) {
+    wrapEl.classList.remove("flash");
+    void wrapEl.offsetWidth; // restart the animation even on back-to-back changes
+    wrapEl.classList.add("flash");
+  }
+  lastGauges[key] = value;
+}
+
 function updateHud() {
   renderStatBar(hullBarEl, "Hull", state.hull, state.maxHull, "hull");
-  // Energy pays for every weapon shot now, so its gauge is always up —
-  // the reactor bar, not a niche ability counter.
-  renderStatBar(energyBarEl, "Energy", state.energy, state.maxEnergy, "energy");
+  // Energy pays for every weapon shot, so the reactor gauge is always up.
+  renderStatBar(energyBarEl, "Reactor", state.energy, state.maxEnergy, "energy");
   // Shield charges have no cap — the bar is however many are banked, all
   // lit. Hidden entirely at zero rather than showing an empty socket for
-  // something you may never buy.
+  // something you may never buy; the gauge cluster reads SHIELDS | HULL,
+  // in damage order (shields absorb first).
   shieldWrapEl.hidden = state.shieldCharges <= 0;
-  renderStatBar(shieldBarEl, "Shield", state.shieldCharges, state.shieldCharges, "shield");
+  renderStatBar(shieldBarEl, "Shields", state.shieldCharges, state.shieldCharges, "shield");
+  flashOnChange("hull", state.hull, hullWrapEl);
+  flashOnChange("energy", state.energy, energyWrapEl);
+  flashOnChange("shield", state.shieldCharges, shieldWrapEl);
+  flashOnChange("salvage", state.salvage, salvageWrapEl);
   levelEl.textContent = `Sector ${state.levelId}: ${state.levelName} · Best ${bestDepth}`;
   logEl.textContent = state.log.slice(-3).join("  ·  ");
   salvageValueEl.textContent = state.salvage;
@@ -1723,13 +1766,16 @@ function updateLegend() {
   scanBtn.classList.toggle("active", legendVisible);
 }
 
-// The console holds ACTIONS only now (Hold Position, Tractor Beam) —
-// every system on/off switch lives on the Ship screen instead
-// (Clubhouse: "you don't need the controls on/off anymore... it's in
-// Ship"). Holding position is always available, since letting an armed
-// weapon fire without moving is a legitimate choice any turn.
+// The panel's action row: Hold Position, Tractor Beam, Target Lock.
+// Target Lock is the old "toggle Warpdrive off to aim" trick promoted to
+// a first-class stance button: engaged = movement offline, taps aim the
+// flagship, Hold Position fires. Holding position is always available,
+// since letting an armed weapon fire without moving is a legitimate
+// choice any turn.
 function updateSystems() {
   holdBtn.disabled = state.status !== "playing" || legendVisible;
+  targetLockBtn.disabled = state.status !== "playing" || legendVisible;
+  targetLockBtn.classList.toggle("active", !state.systems.warpdrive);
 }
 
 // Shared by the systems-row stats line and the click-an-enemy-for-info panel
@@ -1801,19 +1847,30 @@ function updateScanInfo() {
 
     const stats = document.createElement("div");
     stats.className = "enemy-info-stats";
-    // Enemies run their own reactors now — surface the charge state so a
-    // Railgun's multi-turn charge-up is readable ("when does it fire?")
-    // instead of invisible bookkeeping. Only shown when there's a rhythm
-    // to read (cost above what one turn regens); a fires-every-turn
-    // cannon would just say the same thing forever.
-    const charging =
-      def.weapon.energyCost > 1
-        ? enemy.energy >= def.weapon.energyCost
-          ? " · CHARGED — can fire"
-          : ` · CHARGING ${enemy.energy}/${def.weapon.energyCost}`
-        : "";
-    stats.textContent = describeWeapon(def.weapon) + charging;
+    stats.textContent = describeWeapon(def.weapon);
     enemyInfoEl.appendChild(stats);
+
+    // The INTENT line: what this contact will do, derived straight from
+    // the real enemy AI (decideIntent's rules) — never a guess, always a
+    // statement conditional on you staying put, since enemies decide
+    // AFTER you act. Its personal strike zone lights up on the board too
+    // (see draw()) while it's the selected contact.
+    const intent = document.createElement("div");
+    intent.className = "enemy-info-stats enemy-info-intent";
+    const charged = enemy.energy >= def.weapon.energyCost;
+    const inRange = Engine.weaponHexes(enemy, 0, def.weapon).some((h) => Engine.posEq(h, state.playerPos));
+    let intentText;
+    if (!charged) {
+      intentText = `INTENT: CHARGING ${enemy.energy}/${def.weapon.energyCost} — cannot fire yet`;
+    } else if (inRange) {
+      intentText = "INTENT: YOU ARE IN ITS RANGE — fires this turn if you stay put";
+    } else if (def.movesTowardPlayer) {
+      intentText = "INTENT: PURSUING — closes 1 hex/turn, fires the turn you're in range";
+    } else {
+      intentText = "INTENT: HOLDING — never moves, fires the turn you enter its reach";
+    }
+    intent.textContent = intentText;
+    enemyInfoEl.appendChild(intent);
     return;
   }
 
@@ -1943,11 +2000,6 @@ function updateShipOverlay() {
     row.appendChild(statsLine);
     shipHardpointsEl.appendChild(row);
   };
-  systemRow(
-    "warpdrive",
-    "Warpdrive",
-    "Movement. Toggle off to stay put and aim instead: tap an adjacent hex to face it (free), then Hold Position to fire."
-  );
   const WEAPON_INFO = { ram: Engine.WEAPONS.ram, lance: Engine.WEAPONS.lance, repulsor: Engine.WEAPONS.repulsor };
   for (const key of Engine.WEAPON_SYSTEM_KEYS) {
     const owned = key === "ram" || state.actions.includes(key);
@@ -1974,6 +2026,42 @@ function updateShipOverlay() {
   shipHardpointsEl.appendChild(note);
 }
 
+// The starmap: only what the ship actually knows — every sector charted
+// this run (sectorHistory + where you are now), then the gate(s) ahead as
+// uncharted contacts, tinted like their in-world Warp Gates but never
+// explained ("maybe color coordinated, but maybe not tell people").
+function updateMapOverlay() {
+  mapOverlayEl.hidden = !mapVisible;
+  mapBtn.classList.toggle("active", mapVisible);
+  if (!mapVisible) return;
+  mapChartEl.innerHTML = "";
+  const node = (label, detail, cls, tint) => {
+    const row = document.createElement("div");
+    row.className = "map-node" + (cls ? ` ${cls}` : "");
+    if (tint) row.style.borderLeftColor = `rgb(${tint[0]}, ${tint[1]}, ${tint[2]})`;
+    const name = document.createElement("span");
+    name.className = "map-node-name";
+    name.textContent = label;
+    row.appendChild(name);
+    if (detail) {
+      const d = document.createElement("span");
+      d.className = "map-node-detail";
+      d.textContent = detail;
+      row.appendChild(d);
+    }
+    mapChartEl.appendChild(row);
+  };
+  for (const entry of sectorHistory) {
+    node(`Sector ${entry.state.levelId} — ${entry.state.levelName}`, "charted", "visited");
+  }
+  node(`Sector ${state.levelId} — ${state.levelName}`, "you are here", "current");
+  if (state.status === "playing") {
+    for (const ex of state.exits) {
+      node("Uncharted sector", "warp gate ahead", "ahead", ex.variantId ? BRANCH_TINTS[ex.variantId] : null);
+    }
+  }
+}
+
 function render() {
   updateHud();
   updateLegend();
@@ -1981,6 +2069,7 @@ function render() {
   updateScanInfo();
   updateOutpost();
   updateShipOverlay();
+  updateMapOverlay();
   draw();
   persist();
   window.__hhState = state; // debug hook: deterministic + serializable, safe to inspect
@@ -2133,10 +2222,29 @@ scanBtn.addEventListener("click", () => {
 
 shipBtn.addEventListener("click", () => {
   shipVisible = !shipVisible;
+  mapVisible = false;
   render();
 });
 shipCloseBtn.addEventListener("click", () => {
   shipVisible = false;
+  render();
+});
+mapBtn.addEventListener("click", () => {
+  mapVisible = !mapVisible;
+  shipVisible = false;
+  render();
+});
+mapCloseBtn.addEventListener("click", () => {
+  mapVisible = false;
+  render();
+});
+targetLockBtn.addEventListener("click", () => {
+  Engine.setSystem(state, "warpdrive", !state.systems.warpdrive);
+  pushMessage(
+    state.systems.warpdrive
+      ? "Target Lock disengaged — Warpdrive back online."
+      : "Target Lock engaged — tap an adjacent hex to aim, then Hold Position to fire."
+  );
   render();
 });
 

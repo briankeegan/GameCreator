@@ -21,33 +21,12 @@
   <main class="game-area" id="gameArea">
     <div class="enemy-info" id="enemyInfo" hidden></div>
 
-    <div class="hud">
-      <div class="hud-stats">
-        <span class="stat-wrap">
-          <span class="stat-label">Hull</span>
-          <span class="stat-bar" id="hullBar"></span>
-        </span>
-        <span class="stat-wrap">
-          <span class="stat-label">Energy</span>
-          <span class="stat-bar" id="energyBar"></span>
-        </span>
-        <span class="stat-wrap" id="shieldWrap" hidden>
-          <span class="stat-label">Shield</span>
-          <span class="stat-bar" id="shieldBar"></span>
-        </span>
-        <span class="stat-wrap">
-          <span class="stat-label">Salvage</span>
-          <span class="stat-value" id="salvageValue">0</span>
-        </span>
-      </div>
-      <span id="levelLabel">Sector 1 · Best 1</span>
-    </div>
-
     <p id="objective" class="objective"></p>
 
     <div class="board-wrap" id="boardWrap">
       <div class="board-frame">
         <canvas id="board" width="320" height="320"></canvas>
+        <span id="levelLabel" class="sector-chip">Sector 1 · Best 1</span>
         <div class="run-overlay" id="runOverlay" hidden>
           <h2 id="runOverlayTitle"></h2>
           <p id="runOverlayBody"></p>
@@ -63,18 +42,41 @@
       </div>
     </div>
 
-    <!-- Actions only — every system on/off switch lives on the Ship
-         screen now ("you don't need the controls on/off anymore...
-         it's in Ship"). -->
-    <div class="console">
+    <!-- The control panel: everything about the ship in ONE framed console
+         ("bring all the information together nicely as what looks like a
+         control panel") — gauges, this turn's actions, the Scan/Hardpoints
+         modes, and the readout strip. Every gauge/button is dynamic:
+         gauges flash on change, actions appear the moment they unlock. -->
+    <div class="console control-panel">
+      <div class="panel-gauges">
+        <span class="stat-wrap" id="shieldWrap" hidden>
+          <span class="stat-label">Shields</span>
+          <span class="stat-bar" id="shieldBar"></span>
+        </span>
+        <span class="stat-wrap" id="hullWrap">
+          <span class="stat-label">Hull</span>
+          <span class="stat-bar" id="hullBar"></span>
+        </span>
+        <span class="stat-wrap" id="energyWrap">
+          <span class="stat-label">Reactor</span>
+          <span class="stat-bar" id="energyBar"></span>
+        </span>
+        <span class="stat-wrap" id="salvageWrap">
+          <span class="stat-label">Salvage</span>
+          <span class="stat-value" id="salvageValue">0</span>
+        </span>
+      </div>
       <div class="console-grid actions-grid">
         <button id="holdBtn" class="hold-btn">Hold Position</button>
         <button data-mode="tractor">Tractor Beam</button>
+        <button id="targetLockBtn" title="Aim without moving — tap an adjacent hex to face it, then Hold Position to fire">Target Lock</button>
         <span class="weapon-stats" id="tractorStats" hidden></span>
       </div>
-    </div>
-
-    <div class="belowbar">
+      <div class="console-grid modes-grid">
+        <button id="scanBtn" class="scan-btn" title="Scan mode — inspect anything on the board; movement and actions are disabled while it's open" aria-label="Scan">Scan</button>
+        <button id="shipBtn" class="scan-btn" title="Systems — full-screen view of your flagship, its weapons, and upgrades" aria-label="Systems">Systems</button>
+        <button id="mapBtn" class="scan-btn" title="Map — the sectors you've charted this run, and the gates ahead" aria-label="Map">Map</button>
+      </div>
       <p id="log" class="log"></p>
     </div>
 
@@ -92,18 +94,23 @@
     </div>
   </main>
 
-  <div class="corner-btns">
-    <button id="scanBtn" class="scan-btn" title="Scan mode — inspect anything on the board; movement and actions are disabled while it's open" aria-label="Scan">Scan</button>
-    <button id="shipBtn" class="scan-btn" title="Ship — full-screen view of your flagship, its systems, and upgrades" aria-label="Ship">Ship</button>
-  </div>
-
   <div class="ship-overlay" id="shipOverlay" hidden>
     <div class="ship-overlay-inner">
-      <h2>Flagship</h2>
+      <h2>Systems</h2>
       <img class="ship-portrait" src="icons/flagship.png" alt="Your flagship" />
       <div class="ship-section" id="shipStats"></div>
       <div class="ship-section" id="shipHardpoints"></div>
       <button id="shipCloseBtn">Back to the fight</button>
+    </div>
+  </div>
+
+  <!-- The starmap — only what you actually know: sectors charted this run,
+       where you are, and the gates ahead as uncharted contacts. -->
+  <div class="ship-overlay" id="mapOverlay" hidden>
+    <div class="ship-overlay-inner">
+      <h2>Map</h2>
+      <div class="ship-section" id="mapChart"></div>
+      <button id="mapCloseBtn">Back to the fight</button>
     </div>
   </div>
 

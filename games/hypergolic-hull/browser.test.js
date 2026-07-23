@@ -178,15 +178,17 @@ async function freshPage(browser, url, errors) {
   assert.deepStrictEqual(s.actions, ["sublight", "ramming"], "Sector 1 unlocks Sublight + the Shockwave together");
   // Locked actions are hidden entirely now — no padlocked ghost buttons.
   assert.strictEqual(await page.locator('[data-mode="tractor"]').isVisible(), false, "tractor is hidden until unlocked");
-  // The console is actions-only — every system on/off switch lives on the
-  // Ship screen now ("you don't need the controls on/off anymore... it's
-  // in Ship"). An unowned weapon (the Lance Cannon here) simply has no
-  // hardpoint row there yet.
+  // The control panel holds the actions (Hold/Tractor/Target Lock) and the
+  // three mode views; weapon on/off switches live on the Systems screen
+  // ("you don't need the controls on/off anymore"). Warpdrive is the
+  // Target Lock button now, not a Systems row. An unowned weapon (the
+  // Lance Cannon here) simply has no hardpoint row yet.
   await page.click("#shipBtn");
-  assert.strictEqual(await page.locator('#shipHardpoints input[data-system="warpdrive"]').isVisible(), true, "the Ship screen carries the Warpdrive switch");
-  assert.strictEqual(await page.locator('#shipHardpoints input[data-system="ram"]').isVisible(), true, "and the Shockwave's");
+  assert.strictEqual(await page.locator('#shipHardpoints input[data-system="warpdrive"]').count(), 0, "Warpdrive is no longer a Systems row — Target Lock owns it");
+  assert.strictEqual(await page.locator('#shipHardpoints input[data-system="ram"]').isVisible(), true, "the Systems screen carries the Shockwave's switch");
   assert.strictEqual(await page.locator('#shipHardpoints input[data-system="lance"]').count(), 0, "an unpurchased weapon has no hardpoint row yet");
   await page.click("#shipCloseBtn");
+  assert.strictEqual(await page.locator("#targetLockBtn").isVisible(), true, "Target Lock sits on the panel's action row");
   assert.strictEqual(
     await page.locator("#holdBtn").isVisible(),
     true,
@@ -230,6 +232,10 @@ async function freshPage(browser, url, errors) {
   await page.mouse.click(boardBox.x + enemyBox.x, boardBox.y + enemyBox.y);
   assert.strictEqual(await page.locator("#enemyInfo").isVisible(), true, "tapping an enemy in Scan mode shows its info card");
   assert.ok((await page.locator("#enemyInfo").textContent()).includes("INTERCEPTOR"), "the card names the inspected enemy");
+  assert.ok(
+    (await page.locator("#enemyInfo").textContent()).includes("INTENT"),
+    "the selected contact's card states its intent — what it will do, straight from the real AI"
+  );
 
   // The Warp Gate is inspectable too, not just enemies.
   const exitCenter = await page.evaluate(() => window.__hhHexCenter(window.__hhState.exitPos.q, window.__hhState.exitPos.r));
@@ -261,6 +267,15 @@ async function freshPage(browser, url, errors) {
   await page.click("#shipCloseBtn");
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Back to the fight closes the Ship screen");
 
+  // ---- The Map: only what the ship actually knows -------------------------
+  await page.click("#mapBtn");
+  assert.strictEqual(await page.locator("#mapOverlay").isVisible(), true, "the Map button opens the starmap");
+  const mapText = await page.locator("#mapChart").textContent();
+  assert.ok(mapText.includes("you are here"), "the map marks the current sector");
+  assert.ok(mapText.includes("Uncharted"), "the gate ahead shows as an uncharted contact, not a spoiler");
+  await page.click("#mapCloseBtn");
+  assert.strictEqual(await page.locator("#mapOverlay").isVisible(), false, "the map closes again");
+
   // Toggling the Impulse Cannon off (via the Ship screen) stops it
   // auto-firing — walk right up next to the Interceptor with it disabled
   // and confirm it survives.
@@ -287,7 +302,7 @@ async function freshPage(browser, url, errors) {
   // there (only that it's adjacent). With Warpdrive off, tapping an adjacent
   // hex re-aims the flagship toward it for free — no move, no turn spent —
   // so line up the shot that way before committing with Hold Position.
-  await setShipSystem(page, "warpdrive", false);
+  await page.click("#targetLockBtn"); // engage Target Lock — movement offline, taps aim
   const posBeforeAim = (await getState(page)).playerPos;
   const turnBeforeAim = (await getState(page)).turnCount;
   const enemyPos = (await getState(page)).enemies.find((e) => e.alive);
@@ -314,7 +329,7 @@ async function freshPage(browser, url, errors) {
   assert.deepStrictEqual(s.playerPos, posBeforeHold, "Hold Position never moves the flagship");
   assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "Hold Position lets the re-enabled Impulse Cannon fire in place");
   assert.strictEqual(s.exitUnlocked, true);
-  await setShipSystem(page, "warpdrive", true);
+  await page.click("#targetLockBtn"); // disengage — Warpdrive back online
 
   s = await walkToExit(page);
   assert.strictEqual(s.status, "won", "Sector 1 clears once the gate is reached");

@@ -24,38 +24,29 @@ body {
   min-height: 0; /* let this flex child shrink below its content's natural size */
   display: flex;
   flex-direction: column;
-  padding: 10px 12px calc(56px + var(--banner-space));
+  padding: 10px 12px calc(12px + var(--banner-space));
   text-align: center;
   overflow: hidden;
 }
 
-/* Two rows: labeled stat bars up top, the sector line on its own row —
-   "we need stats (green bars) at top to indicate better what is there...
-   all the stats should be easy to understand." Every gauge is a labeled
-   pip bar in its own color; nothing is a bare unexplained number. */
-.hud {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
-  max-width: 520px;
-  width: 100%;
-  margin: 0 auto 8px;
-  font-size: 0.85rem;
-  color: #9fb0c9;
-}
-.hud-stats {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-#levelLabel {
-  text-align: left;
-  font-size: 0.72rem;
+/* The sector/depth line lives ON the board (a translucent chip in the
+   viewport's corner) — it's information about the world outside, not a
+   ship system, so it doesn't belong on the control panel. */
+.sector-chip {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 5;
+  pointer-events: none;
+  background: rgba(11, 15, 24, 0.75);
+  border: 1px solid #2a3652;
   color: #7a8bab;
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  max-width: calc(100% - 12px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -104,6 +95,15 @@ body {
 .stat-value {
   color: #ffce8a;
   font-weight: 600;
+}
+/* A gauge that just changed calls attention to itself for a beat —
+   the panel is dynamic, not a static readout. */
+.stat-wrap.flash {
+  animation: gauge-flash 0.6s ease-out;
+}
+@keyframes gauge-flash {
+  0% { filter: brightness(2.2); }
+  100% { filter: brightness(1); }
 }
 
 /* The flex child that gets whatever vertical room is left over once the HUD
@@ -205,31 +205,54 @@ body {
    instead of several separately-boxed rows, and uses CSS grid (fixed
    column counts) rather than flex-wrap so it packs multiple things per
    row on every phone width instead of only when content happens to fit. */
+/* THE control panel — one framed cockpit console holding everything
+   about the ship (Clubhouse: "combine those all into what looks like a
+   control panel"): gauges strip, this turn's actions, the Scan/
+   Hardpoints modes, and the readout/log strip, top to bottom. */
 .console {
   flex: 0 0 auto;
   max-width: 520px;
   width: 100%;
   margin: 8px auto 0;
-  padding: 8px 10px 8px 18px;
   font-family: "SF Mono", "Menlo", "Consolas", monospace;
   color: #ffce8a;
-  background: #101724;
+  background: #141b2b;
   border: 3px solid #2a3652;
-  border-left: 10px solid #ff9c4a;
+  border-top: 6px solid #ff9c4a;
   box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4);
 }
+.panel-gauges {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #1d2740;
+}
+/* Compact enough that all four gauges hold one row on a 420px phone even
+   with Shields showing — the panel's height must stay constant so the
+   board above never jitters or clips the log strip below. */
+.panel-gauges .stat-label { font-size: 0.56rem; }
+.panel-gauges .stat-pip { width: 11px; height: 11px; }
+.panel-gauges .stat-bar { gap: 2px; }
+.panel-gauges .stat-wrap { gap: 4px; }
 
 .console-grid {
   display: grid;
   gap: 6px 8px;
   align-items: center;
 }
-/* 2 columns, one row per action. The console is actions-only now
-   (Hold Position, Tractor Beam) — every system on/off switch moved to
-   the Ship screen. */
+/* One row of this-turn actions (3 columns), one row of modes (2). */
 .actions-grid {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   font-size: 0.76rem;
+  padding: 8px 10px 4px;
+}
+.modes-grid {
+  grid-template-columns: 1fr 1fr 1fr;
+  font-size: 0.76rem;
+  padding: 4px 10px 8px;
 }
 
 /* A compact badge sharing a grid cell with Hold Position, instead of a
@@ -393,43 +416,21 @@ body {
   50% { box-shadow: 0 0 0 6px rgba(255, 156, 74, 0); }
 }
 
-.belowbar {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: 520px;
-  width: 100%;
-  margin: 8px auto 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* Pinned to the corner so they're always in the same reachable spot, clear
-   of whatever's happening on the board — lifts above the install banner via
-   --banner-space when that's showing. Holds Scan (inspect-only mode) and
-   Ship (the full-screen flagship/loadout view) side by side. */
-.corner-btns {
-  position: fixed;
-  left: 12px;
-  bottom: calc(12px + var(--banner-space));
-  z-index: 40;
-  display: flex;
-  gap: 8px;
-}
+/* The panel's mode buttons: Scan (inspect-only mode) and Hardpoints
+   (the full-screen flagship/loadout view) — blue-edged to read as
+   "views", distinct from the action row above them. */
 .scan-btn {
   background: #1b2436;
   color: #dbe4f2;
   border: 2px solid #5bb8f2;
-  padding: 8px 14px;
+  padding: 7px 8px;
   border-radius: 0;
   font-family: "SF Mono", "Menlo", "Consolas", monospace;
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
   cursor: pointer;
-  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4);
 }
 .scan-btn.active {
   background: #1f4d3a;
@@ -515,7 +516,8 @@ body {
   color: #7a8bab;
   margin: 6px 0 0;
 }
-#shipCloseBtn {
+#shipCloseBtn,
+#mapCloseBtn {
   width: 100%;
   margin-top: 10px;
   background: #5bb8f2;
@@ -529,15 +531,61 @@ body {
   font-family: "SF Mono", "Menlo", "Consolas", monospace;
 }
 
+/* Starmap nodes: the run so far as a vertical chain — charted sectors,
+   the current one, and the uncharted gate(s) ahead (left edge tinted like
+   their in-world gates, deliberately unexplained). */
+.map-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  margin-bottom: 4px;
+  background: #0e1422;
+  border: 1px solid #1d2740;
+  border-left: 6px solid #2a3652;
+  font-size: 0.72rem;
+}
+.map-node-name { color: #9fb0c9; }
+.map-node-detail {
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #7a8bab;
+}
+.map-node.current {
+  border-color: #7fe3a8;
+  border-left-color: #7fe3a8;
+  background: #12291f;
+}
+.map-node.current .map-node-name,
+.map-node.current .map-node-detail { color: #7fe3a8; }
+.map-node.ahead { border-style: dashed; }
+.map-node.ahead .map-node-name { color: #7a8bab; font-style: italic; }
+
+/* The INTENT line on a scanned contact's card — set apart from the plain
+   weapon stats so the "what happens next" answer jumps out. */
+.enemy-info-intent {
+  margin-top: 4px;
+  color: #ffce8a;
+  border-color: #4d3a20;
+}
+
+/* The panel's readout strip — the log lives INSIDE the console now, the
+   bottom line of the control panel. */
 .log {
-  flex: 1 1 auto;
-  height: 2.3em; /* fixed — the bottom zone's height must stay predictable
-                    so the board above it never jitters as messages change */
+  /* Exactly two lines + padding (border-box) — fixed, so the panel's
+     height stays predictable and the board above never jitters. */
+  height: calc(2.4em + 11px);
   overflow: hidden;
-  font-size: 0.78rem;
-  line-height: 1.15em;
+  font-size: 0.72rem;
+  line-height: 1.2em;
   color: #8fa0ba;
   text-align: left;
+  padding: 5px 10px;
+  border-top: 1px solid #1d2740;
+  margin: 0;
 }
 
 .objective {
@@ -560,10 +608,13 @@ body {
   position: fixed;
   left: 12px;
   right: 12px;
-  bottom: calc(64px + var(--banner-space));
+  /* Clears the panel's modes row + log strip so the Scan button stays
+     tappable to close the mode — it may overlap the gauges/actions rows
+     above them, which are disabled during Scan anyway. */
+  bottom: calc(130px + var(--banner-space));
   z-index: 42;
   max-width: 520px;
-  max-height: min(60vh, 60dvh);
+  max-height: min(52vh, 52dvh);
   margin: 0 auto;
   overflow-y: auto;
   display: flex;
@@ -597,6 +648,9 @@ body {
   right: 12px;
   top: 8px;
   z-index: 43;
+  /* Purely informational — taps pass straight through to the board, so
+     the card never blocks scanning whatever's underneath it. */
+  pointer-events: none;
   max-width: 520px;
   margin: 0 auto;
   padding: 8px 10px 8px 14px;
