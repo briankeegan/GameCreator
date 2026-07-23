@@ -1024,26 +1024,34 @@ const energyLevel = {
   exitRule: "all-enemies-dead",
 };
 let energyState = Engine.createGameState(energyLevel, { extraActions: ["lance"] });
-assert.strictEqual(energyState.energy, 3, "a fresh run starts at full Energy");
-assert.strictEqual(energyState.maxEnergy, 3);
-assert.strictEqual(Engine.WEAPONS.ram.energyCost, 1, "the Shockwave costs exactly the per-turn regen — sustainable alone");
-assert.ok(Engine.WEAPONS.lance.energyCost > 1, "the Lance Cannon costs more than the per-turn regen — a real drain");
+assert.strictEqual(energyState.energy, 6, "a fresh run starts at full Energy");
+assert.strictEqual(energyState.maxEnergy, 6);
+// Every weapon costs MORE than the +1/turn regen, so a firing turn always
+// nets negative and the gauge visibly moves — an earlier tuning where the
+// Shockwave cost exactly the regen refilled the same turn it drained and
+// read as "energy isn't hooked up."
+assert.ok(Engine.WEAPONS.ram.energyCost > 1, "even the Shockwave outpaces the regen — firing always shows on the gauge");
+assert.ok(Engine.WEAPONS.lance.energyCost > Engine.WEAPONS.ram.energyCost, "the Lance Cannon is thirstier still");
 
-// A full volley pays for every weapon that fires: Shockwave (1) + Lance
-// (2) against an adjacent dead-ahead Cruiser = 3 spent, +1 regen.
+// A full volley pays for every weapon that fires: Shockwave (2) + Lance
+// (3) against an adjacent dead-ahead Cruiser = 5 spent, +1 regen.
 energyState.enemies[0].q = 2;
 energyState.enemies[0].r = 4; // adjacent, directly up (facing 2)
 Engine.setFacing(energyState, 2);
 Engine.applyHoldPosition(energyState);
 assert.strictEqual(energyState.enemies[0].alive, false, "Shockwave + Lance Cannon volley kills a 2-HP Cruiser");
-assert.strictEqual(energyState.energy, 3 - 1 - 2 + 1, "every shot in the volley was paid for, net of the turn's regen");
+assert.strictEqual(energyState.energy, 6 - 2 - 3 + 1, "every shot in the volley was paid for, net of the turn's regen");
+assert.ok(
+  energyState.events.some((e) => e.type === "energySpend"),
+  "each paid shot emits an energySpend event — the UI floats the cost so the drain is visible in the moment"
+);
 
-// With only 1 Energy left, the Shockwave (first in firing order) claims
+// With only 2 Energy left, the Shockwave (first in firing order) claims
 // it and the Lance Cannon holds fire — logged, not silent.
 energyState = Engine.createGameState(energyLevel, { extraActions: ["lance"] });
 energyState.enemies[0].q = 2;
 energyState.enemies[0].r = 4;
-energyState.energy = 1;
+energyState.energy = 2;
 Engine.setFacing(energyState, 2);
 Engine.applyHoldPosition(energyState);
 assert.strictEqual(energyState.enemies[0].alive, true, "1 Shockwave hit alone leaves a 2-HP Cruiser alive");
@@ -1074,11 +1082,11 @@ assert.throws(
   /not enough Energy/,
   "the Tractor Beam refuses without the Energy to power it"
 );
-tractorEnergyState.energy = 1;
+tractorEnergyState.energy = Engine.WEAPONS.tractor.energyCost;
 Engine.applyTractor(tractorEnergyState, "e0");
 assert.strictEqual(
   tractorEnergyState.energy,
-  1 - Engine.WEAPONS.tractor.energyCost + 1,
+  1,
   "a Tractor push costs its listed Energy, net of the turn's regen"
 );
 

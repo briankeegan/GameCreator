@@ -192,7 +192,13 @@
   // flagship's AND every enemy's ("Energy refills between jumps. Health
   // does not" — long-standing Clubhouse design intent, now the real
   // constraint on how many weapon systems you can afford to keep firing).
-  const START_ENERGY = 3;
+  // The reactor is deliberately bigger than any single shot while every
+  // shot costs MORE than the +1/turn regen: a firing turn always nets
+  // negative, so the gauge visibly drains in combat and climbs back out
+  // of it. (An earlier tuning had the Shockwave cost exactly the regen —
+  // the bar refilled the same turn it drained and never visibly moved,
+  // which read as "energy isn't hooked up" in playtesting.)
+  const START_ENERGY = 6;
   // How many weapon-slot points of systems the flagship starts with —
   // grown via the Hardpoint Expansion Outpost offer.
   const START_WEAPON_SLOTS = 2;
@@ -230,10 +236,10 @@
     // The free auto-weapon now fires in ALL six directions (an encircling
     // blast), not just the forward three — so it defends you from every side
     // after a move, no aiming required. Renamed to the Shockwave to match.
-    // Costs 1 — exactly what you regen per turn, so running it alone is
-    // sustainable forever; running it alongside a second weapon is what
-    // actually drains the reactor.
-    ram: { id: "ram", label: "Shockwave", range: 1, damage: 1, targets: "all", energyCost: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // Costs 2 against +1/turn regen — every firing turn nets -1, so even
+    // the free starting weapon visibly draws down the reactor and combat
+    // has a fuel gauge.
+    ram: { id: "ram", label: "Shockwave", range: 1, damage: 1, targets: "all", energyCost: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     interceptorCannon: { id: "interceptorCannon", label: "Interceptor Cannon", range: 1, damage: 1, targets: "all", energyCost: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // A Sentry Turret's beam reaches TWO hexes in every direction — it never
     // moves, but it zones off a wide ring you have to route around or kill.
@@ -243,16 +249,16 @@
     // manage `facing` to line it up (toggle Warpdrive off, tap an adjacent
     // hex to aim, Hold Position to fire — infrastructure already built for
     // exactly this). Purchased at an Outpost (see OUTPOST_OFFER_POOL), not
-    // unlocked for free by reaching a sector. Costs 2 — above the per-turn
-    // regen, so sustained Lance fire runs the reactor down.
-    lance: { id: "lance", label: "Lance Cannon", range: 3, damage: 2, targets: "all", energyCost: 2, pattern: [0], slots: 1 },
+    // unlocked for free by reaching a sector. Costs 3 — the hardest
+    // hitter is also the thirstiest.
+    lance: { id: "lance", label: "Lance Cannon", range: 3, damage: 2, targets: "all", energyCost: 3, pattern: [0], slots: 1 },
     // Double-edged on purpose (Clubhouse: "make that bad or good depending
     // [how it's used]"): weaker than the Shockwave hit-for-hit, but every
     // surviving target gets shoved a hex directly away from the flagship
     // (see pushEnemyInDirection) — can save you a follow-up hit by knocking
     // a threat out of adjacency, or shove a low-HP target out of the very
     // range you needed to finish it off. Also purchased at an Outpost.
-    repulsor: { id: "repulsor", label: "Repulsor", range: 1, damage: 1, targets: "all", energyCost: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    repulsor: { id: "repulsor", label: "Repulsor", range: 1, damage: 1, targets: "all", energyCost: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // Not an auto-fire weapon (see AUTO_FIRE_WEAPONS below) — Tractor Beam
     // is player-armed-and-aimed (applyTractor), adjacent range in any of
     // the 6 directions. Modeled here anyway so its stats badge (app.js)
@@ -262,7 +268,7 @@
     // into a hazard), not a direct hit. `slots: 0`: an armed-and-aimed
     // action you spend a turn on, not a system left running — it charges
     // energy per use but never occupies a weapon slot.
-    tractor: { id: "tractor", label: "Tractor Beam", range: 1, damage: 0, targets: "push", energyCost: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 0 },
+    tractor: { id: "tractor", label: "Tractor Beam", range: 1, damage: 0, targets: "push", energyCost: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 0 },
     // The original design doc's Railgun Destroyer ("fires a straight-line
     // slug down any of the 6 hex axes, unlimited range... telegraphs the
     // line one turn before firing"). The telegraph is now real and comes
@@ -904,6 +910,7 @@
         continue;
       }
       state.energy -= weapon.energyCost;
+      state.events.push({ type: "energySpend", amount: weapon.energyCost, weapon: weapon.label });
       for (const victim of targets) {
         if (!victim.alive) continue; // an earlier target's push/collision in this same volley already took it out
         victim.hp -= weapon.damage;
@@ -964,6 +971,7 @@
     if (!enemy) throw new Error("Tractor Beam: no such enemy");
     if (!isAdjacent(state.playerPos, enemy)) throw new Error("Tractor Beam: enemy is not adjacent");
     state.energy -= WEAPONS.tractor.energyCost;
+    state.events.push({ type: "energySpend", amount: WEAPONS.tractor.energyCost, weapon: WEAPONS.tractor.label });
     pushEnemyInDirection(state, enemy, directionIndex(state.playerPos, enemy), "Tractor");
     endPlayerAction(state);
   }

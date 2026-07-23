@@ -190,8 +190,8 @@ async function freshPage(browser, url, errors) {
   );
   assert.strictEqual(
     await page.locator("#energyBar .stat-pip.filled").count(),
-    3,
-    "a fresh run's Energy bar starts with all 3 pips lit"
+    6,
+    "a fresh run's Energy bar starts with all 6 pips lit"
   );
   const boardBox = await page.locator("#board").boundingBox();
   assert.ok(boardBox.height > boardBox.width * 0.95, "the canvas grows tall to fit the Hoplite-style board");

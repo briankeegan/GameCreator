@@ -379,6 +379,13 @@ function scheduleAnims(events) {
       if (dir >= 0) shipAngle = DIR_ANGLES[dir];
     }
     else if (ev.type === "playerDeath") anims.push({ kind: "boom", pos: ev, start: now, dur: 650, particles: makeExplosionParticles(16) });
+    else if (ev.type === "energySpend") {
+      // A rising "-N ENERGY" over the flagship on every paid shot — the
+      // energy economy was invisible without it (a Shockwave turn drains
+      // and regens between renders, so only a live cue shows the spend).
+      const priorFloats = anims.filter((a) => a.kind === "efloat").length;
+      anims.push({ kind: "efloat", amount: ev.amount, pos: { q: state.playerPos.q, r: state.playerPos.r }, start: now + priorFloats * 260, dur: 900 });
+    }
   }
   if (anims.length) requestAnimationFrame(tickAnims);
 }
@@ -1537,6 +1544,20 @@ function draw() {
     ctx.translate(shipCenter.x, shipCenter.y);
     ctx.rotate((shipAngle * Math.PI) / 180);
     drawPlayerShip(geom.sx * 0.52, pslide ? 1 - Math.abs(animProgress(pslide, now) - 0.5) * 2 : 0, state.hull / state.maxHull);
+    ctx.restore();
+  }
+
+  // Rising energy-spend readouts, above the ships but below explosions.
+  for (const a of anims) {
+    if (a.kind !== "efloat" || now < a.start || now >= a.start + a.dur) continue;
+    const p = animProgress(a, now);
+    const c = hexToPixel(a.pos);
+    ctx.save();
+    ctx.globalAlpha = 1 - p * p;
+    ctx.fillStyle = "#7fe3a8";
+    ctx.font = `700 ${Math.max(11, geom.sx * 0.34)}px "SF Mono", "Menlo", "Consolas", monospace`;
+    ctx.textAlign = "center";
+    ctx.fillText(`-${a.amount} ENERGY`, c.x, c.y - geom.sx * (0.75 + p * 1.1));
     ctx.restore();
   }
 
