@@ -63,19 +63,12 @@
       </div>
     </div>
 
+    <!-- Actions only — every system on/off switch lives on the Ship
+         screen now ("you don't need the controls on/off anymore...
+         it's in Ship"). -->
     <div class="console">
-      <div class="console-grid systems-grid">
-        <label class="system-toggle"><input type="checkbox" id="toggleWarpdrive" checked /> <i class="swatch swatch-warpdrive"></i> Warpdrive</label>
-        <label class="system-toggle"><input type="checkbox" id="toggleRam" checked /> <i class="swatch swatch-weapon"></i> <span id="ramLabel">Shockwave</span></label>
-        <span class="weapon-stats" id="weaponStats"></span>
-        <button id="holdBtn" class="hold-btn">Hold Position</button>
-        <label class="system-toggle" id="lanceToggleWrap" hidden><input type="checkbox" id="toggleLance" checked /> <i class="swatch swatch-weapon"></i> Lance Cannon</label>
-        <span class="weapon-stats" id="lanceStats" hidden></span>
-        <label class="system-toggle" id="repulsorToggleWrap" hidden><input type="checkbox" id="toggleRepulsor" checked /> <i class="swatch swatch-weapon"></i> Repulsor</label>
-        <span class="weapon-stats" id="repulsorStats" hidden></span>
-        <span class="weapon-slots-label" id="weaponSlotsLabel" hidden></span>
-      </div>
       <div class="console-grid actions-grid">
+        <button id="holdBtn" class="hold-btn">Hold Position</button>
         <button data-mode="tractor">Tractor Beam</button>
         <span class="weapon-stats" id="tractorStats" hidden></span>
       </div>

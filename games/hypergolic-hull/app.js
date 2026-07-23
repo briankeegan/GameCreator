@@ -63,37 +63,9 @@ const shipCloseBtn = document.getElementById("shipCloseBtn");
 const legendEl = document.getElementById("legend");
 const toggleThreatEl = document.getElementById("toggleThreat");
 const toggleLegalEl = document.getElementById("toggleLegal");
-const toggleWarpdriveEl = document.getElementById("toggleWarpdrive");
-const toggleRamEl = document.getElementById("toggleRam");
 const holdBtn = document.getElementById("holdBtn");
-const ramLabelEl = document.getElementById("ramLabel");
-const weaponStatsEl = document.getElementById("weaponStats");
 const tractorStatsEl = document.getElementById("tractorStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
-const weaponSlotsLabelEl = document.getElementById("weaponSlotsLabel");
-
-// Every purchased weapon beyond the base Shockwave (Lance Cannon,
-// Repulsor, ...) gets the same UI treatment: hidden until bought, a
-// toggle, a tap-to-expand stats badge. Data-driven so adding the next one
-// is adding an entry here, not copy-pasting another whole block.
-const PURCHASABLE_WEAPON_UI = [
-  {
-    action: "lance",
-    toggleWrap: document.getElementById("lanceToggleWrap"),
-    toggle: document.getElementById("toggleLance"),
-    stats: document.getElementById("lanceStats"),
-    weapon: Engine.WEAPONS.lance,
-    expanded: false,
-  },
-  {
-    action: "repulsor",
-    toggleWrap: document.getElementById("repulsorToggleWrap"),
-    toggle: document.getElementById("toggleRepulsor"),
-    stats: document.getElementById("repulsorStats"),
-    weapon: Engine.WEAPONS.repulsor,
-    expanded: false,
-  },
-];
 
 // Every piece on the board is custom-drawn (see drawPlayerShip/
 // drawEnemyShip/drawWarpGate/drawOutpost below) — no emoji
@@ -254,13 +226,10 @@ function returnToPreviousSector() {
 // leaves the hex (see updateOutpost).
 let outpostDismissed = false;
 
-// Whether the weapon-stats badge is showing its full sentence (tapped open)
-// or just the compact abbreviation (the default). Every purchasable
-// weapon's own expanded state lives on its PURCHASABLE_WEAPON_UI entry
-// instead of a matching standalone flag here. Tractor Beam isn't in that
-// list (no systems toggle — it's armed-and-aimed, not auto-fire), so it
-// gets its own flag, same pattern as weaponStatsExpanded.
-let weaponStatsExpanded = false;
+// Whether the Tractor Beam's stats badge is showing its full sentence
+// (tapped open) or just the compact abbreviation (the default). The other
+// weapons' stats live on the Ship screen now, spelled out in words — no
+// badges left on the console for them.
 let tractorStatsExpanded = false;
 
 // The flagship's facing, in degrees (canvas convention: 0 = screen-right,
@@ -1754,65 +1723,13 @@ function updateLegend() {
   scanBtn.classList.toggle("active", legendVisible);
 }
 
-// The Warpdrive/Impulse Cannon checkboxes and the Hold Position button —
-// always available (not just when Warpdrive is off), since holding position
-// on purpose to let an armed weapon fire without moving is a legitimate
-// choice any turn, not just a fallback when movement is blocked.
+// The console holds ACTIONS only now (Hold Position, Tractor Beam) —
+// every system on/off switch lives on the Ship screen instead
+// (Clubhouse: "you don't need the controls on/off anymore... it's in
+// Ship"). Holding position is always available, since letting an armed
+// weapon fire without moving is a legitimate choice any turn.
 function updateSystems() {
-  toggleWarpdriveEl.checked = state.systems.warpdrive;
-  toggleRamEl.checked = state.systems.ram;
-  // The toggle itself is never locked out by ownership — you can flip it
-  // whether or not the weapon is unlocked yet this sector; it just has
-  // nothing to do until then (applyWeaponAutoAttacks in engine.js gates on
-  // `ramming` being unlocked regardless of this switch's position). Scan
-  // mode is the one thing that does lock it — inspect-only, no changing
-  // your loadout while you're just looking around.
-  toggleWarpdriveEl.disabled = legendVisible;
-  toggleRamEl.disabled = legendVisible;
-  const unlocked = state.actions.includes("ramming");
   holdBtn.disabled = state.status !== "playing" || legendVisible;
-
-  // Read live off Engine.WEAPONS (rather than hardcoding text here) so the
-  // label/stats can never drift from what the engine actually uses, and so
-  // a future upgrade system that changes these numbers shows up here for
-  // free instead of needing its own display code.
-  const weapon = Engine.WEAPONS.ram;
-  ramLabelEl.textContent = weapon.label;
-  // Tap the badge to inspect it: expands from the compact abbreviation to
-  // the full Range/Damage/Pattern/Speed/Energy sentence, same "tap a thing
-  // to learn about it" pattern as inspecting anything in Scan mode.
-  // Stats are readable either way, locked or not — locked only means the
-  // weapon isn't firing yet, not that you can't go look at its numbers.
-  const lockedPrefix = unlocked ? "" : "offline · ";
-  weaponStatsEl.textContent = lockedPrefix + (weaponStatsExpanded ? describeWeapon(weapon) : describeWeaponCompact(weapon));
-  weaponStatsEl.classList.toggle("expanded", weaponStatsExpanded);
-
-  // Every purchased weapon (Lance Cannon, Repulsor, ...) is Outpost-
-  // purchase-only (see OUTPOST_OFFER_POOL), not sector-unlocked — hidden
-  // entirely until bought, same "simply hidden, no padlock" convention as
-  // the Tractor Beam before its claim.
-  for (const cfg of PURCHASABLE_WEAPON_UI) {
-    const owned = state.actions.includes(cfg.action);
-    cfg.toggleWrap.hidden = !owned;
-    cfg.stats.hidden = !owned;
-    if (owned) {
-      cfg.toggle.checked = state.systems[cfg.action];
-      cfg.toggle.disabled = legendVisible;
-      cfg.stats.textContent = cfg.expanded ? describeWeapon(cfg.weapon) : describeWeaponCompact(cfg.weapon);
-      cfg.stats.classList.toggle("expanded", cfg.expanded);
-    }
-  }
-
-  // "There should be rules about what you can equip" — only worth stating
-  // once there's an actual choice to make (2+ weapon systems unlocked);
-  // with just the Shockwave, there's nothing to trade off yet. Reads the
-  // ship's real slot capacity (upgradable via Hardpoint Expansion), not a
-  // constant.
-  const unlockedWeaponSystems = Engine.WEAPON_SYSTEM_KEYS.filter((k) => k === "ram" || state.actions.includes(k));
-  weaponSlotsLabelEl.hidden = unlockedWeaponSystems.length < 2;
-  if (!weaponSlotsLabelEl.hidden) {
-    weaponSlotsLabelEl.textContent = `Weapon slots: ${Engine.usedWeaponSlots(state)}/${state.weaponSlots}`;
-  }
 }
 
 // Shared by the systems-row stats line and the click-an-enemy-for-info panel
@@ -2000,31 +1917,43 @@ function updateShipOverlay() {
   statRow("Energy regen", text("+1 per turn"));
 
   shipHardpointsEl.innerHTML = "";
-  const WEAPON_INFO = { ram: Engine.WEAPONS.ram, lance: Engine.WEAPONS.lance, repulsor: Engine.WEAPONS.repulsor };
-  for (const key of Engine.WEAPON_SYSTEM_KEYS) {
-    const owned = key === "ram" || state.actions.includes(key);
-    if (!owned) continue;
-    const weapon = WEAPON_INFO[key];
+  // Builds one toggle row — the ONLY place system on/off switches live now
+  // ("you don't need the controls on/off anymore... it's in Ship"): the
+  // console keeps just the actions (Hold Position, Tractor Beam).
+  const systemRow = (key, label, statsText) => {
     const row = document.createElement("div");
     row.className = "ship-hardpoint";
     const head = document.createElement("label");
     head.className = "system-toggle ship-hardpoint-head";
     const toggle = document.createElement("input");
     toggle.type = "checkbox";
+    toggle.dataset.system = key; // stable hook for tests and future styling
     toggle.checked = state.systems[key];
     toggle.addEventListener("change", () => {
-      // The same free pre-turn switch as the console's — can throw on the
-      // weapon-slot cap; handleAction logs it and render() re-syncs the box.
+      // A free pre-turn switch — can throw on the weapon-slot cap;
+      // handleAction logs it and render() re-syncs the box.
       handleAction(() => Engine.setSystem(state, key, toggle.checked));
     });
     head.appendChild(toggle);
-    head.appendChild(document.createTextNode(` ${weapon.label}`));
+    head.appendChild(document.createTextNode(` ${label}`));
     row.appendChild(head);
     const statsLine = document.createElement("div");
     statsLine.className = "ship-hardpoint-stats";
-    statsLine.textContent = describeWeapon(weapon) + ` · ${weapon.slots} slot${weapon.slots === 1 ? "" : "s"}`;
+    statsLine.textContent = statsText;
     row.appendChild(statsLine);
     shipHardpointsEl.appendChild(row);
+  };
+  systemRow(
+    "warpdrive",
+    "Warpdrive",
+    "Movement. Toggle off to stay put and aim instead: tap an adjacent hex to face it (free), then Hold Position to fire."
+  );
+  const WEAPON_INFO = { ram: Engine.WEAPONS.ram, lance: Engine.WEAPONS.lance, repulsor: Engine.WEAPONS.repulsor };
+  for (const key of Engine.WEAPON_SYSTEM_KEYS) {
+    const owned = key === "ram" || state.actions.includes(key);
+    if (!owned) continue;
+    const weapon = WEAPON_INFO[key];
+    systemRow(key, weapon.label, describeWeapon(weapon) + ` · ${weapon.slots} slot${weapon.slots === 1 ? "" : "s"}`);
   }
   if (state.actions.includes("tractor")) {
     const row = document.createElement("div");
@@ -2221,39 +2150,10 @@ toggleLegalEl.addEventListener("change", () => {
   draw();
 });
 
-toggleWarpdriveEl.addEventListener("change", () => {
-  Engine.setSystem(state, "warpdrive", toggleWarpdriveEl.checked);
-  render();
-});
-
-toggleRamEl.addEventListener("change", () => {
-  // Can throw now (weapon-slot cap — see engine.js's setSystem); handleAction
-  // catches it, logs the message, and render() resets the checkbox back to
-  // the real state either way.
-  handleAction(() => Engine.setSystem(state, "ram", toggleRamEl.checked));
-});
-
-weaponStatsEl.addEventListener("click", () => {
-  weaponStatsExpanded = !weaponStatsExpanded;
-  updateSystems();
-});
-
 tractorStatsEl.addEventListener("click", () => {
   tractorStatsExpanded = !tractorStatsExpanded;
   updateHud();
 });
-
-for (const cfg of PURCHASABLE_WEAPON_UI) {
-  cfg.toggle.addEventListener("change", () => {
-    // Can throw (weapon-slot cap) — handleAction catches it, logs the
-    // message, and render() resets the checkbox to the real state either way.
-    handleAction(() => Engine.setSystem(state, cfg.action, cfg.toggle.checked));
-  });
-  cfg.stats.addEventListener("click", () => {
-    cfg.expanded = !cfg.expanded;
-    updateSystems();
-  });
-}
 
 holdBtn.addEventListener("click", () => {
   handleAction(() => Engine.applyHoldPosition(state));

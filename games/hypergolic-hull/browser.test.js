@@ -107,6 +107,16 @@ async function claimOutpostOffer(page, labelSubstring) {
   return getState(page);
 }
 
+// All system on/off switches live on the Ship screen now — open it, flip
+// the one system, close it again.
+async function setShipSystem(page, key, on) {
+  await page.click("#shipBtn");
+  const sel = `#shipHardpoints input[data-system="${key}"]`;
+  if (on) await page.check(sel);
+  else await page.uncheck(sel);
+  await page.click("#shipCloseBtn");
+}
+
 // Walks to the wormhole (wherever it is) and returns via it. The flagship
 // arrives standing directly ON it ("you start as if you're on top of that
 // wormhole, not next to it"), but the very first action taken since
@@ -168,16 +178,15 @@ async function freshPage(browser, url, errors) {
   assert.deepStrictEqual(s.actions, ["sublight", "ramming"], "Sector 1 unlocks Sublight + the Shockwave together");
   // Locked actions are hidden entirely now — no padlocked ghost buttons.
   assert.strictEqual(await page.locator('[data-mode="tractor"]').isVisible(), false, "tractor is hidden until unlocked");
-  // The Lance Cannon toggle is Outpost-purchase-only, hidden until bought
-  // — `.system-toggle` sets `display: flex` unconditionally, which was
-  // found to override the browser's default `[hidden]` behavior and show
-  // it from the very start of a fresh run before this was caught.
-  assert.strictEqual(await page.locator("#lanceToggleWrap").isVisible(), false, "Lance Cannon toggle is hidden until purchased");
-  assert.strictEqual(
-    await page.locator("#toggleRam").isDisabled(),
-    false,
-    "the Impulse Cannon toggle is never locked out"
-  );
+  // The console is actions-only — every system on/off switch lives on the
+  // Ship screen now ("you don't need the controls on/off anymore... it's
+  // in Ship"). An unowned weapon (the Lance Cannon here) simply has no
+  // hardpoint row there yet.
+  await page.click("#shipBtn");
+  assert.strictEqual(await page.locator('#shipHardpoints input[data-system="warpdrive"]').isVisible(), true, "the Ship screen carries the Warpdrive switch");
+  assert.strictEqual(await page.locator('#shipHardpoints input[data-system="ram"]').isVisible(), true, "and the Shockwave's");
+  assert.strictEqual(await page.locator('#shipHardpoints input[data-system="lance"]').count(), 0, "an unpurchased weapon has no hardpoint row yet");
+  await page.click("#shipCloseBtn");
   assert.strictEqual(
     await page.locator("#holdBtn").isVisible(),
     true,
@@ -241,30 +250,21 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), true, "the Ship button opens the full-screen view");
   assert.ok((await page.locator("#shipStats").textContent()).includes("Weapon slots"), "the Ship screen lists the slot capacity");
   const turnBeforeShipToggle = (await getState(page)).turnCount;
-  await page.uncheck('#shipHardpoints input[type="checkbox"]'); // only the Shockwave is owned in Sector 1
+  await page.uncheck('#shipHardpoints input[data-system="ram"]');
   s = await getState(page);
   assert.strictEqual(s.systems.ram, false, "the Ship screen's toggle drives the real system state");
   assert.strictEqual(s.turnCount, turnBeforeShipToggle, "loadout changes on the Ship screen never spend a turn");
-  assert.strictEqual(await page.locator("#toggleRam").isChecked(), false, "the console toggle mirrors it — one state, two views");
-  await page.check('#shipHardpoints input[type="checkbox"]');
+  assert.ok((await page.locator("#shipHardpoints").textContent()).includes("Range 1"), "hardpoint rows spell out the weapon's stats in words");
+  await page.check('#shipHardpoints input[data-system="ram"]');
   s = await getState(page);
   assert.strictEqual(s.systems.ram, true, "toggling back on works the same way");
   await page.click("#shipCloseBtn");
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Back to the fight closes the Ship screen");
 
-  // Tapping the weapon-stats badge expands it to the full stat sentence —
-  // same "tap a thing to inspect it" pattern as clicking an enemy.
-  const compactText = await page.locator("#weaponStats").textContent();
-  await page.click("#weaponStats");
-  const expandedText = await page.locator("#weaponStats").textContent();
-  assert.ok(expandedText.length > compactText.length, "tapping the weapon-stats badge expands it to the full sentence");
-  assert.ok(/Range 1/i.test(expandedText), "the expanded stats spell out Range");
-  await page.click("#weaponStats");
-  assert.strictEqual(await page.locator("#weaponStats").textContent(), compactText, "tapping it again collapses back to the compact badge");
-
-  // Toggling the Impulse Cannon off stops it auto-firing — walk right up next
-  // to the Interceptor with it disabled and confirm it survives.
-  await page.uncheck("#toggleRam");
+  // Toggling the Impulse Cannon off (via the Ship screen) stops it
+  // auto-firing — walk right up next to the Interceptor with it disabled
+  // and confirm it survives.
+  await setShipSystem(page, "ram", false);
   for (let i = 0; i < 20; i++) {
     const adjacent = await page.evaluate(() => {
       const E = window.HypergolicEngine;
@@ -287,7 +287,7 @@ async function freshPage(browser, url, errors) {
   // there (only that it's adjacent). With Warpdrive off, tapping an adjacent
   // hex re-aims the flagship toward it for free — no move, no turn spent —
   // so line up the shot that way before committing with Hold Position.
-  await page.uncheck("#toggleWarpdrive");
+  await setShipSystem(page, "warpdrive", false);
   const posBeforeAim = (await getState(page)).playerPos;
   const turnBeforeAim = (await getState(page)).turnCount;
   const enemyPos = (await getState(page)).enemies.find((e) => e.alive);
@@ -306,7 +306,7 @@ async function freshPage(browser, url, errors) {
   // Warpdrive off blocks movement — Hold Position is the only option (it's
   // always available, on top of that). Flip the Impulse Cannon back on and
   // hold position to fire it without moving.
-  await page.check("#toggleRam");
+  await setShipSystem(page, "ram", true);
   assert.strictEqual(await page.locator("#holdBtn").isVisible(), true, "Hold Position is available");
   const posBeforeHold = (await getState(page)).playerPos;
   await page.click("#holdBtn");
@@ -314,7 +314,7 @@ async function freshPage(browser, url, errors) {
   assert.deepStrictEqual(s.playerPos, posBeforeHold, "Hold Position never moves the flagship");
   assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "Hold Position lets the re-enabled Impulse Cannon fire in place");
   assert.strictEqual(s.exitUnlocked, true);
-  await page.check("#toggleWarpdrive");
+  await setShipSystem(page, "warpdrive", true);
 
   s = await walkToExit(page);
   assert.strictEqual(s.status, "won", "Sector 1 clears once the gate is reached");
@@ -410,7 +410,7 @@ async function freshPage(browser, url, errors) {
   // Interceptor before it can ever strike back, per the Sector 1 test above.)
 
   page = await freshPage(browser, url, errors);
-  await page.uncheck("#toggleRam");
+  await setShipSystem(page, "ram", false);
 
   s = await getState(page);
   for (let i = 0; i < 20 && s.status === "playing"; i++) {
@@ -530,27 +530,33 @@ async function freshPage(browser, url, errors) {
     { warpdrive: true, ram: true, lance: true, repulsor: false },
     "owning all 3 weapon systems starts with only the first 2 (Shockwave + Lance) active"
   );
-  assert.strictEqual(await page.locator("#weaponSlotsLabel").isVisible(), true, "the slot-count reminder shows once 2+ weapon systems are unlocked");
-  assert.strictEqual(await page.locator("#weaponSlotsLabel").textContent(), "Weapon slots: 2/2");
+  await page.click("#shipBtn");
+  assert.ok(
+    (await page.locator("#shipStats").textContent()).includes("2/2 in use"),
+    "the Ship screen shows both weapon slots occupied"
+  );
 
   // Trying to arm the 3rd (Repulsor) while Shockwave+Lance already fill
   // both slots must be rejected — the checkbox reverts, and the log
   // explains why.
-  await page.check("#toggleRepulsor").catch(() => {}); // Playwright's own "state didn't change" error is expected here — see the reset assertion below
+  await page.check('#shipHardpoints input[data-system="repulsor"]').catch(() => {}); // Playwright's own "state didn't change" error is expected here — see the reset assertion below
   s = await getState(page);
   assert.strictEqual(s.systems.repulsor, false, "the rejected toggle never took effect in state");
-  assert.strictEqual(await page.locator("#toggleRepulsor").isChecked(), false, "and the checkbox visually reverts to match");
+  assert.strictEqual(await page.locator('#shipHardpoints input[data-system="repulsor"]').isChecked(), false, "and the checkbox visually reverts to match");
   assert.ok(
     (await page.locator("#log").textContent()).includes("Weapon slots full"),
     "the rejection reason is logged"
   );
 
   // Freeing a slot lets the next toggle through.
-  await page.uncheck("#toggleLance");
-  await page.check("#toggleRepulsor");
+  await page.uncheck('#shipHardpoints input[data-system="lance"]');
+  await page.check('#shipHardpoints input[data-system="repulsor"]');
   s = await getState(page);
   assert.strictEqual(s.systems.repulsor, true, "with a slot free, Repulsor arms successfully");
-  assert.strictEqual(await page.locator("#weaponSlotsLabel").textContent(), "Weapon slots: 2/2", "Shockwave + Repulsor is the new 2/2");
+  assert.ok(
+    (await page.locator("#shipStats").textContent()).includes("2/2 in use"),
+    "Shockwave + Repulsor is the new 2/2"
+  );
   await page.close();
 
   await browser.close();

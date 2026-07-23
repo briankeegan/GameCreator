@@ -224,22 +224,12 @@ body {
   gap: 6px 8px;
   align-items: center;
 }
-.systems-grid {
-  grid-template-columns: 1fr 1fr;
-  font-size: 0.76rem;
-}
-/* 2 columns (button, its stats badge), one row per action — 3 equal
-   columns used to squeeze "Fighter Squadron" down to "FIGHTER SQU…"
-   (Clubhouse: restyling to match the toggle rows made that truncation
-   read as broken instead of just tight). Also gives every action a
-   stats badge slot to match Tractor Beam's — before this, tapping
-   Fighter Squadron/Random Blink to find out what they do was the only
-   way to learn it, with no no-commitment preview. */
+/* 2 columns, one row per action. The console is actions-only now
+   (Hold Position, Tractor Beam) — every system on/off switch moved to
+   the Ship screen. */
 .actions-grid {
   grid-template-columns: 1fr 1fr;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 2px solid #2a3652;
+  font-size: 0.76rem;
 }
 
 /* A compact badge sharing a grid cell with Hold Position, instead of a
@@ -267,18 +257,6 @@ body {
   text-overflow: clip;
 }
 
-/* "There should be rules about what you can equip" — a standing reminder
-   of the weapon-slot cap (see engine.js's setSystem/MAX_ACTIVE_WEAPON_SYSTEMS)
-   so it's discoverable up front, not just via a failed toggle attempt. */
-.weapon-slots-label {
-  grid-column: 1 / -1;
-  font-family: "SF Mono", "Menlo", "Consolas", monospace;
-  font-size: 0.64rem;
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
-  color: #7a8bab;
-}
-.weapon-slots-label[hidden] { display: none; }
 
 .system-toggle {
   display: flex;
