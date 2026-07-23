@@ -208,15 +208,14 @@ async function freshPage(browser, url, errors) {
   assert.ok(boardBox.height > boardBox.width * 0.95, "the canvas grows tall to fit the Hoplite-style board");
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "run overlay must not show on a fresh board");
 
-  // The legend defaults to closed (not force-shown every sector) and just
-  // remembers whatever Scan was last set to. Scan is a real inspect-only
-  // mode now, not just a legend toggle — movement and actions lock out
-  // while it's open; tapping anything on the board reads its info instead
-  // of acting on it.
-  assert.strictEqual(await page.locator("#legend").isVisible(), false, "the legend starts closed by default");
+  // Scan is a pure inspect mode — no icon-key overlay anymore ("all it
+  // should really be is when you're scanning, you just tap things"):
+  // the button lights up, the objective line explains, actions lock out,
+  // and tapping anything on the board identifies it.
   assert.strictEqual(await page.locator("#scanBtn").isVisible(), true, "the Scan toggle is always available");
   await page.click("#scanBtn");
-  assert.strictEqual(await page.locator("#legend").isVisible(), true, "Scan opens the legend");
+  assert.ok((await page.locator("#scanBtn").getAttribute("class")).includes("active"), "Scan lights up while active");
+  assert.ok((await page.locator("#objective").textContent()).includes("SCAN ACTIVE"), "the objective line says what Scan mode is");
   assert.strictEqual(await page.locator("#holdBtn").isDisabled(), true, "actions lock out while Scan mode is open");
 
   const posBeforeScanTap = (await getState(page)).playerPos;
@@ -243,7 +242,7 @@ async function freshPage(browser, url, errors) {
   assert.ok((await page.locator("#enemyInfo").textContent()).includes("WARP GATE"), "the Warp Gate is inspectable in Scan mode");
 
   await page.click("#scanBtn");
-  assert.strictEqual(await page.locator("#legend").isVisible(), false, "Scan closes it again");
+  assert.ok(!(await page.locator("#scanBtn").getAttribute("class")).includes("active"), "Scan dims when closed");
   assert.strictEqual(await page.locator("#enemyInfo").isVisible(), false, "closing Scan mode clears the inspection card too");
   assert.strictEqual(await page.locator("#holdBtn").isDisabled(), false, "actions are usable again once Scan mode closes");
 
@@ -267,12 +266,13 @@ async function freshPage(browser, url, errors) {
   await page.click("#shipCloseBtn");
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Back to the fight closes the Ship screen");
 
-  // ---- The Map: only what the ship actually knows -------------------------
+  // ---- The Map: an SVG starmap of only what the ship actually knows -------
   await page.click("#mapBtn");
   assert.strictEqual(await page.locator("#mapOverlay").isVisible(), true, "the Map button opens the starmap");
   const mapText = await page.locator("#mapChart").textContent();
-  assert.ok(mapText.includes("you are here"), "the map marks the current sector");
-  assert.ok(mapText.includes("Uncharted"), "the gate ahead shows as an uncharted contact, not a spoiler");
+  assert.ok(mapText.includes("YOU ARE HERE"), "the map marks the current sector");
+  assert.ok(mapText.includes("?"), "the gate ahead shows as an uncharted ? node, not a spoiler");
+  assert.strictEqual(await page.locator("#mapChart svg").count(), 1, "the map is a drawn chart, not a text list");
   await page.click("#mapCloseBtn");
   assert.strictEqual(await page.locator("#mapOverlay").isVisible(), false, "the map closes again");
 

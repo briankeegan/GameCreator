@@ -36,7 +36,7 @@
     // Sector 1 — Shockwave. One Interceptor between you and the gate.
     {
       id: 1,
-      name: "Shockwave",
+      name: "Outer Reach",
       board: { type: "rect", cols: 9, rows: 11 },
       playerStart: { q: 4, r: 8 },
       exit: { q: 8, r: -4 },
@@ -54,7 +54,7 @@
     // pickOutpostOfferIds), the one guaranteed place to get it.
     {
       id: 2,
-      name: "Tractor Beam",
+      name: "Salvage Field",
       board: { type: "rect", cols: 9, rows: 11 },
       playerStart: { q: 4, r: 8 },
       exit: { q: 8, r: -4 },
@@ -96,7 +96,7 @@
     // gone, same as most generated sectors past it.
     {
       id: 4,
-      name: "Full Fleet",
+      name: "The Gauntlet",
       board: { type: "rect", cols: 9, rows: 11 },
       playerStart: { q: 4, r: 8 },
       exit: { q: 8, r: -4 },

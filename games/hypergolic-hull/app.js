@@ -68,9 +68,6 @@ const mapOverlayEl = document.getElementById("mapOverlay");
 const mapChartEl = document.getElementById("mapChart");
 const mapCloseBtn = document.getElementById("mapCloseBtn");
 const targetLockBtn = document.getElementById("targetLockBtn");
-const legendEl = document.getElementById("legend");
-const toggleThreatEl = document.getElementById("toggleThreat");
-const toggleLegalEl = document.getElementById("toggleLegal");
 const holdBtn = document.getElementById("holdBtn");
 const tractorStatsEl = document.getElementById("tractorStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
@@ -129,12 +126,6 @@ let shipVisible = false;
 // The starmap — same deal.
 let mapVisible = false;
 
-// Each legend key can be independently muted while the legend is open. The
-// bold/colored board overlays they describe only ever show while the legend
-// itself is open — once it's tucked away, legal-move hexes fall back to a
-// plain, always-on whitish border (see draw()) instead of disappearing.
-let showThreatKey = true;
-let showLegalKey = true;
 
 // A not-yet-unlocked action button is simply hidden, then just appears the
 // sector it unlocks (see updateHud) — Clubhouse feedback: "what is tractor
@@ -1403,7 +1394,7 @@ function draw() {
     // like the legal-move outline below, it's only ever drawn while the
     // legend is open (and its own checkbox is checked). Safety-critical, so
     // it stays legible even over an otherwise-transparent floor tile.
-    if (threats.has(k) && legendVisible && showThreatKey) {
+    if (threats.has(k) && legendVisible) {
       fill = blend(fill, "#7a1f2b", 0.55);
       fillAlpha = Math.max(fillAlpha, 0.62);
     }
@@ -1431,7 +1422,7 @@ function draw() {
       stroke = "#c9d6e8";
       strokeWidth = 0.75;
     }
-    if (legendVisible && legal.has(k) && showLegalKey) {
+    if (legendVisible && legal.has(k)) {
       stroke = "#7fe3a8";
       strokeWidth = 3;
     }
@@ -1496,7 +1487,7 @@ function draw() {
     if (targetable.has(enemy.id)) {
       ctx.beginPath();
       ctx.arc(base.x, base.y, geom.sx * 0.47, 0, Math.PI * 2);
-      if (legendVisible && showLegalKey && legal.has(Engine.hexKey(enemy))) {
+      if (legendVisible && legal.has(Engine.hexKey(enemy))) {
         ctx.lineWidth = 2.5;
         ctx.strokeStyle = "#7fe3a8";
       } else {
@@ -1692,7 +1683,9 @@ function updateHud() {
   flashOnChange("energy", state.energy, energyWrapEl);
   flashOnChange("shield", state.shieldCharges, shieldWrapEl);
   flashOnChange("salvage", state.salvage, salvageWrapEl);
-  levelEl.textContent = `Sector ${state.levelId}: ${state.levelName} · Best ${bestDepth}`;
+  levelEl.textContent = state.levelName.includes("Depth")
+    ? `${state.levelName} · Best ${bestDepth}`
+    : `Sector ${state.levelId} — ${state.levelName} · Best ${bestDepth}`;
   logEl.textContent = state.log.slice(-3).join("  ·  ");
   salvageValueEl.textContent = state.salvage;
 
@@ -1703,8 +1696,9 @@ function updateHud() {
   // arming used to give no in-the-moment hint at all (Clubhouse: "what IS
   // Tractor Beam... weird that I'm able to click on it").
   const remaining = Engine.livingEnemies(state).length;
-  objectiveEl.textContent =
-    mode && MODES[mode]
+  objectiveEl.textContent = legendVisible
+    ? "SCAN ACTIVE — tap anything on the board to identify it"
+    : mode && MODES[mode]
       ? MODES[mode].hint
       : remaining > 0
         ? `Fly to the Warp Gate to warp out — or destroy ${remaining} enemy ${remaining === 1 ? "ship" : "ships"} first for salvage`
@@ -1761,8 +1755,10 @@ function updateHud() {
   }
 }
 
+// Scan mode has no icon-key overlay anymore ("all it should really be is
+// when you're scanning, you just tap things") — the button lights up, the
+// objective line says what to do, and tapping anything identifies it.
 function updateLegend() {
-  legendEl.classList.toggle("hidden", !legendVisible);
   scanBtn.classList.toggle("active", legendVisible);
 }
 
@@ -1795,10 +1791,19 @@ function describeDamage(weapon) {
   return weapon.damage > 0 ? `Damage ${weapon.damage}` : "Push";
 }
 
+// Initiative tiers, spelled out — "make sure it's very obvious":
+// 3 fires first, 2 is standard, 1 fires last.
+function speedWord(weapon) {
+  if (weapon.speed >= 3) return "FAST — fires first";
+  if (weapon.speed === 2) return "STANDARD";
+  return "HEAVY — fires last";
+}
+
 function describeWeapon(weapon) {
+  const speed = weapon.speed ? ` · Speed: ${speedWord(weapon)}` : "";
   return (
     `${weapon.label} — Range ${weapon.range} · ${describeDamage(weapon)} · ` +
-    `Pattern: ${describePattern(weapon)} · Energy ${weapon.energyCost}/shot`
+    `Pattern: ${describePattern(weapon)} · Energy ${weapon.energyCost}/shot${speed}`
   );
 }
 
@@ -1808,7 +1813,8 @@ function describeWeapon(weapon) {
 function describeWeaponCompact(weapon) {
   const pattern = weapon.pattern.length >= 6 ? "ALL" : "FWD";
   const dmg = weapon.damage > 0 ? `D${weapon.damage}` : "PUSH";
-  return `R${weapon.range} · ${dmg} · E${weapon.energyCost} · ${pattern}`;
+  const spd = weapon.speed ? ` · SPD${weapon.speed}` : "";
+  return `R${weapon.range} · ${dmg} · E${weapon.energyCost}${spd} · ${pattern}`;
 }
 
 
@@ -1859,15 +1865,25 @@ function updateScanInfo() {
     intent.className = "enemy-info-stats enemy-info-intent";
     const charged = enemy.energy >= def.weapon.energyCost;
     const inRange = Engine.weaponHexes(enemy, 0, def.weapon).some((h) => Engine.posEq(h, state.playerPos));
+    // Initiative, stated plainly: does this contact shoot before or after
+    // your armed weapons? (Ties go to you — see engine.js resolveCombat.)
+    const activeSpeeds = Engine.WEAPON_SYSTEM_KEYS.filter(
+      (k) => (k === "ram" || state.actions.includes(k)) && state.systems[k]
+    ).map((k) => Engine.WEAPONS[k].speed);
+    const fastest = activeSpeeds.length ? Math.max(...activeSpeeds) : 0;
+    const order =
+      fastest >= def.weapon.speed
+        ? " Your weapons fire FIRST."
+        : " It fires BEFORE your weapons.";
     let intentText;
     if (!charged) {
       intentText = `INTENT: CHARGING ${enemy.energy}/${def.weapon.energyCost} — cannot fire yet`;
     } else if (inRange) {
-      intentText = "INTENT: YOU ARE IN ITS RANGE — fires this turn if you stay put";
+      intentText = "INTENT: YOU ARE IN ITS RANGE — fires this turn if you stay put." + order;
     } else if (def.movesTowardPlayer) {
-      intentText = "INTENT: PURSUING — closes 1 hex/turn, fires the turn you're in range";
+      intentText = "INTENT: PURSUING — closes 1 hex/turn, fires the turn you're in range." + order;
     } else {
-      intentText = "INTENT: HOLDING — never moves, fires the turn you enter its reach";
+      intentText = "INTENT: HOLDING — never moves, fires the turn you enter its reach." + order;
     }
     intent.textContent = intentText;
     enemyInfoEl.appendChild(intent);
@@ -2026,40 +2042,129 @@ function updateShipOverlay() {
   shipHardpointsEl.appendChild(note);
 }
 
-// The starmap: only what the ship actually knows — every sector charted
-// this run (sectorHistory + where you are now), then the gate(s) ahead as
-// uncharted contacts, tinted like their in-world Warp Gates but never
-// explained ("maybe color coordinated, but maybe not tell people").
+// The starmap: an actual chart, not a list — your route through the gates
+// drawn as a constellation, built ONLY from what the ship knows. Reads
+// bottom-up like the board (you fly "up" through sectors). The line bends
+// by which gate you took (cool-tinted gate = left, warm = right), the
+// gate you DIDN'T take at each fork shows as a short dashed stub in its
+// tint (the road not taken), and the gates ahead branch to hollow "?"
+// stars. Gate tints are never explained in words — same rule as the
+// board ("maybe color coordinated, but maybe not tell people").
 function updateMapOverlay() {
   mapOverlayEl.hidden = !mapVisible;
   mapBtn.classList.toggle("active", mapVisible);
   if (!mapVisible) return;
-  mapChartEl.innerHTML = "";
-  const node = (label, detail, cls, tint) => {
-    const row = document.createElement("div");
-    row.className = "map-node" + (cls ? ` ${cls}` : "");
-    if (tint) row.style.borderLeftColor = `rgb(${tint[0]}, ${tint[1]}, ${tint[2]})`;
-    const name = document.createElement("span");
-    name.className = "map-node-name";
-    name.textContent = label;
-    row.appendChild(name);
-    if (detail) {
-      const d = document.createElement("span");
-      d.className = "map-node-detail";
-      d.textContent = detail;
-      row.appendChild(d);
-    }
-    mapChartEl.appendChild(row);
+
+  const chain = [
+    ...sectorHistory.map((entry) => ({
+      name: entry.state.levelName,
+      levelId: entry.state.levelId,
+      tookVariant: entry.state.usedExitVariant || null, // gate used to LEAVE this sector
+      exits: entry.state.exits || [],
+      current: false,
+    })),
+    { name: state.levelName, levelId: state.levelId, tookVariant: null, exits: state.exits || [], current: true },
+  ];
+
+  const W = 340;
+  const STEP = 62;
+  const BOTTOM_PAD = 34;
+  const TOP_PAD = 70;
+  const H = BOTTOM_PAD + TOP_PAD + STEP * Math.max(1, chain.length - 1) + (state.status === "playing" ? STEP : 0);
+  const tintOf = (variantId) => {
+    const t = variantId && BRANCH_TINTS[variantId];
+    return t ? `rgb(${t[0]}, ${t[1]}, ${t[2]})` : "#6ee7ff";
   };
-  for (const entry of sectorHistory) {
-    node(`Sector ${entry.state.levelId} — ${entry.state.levelName}`, "charted", "visited");
+  // x drifts by the gate taken INTO each sector: quiet (cool) bends left,
+  // aggressive (warm) bends right, campaign/single-gate stays the course.
+  const xs = [];
+  let x = W / 2;
+  for (let i = 0; i < chain.length; i++) {
+    if (i > 0) {
+      const via = chain[i - 1].tookVariant;
+      if (via === "quiet") x -= 46;
+      else if (via === "aggressive") x += 46;
+      x = Math.max(48, Math.min(W - 48, x));
+    }
+    xs.push(x);
   }
-  node(`Sector ${state.levelId} — ${state.levelName}`, "you are here", "current");
-  if (state.status === "playing") {
-    for (const ex of state.exits) {
-      node("Uncharted sector", "warp gate ahead", "ahead", ex.variantId ? BRANCH_TINTS[ex.variantId] : null);
+  const yOf = (i) => H - BOTTOM_PAD - i * STEP;
+
+  const svg = [];
+  svg.push(`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">`);
+  // Background starfield — deterministic off the run's shape so the map
+  // doesn't twinkle differently every render.
+  let seed = 0;
+  for (const n of chain) seed = (seed * 31 + n.levelId) >>> 0;
+  const rng = seededRandom(seed + 7);
+  for (let i = 0; i < 40; i++) {
+    const sx = rng() * W;
+    const sy = rng() * H;
+    const r = 0.5 + rng() * 1.1;
+    svg.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${r.toFixed(1)}" fill="#2a3652"/>`);
+  }
+  // Route edges (solid), drawn under the nodes.
+  for (let i = 1; i < chain.length; i++) {
+    svg.push(
+      `<line x1="${xs[i - 1]}" y1="${yOf(i - 1)}" x2="${xs[i]}" y2="${yOf(i)}" stroke="${tintOf(chain[i - 1].tookVariant)}" stroke-width="2" opacity="0.75"/>`
+    );
+  }
+  // Roads not taken: at each PAST fork, a short dashed stub for the gate
+  // you skipped, in its tint.
+  for (let i = 0; i < chain.length - 1; i++) {
+    const n = chain[i];
+    if (!n.exits || n.exits.length < 2 || !n.tookVariant) continue;
+    for (const ex of n.exits) {
+      if (ex.variantId === n.tookVariant) continue;
+      const dir = ex.variantId === "quiet" ? -1 : 1;
+      svg.push(
+        `<line x1="${xs[i]}" y1="${yOf(i)}" x2="${xs[i] + dir * 34}" y2="${yOf(i) - 26}" stroke="${tintOf(ex.variantId)}" stroke-width="1.5" stroke-dasharray="3 4" opacity="0.5"/>` +
+          `<circle cx="${xs[i] + dir * 34}" cy="${yOf(i) - 26}" r="3" fill="none" stroke="${tintOf(ex.variantId)}" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>`
+      );
     }
   }
+  // Gates ahead: dashed branches up to hollow "?" stars.
+  const cur = chain.length - 1;
+  if (state.status === "playing") {
+    const ahead = chain[cur].exits || [];
+    ahead.forEach((ex, j) => {
+      const dir = ahead.length === 1 ? 0 : ex.variantId === "quiet" ? -1 : ex.variantId === "aggressive" ? 1 : j === 0 ? 1 : -1;
+      const ax = Math.max(40, Math.min(W - 40, xs[cur] + dir * 78));
+      const ay = yOf(cur) - STEP;
+      svg.push(
+        `<line x1="${xs[cur]}" y1="${yOf(cur)}" x2="${ax}" y2="${ay}" stroke="${tintOf(ex.variantId)}" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.8"/>` +
+          `<circle cx="${ax}" cy="${ay}" r="9" fill="none" stroke="${tintOf(ex.variantId)}" stroke-width="1.5" stroke-dasharray="3 3"/>` +
+          `<text x="${ax}" y="${ay + 3.5}" text-anchor="middle" fill="${tintOf(ex.variantId)}" font-size="10" font-family="monospace">?</text>`
+      );
+    });
+  }
+  // Visited + current star nodes, with labels.
+  for (let i = 0; i < chain.length; i++) {
+    const n = chain[i];
+    const cx = xs[i];
+    const cy = yOf(i);
+    if (n.current) {
+      svg.push(
+        `<circle cx="${cx}" cy="${cy}" r="12" fill="none" stroke="#7fe3a8" stroke-width="1" opacity="0.5" class="map-pulse"/>` +
+          `<circle cx="${cx}" cy="${cy}" r="6" fill="#7fe3a8"/>`
+      );
+    } else {
+      svg.push(`<circle cx="${cx}" cy="${cy}" r="4.5" fill="#9fb0c9"/>`);
+    }
+    const labelSide = cx > W / 2 ? -1 : 1;
+    const tx = cx + labelSide * 16;
+    const anchor = labelSide === 1 ? "start" : "end";
+    svg.push(
+      `<text x="${tx}" y="${cy + 3.5}" text-anchor="${anchor}" fill="${n.current ? "#7fe3a8" : "#7a8bab"}" font-size="10" font-family="monospace">${n.name.toUpperCase()}</text>`
+    );
+    if (n.current) {
+      svg.push(
+        `<text x="${tx}" y="${cy + 15}" text-anchor="${anchor}" fill="#7fe3a8" font-size="8" font-family="monospace" opacity="0.8">YOU ARE HERE</text>`
+      );
+    }
+  }
+  svg.push("</svg>");
+  mapChartEl.innerHTML = svg.join("");
 }
 
 function render() {
@@ -2246,16 +2351,6 @@ targetLockBtn.addEventListener("click", () => {
       : "Target Lock engaged — tap an adjacent hex to aim, then Hold Position to fire."
   );
   render();
-});
-
-toggleThreatEl.addEventListener("change", () => {
-  showThreatKey = toggleThreatEl.checked;
-  draw();
-});
-
-toggleLegalEl.addEventListener("change", () => {
-  showLegalKey = toggleLegalEl.checked;
-  draw();
 });
 
 tractorStatsEl.addEventListener("click", () => {

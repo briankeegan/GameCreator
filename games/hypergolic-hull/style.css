@@ -260,14 +260,14 @@ body {
    stat sentence (see .expanded), same "tap a thing to inspect it" pattern
    as inspecting anything in Scan mode. */
 .weapon-stats {
+  grid-column: 1 / -1; /* its own full-width row — no more mid-word ellipsis */
   padding: 3px 6px;
   font-family: "SF Mono", "Menlo", "Consolas", monospace;
   font-size: 0.64rem;
   letter-spacing: 0.01em;
   text-transform: uppercase;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: break-word;
   color: #7fe3a8;
   background: #0b0f18;
   border: 2px solid #1f2a3d;
@@ -564,6 +564,17 @@ body {
 .map-node.ahead { border-style: dashed; }
 .map-node.ahead .map-node-name { color: #7a8bab; font-style: italic; }
 
+/* The current node's ring on the starmap breathes. */
+.map-pulse {
+  animation: map-pulse 1.8s ease-in-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+@keyframes map-pulse {
+  0%, 100% { opacity: 0.25; transform: scale(0.85); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}
+
 /* The INTENT line on a scanned contact's card — set apart from the plain
    weapon stats so the "what happens next" answer jumps out. */
 .enemy-info-intent {
@@ -600,43 +611,6 @@ body {
   white-space: nowrap;
 }
 
-/* A floating HUD panel, not part of the page's flow — opening/closing it
-   must never resize (and so never scroll) the cockpit around it. Anchored
-   well clear of the fixed Scan button below it, with its own scrollbar if
-   its content ever runs longer than the room available. */
-.legend {
-  position: fixed;
-  left: 12px;
-  right: 12px;
-  /* Clears the panel's modes row + log strip so the Scan button stays
-     tappable to close the mode — it may overlap the gauges/actions rows
-     above them, which are disabled during Scan anyway. */
-  bottom: calc(130px + var(--banner-space));
-  z-index: 42;
-  max-width: 520px;
-  max-height: min(52vh, 52dvh);
-  margin: 0 auto;
-  overflow-y: auto;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-content: flex-start;
-  gap: 6px 14px;
-  padding: 10px 12px 10px 16px;
-  background: #141b2b;
-  border: 3px solid #2a3652;
-  border-left: 10px solid #5bb8f2;
-  border-radius: 0;
-  font-size: 0.78rem;
-  color: #9fb0c9;
-  text-align: left;
-  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.4);
-}
-.legend.hidden { display: none; }
-
-/* Tap anything on the board in Scan mode to inspect it — a small floating
-   card anchored to the top so it never competes with the legend or Scan
-   button at the bottom. */
 /* A "target scan" readout — same console-panel language as .systems, but
    tinted red/hostile by default so an inspected enemy reads as distinct
    from the friendlier consoles. Non-enemy scans (Warp Gate, Outpost,
@@ -700,6 +674,9 @@ body {
   border: 2px solid #3a2028;
   border-radius: 0;
   padding: 3px 8px;
+  /* Never clip the readout — wrap as many lines as the analysis needs. */
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 /* Neutral/informational tint (blue, matching the Scan button) for
@@ -719,25 +696,6 @@ body {
   letter-spacing: 0.01em;
 }
 
-.legend-toggle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-}
-.legend-toggle input {
-  cursor: pointer;
-}
-.legend .swatch {
-  display: inline-block;
-  width: 0.9em;
-  height: 0.9em;
-  border-radius: 3px;
-  vertical-align: -0.1em;
-  margin-right: 2px;
-}
-.legend .swatch-threat { background: #7a1f2b; }
-.legend .swatch-legal { background: transparent; border: 2px solid #7fe3a8; }
 
 /* Small image-ref swatches standing in for emoji everywhere in the UI chrome
    (legend, HUD, systems toggles) — each echoes the real in-game art's shape

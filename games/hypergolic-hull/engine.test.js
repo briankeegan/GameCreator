@@ -1127,6 +1127,52 @@ const chargedRailgunState = Engine.createGameState(railgunEnergyLevel);
 chargedRailgunState.enemies[0].energy = 3;
 assert.ok(Engine.computeThreatHexes(chargedRailgunState).size > 0, "a fully-charged Railgun's line is a live threat");
 
+// ---- Initiative: the `speed` stat is real — attacks resolve fastest ------
+// first, ties to the player. The Shockwave (speed 3) still pre-empts an
+// adjacent Interceptor's cannon (speed 2) — the whole golden path above
+// depends on that. The Lance Cannon (speed 1) is the flip side: it kills
+// its target AFTER the target's speed-2 shot got off. Heavy weapons hit
+// hard but don't protect you.
+assert.strictEqual(Engine.WEAPONS.ram.speed, 3, "Shockwave is FAST — point defense");
+assert.strictEqual(Engine.WEAPONS.interceptorCannon.speed, 2, "enemy cannons are STANDARD");
+assert.strictEqual(Engine.WEAPONS.lance.speed, 1, "the Lance Cannon is HEAVY — fires last");
+assert.strictEqual(Engine.WEAPONS.railgunBeam.speed, 1, "the Railgun is HEAVY too");
+
+const initiativeLevel = {
+  id: 986,
+  name: "initiative fixture",
+  board: { type: "rect", cols: 5, rows: 8 },
+  playerStart: { q: 2, r: 5 },
+  exit: { q: 4, r: -2 },
+  outpost: null,
+  enemies: [{ type: "interceptor", q: 2, r: 3 }],
+  hazards: [],
+  exitRule: "all-enemies-dead",
+  actions: ["sublight"], // no Shockwave — Lance only, via extraActions below
+};
+// Lance-only loadout, adjacent Interceptor dead ahead: the Lance kills it,
+// but the Interceptor's faster cannon fires first — you still take the hit.
+const lanceInitState = Engine.createGameState(initiativeLevel, { extraActions: ["lance"] });
+lanceInitState.enemies[0].q = 2;
+lanceInitState.enemies[0].r = 4; // adjacent, directly up
+Engine.setFacing(lanceInitState, 2);
+Engine.applyHoldPosition(lanceInitState);
+assert.strictEqual(lanceInitState.enemies[0].alive, false, "the Lance Cannon still kills its target");
+assert.strictEqual(
+  lanceInitState.hull,
+  2,
+  "but the Interceptor's speed-2 cannon fired BEFORE the speed-1 Lance — a heavy weapon doesn't protect you"
+);
+
+// Same situation with the Shockwave (speed 3): the kill lands before the
+// cannon's slot ever comes up. No damage.
+const ramInitState = Engine.createGameState({ ...initiativeLevel, id: 985, actions: ["sublight", "ramming"] });
+ramInitState.enemies[0].q = 2;
+ramInitState.enemies[0].r = 4;
+Engine.applyHoldPosition(ramInitState);
+assert.strictEqual(ramInitState.enemies[0].alive, false, "the Shockwave kills it too");
+assert.strictEqual(ramInitState.hull, 3, "and being FAST, it pre-empts the cannon entirely — no damage");
+
 // A cost-1 enemy is unchanged by the energy system: it fires every turn.
 const chaserEnergyLevel = {
   id: 987,

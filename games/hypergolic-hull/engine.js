@@ -229,8 +229,14 @@
   //
   // `slots` is how many weapon-slot points the system occupies while
   // toggled on — enforced against state.weaponSlots (see setSystem).
-  // A former `speed` stat was displayed here for a while but read by zero
-  // combat code — deleted rather than shipped as fake depth.
+  //
+  // `speed` is INITIATIVE, and it's real: when a turn resolves, every
+  // attack on the board — the flagship's and the enemies' — fires in
+  // descending speed order, ties going to the player (see resolveCombat).
+  // 3 = fast (point defense: pre-empts a standard attacker), 2 = standard,
+  // 1 = heavy (hits hard, but the target shoots first). A dead or
+  // pushed-away attacker never gets its slower shot off — that's the
+  // whole point.
   const ALL_DIRECTIONS_PATTERN = [0, 1, 2, 3, 4, 5];
   const WEAPONS = {
     // The free auto-weapon now fires in ALL six directions (an encircling
@@ -239,11 +245,11 @@
     // Costs 2 against +1/turn regen — every firing turn nets -1, so even
     // the free starting weapon visibly draws down the reactor and combat
     // has a fuel gauge.
-    ram: { id: "ram", label: "Shockwave", range: 1, damage: 1, targets: "all", energyCost: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
-    interceptorCannon: { id: "interceptorCannon", label: "Interceptor Cannon", range: 1, damage: 1, targets: "all", energyCost: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    ram: { id: "ram", label: "Shockwave", range: 1, damage: 1, targets: "all", energyCost: 2, speed: 3, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    interceptorCannon: { id: "interceptorCannon", label: "Interceptor Cannon", range: 1, damage: 1, targets: "all", energyCost: 1, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // A Sentry Turret's beam reaches TWO hexes in every direction — it never
     // moves, but it zones off a wide ring you have to route around or kill.
-    sentryBeam: { id: "sentryBeam", label: "Sentry Beam", range: 2, damage: 1, targets: "all", energyCost: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    sentryBeam: { id: "sentryBeam", label: "Sentry Beam", range: 2, damage: 1, targets: "all", energyCost: 1, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // A trade, not a strict upgrade over the Shockwave's omnidirectional
     // safety: hits harder and at range, but only dead ahead — you have to
     // manage `facing` to line it up (toggle Warpdrive off, tap an adjacent
@@ -251,14 +257,14 @@
     // exactly this). Purchased at an Outpost (see OUTPOST_OFFER_POOL), not
     // unlocked for free by reaching a sector. Costs 3 — the hardest
     // hitter is also the thirstiest.
-    lance: { id: "lance", label: "Lance Cannon", range: 3, damage: 2, targets: "all", energyCost: 3, pattern: [0], slots: 1 },
+    lance: { id: "lance", label: "Lance Cannon", range: 3, damage: 2, targets: "all", energyCost: 3, speed: 1, pattern: [0], slots: 1 },
     // Double-edged on purpose (Clubhouse: "make that bad or good depending
     // [how it's used]"): weaker than the Shockwave hit-for-hit, but every
     // surviving target gets shoved a hex directly away from the flagship
     // (see pushEnemyInDirection) — can save you a follow-up hit by knocking
     // a threat out of adjacency, or shove a low-HP target out of the very
     // range you needed to finish it off. Also purchased at an Outpost.
-    repulsor: { id: "repulsor", label: "Repulsor", range: 1, damage: 1, targets: "all", energyCost: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    repulsor: { id: "repulsor", label: "Repulsor", range: 1, damage: 1, targets: "all", energyCost: 2, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // Not an auto-fire weapon (see AUTO_FIRE_WEAPONS below) — Tractor Beam
     // is player-armed-and-aimed (applyTractor), adjacent range in any of
     // the 6 directions. Modeled here anyway so its stats badge (app.js)
@@ -277,7 +283,7 @@
     // entry in ENEMY_TYPES), instead of firing board-spanning shots every
     // single turn. Still no line-of-sight blocking by intervening units —
     // left for a later pass if it needs more texture.
-    railgunBeam: { id: "railgunBeam", label: "Railgun", range: 20, damage: 1, targets: "all", energyCost: 3, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    railgunBeam: { id: "railgunBeam", label: "Railgun", range: 20, damage: 1, targets: "all", energyCost: 3, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
   };
 
   // Each enemy type is its own small data block: how tough it is (hp), what
@@ -741,22 +747,89 @@
     }
   }
 
-  function enemyPhase(state) {
-    const intents = livingEnemies(state).map((enemy) => decideIntent(state, enemy));
-    let totalDamage = 0;
-    for (const intent of intents) {
-      const enemy = state.enemies.find((e) => e.id === intent.enemyId);
-      if (!enemy || !enemy.alive) continue;
-      if (intent.type === "attack") {
-        const weapon = ENEMY_TYPES[enemy.type].weapon;
-        enemy.energy -= weapon.energyCost; // same rule as the flagship: every shot is paid for
-        totalDamage += weapon.damage;
-        state.events.push({ type: "attack", enemyId: enemy.id, q: enemy.q, r: enemy.r });
-      } else if (intent.type === "move") {
-        state.events.push({ type: "enemyMove", enemyId: enemy.id, from: { q: enemy.q, r: enemy.r }, to: intent.to });
-        enemy.q = intent.to.q;
-        enemy.r = intent.to.r;
+  // Fires one player weapon at whatever it can reach RIGHT NOW — called at
+  // its initiative slot inside resolveCombat, so targets are computed at
+  // fire time (a faster weapon's kill or push this same turn genuinely
+  // removes them from a slower weapon's list).
+  function firePlayerWeapon(state, weapon, onHit) {
+    const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon).map(hexKey));
+    const targets = livingEnemies(state).filter((e) => hexKeys.has(hexKey(e)));
+    if (targets.length === 0) return; // nothing in range — no shot, no energy spent
+    // Every shot is paid for. A weapon that would have fired but can't
+    // afford its cost holds fire — logged so the silence is explained.
+    if (state.energy < weapon.energyCost) {
+      pushLog(state, `${weapon.label} holds fire — not enough Energy (${state.energy}/${weapon.energyCost}).`);
+      return;
+    }
+    state.energy -= weapon.energyCost;
+    state.events.push({ type: "energySpend", amount: weapon.energyCost, weapon: weapon.label });
+    for (const victim of targets) {
+      if (!victim.alive) continue; // an earlier target's push/collision in this same volley already took it out
+      victim.hp -= weapon.damage;
+      if (victim.hp <= 0) {
+        victim.alive = false;
+        state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "weapon" });
+        pushLog(state, `${weapon.label} destroyed ${victim.type}.`);
+        awardSalvage(state, victim.type);
+      } else {
+        state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "weapon" });
+        pushLog(state, `${weapon.label} hit ${victim.type} (${victim.hp}/${victim.maxHp} HP left).`);
+        if (onHit) onHit(state, victim);
       }
+    }
+  }
+
+  // The whole turn's combat, resolved in INITIATIVE order: every attack —
+  // the flagship's armed weapons and every enemy's shot — sorted by
+  // descending weapon speed, ties going to the player. A speed-3 Shockwave
+  // still pre-empts a speed-2 Interceptor at point-blank (kill it before
+  // it fires); a speed-1 Lance Cannon kills its target AFTER that target's
+  // speed-2 cannon already got its shot off — heavy weapons hit hard but
+  // don't protect you. Enemies that chose to move (not attack) step after
+  // the shooting stops; then damage, turn count, and reactor regen apply.
+  function resolveCombat(state, autoFire) {
+    const actors = [];
+    if (autoFire) {
+      for (const { action, systemKey, weapon, onHit } of AUTO_FIRE_WEAPONS) {
+        if (!state.actions.includes(action) || !state.systems[systemKey]) continue;
+        actors.push({ side: "player", speed: weapon.speed, weapon, onHit });
+      }
+    }
+    const intents = livingEnemies(state).map((enemy) => ({ enemy, intent: decideIntent(state, enemy) }));
+    for (const { enemy, intent } of intents) {
+      if (intent.type === "attack") {
+        actors.push({ side: "enemy", speed: ENEMY_TYPES[enemy.type].weapon.speed, enemy });
+      }
+    }
+    actors.sort((a, b) => {
+      if (b.speed !== a.speed) return b.speed - a.speed;
+      if (a.side === b.side) return 0;
+      return a.side === "player" ? -1 : 1; // ties go to the player
+    });
+
+    let totalDamage = 0;
+    for (const actor of actors) {
+      if (actor.side === "player") {
+        firePlayerWeapon(state, actor.weapon, actor.onHit);
+        continue;
+      }
+      const enemy = actor.enemy;
+      if (!enemy.alive) continue; // a faster attack already took it out — its shot dies with it
+      const weapon = ENEMY_TYPES[enemy.type].weapon;
+      // Re-checked at its slot: a faster Repulsor push may have shoved it
+      // out of its own firing range this very turn.
+      if (!weaponHexes(enemy, 0, weapon).some((h) => posEq(h, state.playerPos))) continue;
+      if (enemy.energy < weapon.energyCost) continue;
+      enemy.energy -= weapon.energyCost; // same rule as the flagship: every shot is paid for
+      totalDamage += weapon.damage;
+      state.events.push({ type: "attack", enemyId: enemy.id, q: enemy.q, r: enemy.r });
+    }
+
+    for (const { enemy, intent } of intents) {
+      if (intent.type !== "move" || !enemy.alive) continue;
+      state.events.push({ type: "enemyMove", enemyId: enemy.id, from: { q: enemy.q, r: enemy.r }, to: intent.to });
+      enemy.q = intent.to.q;
+      enemy.r = intent.to.r;
     }
     if (totalDamage > 0 && state.shieldCharges > 0) {
       state.shieldCharges -= 1;
@@ -785,14 +858,17 @@
 
   // ---- turn resolution --------------------------------------------------
   //
-  // Strict order (§7 of the design doc): player action resolves fully
-  // (including instant kills) BEFORE enemy AI decides against the new
-  // state; enemies then move/attack; only then is damage/death/exit
-  // resolved. All player actions funnel through here after mutating state.
-  function endPlayerAction(state) {
+  // The player's movement/positioning resolves first, then ALL combat —
+  // both sides' weapons — fires in initiative order inside resolveCombat
+  // (see the `speed` stat), then movers step, then damage/death/exit. All
+  // player actions funnel through here after mutating state. `opts.autoFire:
+  // false` (the Tractor Beam) spends the turn on the aimed action itself —
+  // the flagship's auto-fire weapons stay quiet that turn, as they always
+  // have on Tractor turns.
+  function endPlayerAction(state, opts) {
     checkExitUnlock(state);
     if (state.status !== "playing") return;
-    enemyPhase(state);
+    resolveCombat(state, !opts || opts.autoFire !== false);
     if (state.status !== "playing") return;
     checkExitUnlock(state);
     const usedExit = state.exits.find((e) => posEq(state.playerPos, e));
@@ -879,55 +955,6 @@
     },
   ];
 
-  // Fires every currently-enabled, unlocked weapon against any living enemy
-  // in its range, in front of the enemy phase — same timing Ramming Speed
-  // always resolved on (instant, before enemies get to react). Called after
-  // any move (or Hold Position), never armed/aimed separately. What it can
-  // actually hit is purely a function of the weapon's own pattern and the
-  // flagship's current facing (weaponHexes) — a forward-only cannon (the
-  // Lance Cannon) only ever threatens the hex directly ahead, so sidestepping
-  // past an enemy without ending up with it dead ahead just doesn't line up
-  // a shot, no separate "did you approach it" check needed. Facing carries
-  // over from the last move for Hold Position, so holding still only fires
-  // on whatever's ahead of wherever you were already facing.
-  function applyWeaponAutoAttacks(state) {
-    for (const { action, systemKey, weapon, onHit } of AUTO_FIRE_WEAPONS) {
-      if (!state.actions.includes(action) || !state.systems[systemKey]) continue;
-      const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon).map(hexKey));
-      // Snapshot targets before firing — an onHit push can move a later
-      // target's hex out from under a hexKeys check made after the fact,
-      // and definitely shouldn't let one weapon's push feed another
-      // target into (or out of) this same volley's hit list.
-      const targets = livingEnemies(state).filter((e) => hexKeys.has(hexKey(e)));
-      if (targets.length === 0) continue; // nothing in range — no shot, no energy spent
-      // Every shot is paid for. A weapon that would have fired but can't
-      // afford its cost holds fire — logged so the silence is explained,
-      // but only when it actually had a target (no spam on empty turns).
-      // Weapons fire in AUTO_FIRE_WEAPONS order, so with a low reactor the
-      // Shockwave gets first claim on what's left.
-      if (state.energy < weapon.energyCost) {
-        pushLog(state, `${weapon.label} holds fire — not enough Energy (${state.energy}/${weapon.energyCost}).`);
-        continue;
-      }
-      state.energy -= weapon.energyCost;
-      state.events.push({ type: "energySpend", amount: weapon.energyCost, weapon: weapon.label });
-      for (const victim of targets) {
-        if (!victim.alive) continue; // an earlier target's push/collision in this same volley already took it out
-        victim.hp -= weapon.damage;
-        if (victim.hp <= 0) {
-          victim.alive = false;
-          state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "weapon" });
-          pushLog(state, `${weapon.label} destroyed ${victim.type}.`);
-          awardSalvage(state, victim.type);
-        } else {
-          state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "weapon" });
-          pushLog(state, `${weapon.label} hit ${victim.type} (${victim.hp}/${victim.maxHp} HP left).`);
-          if (onHit) onHit(state, victim);
-        }
-      }
-    }
-  }
-
   function applySublight(state, to) {
     assertPlaying(state);
     if (!state.systems.warpdrive) throw new Error("Warpdrive: offline — toggle it on, or use Hold Position instead");
@@ -941,10 +968,9 @@
     const dir = directionIndex(from, to);
     if (dir >= 0) state.facing = dir;
     state.playerPos = to;
-    applyWeaponAutoAttacks(state);
     checkPlayerHazard(state);
     if (state.status !== "playing") return;
-    endPlayerAction(state);
+    endPlayerAction(state); // weapons fire inside, at their initiative slots
   }
 
   // Ends the turn in place — the only way to act while Warpdrive is toggled
@@ -952,10 +978,9 @@
   function applyHoldPosition(state) {
     assertPlaying(state);
     state.events = [];
-    applyWeaponAutoAttacks(state);
     checkPlayerHazard(state);
     if (state.status !== "playing") return;
-    endPlayerAction(state);
+    endPlayerAction(state); // weapons fire inside, at their initiative slots
   }
 
   function applyTractor(state, targetEnemyId) {
@@ -973,7 +998,7 @@
     state.energy -= WEAPONS.tractor.energyCost;
     state.events.push({ type: "energySpend", amount: WEAPONS.tractor.energyCost, weapon: WEAPONS.tractor.label });
     pushEnemyInDirection(state, enemy, directionIndex(state.playerPos, enemy), "Tractor");
-    endPlayerAction(state);
+    endPlayerAction(state, { autoFire: false });
   }
 
   // ---- Sector Outpost: shop stop, no turn spent -------------------------
