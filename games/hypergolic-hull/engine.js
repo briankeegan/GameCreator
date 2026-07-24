@@ -199,6 +199,11 @@
   // the bar refilled the same turn it drained and never visibly moved,
   // which read as "energy isn't hooked up" in playtesting.)
   const START_ENERGY = 6;
+  // The RECHARGE action's gain — the ONLY way Energy comes back mid-sector
+  // now. No passive trickle: energy refills to full at every warp jump
+  // ("Energy refills between jumps"), and recovering under fire costs you
+  // a whole turn on purpose.
+  const RECHARGE_ENERGY_GAIN = 2;
   // How many weapon-slot points of systems the flagship starts with —
   // grown via the Hardpoint Expansion Outpost offer.
   const START_WEAPON_SLOTS = 2;
@@ -253,7 +258,7 @@
     // A trade, not a strict upgrade over the Shockwave's omnidirectional
     // safety: hits harder and at range, but only dead ahead — you have to
     // manage `facing` to line it up (toggle Warpdrive off, tap an adjacent
-    // hex to aim, Hold Position to fire — infrastructure already built for
+    // hex to aim, FIRE to commit — infrastructure already built for
     // exactly this). Purchased at an Outpost (see OUTPOST_OFFER_POOL), not
     // unlocked for free by reaching a sector. Costs 3 — the hardest
     // hitter is also the thirstiest.
@@ -460,6 +465,10 @@
       // overlay instead of silently auto-continuing like every other clear.
       isBoss: Boolean(level.isBoss),
       isVictory: false,
+      // Visual identity — {variant, band} from levels.js's generateLevel;
+      // the renderer keys its backdrop palette off this so where you are
+      // LOOKS like how you got there (gate tint) and how deep you are.
+      theme: level.theme || null,
       outpostPos: level.outpost ? { q: level.outpost.q, r: level.outpost.r } : null,
       outpostOfferIds: level.outpost ? pickOutpostOfferIds(level.id) : [],
       exitRule: level.exitRule,
@@ -490,7 +499,7 @@
       // hardcoded constant.
       weaponSlots: (carryOver && carryOver.weaponSlots) || START_WEAPON_SLOTS,
       // Pre-turn system toggles: Warpdrive governs whether you can move at
-      // all this turn (off means Hold Position is your only option); the
+      // all this turn (off = Target Lock stance: stationary actions only); the
       // rest gate their matching AUTO_FIRE_WEAPONS entry, inert until
       // purchased but present from the start so a later purchase has
       // something to flip. All default on.
@@ -514,7 +523,7 @@
         // if you're on top of that wormhole, not next to it" — Clubhouse
         // feedback overriding an earlier, more cautious version of this
         // that spawned adjacent instead. Standing on it from turn zero
-        // would otherwise let the very next action (e.g. Hold Position)
+        // would otherwise let the very next action (e.g. RECHARGE)
         // instantly trip the return trip — wormholeAvailable's turnCount
         // guard below is what actually prevents that surprise, not
         // distance, so literal-same-hex arrival is safe.
@@ -585,7 +594,7 @@
   // Re-aims the flagship without moving or ending the turn — free to call as
   // many times as you like (no events, no enemy phase). This is what lets
   // you dial in a forward-only weapon's direction while Warpdrive is
-  // offline: rotate to face where you want, then commit with Hold Position.
+  // offline: rotate to face where you want, then commit with FIRE.
   function setFacing(state, dir) {
     if (dir < 0 || dir > 5) throw new Error(`Invalid facing: ${dir}`);
     state.facing = dir;
@@ -841,11 +850,10 @@
       pushLog(state, `Took ${totalDamage} damage.`);
     }
     state.turnCount += 1;
-    // Reactors tick together: the flagship and every living enemy regen
-    // +1 Energy at the end of the enemy phase. This is what turns a heavy
-    // weapon's cost into a visible rhythm — a Railgun that just fired (or
-    // just spawned empty) charges back up 1 per turn toward its next shot.
-    state.energy = Math.min(state.maxEnergy, state.energy + 1);
+    // Enemy reactors tick +1 per turn — that rhythm IS their telegraph (a
+    // Railgun charges 3 turns between shots). The flagship gets NO passive
+    // regen anymore: your Energy is a budget, refilled to full at each
+    // warp jump, recovered mid-fight only via the RECHARGE action.
     for (const enemy of livingEnemies(state)) {
       enemy.energy = Math.min(enemy.maxEnergy, enemy.energy + 1);
     }
@@ -957,7 +965,7 @@
 
   function applySublight(state, to) {
     assertPlaying(state);
-    if (!state.systems.warpdrive) throw new Error("Warpdrive: offline — toggle it on, or use Hold Position instead");
+    if (!state.systems.warpdrive) throw new Error("Target Lock engaged — disengage it to move, or FIRE/RECHARGE in place");
     state.events = [];
     if (!isAdjacent(state.playerPos, to)) throw new Error("Sublight Impulse: destination is not adjacent");
     if (!onBoard(state, to)) throw new Error("Sublight Impulse: destination is off the map");
@@ -970,17 +978,38 @@
     state.playerPos = to;
     checkPlayerHazard(state);
     if (state.status !== "playing") return;
-    endPlayerAction(state); // weapons fire inside, at their initiative slots
+    // One action per turn: MOVING is the action — no weapons fire, yours
+    // or auto-anything. Shooting is its own choice (applyFire).
+    endPlayerAction(state, { autoFire: false });
   }
 
-  // Ends the turn in place — the only way to act while Warpdrive is toggled
-  // off, and otherwise just a way to let an armed weapon fire without moving.
-  function applyHoldPosition(state) {
+  // FIRE: the turn's action is shooting — every armed weapon volleys at
+  // whatever it can reach, interleaved with enemy attacks in initiative
+  // order (see resolveCombat). Refuses to waste the turn if nothing is in
+  // reach of any armed weapon.
+  function applyFire(state) {
     assertPlaying(state);
+    const anyTarget = AUTO_FIRE_WEAPONS.some(({ action, systemKey, weapon }) => {
+      if (!state.actions.includes(action) || !state.systems[systemKey]) return false;
+      const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon).map(hexKey));
+      return livingEnemies(state).some((e) => hexKeys.has(hexKey(e)));
+    });
+    if (!anyTarget) throw new Error("Fire: no armed weapon has a target in range");
     state.events = [];
-    checkPlayerHazard(state);
-    if (state.status !== "playing") return;
-    endPlayerAction(state); // weapons fire inside, at their initiative slots
+    endPlayerAction(state); // the volley happens inside, at each weapon's initiative slot
+  }
+
+  // RECHARGE: the turn's action is refueling — the only mid-sector way to
+  // regain Energy. Costs the whole turn while enemies keep coming.
+  function applyRecharge(state) {
+    assertPlaying(state);
+    if (state.energy >= state.maxEnergy) throw new Error("Recharge: Energy is already full");
+    state.events = [];
+    const gained = Math.min(RECHARGE_ENERGY_GAIN, state.maxEnergy - state.energy);
+    state.energy += gained;
+    state.events.push({ type: "energyGain", amount: gained });
+    pushLog(state, `Recharging — +${gained} Energy.`);
+    endPlayerAction(state, { autoFire: false });
   }
 
   function applyTractor(state, targetEnemyId) {
@@ -1114,7 +1143,9 @@
     setFacing,
     computeThreatHexes,
     applySublight,
-    applyHoldPosition,
+    applyFire,
+    applyRecharge,
+    RECHARGE_ENERGY_GAIN,
     applyTractor,
     outpostAvailable,
     outpostOffers,

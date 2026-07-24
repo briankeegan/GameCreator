@@ -58,7 +58,7 @@
           <span class="stat-bar" id="hullBar"></span>
         </span>
         <span class="stat-wrap" id="energyWrap">
-          <span class="stat-label">Reactor</span>
+          <span class="stat-label">Energy</span>
           <span class="stat-bar" id="energyBar"></span>
         </span>
         <span class="stat-wrap" id="salvageWrap">
@@ -67,9 +67,10 @@
         </span>
       </div>
       <div class="console-grid actions-grid">
-        <button id="holdBtn" class="hold-btn">Hold Position</button>
+        <button id="fireBtn" class="hold-btn" title="Spend the turn shooting — every armed weapon volleys at whatever it can reach, in initiative order">Fire</button>
+        <button id="rechargeBtn" title="Spend the turn refueling — +2 Energy. The only way Energy comes back mid-sector">Recharge</button>
         <button data-mode="tractor">Tractor Beam</button>
-        <button id="targetLockBtn" title="Aim without moving — tap an adjacent hex to face it, then Hold Position to fire">Target Lock</button>
+        <button id="targetLockBtn" title="Aim without moving — tap an adjacent hex to face it, then FIRE">Target Lock</button>
         <span class="weapon-stats" id="tractorStats" hidden></span>
       </div>
       <div class="console-grid modes-grid">

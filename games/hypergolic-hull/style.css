@@ -243,9 +243,10 @@ body {
   gap: 6px 8px;
   align-items: center;
 }
-/* One row of this-turn actions (3 columns), one row of modes (2). */
+/* This-turn actions in a 2x2 block (Fire/Recharge/Tractor/Target Lock),
+   one row of modes below. */
 .actions-grid {
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   font-size: 0.76rem;
   padding: 8px 10px 4px;
 }

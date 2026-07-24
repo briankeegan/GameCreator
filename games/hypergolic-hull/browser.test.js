@@ -63,7 +63,13 @@ function pickStepToward(page, goalExpr) {
           : expr === "outpost"
             ? st.outpostPos
             : st.enemies.find((e) => e.alive);
-    return E.legalSublightTargets(st).reduce(
+    // Turn Model v2 play: prefer steps that don't END inside a living
+    // enemy's reach (a MOVE turn doesn't defend you) — fall back to any
+    // legal step when everything's dangerous.
+    const legal = E.legalSublightTargets(st);
+    const safe = legal.filter((cand) => !st.enemies.some((e) => e.alive && E.isAdjacent(e, cand)));
+    const pool = safe.length ? safe : legal;
+    return pool.reduce(
       (best, cand) => {
         const d = E.hexDistance(cand, goal);
         return !best || d < best.d ? { to: cand, d } : best;
@@ -73,6 +79,17 @@ function pickStepToward(page, goalExpr) {
   }, goalExpr);
 }
 
+// Play a turn the v2 way: FIRE if anything's in reach of an armed weapon
+// (the button only lights up when a volley would land), otherwise take a
+// safe step toward the goal.
+async function playTurnToward(page, goalExpr) {
+  if (!(await page.locator("#fireBtn").isDisabled())) {
+    await page.click("#fireBtn");
+    return;
+  }
+  await clickHex(page, "sublight", await pickStepToward(page, goalExpr));
+}
+
 // The end-of-run/sector overlay is held back until animations finish.
 function waitForOverlay(page) {
   return page.waitForFunction(() => !document.getElementById("runOverlay").hidden);
@@ -80,8 +97,8 @@ function waitForOverlay(page) {
 
 async function walkToExit(page) {
   let s = await getState(page);
-  for (let i = 0; i < 20 && s.status === "playing"; i++) {
-    await clickHex(page, "sublight", await pickStepToward(page, "exit"));
+  for (let i = 0; i < 30 && s.status === "playing"; i++) {
+    await playTurnToward(page, "exit");
     s = await getState(page);
   }
   return s;
@@ -92,8 +109,8 @@ async function walkToOutpost(page) {
   // Bounded like walkToExit — a greedy nearest-hex walk has no lookahead,
   // so a chasing enemy (e.g. Sector 2's Cruiser) repositioning every turn
   // can stall it against an obstacle indefinitely otherwise.
-  for (let i = 0; i < 20 && s.status === "playing" && !(s.playerPos.q === s.outpostPos.q && s.playerPos.r === s.outpostPos.r); i++) {
-    await clickHex(page, "sublight", await pickStepToward(page, "outpost"));
+  for (let i = 0; i < 30 && s.status === "playing" && !(s.playerPos.q === s.outpostPos.q && s.playerPos.r === s.outpostPos.r); i++) {
+    await playTurnToward(page, "outpost");
     s = await getState(page);
   }
   return s;
@@ -135,14 +152,20 @@ async function walkToWormhole(page) {
   // chasing enemy.
   for (
     let i = 0;
-    i < 20 && s.status === "playing" && (s.playerPos.q !== s.wormholePos.q || s.playerPos.r !== s.wormholePos.r);
+    i < 30 && s.status === "playing" && (s.playerPos.q !== s.wormholePos.q || s.playerPos.r !== s.wormholePos.r);
     i++
   ) {
-    await clickHex(page, "sublight", await pickStepToward(page, "wormhole"));
+    await playTurnToward(page, "wormhole");
     s = await getState(page);
   }
   if (s.levelId === startLevel) {
-    await page.click("#holdBtn");
+    // Standing on the wormhole as the sector's first action needs one more
+    // turn-ending action to trigger the return — RECHARGE is the
+    // stationary one (drain a point first if the tank is full).
+    await page.evaluate(() => {
+      if (window.__hhState.energy >= window.__hhState.maxEnergy) window.__hhState.energy -= 1;
+    });
+    await page.click("#rechargeBtn");
   }
   await page.waitForFunction((lvl) => window.__hhState.levelId !== lvl, startLevel, { timeout: 5000 });
   return getState(page);
@@ -189,11 +212,10 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator('#shipHardpoints input[data-system="lance"]').count(), 0, "an unpurchased weapon has no hardpoint row yet");
   await page.click("#shipCloseBtn");
   assert.strictEqual(await page.locator("#targetLockBtn").isVisible(), true, "Target Lock sits on the panel's action row");
-  assert.strictEqual(
-    await page.locator("#holdBtn").isVisible(),
-    true,
-    "Hold Position is always available, not just when Warpdrive is off"
-  );
+  assert.strictEqual(await page.locator("#fireBtn").isVisible(), true, "FIRE is a real button — shooting is its own action now");
+  assert.strictEqual(await page.locator("#fireBtn").isDisabled(), true, "FIRE stays dark with nothing in reach — the button itself says whether shooting does anything");
+  assert.strictEqual(await page.locator("#rechargeBtn").isVisible(), true, "RECHARGE is on the panel too");
+  assert.strictEqual(await page.locator("#rechargeBtn").isDisabled(), true, "and it's dark at full Energy — no wasted turns");
   assert.strictEqual(
     await page.locator("#energyBar").isVisible(),
     true,
@@ -216,7 +238,7 @@ async function freshPage(browser, url, errors) {
   await page.click("#scanBtn");
   assert.ok((await page.locator("#scanBtn").getAttribute("class")).includes("active"), "Scan lights up while active");
   assert.ok((await page.locator("#objective").textContent()).includes("SCAN ACTIVE"), "the objective line says what Scan mode is");
-  assert.strictEqual(await page.locator("#holdBtn").isDisabled(), true, "actions lock out while Scan mode is open");
+  assert.strictEqual(await page.locator("#targetLockBtn").isDisabled(), true, "actions lock out while Scan mode is open");
 
   const posBeforeScanTap = (await getState(page)).playerPos;
   const turnBeforeScanTap = (await getState(page)).turnCount;
@@ -244,7 +266,7 @@ async function freshPage(browser, url, errors) {
   await page.click("#scanBtn");
   assert.ok(!(await page.locator("#scanBtn").getAttribute("class")).includes("active"), "Scan dims when closed");
   assert.strictEqual(await page.locator("#enemyInfo").isVisible(), false, "closing Scan mode clears the inspection card too");
-  assert.strictEqual(await page.locator("#holdBtn").isDisabled(), false, "actions are usable again once Scan mode closes");
+  assert.strictEqual(await page.locator("#targetLockBtn").isDisabled(), false, "actions are usable again once Scan mode closes");
 
   // ---- The Ship screen: a full-screen flagship/loadout view --------------
   // ("a mode that goes full screen and shows ship and allows you to
@@ -276,10 +298,8 @@ async function freshPage(browser, url, errors) {
   await page.click("#mapCloseBtn");
   assert.strictEqual(await page.locator("#mapOverlay").isVisible(), false, "the map closes again");
 
-  // Toggling the Impulse Cannon off (via the Ship screen) stops it
-  // auto-firing — walk right up next to the Interceptor with it disabled
-  // and confirm it survives.
-  await setShipSystem(page, "ram", false);
+  // One action per turn: walk right up next to the Interceptor — moving
+  // never fires anything, so it survives point-blank contact.
   for (let i = 0; i < 20; i++) {
     const adjacent = await page.evaluate(() => {
       const E = window.HypergolicEngine;
@@ -294,15 +314,11 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(
     s.enemies.filter((e) => e.alive).length,
     1,
-    "Impulse Cannon toggled off does not auto-fire even at point-blank range"
+    "moving never kills anything — shooting is its own action"
   );
 
-  // The Impulse Cannon only fires dead ahead of the current facing, and the
-  // organic walk above doesn't guarantee the Interceptor ended up exactly
-  // there (only that it's adjacent). With Warpdrive off, tapping an adjacent
-  // hex re-aims the flagship toward it for free — no move, no turn spent —
-  // so line up the shot that way before committing with Hold Position.
-  await page.click("#targetLockBtn"); // engage Target Lock — movement offline, taps aim
+  // Target Lock: movement offline, taps re-aim for free.
+  await page.click("#targetLockBtn"); // engage
   const posBeforeAim = (await getState(page)).playerPos;
   const turnBeforeAim = (await getState(page)).turnCount;
   const enemyPos = (await getState(page)).enemies.find((e) => e.alive);
@@ -310,7 +326,7 @@ async function freshPage(browser, url, errors) {
   const aimBox = await page.locator("#board").boundingBox();
   await page.mouse.click(aimBox.x + enemyCenter.x, aimBox.y + enemyCenter.y);
   s = await getState(page);
-  assert.deepStrictEqual(s.playerPos, posBeforeAim, "re-aiming with Warpdrive off never moves the flagship");
+  assert.deepStrictEqual(s.playerPos, posBeforeAim, "re-aiming with Target Lock engaged never moves the flagship");
   assert.strictEqual(s.turnCount, turnBeforeAim, "re-aiming doesn't spend a turn");
   assert.strictEqual(
     s.facing,
@@ -318,18 +334,24 @@ async function freshPage(browser, url, errors) {
     "the flagship is now facing the Interceptor"
   );
 
-  // Warpdrive off blocks movement — Hold Position is the only option (it's
-  // always available, on top of that). Flip the Impulse Cannon back on and
-  // hold position to fire it without moving.
-  await setShipSystem(page, "ram", true);
-  assert.strictEqual(await page.locator("#holdBtn").isVisible(), true, "Hold Position is available");
-  const posBeforeHold = (await getState(page)).playerPos;
-  await page.click("#holdBtn");
+  // FIRE: lit up (something's in reach), kills the Interceptor in place.
+  assert.strictEqual(await page.locator("#fireBtn").isDisabled(), false, "FIRE lights up with a target in reach");
+  const posBeforeFire = (await getState(page)).playerPos;
+  const energyBeforeFire = (await getState(page)).energy;
+  await page.click("#fireBtn");
   s = await getState(page);
-  assert.deepStrictEqual(s.playerPos, posBeforeHold, "Hold Position never moves the flagship");
-  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "Hold Position lets the re-enabled Impulse Cannon fire in place");
+  assert.deepStrictEqual(s.playerPos, posBeforeFire, "FIRE never moves the flagship");
+  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "the FIRE volley kills the adjacent Interceptor");
+  assert.ok(s.energy < energyBeforeFire, "and the shot visibly cost Energy");
   assert.strictEqual(s.exitUnlocked, true);
   await page.click("#targetLockBtn"); // disengage — Warpdrive back online
+
+  // RECHARGE lights up now that Energy is down, and refills +2.
+  assert.strictEqual(await page.locator("#rechargeBtn").isDisabled(), false, "RECHARGE lights up once Energy is spent");
+  const energyBeforeRecharge = (await getState(page)).energy;
+  await page.click("#rechargeBtn");
+  s = await getState(page);
+  assert.strictEqual(s.energy, Math.min(s.maxEnergy, energyBeforeRecharge + 2), "RECHARGE adds +2 Energy for the turn");
 
   s = await walkToExit(page);
   assert.strictEqual(s.status, "won", "Sector 1 clears once the gate is reached");
@@ -412,20 +434,38 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "the Interceptor is still dead — it's the saved state, not regenerated");
   assert.strictEqual(s.wormholePos, null, "no further history left to go back to from the first sector");
 
-  // Still standing on the Warp Gate — Hold Position re-triggers the win
-  // check and warps back out through the normal flow.
-  await page.click("#holdBtn");
+  // ---- The chart is a maze you can jump around ("jump back and forth") ----
+  // Sector 2 is still charted ahead of us — tap its star on the Map to
+  // jump forward to it, then tap Sector 1's to come straight back.
+  await page.click("#mapBtn");
+  await page.click('#mapChart [data-chart="1"]', { force: true }); // overlapping SVG circles both carry data-chart — the delegated handler reads either
+  await page.waitForFunction(() => window.__hhState.levelId === 2, null, { timeout: 5000 });
+  s = await getState(page);
+  assert.strictEqual(s.status, "playing", "jumping forward on the Map lands in a live board");
+  await page.click("#mapBtn");
+  await page.click('#mapChart [data-chart="0"]', { force: true });
+  await page.waitForFunction(() => window.__hhState.levelId === 1, null, { timeout: 5000 });
+  s = await getState(page);
+  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "Sector 1 is still exactly as we left it — charted, not regenerated");
+
+  // Still standing on the Warp Gate — any turn-ending action re-triggers
+  // the win check; RECHARGE is the stationary one (drain a point first if
+  // the tank happens to be full).
+  await page.evaluate(() => {
+    if (window.__hhState.energy >= window.__hhState.maxEnergy) window.__hhState.energy -= 1;
+    window.render();
+  });
+  await page.click("#rechargeBtn");
   await page.waitForFunction(() => window.__hhState.levelId === 2, null, { timeout: 5000 });
   s = await getState(page);
   assert.strictEqual(s.levelId, 2, "going forward again from a rewound sector re-advances normally");
   await page.close();
 
-  // ---- loss branch: loiter beside Sector 1's Interceptor until Hull 0 -----
-  // (Impulse Cannon toggled off — with it on, moving adjacent auto-kills the
-  // Interceptor before it can ever strike back, per the Sector 1 test above.)
+  // ---- loss branch: keep MOVING beside Sector 1's Interceptor until ------
+  // Hull 0 — one action per turn means repositioning inside its reach
+  // never defends you, so three careless moves end the run.
 
   page = await freshPage(browser, url, errors);
-  await setShipSystem(page, "ram", false);
 
   s = await getState(page);
   for (let i = 0; i < 20 && s.status === "playing"; i++) {
@@ -507,9 +547,11 @@ async function freshPage(browser, url, errors) {
     const fresh = window.HypergolicEngine.createGameState(bossLevel);
     fresh.playerPos = { q: bossLevel.exit.q, r: bossLevel.exit.r };
     Object.assign(window.__hhState, fresh);
+    window.__hhState.energy -= 1; // so RECHARGE (the stationary action) is available to trigger the win check
     window.__hhSetLevelIndex(19); // depth = index + 1 — keep advanceSector's "levelIndex + 1" in sync
+    window.render();
   });
-  await page.click("#holdBtn"); // standing on an always-online gate: Hold Position alone wins it
+  await page.click("#rechargeBtn"); // standing on an always-online gate: any turn-ending action wins it
   await page.waitForFunction(() => window.__hhState.isVictory === true);
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "the overlay waits for animations, same as the loss screen");
   await waitForOverlay(page);

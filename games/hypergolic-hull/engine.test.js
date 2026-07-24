@@ -181,71 +181,85 @@ assert.strictEqual(
   "off-board hexes are not routable"
 );
 
-// ---- steps 1-3: three Sublight moves close in on Interceptor 2 (e1) along
-// a single approach line. The Impulse Cannon only fires dead ahead of the
-// flagship's current facing (not omnidirectionally), so e1 has to actually
-// end up directly in front after a move, not just anywhere in range —
-// that's what step 3's move achieves. Interceptor 1 (e0) is closing in from
-// a different angle the whole time and isn't yet adjacent when e1 dies.
+// ---- the golden path, Turn Model v2: one action per turn ----------------
+// MOVE repositions and never fires a weapon; FIRE volleys everything
+// armed, in initiative order; RECHARGE is the only mid-sector Energy
+// income. Played correctly — FIRE the moment something is beside you —
+// the flagship clears this board without a scratch, because the FAST
+// Shockwave always pre-empts a STANDARD cannon.
 
 let state = Engine.createGameState(goldenLevel);
 assert.strictEqual(state.hull, 3, "the flagship starts a run with 3 Hull");
+assert.strictEqual(state.energy, 6, "and a full Energy budget");
 assert.strictEqual(Engine.livingEnemies(state).length, 2);
 assert.strictEqual(state.exitUnlocked, true, "the Warp Gate is online from the start — clearing enemies is optional, for salvage only");
 
-Engine.applySublight(state, { q: 1, r: -1 });
-Engine.applySublight(state, { q: 2, r: -2 });
-assert.strictEqual(state.hull, 3, "no shot has lined up yet — no damage taken closing in");
-assert.strictEqual(Engine.livingEnemies(state).length, 2, "both Interceptors still alive before the lined-up shot");
-
-Engine.applySublight(state, { q: 2, r: -1 });
-
-assert.deepStrictEqual(state.playerPos, { q: 2, r: -1 });
-assert.strictEqual(state.enemies.find((e) => e.id === "e1").alive, false, "Interceptor 2 should be destroyed once dead ahead of the flagship");
-assert.strictEqual(Engine.livingEnemies(state).length, 1);
-assert.strictEqual(state.hull, 3, "the Shockwave resolves before the enemy phase, so no damage yet");
+let fireTurns = 0;
+let guard = 0;
+while (state.status === "playing" && Engine.livingEnemies(state).length > 0 && guard++ < 40) {
+  const engaged = Engine.livingEnemies(state).some((e) => Engine.isAdjacent(e, state.playerPos));
+  if (engaged) {
+    const before = Engine.livingEnemies(state).length;
+    Engine.applyFire(state);
+    fireTurns++;
+    assert.ok(Engine.livingEnemies(state).length < before, "a point-blank FIRE volley always kills at least the adjacent chaser");
+  } else {
+    // Stalk, don't lunge: closing the final hex yourself means eating the
+    // target's shot (your turn went to moving, its went to firing). Step
+    // toward the nearest survivor but never END a move inside anything's
+    // reach — chasers close the last hex themselves, and then it's your
+    // FIRE, first, thanks to initiative.
+    const prey = Engine.livingEnemies(state).reduce((best, e) => {
+      const d = Engine.hexDistance(state.playerPos, e);
+      return !best || d < best.d ? { e, d } : best;
+    }, null).e;
+    const safe = Engine.legalSublightTargets(state).filter(
+      (cand) => !Engine.livingEnemies(state).some((e) => Engine.isAdjacent(cand, e))
+    );
+    assert.ok(safe.length, "expected a step that stays out of everything's reach");
+    const step = safe.reduce((best, cand) => {
+      const d = Engine.hexDistance(cand, prey);
+      return !best || d < best.d ? { to: cand, d } : best;
+    }, null);
+    Engine.applySublight(state, step.to);
+  }
+}
+assert.strictEqual(Engine.livingEnemies(state).length, 0, "both Interceptors die to FIRE volleys");
+assert.ok(fireTurns >= 1, "at least one turn was spent on the FIRE action");
+assert.strictEqual(state.hull, 3, "played correctly, the flagship never takes a hit — a chaser that just closed can't outdraw the FAST Shockwave");
 assert.strictEqual(state.status, "playing");
 
-const interceptor1 = Engine.livingEnemies(state)[0];
-assert.strictEqual(interceptor1.id, "e0");
-assert.strictEqual(
-  Engine.isAdjacent(interceptor1, state.playerPos),
-  true,
-  "Interceptor 1 should have closed to adjacency by now"
-);
+// ---- the mistake, shown directly: MOVING while engaged ------------------
+// One action per turn means repositioning is NOT defending — end a MOVE
+// still inside a live chaser's reach and its shot lands, nothing
+// pre-empting it.
+const mistakeState = Engine.createGameState(goldenLevel);
+mistakeState.enemies[0].q = mistakeState.playerPos.q;
+mistakeState.enemies[0].r = mistakeState.playerPos.r - 1; // adjacent, directly up
+const stillInReach = Engine.legalSublightTargets(mistakeState).find((to) => Engine.isAdjacent(to, mistakeState.enemies[0]));
+assert.ok(stillInReach, "expected a destination still inside the chaser's reach");
+Engine.applySublight(mistakeState, stillInReach);
+assert.strictEqual(mistakeState.hull, 2, "moving while engaged eats the strike — the turn went to repositioning, not defense");
+assert.strictEqual(mistakeState.enemies[0].alive, true, "and moving killed nothing — shooting is its own action");
 
-// ---- step 3a: mistake branch — stay in range and eat the deterministic
-// strike, which is now instantly lethal (permadeath, one hull point).
-// Impulse Cannon toggled off so this reliably demonstrates taking a hit,
-// regardless of whether the chosen adjacent hex happens to also line up
-// Interceptor 1 dead ahead (which would auto-kill it instead, same as e1
-// above — that's the "correct-ish by accident" case, not what this branch
-// is illustrating).
+// ---- RECHARGE: the only way Energy comes back mid-sector ----------------
+const rechargeProbe = Engine.createGameState(goldenLevel);
+rechargeProbe.energy = 1;
+Engine.applyRecharge(rechargeProbe);
+assert.strictEqual(rechargeProbe.energy, 1 + Engine.RECHARGE_ENERGY_GAIN, "RECHARGE adds its listed Energy");
+assert.ok(rechargeProbe.events.some((e) => e.type === "energyGain"), "and emits an energyGain event for the UI float");
+rechargeProbe.energy = rechargeProbe.maxEnergy;
+assert.throws(() => Engine.applyRecharge(rechargeProbe), /already full/, "RECHARGE refuses at full Energy — no wasted turns");
+// A MOVE ticks the turn counter but never regenerates Energy anymore.
+const drained = Engine.createGameState(goldenLevel);
+drained.enemies.forEach((e) => (e.alive = false)); // clear the board so the walk below is quiet
+drained.energy = 2;
+Engine.applySublight(drained, Engine.legalSublightTargets(drained)[0]);
+assert.strictEqual(drained.energy, 2, "no passive Energy regen — the budget only comes back via RECHARGE or a warp jump");
+// FIRE with nothing in range refuses instead of wasting the turn.
+assert.throws(() => Engine.applyFire(drained), /no armed weapon has a target/, "FIRE refuses when no armed weapon can reach anything");
 
-const mistakeState = clone(state);
-Engine.setSystem(mistakeState, "ram", false);
-const staysAdjacent = Engine.legalSublightTargets(mistakeState).find(
-  (to) => Engine.isAdjacent(to, interceptor1)
-);
-assert.ok(staysAdjacent, "expected a legal move that stays adjacent to Interceptor 1");
-Engine.applySublight(mistakeState, staysAdjacent);
-assert.strictEqual(mistakeState.hull, 2, "staying adjacent to Interceptor 1 eats its deterministic strike — 1 of 3 Hull gone");
-assert.strictEqual(mistakeState.status, "playing", "with 3 Hull a single strike is a scratch, not death");
-
-// ---- step 3b: correct branch — the Shockwave (left armed, unlike the
-// mistake branch) kills Interceptor 1 the moment any move keeps it inside
-// the blast ring: omnidirectional, resolves before the enemy phase, so
-// the strike never lands. (This branch used to be Fighter Squadron,
-// which was cut — everything runs on the weapon systems now.)
-
-const correctState = clone(state);
-const stayInRange = Engine.legalSublightTargets(correctState).find((to) => Engine.isAdjacent(to, interceptor1));
-assert.ok(stayInRange, "expected a legal move that keeps Interceptor 1 in Shockwave range");
-Engine.applySublight(correctState, stayInRange);
-
-assert.strictEqual(Engine.livingEnemies(correctState).length, 0, "Interceptor 1 should be destroyed by the Shockwave");
-assert.strictEqual(correctState.hull, 3, "the correct branch should take no damage");
-assert.strictEqual(correctState.status, "playing");
+const correctState = state; // cleared board, full hull — carry on to the gate
 
 // ---- step 4: the gate was online the whole time; walking onto it wins ----
 
@@ -303,11 +317,11 @@ Engine.applyTractor(collideState, "e0");
 assert.strictEqual(collideState.enemies.find((e) => e.id === "e0").alive, false, "the pushed enemy is destroyed on collision");
 assert.strictEqual(collideState.enemies.find((e) => e.id === "e1").alive, false, "the collided-with unit takes lethal damage too");
 
-// ---- Weapon systems: stat-driven, toggleable, auto-firing --------------
-// (Clubhouse feedback: Ramming Speed became a weapon stat block that
-// auto-fires on any move — or Hold Position — instead of a separate
-// aim-and-fire action; Warpdrive is a matching pre-turn toggle that gates
-// movement itself.)
+// ---- Weapon systems: stat-driven, armed, fired on command ---------------
+// (Turn Model v2: weapons NEVER fire on their own. FIRE is the action —
+// every armed weapon volleys, in initiative order. Toggles on the Systems
+// screen choose what's armed; Target Lock/warpdrive-off gates movement
+// for aiming.)
 
 const weaponLevel = {
   id: 993,
@@ -321,7 +335,7 @@ const weaponLevel = {
   exitRule: "all-enemies-dead",
 };
 
-// Moving into range auto-fires the Impulse Cannon — no separate arm-and-aim step.
+// A move never fires anything — even point-blank.
 let weaponState = Engine.createGameState(weaponLevel);
 assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
 assert.deepStrictEqual(
@@ -330,38 +344,36 @@ assert.deepStrictEqual(
   "all systems default on"
 );
 Engine.applySublight(weaponState, { q: 2, r: 2 }); // steps adjacent to the interceptor
-assert.strictEqual(weaponState.enemies[0].alive, false, "moving into range auto-fires the Impulse Cannon");
-assert.ok(weaponState.events.some((e) => e.type === "kill"), "the auto-attack emits a kill event");
+assert.strictEqual(weaponState.enemies[0].alive, true, "moving fires NOTHING — shooting is its own action now");
+
+// FIRE volleys the armed Shockwave and kills it.
+Engine.applyFire(weaponState);
+assert.strictEqual(weaponState.enemies[0].alive, false, "FIRE kills the adjacent Interceptor");
+assert.ok(weaponState.events.some((e) => e.type === "kill"), "the volley emits a kill event");
 assert.ok(
   weaponState.events.some((e) => e.type === "kill" && e.source === "weapon"),
-  "the auto-attack's kill is tagged source:weapon — the renderer uses this to aim the flagship at it, distinct from a Tractor/Fighter kill"
+  "the kill is tagged source:weapon — the renderer uses this to aim the flagship at it, distinct from a Tractor kill"
 );
+assert.deepStrictEqual(weaponState.playerPos, { q: 2, r: 2 }, "FIRE never moves the flagship");
 
-// Toggling the Impulse Cannon off suppresses the auto-attack.
+// With the Shockwave disarmed, FIRE has nothing to shoot with.
 weaponState = Engine.createGameState(weaponLevel);
 Engine.setSystem(weaponState, "ram", false);
-Engine.applySublight(weaponState, { q: 2, r: 2 });
-assert.strictEqual(weaponState.enemies[0].alive, true, "Impulse Cannon toggled off does not fire");
+weaponState.playerPos = { q: 2, r: 2 };
+assert.throws(() => Engine.applyFire(weaponState), /no armed weapon/, "FIRE refuses with every weapon disarmed");
 
-// Hold Position resolves the turn — and still auto-fires — without moving.
-weaponState = Engine.createGameState(weaponLevel);
-weaponState.playerPos = { q: 2, r: 2 }; // already adjacent, bypassing a staging move
-Engine.applyHoldPosition(weaponState);
-assert.deepStrictEqual(weaponState.playerPos, { q: 2, r: 2 }, "Hold Position never moves the flagship");
-assert.strictEqual(weaponState.enemies[0].alive, false, "Hold Position still lets an armed weapon auto-fire");
-
-// Warpdrive off blocks movement outright — Hold Position is the only option.
+// Warpdrive off (Target Lock engaged) blocks movement outright.
 weaponState = Engine.createGameState(weaponLevel);
 Engine.setSystem(weaponState, "warpdrive", false);
 assert.throws(
   () => Engine.applySublight(weaponState, { q: 2, r: 2 }),
-  /Warpdrive/,
-  "movement requires Warpdrive to be toggled on"
+  /Target Lock/,
+  "movement is blocked while Target Lock is engaged"
 );
 
 // But re-aiming (no move, no turn) still works with Warpdrive off — that's
 // how you dial in a forward-only weapon's direction before committing with
-// Hold Position.
+// FIRE.
 const facingBefore = weaponState.facing;
 Engine.setFacing(weaponState, (facingBefore + 2) % 6);
 assert.strictEqual(weaponState.facing, (facingBefore + 2) % 6, "setFacing re-aims the flagship");
@@ -631,12 +643,16 @@ salvageState.outpostOfferIds = ["repair", "reinforce"];
 assert.strictEqual(salvageState.salvage, 0, "a fresh run starts with zero salvage");
 assert.deepStrictEqual(Engine.outpostOffers(salvageState), [], "not standing on the outpost hex means no offers");
 
-// Stepping into range lets the Shockwave kill the lone Interceptor — the
-// kill drops its salvage.
+// Step into range, then FIRE — the kill drops its salvage.
 Engine.applySublight(salvageState, { q: 0, r: -1 });
-assert.strictEqual(salvageState.enemies[0].alive, false, "the Shockwave kills the adjacent Interceptor");
+Engine.applyFire(salvageState);
+assert.strictEqual(salvageState.enemies[0].alive, false, "the FIRE volley kills the adjacent Interceptor");
 assert.strictEqual(salvageState.salvage, Engine.ENEMY_TYPES.interceptor.salvage, "a kill drops its type's salvage value");
 assert.ok(salvageState.events.some((e) => e.type === "salvage"), "a kill emits a salvage event for the UI to animate");
+// Ending the approach MOVE adjacent to the live Interceptor ate its shot
+// (one action per turn — that's the rule). Reset hull: the shop test
+// below manages its own damage explicitly.
+salvageState.hull = salvageState.maxHull;
 
 // Walk to the outpost — shopping there must not cost a turn.
 Engine.applySublight(salvageState, { q: -1, r: 0 });
@@ -810,7 +826,7 @@ assert.strictEqual(lanceState.systems.lance, true, "the toggle defaults on once 
 // reaches its full range, unlike the omnidirectional Shockwave.
 lanceState.playerPos = { q: lanceLevel.playerStart.q, r: lanceLevel.playerStart.r };
 Engine.setFacing(lanceState, 2); // "up" — toward the interceptor
-Engine.applyHoldPosition(lanceState);
+Engine.applyFire(lanceState);
 assert.strictEqual(lanceState.enemies[0].alive, false, "the Lance Cannon hits a target 3 hexes dead ahead");
 assert.ok(
   lanceState.log.some((line) => line.includes("Lance Cannon destroyed")),
@@ -857,7 +873,7 @@ repulsorState.enemies[0].q = repulsorLevel.playerStart.q;
 repulsorState.enemies[0].r = repulsorLevel.playerStart.r - 1;
 repulsorState.systems.ram = false; // isolate the Repulsor — both it and the Shockwave are adjacent/omnidirectional and would otherwise double up on the same hit
 const hullBeforeRepulsor = repulsorState.hull;
-Engine.applyHoldPosition(repulsorState); // omnidirectional (range 1) — no facing management needed, unlike the Lance Cannon
+Engine.applyFire(repulsorState); // omnidirectional (range 1) — no facing management needed, unlike the Lance Cannon
 assert.strictEqual(repulsorState.enemies[0].alive, true, "1 damage isn't enough to kill a 2-HP Cruiser outright");
 assert.strictEqual(repulsorState.enemies[0].hp, 1, "the Repulsor still deals its own damage on top of the knockback");
 // The push happens before the enemy phase, so knocking the Cruiser out of
@@ -952,7 +968,8 @@ assert.strictEqual(bossState.isVictory, false, "not won yet");
 // file. This test only cares whether clearing a BOSS sector flips
 // isVictory, not how the fight plays out.
 bossState.playerPos = { q: bossLevelDef.exit.q, r: bossLevelDef.exit.r };
-Engine.applyHoldPosition(bossState);
+bossState.energy = 0; // any turn-ending action triggers the win check — RECHARGE is the stationary one
+Engine.applyRecharge(bossState);
 assert.strictEqual(bossState.status, "won", "reaching the gate wins, same as any other sector");
 assert.strictEqual(bossState.isVictory, true, "clearing the BOSS sector sets isVictory — a real Run Complete, not a routine clear");
 
@@ -1026,21 +1043,18 @@ const energyLevel = {
 let energyState = Engine.createGameState(energyLevel, { extraActions: ["lance"] });
 assert.strictEqual(energyState.energy, 6, "a fresh run starts at full Energy");
 assert.strictEqual(energyState.maxEnergy, 6);
-// Every weapon costs MORE than the +1/turn regen, so a firing turn always
-// nets negative and the gauge visibly moves — an earlier tuning where the
-// Shockwave cost exactly the regen refilled the same turn it drained and
-// read as "energy isn't hooked up."
-assert.ok(Engine.WEAPONS.ram.energyCost > 1, "even the Shockwave outpaces the regen — firing always shows on the gauge");
-assert.ok(Engine.WEAPONS.lance.energyCost > Engine.WEAPONS.ram.energyCost, "the Lance Cannon is thirstier still");
+// Energy is a pure budget now — nothing regenerates passively, every
+// shot draws it down, and only RECHARGE or a warp jump refills it.
+assert.ok(Engine.WEAPONS.lance.energyCost > Engine.WEAPONS.ram.energyCost, "the Lance Cannon is thirstier than the Shockwave");
 
 // A full volley pays for every weapon that fires: Shockwave (2) + Lance
-// (3) against an adjacent dead-ahead Cruiser = 5 spent, +1 regen.
+// (3) against an adjacent dead-ahead Cruiser = 5 spent, no regen.
 energyState.enemies[0].q = 2;
 energyState.enemies[0].r = 4; // adjacent, directly up (facing 2)
 Engine.setFacing(energyState, 2);
-Engine.applyHoldPosition(energyState);
+Engine.applyFire(energyState);
 assert.strictEqual(energyState.enemies[0].alive, false, "Shockwave + Lance Cannon volley kills a 2-HP Cruiser");
-assert.strictEqual(energyState.energy, 6 - 2 - 3 + 1, "every shot in the volley was paid for, net of the turn's regen");
+assert.strictEqual(energyState.energy, 6 - 2 - 3, "every shot in the volley was paid for — and nothing trickled back");
 assert.ok(
   energyState.events.some((e) => e.type === "energySpend"),
   "each paid shot emits an energySpend event — the UI floats the cost so the drain is visible in the moment"
@@ -1053,7 +1067,7 @@ energyState.enemies[0].q = 2;
 energyState.enemies[0].r = 4;
 energyState.energy = 2;
 Engine.setFacing(energyState, 2);
-Engine.applyHoldPosition(energyState);
+Engine.applyFire(energyState);
 assert.strictEqual(energyState.enemies[0].alive, true, "1 Shockwave hit alone leaves a 2-HP Cruiser alive");
 assert.strictEqual(energyState.enemies[0].hp, 1, "the Shockwave still fired on the Energy that was left");
 assert.ok(
@@ -1061,15 +1075,11 @@ assert.ok(
   "the unaffordable Lance Cannon holds fire with a log line, not silently"
 );
 
-// No target in range = no shot = no Energy spent.
+// A MOVE spends no Energy at all.
 energyState = Engine.createGameState(energyLevel);
 const energyBeforeEmptyTurn = energyState.energy;
-Engine.applySublight(energyState, { q: 2, r: 4 }); // cruiser is 2 hexes away — out of Shockwave range
-assert.strictEqual(
-  energyState.energy,
-  Math.min(energyState.maxEnergy, energyBeforeEmptyTurn + 1),
-  "a turn with nothing in range spends no Energy, just regens"
-);
+Engine.applySublight(energyState, { q: 2, r: 4 }); // cruiser is 2 hexes away — nothing fires either side
+assert.strictEqual(energyState.energy, energyBeforeEmptyTurn, "a MOVE turn touches no Energy — no spend, no regen");
 
 // The Tractor Beam draws from the same reactor.
 const tractorEnergyState = Engine.createGameState({ ...energyLevel, id: 989 }, { extraActions: ["tractor"] });
@@ -1084,11 +1094,7 @@ assert.throws(
 );
 tractorEnergyState.energy = Engine.WEAPONS.tractor.energyCost;
 Engine.applyTractor(tractorEnergyState, "e0");
-assert.strictEqual(
-  tractorEnergyState.energy,
-  1,
-  "a Tractor push costs its listed Energy, net of the turn's regen"
-);
+assert.strictEqual(tractorEnergyState.energy, 0, "a Tractor push costs its listed Energy — and nothing trickles back");
 
 // ---- Enemy reactors: the Railgun's charge-up telegraph -------------------
 // Enemies run the same energy rules. A cost-1 chaser regens its shot every
@@ -1113,7 +1119,10 @@ assert.strictEqual(Engine.computeThreatHexes(railgunEnergyState).size, 0, "a cha
 
 const hullTimeline = [];
 for (let t = 1; t <= 8; t++) {
-  Engine.applyHoldPosition(railgunEnergyState);
+  // Stationary turns, test-style: drain then RECHARGE (there's no "wait"
+  // action in Turn Model v2 — a full-energy flagship has to move).
+  railgunEnergyState.energy = 0;
+  Engine.applyRecharge(railgunEnergyState);
   hullTimeline.push(railgunEnergyState.hull);
 }
 assert.deepStrictEqual(
@@ -1156,7 +1165,7 @@ const lanceInitState = Engine.createGameState(initiativeLevel, { extraActions: [
 lanceInitState.enemies[0].q = 2;
 lanceInitState.enemies[0].r = 4; // adjacent, directly up
 Engine.setFacing(lanceInitState, 2);
-Engine.applyHoldPosition(lanceInitState);
+Engine.applyFire(lanceInitState);
 assert.strictEqual(lanceInitState.enemies[0].alive, false, "the Lance Cannon still kills its target");
 assert.strictEqual(
   lanceInitState.hull,
@@ -1169,7 +1178,7 @@ assert.strictEqual(
 const ramInitState = Engine.createGameState({ ...initiativeLevel, id: 985, actions: ["sublight", "ramming"] });
 ramInitState.enemies[0].q = 2;
 ramInitState.enemies[0].r = 4;
-Engine.applyHoldPosition(ramInitState);
+Engine.applyFire(ramInitState);
 assert.strictEqual(ramInitState.enemies[0].alive, false, "the Shockwave kills it too");
 assert.strictEqual(ramInitState.hull, 3, "and being FAST, it pre-empts the cannon entirely — no damage");
 
@@ -1187,9 +1196,13 @@ const chaserEnergyLevel = {
   actions: ["sublight"], // no Shockwave — let it survive to attack repeatedly
 };
 const chaserEnergyState = Engine.createGameState(chaserEnergyLevel);
-Engine.applyHoldPosition(chaserEnergyState); // it closes to adjacent
-Engine.applyHoldPosition(chaserEnergyState); // strike 1
-Engine.applyHoldPosition(chaserEnergyState); // strike 2 — no charge gap
+const waitTurn = () => {
+  chaserEnergyState.energy = 0; // stationary turn via drain-and-RECHARGE, same as the Railgun test
+  Engine.applyRecharge(chaserEnergyState);
+};
+waitTurn(); // it closes to adjacent
+waitTurn(); // strike 1
+waitTurn(); // strike 2 — no charge gap
 assert.strictEqual(chaserEnergyState.hull, 1, "a cost-1 chaser fires every single turn, same cadence as before energy existed");
 
 // ---- Asteroid fields: genuinely impassable terrain, distinct from a ------

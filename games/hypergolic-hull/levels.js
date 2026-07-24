@@ -45,7 +45,7 @@
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming"],
-      intro: "Shockwave online. It auto-fires on any enemy within 1 hex — in every direction — after you move.",
+      intro: "One action per turn: MOVE, FIRE, or RECHARGE. Let the Interceptor come to you, then FIRE — your Shockwave hits everything within 1 hex, and it shoots first.",
     },
     // Sector 2 — Tractor Beam. Two enemies; push one off the edge. Unlike
     // every other campaign action, Tractor Beam isn't handed out for free
@@ -194,6 +194,7 @@
         { type: "asteroid", q: 7, r: 0 },
       ],
       exitRule: "all-enemies-dead",
+      theme: { variant: "boss", band: Math.floor(depth / 5) },
       intro:
         "The Bulwark. A hardened defense line — two Cruisers, two Sentries, and an Interceptor between you and the gate. Stock up at the Outpost first.",
     };
@@ -300,6 +301,12 @@
       enemies,
       hazards,
       exitRule: "all-enemies-dead",
+      // Visual identity ("when you're jumping into a color, it should
+      // kinda match that theme"): the gate you came through sets the
+      // sector's mood — warm/hostile for an aggressive gate, cool/calm
+      // for a quiet one — and the depth band shifts the palette family so
+      // deeper regions of space look like different places.
+      theme: { variant: variant ? variant.id : "neutral", band: Math.floor(depth / 5) },
       intro: `Uncharted sector, depth ${depth}. No map, no mercy — salvage what you can.`,
     };
   }

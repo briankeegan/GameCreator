@@ -68,7 +68,8 @@ const mapOverlayEl = document.getElementById("mapOverlay");
 const mapChartEl = document.getElementById("mapChart");
 const mapCloseBtn = document.getElementById("mapCloseBtn");
 const targetLockBtn = document.getElementById("targetLockBtn");
-const holdBtn = document.getElementById("holdBtn");
+const fireBtn = document.getElementById("fireBtn");
+const rechargeBtn = document.getElementById("rechargeBtn");
 const tractorStatsEl = document.getElementById("tractorStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
 
@@ -157,15 +158,14 @@ let inspectedHex = null;
 // Sectors aren't one-way — Clubhouse feedback: "the ability to go forward
 // or backwards... you could potentially go back to an area you were at
 // before," and it "shouldn't just be a button you click... a wormhole
-// sort of thing." Each cleared sector's exact state (enemies dead, salvage
-// spent, Outpost visited) is snapshotted before advancing, so returning to
-// it later shows it exactly as you left it, not a freshly-regenerated
-// board. A wormhole (Engine.wormholeAvailable, drawn as a distinct portal
-// — see drawWormhole) appears somewhere on the new board whenever there's
-// a sector to go back to; flying onto it triggers the return, no button.
-// Going forward again from a rewound sector just re-advances normally —
-// no redo stack, only undo.
-let sectorHistory = [];
+// sort of thing." The run is a persistent CHART now, not an undo stack
+// ("maze like, and maybe you can jump back and forth"): every sector
+// entered stays on it, exactly as you left it, and you can jump to ANY
+// charted sector — back via the wormhole (one step) or straight from the
+// full-screen Map (tap a charted star). Advancing through a NEW gate from
+// a rewound sector abandons the chain that used to be ahead of it.
+let sectorHistory = []; // [{levelIndex, state}] — every sector entered, in order
+let chartIndex = -1; // which chart entry is the LIVE sector
 
 // The flagship spawns standing directly ON the wormhole when arriving via
 // portal ("you start as if you're on top of that wormhole, not next to
@@ -178,8 +178,19 @@ let sectorHistory = [];
 // that first action turns out (move, hold, whatever).
 let justArrived = false;
 
+// Mirrors the live sector back into its chart slot — called before any
+// jump/advance so the chart always holds each sector exactly as last left.
+function snapshotLive() {
+  if (chartIndex >= 0 && sectorHistory[chartIndex]) {
+    sectorHistory[chartIndex] = { levelIndex, state: JSON.parse(JSON.stringify(state)) };
+  }
+}
+
 function advanceSector() {
-  sectorHistory.push({ levelIndex, state: JSON.parse(JSON.stringify(state)) });
+  snapshotLive();
+  // Advancing from a rewound sector abandons the old forward chain — you
+  // chose a gate, that's the route now.
+  sectorHistory = sectorHistory.slice(0, chartIndex + 1);
   loadSector(
     levelIndex + 1,
     {
@@ -197,28 +208,37 @@ function advanceSector() {
   );
 }
 
-function returnToPreviousSector() {
-  if (!sectorHistory.length) return;
-  const prev = sectorHistory.pop();
+// Jump to ANY charted sector — the wormhole calls this with the previous
+// index, the Map calls it with whatever star you tapped.
+function jumpToChart(index) {
+  if (index === chartIndex || index < 0 || index >= sectorHistory.length) return;
+  snapshotLive();
+  const entry = sectorHistory[index];
   // The wormhole-flash anim (if in flight) survives the swap, same as the
   // forward warp does in loadSector — it keeps covering the screen right
   // through the moment the map changes underneath it.
   const keptAnims = anims.filter((a) => a.kind === "wormhole");
-  levelIndex = prev.levelIndex;
-  state = prev.state;
-  // The saved snapshot is mid-"won" (that's the moment it was captured, on
-  // the Warp Gate). Un-consume that so the board is live again — moving or
-  // Hold Position on the gate re-triggers the normal win check and warps
-  // back out through advanceSector, same as clearing it the first time.
+  chartIndex = index;
+  levelIndex = entry.levelIndex;
+  state = JSON.parse(JSON.stringify(entry.state));
+  // A snapshot may be mid-"won" (captured standing on the Warp Gate).
+  // Un-consume that so the board is live again — winning re-triggers
+  // normally on the next action taken on the gate.
   if (state.status === "won") state.status = "playing";
+  justArrived = true; // don't let standing on the wormhole/gate instantly re-trigger
   mode = null;
   anims = keptAnims;
   plannedPath = null;
   autoRoute = null;
   outpostDismissed = false;
+  mapVisible = false;
   shipAngle = -90;
   updateGeometry();
   render();
+}
+
+function returnToPreviousSector() {
+  jumpToChart(chartIndex - 1);
 }
 
 // The outpost shop pops up automatically the moment the flagship is docked
@@ -349,12 +369,15 @@ function scheduleAnims(events) {
       if (dir >= 0) shipAngle = DIR_ANGLES[dir];
     }
     else if (ev.type === "playerDeath") anims.push({ kind: "boom", pos: ev, start: now, dur: 650, particles: makeExplosionParticles(16) });
+    else if (ev.type === "energyGain") {
+      anims.push({ kind: "efloat", amount: `+${ev.amount}`, pos: { q: state.playerPos.q, r: state.playerPos.r }, start: now, dur: 900 });
+    }
     else if (ev.type === "energySpend") {
       // A rising "-N ENERGY" over the flagship on every paid shot — the
       // energy economy was invisible without it (a Shockwave turn drains
       // and regens between renders, so only a live cue shows the spend).
       const priorFloats = anims.filter((a) => a.kind === "efloat").length;
-      anims.push({ kind: "efloat", amount: ev.amount, pos: { q: state.playerPos.q, r: state.playerPos.r }, start: now + priorFloats * 260, dur: 900 });
+      anims.push({ kind: "efloat", amount: `-${ev.amount}`, pos: { q: state.playerPos.q, r: state.playerPos.r }, start: now + priorFloats * 260, dur: 900 });
     }
   }
   if (anims.length) requestAnimationFrame(tickAnims);
@@ -1253,12 +1276,32 @@ const SECTOR_BG = {
 // sector... it's kind of lame background-wise right now [past the start]."
 function backdropForLevel(levelId) {
   if (SECTOR_BG[levelId]) return SECTOR_BG[levelId];
-  const rng = seededRandom(`bghue-${levelId}`);
-  const hue = Math.floor(rng() * 360);
+  // Gate color = destination mood ("when you're jumping into a color, it
+  // should kinda match that theme"): a sector reached through the warm/
+  // aggressive gate lives in warm hostile hues, the cool/quiet gate in
+  // cool calm ones, the boss in its own iron-grey-red. The depth band
+  // walks the base hue within each family, so depth 6 and depth 16 read
+  // as different regions of the same kind of space.
+  const theme = state.theme;
+  const rng = seededRandom(`bghue-${levelId}-${theme ? theme.variant : "x"}`);
+  const band = theme ? theme.band : 0;
+  let hue;
+  let sat = 45;
+  if (theme && theme.variant === "aggressive") {
+    hue = (350 + band * 18 + Math.floor(rng() * 14)) % 360; // reds → oranges, deeper = hotter
+    sat = 55;
+  } else if (theme && theme.variant === "quiet") {
+    hue = 185 + ((band * 16 + Math.floor(rng() * 14)) % 70); // teals → blues → indigos
+  } else if (theme && theme.variant === "boss") {
+    hue = 355;
+    sat = 30;
+  } else {
+    hue = Math.floor(rng() * 360); // neutral arrival — anything goes
+  }
   const accentHue = (hue + 35 + Math.floor(rng() * 40)) % 360;
   return [
-    `hsl(${hue}, 45%, 9%)`,
-    `hsl(${hue}, 55%, 3%)`,
+    `hsl(${hue}, ${sat}%, 9%)`,
+    `hsl(${hue}, ${sat + 10}%, 3%)`,
     `hsla(${accentHue}, 70%, 55%, 0.20)`,
   ];
 }
@@ -1543,7 +1586,7 @@ function draw() {
     ctx.fillStyle = "#7fe3a8";
     ctx.font = `700 ${Math.max(11, geom.sx * 0.34)}px "SF Mono", "Menlo", "Consolas", monospace`;
     ctx.textAlign = "center";
-    ctx.fillText(`-${a.amount} ENERGY`, c.x, c.y - geom.sx * (0.75 + p * 1.1));
+    ctx.fillText(`${a.amount} ENERGY`, c.x, c.y - geom.sx * (0.75 + p * 1.1));
     ctx.restore();
   }
 
@@ -1631,6 +1674,7 @@ function persist() {
   GCStorage.set(GAME_ID, "run", state);
   GCStorage.set(GAME_ID, "levelIndex", levelIndex);
   GCStorage.set(GAME_ID, "sectorHistory", sectorHistory);
+  GCStorage.set(GAME_ID, "chartIndex", chartIndex);
   if (state.status === "won") {
     bestDepth = Math.max(bestDepth, state.levelId);
     GCStorage.set(GAME_ID, "bestDepth", bestDepth);
@@ -1672,7 +1716,7 @@ function flashOnChange(key, value, wrapEl) {
 function updateHud() {
   renderStatBar(hullBarEl, "Hull", state.hull, state.maxHull, "hull");
   // Energy pays for every weapon shot, so the reactor gauge is always up.
-  renderStatBar(energyBarEl, "Reactor", state.energy, state.maxEnergy, "energy");
+  renderStatBar(energyBarEl, "Energy", state.energy, state.maxEnergy, "energy");
   // Shield charges have no cap — the bar is however many are banked, all
   // lit. Hidden entirely at zero rather than showing an empty socket for
   // something you may never buy; the gauge cluster reads SHIELDS | HULL,
@@ -1762,14 +1806,22 @@ function updateLegend() {
   scanBtn.classList.toggle("active", legendVisible);
 }
 
-// The panel's action row: Hold Position, Tractor Beam, Target Lock.
+// The panel's action row: Fire, Recharge, Tractor Beam, Target Lock.
 // Target Lock is the old "toggle Warpdrive off to aim" trick promoted to
 // a first-class stance button: engaged = movement offline, taps aim the
-// flagship, Hold Position fires. Holding position is always available,
-// since letting an armed weapon fire without moving is a legitimate
-// choice any turn.
+// flagship, FIRE commits the shot.
 function updateSystems() {
-  holdBtn.disabled = state.status !== "playing" || legendVisible;
+  // FIRE is only live when an armed weapon actually has a target — the
+  // button itself tells you whether shooting this turn does anything.
+  const canFire = Engine.WEAPON_SYSTEM_KEYS.some((k) => {
+    if (!(k === "ram" || state.actions.includes(k)) || !state.systems[k]) return false;
+    const weapon = Engine.WEAPONS[k];
+    const reach = new Set(Engine.weaponHexes(state.playerPos, state.facing, weapon).map(Engine.hexKey));
+    return Engine.livingEnemies(state).some((e) => reach.has(Engine.hexKey(e)));
+  });
+  fireBtn.disabled = state.status !== "playing" || legendVisible || !canFire;
+  fireBtn.classList.toggle("active", canFire && state.status === "playing" && !legendVisible);
+  rechargeBtn.disabled = state.status !== "playing" || legendVisible || state.energy >= state.maxEnergy;
   targetLockBtn.disabled = state.status !== "playing" || legendVisible;
   targetLockBtn.classList.toggle("active", !state.systems.warpdrive);
 }
@@ -1807,8 +1859,8 @@ function describeWeapon(weapon) {
   );
 }
 
-// Short enough to sit inline in the systems row next to the toggles and
-// Hold Position instead of needing its own full-width line — the full
+// Short enough to sit inline on the console instead of needing its own
+// extra-wide line — the full
 // sentence is still one tap/hover away via the title tooltip.
 function describeWeaponCompact(weapon) {
   const pattern = weapon.pattern.length >= 6 ? "ALL" : "FWD";
@@ -1987,12 +2039,13 @@ function updateShipOverlay() {
   if (state.shieldCharges > 0) statRow("Shield", bar(state.shieldCharges, state.shieldCharges, "shield", "Shield"));
   statRow("Salvage", text(state.salvage));
   statRow("Weapon slots", text(`${Engine.usedWeaponSlots(state)}/${state.weaponSlots} in use`));
-  statRow("Energy regen", text("+1 per turn"));
+  statRow("Recharge", text(`+${Engine.RECHARGE_ENERGY_GAIN} per RECHARGE action`));
+  statRow("Warp jump", text("refills Energy to full"));
 
   shipHardpointsEl.innerHTML = "";
   // Builds one toggle row — the ONLY place system on/off switches live now
   // ("you don't need the controls on/off anymore... it's in Ship"): the
-  // console keeps just the actions (Hold Position, Tractor Beam).
+  // console keeps just the actions (Fire/Recharge/Tractor/Target Lock).
   const systemRow = (key, label, statsText) => {
     const row = document.createElement("div");
     row.className = "ship-hardpoint";
@@ -2038,7 +2091,7 @@ function updateShipOverlay() {
   }
   const note = document.createElement("p");
   note.className = "ship-note";
-  note.textContent = "Loadout changes are free — they never spend a turn. Buy more slots, reactor capacity, and weapons at Outposts.";
+  note.textContent = "Loadout changes are free — they never spend a turn. Buy more slots, Energy capacity, and weapons at Outposts.";
   shipHardpointsEl.appendChild(note);
 }
 
@@ -2055,16 +2108,20 @@ function updateMapOverlay() {
   mapBtn.classList.toggle("active", mapVisible);
   if (!mapVisible) return;
 
-  const chain = [
-    ...sectorHistory.map((entry) => ({
-      name: entry.state.levelName,
-      levelId: entry.state.levelId,
-      tookVariant: entry.state.usedExitVariant || null, // gate used to LEAVE this sector
-      exits: entry.state.exits || [],
-      current: false,
-    })),
-    { name: state.levelName, levelId: state.levelId, tookVariant: null, exits: state.exits || [], current: true },
-  ];
+  // The chart IS the chain now — including sectors ahead of you if you've
+  // jumped back. The live sector substitutes its chart snapshot.
+  const chain = sectorHistory.map((entry, i) => {
+    const st = i === chartIndex ? state : entry.state;
+    return {
+      name: st.levelName,
+      levelId: st.levelId,
+      tookVariant: st.usedExitVariant || null, // gate used to LEAVE this sector
+      exits: st.exits || [],
+      current: i === chartIndex,
+      chartIdx: i,
+    };
+  });
+  if (!chain.length) return;
 
   const W = 340;
   const STEP = 62;
@@ -2123,9 +2180,10 @@ function updateMapOverlay() {
       );
     }
   }
-  // Gates ahead: dashed branches up to hollow "?" stars.
-  const cur = chain.length - 1;
-  if (state.status === "playing") {
+  // Gates ahead: dashed branches up to hollow "?" stars — only from the
+  // end of the charted route (mid-chain, the way forward is already drawn).
+  const cur = chartIndex;
+  if (state.status === "playing" && cur === chain.length - 1) {
     const ahead = chain[cur].exits || [];
     ahead.forEach((ex, j) => {
       const dir = ahead.length === 1 ? 0 : ex.variantId === "quiet" ? -1 : ex.variantId === "aggressive" ? 1 : j === 0 ? 1 : -1;
@@ -2138,7 +2196,9 @@ function updateMapOverlay() {
       );
     });
   }
-  // Visited + current star nodes, with labels.
+  // Charted star nodes, with labels. Every non-current node is TAPPABLE —
+  // tap a charted star to jump back (or forward) to it, exactly as you
+  // left it ("maybe you can jump back and forth between them").
   for (let i = 0; i < chain.length; i++) {
     const n = chain[i];
     const cx = xs[i];
@@ -2149,17 +2209,26 @@ function updateMapOverlay() {
           `<circle cx="${cx}" cy="${cy}" r="6" fill="#7fe3a8"/>`
       );
     } else {
-      svg.push(`<circle cx="${cx}" cy="${cy}" r="4.5" fill="#9fb0c9"/>`);
+      // A generous invisible hit-circle under the visible star, tagged for
+      // the tap-to-jump handler below.
+      svg.push(
+        `<circle cx="${cx}" cy="${cy}" r="16" fill="rgba(0,0,0,0.01)" data-chart="${n.chartIdx}" style="cursor:pointer"/>` +
+          `<circle cx="${cx}" cy="${cy}" r="4.5" fill="#9fb0c9" data-chart="${n.chartIdx}" style="cursor:pointer"/>`
+      );
     }
     const labelSide = cx > W / 2 ? -1 : 1;
     const tx = cx + labelSide * 16;
     const anchor = labelSide === 1 ? "start" : "end";
     svg.push(
-      `<text x="${tx}" y="${cy + 3.5}" text-anchor="${anchor}" fill="${n.current ? "#7fe3a8" : "#7a8bab"}" font-size="10" font-family="monospace">${n.name.toUpperCase()}</text>`
+      `<text x="${tx}" y="${cy + 3.5}" text-anchor="${anchor}" fill="${n.current ? "#7fe3a8" : "#7a8bab"}" font-size="10" font-family="monospace"${n.current ? "" : ` data-chart="${n.chartIdx}" style="cursor:pointer"`}>${n.name.toUpperCase()}</text>`
     );
     if (n.current) {
       svg.push(
         `<text x="${tx}" y="${cy + 15}" text-anchor="${anchor}" fill="#7fe3a8" font-size="8" font-family="monospace" opacity="0.8">YOU ARE HERE</text>`
+      );
+    } else {
+      svg.push(
+        `<text x="${tx}" y="${cy + 15}" text-anchor="${anchor}" fill="#5b6b8a" font-size="7" font-family="monospace" data-chart="${n.chartIdx}" style="cursor:pointer">TAP TO JUMP</text>`
       );
     }
   }
@@ -2236,9 +2305,9 @@ function loadSector(index, carryOver, opts) {
   // state being replaced, so it just keeps fading out over the new sector.
   const keptAnims = opts && opts.keepWarpAnim ? anims.filter((a) => a.kind === "warp") : [];
   levelIndex = index;
-  // A wormhole back appears whenever there's a previous sector saved to
-  // return to (sectorHistory is empty right after "New Run") — every
-  // caller gets this automatically rather than having to remember it.
+  // A wormhole back appears whenever there's a previous charted sector to
+  // return to (the chart is empty right after "New Run") — every caller
+  // gets this automatically rather than having to remember it.
   // opts.variantId (which of a branching sector's Warp Gates was used —
   // see advanceSector) picks which content generateLevel deals for this
   // depth; omitted for the campaign and for a fresh "New Run".
@@ -2246,6 +2315,9 @@ function loadSector(index, carryOver, opts) {
     ...carryOver,
     hasPrevious: sectorHistory.length > 0,
   });
+  // This brand-new sector joins the chart as the live entry.
+  sectorHistory.push({ levelIndex, state: JSON.parse(JSON.stringify(state)) });
+  chartIndex = sectorHistory.length - 1;
   justArrived = true;
   mode = null;
   anims = keptAnims;
@@ -2298,9 +2370,18 @@ function restoreRun() {
   levelIndex = savedIndex;
   state = savedState;
   // Same reasoning as isValidSave above, applied per-entry — drop any
-  // stale history snapshot rather than crashing returnToPreviousSector
-  // later when it's popped.
+  // stale chart snapshot rather than crashing a jump later.
   sectorHistory = GCStorage.get(GAME_ID, "sectorHistory", []).filter((entry) => entry && isValidSave(entry.state));
+  const savedChartIndex = GCStorage.get(GAME_ID, "chartIndex", sectorHistory.length - 1);
+  chartIndex = Math.max(0, Math.min(savedChartIndex, sectorHistory.length - 1));
+  if (!sectorHistory.length) {
+    // A valid live state but no chart (older save) — seed the chart with it.
+    sectorHistory = [{ levelIndex, state: JSON.parse(JSON.stringify(state)) }];
+    chartIndex = 0;
+  } else {
+    // The live state is the freshest version of its chart slot.
+    sectorHistory[chartIndex] = { levelIndex, state: JSON.parse(JSON.stringify(state)) };
+  }
   // A save can land mid-"won" (captured the instant a warp animation
   // started) — the animation itself doesn't survive a reload, so just
   // un-consume it back to "playing", same fix as the wormhole return.
@@ -2343,12 +2424,18 @@ mapCloseBtn.addEventListener("click", () => {
   mapVisible = false;
   render();
 });
+// Tap a charted star on the Map to jump to that sector, as you left it.
+mapChartEl.addEventListener("click", (evt) => {
+  const target = evt.target.closest ? evt.target.closest("[data-chart]") : null;
+  if (!target) return;
+  jumpToChart(Number(target.dataset.chart));
+});
 targetLockBtn.addEventListener("click", () => {
   Engine.setSystem(state, "warpdrive", !state.systems.warpdrive);
   pushMessage(
     state.systems.warpdrive
       ? "Target Lock disengaged — Warpdrive back online."
-      : "Target Lock engaged — tap an adjacent hex to aim, then Hold Position to fire."
+      : "Target Lock engaged — tap an adjacent hex to aim, then FIRE."
   );
   render();
 });
@@ -2358,8 +2445,11 @@ tractorStatsEl.addEventListener("click", () => {
   updateHud();
 });
 
-holdBtn.addEventListener("click", () => {
-  handleAction(() => Engine.applyHoldPosition(state));
+fireBtn.addEventListener("click", () => {
+  handleAction(() => Engine.applyFire(state));
+});
+rechargeBtn.addEventListener("click", () => {
+  handleAction(() => Engine.applyRecharge(state));
 });
 
 
@@ -2439,29 +2529,26 @@ canvas.addEventListener("click", (evt) => {
     return;
   }
 
-  // Warpdrive offline means movement itself is off the table this turn, but
-  // tapping an adjacent hex still re-aims the flagship toward it — free,
-  // doesn't end the turn, doesn't move — so you can dial in a forward-only
-  // weapon's direction before actually committing with Hold Position
-  // (always available; see holdBtn below), the only way to end the turn
-  // while Warpdrive's off.
+  // Target Lock engaged: movement is off the table, and tapping an
+  // adjacent hex re-aims the flagship toward it — free, no turn spent —
+  // so you can dial in a forward-only weapon's direction, then commit
+  // with FIRE.
   if (!state.systems.warpdrive) {
     const dir = Engine.directionIndex(state.playerPos, hex);
     if (dir >= 0) {
       Engine.setFacing(state, dir);
       shipAngle = DIR_ANGLES[dir]; // spin to show the new aim immediately
     } else {
-      pushMessage("Warpdrive offline — tap an adjacent hex to aim, or Hold Position to act.");
+      pushMessage("Target Lock engaged — tap an adjacent hex to aim, then FIRE.");
     }
     render();
     return;
   }
 
-  // Movement never needs a mode armed: any tap that isn't a legal target for
-  // an armed Tractor Beam falls back to a plain move (adjacent) or the
-  // route preview (further away). The Impulse Cannon auto-fires as a side
-  // effect of the move itself — see engine.js — so there's no "ramming"
-  // mode to arm either.
+  // Movement never needs a mode armed: any tap that isn't a legal target
+  // for an armed Tractor Beam falls back to a plain move (adjacent) or the
+  // route preview (further away). Moving IS the turn's action now —
+  // weapons only fire on an explicit FIRE.
   const isPlainMove = Engine.legalSublightTargets(state).some((h) => Engine.posEq(h, hex));
 
   if (mode) {
@@ -2485,6 +2572,7 @@ modeButtons.forEach((btn) => btn.addEventListener("click", () => setMode(btn.dat
 
 restartBtn.addEventListener("click", () => {
   sectorHistory = [];
+  chartIndex = -1;
   loadSector(0);
 });
 
