@@ -712,14 +712,33 @@ assert.throws(
   "an offer refuses when salvage can't cover its cost"
 );
 
-// Salvage, the raised max-Hull, and any banked Shield charges all carry
-// into the next sector via createGameState's carryOver — this is how
-// loadSector() in app.js hands a run's progress from one sector to the next.
-const carriedState = Engine.createGameState(LEVELS[0], { salvage: 4, maxHull: salvageState.maxHull, shieldCharges: 2 });
+// Salvage, the raised max-Hull, shield capacity/charges, AND hull damage
+// all carry into the next sector via createGameState's carryOver — this is
+// how loadSector() in app.js hands a run's progress from one sector to the
+// next. Hull damage is permanent: warping doesn't repair a breached deck,
+// only an Outpost does.
+const carriedState = Engine.createGameState(LEVELS[0], {
+  salvage: 4,
+  hull: 1,
+  maxHull: salvageState.maxHull,
+  shieldCharges: 2,
+  maxShields: 2,
+});
 assert.strictEqual(carriedState.salvage, 4, "salvage carries over into the next sector");
 assert.strictEqual(carriedState.maxHull, salvageState.maxHull, "a permanent max-Hull upgrade carries over too");
-assert.strictEqual(carriedState.hull, carriedState.maxHull, "the new sector still starts at full (carried-over) Hull");
-assert.strictEqual(carriedState.shieldCharges, 2, "banked Shield charges carry over too");
+assert.strictEqual(carriedState.hull, 1, "hull DAMAGE carries over — a jump never repairs the ship");
+assert.strictEqual(carriedState.shieldCharges, 2, "raised shield charges carry over too");
+assert.strictEqual(carriedState.maxShields, 2, "shield generator capacity is permanent, same as max-Hull");
+// A fresh run (no carryOver) starts whole, and with no shields at all —
+// shields only exist once a Shield Generator is bought.
+const freshState = Engine.createGameState(LEVELS[0]);
+assert.strictEqual(freshState.hull, freshState.maxHull, "a fresh run starts at full hull");
+assert.strictEqual(freshState.maxShields, 0, "a fresh run has NO shield capacity");
+assert.strictEqual(freshState.shieldCharges, 0, "and no shield charges");
+// Charges can never exceed capacity — a stale carryOver with more charges
+// than generator capacity clamps down instead of smuggling extras in.
+const clampedState = Engine.createGameState(LEVELS[0], { shieldCharges: 3, maxShields: 1 });
+assert.strictEqual(clampedState.shieldCharges, 1, "carried charges clamp to generator capacity");
 
 // ---- outpost offer variety: not the same fixed shop every visit ---------
 // Repair is always offered (the reliable baseline); how many EXTRA offers
@@ -754,7 +773,7 @@ assert.deepStrictEqual(
   "the same level id always deals the same offers (reproducible)"
 );
 
-// ---- Emergency Shield: absorbs one full hit, then is consumed ------------
+// ---- Shields: a raised charge absorbs one full hit, then is spent --------
 const shieldLevel = {
   id: 991,
   name: "shield fixture",
@@ -780,6 +799,37 @@ const noShieldState = Engine.createGameState(shieldLevel);
 const hullBeforeNoShield = noShieldState.hull;
 Engine.applySublight(noShieldState, { q: 2, r: 2 });
 assert.strictEqual(noShieldState.hull, hullBeforeNoShield - 1, "with no Shield charge banked, the hit costs Hull as normal");
+
+// ---- Shield Generator + Raise Shields: energy pays for protection --------
+// Buying the generator at an Outpost is the one-time salvage purchase
+// (+1 capacity, arrives raised); every re-raise after that costs Energy
+// and a full turn via applyRaiseShields — protection competes with FIRE
+// and RECHARGE for the same one-action economy.
+salvageState.salvage = 15;
+Engine.applyOutpostPurchase(salvageState, "shield");
+assert.strictEqual(salvageState.maxShields, 1, "the Shield Generator installs +1 permanent capacity");
+assert.strictEqual(salvageState.shieldCharges, 1, "the new capacity arrives raised — the upgrade feels immediate");
+assert.strictEqual(salvageState.salvage, 0, "the generator costs its full salvage price");
+
+const raiseState = Engine.createGameState(shieldLevel, { maxShields: 1 });
+assert.strictEqual(raiseState.shieldCharges, 0, "capacity without carried charges starts DOWN — raising costs energy");
+const energyBeforeRaise = raiseState.energy;
+const turnBeforeRaise = raiseState.turnCount;
+Engine.applyRaiseShields(raiseState);
+assert.strictEqual(raiseState.shieldCharges, 1, "Raise Shields brings one charge up");
+assert.strictEqual(raiseState.energy, energyBeforeRaise - Engine.SHIELD_RAISE_COST, "raising a charge costs energy");
+assert.strictEqual(raiseState.turnCount, turnBeforeRaise + 1, "raising shields spends the whole turn");
+assert.ok(raiseState.events.some((e) => e.type === "energySpend"), "raising emits the energySpend float for the UI");
+assert.throws(() => Engine.applyRaiseShields(raiseState), /already raised/, "can't raise past generator capacity");
+raiseState.shieldCharges = 0;
+raiseState.energy = Engine.SHIELD_RAISE_COST - 1;
+assert.throws(() => Engine.applyRaiseShields(raiseState), /RECHARGE first/, "raising refuses without the energy to pay");
+const noGeneratorState = Engine.createGameState(shieldLevel);
+assert.throws(
+  () => Engine.applyRaiseShields(noGeneratorState),
+  /No Shield Generator/,
+  "no generator installed = no shields to raise"
+);
 
 // ---- Lance Cannon: bought at an Outpost, not handed out for free --------
 // Clubhouse feedback: "what about different options and different

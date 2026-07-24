@@ -68,6 +68,7 @@ const mapCloseBtn = document.getElementById("mapCloseBtn");
 const targetLockBtn = document.getElementById("targetLockBtn");
 const fireBtn = document.getElementById("fireBtn");
 const rechargeBtn = document.getElementById("rechargeBtn");
+const shieldsBtn = document.getElementById("shieldsBtn");
 const tractorStatsEl = document.getElementById("tractorStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
 const scanReadoutEl = document.getElementById("scanReadout");
@@ -195,8 +196,10 @@ function advanceSector() {
     levelIndex + 1,
     {
       salvage: state.salvage,
+      hull: state.hull, // hull damage is permanent — warping doesn't repair a breached deck
       maxHull: state.maxHull,
       shieldCharges: state.shieldCharges,
+      maxShields: state.maxShields,
       maxEnergy: state.maxEnergy,
       weaponSlots: state.weaponSlots, // Hardpoint Expansions are permanent, same as Reactor/Hull upgrades
       // A purchased weapon (Lance Cannon, Repulsor, ...) isn't part of any
@@ -213,6 +216,23 @@ function advanceSector() {
 function jumpToChart(index) {
   if (index === chartIndex || index < 0 || index >= sectorHistory.length) return;
   snapshotLive();
+  // The SHIP travels with you — a chart snapshot restores the SECTOR as
+  // you left it (enemies, hazards, positions), never your ship's stats.
+  // Without this, jumping back through a wormhole would roll back hull
+  // damage, salvage, and purchases to whatever they were on your last
+  // visit — free repairs and a time-travel exploit in one.
+  const ship = {
+    hull: state.hull,
+    maxHull: state.maxHull,
+    salvage: state.salvage,
+    shieldCharges: state.shieldCharges,
+    maxShields: state.maxShields,
+    energy: state.energy,
+    maxEnergy: state.maxEnergy,
+    weaponSlots: state.weaponSlots,
+    extraActions: Engine.PURCHASABLE_ACTIONS.filter((a) => state.actions.includes(a)),
+    systems: JSON.parse(JSON.stringify(state.systems)),
+  };
   const entry = sectorHistory[index];
   // The wormhole-flash anim (if in flight) survives the swap, same as the
   // forward warp does in loadSector — it keeps covering the screen right
@@ -221,6 +241,17 @@ function jumpToChart(index) {
   chartIndex = index;
   levelIndex = entry.levelIndex;
   state = JSON.parse(JSON.stringify(entry.state));
+  state.hull = Math.min(ship.hull, ship.maxHull);
+  state.maxHull = ship.maxHull;
+  state.salvage = ship.salvage;
+  state.shieldCharges = ship.shieldCharges;
+  state.maxShields = ship.maxShields;
+  state.energy = Math.min(ship.energy, ship.maxEnergy);
+  state.maxEnergy = ship.maxEnergy;
+  state.weaponSlots = ship.weaponSlots;
+  state.actions = Array.from(new Set([...state.actions, ...ship.extraActions]));
+  state.systems = ship.systems;
+  Engine.clampWeaponSystems(state);
   // A snapshot may be mid-"won" (captured standing on the Warp Gate).
   // Un-consume that so the board is live again — winning re-triggers
   // normally on the next action taken on the gate.
@@ -1762,12 +1793,13 @@ function updateHud() {
   renderStatBar(hullBarEl, "Hull", state.hull, state.maxHull, "hull");
   // Energy pays for every weapon shot, so the reactor gauge is always up.
   renderStatBar(energyBarEl, "Energy", state.energy, state.maxEnergy, "energy");
-  // Shield charges have no cap — the bar is however many are banked, all
-  // lit. Hidden entirely at zero rather than showing an empty socket for
-  // something you may never buy; the gauge cluster reads SHIELDS | HULL,
-  // in damage order (shields absorb first).
-  shieldWrapEl.hidden = state.shieldCharges <= 0;
-  renderStatBar(shieldBarEl, "Shields", state.shieldCharges, state.shieldCharges, "shield");
+  // Shields = generator capacity (empty sockets included, so a DOWN
+  // shield is visible as an unlit pip begging to be re-raised). The gauge
+  // is hidden entirely until a Shield Generator is installed — no empty
+  // socket for something you may never buy; the cluster reads
+  // SHIELDS | HULL, in damage order (shields absorb first).
+  shieldWrapEl.hidden = state.maxShields <= 0;
+  renderStatBar(shieldBarEl, "Shields", state.shieldCharges, state.maxShields, "shield");
   flashOnChange("hull", state.hull, hullWrapEl);
   flashOnChange("energy", state.energy, energyWrapEl);
   flashOnChange("shield", state.shieldCharges, shieldWrapEl);
@@ -1849,6 +1881,15 @@ function updateSystems() {
   fireBtn.disabled = state.status !== "playing" || legendVisible || !canFire;
   fireBtn.classList.toggle("active", canFire && state.status === "playing" && !legendVisible);
   rechargeBtn.disabled = state.status !== "playing" || legendVisible || state.energy >= state.maxEnergy;
+  // Raise Shields only exists once a Shield Generator is installed, and is
+  // only live when there's a spent charge to raise AND the Energy to pay
+  // for it — the button's state is the whole rule, same as FIRE/RECHARGE.
+  shieldsBtn.hidden = state.maxShields <= 0;
+  shieldsBtn.disabled =
+    state.status !== "playing" ||
+    legendVisible ||
+    state.shieldCharges >= state.maxShields ||
+    state.energy < Engine.SHIELD_RAISE_COST;
   targetLockBtn.disabled = state.status !== "playing" || legendVisible;
   targetLockBtn.classList.toggle("active", !state.systems.warpdrive);
 }
@@ -2085,11 +2126,13 @@ function updateShipOverlay() {
   };
   statRow("Hull", bar(state.hull, state.maxHull, "hull", "Hull"));
   statRow("Energy", bar(state.energy, state.maxEnergy, "energy", "Energy"));
-  if (state.shieldCharges > 0) statRow("Shield", bar(state.shieldCharges, state.shieldCharges, "shield", "Shield"));
+  if (state.maxShields > 0) statRow("Shields", bar(state.shieldCharges, state.maxShields, "shield", "Shields"));
   statRow("Salvage", text(state.salvage));
   statRow("Weapon slots", text(`${Engine.usedWeaponSlots(state)}/${state.weaponSlots} in use`));
   statRow("Recharge", text(`+${Engine.RECHARGE_ENERGY_GAIN} per RECHARGE action`));
-  statRow("Warp jump", text("refills Energy to full"));
+  statRow("Warp jump", text("refills Energy — hull damage stays until repaired"));
+  if (state.maxShields > 0)
+    statRow("Raise Shields", text(`−${Engine.SHIELD_RAISE_COST} Energy per charge`));
 
   shipHardpointsEl.innerHTML = "";
   // Builds one toggle row — the ONLY place system on/off switches live now
@@ -2401,6 +2444,9 @@ function isValidSave(s) {
     // The systems rework: ships carry weaponSlots, enemies carry their own
     // reactors. A pre-rework save has neither — drop it, start fresh.
     typeof s.weaponSlots === "number" &&
+    // The hull/shields rework: shields are generator capacity, not loose
+    // charges. A pre-rework save has no maxShields — drop it, start fresh.
+    typeof s.maxShields === "number" &&
     (s.enemies || []).every((e) => typeof e.energy === "number")
   );
 }
@@ -2501,6 +2547,9 @@ fireBtn.addEventListener("click", () => {
 });
 rechargeBtn.addEventListener("click", () => {
   handleAction(() => Engine.applyRecharge(state));
+});
+shieldsBtn.addEventListener("click", () => {
+  handleAction(() => Engine.applyRaiseShields(state));
 });
 
 

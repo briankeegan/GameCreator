@@ -442,11 +442,17 @@ async function freshPage(browser, url, errors) {
   // ---- The chart is a maze you can jump around ("jump back and forth") ----
   // Sector 2 is still charted ahead of us — tap its star on the Map to
   // jump forward to it, then tap Sector 1's to come straight back.
+  // The SHIP travels with you: mark its live stats before jumping, and the
+  // restored snapshot must carry them instead of rolling them back — a
+  // chart jump restores the SECTOR as left, never old hull/salvage.
+  const shipBeforeJump = { hull: s.hull, salvage: s.salvage };
   await page.click("#mapBtn");
   await page.click('#mapChart [data-chart="1"]', { force: true }); // overlapping SVG circles both carry data-chart — the delegated handler reads either
   await page.waitForFunction(() => window.__hhState.levelId === 2, null, { timeout: 5000 });
   s = await getState(page);
   assert.strictEqual(s.status, "playing", "jumping forward on the Map lands in a live board");
+  assert.strictEqual(s.hull, shipBeforeJump.hull, "hull rides along on a chart jump — snapshots never roll it back");
+  assert.strictEqual(s.salvage, shipBeforeJump.salvage, "salvage rides along too — no time-travel refunds");
   await page.click("#mapBtn");
   await page.click('#mapChart [data-chart="0"]', { force: true });
   await page.waitForFunction(() => window.__hhState.levelId === 1, null, { timeout: 5000 });

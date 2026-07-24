@@ -364,7 +364,10 @@
   const OUTPOST_OFFER_POOL = [
     { id: "repair", label: "Repair 1 Hull", cost: 3 },
     { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 15 },
-    { id: "shield", label: "Emergency Shield (absorb the next hit)", cost: 10 },
+    // Shields aren't consumable purchases anymore — you buy the GENERATOR
+    // (permanent +1 capacity, arrives raised), then re-raising a spent
+    // charge costs Energy and a turn (applyRaiseShields), not salvage.
+    { id: "shield", label: "Shield Generator (+1 shield capacity)", cost: 15 },
     // The two "configurable limits" as purchases: your reactor cap (how
     // much Energy you can bank against expensive weapons) and your weapon
     // slots (how many systems can run at once) are both ship stats you
@@ -449,10 +452,21 @@
       // advanceSector is what actually carries it forward.
       actions: Array.from(new Set([...(level.actions || DEFAULT_ACTIONS), ...((carryOver && carryOver.extraActions) || [])])),
       playerPos: { q: level.playerStart.q, r: level.playerStart.r },
-      hull: maxHull,
+      // Hull damage is PERMANENT across jumps — warping doesn't patch a
+      // breached deck ("why is hull repaired between every jump? doesn't
+      // make any sense"). Only an Outpost repair puts pips back. A fresh
+      // run (no carryOver) starts at full.
+      hull: Math.min((carryOver && carryOver.hull) || maxHull, maxHull),
       maxHull: maxHull,
       salvage: (carryOver && carryOver.salvage) || 0,
-      shieldCharges: (carryOver && carryOver.shieldCharges) || 0,
+      // Shields are capacity (a Shield Generator you buy) + charges (raised
+      // by spending Energy — see applyRaiseShields). No generator = no
+      // shields, which is how every run starts.
+      maxShields: (carryOver && carryOver.maxShields) || 0,
+      shieldCharges: Math.min(
+        (carryOver && carryOver.shieldCharges) || 0,
+        (carryOver && carryOver.maxShields) || 0
+      ),
       maxEnergy: (carryOver && carryOver.maxEnergy) || START_ENERGY,
       energy: (carryOver && carryOver.maxEnergy) || START_ENERGY,
       exitPos: { q: exitList(level)[0].q, r: exitList(level)[0].r }, // primary/first gate — kept for single-exit callers
@@ -846,7 +860,12 @@
     if (totalDamage > 0 && state.shieldCharges > 0) {
       state.shieldCharges -= 1;
       state.events.push({ type: "shieldAbsorb", q: state.playerPos.q, r: state.playerPos.r });
-      pushLog(state, `Emergency Shield absorbed ${totalDamage} damage.`);
+      pushLog(
+        state,
+        state.shieldCharges > 0
+          ? `Shields absorbed ${totalDamage} damage — ${state.shieldCharges} charge${state.shieldCharges === 1 ? "" : "s"} left.`
+          : `Shields absorbed ${totalDamage} damage — shields DOWN.`
+      );
     } else if (totalDamage > 0) {
       state.hull = Math.max(0, state.hull - totalDamage);
       state.events.push({ type: "damage", amount: totalDamage, q: state.playerPos.q, r: state.playerPos.r });
@@ -1015,6 +1034,25 @@
     endPlayerAction(state, { autoFire: false });
   }
 
+  // Raising a spent shield charge is a real action with a real energy
+  // price ("shields... will cost energy to recharge") — it competes with
+  // FIRE and RECHARGE for the turn, same one-action economy as everything
+  // else. Requires an installed Shield Generator (maxShields > 0).
+  const SHIELD_RAISE_COST = 2;
+  function applyRaiseShields(state) {
+    assertPlaying(state);
+    if (state.maxShields <= 0) throw new Error("No Shield Generator installed — Outposts sell them");
+    if (state.shieldCharges >= state.maxShields) throw new Error("Shields are already raised");
+    if (state.energy < SHIELD_RAISE_COST)
+      throw new Error(`Raising shields needs ${SHIELD_RAISE_COST} Energy — RECHARGE first`);
+    state.events = [];
+    state.energy -= SHIELD_RAISE_COST;
+    state.events.push({ type: "energySpend", amount: SHIELD_RAISE_COST, weapon: "Shields" });
+    state.shieldCharges += 1;
+    pushLog(state, `Shields raised — ${state.shieldCharges}/${state.maxShields} up.`);
+    endPlayerAction(state, { autoFire: false });
+  }
+
   function applyTractor(state, targetEnemyId) {
     assertPlaying(state);
     assertUnlocked(state, "tractor", "Tractor Beam");
@@ -1080,7 +1118,8 @@
       state.maxHull += 1;
       state.hull += 1;
     } else if (offer.id === "shield") {
-      state.shieldCharges += 1;
+      state.maxShields += 1;
+      state.shieldCharges += 1; // the new capacity arrives raised — an upgrade should feel immediate
     } else if (offer.id === "reactor") {
       state.maxEnergy += 1;
       state.energy += 1; // an upgrade should feel immediate, same as Reinforce Hull
@@ -1149,6 +1188,9 @@
     applyFire,
     applyRecharge,
     RECHARGE_ENERGY_GAIN,
+    applyRaiseShields,
+    SHIELD_RAISE_COST,
+    clampWeaponSystems,
     applyTractor,
     outpostAvailable,
     outpostOffers,
