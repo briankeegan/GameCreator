@@ -38,8 +38,8 @@ function serveRepo() {
 
 // Click the hex at axial (q,r) after arming the given action mode, using the
 // app's own geometry (the canvas now resizes itself to fit each board).
-// Sublight has no button of its own — a plain move or route-preview click
-// works regardless of which mode (if any) happens to be armed.
+// Sublight has no button of its own — a plain tap QUEUES a move into the
+// round plan; nothing happens on the board until ENGAGE commits it.
 async function clickHex(page, mode, hex) {
   if (mode !== "sublight") await page.click(`[data-mode="${mode}"]`);
   const box = await page.locator("#board").boundingBox();
@@ -49,6 +49,13 @@ async function clickHex(page, mode, hex) {
 
 function getState(page) {
   return page.evaluate(() => window.__hhState);
+}
+
+// Commit the queued plan (or, with nothing queued, End Round) and wait for
+// the committed round to finish playing out.
+async function engage(page) {
+  await page.click("#engageBtn");
+  await page.waitForFunction(() => window.__hhExecuting === false, null, { timeout: 10000 });
 }
 
 function pickStepToward(page, goalExpr) {
@@ -63,11 +70,12 @@ function pickStepToward(page, goalExpr) {
           : expr === "outpost"
             ? st.outpostPos
             : st.enemies.find((e) => e.alive);
-    // Turn Model v2 play: prefer steps that don't END inside a living
-    // enemy's reach (a MOVE turn doesn't defend you) — fall back to any
-    // legal step when everything's dangerous.
+    // AP-round play: prefer steps that don't END the round inside anything's
+    // danger zone — computeThreatHexes already projects a charged chaser's
+    // move+fire reach. Fall back to any legal step when everything's hot.
     const legal = E.legalSublightTargets(st);
-    const safe = legal.filter((cand) => !st.enemies.some((e) => e.alive && E.isAdjacent(e, cand)));
+    const threats = E.computeThreatHexes(st);
+    const safe = legal.filter((cand) => !threats.has(E.hexKey(cand)));
     const pool = safe.length ? safe : legal;
     return pool.reduce(
       (best, cand) => {
@@ -79,15 +87,17 @@ function pickStepToward(page, goalExpr) {
   }, goalExpr);
 }
 
-// Play a turn the v2 way: FIRE if anything's in reach of an armed weapon
-// (the button only lights up when a volley would land), otherwise take a
-// safe step toward the goal.
+// Play one ROUND, plan-and-confirm style: queue FIRE if anything's in reach
+// of an armed weapon (the button only lights when a volley would land),
+// otherwise queue a safe step toward the goal — then ENGAGE, passing the
+// round's other AP.
 async function playTurnToward(page, goalExpr) {
   if (!(await page.locator("#fireBtn").isDisabled())) {
     await page.click("#fireBtn");
-    return;
+  } else {
+    await clickHex(page, "sublight", await pickStepToward(page, goalExpr));
   }
-  await clickHex(page, "sublight", await pickStepToward(page, goalExpr));
+  await engage(page);
 }
 
 // The end-of-run/sector overlay is held back until animations finish.
@@ -143,8 +153,8 @@ async function setShipSystem(page, key, on) {
 // sector's first-ever action) is covered directly in engine.test.js. Once
 // any other action has already happened this sector (e.g. an Outpost
 // visit), simply moving onto the wormhole triggers the return immediately;
-// the fallback Hold Position below only matters for the "first action"
-// case, where landing on it wasn't enough by itself.
+// the fallback End Round below only matters for the "first action" case,
+// where landing on it wasn't enough by itself.
 async function walkToWormhole(page) {
   let s = await getState(page);
   const startLevel = s.levelId;
@@ -160,12 +170,8 @@ async function walkToWormhole(page) {
   }
   if (s.levelId === startLevel) {
     // Standing on the wormhole as the sector's first action needs one more
-    // turn-ending action to trigger the return — RECHARGE is the
-    // stationary one (drain a point first if the tank is full).
-    await page.evaluate(() => {
-      if (window.__hhState.energy >= window.__hhState.maxEnergy) window.__hhState.energy -= 1;
-    });
-    await page.click("#rechargeBtn");
+    // action to trigger the return — End Round is the stationary one.
+    await engage(page);
   }
   await page.waitForFunction((lvl) => window.__hhState.levelId !== lvl, startLevel, { timeout: 5000 });
   return getState(page);
@@ -304,60 +310,62 @@ async function freshPage(browser, url, errors) {
   await page.click("#mapCloseBtn");
   assert.strictEqual(await page.locator("#mapOverlay").isVisible(), false, "the map closes again");
 
-  // One action per turn: walk right up next to the Interceptor — moving
-  // never fires anything, so it survives point-blank contact.
-  for (let i = 0; i < 20; i++) {
-    const adjacent = await page.evaluate(() => {
-      const E = window.HypergolicEngine;
-      const st = window.__hhState;
-      return st.enemies.some((e) => e.alive && E.isAdjacent(e, st.playerPos));
-    });
-    s = await getState(page);
-    if (adjacent || s.status !== "playing") break;
-    await clickHex(page, "sublight", await pickStepToward(page, "enemy"));
-  }
-  s = await getState(page);
-  assert.strictEqual(
-    s.enemies.filter((e) => e.alive).length,
-    1,
-    "moving never kills anything — shooting is its own action"
-  );
-
-  // Target Lock: movement offline, taps re-aim for free.
+  // Target Lock: movement offline, taps re-aim for free (real state, no
+  // AP, no round spent).
   await page.click("#targetLockBtn"); // engage
   const posBeforeAim = (await getState(page)).playerPos;
   const turnBeforeAim = (await getState(page)).turnCount;
-  const enemyPos = (await getState(page)).enemies.find((e) => e.alive);
-  const enemyCenter = await page.evaluate(({ q, r }) => window.__hhHexCenter(q, r), enemyPos);
+  const aimHex = await page.evaluate(() => window.HypergolicEngine.legalSublightTargets(window.__hhState)[0]);
+  const aimCenter = await page.evaluate(({ q, r }) => window.__hhHexCenter(q, r), aimHex);
   const aimBox = await page.locator("#board").boundingBox();
-  await page.mouse.click(aimBox.x + enemyCenter.x, aimBox.y + enemyCenter.y);
+  await page.mouse.click(aimBox.x + aimCenter.x, aimBox.y + aimCenter.y);
   s = await getState(page);
   assert.deepStrictEqual(s.playerPos, posBeforeAim, "re-aiming with Target Lock engaged never moves the flagship");
   assert.strictEqual(s.turnCount, turnBeforeAim, "re-aiming doesn't spend a turn");
   assert.strictEqual(
     s.facing,
-    await page.evaluate(({ q, r }) => window.HypergolicEngine.directionIndex(window.__hhState.playerPos, { q, r }), enemyPos),
-    "the flagship is now facing the Interceptor"
+    await page.evaluate(({ q, r }) => window.HypergolicEngine.directionIndex(window.__hhState.playerPos, { q, r }), aimHex),
+    "the flagship is now facing the tapped hex"
   );
-
-  // FIRE: lit up (something's in reach), kills the Interceptor in place.
-  assert.strictEqual(await page.locator("#fireBtn").isDisabled(), false, "FIRE lights up with a target in reach");
-  const posBeforeFire = (await getState(page)).playerPos;
-  const energyBeforeFire = (await getState(page)).energy;
-  await page.click("#fireBtn");
-  s = await getState(page);
-  assert.deepStrictEqual(s.playerPos, posBeforeFire, "FIRE never moves the flagship");
-  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "the FIRE volley kills the adjacent Interceptor");
-  assert.ok(s.energy < energyBeforeFire, "and the shot visibly cost Energy");
-  assert.strictEqual(s.exitUnlocked, true);
   await page.click("#targetLockBtn"); // disengage — Warpdrive back online
 
-  // RECHARGE lights up now that Energy is down, and refills +2.
+  // The AP round in play: 2 Action Points, spend them how you like, then
+  // the enemy phase runs. Let the Interceptor come to us (its own 2 AP
+  // close the gap fast), then FIRE the round it arrives.
+  assert.strictEqual(s.ap, 2, "a round budgets 2 Action Points");
+  assert.strictEqual(await page.locator("#apBar .stat-pip.filled").count(), 2, "the Actions gauge shows both points");
+  assert.strictEqual(await page.locator("#engageBtn").textContent(), "End Round", "with nothing queued, ENGAGE is a plain End Round");
+  let fired = false;
+  for (let i = 0; i < 25; i++) {
+    s = await getState(page);
+    if (s.status !== "playing" || s.enemies.every((e) => !e.alive)) break;
+    if (!(await page.locator("#fireBtn").isDisabled())) {
+      // Queue the volley and check the confirm step reads it back.
+      const energyBeforeFire = s.energy;
+      await page.click("#fireBtn");
+      s = await getState(page);
+      assert.strictEqual(s.enemies.filter((e) => e.alive).length, 1, "queuing FIRE kills nothing — ENGAGE is the commit");
+      assert.strictEqual(s.energy, energyBeforeFire, "and spends nothing yet");
+      assert.ok(/FIRE/.test(await page.locator("#engageBtn").textContent()), "ENGAGE reads back the queued volley");
+      assert.ok(/⚡/.test(await page.locator("#engageBtn").textContent()), "with its energy price on the button");
+      await engage(page);
+      fired = true;
+    } else {
+      await playTurnToward(page, "enemy");
+    }
+  }
+  s = await getState(page);
+  assert.ok(fired, "the kill went through the queue-FIRE-then-ENGAGE flow");
+  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "the committed volley kills the Interceptor");
+  assert.strictEqual(s.exitUnlocked, true);
+
+  // RECHARGE lights up now that Energy is down; queue + commit refills +2.
   assert.strictEqual(await page.locator("#rechargeBtn").isDisabled(), false, "RECHARGE lights up once Energy is spent");
   const energyBeforeRecharge = (await getState(page)).energy;
   await page.click("#rechargeBtn");
+  await engage(page);
   s = await getState(page);
-  assert.strictEqual(s.energy, Math.min(s.maxEnergy, energyBeforeRecharge + 2), "RECHARGE adds +2 Energy for the turn");
+  assert.strictEqual(s.energy, Math.min(s.maxEnergy, energyBeforeRecharge + 2), "RECHARGE adds +2 Energy for its Action Point");
 
   s = await walkToExit(page);
   assert.strictEqual(s.status, "won", "Sector 1 clears once the gate is reached");
@@ -415,6 +423,7 @@ async function freshPage(browser, url, errors) {
   // shop overlay (still standing right there) and block the board clicks
   // the rest of this test relies on.
   await clickHex(page, "sublight", await pickStepToward(page, "wormhole"));
+  await engage(page);
 
   // ---- Run persistence: reloading resumes exactly where you left off ------
   // ("the levels should be remembered" — a reload used to always restart at
@@ -459,38 +468,26 @@ async function freshPage(browser, url, errors) {
   s = await getState(page);
   assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "Sector 1 is still exactly as we left it — charted, not regenerated");
 
-  // Still standing on the Warp Gate — any turn-ending action re-triggers
-  // the win check; RECHARGE is the stationary one (drain a point first if
-  // the tank happens to be full).
-  await page.evaluate(() => {
-    if (window.__hhState.energy >= window.__hhState.maxEnergy) window.__hhState.energy -= 1;
-    window.render();
-  });
-  await page.click("#rechargeBtn");
+  // Still standing on the Warp Gate — any action re-triggers the win
+  // check; End Round is the stationary one.
+  await engage(page);
   await page.waitForFunction(() => window.__hhState.levelId === 2, null, { timeout: 5000 });
   s = await getState(page);
   assert.strictEqual(s.levelId, 2, "going forward again from a rewound sector re-advances normally");
   await page.close();
 
-  // ---- loss branch: keep MOVING beside Sector 1's Interceptor until ------
-  // Hull 0 — one action per turn means repositioning inside its reach
-  // never defends you, so three careless moves end the run.
+  // ---- loss branch: stand still and let Sector 1's Interceptor come ------
+  // — its own 2 AP close the gap and fire, so a few passed rounds end the
+  // run of a flagship that never defends itself.
 
   page = await freshPage(browser, url, errors);
 
   s = await getState(page);
-  for (let i = 0; i < 20 && s.status === "playing"; i++) {
-    const next = await page.evaluate(() => {
-      const E = window.HypergolicEngine;
-      const st = window.__hhState;
-      const living = st.enemies.filter((e) => e.alive);
-      const targets = E.legalSublightTargets(st);
-      return targets.find((t) => living.some((e) => E.isAdjacent(e, t))) || null;
-    });
-    await clickHex(page, "sublight", next || (await pickStepToward(page, "enemy")));
+  for (let i = 0; i < 15 && s.status === "playing"; i++) {
+    await engage(page); // End Round: pass both AP and give its phase the floor
     s = await getState(page);
   }
-  assert.strictEqual(s.status, "lost", "loitering in threat range must end the run");
+  assert.strictEqual(s.status, "lost", "doing nothing while a chaser closes must end the run");
   assert.strictEqual(s.hull, 0);
   await waitForOverlay(page);
   assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Flagship Destroyed");
@@ -501,6 +498,45 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(s.levelId, 1, "New Run resets the campaign to Sector 1");
   assert.strictEqual(s.hull, 3);
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false);
+  await page.close();
+
+  // ---- The round plan: queue, preview, clear, commit ----------------------
+  // "You decide your moves, confirm, then they happen" — taps queue, the
+  // Actions gauge counts down, ENGAGE reads the plan back and commits it.
+  page = await freshPage(browser, url, errors);
+  s = await getState(page);
+  const planStart = s.playerPos;
+  const firstStep = await pickStepToward(page, "exit");
+  await clickHex(page, "sublight", firstStep);
+  s = await getState(page);
+  assert.deepStrictEqual(s.playerPos, planStart, "a tapped move QUEUES — the flagship hasn't gone anywhere yet");
+  assert.strictEqual(await page.evaluate(() => window.__hhPlan.length), 1, "the plan holds the queued step");
+  assert.strictEqual(await page.locator("#apBar .stat-pip.filled").count(), 1, "the Actions gauge counts down as the plan fills");
+  assert.ok(/MOVE/.test(await page.locator("#engageBtn").textContent()), "ENGAGE reads back the queued move");
+  // Second step must be planned FROM THE GHOST — one hex further along.
+  const secondStep = await page.evaluate(() => {
+    const E = window.HypergolicEngine;
+    const sim = JSON.parse(JSON.stringify(window.__hhState));
+    for (const st of window.__hhPlan) if (st.kind === "move") E.applySublight(sim, st.to);
+    const threats = E.computeThreatHexes(sim);
+    const legal = E.legalSublightTargets(sim);
+    return legal.find((h) => !threats.has(E.hexKey(h))) || legal[0];
+  });
+  await clickHex(page, "sublight", secondStep);
+  assert.strictEqual(await page.evaluate(() => window.__hhPlan.length), 2, "two moves queue — planning happens from the ghost position");
+  assert.strictEqual(await page.locator("#apBar .stat-pip.filled").count(), 0, "both Action Points are spoken for");
+  assert.strictEqual(await page.locator("#clearPlanBtn").isVisible(), true, "Clear appears while a plan exists");
+  await page.click("#clearPlanBtn");
+  assert.strictEqual(await page.evaluate(() => window.__hhPlan.length), 0, "Clear wipes the queued plan");
+  assert.strictEqual(await page.locator("#apBar .stat-pip.filled").count(), 2, "and the Actions gauge refills");
+  // Queue one move and commit: the flagship flies it, the round passes.
+  await clickHex(page, "sublight", firstStep);
+  const roundBefore = (await getState(page)).turnCount;
+  await engage(page);
+  s = await getState(page);
+  assert.deepStrictEqual(s.playerPos, { q: firstStep.q, r: firstStep.r }, "ENGAGE commits the queued move for real");
+  assert.strictEqual(s.turnCount, roundBefore + 1, "committing ends the round — the enemy phase ran");
+  assert.strictEqual(s.ap, s.maxAp, "and the next round's Action Points are back");
   await page.close();
 
   // ---- Branching Warp Gates: two gates render without errors ---------------
@@ -558,11 +594,10 @@ async function freshPage(browser, url, errors) {
     const fresh = window.HypergolicEngine.createGameState(bossLevel);
     fresh.playerPos = { q: bossLevel.exit.q, r: bossLevel.exit.r };
     Object.assign(window.__hhState, fresh);
-    window.__hhState.energy -= 1; // so RECHARGE (the stationary action) is available to trigger the win check
     window.__hhSetLevelIndex(19); // depth = index + 1 — keep advanceSector's "levelIndex + 1" in sync
     window.render();
   });
-  await page.click("#rechargeBtn"); // standing on an always-online gate: any turn-ending action wins it
+  await page.click("#engageBtn"); // standing on an always-online gate: any committed action wins it
   await page.waitForFunction(() => window.__hhState.isVictory === true);
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "the overlay waits for animations, same as the loss screen");
   await waitForOverlay(page);

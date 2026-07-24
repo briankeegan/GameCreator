@@ -52,6 +52,10 @@
          gauges flash on change, actions appear the moment they unlock. -->
     <div class="console control-panel">
       <div class="panel-gauges">
+        <span class="stat-wrap" id="apWrap">
+          <span class="stat-label">Actions</span>
+          <span class="stat-bar" id="apBar"></span>
+        </span>
         <span class="stat-wrap" id="shieldWrap" hidden>
           <span class="stat-label">Shields</span>
           <span class="stat-bar" id="shieldBar"></span>
@@ -76,6 +80,10 @@
         <button data-mode="tractor">Tractor Beam</button>
         <button id="targetLockBtn" title="Aim without moving — tap an adjacent hex to face it, then FIRE">Target Lock</button>
         <span class="weapon-stats" id="tractorStats" hidden></span>
+      </div>
+      <div class="console-grid engage-row">
+        <button id="engageBtn" class="engage-btn" title="Commit the round — your queued actions play out in order, then the enemies spend their own Action Points">End Round</button>
+        <button id="clearPlanBtn" class="clear-btn" title="Wipe the queued plan and start the round over" hidden>Clear</button>
       </div>
       <div class="console-grid modes-grid">
         <button id="scanBtn" class="scan-btn" title="Scan mode — inspect anything on the board; movement and actions are disabled while it's open" aria-label="Scan">Scan</button>

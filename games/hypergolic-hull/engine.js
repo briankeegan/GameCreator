@@ -207,6 +207,14 @@
   // How many weapon-slot points of systems the flagship starts with —
   // grown via the Hardpoint Expansion Outpost offer.
   const START_WEAPON_SLOTS = 2;
+  // Action Points per round, both sides of the board. The flagship spends
+  // its AP on any mix of actions (each costs 1); every enemy spends
+  // ENEMY_AP in the enemy phase the same way — attack when it can pay and
+  // reach, close the gap otherwise. Symmetric on purpose: "enemies should
+  // also have AP — that's kinda the point." maxAp is carried per-run
+  // (carryOver) so a future upgrade can grow it without new plumbing.
+  const START_AP = 2;
+  const ENEMY_AP = 2;
 
   // ---- weapon systems ---------------------------------------------------
   //
@@ -237,7 +245,8 @@
   //
   // `speed` is INITIATIVE, and it's real: when a turn resolves, every
   // attack on the board — the flagship's and the enemies' — fires in
-  // descending speed order, ties going to the player (see resolveCombat).
+  // descending speed order within each side's own phase (see enemyPhase
+  // and applyFire).
   // 3 = fast (point defense: pre-empts a standard attacker), 2 = standard,
   // 1 = heavy (hits hard, but the target shoots first). A dead or
   // pushed-away attacker never gets its slower shot off — that's the
@@ -471,11 +480,11 @@
       energy: (carryOver && carryOver.maxEnergy) || START_ENERGY,
       exitPos: { q: exitList(level)[0].q, r: exitList(level)[0].r }, // primary/first gate — kept for single-exit callers
       exits: exitList(level).map((ex) => ({ q: ex.q, r: ex.r, variantId: ex.variantId || null })),
-      usedExitVariant: null, // set on win — see endPlayerAction — which gate you actually flew through
+      usedExitVariant: null, // set on win — see spendAp — which gate you actually flew through
       // "How do you win, or is it just runs?" — a boss sector (see
       // levels.js's bossLevel) clearing is a real "Run Complete" milestone,
       // not a routine sector clear. isVictory flips true the instant it's
-      // won (see endPlayerAction) — app.js checks it to show a distinct
+      // won (see spendAp) — app.js checks it to show a distinct
       // overlay instead of silently auto-continuing like every other clear.
       isBoss: Boolean(level.isBoss),
       isVictory: false,
@@ -524,7 +533,14 @@
       // facing direction 2 ({q:0,r:-1}), i.e. "up" toward the Warp Gate on
       // every board's bottom-to-top layout.
       facing: 2,
-      turnCount: 0,
+      // Action Points: the round's budget, for BOTH sides ("enemies should
+      // also have AP — that's kinda the point"). Every player action costs
+      // 1 AP; when they're spent (or passed via applyEndTurn) the enemy
+      // phase runs and each enemy spends ENEMY_AP of its own. Free-form:
+      // two moves, two volleys, move+fire — energy is the real limiter.
+      maxAp: (carryOver && carryOver.maxAp) || START_AP,
+      ap: (carryOver && carryOver.maxAp) || START_AP,
+      turnCount: 0, // counts ROUNDS (full player phase + enemy phase), not single actions
       status: "playing", // "playing" | "won" | "lost"
       log: [],
       events: [], // animation cues from the last action, e.g. {type:"kill",q,r}
@@ -714,6 +730,19 @@
         const k = hexKey(hex);
         threats.set(k, (threats.get(k) || 0) + 1);
       }
+      // A chaser with 2 AP can close one hex AND fire in the same enemy
+      // phase — its true danger zone this round is one ring wider than
+      // where it stands. Every current chaser carries an omnidirectional
+      // weapon, so "one ring wider" is exactly distance <= range + 1.
+      if (enemyType.movesTowardPlayer) {
+        const extendedRange = enemyType.weapon.range + 1;
+        for (const hex of state.boardHexes) {
+          const d = hexDistance(enemy, hex);
+          if (d < 1 || d > extendedRange) continue;
+          const k = hexKey(hex);
+          if (d > enemyType.weapon.range) threats.set(k, (threats.get(k) || 0) + 1);
+        }
+      }
     }
     return threats;
   }
@@ -731,6 +760,11 @@
     if (inRange && enemy.energy >= enemyType.weapon.energyCost) {
       return { enemyId: enemy.id, type: "attack" };
     }
+    // Already in reach but the reactor can't pay yet: HOLD, don't shuffle
+    // sideways — with 2 AP a round, a chaser that fired its first AP would
+    // otherwise spend its second orbiting the flagship, which reads as
+    // random. It stays put and lets the reactor climb.
+    if (inRange) return { enemyId: enemy.id, type: "wait" };
     // Chasers close the gap; stationary emplacements (a Sentry) just hold and
     // keep their ring of threatened hexes up.
     if (enemyType.movesTowardPlayer) {
@@ -773,9 +807,9 @@
     }
   }
 
-  // Fires one player weapon at whatever it can reach RIGHT NOW — called at
-  // its initiative slot inside resolveCombat, so targets are computed at
-  // fire time (a faster weapon's kill or push this same turn genuinely
+  // Fires one player weapon at whatever it can reach RIGHT NOW — called in
+  // speed order inside applyFire's volley, so targets are computed at
+  // fire time (a faster weapon's kill or push in this same volley genuinely
   // removes them from a slower weapon's list).
   function firePlayerWeapon(state, weapon, onHit) {
     const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon).map(hexKey));
@@ -805,57 +839,35 @@
     }
   }
 
-  // The whole turn's combat, resolved in INITIATIVE order: every attack —
-  // the flagship's armed weapons and every enemy's shot — sorted by
-  // descending weapon speed, ties going to the player. A speed-3 Shockwave
-  // still pre-empts a speed-2 Interceptor at point-blank (kill it before
-  // it fires); a speed-1 Lance Cannon kills its target AFTER that target's
-  // speed-2 cannon already got its shot off — heavy weapons hit hard but
-  // don't protect you. Enemies that chose to move (not attack) step after
-  // the shooting stops; then damage, turn count, and reactor regen apply.
-  function resolveCombat(state, autoFire) {
-    const actors = [];
-    if (autoFire) {
-      for (const { action, systemKey, weapon, onHit } of AUTO_FIRE_WEAPONS) {
-        if (!state.actions.includes(action) || !state.systems[systemKey]) continue;
-        actors.push({ side: "player", speed: weapon.speed, weapon, onHit });
-      }
-    }
-    const intents = livingEnemies(state).map((enemy) => ({ enemy, intent: decideIntent(state, enemy) }));
-    for (const { enemy, intent } of intents) {
-      if (intent.type === "attack") {
-        actors.push({ side: "enemy", speed: ENEMY_TYPES[enemy.type].weapon.speed, enemy });
-      }
-    }
-    actors.sort((a, b) => {
-      if (b.speed !== a.speed) return b.speed - a.speed;
-      if (a.side === b.side) return 0;
-      return a.side === "player" ? -1 : 1; // ties go to the player
-    });
-
+  // The ENEMY PHASE: every living enemy spends ENEMY_AP action points,
+  // symmetric with the flagship's own budget. Each AP step re-reads intent
+  // (so a chaser that closed on its first point fires with its second),
+  // attackers shoot in weapon-speed order (the `speed` stat orders the
+  // barrage), movers step after the shooting. Damage accumulates across
+  // the WHOLE phase and one shield charge absorbs all of it — a raised
+  // shield eats the round's entire barrage before the hull is touched.
+  function enemyPhase(state) {
     let totalDamage = 0;
-    for (const actor of actors) {
-      if (actor.side === "player") {
-        firePlayerWeapon(state, actor.weapon, actor.onHit);
-        continue;
+    for (let apStep = 0; apStep < ENEMY_AP; apStep++) {
+      const intents = livingEnemies(state).map((enemy) => ({ enemy, intent: decideIntent(state, enemy) }));
+      const attackers = intents
+        .filter(({ intent }) => intent.type === "attack")
+        .sort((a, b) => ENEMY_TYPES[b.enemy.type].weapon.speed - ENEMY_TYPES[a.enemy.type].weapon.speed);
+      for (const { enemy } of attackers) {
+        if (!enemy.alive) continue;
+        const weapon = ENEMY_TYPES[enemy.type].weapon;
+        if (!weaponHexes(enemy, 0, weapon).some((h) => posEq(h, state.playerPos))) continue;
+        if (enemy.energy < weapon.energyCost) continue;
+        enemy.energy -= weapon.energyCost; // same rule as the flagship: every shot is paid for
+        totalDamage += weapon.damage;
+        state.events.push({ type: "attack", enemyId: enemy.id, q: enemy.q, r: enemy.r });
       }
-      const enemy = actor.enemy;
-      if (!enemy.alive) continue; // a faster attack already took it out — its shot dies with it
-      const weapon = ENEMY_TYPES[enemy.type].weapon;
-      // Re-checked at its slot: a faster Repulsor push may have shoved it
-      // out of its own firing range this very turn.
-      if (!weaponHexes(enemy, 0, weapon).some((h) => posEq(h, state.playerPos))) continue;
-      if (enemy.energy < weapon.energyCost) continue;
-      enemy.energy -= weapon.energyCost; // same rule as the flagship: every shot is paid for
-      totalDamage += weapon.damage;
-      state.events.push({ type: "attack", enemyId: enemy.id, q: enemy.q, r: enemy.r });
-    }
-
-    for (const { enemy, intent } of intents) {
-      if (intent.type !== "move" || !enemy.alive) continue;
-      state.events.push({ type: "enemyMove", enemyId: enemy.id, from: { q: enemy.q, r: enemy.r }, to: intent.to });
-      enemy.q = intent.to.q;
-      enemy.r = intent.to.r;
+      for (const { enemy, intent } of intents) {
+        if (intent.type !== "move" || !enemy.alive) continue;
+        state.events.push({ type: "enemyMove", enemyId: enemy.id, from: { q: enemy.q, r: enemy.r }, to: intent.to });
+        enemy.q = intent.to.q;
+        enemy.r = intent.to.r;
+      }
     }
     if (totalDamage > 0 && state.shieldCharges > 0) {
       state.shieldCharges -= 1;
@@ -871,11 +883,11 @@
       state.events.push({ type: "damage", amount: totalDamage, q: state.playerPos.q, r: state.playerPos.r });
       pushLog(state, `Took ${totalDamage} damage.`);
     }
-    state.turnCount += 1;
-    // Enemy reactors tick +1 per turn — that rhythm IS their telegraph (a
-    // Railgun charges 3 turns between shots). The flagship gets NO passive
-    // regen anymore: your Energy is a budget, refilled to full at each
-    // warp jump, recovered mid-fight only via the RECHARGE action.
+    state.turnCount += 1; // a ROUND has passed
+    // Enemy reactors tick +1 per ROUND — that rhythm IS their telegraph (a
+    // Railgun charges 3 rounds between shots). The flagship gets NO passive
+    // regen: your Energy is a budget, refilled to full at each warp jump,
+    // recovered mid-fight only via the RECHARGE action.
     for (const enemy of livingEnemies(state)) {
       enemy.energy = Math.min(enemy.maxEnergy, enemy.energy + 1);
     }
@@ -886,21 +898,18 @@
     }
   }
 
-  // ---- turn resolution --------------------------------------------------
+  // ---- round resolution --------------------------------------------------
   //
-  // The player's movement/positioning resolves first, then ALL combat —
-  // both sides' weapons — fires in initiative order inside resolveCombat
-  // (see the `speed` stat), then movers step, then damage/death/exit. All
-  // player actions funnel through here after mutating state. `opts.autoFire:
-  // false` (the Tractor Beam) spends the turn on the aimed action itself —
-  // the flagship's auto-fire weapons stay quiet that turn, as they always
-  // have on Tractor turns.
-  function endPlayerAction(state, opts) {
+  // Every player action funnels through here after mutating state: it costs
+  // 1 AP, resolves immediately (a volley lands the moment you confirm it —
+  // no queued surprises at the engine level), and the moment the round's
+  // AP is spent the enemy phase runs and the budget refills. Flying onto
+  // the Warp Gate wins mid-round — you're through the gate before anyone
+  // gets to answer.
+  function spendAp(state) {
     checkExitUnlock(state);
     if (state.status !== "playing") return;
-    resolveCombat(state, !opts || opts.autoFire !== false);
-    if (state.status !== "playing") return;
-    checkExitUnlock(state);
+    state.ap -= 1;
     const usedExit = state.exits.find((e) => posEq(state.playerPos, e));
     if (usedExit && state.exitUnlocked) {
       state.status = "won";
@@ -911,6 +920,12 @@
       } else {
         pushLog(state, "Level complete.");
       }
+      return;
+    }
+    if (state.ap <= 0) {
+      enemyPhase(state);
+      if (state.status !== "playing") return;
+      state.ap = state.maxAp;
     }
   }
 
@@ -1000,15 +1015,15 @@
     state.playerPos = to;
     checkPlayerHazard(state);
     if (state.status !== "playing") return;
-    // One action per turn: MOVING is the action — no weapons fire, yours
-    // or auto-anything. Shooting is its own choice (applyFire).
-    endPlayerAction(state, { autoFire: false });
+    // Moving costs 1 AP and nothing fires — shooting is its own AP spend
+    // (applyFire).
+    spendAp(state);
   }
 
-  // FIRE: the turn's action is shooting — every armed weapon volleys at
-  // whatever it can reach, interleaved with enemy attacks in initiative
-  // order (see resolveCombat). Refuses to waste the turn if nothing is in
-  // reach of any armed weapon.
+  // FIRE: 1 AP for a full volley — every armed weapon shoots whatever it
+  // can reach, in weapon-speed order, and it lands IMMEDIATELY (enemies
+  // answer in their own phase, not mid-volley). Refuses to waste the AP if
+  // nothing is in reach of any armed weapon.
   function applyFire(state) {
     assertPlaying(state);
     const anyTarget = AUTO_FIRE_WEAPONS.some(({ action, systemKey, weapon }) => {
@@ -1018,7 +1033,25 @@
     });
     if (!anyTarget) throw new Error("Fire: no armed weapon has a target in range");
     state.events = [];
-    endPlayerAction(state); // the volley happens inside, at each weapon's initiative slot
+    const armed = AUTO_FIRE_WEAPONS.filter(
+      ({ action, systemKey }) => state.actions.includes(action) && state.systems[systemKey]
+    ).sort((a, b) => b.weapon.speed - a.weapon.speed);
+    for (const { weapon, onHit } of armed) {
+      firePlayerWeapon(state, weapon, onHit);
+    }
+    spendAp(state);
+  }
+
+  // END TURN: pass whatever AP is left and let the enemy phase run — the
+  // deliberate "hold position and let them come to you" beat, and the
+  // plan-confirm UI's way of committing a round that doesn't use every
+  // point.
+  function applyEndTurn(state) {
+    assertPlaying(state);
+    state.events = [];
+    if (state.ap === state.maxAp) pushLog(state, "Holding position.");
+    state.ap = 1; // collapse the remainder into one pass — spendAp runs the enemy phase
+    spendAp(state);
   }
 
   // RECHARGE: the turn's action is refueling — the only mid-sector way to
@@ -1031,7 +1064,7 @@
     state.energy += gained;
     state.events.push({ type: "energyGain", amount: gained });
     pushLog(state, `Recharging — +${gained} Energy.`);
-    endPlayerAction(state, { autoFire: false });
+    spendAp(state);
   }
 
   // Raising a spent shield charge is a real action with a real energy
@@ -1050,7 +1083,7 @@
     state.events.push({ type: "energySpend", amount: SHIELD_RAISE_COST, weapon: "Shields" });
     state.shieldCharges += 1;
     pushLog(state, `Shields raised — ${state.shieldCharges}/${state.maxShields} up.`);
-    endPlayerAction(state, { autoFire: false });
+    spendAp(state);
   }
 
   function applyTractor(state, targetEnemyId) {
@@ -1068,7 +1101,7 @@
     state.energy -= WEAPONS.tractor.energyCost;
     state.events.push({ type: "energySpend", amount: WEAPONS.tractor.energyCost, weapon: WEAPONS.tractor.label });
     pushEnemyInDirection(state, enemy, directionIndex(state.playerPos, enemy), "Tractor");
-    endPlayerAction(state, { autoFire: false });
+    spendAp(state);
   }
 
   // ---- Sector Outpost: shop stop, no turn spent -------------------------
@@ -1190,6 +1223,9 @@
     RECHARGE_ENERGY_GAIN,
     applyRaiseShields,
     SHIELD_RAISE_COST,
+    applyEndTurn,
+    START_AP,
+    ENEMY_AP,
     clampWeaponSystems,
     applyTractor,
     outpostAvailable,

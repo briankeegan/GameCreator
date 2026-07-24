@@ -34,6 +34,10 @@ body {
   align-items: center;
   gap: 6px;
 }
+/* display:flex above would silently override the `hidden` attribute —
+   a gauge the HUD hides (no Shield Generator yet) must actually vanish,
+   not linger as a floating label. */
+.stat-wrap[hidden] { display: none; }
 .stat-label {
   font-family: "SF Mono", "Menlo", "Consolas", monospace;
   font-size: 0.62rem;
@@ -67,6 +71,12 @@ body {
 .stat-pip-shield.filled {
   background: #5bb8f2;
   border-color: #9ed9ff;
+}
+/* Action Points: amber, the round's own currency — counts down as the
+   plan queues and refills when the round commits. */
+.stat-pip-ap.filled {
+  background: #ffce8a;
+  border-color: #ffe2b3;
 }
 
 .stat-value {
@@ -231,6 +241,42 @@ body {
   grid-template-columns: 1fr 1fr 1fr;
   font-size: 0.76rem;
   padding: 4px 10px 8px;
+}
+/* The commit row: ENGAGE spans wide (it's THE button — everything else
+   just queues), Clear tucks beside it only while a plan exists. */
+.engage-row {
+  grid-template-columns: 1fr auto;
+  padding: 0 10px 4px;
+}
+.engage-row button {
+  width: 100%;
+  background: #1b2436;
+  color: #dbe4f2;
+  border: 2px solid #3a4a68;
+  padding: 7px 10px;
+  border-radius: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.engage-btn.armed {
+  background: #1f4d3a;
+  border-color: #7fe3a8;
+  color: #7fe3a8;
+  box-shadow: 0 0 0 2px rgba(127, 227, 168, 0.35);
+}
+.engage-row button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.clear-btn {
+  color: #ff9d90 !important;
+  border-color: #5a2a33 !important;
 }
 
 /* A compact badge sharing a grid cell with Hold Position, instead of a
