@@ -232,13 +232,19 @@ async function freshPage(browser, url, errors) {
 
   // Scan is a pure inspect mode — no icon-key overlay anymore ("all it
   // should really be is when you're scanning, you just tap things"):
-  // the button lights up, the objective line explains, actions lock out,
-  // and tapping anything on the board identifies it.
+  // the button lights up, the readout strip above the field explains,
+  // actions lock out, and tapping anything on the board identifies it.
   assert.strictEqual(await page.locator("#scanBtn").isVisible(), true, "the Scan toggle is always available");
   await page.click("#scanBtn");
   assert.ok((await page.locator("#scanBtn").getAttribute("class")).includes("active"), "Scan lights up while active");
-  assert.ok((await page.locator("#objective").textContent()).includes("SCAN ACTIVE"), "the objective line says what Scan mode is");
+  assert.ok(
+    /scan active/i.test(await page.locator("#scanHint").textContent()),
+    "the readout strip above the field says what Scan mode is"
+  );
   assert.strictEqual(await page.locator("#targetLockBtn").isDisabled(), true, "actions lock out while Scan mode is open");
+  // Opening Scan reserves the readout strip above the field, which re-fits
+  // the canvas — every click below must use the post-scan bounding box.
+  const scanBoardBox = await page.locator("#board").boundingBox();
 
   const posBeforeScanTap = (await getState(page)).playerPos;
   const turnBeforeScanTap = (await getState(page)).turnCount;
@@ -250,7 +256,7 @@ async function freshPage(browser, url, errors) {
   // The tapped hex is inspected instead — an enemy's info card shows up.
   const scanTargetPos = s.enemies.find((e) => e.alive);
   const enemyBox = await page.evaluate(({ q, r }) => window.__hhHexCenter(q, r), scanTargetPos);
-  await page.mouse.click(boardBox.x + enemyBox.x, boardBox.y + enemyBox.y);
+  await page.mouse.click(scanBoardBox.x + enemyBox.x, scanBoardBox.y + enemyBox.y);
   assert.strictEqual(await page.locator("#enemyInfo").isVisible(), true, "tapping an enemy in Scan mode shows its info card");
   assert.ok((await page.locator("#enemyInfo").textContent()).includes("INTERCEPTOR"), "the card names the inspected enemy");
   assert.ok(
@@ -260,7 +266,7 @@ async function freshPage(browser, url, errors) {
 
   // The Warp Gate is inspectable too, not just enemies.
   const exitCenter = await page.evaluate(() => window.__hhHexCenter(window.__hhState.exitPos.q, window.__hhState.exitPos.r));
-  await page.mouse.click(boardBox.x + exitCenter.x, boardBox.y + exitCenter.y);
+  await page.mouse.click(scanBoardBox.x + exitCenter.x, scanBoardBox.y + exitCenter.y);
   assert.ok((await page.locator("#enemyInfo").textContent()).includes("WARP GATE"), "the Warp Gate is inspectable in Scan mode");
 
   await page.click("#scanBtn");
@@ -396,13 +402,12 @@ async function freshPage(browser, url, errors) {
     false,
     "tapping it once clears the pulse for good"
   );
-  // Arming a mode used to leave the objective line on its generic
-  // "Fly to the Warp Gate" text with zero in-the-moment guidance
-  // (Clubhouse: "what IS Tractor Beam... weird that I'm able to click on
-  // it") — it now swaps to a concrete instruction while armed.
+  // Arming a mode used to give zero in-the-moment guidance (Clubhouse:
+  // "what IS Tractor Beam... weird that I'm able to click on it") — it
+  // now drops a concrete instruction onto the panel's readout strip.
   assert.ok(
-    /tractor beam armed/i.test(await page.locator("#objective").textContent()),
-    "arming Tractor Beam shows a concrete instruction, not the generic objective line"
+    /tractor armed/i.test(await page.locator("#log").textContent()),
+    "arming Tractor Beam puts a concrete instruction on the readout strip"
   );
 
   // Step away from the Outpost hex before reloading — outpostDismissed

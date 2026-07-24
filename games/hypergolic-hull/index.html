@@ -19,14 +19,17 @@
   <!-- Header (All Games / title / chat) is injected by nav.js below. -->
 
   <main class="game-area" id="gameArea">
-    <div class="enemy-info" id="enemyInfo" hidden></div>
-
-    <p id="objective" class="objective"></p>
+    <!-- The scan readout: a reserved strip ABOVE the field, only present
+         while Scan mode is open, so an inspected contact's card never
+         covers the hexes it's describing. -->
+    <div class="scan-readout" id="scanReadout" hidden>
+      <div class="scan-hint" id="scanHint">Scan active — tap anything on the field to identify it</div>
+      <div class="enemy-info" id="enemyInfo" hidden></div>
+    </div>
 
     <div class="board-wrap" id="boardWrap">
       <div class="board-frame">
         <canvas id="board" width="320" height="320"></canvas>
-        <span id="levelLabel" class="sector-chip">Sector 1 · Best 1</span>
         <div class="run-overlay" id="runOverlay" hidden>
           <h2 id="runOverlayTitle"></h2>
           <p id="runOverlayBody"></p>

@@ -45,7 +45,7 @@
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming"],
-      intro: "One action per turn: MOVE, FIRE, or RECHARGE. Let the Interceptor come to you, then FIRE — your Shockwave hits everything within 1 hex, and it shoots first.",
+      intro: "Hostile contact. Let it come close — then FIRE.",
     },
     // Sector 2 — Tractor Beam. Two enemies; push one off the edge. Unlike
     // every other campaign action, Tractor Beam isn't handed out for free
@@ -66,7 +66,7 @@
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming"],
-      intro: "Dock at the Outpost to claim the Tractor Beam — free. Shove an adjacent enemy: off the edge destroys it. The Cruiser takes TWO hits, so shove it instead.",
+      intro: "Dock at the Outpost — a free Tractor Beam is waiting.",
     },
     // Sector 3 — Sentry Line. Three enemies; the lesson is the Sentry
     // (stationary, 2-hex beam ring) and shopping for your first upgrades.
@@ -87,7 +87,7 @@
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "ramming"],
-      intro: "The Sentry doesn't move — but its beam covers 2 hexes all around. Route around it or take it out. Spend salvage at the Outpost while you can.",
+      intro: "The Sentry never moves — its beam reaches 2 hexes.",
     },
     // Sector 4 — Full Fleet. Everything unlocked, no guaranteed Outpost —
     // Clubhouse feedback: "you shouldn't always have a place to heal."
@@ -108,7 +108,7 @@
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
-      intro: "Full fleet command — Interceptors, Cruisers, and a Sentry, all at once. Clear the sector however you like.",
+      intro: "A full fleet. Pick your fights — or run the gauntlet.",
     },
   ];
 
@@ -195,8 +195,7 @@
       ],
       exitRule: "all-enemies-dead",
       theme: { variant: "boss", band: Math.floor(depth / 5) },
-      intro:
-        "The Bulwark. A hardened defense line — two Cruisers, two Sentries, and an Interceptor between you and the gate. Stock up at the Outpost first.",
+      intro: "The Bulwark. Stock up at the Outpost, then break the line.",
     };
   }
 
@@ -307,7 +306,7 @@
       // for a quiet one — and the depth band shifts the palette family so
       // deeper regions of space look like different places.
       theme: { variant: variant ? variant.id : "neutral", band: Math.floor(depth / 5) },
-      intro: `Uncharted sector, depth ${depth}. No map, no mercy — salvage what you can.`,
+      intro: `Depth ${depth}. Salvage what you can.`,
     };
   }
 

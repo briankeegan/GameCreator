@@ -29,29 +29,6 @@ body {
   overflow: hidden;
 }
 
-/* The sector/depth line lives ON the board (a translucent chip in the
-   viewport's corner) — it's information about the world outside, not a
-   ship system, so it doesn't belong on the control panel. */
-.sector-chip {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  z-index: 5;
-  pointer-events: none;
-  background: rgba(11, 15, 24, 0.75);
-  border: 1px solid #2a3652;
-  color: #7a8bab;
-  font-family: "SF Mono", "Menlo", "Consolas", monospace;
-  font-size: 0.6rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: 3px 7px;
-  max-width: calc(100% - 12px);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .stat-wrap {
   display: flex;
   align-items: center;
@@ -606,13 +583,13 @@ body {
   border-color: #4d3a20;
 }
 
-/* The panel's readout strip — the log lives INSIDE the console now, the
-   bottom line of the control panel. */
+/* The panel's readout strip — ONE message, one clean line, never a
+   clipped paragraph. */
 .log {
-  /* Exactly two lines + padding (border-box) — fixed, so the panel's
-     height stays predictable and the board above never jitters. */
-  height: calc(2.4em + 11px);
+  height: calc(1.2em + 11px);
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.72rem;
   line-height: 1.2em;
   color: #8fa0ba;
@@ -622,17 +599,34 @@ body {
   margin: 0;
 }
 
-.objective {
+/* The scan readout slot — a reserved strip ABOVE the field ("move it up
+   where the tap info is"), only present while Scan mode is open, so the
+   inspected card never covers the hexes it's describing. Fixed height:
+   tapping different contacts swaps the card without the board resizing;
+   only entering/leaving Scan mode re-fits the canvas (updateScanInfo). */
+.scan-readout {
   flex: 0 0 auto;
-  max-width: 520px;
   width: 100%;
-  margin: 0 auto 8px;
-  font-size: 0.85rem;
-  color: #f2d16b;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 520px;
+  height: 152px;
+  margin: 0 auto 6px;
+  display: flex;
+  overflow-y: auto;
 }
+.scan-readout[hidden] { display: none; }
+/* margin:auto (not align/justify-center) centers both children AND keeps a
+   card taller than the slot scrollable from its top edge. */
+.scan-readout > * { margin: auto; }
+.scan-hint {
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #5bb8f2;
+  border: 1px dashed #2a3f52;
+  padding: 9px 14px;
+}
+.scan-hint[hidden] { display: none; }
 
 /* A "target scan" readout — same console-panel language as .systems, but
    tinted red/hostile by default so an inspected enemy reads as distinct
@@ -640,16 +634,7 @@ body {
    Wormhole, asteroid field) get the .neutral variant below instead — a
    hostile-red readout for your own Outpost read wrong. */
 .enemy-info {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  top: 8px;
-  z-index: 43;
-  /* Purely informational — taps pass straight through to the board, so
-     the card never blocks scanning whatever's underneath it. */
-  pointer-events: none;
-  max-width: 520px;
-  margin: 0 auto;
+  width: 100%;
   padding: 8px 10px 8px 14px;
   background: #170f14;
   border: 3px solid #5a2a33;

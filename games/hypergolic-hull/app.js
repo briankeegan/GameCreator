@@ -29,7 +29,7 @@ const MODES = {
     // Shown in the objective line while armed (Clubhouse: "what IS Tractor
     // Beam... weird that I'm able to click on it" — arming a mode used to
     // give no in-the-moment hint at all about what to do next).
-    hint: "Tractor Beam armed — tap an adjacent enemy to shove it one hex away. Off the edge, into another ship, or into a hazard = destroyed.",
+    hint: "Tractor armed — tap an enemy beside you to shove it",
   },
 };
 
@@ -37,8 +37,6 @@ const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 const boardWrapEl = document.getElementById("boardWrap");
 const hullBarEl = document.getElementById("hullBar");
-const levelEl = document.getElementById("levelLabel");
-const objectiveEl = document.getElementById("objective");
 const logEl = document.getElementById("log");
 const overlayEl = document.getElementById("runOverlay");
 const overlayTitleEl = document.getElementById("runOverlayTitle");
@@ -72,6 +70,8 @@ const fireBtn = document.getElementById("fireBtn");
 const rechargeBtn = document.getElementById("rechargeBtn");
 const tractorStatsEl = document.getElementById("tractorStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
+const scanReadoutEl = document.getElementById("scanReadout");
+const scanHintEl = document.getElementById("scanHint");
 
 // Every piece on the board is custom-drawn (see drawPlayerShip/
 // drawEnemyShip/drawWarpGate/drawOutpost below) — no emoji
@@ -228,6 +228,7 @@ function jumpToChart(index) {
   justArrived = true; // don't let standing on the wormhole/gate instantly re-trigger
   mode = null;
   anims = keptAnims;
+  announceSector();
   plannedPath = null;
   autoRoute = null;
   outpostDismissed = false;
@@ -346,6 +347,15 @@ function hexCorner(center, i) {
 // ---- animations: short, non-blocking cues fed by engine events ------------
 
 let anims = [];
+
+// The sector's name sweeps across the viewport on arrival, then fades —
+// replacing the permanent "SECTOR 1 — OUTER REACH" chip that sat over the
+// board as clutter. You learn where you are the moment you get there; the
+// Map remembers it after that.
+function announceSector() {
+  anims.push({ kind: "sectorTitle", name: state.levelName, start: performance.now(), dur: 2600 });
+  requestAnimationFrame(tickAnims);
+}
 
 function scheduleAnims(events) {
   const now = performance.now();
@@ -1599,6 +1609,27 @@ function draw() {
 
   ctx.restore();
 
+  // Sector arrival title: the place's name sweeps in big across the upper
+  // viewport and fades — where you are, told once, then out of the way.
+  const title = anims.find((a) => a.kind === "sectorTitle" && now < a.start + a.dur);
+  if (title) {
+    const p = animProgress(title, now);
+    const alpha = p < 0.15 ? p / 0.15 : p > 0.65 ? Math.max(0, (1 - p) / 0.35) : 1;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.textAlign = "center";
+    const size = Math.max(16, Math.min(26, geom.w * 0.052));
+    ctx.font = `700 ${size}px "SF Mono", "Menlo", "Consolas", monospace`;
+    ctx.fillStyle = "#dbe4f2";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+    ctx.shadowBlur = 8;
+    ctx.fillText(title.name.toUpperCase(), geom.w / 2, geom.h * 0.16);
+    ctx.font = `${Math.max(9, size * 0.42)}px "SF Mono", "Menlo", "Consolas", monospace`;
+    ctx.fillStyle = "#7fe3a8";
+    ctx.fillText("ENTERING SECTOR", geom.w / 2, geom.h * 0.16 - size * 1.15);
+    ctx.restore();
+  }
+
   // Warp-out flash: plays once a sector clears (triggered in handleAction),
   // then the run just continues into the next sector on its own — no
   // confirmation needed for a routine clear (see updateHud/advanceSector).
@@ -1666,7 +1697,10 @@ function setMode(next) {
     btn.classList.toggle("active", btn.dataset.mode === mode);
     if (btn.dataset.mode === next) btn.classList.remove("new-unlock");
   });
-  updateHud(); // swaps the objective line to this mode's hint immediately
+  // Arming a mode logs a concrete "what tapping does now" instruction —
+  // the panel's readout strip is the one place instructions live.
+  pushMessage(MODES[next].hint);
+  updateHud();
   draw();
 }
 
@@ -1713,6 +1747,17 @@ function flashOnChange(key, value, wrapEl) {
   lastGauges[key] = value;
 }
 
+// Would a FIRE volley land right now? Drives the FIRE button's enabled
+// (and lit-up) state — the button itself is the "you can shoot" signal.
+function anyFireTarget() {
+  return Engine.WEAPON_SYSTEM_KEYS.some((k) => {
+    if (!(k === "ram" || state.actions.includes(k)) || !state.systems[k]) return false;
+    const weapon = Engine.WEAPONS[k];
+    const reach = new Set(Engine.weaponHexes(state.playerPos, state.facing, weapon).map(Engine.hexKey));
+    return Engine.livingEnemies(state).some((e) => reach.has(Engine.hexKey(e)));
+  });
+}
+
 function updateHud() {
   renderStatBar(hullBarEl, "Hull", state.hull, state.maxHull, "hull");
   // Energy pays for every weapon shot, so the reactor gauge is always up.
@@ -1727,26 +1772,12 @@ function updateHud() {
   flashOnChange("energy", state.energy, energyWrapEl);
   flashOnChange("shield", state.shieldCharges, shieldWrapEl);
   flashOnChange("salvage", state.salvage, salvageWrapEl);
-  levelEl.textContent = state.levelName.includes("Depth")
-    ? `${state.levelName} · Best ${bestDepth}`
-    : `Sector ${state.levelId} — ${state.levelName} · Best ${bestDepth}`;
-  logEl.textContent = state.log.slice(-3).join("  ·  ");
+  // ONE message at a time — three run together read as clipped word soup.
+  // There is no separate instruction line above the field anymore ("remove
+  // the tap info at top — distracts from game"): the readout strip is the
+  // single home for every message and hint.
+  logEl.textContent = state.log[state.log.length - 1] || "Tap a hex beside your ship to move.";
   salvageValueEl.textContent = state.salvage;
-
-  // The Warp Gate is always online — fighting is never mandatory to leave.
-  // Say so, but remind the player that living enemies are still salvage on
-  // the table if they want it. While a mode is armed, replace this with a
-  // concrete instruction for what tapping the board will actually do —
-  // arming used to give no in-the-moment hint at all (Clubhouse: "what IS
-  // Tractor Beam... weird that I'm able to click on it").
-  const remaining = Engine.livingEnemies(state).length;
-  objectiveEl.textContent = legendVisible
-    ? "SCAN ACTIVE — tap anything on the board to identify it"
-    : mode && MODES[mode]
-      ? MODES[mode].hint
-      : remaining > 0
-        ? `Fly to the Warp Gate to warp out — or destroy ${remaining} enemy ${remaining === 1 ? "ship" : "ships"} first for salvage`
-        : "Fly to the Warp Gate to warp out!";
 
   // Hold the end-of-run overlay back until the death/kill animation finishes.
   // A routine win never actually reaches this "not animating" state as
@@ -1758,7 +1789,7 @@ function updateHud() {
   // this overlay is how "Run Complete" actually gets shown to the player.
   if (state.status === "lost" && !animsRunning()) {
     overlayTitleEl.textContent = "Flagship Destroyed";
-    overlayBodyEl.textContent = "Permadeath. Your run ends here.";
+    overlayBodyEl.textContent = `Permadeath. Your run ends here. Best depth: ${bestDepth}.`;
     continueBtnEl.hidden = true;
     overlayEl.hidden = false;
   } else if (state.isVictory && !animsRunning()) {
@@ -1801,7 +1832,8 @@ function updateHud() {
 
 // Scan mode has no icon-key overlay anymore ("all it should really be is
 // when you're scanning, you just tap things") — the button lights up, the
-// objective line says what to do, and tapping anything identifies it.
+// readout strip above the field says what to do, and tapping anything
+// identifies it.
 function updateLegend() {
   scanBtn.classList.toggle("active", legendVisible);
 }
@@ -1813,12 +1845,7 @@ function updateLegend() {
 function updateSystems() {
   // FIRE is only live when an armed weapon actually has a target — the
   // button itself tells you whether shooting this turn does anything.
-  const canFire = Engine.WEAPON_SYSTEM_KEYS.some((k) => {
-    if (!(k === "ram" || state.actions.includes(k)) || !state.systems[k]) return false;
-    const weapon = Engine.WEAPONS[k];
-    const reach = new Set(Engine.weaponHexes(state.playerPos, state.facing, weapon).map(Engine.hexKey));
-    return Engine.livingEnemies(state).some((e) => reach.has(Engine.hexKey(e)));
-  });
+  const canFire = anyFireTarget();
   fireBtn.disabled = state.status !== "playing" || legendVisible || !canFire;
   fireBtn.classList.toggle("active", canFire && state.status === "playing" && !legendVisible);
   rechargeBtn.disabled = state.status !== "playing" || legendVisible || state.energy >= state.maxEnergy;
@@ -1870,6 +1897,19 @@ function describeWeaponCompact(weapon) {
 }
 
 
+// Is there anything inspectable at this hex? Mirrors exactly what
+// updateScanInfo below knows how to describe — when there isn't, the
+// readout strip keeps showing its "tap anything" hint instead of a card.
+function somethingAtHex(hex) {
+  return Boolean(
+    Engine.enemyAt(state, hex) ||
+      state.exits.some((ex) => Engine.posEq(ex, hex)) ||
+      (state.outpostPos && Engine.posEq(state.outpostPos, hex)) ||
+      (state.wormholePos && Engine.posEq(state.wormholePos, hex)) ||
+      Engine.hazardAt(state, hex)
+  );
+}
+
 // The inspected card only ever shows in Scan mode (it's a learn-the-board
 // aid, same as the legend), and only for as long as whatever's at
 // inspectedHex is still there — an enemy that dies, or a Wormhole that
@@ -1877,6 +1917,15 @@ function describeWeaponCompact(weapon) {
 // Covers everything Scan mode promises you can look at: an enemy, the
 // Warp Gate, the Outpost, the Wormhole, or an asteroid field.
 function updateScanInfo() {
+  // The readout strip lives ABOVE the field ("move it up where the tap
+  // info is") and only exists while Scan mode is open — showing/hiding it
+  // changes how much room the board has, so re-fit the canvas whenever it
+  // toggles. Within Scan mode its height is fixed: tapping different
+  // contacts swaps the card in place without the board ever resizing.
+  const slotWasHidden = scanReadoutEl.hidden;
+  scanReadoutEl.hidden = !legendVisible;
+  if (slotWasHidden !== scanReadoutEl.hidden) updateGeometry();
+  scanHintEl.hidden = !legendVisible || Boolean(inspectedHex && somethingAtHex(inspectedHex));
   if (!legendVisible || !inspectedHex) {
     enemyInfoEl.hidden = true;
     return;
@@ -2315,12 +2364,14 @@ function loadSector(index, carryOver, opts) {
     ...carryOver,
     hasPrevious: sectorHistory.length > 0,
   });
+
   // This brand-new sector joins the chart as the live entry.
   sectorHistory.push({ levelIndex, state: JSON.parse(JSON.stringify(state)) });
   chartIndex = sectorHistory.length - 1;
   justArrived = true;
   mode = null;
   anims = keptAnims;
+  announceSector(); // AFTER the anims reset, or the title gets wiped with them
   plannedPath = null;
   autoRoute = null;
   outpostDismissed = false;
@@ -2469,6 +2520,10 @@ function planOrFlyRoute(hex) {
   }
   const path = Engine.findPath(state, state.playerPos, hex);
   plannedPath = path && path.length > 1 ? { target: { q: hex.q, r: hex.r }, hexes: path } : null;
+  // The route preview needs its "now confirm it" instruction — with no
+  // separate coach line above the field anymore, it goes on the readout
+  // strip like every other message.
+  if (plannedPath) pushMessage("Course plotted — tap the marked hex again to fly it.");
   render();
 }
 
@@ -2565,7 +2620,20 @@ canvas.addEventListener("click", (evt) => {
     handleAction(() => Engine.applySublight(state, hex));
     return;
   }
-  if (!Engine.enemyAt(state, hex)) planOrFlyRoute(hex);
+  if (Engine.enemyAt(state, hex)) {
+    // Tapping a hostile used to do NOTHING, silently — the single most
+    // confusing dead-end in playtesting. Say what to do instead.
+    pushMessage("That's a hostile — get beside it, then press FIRE.");
+    render();
+    return;
+  }
+  const hazardHere = Engine.hazardAt(state, hex);
+  if (hazardHere && hazardHere.type === "asteroid") {
+    pushMessage("Asteroid field — impassable. Fly around it.");
+    render();
+    return;
+  }
+  planOrFlyRoute(hex);
 });
 
 modeButtons.forEach((btn) => btn.addEventListener("click", () => setMode(btn.dataset.mode)));

@@ -531,8 +531,11 @@
         state.playerPos = { q: portalPos.q, r: portalPos.r };
       }
     }
+    // Gate status first, intro LAST — the UI's readout strip shows only the
+    // newest log line, and the first thing a fresh sector should say is its
+    // intro, not the always-true "Warp Gate online."
+    checkExitUnlock(state);
     if (level.intro) pushLog(state, level.intro);
-    checkExitUnlock(state); // an enemy-free tutorial board starts with the gate online
     // Every weapon system defaults to systems[key] === true (including
     // Lance/Repulsor before they're even owned — see the comment on the
     // `systems` field above). Once a flagship actually owns 3+ of them
