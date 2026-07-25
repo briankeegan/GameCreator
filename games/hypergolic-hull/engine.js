@@ -99,7 +99,7 @@
   // mechanic and Fighter Squadron was a free instant-kill living outside
   // the weapon/energy model. Everything left runs on the same
   // stats + energy + slots chassis.
-  const ALL_ACTIONS = ["sublight", "ramming", "tractor", "lance", "repulsor"];
+  const ALL_ACTIONS = ["sublight", "autocannon", "tractor", "flakBurst", "arcBeam", "railgun"];
   // Purchase-only actions (see OUTPOST_OFFER_POOL/applyOutpostPurchase) —
   // never part of any level's own baked-in `actions` list, and excluded
   // from the default fallback below so they don't show up for free the
@@ -108,7 +108,7 @@
   // guaranteed claimable (free) at Sector 2's Outpost specifically (see
   // pickOutpostOfferIds), just no longer handed out automatically for
   // reaching the sector.
-  const PURCHASABLE_ACTIONS = ["lance", "repulsor", "tractor"];
+  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "railgun", "tractor"];
   // Sectors that don't specify `actions` explicitly (Sector 4 "Full Fleet"
   // and every procedurally-generated sector) default to every action that
   // unlocks just by playing.
@@ -262,57 +262,39 @@
   // pushed-away attacker never gets its slower shot off — that's the
   // whole point.
   const ALL_DIRECTIONS_PATTERN = [0, 1, 2, 3, 4, 5];
+  // FOUR weapons, each the answer to exactly one situation — cheap-and-
+  // reliable, crowds, standoff, or sniping — with a real price curve and
+  // real footprints (Clubhouse: "they all seem super similar and similarly
+  // priced... use some critical thinking"). Every one of them is ALSO the
+  // item an enemy class carries, so scanning a contact teaches you what's
+  // buyable instead of showing you enemy-only gear you can never own.
   const WEAPONS = {
-    // The free auto-weapon now fires in ALL six directions (an encircling
-    // blast), not just the forward three — so it defends you from every side
-    // after a move, no aiming required. Renamed to the Shockwave to match.
-    // Costs 2 against +1/turn regen — every firing turn nets -1, so even
-    // the free starting weapon visibly draws down the reactor and combat
-    // has a fuel gauge.
-    // `targets: "one"` — the base weapon strikes a SINGLE contact per shot
-    // ("change base weapon to only attack one place"): its reach is still
-    // every adjacent hex, but the shot goes to the target-locked contact
-    // (or the first in reach). Multi-hit stays a trait of specific
-    // hardware (the Repulsor wave, the piercing Lance line), not free.
-    ram: { id: "ram", label: "Shockwave", range: 1, damage: 1, targets: "one", energyCost: 2, speed: 3, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
-    interceptorCannon: { id: "interceptorCannon", label: "Interceptor Cannon", range: 1, damage: 1, targets: "all", energyCost: 1, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
-    // A Sentry Turret's beam reaches TWO hexes in every direction — it never
-    // moves, but it zones off a wide ring you have to route around or kill.
-    sentryBeam: { id: "sentryBeam", label: "Sentry Beam", range: 2, damage: 1, targets: "all", energyCost: 1, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
-    // A trade, not a strict upgrade over the Shockwave's omnidirectional
-    // safety: hits harder and at range, but only dead ahead — you have to
-    // manage `facing` to line it up (toggle Warpdrive off, tap an adjacent
-    // hex to aim, FIRE to commit — infrastructure already built for
-    // exactly this). Purchased at an Outpost (see OUTPOST_OFFER_POOL), not
-    // unlocked for free by reaching a sector. Costs 3 — the hardest
-    // hitter is also the thirstiest.
-    lance: { id: "lance", label: "Lance Cannon", range: 3, damage: 2, targets: "all", energyCost: 3, speed: 1, pattern: [0], slots: 1 },
-    // Double-edged on purpose (Clubhouse: "make that bad or good depending
-    // [how it's used]"): weaker than the Shockwave hit-for-hit, but every
-    // surviving target gets shoved a hex directly away from the flagship
-    // (see pushEnemyInDirection) — can save you a follow-up hit by knocking
-    // a threat out of adjacency, or shove a low-HP target out of the very
-    // range you needed to finish it off. Also purchased at an Outpost.
-    repulsor: { id: "repulsor", label: "Repulsor", range: 1, damage: 1, targets: "all", energyCost: 2, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // The workhorse, and the ship's starting gun. 1 energy against a
+    // +1/cycle reactor means it fires every single round forever — weak,
+    // adjacent-only, never a drain. Interceptors carry this exact gun.
+    autocannon: { id: "autocannon", label: "Autocannon", range: 1, damage: 1, targets: "one", energyCost: 1, speed: 3, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // The crowd answer: the only weapon that hits EVERY adjacent contact
+    // at once, so being surrounded stops being a death sentence. Pricey
+    // per shot (3 against +1/cycle = a shot every third round) and a fat
+    // 2x2 footprint. Cruisers brawl with it.
+    flakBurst: { id: "flakBurst", label: "Flak Burst", range: 1, damage: 1, targets: "all", energyCost: 3, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // Standoff: two hexes in every direction, so you kill things on their
+    // approach instead of trading blows in contact. No facing to manage.
+    // Sentries zone the board with the same beam.
+    arcBeam: { id: "arcBeam", label: "Arc Beam", range: 2, damage: 1, targets: "one", energyCost: 2, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // The sniper: down any of the six axes, the length of the board, two
+    // damage — enough to one-shot the 2-hull classes. 4 energy against
+    // +1/cycle is a visible four-round charge cycle, the exact rhythm the
+    // Railgun Destroyer telegraphs at you. Huge 1x4 footprint.
+    railgun: { id: "railgun", label: "Railgun", range: 20, damage: 2, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // Not an auto-fire weapon (see AUTO_FIRE_WEAPONS below) — Tractor Beam
     // is player-armed-and-aimed (applyTractor), adjacent range in any of
     // the 6 directions. Modeled here anyway so its stats badge (app.js)
-    // reads off real data instead of a hand-copied duplicate, same as
-    // every other weapon. `damage: 0` because it destroys via collision
-    // physics (pushEnemyInDirection: off the edge, into another unit, or
-    // into a hazard), not a direct hit. `slots: 0`: an armed-and-aimed
-    // action you spend a turn on, not a system left running — it charges
-    // energy per use but never occupies a weapon slot.
+    // reads off real data instead of a hand-copied duplicate. `damage: 0`
+    // because it destroys via collision physics (pushEnemyInDirection),
+    // not a direct hit; `slots: 0` because it's an action you spend a turn
+    // on, not a system left running.
     tractor: { id: "tractor", label: "Tractor Beam", range: 1, damage: 0, targets: "push", energyCost: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 0 },
-    // The original design doc's Railgun Destroyer ("fires a straight-line
-    // slug down any of the 6 hex axes, unlimited range... telegraphs the
-    // line one turn before firing"). The telegraph is now real and comes
-    // straight from the energy system: cost 3 against a +1/turn regen
-    // means it visibly charges for 3 turns between shots (see the Railgun
-    // entry in ENEMY_TYPES), instead of firing board-spanning shots every
-    // single turn. Still no line-of-sight blocking by intervening units —
-    // left for a later pass if it needs more texture.
-    railgunBeam: { id: "railgunBeam", label: "Railgun", range: 20, damage: 1, targets: "all", energyCost: 3, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
   };
 
   // Each enemy type is its own small data block: how tough it is (hp), what
@@ -344,9 +326,12 @@
   // Phase 1 is deliberately just the starter roster ("less items to start
   // so we can test this out") — new items are one entry here each.
   const EQUIPMENT = {
-    shockwave: { id: "shockwave", label: "Shockwave", kind: "weapon", weaponKey: "ram", w: 2, h: 1 },
-    lanceCannon: { id: "lanceCannon", label: "Lance Cannon", kind: "weapon", weaponKey: "lance", w: 1, h: 3 },
-    repulsor: { id: "repulsor", label: "Repulsor", kind: "weapon", weaponKey: "repulsor", w: 2, h: 1 },
+    // Item id === action id === systems key === WEAPONS key, deliberately:
+    // one weapon is one physical thing, and every layer names it the same.
+    autocannon: { id: "autocannon", label: "Autocannon", kind: "weapon", weaponKey: "autocannon", w: 2, h: 1 },
+    flakBurst: { id: "flakBurst", label: "Flak Burst", kind: "weapon", weaponKey: "flakBurst", w: 2, h: 2 },
+    arcBeam: { id: "arcBeam", label: "Arc Beam", kind: "weapon", weaponKey: "arcBeam", w: 2, h: 2 },
+    railgun: { id: "railgun", label: "Railgun", kind: "weapon", weaponKey: "railgun", w: 1, h: 4 },
     tractorBeam: { id: "tractorBeam", label: "Tractor Beam", kind: "utility", w: 1, h: 2 },
     reactorCore: { id: "reactorCore", label: "Reactor Core", kind: "reactor", rechargeGain: 1, w: 2, h: 2 },
     sublightDrive: { id: "sublightDrive", label: "Sublight Drive", kind: "engine", moveRange: 1, w: 1, h: 3 },
@@ -354,6 +339,14 @@
     // The Scan mode's hardware ("the scanner should itself be a small
     // item") — a tiny tile, but pull it and the ship flies blind.
     scanner: { id: "scanner", label: "Scanner Array", kind: "sensor", w: 1, h: 1 },
+    // Small hardware the hostile classes are built around. Ordinary
+    // EQUIPMENT entries, not enemy-only props — an enemy's hold renders
+    // through exactly the same registry yours does, and these are what a
+    // wreck would drop.
+    microReactor: { id: "microReactor", label: "Micro Reactor", kind: "reactor", rechargeGain: 1, w: 1, h: 1 },
+    chargeBank: { id: "chargeBank", label: "Charge Bank", kind: "reactor", rechargeGain: 1, w: 1, h: 2 },
+    ablativePlating: { id: "ablativePlating", label: "Ablative Plating", kind: "shield", capacity: 1, w: 1, h: 2 },
+    stationAnchor: { id: "stationAnchor", label: "Station Anchor", kind: "utility", w: 1, h: 1 },
   };
 
   // Can `id`'s tile sit at (x, y) — inside the grid, overlapping nothing?
@@ -396,12 +389,11 @@
   function syncHoldDerived(state) {
     const has = (id) => state.hold.items.some((it) => it.id === id);
     const actions = ["sublight"];
-    if (has("shockwave")) actions.push("ramming");
-    if (has("lanceCannon")) actions.push("lance");
-    if (has("repulsor")) actions.push("repulsor");
+    for (const key of WEAPON_SYSTEM_KEYS) if (has(key)) actions.push(key);
     if (has("tractorBeam")) actions.push("tractor");
     state.actions = actions;
-    state.systems = { warpdrive: true, ram: has("shockwave"), lance: has("lanceCannon"), repulsor: has("repulsor") };
+    state.systems = { warpdrive: true };
+    for (const key of WEAPON_SYSTEM_KEYS) state.systems[key] = has(key);
     state.maxShields = state.hold.items.filter((it) => EQUIPMENT[it.id].kind === "shield").length;
     state.shieldCharges = Math.min(state.shieldCharges, state.maxShields);
     state.scannerInstalled = state.hold.items.some((it) => EQUIPMENT[it.id].kind === "sensor");
@@ -451,62 +443,64 @@
   }
 
   const ENEMY_TYPES = {
-    // `fitted` — the enemy's own equipment loadout, same model as the
-    // flagship's Hold ("enemies work the same way... when you scan an
-    // enemy you should see their setup"): Scan renders this list.
-    // `fitted` is the label list; `holdView` is the same thing as a SHIP-
-    // SHAPED mini grid — the enemy's own Systems view, rendered by Scan
-    // exactly like the flagship's Hold ("scan should show the same sorta
-    // view... their dashboard").
+    // Every enemy is a HOLD, exactly like yours: `hold` lists real
+    // EQUIPMENT ids at real coordinates, so a scanned contact's Systems
+    // screen renders through the same code your own does, and the weapon
+    // it shoots you with is an item you can buy and fit yourself. There is
+    // no enemy-only gear.
+    //   interceptor — the basic chaser: 1 Hull, one Autocannon, closes in.
+    //                 1 energy against +1/cycle regen = fires every round.
+    //   cruiser     — the brawler: 2 Hull, Flak Burst. Three-round charge
+    //                 cycle, so it hits hard on a rhythm you can read.
+    //   sentry      — a fixed gun platform: 2 Hull, no drive, Arc Beam
+    //                 zoning two hexes in every direction.
+    //   railgun     — the sniper emplacement: 2 Hull, no drive, Railgun
+    //                 down any axis for 2 damage on a four-round charge.
     interceptor: {
-      hp: 1, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true, salvage: 1, maxEnergy: 1, startEnergy: 1,
-      fitted: ["Interceptor Cannon", "Micro Reactor", "Sublight Drive"],
-      holdView: {
-        cols: 3, rows: 3, blocked: ["0,0", "2,0", "0,2", "2,2"],
-        tiles: [
-          { kind: "weapon", x: 1, y: 0, w: 1, h: 1, label: "Cannon" },
-          { kind: "reactor", x: 0, y: 1, w: 1, h: 1, label: "Micro Reactor" },
-          { kind: "engine", x: 1, y: 1, w: 1, h: 2, label: "Sublight Drive" },
-          { kind: "reactor", x: 2, y: 1, w: 1, h: 1, spare: true, label: "Spare Cell" },
+      hp: 1, weapon: WEAPONS.autocannon, movesTowardPlayer: true, salvage: 1, maxEnergy: 1, startEnergy: 1,
+      hold: {
+        cols: 3, rows: 4, blocked: ["0,3", "2,3"],
+        items: [
+          { id: "autocannon", x: 0, y: 0 },
+          { id: "microReactor", x: 2, y: 0 },
+          { id: "sublightDrive", x: 1, y: 1 },
         ],
       },
     },
     cruiser: {
-      hp: 2, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true, salvage: 2, maxEnergy: 1, startEnergy: 1,
-      fitted: ["Interceptor Cannon", "Micro Reactor", "Sublight Drive", "Reinforced Plating"],
-      holdView: {
-        cols: 3, rows: 4, blocked: ["0,0", "2,0"],
-        tiles: [
-          { kind: "weapon", x: 1, y: 0, w: 1, h: 1, label: "Cannon" },
-          { kind: "shield", x: 0, y: 1, w: 1, h: 2, label: "Plating" },
-          { kind: "engine", x: 1, y: 1, w: 1, h: 2, label: "Sublight Drive" },
-          { kind: "shield", x: 2, y: 1, w: 1, h: 2, label: "Plating" },
-          { kind: "reactor", x: 1, y: 3, w: 1, h: 1, label: "Micro Reactor" },
+      hp: 2, weapon: WEAPONS.flakBurst, movesTowardPlayer: true, salvage: 2, maxEnergy: 3, startEnergy: 3,
+      hold: {
+        cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
+        items: [
+          { id: "flakBurst", x: 1, y: 0 },
+          { id: "ablativePlating", x: 0, y: 1 },
+          { id: "ablativePlating", x: 3, y: 1 },
+          { id: "sublightDrive", x: 1, y: 2 },
+          { id: "chargeBank", x: 2, y: 2 },
         ],
       },
     },
     sentry: {
-      hp: 2, weapon: WEAPONS.sentryBeam, movesTowardPlayer: false, salvage: 2, maxEnergy: 1, startEnergy: 1,
-      fitted: ["Sentry Beam", "Micro Reactor", "Station Anchor — no drive"],
-      holdView: {
-        cols: 3, rows: 3, blocked: ["0,0", "2,0"],
-        tiles: [
-          { kind: "weapon", x: 1, y: 0, w: 1, h: 1, label: "Sentry Beam" },
-          { kind: "reactor", x: 0, y: 1, w: 3, h: 1, label: "Micro Reactor" },
-          { kind: "utility", x: 1, y: 2, w: 1, h: 1, label: "Anchor" },
+      hp: 2, weapon: WEAPONS.arcBeam, movesTowardPlayer: false, salvage: 2, maxEnergy: 2, startEnergy: 2,
+      hold: {
+        cols: 3, rows: 4, blocked: ["0,0", "2,0"],
+        items: [
+          { id: "arcBeam", x: 0, y: 1 },
+          { id: "microReactor", x: 2, y: 1 },
+          { id: "microReactor", x: 2, y: 2 },
+          { id: "stationAnchor", x: 1, y: 3 },
         ],
       },
     },
     railgun: {
-      hp: 2, weapon: WEAPONS.railgunBeam, movesTowardPlayer: false, salvage: 3, maxEnergy: 3, startEnergy: 0,
-      fitted: ["Railgun", "Charge Bank x3", "Station Anchor — no drive"],
-      holdView: {
-        cols: 3, rows: 4, blocked: ["0,0", "2,0"],
-        tiles: [
-          { kind: "weapon", x: 1, y: 0, w: 1, h: 3, label: "Railgun" },
-          { kind: "reactor", x: 0, y: 1, w: 1, h: 2, label: "Charge Bank" },
-          { kind: "reactor", x: 2, y: 1, w: 1, h: 2, label: "Charge Bank" },
-          { kind: "utility", x: 1, y: 3, w: 1, h: 1, label: "Anchor" },
+      hp: 2, weapon: WEAPONS.railgun, movesTowardPlayer: false, salvage: 3, maxEnergy: 4, startEnergy: 0,
+      hold: {
+        cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
+        items: [
+          { id: "railgun", x: 1, y: 0 },
+          { id: "chargeBank", x: 0, y: 1 },
+          { id: "chargeBank", x: 2, y: 1 },
+          { id: "stationAnchor", x: 1, y: 4 },
         ],
       },
     },
@@ -563,8 +557,13 @@
     // grow at Outposts, not constants.
     { id: "reactor", label: "Reactor Upgrade (+1 Max Energy)", cost: 12 },
     { id: "hardpoint", label: "Hold Expansion (+1 row of internal space)", cost: 20 },
-    { id: "lanceCannon", label: "Lance Cannon (forward-only, 2 dmg, range 3)", cost: 25 },
-    { id: "repulsorWeapon", label: "Repulsor (all sides, 1 dmg + knockback)", cost: 20 },
+    // The three weapons beyond your starting Autocannon, priced on a real
+    // curve — each one answers a situation the others can't, and each is
+    // the item a hostile class already carries (buy the gun that's been
+    // shooting at you).
+    { id: "flakBurst", label: "Flak Burst (2x2 — hits every adjacent contact)", cost: 14 },
+    { id: "arcBeam", label: "Arc Beam (2x2 — range 2, kill them on approach)", cost: 18 },
+    { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 30 },
     // Free — this is a claim, not a purchase. Never part of the general
     // per-level random pool (see pickOutpostOfferIds); it only ever
     // appears at Sector 2's Outpost, guaranteed, since that's the
@@ -693,7 +692,7 @@
       // the previous sector (a run's ship IS its hold) or built fresh
       // from the level's starting kit. `systems` is derived from it.
       hold: buildHold(level, carryOver),
-      systems: { warpdrive: true, ram: false, lance: false, repulsor: false },
+      systems: { warpdrive: true },
       // Direction index (0-5) the flagship is currently facing — gameplay-
       // relevant now, not just cosmetic, since a directional weapon's
       // pattern is relative to it. Updated on every Sublight move; starts
@@ -747,9 +746,7 @@
     const hold = { cols: HOLD_COLS, rows: HOLD_ROWS, blocked: HOLD_BLOCKED.slice(), items: [], cargo: [] };
     const acts = new Set([...(level.actions || DEFAULT_ACTIONS), ...((carryOver && carryOver.extraActions) || [])]);
     const kit = ["sublightDrive", "reactorCore", "scanner"]; // drive first: it runs down the spine, keeping the midsection whole
-    if (acts.has("ramming")) kit.push("shockwave");
-    if (acts.has("lance")) kit.push("lanceCannon");
-    if (acts.has("repulsor")) kit.push("repulsor");
+    for (const key of WEAPON_SYSTEM_KEYS) if (acts.has(key)) kit.push(key);
     if (acts.has("tractor")) kit.push("tractorBeam");
     for (const id of kit) autoPlaceInHold(hold, id);
     return hold;
@@ -759,7 +756,7 @@
   // derived from the Hold now (an installed weapon item sets its
   // systems[key] flag in syncHoldDerived), but the key list itself is
   // stable engine data.
-  const WEAPON_SYSTEM_KEYS = ["ram", "lance", "repulsor"];
+  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "railgun"];
 
   // Re-aims the flagship without moving or ending the turn — free to call as
   // many times as you like (no events, no enemy phase). This is what lets
@@ -1151,16 +1148,7 @@
   // auto-fire weapon is adding one entry here, not new bespoke firing code.
   // `onHit` is optional — the Repulsor uses it to shove a surviving target
   // away (see pushEnemyInDirection); most weapons just damage.
-  const AUTO_FIRE_WEAPONS = [
-    { action: "ramming", systemKey: "ram", weapon: WEAPONS.ram },
-    { action: "lance", systemKey: "lance", weapon: WEAPONS.lance },
-    {
-      action: "repulsor",
-      systemKey: "repulsor",
-      weapon: WEAPONS.repulsor,
-      onHit: (state, victim) => pushEnemyInDirection(state, victim, directionIndex(state.playerPos, victim), "Repulsor"),
-    },
-  ];
+  const AUTO_FIRE_WEAPONS = WEAPON_SYSTEM_KEYS.map((key) => ({ action: key, systemKey: key, weapon: WEAPONS[key] }));
 
   function applySublight(state, to) {
     assertPlaying(state);
@@ -1331,11 +1319,8 @@
       state.energy += 1; // an upgrade should feel immediate, same as Reinforce Hull
     } else if (offer.id === "hardpoint") {
       state.hold.rows += 1; // more internal space — the grid literally grows
-    } else if (offer.id === "lanceCannon") {
-      autoPlaceInHold(state.hold, "lanceCannon");
-      syncHoldDerived(state);
-    } else if (offer.id === "repulsorWeapon") {
-      autoPlaceInHold(state.hold, "repulsor");
+    } else if (offer.id === "flakBurst" || offer.id === "arcBeam" || offer.id === "railgun") {
+      autoPlaceInHold(state.hold, offer.id);
       syncHoldDerived(state);
     } else if (offer.id === "tractorBeam") {
       autoPlaceInHold(state.hold, "tractorBeam");

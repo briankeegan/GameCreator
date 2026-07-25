@@ -147,6 +147,9 @@ let legendVisible = GCStorage.get(GAME_ID, "legendVisible", false);
 // The full-screen Systems view ("a mode that goes full screen and shows
 // ship and allows you to modify") — session-only, always starts closed.
 let shipVisible = false;
+// "ship" (your flagship) or "contact" (the scanned enemy) — set by whichever
+// button opened the Systems screen, never inferred.
+let systemsContext = "ship";
 // The starmap — same deal.
 let mapVisible = false;
 
@@ -408,16 +411,15 @@ function announceSector() {
 }
 
 // Each weapon's signature look ("weapons need unique attack appearance"):
-// the Shockwave is an expanding ring, the Repulsor a blue push-wave, the
-// Lance a piercing beam, enemy cannons fire visible bolts, the Sentry and
-// Railgun sweep beams in their own colors.
+// the Autocannon spits bolts, the Flak Burst blooms a ring across every
+// adjacent hex, the Arc Beam and Railgun sweep beams in their own colors.
+// One entry per weapon covers BOTH ships now that enemies carry the same
+// items you do — a Cruiser's flak looks like your flak, because it is.
 const WEAPON_FX = {
-  ram: { kind: "ring", color: "#ffb36b" },
-  repulsor: { kind: "ring", color: "#5bb8f2" },
-  lance: { kind: "beam", color: "#ffe28a", width: 3.5 },
-  interceptorCannon: { kind: "bolt", color: "#ff8a72" },
-  sentryBeam: { kind: "beam", color: "#8aff9e", width: 2.5 },
-  railgunBeam: { kind: "beam", color: "#ff5ad2", width: 2.5 },
+  autocannon: { kind: "bolt", color: "#ff8a72" },
+  flakBurst: { kind: "ring", color: "#ffb36b" },
+  arcBeam: { kind: "beam", color: "#8aff9e", width: 2.5 },
+  railgun: { kind: "beam", color: "#ff5ad2", width: 3.5 },
 };
 
 function scheduleAnims(events) {
@@ -1504,8 +1506,9 @@ function draw() {
   // (dead ahead of facing, or every neighbor for an omnidirectional weapon)
   // is exactly the same kind of thing "outlined hex" already means, so it
   // gets folded into the same highlight instead of a separate one.
-  if (state.actions.includes("ramming") && state.systems.ram) {
-    for (const h of Engine.weaponHexes(state.playerPos, state.facing, Engine.WEAPONS.ram)) {
+  for (const key of Engine.WEAPON_SYSTEM_KEYS) {
+    if (!state.actions.includes(key) || !state.systems[key]) continue;
+    for (const h of Engine.weaponHexes(state.playerPos, state.facing, Engine.WEAPONS[key])) {
       if (Engine.onBoard(state, h)) legal.add(Engine.hexKey(h));
     }
   }
@@ -1952,7 +1955,7 @@ function flashOnChange(key, value, wrapEl) {
 // position, so queuing a lunge lights the button up for the follow-up shot.
 function anyFireTarget(s) {
   return Engine.WEAPON_SYSTEM_KEYS.some((k) => {
-    if (!(k === "ram" || s.actions.includes(k)) || !s.systems[k]) return false;
+    if (!s.actions.includes(k) || !s.systems[k]) return false;
     const weapon = Engine.WEAPONS[k];
     const reach = new Set(Engine.weaponHexes(s.playerPos, s.facing, weapon).map(Engine.hexKey));
     return Engine.livingEnemies(s).some((e) => reach.has(Engine.hexKey(e)));
@@ -2060,7 +2063,7 @@ function updateLegend() {
 // button represents this moment.
 function armedWeaponKeys() {
   return Engine.WEAPON_SYSTEM_KEYS.filter(
-    (k) => (k === "ram" || state.actions.includes(k)) && state.systems[k]
+    (k) => state.actions.includes(k) && state.systems[k]
   );
 }
 
@@ -2176,6 +2179,7 @@ function updateScanInfo() {
     sysBtn.id = "enemySystemsBtn";
     sysBtn.textContent = "SYSTEMS ▸";
     sysBtn.addEventListener("click", () => {
+      systemsContext = "contact";
       shipVisible = true;
       mapVisible = false;
       render();
@@ -2253,61 +2257,40 @@ function updateOutpost() {
 // dashboard and Systems screen ARE your own components with the enemy
 // passed through, not a parallel set that can drift.
 function shipView(enemy) {
+  const hold = enemy ? Engine.ENEMY_TYPES[enemy.type].hold : state.hold;
+  const installed = hold.items.map((it) => ({ it, eq: Engine.EQUIPMENT[it.id] }));
+  const tiles = installed.map((x, i) => ({
+    kind: x.eq.kind, label: x.eq.label, x: x.it.x, y: x.it.y, w: x.eq.w, h: x.eq.h,
+    holdIndex: i, itemId: x.it.id,
+  }));
   if (!enemy) {
-    const installed = state.hold.items.map((it) => ({ it, eq: Engine.EQUIPMENT[it.id] }));
-    const drive = installed.find((x) => x.eq.kind === "engine");
-    const guns = installed.filter((x) => x.eq.kind === "weapon");
     return {
       name: "FLAGSHIP",
       hull: state.hull, maxHull: state.maxHull,
       energy: state.energy, maxEnergy: state.maxEnergy,
       shields: state.shieldCharges, maxShields: state.maxShields,
-      drive: drive ? `sublight, ${drive.eq.moveRange} hex/round` : "none — no drive installed",
       salvage: String(state.salvage),
-      armament: guns.length
-        ? guns.map((x) => describeWeapon(Engine.WEAPONS[x.eq.weaponKey])).join(" — ")
-        : "none installed",
-      holdTitle: Engine.outpostAvailable(state) ? "THE HOLD — docked: drag to refit" : "THE HOLD — dock at an Outpost to refit",
+      holdTitle: Engine.outpostAvailable(state) ? "THE HOLD — docked: drag to refit" : "THE HOLD — tap an item for its specs",
       gridId: "holdGrid",
-      cols: state.hold.cols, rows: state.hold.rows, blocked: state.hold.blocked || [],
-      tiles: installed.map((x, i) => ({
-        kind: x.eq.kind, label: x.eq.label, x: x.it.x, y: x.it.y, w: x.eq.w, h: x.eq.h,
-        holdIndex: i, itemId: x.it.id,
-      })),
-      cargo: state.hold.cargo,
+      cols: hold.cols, rows: hold.rows, blocked: hold.blocked || [],
+      tiles,
+      cargo: hold.cargo,
       interactive: true,
     };
   }
-  const def = Engine.ENEMY_TYPES[enemy.type];
-  const view = def.holdView || { cols: 1, rows: 1, blocked: [], tiles: [] };
   return {
     name: enemy.type.toUpperCase(),
     hull: enemy.hp, maxHull: enemy.maxHp,
     energy: enemy.energy, maxEnergy: enemy.maxEnergy,
     shields: 0, maxShields: 0,
-    drive: def.movesTowardPlayer ? "sublight, 1 hex/round" : "none — cannot move",
-    salvage: `+${def.salvage} on kill`,
-    armament: describeWeapon(def.weapon),
-    intent: enemyIntentLine(enemy, def),
-    holdTitle: "THEIR HOLD — scanner reconstruction",
+    salvage: `+${Engine.ENEMY_TYPES[enemy.type].salvage} on kill`,
+    holdTitle: "THEIR HOLD — tap an item for its specs",
     gridId: "enemyHoldGrid",
-    cols: view.cols, rows: view.rows, blocked: view.blocked || [],
-    tiles: view.tiles.map((t) => ({ kind: t.kind, label: t.label || t.kind, x: t.x, y: t.y, w: t.w, h: t.h })),
+    cols: hold.cols, rows: hold.rows, blocked: hold.blocked || [],
+    tiles,
     cargo: null,
     interactive: false,
   };
-}
-
-// What this contact will do, derived straight from the real enemy AI
-// (decideIntent's rules) — never a guess, always conditional on you
-// staying put, since enemies decide AFTER you act.
-function enemyIntentLine(enemy, def) {
-  const charged = enemy.energy >= def.weapon.energyCost;
-  const inRange = Engine.weaponHexes(enemy, 0, def.weapon).some((h) => Engine.posEq(h, state.playerPos));
-  if (!charged) return `CHARGING ${enemy.energy}/${def.weapon.energyCost} — cannot fire yet`;
-  if (inRange) return "YOU ARE IN ITS RANGE — fires in its phase if you end the round here.";
-  if (def.movesTowardPlayer) return "PURSUING — closes 1 hex a round, fires the round you're in its reach.";
-  return "HOLDING — never moves, fires the round you end inside its reach.";
 }
 
 // The gauge cluster: the same HULL / ENERGY / SHIELDS pips the console
@@ -2373,7 +2356,12 @@ function updateShipOverlay() {
 
   // Contextual Systems: while Scan has a contact inspected, this screen is
   // THAT ship's. No contact inspected (or it died) → your flagship.
-  const scannedEnemy = legendVisible && inspectedHex ? Engine.enemyAt(state, inspectedHex) : null;
+  // Which ship this screen is about is decided by HOW it was opened: the
+  // console's Systems button is always your own ship, the scan card's
+  // SYSTEMS button is that contact. (Opening yours while a contact is
+  // still inspected used to silently show theirs.)
+  const scannedEnemy =
+    systemsContext === "contact" && legendVisible && inspectedHex ? Engine.enemyAt(state, inspectedHex) : null;
   const vm = shipView(scannedEnemy);
   shipOverlayEl.querySelector("h2").textContent = scannedEnemy ? `Systems — ${vm.name}` : "Systems";
   // Whichever ship this screen is about, you see the ACTUAL ship: your
@@ -2409,10 +2397,7 @@ function updateShipOverlay() {
   statRow("Hull", bar(vm.hull, vm.maxHull, "hull", "Hull"));
   statRow("Energy", bar(vm.energy, vm.maxEnergy, "energy", "Energy"));
   if (vm.maxShields > 0) statRow("Shields", bar(vm.shields, vm.maxShields, "shield", "Shields"));
-  statRow("Drive", text(vm.drive));
-  statRow("Armament", text(vm.armament));
   statRow("Salvage", text(vm.salvage));
-  if (vm.intent) statRow("Intent", text(vm.intent));
 
   // ---- The Hold: the ship's internals as a GRID of shaped equipment ----
   // ("a grid drag and drop for different sized/shaped items") — every tile
@@ -2461,6 +2446,15 @@ function updateShipOverlay() {
   }
   shipHardpointsEl.appendChild(gridEl);
 
+  const holdInfo = document.createElement("p");
+  holdInfo.className = "hold-info";
+  holdInfo.id = "holdInfo";
+  holdInfo.textContent = vm.interactive
+    ? "Tap an item for its specs."
+    : "Tap an item for its specs. Kill it and this is what it drops.";
+  shipHardpointsEl.appendChild(holdInfo);
+  wireHoldInspect(gridEl, holdInfo);
+
   if (vm.cargo) {
     const cargoEl = document.createElement("div");
     cargoEl.className = "hold-cargo";
@@ -2482,30 +2476,46 @@ function updateShipOverlay() {
     wireHoldDrag(gridEl, cargoEl, CELL, docked);
   }
 
-  const note = document.createElement("p");
-  note.className = "ship-note";
-  note.textContent = !vm.interactive
-    ? "Live telemetry from the contact's hull. Kill it and some of this is yours."
-    : docked
-      ? "Drag tiles to rearrange, or drag one down to cargo to power it down. Refits are free while docked."
-      : "Tap a tile to inspect it. Refits only happen at a dock — no rewiring the ship mid-route.";
-  shipHardpointsEl.appendChild(note);
+  if (docked) {
+    const note = document.createElement("p");
+    note.className = "ship-note";
+    note.textContent = "Docked: drag tiles to rearrange, or drag one down to cargo to power it down. Refits are free here.";
+    shipHardpointsEl.appendChild(note);
+  }
 }
 
 // Pointer-based drag-and-drop for the Hold. Docked: drag a tile to a new
 // cell (green = fits, red = doesn't), drop past the grid's bottom edge to
 // stow it; tap a cargo chip to auto-install it. Undocked: taps inspect.
+// What an installed item IS, read straight off its own data — the single
+// source of every spec the UI ever states about equipment, so a hostile's
+// Autocannon reads exactly the same as yours.
+function describeItem(id) {
+  const eq = Engine.EQUIPMENT[id];
+  if (eq.kind === "weapon") return describeWeapon(Engine.WEAPONS[eq.weaponKey]);
+  if (eq.kind === "reactor") return `${eq.label} — +${eq.rechargeGain} Energy per cycle · ${eq.w}x${eq.h}`;
+  if (eq.kind === "engine") return `${eq.label} — ${eq.moveRange} hex per turn · ${eq.w}x${eq.h}`;
+  if (eq.kind === "shield") return `${eq.label} — raise-able charge, absorbs a volley · ${eq.w}x${eq.h}`;
+  if (eq.id === "tractorBeam") return describeWeapon(Engine.WEAPONS.tractor);
+  if (eq.kind === "sensor") return `${eq.label} — powers Scan mode · ${eq.w}x${eq.h}`;
+  if (eq.kind === "utility") return `${eq.label} — ${eq.w}x${eq.h}`;
+  return eq.label;
+}
+
+// Tap any tile, on either ship, and its specs land in the readout under
+// the grid ("clicking on item... should info when selected"). Nothing is
+// written into the screen up front — the grid IS the information.
+function wireHoldInspect(gridEl, infoEl) {
+  gridEl.addEventListener("click", (evt) => {
+    const tile = evt.target.closest ? evt.target.closest(".hold-tile") : null;
+    if (!tile || !tile.dataset.itemId) return;
+    for (const other of gridEl.querySelectorAll(".hold-tile")) other.classList.remove("selected");
+    tile.classList.add("selected");
+    infoEl.textContent = describeItem(tile.dataset.itemId);
+  });
+}
+
 function wireHoldDrag(gridEl, cargoEl, CELL, docked) {
-  const describeItem = (id) => {
-    const eq = Engine.EQUIPMENT[id];
-    if (eq.kind === "weapon") return describeWeapon(Engine.WEAPONS[eq.weaponKey]);
-    if (eq.kind === "reactor") return `${eq.label} — +${eq.rechargeGain} Energy per cycle · ${eq.w}x${eq.h}`;
-    if (eq.kind === "engine") return `${eq.label} — ${eq.moveRange} hex per turn · ${eq.w}x${eq.h}`;
-    if (eq.kind === "shield") return `${eq.label} — raise-able charge, absorbs a volley · ${eq.w}x${eq.h}`;
-    if (eq.id === "tractorBeam") return describeWeapon(Engine.WEAPONS.tractor);
-    if (eq.kind === "sensor") return `${eq.label} — powers Scan mode · ${eq.w}x${eq.h}`;
-    return eq.label;
-  };
 
   for (const chip of cargoEl.querySelectorAll(".hold-cargo-tile")) {
     chip.addEventListener("click", () => {
@@ -2768,7 +2778,7 @@ function pushMessage(message) {
 // Is THIS specific contact inside any armed weapon's reach right now?
 function enemyInReach(s, enemy) {
   return Engine.WEAPON_SYSTEM_KEYS.some((k) => {
-    if (!(k === "ram" || s.actions.includes(k)) || !s.systems[k]) return false;
+    if (!s.actions.includes(k) || !s.systems[k]) return false;
     return Engine.weaponHexes(s.playerPos, s.facing, Engine.WEAPONS[k]).some((h) => Engine.posEq(h, enemy));
   });
 }
@@ -2781,7 +2791,7 @@ function faceEnemyIfPossible(enemy) {
   if (enemyInReach(state, enemy)) return true;
   for (let f = 0; f < 6; f++) {
     const reaches = Engine.WEAPON_SYSTEM_KEYS.some((k) => {
-      if (!(k === "ram" || state.actions.includes(k)) || !state.systems[k]) return false;
+      if (!state.actions.includes(k) || !state.systems[k]) return false;
       return Engine.weaponHexes(state.playerPos, f, Engine.WEAPONS[k]).some((h) => Engine.posEq(h, enemy));
     });
     if (reaches) {
@@ -2796,7 +2806,7 @@ function faceEnemyIfPossible(enemy) {
 function volleyCost(s) {
   let cost = 0;
   for (const k of Engine.WEAPON_SYSTEM_KEYS) {
-    if (!(k === "ram" || s.actions.includes(k)) || !s.systems[k]) continue;
+    if (!s.actions.includes(k) || !s.systems[k]) continue;
     const weapon = Engine.WEAPONS[k];
     const reach = new Set(Engine.weaponHexes(s.playerPos, s.facing, weapon).map(Engine.hexKey));
     if (Engine.livingEnemies(s).some((e) => reach.has(Engine.hexKey(e)))) cost += weapon.energyCost;
@@ -3021,6 +3031,7 @@ scanBtn.addEventListener("click", () => {
 });
 
 shipBtn.addEventListener("click", () => {
+  systemsContext = "ship";
   shipVisible = !shipVisible;
   mapVisible = false;
   render();

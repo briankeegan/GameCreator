@@ -53,10 +53,10 @@ for (const level of LEVELS) {
 }
 // Sector 1 used to be a no-op "learn to move, no enemies" board — cut per
 // Clubhouse feedback ("Level one is pointless"). The campaign now opens
-// directly on the Shockwave lesson.
+// directly on the Autocannon lesson.
 assert.ok(LEVELS.length >= 4, "expected the four-sector tutorial campaign");
-assert.deepStrictEqual(LEVELS[0].actions, ["sublight", "ramming"], "Sector 1 teaches Sublight + the Shockwave together");
-assert.strictEqual(LEVELS[0].enemies.length, 1, "Sector 1 has exactly one Interceptor to learn the Shockwave on");
+assert.deepStrictEqual(LEVELS[0].actions, ["sublight", "autocannon"], "Sector 1 teaches Sublight + the Autocannon together");
+assert.strictEqual(LEVELS[0].enemies.length, 1, "Sector 1 has exactly one Interceptor to learn the Autocannon on");
 for (let i = 1; i < LEVELS.length; i++) {
   const prev = LEVELS[i - 1].actions || Engine.ALL_ACTIONS;
   const cur = LEVELS[i].actions || Engine.ALL_ACTIONS;
@@ -95,7 +95,7 @@ const rectLevel = {
   enemies: [{ type: "interceptor", q: 3, r: 1 }], // column 3: the rightmost column
   hazards: [],
   exitRule: "all-enemies-dead",
-  actions: ["sublight", "ramming", "tractor"], // Tractor Beam is purchase-only now (see PURCHASABLE_ACTIONS) — explicit here since this fixture tests the push mechanic itself, not the unlock gate
+  actions: ["sublight", "autocannon", "tractor"], // Tractor Beam is purchase-only now (see PURCHASABLE_ACTIONS) — explicit here since this fixture tests the push mechanic itself, not the unlock gate
 };
 const rectState = Engine.createGameState(rectLevel);
 assert.strictEqual(rectState.boardHexes.length, 20, "4x5 rect board has 20 hexes");
@@ -218,7 +218,7 @@ while (state.status === "playing" && Engine.livingEnemies(state).length > 0 && g
     const before = living.length;
     Engine.applyFire(state); // resolves in YOUR phase — the dead don't get one of their own
     fireActions++;
-    assert.ok(Engine.livingEnemies(state).length < before, "a point-blank FIRE volley kills a chaser (the single-target Shockwave takes exactly one)");
+    assert.ok(Engine.livingEnemies(state).length < before, "a point-blank FIRE volley kills a chaser (the single-target Autocannon takes exactly one)");
     continue;
   }
   // Stalk: step toward the nearest survivor, but never END a round inside
@@ -243,14 +243,14 @@ while (state.status === "playing" && Engine.livingEnemies(state).length > 0 && g
 }
 assert.strictEqual(Engine.livingEnemies(state).length, 0, "both Interceptors die to FIRE volleys");
 assert.ok(fireActions >= 1, "at least one round was spent on the FIRE action");
-// The single-target Shockwave means getting double-teamed costs a hit (one
+// The single-target Autocannon means getting double-teamed costs a hit (one
 // dies, the other shoots) — perfect play keeps it to at most one.
 assert.ok(state.hull >= 2, "the stalking line survives comfortably — at most one double-team hit");
 assert.strictEqual(state.status, "playing");
 
 // ---- single-target base weapon: the shot goes ONE place -----------------
 // ("change base weapon to only attack one place") — with two contacts
-// adjacent at once, the Shockwave strikes the target-locked one and the
+// adjacent at once, the Autocannon strikes the target-locked one and the
 // other survives untouched.
 const singleLevel = {
   id: 983,
@@ -367,7 +367,7 @@ const edgeLevel = {
   enemies: [{ type: "interceptor", q: 2, r: -1 }],
   hazards: [],
   exitRule: "all-enemies-dead",
-  actions: ["sublight", "ramming", "tractor"], // purchase-only now — explicit here, this fixture tests the push mechanic itself
+  actions: ["sublight", "autocannon", "tractor"], // purchase-only now — explicit here, this fixture tests the push mechanic itself
 };
 
 const edgeState = Engine.createGameState(edgeLevel);
@@ -387,7 +387,7 @@ const collideLevel = {
   ],
   hazards: [],
   exitRule: "all-enemies-dead",
-  actions: ["sublight", "ramming", "tractor"], // purchase-only now — explicit here, this fixture tests the push mechanic itself
+  actions: ["sublight", "autocannon", "tractor"], // purchase-only now — explicit here, this fixture tests the push mechanic itself
 };
 
 const collideState = Engine.createGameState(collideLevel);
@@ -419,13 +419,13 @@ let weaponState = Engine.createGameState(weaponLevel);
 assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
 assert.deepStrictEqual(
   weaponState.systems,
-  { warpdrive: true, ram: true, lance: false, repulsor: false },
-  "arming derives from the Hold — only the installed Shockwave reads armed"
+  { warpdrive: true, autocannon: true, flakBurst: false, arcBeam: false, railgun: false },
+  "arming derives from the Hold — only the installed Autocannon reads armed"
 );
 Engine.applySublight(weaponState, { q: 2, r: 2 }); // steps adjacent to the interceptor
 assert.strictEqual(weaponState.enemies[0].alive, true, "moving fires NOTHING — shooting is its own action now");
 
-// FIRE volleys the armed Shockwave and kills it.
+// FIRE volleys the armed Autocannon and kills it.
 Engine.applyFire(weaponState);
 assert.strictEqual(weaponState.enemies[0].alive, false, "FIRE kills the adjacent Interceptor");
 assert.ok(weaponState.events.some((e) => e.type === "kill"), "the volley emits a kill event");
@@ -435,10 +435,10 @@ assert.ok(
 );
 assert.deepStrictEqual(weaponState.playerPos, { q: 2, r: 2 }, "FIRE never moves the flagship");
 
-// With the Shockwave pulled out of the grid, FIRE has nothing to shoot with.
+// With the Autocannon pulled out of the grid, FIRE has nothing to shoot with.
 weaponState = Engine.createGameState(weaponLevel);
-const shockIdx = weaponState.hold.items.findIndex((it) => it.id === "shockwave");
-weaponState.hold.cargo.push(weaponState.hold.items.splice(shockIdx, 1)[0].id);
+const autocannonIdx = weaponState.hold.items.findIndex((it) => it.id === "autocannon");
+weaponState.hold.cargo.push(weaponState.hold.items.splice(autocannonIdx, 1)[0].id);
 Engine.syncHoldDerived(weaponState);
 weaponState.playerPos = { q: 2, r: 2 };
 assert.throws(() => Engine.applyFire(weaponState), /no armed weapon/, "FIRE refuses with every weapon uninstalled");
@@ -466,21 +466,21 @@ assert.throws(() => Engine.setFacing(weaponState, 6), /Invalid facing/, "facing 
 // The ship's internals are a grid; every item is a shaped tile and its
 // footprint is the equip cost. What's INSTALLED is what works; cargo is
 // inert. Rearranging is free but dock-gated.
-assert.deepStrictEqual(Engine.WEAPON_SYSTEM_KEYS, ["ram", "lance", "repulsor"]);
+assert.deepStrictEqual(Engine.WEAPON_SYSTEM_KEYS, ["autocannon", "flakBurst", "arcBeam", "railgun"]);
 
 let holdState = Engine.createGameState(weaponLevel);
 assert.strictEqual(holdState.hold.cols, 5, "the starter hold is 5 cells wide");
 assert.strictEqual(holdState.hold.rows, 6, "and 6 tall");
 assert.ok(holdState.hold.blocked.length > 0, "with cells masked OUT — the grid is the shape of the ship, not a rectangle");
 assert.strictEqual(
-  Engine.holdCanPlace(holdState.hold, "shockwave", 0, 0),
+  Engine.holdCanPlace(holdState.hold, "autocannon", 0, 0),
   false,
   "nothing can be installed outside the hull silhouette"
 );
 assert.deepStrictEqual(
   holdState.hold.items.map((it) => it.id).sort(),
-  ["reactorCore", "scanner", "shockwave", "sublightDrive"],
-  "the starter kit: Reactor Core + Sublight Drive + Scanner Array + Shockwave, all placed in the grid"
+  ["autocannon", "reactorCore", "scanner", "sublightDrive"],
+  "the starter kit: Reactor Core + Sublight Drive + Scanner Array + Autocannon, all placed in the grid"
 );
 // The Scanner Array is hardware too ("the scanner should itself be a
 // small item") — pull it and the scannerInstalled flag dies with it.
@@ -497,7 +497,7 @@ assert.strictEqual(Engine.EQUIPMENT.sublightDrive.h, 3, "the Sublight Drive is a
 const reactorIdx = holdState.hold.items.findIndex((it) => it.id === "reactorCore");
 const reactorTile = holdState.hold.items[reactorIdx];
 assert.strictEqual(
-  Engine.holdCanPlace(holdState.hold, "shockwave", reactorTile.x, reactorTile.y),
+  Engine.holdCanPlace(holdState.hold, "autocannon", reactorTile.x, reactorTile.y),
   false,
   "a tile can't sit on top of another"
 );
@@ -586,15 +586,15 @@ assert.strictEqual(holdCarryState.maxEnergy, maxEnergyBefore + 1, "maxEnergy car
 // Interceptor's own weapon rather than special-cased.
 assert.strictEqual(
   Engine.ENEMY_TYPES.interceptor.weapon,
-  Engine.WEAPONS.interceptorCannon,
-  "the Interceptor's attack is a WEAPONS entry, same shape as the flagship's Impulse Cannon"
+  Engine.WEAPONS.autocannon,
+  "an Interceptor shoots you with the very Autocannon you fly with — no enemy-only gear"
 );
 const interceptorPos = { q: 0, r: 0 };
 const interceptorWeapon = Engine.ENEMY_TYPES.interceptor.weapon;
 assert.deepStrictEqual(
   interceptorWeapon.pattern.slice().sort(),
   [0, 1, 2, 3, 4, 5],
-  "the Interceptor Cannon is omnidirectional (every direction offset)"
+  "the Autocannon is omnidirectional (every direction offset)"
 );
 // facing is irrelevant to an omnidirectional pattern — passing 0 here still
 // covers every direction, which is exactly the point.
@@ -606,15 +606,15 @@ assert.ok(
   "every hex an omnidirectional range-1 weapon reaches is exactly 1 hex away"
 );
 
-// The Shockwave (the free auto-weapon) now fires in ALL six directions — an
+// The Autocannon (the free auto-weapon) now fires in ALL six directions — an
 // encircling blast that defends you from every side, no aiming required.
-const pulseCannon = Engine.WEAPONS.ram;
-assert.deepStrictEqual(pulseCannon.pattern.slice().sort(), [0, 1, 2, 3, 4, 5], "the Shockwave is omnidirectional");
-const shockHexes = Engine.weaponHexes(interceptorPos, 0, pulseCannon);
-assert.strictEqual(shockHexes.length, 6, "the Shockwave reaches all six neighboring hexes");
+const pulseCannon = Engine.WEAPONS.autocannon;
+assert.deepStrictEqual(pulseCannon.pattern.slice().sort(), [0, 1, 2, 3, 4, 5], "the Autocannon is omnidirectional");
+const autocannonHexes = Engine.weaponHexes(interceptorPos, 0, pulseCannon);
+assert.strictEqual(autocannonHexes.length, 6, "the Autocannon reaches all six neighboring hexes");
 assert.ok(
-  shockHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
-  "every hex the Shockwave reaches is exactly one hex away (range 1, all directions)"
+  autocannonHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
+  "every hex the Autocannon reaches is exactly one hex away (range 1, all directions)"
 );
 
 // ---- new enemy classes: Cruiser (heavy) and Sentry (stationary turret) -----
@@ -624,10 +624,10 @@ assert.strictEqual(Engine.ENEMY_TYPES.cruiser.hp, 2, "the Cruiser is a 2-Hull he
 assert.strictEqual(Engine.ENEMY_TYPES.interceptor.hp, 1, "the Interceptor is still a 1-Hull glass cannon");
 assert.strictEqual(Engine.ENEMY_TYPES.sentry.hp, 2, "the Sentry is a 2-Hull emplacement");
 assert.strictEqual(Engine.ENEMY_TYPES.sentry.movesTowardPlayer !== true, true, "the Sentry never chases");
-assert.strictEqual(Engine.ENEMY_TYPES.sentry.weapon, Engine.WEAPONS.sentryBeam, "the Sentry fires the Sentry Beam");
-assert.strictEqual(Engine.WEAPONS.sentryBeam.range, 2, "the Sentry Beam reaches two hexes");
+assert.strictEqual(Engine.ENEMY_TYPES.sentry.weapon, Engine.WEAPONS.arcBeam, "the Sentry fires the Arc Beam");
+assert.strictEqual(Engine.WEAPONS.arcBeam.range, 2, "the Arc Beam reaches two hexes");
 
-const sentryHexes = Engine.weaponHexes({ q: 0, r: 0 }, 0, Engine.WEAPONS.sentryBeam);
+const sentryHexes = Engine.weaponHexes({ q: 0, r: 0 }, 0, Engine.WEAPONS.arcBeam);
 assert.strictEqual(sentryHexes.length, 12, "a range-2 omnidirectional beam threatens 6 near + 6 far hexes");
 assert.ok(
   sentryHexes.some((h) => Engine.hexDistance(h, { q: 0, r: 0 }) === 2),
@@ -668,7 +668,7 @@ assert.ok(sentryState.events.some((e) => e.type === "attack"), "the Sentry's sho
 // the 6 axes instead of a short ring.
 assert.strictEqual(Engine.ENEMY_TYPES.railgun.hp, 2, "the Railgun is a 2-Hull emplacement, same tier as the Sentry");
 assert.strictEqual(Engine.ENEMY_TYPES.railgun.movesTowardPlayer !== true, true, "the Railgun never chases either");
-assert.strictEqual(Engine.WEAPONS.railgunBeam.range, 20, "the Railgun's shot is effectively board-spanning");
+assert.strictEqual(Engine.WEAPONS.railgun.range, 20, "the Railgun's shot is effectively board-spanning");
 
 const railgunLevel = {
   id: 995,
@@ -687,13 +687,13 @@ const railgunStart = { q: railgunState.enemies[0].q, r: railgunState.enemies[0].
 // Its reactor spawns empty (the charge-up telegraph — see the enemy-
 // reactor section below for the full rhythm), so pre-charge it here to
 // test the range/axis geometry itself.
-railgunState.enemies[0].energy = 3;
+railgunState.enemies[0].energy = Engine.WEAPONS.railgun.energyCost;
 const hullBeforeRailgun = railgunState.hull;
 Engine.applySublight(railgunState, { q: 2, r: 4 }); // still distance 3, but already aligned — the long shot reaches it
 assert.strictEqual(
   railgunState.hull,
-  hullBeforeRailgun - 1,
-  "aligned on the Railgun's axis at distance 3 is already lethal — its range dwarfs the Sentry's"
+  hullBeforeRailgun - Engine.WEAPONS.railgun.damage,
+  "aligned on the Railgun's axis at distance 3 is already lethal — its range dwarfs the Sentry's, and it hits for 2"
 );
 assert.deepStrictEqual(
   { q: railgunState.enemies[0].q, r: railgunState.enemies[0].r },
@@ -704,7 +704,7 @@ assert.deepStrictEqual(
 // Off-axis, the Railgun's shot never reaches at all, no matter the range.
 const railgunOffAxisLevel = { ...railgunLevel, id: 996, playerStart: { q: 0, r: 5 } };
 const railgunOffAxisState = Engine.createGameState(railgunOffAxisLevel);
-railgunOffAxisState.enemies[0].energy = 3; // charged, so the miss below is about geometry, not energy
+railgunOffAxisState.enemies[0].energy = Engine.WEAPONS.railgun.energyCost; // charged, so the miss below is about geometry, not energy
 const hullBeforeOffAxis = railgunOffAxisState.hull;
 Engine.applySublight(railgunOffAxisState, { q: 0, r: 4 });
 assert.strictEqual(
@@ -818,7 +818,7 @@ const carriedHold = {
   items: [
     { id: "reactorCore", x: 0, y: 0 },
     { id: "sublightDrive", x: 2, y: 0 },
-    { id: "shockwave", x: 3, y: 0 },
+    { id: "autocannon", x: 3, y: 0 },
     { id: "shieldGenerator", x: 0, y: 2 },
     { id: "shieldGenerator", x: 3, y: 1 },
   ],
@@ -871,7 +871,7 @@ const lengthsAcrossLevels = new Set();
 for (let id = 900; id < 920; id++) {
   const offers = outpostFixture(id).outpostOfferIds;
   assert.strictEqual(offers[0], "repair", `level ${id}: Repair is always the first offer`);
-  assert.ok(offers.length >= 1 && offers.length <= 7, `level ${id}: 1-7 total offers (Repair plus 0-6 extras, now that Reactor/Hardpoint upgrades joined the pool)`);
+  assert.ok(offers.length >= 1 && offers.length <= 8, `level ${id}: 1-8 total offers (Repair plus 0-7 extras — three weapons, two upgrades, shields, hold expansion)`);
   assert.strictEqual(new Set(offers).size, offers.length, `level ${id}: no duplicate offers`);
   lengthsAcrossLevels.add(offers.length);
 }
@@ -943,116 +943,148 @@ assert.throws(
   "no generator installed = no shields to raise"
 );
 
-// ---- Lance Cannon: bought at an Outpost, not handed out for free --------
-// Clubhouse feedback: "what about different options and different
-// weapons... you have to pay for them" — a new weapon beyond the base kit
-// is a purchase, not another automatic per-sector unlock.
-const lanceLevel = {
+// ---- The purchasable weapons: Flak Burst, Arc Beam, Railgun ------------
+// Clubhouse feedback: "rethink all of those weapons... they all seem super
+// similar and similarly priced." Each of the three now answers a situation
+// the Autocannon can't — crowds, standoff, sniping — on a real price curve,
+// and each is the exact item a hostile class already carries.
+const shopLevel = {
   id: 992,
-  name: "lance fixture",
-  board: { type: "rect", cols: 5, rows: 6 },
-  playerStart: { q: 2, r: 4 },
+  name: "weapon shop fixture",
+  board: { type: "rect", cols: 5, rows: 8 },
+  playerStart: { q: 2, r: 6 },
   exit: { q: 4, r: -2 },
   outpost: { q: 0, r: 0 },
-  enemies: [{ type: "interceptor", q: 2, r: 1 }], // 3 hexes straight ahead of playerStart
+  enemies: [{ type: "interceptor", q: 2, r: 3 }],
   hazards: [],
   exitRule: "all-enemies-dead",
 };
-const lanceState = Engine.createGameState(lanceLevel);
-assert.strictEqual(lanceState.actions.includes("lance"), false, "Lance Cannon isn't part of the starting kit");
-assert.strictEqual(Engine.outpostOffers(lanceState).length, 0, "not docked yet — no offers visible");
 
-// Dock at the Outpost directly (walking there is already covered by other
-// tests) and force it onto this outpost's menu — offer selection is
-// otherwise seeded per-level and not guaranteed to include Lance Cannon.
-lanceState.playerPos = { q: lanceLevel.outpost.q, r: lanceLevel.outpost.r };
-lanceState.outpostOfferIds = ["repair", "lanceCannon"];
+// ARC BEAM — standoff. Reaches two hexes, so it kills things on approach.
+const arcState = Engine.createGameState(shopLevel);
+assert.strictEqual(arcState.actions.includes("arcBeam"), false, "Arc Beam isn't part of the starting kit");
+assert.strictEqual(Engine.outpostOffers(arcState).length, 0, "not docked yet — no offers visible");
+arcState.playerPos = { q: shopLevel.outpost.q, r: shopLevel.outpost.r };
+arcState.outpostOfferIds = ["repair", "arcBeam"];
 assert.throws(
-  () => Engine.applyOutpostPurchase(lanceState, "lanceCannon"),
+  () => Engine.applyOutpostPurchase(arcState, "arcBeam"),
   /not enough salvage/i,
   "gated on affordability like every other offer"
 );
-lanceState.salvage = 25;
-Engine.applyOutpostPurchase(lanceState, "lanceCannon");
-assert.strictEqual(lanceState.actions.includes("lance"), true, "purchasing it unlocks the action");
-assert.strictEqual(lanceState.salvage, 0, "the full cost is spent");
+arcState.salvage = 18;
+Engine.applyOutpostPurchase(arcState, "arcBeam");
+assert.strictEqual(arcState.actions.includes("arcBeam"), true, "purchasing it unlocks the action");
+assert.strictEqual(arcState.salvage, 0, "the full cost is spent");
 assert.strictEqual(
-  lanceState.outpostOfferIds.includes("lanceCannon"),
+  arcState.outpostOfferIds.includes("arcBeam"),
   false,
   "one-time purchase per outpost, same as every non-Repair offer"
 );
-assert.strictEqual(lanceState.systems.lance, true, "the toggle defaults on once purchased");
-
-// Back at playerStart, face the interceptor (3 hexes dead ahead) and
-// confirm the Lance Cannon actually fires — forward-only (pattern [0])
-// reaches its full range, unlike the omnidirectional Shockwave.
-lanceState.playerPos = { q: lanceLevel.playerStart.q, r: lanceLevel.playerStart.r };
-Engine.setFacing(lanceState, 2); // "up" — toward the interceptor
-Engine.applyFire(lanceState);
-assert.strictEqual(lanceState.enemies[0].alive, false, "the Lance Cannon hits a target 3 hexes dead ahead");
+assert.strictEqual(arcState.systems.arcBeam, true, "the toggle defaults on once purchased");
 assert.ok(
-  lanceState.log.some((line) => line.includes("Lance Cannon destroyed")),
-  "the kill is attributed to the Lance Cannon specifically, not the Shockwave"
+  arcState.hold.items.some((it) => it.id === "arcBeam") || arcState.hold.cargo.includes("arcBeam"),
+  "and it arrives as a physical 2x2 item — fitted if it fits, in cargo if it doesn't"
+);
+
+// Two hexes out: beyond the Autocannon entirely, dead in the Arc Beam's ring.
+arcState.playerPos = { q: 2, r: 5 };
+arcState.enemies[0].q = 2;
+arcState.enemies[0].r = 3;
+Engine.applyFire(arcState);
+assert.strictEqual(arcState.enemies[0].alive, false, "the Arc Beam kills a contact two hexes out, which the Autocannon can never touch");
+assert.ok(
+  arcState.log.some((line) => line.includes("Arc Beam destroyed")),
+  "the kill is attributed to the Arc Beam specifically, not the Autocannon"
 );
 
 // A purchased weapon has to be carried forward explicitly into the next
-// sector (see app.js's advanceSector) — the engine side of that contract
-// is `carryOver.extraActions`.
+// sector (see app.js's advanceSector) — the engine side is extraActions.
 const nextSectorState = Engine.createGameState(
-  { ...lanceLevel, id: 993 },
-  { hasPrevious: true, extraActions: ["lance"] }
+  { ...shopLevel, id: 993 },
+  { hasPrevious: true, extraActions: ["arcBeam"] }
 );
-assert.strictEqual(nextSectorState.actions.includes("lance"), true, "extraActions carries a purchased weapon into the next sector");
+assert.strictEqual(nextSectorState.actions.includes("arcBeam"), true, "extraActions carries a purchased weapon into the next sector");
 
-// ---- Repulsor: a second purchasable weapon, knockback instead of just ---
-// damage. Clubhouse feedback: "make that bad or good depending [how it's
-// used]" — every surviving hit gets shoved a hex directly away.
-const repulsorLevel = {
+// FLAK BURST — the crowd answer, and the ONLY weapon that hits more than
+// one contact: being cornered stops being fatal.
+const flakLevel = {
+  ...shopLevel,
   id: 994,
-  name: "repulsor fixture",
-  board: { type: "rect", cols: 5, rows: 6 },
-  playerStart: { q: 2, r: 4 },
-  exit: { q: 4, r: -2 },
-  outpost: { q: 0, r: 0 },
-  enemies: [{ type: "cruiser", q: 2, r: 2 }], // >=2 hexes from playerStart, per spawn-safety validation
-  hazards: [],
-  exitRule: "all-enemies-dead",
+  enemies: [
+    { type: "cruiser", q: 2, r: 3 },
+    { type: "cruiser", q: 1, r: 3 },
+  ],
 };
-const repulsorState = Engine.createGameState(repulsorLevel);
-assert.strictEqual(repulsorState.actions.includes("repulsor"), false, "Repulsor isn't part of the starting kit either");
-repulsorState.playerPos = { q: repulsorLevel.outpost.q, r: repulsorLevel.outpost.r };
-repulsorState.outpostOfferIds = ["repair", "repulsorWeapon"];
-repulsorState.salvage = 20;
-Engine.applyOutpostPurchase(repulsorState, "repulsorWeapon");
-assert.strictEqual(repulsorState.actions.includes("repulsor"), true, "purchasing it unlocks the action");
-assert.strictEqual(repulsorState.systems.repulsor, true, "the toggle defaults on once purchased");
+const flakState = Engine.createGameState(flakLevel);
+assert.strictEqual(flakState.actions.includes("flakBurst"), false, "Flak Burst isn't in the starting kit either");
+flakState.playerPos = { q: flakLevel.outpost.q, r: flakLevel.outpost.r };
+flakState.outpostOfferIds = ["repair", "flakBurst"];
+flakState.salvage = 14;
+Engine.applyOutpostPurchase(flakState, "flakBurst");
+assert.strictEqual(flakState.systems.flakBurst, true, "the toggle defaults on once purchased");
 
-// Reposition the Cruiser adjacent "up" from playerStart to actually fire
-// on it — the level's own spawn position just needs to satisfy authoring
-// validation above, not the exact firing geometry this checks.
-repulsorState.playerPos = { q: repulsorLevel.playerStart.q, r: repulsorLevel.playerStart.r };
-repulsorState.enemies[0].q = repulsorLevel.playerStart.q;
-repulsorState.enemies[0].r = repulsorLevel.playerStart.r - 1;
-repulsorState.systems.ram = false; // isolate the Repulsor — both it and the Shockwave are adjacent/omnidirectional and would otherwise double up on the same hit
-const hullBeforeRepulsor = repulsorState.hull;
-Engine.applyFire(repulsorState); // omnidirectional (range 1) — no facing management needed, unlike the Lance Cannon
-assert.strictEqual(repulsorState.enemies[0].alive, true, "1 damage isn't enough to kill a 2-HP Cruiser outright");
-assert.strictEqual(repulsorState.enemies[0].hp, 1, "the Repulsor still deals its own damage on top of the knockback");
-// The push happens before the enemy phase, so knocking the Cruiser out of
-// adjacency means it has to close the gap again instead of attacking —
-// the flagship takes no damage this turn purely because of the knockback.
-// (Its own chase AI immediately starts closing that gap again afterward,
-// so the exact landing hex isn't asserted here — a stationary enemy would
-// dodge the "not attacking" signal entirely, e.g. a Sentry's range-2 beam
-// still reaches one hex further out.)
-assert.strictEqual(
-  repulsorState.hull,
-  hullBeforeRepulsor,
-  "the knockback pushed the Cruiser out of strike range before the enemy phase — no counter-attack this turn"
+// Two Cruisers, both adjacent, one volley — the Flak Burst damages BOTH.
+flakState.playerPos = { q: 2, r: 5 };
+flakState.enemies[0].q = 2;
+flakState.enemies[0].r = 4;
+flakState.enemies[1].q = 1;
+flakState.enemies[1].r = 5;
+flakState.energy = flakState.maxEnergy;
+flakState.systems.autocannon = false; // isolate the burst — the Autocannon is adjacent too and would double up on one of them
+Engine.applyFire(flakState);
+assert.deepStrictEqual(
+  flakState.enemies.map((e) => e.hp),
+  [1, 1],
+  "one Flak Burst volley damages every adjacent contact at once — no other weapon does"
 );
-assert.ok(
-  repulsorState.log.some((line) => line.includes("Repulsor hit") || line.includes("Repulsor-pushed")),
-  "both the hit and the push are logged"
+
+// RAILGUN — the sniper: any axis, the length of the board, 2 damage, and a
+// four-round charge cycle against a +1/cycle reactor.
+const railgunBuyState = Engine.createGameState({ ...shopLevel, id: 995 });
+railgunBuyState.playerPos = { q: shopLevel.outpost.q, r: shopLevel.outpost.r };
+railgunBuyState.outpostOfferIds = ["repair", "railgun"];
+railgunBuyState.salvage = 30;
+Engine.applyOutpostPurchase(railgunBuyState, "railgun");
+// Footprint is a real constraint: a 1x4 spine does NOT fit around the
+// starting kit, so it arrives inert in cargo until you make room.
+assert.strictEqual(railgunBuyState.systems.railgun, false, "bought but unfitted — a 1x4 spine has nowhere to go in a stock hold");
+assert.ok(railgunBuyState.hold.cargo.includes("railgun"), "so it rides in cargo, powered down, until the Hold has room");
+railgunBuyState.hold.rows += 1; // Hold Expansion — buy the space, then fit the gun
+const railgunCargoIdx = railgunBuyState.hold.cargo.indexOf("railgun");
+let railgunFitted = false;
+for (let y = 0; y < railgunBuyState.hold.rows && !railgunFitted; y++) {
+  for (let x = 0; x < railgunBuyState.hold.cols && !railgunFitted; x++) {
+    if (Engine.holdCanPlace(railgunBuyState.hold, "railgun", x, y)) {
+      railgunBuyState.playerPos = { q: shopLevel.outpost.q, r: shopLevel.outpost.r }; // refits are dock-gated
+      Engine.installFromCargo(railgunBuyState, railgunCargoIdx, x, y);
+      railgunFitted = true;
+    }
+  }
+}
+assert.strictEqual(railgunFitted, true, "one extra row of hold is enough to fit the spine");
+assert.strictEqual(railgunBuyState.systems.railgun, true, "and installing it arms the weapon");
+assert.strictEqual(Engine.WEAPONS.railgun.damage, 2, "the Railgun hits for 2 — it one-shots the 2-Hull classes");
+assert.strictEqual(
+  Engine.WEAPONS.railgun.energyCost,
+  4,
+  "and costs 4 against a +1/cycle reactor: the same charge rhythm the Railgun Destroyer telegraphs at you"
+);
+railgunBuyState.playerPos = { q: 2, r: 6 };
+railgunBuyState.enemies[0].type = "cruiser";
+railgunBuyState.enemies[0].hp = 2;
+railgunBuyState.enemies[0].q = 2;
+railgunBuyState.enemies[0].r = 1; // five hexes away, aligned on an axis
+railgunBuyState.energy = railgunBuyState.maxEnergy;
+Engine.applyFire(railgunBuyState);
+assert.strictEqual(railgunBuyState.enemies[0].alive, false, "the Railgun one-shots a 2-Hull Cruiser across the board");
+
+// Every weapon in the roster is carried by a hostile class — scanning a
+// contact teaches you what's buyable, never enemy-only gear.
+const carriedWeapons = Object.values(Engine.ENEMY_TYPES).map((t) => t.weapon.id).sort();
+assert.deepStrictEqual(
+  carriedWeapons,
+  ["arcBeam", "autocannon", "flakBurst", "railgun"],
+  "all four weapons exist in the world on enemy ships — one class per weapon"
 );
 
 // ---- Tractor Beam: no longer free, claimed at Sector 2's Outpost --------
@@ -1215,39 +1247,43 @@ const energyLevel = {
   hazards: [],
   exitRule: "all-enemies-dead",
 };
-let energyState = Engine.createGameState(energyLevel, { extraActions: ["lance"] });
+let energyState = Engine.createGameState(energyLevel, { extraActions: ["arcBeam"] });
 assert.strictEqual(energyState.energy, 6, "a fresh run starts at full Energy");
 assert.strictEqual(energyState.maxEnergy, 6);
 // Energy is a pure budget now — nothing regenerates passively, every
 // shot draws it down, and only RECHARGE or a warp jump refills it.
-assert.ok(Engine.WEAPONS.lance.energyCost > Engine.WEAPONS.ram.energyCost, "the Lance Cannon is thirstier than the Shockwave");
+assert.ok(Engine.WEAPONS.arcBeam.energyCost > Engine.WEAPONS.autocannon.energyCost, "the Arc Beam is thirstier than the Autocannon — reach costs");
 
-// A full volley pays for every weapon that fires: Shockwave (2) + Lance
-// (3) against an adjacent dead-ahead Cruiser = 5 spent, no regen.
+// A full volley pays for every weapon that fires: Autocannon (1) + Arc
+// Beam (2) against an adjacent Cruiser = 3 spent, no regen.
 energyState.enemies[0].q = 2;
 energyState.enemies[0].r = 4; // adjacent, directly up (facing 2)
 Engine.setFacing(energyState, 2);
 Engine.applyFire(energyState);
-assert.strictEqual(energyState.enemies[0].alive, false, "Shockwave + Lance Cannon volley kills a 2-HP Cruiser");
-assert.strictEqual(energyState.energy, 6 - 2 - 3, "every shot in the volley was paid for — and nothing trickled back");
+assert.strictEqual(energyState.enemies[0].alive, false, "an Autocannon + Arc Beam volley kills a 2-HP Cruiser");
+assert.strictEqual(
+  energyState.energy,
+  6 - Engine.WEAPONS.autocannon.energyCost - Engine.WEAPONS.arcBeam.energyCost,
+  "every shot in the volley was paid for — and nothing trickled back"
+);
 assert.ok(
   energyState.events.some((e) => e.type === "energySpend"),
   "each paid shot emits an energySpend event — the UI floats the cost so the drain is visible in the moment"
 );
 
-// With only 2 Energy left, the Shockwave (first in firing order) claims
-// it and the Lance Cannon holds fire — logged, not silent.
-energyState = Engine.createGameState(energyLevel, { extraActions: ["lance"] });
+// With only 1 Energy left, the Autocannon (first in firing order) claims
+// it and the Arc Beam holds fire — logged, not silent.
+energyState = Engine.createGameState(energyLevel, { extraActions: ["arcBeam"] });
 energyState.enemies[0].q = 2;
 energyState.enemies[0].r = 4;
-energyState.energy = 2;
+energyState.energy = 1;
 Engine.setFacing(energyState, 2);
 Engine.applyFire(energyState);
-assert.strictEqual(energyState.enemies[0].alive, true, "1 Shockwave hit alone leaves a 2-HP Cruiser alive");
-assert.strictEqual(energyState.enemies[0].hp, 1, "the Shockwave still fired on the Energy that was left");
+assert.strictEqual(energyState.enemies[0].alive, true, "1 Autocannon hit alone leaves a 2-HP Cruiser alive");
+assert.strictEqual(energyState.enemies[0].hp, 1, "the Autocannon still fired on the Energy that was left");
 assert.ok(
-  energyState.log.some((line) => /Lance Cannon holds fire/.test(line)),
-  "the unaffordable Lance Cannon holds fire with a log line, not silently"
+  energyState.log.some((line) => /Arc Beam holds fire/.test(line)),
+  "the unaffordable Arc Beam holds fire with a log line, not silently"
 );
 
 // A MOVE spends no Energy at all.
@@ -1260,7 +1296,7 @@ assert.strictEqual(energyState.energy, energyBeforeEmptyTurn, "a MOVE turn touch
 const tractorEnergyState = Engine.createGameState({ ...energyLevel, id: 989 }, { extraActions: ["tractor"] });
 tractorEnergyState.enemies[0].q = 2;
 tractorEnergyState.enemies[0].r = 4;
-tractorEnergyState.systems.ram = false; // isolate the Tractor's own cost (fixture-level disarm)
+tractorEnergyState.systems.autocannon = false; // isolate the Tractor's own cost (fixture-level disarm)
 tractorEnergyState.energy = 0;
 assert.throws(
   () => Engine.applyTractor(tractorEnergyState, "e0"),
@@ -1273,9 +1309,10 @@ assert.strictEqual(tractorEnergyState.energy, 0, "a Tractor push costs its liste
 
 // ---- Enemy reactors: the Railgun's charge-up telegraph -------------------
 // Enemies run the same energy rules. A cost-1 chaser regens its shot every
-// turn (fires exactly as often as before energy existed); the cost-3
-// Railgun spawns EMPTY and visibly charges 3 turns between shots — the
-// design doc's "telegraphs the line" made real through the shared system.
+// turn (fires exactly as often as before energy existed); the cost-4
+// Railgun spawns EMPTY and visibly charges 4 turns between shots, then
+// hits for 2 — the design doc's "telegraphs the line" made real through
+// the shared system, and it's the same item you can buy for 30 salvage.
 
 const railgunEnergyLevel = {
   id: 988,
@@ -1299,13 +1336,13 @@ for (let t = 1; t <= 8; t++) {
 }
 assert.deepStrictEqual(
   hullTimeline,
-  [3, 3, 3, 2, 2, 2, 1, 1],
-  "the Railgun fires on round 4 and every 3rd round after — a readable rhythm, not a constant beam"
+  [3, 3, 3, 3, 1, 1, 1, 1],
+  "the Railgun charges four rounds, then takes 2 Hull in one shot — a readable rhythm, not a constant beam"
 );
 
 // Once charged, its whole line lights up in the threat overlay again.
 const chargedRailgunState = Engine.createGameState(railgunEnergyLevel);
-chargedRailgunState.enemies[0].energy = 3;
+chargedRailgunState.enemies[0].energy = Engine.WEAPONS.railgun.energyCost;
 assert.ok(Engine.computeThreatHexes(chargedRailgunState).size > 0, "a fully-charged Railgun's line is a live threat");
 
 // ---- Phases are sequential; `speed` orders each side's own barrage ------
@@ -1314,10 +1351,10 @@ assert.ok(Engine.computeThreatHexes(chargedRailgunState).size > 0, "a fully-char
 // weapon's speed. The speed stat still orders the shots WITHIN a volley
 // (fast weapons claim Energy and targets first) and within the enemy
 // phase's barrage.
-assert.strictEqual(Engine.WEAPONS.ram.speed, 3, "Shockwave is FAST — fires first in a volley");
-assert.strictEqual(Engine.WEAPONS.interceptorCannon.speed, 2, "enemy cannons are STANDARD");
-assert.strictEqual(Engine.WEAPONS.lance.speed, 1, "the Lance Cannon is HEAVY — fires last in a volley");
-assert.strictEqual(Engine.WEAPONS.railgunBeam.speed, 1, "the Railgun is HEAVY too");
+assert.strictEqual(Engine.WEAPONS.autocannon.speed, 3, "the Autocannon is FAST — fires first in a volley");
+assert.strictEqual(Engine.WEAPONS.flakBurst.speed, 2, "the Flak Burst is STANDARD");
+assert.strictEqual(Engine.WEAPONS.arcBeam.speed, 2, "so is the Arc Beam");
+assert.strictEqual(Engine.WEAPONS.railgun.speed, 1, "the Railgun is HEAVY — fires last in a volley");
 
 const initiativeLevel = {
   id: 986,
@@ -1329,22 +1366,22 @@ const initiativeLevel = {
   enemies: [{ type: "interceptor", q: 2, r: 3 }],
   hazards: [],
   exitRule: "all-enemies-dead",
-  actions: ["sublight"], // no Shockwave — Lance only, via extraActions below
+  actions: ["sublight"], // no Autocannon — the Railgun only, via extraActions below
 };
-// Even the slow Lance kills WITHOUT a reply now — the target dies in your
-// phase and never gets its own.
-const lanceInitState = Engine.createGameState(initiativeLevel, { extraActions: ["lance"] });
-lanceInitState.enemies[0].q = 2;
-lanceInitState.enemies[0].r = 4; // adjacent, directly up
-Engine.setFacing(lanceInitState, 2);
-Engine.applyFire(lanceInitState);
-assert.strictEqual(lanceInitState.enemies[0].alive, false, "the Lance Cannon kills its target");
-assert.strictEqual(lanceInitState.hull, 3, "a kill in your phase means no reply — phases are sequential, not simultaneous");
+// Even the slowest weapon kills WITHOUT a reply now — the target dies in
+// your phase and never gets its own.
+const slowInitState = Engine.createGameState(initiativeLevel, { extraActions: ["railgun"] });
+slowInitState.enemies[0].q = 2;
+slowInitState.enemies[0].r = 4; // adjacent, directly up
+Engine.setFacing(slowInitState, 2);
+Engine.applyFire(slowInitState);
+assert.strictEqual(slowInitState.enemies[0].alive, false, "the Railgun kills its target");
+assert.strictEqual(slowInitState.hull, 3, "a kill in your phase means no reply — phases are sequential, not simultaneous");
 
 // One action per round means closing the gap is its own turn — approach
 // a charged interceptor to adjacency and it fires when your turn
 // commits; the NEXT round, your FIRE kills it before it acts again.
-const tradeState = Engine.createGameState({ ...initiativeLevel, id: 985, actions: ["sublight", "ramming"] });
+const tradeState = Engine.createGameState({ ...initiativeLevel, id: 985, actions: ["sublight", "autocannon"] });
 tradeState.enemies[0].q = 2;
 tradeState.enemies[0].r = 3; // distance 2, dead ahead
 Engine.applySublight(tradeState, { q: 2, r: 4 }); // close to adjacent — the round commits
@@ -1376,7 +1413,7 @@ const chaserEnergyLevel = {
   enemies: [{ type: "interceptor", q: 2, r: 3 }],
   hazards: [],
   exitRule: "all-enemies-dead",
-  actions: ["sublight"], // no Shockwave — let it survive to attack repeatedly
+  actions: ["sublight"], // no Autocannon — let it survive to attack repeatedly
 };
 const chaserEnergyState = Engine.createGameState(chaserEnergyLevel);
 Engine.applyEndTurn(chaserEnergyState); // its phase: closes to adjacent (1 AP — that's its whole turn)

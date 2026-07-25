@@ -1,5 +1,5 @@
 // browser.test.js — the tutorial campaign through the real UI (canvas
-// clicks + action buttons): Sector 1's Shockwave lesson with locked
+// clicks + action buttons): Sector 1's Autocannon lesson with locked
 // actions, the Next Sector handoff, Sector 2's unlock, the loss branch, and
 // restart. Complements engine.test.js, which covers the movement/combat
 // rules headlessly on pinned fixture boards.
@@ -226,15 +226,15 @@ async function freshPage(browser, url, errors) {
   const browser = await chromium.launch({ executablePath: CHROMIUM });
   const errors = [];
 
-  // ---- Sector 1: the Shockwave lesson (the old no-op move-only Sector 1 -
+  // ---- Sector 1: the Autocannon lesson (the old no-op move-only Sector 1 -
   // "Level one is pointless" Clubhouse feedback - was cut) ------------------
 
   let page = await freshPage(browser, url, errors);
   let s = await getState(page);
   assert.strictEqual(s.levelId, 1);
-  assert.strictEqual(s.enemies.length, 1, "Sector 1 has one Interceptor to learn the Shockwave on");
+  assert.strictEqual(s.enemies.length, 1, "Sector 1 has one Interceptor to learn the Autocannon on");
   assert.strictEqual(s.exitUnlocked, true, "the Warp Gate is always online");
-  assert.deepStrictEqual(s.actions, ["sublight", "ramming"], "Sector 1 unlocks Sublight + the Shockwave together");
+  assert.deepStrictEqual(s.actions, ["sublight", "autocannon"], "Sector 1 unlocks Sublight + the Autocannon together");
   // Locked actions are hidden entirely now — no padlocked ghost buttons.
   assert.strictEqual(await page.locator('[data-mode="tractor"]').isVisible(), false, "tractor is hidden until unlocked");
   // The control panel holds the actions (Hold/Tractor/Target Lock) and the
@@ -247,10 +247,10 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(
     await page.locator("#holdGrid .hold-tile").count(),
     4,
-    "the starter kit shows as four shaped tiles: Reactor Core, Sublight Drive, Scanner Array, Shockwave"
+    "the starter kit shows as four shaped tiles: Reactor Core, Sublight Drive, Scanner Array, Autocannon"
   );
   assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="scanner"]').count(), 1, "the Scanner Array is a real 1x1 tile — Scan itself is hardware");
-  assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="shockwave"]').count(), 1, "the Shockwave is one of them");
+  assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="autocannon"]').count(), 1, "the Autocannon is one of them");
   await page.click("#shipCloseBtn");
   assert.strictEqual(await page.locator("#targetLockBtn").count(), 0, "Target Lock is gone — tapping a hostile aims automatically");
   assert.strictEqual(await page.locator("#endTurnBtn").count(), 0, "End Round is gone — waiting is what RECHARGE is for");
@@ -338,16 +338,22 @@ async function freshPage(browser, url, errors) {
   const enemyRows = await page.locator("#shipStats .ship-stat-row .stat-label").allTextContents();
   assert.deepStrictEqual(
     enemyRows.map((t) => t.trim()),
-    ["Hull", "Energy", "Drive", "Armament", "Salvage", "Intent"],
-    "a contact's Systems screen is the flagship's own rows in the flagship's own order, plus its intent"
+    ["Hull", "Energy", "Salvage"],
+    "a contact's Systems screen is the flagship's own rows, in the flagship's own order — no authored prose"
   );
+  // "clicking on item... should info when selected" — nothing is written
+  // into the screen up front; the grid IS the information, and a tap on
+  // any tile reads its specs off that item's own data.
+  await page.locator("#enemyHoldGrid .hold-tile").first().click();
+  const contactItemInfo = await page.locator("#holdInfo").textContent();
+  assert.ok(contactItemInfo.length > 0 && !/Tap an item/.test(contactItemInfo), "tapping a contact's item reports what it is");
   assert.ok(
     (await page.locator("#enemyHoldGrid .hold-tile").count()) > 0,
     "their hold renders as a full-size ship-shaped grid of labeled equipment tiles"
   );
   assert.ok(
-    (await page.locator("#enemyHoldGrid").textContent()).includes("Cannon"),
-    "tiles carry the actual equipment names"
+    (await page.locator("#enemyHoldGrid").textContent()).includes("Autocannon"),
+    "an Interceptor's hold shows the very Autocannon you fly with — enemies carry player items, not enemy-only gear"
   );
   assert.strictEqual(await page.locator("#holdCargo").count(), 0, "a contact has no cargo bay to rummage through");
   await page.locator("#shipCloseBtn").click();
@@ -373,8 +379,8 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), true, "the Ship button opens the full-screen view");
   // Mid-flight the Hold is a read-only schematic: refits are dock-gated.
   assert.ok(
-    (await page.locator("#shipHardpoints").textContent()).includes("dock at an Outpost to refit"),
-    "the Hold says refits need a dock while mid-flight"
+    (await page.locator("#shipHardpoints").textContent()).includes("tap an item for its specs"),
+    "mid-flight the Hold is an inspect-only schematic"
   );
   const refitRefusal = await page.evaluate(() => {
     try {
@@ -386,7 +392,7 @@ async function freshPage(browser, url, errors) {
   });
   assert.ok(/Refits need a dock/.test(refitRefusal), "the engine refuses mid-flight refits outright");
   // Tapping a tile inspects it.
-  await page.click('#holdGrid .hold-tile[data-item-id="shockwave"]');
+  await page.click('#holdGrid .hold-tile[data-item-id="autocannon"]');
   assert.ok(/Range 1/.test(await page.locator("#log").textContent()), "tapping a tile reads out the item's stats");
   await page.click("#shipCloseBtn");
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Return to Helm closes the Systems screen");
@@ -413,9 +419,9 @@ async function freshPage(browser, url, errors) {
     if (s.status !== "playing" || s.enemies.every((e) => !e.alive)) break;
     const target = await enemyInReachOf(page);
     if (target) {
-      // The button is the EQUIPMENT — with just the starting Shockwave
+      // The button is the EQUIPMENT — with just the starting Autocannon
       // armed, it carries the weapon's own name, not the word "Fire".
-      assert.strictEqual(await page.locator("#fireBtn").textContent(), "Shockwave", "the weapons button is named for the armed weapon itself");
+      assert.strictEqual(await page.locator("#fireBtn").textContent(), "Autocannon", "the weapons button is named for the armed weapon itself");
       assert.strictEqual(
         await page.locator("#fireBtn").isDisabled(),
         true,
@@ -473,7 +479,7 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "a routine sector clear shows no modal");
   await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2, null, { timeout: 5000 });
   s = await getState(page);
-  assert.deepStrictEqual(s.actions, ["sublight", "ramming"], "Sector 2 no longer hands out Tractor Beam automatically");
+  assert.deepStrictEqual(s.actions, ["sublight", "autocannon"], "Sector 2 no longer hands out Tractor Beam automatically");
   assert.ok(s.enemies.filter((e) => e.alive).length >= 1);
   assert.strictEqual(await page.locator('[data-mode="tractor"]').isVisible(), false, "hidden until claimed, same as any other locked action");
 
@@ -724,7 +730,7 @@ async function freshPage(browser, url, errors) {
 
   // ---- The Hold at dock: refits are drag/tap, free, and live -------------
   // Inject a docked state with a stowed weapon in cargo, then run the
-  // refit loop through the real UI: stow the Shockwave (capability lost),
+  // refit loop through the real UI: stow the Autocannon (capability lost),
   // reinstall from cargo (capability back). The grid/placement rules are
   // covered exhaustively in engine.test.js; this confirms the screen
   // drives them.
@@ -760,23 +766,23 @@ async function freshPage(browser, url, errors) {
     (await page.locator("#shipHardpoints").textContent()).includes("docked: drag to refit"),
     "the Hold unlocks at a dock"
   );
-  // Stow the Shockwave via the engine (drag mechanics are pointer-driven;
+  // Stow the Autocannon via the engine (drag mechanics are pointer-driven;
   // the engine API is the contract) and confirm the UI + capability follow.
   await page.evaluate(() => {
     const st = window.__hhState;
-    const idx = st.hold.items.findIndex((it) => it.id === "shockwave");
+    const idx = st.hold.items.findIndex((it) => it.id === "autocannon");
     window.HypergolicEngine.stowToCargo(st, idx);
     window.render();
   });
-  assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="shockwave"]').count(), 0, "the stowed Shockwave leaves the grid");
-  assert.strictEqual(await page.locator('#holdCargo .hold-cargo-tile[data-item-id="shockwave"]').count(), 1, "and appears in cargo, powered down");
+  assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="autocannon"]').count(), 0, "the stowed Autocannon leaves the grid");
+  assert.strictEqual(await page.locator('#holdCargo .hold-cargo-tile[data-item-id="autocannon"]').count(), 1, "and appears in cargo, powered down");
   s = await getState(page);
-  assert.strictEqual(s.systems.ram, false, "a stowed weapon is UNARMED — cargo is inert");
+  assert.strictEqual(s.systems.autocannon, false, "a stowed weapon is UNARMED — cargo is inert");
   // Tap the cargo chip to reinstall it (auto-places in the first free spot).
-  await page.click('#holdCargo .hold-cargo-tile[data-item-id="shockwave"]');
+  await page.click('#holdCargo .hold-cargo-tile[data-item-id="autocannon"]');
   s = await getState(page);
-  assert.strictEqual(s.systems.ram, true, "reinstalling from cargo re-arms the weapon");
-  assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="shockwave"]').count(), 1, "and the tile is back in the grid");
+  assert.strictEqual(s.systems.autocannon, true, "reinstalling from cargo re-arms the weapon");
+  assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="autocannon"]').count(), 1, "and the tile is back in the grid");
   await page.close();
 
   await browser.close();

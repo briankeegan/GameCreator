@@ -31,9 +31,9 @@
   // from more/tougher enemies, hazards, and unlocked actions — never a
   // bigger map. The old Sector 1 (a no-op "learn to move, no enemies"
   // board) is gone too — "Level one is pointless" — so the campaign
-  // opens on the Shockwave lesson.
+  // opens on the Autocannon lesson.
   const LEVELS = [
-    // Sector 1 — Shockwave. One Interceptor between you and the gate.
+    // Sector 1 — Autocannon. One Interceptor between you and the gate.
     {
       id: 1,
       name: "Outer Reach",
@@ -44,7 +44,7 @@
       enemies: [{ type: "interceptor", q: 4, r: 3 }],
       hazards: [],
       exitRule: "all-enemies-dead",
-      actions: ["sublight", "ramming"],
+      actions: ["sublight", "autocannon"],
       intro: "Hostile contact. Let it come close — then FIRE.",
     },
     // Sector 2 — Tractor Beam. Two enemies; push one off the edge. Unlike
@@ -65,7 +65,7 @@
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
-      actions: ["sublight", "ramming"],
+      actions: ["sublight", "autocannon"],
       intro: "Dock at the Outpost — a free Tractor Beam is waiting.",
     },
     // Sector 3 — Sentry Line. Three enemies; the lesson is the Sentry
@@ -86,7 +86,7 @@
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
-      actions: ["sublight", "ramming"],
+      actions: ["sublight", "autocannon"],
       intro: "The Sentry never moves — its beam reaches 2 hexes.",
     },
     // Sector 4 — Full Fleet. Everything unlocked, no guaranteed Outpost —
