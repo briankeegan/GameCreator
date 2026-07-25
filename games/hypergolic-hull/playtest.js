@@ -1,10 +1,10 @@
-// playtest.js — plays WHOLE RUNS, sector 1 to the Bulwark at depth 20, with
+// playtest.js — plays WHOLE RUNS, sector 1 to the Bulwark, with
 // a reasonable pilot AI, and reports what actually happened.
 //
 // engine.test.js proves the rules are right on pinned fixtures;
 // browser.test.js proves the UI drives them. Neither answers "is this a
 // game" — whether the economy, the weapon roster, enemy pressure, hull
-// attrition and the shop hang together over twenty sectors. This does:
+// attrition and the shop hang together across a whole crawl. This does:
 // run it across many seeded runs and read the survival curve, what got
 // bought, what did the killing, and where runs actually end.
 //
@@ -19,8 +19,9 @@ const BOSS_DEPTH = Levels.BOSS_DEPTH;
 
 // ---- the pilot ----------------------------------------------------------
 // Plays the way a competent human would, using only what the UI exposes:
-// one action a round, fire when something's in an armed weapon's reach
-// (turning the nose onto it first, exactly as tapping a hostile does),
+// one action a round, one gun per action, fire when something's in a
+// fitted weapon's reach (turning the nose onto it first, exactly as
+// tapping a hostile does),
 // raise shields when they're down and danger is close, recharge when the
 // reactor is too low to shoot, otherwise step toward the objective while
 // avoiding hexes that end the round inside a threat.
@@ -148,9 +149,9 @@ function shop(state, report) {
   //    durability and capacity, then a third gun.
   if (secondGun()) {
     while (state.hull < state.maxHull && has("repair")) buy("repair");
-    // Buying UP the roster beats buying MORE of it now that a turn fires
-    // one gun: the Arc Beam's two damage is a straight upgrade on the
-    // Autocannon's one, where a third mount is only ever coverage.
+    // Reach before breadth now that a turn fires one gun: the Arc Beam
+    // hits things a hex before they reach contact, where another mount is
+    // only ever more coverage of ground you already cover.
     for (const id of ["arcBeam", "railgun", "shield", "hardpoint", "reinforce", "reactor", "flakBurst"]) {
       if (has(id)) buy(id);
     }
