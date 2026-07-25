@@ -464,10 +464,10 @@
       holdView: {
         cols: 3, rows: 3, blocked: ["0,0", "2,0", "0,2", "2,2"],
         tiles: [
-          { kind: "weapon", x: 1, y: 0, w: 1, h: 1 },
-          { kind: "reactor", x: 0, y: 1, w: 1, h: 1 },
-          { kind: "engine", x: 1, y: 1, w: 1, h: 2 },
-          { kind: "reactor", x: 2, y: 1, w: 1, h: 1, spare: true },
+          { kind: "weapon", x: 1, y: 0, w: 1, h: 1, label: "Cannon" },
+          { kind: "reactor", x: 0, y: 1, w: 1, h: 1, label: "Micro Reactor" },
+          { kind: "engine", x: 1, y: 1, w: 1, h: 2, label: "Sublight Drive" },
+          { kind: "reactor", x: 2, y: 1, w: 1, h: 1, spare: true, label: "Spare Cell" },
         ],
       },
     },
@@ -477,11 +477,11 @@
       holdView: {
         cols: 3, rows: 4, blocked: ["0,0", "2,0"],
         tiles: [
-          { kind: "weapon", x: 1, y: 0, w: 1, h: 1 },
-          { kind: "shield", x: 0, y: 1, w: 1, h: 2 },
-          { kind: "engine", x: 1, y: 1, w: 1, h: 2 },
-          { kind: "shield", x: 2, y: 1, w: 1, h: 2 },
-          { kind: "reactor", x: 1, y: 3, w: 1, h: 1 },
+          { kind: "weapon", x: 1, y: 0, w: 1, h: 1, label: "Cannon" },
+          { kind: "shield", x: 0, y: 1, w: 1, h: 2, label: "Plating" },
+          { kind: "engine", x: 1, y: 1, w: 1, h: 2, label: "Sublight Drive" },
+          { kind: "shield", x: 2, y: 1, w: 1, h: 2, label: "Plating" },
+          { kind: "reactor", x: 1, y: 3, w: 1, h: 1, label: "Micro Reactor" },
         ],
       },
     },
@@ -491,9 +491,9 @@
       holdView: {
         cols: 3, rows: 3, blocked: ["0,0", "2,0"],
         tiles: [
-          { kind: "weapon", x: 1, y: 0, w: 1, h: 1 },
-          { kind: "reactor", x: 0, y: 1, w: 3, h: 1 },
-          { kind: "utility", x: 1, y: 2, w: 1, h: 1 },
+          { kind: "weapon", x: 1, y: 0, w: 1, h: 1, label: "Sentry Beam" },
+          { kind: "reactor", x: 0, y: 1, w: 3, h: 1, label: "Micro Reactor" },
+          { kind: "utility", x: 1, y: 2, w: 1, h: 1, label: "Anchor" },
         ],
       },
     },
@@ -503,10 +503,10 @@
       holdView: {
         cols: 3, rows: 4, blocked: ["0,0", "2,0"],
         tiles: [
-          { kind: "weapon", x: 1, y: 0, w: 1, h: 3 },
-          { kind: "reactor", x: 0, y: 1, w: 1, h: 2 },
-          { kind: "reactor", x: 2, y: 1, w: 1, h: 2 },
-          { kind: "utility", x: 1, y: 3, w: 1, h: 1 },
+          { kind: "weapon", x: 1, y: 0, w: 1, h: 3, label: "Railgun" },
+          { kind: "reactor", x: 0, y: 1, w: 1, h: 2, label: "Charge Bank" },
+          { kind: "reactor", x: 2, y: 1, w: 1, h: 2, label: "Charge Bank" },
+          { kind: "utility", x: 1, y: 3, w: 1, h: 1, label: "Anchor" },
         ],
       },
     },

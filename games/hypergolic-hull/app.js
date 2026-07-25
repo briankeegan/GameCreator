@@ -2189,35 +2189,23 @@ function updateScanInfo() {
       ` · SALVAGE +${def.salvage}`;
     enemyInfoEl.appendChild(status);
 
-    // Their SYSTEMS view — the same ship-shaped mini-grid as your own
-    // Hold, with their fitted equipment as colored tiles.
+    // The card stays a DASHBOARD; the contact's full layout lives one tap
+    // deeper — the same menu as your own ship ("should show the menu...
+    // and allow you to expand Systems for that ship"). While this contact
+    // is inspected, the Systems mode button opens THEIR hold, full size.
     if (def.holdView) {
-      const MINI = 20;
-      const mini = document.createElement("div");
-      mini.className = "hold-grid mini-hold";
-      mini.style.width = `${def.holdView.cols * MINI}px`;
-      mini.style.height = `${def.holdView.rows * MINI}px`;
-      mini.style.backgroundSize = `${MINI}px ${MINI}px`;
-      for (const key of def.holdView.blocked || []) {
-        const [bx, by] = key.split(",").map(Number);
-        const cell = document.createElement("div");
-        cell.className = "hold-cell-void mini-void";
-        cell.style.left = `${bx * MINI}px`;
-        cell.style.top = `${by * MINI}px`;
-        cell.style.width = `${MINI}px`;
-        cell.style.height = `${MINI}px`;
-        mini.appendChild(cell);
-      }
-      for (const t of def.holdView.tiles) {
-        const tile = document.createElement("div");
-        tile.className = `hold-tile hold-kind-${t.kind}`;
-        tile.style.left = `${t.x * MINI}px`;
-        tile.style.top = `${t.y * MINI}px`;
-        tile.style.width = `${t.w * MINI - 2}px`;
-        tile.style.height = `${t.h * MINI - 2}px`;
-        mini.appendChild(tile);
-      }
-      enemyInfoEl.appendChild(mini);
+      const menu = document.createElement("div");
+      menu.className = "enemy-info-menu";
+      const sysBtn = document.createElement("button");
+      sysBtn.id = "enemySystemsBtn";
+      sysBtn.textContent = "SYSTEMS ▸";
+      sysBtn.addEventListener("click", () => {
+        shipVisible = true;
+        mapVisible = false;
+        render();
+      });
+      menu.appendChild(sysBtn);
+      enemyInfoEl.appendChild(menu);
     }
 
     const stats = document.createElement("div");
@@ -2330,6 +2318,19 @@ function updateShipOverlay() {
   shipBtn.classList.toggle("active", shipVisible);
   if (!shipVisible) return;
 
+  // Contextual Systems: while Scan has a contact inspected, the Systems
+  // view is THAT ship's — same overlay, their hold, read-only scanner
+  // reconstruction. No contact inspected (or it died) → your flagship.
+  const scannedEnemy = legendVisible && inspectedHex ? Engine.enemyAt(state, inspectedHex) : null;
+  const titleEl = shipOverlayEl.querySelector("h2");
+  const portraitEl = shipOverlayEl.querySelector(".ship-portrait");
+  titleEl.textContent = scannedEnemy ? `Systems — ${scannedEnemy.type.toUpperCase()}` : "Systems";
+  portraitEl.hidden = Boolean(scannedEnemy);
+  if (scannedEnemy) {
+    renderEnemySystems(scannedEnemy);
+    return;
+  }
+
   shipStatsEl.innerHTML = "";
   const statRow = (label, build) => {
     const row = document.createElement("div");
@@ -2431,6 +2432,84 @@ function updateShipOverlay() {
   note.textContent = docked
     ? "Drag tiles to rearrange, or drag one down to cargo to power it down. Refits are free while docked."
     : "Tap a tile to inspect it. Refits only happen at a dock — no rewiring the ship mid-route.";
+  shipHardpointsEl.appendChild(note);
+}
+
+// The Systems overlay, rendered for a scanned CONTACT instead of the
+// flagship: their gauges up top, their ship-shaped hold at full size
+// below — same visual language as your own, but strictly read-only (it's
+// a scanner reconstruction, not a deck you can walk).
+function renderEnemySystems(enemy) {
+  const def = Engine.ENEMY_TYPES[enemy.type];
+  shipStatsEl.innerHTML = "";
+  const statRow = (label, build) => {
+    const row = document.createElement("div");
+    row.className = "ship-stat-row";
+    const name = document.createElement("span");
+    name.className = "stat-label";
+    name.textContent = label;
+    row.appendChild(name);
+    row.appendChild(build());
+    shipStatsEl.appendChild(row);
+  };
+  const bar = (filled, max, variant, label) => () => {
+    const b = document.createElement("span");
+    b.className = "stat-bar";
+    renderStatBar(b, label, filled, max, variant);
+    return b;
+  };
+  const text = (value) => () => {
+    const v = document.createElement("span");
+    v.className = "stat-value";
+    v.textContent = value;
+    return v;
+  };
+  statRow("Hull", bar(enemy.hp, enemy.maxHp, "hull", "Hull"));
+  statRow("Reactor", bar(enemy.energy, enemy.maxEnergy, "energy", "Reactor"));
+  statRow("Drive", text(def.movesTowardPlayer ? "sublight, 1 hex/round" : "none — cannot move"));
+  statRow("Salvage", text(`+${def.salvage} on kill`));
+  statRow("Armament", text(describeWeapon(def.weapon)));
+
+  shipHardpointsEl.innerHTML = "";
+  const holdTitle = document.createElement("div");
+  holdTitle.className = "hold-title";
+  holdTitle.textContent = "THEIR HOLD — scanner reconstruction";
+  shipHardpointsEl.appendChild(holdTitle);
+
+  const view = def.holdView;
+  const CELL = 44;
+  const gridEl = document.createElement("div");
+  gridEl.className = "hold-grid enemy-hold";
+  gridEl.id = "enemyHoldGrid";
+  gridEl.style.width = `${view.cols * CELL}px`;
+  gridEl.style.height = `${view.rows * CELL}px`;
+  gridEl.style.backgroundSize = `${CELL}px ${CELL}px`;
+  for (const key of view.blocked || []) {
+    const [bx, by] = key.split(",").map(Number);
+    const cell = document.createElement("div");
+    cell.className = "hold-cell-void";
+    cell.style.left = `${bx * CELL}px`;
+    cell.style.top = `${by * CELL}px`;
+    cell.style.width = `${CELL}px`;
+    cell.style.height = `${CELL}px`;
+    gridEl.appendChild(cell);
+  }
+  for (const t of view.tiles) {
+    const tile = document.createElement("div");
+    tile.className = `hold-tile hold-kind-${t.kind}`;
+    tile.style.left = `${t.x * CELL}px`;
+    tile.style.top = `${t.y * CELL}px`;
+    tile.style.width = `${t.w * CELL - 4}px`;
+    tile.style.height = `${t.h * CELL - 4}px`;
+    if (t.w === 1) tile.style.fontSize = "0.48rem";
+    tile.textContent = t.label || t.kind;
+    gridEl.appendChild(tile);
+  }
+  shipHardpointsEl.appendChild(gridEl);
+
+  const note = document.createElement("p");
+  note.className = "ship-note";
+  note.textContent = "Live telemetry from the contact's hull. Kill it and some of this is yours.";
   shipHardpointsEl.appendChild(note);
 }
 

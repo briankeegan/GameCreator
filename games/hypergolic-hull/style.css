@@ -475,6 +475,7 @@ body {
   margin: 0 auto 10px;
   image-rendering: pixelated;
 }
+.ship-portrait[hidden] { display: none; } /* display:block would beat the hidden attr (contact view has no portrait) */
 .ship-section {
   margin-bottom: 12px;
 }
@@ -682,11 +683,19 @@ body {
 }
 .enemy-info-dash .stat-label { font-size: 0.56rem; }
 .enemy-info-dash .stat-pip { width: 10px; height: 10px; }
-.mini-hold {
-  margin: 6px 0 2px;
-  pointer-events: none; /* read-only schematic — taps stay on the board */
+.enemy-info-menu { margin: 6px 0 2px; }
+.enemy-info-menu button {
+  pointer-events: auto; /* the card itself is tap-through; this button is not */
+  font-family: inherit;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  color: #7fe3a8;
+  background: #10261f;
+  border: 2px solid #2e7d52;
+  padding: 4px 10px;
+  cursor: pointer;
 }
-.mini-void { background: #170f14; } /* matches the scan card's own panel */
+.enemy-hold { pointer-events: none; } /* scanner reconstruction — strictly read-only */
 .hold-tile.dragging { z-index: 5; opacity: 0.9; }
 .hold-tile.drop-ok { outline: 2px solid #7fe3a8; }
 .hold-tile.drop-bad { outline: 2px solid #ff5a4a; }

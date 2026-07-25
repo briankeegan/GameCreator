@@ -314,13 +314,30 @@ async function freshPage(browser, url, errors) {
     "the card is the contact's DASHBOARD — hull/reactor as real gauge pips, same language as your console"
   );
   assert.ok(
-    (await page.locator("#enemyInfo .mini-hold .hold-tile").count()) > 0,
-    "and shows their SYSTEMS as a ship-shaped mini hold-grid of fitted tiles"
-  );
-  assert.ok(
     (await page.locator("#enemyInfo").textContent()).includes("SALVAGE"),
     "and what its wreck is worth"
   );
+
+  // "should show the menu... and allow you to expand Systems for that
+  // ship" — the card carries a SYSTEMS button that opens the full-size
+  // Systems overlay rendered for the CONTACT, ship-shaped hold and all.
+  await page.locator("#enemySystemsBtn").click();
+  assert.strictEqual(await page.locator("#shipOverlay").isVisible(), true, "the card's SYSTEMS button expands the full overlay");
+  assert.ok(
+    (await page.locator("#shipOverlay h2").textContent()).includes("INTERCEPTOR"),
+    "the overlay is titled for the scanned contact, not the flagship"
+  );
+  assert.ok(
+    (await page.locator("#enemyHoldGrid .hold-tile").count()) > 0,
+    "their hold renders as a full-size ship-shaped grid of labeled equipment tiles"
+  );
+  assert.ok(
+    (await page.locator("#enemyHoldGrid").textContent()).includes("Cannon"),
+    "tiles carry the actual equipment names"
+  );
+  await page.locator("#shipCloseBtn").click();
+  assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Return to Helm closes the contact's Systems view");
+  assert.strictEqual(await page.locator("#enemyInfo").isVisible(), true, "…and the scan card is still up underneath");
   assert.ok(
     (await page.locator("#enemyInfo").textContent()).includes("INTENT"),
     "the selected contact's card states its intent — what it will do, straight from the real AI"
