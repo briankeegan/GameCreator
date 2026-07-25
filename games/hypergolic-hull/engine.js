@@ -261,7 +261,12 @@
     // Costs 2 against +1/turn regen — every firing turn nets -1, so even
     // the free starting weapon visibly draws down the reactor and combat
     // has a fuel gauge.
-    ram: { id: "ram", label: "Shockwave", range: 1, damage: 1, targets: "all", energyCost: 2, speed: 3, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // `targets: "one"` — the base weapon strikes a SINGLE contact per shot
+    // ("change base weapon to only attack one place"): its reach is still
+    // every adjacent hex, but the shot goes to the target-locked contact
+    // (or the first in reach). Multi-hit stays a trait of specific
+    // hardware (the Repulsor wave, the piercing Lance line), not free.
+    ram: { id: "ram", label: "Shockwave", range: 1, damage: 1, targets: "one", energyCost: 2, speed: 3, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     interceptorCannon: { id: "interceptorCannon", label: "Interceptor Cannon", range: 1, damage: 1, targets: "all", energyCost: 1, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // A Sentry Turret's beam reaches TWO hexes in every direction — it never
     // moves, but it zones off a wide ring you have to route around or kill.
@@ -814,10 +819,18 @@
   // speed order inside applyFire's volley, so targets are computed at
   // fire time (a faster weapon's kill or push in this same volley genuinely
   // removes them from a slower weapon's list).
-  function firePlayerWeapon(state, weapon, onHit) {
+  function firePlayerWeapon(state, weapon, onHit, preferredTargetId) {
     const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon).map(hexKey));
-    const targets = livingEnemies(state).filter((e) => hexKeys.has(hexKey(e)));
+    let targets = livingEnemies(state).filter((e) => hexKeys.has(hexKey(e)));
     if (targets.length === 0) return; // nothing in range — no shot, no energy spent
+    // A single-target weapon (targets: "one") puts its whole shot into ONE
+    // contact: the target-locked one if it's in this weapon's reach,
+    // otherwise the first thing it can hit. Multi-hit weapons strike
+    // everything in reach, as ever.
+    if (weapon.targets === "one") {
+      const preferred = preferredTargetId ? targets.find((t) => t.id === preferredTargetId) : null;
+      targets = [preferred || targets[0]];
+    }
     // Every shot is paid for. A weapon that would have fired but can't
     // afford its cost holds fire — logged so the silence is explained.
     if (state.energy < weapon.energyCost) {
@@ -826,6 +839,15 @@
     }
     state.energy -= weapon.energyCost;
     state.events.push({ type: "energySpend", amount: weapon.energyCost, weapon: weapon.label });
+    // Every weapon announces its own shot — the renderer gives each a
+    // signature effect (ring/beam/bolt) so WHAT fired is readable at a
+    // glance, not just that something did.
+    state.events.push({
+      type: "playerFire",
+      weapon: weapon.id,
+      from: { q: state.playerPos.q, r: state.playerPos.r },
+      targets: targets.map((v) => ({ q: v.q, r: v.r })),
+    });
     for (const victim of targets) {
       if (!victim.alive) continue; // an earlier target's push/collision in this same volley already took it out
       victim.hp -= weapon.damage;
@@ -863,7 +885,14 @@
         if (enemy.energy < weapon.energyCost) continue;
         enemy.energy -= weapon.energyCost; // same rule as the flagship: every shot is paid for
         totalDamage += weapon.damage;
-        state.events.push({ type: "attack", enemyId: enemy.id, q: enemy.q, r: enemy.r });
+        state.events.push({
+          type: "attack",
+          enemyId: enemy.id,
+          q: enemy.q,
+          r: enemy.r,
+          weapon: weapon.id,
+          target: { q: state.playerPos.q, r: state.playerPos.r },
+        });
       }
       for (const { enemy, intent } of intents) {
         if (intent.type !== "move" || !enemy.alive) continue;
@@ -1023,11 +1052,12 @@
     spendAp(state);
   }
 
-  // FIRE: 1 AP for a full volley — every armed weapon shoots whatever it
-  // can reach, in weapon-speed order, and it lands IMMEDIATELY (enemies
-  // answer in their own phase, not mid-volley). Refuses to waste the AP if
-  // nothing is in reach of any armed weapon.
-  function applyFire(state) {
+  // FIRE: 1 AP for a full volley — every armed weapon shoots, in
+  // weapon-speed order, and it lands IMMEDIATELY (enemies answer in their
+  // own phase, not mid-volley). `targetEnemyId` (from the UI's target
+  // lock) steers every single-target weapon's shot. Refuses to waste the
+  // AP if nothing is in reach of any armed weapon.
+  function applyFire(state, targetEnemyId) {
     assertPlaying(state);
     const anyTarget = AUTO_FIRE_WEAPONS.some(({ action, systemKey, weapon }) => {
       if (!state.actions.includes(action) || !state.systems[systemKey]) return false;
@@ -1040,7 +1070,7 @@
       ({ action, systemKey }) => state.actions.includes(action) && state.systems[systemKey]
     ).sort((a, b) => b.weapon.speed - a.weapon.speed);
     for (const { weapon, onHit } of armed) {
-      firePlayerWeapon(state, weapon, onHit);
+      firePlayerWeapon(state, weapon, onHit, targetEnemyId);
     }
     spendAp(state);
   }

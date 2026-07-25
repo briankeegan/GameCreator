@@ -123,8 +123,11 @@ let autoRoute = null;
 // immediately on confirm — no batch queue, no separate commit button.
 let targetedEnemyId = null;
 // Tapping a piece of equipment that can't act right now shows what it
-// covers instead of doing nothing: a set of hexKeys washed gold on the
-// board until the next tap/action.
+// covers instead of doing nothing: {hexes: Set<hexKey>, kind} washed over
+// the board until the next tap/action. Color language is consistent
+// everywhere ("movement should be green, attack range red"): kind "move"
+// washes green, kind "attack" washes red-orange, same family as Scan's
+// threat overlay.
 let reachPreview = null;
 
 // Whether Scan mode is open is a remembered player preference, not a
@@ -408,8 +411,27 @@ function announceSector() {
   requestAnimationFrame(tickAnims);
 }
 
+// Each weapon's signature look ("weapons need unique attack appearance"):
+// the Shockwave is an expanding ring, the Repulsor a blue push-wave, the
+// Lance a piercing beam, enemy cannons fire visible bolts, the Sentry and
+// Railgun sweep beams in their own colors.
+const WEAPON_FX = {
+  ram: { kind: "ring", color: "#ffb36b" },
+  repulsor: { kind: "ring", color: "#5bb8f2" },
+  lance: { kind: "beam", color: "#ffe28a", width: 3.5 },
+  interceptorCannon: { kind: "bolt", color: "#ff8a72" },
+  sentryBeam: { kind: "beam", color: "#8aff9e", width: 2.5 },
+  railgunBeam: { kind: "beam", color: "#ff5ad2", width: 2.5 },
+};
+
 function scheduleAnims(events) {
   const now = performance.now();
+  // The enemy phase plays back SEQUENTIALLY ("enemy moves are too fast to
+  // see"): each enemy action claims its own time slot instead of everything
+  // resolving in one invisible instant. Player-side effects stay immediate.
+  let slot = 0; // ms offset for the next enemy action
+  let lastAttackSlot = 0;
+  const step = events.filter((e) => e.type === "attack" || e.type === "enemyMove").length > 5 ? 240 : 340;
   for (const ev of events) {
     if (ev.type === "kill") {
       anims.push({ kind: "boom", pos: ev, start: now, dur: 450, particles: makeExplosionParticles(9) });
@@ -421,15 +443,41 @@ function scheduleAnims(events) {
     else if (ev.type === "hit") {
       if (ev.source === "weapon") shipAngle = angleToward(state.playerPos, ev);
     }
-    else if (ev.type === "attack") anims.push({ kind: "lunge", enemyId: ev.enemyId, start: now, dur: 320 });
-    else if (ev.type === "damage") anims.push({ kind: "flash", start: now, dur: 380 });
-    else if (ev.type === "enemyMove") anims.push({ kind: "slide", enemyId: ev.enemyId, from: ev.from, to: ev.to, start: now, dur: 220 });
+    else if (ev.type === "playerFire") {
+      const fx = WEAPON_FX[ev.weapon];
+      if (fx && fx.kind === "ring") {
+        anims.push({ kind: "fxring", pos: ev.from, color: fx.color, start: now, dur: 420 });
+      } else if (fx) {
+        for (const t of ev.targets) {
+          anims.push({ kind: "fxbeam", from: ev.from, to: t, color: fx.color, width: fx.width || 2.5, start: now, dur: 380 });
+        }
+      }
+    }
+    else if (ev.type === "attack") {
+      slot += step;
+      lastAttackSlot = slot;
+      anims.push({ kind: "lunge", enemyId: ev.enemyId, start: now + slot, dur: 320 });
+      const fx = WEAPON_FX[ev.weapon];
+      if (fx && ev.target) {
+        if (fx.kind === "bolt") {
+          anims.push({ kind: "fxbolt", from: { q: ev.q, r: ev.r }, to: ev.target, color: fx.color, start: now + slot, dur: 320 });
+        } else {
+          anims.push({ kind: "fxbeam", from: { q: ev.q, r: ev.r }, to: ev.target, color: fx.color, width: (fx.width || 2.5), start: now + slot, dur: 420 });
+        }
+      }
+    }
+    else if (ev.type === "damage") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
+    else if (ev.type === "shieldAbsorb") anims.push({ kind: "flash", start: now + lastAttackSlot + 140, dur: 380 });
+    else if (ev.type === "enemyMove") {
+      slot += step;
+      anims.push({ kind: "slide", enemyId: ev.enemyId, from: ev.from, to: ev.to, start: now + slot, dur: 240 });
+    }
     else if (ev.type === "playerMove") {
       anims.push({ kind: "pslide", from: ev.from, to: ev.to, start: now, dur: 230 });
       const dir = Engine.directionIndex(ev.from, ev.to);
       if (dir >= 0) shipAngle = DIR_ANGLES[dir];
     }
-    else if (ev.type === "playerDeath") anims.push({ kind: "boom", pos: ev, start: now, dur: 650, particles: makeExplosionParticles(16) });
+    else if (ev.type === "playerDeath") anims.push({ kind: "boom", pos: ev, start: now + lastAttackSlot + 200, dur: 650, particles: makeExplosionParticles(16) });
     else if (ev.type === "energyGain") {
       anims.push({ kind: "efloat", amount: `+${ev.amount}`, pos: { q: state.playerPos.q, r: state.playerPos.r }, start: now, dur: 900 });
     }
@@ -1510,15 +1558,17 @@ function draw() {
     }
     // Movable/targetable hexes keep their normal color — only the border
     // marks them, so the board doesn't turn into a wall of green.
+    // Course/route preview: green, the one color movement always wears.
     if (route.has(k)) {
-      fill = blend(fill, "#2e5f96", 0.45);
-      fillAlpha = Math.max(fillAlpha, 0.55);
+      fill = blend(fill, "#2e7d52", 0.5);
+      fillAlpha = Math.max(fillAlpha, 0.58);
     }
-    // Equipment reach preview (tap a weapon/engines button with nothing
-    // to do): a gold wash over everything that item covers right now.
-    if (reachPreview && reachPreview.has(k)) {
-      fill = blend(fill, "#b9862e", 0.5);
-      fillAlpha = Math.max(fillAlpha, 0.6);
+    // Equipment reach preview (tap a weapon/engines button, or lock a
+    // target): green = where you can move, red-orange = what your
+    // weapons cover — same color language as the Scan overlay.
+    if (reachPreview && reachPreview.hexes.has(k)) {
+      fill = blend(fill, reachPreview.kind === "move" ? "#2e7d52" : "#a03a26", 0.55);
+      fillAlpha = Math.max(fillAlpha, 0.62);
     }
 
     // The whitish border marks a tile's own type ("this is normal, walkable
@@ -1647,15 +1697,15 @@ function draw() {
 
   // The gunnery target: first tap locked this contact — a pulsing red
   // reticle marks it until the confirming second tap fires (or another
-  // tap stands it down).
+  // tap stands it down). Every OTHER contact the volley would strike
+  // (multi-hit weapons) gets a smaller steady crosshair, so "where it'll
+  // hit" is fully visible before committing.
   if (targetedEnemyId && state.status === "playing") {
-    const target = state.enemies.find((e) => e.id === targetedEnemyId && e.alive);
-    if (target) {
-      const c = hexToPixel(target);
-      const pulse = 1 + 0.08 * Math.sin(now / 160);
-      const r = geom.sx * 0.62 * pulse;
+    const drawReticle = (pos, r, pulseAlpha) => {
+      const c = hexToPixel(pos);
       ctx.save();
       ctx.strokeStyle = "#ff5a4a";
+      ctx.globalAlpha = pulseAlpha;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
@@ -1667,6 +1717,70 @@ function draw() {
         ctx.lineTo(c.x + Math.cos(ang) * r * 1.18, c.y + Math.sin(ang) * r * 1.18);
         ctx.stroke();
       }
+      ctx.restore();
+    };
+    const target = state.enemies.find((e) => e.id === targetedEnemyId && e.alive);
+    if (target) {
+      const pulse = 1 + 0.08 * Math.sin(now / 160);
+      drawReticle(target, geom.sx * 0.62 * pulse, 1);
+      for (const v of predictedVictims(targetedEnemyId)) {
+        if (v.id === targetedEnemyId) continue;
+        drawReticle(v, geom.sx * 0.45, 0.75);
+      }
+    }
+  }
+
+  // Weapon signatures — every shot looks like ITS weapon ("weapons need
+  // unique attack appearance"): expanding rings for the Shockwave (amber)
+  // and Repulsor (blue), piercing beams for the Lance/Sentry/Railgun in
+  // their own colors, traveling bolts for enemy cannons.
+  for (const a of anims) {
+    if (now < a.start || now >= a.start + a.dur) continue;
+    const p = animProgress(a, now);
+    if (a.kind === "fxring") {
+      const c = hexToPixel(a.pos);
+      ctx.save();
+      ctx.globalAlpha = 0.9 * (1 - p);
+      ctx.strokeStyle = a.color;
+      ctx.lineWidth = 3.5 * (1 - p * 0.5);
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, geom.sx * (0.3 + p * 1.35), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    } else if (a.kind === "fxbeam") {
+      const from = hexToPixel(a.from);
+      const to = hexToPixel(a.to);
+      ctx.save();
+      ctx.globalAlpha = Math.sin(Math.PI * p) * 0.95;
+      ctx.strokeStyle = a.color;
+      ctx.lineWidth = a.width;
+      ctx.shadowColor = a.color;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+      ctx.restore();
+    } else if (a.kind === "fxbolt") {
+      const from = hexToPixel(a.from);
+      const to = hexToPixel(a.to);
+      const x = from.x + (to.x - from.x) * p;
+      const y = from.y + (to.y - from.y) * p;
+      ctx.save();
+      ctx.fillStyle = a.color;
+      ctx.shadowColor = a.color;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+      // a short trail behind the bolt
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = a.color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(from.x + (to.x - from.x) * Math.max(0, p - 0.18), from.y + (to.y - from.y) * Math.max(0, p - 0.18));
+      ctx.lineTo(x, y);
+      ctx.stroke();
       ctx.restore();
     }
   }
@@ -1809,13 +1923,18 @@ function animsRunning() {
 // ("stats (green bars) at top to indicate better what is there"), so
 // Hull/Energy/Shield all read the same way at a glance instead of some
 // being bars and some bare numbers.
-function renderStatBar(el, label, filled, max, variant) {
+function renderStatBar(el, label, filled, max, variant, pending = 0) {
   el.innerHTML = "";
   el.setAttribute("aria-label", `${label} ${filled}/${max}`);
   for (let i = 0; i < max; i++) {
     const pip = document.createElement("span");
-    pip.className = `stat-pip stat-pip-${variant}` + (i < filled ? " filled" : "");
+    let cls = `stat-pip stat-pip-${variant}`;
+    if (i < filled) cls += " filled";
+    // The top `pending` filled pips render GHOSTED (lighter green) while a
+    // target is locked — the energy the confirmed shot would burn away.
+    if (pending > 0 && i >= filled - pending && i < filled) cls += " pending";
     el.appendChild(pip);
+    pip.className = cls;
   }
 }
 
@@ -1853,7 +1972,10 @@ function updateHud() {
   flashOnChange("ap", state.ap, apWrapEl);
   renderStatBar(hullBarEl, "Hull", state.hull, state.maxHull, "hull");
   // Energy pays for every weapon shot, so the reactor gauge is always up.
-  renderStatBar(energyBarEl, "Energy", state.energy, state.maxEnergy, "energy");
+  // While a target is locked, the pips the volley would spend go ghostly
+  // ("show the energy it would cost in lighter green").
+  const lockPending = targetedEnemyId ? Math.min(volleyCost(state), state.energy) : 0;
+  renderStatBar(energyBarEl, "Energy", state.energy, state.maxEnergy, "energy", lockPending);
   // Shields = generator capacity (empty sockets included, so a DOWN
   // shield is visible as an unlit pip begging to be re-raised). The gauge
   // is hidden entirely until a Shield Generator is installed — no empty
@@ -1953,9 +2075,13 @@ function updateSystems() {
   const armed = armedWeaponKeys();
   fireBtn.textContent =
     armed.length === 1 ? Engine.WEAPONS[armed[0]].label : armed.length > 1 ? "All Weapons" : "Weapons";
-  const canFire = anyFireTarget(state);
-  fireBtn.disabled = busy || armed.length === 0;
-  fireBtn.classList.toggle("active", canFire && !busy);
+  // The weapon only arms once a target is LOCKED ("should only be
+  // clickable if you've selected a valid target") — tap a hostile to lock,
+  // then the button (or a second tap on the hostile) commits the shot.
+  const locked = targetedEnemyId ? state.enemies.find((e) => e.id === targetedEnemyId && e.alive) : null;
+  const lockValid = Boolean(locked && enemyInReach(state, locked));
+  fireBtn.disabled = busy || !lockValid;
+  fireBtn.classList.toggle("active", lockValid && !busy);
   rechargeBtn.disabled = busy;
   rechargeBtn.textContent = "Reactor Core";
   enginesBtn.disabled = busy;
@@ -1991,9 +2117,10 @@ function speedWord(weapon) {
 
 function describeWeapon(weapon) {
   const speed = weapon.speed ? ` · Speed: ${speedWord(weapon)}` : "";
+  const spread = weapon.targets === "one" ? " · Single target" : " · Hits all in reach";
   return (
     `${weapon.label} — Range ${weapon.range} · ${describeDamage(weapon)} · ` +
-    `Pattern: ${describePattern(weapon)} · Energy ${weapon.energyCost}/shot${speed}`
+    `Pattern: ${describePattern(weapon)}${spread} · Energy ${weapon.energyCost}/shot${speed}`
   );
 }
 
@@ -2445,6 +2572,26 @@ function volleyCost(s) {
   return cost;
 }
 
+// Who actually gets hit if the volley fires right now, honoring the
+// target lock: single-target weapons put their shot into the locked
+// contact (or their first in reach), multi-hit weapons strike everything
+// they cover. Mirrors firePlayerWeapon's real selection exactly.
+function predictedVictims(targetId) {
+  const victims = new Map();
+  for (const k of armedWeaponKeys()) {
+    const weapon = Engine.WEAPONS[k];
+    const reach = new Set(Engine.weaponHexes(state.playerPos, state.facing, weapon).map(Engine.hexKey));
+    let ts = Engine.livingEnemies(state).filter((e) => reach.has(Engine.hexKey(e)));
+    if (!ts.length) continue;
+    if (weapon.targets === "one") {
+      const preferred = targetId ? ts.find((t) => t.id === targetId) : null;
+      ts = [preferred || ts[0]];
+    }
+    for (const t of ts) victims.set(t.id, { q: t.q, r: t.r, id: t.id });
+  }
+  return [...victims.values()];
+}
+
 function handleAction(fn) {
   plannedPath = null;
   reachPreview = null;
@@ -2652,29 +2799,14 @@ tractorStatsEl.addEventListener("click", () => {
 // with a readout line ("if you click the weapon, it would show the range
 // for it"), same idea for the engines.
 fireBtn.addEventListener("click", () => {
+  const lockedTarget = targetedEnemyId;
   targetedEnemyId = null;
-  if (anyFireTarget(state)) {
-    reachPreview = null;
-    handleAction(() => Engine.applyFire(state));
-    return;
-  }
-  const armed = armedWeaponKeys();
-  if (!armed.length) return;
-  const hexes = new Set();
-  for (const k of armed) {
-    for (const h of Engine.weaponHexes(state.playerPos, state.facing, Engine.WEAPONS[k])) {
-      if (Engine.onBoard(state, h)) hexes.add(Engine.hexKey(h));
-    }
-  }
-  reachPreview = hexes;
-  const names = armed.map((k) => Engine.WEAPONS[k].label).join(" + ");
-  const cost = armed.reduce((sum, k) => sum + Engine.WEAPONS[k].energyCost, 0);
-  pushMessage(`${names}: covering the marked hexes — nothing in reach. ${cost}⚡ per full volley.`);
-  render();
+  reachPreview = null;
+  handleAction(() => Engine.applyFire(state, lockedTarget));
 });
 enginesBtn.addEventListener("click", () => {
   targetedEnemyId = null;
-  reachPreview = new Set(Engine.legalSublightTargets(state).map(Engine.hexKey));
+  reachPreview = { hexes: new Set(Engine.legalSublightTargets(state).map(Engine.hexKey)), kind: "move" };
   pushMessage("Sublight Engines — 1 hex per turn. Tap a hex to lay in a course, tap it again to fly.");
   render();
 });
@@ -2791,13 +2923,29 @@ canvas.addEventListener("click", (evt) => {
   if (enemy) {
     plannedPath = null;
       if (targetedEnemyId === enemy.id && enemyInReach(state, enemy)) {
+      const lockedTarget = targetedEnemyId;
       targetedEnemyId = null;
-      handleAction(() => Engine.applyFire(state));
+      handleAction(() => Engine.applyFire(state, lockedTarget));
       return;
     }
     if (faceEnemyIfPossible(enemy)) {
       targetedEnemyId = enemy.id;
-      pushMessage(`Target locked: ${enemy.type.toUpperCase()} — tap it again to FIRE (−${volleyCost(state)}⚡).`);
+      // Show exactly where the volley lands ("should show where it'll
+      // hit"): red wash = weapon coverage, crosshairs (drawn in draw())
+      // = the contacts that actually take the hit.
+      const coverage = new Set();
+      for (const k of armedWeaponKeys()) {
+        for (const h of Engine.weaponHexes(state.playerPos, state.facing, Engine.WEAPONS[k])) {
+          if (Engine.onBoard(state, h)) coverage.add(Engine.hexKey(h));
+        }
+      }
+      reachPreview = { hexes: coverage, kind: "attack" };
+      const struck = predictedVictims(enemy.id);
+      const extra = struck.filter((v) => v.id !== enemy.id).length;
+      pushMessage(
+        `Target locked: ${enemy.type.toUpperCase()} — tap it again to FIRE (−${volleyCost(state)}⚡)` +
+          (extra ? `. Volley also strikes ${extra} other contact${extra === 1 ? "" : "s"}.` : ".")
+      );
     } else {
       targetedEnemyId = null;
       // Out of reach — say what to do instead of dying silently.

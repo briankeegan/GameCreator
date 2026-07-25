@@ -218,7 +218,7 @@ while (state.status === "playing" && Engine.livingEnemies(state).length > 0 && g
     const before = living.length;
     Engine.applyFire(state); // resolves in YOUR phase — the dead don't get one of their own
     fireActions++;
-    assert.ok(Engine.livingEnemies(state).length < before, "a point-blank FIRE volley kills the adjacent chaser(s)");
+    assert.ok(Engine.livingEnemies(state).length < before, "a point-blank FIRE volley kills a chaser (the single-target Shockwave takes exactly one)");
     continue;
   }
   // Stalk: step toward the nearest survivor, but never END a round inside
@@ -243,8 +243,45 @@ while (state.status === "playing" && Engine.livingEnemies(state).length > 0 && g
 }
 assert.strictEqual(Engine.livingEnemies(state).length, 0, "both Interceptors die to FIRE volleys");
 assert.ok(fireActions >= 1, "at least one round was spent on the FIRE action");
-assert.strictEqual(state.hull, 3, "played correctly, the flagship never takes a hit — kills land in YOUR phase, before the target ever gets one");
+// The single-target Shockwave means getting double-teamed costs a hit (one
+// dies, the other shoots) — perfect play keeps it to at most one.
+assert.ok(state.hull >= 2, "the stalking line survives comfortably — at most one double-team hit");
 assert.strictEqual(state.status, "playing");
+
+// ---- single-target base weapon: the shot goes ONE place -----------------
+// ("change base weapon to only attack one place") — with two contacts
+// adjacent at once, the Shockwave strikes the target-locked one and the
+// other survives untouched.
+const singleLevel = {
+  id: 983,
+  radius: 2,
+  playerStart: { q: 0, r: 0 },
+  exit: { q: 2, r: 0 },
+  outpost: null,
+  enemies: [
+    { type: "interceptor", q: 0, r: -2 },
+    { type: "interceptor", q: -2, r: 0 },
+  ],
+  hazards: [],
+  exitRule: "all-enemies-dead",
+};
+const singleState = Engine.createGameState(singleLevel);
+singleState.enemies[0].q = 0;
+singleState.enemies[0].r = -1; // adjacent, up
+singleState.enemies[1].q = -1;
+singleState.enemies[1].r = 0; // adjacent, left
+Engine.applyFire(singleState, "e1"); // lock the SECOND contact
+assert.strictEqual(singleState.enemies.find((e) => e.id === "e1").alive, false, "the locked contact takes the whole shot");
+assert.strictEqual(singleState.enemies.find((e) => e.id === "e0").alive, true, "the other adjacent contact is untouched — single target means single target");
+const singleState2 = Engine.createGameState(singleLevel);
+singleState2.enemies[0].q = 0;
+singleState2.enemies[0].r = -1;
+Engine.applyFire(singleState2); // no lock: the shot picks the first in reach
+assert.strictEqual(
+  singleState2.enemies.filter((e) => !e.alive).length,
+  1,
+  "with no lock, a single-target weapon still fires exactly one shot at one contact"
+);
 
 // ---- the mistake, shown directly: ending your turn in a chaser's reach --
 // The position your action leaves you on is the one the enemy phase

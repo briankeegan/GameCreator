@@ -98,16 +98,34 @@ function pickStepToward(page, goalExpr) {
   }, goalExpr);
 }
 
-// Play one ROUND: FIRE if anything's in reach of an armed weapon (the
-// button only lights when a volley would land), otherwise tap-tap a safe
-// step toward the goal — then End Round to pass whatever AP is left, so
-// each call advances exactly one enemy phase.
+// The first living enemy inside any armed weapon's reach, or null.
+function enemyInReachOf(page) {
+  return page.evaluate(() => {
+    const E = window.HypergolicEngine;
+    const st = window.__hhState;
+    return (
+      st.enemies.find(
+        (e) =>
+          e.alive &&
+          E.WEAPON_SYSTEM_KEYS.some(
+            (k) =>
+              (k === "ram" || st.actions.includes(k)) &&
+              st.systems[k] &&
+              E.weaponHexes(st.playerPos, st.facing, E.WEAPONS[k]).some((h) => h.q === e.q && h.r === e.r)
+          )
+      ) || null
+    );
+  });
+}
+
+// Play one ROUND: if a hostile is in reach, lock-and-fire it (tap to
+// target, then the weapon button commits); otherwise tap-tap a safe step
+// toward the goal — then End Round so each call advances one enemy phase.
 async function playTurnToward(page, goalExpr) {
-  // The weapons button stays tappable for info — "lit" (the .active class)
-  // is the signal that a volley would actually land.
-  const fireLit = ((await page.locator("#fireBtn").getAttribute("class")) || "").includes("active");
-  if (fireLit) {
-    await page.click("#fireBtn");
+  const reachTarget = await enemyInReachOf(page);
+  if (reachTarget) {
+    await clickHex(page, "sublight", reachTarget); // lock
+    await page.click("#fireBtn"); // commit
   } else {
     await flyTo(page, await pickStepToward(page, goalExpr));
   }
@@ -351,13 +369,16 @@ async function freshPage(browser, url, errors) {
   for (let i = 0; i < 25; i++) {
     s = await getState(page);
     if (s.status !== "playing" || s.enemies.every((e) => !e.alive)) break;
-    const weaponsLit = ((await page.locator("#fireBtn").getAttribute("class")) || "").includes("active");
-    if (weaponsLit) {
-      // Something's in reach — the weapons button lights up.
+    const target = await enemyInReachOf(page);
+    if (target) {
       // The button is the EQUIPMENT — with just the starting Shockwave
       // armed, it carries the weapon's own name, not the word "Fire".
       assert.strictEqual(await page.locator("#fireBtn").textContent(), "Shockwave", "the weapons button is named for the armed weapon itself");
-      const target = s.enemies.find((e) => e.alive);
+      assert.strictEqual(
+        await page.locator("#fireBtn").isDisabled(),
+        true,
+        "the weapon stays unarmed until a target is LOCKED — in reach alone isn't enough"
+      );
       const energyBeforeFire = s.energy;
       await clickHex(page, "sublight", target); // first tap: target lock
       s = await getState(page);
@@ -365,9 +386,19 @@ async function freshPage(browser, url, errors) {
       assert.strictEqual(s.energy, energyBeforeFire, "and spends nothing yet");
       assert.strictEqual(await page.evaluate(() => window.__hhTargetedEnemy), target.id, "the contact is target-locked");
       assert.ok(/target locked/i.test(await page.locator("#log").textContent()), "the readout confirms the lock, with the cost");
-      await clickHex(page, "sublight", target); // second tap: FIRE
+      assert.strictEqual(await page.locator("#fireBtn").isDisabled(), false, "the lock arms the weapon button");
+      assert.ok(
+        ((await page.locator("#fireBtn").getAttribute("class")) || "").includes("active"),
+        "and it lights up green"
+      );
+      assert.ok(
+        (await page.locator("#energyBar .stat-pip.pending").count()) > 0,
+        "the Energy gauge ghosts the pips the shot would burn (lighter green)"
+      );
+      await page.click("#fireBtn"); // the armed button commits the shot at the lock
       s = await getState(page);
-      assert.ok(s.energy < energyBeforeFire, "the confirming tap fires for real — energy spent");
+      assert.ok(s.energy < energyBeforeFire, "the confirmed shot fires for real — energy spent");
+      assert.strictEqual(await page.locator("#energyBar .stat-pip.pending").count(), 0, "the ghosted pips are gone once spent");
       fired = true;
     } else {
       await playTurnToward(page, "enemy");
@@ -389,13 +420,6 @@ async function freshPage(browser, url, errors) {
     "the standard Reactor Core cycles +1 Energy for its turn"
   );
   assert.strictEqual(await page.locator("#rechargeBtn").textContent(), "Reactor Core", "the recharge button is the reactor itself");
-  // Tapping a weapon with nothing in reach explains it instead of erroring:
-  // the readout describes the coverage and the volley price.
-  await page.click("#fireBtn");
-  assert.ok(
-    /covering the marked hexes/i.test(await page.locator("#log").textContent()),
-    "tapping the weapon out of reach shows its coverage on the board with a readout line"
-  );
 
   s = await walkToExit(page);
   assert.strictEqual(s.status, "won", "Sector 1 clears once the gate is reached");

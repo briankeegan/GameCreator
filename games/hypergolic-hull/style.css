@@ -68,6 +68,12 @@ body {
   background: #7fe3a8;
   border-color: #b1ffd0;
 }
+/* Ghosted while a target is locked: the energy the confirmed shot would
+   burn — "lighter green, indicate it would go away". */
+.stat-pip-energy.filled.pending {
+  background: rgba(127, 227, 168, 0.35);
+  border-color: rgba(177, 255, 208, 0.5);
+}
 .stat-pip-shield.filled {
   background: #5bb8f2;
   border-color: #9ed9ff;
