@@ -199,11 +199,13 @@
   // the bar refilled the same turn it drained and never visibly moved,
   // which read as "energy isn't hooked up" in playtesting.)
   const START_ENERGY = 6;
-  // The RECHARGE action's gain — the ONLY way Energy comes back mid-sector
-  // now. No passive trickle: energy refills to full at every warp jump
-  // ("Energy refills between jumps"), and recovering under fire costs you
-  // a whole turn on purpose.
-  const RECHARGE_ENERGY_GAIN = 2;
+  // The Reactor Core's per-cycle gain — the ONLY way Energy comes back
+  // mid-sector. No passive trickle: energy refills to full at every warp
+  // jump ("Energy refills between jumps"), and recovering under fire
+  // costs a whole turn on purpose. The STANDARD starting reactor cycles
+  // just +1 ("it should just recharge one, not two") — a better reactor
+  // is a future equipment swap, and this number goes with the item.
+  const RECHARGE_ENERGY_GAIN = 1;
   // How many weapon-slot points of systems the flagship starts with —
   // grown via the Hardpoint Expansion Outpost offer.
   const START_WEAPON_SLOTS = 2;
@@ -1059,12 +1061,12 @@
   // regain Energy. Costs the whole turn while enemies keep coming.
   function applyRecharge(state) {
     assertPlaying(state);
-    if (state.energy >= state.maxEnergy) throw new Error("Recharge: Energy is already full");
+    if (state.energy >= state.maxEnergy) throw new Error("Reactor Core: Energy is already full");
     state.events = [];
     const gained = Math.min(RECHARGE_ENERGY_GAIN, state.maxEnergy - state.energy);
     state.energy += gained;
     state.events.push({ type: "energyGain", amount: gained });
-    pushLog(state, `Recharging — +${gained} Energy.`);
+    pushLog(state, `Reactor cycled — +${gained} Energy.`);
     spendAp(state);
   }
 

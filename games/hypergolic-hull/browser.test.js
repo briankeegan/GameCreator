@@ -103,7 +103,10 @@ function pickStepToward(page, goalExpr) {
 // step toward the goal — then End Round to pass whatever AP is left, so
 // each call advances exactly one enemy phase.
 async function playTurnToward(page, goalExpr) {
-  if (!(await page.locator("#fireBtn").isDisabled())) {
+  // The weapons button stays tappable for info — "lit" (the .active class)
+  // is the signal that a volley would actually land.
+  const fireLit = ((await page.locator("#fireBtn").getAttribute("class")) || "").includes("active");
+  if (fireLit) {
     await page.click("#fireBtn");
   } else {
     await flyTo(page, await pickStepToward(page, goalExpr));
@@ -239,10 +242,18 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#targetLockBtn").count(), 0, "Target Lock is gone — tapping a hostile aims automatically");
   assert.strictEqual(await page.locator("#endTurnBtn").count(), 0, "End Round is gone — waiting is what RECHARGE is for");
   assert.strictEqual(await page.locator("#apWrap").isVisible(), false, "the Actions gauge stays hidden at one action per round");
-  assert.strictEqual(await page.locator("#fireBtn").isVisible(), true, "FIRE is a real button — shooting is its own action now");
-  assert.strictEqual(await page.locator("#fireBtn").isDisabled(), true, "FIRE stays dark with nothing in reach — the button itself says whether shooting does anything");
-  assert.strictEqual(await page.locator("#rechargeBtn").isVisible(), true, "RECHARGE is on the panel too");
-  assert.strictEqual(await page.locator("#rechargeBtn").isDisabled(), true, "and it's dark at full Energy — no wasted turns");
+  assert.strictEqual(await page.locator("#fireBtn").isVisible(), true, "the weapons button is on the panel — shooting is its own action");
+  assert.ok(
+    !((await page.locator("#fireBtn").getAttribute("class")) || "").includes("active"),
+    "the weapons button only LIGHTS UP when something is in reach — unlit means a tap explains the weapon instead"
+  );
+  assert.strictEqual(await page.locator("#enginesBtn").isVisible(), true, "Engines is listed as equipment too");
+  assert.strictEqual(await page.locator("#rechargeBtn").isVisible(), true, "the Reactor Core is on the panel too");
+  const turnBeforeFullCycle = (await getState(page)).turnCount;
+  await page.click("#rechargeBtn"); // at full Energy the reactor refuses with its own reason — no turn wasted
+  s = await getState(page);
+  assert.strictEqual(s.turnCount, turnBeforeFullCycle, "cycling a full reactor spends nothing");
+  assert.ok(/already full/i.test(await page.locator("#log").textContent()), "and the reactor says why");
   assert.strictEqual(
     await page.locator("#energyBar").isVisible(),
     true,
@@ -340,9 +351,12 @@ async function freshPage(browser, url, errors) {
   for (let i = 0; i < 25; i++) {
     s = await getState(page);
     if (s.status !== "playing" || s.enemies.every((e) => !e.alive)) break;
-    if (!(await page.locator("#fireBtn").isDisabled())) {
-      // Something's in reach — the FIRE button carries the volley's price.
-      assert.ok(/⚡/.test(await page.locator("#fireBtn").textContent()), "the lit FIRE button shows the energy the volley will spend");
+    const weaponsLit = ((await page.locator("#fireBtn").getAttribute("class")) || "").includes("active");
+    if (weaponsLit) {
+      // Something's in reach — the weapons button lights up.
+      // The button is the EQUIPMENT — with just the starting Shockwave
+      // armed, it carries the weapon's own name, not the word "Fire".
+      assert.strictEqual(await page.locator("#fireBtn").textContent(), "Shockwave", "the weapons button is named for the armed weapon itself");
       const target = s.enemies.find((e) => e.alive);
       const energyBeforeFire = s.energy;
       await clickHex(page, "sublight", target); // first tap: target lock
@@ -364,12 +378,24 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "the confirmed volley kills the Interceptor");
   assert.strictEqual(s.exitUnlocked, true);
 
-  // RECHARGE lights up now that Energy is down, acts immediately (+2).
-  assert.strictEqual(await page.locator("#rechargeBtn").isDisabled(), false, "RECHARGE lights up once Energy is spent");
+  // The Reactor Core acts immediately now that Energy is down.
+  assert.strictEqual(await page.locator("#rechargeBtn").isDisabled(), false, "the Reactor Core is tappable");
   const energyBeforeRecharge = (await getState(page)).energy;
   await page.click("#rechargeBtn");
   s = await getState(page);
-  assert.strictEqual(s.energy, Math.min(s.maxEnergy, energyBeforeRecharge + 2), "RECHARGE adds +2 Energy for its Action Point");
+  assert.strictEqual(
+    s.energy,
+    Math.min(s.maxEnergy, energyBeforeRecharge + 1),
+    "the standard Reactor Core cycles +1 Energy for its turn"
+  );
+  assert.strictEqual(await page.locator("#rechargeBtn").textContent(), "Reactor Core", "the recharge button is the reactor itself");
+  // Tapping a weapon with nothing in reach explains it instead of erroring:
+  // the readout describes the coverage and the volley price.
+  await page.click("#fireBtn");
+  assert.ok(
+    /covering the marked hexes/i.test(await page.locator("#log").textContent()),
+    "tapping the weapon out of reach shows its coverage on the board with a readout line"
+  );
 
   s = await walkToExit(page);
   assert.strictEqual(s.status, "won", "Sector 1 clears once the gate is reached");

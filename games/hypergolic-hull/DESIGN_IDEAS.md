@@ -113,6 +113,21 @@ New item ideas that spend these resources:
   Clubhouse note — not a strict upgrade over existing weapons, a different
   shape of tool.
 
+**Refits only at dock (Clubhouse, 2026-07-25 — agreed direction, park for
+a dedicated discussion before building):** swapping equipment in and out
+(the Systems screen's arm/disarm toggles, and any future install/uninstall)
+should require being docked at an Outpost/base — "it doesn't really make
+sense for you to be able to change mid route." Today the toggles are free
+mid-flight; when the equipment roster grows past a handful of items, gate
+the refit UI on `outpostAvailable(state)`. Related, from the same
+conversation and now BUILT: the console's action buttons are the equipped
+items themselves (weapon name / All Weapons, Reactor Core, Shield
+Generator, Engines), fully derived from the loadout — including the
+deliberately absurd freedom that everything, even engines, is notionally a
+slot. Different engines (longer moves) and better reactors (bigger
+per-cycle recharge than the standard core's +1) are the intended first
+proofs of that dynamism.
+
 **Two unifying principles from this conversation:**
 - **Enemies should draw from the same pool the player does.** Instead of a
   separate "enemy design space," a Shielded Interceptor, a Knockback

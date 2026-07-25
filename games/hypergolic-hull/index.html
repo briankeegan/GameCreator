@@ -70,10 +70,15 @@
           <span class="stat-value" id="salvageValue">0</span>
         </span>
       </div>
+      <!-- The fitted-equipment row: every button IS a piece of installed
+           hardware, named for what's actually slotted ("rather than calling
+           them fire/recharge, name the weapon or the item"). Tapping one
+           that can't act right now explains itself and shows its reach. -->
       <div class="console-grid actions-grid">
-        <button id="fireBtn" class="hold-btn" title="Spend the turn shooting — every armed weapon volleys at whatever it can reach, in initiative order">Fire</button>
-        <button id="rechargeBtn" title="Spend the turn refueling — +2 Energy. The only way Energy comes back mid-sector">Recharge</button>
-        <button id="shieldsBtn" hidden title="Spend the turn (and 2 Energy) raising one shield charge — a raised charge absorbs an entire volley before your hull">Raise Shields</button>
+        <button id="enginesBtn" title="Sublight Engines — tap a hex on the field to lay in a course, tap it again to fly">Engines</button>
+        <button id="fireBtn" class="hold-btn" title="Your armed weapons — volley everything in reach, or tap while nothing's in reach to see their range">Weapons</button>
+        <button id="rechargeBtn" title="Reactor Core — spend the turn cycling the reactor for +1 Energy">Reactor Core</button>
+        <button id="shieldsBtn" hidden title="Shield Generator — spend the turn (and 2 Energy) raising one charge; a raised charge absorbs an entire volley">Shield Generator</button>
         <button data-mode="tractor">Tractor Beam</button>
         <span class="weapon-stats" id="tractorStats" hidden></span>
       </div>

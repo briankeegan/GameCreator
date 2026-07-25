@@ -68,6 +68,7 @@ const mapCloseBtn = document.getElementById("mapCloseBtn");
 const fireBtn = document.getElementById("fireBtn");
 const rechargeBtn = document.getElementById("rechargeBtn");
 const shieldsBtn = document.getElementById("shieldsBtn");
+const enginesBtn = document.getElementById("enginesBtn");
 const apBarEl = document.getElementById("apBar");
 const apWrapEl = document.getElementById("apWrap");
 const tractorStatsEl = document.getElementById("tractorStats");
@@ -121,6 +122,10 @@ let autoRoute = null;
 // tapping anywhere else dismisses the pending choice. Actions execute
 // immediately on confirm — no batch queue, no separate commit button.
 let targetedEnemyId = null;
+// Tapping a piece of equipment that can't act right now shows what it
+// covers instead of doing nothing: a set of hexKeys washed gold on the
+// board until the next tap/action.
+let reachPreview = null;
 
 // Whether Scan mode is open is a remembered player preference, not a
 // per-sector default — it starts closed the first time you ever play, and
@@ -274,6 +279,7 @@ function jumpToChart(index) {
   anims = keptAnims;
   announceSector();
   targetedEnemyId = null;
+  reachPreview = null;
   plannedPath = null;
   autoRoute = null;
   outpostDismissed = false;
@@ -1508,6 +1514,12 @@ function draw() {
       fill = blend(fill, "#2e5f96", 0.45);
       fillAlpha = Math.max(fillAlpha, 0.55);
     }
+    // Equipment reach preview (tap a weapon/engines button with nothing
+    // to do): a gold wash over everything that item covers right now.
+    if (reachPreview && reachPreview.has(k)) {
+      fill = blend(fill, "#b9862e", 0.5);
+      fillAlpha = Math.max(fillAlpha, 0.6);
+    }
 
     // The whitish border marks a tile's own type ("this is normal, walkable
     // ground") — not whether anyone currently happens to be standing on it,
@@ -1923,24 +1935,33 @@ function updateLegend() {
 // Target Lock is the old "toggle Warpdrive off to aim" trick promoted to
 // a first-class stance button: engaged = movement offline, taps aim the
 // flagship, FIRE commits the shot.
+// The weapons currently armed (owned + toggled on) — what the Weapons
+// button represents this moment.
+function armedWeaponKeys() {
+  return Engine.WEAPON_SYSTEM_KEYS.filter(
+    (k) => (k === "ram" || state.actions.includes(k)) && state.systems[k]
+  );
+}
+
 function updateSystems() {
   const busy = state.status !== "playing" || legendVisible;
-  // FIRE is only live when an armed weapon actually has a target, and its
-  // label carries the volley's real energy price ("it should show how
-  // much energy is gonna potentially be used").
+  // Every button is the INSTALLED EQUIPMENT itself ("name the weapon or
+  // the item"): one armed weapon shows its own name, several read as All
+  // Weapons; the reactor and generator are hardware, not verbs. Buttons
+  // stay tappable even when they can't act — a tap then explains the item
+  // and shows its reach instead of sitting dead.
+  const armed = armedWeaponKeys();
+  fireBtn.textContent =
+    armed.length === 1 ? Engine.WEAPONS[armed[0]].label : armed.length > 1 ? "All Weapons" : "Weapons";
   const canFire = anyFireTarget(state);
-  fireBtn.disabled = busy || !canFire;
+  fireBtn.disabled = busy || armed.length === 0;
   fireBtn.classList.toggle("active", canFire && !busy);
-  fireBtn.textContent = canFire ? `Fire −${volleyCost(state)}⚡` : "Fire";
-  rechargeBtn.disabled = busy || state.energy >= state.maxEnergy;
-  rechargeBtn.textContent = `Recharge +${Engine.RECHARGE_ENERGY_GAIN}⚡`;
-  // Raise Shields only exists once a Shield Generator is installed, and is
-  // only live when there's a spent charge to raise AND the Energy to pay
-  // for it — the button's state is the whole rule, same as FIRE/RECHARGE.
+  rechargeBtn.disabled = busy;
+  rechargeBtn.textContent = "Reactor Core";
+  enginesBtn.disabled = busy;
   shieldsBtn.hidden = state.maxShields <= 0;
-  shieldsBtn.disabled =
-    busy || state.shieldCharges >= state.maxShields || state.energy < Engine.SHIELD_RAISE_COST;
-  shieldsBtn.textContent = `Shields −${Engine.SHIELD_RAISE_COST}⚡`;
+  shieldsBtn.disabled = busy;
+  shieldsBtn.textContent = "Shield Generator";
 }
 
 // Shared by the systems-row stats line and the click-an-enemy-for-info panel
@@ -2149,7 +2170,8 @@ function updateShipOverlay() {
   statRow("Salvage", text(state.salvage));
   statRow("Weapon slots", text(`${Engine.usedWeaponSlots(state)}/${state.weaponSlots} in use`));
   statRow("Recharge", text(`+${Engine.RECHARGE_ENERGY_GAIN} per RECHARGE action`));
-  statRow("Actions", text(`${state.maxAp} per round — every move or action costs 1`));
+  statRow("Engines", text("Sublight Drive — 1 hex per turn"));
+  statRow("Reactor", text(`Reactor Core — +${Engine.RECHARGE_ENERGY_GAIN} Energy per cycle`));
   statRow("Warp jump", text("refills Energy — hull damage stays until repaired"));
   if (state.maxShields > 0)
     statRow("Raise Shields", text(`−${Engine.SHIELD_RAISE_COST} Energy per charge`));
@@ -2425,6 +2447,7 @@ function volleyCost(s) {
 
 function handleAction(fn) {
   plannedPath = null;
+  reachPreview = null;
   const wasJustArrived = justArrived;
   justArrived = false;
   try {
@@ -2491,6 +2514,7 @@ function loadSector(index, carryOver, opts) {
   anims = keptAnims;
   announceSector(); // AFTER the anims reset, or the title gets wiped with them
   targetedEnemyId = null;
+  reachPreview = null;
   plannedPath = null;
   autoRoute = null;
   outpostDismissed = false;
@@ -2577,6 +2601,7 @@ function restoreRun() {
   mode = null;
   anims = [];
   targetedEnemyId = null;
+  reachPreview = null;
   plannedPath = null;
   autoRoute = null;
   outpostDismissed = false;
@@ -2622,16 +2647,43 @@ tractorStatsEl.addEventListener("click", () => {
   updateHud();
 });
 
-// Action buttons act immediately — each is 1 AP; the round commits itself
-// when the budget runs out, and End Round passes whatever's left.
+// Equipment buttons act when they can, and EXPLAIN when they can't —
+// tapping a weapon with nothing in reach washes its range over the board
+// with a readout line ("if you click the weapon, it would show the range
+// for it"), same idea for the engines.
 fireBtn.addEventListener("click", () => {
   targetedEnemyId = null;
-  handleAction(() => Engine.applyFire(state));
+  if (anyFireTarget(state)) {
+    reachPreview = null;
+    handleAction(() => Engine.applyFire(state));
+    return;
+  }
+  const armed = armedWeaponKeys();
+  if (!armed.length) return;
+  const hexes = new Set();
+  for (const k of armed) {
+    for (const h of Engine.weaponHexes(state.playerPos, state.facing, Engine.WEAPONS[k])) {
+      if (Engine.onBoard(state, h)) hexes.add(Engine.hexKey(h));
+    }
+  }
+  reachPreview = hexes;
+  const names = armed.map((k) => Engine.WEAPONS[k].label).join(" + ");
+  const cost = armed.reduce((sum, k) => sum + Engine.WEAPONS[k].energyCost, 0);
+  pushMessage(`${names}: covering the marked hexes — nothing in reach. ${cost}⚡ per full volley.`);
+  render();
+});
+enginesBtn.addEventListener("click", () => {
+  targetedEnemyId = null;
+  reachPreview = new Set(Engine.legalSublightTargets(state).map(Engine.hexKey));
+  pushMessage("Sublight Engines — 1 hex per turn. Tap a hex to lay in a course, tap it again to fly.");
+  render();
 });
 rechargeBtn.addEventListener("click", () => {
-  handleAction(() => Engine.applyRecharge(state));
+  reachPreview = null;
+  handleAction(() => Engine.applyRecharge(state)); // at capacity, the reactor's own refusal explains itself
 });
 shieldsBtn.addEventListener("click", () => {
+  reachPreview = null;
   handleAction(() => Engine.applyRaiseShields(state));
 });
 
@@ -2717,6 +2769,7 @@ canvas.addEventListener("click", (evt) => {
     return;
   }
 
+  reachPreview = null; // any board tap moves on from an equipment preview
   const enemy = Engine.enemyAt(state, hex);
 
   // An armed Tractor Beam is already a deliberate two-step (arm, then
