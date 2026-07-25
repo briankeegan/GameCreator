@@ -1496,7 +1496,7 @@ function draw() {
   const scanTarget = legendVisible && inspectedHex ? Engine.enemyAt(state, inspectedHex) : null;
   const scanTargetHexes = scanTarget
     ? new Set(
-        Engine.weaponHexes(scanTarget, 0, Engine.ENEMY_TYPES[scanTarget.type].weapon)
+        Engine.weaponHexes(scanTarget, Engine.enemyFacing(state, scanTarget), Engine.ENEMY_TYPES[scanTarget.type].weapon)
           .filter((h) => Engine.onBoard(state, h))
           .map(Engine.hexKey)
       )

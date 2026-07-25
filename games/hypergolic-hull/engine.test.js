@@ -213,9 +213,13 @@ let fireActions = 0;
 let guard = 0;
 while (state.status === "playing" && Engine.livingEnemies(state).length > 0 && guard++ < 60) {
   const living = Engine.livingEnemies(state);
-  const engaged = living.some((e) => Engine.isAdjacent(e, state.playerPos));
-  if (engaged) {
+  const contact = living.find((e) => Engine.isAdjacent(e, state.playerPos));
+  if (contact) {
     const before = living.length;
+    // The Autocannon only covers the three hexes off the nose, so a shot
+    // means pointing at something first — exactly what tapping a hostile
+    // does in the UI (faceEnemyIfPossible).
+    Engine.setFacing(state, Engine.directionIndex(state.playerPos, contact));
     Engine.applyFire(state); // resolves in YOUR phase — the dead don't get one of their own
     fireActions++;
     assert.ok(Engine.livingEnemies(state).length < before, "a point-blank FIRE volley kills a chaser (the single-target Autocannon takes exactly one)");
@@ -270,6 +274,7 @@ singleState.enemies[0].q = 0;
 singleState.enemies[0].r = -1; // adjacent, up
 singleState.enemies[1].q = -1;
 singleState.enemies[1].r = 0; // adjacent, left
+Engine.setFacing(singleState, Engine.directionIndex(singleState.playerPos, singleState.enemies[1])); // the Autocannon has to point at it
 Engine.applyFire(singleState, "e1"); // lock the SECOND contact
 assert.strictEqual(singleState.enemies.find((e) => e.id === "e1").alive, false, "the locked contact takes the whole shot");
 assert.strictEqual(singleState.enemies.find((e) => e.id === "e0").alive, true, "the other adjacent contact is untouched — single target means single target");
@@ -591,30 +596,55 @@ assert.strictEqual(
 );
 const interceptorPos = { q: 0, r: 0 };
 const interceptorWeapon = Engine.ENEMY_TYPES.interceptor.weapon;
-assert.deepStrictEqual(
-  interceptorWeapon.pattern.slice().sort(),
-  [0, 1, 2, 3, 4, 5],
-  "the Autocannon is omnidirectional (every direction offset)"
+// A chaser turns its nose toward the flagship (the board draws it doing
+// exactly that), so its forward-arc gun aims the same way yours does.
+const facedState = Engine.createGameState(goldenLevel);
+facedState.enemies[0].q = facedState.playerPos.q;
+facedState.enemies[0].r = facedState.playerPos.r - 1; // adjacent
+assert.strictEqual(
+  Engine.enemyFacing(facedState, facedState.enemies[0]),
+  Engine.directionIndex(facedState.enemies[0], facedState.playerPos),
+  "a hostile's facing is simply 'toward you'"
 );
-// facing is irrelevant to an omnidirectional pattern — passing 0 here still
-// covers every direction, which is exactly the point.
-const omniHexes = Engine.weaponHexes(interceptorPos, 0, interceptorWeapon);
-assert.strictEqual(omniHexes.length, 6, "a range-1 omnidirectional weapon threatens exactly the 6 neighboring hexes");
-assert.ok(!omniHexes.some((h) => Engine.posEq(h, interceptorPos)), "a weapon never threatens its own hex");
+// And it still points the right way from across the board, where there is
+// no single adjacency direction to read.
+facedState.enemies[0].r = facedState.playerPos.r - 4;
+const farFacing = Engine.enemyFacing(facedState, facedState.enemies[0]);
 assert.ok(
-  omniHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
-  "every hex an omnidirectional range-1 weapon reaches is exactly 1 hex away"
+  Engine.hexDistance(Engine.neighbor(facedState.enemies[0], farFacing), facedState.playerPos) <
+    Engine.hexDistance(facedState.enemies[0], facedState.playerPos),
+  "from range, its nose still points at the hex that closes the gap"
+);
+const aimedHexes = Engine.weaponHexes(interceptorPos, 0, interceptorWeapon);
+assert.strictEqual(aimedHexes.length, 3, "its Autocannon covers the same three-hex arc yours does");
+assert.ok(!aimedHexes.some((h) => Engine.posEq(h, interceptorPos)), "a weapon never threatens its own hex");
+assert.ok(
+  aimedHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
+  "every hex a range-1 weapon reaches is exactly 1 hex away"
 );
 
-// The Autocannon (the free auto-weapon) now fires in ALL six directions — an
-// encircling blast that defends you from every side, no aiming required.
+// The Autocannon covers the three hexes off the NOSE, not the full ring
+// ("the Autocannon seems too good") — cheap and reliable, but it can only
+// ever answer one side of a pincer. Coverage is what the paid hardware is
+// sold on.
 const pulseCannon = Engine.WEAPONS.autocannon;
-assert.deepStrictEqual(pulseCannon.pattern.slice().sort(), [0, 1, 2, 3, 4, 5], "the Autocannon is omnidirectional");
 const autocannonHexes = Engine.weaponHexes(interceptorPos, 0, pulseCannon);
-assert.strictEqual(autocannonHexes.length, 6, "the Autocannon reaches all six neighboring hexes");
+assert.strictEqual(autocannonHexes.length, 3, "the Autocannon reaches three hexes — a forward arc, not a ring");
 assert.ok(
   autocannonHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
-  "every hex the Autocannon reaches is exactly one hex away (range 1, all directions)"
+  "every hex it reaches is still exactly one hex away"
+);
+// Whatever is directly BEHIND you is untouchable with it — that's the hole.
+const behind = Engine.weaponHexes(interceptorPos, 3, pulseCannon);
+assert.ok(
+  !autocannonHexes.some((h) => behind.some((b) => Engine.posEq(h, b))),
+  "and the hexes behind the nose are not among them — turning to face is a real cost"
+);
+// The Flak Burst is what you buy to cover the whole ring at once.
+assert.deepStrictEqual(
+  Engine.WEAPONS.flakBurst.pattern.slice().sort(),
+  [0, 1, 2, 3, 4, 5],
+  "the Flak Burst IS the omnidirectional answer — every direction, every adjacent contact"
 );
 
 // ---- new enemy classes: Cruiser (heavy) and Sentry (stationary turret) -----

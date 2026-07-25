@@ -262,6 +262,11 @@
   // pushed-away attacker never gets its slower shot off — that's the
   // whole point.
   const ALL_DIRECTIONS_PATTERN = [0, 1, 2, 3, 4, 5];
+  // The three hexes in front of the nose. A weapon on this pattern has to
+  // be POINTED at what it shoots — you can only answer one side of a
+  // pincer, and whatever's behind you gets a free round. That's the hole
+  // the omnidirectional hardware is sold against.
+  const FORWARD_ARC_PATTERN = [5, 0, 1];
   // FOUR weapons, each the answer to exactly one situation — cheap-and-
   // reliable, crowds, standoff, or sniping — with a real price curve and
   // real footprints (Clubhouse: "they all seem super similar and similarly
@@ -270,9 +275,12 @@
   // buyable instead of showing you enemy-only gear you can never own.
   const WEAPONS = {
     // The workhorse, and the ship's starting gun. 1 energy against a
-    // +1/cycle reactor means it fires every single round forever — weak,
-    // adjacent-only, never a drain. Interceptors carry this exact gun.
-    autocannon: { id: "autocannon", label: "Autocannon", range: 1, damage: 1, targets: "one", energyCost: 1, speed: 3, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // +1/cycle reactor means it fires every single round forever — but it
+    // only covers the three hexes off the nose, so it can never answer a
+    // pincer ("the Autocannon seems too good"). Cheap and reliable is its
+    // whole identity; coverage is what you pay the other three for.
+    // Interceptors carry this exact gun, which is why flanking one works.
+    autocannon: { id: "autocannon", label: "Autocannon", range: 1, damage: 1, targets: "one", energyCost: 1, speed: 3, pattern: FORWARD_ARC_PATTERN, slots: 1 },
     // The crowd answer: the only weapon that hits EVERY adjacent contact
     // at once, so being surrounded stops being a death sentence. Pricey
     // per shot (3 against +1/cycle = a shot every third round) and a fat
@@ -512,6 +520,28 @@
   // is irrelevant for an omnidirectional pattern (it already covers every
   // direction regardless of which one is "ahead"), so callers that don't
   // track a facing (enemies, today) can pass anything, e.g. 0.
+  // Which way a hostile ship is pointing. The chasers turn to face the
+  // flagship (the board draws them doing exactly that); the fixed
+  // emplacements never pivot, and their hardware is omnidirectional
+  // anyway, so their facing is immaterial.
+  function enemyFacing(state, enemy) {
+    const dir = directionIndex(enemy, state.playerPos);
+    if (dir >= 0) return dir;
+    // Not adjacent: point at whichever of the six directions closes the
+    // gap most — the same "nose toward the flagship" the board draws.
+    let best = 0;
+    let bestDist = Infinity;
+    for (let d = 0; d < 6; d++) {
+      const step = neighbor(enemy, d);
+      const dist = hexDistance(step, state.playerPos);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = d;
+      }
+    }
+    return best;
+  }
+
   function weaponHexes(pos, facing, weapon) {
     const hexes = [];
     for (const offset of weapon.pattern) {
@@ -859,7 +889,7 @@
       // up on the turn it can actually fire. (Regen happens AFTER the
       // enemy phase, so "can it fire next phase" is just current energy.)
       if (enemy.energy < enemyType.weapon.energyCost) continue;
-      for (const hex of weaponHexes(enemy, 0, enemyType.weapon)) {
+      for (const hex of weaponHexes(enemy, enemyFacing(state, enemy), enemyType.weapon)) {
         if (!onBoard(state, hex)) continue;
         const k = hexKey(hex);
         threats.set(k, (threats.get(k) || 0) + 1);
@@ -891,7 +921,7 @@
     // standing somewhere its weapon reaches AND its reactor can pay for
     // the shot ("the enemies should be using their own systems"). A
     // charging Railgun holds fire; a cost-1 chaser always affords it.
-    const inRange = weaponHexes(enemy, 0, enemyType.weapon).some((h) => posEq(h, state.playerPos));
+    const inRange = weaponHexes(enemy, enemyFacing(state, enemy), enemyType.weapon).some((h) => posEq(h, state.playerPos));
     if (inRange && enemy.energy >= enemyType.weapon.energyCost) {
       return { enemyId: enemy.id, type: "attack" };
     }
@@ -1008,7 +1038,7 @@
       for (const { enemy } of attackers) {
         if (!enemy.alive) continue;
         const weapon = ENEMY_TYPES[enemy.type].weapon;
-        if (!weaponHexes(enemy, 0, weapon).some((h) => posEq(h, state.playerPos))) continue;
+        if (!weaponHexes(enemy, enemyFacing(state, enemy), weapon).some((h) => posEq(h, state.playerPos))) continue;
         if (enemy.energy < weapon.energyCost) continue;
         enemy.energy -= weapon.energyCost; // same rule as the flagship: every shot is paid for
         totalDamage += weapon.damage;
@@ -1376,6 +1406,7 @@
     buildBoardHexes,
     findPath,
     directionIndex,
+    enemyFacing,
     validateLevel,
     createGameState,
     setFacing,
