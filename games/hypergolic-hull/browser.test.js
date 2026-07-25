@@ -309,6 +309,14 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#enemyInfo").isVisible(), true, "tapping an enemy in Scan mode shows its info card");
   assert.ok((await page.locator("#enemyInfo").textContent()).includes("INTERCEPTOR"), "the card names the inspected enemy");
   assert.ok(
+    /REACTOR \d+\/\d+/.test(await page.locator("#enemyInfo").textContent()),
+    "the card shows the contact's FULL status — reactor charge included"
+  );
+  assert.ok(
+    (await page.locator("#enemyInfo").textContent()).includes("SALVAGE"),
+    "and what its wreck is worth"
+  );
+  assert.ok(
     (await page.locator("#enemyInfo").textContent()).includes("INTENT"),
     "the selected contact's card states its intent — what it will do, straight from the real AI"
   );

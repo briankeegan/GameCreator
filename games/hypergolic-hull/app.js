@@ -2158,6 +2158,17 @@ function updateScanInfo() {
     header.appendChild(hpPips);
     enemyInfoEl.appendChild(header);
 
+    // FULL status readout — the same numbers the flagship lives by:
+    // reactor charge (their shot budget), drive (why sentries never
+    // chase), and what their wreck is worth.
+    const status = document.createElement("div");
+    status.className = "enemy-info-stats";
+    status.textContent =
+      `HULL ${enemy.hp}/${enemy.maxHp} · REACTOR ${enemy.energy}/${enemy.maxEnergy}⚡ · ` +
+      (def.movesTowardPlayer ? "DRIVE: sublight, 1 hex/round" : "DRIVE: none — cannot move") +
+      ` · SALVAGE +${def.salvage}`;
+    enemyInfoEl.appendChild(status);
+
     const stats = document.createElement("div");
     stats.className = "enemy-info-stats";
     stats.textContent = describeWeapon(def.weapon);
