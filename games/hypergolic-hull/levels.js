@@ -47,11 +47,9 @@
       actions: ["sublight", "autocannon"],
       intro: "Hostile contact. Let it come close — then FIRE.",
     },
-    // Sector 2 — Tractor Beam. Two enemies; push one off the edge. Unlike
-    // every other campaign action, Tractor Beam isn't handed out for free
-    // (Clubhouse: "you should not start with it") — it's a free claim at
-    // this sector's Outpost specifically (see engine.js's
-    // pickOutpostOfferIds), the one guaranteed place to get it.
+    // Sector 2 — the first Cruiser: a hostile that survives a hit and keeps
+    // coming, plus the first Outpost. Learning that a dock is where
+    // capability comes from is the lesson here.
     {
       id: 2,
       name: "Salvage Field",
@@ -66,7 +64,7 @@
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "autocannon"],
-      intro: "Dock at the Outpost — a free Tractor Beam is waiting.",
+      intro: "A heavy, and a dock. Salvage buys what you fly with.",
     },
     // Sector 3 — Sentry Line. Three enemies; the lesson is the Sentry
     // (stationary, 2-hex beam ring) and shopping for your first upgrades.

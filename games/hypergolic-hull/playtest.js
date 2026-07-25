@@ -165,7 +165,6 @@ function shop(state, report) {
       }
     }
   }
-  if (has("tractorBeam")) buy("tractorBeam"); // free
 
   // A weapon that landed in cargo is dead weight — fit anything that fits
   // now (this is the tap-a-cargo-chip path in the real Hold UI).

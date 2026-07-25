@@ -236,8 +236,7 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(s.exitUnlocked, true, "the Warp Gate is always online");
   assert.deepStrictEqual(s.actions, ["sublight", "autocannon"], "Sector 1 unlocks Sublight + the Autocannon together");
   // Locked actions are hidden entirely now — no padlocked ghost buttons.
-  assert.strictEqual(await page.locator('[data-mode="tractor"]').isVisible(), false, "tractor is hidden until unlocked");
-  // The control panel holds the actions (Hold/Tractor/Target Lock) and the
+  // The control panel holds the actions and the
   // three mode views; weapon on/off switches live on the Systems screen
   // ("you don't need the controls on/off anymore"). Warpdrive is the
   // Target Lock button now, not a Systems row. An unowned weapon (the
@@ -479,46 +478,19 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "a routine sector clear shows no modal");
   await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2, null, { timeout: 5000 });
   s = await getState(page);
-  assert.deepStrictEqual(s.actions, ["sublight", "autocannon"], "Sector 2 no longer hands out Tractor Beam automatically");
+  assert.deepStrictEqual(s.actions, ["sublight", "autocannon"], "a new sector arrives with exactly what is fitted — nothing handed out");
   assert.ok(s.enemies.filter((e) => e.alive).length >= 1);
-  assert.strictEqual(await page.locator('[data-mode="tractor"]').isVisible(), false, "hidden until claimed, same as any other locked action");
-
-  // ---- Tractor Beam: claimed at the Outpost, not handed out for free -------
-  // (Clubhouse: "you should not start with it") — free (0 salvage), but
-  // you have to actually dock and claim it.
+  // A dock is a scrapyard with a welding rig, not a showroom: Repair plus
+  // exactly two things ("too many options too soon... why sell so much at
+  // every station?").
   s = await walkToOutpost(page);
-  const salvageBeforeClaim = s.salvage;
   assert.ok(await page.locator("#outpostOverlay").isVisible(), "docking opens the Outpost shop");
-  assert.ok(
-    await page.locator('#outpostOffers button:has-text("Tractor Beam")').textContent(),
-    "the Tractor Beam claim is on offer here"
+  assert.strictEqual(
+    await page.locator("#outpostOffers button").count(),
+    3,
+    "a station stocks three things, not a nine-item catalogue"
   );
-  s = await claimOutpostOffer(page, "Tractor Beam");
-  assert.strictEqual(s.actions.includes("tractor"), true, "claiming it unlocks the action");
-  assert.strictEqual(s.salvage, salvageBeforeClaim, "the claim was free — no salvage spent");
   await page.click("#outpostCloseBtn");
-
-  // ---- New-unlock pulse: a freshly-appeared action calls attention to ------
-  // itself instead of silently appearing (Clubhouse: "what is tractor beam
-  // that suddenly appears?").
-  assert.strictEqual(
-    await page.locator('[data-mode="tractor"]').evaluate((el) => el.classList.contains("new-unlock")),
-    true,
-    "Tractor Beam pulses the first time it's shown, before it's ever been tapped"
-  );
-  await page.click('[data-mode="tractor"]');
-  assert.strictEqual(
-    await page.locator('[data-mode="tractor"]').evaluate((el) => el.classList.contains("new-unlock")),
-    false,
-    "tapping it once clears the pulse for good"
-  );
-  // Arming a mode used to give zero in-the-moment guidance (Clubhouse:
-  // "what IS Tractor Beam... weird that I'm able to click on it") — it
-  // now drops a concrete instruction onto the panel's readout strip.
-  assert.ok(
-    /tractor armed/i.test(await page.locator("#log").textContent()),
-    "arming Tractor Beam puts a concrete instruction on the readout strip"
-  );
 
   // Step away from the Outpost hex before reloading — outpostDismissed
   // isn't persisted, so reloading while still docked would re-pop the

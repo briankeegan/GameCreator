@@ -11,7 +11,7 @@
 // radius 3 with the Interceptors spaced further out, which preserves every
 // rule the golden path exists to exercise — Sublight, the Impulse Cannon's
 // forward-facing auto-fire-before-enemy-phase, Interceptor pursuit AI, the
-// mistake/correct damage branch, Tractor Beam, and the
+// mistake/correct damage branch and the
 // exit-unlock/level-complete flow — just with room for the new aiming rule
 // to actually land a shot.
 "use strict";
@@ -75,13 +75,6 @@ assert.ok(lastBoard.rows > lastBoard.cols, "the campaign grows into taller-than-
 // ---- action gating: locked actions throw and offer no targets -----------
 
 const tutorialState = Engine.createGameState(LEVELS[1]); // sublight + ramming only
-assert.deepStrictEqual(Engine.legalTractorTargets(tutorialState), [], "locked tractor offers no targets");
-assert.throws(
-  () => Engine.applyTractor(tutorialState, "e0"),
-  /not unlocked/,
-  "locked actions must refuse to run"
-);
-assert.strictEqual(tutorialState.enemies[0].alive, true, "the refused action must not change state");
 
 // ---- rect boards: bounds, edge push-kills, and animation events ----------
 
@@ -95,7 +88,7 @@ const rectLevel = {
   enemies: [{ type: "interceptor", q: 3, r: 1 }], // column 3: the rightmost column
   hazards: [],
   exitRule: "all-enemies-dead",
-  actions: ["sublight", "autocannon", "tractor"], // Tractor Beam is purchase-only now (see PURCHASABLE_ACTIONS) — explicit here since this fixture tests the push mechanic itself, not the unlock gate
+  actions: ["sublight", "autocannon"],
 };
 const rectState = Engine.createGameState(rectLevel);
 assert.strictEqual(rectState.boardHexes.length, 20, "4x5 rect board has 20 hexes");
@@ -108,12 +101,6 @@ assert.ok(
   Engine.onBoard(rectState, { q: 3, r: -1 }) && !Engine.onBoard(rectState, { q: 3, r: -2 }),
   "column 3 (rightmost) is shifted up by one row, per the flat-top column stagger"
 );
-
-// Tractor push off a rect edge kills, and emits a kill event for the renderer.
-rectState.playerPos = { q: 2, r: 1 }; // adjacent to the edge enemy at (3,1), pushing right off the board
-Engine.applyTractor(rectState, "e0");
-assert.strictEqual(rectState.enemies[0].alive, false, "pushing an enemy off a rect edge destroys it");
-assert.ok(rectState.events.some((e) => e.type === "kill"), "kills emit a kill event");
 
 // Attacks and damage emit events too (drives the lunge + hit-flash animations).
 // Impulse Cannon locked out (actions: ["sublight"]) so the interceptor survives
@@ -360,47 +347,6 @@ while (!Engine.posEq(correctState.playerPos, correctState.exitPos)) {
 
 assert.strictEqual(correctState.status, "won", "reaching the unlocked Warp Gate should complete the level");
 
-// ---- Tractor Beam: edge push-kill and collision push-kill ---------------
-// (Not exercised by the golden path above, so covered directly here.)
-
-const edgeLevel = {
-  id: 998,
-  radius: 2,
-  playerStart: { q: 0, r: 0 },
-  exit: { q: -2, r: 0 },
-  outpost: null,
-  enemies: [{ type: "interceptor", q: 2, r: -1 }],
-  hazards: [],
-  exitRule: "all-enemies-dead",
-  actions: ["sublight", "autocannon", "tractor"], // purchase-only now — explicit here, this fixture tests the push mechanic itself
-};
-
-const edgeState = Engine.createGameState(edgeLevel);
-edgeState.playerPos = { q: 1, r: -1 }; // stand adjacent to (2,-1), on the map-center side (bypasses a staging turn so the AI can't reposition the target first)
-Engine.applyTractor(edgeState, "e0");
-assert.strictEqual(edgeState.enemies.find((e) => e.id === "e0").alive, false, "pushing an enemy off the map edge destroys it");
-
-const collideLevel = {
-  id: 997,
-  radius: 2,
-  playerStart: { q: -2, r: 0 },
-  exit: { q: 2, r: 0 },
-  outpost: null,
-  enemies: [
-    { type: "interceptor", q: 0, r: 0 }, // pushed away from the player, into e1
-    { type: "interceptor", q: 1, r: 0 }, // the collision victim
-  ],
-  hazards: [],
-  exitRule: "all-enemies-dead",
-  actions: ["sublight", "autocannon", "tractor"], // purchase-only now — explicit here, this fixture tests the push mechanic itself
-};
-
-const collideState = Engine.createGameState(collideLevel);
-collideState.playerPos = { q: -1, r: 0 }; // adjacent to e0 at (0,0) (bypasses a staging turn so e1 can't wander off its hex first)
-Engine.applyTractor(collideState, "e0");
-assert.strictEqual(collideState.enemies.find((e) => e.id === "e0").alive, false, "the pushed enemy is destroyed on collision");
-assert.strictEqual(collideState.enemies.find((e) => e.id === "e1").alive, false, "the collided-with unit takes lethal damage too");
-
 // ---- Weapon systems: stat-driven, armed, fired on command ---------------
 // (Turn Model v2: weapons NEVER fire on their own. FIRE is the action —
 // every armed weapon volleys, in initiative order. Toggles on the Systems
@@ -436,7 +382,7 @@ assert.strictEqual(weaponState.enemies[0].alive, false, "FIRE kills the adjacent
 assert.ok(weaponState.events.some((e) => e.type === "kill"), "the volley emits a kill event");
 assert.ok(
   weaponState.events.some((e) => e.type === "kill" && e.source === "weapon"),
-  "the kill is tagged source:weapon — the renderer uses this to aim the flagship at it, distinct from a Tractor kill"
+  "the kill is tagged source:weapon — the renderer uses this to aim the flagship at it"
 );
 assert.deepStrictEqual(weaponState.playerPos, { q: 2, r: 2 }, "FIRE never moves the flagship");
 
@@ -912,15 +858,20 @@ function outpostFixture(id) {
     exitRule: "all-enemies-dead",
   });
 }
-const lengthsAcrossLevels = new Set();
+// A station is a scrapyard with a welding rig, not a showroom: Repair
+// plus TWO things, and WHICH two is what varies from dock to dock
+// (Clubhouse: "too many options too soon... why sell so much at every
+// station?"). Nine offers in one list read as a catalogue, and most of it
+// was greyed out on early-run salvage anyway.
+const stockAcrossLevels = new Set();
 for (let id = 900; id < 920; id++) {
   const offers = outpostFixture(id).outpostOfferIds;
   assert.strictEqual(offers[0], "repair", `level ${id}: Repair is always the first offer`);
-  assert.ok(offers.length >= 1 && offers.length <= 8, `level ${id}: 1-8 total offers (Repair plus 0-7 extras — three weapons, two upgrades, shields, hold expansion)`);
+  assert.strictEqual(offers.length, 3, `level ${id}: a station stocks Repair plus exactly two things`);
   assert.strictEqual(new Set(offers).size, offers.length, `level ${id}: no duplicate offers`);
-  lengthsAcrossLevels.add(offers.length);
+  stockAcrossLevels.add(offers.slice(1).sort().join("+"));
 }
-assert.ok(lengthsAcrossLevels.size > 1, "the offer COUNT varies across levels, not always the same shop size");
+assert.ok(stockAcrossLevels.size > 1, "WHAT a station stocks varies dock to dock, even though how much never does");
 assert.deepStrictEqual(
   outpostFixture(905).outpostOfferIds,
   outpostFixture(905).outpostOfferIds,
@@ -1132,34 +1083,6 @@ assert.deepStrictEqual(
   "all four weapons exist in the world on enemy ships — one class per weapon"
 );
 
-// ---- Tractor Beam: no longer free, claimed at Sector 2's Outpost --------
-// Clubhouse feedback: "you should not start with it" — unlike every other
-// campaign action, Tractor Beam isn't in Sector 2's own `actions` list
-// anymore; it's a free (cost 0) claim, guaranteed on offer at that
-// specific sector's Outpost only.
-assert.strictEqual(LEVELS[1].actions.includes("tractor"), false, "Sector 2 no longer hands out Tractor Beam for free");
-assert.strictEqual(LEVELS[2].actions.includes("tractor"), false, "neither does Sector 3");
-const sector2State = Engine.createGameState(LEVELS[1]);
-assert.strictEqual(sector2State.actions.includes("tractor"), false, "not unlocked on arrival");
-assert.strictEqual(sector2State.outpostOfferIds.includes("tractorBeam"), true, "guaranteed on offer at Sector 2's Outpost specifically");
-sector2State.playerPos = { q: LEVELS[1].outpost.q, r: LEVELS[1].outpost.r };
-const salvageBeforeClaim = sector2State.salvage; // 0 on a fresh run — the claim must not require any
-Engine.applyOutpostPurchase(sector2State, "tractorBeam");
-assert.strictEqual(sector2State.actions.includes("tractor"), true, "claiming it unlocks the action");
-assert.strictEqual(sector2State.salvage, salvageBeforeClaim, "the claim costs nothing");
-assert.ok(sector2State.log.some((line) => line.includes("claimed Tractor Beam")), "claiming (not buying) is reflected in the log");
-
-// It's excluded from the general per-level random pool — other outposts
-// never randomly offer it, only Sector 2's does.
-let anyOtherOutpostOffersTractor = false;
-for (let id = 5; id < 60; id++) {
-  if (Engine.createGameState(generateLevel(id)).outpostOfferIds.includes("tractorBeam")) {
-    anyOtherOutpostOffersTractor = true;
-    break;
-  }
-}
-assert.strictEqual(anyOtherOutpostOffersTractor, false, "Tractor Beam never shows up at a random generated outpost — Sector 2 is the one guaranteed source");
-
 // ---- procedural depth: the run never hard-stops past the campaign -------
 // generateLevel(depth) must produce a valid LevelDef for a wide range of
 // depths — validateLevel (run inside createGameState) throws if anything's
@@ -1336,21 +1259,6 @@ energyState = Engine.createGameState(energyLevel);
 const energyBeforeEmptyTurn = energyState.energy;
 Engine.applySublight(energyState, { q: 2, r: 4 }); // cruiser is 2 hexes away — nothing fires either side
 assert.strictEqual(energyState.energy, energyBeforeEmptyTurn, "a MOVE turn touches no Energy — no spend, no regen");
-
-// The Tractor Beam draws from the same reactor.
-const tractorEnergyState = Engine.createGameState({ ...energyLevel, id: 989 }, { extraActions: ["tractor"] });
-tractorEnergyState.enemies[0].q = 2;
-tractorEnergyState.enemies[0].r = 4;
-tractorEnergyState.systems.autocannon = false; // isolate the Tractor's own cost (fixture-level disarm)
-tractorEnergyState.energy = 0;
-assert.throws(
-  () => Engine.applyTractor(tractorEnergyState, "e0"),
-  /not enough Energy/,
-  "the Tractor Beam refuses without the Energy to power it"
-);
-tractorEnergyState.energy = Engine.WEAPONS.tractor.energyCost;
-Engine.applyTractor(tractorEnergyState, "e0");
-assert.strictEqual(tractorEnergyState.energy, 0, "a Tractor push costs its listed Energy — and nothing trickles back");
 
 // ---- Enemy reactors: the Railgun's charge-up telegraph -------------------
 // Enemies run the same energy rules. A cost-1 chaser regens its shot every

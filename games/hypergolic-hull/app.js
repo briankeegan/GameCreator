@@ -20,17 +20,7 @@ const SQRT3 = Math.sqrt(3);
 // Sublight and Impulse Cannon aren't manually-armed modes anymore — movement
 // always works via a plain tap (see the canvas click handler), and the Pulse
 // Cannon auto-fires as a side effect of that movement (see engine.js). Only
-// the Tractor Beam still needs you to pick a mode and then a target enemy.
 const MODES = {
-  tractor: {
-    label: "Tractor Beam",
-    targets: Engine.legalTractorTargets,
-    kind: "enemy",
-    // Shown in the objective line while armed (Clubhouse: "what IS Tractor
-    // Beam... weird that I'm able to click on it" — arming a mode used to
-    // give no in-the-moment hint at all about what to do next).
-    hint: "Tractor armed — tap an enemy beside you to shove it",
-  },
 };
 
 const canvas = document.getElementById("board");
@@ -77,7 +67,6 @@ const shieldsBtn = document.getElementById("shieldsBtn");
 const enginesBtn = document.getElementById("enginesBtn");
 const apBarEl = document.getElementById("apBar");
 const apWrapEl = document.getElementById("apWrap");
-const tractorStatsEl = document.getElementById("tractorStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
 
 // Every piece on the board is custom-drawn (see drawPlayerShip/
@@ -155,7 +144,7 @@ let mapVisible = false;
 
 
 // A not-yet-unlocked action button is simply hidden, then just appears the
-// sector it unlocks (see updateHud) — Clubhouse feedback: "what is tractor
+// sector it unlocks (see updateHud) — Clubhouse feedback: "what is
 // beam that suddenly appears?" The sector's intro line explains it, but
 // that's easy to miss in the scrolling log. Every action/ability button
 // pulses the FIRST time it's ever shown unused, across every run (tracked
@@ -300,12 +289,6 @@ function returnToPreviousSector() {
 // there — flying off and back re-opens it, so this resets whenever the ship
 // leaves the hex (see updateOutpost).
 let outpostDismissed = false;
-
-// Whether the Tractor Beam's stats badge is showing its full sentence
-// (tapped open) or just the compact abbreviation (the default). The other
-// weapons' stats live on the Ship screen now, spelled out in words — no
-// badges left on the console for them.
-let tractorStatsExpanded = false;
 
 // The flagship's facing, in degrees (canvas convention: 0 = screen-right,
 // increases clockwise). Updated whenever the ship actually moves.
@@ -1372,7 +1355,7 @@ function drawOutpost(center, r, now) {
 // own unmistakable color of deep space, not just a barely-there tint.
 const SECTOR_BG = {
   1: ["#0a1c2e", "#04090f", "rgba(40,180,200,0.18)"], // steel cyan — Shockwave
-  2: ["#1b1233", "#080510", "rgba(150,70,230,0.22)"], // violet nebula — Tractor Beam
+  2: ["#1b1233", "#080510", "rgba(150,70,230,0.22)"], // violet nebula
   3: ["#0a2622", "#03100e", "rgba(40,220,150,0.20)"], // toxic teal — Sentry country
   4: ["#2c1024", "#0e0510", "rgba(230,60,110,0.22)"], // crimson-magenta — Full Fleet
 };
@@ -1515,7 +1498,7 @@ function draw() {
   // Mirrors the whitish hex border, but for enemies: any enemy an unlocked action could
   // ever target, regardless of which mode happens to be armed right now —
   // not just the one enemy set belonging to the currently-selected mode.
-  const targetable = new Set(Engine.legalTractorTargets(state).map((e) => e.id));
+  const targetable = new Set();
   const routeHexes = (plannedPath && plannedPath.hexes) || (autoRoute && autoRoute.path) || null;
   const route = new Set((routeHexes || []).slice(1).map((h) => Engine.hexKey(h)));
 
@@ -2029,19 +2012,6 @@ function updateHud() {
     btn.classList.toggle("new-unlock", !locked && !usedActions.has(m));
   });
 
-  // Tractor Beam gets the same tap-to-expand stats badge as every
-  // purchased weapon (see PURCHASABLE_WEAPON_UI) — it just lives in the
-  // actions-grid next to its button instead of a systems-toggle row,
-  // since it's armed-and-aimed rather than an ambient auto-fire.
-  const tractorOwned = state.actions.includes("tractor");
-  tractorStatsEl.hidden = !tractorOwned;
-  if (tractorOwned) {
-    const tractorWeapon = Engine.WEAPONS.tractor;
-    tractorStatsEl.textContent = tractorStatsExpanded
-      ? describeWeapon(tractorWeapon)
-      : describeWeaponCompact(tractorWeapon);
-    tractorStatsEl.classList.toggle("expanded", tractorStatsExpanded);
-  }
 }
 
 // Scan mode has no icon-key overlay anymore ("all it should really be is
@@ -2055,7 +2025,7 @@ function updateLegend() {
   scanBtn.classList.toggle("active", legendVisible);
 }
 
-// The panel's action row: Fire, Recharge, Tractor Beam, Target Lock.
+// The panel's action row: one button per piece of fitted hardware.
 // Target Lock is the old "toggle Warpdrive off to aim" trick promoted to
 // a first-class stance button: engaged = movement offline, taps aim the
 // flagship, FIRE commits the shot.
@@ -2102,7 +2072,7 @@ function describePattern(weapon) {
   return `${weapon.pattern.length} directions`;
 }
 
-// Tractor Beam's `damage: 0` (it destroys via collision physics — see
+// A `damage: 0` weapon destroys via collision physics (see
 // pushEnemyInDirection — not a direct hit) would otherwise read as "Damage
 // 0", which looks like a bug rather than the intended push-only weapon.
 function describeDamage(weapon) {
@@ -2240,7 +2210,15 @@ function updateOutpost() {
   outpostOffersEl.innerHTML = "";
   for (const offer of Engine.outpostOffers(state)) {
     const btn = document.createElement("button");
-    btn.textContent = `${offer.label} — ${offer.cost} salvage`;
+    // A greyed-out row that only says its price reads as "useless" — it
+    // should say what it's WAITING on, so the shelf is a target to hunt
+    // toward rather than a list of things you can't have.
+    const short = Math.max(0, offer.cost - state.salvage);
+    btn.textContent = !offer.applicable
+      ? `${offer.label} — not needed`
+      : short > 0
+        ? `${offer.label} — ${offer.cost} salvage (${short} short)`
+        : `${offer.label} — ${offer.cost} salvage`;
     btn.disabled = !offer.affordable || !offer.applicable;
     btn.addEventListener("click", () => {
       handleAction(() => Engine.applyOutpostPurchase(state, offer.id));
@@ -2496,7 +2474,6 @@ function describeItem(id) {
   if (eq.kind === "reactor") return `${eq.label} — +${eq.rechargeGain} Energy per cycle · ${eq.w}x${eq.h}`;
   if (eq.kind === "engine") return `${eq.label} — ${eq.moveRange} hex per turn · ${eq.w}x${eq.h}`;
   if (eq.kind === "shield") return `${eq.label} — raise-able charge, absorbs a volley · ${eq.w}x${eq.h}`;
-  if (eq.id === "tractorBeam") return describeWeapon(Engine.WEAPONS.tractor);
   if (eq.kind === "sensor") return `${eq.label} — powers Scan mode · ${eq.w}x${eq.h}`;
   if (eq.kind === "utility") return `${eq.label} — ${eq.w}x${eq.h}`;
   return eq.label;
@@ -3056,10 +3033,6 @@ mapChartEl.addEventListener("click", (evt) => {
   jumpToChart(Number(target.dataset.chart));
 });
 
-tractorStatsEl.addEventListener("click", () => {
-  tractorStatsExpanded = !tractorStatsExpanded;
-  updateHud();
-});
 
 // Equipment buttons act when they can, and EXPLAIN when they can't —
 // tapping a weapon with nothing in reach washes its range over the board
@@ -3170,19 +3143,6 @@ canvas.addEventListener("click", (evt) => {
 
   reachPreview = null; // any board tap moves on from an equipment preview
   const enemy = Engine.enemyAt(state, hex);
-
-  // An armed Tractor Beam is already a deliberate two-step (arm, then
-  // tap) — its target tap executes immediately.
-  if (mode && enemy) {
-    const legal = MODES[mode].targets(state);
-    if (legal.some((e) => e.id === enemy.id)) {
-      targetedEnemyId = null;
-          handleAction(() => {
-        if (mode === "tractor") Engine.applyTractor(state, enemy.id);
-      });
-      return;
-    }
-  }
 
   // Tap-tap firing: the first tap on a hostile swings the flagship to
   // bring its weapons to bear (aiming is free and automatic — no separate

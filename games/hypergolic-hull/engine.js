@@ -99,16 +99,15 @@
   // mechanic and Fighter Squadron was a free instant-kill living outside
   // the weapon/energy model. Everything left runs on the same
   // stats + energy + slots chassis.
-  const ALL_ACTIONS = ["sublight", "autocannon", "tractor", "flakBurst", "arcBeam", "railgun"];
+  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "railgun"];
   // Purchase-only actions (see OUTPOST_OFFER_POOL/applyOutpostPurchase) —
   // never part of any level's own baked-in `actions` list, and excluded
   // from the default fallback below so they don't show up for free the
-  // moment a level omits `actions`. Tractor Beam moved into this bucket
   // per Clubhouse feedback ("you should not start with it") — it's still
   // guaranteed claimable (free) at Sector 2's Outpost specifically (see
   // pickOutpostOfferIds), just no longer handed out automatically for
   // reaching the sector.
-  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "railgun", "tractor"];
+  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "railgun"];
   // Sectors that don't specify `actions` explicitly (Sector 4 "Full Fleet"
   // and every procedurally-generated sector) default to every action that
   // unlocks just by playing.
@@ -302,14 +301,6 @@
     // +1/cycle is a visible four-round charge cycle, the exact rhythm the
     // Railgun Destroyer telegraphs at you. Huge 1x4 footprint.
     railgun: { id: "railgun", label: "Railgun", range: 20, damage: 2, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
-    // Not an auto-fire weapon (see AUTO_FIRE_WEAPONS below) — Tractor Beam
-    // is player-armed-and-aimed (applyTractor), adjacent range in any of
-    // the 6 directions. Modeled here anyway so its stats badge (app.js)
-    // reads off real data instead of a hand-copied duplicate. `damage: 0`
-    // because it destroys via collision physics (pushEnemyInDirection),
-    // not a direct hit; `slots: 0` because it's an action you spend a turn
-    // on, not a system left running.
-    tractor: { id: "tractor", label: "Tractor Beam", range: 1, damage: 0, targets: "push", energyCost: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 0 },
   };
 
   // Each enemy type is its own small data block: how tough it is (hp), what
@@ -347,7 +338,6 @@
     flakBurst: { id: "flakBurst", label: "Flak Burst", kind: "weapon", weaponKey: "flakBurst", w: 2, h: 2 },
     arcBeam: { id: "arcBeam", label: "Arc Beam", kind: "weapon", weaponKey: "arcBeam", w: 2, h: 2 },
     railgun: { id: "railgun", label: "Railgun", kind: "weapon", weaponKey: "railgun", w: 1, h: 4 },
-    tractorBeam: { id: "tractorBeam", label: "Tractor Beam", kind: "utility", w: 1, h: 2 },
     reactorCore: { id: "reactorCore", label: "Reactor Core", kind: "reactor", rechargeGain: 1, w: 2, h: 2 },
     sublightDrive: { id: "sublightDrive", label: "Sublight Drive", kind: "engine", moveRange: 1, w: 1, h: 3 },
     shieldGenerator: { id: "shieldGenerator", label: "Shield Generator", kind: "shield", capacity: 1, w: 2, h: 2 },
@@ -405,7 +395,6 @@
     const has = (id) => state.hold.items.some((it) => it.id === id);
     const actions = ["sublight"];
     for (const key of WEAPON_SYSTEM_KEYS) if (has(key)) actions.push(key);
-    if (has("tractorBeam")) actions.push("tractor");
     state.actions = actions;
     state.systems = { warpdrive: true };
     for (const key of WEAPON_SYSTEM_KEYS) state.systems[key] = has(key);
@@ -619,11 +608,6 @@
     { id: "flakBurst", label: "Flak Burst (2x2 — hits every adjacent contact)", cost: 10 },
     { id: "arcBeam", label: "Arc Beam (2x2 — range 2, kill them on approach)", cost: 12 },
     { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 24 },
-    // Free — this is a claim, not a purchase. Never part of the general
-    // per-level random pool (see pickOutpostOfferIds); it only ever
-    // appears at Sector 2's Outpost, guaranteed, since that's the
-    // campaign's one intended entry point for it.
-    { id: "tractorBeam", label: "Tractor Beam (adjacent, push to destroy)", cost: 0 },
   ];
 
   function seededRandom(seed) {
@@ -640,27 +624,46 @@
   // offers sit alongside it varies (0, 1, or all of them) — a guaranteed
   // fixed shop every visit read as "too easy and not very interesting"
   // (Clubhouse feedback). Deterministic per level id, same as before.
-  function pickOutpostOfferIds(levelId) {
-    const extras = OUTPOST_OFFER_POOL.filter((o) => o.id !== "repair" && o.id !== "tractorBeam");
+  function pickOutpostOfferIds(levelId, aboard) {
+    // A frontier station is a scrapyard with a welding rig, not a
+    // showroom. Repair plus TWO things — that's the whole shelf
+    // (Clubhouse: "too many options too soon... this is a gritty scifi,
+    // why sell so much at every station?"). Nine offers in one list read
+    // as a catalogue, and with early-run salvage most of it was greyed
+    // out anyway: a wall of things you can't have instead of a decision.
+    //
+    // What a station can even stock depends on how deep it is. The first
+    // few sell survival — patches, plating, a shield rig. Weapons are a
+    // find, and the heavy hardware only turns up out where the wrecks
+    // that carried it are.
+    // A station won't try to sell you a second Flak Burst while the first
+    // is still bolted in. With only two slots on the shelf, stocking
+    // something you already fly is the same as stocking nothing — so the
+    // shelf trades against what the ship is actually missing.
+    const carried = new Set(aboard || []);
+    const stock = OUTPOST_OFFER_POOL.filter((o) => {
+      if (o.id === "repair") return false; // always on the shelf, added below
+      if ((o.id === "flakBurst" || o.id === "arcBeam" || o.id === "railgun") && carried.has(o.id)) return false;
+      if (o.id === "shield" && carried.has("shieldGenerator")) return false;
+      if (o.id === "railgun") return levelId >= 8;
+      if (o.id === "arcBeam" || o.id === "hardpoint") return levelId >= 3;
+      if (o.id === "flakBurst") return levelId >= 2;
+      return true; // reinforce / shield / reactor: basic dock trade at any depth
+    });
     const rng = seededRandom(levelId * 7919 + 13);
-    const shuffled = extras.slice();
+    const shuffled = stock.slice();
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
       const tmp = shuffled[i];
       shuffled[i] = shuffled[j];
       shuffled[j] = tmp;
     }
-    const extraCount = Math.floor(rng() * (extras.length + 1)); // 0..extras.length
-    const picked = ["repair", ...shuffled.slice(0, extraCount).map((o) => o.id)];
-    // Sector 2's Outpost is the one guaranteed place to claim the Tractor
-    // Beam — not left to the same per-level randomization as every other
-    // offer (Clubhouse: "you should not start with it").
-    if (levelId === 2) picked.push("tractorBeam");
+    const picked = ["repair", ...shuffled.slice(0, 2).map((o) => o.id)];
     // Sector 3 is the Sentry Line — the first sector with something that
     // outranges you and won't come to you. The weapon that answers it has
     // to be ON THE SHELF there, not left to the shuffle, or the lesson is
     // just "take two hits and hope".
-    if (levelId === 3 && !picked.includes("arcBeam")) picked.push("arcBeam");
+    if (levelId === 3 && !picked.includes("arcBeam")) picked[picked.length - 1] = "arcBeam";
     return picked;
   }
 
@@ -689,6 +692,9 @@
   function createGameState(level, carryOver) {
     validateLevel(level);
     const maxHull = (carryOver && carryOver.maxHull) || START_HULL;
+    // Built before the state literal so the Outpost's shelf can be stocked
+    // against what's actually bolted into this ship.
+    const hold = buildHold(level, carryOver);
     const state = {
       levelId: level.id,
       levelName: level.name || `Sector ${level.id}`,
@@ -725,7 +731,9 @@
       // LOOKS like how you got there (gate tint) and how deep you are.
       theme: level.theme || null,
       outpostPos: level.outpost ? { q: level.outpost.q, r: level.outpost.r } : null,
-      outpostOfferIds: level.outpost ? pickOutpostOfferIds(level.id) : [],
+      outpostOfferIds: level.outpost
+        ? pickOutpostOfferIds(level.id, [...hold.items.map((it) => it.id), ...hold.cargo])
+        : [],
       exitRule: level.exitRule,
       exitUnlocked: false,
       hazards: (level.hazards || []).map((h) => ({ type: h.type, q: h.q, r: h.r })),
@@ -751,7 +759,7 @@
       // The Hold: the ship's equipment grid — either carried whole from
       // the previous sector (a run's ship IS its hold) or built fresh
       // from the level's starting kit. `systems` is derived from it.
-      hold: buildHold(level, carryOver),
+      hold,
       systems: { warpdrive: true },
       // Direction index (0-5) the flagship is currently facing — gameplay-
       // relevant now, not just cosmetic, since a directional weapon's
@@ -807,7 +815,6 @@
     const acts = new Set([...(level.actions || DEFAULT_ACTIONS), ...((carryOver && carryOver.extraActions) || [])]);
     const kit = ["sublightDrive", "reactorCore", "scanner"]; // drive first: it runs down the spine, keeping the midsection whole
     for (const key of WEAPON_SYSTEM_KEYS) if (acts.has(key)) kit.push(key);
-    if (acts.has("tractor")) kit.push("tractorBeam");
     for (const id of kit) autoPlaceInHold(hold, id);
     return hold;
   }
@@ -1177,7 +1184,7 @@
   // Shoves `enemy` one hex in direction `dir` — off the edge, into another
   // unit, or into a hazard all destroy it (colliding with another unit
   // destroys both, same as ramming into an enemy); otherwise it just
-  // relocates. Shared by Tractor Beam (direction derived from the
+  // relocates. Used by anything that shoves a contact (direction derived
   // flagship's position, an armed/aimed action) and the Repulsor weapon
   // (same direction-away-from-the-flagship rule, but auto-fired).
   function pushEnemyInDirection(state, enemy, dir, sourceLabel) {
@@ -1212,7 +1219,7 @@
     }
   }
 
-  // Every player weapon that fires automatically (as opposed to Tractor
+  // Every player weapon that fires automatically as part of a volley
   // Beam, which the player arms and aims at a target
   // directly) — each pairs an `actions` id (permanently unlocked, whether
   // by campaign progression or an Outpost purchase) with a `state.systems`
@@ -1318,23 +1325,6 @@
     spendAp(state);
   }
 
-  function applyTractor(state, targetEnemyId) {
-    assertPlaying(state);
-    assertUnlocked(state, "tractor", "Tractor Beam");
-    // An armed-and-aimed action, but it still draws from the same reactor
-    // as everything else ("make everything work within the system").
-    if (state.energy < WEAPONS.tractor.energyCost) {
-      throw new Error(`Tractor Beam: not enough Energy (${state.energy}/${WEAPONS.tractor.energyCost})`);
-    }
-    state.events = [];
-    const enemy = state.enemies.find((e) => e.id === targetEnemyId && e.alive);
-    if (!enemy) throw new Error("Tractor Beam: no such enemy");
-    if (!isAdjacent(state.playerPos, enemy)) throw new Error("Tractor Beam: enemy is not adjacent");
-    state.energy -= WEAPONS.tractor.energyCost;
-    state.events.push({ type: "energySpend", amount: WEAPONS.tractor.energyCost, weapon: WEAPONS.tractor.label });
-    pushEnemyInDirection(state, enemy, directionIndex(state.playerPos, enemy), "Tractor");
-    spendAp(state);
-  }
 
   // ---- Sector Outpost: shop stop, no turn spent -------------------------
   //
@@ -1394,9 +1384,6 @@
     } else if (offer.id === "flakBurst" || offer.id === "arcBeam" || offer.id === "railgun") {
       autoPlaceInHold(state.hold, offer.id);
       syncHoldDerived(state);
-    } else if (offer.id === "tractorBeam") {
-      autoPlaceInHold(state.hold, "tractorBeam");
-      syncHoldDerived(state);
     }
     state.salvage -= offer.cost;
     pushLog(
@@ -1419,10 +1406,6 @@
     );
   }
 
-  function legalTractorTargets(state) {
-    if (!state.actions.includes("tractor")) return [];
-    return livingEnemiesAdjacentTo(state, state.playerPos);
-  }
 
   // ---- exports --------------------------------------------------------------
 
@@ -1464,13 +1447,11 @@
     START_HULL,
     OUTPOST_OFFER_POOL,
     ENEMY_AP,
-    applyTractor,
     outpostAvailable,
     outpostOffers,
     applyOutpostPurchase,
     wormholeAvailable,
     legalSublightTargets,
-    legalTractorTargets,
     livingEnemies,
     enemyAt,
     hazardAt,
