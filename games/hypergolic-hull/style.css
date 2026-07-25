@@ -592,14 +592,6 @@ body {
   50% { opacity: 0.7; transform: scale(1.1); }
 }
 
-/* The INTENT line on a scanned contact's card — set apart from the plain
-   weapon stats so the "what happens next" answer jumps out. */
-.enemy-info-intent {
-  margin-top: 4px;
-  color: #ffce8a;
-  border-color: #4d3a20;
-}
-
 /* The panel's readout strip — ONE message, one clean line, never a
    clipped paragraph. */
 .log {
@@ -750,21 +742,6 @@ body {
   letter-spacing: 0.04em;
   color: #ff9d90;
   margin-bottom: 4px;
-}
-.enemy-info-hp {
-  display: flex;
-  gap: 3px;
-}
-.enemy-info-pip {
-  width: 10px;
-  height: 10px;
-  border-radius: 0;
-  background: #241419;
-  border: 1px solid #5a2a33;
-}
-.enemy-info-pip.filled {
-  background: #e0533f;
-  border-color: #ff8a72;
 }
 .enemy-info-stats {
   font-family: "SF Mono", "Menlo", "Consolas", monospace;

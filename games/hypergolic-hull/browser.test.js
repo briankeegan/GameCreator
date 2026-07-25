@@ -309,23 +309,37 @@ async function freshPage(browser, url, errors) {
   await page.mouse.click(scanBoardBox.x + enemyBox.x, scanBoardBox.y + enemyBox.y);
   assert.strictEqual(await page.locator("#enemyInfo").isVisible(), true, "tapping an enemy in Scan mode shows its info card");
   assert.ok((await page.locator("#enemyInfo").textContent()).includes("INTERCEPTOR"), "the card names the inspected enemy");
-  assert.ok(
-    (await page.locator("#enemyInfo .enemy-info-dash .stat-pip").count()) > 0,
-    "the card is the contact's DASHBOARD — hull/reactor as real gauge pips, same language as your console"
+  // The card is the SAME dashboard component as the flagship's, with the
+  // enemy passed through: hull/energy gauges + salvage, nothing bespoke.
+  const cardLabels = await page.locator("#enemyInfo .enemy-info-dash .stat-label").allTextContents();
+  assert.deepStrictEqual(
+    cardLabels.map((t) => t.trim().toUpperCase()),
+    ["HULL", "ENERGY", "SALVAGE"],
+    "the card carries the exact gauges the console does — HULL, ENERGY, SALVAGE — and nothing else"
   );
   assert.ok(
-    (await page.locator("#enemyInfo").textContent()).includes("SALVAGE"),
-    "and what its wreck is worth"
+    (await page.locator("#enemyInfo .enemy-info-dash .stat-pip").count()) > 0,
+    "…as real pips, not text"
+  );
+  assert.ok(
+    !(await page.locator("#enemyInfo").textContent()).includes("FITTED"),
+    "the old spec bullets are gone from the card — that detail lives in Systems now"
   );
 
   // "should show the menu... and allow you to expand Systems for that
-  // ship" — the card carries a SYSTEMS button that opens the full-size
-  // Systems overlay rendered for the CONTACT, ship-shaped hold and all.
+  // ship" — the card carries a SYSTEMS button that opens the very same
+  // Systems screen your own ship uses, with the contact passed through.
   await page.locator("#enemySystemsBtn").click();
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), true, "the card's SYSTEMS button expands the full overlay");
   assert.ok(
     (await page.locator("#shipOverlay h2").textContent()).includes("INTERCEPTOR"),
     "the overlay is titled for the scanned contact, not the flagship"
+  );
+  const enemyRows = await page.locator("#shipStats .ship-stat-row .stat-label").allTextContents();
+  assert.deepStrictEqual(
+    enemyRows.map((t) => t.trim()),
+    ["Hull", "Energy", "Drive", "Armament", "Salvage", "Intent"],
+    "a contact's Systems screen is the flagship's own rows in the flagship's own order, plus its intent"
   );
   assert.ok(
     (await page.locator("#enemyHoldGrid .hold-tile").count()) > 0,
@@ -335,13 +349,10 @@ async function freshPage(browser, url, errors) {
     (await page.locator("#enemyHoldGrid").textContent()).includes("Cannon"),
     "tiles carry the actual equipment names"
   );
+  assert.strictEqual(await page.locator("#holdCargo").count(), 0, "a contact has no cargo bay to rummage through");
   await page.locator("#shipCloseBtn").click();
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Return to Helm closes the contact's Systems view");
   assert.strictEqual(await page.locator("#enemyInfo").isVisible(), true, "…and the scan card is still up underneath");
-  assert.ok(
-    (await page.locator("#enemyInfo").textContent()).includes("INTENT"),
-    "the selected contact's card states its intent — what it will do, straight from the real AI"
-  );
 
   // The Warp Gate is inspectable too, not just enemies.
   const exitCenter = await page.evaluate(() => window.__hhHexCenter(window.__hhState.exitPos.q, window.__hhState.exitPos.r));

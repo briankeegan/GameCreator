@@ -2141,111 +2141,41 @@ function updateScanInfo() {
   }
   const enemy = Engine.enemyAt(state, inspectedHex);
   if (enemy) {
-    const def = Engine.ENEMY_TYPES[enemy.type];
+    // A contact's card is the FLAGSHIP'S OWN DASHBOARD with the enemy
+    // passed through ("reuse both components with enemy prop passed
+    // through") — identical gauges, identical wording, nothing bespoke.
+    const vm = shipView(enemy);
     enemyInfoEl.hidden = false;
     enemyInfoEl.classList.remove("neutral");
     enemyInfoEl.innerHTML = "";
 
     const header = document.createElement("div");
     header.className = "enemy-info-header";
-    const hpPips = document.createElement("div");
-    hpPips.className = "enemy-info-hp";
-    for (let i = 0; i < enemy.maxHp; i++) {
-      const pip = document.createElement("span");
-      pip.className = "enemy-info-pip" + (i < enemy.hp ? " filled" : "");
-      hpPips.appendChild(pip);
-    }
     const name = document.createElement("span");
-    name.textContent = enemy.type.toUpperCase();
+    name.textContent = vm.name;
     header.appendChild(name);
-    header.appendChild(hpPips);
     enemyInfoEl.appendChild(header);
 
-    // Their DASHBOARD — the same gauge language as the flagship's own
-    // console ("regular scan should basically show their dashboard"):
-    // hull and reactor as pips, drive + salvage as the fine print.
     const dash = document.createElement("div");
     dash.className = "enemy-info-dash";
-    const dashRow = (label, filled, max, variant) => {
-      const row = document.createElement("span");
-      row.className = "stat-wrap";
-      const name = document.createElement("span");
-      name.className = "stat-label";
-      name.textContent = label;
-      const barEl = document.createElement("span");
-      barEl.className = "stat-bar";
-      renderStatBar(barEl, label, filled, max, variant);
-      row.appendChild(name);
-      row.appendChild(barEl);
-      dash.appendChild(row);
-    };
-    dashRow("Hull", enemy.hp, enemy.maxHp, "hull");
-    dashRow("Reactor", enemy.energy, enemy.maxEnergy, "energy");
+    renderShipGauges(dash, vm);
     enemyInfoEl.appendChild(dash);
-    const status = document.createElement("div");
-    status.className = "enemy-info-stats";
-    status.textContent =
-      (def.movesTowardPlayer ? "DRIVE: sublight, 1 hex/round" : "DRIVE: none — cannot move") +
-      ` · SALVAGE +${def.salvage}`;
-    enemyInfoEl.appendChild(status);
 
-    // The card stays a DASHBOARD; the contact's full layout lives one tap
-    // deeper — the same menu as your own ship ("should show the menu...
-    // and allow you to expand Systems for that ship"). While this contact
-    // is inspected, the Systems mode button opens THEIR hold, full size.
-    if (def.holdView) {
-      const menu = document.createElement("div");
-      menu.className = "enemy-info-menu";
-      const sysBtn = document.createElement("button");
-      sysBtn.id = "enemySystemsBtn";
-      sysBtn.textContent = "SYSTEMS ▸";
-      sysBtn.addEventListener("click", () => {
-        shipVisible = true;
-        mapVisible = false;
-        render();
-      });
-      menu.appendChild(sysBtn);
-      enemyInfoEl.appendChild(menu);
-    }
-
-    const stats = document.createElement("div");
-    stats.className = "enemy-info-stats";
-    stats.textContent = describeWeapon(def.weapon);
-    enemyInfoEl.appendChild(stats);
-
-    // The contact's own equipment — same model as your Hold ("enemies
-    // work the same way... when you scan an enemy you should see their
-    // setup").
-    if (def.fitted) {
-      const fitted = document.createElement("div");
-      fitted.className = "enemy-info-stats";
-      fitted.textContent = `FITTED: ${def.fitted.join(" · ")}`;
-      enemyInfoEl.appendChild(fitted);
-    }
-
-    // The INTENT line: what this contact will do, derived straight from
-    // the real enemy AI (decideIntent's rules) — never a guess, always a
-    // statement conditional on you staying put, since enemies decide
-    // AFTER you act. Its personal strike zone lights up on the board too
-    // (see draw()) while it's the selected contact.
-    const intent = document.createElement("div");
-    intent.className = "enemy-info-stats enemy-info-intent";
-    const charged = enemy.energy >= def.weapon.energyCost;
-    const inRange = Engine.weaponHexes(enemy, 0, def.weapon).some((h) => Engine.posEq(h, state.playerPos));
-    // What its 2 Action Points buy it this round, straight from the real
-    // AI — a chaser can close a hex AND fire in the same enemy phase.
-    let intentText;
-    if (!charged) {
-      intentText = `INTENT: CHARGING ${enemy.energy}/${def.weapon.energyCost} — cannot fire yet`;
-    } else if (inRange) {
-      intentText = "INTENT: YOU ARE IN ITS RANGE — fires in its phase if you end the round here.";
-    } else if (def.movesTowardPlayer) {
-      intentText = "INTENT: PURSUING — closes 1 hex a round, fires the round you're in its reach.";
-    } else {
-      intentText = "INTENT: HOLDING — never moves, fires the round you end inside its reach.";
-    }
-    intent.textContent = intentText;
-    enemyInfoEl.appendChild(intent);
+    // Everything beyond the gauges lives one tap deeper, in the same
+    // Systems screen your own ship uses ("should show the menu... and
+    // allow you to expand Systems for that ship").
+    const menu = document.createElement("div");
+    menu.className = "enemy-info-menu";
+    const sysBtn = document.createElement("button");
+    sysBtn.id = "enemySystemsBtn";
+    sysBtn.textContent = "SYSTEMS ▸";
+    sysBtn.addEventListener("click", () => {
+      shipVisible = true;
+      mapVisible = false;
+      render();
+    });
+    menu.appendChild(sysBtn);
+    enemyInfoEl.appendChild(menu);
     return;
   }
 
@@ -2309,27 +2239,118 @@ function updateOutpost() {
   }
 }
 
-// The full-screen Ship view: the flagship, every gauge, and each owned
-// weapon system as a hardpoint row with its real toggle. Rebuilt from
-// state on every render (same approach as the Outpost shop) — cheap, and
-// it can never drift from what the console toggles say.
+// ---- One ship, one readout --------------------------------------------
+// Your flagship and any contact on the board are the same KIND of object:
+// a hull, a reactor, a drive, an armament, and a hold full of shaped
+// equipment. shipView() normalizes either one into a single shape, and
+// every readout below renders straight from it — so a scanned enemy's
+// dashboard and Systems screen ARE your own components with the enemy
+// passed through, not a parallel set that can drift.
+function shipView(enemy) {
+  if (!enemy) {
+    const installed = state.hold.items.map((it) => ({ it, eq: Engine.EQUIPMENT[it.id] }));
+    const drive = installed.find((x) => x.eq.kind === "engine");
+    const guns = installed.filter((x) => x.eq.kind === "weapon");
+    return {
+      name: "FLAGSHIP",
+      hull: state.hull, maxHull: state.maxHull,
+      energy: state.energy, maxEnergy: state.maxEnergy,
+      shields: state.shieldCharges, maxShields: state.maxShields,
+      drive: drive ? `sublight, ${drive.eq.moveRange} hex/round` : "none — no drive installed",
+      salvage: String(state.salvage),
+      armament: guns.length
+        ? guns.map((x) => describeWeapon(Engine.WEAPONS[x.eq.weaponKey])).join(" — ")
+        : "none installed",
+      holdTitle: Engine.outpostAvailable(state) ? "THE HOLD — docked: drag to refit" : "THE HOLD — dock at an Outpost to refit",
+      gridId: "holdGrid",
+      cols: state.hold.cols, rows: state.hold.rows, blocked: state.hold.blocked || [],
+      tiles: installed.map((x, i) => ({
+        kind: x.eq.kind, label: x.eq.label, x: x.it.x, y: x.it.y, w: x.eq.w, h: x.eq.h,
+        holdIndex: i, itemId: x.it.id,
+      })),
+      cargo: state.hold.cargo,
+      interactive: true,
+    };
+  }
+  const def = Engine.ENEMY_TYPES[enemy.type];
+  const view = def.holdView || { cols: 1, rows: 1, blocked: [], tiles: [] };
+  return {
+    name: enemy.type.toUpperCase(),
+    hull: enemy.hp, maxHull: enemy.maxHp,
+    energy: enemy.energy, maxEnergy: enemy.maxEnergy,
+    shields: 0, maxShields: 0,
+    drive: def.movesTowardPlayer ? "sublight, 1 hex/round" : "none — cannot move",
+    salvage: `+${def.salvage} on kill`,
+    armament: describeWeapon(def.weapon),
+    intent: enemyIntentLine(enemy, def),
+    holdTitle: "THEIR HOLD — scanner reconstruction",
+    gridId: "enemyHoldGrid",
+    cols: view.cols, rows: view.rows, blocked: view.blocked || [],
+    tiles: view.tiles.map((t) => ({ kind: t.kind, label: t.label || t.kind, x: t.x, y: t.y, w: t.w, h: t.h })),
+    cargo: null,
+    interactive: false,
+  };
+}
+
+// What this contact will do, derived straight from the real enemy AI
+// (decideIntent's rules) — never a guess, always conditional on you
+// staying put, since enemies decide AFTER you act.
+function enemyIntentLine(enemy, def) {
+  const charged = enemy.energy >= def.weapon.energyCost;
+  const inRange = Engine.weaponHexes(enemy, 0, def.weapon).some((h) => Engine.posEq(h, state.playerPos));
+  if (!charged) return `CHARGING ${enemy.energy}/${def.weapon.energyCost} — cannot fire yet`;
+  if (inRange) return "YOU ARE IN ITS RANGE — fires in its phase if you end the round here.";
+  if (def.movesTowardPlayer) return "PURSUING — closes 1 hex a round, fires the round you're in its reach.";
+  return "HOLDING — never moves, fires the round you end inside its reach.";
+}
+
+// The gauge cluster: the same HULL / ENERGY / SHIELDS pips the console
+// carries, for whichever ship the view-model describes.
+function renderShipGauges(container, vm, pending) {
+  const gauge = (label, filled, max, variant, ghost) => {
+    const row = document.createElement("span");
+    row.className = "stat-wrap";
+    const name = document.createElement("span");
+    name.className = "stat-label";
+    name.textContent = label;
+    const barEl = document.createElement("span");
+    barEl.className = "stat-bar";
+    renderStatBar(barEl, label, filled, max, variant, ghost);
+    row.appendChild(name);
+    row.appendChild(barEl);
+    container.appendChild(row);
+  };
+  gauge("Hull", vm.hull, vm.maxHull, "hull");
+  gauge("Energy", vm.energy, vm.maxEnergy, "energy", pending);
+  if (vm.maxShields > 0) gauge("Shields", vm.shields, vm.maxShields, "shield");
+  const salv = document.createElement("span");
+  salv.className = "stat-wrap";
+  const salvLabel = document.createElement("span");
+  salvLabel.className = "stat-label";
+  salvLabel.textContent = "Salvage";
+  const salvValue = document.createElement("span");
+  salvValue.className = "stat-value";
+  salvValue.textContent = vm.salvage;
+  salv.appendChild(salvLabel);
+  salv.appendChild(salvValue);
+  container.appendChild(salv);
+}
+
+// The full-screen Systems view. Same component for the flagship and for a
+// scanned contact — only the view-model changes, plus the drag wiring,
+// which a contact's hold obviously never gets (it's a scanner
+// reconstruction, not a deck you can walk).
 function updateShipOverlay() {
   shipOverlayEl.hidden = !shipVisible;
   shipBtn.classList.toggle("active", shipVisible);
   if (!shipVisible) return;
 
-  // Contextual Systems: while Scan has a contact inspected, the Systems
-  // view is THAT ship's — same overlay, their hold, read-only scanner
-  // reconstruction. No contact inspected (or it died) → your flagship.
+  // Contextual Systems: while Scan has a contact inspected, this screen is
+  // THAT ship's. No contact inspected (or it died) → your flagship.
   const scannedEnemy = legendVisible && inspectedHex ? Engine.enemyAt(state, inspectedHex) : null;
-  const titleEl = shipOverlayEl.querySelector("h2");
-  const portraitEl = shipOverlayEl.querySelector(".ship-portrait");
-  titleEl.textContent = scannedEnemy ? `Systems — ${scannedEnemy.type.toUpperCase()}` : "Systems";
-  portraitEl.hidden = Boolean(scannedEnemy);
-  if (scannedEnemy) {
-    renderEnemySystems(scannedEnemy);
-    return;
-  }
+  const vm = shipView(scannedEnemy);
+  shipOverlayEl.querySelector("h2").textContent = scannedEnemy ? `Systems — ${vm.name}` : "Systems";
+  shipOverlayEl.querySelector(".ship-portrait").hidden = Boolean(scannedEnemy);
 
   shipStatsEl.innerHTML = "";
   const statRow = (label, build) => {
@@ -2354,33 +2375,35 @@ function updateShipOverlay() {
     v.textContent = value;
     return v;
   };
-  statRow("Hull", bar(state.hull, state.maxHull, "hull", "Hull"));
-  statRow("Energy", bar(state.energy, state.maxEnergy, "energy", "Energy"));
-  if (state.maxShields > 0) statRow("Shields", bar(state.shieldCharges, state.maxShields, "shield", "Shields"));
-  statRow("Salvage", text(state.salvage));
-  statRow("Warp jump", text("refills Energy — hull damage stays until repaired"));
+  statRow("Hull", bar(vm.hull, vm.maxHull, "hull", "Hull"));
+  statRow("Energy", bar(vm.energy, vm.maxEnergy, "energy", "Energy"));
+  if (vm.maxShields > 0) statRow("Shields", bar(vm.shields, vm.maxShields, "shield", "Shields"));
+  statRow("Drive", text(vm.drive));
+  statRow("Armament", text(vm.armament));
+  statRow("Salvage", text(vm.salvage));
+  if (vm.intent) statRow("Intent", text(vm.intent));
 
   // ---- The Hold: the ship's internals as a GRID of shaped equipment ----
   // ("a grid drag and drop for different sized/shaped items") — every tile
   // is a real installed item; cargo below is aboard-but-inert. Rearranging
-  // is drag-and-drop, but ONLY while docked at an Outpost; mid-flight the
-  // grid is a read-only schematic (tap a tile to inspect it).
+  // is drag-and-drop, but ONLY on your own ship, and only while docked at
+  // an Outpost; otherwise the grid is a read-only schematic.
   shipHardpointsEl.innerHTML = "";
-  const docked = Engine.outpostAvailable(state);
+  const docked = vm.interactive && Engine.outpostAvailable(state);
   const holdTitle = document.createElement("div");
   holdTitle.className = "hold-title";
-  holdTitle.textContent = docked ? "THE HOLD — docked: drag to refit" : "THE HOLD — dock at an Outpost to refit";
+  holdTitle.textContent = vm.holdTitle;
   shipHardpointsEl.appendChild(holdTitle);
 
   const CELL = 44;
   const gridEl = document.createElement("div");
-  gridEl.className = "hold-grid" + (docked ? " docked" : "");
-  gridEl.id = "holdGrid";
-  gridEl.style.width = `${state.hold.cols * CELL}px`;
-  gridEl.style.height = `${state.hold.rows * CELL}px`;
+  gridEl.className = "hold-grid" + (docked ? " docked" : "") + (vm.interactive ? "" : " enemy-hold");
+  gridEl.id = vm.gridId;
+  gridEl.style.width = `${vm.cols * CELL}px`;
+  gridEl.style.height = `${vm.rows * CELL}px`;
   gridEl.style.backgroundSize = `${CELL}px ${CELL}px`;
   // Void cells outside the hull — the grid IS the ship's silhouette.
-  for (const key of state.hold.blocked || []) {
+  for (const key of vm.blocked) {
     const [bx, by] = key.split(",").map(Number);
     const cell = document.createElement("div");
     cell.className = "hold-cell-void";
@@ -2390,126 +2413,51 @@ function updateShipOverlay() {
     cell.style.height = `${CELL}px`;
     gridEl.appendChild(cell);
   }
-  for (let i = 0; i < state.hold.items.length; i++) {
-    const it = state.hold.items[i];
-    const eq = Engine.EQUIPMENT[it.id];
-    const tile = document.createElement("div");
-    tile.className = `hold-tile hold-kind-${eq.kind}`;
-    tile.dataset.holdIndex = String(i);
-    tile.dataset.itemId = it.id;
-    tile.style.left = `${it.x * CELL}px`;
-    tile.style.top = `${it.y * CELL}px`;
-    tile.style.width = `${eq.w * CELL - 4}px`;
-    tile.style.height = `${eq.h * CELL - 4}px`;
-    if (eq.w === 1) tile.style.fontSize = "0.48rem"; // narrow tiles wrap their label instead of clipping it
-    tile.textContent = eq.label;
-    gridEl.appendChild(tile);
-  }
-  shipHardpointsEl.appendChild(gridEl);
-
-  const cargoEl = document.createElement("div");
-  cargoEl.className = "hold-cargo";
-  cargoEl.id = "holdCargo";
-  const cargoLabel = document.createElement("span");
-  cargoLabel.className = "stat-label";
-  cargoLabel.textContent = state.hold.cargo.length ? "CARGO (inert):" : "CARGO: empty";
-  cargoEl.appendChild(cargoLabel);
-  state.hold.cargo.forEach((id, i) => {
-    const eq = Engine.EQUIPMENT[id];
-    const chip = document.createElement("div");
-    chip.className = `hold-tile hold-cargo-tile hold-kind-${eq.kind}`;
-    chip.dataset.cargoIndex = String(i);
-    chip.dataset.itemId = id;
-    chip.textContent = `${eq.label} (${eq.w}x${eq.h})`;
-    cargoEl.appendChild(chip);
-  });
-  shipHardpointsEl.appendChild(cargoEl);
-
-  wireHoldDrag(gridEl, cargoEl, CELL, docked);
-
-  const note = document.createElement("p");
-  note.className = "ship-note";
-  note.textContent = docked
-    ? "Drag tiles to rearrange, or drag one down to cargo to power it down. Refits are free while docked."
-    : "Tap a tile to inspect it. Refits only happen at a dock — no rewiring the ship mid-route.";
-  shipHardpointsEl.appendChild(note);
-}
-
-// The Systems overlay, rendered for a scanned CONTACT instead of the
-// flagship: their gauges up top, their ship-shaped hold at full size
-// below — same visual language as your own, but strictly read-only (it's
-// a scanner reconstruction, not a deck you can walk).
-function renderEnemySystems(enemy) {
-  const def = Engine.ENEMY_TYPES[enemy.type];
-  shipStatsEl.innerHTML = "";
-  const statRow = (label, build) => {
-    const row = document.createElement("div");
-    row.className = "ship-stat-row";
-    const name = document.createElement("span");
-    name.className = "stat-label";
-    name.textContent = label;
-    row.appendChild(name);
-    row.appendChild(build());
-    shipStatsEl.appendChild(row);
-  };
-  const bar = (filled, max, variant, label) => () => {
-    const b = document.createElement("span");
-    b.className = "stat-bar";
-    renderStatBar(b, label, filled, max, variant);
-    return b;
-  };
-  const text = (value) => () => {
-    const v = document.createElement("span");
-    v.className = "stat-value";
-    v.textContent = value;
-    return v;
-  };
-  statRow("Hull", bar(enemy.hp, enemy.maxHp, "hull", "Hull"));
-  statRow("Reactor", bar(enemy.energy, enemy.maxEnergy, "energy", "Reactor"));
-  statRow("Drive", text(def.movesTowardPlayer ? "sublight, 1 hex/round" : "none — cannot move"));
-  statRow("Salvage", text(`+${def.salvage} on kill`));
-  statRow("Armament", text(describeWeapon(def.weapon)));
-
-  shipHardpointsEl.innerHTML = "";
-  const holdTitle = document.createElement("div");
-  holdTitle.className = "hold-title";
-  holdTitle.textContent = "THEIR HOLD — scanner reconstruction";
-  shipHardpointsEl.appendChild(holdTitle);
-
-  const view = def.holdView;
-  const CELL = 44;
-  const gridEl = document.createElement("div");
-  gridEl.className = "hold-grid enemy-hold";
-  gridEl.id = "enemyHoldGrid";
-  gridEl.style.width = `${view.cols * CELL}px`;
-  gridEl.style.height = `${view.rows * CELL}px`;
-  gridEl.style.backgroundSize = `${CELL}px ${CELL}px`;
-  for (const key of view.blocked || []) {
-    const [bx, by] = key.split(",").map(Number);
-    const cell = document.createElement("div");
-    cell.className = "hold-cell-void";
-    cell.style.left = `${bx * CELL}px`;
-    cell.style.top = `${by * CELL}px`;
-    cell.style.width = `${CELL}px`;
-    cell.style.height = `${CELL}px`;
-    gridEl.appendChild(cell);
-  }
-  for (const t of view.tiles) {
+  for (const t of vm.tiles) {
     const tile = document.createElement("div");
     tile.className = `hold-tile hold-kind-${t.kind}`;
+    if (t.itemId) {
+      tile.dataset.holdIndex = String(t.holdIndex);
+      tile.dataset.itemId = t.itemId;
+    }
     tile.style.left = `${t.x * CELL}px`;
     tile.style.top = `${t.y * CELL}px`;
     tile.style.width = `${t.w * CELL - 4}px`;
     tile.style.height = `${t.h * CELL - 4}px`;
-    if (t.w === 1) tile.style.fontSize = "0.48rem";
-    tile.textContent = t.label || t.kind;
+    if (t.w === 1) tile.style.fontSize = "0.48rem"; // narrow tiles wrap their label instead of clipping it
+    tile.textContent = t.label;
     gridEl.appendChild(tile);
   }
   shipHardpointsEl.appendChild(gridEl);
 
+  if (vm.cargo) {
+    const cargoEl = document.createElement("div");
+    cargoEl.className = "hold-cargo";
+    cargoEl.id = "holdCargo";
+    const cargoLabel = document.createElement("span");
+    cargoLabel.className = "stat-label";
+    cargoLabel.textContent = vm.cargo.length ? "CARGO (inert):" : "CARGO: empty";
+    cargoEl.appendChild(cargoLabel);
+    vm.cargo.forEach((id, i) => {
+      const eq = Engine.EQUIPMENT[id];
+      const chip = document.createElement("div");
+      chip.className = `hold-tile hold-cargo-tile hold-kind-${eq.kind}`;
+      chip.dataset.cargoIndex = String(i);
+      chip.dataset.itemId = id;
+      chip.textContent = `${eq.label} (${eq.w}x${eq.h})`;
+      cargoEl.appendChild(chip);
+    });
+    shipHardpointsEl.appendChild(cargoEl);
+    wireHoldDrag(gridEl, cargoEl, CELL, docked);
+  }
+
   const note = document.createElement("p");
   note.className = "ship-note";
-  note.textContent = "Live telemetry from the contact's hull. Kill it and some of this is yours.";
+  note.textContent = !vm.interactive
+    ? "Live telemetry from the contact's hull. Kill it and some of this is yours."
+    : docked
+      ? "Drag tiles to rearrange, or drag one down to cargo to power it down. Refits are free while docked."
+      : "Tap a tile to inspect it. Refits only happen at a dock — no rewiring the ship mid-route.";
   shipHardpointsEl.appendChild(note);
 }
 
