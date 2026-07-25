@@ -2544,9 +2544,19 @@ function restoreRun() {
   }
   levelIndex = savedIndex;
   state = savedState;
+  // A save from the 2-AP era carries maxAp: 2 inside it and would keep
+  // playing (and showing) two actions a round forever — clamp restored
+  // saves down to the shipped budget. (No AP upgrades exist to preserve
+  // yet; if one ships, its persistence gets designed with it.)
+  const clampAp = (s) => {
+    s.maxAp = Math.min(s.maxAp, Engine.START_AP);
+    s.ap = Math.min(s.ap, s.maxAp);
+  };
+  clampAp(state);
   // Same reasoning as isValidSave above, applied per-entry — drop any
   // stale chart snapshot rather than crashing a jump later.
   sectorHistory = GCStorage.get(GAME_ID, "sectorHistory", []).filter((entry) => entry && isValidSave(entry.state));
+  sectorHistory.forEach((entry) => clampAp(entry.state));
   const savedChartIndex = GCStorage.get(GAME_ID, "chartIndex", sectorHistory.length - 1);
   chartIndex = Math.max(0, Math.min(savedChartIndex, sectorHistory.length - 1));
   if (!sectorHistory.length) {

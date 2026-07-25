@@ -919,7 +919,7 @@
         state.isVictory = true;
         pushLog(state, "The Bulwark falls. Run Complete.");
       } else {
-        pushLog(state, "Level complete.");
+        pushLog(state, "Warp jump complete.");
       }
       return;
     }

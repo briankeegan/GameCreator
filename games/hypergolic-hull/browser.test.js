@@ -318,7 +318,7 @@ async function freshPage(browser, url, errors) {
   s = await getState(page);
   assert.strictEqual(s.systems.ram, true, "toggling back on works the same way");
   await page.click("#shipCloseBtn");
-  assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Back to the fight closes the Ship screen");
+  assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Return to Helm closes the Systems screen");
 
   // ---- The Map: an SVG starmap of only what the ship actually knows -------
   await page.click("#mapBtn");
@@ -581,6 +581,24 @@ async function freshPage(browser, url, errors) {
   s = await getState(page);
   assert.strictEqual(s.levelId, 1, "a stale save missing `exits` is dropped for a fresh Sector 1 run, not trusted as-is");
   assert.ok(Array.isArray(s.exits) && s.exits.length >= 1, "the fresh run has a valid, current-shaped state");
+
+  // A save from the 2-AP era is otherwise VALID — but its maxAp: 2 must
+  // clamp to the shipped one-action budget on restore, or an old run
+  // keeps playing (and showing) two actions a round forever.
+  await page.evaluate(() => {
+    const apEraState = JSON.parse(JSON.stringify(window.__hhState));
+    apEraState.maxAp = 2;
+    apEraState.ap = 2;
+    localStorage.setItem("gc:hypergolic-hull:run", JSON.stringify(apEraState));
+    localStorage.setItem("gc:hypergolic-hull:levelIndex", JSON.stringify(0));
+    localStorage.setItem("gc:hypergolic-hull:sectorHistory", JSON.stringify([]));
+  });
+  await page.reload();
+  await page.waitForFunction(() => window.__hhState && window.__hhState.status === "playing");
+  s = await getState(page);
+  assert.strictEqual(s.maxAp, 1, "a 2-AP-era save clamps down to one action per round on restore");
+  assert.strictEqual(s.ap, 1, "and the live counter clamps with it");
+  assert.strictEqual(await page.locator("#apWrap").isVisible(), false, "so the Actions gauge stays hidden for old saves too");
   await page.close();
 
   // ---- Boss milestone: "Run Complete" is a real, manual moment -------------
