@@ -2,3 +2,7 @@
 # image requests here at runtime. Ignored so it never gets swept into the
 # action's auto-created branch or committed to main.
 .autopilot/
+
+# Playwright is installed on demand to run games/*/browser.test.js — the repo
+# itself has no build system and ships nothing from here.
+node_modules/
