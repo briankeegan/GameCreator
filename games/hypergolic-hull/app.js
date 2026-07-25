@@ -215,14 +215,10 @@ function advanceSector() {
       hull: state.hull, // hull damage is permanent — warping doesn't repair a breached deck
       maxHull: state.maxHull,
       shieldCharges: state.shieldCharges,
-      maxShields: state.maxShields,
       maxEnergy: state.maxEnergy,
-      weaponSlots: state.weaponSlots, // Hardpoint Expansions are permanent, same as Reactor/Hull upgrades
       maxAp: state.maxAp,
-      // A purchased weapon (Lance Cannon, Repulsor, ...) isn't part of any
-      // level's own baked-in actions list, so it has to be carried forward
-      // explicitly or the next sector would "forget" it.
-      extraActions: Engine.PURCHASABLE_ACTIONS.filter((a) => state.actions.includes(a)),
+      // The Hold carries whole — the ship IS its equipment grid.
+      hold: state.hold,
     },
     { keepWarpAnim: true, variantId: state.usedExitVariant }
   );
@@ -243,14 +239,11 @@ function jumpToChart(index) {
     maxHull: state.maxHull,
     salvage: state.salvage,
     shieldCharges: state.shieldCharges,
-    maxShields: state.maxShields,
     energy: state.energy,
     maxEnergy: state.maxEnergy,
-    weaponSlots: state.weaponSlots,
     ap: state.ap,
     maxAp: state.maxAp,
-    extraActions: Engine.PURCHASABLE_ACTIONS.filter((a) => state.actions.includes(a)),
-    systems: JSON.parse(JSON.stringify(state.systems)),
+    hold: JSON.parse(JSON.stringify(state.hold)),
   };
   const entry = sectorHistory[index];
   // The wormhole-flash anim (if in flight) survives the swap, same as the
@@ -264,15 +257,12 @@ function jumpToChart(index) {
   state.maxHull = ship.maxHull;
   state.salvage = ship.salvage;
   state.shieldCharges = ship.shieldCharges;
-  state.maxShields = ship.maxShields;
   state.energy = Math.min(ship.energy, ship.maxEnergy);
   state.maxEnergy = ship.maxEnergy;
-  state.weaponSlots = ship.weaponSlots;
   state.ap = ship.ap;
   state.maxAp = ship.maxAp;
-  state.actions = Array.from(new Set([...state.actions, ...ship.extraActions]));
-  state.systems = ship.systems;
-  Engine.clampWeaponSystems(state);
+  state.hold = ship.hold;
+  Engine.syncHoldDerived(state);
   // A snapshot may be mid-"won" (captured standing on the Warp Gate).
   // Un-consume that so the board is live again — winning re-triggers
   // normally on the next action taken on the gate.
@@ -2173,6 +2163,16 @@ function updateScanInfo() {
     stats.textContent = describeWeapon(def.weapon);
     enemyInfoEl.appendChild(stats);
 
+    // The contact's own equipment — same model as your Hold ("enemies
+    // work the same way... when you scan an enemy you should see their
+    // setup").
+    if (def.fitted) {
+      const fitted = document.createElement("div");
+      fitted.className = "enemy-info-stats";
+      fitted.textContent = `FITTED: ${def.fitted.join(" · ")}`;
+      enemyInfoEl.appendChild(fitted);
+    }
+
     // The INTENT line: what this contact will do, derived straight from
     // the real enemy AI (decideIntent's rules) — never a guess, always a
     // statement conditional on you staying put, since enemies decide
@@ -2295,65 +2295,176 @@ function updateShipOverlay() {
   statRow("Energy", bar(state.energy, state.maxEnergy, "energy", "Energy"));
   if (state.maxShields > 0) statRow("Shields", bar(state.shieldCharges, state.maxShields, "shield", "Shields"));
   statRow("Salvage", text(state.salvage));
-  statRow("Weapon slots", text(`${Engine.usedWeaponSlots(state)}/${state.weaponSlots} in use`));
-  statRow("Recharge", text(`+${Engine.RECHARGE_ENERGY_GAIN} per RECHARGE action`));
-  statRow("Engines", text("Sublight Drive — 1 hex per turn"));
-  statRow("Reactor", text(`Reactor Core — +${Engine.RECHARGE_ENERGY_GAIN} Energy per cycle`));
   statRow("Warp jump", text("refills Energy — hull damage stays until repaired"));
-  if (state.maxShields > 0)
-    statRow("Raise Shields", text(`−${Engine.SHIELD_RAISE_COST} Energy per charge`));
 
+  // ---- The Hold: the ship's internals as a GRID of shaped equipment ----
+  // ("a grid drag and drop for different sized/shaped items") — every tile
+  // is a real installed item; cargo below is aboard-but-inert. Rearranging
+  // is drag-and-drop, but ONLY while docked at an Outpost; mid-flight the
+  // grid is a read-only schematic (tap a tile to inspect it).
   shipHardpointsEl.innerHTML = "";
-  // Builds one toggle row — the ONLY place system on/off switches live now
-  // ("you don't need the controls on/off anymore... it's in Ship"): the
-  // console keeps just the actions (Fire/Recharge/Tractor/Target Lock).
-  const systemRow = (key, label, statsText) => {
-    const row = document.createElement("div");
-    row.className = "ship-hardpoint";
-    const head = document.createElement("label");
-    head.className = "system-toggle ship-hardpoint-head";
-    const toggle = document.createElement("input");
-    toggle.type = "checkbox";
-    toggle.dataset.system = key; // stable hook for tests and future styling
-    toggle.checked = state.systems[key];
-    toggle.addEventListener("change", () => {
-      // A free pre-turn switch — can throw on the weapon-slot cap;
-      // handleAction logs it and render() re-syncs the box.
-      handleAction(() => Engine.setSystem(state, key, toggle.checked));
-    });
-    head.appendChild(toggle);
-    head.appendChild(document.createTextNode(` ${label}`));
-    row.appendChild(head);
-    const statsLine = document.createElement("div");
-    statsLine.className = "ship-hardpoint-stats";
-    statsLine.textContent = statsText;
-    row.appendChild(statsLine);
-    shipHardpointsEl.appendChild(row);
-  };
-  const WEAPON_INFO = { ram: Engine.WEAPONS.ram, lance: Engine.WEAPONS.lance, repulsor: Engine.WEAPONS.repulsor };
-  for (const key of Engine.WEAPON_SYSTEM_KEYS) {
-    const owned = key === "ram" || state.actions.includes(key);
-    if (!owned) continue;
-    const weapon = WEAPON_INFO[key];
-    systemRow(key, weapon.label, describeWeapon(weapon) + ` · ${weapon.slots} slot${weapon.slots === 1 ? "" : "s"}`);
+  const docked = Engine.outpostAvailable(state);
+  const holdTitle = document.createElement("div");
+  holdTitle.className = "hold-title";
+  holdTitle.textContent = docked ? "THE HOLD — docked: drag to refit" : "THE HOLD — dock at an Outpost to refit";
+  shipHardpointsEl.appendChild(holdTitle);
+
+  const CELL = 44;
+  const gridEl = document.createElement("div");
+  gridEl.className = "hold-grid" + (docked ? " docked" : "");
+  gridEl.id = "holdGrid";
+  gridEl.style.width = `${state.hold.cols * CELL}px`;
+  gridEl.style.height = `${state.hold.rows * CELL}px`;
+  gridEl.style.backgroundSize = `${CELL}px ${CELL}px`;
+  // Void cells outside the hull — the grid IS the ship's silhouette.
+  for (const key of state.hold.blocked || []) {
+    const [bx, by] = key.split(",").map(Number);
+    const cell = document.createElement("div");
+    cell.className = "hold-cell-void";
+    cell.style.left = `${bx * CELL}px`;
+    cell.style.top = `${by * CELL}px`;
+    cell.style.width = `${CELL}px`;
+    cell.style.height = `${CELL}px`;
+    gridEl.appendChild(cell);
   }
-  if (state.actions.includes("tractor")) {
-    const row = document.createElement("div");
-    row.className = "ship-hardpoint";
-    const head = document.createElement("div");
-    head.className = "ship-hardpoint-head";
-    head.textContent = "TRACTOR BEAM";
-    row.appendChild(head);
-    const statsLine = document.createElement("div");
-    statsLine.className = "ship-hardpoint-stats";
-    statsLine.textContent = describeWeapon(Engine.WEAPONS.tractor) + " · aimed action, no slot";
-    row.appendChild(statsLine);
-    shipHardpointsEl.appendChild(row);
+  for (let i = 0; i < state.hold.items.length; i++) {
+    const it = state.hold.items[i];
+    const eq = Engine.EQUIPMENT[it.id];
+    const tile = document.createElement("div");
+    tile.className = `hold-tile hold-kind-${eq.kind}`;
+    tile.dataset.holdIndex = String(i);
+    tile.dataset.itemId = it.id;
+    tile.style.left = `${it.x * CELL}px`;
+    tile.style.top = `${it.y * CELL}px`;
+    tile.style.width = `${eq.w * CELL - 4}px`;
+    tile.style.height = `${eq.h * CELL - 4}px`;
+    if (eq.w === 1) tile.style.fontSize = "0.48rem"; // narrow tiles wrap their label instead of clipping it
+    tile.textContent = eq.label;
+    gridEl.appendChild(tile);
   }
+  shipHardpointsEl.appendChild(gridEl);
+
+  const cargoEl = document.createElement("div");
+  cargoEl.className = "hold-cargo";
+  cargoEl.id = "holdCargo";
+  const cargoLabel = document.createElement("span");
+  cargoLabel.className = "stat-label";
+  cargoLabel.textContent = state.hold.cargo.length ? "CARGO (inert):" : "CARGO: empty";
+  cargoEl.appendChild(cargoLabel);
+  state.hold.cargo.forEach((id, i) => {
+    const eq = Engine.EQUIPMENT[id];
+    const chip = document.createElement("div");
+    chip.className = `hold-tile hold-cargo-tile hold-kind-${eq.kind}`;
+    chip.dataset.cargoIndex = String(i);
+    chip.dataset.itemId = id;
+    chip.textContent = `${eq.label} (${eq.w}x${eq.h})`;
+    cargoEl.appendChild(chip);
+  });
+  shipHardpointsEl.appendChild(cargoEl);
+
+  wireHoldDrag(gridEl, cargoEl, CELL, docked);
+
   const note = document.createElement("p");
   note.className = "ship-note";
-  note.textContent = "Loadout changes are free — they never spend a turn. Buy more slots, Energy capacity, and weapons at Outposts.";
+  note.textContent = docked
+    ? "Drag tiles to rearrange, or drag one down to cargo to power it down. Refits are free while docked."
+    : "Tap a tile to inspect it. Refits only happen at a dock — no rewiring the ship mid-route.";
   shipHardpointsEl.appendChild(note);
+}
+
+// Pointer-based drag-and-drop for the Hold. Docked: drag a tile to a new
+// cell (green = fits, red = doesn't), drop past the grid's bottom edge to
+// stow it; tap a cargo chip to auto-install it. Undocked: taps inspect.
+function wireHoldDrag(gridEl, cargoEl, CELL, docked) {
+  const describeItem = (id) => {
+    const eq = Engine.EQUIPMENT[id];
+    if (eq.kind === "weapon") return describeWeapon(Engine.WEAPONS[eq.weaponKey]);
+    if (eq.kind === "reactor") return `${eq.label} — +${eq.rechargeGain} Energy per cycle · ${eq.w}x${eq.h}`;
+    if (eq.kind === "engine") return `${eq.label} — ${eq.moveRange} hex per turn · ${eq.w}x${eq.h}`;
+    if (eq.kind === "shield") return `${eq.label} — raise-able charge, absorbs a volley · ${eq.w}x${eq.h}`;
+    if (eq.id === "tractorBeam") return describeWeapon(Engine.WEAPONS.tractor);
+    return eq.label;
+  };
+
+  for (const chip of cargoEl.querySelectorAll(".hold-cargo-tile")) {
+    chip.addEventListener("click", () => {
+      const idx = Number(chip.dataset.cargoIndex);
+      if (!docked) {
+        pushMessage(describeItem(chip.dataset.itemId) + " — in cargo, powered down.");
+        render();
+        return;
+      }
+      // Tap-to-install from cargo: auto-place in the first free spot.
+      const id = state.hold.cargo[idx];
+      for (let y = 0; y < state.hold.rows; y++) {
+        for (let x = 0; x < state.hold.cols; x++) {
+          if (Engine.holdCanPlace(state.hold, id, x, y)) {
+            handleAction(() => Engine.installFromCargo(state, idx, x, y));
+            return;
+          }
+        }
+      }
+      pushMessage("No room in the grid — rearrange or expand the Hold first.");
+      render();
+    });
+  }
+
+  for (const tile of gridEl.querySelectorAll(".hold-tile")) {
+    const idx = Number(tile.dataset.holdIndex);
+    const id = tile.dataset.itemId;
+    if (!docked) {
+      tile.addEventListener("click", () => {
+        pushMessage(describeItem(id) + " — installed and powered.");
+        render();
+      });
+      continue;
+    }
+    tile.addEventListener("pointerdown", (downEvt) => {
+      downEvt.preventDefault();
+      tile.setPointerCapture(downEvt.pointerId);
+      const gridRect = gridEl.getBoundingClientRect();
+      const eq = Engine.EQUIPMENT[id];
+      let moved = false;
+      const onMove = (evt) => {
+        moved = true;
+        const px = evt.clientX - gridRect.left - (eq.w * CELL) / 2;
+        const py = evt.clientY - gridRect.top - (eq.h * CELL) / 2;
+        tile.style.left = `${px}px`;
+        tile.style.top = `${py}px`;
+        const cx = Math.round(px / CELL);
+        const cy = Math.round(py / CELL);
+        tile.classList.toggle("drop-ok", Engine.holdCanPlace(state.hold, id, cx, cy, idx));
+        tile.classList.toggle("drop-bad", !Engine.holdCanPlace(state.hold, id, cx, cy, idx));
+        tile.classList.add("dragging");
+      };
+      const onUp = (evt) => {
+        tile.removeEventListener("pointermove", onMove);
+        tile.removeEventListener("pointerup", onUp);
+        if (!moved) {
+          pushMessage(describeItem(id) + " — installed and powered.");
+          render();
+          return;
+        }
+        const px = evt.clientX - gridRect.left - (eq.w * CELL) / 2;
+        const py = evt.clientY - gridRect.top - (eq.h * CELL) / 2;
+        const cx = Math.round(px / CELL);
+        const cy = Math.round(py / CELL);
+        if (py > gridRect.height - CELL / 2 + CELL) {
+          // Dropped well below the grid: stow to cargo.
+          handleAction(() => Engine.stowToCargo(state, idx));
+          return;
+        }
+        try {
+          Engine.moveHoldItem(state, idx, cx, cy);
+        } catch (err) {
+          pushMessage(err.message);
+        }
+        render();
+      };
+      tile.addEventListener("pointermove", onMove);
+      tile.addEventListener("pointerup", onUp);
+    });
+  }
 }
 
 // The starmap: an actual chart, not a list — your route through the gates
@@ -2688,9 +2799,9 @@ function isValidSave(s) {
     Array.isArray(s.exits) &&
     s.playerPos &&
     typeof s.levelId === "number" &&
-    // The systems rework: ships carry weaponSlots, enemies carry their own
-    // reactors. A pre-rework save has neither — drop it, start fresh.
-    typeof s.weaponSlots === "number" &&
+    // The Hold rework: the ship is its equipment grid. A pre-Hold save
+    // has no hold — drop it, start fresh.
+    Boolean(s.hold && Array.isArray(s.hold.items) && Array.isArray(s.hold.cargo)) &&
     // The hull/shields rework: shields are generator capacity, not loose
     // charges. A pre-rework save has no maxShields — drop it, start fresh.
     typeof s.maxShields === "number" &&

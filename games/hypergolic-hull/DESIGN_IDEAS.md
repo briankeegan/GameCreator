@@ -128,6 +128,20 @@ slot. Different engines (longer moves) and better reactors (bigger
 per-cycle recharge than the standard core's +1) are the intended first
 proofs of that dynamism.
 
+**The Hold (Clubhouse 2026-07-25 — Phase 1 BUILT):** the Systems screen
+is a ship-silhouette grid of shaped equipment tiles (drag-and-drop while
+docked, view-only mid-flight; cargo strip = aboard-but-inert; capabilities
+derive entirely from what's installed — no drive, no moving). Phased plan:
+Phase 1 (built) = starter roster only (Shockwave 2×1, Lance 1×3, Repulsor
+2×1, Tractor 1×2, Reactor Core 2×2, Sublight Drive 1×3, Shield Generator
+2×2), enemies carry `fitted` loadouts shown on Scan. Phase 2 = first new
+items — Flak Array 2×2 (hits all in reach), Capacitor Bank 1×2 (+2 max
+Energy), Ablative Plating 1×2 (+1 max Hull), Ion Drive 2×3 (2-hex moves);
+roster brainstorm also logged: Torpedo Rack (hex-aimed, ammo), Rail Lance
+1×4, Fusion Core 2×3 (+2/cycle), Jump Coil, Salvage Scoop 1×1, Repair Bay
+2×2. Phase 3 = Outpost shelves as drag-source (buying = dragging aboard)
++ enemy equipment drops from the same pool.
+
 **Two unifying principles from this conversation:**
 - **Enemies should draw from the same pool the player does.** Instead of a
   separate "enemy design space," a Shielded Interceptor, a Knockback

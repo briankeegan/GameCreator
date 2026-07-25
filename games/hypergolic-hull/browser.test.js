@@ -174,16 +174,6 @@ async function claimOutpostOffer(page, labelSubstring) {
   return getState(page);
 }
 
-// All system on/off switches live on the Ship screen now — open it, flip
-// the one system, close it again.
-async function setShipSystem(page, key, on) {
-  await page.click("#shipBtn");
-  const sel = `#shipHardpoints input[data-system="${key}"]`;
-  if (on) await page.check(sel);
-  else await page.uncheck(sel);
-  await page.click("#shipCloseBtn");
-}
-
 // Walks to the wormhole (wherever it is) and returns via it. The flagship
 // arrives standing directly ON it ("you start as if you're on top of that
 // wormhole, not next to it"), but the very first action taken since
@@ -253,9 +243,13 @@ async function freshPage(browser, url, errors) {
   // Target Lock button now, not a Systems row. An unowned weapon (the
   // Lance Cannon here) simply has no hardpoint row yet.
   await page.click("#shipBtn");
-  assert.strictEqual(await page.locator('#shipHardpoints input[data-system="warpdrive"]').count(), 0, "Warpdrive is no longer a Systems row — Target Lock owns it");
-  assert.strictEqual(await page.locator('#shipHardpoints input[data-system="ram"]').isVisible(), true, "the Systems screen carries the Shockwave's switch");
-  assert.strictEqual(await page.locator('#shipHardpoints input[data-system="lance"]').count(), 0, "an unpurchased weapon has no hardpoint row yet");
+  assert.strictEqual(await page.locator("#holdGrid").count(), 1, "the Systems screen is the HOLD — a real equipment grid");
+  assert.strictEqual(
+    await page.locator("#holdGrid .hold-tile").count(),
+    3,
+    "the starter kit shows as three shaped tiles: Reactor Core, Sublight Drive, Shockwave"
+  );
+  assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="shockwave"]').count(), 1, "the Shockwave is one of them");
   await page.click("#shipCloseBtn");
   assert.strictEqual(await page.locator("#targetLockBtn").count(), 0, "Target Lock is gone — tapping a hostile aims automatically");
   assert.strictEqual(await page.locator("#endTurnBtn").count(), 0, "End Round is gone — waiting is what RECHARGE is for");
@@ -336,16 +330,23 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "the Ship screen starts closed");
   await page.click("#shipBtn");
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), true, "the Ship button opens the full-screen view");
-  assert.ok((await page.locator("#shipStats").textContent()).includes("Weapon slots"), "the Ship screen lists the slot capacity");
-  const turnBeforeShipToggle = (await getState(page)).turnCount;
-  await page.uncheck('#shipHardpoints input[data-system="ram"]');
-  s = await getState(page);
-  assert.strictEqual(s.systems.ram, false, "the Ship screen's toggle drives the real system state");
-  assert.strictEqual(s.turnCount, turnBeforeShipToggle, "loadout changes on the Ship screen never spend a turn");
-  assert.ok((await page.locator("#shipHardpoints").textContent()).includes("Range 1"), "hardpoint rows spell out the weapon's stats in words");
-  await page.check('#shipHardpoints input[data-system="ram"]');
-  s = await getState(page);
-  assert.strictEqual(s.systems.ram, true, "toggling back on works the same way");
+  // Mid-flight the Hold is a read-only schematic: refits are dock-gated.
+  assert.ok(
+    (await page.locator("#shipHardpoints").textContent()).includes("dock at an Outpost to refit"),
+    "the Hold says refits need a dock while mid-flight"
+  );
+  const refitRefusal = await page.evaluate(() => {
+    try {
+      window.HypergolicEngine.stowToCargo(window.__hhState, 0);
+      return "no-throw";
+    } catch (err) {
+      return err.message;
+    }
+  });
+  assert.ok(/Refits need a dock/.test(refitRefusal), "the engine refuses mid-flight refits outright");
+  // Tapping a tile inspects it.
+  await page.click('#holdGrid .hold-tile[data-item-id="shockwave"]');
+  assert.ok(/Range 1/.test(await page.locator("#log").textContent()), "tapping a tile reads out the item's stats");
   await page.click("#shipCloseBtn");
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Return to Helm closes the Systems screen");
 
@@ -680,56 +681,61 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "continuing closes the victory overlay");
   await page.close();
 
-  // ---- Weapon-slot cap in the UI: "there should be rules about what you --
-  // can equip" (Clubhouse) — with Lance and Repulsor both owned, only 2 of
-  // the 3 toggle-fired weapons can run at once. The cap itself is covered
-  // exhaustively in engine.test.js; this just confirms app.js surfaces it —
-  // the label appears, a rejected toggle click reverts the checkbox and
-  // logs why, and freeing a slot lets the next toggle succeed. Owning both
-  // weapons is simulated directly (grinding real salvage for both purchases
-  // is exercised elsewhere) — same state-injection pattern as the boss
-  // milestone test above.
+  // ---- The Hold at dock: refits are drag/tap, free, and live -------------
+  // Inject a docked state with a stowed weapon in cargo, then run the
+  // refit loop through the real UI: stow the Shockwave (capability lost),
+  // reinstall from cargo (capability back). The grid/placement rules are
+  // covered exhaustively in engine.test.js; this confirms the screen
+  // drives them.
   page = await freshPage(browser, url, errors);
   await page.evaluate(() => {
     const level = window.HypergolicLevels.generateLevel(5);
-    const fresh = window.HypergolicEngine.createGameState(level, { extraActions: ["lance", "repulsor"] });
+    const fresh = window.HypergolicEngine.createGameState(level);
+    fresh.playerPos = { q: fresh.outpostPos ? fresh.outpostPos.q : fresh.playerPos.q, r: fresh.outpostPos ? fresh.outpostPos.r : fresh.playerPos.r };
     Object.assign(window.__hhState, fresh);
-    window.render(); // resize alone only redraws the canvas — the systems panel needs a full render()
+    window.render();
   });
-  await page.waitForTimeout(50);
   s = await getState(page);
-  assert.deepStrictEqual(
-    s.systems,
-    { warpdrive: true, ram: true, lance: true, repulsor: false },
-    "owning all 3 weapon systems starts with only the first 2 (Shockwave + Lance) active"
-  );
+  if (!s.outpostPos) {
+    // This depth happens to deal no Outpost — pick one that does.
+    await page.evaluate(() => {
+      for (let d = 5; d < 30; d++) {
+        const level = window.HypergolicLevels.generateLevel(d);
+        const fresh = window.HypergolicEngine.createGameState(level);
+        if (fresh.outpostPos) {
+          fresh.playerPos = { q: fresh.outpostPos.q, r: fresh.outpostPos.r };
+          Object.assign(window.__hhState, fresh);
+          window.render();
+          return;
+        }
+      }
+    });
+    s = await getState(page);
+  }
+  assert.ok(s.outpostPos, "found a docked fixture");
+  await page.evaluate(() => document.getElementById("outpostCloseBtn").click()); // undock the SHOP overlay, stay on the hex
   await page.click("#shipBtn");
   assert.ok(
-    (await page.locator("#shipStats").textContent()).includes("2/2 in use"),
-    "the Ship screen shows both weapon slots occupied"
+    (await page.locator("#shipHardpoints").textContent()).includes("docked: drag to refit"),
+    "the Hold unlocks at a dock"
   );
-
-  // Trying to arm the 3rd (Repulsor) while Shockwave+Lance already fill
-  // both slots must be rejected — the checkbox reverts, and the log
-  // explains why.
-  await page.check('#shipHardpoints input[data-system="repulsor"]').catch(() => {}); // Playwright's own "state didn't change" error is expected here — see the reset assertion below
+  // Stow the Shockwave via the engine (drag mechanics are pointer-driven;
+  // the engine API is the contract) and confirm the UI + capability follow.
+  await page.evaluate(() => {
+    const st = window.__hhState;
+    const idx = st.hold.items.findIndex((it) => it.id === "shockwave");
+    window.HypergolicEngine.stowToCargo(st, idx);
+    window.render();
+  });
+  assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="shockwave"]').count(), 0, "the stowed Shockwave leaves the grid");
+  assert.strictEqual(await page.locator('#holdCargo .hold-cargo-tile[data-item-id="shockwave"]').count(), 1, "and appears in cargo, powered down");
   s = await getState(page);
-  assert.strictEqual(s.systems.repulsor, false, "the rejected toggle never took effect in state");
-  assert.strictEqual(await page.locator('#shipHardpoints input[data-system="repulsor"]').isChecked(), false, "and the checkbox visually reverts to match");
-  assert.ok(
-    (await page.locator("#log").textContent()).includes("Weapon slots full"),
-    "the rejection reason is logged"
-  );
-
-  // Freeing a slot lets the next toggle through.
-  await page.uncheck('#shipHardpoints input[data-system="lance"]');
-  await page.check('#shipHardpoints input[data-system="repulsor"]');
+  assert.strictEqual(s.systems.ram, false, "a stowed weapon is UNARMED — cargo is inert");
+  // Tap the cargo chip to reinstall it (auto-places in the first free spot).
+  await page.click('#holdCargo .hold-cargo-tile[data-item-id="shockwave"]');
   s = await getState(page);
-  assert.strictEqual(s.systems.repulsor, true, "with a slot free, Repulsor arms successfully");
-  assert.ok(
-    (await page.locator("#shipStats").textContent()).includes("2/2 in use"),
-    "Shockwave + Repulsor is the new 2/2"
-  );
+  assert.strictEqual(s.systems.ram, true, "reinstalling from cargo re-arms the weapon");
+  assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="shockwave"]').count(), 1, "and the tile is back in the grid");
   await page.close();
 
   await browser.close();

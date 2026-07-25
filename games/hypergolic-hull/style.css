@@ -615,6 +615,75 @@ body {
   margin: 0;
 }
 
+/* ---- The Hold: the ship's equipment grid ------------------------------- */
+.hold-title {
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  color: #ffce8a;
+  margin: 10px 0 6px;
+}
+.hold-grid {
+  position: relative;
+  margin: 0 auto;
+  background-color: #0b0f18;
+  background-image:
+    linear-gradient(to right, #1d2740 1px, transparent 1px),
+    linear-gradient(to bottom, #1d2740 1px, transparent 1px);
+  border: 2px solid #2a3652;
+  touch-action: none; /* the grid owns its pointer gestures while docked */
+}
+.hold-grid.docked {
+  border-color: #7fe3a8;
+}
+.hold-tile {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin: 2px;
+  padding: 2px;
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 0.56rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #dbe4f2;
+  background: #1b2436;
+  border: 2px solid #3a4a68;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  line-height: 1.15;
+  cursor: pointer;
+  user-select: none;
+}
+.hold-kind-weapon { border-color: #a03a26; background: #2a1815; }
+.hold-kind-reactor { border-color: #2e7d52; background: #12281c; }
+.hold-kind-engine { border-color: #2e5f96; background: #131f30; }
+.hold-kind-shield { border-color: #5bb8f2; background: #14273a; }
+.hold-kind-utility { border-color: #8a6ecf; background: #201a33; }
+.hold-cell-void {
+  position: absolute;
+  background: #141b2b; /* matches the overlay panel — reads as "outside the hull" */
+  border: none;
+}
+.hold-tile.dragging { z-index: 5; opacity: 0.9; }
+.hold-tile.drop-ok { outline: 2px solid #7fe3a8; }
+.hold-tile.drop-bad { outline: 2px solid #ff5a4a; }
+.hold-cargo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px auto 0;
+  max-width: 340px;
+}
+.hold-cargo-tile {
+  position: static;
+  padding: 5px 8px;
+  opacity: 0.75; /* inert — visibly powered down */
+}
+
 /* A "target scan" readout — same console-panel language as .systems, but
    tinted red/hostile by default so an inspected enemy reads as distinct
    from the friendlier consoles. Non-enemy scans (Warp Gate, Outpost,

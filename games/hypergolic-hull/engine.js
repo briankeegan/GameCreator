@@ -206,9 +206,17 @@
   // just +1 ("it should just recharge one, not two") — a better reactor
   // is a future equipment swap, and this number goes with the item.
   const RECHARGE_ENERGY_GAIN = 1;
-  // How many weapon-slot points of systems the flagship starts with —
-  // grown via the Hardpoint Expansion Outpost offer.
-  const START_WEAPON_SLOTS = 2;
+  // The Hold: the ship's internals are a GRID of cells, and every piece
+  // of equipment is a SHAPED tile — its footprint IS its cost ("a grid
+  // drag and drop for different sized/shaped items"). Starts 5x4; grown
+  // via the Hold Expansion Outpost offer.
+  const HOLD_COLS = 5;
+  const HOLD_ROWS = 6;
+  // Cells OUTSIDE the flagship's hull — the usable cells form the ship's
+  // silhouette: a single-cell nose, widening shoulders, a full midsection,
+  // and a narrower engine deck at the stern. A Hold Expansion adds an
+  // (unmasked) full row of engineering deck below.
+  const HOLD_BLOCKED = ["0,0", "1,0", "3,0", "4,0", "0,1", "4,1", "0,5", "4,5"];
   // Action Points per round, both sides of the board. Dialed back to 1
   // ("maybe you could just do one thing, and that is a turn") — one
   // action IS the round, for the flagship and every enemy alike. The AP
@@ -243,7 +251,7 @@
   // visible multi-turn charge-up rhythm instead of firing every turn.
   //
   // `slots` is how many weapon-slot points the system occupies while
-  // toggled on — enforced against state.weaponSlots (see setSystem).
+  // installed in the Hold — its grid footprint is the real cost now.
   //
   // `speed` is INITIATIVE, and it's real: when a turn resolves, every
   // attack on the board — the flagship's and the enemies' — fires in
@@ -332,11 +340,132 @@
   //                 Procedural depth only (depth >= 8, see levels.js).
   // `salvage` is how much scrap a kill drops, regardless of which action
   // lands it — spendable at a Sector Outpost. Tougher hulls drop more.
+  // Every ownable piece of hardware, with its Hold footprint (w x h cells).
+  // Phase 1 is deliberately just the starter roster ("less items to start
+  // so we can test this out") — new items are one entry here each.
+  const EQUIPMENT = {
+    shockwave: { id: "shockwave", label: "Shockwave", kind: "weapon", weaponKey: "ram", w: 2, h: 1 },
+    lanceCannon: { id: "lanceCannon", label: "Lance Cannon", kind: "weapon", weaponKey: "lance", w: 1, h: 3 },
+    repulsor: { id: "repulsor", label: "Repulsor", kind: "weapon", weaponKey: "repulsor", w: 2, h: 1 },
+    tractorBeam: { id: "tractorBeam", label: "Tractor Beam", kind: "utility", w: 1, h: 2 },
+    reactorCore: { id: "reactorCore", label: "Reactor Core", kind: "reactor", rechargeGain: 1, w: 2, h: 2 },
+    sublightDrive: { id: "sublightDrive", label: "Sublight Drive", kind: "engine", moveRange: 1, w: 1, h: 3 },
+    shieldGenerator: { id: "shieldGenerator", label: "Shield Generator", kind: "shield", capacity: 1, w: 2, h: 2 },
+  };
+
+  // Can `id`'s tile sit at (x, y) — inside the grid, overlapping nothing?
+  // `ignoreIndex` excludes the tile's own current placement while moving it.
+  function holdCanPlace(hold, id, x, y, ignoreIndex) {
+    const eq = EQUIPMENT[id];
+    if (!eq) return false;
+    if (x < 0 || y < 0 || x + eq.w > hold.cols || y + eq.h > hold.rows) return false;
+    // Blocked cells are OUTSIDE the hull — the grid is the shape of the
+    // ship, not a plain rectangle ("it should be the shape of the ship").
+    const blocked = hold.blocked || [];
+    for (let cy = y; cy < y + eq.h; cy++) {
+      for (let cx = x; cx < x + eq.w; cx++) {
+        if (blocked.includes(`${cx},${cy}`)) return false;
+      }
+    }
+    return hold.items.every((it, i) => {
+      if (i === ignoreIndex) return true;
+      const other = EQUIPMENT[it.id];
+      return x + eq.w <= it.x || it.x + other.w <= x || y + eq.h <= it.y || it.y + other.h <= y;
+    });
+  }
+
+  // First-fit placement; falls back to cargo when the grid is full.
+  function autoPlaceInHold(hold, id) {
+    for (let y = 0; y < hold.rows; y++) {
+      for (let x = 0; x < hold.cols; x++) {
+        if (holdCanPlace(hold, id, x, y)) {
+          hold.items.push({ id, x, y });
+          return true;
+        }
+      }
+    }
+    hold.cargo.push(id);
+    return false;
+  }
+
+  // The hold is the SOURCE OF TRUTH — actions, weapon arming, and shield
+  // capacity all derive from what's physically installed. Cargo is inert.
+  function syncHoldDerived(state) {
+    const has = (id) => state.hold.items.some((it) => it.id === id);
+    const actions = ["sublight"];
+    if (has("shockwave")) actions.push("ramming");
+    if (has("lanceCannon")) actions.push("lance");
+    if (has("repulsor")) actions.push("repulsor");
+    if (has("tractorBeam")) actions.push("tractor");
+    state.actions = actions;
+    state.systems = { warpdrive: true, ram: has("shockwave"), lance: has("lanceCannon"), repulsor: has("repulsor") };
+    state.maxShields = state.hold.items.filter((it) => EQUIPMENT[it.id].kind === "shield").length;
+    state.shieldCharges = Math.min(state.shieldCharges, state.maxShields);
+  }
+
+  function assertDocked(state) {
+    if (!outpostAvailable(state)) {
+      throw new Error("Refits need a dock — rearrange the Hold while at an Outpost");
+    }
+  }
+
+  // Rearranging the Hold ("move stuff around") — dock-gated, free (no
+  // turn spent): move an installed tile, stow it to cargo, or install
+  // from cargo into a free spot.
+  function moveHoldItem(state, index, x, y) {
+    assertPlaying(state);
+    assertDocked(state);
+    const it = state.hold.items[index];
+    if (!it) throw new Error("Hold: no such installed item");
+    if (!holdCanPlace(state.hold, it.id, x, y, index)) throw new Error("Hold: that spot doesn't fit this item");
+    it.x = x;
+    it.y = y;
+    syncHoldDerived(state);
+  }
+
+  function stowToCargo(state, index) {
+    assertPlaying(state);
+    assertDocked(state);
+    const it = state.hold.items[index];
+    if (!it) throw new Error("Hold: no such installed item");
+    state.hold.items.splice(index, 1);
+    state.hold.cargo.push(it.id);
+    syncHoldDerived(state);
+    pushLog(state, `${EQUIPMENT[it.id].label} powered down and stowed.`);
+  }
+
+  function installFromCargo(state, cargoIndex, x, y) {
+    assertPlaying(state);
+    assertDocked(state);
+    const id = state.hold.cargo[cargoIndex];
+    if (!id) throw new Error("Hold: no such cargo item");
+    if (!holdCanPlace(state.hold, id, x, y)) throw new Error("Hold: that spot doesn't fit this item");
+    state.hold.cargo.splice(cargoIndex, 1);
+    state.hold.items.push({ id, x, y });
+    syncHoldDerived(state);
+    pushLog(state, `${EQUIPMENT[id].label} installed and powered up.`);
+  }
+
   const ENEMY_TYPES = {
-    interceptor: { hp: 1, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true, salvage: 1, maxEnergy: 1, startEnergy: 1 },
-    cruiser: { hp: 2, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true, salvage: 2, maxEnergy: 1, startEnergy: 1 },
-    sentry: { hp: 2, weapon: WEAPONS.sentryBeam, movesTowardPlayer: false, salvage: 2, maxEnergy: 1, startEnergy: 1 },
-    railgun: { hp: 2, weapon: WEAPONS.railgunBeam, movesTowardPlayer: false, salvage: 3, maxEnergy: 3, startEnergy: 0 },
+    // `fitted` — the enemy's own equipment loadout, same model as the
+    // flagship's Hold ("enemies work the same way... when you scan an
+    // enemy you should see their setup"): Scan renders this list.
+    interceptor: {
+      hp: 1, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true, salvage: 1, maxEnergy: 1, startEnergy: 1,
+      fitted: ["Interceptor Cannon", "Micro Reactor", "Sublight Drive"],
+    },
+    cruiser: {
+      hp: 2, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true, salvage: 2, maxEnergy: 1, startEnergy: 1,
+      fitted: ["Interceptor Cannon", "Micro Reactor", "Sublight Drive", "Reinforced Plating"],
+    },
+    sentry: {
+      hp: 2, weapon: WEAPONS.sentryBeam, movesTowardPlayer: false, salvage: 2, maxEnergy: 1, startEnergy: 1,
+      fitted: ["Sentry Beam", "Micro Reactor", "Station Anchor"],
+    },
+    railgun: {
+      hp: 2, weapon: WEAPONS.railgunBeam, movesTowardPlayer: false, salvage: 3, maxEnergy: 3, startEnergy: 0,
+      fitted: ["Railgun", "Charge Bank x3", "Station Anchor"],
+    },
   };
 
   // Every hex a weapon's pattern actually reaches, fired from `pos` facing
@@ -383,13 +512,13 @@
     // Shields aren't consumable purchases anymore — you buy the GENERATOR
     // (permanent +1 capacity, arrives raised), then re-raising a spent
     // charge costs Energy and a turn (applyRaiseShields), not salvage.
-    { id: "shield", label: "Shield Generator (+1 shield capacity)", cost: 15 },
+    { id: "shield", label: "Shield Generator (2x2 — raise-able charge)", cost: 15 },
     // The two "configurable limits" as purchases: your reactor cap (how
     // much Energy you can bank against expensive weapons) and your weapon
     // slots (how many systems can run at once) are both ship stats you
     // grow at Outposts, not constants.
     { id: "reactor", label: "Reactor Upgrade (+1 Max Energy)", cost: 12 },
-    { id: "hardpoint", label: "Hardpoint Expansion (+1 weapon slot)", cost: 20 },
+    { id: "hardpoint", label: "Hold Expansion (+1 row of internal space)", cost: 20 },
     { id: "lanceCannon", label: "Lance Cannon (forward-only, 2 dmg, range 3)", cost: 25 },
     { id: "repulsorWeapon", label: "Repulsor (all sides, 1 dmg + knockback)", cost: 20 },
     // Free — this is a claim, not a purchase. Never part of the general
@@ -462,11 +591,7 @@
       levelName: level.name || `Sector ${level.id}`,
       radius: level.radius || null,
       boardHexes: buildBoardHexes(level),
-      // `carryOver.extraActions` is how a purchase like the Lance Cannon
-      // (never part of any level's own baked-in `actions` list — see
-      // DEFAULT_ACTIONS) survives into the next sector; app.js's
-      // advanceSector is what actually carries it forward.
-      actions: Array.from(new Set([...(level.actions || DEFAULT_ACTIONS), ...((carryOver && carryOver.extraActions) || [])])),
+      actions: ["sublight"], // derived from the Hold below (syncHoldDerived)
       playerPos: { q: level.playerStart.q, r: level.playerStart.r },
       // Hull damage is PERMANENT across jumps — warping doesn't patch a
       // breached deck ("why is hull repaired between every jump? doesn't
@@ -475,14 +600,11 @@
       hull: Math.min((carryOver && carryOver.hull) || maxHull, maxHull),
       maxHull: maxHull,
       salvage: (carryOver && carryOver.salvage) || 0,
-      // Shields are capacity (a Shield Generator you buy) + charges (raised
-      // by spending Energy — see applyRaiseShields). No generator = no
-      // shields, which is how every run starts.
-      maxShields: (carryOver && carryOver.maxShields) || 0,
-      shieldCharges: Math.min(
-        (carryOver && carryOver.shieldCharges) || 0,
-        (carryOver && carryOver.maxShields) || 0
-      ),
+      // Shields are capacity (installed Shield Generators in the Hold) +
+      // charges (raised by spending Energy — see applyRaiseShields).
+      // Capacity is derived below; carried charges clamp against it.
+      maxShields: 0,
+      shieldCharges: (carryOver && carryOver.shieldCharges) || 0,
       maxEnergy: (carryOver && carryOver.maxEnergy) || START_ENERGY,
       energy: (carryOver && carryOver.maxEnergy) || START_ENERGY,
       exitPos: { q: exitList(level)[0].q, r: exitList(level)[0].r }, // primary/first gate — kept for single-exit callers
@@ -523,17 +645,11 @@
           maxEnergy: def.maxEnergy,
         };
       }),
-      // How many weapon-slot points of systems can run at once (each
-      // WEAPONS entry's `slots` counts against it while toggled on) —
-      // ship data, grown via the Hardpoint Expansion Outpost offer, not a
-      // hardcoded constant.
-      weaponSlots: (carryOver && carryOver.weaponSlots) || START_WEAPON_SLOTS,
-      // Pre-turn system toggles: Warpdrive governs whether you can move at
-      // all this turn (off = Target Lock stance: stationary actions only); the
-      // rest gate their matching AUTO_FIRE_WEAPONS entry, inert until
-      // purchased but present from the start so a later purchase has
-      // something to flip. All default on.
-      systems: { warpdrive: true, ram: true, lance: true, repulsor: true },
+      // The Hold: the ship's equipment grid — either carried whole from
+      // the previous sector (a run's ship IS its hold) or built fresh
+      // from the level's starting kit. `systems` is derived from it.
+      hold: buildHold(level, carryOver),
+      systems: { warpdrive: true, ram: false, lance: false, repulsor: false },
       // Direction index (0-5) the flagship is currently facing — gameplay-
       // relevant now, not just cosmetic, since a directional weapon's
       // pattern is relative to it. Updated on every Sublight move; starts
@@ -573,63 +689,33 @@
     // intro, not the always-true "Warp Gate online."
     checkExitUnlock(state);
     if (level.intro) pushLog(state, level.intro);
-    // Every weapon system defaults to systems[key] === true (including
-    // Lance/Repulsor before they're even owned — see the comment on the
-    // `systems` field above). Once a flagship actually owns 3+ of them
-    // (Lance and Repulsor both purchased, carried into a new sector via
-    // carryOver.extraActions), that default would silently put every one
-    // of them "active" at once, over the slot cap, without ever going
-    // through setSystem. Clamp it down here too, not just in setSystem.
-    clampWeaponSystems(state);
+    // Everything the ship can DO derives from what's in the Hold.
+    syncHoldDerived(state);
     return state;
   }
 
-  // "There should be rules about what you can equip" (Clubhouse) — the
-  // toggle-fired weapon systems compete for state.weaponSlots: each one's
-  // WEAPONS[key].slots counts against the ship's total while it's on.
-  // Doesn't touch Tractor Beam (an armed-and-aimed one-off action, slots
-  // 0) or Warpdrive (movement, not a weapon).
+  // A fresh sector's hold: carried whole from the previous one (the ship
+  // travels), or built from the level's starting kit — every ship begins
+  // with a Reactor Core and a Sublight Drive, plus whatever weapons the
+  // level's actions list (or a carryOver.extraActions fixture) grants.
+  function buildHold(level, carryOver) {
+    if (carryOver && carryOver.hold) return JSON.parse(JSON.stringify(carryOver.hold));
+    const hold = { cols: HOLD_COLS, rows: HOLD_ROWS, blocked: HOLD_BLOCKED.slice(), items: [], cargo: [] };
+    const acts = new Set([...(level.actions || DEFAULT_ACTIONS), ...((carryOver && carryOver.extraActions) || [])]);
+    const kit = ["sublightDrive", "reactorCore"]; // drive first: it runs down the spine, keeping the midsection whole
+    if (acts.has("ramming")) kit.push("shockwave");
+    if (acts.has("lance")) kit.push("lanceCannon");
+    if (acts.has("repulsor")) kit.push("repulsor");
+    if (acts.has("tractor")) kit.push("tractorBeam");
+    for (const id of kit) autoPlaceInHold(hold, id);
+    return hold;
+  }
+
+  // The weapon-system keys the renderer iterates for arming/reach checks —
+  // derived from the Hold now (an installed weapon item sets its
+  // systems[key] flag in syncHoldDerived), but the key list itself is
+  // stable engine data.
   const WEAPON_SYSTEM_KEYS = ["ram", "lance", "repulsor"];
-
-  // Slot points currently in use by owned, toggled-on weapon systems.
-  // `except` (optional) leaves one key out — setSystem uses it to ask
-  // "what's everyone ELSE using?" before approving a toggle-on.
-  function usedWeaponSlots(state, except) {
-    return WEAPON_SYSTEM_KEYS.filter(
-      (k) => k !== except && state.systems[k] && (k === "ram" || state.actions.includes(k))
-    ).reduce((sum, k) => sum + WEAPONS[k].slots, 0);
-  }
-
-  // Disables active-but-owned weapon systems beyond the ship's slot
-  // capacity, keeping earlier WEAPON_SYSTEM_KEYS entries (Shockwave wins
-  // ties over Lance/Repulsor, arbitrary but deterministic). Used wherever
-  // ownership or the default-on systems block can put more slots "active"
-  // than the ship has, without ever going through setSystem's own check.
-  function clampWeaponSystems(state) {
-    const owned = WEAPON_SYSTEM_KEYS.filter((k) => k === "ram" || state.actions.includes(k));
-    let slotsLeft = state.weaponSlots;
-    for (const k of owned) {
-      if (!state.systems[k]) continue;
-      if (WEAPONS[k].slots <= slotsLeft) slotsLeft -= WEAPONS[k].slots;
-      else state.systems[k] = false;
-    }
-  }
-
-  function setSystem(state, key, enabled) {
-    if (!(key in state.systems)) throw new Error(`Unknown system: ${key}`);
-    if (enabled && WEAPON_SYSTEM_KEYS.includes(key)) {
-      // Unowned weapons still default to systems[key] === true (see
-      // createGameState) since they simply don't fire until purchased/
-      // claimed — usedWeaponSlots only counts ones actually unlocked
-      // (ram is always available; the rest need state.actions).
-      if (usedWeaponSlots(state, key) + WEAPONS[key].slots > state.weaponSlots) {
-        throw new Error(
-          `Weapon slots full (${usedWeaponSlots(state, key)}/${state.weaponSlots}) — toggle another weapon off first`
-        );
-      }
-    }
-    state.systems[key] = Boolean(enabled);
-  }
 
   // Re-aims the flagship without moving or ending the turn — free to call as
   // many times as you like (no events, no enemy phase). This is what lets
@@ -1034,7 +1120,13 @@
 
   function applySublight(state, to) {
     assertPlaying(state);
-    if (!state.systems.warpdrive) throw new Error("Target Lock engaged — disengage it to move, or FIRE/RECHARGE in place");
+    // Movement is EQUIPMENT: no installed drive, no flying — the
+    // deliberately absurd freedom of the Hold ("you could remove your
+    // engines altogether... it wouldn't make any sense because you
+    // didn't go anywhere").
+    if (!state.hold.items.some((it) => EQUIPMENT[it.id].kind === "engine")) {
+      throw new Error("No drive installed — the flagship isn't going anywhere");
+    }
     state.events = [];
     if (!isAdjacent(state.playerPos, to)) throw new Error("Sublight Impulse: destination is not adjacent");
     if (!onBoard(state, to)) throw new Error("Sublight Impulse: destination is off the map");
@@ -1091,9 +1183,12 @@
   // regain Energy. Costs the whole turn while enemies keep coming.
   function applyRecharge(state) {
     assertPlaying(state);
+    const reactors = state.hold.items.filter((it) => EQUIPMENT[it.id].kind === "reactor");
+    if (!reactors.length) throw new Error("No reactor installed — nothing to cycle");
     if (state.energy >= state.maxEnergy) throw new Error("Reactor Core: Energy is already full");
     state.events = [];
-    const gained = Math.min(RECHARGE_ENERGY_GAIN, state.maxEnergy - state.energy);
+    const perCycle = reactors.reduce((sum, it) => sum + (EQUIPMENT[it.id].rechargeGain || 0), 0);
+    const gained = Math.min(perCycle, state.maxEnergy - state.energy);
     state.energy += gained;
     state.events.push({ type: "energyGain", amount: gained });
     pushLog(state, `Reactor cycled — +${gained} Energy.`);
@@ -1184,21 +1279,23 @@
       state.maxHull += 1;
       state.hull += 1;
     } else if (offer.id === "shield") {
-      state.maxShields += 1;
-      state.shieldCharges += 1; // the new capacity arrives raised — an upgrade should feel immediate
+      autoPlaceInHold(state.hold, "shieldGenerator");
+      syncHoldDerived(state);
+      state.shieldCharges = Math.min(state.shieldCharges + 1, state.maxShields); // arrives raised if it fit installed
     } else if (offer.id === "reactor") {
       state.maxEnergy += 1;
       state.energy += 1; // an upgrade should feel immediate, same as Reinforce Hull
     } else if (offer.id === "hardpoint") {
-      state.weaponSlots += 1;
+      state.hold.rows += 1; // more internal space — the grid literally grows
     } else if (offer.id === "lanceCannon") {
-      if (!state.actions.includes("lance")) state.actions.push("lance");
-      clampWeaponSystems(state); // owning a 3rd weapon system can't put all 3 "active" at once
+      autoPlaceInHold(state.hold, "lanceCannon");
+      syncHoldDerived(state);
     } else if (offer.id === "repulsorWeapon") {
-      if (!state.actions.includes("repulsor")) state.actions.push("repulsor");
-      clampWeaponSystems(state);
+      autoPlaceInHold(state.hold, "repulsor");
+      syncHoldDerived(state);
     } else if (offer.id === "tractorBeam") {
-      if (!state.actions.includes("tractor")) state.actions.push("tractor");
+      autoPlaceInHold(state.hold, "tractorBeam");
+      syncHoldDerived(state);
     }
     state.salvage -= offer.cost;
     pushLog(
@@ -1233,7 +1330,12 @@
     ALL_ACTIONS,
     PURCHASABLE_ACTIONS,
     WEAPON_SYSTEM_KEYS,
-    usedWeaponSlots,
+    EQUIPMENT,
+    holdCanPlace,
+    syncHoldDerived,
+    moveHoldItem,
+    stowToCargo,
+    installFromCargo,
     hexKey,
     posEq,
     hexDistance,
@@ -1247,7 +1349,6 @@
     directionIndex,
     validateLevel,
     createGameState,
-    setSystem,
     setFacing,
     computeThreatHexes,
     applySublight,
@@ -1259,7 +1360,6 @@
     applyEndTurn,
     START_AP,
     ENEMY_AP,
-    clampWeaponSystems,
     applyTractor,
     outpostAvailable,
     outpostOffers,

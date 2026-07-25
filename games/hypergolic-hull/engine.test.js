@@ -419,8 +419,8 @@ let weaponState = Engine.createGameState(weaponLevel);
 assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
 assert.deepStrictEqual(
   weaponState.systems,
-  { warpdrive: true, ram: true, lance: true, repulsor: true },
-  "all systems default on"
+  { warpdrive: true, ram: true, lance: false, repulsor: false },
+  "arming derives from the Hold — only the installed Shockwave reads armed"
 );
 Engine.applySublight(weaponState, { q: 2, r: 2 }); // steps adjacent to the interceptor
 assert.strictEqual(weaponState.enemies[0].alive, true, "moving fires NOTHING — shooting is its own action now");
@@ -435,24 +435,26 @@ assert.ok(
 );
 assert.deepStrictEqual(weaponState.playerPos, { q: 2, r: 2 }, "FIRE never moves the flagship");
 
-// With the Shockwave disarmed, FIRE has nothing to shoot with.
+// With the Shockwave pulled out of the grid, FIRE has nothing to shoot with.
 weaponState = Engine.createGameState(weaponLevel);
-Engine.setSystem(weaponState, "ram", false);
+const shockIdx = weaponState.hold.items.findIndex((it) => it.id === "shockwave");
+weaponState.hold.cargo.push(weaponState.hold.items.splice(shockIdx, 1)[0].id);
+Engine.syncHoldDerived(weaponState);
 weaponState.playerPos = { q: 2, r: 2 };
-assert.throws(() => Engine.applyFire(weaponState), /no armed weapon/, "FIRE refuses with every weapon disarmed");
+assert.throws(() => Engine.applyFire(weaponState), /no armed weapon/, "FIRE refuses with every weapon uninstalled");
 
-// Warpdrive off (Target Lock engaged) blocks movement outright.
+// No drive in the grid = the ship doesn't move. Equipment is capability.
 weaponState = Engine.createGameState(weaponLevel);
-Engine.setSystem(weaponState, "warpdrive", false);
+const driveIdx = weaponState.hold.items.findIndex((it) => it.id === "sublightDrive");
+weaponState.hold.cargo.push(weaponState.hold.items.splice(driveIdx, 1)[0].id);
+Engine.syncHoldDerived(weaponState);
 assert.throws(
   () => Engine.applySublight(weaponState, { q: 2, r: 2 }),
-  /Target Lock/,
-  "movement is blocked while Target Lock is engaged"
+  /No drive installed/,
+  "movement is blocked with no drive in the Hold"
 );
 
-// But re-aiming (no move, no turn) still works with Warpdrive off — that's
-// how you dial in a forward-only weapon's direction before committing with
-// FIRE.
+// Re-aiming (no move, no turn) works regardless of what's installed.
 const facingBefore = weaponState.facing;
 Engine.setFacing(weaponState, (facingBefore + 2) % 6);
 assert.strictEqual(weaponState.facing, (facingBefore + 2) % 6, "setFacing re-aims the flagship");
@@ -460,109 +462,114 @@ assert.deepStrictEqual(weaponState.playerPos, weaponLevel.playerStart, "re-aimin
 assert.strictEqual(weaponState.turnCount, 0, "re-aiming doesn't consume a turn — no enemy phase runs");
 assert.throws(() => Engine.setFacing(weaponState, 6), /Invalid facing/, "facing must be one of the 6 hex directions");
 
-// ---- Weapon slots: "there should be rules about what you can equip" ----
-// (Clubhouse feedback) — the toggle-fired weapons (Shockwave/Lance/
-// Repulsor) compete for state.weaponSlots, each occupying its
-// WEAPONS[key].slots while armed. Ship data (upgradable via the
-// Hardpoint Expansion Outpost offer), not a hardcoded constant. Tractor
-// Beam is a one-off action (slots: 0), and Warpdrive is movement, not a
-// weapon — neither competes for a slot.
+// ---- The Hold: "a grid drag and drop for different sized/shaped items" --
+// The ship's internals are a grid; every item is a shaped tile and its
+// footprint is the equip cost. What's INSTALLED is what works; cargo is
+// inert. Rearranging is free but dock-gated.
 assert.deepStrictEqual(Engine.WEAPON_SYSTEM_KEYS, ["ram", "lance", "repulsor"]);
-assert.strictEqual(Engine.WEAPONS.tractor.slots, 0, "the Tractor Beam never occupies a weapon slot");
 
-// Lance and Repulsor default systems[key] === true even before they're
-// purchased (see createGameState) — they simply don't fire until owned.
-// The cap must only count weapons actually unlocked, or a fresh flagship
-// with just the Shockwave would already read as "2 active" and get
-// blocked from re-enabling it.
-let capState = Engine.createGameState(weaponLevel);
-assert.ok(
-  !capState.actions.includes("lance") && !capState.actions.includes("repulsor"),
-  "a fresh flagship hasn't unlocked Lance/Repulsor yet"
-);
-assert.strictEqual(capState.weaponSlots, 2, "a fresh flagship has 2 weapon slots");
-assert.strictEqual(Engine.usedWeaponSlots(capState), 1, "only the owned, armed Shockwave counts against them");
-Engine.setSystem(capState, "ram", false);
-Engine.setSystem(capState, "ram", true); // must not throw — lance/repulsor aren't actually owned
-assert.strictEqual(capState.systems.ram, true);
-
-// Once Lance and Repulsor are both owned, the cap bites: Shockwave +
-// Lance is already 2/2 (createGameState itself clamps the 3rd default-on
-// system, Repulsor, back off — see clampWeaponSystems), so arming
-// Repulsor on top must be rejected.
-capState = Engine.createGameState(weaponLevel, { extraActions: ["lance", "repulsor"] });
-assert.ok(
-  capState.actions.includes("lance") && capState.actions.includes("repulsor"),
-  "extraActions carries Lance and Repulsor into the fresh state"
-);
-assert.deepStrictEqual(
-  capState.systems,
-  { warpdrive: true, ram: true, lance: true, repulsor: false },
-  "owning all 3 weapon systems at once starts with only the first 2 (in Shockwave/Lance/Repulsor order) active — the cap is enforced from turn zero, not just on the next toggle"
-);
-assert.throws(
-  () => Engine.setSystem(capState, "repulsor", true),
-  /Weapon slots full/,
-  "a 3rd weapon system can't be armed while both slots are occupied"
-);
-// Toggling one off first frees a slot.
-Engine.setSystem(capState, "ram", false);
-Engine.setSystem(capState, "repulsor", true); // now Lance + Repulsor, 2/2 — must not throw
-assert.strictEqual(capState.systems.repulsor, true);
-// Disabling a system is always allowed, cap or no cap.
-Engine.setSystem(capState, "lance", false);
-assert.strictEqual(capState.systems.lance, false);
-
-// The cap also has to hold at the moment of purchase, not just on the next
-// toggle — buying a 3rd weapon system while the other 2 are already
-// running must not silently leave all 3 flagged "active".
-const capOutpostLevel = { ...weaponLevel, id: 995, playerStart: { q: 3, r: 3 }, outpost: { q: 2, r: 3 } };
-let purchaseState = Engine.createGameState(capOutpostLevel, { extraActions: ["lance"] });
-assert.deepStrictEqual(
-  purchaseState.systems,
-  { warpdrive: true, ram: true, lance: true, repulsor: true },
-  "Shockwave + Lance is exactly 2/2 already — Repulsor still reads active by default, but it isn't owned yet so it doesn't count"
-);
-purchaseState.playerPos = { q: capOutpostLevel.outpost.q, r: capOutpostLevel.outpost.r };
-purchaseState.outpostOfferIds = ["repair", "repulsorWeapon"];
-purchaseState.salvage = 20;
-Engine.applyOutpostPurchase(purchaseState, "repulsorWeapon");
-assert.strictEqual(purchaseState.actions.includes("repulsor"), true, "the purchase still unlocks the action");
+let holdState = Engine.createGameState(weaponLevel);
+assert.strictEqual(holdState.hold.cols, 5, "the starter hold is 5 cells wide");
+assert.strictEqual(holdState.hold.rows, 6, "and 6 tall");
+assert.ok(holdState.hold.blocked.length > 0, "with cells masked OUT — the grid is the shape of the ship, not a rectangle");
 assert.strictEqual(
-  purchaseState.systems.repulsor,
+  Engine.holdCanPlace(holdState.hold, "shockwave", 0, 0),
   false,
-  "but it doesn't auto-arm — Shockwave and Lance already filled both slots, so the newly-bought Repulsor starts off"
+  "nothing can be installed outside the hull silhouette"
 );
-assert.strictEqual(purchaseState.systems.ram, true, "the 2 systems that were already active are untouched by the purchase");
-assert.strictEqual(purchaseState.systems.lance, true);
+assert.deepStrictEqual(
+  holdState.hold.items.map((it) => it.id).sort(),
+  ["reactorCore", "shockwave", "sublightDrive"],
+  "the starter kit: Reactor Core + Sublight Drive + Shockwave, all placed in the grid"
+);
+assert.strictEqual(Engine.EQUIPMENT.reactorCore.w * Engine.EQUIPMENT.reactorCore.h, 4, "the Reactor Core is a 2x2 tile");
+assert.strictEqual(Engine.EQUIPMENT.sublightDrive.h, 3, "the Sublight Drive is a 1x3 tile");
+// Placement rules: bounds and overlaps are rejected.
+const reactorIdx = holdState.hold.items.findIndex((it) => it.id === "reactorCore");
+const reactorTile = holdState.hold.items[reactorIdx];
+assert.strictEqual(
+  Engine.holdCanPlace(holdState.hold, "shockwave", reactorTile.x, reactorTile.y),
+  false,
+  "a tile can't sit on top of another"
+);
+assert.strictEqual(Engine.holdCanPlace(holdState.hold, "reactorCore", 4, 3), false, "a tile can't hang off the grid edge");
 
-// Hardpoint Expansion raises the ship's slot capacity — after buying it,
-// the third weapon CAN be armed alongside the other two.
-purchaseState.outpostOfferIds = ["repair", "hardpoint"];
-purchaseState.salvage = 20;
-Engine.applyOutpostPurchase(purchaseState, "hardpoint");
-assert.strictEqual(purchaseState.weaponSlots, 3, "Hardpoint Expansion adds a weapon slot");
-Engine.setSystem(purchaseState, "repulsor", true); // must not throw anymore
-assert.strictEqual(purchaseState.systems.repulsor, true, "with 3 slots, all 3 weapon systems can run at once");
+// Rearranging is DOCK-GATED ("it doesn't make sense to change mid route").
+assert.throws(
+  () => Engine.stowToCargo(holdState, reactorIdx),
+  /Refits need a dock/,
+  "no rearranging mid-flight"
+);
+
+const holdOutpostLevel = { ...weaponLevel, id: 995, playerStart: { q: 3, r: 3 }, outpost: { q: 2, r: 3 }, enemies: [{ type: "interceptor", q: 1, r: 0 }] };
+let dockState = Engine.createGameState(holdOutpostLevel);
+dockState.playerPos = { q: 2, r: 3 }; // docked
+const turnsBeforeRefit = dockState.turnCount;
+const dockReactorIdx = dockState.hold.items.findIndex((it) => it.id === "reactorCore");
+Engine.stowToCargo(dockState, dockReactorIdx);
+assert.strictEqual(dockState.turnCount, turnsBeforeRefit, "refits at dock are free — no turn spent");
+assert.ok(dockState.hold.cargo.includes("reactorCore"), "the stowed reactor sits in cargo");
+assert.throws(() => Engine.applyRecharge(dockState), /No reactor installed/, "a stowed reactor powers NOTHING — cargo is inert");
+{
+  const cargoIdx = dockState.hold.cargo.indexOf("reactorCore");
+  let spot = null;
+  for (let y = 0; y < dockState.hold.rows && !spot; y++) {
+    for (let x = 0; x < dockState.hold.cols && !spot; x++) {
+      if (Engine.holdCanPlace(dockState.hold, "reactorCore", x, y)) spot = { x, y };
+    }
+  }
+  Engine.installFromCargo(dockState, cargoIdx, spot.x, spot.y);
+}
+assert.ok(dockState.hold.items.some((it) => it.id === "reactorCore"), "installing from cargo puts the tile back in the grid");
+dockState.energy = 0;
+Engine.applyRecharge(dockState); // must not throw — capability restored with the hardware
+assert.ok(dockState.energy > 0, "and the reactor cycles again");
+
+// Buying with no room left lands in cargo; a Hold Expansion adds a row.
+dockState.outpostOfferIds = ["repair", "shield", "hardpoint"];
+dockState.salvage = 50;
+while (true) {
+  const before = dockState.hold.items.length;
+  Engine.applyOutpostPurchase(dockState, "shield");
+  dockState.outpostOfferIds.push("shield"); // re-stock for the test loop
+  if (dockState.hold.items.length === before) break; // this one didn't fit — it went to cargo
+}
+assert.ok(dockState.hold.cargo.includes("shieldGenerator"), "a purchase that doesn't fit the grid waits in cargo");
+const rowsBefore = dockState.hold.rows;
+dockState.salvage = 20;
+Engine.applyOutpostPurchase(dockState, "hardpoint");
+assert.strictEqual(dockState.hold.rows, rowsBefore + 1, "Hold Expansion grows the grid by a row");
+const shieldsBeforeInstall = dockState.maxShields;
+const cargoGenIdx = dockState.hold.cargo.indexOf("shieldGenerator");
+let placed = false;
+for (let y = 0; y < dockState.hold.rows && !placed; y++) {
+  for (let x = 0; x < dockState.hold.cols && !placed; x++) {
+    if (Engine.holdCanPlace(dockState.hold, "shieldGenerator", x, y)) {
+      Engine.installFromCargo(dockState, cargoGenIdx, x, y);
+      placed = true;
+    }
+  }
+}
+assert.ok(placed, "the new row makes room for the waiting generator");
+assert.strictEqual(dockState.maxShields, shieldsBeforeInstall + 1, "the freshly-installed generator adds live shield capacity");
 
 // Reactor Upgrade raises the Energy cap (and fills the new capacity
 // immediately, same as Reinforce Hull).
-purchaseState.outpostOfferIds = ["repair", "reactor"];
-purchaseState.salvage = 12;
-const maxEnergyBefore = purchaseState.maxEnergy;
-const energyBeforeUpgrade = purchaseState.energy;
-Engine.applyOutpostPurchase(purchaseState, "reactor");
-assert.strictEqual(purchaseState.maxEnergy, maxEnergyBefore + 1, "Reactor Upgrade raises max Energy by 1");
-assert.strictEqual(purchaseState.energy, energyBeforeUpgrade + 1, "and the new capacity arrives charged");
+dockState.outpostOfferIds = ["repair", "reactor"];
+dockState.salvage = 12;
+const maxEnergyBefore = dockState.maxEnergy;
+const energyBeforeUpgrade = dockState.energy;
+Engine.applyOutpostPurchase(dockState, "reactor");
+assert.strictEqual(dockState.maxEnergy, maxEnergyBefore + 1, "Reactor Upgrade raises max Energy by 1");
+assert.strictEqual(dockState.energy, energyBeforeUpgrade + 1, "and the new capacity arrives charged");
 
-// Both upgrades carry into the next sector via carryOver, same as
-// maxHull/maxEnergy always have.
-const upgradedCarryState = Engine.createGameState(
+// The whole hold carries across sectors — the ship IS its hold.
+const holdCarryState = Engine.createGameState(
   { ...weaponLevel, id: 994 },
-  { hasPrevious: true, weaponSlots: purchaseState.weaponSlots, maxEnergy: purchaseState.maxEnergy }
+  { hasPrevious: true, hold: dockState.hold, maxEnergy: dockState.maxEnergy }
 );
-assert.strictEqual(upgradedCarryState.weaponSlots, 3, "weaponSlots carries across sectors");
-assert.strictEqual(upgradedCarryState.maxEnergy, maxEnergyBefore + 1, "maxEnergy carries across sectors");
+assert.deepStrictEqual(holdCarryState.hold, dockState.hold, "the hold carries whole via carryOver");
+assert.strictEqual(holdCarryState.maxEnergy, maxEnergyBefore + 1, "maxEnergy carries across sectors");
 
 // Enemies fight through the same WEAPONS/ENEMY_TYPES stat blocks as the
 // flagship — not hardcoded adjacency/damage constants — so the threat
@@ -796,18 +803,30 @@ assert.throws(
 // how loadSector() in app.js hands a run's progress from one sector to the
 // next. Hull damage is permanent: warping doesn't repair a breached deck,
 // only an Outpost does.
+const carriedHold = {
+  cols: 5,
+  rows: 4,
+  items: [
+    { id: "reactorCore", x: 0, y: 0 },
+    { id: "sublightDrive", x: 2, y: 0 },
+    { id: "shockwave", x: 3, y: 0 },
+    { id: "shieldGenerator", x: 0, y: 2 },
+    { id: "shieldGenerator", x: 3, y: 1 },
+  ],
+  cargo: [],
+};
 const carriedState = Engine.createGameState(LEVELS[0], {
   salvage: 4,
   hull: 1,
   maxHull: salvageState.maxHull,
   shieldCharges: 2,
-  maxShields: 2,
+  hold: carriedHold,
 });
 assert.strictEqual(carriedState.salvage, 4, "salvage carries over into the next sector");
 assert.strictEqual(carriedState.maxHull, salvageState.maxHull, "a permanent max-Hull upgrade carries over too");
 assert.strictEqual(carriedState.hull, 1, "hull DAMAGE carries over — a jump never repairs the ship");
 assert.strictEqual(carriedState.shieldCharges, 2, "raised shield charges carry over too");
-assert.strictEqual(carriedState.maxShields, 2, "shield generator capacity is permanent, same as max-Hull");
+assert.strictEqual(carriedState.maxShields, 2, "capacity derives from the two installed generators in the carried hold");
 // A fresh run (no carryOver) starts whole, and with no shields at all —
 // shields only exist once a Shield Generator is bought.
 const freshState = Engine.createGameState(LEVELS[0]);
@@ -815,9 +834,11 @@ assert.strictEqual(freshState.hull, freshState.maxHull, "a fresh run starts at f
 assert.strictEqual(freshState.maxShields, 0, "a fresh run has NO shield capacity");
 assert.strictEqual(freshState.shieldCharges, 0, "and no shield charges");
 // Charges can never exceed capacity — a stale carryOver with more charges
-// than generator capacity clamps down instead of smuggling extras in.
-const clampedState = Engine.createGameState(LEVELS[0], { shieldCharges: 3, maxShields: 1 });
-assert.strictEqual(clampedState.shieldCharges, 1, "carried charges clamp to generator capacity");
+// than installed generators clamps down instead of smuggling extras in.
+const oneGenHold = JSON.parse(JSON.stringify(carriedHold));
+oneGenHold.items = oneGenHold.items.filter((it, i) => !(it.id === "shieldGenerator" && i === 4));
+const clampedState = Engine.createGameState(LEVELS[0], { shieldCharges: 3, hold: oneGenHold });
+assert.strictEqual(clampedState.shieldCharges, 1, "carried charges clamp to installed generator capacity");
 
 // ---- outpost offer variety: not the same fixed shop every visit ---------
 // Repair is always offered (the reliable baseline); how many EXTRA offers
@@ -890,7 +911,10 @@ assert.strictEqual(salvageState.maxShields, 1, "the Shield Generator installs +1
 assert.strictEqual(salvageState.shieldCharges, 1, "the new capacity arrives raised — the upgrade feels immediate");
 assert.strictEqual(salvageState.salvage, 0, "the generator costs its full salvage price");
 
-const raiseState = Engine.createGameState(shieldLevel, { maxShields: 1 });
+const raiseState = Engine.createGameState(shieldLevel);
+raiseState.hold.items.push({ id: "shieldGenerator", x: 3, y: 0 }); // fixture: install a generator directly
+Engine.syncHoldDerived(raiseState);
+assert.strictEqual(raiseState.maxShields, 1, "an installed generator IS the capacity");
 assert.strictEqual(raiseState.shieldCharges, 0, "capacity without carried charges starts DOWN — raising costs energy");
 const energyBeforeRaise = raiseState.energy;
 const turnBeforeRaise = raiseState.turnCount;
@@ -1227,7 +1251,7 @@ assert.strictEqual(energyState.energy, energyBeforeEmptyTurn, "a MOVE turn touch
 const tractorEnergyState = Engine.createGameState({ ...energyLevel, id: 989 }, { extraActions: ["tractor"] });
 tractorEnergyState.enemies[0].q = 2;
 tractorEnergyState.enemies[0].r = 4;
-Engine.setSystem(tractorEnergyState, "ram", false); // isolate the Tractor's own cost
+tractorEnergyState.systems.ram = false; // isolate the Tractor's own cost (fixture-level disarm)
 tractorEnergyState.energy = 0;
 assert.throws(
   () => Engine.applyTractor(tractorEnergyState, "e0"),
