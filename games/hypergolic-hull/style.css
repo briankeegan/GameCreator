@@ -662,11 +662,31 @@ body {
 .hold-kind-engine { border-color: #2e5f96; background: #131f30; }
 .hold-kind-shield { border-color: #5bb8f2; background: #14273a; }
 .hold-kind-utility { border-color: #8a6ecf; background: #201a33; }
+.hold-kind-sensor { border-color: #3fbf9f; background: #10261f; }
 .hold-cell-void {
   position: absolute;
   background: #141b2b; /* matches the overlay panel — reads as "outside the hull" */
   border: none;
 }
+/* The scanned contact's own dashboard + mini Systems view, inside the
+   Scan card — same gauge pips and same ship-shaped grid language as the
+   flagship's console/Hold, just smaller and read-only. */
+.enemy-info-dash {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  background: #0b0f18;
+  border: 2px solid #3a2028;
+  padding: 4px 8px;
+  margin-bottom: 4px;
+}
+.enemy-info-dash .stat-label { font-size: 0.56rem; }
+.enemy-info-dash .stat-pip { width: 10px; height: 10px; }
+.mini-hold {
+  margin: 6px 0 2px;
+  pointer-events: none; /* read-only schematic — taps stay on the board */
+}
+.mini-void { background: #170f14; } /* matches the scan card's own panel */
 .hold-tile.dragging { z-index: 5; opacity: 0.9; }
 .hold-tile.drop-ok { outline: 2px solid #7fe3a8; }
 .hold-tile.drop-bad { outline: 2px solid #ff5a4a; }

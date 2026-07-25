@@ -351,6 +351,9 @@
     reactorCore: { id: "reactorCore", label: "Reactor Core", kind: "reactor", rechargeGain: 1, w: 2, h: 2 },
     sublightDrive: { id: "sublightDrive", label: "Sublight Drive", kind: "engine", moveRange: 1, w: 1, h: 3 },
     shieldGenerator: { id: "shieldGenerator", label: "Shield Generator", kind: "shield", capacity: 1, w: 2, h: 2 },
+    // The Scan mode's hardware ("the scanner should itself be a small
+    // item") — a tiny tile, but pull it and the ship flies blind.
+    scanner: { id: "scanner", label: "Scanner Array", kind: "sensor", w: 1, h: 1 },
   };
 
   // Can `id`'s tile sit at (x, y) — inside the grid, overlapping nothing?
@@ -401,6 +404,7 @@
     state.systems = { warpdrive: true, ram: has("shockwave"), lance: has("lanceCannon"), repulsor: has("repulsor") };
     state.maxShields = state.hold.items.filter((it) => EQUIPMENT[it.id].kind === "shield").length;
     state.shieldCharges = Math.min(state.shieldCharges, state.maxShields);
+    state.scannerInstalled = state.hold.items.some((it) => EQUIPMENT[it.id].kind === "sensor");
   }
 
   function assertDocked(state) {
@@ -450,21 +454,61 @@
     // `fitted` — the enemy's own equipment loadout, same model as the
     // flagship's Hold ("enemies work the same way... when you scan an
     // enemy you should see their setup"): Scan renders this list.
+    // `fitted` is the label list; `holdView` is the same thing as a SHIP-
+    // SHAPED mini grid — the enemy's own Systems view, rendered by Scan
+    // exactly like the flagship's Hold ("scan should show the same sorta
+    // view... their dashboard").
     interceptor: {
       hp: 1, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true, salvage: 1, maxEnergy: 1, startEnergy: 1,
       fitted: ["Interceptor Cannon", "Micro Reactor", "Sublight Drive"],
+      holdView: {
+        cols: 3, rows: 3, blocked: ["0,0", "2,0", "0,2", "2,2"],
+        tiles: [
+          { kind: "weapon", x: 1, y: 0, w: 1, h: 1 },
+          { kind: "reactor", x: 0, y: 1, w: 1, h: 1 },
+          { kind: "engine", x: 1, y: 1, w: 1, h: 2 },
+          { kind: "reactor", x: 2, y: 1, w: 1, h: 1, spare: true },
+        ],
+      },
     },
     cruiser: {
       hp: 2, weapon: WEAPONS.interceptorCannon, movesTowardPlayer: true, salvage: 2, maxEnergy: 1, startEnergy: 1,
       fitted: ["Interceptor Cannon", "Micro Reactor", "Sublight Drive", "Reinforced Plating"],
+      holdView: {
+        cols: 3, rows: 4, blocked: ["0,0", "2,0"],
+        tiles: [
+          { kind: "weapon", x: 1, y: 0, w: 1, h: 1 },
+          { kind: "shield", x: 0, y: 1, w: 1, h: 2 },
+          { kind: "engine", x: 1, y: 1, w: 1, h: 2 },
+          { kind: "shield", x: 2, y: 1, w: 1, h: 2 },
+          { kind: "reactor", x: 1, y: 3, w: 1, h: 1 },
+        ],
+      },
     },
     sentry: {
       hp: 2, weapon: WEAPONS.sentryBeam, movesTowardPlayer: false, salvage: 2, maxEnergy: 1, startEnergy: 1,
-      fitted: ["Sentry Beam", "Micro Reactor", "Station Anchor"],
+      fitted: ["Sentry Beam", "Micro Reactor", "Station Anchor — no drive"],
+      holdView: {
+        cols: 3, rows: 3, blocked: ["0,0", "2,0"],
+        tiles: [
+          { kind: "weapon", x: 1, y: 0, w: 1, h: 1 },
+          { kind: "reactor", x: 0, y: 1, w: 3, h: 1 },
+          { kind: "utility", x: 1, y: 2, w: 1, h: 1 },
+        ],
+      },
     },
     railgun: {
       hp: 2, weapon: WEAPONS.railgunBeam, movesTowardPlayer: false, salvage: 3, maxEnergy: 3, startEnergy: 0,
-      fitted: ["Railgun", "Charge Bank x3", "Station Anchor"],
+      fitted: ["Railgun", "Charge Bank x3", "Station Anchor — no drive"],
+      holdView: {
+        cols: 3, rows: 4, blocked: ["0,0", "2,0"],
+        tiles: [
+          { kind: "weapon", x: 1, y: 0, w: 1, h: 3 },
+          { kind: "reactor", x: 0, y: 1, w: 1, h: 2 },
+          { kind: "reactor", x: 2, y: 1, w: 1, h: 2 },
+          { kind: "utility", x: 1, y: 3, w: 1, h: 1 },
+        ],
+      },
     },
   };
 
@@ -702,7 +746,7 @@
     if (carryOver && carryOver.hold) return JSON.parse(JSON.stringify(carryOver.hold));
     const hold = { cols: HOLD_COLS, rows: HOLD_ROWS, blocked: HOLD_BLOCKED.slice(), items: [], cargo: [] };
     const acts = new Set([...(level.actions || DEFAULT_ACTIONS), ...((carryOver && carryOver.extraActions) || [])]);
-    const kit = ["sublightDrive", "reactorCore"]; // drive first: it runs down the spine, keeping the midsection whole
+    const kit = ["sublightDrive", "reactorCore", "scanner"]; // drive first: it runs down the spine, keeping the midsection whole
     if (acts.has("ramming")) kit.push("shockwave");
     if (acts.has("lance")) kit.push("lanceCannon");
     if (acts.has("repulsor")) kit.push("repulsor");

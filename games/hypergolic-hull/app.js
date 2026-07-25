@@ -2040,6 +2040,9 @@ function updateHud() {
 // readout strip above the field says what to do, and tapping anything
 // identifies it.
 function updateLegend() {
+  // Scan is HARDWARE: stow the Scanner Array and the mode itself dies.
+  if (legendVisible && !state.scannerInstalled) legendVisible = false;
+  scanBtn.disabled = !state.scannerInstalled;
   scanBtn.classList.toggle("active", legendVisible);
 }
 
@@ -2158,16 +2161,64 @@ function updateScanInfo() {
     header.appendChild(hpPips);
     enemyInfoEl.appendChild(header);
 
-    // FULL status readout — the same numbers the flagship lives by:
-    // reactor charge (their shot budget), drive (why sentries never
-    // chase), and what their wreck is worth.
+    // Their DASHBOARD — the same gauge language as the flagship's own
+    // console ("regular scan should basically show their dashboard"):
+    // hull and reactor as pips, drive + salvage as the fine print.
+    const dash = document.createElement("div");
+    dash.className = "enemy-info-dash";
+    const dashRow = (label, filled, max, variant) => {
+      const row = document.createElement("span");
+      row.className = "stat-wrap";
+      const name = document.createElement("span");
+      name.className = "stat-label";
+      name.textContent = label;
+      const barEl = document.createElement("span");
+      barEl.className = "stat-bar";
+      renderStatBar(barEl, label, filled, max, variant);
+      row.appendChild(name);
+      row.appendChild(barEl);
+      dash.appendChild(row);
+    };
+    dashRow("Hull", enemy.hp, enemy.maxHp, "hull");
+    dashRow("Reactor", enemy.energy, enemy.maxEnergy, "energy");
+    enemyInfoEl.appendChild(dash);
     const status = document.createElement("div");
     status.className = "enemy-info-stats";
     status.textContent =
-      `HULL ${enemy.hp}/${enemy.maxHp} · REACTOR ${enemy.energy}/${enemy.maxEnergy}⚡ · ` +
       (def.movesTowardPlayer ? "DRIVE: sublight, 1 hex/round" : "DRIVE: none — cannot move") +
       ` · SALVAGE +${def.salvage}`;
     enemyInfoEl.appendChild(status);
+
+    // Their SYSTEMS view — the same ship-shaped mini-grid as your own
+    // Hold, with their fitted equipment as colored tiles.
+    if (def.holdView) {
+      const MINI = 20;
+      const mini = document.createElement("div");
+      mini.className = "hold-grid mini-hold";
+      mini.style.width = `${def.holdView.cols * MINI}px`;
+      mini.style.height = `${def.holdView.rows * MINI}px`;
+      mini.style.backgroundSize = `${MINI}px ${MINI}px`;
+      for (const key of def.holdView.blocked || []) {
+        const [bx, by] = key.split(",").map(Number);
+        const cell = document.createElement("div");
+        cell.className = "hold-cell-void mini-void";
+        cell.style.left = `${bx * MINI}px`;
+        cell.style.top = `${by * MINI}px`;
+        cell.style.width = `${MINI}px`;
+        cell.style.height = `${MINI}px`;
+        mini.appendChild(cell);
+      }
+      for (const t of def.holdView.tiles) {
+        const tile = document.createElement("div");
+        tile.className = `hold-tile hold-kind-${t.kind}`;
+        tile.style.left = `${t.x * MINI}px`;
+        tile.style.top = `${t.y * MINI}px`;
+        tile.style.width = `${t.w * MINI - 2}px`;
+        tile.style.height = `${t.h * MINI - 2}px`;
+        mini.appendChild(tile);
+      }
+      enemyInfoEl.appendChild(mini);
+    }
 
     const stats = document.createElement("div");
     stats.className = "enemy-info-stats";
@@ -2394,6 +2445,7 @@ function wireHoldDrag(gridEl, cargoEl, CELL, docked) {
     if (eq.kind === "engine") return `${eq.label} — ${eq.moveRange} hex per turn · ${eq.w}x${eq.h}`;
     if (eq.kind === "shield") return `${eq.label} — raise-able charge, absorbs a volley · ${eq.w}x${eq.h}`;
     if (eq.id === "tractorBeam") return describeWeapon(Engine.WEAPONS.tractor);
+    if (eq.kind === "sensor") return `${eq.label} — powers Scan mode · ${eq.w}x${eq.h}`;
     return eq.label;
   };
 
@@ -2845,11 +2897,30 @@ function restoreRun() {
     s.maxAp = Math.min(s.maxAp, Engine.START_AP);
     s.ap = Math.min(s.ap, s.maxAp);
   };
+  // A save from before the Scanner Array existed would fly blind forever —
+  // retrofit one into the first free cell (or cargo, worst case).
+  const ensureScanner = (s) => {
+    if (s.hold.items.some((it) => it.id === "scanner") || s.hold.cargo.includes("scanner")) return;
+    for (let y = 0; y < s.hold.rows; y++) {
+      for (let x = 0; x < s.hold.cols; x++) {
+        if (Engine.holdCanPlace(s.hold, "scanner", x, y)) {
+          s.hold.items.push({ id: "scanner", x, y });
+          Engine.syncHoldDerived(s);
+          return;
+        }
+      }
+    }
+    s.hold.cargo.push("scanner");
+  };
   clampAp(state);
+  ensureScanner(state);
   // Same reasoning as isValidSave above, applied per-entry — drop any
   // stale chart snapshot rather than crashing a jump later.
   sectorHistory = GCStorage.get(GAME_ID, "sectorHistory", []).filter((entry) => entry && isValidSave(entry.state));
-  sectorHistory.forEach((entry) => clampAp(entry.state));
+  sectorHistory.forEach((entry) => {
+    clampAp(entry.state);
+    ensureScanner(entry.state);
+  });
   const savedChartIndex = GCStorage.get(GAME_ID, "chartIndex", sectorHistory.length - 1);
   chartIndex = Math.max(0, Math.min(savedChartIndex, sectorHistory.length - 1));
   if (!sectorHistory.length) {
@@ -2880,6 +2951,11 @@ function restoreRun() {
 }
 
 scanBtn.addEventListener("click", () => {
+  if (!legendVisible && !state.scannerInstalled) {
+    pushMessage("No Scanner Array installed — the ship is flying blind.");
+    render();
+    return;
+  }
   legendVisible = !legendVisible;
   GCStorage.set(GAME_ID, "legendVisible", legendVisible);
   if (!legendVisible) inspectedHex = null; // closing Scan mode clears whatever was inspected

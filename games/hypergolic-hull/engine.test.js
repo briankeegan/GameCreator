@@ -479,9 +479,18 @@ assert.strictEqual(
 );
 assert.deepStrictEqual(
   holdState.hold.items.map((it) => it.id).sort(),
-  ["reactorCore", "shockwave", "sublightDrive"],
-  "the starter kit: Reactor Core + Sublight Drive + Shockwave, all placed in the grid"
+  ["reactorCore", "scanner", "shockwave", "sublightDrive"],
+  "the starter kit: Reactor Core + Sublight Drive + Scanner Array + Shockwave, all placed in the grid"
 );
+// The Scanner Array is hardware too ("the scanner should itself be a
+// small item") — pull it and the scannerInstalled flag dies with it.
+assert.strictEqual(holdState.scannerInstalled, true, "a fresh ship has its Scanner Array powered");
+{
+  const scanIdx = holdState.hold.items.findIndex((it) => it.id === "scanner");
+  holdState.hold.cargo.push(holdState.hold.items.splice(scanIdx, 1)[0].id);
+  Engine.syncHoldDerived(holdState);
+  assert.strictEqual(holdState.scannerInstalled, false, "a stowed Scanner Array powers nothing — the ship flies blind");
+}
 assert.strictEqual(Engine.EQUIPMENT.reactorCore.w * Engine.EQUIPMENT.reactorCore.h, 4, "the Reactor Core is a 2x2 tile");
 assert.strictEqual(Engine.EQUIPMENT.sublightDrive.h, 3, "the Sublight Drive is a 1x3 tile");
 // Placement rules: bounds and overlaps are rejected.

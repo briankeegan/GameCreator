@@ -246,9 +246,10 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#holdGrid").count(), 1, "the Systems screen is the HOLD — a real equipment grid");
   assert.strictEqual(
     await page.locator("#holdGrid .hold-tile").count(),
-    3,
-    "the starter kit shows as three shaped tiles: Reactor Core, Sublight Drive, Shockwave"
+    4,
+    "the starter kit shows as four shaped tiles: Reactor Core, Sublight Drive, Scanner Array, Shockwave"
   );
+  assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="scanner"]').count(), 1, "the Scanner Array is a real 1x1 tile — Scan itself is hardware");
   assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="shockwave"]').count(), 1, "the Shockwave is one of them");
   await page.click("#shipCloseBtn");
   assert.strictEqual(await page.locator("#targetLockBtn").count(), 0, "Target Lock is gone — tapping a hostile aims automatically");
@@ -309,8 +310,12 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#enemyInfo").isVisible(), true, "tapping an enemy in Scan mode shows its info card");
   assert.ok((await page.locator("#enemyInfo").textContent()).includes("INTERCEPTOR"), "the card names the inspected enemy");
   assert.ok(
-    /REACTOR \d+\/\d+/.test(await page.locator("#enemyInfo").textContent()),
-    "the card shows the contact's FULL status — reactor charge included"
+    (await page.locator("#enemyInfo .enemy-info-dash .stat-pip").count()) > 0,
+    "the card is the contact's DASHBOARD — hull/reactor as real gauge pips, same language as your console"
+  );
+  assert.ok(
+    (await page.locator("#enemyInfo .mini-hold .hold-tile").count()) > 0,
+    "and shows their SYSTEMS as a ship-shaped mini hold-grid of fitted tiles"
   );
   assert.ok(
     (await page.locator("#enemyInfo").textContent()).includes("SALVAGE"),
