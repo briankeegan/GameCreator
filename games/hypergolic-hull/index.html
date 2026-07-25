@@ -95,7 +95,10 @@
   <div class="ship-overlay" id="shipOverlay" hidden>
     <div class="ship-overlay-inner">
       <h2>Systems</h2>
-      <img class="ship-portrait" src="icons/flagship.png" alt="Your flagship" />
+      <img class="ship-portrait" id="shipPortrait" src="icons/flagship.png" alt="Your flagship" />
+      <!-- A scanned contact's own hull, drawn with the same renderer the
+           board uses (see renderPortrait) instead of a stand-in image. -->
+      <canvas class="ship-portrait" id="contactPortrait" width="192" height="192" hidden></canvas>
       <div class="ship-section" id="shipStats"></div>
       <div class="ship-section" id="shipHardpoints"></div>
       <button id="shipCloseBtn">Return to Helm</button>

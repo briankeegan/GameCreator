@@ -34,7 +34,11 @@ const MODES = {
 };
 
 const canvas = document.getElementById("board");
-const ctx = canvas.getContext("2d");
+// `let`, not const: renderPortrait() temporarily points every drawing
+// helper below at an offscreen portrait canvas so the Systems screen can
+// show a contact's REAL ship art — the same code the board runs, so the
+// portrait can never drift from what you're actually shooting at.
+let ctx = canvas.getContext("2d");
 const boardWrapEl = document.getElementById("boardWrap");
 const hullBarEl = document.getElementById("hullBar");
 const logEl = document.getElementById("log");
@@ -58,6 +62,8 @@ const modeButtons = Array.from(document.querySelectorAll("[data-mode]"));
 const scanBtn = document.getElementById("scanBtn");
 const shipBtn = document.getElementById("shipBtn");
 const shipOverlayEl = document.getElementById("shipOverlay");
+const shipPortraitEl = document.getElementById("shipPortrait");
+const contactPortraitEl = document.getElementById("contactPortrait");
 const shipStatsEl = document.getElementById("shipStats");
 const shipHardpointsEl = document.getElementById("shipHardpoints");
 const shipCloseBtn = document.getElementById("shipCloseBtn");
@@ -2336,6 +2342,26 @@ function renderShipGauges(container, vm, pending) {
   container.appendChild(salv);
 }
 
+// A contact's portrait: its real hull, at rest, nose-up, drawn straight
+// through drawEnemyShip — the board's own renderer, pointed at the
+// portrait canvas for the duration. Damage shows here too (drawEnemyShip
+// cracks the hull by hp fraction), so a half-dead ship looks half-dead.
+function renderPortrait(enemy) {
+  const boardCtx = ctx;
+  const pc = contactPortraitEl.getContext("2d");
+  pc.clearRect(0, 0, contactPortraitEl.width, contactPortraitEl.height);
+  ctx = pc;
+  try {
+    ctx.save();
+    ctx.translate(contactPortraitEl.width / 2, contactPortraitEl.height / 2);
+    ctx.rotate(-Math.PI / 2); // board art is drawn nose-RIGHT; a portrait reads nose-UP
+    drawEnemyShip(contactPortraitEl.width * 0.33, enemy.hp / enemy.maxHp, enemy.id, enemy.type);
+    ctx.restore();
+  } finally {
+    ctx = boardCtx;
+  }
+}
+
 // The full-screen Systems view. Same component for the flagship and for a
 // scanned contact — only the view-model changes, plus the drag wiring,
 // which a contact's hold obviously never gets (it's a scanner
@@ -2350,7 +2376,12 @@ function updateShipOverlay() {
   const scannedEnemy = legendVisible && inspectedHex ? Engine.enemyAt(state, inspectedHex) : null;
   const vm = shipView(scannedEnemy);
   shipOverlayEl.querySelector("h2").textContent = scannedEnemy ? `Systems — ${vm.name}` : "Systems";
-  shipOverlayEl.querySelector(".ship-portrait").hidden = Boolean(scannedEnemy);
+  // Whichever ship this screen is about, you see the ACTUAL ship: your
+  // flagship's portrait art, or the contact's own hull drawn by the very
+  // renderer that draws it on the board.
+  shipPortraitEl.hidden = Boolean(scannedEnemy);
+  contactPortraitEl.hidden = !scannedEnemy;
+  if (scannedEnemy) renderPortrait(scannedEnemy);
 
   shipStatsEl.innerHTML = "";
   const statRow = (label, build) => {
