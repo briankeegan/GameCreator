@@ -125,7 +125,7 @@ async function playTurnToward(page, goalExpr) {
   const reachTarget = await enemyInReachOf(page);
   if (reachTarget) {
     await clickHex(page, "sublight", reachTarget); // lock
-    await page.click("#fireBtn"); // commit
+    await page.click(".weapon-btn:not([disabled])"); // commit with whichever gun bears
   } else {
     await flyTo(page, await pickStepToward(page, goalExpr));
   }
@@ -254,9 +254,10 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#targetLockBtn").count(), 0, "Target Lock is gone — tapping a hostile aims automatically");
   assert.strictEqual(await page.locator("#endTurnBtn").count(), 0, "End Round is gone — waiting is what RECHARGE is for");
   assert.strictEqual(await page.locator("#apWrap").isVisible(), false, "the Actions gauge stays hidden at one action per round");
-  assert.strictEqual(await page.locator("#fireBtn").isVisible(), true, "the weapons button is on the panel — shooting is its own action");
+  assert.strictEqual(await page.locator(".weapon-btn").count(), 1, "a fresh ship shows exactly one weapon control — the gun it carries");
+  assert.strictEqual(await page.locator(".weapon-btn").textContent(), "Autocannon · 1⚡", "named for the hardware, with what a shot costs");
   assert.ok(
-    !((await page.locator("#fireBtn").getAttribute("class")) || "").includes("active"),
+    !((await page.locator(".weapon-btn").getAttribute("class")) || "").includes("active"),
     "the weapons button only LIGHTS UP when something is in reach — unlit means a tap explains the weapon instead"
   );
   assert.strictEqual(await page.locator("#enginesBtn").isVisible(), true, "Engines is listed as equipment too");
@@ -378,7 +379,7 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), true, "the Ship button opens the full-screen view");
   // Mid-flight the Hold is a read-only schematic: refits are dock-gated.
   assert.ok(
-    (await page.locator("#shipHardpoints").textContent()).includes("tap an item for its specs"),
+    (await page.locator("#shipHardpoints").textContent()).includes("under way, no refits"),
     "mid-flight the Hold is an inspect-only schematic"
   );
   const refitRefusal = await page.evaluate(() => {
@@ -420,11 +421,10 @@ async function freshPage(browser, url, errors) {
     if (target) {
       // The button is the EQUIPMENT — with just the starting Autocannon
       // armed, it carries the weapon's own name, not the word "Fire".
-      assert.strictEqual(await page.locator("#fireBtn").textContent(), "Autocannon", "the weapons button is named for the armed weapon itself");
       assert.strictEqual(
-        await page.locator("#fireBtn").isDisabled(),
+        await page.locator(".weapon-btn").isDisabled(),
         true,
-        "the weapon stays unarmed until a target is LOCKED — in reach alone isn't enough"
+        "the gun stays dead until a contact is marked — in reach alone isn't enough"
       );
       const energyBeforeFire = s.energy;
       await clickHex(page, "sublight", target); // first tap: target lock
@@ -432,17 +432,17 @@ async function freshPage(browser, url, errors) {
       assert.strictEqual(s.enemies.filter((e) => e.alive).length, 1, "the first tap targets — nothing fires yet");
       assert.strictEqual(s.energy, energyBeforeFire, "and spends nothing yet");
       assert.strictEqual(await page.evaluate(() => window.__hhTargetedEnemy), target.id, "the contact is target-locked");
-      assert.ok(/target locked/i.test(await page.locator("#log").textContent()), "the readout confirms the lock, with the cost");
-      assert.strictEqual(await page.locator("#fireBtn").isDisabled(), false, "the lock arms the weapon button");
+      assert.ok(/firing solution/i.test(await page.locator("#log").textContent()), "the readout confirms the solution, and what it costs");
+      assert.strictEqual(await page.locator(".weapon-btn").isDisabled(), false, "marking the contact brings the gun live");
       assert.ok(
-        ((await page.locator("#fireBtn").getAttribute("class")) || "").includes("active"),
+        ((await page.locator(".weapon-btn").getAttribute("class")) || "").includes("active"),
         "and it lights up green"
       );
       assert.ok(
         (await page.locator("#energyBar .stat-pip.pending").count()) > 0,
         "the Energy gauge ghosts the pips the shot would burn (lighter green)"
       );
-      await page.click("#fireBtn"); // the armed button commits the shot at the lock
+      await page.click(".weapon-btn"); // the live gun commits the shot
       s = await getState(page);
       assert.ok(s.energy < energyBeforeFire, "the confirmed shot fires for real — energy spent");
       assert.strictEqual(await page.locator("#energyBar .stat-pip.pending").count(), 0, "the ghosted pips are gone once spent");
@@ -480,6 +480,26 @@ async function freshPage(browser, url, errors) {
   s = await getState(page);
   assert.deepStrictEqual(s.actions, ["sublight", "autocannon"], "a new sector arrives with exactly what is fitted — nothing handed out");
   assert.ok(s.enemies.filter((e) => e.alive).length >= 1);
+  // Scuttling charges: the run's own off switch, two taps deep so a stray
+  // thumb can never end a run.
+  await page.click("#shipBtn");
+  assert.strictEqual(await page.locator("#selfDestructBtn").isVisible(), true, "the Systems screen carries scuttling charges");
+  assert.ok(!(await page.locator("#selfDestructBtn").textContent()).includes("CONFIRM"), "unarmed to begin with");
+  await page.click("#selfDestructBtn");
+  assert.ok(
+    (await page.locator("#selfDestructBtn").textContent()).includes("CONFIRM"),
+    "the first tap only arms them, and says so"
+  );
+  let armedState = await getState(page);
+  assert.ok(armedState.levelId > 1, "and nothing has happened to the run yet");
+  await page.click("#shipCloseBtn"); // walking away disarms
+  await page.click("#shipBtn");
+  assert.ok(
+    !(await page.locator("#selfDestructBtn").textContent()).includes("CONFIRM"),
+    "leaving the screen disarms them again"
+  );
+  await page.click("#shipCloseBtn");
+
   // A dock is a scrapyard with a welding rig, not a showroom: Repair plus
   // exactly two things ("too many options too soon... why sell so much at
   // every station?").
@@ -585,7 +605,7 @@ async function freshPage(browser, url, errors) {
   s = await getState(page);
   assert.deepStrictEqual(s.playerPos, tapStart, "the first tap only lays the course in — no movement yet");
   assert.ok(await page.evaluate(() => Boolean(window.__hhPlannedPath)), "the route preview is live");
-  assert.ok(/tap the marked hex again/i.test(await page.locator("#log").textContent()), "the readout says how to confirm");
+  assert.ok(/course laid in/i.test(await page.locator("#log").textContent()), "the readout says the course is in and waiting on a confirm");
   // Rethink: tapping a DIFFERENT hex dismisses the first course and plots
   // a new one instead.
   const otherStep = await page.evaluate((skip) => {
@@ -671,7 +691,7 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#apWrap").isVisible(), false, "so the Actions gauge stays hidden for old saves too");
   await page.close();
 
-  // ---- Boss milestone: "Run Complete" is a real, manual moment -------------
+  // ---- Boss milestone: "The Bulwark Is Scrap" is a real, manual moment -------------
   // ("how do you win, or is it just runs?") — clearing the depth-20 boss
   // shows a distinct overlay instead of silently auto-continuing like a
   // routine sector clear, and offers a real choice (keep going vs. bank
@@ -692,8 +712,8 @@ async function freshPage(browser, url, errors) {
   await page.waitForFunction(() => window.__hhState.isVictory === true);
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "the overlay waits for animations, same as the loss screen");
   await waitForOverlay(page);
-  assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Run Complete");
-  assert.strictEqual(await page.locator("#continueBtn").isVisible(), true, "Keep Flying is offered on a boss win");
+  assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "The Bulwark Is Scrap");
+  assert.strictEqual(await page.locator("#continueBtn").isVisible(), true, "Keep Flying is offered when the Bulwark dies");
   await page.click("#continueBtn");
   await page.waitForFunction(
     () => window.__hhState.levelId === window.HypergolicLevels.BOSS_DEPTH + 1 && window.__hhState.status === "playing"
@@ -738,7 +758,7 @@ async function freshPage(browser, url, errors) {
   await page.evaluate(() => document.getElementById("outpostCloseBtn").click()); // undock the SHOP overlay, stay on the hex
   await page.click("#shipBtn");
   assert.ok(
-    (await page.locator("#shipHardpoints").textContent()).includes("docked: drag to refit"),
+    (await page.locator("#shipHardpoints").textContent()).includes("docked, free to refit"),
     "the Hold unlocks at a dock"
   );
   // Stow the Autocannon via the engine (drag mechanics are pointer-driven;

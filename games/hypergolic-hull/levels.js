@@ -45,7 +45,7 @@
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "autocannon"],
-      intro: "Hostile contact. Let it come close — then FIRE.",
+      intro: "One contact between us and the gate. Let it come to us.",
     },
     // Sector 2 — the first Cruiser: a hostile that survives a hit and keeps
     // coming, plus the first Outpost. Learning that a dock is where
@@ -64,7 +64,7 @@
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "autocannon"],
-      intro: "A heavy, and a dock. Salvage buys what you fly with.",
+      intro: "Cruiser on approach — it takes two. Station ahead is still trading.",
     },
     // Sector 3 — Sentry Line. Three enemies; the lesson is the Sentry
     // (stationary, 2-hex beam ring) and shopping for your first upgrades.
@@ -88,7 +88,7 @@
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "autocannon"],
-      intro: "The Sentry never moves — its beam reaches 2 hexes.",
+      intro: "Gun platform holding station. It will not come to us, and it does not have to.",
     },
     // Sector 4 — Full Fleet. Everything unlocked, no guaranteed Outpost —
     // Clubhouse feedback: "you shouldn't always have a place to heal."
@@ -113,7 +113,7 @@
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
-      intro: "A full fleet. Pick your fights — or run the gauntlet.",
+      intro: "Three contacts on the board. The gate is open the whole way — we do not have to kill any of them.",
     },
   ];
 
@@ -213,7 +213,7 @@
       ],
       exitRule: "all-enemies-dead",
       theme: { variant: "boss", band: Math.floor(depth / 5) },
-      intro: "The Bulwark. Stock up at the Outpost, then break the line.",
+      intro: "The Bulwark. Last station is right there — take what we can carry.",
     };
   }
 
@@ -305,7 +305,12 @@
     // The hand-authored campaign runs 1, 2, then 3 hostiles; the crawl has
     // to continue that line rather than jumping to five the moment it goes
     // procedural. One more contact every three sectors, topping out at 8.
-    const enemyCount = Math.max(1, Math.min(2 + Math.floor(depth / 3) + (variant ? variant.enemyDelta : 0), 6));
+    // One action fires ONE gun now, so a round is one point of damage
+    // (or one Flak Burst across a crowd) — not a volley off every mount.
+    // Enemy counts were tuned against volleys, and left as they were the
+    // crawl became unwinnable: forty full runs, zero finishes. Slower
+    // ramp, lower ceiling.
+    const enemyCount = Math.max(1, Math.min(2 + Math.floor(depth / 4) + (variant ? variant.enemyDelta : 0), 5));
     // The Railgun Destroyer (long-range, board-spanning shot along its
     // axes) joins the roster at the same depth tier Cruiser/Sentry weight
     // increases — a genuinely new threat shape (line-up-from-across-the-
@@ -322,12 +327,26 @@
         : depth < 8
           ? ["interceptor", "interceptor", "cruiser", "cruiser", "sentry"]
           : ["interceptor", "cruiser", "cruiser", "sentry", "sentry", "railgun"];
+    // At most TWO emplacements on a board. A Sentry or a Railgun Destroyer
+    // doesn't chase you — it denies ground — and three of them on a 9x11
+    // field is a wall with no way around it, which is exactly what full-run
+    // playtesting kept dying to (fourteen of thirty deaths on boards of
+    // three Sentries and a Railgun). Two is a gauntlet you can route
+    // through; three is a corridor with a gun at the end of it.
+    const EMPLACEMENTS = new Set(["sentry", "railgun"]);
+    const MOBILE = ["interceptor", "cruiser"];
     const enemies = [];
+    let emplaced = 0;
     for (const hex of candidates) {
       if (enemies.length >= enemyCount) break;
       if (hazardKeys.has(`${hex.q},${hex.r}`)) continue;
       if (enemies.some((e) => hexDist(e, hex) < 2)) continue; // keep fresh spawns from stacking
-      enemies.push({ type: typePool[Math.floor(rng() * typePool.length)], q: hex.q, r: hex.r });
+      let type = typePool[Math.floor(rng() * typePool.length)];
+      if (EMPLACEMENTS.has(type)) {
+        if (emplaced >= 2) type = MOBILE[Math.floor(rng() * MOBILE.length)];
+        else emplaced++;
+      }
+      enemies.push({ type, q: hex.q, r: hex.r });
     }
 
     return {
@@ -347,7 +366,7 @@
       // for a quiet one — and the depth band shifts the palette family so
       // deeper regions of space look like different places.
       theme: { variant: variant ? variant.id : "neutral", band: Math.floor(depth / 5) },
-      intro: `Depth ${depth}. Salvage what you can.`,
+      intro: `Depth ${depth}. Nothing friendly out this far.`,
     };
   }
 

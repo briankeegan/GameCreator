@@ -31,11 +31,11 @@
           <h2 id="runOverlayTitle"></h2>
           <p id="runOverlayBody"></p>
           <button id="continueBtn" hidden>Keep Flying</button>
-          <button id="restartBtn">New Run</button>
+          <button id="restartBtn">New Ship</button>
         </div>
         <div class="run-overlay outpost-overlay" id="outpostOverlay" hidden>
           <h2><i class="swatch swatch-outpost"></i> Sector Outpost</h2>
-          <p>Salvage: <span id="outpostSalvage">0</span></p>
+          <p>Salvage aboard: <span id="outpostSalvage">0</span></p>
           <div class="outpost-offers" id="outpostOffers"></div>
           <button id="outpostCloseBtn">Undock</button>
         </div>
@@ -75,15 +75,18 @@
            them fire/recharge, name the weapon or the item"). Tapping one
            that can't act right now explains itself and shows its reach. -->
       <div class="console-grid actions-grid">
-        <button id="enginesBtn" title="Sublight Engines — tap a hex on the field to lay in a course, tap it again to fly">Engines</button>
-        <button id="fireBtn" class="hold-btn" title="Your armed weapons — volley everything in reach, or tap while nothing's in reach to see their range">Weapons</button>
-        <button id="rechargeBtn" title="Reactor Core — spend the turn cycling the reactor for +1 Energy">Reactor Core</button>
-        <button id="shieldsBtn" hidden title="Shield Generator — spend the turn (and 2 Energy) raising one charge; a raised charge absorbs an entire volley">Shield Generator</button>
+        <button id="enginesBtn" title="Sublight drive — mark a heading on the field, then confirm it">Engines</button>
+        <!-- One button per fitted weapon, built at render time (see
+             updateSystems) — firing "everything at once" was never a
+             decision. -->
+        <span id="weaponBtns" class="weapon-btns"></span>
+        <button id="rechargeBtn" title="Reactor core — cycle it and put charge back on the bus">Reactor Core</button>
+        <button id="shieldsBtn" hidden title="Shield generator — burn charge to raise a screen; it eats one volley">Shield Generator</button>
       </div>
       <div class="console-grid modes-grid">
-        <button id="scanBtn" class="scan-btn" title="Scan mode — inspect anything on the board; movement and actions are disabled while it's open" aria-label="Scan">Scan</button>
-        <button id="shipBtn" class="scan-btn" title="Systems — full-screen view of your flagship, its weapons, and upgrades" aria-label="Systems">Systems</button>
-        <button id="mapBtn" class="scan-btn" title="Map — the sectors you've charted this run, and the gates ahead" aria-label="Map">Map</button>
+        <button id="scanBtn" class="scan-btn" title="Scanner array — read anything on the board; the helm holds while it is open" aria-label="Scan">Scan</button>
+        <button id="shipBtn" class="scan-btn" title="Systems — this ship, and everything bolted into it" aria-label="Systems">Systems</button>
+        <button id="mapBtn" class="scan-btn" title="Chart — where we have been, and the gates out" aria-label="Map">Map</button>
       </div>
       <p id="log" class="log"></p>
     </div>

@@ -61,7 +61,7 @@ const mapBtn = document.getElementById("mapBtn");
 const mapOverlayEl = document.getElementById("mapOverlay");
 const mapChartEl = document.getElementById("mapChart");
 const mapCloseBtn = document.getElementById("mapCloseBtn");
-const fireBtn = document.getElementById("fireBtn");
+const weaponBtnsEl = document.getElementById("weaponBtns");
 const rechargeBtn = document.getElementById("rechargeBtn");
 const shieldsBtn = document.getElementById("shieldsBtn");
 const enginesBtn = document.getElementById("enginesBtn");
@@ -139,6 +139,8 @@ let shipVisible = false;
 // "ship" (your flagship) or "contact" (the scanned enemy) — set by whichever
 // button opened the Systems screen, never inferred.
 let systemsContext = "ship";
+// Self-destruct is a two-step: the first tap arms it, the second means it.
+let selfDestructArmed = false;
 // The starmap — same deal.
 let mapVisible = false;
 
@@ -1479,7 +1481,7 @@ function draw() {
   const scanTarget = legendVisible && inspectedHex ? Engine.enemyAt(state, inspectedHex) : null;
   const scanTargetHexes = scanTarget
     ? new Set(
-        Engine.weaponHexes(scanTarget, Engine.enemyFacing(state, scanTarget), Engine.ENEMY_TYPES[scanTarget.type].weapon)
+        Engine.weaponHexes(scanTarget, Engine.enemyFacing(state, scanTarget), Engine.ENEMY_TYPES[scanTarget.type].weapon, state)
           .filter((h) => Engine.onBoard(state, h))
           .map(Engine.hexKey)
       )
@@ -1491,7 +1493,7 @@ function draw() {
   // gets folded into the same highlight instead of a separate one.
   for (const key of Engine.WEAPON_SYSTEM_KEYS) {
     if (!state.actions.includes(key) || !state.systems[key]) continue;
-    for (const h of Engine.weaponHexes(state.playerPos, state.facing, Engine.WEAPONS[key])) {
+    for (const h of Engine.weaponHexes(state.playerPos, state.facing, Engine.WEAPONS[key], state)) {
       if (Engine.onBoard(state, h)) legal.add(Engine.hexKey(h));
     }
   }
@@ -1940,7 +1942,7 @@ function anyFireTarget(s) {
   return Engine.WEAPON_SYSTEM_KEYS.some((k) => {
     if (!s.actions.includes(k) || !s.systems[k]) return false;
     const weapon = Engine.WEAPONS[k];
-    const reach = new Set(Engine.weaponHexes(s.playerPos, s.facing, weapon).map(Engine.hexKey));
+    const reach = new Set(Engine.weaponHexes(s.playerPos, s.facing, weapon, s).map(Engine.hexKey));
     return Engine.livingEnemies(s).some((e) => reach.has(Engine.hexKey(e)));
   });
 }
@@ -1956,7 +1958,7 @@ function updateHud() {
   // Energy pays for every weapon shot, so the reactor gauge is always up.
   // While a target is locked, the pips the volley would spend go ghostly
   // ("show the energy it would cost in lighter green").
-  const lockPending = targetedEnemyId ? Math.min(volleyCost(state), state.energy) : 0;
+  const lockPending = targetedEnemyId ? Math.min(nextShotCost(state), state.energy) : 0;
   renderStatBar(energyBarEl, "Energy", state.energy, state.maxEnergy, "energy", lockPending);
   // Shields = generator capacity (empty sockets included, so a DOWN
   // shield is visible as an unlit pip begging to be re-raised). The gauge
@@ -1973,7 +1975,7 @@ function updateHud() {
   // There is no separate instruction line above the field anymore ("remove
   // the tap info at top — distracts from game"): the readout strip is the
   // single home for every message and hint.
-  logEl.textContent = state.log[state.log.length - 1] || "Tap a hex beside your ship to move.";
+  logEl.textContent = state.log[state.log.length - 1] || "Helm ready. Mark a heading.";
   salvageValueEl.textContent = state.salvage;
 
   // Hold the end-of-run overlay back until the death/kill animation finishes.
@@ -1986,12 +1988,12 @@ function updateHud() {
   // this overlay is how "Run Complete" actually gets shown to the player.
   if (state.status === "lost" && !animsRunning()) {
     overlayTitleEl.textContent = "Flagship Destroyed";
-    overlayBodyEl.textContent = `Permadeath. Your run ends here. Best depth: ${bestDepth}.`;
+    overlayBodyEl.textContent = `Lost with all hands at depth ${state.levelId}. Deepest run so far: ${bestDepth}.`;
     continueBtnEl.hidden = true;
     overlayEl.hidden = false;
   } else if (state.isVictory && !animsRunning()) {
-    overlayTitleEl.textContent = "Run Complete";
-    overlayBodyEl.textContent = `The Bulwark falls at depth ${state.levelId}. Keep flying for a higher depth, or bank the win and start fresh.`;
+    overlayTitleEl.textContent = "The Bulwark Is Scrap";
+    overlayBodyEl.textContent = `The Bulwark is dead in the water at depth ${state.levelId}. Press on, or take the ship home.`;
     continueBtnEl.hidden = false;
     overlayEl.hidden = false;
   } else {
@@ -2039,27 +2041,48 @@ function armedWeaponKeys() {
 
 function updateSystems() {
   const busy = state.status !== "playing" || legendVisible;
-  // Every button is the INSTALLED EQUIPMENT itself ("name the weapon or
-  // the item"): one armed weapon shows its own name, several read as All
-  // Weapons; the reactor and generator are hardware, not verbs. Buttons
-  // stay tappable even when they can't act — a tap then explains the item
-  // and shows its reach instead of sitting dead.
-  const armed = armedWeaponKeys();
-  fireBtn.textContent =
-    armed.length === 1 ? Engine.WEAPONS[armed[0]].label : armed.length > 1 ? "All Weapons" : "Weapons";
-  // The weapon only arms once a target is LOCKED ("should only be
-  // clickable if you've selected a valid target") — tap a hostile to lock,
-  // then the button (or a second tap on the hostile) commits the shot.
+  // ONE BUTTON PER FITTED WEAPON. "All Weapons" volleying everything at
+  // once was never a decision — which gun answers this contact is the
+  // decision, so each one is its own control, named for the hardware,
+  // showing what it costs. A gun that doesn't bear on the locked contact
+  // is dead until it does. With a single weapon fitted there is nothing
+  // to choose, so a second tap on the hostile just fires it.
   const locked = targetedEnemyId ? state.enemies.find((e) => e.id === targetedEnemyId && e.alive) : null;
-  const lockValid = Boolean(locked && enemyInReach(state, locked));
-  fireBtn.disabled = busy || !lockValid;
-  fireBtn.classList.toggle("active", lockValid && !busy);
+  weaponBtnsEl.innerHTML = "";
+  for (const key of armedWeaponKeys()) {
+    const weapon = Engine.WEAPONS[key];
+    const bears = Boolean(locked) && weaponBears(state, weapon, locked);
+    const affordable = state.energy >= weapon.energyCost;
+    const btn = document.createElement("button");
+    btn.className = "hold-btn weapon-btn";
+    btn.dataset.weapon = key;
+    btn.title = describeWeapon(weapon);
+    btn.textContent = `${weapon.label} · ${weapon.energyCost}⚡`;
+    btn.disabled = busy || !bears || !affordable;
+    btn.classList.toggle("active", bears && affordable && !busy);
+    btn.addEventListener("click", () => {
+      const target = targetedEnemyId;
+      targetedEnemyId = null;
+      reachPreview = null;
+      handleAction(() => Engine.applyFire(state, target, key));
+    });
+    weaponBtnsEl.appendChild(btn);
+  }
   rechargeBtn.disabled = busy;
   rechargeBtn.textContent = "Reactor Core";
   enginesBtn.disabled = busy;
   shieldsBtn.hidden = state.maxShields <= 0;
   shieldsBtn.disabled = busy;
   shieldsBtn.textContent = "Shield Generator";
+}
+
+// Does this weapon's reach actually cover that contact, at any facing the
+// ship can turn to? (Tapping a hostile already turns the nose onto it.)
+function weaponBears(state, weapon, enemy) {
+  for (let facing = 0; facing < 6; facing++) {
+    if (Engine.weaponHexes(state.playerPos, facing, weapon, state).some((h) => Engine.posEq(h, enemy))) return true;
+  }
+  return false;
 }
 
 // Shared by the systems-row stats line and the click-an-enemy-for-info panel
@@ -2178,18 +2201,16 @@ function updateScanInfo() {
   stats.className = "enemy-info-stats";
   if (isGate) {
     name.textContent = "WARP GATE";
-    stats.textContent = state.exitUnlocked
-      ? "Online — fly here to warp out and clear the sector."
-      : "Offline — clear the sector's objective to unlock it.";
+    stats.textContent = "Reads online. It will take us out of this sector whenever we are ready.";
   } else if (isOutpost) {
     name.textContent = "OUTPOST";
-    stats.textContent = "Dock here to spend Salvage on repairs and upgrades.";
+    stats.textContent = "Trading post. They will patch a hull and sell whatever they happen to have.";
   } else if (isWormhole) {
     name.textContent = "WORMHOLE";
-    stats.textContent = "Fly here to return to the previous sector. It doesn't always land in the same spot.";
+    stats.textContent = "Unstable throat. It goes back the way we came — roughly where we came in.";
   } else {
     name.textContent = "ASTEROID FIELD";
-    stats.textContent = "Impassable — route around it.";
+    stats.textContent = "Solid rock and dust. Nothing gets through it.";
   }
   header.appendChild(name);
   enemyInfoEl.appendChild(header);
@@ -2248,7 +2269,7 @@ function shipView(enemy) {
       energy: state.energy, maxEnergy: state.maxEnergy,
       shields: state.shieldCharges, maxShields: state.maxShields,
       salvage: String(state.salvage),
-      holdTitle: Engine.outpostAvailable(state) ? "THE HOLD — docked: drag to refit" : "THE HOLD — tap an item for its specs",
+      holdTitle: Engine.outpostAvailable(state) ? "THE HOLD — docked, free to refit" : "THE HOLD — under way, no refits",
       gridId: "holdGrid",
       cols: hold.cols, rows: hold.rows, blocked: hold.blocked || [],
       tiles,
@@ -2262,7 +2283,7 @@ function shipView(enemy) {
     energy: enemy.energy, maxEnergy: enemy.maxEnergy,
     shields: 0, maxShields: 0,
     salvage: `+${Engine.ENEMY_TYPES[enemy.type].salvage} on kill`,
-    holdTitle: "THEIR HOLD — tap an item for its specs",
+    holdTitle: "THEIR HOLD — scanner reconstruction",
     gridId: "enemyHoldGrid",
     cols: hold.cols, rows: hold.rows, blocked: hold.blocked || [],
     tiles,
@@ -2428,8 +2449,8 @@ function updateShipOverlay() {
   holdInfo.className = "hold-info";
   holdInfo.id = "holdInfo";
   holdInfo.textContent = vm.interactive
-    ? "Tap an item for its specs."
-    : "Tap an item for its specs. Kill it and this is what it drops.";
+    ? "Tap a system for its readout."
+    : "Tap a system for its readout. Kill it and this is what floats free.";
   shipHardpointsEl.appendChild(holdInfo);
   wireHoldInspect(gridEl, holdInfo);
 
@@ -2457,8 +2478,33 @@ function updateShipOverlay() {
   if (docked) {
     const note = document.createElement("p");
     note.className = "ship-note";
-    note.textContent = "Docked: drag tiles to rearrange, or drag one down to cargo to power it down. Refits are free here.";
+    note.textContent = "Docked. Shift the load however you like — the yard does not charge for it.";
     shipHardpointsEl.appendChild(note);
+  }
+
+  // Scuttling charges. Two taps, because one stray thumb should never end
+  // a run — the first arms it and says so, the second means it.
+  if (vm.interactive) {
+    const scuttle = document.createElement("button");
+    scuttle.id = "selfDestructBtn";
+    scuttle.className = "self-destruct" + (selfDestructArmed ? " armed" : "");
+    scuttle.textContent = selfDestructArmed ? "CONFIRM — SCUTTLE THE SHIP" : "Scuttling Charges";
+    scuttle.addEventListener("click", () => {
+      if (selfDestructArmed) {
+        shipVisible = false;
+        scuttleShip();
+        return;
+      }
+      selfDestructArmed = true;
+      render();
+    });
+    shipHardpointsEl.appendChild(scuttle);
+    const warn = document.createElement("p");
+    warn.className = "ship-note self-destruct-note";
+    warn.textContent = selfDestructArmed
+      ? "Charges armed. Tap again and we scuttle her — this ship and everything in the hold."
+      : "Blow the charges and start over in a fresh hull. Nothing carries over.";
+    shipHardpointsEl.appendChild(warn);
   }
 }
 
@@ -2498,7 +2544,7 @@ function wireHoldDrag(gridEl, cargoEl, CELL, docked) {
     chip.addEventListener("click", () => {
       const idx = Number(chip.dataset.cargoIndex);
       if (!docked) {
-        pushMessage(describeItem(chip.dataset.itemId) + " — in cargo, powered down.");
+        pushMessage(describeItem(chip.dataset.itemId) + " — in the hold, powered down.");
         render();
         return;
       }
@@ -2512,7 +2558,7 @@ function wireHoldDrag(gridEl, cargoEl, CELL, docked) {
           }
         }
       }
-      pushMessage("No room in the grid — rearrange or expand the Hold first.");
+      pushMessage("No clearance for that — shift the load, or buy the space.");
       render();
     });
   }
@@ -2522,7 +2568,7 @@ function wireHoldDrag(gridEl, cargoEl, CELL, docked) {
     const id = tile.dataset.itemId;
     if (!docked) {
       tile.addEventListener("click", () => {
-        pushMessage(describeItem(id) + " — installed and powered.");
+        pushMessage(describeItem(id) + " — fitted and drawing power.");
         render();
       });
       continue;
@@ -2549,7 +2595,7 @@ function wireHoldDrag(gridEl, cargoEl, CELL, docked) {
         tile.removeEventListener("pointermove", onMove);
         tile.removeEventListener("pointerup", onUp);
         if (!moved) {
-          pushMessage(describeItem(id) + " — installed and powered.");
+          pushMessage(describeItem(id) + " — fitted and drawing power.");
           render();
           return;
         }
@@ -2756,7 +2802,7 @@ function pushMessage(message) {
 function enemyInReach(s, enemy) {
   return Engine.WEAPON_SYSTEM_KEYS.some((k) => {
     if (!s.actions.includes(k) || !s.systems[k]) return false;
-    return Engine.weaponHexes(s.playerPos, s.facing, Engine.WEAPONS[k]).some((h) => Engine.posEq(h, enemy));
+    return Engine.weaponHexes(s.playerPos, s.facing, Engine.WEAPONS[k], s).some((h) => Engine.posEq(h, enemy));
   });
 }
 
@@ -2769,7 +2815,7 @@ function faceEnemyIfPossible(enemy) {
   for (let f = 0; f < 6; f++) {
     const reaches = Engine.WEAPON_SYSTEM_KEYS.some((k) => {
       if (!state.actions.includes(k) || !state.systems[k]) return false;
-      return Engine.weaponHexes(state.playerPos, f, Engine.WEAPONS[k]).some((h) => Engine.posEq(h, enemy));
+      return Engine.weaponHexes(state.playerPos, f, Engine.WEAPONS[k], state).some((h) => Engine.posEq(h, enemy));
     });
     if (reaches) {
       Engine.setFacing(state, f);
@@ -2780,15 +2826,24 @@ function faceEnemyIfPossible(enemy) {
   return false;
 }
 
-function volleyCost(s) {
-  let cost = 0;
-  for (const k of Engine.WEAPON_SYSTEM_KEYS) {
-    if (!s.actions.includes(k) || !s.systems[k]) continue;
+// Which fitted guns actually bear on this contact and have the charge to
+// fire. One means there's nothing to decide; more than one means the
+// player picks, which is the whole point of a weapon per button.
+function bearingWeapons(s, enemy) {
+  return armedWeaponKeys().filter((k) => {
     const weapon = Engine.WEAPONS[k];
-    const reach = new Set(Engine.weaponHexes(s.playerPos, s.facing, weapon).map(Engine.hexKey));
-    if (Engine.livingEnemies(s).some((e) => reach.has(Engine.hexKey(e)))) cost += weapon.energyCost;
-  }
-  return cost;
+    return weaponBears(s, weapon, enemy) && s.energy >= weapon.energyCost;
+  });
+}
+
+// What the next shot costs: the one gun that bears, or the cheapest of
+// the several that do (which is what an unspecified FIRE would spend).
+function nextShotCost(s) {
+  const locked = targetedEnemyId ? s.enemies.find((e) => e.id === targetedEnemyId && e.alive) : null;
+  if (!locked) return 0;
+  const keys = bearingWeapons(s, locked);
+  if (!keys.length) return 0;
+  return Math.min(...keys.map((k) => Engine.WEAPONS[k].energyCost));
 }
 
 // Who actually gets hit if the volley fires right now, honoring the
@@ -2799,7 +2854,7 @@ function predictedVictims(targetId) {
   const victims = new Map();
   for (const k of armedWeaponKeys()) {
     const weapon = Engine.WEAPONS[k];
-    const reach = new Set(Engine.weaponHexes(state.playerPos, state.facing, weapon).map(Engine.hexKey));
+    const reach = new Set(Engine.weaponHexes(state.playerPos, state.facing, weapon, state).map(Engine.hexKey));
     let ts = Engine.livingEnemies(state).filter((e) => reach.has(Engine.hexKey(e)));
     if (!ts.length) continue;
     if (weapon.targets === "one") {
@@ -2944,6 +2999,19 @@ function restoreRun() {
   };
   // A save from before the Scanner Array existed would fly blind forever —
   // retrofit one into the first free cell (or cargo, worst case).
+  // Equipment that no longer exists in the game (the Tractor Beam, cut
+  // with the weapon roster) is still sitting in old saved holds — and the
+  // Hold renders straight off EQUIPMENT, so a stale id is a ghost tile at
+  // best and a crash at worst. Strip anything the registry doesn't know
+  // before the rest of the restore touches it.
+  const purgeRetiredGear = (s) => {
+    const known = (id) => Boolean(Engine.EQUIPMENT[id]);
+    const before = s.hold.items.length + s.hold.cargo.length;
+    s.hold.items = s.hold.items.filter((it) => known(it.id));
+    s.hold.cargo = s.hold.cargo.filter(known);
+    if (s.hold.items.length + s.hold.cargo.length !== before) Engine.syncHoldDerived(s);
+  };
+
   const ensureScanner = (s) => {
     if (s.hold.items.some((it) => it.id === "scanner") || s.hold.cargo.includes("scanner")) return;
     for (let y = 0; y < s.hold.rows; y++) {
@@ -2958,12 +3026,14 @@ function restoreRun() {
     s.hold.cargo.push("scanner");
   };
   clampAp(state);
+  purgeRetiredGear(state);
   ensureScanner(state);
   // Same reasoning as isValidSave above, applied per-entry — drop any
   // stale chart snapshot rather than crashing a jump later.
   sectorHistory = GCStorage.get(GAME_ID, "sectorHistory", []).filter((entry) => entry && isValidSave(entry.state));
   sectorHistory.forEach((entry) => {
     clampAp(entry.state);
+    purgeRetiredGear(entry.state);
     ensureScanner(entry.state);
   });
   const savedChartIndex = GCStorage.get(GAME_ID, "chartIndex", sectorHistory.length - 1);
@@ -2997,7 +3067,7 @@ function restoreRun() {
 
 scanBtn.addEventListener("click", () => {
   if (!legendVisible && !state.scannerInstalled) {
-    pushMessage("No Scanner Array installed — the ship is flying blind.");
+    pushMessage("No scanner array fitted. We are flying blind.");
     render();
     return;
   }
@@ -3015,6 +3085,7 @@ shipBtn.addEventListener("click", () => {
 });
 shipCloseBtn.addEventListener("click", () => {
   shipVisible = false;
+  selfDestructArmed = false; // walking away disarms
   render();
 });
 mapBtn.addEventListener("click", () => {
@@ -3038,16 +3109,10 @@ mapChartEl.addEventListener("click", (evt) => {
 // tapping a weapon with nothing in reach washes its range over the board
 // with a readout line ("if you click the weapon, it would show the range
 // for it"), same idea for the engines.
-fireBtn.addEventListener("click", () => {
-  const lockedTarget = targetedEnemyId;
-  targetedEnemyId = null;
-  reachPreview = null;
-  handleAction(() => Engine.applyFire(state, lockedTarget));
-});
 enginesBtn.addEventListener("click", () => {
   targetedEnemyId = null;
   reachPreview = { hexes: new Set(Engine.legalSublightTargets(state).map(Engine.hexKey)), kind: "move" };
-  pushMessage("Sublight Engines — 1 hex per turn. Tap a hex to lay in a course, tap it again to fly.");
+  pushMessage("Sublight drive — one grid a burn. Mark a heading, then confirm it.");
   render();
 });
 rechargeBtn.addEventListener("click", () => {
@@ -3080,7 +3145,7 @@ function planOrFlyRoute(hex) {
   plannedPath = path && path.length > 1 ? { target: { q: hex.q, r: hex.r }, hexes: path } : null;
   // The route preview needs its "now confirm it" instruction — it goes on
   // the readout strip like every other message.
-  if (plannedPath) pushMessage("Course laid in — tap the marked hex again to fly it.");
+  if (plannedPath) pushMessage("Course laid in. Confirm to burn.");
   render();
 }
 
@@ -3100,7 +3165,7 @@ function stepRoute() {
   const arrived = Engine.posEq(state.playerPos, autoRoute.target);
   const hurt = state.hull < autoRoute.hullAtStart;
   if (arrived || hurt || state.status !== "playing") {
-    if (hurt && !arrived && state.status === "playing") pushMessage("Route aborted — taking fire!");
+    if (hurt && !arrived && state.status === "playing") pushMessage("Course aborted — we are taking fire.");
     autoRoute = null;
     render();
     return;
@@ -3109,7 +3174,7 @@ function stepRoute() {
   const path = Engine.findPath(state, state.playerPos, autoRoute.target);
   if (!path || path.length < 2) {
     autoRoute = null;
-    pushMessage("Route blocked.");
+    pushMessage("No clear lane.");
     render();
     return;
   }
@@ -3149,11 +3214,24 @@ canvas.addEventListener("click", (evt) => {
   // Target Lock mode) and TARGETS it; the second tap fires the volley.
   if (enemy) {
     plannedPath = null;
-      if (targetedEnemyId === enemy.id && enemyInReach(state, enemy)) {
-      const lockedTarget = targetedEnemyId;
-      targetedEnemyId = null;
-      handleAction(() => Engine.applyFire(state, lockedTarget));
-      return;
+    if (targetedEnemyId === enemy.id && enemyInReach(state, enemy)) {
+      // Second tap. One gun bears → fire it, no ceremony. Several bear →
+      // the choice IS the move, so the console's weapon buttons stay lit
+      // and the tap doesn't pick for you.
+      const bearing = bearingWeapons(state, enemy);
+      if (bearing.length === 1) {
+        const lockedTarget = targetedEnemyId;
+        targetedEnemyId = null;
+        handleAction(() => Engine.applyFire(state, lockedTarget, bearing[0]));
+        return;
+      }
+      if (bearing.length > 1) {
+        pushMessage(
+          `${bearing.map((k) => Engine.WEAPONS[k].label).join(" or ")} — gunnery's waiting on you.`
+        );
+        render();
+        return;
+      }
     }
     if (faceEnemyIfPossible(enemy)) {
       targetedEnemyId = enemy.id;
@@ -3162,21 +3240,23 @@ canvas.addEventListener("click", (evt) => {
       // = the contacts that actually take the hit.
       const coverage = new Set();
       for (const k of armedWeaponKeys()) {
-        for (const h of Engine.weaponHexes(state.playerPos, state.facing, Engine.WEAPONS[k])) {
+        for (const h of Engine.weaponHexes(state.playerPos, state.facing, Engine.WEAPONS[k], state)) {
           if (Engine.onBoard(state, h)) coverage.add(Engine.hexKey(h));
         }
       }
       reachPreview = { hexes: coverage, kind: "attack" };
-      const struck = predictedVictims(enemy.id);
-      const extra = struck.filter((v) => v.id !== enemy.id).length;
+      const bearing = bearingWeapons(state, enemy);
       pushMessage(
-        `Target locked: ${enemy.type.toUpperCase()} — tap it again to FIRE (−${volleyCost(state)}⚡)` +
-          (extra ? `. Volley also strikes ${extra} other contact${extra === 1 ? "" : "s"}.` : ".")
+        bearing.length === 1
+          ? `Firing solution on ${enemy.type.toUpperCase()} — ${Engine.WEAPONS[bearing[0]].label} ready, ${Engine.WEAPONS[bearing[0]].energyCost} charge.`
+          : bearing.length > 1
+            ? `Firing solution on ${enemy.type.toUpperCase()} — ${bearing.map((k) => Engine.WEAPONS[k].label).join(" or ")}?`
+            : `${enemy.type.toUpperCase()} marked. Nothing aboard bears on it yet.`
       );
     } else {
       targetedEnemyId = null;
       // Out of reach — say what to do instead of dying silently.
-      pushMessage("That's a hostile — get beside it, then tap it twice to FIRE.");
+      pushMessage("Hostile out of arc. Bring us into range first.");
     }
     render();
     return;
@@ -3186,7 +3266,7 @@ canvas.addEventListener("click", (evt) => {
   targetedEnemyId = null;
   const hazardHere = Engine.hazardAt(state, hex);
   if (hazardHere && hazardHere.type === "asteroid") {
-      pushMessage("Asteroid field — impassable. Fly around it.");
+      pushMessage("Rock. Nothing gets through that — go around.");
     render();
     return;
   }
@@ -3196,11 +3276,14 @@ canvas.addEventListener("click", (evt) => {
 
 modeButtons.forEach((btn) => btn.addEventListener("click", () => setMode(btn.dataset.mode)));
 
-restartBtn.addEventListener("click", () => {
+function scuttleShip() {
   sectorHistory = [];
   chartIndex = -1;
+  selfDestructArmed = false;
   loadSector(0);
-});
+}
+
+restartBtn.addEventListener("click", scuttleShip);
 
 continueBtnEl.addEventListener("click", () => {
   advanceSector();

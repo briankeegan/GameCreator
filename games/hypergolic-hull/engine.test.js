@@ -328,7 +328,7 @@ drained.energy = 2;
 Engine.applySublight(drained, Engine.legalSublightTargets(drained)[0]);
 assert.strictEqual(drained.energy, 2, "no passive Energy regen — the budget only comes back via RECHARGE or a warp jump");
 // FIRE with nothing in range refuses instead of wasting the turn.
-assert.throws(() => Engine.applyFire(drained), /no armed weapon has a target/, "FIRE refuses when no armed weapon can reach anything");
+assert.throws(() => Engine.applyFire(drained), /Nothing in arc/, "FIRE refuses when no fitted weapon bears on anything");
 
 const correctState = state; // cleared board, full hull — carry on to the gate
 
@@ -392,7 +392,7 @@ const autocannonIdx = weaponState.hold.items.findIndex((it) => it.id === "autoca
 weaponState.hold.cargo.push(weaponState.hold.items.splice(autocannonIdx, 1)[0].id);
 Engine.syncHoldDerived(weaponState);
 weaponState.playerPos = { q: 2, r: 2 };
-assert.throws(() => Engine.applyFire(weaponState), /no armed weapon/, "FIRE refuses with every weapon uninstalled");
+assert.throws(() => Engine.applyFire(weaponState), /Nothing in arc/, "FIRE refuses with every weapon uninstalled");
 
 // No drive in the grid = the ship doesn't move. Equipment is capability.
 weaponState = Engine.createGameState(weaponLevel);
@@ -401,7 +401,7 @@ weaponState.hold.cargo.push(weaponState.hold.items.splice(driveIdx, 1)[0].id);
 Engine.syncHoldDerived(weaponState);
 assert.throws(
   () => Engine.applySublight(weaponState, { q: 2, r: 2 }),
-  /No drive installed/,
+  /No drive fitted/,
   "movement is blocked with no drive in the Hold"
 );
 
@@ -598,7 +598,10 @@ assert.deepStrictEqual(
 // never moves but its beam reaches two hexes in every direction.
 assert.strictEqual(Engine.ENEMY_TYPES.cruiser.hp, 2, "the Cruiser is a 2-Hull heavy (survives a single hit)");
 assert.strictEqual(Engine.ENEMY_TYPES.interceptor.hp, 1, "the Interceptor is still a 1-Hull glass cannon");
-assert.strictEqual(Engine.ENEMY_TYPES.sentry.hp, 2, "the Sentry is a 2-Hull emplacement");
+// Glass: it denies ground and dies to one shot. At 2 Hull a pair of
+// them walled a whole board — the question a Sentry asks should be "can
+// you reach it", not "can you out-trade it".
+assert.strictEqual(Engine.ENEMY_TYPES.sentry.hp, 1, "the Sentry is a ONE-Hull emplacement");
 assert.strictEqual(Engine.ENEMY_TYPES.sentry.movesTowardPlayer !== true, true, "the Sentry never chases");
 assert.strictEqual(Engine.ENEMY_TYPES.sentry.weapon, Engine.WEAPONS.arcBeam, "the Sentry fires the Arc Beam");
 assert.strictEqual(Engine.WEAPONS.arcBeam.range, 2, "the Arc Beam reaches two hexes");
@@ -765,7 +768,7 @@ assert.strictEqual(salvageState.turnCount, turnAfterArrival, "shopping does not 
 salvageState.salvage = repairOffer.cost; // afford another repair, to isolate the "already full" refusal
 assert.throws(
   () => Engine.applyOutpostPurchase(salvageState, "repair"),
-  /already full/,
+  /hull is sound/,
   "Repair refuses once Hull is already at max"
 );
 
@@ -794,7 +797,7 @@ salvageState.outpostOfferIds = ["repair", "shield"];
 salvageState.salvage = 0;
 assert.throws(
   () => Engine.applyOutpostPurchase(salvageState, "shield"),
-  /not enough salvage/,
+  /Not enough salvage/,
   "an offer refuses when salvage can't cover its cost"
 );
 
@@ -928,14 +931,14 @@ assert.strictEqual(raiseState.shieldCharges, 1, "Raise Shields brings one charge
 assert.strictEqual(raiseState.energy, energyBeforeRaise - Engine.SHIELD_RAISE_COST, "raising a charge costs energy");
 assert.strictEqual(raiseState.turnCount, turnBeforeRaise + 1, "raising shields spends the turn like everything else");
 assert.ok(raiseState.events.some((e) => e.type === "energySpend"), "raising emits the energySpend float for the UI");
-assert.throws(() => Engine.applyRaiseShields(raiseState), /already raised/, "can't raise past generator capacity");
+assert.throws(() => Engine.applyRaiseShields(raiseState), /already up/, "can't raise past generator capacity");
 raiseState.shieldCharges = 0;
 raiseState.energy = Engine.SHIELD_RAISE_COST - 1;
-assert.throws(() => Engine.applyRaiseShields(raiseState), /RECHARGE first/, "raising refuses without the energy to pay");
+assert.throws(() => Engine.applyRaiseShields(raiseState), /Not enough charge/, "raising refuses without the energy to pay");
 const noGeneratorState = Engine.createGameState(shieldLevel);
 assert.throws(
   () => Engine.applyRaiseShields(noGeneratorState),
-  /No Shield Generator/,
+  /No shield generator/,
   "no generator installed = no shields to raise"
 );
 
@@ -989,7 +992,7 @@ arcState.enemies[0].r = 3;
 Engine.applyFire(arcState);
 assert.strictEqual(arcState.enemies[0].alive, false, "the Arc Beam kills a contact two hexes out, which the Autocannon can never touch");
 assert.ok(
-  arcState.log.some((line) => line.includes("Arc Beam destroyed")),
+  arcState.log.some((line) => /Arc Beam: \w+ destroyed/.test(line)),
   "the kill is attributed to the Arc Beam specifically, not the Autocannon"
 );
 
@@ -1222,36 +1225,54 @@ assert.strictEqual(energyState.maxEnergy, 6);
 // shot draws it down, and only RECHARGE or a warp jump refills it.
 assert.ok(Engine.WEAPONS.arcBeam.energyCost > Engine.WEAPONS.autocannon.energyCost, "the Arc Beam is thirstier than the Autocannon — reach costs");
 
-// A full volley pays for every weapon that fires: Autocannon (1) + Arc
-// Beam (2) against an adjacent Cruiser = 3 spent, no regen.
+// One action fires ONE gun — you pick which ("was supposed to show each
+// option... otherwise you have to choose"). Naming it spends exactly that
+// weapon's charge and nothing else.
 energyState.enemies[0].q = 2;
 energyState.enemies[0].r = 4; // adjacent, directly up (facing 2)
 Engine.setFacing(energyState, 2);
-Engine.applyFire(energyState);
-assert.strictEqual(energyState.enemies[0].alive, false, "an Autocannon + Arc Beam volley kills a 2-HP Cruiser");
+Engine.applyFire(energyState, "e0", "arcBeam");
+assert.strictEqual(energyState.enemies[0].hp, 1, "the named gun fired — and only it");
 assert.strictEqual(
   energyState.energy,
-  6 - Engine.WEAPONS.autocannon.energyCost - Engine.WEAPONS.arcBeam.energyCost,
-  "every shot in the volley was paid for — and nothing trickled back"
+  6 - Engine.WEAPONS.arcBeam.energyCost,
+  "the Arc Beam's charge came off the bus; the Autocannon never fired, so it cost nothing"
 );
 assert.ok(
   energyState.events.some((e) => e.type === "energySpend"),
-  "each paid shot emits an energySpend event — the UI floats the cost so the drain is visible in the moment"
+  "a paid shot emits an energySpend event — the UI floats the cost so the drain is visible in the moment"
 );
 
-// With only 1 Energy left, the Autocannon (first in firing order) claims
-// it and the Arc Beam holds fire — logged, not silent.
+// Naming a gun that can't reach is a refusal, not a silent substitution.
+assert.throws(
+  () => Engine.applyFire(energyState, "e0", "railgun"),
+  /isn't fitted/,
+  "you can't fire a gun the ship isn't carrying"
+);
+
+// With no gun named, a ship fires the cheapest thing that bears — a
+// one-weapon ship should never be asked to choose.
+energyState = Engine.createGameState(energyLevel, { extraActions: ["arcBeam"] });
+energyState.enemies[0].q = 2;
+energyState.enemies[0].r = 4;
+Engine.setFacing(energyState, 2);
+Engine.applyFire(energyState);
+assert.strictEqual(
+  energyState.energy,
+  6 - Engine.WEAPONS.autocannon.energyCost,
+  "unspecified FIRE takes the cheapest gun that bears"
+);
+
+// A gun you can't afford refuses by name rather than quietly doing nothing.
 energyState = Engine.createGameState(energyLevel, { extraActions: ["arcBeam"] });
 energyState.enemies[0].q = 2;
 energyState.enemies[0].r = 4;
 energyState.energy = 1;
 Engine.setFacing(energyState, 2);
-Engine.applyFire(energyState);
-assert.strictEqual(energyState.enemies[0].alive, true, "1 Autocannon hit alone leaves a 2-HP Cruiser alive");
-assert.strictEqual(energyState.enemies[0].hp, 1, "the Autocannon still fired on the Energy that was left");
-assert.ok(
-  energyState.log.some((line) => /Arc Beam holds fire/.test(line)),
-  "the unaffordable Arc Beam holds fire with a log line, not silently"
+assert.throws(
+  () => Engine.applyFire(energyState, "e0", "arcBeam"),
+  /charge at 1 of 2/,
+  "an unaffordable gun says what it's short of"
 );
 
 // A MOVE spends no Energy at all.
@@ -1289,7 +1310,7 @@ for (let t = 1; t <= 8; t++) {
 }
 assert.deepStrictEqual(
   hullTimeline,
-  [5, 5, 5, 5, 3, 3, 3, 3],
+  [7, 7, 7, 7, 5, 5, 5, 5],
   "the Railgun charges four rounds, then takes 2 Hull in one shot — a readable rhythm, not a constant beam"
 );
 
@@ -1397,7 +1418,7 @@ assert.ok(
 );
 assert.throws(
   () => Engine.applySublight(terrainState, { q: 1, r: 0 }),
-  /blocked by an asteroid field/,
+  /Rock in the way/,
   "moving into an asteroid field is refused outright, not just punished"
 );
 assert.ok(

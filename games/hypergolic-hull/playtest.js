@@ -41,7 +41,7 @@ function bestShot(state) {
   for (const enemy of living) {
     for (const weapon of weapons) {
       for (let facing = 0; facing < 6; facing++) {
-        const reach = Engine.weaponHexes(state.playerPos, facing, weapon);
+        const reach = Engine.weaponHexes(state.playerPos, facing, weapon, state);
         if (!reach.some((h) => Engine.posEq(h, enemy))) continue;
         // A "hits all in reach" weapon is worth exactly as much as the
         // number of contacts standing in that reach — the whole reason to
@@ -65,7 +65,7 @@ function bestShot(state) {
 // uniform-cost search over the whole board where a threatened hex simply
 // costs a lot more than a clear one, so detours win whenever a detour
 // exists and the direct line still wins when it doesn't.
-const THREAT_COST = 9;
+const THREAT_COST = 12; // a long detour beats a single hit — hull is the scarcest thing in the game
 
 function routeStep(state, goal) {
   const startKey = Engine.hexKey(state.playerPos);
@@ -148,7 +148,10 @@ function shop(state, report) {
   //    durability and capacity, then a third gun.
   if (secondGun()) {
     while (state.hull < state.maxHull && has("repair")) buy("repair");
-    for (const id of ["shield", "hardpoint", "flakBurst", "arcBeam", "railgun", "reinforce", "reactor"]) {
+    // Buying UP the roster beats buying MORE of it now that a turn fires
+    // one gun: the Arc Beam's two damage is a straight upgrade on the
+    // Autocannon's one, where a third mount is only ever coverage.
+    for (const id of ["arcBeam", "railgun", "shield", "hardpoint", "reinforce", "reactor", "flakBurst"]) {
       if (has(id)) buy(id);
     }
     // Don't die rich. Anything still on the shelf beats salvage in the
@@ -156,7 +159,7 @@ function shop(state, report) {
     let spending = true;
     while (spending && state.salvage >= 10) {
       spending = false;
-      for (const id of ["hardpoint", "reinforce", "reactor", "railgun", "arcBeam", "flakBurst", "shield"]) {
+      for (const id of ["arcBeam", "railgun", "hardpoint", "reinforce", "reactor", "flakBurst", "shield"]) {
         if (has(id)) {
           buy(id);
           spending = true;
@@ -233,7 +236,7 @@ function playSector(state, report) {
     }
     if (shot) {
       Engine.setFacing(state, shot.facing);
-      Engine.applyFire(state, shot.enemy.id);
+      Engine.applyFire(state, shot.enemy.id, shot.weapon.id); // one action, one named gun
       report.kills[shot.weapon.id] = report.kills[shot.weapon.id] || { shots: 0, kills: 0 };
       report.kills[shot.weapon.id].shots++;
       if (!shot.enemy.alive) report.kills[shot.weapon.id].kills++;
@@ -326,7 +329,17 @@ function playRun(seed, report) {
           ` enemies ${(level.enemies || []).length} dock ${level.outpost ? "y" : "n"}`
       );
     }
-    if (outcome === "lost") return { depth, outcome: "died", hull: 0 };
+    if (outcome === "lost") {
+      // What actually ended it — the last few readout lines are the
+      // ship's own account of the final rounds.
+      for (const line of state.log.slice(-4)) {
+        const key = line.replace(/\d+/g, "N");
+        report.deathLines[key] = (report.deathLines[key] || 0) + 1;
+      }
+      const killers = Engine.livingEnemies(state).map((e) => e.type).sort().join("+") || "none";
+      report.deathBoards[killers] = (report.deathBoards[killers] || 0) + 1;
+      return { depth, outcome: "died", hull: 0 };
+    }
     if (outcome === "stalled") return { depth, outcome: "stalled" };
     if (state.isVictory) {
       report.hullAtDepth[depth] = report.hullAtDepth[depth] || [];
@@ -368,6 +381,8 @@ function main() {
     recharges: 0,
     shieldsRaised: 0,
     gates: {},
+    deathLines: {},
+    deathBoards: {},
     errors: [],
   };
   const outcomes = {};
@@ -395,6 +410,11 @@ function main() {
   console.log("fitted from cargo:", report.fitted);
   console.log(`recharges: ${report.recharges}, shields raised: ${report.shieldsRaised}`);
 console.log("gates taken:", report.gates);
+  const top = (obj, n) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n);
+  console.log("\nwhat the board looked like at death:");
+  for (const [board, n] of top(report.deathBoards, 6)) console.log(`  ${n}x ${board}`);
+  console.log("\nlast words:");
+  for (const [line, n] of top(report.deathLines, 8)) console.log(`  ${n}x ${line}`);
   if (report.errors.length) {
     console.log("\nERRORS:");
     const counted = {};

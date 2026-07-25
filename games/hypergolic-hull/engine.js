@@ -183,14 +183,17 @@
   // turns this from a pure-skill puzzle into a luck-and-skill crawl — room to
   // trade Hull for tempo, recover from a bad roll, and let salvage/repairs
   // matter. (Was 1: one-hit permadeath.)
-  // Five, not three. Hull damage is permanent across sectors and repairs
+  // Seven. Fights take longer than they used to — a turn fires ONE gun
+  // now, not every mount at once — so the ship has to be able to absorb
+  // more of them. At five, forty full runs finished exactly zero times.
+  // Hull damage is permanent across sectors and repairs
   // only exist at Outposts, which aren't in every sector — at 3 a single
   // Sentry (2 Hull, outranges your starting gun) took two thirds of the
   // ship before you could answer it, and a run was mathematically over by
   // sector 3 no matter how well it was flown. Five leaves room to learn
   // the stalking rhythm and to bank salvage for the weapon that actually
   // answers a stationary gun, without making death abstract.
-  const START_HULL = 5;
+  const START_HULL = 7;
 
   // Energy is a second resource, distinct from Hull (permanent damage,
   // repaired only at an Outpost) and salvage (a currency): it regenerates
@@ -292,9 +295,11 @@
     // per shot (3 against +1/cycle = a shot every third round) and a fat
     // 2x2 footprint. Cruisers brawl with it.
     flakBurst: { id: "flakBurst", label: "Flak Burst", range: 1, damage: 1, targets: "all", energyCost: 3, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, spread: "ring", slots: 1 },
-    // Standoff: two hexes in every direction, so you kill things on their
-    // approach instead of trading blows in contact. No facing to manage.
-    // Sentries zone the board with the same beam.
+    // Standoff. Two hexes in every direction, so you hit things on their
+    // approach instead of trading blows in contact — reach is what you're
+    // buying, not stopping power. (Two damage was tried and it is simply
+    // too much on a weapon this easy to bring to bear: the Cruisers that
+    // carry it flattened the early crawl, median run depth 5.)
     arcBeam: { id: "arcBeam", label: "Arc Beam", range: 2, damage: 1, targets: "one", energyCost: 2, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, spread: "ring", slots: 1 },
     // The sniper: down any of the six axes, the length of the board, two
     // damage — enough to one-shot the 2-hull classes. 4 energy against
@@ -405,7 +410,7 @@
 
   function assertDocked(state) {
     if (!outpostAvailable(state)) {
-      throw new Error("Refits need a dock — rearrange the Hold while at an Outpost");
+      throw new Error("Refits need a dock — no rewiring the ship under way");
     }
   }
 
@@ -454,10 +459,16 @@
     // no enemy-only gear.
     //   interceptor — the basic chaser: 1 Hull, one Autocannon, closes in.
     //                 1 energy against +1/cycle regen = fires every round.
-    //   cruiser     — the brawler: 2 Hull, Flak Burst. Three-round charge
-    //                 cycle, so it hits hard on a rhythm you can read.
-    //   sentry      — a fixed gun platform: 2 Hull, no drive, Arc Beam
-    //                 zoning two hexes in every direction.
+    //   cruiser     — the brawler: 2 Hull, Flak Burst, closes to contact.
+    //                 Reach belongs to the things that can't chase you:
+    //                 a mobile hostile that also outranged you was tested
+    //                 and it flattened the crawl by depth 5.
+    //   sentry      — a fixed gun platform: ONE Hull, no drive, an Arc
+    //                 Beam zoning two hexes in every direction. Glass —
+    //                 it denies ground and dies to a single shot, so the
+    //                 question is "can you reach it", not "can you
+    //                 out-trade it". At 2 Hull, two of them walled a 9x11
+    //                 board completely.
     //   railgun     — the sniper emplacement: 2 Hull, no drive, Railgun
     //                 down any axis for 2 damage on a four-round charge.
     interceptor: {
@@ -485,7 +496,7 @@
       },
     },
     sentry: {
-      hp: 2, weapon: WEAPONS.arcBeam, movesTowardPlayer: false, salvage: 4, maxEnergy: 2, startEnergy: 2,
+      hp: 1, weapon: WEAPONS.arcBeam, movesTowardPlayer: false, salvage: 4, maxEnergy: 2, startEnergy: 2,
       hold: {
         cols: 3, rows: 4, blocked: ["0,0", "2,0"],
         items: [
@@ -538,7 +549,7 @@
     return best;
   }
 
-  function weaponHexes(pos, facing, weapon) {
+  function weaponHexes(pos, facing, weapon, state) {
     // A RING weapon fills every hex within range, not just the six
     // straight axes out of the ship. Without this a "range 2" beam has a
     // blind spot everywhere off-axis — two thirds of the actual ring —
@@ -557,6 +568,14 @@
       }
       return hexes;
     }
+    // Line weapons stop at the first thing they hit. A slug does not pass
+    // through an asteroid, and it does not pass through a hull — so a
+    // Railgun Destroyer's six board-length axes are lines you can break
+    // by putting rock (or somebody else's ship) between you and it,
+    // rather than ambient damage sprayed across the whole board. This is
+    // the line-of-sight pass the original Railgun note left for later;
+    // playtesting made the case, with runs bleeding two Hull at a time
+    // crossing lanes they had no way to see coming.
     const hexes = [];
     for (const offset of weapon.pattern) {
       const dir = (facing + offset + 6) % 6;
@@ -564,9 +583,19 @@
       for (let step = 0; step < weapon.range; step++) {
         cur = neighbor(cur, dir);
         hexes.push(cur);
+        if (state && blocksShot(state, cur)) break; // it hits this, and stops
       }
     }
     return hexes;
+  }
+
+  // What a slug runs into: solid terrain, or any hull that isn't the
+  // shooter's own. (The target itself is included before the line stops —
+  // the shot hits the first thing in the lane, which is the whole point.)
+  function blocksShot(state, hex) {
+    if (isBlockingHazard(hazardAt(state, hex))) return true;
+    if (enemyAt(state, hex)) return true;
+    return posEq(state.playerPos, hex);
   }
 
   // Spent at a Sector Outpost, standing on its hex — see applyOutpostPurchase.
@@ -915,7 +944,7 @@
     if (amount <= 0) return;
     state.salvage += amount;
     state.events.push({ type: "salvage", amount });
-    pushLog(state, `+${amount} salvage.`);
+    pushLog(state, `Salvage recovered — +${amount}.`);
   }
 
   // ---- threat overlay: pillar #3, "the board is the UI" -------------------
@@ -938,7 +967,7 @@
       // up on the turn it can actually fire. (Regen happens AFTER the
       // enemy phase, so "can it fire next phase" is just current energy.)
       if (enemy.energy < enemyType.weapon.energyCost) continue;
-      for (const hex of weaponHexes(enemy, enemyFacing(state, enemy), enemyType.weapon)) {
+      for (const hex of weaponHexes(enemy, enemyFacing(state, enemy), enemyType.weapon, state)) {
         if (!onBoard(state, hex)) continue;
         const k = hexKey(hex);
         threats.set(k, (threats.get(k) || 0) + 1);
@@ -970,7 +999,7 @@
     // standing somewhere its weapon reaches AND its reactor can pay for
     // the shot ("the enemies should be using their own systems"). A
     // charging Railgun holds fire; a cost-1 chaser always affords it.
-    const inRange = weaponHexes(enemy, enemyFacing(state, enemy), enemyType.weapon).some((h) => posEq(h, state.playerPos));
+    const inRange = weaponHexes(enemy, enemyFacing(state, enemy), enemyType.weapon, state).some((h) => posEq(h, state.playerPos));
     if (inRange && enemy.energy >= enemyType.weapon.energyCost) {
       return { enemyId: enemy.id, type: "attack" };
     }
@@ -1009,7 +1038,7 @@
   function checkExitUnlock(state) {
     if (!state.exitUnlocked) {
       state.exitUnlocked = true;
-      pushLog(state, "Warp Gate online.");
+      pushLog(state, "Gate reads online.");
     }
   }
 
@@ -1017,7 +1046,7 @@
     if (hazardAt(state, state.playerPos)) {
       state.hull = 0;
       state.status = "lost";
-      pushLog(state, "Flagship destroyed.");
+      pushLog(state, "Hull breached. All hands.");
     }
   }
 
@@ -1026,7 +1055,7 @@
   // fire time (a faster weapon's kill or push in this same volley genuinely
   // removes them from a slower weapon's list).
   function firePlayerWeapon(state, weapon, onHit, preferredTargetId) {
-    const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon).map(hexKey));
+    const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon, state).map(hexKey));
     let targets = livingEnemies(state).filter((e) => hexKeys.has(hexKey(e)));
     if (targets.length === 0) return; // nothing in range — no shot, no energy spent
     // A single-target weapon (targets: "one") puts its whole shot into ONE
@@ -1040,7 +1069,7 @@
     // Every shot is paid for. A weapon that would have fired but can't
     // afford its cost holds fire — logged so the silence is explained.
     if (state.energy < weapon.energyCost) {
-      pushLog(state, `${weapon.label} holds fire — not enough Energy (${state.energy}/${weapon.energyCost}).`);
+      pushLog(state, `${weapon.label} holding — charge at ${state.energy} of ${weapon.energyCost}.`);
       return;
     }
     state.energy -= weapon.energyCost;
@@ -1060,11 +1089,11 @@
       if (victim.hp <= 0) {
         victim.alive = false;
         state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "weapon" });
-        pushLog(state, `${weapon.label} destroyed ${victim.type}.`);
+        pushLog(state, `${weapon.label}: ${victim.type.toUpperCase()} destroyed.`);
         awardSalvage(state, victim.type);
       } else {
         state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "weapon" });
-        pushLog(state, `${weapon.label} hit ${victim.type} (${victim.hp}/${victim.maxHp} HP left).`);
+        pushLog(state, `${weapon.label}: ${victim.type.toUpperCase()} hit — hull ${victim.hp} of ${victim.maxHp}.`);
         if (onHit) onHit(state, victim);
       }
     }
@@ -1087,7 +1116,7 @@
       for (const { enemy } of attackers) {
         if (!enemy.alive) continue;
         const weapon = ENEMY_TYPES[enemy.type].weapon;
-        if (!weaponHexes(enemy, enemyFacing(state, enemy), weapon).some((h) => posEq(h, state.playerPos))) continue;
+        if (!weaponHexes(enemy, enemyFacing(state, enemy), weapon, state).some((h) => posEq(h, state.playerPos))) continue;
         if (enemy.energy < weapon.energyCost) continue;
         enemy.energy -= weapon.energyCost; // same rule as the flagship: every shot is paid for
         totalDamage += weapon.damage;
@@ -1119,7 +1148,7 @@
     } else if (totalDamage > 0) {
       state.hull = Math.max(0, state.hull - totalDamage);
       state.events.push({ type: "damage", amount: totalDamage, q: state.playerPos.q, r: state.playerPos.r });
-      pushLog(state, `Took ${totalDamage} damage.`);
+      pushLog(state, totalDamage > 1 ? `We are hit — hull down ${totalDamage}.` : "We are hit — hull down 1.");
     }
     state.turnCount += 1; // a ROUND has passed
     // Enemy reactors tick +1 per ROUND — that rhythm IS their telegraph (a
@@ -1132,7 +1161,7 @@
     if (state.hull <= 0) {
       state.status = "lost";
       state.events.push({ type: "playerDeath", q: state.playerPos.q, r: state.playerPos.r });
-      pushLog(state, "Flagship destroyed.");
+      pushLog(state, "Hull breached. All hands.");
     }
   }
 
@@ -1154,9 +1183,9 @@
       state.usedExitVariant = usedExit.variantId;
       if (state.isBoss) {
         state.isVictory = true;
-        pushLog(state, "The Bulwark falls. Run Complete.");
+        pushLog(state, "The Bulwark is dead in the water.");
       } else {
-        pushLog(state, "Warp jump complete.");
+        pushLog(state, "Jump complete.");
       }
       return;
     }
@@ -1236,13 +1265,13 @@
     // engines altogether... it wouldn't make any sense because you
     // didn't go anywhere").
     if (!state.hold.items.some((it) => EQUIPMENT[it.id].kind === "engine")) {
-      throw new Error("No drive installed — the flagship isn't going anywhere");
+      throw new Error("No drive fitted — we are not going anywhere");
     }
     state.events = [];
-    if (!isAdjacent(state.playerPos, to)) throw new Error("Sublight Impulse: destination is not adjacent");
-    if (!onBoard(state, to)) throw new Error("Sublight Impulse: destination is off the map");
-    if (enemyAt(state, to)) throw new Error("Sublight Impulse: destination is occupied");
-    if (isBlockingHazard(hazardAt(state, to))) throw new Error("Sublight Impulse: blocked by an asteroid field");
+    if (!isAdjacent(state.playerPos, to)) throw new Error("Too far for one burn");
+    if (!onBoard(state, to)) throw new Error("That heading runs off the chart");
+    if (enemyAt(state, to)) throw new Error("Something is sitting on that grid");
+    if (isBlockingHazard(hazardAt(state, to))) throw new Error("Rock in the way");
     const from = { q: state.playerPos.q, r: state.playerPos.r };
     state.events.push({ type: "playerMove", from, to: { q: to.q, r: to.r } });
     const dir = directionIndex(from, to);
@@ -1260,21 +1289,47 @@
   // own phase, not mid-volley). `targetEnemyId` (from the UI's target
   // lock) steers every single-target weapon's shot. Refuses to waste the
   // AP if nothing is in reach of any armed weapon.
-  function applyFire(state, targetEnemyId) {
-    assertPlaying(state);
-    const anyTarget = AUTO_FIRE_WEAPONS.some(({ action, systemKey, weapon }) => {
-      if (!state.actions.includes(action) || !state.systems[systemKey]) return false;
-      const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon).map(hexKey));
+  // FIRE: 1 AP. `weaponKey` names WHICH gun pulls the trigger — every
+  // fitted weapon is its own button on the console, because "fire
+  // everything" is not a decision ("was supposed to show each option...
+  // if there is only one option auto use on click, otherwise you have to
+  // choose"). Omit it and the ship fires the only thing it can, which is
+  // what a one-gun ship should do without asking.
+  function armedWeaponsFor(state) {
+    return AUTO_FIRE_WEAPONS.filter(
+      ({ action, systemKey }) => state.actions.includes(action) && state.systems[systemKey]
+    );
+  }
+
+  // The guns that actually bear on something right now.
+  function weaponsWithTargets(state) {
+    return armedWeaponsFor(state).filter(({ weapon }) => {
+      const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon, state).map(hexKey));
       return livingEnemies(state).some((e) => hexKeys.has(hexKey(e)));
     });
-    if (!anyTarget) throw new Error("Fire: no armed weapon has a target in range");
-    state.events = [];
-    const armed = AUTO_FIRE_WEAPONS.filter(
-      ({ action, systemKey }) => state.actions.includes(action) && state.systems[systemKey]
-    ).sort((a, b) => b.weapon.speed - a.weapon.speed);
-    for (const { weapon, onHit } of armed) {
-      firePlayerWeapon(state, weapon, onHit, targetEnemyId);
+  }
+
+  function applyFire(state, targetEnemyId, weaponKey) {
+    assertPlaying(state);
+    const bearing = weaponsWithTargets(state);
+    if (!bearing.length) throw new Error("Nothing in arc");
+    let firing;
+    if (weaponKey) {
+      firing = bearing.find(({ systemKey }) => systemKey === weaponKey);
+      if (!firing) {
+        const fitted = armedWeaponsFor(state).find(({ systemKey }) => systemKey === weaponKey);
+        throw new Error(fitted ? `${fitted.weapon.label}: nothing in arc` : "That weapon isn't fitted");
+      }
+    } else {
+      // No choice made: fire the only gun that bears, or the cheapest one
+      // that does — a single-weapon ship never needs to be asked.
+      firing = bearing.slice().sort((a, b) => a.weapon.energyCost - b.weapon.energyCost)[0];
     }
+    if (state.energy < firing.weapon.energyCost) {
+      throw new Error(`${firing.weapon.label}: charge at ${state.energy} of ${firing.weapon.energyCost}`);
+    }
+    state.events = [];
+    firePlayerWeapon(state, firing.weapon, firing.onHit, targetEnemyId);
     spendAp(state);
   }
 
@@ -1285,7 +1340,7 @@
   function applyEndTurn(state) {
     assertPlaying(state);
     state.events = [];
-    if (state.ap === state.maxAp) pushLog(state, "Holding position.");
+    if (state.ap === state.maxAp) pushLog(state, "Holding station.");
     state.ap = 1; // collapse the remainder into one pass — spendAp runs the enemy phase
     spendAp(state);
   }
@@ -1296,13 +1351,13 @@
     assertPlaying(state);
     const reactors = state.hold.items.filter((it) => EQUIPMENT[it.id].kind === "reactor");
     if (!reactors.length) throw new Error("No reactor installed — nothing to cycle");
-    if (state.energy >= state.maxEnergy) throw new Error("Reactor Core: Energy is already full");
+    if (state.energy >= state.maxEnergy) throw new Error("Reactor Core: bus is already full");
     state.events = [];
     const perCycle = reactors.reduce((sum, it) => sum + (EQUIPMENT[it.id].rechargeGain || 0), 0);
     const gained = Math.min(perCycle, state.maxEnergy - state.energy);
     state.energy += gained;
     state.events.push({ type: "energyGain", amount: gained });
-    pushLog(state, `Reactor cycled — +${gained} Energy.`);
+    pushLog(state, `Reactor cycled — ${gained} back on the bus.`);
     spendAp(state);
   }
 
@@ -1313,15 +1368,15 @@
   const SHIELD_RAISE_COST = 2;
   function applyRaiseShields(state) {
     assertPlaying(state);
-    if (state.maxShields <= 0) throw new Error("No Shield Generator installed — Outposts sell them");
-    if (state.shieldCharges >= state.maxShields) throw new Error("Shields are already raised");
+    if (state.maxShields <= 0) throw new Error("No shield generator fitted — the yards sell them");
+    if (state.shieldCharges >= state.maxShields) throw new Error("Shields are already up");
     if (state.energy < SHIELD_RAISE_COST)
-      throw new Error(`Raising shields needs ${SHIELD_RAISE_COST} Energy — RECHARGE first`);
+      throw new Error(`Not enough charge to raise shields — needs ${SHIELD_RAISE_COST}`);
     state.events = [];
     state.energy -= SHIELD_RAISE_COST;
     state.events.push({ type: "energySpend", amount: SHIELD_RAISE_COST, weapon: "Shields" });
     state.shieldCharges += 1;
-    pushLog(state, `Shields raised — ${state.shieldCharges}/${state.maxShields} up.`);
+    pushLog(state, `Shields up — ${state.shieldCharges} of ${state.maxShields}.`);
     spendAp(state);
   }
 
@@ -1364,10 +1419,10 @@
     if (!state.outpostOfferIds.includes(offerId)) throw new Error(`Outpost: "${offerId}" is not on offer here`);
     const offer = OUTPOST_OFFER_POOL.find((o) => o.id === offerId);
     if (!offer) throw new Error(`Outpost: unknown offer "${offerId}"`);
-    if (state.salvage < offer.cost) throw new Error(`Outpost: not enough salvage for ${offer.label}`);
+    if (state.salvage < offer.cost) throw new Error(`Not enough salvage for ${offer.label}`);
     state.events = [];
     if (offer.id === "repair") {
-      if (state.hull >= state.maxHull) throw new Error("Outpost: Hull is already full");
+      if (state.hull >= state.maxHull) throw new Error("Nothing to patch — hull is sound");
       state.hull += 1;
     } else if (offer.id === "reinforce") {
       state.maxHull += 1;
@@ -1388,7 +1443,7 @@
     state.salvage -= offer.cost;
     pushLog(
       state,
-      offer.cost > 0 ? `Outpost: bought ${offer.label} (-${offer.cost} salvage).` : `Outpost: claimed ${offer.label}.`
+      offer.cost > 0 ? `Traded ${offer.cost} salvage for ${offer.label}.` : `Took delivery of ${offer.label}.`
     );
     // Every offer except Repair is a one-time purchase per outpost — buying
     // it removes it from what's on offer here, so a visit is a real choice
@@ -1438,6 +1493,8 @@
     computeThreatHexes,
     applySublight,
     applyFire,
+    armedWeaponsFor,
+    weaponsWithTargets,
     applyRecharge,
     RECHARGE_ENERGY_GAIN,
     applyRaiseShields,

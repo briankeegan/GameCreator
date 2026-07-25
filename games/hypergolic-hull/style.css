@@ -847,3 +847,39 @@ body {
   min-height: 2.2em;
 }
 .hold-tile.selected { outline: 2px solid #ffce8a; }
+
+/* Scuttling charges — the run's own off switch, kept visually apart from
+   every other control on the Systems screen and armed in two steps. */
+.self-destruct {
+  display: block;
+  width: 100%;
+  max-width: 340px;
+  margin: 18px auto 0;
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ff8a72;
+  background: #1d1013;
+  border: 2px solid #5a2a33;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.self-destruct.armed {
+  color: #12060a;
+  background: #e0533f;
+  border-color: #ff8a72;
+  font-weight: 700;
+  animation: gauge-flash 0.9s ease-out infinite;
+}
+.self-destruct-note { color: #7a5a5f; }
+
+/* One control per fitted weapon — they share the actions grid cell and
+   wrap onto their own line when the ship carries more than a couple. */
+.weapon-btns {
+  display: contents;
+}
+.weapon-btn.active {
+  border-color: #7fe3a8;
+  color: #7fe3a8;
+}
