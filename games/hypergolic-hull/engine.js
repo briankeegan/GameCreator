@@ -184,7 +184,14 @@
   // turns this from a pure-skill puzzle into a luck-and-skill crawl — room to
   // trade Hull for tempo, recover from a bad roll, and let salvage/repairs
   // matter. (Was 1: one-hit permadeath.)
-  const START_HULL = 3;
+  // Five, not three. Hull damage is permanent across sectors and repairs
+  // only exist at Outposts, which aren't in every sector — at 3 a single
+  // Sentry (2 Hull, outranges your starting gun) took two thirds of the
+  // ship before you could answer it, and a run was mathematically over by
+  // sector 3 no matter how well it was flown. Five leaves room to learn
+  // the stalking rhythm and to bank salvage for the weapon that actually
+  // answers a stationary gun, without making death abstract.
+  const START_HULL = 5;
 
   // Energy is a second resource, distinct from Hull (permanent damage,
   // repaired only at an Outpost) and salvage (a currency): it regenerates
@@ -285,11 +292,11 @@
     // at once, so being surrounded stops being a death sentence. Pricey
     // per shot (3 against +1/cycle = a shot every third round) and a fat
     // 2x2 footprint. Cruisers brawl with it.
-    flakBurst: { id: "flakBurst", label: "Flak Burst", range: 1, damage: 1, targets: "all", energyCost: 3, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    flakBurst: { id: "flakBurst", label: "Flak Burst", range: 1, damage: 1, targets: "all", energyCost: 3, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, spread: "ring", slots: 1 },
     // Standoff: two hexes in every direction, so you kill things on their
     // approach instead of trading blows in contact. No facing to manage.
     // Sentries zone the board with the same beam.
-    arcBeam: { id: "arcBeam", label: "Arc Beam", range: 2, damage: 1, targets: "one", energyCost: 2, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    arcBeam: { id: "arcBeam", label: "Arc Beam", range: 2, damage: 1, targets: "one", energyCost: 2, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, spread: "ring", slots: 1 },
     // The sniper: down any of the six axes, the length of the board, two
     // damage — enough to one-shot the 2-hull classes. 4 energy against
     // +1/cycle is a visible four-round charge cycle, the exact rhythm the
@@ -465,7 +472,7 @@
     //   railgun     — the sniper emplacement: 2 Hull, no drive, Railgun
     //                 down any axis for 2 damage on a four-round charge.
     interceptor: {
-      hp: 1, weapon: WEAPONS.autocannon, movesTowardPlayer: true, salvage: 1, maxEnergy: 1, startEnergy: 1,
+      hp: 1, weapon: WEAPONS.autocannon, movesTowardPlayer: true, salvage: 2, maxEnergy: 1, startEnergy: 1,
       hold: {
         cols: 3, rows: 4, blocked: ["0,3", "2,3"],
         items: [
@@ -476,7 +483,7 @@
       },
     },
     cruiser: {
-      hp: 2, weapon: WEAPONS.flakBurst, movesTowardPlayer: true, salvage: 2, maxEnergy: 3, startEnergy: 3,
+      hp: 2, weapon: WEAPONS.flakBurst, movesTowardPlayer: true, salvage: 4, maxEnergy: 3, startEnergy: 3,
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
@@ -489,7 +496,7 @@
       },
     },
     sentry: {
-      hp: 2, weapon: WEAPONS.arcBeam, movesTowardPlayer: false, salvage: 2, maxEnergy: 2, startEnergy: 2,
+      hp: 2, weapon: WEAPONS.arcBeam, movesTowardPlayer: false, salvage: 4, maxEnergy: 2, startEnergy: 2,
       hold: {
         cols: 3, rows: 4, blocked: ["0,0", "2,0"],
         items: [
@@ -501,7 +508,7 @@
       },
     },
     railgun: {
-      hp: 2, weapon: WEAPONS.railgun, movesTowardPlayer: false, salvage: 3, maxEnergy: 4, startEnergy: 0,
+      hp: 2, weapon: WEAPONS.railgun, movesTowardPlayer: false, salvage: 6, maxEnergy: 4, startEnergy: 0,
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
@@ -543,6 +550,24 @@
   }
 
   function weaponHexes(pos, facing, weapon) {
+    // A RING weapon fills every hex within range, not just the six
+    // straight axes out of the ship. Without this a "range 2" beam has a
+    // blind spot everywhere off-axis — two thirds of the actual ring —
+    // so a contact standing one hex off the line is simply unhittable,
+    // which is exactly how the Arc Beam managed to be bought and then
+    // never once fired in playtesting. Line weapons (the Railgun) stay
+    // axial on purpose: firing down an axis IS the weapon.
+    if (weapon.spread === "ring") {
+      const hexes = [];
+      for (let dq = -weapon.range; dq <= weapon.range; dq++) {
+        for (let dr = -weapon.range; dr <= weapon.range; dr++) {
+          const cand = { q: pos.q + dq, r: pos.r + dr };
+          const dist = hexDistance(pos, cand);
+          if (dist >= 1 && dist <= weapon.range) hexes.push(cand);
+        }
+      }
+      return hexes;
+    }
     const hexes = [];
     for (const offset of weapon.pattern) {
       const dir = (facing + offset + 6) % 6;
@@ -575,25 +600,25 @@
   // different weapons... you have to pay for them"). Priced above every
   // other offer — a whole new permanent weapon, not just a stat bump.
   const OUTPOST_OFFER_POOL = [
-    { id: "repair", label: "Repair 1 Hull", cost: 3 },
-    { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 15 },
+    { id: "repair", label: "Repair 1 Hull", cost: 2 },
+    { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 10 },
     // Shields aren't consumable purchases anymore — you buy the GENERATOR
     // (permanent +1 capacity, arrives raised), then re-raising a spent
     // charge costs Energy and a turn (applyRaiseShields), not salvage.
-    { id: "shield", label: "Shield Generator (2x2 — raise-able charge)", cost: 15 },
+    { id: "shield", label: "Shield Generator (2x2 — raise-able charge)", cost: 10 },
     // The two "configurable limits" as purchases: your reactor cap (how
     // much Energy you can bank against expensive weapons) and your weapon
     // slots (how many systems can run at once) are both ship stats you
     // grow at Outposts, not constants.
-    { id: "reactor", label: "Reactor Upgrade (+1 Max Energy)", cost: 12 },
-    { id: "hardpoint", label: "Hold Expansion (+1 row of internal space)", cost: 20 },
+    { id: "reactor", label: "Reactor Upgrade (+1 Max Energy)", cost: 8 },
+    { id: "hardpoint", label: "Hold Expansion (+1 row of internal space)", cost: 12 },
     // The three weapons beyond your starting Autocannon, priced on a real
     // curve — each one answers a situation the others can't, and each is
     // the item a hostile class already carries (buy the gun that's been
     // shooting at you).
-    { id: "flakBurst", label: "Flak Burst (2x2 — hits every adjacent contact)", cost: 14 },
-    { id: "arcBeam", label: "Arc Beam (2x2 — range 2, kill them on approach)", cost: 18 },
-    { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 30 },
+    { id: "flakBurst", label: "Flak Burst (2x2 — hits every adjacent contact)", cost: 10 },
+    { id: "arcBeam", label: "Arc Beam (2x2 — range 2, kill them on approach)", cost: 12 },
+    { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 24 },
     // Free — this is a claim, not a purchase. Never part of the general
     // per-level random pool (see pickOutpostOfferIds); it only ever
     // appears at Sector 2's Outpost, guaranteed, since that's the
@@ -631,6 +656,11 @@
     // Beam — not left to the same per-level randomization as every other
     // offer (Clubhouse: "you should not start with it").
     if (levelId === 2) picked.push("tractorBeam");
+    // Sector 3 is the Sentry Line — the first sector with something that
+    // outranges you and won't come to you. The weapon that answers it has
+    // to be ON THE SHELF there, not left to the shuffle, or the lesson is
+    // just "take two hits and hope".
+    if (levelId === 3 && !picked.includes("arcBeam")) picked.push("arcBeam");
     return picked;
   }
 
@@ -861,8 +891,20 @@
 
   // Every kill drops scrap, no matter which action lands it — see
   // ENEMY_TYPES[type].salvage.
+  // Deeper wrecks are worth more. Without this the shop is priced against
+  // sector-2 income forever while the sectors themselves keep getting
+  // harder — the run becomes a treadmill you can only lose, which is
+  // exactly what full-run playtesting showed: deaths piling up at depth
+  // 9-13 with nothing new ever fitted. A bounty that climbs with depth is
+  // also what makes "fight it or route around it" stay a real question
+  // instead of always being "route around it".
+  function depthBounty(state) {
+    return Math.floor((state.levelId || 1) / 4);
+  }
+
   function awardSalvage(state, enemyType) {
-    const amount = (ENEMY_TYPES[enemyType] || {}).salvage || 0;
+    const base = (ENEMY_TYPES[enemyType] || {}).salvage || 0;
+    const amount = base > 0 ? base + depthBounty(state) : 0;
     if (amount <= 0) return;
     state.salvage += amount;
     state.events.push({ type: "salvage", amount });
@@ -1419,6 +1461,8 @@
     SHIELD_RAISE_COST,
     applyEndTurn,
     START_AP,
+    START_HULL,
+    OUTPOST_OFFER_POOL,
     ENEMY_AP,
     applyTractor,
     outpostAvailable,

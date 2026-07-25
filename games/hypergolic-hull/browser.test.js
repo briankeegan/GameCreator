@@ -597,7 +597,7 @@ async function freshPage(browser, url, errors) {
   await page.waitForFunction(() => window.__hhState.status === "playing");
   s = await getState(page);
   assert.strictEqual(s.levelId, 1, "New Run resets the campaign to Sector 1");
-  assert.strictEqual(s.hull, 3);
+  assert.strictEqual(s.hull, s.maxHull, "and the ship comes back whole");
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false);
   await page.close();
 
@@ -703,16 +703,17 @@ async function freshPage(browser, url, errors) {
   // ("how do you win, or is it just runs?") — clearing the depth-20 boss
   // shows a distinct overlay instead of silently auto-continuing like a
   // routine sector clear, and offers a real choice (keep going vs. bank
-  // the win). Simulated directly (playing to depth 20 for real is out of
+  // the win). Simulated directly (playing the whole crawl for real is out of
   // scope for a test) — the win/isVictory logic itself is covered in
   // engine.test.js; this confirms app.js's UI reacts to it correctly.
   page = await freshPage(browser, url, errors);
   await page.evaluate(() => {
-    const bossLevel = window.HypergolicLevels.generateLevel(20);
+    const bossDepth = window.HypergolicLevels.BOSS_DEPTH;
+    const bossLevel = window.HypergolicLevels.generateLevel(bossDepth);
     const fresh = window.HypergolicEngine.createGameState(bossLevel);
     fresh.playerPos = { q: bossLevel.exit.q, r: bossLevel.exit.r };
     Object.assign(window.__hhState, fresh);
-    window.__hhSetLevelIndex(19); // depth = index + 1 — keep advanceSector's "levelIndex + 1" in sync
+    window.__hhSetLevelIndex(bossDepth - 1); // depth = index + 1 — keep advanceSector's "levelIndex + 1" in sync
     window.render();
   });
   await endRound(page); // standing on an always-online gate: any action wins it
@@ -722,7 +723,9 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Run Complete");
   assert.strictEqual(await page.locator("#continueBtn").isVisible(), true, "Keep Flying is offered on a boss win");
   await page.click("#continueBtn");
-  await page.waitForFunction(() => window.__hhState.levelId === 21 && window.__hhState.status === "playing");
+  await page.waitForFunction(
+    () => window.__hhState.levelId === window.HypergolicLevels.BOSS_DEPTH + 1 && window.__hhState.status === "playing"
+  );
   s = await getState(page);
   assert.strictEqual(s.isBoss, false, "the sector past the boss is purely procedural again");
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "continuing closes the victory overlay");

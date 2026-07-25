@@ -18,7 +18,7 @@
 
 const assert = require("assert");
 const Engine = require("./engine.js");
-const { LEVELS, generateLevel } = require("./levels.js");
+const { LEVELS, generateLevel, BOSS_DEPTH } = require("./levels.js");
 
 function clone(state) {
   return JSON.parse(JSON.stringify(state));
@@ -136,8 +136,8 @@ assert.ok(
   meleeState.events.some((e) => e.type === "playerMove" && e.to.q === 2 && e.to.r === 2),
   "player moves emit a playerMove event (drives the flight animation)"
 );
-assert.strictEqual(meleeState.hull, 2, "a strike costs 1 of 3 Hull — no longer instant death");
-assert.strictEqual(meleeState.status, "playing", "with 3 Hull the run survives a single hit");
+assert.strictEqual(meleeState.hull, Engine.START_HULL - 1, "a strike costs 1 Hull — no longer instant death");
+assert.strictEqual(meleeState.status, "playing", "the run survives a single hit");
 assert.ok(meleeState.events.some((e) => e.type === "attack"), "attacks emit an attack event");
 assert.ok(meleeState.events.some((e) => e.type === "damage"), "damage emits a damage event");
 
@@ -190,7 +190,7 @@ assert.strictEqual(
 // (see the bookkeeping section below) for a future re-expansion.
 
 let state = Engine.createGameState(goldenLevel);
-assert.strictEqual(state.hull, 3, "the flagship starts a run with 3 Hull");
+assert.strictEqual(state.hull, Engine.START_HULL, "the flagship starts a run at full Hull");
 assert.strictEqual(state.energy, 6, "and a full Energy budget");
 assert.strictEqual(state.ap, 1, "one action per round — the AP counter idles at 1");
 assert.strictEqual(state.maxAp, 1, "1 is the standard budget now (the plumbing supports more)");
@@ -298,7 +298,7 @@ mistakeState.enemies[0].r = mistakeState.playerPos.r - 1; // adjacent, directly 
 const stillInReach = Engine.legalSublightTargets(mistakeState).find((to) => Engine.isAdjacent(to, mistakeState.enemies[0]));
 assert.ok(stillInReach, "expected a destination still inside the chaser's reach");
 Engine.applySublight(mistakeState, stillInReach);
-assert.strictEqual(mistakeState.hull, 2, "moving while engaged eats the strike — the turn went to repositioning, not defense");
+assert.strictEqual(mistakeState.hull, Engine.START_HULL - 1, "moving while engaged eats the strike — the turn went to repositioning, not defense");
 assert.strictEqual(mistakeState.enemies[0].alive, true, "and moving killed nothing — shooting is its own action");
 
 // ---- AP bookkeeping: one action commits the round; plumbing is intact ---
@@ -658,7 +658,15 @@ assert.strictEqual(Engine.ENEMY_TYPES.sentry.weapon, Engine.WEAPONS.arcBeam, "th
 assert.strictEqual(Engine.WEAPONS.arcBeam.range, 2, "the Arc Beam reaches two hexes");
 
 const sentryHexes = Engine.weaponHexes({ q: 0, r: 0 }, 0, Engine.WEAPONS.arcBeam);
-assert.strictEqual(sentryHexes.length, 12, "a range-2 omnidirectional beam threatens 6 near + 6 far hexes");
+// The FULL two-hex ring, not just the six straight axes out of the hull.
+// Axis-only coverage left a range-2 weapon unable to hit anything standing
+// one hex off the line — two thirds of its own ring — which is how the Arc
+// Beam managed to be bought and then never once fired in playtesting.
+assert.strictEqual(sentryHexes.length, 18, "a range-2 ring weapon covers every hex within two — 6 near + 12 far");
+assert.ok(
+  sentryHexes.some((h) => Engine.hexDistance(h, { q: 0, r: 0 }) === 2 && h.q !== 0 && h.r !== 0),
+  "including the off-axis ones"
+);
 assert.ok(
   sentryHexes.some((h) => Engine.hexDistance(h, { q: 0, r: 0 }) === 2),
   "and it genuinely reaches out to distance 2, not just the neighbors"
@@ -772,7 +780,14 @@ assert.deepStrictEqual(Engine.outpostOffers(salvageState), [], "not standing on 
 Engine.applySublight(salvageState, { q: 0, r: -1 });
 Engine.applyFire(salvageState);
 assert.strictEqual(salvageState.enemies[0].alive, false, "the FIRE volley kills the adjacent Interceptor");
-assert.strictEqual(salvageState.salvage, Engine.ENEMY_TYPES.interceptor.salvage, "a kill drops its type's salvage value");
+// A wreck is worth its type's value PLUS a depth bounty — deeper sectors
+// pay better, so the shop keeps up with the sectors instead of staying
+// priced against sector 2 forever.
+assert.strictEqual(
+  salvageState.salvage,
+  Engine.ENEMY_TYPES.interceptor.salvage + Math.floor(salvageLevel.id / 4),
+  "a kill drops its type's salvage value, scaled by how deep the sector is"
+);
 assert.ok(salvageState.events.some((e) => e.type === "salvage"), "a kill emits a salvage event for the UI to animate");
 // Ending the approach MOVE adjacent to the live Interceptor ate its shot
 // (one action per turn — that's the rule). Reset hull: the shop test
@@ -944,7 +959,7 @@ assert.strictEqual(noShieldState.hull, hullBeforeNoShield - 1, "with no Shield c
 // (+1 capacity, arrives raised); every re-raise after that costs Energy
 // and a full turn via applyRaiseShields — protection competes with FIRE
 // and RECHARGE for the same one-action economy.
-salvageState.salvage = 15;
+salvageState.salvage = Engine.OUTPOST_OFFER_POOL.find((o) => o.id === "shield").cost;
 Engine.applyOutpostPurchase(salvageState, "shield");
 assert.strictEqual(salvageState.maxShields, 1, "the Shield Generator installs +1 permanent capacity");
 assert.strictEqual(salvageState.shieldCharges, 1, "the new capacity arrives raised — the upgrade feels immediate");
@@ -1001,7 +1016,7 @@ assert.throws(
   /not enough salvage/i,
   "gated on affordability like every other offer"
 );
-arcState.salvage = 18;
+arcState.salvage = Engine.OUTPOST_OFFER_POOL.find((o) => o.id === "arcBeam").cost;
 Engine.applyOutpostPurchase(arcState, "arcBeam");
 assert.strictEqual(arcState.actions.includes("arcBeam"), true, "purchasing it unlocks the action");
 assert.strictEqual(arcState.salvage, 0, "the full cost is spent");
@@ -1049,7 +1064,7 @@ const flakState = Engine.createGameState(flakLevel);
 assert.strictEqual(flakState.actions.includes("flakBurst"), false, "Flak Burst isn't in the starting kit either");
 flakState.playerPos = { q: flakLevel.outpost.q, r: flakLevel.outpost.r };
 flakState.outpostOfferIds = ["repair", "flakBurst"];
-flakState.salvage = 14;
+flakState.salvage = Engine.OUTPOST_OFFER_POOL.find((o) => o.id === "flakBurst").cost;
 Engine.applyOutpostPurchase(flakState, "flakBurst");
 assert.strictEqual(flakState.systems.flakBurst, true, "the toggle defaults on once purchased");
 
@@ -1073,7 +1088,7 @@ assert.deepStrictEqual(
 const railgunBuyState = Engine.createGameState({ ...shopLevel, id: 995 });
 railgunBuyState.playerPos = { q: shopLevel.outpost.q, r: shopLevel.outpost.r };
 railgunBuyState.outpostOfferIds = ["repair", "railgun"];
-railgunBuyState.salvage = 30;
+railgunBuyState.salvage = Engine.OUTPOST_OFFER_POOL.find((o) => o.id === "railgun").cost;
 Engine.applyOutpostPurchase(railgunBuyState, "railgun");
 // Footprint is a real constraint: a 1x4 spine does NOT fit around the
 // starting kit, so it arrives inert in cargo until you make room.
@@ -1175,13 +1190,13 @@ assert.ok(generateLevel(21).enemies.length >= generateLevel(6).enemies.length, "
 // ---- Boss milestone: "how do you win, or is it just runs?" --------------
 // Depth 20 is a single, fixed "Run Complete" moment, not another
 // procedural roll and not a repeating pattern.
-const bossLevelDef = generateLevel(20);
-assert.strictEqual(bossLevelDef.isBoss, true, "depth 20 is the boss sector");
+const bossLevelDef = generateLevel(BOSS_DEPTH);
+assert.strictEqual(bossLevelDef.isBoss, true, "the boss depth is the boss sector");
 assert.strictEqual(bossLevelDef.name, "The Bulwark");
 assert.ok(bossLevelDef.outpost, "the boss sector has a guaranteed Outpost — shop before the fight");
-assert.deepStrictEqual(generateLevel(20, "aggressive"), generateLevel(20), "the boss ignores variantId — no branching into it");
-assert.notStrictEqual(generateLevel(19).isBoss, true, "depth 19 is still purely procedural");
-assert.notStrictEqual(generateLevel(21).isBoss, true, "depth 21 (past the boss) is purely procedural too — one milestone, not a repeating pattern");
+assert.deepStrictEqual(generateLevel(BOSS_DEPTH, "aggressive"), generateLevel(BOSS_DEPTH), "the boss ignores variantId — no branching into it");
+assert.notStrictEqual(generateLevel(BOSS_DEPTH - 1).isBoss, true, "the depth before it is still purely procedural");
+assert.notStrictEqual(generateLevel(BOSS_DEPTH + 1).isBoss, true, "past the boss is purely procedural too — one milestone, not a repeating pattern");
 
 const bossState = Engine.createGameState(bossLevelDef);
 assert.strictEqual(bossState.isBoss, true);
@@ -1366,7 +1381,7 @@ for (let t = 1; t <= 8; t++) {
 }
 assert.deepStrictEqual(
   hullTimeline,
-  [3, 3, 3, 3, 1, 1, 1, 1],
+  [5, 5, 5, 5, 3, 3, 3, 3],
   "the Railgun charges four rounds, then takes 2 Hull in one shot — a readable rhythm, not a constant beam"
 );
 
@@ -1406,7 +1421,7 @@ slowInitState.enemies[0].r = 4; // adjacent, directly up
 Engine.setFacing(slowInitState, 2);
 Engine.applyFire(slowInitState);
 assert.strictEqual(slowInitState.enemies[0].alive, false, "the Railgun kills its target");
-assert.strictEqual(slowInitState.hull, 3, "a kill in your phase means no reply — phases are sequential, not simultaneous");
+assert.strictEqual(slowInitState.hull, Engine.START_HULL, "a kill in your phase means no reply — phases are sequential, not simultaneous");
 
 // One action per round means closing the gap is its own turn — approach
 // a charged interceptor to adjacency and it fires when your turn
@@ -1415,10 +1430,10 @@ const tradeState = Engine.createGameState({ ...initiativeLevel, id: 985, actions
 tradeState.enemies[0].q = 2;
 tradeState.enemies[0].r = 3; // distance 2, dead ahead
 Engine.applySublight(tradeState, { q: 2, r: 4 }); // close to adjacent — the round commits
-assert.strictEqual(tradeState.hull, 2, "ending your turn beside a charged chaser eats its shot");
+assert.strictEqual(tradeState.hull, Engine.START_HULL - 1, "ending your turn beside a charged chaser eats its shot");
 Engine.applyFire(tradeState); // your phase first: the kill lands before its next shot
 assert.strictEqual(tradeState.enemies[0].alive, false, "the next round's FIRE kills it");
-assert.strictEqual(tradeState.hull, 2, "with no reply — the dead don't get a phase");
+assert.strictEqual(tradeState.hull, Engine.START_HULL - 1, "with no reply — the dead don't get a phase");
 assert.strictEqual(tradeState.turnCount, 2, "the exchange took two full rounds");
 
 // The enemy phase runs on the same 1-AP budget: a chaser 2 hexes out
@@ -1428,9 +1443,9 @@ closerState.enemies[0].q = 2;
 closerState.enemies[0].r = 3; // distance 2
 Engine.applyEndTurn(closerState); // hold: its phase spends its one point moving
 assert.strictEqual(Engine.isAdjacent(closerState.enemies[0], closerState.playerPos), true, "the chaser closed a hex");
-assert.strictEqual(closerState.hull, 3, "moving was its whole turn — no shot yet");
+assert.strictEqual(closerState.hull, Engine.START_HULL, "moving was its whole turn — no shot yet");
 Engine.applyEndTurn(closerState); // hold again: now it fires
-assert.strictEqual(closerState.hull, 2, "the following round it spends its point on the shot");
+assert.strictEqual(closerState.hull, Engine.START_HULL - 1, "the following round it spends its point on the shot");
 
 // A cost-1 enemy is unchanged by the energy system: it fires every turn.
 const chaserEnergyLevel = {
@@ -1449,7 +1464,7 @@ const chaserEnergyState = Engine.createGameState(chaserEnergyLevel);
 Engine.applyEndTurn(chaserEnergyState); // its phase: closes to adjacent (1 AP — that's its whole turn)
 Engine.applyEndTurn(chaserEnergyState); // strike 1
 Engine.applyEndTurn(chaserEnergyState); // strike 2 — the +1/round regen keeps a cost-1 cannon firing every round
-assert.strictEqual(chaserEnergyState.hull, 1, "a cost-1 chaser fires every round once in reach — no charge gap");
+assert.strictEqual(chaserEnergyState.hull, Engine.START_HULL - 2, "a cost-1 chaser fires every round once in reach — no charge gap");
 
 // ---- Asteroid fields: genuinely impassable terrain, distinct from a ------
 // blackhole's instant-destruction trap. Clubhouse feedback: "places you

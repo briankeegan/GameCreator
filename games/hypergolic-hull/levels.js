@@ -79,8 +79,11 @@
       playerStart: { q: 4, r: 8 },
       exit: { q: 8, r: -4 },
       outpost: { q: 0, r: 0 },
+      // The Sentry lesson: ONE emplacement and one escort. Its beam covers
+      // a two-hex ring in every direction, which is a wall on a board this
+      // width — learning to read that zone is the whole sector, and a
+      // third hostile just turns the lesson into an unwinnable brawl.
       enemies: [
-        { type: "cruiser", q: 2, r: 5 },
         { type: "sentry", q: 6, r: 1 },
         { type: "interceptor", q: 4, r: 0 },
       ],
@@ -100,7 +103,11 @@
       board: { type: "rect", cols: 9, rows: 11 },
       playerStart: { q: 4, r: 8 },
       exit: { q: 8, r: -4 },
-      outpost: null,
+      // The last hand-authored sector before the crawl goes procedural —
+      // so this is the outfitters. Running it dry meant arriving at depth
+      // 5 with a hold full of salvage, a starting gun, and no shelf to
+      // spend on since sector 3.
+      outpost: { q: 0, r: 0 },
       enemies: [
         { type: "cruiser", q: 3, r: 5 },
         { type: "sentry", q: 6, r: 2 },
@@ -173,7 +180,15 @@
   // permadeath loss screen. The crawl still continues past it afterward,
   // purely procedural from depth 21 on, for players chasing a higher
   // depth — this is the one milestone, not the first of many.
-  const BOSS_DEPTH = 20;
+  // Twelve, not twenty. A sector is fifteen to twenty-five rounds of
+  // real play, so a twenty-deep run is several hundred taps — and full-run
+  // playtesting never once got there: the survival curve ran out around
+  // depth 13-15 no matter how well the ship was flown or fitted. Twelve
+  // gives the run an actual shape — four authored sectors to learn on,
+  // seven of escalating crawl, then the Bulwark — and it stays a real
+  // achievement rather than a theoretical one. The crawl still continues
+  // past it, purely procedural, for anyone chasing depth.
+  const BOSS_DEPTH = 12;
 
   function bossLevel(depth) {
     const rows = 11;
@@ -247,7 +262,15 @@
     // (Clubhouse feedback). ~60% of generated sectors have one, shifted by
     // the incoming variant's bias.
     const outpostChance = Math.min(0.9, Math.max(0.1, 0.6 + (variant ? variant.outpostChanceDelta : 0)));
-    const hasOutpost = rng() < outpostChance;
+    // ...but there is ALWAYS a dock within three jumps. Hull damage is
+    // permanent, so a dry stretch of four or five sectors isn't difficulty,
+    // it's just a run bleeding out with nothing it can do about it.
+    // A dock at least every OTHER sector. Hull damage is permanent and the
+    // only repair is a dock, so a three-sector dry stretch isn't tension —
+    // it's a run that already ended and hasn't been told yet. Playtesting
+    // ran into exactly that: dying at depth 5 with 13 salvage in the hold
+    // and no shelf to spend it on since depth 3.
+    const hasOutpost = depth % 2 === 0 || rng() < outpostChance;
     const outpost = hasOutpost ? { q: 0, r: 0 } : null;
 
     const hexes = [];
@@ -281,15 +304,26 @@
     }
     const hazardKeys = new Set(hazards.map((h) => `${h.q},${h.r}`));
 
-    const enemyCount = Math.max(1, Math.min(3 + Math.floor(depth / 2) + (variant ? variant.enemyDelta : 0), 9));
+    // The hand-authored campaign runs 1, 2, then 3 hostiles; the crawl has
+    // to continue that line rather than jumping to five the moment it goes
+    // procedural. One more contact every three sectors, topping out at 8.
+    const enemyCount = Math.max(1, Math.min(2 + Math.floor(depth / 3) + (variant ? variant.enemyDelta : 0), 6));
     // The Railgun Destroyer (long-range, board-spanning shot along its
     // axes) joins the roster at the same depth tier Cruiser/Sentry weight
     // increases — a genuinely new threat shape (line-up-from-across-the-
     // map instead of adjacent/short-ring), not just another stat bump.
+    // Threat SHAPES arrive one at a time, not all at once: chasers first,
+    // then the emplacement that zones a chunk of the board off, then the
+    // one that shoots the length of it. A Sentry's beam covers a true
+    // two-hex ring (18 hexes) — dropping two of those into a depth-4
+    // board alongside cruisers doesn't read as difficulty, it reads as a
+    // wall you have to walk through and lose hull to.
     const typePool =
-      depth < 8
-        ? ["interceptor", "interceptor", "cruiser", "sentry"]
-        : ["interceptor", "cruiser", "cruiser", "sentry", "sentry", "railgun"];
+      depth < 5
+        ? ["interceptor", "interceptor", "cruiser"]
+        : depth < 8
+          ? ["interceptor", "interceptor", "cruiser", "cruiser", "sentry"]
+          : ["interceptor", "cruiser", "cruiser", "sentry", "sentry", "railgun"];
     const enemies = [];
     for (const hex of candidates) {
       if (enemies.length >= enemyCount) break;
@@ -319,7 +353,7 @@
     };
   }
 
-  const HypergolicLevels = { LEVELS, generateLevel };
+  const HypergolicLevels = { LEVELS, generateLevel, BOSS_DEPTH };
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = HypergolicLevels;
