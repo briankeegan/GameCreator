@@ -19,13 +19,10 @@
   <!-- Header (All Games / title / chat) is injected by nav.js below. -->
 
   <main class="game-area" id="gameArea">
-    <!-- The scan readout: a reserved strip ABOVE the field, only present
-         while Scan mode is open, so an inspected contact's card never
-         covers the hexes it's describing. -->
-    <div class="scan-readout" id="scanReadout" hidden>
-      <div class="scan-hint" id="scanHint">Scan active — tap anything on the field to identify it</div>
-      <div class="enemy-info" id="enemyInfo" hidden></div>
-    </div>
+    <!-- The scan readout card: floats over the top of the field when a
+         contact is inspected — Scan must never resize the board or add
+         standing text of its own. -->
+    <div class="enemy-info" id="enemyInfo" hidden></div>
 
     <div class="board-wrap" id="boardWrap">
       <div class="board-frame">
@@ -82,8 +79,7 @@
         <span class="weapon-stats" id="tractorStats" hidden></span>
       </div>
       <div class="console-grid engage-row">
-        <button id="engageBtn" class="engage-btn" title="Commit the round — your queued actions play out in order, then the enemies spend their own Action Points">End Round</button>
-        <button id="clearPlanBtn" class="clear-btn" title="Wipe the queued plan and start the round over" hidden>Clear</button>
+        <button id="endTurnBtn" class="engage-btn" title="Pass your remaining Action Points and hold position — the enemies then spend theirs">End Round</button>
       </div>
       <div class="console-grid modes-grid">
         <button id="scanBtn" class="scan-btn" title="Scan mode — inspect anything on the board; movement and actions are disabled while it's open" aria-label="Scan">Scan</button>

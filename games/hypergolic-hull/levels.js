@@ -155,6 +155,11 @@
   const BRANCH_VARIANTS = [
     { id: "aggressive", enemyDelta: 2, hazardDelta: 1, outpostChanceDelta: -0.25 },
     { id: "quiet", enemyDelta: -1, hazardDelta: 0, outpostChanceDelta: 0.25 },
+    // The third direction ("should have multiple directions — that's how
+    // it's a maze"): drift sectors run hazard-heavy — normal resistance,
+    // but the map itself fights you. Not every sector deals this gate
+    // (see generateLevel), so the chart genuinely forks 2 or 3 ways.
+    { id: "drift", enemyDelta: 0, hazardDelta: 2, outpostChanceDelta: 0 },
   ];
 
   // "How do you win, or is it just runs?" (Clubhouse) — depth 20 is a
@@ -227,11 +232,15 @@
     // of them now.
     const startCol = Math.floor(cols / 2);
     const playerStart = { q: startCol, r: rows - 1 - Math.floor(startCol / 2) };
-    const exits = BRANCH_VARIANTS.map((v, i) => ({
-      q: i === 0 ? cols - 1 : startCol,
-      r: i === 0 ? -Math.floor((cols - 1) / 2) : -Math.floor(startCol / 2),
-      variantId: v.id,
-    }));
+    const exits = [
+      { q: cols - 1, r: -Math.floor((cols - 1) / 2), variantId: "aggressive" }, // top-right
+      { q: startCol, r: -Math.floor(startCol / 2), variantId: "quiet" }, // straight up
+    ];
+    // Some sectors (deterministically, ~half) deal a THIRD gate toward the
+    // top-left — the drift route. (Top of column 2, not the true corner:
+    // the (0,0) corner is the Outpost's fixed berth.) 2- and 3-way forks
+    // mixing is what makes the chart read as a maze instead of a ladder.
+    if (rng() < 0.55) exits.push({ q: 2, r: -1, variantId: "drift" });
     const exit = exits[0]; // primary/first gate — every non-branching call site reads this
     // Not every sector gets an Outpost — a guaranteed safe restock every
     // single time made the crawl "too easy and not very interesting"

@@ -1088,13 +1088,26 @@ assert.strictEqual(bossState.isVictory, true, "clearing the BOSS sector sets isV
 // different portals" (Clubhouse feedback) — every generated sector offers
 // 2 exits, each biasing what comes next, deterministically per variant.
 const branchLevel = generateLevel(30);
-assert.strictEqual(branchLevel.exits.length, 2, "a generated sector always offers 2 Warp Gates");
+assert.ok(
+  branchLevel.exits.length >= 2 && branchLevel.exits.length <= 3,
+  "a generated sector offers 2 or 3 Warp Gates"
+);
 assert.deepStrictEqual(branchLevel.exit, branchLevel.exits[0], "the singular `exit` field is just the first gate, for single-exit callers");
 const branchIds = branchLevel.exits.map((e) => e.variantId);
-assert.deepStrictEqual(new Set(branchIds).size, 2, "the two gates are tagged with different variant ids");
+assert.deepStrictEqual(new Set(branchIds).size, branchLevel.exits.length, "every gate is tagged with a distinct variant id");
+// The maze mixes fork sizes ("should have multiple directions — that's
+// how it's a maze"): across a run of depths, some sectors deal 2 gates
+// and some deal 3 — never a uniform ladder.
+const gateCounts = new Set();
+for (let depth = 21; depth <= 40; depth++) gateCounts.add(generateLevel(depth).exits.length);
+assert.ok(gateCounts.has(2) && gateCounts.has(3), "both 2-gate and 3-gate sectors occur across depths");
+// The third direction is a real destination: arriving THROUGH a drift
+// gate deals a valid, deterministic sector like any other variant.
+assert.deepStrictEqual(generateLevel(31, "drift"), generateLevel(31, "drift"), "drift arrivals are deterministic");
+Engine.createGameState(generateLevel(31, "drift")); // throws if invalid
 
 const branchState = Engine.createGameState(branchLevel);
-assert.strictEqual(branchState.exits.length, 2, "state.exits mirrors the level's two gates");
+assert.strictEqual(branchState.exits.length, branchLevel.exits.length, "state.exits mirrors every one of the level's gates");
 assert.ok(Engine.posEq(branchState.exitPos, branchState.exits[0]), "state.exitPos is still the primary/first gate");
 assert.strictEqual(branchState.usedExitVariant, null, "no gate has been used yet");
 

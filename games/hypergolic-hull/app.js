@@ -29,7 +29,7 @@ const MODES = {
     // Shown in the objective line while armed (Clubhouse: "what IS Tractor
     // Beam... weird that I'm able to click on it" — arming a mode used to
     // give no in-the-moment hint at all about what to do next).
-    hint: "Tractor armed — tap an adjacent enemy to queue the shove",
+    hint: "Tractor armed — tap an enemy beside you to shove it",
   },
 };
 
@@ -69,14 +69,11 @@ const targetLockBtn = document.getElementById("targetLockBtn");
 const fireBtn = document.getElementById("fireBtn");
 const rechargeBtn = document.getElementById("rechargeBtn");
 const shieldsBtn = document.getElementById("shieldsBtn");
-const engageBtn = document.getElementById("engageBtn");
-const clearPlanBtn = document.getElementById("clearPlanBtn");
+const endTurnBtn = document.getElementById("endTurnBtn");
 const apBarEl = document.getElementById("apBar");
 const apWrapEl = document.getElementById("apWrap");
 const tractorStatsEl = document.getElementById("tractorStats");
 const enemyInfoEl = document.getElementById("enemyInfo");
-const scanReadoutEl = document.getElementById("scanReadout");
-const scanHintEl = document.getElementById("scanHint");
 
 // Every piece on the board is custom-drawn (see drawPlayerShip/
 // drawEnemyShip/drawWarpGate/drawOutpost below) — no emoji
@@ -106,6 +103,7 @@ let levelIndex = 0;
 const BRANCH_TINTS = {
   aggressive: [255, 120, 90], // warm — heavier resistance, less likely to have an Outpost
   quiet: [120, 190, 255], // cool — lighter resistance, more likely to have an Outpost
+  drift: [170, 235, 130], // hazy green — hazard-heavy drift fields
 };
 let state = Engine.createGameState(levelForIndex(levelIndex));
 // null means no mode armed — plain moves/route-preview work regardless.
@@ -118,13 +116,13 @@ let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
 let plannedPath = null;
 let autoRoute = null;
 
-// The round PLAN ("you decide your moves, confirm, then they happen"):
-// taps and action buttons QUEUE up to state.ap steps, the board previews
-// the queued position/kills, and ENGAGE commits them — your actions play
-// out in order, then the enemy phase runs. `executing` locks input while
-// the committed round animates.
-let plan = [];
-let executing = false;
+// Tap-tap confirm ("if you click on a target it should target them, and
+// clicking again fires — same for move"): the first tap on a hostile
+// TARGETS it (reticle + readout line), the second tap fires for real;
+// moves preview their route on the first tap and fly on the second;
+// tapping anywhere else dismisses the pending choice. Actions execute
+// immediately on confirm — no batch queue, no separate commit button.
+let targetedEnemyId = null;
 
 // Whether Scan mode is open is a remembered player preference, not a
 // per-sector default — it starts closed the first time you ever play, and
@@ -277,8 +275,7 @@ function jumpToChart(index) {
   mode = null;
   anims = keptAnims;
   announceSector();
-  plan = [];
-  executing = false;
+  targetedEnemyId = null;
   plannedPath = null;
   autoRoute = null;
   outpostDismissed = false;
@@ -1352,6 +1349,8 @@ function backdropForLevel(levelId) {
     sat = 55;
   } else if (theme && theme.variant === "quiet") {
     hue = 185 + ((band * 16 + Math.floor(rng() * 14)) % 70); // teals → blues → indigos
+  } else if (theme && theme.variant === "drift") {
+    hue = 70 + ((band * 14 + Math.floor(rng() * 16)) % 60); // ambers → greens — drifting debris fields
   } else if (theme && theme.variant === "boss") {
     hue = 355;
     sat = 30;
@@ -1636,55 +1635,18 @@ function draw() {
     ctx.restore();
   }
 
-  // The PLAN preview: numbered step markers along the queued moves, a
-  // ghost flagship where the plan ends, and a kill reticle on every enemy
-  // the queued volleys would hit — "you decide your moves, confirm, then
-  // they happen", with the consequences visible before ENGAGE.
-  if (plan.length && !executing && state.status === "playing") {
-    const sim = planSim();
-    let stepNo = 0;
-    for (const step of plan) {
-      if (step.kind !== "move") continue;
-      stepNo += 1;
-      const c = hexToPixel(step.to);
+  // The gunnery target: first tap locked this contact — a pulsing red
+  // reticle marks it until the confirming second tap fires (or another
+  // tap stands it down).
+  if (targetedEnemyId && state.status === "playing") {
+    const target = state.enemies.find((e) => e.id === targetedEnemyId && e.alive);
+    if (target) {
+      const c = hexToPixel(target);
+      const pulse = 1 + 0.08 * Math.sin(now / 160);
+      const r = geom.sx * 0.62 * pulse;
       ctx.save();
-      ctx.beginPath();
-      ctx.arc(c.x, c.y, geom.sx * 0.3, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(127, 227, 168, 0.22)";
-      ctx.fill();
-      ctx.strokeStyle = "rgba(127, 227, 168, 0.85)";
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 3]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = "#7fe3a8";
-      ctx.font = `700 ${Math.max(10, geom.sx * 0.32)}px "SF Mono", "Menlo", "Consolas", monospace`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(String(stepNo), c.x, c.y);
-      ctx.restore();
-    }
-    if (!Engine.posEq(sim.playerPos, state.playerPos)) {
-      const g = hexToPixel(sim.playerPos);
-      ctx.save();
-      ctx.globalAlpha = 0.45;
-      ctx.translate(g.x, g.y);
-      ctx.rotate((DIR_ANGLES[sim.facing] * Math.PI) / 180);
-      drawPlayerShip(geom.sx * 0.52, 0, state.hull / state.maxHull);
-      ctx.restore();
-    }
-    // Kill/damage preview by diffing the simulation against reality.
-    for (const enemy of state.enemies) {
-      if (!enemy.alive) continue;
-      const simTwin = sim.enemies.find((e) => e.id === enemy.id);
-      const doomed = !simTwin || !simTwin.alive;
-      const winged = simTwin && simTwin.alive && simTwin.hp < enemy.hp;
-      if (!doomed && !winged) continue;
-      const c = hexToPixel(enemy);
-      ctx.save();
-      ctx.strokeStyle = doomed ? "#ff5a4a" : "#ffce8a";
+      ctx.strokeStyle = "#ff5a4a";
       ctx.lineWidth = 2;
-      const r = geom.sx * 0.62;
       ctx.beginPath();
       ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
       ctx.stroke();
@@ -1873,11 +1835,10 @@ function anyFireTarget(s) {
 }
 
 function updateHud() {
-  // The round's Action Points, minus whatever the plan has already
-  // spoken for — the gauge counts DOWN as you queue, so "how much round
-  // is left" is always visible.
-  renderStatBar(apBarEl, "Actions", Math.max(0, state.ap - plan.length), state.maxAp, "ap");
-  flashOnChange("ap", state.ap - plan.length, apWrapEl);
+  // The round's Action Points — counts down as you act, refills when the
+  // round commits.
+  renderStatBar(apBarEl, "Actions", state.ap, state.maxAp, "ap");
+  flashOnChange("ap", state.ap, apWrapEl);
   renderStatBar(hullBarEl, "Hull", state.hull, state.maxHull, "hull");
   // Energy pays for every weapon shot, so the reactor gauge is always up.
   renderStatBar(energyBarEl, "Energy", state.energy, state.maxEnergy, "energy");
@@ -1930,9 +1891,8 @@ function updateHud() {
     btn.textContent = MODES[m].label;
     // Scan mode is inspect-only — every action locks out while it's open
     // (see the canvas click handler), so the buttons themselves go dead
-    // too instead of sitting there clickable but doing nothing. Same
-    // while a committed round is executing.
-    btn.disabled = state.status !== "playing" || legendVisible || executing || plan.length >= state.ap;
+    // too instead of sitting there clickable but doing nothing.
+    btn.disabled = state.status !== "playing" || legendVisible;
     btn.classList.toggle("new-unlock", !locked && !usedActions.has(m));
   });
 
@@ -1964,42 +1924,26 @@ function updateLegend() {
 // a first-class stance button: engaged = movement offline, taps aim the
 // flagship, FIRE commits the shot.
 function updateSystems() {
-  // Every action button reads off the PLAN's simulated end-state, not the
-  // raw board — queue a lunge and FIRE lights up for the follow-up; queue
-  // a volley and RECHARGE knows the energy it already spent.
-  const sim = executing ? state : planSim();
-  const busy = state.status !== "playing" || legendVisible || executing;
-  const planFull = plan.length >= state.ap;
-  const canFire = !planFull && anyFireTarget(sim) && sim.status === "playing";
+  const busy = state.status !== "playing" || legendVisible;
+  // FIRE is only live when an armed weapon actually has a target, and its
+  // label carries the volley's real energy price ("it should show how
+  // much energy is gonna potentially be used").
+  const canFire = anyFireTarget(state);
   fireBtn.disabled = busy || !canFire;
   fireBtn.classList.toggle("active", canFire && !busy);
-  rechargeBtn.disabled = busy || planFull || sim.status !== "playing" || sim.energy >= sim.maxEnergy;
+  fireBtn.textContent = canFire ? `Fire −${volleyCost(state)}⚡` : "Fire";
+  rechargeBtn.disabled = busy || state.energy >= state.maxEnergy;
+  rechargeBtn.textContent = `Recharge +${Engine.RECHARGE_ENERGY_GAIN}⚡`;
   // Raise Shields only exists once a Shield Generator is installed, and is
   // only live when there's a spent charge to raise AND the Energy to pay
   // for it — the button's state is the whole rule, same as FIRE/RECHARGE.
   shieldsBtn.hidden = state.maxShields <= 0;
   shieldsBtn.disabled =
-    busy ||
-    planFull ||
-    sim.status !== "playing" ||
-    sim.shieldCharges >= sim.maxShields ||
-    sim.energy < Engine.SHIELD_RAISE_COST;
+    busy || state.shieldCharges >= state.maxShields || state.energy < Engine.SHIELD_RAISE_COST;
+  shieldsBtn.textContent = `Shields −${Engine.SHIELD_RAISE_COST}⚡`;
   targetLockBtn.disabled = busy;
   targetLockBtn.classList.toggle("active", !state.systems.warpdrive);
-
-  // ENGAGE is the confirm: it reads back exactly what's queued and what
-  // the round will cost, and with nothing queued it's a plain End Round.
-  engageBtn.disabled = state.status !== "playing" || legendVisible || executing;
-  if (plan.length) {
-    const delta = state.energy - sim.energy;
-    const cost = delta > 0 ? ` · −${delta}⚡` : delta < 0 ? ` · +${-delta}⚡` : "";
-    engageBtn.textContent = `Engage: ${plan.map((s) => PLAN_LABELS[s.kind]).join(" + ")}${cost}`;
-    engageBtn.classList.add("armed");
-  } else {
-    engageBtn.textContent = "End Round";
-    engageBtn.classList.remove("armed");
-  }
-  clearPlanBtn.hidden = !plan.length || executing;
+  endTurnBtn.disabled = busy;
 }
 
 // Shared by the systems-row stats line and the click-an-enemy-for-info panel
@@ -2046,19 +1990,6 @@ function describeWeaponCompact(weapon) {
 }
 
 
-// Is there anything inspectable at this hex? Mirrors exactly what
-// updateScanInfo below knows how to describe — when there isn't, the
-// readout strip keeps showing its "tap anything" hint instead of a card.
-function somethingAtHex(hex) {
-  return Boolean(
-    Engine.enemyAt(state, hex) ||
-      state.exits.some((ex) => Engine.posEq(ex, hex)) ||
-      (state.outpostPos && Engine.posEq(state.outpostPos, hex)) ||
-      (state.wormholePos && Engine.posEq(state.wormholePos, hex)) ||
-      Engine.hazardAt(state, hex)
-  );
-}
-
 // The inspected card only ever shows in Scan mode (it's a learn-the-board
 // aid, same as the legend), and only for as long as whatever's at
 // inspectedHex is still there — an enemy that dies, or a Wormhole that
@@ -2066,15 +1997,6 @@ function somethingAtHex(hex) {
 // Covers everything Scan mode promises you can look at: an enemy, the
 // Warp Gate, the Outpost, the Wormhole, or an asteroid field.
 function updateScanInfo() {
-  // The readout strip lives ABOVE the field ("move it up where the tap
-  // info is") and only exists while Scan mode is open — showing/hiding it
-  // changes how much room the board has, so re-fit the canvas whenever it
-  // toggles. Within Scan mode its height is fixed: tapping different
-  // contacts swaps the card in place without the board ever resizing.
-  const slotWasHidden = scanReadoutEl.hidden;
-  scanReadoutEl.hidden = !legendVisible;
-  if (slotWasHidden !== scanReadoutEl.hidden) updateGeometry();
-  scanHintEl.hidden = !legendVisible || Boolean(inspectedHex && somethingAtHex(inspectedHex));
   if (!legendVisible || !inspectedHex) {
     enemyInfoEl.hidden = true;
     return;
@@ -2368,7 +2290,7 @@ function updateMapOverlay() {
     if (!n.exits || n.exits.length < 2 || !n.tookVariant) continue;
     for (const ex of n.exits) {
       if (ex.variantId === n.tookVariant) continue;
-      const dir = ex.variantId === "quiet" ? -1 : 1;
+      const dir = ex.variantId === "quiet" ? -1 : ex.variantId === "drift" ? 0 : 1;
       svg.push(
         `<line x1="${xs[i]}" y1="${yOf(i)}" x2="${xs[i] + dir * 34}" y2="${yOf(i) - 26}" stroke="${tintOf(ex.variantId)}" stroke-width="1.5" stroke-dasharray="3 4" opacity="0.5"/>` +
           `<circle cx="${xs[i] + dir * 34}" cy="${yOf(i) - 26}" r="3" fill="none" stroke="${tintOf(ex.variantId)}" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>`
@@ -2381,7 +2303,18 @@ function updateMapOverlay() {
   if (state.status === "playing" && cur === chain.length - 1) {
     const ahead = chain[cur].exits || [];
     ahead.forEach((ex, j) => {
-      const dir = ahead.length === 1 ? 0 : ex.variantId === "quiet" ? -1 : ex.variantId === "aggressive" ? 1 : j === 0 ? 1 : -1;
+      const dir =
+        ahead.length === 1
+          ? 0
+          : ex.variantId === "quiet"
+            ? -1
+            : ex.variantId === "aggressive"
+              ? 1
+              : ex.variantId === "drift"
+                ? 0
+                : j === 0
+                  ? 1
+                  : -1;
       const ax = Math.max(40, Math.min(W - 40, xs[cur] + dir * 78));
       const ay = yOf(cur) - STEP;
       svg.push(
@@ -2444,8 +2377,7 @@ function render() {
   window.__hhState = state; // debug hook: deterministic + serializable, safe to inspect
   window.__hhPlannedPath = plannedPath;
   window.__hhAutoRoute = autoRoute;
-  window.__hhPlan = plan;
-  window.__hhExecuting = executing;
+  window.__hhTargetedEnemy = targetedEnemyId;
 }
 
 function pushMessage(message) {
@@ -2453,110 +2385,27 @@ function pushMessage(message) {
   if (state.log.length > 20) state.log.shift();
 }
 
-// ---- The round plan --------------------------------------------------------
-
-// One queued step, applied to a (real or simulated) state.
-function applyPlanStep(s, step) {
-  if (step.kind === "move") Engine.applySublight(s, step.to);
-  else if (step.kind === "fire") Engine.applyFire(s);
-  else if (step.kind === "recharge") Engine.applyRecharge(s);
-  else if (step.kind === "shields") Engine.applyRaiseShields(s);
-  else if (step.kind === "tractor") Engine.applyTractor(s, step.enemyId);
+// The energy a FIRE volley would spend right now — every armed weapon
+// with a target in reach bills its listed cost. Shown on the FIRE button
+// and in the target-lock readout ("it should show how much energy is
+// gonna potentially be used").
+// Is THIS specific contact inside any armed weapon's reach right now?
+function enemyInReach(s, enemy) {
+  return Engine.WEAPON_SYSTEM_KEYS.some((k) => {
+    if (!(k === "ram" || s.actions.includes(k)) || !s.systems[k]) return false;
+    return Engine.weaponHexes(s.playerPos, s.facing, Engine.WEAPONS[k]).some((h) => Engine.posEq(h, enemy));
+  });
 }
 
-// Where the plan leaves the flagship: a full simulation of the queued
-// steps on a clone. Exact, not a guess — the player phase is
-// deterministic and enemies only act once the round is committed, so the
-// ghost position, facing, energy, and kills previewed from this are what
-// will really happen.
-function planSim(extraStep) {
-  const sim = JSON.parse(JSON.stringify(state));
-  const kept = [];
-  for (const step of plan) {
-    // Real state can shift under a queued plan (an Outpost purchase, a
-    // Target Lock re-aim) — a step that no longer replays just drops out
-    // instead of crashing every render that simulates the plan.
-    try {
-      applyPlanStep(sim, step);
-      kept.push(step);
-    } catch (err) {
-      /* invalidated step — pruned */
-    }
+function volleyCost(s) {
+  let cost = 0;
+  for (const k of Engine.WEAPON_SYSTEM_KEYS) {
+    if (!(k === "ram" || s.actions.includes(k)) || !s.systems[k]) continue;
+    const weapon = Engine.WEAPONS[k];
+    const reach = new Set(Engine.weaponHexes(s.playerPos, s.facing, weapon).map(Engine.hexKey));
+    if (Engine.livingEnemies(s).some((e) => reach.has(Engine.hexKey(e)))) cost += weapon.energyCost;
   }
-  if (kept.length !== plan.length) plan = kept;
-  if (extraStep) applyPlanStep(sim, extraStep); // throws propagate — queueStep shows the reason
-  return sim;
-}
-
-// Queue one step, validated against the simulation — an illegal addition
-// (no target from the planned spot, energy already spent by an earlier
-// queued shot, blocked hex) is refused with the engine's own reason.
-function queueStep(step) {
-  if (executing || state.status !== "playing" || legendVisible) return;
-  if (plan.length >= state.ap) {
-    pushMessage("No Action Points left this round — press ENGAGE.");
-    render();
-    return;
-  }
-  try {
-    planSim(step);
-  } catch (err) {
-    pushMessage(err.message);
-    render();
-    return;
-  }
-  plan.push(step);
-  if (step.kind === "tractor") {
-    mode = null; // the shove is queued — disarm so the next tap plans normally
-    modeButtons.forEach((btn) => btn.classList.toggle("active", false));
-  }
-  plannedPath = null;
-  render();
-}
-
-const PLAN_LABELS = { move: "MOVE", fire: "FIRE", recharge: "RECHARGE", shields: "SHIELDS", tractor: "TRACTOR" };
-
-// Commit the round: play the queued steps in order (spaced out so each
-// resolves visibly), then pass any unspent AP so the enemy phase runs.
-function executePlan() {
-  if (executing || state.status !== "playing" || legendVisible) return;
-  const steps = plan.slice();
-  const needsPass = steps.length < state.ap;
-  plan = [];
-  plannedPath = null;
-  executing = true;
-  let i = 0;
-  const startedAt = performance.now();
-  const runNext = () => {
-    if (state.status !== "playing") {
-      executing = false;
-      render();
-      return;
-    }
-    // A step of THIS commit that flew onto the wormhole already scheduled
-    // the return trip — committing more of the plan in the old sector
-    // would be nonsense, so the rest of the round dissolves into the
-    // transit. Only anims born after this commit started count: leftover
-    // flashes from a previous transition deliberately linger in `anims`
-    // (see jumpToChart's keptAnims) and must not block a fresh round.
-    if (anims.some((a) => a.kind === "wormhole" && a.start >= startedAt)) {
-      executing = false;
-      render();
-      return;
-    }
-    if (i < steps.length) {
-      const step = steps[i++];
-      handleAction(() => applyPlanStep(state, step));
-      setTimeout(runNext, 380);
-      return;
-    }
-    if (needsPass) {
-      handleAction(() => Engine.applyEndTurn(state));
-    }
-    executing = false;
-    render();
-  };
-  runNext();
+  return cost;
 }
 
 function handleAction(fn) {
@@ -2626,8 +2475,7 @@ function loadSector(index, carryOver, opts) {
   mode = null;
   anims = keptAnims;
   announceSector(); // AFTER the anims reset, or the title gets wiped with them
-  plan = [];
-  executing = false;
+  targetedEnemyId = null;
   plannedPath = null;
   autoRoute = null;
   outpostDismissed = false;
@@ -2703,8 +2551,7 @@ function restoreRun() {
   justArrived = true;
   mode = null;
   anims = [];
-  plan = [];
-  executing = false;
+  targetedEnemyId = null;
   plannedPath = null;
   autoRoute = null;
   outpostDismissed = false;
@@ -2759,60 +2606,45 @@ tractorStatsEl.addEventListener("click", () => {
   updateHud();
 });
 
-// Action buttons QUEUE their step into the round plan — ENGAGE commits.
-fireBtn.addEventListener("click", () => queueStep({ kind: "fire" }));
-rechargeBtn.addEventListener("click", () => queueStep({ kind: "recharge" }));
-shieldsBtn.addEventListener("click", () => queueStep({ kind: "shields" }));
-engageBtn.addEventListener("click", executePlan);
-clearPlanBtn.addEventListener("click", () => {
-  plan = [];
-  render();
+// Action buttons act immediately — each is 1 AP; the round commits itself
+// when the budget runs out, and End Round passes whatever's left.
+fireBtn.addEventListener("click", () => {
+  targetedEnemyId = null;
+  handleAction(() => Engine.applyFire(state));
+});
+rechargeBtn.addEventListener("click", () => {
+  handleAction(() => Engine.applyRecharge(state));
+});
+shieldsBtn.addEventListener("click", () => {
+  handleAction(() => Engine.applyRaiseShields(state));
+});
+endTurnBtn.addEventListener("click", () => {
+  targetedEnemyId = null;
+  handleAction(() => Engine.applyEndTurn(state));
 });
 
 
-// First tap on a distant hex: preview the quickest route from wherever the
-// plan leaves the flagship. Second tap on the same hex: if the route fits
-// this round's remaining Action Points, its steps queue into the plan; a
-// genuinely long haul (only from an empty plan) flies via autoRoute, one
-// real action per step across as many rounds as it takes.
+// Tap-tap movement: the FIRST tap on any reachable hex marks the quickest
+// route to it (one hex or twenty); tapping the SAME hex again confirms and
+// flies it, one real action per step, across as many rounds as it takes.
+// Tapping anywhere else dismisses the preview and starts a new one.
 function planOrFlyRoute(hex) {
-  const sim = planSim();
-  if (Engine.posEq(hex, sim.playerPos)) {
+  if (Engine.posEq(hex, state.playerPos)) {
     plannedPath = null;
     render();
     return;
   }
   if (plannedPath && Engine.posEq(plannedPath.target, hex)) {
-    const steps = plannedPath.hexes.length - 1;
-    if (steps <= state.ap - plan.length) {
-      const hexes = plannedPath.hexes.slice(1);
-      plannedPath = null;
-      for (const h of hexes) queueStep({ kind: "move", to: { q: h.q, r: h.r } });
-      return;
-    }
-    if (plan.length) {
-      pushMessage("Too far for this round's Action Points — ENGAGE first, or pick a closer hex.");
-      render();
-      return;
-    }
     autoRoute = { target: plannedPath.target, path: plannedPath.hexes, hullAtStart: state.hull, stepIndex: 0 };
     plannedPath = null;
     stepRoute();
     return;
   }
-  const path = Engine.findPath(sim, sim.playerPos, hex);
+  const path = Engine.findPath(state, state.playerPos, hex);
   plannedPath = path && path.length > 1 ? { target: { q: hex.q, r: hex.r }, hexes: path } : null;
-  // The route preview needs its "now confirm it" instruction — with no
-  // separate coach line above the field anymore, it goes on the readout
-  // strip like every other message.
-  if (plannedPath) {
-    const steps = plannedPath.hexes.length - 1;
-    pushMessage(
-      steps <= state.ap - plan.length
-        ? "Course plotted — tap the marked hex again to add it to the plan."
-        : "Course plotted — tap the marked hex again to fly it."
-    );
-  }
+  // The route preview needs its "now confirm it" instruction — it goes on
+  // the readout strip like every other message.
+  if (plannedPath) pushMessage("Course laid in — tap the marked hex again to fly it.");
   render();
 }
 
@@ -2854,7 +2686,7 @@ function stepRoute() {
 }
 
 canvas.addEventListener("click", (evt) => {
-  if (state.status !== "playing" || autoRoute || executing) return;
+  if (state.status !== "playing" || autoRoute) return;
 
   const rect = canvas.getBoundingClientRect();
   const scale = geom.w / rect.width;
@@ -2889,29 +2721,44 @@ canvas.addEventListener("click", (evt) => {
     return;
   }
 
-  // Everything below plans from where the queued steps LEAVE the flagship
-  // — the ghost — not necessarily where it stands right now.
-  const sim = planSim();
+  const enemy = Engine.enemyAt(state, hex);
 
-  if (mode) {
-    const enemy = Engine.enemyAt(state, hex);
-    const legal = MODES[mode].targets(sim);
-    if (enemy && legal.some((e) => e.id === enemy.id)) {
-      if (mode === "tractor") queueStep({ kind: "tractor", enemyId: enemy.id });
+  // An armed Tractor Beam is already a deliberate two-step (arm, then
+  // tap) — its target tap executes immediately.
+  if (mode && enemy) {
+    const legal = MODES[mode].targets(state);
+    if (legal.some((e) => e.id === enemy.id)) {
+      targetedEnemyId = null;
+      handleAction(() => {
+        if (mode === "tractor") Engine.applyTractor(state, enemy.id);
+      });
       return;
     }
   }
-  if (Engine.legalSublightTargets(sim).some((h) => Engine.posEq(h, hex))) {
-    queueStep({ kind: "move", to: { q: hex.q, r: hex.r } });
-    return;
-  }
-  if (Engine.enemyAt(state, hex)) {
-    // Tapping a hostile used to do NOTHING, silently — the single most
-    // confusing dead-end in playtesting. Say what to do instead.
-    pushMessage("That's a hostile — get beside it, then press FIRE.");
+
+  // Tap-tap firing: first tap on a hostile in reach TARGETS it (reticle +
+  // cost readout), the second tap on the same hostile fires the volley.
+  if (enemy) {
+    plannedPath = null;
+    if (targetedEnemyId === enemy.id && enemyInReach(state, enemy)) {
+      targetedEnemyId = null;
+      handleAction(() => Engine.applyFire(state));
+      return;
+    }
+    if (enemyInReach(state, enemy)) {
+      targetedEnemyId = enemy.id;
+      pushMessage(`Target locked: ${enemy.type.toUpperCase()} — tap it again to FIRE (−${volleyCost(state)}⚡).`);
+    } else {
+      targetedEnemyId = null;
+      // Out of reach — say what to do instead of dying silently.
+      pushMessage("That's a hostile — get beside it, then tap it twice to FIRE.");
+    }
     render();
     return;
   }
+
+  // Any non-enemy tap stands the gunnery target down.
+  targetedEnemyId = null;
   const hazardHere = Engine.hazardAt(state, hex);
   if (hazardHere && hazardHere.type === "asteroid") {
     pushMessage("Asteroid field — impassable. Fly around it.");

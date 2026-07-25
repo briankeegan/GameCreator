@@ -37,9 +37,9 @@ function serveRepo() {
 }
 
 // Click the hex at axial (q,r) after arming the given action mode, using the
-// app's own geometry (the canvas now resizes itself to fit each board).
-// Sublight has no button of its own — a plain tap QUEUES a move into the
-// round plan; nothing happens on the board until ENGAGE commits it.
+// app's own geometry (the canvas resizes itself to fit each board).
+// Sublight has no button of its own — a plain tap lays a course in
+// (tap-tap: the SECOND tap on the same hex confirms and flies it).
 async function clickHex(page, mode, hex) {
   if (mode !== "sublight") await page.click(`[data-mode="${mode}"]`);
   const box = await page.locator("#board").boundingBox();
@@ -51,11 +51,17 @@ function getState(page) {
   return page.evaluate(() => window.__hhState);
 }
 
-// Commit the queued plan (or, with nothing queued, End Round) and wait for
-// the committed round to finish playing out.
-async function engage(page) {
-  await page.click("#engageBtn");
-  await page.waitForFunction(() => window.__hhExecuting === false, null, { timeout: 10000 });
+// Pass the rest of the round — the enemies then spend their AP.
+async function endRound(page) {
+  await page.click("#endTurnBtn");
+}
+
+// Tap-tap movement: first tap lays the course in, second tap (same hex)
+// confirms and flies it — then wait for the flight to finish.
+async function flyTo(page, hex) {
+  await clickHex(page, "sublight", hex);
+  await clickHex(page, "sublight", hex);
+  await page.waitForFunction(() => window.__hhAutoRoute === null, null, { timeout: 20000 });
 }
 
 function pickStepToward(page, goalExpr) {
@@ -87,17 +93,25 @@ function pickStepToward(page, goalExpr) {
   }, goalExpr);
 }
 
-// Play one ROUND, plan-and-confirm style: queue FIRE if anything's in reach
-// of an armed weapon (the button only lights when a volley would land),
-// otherwise queue a safe step toward the goal — then ENGAGE, passing the
-// round's other AP.
+// Play one ROUND: FIRE if anything's in reach of an armed weapon (the
+// button only lights when a volley would land), otherwise tap-tap a safe
+// step toward the goal — then End Round to pass whatever AP is left, so
+// each call advances exactly one enemy phase.
 async function playTurnToward(page, goalExpr) {
   if (!(await page.locator("#fireBtn").isDisabled())) {
     await page.click("#fireBtn");
   } else {
-    await clickHex(page, "sublight", await pickStepToward(page, goalExpr));
+    await flyTo(page, await pickStepToward(page, goalExpr));
   }
-  await engage(page);
+  const done = await page.evaluate(() => {
+    const st = window.__hhState;
+    return (
+      st.status !== "playing" ||
+      st.ap === st.maxAp || // the action itself already committed the round
+      window.HypergolicEngine.wormholeAvailable(st) // a return trip is in flight — don't act in the old sector
+    );
+  });
+  if (!done) await endRound(page);
 }
 
 // The end-of-run/sector overlay is held back until animations finish.
@@ -171,7 +185,7 @@ async function walkToWormhole(page) {
   if (s.levelId === startLevel) {
     // Standing on the wormhole as the sector's first action needs one more
     // action to trigger the return — End Round is the stationary one.
-    await engage(page);
+    await endRound(page);
   }
   await page.waitForFunction((lvl) => window.__hhState.levelId !== lvl, startLevel, { timeout: 5000 });
   return getState(page);
@@ -243,14 +257,13 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#scanBtn").isVisible(), true, "the Scan toggle is always available");
   await page.click("#scanBtn");
   assert.ok((await page.locator("#scanBtn").getAttribute("class")).includes("active"), "Scan lights up while active");
-  assert.ok(
-    /scan active/i.test(await page.locator("#scanHint").textContent()),
-    "the readout strip above the field says what Scan mode is"
-  );
   assert.strictEqual(await page.locator("#targetLockBtn").isDisabled(), true, "actions lock out while Scan mode is open");
-  // Opening Scan reserves the readout strip above the field, which re-fits
-  // the canvas — every click below must use the post-scan bounding box.
+  // "Scan should not change the size of the board or add text" — opening
+  // it must leave the canvas exactly as it was, and show nothing until
+  // something is actually tapped.
   const scanBoardBox = await page.locator("#board").boundingBox();
+  assert.deepStrictEqual(scanBoardBox, boardBox, "opening Scan never resizes or moves the board");
+  assert.strictEqual(await page.locator("#enemyInfo").isVisible(), false, "Scan adds no standing text of its own");
 
   const posBeforeScanTap = (await getState(page)).playerPos;
   const turnBeforeScanTap = (await getState(page)).turnCount;
@@ -331,39 +344,44 @@ async function freshPage(browser, url, errors) {
 
   // The AP round in play: 2 Action Points, spend them how you like, then
   // the enemy phase runs. Let the Interceptor come to us (its own 2 AP
-  // close the gap fast), then FIRE the round it arrives.
+  // close the gap fast), then kill it via tap-tap: first tap TARGETS,
+  // second tap FIRES ("if you click on a target it should target them,
+  // and clicking again fires").
   assert.strictEqual(s.ap, 2, "a round budgets 2 Action Points");
   assert.strictEqual(await page.locator("#apBar .stat-pip.filled").count(), 2, "the Actions gauge shows both points");
-  assert.strictEqual(await page.locator("#engageBtn").textContent(), "End Round", "with nothing queued, ENGAGE is a plain End Round");
+  assert.strictEqual(await page.locator("#endTurnBtn").isVisible(), true, "End Round is always on the panel");
   let fired = false;
   for (let i = 0; i < 25; i++) {
     s = await getState(page);
     if (s.status !== "playing" || s.enemies.every((e) => !e.alive)) break;
     if (!(await page.locator("#fireBtn").isDisabled())) {
-      // Queue the volley and check the confirm step reads it back.
+      // Something's in reach — the FIRE button carries the volley's price.
+      assert.ok(/⚡/.test(await page.locator("#fireBtn").textContent()), "the lit FIRE button shows the energy the volley will spend");
+      const target = s.enemies.find((e) => e.alive);
       const energyBeforeFire = s.energy;
-      await page.click("#fireBtn");
+      await clickHex(page, "sublight", target); // first tap: target lock
       s = await getState(page);
-      assert.strictEqual(s.enemies.filter((e) => e.alive).length, 1, "queuing FIRE kills nothing — ENGAGE is the commit");
+      assert.strictEqual(s.enemies.filter((e) => e.alive).length, 1, "the first tap targets — nothing fires yet");
       assert.strictEqual(s.energy, energyBeforeFire, "and spends nothing yet");
-      assert.ok(/FIRE/.test(await page.locator("#engageBtn").textContent()), "ENGAGE reads back the queued volley");
-      assert.ok(/⚡/.test(await page.locator("#engageBtn").textContent()), "with its energy price on the button");
-      await engage(page);
+      assert.strictEqual(await page.evaluate(() => window.__hhTargetedEnemy), target.id, "the contact is target-locked");
+      assert.ok(/target locked/i.test(await page.locator("#log").textContent()), "the readout confirms the lock, with the cost");
+      await clickHex(page, "sublight", target); // second tap: FIRE
+      s = await getState(page);
+      assert.ok(s.energy < energyBeforeFire, "the confirming tap fires for real — energy spent");
       fired = true;
     } else {
       await playTurnToward(page, "enemy");
     }
   }
   s = await getState(page);
-  assert.ok(fired, "the kill went through the queue-FIRE-then-ENGAGE flow");
-  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "the committed volley kills the Interceptor");
+  assert.ok(fired, "the kill went through the tap-to-target, tap-to-fire flow");
+  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "the confirmed volley kills the Interceptor");
   assert.strictEqual(s.exitUnlocked, true);
 
-  // RECHARGE lights up now that Energy is down; queue + commit refills +2.
+  // RECHARGE lights up now that Energy is down, acts immediately (+2).
   assert.strictEqual(await page.locator("#rechargeBtn").isDisabled(), false, "RECHARGE lights up once Energy is spent");
   const energyBeforeRecharge = (await getState(page)).energy;
   await page.click("#rechargeBtn");
-  await engage(page);
   s = await getState(page);
   assert.strictEqual(s.energy, Math.min(s.maxEnergy, energyBeforeRecharge + 2), "RECHARGE adds +2 Energy for its Action Point");
 
@@ -422,8 +440,7 @@ async function freshPage(browser, url, errors) {
   // isn't persisted, so reloading while still docked would re-pop the
   // shop overlay (still standing right there) and block the board clicks
   // the rest of this test relies on.
-  await clickHex(page, "sublight", await pickStepToward(page, "wormhole"));
-  await engage(page);
+  await flyTo(page, await pickStepToward(page, "wormhole"));
 
   // ---- Run persistence: reloading resumes exactly where you left off ------
   // ("the levels should be remembered" — a reload used to always restart at
@@ -470,7 +487,7 @@ async function freshPage(browser, url, errors) {
 
   // Still standing on the Warp Gate — any action re-triggers the win
   // check; End Round is the stationary one.
-  await engage(page);
+  await endRound(page);
   await page.waitForFunction(() => window.__hhState.levelId === 2, null, { timeout: 5000 });
   s = await getState(page);
   assert.strictEqual(s.levelId, 2, "going forward again from a rewound sector re-advances normally");
@@ -484,7 +501,7 @@ async function freshPage(browser, url, errors) {
 
   s = await getState(page);
   for (let i = 0; i < 15 && s.status === "playing"; i++) {
-    await engage(page); // End Round: pass both AP and give its phase the floor
+    await endRound(page); // pass both AP and give its phase the floor
     s = await getState(page);
   }
   assert.strictEqual(s.status, "lost", "doing nothing while a chaser closes must end the run");
@@ -500,42 +517,44 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false);
   await page.close();
 
-  // ---- The round plan: queue, preview, clear, commit ----------------------
-  // "You decide your moves, confirm, then they happen" — taps queue, the
-  // Actions gauge counts down, ENGAGE reads the plan back and commits it.
+  // ---- Tap-tap movement: course in, confirm, rethink, dismiss -------------
+  // "You engage move... cancel... rethink" — the first tap lays a course
+  // in and moves NOTHING; tapping elsewhere dismisses it for a new one;
+  // only tapping the marked hex again actually flies it.
   page = await freshPage(browser, url, errors);
   s = await getState(page);
-  const planStart = s.playerPos;
+  const tapStart = s.playerPos;
   const firstStep = await pickStepToward(page, "exit");
   await clickHex(page, "sublight", firstStep);
   s = await getState(page);
-  assert.deepStrictEqual(s.playerPos, planStart, "a tapped move QUEUES — the flagship hasn't gone anywhere yet");
-  assert.strictEqual(await page.evaluate(() => window.__hhPlan.length), 1, "the plan holds the queued step");
-  assert.strictEqual(await page.locator("#apBar .stat-pip.filled").count(), 1, "the Actions gauge counts down as the plan fills");
-  assert.ok(/MOVE/.test(await page.locator("#engageBtn").textContent()), "ENGAGE reads back the queued move");
-  // Second step must be planned FROM THE GHOST — one hex further along.
-  const secondStep = await page.evaluate(() => {
+  assert.deepStrictEqual(s.playerPos, tapStart, "the first tap only lays the course in — no movement yet");
+  assert.ok(await page.evaluate(() => Boolean(window.__hhPlannedPath)), "the route preview is live");
+  assert.ok(/tap the marked hex again/i.test(await page.locator("#log").textContent()), "the readout says how to confirm");
+  // Rethink: tapping a DIFFERENT hex dismisses the first course and plots
+  // a new one instead.
+  const otherStep = await page.evaluate((skip) => {
     const E = window.HypergolicEngine;
-    const sim = JSON.parse(JSON.stringify(window.__hhState));
-    for (const st of window.__hhPlan) if (st.kind === "move") E.applySublight(sim, st.to);
-    const threats = E.computeThreatHexes(sim);
-    const legal = E.legalSublightTargets(sim);
-    return legal.find((h) => !threats.has(E.hexKey(h))) || legal[0];
-  });
-  await clickHex(page, "sublight", secondStep);
-  assert.strictEqual(await page.evaluate(() => window.__hhPlan.length), 2, "two moves queue — planning happens from the ghost position");
-  assert.strictEqual(await page.locator("#apBar .stat-pip.filled").count(), 0, "both Action Points are spoken for");
-  assert.strictEqual(await page.locator("#clearPlanBtn").isVisible(), true, "Clear appears while a plan exists");
-  await page.click("#clearPlanBtn");
-  assert.strictEqual(await page.evaluate(() => window.__hhPlan.length), 0, "Clear wipes the queued plan");
-  assert.strictEqual(await page.locator("#apBar .stat-pip.filled").count(), 2, "and the Actions gauge refills");
-  // Queue one move and commit: the flagship flies it, the round passes.
-  await clickHex(page, "sublight", firstStep);
-  const roundBefore = (await getState(page)).turnCount;
-  await engage(page);
+    return E.legalSublightTargets(window.__hhState).find((h) => !(h.q === skip.q && h.r === skip.r));
+  }, firstStep);
+  await clickHex(page, "sublight", otherStep);
   s = await getState(page);
-  assert.deepStrictEqual(s.playerPos, { q: firstStep.q, r: firstStep.r }, "ENGAGE commits the queued move for real");
-  assert.strictEqual(s.turnCount, roundBefore + 1, "committing ends the round — the enemy phase ran");
+  assert.deepStrictEqual(s.playerPos, tapStart, "switching targets still moves nothing");
+  assert.deepStrictEqual(
+    await page.evaluate(() => window.__hhPlannedPath.target),
+    { q: otherStep.q, r: otherStep.r },
+    "the preview now points at the new hex — the old course was dismissed"
+  );
+  // Confirm: tapping the marked hex again flies it for real.
+  const roundBefore = s.turnCount;
+  await clickHex(page, "sublight", otherStep);
+  await page.waitForFunction(() => window.__hhAutoRoute === null, null, { timeout: 20000 });
+  s = await getState(page);
+  assert.deepStrictEqual(s.playerPos, { q: otherStep.q, r: otherStep.r }, "the confirming tap flies the course");
+  assert.strictEqual(s.ap, s.maxAp - 1, "one Action Point spent — the round is still open");
+  assert.strictEqual(s.turnCount, roundBefore, "and the enemy phase hasn't run yet");
+  await endRound(page);
+  s = await getState(page);
+  assert.strictEqual(s.turnCount, roundBefore + 1, "End Round passes the rest — the enemy phase runs");
   assert.strictEqual(s.ap, s.maxAp, "and the next round's Action Points are back");
   await page.close();
 
@@ -555,8 +574,8 @@ async function freshPage(browser, url, errors) {
   });
   await page.waitForTimeout(50);
   const branchExits = await page.evaluate(() => window.__hhState.exits);
-  assert.strictEqual(branchExits.length, 2, "a generated sector's state carries both Warp Gates");
-  assert.notStrictEqual(branchExits[0].variantId, branchExits[1].variantId, "the two gates are tagged with different variants");
+  assert.ok(branchExits.length >= 2, "a generated sector's state carries every Warp Gate");
+  assert.notStrictEqual(branchExits[0].variantId, branchExits[1].variantId, "the gates are tagged with different variants");
   await page.close();
 
   // ---- Backward-compat: a stale save missing a newer field must not -------
@@ -597,7 +616,7 @@ async function freshPage(browser, url, errors) {
     window.__hhSetLevelIndex(19); // depth = index + 1 — keep advanceSector's "levelIndex + 1" in sync
     window.render();
   });
-  await page.click("#engageBtn"); // standing on an always-online gate: any committed action wins it
+  await page.click("#endTurnBtn"); // standing on an always-online gate: any action wins it
   await page.waitForFunction(() => window.__hhState.isVictory === true);
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "the overlay waits for animations, same as the loss screen");
   await waitForOverlay(page);
