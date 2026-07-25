@@ -242,32 +242,6 @@ body {
   font-size: 0.76rem;
   padding: 4px 10px 8px;
 }
-/* End Round spans its own wide row — the one "pass and let them move"
-   button, visually distinct from the per-action buttons above it. */
-.engage-row {
-  grid-template-columns: 1fr;
-  padding: 0 10px 4px;
-}
-.engage-row button {
-  width: 100%;
-  background: #1b2436;
-  color: #dbe4f2;
-  border: 2px solid #3a4a68;
-  padding: 7px 10px;
-  border-radius: 0;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.engage-row button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
 
 /* A compact badge sharing a grid cell with Hold Position, instead of a
    whole separate full-width line underneath — tap it to expand to the full

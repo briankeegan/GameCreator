@@ -51,9 +51,14 @@ function getState(page) {
   return page.evaluate(() => window.__hhState);
 }
 
-// Pass the rest of the round — the enemies then spend their AP.
+// A stationary turn: RECHARGE is the wait ("the holding pattern would be
+// recharge") — drain a point first if the tank happens to be full.
 async function endRound(page) {
-  await page.click("#endTurnBtn");
+  await page.evaluate(() => {
+    if (window.__hhState.energy >= window.__hhState.maxEnergy) window.__hhState.energy -= 1;
+    window.render();
+  });
+  await page.click("#rechargeBtn");
 }
 
 // Tap-tap movement: first tap lays the course in, second tap (same hex)
@@ -231,7 +236,9 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator('#shipHardpoints input[data-system="ram"]').isVisible(), true, "the Systems screen carries the Shockwave's switch");
   assert.strictEqual(await page.locator('#shipHardpoints input[data-system="lance"]').count(), 0, "an unpurchased weapon has no hardpoint row yet");
   await page.click("#shipCloseBtn");
-  assert.strictEqual(await page.locator("#targetLockBtn").isVisible(), true, "Target Lock sits on the panel's action row");
+  assert.strictEqual(await page.locator("#targetLockBtn").count(), 0, "Target Lock is gone — tapping a hostile aims automatically");
+  assert.strictEqual(await page.locator("#endTurnBtn").count(), 0, "End Round is gone — waiting is what RECHARGE is for");
+  assert.strictEqual(await page.locator("#apWrap").isVisible(), false, "the Actions gauge stays hidden at one action per round");
   assert.strictEqual(await page.locator("#fireBtn").isVisible(), true, "FIRE is a real button — shooting is its own action now");
   assert.strictEqual(await page.locator("#fireBtn").isDisabled(), true, "FIRE stays dark with nothing in reach — the button itself says whether shooting does anything");
   assert.strictEqual(await page.locator("#rechargeBtn").isVisible(), true, "RECHARGE is on the panel too");
@@ -257,7 +264,7 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#scanBtn").isVisible(), true, "the Scan toggle is always available");
   await page.click("#scanBtn");
   assert.ok((await page.locator("#scanBtn").getAttribute("class")).includes("active"), "Scan lights up while active");
-  assert.strictEqual(await page.locator("#targetLockBtn").isDisabled(), true, "actions lock out while Scan mode is open");
+  assert.strictEqual(await page.locator("#rechargeBtn").isDisabled(), true, "actions lock out while Scan mode is open");
   // "Scan should not change the size of the board or add text" — opening
   // it must leave the canvas exactly as it was, and show nothing until
   // something is actually tapped.
@@ -291,7 +298,7 @@ async function freshPage(browser, url, errors) {
   await page.click("#scanBtn");
   assert.ok(!(await page.locator("#scanBtn").getAttribute("class")).includes("active"), "Scan dims when closed");
   assert.strictEqual(await page.locator("#enemyInfo").isVisible(), false, "closing Scan mode clears the inspection card too");
-  assert.strictEqual(await page.locator("#targetLockBtn").isDisabled(), false, "actions are usable again once Scan mode closes");
+
 
   // ---- The Ship screen: a full-screen flagship/loadout view --------------
   // ("a mode that goes full screen and shows ship and allows you to
@@ -323,33 +330,12 @@ async function freshPage(browser, url, errors) {
   await page.click("#mapCloseBtn");
   assert.strictEqual(await page.locator("#mapOverlay").isVisible(), false, "the map closes again");
 
-  // Target Lock: movement offline, taps re-aim for free (real state, no
-  // AP, no round spent).
-  await page.click("#targetLockBtn"); // engage
-  const posBeforeAim = (await getState(page)).playerPos;
-  const turnBeforeAim = (await getState(page)).turnCount;
-  const aimHex = await page.evaluate(() => window.HypergolicEngine.legalSublightTargets(window.__hhState)[0]);
-  const aimCenter = await page.evaluate(({ q, r }) => window.__hhHexCenter(q, r), aimHex);
-  const aimBox = await page.locator("#board").boundingBox();
-  await page.mouse.click(aimBox.x + aimCenter.x, aimBox.y + aimCenter.y);
+  // One action per turn in play: let the Interceptor come to us (it
+  // spends its rounds closing), then kill it via tap-tap: first tap
+  // TARGETS, second tap FIRES ("if you click on a target it should
+  // target them, and clicking again fires").
   s = await getState(page);
-  assert.deepStrictEqual(s.playerPos, posBeforeAim, "re-aiming with Target Lock engaged never moves the flagship");
-  assert.strictEqual(s.turnCount, turnBeforeAim, "re-aiming doesn't spend a turn");
-  assert.strictEqual(
-    s.facing,
-    await page.evaluate(({ q, r }) => window.HypergolicEngine.directionIndex(window.__hhState.playerPos, { q, r }), aimHex),
-    "the flagship is now facing the tapped hex"
-  );
-  await page.click("#targetLockBtn"); // disengage — Warpdrive back online
-
-  // The AP round in play: 2 Action Points, spend them how you like, then
-  // the enemy phase runs. Let the Interceptor come to us (its own 2 AP
-  // close the gap fast), then kill it via tap-tap: first tap TARGETS,
-  // second tap FIRES ("if you click on a target it should target them,
-  // and clicking again fires").
-  assert.strictEqual(s.ap, 2, "a round budgets 2 Action Points");
-  assert.strictEqual(await page.locator("#apBar .stat-pip.filled").count(), 2, "the Actions gauge shows both points");
-  assert.strictEqual(await page.locator("#endTurnBtn").isVisible(), true, "End Round is always on the panel");
+  assert.strictEqual(s.maxAp, 1, "one action per round is the shipped budget (AP plumbing kept underneath)");
   let fired = false;
   for (let i = 0; i < 25; i++) {
     s = await getState(page);
@@ -544,18 +530,15 @@ async function freshPage(browser, url, errors) {
     { q: otherStep.q, r: otherStep.r },
     "the preview now points at the new hex — the old course was dismissed"
   );
-  // Confirm: tapping the marked hex again flies it for real.
+  // Confirm: tapping the marked hex again flies it for real — and the
+  // single action commits the round (enemy phase runs).
   const roundBefore = s.turnCount;
   await clickHex(page, "sublight", otherStep);
   await page.waitForFunction(() => window.__hhAutoRoute === null, null, { timeout: 20000 });
   s = await getState(page);
   assert.deepStrictEqual(s.playerPos, { q: otherStep.q, r: otherStep.r }, "the confirming tap flies the course");
-  assert.strictEqual(s.ap, s.maxAp - 1, "one Action Point spent — the round is still open");
-  assert.strictEqual(s.turnCount, roundBefore, "and the enemy phase hasn't run yet");
-  await endRound(page);
-  s = await getState(page);
-  assert.strictEqual(s.turnCount, roundBefore + 1, "End Round passes the rest — the enemy phase runs");
-  assert.strictEqual(s.ap, s.maxAp, "and the next round's Action Points are back");
+  assert.strictEqual(s.turnCount, roundBefore + 1, "one action IS the turn — the enemy phase ran with it");
+  assert.strictEqual(s.ap, s.maxAp, "and the next turn is ready");
   await page.close();
 
   // ---- Branching Warp Gates: two gates render without errors ---------------
@@ -616,7 +599,7 @@ async function freshPage(browser, url, errors) {
     window.__hhSetLevelIndex(19); // depth = index + 1 — keep advanceSector's "levelIndex + 1" in sync
     window.render();
   });
-  await page.click("#endTurnBtn"); // standing on an always-online gate: any action wins it
+  await endRound(page); // standing on an always-online gate: any action wins it
   await page.waitForFunction(() => window.__hhState.isVictory === true);
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false, "the overlay waits for animations, same as the loss screen");
   await waitForOverlay(page);

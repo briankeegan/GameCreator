@@ -65,11 +65,9 @@ const mapBtn = document.getElementById("mapBtn");
 const mapOverlayEl = document.getElementById("mapOverlay");
 const mapChartEl = document.getElementById("mapChart");
 const mapCloseBtn = document.getElementById("mapCloseBtn");
-const targetLockBtn = document.getElementById("targetLockBtn");
 const fireBtn = document.getElementById("fireBtn");
 const rechargeBtn = document.getElementById("rechargeBtn");
 const shieldsBtn = document.getElementById("shieldsBtn");
-const endTurnBtn = document.getElementById("endTurnBtn");
 const apBarEl = document.getElementById("apBar");
 const apWrapEl = document.getElementById("apWrap");
 const tractorStatsEl = document.getElementById("tractorStats");
@@ -1835,8 +1833,10 @@ function anyFireTarget(s) {
 }
 
 function updateHud() {
-  // The round's Action Points — counts down as you act, refills when the
-  // round commits.
+  // The Actions gauge only earns its spot when a round is more than one
+  // action ("you could just hide the actions" — the AP plumbing stays for
+  // a future re-expansion, the pips just stay out of the way at 1/1).
+  apWrapEl.hidden = state.maxAp <= 1;
   renderStatBar(apBarEl, "Actions", state.ap, state.maxAp, "ap");
   flashOnChange("ap", state.ap, apWrapEl);
   renderStatBar(hullBarEl, "Hull", state.hull, state.maxHull, "hull");
@@ -1941,9 +1941,6 @@ function updateSystems() {
   shieldsBtn.disabled =
     busy || state.shieldCharges >= state.maxShields || state.energy < Engine.SHIELD_RAISE_COST;
   shieldsBtn.textContent = `Shields −${Engine.SHIELD_RAISE_COST}⚡`;
-  targetLockBtn.disabled = busy;
-  targetLockBtn.classList.toggle("active", !state.systems.warpdrive);
-  endTurnBtn.disabled = busy;
 }
 
 // Shared by the systems-row stats line and the click-an-enemy-for-info panel
@@ -2045,9 +2042,7 @@ function updateScanInfo() {
     } else if (inRange) {
       intentText = "INTENT: YOU ARE IN ITS RANGE — fires in its phase if you end the round here.";
     } else if (def.movesTowardPlayer) {
-      intentText =
-        "INTENT: PURSUING — 2 AP a round, same as you: it can close a hex AND fire. Danger zone: " +
-        `${def.weapon.range + 1} hexes.`;
+      intentText = "INTENT: PURSUING — closes 1 hex a round, fires the round you're in its reach.";
     } else {
       intentText = "INTENT: HOLDING — never moves, fires the round you end inside its reach.";
     }
@@ -2397,6 +2392,26 @@ function enemyInReach(s, enemy) {
   });
 }
 
+// Aiming is automatic now — tapping a hostile swings the flagship to
+// whatever facing brings an armed weapon to bear on it (free, no turn
+// spent, same rules as the old Target Lock re-aim). Returns whether any
+// facing works; already-in-reach targets need no turn at all.
+function faceEnemyIfPossible(enemy) {
+  if (enemyInReach(state, enemy)) return true;
+  for (let f = 0; f < 6; f++) {
+    const reaches = Engine.WEAPON_SYSTEM_KEYS.some((k) => {
+      if (!(k === "ram" || state.actions.includes(k)) || !state.systems[k]) return false;
+      return Engine.weaponHexes(state.playerPos, f, Engine.WEAPONS[k]).some((h) => Engine.posEq(h, enemy));
+    });
+    if (reaches) {
+      Engine.setFacing(state, f);
+      shipAngle = DIR_ANGLES[f]; // spin to show the new aim immediately
+      return true;
+    }
+  }
+  return false;
+}
+
 function volleyCost(s) {
   let cost = 0;
   for (const k of Engine.WEAPON_SYSTEM_KEYS) {
@@ -2591,15 +2606,6 @@ mapChartEl.addEventListener("click", (evt) => {
   if (!target) return;
   jumpToChart(Number(target.dataset.chart));
 });
-targetLockBtn.addEventListener("click", () => {
-  Engine.setSystem(state, "warpdrive", !state.systems.warpdrive);
-  pushMessage(
-    state.systems.warpdrive
-      ? "Target Lock disengaged — Warpdrive back online."
-      : "Target Lock engaged — tap an adjacent hex to aim, then FIRE."
-  );
-  render();
-});
 
 tractorStatsEl.addEventListener("click", () => {
   tractorStatsExpanded = !tractorStatsExpanded;
@@ -2617,10 +2623,6 @@ rechargeBtn.addEventListener("click", () => {
 });
 shieldsBtn.addEventListener("click", () => {
   handleAction(() => Engine.applyRaiseShields(state));
-});
-endTurnBtn.addEventListener("click", () => {
-  targetedEnemyId = null;
-  handleAction(() => Engine.applyEndTurn(state));
 });
 
 
@@ -2705,22 +2707,6 @@ canvas.addEventListener("click", (evt) => {
     return;
   }
 
-  // Target Lock engaged: movement is off the table, and tapping an
-  // adjacent hex re-aims the flagship toward it — free, no turn spent —
-  // so you can dial in a forward-only weapon's direction, then commit
-  // with FIRE.
-  if (!state.systems.warpdrive) {
-    const dir = Engine.directionIndex(state.playerPos, hex);
-    if (dir >= 0) {
-      Engine.setFacing(state, dir);
-      shipAngle = DIR_ANGLES[dir]; // spin to show the new aim immediately
-    } else {
-      pushMessage("Target Lock engaged — tap an adjacent hex to aim, then FIRE.");
-    }
-    render();
-    return;
-  }
-
   const enemy = Engine.enemyAt(state, hex);
 
   // An armed Tractor Beam is already a deliberate two-step (arm, then
@@ -2729,23 +2715,24 @@ canvas.addEventListener("click", (evt) => {
     const legal = MODES[mode].targets(state);
     if (legal.some((e) => e.id === enemy.id)) {
       targetedEnemyId = null;
-      handleAction(() => {
+          handleAction(() => {
         if (mode === "tractor") Engine.applyTractor(state, enemy.id);
       });
       return;
     }
   }
 
-  // Tap-tap firing: first tap on a hostile in reach TARGETS it (reticle +
-  // cost readout), the second tap on the same hostile fires the volley.
+  // Tap-tap firing: the first tap on a hostile swings the flagship to
+  // bring its weapons to bear (aiming is free and automatic — no separate
+  // Target Lock mode) and TARGETS it; the second tap fires the volley.
   if (enemy) {
     plannedPath = null;
-    if (targetedEnemyId === enemy.id && enemyInReach(state, enemy)) {
+      if (targetedEnemyId === enemy.id && enemyInReach(state, enemy)) {
       targetedEnemyId = null;
       handleAction(() => Engine.applyFire(state));
       return;
     }
-    if (enemyInReach(state, enemy)) {
+    if (faceEnemyIfPossible(enemy)) {
       targetedEnemyId = enemy.id;
       pushMessage(`Target locked: ${enemy.type.toUpperCase()} — tap it again to FIRE (−${volleyCost(state)}⚡).`);
     } else {
@@ -2761,10 +2748,11 @@ canvas.addEventListener("click", (evt) => {
   targetedEnemyId = null;
   const hazardHere = Engine.hazardAt(state, hex);
   if (hazardHere && hazardHere.type === "asteroid") {
-    pushMessage("Asteroid field — impassable. Fly around it.");
+      pushMessage("Asteroid field — impassable. Fly around it.");
     render();
     return;
   }
+
   planOrFlyRoute(hex);
 });
 

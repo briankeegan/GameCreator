@@ -136,7 +136,6 @@ assert.ok(
   meleeState.events.some((e) => e.type === "playerMove" && e.to.q === 2 && e.to.r === 2),
   "player moves emit a playerMove event (drives the flight animation)"
 );
-Engine.applyEndTurn(meleeState); // pass the round's other AP: the enemy phase runs and the interceptor strikes
 assert.strictEqual(meleeState.hull, 2, "a strike costs 1 of 3 Hull — no longer instant death");
 assert.strictEqual(meleeState.status, "playing", "with 3 Hull the run survives a single hit");
 assert.ok(meleeState.events.some((e) => e.type === "attack"), "attacks emit an attack event");
@@ -147,7 +146,6 @@ assert.ok(meleeState.events.some((e) => e.type === "damage"), "damage emits a da
 const deathState = Engine.createGameState(meleeLevel);
 deathState.hull = 1;
 Engine.applySublight(deathState, { q: 2, r: 2 });
-Engine.applyEndTurn(deathState);
 assert.strictEqual(deathState.status, "lost", "the final hit still ends the run");
 assert.ok(deathState.events.some((e) => e.type === "playerDeath"), "lethal damage emits a playerDeath event");
 
@@ -183,33 +181,32 @@ assert.strictEqual(
   "off-board hexes are not routable"
 );
 
-// ---- the golden path, the AP round model --------------------------------
-// Both sides budget 2 Action Points a round ("enemies should also have
-// AP — that's kinda the point"). The flagship spends its AP on any mix —
-// two moves, move+FIRE, two volleys — actions resolving immediately; then
-// the enemy phase runs and every enemy spends ENEMY_AP the same way. A
-// chaser can close a hex AND fire in its phase, so the safe stand-off
-// distance at round end is 3+; the flip side is the lunge — move adjacent
-// and FIRE in the same round, killing before the target ever gets a phase.
+// ---- the golden path, one action per round ------------------------------
+// One action IS the round ("maybe you could just do one thing, and that
+// is a turn") — for the flagship and every enemy alike. Your action
+// resolves immediately, then the enemy phase runs: a FIRE kill lands
+// before the target ever gets its phase, and a chaser spends its one
+// point closing OR firing, never both. The AP plumbing stays underneath
+// (see the bookkeeping section below) for a future re-expansion.
 
 let state = Engine.createGameState(goldenLevel);
 assert.strictEqual(state.hull, 3, "the flagship starts a run with 3 Hull");
 assert.strictEqual(state.energy, 6, "and a full Energy budget");
-assert.strictEqual(state.ap, 2, "and 2 Action Points for the opening round");
-assert.strictEqual(state.maxAp, 2, "2 is the standard AP budget");
+assert.strictEqual(state.ap, 1, "one action per round — the AP counter idles at 1");
+assert.strictEqual(state.maxAp, 1, "1 is the standard budget now (the plumbing supports more)");
 assert.strictEqual(Engine.livingEnemies(state).length, 2);
 assert.strictEqual(state.exitUnlocked, true, "the Warp Gate is online from the start — clearing enemies is optional, for salvage only");
 
-// A chaser's true danger zone this round is one ring past its weapon —
-// with 2 AP it can close a hex and still fire.
+// A 1-AP chaser moves OR fires — its danger zone is exactly its weapon's
+// current reach, no move+fire projection.
 const openingThreats = Engine.computeThreatHexes(state);
 assert.ok(
   Engine.livingEnemies(state).every((e) =>
     state.boardHexes
       .filter((h) => Engine.hexDistance(h, e) === 2)
-      .every((h) => openingThreats.has(Engine.hexKey(h)))
+      .every((h) => !openingThreats.has(Engine.hexKey(h)))
   ),
-  "the threat overlay projects a charged chaser's move+fire reach (distance 2), not just where it stands"
+  "the threat overlay marks only a chaser's actual weapon reach — no move+fire projection at 1 AP"
 );
 
 let fireActions = 0;
@@ -219,30 +216,21 @@ while (state.status === "playing" && Engine.livingEnemies(state).length > 0 && g
   const engaged = living.some((e) => Engine.isAdjacent(e, state.playerPos));
   if (engaged) {
     const before = living.length;
-    Engine.applyFire(state); // resolves IMMEDIATELY — the dead don't get an enemy phase
+    Engine.applyFire(state); // resolves in YOUR phase — the dead don't get one of their own
     fireActions++;
     assert.ok(Engine.livingEnemies(state).length < before, "a point-blank FIRE volley kills the adjacent chaser(s)");
     continue;
   }
+  // Stalk: step toward the nearest survivor, but never END a round inside
+  // anything's reach — the chaser closes the last hex itself, and then
+  // YOUR next action is the kill.
   const prey = living.reduce((best, e) => {
     const d = Engine.hexDistance(state.playerPos, e);
     return !best || d < best.d ? { e, d } : best;
   }, null);
-  if (state.ap >= 2 && prey.d === 2) {
-    // The LUNGE: first AP steps adjacent, next loop iteration's FIRE is
-    // the second — the whole kill happens inside one round.
-    const lungeStep = Engine.legalSublightTargets(state).find((cand) => Engine.isAdjacent(cand, prey.e));
-    assert.ok(lungeStep, "expected a lunge step beside the prey");
-    Engine.applySublight(state, lungeStep);
-    continue;
-  }
-  // Otherwise approach, but any move that ENDS the round must leave every
-  // living chaser at distance 3+ — inside 2 they close and fire in their
-  // phase.
-  let candidates = Engine.legalSublightTargets(state);
-  if (state.ap === 1) {
-    candidates = candidates.filter((cand) => living.every((e) => Engine.hexDistance(cand, e) > 2));
-  }
+  const candidates = Engine.legalSublightTargets(state).filter((cand) =>
+    living.every((e) => Engine.hexDistance(cand, e) > 1)
+  );
   if (!candidates.length) {
     Engine.applyEndTurn(state); // nowhere safe to step — hold position instead
     continue;
@@ -254,50 +242,47 @@ while (state.status === "playing" && Engine.livingEnemies(state).length > 0 && g
   Engine.applySublight(state, step.to);
 }
 assert.strictEqual(Engine.livingEnemies(state).length, 0, "both Interceptors die to FIRE volleys");
-assert.ok(fireActions >= 1, "at least one AP was spent on the FIRE action");
+assert.ok(fireActions >= 1, "at least one round was spent on the FIRE action");
 assert.strictEqual(state.hull, 3, "played correctly, the flagship never takes a hit — kills land in YOUR phase, before the target ever gets one");
 assert.strictEqual(state.status, "playing");
 
-// ---- the mistake, shown directly: ending the round in a chaser's reach --
-// Mid-round repositioning is free of reactions, but the position you END
-// the round on is the one the enemy phase punishes — a chaser left beside
-// you (or even 2 away, charged) gets its shot.
+// ---- the mistake, shown directly: ending your turn in a chaser's reach --
+// The position your action leaves you on is the one the enemy phase
+// punishes — move to a hex still beside a charged chaser and its shot
+// lands the moment your turn commits.
 const mistakeState = Engine.createGameState(goldenLevel);
 mistakeState.enemies[0].q = mistakeState.playerPos.q;
 mistakeState.enemies[0].r = mistakeState.playerPos.r - 1; // adjacent, directly up
 const stillInReach = Engine.legalSublightTargets(mistakeState).find((to) => Engine.isAdjacent(to, mistakeState.enemies[0]));
 assert.ok(stillInReach, "expected a destination still inside the chaser's reach");
 Engine.applySublight(mistakeState, stillInReach);
-assert.strictEqual(mistakeState.hull, 3, "mid-round, moving hasn't been punished yet — enemies act in their own phase");
-Engine.applyEndTurn(mistakeState); // commit the round from inside its reach
-assert.strictEqual(mistakeState.hull, 2, "ending the round while engaged eats the strike — position at round end is what counts");
+assert.strictEqual(mistakeState.hull, 2, "moving while engaged eats the strike — the turn went to repositioning, not defense");
 assert.strictEqual(mistakeState.enemies[0].alive, true, "and moving killed nothing — shooting is its own action");
 
-// ---- AP bookkeeping: spend, refill, pass, carry -------------------------
+// ---- AP bookkeeping: one action commits the round; plumbing is intact ---
 const apState = Engine.createGameState(goldenLevel);
 apState.enemies.forEach((e) => (e.alive = false)); // quiet board — this tests the counter, not combat
 Engine.applySublight(apState, Engine.legalSublightTargets(apState)[0]);
-assert.strictEqual(apState.ap, 1, "an action costs 1 AP");
-assert.strictEqual(apState.turnCount, 0, "the round isn't over while AP remains");
-Engine.applySublight(apState, Engine.legalSublightTargets(apState)[0]);
-assert.strictEqual(apState.turnCount, 1, "spending the last AP runs the enemy phase — a round has passed");
-assert.strictEqual(apState.ap, apState.maxAp, "and the AP budget refills for the new round");
-// Two RECHARGEs in one round — free-form spending ("why not two attacks
-// or two moves").
-apState.energy = 1;
-Engine.applyRecharge(apState);
-Engine.applyRecharge(apState);
-assert.strictEqual(apState.energy, 1 + 2 * Engine.RECHARGE_ENERGY_GAIN, "both AP can go to the same action");
-assert.strictEqual(apState.turnCount, 2, "two actions = one full round");
-// END TURN passes a full budget outright.
+assert.strictEqual(apState.turnCount, 1, "a single action runs the enemy phase — one action IS the round");
+assert.strictEqual(apState.ap, apState.maxAp, "and the budget refills for the new round");
+// Hold position (tap-tap on your own ship in the UI) passes the round.
 const turnBeforePass = apState.turnCount;
 Engine.applyEndTurn(apState);
-assert.strictEqual(apState.turnCount, turnBeforePass + 1, "END TURN commits the round immediately");
-assert.strictEqual(apState.ap, apState.maxAp, "and the next round starts with a full budget");
-// maxAp carries across sectors like every other permanent ship stat.
-const apCarryState = Engine.createGameState(goldenLevel, { maxAp: 3 });
-assert.strictEqual(apCarryState.maxAp, 3, "maxAp carries via carryOver — upgrade plumbing is already in place");
-assert.strictEqual(apCarryState.ap, 3, "and the round starts with the full carried budget");
+assert.strictEqual(apState.turnCount, turnBeforePass + 1, "holding position commits the round immediately");
+assert.strictEqual(apState.ap, apState.maxAp, "and the next round starts fresh");
+// maxAp carries across sectors — a future "+1 AP" upgrade (or putting
+// 2-AP rounds back) is pure data, no new plumbing.
+const apCarryState = Engine.createGameState(goldenLevel, { maxAp: 2 });
+assert.strictEqual(apCarryState.maxAp, 2, "maxAp carries via carryOver — re-expansion plumbing is already in place");
+assert.strictEqual(apCarryState.ap, 2, "and the round starts with the full carried budget");
+// With a 2-AP carryOver, free-form spending still works exactly as built.
+apCarryState.enemies.forEach((e) => (e.alive = false));
+apCarryState.energy = 1;
+Engine.applyRecharge(apCarryState);
+assert.strictEqual(apCarryState.turnCount, 0, "at 2 AP, the round isn't over after one action");
+Engine.applyRecharge(apCarryState);
+assert.strictEqual(apCarryState.turnCount, 1, "two actions = one full round");
+assert.strictEqual(apCarryState.energy, 1 + 2 * Engine.RECHARGE_ENERGY_GAIN, "both AP can go to the same action");
 
 // ---- RECHARGE: the only way Energy comes back mid-sector ----------------
 const rechargeProbe = Engine.createGameState(goldenLevel);
@@ -652,7 +637,6 @@ const railgunStart = { q: railgunState.enemies[0].q, r: railgunState.enemies[0].
 railgunState.enemies[0].energy = 3;
 const hullBeforeRailgun = railgunState.hull;
 Engine.applySublight(railgunState, { q: 2, r: 4 }); // still distance 3, but already aligned — the long shot reaches it
-Engine.applyEndTurn(railgunState); // commit the round so its phase fires
 assert.strictEqual(
   railgunState.hull,
   hullBeforeRailgun - 1,
@@ -670,7 +654,6 @@ const railgunOffAxisState = Engine.createGameState(railgunOffAxisLevel);
 railgunOffAxisState.enemies[0].energy = 3; // charged, so the miss below is about geometry, not energy
 const hullBeforeOffAxis = railgunOffAxisState.hull;
 Engine.applySublight(railgunOffAxisState, { q: 0, r: 4 });
-Engine.applyEndTurn(railgunOffAxisState); // full round — its phase runs and still can't reach
 assert.strictEqual(
   railgunOffAxisState.hull,
   hullBeforeOffAxis,
@@ -848,8 +831,7 @@ const shieldLevel = {
 const shieldState = Engine.createGameState(shieldLevel);
 shieldState.shieldCharges = 1;
 const hullBeforeShield = shieldState.hull;
-Engine.applySublight(shieldState, { q: 2, r: 2 }); // step adjacent
-Engine.applyEndTurn(shieldState); // commit the round: the interceptor attacks in its phase
+Engine.applySublight(shieldState, { q: 2, r: 2 }); // step adjacent — the move commits the round, the interceptor attacks
 assert.strictEqual(shieldState.hull, hullBeforeShield, "a raised Shield charge fully absorbs the phase — no Hull lost");
 assert.strictEqual(shieldState.shieldCharges, 0, "absorbing consumes the Shield charge");
 assert.ok(shieldState.events.some((e) => e.type === "shieldAbsorb"), "absorbing emits a shieldAbsorb event for the UI");
@@ -858,7 +840,6 @@ assert.ok(shieldState.events.some((e) => e.type === "shieldAbsorb"), "absorbing 
 const noShieldState = Engine.createGameState(shieldLevel);
 const hullBeforeNoShield = noShieldState.hull;
 Engine.applySublight(noShieldState, { q: 2, r: 2 });
-Engine.applyEndTurn(noShieldState);
 assert.strictEqual(noShieldState.hull, hullBeforeNoShield - 1, "with no Shield charge banked, the hit costs Hull as normal");
 
 // ---- Shield Generator + Raise Shields: energy pays for protection --------
@@ -875,11 +856,11 @@ assert.strictEqual(salvageState.salvage, 0, "the generator costs its full salvag
 const raiseState = Engine.createGameState(shieldLevel, { maxShields: 1 });
 assert.strictEqual(raiseState.shieldCharges, 0, "capacity without carried charges starts DOWN — raising costs energy");
 const energyBeforeRaise = raiseState.energy;
-const apBeforeRaise = raiseState.ap;
+const turnBeforeRaise = raiseState.turnCount;
 Engine.applyRaiseShields(raiseState);
 assert.strictEqual(raiseState.shieldCharges, 1, "Raise Shields brings one charge up");
 assert.strictEqual(raiseState.energy, energyBeforeRaise - Engine.SHIELD_RAISE_COST, "raising a charge costs energy");
-assert.strictEqual(raiseState.ap, apBeforeRaise - 1, "raising shields costs an Action Point like everything else");
+assert.strictEqual(raiseState.turnCount, turnBeforeRaise + 1, "raising shields spends the turn like everything else");
 assert.ok(raiseState.events.some((e) => e.type === "energySpend"), "raising emits the energySpend float for the UI");
 assert.throws(() => Engine.applyRaiseShields(raiseState), /already raised/, "can't raise past generator capacity");
 raiseState.shieldCharges = 0;
@@ -1290,25 +1271,29 @@ Engine.applyFire(lanceInitState);
 assert.strictEqual(lanceInitState.enemies[0].alive, false, "the Lance Cannon kills its target");
 assert.strictEqual(lanceInitState.hull, 3, "a kill in your phase means no reply — phases are sequential, not simultaneous");
 
-// The LUNGE, end to end: from distance 2, move adjacent then FIRE in the
-// same round — the interceptor dies having never acted.
-const lungeState = Engine.createGameState({ ...initiativeLevel, id: 985, actions: ["sublight", "ramming"] });
-lungeState.enemies[0].q = 2;
-lungeState.enemies[0].r = 3; // distance 2, dead ahead
-Engine.applySublight(lungeState, { q: 2, r: 4 }); // AP 1: close to adjacent
-Engine.applyFire(lungeState); // AP 2: point-blank volley
-assert.strictEqual(lungeState.enemies[0].alive, false, "move + FIRE in one round kills from 2 hexes out");
-assert.strictEqual(lungeState.hull, 3, "the lunge lands before the target's phase — no damage taken");
-assert.strictEqual(lungeState.turnCount, 1, "the lunge consumed exactly one full round");
+// One action per round means closing the gap is its own turn — approach
+// a charged interceptor to adjacency and it fires when your turn
+// commits; the NEXT round, your FIRE kills it before it acts again.
+const tradeState = Engine.createGameState({ ...initiativeLevel, id: 985, actions: ["sublight", "ramming"] });
+tradeState.enemies[0].q = 2;
+tradeState.enemies[0].r = 3; // distance 2, dead ahead
+Engine.applySublight(tradeState, { q: 2, r: 4 }); // close to adjacent — the round commits
+assert.strictEqual(tradeState.hull, 2, "ending your turn beside a charged chaser eats its shot");
+Engine.applyFire(tradeState); // your phase first: the kill lands before its next shot
+assert.strictEqual(tradeState.enemies[0].alive, false, "the next round's FIRE kills it");
+assert.strictEqual(tradeState.hull, 2, "with no reply — the dead don't get a phase");
+assert.strictEqual(tradeState.turnCount, 2, "the exchange took two full rounds");
 
-// The enemy phase has AP too: a charged interceptor 2 hexes out closes
-// AND fires in its own phase if you just stand there.
+// The enemy phase runs on the same 1-AP budget: a chaser 2 hexes out
+// spends one round closing, and only fires the round AFTER.
 const closerState = Engine.createGameState({ ...initiativeLevel, id: 984 });
 closerState.enemies[0].q = 2;
 closerState.enemies[0].r = 3; // distance 2
-Engine.applyEndTurn(closerState); // hold position: its phase gets both its AP
-assert.strictEqual(Engine.isAdjacent(closerState.enemies[0], closerState.playerPos), true, "the chaser spent one enemy AP closing");
-assert.strictEqual(closerState.hull, 2, "and its second on the shot — move+fire in one enemy phase");
+Engine.applyEndTurn(closerState); // hold: its phase spends its one point moving
+assert.strictEqual(Engine.isAdjacent(closerState.enemies[0], closerState.playerPos), true, "the chaser closed a hex");
+assert.strictEqual(closerState.hull, 3, "moving was its whole turn — no shot yet");
+Engine.applyEndTurn(closerState); // hold again: now it fires
+assert.strictEqual(closerState.hull, 2, "the following round it spends its point on the shot");
 
 // A cost-1 enemy is unchanged by the energy system: it fires every turn.
 const chaserEnergyLevel = {
@@ -1324,9 +1309,10 @@ const chaserEnergyLevel = {
   actions: ["sublight"], // no Shockwave — let it survive to attack repeatedly
 };
 const chaserEnergyState = Engine.createGameState(chaserEnergyLevel);
-Engine.applyEndTurn(chaserEnergyState); // its phase: closes to adjacent AND fires — 2 enemy AP
-Engine.applyEndTurn(chaserEnergyState); // fires again next round — the +1/round regen covers a cost-1 cannon
-assert.strictEqual(chaserEnergyState.hull, 1, "a cost-1 chaser fires every round — its regen keeps pace with its cannon");
+Engine.applyEndTurn(chaserEnergyState); // its phase: closes to adjacent (1 AP — that's its whole turn)
+Engine.applyEndTurn(chaserEnergyState); // strike 1
+Engine.applyEndTurn(chaserEnergyState); // strike 2 — the +1/round regen keeps a cost-1 cannon firing every round
+assert.strictEqual(chaserEnergyState.hull, 1, "a cost-1 chaser fires every round once in reach — no charge gap");
 
 // ---- Asteroid fields: genuinely impassable terrain, distinct from a ------
 // blackhole's instant-destruction trap. Clubhouse feedback: "places you

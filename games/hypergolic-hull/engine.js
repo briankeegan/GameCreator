@@ -207,14 +207,14 @@
   // How many weapon-slot points of systems the flagship starts with —
   // grown via the Hardpoint Expansion Outpost offer.
   const START_WEAPON_SLOTS = 2;
-  // Action Points per round, both sides of the board. The flagship spends
-  // its AP on any mix of actions (each costs 1); every enemy spends
-  // ENEMY_AP in the enemy phase the same way — attack when it can pay and
-  // reach, close the gap otherwise. Symmetric on purpose: "enemies should
-  // also have AP — that's kinda the point." maxAp is carried per-run
-  // (carryOver) so a future upgrade can grow it without new plumbing.
-  const START_AP = 2;
-  const ENEMY_AP = 2;
+  // Action Points per round, both sides of the board. Dialed back to 1
+  // ("maybe you could just do one thing, and that is a turn") — one
+  // action IS the round, for the flagship and every enemy alike. The AP
+  // plumbing (spendAp/applyEndTurn/maxAp carryOver) deliberately stays
+  // intact so a 2-AP round (or a +1 AP upgrade) can come back as pure
+  // data, "in case we decide to put it back."
+  const START_AP = 1;
+  const ENEMY_AP = 1;
 
   // ---- weapon systems ---------------------------------------------------
   //
@@ -730,11 +730,12 @@
         const k = hexKey(hex);
         threats.set(k, (threats.get(k) || 0) + 1);
       }
-      // A chaser with 2 AP can close one hex AND fire in the same enemy
+      // A chaser with 2+ AP can close one hex AND fire in the same enemy
       // phase — its true danger zone this round is one ring wider than
       // where it stands. Every current chaser carries an omnidirectional
       // weapon, so "one ring wider" is exactly distance <= range + 1.
-      if (enemyType.movesTowardPlayer) {
+      // (Moot at ENEMY_AP 1 — a 1-AP chaser moves OR fires, never both.)
+      if (ENEMY_AP > 1 && enemyType.movesTowardPlayer) {
         const extendedRange = enemyType.weapon.range + 1;
         for (const hex of state.boardHexes) {
           const d = hexDistance(enemy, hex);
