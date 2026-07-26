@@ -185,12 +185,14 @@ assert.strictEqual(Engine.livingEnemies(state).length, 2);
 assert.strictEqual(state.exitUnlocked, true, "the Warp Gate is online from the start — clearing enemies is optional, for salvage only");
 
 // A 1-AP chaser moves OR fires — its danger zone is exactly its weapon's
-// current reach, no move+fire projection.
+// current reach, no move+fire projection. (An Interceptor's Autocannon
+// reaches two down its lanes, so distance-2 hexes ON those lanes are
+// genuinely threatened; three is where the projection would start.)
 const openingThreats = Engine.computeThreatHexes(state);
 assert.ok(
   Engine.livingEnemies(state).every((e) =>
     state.boardHexes
-      .filter((h) => Engine.hexDistance(h, e) === 2)
+      .filter((h) => Engine.hexDistance(h, e) === 3)
       .every((h) => !openingThreats.has(Engine.hexKey(h)))
   ),
   "the threat overlay marks only a chaser's actual weapon reach — no move+fire projection at 1 AP"
@@ -562,11 +564,11 @@ assert.ok(
   "from range, its nose still points at the hex that closes the gap"
 );
 const aimedHexes = Engine.weaponHexes(interceptorPos, 0, interceptorWeapon);
-assert.strictEqual(aimedHexes.length, 3, "its Autocannon covers the same three-hex arc yours does");
+assert.strictEqual(aimedHexes.length, 6, "its Autocannon covers the same three lanes, two deep, that yours does");
 assert.ok(!aimedHexes.some((h) => Engine.posEq(h, interceptorPos)), "a weapon never threatens its own hex");
 assert.ok(
-  aimedHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
-  "every hex a range-1 weapon reaches is exactly 1 hex away"
+  aimedHexes.every((h) => Engine.hexDistance(h, interceptorPos) <= 2),
+  "and nothing it reaches is more than two hexes out"
 );
 
 // The Autocannon covers the three hexes off the NOSE, not the full ring
@@ -575,10 +577,13 @@ assert.ok(
 // sold on.
 const pulseCannon = Engine.WEAPONS.autocannon;
 const autocannonHexes = Engine.weaponHexes(interceptorPos, 0, pulseCannon);
-assert.strictEqual(autocannonHexes.length, 3, "the Autocannon reaches three hexes — a forward arc, not a ring");
+// Three lanes, two deep. The reach is what makes a three-Hull ship
+// playable — you can hit a chaser the hex BEFORE it reaches contact —
+// and the narrow arc is what stops it from answering everything.
+assert.strictEqual(autocannonHexes.length, 6, "the Autocannon covers three lanes, two deep — an arc, not a ring");
 assert.ok(
-  autocannonHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
-  "every hex it reaches is still exactly one hex away"
+  autocannonHexes.every((h) => Engine.hexDistance(h, interceptorPos) <= 2),
+  "and nothing further than two out"
 );
 // Whatever is directly BEHIND you is untouchable with it — that's the hole.
 const behind = Engine.weaponHexes(interceptorPos, 3, pulseCannon);
@@ -985,15 +990,25 @@ assert.ok(
   "and it arrives as a physical 2x2 item — fitted if it fits, in cargo if it doesn't"
 );
 
-// Two hexes out: beyond the Autocannon entirely, dead in the Arc Beam's ring.
+// What the Arc Beam buys is coverage, not reach: the Autocannon also
+// reaches two, but only down the three lanes off the nose. Off those
+// lanes — a contact sitting behind the ship's shoulder — the Autocannon
+// has nothing and the ring still holds it.
 arcState.playerPos = { q: 2, r: 5 };
-arcState.enemies[0].q = 2;
-arcState.enemies[0].r = 3;
-Engine.applyFire(arcState);
-assert.strictEqual(arcState.enemies[0].alive, false, "the Arc Beam kills a contact two hexes out, which the Autocannon can never touch");
+arcState.enemies[0].q = 3;
+arcState.enemies[0].r = 4; // two out, off every lane at this facing
+Engine.setFacing(arcState, 3); // nose pointed the other way entirely
+assert.ok(
+  !Engine.weaponHexes(arcState.playerPos, arcState.facing, Engine.WEAPONS.autocannon, arcState).some((h) =>
+    Engine.posEq(h, arcState.enemies[0])
+  ),
+  "the Autocannon genuinely cannot bring that contact into its arc from here"
+);
+Engine.applyFire(arcState, "e0", "arcBeam");
+assert.strictEqual(arcState.enemies[0].alive, false, "the Arc Beam takes it anyway — no facing required");
 assert.ok(
   arcState.log.some((line) => /Arc Beam: \w+ destroyed/.test(line)),
-  "the kill is attributed to the Arc Beam specifically, not the Autocannon"
+  "and the kill is attributed to the gun that actually fired"
 );
 
 // A purchased weapon has to be carried forward explicitly into the next
@@ -1310,7 +1325,7 @@ for (let t = 1; t <= 8; t++) {
 }
 assert.deepStrictEqual(
   hullTimeline,
-  [7, 7, 7, 7, 5, 5, 5, 5],
+  [3, 3, 3, 3, 1, 1, 1, 1],
   "the Railgun charges four rounds, then takes 2 Hull in one shot — a readable rhythm, not a constant beam"
 );
 
@@ -1365,16 +1380,25 @@ assert.strictEqual(tradeState.enemies[0].alive, false, "the next round's FIRE ki
 assert.strictEqual(tradeState.hull, Engine.START_HULL - 1, "with no reply — the dead don't get a phase");
 assert.strictEqual(tradeState.turnCount, 2, "the exchange took two full rounds");
 
-// The enemy phase runs on the same 1-AP budget: a chaser 2 hexes out
-// spends one round closing, and only fires the round AFTER.
+// The enemy phase runs on the same 1-AP budget: a chaser out of range
+// spends its round closing, and fires the round it can.
 const closerState = Engine.createGameState({ ...initiativeLevel, id: 984 });
 closerState.enemies[0].q = 2;
-closerState.enemies[0].r = 3; // distance 2
+closerState.enemies[0].r = 2; // distance 3 — past its Autocannon's two
 Engine.applyEndTurn(closerState); // hold: its phase spends its one point moving
-assert.strictEqual(Engine.isAdjacent(closerState.enemies[0], closerState.playerPos), true, "the chaser closed a hex");
+assert.strictEqual(
+  Engine.hexDistance(closerState.enemies[0], closerState.playerPos),
+  2,
+  "the chaser closed a hex"
+);
 assert.strictEqual(closerState.hull, Engine.START_HULL, "moving was its whole turn — no shot yet");
-Engine.applyEndTurn(closerState); // hold again: now it fires
+Engine.applyEndTurn(closerState); // hold again: now it shoots from two out
 assert.strictEqual(closerState.hull, Engine.START_HULL - 1, "the following round it spends its point on the shot");
+assert.strictEqual(
+  Engine.hexDistance(closerState.enemies[0], closerState.playerPos),
+  2,
+  "and it never had to reach contact to do it — the Autocannon reaches two on both sides of the fight"
+);
 
 // A cost-1 enemy is unchanged by the energy system: it fires every turn.
 const chaserEnergyLevel = {
@@ -1390,9 +1414,11 @@ const chaserEnergyLevel = {
   actions: ["sublight"], // no Autocannon — let it survive to attack repeatedly
 };
 const chaserEnergyState = Engine.createGameState(chaserEnergyLevel);
-Engine.applyEndTurn(chaserEnergyState); // its phase: closes to adjacent (1 AP — that's its whole turn)
+// It spawns two out, which is already inside its own Autocannon's reach,
+// so it opens fire immediately and keeps firing: a cost-1 gun against a
+// +1/round regen never has a charge gap.
 Engine.applyEndTurn(chaserEnergyState); // strike 1
-Engine.applyEndTurn(chaserEnergyState); // strike 2 — the +1/round regen keeps a cost-1 cannon firing every round
+Engine.applyEndTurn(chaserEnergyState); // strike 2
 assert.strictEqual(chaserEnergyState.hull, Engine.START_HULL - 2, "a cost-1 chaser fires every round once in reach — no charge gap");
 
 // ---- Asteroid fields: genuinely impassable terrain, distinct from a ------

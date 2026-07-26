@@ -393,7 +393,7 @@ async function freshPage(browser, url, errors) {
   assert.ok(/Refits need a dock/.test(refitRefusal), "the engine refuses mid-flight refits outright");
   // Tapping a tile inspects it.
   await page.click('#holdGrid .hold-tile[data-item-id="autocannon"]');
-  assert.ok(/Range 1/.test(await page.locator("#log").textContent()), "tapping a tile reads out the item's stats");
+  assert.ok(/Range 2/.test(await page.locator("#holdInfo").textContent()), "tapping a tile reads out the item's stats");
   await page.click("#shipCloseBtn");
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Return to Helm closes the Systems screen");
 

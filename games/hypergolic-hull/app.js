@@ -2566,13 +2566,7 @@ function wireHoldDrag(gridEl, cargoEl, CELL, docked) {
   for (const tile of gridEl.querySelectorAll(".hold-tile")) {
     const idx = Number(tile.dataset.holdIndex);
     const id = tile.dataset.itemId;
-    if (!docked) {
-      tile.addEventListener("click", () => {
-        pushMessage(describeItem(id) + " — fitted and drawing power.");
-        render();
-      });
-      continue;
-    }
+    if (!docked) continue; // undocked: wireHoldInspect already reads the tile out in place
     tile.addEventListener("pointerdown", (downEvt) => {
       downEvt.preventDefault();
       tile.setPointerCapture(downEvt.pointerId);

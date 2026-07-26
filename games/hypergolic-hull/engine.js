@@ -183,17 +183,13 @@
   // turns this from a pure-skill puzzle into a luck-and-skill crawl — room to
   // trade Hull for tempo, recover from a bad roll, and let salvage/repairs
   // matter. (Was 1: one-hit permadeath.)
-  // Seven. Fights take longer than they used to — a turn fires ONE gun
-  // now, not every mount at once — so the ship has to be able to absorb
-  // more of them. At five, forty full runs finished exactly zero times.
-  // Hull damage is permanent across sectors and repairs
-  // only exist at Outposts, which aren't in every sector — at 3 a single
-  // Sentry (2 Hull, outranges your starting gun) took two thirds of the
-  // ship before you could answer it, and a run was mathematically over by
-  // sector 3 no matter how well it was flown. Five leaves room to learn
-  // the stalking rhythm and to bank salvage for the weapon that actually
-  // answers a stationary gun, without making death abstract.
-  const START_HULL = 7;
+  // Three. Deliberately unforgiving: hull damage is permanent, repairs
+  // only exist at a dock, and a single mistake is most of the ship. Five
+  // and seven were both tried and both read as too soft — the crawl is
+  // supposed to be survived, not absorbed. What makes three playable
+  // rather than arbitrary is that the gate is always open: you are never
+  // required to trade hits, and a contact you route around costs nothing.
+  const START_HULL = 3;
 
   // Energy is a second resource, distinct from Hull (permanent damage,
   // repaired only at an Outpost) and salvage (a currency): it regenerates
@@ -285,11 +281,15 @@
   const WEAPONS = {
     // The workhorse, and the ship's starting gun. 1 energy against a
     // +1/cycle reactor means it fires every single round forever — but it
-    // only covers the three hexes off the nose, so it can never answer a
-    // pincer ("the Autocannon seems too good"). Cheap and reliable is its
-    // whole identity; coverage is what you pay the other three for.
+    // only covers the three lanes off the nose, so it can never answer a
+    // pincer ("the Autocannon seems too good"). It reaches two down those
+    // lanes, which is what makes a three-Hull ship playable at all: you
+    // can hit a chaser the hex BEFORE it reaches contact, instead of
+    // being forced to trade blows with everything you meet. Coverage —
+    // hitting what isn't in front of you — is what you pay the other
+    // three for.
     // Interceptors carry this exact gun, which is why flanking one works.
-    autocannon: { id: "autocannon", label: "Autocannon", range: 1, damage: 1, targets: "one", energyCost: 1, speed: 3, pattern: FORWARD_ARC_PATTERN, slots: 1 },
+    autocannon: { id: "autocannon", label: "Autocannon", range: 2, damage: 1, targets: "one", energyCost: 1, speed: 3, pattern: FORWARD_ARC_PATTERN, slots: 1 },
     // The crowd answer: the only weapon that hits EVERY adjacent contact
     // at once, so being surrounded stops being a death sentence. Pricey
     // per shot (3 against +1/cycle = a shot every third round) and a fat
@@ -623,7 +623,7 @@
     // Shields aren't consumable purchases anymore — you buy the GENERATOR
     // (permanent +1 capacity, arrives raised), then re-raising a spent
     // charge costs Energy and a turn (applyRaiseShields), not salvage.
-    { id: "shield", label: "Shield Generator (2x2 — raise-able charge)", cost: 10 },
+    { id: "shield", label: "Shield Generator (2x2 — raise-able charge)", cost: 8 },
     // The two "configurable limits" as purchases: your reactor cap (how
     // much Energy you can bank against expensive weapons) and your weapon
     // slots (how many systems can run at once) are both ship stats you
@@ -688,6 +688,11 @@
       shuffled[j] = tmp;
     }
     const picked = ["repair", ...shuffled.slice(0, 2).map((o) => o.id)];
+    // A three-Hull ship lives or dies on screens, so a yard will always
+    // find you a generator if you're flying without one. Everything else
+    // is what they happen to have; this one is the trade that keeps the
+    // crawl survivable at all.
+    if (!carried.has("shieldGenerator") && !picked.includes("shield")) picked[picked.length - 1] = "shield";
     // Sector 3 is the Sentry Line — the first sector with something that
     // outranges you and won't come to you. The weapon that answers it has
     // to be ON THE SHELF there, not left to the shuffle, or the lesson is
