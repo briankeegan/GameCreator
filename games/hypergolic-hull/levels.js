@@ -200,12 +200,16 @@
       playerStart: { q: startCol, r: rows - 1 - Math.floor(startCol / 2) },
       exit: { q: cols - 1, r: -Math.floor((cols - 1) / 2) },
       outpost: { q: 0, r: 0 },
+      // Two gun platforms holding the line, one heavy, one runner. Five
+      // was the old shape and it simply cannot be traded with by a
+      // three-Hull ship however well it's flown — the fight has to be
+      // winnable by a run that arrives in good order, or the last sector
+      // is just a wall with a name.
       enemies: [
-        { type: "cruiser", q: 2, r: 6 },
-        { type: "cruiser", q: 6, r: 6 },
+        { type: "cruiser", q: 3, r: 6 },
         { type: "sentry", q: 2, r: 2 },
         { type: "sentry", q: 6, r: 2 },
-        { type: "interceptor", q: startCol, r: 3 },
+        { type: "interceptor", q: startCol, r: 4 },
       ],
       hazards: [
         { type: "asteroid", q: 1, r: 4 },
@@ -316,15 +320,18 @@
     // increases — a genuinely new threat shape (line-up-from-across-the-
     // map instead of adjacent/short-ring), not just another stat bump.
     // Threat SHAPES arrive one at a time, not all at once: chasers first,
-    // then the emplacement that zones a chunk of the board off, then the
-    // one that shoots the length of it. A Sentry's beam covers a true
+    // then the emplacement that zones a chunk of the board off, and only
+    // in the last stretch the one that shoots the length of it. A Railgun
+    // Destroyer takes two thirds of a fresh hull in one slug from off
+    // screen; meeting that at depth 8 with a starting kit isn't a puzzle,
+    // it's a coin toss. A Sentry's beam covers a true
     // two-hex ring (18 hexes) — dropping two of those into a depth-4
     // board alongside cruisers doesn't read as difficulty, it reads as a
     // wall you have to walk through and lose hull to.
     const typePool =
       depth < 5
         ? ["interceptor", "interceptor", "cruiser"]
-        : depth < 8
+        : depth < 10
           ? ["interceptor", "interceptor", "cruiser", "cruiser", "sentry"]
           : ["interceptor", "cruiser", "cruiser", "sentry", "sentry", "railgun"];
     // At most TWO emplacements on a board. A Sentry or a Railgun Destroyer

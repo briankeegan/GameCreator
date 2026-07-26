@@ -281,15 +281,13 @@
   const WEAPONS = {
     // The workhorse, and the ship's starting gun. 1 energy against a
     // +1/cycle reactor means it fires every single round forever — but it
-    // only covers the three lanes off the nose, so it can never answer a
-    // pincer ("the Autocannon seems too good"). It reaches two down those
-    // lanes, which is what makes a three-Hull ship playable at all: you
-    // can hit a chaser the hex BEFORE it reaches contact, instead of
-    // being forced to trade blows with everything you meet. Coverage —
-    // hitting what isn't in front of you — is what you pay the other
-    // three for.
+    // only covers the three hexes off the nose. It does NOT reach — that
+    // was tried, and a starting gun that hits at two makes every other
+    // weapon redundant: measured, a pilot that just shot everything with
+    // it won two runs in three and never needed the shop. REACH is the
+    // thing you buy. Cheap, reliable, and strictly a contact weapon.
     // Interceptors carry this exact gun, which is why flanking one works.
-    autocannon: { id: "autocannon", label: "Autocannon", range: 2, damage: 1, targets: "one", energyCost: 1, speed: 3, pattern: FORWARD_ARC_PATTERN, slots: 1 },
+    autocannon: { id: "autocannon", label: "Autocannon", range: 1, damage: 1, targets: "one", energyCost: 1, speed: 3, pattern: FORWARD_ARC_PATTERN, slots: 1 },
     // The crowd answer: the only weapon that hits EVERY adjacent contact
     // at once, so being surrounded stops being a death sentence. Pricey
     // per shot (3 against +1/cycle = a shot every third round) and a fat
@@ -617,8 +615,15 @@
   // sector (Clubhouse feedback: "what about different options and
   // different weapons... you have to pay for them"). Priced above every
   // other offer — a whole new permanent weapon, not just a stat bump.
+  // Patching is deliberately NOT the cheapest thing on the shelf. At two
+  // salvage a hull point it was the most efficient purchase in the game
+  // by a distance, and a pilot that simply bought patches every visit and
+  // shot everything it met beat every other way of playing — which makes
+  // the shop a formality rather than a decision. Five is still the thing
+  // you buy when you're hurt; it is no longer the thing you buy instead of
+  // thinking.
   const OUTPOST_OFFER_POOL = [
-    { id: "repair", label: "Repair 1 Hull", cost: 2 },
+    { id: "repair", label: "Patch 1 Hull", cost: 5 },
     { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 10 },
     // Shields aren't consumable purchases anymore — you buy the GENERATOR
     // (permanent +1 capacity, arrives raised), then re-raising a spent
@@ -635,7 +640,7 @@
     // the item a hostile class already carries (buy the gun that's been
     // shooting at you).
     { id: "flakBurst", label: "Flak Burst (2x2 — hits every adjacent contact)", cost: 10 },
-    { id: "arcBeam", label: "Arc Beam (2x2 — range 2, kill them on approach)", cost: 12 },
+    { id: "arcBeam", label: "Arc Beam (2x2 — range 2, kill them on approach)", cost: 8 },
     { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 24 },
   ];
 
@@ -701,6 +706,14 @@
     return picked;
   }
 
+  // The Bulwark's own station is the one shop in the crawl that isn't a
+  // gamble: it is parked directly before the fight the whole run has been
+  // heading toward, and arriving with salvage you can't spend is a bad
+  // way to lose. Patches, a screen, and the heavy gun — always.
+  function bossOutpostOfferIds() {
+    return ["repair", "shield", "railgun"];
+  }
+
   // Placed only when carryOver says a previous sector exists to return to
   // (see createGameState below) — an in-world object, not a UI button
   // (Clubhouse feedback: "it should be, like... a wormhole sort of thing").
@@ -721,6 +734,33 @@
     );
     if (!candidates.length) return null;
     return candidates[Math.floor(rng() * candidates.length)];
+  }
+
+  // ---- can this board be crossed? ----------------------------------------
+  // Worth writing down, because it was got wrong once: a fixed gun's kill
+  // zone is NOT a wall. Every emplacement in the game costs more to fire
+  // than its reactor makes in a round — a Sentry's beam is 2 against +1,
+  // a Railgun's slug 4 — so every zone blinks. Crossing one is a question
+  // of WHEN, not whether, and the answer is on the contact's own scan
+  // card: CHARGING 2/4 means two more rounds of free passage.
+  //
+  // An earlier version of this file treated those zones as permanent and
+  // "guaranteed" a lane around them. On a 9x11 board a single Railgun's
+  // six lanes radiate into wedges you can't get between, so that rule
+  // decided every board with a Destroyer on it was unsolvable and quietly
+  // replaced the Destroyer with a cruiser. The lanes ARE the design; the
+  // timing is the puzzle.
+  function staticKillZones(state) {
+    const zone = new Set();
+    for (const enemy of livingEnemies(state)) {
+      const def = ENEMY_TYPES[enemy.type];
+      if (!def || def.movesTowardPlayer) continue;
+      if (enemy.energy < def.weapon.energyCost) continue; // discharged: this is the gap you cross in
+      for (const hex of weaponHexes(enemy, 0, def.weapon, state)) {
+        if (onBoard(state, hex)) zone.add(hexKey(hex));
+      }
+    }
+    return zone;
   }
 
   function createGameState(level, carryOver) {
@@ -766,7 +806,9 @@
       theme: level.theme || null,
       outpostPos: level.outpost ? { q: level.outpost.q, r: level.outpost.r } : null,
       outpostOfferIds: level.outpost
-        ? pickOutpostOfferIds(level.id, [...hold.items.map((it) => it.id), ...hold.cargo])
+        ? level.isBoss
+          ? bossOutpostOfferIds()
+          : pickOutpostOfferIds(level.id, [...hold.items.map((it) => it.id), ...hold.cargo])
         : [],
       exitRule: level.exitRule,
       exitUnlocked: false,
@@ -1496,6 +1538,7 @@
     createGameState,
     setFacing,
     computeThreatHexes,
+    staticKillZones,
     applySublight,
     applyFire,
     armedWeaponsFor,

@@ -66,7 +66,24 @@ function bestShot(state) {
 // uniform-cost search over the whole board where a threatened hex simply
 // costs a lot more than a clear one, so detours win whenever a detour
 // exists and the direct line still wins when it doesn't.
-const THREAT_COST = 12; // a long detour beats a single hit — hull is the scarcest thing in the game
+// HOW WELL THE SHIP IS FLOWN. The point of the harness is no longer "what
+// is the win rate" — it's whether SKILL is the deciding variable. A run
+// should come apart because of decisions (bought the wrong thing, took
+// the wrong fight, walked the wrong lane), not because of the deal. So
+// the same game gets played by three different pilots and the spread
+// between them is the answer:
+//
+//   careful  — routes wide of every kill zone, lets chasers come to it,
+//              keeps a screen up, banks salvage for reach.
+//   greedy   — kills everything it can reach, buys whatever is cheapest
+//              the moment it can afford anything.
+//   reckless — beelines the gate, never shops, never waits.
+//
+// If careful wins and the other two don't, the game rewards knowing how
+// to play it. If nobody wins, it's unfair. If everybody wins, it's flat.
+const PILOT = process.env.PILOT || "careful";
+const CARE = { careful: 6, greedy: 4, reckless: 0 }[PILOT]; // detours cost rounds, and rounds let chasers close — caution has a price too
+const THREAT_COST = CARE; // a detour beats a hit — hull is the scarcest thing in the game
 
 function routeStep(state, goal) {
   const startKey = Engine.hexKey(state.playerPos);
@@ -75,6 +92,13 @@ function routeStep(state, goal) {
   const blocked = new Set();
   for (const e of Engine.livingEnemies(state)) blocked.add(Engine.hexKey(e));
   for (const h of state.hazards || []) blocked.add(Engine.hexKey(h)); // asteroid fields are impassable
+  // A fixed gun's zone is only dangerous while the gun is CHARGED, and
+  // every emplacement in the game costs more to fire than it makes in a
+  // round — so each zone blinks, and staticKillZones only reports the
+  // ones that are live right now. A pilot who reads the charge counters
+  // routes around what's hot and walks through what's spent; one who
+  // doesn't pays a hull for the shortcut. That timing is the puzzle.
+  const emplaced = PILOT === "careful" ? Engine.staticKillZones(state) : new Set();
 
   const dist = new Map([[startKey, 0]]);
   const firstStep = new Map();
@@ -91,7 +115,7 @@ function routeStep(state, goal) {
     for (const nb of Engine.neighbors(cur)) {
       const key = Engine.hexKey(nb);
       if (!Engine.onBoard(state, nb) || blocked.has(key)) continue;
-      const step = 1 + (threats.has(key) ? THREAT_COST : 0);
+      const step = 1 + (threats.has(key) ? THREAT_COST : 0) + (emplaced.has(key) ? 60 : 0);
       const next = dist.get(curKey) + step;
       if (dist.has(key) && dist.get(key) <= next) continue;
       dist.set(key, next);
@@ -115,14 +139,37 @@ function routeStep(state, goal) {
 // salvage spent on a trinket is salvage not spent on the gun that answers
 // the thing killing you — so the pilot banks rather than dribbles.
 function shop(state, report) {
+  if (PILOT === "reckless") return; // never docks, never spends
   const buy = (id) => {
     Engine.applyOutpostPurchase(state, id);
     report.purchases[id] = (report.purchases[id] || 0) + 1;
   };
   const has = (id) => Engine.outpostOffers(state).some((o) => o.id === id && o.affordable);
 
-  // 1. A hull you can fight with, before anything else.
-  while (state.hull < Math.ceil(state.maxHull * 0.6) && has("repair")) buy("repair");
+  // 1. A hull you can fight with, before anything else — and at the last
+  //    station before the Bulwark, every point of it. There is nothing
+  //    after this to save for.
+  const lastStop = state.isBoss;
+  const floor = lastStop ? state.maxHull : Math.ceil(state.maxHull * 0.6);
+  while (state.hull < floor && has("repair")) buy("repair");
+
+  // A greedy pilot buys the first thing it can afford, every time — which
+  // is exactly how a run ends up at depth 9 with a full hull, a reactor
+  // upgrade, and nothing that can answer what's shooting at it.
+  if (PILOT === "greedy") {
+    let spent = true;
+    while (spent) {
+      spent = false;
+      for (const offer of Engine.outpostOffers(state)) {
+        if (!offer.affordable || !offer.applicable) continue;
+        buy(offer.id);
+        spent = true;
+        break;
+      }
+    }
+    fitFromCargo(state, report);
+    return;
+  }
 
   // 2. A second gun. Until there is one, everything else waits — this is
   //    the single biggest determinant of how deep a run gets.
@@ -152,6 +199,10 @@ function shop(state, report) {
     // Reach before breadth now that a turn fires one gun: the Arc Beam
     // hits things a hex before they reach contact, where another mount is
     // only ever more coverage of ground you already cover.
+    // Reach first, and everything else after. Buying the crowd answer
+    // early was tried and it's a trap: the Flak Burst costs salvage the
+    // ship needs for reach and three charge a shot out of six, and runs
+    // that led with it finished a third as often.
     for (const id of ["arcBeam", "railgun", "shield", "hardpoint", "reinforce", "reactor", "flakBurst"]) {
       if (has(id)) buy(id);
     }
@@ -170,8 +221,12 @@ function shop(state, report) {
     }
   }
 
-  // A weapon that landed in cargo is dead weight — fit anything that fits
-  // now (this is the tap-a-cargo-chip path in the real Hold UI).
+  fitFromCargo(state, report);
+}
+
+// A weapon that landed in cargo is dead weight — fit anything that fits
+// now (this is the tap-a-cargo-chip path in the real Hold UI).
+function fitFromCargo(state, report) {
   for (let i = state.hold.cargo.length - 1; i >= 0; i--) {
     const id = state.hold.cargo[i];
     let placed = false;
@@ -226,8 +281,22 @@ function playSector(state, report) {
     const threatened = threats.has(Engine.hexKey(state.playerPos));
 
     // Shoot whatever is already in reach — anything close enough to hit is
-    // close enough to hit you back.
-    const shot = bestShot(state);
+    // close enough to hit you back. A careful pilot doesn't open fire on
+    // something it could simply walk away from: shooting costs the round
+    // AND leaves you standing where you are, which is the single most
+    // common way a good position turns into a bad one.
+    // Skill is NOT caution. A pilot that skips fights arrives at depth 8
+    // with a clean hull, no salvage and a starting gun — measured, it beat
+    // exactly nothing. Skill is taking the fights you WIN: a shot that
+    // kills outright, or a trade you can afford, and leaving the rest.
+    const raw = bestShot(state);
+    const worthIt =
+      !raw ||
+      PILOT !== "careful" ||
+      raw.enemy.hp <= raw.weapon.damage || // it dies this round: always take it
+      threatened || // already in its zone — trading beats standing there
+      state.hull > 1; // can afford the reply; at one Hull, don't start anything
+    const shot = PILOT === "reckless" ? null : worthIt ? raw : null;
     if (process.env.VERBOSE === "2") {
       console.log(
         `    r${round} pos ${state.playerPos.q},${state.playerPos.r} hull ${state.hull} e ${state.energy}` +
@@ -257,13 +326,33 @@ function playSector(state, report) {
 
     // Chasers are coming whether we like it or not: hold one hex outside
     // their reach and let them close, so the kill lands in OUR phase.
+    // (A reckless pilot never waits — that's the whole difference.)
     // Emplacements are the opposite — they never move, so there is no
     // "wait" that helps, only a decision to engage or route around.
     const chasers = enemies.filter((e) => Engine.ENEMY_TYPES[e.type].movesTowardPlayer);
     const nearestChaser = chasers.reduce((best, e) =>
       !best || Engine.hexDistance(state.playerPos, e) < Engine.hexDistance(state.playerPos, best) ? e : best
     , null);
-    if (nearestChaser && !threatened && healthy && Engine.hexDistance(state.playerPos, nearestChaser) <= 3) {
+    // Don't take a fight standing inside a fixed gun's ring. Chasers come
+    // to you wherever you are, so pick the ground: step clear first, THEN
+    // let them arrive. This is most of what separates a run that ends at
+    // depth 9 from one that finishes.
+    // Never take a fight standing where a charged emplacement can reach.
+    // Chasers come to you wherever you are, so pick the ground first.
+    const zones = Engine.staticKillZones(state);
+    if (PILOT === "careful" && zones.has(Engine.hexKey(state.playerPos)) && nearestChaser) {
+      const clear = Engine.legalSublightTargets(state).filter((h) => !zones.has(Engine.hexKey(h)));
+      if (clear.length) {
+        Engine.applySublight(
+          state,
+          clear.reduce((best, cand) =>
+            !best || Engine.hexDistance(cand, state.exitPos) < Engine.hexDistance(best, state.exitPos) ? cand : best
+          , null)
+        );
+        continue;
+      }
+    }
+    if (PILOT !== "reckless" && nearestChaser && !threatened && healthy && Engine.hexDistance(state.playerPos, nearestChaser) <= 3) {
       if (state.energy < state.maxEnergy) {
         Engine.applyRecharge(state);
         report.recharges++;

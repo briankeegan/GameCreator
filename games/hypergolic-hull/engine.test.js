@@ -564,11 +564,11 @@ assert.ok(
   "from range, its nose still points at the hex that closes the gap"
 );
 const aimedHexes = Engine.weaponHexes(interceptorPos, 0, interceptorWeapon);
-assert.strictEqual(aimedHexes.length, 6, "its Autocannon covers the same three lanes, two deep, that yours does");
+assert.strictEqual(aimedHexes.length, 3, "its Autocannon covers the same three-hex arc yours does");
 assert.ok(!aimedHexes.some((h) => Engine.posEq(h, interceptorPos)), "a weapon never threatens its own hex");
 assert.ok(
-  aimedHexes.every((h) => Engine.hexDistance(h, interceptorPos) <= 2),
-  "and nothing it reaches is more than two hexes out"
+  aimedHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
+  "and it has to be in contact to use it — reach is a thing you BUY"
 );
 
 // The Autocannon covers the three hexes off the NOSE, not the full ring
@@ -577,13 +577,14 @@ assert.ok(
 // sold on.
 const pulseCannon = Engine.WEAPONS.autocannon;
 const autocannonHexes = Engine.weaponHexes(interceptorPos, 0, pulseCannon);
-// Three lanes, two deep. The reach is what makes a three-Hull ship
-// playable — you can hit a chaser the hex BEFORE it reaches contact —
-// and the narrow arc is what stops it from answering everything.
-assert.strictEqual(autocannonHexes.length, 6, "the Autocannon covers three lanes, two deep — an arc, not a ring");
+// Three hexes off the nose, in contact. A starting gun that reached two
+// was tried and it made the whole shop redundant — a pilot that just shot
+// everything with it won two runs in three and never bought anything.
+// REACH is the purchase; this is the thing you make do with until then.
+assert.strictEqual(autocannonHexes.length, 3, "the Autocannon covers three hexes — a contact arc, not a ring");
 assert.ok(
-  autocannonHexes.every((h) => Engine.hexDistance(h, interceptorPos) <= 2),
-  "and nothing further than two out"
+  autocannonHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
+  "every hex it reaches is exactly one out"
 );
 // Whatever is directly BEHIND you is untouchable with it — that's the hole.
 const behind = Engine.weaponHexes(interceptorPos, 3, pulseCannon);
@@ -641,8 +642,19 @@ const sentryLevel = {
   actions: ["sublight"], // no flagship weapons, so the Sentry lives to fire back
 };
 const sentryState = Engine.createGameState(sentryLevel);
+// A board is guaranteed to have a lane past its fixed guns (see
+// openALane), which can move an emplacement off a choke point — so read
+// where this one actually ended up rather than assuming the authored hex.
 const sentryStart = { q: sentryState.enemies[0].q, r: sentryState.enemies[0].r };
-Engine.applySublight(sentryState, { q: 2, r: 4 }); // distance 3 — still out of the beam
+const stepAt = (dist) =>
+  sentryState.boardHexes.find(
+    (h) =>
+      Engine.hexDistance(h, sentryStart) === dist &&
+      Engine.legalSublightTargets(sentryState).some((l) => Engine.posEq(l, h))
+  );
+sentryState.playerPos = sentryState.boardHexes.find((h) => Engine.hexDistance(h, sentryStart) === 4);
+const safeStep = stepAt(3);
+Engine.applySublight(sentryState, safeStep); // distance 3 — still out of the beam
 assert.strictEqual(sentryState.status, "playing", "stepping to distance 3 is safe — the beam only reaches 2");
 assert.deepStrictEqual(
   { q: sentryState.enemies[0].q, r: sentryState.enemies[0].r },
@@ -650,7 +662,7 @@ assert.deepStrictEqual(
   "the Sentry does not move to chase — it holds its hex"
 );
 const hullBeforeBeam = sentryState.hull;
-Engine.applySublight(sentryState, { q: 2, r: 3 }); // distance 2 — into the beam
+Engine.applySublight(sentryState, stepAt(2)); // into the beam
 assert.strictEqual(sentryState.hull, hullBeforeBeam - 1, "entering the Sentry's 2-hex ring takes a hit");
 assert.ok(sentryState.events.some((e) => e.type === "attack"), "the Sentry's shot emits an attack event");
 
@@ -681,7 +693,15 @@ const railgunStart = { q: railgunState.enemies[0].q, r: railgunState.enemies[0].
 // test the range/axis geometry itself.
 railgunState.enemies[0].energy = Engine.WEAPONS.railgun.energyCost;
 const hullBeforeRailgun = railgunState.hull;
-Engine.applySublight(railgunState, { q: 2, r: 4 }); // still distance 3, but already aligned — the long shot reaches it
+// Park the ship three out on one of the Railgun's own axes, wherever the
+// lane guarantee ended up putting it, then take a step along that lane.
+const railgunLane = Engine.weaponHexes(railgunStart, 0, Engine.WEAPONS.railgun, railgunState).filter((h) =>
+  Engine.onBoard(railgunState, h)
+);
+const standOff = railgunLane.find((h) => Engine.hexDistance(h, railgunStart) === 4);
+const intoLine = railgunLane.find((h) => Engine.hexDistance(h, railgunStart) === 3);
+railgunState.playerPos = { q: standOff.q, r: standOff.r };
+Engine.applySublight(railgunState, intoLine); // three out and aligned — the long shot reaches it
 assert.strictEqual(
   railgunState.hull,
   hullBeforeRailgun - Engine.WEAPONS.railgun.damage,
@@ -697,8 +717,30 @@ assert.deepStrictEqual(
 const railgunOffAxisLevel = { ...railgunLevel, id: 996, playerStart: { q: 0, r: 5 } };
 const railgunOffAxisState = Engine.createGameState(railgunOffAxisLevel);
 railgunOffAxisState.enemies[0].energy = Engine.WEAPONS.railgun.energyCost; // charged, so the miss below is about geometry, not energy
+const offAxisGun = railgunOffAxisState.enemies[0];
+const offAxisLine = new Set(
+  Engine.weaponHexes(offAxisGun, 0, Engine.WEAPONS.railgun, railgunOffAxisState).map(Engine.hexKey)
+);
+// Somewhere close to it but on none of its six lanes.
+const offLane = railgunOffAxisState.boardHexes.filter(
+  (h) => !offAxisLine.has(Engine.hexKey(h)) && !Engine.enemyAt(railgunOffAxisState, h)
+);
+// Two adjacent hexes, both off every lane, as close to the gun as the
+// board allows — so the step below is a move it watches and cannot hit.
+let offAxisPerch = null;
+let offAxisStep = null;
+for (const a of offLane) {
+  const b = offLane.find((h) => Engine.hexDistance(h, a) === 1);
+  if (!b) continue;
+  if (!offAxisPerch || Engine.hexDistance(a, offAxisGun) < Engine.hexDistance(offAxisPerch, offAxisGun)) {
+    offAxisPerch = a;
+    offAxisStep = b;
+  }
+}
+assert.ok(offAxisPerch && offAxisStep, "the board has somewhere off every lane to stand");
+railgunOffAxisState.playerPos = { q: offAxisPerch.q, r: offAxisPerch.r };
 const hullBeforeOffAxis = railgunOffAxisState.hull;
-Engine.applySublight(railgunOffAxisState, { q: 0, r: 4 });
+Engine.applySublight(railgunOffAxisState, offAxisStep);
 assert.strictEqual(
   railgunOffAxisState.hull,
   hullBeforeOffAxis,
@@ -1303,14 +1345,17 @@ assert.strictEqual(energyState.energy, energyBeforeEmptyTurn, "a MOVE turn touch
 // hits for 2 — the design doc's "telegraphs the line" made real through
 // the shared system, and it's the same item you can buy for 30 salvage.
 
+// Roomy enough that the lane guarantee (see openALane) has no reason to
+// touch the emplacement — this fixture is about the charge rhythm, and a
+// board where the gun's lanes cover every approach is a different test.
 const railgunEnergyLevel = {
   id: 988,
   name: "railgun energy fixture",
-  board: { type: "rect", cols: 5, rows: 8 },
-  playerStart: { q: 2, r: 5 },
-  exit: { q: 4, r: -2 },
+  board: { type: "rect", cols: 9, rows: 11 },
+  playerStart: { q: 4, r: 8 },
+  exit: { q: 8, r: -4 },
   outpost: null,
-  enemies: [{ type: "railgun", q: 2, r: 0 }], // same column: on-axis, in range from spawn
+  enemies: [{ type: "railgun", q: 4, r: 3 }], // same column: on-axis, in range from spawn
   hazards: [],
   exitRule: "all-enemies-dead",
 };
@@ -1384,21 +1429,16 @@ assert.strictEqual(tradeState.turnCount, 2, "the exchange took two full rounds")
 // spends its round closing, and fires the round it can.
 const closerState = Engine.createGameState({ ...initiativeLevel, id: 984 });
 closerState.enemies[0].q = 2;
-closerState.enemies[0].r = 2; // distance 3 — past its Autocannon's two
-Engine.applyEndTurn(closerState); // hold: its phase spends its one point moving
+closerState.enemies[0].r = 3; // distance 2 — outside a contact weapon's reach
+Engine.applyEndTurn(closerState); // hold: its phase spends its one point closing
 assert.strictEqual(
-  Engine.hexDistance(closerState.enemies[0], closerState.playerPos),
-  2,
+  Engine.isAdjacent(closerState.enemies[0], closerState.playerPos),
+  true,
   "the chaser closed a hex"
 );
 assert.strictEqual(closerState.hull, Engine.START_HULL, "moving was its whole turn — no shot yet");
-Engine.applyEndTurn(closerState); // hold again: now it shoots from two out
+Engine.applyEndTurn(closerState); // hold again: now it fires
 assert.strictEqual(closerState.hull, Engine.START_HULL - 1, "the following round it spends its point on the shot");
-assert.strictEqual(
-  Engine.hexDistance(closerState.enemies[0], closerState.playerPos),
-  2,
-  "and it never had to reach contact to do it — the Autocannon reaches two on both sides of the fight"
-);
 
 // A cost-1 enemy is unchanged by the energy system: it fires every turn.
 const chaserEnergyLevel = {
@@ -1414,11 +1454,9 @@ const chaserEnergyLevel = {
   actions: ["sublight"], // no Autocannon — let it survive to attack repeatedly
 };
 const chaserEnergyState = Engine.createGameState(chaserEnergyLevel);
-// It spawns two out, which is already inside its own Autocannon's reach,
-// so it opens fire immediately and keeps firing: a cost-1 gun against a
-// +1/round regen never has a charge gap.
+Engine.applyEndTurn(chaserEnergyState); // its phase: closes to contact — that's its whole turn
 Engine.applyEndTurn(chaserEnergyState); // strike 1
-Engine.applyEndTurn(chaserEnergyState); // strike 2
+Engine.applyEndTurn(chaserEnergyState); // strike 2 — a cost-1 gun against +1/round never has a charge gap
 assert.strictEqual(chaserEnergyState.hull, Engine.START_HULL - 2, "a cost-1 chaser fires every round once in reach — no charge gap");
 
 // ---- Asteroid fields: genuinely impassable terrain, distinct from a ------
