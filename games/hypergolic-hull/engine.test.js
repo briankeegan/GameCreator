@@ -1143,6 +1143,65 @@ assert.deepStrictEqual(
   "all four weapons exist in the world on enemy ships — one class per weapon"
 );
 
+// ---- maps as PLACES -----------------------------------------------------
+// A sector should be somewhere, not a numbered room: its own colour of
+// space, its own furniture, its own reasons to go there — and a fork worth
+// thinking about. Come back through a wormhole four jumps later and the
+// board should tell you where you are before any text does.
+{
+  const seen = new Map();
+  let oneWayOut = 0;
+  let docks = 0;
+  let sectors = 0;
+  for (let depth = 5; depth <= 30; depth++) {
+    for (const variant of ["aggressive", "quiet", "drift"]) {
+      const level = generateLevel(depth, variant);
+      assert.ok(level.locale && level.locale.name, `depth ${depth} knows where it is`);
+      // The boss is the one sector that doesn't fork — both roads converge
+      // on it, which is the point of it.
+      if (level.isBoss) continue;
+      sectors++;
+      assert.ok(level.exits.length >= 2, `depth ${depth} always forks — a single exit is a corridor`);
+      if (level.exits.length < 3) oneWayOut++;
+      if (level.outpost) docks++;
+      seen.set(level.locale.id, (seen.get(level.locale.id) || 0) + 1);
+      // Nothing parked on the doorstep: every gate is a real crossing.
+      for (const gate of level.exits) {
+        assert.ok(
+          Engine.hexDistance(level.playerStart, gate) >= 6,
+          `depth ${depth}: gate ${gate.variantId} is a proper distance from where you come in`
+        );
+      }
+    }
+  }
+  assert.ok(seen.size >= 5, "the crawl visits genuinely different kinds of space, not one with a hue shift");
+  assert.ok(oneWayOut < sectors * 0.4, "three-way forks are the common case, not the exception");
+  // Not every sector trades — a dry stretch is a real thing that happens,
+  // and a reason to take the other gate.
+  assert.ok(docks < sectors * 0.75, "docks are not guaranteed everywhere");
+  assert.ok(docks > sectors * 0.25, "...but the crawl isn't a desert either");
+}
+
+// A locale is a real difference, not a paint job: what's out there changes
+// what the sector is made of.
+{
+  const tally = {};
+  for (let depth = 5; depth <= 40; depth++) {
+    const level = generateLevel(depth, "quiet");
+    const t = (tally[level.locale.id] = tally[level.locale.id] || { rocks: 0, foes: 0, n: 0 });
+    t.rocks += level.hazards.length;
+    t.foes += level.enemies.length;
+    t.n++;
+  }
+  const ids = Object.keys(tally);
+  assert.ok(ids.length >= 3, "a decent spread of locales shows up across a run's worth of depths");
+  const rockRates = ids.map((id) => tally[id].rocks / tally[id].n);
+  assert.ok(
+    Math.max(...rockRates) - Math.min(...rockRates) >= 1,
+    "different places genuinely have different amounts of cover in them"
+  );
+}
+
 // ---- procedural depth: the run never hard-stops past the campaign -------
 // generateLevel(depth) must produce a valid LevelDef for a wide range of
 // depths — validateLevel (run inside createGameState) throws if anything's

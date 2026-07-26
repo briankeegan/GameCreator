@@ -186,6 +186,119 @@
   // seven of escalating crawl, then the Bulwark — and it stays a real
   // achievement rather than a theoretical one. The crawl still continues
   // past it, purely procedural, for anyone chasing depth.
+  // ---- WHERE YOU ARE ------------------------------------------------------
+  // Sectors are places, not numbered rooms. Each one belongs to a LOCALE:
+  // its own colour of space, its own furniture (a planet's limb, a dust
+  // shoal, a wreck field), its own hex scale — and its own reasons to go
+  // there or avoid it. The point is recognition. Come back through a
+  // wormhole three jumps later and the board should say "the shoals" before
+  // you've read a word of text.
+  //
+  // Every locale pulls its weight mechanically as well as visually, so
+  // picking a gate is a real choice and not just a colour preference:
+  //   hazardDelta    — asteroid fields. Cover from a Railgun's lanes, and
+  //                    walls that break up a chase.
+  //   enemyDelta     — how crowded it is.
+  //   outpostDelta   — whether anybody trades out here.
+  //   salvageDelta   — what a wreck is worth in this part of space.
+  //   zoom           — hex scale. Some places are tight and close; none is
+  //                    ever pulled further out than the standard board.
+  const LOCALES = [
+    {
+      id: "shoals",
+      name: "Dust Shoals",
+      blurb: "Thick with dust. Good cover, poor visibility.",
+      hazardDelta: 2,
+      enemyDelta: -1,
+      outpostDelta: -0.1,
+      salvageDelta: 0,
+      zoom: 1,
+      hue: 34,
+      sat: 40,
+      feature: "dust",
+    },
+    {
+      id: "shallows",
+      name: "Planetary Shallows",
+      blurb: "A world's limb fills half the sky. Traffic, and things that prey on it.",
+      hazardDelta: 0,
+      enemyDelta: 1,
+      outpostDelta: 0.15,
+      salvageDelta: 1,
+      zoom: 1.12,
+      hue: 205,
+      sat: 45,
+      feature: "planet",
+    },
+    {
+      id: "void",
+      name: "The Deep",
+      blurb: "Nothing out here. Nothing to hide behind either.",
+      hazardDelta: -2,
+      enemyDelta: 0,
+      outpostDelta: -0.25,
+      salvageDelta: 1,
+      zoom: 1,
+      hue: 240,
+      sat: 30,
+      feature: "void",
+    },
+    {
+      id: "belt",
+      name: "The Breakers",
+      blurb: "A shipping lane that didn't make it. Scrappers work this stretch.",
+      hazardDelta: 1,
+      enemyDelta: 0,
+      outpostDelta: 0.3,
+      salvageDelta: 2,
+      zoom: 1.08,
+      hue: 18,
+      sat: 50,
+      feature: "wrecks",
+    },
+    {
+      id: "storm",
+      name: "Ion Front",
+      blurb: "The whole sky is charged. Everything out here is running hot.",
+      hazardDelta: 0,
+      enemyDelta: 1,
+      outpostDelta: -0.15,
+      salvageDelta: 1,
+      zoom: 1,
+      hue: 285,
+      sat: 55,
+      feature: "storm",
+    },
+    {
+      id: "graveyard",
+      name: "The Cold Yard",
+      blurb: "Hulls older than the war, still holding formation.",
+      hazardDelta: 2,
+      enemyDelta: -1,
+      outpostDelta: 0,
+      salvageDelta: 3,
+      zoom: 1.15,
+      hue: 160,
+      sat: 35,
+      feature: "hulks",
+    },
+  ];
+
+  // Which locale a sector is depends on the depth AND the gate you came
+  // through, so the same depth reached two ways is two different places —
+  // and so a gate can honestly advertise where it goes (see localeAhead).
+  function localeFor(depth, variantId) {
+    const rng = seededRandom(depth * 6151 + (variantId ? variantId.length * 977 : 0) + (variantId || "x").charCodeAt(0) * 31);
+    return LOCALES[Math.floor(rng() * LOCALES.length)];
+  }
+
+  // What lies through a given gate of a given sector — the Map and the
+  // gate itself read this, so "why would I go left" has an answer before
+  // you commit to it.
+  function localeAhead(depth, variantId) {
+    return depth + 1 === BOSS_DEPTH ? { id: "bulwark", name: "The Bulwark", blurb: "It's waiting." } : localeFor(depth + 1, variantId);
+  }
+
   const BOSS_DEPTH = 12;
 
   function bossLevel(depth) {
@@ -216,7 +329,20 @@
         { type: "asteroid", q: 7, r: 0 },
       ],
       exitRule: "all-enemies-dead",
-      theme: { variant: "boss", band: Math.floor(depth / 5) },
+      // The most recognisable place in the run, and the only one you meet
+      // once: iron and old blood, tight in, wrecks of everything that tried
+      // this before you.
+      locale: {
+        id: "bulwark",
+        name: "The Bulwark",
+        blurb: "Iron and old blood. Everything that tried this before us is still here.",
+        hue: 6,
+        sat: 40,
+        feature: "hulks",
+        zoom: 1.1,
+      },
+      salvageBonus: 2,
+      theme: { variant: "boss", band: Math.floor(depth / 5), locale: "bulwark" },
       intro: "The Bulwark. Last station is right there — take what we can carry.",
     };
   }
@@ -237,6 +363,9 @@
     // depth deal genuinely different boards, not just different enemy
     // counts off the same layout.
     const variant = BRANCH_VARIANTS.find((v) => v.id === variantId) || null;
+    // WHERE this sector is — drives its look, its furniture, and how much
+    // of everything it has (see LOCALES).
+    const locale = localeFor(depth, variantId);
     const variantSeedOffset = variant ? (BRANCH_VARIANTS.indexOf(variant) + 1) * 104729 : 0;
     const rng = seededRandom(depth * 2654435761 + variantSeedOffset);
 
@@ -257,22 +386,20 @@
     // top-left — the drift route. (Top of column 2, not the true corner:
     // the (0,0) corner is the Outpost's fixed berth.) 2- and 3-way forks
     // mixing is what makes the chart read as a maze instead of a ladder.
-    if (rng() < 0.55) exits.push({ q: 2, r: -1, variantId: "drift" });
+    // A fork is the whole point of a chart. Two ways out is the floor,
+    // three is the common case — a sector with one exit is a corridor.
+    if (rng() < 0.8) exits.push({ q: 2, r: -1, variantId: "drift" });
     const exit = exits[0]; // primary/first gate — every non-branching call site reads this
     // Not every sector gets an Outpost — a guaranteed safe restock every
-    // single time made the crawl "too easy and not very interesting"
-    // (Clubhouse feedback). ~60% of generated sectors have one, shifted by
-    // the incoming variant's bias.
-    const outpostChance = Math.min(0.9, Math.max(0.1, 0.6 + (variant ? variant.outpostChanceDelta : 0)));
-    // ...but there is ALWAYS a dock within three jumps. Hull damage is
-    // permanent, so a dry stretch of four or five sectors isn't difficulty,
-    // it's just a run bleeding out with nothing it can do about it.
-    // A dock at least every OTHER sector. Hull damage is permanent and the
-    // only repair is a dock, so a three-sector dry stretch isn't tension —
-    // it's a run that already ended and hasn't been told yet. Playtesting
-    // ran into exactly that: dying at depth 5 with 13 salvage in the hold
-    // and no shelf to spend it on since depth 3.
-    const hasOutpost = depth % 2 === 0 || rng() < outpostChance;
+    // Not every sector trades. Somebody has to actually be out here, and
+    // that's a property of WHERE you are: scrappers work the Breakers,
+    // nobody is selling anything in the Deep. A dry stretch is a real
+    // thing that happens to a run, and a reason to take the other gate.
+    const outpostChance = Math.min(
+      0.85,
+      Math.max(0.05, 0.42 + (variant ? variant.outpostChanceDelta : 0) + locale.outpostDelta)
+    );
+    const hasOutpost = rng() < outpostChance;
     const outpost = hasOutpost ? { q: 0, r: 0 } : null;
 
     const hexes = [];
@@ -296,7 +423,10 @@
     // isBlockingHazard), not just more enemies — so "not every square is
     // always the same" (Clubhouse feedback). Kept away from both exits and
     // the Outpost so a run can never get its goal fully walled off.
-    const hazardCount = Math.max(0, Math.min(1 + Math.floor(depth / 4) + (variant ? variant.hazardDelta : 0), 4));
+    const hazardCount = Math.max(
+      0,
+      Math.min(1 + Math.floor(depth / 4) + (variant ? variant.hazardDelta : 0) + locale.hazardDelta, 6)
+    );
     const hazards = [];
     for (const hex of candidates) {
       if (hazards.length >= hazardCount) break;
@@ -314,7 +444,10 @@
     // Enemy counts were tuned against volleys, and left as they were the
     // crawl became unwinnable: forty full runs, zero finishes. Slower
     // ramp, lower ceiling.
-    const enemyCount = Math.max(1, Math.min(2 + Math.floor(depth / 4) + (variant ? variant.enemyDelta : 0), 5));
+    const enemyCount = Math.max(
+      1,
+      Math.min(2 + Math.floor(depth / 4) + (variant ? variant.enemyDelta : 0) + locale.enemyDelta, 5)
+    );
     // The Railgun Destroyer (long-range, board-spanning shot along its
     // axes) joins the roster at the same depth tier Cruiser/Sentry weight
     // increases — a genuinely new threat shape (line-up-from-across-the-
@@ -358,7 +491,7 @@
 
     return {
       id: depth,
-      name: `Deep Space — Depth ${depth}`,
+      name: `${locale.name} — Depth ${depth}`,
       board: { type: "rect", cols, rows },
       playerStart,
       exit,
@@ -372,8 +505,20 @@
       // sector's mood — warm/hostile for an aggressive gate, cool/calm
       // for a quiet one — and the depth band shifts the palette family so
       // deeper regions of space look like different places.
-      theme: { variant: variant ? variant.id : "neutral", band: Math.floor(depth / 5) },
-      intro: `Depth ${depth}. Nothing friendly out this far.`,
+      // Where this is, not just how deep — the renderer paints the whole
+      // backdrop off this and the Map labels the star with it.
+      locale: {
+        id: locale.id,
+        name: locale.name,
+        blurb: locale.blurb,
+        hue: locale.hue,
+        sat: locale.sat,
+        feature: locale.feature,
+        zoom: locale.zoom,
+      },
+      salvageBonus: locale.salvageDelta,
+      theme: { variant: variant ? variant.id : "neutral", band: Math.floor(depth / 5), locale: locale.id },
+      intro: `${locale.name}. ${locale.blurb}`,
     };
   }
 

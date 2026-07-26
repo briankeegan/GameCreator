@@ -335,14 +335,24 @@ function updateGeometry() {
   // pointy-top, where width used the SQRT3 factor and height used 2.
   const sxFromWidth = (availW - 2 * pad) / (maxX - minX + 2);
   const sxFromHeight = (availH - 2 * pad) / (maxY - minY + SQRT3 * HEX_RATIO);
-  const sx = Math.min(sxFromWidth, sxFromHeight);
-  const cssW = Math.round((maxX - minX + 2) * sx + 2 * pad);
-  const cssH = Math.round((maxY - minY + SQRT3 * HEX_RATIO) * sx + 2 * pad);
+  // Some places are tighter than others: a locale can pull the camera IN
+  // (never further out than the standard board — that reads as "smaller",
+  // not "bigger"), which is another way a sector announces where it is.
+  const zoom = state.locale && state.locale.zoom ? Math.max(1, state.locale.zoom) : 1;
+  const sx = Math.min(sxFromWidth, sxFromHeight) * zoom;
+  // The canvas takes the WHOLE area it's given and the board floats in the
+  // middle of it — the sky is the place, not a texture inside the grid's
+  // outline. Everything around the hexes is still this sector: its planet,
+  // its dust banks, its wrecks.
+  const boardW = (maxX - minX + 2) * sx;
+  const boardH = (maxY - minY + SQRT3 * HEX_RATIO) * sx;
+  const cssW = Math.round(Math.max(boardW + 2 * pad, Math.min(availW, 520)));
+  const cssH = Math.round(Math.max(boardH + 2 * pad, availH));
   geom = {
     sx,
     sy: sx * HEX_RATIO,
-    offX: pad + (1 - minX) * sx,
-    offY: pad + ((SQRT3 * HEX_RATIO) / 2 - minY) * sx,
+    offX: (cssW - boardW) / 2 + (1 - minX) * sx,
+    offY: (cssH - boardH) / 2 + ((SQRT3 * HEX_RATIO) / 2 - minY) * sx,
     w: cssW,
     h: cssH,
   };
@@ -1345,88 +1355,157 @@ function drawOutpost(center, r, now) {
   ctx.restore();
 }
 
-// Each sector gets its own deep-space mood — a tinted nebula wash plus a
-// sparse, sector-specific starfield — so the campaign visibly changes scenery
-// as you advance instead of every board reading identically (doubly so now
-// that sectors aren't one-way — a distinct look per sector is how you tell
-// where you are as you go back and forth). Colors are [core, edge] of a
-// radial gradient; the starfield is seeded per sector so it stays put
-// frame-to-frame rather than twinkling into new positions.
-// [coreTint, edgeTint, nebulaAccent] — the first two are the base wash; the
-// third is a big soft off-center glow layered on top so each sector has its
-// own unmistakable color of deep space, not just a barely-there tint.
+// ---- WHERE YOU ARE ------------------------------------------------------
+// The backdrop is the PLACE, and it fills the whole frame — the hex grid
+// floats on top of it as an overlay, rather than the old arrangement where
+// space was painted inside the board's silhouette and everything outside
+// was flat panel colour. Each locale (see levels.js LOCALES) paints its own
+// sky and its own furniture: a planet's limb, dust shoals, an old wreck
+// field. The point is recognition — come back through a wormhole four jumps
+// later and the board should tell you where you are before any text does.
 const SECTOR_BG = {
-  1: ["#0a1c2e", "#04090f", "rgba(40,180,200,0.18)"], // steel cyan — Shockwave
+  1: ["#0a1c2e", "#04090f", "rgba(40,180,200,0.18)"], // steel cyan — the Outer Reach
   2: ["#1b1233", "#080510", "rgba(150,70,230,0.22)"], // violet nebula
   3: ["#0a2622", "#03100e", "rgba(40,220,150,0.20)"], // toxic teal — Sentry country
-  4: ["#2c1024", "#0e0510", "rgba(230,60,110,0.22)"], // crimson-magenta — Full Fleet
+  4: ["#2c1024", "#0e0510", "rgba(230,60,110,0.22)"], // crimson-magenta — the Gauntlet
 };
-// Every sector past the hand-authored campaign gets its OWN deterministic
-// palette too, instead of just repeating Sector 1's blue forever — a
-// rotating hue keeps deep runs visually distinct sector to sector.
-// Clubhouse feedback: "unique backgrounds that look really cool per
-// sector... it's kind of lame background-wise right now [past the start]."
+
+function localeOf() {
+  return (state && state.locale) || null;
+}
+
 function backdropForLevel(levelId) {
+  const locale = localeOf();
+  if (locale) {
+    const accent = (locale.hue + 40) % 360;
+    return [
+      `hsl(${locale.hue}, ${locale.sat}%, 10%)`,
+      `hsl(${locale.hue}, ${Math.min(70, locale.sat + 12)}%, 3%)`,
+      `hsla(${accent}, ${Math.min(80, locale.sat + 25)}%, 55%, 0.22)`,
+    ];
+  }
   if (SECTOR_BG[levelId]) return SECTOR_BG[levelId];
-  // Gate color = destination mood ("when you're jumping into a color, it
-  // should kinda match that theme"): a sector reached through the warm/
-  // aggressive gate lives in warm hostile hues, the cool/quiet gate in
-  // cool calm ones, the boss in its own iron-grey-red. The depth band
-  // walks the base hue within each family, so depth 6 and depth 16 read
-  // as different regions of the same kind of space.
   const theme = state.theme;
   const rng = seededRandom(`bghue-${levelId}-${theme ? theme.variant : "x"}`);
-  const band = theme ? theme.band : 0;
-  let hue;
-  let sat = 45;
-  if (theme && theme.variant === "aggressive") {
-    hue = (350 + band * 18 + Math.floor(rng() * 14)) % 360; // reds → oranges, deeper = hotter
-    sat = 55;
-  } else if (theme && theme.variant === "quiet") {
-    hue = 185 + ((band * 16 + Math.floor(rng() * 14)) % 70); // teals → blues → indigos
-  } else if (theme && theme.variant === "drift") {
-    hue = 70 + ((band * 14 + Math.floor(rng() * 16)) % 60); // ambers → greens — drifting debris fields
-  } else if (theme && theme.variant === "boss") {
-    hue = 355;
-    sat = 30;
-  } else {
-    hue = Math.floor(rng() * 360); // neutral arrival — anything goes
-  }
-  const accentHue = (hue + 35 + Math.floor(rng() * 40)) % 360;
-  return [
-    `hsl(${hue}, ${sat}%, 9%)`,
-    `hsl(${hue}, ${sat + 10}%, 3%)`,
-    `hsla(${accentHue}, 70%, 55%, 0.20)`,
-  ];
+  const hue = Math.floor(rng() * 360);
+  return [`hsl(${hue}, 45%, 9%)`, `hsl(${hue}, 55%, 3%)`, `hsla(${(hue + 35) % 360}, 70%, 55%, 0.20)`];
 }
+
 const starCache = new Map();
-function starsFor(levelId, w, h) {
-  const key = `${levelId}:${w}x${h}`;
+function starsFor(levelId, w, h, density) {
+  const key = `${levelId}:${w}x${h}:${density}`;
   if (starCache.has(key)) return starCache.get(key);
   const rng = seededRandom(`stars-${key}`);
   const stars = [];
-  for (let i = 0; i < 90; i++) {
-    stars.push({ x: rng() * w, y: rng() * h, r: 0.4 + rng() * 1.3, a: 0.25 + rng() * 0.55 });
+  for (let i = 0; i < density; i++) {
+    stars.push({ x: rng() * w, y: rng() * h, r: 0.4 + rng() * 1.4, a: 0.2 + rng() * 0.6 });
   }
   starCache.set(key, stars);
   return stars;
 }
+
+// The furniture. Each locale draws one big recognisable thing plus its own
+// texture, all of it behind the grid and outside the board's edges too, so
+// the sector reads as a place the board is sitting IN.
+function drawLocaleFeature(feature, hue, sat) {
+  const w = geom.w;
+  const h = geom.h;
+  const rng = seededRandom(`feature-${state.levelId}-${feature}`);
+  ctx.save();
+  if (feature === "planet") {
+    // A world's limb, huge, cropped by the frame.
+    const cx = w * (rng() < 0.5 ? -0.15 : 1.15);
+    const cy = h * (0.15 + rng() * 0.5);
+    const r = h * (0.55 + rng() * 0.25);
+    const body = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.1, cx, cy, r);
+    body.addColorStop(0, `hsla(${hue}, ${sat + 20}%, 42%, 0.55)`);
+    body.addColorStop(0.65, `hsla(${hue}, ${sat + 10}%, 20%, 0.5)`);
+    body.addColorStop(1, `hsla(${hue}, ${sat}%, 6%, 0.15)`);
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    // Banding, so it reads as a gas giant rather than a circle.
+    ctx.globalAlpha = 0.18;
+    for (let i = 0; i < 6; i++) {
+      const band = cy - r + (r * 2 * (i + 0.5)) / 6;
+      ctx.fillStyle = `hsl(${(hue + i * 6) % 360}, ${sat + 15}%, ${28 + i * 4}%)`;
+      ctx.beginPath();
+      ctx.ellipse(cx, band, r * 0.98, r * 0.09, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (feature === "dust") {
+    // Shoals: soft banks of dust drifting across the whole frame.
+    for (let i = 0; i < 5; i++) {
+      const bx = rng() * w;
+      const by = rng() * h;
+      const br = h * (0.25 + rng() * 0.3);
+      const cloud = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+      cloud.addColorStop(0, `hsla(${hue + 10}, ${sat}%, 45%, 0.13)`);
+      cloud.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = cloud;
+      ctx.fillRect(0, 0, w, h);
+    }
+    ctx.globalAlpha = 0.5;
+    for (let i = 0; i < 60; i++) {
+      ctx.fillStyle = `hsla(${hue}, ${sat}%, 70%, ${0.05 + rng() * 0.12})`;
+      ctx.beginPath();
+      ctx.arc(rng() * w, rng() * h, 1 + rng() * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (feature === "wrecks" || feature === "hulks") {
+    // Somebody else's bad day, drifting. Hulks are bigger and colder.
+    const count = feature === "hulks" ? 5 : 9;
+    const scale = feature === "hulks" ? 1.9 : 1;
+    ctx.globalAlpha = feature === "hulks" ? 0.3 : 0.24;
+    for (let i = 0; i < count; i++) {
+      const x = rng() * w;
+      const y = rng() * h;
+      const len = (10 + rng() * 26) * scale;
+      const wide = (3 + rng() * 6) * scale;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rng() * Math.PI);
+      ctx.fillStyle = `hsl(${hue + 8}, ${Math.max(10, sat - 20)}%, ${22 + rng() * 14}%)`;
+      ctx.fillRect(-len / 2, -wide / 2, len, wide);
+      ctx.fillStyle = `hsl(${hue + 8}, ${Math.max(10, sat - 25)}%, ${14 + rng() * 8}%)`;
+      ctx.fillRect(-len / 2, -wide / 2, len * 0.3, wide);
+      ctx.restore();
+    }
+  } else if (feature === "storm") {
+    // Ion front: charged curtains sweeping the sky.
+    ctx.globalAlpha = 0.35;
+    for (let i = 0; i < 4; i++) {
+      const x = rng() * w;
+      const curtain = ctx.createLinearGradient(x - w * 0.2, 0, x + w * 0.2, h);
+      curtain.addColorStop(0, "rgba(0,0,0,0)");
+      curtain.addColorStop(0.5, `hsla(${(hue + 20 + i * 12) % 360}, 80%, 60%, 0.16)`);
+      curtain.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = curtain;
+      ctx.fillRect(0, 0, w, h);
+    }
+  }
+  ctx.restore();
+}
+
 function drawSectorBackdrop() {
   const bg = backdropForLevel(state.levelId);
-  const g = ctx.createRadialGradient(geom.w * 0.5, geom.h * 0.34, geom.w * 0.08, geom.w * 0.5, geom.h * 0.52, geom.h * 0.8);
+  const locale = localeOf();
+  const g = ctx.createRadialGradient(geom.w * 0.5, geom.h * 0.34, geom.w * 0.08, geom.w * 0.5, geom.h * 0.52, geom.h * 0.9);
   g.addColorStop(0, bg[0]);
   g.addColorStop(1, bg[1]);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, geom.w, geom.h);
-  // A large soft nebula glow, offset to one corner, in the sector's accent
-  // color — this is what makes each sector read as its own place at a glance.
   const neb = ctx.createRadialGradient(geom.w * 0.72, geom.h * 0.24, 0, geom.w * 0.72, geom.h * 0.24, geom.h * 0.7);
   neb.addColorStop(0, bg[2]);
   neb.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = neb;
   ctx.fillRect(0, 0, geom.w, geom.h);
+  // Star density is part of a locale's identity: the Deep is nothing but
+  // stars, the shoals are half-hidden by dust.
+  const density = locale ? { void: 190, shoals: 45, shallows: 80, belt: 90, storm: 70, graveyard: 60 }[locale.id] || 90 : 90;
   ctx.save();
-  for (const st of starsFor(state.levelId, Math.round(geom.w), Math.round(geom.h))) {
+  for (const st of starsFor(state.levelId, Math.round(geom.w), Math.round(geom.h), density)) {
     ctx.globalAlpha = st.a;
     ctx.fillStyle = "#dbe7ff";
     ctx.beginPath();
@@ -1434,6 +1513,7 @@ function drawSectorBackdrop() {
     ctx.fill();
   }
   ctx.restore();
+  if (locale) drawLocaleFeature(locale.feature, locale.hue, locale.sat);
 }
 
 // The union of every board hex, as one path — hexes are true regular
@@ -1460,9 +1540,18 @@ function boardPath() {
 function draw() {
   const now = performance.now();
   ctx.clearRect(0, 0, geom.w, geom.h);
+  // The place first, edge to edge — the sky is not something that stops at
+  // the board's outline ("the full background is actually the background,
+  // and the grid is just an overlay on top of it"). The board is then laid
+  // over it as a lit panel of navigable space.
+  drawSectorBackdrop();
   ctx.save();
   ctx.clip(boardPath());
-  drawSectorBackdrop();
+  const lit = ctx.createLinearGradient(0, 0, 0, geom.h);
+  lit.addColorStop(0, "rgba(190,225,255,0.07)");
+  lit.addColorStop(1, "rgba(120,170,230,0.03)");
+  ctx.fillStyle = lit;
+  ctx.fillRect(0, 0, geom.w, geom.h);
   ctx.restore();
   ctx.save();
 

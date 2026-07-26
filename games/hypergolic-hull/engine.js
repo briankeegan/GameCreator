@@ -726,12 +726,19 @@
   function pickPortalPos(state, levelId) {
     const rng = seededRandom(levelId * 15485863 + 29);
     const reserved = [...state.exits, state.outpostPos].filter(Boolean);
-    const candidates = state.boardHexes.filter(
-      (h) =>
-        !reserved.some((r) => posEq(r, h)) &&
-        !hazardAt(state, h) &&
-        !state.enemies.some((e) => e.alive && hexDistance(h, e) < 2)
+    const clear = (h) =>
+      !reserved.some((r) => posEq(r, h)) &&
+      !hazardAt(state, h) &&
+      !state.enemies.some((e) => e.alive && hexDistance(h, e) < 2);
+    // ...and never within spitting distance of a gate. Coming back through
+    // a wormhole and finding the way out three hexes away isn't a sector,
+    // it's a corridor — you should have to cross the place again, by
+    // whatever route it offers this time.
+    const gates = state.exits.length ? state.exits : [state.exitPos];
+    const roomy = state.boardHexes.filter(
+      (h) => clear(h) && gates.every((g) => hexDistance(h, g) >= 5)
     );
+    const candidates = roomy.length ? roomy : state.boardHexes.filter(clear);
     if (!candidates.length) return null;
     return candidates[Math.floor(rng() * candidates.length)];
   }
@@ -804,6 +811,12 @@
       // the renderer keys its backdrop palette off this so where you are
       // LOOKS like how you got there (gate tint) and how deep you are.
       theme: level.theme || null,
+      // WHERE this is — name, colour, furniture, zoom. The renderer paints
+      // the whole sky from it and the chart labels the star with it, so a
+      // sector you've been to before is recognisable on sight.
+      locale: level.locale || null,
+      // Some stretches of space are worth more per wreck than others.
+      salvageBonus: level.salvageBonus || 0,
       outpostPos: level.outpost ? { q: level.outpost.q, r: level.outpost.r } : null,
       outpostOfferIds: level.outpost
         ? level.isBoss
@@ -982,7 +995,7 @@
   // also what makes "fight it or route around it" stay a real question
   // instead of always being "route around it".
   function depthBounty(state) {
-    return Math.floor((state.levelId || 1) / 4);
+    return Math.floor((state.levelId || 1) / 4) + (state.salvageBonus || 0);
   }
 
   function awardSalvage(state, enemyType) {
