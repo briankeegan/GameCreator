@@ -53,6 +53,7 @@ const scanBtn = document.getElementById("scanBtn");
 const shipBtn = document.getElementById("shipBtn");
 const shipOverlayEl = document.getElementById("shipOverlay");
 const shipPortraitEl = document.getElementById("shipPortrait");
+const scuttleFxEl = document.getElementById("scuttleFx");
 const contactPortraitEl = document.getElementById("contactPortrait");
 const shipStatsEl = document.getElementById("shipStats");
 const shipHardpointsEl = document.getElementById("shipHardpoints");
@@ -2817,12 +2818,19 @@ function updateShipOverlay() {
   // Scuttling charges. Two taps, because one stray thumb should never end
   // a run — the first arms it and says so, the second means it.
   if (vm.interactive) {
+    let warnText = null; // filled in just below; the confirm handler speaks through it
     const scuttle = document.createElement("button");
     scuttle.id = "selfDestructBtn";
     scuttle.className = "self-destruct" + (selfDestructArmed ? " armed" : "");
     scuttle.textContent = selfDestructArmed ? "CONFIRM — SCUTTLE THE SHIP" : "Scuttling Charges";
-    scuttle.addEventListener("click", () => {
+    scuttle.addEventListener("click", async () => {
       if (selfDestructArmed) {
+        // Watch her go first. The screen stays put through the blast, then
+        // the fresh hull is waiting when the smoke clears.
+        scuttle.disabled = true;
+        scuttle.textContent = "CHARGES AWAY";
+        warnText.textContent = "Charges blown. It has been an honour.";
+        await playScuttle();
         shipVisible = false;
         scuttleShip();
         return;
@@ -2832,6 +2840,7 @@ function updateShipOverlay() {
     });
     shipHardpointsEl.appendChild(scuttle);
     const warn = document.createElement("p");
+    warnText = warn;
     warn.className = "ship-note self-destruct-note";
     warn.textContent = selfDestructArmed
       ? "Charges armed. Tap again and we scuttle her — this ship and everything in the hold."
@@ -3609,6 +3618,58 @@ function scuttleShip() {
   chartIndex = -1;
   selfDestructArmed = false;
   loadSector(0);
+}
+
+// Blowing the charges is the loudest thing you can do to your own ship, so
+// you watch it happen — on the Systems screen you armed them from, with
+// the portrait coming apart under the blast. Same drawExplosion the board
+// uses when anything else dies out there; no second explosion renderer.
+// Resolves when the fire is out, and only then does the run reset.
+const SCUTTLE_MS = 1250;
+function playScuttle() {
+  return new Promise((resolve) => {
+    const fx = scuttleFxEl;
+    if (!fx || !fx.getContext) {
+      resolve();
+      return;
+    }
+    shipPortraitEl.classList.add("scuttling");
+    fx.hidden = false;
+    const fxCtx = fx.getContext("2d");
+    const boardCtx = ctx;
+    const center = { x: fx.width / 2, y: fx.height / 2 };
+    // Three staggered blasts — a magazine goes up in pieces, not at once.
+    const blasts = [
+      { at: 0, off: { x: 0, y: 0 }, size: fx.width * 0.5, parts: makeExplosionParticles(14) },
+      { at: 210, off: { x: -fx.width * 0.13, y: fx.height * 0.1 }, size: fx.width * 0.44, parts: makeExplosionParticles(12) },
+      { at: 400, off: { x: fx.width * 0.12, y: -fx.height * 0.09 }, size: fx.width * 0.52, parts: makeExplosionParticles(14) },
+      { at: 560, off: { x: 0, y: 0 }, size: fx.width * 0.95, parts: makeExplosionParticles(22) },
+    ];
+    const start = performance.now();
+    const step = (now) => {
+      const t = now - start;
+      fxCtx.clearRect(0, 0, fx.width, fx.height);
+      ctx = fxCtx;
+      try {
+        for (const b of blasts) {
+          const p = (t - b.at) / 700;
+          if (p < 0 || p > 1) continue;
+          drawExplosion({ x: center.x + b.off.x, y: center.y + b.off.y }, p, b.parts, b.size);
+        }
+      } finally {
+        ctx = boardCtx;
+      }
+      if (t < SCUTTLE_MS) {
+        requestAnimationFrame(step);
+        return;
+      }
+      fxCtx.clearRect(0, 0, fx.width, fx.height);
+      fx.hidden = true;
+      shipPortraitEl.classList.remove("scuttling");
+      resolve();
+    };
+    requestAnimationFrame(step);
+  });
 }
 
 restartBtn.addEventListener("click", scuttleShip);

@@ -778,6 +778,32 @@ async function freshPage(browser, url, errors) {
   s = await getState(page);
   assert.strictEqual(s.systems.autocannon, true, "reinstalling from cargo re-arms the weapon");
   assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="autocannon"]').count(), 1, "and the tile is back in the grid");
+  // Blowing the scuttling charges is something you WATCH. The ship comes
+  // apart on the Systems screen you armed them from, and only once the
+  // fire is out does the run reset ("show the ship explode").
+  {
+    if (!(await page.locator("#shipOverlay").isVisible())) await page.click("#shipBtn");
+    await page.click("#selfDestructBtn"); // arms
+    assert.ok(
+      (await page.locator("#selfDestructBtn").textContent()).includes("CONFIRM"),
+      "one tap arms the charges and says so — it never just ends the run"
+    );
+    await page.click("#selfDestructBtn"); // fires
+    await page.waitForTimeout(200);
+    assert.strictEqual(await page.locator("#scuttleFx").isVisible(), true, "the charges go off on screen");
+    assert.ok(
+      ((await page.locator("#shipPortrait").getAttribute("class")) || "").includes("scuttling"),
+      "and the hull is coming apart while they do"
+    );
+    assert.strictEqual(await page.locator("#shipOverlay").isVisible(), true, "the screen holds through the blast");
+    await page.waitForTimeout(1400);
+    assert.strictEqual(await page.locator("#scuttleFx").isVisible(), false, "the fire goes out");
+    assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "then the screen clears");
+    const after = await getState(page);
+    assert.strictEqual(after.levelId, 1, "and the fresh hull is back at the start of the crawl");
+    assert.strictEqual(after.hull, after.maxHull, "undamaged — nothing carried over");
+  }
+
   // Every place looks like itself. Six sectors that differ only by a hue
   // shift behind an identical white lattice are six copies of one board —
   // "they all look basically the same". So: each locale gets its own sky

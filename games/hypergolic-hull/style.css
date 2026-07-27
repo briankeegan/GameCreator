@@ -476,6 +476,37 @@ body {
   image-rendering: pixelated;
 }
 .ship-portrait[hidden] { display: none; } /* display:block would beat the hidden attr (contact view has no portrait) */
+/* The portrait and the scuttling blast share one box, so the explosion
+   lands exactly where the ship was rather than somewhere near it. */
+.portrait-frame {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 10px;
+}
+.portrait-frame .ship-portrait { margin: 0; }
+.scuttle-fx {
+  /* Bleeds past the portrait box on purpose — debris should clear the hull. */
+  position: absolute;
+  inset: -28px;
+  width: 152px;
+  height: 152px;
+  pointer-events: none;
+}
+.scuttle-fx[hidden] { display: none; }
+/* The hull tears itself apart under the blast rather than just vanishing. */
+.ship-portrait.scuttling {
+  animation: scuttle-shake 1.25s ease-out 1 forwards;
+}
+@keyframes scuttle-shake {
+  0%   { transform: translate(0, 0) scale(1); filter: none; }
+  8%   { transform: translate(-3px, 2px) scale(1.04); filter: brightness(3.5) saturate(0.3); }
+  16%  { transform: translate(3px, -2px) scale(1.02); filter: brightness(1.6); }
+  30%  { transform: translate(-4px, -1px) scale(1.07); filter: brightness(4) saturate(0); }
+  46%  { transform: translate(3px, 2px) scale(1.03); filter: brightness(1.4); }
+  62%  { transform: translate(-2px, 1px) scale(1.1); filter: brightness(4.5) saturate(0); opacity: 0.8; }
+  100% { transform: translate(0, 4px) scale(0.6); filter: brightness(0.15); opacity: 0; }
+}
 .ship-section {
   margin-bottom: 12px;
 }
