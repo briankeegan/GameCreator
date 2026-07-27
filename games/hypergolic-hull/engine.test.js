@@ -1313,6 +1313,57 @@ assert.deepStrictEqual(
   assert.ok(differ > total * 0.5, "the fork is usually a choice between two different kinds of space");
 }
 
+// Boards are not all one size, and the ones you meet first are tight.
+// 9x11 is the ceiling, never exceeded; most sectors come in under it.
+{
+  const shapes = new Map();
+  let big = 0;
+  let total = 0;
+  for (let depth = 1; depth <= 40; depth++) {
+    for (const variant of ["aggressive", "quiet", "drift"]) {
+      const level = generateLevel(depth, variant);
+      if (level.isBoss) continue;
+      const { cols, rows } = level.board;
+      assert.ok(cols <= 9 && rows <= 11, `depth ${depth} never deals a board bigger than the old fixed one`);
+      assert.ok(rows >= 7, `depth ${depth} is still big enough that a gate isn't on the doorstep`);
+      if (depth <= 4) assert.ok(rows <= 9, `the first few sectors are tight — a run should start moving straight away`);
+      shapes.set(`${cols}x${rows}`, (shapes.get(`${cols}x${rows}`) || 0) + 1);
+      total++;
+      if (cols * rows > 72) big++;
+    }
+  }
+  assert.ok(shapes.size >= 4, "sectors come in genuinely different shapes, not one");
+  assert.ok(big < total * 0.35, "most boards are smaller than the old ceiling, not the same size as it");
+}
+
+// The dock moves. It used to be nailed to hex (0,0) on every single board
+// in the game, which made "is there a shop" the only question a station
+// ever asked. ("Why is the outpost always in the same place?")
+{
+  const berths = new Map();
+  let docks = 0;
+  for (let depth = 2; depth <= 40; depth++) {
+    for (const variant of ["aggressive", "quiet", "drift"]) {
+      const level = generateLevel(depth, variant);
+      if (level.isBoss || !level.outpost) continue;
+      docks++;
+      berths.set(`${level.outpost.q},${level.outpost.r}`, true);
+      assert.ok(
+        Engine.hexDistance(level.playerStart, level.outpost) >= 4,
+        `depth ${depth}: the dock is a trip, not something you spawn on top of`
+      );
+      for (const gate of level.exits) {
+        assert.ok(
+          Engine.hexDistance(level.outpost, gate) >= 3,
+          `depth ${depth}: docking is a decision, not something you do in passing on the way out`
+        );
+      }
+    }
+  }
+  assert.ok(berths.size >= 8, "stations berth all over the place, not in one corner forever");
+  assert.ok(berths.size > docks * 0.25, "and no single berth dominates the crawl");
+}
+
 // A locale is a real difference, not a paint job: what's out there changes
 // what the sector is made of.
 {

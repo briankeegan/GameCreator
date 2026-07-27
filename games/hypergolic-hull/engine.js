@@ -706,7 +706,7 @@
   // you buy when you're hurt; it is no longer the thing you buy instead of
   // thinking.
   const OUTPOST_OFFER_POOL = [
-    { id: "repair", label: "Patch 1 Hull", cost: 5 },
+    { id: "repair", label: "Patch 1 Hull", cost: 10 },
     { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 10 },
     // Shields aren't consumable purchases anymore — you buy the GENERATOR
     // (permanent +1 capacity, arrives raised), then re-raising a spent

@@ -421,11 +421,17 @@ async function freshPage(browser, url, errors) {
     if (target) {
       // The button is the EQUIPMENT — with just the starting Autocannon
       // armed, it carries the weapon's own name, not the word "Fire".
+      // Being in reach isn't enough to FIRE — a contact has to be marked
+      // first. But the button isn't dead while you decide: with nothing
+      // marked it plots the gun's reach instead, which spends nothing.
+      const apBeforePlot = s.ap;
+      await page.locator(".weapon-btn").first().click();
       assert.strictEqual(
-        await page.locator(".weapon-btn").isDisabled(),
-        true,
-        "the gun stays dead until a contact is marked — in reach alone isn't enough"
+        (await getState(page)).ap,
+        apBeforePlot,
+        "tapping a gun with nothing marked plots its reach — it never quietly spends the turn"
       );
+      await page.locator(".weapon-btn").first().click(); // put the plot away again
       const energyBeforeFire = s.energy;
       await clickHex(page, "sublight", target); // first tap: target lock
       s = await getState(page);
@@ -778,6 +784,50 @@ async function freshPage(browser, url, errors) {
   s = await getState(page);
   assert.strictEqual(s.systems.autocannon, true, "reinstalling from cargo re-arms the weapon");
   assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="autocannon"]').count(), 1, "and the tile is back in the grid");
+  // A weapon button with nothing marked is not a dead button — it answers
+  // "where does this gun even reach from here", for free, before you
+  // commit to anything. ("When you click a weapon and an enemy is not
+  // selected, it should show range.")
+  {
+    if (await page.locator("#shipOverlay").isVisible()) await page.click("#shipCloseBtn");
+    await page.evaluate(() => {
+      const E = window.HypergolicEngine;
+      const st = window.__hhState;
+      st.hold.rows += 2;
+      for (let y = 0; y < st.hold.rows; y++) {
+        let done = false;
+        for (let x = 0; x < st.hold.cols && !done; x++) {
+          if (E.holdCanPlace(st.hold, "arcBeam", x, y)) { st.hold.items.push({ id: "arcBeam", x, y }); done = true; }
+        }
+        if (done) break;
+      }
+      E.syncHoldDerived(st);
+      window.render();
+    });
+    const arc = page.locator('.weapon-btn[data-weapon="arcBeam"]');
+    assert.strictEqual(await arc.isDisabled(), false, "with nothing marked, a gun you can afford is still worth tapping");
+    await arc.click();
+    const reach = await page.evaluate(() => {
+      const r = window.__hhReachPreview;
+      return r ? { kind: r.kind, key: r.weaponKey, n: r.hexes.size } : null;
+    });
+    assert.ok(reach, "tapping it plots the gun's reach");
+    assert.strictEqual(reach.kind, "attack", "in the colour weapons always wear");
+    assert.strictEqual(reach.key, "arcBeam", "for THAT gun, not whichever fired last");
+    assert.ok(reach.n > 6, "the Arc Beam's whole two-hex ring, not just the six axes");
+    assert.ok(
+      ((await arc.getAttribute("class")) || "").includes("active"),
+      "and the button shows it's the one doing the talking"
+    );
+    await arc.click();
+    assert.strictEqual(await page.evaluate(() => window.__hhReachPreview), null, "tapping again puts the plot away");
+    assert.strictEqual(
+      await page.evaluate(() => window.__hhState.ap),
+      await page.evaluate(() => window.__hhState.maxAp),
+      "asking the question costs nothing — no AP, no energy"
+    );
+  }
+
   // Blowing the scuttling charges is something you WATCH. The ship comes
   // apart on the Systems screen you armed them from, and only once the
   // fire is out does the run reset ("show the ship explode").
@@ -823,6 +873,47 @@ async function freshPage(browser, url, errors) {
     }
     assert.strictEqual(new Set(looks.map((l) => l.sky)).size, looks.length, "no two places share a sky");
     assert.strictEqual(new Set(looks.map((l) => l.grid)).size, looks.length, "no two places share a lattice");
+
+    // ...and a place's colour MEANS that place. The gate that leads there,
+    // the line to it on the chart, the grid you fly over and the sky you
+    // arrive under all carry the locale's own hue. A gate that promised
+    // violet and dropped you somewhere amber would make the tell worthless.
+    const hues = await page.evaluate(() => {
+      // Pull the hue back out of the hand-tuned sky and grid so we're
+      // checking the ART, not the table that generated it.
+      const hueOfRgb = (r, g, b) => {
+        const mx = Math.max(r, g, b);
+        const mn = Math.min(r, g, b);
+        if (mx === mn) return null;
+        const d = mx - mn;
+        let h;
+        if (mx === r) h = ((g - b) / d) % 6;
+        else if (mx === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        return ((h * 60) % 360 + 360) % 360;
+      };
+      return window.HypergolicLevels.LOCALES.map((l) => {
+        const sky = window.__hhLooks.SKIES[l.id][0].match(/hsl\((\d+)/);
+        const grid = window.__hhLooks.GRID_LOOKS[l.id].stroke.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        return {
+          id: l.id,
+          locale: l.hue,
+          sky: Number(sky[1]),
+          grid: hueOfRgb(Number(grid[1]), Number(grid[2]), Number(grid[3])),
+        };
+      });
+    });
+    const apart = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+    for (const h of hues) {
+      assert.ok(apart(h.locale, h.sky) <= 20, `${h.id}: the sky is the colour the place is (${h.sky} vs ${h.locale})`);
+      assert.ok(apart(h.locale, h.grid) <= 35, `${h.id}: so is the grid over it (${h.grid} vs ${h.locale})`);
+    }
+    // Ten places, ten hues, none of them close enough to be confused for
+    // each other at a glance.
+    const spread = hues.map((h) => h.locale).sort((a, b) => a - b);
+    for (let i = 1; i < spread.length; i++) {
+      assert.ok(spread[i] - spread[i - 1] >= 15, `places are told apart by colour alone (${spread[i - 1]} vs ${spread[i]})`);
+    }
   }
 
   await page.close();

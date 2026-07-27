@@ -1196,6 +1196,21 @@ function makeExplosionParticles(count) {
 // four broken arcs always drops you somewhere full of wrecks. (Clubhouse:
 // "gates should be advertising in some secret way... people can just
 // figure that out as they play.")
+// THE colour rule, in one function: a place has a hue, and everything
+// that refers to that place wears it — the sky when you arrive, the grid
+// you fly over, the gate that leads there, and the line to it on the
+// chart. Nothing gets its own private palette. (The chart used to colour
+// routes by which GATE you took — warm/cool/green — while the board
+// coloured the same gates by where they GO, so the two screens disagreed
+// about what a colour meant. They don't now.)
+function localeRgbAhead(levelId, variantId) {
+  const ahead = levelId && window.HypergolicLevels && window.HypergolicLevels.localeAhead
+    ? window.HypergolicLevels.localeAhead(levelId, variantId)
+    : null;
+  if (!ahead || !ahead.hue) return null;
+  return { id: ahead.id, rgb: hslToRgb(ahead.hue, Math.min(85, ahead.sat + 30), 62) };
+}
+
 function gateLook(variantId) {
   const ahead = state.levelId && window.HypergolicLevels && window.HypergolicLevels.localeAhead
     ? window.HypergolicLevels.localeAhead(state.levelId, variantId)
@@ -1420,6 +1435,10 @@ const SKIES = {
   void: ["hsl(238, 32%, 4%)", "hsl(240, 45%, 1%)", "hsla(250, 55%, 50%, 0.07)"],
   belt: ["hsl(16, 48%, 9%)", "hsl(10, 58%, 3%)", "hsla(30, 75%, 55%, 0.14)"],
   storm: ["hsl(283, 55%, 12%)", "hsl(272, 65%, 4%)", "hsla(310, 90%, 62%, 0.20)"],
+  rings: ["hsl(44, 50%, 11%)", "hsl(38, 58%, 3%)", "hsla(52, 80%, 60%, 0.16)"],
+  nursery: ["hsl(330, 56%, 12%)", "hsl(318, 64%, 4%)", "hsla(345, 92%, 64%, 0.24)"],
+  binary: ["hsl(190, 44%, 11%)", "hsl(198, 52%, 3%)", "hsla(182, 85%, 66%, 0.20)"],
+  maw: ["hsl(268, 58%, 8%)", "hsl(275, 70%, 2%)", "hsla(280, 90%, 58%, 0.18)"],
   graveyard: ["hsl(168, 28%, 7%)", "hsl(178, 36%, 2%)", "hsla(150, 45%, 45%, 0.10)"],
   bulwark: ["hsl(2, 46%, 9%)", "hsl(355, 58%, 3%)", "hsla(15, 85%, 55%, 0.17)"],
 };
@@ -1470,6 +1489,10 @@ const GRID_LOOKS = {
   void: { stroke: "rgba(150,172,214,0.20)", width: 0.6, panel: ["rgba(120,150,210,0.035)", "rgba(60,80,140,0.02)"] },
   belt: { stroke: "rgba(240,176,116,0.46)", width: 1.05, panel: ["rgba(255,170,90,0.08)", "rgba(150,70,30,0.05)"] },
   storm: { stroke: "rgba(228,172,255,0.58)", width: 1.15, panel: ["rgba(220,150,255,0.11)", "rgba(110,50,170,0.07)"] },
+  rings: { stroke: "rgba(246,214,140,0.44)", width: 0.95, panel: ["rgba(255,224,140,0.08)", "rgba(150,110,30,0.05)"] },
+  nursery: { stroke: "rgba(255,168,206,0.52)", width: 1.0, panel: ["rgba(255,140,190,0.10)", "rgba(150,30,80,0.06)"] },
+  binary: { stroke: "rgba(170,238,246,0.50)", width: 0.85, panel: ["rgba(150,235,245,0.09)", "rgba(30,110,130,0.05)"] },
+  maw: { stroke: "rgba(196,158,255,0.36)", width: 0.7, panel: ["rgba(160,110,255,0.06)", "rgba(50,20,100,0.04)"] },
   graveyard: { stroke: "rgba(154,220,200,0.30)", width: 0.8, panel: ["rgba(120,220,195,0.05)", "rgba(30,80,70,0.04)"] },
   bulwark: { stroke: "rgba(255,150,150,0.55)", width: 1.2, panel: ["rgba(255,120,110,0.10)", "rgba(120,20,20,0.07)"] },
 };
@@ -1529,63 +1552,130 @@ function drawLocaleFeature(feature, hue, sat) {
     ctx.arc(cx, cy, r * 1.13, 0, Math.PI * 2);
     ctx.fill();
   } else if (feature === "dust") {
-    // Shoals: you are INSIDE the dust, not looking at it. Heavy warm banks
-    // that swallow the far side of the board.
-    for (let i = 0; i < 7; i++) {
+    // Shoals: a nebula has STRUCTURE — filaments running one way, dark
+    // absorption lanes cutting across them, a couple of bright knots where
+    // it's thickest. Soft even blobs average out to a flat brown wash,
+    // which is exactly what this used to be.
+    const flow = -0.6 + rng() * 1.2; // the whole bank drifts one way
+    for (let i = 0; i < 8; i++) {
       const bx = rng() * w;
       const by = rng() * h;
-      const br = h * (0.3 + rng() * 0.4);
-      const cloud = ctx.createRadialGradient(bx, by, 0, bx, by, br);
-      cloud.addColorStop(0, `hsla(${hue + 8}, ${sat + 25}%, 44%, 0.15)`);
-      cloud.addColorStop(0.5, `hsla(${hue}, ${sat + 10}%, 28%, 0.08)`);
-      cloud.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = cloud;
+      const len = h * (0.35 + rng() * 0.45);
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate(flow + (rng() - 0.5) * 0.5);
+      ctx.scale(1, 0.28 + rng() * 0.2);
+      const fil = ctx.createRadialGradient(0, 0, 0, 0, 0, len);
+      fil.addColorStop(0, `hsla(${hue + 10}, ${sat + 30}%, 52%, 0.26)`);
+      fil.addColorStop(0.45, `hsla(${hue - 4}, ${sat + 15}%, 34%, 0.13)`);
+      fil.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = fil;
+      ctx.beginPath();
+      ctx.arc(0, 0, len, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    // Dark lanes: the dust you can't see through, which is what makes the
+    // rest read as dust rather than a gradient.
+    for (let i = 0; i < 5; i++) {
+      const bx = rng() * w;
+      const by = rng() * h;
+      const len = h * (0.3 + rng() * 0.4);
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate(flow + (rng() - 0.5) * 0.9);
+      ctx.scale(1, 0.1 + rng() * 0.12);
+      const lane = ctx.createRadialGradient(0, 0, 0, 0, 0, len);
+      lane.addColorStop(0, "rgba(6,3,1,0.5)");
+      lane.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = lane;
+      ctx.beginPath();
+      ctx.arc(0, 0, len, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    // Two hot knots — somewhere in there something is still lit.
+    for (let i = 0; i < 2; i++) {
+      const kx = w * (0.15 + rng() * 0.7);
+      const ky = h * (0.15 + rng() * 0.7);
+      const kr = h * (0.08 + rng() * 0.09);
+      const knot = ctx.createRadialGradient(kx, ky, 0, kx, ky, kr);
+      knot.addColorStop(0, `hsla(${hue + 22}, 95%, 72%, 0.34)`);
+      knot.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = knot;
       ctx.fillRect(0, 0, w, h);
     }
-    // Grit, close to the lens.
-    for (let i = 0; i < 150; i++) {
+    // Grit close to the lens.
+    for (let i = 0; i < 130; i++) {
       ctx.globalAlpha = 0.1 + rng() * 0.35;
       ctx.fillStyle = `hsl(${hue + rng() * 20}, ${sat + 20}%, ${55 + rng() * 25}%)`;
       ctx.beginPath();
       ctx.arc(rng() * w, rng() * h, 0.6 + rng() * 2.6, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.globalAlpha = 1;
   } else if (feature === "wrecks") {
-    // The Breakers: a shipping lane that didn't make it. A debris LANE
-    // crosses the frame on a diagonal, dense along its spine.
+    // The Breakers: real rocks, at real sizes, with a lit edge and a dark
+    // body so they read as objects you are flying past rather than smudges.
+    // A debris lane crosses the frame; the big ones cluster along it.
     const angle = -0.5 + rng() * 1.0;
     ctx.save();
     ctx.translate(w * 0.5, h * 0.5);
     ctx.rotate(angle);
-    const lane = ctx.createLinearGradient(0, -h * 0.55, 0, h * 0.55);
+    const lane = ctx.createLinearGradient(0, -h * 0.5, 0, h * 0.5);
     lane.addColorStop(0, "rgba(0,0,0,0)");
-    lane.addColorStop(0.5, `hsla(${hue}, ${sat + 20}%, 40%, 0.22)`);
+    lane.addColorStop(0.5, `hsla(${hue}, ${sat + 25}%, 42%, 0.2)`);
     lane.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = lane;
-    ctx.fillRect(-w, -h * 0.55, w * 2, h * 1.1);
-    // Rocks and torn plate, thickest along the lane.
-    for (let i = 0; i < 70; i++) {
-      const x = (rng() * 2 - 1) * w;
+    ctx.fillRect(-w, -h * 0.5, w * 2, h);
+    const rocks = [];
+    for (let i = 0; i < 34; i++) {
       const spread = (rng() + rng() + rng()) / 3 - 0.5; // clustered on the spine
-      const y = spread * h * 0.9;
-      const size = 2 + rng() * 14 * (1 - Math.abs(spread) * 1.2);
-      if (size < 1.5) continue;
-      ctx.globalAlpha = 0.35 + rng() * 0.4;
-      ctx.fillStyle = `hsl(${hue + rng() * 14}, ${sat - 10}%, ${16 + rng() * 22}%)`;
+      rocks.push({
+        x: (rng() * 2 - 1) * w * 0.9,
+        y: spread * h * 0.95,
+        size: (5 + rng() * 46) * (1 - Math.abs(spread) * 0.9),
+        seed: rng(),
+      });
+    }
+    rocks.sort((a, b) => a.size - b.size); // big ones nearest, drawn last
+    for (const rock of rocks) {
+      if (rock.size < 3) continue;
+      const lit = -2.1 + rock.seed * 0.4; // one light source for the whole field
+      ctx.save();
+      ctx.translate(rock.x, rock.y);
       ctx.beginPath();
-      const pts = 5 + Math.floor(rng() * 3);
+      const pts = 7 + Math.floor(rng() * 4);
+      const radii = [];
+      for (let p = 0; p < pts; p++) radii.push(rock.size * (0.62 + rng() * 0.5));
       for (let p = 0; p < pts; p++) {
         const a = (p / pts) * Math.PI * 2;
-        const rr = size * (0.6 + rng() * 0.6);
-        const px = x + Math.cos(a) * rr;
-        const py = y + Math.sin(a) * rr * 0.7;
+        const px = Math.cos(a) * radii[p];
+        const py = Math.sin(a) * radii[p] * 0.82;
         if (p === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
       ctx.closePath();
+      const shade = ctx.createLinearGradient(
+        Math.cos(lit) * rock.size, Math.sin(lit) * rock.size,
+        -Math.cos(lit) * rock.size, -Math.sin(lit) * rock.size
+      );
+      shade.addColorStop(0, `hsl(${hue + 12}, ${sat}%, ${30 + rock.seed * 14}%)`);
+      shade.addColorStop(0.55, `hsl(${hue + 4}, ${sat - 8}%, ${13 + rock.seed * 6}%)`);
+      shade.addColorStop(1, "hsl(12, 30%, 5%)");
+      ctx.fillStyle = shade;
+      ctx.globalAlpha = 0.62 + rock.seed * 0.3;
       ctx.fill();
+      // A hairline of sunlight on the lit edge — the thing that makes a
+      // polygon read as a rock.
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = `hsl(${hue + 25}, ${sat + 25}%, ${52 + rock.seed * 15}%)`;
+      ctx.lineWidth = Math.max(0.6, rock.size * 0.04);
+      ctx.stroke();
+      ctx.restore();
     }
     ctx.restore();
+    ctx.globalAlpha = 1;
   } else if (feature === "hulks") {
     // The Cold Yard: big dead ships, ALL POINTING THE SAME WAY. They are
     // still holding a formation nobody stood down. That alignment is the
@@ -1660,6 +1750,197 @@ function drawLocaleFeature(feature, hue, sat) {
       }
       ctx.stroke();
     }
+  } else if (feature === "rings") {
+    // A ringed giant, seen near enough that the ring plane runs right
+    // across the sky as a hard band with a gap in it — the one silhouette
+    // nobody mistakes for anywhere else.
+    const left = rng() < 0.5;
+    const cx = w * (left ? -0.3 : 1.3);
+    const cy = h * (0.2 + rng() * 0.4);
+    const r = h * (0.42 + rng() * 0.12);
+    const tilt = (left ? 1 : -1) * (0.22 + rng() * 0.22);
+    // Rings behind the body first, then the body, then rings in front —
+    // that overlap is what sells the plane.
+    const drawRings = (clipFront) => {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(tilt);
+      ctx.scale(1, 0.17);
+      if (clipFront) {
+        ctx.beginPath();
+        ctx.rect(-r * 4, 0, r * 8, r * 4);
+        ctx.clip();
+      } else {
+        ctx.beginPath();
+        ctx.rect(-r * 4, -r * 4, r * 8, r * 4);
+        ctx.clip();
+      }
+      const bands = [
+        [1.35, 1.72, 0.4], [1.78, 2.05, 0.16], [2.12, 2.55, 0.34], [2.62, 2.78, 0.1], [2.84, 3.1, 0.24],
+      ];
+      for (const [inner, outer, alpha] of bands) {
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = `hsl(${hue + 8}, ${sat + 25}%, ${58 + rng() * 12}%)`;
+        ctx.lineWidth = r * (outer - inner);
+        ctx.beginPath();
+        ctx.arc(0, 0, r * (inner + outer) * 0.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+    drawRings(false);
+    ctx.globalAlpha = 1;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+    const body = ctx.createLinearGradient(cx + (left ? r : -r), cy, cx + (left ? -r : r), cy);
+    body.addColorStop(0, `hsl(${hue}, ${sat + 22}%, 52%)`);
+    body.addColorStop(0.5, `hsl(${hue - 8}, ${sat + 10}%, 26%)`);
+    body.addColorStop(1, "#06060a");
+    ctx.fillStyle = body;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    for (let i = 0; i < 8; i++) {
+      ctx.globalAlpha = 0.16 + rng() * 0.12;
+      ctx.fillStyle = `hsl(${(hue + (i % 3) * 10) % 360}, ${sat + 18}%, ${24 + (i % 4) * 9}%)`;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - r + (r * 2 * (i + 0.5)) / 8, r, r * 0.05, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    drawRings(true);
+    // The ring's shadow, thrown across the planet's face.
+    ctx.globalAlpha = 0.3;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    ctx.fillStyle = "rgba(0,0,0,0.8)";
+    ctx.fillRect(-r, -r * 0.06, r * 2, r * 0.12);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  } else if (feature === "nursery") {
+    // A star nursery: towering pillars of gas lit from within, and young
+    // stars burning holes in them. Bright, hot, crowded.
+    for (let i = 0; i < 4; i++) {
+      const px = w * (0.1 + rng() * 0.8);
+      const base = h * (0.75 + rng() * 0.35);
+      const top = h * (0.05 + rng() * 0.35);
+      const wide = w * (0.1 + rng() * 0.16);
+      ctx.globalAlpha = 0.5;
+      const col = ctx.createLinearGradient(px, base, px, top);
+      col.addColorStop(0, `hsla(${hue - 12}, ${sat + 25}%, 26%, 0.6)`);
+      col.addColorStop(0.6, `hsla(${hue + 10}, ${sat + 35}%, 42%, 0.4)`);
+      col.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(px - wide, base);
+      ctx.lineTo(px - wide * (0.25 + rng() * 0.3), top);
+      ctx.lineTo(px + wide * (0.25 + rng() * 0.3), top + h * 0.06);
+      ctx.lineTo(px + wide, base);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    for (let i = 0; i < 5; i++) {
+      const sx = w * (0.08 + rng() * 0.84);
+      const sy = h * (0.08 + rng() * 0.84);
+      const sr = h * (0.05 + rng() * 0.08);
+      const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+      glow.addColorStop(0, "rgba(255,255,255,0.85)");
+      glow.addColorStop(0.25, `hsla(${hue + 25}, 100%, 74%, 0.5)`);
+      glow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, w, h);
+      // Diffraction spikes — a hot young star, not a dot.
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = "rgba(255,240,250,0.7)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx - sr * 1.9, sy); ctx.lineTo(sx + sr * 1.9, sy);
+      ctx.moveTo(sx, sy - sr * 1.9); ctx.lineTo(sx, sy + sr * 1.9);
+      ctx.stroke();
+      ctx.restore();
+    }
+  } else if (feature === "binary") {
+    // Two suns. Hard, shadowless light from both sides at once, and a
+    // pale gulf of glare in between.
+    const suns = [
+      { x: w * (0.1 + rng() * 0.16), y: h * (0.1 + rng() * 0.3), r: h * 0.09, h: hue - 25 },
+      { x: w * (0.72 + rng() * 0.18), y: h * (0.5 + rng() * 0.35), r: h * 0.065, h: hue + 30 },
+    ];
+    const bridge = ctx.createLinearGradient(suns[0].x, suns[0].y, suns[1].x, suns[1].y);
+    bridge.addColorStop(0, `hsla(${suns[0].h}, 80%, 62%, 0.16)`);
+    bridge.addColorStop(0.5, `hsla(${hue}, 60%, 50%, 0.06)`);
+    bridge.addColorStop(1, `hsla(${suns[1].h}, 85%, 64%, 0.14)`);
+    ctx.fillStyle = bridge;
+    ctx.fillRect(0, 0, w, h);
+    for (const sun of suns) {
+      const glow = ctx.createRadialGradient(sun.x, sun.y, 0, sun.x, sun.y, sun.r * 4.5);
+      glow.addColorStop(0, "rgba(255,255,255,0.95)");
+      glow.addColorStop(0.12, `hsla(${sun.h}, 100%, 76%, 0.6)`);
+      glow.addColorStop(0.45, `hsla(${sun.h}, 90%, 58%, 0.14)`);
+      glow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, w, h);
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = `hsla(${sun.h}, 100%, 85%, 0.8)`;
+      ctx.lineWidth = 1.2;
+      for (let a = 0; a < 4; a++) {
+        const ang = (a * Math.PI) / 4 + 0.2;
+        ctx.beginPath();
+        ctx.moveTo(sun.x - Math.cos(ang) * sun.r * 5, sun.y - Math.sin(ang) * sun.r * 5);
+        ctx.lineTo(sun.x + Math.cos(ang) * sun.r * 5, sun.y + Math.sin(ang) * sun.r * 5);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  } else if (feature === "maw") {
+    // Something out here eats light: an accretion disc seen almost
+    // edge-on, its far side bent up over the top, and a hole in the middle
+    // with nothing in it at all.
+    const cx = w * (0.3 + rng() * 0.4);
+    const cy = h * (0.25 + rng() * 0.4);
+    const r = h * (0.17 + rng() * 0.07);
+    const tilt = -0.5 + rng() * 1.0;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    // Lensed far side: a bright arc standing above the hole.
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = `hsla(${hue + 40}, 95%, 72%, 0.75)`;
+    ctx.lineWidth = r * 0.16;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.5, Math.PI * 1.06, Math.PI * 1.94);
+    ctx.stroke();
+    // The disc itself, flattened.
+    ctx.save();
+    ctx.scale(1, 0.2);
+    for (let i = 0; i < 5; i++) {
+      ctx.globalAlpha = 0.5 - i * 0.07;
+      ctx.strokeStyle = `hsla(${hue + 30 + i * 12}, 95%, ${74 - i * 8}%, 0.8)`;
+      ctx.lineWidth = r * 0.3;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * (1.5 + i * 0.45), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+    // The hole. Nothing gets drawn in here, ever.
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    // A thin photon ring right at the edge.
+    ctx.strokeStyle = `hsla(${hue + 45}, 100%, 85%, 0.6)`;
+    ctx.lineWidth = Math.max(1, r * 0.04);
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.06, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    ctx.globalAlpha = 1;
   } else if (feature === "void") {
     // The Deep: no furniture at all. One far-off galaxy, small enough that
     // it makes the emptiness bigger rather than filling it.
@@ -1734,7 +2015,7 @@ function drawSectorBackdrop() {
   ctx.fillRect(0, 0, geom.w, geom.h);
   // Star density is part of a locale's identity: the Deep is nothing but
   // stars, the shoals are half-hidden by dust.
-  const density = locale ? { void: 190, shoals: 45, shallows: 80, belt: 90, storm: 70, graveyard: 60 }[locale.id] || 90 : 90;
+  const density = locale ? { void: 190, shoals: 45, shallows: 80, belt: 90, storm: 70, graveyard: 60, rings: 70, nursery: 110, binary: 130, maw: 150 }[locale.id] || 90 : 90;
   ctx.save();
   for (const st of starsFor(state.levelId, Math.round(geom.w), Math.round(geom.h), density)) {
     ctx.globalAlpha = st.a;
@@ -1835,8 +2116,15 @@ function draw() {
     const isWormhole = state.wormholePos && Engine.posEq(hex, state.wormholePos);
     const isHazard = Engine.hazardAt(state, hex);
 
-    let fill = "#182238";
-    let fillAlpha = 0.22; // plain floor: mostly transparent, the sector backdrop does the talking
+    // Plain floor gets NO fill at all. It used to get a 22%-opacity navy
+    // wash, which sounds like nothing until you notice it covers the
+    // entire board — i.e. nearly the whole screen — in every sector. That
+    // veil was blue-shifting and flattening every locale toward the same
+    // grey-navy no matter what sky was painted behind it, which is why six
+    // different places kept reading as one. The sky is the background now,
+    // full stop; the grid is a lattice drawn on top of it.
+    let fill = null;
+    let fillAlpha = 0;
     if (isHazard) {
       fill = isHazard.type === "asteroid" ? "#241f1c" : "#3a1030";
       fillAlpha = 0.8;
@@ -1855,25 +2143,25 @@ function draw() {
     // legend is open (and its own checkbox is checked). Safety-critical, so
     // it stays legible even over an otherwise-transparent floor tile.
     if (threats.has(k) && legendVisible) {
-      fill = blend(fill, "#7a1f2b", 0.55);
+      fill = blend(fill || "#182238", "#7a1f2b", 0.55);
       fillAlpha = Math.max(fillAlpha, 0.62);
     }
     if (scanTargetHexes && scanTargetHexes.has(k)) {
-      fill = blend(fill, "#e0533f", 0.6);
+      fill = blend(fill || "#182238", "#e0533f", 0.6);
       fillAlpha = Math.max(fillAlpha, 0.75);
     }
     // Movable/targetable hexes keep their normal color — only the border
     // marks them, so the board doesn't turn into a wall of green.
     // Course/route preview: green, the one color movement always wears.
     if (route.has(k)) {
-      fill = blend(fill, "#2e7d52", 0.5);
+      fill = blend(fill || "#182238", "#2e7d52", 0.5);
       fillAlpha = Math.max(fillAlpha, 0.58);
     }
     // Equipment reach preview (tap a weapon/engines button, or lock a
     // target): green = where you can move, red-orange = what your
     // weapons cover — same color language as the Scan overlay.
     if (reachPreview && reachPreview.hexes.has(k)) {
-      fill = blend(fill, reachPreview.kind === "move" ? "#2e7d52" : "#a03a26", 0.55);
+      fill = blend(fill || "#182238", reachPreview.kind === "move" ? "#2e7d52" : "#a03a26", 0.55);
       fillAlpha = Math.max(fillAlpha, 0.62);
     }
 
@@ -2391,9 +2679,34 @@ function updateSystems() {
     btn.dataset.weapon = key;
     btn.title = describeWeapon(weapon);
     btn.textContent = `${weapon.label} · ${weapon.energyCost}⚡`;
-    btn.disabled = busy || !bears || !affordable;
-    btn.classList.toggle("active", bears && affordable && !busy);
+    // With nothing marked, the button is not dead — it SHOWS YOU WHERE
+    // THIS GUN REACHES. "Can the Arc Beam even get that far" is a question
+    // you should be able to ask before committing to anything, and asking
+    // it costs nothing: no AP, no energy, just the wash on the board.
+    // Tap again (or tap the board) to put it away.
+    const previewing = reachPreview && reachPreview.weaponKey === key;
+    btn.disabled = busy || !affordable || (Boolean(locked) && !bears);
+    btn.classList.toggle("active", (bears && affordable && !busy) || previewing);
     btn.addEventListener("click", () => {
+      if (!locked) {
+        if (previewing) {
+          reachPreview = null;
+          pushMessage("Fire plot down.");
+        } else {
+          reachPreview = {
+            hexes: new Set(
+              Engine.weaponHexes(state.playerPos, state.facing, weapon, state)
+                .filter((h) => Engine.onBoard(state, h))
+                .map(Engine.hexKey)
+            ),
+            kind: "attack",
+            weaponKey: key,
+          };
+          pushMessage(`${weapon.label}: this is everything it covers from here.`);
+        }
+        render();
+        return;
+      }
       const target = targetedEnemyId;
       targetedEnemyId = null;
       reachPreview = null;
@@ -2991,7 +3304,10 @@ function updateMapOverlay() {
   const BOTTOM_PAD = 34;
   const TOP_PAD = 70;
   const H = BOTTOM_PAD + TOP_PAD + STEP * Math.max(1, chain.length - 1) + (state.status === "playing" ? STEP : 0);
-  const tintOf = (variantId) => {
+  // Same colour the gate itself wore on the board — see localeRgbAhead.
+  const tintOf = (levelId, variantId) => {
+    const ahead = localeRgbAhead(levelId, variantId);
+    if (ahead) return `rgb(${ahead.rgb[0]}, ${ahead.rgb[1]}, ${ahead.rgb[2]})`;
     const t = variantId && BRANCH_TINTS[variantId];
     return t ? `rgb(${t[0]}, ${t[1]}, ${t[2]})` : "#6ee7ff";
   };
@@ -3026,7 +3342,7 @@ function updateMapOverlay() {
   // Route edges (solid), drawn under the nodes.
   for (let i = 1; i < chain.length; i++) {
     svg.push(
-      `<line x1="${xs[i - 1]}" y1="${yOf(i - 1)}" x2="${xs[i]}" y2="${yOf(i)}" stroke="${tintOf(chain[i - 1].tookVariant)}" stroke-width="2" opacity="0.75"/>`
+      `<line x1="${xs[i - 1]}" y1="${yOf(i - 1)}" x2="${xs[i]}" y2="${yOf(i)}" stroke="${tintOf(chain[i - 1].levelId, chain[i - 1].tookVariant)}" stroke-width="2" opacity="0.75"/>`
     );
   }
   // Roads not taken: at each PAST fork, a short dashed stub for the gate
@@ -3037,9 +3353,10 @@ function updateMapOverlay() {
     for (const ex of n.exits) {
       if (ex.variantId === n.tookVariant) continue;
       const dir = ex.variantId === "quiet" ? -1 : ex.variantId === "drift" ? 0 : 1;
+      const tint = tintOf(n.levelId, ex.variantId);
       svg.push(
-        `<line x1="${xs[i]}" y1="${yOf(i)}" x2="${xs[i] + dir * 34}" y2="${yOf(i) - 26}" stroke="${tintOf(ex.variantId)}" stroke-width="1.5" stroke-dasharray="3 4" opacity="0.5"/>` +
-          `<circle cx="${xs[i] + dir * 34}" cy="${yOf(i) - 26}" r="3" fill="none" stroke="${tintOf(ex.variantId)}" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>`
+        `<line x1="${xs[i]}" y1="${yOf(i)}" x2="${xs[i] + dir * 34}" y2="${yOf(i) - 26}" stroke="${tint}" stroke-width="1.5" stroke-dasharray="3 4" opacity="0.5"/>` +
+          `<circle cx="${xs[i] + dir * 34}" cy="${yOf(i) - 26}" r="3" fill="none" stroke="${tint}" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>`
       );
     }
   }
@@ -3063,10 +3380,11 @@ function updateMapOverlay() {
                   : -1;
       const ax = Math.max(40, Math.min(W - 40, xs[cur] + dir * 78));
       const ay = yOf(cur) - STEP;
+      const tint = tintOf(chain[cur].levelId, ex.variantId);
       svg.push(
-        `<line x1="${xs[cur]}" y1="${yOf(cur)}" x2="${ax}" y2="${ay}" stroke="${tintOf(ex.variantId)}" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.8"/>` +
-          `<circle cx="${ax}" cy="${ay}" r="9" fill="none" stroke="${tintOf(ex.variantId)}" stroke-width="1.5" stroke-dasharray="3 3"/>` +
-          `<text x="${ax}" y="${ay + 3.5}" text-anchor="middle" fill="${tintOf(ex.variantId)}" font-size="10" font-family="monospace">?</text>`
+        `<line x1="${xs[cur]}" y1="${yOf(cur)}" x2="${ax}" y2="${ay}" stroke="${tint}" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.8"/>` +
+          `<circle cx="${ax}" cy="${ay}" r="9" fill="none" stroke="${tint}" stroke-width="1.5" stroke-dasharray="3 3"/>` +
+          `<text x="${ax}" y="${ay + 3.5}" text-anchor="middle" fill="${tint}" font-size="10" font-family="monospace">?</text>`
       );
     });
   }
@@ -3124,6 +3442,7 @@ function render() {
   window.__hhPlannedPath = plannedPath;
   window.__hhAutoRoute = autoRoute;
   window.__hhTargetedEnemy = targetedEnemyId;
+  window.__hhReachPreview = reachPreview; // test hook: the equipment plot currently on the board
 }
 
 function pushMessage(message) {
@@ -3618,6 +3937,11 @@ function scuttleShip() {
   chartIndex = -1;
   selfDestructArmed = false;
   loadSector(0);
+  // Arrive like you arrived anywhere else — the flash, then the sector.
+  // Cutting straight to a fresh board read like the page had reloaded
+  // rather than like a new hull warping in.
+  anims.push({ kind: "warp", start: performance.now(), dur: 900 });
+  requestAnimationFrame(tickAnims);
 }
 
 // Blowing the charges is the loudest thing you can do to your own ship, so

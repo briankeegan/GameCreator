@@ -269,6 +269,61 @@
       sat: 55,
       feature: "storm",
     },
+    // "More backgrounds... planets with rings... more crazy ideas." Each
+    // one is a real place with its own hazard/enemy/salvage economics, not
+    // just new wallpaper — a reason to take that gate, or not.
+    {
+      id: "rings",
+      name: "The Ringworks",
+      blurb: "A giant with a ring system, and the ice is worth money.",
+      hazardDelta: 1,
+      enemyDelta: 0,
+      outpostDelta: 0.2,
+      salvageDelta: 2,
+      zoom: 1.1,
+      hue: 52,
+      sat: 48,
+      feature: "rings",
+    },
+    {
+      id: "nursery",
+      name: "The Kiln",
+      blurb: "Stars being made. Everything here is too bright and too hot.",
+      hazardDelta: 1,
+      enemyDelta: 1,
+      outpostDelta: -0.2,
+      salvageDelta: 2,
+      zoom: 1,
+      hue: 330,
+      sat: 55,
+      feature: "nursery",
+    },
+    {
+      id: "binary",
+      name: "The Twins",
+      blurb: "Two suns, no shade. You can be seen from anywhere.",
+      hazardDelta: -1,
+      enemyDelta: 1,
+      outpostDelta: 0.1,
+      salvageDelta: 1,
+      zoom: 1,
+      hue: 190,
+      sat: 42,
+      feature: "binary",
+    },
+    {
+      id: "maw",
+      name: "The Maw",
+      blurb: "Something out here eats light. Nobody comes back rich and unhurt.",
+      hazardDelta: 0,
+      enemyDelta: -1,
+      outpostDelta: -0.3,
+      salvageDelta: 4,
+      zoom: 1.18,
+      hue: 268,
+      sat: 60,
+      feature: "maw",
+    },
     {
       id: "graveyard",
       name: "The Cold Yard",
@@ -309,6 +364,22 @@
     storm: {
       first: ["Corona", "Static", "Feral", "Ember", "Pale", "Wrath"],
       last: ["Front", "Squall", "Surge", "Curtain", "Flare", "Boundary"],
+    },
+    rings: {
+      first: ["Bellaquin", "Saturnine", "Halo", "Ferris", "Cassini", "Bright"],
+      last: ["Ringworks", "Arc", "Shepherd", "Divide", "Sweep", "Annulus"],
+    },
+    nursery: {
+      first: ["Furnace", "Kiln", "Firstlight", "Ember", "Cradle", "Vestal"],
+      last: ["Pillars", "Nursery", "Forge", "Bloom", "Ignition", "Rise"],
+    },
+    binary: {
+      first: ["Castor", "Gemini", "Twinfall", "Duo", "Second", "Pale"],
+      last: ["Twins", "Pair", "Noon", "Glare", "Meridian", "Shadowless"],
+    },
+    maw: {
+      first: ["Anselm", "Hungry", "Ashen", "Kolm", "Last", "Blind"],
+      last: ["Maw", "Throat", "Descent", "Well", "Fall", "Horizon"],
     },
     graveyard: {
       first: ["Cassivar", "Dumas", "Old", "Silent", "Winter", "Hollis"],
@@ -396,8 +467,6 @@
     // insufficient attempts at capping growth. Board size never grows with
     // depth anymore; enemy count/mix and hazards (see below) carry
     // difficulty instead of an ever-bigger or ever-denser map.
-    const rows = 11;
-    const cols = 9;
     // `variantId` is which gate got you INTO this sector (see app.js's
     // advanceSector) — it biases what this sector itself contains. Folded
     // into the seed too, so "aggressive" and "quiet" arrivals at the same
@@ -409,6 +478,27 @@
     const locale = localeFor(depth, variantId);
     const variantSeedOffset = variant ? (BRANCH_VARIANTS.indexOf(variant) + 1) * 104729 : 0;
     const rng = seededRandom(depth * 2654435761 + variantSeedOffset);
+
+    // Boards are not all one size. 9x11 was every single sector, which is
+    // a lot of empty hexes to cross before anything happens, and it made
+    // the early crawl a slog. 9x11 stays the CEILING — nothing is ever
+    // bigger — but most sectors come in under it, and the first few are
+    // deliberately tight so a run starts moving straight away. ("In first
+    // few maps have smaller grids... never larger than what we have, but
+    // more should be smaller.") 7 rows is the floor: any shorter and a
+    // gate would be close enough to the start to be a doorstep.
+    const SHAPES = [
+      { cols: 7, rows: 7 }, { cols: 7, rows: 8 }, { cols: 9, rows: 8 },
+      { cols: 7, rows: 9 }, { cols: 9, rows: 9 }, { cols: 9, rows: 10 }, { cols: 9, rows: 11 },
+    ];
+    // Depth 1-4: only the tight end of the table. Deeper: the whole table,
+    // still weighted small — two rolls, keep the smaller.
+    const shape =
+      depth <= 4
+        ? SHAPES[Math.floor(rng() * 3)]
+        : SHAPES[Math.min(Math.floor(rng() * SHAPES.length), Math.floor(rng() * SHAPES.length))];
+    const cols = shape.cols;
+    const rows = shape.rows;
 
     // Flat-top rect board (see engine.js's buildBoardHexes): column c spans
     // r = -floor(c/2) .. rows-1-floor(c/2). Player starts at the bottom of
@@ -441,7 +531,6 @@
       Math.max(0.05, 0.42 + (variant ? variant.outpostChanceDelta : 0) + locale.outpostDelta)
     );
     const hasOutpost = rng() < outpostChance;
-    const outpost = hasOutpost ? { q: 0, r: 0 } : null;
 
     const hexes = [];
     for (let col = 0; col < cols; col++) {
@@ -449,6 +538,29 @@
         hexes.push({ q: col, r: row - Math.floor(col / 2) });
       }
     }
+    // The dock goes somewhere DIFFERENT every sector. It used to be nailed
+    // to hex (0,0) — the same corner of every board in the game — which
+    // made "is there a shop here" the only question a station ever asked,
+    // and made the route to it identical forever. Now it's seeded like
+    // everything else: never on your doorstep, never parked on a gate, and
+    // never so close to a gate that docking is free on the way past.
+    // Deciding to go and get it is the point.
+    // Stations sit at a sector's edge (the engine validates it), so a berth
+    // is any border hex far enough from where you come in and from every
+    // gate that docking is a real detour rather than something you do on
+    // the way past.
+    const isBorder = (h) => {
+      const col = h.q;
+      const row = h.r + Math.floor(col / 2);
+      return col === 0 || col === cols - 1 || row === 0 || row === rows - 1;
+    };
+    const berths = hexes.filter(
+      (h) =>
+        isBorder(h) &&
+        hexDist(h, playerStart) >= 4 &&
+        exits.every((ex) => hexDist(h, ex) >= 3)
+    );
+    const outpost = hasOutpost && berths.length ? berths[Math.floor(rng() * berths.length)] : null;
     const reserved = [playerStart, ...exits, ...(outpost ? [outpost] : [])];
     const candidates = hexes.filter(
       (h) => hexDist(h, playerStart) >= 3 && !reserved.some((r2) => r2.q === h.q && r2.r === h.r)
@@ -464,9 +576,24 @@
     // isBlockingHazard), not just more enemies — so "not every square is
     // always the same" (Clubhouse feedback). Kept away from both exits and
     // the Outpost so a run can never get its goal fully walled off.
+    // Counts are DENSITIES, not absolutes. Boards vary in size now, and
+    // dropping a 9x11 board's worth of hostiles onto a 7x7 one doubles the
+    // pressure per hex — measured, it halved a careful pilot's finish rate
+    // and wiped out the gap between careful and greedy entirely, because
+    // there was no longer any ground to pick. The crowding has to stay
+    // constant so board size changes the SHAPE of a sector, not its
+    // difficulty.
+    const area = cols * rows;
+    // Not a straight area ratio: a small board is harder to survive at the
+    // same count (less ground to give away), so halving the area shouldn't
+    // halve the roster. Half-way between "same count everywhere" and "same
+    // hostiles per hex" lands the crawl back where it was tuned — measured
+    // at careful ~1 run in 3, greedy and reckless well below it.
+    const density = area / 99; // 9x11, the old fixed board, is 1.0
+    const scale = (n) => Math.max(1, Math.round(n * density));
     const hazardCount = Math.max(
       0,
-      Math.min(1 + Math.floor(depth / 4) + (variant ? variant.hazardDelta : 0) + locale.hazardDelta, 6)
+      Math.min(scale(1 + Math.floor(depth / 4) + (variant ? variant.hazardDelta : 0) + locale.hazardDelta), 6)
     );
     const hazards = [];
     for (const hex of candidates) {
@@ -487,7 +614,7 @@
     // ramp, lower ceiling.
     const enemyCount = Math.max(
       1,
-      Math.min(2 + Math.floor(depth / 4) + (variant ? variant.enemyDelta : 0) + locale.enemyDelta, 5)
+      Math.min(scale(2 + Math.floor(depth / 3) + (variant ? variant.enemyDelta : 0) + locale.enemyDelta), 6)
     );
     // The Railgun Destroyer (long-range, board-spanning shot along its
     // axes) joins the roster at the same depth tier Cruiser/Sentry weight
