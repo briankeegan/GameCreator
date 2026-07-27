@@ -1189,8 +1189,35 @@ function makeExplosionParticles(count) {
 // "maybe we could have [them] color coordinated, but maybe not tell
 // people" — so the color is real and consistent, but never spelled out in
 // the legend; you learn what each one tends to mean by flying it.
-function drawWarpGate(center, r, online, now, rgb) {
+// A gate is painted in the colour of what's THROUGH it, and the number of
+// arcs in its ring is a property of the place too. Nothing anywhere says
+// so — you learn it by going through a few and noticing that the ring with
+// four broken arcs always drops you somewhere full of wrecks. (Clubhouse:
+// "gates should be advertising in some secret way... people can just
+// figure that out as they play.")
+function gateLook(variantId) {
+  const ahead = state.levelId && window.HypergolicLevels && window.HypergolicLevels.localeAhead
+    ? window.HypergolicLevels.localeAhead(state.levelId, variantId)
+    : null;
+  if (!ahead || !ahead.hue) return { rgb: BRANCH_TINTS[variantId] || [120, 255, 210], arcs: 3, dash: false };
+  const rgb = hslToRgb(ahead.hue, Math.min(85, ahead.sat + 30), 62);
+  const ARCS = { shoals: 2, shallows: 3, void: 1, belt: 4, storm: 5, graveyard: 6, bulwark: 3 };
+  return { rgb, arcs: ARCS[ahead.id] || 3, dash: ahead.id === "belt" || ahead.id === "graveyard" };
+}
+
+function hslToRgb(h, sPct, lPct) {
+  const sat = sPct / 100;
+  const light = lPct / 100;
+  const k = (n) => (n + h / 30) % 12;
+  const a = sat * Math.min(light, 1 - light);
+  const f = (n) => light - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
+
+function drawWarpGate(center, r, online, now, rgb, look) {
   const [cr, cg, cb] = rgb || [120, 255, 210];
+  const arcs = (look && look.arcs) || 3;
+  const dashed = Boolean(look && look.dash);
   ctx.save();
   ctx.translate(center.x, center.y);
   const t = (now || 0) / 1000;
@@ -1208,12 +1235,15 @@ function drawWarpGate(center, r, online, now, rgb) {
     ctx.strokeStyle = `rgba(${Math.min(255, cr + 60)},${Math.min(255, cg + 20)},${Math.min(255, cb + 25)},0.9)`;
     ctx.lineWidth = Math.max(1.5, r * 0.12);
     ctx.lineCap = "round";
-    for (let i = 0; i < 3; i++) {
-      const a = (i * Math.PI * 2) / 3;
+    // The ring: how many arcs, and whether they're broken, is the tell.
+    if (dashed) ctx.setLineDash([Math.max(2, r * 0.18), Math.max(2, r * 0.14)]);
+    for (let i = 0; i < arcs; i++) {
+      const a = (i * Math.PI * 2) / arcs;
       ctx.beginPath();
-      ctx.arc(0, 0, r * 0.62, a, a + Math.PI * 0.68);
+      ctx.arc(0, 0, r * 0.62, a, a + (Math.PI * 2) / arcs - 0.35);
       ctx.stroke();
     }
+    ctx.setLineDash([]);
     ctx.restore();
     const pulse = 0.75 + 0.25 * Math.sin(t * 3);
     const core = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.42 * pulse);
@@ -1224,11 +1254,19 @@ function drawWarpGate(center, r, online, now, rgb) {
     ctx.arc(0, 0, r * 0.42 * pulse, 0, Math.PI * 2);
     ctx.fill();
   } else {
+    // Dark, but the ring still has its shape — you can read where a gate
+    // goes while you're still clearing the sector, not only once it lights.
     ctx.strokeStyle = "rgba(150,170,190,0.5)";
     ctx.lineWidth = Math.max(1.5, r * 0.14);
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.lineCap = "round";
+    if (dashed) ctx.setLineDash([Math.max(2, r * 0.18), Math.max(2, r * 0.14)]);
+    for (let i = 0; i < arcs; i++) {
+      const a = (i * Math.PI * 2) / arcs;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.62, a, a + (Math.PI * 2) / arcs - 0.35);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
     ctx.strokeStyle = "rgba(110,130,150,0.38)";
     ctx.lineWidth = Math.max(1, r * 0.07);
     ctx.beginPath();
@@ -1570,7 +1608,8 @@ function draw() {
   const scanTarget = legendVisible && inspectedHex ? Engine.enemyAt(state, inspectedHex) : null;
   const scanTargetHexes = scanTarget
     ? new Set(
-        Engine.weaponHexes(scanTarget, Engine.enemyFacing(state, scanTarget), Engine.ENEMY_TYPES[scanTarget.type].weapon, state)
+        (Engine.enemyShip(scanTarget) ? Engine.enemyShip(scanTarget).weapons : [])
+          .flatMap((w) => Engine.weaponHexes(scanTarget, Engine.enemyFacing(state, scanTarget), w, state))
           .filter((h) => Engine.onBoard(state, h))
           .map(Engine.hexKey)
       )
@@ -1664,7 +1703,8 @@ function draw() {
     drawHex(center, fill, stroke, strokeWidth, fillAlpha);
 
     if (isExit) {
-      drawWarpGate(center, geom.sx * 0.5, state.exitUnlocked, now, BRANCH_TINTS[exitHere.variantId]);
+      const look = gateLook(exitHere.variantId);
+      drawWarpGate(center, geom.sx * 0.5, state.exitUnlocked, now, look.rgb, look);
     } else if (isOutpost) {
       drawOutpost(center, geom.sx * 0.56, now);
     } else if (isWormhole) {
@@ -2606,9 +2646,11 @@ function updateShipOverlay() {
 function describeItem(id) {
   const eq = Engine.EQUIPMENT[id];
   if (eq.kind === "weapon") return describeWeapon(Engine.WEAPONS[eq.weaponKey]);
-  if (eq.kind === "reactor") return `${eq.label} — +${eq.rechargeGain} Energy per cycle · ${eq.w}x${eq.h}`;
+  if (eq.kind === "reactor") return `${eq.label} — holds ${eq.energyCapacity}, makes +${eq.rechargeGain} per cycle · ${eq.w}x${eq.h}`;
+  if (eq.kind === "battery") return `${eq.label} — holds ${eq.energyCapacity}, generates nothing · ${eq.w}x${eq.h}`;
   if (eq.kind === "engine") return `${eq.label} — ${eq.moveRange} hex per turn · ${eq.w}x${eq.h}`;
   if (eq.kind === "shield") return `${eq.label} — raise-able charge, absorbs a volley · ${eq.w}x${eq.h}`;
+  if (eq.kind === "armor") return `${eq.label} — +${eq.hullBonus} Hull, welded on · ${eq.w}x${eq.h}`;
   if (eq.kind === "sensor") return `${eq.label} — powers Scan mode · ${eq.w}x${eq.h}`;
   if (eq.kind === "utility") return `${eq.label} — ${eq.w}x${eq.h}`;
   return eq.label;

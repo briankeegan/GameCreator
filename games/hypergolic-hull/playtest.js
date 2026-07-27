@@ -329,7 +329,10 @@ function playSector(state, report) {
     // (A reckless pilot never waits — that's the whole difference.)
     // Emplacements are the opposite — they never move, so there is no
     // "wait" that helps, only a decision to engage or route around.
-    const chasers = enemies.filter((e) => Engine.ENEMY_TYPES[e.type].movesTowardPlayer);
+    const chasers = enemies.filter((e) => {
+      const ship = Engine.enemyShip(e);
+      return ship && ship.hasDrive;
+    });
     const nearestChaser = chasers.reduce((best, e) =>
       !best || Engine.hexDistance(state.playerPos, e) < Engine.hexDistance(state.playerPos, best) ? e : best
     , null);

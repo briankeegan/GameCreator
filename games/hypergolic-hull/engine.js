@@ -341,7 +341,7 @@
     flakBurst: { id: "flakBurst", label: "Flak Burst", kind: "weapon", weaponKey: "flakBurst", w: 2, h: 2 },
     arcBeam: { id: "arcBeam", label: "Arc Beam", kind: "weapon", weaponKey: "arcBeam", w: 2, h: 2 },
     railgun: { id: "railgun", label: "Railgun", kind: "weapon", weaponKey: "railgun", w: 1, h: 4 },
-    reactorCore: { id: "reactorCore", label: "Reactor Core", kind: "reactor", rechargeGain: 1, w: 2, h: 2 },
+    reactorCore: { id: "reactorCore", label: "Reactor Core", kind: "reactor", rechargeGain: 1, energyCapacity: 6, w: 2, h: 2 },
     sublightDrive: { id: "sublightDrive", label: "Sublight Drive", kind: "engine", moveRange: 1, w: 1, h: 3 },
     shieldGenerator: { id: "shieldGenerator", label: "Shield Generator", kind: "shield", capacity: 1, w: 2, h: 2 },
     // The Scan mode's hardware ("the scanner should itself be a small
@@ -351,9 +351,14 @@
     // EQUIPMENT entries, not enemy-only props — an enemy's hold renders
     // through exactly the same registry yours does, and these are what a
     // wreck would drop.
-    microReactor: { id: "microReactor", label: "Micro Reactor", kind: "reactor", rechargeGain: 1, w: 1, h: 1 },
-    chargeBank: { id: "chargeBank", label: "Charge Bank", kind: "reactor", rechargeGain: 1, w: 1, h: 2 },
-    ablativePlating: { id: "ablativePlating", label: "Ablative Plating", kind: "shield", capacity: 1, w: 1, h: 2 },
+    microReactor: { id: "microReactor", label: "Micro Reactor", kind: "reactor", rechargeGain: 1, energyCapacity: 1, w: 1, h: 1 },
+    // A battery, not a generator: it holds charge, it doesn't make any.
+    // A ship built entirely of Charge Banks has a big bus and no way to
+    // refill it — which is exactly why the Railgun emplacement is slow.
+    chargeBank: { id: "chargeBank", label: "Charge Bank", kind: "battery", energyCapacity: 2, w: 1, h: 2 },
+    // Bolted-on hull, not a screen: it raises how much damage the ship can
+    // eat before it comes apart. Same item, same effect, whoever fits it.
+    ablativePlating: { id: "ablativePlating", label: "Ablative Plating", kind: "armor", hullBonus: 1, w: 1, h: 2 },
     stationAnchor: { id: "stationAnchor", label: "Station Anchor", kind: "utility", w: 1, h: 1 },
   };
 
@@ -392,18 +397,61 @@
     return false;
   }
 
-  // The hold is the SOURCE OF TRUTH — actions, weapon arming, and shield
-  // capacity all derive from what's physically installed. Cargo is inert.
+  // The weapon-system keys the renderer iterates for arming/reach checks —
+  // derived from the Hold now (an installed weapon item sets its
+  // systems[key] flag in deriveShip), but the key list itself is stable
+  // engine data.
+  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "railgun"];
+
+  // ---- what a hold makes a ship able to do -------------------------------
+  //
+  // THE one place capability comes from, for the flagship and for every
+  // hostile alike. There is no second set of rules for enemies: a contact
+  // that flies has a drive bolted in, a contact that shoots has that gun
+  // in its hold, its reactor is the reactors it carries. Pull the drive
+  // out of an Interceptor's hold and it sits still, for the same reason
+  // you would. ("The enemy should be working exactly the same way that
+  // the user is. They have the exact same mechanics in every sense of the
+  // word... They can't move without the item that lets them move. They
+  // can't attack without the item that lets them attack.")
+  function deriveShip(hold) {
+    const items = (hold && hold.items) || [];
+    const eq = (it) => EQUIPMENT[it.id] || {};
+    const has = (id) => items.some((it) => it.id === id);
+    const weaponKeys = WEAPON_SYSTEM_KEYS.filter(has);
+    const systems = { warpdrive: true };
+    for (const key of WEAPON_SYSTEM_KEYS) systems[key] = has(key);
+    const sum = (field) => items.reduce((total, it) => total + (eq(it)[field] || 0), 0);
+    return {
+      weaponKeys,
+      weapons: weaponKeys.map((key) => WEAPONS[key]),
+      actions: ["sublight", ...weaponKeys],
+      systems,
+      hasDrive: items.some((it) => eq(it).kind === "engine"),
+      maxShields: items.filter((it) => eq(it).kind === "shield").length,
+      scannerInstalled: items.some((it) => eq(it).kind === "sensor"),
+      // Batteries hold charge; only generators make it. A hull full of
+      // Charge Banks is a big bus that fills very slowly.
+      maxEnergy: sum("energyCapacity"),
+      rechargeGain: sum("rechargeGain"),
+      hullBonus: sum("hullBonus"),
+    };
+  }
+
+  // The hold is the SOURCE OF TRUTH — actions, weapon arming, reactor
+  // capacity, hull and shield capacity all derive from what's physically
+  // installed. Cargo is inert.
   function syncHoldDerived(state) {
-    const has = (id) => state.hold.items.some((it) => it.id === id);
-    const actions = ["sublight"];
-    for (const key of WEAPON_SYSTEM_KEYS) if (has(key)) actions.push(key);
-    state.actions = actions;
-    state.systems = { warpdrive: true };
-    for (const key of WEAPON_SYSTEM_KEYS) state.systems[key] = has(key);
-    state.maxShields = state.hold.items.filter((it) => EQUIPMENT[it.id].kind === "shield").length;
+    const ship = deriveShip(state.hold);
+    state.actions = ship.actions;
+    state.systems = ship.systems;
+    state.maxShields = ship.maxShields;
     state.shieldCharges = Math.min(state.shieldCharges, state.maxShields);
-    state.scannerInstalled = state.hold.items.some((it) => EQUIPMENT[it.id].kind === "sensor");
+    state.scannerInstalled = ship.scannerInstalled;
+    state.maxEnergy = ship.maxEnergy;
+    state.energy = Math.min(state.energy, state.maxEnergy);
+    state.maxHull = START_HULL + ship.hullBonus;
+    state.hull = Math.min(state.hull, state.maxHull);
   }
 
   function assertDocked(state) {
@@ -469,8 +517,13 @@
     //                 board completely.
     //   railgun     — the sniper emplacement: 2 Hull, no drive, Railgun
     //                 down any axis for 2 damage on a four-round charge.
+    // `hull` is the bare airframe (the flagship's equivalent is
+    // START_HULL); Ablative Plating adds to it. Everything else — what it
+    // shoots, whether it can chase you at all, how big its bus is and how
+    // fast it fills — is READ OFF THE HOLD by deriveShip, exactly as
+    // yours is. Nothing here restates it.
     interceptor: {
-      hp: 1, weapon: WEAPONS.autocannon, movesTowardPlayer: true, salvage: 2, maxEnergy: 1, startEnergy: 1,
+      hull: 1, salvage: 2,
       hold: {
         cols: 3, rows: 4, blocked: ["0,3", "2,3"],
         items: [
@@ -481,43 +534,73 @@
       },
     },
     cruiser: {
-      hp: 2, weapon: WEAPONS.flakBurst, movesTowardPlayer: true, salvage: 4, maxEnergy: 3, startEnergy: 3,
+      hull: 1, salvage: 4,
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
           { id: "flakBurst", x: 1, y: 0 },
           { id: "ablativePlating", x: 0, y: 1 },
-          { id: "ablativePlating", x: 3, y: 1 },
+          { id: "microReactor", x: 3, y: 1 },
           { id: "sublightDrive", x: 1, y: 2 },
           { id: "chargeBank", x: 2, y: 2 },
         ],
       },
     },
     sentry: {
-      hp: 1, weapon: WEAPONS.arcBeam, movesTowardPlayer: false, salvage: 4, maxEnergy: 2, startEnergy: 2,
+      hull: 1, salvage: 4,
       hold: {
         cols: 3, rows: 4, blocked: ["0,0", "2,0"],
         items: [
           { id: "arcBeam", x: 0, y: 1 },
-          { id: "microReactor", x: 2, y: 1 },
-          { id: "microReactor", x: 2, y: 2 },
+          { id: "microReactor", x: 1, y: 0 },
+          { id: "chargeBank", x: 2, y: 1 },
           { id: "stationAnchor", x: 1, y: 3 },
         ],
       },
     },
+    // Two big banks and one small generator: five on the bus, one a
+    // round to fill it, a slug that costs four. The telegraph isn't a
+    // scripted timer — it's the hardware.
     railgun: {
-      hp: 2, weapon: WEAPONS.railgun, movesTowardPlayer: false, salvage: 6, maxEnergy: 4, startEnergy: 0,
+      hull: 2, salvage: 6, startsEmpty: true,
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
           { id: "railgun", x: 1, y: 0 },
           { id: "chargeBank", x: 0, y: 1 },
           { id: "chargeBank", x: 2, y: 1 },
+          { id: "microReactor", x: 0, y: 3 },
           { id: "stationAnchor", x: 1, y: 4 },
         ],
       },
     },
   };
+
+  // Derived once per class at load — the holds above are static, so this
+  // is the same object every caller sees, and no code anywhere is allowed
+  // to hand-author what a class "has".
+  for (const def of Object.values(ENEMY_TYPES)) {
+    def.ship = deriveShip(def.hold);
+    def.maxHull = def.hull + def.ship.hullBonus;
+  }
+
+  // What a given contact can do right now — its class's derived profile.
+  // Enemies don't cache a copy on the instance: same hold, same answer.
+  function enemyShip(enemy) {
+    const def = ENEMY_TYPES[enemy.type];
+    return def ? def.ship : null;
+  }
+
+  // Every weapon a contact could fire from where it stands, ignoring
+  // whether it can currently pay for it. Same geometry function the
+  // flagship's own reach preview uses.
+  function enemyWeaponsBearing(state, enemy, target) {
+    const ship = enemyShip(enemy);
+    if (!ship) return [];
+    const facing = enemyFacing(state, enemy);
+    const at = target || state.playerPos;
+    return ship.weapons.filter((w) => weaponHexes(enemy, facing, w, state).some((h) => posEq(h, at)));
+  }
 
   // Every hex a weapon's pattern actually reaches, fired from `pos` facing
   // hex-direction `facing` (0-5) — each pattern offset traces a straight
@@ -760,11 +843,15 @@
   function staticKillZones(state) {
     const zone = new Set();
     for (const enemy of livingEnemies(state)) {
-      const def = ENEMY_TYPES[enemy.type];
-      if (!def || def.movesTowardPlayer) continue;
-      if (enemy.energy < def.weapon.energyCost) continue; // discharged: this is the gap you cross in
-      for (const hex of weaponHexes(enemy, 0, def.weapon, state)) {
-        if (onBoard(state, hex)) zone.add(hexKey(hex));
+      const ship = enemyShip(enemy);
+      // An emplacement is simply a hull with no drive in it — that's the
+      // whole definition, same as the flagship with its engines pulled.
+      if (!ship || ship.hasDrive) continue;
+      for (const weapon of ship.weapons) {
+        if (enemy.energy < weapon.energyCost) continue; // discharged: this is the gap you cross in
+        for (const hex of weaponHexes(enemy, 0, weapon, state)) {
+          if (onBoard(state, hex)) zone.add(hexKey(hex));
+        }
       }
     }
     return zone;
@@ -772,10 +859,14 @@
 
   function createGameState(level, carryOver) {
     validateLevel(level);
-    const maxHull = (carryOver && carryOver.maxHull) || START_HULL;
     // Built before the state literal so the Outpost's shelf can be stocked
-    // against what's actually bolted into this ship.
+    // against what's actually bolted into this ship — and so the ship's
+    // hull and bus can be read off the hardware rather than carried as
+    // free-floating numbers. Plating IS the extra hull; reactors ARE the
+    // bus. Same as any hostile out there (see ENEMY_TYPES).
     const hold = buildHold(level, carryOver);
+    const derived = deriveShip(hold);
+    const maxHull = START_HULL + derived.hullBonus;
     const state = {
       levelId: level.id,
       levelName: level.name || `Sector ${level.id}`,
@@ -795,8 +886,10 @@
       // Capacity is derived below; carried charges clamp against it.
       maxShields: 0,
       shieldCharges: (carryOver && carryOver.shieldCharges) || 0,
-      maxEnergy: (carryOver && carryOver.maxEnergy) || START_ENERGY,
-      energy: (carryOver && carryOver.maxEnergy) || START_ENERGY,
+      // Energy refills to full at every warp jump; how full "full" is
+      // depends entirely on the reactors and banks in the hold.
+      maxEnergy: derived.maxEnergy,
+      energy: derived.maxEnergy,
       exitPos: { q: exitList(level)[0].q, r: exitList(level)[0].r }, // primary/first gate — kept for single-exit callers
       exits: exitList(level).map((ex) => ({ q: ex.q, r: ex.r, variantId: ex.variantId || null })),
       usedExitVariant: null, // set on win — see spendAp — which gate you actually flew through
@@ -835,14 +928,15 @@
           q: e.q,
           r: e.r,
           alive: true,
-          hp: def.hp,
-          maxHp: def.hp,
-          // Enemies run their own reactors, same rules as the flagship —
-          // a Railgun spawns EMPTY and visibly charges toward its first
-          // shot (the telegraph), a cost-1 chaser spawns full and fires
-          // every turn exactly like it did before energy existed.
-          energy: def.startEnergy,
-          maxEnergy: def.maxEnergy,
+          // Airframe plus whatever plating is bolted to it — derived, not
+          // declared, exactly like the flagship's maxHull.
+          hp: def.maxHull,
+          maxHp: def.maxHull,
+          // Its reactor is the reactors in its hold. A Railgun spawns
+          // EMPTY and visibly charges toward its first shot (the
+          // telegraph); a cost-1 chaser spawns full and fires every turn.
+          energy: def.startsEmpty ? 0 : def.ship.maxEnergy,
+          maxEnergy: def.ship.maxEnergy,
         };
       }),
       // The Hold: the ship's equipment grid — either carried whole from
@@ -908,12 +1002,6 @@
     return hold;
   }
 
-  // The weapon-system keys the renderer iterates for arming/reach checks —
-  // derived from the Hold now (an installed weapon item sets its
-  // systems[key] flag in syncHoldDerived), but the key list itself is
-  // stable engine data.
-  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "railgun"];
-
   // Re-aims the flagship without moving or ending the turn — free to call as
   // many times as you like (no events, no enemy phase). This is what lets
   // you dial in a forward-only weapon's direction while Warpdrive is
@@ -943,6 +1031,22 @@
   // same... asteroid fields" — real obstacles, not just more damage.
   function isBlockingHazard(hazard) {
     return Boolean(hazard) && hazard.type === "asteroid";
+  }
+
+  // Can a ship — ANY ship — end a burn on this hex? One rule, one place:
+  // on the chart, nothing else parked there, and no rock in the way. It
+  // was previously written out twice, and the enemy copy forgot about
+  // rocks, so hostiles flew straight through asteroid fields the
+  // flagship had to go around. Cover has to be cover for everyone.
+  // `mover` (optional) is the ship doing the moving, so it doesn't count
+  // itself as an obstacle.
+  function canFlyInto(state, hex, mover) {
+    if (!onBoard(state, hex)) return false;
+    if (isBlockingHazard(hazardAt(state, hex))) return false;
+    if (!(mover && mover === "player") && posEq(hex, state.playerPos)) return false;
+    const blocker = enemyAt(state, hex);
+    if (blocker && blocker !== mover) return false;
+    return true;
   }
 
   function livingEnemiesAdjacentTo(state, pos) {
@@ -1020,30 +1124,33 @@
   function computeThreatHexes(state) {
     const threats = new Map(); // hexKey -> damage count
     for (const enemy of livingEnemies(state)) {
-      const enemyType = ENEMY_TYPES[enemy.type];
-      if (!enemyType) continue;
+      const ship = enemyShip(enemy);
+      if (!ship) continue;
       // A weapon its reactor can't afford this coming enemy phase is no
       // threat yet — a charging Railgun's board-spanning line only lights
       // up on the turn it can actually fire. (Regen happens AFTER the
       // enemy phase, so "can it fire next phase" is just current energy.)
-      if (enemy.energy < enemyType.weapon.energyCost) continue;
-      for (const hex of weaponHexes(enemy, enemyFacing(state, enemy), enemyType.weapon, state)) {
-        if (!onBoard(state, hex)) continue;
-        const k = hexKey(hex);
-        threats.set(k, (threats.get(k) || 0) + 1);
+      const live = ship.weapons.filter((w) => enemy.energy >= w.energyCost);
+      if (!live.length) continue;
+      const covered = new Set();
+      for (const weapon of live) {
+        for (const hex of weaponHexes(enemy, enemyFacing(state, enemy), weapon, state)) {
+          if (!onBoard(state, hex)) continue;
+          covered.add(hexKey(hex));
+        }
       }
+      for (const k of covered) threats.set(k, (threats.get(k) || 0) + 1);
       // A chaser with 2+ AP can close one hex AND fire in the same enemy
       // phase — its true danger zone this round is one ring wider than
       // where it stands. Every current chaser carries an omnidirectional
       // weapon, so "one ring wider" is exactly distance <= range + 1.
       // (Moot at ENEMY_AP 1 — a 1-AP chaser moves OR fires, never both.)
-      if (ENEMY_AP > 1 && enemyType.movesTowardPlayer) {
-        const extendedRange = enemyType.weapon.range + 1;
+      if (ENEMY_AP > 1 && ship.hasDrive) {
+        const reach = Math.max(...live.map((w) => w.range));
         for (const hex of state.boardHexes) {
           const d = hexDistance(enemy, hex);
-          if (d < 1 || d > extendedRange) continue;
-          const k = hexKey(hex);
-          if (d > enemyType.weapon.range) threats.set(k, (threats.get(k) || 0) + 1);
+          if (d <= reach || d > reach + 1) continue;
+          threats.set(hexKey(hex), (threats.get(hexKey(hex)) || 0) + 1);
         }
       }
     }
@@ -1053,33 +1160,36 @@
   // ---- enemy AI -------------------------------------------------------------
 
   function decideIntent(state, enemy) {
-    const enemyType = ENEMY_TYPES[enemy.type];
-    if (!enemyType) return { enemyId: enemy.id, type: "wait" };
-    // Any enemy — chaser or emplacement — fires the instant the player is
-    // standing somewhere its weapon reaches AND its reactor can pay for
-    // the shot ("the enemies should be using their own systems"). A
+    const ship = enemyShip(enemy);
+    if (!ship) return { enemyId: enemy.id, type: "wait" };
+    // Any contact fires the instant the flagship is standing somewhere one
+    // of ITS FITTED GUNS reaches and its reactor can pay for the shot —
+    // the same two questions the flagship's own fire controls ask. A
     // charging Railgun holds fire; a cost-1 chaser always affords it.
-    const inRange = weaponHexes(enemy, enemyFacing(state, enemy), enemyType.weapon, state).some((h) => posEq(h, state.playerPos));
-    if (inRange && enemy.energy >= enemyType.weapon.energyCost) {
-      return { enemyId: enemy.id, type: "attack" };
+    // With several guns aboard it takes the cheapest that bears, which is
+    // exactly what applyFire does for you when you don't name one.
+    const bearing = enemyWeaponsBearing(state, enemy);
+    const affordable = bearing.filter((w) => enemy.energy >= w.energyCost);
+    if (affordable.length) {
+      const pick = affordable.slice().sort((a, b) => a.energyCost - b.energyCost || b.damage - a.damage)[0];
+      return { enemyId: enemy.id, type: "attack", weaponKey: pick.id };
     }
     // Already in reach but the reactor can't pay yet: HOLD, don't shuffle
-    // sideways — with 2 AP a round, a chaser that fired its first AP would
-    // otherwise spend its second orbiting the flagship, which reads as
-    // random. It stays put and lets the reactor climb.
-    if (inRange) return { enemyId: enemy.id, type: "wait" };
-    // Chasers close the gap; stationary emplacements (a Sentry) just hold and
-    // keep their ring of threatened hexes up.
-    if (enemyType.movesTowardPlayer) {
-      const occupiedNow = new Set(
-        state.enemies.filter((e) => e.alive && e.id !== enemy.id).map((e) => hexKey(e))
-      );
+    // sideways — a chaser that spent the turn orbiting the flagship reads
+    // as random. It stays put and lets the reactor climb.
+    if (bearing.length) return { enemyId: enemy.id, type: "wait" };
+    // No drive fitted, no flying — the same rule that grounds the
+    // flagship with its engines pulled (see applySublight). That, and
+    // nothing else, is what makes a Sentry an emplacement.
+    if (ship.hasDrive) {
       const candidates = [];
       for (let i = 0; i < 6; i++) {
         const to = neighbor(enemy, i);
-        if (!onBoard(state, to)) continue;
-        if (posEq(to, state.playerPos)) continue;
-        if (occupiedNow.has(hexKey(to))) continue;
+        if (!canFlyInto(state, to, enemy)) continue;
+        // Legal, but nobody flies into a black hole on purpose — the
+        // flagship may (it's your funeral); an AI throwing itself down
+        // one would be a free kill, not terrain.
+        if (hazardAt(state, to)) continue;
         candidates.push({ to, dist: hexDistance(to, state.playerPos), dir: i });
       }
       candidates.sort((a, b) => a.dist - b.dist || a.dir - b.dir);
@@ -1172,10 +1282,11 @@
       const intents = livingEnemies(state).map((enemy) => ({ enemy, intent: decideIntent(state, enemy) }));
       const attackers = intents
         .filter(({ intent }) => intent.type === "attack")
-        .sort((a, b) => ENEMY_TYPES[b.enemy.type].weapon.speed - ENEMY_TYPES[a.enemy.type].weapon.speed);
-      for (const { enemy } of attackers) {
+        .sort((a, b) => (WEAPONS[b.intent.weaponKey].speed || 0) - (WEAPONS[a.intent.weaponKey].speed || 0));
+      for (const { enemy, intent } of attackers) {
         if (!enemy.alive) continue;
-        const weapon = ENEMY_TYPES[enemy.type].weapon;
+        const weapon = WEAPONS[intent.weaponKey];
+        if (!weapon) continue;
         if (!weaponHexes(enemy, enemyFacing(state, enemy), weapon, state).some((h) => posEq(h, state.playerPos))) continue;
         if (enemy.energy < weapon.energyCost) continue;
         enemy.energy -= weapon.energyCost; // same rule as the flagship: every shot is paid for
@@ -1211,12 +1322,17 @@
       pushLog(state, totalDamage > 1 ? `We are hit — hull down ${totalDamage}.` : "We are hit — hull down 1.");
     }
     state.turnCount += 1; // a ROUND has passed
-    // Enemy reactors tick +1 per ROUND — that rhythm IS their telegraph (a
-    // Railgun charges 3 rounds between shots). The flagship gets NO passive
-    // regen: your Energy is a budget, refilled to full at each warp jump,
-    // recovered mid-fight only via the RECHARGE action.
+    // Enemy reactors tick once per ROUND, by exactly the rate their own
+    // generators produce — a Railgun's single Micro Reactor against a
+    // 4-energy slug IS the four-round telegraph; nothing scripts it. The
+    // flagship gets no passive tick: with only one action a round, an
+    // enemy that had to spend its turn cycling would simply stop being a
+    // threat, so this is the one place the two sides differ, and it's a
+    // consequence of the AP budget, not of enemies having private rules.
     for (const enemy of livingEnemies(state)) {
-      enemy.energy = Math.min(enemy.maxEnergy, enemy.energy + 1);
+      const ship = enemyShip(enemy);
+      if (!ship) continue;
+      enemy.energy = Math.min(enemy.maxEnergy, enemy.energy + ship.rechargeGain);
     }
     if (state.hull <= 0) {
       state.status = "lost";
@@ -1485,15 +1601,23 @@
       if (state.hull >= state.maxHull) throw new Error("Nothing to patch — hull is sound");
       state.hull += 1;
     } else if (offer.id === "reinforce") {
-      state.maxHull += 1;
-      state.hull += 1;
+      // Plating is a crate of hardware that gets welded in, not a number
+      // going up — the same Ablative Plating a Cruiser carries. If the
+      // hold is full it goes to cargo and does nothing until you find
+      // room for it, which is the honest outcome.
+      autoPlaceInHold(state.hold, "ablativePlating");
+      syncHoldDerived(state);
+      state.hull = Math.min(state.hull + 1, state.maxHull);
     } else if (offer.id === "shield") {
       autoPlaceInHold(state.hold, "shieldGenerator");
       syncHoldDerived(state);
       state.shieldCharges = Math.min(state.shieldCharges + 1, state.maxShields); // arrives raised if it fit installed
     } else if (offer.id === "reactor") {
-      state.maxEnergy += 1;
-      state.energy += 1; // an upgrade should feel immediate, same as Reinforce Hull
+      // A Micro Reactor: one more on the bus AND one more per cycle, the
+      // same tile the chasers run on.
+      autoPlaceInHold(state.hold, "microReactor");
+      syncHoldDerived(state);
+      state.energy = Math.min(state.energy + 1, state.maxEnergy); // an upgrade should feel immediate
     } else if (offer.id === "hardpoint") {
       state.hold.rows += 1; // more internal space — the grid literally grows
     } else if (offer.id === "flakBurst" || offer.id === "arcBeam" || offer.id === "railgun") {
@@ -1576,6 +1700,10 @@
     WEAPONS,
     ENEMY_TYPES,
     weaponHexes,
+    deriveShip,
+    enemyShip,
+    enemyWeaponsBearing,
+    canFlyInto,
   };
 
   if (typeof module !== "undefined" && module.exports) {

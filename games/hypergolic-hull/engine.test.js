@@ -18,7 +18,8 @@
 
 const assert = require("assert");
 const Engine = require("./engine.js");
-const { LEVELS, generateLevel, BOSS_DEPTH } = require("./levels.js");
+const HypergolicLevels = require("./levels.js");
+const { LEVELS, generateLevel, BOSS_DEPTH } = HypergolicLevels;
 
 function clone(state) {
   return JSON.parse(JSON.stringify(state));
@@ -537,13 +538,13 @@ assert.strictEqual(holdCarryState.maxEnergy, maxEnergyBefore + 1, "maxEnergy car
 // flagship — not hardcoded adjacency/damage constants — so the threat
 // overlay, attack range, and damage-per-hit are all read off the
 // Interceptor's own weapon rather than special-cased.
-assert.strictEqual(
-  Engine.ENEMY_TYPES.interceptor.weapon,
-  Engine.WEAPONS.autocannon,
+assert.deepStrictEqual(
+  Engine.ENEMY_TYPES.interceptor.ship.weapons,
+  [Engine.WEAPONS.autocannon],
   "an Interceptor shoots you with the very Autocannon you fly with — no enemy-only gear"
 );
 const interceptorPos = { q: 0, r: 0 };
-const interceptorWeapon = Engine.ENEMY_TYPES.interceptor.weapon;
+const interceptorWeapon = Engine.ENEMY_TYPES.interceptor.ship.weapons[0];
 // A chaser turns its nose toward the flagship (the board draws it doing
 // exactly that), so its forward-arc gun aims the same way yours does.
 const facedState = Engine.createGameState(goldenLevel);
@@ -602,14 +603,14 @@ assert.deepStrictEqual(
 // ---- new enemy classes: Cruiser (heavy) and Sentry (stationary turret) -----
 // Variety beyond the lone Interceptor: a Cruiser takes two hits, and a Sentry
 // never moves but its beam reaches two hexes in every direction.
-assert.strictEqual(Engine.ENEMY_TYPES.cruiser.hp, 2, "the Cruiser is a 2-Hull heavy (survives a single hit)");
-assert.strictEqual(Engine.ENEMY_TYPES.interceptor.hp, 1, "the Interceptor is still a 1-Hull glass cannon");
+assert.strictEqual(Engine.ENEMY_TYPES.cruiser.maxHull, 2, "the Cruiser is a 2-Hull heavy (survives a single hit)");
+assert.strictEqual(Engine.ENEMY_TYPES.interceptor.maxHull, 1, "the Interceptor is still a 1-Hull glass cannon");
 // Glass: it denies ground and dies to one shot. At 2 Hull a pair of
 // them walled a whole board — the question a Sentry asks should be "can
 // you reach it", not "can you out-trade it".
-assert.strictEqual(Engine.ENEMY_TYPES.sentry.hp, 1, "the Sentry is a ONE-Hull emplacement");
-assert.strictEqual(Engine.ENEMY_TYPES.sentry.movesTowardPlayer !== true, true, "the Sentry never chases");
-assert.strictEqual(Engine.ENEMY_TYPES.sentry.weapon, Engine.WEAPONS.arcBeam, "the Sentry fires the Arc Beam");
+assert.strictEqual(Engine.ENEMY_TYPES.sentry.maxHull, 1, "the Sentry is a ONE-Hull emplacement");
+assert.strictEqual(Engine.ENEMY_TYPES.sentry.ship.hasDrive, false, "the Sentry never chases — there is no drive in it");
+assert.deepStrictEqual(Engine.ENEMY_TYPES.sentry.ship.weapons, [Engine.WEAPONS.arcBeam], "the Sentry fires the Arc Beam");
 assert.strictEqual(Engine.WEAPONS.arcBeam.range, 2, "the Arc Beam reaches two hexes");
 
 const sentryHexes = Engine.weaponHexes({ q: 0, r: 0 }, 0, Engine.WEAPONS.arcBeam);
@@ -670,8 +671,8 @@ assert.ok(sentryState.events.some((e) => e.type === "attack"), "the Sentry's sho
 // built at last ("what about... basic enemy variety") — stationary like
 // the Sentry, but its shot reaches the length of the board along any of
 // the 6 axes instead of a short ring.
-assert.strictEqual(Engine.ENEMY_TYPES.railgun.hp, 2, "the Railgun is a 2-Hull emplacement, same tier as the Sentry");
-assert.strictEqual(Engine.ENEMY_TYPES.railgun.movesTowardPlayer !== true, true, "the Railgun never chases either");
+assert.strictEqual(Engine.ENEMY_TYPES.railgun.maxHull, 2, "the Railgun is a 2-Hull emplacement, same tier as the Sentry");
+assert.strictEqual(Engine.ENEMY_TYPES.railgun.ship.hasDrive, false, "the Railgun never chases either");
 assert.strictEqual(Engine.WEAPONS.railgun.range, 20, "the Railgun's shot is effectively board-spanning");
 
 const railgunLevel = {
@@ -825,6 +826,13 @@ salvageState.salvage = reinforceOffer.cost;
 const maxHullBefore = salvageState.maxHull;
 Engine.applyOutpostPurchase(salvageState, "reinforce");
 assert.strictEqual(salvageState.maxHull, maxHullBefore + 1, "Reinforce Hull raises the cap by 1");
+// ...and it does so by welding a real crate of Ablative Plating into the
+// hold — the same item a Cruiser carries. Extra hull is hardware you can
+// point at, not a number on a sheet.
+assert.ok(
+  salvageState.hold.items.some((it) => it.id === "ablativePlating"),
+  "Reinforce Hull installs actual plating, the same item the hostiles carry"
+);
 assert.strictEqual(salvageState.salvage, 0, "Reinforce Hull spent all the salvage set aside for it");
 
 // Every offer except Repair is one-time per outpost — buying it removes
@@ -862,18 +870,20 @@ const carriedHold = {
     { id: "autocannon", x: 3, y: 0 },
     { id: "shieldGenerator", x: 0, y: 2 },
     { id: "shieldGenerator", x: 3, y: 1 },
+    { id: "ablativePlating", x: 4, y: 0 },
   ],
   cargo: [],
 };
 const carriedState = Engine.createGameState(LEVELS[0], {
   salvage: 4,
   hull: 1,
-  maxHull: salvageState.maxHull,
   shieldCharges: 2,
   hold: carriedHold,
 });
 assert.strictEqual(carriedState.salvage, 4, "salvage carries over into the next sector");
-assert.strictEqual(carriedState.maxHull, salvageState.maxHull, "a permanent max-Hull upgrade carries over too");
+// The upgrade carries because the PLATING carries — max hull isn't a
+// separate number riding along beside the ship, it's part of the ship.
+assert.strictEqual(carriedState.maxHull, Engine.START_HULL + 1, "the welded-in plating is still welded in next sector");
 assert.strictEqual(carriedState.hull, 1, "hull DAMAGE carries over — a jump never repairs the ship");
 assert.strictEqual(carriedState.shieldCharges, 2, "raised shield charges carry over too");
 assert.strictEqual(carriedState.maxShields, 2, "capacity derives from the two installed generators in the carried hold");
@@ -1136,12 +1146,89 @@ assert.strictEqual(railgunBuyState.enemies[0].alive, false, "the Railgun one-sho
 
 // Every weapon in the roster is carried by a hostile class — scanning a
 // contact teaches you what's buyable, never enemy-only gear.
-const carriedWeapons = Object.values(Engine.ENEMY_TYPES).map((t) => t.weapon.id).sort();
+const carriedWeapons = Object.values(Engine.ENEMY_TYPES).flatMap((t) => t.ship.weaponKeys).sort();
 assert.deepStrictEqual(
   carriedWeapons,
   ["arcBeam", "autocannon", "flakBurst", "railgun"],
   "all four weapons exist in the world on enemy ships — one class per weapon"
 );
+
+// ---- one set of rules, both sides --------------------------------------
+// There is no second rulebook for hostiles. Everything a contact can do is
+// read off its hold by the same deriveShip() the flagship runs through, and
+// it flies by the same movement rule. This block is the guard on that:
+// "the enemy should be working exactly the same way that the user is...
+// they can't move without the item that lets them move. They can't attack
+// without the item that lets them attack."
+{
+  // Nothing on this board flies through a rock. A chaser boxed in by
+  // asteroids stays put instead of walking over one — cover has to be
+  // cover for both sides or it's worth nothing.
+  const rockLevel = {
+    id: 992,
+    name: "rock parity fixture",
+    board: { type: "rect", cols: 5, rows: 9 },
+    playerStart: { q: 2, r: 7 },
+    exit: { q: 2, r: -1 },
+    outpost: null,
+    enemies: [{ type: "interceptor", q: 2, r: 2 }],
+    // A full wall across the chaser's only approach.
+    hazards: [0, 1, 2, 3, 4].map((q) => ({ type: "asteroid", q, r: 3 })),
+    exitRule: "all-enemies-dead",
+    actions: ["sublight"],
+  };
+  const rockState = Engine.createGameState(rockLevel);
+  const chaser = rockState.enemies[0];
+  const rocks = new Set(rockState.hazards.map((h) => Engine.hexKey(h)));
+  for (let round = 0; round < 8; round++) {
+    Engine.applyEndTurn(rockState);
+    assert.ok(
+      !rocks.has(Engine.hexKey(chaser)),
+      "a hostile never ends a burn inside an asteroid — the rock stops it exactly like it stops you"
+    );
+    assert.ok(chaser.r < 3, "and it never gets past the wall it can't fly through");
+  }
+
+  // Capability comes from hardware, and ONLY from hardware. Take the drive
+  // out and the same class stops chasing; take the gun out and it stops
+  // shooting. Nothing else in the file gets a vote.
+  const grounded = Engine.deriveShip({
+    items: Engine.ENEMY_TYPES.interceptor.hold.items.filter((it) => it.id !== "sublightDrive"),
+  });
+  assert.strictEqual(grounded.hasDrive, false, "pull an Interceptor's drive and it is an emplacement");
+  const disarmed = Engine.deriveShip({
+    items: Engine.ENEMY_TYPES.interceptor.hold.items.filter((it) => it.id !== "autocannon"),
+  });
+  assert.deepStrictEqual(disarmed.weapons, [], "pull its gun and it has nothing to shoot you with");
+
+  // And that isn't just theory about a derived object — an actual grounded
+  // contact on an actual board never moves.
+  Engine.ENEMY_TYPES.__testHulk = {
+    hull: 1, salvage: 1,
+    hold: { cols: 2, rows: 2, blocked: [], items: [{ id: "microReactor", x: 0, y: 0 }] },
+  };
+  Engine.ENEMY_TYPES.__testHulk.ship = Engine.deriveShip(Engine.ENEMY_TYPES.__testHulk.hold);
+  Engine.ENEMY_TYPES.__testHulk.maxHull = 1;
+  const hulkState = Engine.createGameState({ ...rockLevel, id: 991, hazards: [], enemies: [{ type: "__testHulk", q: 2, r: 2 }] });
+  const hulk = hulkState.enemies[0];
+  const hulkStart = Engine.hexKey(hulk);
+  const hullBeforeHulk = hulkState.hull;
+  for (let round = 0; round < 6; round++) Engine.applyEndTurn(hulkState);
+  assert.strictEqual(Engine.hexKey(hulk), hulkStart, "no drive fitted, no flying — for them exactly as for you");
+  assert.strictEqual(hulkState.hull, hullBeforeHulk, "no gun fitted, no shooting");
+  delete Engine.ENEMY_TYPES.__testHulk;
+
+  // Every class's numbers ARE its hold's numbers. If someone hand-writes a
+  // stat block again, this fails.
+  for (const [name, def] of Object.entries(Engine.ENEMY_TYPES)) {
+    const fresh = Engine.deriveShip(def.hold);
+    assert.deepStrictEqual(fresh.weaponKeys, def.ship.weaponKeys, `${name}'s armament is its hold's armament`);
+    assert.strictEqual(fresh.maxEnergy, def.ship.maxEnergy, `${name}'s bus is the reactors it carries`);
+    assert.strictEqual(def.maxHull, def.hull + fresh.hullBonus, `${name}'s hull is airframe plus plating`);
+    assert.ok(fresh.rechargeGain > 0, `${name} carries a generator, not just batteries — it can actually refill`);
+    assert.ok(fresh.maxEnergy >= Math.min(...fresh.weapons.map((w) => w.energyCost)), `${name} can eventually afford to fire`);
+  }
+}
 
 // ---- maps as PLACES -----------------------------------------------------
 // A sector should be somewhere, not a numbered room: its own colour of
@@ -1180,6 +1267,50 @@ assert.deepStrictEqual(
   // and a reason to take the other gate.
   assert.ok(docks < sectors * 0.75, "docks are not guaranteed everywhere");
   assert.ok(docks > sectors * 0.25, "...but the crawl isn't a desert either");
+}
+
+// Every sector is a NAME, not a category label. Four "The Cold Yard"s on
+// one chart is a list of types; "Winter Line" and "Hollis Mausoleum" are
+// two places you actually went.
+{
+  const names = new Set();
+  let sectors = 0;
+  for (let depth = 5; depth <= 30; depth++) {
+    for (const variant of ["aggressive", "quiet", "drift"]) {
+      const level = generateLevel(depth, variant);
+      if (level.isBoss) continue;
+      sectors++;
+      names.add(level.name);
+      assert.ok(level.name && level.name !== level.locale.name, `depth ${depth} ${variant} has a name of its own`);
+    }
+  }
+  assert.ok(names.size > sectors * 0.6, "sector names are mostly distinct across a crawl, not a handful repeated");
+  // ...and a place keeps its name: the chart you drew stays true.
+  assert.equal(generateLevel(9, "quiet").name, generateLevel(9, "quiet").name);
+}
+
+// A gate advertises where it goes — honestly. Nothing in the UI says so;
+// the tell is only worth learning if it's never a lie, so localeAhead must
+// match the sector you actually arrive in.
+{
+  for (let depth = 4; depth <= 20; depth++) {
+    for (const variant of ["aggressive", "quiet", "drift"]) {
+      const promised = HypergolicLevels.localeAhead(depth, variant);
+      const arrived = generateLevel(depth + 1, variant);
+      assert.equal(promised.id, arrived.locale.id, `depth ${depth} ${variant} gate tells the truth about what's through it`);
+    }
+  }
+  // Two gates out of the same sector shouldn't usually promise the same
+  // place, or there'd be nothing to read off them.
+  let differ = 0;
+  let total = 0;
+  for (let depth = 4; depth <= 30; depth++) {
+    const a = HypergolicLevels.localeAhead(depth, "aggressive");
+    const q = HypergolicLevels.localeAhead(depth, "quiet");
+    total++;
+    if (a.id !== q.id) differ++;
+  }
+  assert.ok(differ > total * 0.5, "the fork is usually a choice between two different kinds of space");
 }
 
 // A locale is a real difference, not a paint job: what's out there changes

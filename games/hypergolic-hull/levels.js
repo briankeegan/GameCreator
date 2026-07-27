@@ -284,6 +284,47 @@
     },
   ];
 
+  // Every sector gets its own NAME, not just its locale's label — a chart
+  // full of "The Cold Yard" four times over reads as a category list, and
+  // the whole point of these places is that you remember individual ones.
+  // Names are seeded per sector, so a place you charted keeps its name for
+  // the whole run (and re-deals identically on the same seed).
+  const NAME_PARTS = {
+    shoals: {
+      first: ["Kesler", "Ashfall", "Meridian", "Tallow", "Sable", "Coriolis"],
+      last: ["Shoals", "Drift", "Banks", "Reach", "Shallows", "Veil"],
+    },
+    shallows: {
+      first: ["Halcyon", "Ostara", "Verrin", "Kepler", "Aldis", "Nyx"],
+      last: ["Approach", "Anchorage", "Roads", "Narrows", "Basin", "Crossing"],
+    },
+    void: {
+      first: ["Null", "Hollow", "Perdition", "Long", "Cold", "Empty"],
+      last: ["Gap", "Silence", "Span", "Dark", "Interval", "March"],
+    },
+    belt: {
+      first: ["Tessaly", "Redline", "Kollis", "Marrow", "Ironway", "Vashti"],
+      last: ["Breakers", "Wreckline", "Scrapway", "Cut", "Run", "Spoil"],
+    },
+    storm: {
+      first: ["Corona", "Static", "Feral", "Ember", "Pale", "Wrath"],
+      last: ["Front", "Squall", "Surge", "Curtain", "Flare", "Boundary"],
+    },
+    graveyard: {
+      first: ["Cassivar", "Dumas", "Old", "Silent", "Winter", "Hollis"],
+      last: ["Yard", "Line", "Fleet", "Standing", "Anchorage", "Mausoleum"],
+    },
+  };
+
+  function sectorName(locale, depth, variantId) {
+    const parts = NAME_PARTS[locale.id];
+    if (!parts) return locale.name;
+    const rng = seededRandom(depth * 7919 + (variantId || "x").charCodeAt(0) * 613 + locale.id.length * 97);
+    const first = parts.first[Math.floor(rng() * parts.first.length)];
+    const last = parts.last[Math.floor(rng() * parts.last.length)];
+    return `${first} ${last}`;
+  }
+
   // Which locale a sector is depends on the depth AND the gate you came
   // through, so the same depth reached two ways is two different places —
   // and so a gate can honestly advertise where it goes (see localeAhead).
@@ -491,7 +532,7 @@
 
     return {
       id: depth,
-      name: `${locale.name} — Depth ${depth}`,
+      name: sectorName(locale, depth, variantId),
       board: { type: "rect", cols, rows },
       playerStart,
       exit,
@@ -518,11 +559,11 @@
       },
       salvageBonus: locale.salvageDelta,
       theme: { variant: variant ? variant.id : "neutral", band: Math.floor(depth / 5), locale: locale.id },
-      intro: `${locale.name}. ${locale.blurb}`,
+      intro: `${sectorName(locale, depth, variantId)} — ${locale.name.toLowerCase()}. ${locale.blurb}`,
     };
   }
 
-  const HypergolicLevels = { LEVELS, generateLevel, BOSS_DEPTH };
+  const HypergolicLevels = { LEVELS, generateLevel, BOSS_DEPTH, localeAhead, LOCALES };
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = HypergolicLevels;

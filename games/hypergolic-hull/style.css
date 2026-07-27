@@ -654,6 +654,8 @@ body {
 .hold-kind-reactor { border-color: #2e7d52; background: #12281c; }
 .hold-kind-engine { border-color: #2e5f96; background: #131f30; }
 .hold-kind-shield { border-color: #5bb8f2; background: #14273a; }
+.hold-kind-battery { border-color: #7fa84a; background: #1b2412; }
+.hold-kind-armor { border-color: #9c8a6a; background: #26211a; }
 .hold-kind-utility { border-color: #8a6ecf; background: #201a33; }
 .hold-kind-sensor { border-color: #3fbf9f; background: #10261f; }
 .hold-cell-void {
