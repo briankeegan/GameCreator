@@ -1412,8 +1412,24 @@ function localeOf() {
   return (state && state.locale) || null;
 }
 
+// [inner, outer, nebula-accent] — the whole sky of a place.
+const SKIES = {
+  shoals: ["hsl(30, 46%, 12%)", "hsl(22, 55%, 4%)", "hsla(40, 70%, 58%, 0.16)"],
+  shallows: ["hsl(206, 55%, 9%)", "hsl(220, 62%, 3%)", "hsla(192, 85%, 60%, 0.14)"],
+  void: ["hsl(238, 32%, 4%)", "hsl(240, 45%, 1%)", "hsla(250, 55%, 50%, 0.07)"],
+  belt: ["hsl(16, 48%, 9%)", "hsl(10, 58%, 3%)", "hsla(30, 75%, 55%, 0.14)"],
+  storm: ["hsl(283, 55%, 12%)", "hsl(272, 65%, 4%)", "hsla(310, 90%, 62%, 0.20)"],
+  graveyard: ["hsl(168, 28%, 7%)", "hsl(178, 36%, 2%)", "hsla(150, 45%, 45%, 0.10)"],
+  bulwark: ["hsl(2, 46%, 9%)", "hsl(355, 58%, 3%)", "hsla(15, 85%, 55%, 0.17)"],
+};
+
 function backdropForLevel(levelId) {
   const locale = localeOf();
+  // Hand-picked per place rather than one formula off a hue: the formula
+  // put every sector at the same near-black with a slight tint, which is
+  // most of why they all looked alike. Dust scatters light and is genuinely
+  // bright; the Deep is as close to nothing as the screen allows.
+  if (locale && SKIES[locale.id]) return SKIES[locale.id];
   if (locale) {
     const accent = (locale.hue + 40) % 360;
     return [
@@ -1445,83 +1461,259 @@ function starsFor(levelId, w, h, density) {
 // The furniture. Each locale draws one big recognisable thing plus its own
 // texture, all of it behind the grid and outside the board's edges too, so
 // the sector reads as a place the board is sitting IN.
+// How the navigable grid is lit HERE — line colour/weight, and the wash
+// that separates the board from the sky behind it. Six entries, six looks.
+const GRID_LOOKS = {
+  shoals: { stroke: "rgba(226,188,140,0.34)", width: 0.9, panel: ["rgba(255,214,150,0.07)", "rgba(180,120,60,0.05)"] },
+  shallows: { stroke: "rgba(196,226,255,0.52)", width: 0.85, panel: ["rgba(160,215,255,0.10)", "rgba(40,90,160,0.06)"] },
+  void: { stroke: "rgba(150,172,214,0.20)", width: 0.6, panel: ["rgba(120,150,210,0.035)", "rgba(60,80,140,0.02)"] },
+  belt: { stroke: "rgba(240,176,116,0.46)", width: 1.05, panel: ["rgba(255,170,90,0.08)", "rgba(150,70,30,0.05)"] },
+  storm: { stroke: "rgba(228,172,255,0.58)", width: 1.15, panel: ["rgba(220,150,255,0.11)", "rgba(110,50,170,0.07)"] },
+  graveyard: { stroke: "rgba(154,220,200,0.30)", width: 0.8, panel: ["rgba(120,220,195,0.05)", "rgba(30,80,70,0.04)"] },
+  bulwark: { stroke: "rgba(255,150,150,0.55)", width: 1.2, panel: ["rgba(255,120,110,0.10)", "rgba(120,20,20,0.07)"] },
+};
+const DEFAULT_GRID_LOOK = { stroke: "rgba(201,214,232,0.6)", width: 0.75, panel: ["rgba(190,225,255,0.07)", "rgba(120,170,230,0.03)"] };
+
+function gridLook() {
+  const locale = localeOf();
+  return (locale && GRID_LOOKS[locale.id]) || DEFAULT_GRID_LOOK;
+}
+
 function drawLocaleFeature(feature, hue, sat) {
   const w = geom.w;
   const h = geom.h;
   const rng = seededRandom(`feature-${state.levelId}-${feature}`);
   ctx.save();
   if (feature === "planet") {
-    // A world's limb, huge, cropped by the frame.
-    const cx = w * (rng() < 0.5 ? -0.15 : 1.15);
-    const cy = h * (0.15 + rng() * 0.5);
-    const r = h * (0.55 + rng() * 0.25);
-    const body = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.1, cx, cy, r);
-    body.addColorStop(0, `hsla(${hue}, ${sat + 20}%, 42%, 0.55)`);
-    body.addColorStop(0.65, `hsla(${hue}, ${sat + 10}%, 20%, 0.5)`);
-    body.addColorStop(1, `hsla(${hue}, ${sat}%, 6%, 0.15)`);
-    ctx.fillStyle = body;
+    // A world, and you are close to it. It owns most of the frame, has a
+    // hard terminator and a lit atmosphere rim — not a tinted circle.
+    const left = rng() < 0.5;
+    const cx = w * (left ? -0.55 : 1.55);
+    const cy = h * (0.05 + rng() * 0.4);
+    const r = h * (0.62 + rng() * 0.18);
+    ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-    // Banding, so it reads as a gas giant rather than a circle.
-    ctx.globalAlpha = 0.18;
-    for (let i = 0; i < 6; i++) {
-      const band = cy - r + (r * 2 * (i + 0.5)) / 6;
-      ctx.fillStyle = `hsl(${(hue + i * 6) % 360}, ${sat + 15}%, ${28 + i * 4}%)`;
+    ctx.clip();
+    const body = ctx.createLinearGradient(cx + (left ? r : -r), cy, cx + (left ? -r : r), cy);
+    body.addColorStop(0, `hsl(${hue}, ${sat + 25}%, 46%)`);
+    body.addColorStop(0.45, `hsl(${hue - 6}, ${sat + 15}%, 24%)`);
+    body.addColorStop(0.78, `hsl(${hue - 10}, ${sat}%, 8%)`);
+    body.addColorStop(1, "#05070c");
+    ctx.fillStyle = body;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    // Latitude banding, wide and soft — a real gas envelope.
+    for (let i = 0; i < 11; i++) {
+      const band = cy - r + (r * 2 * (i + 0.5)) / 11;
+      ctx.globalAlpha = 0.14 + rng() * 0.12;
+      ctx.fillStyle = `hsl(${(hue + (i % 3) * 9) % 360}, ${sat + 20}%, ${20 + (i % 4) * 8}%)`;
       ctx.beginPath();
-      ctx.ellipse(cx, band, r * 0.98, r * 0.09, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx, band, r, r * (0.03 + rng() * 0.05), 0, 0, Math.PI * 2);
       ctx.fill();
     }
+    // One storm eye, because a planet you remember has a landmark.
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = `hsl(${(hue + 20) % 360}, ${sat + 30}%, 52%)`;
+    ctx.beginPath();
+    ctx.ellipse(cx + (left ? r * 0.55 : -r * 0.55), cy + r * 0.18, r * 0.13, r * 0.07, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // Atmosphere: a bright rim on the lit limb, fading into the sky.
+    ctx.globalAlpha = 1;
+    const halo = ctx.createRadialGradient(cx, cy, r * 0.97, cx, cy, r * 1.13);
+    halo.addColorStop(0, `hsla(${hue + 10}, 90%, 72%, 0.42)`);
+    halo.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 1.13, 0, Math.PI * 2);
+    ctx.fill();
   } else if (feature === "dust") {
-    // Shoals: soft banks of dust drifting across the whole frame.
-    for (let i = 0; i < 5; i++) {
+    // Shoals: you are INSIDE the dust, not looking at it. Heavy warm banks
+    // that swallow the far side of the board.
+    for (let i = 0; i < 7; i++) {
       const bx = rng() * w;
       const by = rng() * h;
-      const br = h * (0.25 + rng() * 0.3);
+      const br = h * (0.3 + rng() * 0.4);
       const cloud = ctx.createRadialGradient(bx, by, 0, bx, by, br);
-      cloud.addColorStop(0, `hsla(${hue + 10}, ${sat}%, 45%, 0.13)`);
+      cloud.addColorStop(0, `hsla(${hue + 8}, ${sat + 25}%, 44%, 0.15)`);
+      cloud.addColorStop(0.5, `hsla(${hue}, ${sat + 10}%, 28%, 0.08)`);
       cloud.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = cloud;
       ctx.fillRect(0, 0, w, h);
     }
-    ctx.globalAlpha = 0.5;
-    for (let i = 0; i < 60; i++) {
-      ctx.fillStyle = `hsla(${hue}, ${sat}%, 70%, ${0.05 + rng() * 0.12})`;
+    // Grit, close to the lens.
+    for (let i = 0; i < 150; i++) {
+      ctx.globalAlpha = 0.1 + rng() * 0.35;
+      ctx.fillStyle = `hsl(${hue + rng() * 20}, ${sat + 20}%, ${55 + rng() * 25}%)`;
       ctx.beginPath();
-      ctx.arc(rng() * w, rng() * h, 1 + rng() * 2.5, 0, Math.PI * 2);
+      ctx.arc(rng() * w, rng() * h, 0.6 + rng() * 2.6, 0, Math.PI * 2);
       ctx.fill();
     }
-  } else if (feature === "wrecks" || feature === "hulks") {
-    // Somebody else's bad day, drifting. Hulks are bigger and colder.
-    const count = feature === "hulks" ? 5 : 9;
-    const scale = feature === "hulks" ? 1.9 : 1;
-    ctx.globalAlpha = feature === "hulks" ? 0.3 : 0.24;
-    for (let i = 0; i < count; i++) {
-      const x = rng() * w;
-      const y = rng() * h;
-      const len = (10 + rng() * 26) * scale;
-      const wide = (3 + rng() * 6) * scale;
+  } else if (feature === "wrecks") {
+    // The Breakers: a shipping lane that didn't make it. A debris LANE
+    // crosses the frame on a diagonal, dense along its spine.
+    const angle = -0.5 + rng() * 1.0;
+    ctx.save();
+    ctx.translate(w * 0.5, h * 0.5);
+    ctx.rotate(angle);
+    const lane = ctx.createLinearGradient(0, -h * 0.55, 0, h * 0.55);
+    lane.addColorStop(0, "rgba(0,0,0,0)");
+    lane.addColorStop(0.5, `hsla(${hue}, ${sat + 20}%, 40%, 0.22)`);
+    lane.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = lane;
+    ctx.fillRect(-w, -h * 0.55, w * 2, h * 1.1);
+    // Rocks and torn plate, thickest along the lane.
+    for (let i = 0; i < 70; i++) {
+      const x = (rng() * 2 - 1) * w;
+      const spread = (rng() + rng() + rng()) / 3 - 0.5; // clustered on the spine
+      const y = spread * h * 0.9;
+      const size = 2 + rng() * 14 * (1 - Math.abs(spread) * 1.2);
+      if (size < 1.5) continue;
+      ctx.globalAlpha = 0.35 + rng() * 0.4;
+      ctx.fillStyle = `hsl(${hue + rng() * 14}, ${sat - 10}%, ${16 + rng() * 22}%)`;
+      ctx.beginPath();
+      const pts = 5 + Math.floor(rng() * 3);
+      for (let p = 0; p < pts; p++) {
+        const a = (p / pts) * Math.PI * 2;
+        const rr = size * (0.6 + rng() * 0.6);
+        const px = x + Math.cos(a) * rr;
+        const py = y + Math.sin(a) * rr * 0.7;
+        if (p === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  } else if (feature === "hulks") {
+    // The Cold Yard: big dead ships, ALL POINTING THE SAME WAY. They are
+    // still holding a formation nobody stood down. That alignment is the
+    // thing you recognise when you come back.
+    const heading = -0.35 + rng() * 0.7;
+    const rows = 4;
+    for (let i = 0; i < 7; i++) {
+      const x = w * (0.08 + (i % 3) * 0.36 + rng() * 0.1);
+      const y = h * (0.08 + Math.floor(i / 3) * (0.9 / rows) + rng() * 0.12);
+      const len = h * (0.18 + rng() * 0.22);
+      const wide = len * (0.16 + rng() * 0.08);
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate(rng() * Math.PI);
-      ctx.fillStyle = `hsl(${hue + 8}, ${Math.max(10, sat - 20)}%, ${22 + rng() * 14}%)`;
-      ctx.fillRect(-len / 2, -wide / 2, len, wide);
-      ctx.fillStyle = `hsl(${hue + 8}, ${Math.max(10, sat - 25)}%, ${14 + rng() * 8}%)`;
-      ctx.fillRect(-len / 2, -wide / 2, len * 0.3, wide);
+      ctx.rotate(heading);
+      ctx.globalAlpha = 0.55;
+      // Hull: a long wedge with a broken spine.
+      ctx.fillStyle = `hsl(${hue}, ${Math.max(8, sat - 22)}%, 13%)`;
+      ctx.beginPath();
+      ctx.moveTo(-len * 0.5, 0);
+      ctx.lineTo(-len * 0.2, -wide * 0.5);
+      ctx.lineTo(len * 0.42, -wide * 0.32);
+      ctx.lineTo(len * 0.5, 0);
+      ctx.lineTo(len * 0.42, wide * 0.32);
+      ctx.lineTo(-len * 0.2, wide * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = `hsl(${hue + 6}, ${sat}%, 34%)`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // A few running lights nobody ever switched off.
+      for (let d = 0; d < 3; d++) {
+        ctx.globalAlpha = 0.25 + rng() * 0.5;
+        ctx.fillStyle = `hsl(${hue + 20}, 80%, 70%)`;
+        ctx.beginPath();
+        ctx.arc(-len * 0.3 + d * len * 0.3, 0, 1.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     }
   } else if (feature === "storm") {
-    // Ion front: charged curtains sweeping the sky.
-    ctx.globalAlpha = 0.35;
-    for (let i = 0; i < 4; i++) {
+    // Ion front: the sky itself is the hazard. Bright curtains, top to
+    // bottom, and a horizon-wide glow along one edge.
+    for (let i = 0; i < 6; i++) {
       const x = rng() * w;
-      const curtain = ctx.createLinearGradient(x - w * 0.2, 0, x + w * 0.2, h);
+      const wide = w * (0.12 + rng() * 0.22);
+      const curtain = ctx.createLinearGradient(x - wide, 0, x + wide, h);
       curtain.addColorStop(0, "rgba(0,0,0,0)");
-      curtain.addColorStop(0.5, `hsla(${(hue + 20 + i * 12) % 360}, 80%, 60%, 0.16)`);
+      curtain.addColorStop(0.5, `hsla(${(hue + rng() * 60) % 360}, 90%, 66%, ${0.16 + rng() * 0.2})`);
       curtain.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = curtain;
       ctx.fillRect(0, 0, w, h);
     }
+    const front = ctx.createLinearGradient(0, h, 0, h * 0.45);
+    front.addColorStop(0, `hsla(${(hue + 30) % 360}, 95%, 62%, 0.26)`);
+    front.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = front;
+    ctx.fillRect(0, 0, w, h);
+    // Discharge filaments.
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = `hsla(${(hue + 40) % 360}, 100%, 82%, 0.5)`;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+      let x = rng() * w;
+      let y = rng() * h * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (let s = 0; s < 7; s++) {
+        x += (rng() - 0.5) * w * 0.16;
+        y += h * 0.08;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  } else if (feature === "void") {
+    // The Deep: no furniture at all. One far-off galaxy, small enough that
+    // it makes the emptiness bigger rather than filling it.
+    const gx = w * (0.15 + rng() * 0.7);
+    const gy = h * (0.12 + rng() * 0.6);
+    const gr = h * (0.1 + rng() * 0.08);
+    ctx.save();
+    ctx.translate(gx, gy);
+    ctx.rotate(rng() * Math.PI);
+    ctx.scale(1, 0.32);
+    const smear = ctx.createRadialGradient(0, 0, 0, 0, 0, gr);
+    smear.addColorStop(0, `hsla(${hue + 20}, 60%, 78%, 0.3)`);
+    smear.addColorStop(0.5, `hsla(${hue}, 50%, 55%, 0.1)`);
+    smear.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = smear;
+    ctx.beginPath();
+    ctx.arc(0, 0, gr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// Some places are in FRONT of you as well as behind — you fly through the
+// dust and the charge, not past them. This runs after the board is drawn,
+// so the near side of the weather sits over the grid and the sector
+// genuinely feels different to be inside of.
+function drawLocaleForeground(now) {
+  const locale = localeOf();
+  if (!locale) return;
+  const w = geom.w;
+  const h = geom.h;
+  const t = (now || 0) / 1000;
+  ctx.save();
+  if (locale.feature === "dust") {
+    const rng = seededRandom(`fg-${state.levelId}`);
+    for (let i = 0; i < 4; i++) {
+      const bx = ((rng() * w + t * (6 + i * 4)) % (w * 1.4)) - w * 0.2;
+      const by = rng() * h;
+      const br = h * (0.22 + rng() * 0.2);
+      const cloud = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+      cloud.addColorStop(0, `hsla(${locale.hue + 10}, ${locale.sat + 20}%, 52%, 0.13)`);
+      cloud.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = cloud;
+      ctx.fillRect(0, 0, w, h);
+    }
+  } else if (locale.feature === "storm") {
+    // The charge crawls across everything, board included.
+    const pulse = 0.05 + 0.05 * Math.sin(t * 1.7);
+    const sheet = ctx.createLinearGradient(0, 0, w, h);
+    sheet.addColorStop(0, `hsla(${locale.hue}, 90%, 70%, ${pulse})`);
+    sheet.addColorStop(0.5, "rgba(0,0,0,0)");
+    sheet.addColorStop(1, `hsla(${(locale.hue + 50) % 360}, 90%, 70%, ${pulse})`);
+    ctx.fillStyle = sheet;
+    ctx.fillRect(0, 0, w, h);
   }
   ctx.restore();
 }
@@ -1585,9 +1777,10 @@ function draw() {
   drawSectorBackdrop();
   ctx.save();
   ctx.clip(boardPath());
+  const panel = gridLook().panel;
   const lit = ctx.createLinearGradient(0, 0, 0, geom.h);
-  lit.addColorStop(0, "rgba(190,225,255,0.07)");
-  lit.addColorStop(1, "rgba(120,170,230,0.03)");
+  lit.addColorStop(0, panel[0]);
+  lit.addColorStop(1, panel[1]);
   ctx.fillStyle = lit;
   ctx.fillRect(0, 0, geom.w, geom.h);
   ctx.restore();
@@ -1693,8 +1886,15 @@ function draw() {
     let stroke = "#1a2233";
     let strokeWidth = 1.5;
     if (!isHazard) {
-      stroke = "#c9d6e8";
-      strokeWidth = 0.75;
+      // The grid belongs to the PLACE, not to the game engine. One fixed
+      // near-white lattice everywhere was doing most of the looking, which
+      // is why six different skies still read as the same board — you saw
+      // the lattice and a hue shift behind it. Out in the Deep it's barely
+      // there; in an ion front the whole sky is charged and so are the
+      // lines. ("They all look basically the same.")
+      const gl = gridLook();
+      stroke = gl.stroke;
+      strokeWidth = gl.width;
     }
     if (legendVisible && legal.has(k)) {
       stroke = "#7fe3a8";
@@ -1920,6 +2120,9 @@ function draw() {
   }
 
   ctx.restore();
+
+  // ...and the near side of the weather, over the top of all of it.
+  drawLocaleForeground(now);
 
   // Sector arrival title: the place's name sweeps in big across the upper
   // viewport and fades — where you are, told once, then out of the way.
@@ -3425,6 +3628,7 @@ window.addEventListener("resize", () => {
 });
 
 window.__hhHexCenter = (q, r) => hexToPixel({ q, r }); // debug/test hook: CSS-pixel center of a hex
+window.__hhLooks = { SKIES, GRID_LOOKS }; // test hook: every place has its own sky and its own lattice
 // debug/test hook: sync the internal levelIndex counter after directly
 // mutating window.__hhState (see browser.test.js's boss-milestone test) —
 // levelIndex normally only ever changes via loadSector, which keeps it and

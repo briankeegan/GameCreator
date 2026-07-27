@@ -778,6 +778,27 @@ async function freshPage(browser, url, errors) {
   s = await getState(page);
   assert.strictEqual(s.systems.autocannon, true, "reinstalling from cargo re-arms the weapon");
   assert.strictEqual(await page.locator('#holdGrid .hold-tile[data-item-id="autocannon"]').count(), 1, "and the tile is back in the grid");
+  // Every place looks like itself. Six sectors that differ only by a hue
+  // shift behind an identical white lattice are six copies of one board —
+  // "they all look basically the same". So: each locale gets its own sky
+  // AND its own grid, and no two are the same.
+  {
+    const looks = await page.evaluate(() => {
+      const ids = window.HypergolicLevels.LOCALES.map((l) => l.id);
+      return ids.map((id) => ({
+        id,
+        sky: (window.__hhLooks.SKIES[id] || []).join("|"),
+        grid: JSON.stringify(window.__hhLooks.GRID_LOOKS[id] || null),
+      }));
+    });
+    for (const look of looks) {
+      assert.ok(look.sky, `${look.id} has a sky of its own, not a formula off its hue`);
+      assert.ok(look.grid !== "null", `${look.id} lights its grid its own way`);
+    }
+    assert.strictEqual(new Set(looks.map((l) => l.sky)).size, looks.length, "no two places share a sky");
+    assert.strictEqual(new Set(looks.map((l) => l.grid)).size, looks.length, "no two places share a lattice");
+  }
+
   await page.close();
 
   await browser.close();
