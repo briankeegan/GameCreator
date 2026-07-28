@@ -373,7 +373,7 @@ let weaponState = Engine.createGameState(weaponLevel);
 assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
 assert.deepStrictEqual(
   weaponState.systems,
-  { warpdrive: true, autocannon: true, flakBurst: false, arcBeam: false, railgun: false },
+  { warpdrive: true, autocannon: true, flakBurst: false, arcBeam: false, mortar: false, flankTubes: false, railgun: false },
   "arming derives from the Hold — only the installed Autocannon reads armed"
 );
 Engine.applySublight(weaponState, { q: 2, r: 2 }); // steps adjacent to the interceptor
@@ -420,7 +420,7 @@ assert.throws(() => Engine.setFacing(weaponState, 6), /Invalid facing/, "facing 
 // The ship's internals are a grid; every item is a shaped tile and its
 // footprint is the equip cost. What's INSTALLED is what works; cargo is
 // inert. Rearranging is free but dock-gated.
-assert.deepStrictEqual(Engine.WEAPON_SYSTEM_KEYS, ["autocannon", "flakBurst", "arcBeam", "railgun"]);
+assert.deepStrictEqual(Engine.WEAPON_SYSTEM_KEYS, ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun"]);
 
 let holdState = Engine.createGameState(weaponLevel);
 assert.strictEqual(holdState.hold.cols, 5, "the starter hold is 5 cells wide");
@@ -572,16 +572,12 @@ assert.ok(
   "and it has to be in contact to use it — reach is a thing you BUY"
 );
 
-// The Autocannon covers the three hexes off the NOSE, not the full ring
-// ("the Autocannon seems too good") — cheap and reliable, but it can only
-// ever answer one side of a pincer. Coverage is what the paid hardware is
-// sold on.
+// The Autocannon is a WEDGE off the nose, not a ring: three lanes, two
+// deep. Cheap, and the only gun that answers both distances at once — but
+// only where you're pointing, so it can never cover a pincer. Coverage
+// and indirect fire are what the paid hardware is sold on.
 const pulseCannon = Engine.WEAPONS.autocannon;
 const autocannonHexes = Engine.weaponHexes(interceptorPos, 0, pulseCannon);
-// Three hexes off the nose, in contact. A starting gun that reached two
-// was tried and it made the whole shop redundant — a pilot that just shot
-// everything with it won two runs in three and never bought anything.
-// REACH is the purchase; this is the thing you make do with until then.
 assert.strictEqual(autocannonHexes.length, 3, "the Autocannon covers three hexes — a contact arc, not a ring");
 assert.ok(
   autocannonHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
@@ -614,18 +610,19 @@ assert.deepStrictEqual(Engine.ENEMY_TYPES.sentry.ship.weapons, [Engine.WEAPONS.a
 assert.strictEqual(Engine.WEAPONS.arcBeam.range, 2, "the Arc Beam reaches two hexes");
 
 const sentryHexes = Engine.weaponHexes({ q: 0, r: 0 }, 0, Engine.WEAPONS.arcBeam);
-// The FULL two-hex ring, not just the six straight axes out of the hull.
-// Axis-only coverage left a range-2 weapon unable to hit anything standing
-// one hex off the line — two thirds of its own ring — which is how the Arc
-// Beam managed to be bought and then never once fired in playtesting.
-assert.strictEqual(sentryHexes.length, 18, "a range-2 ring weapon covers every hex within two — 6 near + 12 far");
+// The SHELL at exactly two — the whole ring, off-axis hexes included, and
+// a hole in the middle. Reach is bought, not given: this gun out-ranges a
+// chaser and then cannot touch it once it closes to contact. (It used to
+// cover everything within two, which made it a strict upgrade on the Flak
+// Burst and made "which gun" a non-question.)
+assert.strictEqual(sentryHexes.length, 12, "the Arc Beam covers the full ring at two — every hex, not just the axes");
+assert.ok(
+  sentryHexes.every((h) => Engine.hexDistance(h, { q: 0, r: 0 }) === 2),
+  "and NOTHING closer — the hole in the middle is the point of it"
+);
 assert.ok(
   sentryHexes.some((h) => Engine.hexDistance(h, { q: 0, r: 0 }) === 2 && h.q !== 0 && h.r !== 0),
   "including the off-axis ones"
-);
-assert.ok(
-  sentryHexes.some((h) => Engine.hexDistance(h, { q: 0, r: 0 }) === 2),
-  "and it genuinely reaches out to distance 2, not just the neighbors"
 );
 
 // Behavior: a Sentry holds position while the player is out of range, then
@@ -1042,13 +1039,12 @@ assert.ok(
   "and it arrives as a physical 2x2 item — fitted if it fits, in cargo if it doesn't"
 );
 
-// What the Arc Beam buys is coverage, not reach: the Autocannon also
-// reaches two, but only down the three lanes off the nose. Off those
-// lanes — a contact sitting behind the ship's shoulder — the Autocannon
-// has nothing and the ring still holds it.
+// What the Arc Beam buys is the SHELL at two: it holds a contact on its
+// approach, from any direction, with no facing required — and it cannot
+// touch anything closer than that. Reach costs you the close-in fight.
 arcState.playerPos = { q: 2, r: 5 };
 arcState.enemies[0].q = 3;
-arcState.enemies[0].r = 4; // two out, off every lane at this facing
+arcState.enemies[0].r = 3; // two out, off every axis
 Engine.setFacing(arcState, 3); // nose pointed the other way entirely
 assert.ok(
   !Engine.weaponHexes(arcState.playerPos, arcState.facing, Engine.WEAPONS.autocannon, arcState).some((h) =>
@@ -1061,6 +1057,14 @@ assert.strictEqual(arcState.enemies[0].alive, false, "the Arc Beam takes it anyw
 assert.ok(
   arcState.log.some((line) => /Arc Beam: \w+ destroyed/.test(line)),
   "and the kill is attributed to the gun that actually fired"
+);
+// ...and the hole in the middle is real. Let something reach contact and
+// the standoff gun is a passenger — that trade IS the weapon.
+assert.ok(
+  !Engine.weaponHexes({ q: 0, r: 0 }, 0, Engine.WEAPONS.arcBeam).some(
+    (h) => Engine.hexDistance(h, { q: 0, r: 0 }) < 2
+  ),
+  "an Arc Beam cannot answer anything in contact — that is what buying reach costs"
 );
 
 // A purchased weapon has to be carried forward explicitly into the next
@@ -1149,9 +1153,91 @@ assert.strictEqual(railgunBuyState.enemies[0].alive, false, "the Railgun one-sho
 const carriedWeapons = Object.values(Engine.ENEMY_TYPES).flatMap((t) => t.ship.weaponKeys).sort();
 assert.deepStrictEqual(
   carriedWeapons,
-  ["arcBeam", "autocannon", "flakBurst", "railgun"],
-  "all four weapons exist in the world on enemy ships — one class per weapon"
+  ["arcBeam", "autocannon", "flakBurst", "flankTubes", "mortar", "railgun"],
+  "every weapon exists in the world on an enemy ship — one class per weapon, no enemy-only gear"
 );
+
+// ---- weapons are shapes, and every shape has a hole --------------------
+// The roster used to be six ways of saying "everything within N", where a
+// bigger N was strictly better and where you stood never mattered beyond
+// counting hexes. Each gun now covers a footprint with somewhere it
+// cannot reach, so "which gun answers THIS contact, standing THERE" is a
+// real question. This block is the guard on that.
+{
+  const origin = { q: 0, r: 0 };
+  const at = (w) => Engine.weaponHexes(origin, 0, Engine.WEAPONS[w]);
+  const distances = (w) => new Set(at(w).map((h) => Engine.hexDistance(origin, h)));
+
+  // Three shells, at exactly one, two and three. Nothing in the middle of
+  // any of them — the ladder is the design.
+  assert.deepStrictEqual([...distances("autocannon")], [1], "the Autocannon is a contact arc off the nose");
+  assert.deepStrictEqual([...distances("flakBurst")], [1], "Flak Burst is the shell at contact and nothing further");
+  assert.deepStrictEqual([...distances("arcBeam")], [2], "the Arc Beam is the shell at two, with a hole inside it");
+  assert.deepStrictEqual([...distances("mortar")], [3], "the Mortar is the shell at three, with a bigger hole inside it");
+  assert.strictEqual(at("flakBurst").length, 6, "six hexes touching the hull");
+  assert.strictEqual(at("arcBeam").length, 12, "twelve at two");
+  assert.strictEqual(at("mortar").length, 18, "eighteen at three");
+
+  // No gun is a strict upgrade on another. Covering strictly more ground
+  // is allowed — a Railgun's lanes swallow the Autocannon's wedge — but
+  // only if you PAY for it, in charge or in damage. Nothing may be wider
+  // AND cheaper AND harder-hitting than something else, or fitting the
+  // second gun stops being a decision.
+  const keys = Engine.WEAPON_SYSTEM_KEYS;
+  for (const a of keys) {
+    for (const b of keys) {
+      if (a === b) continue;
+      const wa = Engine.WEAPONS[a];
+      const wb = Engine.WEAPONS[b];
+      const bHexes = new Set(at(b).map(Engine.hexKey));
+      const aCovered = at(a).every((h) => bHexes.has(Engine.hexKey(h)));
+      if (!aCovered) continue; // b doesn't cover a's ground at all
+      assert.ok(
+        wb.energyCost > wa.energyCost || wb.damage < wa.damage,
+        `${b} covers everything ${a} does, so it has to give something up — charge or stopping power`
+      );
+    }
+  }
+
+  // The Flank Tubes are the exact complement of a Railgun's lanes: the six
+  // gaps between the axes, at two. Nothing they cover is on an axis.
+  const tubes = at("flankTubes");
+  assert.strictEqual(tubes.length, 6, "six tubes, six gaps");
+  assert.ok(tubes.every((h) => Engine.hexDistance(origin, h) === 2), "all of them two out");
+  const lanes = new Set(
+    Engine.weaponHexes(origin, 0, Engine.WEAPONS.railgun).map(Engine.hexKey)
+  );
+  assert.ok(
+    tubes.every((h) => !lanes.has(Engine.hexKey(h))),
+    "and not one of them on a lane — the Tubes cover precisely what a Railgun never can"
+  );
+
+  // Cover cuts both ways. A rock breaks a Railgun's lane; a Mortar lobs
+  // straight over it. That asymmetry is what makes an asteroid field a
+  // decision instead of just a wall.
+  const coverLevel = {
+    id: 989,
+    name: "cover fixture",
+    board: { type: "rect", cols: 5, rows: 9 },
+    playerStart: { q: 2, r: 6 },
+    exit: { q: 2, r: -1 },
+    outpost: null,
+    enemies: [{ type: "interceptor", q: 2, r: 3 }], // three straight up
+    hazards: [{ type: "asteroid", q: 2, r: 4 }], // a rock in between
+    exitRule: "all-enemies-dead",
+    actions: ["sublight"],
+  };
+  const coverState = Engine.createGameState(coverLevel);
+  const foe = coverState.enemies[0];
+  assert.ok(
+    !Engine.weaponHexes(coverState.playerPos, 2, Engine.WEAPONS.railgun, coverState).some((h) => Engine.posEq(h, foe)),
+    "the rock stops the Railgun's slug dead — that lane is closed"
+  );
+  assert.ok(
+    Engine.weaponHexes(coverState.playerPos, 2, Engine.WEAPONS.mortar, coverState).some((h) => Engine.posEq(h, foe)),
+    "and the Mortar drops one on it anyway — hiding behind rock is no defence against indirect fire"
+  );
+}
 
 // ---- one set of rules, both sides --------------------------------------
 // There is no second rulebook for hostiles. Everything a contact can do is
@@ -1527,7 +1613,7 @@ assert.ok(Engine.WEAPONS.arcBeam.energyCost > Engine.WEAPONS.autocannon.energyCo
 // option... otherwise you have to choose"). Naming it spends exactly that
 // weapon's charge and nothing else.
 energyState.enemies[0].q = 2;
-energyState.enemies[0].r = 4; // adjacent, directly up (facing 2)
+energyState.enemies[0].r = 3; // two straight up — on the Arc Beam's shell, not inside it
 Engine.setFacing(energyState, 2);
 Engine.applyFire(energyState, "e0", "arcBeam");
 assert.strictEqual(energyState.enemies[0].hp, 1, "the named gun fired — and only it");
@@ -1564,7 +1650,7 @@ assert.strictEqual(
 // A gun you can't afford refuses by name rather than quietly doing nothing.
 energyState = Engine.createGameState(energyLevel, { extraActions: ["arcBeam"] });
 energyState.enemies[0].q = 2;
-energyState.enemies[0].r = 4;
+energyState.enemies[0].r = 3; // on the Arc Beam's shell, so the refusal is about charge
 energyState.energy = 1;
 Engine.setFacing(energyState, 2);
 assert.throws(

@@ -107,7 +107,7 @@
   // guaranteed claimable (free) at Sector 2's Outpost specifically (see
   // pickOutpostOfferIds), just no longer handed out automatically for
   // reaching the sector.
-  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "railgun"];
+  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun"];
   // Sectors that don't specify `actions` explicitly (Sector 4 "Full Fleet"
   // and every procedurally-generated sector) default to every action that
   // unlocks just by playing.
@@ -272,38 +272,123 @@
   // pincer, and whatever's behind you gets a free round. That's the hole
   // the omnidirectional hardware is sold against.
   const FORWARD_ARC_PATTERN = [5, 0, 1];
-  // FOUR weapons, each the answer to exactly one situation — cheap-and-
-  // reliable, crowds, standoff, or sniping — with a real price curve and
-  // real footprints (Clubhouse: "they all seem super similar and similarly
-  // priced... use some critical thinking"). Every one of them is ALSO the
-  // item an enemy class carries, so scanning a contact teaches you what's
-  // buyable instead of showing you enemy-only gear you can never own.
+
+  // ---- weapons are SHAPES, not ranges ------------------------------------
+  //
+  // Every gun used to be "everything within N hexes", which meant the only
+  // question a weapon ever asked was how big N was, and a bigger N was
+  // strictly better. Nothing about where you stood mattered beyond a
+  // distance count. ("Right now you just have range, and I don't just want
+  // range. I want patterns of where they hit... think chess.")
+  //
+  // So each weapon now covers a FOOTPRINT, and the footprints have holes
+  // in them. Three of them are shells at an exact distance — 1, 2 and 3 —
+  // which means every gun in that family is blind to something:
+  //
+  //   Flak Burst   ring at exactly 1     ......    the crowd answer, and
+  //                                                useless at any reach
+  //   Arc Beam     ring at exactly 2     .o...     out-reaches a chaser,
+  //                                                helpless once it closes
+  //   Mortar       ring at exactly 3     ..o..     lobs OVER cover, and
+  //                                                cannot defend itself
+  //   Railgun      one axis, any distance, stops at the first rock or hull
+  //   Flank Tubes  the six OFF-axis hexes at 2 — exactly the gaps a
+  //                Railgun's lanes can never cover
+  //   Autocannon   three hexes off the nose: point it at something
+  //
+  // A contact sitting two hexes away is a completely different problem
+  // from the same contact one hex away, and the answer is which gun you
+  // fitted, not how much energy you saved. Cover matters in both
+  // directions now: rock breaks a Railgun lane and does nothing at all
+  // against a Mortar.
+  const SHAPES = {
+    // Pattern offsets stepped out to `range`, stopped by anything solid.
+    arc: (pos, facing, weapon, state) => {
+      const hexes = [];
+      for (const offset of weapon.pattern) {
+        const dir = (facing + offset + 6) % 6;
+        let cur = pos;
+        for (let step = 0; step < weapon.range; step++) {
+          cur = neighbor(cur, dir);
+          hexes.push(cur);
+          if (state && blocksShot(state, cur)) break;
+        }
+      }
+      return hexes;
+    },
+    // Every hex at a distance between minRange and range — a shell, with
+    // a hole in the middle whenever minRange > 1.
+    ring: (pos, facing, weapon) => {
+      const hexes = [];
+      const max = weapon.range;
+      const min = weapon.minRange || 1;
+      for (let dq = -max; dq <= max; dq++) {
+        for (let dr = -max; dr <= max; dr++) {
+          const cand = { q: pos.q + dq, r: pos.r + dr };
+          const dist = hexDistance(pos, cand);
+          if (dist >= min && dist <= max) hexes.push(cand);
+        }
+      }
+      return hexes;
+    },
+    // Straight down all six axes until something solid stops it.
+    lane: (pos, facing, weapon, state) => SHAPES.arc(pos, facing, { ...weapon, pattern: ALL_DIRECTIONS_PATTERN }, state),
+    // The six hexes at distance 2 that are NOT on an axis: the gaps
+    // between the lanes. Precisely the ground a Railgun cannot touch.
+    offAxis: (pos) => {
+      const axial = new Set();
+      for (let d = 0; d < 6; d++) {
+        const two = neighbor(neighbor(pos, d), d);
+        axial.add(hexKey(two));
+      }
+      const hexes = [];
+      for (let dq = -2; dq <= 2; dq++) {
+        for (let dr = -2; dr <= 2; dr++) {
+          const cand = { q: pos.q + dq, r: pos.r + dr };
+          if (hexDistance(pos, cand) !== 2) continue;
+          if (axial.has(hexKey(cand))) continue;
+          hexes.push(cand);
+        }
+      }
+      return hexes;
+    },
+  };
+
+  // SIX weapons, each the answer to exactly one situation, and each with
+  // somewhere it cannot reach. Every one of them is ALSO carried by a
+  // hostile class — scanning a contact teaches you what's buyable, and
+  // what its blind spot is.
   const WEAPONS = {
-    // The workhorse, and the ship's starting gun. 1 energy against a
-    // +1/cycle reactor means it fires every single round forever — but it
-    // only covers the three hexes off the nose. It does NOT reach — that
-    // was tried, and a starting gun that hits at two makes every other
-    // weapon redundant: measured, a pilot that just shot everything with
-    // it won two runs in three and never needed the shop. REACH is the
-    // thing you buy. Cheap, reliable, and strictly a contact weapon.
-    // Interceptors carry this exact gun, which is why flanking one works.
-    autocannon: { id: "autocannon", label: "Autocannon", range: 1, damage: 1, targets: "one", energyCost: 1, speed: 3, pattern: FORWARD_ARC_PATTERN, slots: 1 },
-    // The crowd answer: the only weapon that hits EVERY adjacent contact
-    // at once, so being surrounded stops being a death sentence. Pricey
-    // per shot (3 against +1/cycle = a shot every third round) and a fat
-    // 2x2 footprint. Cruisers brawl with it.
-    flakBurst: { id: "flakBurst", label: "Flak Burst", range: 1, damage: 1, targets: "all", energyCost: 3, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, spread: "ring", slots: 1 },
-    // Standoff. Two hexes in every direction, so you hit things on their
-    // approach instead of trading blows in contact — reach is what you're
-    // buying, not stopping power. (Two damage was tried and it is simply
-    // too much on a weapon this easy to bring to bear: the Cruisers that
-    // carry it flattened the early crawl, median run depth 5.)
-    arcBeam: { id: "arcBeam", label: "Arc Beam", range: 2, damage: 1, targets: "one", energyCost: 2, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, spread: "ring", slots: 1 },
+    // The starter: three hexes off the nose, in contact. Cheapest gun in
+    // the game by a mile, and the price of that is you have to be pointing
+    // at the thing and standing next to it. Deepening it to a two-hex
+    // wedge was tried here and measured: cheap reach makes every purchase
+    // optional, a pilot that just shot everything finished two runs in
+    // three, and the whole shop stopped mattering. Reach is the thing you
+    // BUY. (Its footprint does sit inside the Flak Burst's ring — that's
+    // allowed, because the Burst costs three times as much a shot and the
+    // roster rule is that covering more ground has to be paid for.)
+    autocannon: { id: "autocannon", label: "Autocannon", shape: "arc", range: 1, damage: 1, targets: "one", energyCost: 1, speed: 3, pattern: FORWARD_ARC_PATTERN, slots: 1 },
+    // The crowd answer: every adjacent contact at once, so being
+    // surrounded stops being a death sentence. Reaches nothing further.
+    flakBurst: { id: "flakBurst", label: "Flak Burst", shape: "ring", range: 1, minRange: 1, damage: 1, targets: "all", energyCost: 3, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // Standoff — and ONLY standoff. It hits the shell at exactly two
+    // hexes and has a hole in the middle: let a chaser close to contact
+    // and this gun is a passenger. Buying reach means giving something up
+    // now, instead of being a strict upgrade on the Flak Burst.
+    arcBeam: { id: "arcBeam", label: "Arc Beam", shape: "ring", range: 2, minRange: 2, damage: 1, targets: "one", energyCost: 2, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // Indirect fire: the shell at exactly three hexes, LOBBED, so rock in
+    // between is no protection at all. The one gun that answers something
+    // sitting behind an asteroid field — and the one gun a rock can't
+    // save YOU from either.
+    mortar: { id: "mortar", label: "Mortar", shape: "ring", range: 3, minRange: 3, damage: 1, targets: "one", energyCost: 3, speed: 1, ignoresCover: true, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // The six gaps between the axes, two hexes out, two damage. The exact
+    // complement of a Railgun: what one covers, the other can't.
+    flankTubes: { id: "flankTubes", label: "Flank Tubes", shape: "offAxis", range: 2, damage: 2, targets: "one", energyCost: 3, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // The sniper: down any of the six axes, the length of the board, two
-    // damage — enough to one-shot the 2-hull classes. 4 energy against
-    // +1/cycle is a visible four-round charge cycle, the exact rhythm the
-    // Railgun Destroyer telegraphs at you. Huge 1x4 footprint.
-    railgun: { id: "railgun", label: "Railgun", range: 20, damage: 2, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // damage. Stopped by the first rock or hull in the lane, which is
+    // both its weakness and how you survive one.
+    railgun: { id: "railgun", label: "Railgun", shape: "lane", range: 20, damage: 2, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
   };
 
   // Each enemy type is its own small data block: how tough it is (hp), what
@@ -341,6 +426,8 @@
     flakBurst: { id: "flakBurst", label: "Flak Burst", kind: "weapon", weaponKey: "flakBurst", w: 2, h: 2 },
     arcBeam: { id: "arcBeam", label: "Arc Beam", kind: "weapon", weaponKey: "arcBeam", w: 2, h: 2 },
     railgun: { id: "railgun", label: "Railgun", kind: "weapon", weaponKey: "railgun", w: 1, h: 4 },
+    mortar: { id: "mortar", label: "Mortar", kind: "weapon", weaponKey: "mortar", w: 2, h: 2 },
+    flankTubes: { id: "flankTubes", label: "Flank Tubes", kind: "weapon", weaponKey: "flankTubes", w: 1, h: 3 },
     reactorCore: { id: "reactorCore", label: "Reactor Core", kind: "reactor", rechargeGain: 1, energyCapacity: 6, w: 2, h: 2 },
     sublightDrive: { id: "sublightDrive", label: "Sublight Drive", kind: "engine", moveRange: 1, w: 1, h: 3 },
     shieldGenerator: { id: "shieldGenerator", label: "Shield Generator", kind: "shield", capacity: 1, w: 2, h: 2 },
@@ -401,7 +488,7 @@
   // derived from the Hold now (an installed weapon item sets its
   // systems[key] flag in deriveShip), but the key list itself is stable
   // engine data.
-  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "railgun"];
+  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun"];
 
   // ---- what a hold makes a ship able to do -------------------------------
   //
@@ -558,6 +645,39 @@
         ],
       },
     },
+    // The emplacement that makes cover worthless. Its shell lands at
+    // exactly three hexes and doesn't care what's in between, so parking
+    // behind a rock is no answer — you close inside three, back off past
+    // it, or kill it. There is no hiding from this one.
+    mortar: {
+      hull: 1, salvage: 5,
+      hold: {
+        cols: 3, rows: 4, blocked: ["0,0", "2,0"],
+        items: [
+          { id: "mortar", x: 0, y: 1 },
+          { id: "microReactor", x: 1, y: 0 },
+          { id: "chargeBank", x: 2, y: 1 },
+          { id: "stationAnchor", x: 1, y: 3 },
+        ],
+      },
+    },
+    // A chaser that threatens the gaps instead of the lanes: the six
+    // off-axis hexes at two, for two damage. Line yourself up on an axis
+    // with it, or get inside it — standing diagonally off at two is the
+    // one place it wants you.
+    lancer: {
+      hull: 1, salvage: 5,
+      hold: {
+        cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
+        items: [
+          { id: "flankTubes", x: 1, y: 0 },
+          { id: "ablativePlating", x: 0, y: 1 },
+          { id: "microReactor", x: 3, y: 1 },
+          { id: "sublightDrive", x: 2, y: 1 },
+          { id: "chargeBank", x: 0, y: 3 },
+        ],
+      },
+    },
     // Two big banks and one small generator: five on the bus, one a
     // round to fill it, a slug that costs four. The telegraph isn't a
     // scripted timer — it's the hardware.
@@ -631,43 +751,11 @@
   }
 
   function weaponHexes(pos, facing, weapon, state) {
-    // A RING weapon fills every hex within range, not just the six
-    // straight axes out of the ship. Without this a "range 2" beam has a
-    // blind spot everywhere off-axis — two thirds of the actual ring —
-    // so a contact standing one hex off the line is simply unhittable,
-    // which is exactly how the Arc Beam managed to be bought and then
-    // never once fired in playtesting. Line weapons (the Railgun) stay
-    // axial on purpose: firing down an axis IS the weapon.
-    if (weapon.spread === "ring") {
-      const hexes = [];
-      for (let dq = -weapon.range; dq <= weapon.range; dq++) {
-        for (let dr = -weapon.range; dr <= weapon.range; dr++) {
-          const cand = { q: pos.q + dq, r: pos.r + dr };
-          const dist = hexDistance(pos, cand);
-          if (dist >= 1 && dist <= weapon.range) hexes.push(cand);
-        }
-      }
-      return hexes;
-    }
-    // Line weapons stop at the first thing they hit. A slug does not pass
-    // through an asteroid, and it does not pass through a hull — so a
-    // Railgun Destroyer's six board-length axes are lines you can break
-    // by putting rock (or somebody else's ship) between you and it,
-    // rather than ambient damage sprayed across the whole board. This is
-    // the line-of-sight pass the original Railgun note left for later;
-    // playtesting made the case, with runs bleeding two Hull at a time
-    // crossing lanes they had no way to see coming.
-    const hexes = [];
-    for (const offset of weapon.pattern) {
-      const dir = (facing + offset + 6) % 6;
-      let cur = pos;
-      for (let step = 0; step < weapon.range; step++) {
-        cur = neighbor(cur, dir);
-        hexes.push(cur);
-        if (state && blocksShot(state, cur)) break; // it hits this, and stops
-      }
-    }
-    return hexes;
+    const shape = SHAPES[weapon.shape] || SHAPES.arc;
+    // A lobbed shell doesn't care what's between you and it — cover is
+    // simply not part of the question for a Mortar, which is the whole
+    // reason to own one and the whole reason to fear one.
+    return shape(pos, facing, weapon, weapon.ignoresCover ? null : state);
   }
 
   // What a slug runs into: solid terrain, or any hull that isn't the
@@ -722,8 +810,10 @@
     // curve — each one answers a situation the others can't, and each is
     // the item a hostile class already carries (buy the gun that's been
     // shooting at you).
-    { id: "flakBurst", label: "Flak Burst (2x2 — hits every adjacent contact)", cost: 10 },
-    { id: "arcBeam", label: "Arc Beam (2x2 — range 2, kill them on approach)", cost: 8 },
+    { id: "flakBurst", label: "Flak Burst (2x2 — everything touching us, at once)", cost: 10 },
+    { id: "arcBeam", label: "Arc Beam (2x2 — the ring at two. Nothing closer.)", cost: 8 },
+    { id: "mortar", label: "Mortar (2x2 — lands at three, straight over the rocks)", cost: 14 },
+    { id: "flankTubes", label: "Flank Tubes (1x3 — the gaps at two, 2 dmg)", cost: 16 },
     { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 24 },
   ];
 
@@ -760,9 +850,14 @@
     const carried = new Set(aboard || []);
     const stock = OUTPOST_OFFER_POOL.filter((o) => {
       if (o.id === "repair") return false; // always on the shelf, added below
-      if ((o.id === "flakBurst" || o.id === "arcBeam" || o.id === "railgun") && carried.has(o.id)) return false;
+      if (WEAPON_SYSTEM_KEYS.includes(o.id) && carried.has(o.id)) return false;
       if (o.id === "shield" && carried.has("shieldGenerator")) return false;
+      // Shapes arrive one at a time so each one gets to be a lesson: the
+      // crowd answer, then standoff, then the gun that beats cover, then
+      // the one that covers what a lane can't, then the sniper.
       if (o.id === "railgun") return levelId >= 8;
+      if (o.id === "flankTubes") return levelId >= 7;
+      if (o.id === "mortar") return levelId >= 5;
       if (o.id === "arcBeam" || o.id === "hardpoint") return levelId >= 3;
       if (o.id === "flakBurst") return levelId >= 2;
       return true; // reinforce / shield / reactor: basic dock trade at any depth
@@ -1620,7 +1715,7 @@
       state.energy = Math.min(state.energy + 1, state.maxEnergy); // an upgrade should feel immediate
     } else if (offer.id === "hardpoint") {
       state.hold.rows += 1; // more internal space — the grid literally grows
-    } else if (offer.id === "flakBurst" || offer.id === "arcBeam" || offer.id === "railgun") {
+    } else if (WEAPON_SYSTEM_KEYS.includes(offer.id)) {
       autoPlaceInHold(state.hold, offer.id);
       syncHoldDerived(state);
     }

@@ -487,9 +487,13 @@
     // few maps have smaller grids... never larger than what we have, but
     // more should be smaller.") 7 rows is the floor: any shorter and a
     // gate would be close enough to the start to be a doorstep.
+    // 7x7 was in this table and came out again: with weapons that care
+    // about exact distance bands, a board that small has nowhere to stand,
+    // so every fight collapses into whoever shoots first. Positioning
+    // needs room to be a skill. Small still, just not airless.
     const SHAPES = [
-      { cols: 7, rows: 7 }, { cols: 7, rows: 8 }, { cols: 9, rows: 8 },
-      { cols: 7, rows: 9 }, { cols: 9, rows: 9 }, { cols: 9, rows: 10 }, { cols: 9, rows: 11 },
+      { cols: 7, rows: 8 }, { cols: 7, rows: 9 }, { cols: 9, rows: 8 },
+      { cols: 9, rows: 9 }, { cols: 9, rows: 9 }, { cols: 9, rows: 10 }, { cols: 9, rows: 11 },
     ];
     // Depth 1-4: only the tight end of the table. Deeper: the whole table,
     // still weighted small — two rolls, keep the smaller.
@@ -629,20 +633,26 @@
     // two-hex ring (18 hexes) — dropping two of those into a depth-4
     // board alongside cruisers doesn't read as difficulty, it reads as a
     // wall you have to walk through and lose hull to.
+    // Threat SHAPES arrive one at a time, each one a new question about
+    // where you are allowed to stand: adjacent, then the ring at two,
+    // then the shell at three that goes over cover, then the gaps a lane
+    // can't reach, and last the lane itself.
     const typePool =
       depth < 5
         ? ["interceptor", "interceptor", "cruiser"]
-        : depth < 10
-          ? ["interceptor", "interceptor", "cruiser", "cruiser", "sentry"]
-          : ["interceptor", "cruiser", "cruiser", "sentry", "sentry", "railgun"];
+        : depth < 8
+          ? ["interceptor", "interceptor", "cruiser", "cruiser", "sentry", "mortar"]
+          : depth < 11
+            ? ["interceptor", "cruiser", "cruiser", "sentry", "mortar", "lancer"]
+            : ["interceptor", "cruiser", "sentry", "mortar", "lancer", "lancer", "railgun"];
     // At most TWO emplacements on a board. A Sentry or a Railgun Destroyer
     // doesn't chase you — it denies ground — and three of them on a 9x11
     // field is a wall with no way around it, which is exactly what full-run
     // playtesting kept dying to (fourteen of thirty deaths on boards of
     // three Sentries and a Railgun). Two is a gauntlet you can route
     // through; three is a corridor with a gun at the end of it.
-    const EMPLACEMENTS = new Set(["sentry", "railgun"]);
-    const MOBILE = ["interceptor", "cruiser"];
+    const EMPLACEMENTS = new Set(["sentry", "railgun", "mortar"]);
+    const MOBILE = ["interceptor", "cruiser", "lancer"];
     const enemies = [];
     let emplaced = 0;
     for (const hex of candidates) {

@@ -393,7 +393,12 @@ async function freshPage(browser, url, errors) {
   assert.ok(/Refits need a dock/.test(refitRefusal), "the engine refuses mid-flight refits outright");
   // Tapping a tile inspects it.
   await page.click('#holdGrid .hold-tile[data-item-id="autocannon"]');
-  assert.ok(/Range 1/.test(await page.locator("#holdInfo").textContent()), "tapping a tile reads out the item's stats");
+  // The readout leads with the gun's FOOTPRINT — where it lands is the
+  // interesting thing about it, not a range number.
+  assert.ok(
+    /wedge off the nose/.test(await page.locator("#holdInfo").textContent()),
+    "tapping a tile reads out the shape the item covers"
+  );
   await page.click("#shipCloseBtn");
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Return to Helm closes the Systems screen");
 

@@ -415,6 +415,8 @@ const WEAPON_FX = {
   autocannon: { kind: "bolt", color: "#ff8a72" },
   flakBurst: { kind: "ring", color: "#ffb36b" },
   arcBeam: { kind: "beam", color: "#8aff9e", width: 2.5 },
+  mortar: { kind: "ring", color: "#ffe28a" },
+  flankTubes: { kind: "bolt", color: "#8ad6ff" },
   railgun: { kind: "beam", color: "#ff5ad2", width: 3.5 },
 };
 
@@ -2733,12 +2735,20 @@ function weaponBears(state, weapon, enemy) {
 
 // Shared by the systems-row stats line and the click-an-enemy-for-info panel
 // below, so both always describe a weapon the same way.
+// A gun's FOOTPRINT is the interesting thing about it now, so that's what
+// the readout leads with — where it lands, and where it doesn't.
 function describePattern(weapon) {
-  if (weapon.pattern.length >= 6) return "all directions";
-  if (weapon.pattern.length === 1 && weapon.pattern[0] === 0) return "forward only";
-  const set = new Set(weapon.pattern);
-  if (weapon.pattern.length === 3 && set.has(0) && set.has(1) && set.has(5)) return "forward + both sides";
-  return `${weapon.pattern.length} directions`;
+  if (weapon.shape === "ring") {
+    const min = weapon.minRange || 1;
+    if (min === weapon.range && min > 1) {
+      return `the ring at exactly ${min} — nothing closer${weapon.ignoresCover ? ", and rock is no cover" : ""}`;
+    }
+    return "every hex touching the hull";
+  }
+  if (weapon.shape === "lane") return "straight down any axis, until it hits something";
+  if (weapon.shape === "offAxis") return "the six gaps between the axes, two out";
+  if (weapon.shape === "arc") return `a wedge off the nose, ${weapon.range} deep`;
+  return "all directions";
 }
 
 // A `damage: 0` weapon destroys via collision physics (see
@@ -2760,8 +2770,8 @@ function describeWeapon(weapon) {
   const speed = weapon.speed ? ` · Speed: ${speedWord(weapon)}` : "";
   const spread = weapon.targets === "one" ? " · Single target" : " · Hits all in reach";
   return (
-    `${weapon.label} — Range ${weapon.range} · ${describeDamage(weapon)} · ` +
-    `Pattern: ${describePattern(weapon)}${spread} · Energy ${weapon.energyCost}/shot${speed}`
+    `${weapon.label} — ${describePattern(weapon)} · ${describeDamage(weapon)}` +
+    `${spread} · Energy ${weapon.energyCost}/shot${speed}`
   );
 }
 
@@ -2769,10 +2779,15 @@ function describeWeapon(weapon) {
 // extra-wide line — the full
 // sentence is still one tap/hover away via the title tooltip.
 function describeWeaponCompact(weapon) {
-  const pattern = weapon.pattern.length >= 6 ? "ALL" : "FWD";
+  const SHAPE = { ring: "RING", lane: "LANE", offAxis: "GAPS", arc: "WEDGE" };
+  const band =
+    weapon.shape === "ring"
+      ? `@${weapon.minRange || 1}`
+      : weapon.shape === "lane"
+        ? "@ANY"
+        : `@${weapon.range}`;
   const dmg = weapon.damage > 0 ? `D${weapon.damage}` : "PUSH";
-  const spd = weapon.speed ? ` · SPD${weapon.speed}` : "";
-  return `R${weapon.range} · ${dmg} · E${weapon.energyCost}${spd} · ${pattern}`;
+  return `${SHAPE[weapon.shape] || "ARC"}${band} · ${dmg} · E${weapon.energyCost}`;
 }
 
 

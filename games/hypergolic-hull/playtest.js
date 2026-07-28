@@ -342,8 +342,16 @@ function playSector(state, report) {
     // depth 9 from one that finishes.
     // Never take a fight standing where a charged emplacement can reach.
     // Chasers come to you wherever you are, so pick the ground first.
+    // Standing inside a charged emplacement's footprint is a choice, and
+    // it's the wrong one whether or not anything is chasing you. This used
+    // to only fire when a chaser was on the board, which meant a pair of
+    // Mortars — emplacements, so no chaser anywhere — got to shell the
+    // pilot indefinitely while it walked to the gate. Their shell lands at
+    // exactly three, so the way out is often FORWARD, into two: the zone
+    // set already knows that, since it lists the hexes a gun really
+    // covers rather than everything within its range.
     const zones = Engine.staticKillZones(state);
-    if (PILOT === "careful" && zones.has(Engine.hexKey(state.playerPos)) && nearestChaser) {
+    if (PILOT === "careful" && zones.has(Engine.hexKey(state.playerPos))) {
       const clear = Engine.legalSublightTargets(state).filter((h) => !zones.has(Engine.hexKey(h)));
       if (clear.length) {
         Engine.applySublight(
