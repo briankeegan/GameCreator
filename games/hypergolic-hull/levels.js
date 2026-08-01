@@ -479,28 +479,45 @@
     const variantSeedOffset = variant ? (BRANCH_VARIANTS.indexOf(variant) + 1) * 104729 : 0;
     const rng = seededRandom(depth * 2654435761 + variantSeedOffset);
 
-    // Boards are not all one size. 9x11 was every single sector, which is
-    // a lot of empty hexes to cross before anything happens, and it made
-    // the early crawl a slog. 9x11 stays the CEILING — nothing is ever
-    // bigger — but most sectors come in under it, and the first few are
-    // deliberately tight so a run starts moving straight away. ("In first
-    // few maps have smaller grids... never larger than what we have, but
-    // more should be smaller.") 7 rows is the floor: any shorter and a
-    // gate would be close enough to the start to be a doorstep.
-    // 7x7 was in this table and came out again: with weapons that care
-    // about exact distance bands, a board that small has nowhere to stand,
-    // so every fight collapses into whoever shoots first. Positioning
-    // needs room to be a skill. Small still, just not airless.
-    const SHAPES = [
-      { cols: 7, rows: 8 }, { cols: 7, rows: 9 }, { cols: 9, rows: 8 },
-      { cols: 9, rows: 9 }, { cols: 9, rows: 9 }, { cols: 9, rows: 10 }, { cols: 9, rows: 11 },
-    ];
-    // Depth 1-4: only the tight end of the table. Deeper: the whole table,
-    // still weighted small — two rolls, keep the smaller.
-    const shape =
-      depth <= 4
-        ? SHAPES[Math.floor(rng() * 3)]
-        : SHAPES[Math.min(Math.floor(rng() * SHAPES.length), Math.floor(rng() * SHAPES.length))];
+    // ---- how big is this sector? -------------------------------------
+    //
+    // The board is sized to the ROSTER, not rolled independently of it.
+    // Two things were being decided separately — how many hostiles, and
+    // how much room — and then reconciled by scaling the count to the
+    // area, which is backwards: it meant a quiet sector could still deal
+    // a big empty board to walk across, and a crowded one could land on
+    // something airless. Deciding the fight first and then giving it a
+    // room to happen in gets both asks at once — "smaller boards,
+    // particularly when there are less enemies... and generally smaller
+    // boards in the beginning" — because early sectors have the smallest
+    // rosters, so they get the smallest boards for free.
+    //
+    // 9x11 is still the ceiling and nothing exceeds it. 7 rows is the
+    // floor: any shorter and a gate is on the doorstep.
+    // A gate's variant and a locale can each swing the roster by a couple
+    // of hulls, which at depth 1 — where the base is two — means the
+    // aggressive fork was dealing FIVE. A fork should be a heavier version
+    // of the sector you'd have got, not a different game. So the deltas
+    // are applied under a ceiling that opens up with depth: taking the
+    // hard road early gets you the hardest sector available at that depth,
+    // and that is all.
+    const ceiling = 2 + Math.floor(depth / 2);
+    const roster = Math.max(
+      1,
+      Math.min(1 + Math.floor(depth / 3) + (variant ? variant.enemyDelta : 0) + locale.enemyDelta, ceiling, 5)
+    );
+    // Two candidate sizes per roster so sectors of the same weight still
+    // don't all look alike; the seeded roll picks one.
+    const SIZE_FOR_ROSTER = {
+      1: [{ cols: 7, rows: 7 }, { cols: 7, rows: 8 }],
+      2: [{ cols: 7, rows: 8 }, { cols: 7, rows: 9 }],
+      3: [{ cols: 7, rows: 9 }, { cols: 9, rows: 8 }],
+      4: [{ cols: 9, rows: 9 }, { cols: 9, rows: 10 }],
+      5: [{ cols: 9, rows: 10 }, { cols: 9, rows: 11 }],
+      6: [{ cols: 9, rows: 11 }, { cols: 9, rows: 11 }],
+    };
+    const sizes = SIZE_FOR_ROSTER[roster];
+    const shape = sizes[Math.floor(rng() * sizes.length)];
     const cols = shape.cols;
     const rows = shape.rows;
 
@@ -532,7 +549,7 @@
     // thing that happens to a run, and a reason to take the other gate.
     const outpostChance = Math.min(
       0.85,
-      Math.max(0.05, 0.42 + (variant ? variant.outpostChanceDelta : 0) + locale.outpostDelta)
+      Math.max(0.05, 0.6 + (variant ? variant.outpostChanceDelta : 0) + locale.outpostDelta)
     );
     const hasOutpost = rng() < outpostChance;
 
@@ -616,10 +633,7 @@
     // Enemy counts were tuned against volleys, and left as they were the
     // crawl became unwinnable: forty full runs, zero finishes. Slower
     // ramp, lower ceiling.
-    const enemyCount = Math.max(
-      1,
-      Math.min(scale(2 + Math.floor(depth / 3) + (variant ? variant.enemyDelta : 0) + locale.enemyDelta), 6)
-    );
+    const enemyCount = roster; // the board was built for exactly this many
     // The Railgun Destroyer (long-range, board-spanning shot along its
     // axes) joins the roster at the same depth tier Cruiser/Sentry weight
     // increases — a genuinely new threat shape (line-up-from-across-the-
@@ -637,14 +651,21 @@
     // where you are allowed to stand: adjacent, then the ring at two,
     // then the shell at three that goes over cover, then the gaps a lane
     // can't reach, and last the lane itself.
+    // A shape is only a puzzle if you own something that can answer it.
+    // Mortars were arriving at depth 5, where the ship is still carrying
+    // nothing but a contact-range Autocannon: a shell that lands at three
+    // and ignores cover is then not a puzzle, it's a tax, and it showed —
+    // every run spent its entire salvage on hull patches and reached the
+    // Bulwark with the gun it started with. Each new shape now lands a
+    // sector or two AFTER the gun that answers it appears on a shelf.
     const typePool =
       depth < 5
         ? ["interceptor", "interceptor", "cruiser"]
         : depth < 8
-          ? ["interceptor", "interceptor", "cruiser", "cruiser", "sentry", "mortar"]
+          ? ["interceptor", "interceptor", "cruiser", "cruiser", "sentry"]
           : depth < 11
-            ? ["interceptor", "cruiser", "cruiser", "sentry", "mortar", "lancer"]
-            : ["interceptor", "cruiser", "sentry", "mortar", "lancer", "lancer", "railgun"];
+            ? ["interceptor", "cruiser", "cruiser", "sentry", "sentry", "mortar"]
+            : ["interceptor", "cruiser", "sentry", "mortar", "lancer", "railgun"];
     // At most TWO emplacements on a board. A Sentry or a Railgun Destroyer
     // doesn't chase you — it denies ground — and three of them on a 9x11
     // field is a wall with no way around it, which is exactly what full-run

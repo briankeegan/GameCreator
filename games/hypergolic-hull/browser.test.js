@@ -512,14 +512,16 @@ async function freshPage(browser, url, errors) {
   await page.click("#shipCloseBtn");
 
   // A dock is a scrapyard with a welding rig, not a showroom: Repair plus
-  // exactly two things ("too many options too soon... why sell so much at
-  // every station?").
+  // exactly three things ("too many options too soon... why sell so much at
+  // every station?"). Three, not two, since the roster went to six shapes —
+  // a two-slot shelf measured out as never once offering the Arc Beam
+  // across sixty runs.
   s = await walkToOutpost(page);
   assert.ok(await page.locator("#outpostOverlay").isVisible(), "docking opens the Outpost shop");
   assert.strictEqual(
     await page.locator("#outpostOffers button").count(),
-    3,
-    "a station stocks three things, not a nine-item catalogue"
+    4,
+    "a station stocks four things, not a nine-item catalogue"
   );
   await page.click("#outpostCloseBtn");
 
@@ -814,12 +816,23 @@ async function freshPage(browser, url, errors) {
     await arc.click();
     const reach = await page.evaluate(() => {
       const r = window.__hhReachPreview;
-      return r ? { kind: r.kind, key: r.weaponKey, n: r.hexes.size } : null;
+      if (!r) return null;
+      const E = window.HypergolicEngine;
+      const me = window.__hhState.playerPos;
+      const dists = [...r.hexes].map((k) => {
+        const [q, e] = k.split(",").map(Number);
+        return E.hexDistance(me, { q, r: e });
+      });
+      return { kind: r.kind, key: r.weaponKey, n: r.hexes.size, dists: [...new Set(dists)] };
     });
     assert.ok(reach, "tapping it plots the gun's reach");
     assert.strictEqual(reach.kind, "attack", "in the colour weapons always wear");
     assert.strictEqual(reach.key, "arcBeam", "for THAT gun, not whichever fired last");
-    assert.ok(reach.n > 6, "the Arc Beam's whole two-hex ring, not just the six axes");
+    // The plot is clipped to the board, so the COUNT depends on where the
+    // ship happens to be standing. The shape doesn't: every hex it plots
+    // is exactly two out, hole in the middle and all.
+    assert.ok(reach.n > 0, "the Arc Beam plots something");
+    assert.deepStrictEqual(reach.dists, [2], "and every hex of it is exactly two out — the shell, with its hole");
     assert.ok(
       ((await arc.getAttribute("class")) || "").includes("active"),
       "and the button shows it's the one doing the talking"

@@ -856,8 +856,8 @@
       // crowd answer, then standoff, then the gun that beats cover, then
       // the one that covers what a lane can't, then the sniper.
       if (o.id === "railgun") return levelId >= 8;
-      if (o.id === "flankTubes") return levelId >= 7;
-      if (o.id === "mortar") return levelId >= 5;
+      if (o.id === "flankTubes") return levelId >= 8;
+      if (o.id === "mortar") return levelId >= 6;
       if (o.id === "arcBeam" || o.id === "hardpoint") return levelId >= 3;
       if (o.id === "flakBurst") return levelId >= 2;
       return true; // reinforce / shield / reactor: basic dock trade at any depth
@@ -870,7 +870,14 @@
       shuffled[i] = shuffled[j];
       shuffled[j] = tmp;
     }
-    const picked = ["repair", ...shuffled.slice(0, 2).map((o) => o.id)];
+    // THREE slots, not two. With six weapons in the world a two-slot
+    // shelf simply cannot show you the gun you need often enough: adding
+    // the Mortar and the Flank Tubes to the pool measured out as the Arc
+    // Beam never appearing at all across sixty runs, and every run
+    // reaching the Bulwark with the Autocannon it started with, spending
+    // its whole salvage on hull patches. A dock has to be a real chance
+    // to change what the ship is.
+    const picked = ["repair", ...shuffled.slice(0, 3).map((o) => o.id)];
     // A three-Hull ship lives or dies on screens, so a yard will always
     // find you a generator if you're flying without one. Everything else
     // is what they happen to have; this one is the trade that keeps the

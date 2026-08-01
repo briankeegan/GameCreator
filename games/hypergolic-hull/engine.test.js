@@ -924,7 +924,7 @@ const stockAcrossLevels = new Set();
 for (let id = 900; id < 920; id++) {
   const offers = outpostFixture(id).outpostOfferIds;
   assert.strictEqual(offers[0], "repair", `level ${id}: Repair is always the first offer`);
-  assert.strictEqual(offers.length, 3, `level ${id}: a station stocks Repair plus exactly two things`);
+  assert.strictEqual(offers.length, 4, `level ${id}: a station stocks Repair plus exactly three things — six weapons need a wider shelf`);
   assert.strictEqual(new Set(offers).size, offers.length, `level ${id}: no duplicate offers`);
   stockAcrossLevels.add(offers.slice(1).sort().join("+"));
 }
@@ -1399,12 +1399,16 @@ assert.deepStrictEqual(
   assert.ok(differ > total * 0.5, "the fork is usually a choice between two different kinds of space");
 }
 
-// Boards are not all one size, and the ones you meet first are tight.
-// 9x11 is the ceiling, never exceeded; most sectors come in under it.
+// A sector is sized to the FIGHT it holds. Board size and roster used to
+// be rolled independently and reconciled afterwards, which let a quiet
+// sector deal a big empty board to trudge across. Deciding the fight
+// first and then giving it a room to happen in is what makes the early
+// crawl tight without making the late crawl airless. ("Smaller boards,
+// particularly when there are less enemies... generally smaller boards
+// in the beginning.")
 {
   const shapes = new Map();
-  let big = 0;
-  let total = 0;
+  const areaByRoster = new Map();
   for (let depth = 1; depth <= 40; depth++) {
     for (const variant of ["aggressive", "quiet", "drift"]) {
       const level = generateLevel(depth, variant);
@@ -1412,14 +1416,35 @@ assert.deepStrictEqual(
       const { cols, rows } = level.board;
       assert.ok(cols <= 9 && rows <= 11, `depth ${depth} never deals a board bigger than the old fixed one`);
       assert.ok(rows >= 7, `depth ${depth} is still big enough that a gate isn't on the doorstep`);
-      if (depth <= 4) assert.ok(rows <= 9, `the first few sectors are tight — a run should start moving straight away`);
       shapes.set(`${cols}x${rows}`, (shapes.get(`${cols}x${rows}`) || 0) + 1);
-      total++;
-      if (cols * rows > 72) big++;
+      const n = level.enemies.length;
+      if (!areaByRoster.has(n)) areaByRoster.set(n, []);
+      areaByRoster.get(n).push(cols * rows);
     }
   }
   assert.ok(shapes.size >= 4, "sectors come in genuinely different shapes, not one");
-  assert.ok(big < total * 0.35, "most boards are smaller than the old ceiling, not the same size as it");
+  // More hostiles, more room — monotonically, with no roster ever getting
+  // a smaller board than a lighter one.
+  const rosters = [...areaByRoster.keys()].sort((a, b) => a - b);
+  assert.ok(rosters.length >= 4, "rosters genuinely vary across a crawl");
+  for (let i = 1; i < rosters.length; i++) {
+    const lighter = Math.max(...areaByRoster.get(rosters[i - 1]));
+    const heavier = Math.max(...areaByRoster.get(rosters[i]));
+    assert.ok(heavier >= lighter, `a ${rosters[i]}-hostile sector is never given less room than a ${rosters[i - 1]}-hostile one`);
+  }
+  // And the sectors you meet first are the small ones, because they hold
+  // the smallest fights. The aggressive fork is exempt on purpose: taking
+  // it early means asking for a heavier roster, and a heavier roster is
+  // owed the room to fight it in — that's the deal that gate offers.
+  for (let depth = 1; depth <= 4; depth++) {
+    for (const variant of ["quiet", "drift"]) {
+      const level = generateLevel(depth, variant);
+      assert.ok(
+        level.board.cols * level.board.rows <= 72,
+        `depth ${depth} (${variant}) starts tight — a run should get moving straight away`
+      );
+    }
+  }
 }
 
 // The dock moves. It used to be nailed to hex (0,0) on every single board

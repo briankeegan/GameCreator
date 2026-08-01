@@ -178,12 +178,15 @@ function shop(state, report) {
     // Which second gun the pilot reaches for. Both paths get played, so a
     // weapon that only looks good on paper shows up here as a worse
     // survival curve rather than a nice-sounding line in a design doc.
+    // The roster is six SHAPES now, and the pilot's second gun should be
+    // the one that covers what the Autocannon can't — this list was still
+    // the old four and could not so much as consider a Mortar.
     const preference =
       process.env.GUN_PREF === "arc"
-        ? ["arcBeam", "flakBurst", "railgun"]
+        ? ["arcBeam", "flakBurst", "mortar", "flankTubes", "railgun"]
         : process.env.GUN_PREF === "railgun"
-          ? ["railgun", "arcBeam", "flakBurst"]
-          : ["flakBurst", "arcBeam", "railgun"];
+          ? ["railgun", "arcBeam", "flakBurst", "mortar", "flankTubes"]
+          : ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun"];
     // Bank for the gun you actually want rather than grabbing whatever is
     // cheapest on the shelf — otherwise every run ends up flying the same
     // ship and the roster never gets tested.
