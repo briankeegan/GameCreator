@@ -3635,6 +3635,7 @@ function predictedVictims(targetId) {
 }
 
 function handleAction(fn) {
+  let ok = false;
   plannedPath = null;
   reachPreview = null;
   const wasJustArrived = justArrived;
@@ -3671,10 +3672,21 @@ function handleAction(fn) {
       requestAnimationFrame(tickAnims);
       setTimeout(returnToPreviousSector, warpDur * 0.55);
     }
+    ok = true;
   } catch (err) {
     pushMessage(err.message);
   }
-  render();
+  // render() used to sit OUTSIDE this guard. A throw in here therefore
+  // escaped handleAction, escaped stepRoute, and left `autoRoute` set —
+  // and since a board tap is ignored while a route is in flight, that
+  // silently deafened the whole board: no moving, no firing, no way back
+  // except a reload. Whatever goes wrong, the turn ends cleanly.
+  try {
+    render();
+  } catch (err) {
+    console.error("render failed", err);
+  }
+  return ok;
 }
 
 function loadSector(index, carryOver, opts) {
@@ -3929,6 +3941,18 @@ function autoRouteDelay(stepIndex) {
 }
 
 function stepRoute() {
+  try {
+    stepRouteInner();
+  } catch (err) {
+    // Nothing that happens mid-flight is worth losing the controls over.
+    autoRoute = null;
+    pushMessage("Course aborted.");
+    console.error("route step failed", err);
+    render();
+  }
+}
+
+function stepRouteInner() {
   if (!autoRoute) return;
   const arrived = Engine.posEq(state.playerPos, autoRoute.target);
   const hurt = state.hull < autoRoute.hullAtStart;
@@ -3947,7 +3971,14 @@ function stepRoute() {
     return;
   }
   autoRoute.path = path;
-  handleAction(() => Engine.applySublight(state, path[1]));
+  // If the burn itself was refused, the route is over — retrying the same
+  // blocked step on a timer forever is how a flight turns into a lockout.
+  const flew = handleAction(() => Engine.applySublight(state, path[1]));
+  if (!flew) {
+    autoRoute = null;
+    render();
+    return;
+  }
   if (autoRoute) {
     autoRoute.stepIndex += 1;
     setTimeout(stepRoute, autoRouteDelay(autoRoute.stepIndex));
@@ -3955,7 +3986,17 @@ function stepRoute() {
 }
 
 canvas.addEventListener("click", (evt) => {
-  if (state.status !== "playing" || autoRoute) return;
+  if (state.status !== "playing") return;
+  // A tap during a flight CANCELS it rather than being thrown away. It
+  // reads better — you can change your mind halfway down a long burn —
+  // and it means the board can never be left permanently deaf to input,
+  // whatever else goes wrong: one tap always does something.
+  if (autoRoute) {
+    autoRoute = null;
+    pushMessage("Course aborted — holding here.");
+    render();
+    return;
+  }
 
   const rect = canvas.getBoundingClientRect();
   const scale = geom.w / rect.width;

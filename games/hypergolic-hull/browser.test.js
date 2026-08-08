@@ -909,6 +909,40 @@ async function freshPage(browser, url, errors) {
     assert.ok(agrees, "the hexes a gun covers are the hexes off the nose you can see");
   }
 
+  // The board can never be left deaf to input. A flight used to swallow
+  // every tap until it finished, and handleAction's render() sat outside
+  // its own try/catch — so one throw mid-route left `autoRoute` set and
+  // the whole board stopped responding: no moving, no firing, no way out
+  // but a reload. ("On this map I can't move or attack.")
+  {
+    // Lay a long course and confirm it, then tap again mid-flight.
+    const far = await page.evaluate(() => {
+      const st = window.__hhState;
+      return st.exits && st.exits[0] ? { q: st.exits[0].q, r: st.exits[0].r } : null;
+    });
+    if (far) {
+      await clickHex(page, "sublight", far); // lay in
+      await clickHex(page, "sublight", far); // confirm — the burn starts
+      await page.waitForTimeout(120);
+      const flying = await page.evaluate(() => window.__hhAutoRoute !== null);
+      if (flying) {
+        await clickHex(page, "sublight", far); // a tap DURING the flight
+        assert.strictEqual(
+          await page.evaluate(() => window.__hhAutoRoute),
+          null,
+          "a tap mid-flight aborts the course instead of being swallowed"
+        );
+      }
+      // ...and whatever happened, the controls answer again.
+      await page.waitForFunction(() => window.__hhAutoRoute === null, null, { timeout: 15000 });
+      const alive = await page.evaluate(() => {
+        const st = window.__hhState;
+        return st.status !== "playing" || window.__hhAutoRoute === null;
+      });
+      assert.ok(alive, "the board is taking input again once the burn ends");
+    }
+  }
+
   // Blowing the scuttling charges is something you WATCH. The ship comes
   // apart on the Systems screen you armed them from, and only once the
   // fire is out does the run reset ("show the ship explode").
