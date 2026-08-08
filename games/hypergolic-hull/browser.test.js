@@ -943,6 +943,29 @@ async function freshPage(browser, url, errors) {
     }
   }
 
+  // Every hostile class has a hull of its own. This used to be an if-chain
+  // with three branches and a fallback, so the Mortar Platform and the
+  // Lancer both rendered as Interceptors — byte for byte — while finished
+  // art for them sat unreferenced in icons/. A class either has a sprite
+  // or it visibly has none; two classes never share one.
+  {
+    const fleet = await page.evaluate(() => {
+      const classes = Object.keys(window.HypergolicEngine.ENEMY_TYPES);
+      const sprites = window.__hhEnemySprites || {};
+      return classes.map((c) => ({
+        type: c,
+        src: sprites[c] ? sprites[c].src.split("/").pop() : null,
+        loaded: sprites[c] ? sprites[c].complete && sprites[c].naturalWidth > 0 : false,
+      }));
+    });
+    for (const ship of fleet) {
+      assert.ok(ship.src, `${ship.type} has a sprite of its own, not a fallback to somebody else's hull`);
+      assert.ok(ship.loaded, `${ship.type}'s sprite (${ship.src}) actually loads`);
+    }
+    const srcs = fleet.map((f) => f.src);
+    assert.strictEqual(new Set(srcs).size, srcs.length, `no two classes share a hull (${srcs.join(", ")})`);
+  }
+
   // Blowing the scuttling charges is something you WATCH. The ship comes
   // apart on the Systems screen you armed them from, and only once the
   // fire is out does the run reset ("show the ship explode").

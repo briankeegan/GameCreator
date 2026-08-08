@@ -570,13 +570,45 @@ function drawHex(center, fill, stroke, lineWidth, fillAlpha) {
 // else about the rotation math has to change.
 const flagshipImg = new Image();
 flagshipImg.src = "icons/flagship.png";
+// The Mk2. Nothing used to change what your own ship looked like however
+// much you bolted into it; now the hull you fly visibly stops being the
+// one you started in, the moment it's carrying a second gun AND a screen.
+// Cosmetic only — it reads the Hold, it doesn't change it.
+const flagshipMk2Img = new Image();
+flagshipMk2Img.src = "icons/flagship-mk2.png";
+flagshipMk2Img.onload = () => draw();
+function flagshipSprite() {
+  const guns = Engine.WEAPON_SYSTEM_KEYS.filter((k) => state.systems && state.systems[k]).length;
+  return guns >= 2 && state.maxShields > 0 ? flagshipMk2Img : flagshipImg;
+}
 flagshipImg.onload = () => draw();
 const interceptorImg = new Image();
 interceptorImg.src = "icons/interceptor.png";
 interceptorImg.onload = () => draw();
 
+// One sprite per hostile class. This used to be an if-chain with three
+// branches and a fallback, which meant every class added after those three
+// silently inherited the Interceptor's hull — the Mortar Platform and the
+// Lancer were both rendering as Interceptors, byte for byte, while
+// finished art for them sat unreferenced in icons/. A lookup can't drift
+// like that: a class either has a sprite here or it visibly has none.
+const ENEMY_SPRITES = {};
+for (const [type, file] of Object.entries({
+  interceptor: "icons/interceptor.png",
+  cruiser: "icons/enemy-cruiser.png",
+  sentry: "icons/enemy-sentry.png",
+  mortar: "icons/enemy-bomber.png", // the one hull in the set with a loaded bay
+  lancer: "icons/enemy-minelayer.png", // pods held out wide, like the Tubes fire
+  railgun: "icons/enemy-railgun.png",
+})) {
+  const img = new Image();
+  img.src = file;
+  img.onload = () => draw();
+  ENEMY_SPRITES[type] = img;
+}
+
 function drawShipImage(img, s) {
-  if (!img.complete || !img.naturalWidth) return false;
+  if (!img || !img.complete || !img.naturalWidth) return false; // a class with no sprite falls through to the shapes below
   ctx.save();
   ctx.rotate(Math.PI / 2);
   ctx.drawImage(img, -s * 1.1, -s * 1.1, s * 2.2, s * 2.2);
@@ -945,7 +977,7 @@ function drawEnemyFighter(s, thrust) {
 
 function drawPlayerShip(size, thrustFrac, hpFrac) {
   ctx.save();
-  if (!drawShipImage(flagshipImg, size)) {
+  if (!drawShipImage(flagshipSprite(), size) && !drawShipImage(flagshipImg, size)) {
     drawHero(size, thrustFrac);
   }
   drawCracks(size, hpFrac, "player");
@@ -1129,6 +1161,10 @@ function drawEnemyShip(size, hpFrac, crackSeed, type) {
     interceptor: ["rgba(255,110,70,0.55)", "rgba(255,60,45,0.28)", "rgba(255,50,40,0)"],
     cruiser: ["rgba(255,170,60,0.55)", "rgba(240,120,30,0.30)", "rgba(240,110,30,0)"],
     sentry: ["rgba(70,240,150,0.50)", "rgba(40,200,120,0.26)", "rgba(30,190,110,0)"],
+    // Every class needs its own, or it silently borrows the Interceptor's
+    // red and two different threats look like the same threat.
+    mortar: ["rgba(235,220,110,0.52)", "rgba(200,180,60,0.27)", "rgba(190,170,50,0)"],
+    lancer: ["rgba(205,120,255,0.52)", "rgba(160,70,220,0.27)", "rgba(150,60,210,0)"],
     railgun: ["rgba(90,170,255,0.50)", "rgba(50,120,220,0.26)", "rgba(40,100,200,0)"],
   };
   const hc = HALO[type] || HALO.interceptor;
@@ -1140,14 +1176,13 @@ function drawEnemyShip(size, hpFrac, crackSeed, type) {
   ctx.beginPath();
   ctx.arc(0, 0, size * 1.25, 0, Math.PI * 2);
   ctx.fill();
-  if (type === "cruiser") {
-    drawCruiser(size * 1.12);
-  } else if (type === "sentry") {
-    drawSentry(size * 1.05);
-  } else if (type === "railgun") {
-    drawRailgun(size * 1.1);
-  } else if (!drawShipImage(interceptorImg, size)) {
-    drawEnemyFighter(size, 0);
+  // The sprite is the ship. The hand-drawn shapes below are only what you
+  // get in the moment before its PNG has finished loading.
+  if (!drawShipImage(ENEMY_SPRITES[type], size)) {
+    if (type === "cruiser") drawCruiser(size * 1.12);
+    else if (type === "sentry") drawSentry(size * 1.05);
+    else if (type === "railgun") drawRailgun(size * 1.1);
+    else if (!drawShipImage(interceptorImg, size)) drawEnemyFighter(size, 0);
   }
   drawCracks(size, hpFrac, crackSeed);
   ctx.restore();
@@ -1392,9 +1427,20 @@ function drawAsteroidField(center, r, seed) {
 // the vector-art treatment the flagship/Interceptor/Warp Gate already got.
 // A gunmetal hub with two docking struts and a slow amber beacon so it
 // reads as "a place," not a tool icon.
+const outpostImg = new Image();
+outpostImg.src = "icons/outpost.png";
+outpostImg.onload = () => draw();
+
 function drawOutpost(center, r, now) {
   ctx.save();
   ctx.translate(center.x, center.y);
+  // A finished station sprite was sitting in icons/ unreferenced while
+  // this function painted one from scratch. The shape below is the
+  // fallback for the moment before it loads.
+  if (drawShipImage(outpostImg, r * 0.98)) {
+    ctx.restore();
+    return;
+  }
   ctx.fillStyle = "#3a4358";
   ctx.strokeStyle = "#8fa2c2";
   ctx.lineWidth = Math.max(1, r * 0.06);
@@ -3554,7 +3600,8 @@ function render() {
   window.__hhTargetedEnemy = targetedEnemyId;
   window.__hhReachPreview = reachPreview;
   window.__hhShipAngle = shipAngle; // test hook: where the sprite is actually pointing
-  window.__hhDirAngles = DIR_ANGLES; // test hook: the angle each facing should draw at // test hook: the equipment plot currently on the board
+  window.__hhDirAngles = DIR_ANGLES; // test hook: the angle each facing should draw at
+  window.__hhEnemySprites = ENEMY_SPRITES; // test hook: one hull per class, no sharing // test hook: the equipment plot currently on the board
 }
 
 function pushMessage(message) {
