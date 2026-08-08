@@ -879,6 +879,27 @@ body {
   color: #9fb0c9;
   min-height: 2.2em;
 }
+/* A tapped gun draws the ground it covers next to its numbers — the shape
+   is the thing you actually have to hold in your head, and a sentence
+   describing a hex pattern is a poor substitute for the pattern. */
+.hold-info-figure {
+  float: left;
+  width: 116px;
+  margin: 0 10px 4px 0;
+  display: block;
+}
+.hold-info-figure .foot { width: 116px; height: auto; display: block; }
+.foot-note {
+  display: block;
+  font-size: 0.54rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7a8bab;
+  text-align: center;
+  margin-top: 3px;
+}
+.foot-note.foot-warn { color: #e0533f; }
+.hold-info-text { display: block; overflow: hidden; }
 .hold-tile.selected { outline: 2px solid #ffce8a; }
 
 /* Scuttling charges — the run's own off switch, kept visually apart from

@@ -394,11 +394,21 @@ async function freshPage(browser, url, errors) {
   // Tapping a tile inspects it.
   await page.click('#holdGrid .hold-tile[data-item-id="autocannon"]');
   // The readout leads with the gun's FOOTPRINT — where it lands is the
-  // interesting thing about it, not a range number.
+  // interesting thing about it, not a range number — and it DRAWS it,
+  // because a sentence describing a hex pattern is a poor substitute for
+  // the pattern ("when you select a weapon it should show how it works
+  // grid-wise").
   assert.ok(
-    /wedge off the nose/.test(await page.locator("#holdInfo").textContent()),
+    /three hexes off the nose/.test(await page.locator("#holdInfo").textContent()),
     "tapping a tile reads out the shape the item covers"
   );
+  assert.strictEqual(
+    await page.locator("#holdInfo svg.foot polygon").count() > 0,
+    true,
+    "and draws that shape as a hex field"
+  );
+  const litCount = await page.locator("#holdInfo svg.foot polygon[stroke='#e0533f']").count();
+  assert.strictEqual(litCount, 3, "the Autocannon lights exactly its three hexes");
   await page.click("#shipCloseBtn");
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Return to Helm closes the Systems screen");
 
@@ -844,6 +854,59 @@ async function freshPage(browser, url, errors) {
       await page.evaluate(() => window.__hhState.maxAp),
       "asking the question costs nothing — no AP, no energy"
     );
+  }
+
+  // The nose you can see and the facing the engine fires from are the same
+  // thing. They used to come apart: landing a shot swung the sprite round
+  // to point at whatever it hit, while state.facing never moved — so from
+  // the next round the ship appeared to aim one way and every arc weapon,
+  // and the reach preview, worked off another. ("When I select the gun it
+  // shows where it can hit incorrectly.")
+  {
+    const noseMatchesFacing = () =>
+      page.evaluate(() => {
+        const st = window.__hhState;
+        const drawn = window.__hhShipAngle;
+        const want = window.__hhDirAngles[st.facing];
+        // Degrees wrap; compare the short way round.
+        const off = Math.abs(((drawn - want + 540) % 360) - 180);
+        return { facing: st.facing, drawn: Math.round(drawn), want: Math.round(want), off: Math.round(off) };
+      });
+
+    let aim = await noseMatchesFacing();
+    assert.strictEqual(aim.off, 0, `a fresh ship's nose matches its facing (drawn ${aim.drawn}, facing ${aim.facing})`);
+
+    // Park a hostile off the nose and shoot it — the case that used to lie.
+    await page.evaluate(() => {
+      const st = window.__hhState;
+      const e = st.enemies.find((x) => x.alive) || st.enemies[0];
+      e.alive = true;
+      e.hp = 1;
+      e.q = st.playerPos.q - 1;
+      e.r = st.playerPos.r;
+      st.energy = st.maxEnergy;
+      window.render();
+    });
+    const target = await page.evaluate(() => window.__hhState.enemies.find((x) => x.alive));
+    await clickHex(page, "sublight", target);
+    const gun = page.locator(".weapon-btn:not([disabled])").first();
+    if (await gun.count()) {
+      await gun.click();
+      await page.waitForTimeout(900);
+      aim = await noseMatchesFacing();
+      assert.strictEqual(aim.off, 0, `after firing, the nose still matches facing (drawn ${aim.drawn}, facing ${aim.facing})`);
+    }
+
+    // ...and the reach plot agrees with the nose, which is the thing the
+    // player actually reads off the board.
+    const agrees = await page.evaluate(() => {
+      const E = window.HypergolicEngine;
+      const st = window.__hhState;
+      const fromFacing = E.weaponHexes(st.playerPos, st.facing, E.WEAPONS.autocannon, st).map(E.hexKey).sort();
+      const fromDrawn = E.weaponHexes(st.playerPos, window.__hhDirAngles.indexOf(window.__hhShipAngle), E.WEAPONS.autocannon, st).map(E.hexKey).sort();
+      return JSON.stringify(fromFacing) === JSON.stringify(fromDrawn);
+    });
+    assert.ok(agrees, "the hexes a gun covers are the hexes off the nose you can see");
   }
 
   // Blowing the scuttling charges is something you WATCH. The ship comes

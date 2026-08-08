@@ -302,6 +302,14 @@ const DIR_ANGLES = Engine.DIRECTIONS.map((d) => {
 });
 let shipAngle = -90; // start facing "up", toward the gate; the custom ship shape is drawn nose-right at angle 0
 
+// The drawn nose is a VIEW of state.facing, never its own truth. Anything
+// that changes facing calls this; nothing else moves the sprite.
+function syncShipAngle() {
+  if (state && typeof state.facing === "number" && DIR_ANGLES[state.facing] !== undefined) {
+    shipAngle = DIR_ANGLES[state.facing];
+  }
+}
+
 // Continuous version of the DIR_ANGLES lookup above (which only covers the
 // 6 adjacent-hex directions) — a weapon should aim straight at its actual
 // target regardless of range, not just the direction the flagship walked.
@@ -431,13 +439,17 @@ function scheduleAnims(events) {
   for (const ev of events) {
     if (ev.type === "kill") {
       anims.push({ kind: "boom", pos: ev, start: now, dur: 450, particles: makeExplosionParticles(9) });
-      // A weapon's kill always comes after any playerMove event this same
-      // turn, so this correctly overrides the movement-direction facing
-      // above with "aim straight at what you just fired on" instead.
-      if (ev.source === "weapon") shipAngle = angleToward(state.playerPos, ev);
     }
     else if (ev.type === "hit") {
-      if (ev.source === "weapon") shipAngle = angleToward(state.playerPos, ev);
+      // NOTE: landing a shot used to swing the sprite round to point at
+      // whatever it hit. It looked good and it was a lie — `state.facing`
+      // never moved, so from the next round on the nose pointed one way
+      // while every arc weapon fired somewhere else, and the reach preview
+      // (which reads facing, correctly) lit hexes that had nothing to do
+      // with where the ship appeared to be aimed. The ship now turns only
+      // when it actually turns: applySublight on a move, and setFacing when
+      // faceEnemyIfPossible has to re-aim to bring a gun to bear. Both of
+      // those go through syncShipAngle below.
     }
     else if (ev.type === "playerFire") {
       const fx = WEAPON_FX[ev.weapon];
@@ -472,6 +484,7 @@ function scheduleAnims(events) {
       anims.push({ kind: "pslide", from: ev.from, to: ev.to, start: now, dur: 230 });
       const dir = Engine.directionIndex(ev.from, ev.to);
       if (dir >= 0) shipAngle = DIR_ANGLES[dir];
+      else syncShipAngle();
     }
     else if (ev.type === "playerDeath") anims.push({ kind: "boom", pos: ev, start: now + lastAttackSlot + 200, dur: 650, particles: makeExplosionParticles(16) });
     else if (ev.type === "energyGain") {
@@ -2747,7 +2760,9 @@ function describePattern(weapon) {
   }
   if (weapon.shape === "lane") return "straight down any axis, until it hits something";
   if (weapon.shape === "offAxis") return "the six gaps between the axes, two out";
-  if (weapon.shape === "arc") return `a wedge off the nose, ${weapon.range} deep`;
+  if (weapon.shape === "arc") {
+    return weapon.range === 1 ? "three hexes off the nose, in contact" : `a wedge off the nose, ${weapon.range} deep`;
+  }
   return "all directions";
 }
 
@@ -3196,6 +3211,83 @@ function describeItem(id) {
   return eq.label;
 }
 
+// A weapon's FOOTPRINT, drawn as the hex field it actually covers, from
+// the point of view of whatever ship is carrying it. A sentence can say
+// "the ring at exactly two" but the shape is the thing you have to hold in
+// your head while you fly, so the readout draws it ("when you select a
+// weapon it should show how it works grid-wise"). Same geometry and the
+// same colours as the board: flat-top hexes, the carrier in amber, covered
+// ground in the red the board washes threatened hexes with.
+const FOOT_SPAN = 3; // far enough for the Mortar's shell; lanes say so in words
+function weaponFootprintSVG(weapon) {
+  const S = 13;
+  const centre = (q, r) => ({ x: S * 1.5 * q, y: S * Math.sqrt(3) * (r + q / 2) });
+  const corners = (cx, cy) => {
+    const pts = [];
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 180) * (60 * i);
+      pts.push(`${(cx + S * Math.cos(a)).toFixed(1)},${(cy + S * Math.sin(a)).toFixed(1)}`);
+    }
+    return pts.join(" ");
+  };
+  const origin = { q: 0, r: 0 };
+  const covered = new Set(
+    Engine.weaponHexes(origin, 0, weapon)
+      .filter((h) => Engine.hexDistance(origin, h) <= FOOT_SPAN)
+      .map(Engine.hexKey)
+  );
+  const cells = [];
+  for (let q = -FOOT_SPAN; q <= FOOT_SPAN; q++) {
+    for (let r = -FOOT_SPAN; r <= FOOT_SPAN; r++) {
+      if (Engine.hexDistance(origin, { q, r }) > FOOT_SPAN) continue;
+      cells.push({ q, r });
+    }
+  }
+  const pts = cells.map((c) => centre(c.q, c.r));
+  const xs = pts.map((p) => p.x);
+  const ys = pts.map((p) => p.y);
+  const pad = S + 2;
+  const minX = Math.min(...xs) - pad;
+  const minY = Math.min(...ys) - pad;
+  const w = Math.max(...xs) + pad - minX;
+  const h = Math.max(...ys) + pad - minY;
+  const parts = [
+    `<svg class="foot" viewBox="${minX.toFixed(1)} ${minY.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}" role="img" aria-label="${weapon.label}: ${describePattern(weapon)}">`,
+  ];
+  for (const c of cells) {
+    const p = centre(c.q, c.r);
+    const self = c.q === 0 && c.r === 0;
+    const lit = covered.has(Engine.hexKey(c));
+    const fill = self ? "rgba(255,156,74,0.34)" : lit ? "rgba(224,83,63,0.42)" : "rgba(255,255,255,0.02)";
+    const stroke = self ? "#ff9c4a" : lit ? "#e0533f" : "#2a3652";
+    parts.push(
+      `<polygon points="${corners(p.x, p.y)}" fill="${fill}" stroke="${stroke}" stroke-width="${self || lit ? 1.3 : 0.7}"/>`
+    );
+  }
+  const o = centre(0, 0);
+  parts.push(`<circle cx="${o.x}" cy="${o.y}" r="3.6" fill="#ff9c4a"/></svg>`);
+  return parts.join("");
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+// The readout for one tapped tile: what it is, and — for a gun — the shape
+// it covers.
+function renderItemReadout(infoEl, id) {
+  const eq = Engine.EQUIPMENT[id];
+  const text = `<span class="hold-info-text">${escapeHtml(describeItem(id))}</span>`;
+  if (!eq || eq.kind !== "weapon") {
+    infoEl.innerHTML = text;
+    return;
+  }
+  const weapon = Engine.WEAPONS[eq.weaponKey];
+  const note = weapon.shape === "lane" ? '<span class="foot-note">…and onward to the board edge</span>' : "";
+  const cover = weapon.ignoresCover ? '<span class="foot-note foot-warn">lobbed — rock is no cover</span>' : "";
+  infoEl.innerHTML = `<span class="hold-info-figure">${weaponFootprintSVG(weapon)}${note}${cover}</span>${text}`;
+}
+
 // Tap any tile, on either ship, and its specs land in the readout under
 // the grid ("clicking on item... should info when selected"). Nothing is
 // written into the screen up front — the grid IS the information.
@@ -3205,7 +3297,7 @@ function wireHoldInspect(gridEl, infoEl) {
     if (!tile || !tile.dataset.itemId) return;
     for (const other of gridEl.querySelectorAll(".hold-tile")) other.classList.remove("selected");
     tile.classList.add("selected");
-    infoEl.textContent = describeItem(tile.dataset.itemId);
+    renderItemReadout(infoEl, tile.dataset.itemId);
   });
 }
 
@@ -3453,11 +3545,16 @@ function render() {
   updateMapOverlay();
   draw();
   persist();
+  // The nose can never drift from the engine's facing: whatever just
+  // happened, this is the last word before anything is drawn.
+  if (!anims.some((a) => a.kind === "pslide")) syncShipAngle();
   window.__hhState = state; // debug hook: deterministic + serializable, safe to inspect
   window.__hhPlannedPath = plannedPath;
   window.__hhAutoRoute = autoRoute;
   window.__hhTargetedEnemy = targetedEnemyId;
-  window.__hhReachPreview = reachPreview; // test hook: the equipment plot currently on the board
+  window.__hhReachPreview = reachPreview;
+  window.__hhShipAngle = shipAngle; // test hook: where the sprite is actually pointing
+  window.__hhDirAngles = DIR_ANGLES; // test hook: the angle each facing should draw at // test hook: the equipment plot currently on the board
 }
 
 function pushMessage(message) {
