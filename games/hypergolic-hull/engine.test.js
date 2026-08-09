@@ -1399,6 +1399,41 @@ assert.deepStrictEqual(
   assert.ok(differ > total * 0.5, "the fork is usually a choice between two different kinds of space");
 }
 
+// The hand-authored campaign obeys the same rule as everything else. It
+// used to be exempt by accident — all four sectors were 9x11, the biggest
+// board in the game, with rosters of 1, 2, 2 and 3. Sector 1 in particular
+// was ninety-nine hexes holding a single contact, which is the first thing
+// anyone ever sees of this game.
+{
+  for (const level of LEVELS) {
+    const area = level.board.cols * level.board.rows;
+    const foes = level.enemies.length;
+    assert.ok(area <= 99, `sector ${level.id} never exceeds the ceiling`);
+    assert.ok(
+      area <= 56 + foes * 12,
+      `sector ${level.id} is sized to its ${foes}-hostile roster, not dealt the biggest board going (area ${area})`
+    );
+    for (const gate of [level.exit, ...(level.exits || [])].filter(Boolean)) {
+      assert.ok(
+        Engine.hexDistance(level.playerStart, gate) >= 6,
+        `sector ${level.id}: the gate is a crossing, not a doorstep`
+      );
+    }
+    for (const foe of level.enemies) {
+      assert.ok(Engine.hexDistance(level.playerStart, foe) >= 2, `sector ${level.id}: nothing spawns in your lap`);
+    }
+    assert.ok(level.board.rows >= level.board.cols, `sector ${level.id} is never wider than tall — this is a portrait cockpit`);
+  }
+  // The opening sector is the smallest of them, because it holds the
+  // smallest fight.
+  const first = LEVELS[0];
+  assert.strictEqual(first.enemies.length, 1, "sector 1 is still the one-contact lesson");
+  assert.ok(
+    first.board.cols * first.board.rows <= 60,
+    "and it is dealt a board that fits one contact"
+  );
+}
+
 // A sector is sized to the FIGHT it holds. Board size and roster used to
 // be rolled independently and reconciled afterwards, which let a quiet
 // sector deal a big empty board to trudge across. Deciding the fight

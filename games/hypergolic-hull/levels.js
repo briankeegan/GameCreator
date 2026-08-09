@@ -37,11 +37,14 @@
     {
       id: 1,
       name: "Outer Reach",
-      board: { type: "rect", cols: 9, rows: 11 },
-      playerStart: { q: 4, r: 8 },
-      exit: { q: 8, r: -4 },
+      // Sized to its roster, like every procedural sector. This was 9x11 —
+      // the biggest board in the game — holding ONE contact, which is a
+      // lot of empty hexes to cross before the tutorial fight happens.
+      board: { type: "rect", cols: 7, rows: 8 },
+      playerStart: { q: 3, r: 6 },
+      exit: { q: 6, r: -3 },
       outpost: null,
-      enemies: [{ type: "interceptor", q: 4, r: 3 }],
+      enemies: [{ type: "interceptor", q: 3, r: 2 }],
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "autocannon"],
@@ -53,13 +56,13 @@
     {
       id: 2,
       name: "Salvage Field",
-      board: { type: "rect", cols: 9, rows: 11 },
-      playerStart: { q: 4, r: 8 },
-      exit: { q: 8, r: -4 },
+      board: { type: "rect", cols: 7, rows: 9 },
+      playerStart: { q: 3, r: 7 },
+      exit: { q: 6, r: -3 },
       outpost: { q: 0, r: 0 },
       enemies: [
-        { type: "cruiser", q: 4, r: 3 },
-        { type: "interceptor", q: 6, r: 0 },
+        { type: "cruiser", q: 3, r: 3 },
+        { type: "interceptor", q: 5, r: 0 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
@@ -73,17 +76,17 @@
     {
       id: 3,
       name: "Sentry Line",
-      board: { type: "rect", cols: 9, rows: 11 },
-      playerStart: { q: 4, r: 8 },
-      exit: { q: 8, r: -4 },
+      board: { type: "rect", cols: 7, rows: 9 },
+      playerStart: { q: 3, r: 7 },
+      exit: { q: 6, r: -3 },
       outpost: { q: 0, r: 0 },
       // The Sentry lesson: ONE emplacement and one escort. Its beam covers
       // a two-hex ring in every direction, which is a wall on a board this
       // width — learning to read that zone is the whole sector, and a
       // third hostile just turns the lesson into an unwinnable brawl.
       enemies: [
-        { type: "sentry", q: 6, r: 1 },
-        { type: "interceptor", q: 4, r: 0 },
+        { type: "sentry", q: 5, r: 1 },
+        { type: "interceptor", q: 3, r: 3 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
@@ -98,18 +101,18 @@
     {
       id: 4,
       name: "The Gauntlet",
-      board: { type: "rect", cols: 9, rows: 11 },
-      playerStart: { q: 4, r: 8 },
-      exit: { q: 8, r: -4 },
+      board: { type: "rect", cols: 7, rows: 10 },
+      playerStart: { q: 3, r: 8 },
+      exit: { q: 6, r: -3 },
       // The last hand-authored sector before the crawl goes procedural —
       // so this is the outfitters. Running it dry meant arriving at depth
       // 5 with a hold full of salvage, a starting gun, and no shelf to
       // spend on since sector 3.
       outpost: { q: 0, r: 0 },
       enemies: [
-        { type: "cruiser", q: 3, r: 5 },
-        { type: "sentry", q: 6, r: 2 },
-        { type: "interceptor", q: 4, r: 0 },
+        { type: "cruiser", q: 3, r: 4 },
+        { type: "sentry", q: 5, r: 1 },
+        { type: "interceptor", q: 4, r: 4 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
@@ -508,10 +511,13 @@
     );
     // Two candidate sizes per roster so sectors of the same weight still
     // don't all look alike; the seeded roll picks one.
+    // Never wider than tall: the game is a portrait cockpit, and a board
+    // that runs wide shrinks every hex to fit the screen's width while
+    // leaving vertical room unused. Growth goes downrange, not sideways.
     const SIZE_FOR_ROSTER = {
       1: [{ cols: 7, rows: 7 }, { cols: 7, rows: 8 }],
       2: [{ cols: 7, rows: 8 }, { cols: 7, rows: 9 }],
-      3: [{ cols: 7, rows: 9 }, { cols: 9, rows: 8 }],
+      3: [{ cols: 7, rows: 9 }, { cols: 7, rows: 10 }],
       4: [{ cols: 9, rows: 9 }, { cols: 9, rows: 10 }],
       5: [{ cols: 9, rows: 10 }, { cols: 9, rows: 11 }],
       6: [{ cols: 9, rows: 11 }, { cols: 9, rows: 11 }],
