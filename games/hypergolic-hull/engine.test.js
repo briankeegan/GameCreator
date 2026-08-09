@@ -489,6 +489,10 @@ Engine.applyRecharge(dockState); // must not throw — capability restored with 
 assert.ok(dockState.energy > 0, "and the reactor cycles again");
 
 // Buying with no room left lands in cargo; a Hold Expansion adds a row.
+// The sale is NOT refused — the shelf is randomized, so refusing would let
+// a whole run go by with a gun permanently unbuyable. It's announced
+// instead: outpostOffers() reports fits:false and the purchase logs where
+// the crate actually went.
 dockState.outpostOfferIds = ["repair", "shield", "hardpoint"];
 dockState.salvage = 50;
 while (true) {
@@ -498,6 +502,15 @@ while (true) {
   if (dockState.hold.items.length === before) break; // this one didn't fit — it went to cargo
 }
 assert.ok(dockState.hold.cargo.includes("shieldGenerator"), "a purchase that doesn't fit the grid waits in cargo");
+assert.ok(
+  dockState.log.some((line) => /stowed in cargo/.test(line)),
+  "and it says so — a crate going inert is never silent"
+);
+assert.strictEqual(
+  Engine.outpostOffers(dockState).find((o) => o.id === "shield").fits,
+  false,
+  "the shelf can warn about it before you pay, too"
+);
 const rowsBefore = dockState.hold.rows;
 dockState.salvage = 20;
 Engine.applyOutpostPurchase(dockState, "hardpoint");
@@ -1114,9 +1127,15 @@ const railgunBuyState = Engine.createGameState({ ...shopLevel, id: 995 });
 railgunBuyState.playerPos = { q: shopLevel.outpost.q, r: shopLevel.outpost.r };
 railgunBuyState.outpostOfferIds = ["repair", "railgun"];
 railgunBuyState.salvage = Engine.OUTPOST_OFFER_POOL.find((o) => o.id === "railgun").cost;
-Engine.applyOutpostPurchase(railgunBuyState, "railgun");
 // Footprint is a real constraint: a 1x4 spine does NOT fit around the
-// starting kit, so it arrives inert in cargo until you make room.
+// starting kit, so it arrives inert in cargo until you make room — and the
+// shelf warns you of exactly that before you hand over the salvage.
+assert.strictEqual(
+  Engine.outpostOffers(railgunBuyState).find((o) => o.id === "railgun").fits,
+  false,
+  "the shop knows the spine won't fit a stock hold"
+);
+Engine.applyOutpostPurchase(railgunBuyState, "railgun");
 assert.strictEqual(railgunBuyState.systems.railgun, false, "bought but unfitted — a 1x4 spine has nowhere to go in a stock hold");
 assert.ok(railgunBuyState.hold.cargo.includes("railgun"), "so it rides in cargo, powered down, until the Hold has room");
 railgunBuyState.hold.rows += 1; // Hold Expansion — buy the space, then fit the gun

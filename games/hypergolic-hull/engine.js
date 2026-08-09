@@ -99,7 +99,7 @@
   // mechanic and Fighter Squadron was a free instant-kill living outside
   // the weapon/energy model. Everything left runs on the same
   // stats + energy + slots chassis.
-  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "railgun"];
+  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun"];
   // Purchase-only actions (see OUTPOST_OFFER_POOL/applyOutpostPurchase) —
   // never part of any level's own baked-in `actions` list, and excluded
   // from the default fallback below so they don't show up for free the
@@ -273,6 +273,54 @@
   // the omnidirectional hardware is sold against.
   const FORWARD_ARC_PATTERN = [5, 0, 1];
 
+  // Is there a clear line from `from` to `to`? Walks the hexes strictly
+  // between the two and asks whether anything solid is standing in them.
+  // Used by the shell and gap weapons; lane weapons stop at the first
+  // blocker as they step, and lobbed weapons don't ask at all.
+  //
+  // Hex lines are done in cube space and rounded; when a line passes
+  // exactly between two hexes we accept EITHER being clear, so a shot
+  // threading a one-hex gap is allowed rather than blocked by a rounding
+  // coin-flip.
+  // "If I stood there, would this reach me?" — the flagship's own hull is
+  // not cover for the ground behind it when answering that.
+  const HYPOTHETICAL = { ignorePlayer: true };
+
+  function hasLineOfSight(state, from, to, opts) {
+    const dist = hexDistance(from, to);
+    if (dist < 2) return true;
+    const ax = from.q;
+    const az = from.r;
+    const ay = -ax - az;
+    const bx = to.q;
+    const bz = to.r;
+    const by = -bx - bz;
+    for (let step = 1; step < dist; step++) {
+      const t = step / dist;
+      const x = ax + (bx - ax) * t;
+      const y = ay + (by - ay) * t;
+      const z = az + (bz - az) * t;
+      // Round to the two nearest candidate hexes (nudge either way).
+      const candidates = [-1e-6, 1e-6].map((eps) => cubeRound(x + eps, y - 2 * eps, z + eps));
+      const clear = candidates.some((c) => !blocksShot(state, c, opts));
+      if (!clear) return false;
+    }
+    return true;
+  }
+
+  function cubeRound(x, y, z) {
+    let rx = Math.round(x);
+    let ry = Math.round(y);
+    let rz = Math.round(z);
+    const dx = Math.abs(rx - x);
+    const dy = Math.abs(ry - y);
+    const dz = Math.abs(rz - z);
+    if (dx > dy && dx > dz) rx = -ry - rz;
+    else if (dy > dz) ry = -rx - rz;
+    else rz = -rx - ry;
+    return { q: rx, r: rz };
+  }
+
   // ---- weapons are SHAPES, not ranges ------------------------------------
   //
   // Every gun used to be "everything within N hexes", which meant the only
@@ -303,7 +351,7 @@
   // against a Mortar.
   const SHAPES = {
     // Pattern offsets stepped out to `range`, stopped by anything solid.
-    arc: (pos, facing, weapon, state) => {
+    arc: (pos, facing, weapon, state, opts) => {
       const hexes = [];
       for (const offset of weapon.pattern) {
         const dir = (facing + offset + 6) % 6;
@@ -311,14 +359,19 @@
         for (let step = 0; step < weapon.range; step++) {
           cur = neighbor(cur, dir);
           hexes.push(cur);
-          if (state && blocksShot(state, cur)) break;
+          if (state && blocksShot(state, cur, opts)) break;
         }
       }
       return hexes;
     },
     // Every hex at a distance between minRange and range — a shell, with
-    // a hole in the middle whenever minRange > 1.
-    ring: (pos, facing, weapon) => {
+    // a hole in the middle whenever minRange > 1. Cover counts: a shell
+    // still has to get there. Only a weapon that declares ignoresCover
+    // (the Mortar, which lobs) is handed a null state and so sees through
+    // everything. Without this, four of the six weapons shot straight
+    // through asteroid fields and the whole "put rock between you and it"
+    // idea was fiction.
+    ring: (pos, facing, weapon, state, opts) => {
       const hexes = [];
       const max = weapon.range;
       const min = weapon.minRange || 1;
@@ -326,16 +379,18 @@
         for (let dr = -max; dr <= max; dr++) {
           const cand = { q: pos.q + dq, r: pos.r + dr };
           const dist = hexDistance(pos, cand);
-          if (dist >= min && dist <= max) hexes.push(cand);
+          if (dist < min || dist > max) continue;
+          if (state && !hasLineOfSight(state, pos, cand, opts)) continue;
+          hexes.push(cand);
         }
       }
       return hexes;
     },
     // Straight down all six axes until something solid stops it.
-    lane: (pos, facing, weapon, state) => SHAPES.arc(pos, facing, { ...weapon, pattern: ALL_DIRECTIONS_PATTERN }, state),
+    lane: (pos, facing, weapon, state, opts) => SHAPES.arc(pos, facing, { ...weapon, pattern: ALL_DIRECTIONS_PATTERN }, state, opts),
     // The six hexes at distance 2 that are NOT on an axis: the gaps
     // between the lanes. Precisely the ground a Railgun cannot touch.
-    offAxis: (pos) => {
+    offAxis: (pos, facing, weapon, state, opts) => {
       const axial = new Set();
       for (let d = 0; d < 6; d++) {
         const two = neighbor(neighbor(pos, d), d);
@@ -347,6 +402,7 @@
           const cand = { q: pos.q + dq, r: pos.r + dr };
           if (hexDistance(pos, cand) !== 2) continue;
           if (axial.has(hexKey(cand))) continue;
+          if (state && !hasLineOfSight(state, pos, cand, opts)) continue;
           hexes.push(cand);
         }
       }
@@ -528,17 +584,28 @@
   // The hold is the SOURCE OF TRUTH — actions, weapon arming, reactor
   // capacity, hull and shield capacity all derive from what's physically
   // installed. Cargo is inert.
-  function syncHoldDerived(state) {
+  function syncHoldDerived(state, opts) {
     const ship = deriveShip(state.hold);
     state.actions = ship.actions;
     state.systems = ship.systems;
+    // Rearranging the Hold is free and reversible. Stowing a crate and
+    // putting it straight back used to cost a point of max hull and a
+    // shield charge permanently, because the clamp on the way down was
+    // never matched by anything on the way back up. Credit is given back
+    // ONLY during a refit — capacity appearing for the first time (a fresh
+    // ship, a purchase) still arrives empty and has to be raised.
+    const refit = Boolean(opts && opts.refit);
+    const shieldsBefore = state.maxShields || 0;
     state.maxShields = ship.maxShields;
-    state.shieldCharges = Math.min(state.shieldCharges, state.maxShields);
+    if (refit && ship.maxShields > shieldsBefore) state.shieldCharges += ship.maxShields - shieldsBefore;
+    state.shieldCharges = Math.max(0, Math.min(state.shieldCharges, state.maxShields));
     state.scannerInstalled = ship.scannerInstalled;
     state.maxEnergy = ship.maxEnergy;
     state.energy = Math.min(state.energy, state.maxEnergy);
+    const hullBefore = state.maxHull || START_HULL + ship.hullBonus;
     state.maxHull = START_HULL + ship.hullBonus;
-    state.hull = Math.min(state.hull, state.maxHull);
+    if (refit && state.maxHull > hullBefore) state.hull += state.maxHull - hullBefore;
+    state.hull = Math.max(0, Math.min(state.hull, state.maxHull));
   }
 
   function assertDocked(state) {
@@ -558,7 +625,7 @@
     if (!holdCanPlace(state.hold, it.id, x, y, index)) throw new Error("Hold: that spot doesn't fit this item");
     it.x = x;
     it.y = y;
-    syncHoldDerived(state);
+    syncHoldDerived(state, { refit: true });
   }
 
   function stowToCargo(state, index) {
@@ -568,7 +635,7 @@
     if (!it) throw new Error("Hold: no such installed item");
     state.hold.items.splice(index, 1);
     state.hold.cargo.push(it.id);
-    syncHoldDerived(state);
+    syncHoldDerived(state, { refit: true });
     pushLog(state, `${EQUIPMENT[it.id].label} powered down and stowed.`);
   }
 
@@ -580,7 +647,7 @@
     if (!holdCanPlace(state.hold, id, x, y)) throw new Error("Hold: that spot doesn't fit this item");
     state.hold.cargo.splice(cargoIndex, 1);
     state.hold.items.push({ id, x, y });
-    syncHoldDerived(state);
+    syncHoldDerived(state, { refit: true });
     pushLog(state, `${EQUIPMENT[id].label} installed and powered up.`);
   }
 
@@ -674,7 +741,7 @@
           { id: "ablativePlating", x: 0, y: 1 },
           { id: "microReactor", x: 3, y: 1 },
           { id: "sublightDrive", x: 2, y: 1 },
-          { id: "chargeBank", x: 0, y: 3 },
+          { id: "chargeBank", x: 3, y: 2 },
         ],
       },
     },
@@ -699,7 +766,17 @@
   // Derived once per class at load — the holds above are static, so this
   // is the same object every caller sees, and no code anywhere is allowed
   // to hand-author what a class "has".
-  for (const def of Object.values(ENEMY_TYPES)) {
+  for (const [name, def] of Object.entries(ENEMY_TYPES)) {
+    // A hostile hold has to obey the same packing rules the player's does.
+    // One of them didn't — a 1x2 crate straddling a blocked cell, drawn
+    // hanging outside the hull on the Scan screen.
+    const packed = { ...def.hold, items: [] };
+    for (const it of def.hold.items) {
+      if (!holdCanPlace(packed, it.id, it.x, it.y)) {
+        throw new Error(`${name}'s hold: ${it.id} does not fit at ${it.x},${it.y}`);
+      }
+      packed.items.push(it);
+    }
     def.ship = deriveShip(def.hold);
     def.maxHull = def.hull + def.ship.hullBonus;
   }
@@ -750,20 +827,27 @@
     return best;
   }
 
-  function weaponHexes(pos, facing, weapon, state) {
+  function weaponHexes(pos, facing, weapon, state, opts) {
     const shape = SHAPES[weapon.shape] || SHAPES.arc;
     // A lobbed shell doesn't care what's between you and it — cover is
     // simply not part of the question for a Mortar, which is the whole
     // reason to own one and the whole reason to fear one.
-    return shape(pos, facing, weapon, weapon.ignoresCover ? null : state);
+    return shape(pos, facing, weapon, weapon.ignoresCover ? null : state, opts);
   }
 
   // What a slug runs into: solid terrain, or any hull that isn't the
   // shooter's own. (The target itself is included before the line stops —
   // the shot hits the first thing in the lane, which is the whole point.)
-  function blocksShot(state, hex) {
+  function blocksShot(state, hex, opts) {
     if (isBlockingHazard(hazardAt(state, hex))) return true;
     if (enemyAt(state, hex)) return true;
+    // A threat map answers "would I be hit if I STOOD there" — so the
+    // flagship's current hull must not count as cover for the hex behind
+    // it. It used to, which reported the hexes directly behind you as safe
+    // from a Railgun lane and then took two hull off you for standing in
+    // one. Only the hypothetical callers pass this; real resolution keeps
+    // the player solid.
+    if (opts && opts.ignorePlayer) return false;
     return posEq(state.playerPos, hex);
   }
 
@@ -793,6 +877,18 @@
   // the shop a formality rather than a decision. Five is still the thing
   // you buy when you're hurt; it is no longer the thing you buy instead of
   // thinking.
+  // Which physical crate each shelf offer actually installs.
+  const OFFER_ITEM = {
+    reinforce: "ablativePlating",
+    shield: "shieldGenerator",
+    reactor: "microReactor",
+    flakBurst: "flakBurst",
+    arcBeam: "arcBeam",
+    mortar: "mortar",
+    flankTubes: "flankTubes",
+    railgun: "railgun",
+  };
+
   const OUTPOST_OFFER_POOL = [
     { id: "repair", label: "Patch 1 Hull", cost: 10 },
     { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 10 },
@@ -882,12 +978,24 @@
     // find you a generator if you're flying without one. Everything else
     // is what they happen to have; this one is the trade that keeps the
     // crawl survivable at all.
-    if (!carried.has("shieldGenerator") && !picked.includes("shield")) picked[picked.length - 1] = "shield";
+    // Both guarantees APPEND and drop the last unforced entry, rather than
+    // writing into the same slot — at sector 3 they used to overwrite each
+    // other, so a ship with no screen could be promised one and handed an
+    // Arc Beam instead.
+    const force = (id) => {
+      if (picked.includes(id)) return;
+      const drop = picked.findIndex((p, i) => i > 0 && !FORCED.has(p));
+      if (drop >= 0) picked.splice(drop, 1);
+      picked.push(id);
+      FORCED.add(id);
+    };
+    const FORCED = new Set();
+    if (!carried.has("shieldGenerator")) force("shield");
     // Sector 3 is the Sentry Line — the first sector with something that
     // outranges you and won't come to you. The weapon that answers it has
     // to be ON THE SHELF there, not left to the shuffle, or the lesson is
     // just "take two hits and hope".
-    if (levelId === 3 && !picked.includes("arcBeam")) picked[picked.length - 1] = "arcBeam";
+    if (levelId === 3 && !carried.has("arcBeam")) force("arcBeam");
     return picked;
   }
 
@@ -951,7 +1059,7 @@
       if (!ship || ship.hasDrive) continue;
       for (const weapon of ship.weapons) {
         if (enemy.energy < weapon.energyCost) continue; // discharged: this is the gap you cross in
-        for (const hex of weaponHexes(enemy, 0, weapon, state)) {
+        for (const hex of weaponHexes(enemy, 0, weapon, state, HYPOTHETICAL)) {
           if (onBoard(state, hex)) zone.add(hexKey(hex));
         }
       }
@@ -980,9 +1088,14 @@
       // breached deck ("why is hull repaired between every jump? doesn't
       // make any sense"). Only an Outpost repair puts pips back. A fresh
       // run (no carryOver) starts at full.
-      hull: Math.min((carryOver && carryOver.hull) || maxHull, maxHull),
+      // `|| maxHull` used to turn a carried hull of 0 into a full one, and
+      // let a negative value through untouched.
+      hull: Math.max(0, Math.min(
+        carryOver && Number.isFinite(carryOver.hull) ? carryOver.hull : maxHull,
+        maxHull
+      )),
       maxHull: maxHull,
-      salvage: (carryOver && carryOver.salvage) || 0,
+      salvage: Math.max(0, (carryOver && Number.isFinite(carryOver.salvage) ? carryOver.salvage : 0)),
       // Shields are capacity (installed Shield Generators in the Hold) +
       // charges (raised by spending Energy — see applyRaiseShields).
       // Capacity is derived below; carried charges clamp against it.
@@ -1073,9 +1186,11 @@
         // feedback overriding an earlier, more cautious version of this
         // that spawned adjacent instead. Standing on it from turn zero
         // would otherwise let the very next action (e.g. RECHARGE)
-        // instantly trip the return trip — wormholeAvailable's turnCount
-        // guard below is what actually prevents that surprise, not
-        // distance, so literal-same-hex arrival is safe.
+        // instantly trip the return trip. Nothing in THIS file prevents
+        // that — wormholeAvailable is a bare posEq query, and the comment
+        // here used to claim it had a turnCount guard, which it never did.
+        // The renderer owns it: app.js remembers the hex you arrived on
+        // and holds the trigger until the flagship has actually left it.
         state.wormholePos = portalPos;
         state.playerPos = { q: portalPos.q, r: portalPos.r };
       }
@@ -1236,7 +1351,7 @@
       if (!live.length) continue;
       const covered = new Set();
       for (const weapon of live) {
-        for (const hex of weaponHexes(enemy, enemyFacing(state, enemy), weapon, state)) {
+        for (const hex of weaponHexes(enemy, enemyFacing(state, enemy), weapon, state, HYPOTHETICAL)) {
           if (!onBoard(state, hex)) continue;
           covered.add(hexKey(hex));
         }
@@ -1402,9 +1517,21 @@
           target: { q: state.playerPos.q, r: state.playerPos.r },
         });
       }
+      // Every intent was decided against the board as it stood BEFORE
+      // anyone moved, so two contacts can pick the same hex. Applying both
+      // stacked them: one apparent contact dealing two damage a round, a
+      // single-target shot leaving a hidden survivor, and enemyAt() only
+      // ever seeing the first of them. Claim ground as it is taken.
+      const claimed = new Set(livingEnemies(state).map((e) => hexKey(e)));
       for (const { enemy, intent } of intents) {
         if (intent.type !== "move" || !enemy.alive) continue;
-        state.events.push({ type: "enemyMove", enemyId: enemy.id, from: { q: enemy.q, r: enemy.r }, to: intent.to });
+        const from = { q: enemy.q, r: enemy.r };
+        const dest = hexKey(intent.to);
+        // Re-check at APPLY time, not decide time: the board has moved on.
+        if (claimed.has(dest) || !canFlyInto(state, intent.to, enemy)) continue;
+        claimed.delete(hexKey(from));
+        claimed.add(dest);
+        state.events.push({ type: "enemyMove", enemyId: enemy.id, from, to: intent.to });
         enemy.q = intent.to.q;
         enemy.r = intent.to.r;
       }
@@ -1538,6 +1665,9 @@
 
   function applySublight(state, to) {
     assertPlaying(state);
+    // NOTE: validation comes BEFORE state.events is cleared. Clearing
+    // first meant a refused tap silently binned the cues from the last
+    // action that DID happen, because the UI catches and carries on.
     // Movement is EQUIPMENT: no installed drive, no flying — the
     // deliberately absurd freedom of the Hold ("you could remove your
     // engines altogether... it wouldn't make any sense because you
@@ -1545,16 +1675,16 @@
     if (!state.hold.items.some((it) => EQUIPMENT[it.id].kind === "engine")) {
       throw new Error("No drive fitted — we are not going anywhere");
     }
-    state.events = [];
     if (!isAdjacent(state.playerPos, to)) throw new Error("Too far for one burn");
     if (!onBoard(state, to)) throw new Error("That heading runs off the chart");
     if (enemyAt(state, to)) throw new Error("Something is sitting on that grid");
     if (isBlockingHazard(hazardAt(state, to))) throw new Error("Rock in the way");
+    state.events = [];
     const from = { q: state.playerPos.q, r: state.playerPos.r };
     state.events.push({ type: "playerMove", from, to: { q: to.q, r: to.r } });
     const dir = directionIndex(from, to);
     if (dir >= 0) state.facing = dir;
-    state.playerPos = to;
+    state.playerPos = { q: to.q, r: to.r }; // copy: never alias a board hex or an exit into live state
     checkPlayerHazard(state);
     if (state.status !== "playing") return;
     // Moving costs 1 AP and nothing fires — shooting is its own AP spend
@@ -1678,6 +1808,8 @@
   // arriving doesn't instantly bounce you back out is a UI-timing concern
   // (app.js's handleAction owns it), not something this pure query needs
   // to know about.
+  // Position only. Suppressing the trigger on arrival is app.js's job
+  // (see markArrival/stillOnArrivalHex) — this stays a pure query.
   function wormholeAvailable(state) {
     return Boolean(state.wormholePos) && posEq(state.playerPos, state.wormholePos);
   }
@@ -1688,7 +1820,28 @@
       ...offer,
       affordable: state.salvage >= offer.cost,
       applicable: offer.id !== "repair" || state.hull < state.maxHull,
+      // Whether the crate would physically go in — the UI greys out what
+      // there is no room for rather than letting you find out by paying.
+      fits: OFFER_ITEM[offer.id] ? holdHasRoomFor(state.hold, OFFER_ITEM[offer.id]) : true,
     }));
+  }
+
+  // Hardware you have no room for still SELLS — it rides in cargo until a
+  // Hold Expansion (or a rearrange) makes room, which is the only way a
+  // 1x4 Railgun is ever obtainable at all: the shelf is randomized, so
+  // refusing the sale outright can lock a gun out of a whole run. What was
+  // actually wrong was that it happened silently. It's announced now, in
+  // the log here and on the shop button itself (see outpostOffers().fits).
+  function noteStowed(state, itemId, label) {
+    if (holdHasRoomFor(state.hold, itemId)) return;
+    pushLog(state, `${label || EQUIPMENT[itemId].label} stowed in cargo — no room in the Hold yet.`);
+  }
+
+  function holdHasRoomFor(hold, itemId) {
+    for (let y = 0; y < hold.rows; y++) {
+      for (let x = 0; x < hold.cols; x++) if (holdCanPlace(hold, itemId, x, y)) return true;
+    }
+    return false;
   }
 
   function applyOutpostPurchase(state, offerId) {
@@ -1703,6 +1856,7 @@
       if (state.hull >= state.maxHull) throw new Error("Nothing to patch — hull is sound");
       state.hull += 1;
     } else if (offer.id === "reinforce") {
+      noteStowed(state, "ablativePlating", offer.label);
       // Plating is a crate of hardware that gets welded in, not a number
       // going up — the same Ablative Plating a Cruiser carries. If the
       // hold is full it goes to cargo and does nothing until you find
@@ -1711,10 +1865,12 @@
       syncHoldDerived(state);
       state.hull = Math.min(state.hull + 1, state.maxHull);
     } else if (offer.id === "shield") {
+      noteStowed(state, "shieldGenerator", offer.label);
       autoPlaceInHold(state.hold, "shieldGenerator");
       syncHoldDerived(state);
       state.shieldCharges = Math.min(state.shieldCharges + 1, state.maxShields); // arrives raised if it fit installed
     } else if (offer.id === "reactor") {
+      noteStowed(state, "microReactor", offer.label);
       // A Micro Reactor: one more on the bus AND one more per cycle, the
       // same tile the chasers run on.
       autoPlaceInHold(state.hold, "microReactor");
@@ -1723,6 +1879,7 @@
     } else if (offer.id === "hardpoint") {
       state.hold.rows += 1; // more internal space — the grid literally grows
     } else if (WEAPON_SYSTEM_KEYS.includes(offer.id)) {
+      noteStowed(state, offer.id, offer.label);
       autoPlaceInHold(state.hold, offer.id);
       syncHoldDerived(state);
     }
@@ -1742,6 +1899,9 @@
   // ---- legal-target queries (used by the renderer to highlight hexes) -----
 
   function legalSublightTargets(state) {
+    // Same gate applySublight enforces — otherwise the board offers moves
+    // the engine will refuse.
+    if (!state.hold || !state.hold.items.some((it) => (EQUIPMENT[it.id] || {}).kind === "engine")) return [];
     return neighbors(state.playerPos).filter(
       (to) => onBoard(state, to) && !enemyAt(state, to) && !isBlockingHazard(hazardAt(state, to))
     );

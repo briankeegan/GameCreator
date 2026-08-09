@@ -42,9 +42,24 @@ function serveRepo() {
 // (tap-tap: the SECOND tap on the same hex confirms and flies it).
 async function clickHex(page, mode, hex) {
   if (mode !== "sublight") await page.click(`[data-mode="${mode}"]`);
-  const box = await page.locator("#board").boundingBox();
-  const c = await page.evaluate(({ q, r }) => window.__hhHexCenter(q, r), { q: hex.q, r: hex.r });
-  await page.mouse.click(box.x + c.x, box.y + c.y);
+  const pt = await hexScreenPoint(page, hex);
+  await page.mouse.click(pt.x, pt.y);
+}
+
+// Where a hex actually IS on screen. The canvas can be laid out at a
+// different size than it was drawn at, and this test suite used to ignore
+// that — which is how it kept passing while real taps were landing a row
+// off on every zoomed locale.
+function hexScreenPoint(page, hex) {
+  return page.evaluate(({ q, r }) => {
+    const c = window.__hhHexCenter(q, r);
+    const canvas = document.getElementById("board");
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: rect.left + c.x * (rect.width / parseFloat(canvas.style.width)),
+      y: rect.top + c.y * (rect.height / parseFloat(canvas.style.height)),
+    };
+  }, { q: hex.q, r: hex.r });
 }
 
 function getState(page) {
@@ -176,18 +191,23 @@ async function claimOutpostOffer(page, labelSubstring) {
 
 // Walks to the wormhole (wherever it is) and returns via it. The flagship
 // arrives standing directly ON it ("you start as if you're on top of that
-// wormhole, not next to it"), but the very first action taken since
-// arriving this sector is deliberately suppressed (app.js's `justArrived`)
-// so spawning doesn't instantly bounce the flagship back out before it's
-// done anything — that exact scenario (landing on the wormhole as the
-// sector's first-ever action) is covered directly in engine.test.js. Once
-// any other action has already happened this sector (e.g. an Outpost
-// visit), simply moving onto the wormhole triggers the return immediately;
-// the fallback End Round below only matters for the "first action" case,
-// where landing on it wasn't enough by itself.
+// wormhole, not next to it"), and the return trip is suppressed for as
+// long as it stays on that hex — arriving somewhere must never bounce you
+// straight back out, and no number of actions taken while parked there
+// changes that (Recharge, Raise Shields and firing all used to). Leaving
+// the hex arms it permanently, so the way to take a wormhole you spawned
+// on is to step off and fly back onto it.
 async function walkToWormhole(page) {
   let s = await getState(page);
   const startLevel = s.levelId;
+  // Spawned on it? Step off first — the return only arms once we've left.
+  if (s.playerPos.q === s.wormholePos.q && s.playerPos.r === s.wormholePos.r) {
+    const off = await page.evaluate(
+      () => window.HypergolicEngine.legalSublightTargets(window.__hhState)[0]
+    );
+    await flyTo(page, off);
+    s = await getState(page);
+  }
   // Bounded for the same reason as walkToOutpost — no lookahead against a
   // chasing enemy.
   for (
@@ -197,11 +217,6 @@ async function walkToWormhole(page) {
   ) {
     await playTurnToward(page, "wormhole");
     s = await getState(page);
-  }
-  if (s.levelId === startLevel) {
-    // Standing on the wormhole as the sector's first action needs one more
-    // action to trigger the return — End Round is the stationary one.
-    await endRound(page);
   }
   await page.waitForFunction((lvl) => window.__hhState.levelId !== lvl, startLevel, { timeout: 5000 });
   return getState(page);
@@ -302,6 +317,13 @@ async function freshPage(browser, url, errors) {
   s = await getState(page);
   assert.deepStrictEqual(s.playerPos, posBeforeScanTap, "tapping the board in Scan mode never moves the flagship");
   assert.strictEqual(s.turnCount, turnBeforeScanTap, "and never spends a turn");
+  // ...but it is never SILENT. A held helm that says nothing is
+  // indistinguishable from a frozen game: taps did nothing, no card
+  // appeared, no message was written and the screen wasn't even redrawn.
+  assert.ok(
+    /helm is holding/i.test(s.log[s.log.length - 1]),
+    `a Scan tap always says the helm is held (got "${s.log[s.log.length - 1]}")`
+  );
 
   // The tapped hex is inspected instead — an enemy's info card shows up.
   const scanTargetPos = s.enemies.find((e) => e.alive);
@@ -368,6 +390,20 @@ async function freshPage(browser, url, errors) {
   await page.click("#scanBtn");
   assert.ok(!(await page.locator("#scanBtn").getAttribute("class")).includes("active"), "Scan dims when closed");
   assert.strictEqual(await page.locator("#enemyInfo").isVisible(), false, "closing Scan mode clears the inspection card too");
+
+  // Scan is SESSION-ONLY. It used to be a remembered preference, so
+  // leaving it on and closing the tab came back to a ship that could not
+  // move, could not fire, and said nothing about why — an input lock
+  // persisted to disk.
+  await page.click("#scanBtn");
+  assert.ok((await page.locator("#scanBtn").getAttribute("class")).includes("active"), "Scan is on");
+  await page.reload();
+  await page.waitForFunction(() => window.__hhState && window.__hhState.status === "playing");
+  assert.ok(
+    !(await page.locator("#scanBtn").getAttribute("class")).includes("active"),
+    "a reload never comes back with the helm still held"
+  );
+  assert.strictEqual(await page.locator("#rechargeBtn").isDisabled(), false, "and the controls are live again");
 
 
   // ---- The Ship screen: a full-screen flagship/loadout view --------------
@@ -500,6 +536,28 @@ async function freshPage(browser, url, errors) {
   await page.waitForFunction(() => window.__hhState.status === "playing" && window.__hhState.levelId === 2, null, { timeout: 5000 });
   s = await getState(page);
   assert.deepStrictEqual(s.actions, ["sublight", "autocannon"], "a new sector arrives with exactly what is fitted — nothing handed out");
+
+  // ---- Parked on the arrival hex is INERT, however long you sit there ---
+  // The flagship spawns standing ON the wormhole back, and the arrival
+  // grace used to be a single-use flag consumed by the first action taken.
+  // So the SECOND action while still parked there — Recharge, Raise
+  // Shields, a shot, anything — bounced you straight back out. ("Once
+  // again, this doesn't work, taking us back.") The grace is positional
+  // now: the hex you came in on does nothing until the ship has left it.
+  assert.deepStrictEqual(
+    { q: s.playerPos.q, r: s.playerPos.r },
+    { q: s.wormholePos.q, r: s.wormholePos.r },
+    "arriving by warp puts the flagship on the wormhole back"
+  );
+  for (let i = 0; i < 4; i++) {
+    await endRound(page);
+    await page.waitForTimeout(600); // long enough for a jump to have fired
+    const parked = await getState(page);
+    assert.strictEqual(parked.levelId, 2, `action ${i + 1} taken while parked on the wormhole must not jump`);
+    assert.strictEqual(parked.status, "playing", "and must not freeze the board");
+    if (parked.playerPos.q !== s.wormholePos.q || parked.playerPos.r !== s.wormholePos.r) break;
+  }
+  s = await getState(page);
   assert.ok(s.enemies.filter((e) => e.alive).length >= 1);
   // Scuttling charges: the run's own off switch, two taps deep so a stray
   // thumb can never end a run.
@@ -555,6 +613,7 @@ async function freshPage(browser, url, errors) {
   // Clubhouse feedback its position is randomized each time, not fixed)
 
   assert.ok(s.wormholePos, "a cleared sector leaves a wormhole back, once there's history to return to");
+
   s = await walkToWormhole(page);
   assert.strictEqual(s.levelId, 1, "flying onto the wormhole rewinds to the previous sector");
   // The saved snapshot is un-consumed back to "playing" (it was mid-"won",
@@ -584,12 +643,35 @@ async function freshPage(browser, url, errors) {
   s = await getState(page);
   assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "Sector 1 is still exactly as we left it — charted, not regenerated");
 
-  // Still standing on the Warp Gate — any action re-triggers the win
-  // check; End Round is the stationary one.
+  // Standing on the Warp Gate, because that's where the snapshot was
+  // taken. Arriving on it must NOT re-win — the ship has to actually
+  // leave the hex and fly back onto it. (Before, any action at all threw
+  // you forward from here, which combined with the two-way wormhole into
+  // an endless sector ping-pong you couldn't act your way out of.)
+  const onGate = { q: s.playerPos.q, r: s.playerPos.r };
+  assert.deepStrictEqual(onGate, s.exitPos, "the rewound sector puts us back on its Warp Gate");
   await endRound(page);
+  await page.waitForTimeout(700);
+  s = await getState(page);
+  assert.strictEqual(s.levelId, 1, "an action taken while parked on the gate does NOT re-trigger the jump");
+  assert.strictEqual(s.status, "playing", "and the board stays live");
+
+  // Leave the hex, then fly back onto it — that is a real jump.
+  const offGate = await page.evaluate(() => window.HypergolicEngine.legalSublightTargets(window.__hhState)[0]);
+  await flyTo(page, offGate);
+  await flyTo(page, onGate);
   await page.waitForFunction(() => window.__hhState.levelId === 2, null, { timeout: 5000 });
   s = await getState(page);
   assert.strictEqual(s.levelId, 2, "going forward again from a rewound sector re-advances normally");
+  // ...and it re-advances into the sector ALREADY CHARTED ahead, not a
+  // freshly generated one. advanceSector used to truncate the chart and
+  // regenerate unconditionally, so a trip back through a wormhole and
+  // forward again silently resurrected everything you'd killed.
+  assert.strictEqual(
+    s.enemies.filter((e) => e.alive).length,
+    0,
+    "Sector 2 is the one we cleared — coming back to it must not regenerate it"
+  );
   await page.close();
 
   // ---- loss branch: stand still and let Sector 1's Interceptor come ------
@@ -996,6 +1078,58 @@ async function freshPage(browser, url, errors) {
     });
     assert.ok(tile && tile.icon, "a weapon tile is marked as carrying art");
     assert.ok(/weapon-autocannon\.png/.test(tile.bg), `and points at its own module (${tile && tile.bg})`);
+  }
+
+  // A tap must land on the hex you aimed at. This is the one that got
+  // away: a locale's "zoom" multiplied the hex size AFTER the board had
+  // been fitted, so the canvas element came out bigger than its box and
+  // the browser squashed it horizontally only — laid out at 0.898 across
+  // and 1.0 down. The tap handler converted screen pixels to hexes with a
+  // single scale factor, so vertical taps landed up to a whole hex low and
+  // taps near the bottom edge, where the flagship normally sits, fell off
+  // the board and did nothing at all. Measured on the old code: 67 of 90
+  // taps on a shallows board hit the wrong hex.
+  //
+  // Scan mode is used to sweep because a tap there only inspects — no
+  // move, no turn spent.
+  {
+    const before = await page.evaluate(() => document.getElementById("scanBtn").classList.contains("active"));
+    if (!before) await page.click("#scanBtn");
+    let taps = 0;
+    const wrong = [];
+    for (const idx of [0, 6, 9]) {
+      await page.evaluate((i) => window.loadSector(i, { hasPrevious: i > 0 }), idx);
+      await page.waitForTimeout(60);
+      if (!(await page.evaluate(() => document.getElementById("scanBtn").classList.contains("active")))) {
+        await page.click("#scanBtn");
+      }
+      const info = await page.evaluate(() => ({
+        locale: (window.__hhState.locale || {}).id || "campaign",
+        hexes: window.__hhState.boardHexes.slice(),
+      }));
+      for (const h of info.hexes) {
+        const pt = await hexScreenPoint(page, h);
+        await page.mouse.click(pt.x, pt.y);
+        const got = await page.evaluate(() => window.__hhGetInspected());
+        taps++;
+        if (!got || got.q !== h.q || got.r !== h.r) {
+          wrong.push(`${info.locale} wanted ${h.q},${h.r} got ${got ? got.q + "," + got.r : "nothing"}`);
+        }
+      }
+      // The canvas must also never be laid out at a size it wasn't drawn
+      // at — that mismatch is what broke the mapping in the first place.
+      const fit = await page.evaluate(() => {
+        const c = document.getElementById("board");
+        const r = c.getBoundingClientRect();
+        return { xs: r.width / parseFloat(c.style.width), ys: r.height / parseFloat(c.style.height) };
+      });
+      assert.ok(
+        Math.abs(fit.xs - 1) < 0.01 && Math.abs(fit.ys - 1) < 0.01,
+        `${info.locale}: the board is drawn at the size it is laid out at (x ${fit.xs.toFixed(3)}, y ${fit.ys.toFixed(3)})`
+      );
+    }
+    assert.deepStrictEqual(wrong, [], `every one of ${taps} taps landed on the hex it was aimed at`);
+    await page.click("#scanBtn"); // back out of Scan
   }
 
   // Blowing the scuttling charges is something you WATCH. The ship comes

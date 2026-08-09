@@ -144,7 +144,10 @@ function shop(state, report) {
     Engine.applyOutpostPurchase(state, id);
     report.purchases[id] = (report.purchases[id] || 0) + 1;
   };
-  const has = (id) => Engine.outpostOffers(state).some((o) => o.id === id && o.affordable);
+  // Buyable means affordable and applicable. Something that doesn't fit
+  // yet still sells — it rides in cargo until a Hold Expansion, which is
+  // how the big spines get bought at all (fitFromCargo picks them up).
+  const has = (id) => Engine.outpostOffers(state).some((o) => o.id === id && o.affordable && o.applicable);
 
   // 1. A hull you can fight with, before anything else — and at the last
   //    station before the Bulwark, every point of it. There is nothing

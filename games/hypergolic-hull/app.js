@@ -111,6 +111,14 @@ let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
 let plannedPath = null;
 let autoRoute = null;
 
+// Drop the current course AND any timer it has in flight. Nulling the
+// route alone left the pending setTimeout alive, so it re-entered and
+// drove whatever course came next as a second chain.
+function cancelRoute() {
+  if (autoRoute && autoRoute.timer) clearTimeout(autoRoute.timer);
+  autoRoute = null;
+}
+
 // Tap-tap confirm ("if you click on a target it should target them, and
 // clicking again fires — same for move"): the first tap on a hostile
 // TARGETS it (reticle + readout line), the second tap fires for real;
@@ -132,7 +140,14 @@ let reachPreview = null;
 // Scan mode shows the legend AND is a real inspect-only mode: movement and
 // every action lock out while it's open — the no-commitment way to look at
 // anything on the board without acting on it.
-let legendVisible = GCStorage.get(GAME_ID, "legendVisible", false);
+//
+// SESSION-ONLY, deliberately. It used to be a remembered preference, which
+// meant leaving Scan on and closing the tab came back to a ship that could
+// not move, could not fire, and said nothing about why — the helm held,
+// every button greyed, the readout frozen on whatever it last said, and
+// the only tell a CSS class on one button. That is an indefinite input
+// lock stored on disk. A mode that takes the controls away starts off.
+let legendVisible = false;
 
 // The full-screen Systems view ("a mode that goes full screen and shows
 // ship and allows you to modify") — session-only, always starts closed.
@@ -187,27 +202,69 @@ let chartIndex = -1; // which chart entry is the LIVE sector
 
 // The flagship spawns standing directly ON the wormhole when arriving via
 // portal ("you start as if you're on top of that wormhole, not next to
-// it" — Clubhouse feedback), which means Engine.wormholeAvailable is true
-// from turn zero. Left unguarded, the very first action taken (e.g. Hold
-// Position, without moving off it) would instantly bounce the flagship
-// right back out before the player had done anything. This flag
-// suppresses exactly that one action's trigger — set whenever a sector is
-// (re)loaded, consumed by the first handleAction call afterward, however
-// that first action turns out (move, hold, whatever).
-let justArrived = false;
+// it" — Clubhouse feedback), and a wormhole return lands it standing on
+// the previous sector's Warp Gate. Both hexes are live triggers, so
+// arriving has to suppress them until the ship has actually LEFT.
+//
+// This used to be a one-shot boolean consumed by the first handleAction
+// call. That was wrong in three ways at once, and together they are the
+// "it keeps taking us back" report: a second action taken while still
+// parked on the hex (Recharge, Raise Shields, firing) bounced you out; a
+// failed action that never took a turn burned the flag just the same; and
+// the win branch had no guard at all, so you'd land on a gate, get yanked
+// forward again on your next action, and — because advanceSector truncates
+// the chart — arrive in a freshly REGENERATED sector with your kills undone.
+//
+// It's positional now: the hex you arrived on is inert until you're
+// somewhere else. That's the rule the player already believes.
+let arrivedOn = null;
+
+// Whether the flagship is still sitting on the hex it arrived on, and so
+// whether gate/wormhole triggers are still suppressed. Leaving that hex
+// LATCHES the suppression off for good — flying back onto the wormhole
+// later is a deliberate return trip and has to work.
+function stillOnArrivalHex() {
+  if (!arrivedOn) return false;
+  if (!Engine.posEq(state.playerPos, arrivedOn)) {
+    arrivedOn = null;
+    return false;
+  }
+  return true;
+}
+
+// Called on every load/jump: remember where we came in.
+function markArrival() {
+  arrivedOn = { q: state.playerPos.q, r: state.playerPos.r };
+}
 
 // Mirrors the live sector back into its chart slot — called before any
 // jump/advance so the chart always holds each sector exactly as last left.
 function snapshotLive() {
   if (chartIndex >= 0 && sectorHistory[chartIndex]) {
-    sectorHistory[chartIndex] = { levelIndex, state: JSON.parse(JSON.stringify(state)) };
+    sectorHistory[chartIndex] = {
+      levelIndex,
+      // Which gate led HERE — advanceSector matches on it so re-entering
+      // by the same gate restores this sector instead of regenerating it.
+      variantId: sectorHistory[chartIndex].variantId,
+      state: JSON.parse(JSON.stringify(state)),
+    };
   }
 }
 
 function advanceSector() {
   snapshotLive();
-  // Advancing from a rewound sector abandons the old forward chain — you
-  // chose a gate, that's the route now.
+  // Going forward through a gate you have ALREADY been through returns you
+  // to that charted sector, exactly as you left it. It used to truncate
+  // the chart and generate a brand-new sector every time, which meant a
+  // trip back through a wormhole and forward again silently resurrected
+  // every enemy you'd killed and undid the salvage you'd taken.
+  const ahead = sectorHistory[chartIndex + 1];
+  if (ahead && ahead.levelIndex === levelIndex + 1 && ahead.variantId === (state.usedExitVariant || null)) {
+    jumpToChart(chartIndex + 1);
+    return;
+  }
+  // Advancing through a DIFFERENT gate than last time abandons the old
+  // forward chain — you chose a gate, that's the route now.
   sectorHistory = sectorHistory.slice(0, chartIndex + 1);
   loadSector(
     levelIndex + 1,
@@ -268,14 +325,14 @@ function jumpToChart(index) {
   // Un-consume that so the board is live again — winning re-triggers
   // normally on the next action taken on the gate.
   if (state.status === "won") state.status = "playing";
-  justArrived = true; // don't let standing on the wormhole/gate instantly re-trigger
+  markArrival(); // standing on the wormhole/gate doesn't re-trigger until we leave it
   mode = null;
   anims = keptAnims;
   announceSector();
   targetedEnemyId = null;
   reachPreview = null;
   plannedPath = null;
-  autoRoute = null;
+  cancelRoute();
   outpostDismissed = false;
   mapVisible = false;
   shipAngle = -90;
@@ -344,19 +401,33 @@ function updateGeometry() {
   // pointy-top, where width used the SQRT3 factor and height used 2.
   const sxFromWidth = (availW - 2 * pad) / (maxX - minX + 2);
   const sxFromHeight = (availH - 2 * pad) / (maxY - minY + SQRT3 * HEX_RATIO);
-  // Some places are tighter than others: a locale can pull the camera IN
-  // (never further out than the standard board — that reads as "smaller",
-  // not "bigger"), which is another way a sector announces where it is.
-  const zoom = state.locale && state.locale.zoom ? Math.max(1, state.locale.zoom) : 1;
-  const sx = Math.min(sxFromWidth, sxFromHeight) * zoom;
+  // The board is fitted to the space available, FULL STOP. A locale's
+  // "zoom" used to multiply this, which made the canvas element bigger
+  // than the box it lives in; `max-width:100%` then squashed it back
+  // horizontally ONLY, so the canvas ended up laid out at 0.898 across and
+  // 1.0 down. Two things went wrong with that. The board was visibly
+  // squashed, and — much worse — the tap handler converts screen pixels to
+  // hexes with a single scale factor, so vertical taps landed up to a
+  // whole hex off and taps near the bottom edge (where the flagship
+  // normally sits) fell off the board entirely and did nothing at all.
+  // That is the "I can't move or attack" report, and it only ever
+  // happened on the five locales with a zoom above 1.
+  //
+  // Wanting a place to feel closer is a fine instinct; it belongs to the
+  // ART, not the playfield. drawSectorBackdrop applies locale.zoom to the
+  // sky. The grid always fits.
+  const sx = Math.min(sxFromWidth, sxFromHeight);
   // The canvas takes the WHOLE area it's given and the board floats in the
   // middle of it — the sky is the place, not a texture inside the grid's
   // outline. Everything around the hexes is still this sector: its planet,
   // its dust banks, its wrecks.
   const boardW = (maxX - minX + 2) * sx;
   const boardH = (maxY - minY + SQRT3 * HEX_RATIO) * sx;
-  const cssW = Math.round(Math.max(boardW + 2 * pad, Math.min(availW, 520)));
-  const cssH = Math.round(Math.max(boardH + 2 * pad, availH));
+  // Never bigger than the box: an oversized canvas gets scaled by the
+  // browser, and every screen-to-hex conversion in the game assumes one
+  // canvas pixel is one CSS pixel.
+  const cssW = Math.round(Math.min(Math.max(boardW + 2 * pad, Math.min(availW, 520)), availW));
+  const cssH = Math.round(Math.min(Math.max(boardH + 2 * pad, availH), availH));
   geom = {
     sx,
     sy: sx * HEX_RATIO,
@@ -1408,13 +1479,16 @@ function drawAsteroidField(center, r, seed) {
       else ctx.lineTo(px, py);
     }
     ctx.closePath();
-    ctx.fillStyle = "#4a3d38";
+    // Rock that reads on a black sky. The old #4a3d38 body outlined in a
+    // darker #241c19 was a dark shape edged in a darker shape — fine on
+    // paper, invisible in the Deep.
+    ctx.fillStyle = "#6d5a4f";
     ctx.fill();
-    ctx.strokeStyle = "#241c19";
+    ctx.strokeStyle = "#201916";
     ctx.lineWidth = Math.max(1, r * 0.05);
     ctx.stroke();
     // A small rim highlight on the upper-left, like sunlit rock.
-    ctx.strokeStyle = "rgba(180,150,120,0.35)";
+    ctx.strokeStyle = "rgba(255,214,170,0.6)";
     ctx.lineWidth = Math.max(1, r * 0.03);
     ctx.beginPath();
     ctx.arc(cx - rockR * 0.15, cy - rockR * 0.15, rockR * 0.7, Math.PI * 0.9, Math.PI * 1.6);
@@ -1526,6 +1600,18 @@ function backdropForLevel(levelId) {
   return [`hsl(${hue}, 45%, 9%)`, `hsl(${hue}, 55%, 3%)`, `hsla(${(hue + 35) % 360}, 70%, 55%, 0.20)`];
 }
 
+// A point in the sky AROUND the board rather than on top of it — the
+// margins down either side and the strip along the top. Anything bright
+// and small (a sun, a newborn star) gets placed with this, because a hard
+// highlight sitting between two hexes is the one thing that reliably makes
+// a ship on those hexes impossible to see.
+function edgeOfSky(rng, w, h) {
+  const side = rng();
+  if (side < 0.4) return { x: w * (-0.05 + rng() * 0.18), y: h * rng() };
+  if (side < 0.8) return { x: w * (0.87 + rng() * 0.18), y: h * rng() };
+  return { x: w * rng(), y: h * (-0.04 + rng() * 0.14) };
+}
+
 const starCache = new Map();
 function starsFor(levelId, w, h, density) {
   const key = `${levelId}:${w}x${h}:${density}`;
@@ -1547,7 +1633,11 @@ function starsFor(levelId, w, h, density) {
 const GRID_LOOKS = {
   shoals: { stroke: "rgba(226,188,140,0.34)", width: 0.9, panel: ["rgba(255,214,150,0.07)", "rgba(180,120,60,0.05)"] },
   shallows: { stroke: "rgba(196,226,255,0.52)", width: 0.85, panel: ["rgba(160,215,255,0.10)", "rgba(40,90,160,0.06)"] },
-  void: { stroke: "rgba(150,172,214,0.20)", width: 0.6, panel: ["rgba(120,150,210,0.035)", "rgba(60,80,140,0.02)"] },
+  // The Deep's lattice was the faintest in the game (a quarter of its hex
+  // edges failed both contrast and colour-difference tests) — its sky is
+  // flat and empty, so the grid is the only thing holding the board
+  // together and it has to actually be drawn.
+  void: { stroke: "rgba(150,172,214,0.34)", width: 0.9, panel: ["rgba(120,150,210,0.035)", "rgba(60,80,140,0.02)"] },
   belt: { stroke: "rgba(240,176,116,0.46)", width: 1.05, panel: ["rgba(255,170,90,0.08)", "rgba(150,70,30,0.05)"] },
   storm: { stroke: "rgba(228,172,255,0.58)", width: 1.15, panel: ["rgba(220,150,255,0.11)", "rgba(110,50,170,0.07)"] },
   rings: { stroke: "rgba(246,214,140,0.44)", width: 0.95, panel: ["rgba(255,224,140,0.08)", "rgba(150,110,30,0.05)"] },
@@ -1780,18 +1870,23 @@ function drawLocaleFeature(feature, hue, sat) {
   } else if (feature === "storm") {
     // Ion front: the sky itself is the hazard. Bright curtains, top to
     // bottom, and a horizon-wide glow along one edge.
-    for (let i = 0; i < 6; i++) {
+    // Three curtains, not six, and each one a third as strong. Six
+    // stacked full-canvas gradients at 16-36% alpha each added up to a
+    // flat pink wall: measured, EVERY hex on this board put an enemy
+    // sprite below a 1.5 contrast ratio, and the warp gate failed on 82%
+    // of them. A curtain should be something you see through.
+    for (let i = 0; i < 3; i++) {
       const x = rng() * w;
       const wide = w * (0.12 + rng() * 0.22);
       const curtain = ctx.createLinearGradient(x - wide, 0, x + wide, h);
       curtain.addColorStop(0, "rgba(0,0,0,0)");
-      curtain.addColorStop(0.5, `hsla(${(hue + rng() * 60) % 360}, 90%, 66%, ${0.16 + rng() * 0.2})`);
+      curtain.addColorStop(0.5, `hsla(${(hue + rng() * 60) % 360}, 90%, 66%, ${0.07 + rng() * 0.07})`);
       curtain.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = curtain;
       ctx.fillRect(0, 0, w, h);
     }
     const front = ctx.createLinearGradient(0, h, 0, h * 0.45);
-    front.addColorStop(0, `hsla(${(hue + 30) % 360}, 95%, 62%, 0.26)`);
+    front.addColorStop(0, `hsla(${(hue + 30) % 360}, 95%, 62%, 0.10)`);
     front.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = front;
     ctx.fillRect(0, 0, w, h);
@@ -1855,9 +1950,13 @@ function drawLocaleFeature(feature, hue, sat) {
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.clip();
+    // The lit limb tops out at 30% lightness, not 52%. At 52% this was the
+    // brightest surface in the game and it sat under 63% of the board's
+    // hexes — the grid's own pale-yellow stroke measured a 1.21 contrast
+    // ratio against it, i.e. gone.
     const body = ctx.createLinearGradient(cx + (left ? r : -r), cy, cx + (left ? -r : r), cy);
-    body.addColorStop(0, `hsl(${hue}, ${sat + 22}%, 52%)`);
-    body.addColorStop(0.5, `hsl(${hue - 8}, ${sat + 10}%, 26%)`);
+    body.addColorStop(0, `hsl(${hue}, ${sat + 22}%, 30%)`);
+    body.addColorStop(0.5, `hsl(${hue - 8}, ${sat + 10}%, 16%)`);
     body.addColorStop(1, "#06060a");
     ctx.fillStyle = body;
     ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
@@ -1903,33 +2002,43 @@ function drawLocaleFeature(feature, hue, sat) {
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+    // Newborn stars, out at the margins. They used to be scattered across
+    // the whole canvas at a 0.85-white core, which put a hard glare
+    // directly under the hexes — 47% of them made an enemy sprite
+    // unreadable. A star belongs in the sky around the board, not on it.
     for (let i = 0; i < 5; i++) {
-      const sx = w * (0.08 + rng() * 0.84);
-      const sy = h * (0.08 + rng() * 0.84);
+      const { x: sx, y: sy } = edgeOfSky(rng, w, h);
       const sr = h * (0.05 + rng() * 0.08);
       const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
-      glow.addColorStop(0, "rgba(255,255,255,0.85)");
-      glow.addColorStop(0.25, `hsla(${hue + 25}, 100%, 74%, 0.5)`);
+      glow.addColorStop(0, "rgba(255,255,255,0.55)");
+      glow.addColorStop(0.25, `hsla(${hue + 25}, 100%, 74%, 0.35)`);
       glow.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, w, h);
-      // Diffraction spikes — a hot young star, not a dot.
+      // Diffraction spikes — a hot young star, not a dot. Short and thick:
+      // at 1px they were the same weight and colour as the hex grid and
+      // the route-preview dashes, and read as false board edges.
       ctx.save();
-      ctx.globalAlpha = 0.5;
+      ctx.globalAlpha = 0.4;
       ctx.strokeStyle = "rgba(255,240,250,0.7)";
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.moveTo(sx - sr * 1.9, sy); ctx.lineTo(sx + sr * 1.9, sy);
-      ctx.moveTo(sx, sy - sr * 1.9); ctx.lineTo(sx, sy + sr * 1.9);
+      ctx.moveTo(sx - sr * 1.1, sy); ctx.lineTo(sx + sr * 1.1, sy);
+      ctx.moveTo(sx, sy - sr * 1.1); ctx.lineTo(sx, sy + sr * 1.1);
       ctx.stroke();
       ctx.restore();
     }
   } else if (feature === "binary") {
     // Two suns. Hard, shadowless light from both sides at once, and a
     // pale gulf of glare in between.
+    // Both suns sit off past the board's edges. They used to be placed at
+    // 10-26% and 72-90% of the canvas width — inside the play area — and a
+    // 0.95-white core between the hexes wiped the grid out entirely there
+    // (contrast ratio 1.02, i.e. not drawn).
     const suns = [
-      { x: w * (0.1 + rng() * 0.16), y: h * (0.1 + rng() * 0.3), r: h * 0.09, h: hue - 25 },
-      { x: w * (0.72 + rng() * 0.18), y: h * (0.5 + rng() * 0.35), r: h * 0.065, h: hue + 30 },
+      { x: w * (-0.14 + rng() * 0.16), y: h * (0.08 + rng() * 0.3), r: h * 0.09, h: hue - 25 },
+      { x: w * (0.98 + rng() * 0.18), y: h * (0.5 + rng() * 0.35), r: h * 0.065, h: hue + 30 },
     ];
     const bridge = ctx.createLinearGradient(suns[0].x, suns[0].y, suns[1].x, suns[1].y);
     bridge.addColorStop(0, `hsla(${suns[0].h}, 80%, 62%, 0.16)`);
@@ -1939,21 +2048,26 @@ function drawLocaleFeature(feature, hue, sat) {
     ctx.fillRect(0, 0, w, h);
     for (const sun of suns) {
       const glow = ctx.createRadialGradient(sun.x, sun.y, 0, sun.x, sun.y, sun.r * 4.5);
-      glow.addColorStop(0, "rgba(255,255,255,0.95)");
-      glow.addColorStop(0.12, `hsla(${sun.h}, 100%, 76%, 0.6)`);
-      glow.addColorStop(0.45, `hsla(${sun.h}, 90%, 58%, 0.14)`);
+      glow.addColorStop(0, "rgba(255,255,255,0.45)");
+      glow.addColorStop(0.12, `hsla(${sun.h}, 100%, 76%, 0.35)`);
+      glow.addColorStop(0.45, `hsla(${sun.h}, 90%, 58%, 0.1)`);
       glow.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, w, h);
+      // Short, thick, round-capped flares. At 1.2px and five radii long
+      // they were the same weight and colour family as the hex grid AND
+      // the dashed route preview, and read as board geometry that wasn't
+      // there.
       ctx.save();
-      ctx.globalAlpha = 0.45;
+      ctx.globalAlpha = 0.4;
       ctx.strokeStyle = `hsla(${sun.h}, 100%, 85%, 0.8)`;
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 2.6;
+      ctx.lineCap = "round";
       for (let a = 0; a < 4; a++) {
         const ang = (a * Math.PI) / 4 + 0.2;
         ctx.beginPath();
-        ctx.moveTo(sun.x - Math.cos(ang) * sun.r * 5, sun.y - Math.sin(ang) * sun.r * 5);
-        ctx.lineTo(sun.x + Math.cos(ang) * sun.r * 5, sun.y + Math.sin(ang) * sun.r * 5);
+        ctx.moveTo(sun.x - Math.cos(ang) * sun.r * 2.2, sun.y - Math.sin(ang) * sun.r * 2.2);
+        ctx.lineTo(sun.x + Math.cos(ang) * sun.r * 2.2, sun.y + Math.sin(ang) * sun.r * 2.2);
         ctx.stroke();
       }
       ctx.restore();
@@ -1962,17 +2076,23 @@ function drawLocaleFeature(feature, hue, sat) {
     // Something out here eats light: an accretion disc seen almost
     // edge-on, its far side bent up over the top, and a hole in the middle
     // with nothing in it at all.
-    const cx = w * (0.3 + rng() * 0.4);
-    const cy = h * (0.25 + rng() * 0.4);
-    const r = h * (0.17 + rng() * 0.07);
+    // It used to be drawn at the size of the thing it depicts, which is
+    // the wrong instinct on a 520px board: the hole alone covered 41% of
+    // the hexes in flat #000, and the disc bands ran off both edges at up
+    // to 75px wide. You cannot fight on that. It's a landmark now — off to
+    // one side, half the radius, and every band thin enough to read as
+    // structure rather than weather.
+    const cx = w * (0.14 + rng() * 0.24) + (rng() < 0.5 ? 0 : w * 0.48);
+    const cy = h * (0.1 + rng() * 0.2);
+    const r = h * (0.085 + rng() * 0.035);
     const tilt = -0.5 + rng() * 1.0;
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(tilt);
     // Lensed far side: a bright arc standing above the hole.
-    ctx.globalAlpha = 0.85;
+    ctx.globalAlpha = 0.3;
     ctx.strokeStyle = `hsla(${hue + 40}, 95%, 72%, 0.75)`;
-    ctx.lineWidth = r * 0.16;
+    ctx.lineWidth = Math.max(1.5, r * 0.14);
     ctx.beginPath();
     ctx.arc(0, 0, r * 1.5, Math.PI * 1.06, Math.PI * 1.94);
     ctx.stroke();
@@ -1980,20 +2100,23 @@ function drawLocaleFeature(feature, hue, sat) {
     ctx.save();
     ctx.scale(1, 0.2);
     for (let i = 0; i < 5; i++) {
-      ctx.globalAlpha = 0.5 - i * 0.07;
+      ctx.globalAlpha = 0.2 - i * 0.03;
       ctx.strokeStyle = `hsla(${hue + 30 + i * 12}, 95%, ${74 - i * 8}%, 0.8)`;
-      ctx.lineWidth = r * 0.3;
+      ctx.lineWidth = r * 0.15;
       ctx.beginPath();
       ctx.arc(0, 0, r * (1.5 + i * 0.45), 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.restore();
-    // The hole. Nothing gets drawn in here, ever.
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = "#000";
+    // The hole. Deep violet-black rather than an opaque #000 hole punched
+    // through the play area — it still eats the light behind it, it just
+    // no longer takes the board with it.
+    ctx.globalAlpha = 0.72;
+    ctx.fillStyle = "#06030f";
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalAlpha = 1;
     // A thin photon ring right at the edge.
     ctx.strokeStyle = `hsla(${hue + 45}, 100%, 85%, 0.6)`;
     ctx.lineWidth = Math.max(1, r * 0.04);
@@ -2036,6 +2159,13 @@ function drawLocaleForeground(now) {
   const h = geom.h;
   const t = (now || 0) / 1000;
   ctx.save();
+  // Weather goes in FRONT of the sector but never in front of the board.
+  // Both of these are full-canvas washes and they were being laid over the
+  // finished grid, on top of the same locales that were already the two
+  // haziest in the game — a second veil over the one surface that has to
+  // stay readable. Clipped out of the play area, they still sell the place
+  // and cost the player nothing.
+  ctx.clip(skyOutsideBoardPath(), "evenodd");
   if (locale.feature === "dust") {
     const rng = seededRandom(`fg-${state.levelId}`);
     for (let i = 0; i < 4; i++) {
@@ -2049,7 +2179,7 @@ function drawLocaleForeground(now) {
       ctx.fillRect(0, 0, w, h);
     }
   } else if (locale.feature === "storm") {
-    // The charge crawls across everything, board included.
+    // The charge crawls across everything around the board.
     const pulse = 0.05 + 0.05 * Math.sin(t * 1.7);
     const sheet = ctx.createLinearGradient(0, 0, w, h);
     sheet.addColorStop(0, `hsla(${locale.hue}, 90%, 70%, ${pulse})`);
@@ -2064,6 +2194,15 @@ function drawLocaleForeground(now) {
 function drawSectorBackdrop() {
   const bg = backdropForLevel(state.levelId);
   const locale = localeOf();
+  // "Sometimes a little more zoomed in" — applied to the view of the
+  // place, which is what that was ever about, and never to the grid.
+  const zoom = locale && locale.zoom ? Math.max(1, locale.zoom) : 1;
+  ctx.save();
+  if (zoom !== 1) {
+    ctx.translate(geom.w / 2, geom.h / 2);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-geom.w / 2, -geom.h / 2);
+  }
   const g = ctx.createRadialGradient(geom.w * 0.5, geom.h * 0.34, geom.w * 0.08, geom.w * 0.5, geom.h * 0.52, geom.h * 0.9);
   g.addColorStop(0, bg[0]);
   g.addColorStop(1, bg[1]);
@@ -2087,6 +2226,7 @@ function drawSectorBackdrop() {
   }
   ctx.restore();
   if (locale) drawLocaleFeature(locale.feature, locale.hue, locale.sat);
+  ctx.restore();
 }
 
 // The union of every board hex, as one path — hexes are true regular
@@ -2110,6 +2250,53 @@ function boardPath() {
   return path;
 }
 
+// Everything EXCEPT the board: the whole canvas with the board punched out
+// of it, for clipping weather that should pass behind the play area.
+// (Path2D has no boolean ops — the even-odd fill rule does the subtraction:
+// a point inside both the rect and the board crosses two boundaries and so
+// counts as outside.)
+function skyOutsideBoardPath() {
+  const path = new Path2D();
+  path.rect(0, 0, geom.w, geom.h);
+  path.addPath(boardPath());
+  return path;
+}
+
+// The board floor: whatever the sky is doing, the play area lands in a
+// narrow, readable band of brightness before a single hex is drawn.
+//
+// This exists because the art kept winning arguments with the gameplay.
+// Measured across all ten locales, the backdrop swung 232x in brightness
+// UNDER the board on the maw (an opaque black disc covering 41% of the
+// hexes), and 27x on binary (a white sun core sitting between them). On
+// those hexes an enemy sprite measured a contrast ratio of 1.0 against
+// what was behind it — literally invisible — and the grid lines vanished
+// too. The old separator wash was 2-11% alpha, which moved board
+// luminance by under 0.01 and never stood a chance.
+//
+// Two passes do it: a dark fill compresses everything bright down, then a
+// faint lift raises everything black up. Both are clipped to the board, so
+// the sky outside the play area keeps its full range and the place still
+// reads as a place — it's only the ~80 hexes you actually have to see
+// things on that get held to a standard.
+function drawBoardFloor() {
+  ctx.save();
+  ctx.clip(boardPath());
+  ctx.fillStyle = "rgba(5,8,18,0.46)"; // pull the highlights down
+  ctx.fillRect(0, 0, geom.w, geom.h);
+  const panel = gridLook().panel;
+  const lit = ctx.createLinearGradient(0, 0, 0, geom.h);
+  lit.addColorStop(0, panel[0]);
+  lit.addColorStop(1, panel[1]);
+  ctx.fillStyle = lit;
+  ctx.fillRect(0, 0, geom.w, geom.h);
+  // ...and lift the blacks, so a locale whose sky is 0.0007 luminance
+  // still gives the grid and the sprites something to sit on.
+  ctx.fillStyle = "rgba(140,160,215,0.05)";
+  ctx.fillRect(0, 0, geom.w, geom.h);
+  ctx.restore();
+}
+
 function draw() {
   const now = performance.now();
   ctx.clearRect(0, 0, geom.w, geom.h);
@@ -2118,15 +2305,7 @@ function draw() {
   // and the grid is just an overlay on top of it"). The board is then laid
   // over it as a lit panel of navigable space.
   drawSectorBackdrop();
-  ctx.save();
-  ctx.clip(boardPath());
-  const panel = gridLook().panel;
-  const lit = ctx.createLinearGradient(0, 0, 0, geom.h);
-  lit.addColorStop(0, panel[0]);
-  lit.addColorStop(1, panel[1]);
-  ctx.fillStyle = lit;
-  ctx.fillRect(0, 0, geom.w, geom.h);
-  ctx.restore();
+  drawBoardFloor();
   ctx.save();
 
   // Screen shake while a damage flash is running.
@@ -2187,7 +2366,7 @@ function draw() {
     let fill = null;
     let fillAlpha = 0;
     if (isHazard) {
-      fill = isHazard.type === "asteroid" ? "#241f1c" : "#3a1030";
+      fill = isHazard.type === "asteroid" ? "#38302b" : "#3a1030";
       fillAlpha = 0.8;
     } else if (isExit) {
       fill = state.exitUnlocked ? "#1f4d3a" : "#2a2f45";
@@ -2235,7 +2414,17 @@ function draw() {
     // next to the key explaining it.
     let stroke = "#1a2233";
     let strokeWidth = 1.5;
-    if (!isHazard) {
+    if (isHazard) {
+      // A wall you cannot see is not a wall. This tile used to be a fixed
+      // near-black brown outlined in an even darker navy, which cannot
+      // separate from a near-black sky by definition — measured invisible
+      // on 100% of hexes in the Deep, the graveyard and the belt, and on
+      // most of the maw and the shoals. It wears a bright warm rim now, on
+      // every sky, because "can I fly through this" is the single most
+      // consequential thing a hex says.
+      stroke = isHazard.type === "asteroid" ? "rgba(255,214,168,0.72)" : "rgba(255,150,235,0.72)";
+      strokeWidth = 2;
+    } else {
       // The grid belongs to the PLACE, not to the game engine. One fixed
       // near-white lattice everywhere was doing most of the looking, which
       // is why six different skies still read as the same board — you saw
@@ -2961,7 +3150,12 @@ function updateOutpost() {
       ? `${offer.label} — not needed`
       : short > 0
         ? `${offer.label} — ${offer.cost} salvage (${short} short)`
-        : `${offer.label} — ${offer.cost} salvage`;
+        : // It still sells with a full Hold — it just arrives in cargo,
+          // inert, until you make room. Say that BEFORE the salvage moves
+          // rather than letting the player discover it afterwards.
+          offer.fits === false
+          ? `${offer.label} — ${offer.cost} salvage (→ cargo, no room yet)`
+          : `${offer.label} — ${offer.cost} salvage`;
     btn.disabled = !offer.affordable || !offer.applicable;
     btn.addEventListener("click", () => {
       handleAction(() => Engine.applyOutpostPurchase(state, offer.id));
@@ -3692,14 +3886,57 @@ function predictedVictims(targetId) {
   return [...victims.values()];
 }
 
-function handleAction(fn) {
+// A sector swap runs off a timer, outside handleAction's try/catch. If one
+// of those throws part-way — before `state` has been replaced — the run is
+// left in status "won" with no overlay, every button disabled and the board
+// tap handler bailing out early: no way back but a page reload. The turn
+// loop already guards its own render for exactly this reason; the swaps
+// were the last unguarded path into that dead end.
+function runTransition(swap, animKind) {
+  try {
+    swap();
+  } catch (err) {
+    console.error("sector transition failed", err);
+    if (state && state.status === "won") state.status = "playing";
+    anims = anims.filter((a) => a.kind !== animKind);
+    pushMessage("Jump aborted — hold position.");
+    try {
+      render();
+    } catch (renderErr) {
+      console.error("render failed", renderErr);
+    }
+  }
+}
+
+// opts.allowTransition — whether flying onto a Warp Gate or a wormhole on
+// THIS action is allowed to change sector. False for the intermediate hops
+// of a plotted course: a route that merely passes over the wormhole used to
+// yank you back to the previous sector two hexes into a seven-hex burn.
+// Only the step that actually lands on the route's destination counts.
+function handleAction(fn, opts) {
+  const allowTransition = !opts || opts.allowTransition !== false;
   let ok = false;
   plannedPath = null;
   reachPreview = null;
-  const wasJustArrived = justArrived;
-  justArrived = false;
   try {
     fn();
+    // Did that action take us off the hex we arrived on? Checked every
+    // action, not just the ones that end on a gate — the flag has to
+    // latch off the moment the ship leaves, or flying back onto the
+    // wormhole later would find it still suppressed and do nothing.
+    const parked = stillOnArrivalHex();
+    // The engine wins the sector on ANY action taken while standing on a
+    // Warp Gate — it has no idea you were put down on one by a wormhole
+    // or a chart jump. Suppressing just the warp would leave the run
+    // stuck in status "won": no overlay, every control disabled, board
+    // taps ignored. So un-consume the win outright, exactly as jumpToChart
+    // and restoreRun already do for a snapshot captured mid-jump. Fly off
+    // the gate and back on and it wins for real.
+    if (parked && state.status === "won") {
+      state.status = "playing";
+      state.isVictory = false;
+      state.usedExitVariant = null;
+    }
     mode = null;
     modeButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.mode === mode));
     scheduleAnims(state.events);
@@ -3707,7 +3944,14 @@ function handleAction(fn) {
     // "Run Complete" is a real milestone, not a routine clear, and gets a
     // manual overlay instead (see updateHud). continueBtn triggers the
     // exact same advanceSector flow, just player-initiated.
-    if (state.status === "won" && !state.isVictory && !anims.some((a) => a.kind === "warp")) {
+    if (
+      allowTransition &&
+      state.status === "won" &&
+      !state.isVictory &&
+      // (A win while parked on the arrival hex was already un-consumed
+      // above, so reaching here means it's a real one.)
+      !anims.some((a) => a.kind === "warp")
+    ) {
       const warpDur = 900;
       anims.push({ kind: "warp", start: performance.now(), dur: warpDur });
       requestAnimationFrame(tickAnims);
@@ -3715,11 +3959,16 @@ function handleAction(fn) {
       // flashAlpha curve in draw()'s "warp" case, centered at p=0.55) —
       // the screen is fully obscured at that instant, so the map changes
       // underneath the flash instead of after it finishes.
-      setTimeout(advanceSector, warpDur * 0.55);
+      setTimeout(() => runTransition(advanceSector, "warp"), warpDur * 0.55);
     } else if (
+      allowTransition &&
       state.status === "playing" &&
       Engine.wormholeAvailable(state) &&
-      !wasJustArrived &&
+      !parked &&
+      // Nowhere to go back TO. A chart/save desync could otherwise arm
+      // this every single action: a full-screen flash, 900ms, and then
+      // jumpToChart(-1) quietly doing nothing.
+      chartIndex > 0 &&
       !anims.some((a) => a.kind === "wormhole")
     ) {
       // Flying onto the wormhole is the return trip — same peak-opacity
@@ -3728,7 +3977,7 @@ function handleAction(fn) {
       const warpDur = 900;
       anims.push({ kind: "wormhole", start: performance.now(), dur: warpDur });
       requestAnimationFrame(tickAnims);
-      setTimeout(returnToPreviousSector, warpDur * 0.55);
+      setTimeout(() => runTransition(returnToPreviousSector, "wormhole"), warpDur * 0.55);
     }
     ok = true;
   } catch (err) {
@@ -3766,16 +4015,20 @@ function loadSector(index, carryOver, opts) {
   });
 
   // This brand-new sector joins the chart as the live entry.
-  sectorHistory.push({ levelIndex, state: JSON.parse(JSON.stringify(state)) });
+  sectorHistory.push({
+    levelIndex,
+    variantId: (opts && opts.variantId) || null,
+    state: JSON.parse(JSON.stringify(state)),
+  });
   chartIndex = sectorHistory.length - 1;
-  justArrived = true;
+  markArrival();
   mode = null;
   anims = keptAnims;
   announceSector(); // AFTER the anims reset, or the title gets wiped with them
   targetedEnemyId = null;
   reachPreview = null;
   plannedPath = null;
-  autoRoute = null;
+  cancelRoute();
   outpostDismissed = false;
   shipAngle = -90;
   updateGeometry();
@@ -3882,7 +4135,11 @@ function restoreRun() {
     chartIndex = 0;
   } else {
     // The live state is the freshest version of its chart slot.
-    sectorHistory[chartIndex] = { levelIndex, state: JSON.parse(JSON.stringify(state)) };
+    sectorHistory[chartIndex] = {
+      levelIndex,
+      variantId: sectorHistory[chartIndex].variantId || null,
+      state: JSON.parse(JSON.stringify(state)),
+    };
   }
   // A save can land mid-"won" (captured the instant a warp animation
   // started) — the animation itself doesn't survive a reload, so just
@@ -3890,13 +4147,13 @@ function restoreRun() {
   if (state.status === "won") state.status = "playing";
   // Same arrival grace as loadSector — harmless even if the flagship
   // wasn't actually standing on a wormhole when this was saved.
-  justArrived = true;
+  markArrival();
   mode = null;
   anims = [];
   targetedEnemyId = null;
   reachPreview = null;
   plannedPath = null;
-  autoRoute = null;
+  cancelRoute();
   outpostDismissed = false;
   shipAngle = -90;
   updateGeometry();
@@ -3910,7 +4167,6 @@ scanBtn.addEventListener("click", () => {
     return;
   }
   legendVisible = !legendVisible;
-  GCStorage.set(GAME_ID, "legendVisible", legendVisible);
   if (!legendVisible) inspectedHex = null; // closing Scan mode clears whatever was inspected
   render(); // full refresh — every button/toggle's disabled state depends on legendVisible now
 });
@@ -3976,6 +4232,13 @@ function planOrFlyRoute(hex) {
   if (plannedPath && Engine.posEq(plannedPath.target, hex)) {
     autoRoute = { target: plannedPath.target, path: plannedPath.hexes, hullAtStart: state.hull, stepIndex: 0 };
     plannedPath = null;
+    // Answer the instruction the moment it's obeyed. Nothing in the move
+    // path writes to the readout, so "Course laid in. Confirm to burn."
+    // used to sit there through the whole burn and well past arrival —
+    // a screen still asking you to confirm something you already did is
+    // what a frozen game looks like, and it's the line every "it's stuck"
+    // report quotes whether or not anything is actually wrong.
+    pushMessage("Burning.");
     stepRoute();
     return;
   }
@@ -4003,7 +4266,7 @@ function stepRoute() {
     stepRouteInner();
   } catch (err) {
     // Nothing that happens mid-flight is worth losing the controls over.
-    autoRoute = null;
+    cancelRoute();
     pushMessage("Course aborted.");
     console.error("route step failed", err);
     render();
@@ -4016,14 +4279,15 @@ function stepRouteInner() {
   const hurt = state.hull < autoRoute.hullAtStart;
   if (arrived || hurt || state.status !== "playing") {
     if (hurt && !arrived && state.status === "playing") pushMessage("Course aborted — we are taking fire.");
-    autoRoute = null;
+    else if (arrived && state.status === "playing") pushMessage("In position.");
+    cancelRoute();
     render();
     return;
   }
   // Recompute each step: enemies move between turns and can block the way.
   const path = Engine.findPath(state, state.playerPos, autoRoute.target);
   if (!path || path.length < 2) {
-    autoRoute = null;
+    cancelRoute();
     pushMessage("No clear lane.");
     render();
     return;
@@ -4031,15 +4295,20 @@ function stepRouteInner() {
   autoRoute.path = path;
   // If the burn itself was refused, the route is over — retrying the same
   // blocked step on a timer forever is how a flight turns into a lockout.
-  const flew = handleAction(() => Engine.applySublight(state, path[1]));
+  const flew = handleAction(() => Engine.applySublight(state, path[1]), {
+    allowTransition: Engine.posEq(path[1], autoRoute.target),
+  });
   if (!flew) {
-    autoRoute = null;
+    cancelRoute();
     render();
     return;
   }
   if (autoRoute) {
     autoRoute.stepIndex += 1;
-    setTimeout(stepRoute, autoRouteDelay(autoRoute.stepIndex));
+    // Held so cancelling a course actually stops it. An orphaned timer
+    // used to survive the cancel and then drive the NEXT course as a
+    // second chain, flying it at roughly double speed.
+    autoRoute.timer = setTimeout(stepRoute, autoRouteDelay(autoRoute.stepIndex));
   }
 }
 
@@ -4050,16 +4319,17 @@ canvas.addEventListener("click", (evt) => {
   // and it means the board can never be left permanently deaf to input,
   // whatever else goes wrong: one tap always does something.
   if (autoRoute) {
-    autoRoute = null;
+    cancelRoute();
     pushMessage("Course aborted — holding here.");
     render();
     return;
   }
 
+  // Per-AXIS scaling. This used to use one factor for both, which is only
+  // right while the canvas keeps its aspect ratio — and it didn't.
   const rect = canvas.getBoundingClientRect();
-  const scale = geom.w / rect.width;
-  const x = (evt.clientX - rect.left) * scale;
-  const y = (evt.clientY - rect.top) * scale;
+  const x = (evt.clientX - rect.left) * (geom.w / (rect.width || geom.w));
+  const y = (evt.clientY - rect.top) * (geom.h / (rect.height || geom.h));
   const hex = pixelToHex(x, y);
 
   // Scan mode is inspect-only — tapping anything on the board (an enemy,
@@ -4069,7 +4339,17 @@ canvas.addEventListener("click", (evt) => {
   // let a tap fall through into a real move or action underneath it.
   if (legendVisible) {
     inspectedHex = { q: hex.q, r: hex.r };
+    // Always SAY something. A tap that inspects empty space used to be a
+    // completely silent no-op — no card, no message, no redraw — which is
+    // indistinguishable from a frozen game, and is how "I can't move or
+    // attack" gets reported when the helm is merely being held.
+    pushMessage(
+      Engine.enemyAt(state, hex)
+        ? "Scanning contact — helm is holding. Tap Scan to resume."
+        : "Scanning — helm is holding. Tap Scan to resume."
+    );
     updateScanInfo();
+    render();
     return;
   }
 
@@ -4223,7 +4503,11 @@ window.addEventListener("resize", () => {
   draw();
 });
 
-window.__hhHexCenter = (q, r) => hexToPixel({ q, r }); // debug/test hook: CSS-pixel center of a hex
+window.__hhHexCenter = (q, r) => hexToPixel({ q, r });
+window.__hhPixelToHex = (x, y) => pixelToHex(x, y); // test hook: the tap conversion, so a round-trip can be proven
+window.__hhGetInspected = () => inspectedHex;
+// test hook: the chart, so a test can prove a return trip is even armed
+window.__hhChart = () => ({ chartIndex, length: sectorHistory.length, arrivedOn });
 window.__hhLooks = { SKIES, GRID_LOOKS }; // test hook: every place has its own sky and its own lattice
 // debug/test hook: sync the internal levelIndex counter after directly
 // mutating window.__hhState (see browser.test.js's boss-milestone test) —
