@@ -3163,6 +3163,17 @@ function updateShipOverlay() {
     tile.style.height = `${t.h * CELL - 4}px`;
     if (t.w === 1) tile.style.fontSize = "0.48rem"; // narrow tiles wrap their label instead of clipping it
     tile.textContent = t.label;
+    // A gun gets its own picture on the tile. The Hold is the one screen
+    // where hardware IS the content, and every tile in it was a coloured
+    // rectangle with a word in it — the icons say something the word
+    // can't: the Flank Tubes visibly point outward, the Railgun is a
+    // spine, the Mortar is a fat throat. Label stays, because at this
+    // size the picture alone isn't enough to pick a gun by.
+    const eq = t.itemId && Engine.EQUIPMENT[t.itemId];
+    if (eq && eq.kind === "weapon") {
+      tile.classList.add("has-icon");
+      tile.style.backgroundImage = `url("icons/weapon-${eq.weaponKey}.png")`;
+    }
     gridEl.appendChild(tile);
   }
   shipHardpointsEl.appendChild(gridEl);

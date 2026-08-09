@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("hypergolic-hull-v8", [
+GCRegisterServiceWorker("hypergolic-hull-v9", [
   "./",
   "./index.html",
   "./style.css",

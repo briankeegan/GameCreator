@@ -966,6 +966,38 @@ async function freshPage(browser, url, errors) {
     assert.strictEqual(new Set(srcs).size, srcs.length, `no two classes share a hull (${srcs.join(", ")})`);
   }
 
+  // Every gun carries its own module art on its Hold tile. A CSS
+  // background that 404s fails silently — the tile just looks like the
+  // coloured rectangle it used to be — so this checks the files actually
+  // decode, not merely that a url() got set.
+  {
+    const icons = await page.evaluate(async () => {
+      const E = window.HypergolicEngine;
+      const out = [];
+      for (const key of E.WEAPON_SYSTEM_KEYS) {
+        const src = `icons/weapon-${key}.png`;
+        const ok = await new Promise((res) => {
+          const img = new Image();
+          img.onload = () => res(img.naturalWidth > 0);
+          img.onerror = () => res(false);
+          img.src = src;
+        });
+        out.push({ key, src, ok });
+      }
+      return out;
+    });
+    for (const icon of icons) {
+      assert.ok(icon.ok, `${icon.key} has module art that loads (${icon.src})`);
+    }
+    // ...and the tile in the Hold is actually wired to it.
+    const tile = await page.evaluate(() => {
+      const el = document.querySelector('#holdGrid .hold-tile[data-item-id="autocannon"]');
+      return el ? { icon: el.classList.contains("has-icon"), bg: el.style.backgroundImage } : null;
+    });
+    assert.ok(tile && tile.icon, "a weapon tile is marked as carrying art");
+    assert.ok(/weapon-autocannon\.png/.test(tile.bg), `and points at its own module (${tile && tile.bg})`);
+  }
+
   // Blowing the scuttling charges is something you WATCH. The ship comes
   // apart on the Systems screen you armed them from, and only once the
   // fire is out does the run reset ("show the ship explode").

@@ -722,6 +722,17 @@ body {
 }
 /* A contact's hold is read-only in the sense that you can't DRAG it —
    but every tile is still tappable, same as your own. */
+/* A weapon tile carries its module art above its name. background-size is
+   set in ch-independent % so it scales with the tile rather than fighting
+   it, and the label drops to the bottom so the picture has the middle. */
+.hold-tile.has-icon {
+  background-repeat: no-repeat;
+  background-position: center 34%;
+  background-size: auto 52%;
+  align-items: flex-end;
+  padding-bottom: 3px;
+  text-shadow: 0 1px 2px #05070c, 0 0 3px #05070c;
+}
 .enemy-hold .hold-tile { cursor: pointer; }
 .hold-tile.dragging { z-index: 5; opacity: 0.9; }
 .hold-tile.drop-ok { outline: 2px solid #7fe3a8; }
