@@ -139,7 +139,21 @@
       mustBeOn(label, ex);
       if (!isBorder(ex)) throw new Error(`Level ${level.id}: ${label} is not on the board's edge`);
     });
-    if (level.outpost) {
+    if (level.outpost === true) {
+      // Hand-authored sector: a pool of valid berths, not one fixed hex —
+      // see pickOutpostPos. Every candidate has to be a real, on-edge spot,
+      // since any one of them can be the one a given run actually gets.
+      const candidates = level.outpostCandidates || [];
+      if (!candidates.length) {
+        throw new Error(`Level ${level.id}: outpost is true but outpostCandidates is empty`);
+      }
+      candidates.forEach((c, i) => {
+        mustBeOn(`outpostCandidates[${i}]`, c);
+        if (!isBorder(c)) {
+          throw new Error(`Level ${level.id}: outpostCandidates[${i}] is not on the board's edge`);
+        }
+      });
+    } else if (level.outpost) {
       mustBeOn("outpost", level.outpost);
       if (!isBorder(level.outpost)) {
         throw new Error(`Level ${level.id}: outpost is not on the board's edge`);
@@ -164,7 +178,12 @@
     const entities = [
       { label: "playerStart", pos: level.playerStart },
       ...exits.map((ex, i) => ({ label: exits.length > 1 ? `exit${i}` : "exit", pos: ex })),
-      ...(level.outpost ? [{ label: "outpost", pos: level.outpost }] : []),
+      // A boolean outpost is a pool of candidate berths, not a placed
+      // entity — pickOutpostPos resolves it to one hex per run, and each
+      // candidate was already checked for a clear approach when it was
+      // built (see levels.js's outpost candidate helper), so there's
+      // nothing here for the shared-hex check to compare against.
+      ...(level.outpost && level.outpost !== true ? [{ label: "outpost", pos: level.outpost }] : []),
       ...level.enemies.map((e, i) => ({ label: `enemy${i}`, pos: e })),
       ...(level.hazards || []).map((h, i) => ({ label: `hazard${i}`, pos: h })),
     ];
@@ -1030,11 +1049,29 @@
     };
   }
 
+  // Mixes the whole-run seed (see state.runSeed) into a per-question salt,
+  // so "which offers does Sector 2 deal" and "which berth does its Outpost
+  // use" roll off different numbers even though they're both asked about
+  // the same level id. A runSeed of 0 (the default when nothing supplies
+  // one — e.g. a caller that builds state directly) collapses this back to
+  // plain seededRandom(salt), so every existing deterministic-per-level-id
+  // caller/test is unaffected.
+  function runSeeded(runSeed, salt) {
+    return seededRandom((Math.imul((runSeed || 0) >>> 0, 2654435761) + salt) >>> 0);
+  }
+
   // Repair is always on offer (the reliable baseline), but how many EXTRA
   // offers sit alongside it varies (0, 1, or all of them) — a guaranteed
   // fixed shop every visit read as "too easy and not very interesting"
-  // (Clubhouse feedback). Deterministic per level id, same as before.
-  function pickOutpostOfferIds(levelId, aboard) {
+  // (Clubhouse feedback).
+  // Used to be deterministic per level id alone — replaying Sector 2 (or
+  // any hand-authored sector) dealt the exact same stock every single run,
+  // which is the "selling the same thing every time" complaint: reproducible
+  // isn't the same as lucky. Now it's per level id AND per run (see
+  // state.runSeed) — the same sector still can't reroll mid-visit (you're
+  // not punished for backing out of the menu), but a fresh run deals it
+  // fresh.
+  function pickOutpostOfferIds(levelId, aboard, runSeed) {
     // A frontier station is a scrapyard with a welding rig, not a
     // showroom. Repair plus TWO things — that's the whole shelf
     // (Clubhouse: "too many options too soon... this is a gritty scifi,
@@ -1065,7 +1102,7 @@
       if (o.id === "flakBurst") return levelId >= 2;
       return true; // reinforce / shield / reactor: basic dock trade at any depth
     });
-    const rng = seededRandom(levelId * 7919 + 13);
+    const rng = runSeeded(runSeed, levelId * 7919 + 13);
     const shuffled = stock.slice();
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
@@ -1112,6 +1149,23 @@
   // way to lose. Patches, a screen, and the heavy gun — always.
   function bossOutpostOfferIds() {
     return ["repair", "shield", "railgun"];
+  }
+
+  // Which hex the Sector Outpost actually sits on. Procedural sectors have
+  // resolved this to a real position (or null) already, in levels.js's
+  // generateLevel — pass it straight through. Hand-authored campaign
+  // sectors (2-4) used to hardcode a single hex, always the same one on
+  // every run of that sector — the "ports always in the same place"
+  // complaint. They now declare `outpost: true` plus a pool of valid
+  // berths in `outpostCandidates` (see levels.js), and which one gets used
+  // is rolled per RUN here — same sector, different dock, different run.
+  function pickOutpostPos(level, runSeed) {
+    if (!level.outpost) return null;
+    if (level.outpost !== true) return { q: level.outpost.q, r: level.outpost.r };
+    const candidates = level.outpostCandidates || [];
+    if (!candidates.length) return null;
+    const rng = runSeeded(runSeed, level.id * 104729 + 31);
+    return candidates[Math.floor(rng() * candidates.length)];
   }
 
   // Placed only when carryOver says a previous sector exists to return to
@@ -1184,6 +1238,16 @@
     const hold = buildHold(level, carryOver);
     const derived = deriveShip(hold);
     const maxHull = START_HULL + derived.hullBonus;
+    // Rolled fresh (via Math.random(), outside the engine — see app.js's
+    // freshRunSeed) the moment an actual new run starts, then carried
+    // through carryOver from sector to sector for the rest of that run.
+    // Everything that used to be "reproducible" purely off level id — which
+    // outpost berth, which shop stock — now also depends on this, so two
+    // playthroughs of the same sector are no longer guaranteed identical.
+    // Defaults to 0 (not random) when nothing supplies one, so a caller
+    // that builds state directly — every existing engine test — still gets
+    // the exact old deterministic-per-level-id behavior.
+    const runSeed = (carryOver && Number.isFinite(carryOver.runSeed)) ? carryOver.runSeed >>> 0 : 0;
     const state = {
       levelId: level.id,
       levelName: level.name || `Sector ${level.id}`,
@@ -1232,11 +1296,12 @@
       locale: level.locale || null,
       // Some stretches of space are worth more per wreck than others.
       salvageBonus: level.salvageBonus || 0,
-      outpostPos: level.outpost ? { q: level.outpost.q, r: level.outpost.r } : null,
+      runSeed: runSeed,
+      outpostPos: pickOutpostPos(level, runSeed),
       outpostOfferIds: level.outpost
         ? level.isBoss
           ? bossOutpostOfferIds()
-          : pickOutpostOfferIds(level.id, [...hold.items.map((it) => it.id), ...hold.cargo])
+          : pickOutpostOfferIds(level.id, [...hold.items.map((it) => it.id), ...hold.cargo], runSeed)
         : [],
       exitRule: level.exitRule,
       exitUnlocked: false,
@@ -1937,14 +2002,24 @@
 
   function outpostOffers(state) {
     if (!outpostAvailable(state)) return [];
-    return OUTPOST_OFFER_POOL.filter((o) => state.outpostOfferIds.includes(o.id)).map((offer) => ({
-      ...offer,
-      affordable: state.salvage >= offer.cost,
-      applicable: offer.id !== "repair" || state.hull < state.maxHull,
-      // Whether the crate would physically go in — the UI greys out what
-      // there is no room for rather than letting you find out by paying.
-      fits: OFFER_ITEM[offer.id] ? holdHasRoomFor(state.hold, OFFER_ITEM[offer.id]) : true,
-    }));
+    // Reads off state.outpostOfferIds' own order (repair, then the shuffled
+    // extras) rather than re-filtering OUTPOST_OFFER_POOL — filtering the
+    // pool put every shelf back into the SAME fixed catalogue order
+    // (reinforce before shield before reactor before hardpoint before...)
+    // no matter how the stock itself had been shuffled, so the shelf read
+    // as "same order every time" even on runs that genuinely rolled
+    // different stock.
+    return state.outpostOfferIds
+      .map((id) => OUTPOST_OFFER_POOL.find((o) => o.id === id))
+      .filter(Boolean)
+      .map((offer) => ({
+        ...offer,
+        affordable: state.salvage >= offer.cost,
+        applicable: offer.id !== "repair" || state.hull < state.maxHull,
+        // Whether the crate would physically go in — the UI greys out what
+        // there is no room for rather than letting you find out by paying.
+        fits: OFFER_ITEM[offer.id] ? holdHasRoomFor(state.hold, OFFER_ITEM[offer.id]) : true,
+      }));
   }
 
   // Hardware you have no room for still SELLS — it rides in cargo until a

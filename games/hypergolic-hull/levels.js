@@ -59,7 +59,9 @@
       board: { type: "rect", cols: 7, rows: 9 },
       playerStart: { q: 3, r: 7 },
       exit: { q: 6, r: -3 },
-      outpost: { q: 0, r: 0 },
+      // A pool of valid berths, not one fixed hex — see
+      // computeOutpostCandidates above and engine.js's pickOutpostPos.
+      outpost: true,
       enemies: [
         { type: "cruiser", q: 3, r: 3 },
         { type: "interceptor", q: 5, r: 0 },
@@ -79,7 +81,7 @@
       board: { type: "rect", cols: 7, rows: 9 },
       playerStart: { q: 3, r: 7 },
       exit: { q: 6, r: -3 },
-      outpost: { q: 0, r: 0 },
+      outpost: true,
       // The Sentry lesson: ONE emplacement and one escort. Its beam covers
       // a two-hex ring in every direction, which is a wall on a board this
       // width — learning to read that zone is the whole sector, and a
@@ -108,7 +110,7 @@
       // so this is the outfitters. Running it dry meant arriving at depth
       // 5 with a hold full of salvage, a starting gun, and no shelf to
       // spend on since sector 3.
-      outpost: { q: 0, r: 0 },
+      outpost: true,
       enemies: [
         { type: "cruiser", q: 3, r: 4 },
         { type: "sentry", q: 5, r: 1 },
@@ -137,6 +139,42 @@
 
   function hexDist(a, b) {
     return (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
+  }
+
+  // Hand-authored campaign sectors (2-4) declare `outpost: true` instead of
+  // one fixed hex, plus this candidate pool — which berth a given run
+  // actually gets is rolled per run in engine.js's pickOutpostPos, not
+  // baked into the level data. Every hand-authored sector used to dock at
+  // the exact same (0,0) corner on every single playthrough — "why is the
+  // outpost always in the same place?" Same rules as a procedural sector's
+  // berths below: on the board's edge, a real trip from where you spawn,
+  // and never close enough to a gate to dock in passing.
+  function computeOutpostCandidates(level) {
+    const cols = level.board.cols;
+    const rows = level.board.rows;
+    const isBorder = (h) => {
+      const col = h.q;
+      const row = h.r + Math.floor(col / 2);
+      return col === 0 || col === cols - 1 || row === 0 || row === rows - 1;
+    };
+    const gates = level.exits && level.exits.length ? level.exits : [level.exit];
+    const blocked = new Set(
+      [level.playerStart, ...gates, ...level.enemies, ...(level.hazards || [])].map((h) => `${h.q},${h.r}`)
+    );
+    const candidates = [];
+    for (let col = 0; col < cols; col++) {
+      for (let row = 0; row < rows; row++) {
+        const h = { q: col, r: row - Math.floor(col / 2) };
+        if (!isBorder(h) || blocked.has(`${h.q},${h.r}`)) continue;
+        if (hexDist(h, level.playerStart) < 4) continue;
+        if (gates.some((g) => hexDist(h, g) < 3)) continue;
+        candidates.push(h);
+      }
+    }
+    return candidates;
+  }
+  for (const level of LEVELS) {
+    if (level.outpost === true) level.outpostCandidates = computeOutpostCandidates(level);
   }
 
   // Small deterministic PRNG (mulberry32) seeded off depth — the SAME depth

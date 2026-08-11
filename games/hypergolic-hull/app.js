@@ -100,7 +100,18 @@ const BRANCH_TINTS = {
   quiet: [120, 190, 255], // cool — lighter resistance, more likely to have an Outpost
   drift: [170, 235, 130], // hazy green — hazard-heavy drift fields
 };
-let state = Engine.createGameState(levelForIndex(levelIndex));
+// The one deliberate use of real (non-seeded) randomness in this game: a
+// fresh whole-run seed, rolled once when a genuinely NEW run starts (see
+// loadSector(0) callers and scuttleShip below) and then carried sector to
+// sector via carryOver.runSeed for the rest of that run. Everything that
+// USES it (which Outpost berth, which shop stock) stays a deterministic
+// seededRandom() inside engine.js — this is the only spot that has to
+// touch Math.random() at all, and it does so once per run, not per turn,
+// keeping every combat rule exactly as deterministic as it always was.
+function freshRunSeed() {
+  return Math.floor(Math.random() * 0xffffffff) >>> 0;
+}
+let state = Engine.createGameState(levelForIndex(levelIndex), { runSeed: freshRunSeed() });
 // null means no mode armed — plain moves/route-preview work regardless.
 let mode = null;
 let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
@@ -275,6 +286,9 @@ function advanceSector() {
       shieldCharges: state.shieldCharges,
       maxEnergy: state.maxEnergy,
       maxAp: state.maxAp,
+      // Whole run shares one seed — carried forward, never rerolled
+      // mid-run, so the "luck" a run got is that run's, start to finish.
+      runSeed: state.runSeed,
       // The Hold carries whole — the ship IS its equipment grid.
       hold: state.hold,
     },
@@ -4096,6 +4110,10 @@ function isValidSave(s) {
     typeof s.maxShields === "number" &&
     // The AP round rework: no ap counter = pre-rework save. Same policy.
     typeof s.ap === "number" &&
+    // The per-run luck seed: a pre-rework save has no runSeed, which would
+    // otherwise silently fall back to the deterministic default (0) for
+    // the rest of that run instead of getting a real one. Same policy.
+    typeof s.runSeed === "number" &&
     (s.enemies || []).every((e) => typeof e.energy === "number")
   );
 }
@@ -4110,7 +4128,7 @@ function restoreRun() {
   const savedState = GCStorage.get(GAME_ID, "run", null);
   const savedIndex = GCStorage.get(GAME_ID, "levelIndex", null);
   if (!isValidSave(savedState) || savedIndex === null) {
-    loadSector(0);
+    loadSector(0, { runSeed: freshRunSeed() });
     return;
   }
   levelIndex = savedIndex;
@@ -4462,7 +4480,10 @@ function scuttleShip() {
   sectorHistory = [];
   chartIndex = -1;
   selfDestructArmed = false;
-  loadSector(0);
+  // A new run rolls a new seed — same sector, different luck: which
+  // Outposts you find and what they're stocked with can genuinely differ
+  // from the last time you flew Sector 2.
+  loadSector(0, { runSeed: freshRunSeed() });
   // Arrive like you arrived anywhere else — the flash, then the sector.
   // Cutting straight to a fresh board read like the page had reloaded
   // rather than like a new hull warping in.

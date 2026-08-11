@@ -414,7 +414,11 @@ function playRun(seed, report) {
     const level = depth <= LEVELS.length ? LEVELS[depth - 1] : Levels.generateLevel(depth, variantId);
     let state;
     try {
-      state = Engine.createGameState(level, carryOver ? { ...carryOver, hasPrevious: true } : undefined);
+      // Feeds the playtest's own per-run seed through as the ship's luck
+      // seed too, so simulated runs exercise the same run-to-run Outpost
+      // variance a real player gets, instead of every run rolling the
+      // hand-authored sectors' shop/berth identically.
+      state = Engine.createGameState(level, { ...(carryOver || {}), runSeed: seed, hasPrevious: Boolean(carryOver) });
     } catch (err) {
       report.errors.push(`depth ${depth}: level failed to build — ${err.message}`);
       return { depth, outcome: "error" };
