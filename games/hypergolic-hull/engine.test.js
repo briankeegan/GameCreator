@@ -1167,14 +1167,126 @@ railgunBuyState.energy = railgunBuyState.maxEnergy;
 Engine.applyFire(railgunBuyState);
 assert.strictEqual(railgunBuyState.enemies[0].alive, false, "the Railgun one-shots a 2-Hull Cruiser across the board");
 
-// Every weapon in the roster is carried by a hostile class — scanning a
-// contact teaches you what's buyable, never enemy-only gear.
-const carriedWeapons = Object.values(Engine.ENEMY_TYPES).flatMap((t) => t.ship.weaponKeys).sort();
+// The gear rule, both directions. It used to be asserted as an exact 1:1
+// list, which was only ever true by accident of there being six classes
+// and six weapons — classes share weapons now (an Escort and a Scout both
+// fly an Autocannon, the Bulwark carries two guns), and that is the
+// point: what a hostile has is a loadout, not a species.
+const carriedWeapons = new Set(Object.values(Engine.ENEMY_TYPES).flatMap((t) => t.ship.weaponKeys));
+for (const key of Engine.WEAPON_SYSTEM_KEYS) {
+  assert.ok(carriedWeapons.has(key), `${key} must exist in the world on some hostile — nothing is player-only`);
+}
+for (const key of carriedWeapons) {
+  assert.ok(
+    Engine.WEAPON_SYSTEM_KEYS.includes(key),
+    `${key} is carried by a hostile, so it has to be a gun you can buy and fit — no enemy-only gear`
+  );
+}
+// And every crate in a hostile hold is a crate from the same catalogue.
+for (const [name, def] of Object.entries(Engine.ENEMY_TYPES)) {
+  for (const it of def.hold.items) {
+    assert.ok(Engine.EQUIPMENT[it.id], `${name} carries "${it.id}", which is not real equipment`);
+  }
+}
+
+// ---- the second wave: five classes, no new rules ------------------------
+// Every one of them is a different arrangement of the same crates, and the
+// engine reads their stats off the hold exactly as it reads yours.
+assert.strictEqual(Engine.ENEMY_TYPES.scout.maxHull, 1, "the Scout is the cheapest airframe in the sky");
+assert.strictEqual(Engine.ENEMY_TYPES.scout.ship.hasDrive, true, "and it chases");
+assert.strictEqual(Engine.ENEMY_TYPES.escort.ship.maxShields, 1, "the Escort is the first hostile with a screen");
+assert.strictEqual(Engine.ENEMY_TYPES.carrier.maxHull, 2, "the Carrier is two Hull");
 assert.deepStrictEqual(
-  carriedWeapons,
-  ["arcBeam", "autocannon", "flakBurst", "flankTubes", "mortar", "railgun"],
-  "every weapon exists in the world on an enemy ship — one class per weapon, no enemy-only gear"
+  Engine.ENEMY_TYPES.carrier.ship.weaponKeys.slice().sort(),
+  ["autocannon", "flakBurst"],
+  "and the only MOBILE hostile carrying two guns — that, not a bigger hull, is what it is"
 );
+assert.strictEqual(
+  Object.values(Engine.ENEMY_TYPES).filter((t) => t.ship.hasDrive && t.ship.weaponKeys.length > 1).length,
+  1,
+  "exactly one mobile class carries a second gun — it stays a distinct thing"
+);
+assert.deepStrictEqual(
+  Engine.ENEMY_TYPES.salvager.ship.weaponKeys,
+  [],
+  "the Salvager has NO gun of any kind — it is a decision about time, not a threat"
+);
+assert.ok(
+  Engine.ENEMY_TYPES.salvager.salvage > Engine.ENEMY_TYPES.carrier.salvage,
+  "and it is the richest wreck on any ordinary board, which is the whole reason to stop for it"
+);
+assert.strictEqual(Engine.ENEMY_TYPES.bulwark.maxHull, 4, "the Bulwark is four Hull — the heaviest thing in the run");
+assert.strictEqual(Engine.ENEMY_TYPES.bulwark.ship.hasDrive, false, "bolted down — it is a fortress, not a ship");
+assert.deepStrictEqual(
+  Engine.ENEMY_TYPES.bulwark.ship.weaponKeys.slice().sort(),
+  ["flakBurst", "railgun"],
+  "carrying both ends of the roster: the lane and the contact ring"
+);
+assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges its first slug in front of you");
+// Its two guns together leave exactly one kind of ground to stand on:
+// off its axes, outside contact. That gap is the fight, so prove it exists.
+{
+  const probe = Engine.createGameState({
+    id: 970,
+    name: "bulwark geometry",
+    board: { type: "rect", cols: 9, rows: 11 },
+    playerStart: { q: 4, r: 8 },
+    exit: { q: 8, r: -4 },
+    outpost: null,
+    enemies: [{ type: "bulwark", q: 4, r: 3 }],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+  });
+  const gun = probe.enemies[0];
+  const covered = new Set();
+  for (const key of Engine.ENEMY_TYPES.bulwark.ship.weaponKeys) {
+    for (const h of Engine.weaponHexes(gun, 0, Engine.WEAPONS[key], probe)) covered.add(Engine.hexKey(h));
+  }
+  const safe = probe.boardHexes.filter((h) => !covered.has(Engine.hexKey(h)) && !Engine.posEq(h, gun));
+  assert.ok(safe.length > 0, "there IS ground the Bulwark cannot reach — the fight is findable");
+  assert.ok(
+    safe.some((h) => Engine.hexDistance(h, gun) <= 3),
+    "and some of it is close enough to shoot back from"
+  );
+  assert.ok(
+    !safe.some((h) => Engine.hexDistance(h, gun) === 1),
+    "but none of it is in contact — the Flak Burst owns every adjacent hex"
+  );
+}
+
+// A hostile screen absorbs exactly one hit, then it's spent — the same
+// rule your own Shield Generator follows, because it IS the same item.
+{
+  const shielded = Engine.createGameState({
+    id: 969,
+    name: "escort fixture",
+    board: { type: "rect", cols: 5, rows: 7 },
+    playerStart: { q: 2, r: 4 },
+    exit: { q: 2, r: -1 },
+    outpost: null,
+    enemies: [{ type: "escort", q: 2, r: 1 }],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+    actions: ["sublight", "autocannon"],
+  });
+  const escort = shielded.enemies[0];
+  assert.strictEqual(escort.shieldCharges, 1, "an Escort spawns with its screen raised");
+  // Step into contact so the Autocannon (a three-hex arc off the nose) bears.
+  escort.q = shielded.playerPos.q;
+  escort.r = shielded.playerPos.r - 1;
+  Engine.setFacing(shielded, Engine.directionIndex(shielded.playerPos, escort));
+  Engine.applyFire(shielded);
+  assert.strictEqual(escort.alive, true, "the shot that kills an Interceptor outright only pops the bubble");
+  assert.strictEqual(escort.shieldCharges, 0, "the charge is spent");
+  assert.strictEqual(escort.hp, escort.maxHp, "and no Hull was touched");
+  assert.ok(
+    shielded.events.some((e) => e.type === "enemyShieldAbsorb"),
+    "the absorb emits its own event so the board can show it"
+  );
+  shielded.energy = shielded.maxEnergy;
+  Engine.applyFire(shielded);
+  assert.strictEqual(escort.alive, false, "the second shot goes through");
+}
 
 // ---- weapons are shapes, and every shape has a hole --------------------
 // The roster used to be six ways of saying "everything within N", where a
@@ -1331,7 +1443,30 @@ assert.deepStrictEqual(
     assert.strictEqual(fresh.maxEnergy, def.ship.maxEnergy, `${name}'s bus is the reactors it carries`);
     assert.strictEqual(def.maxHull, def.hull + fresh.hullBonus, `${name}'s hull is airframe plus plating`);
     assert.ok(fresh.rechargeGain > 0, `${name} carries a generator, not just batteries — it can actually refill`);
-    assert.ok(fresh.maxEnergy >= Math.min(...fresh.weapons.map((w) => w.energyCost)), `${name} can eventually afford to fire`);
+    // A class with no gun at all is legal and deliberate (the Salvager) —
+    // but anything that DOES carry one has to be able to pay for it, or
+    // it's an enemy that stands there forever with its safety on.
+    if (fresh.weapons.length) {
+      assert.ok(
+        fresh.maxEnergy >= Math.min(...fresh.weapons.map((w) => w.energyCost)),
+        `${name} can eventually afford to fire`
+      );
+    }
+  }
+
+  // The Salvager is the live proof of the weaponless case: it flies (it
+  // has a drive), it closes, and it cannot hurt you, because there is no
+  // gun in its hold — not because anything special-cases it.
+  {
+    const tugLevel = { ...rockLevel, id: 990, hazards: [], enemies: [{ type: "salvager", q: 2, r: 0 }] };
+    const tugState = Engine.createGameState(tugLevel);
+    const tug = tugState.enemies[0];
+    const startKey = Engine.hexKey(tug);
+    const hullBefore = tugState.hull;
+    for (let round = 0; round < 8; round++) Engine.applyEndTurn(tugState);
+    assert.notStrictEqual(Engine.hexKey(tug), startKey, "the Salvager closes — it has a drive like anything else");
+    assert.strictEqual(tugState.hull, hullBefore, "and it never lands a hit, because it has nothing to hit with");
+    assert.strictEqual(tugState.status, "playing", "you can stand next to one all day");
   }
 }
 

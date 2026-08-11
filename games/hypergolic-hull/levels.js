@@ -433,11 +433,18 @@
       // three-Hull ship however well it's flown — the fight has to be
       // winnable by a run that arrives in good order, or the last sector
       // is just a wall with a name.
+      // The Bulwark itself, at last — the thing the sector is named after
+      // was until now a board of ordinary hostiles wearing its name. Five
+      // Hull of plating, bolted down (no drive), carrying BOTH ends of the
+      // roster: a Railgun down every axis and a Flak Burst covering
+      // contact. Between them they rule out standing on its lanes and rule
+      // out hugging it, so the fight is about finding the ground that's
+      // left — off-axis, at two or three — and holding it while its escort
+      // tries to push you back onto a lane.
       enemies: [
-        { type: "cruiser", q: 3, r: 6 },
-        { type: "sentry", q: 2, r: 2 },
-        { type: "sentry", q: 6, r: 2 },
-        { type: "interceptor", q: startCol, r: 4 },
+        { type: "bulwark", q: startCol, r: 2 },
+        { type: "escort", q: 2, r: 5 },
+        { type: "interceptor", q: 6, r: 4 },
       ],
       hazards: [
         { type: "asteroid", q: 1, r: 4 },
@@ -664,14 +671,28 @@
     // every run spent its entire salvage on hull patches and reached the
     // Bulwark with the gun it started with. Each new shape now lands a
     // sector or two AFTER the gun that answers it appears on a shelf.
+    // The second wave slots into that same discipline — each new class is
+    // a new QUESTION, introduced once there's an answer to it on a shelf:
+    //   scout    — depth 1. Same question as an Interceptor, asked by more
+    //              of them at once. It's the cheapest thing in the sky and
+    //              it belongs in the shallow end.
+    //   salvager — depth 5. Carries no gun at all; it's a decision about
+    //              time, not about damage, so it can't make a board
+    //              harder to survive, only more tempting to linger on.
+    //   escort   — depth 5, alongside it: the first hostile screen, i.e.
+    //              "everything takes one more shot than you think". Lands
+    //              at the tier where a second gun is realistically fitted.
+    //   carrier  — depth 8. Three Hull that walks at you and detonates a
+    //              full ring in contact. Wants an answer at range, which
+    //              is exactly what the depth-8 shelf is selling.
     const typePool =
       depth < 5
-        ? ["interceptor", "interceptor", "cruiser"]
+        ? ["interceptor", "interceptor", "scout", "scout", "cruiser"]
         : depth < 8
-          ? ["interceptor", "interceptor", "cruiser", "cruiser", "sentry"]
+          ? ["interceptor", "scout", "scout", "cruiser", "cruiser", "sentry", "salvager"]
           : depth < 11
-            ? ["interceptor", "cruiser", "cruiser", "sentry", "sentry", "mortar"]
-            : ["interceptor", "cruiser", "sentry", "mortar", "lancer", "railgun"];
+            ? ["interceptor", "scout", "cruiser", "escort", "carrier", "sentry", "sentry", "mortar", "salvager"]
+            : ["scout", "cruiser", "escort", "carrier", "sentry", "mortar", "lancer", "railgun", "salvager"];
     // At most TWO emplacements on a board. A Sentry or a Railgun Destroyer
     // doesn't chase you — it denies ground — and three of them on a 9x11
     // field is a wall with no way around it, which is exactly what full-run
@@ -679,9 +700,18 @@
     // three Sentries and a Railgun). Two is a gauntlet you can route
     // through; three is a corridor with a gun at the end of it.
     const EMPLACEMENTS = new Set(["sentry", "railgun", "mortar"]);
-    const MOBILE = ["interceptor", "cruiser", "lancer"];
+    // The same argument as EMPLACEMENTS, applied to durability instead of
+    // to zoning. An Escort takes one more shot than it looks like it
+    // should and a Carrier takes two; a board of nothing but those is not
+    // harder, it's just longer, and at one gun fired per round "longer"
+    // means every chaser on the map gets extra free turns while you grind.
+    // Two per board keeps them a complication rather than the whole sum.
+    const HEAVIES = new Set(["escort", "carrier"]);
+    const MOBILE = ["interceptor", "scout", "cruiser", "escort", "lancer"];
     const enemies = [];
+    const LIGHT = ["interceptor", "scout", "cruiser"];
     let emplaced = 0;
+    let heavies = 0;
     for (const hex of candidates) {
       if (enemies.length >= enemyCount) break;
       if (hazardKeys.has(`${hex.q},${hex.r}`)) continue;
@@ -690,6 +720,10 @@
       if (EMPLACEMENTS.has(type)) {
         if (emplaced >= 2) type = MOBILE[Math.floor(rng() * MOBILE.length)];
         else emplaced++;
+      }
+      if (HEAVIES.has(type)) {
+        if (heavies >= 2) type = LIGHT[Math.floor(rng() * LIGHT.length)];
+        else heavies++;
       }
       enemies.push({ type, q: hex.q, r: hex.r });
     }

@@ -671,6 +671,11 @@ for (const [type, file] of Object.entries({
   mortar: "icons/enemy-bomber.png", // the one hull in the set with a loaded bay
   lancer: "icons/enemy-minelayer.png", // pods held out wide, like the Tubes fire
   railgun: "icons/enemy-railgun.png",
+  scout: "icons/enemy-scout.png",
+  escort: "icons/enemy-escort.png", // the hull that visibly has a bubble around it
+  carrier: "icons/enemy-carrier.png",
+  salvager: "icons/enemy-tug.png", // grapples and a tractor lens, no gun anywhere on it
+  bulwark: "icons/enemy-bulwark.png",
 })) {
   const img = new Image();
   img.src = file;
@@ -1223,7 +1228,13 @@ function drawRailgun(s) {
   ctx.fill();
 }
 
-function drawEnemyShip(size, hpFrac, crackSeed, type) {
+// How big a class draws relative to a standard hull. A boss that arrives
+// at exactly the size of the Interceptor you killed at depth 1 does not
+// read as the thing the sector is named after.
+const SHIP_SCALE = { bulwark: 1.45, carrier: 1.18, salvager: 1.12, scout: 0.9 };
+
+function drawEnemyShip(size, hpFrac, crackSeed, type, shielded) {
+  size *= SHIP_SCALE[type] || 1;
   ctx.save();
   // High-contrast hostile halo, color-coded per enemy class so each one reads
   // at a glance even before you clock its silhouette: the enemy hulls are
@@ -1237,6 +1248,16 @@ function drawEnemyShip(size, hpFrac, crackSeed, type) {
     mortar: ["rgba(235,220,110,0.52)", "rgba(200,180,60,0.27)", "rgba(190,170,50,0)"],
     lancer: ["rgba(205,120,255,0.52)", "rgba(160,70,220,0.27)", "rgba(150,60,210,0)"],
     railgun: ["rgba(90,170,255,0.50)", "rgba(50,120,220,0.26)", "rgba(40,100,200,0)"],
+    // The second wave. Each one is keyed to the hull's own paint so the
+    // glow and the ship read as one object: the Scout's sand, the
+    // Escort's shield blue, the Carrier's violet, the Salvager's brass
+    // (the only friendly-looking glow out there, on the only thing that
+    // can't shoot you), and the Bulwark's furnace red.
+    scout: ["rgba(232,200,140,0.50)", "rgba(190,150,80,0.26)", "rgba(180,140,70,0)"],
+    escort: ["rgba(130,205,255,0.55)", "rgba(70,150,230,0.28)", "rgba(60,130,215,0)"],
+    carrier: ["rgba(190,120,240,0.55)", "rgba(140,60,200,0.30)", "rgba(125,50,185,0)"],
+    salvager: ["rgba(120,235,205,0.50)", "rgba(210,170,60,0.26)", "rgba(200,160,50,0)"],
+    bulwark: ["rgba(255,90,60,0.62)", "rgba(200,35,25,0.34)", "rgba(180,25,20,0)"],
   };
   const hc = HALO[type] || HALO.interceptor;
   const halo = ctx.createRadialGradient(0, 0, size * 0.15, 0, 0, size * 1.25);
@@ -1256,6 +1277,20 @@ function drawEnemyShip(size, hpFrac, crackSeed, type) {
     else if (!drawShipImage(interceptorImg, size)) drawEnemyFighter(size, 0);
   }
   drawCracks(size, hpFrac, crackSeed);
+  // A raised hostile screen is drawn, because it changes what your next
+  // shot does: this contact eats one full hit before its hull is touched.
+  // Same information your own SHIELDS pip carries, in the place you're
+  // actually looking.
+  if (shielded) {
+    ctx.save();
+    ctx.setLineDash([size * 0.22, size * 0.16]);
+    ctx.strokeStyle = "rgba(150,215,255,0.85)";
+    ctx.lineWidth = Math.max(1.4, size * 0.09);
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 1.02, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.restore();
 }
 
@@ -2519,7 +2554,7 @@ function draw() {
     if (enemy.type !== "sentry" && enemy.type !== "railgun") {
       ctx.rotate((angleToward(enemy, state.playerPos) * Math.PI) / 180);
     }
-    drawEnemyShip(geom.sx * 0.46, enemy.hp / enemy.maxHp, enemy.id, enemy.type);
+    drawEnemyShip(geom.sx * 0.46, enemy.hp / enemy.maxHp, enemy.id, enemy.type, enemy.shieldCharges > 0);
     ctx.restore();
   }
 
@@ -3253,7 +3288,7 @@ function renderPortrait(enemy) {
     ctx.save();
     ctx.translate(contactPortraitEl.width / 2, contactPortraitEl.height / 2);
     ctx.rotate(-Math.PI / 2); // board art is drawn nose-RIGHT; a portrait reads nose-UP
-    drawEnemyShip(contactPortraitEl.width * 0.33, enemy.hp / enemy.maxHp, enemy.id, enemy.type);
+    drawEnemyShip(contactPortraitEl.width * 0.33, enemy.hp / enemy.maxHp, enemy.id, enemy.type, enemy.shieldCharges > 0);
     ctx.restore();
   } finally {
     ctx = boardCtx;

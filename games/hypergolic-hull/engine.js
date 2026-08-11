@@ -761,6 +761,113 @@
         ],
       },
     },
+    // ---- the second wave -------------------------------------------------
+    // Five more classes, and not one of them needed a new rule: every
+    // difference below is a different arrangement of the same crates you
+    // can buy yourself. What makes a class is what it bolted on.
+
+    // Cheapest airframe in the sky: a gun, a drive, and a scanner where
+    // the armour should be. It dies to anything. It arrives in numbers,
+    // which is the entire idea — the Interceptor asks "can you kill it",
+    // a Scout screen asks "can you kill FOUR of them before they all
+    // reach you", and the answer depends on whether your second gun
+    // covers ground or covers a direction.
+    scout: {
+      hull: 1, salvage: 2,
+      hold: {
+        cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
+        items: [
+          { id: "sublightDrive", x: 1, y: 0 },
+          { id: "microReactor", x: 0, y: 1 },
+          { id: "scanner", x: 2, y: 1 },
+          { id: "autocannon", x: 0, y: 3 },
+        ],
+      },
+    },
+    // The first hostile to carry a screen. One Hull under it, so the
+    // Autocannon that kills an Interceptor outright only pops the bubble
+    // here — everything takes exactly one more shot than you expect, and
+    // a volley you were counting on to clear contact doesn't.
+    escort: {
+      hull: 1, salvage: 5,
+      hold: {
+        cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
+        items: [
+          { id: "shieldGenerator", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 1 },
+          { id: "microReactor", x: 3, y: 1 },
+          { id: "autocannon", x: 1, y: 2 },
+        ],
+      },
+    },
+    // Four bays and a nose gun: the only mobile hostile carrying TWO
+    // weapons, and that — not a bigger hull — is what makes it dangerous.
+    // The Autocannon answers you at contact in front, the Flak Burst
+    // answers the whole ring, so backing off one hex to a flank stops
+    // working the way it does against everything else. Two Hull, because
+    // three of them plus an Escort's screen turned every deep board into
+    // arithmetic (measured: it took the win rate from 48% to zero).
+    carrier: {
+      hull: 1, salvage: 8,
+      hold: {
+        cols: 4, rows: 6, blocked: ["0,0", "3,0", "0,5", "3,5"],
+        items: [
+          { id: "flakBurst", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 1 },
+          { id: "ablativePlating", x: 3, y: 1 },
+          { id: "autocannon", x: 1, y: 2 },
+          { id: "microReactor", x: 1, y: 3 },
+          { id: "chargeBank", x: 2, y: 3 },
+        ],
+      },
+    },
+    // Not a warship. Grapples, a tractor lens and two crates of plating —
+    // it is out here for the wrecks, and it has no gun of any kind, so
+    // check its Systems screen and you'll find nothing that can hurt you.
+    // It still closes, because that's what a hold with a drive and no
+    // weapon does. The decision it poses is pure economics: it is worth
+    // more than anything else on the board and every turn you spend
+    // cracking it is a turn the things that CAN shoot get for free.
+    salvager: {
+      hull: 1, salvage: 14,
+      hold: {
+        cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
+        items: [
+          { id: "sublightDrive", x: 1, y: 0 },
+          { id: "ablativePlating", x: 0, y: 1 },
+          { id: "ablativePlating", x: 2, y: 1 },
+          { id: "microReactor", x: 0, y: 3 },
+        ],
+      },
+    },
+    // The Bulwark: a fortress, not a ship. Two crates of plating on a
+    // two-Hull frame, no drive at all, and BOTH ends of the roster's
+    // range bolted to it — a Railgun down every axis for 2, and a Flak
+    // Burst covering every hex in contact. Those two guns leave exactly
+    // one place to stand: off its axes, at two or three out. Finding that
+    // ground is the fight. It spawns with an empty bus and fills it in
+    // front of you, same telegraph as its little brother.
+    //
+    // Four Hull, not five. At five, with one gun fired per round against
+    // two guns firing back, thirteen runs in forty reached it and not one
+    // of them finished — a last sector nobody beats is a wall with a name
+    // on it, which is the exact note this level already carried.
+    bulwark: {
+      hull: 2, salvage: 30, startsEmpty: true,
+      hold: {
+        cols: 5, rows: 6, blocked: ["0,0", "4,0", "0,5", "4,5"],
+        items: [
+          { id: "railgun", x: 1, y: 0 },
+          { id: "flakBurst", x: 2, y: 0 },
+          { id: "ablativePlating", x: 0, y: 1 },
+          { id: "ablativePlating", x: 4, y: 1 },
+          { id: "chargeBank", x: 3, y: 2 },
+          { id: "chargeBank", x: 0, y: 3 },
+          { id: "microReactor", x: 4, y: 3 },
+          { id: "stationAnchor", x: 1, y: 4 },
+        ],
+      },
+    },
   };
 
   // Derived once per class at load — the holds above are static, so this
@@ -1152,6 +1259,12 @@
           // telegraph); a cost-1 chaser spawns full and fires every turn.
           energy: def.startsEmpty ? 0 : def.ship.maxEnergy,
           maxEnergy: def.ship.maxEnergy,
+          // A Shield Generator in a hostile hold does what one in yours
+          // does: absorbs a hit, then it's spent. Same item, same rule,
+          // same both ways round — an Escort is simply the first class
+          // that bothered to bolt one on.
+          shieldCharges: def.ship.maxShields,
+          maxShields: def.ship.maxShields,
         };
       }),
       // The Hold: the ship's equipment grid — either carried whole from
@@ -1472,6 +1585,14 @@
     });
     for (const victim of targets) {
       if (!victim.alive) continue; // an earlier target's push/collision in this same volley already took it out
+      // A raised hostile screen eats the whole shot, exactly as yours eats
+      // a whole enemy phase — one charge, one hit, however big the hit.
+      if (victim.shieldCharges > 0) {
+        victim.shieldCharges -= 1;
+        state.events.push({ type: "enemyShieldAbsorb", q: victim.q, r: victim.r, enemyId: victim.id });
+        pushLog(state, `${weapon.label}: ${victim.type.toUpperCase()} screen holds — shield down.`);
+        continue;
+      }
       victim.hp -= weapon.damage;
       if (victim.hp <= 0) {
         victim.alive = false;
