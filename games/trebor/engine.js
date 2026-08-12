@@ -394,10 +394,14 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
     // Strength adds flat damage to every attack — from the class mechanic, from
     // relics (Spiked Collar), and from this-combat relic Strength (Rag Medal);
     // Vulnerable then amplifies the total by 50% per target.
+    const mech = classMechanic(state, content);
+    // Underdog (Piccolo): while at or below half Hull, every attack hits harder.
+    const underdog = mech.underdogDamage && state.player.hp * 2 <= state.player.maxHp ? mech.underdogDamage : 0;
     const strength =
-      (classMechanic(state, content).strength || 0) +
+      (mech.strength || 0) +
       relicSum(state, content, "strength") +
-      (state.player.combatStrength || 0);
+      (state.player.combatStrength || 0) +
+      underdog;
     const base = card.damage + strength;
     if (card.aoe) {
       for (const enemy of livingEnemies(state)) applyDamage(enemy, withVulnerable(enemy, base));
@@ -416,6 +420,13 @@ function playCard(state, content, handIndex, targetId, rng = Math.random) {
     const marked = card.aoe ? livingEnemies(state) : [target];
     for (const e of marked) if (e) e.weak += card.weak;
     state.log.push(`${card.name}: +${card.weak} Weak.`);
+  }
+  if (card.selfDamage) {
+    // Reckless cards (Piccolo's kit): recoil straight to Hull — ignores Block, and
+    // deliberately shoves him toward his Underdog range. Never lethal on its own
+    // (min 1), so a hard swing can't kill you outright; the cats still can.
+    state.player.hp = Math.max(1, state.player.hp - card.selfDamage);
+    state.log.push(`${card.name}: lose ${card.selfDamage} Hull.`);
   }
   if (card.block) {
     state.player.block += card.block;

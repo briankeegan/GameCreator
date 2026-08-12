@@ -57,7 +57,7 @@ assert.throws(() => Engine.playCard(gate, Content, 0, null, rng), /Cannot play a
 assert.throws(() => Engine.chooseClass(gate, Content, "notADog", rng), /Unknown class/);
 
 // Each class sets its own Hull and 12-card deck.
-const hpByClass = { riddle: 26, koozie: 32, bevy: 30, lala: 36, dolche: 30, rambo: 36 };
+const hpByClass = { piccolo: 28, riddle: 26, koozie: 32, bevy: 30, lala: 36, dolche: 30, rambo: 36 };
 for (const id of Object.keys(Content.CLASSES)) {
   const s = Engine.createGameState(Content, rng);
   Engine.chooseClass(s, Content, id, rng);
@@ -120,6 +120,29 @@ assert.strictEqual(ramM.enemies[0].hp, 28 - 8, "turn-1 Bite lands for 6+2 Moment
 const beforeStr = ramM.player.combatStrength;
 Engine.endPlayerTurn(ramM, Content, rng);
 assert.strictEqual(ramM.player.combatStrength, beforeStr + 2, "Momentum stacks +2 Strength each turn");
+
+// Piccolo — Underdog: attacks hit +3 while at or below half Hull; Reckless Charge
+// deals damage and recoils straight to Hull (through Block), never lethal.
+const picM = Engine.createGameState(Content, rng);
+Engine.chooseClass(picM, Content, "piccolo", rng);
+Engine.chooseNode(picM, Content, 0, rng);
+picM.player.energy = 99; // isolate: never energy-gated during the sequence
+const pFoe = picM.enemies[0];
+pFoe.hp = 50; // survives the whole sequence; isolates the damage numbers
+pFoe.block = 0;
+picM.hand.unshift("bite");
+Engine.playCard(picM, Content, 0, pFoe.id, rng); // full Hull (28) -> Underdog OFF, Bite = 6
+assert.strictEqual(pFoe.hp, 50 - 6, "at full Hull Bite is just 6 (Underdog off)");
+picM.player.hp = 14; // exactly half of 28 -> Underdog ON
+picM.hand.unshift("bite");
+Engine.playCard(picM, Content, 0, pFoe.id, rng);
+assert.strictEqual(pFoe.hp, 44 - 9, "at half Hull Bite hits for 6+3 Underdog");
+picM.player.hp = 20; // back above half -> Underdog off for the attack
+picM.player.block = 99; // recoil must ignore Block
+picM.hand.unshift("recklessCharge");
+Engine.playCard(picM, Content, 0, pFoe.id, rng);
+assert.strictEqual(pFoe.hp, 35 - 8, "Reckless Charge deals its 8 (Underdog off above half Hull)");
+assert.strictEqual(picM.player.hp, 18, "Reckless Charge recoils 2 Hull straight through Block");
 
 // ---------------------------------------------------------------------
 // Floor 1 fight (as Koozie), traced through the key mechanics.
@@ -384,7 +407,7 @@ assert.strictEqual(Engine.livingEnemies(vuln)[0].vulnerable, 1, "Vulnerable tick
 
 // Reward-pool hygiene: no class-signature card is offered as a generic reward
 // (they'd strictly dominate — Lock Jaw over Bite), and the Vulnerable cards are.
-const classSignatures = ["lockJaw", "chomp", "bodySlam", "riptide", "brace", "counterSurge", "rally", "flurry", "scurry", "digIn"];
+const classSignatures = ["lockJaw", "chomp", "bodySlam", "riptide", "brace", "counterSurge", "rally", "flurry", "scurry", "digIn", "recklessCharge", "herd", "scrapper"];
 for (const id of classSignatures) {
   assert.ok(!Content.BASE_REWARD_POOL.includes(id), `${id} (a class signature) must not be in the shared reward pool`);
 }

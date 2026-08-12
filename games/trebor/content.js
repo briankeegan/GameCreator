@@ -54,6 +54,12 @@ const CARDS = {
   sledCharge: { id: "sledCharge", name: "Sled Charge", cost: 1, damage: 5, combatStrength: 1, text: "Deal 5 damage. Gain +1 Strength this combat." }, // Rambo
   packHowl: { id: "packHowl", name: "Pack Howl", cost: 1, damage: 4, aoe: true, combatStrength: 1, text: "Deal 4 to ALL. Gain +1 Strength this combat." }, // Rambo
   mush: { id: "mush", name: "Mush", cost: 1, damage: 3, draw: 1, combatStrength: 1, text: "Deal 3 damage. Draw a card. Gain +1 Strength this combat." }, // Rambo
+  // Piccolo's signatures — a scrappy little corgi who throws himself in. Reckless
+  // Charge trades Hull for a big hit (and pushes him into Underdog range); Herd
+  // rounds up the whole pack with a nip; Scrapper is a compact brawl of hit+guard.
+  recklessCharge: { id: "recklessCharge", name: "Reckless Charge", cost: 1, damage: 8, selfDamage: 2, text: "Deal 8 damage. Lose 2 Hull." }, // Piccolo
+  herd: { id: "herd", name: "Herd", cost: 1, damage: 4, aoe: true, weak: 1, text: "Deal 4 to ALL enemies. Apply 1 Weak to ALL." }, // Piccolo
+  scrapper: { id: "scrapper", name: "Scrapper", cost: 1, damage: 5, block: 4, text: "Deal 5 damage. Gain 4 Block." }, // Piccolo
   // Boss-reward cards — powerful, only offered after felling an act boss:
   maul: { id: "maul", name: "Maul", cost: 2, damage: 18, text: "Deal 18 damage." },
   warCry: { id: "warCry", name: "War Cry", cost: 2, damage: 10, aoe: true, block: 6, text: "Deal 10 to ALL enemies. Gain 6 Block." },
@@ -66,6 +72,19 @@ const CARDS = {
 // starting deck and Hull (HP) so it plays distinctly. `deck` is a flat list
 // of card ids (duplicates allowed). Chosen once at the start of a run.
 const CLASSES = {
+  piccolo: {
+    id: "piccolo",
+    name: "Piccolo",
+    breed: "Pembroke Welsh Corgi",
+    blurb: "A stubby-legged scrapper with more nerve than sense — small, low to the ground, and meanest when he's cornered. He fights hardest with his back against the wall.",
+    maxHp: 28,
+    // Underdog: while at or below half Hull, his attacks hit for +3. He WANTS to
+    // be hurt — a comeback fighter, the mirror of a turtle. Reckless Charge trades
+    // Hull to get there on purpose. Rewards living dangerously.
+    mechanic: { underdogDamage: 3, name: "Underdog", text: "While at or below half Hull, your attacks deal +3 damage." },
+    deck: ["recklessCharge", "recklessCharge", "scrapper", "scrapper", "herd", "bite", "bite", "bite", "growl", "growl", "nip", "guardDog"],
+    rewardCards: ["recklessCharge", "herd", "scrapper", "muzzle"],
+  },
   riddle: {
     id: "riddle",
     name: "Riddle",
@@ -189,6 +208,7 @@ function cardTextOf(c) {
   if (c.heal) parts.push(`Heal ${c.heal}.`);
   if (c.combatStrength) parts.push(`Gain +${c.combatStrength} Strength this combat.`);
   if (c.draw) parts.push(`Draw ${c.draw} card${c.draw > 1 ? "s" : ""}.`);
+  if (c.selfDamage) parts.push(`Lose ${c.selfDamage} Hull.`);
   return parts.join(" ");
 }
 
@@ -201,6 +221,7 @@ const UPGRADABLE = [
   "gnash", "hunker", "digIn", "riptide", "rally", "lockJaw",
   "scurry", "brace", "counterSurge", "flurry", "chomp", "bodySlam",
   "truffleHunt", "waterlog", "curlUp", "sledCharge", "packHowl", "mush",
+  "recklessCharge", "herd", "scrapper",
 ];
 const UPGRADES = {};
 for (const id of UPGRADABLE) {

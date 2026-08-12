@@ -42,6 +42,7 @@
     "counterSurge", "goodBoy", "rend", "howl", "bigBark", "alphaStrike", "secondWind",
     "cower", "muzzle", "nip", "gnash", "hunker",
     "truffleHunt", "waterlog", "curlUp", "sledCharge", "packHowl", "mush",
+    "recklessCharge", "herd", "scrapper",
   ]);
 
   const NODE_ICON = {
@@ -78,6 +79,7 @@
     catKing: "icons/enemy-cat-king.png",
   };
   const DOG_IMG = {
+    piccolo: "icons/dog-piccolo.png",
     riddle: "icons/dog-riddle.png",
     koozie: "icons/dog-koozie.png",
     bevy: "icons/dog-bevy.png",
