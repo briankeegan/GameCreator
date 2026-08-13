@@ -289,6 +289,10 @@ function advanceSector() {
       // Whole run shares one seed — carried forward, never rerolled
       // mid-run, so the "luck" a run got is that run's, start to finish.
       runSeed: state.runSeed,
+      // The rare-item bad-luck counter (see RARE_PITY_VISITS) tracks
+      // across the whole run too — a dry streak follows you sector to
+      // sector, same as the seed it's derived from.
+      raresSkipped: state.raresSkipped,
       // The Hold carries whole — the ship IS its equipment grid.
       hold: state.hold,
     },
@@ -1554,38 +1558,74 @@ const outpostImg = new Image();
 outpostImg.src = "icons/outpost.png";
 outpostImg.onload = () => draw();
 
-function drawOutpost(center, r, now) {
+// Whether THIS visit's shelf has a rare-tier item on it (Mortar/Flank
+// Tubes/Railgun — see Engine.OUTPOST_OFFER_POOL) — the beacon reads it, so
+// a station worth detouring for looks different from a routine one before
+// you're even docked. Nothing in the UI states what the color means (same
+// treatment as the gate tints — "maybe color coordinated, but maybe not
+// tell people"); fly a few and you learn to read it.
+function outpostHasRareStock(state) {
+  return (state.outpostOfferIds || []).some((id) => {
+    const offer = Engine.OUTPOST_OFFER_POOL.find((o) => o.id === id);
+    return offer && offer.rarity === "rare";
+  });
+}
+
+function drawOutpost(center, r, now, hasRareStock) {
   ctx.save();
   ctx.translate(center.x, center.y);
+  // A wide outer halo, same construction as drawEnemyShip's per-class
+  // glow — that one reads at a glance from across the board because it's
+  // sized to stand off the dark floor, not just tint the sprite itself.
+  // The small inner beacon below already changed color, but at real board
+  // zoom it was too small to actually notice; this is the part that
+  // carries the signal from a distance.
+  if (hasRareStock) {
+    const outerHalo = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 1.3);
+    outerHalo.addColorStop(0, "rgba(215,80,255,0.5)");
+    outerHalo.addColorStop(0.55, "rgba(180,50,225,0.26)");
+    outerHalo.addColorStop(1, "rgba(160,40,210,0)");
+    ctx.fillStyle = outerHalo;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
   // A finished station sprite was sitting in icons/ unreferenced while
   // this function painted one from scratch. The shape below is the
   // fallback for the moment before it loads.
-  if (drawShipImage(outpostImg, r * 0.98)) {
-    ctx.restore();
-    return;
+  const usedSprite = drawShipImage(outpostImg, r * 0.98);
+  if (!usedSprite) {
+    ctx.fillStyle = "#3a4358";
+    ctx.strokeStyle = "#8fa2c2";
+    ctx.lineWidth = Math.max(1, r * 0.06);
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Two docking struts, opposite each other.
+    ctx.fillStyle = "#4a5570";
+    for (const angle of [0, Math.PI]) {
+      ctx.save();
+      ctx.rotate(angle);
+      ctx.fillRect(r * 0.42, -r * 0.12, r * 0.5, r * 0.24);
+      ctx.strokeRect(r * 0.42, -r * 0.12, r * 0.5, r * 0.24);
+      ctx.restore();
+    }
   }
-  ctx.fillStyle = "#3a4358";
-  ctx.strokeStyle = "#8fa2c2";
-  ctx.lineWidth = Math.max(1, r * 0.06);
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-  // Two docking struts, opposite each other.
-  ctx.fillStyle = "#4a5570";
-  for (const angle of [0, Math.PI]) {
-    ctx.save();
-    ctx.rotate(angle);
-    ctx.fillRect(r * 0.42, -r * 0.12, r * 0.5, r * 0.24);
-    ctx.strokeRect(r * 0.42, -r * 0.12, r * 0.5, r * 0.24);
-    ctx.restore();
-  }
-  // A slow-pulsing amber beacon at the hub's core — "open for business."
+  // A slow-pulsing beacon at the hub's core — "open for business," same as
+  // always, in the usual amber. Drawn over the loaded sprite too, not just
+  // the vector fallback: the PNG is one flat static image, so without this
+  // every station would look identical regardless of what it's stocking.
+  // A rare-tier item on the shelf turns it hot violet instead — the same
+  // "color means something, nobody tells you what" language the Warp
+  // Gates already use for their branch tints.
   const t = (now || 0) / 1000;
   const pulse = 0.6 + 0.4 * Math.sin(t * 2);
+  const core = hasRareStock ? "255,225,255" : "255,206,138";
+  const edge = hasRareStock ? "215,80,255" : "255,160,60";
   const beacon = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.3 * pulse);
-  beacon.addColorStop(0, "rgba(255,206,138,0.95)");
-  beacon.addColorStop(1, "rgba(255,160,60,0)");
+  beacon.addColorStop(0, `rgba(${core},0.95)`);
+  beacon.addColorStop(1, `rgba(${edge},0)`);
   ctx.fillStyle = beacon;
   ctx.beginPath();
   ctx.arc(0, 0, r * 0.3 * pulse, 0, Math.PI * 2);
@@ -2494,7 +2534,7 @@ function draw() {
       const look = gateLook(exitHere.variantId);
       drawWarpGate(center, geom.sx * 0.5, state.exitUnlocked, now, look.rgb, look);
     } else if (isOutpost) {
-      drawOutpost(center, geom.sx * 0.56, now);
+      drawOutpost(center, geom.sx * 0.56, now, outpostHasRareStock(state));
     } else if (isWormhole) {
       drawWormhole(center, geom.sx * 0.5, now);
     } else if (isHazard && isHazard.type === "asteroid") {

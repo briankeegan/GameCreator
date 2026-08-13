@@ -474,6 +474,9 @@ function playRun(seed, report) {
       maxEnergy: state.maxEnergy,
       maxAp: state.maxAp,
       hold: state.hold,
+      // Carried so the rare-item bad-luck guarantee actually accumulates
+      // across a simulated run instead of resetting every sector.
+      raresSkipped: state.raresSkipped,
     };
   }
   return { depth: depth - 1, outcome: "survived" };

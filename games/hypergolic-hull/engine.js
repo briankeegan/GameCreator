@@ -1015,29 +1015,63 @@
     railgun: "railgun",
   };
 
+  // `rarity` drives two things (see pickOutpostOfferIds): how LIKELY an
+  // item is to be the one the shelf rolls, and — via RARITY_WEIGHT — how
+  // hard the bad-luck guarantee has to work to find you one. Repair has no
+  // rarity: it's not part of the roll at all, always on the shelf.
+  // Tiers follow the game's own unlock ladder — reinforce/shield/reactor
+  // are available from Sector 2 on, so they're common; flakBurst/arcBeam/
+  // hardpoint unlock a little deeper, so uncommon; mortar/flankTubes/
+  // railgun are the late, expensive, run-defining shapes, so rare.
   const OUTPOST_OFFER_POOL = [
     { id: "repair", label: "Patch 1 Hull", cost: 10 },
-    { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 10 },
+    { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 10, rarity: "common" },
     // Shields aren't consumable purchases anymore — you buy the GENERATOR
     // (permanent +1 capacity, arrives raised), then re-raising a spent
     // charge costs Energy and a turn (applyRaiseShields), not salvage.
-    { id: "shield", label: "Shield Generator (2x2 — raise-able charge)", cost: 8 },
+    { id: "shield", label: "Shield Generator (2x2 — raise-able charge)", cost: 8, rarity: "common" },
     // The two "configurable limits" as purchases: your reactor cap (how
     // much Energy you can bank against expensive weapons) and your weapon
     // slots (how many systems can run at once) are both ship stats you
     // grow at Outposts, not constants.
-    { id: "reactor", label: "Reactor Upgrade (+1 Max Energy)", cost: 8 },
-    { id: "hardpoint", label: "Hold Expansion (+1 row of internal space)", cost: 12 },
+    { id: "reactor", label: "Reactor Upgrade (+1 Max Energy)", cost: 8, rarity: "common" },
+    { id: "hardpoint", label: "Hold Expansion (+1 row of internal space)", cost: 12, rarity: "uncommon" },
     // The three weapons beyond your starting Autocannon, priced on a real
     // curve — each one answers a situation the others can't, and each is
     // the item a hostile class already carries (buy the gun that's been
     // shooting at you).
-    { id: "flakBurst", label: "Flak Burst (2x2 — everything touching us, at once)", cost: 10 },
-    { id: "arcBeam", label: "Arc Beam (2x2 — the ring at two. Nothing closer.)", cost: 8 },
-    { id: "mortar", label: "Mortar (2x2 — lands at three, straight over the rocks)", cost: 14 },
-    { id: "flankTubes", label: "Flank Tubes (1x3 — the gaps at two, 2 dmg)", cost: 16 },
-    { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 24 },
+    { id: "flakBurst", label: "Flak Burst (2x2 — everything touching us, at once)", cost: 10, rarity: "uncommon" },
+    { id: "arcBeam", label: "Arc Beam (2x2 — the ring at two. Nothing closer.)", cost: 8, rarity: "uncommon" },
+    { id: "mortar", label: "Mortar (2x2 — lands at three, straight over the rocks)", cost: 14, rarity: "rare" },
+    { id: "flankTubes", label: "Flank Tubes (1x3 — the gaps at two, 2 dmg)", cost: 16, rarity: "rare" },
+    { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 24, rarity: "rare" },
   ];
+
+  // Roughly Slay the Spire's shop odds (~54/37/9 common/uncommon/rare) and
+  // Risk of Rain 2's item-tier weighting (commons dominate the pool,
+  // legendaries are the exception) — commons should show up constantly,
+  // rares should feel like an event when they do.
+  const RARITY_WEIGHT = { common: 10, uncommon: 4, rare: 1 };
+
+  // Weighted sample of `count` items from `items`, no repeats, heavier
+  // items more likely each draw — the standard "shrinking roulette wheel":
+  // roll a point along the total weight, walk the list until it lands,
+  // remove that item, repeat against what's left.
+  function weightedPickWithoutReplacement(items, weightOf, count, rng) {
+    const pool = items.slice();
+    const picked = [];
+    while (pool.length && picked.length < count) {
+      const total = pool.reduce((sum, it) => sum + weightOf(it), 0);
+      let roll = rng() * total;
+      let i = 0;
+      for (; i < pool.length - 1; i++) {
+        roll -= weightOf(pool[i]);
+        if (roll < 0) break;
+      }
+      picked.push(pool.splice(i, 1)[0]);
+    }
+    return picked;
+  }
 
   function seededRandom(seed) {
     let a = seed >>> 0;
@@ -1071,7 +1105,21 @@
   // state.runSeed) — the same sector still can't reroll mid-visit (you're
   // not punished for backing out of the menu), but a fresh run deals it
   // fresh.
-  function pickOutpostOfferIds(levelId, aboard, runSeed) {
+  // How many salvage-eligible cost swings apply, either way — wide enough
+  // to feel like a real roll ("a cheap Railgun!"), narrow enough that a
+  // rolled price never breaks the hand-tuned cost curve ("weapons should
+  // be way more expensive... you have to save up for them" — a Railgun
+  // at 24±15% is still 20-28, still a save-up purchase either way).
+  const PRICE_VARIANCE = 0.15;
+
+  // How many consecutive Outpost visits are allowed to roll zero rare-tier
+  // items (Mortar/Flank Tubes/Railgun) before the next one is guaranteed
+  // one — see state.raresSkipped. Same shape as Slay the Spire's rare-card
+  // "pity" offset: pure bad luck can make a run miss the shapes it needs
+  // to answer what it's fighting, which isn't lucky, it's unsolvable.
+  const RARE_PITY_VISITS = 3;
+
+  function pickOutpostOfferIds(levelId, aboard, runSeed, raresSkipped) {
     // A frontier station is a scrapyard with a welding rig, not a
     // showroom. Repair plus TWO things — that's the whole shelf
     // (Clubhouse: "too many options too soon... this is a gritty scifi,
@@ -1103,44 +1151,74 @@
       return true; // reinforce / shield / reactor: basic dock trade at any depth
     });
     const rng = runSeeded(runSeed, levelId * 7919 + 13);
-    const shuffled = stock.slice();
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      const tmp = shuffled[i];
-      shuffled[i] = shuffled[j];
-      shuffled[j] = tmp;
-    }
-    // THREE slots, not two. With six weapons in the world a two-slot
-    // shelf simply cannot show you the gun you need often enough: adding
-    // the Mortar and the Flank Tubes to the pool measured out as the Arc
-    // Beam never appearing at all across sixty runs, and every run
-    // reaching the Bulwark with the Autocannon it started with, spending
-    // its whole salvage on hull patches. A dock has to be a real chance
-    // to change what the ship is.
-    const picked = ["repair", ...shuffled.slice(0, 3).map((o) => o.id)];
+    // THREE slots, not two, weighted by rarity rather than a flat
+    // shuffle-and-slice — commons show up often, rares are the exciting
+    // exception (see RARITY_WEIGHT). Flat odds still needed the slot count
+    // bumped from two to three in the first place: with six weapons in the
+    // world a two-slot shelf simply cannot show you the gun you need often
+    // enough — measured out as the Arc Beam never appearing at all across
+    // sixty runs, and every run reaching the Bulwark with the Autocannon
+    // it started with. A dock has to be a real chance to change the ship.
+    const rolled = weightedPickWithoutReplacement(stock, (o) => RARITY_WEIGHT[o.rarity] || 1, 3, rng);
+    const ids = ["repair", ...rolled.map((o) => o.id)];
+    // Both guarantees below APPEND and drop the last unforced entry,
+    // rather than writing into the same slot — at sector 3 they used to
+    // overwrite each other, so a ship with no screen could be promised one
+    // and handed an Arc Beam instead.
+    const FORCED = new Set();
+    const force = (id) => {
+      if (ids.includes(id)) return;
+      const drop = ids.findIndex((p, i) => i > 0 && !FORCED.has(p));
+      if (drop >= 0) ids.splice(drop, 1);
+      ids.push(id);
+      FORCED.add(id);
+    };
     // A three-Hull ship lives or dies on screens, so a yard will always
     // find you a generator if you're flying without one. Everything else
     // is what they happen to have; this one is the trade that keeps the
     // crawl survivable at all.
-    // Both guarantees APPEND and drop the last unforced entry, rather than
-    // writing into the same slot — at sector 3 they used to overwrite each
-    // other, so a ship with no screen could be promised one and handed an
-    // Arc Beam instead.
-    const force = (id) => {
-      if (picked.includes(id)) return;
-      const drop = picked.findIndex((p, i) => i > 0 && !FORCED.has(p));
-      if (drop >= 0) picked.splice(drop, 1);
-      picked.push(id);
-      FORCED.add(id);
-    };
-    const FORCED = new Set();
     if (!carried.has("shieldGenerator")) force("shield");
     // Sector 3 is the Sentry Line — the first sector with something that
     // outranges you and won't come to you. The weapon that answers it has
-    // to be ON THE SHELF there, not left to the shuffle, or the lesson is
+    // to be ON THE SHELF there, not left to the roll, or the lesson is
     // just "take two hits and hope".
     if (levelId === 3 && !carried.has("arcBeam")) force("arcBeam");
-    return picked;
+
+    // Bad-luck protection: three straight visits with nothing rare on the
+    // shelf forces the fourth to deal one, same mechanism as the
+    // guarantees above. Doesn't fire (and doesn't count against the
+    // streak) at depths where nothing rare is eligible yet — that's the
+    // unlock schedule doing its job, not a dry spell.
+    const hasRareEligible = stock.some((o) => o.rarity === "rare");
+    const gotRare = ids.some((id) => (OUTPOST_OFFER_POOL.find((o) => o.id === id) || {}).rarity === "rare");
+    let nextRaresSkipped = raresSkipped || 0;
+    if (gotRare) {
+      nextRaresSkipped = 0;
+    } else if (hasRareEligible) {
+      if (nextRaresSkipped >= RARE_PITY_VISITS) {
+        const rareChoices = stock.filter((o) => o.rarity === "rare" && !ids.includes(o.id));
+        if (rareChoices.length) {
+          force(rareChoices[Math.floor(rng() * rareChoices.length)].id);
+          nextRaresSkipped = 0;
+        }
+      } else {
+        nextRaresSkipped += 1;
+      }
+    }
+
+    // Prices wobble too — a fresh roll per offer, off the same run-seeded
+    // stream as the stock itself, so the exact same Railgun offer can cost
+    // more or less than last time you saw it. Repair sits out: it's "the
+    // reliable baseline," not part of the gamble.
+    const prices = {};
+    for (const id of ids) {
+      if (id === "repair") continue;
+      const offer = OUTPOST_OFFER_POOL.find((o) => o.id === id);
+      const mult = 1 - PRICE_VARIANCE + rng() * (2 * PRICE_VARIANCE);
+      prices[id] = Math.max(1, Math.round(offer.cost * mult));
+    }
+
+    return { ids, prices, raresSkipped: nextRaresSkipped };
   }
 
   // The Bulwark's own station is the one shop in the crawl that isn't a
@@ -1248,6 +1326,29 @@
     // that builds state directly — every existing engine test — still gets
     // the exact old deterministic-per-level-id behavior.
     const runSeed = (carryOver && Number.isFinite(carryOver.runSeed)) ? carryOver.runSeed >>> 0 : 0;
+    // How many consecutive Outpost visits this run has gone without a
+    // rare-tier item on the shelf (see RARE_PITY_VISITS) — carried through
+    // carryOver exactly like runSeed, so the bad-luck guarantee tracks
+    // across the whole run rather than resetting every sector.
+    const priorRaresSkipped = (carryOver && Number.isFinite(carryOver.raresSkipped)) ? carryOver.raresSkipped : 0;
+    let outpostOfferIds = [];
+    let outpostOfferPrices = {};
+    let raresSkipped = priorRaresSkipped;
+    if (level.outpost) {
+      if (level.isBoss) {
+        outpostOfferIds = bossOutpostOfferIds(); // fixed offers at fixed prices — see bossOutpostOfferIds
+      } else {
+        const rolled = pickOutpostOfferIds(
+          level.id,
+          [...hold.items.map((it) => it.id), ...hold.cargo],
+          runSeed,
+          priorRaresSkipped
+        );
+        outpostOfferIds = rolled.ids;
+        outpostOfferPrices = rolled.prices;
+        raresSkipped = rolled.raresSkipped;
+      }
+    }
     const state = {
       levelId: level.id,
       levelName: level.name || `Sector ${level.id}`,
@@ -1297,12 +1398,14 @@
       // Some stretches of space are worth more per wreck than others.
       salvageBonus: level.salvageBonus || 0,
       runSeed: runSeed,
+      raresSkipped: raresSkipped,
       outpostPos: pickOutpostPos(level, runSeed),
-      outpostOfferIds: level.outpost
-        ? level.isBoss
-          ? bossOutpostOfferIds()
-          : pickOutpostOfferIds(level.id, [...hold.items.map((it) => it.id), ...hold.cargo], runSeed)
-        : [],
+      outpostOfferIds: outpostOfferIds,
+      // Per-visit rolled price for each id in outpostOfferIds (see
+      // pickOutpostOfferIds) — outpostOffers()/applyOutpostPurchase() read
+      // this instead of OUTPOST_OFFER_POOL's flat cost. Empty for the boss
+      // shop (bossOutpostOfferIds) and for a sector with no Outpost.
+      outpostOfferPrices: outpostOfferPrices,
       exitRule: level.exitRule,
       exitUnlocked: false,
       hazards: (level.hazards || []).map((h) => ({ type: h.type, q: h.q, r: h.r })),
@@ -2012,14 +2115,23 @@
     return state.outpostOfferIds
       .map((id) => OUTPOST_OFFER_POOL.find((o) => o.id === id))
       .filter(Boolean)
-      .map((offer) => ({
-        ...offer,
-        affordable: state.salvage >= offer.cost,
-        applicable: offer.id !== "repair" || state.hull < state.maxHull,
-        // Whether the crate would physically go in — the UI greys out what
-        // there is no room for rather than letting you find out by paying.
-        fits: OFFER_ITEM[offer.id] ? holdHasRoomFor(state.hold, OFFER_ITEM[offer.id]) : true,
-      }));
+      .map((offer) => {
+        // The price actually rolled for THIS visit (see
+        // pickOutpostOfferIds) — falls back to the pool's flat cost for
+        // the boss shop (no roll — see bossOutpostOfferIds) and for any
+        // caller that sets state.outpostOfferIds by hand without also
+        // rolling prices (every existing test fixture).
+        const cost = (state.outpostOfferPrices && state.outpostOfferPrices[offer.id]) ?? offer.cost;
+        return {
+          ...offer,
+          cost,
+          affordable: state.salvage >= cost,
+          applicable: offer.id !== "repair" || state.hull < state.maxHull,
+          // Whether the crate would physically go in — the UI greys out what
+          // there is no room for rather than letting you find out by paying.
+          fits: OFFER_ITEM[offer.id] ? holdHasRoomFor(state.hold, OFFER_ITEM[offer.id]) : true,
+        };
+      });
   }
 
   // Hardware you have no room for still SELLS — it rides in cargo until a
@@ -2046,7 +2158,10 @@
     if (!state.outpostOfferIds.includes(offerId)) throw new Error(`Outpost: "${offerId}" is not on offer here`);
     const offer = OUTPOST_OFFER_POOL.find((o) => o.id === offerId);
     if (!offer) throw new Error(`Outpost: unknown offer "${offerId}"`);
-    if (state.salvage < offer.cost) throw new Error(`Not enough salvage for ${offer.label}`);
+    // The price rolled for THIS visit (see pickOutpostOfferIds), not the
+    // pool's flat cost — same fallback as outpostOffers() above.
+    const cost = (state.outpostOfferPrices && state.outpostOfferPrices[offerId]) ?? offer.cost;
+    if (state.salvage < cost) throw new Error(`Not enough salvage for ${offer.label}`);
     state.events = [];
     if (offer.id === "repair") {
       if (state.hull >= state.maxHull) throw new Error("Nothing to patch — hull is sound");
@@ -2079,11 +2194,8 @@
       autoPlaceInHold(state.hold, offer.id);
       syncHoldDerived(state);
     }
-    state.salvage -= offer.cost;
-    pushLog(
-      state,
-      offer.cost > 0 ? `Traded ${offer.cost} salvage for ${offer.label}.` : `Took delivery of ${offer.label}.`
-    );
+    state.salvage -= cost;
+    pushLog(state, cost > 0 ? `Traded ${cost} salvage for ${offer.label}.` : `Took delivery of ${offer.label}.`);
     // Every offer except Repair is a one-time purchase per outpost — buying
     // it removes it from what's on offer here, so a visit is a real choice
     // instead of "buy everything repeatedly as long as you can afford it."

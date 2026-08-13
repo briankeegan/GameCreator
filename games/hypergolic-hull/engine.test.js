@@ -948,6 +948,99 @@ assert.deepStrictEqual(
   "the same level id always deals the same offers (reproducible)"
 );
 
+// ---- outpost rarity, price, and the rare-item bad-luck guarantee --------
+// Clubhouse feedback: even varied-per-level stock was the exact same
+// stock every single time you replayed that sector — reproducible had
+// quietly become boring for a "luck and skill" crawler. Fixed by tying the
+// roll to state.runSeed (a fresh one per RUN, not per level id) plus three
+// things borrowed from how established roguelikes actually do drop
+// tables: weighted rarity (Slay the Spire's shop odds, Risk of Rain 2's
+// item tiers — commons common, rares an event), price variance per visit,
+// and a bad-luck guarantee (Slay the Spire's rare-card pity offset) so a
+// genuinely unlucky run still isn't an unsolvable one.
+function outpostRunFixture(levelId, runSeed, raresSkipped) {
+  return Engine.createGameState(
+    {
+      id: levelId,
+      radius: 2,
+      playerStart: { q: 0, r: 0 },
+      exit: { q: 2, r: 0 },
+      outpost: { q: -2, r: 0 },
+      enemies: [],
+      hazards: [],
+      exitRule: "all-enemies-dead",
+    },
+    { runSeed, raresSkipped }
+  );
+}
+assert.deepStrictEqual(
+  outpostRunFixture(950, 42, 0).outpostOfferIds,
+  outpostRunFixture(950, 42, 0).outpostOfferIds,
+  "same level id + same run seed + same pity state always deals the same shop (reproducible within a run)"
+);
+assert.notDeepStrictEqual(
+  outpostRunFixture(950, 1, 0).outpostOfferIds,
+  outpostRunFixture(950, 2, 0).outpostOfferIds,
+  "a different run seed can deal Sector 950 a genuinely different shop — replaying a sector isn't guaranteed identical anymore"
+);
+// Rarity actually weights the roll: sampled with the bad-luck guarantee
+// held off (raresSkipped reset every sample), commons should show up far
+// more than rares purely from the weighting, not the guarantee.
+{
+  const tally = {};
+  for (let levelId = 950; levelId < 1050; levelId++) {
+    const s = outpostRunFixture(levelId, 99, 0);
+    for (const id of s.outpostOfferIds) tally[id] = (tally[id] || 0) + 1;
+  }
+  const commonCount = (tally.reinforce || 0) + (tally.reactor || 0);
+  const rareCount = (tally.mortar || 0) + (tally.flankTubes || 0) + (tally.railgun || 0);
+  assert.ok(
+    commonCount > rareCount * 2,
+    `common items (${commonCount} sightings) show up meaningfully more than rare ones (${rareCount}) — rarity weighting is real, not cosmetic`
+  );
+}
+// Prices roll within a modest band of the pool's listed cost — a real
+// swing ("a cheap Railgun!"), never enough to break the hand-tuned cost
+// curve ("weapons should be way more expensive... you have to save up").
+{
+  let sawADifferentPrice = false;
+  for (let levelId = 950; levelId < 980; levelId++) {
+    const s = outpostRunFixture(levelId, 7, 0);
+    for (const id of s.outpostOfferIds) {
+      if (id === "repair") continue;
+      const base = Engine.OUTPOST_OFFER_POOL.find((o) => o.id === id).cost;
+      const rolled = s.outpostOfferPrices[id];
+      assert.ok(
+        rolled >= Math.floor(base * 0.85) && rolled <= Math.ceil(base * 1.15),
+        `level ${levelId}: rolled price ${rolled} for ${id} stays within the tuned band around ${base}`
+      );
+      if (rolled !== base) sawADifferentPrice = true;
+    }
+  }
+  assert.ok(sawADifferentPrice, "prices actually DO vary visit to visit, not just in theory");
+}
+// Bad-luck protection: three straight Outpost visits with nothing
+// rare-tier on the shelf force the fourth to deal one — a dry streak
+// longer than that isn't luck, it's a run that can't get the shapes it
+// needs to answer what it's fighting.
+{
+  const RARE_IDS = new Set(["mortar", "flankTubes", "railgun"]);
+  let raresSkipped = 0;
+  let dryStreak = 0;
+  let worstDryStreak = 0;
+  for (let levelId = 950; levelId < 1010; levelId++) {
+    const s = outpostRunFixture(levelId, 2024, raresSkipped);
+    const gotRare = s.outpostOfferIds.some((id) => RARE_IDS.has(id));
+    dryStreak = gotRare ? 0 : dryStreak + 1;
+    worstDryStreak = Math.max(worstDryStreak, dryStreak);
+    raresSkipped = s.raresSkipped;
+  }
+  assert.ok(
+    worstDryStreak <= 3,
+    `no run of Outposts should go more than 3 straight visits without a rare-tier item (worst streak seen: ${worstDryStreak})`
+  );
+}
+
 // ---- Shields: a raised charge absorbs one full hit, then is spent --------
 const shieldLevel = {
   id: 991,
