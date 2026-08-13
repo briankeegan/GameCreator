@@ -1132,6 +1132,86 @@ async function freshPage(browser, url, errors) {
     await page.click("#scanBtn"); // back out of Scan
   }
 
+  // A plotted course has to actually FLY. The burn used to abort the
+  // instant hull dropped, and since every step of a course is a full
+  // round — enemy phase and all — anything shooting at you ended the
+  // course on its first step. Measured before the fix: asked for 9 hexes,
+  // flew 1; asked for 12, flew 2; asked for 10, flew 1. Re-plotting just
+  // repeated it, so movement across a contested board degraded to one hex
+  // per double-tap and read, correctly, as "I can only click two away".
+  {
+    // A controlled board: one chaser in contact so damage is certain, and
+    // a long clear lane to run down.
+    const flight = await page.evaluate(() => {
+      const E = window.HypergolicEngine;
+      const st = window.__hhState;
+      st.hazards = [];
+      st.hull = st.maxHull;
+      st.shieldCharges = 0;
+      // Put the flagship at one end of the longest column available.
+      const col = st.playerPos.q;
+      const lane = st.boardHexes.filter((h) => h.q === col).sort((a, b) => a.r - b.r);
+      st.playerPos = { q: lane[lane.length - 1].q, r: lane[lane.length - 1].r };
+      const def = E.ENEMY_TYPES.interceptor;
+      st.enemies = [
+        {
+          id: "chase", type: "interceptor", alive: true,
+          q: st.playerPos.q, r: st.playerPos.r - 1,
+          hp: def.maxHull, maxHp: def.maxHull,
+          energy: def.ship.maxEnergy, maxEnergy: def.ship.maxEnergy,
+          shieldCharges: 0, maxShields: 0,
+        },
+      ];
+      window.render();
+      return { from: { ...st.playerPos }, target: lane[0], hull: st.hull };
+    });
+    const askedFor = await page.evaluate(
+      ({ a, b }) => window.HypergolicEngine.hexDistance(a, b), { a: flight.from, b: flight.target }
+    );
+    assert.ok(askedFor >= 5, `the fixture lane is worth flying (${askedFor} hexes)`);
+    await flyTo(page, flight.target);
+    const after = await getState(page);
+    const flew = await page.evaluate(
+      ({ a, b }) => window.HypergolicEngine.hexDistance(a, b), { a: flight.from, b: after.playerPos }
+    );
+    assert.ok(after.hull < flight.hull, "the fixture really does take fire mid-burn (otherwise this proves nothing)");
+    assert.ok(
+      flew > 1,
+      `a course under fire flies on: asked for ${askedFor}, flew ${flew}, hull ${flight.hull} -> ${after.hull}`
+    );
+    // ...and when it does stop, the rest of the course stays laid in, so
+    // one tap resumes rather than starting the whole plot over.
+    if (flew < askedFor && after.status === "playing") {
+      const resumable = await page.evaluate(() => Boolean(window.__hhPlannedPath));
+      assert.ok(resumable, "a held course leaves its remainder plotted");
+    }
+  }
+
+  // A course must never refuse to move at ALL. An earlier attempt at the
+  // fix above stopped any burn while hull was at 1, which checked BEFORE
+  // taking a step — so on a low hull the ship sat still however far you
+  // asked it to go. That is the same lockout wearing a different hat.
+  {
+    const lowHull = await page.evaluate(() => {
+      const st = window.__hhState;
+      st.enemies = [];
+      st.hazards = [];
+      st.hull = 1;
+      const col = st.playerPos.q;
+      const lane = st.boardHexes.filter((h) => h.q === col).sort((a, b) => a.r - b.r);
+      st.playerPos = { q: lane[lane.length - 1].q, r: lane[lane.length - 1].r };
+      window.render();
+      return { from: { ...st.playerPos }, target: lane[0] };
+    });
+    await flyTo(page, lowHull.target);
+    const after = await getState(page);
+    assert.deepStrictEqual(
+      { q: after.playerPos.q, r: after.playerPos.r },
+      { q: lowHull.target.q, r: lowHull.target.r },
+      "on a clear board a course flies its whole length, whatever the hull is down to"
+    );
+  }
+
   // Blowing the scuttling charges is something you WATCH. The ship comes
   // apart on the Systems screen you armed them from, and only once the
   // fire is out does the run reset ("show the ship explode").

@@ -4283,7 +4283,7 @@ function planOrFlyRoute(hex) {
     return;
   }
   if (plannedPath && Engine.posEq(plannedPath.target, hex)) {
-    autoRoute = { target: plannedPath.target, path: plannedPath.hexes, hullAtStart: state.hull, stepIndex: 0 };
+    autoRoute = { target: plannedPath.target, path: plannedPath.hexes, damageTaken: 0, stepIndex: 0 };
     plannedPath = null;
     // Answer the instruction the moment it's obeyed. Nothing in the move
     // path writes to the readout, so "Course laid in. Confirm to burn."
@@ -4326,13 +4326,50 @@ function stepRoute() {
   }
 }
 
+// When a burn gives up. This used to be "the instant hull drops, stop" —
+// and since every step of a course is a full round, and on any board with
+// hostiles on it something hits you most rounds, that meant a plotted
+// nine-hex course reliably flew ONE hex and quit. Measured across four
+// depths: asked for 9, flew 1; asked for 12, flew 2; asked for 10, flew 1.
+// The player experiences that as "I can only move two hexes", because
+// that is precisely what happens, and re-plotting just repeats it.
+//
+// Retreating while a chaser plinks at you is not a mistake to be
+// protected from — it's the whole reason to cross ground. So a single hit
+// no longer ends the burn. What ends it is the ship being in real
+// trouble: a SECOND hit in the same course, or hull down to its last
+// point, where every further step is the run. Either way the rest of the
+// course stays laid in, so one tap resumes it instead of starting over.
+// And a tap anywhere still cancels a burn at any moment (see the canvas
+// handler) — control was never actually taken away, only movement was.
+// One number: a course carries a damage budget of 2 Hull, and stops once
+// it's spent. That covers both "a chaser hit me twice" and "a Railgun put
+// two through me at once", without ever depending on how much hull the
+// ship happened to start with — a first attempt at this checked
+// `hull <= 1` and turned into a different lockout entirely: at one Hull
+// the route refused to move a single hex, forever.
+const ROUTE_DAMAGE_BUDGET = 2;
+
+function routeStop(route) {
+  return route.damageTaken >= ROUTE_DAMAGE_BUDGET
+    ? "Course held — we are taking real damage. Taking stock."
+    : null;
+}
+
 function stepRouteInner() {
   if (!autoRoute) return;
   const arrived = Engine.posEq(state.playerPos, autoRoute.target);
-  const hurt = state.hull < autoRoute.hullAtStart;
-  if (arrived || hurt || state.status !== "playing") {
-    if (hurt && !arrived && state.status === "playing") pushMessage("Course aborted — we are taking fire.");
-    else if (arrived && state.status === "playing") pushMessage("In position.");
+  const stopReason = arrived ? null : routeStop(autoRoute);
+  if (arrived || stopReason || state.status !== "playing") {
+    if (stopReason && state.status === "playing") {
+      pushMessage(stopReason);
+      // Leave the remainder laid in — the plan was fine, the moment
+      // wasn't. Confirming once picks it straight back up.
+      const rest = Engine.findPath(state, state.playerPos, autoRoute.target);
+      plannedPath = rest && rest.length > 1 ? { target: { ...autoRoute.target }, hexes: rest } : null;
+    } else if (arrived && state.status === "playing") {
+      pushMessage("In position.");
+    }
     cancelRoute();
     render();
     return;
@@ -4346,11 +4383,13 @@ function stepRouteInner() {
     return;
   }
   autoRoute.path = path;
+  const hullBefore = state.hull;
   // If the burn itself was refused, the route is over — retrying the same
   // blocked step on a timer forever is how a flight turns into a lockout.
   const flew = handleAction(() => Engine.applySublight(state, path[1]), {
     allowTransition: Engine.posEq(path[1], autoRoute.target),
   });
+  if (autoRoute && state.hull < hullBefore) autoRoute.damageTaken += hullBefore - state.hull;
   if (!flew) {
     cancelRoute();
     render();
