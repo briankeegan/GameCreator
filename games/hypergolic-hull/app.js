@@ -51,6 +51,7 @@ const outpostCloseBtn = document.getElementById("outpostCloseBtn");
 const modeButtons = Array.from(document.querySelectorAll("[data-mode]"));
 const scanBtn = document.getElementById("scanBtn");
 const shipBtn = document.getElementById("shipBtn");
+const outpostRefitBtn = document.getElementById("outpostRefitBtn");
 const shipOverlayEl = document.getElementById("shipOverlay");
 const shipPortraitEl = document.getElementById("shipPortrait");
 const scuttleFxEl = document.getElementById("scuttleFx");
@@ -4270,6 +4271,18 @@ shipBtn.addEventListener("click", () => {
   mapVisible = false;
   render();
 });
+// A berth is for two things and the overlay only ever advertised one.
+// This takes you straight to the Hold with the dock still under you, so
+// the refit half of the game is reachable without already knowing the
+// Systems screen exists and that it behaves differently while docked.
+outpostRefitBtn.addEventListener("click", () => {
+  outpostDismissed = true; // step out of the shop, stay berthed
+  systemsContext = "ship";
+  shipVisible = true;
+  mapVisible = false;
+  render();
+});
+
 shipCloseBtn.addEventListener("click", () => {
   shipVisible = false;
   selfDestructArmed = false; // walking away disarms
@@ -4554,6 +4567,18 @@ canvas.addEventListener("click", (evt) => {
 
   // Any non-enemy tap stands the gunnery target down.
   targetedEnemyId = null;
+
+  // Tapping the berth you are already standing on re-opens it. "Undock"
+  // only ever hid the panel — the ship never actually left — but with the
+  // panel gone there was no way back to it without flying off the hex and
+  // returning, which reads as the dock being a one-shot thing you can
+  // accidentally close forever.
+  if (Engine.outpostAvailable(state) && Engine.posEq(hex, state.playerPos)) {
+    outpostDismissed = false;
+    pushMessage("Back alongside. Trading and refits both open.");
+    render();
+    return;
+  }
   const hazardHere = Engine.hazardAt(state, hex);
   if (hazardHere && hazardHere.type === "asteroid") {
       pushMessage("Rock. Nothing gets through that — go around.");

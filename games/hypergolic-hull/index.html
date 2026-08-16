@@ -37,7 +37,16 @@
           <h2><i class="swatch swatch-outpost"></i> Sector Outpost</h2>
           <p>Salvage aboard: <span id="outpostSalvage">0</span></p>
           <div class="outpost-offers" id="outpostOffers"></div>
+          <!-- Buying is only half of what a dock is for: the Hold can only
+               be rearranged while berthed, and nothing here used to say so,
+               so the whole refit half of the game went unnoticed behind a
+               screen you had to already know about. -->
+          <p class="outpost-note">A berth is also the only place you can open the
+            hull up — move equipment, fit anything riding in cargo, throw out
+            what you're not using.</p>
+          <button id="outpostRefitBtn">Open the Hold</button>
           <button id="outpostCloseBtn">Undock</button>
+          <p class="outpost-note">Still berthed after undocking — tap the dock again to come back.</p>
         </div>
       </div>
     </div>

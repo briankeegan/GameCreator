@@ -592,6 +592,47 @@ async function freshPage(browser, url, errors) {
     "a station stocks four things, not a nine-item catalogue"
   );
   await page.click("#outpostCloseBtn");
+  assert.strictEqual(await page.locator("#outpostOverlay").isVisible(), false, "Undock closes the panel");
+
+  // ...but the ship never actually LEFT, so tapping the berth it is
+  // standing on brings the panel straight back. Without this, "Undock"
+  // read as a one-way door you could shut on yourself: the only way back
+  // was to fly off the hex and return, and nothing said so.
+  s = await getState(page);
+  await clickHex(page, "sublight", s.playerPos);
+  assert.ok(
+    await page.locator("#outpostOverlay").isVisible(),
+    "tapping the berth you are standing on re-opens the Outpost"
+  );
+
+  // A dock is for two things, and the panel used to advertise one. The
+  // Hold can ONLY be rearranged while berthed, so the refit half of the
+  // game lived behind a screen you had to already know about.
+  assert.ok(
+    /hull up|equipment|cargo/i.test(await page.locator(".outpost-note").first().textContent()),
+    "the panel says a berth is also where you open the hull up"
+  );
+  await page.click("#outpostRefitBtn");
+  assert.ok(await page.locator("#shipOverlay").isVisible(), "and the button takes you straight to the Hold");
+  assert.strictEqual(
+    await page.locator("#outpostOverlay").isVisible(),
+    false,
+    "stepping into the Hold steps out of the shop"
+  );
+  assert.ok(
+    /docked/i.test(await page.locator("#shipOverlay").textContent()),
+    "the Hold shows itself as docked and refittable, not under way"
+  );
+  assert.ok(
+    await page.locator(".hold-grid.docked").count() > 0,
+    "and the grid is in its refittable state"
+  );
+  await page.click("#shipCloseBtn");
+  // Still berthed after all that — the shop is one tap away again.
+  s = await getState(page);
+  await clickHex(page, "sublight", s.playerPos);
+  assert.ok(await page.locator("#outpostOverlay").isVisible(), "still berthed, so the shop comes back");
+  await page.click("#outpostCloseBtn");
 
   // Step away from the Outpost hex before reloading — outpostDismissed
   // isn't persisted, so reloading while still docked would re-pop the
