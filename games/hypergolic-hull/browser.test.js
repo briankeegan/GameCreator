@@ -607,11 +607,9 @@ async function freshPage(browser, url, errors) {
 
   // A dock is for two things, and the panel used to advertise one. The
   // Hold can ONLY be rearranged while berthed, so the refit half of the
-  // game lived behind a screen you had to already know about.
-  assert.ok(
-    /hull up|equipment|cargo/i.test(await page.locator(".outpost-note").first().textContent()),
-    "the panel says a berth is also where you open the hull up"
-  );
+  // game lived behind a screen you had to already know about. The button
+  // carries that on its own — no paragraph explaining it.
+  assert.ok(await page.locator("#outpostRefitBtn").isVisible(), "the panel offers the Hold, not just the shelf");
   await page.click("#outpostRefitBtn");
   assert.ok(await page.locator("#shipOverlay").isVisible(), "and the button takes you straight to the Hold");
   assert.strictEqual(

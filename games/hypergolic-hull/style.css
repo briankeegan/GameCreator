@@ -182,14 +182,12 @@ body {
   color: #6b7a94;
   cursor: not-allowed;
 }
-/* The dock's small print: what a berth is FOR, beyond the shelf. Quiet
-   enough not to compete with the offers, present enough to be read once. */
+/* The dock's one line of small print. Quiet enough not to compete with
+   the offers, present enough to be read once. */
 .outpost-note {
-  margin: 0.35rem 0 0;
-  max-width: 30ch;
-  font-size: 0.78rem;
-  line-height: 1.35;
-  color: #8ea3c0;
+  margin: 0.3rem 0 0;
+  font-size: 0.75rem;
+  color: #7e92ad;
 }
 
 .outpost-overlay button#outpostRefitBtn {
