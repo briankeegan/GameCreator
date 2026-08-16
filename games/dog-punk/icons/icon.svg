@@ -1,4 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
   <rect width="192" height="192" rx="32" fill="#2f3b52"/>
-  <rect x="48" y="48" width="96" height="96" rx="16" fill="#f2b179"/>
+  <!-- dog head -->
+  <circle cx="96" cy="112" r="46" fill="#c98a4b"/>
+  <ellipse cx="72" cy="96" rx="16" ry="22" fill="#a06a34" transform="rotate(-20 72 96)"/>
+  <ellipse cx="120" cy="96" rx="16" ry="22" fill="#a06a34" transform="rotate(20 120 96)"/>
+  <!-- mohawk -->
+  <polygon points="96,36 108,66 84,66" fill="#ff3fa0"/>
+  <polygon points="86,44 96,70 76,70" fill="#ff3fa0"/>
+  <polygon points="106,44 116,70 96,70" fill="#ff3fa0"/>
+  <!-- muzzle + eye + collar spike -->
+  <circle cx="96" cy="122" r="14" fill="#e0a86a"/>
+  <circle cx="96" cy="120" r="3" fill="#241a10"/>
+  <circle cx="78" cy="104" r="3.5" fill="#1a1208"/>
+  <circle cx="114" cy="104" r="3.5" fill="#1a1208"/>
+  <rect x="70" y="150" width="52" height="14" rx="4" fill="#151515"/>
+  <circle cx="96" cy="157" r="4" fill="#c9c9c9"/>
 </svg>
