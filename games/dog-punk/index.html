@@ -19,7 +19,44 @@
   <!-- Header (All Games / title / chat) is injected by nav.js below. -->
 
   <main class="game-area" id="gameArea">
-    <p>Your game goes here.</p>
+    <div class="hud" id="hud">
+      <div class="hud-left">
+        <div class="hearts" id="hearts"></div>
+      </div>
+      <div class="hud-title">Level 1 &middot; Scrapyard Alley</div>
+      <div class="hud-right">
+        <span id="enemyCount">3 left</span>
+      </div>
+    </div>
+
+    <div class="board-wrap" id="boardWrap">
+      <div class="board-frame">
+        <canvas id="board" width="512" height="384"></canvas>
+
+        <div class="run-overlay" id="winOverlay" hidden>
+          <h2>Alley Cleared!</h2>
+          <p id="winTime"></p>
+          <button id="winRetryBtn">Play Again</button>
+        </div>
+        <div class="run-overlay" id="loseOverlay" hidden>
+          <h2>Beverly Got Scrapped</h2>
+          <p>The junk rats got the best of her this time.</p>
+          <button id="loseRetryBtn">Try Again</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="hint">Move: Arrow keys / WASD &nbsp;&middot;&nbsp; Attack: Space</p>
+
+    <div class="touch-controls" id="touchControls">
+      <div class="dpad" id="dpad">
+        <button class="dpad-btn dpad-up" data-dir="up" aria-label="Up">&#9650;</button>
+        <button class="dpad-btn dpad-left" data-dir="left" aria-label="Left">&#9664;</button>
+        <button class="dpad-btn dpad-right" data-dir="right" aria-label="Right">&#9654;</button>
+        <button class="dpad-btn dpad-down" data-dir="down" aria-label="Down">&#9660;</button>
+      </div>
+      <button class="attack-btn" id="attackBtn" aria-label="Attack">&#9876;&#xFE0E;</button>
+    </div>
   </main>
 
   <div class="install-banner" id="installBanner">

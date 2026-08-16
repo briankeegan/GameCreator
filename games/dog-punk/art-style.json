@@ -1,0 +1,9 @@
+{
+  "camera": "Three-quarter top-down view (SNES-era Zelda: A Link to the Past style) — subject viewed from a raised angle, facing forward/downward toward the viewer, centered and filling most of the frame.",
+  "style": "Detailed 16-bit-era pixel art in the style of classic SNES top-down action-adventure games (A Link to the Past). Crisp hard-edged pixel shapes, limited banded/dithered shading for depth and volume, no soft gradients or airbrushed shading. Strong, clean, iconic silhouette that reads instantly at small size. Limited, deliberate palette (roughly 16-24 colors per subject).",
+  "palette": "Punk-rock accents — black leather, studded silver, and a loud mohawk/highlight color (hot pink, acid green, or electric blue) — set against warm overworld earth tones (mossy greens, browns, weathered wood and stone). Exact colors vary per asset, specified in the asset description.",
+  "background": "Transparent background — a single isolated character/object cut out cleanly, no scene behind it, only a small soft contact shadow directly beneath, no other objects.",
+  "constraints": "Square 1:1 composition. No text, no logos, no watermarks, no UI elements, no drop shadow outside the subject.",
+  "pixelArt": true,
+  "pixelGrid": 64
+}

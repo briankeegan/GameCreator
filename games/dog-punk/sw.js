@@ -11,4 +11,6 @@ GCRegisterServiceWorker("dog-punk-v1", [
   "../../shared/pwa.js",
   "../../shared/storage.js",
   "./icons/icon.svg",
+  "./hero.png",
+  "./enemy-rat.png",
 ]);
