@@ -34,6 +34,14 @@
       "tagline": "Get gains while loose tum.",
       "themeColor": "#2f3b52",
       "icon": "games/buffer/icons/icon.svg"
+    },
+    {
+      "id": "dog-punk",
+      "name": "Dog Punk",
+      "tagline": "Dog zelda inspired game",
+      "themeColor": "#2f3b52",
+      "icon": "games/dog-punk/icons/icon.svg",
+      "autopilot": true
     }
   ]
 }
