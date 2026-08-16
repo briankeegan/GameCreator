@@ -164,12 +164,37 @@ body {
   cursor: pointer;
 }
 
-.outpost-offers {
+.outpost-offers,
+.loadout-picker {
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: 100%;
   max-width: 260px;
+}
+/* Same shelf language as the Outpost's offer buttons — a picker for
+   Requisition-unlocked starting loadouts, shown on the death/victory
+   overlay right before "New Ship". Selected = outlined, locked = greyed
+   with its cost, same as an offer you can't yet afford. */
+.loadout-picker button {
+  margin-top: 0;
+  width: 100%;
+  background: #ffce8a;
+  color: #1b2436;
+  border: none;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.loadout-picker button:disabled {
+  background: #2a3652;
+  color: #6b7a94;
+  cursor: not-allowed;
+}
+.loadout-picker button.selected {
+  outline: 2px solid #ffd27f;
+  outline-offset: 1px;
 }
 .outpost-offers button {
   margin-top: 0;

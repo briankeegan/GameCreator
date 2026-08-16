@@ -917,6 +917,37 @@ oneGenHold.items = oneGenHold.items.filter((it, i) => !(it.id === "shieldGenerat
 const clampedState = Engine.createGameState(LEVELS[0], { shieldCharges: 3, hold: oneGenHold });
 assert.strictEqual(clampedState.shieldCharges, 1, "carried charges clamp to installed generator capacity");
 
+// ---- Starting loadouts: alternate ways to begin a run --------------------
+// Meta-progression (Requisition, unlocked between runs — see app.js)
+// changes WHICH kit a fresh run starts with, never anything mid-run — so
+// every loadout only has to prove itself as a valid, sane FRESH ship.
+{
+  const ids = Object.keys(Engine.STARTING_LOADOUTS);
+  assert.ok(ids.includes("standard") && ids.length >= 3, "at least the default plus two real alternatives exist");
+  for (const id of ids) {
+    const loadout = Engine.STARTING_LOADOUTS[id];
+    const s = Engine.createGameState(LEVELS[0], { startingLoadout: id });
+    assert.ok(s.hold.items.length >= loadout.kit.length, `${id}: every kit item actually placed in the Hold`);
+    assert.ok(s.actions.includes("sublight"), `${id}: every loadout can still move — sublight never locked`);
+    assert.ok(s.maxHull >= Engine.START_HULL, `${id}: never LESS hull than the baseline airframe`);
+  }
+  assert.strictEqual(
+    JSON.stringify(Engine.createGameState(LEVELS[0]).hold.items),
+    JSON.stringify(Engine.createGameState(LEVELS[0], { startingLoadout: "standard" }).hold.items),
+    "omitting startingLoadout is identical to explicitly picking Standard — unlocking nothing changes nothing"
+  );
+  // Escort Start's whole point is a shield ready on turn one, not a Hold
+  // slot you have to spend a turn charging before it does anything.
+  const escort = Engine.createGameState(LEVELS[0], { startingLoadout: "escort" });
+  assert.ok(escort.maxShields > 0, "Escort Start actually carries a Shield Generator");
+  assert.strictEqual(escort.shieldCharges, escort.maxShields, "...and it arrives already raised");
+  // Salvager Start is the deliberate easier-start exception: strictly more
+  // max Hull than Standard, nothing traded away for it.
+  const salvager = Engine.createGameState(LEVELS[0], { startingLoadout: "salvager" });
+  const standard = Engine.createGameState(LEVELS[0], { startingLoadout: "standard" });
+  assert.ok(salvager.maxHull > standard.maxHull, "Salvager Start has more max Hull than Standard");
+}
+
 // ---- outpost offer variety: not the same fixed shop every visit ---------
 // Repair is always offered (the reliable baseline); how many EXTRA offers
 // sit alongside it varies (0-2), picked deterministically per level id, so

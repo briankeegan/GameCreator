@@ -1453,7 +1453,11 @@
       // charges (raised by spending Energy — see applyRaiseShields).
       // Capacity is derived below; carried charges clamp against it.
       maxShields: 0,
-      shieldCharges: (carryOver && carryOver.shieldCharges) || 0,
+      // A Shield Generator "arrives raised" whether bought at an Outpost
+      // (see applyOutpostPurchase) or started with (see
+      // STARTING_LOADOUTS' Escort Start) — a fresh ship's shields default
+      // to full capacity, not an empty one it has to spend a turn on.
+      shieldCharges: (carryOver && Number.isFinite(carryOver.shieldCharges)) ? carryOver.shieldCharges : derived.maxShields,
       // Energy refills to full at every warp jump; how full "full" is
       // depends entirely on the reactors and banks in the hold.
       maxEnergy: derived.maxEnergy,
@@ -1570,15 +1574,31 @@
     return state;
   }
 
+  // Alternate starting KITS for a brand-new run — unlocked between runs
+  // with Scrap (see app.js), not bought in-run, so the tuned salvage
+  // economy never touches them. Each is a different SHAPE of the same
+  // starting budget, not a straight power bump — Escort trades reactor
+  // capacity for a shield from turn one; Salvager is the one deliberate
+  // exception, an eased-difficulty pick (+1 max Hull) for a run that
+  // found the standard start too punishing. "Standard" is exactly
+  // buildHold's kit as it always was — unlocking nothing changes nothing.
+  const STARTING_LOADOUTS = {
+    standard: { label: "Standard", cost: 0, kit: ["sublightDrive", "reactorCore", "scanner"] },
+    escort: { label: "Escort Start", cost: 10, kit: ["sublightDrive", "microReactor", "scanner", "shieldGenerator"] },
+    salvager: { label: "Salvager Start", cost: 20, kit: ["sublightDrive", "reactorCore", "scanner", "ablativePlating"] },
+  };
+
   // A fresh sector's hold: carried whole from the previous one (the ship
-  // travels), or built from the level's starting kit — every ship begins
-  // with a Reactor Core and a Sublight Drive, plus whatever weapons the
-  // level's actions list (or a carryOver.extraActions fixture) grants.
+  // travels), or built from a starting kit — every ship begins with a
+  // Sublight Drive and a reactor, plus whatever weapons the level's
+  // actions list (or a carryOver.extraActions fixture) grants.
   function buildHold(level, carryOver) {
     if (carryOver && carryOver.hold) return JSON.parse(JSON.stringify(carryOver.hold));
     const hold = { cols: HOLD_COLS, rows: HOLD_ROWS, blocked: HOLD_BLOCKED.slice(), items: [], cargo: [] };
     const acts = new Set([...(level.actions || DEFAULT_ACTIONS), ...((carryOver && carryOver.extraActions) || [])]);
-    const kit = ["sublightDrive", "reactorCore", "scanner"]; // drive first: it runs down the spine, keeping the midsection whole
+    const loadoutId = (carryOver && carryOver.startingLoadout) || "standard";
+    const loadout = STARTING_LOADOUTS[loadoutId] || STARTING_LOADOUTS.standard;
+    const kit = loadout.kit.slice(); // drive first: it runs down the spine, keeping the midsection whole
     for (const key of WEAPON_SYSTEM_KEYS) if (acts.has(key)) kit.push(key);
     for (const id of kit) autoPlaceInHold(hold, id);
     return hold;
@@ -2601,6 +2621,7 @@
     hazardAt,
     WEAPONS,
     ENEMY_TYPES,
+    STARTING_LOADOUTS,
     weaponHexes,
     deriveShip,
     enemyShip,

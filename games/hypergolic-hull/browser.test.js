@@ -758,12 +758,56 @@ async function freshPage(browser, url, errors) {
   await waitForOverlay(page);
   assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Flagship Destroyed");
 
+  assert.strictEqual(
+    await page.locator("#runOverlayRequisition").textContent(),
+    "+0 Requisition — 0 banked.",
+    "a Sector 1 loss earns nothing — Requisition only starts accruing past the campaign"
+  );
+  assert.strictEqual(await page.locator("#loadoutPicker button").count(), 3, "Standard plus the two unlockable loadouts");
+  assert.strictEqual(
+    await page.locator("#loadoutPicker button.selected").textContent(),
+    "Standard",
+    "Standard is selected by default, and it's the only one unlocked yet"
+  );
+
   await page.click("#restartBtn");
   await page.waitForFunction(() => window.__hhState.status === "playing");
   s = await getState(page);
   assert.strictEqual(s.levelId, 1, "New Run resets the campaign to Sector 1");
   assert.strictEqual(s.hull, s.maxHull, "and the ship comes back whole");
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false);
+  await page.close();
+
+  // ---- Requisition: earn it, unlock a loadout, fly the next run with it --
+  page = await freshPage(browser, url, errors);
+  // A deep loss, forced directly rather than played out — engine.test.js
+  // already covers the reward math and the Hold contents of each loadout
+  // headlessly; this is here to prove the real DOM wiring (the overlay's
+  // picker, the click handler, New Ship actually reading the selection).
+  await page.evaluate(() => {
+    window.__hhState.levelId = 34;
+    window.__hhState.hull = 0;
+    window.__hhState.status = "lost";
+    window.render();
+  });
+  await waitForOverlay(page);
+  assert.strictEqual(
+    await page.locator("#runOverlayRequisition").textContent(),
+    "+30 Requisition — 30 banked.",
+    "depth 34 - 4 = 30, exactly the legible formula on the overlay"
+  );
+  const escortBtn = page.locator("#loadoutPicker button", { hasText: "Escort" });
+  assert.strictEqual(await escortBtn.isDisabled(), false, "30 banked covers Escort Start's 10 cost");
+  await escortBtn.click();
+  assert.strictEqual(await escortBtn.textContent(), "Escort Start", "unlocked, the cost/short suffix drops off the label");
+  assert.strictEqual(await escortBtn.evaluate((el) => el.classList.contains("selected")), true);
+
+  await page.click("#restartBtn");
+  await page.waitForFunction(() => window.__hhState.status === "playing");
+  s = await getState(page);
+  const holdIds = s.hold.items.map((it) => it.id);
+  assert.ok(holdIds.includes("shieldGenerator"), "New Ship actually started with the selected Escort Start loadout");
+  assert.strictEqual(s.shieldCharges, s.maxShields, "...shield already raised, as Escort Start promises");
   await page.close();
 
   // ---- Tap-tap movement: course in, confirm, rethink, dismiss -------------

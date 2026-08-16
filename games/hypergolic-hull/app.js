@@ -35,6 +35,8 @@ const logEl = document.getElementById("log");
 const overlayEl = document.getElementById("runOverlay");
 const overlayTitleEl = document.getElementById("runOverlayTitle");
 const overlayBodyEl = document.getElementById("runOverlayBody");
+const overlayRequisitionEl = document.getElementById("runOverlayRequisition");
+const loadoutPickerEl = document.getElementById("loadoutPicker");
 const restartBtn = document.getElementById("restartBtn");
 const continueBtnEl = document.getElementById("continueBtn");
 const salvageValueEl = document.getElementById("salvageValue");
@@ -113,7 +115,42 @@ const BRANCH_TINTS = {
 function freshRunSeed() {
   return Math.floor(Math.random() * 0xffffffff) >>> 0;
 }
-let state = Engine.createGameState(levelForIndex(levelIndex), { runSeed: freshRunSeed() });
+// Requisition: a SECOND currency, wholly separate from in-run salvage
+// (never spendable mid-run, so the tuned "save up for weapons" economy
+// stays untouched) — earned once per run, when the run actually ends, and
+// spent between runs unlocking alternate starting loadouts (see
+// Engine.STARTING_LOADOUTS). The point: even a loss banks something, and
+// that something is a real choice next time, not just a bigger number —
+// mirrors games/trebor's existing achievement→unlock pattern, the only
+// precedent for cross-run progression in this repo.
+let requisition = GCStorage.get(GAME_ID, "requisition", 0);
+let unlockedLoadouts = new Set(GCStorage.get(GAME_ID, "unlockedLoadouts", ["standard"]));
+let selectedLoadout = GCStorage.get(GAME_ID, "selectedLoadout", "standard");
+// Guards the award below against firing again on every repeated render of
+// the same death/victory frame — reset in loadSector, same lifecycle as
+// outpostDismissed/shipAngle just below it.
+let requisitionAwardedThisEnding = false;
+let requisitionEarnedThisEnding = 0;
+
+function persistUnlocks() {
+  GCStorage.set(GAME_ID, "requisition", requisition);
+  GCStorage.set(GAME_ID, "unlockedLoadouts", Array.from(unlockedLoadouts));
+  GCStorage.set(GAME_ID, "selectedLoadout", selectedLoadout);
+}
+
+// How much a run banks, once — legible on the overlay ("you got to depth
+// 7, that's 3"). Depth past the campaign is the whole signal: it's the
+// same thing bestDepth already tracks, just turned into something spendable
+// instead of only a number on a screen. A boss clear is a real milestone
+// on top of that, same as isVictory gets its own distinct overlay.
+function requisitionEarnedFor(finishedState) {
+  return Math.max(0, finishedState.levelId - 4) + (finishedState.isVictory ? 15 : 0);
+}
+
+let state = Engine.createGameState(levelForIndex(levelIndex), {
+  runSeed: freshRunSeed(),
+  startingLoadout: selectedLoadout,
+});
 // null means no mode armed — plain moves/route-preview work regardless.
 let mode = null;
 let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
@@ -3014,6 +3051,12 @@ function persist() {
     bestDepth = Math.max(bestDepth, state.levelId);
     GCStorage.set(GAME_ID, "bestDepth", bestDepth);
   }
+  // Written every render, same as "run" itself — otherwise a page reload
+  // while sitting on the death/victory overlay (state.status still "lost"
+  // in the restored save) would find the in-memory guard reset to false
+  // and bank Requisition for the same ending a second time.
+  GCStorage.set(GAME_ID, "requisitionAwardedThisEnding", requisitionAwardedThisEnding);
+  GCStorage.set(GAME_ID, "requisitionEarnedThisEnding", requisitionEarnedThisEnding);
 }
 
 function animsRunning() {
@@ -3104,14 +3147,28 @@ function updateHud() {
   // routine clear. A BOSS win (isVictory) is the one exception — see
   // handleAction, which deliberately skips the auto-continue for it — so
   // this overlay is how "Run Complete" actually gets shown to the player.
+  if ((state.status === "lost" || state.isVictory) && !animsRunning() && !requisitionAwardedThisEnding) {
+    // Banked once, the moment the run actually ends (loss, or a boss
+    // clear) — never on "Keep Flying" past the Bulwark, since that isn't
+    // the run ending. Depth past the campaign is the same number
+    // bestDepth already tracks, just turned into something spendable.
+    requisitionEarnedThisEnding = requisitionEarnedFor(state);
+    requisition += requisitionEarnedThisEnding;
+    requisitionAwardedThisEnding = true;
+    persistUnlocks();
+  }
   if (state.status === "lost" && !animsRunning()) {
     overlayTitleEl.textContent = "Flagship Destroyed";
     overlayBodyEl.textContent = `Lost with all hands at depth ${state.levelId}. Deepest run so far: ${bestDepth}.`;
+    overlayRequisitionEl.textContent = `+${requisitionEarnedThisEnding} Requisition — ${requisition} banked.`;
+    updateLoadoutPicker();
     continueBtnEl.hidden = true;
     overlayEl.hidden = false;
   } else if (state.isVictory && !animsRunning()) {
     overlayTitleEl.textContent = "The Bulwark Is Scrap";
     overlayBodyEl.textContent = `The Bulwark is dead in the water at depth ${state.levelId}. Press on, or take the ship home.`;
+    overlayRequisitionEl.textContent = `+${requisitionEarnedThisEnding} Requisition — ${requisition} banked.`;
+    updateLoadoutPicker();
     continueBtnEl.hidden = false;
     overlayEl.hidden = false;
   } else {
@@ -3377,6 +3434,38 @@ function updateScanInfo() {
   header.appendChild(name);
   enemyInfoEl.appendChild(header);
   enemyInfoEl.appendChild(stats);
+}
+
+// Rebuilds the death/victory overlay's starting-loadout picker from
+// Engine.STARTING_LOADOUTS every time it's shown — same "cheap enough to
+// just rebuild it" approach as updateOutpost below. Unlocked entries pick
+// which loadout the NEXT run (New Ship) starts with; locked ones spend
+// banked Requisition to unlock (and immediately select) on click, same
+// shelf language as an Outpost offer you can or can't yet afford.
+function updateLoadoutPicker() {
+  loadoutPickerEl.innerHTML = "";
+  for (const [id, loadout] of Object.entries(Engine.STARTING_LOADOUTS)) {
+    const btn = document.createElement("button");
+    const owned = unlockedLoadouts.has(id);
+    const short = Math.max(0, loadout.cost - requisition);
+    btn.textContent = owned
+      ? loadout.label
+      : short > 0
+        ? `${loadout.label} — ${loadout.cost} req. (${short} short)`
+        : `${loadout.label} — ${loadout.cost} req.`;
+    btn.disabled = !owned && short > 0;
+    btn.classList.toggle("selected", owned && selectedLoadout === id);
+    btn.addEventListener("click", () => {
+      if (!owned) {
+        requisition -= loadout.cost;
+        unlockedLoadouts.add(id);
+      }
+      selectedLoadout = id;
+      persistUnlocks();
+      updateLoadoutPicker();
+    });
+    loadoutPickerEl.appendChild(btn);
+  }
 }
 
 // Rebuilds the outpost shop's offer buttons from Engine.outpostOffers every
@@ -4364,6 +4453,8 @@ function loadSector(index, carryOver, opts) {
   cancelRoute();
   outpostDismissed = false;
   shipAngle = -90;
+  requisitionAwardedThisEnding = false;
+  requisitionEarnedThisEnding = 0;
   updateGeometry();
   render();
 }
@@ -4412,11 +4503,17 @@ function restoreRun() {
   const savedState = GCStorage.get(GAME_ID, "run", null);
   const savedIndex = GCStorage.get(GAME_ID, "levelIndex", null);
   if (!isValidSave(savedState) || savedIndex === null) {
-    loadSector(0, { runSeed: freshRunSeed() });
+    loadSector(0, { runSeed: freshRunSeed(), startingLoadout: selectedLoadout });
     return;
   }
   levelIndex = savedIndex;
   state = savedState;
+  // Restored in lockstep with "run" (see persist()) — otherwise reloading
+  // while sitting on the death/victory overlay would re-bank Requisition
+  // for the same ending, since the in-memory guard defaults to false on
+  // every fresh page load.
+  requisitionAwardedThisEnding = GCStorage.get(GAME_ID, "requisitionAwardedThisEnding", false);
+  requisitionEarnedThisEnding = GCStorage.get(GAME_ID, "requisitionEarnedThisEnding", 0);
   // A save from the 2-AP era carries maxAp: 2 inside it and would keep
   // playing (and showing) two actions a round forever — clamp restored
   // saves down to the shipped budget. (No AP upgrades exist to preserve
@@ -4840,8 +4937,10 @@ function scuttleShip() {
   selfDestructArmed = false;
   // A new run rolls a new seed — same sector, different luck: which
   // Outposts you find and what they're stocked with can genuinely differ
-  // from the last time you flew Sector 2.
-  loadSector(0, { runSeed: freshRunSeed() });
+  // from the last time you flew Sector 2. It also starts with whatever
+  // loadout is currently selected (see the death-overlay picker) —
+  // Standard unless something else has been unlocked and chosen.
+  loadSector(0, { runSeed: freshRunSeed(), startingLoadout: selectedLoadout });
   // Arrive like you arrived anywhere else — the flash, then the sector.
   // Cutting straight to a fresh board read like the page had reloaded
   // rather than like a new hull warping in.
