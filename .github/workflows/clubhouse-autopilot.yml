@@ -45,9 +45,10 @@ on:
       message:
         description: 'The message to handle (simulates a new chat comment)'
         required: true
-  # LIVE TRIGGER — uncomment to go autonomous once the manual test passes:
-  # issue_comment:
-  #   types: [created]
+  # LIVE TRIGGER — a new comment on any Clubhouse PR fires this (the job's
+  # `if:` then gates it to real, non-bot, non-Claude messages on opted-in games).
+  issue_comment:
+    types: [created]
 
 # One run at a time per thread, so two quick messages can't race each other.
 # A newer message queues behind the in-flight run.
