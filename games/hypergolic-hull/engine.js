@@ -1625,34 +1625,27 @@
   // flagship already arrives in every sector at full Energy however
   // drained it was when it left. Same rule, both directions. It also
   // closes the trick of fleeing a Railgun mid-charge to freeze it.
-  const DRIFT_MIN = 2;
-  const DRIFT_CAP = 6;
+  // How far a contact can have wandered: 0 to 2 hexes, rolled per ship.
+  // Deliberately small. Far enough that the board isn't the diorama it was,
+  // near enough that what you scouted is still broadly true — a big drift
+  // reads as a re-rolled sector and throws away everything you learned.
+  // Some ships won't have moved at all, which is what a quiet patrol looks
+  // like.
+  const DRIFT_MAX = 2;
 
   // Wandering, not teleporting. A uniform re-roll reads as a different
   // sector and throws away everything you learned; a few legal steps reads
   // as "they moved". Steps scale with how long you were gone, capped.
-  function driftEnemy(state, enemy, steps, rng) {
-    const origin = { q: enemy.q, r: enemy.r };
-    const legalFrom = (from) =>
-      neighbors(from).filter((to) => canFlyInto(state, to, enemy) && !hazardAt(state, to));
+  function driftEnemy(state, enemy, rng) {
+    const steps = Math.floor(rng() * (DRIFT_MAX + 1)); // 0, 1 or 2, this ship's own roll
     for (let i = 0; i < steps; i++) {
-      const options = legalFrom(enemy);
+      const options = neighbors(enemy).filter(
+        (to) => canFlyInto(state, to, enemy) && !hazardAt(state, to)
+      );
       if (!options.length) return;
       const pick = options[Math.floor(rng() * options.length)];
       enemy.q = pick.q;
       enemy.r = pick.r;
-    }
-    // A short random walk lands back where it started often enough to
-    // matter (step out, step back — one option in six, every time), and a
-    // contact found on the exact hex you left it on is the whole bug this
-    // is fixing. If we ended up home, take one more step somewhere else.
-    if (posEq(enemy, origin)) {
-      const elsewhere = legalFrom(enemy).filter((to) => !posEq(to, origin));
-      if (elsewhere.length) {
-        const pick = elsewhere[Math.floor(rng() * elsewhere.length)];
-        enemy.q = pick.q;
-        enemy.r = pick.r;
-      }
     }
   }
 
@@ -1728,21 +1721,18 @@
     return state;
   }
 
-  // Called with a restored chart snapshot. opts.turnsAway is how many
-  // rounds the flagship spent elsewhere; opts.arrivals are contacts that
-  // followed it here (already removed from the sector they came from).
+  // Called with a restored chart snapshot. opts.arrivals are contacts that
+  // followed the flagship here (already removed from the sector they came
+  // from). Drift is a flat 0-2 per ship rather than something scaled by
+  // how long you were away: a patrol is a patrol, and tying it to the turn
+  // counter only ever produced a frozen board on a quick out-and-back.
   function reenterSector(state, opts) {
     opts = opts || {};
     const rng = runSeeded(state.runSeed, state.levelId * 7717 + (opts.nonce || 0) * 131);
-    // A floor as well as a cap. Drift scaled purely by turns elapsed meant
-    // a quick out-and-back drifted nobody at all — which is exactly the
-    // frozen-diorama board this whole thing exists to fix. Transiting a
-    // gate takes time whether or not the turn counter says so.
-    const steps = Math.max(DRIFT_MIN, Math.min(opts.turnsAway || 0, DRIFT_CAP));
     for (const enemy of livingEnemies(state)) {
       enemy.energy = enemy.maxEnergy; // reactors run whether or not you are watching
       const ship = enemyShip(enemy);
-      if (ship && ship.hasDrive) driftEnemy(state, enemy, steps, rng);
+      if (ship && ship.hasDrive) driftEnemy(state, enemy, rng);
     }
     clearArrival(state, rng);
     for (const arrival of opts.arrivals || []) placeArrival(state, arrival, rng);

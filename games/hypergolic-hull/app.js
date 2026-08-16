@@ -213,10 +213,10 @@ let inspectedHex = null;
 let sectorHistory = []; // [{levelIndex, state}] — every sector entered, in order
 let chartIndex = -1; // which chart entry is the LIVE sector
 
-// Rounds flown across the WHOLE run, not per sector — how long a sector
-// has been left alone is the difference between this and the value stamped
-// on its chart entry when you left it. Drives how far its contacts drift
-// before you see them again (see Engine.reenterSector).
+// Rounds flown across the WHOLE run, not per sector. Sector turnCounts
+// reset; this doesn't, so it stays a stable nonce for the per-return drift
+// roll (see Engine.reenterSector) — two visits to the same sector don't
+// deal the same wander.
 let voyageTurns = 0;
 // A contact that was on you when you left, riding along to the next
 // sector. At most one per transit — a leash, or a long run turns into a
@@ -262,12 +262,11 @@ function markArrival() {
 
 // Mirrors the live sector back into its chart slot — called before any
 // jump/advance so the chart always holds each sector exactly as last left.
-// Called the instant before the live sector is swapped away. Records when
-// we left (for drift on return) and hands back the one contact, if any,
-// that was close enough to come with us — removed from the sector it is
-// leaving, so it is the SAME ship carrying the SAME damage, not a copy.
+// Called the instant before the live sector is swapped away. Hands back
+// the one contact, if any, that was close enough to come with us —
+// removed from the sector it is leaving, so it is the SAME ship carrying
+// the SAME damage, not a copy.
 function departLiveSector() {
-  if (chartIndex >= 0 && sectorHistory[chartIndex]) sectorHistory[chartIndex].leftAt = voyageTurns;
   const candidates = Engine.enemiesThatCanFollow(state);
   if (!candidates.length) return [];
   const chosen = candidates[0];
@@ -374,11 +373,7 @@ function jumpToChart(index, opts) {
   // left them (no engine — the same rule that makes them emplacements);
   // anything with a drive has been flying, and every reactor out there has
   // been refilling, the same way ours does between sectors. Damage stays.
-  Engine.reenterSector(state, {
-    turnsAway: Math.max(0, voyageTurns - (entry.leftAt || 0)),
-    arrivals,
-    nonce: voyageTurns,
-  });
+  Engine.reenterSector(state, { arrivals, nonce: voyageTurns });
   // A snapshot may be mid-"won" (captured standing on the Warp Gate).
   // Un-consume that so the board is live again — winning re-triggers
   // normally on the next action taken on the gate.

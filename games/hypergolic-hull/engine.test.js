@@ -1592,7 +1592,7 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
   at("railgun").energy = 1;
   const drivelessKeys = ["sentry", "railgun"];
 
-  Engine.reenterSector(st, { turnsAway: 4, nonce: 1 });
+  Engine.reenterSector(st, { nonce: 1 });
 
   for (const type of drivelessKeys) {
     assert.strictEqual(
@@ -1619,37 +1619,45 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
     Engine.livingEnemies(st).every((e) => Engine.onBoard(st, e)),
     "and nothing drifted off the board"
   );
-  // Drift is a wander, not a re-roll: a re-rolled board would throw away
-  // everything you learned about it.
-  const movers = ["interceptor", "cruiser"];
-  for (const t of movers) {
+  // Drift is a short wander, not a re-roll: a re-rolled board throws away
+  // everything you learned about it. Two hexes, hard ceiling.
+  for (const t of ["interceptor", "cruiser"]) {
     const wasAt = before[t].split(",").map(Number);
     assert.ok(
-      Engine.hexDistance(at(t), { q: wasAt[0], r: wasAt[1] }) <= 6,
-      `${t} drifted, it did not teleport`
+      Engine.hexDistance(at(t), { q: wasAt[0], r: wasAt[1] }) <= 2,
+      `${t} drifted at most two hexes, it did not relocate`
     );
   }
-  // Even a quick out-and-back moves the movers. Scaling drift purely by
-  // elapsed turns meant nipping through a gate and straight back drifted
-  // nobody — the exact frozen board this exists to fix.
+  // Drift is rolled PER SHIP, so a board reads as a patrol rather than as
+  // everything shuffling in lockstep: across repeated returns some
+  // contacts have moved and some haven't, and the fixed guns never do.
   {
-    const quick = Engine.createGameState(board);
-    quick.runSeed = 777;
-    const wasAt = Object.fromEntries(quick.enemies.map((e) => [e.type, Engine.hexKey(e)]));
-    Engine.reenterSector(quick, { turnsAway: 0, nonce: 2 });
-    const find = (t) => quick.enemies.find((e) => e.type === t);
-    // EVERY mover, not just one of them: a random walk that happens to end
-    // where it began leaves that contact looking frozen, which is the bug.
-    for (const t of ["interceptor", "cruiser"]) {
-      assert.notStrictEqual(Engine.hexKey(find(t)), wasAt[t], `the ${t} is not on the hex we left it on`);
+    let anyMoved = false;
+    let anyStill = false;
+    for (let visit = 0; visit < 25; visit++) {
+      const trip = Engine.createGameState(board);
+      trip.runSeed = 4242;
+      const wasAt = Object.fromEntries(trip.enemies.map((e) => [e.type, Engine.hexKey(e)]));
+      Engine.reenterSector(trip, { nonce: visit });
+      const find = (t) => trip.enemies.find((e) => e.type === t);
+      for (const t of ["interceptor", "cruiser", "scout"]) {
+        const e = find(t);
+        if (!e) continue;
+        if (Engine.hexKey(e) === wasAt[t]) anyStill = true;
+        else anyMoved = true;
+      }
+      for (const t of ["sentry", "railgun"]) {
+        assert.strictEqual(Engine.hexKey(find(t)), wasAt[t], `the ${t} never budges — it has no engine`);
+      }
     }
-    assert.strictEqual(Engine.hexKey(find("sentry")), wasAt.sentry, "and the bolted-down gun still hasn't budged");
+    assert.ok(anyMoved, "contacts do wander between visits");
+    assert.ok(anyStill, "and some are found right where you left them — 0 is a legal roll");
   }
 
   // A cleared sector stays cleared.
   const emptied = Engine.createGameState(board);
   emptied.enemies.forEach((e) => (e.alive = false));
-  Engine.reenterSector(emptied, { turnsAway: 20 });
+  Engine.reenterSector(emptied, {});
   assert.strictEqual(Engine.livingEnemies(emptied).length, 0, "nothing wanders back into a sector you emptied");
 }
 
