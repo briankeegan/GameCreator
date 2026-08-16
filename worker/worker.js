@@ -217,7 +217,7 @@ export default {
     }
     if (request.method !== "POST") {
       return json(200, {
-        relay: "gc-r7",
+        relay: "gc-r8",
         settings: {
           GAMES_KV: env.GAMES_KV ? "bound" : "MISSING",
           GITHUB_TOKEN: env.GITHUB_TOKEN ? "set" : "MISSING",
@@ -256,6 +256,11 @@ export default {
         const tagline = String(payload.tagline || "");
         const secretWord = String(payload.secretWord || "");
         if (!secretWord) return json(400, { error: "secretWord is required" });
+        // Autopilot opt-in: when true, the clubhouse-autopilot workflow handles
+        // this game's chat messages automatically. Default off (manual — a
+        // subscribed session handles it). Stored as a flag on the games.json
+        // entry, which the workflow reads to decide whether to act.
+        const autopilot = payload.autopilot === true || payload.autopilot === "true";
 
         if (await loadGame(env, gameId)) {
           return json(409, { error: `"${gameId}" already exists — use admin-upsert to change its chat, or pick a different id` });
@@ -282,6 +287,8 @@ export default {
             tagline,
             themeColor: "#2f3b52",
             icon: `games/${gameId}/icons/icon.svg`,
+            // Only written when opted in, so existing entries stay clean.
+            ...(autopilot ? { autopilot: true } : {}),
           });
           await ghPutFile(
             env,
@@ -410,7 +417,7 @@ export default {
           detail = body.message ? ` — ${body.message}` : "";
         } catch {}
         return json(502, {
-          error: `github said ${res.status}${detail} [game: ${gameId}] [relay gc-r7]`,
+          error: `github said ${res.status}${detail} [game: ${gameId}] [relay gc-r8]`,
         });
       }
       return json(200, { ok: true });

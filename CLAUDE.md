@@ -62,6 +62,16 @@ design discussion. `shared/` holds the components every game reuses
   skipping the name+secret form entirely, on ANY game — no per-game secret
   lookup needed. Falls back to the normal per-game saved login if the
   admin token is missing/stale.
+- **Per-game autopilot toggle.** Each game chooses how its Clubhouse
+  messages are handled, via an `"autopilot": true` flag on its `games.json`
+  entry (absent = off). OFF (default) = manual: a subscribed session handles
+  messages like always. ON = the `.github/workflows/clubhouse-autopilot.yml`
+  workflow handles them automatically (edits → in-run art generate+review →
+  headless smoke test → auto-merged PR → reply). The flag is set at creation
+  via the Admin "Create a new game" checkbox (`admin-create-game` writes it),
+  and the workflow's `ctx` step reads it (deriving the game id from the PR's
+  `clubhouse/<id>` head branch) to decide whether to act — a manual
+  `workflow_dispatch` bypasses the flag so you can always test a game.
 
 ## Handling a clubhouse request
 
@@ -148,6 +158,20 @@ design discussion. `shared/` holds the components every game reuses
   `dall-e-3` + `response_format`; gpt-image-1 always returns `b64_json`
   and uses sizes `1024x1024`/`1024x1536`/`1536x1024`), decode the PNG, and
   commit it via a normal `git commit`/`git push` inside the runner.
+  - **Cost / reliability knobs (both Actions):** a `quality` input
+    (`low`/`medium`/`high`, **default `medium`**) — high is ~4× the cost of
+    medium per image, so only bump it for a showcase asset that needs it. A
+    `force` input (**default false**) makes generation **skip if the output
+    file already exists**, so re-running a batch after a partial failure
+    never re-bills for art you already have — pass `force=true` to
+    deliberately regenerate/replace one. Both Actions also retry on OpenAI
+    HTTP 429 (the gpt-image per-minute cap — 5/min) and transient 5xx with
+    backoff; a rejected request isn't billed, so bulk batches stop failing
+    at no extra cost. NOTE: OpenAI's usage dashboard "Images" panel counts
+    the legacy image API only — `gpt-image-1` is token-metered, so those
+    calls show up as token usage, and the "Images" widget can read 0 even
+    while generation is working fine (confirmed: the API rate-limited us,
+    which is impossible if it weren't being called).
   - **"Generate image"** is freeform: inputs are just `prompt`,
     `output_path`, `size`. No persisted style — use it for one-off/
     experimental images, or for a game that doesn't have an

@@ -75,6 +75,12 @@
       <label>Secret word <span class="admin-note">(for this game's chat login)</span>
         <input id="createSecretInput" type="text" placeholder="pinkunicorn" />
       </label>
+      <label class="admin-checkbox">
+        <input id="createAutopilotInput" type="checkbox" />
+        <span>Autopilot this game's chat
+          <span class="admin-note">(Claude auto-handles new messages — edits, art, ships, replies. Off = a subscribed session handles it manually.)</span>
+        </span>
+      </label>
       <div class="admin-actions">
         <button id="createBtn">Create game</button>
         <span id="createStatus" class="admin-status"></span>

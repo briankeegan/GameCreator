@@ -20,6 +20,7 @@ const createIdInput = document.getElementById("createIdInput");
 const createNameInput = document.getElementById("createNameInput");
 const createTaglineInput = document.getElementById("createTaglineInput");
 const createSecretInput = document.getElementById("createSecretInput");
+const createAutopilotInput = document.getElementById("createAutopilotInput");
 const createBtn = document.getElementById("createBtn");
 const createStatusEl = document.getElementById("createStatus");
 
@@ -288,13 +289,14 @@ createBtn.addEventListener("click", () => {
   const name = createNameInput.value.trim();
   const tagline = createTaglineInput.value.trim();
   const secretWord = createSecretInput.value.trim();
+  const autopilot = createAutopilotInput.checked;
   if (!game || !name || !secretWord) {
     setStatus(createStatusEl, "Game id, display name, and secret word are required.", "error");
     return;
   }
   createBtn.disabled = true;
   setStatus(createStatusEl, "Creating… (scaffolding files, listing it, setting up chat)");
-  callAdmin({ action: "admin-create-game", game, name, tagline, secretWord })
+  callAdmin({ action: "admin-create-game", game, name, tagline, secretWord, autopilot })
     .then((data) => {
       setStatus(
         createStatusEl,
@@ -305,6 +307,7 @@ createBtn.addEventListener("click", () => {
       createNameInput.value = "";
       createTaglineInput.value = "";
       createSecretInput.value = "";
+      createAutopilotInput.checked = false;
       refreshList();
     })
     .catch((err) => setStatus(createStatusEl, err.message, "error"))
