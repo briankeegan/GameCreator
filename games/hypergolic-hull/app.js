@@ -213,6 +213,16 @@ let inspectedHex = null;
 let sectorHistory = []; // [{levelIndex, state}] — every sector entered, in order
 let chartIndex = -1; // which chart entry is the LIVE sector
 
+// Rounds flown across the WHOLE run, not per sector — how long a sector
+// has been left alone is the difference between this and the value stamped
+// on its chart entry when you left it. Drives how far its contacts drift
+// before you see them again (see Engine.reenterSector).
+let voyageTurns = 0;
+// A contact that was on you when you left, riding along to the next
+// sector. At most one per transit — a leash, or a long run turns into a
+// conga line you cannot outrun.
+let pendingArrivals = [];
+
 // The flagship spawns standing directly ON the wormhole when arriving via
 // portal ("you start as if you're on top of that wormhole, not next to
 // it" — Clubhouse feedback), and a wormhole return lands it standing on
@@ -252,6 +262,19 @@ function markArrival() {
 
 // Mirrors the live sector back into its chart slot — called before any
 // jump/advance so the chart always holds each sector exactly as last left.
+// Called the instant before the live sector is swapped away. Records when
+// we left (for drift on return) and hands back the one contact, if any,
+// that was close enough to come with us — removed from the sector it is
+// leaving, so it is the SAME ship carrying the SAME damage, not a copy.
+function departLiveSector() {
+  if (chartIndex >= 0 && sectorHistory[chartIndex]) sectorHistory[chartIndex].leftAt = voyageTurns;
+  const candidates = Engine.enemiesThatCanFollow(state);
+  if (!candidates.length) return [];
+  const chosen = candidates[0];
+  state.enemies = state.enemies.filter((e) => e !== chosen);
+  return [chosen];
+}
+
 function snapshotLive() {
   if (chartIndex >= 0 && sectorHistory[chartIndex]) {
     sectorHistory[chartIndex] = {
@@ -265,6 +288,7 @@ function snapshotLive() {
 }
 
 function advanceSector() {
+  const arrivals = departLiveSector();
   snapshotLive();
   // Going forward through a gate you have ALREADY been through returns you
   // to that charted sector, exactly as you left it. It used to truncate
@@ -273,9 +297,10 @@ function advanceSector() {
   // every enemy you'd killed and undid the salvage you'd taken.
   const ahead = sectorHistory[chartIndex + 1];
   if (ahead && ahead.levelIndex === levelIndex + 1 && ahead.variantId === (state.usedExitVariant || null)) {
-    jumpToChart(chartIndex + 1);
+    jumpToChart(chartIndex + 1, { arrivals });
     return;
   }
+  pendingArrivals = arrivals;
   // Advancing through a DIFFERENT gate than last time abandons the old
   // forward chain — you chose a gate, that's the route now.
   sectorHistory = sectorHistory.slice(0, chartIndex + 1);
@@ -304,8 +329,12 @@ function advanceSector() {
 
 // Jump to ANY charted sector — the wormhole calls this with the previous
 // index, the Map calls it with whatever star you tapped.
-function jumpToChart(index) {
+// opts.arrivals — contacts the CALLER already pulled out of the live
+// sector (advanceSector does this before deciding which way it is going).
+// Without it this would depart twice and recruit a second follower.
+function jumpToChart(index, opts) {
   if (index === chartIndex || index < 0 || index >= sectorHistory.length) return;
+  const arrivals = (opts && opts.arrivals) || departLiveSector();
   snapshotLive();
   // The SHIP travels with you — a chart snapshot restores the SECTOR as
   // you left it (enemies, hazards, positions), never your ship's stats.
@@ -341,6 +370,15 @@ function jumpToChart(index) {
   state.maxAp = ship.maxAp;
   state.hold = ship.hold;
   Engine.syncHoldDerived(state);
+  // Time passed while we were elsewhere. Emplacements are exactly where we
+  // left them (no engine — the same rule that makes them emplacements);
+  // anything with a drive has been flying, and every reactor out there has
+  // been refilling, the same way ours does between sectors. Damage stays.
+  Engine.reenterSector(state, {
+    turnsAway: Math.max(0, voyageTurns - (entry.leftAt || 0)),
+    arrivals,
+    nonce: voyageTurns,
+  });
   // A snapshot may be mid-"won" (captured standing on the Warp Gate).
   // Un-consume that so the board is live again — winning re-triggers
   // normally on the next action taken on the gate.
@@ -4166,8 +4204,12 @@ function handleAction(fn, opts) {
   let ok = false;
   plannedPath = null;
   reachPreview = null;
+  const turnsBefore = state.turnCount;
   try {
     fn();
+    // The run's own clock. Sector turnCounts reset; this doesn't, so "how
+    // long has that sector been alone" stays answerable across the chart.
+    if (state.turnCount > turnsBefore) voyageTurns += state.turnCount - turnsBefore;
     // Did that action take us off the hex we arrived on? Checked every
     // action, not just the ones that end on a gate — the flag has to
     // latch off the moment the ship leaves, or flying back onto the
@@ -4261,6 +4303,14 @@ function loadSector(index, carryOver, opts) {
     ...carryOver,
     hasPrevious: sectorHistory.length > 0,
   });
+
+  // Anything that chased us through a gate arrives on the fresh board too
+  // — placement only, so the sector's own contacts keep the positions and
+  // the empty reactors they were authored with.
+  if (pendingArrivals.length) {
+    Engine.placeArrivals(state, pendingArrivals, voyageTurns);
+    pendingArrivals = [];
+  }
 
   // This brand-new sector joins the chart as the live entry.
   sectorHistory.push({
@@ -4836,7 +4886,10 @@ window.__hhHexCenter = (q, r) => hexToPixel({ q, r });
 window.__hhPixelToHex = (x, y) => pixelToHex(x, y); // test hook: the tap conversion, so a round-trip can be proven
 window.__hhGetInspected = () => inspectedHex;
 // test hook: the chart, so a test can prove a return trip is even armed
-window.__hhChart = () => ({ chartIndex, length: sectorHistory.length, arrivedOn });
+window.__hhChart = () => ({ chartIndex, length: sectorHistory.length, arrivedOn, voyageTurns });
+// test hook: drive a chart jump the way tapping a star on the Map does,
+// so the leave-and-return rules can be exercised end to end
+window.__hhJumpToChart = (i) => jumpToChart(i);
 window.__hhLooks = { SKIES, GRID_LOOKS }; // test hook: every place has its own sky and its own lattice
 // debug/test hook: sync the internal levelIndex counter after directly
 // mutating window.__hhState (see browser.test.js's boss-milestone test) —

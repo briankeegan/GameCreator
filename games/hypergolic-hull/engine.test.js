@@ -1563,6 +1563,155 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
   }
 }
 
+// ---- coming back to a sector you left -----------------------------------
+// A chart snapshot used to restore every contact frozen on the exact hex
+// it occupied, forever: fly out and back and the board was a diorama.
+{
+  const board = {
+    id: 958,
+    name: "return fixture",
+    board: { type: "rect", cols: 9, rows: 11 },
+    playerStart: { q: 4, r: 8 },
+    exit: { q: 8, r: -4 },
+    outpost: null,
+    enemies: [
+      { type: "sentry", q: 2, r: 2 },
+      { type: "railgun", q: 6, r: 1 },
+      { type: "interceptor", q: 4, r: 3 },
+      { type: "cruiser", q: 2, r: 6 },
+    ],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+  };
+  const st = Engine.createGameState(board);
+  st.runSeed = 12345;
+  const at = (type) => st.enemies.find((e) => e.type === type);
+  const before = Object.fromEntries(st.enemies.map((e) => [e.type, Engine.hexKey(e)]));
+  // Battle damage, and a reactor part-way through a charge.
+  at("cruiser").hp = 1;
+  at("railgun").energy = 1;
+  const drivelessKeys = ["sentry", "railgun"];
+
+  Engine.reenterSector(st, { turnsAway: 4, nonce: 1 });
+
+  for (const type of drivelessKeys) {
+    assert.strictEqual(
+      Engine.hexKey(at(type)),
+      before[type],
+      `the ${type} has no engine, so it is exactly where it was — the same rule that makes it an emplacement`
+    );
+  }
+  assert.ok(
+    ["interceptor", "cruiser"].some((t) => Engine.hexKey(at(t)) !== before[t]),
+    "anything with a drive has been flying, not parked"
+  );
+  assert.strictEqual(at("cruiser").hp, 1, "damage persists — nobody is patching hull out here");
+  assert.strictEqual(
+    at("railgun").energy,
+    at("railgun").maxEnergy,
+    "reactors refill, exactly as the flagship's does between sectors — and so fleeing a charging gun can't freeze it"
+  );
+  assert.ok(
+    Engine.livingEnemies(st).every((e) => Engine.hexDistance(e, st.playerPos) >= 2),
+    "nothing may be sitting on top of you the instant you materialise"
+  );
+  assert.ok(
+    Engine.livingEnemies(st).every((e) => Engine.onBoard(st, e)),
+    "and nothing drifted off the board"
+  );
+  // Drift is a wander, not a re-roll: a re-rolled board would throw away
+  // everything you learned about it.
+  const movers = ["interceptor", "cruiser"];
+  for (const t of movers) {
+    const wasAt = before[t].split(",").map(Number);
+    assert.ok(
+      Engine.hexDistance(at(t), { q: wasAt[0], r: wasAt[1] }) <= 6,
+      `${t} drifted, it did not teleport`
+    );
+  }
+  // Even a quick out-and-back moves the movers. Scaling drift purely by
+  // elapsed turns meant nipping through a gate and straight back drifted
+  // nobody — the exact frozen board this exists to fix.
+  {
+    const quick = Engine.createGameState(board);
+    quick.runSeed = 777;
+    const wasAt = Object.fromEntries(quick.enemies.map((e) => [e.type, Engine.hexKey(e)]));
+    Engine.reenterSector(quick, { turnsAway: 0, nonce: 2 });
+    const find = (t) => quick.enemies.find((e) => e.type === t);
+    // EVERY mover, not just one of them: a random walk that happens to end
+    // where it began leaves that contact looking frozen, which is the bug.
+    for (const t of ["interceptor", "cruiser"]) {
+      assert.notStrictEqual(Engine.hexKey(find(t)), wasAt[t], `the ${t} is not on the hex we left it on`);
+    }
+    assert.strictEqual(Engine.hexKey(find("sentry")), wasAt.sentry, "and the bolted-down gun still hasn't budged");
+  }
+
+  // A cleared sector stays cleared.
+  const emptied = Engine.createGameState(board);
+  emptied.enemies.forEach((e) => (e.alive = false));
+  Engine.reenterSector(emptied, { turnsAway: 20 });
+  assert.strictEqual(Engine.livingEnemies(emptied).length, 0, "nothing wanders back into a sector you emptied");
+}
+
+// Following you through a gate: only something that can actually fly, and
+// only if it genuinely had you, not merely if it was alive somewhere.
+{
+  const chased = Engine.createGameState({
+    id: 957,
+    name: "follow fixture",
+    board: { type: "rect", cols: 9, rows: 11 },
+    playerStart: { q: 4, r: 8 },
+    exit: { q: 8, r: -4 },
+    outpost: null,
+    enemies: [
+      { type: "sentry", q: 4, r: 6 }, // bolted down, and deliberately in range
+      { type: "interceptor", q: 2, r: 2 }, // can fly, but nowhere near you
+    ],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+  });
+  assert.deepStrictEqual(
+    Engine.enemiesThatCanFollow(chased).map((e) => e.type),
+    [],
+    "a gun bolted to a rock follows nobody, and neither does something across the board"
+  );
+  // Put the chaser in contact and it comes with you.
+  const chaser = chased.enemies[1];
+  chaser.q = chased.playerPos.q;
+  chaser.r = chased.playerPos.r - 1;
+  assert.deepStrictEqual(
+    Engine.enemiesThatCanFollow(chased).map((e) => e.type),
+    ["interceptor"],
+    "something in contact with a drive fitted can"
+  );
+  // It arrives as the SAME ship — the damage came with it.
+  chaser.hp = 1;
+  const arrivalBoard = Engine.createGameState({
+    id: 956,
+    name: "arrival fixture",
+    board: { type: "rect", cols: 9, rows: 11 },
+    playerStart: { q: 4, r: 8 },
+    exit: { q: 8, r: -4 },
+    outpost: null,
+    enemies: [],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+  });
+  arrivalBoard.runSeed = 999;
+  Engine.placeArrivals(arrivalBoard, [chaser], 3);
+  const landed = Engine.livingEnemies(arrivalBoard);
+  assert.strictEqual(landed.length, 1, "the follower is on the new board");
+  assert.strictEqual(landed[0].hp, 1, "carrying the damage you already did to it");
+  assert.ok(
+    Engine.hexDistance(landed[0], arrivalBoard.playerPos) >= 2,
+    "and never in your lap — you always get an action first"
+  );
+  assert.ok(
+    arrivalBoard.log.some((line) => /came through behind us/i.test(line)),
+    "and it announces itself"
+  );
+}
+
 // ---- routing goes AROUND the shooting -----------------------------------
 // The route preview was a plain shortest-hop walk: it would run the whole
 // length of a Sentry's ring because every individual step was legal, and

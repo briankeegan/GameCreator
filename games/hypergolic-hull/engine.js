@@ -1604,6 +1604,151 @@
     return true;
   }
 
+  // ---- coming back to a sector you left ---------------------------------
+  //
+  // A charted sector used to be restored exactly as you left it: every
+  // contact frozen mid-step on the hex it occupied, forever. Fly out and
+  // back and the board was a diorama.
+  //
+  // The fix is the rule the game already has. `hasDrive` is what makes a
+  // Sentry an emplacement, and it is equally what decides who could have
+  // gone anywhere while you were away:
+  //
+  //   emplacements — no engine, so they are EXACTLY where you left them.
+  //                  That isn't laziness, it's the same rule, and it means
+  //                  the static kill-zone geometry you scouted is still
+  //                  true when you come back. Recon keeps its value.
+  //   everything else — has been flying. It drifts.
+  //
+  // Damage persists on both sides (nobody is patching hull out here) while
+  // reactors refill on both sides, which is not a favour to the enemy: the
+  // flagship already arrives in every sector at full Energy however
+  // drained it was when it left. Same rule, both directions. It also
+  // closes the trick of fleeing a Railgun mid-charge to freeze it.
+  const DRIFT_MIN = 2;
+  const DRIFT_CAP = 6;
+
+  // Wandering, not teleporting. A uniform re-roll reads as a different
+  // sector and throws away everything you learned; a few legal steps reads
+  // as "they moved". Steps scale with how long you were gone, capped.
+  function driftEnemy(state, enemy, steps, rng) {
+    const origin = { q: enemy.q, r: enemy.r };
+    const legalFrom = (from) =>
+      neighbors(from).filter((to) => canFlyInto(state, to, enemy) && !hazardAt(state, to));
+    for (let i = 0; i < steps; i++) {
+      const options = legalFrom(enemy);
+      if (!options.length) return;
+      const pick = options[Math.floor(rng() * options.length)];
+      enemy.q = pick.q;
+      enemy.r = pick.r;
+    }
+    // A short random walk lands back where it started often enough to
+    // matter (step out, step back — one option in six, every time), and a
+    // contact found on the exact hex you left it on is the whole bug this
+    // is fixing. If we ended up home, take one more step somewhere else.
+    if (posEq(enemy, origin)) {
+      const elsewhere = legalFrom(enemy).filter((to) => !posEq(to, origin));
+      if (elsewhere.length) {
+        const pick = elsewhere[Math.floor(rng() * elsewhere.length)];
+        enemy.q = pick.q;
+        enemy.r = pick.r;
+      }
+    }
+  }
+
+  // Nothing may be sitting on top of you the instant you materialise —
+  // the same guarantee validateLevel makes about a fresh sector's spawn.
+  // Anything that drifted too close is walked back out.
+  function clearArrival(state, rng) {
+    for (const enemy of livingEnemies(state)) {
+      for (let tries = 0; tries < 8 && hexDistance(enemy, state.playerPos) < 2; tries++) {
+        const away = neighbors(enemy).filter(
+          (to) =>
+            canFlyInto(state, to, enemy) &&
+            !hazardAt(state, to) &&
+            hexDistance(to, state.playerPos) > hexDistance(enemy, state.playerPos)
+        );
+        if (!away.length) break;
+        const pick = away[Math.floor(rng() * away.length)];
+        enemy.q = pick.q;
+        enemy.r = pick.r;
+      }
+    }
+  }
+
+  // Who is close enough to come after you through a gate: something that
+  // can fly (an emplacement bolted to a rock does not follow anyone) and
+  // that actually had you in its sights, not merely something alive
+  // somewhere on the board.
+  function enemiesThatCanFollow(state) {
+    return livingEnemies(state).filter((enemy) => {
+      const ship = enemyShip(enemy);
+      if (!ship || !ship.hasDrive) return false;
+      if (isAdjacent(enemy, state.playerPos)) return true;
+      return ship.weapons.some((weapon) =>
+        weaponHexes(enemy, enemyFacing(state, enemy), weapon, state, HYPOTHETICAL).some((h) =>
+          posEq(h, state.playerPos)
+        )
+      );
+    });
+  }
+
+  // Drop a contact that followed you through onto the new board — never
+  // closer than the no-adjacent-spawn rule allows, so you always get an
+  // action before it is on you.
+  function placeArrival(state, enemy, rng) {
+    const spots = state.boardHexes.filter(
+      (h) =>
+        hexDistance(h, state.playerPos) >= 2 &&
+        hexDistance(h, state.playerPos) <= 4 &&
+        canFlyInto(state, h, null) &&
+        !hazardAt(state, h) &&
+        !(state.exits || []).some((ex) => posEq(ex, h)) &&
+        !(state.outpostPos && posEq(state.outpostPos, h))
+    );
+    if (!spots.length) return false;
+    const pick = spots[Math.floor(rng() * spots.length)];
+    enemy.q = pick.q;
+    enemy.r = pick.r;
+    enemy.id = `f${state.enemies.length}`;
+    state.enemies.push(enemy);
+    pushLog(state, `${enemy.type.toUpperCase()} came through behind us.`);
+    return true;
+  }
+
+  // Placement only, for a sector being generated fresh: a follower still
+  // has to be put on the board, but nothing already there should drift and
+  // no reactor should be topped up — a Railgun and the Bulwark spawn with
+  // an EMPTY bus on purpose (the charge-up telegraph), and refilling them
+  // on arrival would quietly delete it.
+  function placeArrivals(state, arrivals, nonce) {
+    if (!arrivals || !arrivals.length) return state;
+    const rng = runSeeded(state.runSeed, state.levelId * 3313 + (nonce || 0) * 131);
+    for (const arrival of arrivals) placeArrival(state, arrival, rng);
+    return state;
+  }
+
+  // Called with a restored chart snapshot. opts.turnsAway is how many
+  // rounds the flagship spent elsewhere; opts.arrivals are contacts that
+  // followed it here (already removed from the sector they came from).
+  function reenterSector(state, opts) {
+    opts = opts || {};
+    const rng = runSeeded(state.runSeed, state.levelId * 7717 + (opts.nonce || 0) * 131);
+    // A floor as well as a cap. Drift scaled purely by turns elapsed meant
+    // a quick out-and-back drifted nobody at all — which is exactly the
+    // frozen-diorama board this whole thing exists to fix. Transiting a
+    // gate takes time whether or not the turn counter says so.
+    const steps = Math.max(DRIFT_MIN, Math.min(opts.turnsAway || 0, DRIFT_CAP));
+    for (const enemy of livingEnemies(state)) {
+      enemy.energy = enemy.maxEnergy; // reactors run whether or not you are watching
+      const ship = enemyShip(enemy);
+      if (ship && ship.hasDrive) driftEnemy(state, enemy, steps, rng);
+    }
+    clearArrival(state, rng);
+    for (const arrival of opts.arrivals || []) placeArrival(state, arrival, rng);
+    return state;
+  }
+
   function livingEnemiesAdjacentTo(state, pos) {
     return livingEnemies(state).filter((e) => isAdjacent(e, pos));
   }
@@ -2423,6 +2568,9 @@
     outpostOffers,
     applyOutpostPurchase,
     wormholeAvailable,
+    reenterSector,
+    placeArrivals,
+    enemiesThatCanFollow,
     legalSublightTargets,
     livingEnemies,
     enemyAt,
