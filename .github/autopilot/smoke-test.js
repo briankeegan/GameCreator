@@ -7,23 +7,57 @@
 // A failure here blocks the merge — the workflow posts the errors to the thread
 // instead of deploying a dead game.
 //
+// Pages are served over a real local HTTP server (NOT file://): the landing
+// page and games do `fetch()` for JSON/assets, and fetch() cannot read file://
+// URLs — loading over file:// produced false failures. http://127.0.0.1 mirrors
+// how the site actually runs.
+//
 // Usage: node smoke-test.js <index.html path> [<index.html path> ...]
-// Loads over file:// (no server needed). Exits 0 if all pass, 1 if any fail,
-// 2 on harness error. On failure it also writes a human-readable summary to
-// .autopilot/failure.md for the workflow to post.
+// Exits 0 if all pass, 1 if any fail, 2 on harness error. On failure it also
+// writes a human-readable summary to .autopilot/failure.md for the workflow.
 
 const { chromium } = require('playwright');
-const path = require('path');
+const http = require('http');
 const fs = require('fs');
+const path = require('path');
 
 const targets = process.argv.slice(2);
 if (!targets.length) { console.log('No runtime targets — skipping smoke test.'); process.exit(0); }
 
-// Loading over file:// legitimately 404s the service worker / manifest / icons
-// (relative fetches, no server). Those are not game bugs — ignore them.
-const IGNORE = /service ?worker|sw\.js|manifest|favicon|icon|Failed to (load|register)|status of 404/i;
+const ROOT = process.cwd();
+const PORT = 8123;
+
+const MIME = {
+  '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
+  '.json': 'application/json', '.css': 'text/css', '.png': 'image/png',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json',
+  '.ico': 'image/x-icon', '.woff2': 'font/woff2',
+};
+
+// Genuinely-irrelevant noise when loading a game in isolation (service worker /
+// manifest / icon fetches that 404 without the full site). Not game bugs.
+const IGNORE = /service ?worker|sw\.js|manifest|favicon|\.webmanifest|apple-touch|register|icon/i;
+
+function serve() {
+  return http.createServer((req, res) => {
+    const urlPath = decodeURIComponent(req.url.split('?')[0]);
+    const rel = urlPath.replace(/^\/+/, '');
+    const abs = path.join(ROOT, rel);
+    // Contain to repo root.
+    if (!abs.startsWith(ROOT)) { res.writeHead(403); return res.end(); }
+    fs.readFile(abs, (err, buf) => {
+      if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('not found'); }
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(abs).toLowerCase()] || 'application/octet-stream' });
+      res.end(buf);
+    });
+  });
+}
 
 (async () => {
+  const server = serve();
+  await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
+
   const browser = await chromium.launch();
   const failures = [];
 
@@ -34,9 +68,8 @@ const IGNORE = /service ?worker|sw\.js|manifest|favicon|icon|Failed to (load|reg
     page.on('console', (m) => { if (m.type() === 'error' && !IGNORE.test(m.text())) errs.push('console: ' + m.text()); });
 
     try {
-      await page.goto('file://' + path.resolve(t), { waitUntil: 'load', timeout: 15000 });
-      await page.waitForTimeout(1500); // let init / first paint run
-      // "Something actually rendered": a sized canvas, or non-empty body text.
+      await page.goto(`http://127.0.0.1:${PORT}/${t}`, { waitUntil: 'load', timeout: 20000 });
+      await page.waitForTimeout(1800); // let init / first paint / fetches run
       const rendered = await page.evaluate(() => {
         const c = document.querySelector('canvas');
         if (c && c.width > 0 && c.height > 0) return true;
@@ -54,6 +87,7 @@ const IGNORE = /service ?worker|sw\.js|manifest|favicon|icon|Failed to (load|reg
   }
 
   await browser.close();
+  server.close();
 
   if (failures.length) {
     const md =
@@ -67,4 +101,5 @@ const IGNORE = /service ?worker|sw\.js|manifest|favicon|icon|Failed to (load|reg
   }
 
   console.log(`\nSmoke test passed for ${targets.length} target(s).`);
+  process.exit(0);
 })().catch((e) => { console.error('HARNESS ERROR', e); process.exit(2); });
