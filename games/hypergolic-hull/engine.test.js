@@ -1869,6 +1869,144 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
   assert.ok(berths.size > docks * 0.25, "and no single berth dominates the crawl");
 }
 
+// ---- rare Discoveries: derelict wrecks, silent outposts, uncharted body -
+// Clubhouse: "random unlikely, occasional finds... rare... an abandoned
+// ship, an abandoned outpost." Pure upside, no menu — resolved the instant
+// the flagship lands on the hex (see checkDiscovery/resolveDiscoveryReward
+// in engine.js).
+{
+  // generateLevel's discoveryCandidates must always be valid, unoccupied
+  // ground — never on top of an enemy, a hazard, the Outpost, a gate, or
+  // the player's own start.
+  let sectors = 0;
+  let sectorsWithCandidates = 0;
+  for (let depth = 5; depth <= 40; depth++) {
+    for (const variant of ["aggressive", "quiet", "drift"]) {
+      const level = generateLevel(depth, variant);
+      if (level.isBoss) continue;
+      sectors++;
+      if ((level.discoveryCandidates || []).length) sectorsWithCandidates++;
+      const occupied = new Set([
+        ...level.hazards.map((h) => `${h.q},${h.r}`),
+        ...level.enemies.map((e) => `${e.q},${e.r}`),
+        ...(level.outpost ? [`${level.outpost.q},${level.outpost.r}`] : []),
+        ...level.exits.map((ex) => `${ex.q},${ex.r}`),
+        `${level.playerStart.q},${level.playerStart.r}`,
+      ]);
+      for (const c of level.discoveryCandidates || []) {
+        assert.ok(
+          !occupied.has(`${c.q},${c.r}`),
+          `depth ${depth} ${variant}: a discovery candidate never overlaps another entity`
+        );
+      }
+    }
+  }
+  assert.ok(
+    sectorsWithCandidates > sectors * 0.8,
+    "nearly every procedural sector has SOMEWHERE a Discovery could go, even on the (common) roll where none actually appears"
+  );
+}
+// Presence/position is real per-RUN luck, not baked into the board — the
+// exact bug already fixed once for the campaign Outpost (levels.js's own
+// rng is seeded purely off depth/variant), guarded here so it can't
+// quietly regress for Discoveries: same depth+variant, different runSeed,
+// can genuinely differ on whether/where one shows up.
+{
+  const fixedLevel = generateLevel(15, "quiet");
+  let withDiscovery = 0;
+  const total = 300;
+  for (let seed = 0; seed < total; seed++) {
+    if (Engine.createGameState(fixedLevel, { runSeed: seed }).discoveryPos) withDiscovery++;
+  }
+  const rate = withDiscovery / total;
+  assert.ok(
+    rate > 0.03 && rate < 0.15,
+    `discovery spawn rate (${(rate * 100).toFixed(1)}%) lands in the "rare, occasional" ballpark, not never and not routine`
+  );
+  assert.deepStrictEqual(
+    Engine.createGameState(fixedLevel, { runSeed: 42 }).discoveryPos,
+    Engine.createGameState(fixedLevel, { runSeed: 42 }).discoveryPos,
+    "same run seed always deals the same Discovery (reproducible within a run)"
+  );
+}
+// End-to-end: flying onto it pays out exactly once, never a downside, and
+// re-crossing the (now-claimed) hex later does nothing more.
+{
+  function discoveryFixture(runSeed) {
+    return Engine.createGameState(
+      {
+        id: 30,
+        board: { type: "rect", cols: 7, rows: 9 },
+        playerStart: { q: 3, r: 7 },
+        exit: { q: 6, r: -3 },
+        outpost: null,
+        enemies: [],
+        hazards: [],
+        exitRule: "all-enemies-dead",
+        discoveryCandidates: [{ q: 3, r: 3 }],
+      },
+      { runSeed }
+    );
+  }
+  let hitSeed = null;
+  for (let seed = 0; seed < 500 && hitSeed === null; seed++) {
+    if (discoveryFixture(seed).discoveryPos) hitSeed = seed;
+  }
+  assert.ok(hitSeed !== null, "found a seed that rolls a Discovery on the fixture within 500 tries");
+  const s = discoveryFixture(hitSeed);
+  const salvageBefore = s.salvage;
+  const hullBefore = s.hull;
+  s.playerPos = { q: 4, r: 3 }; // adjacent — test-only teleport straight to the doorstep
+  Engine.applySublight(s, s.discoveryPos);
+  assert.strictEqual(s.discoveryPos, null, "a Discovery is consumed the instant it resolves");
+  assert.ok(
+    s.salvage > salvageBefore || s.hold.items.length + s.hold.cargo.length > 0,
+    "landing on it actually granted something"
+  );
+  assert.ok(hullBefore === s.hull, "a Discovery is never a downside — Hull never drops from finding one");
+  assert.ok(s.log.some((line) => /salvaged/.test(line)), "the find gets a log line naming what it was");
+  const salvageAfterFirst = s.salvage;
+  const holdAfterFirst = JSON.stringify(s.hold);
+  s.playerPos = { q: 4, r: 3 };
+  Engine.applySublight(s, { q: 3, r: 3 });
+  assert.strictEqual(s.salvage, salvageAfterFirst, "re-crossing an already-claimed Discovery hex grants no more salvage");
+  assert.strictEqual(JSON.stringify(s.hold), holdAfterFirst, "...or any more equipment");
+}
+// Sampled over many resolutions, the free-item half of the reward table
+// never hands out a rare-tier weapon — Railgun/Flank Tubes/Mortar stay a
+// paid-for, saved-up purchase, never a free roll of the dice.
+{
+  const rareEquipmentIds = new Set(
+    Engine.OUTPOST_OFFER_POOL.filter((o) => o.rarity === "rare").map((o) => o.id)
+  );
+  let itemGrants = 0;
+  for (let seed = 0; seed < 500; seed++) {
+    const level = {
+      id: 30, // depth 30: every weapon (including every rare one) is otherwise eligible by depth
+      board: { type: "rect", cols: 9, rows: 11 },
+      playerStart: { q: 4, r: 8 },
+      exit: { q: 8, r: -4 },
+      outpost: null,
+      enemies: [],
+      hazards: [],
+      exitRule: "all-enemies-dead",
+      discoveryCandidates: [{ q: 4, r: 4 }],
+    };
+    const s = Engine.createGameState(level, { runSeed: seed });
+    if (!s.discoveryPos) continue;
+    s.playerPos = { q: 5, r: 4 };
+    Engine.applySublight(s, s.discoveryPos);
+    const grant = s.events.find((e) => e.type === "discovery" && e.kind === "item");
+    if (!grant) continue;
+    itemGrants++;
+    assert.ok(
+      !rareEquipmentIds.has(grant.itemId),
+      `a Discovery granted "${grant.itemId}" for free, which is rare-tier — that's meant to stay a paid purchase`
+    );
+  }
+  assert.ok(itemGrants > 0, "at least some Discoveries across the sample actually granted a free item, not always salvage");
+}
+
 // A locale is a real difference, not a paint job: what's out there changes
 // what the sector is made of.
 {

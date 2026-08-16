@@ -399,6 +399,8 @@ function playSector(state, report) {
       continue;
     }
     Engine.applySublight(state, step);
+    const discovery = state.events.find((e) => e.type === "discovery");
+    if (discovery) report.discoveries[discovery.kind] = (report.discoveries[discovery.kind] || 0) + 1;
     if (state.status === "won") return "cleared";
   }
   return "stalled";
@@ -497,6 +499,7 @@ function main() {
     gates: {},
     deathLines: {},
     deathBoards: {},
+    discoveries: {},
     errors: [],
   };
   const outcomes = {};
@@ -524,6 +527,7 @@ function main() {
   console.log("fitted from cargo:", report.fitted);
   console.log(`recharges: ${report.recharges}, shields raised: ${report.shieldsRaised}`);
 console.log("gates taken:", report.gates);
+  console.log("discoveries found:", report.discoveries);
   const top = (obj, n) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n);
   console.log("\nwhat the board looked like at death:");
   for (const [board, n] of top(report.deathBoards, 6)) console.log(`  ${n}x ${board}`);

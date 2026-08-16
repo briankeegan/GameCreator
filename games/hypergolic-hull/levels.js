@@ -766,6 +766,23 @@
       enemies.push({ type, q: hex.q, r: hex.r });
     }
 
+    // Rare discovery candidates — see engine.js's pickDiscovery. This file
+    // only lists WHERE one COULD go; whether one actually appears, and
+    // which spot wins, is rolled per RUN in engine.js, deliberately not
+    // here. This generator's own rng is seeded purely off (depth,
+    // variantId) — right for the board itself (same depth deals the same
+    // board), but rolling a Discovery's presence here too would make it
+    // permanently fixed for a given depth, the exact bug just fixed for
+    // the campaign Outpost.
+    const occupiedKeys = new Set([
+      ...hazards.map((h) => `${h.q},${h.r}`),
+      ...enemies.map((e) => `${e.q},${e.r}`),
+      ...(outpost ? [`${outpost.q},${outpost.r}`] : []),
+    ]);
+    const discoveryCandidates = candidates.filter(
+      (h) => !occupiedKeys.has(`${h.q},${h.r}`) && exits.every((ex) => hexDist(h, ex) >= 2)
+    );
+
     return {
       id: depth,
       name: sectorName(locale, depth, variantId),
@@ -776,6 +793,7 @@
       outpost,
       enemies,
       hazards,
+      discoveryCandidates,
       exitRule: "all-enemies-dead",
       // Visual identity ("when you're jumping into a color, it should
       // kinda match that theme"): the gate you came through sets the

@@ -159,6 +159,13 @@
         throw new Error(`Level ${level.id}: outpost is not on the board's edge`);
       }
     }
+    // Discovery candidates (see pickDiscovery) — unlike the Outpost, not
+    // restricted to the border; anywhere clear of spawn/gates/other
+    // entities is fair game, same ground procedural hazards are picked
+    // from. Optional: a level with none just never rolls one.
+    for (const [i, c] of (level.discoveryCandidates || []).entries()) {
+      mustBeOn(`discoveryCandidates[${i}]`, c);
+    }
     for (const enemy of level.enemies) {
       mustBeOn("enemy", enemy);
       if (hexDistance(level.playerStart, enemy) < 2) {
@@ -1119,25 +1126,26 @@
   // to answer what it's fighting, which isn't lucky, it's unsolvable.
   const RARE_PITY_VISITS = 3;
 
-  function pickOutpostOfferIds(levelId, aboard, runSeed, raresSkipped) {
-    // A frontier station is a scrapyard with a welding rig, not a
-    // showroom. Repair plus TWO things — that's the whole shelf
-    // (Clubhouse: "too many options too soon... this is a gritty scifi,
-    // why sell so much at every station?"). Nine offers in one list read
-    // as a catalogue, and with early-run salvage most of it was greyed
-    // out anyway: a wall of things you can't have instead of a decision.
-    //
-    // What a station can even stock depends on how deep it is. The first
-    // few sell survival — patches, plating, a shield rig. Weapons are a
-    // find, and the heavy hardware only turns up out where the wrecks
-    // that carried it are.
-    // A station won't try to sell you a second Flak Burst while the first
-    // is still bolted in. With only two slots on the shelf, stocking
-    // something you already fly is the same as stocking nothing — so the
-    // shelf trades against what the ship is actually missing.
+  // What's even eligible to be offered, at an Outpost OR a Discovery — how
+  // deep the sector is, and what's already bolted in. Factored out so a
+  // Discovery's free item roll (see resolveDiscoveryReward) draws from
+  // exactly the same "what could this ship plausibly find here" pool as
+  // the shop does, rather than a second hand-maintained copy of the same
+  // depth-gating rules.
+  //
+  // A frontier station is a scrapyard with a welding rig, not a showroom
+  // (Clubhouse: "too many options too soon... this is a gritty scifi, why
+  // sell so much at every station?"). What a station can even stock
+  // depends on how deep it is. The first few sell survival — patches,
+  // plating, a shield rig. Weapons are a find, and the heavy hardware only
+  // turns up out where the wrecks that carried it are.
+  // A station won't try to sell you a second Flak Burst while the first
+  // is still bolted in — stocking something you already fly is the same
+  // as stocking nothing.
+  function eligibleOfferStock(levelId, aboard) {
     const carried = new Set(aboard || []);
-    const stock = OUTPOST_OFFER_POOL.filter((o) => {
-      if (o.id === "repair") return false; // always on the shelf, added below
+    return OUTPOST_OFFER_POOL.filter((o) => {
+      if (o.id === "repair") return false; // always on the shelf, added by the caller
       if (WEAPON_SYSTEM_KEYS.includes(o.id) && carried.has(o.id)) return false;
       if (o.id === "shield" && carried.has("shieldGenerator")) return false;
       // Shapes arrive one at a time so each one gets to be a lesson: the
@@ -1150,6 +1158,15 @@
       if (o.id === "flakBurst") return levelId >= 2;
       return true; // reinforce / shield / reactor: basic dock trade at any depth
     });
+  }
+
+  function pickOutpostOfferIds(levelId, aboard, runSeed, raresSkipped) {
+    // Nine offers in one list read as a catalogue, and with early-run
+    // salvage most of it was greyed out anyway: a wall of things you can't
+    // have instead of a decision. Repair plus THREE things is the whole
+    // shelf — see eligibleOfferStock above for what can even be on it.
+    const carried = new Set(aboard || []);
+    const stock = eligibleOfferStock(levelId, aboard);
     const rng = runSeeded(runSeed, levelId * 7919 + 13);
     // THREE slots, not two, weighted by rarity rather than a flat
     // shuffle-and-slice — commons show up often, rares are the exciting
@@ -1246,6 +1263,39 @@
     return candidates[Math.floor(rng() * candidates.length)];
   }
 
+  // A rare, optional-detour hex — a derelict wreck, a silent outpost, an
+  // uncharted body — that pays out the instant the flagship flies onto it,
+  // no menu, never a downside (see resolveDiscoveryReward). Only procedural
+  // sectors get one, deliberately NOT via generateLevel's own local rng:
+  // that one is seeded purely off (depth, variantId) — same depth always
+  // deals the same board — which is exactly right for enemies/hazards but
+  // would make a Discovery's presence and position fixed forever for a
+  // given depth if it rolled there too. So generateLevel only emits the
+  // CANDIDATE hexes (levels.js); whether one actually appears, and which
+  // candidate wins, is rolled here against the per-RUN seed, same split as
+  // pickOutpostPos above.
+  const DISCOVERY_CHANCE = 0.08;
+  // Purely cosmetic — three names for the one mechanic below, each with
+  // its own generated icon (games/hypergolic-hull/icons/discovery-<id>.png,
+  // app.js picks by id). Rolled the same way as which hex it lands on, so
+  // "what did I find" varies same as "where."
+  const DISCOVERY_FLAVORS = [
+    { id: "derelict", label: "Derelict Hulk" },
+    { id: "outpost", label: "Silent Outpost" },
+    { id: "wreckage", label: "Uncharted Wreckage" },
+  ];
+  // Returns { pos: {q,r}, flavor, label } or null — never fires (and
+  // never rolls a flavor) when there's nowhere valid to put one.
+  function pickDiscovery(level, runSeed) {
+    const candidates = level.discoveryCandidates || [];
+    if (!candidates.length) return null;
+    const rng = runSeeded(runSeed, level.id * 200003 + 71);
+    if (rng() >= DISCOVERY_CHANCE) return null;
+    const pos = candidates[Math.floor(rng() * candidates.length)];
+    const flavor = DISCOVERY_FLAVORS[Math.floor(rng() * DISCOVERY_FLAVORS.length)];
+    return { pos: { q: pos.q, r: pos.r }, flavor: flavor.id, label: flavor.label };
+  }
+
   // Placed only when carryOver says a previous sector exists to return to
   // (see createGameState below) — an in-world object, not a UI button
   // (Clubhouse feedback: "it should be, like... a wormhole sort of thing").
@@ -1257,7 +1307,7 @@
   // start as if you're on top of that wormhole, not next to it."
   function pickPortalPos(state, levelId) {
     const rng = seededRandom(levelId * 15485863 + 29);
-    const reserved = [...state.exits, state.outpostPos].filter(Boolean);
+    const reserved = [...state.exits, state.outpostPos, state.discoveryPos].filter(Boolean);
     const clear = (h) =>
       !reserved.some((r) => posEq(r, h)) &&
       !hazardAt(state, h) &&
@@ -1349,6 +1399,10 @@
         raresSkipped = rolled.raresSkipped;
       }
     }
+    // Rare, optional-detour hex — see pickDiscovery. Never on a level with
+    // no candidates (the four hand-authored campaign sectors never get
+    // any — see levels.js), and even then only ~8% of the time.
+    const discovery = pickDiscovery(level, runSeed);
     const state = {
       levelId: level.id,
       levelName: level.name || `Sector ${level.id}`,
@@ -1406,6 +1460,9 @@
       // this instead of OUTPOST_OFFER_POOL's flat cost. Empty for the boss
       // shop (bossOutpostOfferIds) and for a sector with no Outpost.
       outpostOfferPrices: outpostOfferPrices,
+      discoveryPos: discovery ? discovery.pos : null,
+      discoveryFlavor: discovery ? discovery.flavor : null,
+      discoveryLabel: discovery ? discovery.label : null,
       exitRule: level.exitRule,
       exitUnlocked: false,
       hazards: (level.hazards || []).map((h) => ({ type: h.type, q: h.q, r: h.r })),
@@ -1652,6 +1709,57 @@
     state.salvage += amount;
     state.events.push({ type: "salvage", amount });
     pushLog(state, `Salvage recovered — +${amount}.`);
+  }
+
+  // A Discovery is found ONCE, on arrival, and always pays out something —
+  // never a downside, never a menu. Rolled at resolution time (not when
+  // the hex was placed), off the same run seed, so it's still a genuine
+  // roll even though a save/reload wouldn't be able to change it.
+  //
+  // ~65% a salvage windfall — bigger than one kill's worth, a real "found
+  // something" moment, via the same amount the shop is priced against
+  // (depthBounty). ~35% a free item, but capped at common/uncommon — a
+  // free Railgun for zero salvage would gut the "weapons should be way
+  // more expensive, you have to save up" curve the shop was tuned around,
+  // and would bypass the shop's own rare-item scarcity accounting
+  // (raresSkipped) entirely. Drawn from exactly the same eligible pool
+  // eligibleOfferStock already computes for the shop, so a Discovery only
+  // ever hands you something this ship could plausibly have found here.
+  const DISCOVERY_SALVAGE_CHANCE = 0.65;
+  function resolveDiscoveryReward(state) {
+    const aboard = [...state.hold.items.map((it) => it.id), ...state.hold.cargo];
+    const rng = runSeeded(state.runSeed, state.levelId * 200003 + 137);
+    const commonOrUncommon = eligibleOfferStock(state.levelId, aboard).filter(
+      (o) => o.rarity === "common" || o.rarity === "uncommon"
+    );
+    if (rng() < DISCOVERY_SALVAGE_CHANCE || !commonOrUncommon.length) {
+      const amount = depthBounty(state) * 2 + 6;
+      state.salvage += amount;
+      state.events.push({ type: "discovery", kind: "salvage", amount });
+      return `+${amount} salvage`;
+    }
+    const [won] = weightedPickWithoutReplacement(commonOrUncommon, (o) => RARITY_WEIGHT[o.rarity] || 1, 1, rng);
+    const itemId = OFFER_ITEM[won.id] || won.id;
+    noteStowed(state, itemId, won.label);
+    autoPlaceInHold(state.hold, itemId);
+    syncHoldDerived(state);
+    state.events.push({ type: "discovery", kind: "item", itemId, label: won.label });
+    return won.label;
+  }
+
+  // Called from applySublight right alongside checkPlayerHazard — the
+  // flagship just moved, so this is where "did it land on something"
+  // belongs. Consumed on the spot: discoveryPos clears, so flying back
+  // over the same hex later in this sector does nothing (it's already
+  // been picked clean).
+  function checkDiscovery(state) {
+    if (!state.discoveryPos || !posEq(state.playerPos, state.discoveryPos)) return;
+    const label = state.discoveryLabel || "Wreckage";
+    const won = resolveDiscoveryReward(state);
+    pushLog(state, `${label} — salvaged ${won}.`);
+    state.discoveryPos = null;
+    state.discoveryFlavor = null;
+    state.discoveryLabel = null;
   }
 
   // ---- threat overlay: pillar #3, "the board is the UI" -------------------
@@ -2021,6 +2129,7 @@
     state.playerPos = { q: to.q, r: to.r }; // copy: never alias a board hex or an exit into live state
     checkPlayerHazard(state);
     if (state.status !== "playing") return;
+    checkDiscovery(state);
     // Moving costs 1 AP and nothing fires — shooting is its own AP spend
     // (applyFire).
     spendAp(state);

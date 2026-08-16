@@ -1563,6 +1563,80 @@ const outpostImg = new Image();
 outpostImg.src = "icons/outpost.png";
 outpostImg.onload = () => draw();
 
+// Rare Discoveries: a derelict wreck, a silent outpost, an uncharted body
+// — one mechanic (see Engine's pickDiscovery), three generated sprites
+// picked by state.discoveryFlavor, each with its own look but the same
+// cyan "sensor contact" halo and beacon so it reads as one kind of thing
+// regardless of which flavor it rolled.
+const discoveryImgs = {
+  derelict: new Image(),
+  outpost: new Image(),
+  wreckage: new Image(),
+};
+discoveryImgs.derelict.src = "icons/discovery-derelict.png";
+discoveryImgs.outpost.src = "icons/discovery-outpost.png";
+discoveryImgs.wreckage.src = "icons/discovery-wreckage.png";
+Object.values(discoveryImgs).forEach((img) => {
+  img.onload = () => draw();
+});
+
+function drawDiscovery(center, r, now, flavor, seedKey) {
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  // A cool cyan halo — "sensor contact, worth a look" — same construction
+  // as the Outpost's rare-stock halo and the enemy classes' per-type
+  // glow, its own hue so it never reads as either of those.
+  const halo = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 1.25);
+  halo.addColorStop(0, "rgba(110,230,225,0.45)");
+  halo.addColorStop(0.55, "rgba(70,190,190,0.22)");
+  halo.addColorStop(1, "rgba(60,170,175,0)");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 1.25, 0, Math.PI * 2);
+  ctx.fill();
+
+  const img = discoveryImgs[flavor] || discoveryImgs.wreckage;
+  if (!drawShipImage(img, r * 0.98)) {
+    // Vector fallback for the moment before that flavor's sprite loads: a
+    // small cluster of jagged debris shards, same seeded-shape technique
+    // drawAsteroidField uses, so it never reads as an empty hex.
+    const rng = seededRandom(`discovery-${seedKey}`);
+    ctx.fillStyle = "#5a6270";
+    ctx.strokeStyle = "#8fa2c2";
+    ctx.lineWidth = Math.max(1, r * 0.05);
+    for (let i = 0; i < 4; i++) {
+      const ang = (i / 4) * Math.PI * 2 + rng() * 0.6;
+      const dist = r * (0.15 + rng() * 0.2);
+      const sz = r * (0.16 + rng() * 0.14);
+      ctx.save();
+      ctx.translate(Math.cos(ang) * dist, Math.sin(ang) * dist);
+      ctx.rotate(rng() * Math.PI * 2);
+      ctx.beginPath();
+      ctx.moveTo(-sz, -sz * 0.6);
+      ctx.lineTo(sz, -sz * 0.3);
+      ctx.lineTo(sz * 0.6, sz);
+      ctx.lineTo(-sz * 0.7, sz * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+  // A slow pulsing cyan core, same beacon technique as the Outpost's, a
+  // different hue so the two are never mistaken for the same kind of
+  // place at a glance.
+  const t = (now || 0) / 1000;
+  const pulse = 0.6 + 0.4 * Math.sin(t * 2.4);
+  const beacon = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.26 * pulse);
+  beacon.addColorStop(0, "rgba(180,255,250,0.9)");
+  beacon.addColorStop(1, "rgba(90,220,215,0)");
+  ctx.fillStyle = beacon;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.26 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 // Whether THIS visit's shelf has a rare-tier item on it (Mortar/Flank
 // Tubes/Railgun — see Engine.OUTPOST_OFFER_POOL) — the beacon reads it, so
 // a station worth detouring for looks different from a routine one before
@@ -2448,6 +2522,7 @@ function draw() {
     const isExit = Boolean(exitHere);
     const isOutpost = state.outpostPos && Engine.posEq(hex, state.outpostPos);
     const isWormhole = state.wormholePos && Engine.posEq(hex, state.wormholePos);
+    const isDiscovery = state.discoveryPos && Engine.posEq(hex, state.discoveryPos);
     const isHazard = Engine.hazardAt(state, hex);
 
     // Plain floor gets NO fill at all. It used to get a 22%-opacity navy
@@ -2470,6 +2545,9 @@ function draw() {
       fillAlpha = 0.8;
     } else if (isWormhole) {
       fill = "#3a2a1c";
+      fillAlpha = 0.8;
+    } else if (isDiscovery) {
+      fill = "#1f4a4a";
       fillAlpha = 0.8;
     }
     // The red strike-range wash is one of the legend's toggleable keys —
@@ -2542,6 +2620,8 @@ function draw() {
       drawOutpost(center, geom.sx * 0.56, now, outpostHasRareStock(state));
     } else if (isWormhole) {
       drawWormhole(center, geom.sx * 0.5, now);
+    } else if (isDiscovery) {
+      drawDiscovery(center, geom.sx * 0.56, now, state.discoveryFlavor, `${state.levelId}-${k}`);
     } else if (isHazard && isHazard.type === "asteroid") {
       drawAsteroidField(center, geom.sx * 0.56, k);
     }
@@ -3190,8 +3270,9 @@ function updateScanInfo() {
   const isGate = state.exits.some((ex) => Engine.posEq(ex, inspectedHex));
   const isOutpost = Boolean(state.outpostPos) && Engine.posEq(state.outpostPos, inspectedHex);
   const isWormhole = Boolean(state.wormholePos) && Engine.posEq(state.wormholePos, inspectedHex);
+  const isDiscovery = Boolean(state.discoveryPos) && Engine.posEq(state.discoveryPos, inspectedHex);
   const hazard = Engine.hazardAt(state, inspectedHex);
-  if (!isGate && !isOutpost && !isWormhole && !hazard) {
+  if (!isGate && !isOutpost && !isWormhole && !isDiscovery && !hazard) {
     enemyInfoEl.hidden = true; // nothing at this hex to report
     return;
   }
@@ -3213,6 +3294,9 @@ function updateScanInfo() {
   } else if (isWormhole) {
     name.textContent = "WORMHOLE";
     stats.textContent = "Unstable throat. It goes back the way we came — roughly where we came in.";
+  } else if (isDiscovery) {
+    name.textContent = (state.discoveryLabel || "WRECKAGE").toUpperCase();
+    stats.textContent = "Unclaimed. Worth a look — flying onto it is enough.";
   } else {
     name.textContent = "ASTEROID FIELD";
     stats.textContent = "Solid rock and dust. Nothing gets through it.";
