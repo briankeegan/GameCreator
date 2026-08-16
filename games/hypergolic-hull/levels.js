@@ -550,6 +550,13 @@
     // hard road early gets you the hardest sector available at that depth,
     // and that is all.
     const ceiling = 2 + Math.floor(depth / 2);
+    // Pressure comes from NUMBERS and ground now, not from hull. Every
+    // armed class is one-shot (only the Bulwark takes a second), which took
+    // good play from 28% to 72% on its own — so the ramp climbs faster and
+    // tops out higher to pay that back. This is the honest lever: another
+    // contact is another gun, another firing arc and another thing that can
+    // jam its own wingman, where another hit point was only ever a longer
+    // turn count.
     const roster = Math.max(
       1,
       Math.min(1 + Math.floor(depth / 3) + (variant ? variant.enemyDelta : 0) + locale.enemyDelta, ceiling, 5)
@@ -566,6 +573,7 @@
       4: [{ cols: 9, rows: 9 }, { cols: 9, rows: 10 }],
       5: [{ cols: 9, rows: 10 }, { cols: 9, rows: 11 }],
       6: [{ cols: 9, rows: 11 }, { cols: 9, rows: 11 }],
+      7: [{ cols: 9, rows: 11 }, { cols: 9, rows: 11 }],
     };
     const sizes = SIZE_FOR_ROSTER[roster];
     const shape = sizes[Math.floor(rng() * sizes.length)];

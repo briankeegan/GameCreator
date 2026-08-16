@@ -1289,6 +1289,41 @@ function drawRailgun(s) {
 // read as the thing the sector is named after.
 const SHIP_SCALE = { bulwark: 1.45, carrier: 1.18, salvager: 1.12, scout: 0.9 };
 
+// A gun's charge, on the gun. The danger overlay already goes dark while
+// a weapon is discharged, but that only says "not this round" — it never
+// said HOW LONG. A Cruiser reloads over three rounds and a Railgun over
+// four, and those are the windows the whole fight is played inside, so
+// they belong on the board rather than in the player's memory.
+//
+// Filled pips are charge in hand; hollow ones are what it still needs
+// before its cheapest gun fires. Nothing is drawn once it's ready and
+// showing — at that point the red wash under it is the message.
+function drawChargePips(center, enemy) {
+  const ship = Engine.ENEMY_TYPES[enemy.type] && Engine.ENEMY_TYPES[enemy.type].ship;
+  if (!ship || !ship.weapons.length) return;
+  const cheapest = Math.min(...ship.weapons.map((w) => w.energyCost));
+  if (cheapest <= 1 || enemy.energy >= cheapest) return; // nothing to count down
+  const w = geom.sx * 0.13;
+  const gap = w * 0.5;
+  const total = cheapest * w + (cheapest - 1) * gap;
+  const y = center.y + geom.sx * 0.52;
+  ctx.save();
+  for (let i = 0; i < cheapest; i++) {
+    const x = center.x - total / 2 + i * (w + gap);
+    ctx.beginPath();
+    ctx.rect(x, y, w, w * 0.62);
+    if (i < enemy.energy) {
+      ctx.fillStyle = "rgba(255,196,110,0.92)";
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = "rgba(255,196,110,0.45)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 function drawEnemyShip(size, hpFrac, crackSeed, type, shielded) {
   size *= SHIP_SCALE[type] || 1;
   ctx.save();
@@ -2583,10 +2618,14 @@ function draw() {
       fill = "#1f4a4a";
       fillAlpha = 0.8;
     }
-    // The red strike-range wash is one of the legend's toggleable keys —
-    // like the legal-move outline below, it's only ever drawn while the
-    // legend is open (and its own checkbox is checked). Safety-critical, so
-    // it stays legible even over an otherwise-transparent floor tile.
+    // Where you will be shot — shown on demand, in Scan, not permanently.
+    // Scan costs no turn, so this is deliberate information rather than
+    // hidden information: you look, you close it, you move. (Hoplite paints
+    // its whole threat picture all the time; that was tried here and the
+    // board reads better kept clean, with the danger a thing you ask for.)
+    // The overlay honours a gun's CHARGE — a discharged weapon lights
+    // nothing — so what you're reading is the live rhythm, not a static
+    // range chart.
     if (threats.has(k) && legendVisible) {
       fill = blend(fill || "#182238", "#7a1f2b", 0.55);
       fillAlpha = Math.max(fillAlpha, 0.62);
@@ -2728,6 +2767,7 @@ function draw() {
     }
     drawEnemyShip(geom.sx * 0.46, enemy.hp / enemy.maxHp, enemy.id, enemy.type, enemy.shieldCharges > 0);
     ctx.restore();
+    drawChargePips(center, enemy);
   }
 
   // The flagship: slides along its move, flashes red on damage, hidden once

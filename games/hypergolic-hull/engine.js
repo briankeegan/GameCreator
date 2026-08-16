@@ -703,7 +703,7 @@
     // fast it fills — is READ OFF THE HOLD by deriveShip, exactly as
     // yours is. Nothing here restates it.
     interceptor: {
-      hull: 1, salvage: 2,
+      hull: 1, salvage: 1,
       hold: {
         cols: 3, rows: 4, blocked: ["0,3", "2,3"],
         items: [
@@ -714,12 +714,11 @@
       },
     },
     cruiser: {
-      hull: 1, salvage: 4,
+      hull: 1, salvage: 2,
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
           { id: "flakBurst", x: 1, y: 0 },
-          { id: "ablativePlating", x: 0, y: 1 },
           { id: "microReactor", x: 3, y: 1 },
           { id: "sublightDrive", x: 1, y: 2 },
           { id: "chargeBank", x: 2, y: 2 },
@@ -727,7 +726,7 @@
       },
     },
     sentry: {
-      hull: 1, salvage: 4,
+      hull: 1, salvage: 2,
       hold: {
         cols: 3, rows: 4, blocked: ["0,0", "2,0"],
         items: [
@@ -743,7 +742,7 @@
     // behind a rock is no answer — you close inside three, back off past
     // it, or kill it. There is no hiding from this one.
     mortar: {
-      hull: 1, salvage: 5,
+      hull: 1, salvage: 3,
       hold: {
         cols: 3, rows: 4, blocked: ["0,0", "2,0"],
         items: [
@@ -759,12 +758,11 @@
     // with it, or get inside it — standing diagonally off at two is the
     // one place it wants you.
     lancer: {
-      hull: 1, salvage: 5,
+      hull: 1, salvage: 3,
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
           { id: "flankTubes", x: 1, y: 0 },
-          { id: "ablativePlating", x: 0, y: 1 },
           { id: "microReactor", x: 3, y: 1 },
           { id: "sublightDrive", x: 2, y: 1 },
           { id: "chargeBank", x: 3, y: 2 },
@@ -775,7 +773,7 @@
     // round to fill it, a slug that costs four. The telegraph isn't a
     // scripted timer — it's the hardware.
     railgun: {
-      hull: 2, salvage: 6, startsEmpty: true,
+      hull: 1, salvage: 3, startsEmpty: true,
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
@@ -799,7 +797,7 @@
     // reach you", and the answer depends on whether your second gun
     // covers ground or covers a direction.
     scout: {
-      hull: 1, salvage: 2,
+      hull: 1, salvage: 1,
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
@@ -815,7 +813,7 @@
     // here — everything takes exactly one more shot than you expect, and
     // a volley you were counting on to clear contact doesn't.
     escort: {
-      hull: 1, salvage: 5,
+      hull: 1, salvage: 3,
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
@@ -834,13 +832,12 @@
     // three of them plus an Escort's screen turned every deep board into
     // arithmetic (measured: it took the win rate from 48% to zero).
     carrier: {
-      hull: 1, salvage: 8,
+      hull: 1, salvage: 4,
       hold: {
         cols: 4, rows: 6, blocked: ["0,0", "3,0", "0,5", "3,5"],
         items: [
           { id: "flakBurst", x: 1, y: 0 },
           { id: "sublightDrive", x: 0, y: 1 },
-          { id: "ablativePlating", x: 3, y: 1 },
           { id: "autocannon", x: 1, y: 2 },
           { id: "microReactor", x: 1, y: 3 },
           { id: "chargeBank", x: 2, y: 3 },
@@ -855,7 +852,7 @@
     // more than anything else on the board and every turn you spend
     // cracking it is a turn the things that CAN shoot get for free.
     salvager: {
-      hull: 1, salvage: 14,
+      hull: 1, salvage: 8,
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
@@ -879,13 +876,12 @@
     // of them finished — a last sector nobody beats is a wall with a name
     // on it, which is the exact note this level already carried.
     bulwark: {
-      hull: 2, salvage: 30, startsEmpty: true,
+      hull: 1, salvage: 16, startsEmpty: true,
       hold: {
         cols: 5, rows: 6, blocked: ["0,0", "4,0", "0,5", "4,5"],
         items: [
           { id: "railgun", x: 1, y: 0 },
           { id: "flakBurst", x: 2, y: 0 },
-          { id: "ablativePlating", x: 0, y: 1 },
           { id: "ablativePlating", x: 4, y: 1 },
           { id: "chargeBank", x: 3, y: 2 },
           { id: "chargeBank", x: 0, y: 3 },
@@ -924,12 +920,43 @@
   // Every weapon a contact could fire from where it stands, ignoring
   // whether it can currently pay for it. Same geometry function the
   // flagship's own reach preview uses.
+  // Nothing out here shoots through its own side. Hoplite's whole roster is
+  // built this way — its bomber won't drop a bomb next to another demon,
+  // its wizard won't fire at all with a demon inside five — and it is what
+  // turns a crowd of enemies from "more hit points" into terrain you can
+  // work against. Standing so that a hostile's own wingman is in its way
+  // is a real move now, and it costs the shot rather than the ally.
+  //
+  // Blocking already handled the LINE (see blocksShot); this handles the
+  // SPREAD, which is the half that matters for a Flak Burst or a Mortar
+  // shell — those cover hexes rather than trace them, so nothing was ever
+  // in the way of them.
+  // Only weapons that SPREAD hold fire for their own side, which is
+  // exactly Hoplite's split: its footman attacks regardless, its archer is
+  // merely blocked by whatever stands in the line, and only the bomber
+  // refuses to drop one beside another demon. Applying it to every gun was
+  // tried and it inverted the game — with every class one-shot, a crowd
+  // jammed itself so thoroughly that MORE enemies made a board safer
+  // (good play went to 37 wins in 40). A precise gun shoots past its
+  // friends; a burst cannot.
+  function spreads(weapon) {
+    return weapon.targets === "all" || weapon.ignoresCover;
+  }
+
+  function wouldCatchAlly(state, enemy, weapon, facing) {
+    if (!spreads(weapon)) return false;
+    const covered = weaponHexes(enemy, facing, weapon, state);
+    return livingEnemies(state).some((other) => other !== enemy && covered.some((h) => posEq(h, other)));
+  }
+
   function enemyWeaponsBearing(state, enemy, target) {
     const ship = enemyShip(enemy);
     if (!ship) return [];
     const facing = enemyFacing(state, enemy);
     const at = target || state.playerPos;
-    return ship.weapons.filter((w) => weaponHexes(enemy, facing, w, state).some((h) => posEq(h, at)));
+    return ship.weapons.filter(
+      (w) => weaponHexes(enemy, facing, w, state).some((h) => posEq(h, at)) && !wouldCatchAlly(state, enemy, w, facing)
+    );
   }
 
   // Every hex a weapon's pattern actually reaches, fired from `pos` facing
@@ -1916,7 +1943,14 @@
       // threat yet — a charging Railgun's board-spanning line only lights
       // up on the turn it can actually fire. (Regen happens AFTER the
       // enemy phase, so "can it fire next phase" is just current energy.)
-      const live = ship.weapons.filter((w) => enemy.energy >= w.energyCost);
+      // Same two gates the enemy itself applies when it decides to shoot:
+      // it must be able to afford the shot, and it must not catch its own
+      // side with it. A danger overlay that ignored the second would mark
+      // hexes as lethal that the hostile will visibly decline to fire on.
+      const facing = enemyFacing(state, enemy);
+      const live = ship.weapons.filter(
+        (w) => enemy.energy >= w.energyCost && !wouldCatchAlly(state, enemy, w, facing)
+      );
       if (!live.length) continue;
       const covered = new Set();
       for (const weapon of live) {

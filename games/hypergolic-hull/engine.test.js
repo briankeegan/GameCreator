@@ -612,7 +612,14 @@ assert.deepStrictEqual(
 // ---- new enemy classes: Cruiser (heavy) and Sentry (stationary turret) -----
 // Variety beyond the lone Interceptor: a Cruiser takes two hits, and a Sentry
 // never moves but its beam reaches two hexes in every direction.
-assert.strictEqual(Engine.ENEMY_TYPES.cruiser.maxHull, 2, "the Cruiser is a 2-Hull heavy (survives a single hit)");
+// Hull is no longer the difficulty lever anywhere in the roster. Hoplite
+// has NO hp variance — every demon dies in one hit — and toughness measured
+// out badly here twice: a 3-Hull Carrier took good-play wins from 19/40 to
+// zero, and the 2-Hull Cruiser cost exactly one hull in 40 of 40 runs.
+// Extra hull doesn't add difficulty, it adds DURATION, and duration is what
+// the rest of the board converts into damage. What a class is now lives in
+// the shape it covers and the rhythm it fires on.
+assert.strictEqual(Engine.ENEMY_TYPES.cruiser.maxHull, 1, "the Cruiser dies to one shot, like almost everything else");
 assert.strictEqual(Engine.ENEMY_TYPES.interceptor.maxHull, 1, "the Interceptor is still a 1-Hull glass cannon");
 // Glass: it denies ground and dies to one shot. At 2 Hull a pair of
 // them walled a whole board — the question a Sentry asks should be "can
@@ -681,7 +688,7 @@ assert.ok(sentryState.events.some((e) => e.type === "attack"), "the Sentry's sho
 // built at last ("what about... basic enemy variety") — stationary like
 // the Sentry, but its shot reaches the length of the board along any of
 // the 6 axes instead of a short ring.
-assert.strictEqual(Engine.ENEMY_TYPES.railgun.maxHull, 2, "the Railgun is a 2-Hull emplacement, same tier as the Sentry");
+assert.strictEqual(Engine.ENEMY_TYPES.railgun.maxHull, 1, "the Railgun is glass too — its reach is the threat, not its hull");
 assert.strictEqual(Engine.ENEMY_TYPES.railgun.ship.hasDrive, false, "the Railgun never chases either");
 assert.strictEqual(Engine.WEAPONS.railgun.range, 20, "the Railgun's shot is effectively board-spanning");
 
@@ -1209,9 +1216,9 @@ flakState.energy = flakState.maxEnergy;
 flakState.systems.autocannon = false; // isolate the burst — the Autocannon is adjacent too and would double up on one of them
 Engine.applyFire(flakState);
 assert.deepStrictEqual(
-  flakState.enemies.map((e) => e.hp),
-  [1, 1],
-  "one Flak Burst volley damages every adjacent contact at once — no other weapon does"
+  flakState.enemies.map((e) => e.alive),
+  [false, false],
+  "one Flak Burst volley hits every adjacent contact at once — no other weapon does"
 );
 
 // RAILGUN — the sniper: any axis, the length of the board, 2 damage, and a
@@ -1245,7 +1252,7 @@ for (let y = 0; y < railgunBuyState.hold.rows && !railgunFitted; y++) {
 }
 assert.strictEqual(railgunFitted, true, "one extra row of hold is enough to fit the spine");
 assert.strictEqual(railgunBuyState.systems.railgun, true, "and installing it arms the weapon");
-assert.strictEqual(Engine.WEAPONS.railgun.damage, 2, "the Railgun hits for 2 — it one-shots the 2-Hull classes");
+assert.strictEqual(Engine.WEAPONS.railgun.damage, 2, "the Railgun hits for 2 — it one-shots anything, including the Bulwark's plating");
 assert.strictEqual(
   Engine.WEAPONS.railgun.energyCost,
   4,
@@ -1258,7 +1265,7 @@ railgunBuyState.enemies[0].q = 2;
 railgunBuyState.enemies[0].r = 1; // five hexes away, aligned on an axis
 railgunBuyState.energy = railgunBuyState.maxEnergy;
 Engine.applyFire(railgunBuyState);
-assert.strictEqual(railgunBuyState.enemies[0].alive, false, "the Railgun one-shots a 2-Hull Cruiser across the board");
+assert.strictEqual(railgunBuyState.enemies[0].alive, false, "the Railgun kills across the whole board");
 
 // The gear rule, both directions. It used to be asserted as an exact 1:1
 // list, which was only ever true by accident of there being six classes
@@ -1288,7 +1295,7 @@ for (const [name, def] of Object.entries(Engine.ENEMY_TYPES)) {
 assert.strictEqual(Engine.ENEMY_TYPES.scout.maxHull, 1, "the Scout is the cheapest airframe in the sky");
 assert.strictEqual(Engine.ENEMY_TYPES.scout.ship.hasDrive, true, "and it chases");
 assert.strictEqual(Engine.ENEMY_TYPES.escort.ship.maxShields, 1, "the Escort is the first hostile with a screen");
-assert.strictEqual(Engine.ENEMY_TYPES.carrier.maxHull, 2, "the Carrier is two Hull");
+assert.strictEqual(Engine.ENEMY_TYPES.carrier.maxHull, 1, "the Carrier is one Hull — two GUNS is what it is, not two hit points");
 assert.deepStrictEqual(
   Engine.ENEMY_TYPES.carrier.ship.weaponKeys.slice().sort(),
   ["autocannon", "flakBurst"],
@@ -1308,7 +1315,14 @@ assert.ok(
   Engine.ENEMY_TYPES.salvager.salvage > Engine.ENEMY_TYPES.carrier.salvage,
   "and it is the richest wreck on any ordinary board, which is the whole reason to stop for it"
 );
-assert.strictEqual(Engine.ENEMY_TYPES.bulwark.maxHull, 4, "the Bulwark is four Hull — the heaviest thing in the run");
+assert.strictEqual(Engine.ENEMY_TYPES.bulwark.maxHull, 2, "the Bulwark is the one thing that takes a second shot");
+// ...and it is the ONLY armed class that does. Everything else is glass.
+{
+  const tough = Object.entries(Engine.ENEMY_TYPES)
+    .filter(([, t]) => t.ship.weapons.length && t.maxHull > 1)
+    .map(([n]) => n);
+  assert.deepStrictEqual(tough, ["bulwark"], `only the boss survives a hit (${tough.join(", ")})`);
+}
 assert.strictEqual(Engine.ENEMY_TYPES.bulwark.ship.hasDrive, false, "bolted down — it is a fortress, not a ship");
 assert.deepStrictEqual(
   Engine.ENEMY_TYPES.bulwark.ship.weaponKeys.slice().sort(),
@@ -1561,6 +1575,74 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
     assert.strictEqual(tugState.hull, hullBefore, "and it never lands a hit, because it has nothing to hit with");
     assert.strictEqual(tugState.status, "playing", "you can stand next to one all day");
   }
+}
+
+// ---- nothing shoots through its own side --------------------------------
+// Hoplite's roster is built on this: its bomber won't drop a bomb beside
+// another demon, its wizard won't fire at all with a demon within five. It
+// is what turns a crowd from "more hit points" into terrain you can work
+// against — stand so a hostile's own wingman is in the way and it costs
+// them the shot. Blocking already handled the LINE (see blocksShot); this
+// is the SPREAD, which is the half that matters for a Flak Burst.
+{
+  const pack = Engine.createGameState({
+    id: 955,
+    name: "friendly fire fixture",
+    board: { type: "rect", cols: 7, rows: 9 },
+    playerStart: { q: 3, r: 6 },
+    exit: { q: 6, r: -3 },
+    outpost: null,
+    enemies: [
+      { type: "cruiser", q: 3, r: 2 }, // Flak Burst: every adjacent hex at once
+      { type: "scout", q: 1, r: 4 },
+    ],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+  });
+  const gunner = pack.enemies[0];
+  const wingman = pack.enemies[1];
+  // Player in contact: with nobody else touching the gunner, it fires.
+  pack.playerPos = { q: gunner.q, r: gunner.r + 1 };
+  assert.ok(
+    Engine.computeThreatHexes(pack).has(Engine.hexKey(pack.playerPos)),
+    "a clear Flak Burst threatens the hex you are standing on"
+  );
+  const hullBefore = pack.hull;
+  Engine.applyEndTurn(pack);
+  assert.ok(pack.hull < hullBefore, "and it takes the shot");
+
+  // Now park its wingman inside the same burst. It holds fire.
+  const jammed = Engine.createGameState({
+    id: 954,
+    name: "jammed fixture",
+    board: { type: "rect", cols: 7, rows: 9 },
+    playerStart: { q: 3, r: 6 },
+    exit: { q: 6, r: -3 },
+    outpost: null,
+    enemies: [
+      { type: "cruiser", q: 3, r: 2 },
+      { type: "scout", q: 3, r: 1 }, // adjacent to the gunner, so inside its own burst
+    ],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+  });
+  const jammedGun = jammed.enemies[0];
+  jammed.playerPos = { q: jammedGun.q, r: jammedGun.r + 1 };
+  assert.strictEqual(
+    Engine.computeThreatHexes(jammed).has(Engine.hexKey(jammed.playerPos)),
+    false,
+    "with its own wingman in the burst, the overlay stops marking that hex — the telegraph tells the truth"
+  );
+  const safeHull = jammed.hull;
+  Engine.applyEndTurn(jammed);
+  assert.strictEqual(jammed.hull, safeHull, "and it genuinely holds fire rather than eating its own");
+  // The wingman moving out un-jams it — this is a position, not a permanent state.
+  jammed.enemies[1].q = 0;
+  jammed.enemies[1].r = 7;
+  assert.ok(
+    Engine.computeThreatHexes(jammed).has(Engine.hexKey(jammed.playerPos)),
+    "once the wingman clears the blast, the gun is live again"
+  );
 }
 
 // ---- coming back to a sector you left -----------------------------------
@@ -2330,7 +2412,7 @@ energyState.enemies[0].q = 2;
 energyState.enemies[0].r = 3; // two straight up — on the Arc Beam's shell, not inside it
 Engine.setFacing(energyState, 2);
 Engine.applyFire(energyState, "e0", "arcBeam");
-assert.strictEqual(energyState.enemies[0].hp, 1, "the named gun fired — and only it");
+assert.strictEqual(energyState.enemies[0].alive, false, "the named gun fired — and only it");
 assert.strictEqual(
   energyState.energy,
   6 - Engine.WEAPONS.arcBeam.energyCost,
@@ -2342,6 +2424,11 @@ assert.ok(
 );
 
 // Naming a gun that can't reach is a refusal, not a silent substitution.
+// (Everything is one-shot now, so put the target back on its feet first —
+// otherwise FIRE refuses for having nothing to shoot at, which is a
+// different refusal than the one under test.)
+energyState.enemies[0].alive = true;
+energyState.enemies[0].hp = energyState.enemies[0].maxHp;
 assert.throws(
   () => Engine.applyFire(energyState, "e0", "railgun"),
   /isn't fitted/,
