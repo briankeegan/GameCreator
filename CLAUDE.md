@@ -1,5 +1,14 @@
 # GameCreator — session conventions
 
+## Replies
+
+Keep chat replies SHORT. The owner has asked for this explicitly and more
+than once. Answer the question, state the recommendation, stop. No
+restating the ask, no summarising work already described in a commit
+message, no tables or headed sections unless the answer genuinely needs
+structure. Detail belongs in commit messages and code comments, not in
+chat.
+
 A multi-game static site (no build system), deployed to
 briankeegan.github.io/GameCreator/. Landing page lists every game from
 `games.json`; each game lives at `games/<id>/`, is independently
