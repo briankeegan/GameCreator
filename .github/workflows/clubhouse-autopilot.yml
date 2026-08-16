@@ -285,6 +285,38 @@ jobs:
           jq -r '.result // "(no result text)"' .autopilot/result.json || true
           echo "Broker usage: $(curl -s http://127.0.0.1:8791/health || echo 'n/a')"
 
+      # PRE-SHIP GATE. The model auto-merges to live, so before we ship, load
+      # every changed game (and the landing page, if shared code changed) in a
+      # headless browser and fail if it throws or renders nothing. A failure
+      # here blocks the merge; the thread gets the actual error (via the
+      # failure step, which prefers .autopilot/failure.md) instead of a dead
+      # game. Runtime-only: doc/workflow-only changes skip it entirely.
+      - name: Smoke-test changed games before shipping
+        if: success()
+        run: |
+          set -uo pipefail
+          changed=$(git diff --name-only -- games shared games.json index.html app.js style.css || true)
+          if [ -z "$changed" ]; then echo "No runtime changes — skipping smoke test."; exit 0; fi
+
+          targets=""
+          add() { case " $targets " in *" $1 "*) ;; *) targets="$targets $1";; esac; }
+          shared_changed=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              games/*/*) gid=$(printf '%s' "$f" | cut -d/ -f2); [ -f "games/$gid/index.html" ] && add "games/$gid/index.html";;
+              shared/*|games.json|index.html|app.js|style.css) shared_changed=1;;
+            esac
+          done <<< "$changed"
+          # Shared / landing changes affect the landing page — test it too.
+          [ -n "$shared_changed" ] && [ -f "index.html" ] && add "index.html"
+
+          if [ -z "$targets" ]; then echo "Nothing runtime to test."; exit 0; fi
+          echo "Smoke-testing:$targets"
+          npm i playwright@1.56.1 >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null
+          node .github/autopilot/smoke-test.js $targets
+
       # Deterministic: land the model's edits on main via a fresh auto-merged
       # PR, then deploy. Only the content paths are staged, so .autopilot/ and
       # any stray files never get committed.
@@ -353,5 +385,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Prefer a specific diagnostic if a step wrote one (e.g. the smoke
+          # test's list of what broke); otherwise a generic message + run link.
+          if [ -s ".autopilot/failure.md" ]; then
+            body=$(cat .autopilot/failure.md)
+          else
+            body=$(printf 'Something went wrong while handling that — the automated run failed before I could finish. Details: %s/%s/actions/runs/%s' "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}")
+          fi
           gh pr comment ${{ steps.ctx.outputs.pr }} --repo ${{ github.repository }} \
-            --body "$(printf '**Claude says:**\n\nSomething went wrong while handling that — the automated run failed before I could finish. Details: %s/%s/actions/runs/%s' "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}")"
+            --body "$(printf '**Claude says:**\n\n%s' "$body")"
