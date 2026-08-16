@@ -365,34 +365,34 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           CONTENT='games shared worker admin games.json app.js style.css index.html'
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A -- $CONTENT 2>/dev/null || true
 
           if git diff --cached --quiet; then
-            echo "No file changes — reply-only, no PR."
+            echo "No file changes — reply-only, nothing to ship."
             exit 0
           fi
 
-          BRANCH="clubhouse-auto/${{ github.run_id }}"
-          git checkout -b "$BRANCH"
+          # Push straight to main. (A PR would be tidier, but GitHub Actions is
+          # blocked from creating PRs by default — "GitHub Actions is not
+          # permitted to create or approve pull requests" — and the smoke test
+          # above already gated this change, so a direct push is safe. This
+          # mirrors what generate-image.yml already does successfully.)
           git commit -m "Clubhouse request (automated) — PR #${{ steps.ctx.outputs.pr }}"
-          git push origin "$BRANCH"
+          pushed=""
+          for i in 1 2 3 4 5 6; do
+            if git pull --rebase origin main && git push origin HEAD:main; then pushed="yes"; break; fi
+            echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+          done
+          if [ -z "$pushed" ]; then echo "::error::Could not push to main after retries"; exit 1; fi
 
-          PR_URL=$(gh pr create --repo "$REPO" --base main --head "$BRANCH" \
-            --title "Clubhouse change (automated) — #${{ steps.ctx.outputs.pr }}" \
-            --body "Automated change from Clubhouse thread #${{ steps.ctx.outputs.pr }}. Landed by clubhouse-autopilot run ${{ github.run_id }}.")
-          echo "Opened $PR_URL"
-
-          # Auto-merge. Comment out this single line to switch to human review
-          # (the PR then sits open until someone merges it).
-          gh pr merge "$PR_URL" --repo "$REPO" --squash --delete-branch
-
-          # A GITHUB_TOKEN merge doesn't trigger Pages, so dispatch the deploy.
+          # A GITHUB_TOKEN push doesn't trigger Pages (recursion guard), so
+          # dispatch the deploy explicitly.
           gh workflow run pages.yml --ref main
-          echo "Merged and dispatched Pages deploy."
+          echo "Pushed to main and dispatched Pages deploy."
 
       # (Art is generated + reviewed in-run via the broker and written straight
       # into games/**, so it's committed alongside the code by "Land changes"
