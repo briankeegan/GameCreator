@@ -298,16 +298,31 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          # Capture stdout(JSON) + stderr to files and DON'T let set -e abort
+          # before we've surfaced them — otherwise a non-zero claude exit hides
+          # the actual reason (why it failed / whether it hit the turn cap).
+          set +e
           claude --bare -p "$(cat .autopilot/prompt.txt)" \
             --permission-mode bypassPermissions \
             --model claude-sonnet-5 \
-            --max-turns 50 \
+            --max-turns 120 \
             --allowedTools "Read,Edit,MultiEdit,Write,Glob,Grep,Bash" \
-            --output-format json > .autopilot/result.json
-          # Surface the model's own summary + broker usage in the log.
-          jq -r '.result // "(no result text)"' .autopilot/result.json || true
-          echo "Broker usage: $(curl -s http://127.0.0.1:8791/health || echo 'n/a')"
+            --output-format json > .autopilot/result.json 2> .autopilot/claude.err
+          rc=$?
+          echo "===== claude exit code: $rc ====="
+          echo "----- result.json (subtype / is_error / result|error) -----"
+          jq -r '"subtype=\(.subtype // "?")  is_error=\(.is_error // "?")  num_turns=\(.num_turns // "?")", (.result // .error // "(no parseable result field)")' .autopilot/result.json 2>/dev/null \
+            || { echo "(result.json not valid JSON — raw head:)"; head -c 2000 .autopilot/result.json; }
+          echo "----- claude stderr (tail) -----"
+          tail -c 1500 .autopilot/claude.err 2>/dev/null || true
+          echo "----- broker usage -----"
+          curl -s http://127.0.0.1:8791/health || echo 'n/a'
+          echo ""
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::Claude CLI exited $rc — see result/stderr above."
+            exit 1
+          fi
 
       # PRE-SHIP GATE. The model auto-merges to live, so before we ship, load
       # every changed game (and the landing page, if shared code changed) in a
