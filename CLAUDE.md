@@ -62,6 +62,16 @@ design discussion. `shared/` holds the components every game reuses
   skipping the name+secret form entirely, on ANY game — no per-game secret
   lookup needed. Falls back to the normal per-game saved login if the
   admin token is missing/stale.
+- **Per-game autopilot toggle.** Each game chooses how its Clubhouse
+  messages are handled, via an `"autopilot": true` flag on its `games.json`
+  entry (absent = off). OFF (default) = manual: a subscribed session handles
+  messages like always. ON = the `.github/workflows/clubhouse-autopilot.yml`
+  workflow handles them automatically (edits → in-run art generate+review →
+  headless smoke test → auto-merged PR → reply). The flag is set at creation
+  via the Admin "Create a new game" checkbox (`admin-create-game` writes it),
+  and the workflow's `ctx` step reads it (deriving the game id from the PR's
+  `clubhouse/<id>` head branch) to decide whether to act — a manual
+  `workflow_dispatch` bypasses the flag so you can always test a game.
 
 ## Handling a clubhouse request
 

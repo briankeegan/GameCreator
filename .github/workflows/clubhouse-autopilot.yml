@@ -115,6 +115,28 @@ jobs:
           TITLE=$(gh pr view "$PR" --repo "$REPO" --json title --jq '.title' 2>/dev/null || echo "Clubhouse")
           echo "pr=$PR" >> "$GITHUB_OUTPUT"
           echo "title=$TITLE" >> "$GITHUB_OUTPUT"
+
+          # PER-GAME AUTOPILOT GATE. Only games that opted in (games.json entry
+          # with "autopilot": true) get handled automatically — every other
+          # game's chat is left for a subscribed session to handle manually.
+          # A manual workflow_dispatch always runs (you triggered it on purpose,
+          # e.g. to test), so it bypasses the flag.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch — bypassing the per-game gate."
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            HEAD=$(gh pr view "$PR" --repo "$REPO" --json headRefName --jq '.headRefName' 2>/dev/null || echo "")
+            GID="${HEAD#clubhouse/}"
+            FLAG=$(jq -r --arg id "$GID" '.games[]? | select(.id==$id) | .autopilot // false' games.json 2>/dev/null || echo "false")
+            if [ "$FLAG" = "true" ]; then
+              echo "Autopilot ENABLED for '$GID'."
+              echo "enabled=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Autopilot OFF for '${GID:-unknown}' — leaving this message for manual handling."
+              echo "enabled=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
           # message may be multi-line — use a run-id-delimited heredoc so a
           # malicious comment can't break out of the block.
           {
@@ -250,6 +272,7 @@ jobs:
       # hard per-run spend ceiling. imagemagick is needed for the trim/resize of
       # cut-out assets and isn't preinstalled on ubuntu-latest.
       - name: Start image broker (holds OpenAI key; model never sees it)
+        if: steps.ctx.outputs.enabled == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           MAX_GENERATIONS: '6'
@@ -271,6 +294,7 @@ jobs:
       # bounded to file edits. Bash is allowed (it needs curl for the broker)
       # and Read is how it reviews the generated PNGs.
       - name: Handle the Clubhouse message (headless Claude)
+        if: steps.ctx.outputs.enabled == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -292,7 +316,7 @@ jobs:
       # failure step, which prefers .autopilot/failure.md) instead of a dead
       # game. Runtime-only: doc/workflow-only changes skip it entirely.
       - name: Smoke-test changed games before shipping
-        if: success()
+        if: success() && steps.ctx.outputs.enabled == 'true'
         run: |
           set -uo pipefail
           changed=$(git diff --name-only -- games shared games.json index.html app.js style.css || true)
@@ -321,7 +345,7 @@ jobs:
       # PR, then deploy. Only the content paths are staged, so .autopilot/ and
       # any stray files never get committed.
       - name: Land changes on main and deploy
-        if: success()
+        if: success() && steps.ctx.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -363,7 +387,7 @@ jobs:
       # version stamp (latest SUCCESSFUL pages.yml run — the just-dispatched
       # deploy is still in_progress, so `--status success` gives what's live).
       - name: Post Claude's reply to the thread
-        if: success()
+        if: success() && steps.ctx.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -381,7 +405,7 @@ jobs:
       # Deterministic: if any step above failed, the thread still gets an answer
       # instead of going mysteriously silent.
       - name: Report failure to the thread
-        if: failure()
+        if: failure() && steps.ctx.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
