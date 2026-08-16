@@ -52,6 +52,7 @@ const modeButtons = Array.from(document.querySelectorAll("[data-mode]"));
 const scanBtn = document.getElementById("scanBtn");
 const shipBtn = document.getElementById("shipBtn");
 const outpostRefitBtn = document.getElementById("outpostRefitBtn");
+const outpostDetailEl = document.getElementById("outpostDetail");
 const shipOverlayEl = document.getElementById("shipOverlay");
 const shipPortraitEl = document.getElementById("shipPortrait");
 const scuttleFxEl = document.getElementById("scuttleFx");
@@ -368,6 +369,9 @@ function returnToPreviousSector() {
 // there — flying off and back re-opens it, so this resets whenever the ship
 // leaves the hex (see updateOutpost).
 let outpostDismissed = false;
+// Which offer is being read right now. Buying is a second, separate tap
+// (see updateOutpost) — the shelf inspects, the button spends.
+let selectedOfferId = null;
 
 // The flagship's facing, in degrees (canvas convention: 0 = screen-right,
 // increases clockwise). Updated whenever the ship actually moves.
@@ -3223,36 +3227,106 @@ function updateScanInfo() {
 // out of sync with actual affordability/applicability as salvage/hull change.
 function updateOutpost() {
   const docked = state.status === "playing" && Engine.outpostAvailable(state);
-  if (!docked) outpostDismissed = false; // re-arm for the next visit
+  if (!docked) {
+    outpostDismissed = false; // re-arm for the next visit
+    selectedOfferId = null;
+  }
   const show = docked && !outpostDismissed;
   outpostOverlayEl.hidden = !show;
   if (!show) return;
 
   outpostSalvageEl.textContent = state.salvage;
   outpostOffersEl.innerHTML = "";
-  for (const offer of Engine.outpostOffers(state)) {
+  const offers = Engine.outpostOffers(state);
+  // A selection that is no longer on the shelf (you just bought it) stops
+  // being selected, rather than leaving a readout for something that isn't
+  // there any more.
+  if (selectedOfferId && !offers.some((o) => o.id === selectedOfferId)) selectedOfferId = null;
+
+  for (const offer of offers) {
     const btn = document.createElement("button");
     // A greyed-out row that only says its price reads as "useless" — it
     // should say what it's WAITING on, so the shelf is a target to hunt
     // toward rather than a list of things you can't have.
     const short = Math.max(0, offer.cost - state.salvage);
+    // The shelf carries the NAME and the price; everything else about the
+    // thing lives in the readout below, now that there is one. The pool's
+    // labels tack the shape onto the name in brackets, which made every
+    // row a paragraph.
+    const name = offer.label.replace(/\s*\(.*\)\s*$/, "");
     btn.textContent = !offer.applicable
-      ? `${offer.label} — not needed`
+      ? `${name} — not needed`
       : short > 0
-        ? `${offer.label} — ${offer.cost} salvage (${short} short)`
-        : // It still sells with a full Hold — it just arrives in cargo,
-          // inert, until you make room. Say that BEFORE the salvage moves
-          // rather than letting the player discover it afterwards.
-          offer.fits === false
-          ? `${offer.label} — ${offer.cost} salvage (→ cargo, no room yet)`
-          : `${offer.label} — ${offer.cost} salvage`;
-    btn.disabled = !offer.affordable || !offer.applicable;
+        ? `${name} — ${offer.cost} salvage (${short} short)`
+        : `${name} — ${offer.cost} salvage`;
+    // Tapping the shelf INSPECTS. It used to buy on the spot, so the only
+    // way to find out what a gun's footprint looked like was to own it —
+    // and a mis-tap spent salvage you were saving. Even an offer you can't
+    // afford is worth reading: that's how you decide what to save for.
+    btn.classList.toggle("selected", offer.id === selectedOfferId);
     btn.addEventListener("click", () => {
-      handleAction(() => Engine.applyOutpostPurchase(state, offer.id));
+      selectedOfferId = selectedOfferId === offer.id ? null : offer.id;
+      render();
     });
     outpostOffersEl.appendChild(btn);
   }
+
+  // The readout box is ALWAYS on screen, selected or not. Showing it only
+  // when something is picked meant the shelf and the Undock button below
+  // it jumped down the moment you tapped a row — and jumped again between
+  // a one-line offer and a weapon's footprint diagram.
+  const selected = offers.find((o) => o.id === selectedOfferId) || null;
+  outpostDetailEl.hidden = false;
+  outpostDetailEl.innerHTML = "";
+  if (!selected) {
+    const empty = document.createElement("div");
+    empty.className = "outpost-detail-empty";
+    empty.textContent = "Tap anything on the shelf to look it over.";
+    outpostDetailEl.appendChild(empty);
+    return;
+  }
+
+  // The same readout the Hold gives a fitted item — footprint diagram and
+  // all — for anything that actually delivers a crate. Offers that don't
+  // (a patch, another row of hull) describe themselves.
+  const body = document.createElement("div");
+  if (selected.itemId) {
+    renderItemReadout(body, selected.itemId);
+  } else {
+    body.innerHTML = `<span class="hold-info-text">${escapeHtml(OFFER_BLURB[selected.id] || selected.label)}</span>`;
+  }
+  outpostDetailEl.appendChild(body);
+
+  if (selected.fits === false) {
+    const warn = document.createElement("p");
+    warn.className = "outpost-note";
+    warn.textContent = "No room in the Hold — it rides in cargo until you make space.";
+    outpostDetailEl.appendChild(warn);
+  }
+
+  const buy = document.createElement("button");
+  buy.className = "outpost-buy";
+  buy.textContent = !selected.applicable
+    ? "Not needed"
+    : selected.affordable
+      ? `Buy — ${selected.cost} salvage`
+      : `${selected.cost - state.salvage} salvage short`;
+  buy.disabled = !selected.affordable || !selected.applicable;
+  buy.addEventListener("click", () => {
+    const id = selected.id;
+    selectedOfferId = null;
+    handleAction(() => Engine.applyOutpostPurchase(state, id));
+  });
+  outpostDetailEl.appendChild(buy);
 }
+
+// What the offers that DON'T hand you a crate actually do. Anything that
+// delivers real equipment is described by describeItem instead, off the
+// item itself, so it can never drift from the thing you receive.
+const OFFER_BLURB = {
+  repair: "Patch 1 Hull. Welded plate over the worst of it — the only way hull comes back mid-run.",
+  hardpoint: "One more row of internal space. Nothing works until it's fitted, and this is where it fits.",
+};
 
 // ---- One ship, one readout --------------------------------------------
 // Your flagship and any contact on the board are the same KIND of object:

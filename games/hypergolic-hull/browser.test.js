@@ -181,11 +181,15 @@ async function walkToOutpost(page) {
   return s;
 }
 
-// Claims an Outpost offer by matching its button text (see updateOutpost —
-// `${offer.label} — ${offer.cost} salvage`), rather than hardcoding a
-// selector, since the offers are built dynamically from Engine.outpostOffers.
+// Claims an Outpost offer by matching its button text, rather than
+// hardcoding a selector, since the offers are built dynamically from
+// Engine.outpostOffers. Buying is TWO taps now: the shelf inspects, and a
+// separate button spends the salvage — a single tap used to buy on the
+// spot, so a mis-tap cost you the salvage you were saving and a weapon's
+// footprint could only be seen by owning it.
 async function claimOutpostOffer(page, labelSubstring) {
   await page.click(`#outpostOffers button:has-text("${labelSubstring}")`);
+  await page.click("#outpostDetail .outpost-buy");
   return getState(page);
 }
 
@@ -604,6 +608,31 @@ async function freshPage(browser, url, errors) {
     await page.locator("#outpostOverlay").isVisible(),
     "tapping the berth you are standing on re-opens the Outpost"
   );
+
+  // Tapping the shelf INSPECTS; it must not spend anything. And what it
+  // shows is the same readout the Hold gives a fitted item — for a weapon
+  // that includes the hex footprint it covers, which previously could only
+  // be discovered by buying the gun.
+  {
+    const before = await getState(page);
+    await page.click("#outpostOffers button >> nth=0");
+    const after = await getState(page);
+    assert.strictEqual(after.salvage, before.salvage, "tapping an offer costs nothing — it reads it out");
+    assert.strictEqual(after.turnCount, before.turnCount, "and spends no turn");
+    assert.ok(await page.locator("#outpostDetail").isVisible(), "the readout opens under the shelf");
+    assert.ok(await page.locator("#outpostDetail .outpost-buy").isVisible(), "with a separate button to actually buy");
+
+    // The box never changes size between offers, so the shelf and Undock
+    // don't move under your thumb while you're comparing things.
+    const undockY = async () => Math.round((await page.locator("#outpostCloseBtn").boundingBox()).y);
+    const seen = new Set([await undockY()]);
+    const count = await page.locator("#outpostOffers button").count();
+    for (let i = 0; i < count; i++) {
+      await page.click(`#outpostOffers button >> nth=${i}`);
+      seen.add(await undockY());
+    }
+    assert.strictEqual(seen.size, 1, `Undock stays put while browsing the shelf (saw ${[...seen].join(", ")})`);
+  }
 
   // A dock is for two things, and the panel used to advertise one. The
   // Hold can ONLY be rearranged while berthed, so the refit half of the

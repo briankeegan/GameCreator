@@ -2175,6 +2175,12 @@
           // Whether the crate would physically go in — the UI greys out what
           // there is no room for rather than letting you find out by paying.
           fits: OFFER_ITEM[offer.id] ? holdHasRoomFor(state.hold, OFFER_ITEM[offer.id]) : true,
+          // WHICH crate this offer actually delivers, when it delivers one
+          // at all. The shop can then describe a purchase with the very
+          // same readout the Hold uses for a fitted item — footprint
+          // diagram and all — instead of keeping a second, driftable
+          // description of the same equipment.
+          itemId: OFFER_ITEM[offer.id] || null,
         };
       });
   }

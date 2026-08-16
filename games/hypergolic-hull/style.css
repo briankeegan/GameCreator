@@ -182,6 +182,68 @@ body {
   color: #6b7a94;
   cursor: not-allowed;
 }
+/* What the selected offer actually IS, under the shelf: the same readout
+   the Hold gives a fitted item (footprint diagram included), plus the
+   button that spends the salvage. Buying used to happen on the first tap,
+   so a weapon's shape could only be discovered by owning it. */
+/* Fixed height, always present. A Mortar's footprint diagram is several
+   times taller than "Patch 1 Hull", so sizing this to its contents made
+   the shelf and the Undock button jump every time you tapped a different
+   row — you'd go to read one thing and the button you wanted had moved.
+   The box reserves the tallest case up front and holds it, empty or not. */
+.outpost-detail {
+  display: flex;
+  flex-direction: column;
+  margin: 0.5rem 0 0.2rem;
+  padding: 0.55rem 0.7rem;
+  width: 100%;
+  max-width: 21rem;
+  height: 15rem; /* fixed, not min-height: min- still grows for a tall diagram */
+  border: 1px solid #2f4468;
+  background: #10182a;
+  text-align: left;
+}
+
+/* The readout takes whatever room it needs; the button stays pinned to the
+   bottom of the box, so it doesn't move between a one-line offer and a
+   diagram either. */
+.outpost-detail > div:first-child {
+  flex: 1 1 auto;
+  /* A flex item won't shrink below its content without this, which is why
+     a fixed height alone still let the tallest footprint push the box —
+     and the Undock button — down the screen. Anything taller than the box
+     scrolls inside it instead of moving the furniture. */
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.outpost-detail-empty {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  color: #6f819c;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.outpost-detail .hold-info-figure {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.outpost-detail .outpost-buy {
+  display: block;
+  width: 100%;
+  margin: 0.55rem 0 0;
+  flex: 0 0 auto;
+}
+
+.outpost-offers button.selected {
+  outline: 2px solid #ffd27f;
+  outline-offset: 1px;
+}
+
 /* The dock's one line of small print. Quiet enough not to compete with
    the offers, present enough to be read once. */
 .outpost-note {
