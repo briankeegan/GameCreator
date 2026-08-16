@@ -1555,28 +1555,73 @@
   // and hazards. BFS with the fixed direction order, so routes are
   // deterministic. Returns null when the target is blocked or unreachable.
   // Drives the tap-twice "fly there" route preview in the UI.
-  function findPath(state, from, to) {
+  // What a hex costs to fly through. A plain step is 1; a hex inside a
+  // CHARGED emplacement's firing zone costs a great deal more.
+  //
+  // Only emplacements count, deliberately. A course is re-plotted every
+  // step (enemies move between rounds), so weighting the search by things
+  // that MOVE makes the ship dither: it steps aside to dodge a chaser, the
+  // chaser follows, the new cheapest route runs back the way it came, and
+  // the burn oscillates on the spot. Caught by the route test doing
+  // exactly that — two rounds passed, two Hull lost, net displacement
+  // zero. You cannot out-route something that follows you, and pretending
+  // otherwise costs you the turns you needed to shoot it.
+  //
+  // An emplacement is the opposite: no drive, so its zone is a fixed
+  // feature of the board, and going around one genuinely works. That is
+  // also the thing a player means by "an area where you get shot".
+  //
+  // A cost, not a wall: if the only way through is hot, the route still
+  // goes. A course that refuses to exist is worse than a dangerous one.
+  const KILL_ZONE_STEP_COST = 60;
+
+  // opts.avoidThreats — weight the search by danger instead of counting
+  // hexes. Off by default: findPath's plain shortest-hop behaviour is what
+  // the engine's own rules (and its tests) expect.
+  function findPath(state, from, to, opts) {
     const blocked = (pos) => enemyAt(state, pos) || hazardAt(state, pos);
     if (!onBoard(state, to) || blocked(to)) return null;
     if (posEq(from, to)) return [{ q: from.q, r: from.r }];
-    const prev = new Map([[hexKey(from), null]]);
-    const queue = [from];
+
+    const avoid = Boolean(opts && opts.avoidThreats);
+    const killZones = avoid ? staticKillZones(state) : null;
+    const goalKey = hexKey(to);
+    const stepCost = (key) => {
+      if (!avoid || key === goalKey) return 1; // you tapped it; going there is the point
+      return 1 + (killZones.has(key) ? KILL_ZONE_STEP_COST : 0);
+    };
+
+    // Uniform-cost search. With every step costing 1 this is exactly the
+    // breadth-first walk it replaced, so the default path is unchanged.
+    const startKey = hexKey(from);
+    const prev = new Map([[startKey, null]]);
+    const dist = new Map([[startKey, 0]]);
+    const queue = [{ pos: from, key: startKey, cost: 0 }];
     while (queue.length) {
-      const cur = queue.shift();
-      for (let i = 0; i < 6; i++) {
-        const n = neighbor(cur, i);
-        if (!onBoard(state, n) || prev.has(hexKey(n)) || blocked(n)) continue;
-        prev.set(hexKey(n), cur);
-        if (posEq(n, to)) {
-          const path = [n];
-          let p = cur;
-          while (p) {
-            path.unshift(p);
-            p = prev.get(hexKey(p));
-          }
-          return path;
+      let bestAt = 0;
+      for (let i = 1; i < queue.length; i++) if (queue[i].cost < queue[bestAt].cost) bestAt = i;
+      const cur = queue.splice(bestAt, 1)[0];
+      if (cur.cost > (dist.get(cur.key) ?? Infinity)) continue;
+      if (cur.key === goalKey) {
+        const path = [];
+        for (let k = cur.key, p = cur.pos; k !== null; ) {
+          path.unshift({ q: p.q, r: p.r });
+          const parent = prev.get(k);
+          if (!parent) break;
+          p = parent;
+          k = hexKey(parent);
         }
-        queue.push(n);
+        return path;
+      }
+      for (let i = 0; i < 6; i++) {
+        const n = neighbor(cur.pos, i);
+        const key = hexKey(n);
+        if (!onBoard(state, n) || blocked(n)) continue;
+        const next = cur.cost + stepCost(key);
+        if (next >= (dist.get(key) ?? Infinity)) continue;
+        dist.set(key, next);
+        prev.set(key, { q: cur.pos.q, r: cur.pos.r });
+        queue.push({ pos: { q: n.q, r: n.r }, key, cost: next });
       }
     }
     return null;

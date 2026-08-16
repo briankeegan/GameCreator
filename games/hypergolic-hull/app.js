@@ -4335,7 +4335,14 @@ function planOrFlyRoute(hex) {
     stepRoute();
     return;
   }
-  const path = Engine.findPath(state, state.playerPos, hex);
+  // Plot AROUND the shooting, not through it. The preview used to be a
+  // plain shortest-hop walk that happily ran the length of a Sentry's ring
+  // because every individual step was legal — while playtest.js's pilot AI
+  // had been weighting the same search by danger for months. Same rule
+  // both sides now: a detour that keeps you out of a firing solution beats
+  // a shorter line that doesn't, and if the only way through is hot the
+  // route still exists, it just costs.
+  const path = Engine.findPath(state, state.playerPos, hex, { avoidThreats: true });
   plannedPath = path && path.length > 1 ? { target: { q: hex.q, r: hex.r }, hexes: path } : null;
   // The route preview needs its "now confirm it" instruction — it goes on
   // the readout strip like every other message.
@@ -4405,7 +4412,7 @@ function stepRouteInner() {
       pushMessage(stopReason);
       // Leave the remainder laid in — the plan was fine, the moment
       // wasn't. Confirming once picks it straight back up.
-      const rest = Engine.findPath(state, state.playerPos, autoRoute.target);
+      const rest = Engine.findPath(state, state.playerPos, autoRoute.target, { avoidThreats: true });
       plannedPath = rest && rest.length > 1 ? { target: { ...autoRoute.target }, hexes: rest } : null;
     } else if (arrived && state.status === "playing") {
       pushMessage("In position.");
@@ -4415,7 +4422,11 @@ function stepRouteInner() {
     return;
   }
   // Recompute each step: enemies move between turns and can block the way.
-  const path = Engine.findPath(state, state.playerPos, autoRoute.target);
+  // Re-plotted every step, threat-weighted every step: enemies move
+  // between rounds, so the safe lane when you laid the course in is not
+  // necessarily the safe lane three hexes later. The burn re-reads the
+  // board rather than following a plan that has gone stale.
+  const path = Engine.findPath(state, state.playerPos, autoRoute.target, { avoidThreats: true });
   if (!path || path.length < 2) {
     cancelRoute();
     pushMessage("No clear lane.");

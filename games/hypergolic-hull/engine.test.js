@@ -1563,6 +1563,118 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
   }
 }
 
+// ---- routing goes AROUND the shooting -----------------------------------
+// The route preview was a plain shortest-hop walk: it would run the whole
+// length of a Sentry's ring because every individual step was legal, and
+// the player got shot for taking the course the game drew for them. (The
+// playtest harness's own pilot had been weighting this search by danger
+// for months — the AI routed around kill zones while the UI didn't.)
+{
+  const gauntlet = {
+    id: 960,
+    name: "gauntlet",
+    board: { type: "rect", cols: 9, rows: 11 },
+    playerStart: { q: 4, r: 8 },
+    exit: { q: 8, r: -4 },
+    outpost: null,
+    enemies: [{ type: "sentry", q: 4, r: 3 }], // parked squarely between start and goal
+    hazards: [],
+    exitRule: "all-enemies-dead",
+  };
+  const gs = Engine.createGameState(gauntlet);
+  const goal = { q: 4, r: -2 }; // straight past the emplacement
+  const threats = Engine.computeThreatHexes(gs);
+  const zones = Engine.staticKillZones(gs);
+  const countIn = (path, set) => path.filter((h) => set.has(Engine.hexKey(h))).length;
+
+  const plain = Engine.findPath(gs, gs.playerPos, goal);
+  const safe = Engine.findPath(gs, gs.playerPos, goal, { avoidThreats: true });
+  assert.ok(plain && safe, "both routes exist");
+  assert.ok(countIn(plain, zones) > 0, "the direct line really does cross the Sentry's live zone (else this proves nothing)");
+  assert.strictEqual(countIn(safe, zones), 0, "the threat-aware route crosses NONE of it");
+  assert.strictEqual(countIn(safe, threats), 0, "and stays out of every firing solution on the board");
+  assert.ok(safe.length > plain.length, "which costs a few extra hexes — that is the trade, and it is worth it");
+  assert.ok(Engine.posEq(safe[safe.length - 1], goal), "a detour still arrives where you tapped");
+  for (let i = 1; i < safe.length; i++) {
+    assert.strictEqual(Engine.isAdjacent(safe[i - 1], safe[i]), true, "every step of a detour is still one hex");
+  }
+
+  // Costs, not walls. Tap a hex INSIDE the kill zone and the route still
+  // goes there — declining to plot a course at all would be far worse than
+  // plotting a dangerous one.
+  const insideZone = gs.boardHexes.find(
+    (h) => zones.has(Engine.hexKey(h)) && !Engine.enemyAt(gs, h) && !Engine.posEq(h, gs.playerPos)
+  );
+  assert.ok(insideZone, "the fixture has somewhere dangerous to tap");
+  const intoDanger = Engine.findPath(gs, gs.playerPos, insideZone, { avoidThreats: true });
+  assert.ok(intoDanger, "a course into a kill zone is still plotted — danger is a cost, never a refusal");
+  assert.ok(Engine.posEq(intoDanger[intoDanger.length - 1], insideZone), "and it arrives");
+
+  // Weighting must never make the route DITHER. A course is re-plotted
+  // every step, so if the search weighted things that move, the ship would
+  // step aside to dodge a chaser, the chaser would follow, and the new
+  // cheapest route would run back the way it came — measured doing exactly
+  // that: two rounds, two Hull, net displacement zero. Simulate the
+  // re-plot loop against a chaser that closes each round and require real
+  // progress every single step.
+  {
+    const chase = Engine.createGameState({
+      id: 959,
+      name: "dither fixture",
+      board: { type: "rect", cols: 9, rows: 11 },
+      playerStart: { q: 4, r: 8 },
+      exit: { q: 8, r: -4 },
+      outpost: null,
+      enemies: [{ type: "interceptor", q: 4, r: 6 }],
+      hazards: [],
+      exitRule: "all-enemies-dead",
+    });
+    const goal = { q: 4, r: 0 };
+    const seen = new Set([Engine.hexKey(chase.playerPos)]);
+    let last = Engine.hexDistance(chase.playerPos, goal);
+    for (let step = 0; step < 12 && !Engine.posEq(chase.playerPos, goal); step++) {
+      const path = Engine.findPath(chase, chase.playerPos, goal, { avoidThreats: true });
+      assert.ok(path && path.length > 1, "a re-plot always finds the way on");
+      chase.playerPos = { q: path[1].q, r: path[1].r };
+      const key = Engine.hexKey(chase.playerPos);
+      assert.ok(!seen.has(key), `the burn never revisits a hex it already flew (${key}) — that is dithering`);
+      seen.add(key);
+      // Not "every step closes the gap" — stepping sideways around a
+      // hostile that is physically standing in the lane is correct, and
+      // asserting otherwise flagged exactly that as a fault. Dithering is
+      // specifically going BACK over ground already flown, which the
+      // revisit check above catches on its own.
+      last = Engine.hexDistance(chase.playerPos, goal);
+      // The chaser closes, exactly as it would in the enemy phase.
+      const toward = Engine.findPath(chase, chase.enemies[0], chase.playerPos);
+      if (toward && toward.length > 1) {
+        chase.enemies[0].q = toward[1].q;
+        chase.enemies[0].r = toward[1].r;
+      }
+    }
+    assert.ok(Engine.posEq(chase.playerPos, goal), "and it actually arrives while being chased the whole way");
+  }
+
+  // The weighting must never lose a route that plain pathing would find.
+  // Swept across every shipped and generated sector, every reachable hex.
+  let checked = 0;
+  for (let depth = 1; depth <= 12; depth++) {
+    const level = depth <= LEVELS.length ? LEVELS[depth - 1] : generateLevel(depth, null);
+    const st = Engine.createGameState(level);
+    for (const h of st.boardHexes) {
+      const a = Engine.findPath(st, st.playerPos, h);
+      const b = Engine.findPath(st, st.playerPos, h, { avoidThreats: true });
+      assert.strictEqual(Boolean(a), Boolean(b), `depth ${depth} ${Engine.hexKey(h)}: danger-weighting must not lose a route`);
+      if (b) {
+        assert.ok(Engine.posEq(b[b.length - 1], h), `depth ${depth} ${Engine.hexKey(h)}: route ends where asked`);
+        for (let i = 1; i < b.length; i++) assert.strictEqual(Engine.isAdjacent(b[i - 1], b[i]), true, "one hex per step");
+      }
+      checked++;
+    }
+  }
+  assert.ok(checked > 500, `swept a real number of destinations (${checked})`);
+}
+
 // ---- maps as PLACES -----------------------------------------------------
 // A sector should be somewhere, not a numbered room: its own colour of
 // space, its own furniture, its own reasons to go there — and a fork worth
