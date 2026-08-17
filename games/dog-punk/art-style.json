@@ -1,9 +1,9 @@
 {
   "camera": "Three-quarter top-down view (SNES-era Zelda: A Link to the Past style) — subject viewed from a raised angle, facing forward/downward toward the viewer, centered and filling most of the frame.",
-  "style": "Detailed 16-bit-era pixel art in the style of classic SNES top-down action-adventure games (A Link to the Past). Crisp hard-edged pixel shapes, limited banded/dithered shading for depth and volume, no soft gradients or airbrushed shading. Strong, clean, iconic silhouette that reads instantly at small size. Limited, deliberate palette (roughly 16-24 colors per subject).",
+  "style": "AUTHENTIC LOW-RESOLUTION SPRITE, not a painted illustration with a pixelation filter. Render as if it were a real 16x16-tile SNES game sprite blown up: large, chunky, uniform square pixels clearly visible as a grid (like Link to the Past / Pokemon Gen 3 overworld sprites), each pixel a single FLAT solid color with a hard 90-degree edge to its neighbor. STRICTLY FORBIDDEN: smooth gradients, soft airbrushed shading, blur, anti-aliasing, painterly brushwork, photographic texture, soft drop shadows. Shading is done ONLY by stepping between 2-3 flat color bands per surface (light band / base band / dark band), each a hard-edged shape, never a blend. Bold 1-pixel black outline around the whole silhouette. Very limited palette: no more than ~16 flat colors total. Strong, simple, iconic silhouette that reads instantly at thumbnail size.",
   "palette": "Punk-rock accents — black leather, studded silver, and a loud mohawk/highlight color (hot pink, acid green, or electric blue) — set against warm overworld earth tones (mossy greens, browns, weathered wood and stone). Exact colors vary per asset, specified in the asset description.",
-  "background": "Transparent background — a single isolated character/object cut out cleanly, no scene behind it, only a small soft contact shadow directly beneath, no other objects.",
-  "constraints": "Square 1:1 composition. No text, no logos, no watermarks, no UI elements, no drop shadow outside the subject.",
+  "background": "Transparent background — a single isolated character/object cut out cleanly, no scene behind it, no shadow, no other objects.",
+  "constraints": "Square 1:1 composition. No text, no logos, no watermarks, no UI elements, no drop shadow outside the subject, no gradients anywhere.",
   "pixelArt": true,
-  "pixelGrid": 64
+  "pixelGrid": 32
 }

@@ -4,11 +4,16 @@
 // the Past's opening area — walk out, clear the room's enemies, the gate
 // at the top opens, walk through it to clear the level.
 //
-// Art: hero.png / enemy-rat.png are generated pixel-art sprites that ship
-// alongside this file (same-origin — never fetched cross-origin, and never
-// sampled with getImageData/toDataURL, only ever drawImage'd). If either
-// fails to load for any reason the game still renders and plays using the
-// hand-drawn canvas fallbacks below, per-frame — nothing blocks on load.
+// Art: hero_down/hero_up/hero_side.png and rat_side.png are generated
+// pixel-art sprites that ship alongside this file (same-origin — never
+// fetched cross-origin, and never sampled with getImageData/toDataURL,
+// only ever drawImage'd). hero_side/rat_side are mirrored per-frame for
+// the opposite horizontal direction, so 3 hero images + 1 rat image cover
+// all 4 facing directions. If any image fails to load for any reason the
+// game still renders and plays using the hand-drawn canvas fallbacks
+// below, per-frame — nothing blocks on load. Movement and attacks are
+// animated procedurally (walk bob/squash, attack lunge + slash sweep,
+// enemy windup/lunge) rather than via pre-baked animation frames.
 const GAME_ID = "dog-punk";
 const TILE = 32;
 const COLS = 16;
@@ -40,15 +45,32 @@ const ENEMY_SPAWNS = [
 ];
 
 // ---- sprites (same-origin PNGs shipped with this game) ----
-const heroImg = new Image();
-let heroReady = false;
-heroImg.onload = () => { heroReady = true; };
-heroImg.src = "hero.png";
+// Hero: 3 real frames (down/up/side) cover all 4 facing directions —
+// "side" is mirrored horizontally for left vs right. Rat: 1 real frame
+// (side), mirrored the same way; rats don't get distinct up/down art but
+// still turn to face their movement/attack direction and animate.
+function loadSprite(src) {
+  const img = new Image();
+  const state = { img, ready: false };
+  img.onload = () => { state.ready = true; };
+  img.src = src;
+  return state;
+}
+const heroDown = loadSprite("hero_down.png");
+const heroUp = loadSprite("hero_up.png");
+const heroSide = loadSprite("hero_side.png");
+const ratSide = loadSprite("rat_side.png");
 
-const ratImg = new Image();
-let ratReady = false;
-ratImg.onload = () => { ratReady = true; };
-ratImg.src = "enemy-rat.png";
+// facing -> { sprite, mirror }
+function heroSpriteFor(facing) {
+  if (facing === "up") return { s: heroUp, mirror: false };
+  if (facing === "left") return { s: heroSide, mirror: true };
+  if (facing === "right") return { s: heroSide, mirror: false };
+  return { s: heroDown, mirror: false };
+}
+function ratSpriteFor(facing) {
+  return { s: ratSide, mirror: facing === "left" };
+}
 
 // ---- DOM ----
 const canvas = document.getElementById("board");
@@ -117,8 +139,9 @@ function freshState() {
       speed: 130, facing: "down",
       hp: 3, maxHp: 3,
       invulnUntil: 0,
-      attackUntil: 0, attackCooldownUntil: 0,
+      attackUntil: 0, attackCooldownUntil: 0, attackStartAt: 0,
       kbx: 0, kby: 0,
+      animPhase: 0, moving: false,
     },
     enemies: ENEMY_SPAWNS.map((s) => ({
       x: s.c * TILE + TILE / 2, y: s.r * TILE + TILE / 2,
@@ -126,6 +149,12 @@ function freshState() {
       hp: 2, alive: true, facing: "down",
       wanderT: Math.random() * 2, wanderDx: 0, wanderDy: 0,
       hitFlash: 0,
+      animPhase: 0, moving: false,
+      // attack state machine: idle (seek/wander) -> windup (telegraph,
+      // holds still) -> lunge (fast dash, deals contact damage once) -> back
+      // to idle with a cooldown. Only the lunge can hurt the player.
+      atkState: "idle", atkTimer: 0, atkDuration: 0,
+      attackCooldownUntil: 0, lungeDx: 0, lungeDy: 0, hasHitThisLunge: false,
     })),
     startTime: performance.now(),
     elapsed: 0,
@@ -204,10 +233,19 @@ function update(dt, now) {
     moveEntity(p, dx * p.speed * dt, dy * p.speed * dt, gateOpen);
   }
 
+  // walk-cycle animation: advance a phase clock while actually moving under
+  // the player's own steam (not knockback, not mid-attack), ease back to a
+  // resting pose otherwise. Driving this off distance covered (not just
+  // wall-clock time) keeps the step cadence matched to actual speed.
+  p.moving = (dx !== 0 || dy !== 0) && now >= p.attackUntil;
+  if (p.moving) p.animPhase += dt * 9;
+  else p.animPhase *= 0.9;
+
   // attack
   if (attackQueued) {
     attackQueued = false;
     if (now >= p.attackCooldownUntil) {
+      p.attackStartAt = now;
       p.attackUntil = now + 220;
       p.attackCooldownUntil = now + 380;
     }
@@ -235,18 +273,63 @@ function update(dt, now) {
   }
 
   // enemies
+  const ATTACK_RANGE = 34;
+  const DETECT_RANGE = 100;
   for (const en of state.enemies) {
     if (!en.alive) continue;
     if (en.hitFlash > 0) en.hitFlash -= dt;
+    en.moving = false;
 
     if (en.kbx || en.kby) {
       moveEntity(en, en.kbx * dt, en.kby * dt, gateOpen);
       en.kbx *= 0.85; en.kby *= 0.85;
       if (Math.abs(en.kbx) < 1) en.kbx = 0;
       if (Math.abs(en.kby) < 1) en.kby = 0;
+    } else if (en.atkState === "windup") {
+      // telegraph: hold still, face the player, coil up (visual only).
+      en.atkTimer -= dt;
+      const dxp = p.x - en.x, dyp = p.y - en.y;
+      en.facing = Math.abs(dxp) > Math.abs(dyp) ? (dxp > 0 ? "right" : "left") : (dyp > 0 ? "down" : "up");
+      if (en.atkTimer <= 0) {
+        en.atkState = "lunge";
+        en.atkTimer = en.atkDuration = 0.16;
+        const len = Math.hypot(dxp, dyp) || 1;
+        en.lungeDx = dxp / len;
+        en.lungeDy = dyp / len;
+        en.hasHitThisLunge = false;
+      }
+    } else if (en.atkState === "lunge") {
+      // the actual attack: a fast committed dash — this is the only window
+      // that can damage the player, so a hit always has a visible "wind up
+      // then pounce" tell before it, not just silent contact.
+      en.atkTimer -= dt;
+      en.moving = true;
+      moveEntity(en, en.lungeDx * en.speed * 3.4 * dt, en.lungeDy * en.speed * 3.4 * dt, gateOpen);
+      if (!en.hasHitThisLunge && now >= p.invulnUntil &&
+          rectsOverlap(p.x, p.y, p.w, p.h, en.x, en.y, en.w, en.h)) {
+        en.hasHitThisLunge = true;
+        p.hp -= 1;
+        p.invulnUntil = now + 900;
+        const kdx = p.x - en.x, kdy = p.y - en.y;
+        const klen = Math.hypot(kdx, kdy) || 1;
+        p.kbx = (kdx / klen) * 160;
+        p.kby = (kdy / klen) * 160;
+        if (p.hp <= 0) {
+          state.lost = true;
+          loseOverlay.hidden = false;
+        }
+      }
+      if (en.atkTimer <= 0) {
+        en.atkState = "idle";
+        en.attackCooldownUntil = now + 900;
+      }
     } else {
       const distToPlayer = Math.hypot(p.x - en.x, p.y - en.y);
-      if (distToPlayer < 100) {
+      if (distToPlayer < ATTACK_RANGE && now >= en.attackCooldownUntil) {
+        en.atkState = "windup";
+        en.atkTimer = en.atkDuration = 0.28;
+      } else if (distToPlayer < DETECT_RANGE) {
+        en.moving = true;
         const ex = (p.x - en.x) / (distToPlayer || 1);
         const ey = (p.y - en.y) / (distToPlayer || 1);
         moveEntity(en, ex * en.speed * dt, ey * en.speed * dt, gateOpen);
@@ -259,23 +342,14 @@ function update(dt, now) {
           en.wanderDx = Math.cos(ang) * 0.5;
           en.wanderDy = Math.sin(ang) * 0.5;
         }
+        en.moving = true;
         moveEntity(en, en.wanderDx * en.speed * dt, en.wanderDy * en.speed * dt, gateOpen);
-      }
-
-      // contact damage
-      if (now >= p.invulnUntil && rectsOverlap(p.x, p.y, p.w, p.h, en.x, en.y, en.w, en.h)) {
-        p.hp -= 1;
-        p.invulnUntil = now + 900;
-        const kdx = p.x - en.x, kdy = p.y - en.y;
-        const klen = Math.hypot(kdx, kdy) || 1;
-        p.kbx = (kdx / klen) * 160;
-        p.kby = (kdy / klen) * 160;
-        if (p.hp <= 0) {
-          state.lost = true;
-          loseOverlay.hidden = false;
-        }
+        en.facing = Math.abs(en.wanderDx) > Math.abs(en.wanderDy) ? (en.wanderDx > 0 ? "right" : "left") : (en.wanderDy > 0 ? "down" : "up");
       }
     }
+
+    if (en.moving) en.animPhase += dt * 10;
+    else en.animPhase *= 0.9;
   }
 
   // win check: standing on the gate tile once every enemy is down
@@ -330,10 +404,14 @@ function drawTile(c, r, ch, gateOpen) {
   }
 }
 
-function drawHeroFallback(x, y, facing, hurt) {
+// Facing -> unit vector, used for lunge offsets and slash-arc placement.
+const FACING_VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+const FACING_ANGLE = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
+
+function drawHeroFallback(x, y, facing, hurt, squashX, squashY) {
   ctx.save();
   ctx.translate(x, y);
-  if (facing === "left") ctx.scale(-1, 1);
+  ctx.scale((facing === "left" ? -1 : 1) * squashX, squashY);
   ctx.fillStyle = "rgba(0,0,0,0.25)";
   ctx.beginPath();
   ctx.ellipse(0, 14, 12, 4, 0, 0, Math.PI * 2);
@@ -342,16 +420,24 @@ function drawHeroFallback(x, y, facing, hurt) {
   ctx.fillRect(-10, -4, 20, 16);
   ctx.fillStyle = "#c98a4b"; // fur head
   ctx.fillRect(-8, -18, 16, 16);
-  ctx.fillStyle = "#ff3fa0"; // mohawk
-  ctx.fillRect(-2, -26, 4, 10);
-  ctx.fillStyle = "#000";
-  ctx.fillRect(2, -12, 3, 3); // eye
+  // a hint of directionality even in the fallback: back of the head (up)
+  // shows no face, front (down/side) shows an eye.
+  if (facing !== "up") {
+    ctx.fillStyle = "#ff3fa0"; // mohawk
+    ctx.fillRect(-2, -26, 4, 10);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(2, -12, 3, 3); // eye
+  } else {
+    ctx.fillStyle = "#ff3fa0";
+    ctx.fillRect(-2, -27, 4, 11);
+  }
   ctx.restore();
 }
 
-function drawRatFallback(x, y, facing, hitFlash) {
+function drawRatFallback(x, y, facing, hitFlash, squashX, squashY) {
   ctx.save();
   ctx.translate(x, y);
+  ctx.scale((facing === "left" ? -1 : 1) * squashX, squashY);
   ctx.fillStyle = "rgba(0,0,0,0.25)";
   ctx.beginPath();
   ctx.ellipse(0, 10, 11, 4, 0, 0, Math.PI * 2);
@@ -369,15 +455,25 @@ function drawRatFallback(x, y, facing, hitFlash) {
   ctx.restore();
 }
 
-function drawSprite(img, ready, x, y, facing, size, fallback) {
-  if (ready) {
+// Draws a directional sprite with a walk-cycle bob/squash and an optional
+// extra offset (used for the attack lunge). `spriteFor(facing)` returns
+// `{ s: {img, ready}, mirror }`.
+function drawAnimatedSprite(spriteFor, facing, x, y, size, anim, fallback) {
+  const { s, mirror } = spriteFor(facing);
+  const stepSquash = anim.moving ? Math.abs(Math.sin(anim.phase * 2)) * 0.06 : 0;
+  const bobY = anim.moving ? -Math.abs(Math.sin(anim.phase)) * 3 : 0;
+  const scaleX = (anim.scaleX ?? 1) + stepSquash;
+  const scaleY = (anim.scaleY ?? 1) - stepSquash;
+  const dx = (anim.offsetX || 0);
+  const dy = (anim.offsetY || 0) + bobY;
+  if (s.ready) {
     ctx.save();
-    ctx.translate(x, y);
-    if (facing === "left") ctx.scale(-1, 1);
-    ctx.drawImage(img, -size / 2, -size / 2, size, size);
+    ctx.translate(x + dx, y + dy);
+    ctx.scale((mirror ? -1 : 1) * scaleX, scaleY);
+    ctx.drawImage(s.img, -size / 2, -size / 2, size, size);
     ctx.restore();
   } else {
-    fallback();
+    fallback(x + dx, y + dy, facing, scaleX, scaleY);
   }
 }
 
@@ -390,29 +486,61 @@ function render(now) {
 
   for (const en of state.enemies) {
     if (!en.alive) continue;
-    drawSprite(ratImg, ratReady, en.x, en.y - 6, en.facing, 34,
-      () => drawRatFallback(en.x, en.y - 6, en.facing, en.hitFlash));
+    let scaleX = 1, scaleY = 1;
+    if (en.atkState === "windup") {
+      // coil up before pouncing.
+      const t = 1 - en.atkTimer / (en.atkDuration || 1);
+      scaleX = 1 + t * 0.18;
+      scaleY = 1 - t * 0.22;
+    } else if (en.atkState === "lunge") {
+      // stretched out mid-pounce, direction-of-travel dependent.
+      const horiz = Math.abs(en.lungeDx) >= Math.abs(en.lungeDy);
+      scaleX = horiz ? 1.3 : 0.9;
+      scaleY = horiz ? 0.85 : 1.3;
+    }
+    drawAnimatedSprite(ratSpriteFor, en.facing, en.x, en.y - 6, 34,
+      { moving: en.moving, phase: en.animPhase, scaleX, scaleY },
+      (x, y, facing, sx, sy) => drawRatFallback(x, y, facing, en.hitFlash, sx, sy));
   }
 
   const p = state.player;
   const blinking = now < p.invulnUntil && Math.floor(now / 100) % 2 === 0;
+  const attacking = now < p.attackUntil;
+  const attackT = attacking ? 1 - (p.attackUntil - now) / 220 : 0; // 0..1 through the swing
+  let offsetX = 0, offsetY = 0, scaleX = 1, scaleY = 1;
+  if (attacking) {
+    const [fx, fy] = FACING_VEC[p.facing];
+    const lunge = Math.sin(Math.min(1, attackT) * Math.PI) * 6; // out and back
+    offsetX = fx * lunge;
+    offsetY = fy * lunge;
+    const stretch = Math.sin(Math.min(1, attackT) * Math.PI) * 0.14;
+    scaleX = 1 + stretch * Math.abs(fx) + stretch * 0.4 * Math.abs(fy);
+    scaleY = 1 + stretch * Math.abs(fy) + stretch * 0.4 * Math.abs(fx);
+  }
   if (!blinking) {
-    drawSprite(heroImg, heroReady, p.x, p.y - 10, p.facing, 44,
-      () => drawHeroFallback(p.x, p.y - 10, p.facing, now < p.invulnUntil));
+    drawAnimatedSprite(heroSpriteFor, p.facing, p.x, p.y - 10, 44,
+      { moving: p.moving, phase: p.animPhase, offsetX, offsetY, scaleX, scaleY },
+      (x, y, facing, sx, sy) => drawHeroFallback(x, y, facing, now < p.invulnUntil, sx, sy));
   }
 
-  if (now < p.attackUntil) {
+  // attack: a quick slash arc sweeping across the facing direction, not
+  // just a static ring — sells the swing as an action, not a hitbox debug
+  // circle.
+  if (attacking) {
+    const baseAngle = FACING_ANGLE[p.facing];
+    const sweep = 2.0; // radians of total swing
+    const startA = baseAngle - sweep / 2;
+    const progressA = startA + sweep * Math.min(1, attackT);
+    const reach = 26;
+    const hx = p.x + Math.cos(baseAngle) * reach * 0.3;
+    const hy = p.y - 6 + Math.sin(baseAngle) * reach * 0.3;
     ctx.save();
-    ctx.strokeStyle = "#f7e26b";
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = "#f4f0e6";
+    ctx.lineWidth = 5;
+    ctx.lineCap = "round";
+    ctx.globalAlpha = 0.9;
     ctx.beginPath();
-    const reach = 24;
-    let hx = p.x, hy = p.y - 6;
-    if (p.facing === "up") hy -= reach;
-    if (p.facing === "down") hy += reach;
-    if (p.facing === "left") hx -= reach;
-    if (p.facing === "right") hx += reach;
-    ctx.arc(hx, hy, 14, 0, Math.PI * 2);
+    ctx.arc(hx, hy, reach, startA, progressA);
     ctx.stroke();
     ctx.restore();
   }
