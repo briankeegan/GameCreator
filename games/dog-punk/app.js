@@ -16,8 +16,17 @@
 // 4 facing directions for both. If any image fails to load for any reason
 // the game still renders and plays using the hand-drawn canvas fallbacks
 // below (which get their own procedural leg-swap animation), per-frame —
-// nothing blocks on load. Attacks remain procedural (lunge + slash sweep,
-// enemy windup/pounce) since those are one-shot actions, not a cycle.
+// nothing blocks on load.
+//
+// Attacks additionally swap to a DEDICATED drawn attack-pose frame for the
+// whole attack/lunge window — hero_atk_down/up/side.png (blade swept fully
+// out mid-slash) and rat_atk_side.png (jaws open, claws out mid-pounce) —
+// instead of just reusing the idle/walk pose with a procedural lunge+
+// stretch. The lunge/stretch/slash-arc motion still layers on top of that
+// pose for follow-through; the pose itself is what makes it read as an
+// actual weapon swing / bite rather than a body-check. Canvas fallbacks
+// (drawHeroFallback/drawRatFallback) draw their own matching weapon-swing
+// / bared-teeth version so this still works with the PNGs missing.
 const GAME_ID = "dog-punk";
 const TILE = 32;
 const COLS = 16;
@@ -70,6 +79,14 @@ const heroDownWalk2 = loadSprite("hero_down_walk2.png");
 const heroUpWalk2 = loadSprite("hero_up_walk2.png");
 const heroSideWalk2 = loadSprite("hero_side_walk2.png");
 const ratSideWalk2 = loadSprite("rat_side_walk2.png");
+// Dedicated attack-pose frames — a real drawn mid-swing/mid-pounce pose per
+// facing, not just the idle/walk frame stretched — swapped in for the
+// entire attack window so the weapon/claws visibly slash instead of the
+// character just lunging while holding the same standing pose.
+const heroAtkDown = loadSprite("hero_atk_down.png");
+const heroAtkUp = loadSprite("hero_atk_up.png");
+const heroAtkSide = loadSprite("hero_atk_side.png");
+const ratAtkSide = loadSprite("rat_atk_side.png");
 
 // facing (+ walk-cycle step) -> { sprite, mirror }
 // hero_side.png / rat_side.png are both drawn facing LEFT natively, so
@@ -84,6 +101,17 @@ function heroSpriteFor(facing, step) {
 }
 function ratSpriteFor(facing, step) {
   return { s: step ? ratSideWalk2 : ratSide, mirror: facing === "right" };
+}
+// Attack-pose lookups (ignore the walk-cycle `step` arg — same signature as
+// the walk lookups above so drawAnimatedSprite can call either one).
+function heroAttackSpriteFor(facing) {
+  if (facing === "up") return { s: heroAtkUp, mirror: false };
+  if (facing === "left") return { s: heroAtkSide, mirror: false };
+  if (facing === "right") return { s: heroAtkSide, mirror: true };
+  return { s: heroAtkDown, mirror: false };
+}
+function ratAttackSpriteFor(facing) {
+  return { s: ratAtkSide, mirror: facing === "right" };
 }
 
 // ---- DOM ----
@@ -422,7 +450,7 @@ function drawTile(c, r, ch, gateOpen) {
 const FACING_VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const FACING_ANGLE = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
 
-function drawHeroFallback(x, y, facing, hurt, squashX, squashY, step) {
+function drawHeroFallback(x, y, facing, hurt, squashX, squashY, step, attacking, attackT) {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale((facing === "left" ? -1 : 1) * squashX, squashY);
@@ -450,10 +478,22 @@ function drawHeroFallback(x, y, facing, hurt, squashX, squashY, step) {
     ctx.fillStyle = "#ff3fa0";
     ctx.fillRect(-2, -27, 4, 11);
   }
+  // weapon: a knife, swept through a real swing arc while attacking so the
+  // canvas fallback slashes too (not just the sprite-image path) — held
+  // low and still the rest of the time.
+  const swingAngle = attacking ? -1.3 + Math.min(1, attackT) * 2.0 : -0.25;
+  ctx.save();
+  ctx.translate(9, -1);
+  ctx.rotate(swingAngle);
+  ctx.fillStyle = "#5a4632"; // handle
+  ctx.fillRect(-3, -2, 5, 4);
+  ctx.fillStyle = "#d7dde0"; // blade
+  ctx.fillRect(2, -2, 15, 4);
+  ctx.restore();
   ctx.restore();
 }
 
-function drawRatFallback(x, y, facing, hitFlash, squashX, squashY, step) {
+function drawRatFallback(x, y, facing, hitFlash, squashX, squashY, step, attacking) {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale((facing === "left" ? -1 : 1) * squashX, squashY);
@@ -472,9 +512,22 @@ function drawRatFallback(x, y, facing, hitFlash, squashX, squashY, step) {
   ctx.fillStyle = "#5c4c34";
   ctx.fillRect(-4, -12, 4, 4);
   ctx.fillRect(2, -12, 4, 4);
-  ctx.fillStyle = "#c0392b";
-  ctx.fillRect(-6, -4, 2, 2);
-  ctx.fillRect(4, -4, 2, 2);
+  if (attacking) {
+    // pounce: jaws wide open baring teeth + a claw stab out front, instead
+    // of the calm resting eyes, so the canvas fallback also shows a real
+    // attack tell, not just a stretched idle body.
+    ctx.fillStyle = "#1b1b1b";
+    ctx.fillRect(-9, -3, 7, 6);
+    ctx.fillStyle = "#f4f0e6";
+    ctx.fillRect(-9, -3, 2, 2);
+    ctx.fillRect(-9, 1, 2, 2);
+    ctx.fillStyle = "#5c4c34";
+    ctx.fillRect(-14, -2, 6, 3); // extended claw
+  } else {
+    ctx.fillStyle = "#c0392b";
+    ctx.fillRect(-6, -4, 2, 2);
+    ctx.fillRect(4, -4, 2, 2);
+  }
   ctx.restore();
 }
 
@@ -514,20 +567,24 @@ function render(now) {
   for (const en of state.enemies) {
     if (!en.alive) continue;
     let scaleX = 1, scaleY = 1;
+    const lunging = en.atkState === "lunge";
     if (en.atkState === "windup") {
       // coil up before pouncing.
       const t = 1 - en.atkTimer / (en.atkDuration || 1);
       scaleX = 1 + t * 0.18;
       scaleY = 1 - t * 0.22;
-    } else if (en.atkState === "lunge") {
+    } else if (lunging) {
       // stretched out mid-pounce, direction-of-travel dependent.
       const horiz = Math.abs(en.lungeDx) >= Math.abs(en.lungeDy);
       scaleX = horiz ? 1.3 : 0.9;
       scaleY = horiz ? 0.85 : 1.3;
     }
-    drawAnimatedSprite(ratSpriteFor, en.facing, en.x, en.y - 6, 34,
-      { moving: en.moving, phase: en.animPhase, scaleX, scaleY },
-      (x, y, facing, sx, sy, step) => drawRatFallback(x, y, facing, en.hitFlash, sx, sy, step));
+    // the pounce swaps to a real drawn attack pose (jaws open, claws out)
+    // instead of just stretching the idle art, so the lunge reads as an
+    // actual attack animation rather than a squashed walk frame.
+    drawAnimatedSprite(lunging ? ratAttackSpriteFor : ratSpriteFor, en.facing, en.x, en.y - 6, 34,
+      { moving: en.moving && !lunging, phase: en.animPhase, scaleX, scaleY },
+      (x, y, facing, sx, sy, step) => drawRatFallback(x, y, facing, en.hitFlash, sx, sy, step, lunging));
   }
 
   const p = state.player;
@@ -545,9 +602,13 @@ function render(now) {
     scaleY = 1 + stretch * Math.abs(fy) + stretch * 0.4 * Math.abs(fx);
   }
   if (!blinking) {
-    drawAnimatedSprite(heroSpriteFor, p.facing, p.x, p.y - 10, 44,
+    // during the attack window, swap to a real drawn mid-swing pose (blade
+    // swept out through the slash) instead of just lunging/stretching the
+    // idle-standing art — that stretch alone read as a body-check, not a
+    // weapon swing.
+    drawAnimatedSprite(attacking ? heroAttackSpriteFor : heroSpriteFor, p.facing, p.x, p.y - 10, 44,
       { moving: p.moving, phase: p.animPhase, offsetX, offsetY, scaleX, scaleY },
-      (x, y, facing, sx, sy, step) => drawHeroFallback(x, y, facing, now < p.invulnUntil, sx, sy, step));
+      (x, y, facing, sx, sy, step) => drawHeroFallback(x, y, facing, now < p.invulnUntil, sx, sy, step, attacking, attackT));
   }
 
   // attack: a quick slash arc sweeping across the facing direction, not
