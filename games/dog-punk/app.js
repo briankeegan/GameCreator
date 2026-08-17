@@ -62,14 +62,18 @@ const heroSide = loadSprite("hero_side.png");
 const ratSide = loadSprite("rat_side.png");
 
 // facing -> { sprite, mirror }
+// hero_side.png / rat_side.png are both drawn facing LEFT natively, so
+// "left" is the unmirrored case and "right" is the one that needs the flip
+// — get this backwards and the sprite visibly walks/lunges the wrong way
+// whenever it should be facing right (moonwalking bug, fixed 2026-08-17).
 function heroSpriteFor(facing) {
   if (facing === "up") return { s: heroUp, mirror: false };
-  if (facing === "left") return { s: heroSide, mirror: true };
-  if (facing === "right") return { s: heroSide, mirror: false };
+  if (facing === "left") return { s: heroSide, mirror: false };
+  if (facing === "right") return { s: heroSide, mirror: true };
   return { s: heroDown, mirror: false };
 }
 function ratSpriteFor(facing) {
-  return { s: ratSide, mirror: facing === "left" };
+  return { s: ratSide, mirror: facing === "right" };
 }
 
 // ---- DOM ----
