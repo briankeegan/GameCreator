@@ -4,16 +4,20 @@
 // the Past's opening area — walk out, clear the room's enemies, the gate
 // at the top opens, walk through it to clear the level.
 //
-// Art: hero_down/hero_up/hero_side.png and rat_side.png are generated
-// pixel-art sprites that ship alongside this file (same-origin — never
-// fetched cross-origin, and never sampled with getImageData/toDataURL,
-// only ever drawImage'd). hero_side/rat_side are mirrored per-frame for
-// the opposite horizontal direction, so 3 hero images + 1 rat image cover
-// all 4 facing directions. If any image fails to load for any reason the
-// game still renders and plays using the hand-drawn canvas fallbacks
-// below, per-frame — nothing blocks on load. Movement and attacks are
-// animated procedurally (walk bob/squash, attack lunge + slash sweep,
-// enemy windup/lunge) rather than via pre-baked animation frames.
+// Art: hero_down/hero_up/hero_side.png (+ _walk2 variants) and rat_side.png
+// (+ _walk2) are generated pixel-art sprites that ship alongside this file
+// (same-origin — never fetched cross-origin, and never sampled with
+// getImageData/toDataURL, only ever drawImage'd). Each direction has TWO
+// real drawn frames — a standing/base pose and an opposite-leg mid-stride
+// pose — and the game flips between them while moving for an actual pixel
+// walk-cycle animation (not just squash/bob on one static image). _side
+// art is mirrored per-frame for the opposite horizontal direction, so 3
+// hero base + 3 hero walk2 + 1 rat base + 1 rat walk2 = 8 images cover all
+// 4 facing directions for both. If any image fails to load for any reason
+// the game still renders and plays using the hand-drawn canvas fallbacks
+// below (which get their own procedural leg-swap animation), per-frame —
+// nothing blocks on load. Attacks remain procedural (lunge + slash sweep,
+// enemy windup/pounce) since those are one-shot actions, not a cycle.
 const GAME_ID = "dog-punk";
 const TILE = 32;
 const COLS = 16;
@@ -60,20 +64,26 @@ const heroDown = loadSprite("hero_down.png");
 const heroUp = loadSprite("hero_up.png");
 const heroSide = loadSprite("hero_side.png");
 const ratSide = loadSprite("rat_side.png");
+// Second walk-cycle frame per direction: same pose/outfit, opposite leg
+// forward — alternated with the base frame above while actually moving.
+const heroDownWalk2 = loadSprite("hero_down_walk2.png");
+const heroUpWalk2 = loadSprite("hero_up_walk2.png");
+const heroSideWalk2 = loadSprite("hero_side_walk2.png");
+const ratSideWalk2 = loadSprite("rat_side_walk2.png");
 
-// facing -> { sprite, mirror }
+// facing (+ walk-cycle step) -> { sprite, mirror }
 // hero_side.png / rat_side.png are both drawn facing LEFT natively, so
 // "left" is the unmirrored case and "right" is the one that needs the flip
 // — get this backwards and the sprite visibly walks/lunges the wrong way
 // whenever it should be facing right (moonwalking bug, fixed 2026-08-17).
-function heroSpriteFor(facing) {
-  if (facing === "up") return { s: heroUp, mirror: false };
-  if (facing === "left") return { s: heroSide, mirror: false };
-  if (facing === "right") return { s: heroSide, mirror: true };
-  return { s: heroDown, mirror: false };
+function heroSpriteFor(facing, step) {
+  if (facing === "up") return { s: step ? heroUpWalk2 : heroUp, mirror: false };
+  if (facing === "left") return { s: step ? heroSideWalk2 : heroSide, mirror: false };
+  if (facing === "right") return { s: step ? heroSideWalk2 : heroSide, mirror: true };
+  return { s: step ? heroDownWalk2 : heroDown, mirror: false };
 }
-function ratSpriteFor(facing) {
-  return { s: ratSide, mirror: facing === "right" };
+function ratSpriteFor(facing, step) {
+  return { s: step ? ratSideWalk2 : ratSide, mirror: facing === "right" };
 }
 
 // ---- DOM ----
@@ -412,7 +422,7 @@ function drawTile(c, r, ch, gateOpen) {
 const FACING_VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const FACING_ANGLE = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
 
-function drawHeroFallback(x, y, facing, hurt, squashX, squashY) {
+function drawHeroFallback(x, y, facing, hurt, squashX, squashY, step) {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale((facing === "left" ? -1 : 1) * squashX, squashY);
@@ -420,6 +430,11 @@ function drawHeroFallback(x, y, facing, hurt, squashX, squashY) {
   ctx.beginPath();
   ctx.ellipse(0, 14, 12, 4, 0, 0, Math.PI * 2);
   ctx.fill();
+  // legs: swap which one is forward/lifted per walk-cycle step, so the
+  // canvas fallback has a real leg-swap animation too, not just squash.
+  ctx.fillStyle = "#2a2a2a";
+  ctx.fillRect(step ? -8 : 2, 10, 6, 6);
+  ctx.fillRect(step ? 2 : -8, 8, 6, 8);
   ctx.fillStyle = hurt ? "#e78888" : "#1b1b1b"; // jacket
   ctx.fillRect(-10, -4, 20, 16);
   ctx.fillStyle = "#c98a4b"; // fur head
@@ -438,7 +453,7 @@ function drawHeroFallback(x, y, facing, hurt, squashX, squashY) {
   ctx.restore();
 }
 
-function drawRatFallback(x, y, facing, hitFlash, squashX, squashY) {
+function drawRatFallback(x, y, facing, hitFlash, squashX, squashY, step) {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale((facing === "left" ? -1 : 1) * squashX, squashY);
@@ -446,6 +461,10 @@ function drawRatFallback(x, y, facing, hitFlash, squashX, squashY) {
   ctx.beginPath();
   ctx.ellipse(0, 10, 11, 4, 0, 0, Math.PI * 2);
   ctx.fill();
+  // legs: swap forward pair per walk-cycle step.
+  ctx.fillStyle = "#4a3d28";
+  ctx.fillRect(step ? -8 : -4, 6, 4, 5);
+  ctx.fillRect(step ? 4 : 8, 6, 4, 5);
   ctx.fillStyle = hitFlash > 0 ? "#ffffff" : "#8a7a5c";
   ctx.beginPath();
   ctx.ellipse(0, 0, 11, 8, 0, 0, Math.PI * 2);
@@ -459,12 +478,16 @@ function drawRatFallback(x, y, facing, hitFlash, squashX, squashY) {
   ctx.restore();
 }
 
-// Draws a directional sprite with a walk-cycle bob/squash and an optional
-// extra offset (used for the attack lunge). `spriteFor(facing)` returns
-// `{ s: {img, ready}, mirror }`.
+// Draws a directional sprite with a real 2-frame pixel walk cycle (swaps to
+// the opposite-leg drawn frame on alternating steps while moving) plus a
+// bob/squash and an optional extra offset (used for the attack lunge).
+// `spriteFor(facing, step)` returns `{ s: {img, ready}, mirror }`.
 function drawAnimatedSprite(spriteFor, facing, x, y, size, anim, fallback) {
-  const { s, mirror } = spriteFor(facing);
-  const stepSquash = anim.moving ? Math.abs(Math.sin(anim.phase * 2)) * 0.06 : 0;
+  // ~2 steps per phase cycle; phase advances with distance moved (see
+  // update()), so cadence scales with actual movement speed.
+  const step = anim.moving && Math.sin(anim.phase) > 0;
+  const { s, mirror } = spriteFor(facing, step);
+  const stepSquash = anim.moving ? Math.abs(Math.sin(anim.phase * 2)) * 0.05 : 0;
   const bobY = anim.moving ? -Math.abs(Math.sin(anim.phase)) * 3 : 0;
   const scaleX = (anim.scaleX ?? 1) + stepSquash;
   const scaleY = (anim.scaleY ?? 1) - stepSquash;
@@ -477,7 +500,7 @@ function drawAnimatedSprite(spriteFor, facing, x, y, size, anim, fallback) {
     ctx.drawImage(s.img, -size / 2, -size / 2, size, size);
     ctx.restore();
   } else {
-    fallback(x + dx, y + dy, facing, scaleX, scaleY);
+    fallback(x + dx, y + dy, facing, scaleX, scaleY, step);
   }
 }
 
@@ -504,7 +527,7 @@ function render(now) {
     }
     drawAnimatedSprite(ratSpriteFor, en.facing, en.x, en.y - 6, 34,
       { moving: en.moving, phase: en.animPhase, scaleX, scaleY },
-      (x, y, facing, sx, sy) => drawRatFallback(x, y, facing, en.hitFlash, sx, sy));
+      (x, y, facing, sx, sy, step) => drawRatFallback(x, y, facing, en.hitFlash, sx, sy, step));
   }
 
   const p = state.player;
@@ -524,7 +547,7 @@ function render(now) {
   if (!blinking) {
     drawAnimatedSprite(heroSpriteFor, p.facing, p.x, p.y - 10, 44,
       { moving: p.moving, phase: p.animPhase, offsetX, offsetY, scaleX, scaleY },
-      (x, y, facing, sx, sy) => drawHeroFallback(x, y, facing, now < p.invulnUntil, sx, sy));
+      (x, y, facing, sx, sy, step) => drawHeroFallback(x, y, facing, now < p.invulnUntil, sx, sy, step));
   }
 
   // attack: a quick slash arc sweeping across the facing direction, not
