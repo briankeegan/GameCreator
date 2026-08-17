@@ -1575,18 +1575,57 @@
   }
 
   // Alternate starting KITS for a brand-new run — unlocked between runs
-  // with Scrap (see app.js), not bought in-run, so the tuned salvage
+  // with Requisition (see app.js), not bought in-run, so the tuned salvage
   // economy never touches them. Each is a different SHAPE of the same
-  // starting budget, not a straight power bump — Escort trades reactor
-  // capacity for a shield from turn one; Salvager is the one deliberate
-  // exception, an eased-difficulty pick (+1 max Hull) for a run that
-  // found the standard start too punishing. "Standard" is exactly
-  // buildHold's kit as it always was — unlocking nothing changes nothing.
+  // starting budget, not a straight power bump: Salvager originally traded
+  // NOTHING for its extra Hull, which made it a strict upgrade over
+  // Standard the moment it was unlocked — the other two options became
+  // pointless to ever pick again. Both alternatives now pay the same price
+  // (a Micro Reactor instead of a full Reactor Core — less energy bank
+  // until a real one's bought) for two different things, so there's a
+  // real question to answer, not a race to whichever unlocks first.
   const STARTING_LOADOUTS = {
-    standard: { label: "Standard", cost: 0, kit: ["sublightDrive", "reactorCore", "scanner"] },
-    escort: { label: "Escort Start", cost: 10, kit: ["sublightDrive", "microReactor", "scanner", "shieldGenerator"] },
-    salvager: { label: "Salvager Start", cost: 20, kit: ["sublightDrive", "reactorCore", "scanner", "ablativePlating"] },
+    standard: {
+      label: "Standard",
+      cost: 0,
+      blurb: "The baseline. Full reactor, no shield.",
+      kit: ["sublightDrive", "reactorCore", "scanner"],
+    },
+    escort: {
+      label: "Escort Start",
+      cost: 10,
+      blurb: "Shield raised from turn one — one hit absorbed free. Costs reactor capacity to fit it.",
+      kit: ["sublightDrive", "microReactor", "scanner", "shieldGenerator"],
+    },
+    salvager: {
+      label: "Salvager Start",
+      cost: 20,
+      blurb: "An extra plate of armor. Same reactor cost as Escort Start.",
+      kit: ["sublightDrive", "microReactor", "scanner", "ablativePlating"],
+    },
   };
+
+  // A loadout's stats without building a whole game state — just the kit
+  // run through the same deriveShip every ship reads its stats off. Lets
+  // app.js's death-overlay picker show what a loadout actually gives you
+  // before you commit to it, the same way an Outpost offer can be
+  // inspected before it's bought.
+  function previewLoadout(loadoutId) {
+    const loadout = STARTING_LOADOUTS[loadoutId] || STARTING_LOADOUTS.standard;
+    const hold = { cols: HOLD_COLS, rows: HOLD_ROWS, blocked: HOLD_BLOCKED.slice(), items: [], cargo: [] };
+    for (const id of loadout.kit) autoPlaceInHold(hold, id);
+    const ship = deriveShip(hold);
+    return {
+      id: loadoutId,
+      label: loadout.label,
+      cost: loadout.cost,
+      blurb: loadout.blurb,
+      kit: loadout.kit.slice(),
+      maxHull: START_HULL + ship.hullBonus,
+      maxEnergy: ship.maxEnergy,
+      maxShields: ship.maxShields,
+    };
+  }
 
   // A fresh sector's hold: carried whole from the previous one (the ship
   // travels), or built from a starting kit — every ship begins with a
@@ -2622,6 +2661,7 @@
     WEAPONS,
     ENEMY_TYPES,
     STARTING_LOADOUTS,
+    previewLoadout,
     weaponHexes,
     deriveShip,
     enemyShip,

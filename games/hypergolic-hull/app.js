@@ -37,6 +37,7 @@ const overlayTitleEl = document.getElementById("runOverlayTitle");
 const overlayBodyEl = document.getElementById("runOverlayBody");
 const overlayRequisitionEl = document.getElementById("runOverlayRequisition");
 const loadoutPickerEl = document.getElementById("loadoutPicker");
+const loadoutDetailEl = document.getElementById("loadoutDetail");
 const restartBtn = document.getElementById("restartBtn");
 const continueBtnEl = document.getElementById("continueBtn");
 const salvageValueEl = document.getElementById("salvageValue");
@@ -3173,6 +3174,7 @@ function updateHud() {
     overlayEl.hidden = false;
   } else {
     overlayEl.hidden = true;
+    previewedLoadout = null; // re-arm for the next time this overlay shows
   }
 
   modeButtons.forEach((btn) => {
@@ -3436,36 +3438,98 @@ function updateScanInfo() {
   enemyInfoEl.appendChild(stats);
 }
 
-// Rebuilds the death/victory overlay's starting-loadout picker from
+// Which loadout chip is currently being INSPECTED — separate from
+// selectedLoadout (which one is actually armed for the next run). Tapping
+// a chip only previews it; a distinct button in the detail box below
+// commits. Same two-step shape as the Outpost's shelf/selectedOfferId,
+// deliberately: a single tap that both bought AND armed something at once
+// read as "I don't understand what I'm choosing" (Clubhouse: "what...
+// this isn't normally how unlocks work... you select the next one, it
+// shows what's available, then you confirm").
+let previewedLoadout = null;
+
+// Rebuilds the death/victory overlay's starting-loadout chips from
 // Engine.STARTING_LOADOUTS every time it's shown — same "cheap enough to
-// just rebuild it" approach as updateOutpost below. Unlocked entries pick
-// which loadout the NEXT run (New Ship) starts with; locked ones spend
-// banked Requisition to unlock (and immediately select) on click, same
-// shelf language as an Outpost offer you can or can't yet afford.
+// just rebuild it" approach as updateOutpost below.
 function updateLoadoutPicker() {
   loadoutPickerEl.innerHTML = "";
-  for (const [id, loadout] of Object.entries(Engine.STARTING_LOADOUTS)) {
+  const ids = Object.keys(Engine.STARTING_LOADOUTS);
+  if (previewedLoadout && !ids.includes(previewedLoadout)) previewedLoadout = null;
+  for (const id of ids) {
+    const loadout = Engine.STARTING_LOADOUTS[id];
     const btn = document.createElement("button");
     const owned = unlockedLoadouts.has(id);
-    const short = Math.max(0, loadout.cost - requisition);
-    btn.textContent = owned
-      ? loadout.label
-      : short > 0
-        ? `${loadout.label} — ${loadout.cost} req. (${short} short)`
-        : `${loadout.label} — ${loadout.cost} req.`;
-    btn.disabled = !owned && short > 0;
-    btn.classList.toggle("selected", owned && selectedLoadout === id);
+    const active = selectedLoadout === id;
+    btn.textContent = active ? `${loadout.label} ✓` : loadout.label;
+    btn.classList.toggle("selected", previewedLoadout === id);
     btn.addEventListener("click", () => {
-      if (!owned) {
-        requisition -= loadout.cost;
-        unlockedLoadouts.add(id);
-      }
-      selectedLoadout = id;
-      persistUnlocks();
+      previewedLoadout = previewedLoadout === id ? null : id;
       updateLoadoutPicker();
+      updateLoadoutDetail();
     });
     loadoutPickerEl.appendChild(btn);
   }
+  updateLoadoutDetail();
+}
+
+// The readout for whichever chip is currently previewed — what it gives
+// you, what it costs to fit, and a single button that actually commits
+// (unlock-and-select if locked, select if already owned, or just "this is
+// what's flying next" if it's already the active pick).
+function updateLoadoutDetail() {
+  loadoutDetailEl.hidden = false;
+  loadoutDetailEl.innerHTML = "";
+  if (!previewedLoadout) {
+    const empty = document.createElement("div");
+    empty.className = "loadout-detail-empty";
+    empty.textContent = "Tap a start to see what it gives you.";
+    loadoutDetailEl.appendChild(empty);
+    return;
+  }
+
+  const preview = Engine.previewLoadout(previewedLoadout);
+  const owned = unlockedLoadouts.has(previewedLoadout);
+  const active = selectedLoadout === previewedLoadout;
+
+  // Stats first, always visible even if the blurb wraps long enough to
+  // need the box's scroll — the numbers are what actually distinguishes
+  // one loadout from another; the blurb is the why.
+  const body = document.createElement("div");
+  const stats = document.createElement("div");
+  stats.className = "loadout-stats";
+  stats.textContent =
+    `Hull ${preview.maxHull} · Energy ${preview.maxEnergy}` +
+    (preview.maxShields > 0 ? ` · Shields ${preview.maxShields} (raised)` : "");
+  body.appendChild(stats);
+  const blurb = document.createElement("span");
+  blurb.className = "hold-info-text";
+  blurb.textContent = preview.blurb;
+  body.appendChild(blurb);
+  loadoutDetailEl.appendChild(body);
+
+  const confirm = document.createElement("button");
+  confirm.className = "loadout-confirm";
+  if (active) {
+    confirm.textContent = "This is flying next";
+    confirm.disabled = true;
+  } else if (owned) {
+    confirm.textContent = "Select for next run";
+    confirm.disabled = false;
+  } else {
+    const short = Math.max(0, preview.cost - requisition);
+    confirm.textContent = short > 0 ? `Unlock — ${preview.cost} req. (${short} short)` : `Unlock — ${preview.cost} req.`;
+    confirm.disabled = short > 0;
+  }
+  confirm.addEventListener("click", () => {
+    if (!owned) {
+      requisition -= preview.cost;
+      unlockedLoadouts.add(previewedLoadout);
+    }
+    selectedLoadout = previewedLoadout;
+    persistUnlocks();
+    updateLoadoutPicker();
+  });
+  loadoutDetailEl.appendChild(confirm);
 }
 
 // Rebuilds the outpost shop's offer buttons from Engine.outpostOffers every

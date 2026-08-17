@@ -216,23 +216,33 @@ body {
    the shelf and the Undock button jump every time you tapped a different
    row — you'd go to read one thing and the button you wanted had moved.
    The box reserves the tallest case up front and holds it, empty or not. */
-.outpost-detail {
+.outpost-detail,
+.loadout-detail {
   display: flex;
   flex-direction: column;
   margin: 0.5rem 0 0.2rem;
   padding: 0.55rem 0.7rem;
   width: 100%;
   max-width: 21rem;
-  height: 15rem; /* fixed, not min-height: min- still grows for a tall diagram */
   border: 1px solid #2f4468;
   background: #10182a;
   text-align: left;
+}
+.outpost-detail {
+  height: 15rem; /* fixed, not min-height: min- still grows for a tall diagram */
+}
+/* Shorter than the Outpost's box — a loadout's readout is a blurb and a
+   stat line, never a footprint diagram, so it doesn't need the room a
+   Mortar's does. */
+.loadout-detail {
+  height: 10rem;
 }
 
 /* The readout takes whatever room it needs; the button stays pinned to the
    bottom of the box, so it doesn't move between a one-line offer and a
    diagram either. */
-.outpost-detail > div:first-child {
+.outpost-detail > div:first-child,
+.loadout-detail > div:first-child {
   flex: 1 1 auto;
   /* A flex item won't shrink below its content without this, which is why
      a fixed height alone still let the tallest footprint push the box —
@@ -242,7 +252,8 @@ body {
   overflow-y: auto;
 }
 
-.outpost-detail-empty {
+.outpost-detail-empty,
+.loadout-detail-empty {
   display: flex;
   flex: 1 1 auto;
   align-items: center;
@@ -257,11 +268,17 @@ body {
   margin-bottom: 0.35rem;
 }
 
-.outpost-detail .outpost-buy {
+.outpost-detail .outpost-buy,
+.loadout-detail .loadout-confirm {
   display: block;
   width: 100%;
   margin: 0.55rem 0 0;
   flex: 0 0 auto;
+}
+.loadout-detail .loadout-stats {
+  margin: 0.3rem 0;
+  font-size: 0.8rem;
+  color: #cfe2ff;
 }
 
 .outpost-offers button.selected {

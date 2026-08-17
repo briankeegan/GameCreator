@@ -941,11 +941,26 @@ assert.strictEqual(clampedState.shieldCharges, 1, "carried charges clamp to inst
   const escort = Engine.createGameState(LEVELS[0], { startingLoadout: "escort" });
   assert.ok(escort.maxShields > 0, "Escort Start actually carries a Shield Generator");
   assert.strictEqual(escort.shieldCharges, escort.maxShields, "...and it arrives already raised");
-  // Salvager Start is the deliberate easier-start exception: strictly more
-  // max Hull than Standard, nothing traded away for it.
+  // Salvager Start trades the exact same thing Escort does (reactor
+  // capacity) for a different benefit (+1 max Hull instead of a shield).
   const salvager = Engine.createGameState(LEVELS[0], { startingLoadout: "salvager" });
   const standard = Engine.createGameState(LEVELS[0], { startingLoadout: "standard" });
   assert.ok(salvager.maxHull > standard.maxHull, "Salvager Start has more max Hull than Standard");
+  assert.ok(salvager.maxEnergy < standard.maxEnergy, "...paid for with less max Energy, same as Escort Start");
+  // No loadout may be a STRICT upgrade over another (equal-or-better on
+  // every stat, worse on none) — a first pass at this shipped with
+  // Salvager strictly better than Standard for zero cost, which made
+  // Standard pointless the moment it was unlocked. Compares every pair
+  // across Hull/Energy/Shields; a strict dominance either way is a bug.
+  const previews = Object.keys(Engine.STARTING_LOADOUTS).map((id) => Engine.previewLoadout(id));
+  for (const a of previews) {
+    for (const b of previews) {
+      if (a.id === b.id) continue;
+      const stats = ["maxHull", "maxEnergy", "maxShields"];
+      const aStrictlyBetter = stats.every((k) => a[k] >= b[k]) && stats.some((k) => a[k] > b[k]);
+      assert.ok(!aStrictlyBetter, `${a.id} must not be a strict upgrade over ${b.id} on every stat`);
+    }
+  }
 }
 
 // ---- outpost offer variety: not the same fixed shop every visit ---------
