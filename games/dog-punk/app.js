@@ -93,6 +93,13 @@ const ratAtkSide = loadSprite("rat_atk_side.png");
 // "left" is the unmirrored case and "right" is the one that needs the flip
 // — get this backwards and the sprite visibly walks/lunges the wrong way
 // whenever it should be facing right (moonwalking bug, fixed 2026-08-17).
+// NOTE: this mirror logic was actually correct — the real bug (found in a
+// later pass, same day) was that hero_side_walk2.png itself had been drawn
+// facing RIGHT while hero_side.png faced LEFT, so every other walk-cycle
+// frame flipped backwards regardless of the code. Regenerated hero_side_
+// walk2.png facing LEFT to match — always keep every "_side"/"_side_walk2"/
+// "_atk_side" art asset facing the same native direction, or this class of
+// bug recurs.
 function heroSpriteFor(facing, step) {
   if (facing === "up") return { s: step ? heroUpWalk2 : heroUp, mirror: false };
   if (facing === "left") return { s: step ? heroSideWalk2 : heroSide, mirror: false };
