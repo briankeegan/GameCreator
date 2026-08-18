@@ -742,9 +742,29 @@ flagshipImg.src = "icons/flagship.png";
 const flagshipMk2Img = new Image();
 flagshipMk2Img.src = "icons/flagship-mk2.png";
 flagshipMk2Img.onload = () => draw();
+// Two more, one per alternate starting loadout (see Engine.STARTING_LOADOUTS)
+// — "different looking ships" for the ones that fly differently from turn
+// one, not just once you've bolted on a second gun and a screen the hard
+// way. Same reasoning as Mk2: reads the ship's stats, doesn't change them.
+const flagshipEscortImg = new Image();
+flagshipEscortImg.src = "icons/flagship-escort.png";
+flagshipEscortImg.onload = () => draw();
+const flagshipArmoredImg = new Image();
+flagshipArmoredImg.src = "icons/flagship-armored.png";
+flagshipArmoredImg.onload = () => draw();
+// Shared by the live HUD (off the real ship) and the death-overlay's
+// loadout preview (off a hypothetical one) — same priority order either
+// way: the fully-upgraded Mk2 look wins over either single-trait look,
+// which wins over the plain hull.
+function pickFlagshipSprite({ guns, maxShields, maxHull }) {
+  if (guns >= 2 && maxShields > 0) return flagshipMk2Img;
+  if (maxShields > 0) return flagshipEscortImg;
+  if (maxHull > Engine.START_HULL) return flagshipArmoredImg;
+  return flagshipImg;
+}
 function flagshipSprite() {
   const guns = Engine.WEAPON_SYSTEM_KEYS.filter((k) => state.systems && state.systems[k]).length;
-  return guns >= 2 && state.maxShields > 0 ? flagshipMk2Img : flagshipImg;
+  return pickFlagshipSprite({ guns, maxShields: state.maxShields, maxHull: state.maxHull });
 }
 flagshipImg.onload = () => draw();
 const interceptorImg = new Image();
@@ -3545,10 +3565,19 @@ function updateLoadoutDetail() {
   const owned = unlockedLoadouts.has(previewedLoadout);
   const active = selectedLoadout === previewedLoadout;
 
+  // The hull itself first — a fresh loadout never carries a second gun
+  // (weapons come from the sector, not the kit), so this only ever picks
+  // between the plain hull and whichever single-trait look this loadout's
+  // Shields/Hull earns it; Mk2 is a mid-run-only look.
+  const body = document.createElement("div");
+  const figure = document.createElement("img");
+  figure.className = "loadout-ship-figure";
+  figure.src = pickFlagshipSprite({ guns: 1, maxShields: preview.maxShields, maxHull: preview.maxHull }).src;
+  figure.alt = preview.label;
+  body.appendChild(figure);
   // Stats first, always visible even if the blurb wraps long enough to
   // need the box's scroll — the numbers are what actually distinguishes
   // one loadout from another; the blurb is the why.
-  const body = document.createElement("div");
   const stats = document.createElement("div");
   stats.className = "loadout-stats";
   stats.textContent =
@@ -3813,6 +3842,7 @@ function updateShipOverlay() {
   shipPortraitEl.hidden = Boolean(scannedEnemy);
   contactPortraitEl.hidden = !scannedEnemy;
   if (scannedEnemy) renderPortrait(scannedEnemy);
+  else shipPortraitEl.src = flagshipSprite().src;
 
   shipStatsEl.innerHTML = "";
   const statRow = (label, build) => {

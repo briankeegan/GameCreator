@@ -280,6 +280,17 @@ body {
   font-size: 0.8rem;
   color: #cfe2ff;
 }
+/* The hull itself, not just its numbers — "need different looking ships
+   and previews of those ships" (Clubhouse). Floats beside the stats/blurb
+   text, same layout trick as the Outpost's weapon-footprint figure. */
+.loadout-ship-figure {
+  float: left;
+  width: 64px;
+  height: 64px;
+  margin: 0 10px 4px 0;
+  display: block;
+  image-rendering: pixelated;
+}
 
 .outpost-offers button.selected {
   outline: 2px solid #ffd27f;
