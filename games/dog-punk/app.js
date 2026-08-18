@@ -27,6 +27,20 @@
 // actual weapon swing / bite rather than a body-check. Canvas fallbacks
 // (drawHeroFallback/drawRatFallback) draw their own matching weapon-swing
 // / bared-teeth version so this still works with the PNGs missing.
+//
+// 2026-08-18 art redo: hero_down/hero_down_walk2/hero_side/hero_side_walk2
+// were regenerated against a LOCKED hex palette (see art-style.json's
+// "mainCharacter" field) specifically so Beverly's fur/mohawk/jacket/pants
+// colors can't drift frame-to-frame the way they did before (that drift —
+// not the silhouette — was the real "art is awful" complaint: idle and
+// walk frames flickering between slightly different fur shades). hero_up
+// and all hero_atk_*/rat_* art are untouched from the prior pass — they
+// already sit close enough to the same palette that they don't clash, but
+// if that ever gets flagged, redo them against the same locked palette.
+// Also added: idle breathing (breathePhase, see update()/render()) so
+// standing still is no longer a fully frozen frame, and a cosmetic
+// scrap-burst on rat death (state.deathFx) so kills don't just vanish
+// instantly — see those for details.
 const GAME_ID = "dog-punk";
 const TILE = 32;
 const COLS = 16;
@@ -191,6 +205,7 @@ function freshState() {
       attackUntil: 0, attackCooldownUntil: 0, attackStartAt: 0,
       kbx: 0, kby: 0,
       animPhase: 0, moving: false,
+      breathePhase: 0,
     },
     enemies: ENEMY_SPAWNS.map((s) => ({
       x: s.c * TILE + TILE / 2, y: s.r * TILE + TILE / 2,
@@ -209,6 +224,10 @@ function freshState() {
     elapsed: 0,
     won: false,
     lost: false,
+    // Purely-visual scrap-burst particles left behind when a rat dies — see
+    // update()'s attack-hit section (spawn) and render() (draw+fade). Never
+    // read by collision/gate/win logic, so it can't affect gameplay timing.
+    deathFx: [],
   };
 }
 
@@ -289,6 +308,12 @@ function update(dt, now) {
   p.moving = (dx !== 0 || dy !== 0) && now >= p.attackUntil;
   if (p.moving) p.animPhase += dt * 9;
   else p.animPhase *= 0.9;
+  // idle breathing: a slow, always-running clock independent of the walk
+  // cycle, so Beverly is never a completely frozen static image while just
+  // standing still — a subtle chest-rise/fall, used in render() only when
+  // she's neither walking nor mid-attack (those already have their own
+  // motion) so it never fights the walk-bob or the attack lunge/stretch.
+  p.breathePhase += dt * 2.4;
 
   // attack
   if (attackQueued) {
@@ -316,7 +341,13 @@ function update(dt, now) {
         const klen = Math.hypot(kdx, kdy) || 1;
         en.kbx = (kdx / klen) * 90;
         en.kby = (kdy / klen) * 90;
-        if (en.hp <= 0) en.alive = false;
+        if (en.hp <= 0) {
+          en.alive = false;
+          // purely-cosmetic scrap burst at the spot it died — see render()
+          // for the fade/expand animation; doesn't touch gate/enemyCount
+          // logic (that still keys off `alive`, unchanged from before).
+          state.deathFx.push({ x: en.x, y: en.y, t: 0, dur: 0.4 });
+        }
       }
     }
   }
@@ -399,6 +430,13 @@ function update(dt, now) {
 
     if (en.moving) en.animPhase += dt * 10;
     else en.animPhase *= 0.9;
+  }
+
+  // advance/prune the cosmetic death-burst particles (see attack-hit section
+  // above for where they're spawned).
+  if (state.deathFx.length) {
+    for (const fx of state.deathFx) fx.t += dt;
+    state.deathFx = state.deathFx.filter((fx) => fx.t < fx.dur);
   }
 
   // win check: standing on the gate tile once every enemy is down
@@ -594,6 +632,27 @@ function render(now) {
       (x, y, facing, sx, sy, step) => drawRatFallback(x, y, facing, en.hitFlash, sx, sy, step, lunging));
   }
 
+  // scrap-burst death animation: small squares kick outward from where a
+  // rat died and fade/shrink over ~0.4s, instead of the rat just silently
+  // vanishing the instant its hp hits zero.
+  for (const fx of state.deathFx) {
+    const t = fx.t / fx.dur; // 0..1
+    const alpha = 1 - t;
+    const spread = 4 + t * 22;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
+    const bits = [
+      [-1, -1, "#8a7a5c"], [1, -1, "#5c4c34"], [-1, 1, "#5c4c34"],
+      [1, 1, "#8a7a5c"], [0, -1.3, "#c0392b"], [0, 1.3, "#8a7a5c"],
+    ];
+    for (const [bx, by, color] of bits) {
+      ctx.fillStyle = color;
+      const size = 4 * (1 - t * 0.6);
+      ctx.fillRect(fx.x + bx * spread - size / 2, fx.y - 6 + by * spread - size / 2, size, size);
+    }
+    ctx.restore();
+  }
+
   const p = state.player;
   const blinking = now < p.invulnUntil && Math.floor(now / 100) % 2 === 0;
   const attacking = now < p.attackUntil;
@@ -607,6 +666,12 @@ function render(now) {
     const stretch = Math.sin(Math.min(1, attackT) * Math.PI) * 0.14;
     scaleX = 1 + stretch * Math.abs(fx) + stretch * 0.4 * Math.abs(fy);
     scaleY = 1 + stretch * Math.abs(fy) + stretch * 0.4 * Math.abs(fx);
+  } else if (!p.moving) {
+    // idle breathing (see update() for the clock) — a tiny, slow chest
+    // rise/fall so standing still is never a completely frozen frame.
+    const breathe = Math.sin(p.breathePhase) * 0.025;
+    scaleY = 1 + breathe;
+    scaleX = 1 - breathe * 0.5;
   }
   if (!blinking) {
     // during the attack window, swap to a real drawn mid-swing pose (blade
@@ -646,9 +711,18 @@ function heartSVG(full) {
   const fill = full ? "#e0405a" : "#3a2a2a";
   return `<svg viewBox="0 0 16 16" class="heart"><path fill="${fill}" d="M8 14 1 7.5A4 4 0 0 1 7 2l1 1 1-1a4 4 0 0 1 6 5.5z"/></svg>`;
 }
+let lastHudHp = null;
 function renderHud() {
   const p = state.player;
   heartsEl.innerHTML = Array.from({ length: p.maxHp }, (_, i) => heartSVG(i < p.hp)).join("");
+  // shake the heart row for one animation cycle whenever hp just dropped, so
+  // losing health is a visible moment, not a silent icon swap.
+  if (lastHudHp !== null && p.hp < lastHudHp) {
+    heartsEl.classList.remove("hit");
+    void heartsEl.offsetWidth; // restart the CSS animation if already mid-shake
+    heartsEl.classList.add("hit");
+  }
+  lastHudHp = p.hp;
   const left = state.enemies.filter((e) => e.alive).length;
   enemyCountEl.textContent = left > 0 ? `${left} left` : "Gate open!";
 }
@@ -670,6 +744,8 @@ function resetLevel() {
   loseOverlay.hidden = true;
   keys.clear();
   touchDirs.clear();
+  lastHudHp = null;
+  heartsEl.classList.remove("hit");
 }
 
 winRetryBtn.addEventListener("click", resetLevel);
