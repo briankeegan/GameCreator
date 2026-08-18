@@ -99,7 +99,7 @@
   // mechanic and Fighter Squadron was a free instant-kill living outside
   // the weapon/energy model. Everything left runs on the same
   // stats + energy + slots chassis.
-  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun"];
+  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod"];
   // Purchase-only actions (see OUTPOST_OFFER_POOL/applyOutpostPurchase) —
   // never part of any level's own baked-in `actions` list, and excluded
   // from the default fallback below so they don't show up for free the
@@ -107,7 +107,7 @@
   // guaranteed claimable (free) at Sector 2's Outpost specifically (see
   // pickOutpostOfferIds), just no longer handed out automatically for
   // reaching the sector.
-  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun"];
+  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod"];
   // Sectors that don't specify `actions` explicitly (Sector 4 "Full Fleet"
   // and every procedurally-generated sector) default to every action that
   // unlocks just by playing.
@@ -467,6 +467,15 @@
     // The six gaps between the axes, two hexes out, two damage. The exact
     // complement of a Railgun: what one covers, the other can't.
     flankTubes: { id: "flankTubes", label: "Flank Tubes", shape: "offAxis", range: 2, damage: 2, targets: "one", energyCost: 3, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // The only weapon that doesn't resolve the turn it fires. It puts a
+    // MISSILE on the board — an object with a position, chasing whoever it
+    // was launched at, one hex a round. You can outrun it, put a rock
+    // between you and it, or walk it into somebody else: it detonates on
+    // the first ship it reaches and it does not care whose side that ship
+    // is on. Long reach and heavy damage, paid for in the round of warning
+    // it gives you. (Hoplite's bomber is the ancestor — telegraphed area
+    // denial that kills its own.)
+    missilePod: { id: "missilePod", label: "Missile Pod", shape: "ring", range: 4, minRange: 2, damage: 1, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, launches: true },
     // The sniper: down any of the six axes, the length of the board, two
     // damage. Stopped by the first rock or hull in the lane, which is
     // both its weakness and how you survive one.
@@ -510,6 +519,7 @@
     railgun: { id: "railgun", label: "Railgun", kind: "weapon", weaponKey: "railgun", w: 1, h: 4 },
     mortar: { id: "mortar", label: "Mortar", kind: "weapon", weaponKey: "mortar", w: 2, h: 2 },
     flankTubes: { id: "flankTubes", label: "Flank Tubes", kind: "weapon", weaponKey: "flankTubes", w: 1, h: 3 },
+    missilePod: { id: "missilePod", label: "Missile Pod", kind: "weapon", weaponKey: "missilePod", w: 2, h: 2 },
     reactorCore: { id: "reactorCore", label: "Reactor Core", kind: "reactor", rechargeGain: 1, energyCapacity: 6, w: 2, h: 2 },
     sublightDrive: { id: "sublightDrive", label: "Sublight Drive", kind: "engine", moveRange: 1, w: 1, h: 3 },
     shieldGenerator: { id: "shieldGenerator", label: "Shield Generator", kind: "shield", capacity: 1, w: 2, h: 2 },
@@ -570,7 +580,7 @@
   // derived from the Hold now (an installed weapon item sets its
   // systems[key] flag in deriveShip), but the key list itself is stable
   // engine data.
-  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun"];
+  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod"];
 
   // ---- what a hold makes a ship able to do -------------------------------
   //
@@ -834,13 +844,14 @@
     carrier: {
       hull: 1, salvage: 4,
       hold: {
-        cols: 4, rows: 6, blocked: ["0,0", "3,0", "0,5", "3,5"],
+        cols: 5, rows: 6, blocked: ["0,0", "4,0", "0,5", "4,5"],
         items: [
           { id: "flakBurst", x: 1, y: 0 },
+          { id: "missilePod", x: 3, y: 1 },
           { id: "sublightDrive", x: 0, y: 1 },
-          { id: "autocannon", x: 1, y: 2 },
-          { id: "microReactor", x: 1, y: 3 },
-          { id: "chargeBank", x: 2, y: 3 },
+          { id: "microReactor", x: 3, y: 0 },
+          { id: "chargeBank", x: 1, y: 2 },
+          { id: "chargeBank", x: 2, y: 2 },
         ],
       },
     },
@@ -969,6 +980,55 @@
   // flagship (the board draws them doing exactly that); the fixed
   // emplacements never pivot, and their hardware is omnidirectional
   // anyway, so their facing is immaterial.
+  // Which way a hostile's nose points FROM a given hex — the same "toward
+  // the flagship" rule the board draws, but askable about a hex it is only
+  // considering moving to. Needed because a weapon's footprint is relative
+  // to facing, so "would my gun bear if I stood there" cannot be answered
+  // without it.
+  function facingFrom(state, from) {
+    const dir = directionIndex(from, state.playerPos);
+    if (dir >= 0) return dir;
+    let best = 0;
+    let bestDist = Infinity;
+    for (let d = 0; d < 6; d++) {
+      const dist = hexDistance(neighbor(from, d), state.playerPos);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = d;
+      }
+    }
+    return best;
+  }
+
+  // Every hex this hostile could stand on and actually hit you from. This
+  // is what "move toward the flagship" should always have meant: the AI
+  // used to sort candidate hexes by distance alone, so a class whose gun
+  // fires at range 2 walked cheerfully to range 1 and disarmed itself.
+  // Measured before this existed: a Lancer closed to distance 1 and then
+  // sat beside the flagship for the rest of the sector without ever firing
+  // a shot, because its Flank Tubes only bear off-axis at two.
+  //
+  // In Hoplite the archer cannot shoot adjacent, so it moves to where it
+  // CAN shoot and gives ground when you close. Same idea: aim at the
+  // firing solution, not at the player.
+  function firingPositions(state, enemy) {
+    const ship = enemyShip(enemy);
+    if (!ship || !ship.weapons.length) return [];
+    const spots = [];
+    for (const hex of state.boardHexes) {
+      if (!canFlyInto(state, hex, enemy)) continue;
+      if (hazardAt(state, hex)) continue;
+      const facing = facingFrom(state, hex);
+      const bears = ship.weapons.some(
+        (w) =>
+          weaponHexes(hex, facing, w, state).some((h) => posEq(h, state.playerPos)) &&
+          !wouldCatchAlly(state, { ...enemy, q: hex.q, r: hex.r }, w, facing)
+      );
+      if (bears) spots.push(hex);
+    }
+    return spots;
+  }
+
   function enemyFacing(state, enemy) {
     const dir = directionIndex(enemy, state.playerPos);
     if (dir >= 0) return dir;
@@ -1047,6 +1107,7 @@
     mortar: "mortar",
     flankTubes: "flankTubes",
     railgun: "railgun",
+    missilePod: "missilePod",
   };
 
   // `rarity` drives two things (see pickOutpostOfferIds): how LIKELY an
@@ -1079,6 +1140,7 @@
     { id: "mortar", label: "Mortar (2x2 — lands at three, straight over the rocks)", cost: 14, rarity: "rare" },
     { id: "flankTubes", label: "Flank Tubes (1x3 — the gaps at two, 2 dmg)", cost: 16, rarity: "rare" },
     { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 24, rarity: "rare" },
+    { id: "missilePod", label: "Missile Pod (2x2 — it flies itself, 2 dmg)", cost: 18, rarity: "rare" },
   ];
 
   // Roughly Slay the Spire's shop odds (~54/37/9 common/uncommon/rare) and
@@ -1482,6 +1544,9 @@
       locale: level.locale || null,
       // Some stretches of space are worth more per wreck than others.
       salvageBonus: level.salvageBonus || 0,
+      // Ordnance in flight. Persisted with the rest of the sector, so a
+      // missile you left behind is still coming for you when you come back.
+      missiles: [],
       runSeed: runSeed,
       raresSkipped: raresSkipped,
       outpostPos: pickOutpostPos(level, runSeed),
@@ -2038,6 +2103,130 @@
 
   // ---- enemy AI -------------------------------------------------------------
 
+  // ---- missiles ----------------------------------------------------------
+  // Ordnance in flight: a real thing standing on a real hex, not a delayed
+  // number. It moves one hex a round toward whatever it was launched at,
+  // and detonates on the first ship it reaches — including the side that
+  // fired it, which is the whole reason it is interesting. Between the
+  // launch and the hit there is a round in which the board is a different
+  // puzzle: run, break line behind a rock, or steer it into a wingman.
+  // Long enough to cross the launcher's own reach, short enough that it
+  // eventually gives up rather than herding you for the rest of the
+  // sector. A missile flies at exactly your speed, so it can never run you
+  // down while you keep moving — what it actually costs you is the round
+  // you wanted to spend SHOOTING. That is the whole tension: outrun it and
+  // do nothing, or stand, fight, and wear it.
+  const MISSILE_FUSE = 7;
+
+  // How many rounds a hostile will manoeuvre for a better angle before it
+  // gives up and simply closes.
+  const PATIENCE = 2;
+
+  function liveMissiles(state) {
+    return state.missiles || (state.missiles = []);
+  }
+
+  function launchMissile(state, from, weapon, ownerId) {
+    const list = liveMissiles(state);
+    const missile = {
+      id: `m${state.missileSeq = (state.missileSeq || 0) + 1}`,
+      q: from.q,
+      r: from.r,
+      damage: weapon.damage,
+      fuse: MISSILE_FUSE,
+      ownerId: ownerId || null,
+    };
+    list.push(missile);
+    state.events.push({ type: "missileLaunch", q: missile.q, r: missile.r, id: missile.id });
+    return missile;
+  }
+
+  // What a missile is standing on, if anything. Hostiles and the flagship
+  // are both fair game — a missile has no idea who launched it.
+  function shipAt(state, hex) {
+    const foe = enemyAt(state, hex);
+    if (foe) return { kind: "enemy", enemy: foe };
+    if (posEq(state.playerPos, hex)) return { kind: "player" };
+    return null;
+  }
+
+  function detonateMissile(state, missile, onPlayerDamage) {
+    state.events.push({ type: "missileHit", q: missile.q, r: missile.r, id: missile.id });
+    const hit = shipAt(state, missile);
+    if (hit && hit.kind === "player") {
+      if (onPlayerDamage) onPlayerDamage(missile.damage);
+    } else if (hit && hit.kind === "enemy") {
+      const victim = hit.enemy;
+      if (victim.shieldCharges > 0) {
+        victim.shieldCharges -= 1;
+        state.events.push({ type: "enemyShieldAbsorb", q: victim.q, r: victim.r, enemyId: victim.id });
+        pushLog(state, `${victim.type.toUpperCase()} took a missile on its screen.`);
+      } else {
+        victim.hp -= missile.damage;
+        if (victim.hp <= 0) {
+          victim.alive = false;
+          state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "missile" });
+          pushLog(state, `${victim.type.toUpperCase()} took its own side's missile.`);
+          awardSalvage(state, victim.type);
+        } else {
+          state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "missile" });
+        }
+      }
+    }
+    missile.spent = true;
+  }
+
+  // Called once per round, after everyone has acted. Each missile steps a
+  // hex toward the flagship and detonates the moment it is standing on a
+  // ship — so stepping AWAY buys you exactly one more round, and stepping
+  // so that a hostile is between you and it buys you the whole missile.
+  function advanceMissiles(state, onPlayerDamage) {
+    const list = liveMissiles(state);
+    if (!list.length) return;
+    for (const missile of list) {
+      if (missile.spent) continue;
+      missile.fuse -= 1;
+      if (missile.fuse <= 0) {
+        state.events.push({ type: "missileFizzle", q: missile.q, r: missile.r, id: missile.id });
+        missile.spent = true;
+        continue;
+      }
+      // A missile chases whoever it was launched AT: a hostile's chases
+      // the flagship, yours chases the nearest hostile. Either way it
+      // detonates on the first ship it happens to reach, which is how one
+      // ends up killing the side that fired it.
+      const chasing = missile.ownerId
+        ? state.playerPos
+        : livingEnemies(state).reduce(
+            (best, e) => (!best || hexDistance(missile, e) < hexDistance(missile, best) ? e : best),
+            null
+          );
+      if (!chasing) {
+        state.events.push({ type: "missileFizzle", q: missile.q, r: missile.r, id: missile.id });
+        missile.spent = true;
+        continue;
+      }
+      let best = null;
+      for (let d = 0; d < 6; d++) {
+        const to = neighbor(missile, d);
+        if (!onBoard(state, to)) continue;
+        if (isBlockingHazard(hazardAt(state, to))) continue; // rock stops it dead
+        const dist = hexDistance(to, chasing);
+        if (!best || dist < best.dist) best = { to, dist };
+      }
+      if (!best) {
+        state.events.push({ type: "missileFizzle", q: missile.q, r: missile.r, id: missile.id });
+        missile.spent = true;
+        continue;
+      }
+      missile.q = best.to.q;
+      missile.r = best.to.r;
+      state.events.push({ type: "missileMove", q: missile.q, r: missile.r, id: missile.id });
+      if (shipAt(state, missile)) detonateMissile(state, missile, onPlayerDamage);
+    }
+    state.missiles = list.filter((m) => !m.spent);
+  }
+
   function decideIntent(state, enemy) {
     const ship = enemyShip(enemy);
     if (!ship) return { enemyId: enemy.id, type: "wait" };
@@ -2071,8 +2260,36 @@
         if (hazardAt(state, to)) continue;
         candidates.push({ to, dist: hexDistance(to, state.playerPos), dir: i });
       }
-      candidates.sort((a, b) => a.dist - b.dist || a.dir - b.dir);
       if (candidates.length === 0) return { enemyId: enemy.id, type: "wait" };
+      // Head for somewhere its gun actually bears. A hostile that only
+      // ever minimised distance walked past its own firing solution — and
+      // for anything that shoots at range, straight through it — which is
+      // why every chaser played identically no matter what it carried.
+      //
+      // Falling back to closing the gap matters: with no reachable firing
+      // position (a Flak Burst jammed by its own wingman, a lane blocked
+      // by a rock) an AI that only knew how to seek a solution would just
+      // stand still, which reads as broken rather than as tactical.
+      // Patience runs out. A class that only ever moved toward its ideal
+      // firing angle can be un-catchable: ordnance and a kiter both travel
+      // at exactly the flagship's speed, so a hostile that always backs
+      // off to keep its range is never caught and the sector never ends.
+      // Measured: 12 of 40 runs stalled outright. After a few fruitless
+      // rounds it stops holding out for the good shot and just closes,
+      // which ends the standoff and reads as a hostile losing its nerve.
+      const solutions = (enemy.idleRounds || 0) >= PATIENCE ? [] : firingPositions(state, enemy);
+      if (solutions.length) {
+        const nearestSolution = (h) =>
+          solutions.reduce((best, s) => Math.min(best, hexDistance(h, s)), Infinity);
+        candidates.sort((a, b) => nearestSolution(a.to) - nearestSolution(b.to) || a.dist - b.dist || a.dir - b.dir);
+        // Already as close to a shooting spot as any step would take it:
+        // hold, rather than shuffling sideways forever.
+        if (nearestSolution(enemy) <= nearestSolution(candidates[0].to)) {
+          return { enemyId: enemy.id, type: "wait" };
+        }
+      } else {
+        candidates.sort((a, b) => a.dist - b.dist || a.dir - b.dir);
+      }
       return { enemyId: enemy.id, type: "move", to: candidates[0].to };
     }
     return { enemyId: enemy.id, type: "wait" };
@@ -2123,6 +2340,14 @@
     }
     state.energy -= weapon.energyCost;
     state.events.push({ type: "energySpend", amount: weapon.energyCost, weapon: weapon.label });
+    // Same crate, same behaviour, both directions: your missile is an
+    // object on the board too, and it will happily detonate on the first
+    // thing it reaches.
+    if (weapon.launches) {
+      launchMissile(state, state.playerPos, weapon, null);
+      pushLog(state, `${weapon.label} away — it flies itself from here.`);
+      return;
+    }
     // Every weapon announces its own shot — the renderer gives each a
     // signature effect (ring/beam/bolt) so WHAT fired is readable at a
     // glance, not just that something did.
@@ -2165,6 +2390,7 @@
   // shield eats the round's entire barrage before the hull is touched.
   function enemyPhase(state) {
     let totalDamage = 0;
+    const firedThisPhase = new Set();
     for (let apStep = 0; apStep < ENEMY_AP; apStep++) {
       const intents = livingEnemies(state).map((enemy) => ({ enemy, intent: decideIntent(state, enemy) }));
       const attackers = intents
@@ -2177,6 +2403,14 @@
         if (!weaponHexes(enemy, enemyFacing(state, enemy), weapon, state).some((h) => posEq(h, state.playerPos))) continue;
         if (enemy.energy < weapon.energyCost) continue;
         enemy.energy -= weapon.energyCost; // same rule as the flagship: every shot is paid for
+        // A launcher doesn't hurt anyone this round — it puts something on
+        // the board that will, next round, unless you deal with it.
+        firedThisPhase.add(enemy.id);
+        if (weapon.launches) {
+          launchMissile(state, enemy, weapon, enemy.id);
+          pushLog(state, `${enemy.type.toUpperCase()} launched — one round to move.`);
+          continue;
+        }
         totalDamage += weapon.damage;
         state.events.push({
           type: "attack",
@@ -2206,6 +2440,18 @@
         enemy.r = intent.to.r;
       }
     }
+    // Anyone who found a shot this round is fresh out of patience-spending;
+    // anyone who didn't is one round closer to just charging in.
+    for (const enemy of livingEnemies(state)) {
+      enemy.idleRounds = firedThisPhase.has(enemy.id) ? 0 : (enemy.idleRounds || 0) + 1;
+    }
+    // Ordnance already in the air flies LAST, after everyone has taken
+    // their step — so the hex you moved to is the hex it is judging, and
+    // moving away really does buy you the round. Anything it detonates on
+    // is fair game, whichever side launched it.
+    advanceMissiles(state, (dmg) => {
+      totalDamage += dmg;
+    });
     if (totalDamage > 0 && state.shieldCharges > 0) {
       state.shieldCharges -= 1;
       state.events.push({ type: "shieldAbsorb", q: state.playerPos.q, r: state.playerPos.r });

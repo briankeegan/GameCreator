@@ -373,7 +373,7 @@ let weaponState = Engine.createGameState(weaponLevel);
 assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
 assert.deepStrictEqual(
   weaponState.systems,
-  { warpdrive: true, autocannon: true, flakBurst: false, arcBeam: false, mortar: false, flankTubes: false, railgun: false },
+  { warpdrive: true, autocannon: true, flakBurst: false, arcBeam: false, mortar: false, flankTubes: false, railgun: false, missilePod: false },
   "arming derives from the Hold — only the installed Autocannon reads armed"
 );
 Engine.applySublight(weaponState, { q: 2, r: 2 }); // steps adjacent to the interceptor
@@ -420,7 +420,7 @@ assert.throws(() => Engine.setFacing(weaponState, 6), /Invalid facing/, "facing 
 // The ship's internals are a grid; every item is a shaped tile and its
 // footprint is the equip cost. What's INSTALLED is what works; cargo is
 // inert. Rearranging is free but dock-gated.
-assert.deepStrictEqual(Engine.WEAPON_SYSTEM_KEYS, ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun"]);
+assert.deepStrictEqual(Engine.WEAPON_SYSTEM_KEYS, ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod"]);
 
 let holdState = Engine.createGameState(weaponLevel);
 assert.strictEqual(holdState.hold.cols, 5, "the starter hold is 5 cells wide");
@@ -1077,7 +1077,12 @@ assert.notDeepStrictEqual(
 // longer than that isn't luck, it's a run that can't get the shapes it
 // needs to answer what it's fighting.
 {
-  const RARE_IDS = new Set(["mortar", "flankTubes", "railgun"]);
+  // Read the tier off the pool rather than restating it — a new rare (the
+  // Missile Pod) was added and this list silently stopped describing the
+  // shelf it was meant to be checking.
+  const RARE_IDS = new Set(
+    Engine.OUTPOST_OFFER_POOL.filter((o) => o.rarity === "rare").map((o) => o.id)
+  );
   let raresSkipped = 0;
   let dryStreak = 0;
   let worstDryStreak = 0;
@@ -1344,7 +1349,7 @@ assert.strictEqual(Engine.ENEMY_TYPES.escort.ship.maxShields, 1, "the Escort is 
 assert.strictEqual(Engine.ENEMY_TYPES.carrier.maxHull, 1, "the Carrier is one Hull — two GUNS is what it is, not two hit points");
 assert.deepStrictEqual(
   Engine.ENEMY_TYPES.carrier.ship.weaponKeys.slice().sort(),
-  ["autocannon", "flakBurst"],
+  ["flakBurst", "missilePod"],
   "and the only MOBILE hostile carrying two guns — that, not a bigger hull, is what it is"
 );
 assert.strictEqual(
@@ -1620,6 +1625,85 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
     assert.notStrictEqual(Engine.hexKey(tug), startKey, "the Salvager closes — it has a drive like anything else");
     assert.strictEqual(tugState.hull, hullBefore, "and it never lands a hit, because it has nothing to hit with");
     assert.strictEqual(tugState.status, "playing", "you can stand next to one all day");
+  }
+}
+
+// ---- missiles: ordnance that exists on the board -------------------------
+// Everything else in the game resolves the instant it fires. A missile
+// doesn't: it becomes a thing standing on a hex, flying at exactly your
+// speed toward whoever it was launched at. You can always outrun it — what
+// you cannot do is outrun it AND shoot in the same round, which is the
+// whole decision it poses. Descended from Hoplite's bomber: telegraphed,
+// dodgeable, and perfectly happy to kill the side that launched it.
+{
+  const board = {
+    id: 953,
+    name: "missile fixture",
+    board: { type: "rect", cols: 9, rows: 11 },
+    playerStart: { q: 4, r: 8 },
+    exit: { q: 8, r: -4 },
+    outpost: null,
+    enemies: [{ type: "carrier", q: 4, r: 3 }],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+  };
+  assert.ok(
+    Engine.ENEMY_TYPES.carrier.ship.weaponKeys.includes("missilePod"),
+    "the Carrier's bay doors are missile tubes"
+  );
+  assert.strictEqual(Engine.WEAPONS.missilePod.launches, true, "and a launcher is flagged as one");
+
+  // Stand still and it lands.
+  const still = Engine.createGameState(board);
+  still.enemies[0].energy = still.enemies[0].maxEnergy;
+  let sawMissile = false;
+  for (let round = 0; round < 9 && still.status === "playing"; round++) {
+    Engine.applyEndTurn(still);
+    if ((still.missiles || []).length) sawMissile = true;
+  }
+  assert.ok(sawMissile, "a launcher puts ordnance on the board rather than dealing damage on the spot");
+  assert.ok(still.hull < Engine.START_HULL, "and standing in its way costs you hull");
+
+  // A missile detonates on the FIRST ship it reaches, whoever's side.
+  const friendly = Engine.createGameState(board);
+  friendly.missiles = [{ id: "m1", q: 4, r: 5, damage: 2, fuse: 5, ownerId: "e0" }];
+  // A Sentry, deliberately: ordnance flies AFTER everyone has moved, so a
+  // chaser would simply have stepped out of the way before it arrived.
+  // An emplacement has no drive and has to wear it.
+  const bystander = {
+    id: "e9", type: "sentry", q: 4, r: 6, alive: true,
+    hp: 1, maxHp: 1, energy: 0, maxEnergy: 3, shieldCharges: 0, maxShields: 0,
+  };
+  friendly.enemies.push(bystander);
+  const hullBefore = friendly.hull;
+  Engine.applyEndTurn(friendly);
+  assert.strictEqual(bystander.alive, false, "it detonated on the hostile standing in its path");
+  assert.strictEqual(friendly.hull, hullBefore, "and never reached the flagship at all");
+
+  // Rock stops it: a missile that cannot step anywhere useful gives out.
+  const walled = Engine.createGameState({ ...board, id: 952, hazards: [{ type: "asteroid", q: 4, r: 6 }] });
+  walled.missiles = [{ id: "m2", q: 4, r: 5, damage: 2, fuse: 2, ownerId: "e0" }];
+  const wallHull = walled.hull;
+  Engine.applyEndTurn(walled);
+  Engine.applyEndTurn(walled);
+  assert.strictEqual(walled.hull, wallHull, "a rock in the lane is a rock in the lane");
+
+  // A fuse is finite — nothing herds you for the whole sector.
+  const burnout = Engine.createGameState({ ...board, id: 951, enemies: [] });
+  burnout.missiles = [{ id: "m3", q: 0, r: 0, damage: 2, fuse: 1, ownerId: "e0" }];
+  Engine.applyEndTurn(burnout);
+  assert.strictEqual((burnout.missiles || []).length, 0, "it burns out rather than chasing forever");
+
+  // Same crate both ways round: yours flies at THEM.
+  const mine = Engine.createGameState({ ...board, id: 950 });
+  mine.hold.items.push({ id: "missilePod", x: 0, y: 4 });
+  Engine.syncHoldDerived(mine);
+  if (mine.systems.missilePod) {
+    mine.energy = mine.maxEnergy;
+    mine.enemies[0].q = mine.playerPos.q;
+    mine.enemies[0].r = mine.playerPos.r - 3; // inside the pod's ring
+    Engine.applyFire(mine, null, "missilePod");
+    assert.ok((mine.missiles || []).some((m) => !m.ownerId), "the flagship's own launch is on the board too");
   }
 }
 

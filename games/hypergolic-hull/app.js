@@ -1362,6 +1362,56 @@ function drawChargePips(center, enemy) {
   ctx.restore();
 }
 
+// Ordnance in flight. It has to read as a THING on a hex — something you
+// can count the distance to and walk away from — rather than as an effect,
+// because the whole decision it poses is spatial: outrun it, put a rock in
+// its way, or steer it into somebody else. Nose points where it's going.
+function drawMissile(center, missile, now) {
+  const s = geom.sx * 0.3;
+  const target = missile.ownerId ? state.playerPos : nearestLivingEnemy(missile);
+  const ang = target ? (angleToward(missile, target) * Math.PI) / 180 : 0;
+  const pulse = 0.55 + 0.45 * Math.sin(now / 110);
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  // A warning halo so it never hides under the grid.
+  const halo = ctx.createRadialGradient(0, 0, s * 0.2, 0, 0, s * 2.1);
+  halo.addColorStop(0, `rgba(255,150,60,${0.34 * pulse})`);
+  halo.addColorStop(1, "rgba(255,120,40,0)");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(0, 0, s * 2.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.rotate(ang);
+  // Exhaust, then the body: a stubby dart, unmistakably not a ship.
+  ctx.fillStyle = `rgba(255,196,90,${0.5 + 0.4 * pulse})`;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.9, 0);
+  ctx.lineTo(-s * 2.0 - s * pulse, -s * 0.28);
+  ctx.lineTo(-s * 2.0 - s * pulse, s * 0.28);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#e8ecf5";
+  ctx.beginPath();
+  ctx.moveTo(s * 1.15, 0);
+  ctx.lineTo(-s * 0.55, -s * 0.42);
+  ctx.lineTo(-s * 0.9, 0);
+  ctx.lineTo(-s * 0.55, s * 0.42);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#c0392b";
+  ctx.beginPath();
+  ctx.arc(s * 0.45, 0, s * 0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function nearestLivingEnemy(from) {
+  return Engine.livingEnemies(state).reduce(
+    (best, e) => (!best || Engine.hexDistance(from, e) < Engine.hexDistance(from, best) ? e : best),
+    null
+  );
+}
+
 function drawEnemyShip(size, hpFrac, crackSeed, type, shielded) {
   size *= SHIP_SCALE[type] || 1;
   ctx.save();
@@ -2806,6 +2856,10 @@ function draw() {
     drawEnemyShip(geom.sx * 0.46, enemy.hp / enemy.maxHp, enemy.id, enemy.type, enemy.shieldCharges > 0);
     ctx.restore();
     drawChargePips(center, enemy);
+  }
+
+  for (const missile of state.missiles || []) {
+    drawMissile(hexToPixel(missile), missile, now);
   }
 
   // The flagship: slides along its move, flashes red on damage, hidden once
