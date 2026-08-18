@@ -183,10 +183,18 @@ jobs:
           TITLE: ${{ steps.ctx.outputs.title }}
         run: |
           cat > .autopilot/prompt.txt <<'PROMPT_HEADER'
-          A new message just landed in a game's Clubhouse chat thread and you
-          are handling it AUTONOMOUSLY — no human is watching this run.
+          You are handling a game's Clubhouse chat thread AUTONOMOUSLY — no
+          human is watching this run. Messages can arrive faster than runs
+          finish, so DO NOT assume one run per message. Handle EVERY user
+          message that has landed since your own last reply — not just the most
+          recent one. Your past replies begin with "**Claude says:**"; treat
+          every user message that appears AFTER your most recent such reply as
+          an outstanding request, and address ALL of them together in this one
+          pass, combining related asks into a single coherent change. If there
+          is no prior "**Claude says:**" reply in the thread, handle every user
+          message in it.
 
-          You do only the parts that need judgment: understand the request,
+          You do only the parts that need judgment: understand the request(s),
           edit game files, decide whether art is needed, and write the reply.
           You do NOT commit, push, post comments, dispatch workflows, or look
           up version numbers — the workflow does all of that deterministically
@@ -255,12 +263,16 @@ jobs:
             echo ""
             echo "Thread: PR #${PR} — \"${TITLE}\""
             echo ""
-            echo "-----BEGIN MESSAGE-----"
+            echo "The MOST RECENT message (there may be several unanswered ones —"
+            echo "check the history and handle ALL user messages since your last"
+            echo "'**Claude says:**' reply, not only this one):"
+            echo "-----BEGIN MOST RECENT MESSAGE-----"
             printf '%s\n' "$MESSAGE"
-            echo "-----END MESSAGE-----"
+            echo "-----END MOST RECENT MESSAGE-----"
             echo ""
-            echo "Full thread history so far (earlier decisions and what you've"
-            echo "already shipped — your own past replies are the record of prior work):"
+            echo "Full thread history (oldest first). Your own '**Claude says:**'"
+            echo "replies mark what you've already handled; EVERY user message"
+            echo "after your most recent such reply is outstanding — address them all:"
             echo "-----BEGIN HISTORY-----"
             printf '%s\n' "$HISTORY"
             echo "-----END HISTORY-----"
