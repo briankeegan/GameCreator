@@ -516,6 +516,57 @@
     };
   }
 
+  // Which classes a given depth is allowed to deal. Exported so anything
+  // that documents the roster (the Threat Library page) reads the real
+  // ladder rather than a transcription of it.
+  function typePoolFor(depth) {
+    // The ladder. Read it as "which QUESTIONS is this stretch of the run
+    // allowed to ask", not as a difficulty curve — every class here is
+    // one-shot, so a pool is a set of shapes, not a set of stat blocks.
+    //
+    // The campaign (sectors 1-4, hand-authored above) now teaches four of
+    // them: contact, the anchored lane at three, the ring at two, and the
+    // screen. It used to teach one — an Interceptor, four times, wearing
+    // different names — which meant nothing genuinely new happened until
+    // depth 8 and the shallow end was just long.
+    //
+    // The rule the ladder still obeys: a shape lands a sector or two AFTER
+    // the gun that answers it reaches a shelf. What changed is the
+    // recognition that ANCHORED reach is answerable with the starting kit
+    // and MOBILE reach is not — the Scout measured at 4 wins in 40 in
+    // sectors 1-4 and 22-to-7 head to head on identical seeds, and it was
+    // never the range that did that, it was the range plus a drive.
+    // So the Picket carries the long gun early, and the Scout — the same
+    // gun that can also reposition — still waits for the shelf.
+    return depth < 5
+      ? // Only reachable if something ever generates a shallow sector;
+          // depths 1-4 are hand-authored. Kept in step with them anyway.
+          ["interceptor", "interceptor", "cruiser", "picket", "salvager"]
+        : depth < 8
+          ? // The campaign's shapes about GROUND, dealt in any combination
+            // rather than one per sector, plus the Salvager's decision.
+            // The Escort is deliberately not here: a screen isn't a new
+            // question, it's a doubled answer, and at one gun fired per
+            // round a stretch full of them is the same fight taking twice
+            // as long while everything else on the board shoots for free.
+            // Measured with it in this pool, the run fell off a cliff at
+            // depth 7 (39 runs alive at 6, 23 at 7) and the death boards
+            // were almost all cruiser+escort.
+            ["interceptor", "interceptor", "cruiser", "cruiser", "picket", "picket", "sentry", "salvager"]
+          : depth < 11
+            ? // The shelf has had three or four passes by now: the Scout
+              // (reach WITH a drive) and the Mortar (reach that ignores
+              // cover) both land here, and the Carrier makes backing off
+              // to a flank stop working.
+              ["interceptor", "cruiser", "picket", "scout", "escort", "carrier", "sentry", "sentry", "mortar", "salvager"]
+            : // Everything, including the two that shoot the length of the
+              // board. The Interceptor stays in the pool — it was dropped
+              // here at some point and that only made the deep end MORE
+              // uniform, which is the exact problem this ladder exists to
+              // avoid.
+              ["interceptor", "cruiser", "picket", "scout", "escort", "carrier", "sentry", "mortar", "lancer", "railgun", "salvager"];
+  }
+
   function generateLevel(depth, variantId) {
     if (depth === BOSS_DEPTH) return bossLevel(depth);
     // Fixed at the exact same size as every hand-authored sector — 9×11,
@@ -740,52 +791,7 @@
     //   carrier  — depth 8. Three Hull that walks at you and detonates a
     //              full ring in contact. Wants an answer at range, which
     //              is exactly what the depth-8 shelf is selling.
-    // The ladder. Read it as "which QUESTIONS is this stretch of the run
-    // allowed to ask", not as a difficulty curve — every class here is
-    // one-shot, so a pool is a set of shapes, not a set of stat blocks.
-    //
-    // The campaign (sectors 1-4, hand-authored above) now teaches four of
-    // them: contact, the anchored lane at three, the ring at two, and the
-    // screen. It used to teach one — an Interceptor, four times, wearing
-    // different names — which meant nothing genuinely new happened until
-    // depth 8 and the shallow end was just long.
-    //
-    // The rule the ladder still obeys: a shape lands a sector or two AFTER
-    // the gun that answers it reaches a shelf. What changed is the
-    // recognition that ANCHORED reach is answerable with the starting kit
-    // and MOBILE reach is not — the Scout measured at 4 wins in 40 in
-    // sectors 1-4 and 22-to-7 head to head on identical seeds, and it was
-    // never the range that did that, it was the range plus a drive.
-    // So the Picket carries the long gun early, and the Scout — the same
-    // gun that can also reposition — still waits for the shelf.
-    const typePool =
-      depth < 5
-        ? // Only reachable if something ever generates a shallow sector;
-          // depths 1-4 are hand-authored. Kept in step with them anyway.
-          ["interceptor", "interceptor", "cruiser", "picket", "salvager"]
-        : depth < 8
-          ? // The campaign's shapes about GROUND, dealt in any combination
-            // rather than one per sector, plus the Salvager's decision.
-            // The Escort is deliberately not here: a screen isn't a new
-            // question, it's a doubled answer, and at one gun fired per
-            // round a stretch full of them is the same fight taking twice
-            // as long while everything else on the board shoots for free.
-            // Measured with it in this pool, the run fell off a cliff at
-            // depth 7 (39 runs alive at 6, 23 at 7) and the death boards
-            // were almost all cruiser+escort.
-            ["interceptor", "interceptor", "cruiser", "cruiser", "picket", "picket", "sentry", "salvager"]
-          : depth < 11
-            ? // The shelf has had three or four passes by now: the Scout
-              // (reach WITH a drive) and the Mortar (reach that ignores
-              // cover) both land here, and the Carrier makes backing off
-              // to a flank stop working.
-              ["interceptor", "cruiser", "picket", "scout", "escort", "carrier", "sentry", "sentry", "mortar", "salvager"]
-            : // Everything, including the two that shoot the length of the
-              // board. The Interceptor stays in the pool — it was dropped
-              // here at some point and that only made the deep end MORE
-              // uniform, which is the exact problem this ladder exists to
-              // avoid.
-              ["interceptor", "cruiser", "picket", "scout", "escort", "carrier", "sentry", "mortar", "lancer", "railgun", "salvager"];
+    const typePool = typePoolFor(depth);
     // At most TWO emplacements on a board. A Sentry or a Railgun Destroyer
     // doesn't chase you — it denies ground — and three of them on a 9x11
     // field is a wall with no way around it, which is exactly what full-run
@@ -879,7 +885,7 @@
     };
   }
 
-  const HypergolicLevels = { LEVELS, generateLevel, BOSS_DEPTH, localeAhead, LOCALES };
+  const HypergolicLevels = { LEVELS, generateLevel, typePoolFor, BOSS_DEPTH, localeAhead, LOCALES };
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = HypergolicLevels;

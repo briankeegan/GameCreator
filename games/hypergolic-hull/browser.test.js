@@ -96,10 +96,25 @@ function pickStepToward(page, goalExpr) {
           : expr === "outpost"
             ? st.outpostPos
             : st.enemies.find((e) => e.alive);
-    // AP-round play: prefer steps that don't END the round inside anything's
-    // danger zone — computeThreatHexes already projects a charged chaser's
-    // move+fire reach. Fall back to any legal step when everything's hot.
+    // Route the way the GAME routes: the engine's own pathfinder, with
+    // threat avoidance on, and take the first step of the path it
+    // returns. The harness used to do this itself — pick the legal step
+    // nearest the goal, preferring one outside computeThreatHexes — and
+    // that has no lookahead at all, which is fine against chasers (their
+    // zones move, so a stalled walk frees itself next round) and
+    // deadlocks against an EMPLACEMENT (its zone never moves, so a walk
+    // that must cross the zone to reach the dock will refuse forever).
+    // Sector 2's anchored Picket made that failure routine.
     const legal = E.legalSublightTargets(st);
+    const path = E.findPath(st, st.playerPos, goal, { avoidThreats: true }) ||
+      E.findPath(st, st.playerPos, goal);
+    if (path && path.length > 1) {
+      const next = path[1];
+      const step = legal.find((c) => c.q === next.q && c.r === next.r);
+      if (step) return step;
+    }
+    // No route (the goal is walled off, or a hostile is standing on it):
+    // fall back to closing the distance however we legally can.
     const threats = E.computeThreatHexes(st);
     const safe = legal.filter((cand) => !threats.has(E.hexKey(cand)));
     const pool = safe.length ? safe : legal;
