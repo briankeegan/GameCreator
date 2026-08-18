@@ -41,6 +41,24 @@
 // standing still is no longer a fully frozen frame, and a cosmetic
 // scrap-burst on rat death (state.deathFx) so kills don't just vanish
 // instantly — see those for details.
+//
+// 2026-08-18 (later pass) — root-caused the recurring "art is awful" reports
+// to a fine crosshatch/graph-paper TEXTURE baked inside individual color
+// blocks on a few specific frames (found by cropping+zooming the PNGs, not
+// just eyeballing thumbnails): rat_atk_side.png and rat_side_walk2.png were
+// the worst (a grid visible across the whole sprite), hero_down_walk2.png/
+// hero_up_walk2.png milder. Regenerated those four against a strengthened
+// art-style.json ("no fine crosshatch/grain inside a color block" spelled
+// out as its own explicit rule, plus a new locked `enemy` palette so the
+// rats stop drifting too). hero_side.png/hero_atk_side.png still carry a
+// faint version of this same texture but a same-slot regen attempt came out
+// worse (added texture AND briefly drew a human face instead of a dog), so
+// those two were left as-is rather than ship a downgrade — redo them next
+// pass. Verified headlessly (Playwright): all 4 directions' walk cycles,
+// all 4 attack directions, and a rat pounce, reading `state.player`/
+// `state.enemies` directly plus cropped canvas screenshots — facing/
+// mirroring for both Beverly and the rats is correct in every direction
+// (this was NOT actually still broken; re-confirmed, not re-fixed).
 const GAME_ID = "dog-punk";
 const TILE = 32;
 const COLS = 16;
