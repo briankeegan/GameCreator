@@ -45,6 +45,10 @@ on:
       message:
         description: 'The message to handle (simulates a new chat comment)'
         required: true
+      attempt:
+        description: 'Retry attempt number (internal — the failure path re-dispatches with this incremented, up to 3)'
+        required: false
+        default: '1'
   # LIVE TRIGGER — a new comment on any Clubhouse PR fires this (the job's
   # `if:` then gates it to real, non-bot, non-Claude messages on opted-in games).
   issue_comment:
@@ -77,8 +81,9 @@ jobs:
     runs-on: ubuntu-latest
     # Hard cap on the whole job so a hang can never hold the per-thread queue
     # lock for GitHub's default 6 hours (which stalled every queued message
-    # behind it). The model step has its own tighter timeout below.
-    timeout-minutes: 45
+    # behind it). The model step has its own tighter timeout below. Sized to
+    # fit the retry backoff (~10 min) + the 30-min model cap + overhead.
+    timeout-minutes: 55
     permissions:
       contents: write        # push the change branch
       pull-requests: write   # open + merge the change PR, post the reply comment
@@ -91,6 +96,15 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+
+      # On an automatic retry (attempt > 1), wait ~10 min first so a transient
+      # cause (rate limit, brief outage) has time to clear before re-attempting.
+      # attempt 1 (a real message) never waits.
+      - name: Retry backoff
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.attempt != '1'
+        run: |
+          echo "Automatic retry (attempt ${{ github.event.inputs.attempt }}/3) — waiting 10 min for transient issues to clear."
+          sleep 600
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -440,17 +454,35 @@ jobs:
 
       # Deterministic: if any step above failed, the thread still gets an answer
       # instead of going mysteriously silent.
-      - name: Report failure to the thread
+      - name: Retry or report failure
         if: failure() && steps.ctx.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
-          # Prefer a specific diagnostic if a step wrote one (e.g. the smoke
-          # test's list of what broke); otherwise a generic message + run link.
-          if [ -s ".autopilot/failure.md" ]; then
-            body=$(cat .autopilot/failure.md)
+          ATTEMPT="${{ github.event.inputs.attempt || '1' }}"
+          MAX=3
+          if [ "$ATTEMPT" -lt "$MAX" ]; then
+            # Transient failures are common; re-dispatch (with attempt+1). The
+            # retry run waits ~10 min at its start before re-attempting. The run
+            # sweeps ALL unanswered messages, so we don't need the exact text.
+            NEXT=$((ATTEMPT + 1))
+            echo "Attempt $ATTEMPT/$MAX failed — scheduling retry $NEXT."
+            gh workflow run clubhouse-autopilot.yml --ref main \
+              -f pr_number="${{ steps.ctx.outputs.pr }}" \
+              -f message="(automatic retry — address all outstanding requests in this thread)" \
+              -f attempt="$NEXT" \
+              || echo "::warning::could not schedule retry"
+            gh pr comment ${{ steps.ctx.outputs.pr }} --repo "$REPO" \
+              --body "$(printf '**Claude says:**\n\nThat run hit a snag — retrying automatically (attempt %s of %s). Give it about 10 minutes.' "$NEXT" "$MAX")"
           else
-            body=$(printf 'Something went wrong while handling that — the automated run failed before I could finish. Details: %s/%s/actions/runs/%s' "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}")
+            # Out of retries — surface the specific diagnostic if a step wrote
+            # one (e.g. the smoke test), else a generic message + run link.
+            if [ -s ".autopilot/failure.md" ]; then
+              body=$(cat .autopilot/failure.md)
+            else
+              body=$(printf 'Something went wrong while handling that. Details: %s/%s/actions/runs/%s' "${{ github.server_url }}" "$REPO" "${{ github.run_id }}")
+            fi
+            gh pr comment ${{ steps.ctx.outputs.pr }} --repo "$REPO" \
+              --body "$(printf '**Claude says:**\n\nI tried %s times and still could not get this to go through, so I have stopped to avoid burning more on it — a human should take a look.\n\n%s' "$MAX" "$body")"
           fi
-          gh pr comment ${{ steps.ctx.outputs.pr }} --repo ${{ github.repository }} \
-            --body "$(printf '**Claude says:**\n\n%s' "$body")"
