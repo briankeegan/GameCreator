@@ -208,6 +208,10 @@ let shipVisible = false;
 let systemsContext = "ship";
 // Self-destruct is a two-step: the first tap arms it, the second means it.
 let selfDestructArmed = false;
+// Set when the current "lost" overlay was reached by scuttling rather than
+// dying, so it can read "Charges Blown" instead of "Flagship Destroyed" —
+// same overlay, same loadout picker, different framing.
+let voluntaryScuttle = false;
 // The starmap — same deal.
 let mapVisible = false;
 
@@ -3233,8 +3237,13 @@ function updateHud() {
     persistUnlocks();
   }
   if (state.status === "lost" && !animsRunning()) {
-    overlayTitleEl.textContent = "Flagship Destroyed";
-    overlayBodyEl.textContent = `Lost with all hands at depth ${state.levelId}. Deepest run so far: ${bestDepth}.`;
+    if (voluntaryScuttle) {
+      overlayTitleEl.textContent = "Charges Blown";
+      overlayBodyEl.textContent = `Scuttled at depth ${state.levelId}. Deepest run so far: ${bestDepth}.`;
+    } else {
+      overlayTitleEl.textContent = "Flagship Destroyed";
+      overlayBodyEl.textContent = `Lost with all hands at depth ${state.levelId}. Deepest run so far: ${bestDepth}.`;
+    }
     overlayRequisitionEl.textContent = `+${requisitionEarnedThisEnding} Requisition — ${requisition} banked.`;
     updateLoadoutPicker();
     continueBtnEl.hidden = true;
@@ -3978,13 +3987,18 @@ function updateShipOverlay() {
     scuttle.addEventListener("click", async () => {
       if (selfDestructArmed) {
         // Watch her go first. The screen stays put through the blast, then
-        // the fresh hull is waiting when the smoke clears.
+        // the death overlay comes up same as any other run ending — same
+        // Requisition payout, same loadout picker to arm the next hull —
+        // "New Ship" there is what actually starts the fresh run.
         scuttle.disabled = true;
         scuttle.textContent = "CHARGES AWAY";
         warnText.textContent = "Charges blown. It has been an honour.";
         await playScuttle();
         shipVisible = false;
-        scuttleShip();
+        selfDestructArmed = false;
+        voluntaryScuttle = true;
+        state.status = "lost";
+        render();
         return;
       }
       selfDestructArmed = true;
@@ -4603,6 +4617,7 @@ function loadSector(index, carryOver, opts) {
   shipAngle = -90;
   requisitionAwardedThisEnding = false;
   requisitionEarnedThisEnding = 0;
+  voluntaryScuttle = false;
   updateGeometry();
   render();
 }

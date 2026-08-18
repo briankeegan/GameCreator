@@ -1343,8 +1343,13 @@ async function freshPage(browser, url, errors) {
   }
 
   // Blowing the scuttling charges is something you WATCH. The ship comes
-  // apart on the Systems screen you armed them from, and only once the
-  // fire is out does the run reset ("show the ship explode").
+  // apart on the Systems screen you armed them from, and once the fire is
+  // out the SAME run-ending overlay any death shows comes up — Requisition
+  // payout, loadout picker to arm the next hull, and "New Ship" to actually
+  // start it. Scuttling used to skip straight to a fresh hull with no
+  // chance to pick a loadout ("when i scuttle charges it dowst give the
+  // options") — it now goes through the exact same ending flow, just
+  // framed as a scuttle rather than a death.
   {
     if (!(await page.locator("#shipOverlay").isVisible())) await page.click("#shipBtn");
     await page.click("#selfDestructBtn"); // arms
@@ -1362,7 +1367,12 @@ async function freshPage(browser, url, errors) {
     assert.strictEqual(await page.locator("#shipOverlay").isVisible(), true, "the screen holds through the blast");
     await page.waitForTimeout(1400);
     assert.strictEqual(await page.locator("#scuttleFx").isVisible(), false, "the fire goes out");
-    assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "then the screen clears");
+    assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "the Systems screen clears");
+    await waitForOverlay(page);
+    assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Charges Blown", "framed as a scuttle, not a death");
+    assert.strictEqual(await page.locator("#loadoutPicker button").count(), 3, "same loadout picker a death shows");
+    await page.click("#restartBtn");
+    await page.waitForFunction(() => window.__hhState.status === "playing");
     const after = await getState(page);
     assert.strictEqual(after.levelId, 1, "and the fresh hull is back at the start of the crawl");
     assert.strictEqual(after.hull, after.maxHull, "undamaged — nothing carried over");
