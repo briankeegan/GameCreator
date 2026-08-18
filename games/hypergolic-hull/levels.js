@@ -50,31 +50,43 @@
       actions: ["sublight", "autocannon"],
       intro: "One contact between us and the gate. Let it come to us.",
     },
-    // Sector 2 — the first Cruiser: a hostile that survives a hit and keeps
-    // coming, plus the first Outpost. Learning that a dock is where
-    // capability comes from is the lesson here.
+    // Sector 2 — the Picket. The first thing in the run that can hurt you
+    // from further away than you can hurt it, and it arrives at sector
+    // TWO on purpose: the shallow end used to be one Interceptor asked
+    // four different ways, so nothing new happened until the crawl. What
+    // makes it fair this early is that it CANNOT move and cannot fire
+    // inside two hexes — the Autocannon you start with is a complete
+    // answer to it, provided you work out that stepping off its axis or
+    // closing on it are the same solution. Plus the first Outpost:
+    // learning that a dock is where capability comes from.
     {
       id: 2,
-      name: "Salvage Field",
+      name: "Picket Line",
       board: { type: "rect", cols: 7, rows: 9 },
       playerStart: { q: 3, r: 7 },
       exit: { q: 6, r: -3 },
       // A pool of valid berths, not one fixed hex — see
       // computeOutpostCandidates above and engine.js's pickOutpostPos.
       outpost: true,
+      // The Picket sits ON the middle column, i.e. squarely on the lane
+      // between where you start and where the gate is, so the lesson is
+      // unavoidable: fly straight at it and you eat two shots on the way
+      // in. The Interceptor is off to one side to make sure you can't
+      // just stand still and out-wait the lance.
       enemies: [
-        { type: "cruiser", q: 3, r: 3 },
-        { type: "interceptor", q: 5, r: 0 },
+        { type: "picket", q: 3, r: 2 },
+        { type: "interceptor", q: 5, r: 1 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "autocannon"],
-      intro: "Cruiser on approach — it takes two. Station ahead is still trading.",
+      intro: "Anchored gun on the approach — it reaches three hexes down every axis, and nothing at one. Station ahead is still trading.",
     },
-    // Sector 3 — Sentry Line. Three enemies; the lesson is the Sentry
-    // (stationary, 2-hex beam ring) and shopping for your first upgrades.
-    // (This slot used to teach Fighter Squadron, which was cut — Clubhouse:
-    // "remove Random Blink and Fighter Squadron.")
+    // Sector 3 — Sentry Line. The second kind of ground denial (a ring at
+    // two rather than a lane at three) and, next to it, the Salvager: a
+    // hostile carrying no gun at all and eight salvage. That pairing is
+    // the sector — the safe target is the expensive one, and every round
+    // spent cracking it is a round the Sentry gets for free.
     {
       id: 3,
       name: "Sentry Line",
@@ -82,43 +94,40 @@
       playerStart: { q: 3, r: 7 },
       exit: { q: 6, r: -3 },
       outpost: true,
-      // The Sentry lesson: ONE emplacement and one escort. Its beam covers
-      // a two-hex ring in every direction, which is a wall on a board this
-      // width — learning to read that zone is the whole sector, and a
-      // third hostile just turns the lesson into an unwinnable brawl.
       enemies: [
         { type: "sentry", q: 5, r: 1 },
+        { type: "salvager", q: 2, r: 4 },
         { type: "interceptor", q: 3, r: 3 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "autocannon"],
-      intro: "Gun platform holding station. It will not come to us, and it does not have to.",
+      intro: "Gun platform holding station — it will not come to us, and it does not have to. The tug is unarmed and worth more than both of them.",
     },
-    // Sector 4 — Full Fleet. Everything unlocked, no guaranteed Outpost —
-    // Clubhouse feedback: "you shouldn't always have a place to heal."
-    // Sectors 2-3 keep theirs (that's where the Outpost mechanic itself
-    // gets taught); by the toughest campaign fight, that safety net is
-    // gone, same as most generated sectors past it.
+    // Sector 4 — Full Fleet. Everything unlocked, and the last hand-authored
+    // sector before the crawl goes procedural — so this is the outfitters
+    // (running it dry meant arriving at depth 5 with a hold full of salvage
+    // and no shelf to spend it on since sector 3).
+    //
+    // Three shapes at once, one of each thing the campaign has taught, plus
+    // the Escort — the first screen, i.e. "everything takes one more shot
+    // than you think" — which is a difficulty note rather than a new
+    // question about ground, and so belongs last.
     {
       id: 4,
       name: "The Gauntlet",
       board: { type: "rect", cols: 7, rows: 10 },
       playerStart: { q: 3, r: 8 },
       exit: { q: 6, r: -3 },
-      // The last hand-authored sector before the crawl goes procedural —
-      // so this is the outfitters. Running it dry meant arriving at depth
-      // 5 with a hold full of salvage, a starting gun, and no shelf to
-      // spend on since sector 3.
       outpost: true,
       enemies: [
-        { type: "cruiser", q: 3, r: 4 },
-        { type: "sentry", q: 5, r: 1 },
-        { type: "interceptor", q: 4, r: 4 },
+        { type: "picket", q: 3, r: 3 },
+        { type: "escort", q: 5, r: 1 },
+        { type: "cruiser", q: 2, r: 5 },
       ],
       hazards: [],
       exitRule: "all-enemies-dead",
-      intro: "Three contacts on the board. The gate is open the whole way — we do not have to kill any of them.",
+      intro: "Three contacts, three different problems. The gate is open the whole way — we do not have to kill any of them.",
     },
   ];
 
@@ -731,29 +740,52 @@
     //   carrier  — depth 8. Three Hull that walks at you and detonates a
     //              full ring in contact. Wants an answer at range, which
     //              is exactly what the depth-8 shelf is selling.
+    // The ladder. Read it as "which QUESTIONS is this stretch of the run
+    // allowed to ask", not as a difficulty curve — every class here is
+    // one-shot, so a pool is a set of shapes, not a set of stat blocks.
+    //
+    // The campaign (sectors 1-4, hand-authored above) now teaches four of
+    // them: contact, the anchored lane at three, the ring at two, and the
+    // screen. It used to teach one — an Interceptor, four times, wearing
+    // different names — which meant nothing genuinely new happened until
+    // depth 8 and the shallow end was just long.
+    //
+    // The rule the ladder still obeys: a shape lands a sector or two AFTER
+    // the gun that answers it reaches a shelf. What changed is the
+    // recognition that ANCHORED reach is answerable with the starting kit
+    // and MOBILE reach is not — the Scout measured at 4 wins in 40 in
+    // sectors 1-4 and 22-to-7 head to head on identical seeds, and it was
+    // never the range that did that, it was the range plus a drive.
+    // So the Picket carries the long gun early, and the Scout — the same
+    // gun that can also reposition — still waits for the shelf.
     const typePool =
-      // The Scout used to be an Interceptor with a scanner. It carries the
-      // LONG gun now, which moves it out of the shallow end entirely: this
-      // file's own rule is that a new shape lands a sector or two AFTER
-      // the gun that answers it reaches a shelf, and a hostile that
-      // outranges you is unanswerable while the only thing aboard is a
-      // range-1 Autocannon. Measured in sectors 1-4: good play won 4 runs
-      // in 40 and the Scout was in nearly every death board.
-      //
-      // It lands at depth 8 in the end. A mobile long gun is worth a lot
-      // in a game where the only counter is to walk into it, and walking
-      // costs rounds under fire: measured head to head on identical
-      // seeds, swapping the Scout's Autocannon for the Beam Lance took
-      // good play from 22 wins in 40 to 7. It arrives alongside the other
-      // classes that punish standing still, by which point two or three
-      // shops have been and gone.
       depth < 5
-        ? ["interceptor", "interceptor", "cruiser"]
+        ? // Only reachable if something ever generates a shallow sector;
+          // depths 1-4 are hand-authored. Kept in step with them anyway.
+          ["interceptor", "interceptor", "cruiser", "picket", "salvager"]
         : depth < 8
-          ? ["interceptor", "cruiser", "cruiser", "sentry", "salvager"]
+          ? // The campaign's shapes about GROUND, dealt in any combination
+            // rather than one per sector, plus the Salvager's decision.
+            // The Escort is deliberately not here: a screen isn't a new
+            // question, it's a doubled answer, and at one gun fired per
+            // round a stretch full of them is the same fight taking twice
+            // as long while everything else on the board shoots for free.
+            // Measured with it in this pool, the run fell off a cliff at
+            // depth 7 (39 runs alive at 6, 23 at 7) and the death boards
+            // were almost all cruiser+escort.
+            ["interceptor", "interceptor", "cruiser", "cruiser", "picket", "picket", "sentry", "salvager"]
           : depth < 11
-            ? ["interceptor", "scout", "cruiser", "escort", "carrier", "sentry", "sentry", "mortar", "salvager"]
-            : ["scout", "cruiser", "escort", "carrier", "sentry", "mortar", "lancer", "railgun", "salvager"];
+            ? // The shelf has had three or four passes by now: the Scout
+              // (reach WITH a drive) and the Mortar (reach that ignores
+              // cover) both land here, and the Carrier makes backing off
+              // to a flank stop working.
+              ["interceptor", "cruiser", "picket", "scout", "escort", "carrier", "sentry", "sentry", "mortar", "salvager"]
+            : // Everything, including the two that shoot the length of the
+              // board. The Interceptor stays in the pool — it was dropped
+              // here at some point and that only made the deep end MORE
+              // uniform, which is the exact problem this ladder exists to
+              // avoid.
+              ["interceptor", "cruiser", "picket", "scout", "escort", "carrier", "sentry", "mortar", "lancer", "railgun", "salvager"];
     // At most TWO emplacements on a board. A Sentry or a Railgun Destroyer
     // doesn't chase you — it denies ground — and three of them on a 9x11
     // field is a wall with no way around it, which is exactly what full-run
@@ -767,7 +799,7 @@
     // board of one archer and one Sentry — the beam owning the lanes and
     // the ring owning everything at two, between them leaving nowhere to
     // stand. Ten of forty runs ended on that pair.
-    const EMPLACEMENTS = new Set(["sentry", "railgun", "mortar", "scout"]);
+    const EMPLACEMENTS = new Set(["sentry", "railgun", "mortar", "scout", "picket"]);
     // The same argument as EMPLACEMENTS, applied to durability instead of
     // to zoning. An Escort takes one more shot than it looks like it
     // should and a Carrier takes two; a board of nothing but those is not

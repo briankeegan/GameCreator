@@ -172,9 +172,12 @@ async function walkToExit(page) {
 async function walkToOutpost(page) {
   let s = await getState(page);
   // Bounded like walkToExit — a greedy nearest-hex walk has no lookahead,
-  // so a chasing enemy (e.g. Sector 2's Cruiser) repositioning every turn
-  // can stall it against an obstacle indefinitely otherwise.
-  for (let i = 0; i < 30 && s.status === "playing" && !(s.playerPos.q === s.outpostPos.q && s.playerPos.r === s.outpostPos.r); i++) {
+  // so a chasing enemy repositioning every turn can stall it against an
+  // obstacle indefinitely otherwise. The bound is generous (60, not 30):
+  // Sector 2's Picket is anchored across the middle of the board, so the
+  // berth on the far side is now a genuinely long walk around it and a
+  // tighter budget ran out one hex short of the dock.
+  for (let i = 0; i < 60 && s.status === "playing" && !(s.playerPos.q === s.outpostPos.q && s.playerPos.r === s.outpostPos.r); i++) {
     await playTurnToward(page, "outpost");
     s = await getState(page);
   }

@@ -786,6 +786,7 @@ for (const [type, file] of Object.entries({
   interceptor: "icons/interceptor.png",
   cruiser: "icons/enemy-cruiser.png",
   sentry: "icons/enemy-sentry.png",
+  picket: "icons/enemy-picket.png", // the anchored lance — a mast, not a hull
   mortar: "icons/enemy-bomber.png", // the one hull in the set with a loaded bay
   lancer: "icons/enemy-minelayer.png", // pods held out wide, like the Tubes fire
   railgun: "icons/enemy-railgun.png",
@@ -1349,7 +1350,7 @@ function drawRailgun(s) {
 // How big a class draws relative to a standard hull. A boss that arrives
 // at exactly the size of the Interceptor you killed at depth 1 does not
 // read as the thing the sector is named after.
-const SHIP_SCALE = { bulwark: 1.45, carrier: 1.18, salvager: 1.12, scout: 0.9 };
+const SHIP_SCALE = { bulwark: 1.45, carrier: 1.18, salvager: 1.12, scout: 0.9, picket: 0.95 };
 
 // A gun's charge, on the gun. The danger overlay already goes dark while
 // a weapon is discharged, but that only says "not this round" — it never
@@ -1446,6 +1447,9 @@ function drawEnemyShip(size, hpFrac, crackSeed, type, shielded) {
     interceptor: ["rgba(255,110,70,0.55)", "rgba(255,60,45,0.28)", "rgba(255,50,40,0)"],
     cruiser: ["rgba(255,170,60,0.55)", "rgba(240,120,30,0.30)", "rgba(240,110,30,0)"],
     sentry: ["rgba(70,240,150,0.50)", "rgba(40,200,120,0.26)", "rgba(30,190,110,0)"],
+    // The Picket carries the Scout's gun, so it carries a cooler cousin of
+    // the Scout's sand — related at a glance, not mistakable for it.
+    picket: ["rgba(210,215,175,0.50)", "rgba(160,175,120,0.26)", "rgba(150,165,110,0)"],
     // Every class needs its own, or it silently borrows the Interceptor's
     // red and two different threats look like the same threat.
     mortar: ["rgba(235,220,110,0.52)", "rgba(200,180,60,0.27)", "rgba(190,170,50,0)"],
@@ -1475,7 +1479,7 @@ function drawEnemyShip(size, hpFrac, crackSeed, type, shielded) {
   // get in the moment before its PNG has finished loading.
   if (!drawShipImage(ENEMY_SPRITES[type], size)) {
     if (type === "cruiser") drawCruiser(size * 1.12);
-    else if (type === "sentry") drawSentry(size * 1.05);
+    else if (type === "sentry" || type === "picket") drawSentry(size * 1.05);
     else if (type === "railgun") drawRailgun(size * 1.1);
     else if (!drawShipImage(interceptorImg, size)) drawEnemyFighter(size, 0);
   }

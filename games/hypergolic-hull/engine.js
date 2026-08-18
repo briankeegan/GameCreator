@@ -764,6 +764,27 @@
         ],
       },
     },
+    // The archer that can't chase you — and the first thing in the run
+    // that shoots you from further away than you can shoot back. Same
+    // Beam Lance the Scout carries, bolted to a Station Anchor instead of
+    // a drive, which is what makes it fair in the shallow end: a MOBILE
+    // long gun in sectors 1-4 measured at 4 wins in 40, because the only
+    // answer to reach is to walk it down and it kept walking away from
+    // the walk. Nailed to the deck, the same gun is a puzzle with two
+    // clean solutions the starting kit can actually execute — step off
+    // its axis, or close inside two, where the Lance has no shot at all.
+    picket: {
+      hull: 1, salvage: 2,
+      hold: {
+        cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
+        items: [
+          { id: "beamLance", x: 1, y: 0 },
+          { id: "stationAnchor", x: 0, y: 1 },
+          { id: "microReactor", x: 2, y: 1 },
+          { id: "chargeBank", x: 2, y: 2 },
+        ],
+      },
+    },
     // The emplacement that makes cover worthless. Its shell lands at
     // exactly three hexes and doesn't care what's in between, so parking
     // behind a rock is no answer — you close inside three, back off past
