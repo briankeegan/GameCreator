@@ -159,10 +159,11 @@ jobs:
       # found") so it's installed explicitly first.
       - name: Resize + trim for web
         if: steps.gen.outputs.skipped != 'true'
+        timeout-minutes: 3
         env:
           OUTPUT_PATH: ${{ inputs.output_path }}
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq imagemagick
           convert "$OUTPUT_PATH" -trim +repage -resize '512x512>' -background none -gravity center -extent 512x512 "$OUTPUT_PATH"
 
       # Retry-with-rebase so several asset generations running at once don't
