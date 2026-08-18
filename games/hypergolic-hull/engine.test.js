@@ -373,7 +373,7 @@ let weaponState = Engine.createGameState(weaponLevel);
 assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
 assert.deepStrictEqual(
   weaponState.systems,
-  { warpdrive: true, autocannon: true, flakBurst: false, arcBeam: false, mortar: false, flankTubes: false, railgun: false, missilePod: false },
+  { warpdrive: true, autocannon: true, flakBurst: false, arcBeam: false, mortar: false, flankTubes: false, railgun: false, missilePod: false, beamLance: false },
   "arming derives from the Hold — only the installed Autocannon reads armed"
 );
 Engine.applySublight(weaponState, { q: 2, r: 2 }); // steps adjacent to the interceptor
@@ -420,7 +420,7 @@ assert.throws(() => Engine.setFacing(weaponState, 6), /Invalid facing/, "facing 
 // The ship's internals are a grid; every item is a shaped tile and its
 // footprint is the equip cost. What's INSTALLED is what works; cargo is
 // inert. Rearranging is free but dock-gated.
-assert.deepStrictEqual(Engine.WEAPON_SYSTEM_KEYS, ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod"]);
+assert.deepStrictEqual(Engine.WEAPON_SYSTEM_KEYS, ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance"]);
 
 let holdState = Engine.createGameState(weaponLevel);
 assert.strictEqual(holdState.hold.cols, 5, "the starter hold is 5 cells wide");

@@ -732,10 +732,25 @@
     //              full ring in contact. Wants an answer at range, which
     //              is exactly what the depth-8 shelf is selling.
     const typePool =
+      // The Scout used to be an Interceptor with a scanner. It carries the
+      // LONG gun now, which moves it out of the shallow end entirely: this
+      // file's own rule is that a new shape lands a sector or two AFTER
+      // the gun that answers it reaches a shelf, and a hostile that
+      // outranges you is unanswerable while the only thing aboard is a
+      // range-1 Autocannon. Measured in sectors 1-4: good play won 4 runs
+      // in 40 and the Scout was in nearly every death board.
+      //
+      // It lands at depth 8 in the end. A mobile long gun is worth a lot
+      // in a game where the only counter is to walk into it, and walking
+      // costs rounds under fire: measured head to head on identical
+      // seeds, swapping the Scout's Autocannon for the Beam Lance took
+      // good play from 22 wins in 40 to 7. It arrives alongside the other
+      // classes that punish standing still, by which point two or three
+      // shops have been and gone.
       depth < 5
-        ? ["interceptor", "interceptor", "scout", "scout", "cruiser"]
+        ? ["interceptor", "interceptor", "cruiser"]
         : depth < 8
-          ? ["interceptor", "scout", "scout", "cruiser", "cruiser", "sentry", "salvager"]
+          ? ["interceptor", "cruiser", "cruiser", "sentry", "salvager"]
           : depth < 11
             ? ["interceptor", "scout", "cruiser", "escort", "carrier", "sentry", "sentry", "mortar", "salvager"]
             : ["scout", "cruiser", "escort", "carrier", "sentry", "mortar", "lancer", "railgun", "salvager"];
@@ -745,7 +760,14 @@
     // playtesting kept dying to (fourteen of thirty deaths on boards of
     // three Sentries and a Railgun). Two is a gauntlet you can route
     // through; three is a corridor with a gun at the end of it.
-    const EMPLACEMENTS = new Set(["sentry", "railgun", "mortar"]);
+    // Ground-denial units, capped at two per board. The Scout belongs here
+    // now even though it flies: it owns three hexes of every axis and
+    // gives ground rather than trading, which denies space exactly the way
+    // a fixed gun does. Measured while it was uncapped, the wall was a
+    // board of one archer and one Sentry — the beam owning the lanes and
+    // the ring owning everything at two, between them leaving nowhere to
+    // stand. Ten of forty runs ended on that pair.
+    const EMPLACEMENTS = new Set(["sentry", "railgun", "mortar", "scout"]);
     // The same argument as EMPLACEMENTS, applied to durability instead of
     // to zoning. An Escort takes one more shot than it looks like it
     // should and a Carrier takes two; a board of nothing but those is not
@@ -753,9 +775,9 @@
     // means every chaser on the map gets extra free turns while you grind.
     // Two per board keeps them a complication rather than the whole sum.
     const HEAVIES = new Set(["escort", "carrier"]);
-    const MOBILE = ["interceptor", "scout", "cruiser", "escort", "lancer"];
+    const MOBILE = ["interceptor", "cruiser", "escort", "lancer"];
     const enemies = [];
-    const LIGHT = ["interceptor", "scout", "cruiser"];
+    const LIGHT = ["interceptor", "cruiser"];
     let emplaced = 0;
     let heavies = 0;
     for (const hex of candidates) {

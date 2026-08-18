@@ -99,7 +99,7 @@
   // mechanic and Fighter Squadron was a free instant-kill living outside
   // the weapon/energy model. Everything left runs on the same
   // stats + energy + slots chassis.
-  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod"];
+  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance"];
   // Purchase-only actions (see OUTPOST_OFFER_POOL/applyOutpostPurchase) —
   // never part of any level's own baked-in `actions` list, and excluded
   // from the default fallback below so they don't show up for free the
@@ -107,7 +107,7 @@
   // guaranteed claimable (free) at Sector 2's Outpost specifically (see
   // pickOutpostOfferIds), just no longer handed out automatically for
   // reaching the sector.
-  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod"];
+  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance"];
   // Sectors that don't specify `actions` explicitly (Sector 4 "Full Fleet"
   // and every procedurally-generated sector) default to every action that
   // unlocks just by playing.
@@ -377,14 +377,22 @@
   // against a Mortar.
   const SHAPES = {
     // Pattern offsets stepped out to `range`, stopped by anything solid.
+    // Pattern offsets stepped out to `range`, stopped by anything solid.
+    // A minRange leaves the near end of each lane alone — the beam still
+    // travels through those hexes (and is still stopped by whatever is
+    // standing in them), it just cannot be aimed at something that close.
+    // That hole is what makes a long gun a long gun: Hoplite's archer
+    // cannot shoot an adjacent tile, which is the entire reason closing on
+    // one is a real answer to it.
     arc: (pos, facing, weapon, state, opts) => {
       const hexes = [];
+      const min = weapon.minRange || 1;
       for (const offset of weapon.pattern) {
         const dir = (facing + offset + 6) % 6;
         let cur = pos;
         for (let step = 0; step < weapon.range; step++) {
           cur = neighbor(cur, dir);
-          hexes.push(cur);
+          if (step + 1 >= min) hexes.push(cur);
           if (state && blocksShot(state, cur, opts)) break;
         }
       }
@@ -479,6 +487,14 @@
     // The sniper: down any of the six axes, the length of the board, two
     // damage. Stopped by the first rock or hull in the lane, which is
     // both its weakness and how you survive one.
+    // The long gun that MOVES. Everything with reach in this game was
+    // bolted to the floor — the design note used to read "reach belongs to
+    // the things that can't chase you" — which left every mobile class
+    // wanting the same hex and playing the same way. This is Hoplite's
+    // archer: it shoots five hexes down any axis, it CANNOT shoot anything
+    // adjacent, and it walks to keep that gap open. Closing on it is the
+    // answer, and closing costs you the rounds it spends shooting.
+    beamLance: { id: "beamLance", label: "Beam Lance", shape: "lane", range: 3, minRange: 2, damage: 1, targets: "one", energyCost: 2, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     railgun: { id: "railgun", label: "Railgun", shape: "lane", range: 20, damage: 2, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
   };
 
@@ -516,6 +532,7 @@
     autocannon: { id: "autocannon", label: "Autocannon", kind: "weapon", weaponKey: "autocannon", w: 2, h: 1 },
     flakBurst: { id: "flakBurst", label: "Flak Burst", kind: "weapon", weaponKey: "flakBurst", w: 2, h: 2 },
     arcBeam: { id: "arcBeam", label: "Arc Beam", kind: "weapon", weaponKey: "arcBeam", w: 2, h: 2 },
+    beamLance: { id: "beamLance", label: "Beam Lance", kind: "weapon", weaponKey: "beamLance", w: 1, h: 3 },
     railgun: { id: "railgun", label: "Railgun", kind: "weapon", weaponKey: "railgun", w: 1, h: 4 },
     mortar: { id: "mortar", label: "Mortar", kind: "weapon", weaponKey: "mortar", w: 2, h: 2 },
     flankTubes: { id: "flankTubes", label: "Flank Tubes", kind: "weapon", weaponKey: "flankTubes", w: 1, h: 3 },
@@ -580,7 +597,7 @@
   // derived from the Hold now (an installed weapon item sets its
   // systems[key] flag in deriveShip), but the key list itself is stable
   // engine data.
-  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod"];
+  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance"];
 
   // ---- what a hold makes a ship able to do -------------------------------
   //
@@ -806,15 +823,30 @@
     // a Scout screen asks "can you kill FOUR of them before they all
     // reach you", and the answer depends on whether your second gun
     // covers ground or covers a direction.
+    // The archer, and the reason the shallow end stops being one enemy
+    // twice. It was an Interceptor with a scanner bolted on — same gun,
+    // same contact range, same "walk at you" — so sectors 1-4 asked one
+    // question no matter which hull asked it.
+    //
+    // Now it carries the long gun and cannot fire at contact at all. It
+    // keeps its lane open and plinks; walking it down is the answer, and
+    // the walk is what costs you.
+    //
+    // Three hexes, not Hoplite's five. Its archer reaches five because its
+    // hero has a big health bar and a leap; ours has three Hull and one
+    // move a round, so closing five hexes down a lane is four free hits
+    // and simply not a puzzle. Measured at five: good play won 8 runs in
+    // 40. The lane is the real counter either way — step off its axis and
+    // it has nothing.
     scout: {
-      hull: 1, salvage: 1,
+      hull: 1, salvage: 2,
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
-          { id: "sublightDrive", x: 1, y: 0 },
-          { id: "microReactor", x: 0, y: 1 },
-          { id: "scanner", x: 2, y: 1 },
-          { id: "autocannon", x: 0, y: 3 },
+          { id: "beamLance", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 1 },
+          { id: "microReactor", x: 2, y: 1 },
+          { id: "chargeBank", x: 2, y: 2 },
         ],
       },
     },
@@ -1108,6 +1140,7 @@
     flankTubes: "flankTubes",
     railgun: "railgun",
     missilePod: "missilePod",
+    beamLance: "beamLance",
   };
 
   // `rarity` drives two things (see pickOutpostOfferIds): how LIKELY an
@@ -1137,6 +1170,7 @@
     // shooting at you).
     { id: "flakBurst", label: "Flak Burst (2x2 — everything touching us, at once)", cost: 10, rarity: "uncommon" },
     { id: "arcBeam", label: "Arc Beam (2x2 — the ring at two. Nothing closer.)", cost: 8, rarity: "uncommon" },
+    { id: "beamLance", label: "Beam Lance (1x3 — three down any axis, nothing adjacent)", cost: 9, rarity: "uncommon" },
     { id: "mortar", label: "Mortar (2x2 — lands at three, straight over the rocks)", cost: 14, rarity: "rare" },
     { id: "flankTubes", label: "Flank Tubes (1x3 — the gaps at two, 2 dmg)", cost: 16, rarity: "rare" },
     { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 24, rarity: "rare" },
@@ -2277,20 +2311,32 @@
       // Measured: 12 of 40 runs stalled outright. After a few fruitless
       // rounds it stops holding out for the good shot and just closes,
       // which ends the standoff and reads as a hostile losing its nerve.
+      // A hostile may slide sideways to find its angle, but it may never
+      // back AWAY from the flagship. Letting it retreat produced a gun
+      // that fired and gave ground in alternation — and since it moves at
+      // exactly your speed, you close a net hex every two rounds while
+      // being shot the whole way, which is not a fight you can win by
+      // playing well. Hoplite's archer has the same range problem and
+      // solves it the same way: its demons only ever move to REDUCE the
+      // distance to the player. Closing on a long gun is the counter, so
+      // closing has to be possible.
+      const standoff = hexDistance(enemy, state.playerPos);
+      const closers = candidates.filter((c) => c.dist <= standoff);
+      const pool = closers.length ? closers : candidates;
       const solutions = (enemy.idleRounds || 0) >= PATIENCE ? [] : firingPositions(state, enemy);
       if (solutions.length) {
         const nearestSolution = (h) =>
           solutions.reduce((best, s) => Math.min(best, hexDistance(h, s)), Infinity);
-        candidates.sort((a, b) => nearestSolution(a.to) - nearestSolution(b.to) || a.dist - b.dist || a.dir - b.dir);
+        pool.sort((a, b) => nearestSolution(a.to) - nearestSolution(b.to) || a.dist - b.dist || a.dir - b.dir);
         // Already as close to a shooting spot as any step would take it:
         // hold, rather than shuffling sideways forever.
-        if (nearestSolution(enemy) <= nearestSolution(candidates[0].to)) {
+        if (nearestSolution(enemy) <= nearestSolution(pool[0].to)) {
           return { enemyId: enemy.id, type: "wait" };
         }
       } else {
-        candidates.sort((a, b) => a.dist - b.dist || a.dir - b.dir);
+        pool.sort((a, b) => a.dist - b.dist || a.dir - b.dir);
       }
-      return { enemyId: enemy.id, type: "move", to: candidates[0].to };
+      return { enemyId: enemy.id, type: "move", to: pool[0].to };
     }
     return { enemyId: enemy.id, type: "wait" };
   }
