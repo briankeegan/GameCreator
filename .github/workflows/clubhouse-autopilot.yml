@@ -75,6 +75,10 @@ jobs:
        github.event.comment.user.type != 'Bot' &&
        !startsWith(github.event.comment.body, '**Claude says:**'))
     runs-on: ubuntu-latest
+    # Hard cap on the whole job so a hang can never hold the per-thread queue
+    # lock for GitHub's default 6 hours (which stalled every queued message
+    # behind it). The model step has its own tighter timeout below.
+    timeout-minutes: 45
     permissions:
       contents: write        # push the change branch
       pull-requests: write   # open + merge the change PR, post the reply comment
@@ -308,6 +312,10 @@ jobs:
       # and Read is how it reviews the generated PNGs.
       - name: Handle the Clubhouse message (headless Claude)
         if: steps.ctx.outputs.enabled == 'true'
+        # If the model hangs (stuck API call, wedged broker curl, etc.), kill it
+        # here instead of letting it block the thread for hours. On timeout this
+        # step fails and the failure reply fires, freeing the queue.
+        timeout-minutes: 30
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
