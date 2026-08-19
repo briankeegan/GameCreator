@@ -411,6 +411,24 @@ jobs:
             exit 0
           fi
 
+          # CACHE-BUST: each game is a PWA whose service worker serves cached
+          # assets under a versioned cache name (e.g. "dog-punk-v2"). If that
+          # name doesn't change, regenerated sprites/code never reach browsers —
+          # the SW keeps serving the stale copies (the "it never regenerated /
+          # looks identical" bug). So for every game with staged changes, bump
+          # the -vN in its sw.js cache name. Deterministic — never relies on the
+          # model to remember.
+          for g in $(git diff --cached --name-only -- games | sed -n 's#^games/\([^/]*\)/.*#\1#p' | sort -u); do
+            sw="games/$g/sw.js"
+            [ -f "$sw" ] || continue
+            if perl -i -pe 's/(GCRegisterServiceWorker\("[^"]*?-v)(\d+)(")/$1 . ($2 + 1) . $3/e' "$sw" 2>/dev/null && ! git diff --quiet -- "$sw"; then
+              git add "$sw"
+              echo "Bumped PWA cache version in $sw"
+            else
+              echo "::warning::could not bump cache version in $sw (unexpected format) — regenerated assets may be cached stale."
+            fi
+          done
+
           # Push straight to main. (A PR would be tidier, but GitHub Actions is
           # blocked from creating PRs by default — "GitHub Actions is not
           # permitted to create or approve pull requests" — and the smoke test
