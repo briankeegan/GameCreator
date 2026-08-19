@@ -15,31 +15,33 @@ are ephemeral; this file is the source of truth. Keep it updated as things land.
    → lounge → library rooms with NPC dialogue. ✅ Mobile layout bugs fixed
    (dialogue panel covering screen, touch d-pad showing during cutscene,
    blank space below stage, missing install-banner CSS).
-   ✅ NPCs now render as a round token + ground shadow (was: portrait image
-   stretched into a rectangle mid-air — reported live as "floating heads").
-   ✅ NPC y-coordinates moved into the same floor band the player walks in,
-   since generated background art doesn't guarantee a floor line at any
-   given y (reported live as "how do I walk on bottles" — NPCs were placed
-   up near a bar shelf in the generated lounge art).
-   ✅ Cutscene lines now distinguish narration (internal thought/memory —
-   no speaker nameplate, italic caption) from actual spoken dialogue
-   (nameplate + normal styling) — was: all lines shown as if Nella were
-   saying her own internal narration out loud, reported live as "why is
-   internal dialog showing up".
-   **PAUSED on the user's explicit instruction ("stop wasting my money"):
-   no further OpenAI art generation until asked again.**
-2. **Imagemagick "Resize + trim for web" step timeout — unresolved.** 12
-   `generate-game-asset.yml` runs (prologue backgrounds: bg-childhood,
-   bg-mall, bg-news, bg-rain, bg-porch, bg-kitchen, bg-cartridge, bg-crt,
-   bg-crt_red, bg-latin, bg-chaos, bg-bedroom) all paid for the OpenAI
-   generation but failed at the resize step
-   (`The action 'Resize + trim for web' has timed out after 3 minutes`,
-   confirmed via job log on run 32303601540) — likely apt-get contention
-   from dispatching all 12 near-simultaneously. Images were never
-   committed. **Do not re-dispatch or generate more art until the user
-   asks — this item is on hold along with all other art generation.**
-   When resumed: fix the timeout (longer `timeout-minutes`, and/or
-   don't fire 12 runs at once) before re-running.
+   ✅ NPCs render as real full-body standing sprites (`npc.sprite`, feet
+   anchored to a ground shadow) — was: a portrait image stretched into a
+   rectangle mid-air ("floating heads"), then a round bust token, now an
+   actual body. Falls back to the round bust token, then a plain colored
+   circle, if no sprite exists for a character.
+   ✅ Nella (the player) also has her own standing sprite (`nella_walk.png`,
+   mirrored for left-facing) — was rendering as a plain colored blob.
+   ✅ All 12 prologue cutscene backgrounds generated and landed (childhood,
+   mall, news, rain, porch, kitchen, cartridge, crt, crt_red, latin, chaos)
+   plus bg-bedroom — every cutscene beat and room now has real art matching
+   its actual described scene (not generic/random imagery).
+   ✅ NPC y-coordinates moved into the same floor band the player walks in.
+   ✅ Cutscene lines distinguish narration (internal thought/memory — no
+   speaker nameplate, italic caption) from actual spoken dialogue.
+   Verified end-to-end via headless mobile Playwright: zero console errors,
+   correct room transitions, NPC portraits load in the talk box.
+   Remaining for this game: Kyran, Diamond, Eric, Magma, Rex, Anarchy have
+   no art or in-room presence yet (not needed until they're written into a
+   room). Devil currently only has a text-prompt (no inspo reference) sprite.
+2. **Art-gen resize step was hanging, not just slow — fixed.** `apt-get
+   install imagemagick` in `generate-game-asset.yml` /
+   `generate-referenced-asset.yml` was confirmed to hang SILENTLY for a full
+   10-minute step timeout (zero log output) against a bad/busy mirror —
+   this is what silently dropped 12 paid-for prologue-background
+   generations earlier. Root-cause fixed by dropping apt-get/imagemagick
+   entirely in favor of Python + Pillow (installs from PyPI, verified
+   working locally and in production runs). No longer an open item.
 3. **Fix multi-image upload in the Clubhouse (online).** Chat currently can't
    send multiple images at once — user had to upload them to the CLI session
    instead. Fix `shared/clubhouse.js` + the worker `upload-image` flow.
@@ -50,9 +52,12 @@ are ephemeral; this file is the source of truth. Keep it updated as things land.
    chains attack the opponent. Explicitly deferred by the user until the
    characters/rooms were in place — that's now done, so this is next once
    picked back up.
-5. **No sprite sheets exist yet** — only single static character portraits.
-   Walking/talking animation would need real sprite sheets, not generated
-   yet (also blocked by the art-generation pause above).
+5. **No animated walk-cycle sprite sheets** — each character (including
+   Nella) has one static standing pose, not a multi-frame walk animation.
+   gpt-image-1 (single-shot text-to-image) isn't reliable at producing
+   clean, aligned multi-frame sprite sheets, so this would need a different
+   approach (e.g. hand-built frame interpolation, or a purpose-built sprite
+   tool) if pursued.
 
 ## Reliability fixes already shipped (autopilot)
 - Sweep ALL unanswered messages per run (burst-safe).
