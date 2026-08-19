@@ -94,6 +94,33 @@ design discussion. `shared/` holds the components every game reuses
   cancellation, which is the one shape of failure that reports nothing.
   Corollary: cancelling an autopilot run by hand now re-dispatches it. To
   actually stop a thread, set `"autopilot": false` on that game.
+- **Art is generated as SHEETS, never single frames.** This is the most
+  expensive lesson in the repo: a sprite generated on its own is drawn from
+  scratch, so its colours, proportions and pixel scale don't match the frames
+  beside it. Dog Punk shipped a hero whose front view was an orange dog with a
+  magenta mohawk and whose side view was a tan dog with a pink beret, and five
+  rounds of regenerating single frames never converged — each new frame drifted
+  somewhere else, while every reply honestly reported success. Generate ONE
+  image holding a whole row (idle, walk, attack) and cut it up; frames drawn
+  together cannot drift.
+  - Cutter: `.github/art/build_sheet.py` (shared, not per-game). It keys the
+    flat background to transparency — ask the generator for FLAT WHITE, never
+    transparency, which comes back as a beige wash — cuts frames at gutters or
+    as connected blobs (`--blobs` when sprites overlap), scales each row by ONE
+    factor so the character can't change size mid-animation, snaps to the
+    art-pixel grid, maps every pixel to the game's `lockedPalette`, and lays
+    frames on a common foot baseline. `--help` documents the rest.
+  - Rules live in `games/<id>/art-style.json`, and the palette in it is
+    ENFORCED by the cutter rather than merely described — a game's hero and its
+    enemies cannot drift into different colour worlds. New games are scaffolded
+    an unfilled one from `games/_template/` (see `TEMPLATE_FILES` in
+    `worker.js`); the first art request fills it in.
+  - Relative size between characters lives in `--body-height` (how much of the
+    cell the character fills), never in per-character draw sizes — every
+    sheet-based character is drawn at ONE on-screen cell size so an art pixel
+    is the same size for all of them.
+  - Raw generations go in `games/<id>/art-src/`; shipped sheets are rebuilt
+    from them, never hand-edited.
 
 ## Handling a clubhouse request
 
