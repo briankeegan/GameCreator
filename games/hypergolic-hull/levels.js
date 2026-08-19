@@ -806,6 +806,17 @@
     // the ring owning everything at two, between them leaving nowhere to
     // stand. Ten of forty runs ended on that pair.
     const EMPLACEMENTS = new Set(["sentry", "railgun", "mortar", "scout", "picket"]);
+    // ...but never MOST of the board. Two was a flat cap regardless of how
+    // many hostiles the sector deals, so a two- or three-strong roster
+    // could come out half or two thirds bolted to the deck — and a board
+    // where most of what you can see never comes after you doesn't read as
+    // ground to route through, it reads as a board of things that are
+    // broken. ("Why are some of the ships just not moving?") Measured at
+    // the flat cap: 38% of every hostile in the game had no engine, and 8
+    // boards in 25 were at least half static. Fewer than half, always, so
+    // the thing hunting you always outnumbers the thing sitting there.
+    // One on anything up to four hostiles, two on a five. Never a majority.
+    const staticCap = enemyCount <= 4 ? 1 : 2;
     // The same argument as EMPLACEMENTS, applied to durability instead of
     // to zoning. An Escort takes one more shot than it looks like it
     // should and a Carrier takes two; a board of nothing but those is not
@@ -824,7 +835,7 @@
       if (enemies.some((e) => hexDist(e, hex) < 2)) continue; // keep fresh spawns from stacking
       let type = typePool[Math.floor(rng() * typePool.length)];
       if (EMPLACEMENTS.has(type)) {
-        if (emplaced >= 2) type = MOBILE[Math.floor(rng() * MOBILE.length)];
+        if (emplaced >= staticCap) type = MOBILE[Math.floor(rng() * MOBILE.length)];
         else emplaced++;
       }
       if (HEAVIES.has(type)) {
