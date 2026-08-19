@@ -511,9 +511,16 @@ function update(dt, now) {
         en.wanderT -= dt;
         if (en.wanderT <= 0) {
           en.wanderT = 1 + Math.random() * 1.5;
-          const ang = Math.random() * Math.PI * 2;
-          en.wanderDx = Math.cos(ang) * 0.5;
-          en.wanderDy = Math.sin(ang) * 0.5;
+          // Cardinal patrol steps, not a free diagonal angle: reads much
+          // more like a Zelda-style patrolling enemy, and it's weighted
+          // toward left/right because that's the rats' real dedicated
+          // sprite (a mirrored side view) — vertical legs still happen
+          // regularly so they do walk up/down, just less often than they
+          // walk left/right.
+          const roll = Math.random();
+          const dir = roll < 0.4 ? "left" : roll < 0.8 ? "right" : roll < 0.9 ? "up" : "down";
+          en.wanderDx = dir === "left" ? -0.5 : dir === "right" ? 0.5 : 0;
+          en.wanderDy = dir === "up" ? -0.5 : dir === "down" ? 0.5 : 0;
         }
         en.moving = true;
         moveEntity(en, en.wanderDx * en.speed * dt, en.wanderDy * en.speed * dt, gateOpen);
