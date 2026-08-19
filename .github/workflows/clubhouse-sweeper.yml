@@ -1,0 +1,119 @@
+name: Clubhouse sweeper
+
+# THE BACKSTOP. clubhouse-autopilot.yml is event-driven: a comment fires it,
+# and if that run dies it retries itself. Both of those are single points of
+# failure — the run can be CANCELLED rather than failed (job timeout, lost
+# runner), the webhook can be missed or dropped during a GitHub incident, the
+# job's `if:` gate can misjudge an event, or the retry dispatch itself can
+# fail. Every one of those looks identical from the Clubhouse: a message sits
+# there and nothing happens, with no error to explain it.
+#
+# So instead of trusting the event path, this sweep asks the only question
+# that actually matters, on a timer: IS THERE A MESSAGE NOBODY ANSWERED? If a
+# thread's newest comment is a human message that is older than the grace
+# window, the autopilot is dispatched for it, whatever went wrong upstream.
+#
+# EXACTLY-ONCE, cheaply: before dispatching, the sweep leaves an 👀 reaction on
+# the comment as a claim marker, and it skips any comment already carrying one.
+# So a message can be swept at most once no matter how many times this runs —
+# a genuinely broken request can't turn into an infinite dispatch loop, and the
+# reaction doubles as a visible "this was picked up by the backstop" signal.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      grace_minutes:
+        description: 'Only sweep messages older than this many minutes (default 45)'
+        required: false
+        default: '45'
+
+# Never let two sweeps overlap; a late one is worthless once a newer one runs.
+concurrency:
+  group: clubhouse-sweeper
+  cancel-in-progress: true
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write        # to leave the 👀 claim reaction
+      actions: write       # to dispatch clubhouse-autopilot.yml
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Sweep unanswered Clubhouse messages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          # Long enough that a healthy run (~12 min, or ~45 with one automatic
+          # retry's 10-min backoff) answers first and this never fires. This is
+          # a backstop, not a second scheduler.
+          GRACE: ${{ github.event.inputs.grace_minutes || '45' }}
+        run: |
+          set -uo pipefail
+          now=$(date -u +%s)
+
+          # Every open Clubhouse thread, with the game id from its branch name.
+          gh api "repos/$REPO/pulls?state=open&per_page=100" \
+            --jq '.[] | select(.title | startswith("Clubhouse")) | [.number, .head.ref] | @tsv' \
+          | while IFS=$'\t' read -r pr ref; do
+              gid="${ref#clubhouse/}"
+
+              # Only opted-in games. A manual thread stays manual.
+              enabled=$(jq -r --arg g "$gid" '(.games[] | select(.id == $g) | .autopilot) // false' games.json 2>/dev/null)
+              if [ "$enabled" != "true" ]; then
+                echo "PR #$pr ($gid): autopilot off — skipping."
+                continue
+              fi
+
+              # The newest comment is the whole state of the thread: if it's
+              # ours, the thread is answered; if it's theirs, it is not.
+              # base64 per comment because bodies are multi-line — one line per
+              # comment is what makes `tail -1` (the newest, the API returns
+              # them oldest-first) reliable. --jq runs per PAGE, so a plain
+              # `last` would yield one row per page, not one overall.
+              last=$(gh api "repos/$REPO/issues/$pr/comments?per_page=100" --paginate \
+                       --jq '.[] | {id, type: .user.type, body, created_at} | @base64' 2>/dev/null | tail -1)
+              if [ -z "$last" ]; then echo "PR #$pr ($gid): no comments."; continue; fi
+              c=$(printf '%s' "$last" | base64 -d)
+
+              body=$(printf '%s' "$c" | jq -r '.body // ""')
+              type=$(printf '%s' "$c" | jq -r '.type // ""')
+              cid=$(printf '%s' "$c"  | jq -r '.id')
+              made=$(printf '%s' "$c" | jq -r '.created_at')
+
+              case "$body" in '**Claude says:**'*) echo "PR #$pr ($gid): answered."; continue;; esac
+              if [ "$type" = "Bot" ]; then echo "PR #$pr ($gid): last comment is a bot's — skipping."; continue; fi
+
+              age=$(( (now - $(date -u -d "$made" +%s)) / 60 ))
+              if [ "$age" -lt "$GRACE" ]; then
+                echo "PR #$pr ($gid): unanswered but only ${age}m old (grace ${GRACE}m) — leaving it to the event path."
+                continue
+              fi
+
+              # Claim it. If the marker is already there, a previous sweep took
+              # this one and we do not dispatch again.
+              if gh api "repos/$REPO/issues/comments/$cid/reactions" \
+                   --jq '.[] | select(.content == "eyes") | .user.login' 2>/dev/null | grep -q .; then
+                echo "PR #$pr ($gid): comment $cid already swept — not re-dispatching."
+                continue
+              fi
+              gh api --method POST "repos/$REPO/issues/comments/$cid/reactions" \
+                -f content=eyes >/dev/null 2>&1 \
+                || echo "::warning::could not mark comment $cid as claimed — dispatching anyway"
+
+              echo "::warning::PR #$pr ($gid): message ${age}m old and unanswered — the event path did not handle it. Dispatching autopilot."
+              gh workflow run clubhouse-autopilot.yml --ref main \
+                -f pr_number="$pr" \
+                -f message="(backstop sweep — this thread has an unanswered message; address all outstanding requests in it)" \
+                -f attempt="1" \
+                || echo "::error::sweeper could not dispatch autopilot for PR #$pr"
+            done
+
+          echo "Sweep complete."
