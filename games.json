@@ -42,6 +42,14 @@
       "themeColor": "#2f3b52",
       "icon": "games/dog-punk/icons/icon.svg",
       "autopilot": true
+    },
+    {
+      "id": "the-game",
+      "name": "Newsey-the-game",
+      "tagline": "Tba",
+      "themeColor": "#2f3b52",
+      "icon": "games/the-game/icons/icon.svg",
+      "autopilot": true
     }
   ]
 }
