@@ -1,0 +1,12 @@
+{
+  "name": "Newsey-the-game",
+  "short_name": "Newsey-the-game",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#faf8ef",
+  "theme_color": "#2f3b52",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
