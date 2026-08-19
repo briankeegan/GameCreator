@@ -59,6 +59,25 @@
 // `state.enemies` directly plus cropped canvas screenshots — facing/
 // mirroring for both Beverly and the rats is correct in every direction
 // (this was NOT actually still broken; re-confirmed, not re-fixed).
+//
+// 2026-08-19 — found the actual root cause of the recurring "art looks
+// wrong/different" reports for hero_up_walk2.png and rat_side_walk2.png
+// specifically: the in-run art generator's automatic per-game styling only
+// ever sent this file's `camera`/`style`/`palette`/`background`/`constraints`
+// fields to the model, never the locked-hex-palette `mainCharacter`/`enemy`
+// fields below — so unless a prior pass happened to retype the exact locked
+// palette into that one generation's own prompt, the model was free to
+// improvise fur/jacket/tail colors from scratch each time, which is exactly
+// why hero_up_walk2 came out as a different-looking creature (no visible
+// face, wrong palette, missing shield/dagger) than hero_up, and rat_side_
+// walk2 came out olive-green instead of rat_side's brown. Regenerated both,
+// this time with the full locked palette spelled out explicitly in the
+// generation prompt itself (not just relying on art-style.json being read
+// automatically) — both now visibly match their sibling frame's colors and
+// silhouette. No code changes were needed for the sprites to be *used*: the
+// walk-cycle swap logic below was already correct (loads all 8 PNGs, swaps
+// on `animPhase`, falls back to canvas if any fail to load) — the sprites
+// were being shown, they just alternated between two mismatched drawings.
 const GAME_ID = "dog-punk";
 const TILE = 32;
 const COLS = 16;
