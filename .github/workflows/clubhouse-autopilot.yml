@@ -122,14 +122,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          # SECURITY / CORRECTNESS: the two untrusted-text fields (a manual
+          # dispatch message, or — far more dangerously — an arbitrary PR
+          # comment body written by anyone) are passed here as env vars, NOT
+          # spliced into the script via ${{ }}. ${{ }} substitutes BEFORE the
+          # shell ever runs, so a comment containing a stray `)`, `"`, `` ` ``,
+          # or `$(...)` becomes literal shell syntax and can break — or worse,
+          # execute arbitrary commands in this job (a documented GitHub Actions
+          # injection class). This exact bug crashed a real run on a long,
+          # punctuation-heavy Clubhouse message ("syntax error near unexpected
+          # token `everthing'"). $VAR expansion below is opaque data, immune
+          # to this class of injection.
+          INPUT_MESSAGE: ${{ github.event.inputs.message }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             PR="${{ github.event.inputs.pr_number }}"
-            MSG="${{ github.event.inputs.message }}"
+            MSG="$INPUT_MESSAGE"
           else
             PR="${{ github.event.issue.number }}"
-            MSG="${{ github.event.comment.body }}"
+            MSG="$COMMENT_BODY"
           fi
           TITLE=$(gh pr view "$PR" --repo "$REPO" --json title --jq '.title' 2>/dev/null || echo "Clubhouse")
           echo "pr=$PR" >> "$GITHUB_OUTPUT"

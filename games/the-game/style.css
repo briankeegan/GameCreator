@@ -1,61 +1,272 @@
-/* Delete/replace everything below — this is just enough to prove the page
-   works. The header bar and install banner above are shared styling (see
-   ../../shared/nav.css) — leave those alone unless you mean to restyle
-   every game at once. */
-
-* { box-sizing: border-box; }
-
-html, body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #faf8ef;
-  color: #2f3b52;
-}
-
 .game-area {
-  padding: 24px 16px;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: #120a20;
+  color: #f1e9ff;
+  min-height: 100%;
+  box-sizing: border-box;
 }
 
-/* ---- shared install banner (leave as-is; every game gets this) ---- */
-:root { --banner-space: 0px; }
-.install-banner {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: none;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px max(10px, env(safe-area-inset-bottom));
-  background: #2f3b52;
-  color: #fff;
-  z-index: 50;
+.stage {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  aspect-ratio: 640 / 400;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  background: #0d0618;
 }
-.install-banner.visible { display: flex; }
-.install-banner-icon { width: 36px; height: 36px; border-radius: 8px; }
-.install-banner-text { flex: 1 1 auto; font-size: 0.82rem; line-height: 1.35; }
-.share-glyph { font-size: 1rem; }
-.install-banner-btn {
-  flex: 0 0 auto;
-  background: #f2b179;
-  color: #3a2a1a;
-  border: none;
+
+#scene {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.room-label {
+  position: absolute;
+  top: 8px;
+  left: 10px;
   font-weight: 700;
-  padding: 8px 14px;
-  border-radius: 8px;
+  letter-spacing: 0.03em;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  font-size: 0.85rem;
+  color: #e8d9ff;
+}
+
+.interact-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 5, 20, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+
+/* ---- Cutscene overlay ---- */
+.cutscene {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  cursor: pointer;
+  user-select: none;
+}
+.cutscene.hidden { display: none; }
+
+.bg {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, #2b1a4a, #12081f 70%);
+  background-size: cover;
+  background-position: center;
+  transition: background 0.25s ease;
+}
+
+.vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.55) 100%);
+  pointer-events: none;
+}
+
+.portrait-wrap {
+  position: absolute;
+  right: 4%;
+  bottom: 22%;
+  width: 34%;
+  max-width: 220px;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.6));
+}
+.portrait[hidden] { display: none; }
+.portrait-fallback {
+  position: absolute;
+  inset: 8%;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 2.2rem;
+  color: rgba(255, 255, 255, 0.85);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.18), transparent 60%), #4a2f7a;
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.15);
+}
+.portrait-fallback[hidden] { display: none; }
+
+.dialogue {
+  position: absolute;
+  left: 3%;
+  right: 3%;
+  bottom: 4%;
+  background: rgba(12, 6, 22, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 12px 16px 10px;
+  min-height: 5.5em;
+  backdrop-filter: blur(2px);
+}
+.speaker {
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+  min-height: 1.1em;
+}
+.line {
+  font-size: 0.92rem;
+  line-height: 1.42;
+  white-space: pre-line;
+}
+.advance {
+  position: absolute;
+  right: 14px;
+  bottom: 8px;
+  font-size: 0.72rem;
+  opacity: 0.65;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.85; } }
+
+/* ---- Talk box (walk-around mode) ---- */
+.talk-box {
+  position: absolute;
+  left: 3%;
+  right: 3%;
+  bottom: 4%;
+  z-index: 4;
+  display: flex;
+  gap: 10px;
+  background: rgba(12, 6, 22, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 10px 14px 8px;
+  min-height: 4.6em;
   cursor: pointer;
 }
-.install-banner-close {
+.talk-portrait-wrap {
+  position: relative;
+  width: 52px;
+  height: 52px;
   flex: 0 0 auto;
-  background: transparent;
-  border: none;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.talk-portrait { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+.talk-portrait[hidden] { display: none; }
+.talk-portrait-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
   color: #fff;
-  font-size: 1.3rem;
-  line-height: 1;
+  background: #4a2f7a;
+}
+.talk-portrait-fallback[hidden] { display: none; }
+.talk-body { flex: 1; position: relative; }
+.talk-speaker { font-weight: 800; font-size: 0.78rem; margin-bottom: 2px; }
+.talk-line { font-size: 0.88rem; line-height: 1.35; }
+.talk-box[hidden] { display: none; }
+
+/* ---- Duel placeholder ---- */
+.duel-placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, #3a1030, #10050c 75%);
+}
+.duel-card { text-align: center; padding: 20px; max-width: 320px; }
+.duel-title { font-size: 1.6rem; font-weight: 900; letter-spacing: 0.08em; margin-bottom: 10px; color: #ffd166; text-shadow: 0 0 16px rgba(255, 209, 102, 0.5); }
+.duel-card p { margin: 6px 0; opacity: 0.9; }
+.duel-card .soon { font-style: italic; opacity: 0.75; margin-bottom: 14px; }
+.duel-card button {
+  margin-top: 8px;
+  padding: 10px 18px;
+  border-radius: 20px;
+  border: none;
+  background: #ffd166;
+  color: #2a1a00;
+  font-weight: 800;
   cursor: pointer;
-  opacity: 0.7;
+}
+.duel-placeholder[hidden] { display: none; }
+
+/* ---- Touch controls ---- */
+.touch-controls {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 4px 6px;
+}
+.touch-controls[hidden] { display: none; }
+.dpad {
+  display: grid;
+  grid-template-columns: 44px 44px 44px;
+  grid-template-rows: 44px 44px;
+  gap: 4px;
+}
+.dpad button {
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f1e9ff;
+  font-size: 1rem;
+}
+.dpad button[data-dir="up"] { grid-column: 2; grid-row: 1; }
+.dpad button[data-dir="left"] { grid-column: 1; grid-row: 2; }
+.dpad button[data-dir="right"] { grid-column: 3; grid-row: 2; }
+.dpad button[data-dir="down"] { grid-column: 2; grid-row: 2; }
+.interact-btn {
+  padding: 14px 22px;
+  border-radius: 24px;
+  border: none;
+  background: #8a5cf6;
+  color: #fff;
+  font-weight: 800;
+}
+
+.story-menu {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  justify-content: flex-end;
+}
+.story-menu button {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #cbb9ee;
+  border-radius: 16px;
+  padding: 5px 12px;
+  font-size: 0.75rem;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .touch-controls { display: flex !important; }
 }

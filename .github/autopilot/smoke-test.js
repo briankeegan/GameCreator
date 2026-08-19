@@ -39,6 +39,15 @@ const MIME = {
 // manifest / icon fetches that 404 without the full site). Not game bugs.
 const IGNORE = /service ?worker|sw\.js|manifest|favicon|\.webmanifest|apple-touch|register|icon/i;
 
+// A missing image (art/*.png etc.) is EXPECTED and not a bug: every game in
+// this framework references generated art with a graceful in-code fallback
+// (canvas draw / tinted placeholder) specifically so it plays before any art
+// exists — see CLAUDE.md's "reference-with-fallback" pattern. A missing
+// script/stylesheet/html file is a real, fatal problem. Chromium's own
+// "Failed to load resource" console message carries no URL to pattern-match
+// against, so this is checked via the actual network response instead.
+const EXPECTED_MISSING_EXT = /\.(png|jpe?g|gif|webp|ico)$/i;
+
 function serve() {
   return http.createServer((req, res) => {
     const urlPath = decodeURIComponent(req.url.split('?')[0]);
@@ -65,7 +74,24 @@ function serve() {
     const errs = [];
     const page = await browser.newPage();
     page.on('pageerror', (e) => errs.push('uncaught: ' + e.message));
-    page.on('console', (m) => { if (m.type() === 'error' && !IGNORE.test(m.text())) errs.push('console: ' + m.text()); });
+    // The browser's generic "Failed to load resource" text carries no URL, so
+    // it's never treated as fatal here — the response listener below inspects
+    // the actual failed URL and decides whether it's an expected missing
+    // image (ignored) or a genuinely broken asset (fatal).
+    page.on('console', (m) => {
+      if (m.type() !== 'error') return;
+      if (IGNORE.test(m.text())) return;
+      if (/^Failed to load resource/i.test(m.text())) return;
+      errs.push('console: ' + m.text());
+    });
+    page.on('response', (res) => {
+      if (res.status() < 400) return;
+      let pathname;
+      try { pathname = new URL(res.url()).pathname; } catch (_) { return; }
+      if (IGNORE.test(pathname)) return;
+      if (EXPECTED_MISSING_EXT.test(pathname)) return; // missing art — has a fallback, not a bug
+      errs.push(`HTTP ${res.status()} loading ${pathname}`);
+    });
 
     try {
       await page.goto(`http://127.0.0.1:${PORT}/${t}`, { waitUntil: 'load', timeout: 20000 });
