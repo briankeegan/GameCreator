@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("sample-clicker-v1", [
+GCRegisterServiceWorker("sample-clicker-v2", [
   "./",
   "./index.html",
   "./style.css",
