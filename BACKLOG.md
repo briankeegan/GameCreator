@@ -8,6 +8,33 @@ are ephemeral; this file is the source of truth. Keep it updated as things land.
   has issues: (1) do the work manually to unblock, AND (2) fix the root cause in
   the workflow so it can't recur. Log new issues here.
 
+## Art-generation lessons learned (apply to every future prompt)
+Baked the durable ones straight into `games/the-game/art-style.json`'s
+`constraints` field so any `game:"the-game"` generation inherits them
+automatically. Session-specific/one-off lessons that don't belong in that
+shared file:
+- **Check generated character art against the actual plot description**,
+  not just against the inspiration image it's stylistically based on — an
+  inspo image can be a mood/style reference for a human character (e.g.
+  Kat's "dapper cat bartender" reference) without meaning the character IS
+  that species. Confirmed failure: Kat and the Devil were both drawn as
+  literal animals/beasts before this was caught.
+- **A character's appearance can be story-dependent** — Nella has horns
+  only *after* her Infinity transformation; her real-world/pre-transformation
+  art must be fully human. Don't assume one static description applies to
+  every scene a character appears in — check where in the story each piece
+  of art is actually used.
+- **True multi-frame sprite sheets from single-shot generation are
+  unreliable without post-processing** — confirmed via `nella_walksheet.png`:
+  columns came out cleanly separated, but rows bled into each other
+  (measured programmatically via alpha-channel content bands, not just
+  eyeballed) and the "facing right" row duplicated "facing left" instead of
+  mirroring it. A sibling Clubhouse thread building a different game got a
+  usable sheet by adding actual post-processing (palette quantization
+  across frames, feet alignment) after generation — don't just trust a raw
+  one-shot grid; verify cell boundaries programmatically and expect to need
+  a cleanup pass.
+
 ## Open work
 1. **`games/the-game` ("Puzzle Attack") build.** ✅ Plot saved
    (`reference/the-game/PLOT.md`) + 16 inspiration images
