@@ -8,11 +8,10 @@
   var gameId = "the-game";
   var STORY = window.NEWSEY_STORY;
   var CHARACTERS = STORY.CHARACTERS;
-  var CUTSCENE = STORY.CUTSCENE;
   var ROOMS = STORY.ROOMS;
 
   // ---------- persistence ----------
-  var save = window.GCStorage.get(gameId, "save", { introSeen: false, room: "bedroom" });
+  var save = window.GCStorage.get(gameId, "save", { introSeen: false, room: "house" });
   function persist() { window.GCStorage.set(gameId, "save", save); }
 
   // ---------- art loading (graceful fallback) ----------
@@ -28,7 +27,42 @@
     artCache[id] = entry;
     return entry;
   }
+  function loadBg(id) {
+    if (!id) return null;
+    var bgId = "bg-" + id;
+    if (artCache[bgId]) return artCache[bgId];
+    var img = new Image();
+    var entry = { img: img, ok: false };
+    img.onload = function () { entry.ok = true; };
+    img.onerror = function () { entry.ok = false; };
+    img.src = "art/" + bgId + ".png";
+    artCache[bgId] = entry;
+    return entry;
+  }
   function bgUrl(id) { return id ? "url('art/bg-" + id + ".png'), " : ""; }
+
+  // Warm the cache for every art/bg id the game can possibly need, right at
+  // boot, so nobody ever sees the fallback flash while a portrait or NPC
+  // sprite that's about to be shown is still on the wire — the network
+  // request already happened seconds earlier while they were reading the
+  // previous line.
+  (function preloadAllArt() {
+    [STORY.INTRO_CUTSCENE, STORY.DREAM_CUTSCENE].forEach(function (list) {
+      list.forEach(function (s) {
+        if (s.art) loadArt(s.art);
+        if (s.bg) loadBg(s.bg);
+      });
+    });
+    Object.keys(ROOMS).forEach(function (id) {
+      var room = ROOMS[id];
+      loadBg(room.bg);
+      room.npcs.forEach(function (npc) {
+        if (npc.art) loadArt(npc.art);
+        if (npc.sprite) loadArt(npc.sprite);
+      });
+    });
+    loadArt("nella_top");
+  })();
 
   // =========================================================================
   // CUTSCENE MODE
@@ -42,9 +76,11 @@
   var cIndex = 0;
   var lastBg = "";
   var lastArt = undefined;
+  var activeCutscene = STORY.INTRO_CUTSCENE;
+  var cutsceneDoneCallback = null;
 
   function renderCutsceneLine() {
-    var s = CUTSCENE[cIndex];
+    var s = activeCutscene[cIndex];
     if (s.bg !== undefined && s.bg !== lastBg) {
       lastBg = s.bg;
       bgEl.style.backgroundImage = s.bg
@@ -78,7 +114,7 @@
     }
     if (entry.img.complete) trySwap(); else { entry.img.onload = trySwap; entry.img.onerror = trySwap; }
   }
-  function currentSpeakerId() { return (CUTSCENE[cIndex] && CUTSCENE[cIndex].who) || ""; }
+  function currentSpeakerId() { return (activeCutscene[cIndex] && activeCutscene[cIndex].who) || ""; }
 
   function fallbackGradient(id) {
     // A deterministic tinted gradient per background id, so every scene reads
@@ -92,17 +128,22 @@
 
   function advanceCutscene() {
     cIndex++;
-    if (cIndex >= CUTSCENE.length) { endCutscene(); return; }
+    if (cIndex >= activeCutscene.length) { endCutscene(); return; }
     renderCutsceneLine();
   }
   function endCutscene() {
-    save.introSeen = true;
-    persist();
     cutsceneEl.classList.add("hidden");
     if (isTouch) document.getElementById("touchControls").hidden = false;
-    enterRoom(save.room || "bedroom");
+    var cb = cutsceneDoneCallback;
+    cutsceneDoneCallback = null;
+    if (cb) cb();
   }
-  function startCutscene() {
+  // list: which cutscene array to play. onDone: called once it finishes
+  // (decides which room to land in — the two cutscenes go to different
+  // rooms, so this isn't hardcoded here).
+  function startCutscene(list, onDone) {
+    activeCutscene = list;
+    cutsceneDoneCallback = onDone;
     cIndex = 0; lastBg = ""; lastArt = undefined;
     portraitImg.hidden = true;
     portraitFallback.hidden = true;
@@ -112,7 +153,9 @@
   }
   cutsceneEl.addEventListener("click", advanceCutscene);
   cutsceneEl.addEventListener("keydown", function (e) { if (e.key === " " || e.key === "Enter") advanceCutscene(); });
-  document.getElementById("restartBtn").addEventListener("click", startCutscene);
+  document.getElementById("restartBtn").addEventListener("click", function () {
+    startCutscene(STORY.INTRO_CUTSCENE, function () { enterRoom("house"); });
+  });
 
   // =========================================================================
   // WALK-AROUND MODE
@@ -226,6 +269,9 @@
       var wasTalking = talking;
       talking = null;
       if (wasTalking.npc.duel) openDuelPlaceholder();
+      if (wasTalking.npc.cutscene) {
+        startCutscene(STORY[wasTalking.npc.cutscene], function () { enterRoom("bedroom"); });
+      }
       return;
     }
     npcLineCounters[npc.id] = talking.lineIndex;
@@ -272,7 +318,7 @@
       return;
     }
     // Fallback: flat tinted room with a floor/wall split, deterministic per room.
-    var hues = { lounge: 20, library: 265 };
+    var hues = { lounge: 20, library: 265, house: 35, bedroom: 300, arena: 45 };
     var h = hues[currentRoom.bg] !== undefined ? hues[currentRoom.bg] : 250;
     ctx.fillStyle = "hsl(" + h + ",30%,14%)";
     ctx.fillRect(0, 0, VW, VH);
@@ -408,10 +454,14 @@
   // ---------- boot ----------
   if (save.introSeen) {
     cutsceneEl.classList.add("hidden");
-    enterRoom(save.room || "bedroom");
+    enterRoom(save.room || "house");
   } else {
-    startCutscene();
-    currentRoom = ROOMS[save.room || "bedroom"];
+    startCutscene(STORY.INTRO_CUTSCENE, function () {
+      save.introSeen = true;
+      persist();
+      enterRoom("house");
+    });
+    currentRoom = ROOMS[save.room || "house"];
     player.x = currentRoom.playerStart.x; player.y = currentRoom.playerStart.y;
   }
   requestAnimationFrame(loop);

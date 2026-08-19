@@ -23,6 +23,7 @@ window.NEWSEY_STORY = (function () {
     chuck:   { name: "Chuck",        color: "#2e86c1" },
     news:    { name: "News Anchor",  color: "#8a8f98" },
     devil:   { name: "???",          color: "#e84393" },
+    tv:      { name: "Old TV",       color: "#5a4a7a" },
     may:     { name: "May 2000",     color: "#e84393" },
     kat:     { name: "Kat",          color: "#27ae60" },
     john:    { name: "John Boxley",  color: "#6c5ce7" },
@@ -34,30 +35,33 @@ window.NEWSEY_STORY = (function () {
     magma:   { name: "Magma",        color: "#e17055" }
   };
 
-  // ---- 1. CUTSCENE: the backstory, up through waking in Infinity ----------
+  // ---- 1. CUTSCENES: two short narrated beats, playable room in between --
   // Kept SHORT on purpose — this is a game, not a book. The plot's full prose
   // is reference/the-game/PLOT.md; it's a blueprint for what to BUILD (scenes,
   // art, rooms), not text to put on screen. Every bg id here gets its own
   // generated scene, so the picture carries the setting — the line under it
-  // only needs to carry the beat. Real back-and-forth exchanges are kept as
-  // actual dialogue; solo narration is cut to one line per moment.
+  // only needs to carry the beat.
   // `narration` = internal thought / memory / scene description — NOT the
   // character speaking out loud. Rendered as an unattributed italic
   // caption (no nameplate) so it reads as narration, not as dialogue.
-  // Lines without `narration` are actual spoken exchanges and keep the
-  // normal speaker nameplate + dialogue styling.
-  var CUTSCENE = [
+  //
+  // INTRO_CUTSCENE plays once at boot, up through "it's just me and this
+  // house now" — the moment the story reaches the present. Everything after
+  // that is playable (ROOMS.house below): Chuck's arrival, finding the
+  // cartridge and the note are real in-room dialogue, not narration.
+  // DREAM_CUTSCENE is a second, later narrated beat — triggered by
+  // interacting with the TV in ROOMS.house — covering the part that can't
+  // be walked-around yet (actually playing Puzzle Attack; there's no
+  // matching-panels mechanic built yet, see BACKLOG) through the deal that
+  // drops her into Infinity.
+  var INTRO_CUTSCENE = [
     { bg: "childhood", who: "nella", art: "nella_child", narration: true, text: "Age nine. My first video game: \"Puzzle Attack.\" Match three, or get smashed flat. I was obsessed." },
     { bg: "mall", who: "nella", narration: true, text: "Age ten. A Puzzle Attack tournament at the mall — my hero May 2000 was competing. Then the screaming started." },
     { bg: "news", who: "news", art: null, text: "Six dead. Twenty-three injured. \"Puzzle Attack\" is pulled from shelves, banned nationwide." },
-    { bg: "rain", who: "nella", art: "nella", narration: true, text: "Twenty years later. My father just died. It's just me and this house now." },
-    { bg: "porch", who: "chuck", art: "chuck", text: "Nella! Get out of the rain!" },
-    { who: "nella", narration: true, text: "Chuck. My oldest friend." },
-    { who: "chuck", text: "I'm so sorry, Nella." },
-    { bg: "kitchen", who: "chuck", art: "chuck_box", text: "Clearing your dad's basement — I found something." },
-    { bg: "cartridge", who: "nella", art: "nella", narration: true, text: "My old Puzzle Attack cartridge. A note taped to the back." },
-    { who: "dad", art: "note", text: "My Nella — maybe you'll play again someday. Love, Dad." },
-    { who: "nella", narration: true, text: "Peeling the note off revealed a hidden button. I pressed it." },
+    { bg: "rain", who: "nella", art: "nella", narration: true, text: "Twenty years later. My father just died. It's just me and this house now." }
+  ];
+
+  var DREAM_CUTSCENE = [
     { bg: "crt", who: "chuck", art: "chuck", text: "Ready, Nella?" },
     { who: "nella", art: "nella", narration: true, text: "Twenty years gone, and my hands remembered everything." },
     { who: "chuck", art: "chuck", text: "Nella, I don't think your dad hid a secret in a video game. This sounds insane." },
@@ -68,10 +72,8 @@ window.NEWSEY_STORY = (function () {
     { bg: "chaos", who: "nella", narration: true, text: "A skull. A chaos symbol. \"A deal is struck. Proceed?\"" },
     { who: "nella", narration: true, text: "I pressed Start and Select." },
     { bg: "", narration: true, text: "The world faded to black." }
-    // Cutscene ends here. What happens next — waking up, the horns in the
-    // mirror, the devil's welcome — is no longer narrated: it's the first
-    // playable room (see ROOMS.bedroom below). You wake up, walk to the
-    // mirror yourself, and walk out the door yourself.
+    // After this: waking up, the horns in the mirror, the devil's welcome —
+    // is not narrated either, it's ROOMS.bedroom (Infinity).
   ];
 
   // ---- 2. WALK-AROUND: rooms, exits, and NPCs to talk to ------------------
@@ -87,6 +89,35 @@ window.NEWSEY_STORY = (function () {
   // in this band keeps them visually grounded regardless of what the
   // background art behind them looks like.
   var ROOMS = {
+    house: {
+      bg: "house",
+      label: "Your Father's House",
+      playerStart: { x: 150, y: 155 },
+      // No walkable exit — you leave by finishing the TV conversation
+      // (which plays DREAM_CUTSCENE and lands you in ROOMS.bedroom).
+      exits: [],
+      npcs: [
+        {
+          id: "chuck", x: 110, y: 160, art: "chuck", sprite: "chuck_top",
+          lines: [
+            "Nella! Get out of the rain!",
+            "I'm so sorry, Nella.",
+            "Clearing your dad's basement, I found something — your old Puzzle Attack cartridge. There's a note taped to the back.",
+            "\"My Nella — maybe you'll play again someday. Love, Dad.\"",
+            "There's a hidden button under the note. I think he wanted you to press it.",
+            "The old console still works. Whenever you're ready… go take a look."
+          ]
+        },
+        {
+          id: "tv", x: 230, y: 160, art: null, sprite: "tv_top",
+          lines: [
+            "The old CRT. Dusty cables, a game console still plugged in.",
+            "Twenty years gone, and your hands remember everything."
+          ],
+          cutscene: "DREAM_CUTSCENE"
+        }
+      ]
+    },
     bedroom: {
       bg: "bedroom",
       label: "Your Room, Infinity",
@@ -163,5 +194,5 @@ window.NEWSEY_STORY = (function () {
     }
   };
 
-  return { CHARACTERS: CHARACTERS, CUTSCENE: CUTSCENE, ROOMS: ROOMS };
+  return { CHARACTERS: CHARACTERS, INTRO_CUTSCENE: INTRO_CUTSCENE, DREAM_CUTSCENE: DREAM_CUTSCENE, ROOMS: ROOMS };
 })();
