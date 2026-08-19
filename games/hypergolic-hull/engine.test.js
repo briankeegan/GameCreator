@@ -373,7 +373,7 @@ let weaponState = Engine.createGameState(weaponLevel);
 assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
 assert.deepStrictEqual(
   weaponState.systems,
-  { warpdrive: true, autocannon: true, flakBurst: false, arcBeam: false, mortar: false, flankTubes: false, railgun: false, missilePod: false, beamLance: false },
+  { warpdrive: true, autocannon: true, flakBurst: false, arcBeam: false, mortar: false, flankTubes: false, railgun: false, missilePod: false, beamLance: false, siegeLance: false, demolitionCharge: false },
   "arming derives from the Hold — only the installed Autocannon reads armed"
 );
 Engine.applySublight(weaponState, { q: 2, r: 2 }); // steps adjacent to the interceptor
@@ -416,11 +416,29 @@ assert.deepStrictEqual(weaponState.playerPos, weaponLevel.playerStart, "re-aimin
 assert.strictEqual(weaponState.turnCount, 0, "re-aiming doesn't consume a turn — no enemy phase runs");
 assert.throws(() => Engine.setFacing(weaponState, 6), /Invalid facing/, "facing must be one of the 6 hex directions");
 
+// The price a shelf rolled for THIS visit, which is what a purchase
+// actually charges (see applyOutpostPurchase) — the pool's `cost` is only
+// the fallback. Reading the flat cost meant these fixtures broke, with a
+// confusing "the full cost is spent" failure, the moment anything changed
+// the offer pool and re-rolled the prices.
+function priceOf(state, id) {
+  return (state.outpostOfferPrices && state.outpostOfferPrices[id]) ?? Engine.OUTPOST_OFFER_POOL.find((o) => o.id === id).cost;
+}
+
 // ---- The Hold: "a grid drag and drop for different sized/shaped items" --
 // The ship's internals are a grid; every item is a shaped tile and its
 // footprint is the equip cost. What's INSTALLED is what works; cargo is
 // inert. Rearranging is free but dock-gated.
-assert.deepStrictEqual(Engine.WEAPON_SYSTEM_KEYS, ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance"]);
+// Derived from the registry rather than retyped: every WEAPONS entry has
+// to be a system key, or the renderer's arming loop silently skips a gun
+// you own (which is exactly how the Mortar and the Lancer once shipped
+// invisible). Asserting the LIST by hand meant adding a weapon broke this
+// line before it broke anything real.
+assert.deepStrictEqual(
+  Engine.WEAPON_SYSTEM_KEYS.slice().sort(),
+  Object.keys(Engine.WEAPONS).sort(),
+  "every weapon in the registry is a system key — nothing owned is unfireable"
+);
 
 let holdState = Engine.createGameState(weaponLevel);
 assert.strictEqual(holdState.hold.cols, 5, "the starter hold is 5 cells wide");
@@ -1141,7 +1159,7 @@ assert.strictEqual(noShieldState.hull, hullBeforeNoShield - 1, "with no Shield c
 // (+1 capacity, arrives raised); every re-raise after that costs Energy
 // and a full turn via applyRaiseShields — protection competes with FIRE
 // and RECHARGE for the same one-action economy.
-salvageState.salvage = Engine.OUTPOST_OFFER_POOL.find((o) => o.id === "shield").cost;
+salvageState.salvage = priceOf(salvageState, "shield");
 Engine.applyOutpostPurchase(salvageState, "shield");
 assert.strictEqual(salvageState.maxShields, 1, "the Shield Generator installs +1 permanent capacity");
 assert.strictEqual(salvageState.shieldCharges, 1, "the new capacity arrives raised — the upgrade feels immediate");
@@ -1198,7 +1216,7 @@ assert.throws(
   /not enough salvage/i,
   "gated on affordability like every other offer"
 );
-arcState.salvage = Engine.OUTPOST_OFFER_POOL.find((o) => o.id === "arcBeam").cost;
+arcState.salvage = priceOf(arcState, "arcBeam");
 Engine.applyOutpostPurchase(arcState, "arcBeam");
 assert.strictEqual(arcState.actions.includes("arcBeam"), true, "purchasing it unlocks the action");
 assert.strictEqual(arcState.salvage, 0, "the full cost is spent");
@@ -1263,7 +1281,7 @@ const flakState = Engine.createGameState(flakLevel);
 assert.strictEqual(flakState.actions.includes("flakBurst"), false, "Flak Burst isn't in the starting kit either");
 flakState.playerPos = { q: flakLevel.outpost.q, r: flakLevel.outpost.r };
 flakState.outpostOfferIds = ["repair", "flakBurst"];
-flakState.salvage = Engine.OUTPOST_OFFER_POOL.find((o) => o.id === "flakBurst").cost;
+flakState.salvage = priceOf(flakState, "flakBurst");
 Engine.applyOutpostPurchase(flakState, "flakBurst");
 assert.strictEqual(flakState.systems.flakBurst, true, "the toggle defaults on once purchased");
 
@@ -1287,7 +1305,7 @@ assert.deepStrictEqual(
 const railgunBuyState = Engine.createGameState({ ...shopLevel, id: 995 });
 railgunBuyState.playerPos = { q: shopLevel.outpost.q, r: shopLevel.outpost.r };
 railgunBuyState.outpostOfferIds = ["repair", "railgun"];
-railgunBuyState.salvage = Engine.OUTPOST_OFFER_POOL.find((o) => o.id === "railgun").cost;
+railgunBuyState.salvage = priceOf(railgunBuyState, "railgun");
 // Footprint is a real constraint: a 1x4 spine does NOT fit around the
 // starting kit, so it arrives inert in cargo until you make room — and the
 // shelf warns you of exactly that before you hand over the salvage.
@@ -1464,7 +1482,28 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
 // real question. This block is the guard on that.
 {
   const origin = { q: 0, r: 0 };
-  const at = (w) => Engine.weaponHexes(origin, 0, Engine.WEAPONS[w]);
+  // The ground a gun THREATENS, which for most weapons is simply where it
+  // reaches. A weapon that PLACES something is different: weaponHexes is
+  // only where the thing lands, and what it actually threatens is that hex
+  // plus its blast. Comparing throw rings would have called the Demolition
+  // Charge a worse Arc Beam — same ring at two, more charge — when it
+  // covers seven hexes for the Beam's one.
+  const at = (w) => {
+    const weapon = Engine.WEAPONS[w];
+    const landed = Engine.weaponHexes(origin, 0, weapon);
+    if (!weapon.places) return landed;
+    const out = new Map();
+    for (const hex of landed) {
+      for (let dq = -weapon.blast; dq <= weapon.blast; dq++) {
+        for (let dr = -weapon.blast; dr <= weapon.blast; dr++) {
+          const h = { q: hex.q + dq, r: hex.r + dr };
+          if (Engine.hexDistance(hex, h) > weapon.blast) continue;
+          out.set(Engine.hexKey(h), h);
+        }
+      }
+    }
+    return [...out.values()];
+  };
   const distances = (w) => new Set(at(w).map((h) => Engine.hexDistance(origin, h)));
 
   // Three shells, at exactly one, two and three. Nothing in the middle of

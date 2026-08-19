@@ -786,7 +786,8 @@ for (const [type, file] of Object.entries({
   interceptor: "icons/interceptor.png",
   cruiser: "icons/enemy-cruiser.png",
   sentry: "icons/enemy-sentry.png",
-  picket: "icons/enemy-picket.png", // the anchored lance — a mast, not a hull
+  picket: "icons/enemy-picket.png",
+  demolitionist: "icons/enemy-demolitionist.png",
   mortar: "icons/enemy-bomber.png", // the one hull in the set with a loaded bay
   lancer: "icons/enemy-minelayer.png", // pods held out wide, like the Tubes fire
   railgun: "icons/enemy-railgun.png",
@@ -1350,7 +1351,7 @@ function drawRailgun(s) {
 // How big a class draws relative to a standard hull. A boss that arrives
 // at exactly the size of the Interceptor you killed at depth 1 does not
 // read as the thing the sector is named after.
-const SHIP_SCALE = { bulwark: 1.45, carrier: 1.18, salvager: 1.12, scout: 0.9, picket: 0.95 };
+const SHIP_SCALE = { bulwark: 1.45, carrier: 1.18, salvager: 1.12, scout: 0.9, picket: 0.95, demolitionist: 1.1 };
 
 // A gun's charge, on the gun. The danger overlay already goes dark while
 // a weapon is discharged, but that only says "not this round" — it never
@@ -1391,6 +1392,50 @@ function drawChargePips(center, enemy) {
 // can count the distance to and walk away from — rather than as an effect,
 // because the whole decision it poses is spatial: outrun it, put a rock in
 // its way, or steer it into somebody else. Nose points where it's going.
+// A charge on the ground, and the hexes it is going to take with it. This
+// is the most literal danger the game has — a number counting down on a
+// patch of board — so it is drawn as exactly that: the blast shaded and
+// outlined so you can see its edge, and the fuse printed on the charge
+// itself. Anything less and a bomb is an ambush rather than a decision.
+function drawCharge(charge, now) {
+  const pulse = 0.5 + 0.5 * Math.sin(now / (charge.fuse <= 1 ? 90 : 190));
+  const blast = Engine.chargeBlastHexes(state, charge);
+  ctx.save();
+  for (const hex of blast) {
+    const c = hexToPixel(hex);
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 180) * (60 * i);
+      const x = c.x + geom.sx * Math.cos(a);
+      const y = c.y + geom.sx * Math.sin(a);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = `rgba(255,110,50,${(charge.fuse <= 1 ? 0.2 : 0.12) + 0.09 * pulse})`;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,150,70,${0.35 + 0.3 * pulse})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+  const centre = hexToPixel(charge);
+  const s = geom.sx * 0.32;
+  ctx.translate(centre.x, centre.y);
+  ctx.fillStyle = `rgba(30,16,10,0.92)`;
+  ctx.beginPath();
+  ctx.arc(0, 0, s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = `rgba(255,170,80,${0.7 + 0.3 * pulse})`;
+  ctx.lineWidth = 2.2;
+  ctx.stroke();
+  ctx.fillStyle = "#ffd9a6";
+  ctx.font = `700 ${Math.round(s * 1.25)}px ui-monospace, Menlo, monospace`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(charge.fuse), 0, 1);
+  ctx.restore();
+}
+
 function drawMissile(center, missile, now) {
   const s = geom.sx * 0.3;
   const target = missile.ownerId ? state.playerPos : nearestLivingEnemy(missile);
@@ -1450,6 +1495,9 @@ function drawEnemyShip(size, hpFrac, crackSeed, type, shielded) {
     // The Picket carries the Scout's gun, so it carries a cooler cousin of
     // the Scout's sand — related at a glance, not mistakable for it.
     picket: ["rgba(210,215,175,0.50)", "rgba(160,175,120,0.26)", "rgba(150,165,110,0)"],
+    // Fuse-orange, the same colour its charges burn — the only class whose
+    // glow is a warning about the ground rather than about the ship.
+    demolitionist: ["rgba(255,150,60,0.55)", "rgba(225,105,30,0.29)", "rgba(210,90,25,0)"],
     // Every class needs its own, or it silently borrows the Interceptor's
     // red and two different threats look like the same threat.
     mortar: ["rgba(235,220,110,0.52)", "rgba(200,180,60,0.27)", "rgba(190,170,50,0)"],
@@ -2886,6 +2934,12 @@ function draw() {
     drawChargePips(center, enemy);
   }
 
+  // Charges under the ordnance and under the ships: it's ground, and
+  // whatever is standing on it has to stay readable on top of it.
+  for (const charge of state.charges || []) {
+    if (!charge.spent) drawCharge(charge, now);
+  }
+
   for (const missile of state.missiles || []) {
     drawMissile(hexToPixel(missile), missile, now);
   }
@@ -3379,6 +3433,12 @@ function weaponBears(state, weapon, enemy) {
 // A gun's FOOTPRINT is the interesting thing about it now, so that's what
 // the readout leads with — where it lands, and where it doesn't.
 function describePattern(weapon) {
+  // A charge is described by what it DOES, not by the ring it's thrown to
+  // — "the ring at exactly two" is true and completely misleading about a
+  // weapon whose point is the seven hexes it takes two rounds later.
+  if (weapon.places) {
+    return `lobbed ${weapon.range} out, then it takes that hex and every hex touching it, two rounds later`;
+  }
   if (weapon.shape === "ring") {
     const min = weapon.minRange || 1;
     if (min === weapon.range && min > 1) {
@@ -3386,7 +3446,15 @@ function describePattern(weapon) {
     }
     return "every hex touching the hull";
   }
-  if (weapon.shape === "lane") return "straight down any axis, until it hits something";
+  if (weapon.shape === "lane") {
+    // Two lances now, and they differ ONLY in which part of the lane they
+    // own — so a blanket "straight down any axis" left the whole decision
+    // between them invisible.
+    const min = weapon.minRange || 1;
+    if (weapon.range >= 20) return "straight down any axis, until it hits something";
+    const band = min === weapon.range ? `exactly ${min}` : `${min} to ${weapon.range}`;
+    return `straight down any axis, ${band} out — nothing inside ${min}`;
+  }
   if (weapon.shape === "offAxis") return "the six gaps between the axes, two out";
   if (weapon.shape === "arc") {
     return weapon.range === 1 ? "three hexes off the nose, in contact" : `a wedge off the nose, ${weapon.range} deep`;
@@ -4068,11 +4136,26 @@ function weaponFootprintSVG(weapon) {
     return pts.join(" ");
   };
   const origin = { q: 0, r: 0 };
+  const landed = Engine.weaponHexes(origin, 0, weapon);
   const covered = new Set(
-    Engine.weaponHexes(origin, 0, weapon)
-      .filter((h) => Engine.hexDistance(origin, h) <= FOOT_SPAN)
-      .map(Engine.hexKey)
+    landed.filter((h) => Engine.hexDistance(origin, h) <= FOOT_SPAN).map(Engine.hexKey)
   );
+  // A weapon that PLACES something threatens two different things and the
+  // diagram has to say so: the ring it can throw TO, and — bigger, and
+  // the part that actually kills — the blast around wherever it lands.
+  // Drawing only the throw ring made a Demolition Charge look like a worse
+  // Arc Beam.
+  const blastZone = new Set();
+  if (weapon.places) {
+    for (let q = -FOOT_SPAN; q <= FOOT_SPAN; q++) {
+      for (let r = -FOOT_SPAN; r <= FOOT_SPAN; r++) {
+        const h = { q, r };
+        if (Engine.hexDistance(origin, h) > FOOT_SPAN) continue;
+        if (covered.has(Engine.hexKey(h))) continue;
+        if (landed.some((t) => Engine.hexDistance(t, h) <= (weapon.blast || 1))) blastZone.add(Engine.hexKey(h));
+      }
+    }
+  }
   const cells = [];
   for (let q = -FOOT_SPAN; q <= FOOT_SPAN; q++) {
     for (let r = -FOOT_SPAN; r <= FOOT_SPAN; r++) {
@@ -4095,10 +4178,17 @@ function weaponFootprintSVG(weapon) {
     const p = centre(c.q, c.r);
     const self = c.q === 0 && c.r === 0;
     const lit = covered.has(Engine.hexKey(c));
-    const fill = self ? "rgba(255,156,74,0.34)" : lit ? "rgba(224,83,63,0.42)" : "rgba(255,255,255,0.02)";
-    const stroke = self ? "#ff9c4a" : lit ? "#e0533f" : "#2a3652";
+    const splash = blastZone.has(Engine.hexKey(c));
+    const fill = self
+      ? "rgba(255,156,74,0.34)"
+      : lit
+        ? "rgba(224,83,63,0.42)"
+        : splash
+          ? "rgba(224,83,63,0.18)"
+          : "rgba(255,255,255,0.02)";
+    const stroke = self ? "#ff9c4a" : lit ? "#e0533f" : splash ? "#8d3a2f" : "#2a3652";
     parts.push(
-      `<polygon points="${corners(p.x, p.y)}" fill="${fill}" stroke="${stroke}" stroke-width="${self || lit ? 1.3 : 0.7}"/>`
+      `<polygon points="${corners(p.x, p.y)}" fill="${fill}" stroke="${stroke}" stroke-width="${self || lit ? 1.3 : splash ? 1 : 0.7}"/>`
     );
   }
   const o = centre(0, 0);
@@ -4122,7 +4212,10 @@ function renderItemReadout(infoEl, id) {
   const weapon = Engine.WEAPONS[eq.weaponKey];
   const note = weapon.shape === "lane" ? '<span class="foot-note">…and onward to the board edge</span>' : "";
   const cover = weapon.ignoresCover ? '<span class="foot-note foot-warn">lobbed — rock is no cover</span>' : "";
-  infoEl.innerHTML = `<span class="hold-info-figure">${weaponFootprintSVG(weapon)}${note}${cover}</span>${text}`;
+  const fuse = weapon.places
+    ? '<span class="foot-note foot-warn">lands where you aim, goes off two rounds later — pale hexes are the blast, and it does not care whose ship is in it</span>'
+    : "";
+  infoEl.innerHTML = `<span class="hold-info-figure">${weaponFootprintSVG(weapon)}${note}${cover}${fuse}</span>${text}`;
 }
 
 // Tap any tile, on either ship, and its specs land in the readout under

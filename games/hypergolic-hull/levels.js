@@ -121,7 +121,7 @@
       exit: { q: 6, r: -3 },
       outpost: true,
       enemies: [
-        { type: "picket", q: 3, r: 3 },
+        { type: "demolitionist", q: 3, r: 3 },
         { type: "escort", q: 5, r: 1 },
         { type: "cruiser", q: 2, r: 5 },
       ],
@@ -552,19 +552,24 @@
             // Measured with it in this pool, the run fell off a cliff at
             // depth 7 (39 runs alive at 6, 23 at 7) and the death boards
             // were almost all cruiser+escort.
-            ["interceptor", "interceptor", "cruiser", "cruiser", "picket", "picket", "sentry", "salvager"]
+            ["interceptor", "interceptor", "cruiser", "cruiser", "picket", "picket", "sentry", "demolitionist", "salvager"]
           : depth < 11
             ? // The shelf has had three or four passes by now: the Scout
-              // (reach WITH a drive) and the Mortar (reach that ignores
-              // cover) both land here, and the Carrier makes backing off
-              // to a flank stop working.
-              ["interceptor", "cruiser", "picket", "scout", "escort", "carrier", "sentry", "sentry", "mortar", "salvager"]
+              // (reach that fires every round) and the Mortar (reach that
+              // ignores cover) both land here, the Carrier makes backing
+              // off to a flank stop working, and the Demolitionist asks
+              // the only question in the game that isn't about a line or a
+              // ring — though by here you have met it (Sector 4 and the
+              // shallow crawl both deal it), so what depth 8 adds is a
+              // bomb landing while three other things are also asking you
+              // to be somewhere.
+              ["interceptor", "cruiser", "picket", "scout", "escort", "carrier", "demolitionist", "sentry", "sentry", "mortar", "salvager"]
             : // Everything, including the two that shoot the length of the
               // board. The Interceptor stays in the pool — it was dropped
               // here at some point and that only made the deep end MORE
               // uniform, which is the exact problem this ladder exists to
               // avoid.
-              ["interceptor", "cruiser", "picket", "scout", "escort", "carrier", "sentry", "mortar", "lancer", "railgun", "salvager"];
+              ["interceptor", "cruiser", "picket", "scout", "escort", "carrier", "demolitionist", "sentry", "mortar", "lancer", "railgun", "salvager"];
   }
 
   function generateLevel(depth, variantId) {
@@ -824,7 +829,7 @@
     // means every chaser on the map gets extra free turns while you grind.
     // Two per board keeps them a complication rather than the whole sum.
     const HEAVIES = new Set(["escort", "carrier"]);
-    const MOBILE = ["interceptor", "cruiser", "escort", "lancer"];
+    const MOBILE = ["interceptor", "cruiser", "escort", "lancer", "demolitionist"];
     const enemies = [];
     const LIGHT = ["interceptor", "cruiser"];
     let emplaced = 0;

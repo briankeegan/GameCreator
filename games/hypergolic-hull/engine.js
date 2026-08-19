@@ -1,3 +1,10 @@
+          // One reactor, so the Lance fires every other round — and the
+          // round in between is spent MOVING, not standing still, which is
+          // the difference the AI makes rather than the hold. It ran on
+          // two for a while, purely so a bearing Scout could always afford
+          // its shot and could never fire-then-give-ground; decideIntent
+          // forbids that directly now (a gun that bears may only close),
+          // so the second generator was buying nothing but damage.
 // engine.js — deterministic hex-tactics engine for Hypergolic Hull.
 //
 // Pure game logic, no DOM/canvas. Runs identically in the browser (attached
@@ -496,6 +503,40 @@
     // answer, and closing costs you the rounds it spends shooting.
     beamLance: { id: "beamLance", label: "Beam Lance", shape: "lane", range: 3, minRange: 2, damage: 1, targets: "one", energyCost: 2, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     railgun: { id: "railgun", label: "Railgun", shape: "lane", range: 20, damage: 2, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // The Beam Lance's slow big brother: the far HALF of a lane, three and
+    // four hexes out, with a hole big enough to walk into — anything
+    // inside three is completely safe from it, where the Beam Lance still
+    // reaches you at two. Longer, slower, and easier to get under; the two
+    // lances overlap on exactly one ring and neither is the other's
+    // upgrade. It costs 3,
+    // so on one generator it fires one round in three and spends the other
+    // two moving. Reach and rate of fire are the two halves of what a long
+    // gun is, and this is the half of the trade the Lance doesn't make.
+    //
+    // That cadence is also what makes a MOBILE long gun meetable early: a
+    // range-3 lance that fired every other round measured at 4 wins in 40
+    // in the shallow sectors, because the counter to reach is to walk it
+    // down and there was never a round spare to walk in. Two free rounds
+    // out of every three is that round.
+    siegeLance: { id: "siegeLance", label: "Siege Lance", shape: "lane", range: 4, minRange: 3, damage: 1, targets: "one", energyCost: 3, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // Hoplite's Demolitionist, and the one question nothing else in this
+    // game asks. Every other gun says "do not be standing HERE when I
+    // fire"; this one says "this GROUND is going away." It doesn't damage
+    // anything the round it's used — it puts a charge on a hex with a
+    // burning fuse and a blast that covers that hex and all six around it,
+    // and then you have two rounds to not be in any of them.
+    //
+    // Which makes it the only weapon in the game whose answer is time
+    // rather than geometry, and the only one that reliably threatens a
+    // crowd — including its own side, which is exactly why the class that
+    // carries it refuses to throw one near a friend (see INHIBITIONS).
+        // Thrown to exactly two hexes — a short lob, deliberately. The blast
+    // covers a full ring around where it lands, so from two out the
+    // thrower is standing one hex clear of its own bomb and no further:
+    // it has to come in close and then live with what it did. Reaching
+    // three as well would have made it a strictly better Mortar (same
+    // charge, same damage, more ground), which the roster rule forbids.
+    demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", shape: "ring", range: 2, minRange: 2, damage: 1, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, places: true, blast: 1 },
   };
 
   // Each enemy type is its own small data block: how tough it is (hp), what
@@ -537,6 +578,8 @@
     mortar: { id: "mortar", label: "Mortar", kind: "weapon", weaponKey: "mortar", w: 2, h: 2 },
     flankTubes: { id: "flankTubes", label: "Flank Tubes", kind: "weapon", weaponKey: "flankTubes", w: 1, h: 3 },
     missilePod: { id: "missilePod", label: "Missile Pod", kind: "weapon", weaponKey: "missilePod", w: 2, h: 2 },
+    siegeLance: { id: "siegeLance", label: "Siege Lance", kind: "weapon", weaponKey: "siegeLance", w: 1, h: 3 },
+    demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", kind: "weapon", weaponKey: "demolitionCharge", w: 2, h: 2 },
     reactorCore: { id: "reactorCore", label: "Reactor Core", kind: "reactor", rechargeGain: 1, energyCapacity: 6, w: 2, h: 2 },
     sublightDrive: { id: "sublightDrive", label: "Sublight Drive", kind: "engine", moveRange: 1, w: 1, h: 3 },
     shieldGenerator: { id: "shieldGenerator", label: "Shield Generator", kind: "shield", capacity: 1, w: 2, h: 2 },
@@ -597,7 +640,7 @@
   // derived from the Hold now (an installed weapon item sets its
   // systems[key] flag in deriveShip), but the key list itself is stable
   // engine data.
-  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance"];
+  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "siegeLance", "demolitionCharge"];
 
   // ---- what a hold makes a ship able to do -------------------------------
   //
@@ -764,24 +807,54 @@
         ],
       },
     },
-    // The archer that can't chase you — and the first thing in the run
-    // that shoots you from further away than you can shoot back. Same
-    // Beam Lance the Scout carries, bolted to a Station Anchor instead of
-    // a drive, which is what makes it fair in the shallow end: a MOBILE
-    // long gun in sectors 1-4 measured at 4 wins in 40, because the only
-    // answer to reach is to walk it down and it kept walking away from
-    // the walk. Nailed to the deck, the same gun is a puzzle with two
-    // clean solutions the starting kit can actually execute — step off
-    // its axis, or close inside two, where the Lance has no shot at all.
+    // The archer that walks. It was bolted to the deck at first, because a
+    // MOBILE long gun measured at 4 wins in 40 when it turned up in the
+    // shallow end and the only counter to reach is to walk it down — it
+    // kept walking away from the walk. But a gun platform that never moves
+    // reads as broken however correct it is ("the picket just straight up
+    // doesn't move"), and reading right beats measuring right.
+    //
+    // So it has an engine, and it pays for the engine in TIME. It carries
+    // the Siege Lance, not the Beam Lance: same three hexes down an axis,
+    // same nothing at contact, but three charge instead of two, so on one
+    // generator it fires one round in three and spends the other two
+    // moving. That is exactly "shoot if you're in range, otherwise move"
+    // from the outside, and it is Hoplite's Demolitionist cadence — the
+    // reach is real, and you get two free rounds to do something about it.
     picket: {
       hull: 1, salvage: 2,
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
-          { id: "beamLance", x: 1, y: 0 },
-          { id: "stationAnchor", x: 0, y: 1 },
+          { id: "siegeLance", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 1 },
           { id: "microReactor", x: 2, y: 1 },
           { id: "chargeBank", x: 2, y: 2 },
+        ],
+      },
+    },
+    // Hoplite's Demolitionist, and the only class in the game that
+    // threatens GROUND rather than a ship. It does no damage the round it
+    // acts: it drops a charge on the hex you are standing on, with two
+    // rounds on the fuse and a blast that takes that hex and all six
+    // around it. You have those two rounds and they are enough — being
+    // caught is always a decision.
+    //
+    // Its inhibition is the interesting half (see INHIBITIONS.blastSafe):
+    // it will not throw one that would catch its own side. Standing beside
+    // another hostile switches it off completely, so a crowd — the thing
+    // every other instinct in this game says to break up — is cover from
+    // the one enemy you cannot out-position.
+    demolitionist: {
+      hull: 1, salvage: 4, inhibition: "blastSafe",
+      hold: {
+        cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
+        items: [
+          { id: "demolitionCharge", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 1 },
+          { id: "microReactor", x: 3, y: 1 },
+          { id: "chargeBank", x: 1, y: 2 },
+          { id: "chargeBank", x: 3, y: 2 },
         ],
       },
     },
@@ -820,8 +893,14 @@
     // Two big banks and one small generator: five on the bus, one a
     // round to fill it, a slug that costs four. The telegraph isn't a
     // scripted timer — it's the hardware.
+    // ...and the Wizard's rule, because a board-length gun that works no
+    // matter what is a gun you can only answer by walking a very long way.
+    // It won't fire while any other hostile is within three hexes of it,
+    // so the counter is to bring its own side to it — bait a chaser back
+    // past the emplacement and the lane goes quiet. That is the opposite
+    // of what every other threat on the board teaches, which is the point.
     railgun: {
-      hull: 1, salvage: 3, startsEmpty: true,
+      hull: 1, salvage: 3, startsEmpty: true, inhibition: "loner",
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
@@ -875,7 +954,6 @@
           // On two it can pay every round, which means it is always either
           // shooting or repositioning, never idle: 31% / 0% / 69%.
           { id: "microReactor", x: 2, y: 1 },
-          { id: "microReactor", x: 1, y: 3 },
           { id: "chargeBank", x: 2, y: 2 },
         ],
       },
@@ -1014,6 +1092,46 @@
   // friends; a burst cannot.
   function spreads(weapon) {
     return weapon.targets === "all" || weapon.ignoresCover;
+  }
+
+  // ---- inhibitions -------------------------------------------------------
+  //
+  // Hoplite's real lesson, and the half of it this game was missing. Every
+  // demon there has a hole AND a rule its own side can trigger: the archer
+  // is blocked by allies, the demolitionist won't bomb a tile next to
+  // another demon, the wizard won't attack AT ALL while another demon is
+  // near it. Crowds make Hoplite's enemies weaker, which is what turns
+  // positioning from "where is it safe to stand" into "where can I make
+  // them jam each other".
+  //
+  // We had exactly one of these, buried in the weapons: a spread gun holds
+  // fire rather than catching a friend. That covers the Flak Burst and the
+  // Mortar and nothing else. These are per-CLASS, declared on the class,
+  // and read by decideIntent before it will let one shoot.
+  const INHIBITIONS = {
+    // The Demolitionist: it will not drop a charge whose blast would take
+    // one of its own with it. Stand next to another hostile and the bomb
+    // never comes — which is a real, usable answer, and the reason a crowd
+    // is worth walking into instead of away from.
+    blastSafe: (state, enemy, weapon) => {
+      if (!weapon.places) return false;
+      const blast = chargeBlastHexes(state, { q: state.playerPos.q, r: state.playerPos.r, blast: weapon.blast || 1 });
+      return livingEnemies(state).some((other) => other !== enemy && blast.some((h) => posEq(h, other)));
+    },
+    // The Wizard's: it won't fire at all while another hostile is close to
+    // IT. A long gun that only works alone — so the way to shut one down
+    // is to bring its own side to it, which is the opposite of every other
+    // instinct the game teaches.
+    loner: (state, enemy) =>
+      livingEnemies(state).some((other) => other !== enemy && hexDistance(other, enemy) <= LONER_RADIUS),
+  };
+  const LONER_RADIUS = 3;
+
+  // Does this class refuse the shot it could otherwise take?
+  function inhibited(state, enemy, weapon) {
+    const def = ENEMY_TYPES[enemy.type];
+    const rule = def && def.inhibition && INHIBITIONS[def.inhibition];
+    return rule ? rule(state, enemy, weapon) : false;
   }
 
   function wouldCatchAlly(state, enemy, weapon, facing) {
@@ -1171,6 +1289,8 @@
     railgun: "railgun",
     missilePod: "missilePod",
     beamLance: "beamLance",
+    siegeLance: "siegeLance",
+    demolitionCharge: "demolitionCharge",
   };
 
   // `rarity` drives two things (see pickOutpostOfferIds): how LIKELY an
@@ -1205,6 +1325,14 @@
     { id: "flankTubes", label: "Flank Tubes (1x3 — the gaps at two, 2 dmg)", cost: 16, rarity: "rare" },
     { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 24, rarity: "rare" },
     { id: "missilePod", label: "Missile Pod (2x2 — it flies itself, 2 dmg)", cost: 18, rarity: "rare" },
+    // Cheap because it's slow: same reach as the Beam Lance, one round in
+    // three. The gun you buy when what you need is to out-range something,
+    // not to out-shoot it.
+    { id: "siegeLance", label: "Siege Lance (1x3 — three and four down any axis, one shot in three)", cost: 7, rarity: "uncommon" },
+    // Priced with the Mortar, and for the same reason: it's the answer to
+    // ground rather than to a ship. It threatens seven hexes at once and
+    // it does not care what's standing on them, including you.
+    { id: "demolitionCharge", label: "Demolition Charge (2x2 — lobbed to two, a two-round fuse, seven hexes)", cost: 15, rarity: "rare" },
   ];
 
   // Roughly Slay the Spire's shop odds (~54/37/9 common/uncommon/rare) and
@@ -2137,7 +2265,18 @@
       // hexes as lethal that the hostile will visibly decline to fire on.
       const facing = enemyFacing(state, enemy);
       const live = ship.weapons.filter(
-        (w) => enemy.energy >= w.energyCost && !wouldCatchAlly(state, enemy, w, facing)
+        (w) =>
+          enemy.energy >= w.energyCost &&
+          !wouldCatchAlly(state, enemy, w, facing) &&
+          // A gun its CLASS refuses to use is not a danger zone either —
+          // a Railgun with a friend beside it isn't going to shoot, and
+          // painting its lanes red would be a lie the player then plays
+          // around for nothing. Same reasoning as wouldCatchAlly.
+          !inhibited(state, enemy, w) &&
+          // A charge does no damage the round it's thrown; where it LANDS
+          // isn't dangerous, what it becomes is. Live charges are added
+          // below, off the board rather than off the thrower.
+          !w.places
       );
       if (!live.length) continue;
       const covered = new Set();
@@ -2160,6 +2299,16 @@
           if (d <= reach || d > reach + 1) continue;
           threats.set(hexKey(hex), (threats.get(hexKey(hex)) || 0) + 1);
         }
+      }
+    }
+    // Ordnance already on the board. A burning charge is the most literal
+    // danger zone in the game — seven hexes with a number on them — and it
+    // has to be in here or nothing that reads this map (the overlay, the
+    // auto-router, the pilots in playtest.js) can see a bomb at all.
+    for (const charge of liveCharges(state)) {
+      if (charge.spent) continue;
+      for (const hex of chargeBlastHexes(state, charge)) {
+        threats.set(hexKey(hex), (threats.get(hexKey(hex)) || 0) + 1);
       }
     }
     return threats;
@@ -2203,6 +2352,129 @@
     list.push(missile);
     state.events.push({ type: "missileLaunch", q: missile.q, r: missile.r, id: missile.id });
     return missile;
+  }
+
+  // ---- demolition charges ------------------------------------------------
+  //
+  // The other kind of ordnance, and the opposite question. A missile is a
+  // thing that comes to FIND you, so the answer is to keep moving. A
+  // charge is a thing that lands on GROUND, so the answer is to not be on
+  // it — and since its blast covers the hex it landed on and all six
+  // around it, "not on it" can mean crossing half the board you were
+  // planning to fight from.
+  //
+  // Two rounds of fuse: it lands, one round ticks with it visible and
+  // counting, and it goes off at the end of the next. That's enough time
+  // to walk out of a seven-hex blast from anywhere inside it, so being
+  // caught is a decision you made, never something that happened to you.
+  const CHARGE_FUSE = 2;
+
+  function liveCharges(state) {
+    return state.charges || (state.charges = []);
+  }
+
+  // Every hex a charge takes with it when it goes: its own, plus a ring
+  // out to `blast`. Rocks don't shield you — the whole point of the thing
+  // is that it removes the ground rather than shooting across it.
+  function chargeBlastHexes(state, charge) {
+    const hexes = [{ q: charge.q, r: charge.r }];
+    let frontier = [{ q: charge.q, r: charge.r }];
+    for (let ring = 0; ring < (charge.blast || 1); ring++) {
+      const next = [];
+      for (const hex of frontier) {
+        for (let d = 0; d < 6; d++) {
+          const to = neighbor(hex, d);
+          if (!onBoard(state, to)) continue;
+          if (hexes.some((h) => posEq(h, to))) continue;
+          hexes.push(to);
+          next.push(to);
+        }
+      }
+      frontier = next;
+    }
+    return hexes;
+  }
+
+  function placeCharge(state, hex, weapon, ownerId) {
+    const charge = {
+      id: `c${(state.chargeSeq = (state.chargeSeq || 0) + 1)}`,
+      q: hex.q,
+      r: hex.r,
+      damage: weapon.damage,
+      blast: weapon.blast || 1,
+      // CHARGE_FUSE + 1, because the round it lands in is a round the
+      // player never gets: a charge is thrown during the enemy phase and
+      // the fuse ticks at the end of that same phase. Set to the flat 2
+      // it left you exactly ONE move to clear a blast that reaches one hex
+      // in every direction — which is impossible, since one step from the
+      // centre is still inside it. Being caught has to be a decision, and
+      // that means the number of moves has to exceed the radius.
+      fuse: CHARGE_FUSE + 1,
+      ownerId: ownerId || null,
+    };
+    liveCharges(state).push(charge);
+    state.events.push({ type: "chargePlaced", q: charge.q, r: charge.r, id: charge.id });
+    return charge;
+  }
+
+  // It goes off on everything standing in it, both sides, no exceptions —
+  // the hostile that threw it included, if it hasn't cleared the area.
+  function detonateCharge(state, charge, onPlayerDamage) {
+    const hexes = chargeBlastHexes(state, charge);
+    state.events.push({ type: "chargeBlast", q: charge.q, r: charge.r, id: charge.id, hexes });
+    pushLog(state, "Charge detonates.");
+    for (const hex of hexes) {
+      const hit = shipAt(state, hex);
+      if (!hit) continue;
+      if (hit.kind === "player") {
+        if (onPlayerDamage) onPlayerDamage(charge.damage);
+        continue;
+      }
+      const victim = hit.enemy;
+      if (victim.shieldCharges > 0) {
+        victim.shieldCharges -= 1;
+        state.events.push({ type: "enemyShieldAbsorb", q: victim.q, r: victim.r, enemyId: victim.id });
+        pushLog(state, `${victim.type.toUpperCase()} rode the blast out on its screen.`);
+        continue;
+      }
+      victim.hp -= charge.damage;
+      if (victim.hp <= 0) {
+        victim.alive = false;
+        state.events.push({ type: "kill", q: victim.q, r: victim.r, victim: victim.type, source: "charge" });
+        pushLog(state, `${victim.type.toUpperCase()} caught in the blast.`);
+        awardSalvage(state, victim.type);
+      } else {
+        state.events.push({ type: "hit", q: victim.q, r: victim.r, source: "charge" });
+      }
+    }
+    charge.spent = true;
+  }
+
+  // Ticked once a round alongside the missiles, and for the same reason:
+  // after everybody has moved, so the hex you stepped to is the hex being
+  // judged and walking clear genuinely works.
+  function advanceCharges(state, onPlayerDamage) {
+    const list = liveCharges(state);
+    if (!list.length) return;
+    for (const charge of list) {
+      if (charge.spent) continue;
+      charge.fuse -= 1;
+      state.events.push({ type: "chargeTick", q: charge.q, r: charge.r, id: charge.id, fuse: charge.fuse });
+      if (charge.fuse <= 0) detonateCharge(state, charge, onPlayerDamage);
+    }
+    state.charges = list.filter((c) => !c.spent);
+  }
+
+  // Every hex currently under a live charge — the renderer paints these and
+  // the threat overlay counts them, because a fuse you can't see is just an
+  // ambush.
+  function chargedHexes(state) {
+    const keys = new Set();
+    for (const charge of liveCharges(state)) {
+      if (charge.spent) continue;
+      for (const hex of chargeBlastHexes(state, charge)) keys.add(hexKey(hex));
+    }
+    return keys;
   }
 
   // What a missile is standing on, if anything. Hostiles and the flagship
@@ -2300,7 +2572,7 @@
     // charging Railgun holds fire; a cost-1 chaser always affords it.
     // With several guns aboard it takes the cheapest that bears, which is
     // exactly what applyFire does for you when you don't name one.
-    const bearing = enemyWeaponsBearing(state, enemy);
+    const bearing = enemyWeaponsBearing(state, enemy).filter((w) => !inhibited(state, enemy, w));
     const affordable = bearing.filter((w) => enemy.energy >= w.energyCost);
     if (affordable.length) {
       const pick = affordable.slice().sort((a, b) => a.energyCost - b.energyCost || b.damage - a.damage)[0];
@@ -2363,23 +2635,28 @@
       // distance to the player. Closing on a long gun is the counter, so
       // closing has to be possible.
       const standoff = hexDistance(enemy, state.playerPos);
-      // Somewhere its gun ACTUALLY BEARS outranks the no-retreat rule, and
-      // only that. Without this a minimum-range gun walks itself out of
-      // its own band and can never get back: the Scout closes to contact,
-      // where a Beam Lance has no shot at all, and then can't step back
-      // out to two because stepping back is retreating — so it circles you
-      // forever, harmless. Measured, it fired on 8% of its turns.
+      // Where it can put its gun on you, and how far it's allowed to go to
+      // get there. Two cases, and the difference between them is the whole
+      // anti-kiting rule:
       //
-      // This can't become the kiting that made sectors unwinnable before,
-      // because a hostile that CAN shoot never reaches this code at all —
-      // it shot. Giving ground is available only to something that has no
-      // shot from where it stands, which makes it un-jamming a gun rather
-      // than keeping its distance. (And the Scout carries two reactors now
-      // precisely so "bearing but broke" isn't a state it can be in.)
+      //   JAMMED (no shot from here at all — you're inside its minimum
+      //   range, or off its axis). It may go ANYWHERE that bears,
+      //   backwards included. Without that a minimum-range gun walks into
+      //   its own dead zone and can never get out, because leaving is
+      //   retreating: measured, the Scout fired on 8% of its turns and
+      //   spent the rest orbiting you harmlessly.
+      //
+      //   BEARING BUT BROKE (its gun covers you, the reactor is short).
+      //   It may only CLOSE, and among the ways to close it prefers one
+      //   that keeps you covered. Letting this case drift backwards would
+      //   be fire, give ground, fire, give ground — the pattern that made
+      //   sectors unwinnable before — and any gun costing more than its
+      //   reactor makes in a round would do it two turns in three.
       const solutionKeys = new Set(firingPositions(state, enemy).map(hexKey));
-      const bears = candidates.filter((c) => solutionKeys.has(hexKey(c.to)));
       const closers = candidates.filter((c) => c.dist <= standoff);
-      const pool = bears.length ? bears : closers.length ? closers : candidates;
+      const bearsFrom = (list) => list.filter((c) => solutionKeys.has(hexKey(c.to)));
+      const allowed = bearing.length ? closers : candidates;
+      const pool = bearsFrom(allowed).length ? bearsFrom(allowed) : closers.length ? closers : candidates;
       const solutions = (enemy.idleRounds || 0) >= PATIENCE ? [] : firingPositions(state, enemy);
       if (solutions.length) {
         const nearestSolution = (h) =>
@@ -2450,6 +2727,15 @@
       pushLog(state, `${weapon.label} away — it flies itself from here.`);
       return;
     }
+    // A charge lands ON the target's hex, not on the target: it does no
+    // damage now, and in two rounds it takes that hex and the six around
+    // it. Whatever has walked into those by then is what it kills, which
+    // may very well include you.
+    if (weapon.places) {
+      placeCharge(state, targets[0], weapon, null);
+      pushLog(state, `${weapon.label} set — two rounds on the fuse. Clear the area.`);
+      return;
+    }
     // Every weapon announces its own shot — the renderer gives each a
     // signature effect (ring/beam/bolt) so WHAT fired is readable at a
     // glance, not just that something did.
@@ -2513,6 +2799,11 @@
           pushLog(state, `${enemy.type.toUpperCase()} launched — one round to move.`);
           continue;
         }
+        if (weapon.places) {
+          placeCharge(state, state.playerPos, weapon, enemy.id);
+          pushLog(state, `${enemy.type.toUpperCase()} dropped a charge — two rounds, seven hexes.`);
+          continue;
+        }
         totalDamage += weapon.damage;
         state.events.push({
           type: "attack",
@@ -2552,6 +2843,9 @@
     // moving away really does buy you the round. Anything it detonates on
     // is fair game, whichever side launched it.
     advanceMissiles(state, (dmg) => {
+      totalDamage += dmg;
+    });
+    advanceCharges(state, (dmg) => {
       totalDamage += dmg;
     });
     if (totalDamage > 0 && state.shieldCharges > 0) {
@@ -2975,6 +3269,8 @@
     onBoard,
     buildBoardHexes,
     findPath,
+    chargeBlastHexes,
+    chargedHexes,
     directionIndex,
     enemyFacing,
     validateLevel,
