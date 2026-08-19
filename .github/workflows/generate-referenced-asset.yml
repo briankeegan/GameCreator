@@ -168,21 +168,27 @@ jobs:
 
       - name: Resize + trim for web
         if: steps.gen.outputs.skipped != 'true'
-        timeout-minutes: 10
+        timeout-minutes: 5
         env:
           OUTPUT_PATH: ${{ inputs.output_path }}
         run: |
-          # See generate-game-asset.yml for why this retries + has a longer
-          # timeout: a tight timeout here previously dropped paid-for generations
-          # when several runs' apt-get hit a busy mirror at the same time.
-          ok=""
-          for i in 1 2 3; do
-            sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq && \
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq imagemagick && { ok=1; break; }
-            echo "apt-get attempt $i failed, retrying…"; sleep 10
-          done
-          [ -z "$ok" ] && { echo "::error::apt-get install imagemagick failed after retries"; exit 1; }
-          convert "$OUTPUT_PATH" -trim +repage -resize '768x768>' -background none -gravity center "$OUTPUT_PATH"
+          # See generate-game-asset.yml for why this no longer uses apt-get:
+          # `apt-get install imagemagick` was confirmed to hang SILENTLY for a
+          # full 10-minute step timeout with zero output — not slow, actually
+          # stuck — so no retry/timeout tuning around apt-get itself could fix
+          # it. Pillow installs from PyPI instead and does the same job.
+          python3 -m pip install --quiet --disable-pip-version-check pillow
+          python3 - <<'PYEOF'
+          import os
+          from PIL import Image
+          path = os.environ["OUTPUT_PATH"]
+          im = Image.open(path).convert("RGBA")
+          bbox = im.getbbox()
+          if bbox:
+              im = im.crop(bbox)
+          im.thumbnail((768, 768), Image.LANCZOS)
+          im.save(path)
+          PYEOF
 
       - name: Commit and push
         if: steps.gen.outputs.skipped != 'true'

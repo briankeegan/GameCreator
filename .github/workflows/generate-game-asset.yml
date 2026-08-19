@@ -159,22 +159,31 @@ jobs:
       # found") so it's installed explicitly first.
       - name: Resize + trim for web
         if: steps.gen.outputs.skipped != 'true'
-        timeout-minutes: 10
+        timeout-minutes: 5
         env:
           OUTPUT_PATH: ${{ inputs.output_path }}
         run: |
-          # apt-get under a busy shared mirror (e.g. several of these runs firing
-          # at once) can take well over the previous 3-minute step timeout, which
-          # silently dropped 12 already-paid-for generations (they never reached
-          # "Commit and push"). Retry apt-get itself, and give the step more room.
-          ok=""
-          for i in 1 2 3; do
-            sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq && \
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq imagemagick && { ok=1; break; }
-            echo "apt-get attempt $i failed, retrying…"; sleep 10
-          done
-          [ -z "$ok" ] && { echo "::error::apt-get install imagemagick failed after retries"; exit 1; }
-          convert "$OUTPUT_PATH" -trim +repage -resize '512x512>' -background none -gravity center -extent 512x512 "$OUTPUT_PATH"
+          # apt-get install imagemagick previously hung SILENTLY for the full
+          # step timeout against a busy/unreachable mirror (confirmed: a run
+          # produced zero output for 10 straight minutes before timing out) —
+          # not just slow, actually stuck, so no amount of retry/timeout
+          # tuning around apt-get itself would help. Pillow is pure-Python,
+          # installs from PyPI (a different, more reliable host) in seconds,
+          # and does the same trim+resize+pad job.
+          python3 -m pip install --quiet --disable-pip-version-check pillow
+          python3 - <<'PYEOF'
+          import os
+          from PIL import Image
+          path = os.environ["OUTPUT_PATH"]
+          im = Image.open(path).convert("RGBA")
+          bbox = im.getbbox()
+          if bbox:
+              im = im.crop(bbox)
+          im.thumbnail((512, 512), Image.LANCZOS)
+          canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+          canvas.paste(im, ((512 - im.width) // 2, (512 - im.height) // 2), im)
+          canvas.save(path)
+          PYEOF
 
       # Retry-with-rebase so several asset generations running at once don't
       # clobber each other pushing to main (each runner does plain commit+push).
