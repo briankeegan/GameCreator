@@ -180,9 +180,7 @@ jobs:
           if bbox:
               im = im.crop(bbox)
           im.thumbnail((512, 512), Image.LANCZOS)
-          canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
-          canvas.paste(im, ((512 - im.width) // 2, (512 - im.height) // 2), im)
-          canvas.save(path)
+          im.save(path)
           PYEOF
 
       # Retry-with-rebase so several asset generations running at once don't
