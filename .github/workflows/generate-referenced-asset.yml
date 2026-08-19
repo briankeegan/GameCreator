@@ -168,10 +168,20 @@ jobs:
 
       - name: Resize + trim for web
         if: steps.gen.outputs.skipped != 'true'
+        timeout-minutes: 10
         env:
           OUTPUT_PATH: ${{ inputs.output_path }}
         run: |
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq imagemagick
+          # See generate-game-asset.yml for why this retries + has a longer
+          # timeout: a tight timeout here previously dropped paid-for generations
+          # when several runs' apt-get hit a busy mirror at the same time.
+          ok=""
+          for i in 1 2 3; do
+            sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq && \
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq imagemagick && { ok=1; break; }
+            echo "apt-get attempt $i failed, retrying…"; sleep 10
+          done
+          [ -z "$ok" ] && { echo "::error::apt-get install imagemagick failed after retries"; exit 1; }
           convert "$OUTPUT_PATH" -trim +repage -resize '768x768>' -background none -gravity center "$OUTPUT_PATH"
 
       - name: Commit and push

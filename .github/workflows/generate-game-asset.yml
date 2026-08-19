@@ -159,11 +159,21 @@ jobs:
       # found") so it's installed explicitly first.
       - name: Resize + trim for web
         if: steps.gen.outputs.skipped != 'true'
-        timeout-minutes: 3
+        timeout-minutes: 10
         env:
           OUTPUT_PATH: ${{ inputs.output_path }}
         run: |
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq imagemagick
+          # apt-get under a busy shared mirror (e.g. several of these runs firing
+          # at once) can take well over the previous 3-minute step timeout, which
+          # silently dropped 12 already-paid-for generations (they never reached
+          # "Commit and push"). Retry apt-get itself, and give the step more room.
+          ok=""
+          for i in 1 2 3; do
+            sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq && \
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq imagemagick && { ok=1; break; }
+            echo "apt-get attempt $i failed, retrying…"; sleep 10
+          done
+          [ -z "$ok" ] && { echo "::error::apt-get install imagemagick failed after retries"; exit 1; }
           convert "$OUTPUT_PATH" -trim +repage -resize '512x512>' -background none -gravity center -extent 512x512 "$OUTPUT_PATH"
 
       # Retry-with-rebase so several asset generations running at once don't
