@@ -72,6 +72,28 @@ design discussion. `shared/` holds the components every game reuses
   and the workflow's `ctx` step reads it (deriving the game id from the PR's
   `clubhouse/<id>` head branch) to decide whether to act — a manual
   `workflow_dispatch` bypasses the flag so you can always test a game.
+- **Autopilot has a backstop — don't hand-nurse it.**
+  `.github/workflows/clubhouse-sweeper.yml` runs every 15 min and asks the
+  only question that matters: does any autopilot thread have a human
+  message as its newest comment, older than 45 min? If so it dispatches
+  the autopilot for that thread, whatever went wrong upstream. This exists
+  because the event path has failure modes it cannot see or report: a job
+  that is CANCELLED rather than failed (job timeout, lost runner) skips
+  the `failure()` retry step entirely — that's how a Dog Punk message sat
+  unanswered with no error and no retry until someone came asking. Two
+  bounds keep it from becoming a cost/spam problem: the 45-min grace (a
+  healthy run answers in ~12 min, ~45 with one automatic retry's backoff),
+  and an 👀 reaction on the comment as a one-time claim marker, so any
+  given message is swept AT MOST ONCE, forever. An 👀 on a message in a
+  thread therefore means "the backstop caught this one" — worth noticing,
+  since it implies the event path failed silently.
+- Related: every step in the autopilot that can block on the network has
+  its own `timeout-minutes`, and the retry step is gated on
+  `failure() || cancelled()`. Keep both properties if you touch that
+  workflow — a hung step with no step-level cap turns into a job-level
+  cancellation, which is the one shape of failure that reports nothing.
+  Corollary: cancelling an autopilot run by hand now re-dispatches it. To
+  actually stop a thread, set `"autopilot": false` on that game.
 
 ## Handling a clubhouse request
 
