@@ -96,6 +96,10 @@ window.NEWSEY_STORY = (function () {
       // No walkable exit — you leave by finishing the TV conversation
       // (which plays DREAM_CUTSCENE and lands you in ROOMS.bedroom).
       exits: [],
+      // Hand-placed from looking at bg-house.png: the kitchen table (with
+      // the moving boxes on it) sits back-center, so it's blocked off —
+      // otherwise the player could walk straight through it.
+      obstacles: [ { x: 110, y: 78, w: 100, h: 42 } ],
       npcs: [
         {
           id: "chuck", x: 110, y: 160, art: "chuck", sprite: "chuck_top",
@@ -122,7 +126,11 @@ window.NEWSEY_STORY = (function () {
       bg: "bedroom",
       label: "Your Room, Infinity",
       playerStart: { x: 150, y: 150 },
-      exits: [ { x: 300, y: 150, w: 20, h: 40, to: "lounge", label: "→ Out the door" } ],
+      // Hand-placed from bg-bedroom.png: the door is on the right wall,
+      // the mirror stands on the left and the bed is back-center-right —
+      // both are blocked off so the player can't walk through them.
+      exits: [ { x: 275, y: 120, w: 20, h: 55, to: "lounge", label: "→ Out the door" } ],
+      obstacles: [ { x: 15, y: 60, w: 55, h: 75 }, { x: 150, y: 65, w: 85, h: 45 } ],
       npcs: [
         {
           id: "devil", x: 150, y: 155, art: "devil", sprite: "devil_top",
@@ -139,8 +147,11 @@ window.NEWSEY_STORY = (function () {
       bg: "lounge",
       label: "The Lounge",
       playerStart: { x: 60, y: 150 },
-      // Doors move you to another room, drawn as a marked exit tile.
-      exits: [ { x: 300, y: 150, w: 20, h: 40, to: "library", label: "→ Library" } ],
+      // Hand-placed from bg-lounge.png: the doorway to the library is on
+      // the right wall; the bar counter spans most of the back wall and
+      // is blocked off so the player can't walk through/behind it.
+      exits: [ { x: 270, y: 120, w: 20, h: 55, to: "library", label: "→ Library" } ],
+      obstacles: [ { x: 30, y: 55, w: 190, h: 38 } ],
       npcs: [
         {
           id: "kat", x: 150, y: 162, art: "kat", sprite: "kat_top",
@@ -170,8 +181,13 @@ window.NEWSEY_STORY = (function () {
     library: {
       bg: "library",
       label: "The Library",
-      playerStart: { x: 40, y: 150 },
-      exits: [ { x: 0, y: 150, w: 20, h: 40, to: "lounge", label: "← Lounge" } ],
+      playerStart: { x: 150, y: 165 },
+      // Hand-placed from bg-library.png: the exit archway back to the
+      // lounge is actually on the right side of the room, not the left
+      // (the previous x:0 placement didn't match the art at all — the
+      // bookshelves occupy the whole left wall and are blocked off).
+      exits: [ { x: 225, y: 120, w: 20, h: 55, to: "lounge", label: "→ Lounge" } ],
+      obstacles: [ { x: 0, y: 55, w: 170, h: 70 } ],
       npcs: [
         {
           id: "michael", x: 120, y: 160, art: "michael", sprite: "michael_top",
