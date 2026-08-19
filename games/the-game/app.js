@@ -425,14 +425,24 @@
   // up/down reuse the same forward-facing art rather than showing her
   // back (no art for that exists, and forward-facing-always is far less
   // broken-looking than stretching/guessing a rear view).
+  // Real per-direction art: down/up/left are distinct sprites (extracted
+  // from a generated walk-cycle sheet — see nella_walksheet.png), right
+  // reuses "left" mirrored since a 2D side profile facing right is just
+  // that same art flipped. Falls back to the single forward-facing
+  // "nella_top" sprite (mirrored for left) if the directional art isn't
+  // available, then to the plain colored blob.
+  var FACING_ART = { down: "nella_down", up: "nella_up", left: "nella_left", right: "nella_left" };
   function drawPlayer() {
-    var entry = loadArt("nella_top");
+    var wantId = FACING_ART[player.facing] || "nella_down";
+    var entry = loadArt(wantId);
+    if (!(entry && entry.ok)) entry = loadArt("nella_top"); // fallback while directional art is missing
     if (entry && entry.ok) {
       var img = entry.img;
       var h = 30, w = h * (img.naturalWidth / img.naturalHeight);
       var cx = player.x + player.w / 2, feetY = player.y + player.h;
+      var mirror = player.facing === "right" || (player.facing === "left" && wantId === "nella_top");
       ctx.save();
-      if (player.facing === "left") {
+      if (mirror) {
         ctx.translate(cx, 0);
         ctx.scale(-1, 1);
         ctx.drawImage(img, -w / 2, feetY - h, w, h);
