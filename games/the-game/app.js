@@ -52,7 +52,12 @@
   // its neighbors, regardless of how tightly its own source was cropped.
   function spriteDrawSize(img, targetH) {
     var w = targetH * (img.naturalWidth / img.naturalHeight);
-    var minW = targetH * 0.5, maxW = targetH * 0.95;
+    // Previous bounds (0.5–0.95 * height) were too close to the actual
+    // outlier ratios to do anything — Kat's natural width only clamped
+    // from 14px to 15px at height 30, an invisible change, and she still
+    // read as "stretched thin". Tightened to a narrower, more assertive
+    // band so an outlier ratio visibly corrects instead of barely moving.
+    var minW = targetH * 0.68, maxW = targetH * 0.85;
     w = Math.max(minW, Math.min(maxW, w));
     return { w: w, h: targetH };
   }
