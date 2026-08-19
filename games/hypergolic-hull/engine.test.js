@@ -961,6 +961,16 @@ assert.strictEqual(clampedState.shieldCharges, 1, "carried charges clamp to inst
       assert.ok(!aStrictlyBetter, `${a.id} must not be a strict upgrade over ${b.id} on every stat`);
     }
   }
+  // A carryOver.startingLoadout pointing at an id that doesn't exist (a
+  // stale localStorage value from a renamed/removed loadout) must fall
+  // back to Standard rather than throw or silently produce a broken ship —
+  // this is what actually keeps "the chosen chip" from ever wedging a run.
+  const unknownFallback = Engine.createGameState(LEVELS[0], { startingLoadout: "some-removed-id" });
+  assert.strictEqual(
+    JSON.stringify(unknownFallback.hold.items),
+    JSON.stringify(Engine.createGameState(LEVELS[0], { startingLoadout: "standard" }).hold.items),
+    "an unrecognized startingLoadout id falls back to Standard, same as omitting it entirely"
+  );
 }
 
 // ---- outpost offer variety: not the same fixed shop every visit ---------

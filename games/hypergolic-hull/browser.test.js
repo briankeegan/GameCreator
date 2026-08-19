@@ -844,6 +844,36 @@ async function freshPage(browser, url, errors) {
   const holdIds = s.hold.items.map((it) => it.id);
   assert.ok(holdIds.includes("shieldGenerator"), "New Ship actually started with the selected Escort Start loadout");
   assert.strictEqual(s.shieldCharges, s.maxShields, "...shield already raised, as Escort Start promises");
+
+  // ---- The pick survives closing and reopening the app, not just staying --
+  // ---- on the same page ----------------------------------------------------
+  // Everything above ran in one continuous page session — it never actually
+  // proved the choice outlives a reload, which is the one form of
+  // continuity nothing else here exercises. A plain reload re-runs the
+  // whole boot sequence from localStorage exactly like a real close and
+  // reopen would (there's no persistent JS process to begin with, so a
+  // reload IS the reopen) — no need for a second Page/browser context.
+  await page.reload();
+  await page.waitForFunction(() => window.__hhState && window.__hhState.status === "playing");
+  s = await getState(page);
+  const reopenedHoldIds = s.hold.items.map((it) => it.id);
+  assert.ok(reopenedHoldIds.includes("shieldGenerator"), "the run in progress was already Escort Start — the pick outlived the reload");
+  await page.evaluate(() => {
+    window.__hhState.levelId = 34;
+    window.__hhState.hull = 0;
+    window.__hhState.status = "lost";
+    window.render();
+  });
+  await waitForOverlay(page);
+  assert.strictEqual(
+    await page.locator("#loadoutPicker button", { hasText: "Escort Start ✓" }).count(),
+    1,
+    "the picker itself remembers it across the reload too, not just the in-flight run"
+  );
+  await page.click("#restartBtn");
+  await page.waitForFunction(() => window.__hhState.status === "playing");
+  s = await getState(page);
+  assert.ok(s.hold.items.map((it) => it.id).includes("shieldGenerator"), "and a genuinely new run after the reload still picks it up");
   await page.close();
 
   // ---- Tap-tap movement: course in, confirm, rethink, dismiss -------------

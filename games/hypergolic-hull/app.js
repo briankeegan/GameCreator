@@ -3542,6 +3542,16 @@ function updateLoadoutPicker() {
   loadoutPickerEl.innerHTML = "";
   const ids = Object.keys(Engine.STARTING_LOADOUTS);
   if (previewedLoadout && !ids.includes(previewedLoadout)) previewedLoadout = null;
+  // A selection pointing at an id that no longer exists (a stale
+  // localStorage value from before a loadout was renamed/removed) must
+  // never mean "no chip checked, silently fly Standard anyway" — that's
+  // exactly the kind of desync the chosen chip needs to never suffer.
+  // Self-heal to Standard and persist the correction so it doesn't
+  // recur every render.
+  if (!ids.includes(selectedLoadout)) {
+    selectedLoadout = "standard";
+    persistUnlocks();
+  }
   for (const id of ids) {
     const loadout = Engine.STARTING_LOADOUTS[id];
     const btn = document.createElement("button");
