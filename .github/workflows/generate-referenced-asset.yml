@@ -1,0 +1,188 @@
+name: Generate referenced asset
+
+# Manually triggered only (workflow_dispatch) — same never-runs-on-push safety
+# as the other generators. This is the ONLY one of the three image-gen Actions
+# that actually uses reference images to guide the output — "Generate image"
+# and "Generate game asset" are text-prompt-only (OpenAI's /v1/images/generations),
+# which can describe a look but can't match a specific supplied picture. This
+# calls OpenAI's /v1/images/edits instead, attaching one or more reference PNGs
+# already committed in the repo (e.g. reference/<game>/inspo-07.png) so the
+# output is actually visually derived from them, not just described in words.
+#
+# Use this over "Generate game asset" whenever a specific reference image
+# exists for what you're generating (a character, a scene) and the ask is to
+# match it closely. Falls back to games/<game>/art-style.json for palette/style
+# framing the same way "Generate game asset" does, if that file exists.
+on:
+  workflow_dispatch:
+    inputs:
+      game:
+        description: "Game id (used to look up games/<id>/art-style.json, optional)"
+        required: false
+        type: string
+      asset:
+        description: "What this image is / how it should differ from the references, e.g. 'Nella, the protagonist, red demon horns and glowing red eyes, dark crimson robe'"
+        required: true
+        type: string
+      references:
+        description: "Comma-separated repo-relative paths to reference PNGs, e.g. reference/the-game/inspo-07.png,reference/the-game/inspo-08.png"
+        required: true
+        type: string
+      output_path:
+        description: "Where to save it, e.g. games/the-game/art/kat.png"
+        required: true
+        type: string
+      size:
+        description: "Image size"
+        required: false
+        type: choice
+        options:
+          - "1024x1024"
+          - "1024x1536"
+          - "1536x1024"
+        default: "1024x1024"
+      quality:
+        description: "Render quality — cost rises steeply: low < medium < high."
+        required: false
+        type: choice
+        options:
+          - "low"
+          - "medium"
+          - "high"
+        default: "medium"
+      transparent:
+        description: "Cut the subject out on a transparent background (for a game sprite, not a scene/background)"
+        required: false
+        type: boolean
+        default: false
+      force:
+        description: "Regenerate even if the output file already exists"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build prompt (asset + optional art-style.json framing)
+        id: style
+        env:
+          GAME: ${{ inputs.game }}
+          ASSET: ${{ inputs.asset }}
+        run: |
+          STYLE_FILE="games/$GAME/art-style.json"
+          if [ -n "$GAME" ] && [ -f "$STYLE_FILE" ]; then
+            camera=$(jq -r '.camera' "$STYLE_FILE")
+            style=$(jq -r '.style' "$STYLE_FILE")
+            palette=$(jq -r '.palette' "$STYLE_FILE")
+            background=$(jq -r '.background' "$STYLE_FILE")
+            constraints=$(jq -r '.constraints' "$STYLE_FILE")
+            prompt="Match the visual style of the attached reference image(s) closely (rendering technique, line work, lighting, palette). ${camera} ${ASSET}. ${style} Color palette: ${palette} Background: ${background} ${constraints}"
+          else
+            prompt="Match the visual style of the attached reference image(s) closely (rendering technique, line work, lighting, palette). ${ASSET}"
+          fi
+          {
+            echo "prompt<<PROMPT_EOF"
+            echo "$prompt"
+            echo "PROMPT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate image via OpenAI (reference-guided edit)
+        id: gen
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PROMPT: ${{ steps.style.outputs.prompt }}
+          SIZE: ${{ inputs.size }}
+          QUALITY: ${{ inputs.quality }}
+          OUTPUT_PATH: ${{ inputs.output_path }}
+          REFERENCES: ${{ inputs.references }}
+          TRANSPARENT: ${{ inputs.transparent }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          if [ -s "$OUTPUT_PATH" ] && [ "$FORCE" != "true" ]; then
+            echo "::notice::$OUTPUT_PATH already exists — skipping (re-run with force=true to regenerate)."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p "$(dirname "$OUTPUT_PATH")"
+
+          IFS=',' read -ra REF_ARR <<< "$REFERENCES"
+          IMG_ARGS=()
+          for ref in "${REF_ARR[@]}"; do
+            ref_trimmed=$(echo "$ref" | xargs)
+            [ -z "$ref_trimmed" ] && continue
+            if [ ! -f "$ref_trimmed" ]; then
+              echo "::error::Reference image not found: $ref_trimmed"
+              exit 1
+            fi
+            IMG_ARGS+=(-F "image[]=@${ref_trimmed}")
+          done
+          if [ "${#IMG_ARGS[@]}" -eq 0 ]; then
+            echo "::error::No valid reference images provided."
+            exit 1
+          fi
+
+          BG_ARGS=()
+          [ "$TRANSPARENT" = "true" ] && BG_ARGS=(-F "background=transparent")
+
+          ok=""
+          for attempt in 1 2 3 4 5 6; do
+            resp=$(curl -sS -w '\n%{http_code}' https://api.openai.com/v1/images/edits \
+              -H "Authorization: Bearer $OPENAI_API_KEY" \
+              -F "model=gpt-image-1" \
+              "${IMG_ARGS[@]}" \
+              -F "prompt=${PROMPT}" \
+              -F "size=${SIZE}" \
+              -F "quality=${QUALITY}" \
+              "${BG_ARGS[@]}" || true)
+            code=$(printf '%s' "$resp" | tail -n1)
+            body=$(printf '%s' "$resp" | sed '$d')
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            error=$(printf '%s' "$body" | jq -r '.error.message // empty' 2>/dev/null)
+            if [ "$code" = "429" ] || [ "$code" = "000" ] || [ "${code#5}" != "$code" ]; then
+              wait=$((attempt * 15 + RANDOM % 8))
+              echo "Rate-limited/transient (HTTP $code, attempt $attempt): ${error:-no body} — retrying in ${wait}s"
+              sleep "$wait"
+              continue
+            fi
+            echo "::error::OpenAI API error (HTTP $code): ${error:-unknown}"
+            exit 1
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::Still rate-limited after retries — try again later."
+            exit 1
+          fi
+
+          printf '%s' "$body" | jq -r '.data[0].b64_json' | base64 -d > "$OUTPUT_PATH"
+          if [ ! -s "$OUTPUT_PATH" ]; then
+            echo "::error::Output file is empty — generation likely failed"
+            exit 1
+          fi
+
+      - name: Resize + trim for web
+        if: steps.gen.outputs.skipped != 'true'
+        env:
+          OUTPUT_PATH: ${{ inputs.output_path }}
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq imagemagick
+          convert "$OUTPUT_PATH" -trim +repage -resize '768x768>' -background none -gravity center "$OUTPUT_PATH"
+
+      - name: Commit and push
+        if: steps.gen.outputs.skipped != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ inputs.output_path }}"
+          git commit -m "Generate referenced asset (${{ inputs.game }}): ${{ inputs.asset }}" || { echo "Nothing to commit"; exit 0; }
+          for i in 1 2 3 4 5 6; do
+            git pull --rebase origin main && git push && exit 0
+            echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+          done
+          echo "::error::Could not push after retries"; exit 1
