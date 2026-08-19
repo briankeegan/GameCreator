@@ -349,10 +349,27 @@
     }
   }
 
+  // Only one standing sprite exists ("nella_walk", full body, facing
+  // forward) — not a 4-direction walk-cycle set. Mirror it horizontally
+  // for "left" so at least left/right read correctly; up/down reuse the
+  // same forward-facing art rather than showing her back (no art for
+  // that exists, and forward-facing-always is far less broken-looking
+  // than stretching/guessing a rear view).
   function drawPlayer() {
-    var entry = loadArt("nella_walk_" + player.facing);
+    var entry = loadArt("nella_walk");
     if (entry && entry.ok) {
-      ctx.drawImage(entry.img, player.x - 3, player.y - 14, player.w + 6, player.h + 14);
+      var img = entry.img;
+      var h = 50, w = h * (img.naturalWidth / img.naturalHeight);
+      var cx = player.x + player.w / 2, feetY = player.y + player.h;
+      ctx.save();
+      if (player.facing === "left") {
+        ctx.translate(cx, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, -w / 2, feetY - h, w, h);
+      } else {
+        ctx.drawImage(img, cx - w / 2, feetY - h, w, h);
+      }
+      ctx.restore();
       return;
     }
     ctx.fillStyle = "#c0392b";
