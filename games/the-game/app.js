@@ -12,7 +12,7 @@
   var ROOMS = STORY.ROOMS;
 
   // ---------- persistence ----------
-  var save = window.GCStorage.get(gameId, "save", { introSeen: false, room: "lounge" });
+  var save = window.GCStorage.get(gameId, "save", { introSeen: false, room: "bedroom" });
   function persist() { window.GCStorage.set(gameId, "save", save); }
 
   // ---------- art loading (graceful fallback) ----------
@@ -99,7 +99,7 @@
     persist();
     cutsceneEl.classList.add("hidden");
     if (isTouch) document.getElementById("touchControls").hidden = false;
-    enterRoom(save.room || "lounge");
+    enterRoom(save.room || "bedroom");
   }
   function startCutscene() {
     cIndex = 0; lastBg = ""; lastArt = undefined;
@@ -357,10 +357,10 @@
   // ---------- boot ----------
   if (save.introSeen) {
     cutsceneEl.classList.add("hidden");
-    enterRoom(save.room || "lounge");
+    enterRoom(save.room || "bedroom");
   } else {
     startCutscene();
-    currentRoom = ROOMS[save.room || "lounge"];
+    currentRoom = ROOMS[save.room || "bedroom"];
     player.x = currentRoom.playerStart.x; player.y = currentRoom.playerStart.y;
   }
   requestAnimationFrame(loop);
