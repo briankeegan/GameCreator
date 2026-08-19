@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <title>Newsey-the-game</title>
-  <meta name="theme-color" content="#2f3b52" />
+  <title>Puzzle Attack</title>
+  <meta name="theme-color" content="#1a1030" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Newsey-the-game" />
+  <meta name="apple-mobile-web-app-title" content="Puzzle Attack" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icons/icon.svg" />
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
@@ -19,7 +19,65 @@
   <!-- Header (All Games / title / chat) is injected by nav.js below. -->
 
   <main class="game-area" id="gameArea">
-    <p>Your game goes here.</p>
+    <div class="stage" id="stage">
+      <!-- WALK-AROUND MODE: a real top-down room, always underneath. -->
+      <canvas id="scene" width="640" height="400" aria-label="Infinity. Walk up to someone to talk."></canvas>
+      <div class="room-label" id="roomLabel"></div>
+      <div class="interact-hint" id="interactHint" hidden>tap / press Z to talk</div>
+
+      <!-- CUTSCENE MODE: an overlay that covers the canvas during the intro. -->
+      <div class="cutscene" id="cutscene" role="button" tabindex="0" aria-label="Story. Tap to continue.">
+        <div class="bg" id="bg"></div>
+        <div class="vignette"></div>
+        <div class="portrait-wrap" id="portraitWrap">
+          <img class="portrait" id="portrait" alt="" />
+          <div class="portrait-fallback" id="portraitFallback"></div>
+        </div>
+        <div class="dialogue" id="dialogue">
+          <div class="speaker" id="speaker"></div>
+          <div class="line" id="line"></div>
+          <div class="advance" id="advance">tap ▸</div>
+        </div>
+      </div>
+
+      <!-- DIALOGUE BOX: pops over the walk-around scene when talking to an NPC. -->
+      <div class="talk-box" id="talkBox" hidden>
+        <div class="talk-portrait-wrap">
+          <img class="talk-portrait" id="talkPortrait" alt="" />
+          <div class="talk-portrait-fallback" id="talkPortraitFallback"></div>
+        </div>
+        <div class="talk-body">
+          <div class="talk-speaker" id="talkSpeaker"></div>
+          <div class="talk-line" id="talkLine"></div>
+          <div class="advance" id="talkAdvance">tap ▸</div>
+        </div>
+      </div>
+
+      <!-- Slot for the eventual playable duel. -->
+      <div class="duel-placeholder" id="duelPlaceholder" hidden>
+        <div class="duel-card">
+          <div class="duel-title">⚔ DUEL</div>
+          <p>The panels unroll on their golden ribbons…</p>
+          <p class="soon">Playable Panel Attack duel — <b>coming soon</b>.</p>
+          <button id="duelContinue">Back to the lounge ▸</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Touch joystick, shown only on touch devices. -->
+    <div class="touch-controls" id="touchControls" hidden>
+      <div class="dpad" id="dpad">
+        <button data-dir="up">▲</button>
+        <button data-dir="left">◀</button>
+        <button data-dir="right">▶</button>
+        <button data-dir="down">▼</button>
+      </div>
+      <button class="interact-btn" id="interactBtn">talk</button>
+    </div>
+
+    <div class="story-menu" id="storyMenu">
+      <button id="restartBtn" title="Replay the intro">↺ Replay intro</button>
+    </div>
   </main>
 
   <div class="install-banner" id="installBanner">
@@ -34,10 +92,11 @@
 
   <script src="../../shared/nav.js"
           data-game-id="the-game"
-          data-game-name="Newsey-the-game"
+          data-game-name="Puzzle Attack"
           data-version="v1"
           data-root="../../"></script>
   <script src="../../shared/storage.js"></script>
+  <script src="story.js"></script>
   <script src="app.js"></script>
   <script src="../../shared/pwa.js" data-sw="sw.js"></script>
 </body>
