@@ -284,6 +284,27 @@
   });
 
   // ---- movement + collision ----
+  // Every room has a walkable "floor" rect (falls back to a generic one if
+  // a room doesn't define its own) plus an optional list of "obstacles" —
+  // furniture/counters the player can't walk into. Without this the player
+  // could walk anywhere on the whole canvas, including through walls and
+  // furniture drawn near the back of the room.
+  var DEFAULT_FLOOR = { x: 16, y: 95, w: VW - 32, h: VH - 95 - 10 };
+  function clampToFloor(room, x, y) {
+    var f = room.floor || DEFAULT_FLOOR;
+    return {
+      x: Math.max(f.x, Math.min(f.x + f.w - player.w, x)),
+      y: Math.max(f.y, Math.min(f.y + f.h - player.h, y))
+    };
+  }
+  function blockedByObstacle(room, x, y) {
+    var obstacles = room.obstacles || [];
+    for (var i = 0; i < obstacles.length; i++) {
+      var o = obstacles[i];
+      if (x + player.w > o.x && x < o.x + o.w && y + player.h > o.y && y < o.y + o.h) return true;
+    }
+    return false;
+  }
   function update(dt) {
     if (talking || !duelPlaceholder.hidden) return;
     var dx = 0, dy = 0;
@@ -295,10 +316,13 @@
       var len = Math.sqrt(dx * dx + dy * dy);
       dx /= len; dy /= len;
       player.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
-      player.x += dx * player.speed * dt;
-      player.y += dy * player.speed * dt;
-      player.x = Math.max(4, Math.min(VW - player.w - 4, player.x));
-      player.y = Math.max(30, Math.min(VH - player.h - 8, player.y));
+      // Try each axis independently so the player can slide along a wall
+      // or obstacle instead of fully stopping the moment either axis hits
+      // something.
+      var tryX = clampToFloor(currentRoom, player.x + dx * player.speed * dt, player.y);
+      if (!blockedByObstacle(currentRoom, tryX.x, player.y)) player.x = tryX.x;
+      var tryY = clampToFloor(currentRoom, player.x, player.y + dy * player.speed * dt);
+      if (!blockedByObstacle(currentRoom, player.x, tryY.y)) player.y = tryY.y;
     }
     // exits
     currentRoom.exits.forEach(function (ex) {
