@@ -231,6 +231,17 @@ body {
 .outpost-detail {
   height: 15rem; /* fixed, not min-height: min- still grows for a tall diagram */
 }
+/* ...and the fixed height only actually BINDS with this. Both boxes are
+   flex items themselves, and a flex item's automatic minimum size is its
+   content, which quietly wins over an explicit `height` — so the one
+   offer with a tall footprint diagram (the Beam Lance) pushed the box ten
+   pixels past its 15rem and took the Undock button down with it. Same
+   trick as the inner readout below, one level up. */
+.outpost-detail,
+.loadout-detail {
+  flex: 0 0 auto;
+  min-height: 0;
+}
 /* Shorter than the Outpost's box — a loadout's readout is a blurb and a
    stat line, never a footprint diagram, so it doesn't need the room a
    Mortar's does. */

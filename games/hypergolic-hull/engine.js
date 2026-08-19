@@ -866,7 +866,16 @@
         items: [
           { id: "beamLance", x: 1, y: 0 },
           { id: "sublightDrive", x: 0, y: 1 },
+          // TWO reactors, and that's the whole difference between an
+          // archer and a thing that stands still. The Lance costs 2 and
+          // one reactor pays +1 a round, so on a single generator it fired
+          // every OTHER turn — and since it was already parked on its
+          // ideal hex, the off turn had nowhere better to be, so it simply
+          // sat there. Measured: 44% shooting, 39% motionless, 17% moving.
+          // On two it can pay every round, which means it is always either
+          // shooting or repositioning, never idle: 31% / 0% / 69%.
           { id: "microReactor", x: 2, y: 1 },
+          { id: "microReactor", x: 1, y: 3 },
           { id: "chargeBank", x: 2, y: 2 },
         ],
       },
@@ -2297,10 +2306,22 @@
       const pick = affordable.slice().sort((a, b) => a.energyCost - b.energyCost || b.damage - a.damage)[0];
       return { enemyId: enemy.id, type: "attack", weaponKey: pick.id };
     }
-    // Already in reach but the reactor can't pay yet: HOLD, don't shuffle
-    // sideways — a chaser that spent the turn orbiting the flagship reads
-    // as random. It stays put and lets the reactor climb.
-    if (bearing.length) return { enemyId: enemy.id, type: "wait" };
+    // In reach, but the reactor can't pay for the shot yet. An emplacement
+    // has no choice — it sits there and lets the bus climb (the charge
+    // pips under it say so). Anything with an ENGINE moves.
+    //
+    // This is Hoplite's rule, and it is the whole rule: a demon that can
+    // attack, attacks; a demon that can't, MOVES. Nothing in Hoplite ever
+    // spends a turn doing nothing, which is why its board always reads as
+    // a board full of things hunting you. Ours used to hold station and
+    // let the reactor climb — the Scout stood motionless 39% of its turns
+    // and the Carrier 54%, which from the other side of the board looks
+    // like a gun that's broken rather than one that's reloading.
+    //
+    // So this branch no longer exists for anything that can fly; a
+    // hostile with a drive and no shot this round falls straight through
+    // to the chase below, exactly like one that never had a shot.
+    if (bearing.length && !ship.hasDrive) return { enemyId: enemy.id, type: "wait" };
     // No drive fitted, no flying — the same rule that grounds the
     // flagship with its engines pulled (see applySublight). That, and
     // nothing else, is what makes a Sentry an emplacement.
@@ -2342,18 +2363,32 @@
       // distance to the player. Closing on a long gun is the counter, so
       // closing has to be possible.
       const standoff = hexDistance(enemy, state.playerPos);
+      // Somewhere its gun ACTUALLY BEARS outranks the no-retreat rule, and
+      // only that. Without this a minimum-range gun walks itself out of
+      // its own band and can never get back: the Scout closes to contact,
+      // where a Beam Lance has no shot at all, and then can't step back
+      // out to two because stepping back is retreating — so it circles you
+      // forever, harmless. Measured, it fired on 8% of its turns.
+      //
+      // This can't become the kiting that made sectors unwinnable before,
+      // because a hostile that CAN shoot never reaches this code at all —
+      // it shot. Giving ground is available only to something that has no
+      // shot from where it stands, which makes it un-jamming a gun rather
+      // than keeping its distance. (And the Scout carries two reactors now
+      // precisely so "bearing but broke" isn't a state it can be in.)
+      const solutionKeys = new Set(firingPositions(state, enemy).map(hexKey));
+      const bears = candidates.filter((c) => solutionKeys.has(hexKey(c.to)));
       const closers = candidates.filter((c) => c.dist <= standoff);
-      const pool = closers.length ? closers : candidates;
+      const pool = bears.length ? bears : closers.length ? closers : candidates;
       const solutions = (enemy.idleRounds || 0) >= PATIENCE ? [] : firingPositions(state, enemy);
       if (solutions.length) {
         const nearestSolution = (h) =>
           solutions.reduce((best, s) => Math.min(best, hexDistance(h, s)), Infinity);
         pool.sort((a, b) => nearestSolution(a.to) - nearestSolution(b.to) || a.dist - b.dist || a.dir - b.dir);
-        // Already as close to a shooting spot as any step would take it:
-        // hold, rather than shuffling sideways forever.
-        if (nearestSolution(enemy) <= nearestSolution(pool[0].to)) {
-          return { enemyId: enemy.id, type: "wait" };
-        }
+        // There used to be a hold here: if no step got it any closer to a
+        // shooting spot than it already was, it stayed put rather than
+        // shuffling sideways. That is the same "do nothing" turn as the
+        // recharge hold above, and it reads the same way. It moves.
       } else {
         pool.sort((a, b) => a.dist - b.dist || a.dir - b.dir);
       }

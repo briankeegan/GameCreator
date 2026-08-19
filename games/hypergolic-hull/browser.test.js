@@ -219,6 +219,18 @@ async function claimOutpostOffer(page, labelSubstring) {
 // changes that (Recharge, Raise Shields and firing all used to). Leaving
 // the hex arms it permanently, so the way to take a wormhole you spawned
 // on is to step off and fly back onto it.
+// Hunts down every living hostile in the current sector. Same bounded,
+// lookahead-free loop as the walks above — playTurnToward's default goal
+// is the first living enemy, and it fires the moment one is in reach.
+async function huntEverything(page) {
+  let s = await getState(page);
+  for (let i = 0; i < 80 && s.status === "playing" && s.enemies.some((e) => e.alive); i++) {
+    await playTurnToward(page, "enemy");
+    s = await getState(page);
+  }
+  return s;
+}
+
 async function walkToWormhole(page) {
   let s = await getState(page);
   const startLevel = s.levelId;
@@ -699,6 +711,18 @@ async function freshPage(browser, url, errors) {
   // Clubhouse feedback its position is randomized each time, not fixed)
 
   assert.ok(s.wormholePos, "a cleared sector leaves a wormhole back, once there's history to return to");
+
+  // Clear Sector 2 on purpose before leaving it. The regeneration test
+  // below is "the things we killed are still dead", so it needs kills to
+  // exist — and they used to happen by accident, because Sector 2's roster
+  // was two chasers that walked into the harness's guns unprompted. It
+  // ships an anchored Picket now, which sits exactly where it is: a walk
+  // to the dock and out again can legitimately never come within a hex of
+  // it, and the assertion started failing at random the moment that
+  // became possible. Hunting is explicit now, and asserted, so if it ever
+  // stops working this fails where the problem is.
+  s = await huntEverything(page);
+  assert.strictEqual(s.enemies.filter((e) => e.alive).length, 0, "Sector 2 is cleared before we leave it");
 
   s = await walkToWormhole(page);
   assert.strictEqual(s.levelId, 1, "flying onto the wormhole rewinds to the previous sector");
