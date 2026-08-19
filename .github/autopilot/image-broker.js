@@ -83,7 +83,15 @@ async function generate({ prompt, size, quality, transparent }) {
 // -trim + downscale to a web-friendly 512px sprite (same as the game-asset
 // action) so a set of assets doesn't bloat the PWA. Only for cut-out assets.
 function trimAndResize(file) {
-  execFileSync('convert', [file, '-trim', '+repage', '-resize', '512x512>', '-background', 'none', '-gravity', 'center', '-extent', '512x512', file]);
+  // ImageMagick 7 ships only `magick`; 6 ships `convert`. Runner images have
+  // varied on which is present, so pick whichever exists.
+  const args = [file, '-trim', '+repage', '-resize', '512x512>', '-background', 'none', '-gravity', 'center', '-extent', '512x512', file];
+  try {
+    execFileSync('convert', args);
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+    execFileSync('magick', args);
+  }
 }
 
 function reply(res, code, obj) {

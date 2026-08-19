@@ -112,6 +112,7 @@ jobs:
           node-version: '22'
 
       - name: Install Claude Code CLI
+        timeout-minutes: 8
         run: npm install -g @anthropic-ai/claude-code
 
       # Normalize the two trigger shapes (manual dispatch vs. real comment) into
@@ -317,12 +318,29 @@ jobs:
       # cut-out assets and isn't preinstalled on ubuntu-latest.
       - name: Start image broker (holds OpenAI key; model never sees it)
         if: steps.ctx.outputs.enabled == 'true'
+        # BOUND THIS STEP. `apt-get` here wedged on a stalled mirror once and
+        # produced NO output for 55 minutes, until the job-level timeout fired.
+        # A job timeout is a *cancellation*, so "Retry or report failure"
+        # (if: failure()) never ran: the thread just went silent and the message
+        # was never handled. Any step that can hang needs its own timeout so it
+        # fails instead, and the retry/report path actually fires.
+        timeout-minutes: 6
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           MAX_GENERATIONS: '6'
         run: |
           set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
+          # ImageMagick may already be on the runner image; only install if it
+          # isn't, and never let apt block indefinitely (see above).
+          if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
+            for i in 1 2; do
+              if sudo timeout 120 apt-get update -qq && sudo timeout 180 apt-get install -y -qq imagemagick; then break; fi
+              echo "::warning::imagemagick install attempt $i failed or stalled — retrying"
+              sleep 10
+            done
+          fi
+          command -v magick >/dev/null 2>&1 || command -v convert >/dev/null 2>&1 || {
+            echo "::error::ImageMagick unavailable — cannot post-process generated art"; exit 1; }
           nohup node .github/autopilot/image-broker.js > .autopilot/broker.log 2>&1 &
           # Wait until it's listening (or fail loudly) before starting the model.
           for i in $(seq 1 20); do
@@ -380,6 +398,9 @@ jobs:
       # game. Runtime-only: doc/workflow-only changes skip it entirely.
       - name: Smoke-test changed games before shipping
         if: success() && steps.ctx.outputs.enabled == 'true'
+        # Downloads playwright + chromium — bounded so a slow/stalled fetch
+        # fails into the retry path instead of eating the job timeout.
+        timeout-minutes: 15
         run: |
           set -uo pipefail
           changed=$(git diff --name-only -- games shared games.json index.html app.js style.css || true)
@@ -409,6 +430,7 @@ jobs:
       # any stray files never get committed.
       - name: Land changes on main and deploy
         if: success() && steps.ctx.outputs.enabled == 'true'
+        timeout-minutes: 10
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
