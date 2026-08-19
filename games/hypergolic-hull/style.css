@@ -280,6 +280,16 @@ body {
   font-size: 0.8rem;
   color: #cfe2ff;
 }
+/* Replaces the confirm button once a loadout is already owned — the chip
+   tap itself is what selects it now, so there's nothing left to confirm. */
+.loadout-detail .loadout-status {
+  margin: 0.55rem 0 0;
+  padding: 0.5rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #9fb4d1;
+  flex: 0 0 auto;
+}
 /* The hull itself, not just its numbers — "need different looking ships
    and previews of those ships" (Clubhouse). Floats beside the stats/blurb
    text, same layout trick as the Outpost's weapon-footprint figure. */

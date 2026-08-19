@@ -3550,9 +3550,22 @@ function updateLoadoutPicker() {
     btn.textContent = active ? `${loadout.label} ✓` : loadout.label;
     btn.classList.toggle("selected", previewedLoadout === id);
     btn.addEventListener("click", () => {
+      // Owned loadouts are free to switch between — one tap arms it for
+      // the next run, same as tapping a chip anywhere else in this UI
+      // reads as "picking" it. A separate confirm on top of that read as
+      // the tap not doing anything ("does not seem to actually select
+      // what I chose"). A LOCKED one still only previews here — the
+      // confirm step stays for that, because it's the one action that
+      // actually spends Requisition.
+      if (owned) {
+        selectedLoadout = id;
+        previewedLoadout = id;
+        persistUnlocks();
+        updateLoadoutPicker();
+        return;
+      }
       previewedLoadout = previewedLoadout === id ? null : id;
       updateLoadoutPicker();
-      updateLoadoutDetail();
     });
     loadoutPickerEl.appendChild(btn);
   }
@@ -3603,29 +3616,30 @@ function updateLoadoutDetail() {
   body.appendChild(blurb);
   loadoutDetailEl.appendChild(body);
 
-  const confirm = document.createElement("button");
-  confirm.className = "loadout-confirm";
-  if (active) {
-    confirm.textContent = "This is flying next";
-    confirm.disabled = true;
-  } else if (owned) {
-    confirm.textContent = "Select for next run";
-    confirm.disabled = false;
+  if (owned) {
+    // The chip tap already armed it (see updateLoadoutPicker) — nothing
+    // left to confirm here, just say so.
+    const status = document.createElement("p");
+    status.className = "loadout-status";
+    status.textContent = active ? "This is flying next." : "Tap the chip to fly this one next.";
+    loadoutDetailEl.appendChild(status);
   } else {
+    // Locked is the one case that actually spends something, so it keeps
+    // a deliberate second tap.
+    const confirm = document.createElement("button");
+    confirm.className = "loadout-confirm";
     const short = Math.max(0, preview.cost - requisition);
     confirm.textContent = short > 0 ? `Unlock — ${preview.cost} req. (${short} short)` : `Unlock — ${preview.cost} req.`;
     confirm.disabled = short > 0;
-  }
-  confirm.addEventListener("click", () => {
-    if (!owned) {
+    confirm.addEventListener("click", () => {
       requisition -= preview.cost;
       unlockedLoadouts.add(previewedLoadout);
-    }
-    selectedLoadout = previewedLoadout;
-    persistUnlocks();
-    updateLoadoutPicker();
-  });
-  loadoutDetailEl.appendChild(confirm);
+      selectedLoadout = previewedLoadout;
+      persistUnlocks();
+      updateLoadoutPicker();
+    });
+    loadoutDetailEl.appendChild(confirm);
+  }
 }
 
 // Rebuilds the outpost shop's offer buttons from Engine.outpostOffers every
