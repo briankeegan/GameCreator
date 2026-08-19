@@ -24,6 +24,7 @@ window.NEWSEY_STORY = (function () {
     news:    { name: "News Anchor",  color: "#8a8f98" },
     devil:   { name: "???",          color: "#e84393" },
     tv:      { name: "Old TV",       color: "#5a4a7a" },
+    portal:  { name: "The Portal",   color: "#00cec9" },
     may:     { name: "May 2000",     color: "#e84393" },
     kat:     { name: "Kat",          color: "#27ae60" },
     john:    { name: "John Boxley",  color: "#6c5ce7" },
@@ -165,14 +166,58 @@ window.NEWSEY_STORY = (function () {
       // Hand-placed from bg-lounge.png: the doorway to the library is on
       // the right wall; the bar counter spans most of the back wall and
       // is blocked off so the player can't walk through/behind it.
-      exits: [ { x: 246, y: 95, w: 20, h: 45, to: "library", label: "→ Library" } ],
+      exits: [ { x: 262, y: 95, w: 20, h: 45, to: "library", label: "→ Library" } ],
       obstacles: [ { x: 30, y: 55, w: 190, h: 38 } ],
       npcs: [
         {
+          // Flavor only here — per the plot, the Lounge is "the bar + portals
+          // to duels", not the duel itself. Kat's actual fight happens in
+          // ROOMS.arena, reached through the portal below.
           id: "kat", x: 150, y: 162, art: "kat", sprite: "kat_top",
           lines: [
             "Hello there. They call me Kat. What's your name?",
             "I'll buy you a drink — if you duel me. No better way to learn!",
+            "Head to the portal when you're ready — I'll be waiting on the other side."
+          ]
+        },
+        {
+          id: "may", x: 220, y: 158, art: "may", sprite: "may_top",
+          lines: [
+            "You again? Stay out of my way.",
+            "Something doesn't add up about the new arrivals lately. Watch yourself.",
+            "…Fine. If you want to know what a champion plays like, meet me through the portal."
+          ]
+        },
+        {
+          id: "timothy", x: 258, y: 168, art: "timothy", sprite: "timothy_top",
+          lines: [
+            "Now, now — that's no way to welcome the new people.",
+            "My bracelet's all diamond. Yours will get there too, given time."
+          ]
+        },
+        {
+          // The plot: "the Lounge (bar + portals to duels)" — this is that
+          // portal. No art generated yet, renders as a fallback token.
+          id: "portal", x: 60, y: 100, art: null, sprite: null,
+          lines: [
+            "A shimmering doorway, humming with the same pink-and-red glow as a panel board.",
+            "You step through."
+          ],
+          gotoRoom: "arena"
+        }
+      ]
+    },
+    arena: {
+      bg: "arena",
+      label: "The Arena",
+      playerStart: { x: 150, y: 165 },
+      exits: [ { x: 262, y: 95, w: 20, h: 45, to: "lounge", label: "→ Back through the portal" } ],
+      npcs: [
+        {
+          id: "kat", x: 100, y: 155, art: "kat", sprite: "kat_top",
+          counterKey: "kat_arena", // separate dialogue progress from lounge-Kat
+          lines: [
+            "There you are. Ready?",
             "Chains, dear. Clear one thing so another thing falls into place. That's the whole game."
           ],
           // The plot's first real duel: chains matter, garbage arrives as slabs.
@@ -186,15 +231,14 @@ window.NEWSEY_STORY = (function () {
             ],
             afterLoss: [
               "Don't sulk. Watch what I did: I never cleared just one thing at a time.",
-              "Again, whenever you like. The bar isn't going anywhere."
+              "Again, whenever you like."
             ]
           }
         },
         {
           id: "may", x: 220, y: 158, art: "may", sprite: "may_top",
+          counterKey: "may_arena",
           lines: [
-            "You again? Stay out of my way.",
-            "Something doesn't add up about the new arrivals lately. Watch yourself.",
             "…Fine. If you want to know what a champion plays like, put your hands on the panels."
           ],
           // The champion. Her board runs cursed red and she does not miss much.
@@ -211,13 +255,6 @@ window.NEWSEY_STORY = (function () {
               "Go practice. I'll still be here."
             ]
           }
-        },
-        {
-          id: "timothy", x: 258, y: 168, art: "timothy", sprite: "timothy_top",
-          lines: [
-            "Now, now — that's no way to welcome the new people.",
-            "My bracelet's all diamond. Yours will get there too, given time."
-          ]
         }
       ]
     },
@@ -229,7 +266,7 @@ window.NEWSEY_STORY = (function () {
       // lounge is actually on the right side of the room, not the left
       // (the previous x:0 placement didn't match the art at all — the
       // bookshelves occupy the whole left wall and are blocked off).
-      exits: [ { x: 234, y: 95, w: 20, h: 45, to: "lounge", label: "→ Lounge" } ],
+      exits: [ { x: 262, y: 95, w: 20, h: 45, to: "lounge", label: "→ Lounge" } ],
       obstacles: [ { x: 0, y: 55, w: 170, h: 70 } ],
       npcs: [
         {

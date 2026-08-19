@@ -345,6 +345,7 @@
       if (wasTalking.npc.cutscene) {
         startCutscene(STORY[wasTalking.npc.cutscene], function () { enterRoom("bedroom"); });
       }
+      if (wasTalking.npc.gotoRoom) enterRoom(wasTalking.npc.gotoRoom);
       return;
     }
     npcLineCounters[key] = talking.lineIndex;
