@@ -2861,4 +2861,154 @@ assert.deepStrictEqual(
   "the same level id always places the wormhole at the same spot (reproducible)"
 );
 
+// ---- Demolition charges: the one weapon that threatens GROUND ----------
+// Everything else in the roster says "don't be standing here when I fire".
+// A charge says "this ground is going away" — it does no damage at all the
+// round it's used, and two rounds later it takes the hex it landed on and
+// all six around it, whoever is in them.
+{
+  const bombLevel = {
+    id: 970,
+    name: "charge fixture",
+    board: { type: "rect", cols: 9, rows: 11 },
+    playerStart: { q: 4, r: 6 },
+    exit: { q: 8, r: -4 },
+    outpost: null,
+    enemies: [{ type: "demolitionist", q: 4, r: 4 }],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+  };
+
+  const charge = Engine.WEAPONS.demolitionCharge;
+  assert.ok(charge.places, "a charge is PLACED, not fired at somebody");
+  assert.strictEqual(charge.blast, 1, "and what it takes is a full ring around where it lands");
+
+  // The blast is seven hexes: the one it sits on, and the six touching it.
+  const blastState = Engine.createGameState(bombLevel);
+  const blast = Engine.chargeBlastHexes(blastState, { q: 4, r: 4, blast: 1 });
+  assert.strictEqual(blast.length, 7, "seven hexes — its own and the six around it");
+  assert.ok(
+    blast.every((h) => Engine.hexDistance({ q: 4, r: 4 }, h) <= 1),
+    "and nothing further out than one"
+  );
+
+  // THE FUSE HAS TO OUTLAST THE RADIUS. A charge is thrown during the enemy
+  // phase and its fuse ticks at the end of that same phase, so a flat
+  // two-round fuse left exactly ONE move to clear a blast that reaches one
+  // hex in every direction — which is impossible, because one step from the
+  // centre is still inside it. Being caught by a bomb has to be a decision.
+  {
+    let st = Engine.createGameState(bombLevel);
+    st.enemies[0].energy = charge.energyCost;
+    st.playerPos = { q: 4, r: 4 }; // standing two off the thrower, inside its throw ring
+    st.enemies[0].q = 4;
+    st.enemies[0].r = 2;
+    st.energy = 0; // so Recharge is a legal way to spend the turn
+    Engine.applyRecharge(st); // burn a turn so the enemy phase runs
+    assert.ok(Engine.chargedHexes(st).size > 0, "the Demolitionist threw one, and the board can see where it will go off");
+    assert.ok(
+      Engine.chargedHexes(st).has(Engine.hexKey(st.playerPos)),
+      "it threw it AT us — this fixture is worthless if we aren't standing in the blast"
+    );
+    const start = { q: st.playerPos.q, r: st.playerPos.r };
+    let moves = 0;
+    while (Engine.chargedHexes(st).has(Engine.hexKey(st.playerPos)) && st.status === "playing" && moves < 6) {
+      const away = Engine.legalSublightTargets(st).reduce(
+        (best, h) => (!best || Engine.hexDistance(h, start) > Engine.hexDistance(best, start) ? h : best),
+        null
+      );
+      Engine.applySublight(st, away);
+      moves += 1;
+    }
+    assert.ok(moves <= 2, `two moves is enough to walk out of a blast (took ${moves})`);
+    assert.strictEqual(st.status, "playing", "and walking out of it means you are not in it when it goes");
+  }
+
+  // It kills its own side just as happily — which is exactly why the class
+  // that carries one refuses to throw it near a friend (below).
+  {
+    const st = Engine.createGameState(bombLevel);
+    st.enemies.push({ ...st.enemies[0], id: "e9", q: 4, r: 5, alive: true, hp: 1, maxHp: 1, energy: 0, shieldCharges: 0 });
+    const bystander = st.enemies[st.enemies.length - 1];
+    st.charges = [{ id: "c1", q: 4, r: 5, damage: 1, blast: 1, fuse: 1, ownerId: st.enemies[0].id }];
+    st.energy = 0;
+    Engine.applyRecharge(st);
+    assert.strictEqual(bystander.alive, false, "a charge does not care whose side is standing in it");
+  }
+}
+
+// ---- Inhibitions: Hoplite's real lesson ---------------------------------
+// Every demon in Hoplite has a hole AND a rule its own side can trigger, so
+// crowds make its enemies WEAKER and positioning is about jamming them
+// against each other. We had exactly one of these, buried in the weapons
+// (a spread gun holds fire rather than catching a friend). These are the
+// per-class ones.
+{
+  const inhLevel = {
+    id: 971,
+    name: "inhibition fixture",
+    board: { type: "rect", cols: 9, rows: 11 },
+    playerStart: { q: 4, r: 8 },
+    exit: { q: 8, r: -4 },
+    outpost: null,
+    enemies: [{ type: "demolitionist", q: 4, r: 5 }],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+  };
+
+  // blastSafe — the Demolitionist will not throw one that would take a
+  // friend with it. Stand next to another hostile and the bomb never comes,
+  // which makes a crowd the one place a bomber can't reach you.
+  {
+    const alone = Engine.createGameState(inhLevel);
+    alone.enemies[0].energy = Engine.WEAPONS.demolitionCharge.energyCost;
+    alone.enemies[0].q = alone.playerPos.q;
+    alone.enemies[0].r = alone.playerPos.r - 2;
+    alone.energy = 0;
+    Engine.applyRecharge(alone);
+    assert.ok(Engine.chargedHexes(alone).size > 0, "on its own it throws");
+
+    const crowded = Engine.createGameState(inhLevel);
+    crowded.enemies[0].energy = Engine.WEAPONS.demolitionCharge.energyCost;
+    crowded.enemies[0].q = crowded.playerPos.q;
+    crowded.enemies[0].r = crowded.playerPos.r - 2;
+    crowded.enemies.push({
+      ...crowded.enemies[0], id: "e9", type: "interceptor",
+      q: crowded.playerPos.q, r: crowded.playerPos.r - 1, energy: 0,
+    });
+    crowded.energy = 0;
+    Engine.applyRecharge(crowded);
+    assert.strictEqual(
+      Engine.chargedHexes(crowded).size,
+      0,
+      "with one of its own beside the target it holds the charge — a crowd switches a bomber off"
+    );
+  }
+
+  // loner — the Railgun Destroyer won't fire at all while another hostile
+  // is close to IT. The counter is to bring its own side to it, which is
+  // the opposite of what every other threat on the board teaches.
+  {
+    const solo = Engine.createGameState({ ...inhLevel, enemies: [{ type: "railgun", q: 4, r: 0 }] });
+    solo.enemies[0].energy = Engine.WEAPONS.railgun.energyCost;
+    solo.playerPos = { q: 4, r: 4 }; // straight down its lane
+    assert.ok(
+      Engine.computeThreatHexes(solo).has(Engine.hexKey(solo.playerPos)),
+      "alone, its lane is live"
+    );
+
+    const escorted = Engine.createGameState({
+      ...inhLevel,
+      enemies: [{ type: "railgun", q: 4, r: 0 }, { type: "interceptor", q: 4, r: 1 }],
+    });
+    escorted.enemies[0].energy = Engine.WEAPONS.railgun.energyCost;
+    escorted.playerPos = { q: 4, r: 4 };
+    assert.strictEqual(
+      Engine.computeThreatHexes(escorted).has(Engine.hexKey(escorted.playerPos)),
+      false,
+      "with a wingman inside three of it, the lane goes quiet — and the overlay says so"
+    );
+  }
+}
+
 console.log("All golden-path assertions passed.");

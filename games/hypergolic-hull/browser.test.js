@@ -1227,6 +1227,32 @@ async function freshPage(browser, url, errors) {
     }
   }
 
+  // Every WEAPON has art too, for the same reason and with the same
+  // failure mode: the Hold paints a tile from icons/weapon-<key>.png with
+  // no fallback, so a gun whose art was never generated is an empty box in
+  // your own ship. Derived from the registry, so adding a weapon and
+  // forgetting the asset fails here rather than in someone's hold.
+  {
+    const guns = await page.evaluate(async () => {
+      const keys = Object.keys(window.HypergolicEngine.WEAPONS);
+      const out = [];
+      for (const key of keys) {
+        const img = new Image();
+        img.src = `icons/weapon-${key}.png`;
+        out.push(
+          await new Promise((done) => {
+            img.onload = () => done({ key, ok: img.naturalWidth > 0 });
+            img.onerror = () => done({ key, ok: false });
+          })
+        );
+      }
+      return out;
+    });
+    for (const gun of guns) {
+      assert.ok(gun.ok, `${gun.key} has its own art at icons/weapon-${gun.key}.png`);
+    }
+  }
+
   // Every hostile class has a hull of its own. This used to be an if-chain
   // with three branches and a fallback, so the Mortar Platform and the
   // Lancer both rendered as Interceptors — byte for byte — while finished
