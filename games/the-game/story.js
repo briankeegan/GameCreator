@@ -129,7 +129,7 @@ window.NEWSEY_STORY = (function () {
       // Hand-placed from bg-bedroom.png: the door is on the right wall,
       // the mirror stands on the left and the bed is back-center-right —
       // both are blocked off so the player can't walk through them.
-      exits: [ { x: 275, y: 120, w: 20, h: 55, to: "lounge", label: "→ Out the door" } ],
+      exits: [ { x: 262, y: 95, w: 20, h: 45, to: "lounge", label: "→ Out the door" } ],
       obstacles: [ { x: 15, y: 60, w: 55, h: 75 }, { x: 150, y: 65, w: 85, h: 45 } ],
       npcs: [
         {
@@ -165,7 +165,7 @@ window.NEWSEY_STORY = (function () {
       // Hand-placed from bg-lounge.png: the doorway to the library is on
       // the right wall; the bar counter spans most of the back wall and
       // is blocked off so the player can't walk through/behind it.
-      exits: [ { x: 270, y: 120, w: 20, h: 55, to: "library", label: "→ Library" } ],
+      exits: [ { x: 246, y: 95, w: 20, h: 45, to: "library", label: "→ Library" } ],
       obstacles: [ { x: 30, y: 55, w: 190, h: 38 } ],
       npcs: [
         {
@@ -229,7 +229,7 @@ window.NEWSEY_STORY = (function () {
       // lounge is actually on the right side of the room, not the left
       // (the previous x:0 placement didn't match the art at all — the
       // bookshelves occupy the whole left wall and are blocked off).
-      exits: [ { x: 225, y: 120, w: 20, h: 55, to: "lounge", label: "→ Lounge" } ],
+      exits: [ { x: 234, y: 95, w: 20, h: 45, to: "lounge", label: "→ Lounge" } ],
       obstacles: [ { x: 0, y: 55, w: 170, h: 70 } ],
       npcs: [
         {

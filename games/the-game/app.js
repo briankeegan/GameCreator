@@ -7,6 +7,50 @@
 // zero generated art.
 (function () {
   var gameId = "the-game";
+
+  // ---------- stage sizing (mobile) ----------
+  // CSS alone couldn't do "grow to fill available height without ever
+  // losing the canvas's 640:400 proportions": combining aspect-ratio with
+  // flex-grow in a column, Chromium resolved width to the full cross-axis
+  // FIRST and only then grew height, ignoring the ratio entirely (visible
+  // stretching, confirmed via computed styles showing aspect-ratio set
+  // correctly but width/height not respecting it). Computing the box in
+  // JS is the reliable way to get this right.
+  var sizeStage = (function initStageSizing() {
+    var stageEl = document.getElementById("stage");
+    var gameArea = document.getElementById("gameArea");
+    function run() {
+      if (window.innerWidth > 480) {
+        stageEl.classList.remove("js-sized");
+        stageEl.style.removeProperty("--stage-w");
+        stageEl.style.removeProperty("--stage-h");
+        return;
+      }
+      var siblings = Array.prototype.filter.call(gameArea.children, function (el) { return el !== stageEl; });
+      var usedHeight = siblings.reduce(function (sum, el) {
+        var cs = getComputedStyle(el);
+        return cs.display === "none" ? sum : sum + el.getBoundingClientRect().height;
+      }, 0);
+      var gaStyles = getComputedStyle(gameArea);
+      var gap = parseFloat(gaStyles.rowGap || gaStyles.gap || "0") * siblings.length;
+      var paddingV = parseFloat(gaStyles.paddingTop) + parseFloat(gaStyles.paddingBottom);
+      var paddingH = parseFloat(gaStyles.paddingLeft) + parseFloat(gaStyles.paddingRight);
+      var availH = Math.max(0, gameArea.clientHeight - usedHeight - gap - paddingV);
+      var availW = Math.max(0, gameArea.clientWidth - paddingH);
+      var ratio = 640 / 400;
+      var w = availW, h = w / ratio;
+      if (h > availH) { h = availH; w = h * ratio; }
+      stageEl.style.setProperty("--stage-w", w + "px");
+      stageEl.style.setProperty("--stage-h", h + "px");
+      stageEl.classList.add("js-sized");
+    }
+    window.addEventListener("resize", run);
+    window.addEventListener("orientationchange", run);
+    run();
+    return run; // exposed so code that toggles a sibling's visibility (the
+                // cutscene hiding touch-controls, etc) can ask for a resize
+  })();
+
   var STORY = window.NEWSEY_STORY;
   var CHARACTERS = STORY.CHARACTERS;
   var ROOMS = STORY.ROOMS;
@@ -157,6 +201,7 @@
   function endCutscene() {
     cutsceneEl.classList.add("hidden");
     if (isTouch) document.getElementById("touchControls").hidden = false;
+    sizeStage();
     var cb = cutsceneDoneCallback;
     cutsceneDoneCallback = null;
     if (cb) cb();
@@ -172,6 +217,7 @@
     portraitFallback.hidden = true;
     cutsceneEl.classList.remove("hidden");
     if (isTouch) document.getElementById("touchControls").hidden = true;
+    sizeStage();
     renderCutsceneLine();
   }
   cutsceneEl.addEventListener("click", advanceCutscene);
@@ -199,6 +245,7 @@
 
   var currentRoom = null;
   var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down" };
+  var walkPhase = 0, isWalking = false; // drives the procedural walk-bob (see drawPlayer)
   var keys = {};
   var talking = null; // { npc, lineIndex }
   var lastTime = null;
@@ -224,7 +271,7 @@
   window.addEventListener("keyup", function (e) { keys[e.key] = false; });
 
   var isTouch = matchMedia("(hover: none) and (pointer: coarse)").matches;
-  if (isTouch) document.getElementById("touchControls").hidden = false;
+  if (isTouch) { document.getElementById("touchControls").hidden = false; sizeStage(); }
   var touchDir = null;
   document.querySelectorAll("#dpad button").forEach(function (btn) {
     var dir = btn.dataset.dir;
@@ -380,6 +427,10 @@
       if (!blockedByObstacle(currentRoom, tryX.x, player.y)) player.x = tryX.x;
       var tryY = clampToFloor(currentRoom, player.x, player.y + dy * player.speed * dt);
       if (!blockedByObstacle(currentRoom, player.x, tryY.y)) player.y = tryY.y;
+      isWalking = true;
+      walkPhase += dt * 9; // bob speed; unrelated to player.speed so it stays readable
+    } else {
+      isWalking = false;
     }
     // exits
     currentRoom.exits.forEach(function (ex) {
@@ -432,7 +483,6 @@
     var c = CHARACTERS[npc.id] || { name: npc.id, color: "#8a5cf6" };
     var spriteEntry = npc.sprite ? loadArt(npc.sprite) : null;
     var hasSprite = spriteEntry && spriteEntry.ok && spriteEntry.img.naturalHeight;
-    var headTop;
 
     ctx.fillStyle = "rgba(0,0,0,0.4)";
     ctx.beginPath(); ctx.ellipse(npc.x, npc.y + 3, 11, 3.4, 0, 0, Math.PI * 2); ctx.fill();
@@ -441,7 +491,6 @@
       var img = spriteEntry.img;
       var size = spriteDrawSize(img, 30), w = size.w, h = size.h;
       ctx.drawImage(img, npc.x - w / 2, npc.y - h, w, h);
-      headTop = npc.y - h;
     } else {
       var entry = loadArt(npc.art);
       var r = 11;
@@ -461,13 +510,8 @@
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = "rgba(255,255,255,0.85)";
       ctx.beginPath(); ctx.arc(npc.x, npc.y - r, r, 0, Math.PI * 2); ctx.stroke();
-      headTop = npc.y - r * 2;
     }
 
-    ctx.fillStyle = "#fff";
-    ctx.font = "7px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(c.name, npc.x, headTop - 4);
     // proximity glow, hugging the ground shadow so it reads as a floor ring
     var d = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h / 2));
     if (d < 26) {
@@ -498,13 +542,18 @@
       var size = spriteDrawSize(img, 30), w = size.w, h = size.h;
       var cx = player.x + player.w / 2, feetY = player.y + player.h;
       var mirror = player.facing === "right" || (player.facing === "left" && wantId === "nella_top");
+      // No real walk-cycle animation frames exist — a small vertical bob
+      // while moving is a cheap, code-only stand-in that still reads as
+      // "walking" instead of a sprite sliding perfectly still across the
+      // floor. abs() so it bobs up-down-up-down rather than up-then-snap.
+      var bob = isWalking ? Math.abs(Math.sin(walkPhase)) * 2 : 0;
       ctx.save();
       if (mirror) {
         ctx.translate(cx, 0);
         ctx.scale(-1, 1);
-        ctx.drawImage(img, -w / 2, feetY - h, w, h);
+        ctx.drawImage(img, -w / 2, feetY - h - bob, w, h);
       } else {
-        ctx.drawImage(img, cx - w / 2, feetY - h, w, h);
+        ctx.drawImage(img, cx - w / 2, feetY - h - bob, w, h);
       }
       ctx.restore();
       return;

@@ -31,15 +31,24 @@ html, body {
   background: #0d0618;
 }
 /* A fixed aspect-ratio left a big empty gap below the game on a tall phone
-   screen (touch controls + menu don't come close to filling the rest of
-   the viewport) — reported live as "this rooms are tiny". Below 480px let
-   the stage flex-grow to actually fill the remaining vertical space
-   instead of stopping at a fixed ratio; the canvas already stretches to
-   whatever box size it's given (#scene below), so this just means more of
-   the screen is spent on the room instead of blank background. */
-@media (max-width: 480px) {
-  .game-area { display: flex; flex-direction: column; }
-  .stage { aspect-ratio: auto; flex: 1 1 auto; min-height: 0; width: 100%; }
+   screen — reported live as "this rooms are tiny". Dropping aspect-ratio
+   entirely (attempt 1) let the stage flex-grow to fill that space, but
+   with no aspect-ratio constraint the box no longer matched the canvas's
+   native 640:400 shape, so everything drawn on it got non-uniformly
+   stretched — reported live as sprites "still stretched". Re-adding
+   aspect-ratio alongside flex-grow (attempt 2) turned out not to work:
+   Chromium resolved width to fill the cross-axis FIRST (as if
+   align-items were stretch, even though it's center) and only then grew
+   height, ignoring the ratio entirely — confirmed via computed styles
+   showing aspect-ratio correctly set to 640/400 but width/height not
+   matching it at all. Sizing is now computed and applied in JS instead
+   (see games/the-game/app.js sizeStage()), which is the reliable way to
+   get "as large as possible without ever losing proportions" on mobile.
+   This class only sets sane desktop/tablet defaults now. */
+.stage.js-sized {
+  width: var(--stage-w, 100%);
+  height: var(--stage-h, auto);
+  max-width: none;
 }
 
 #scene {
