@@ -41,6 +41,8 @@ window.NewseyDuel = (function () {
       canvas: el("duelCanvas"),
       quit: el("duelQuit"),
       raise: el("duelRaise"),
+      swap: el("duelSwap"),
+      dpad: document.querySelectorAll(".duel-dpad button"),
       result: el("duelResult"),
       resultTitle: el("duelResultTitle"),
       resultText: el("duelResultText"),
@@ -84,19 +86,25 @@ window.NewseyDuel = (function () {
       acc: 0,
       last: null,
       keys: {},
+      buttons: { left: false, right: false, up: false, down: false, swap: false, raise: false },
+      // A tap can start and end inside a single 60 Hz frame, which would make
+      // the press invisible to the engine. Anything pressed is latched here
+      // until at least one frame has read it.
+      latched: {},
+      keyLatch: {},
       pointer: null,
-      raiseHeld: false,
+      selection: null, // tap-to-select: the panel waiting for a partner
       effects: [],
       cards: [],
+      swapCount: 0,
       onEnd: opts.onEnd || function () {},
       layout: null
     };
 
     els.screen.hidden = false;
     els.result.hidden = true;
-    els.hint.textContent = isTouch()
-      ? "drag a panel sideways to swap · hold RAISE to push the stack up"
-      : "arrows move · Z swaps · shift raises";
+    els.hint.textContent = "tap two panels side by side to swap them, or drag one sideways"
+      + (isTouch() ? "" : " · arrows + Z work too");
     bindInput();
     resize();
     state.last = null;
@@ -122,6 +130,7 @@ window.NewseyDuel = (function () {
     handlers.keydown = function (e) {
       if (!state) return;
       state.keys[e.key] = true;
+      state.keyLatch[e.key] = true; // a very short tap must survive one frame
       if (e.key === "Escape") { quit(); return; }
       if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].indexOf(e.key) !== -1) e.preventDefault();
     };
@@ -132,28 +141,47 @@ window.NewseyDuel = (function () {
     var canvas = els.canvas;
     handlers.down = function (e) { pointerDown(e); };
     handlers.move = function (e) { pointerMove(e); };
-    handlers.up = function () { if (state) state.pointer = null; };
+    handlers.up = function (e) { pointerUp(e); };
     canvas.addEventListener("pointerdown", handlers.down);
     canvas.addEventListener("pointermove", handlers.move);
     window.addEventListener("pointerup", handlers.up);
-    window.addEventListener("pointercancel", handlers.up);
+    handlers.cancel = function () { if (state) state.pointer = null; };
+    window.addEventListener("pointercancel", handlers.cancel);
 
     handlers.resize = function () { resize(); };
     window.addEventListener("resize", handlers.resize);
 
     els.quit.onclick = quit;
     els.resultBtn.onclick = function () { finish(); };
-    // The raise button is a hold, not a tap.
-    els.raise.onpointerdown = function (e) { e.preventDefault(); if (state) state.raiseHeld = true; };
-    els.raise.onpointerup = function () { if (state) state.raiseHeld = false; };
-    els.raise.onpointerleave = function () { if (state) state.raiseHeld = false; };
+    // Every on-screen control is a HOLD, not a click: directions repeat through
+    // the engine's own key-repeat, raise keeps raising while held, and swap is
+    // edge-detected engine-side so holding it doesn't spam swaps.
+    holdButton(els.raise, "raise");
+    holdButton(els.swap, "swap");
+    for (var i = 0; i < els.dpad.length; i++) holdButton(els.dpad[i], els.dpad[i].dataset.dir);
+  }
+
+  // Binds one on-screen button to one input flag for as long as it is held.
+  function holdButton(button, flag) {
+    var set = function (e) {
+      e.preventDefault();
+      if (state) { state.buttons[flag] = true; state.latched[flag] = true; }
+      if (button.setPointerCapture && e.pointerId !== undefined) {
+        try { button.setPointerCapture(e.pointerId); } catch (err) { /* not fatal */ }
+      }
+    };
+    var clear = function () { if (state) state.buttons[flag] = false; };
+    button.onpointerdown = set;
+    button.onpointerup = clear;
+    button.onpointercancel = clear;
+    button.onpointerleave = clear;
   }
 
   function unbindInput() {
     window.removeEventListener("keydown", handlers.keydown);
     window.removeEventListener("keyup", handlers.keyup);
     window.removeEventListener("pointerup", handlers.up);
-    window.removeEventListener("pointercancel", handlers.up);
+    window.removeEventListener("pointercancel", handlers.cancel);
     window.removeEventListener("resize", handlers.resize);
     if (els) {
       els.canvas.removeEventListener("pointerdown", handlers.down);
@@ -162,7 +190,9 @@ window.NewseyDuel = (function () {
   }
 
   // Pointer -> board cell. Returns null when the pointer isn't over the
-  // player's board.
+  // player's board. The board slides upward as the stack rises, so the rise
+  // offset has to come out of the y before the row is worked out — without it
+  // taps near a row boundary land on the wrong panel.
   function cellAt(e) {
     var layout = state && state.layout;
     if (!layout) return null;
@@ -170,9 +200,9 @@ window.NewseyDuel = (function () {
     var x = e.clientX - rect.left;
     var y = e.clientY - rect.top;
     var b = layout.player;
+    var rise = ((16 - state.player.displacement) / 16) * layout.cell;
     var col = Math.floor((x - b.x) / layout.cell) + 1;
-    var rowFromTop = Math.floor((y - b.y) / layout.cell);
-    var row = E.HEIGHT - rowFromTop;
+    var row = Math.floor((b.y + layout.boardH - y - rise) / layout.cell) + 1;
     if (col < 1 || col > E.WIDTH || row < 1 || row > E.HEIGHT) return null;
     return { row: row, col: col };
   }
@@ -180,8 +210,8 @@ window.NewseyDuel = (function () {
   function pointerDown(e) {
     if (!state || state.over || state.countdown > 0) return;
     var cell = cellAt(e);
-    if (!cell) return;
-    state.pointer = cell;
+    if (!cell) { state.selection = null; return; }
+    state.pointer = { row: cell.row, col: cell.col, dragged: false };
     state.player.curRow = cell.row;
     state.player.curCol = Math.min(cell.col, E.WIDTH - 1);
     state.player.clampCursor();
@@ -196,22 +226,57 @@ window.NewseyDuel = (function () {
     while (cell.col > state.pointer.col) {
       if (!state.player.touchSwap(state.pointer.row, state.pointer.col)) break;
       state.pointer.col++;
+      state.pointer.dragged = true;
+      state.selection = null;
     }
     while (cell.col < state.pointer.col) {
       if (!state.player.touchSwap(state.pointer.row, state.pointer.col - 1)) break;
       state.pointer.col--;
+      state.pointer.dragged = true;
+      state.selection = null;
     }
   }
 
+  // A tap that never became a drag picks a panel; tapping the panel beside it
+  // swaps the two. Dragging is faster once you know it exists, but nobody
+  // discovers it on their own — tapping is what people try first.
+  function pointerUp(e) {
+    if (!state) return;
+    var pointer = state.pointer;
+    state.pointer = null;
+    if (!pointer || pointer.dragged || state.over || state.countdown > 0) return;
+    var cell = cellAt(e);
+    if (!cell) { state.selection = null; return; }
+
+    var selection = state.selection;
+    if (selection && selection.row === cell.row && Math.abs(selection.col - cell.col) === 1) {
+      state.player.touchSwap(cell.row, Math.min(selection.col, cell.col));
+      state.selection = null;
+    } else if (selection && selection.row === cell.row && selection.col === cell.col) {
+      state.selection = null; // tapping the same panel again lets it go
+    } else {
+      state.selection = { row: cell.row, col: cell.col };
+    }
+  }
+
+  // Keyboard and the on-screen buttons feed the same input — either can drive
+  // the whole game.
   function readKeyboard() {
-    var k = state.keys;
+    var b = state.buttons, latched = state.latched, keyLatch = state.keyLatch;
+    var keys = state.keys;
+    var k = {};
+    for (var name in keys) if (keys[name]) k[name] = true;
+    for (var pressed in keyLatch) k[pressed] = true;
+    function held(flag) { return b[flag] || latched[flag]; }
+    state.latched = {};   // every latched press survives exactly one frame
+    state.keyLatch = {};
     return {
-      left: !!(k.ArrowLeft || k.a || k.A),
-      right: !!(k.ArrowRight || k.d || k.D),
-      up: !!(k.ArrowUp || k.w || k.W),
-      down: !!(k.ArrowDown || k.s || k.S),
-      swap: !!(k.z || k.Z || k.x || k.X || k[" "] || k.Enter),
-      raise: !!(k.Shift || k.r || k.R || state.raiseHeld)
+      left: !!(k.ArrowLeft || k.a || k.A || held("left")),
+      right: !!(k.ArrowRight || k.d || k.D || held("right")),
+      up: !!(k.ArrowUp || k.w || k.W || held("up")),
+      down: !!(k.ArrowDown || k.s || k.S || held("down")),
+      swap: !!(k.z || k.Z || k.x || k.X || k[" "] || k.Enter || held("swap")),
+      raise: !!(k.Shift || k.r || k.R || held("raise"))
     };
   }
 
@@ -288,6 +353,14 @@ window.NewseyDuel = (function () {
         else if (ev.size > 3) addCard(isPlayer, ev.row, ev.col, ev.size + " combo", "#7ee6ff");
       } else if (ev.type === "pop") {
         addSparks(isPlayer, ev.row, ev.col, ev.garbage ? "#c9a7ff" : null);
+      } else if (ev.type === "swap" && isPlayer) {
+        state.swapCount++;
+      } else if (ev.type === "newRow" && isPlayer) {
+        // The whole board just moved up a row; anything the player has their
+        // finger on moved with it.
+        if (state.selection) state.selection.row++;
+        if (state.pointer) state.pointer.row++;
+        if (state.selection && state.selection.row > E.HEIGHT) state.selection = null;
       }
     }
   }
@@ -448,7 +521,10 @@ window.NewseyDuel = (function () {
     }
 
     drawEffects(isPlayer, x, y, cell, bottom, rise);
-    if (isPlayer && !stack.gameOver) drawCursor(stack, x, y, cell, bottom, rise);
+    if (isPlayer && !stack.gameOver) {
+      if (state.selection) drawSelection(state.selection, x, cell, bottom, rise);
+      drawCursor(stack, x, y, cell, bottom, rise);
+    }
   }
 
   function roundRect(ctx, x, y, w, h, r) {
@@ -598,6 +674,21 @@ window.NewseyDuel = (function () {
     ctx.restore();
   }
 
+  // The panel a tap has picked up, waiting for its partner.
+  function drawSelection(selection, x, cell, bottom, rise) {
+    var ctx = els.ctx;
+    var sx = x + (selection.col - 1) * cell;
+    var sy = bottom - selection.row * cell - rise;
+    ctx.save();
+    ctx.strokeStyle = "#ffd166";
+    ctx.lineWidth = Math.max(2, cell * 0.1);
+    ctx.setLineDash([cell * 0.25, cell * 0.18]);
+    ctx.lineDashOffset = -(state.player.clock % 60) * 0.5;
+    roundRect(ctx, sx + 1, sy + 1, cell - 2, cell - 2, cell * 0.2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawEffects(isPlayer, x, y, cell, bottom, rise) {
     var ctx = els.ctx;
     for (var i = 0; i < state.effects.length; i++) {
@@ -735,6 +826,15 @@ window.NewseyDuel = (function () {
         foeFill: state.foe.fillRatio(),
         playerScore: state.player.score,
         foeScore: state.foe.score,
+        playerSwaps: state.swapCount,
+        cursor: state.player.curRow + "," + state.player.curCol,
+        selection: state.selection && (state.selection.row + "," + state.selection.col),
+        pointer: state.pointer && (state.pointer.row + "," + state.pointer.col + (state.pointer.dragged ? ",dragged" : "")),
+        displacement: state.player.displacement,
+        board: state.layout && {
+          x: state.layout.player.x, y: state.layout.player.y,
+          cell: state.layout.cell, height: state.layout.boardH
+        },
         clock: state.player.clock,
         autoplay: function (difficulty) {
           state.autopilot = new window.PanelCpu.Cpu(state.player, {

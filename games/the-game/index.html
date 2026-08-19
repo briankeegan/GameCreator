@@ -62,9 +62,23 @@
       <div class="duel-screen" id="duelScreen" hidden>
         <canvas id="duelCanvas"></canvas>
         <div class="duel-bar">
-          <button class="duel-btn" id="duelQuit">✕ forfeit</button>
-          <div class="duel-hint" id="duelHint"></div>
-          <button class="duel-btn duel-raise" id="duelRaise">RAISE</button>
+          <div class="duel-topline">
+            <button class="duel-btn duel-small" id="duelQuit">✕ forfeit</button>
+            <div class="duel-hint" id="duelHint"></div>
+          </div>
+          <!-- On-screen controls: the same scheme as the original game — move a
+               two-wide cursor, press swap. Works with touch or mouse, and the
+               keyboard (arrows / Z / shift) does the same thing. -->
+          <div class="duel-controls">
+            <div class="dpad duel-dpad">
+              <button data-dir="up">▲</button>
+              <button data-dir="left">◀</button>
+              <button data-dir="right">▶</button>
+              <button data-dir="down">▼</button>
+            </div>
+            <button class="duel-btn duel-swap" id="duelSwap">SWAP</button>
+            <button class="duel-btn duel-raise" id="duelRaise">RAISE</button>
+          </div>
         </div>
         <div class="duel-result" id="duelResult" hidden>
           <div class="duel-card">
