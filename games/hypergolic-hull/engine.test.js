@@ -373,7 +373,7 @@ let weaponState = Engine.createGameState(weaponLevel);
 assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
 assert.deepStrictEqual(
   weaponState.systems,
-  { warpdrive: true, autocannon: true, flakBurst: false, arcBeam: false, mortar: false, flankTubes: false, railgun: false, missilePod: false, beamLance: false, siegeLance: false, demolitionCharge: false },
+  { warpdrive: true, autocannon: true, flakBurst: false, arcBeam: false, mortar: false, flankTubes: false, railgun: false, missilePod: false, beamLance: false, arcProjector: false, demolitionCharge: false },
   "arming derives from the Hold — only the installed Autocannon reads armed"
 );
 Engine.applySublight(weaponState, { q: 2, r: 2 }); // steps adjacent to the interceptor
@@ -595,30 +595,46 @@ assert.ok(
     Engine.hexDistance(facedState.enemies[0], facedState.playerPos),
   "from range, its nose still points at the hex that closes the gap"
 );
+// The contact gun covers all six hexes touching the hull, on both sides of
+// the board. It was a three-hex wedge off the nose, which gave every chaser
+// in the game a blind side you could stand in for free — and Hoplite's
+// footman, the thing this class IS, "can only attack adjacent tiles" with no
+// arc at all. Facing stops mattering at contact, which is also why Hoplite
+// has no facing.
 const aimedHexes = Engine.weaponHexes(interceptorPos, 0, interceptorWeapon);
-assert.strictEqual(aimedHexes.length, 3, "its Autocannon covers the same three-hex arc yours does");
+assert.strictEqual(aimedHexes.length, 6, "its Autocannon covers every hex touching it — no blind side");
+assert.ok(
+  aimedHexes.every((h) => Engine.hexDistance(interceptorPos, h) === 1),
+  "and nothing further out than contact"
+);
+assert.deepStrictEqual(
+  Engine.weaponHexes(interceptorPos, 0, interceptorWeapon).map(Engine.hexKey).sort(),
+  Engine.weaponHexes(interceptorPos, 3, interceptorWeapon).map(Engine.hexKey).sort(),
+  "facing makes no difference to it at all"
+);
 assert.ok(!aimedHexes.some((h) => Engine.posEq(h, interceptorPos)), "a weapon never threatens its own hex");
 assert.ok(
   aimedHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
   "and it has to be in contact to use it — reach is a thing you BUY"
 );
 
-// The Autocannon is a WEDGE off the nose, not a ring: three lanes, two
-// deep. Cheap, and the only gun that answers both distances at once — but
-// only where you're pointing, so it can never cover a pincer. Coverage
-// and indirect fire are what the paid hardware is sold on.
+// The Autocannon covers CONTACT, all the way round. It was a wedge off the
+// nose, which meant every chaser in the game had three hexes behind it you
+// could stand in for free — and the class carrying it is a footman, which
+// "can only attack adjacent tiles" with no arc anywhere in the rule. What
+// you buy past it is reach and coverage-at-range, not coverage at contact.
 const pulseCannon = Engine.WEAPONS.autocannon;
 const autocannonHexes = Engine.weaponHexes(interceptorPos, 0, pulseCannon);
-assert.strictEqual(autocannonHexes.length, 3, "the Autocannon covers three hexes — a contact arc, not a ring");
+assert.strictEqual(autocannonHexes.length, 6, "the Autocannon covers every hex touching the hull");
 assert.ok(
   autocannonHexes.every((h) => Engine.hexDistance(h, interceptorPos) === 1),
-  "every hex it reaches is exactly one out"
+  "every hex it reaches is exactly one out — and nothing further"
 );
-// Whatever is directly BEHIND you is untouchable with it — that's the hole.
-const behind = Engine.weaponHexes(interceptorPos, 3, pulseCannon);
-assert.ok(
-  !autocannonHexes.some((h) => behind.some((b) => Engine.posEq(h, b))),
-  "and the hexes behind the nose are not among them — turning to face is a real cost"
+// No blind side, and no cost to turning: facing is simply not part of it.
+assert.deepStrictEqual(
+  autocannonHexes.map(Engine.hexKey).sort(),
+  Engine.weaponHexes(interceptorPos, 3, pulseCannon).map(Engine.hexKey).sort(),
+  "there is no behind — the same six hexes whichever way it points"
 );
 // The Flak Burst is what you buy to cover the whole ring at once.
 assert.deepStrictEqual(
@@ -702,12 +718,15 @@ Engine.applySublight(sentryState, stepAt(2)); // into the beam
 assert.strictEqual(sentryState.hull, hullBeforeBeam - 1, "entering the Sentry's 2-hex ring takes a hit");
 assert.ok(sentryState.events.some((e) => e.type === "attack"), "the Sentry's shot emits an attack event");
 
-// ---- Railgun Destroyer: the original design doc's long-range emplacement,
-// built at last ("what about... basic enemy variety") — stationary like
-// the Sentry, but its shot reaches the length of the board along any of
-// the 6 axes instead of a short ring.
-assert.strictEqual(Engine.ENEMY_TYPES.railgun.maxHull, 1, "the Railgun is glass too — its reach is the threat, not its hull");
-assert.strictEqual(Engine.ENEMY_TYPES.railgun.ship.hasDrive, false, "the Railgun never chases either");
+// ---- Railgun Destroyer: the long gun, and it FLIES. It was bolted down
+// for no reason its own hull ever supported — engine bells, fins, and the
+// word "destroyer" in the name. What keeps it fair is the hardware: two big
+// banks on one small generator, so its slug is telegraphed by a bus you can
+// watch filling, and one action a round means it can reposition or fire,
+// never both.
+assert.strictEqual(Engine.ENEMY_TYPES.railgun.maxHull, 1, "the Railgun is glass — its reach is the threat, not its hull");
+assert.strictEqual(Engine.ENEMY_TYPES.railgun.ship.hasDrive, true, "and it moves, like the ship it is drawn as");
+assert.strictEqual(Engine.ENEMY_TYPES.railgun.startsEmpty, true, "arriving with an empty bus is the telegraph");
 assert.strictEqual(Engine.WEAPONS.railgun.range, 20, "the Railgun's shot is effectively board-spanning");
 
 const railgunLevel = {
@@ -1371,8 +1390,11 @@ for (const [name, def] of Object.entries(Engine.ENEMY_TYPES)) {
 // ---- the second wave: five classes, no new rules ------------------------
 // Every one of them is a different arrangement of the same crates, and the
 // engine reads their stats off the hold exactly as it reads yours.
-assert.strictEqual(Engine.ENEMY_TYPES.scout.maxHull, 1, "the Scout is the cheapest airframe in the sky");
-assert.strictEqual(Engine.ENEMY_TYPES.scout.ship.hasDrive, true, "and it chases");
+// The Scout is gone — it and the Picket carried near-identical guns, which
+// is why both read thin. One archer, and the Picket is it.
+assert.strictEqual(Engine.ENEMY_TYPES.scout, undefined, "there is one archer in the game, not two");
+assert.strictEqual(Engine.ENEMY_TYPES.picket.ship.hasDrive, true, "and it flies");
+assert.deepStrictEqual(Engine.ENEMY_TYPES.picket.ship.weaponKeys, ["beamLance"], "carrying the archer's beam");
 assert.strictEqual(Engine.ENEMY_TYPES.escort.ship.maxShields, 1, "the Escort is the first hostile with a screen");
 assert.strictEqual(Engine.ENEMY_TYPES.carrier.maxHull, 1, "the Carrier is one Hull — two GUNS is what it is, not two hit points");
 assert.deepStrictEqual(
@@ -1508,7 +1530,7 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
 
   // Three shells, at exactly one, two and three. Nothing in the middle of
   // any of them — the ladder is the design.
-  assert.deepStrictEqual([...distances("autocannon")], [1], "the Autocannon is a contact arc off the nose");
+  assert.deepStrictEqual([...distances("autocannon")], [1], "the Autocannon is contact, all the way round");
   assert.deepStrictEqual([...distances("flakBurst")], [1], "Flak Burst is the shell at contact and nothing further");
   assert.deepStrictEqual([...distances("arcBeam")], [2], "the Arc Beam is the shell at two, with a hole inside it");
   assert.deepStrictEqual([...distances("mortar")], [3], "the Mortar is the shell at three, with a bigger hole inside it");
@@ -1530,6 +1552,16 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
       const bHexes = new Set(at(b).map(Engine.hexKey));
       const aCovered = at(a).every((h) => bHexes.has(Engine.hexKey(h)));
       if (!aCovered) continue; // b doesn't cover a's ground at all
+      // Covering the same hexes isn't the same as doing the same job: a gun
+      // that hits EVERYTHING in its footprint is not out-classed by a
+      // cheaper one that picks a single target out of it. The Autocannon
+      // and the Flak Burst share a ring and are not each other's upgrade.
+      if (wa.targets === "all" && wb.targets === "one") continue;
+      // Nor is ground the same as a ship. A charge covers a lot of hexes
+      // and hits nothing for two rounds, which is time enough to walk out
+      // of all of them — what it gives up is immediacy, and no footprint
+      // comparison can see that.
+      if (wb.places && !wa.places) continue;
       assert.ok(
         wb.energyCost > wa.energyCost || wb.damage < wa.damage,
         `${b} covers everything ${a} does, so it has to give something up — charge or stopping power`
@@ -1773,7 +1805,7 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
     outpost: null,
     enemies: [
       { type: "cruiser", q: 3, r: 2 }, // Flak Burst: every adjacent hex at once
-      { type: "scout", q: 1, r: 4 },
+      { type: "cutter", q: 1, r: 4 },
     ],
     hazards: [],
     exitRule: "all-enemies-dead",
@@ -1800,7 +1832,7 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
     outpost: null,
     enemies: [
       { type: "cruiser", q: 3, r: 2 },
-      { type: "scout", q: 3, r: 1 }, // adjacent to the gunner, so inside its own burst
+      { type: "interceptor", q: 3, r: 1 }, // adjacent to the gunner, so inside its own burst
     ],
     hazards: [],
     exitRule: "all-enemies-dead",
@@ -1851,7 +1883,9 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
   // Battle damage, and a reactor part-way through a charge.
   at("cruiser").hp = 1;
   at("railgun").energy = 1;
-  const drivelessKeys = ["sentry", "railgun"];
+  // Derived, not listed: the Railgun Destroyer flies now, and a hardcoded
+  // pair of names is exactly how that kind of thing goes stale.
+  const drivelessKeys = st.enemies.filter((e) => !Engine.ENEMY_TYPES[e.type].ship.hasDrive).map((e) => e.type);
 
   Engine.reenterSector(st, { nonce: 1 });
 
@@ -1862,8 +1896,9 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
       `the ${type} has no engine, so it is exactly where it was — the same rule that makes it an emplacement`
     );
   }
+  const driven = st.enemies.filter((e) => Engine.ENEMY_TYPES[e.type].ship.hasDrive).map((e) => e.type);
   assert.ok(
-    ["interceptor", "cruiser"].some((t) => Engine.hexKey(at(t)) !== before[t]),
+    driven.some((t) => Engine.hexKey(at(t)) !== before[t]),
     "anything with a drive has been flying, not parked"
   );
   assert.strictEqual(at("cruiser").hp, 1, "damage persists — nobody is patching hull out here");
@@ -1901,13 +1936,14 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
       const wasAt = Object.fromEntries(trip.enemies.map((e) => [e.type, Engine.hexKey(e)]));
       Engine.reenterSector(trip, { nonce: visit });
       const find = (t) => trip.enemies.find((e) => e.type === t);
-      for (const t of ["interceptor", "cruiser", "scout"]) {
+      for (const t of ["interceptor", "cruiser", "picket"]) {
         const e = find(t);
         if (!e) continue;
         if (Engine.hexKey(e) === wasAt[t]) anyStill = true;
         else anyMoved = true;
       }
-      for (const t of ["sentry", "railgun"]) {
+      for (const e of trip.enemies.filter((x) => !Engine.ENEMY_TYPES[x.type].ship.hasDrive)) {
+        const t = e.type;
         assert.strictEqual(Engine.hexKey(find(t)), wasAt[t], `the ${t} never budges — it has no engine`);
       }
     }

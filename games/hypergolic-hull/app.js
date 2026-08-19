@@ -795,10 +795,10 @@ for (const [type, file] of Object.entries({
   sentry: "icons/enemy-sentry.png",
   picket: "icons/enemy-picket.png",
   demolitionist: "icons/enemy-demolitionist.png",
-  mortar: "icons/enemy-bomber.png", // the one hull in the set with a loaded bay
+  cutter: "icons/enemy-cutter.png",
+  bombard: "icons/enemy-bomber.png", // four lit thrusters and swept wings — it flies
   lancer: "icons/enemy-minelayer.png", // pods held out wide, like the Tubes fire
   railgun: "icons/enemy-railgun.png",
-  scout: "icons/enemy-scout.png",
   escort: "icons/enemy-escort.png", // the hull that visibly has a bubble around it
   carrier: "icons/enemy-carrier.png",
   salvager: "icons/enemy-tug.png", // grapples and a tractor lens, no gun anywhere on it
@@ -1358,7 +1358,7 @@ function drawRailgun(s) {
 // How big a class draws relative to a standard hull. A boss that arrives
 // at exactly the size of the Interceptor you killed at depth 1 does not
 // read as the thing the sector is named after.
-const SHIP_SCALE = { bulwark: 1.45, carrier: 1.18, salvager: 1.12, scout: 0.9, picket: 0.95, demolitionist: 1.1 };
+const SHIP_SCALE = { bulwark: 1.45, carrier: 1.18, salvager: 1.12, picket: 0.95, demolitionist: 1.1, cutter: 0.95 };
 
 // A gun's charge, on the gun. The danger overlay already goes dark while
 // a weapon is discharged, but that only says "not this round" — it never
@@ -1505,9 +1505,11 @@ function drawEnemyShip(size, hpFrac, crackSeed, type, shielded) {
     // Fuse-orange, the same colour its charges burn — the only class whose
     // glow is a warning about the ground rather than about the ship.
     demolitionist: ["rgba(255,150,60,0.55)", "rgba(225,105,30,0.29)", "rgba(210,90,25,0)"],
+    // Cold white-green: the one beam that reaches you at contact.
+    cutter: ["rgba(190,255,210,0.52)", "rgba(110,215,160,0.27)", "rgba(90,200,145,0)"],
     // Every class needs its own, or it silently borrows the Interceptor's
     // red and two different threats look like the same threat.
-    mortar: ["rgba(235,220,110,0.52)", "rgba(200,180,60,0.27)", "rgba(190,170,50,0)"],
+    bombard: ["rgba(235,220,110,0.52)", "rgba(200,180,60,0.27)", "rgba(190,170,50,0)"],
     lancer: ["rgba(205,120,255,0.52)", "rgba(160,70,220,0.27)", "rgba(150,60,210,0)"],
     railgun: ["rgba(90,170,255,0.50)", "rgba(50,120,220,0.26)", "rgba(40,100,200,0)"],
     // The second wave. Each one is keyed to the hull's own paint so the
@@ -1515,7 +1517,6 @@ function drawEnemyShip(size, hpFrac, crackSeed, type, shielded) {
     // Escort's shield blue, the Carrier's violet, the Salvager's brass
     // (the only friendly-looking glow out there, on the only thing that
     // can't shoot you), and the Bulwark's furnace red.
-    scout: ["rgba(232,200,140,0.50)", "rgba(190,150,80,0.26)", "rgba(180,140,70,0)"],
     escort: ["rgba(130,205,255,0.55)", "rgba(70,150,230,0.28)", "rgba(60,130,215,0)"],
     carrier: ["rgba(190,120,240,0.55)", "rgba(140,60,200,0.30)", "rgba(125,50,185,0)"],
     salvager: ["rgba(120,235,205,0.50)", "rgba(210,170,60,0.26)", "rgba(200,160,50,0)"],
@@ -2930,10 +2931,12 @@ function draw() {
     const center = overrides.get(enemy.id) || base;
     ctx.save();
     ctx.translate(center.x, center.y);
-    // Sentry and Railgun are fixed emplacements — they don't pivot to face
-    // you (the Railgun's 6 barrels already cover every direction at once);
-    // every other enemy points its nose at the flagship.
-    if (enemy.type !== "sentry" && enemy.type !== "railgun") {
+    // Anything without an engine can't turn to face you, and everything
+    // bolted down out here covers all six directions at once anyway. Read
+    // off the hold rather than a list of names: the list said "sentry and
+    // railgun", and the Railgun Destroyer flies now.
+    const def = Engine.ENEMY_TYPES[enemy.type];
+    if (!def || def.ship.hasDrive) {
       ctx.rotate((angleToward(enemy, state.playerPos) * Math.PI) / 180);
     }
     drawEnemyShip(geom.sx * 0.46, enemy.hp / enemy.maxHp, enemy.id, enemy.type, enemy.shieldCharges > 0);
@@ -3451,7 +3454,7 @@ function describePattern(weapon) {
     if (min === weapon.range && min > 1) {
       return `the ring at exactly ${min} — nothing closer${weapon.ignoresCover ? ", and rock is no cover" : ""}`;
     }
-    return "every hex touching the hull";
+    return `every hex touching the hull${weapon.targets === "all" ? ", all at once" : ""}`;
   }
   if (weapon.shape === "lane") {
     // Two lances now, and they differ ONLY in which part of the lane they
@@ -3464,7 +3467,7 @@ function describePattern(weapon) {
   }
   if (weapon.shape === "offAxis") return "the six gaps between the axes, two out";
   if (weapon.shape === "arc") {
-    return weapon.range === 1 ? "three hexes off the nose, in contact" : `a wedge off the nose, ${weapon.range} deep`;
+    return `a wedge off the nose, ${weapon.range} deep`;
   }
   return "all directions";
 }

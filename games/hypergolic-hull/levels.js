@@ -62,8 +62,14 @@
     {
       id: 2,
       name: "Picket Line",
-      board: { type: "rect", cols: 7, rows: 9 },
-      playerStart: { q: 3, r: 7 },
+      // Small, because the lesson is the LINE and nothing else. The archer
+      // reaches five hexes and fires every round it has one, so on a big
+      // board with something else pinning you it simply shoots you to
+      // death while you walk — measured, a pilot that didn't know to break
+      // the lane never reached the dock. One contact, short distances, and
+      // the whole sector is "get off its axis, or get under it".
+      board: { type: "rect", cols: 7, rows: 8 },
+      playerStart: { q: 3, r: 6 },
       exit: { q: 6, r: -3 },
       // A pool of valid berths, not one fixed hex — see
       // computeOutpostCandidates above and engine.js's pickOutpostPos.
@@ -73,14 +79,11 @@
       // unavoidable: fly straight at it and you eat two shots on the way
       // in. The Interceptor is off to one side to make sure you can't
       // just stand still and out-wait the lance.
-      enemies: [
-        { type: "picket", q: 3, r: 2 },
-        { type: "interceptor", q: 5, r: 1 },
-      ],
+      enemies: [{ type: "picket", q: 3, r: 2 }],
       hazards: [],
       exitRule: "all-enemies-dead",
       actions: ["sublight", "autocannon"],
-      intro: "Anchored gun on the approach — it reaches three hexes down every axis, and nothing at one. Station ahead is still trading.",
+      intro: "Long gun on the approach — it reaches five hexes down every axis, and nothing at one. Get off its line. Station ahead is still trading.",
     },
     // Sector 3 — Sentry Line. The second kind of ground denial (a ring at
     // two rather than a lane at three) and, next to it, the Salvager: a
@@ -121,7 +124,7 @@
       exit: { q: 6, r: -3 },
       outpost: true,
       enemies: [
-        { type: "demolitionist", q: 3, r: 3 },
+        { type: "picket", q: 3, r: 3 },
         { type: "escort", q: 5, r: 1 },
         { type: "cruiser", q: 2, r: 5 },
       ],
@@ -552,7 +555,7 @@
             // Measured with it in this pool, the run fell off a cliff at
             // depth 7 (39 runs alive at 6, 23 at 7) and the death boards
             // were almost all cruiser+escort.
-            ["interceptor", "interceptor", "cruiser", "cruiser", "picket", "picket", "sentry", "demolitionist", "salvager"]
+            ["interceptor", "interceptor", "cruiser", "cruiser", "picket", "sentry", "salvager"]
           : depth < 11
             ? // The shelf has had three or four passes by now: the Scout
               // (reach that fires every round) and the Mortar (reach that
@@ -563,13 +566,13 @@
               // shallow crawl both deal it), so what depth 8 adds is a
               // bomb landing while three other things are also asking you
               // to be somewhere.
-              ["interceptor", "cruiser", "picket", "scout", "escort", "carrier", "demolitionist", "sentry", "sentry", "mortar", "salvager"]
+              ["interceptor", "cruiser", "picket", "cutter", "escort", "carrier", "demolitionist", "sentry", "bombard", "salvager"]
             : // Everything, including the two that shoot the length of the
               // board. The Interceptor stays in the pool — it was dropped
               // here at some point and that only made the deep end MORE
               // uniform, which is the exact problem this ladder exists to
               // avoid.
-              ["interceptor", "cruiser", "picket", "scout", "escort", "carrier", "demolitionist", "sentry", "mortar", "lancer", "railgun", "salvager"];
+              ["interceptor", "cruiser", "picket", "cutter", "escort", "carrier", "demolitionist", "sentry", "bombard", "lancer", "railgun", "salvager"];
   }
 
   function generateLevel(depth, variantId) {
@@ -810,7 +813,18 @@
     // board of one archer and one Sentry — the beam owning the lanes and
     // the ring owning everything at two, between them leaving nowhere to
     // stand. Ten of forty runs ended on that pair.
-    const EMPLACEMENTS = new Set(["sentry", "railgun", "mortar", "scout", "picket"]);
+    // Only the Sentry. The Bombard, the Railgun Destroyer and the Picket
+    // all fly now — their hulls always said so — so the thing this cap is
+    // guarding against, a board of guns you cannot make move, is one class.
+    const EMPLACEMENTS = new Set(["sentry"]);
+    // A hard cap of ONE long gun per board, and it is the most load-bearing
+    // number in this file. The archer and the Cutter reach five hexes and
+    // fire every round or every other round; two of them on one board is
+    // two damage a round arriving from off-screen while you are still
+    // walking, and no amount of good play answers that with three hull.
+    // Hoplite deals its ranged demons the same way — sparingly, and never
+    // as the bulk of a floor.
+    const LONG_GUNS = new Set(["picket", "cutter", "railgun"]);
     // ...but never MOST of the board. Two was a flat cap regardless of how
     // many hostiles the sector deals, so a two- or three-strong roster
     // could come out half or two thirds bolted to the deck — and a board
@@ -834,6 +848,7 @@
     const LIGHT = ["interceptor", "cruiser"];
     let emplaced = 0;
     let heavies = 0;
+    let longGuns = 0;
     for (const hex of candidates) {
       if (enemies.length >= enemyCount) break;
       if (hazardKeys.has(`${hex.q},${hex.r}`)) continue;
@@ -842,6 +857,10 @@
       if (EMPLACEMENTS.has(type)) {
         if (emplaced >= staticCap) type = MOBILE[Math.floor(rng() * MOBILE.length)];
         else emplaced++;
+      }
+      if (LONG_GUNS.has(type)) {
+        if (longGuns >= 1) type = MOBILE[Math.floor(rng() * MOBILE.length)];
+        else longGuns++;
       }
       if (HEAVIES.has(type)) {
         if (heavies >= 2) type = LIGHT[Math.floor(rng() * LIGHT.length)];

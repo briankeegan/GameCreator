@@ -469,7 +469,7 @@ async function freshPage(browser, url, errors) {
   // the pattern ("when you select a weapon it should show how it works
   // grid-wise").
   assert.ok(
-    /three hexes off the nose/.test(await page.locator("#holdInfo").textContent()),
+    /every hex touching the hull/.test(await page.locator("#holdInfo").textContent()),
     "tapping a tile reads out the shape the item covers"
   );
   assert.strictEqual(
@@ -478,7 +478,7 @@ async function freshPage(browser, url, errors) {
     "and draws that shape as a hex field"
   );
   const litCount = await page.locator("#holdInfo svg.foot polygon[stroke='#e0533f']").count();
-  assert.strictEqual(litCount, 3, "the Autocannon lights exactly its three hexes");
+  assert.strictEqual(litCount, 6, "the Autocannon lights all six hexes touching the hull");
   await page.click("#shipCloseBtn");
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "Return to Helm closes the Systems screen");
 
@@ -583,6 +583,14 @@ async function freshPage(browser, url, errors) {
     { q: s.wormholePos.q, r: s.wormholePos.r },
     "arriving by warp puts the flagship on the wormhole back"
   );
+  // Clear the board first: what's under test is the wormhole grace, not
+  // survival, and Sector 2's archer reaches five hexes and fires every
+  // round — sitting still on one hex for four rounds in its line is simply
+  // fatal, which would fail this for the wrong reason.
+  await page.evaluate(() => {
+    window.__hhState.enemies.forEach((e) => (e.alive = false));
+    window.render();
+  });
   for (let i = 0; i < 4; i++) {
     await endRound(page);
     await page.waitForTimeout(600); // long enough for a jump to have fired
@@ -592,7 +600,6 @@ async function freshPage(browser, url, errors) {
     if (parked.playerPos.q !== s.wormholePos.q || parked.playerPos.r !== s.wormholePos.r) break;
   }
   s = await getState(page);
-  assert.ok(s.enemies.filter((e) => e.alive).length >= 1);
   // Scuttling charges: the run's own off switch, two taps deep so a stray
   // thumb can never end a run.
   await page.click("#shipBtn");

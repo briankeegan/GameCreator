@@ -106,7 +106,7 @@
   // mechanic and Fighter Squadron was a free instant-kill living outside
   // the weapon/energy model. Everything left runs on the same
   // stats + energy + slots chassis.
-  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance"];
+  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge"];
   // Purchase-only actions (see OUTPOST_OFFER_POOL/applyOutpostPurchase) —
   // never part of any level's own baked-in `actions` list, and excluded
   // from the default fallback below so they don't show up for free the
@@ -114,7 +114,7 @@
   // guaranteed claimable (free) at Sector 2's Outpost specifically (see
   // pickOutpostOfferIds), just no longer handed out automatically for
   // reaching the sector.
-  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance"];
+  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge"];
   // Sectors that don't specify `actions` explicitly (Sector 4 "Full Fleet"
   // and every procedurally-generated sector) default to every action that
   // unlocks just by playing.
@@ -465,7 +465,7 @@
     // BUY. (Its footprint does sit inside the Flak Burst's ring — that's
     // allowed, because the Burst costs three times as much a shot and the
     // roster rule is that covering more ground has to be paid for.)
-    autocannon: { id: "autocannon", label: "Autocannon", shape: "arc", range: 1, damage: 1, targets: "one", energyCost: 1, speed: 3, pattern: FORWARD_ARC_PATTERN, slots: 1 },
+    autocannon: { id: "autocannon", label: "Autocannon", shape: "ring", range: 1, minRange: 1, damage: 1, targets: "one", energyCost: 1, speed: 3, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // The crowd answer: every adjacent contact at once, so being
     // surrounded stops being a death sentence. Reaches nothing further.
     flakBurst: { id: "flakBurst", label: "Flak Burst", shape: "ring", range: 1, minRange: 1, damage: 1, targets: "all", energyCost: 3, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
@@ -501,24 +501,13 @@
     // archer: it shoots five hexes down any axis, it CANNOT shoot anything
     // adjacent, and it walks to keep that gap open. Closing on it is the
     // answer, and closing costs you the rounds it spends shooting.
-    beamLance: { id: "beamLance", label: "Beam Lance", shape: "lane", range: 3, minRange: 2, damage: 1, targets: "one", energyCost: 2, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    beamLance: { id: "beamLance", label: "Beam Lance", shape: "lane", range: 5, minRange: 2, damage: 1, targets: "one", energyCost: 1, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // The Cutter's gun. Same six axes as the Beam Lance and one hex longer
+    // at the near end — it can fire at CONTACT, so there is no inside-its-
+    // guard to reach, which is the whole difference between the two. What
+    // switches it off instead is its own side: see INHIBITIONS.beamClear.
+    arcProjector: { id: "arcProjector", label: "Arc Projector", shape: "lane", range: 5, minRange: 1, damage: 1, targets: "one", energyCost: 2, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     railgun: { id: "railgun", label: "Railgun", shape: "lane", range: 20, damage: 2, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
-    // The Beam Lance's slow big brother: the far HALF of a lane, three and
-    // four hexes out, with a hole big enough to walk into — anything
-    // inside three is completely safe from it, where the Beam Lance still
-    // reaches you at two. Longer, slower, and easier to get under; the two
-    // lances overlap on exactly one ring and neither is the other's
-    // upgrade. It costs 3,
-    // so on one generator it fires one round in three and spends the other
-    // two moving. Reach and rate of fire are the two halves of what a long
-    // gun is, and this is the half of the trade the Lance doesn't make.
-    //
-    // That cadence is also what makes a MOBILE long gun meetable early: a
-    // range-3 lance that fired every other round measured at 4 wins in 40
-    // in the shallow sectors, because the counter to reach is to walk it
-    // down and there was never a round spare to walk in. Two free rounds
-    // out of every three is that round.
-    siegeLance: { id: "siegeLance", label: "Siege Lance", shape: "lane", range: 4, minRange: 3, damage: 1, targets: "one", energyCost: 3, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // Hoplite's Demolitionist, and the one question nothing else in this
     // game asks. Every other gun says "do not be standing HERE when I
     // fire"; this one says "this GROUND is going away." It doesn't damage
@@ -536,7 +525,7 @@
     // it has to come in close and then live with what it did. Reaching
     // three as well would have made it a strictly better Mortar (same
     // charge, same damage, more ground), which the roster rule forbids.
-    demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", shape: "ring", range: 2, minRange: 2, damage: 1, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, places: true, blast: 1 },
+    demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", shape: "ring", range: 3, minRange: 1, damage: 1, targets: "one", energyCost: 3, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, places: true, blast: 1 },
   };
   // Static data, read everywhere, written nowhere — frozen so an
   // accidental mutation (a helper that "just tweaks" a weapon object for
@@ -583,7 +572,7 @@
     mortar: { id: "mortar", label: "Mortar", kind: "weapon", weaponKey: "mortar", w: 2, h: 2 },
     flankTubes: { id: "flankTubes", label: "Flank Tubes", kind: "weapon", weaponKey: "flankTubes", w: 1, h: 3 },
     missilePod: { id: "missilePod", label: "Missile Pod", kind: "weapon", weaponKey: "missilePod", w: 2, h: 2 },
-    siegeLance: { id: "siegeLance", label: "Siege Lance", kind: "weapon", weaponKey: "siegeLance", w: 1, h: 3 },
+    arcProjector: { id: "arcProjector", label: "Arc Projector", kind: "weapon", weaponKey: "arcProjector", w: 1, h: 3 },
     demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", kind: "weapon", weaponKey: "demolitionCharge", w: 2, h: 2 },
     reactorCore: { id: "reactorCore", label: "Reactor Core", kind: "reactor", rechargeGain: 1, energyCapacity: 6, w: 2, h: 2 },
     sublightDrive: { id: "sublightDrive", label: "Sublight Drive", kind: "engine", moveRange: 1, w: 1, h: 3 },
@@ -646,7 +635,7 @@
   // derived from the Hold now (an installed weapon item sets its
   // systems[key] flag in deriveShip), but the key list itself is stable
   // engine data.
-  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "siegeLance", "demolitionCharge"];
+  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge"];
 
   // ---- what a hold makes a ship able to do -------------------------------
   //
@@ -832,7 +821,7 @@
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
-          { id: "siegeLance", x: 1, y: 0 },
+          { id: "beamLance", x: 1, y: 0 },
           { id: "sublightDrive", x: 0, y: 1 },
           { id: "microReactor", x: 2, y: 1 },
           { id: "chargeBank", x: 2, y: 2 },
@@ -864,19 +853,20 @@
         ],
       },
     },
-    // The emplacement that makes cover worthless. Its shell lands at
-    // exactly three hexes and doesn't care what's in between, so parking
-    // behind a rock is no answer — you close inside three, back off past
-    // it, or kill it. There is no hiding from this one.
-    mortar: {
+    // The Bombard — and it FLIES, which it always should have: four lit
+    // thrusters and swept wings, and it was called a platform anyway. Its
+    // shell lands at exactly three and doesn't care what's in between, so
+    // parking behind a rock is no answer. Get inside three and it has
+    // nothing; that hole is the whole answer to it.
+    bombard: {
       hull: 1, salvage: 3,
       hold: {
-        cols: 3, rows: 4, blocked: ["0,0", "2,0"],
+        cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
-          { id: "mortar", x: 0, y: 1 },
-          { id: "microReactor", x: 1, y: 0 },
-          { id: "chargeBank", x: 2, y: 1 },
-          { id: "stationAnchor", x: 1, y: 3 },
+          { id: "mortar", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 1 },
+          { id: "microReactor", x: 3, y: 1 },
+          { id: "chargeBank", x: 3, y: 2 },
         ],
       },
     },
@@ -899,22 +889,21 @@
     // Two big banks and one small generator: five on the bus, one a
     // round to fill it, a slug that costs four. The telegraph isn't a
     // scripted timer — it's the hardware.
-    // ...and the Wizard's rule, because a board-length gun that works no
-    // matter what is a gun you can only answer by walking a very long way.
-    // It won't fire while any other hostile is within three hexes of it,
-    // so the counter is to bring its own side to it — bait a chaser back
-    // past the emplacement and the lane goes quiet. That is the opposite
-    // of what every other threat on the board teaches, which is the point.
+    // Engine bells, fins, and the word "destroyer" in its name — it was
+    // bolted to the deck for no reason the hull ever supported. It flies.
+    // What keeps it fair is the hardware: two big banks and one small
+    // generator, so its first slug is telegraphed by a bus you can watch
+    // filling, and it cannot both reposition and fire in the same round.
     railgun: {
-      hull: 1, salvage: 3, startsEmpty: true, inhibition: "loner",
+      hull: 1, salvage: 3, startsEmpty: true,
       hold: {
-        cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
+        cols: 4, rows: 6, blocked: ["0,0", "3,0", "0,5", "3,5"],
         items: [
           { id: "railgun", x: 1, y: 0 },
+          { id: "sublightDrive", x: 2, y: 1 },
           { id: "chargeBank", x: 0, y: 1 },
-          { id: "chargeBank", x: 2, y: 1 },
-          { id: "microReactor", x: 0, y: 3 },
-          { id: "stationAnchor", x: 1, y: 4 },
+          { id: "chargeBank", x: 0, y: 3 },
+          { id: "microReactor", x: 3, y: 1 },
         ],
       },
     },
@@ -923,42 +912,19 @@
     // difference below is a different arrangement of the same crates you
     // can buy yourself. What makes a class is what it bolted on.
 
-    // Cheapest airframe in the sky: a gun, a drive, and a scanner where
-    // the armour should be. It dies to anything. It arrives in numbers,
-    // which is the entire idea — the Interceptor asks "can you kill it",
-    // a Scout screen asks "can you kill FOUR of them before they all
-    // reach you", and the answer depends on whether your second gun
-    // covers ground or covers a direction.
-    // The archer, and the reason the shallow end stops being one enemy
-    // twice. It was an Interceptor with a scanner bolted on — same gun,
-    // same contact range, same "walk at you" — so sectors 1-4 asked one
-    // question no matter which hull asked it.
-    //
-    // Now it carries the long gun and cannot fire at contact at all. It
-    // keeps its lane open and plinks; walking it down is the answer, and
-    // the walk is what costs you.
-    //
-    // Three hexes, not Hoplite's five. Its archer reaches five because its
-    // hero has a big health bar and a leap; ours has three Hull and one
-    // move a round, so closing five hexes down a lane is four free hits
-    // and simply not a puzzle. Measured at five: good play won 8 runs in
-    // 40. The lane is the real counter either way — step off its axis and
-    // it has nothing.
-    scout: {
-      hull: 1, salvage: 2,
+    // The Cutter. Same six axes as the Picket's Beam Lance and one hex
+    // longer at the near end: it can fire at CONTACT, so unlike an archer
+    // there is no inside-its-guard to reach. What turns it off is its own
+    // side — it will not fire while any hostile stands anywhere in that
+    // beam, so you do not out-position it, you position the things around
+    // it and its own wingmen become your cover.
+    cutter: {
+      hull: 1, salvage: 3, inhibition: "beamClear",
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
-          { id: "beamLance", x: 1, y: 0 },
+          { id: "arcProjector", x: 1, y: 0 },
           { id: "sublightDrive", x: 0, y: 1 },
-          // TWO reactors, and that's the whole difference between an
-          // archer and a thing that stands still. The Lance costs 2 and
-          // one reactor pays +1 a round, so on a single generator it fired
-          // every OTHER turn — and since it was already parked on its
-          // ideal hex, the off turn had nowhere better to be, so it simply
-          // sat there. Measured: 44% shooting, 39% motionless, 17% moving.
-          // On two it can pay every round, which means it is always either
-          // shooting or repositioning, never idle: 31% / 0% / 69%.
           { id: "microReactor", x: 2, y: 1 },
           { id: "chargeBank", x: 2, y: 2 },
         ],
@@ -1141,19 +1107,23 @@
     // one of its own with it. Stand next to another hostile and the bomb
     // never comes — which is a real, usable answer, and the reason a crowd
     // is worth walking into instead of away from.
+    // ...including itself: the charge can now be lobbed as close as one hex
+    // away, so "would this catch a friend" has to count the thrower or it
+    // will happily stand inside its own blast.
     blastSafe: (state, enemy, weapon) => {
       if (!weapon.places) return false;
       const blast = chargeBlastHexes(state, { q: state.playerPos.q, r: state.playerPos.r, blast: weapon.blast || 1 });
-      return livingEnemies(state).some((other) => other !== enemy && blast.some((h) => posEq(h, other)));
+      return livingEnemies(state).some((other) => blast.some((h) => posEq(h, other)));
     },
-    // The Wizard's: it won't fire at all while another hostile is close to
-    // IT. A long gun that only works alone — so the way to shut one down
-    // is to bring its own side to it, which is the opposite of every other
-    // instinct the game teaches.
-    loner: (state, enemy) =>
-      livingEnemies(state).some((other) => other !== enemy && hexDistance(other, enemy) <= LONER_RADIUS),
+    // The Cutter's: it will not fire while any hostile is standing anywhere
+    // in the beam it is about to fire. Not a proximity rule — a POSITION
+    // rule. You do not out-range it or get under it; you put its own side
+    // in front of it, and its wingmen become your cover.
+    beamClear: (state, enemy, weapon) => {
+      const covered = weaponHexes(enemy, enemyFacing(state, enemy), weapon, state);
+      return livingEnemies(state).some((other) => other !== enemy && covered.some((h) => posEq(h, other)));
+    },
   };
-  const LONER_RADIUS = 3;
 
   // Does this class refuse the shot it could otherwise take?
   function inhibited(state, enemy, weapon) {
@@ -1317,7 +1287,7 @@
     railgun: "railgun",
     missilePod: "missilePod",
     beamLance: "beamLance",
-    siegeLance: "siegeLance",
+    arcProjector: "arcProjector",
     demolitionCharge: "demolitionCharge",
   };
 
@@ -1348,7 +1318,7 @@
     // shooting at you).
     { id: "flakBurst", label: "Flak Burst (2x2 — everything touching us, at once)", cost: 10, rarity: "uncommon" },
     { id: "arcBeam", label: "Arc Beam (2x2 — the ring at two. Nothing closer.)", cost: 8, rarity: "uncommon" },
-    { id: "beamLance", label: "Beam Lance (1x3 — three down any axis, nothing adjacent)", cost: 9, rarity: "uncommon" },
+    { id: "beamLance", label: "Beam Lance (1x3 — two to five down any axis, nothing adjacent)", cost: 12, rarity: "uncommon" },
     { id: "mortar", label: "Mortar (2x2 — lands at three, straight over the rocks)", cost: 14, rarity: "rare" },
     { id: "flankTubes", label: "Flank Tubes (1x3 — the gaps at two, 2 dmg)", cost: 16, rarity: "rare" },
     { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 24, rarity: "rare" },
@@ -1356,11 +1326,11 @@
     // Cheap because it's slow: same reach as the Beam Lance, one round in
     // three. The gun you buy when what you need is to out-range something,
     // not to out-shoot it.
-    { id: "siegeLance", label: "Siege Lance (1x3 — three and four down any axis, one shot in three)", cost: 7, rarity: "uncommon" },
+    { id: "arcProjector", label: "Arc Projector (1x3 — one to five down any axis, contact included)", cost: 13, rarity: "rare" },
     // Priced with the Mortar, and for the same reason: it's the answer to
     // ground rather than to a ship. It threatens seven hexes at once and
     // it does not care what's standing on them, including you.
-    { id: "demolitionCharge", label: "Demolition Charge (2x2 — lobbed to two, a two-round fuse, seven hexes)", cost: 15, rarity: "rare" },
+    { id: "demolitionCharge", label: "Demolition Charge (2x2 — lobbed up to three, a two-round fuse, seven hexes)", cost: 15, rarity: "rare" },
   ];
 
   // Roughly Slay the Spire's shop odds (~54/37/9 common/uncommon/rare) and
