@@ -45,13 +45,20 @@ are ephemeral; this file is the source of truth. Keep it updated as things land.
 3. **Fix multi-image upload in the Clubhouse (online).** Chat currently can't
    send multiple images at once — user had to upload them to the CLI session
    instead. Fix `shared/clubhouse.js` + the worker `upload-image` flow.
-4. **Build the actual Panel Attack duel mechanic** (currently a "coming
-   soon" placeholder in `games/the-game`). Reference source:
-   **`briankeegan/panel-game`** (a Lua/LÖVE2D fork of Panel Attack, default
-   branch `beta`) — match colored panels in rows/columns of 3+, gravity,
-   chains attack the opponent. Explicitly deferred by the user until the
-   characters/rooms were in place — that's now done, so this is next once
-   picked back up.
+4. **Panel Attack duel mechanic — ✅ built.** `games/the-game/panel-engine.js`
+   is a JS port of the core engine from **`briankeegan/panel-game`** (the
+   Lua/LÖVE fork): the full panel state machine, the "modern" level table
+   (rise speed / colors / health / stop-time formula / FLASH-FACE-POP-HOVER
+   frame constants), the combo→garbage-width and chain→garbage-height
+   tables, garbage physics (falls as a block, clears on contact with a
+   match, bottom row converts to panels and can carry a chain) and the
+   transit/telegraph/land delays on attacks. `panel-cpu.js` is the opponent,
+   `duel.js` is the screen (canvas renderer, keyboard + drag-to-swap touch
+   input, countdown, attack animations, result). Talking to a duellist in a
+   room opens it; wins are saved per opponent. Not ported, deliberately:
+   shock/metal panels, rollback/netplay, replays, puzzle modes.
+   Possible next: an opponent portrait beside their board, sound, and a
+   smarter CPU (it plays single swaps only — it never plans a chain).
 5. **No animated walk-cycle sprite sheets** — each character (including
    Nella) has one static standing pose, not a multi-frame walk animation.
    gpt-image-1 (single-shot text-to-image) isn't reliable at producing

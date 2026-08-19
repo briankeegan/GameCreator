@@ -240,19 +240,75 @@ html, body {
 .talk-box[hidden] { display: none; }
 
 /* ---- Duel placeholder ---- */
-.duel-placeholder {
+/* ---- Duel: the playable Panel Attack board ----
+   A column: canvas on top taking all the space it can, a control bar under it.
+   The canvas has no intrinsic size — duel.js reads its client box and sets the
+   backing store from it, so it fits the wide desktop stage and the tall phone
+   stage alike. ---- */
+.duel-screen {
+  /* Fixed, not absolute: a duel takes the whole viewport rather than the
+     letterboxed 640x400 stage, which is the difference between panels you can
+     actually hit with a thumb and panels you can't. Above the install banner
+     (z-index 50) so nothing overlaps the control bar. */
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(circle at center, #3a1030, #10050c 78%);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.duel-screen[hidden] { display: none; }
+#duelCanvas {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  display: block;
+  touch-action: none; /* dragging a panel must not scroll the page */
+}
+.duel-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(10, 4, 16, 0.6);
+}
+.duel-hint {
+  flex: 1 1 auto;
+  text-align: center;
+  font-size: 0.65rem;
+  opacity: 0.7;
+  line-height: 1.2;
+}
+.duel-btn {
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f1e9ff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+.duel-btn:active { background: rgba(255, 255, 255, 0.25); }
+.duel-raise { background: rgba(255, 209, 102, 0.2); border-color: #ffd166; color: #ffd166; }
+
+.duel-result {
   position: absolute;
   inset: 0;
-  z-index: 6;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at center, #3a1030, #10050c 75%);
+  background: rgba(6, 2, 10, 0.82);
 }
+.duel-result[hidden] { display: none; }
 .duel-card { text-align: center; padding: 20px; max-width: 320px; }
 .duel-title { font-size: 1.6rem; font-weight: 900; letter-spacing: 0.08em; margin-bottom: 10px; color: #ffd166; text-shadow: 0 0 16px rgba(255, 209, 102, 0.5); }
-.duel-card p { margin: 6px 0; opacity: 0.9; }
-.duel-card .soon { font-style: italic; opacity: 0.75; margin-bottom: 14px; }
+.duel-card p { margin: 6px 0 14px; opacity: 0.9; }
 .duel-card button {
   margin-top: 8px;
   padding: 10px 18px;
@@ -263,7 +319,6 @@ html, body {
   font-weight: 800;
   cursor: pointer;
 }
-.duel-placeholder[hidden] { display: none; }
 
 /* ---- Touch controls ---- */
 .touch-controls {

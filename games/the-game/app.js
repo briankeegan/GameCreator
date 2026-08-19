@@ -1,9 +1,10 @@
 // Puzzle Attack / Newsey — game engine.
 // Two modes: CUTSCENE (tap-through intro) then WALK-AROUND (classic top-down
 // room; move with arrows/touch d-pad, walk up to an NPC, press interact to
-// talk). Duels are a "coming soon" placeholder for now (the real Panel Attack
-// board lands later). Everything has a canvas-drawn fallback so the game is
-// fully playable with zero generated art.
+// talk). Talking to a duellist opens the DUEL: a full Panel Attack match on a
+// real board (duel.js + panel-engine.js, ported from the Lua reference).
+// Everything has a canvas-drawn fallback so the game is fully playable with
+// zero generated art.
 (function () {
   var gameId = "the-game";
   var STORY = window.NEWSEY_STORY;
@@ -11,7 +12,8 @@
   var ROOMS = STORY.ROOMS;
 
   // ---------- persistence ----------
-  var save = window.GCStorage.get(gameId, "save", { introSeen: false, room: "house" });
+  var save = window.GCStorage.get(gameId, "save", { introSeen: false, room: "house", duelsWon: {} });
+  if (!save.duelsWon) save.duelsWon = {}; // saves made before duels existed
   function persist() { window.GCStorage.set(gameId, "save", save); }
 
   // ---------- art loading (graceful fallback) ----------
@@ -173,7 +175,6 @@
   var talkPortraitFallback = document.getElementById("talkPortraitFallback");
   var talkSpeaker = document.getElementById("talkSpeaker");
   var talkLine = document.getElementById("talkLine");
-  var duelPlaceholder = document.getElementById("duelPlaceholder");
 
   var currentRoom = null;
   var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down" };
@@ -262,26 +263,61 @@
 
   function advanceTalk() {
     var npc = talking.npc;
+    // counterKey lets a temporary conversation (the post-duel lines) share the
+    // speaker's portrait and nameplate without clobbering that NPC's own
+    // position in their normal dialogue.
+    var key = npc.counterKey || npc.id;
     talking.lineIndex++;
     if (talking.lineIndex >= npc.lines.length) {
-      npcLineCounters[npc.id] = npc.lines.length - 1; // stay on last line for future visits
+      npcLineCounters[key] = npc.lines.length - 1; // stay on last line for future visits
       talkBox.hidden = true;
       var wasTalking = talking;
       talking = null;
-      if (wasTalking.npc.duel) openDuelPlaceholder();
+      if (wasTalking.npc.duel) startDuel(wasTalking.npc);
       if (wasTalking.npc.cutscene) {
         startCutscene(STORY[wasTalking.npc.cutscene], function () { enterRoom("bedroom"); });
       }
       return;
     }
-    npcLineCounters[npc.id] = talking.lineIndex;
+    npcLineCounters[key] = talking.lineIndex;
     renderTalk();
   }
 
-  function openDuelPlaceholder() { duelPlaceholder.hidden = false; }
-  document.getElementById("duelContinue").addEventListener("click", function () {
-    duelPlaceholder.hidden = true;
-  });
+  // ---- duels ----
+  // The NPC's `duel` block in story.js says who you are facing, how hard they
+  // play and whether their board runs the normal pink or the cursed red. Wins
+  // are remembered per opponent so the world can read differently on a rematch.
+  function startDuel(npc) {
+    var config = (typeof npc.duel === "object" && npc.duel) || {};
+    var character = CHARACTERS[npc.id] || {};
+    window.NewseyDuel.start({
+      playerName: CHARACTERS.nella.name,
+      playerLevel: config.playerLevel || 2,
+      opponent: {
+        id: npc.id,
+        name: config.name || character.name || npc.id,
+        level: config.level || 3,
+        difficulty: config.difficulty || "steady",
+        theme: config.theme || "pink",
+        winLine: config.winLine,
+        loseLine: config.loseLine
+      },
+      onEnd: function (outcome) {
+        if (outcome.result === "win") {
+          save.duelsWon[npc.id] = (save.duelsWon[npc.id] || 0) + 1;
+          persist();
+        }
+        var lines = outcome.result === "win" ? config.afterWin : config.afterLoss;
+        if (outcome.result !== "quit" && lines && lines.length) {
+          talking = {
+            npc: { id: npc.id, art: npc.art, lines: lines, counterKey: npc.id + ":after" },
+            lineIndex: 0
+          };
+          renderTalk();
+        }
+      }
+    });
+  }
 
   // ---- movement + collision ----
   // Every room has a walkable "floor" rect (falls back to a generic one if
@@ -306,7 +342,7 @@
     return false;
   }
   function update(dt) {
-    if (talking || !duelPlaceholder.hidden) return;
+    if (talking || window.NewseyDuel.isActive()) return;
     var dx = 0, dy = 0;
     if (keys["ArrowLeft"] || keys["a"] || touchDir === "left") dx -= 1;
     if (keys["ArrowRight"] || keys["d"] || touchDir === "right") dx += 1;
@@ -492,5 +528,10 @@
 
   // Read-only debug hook for automated testing (headless smoke tests can't
   // reach into this closure otherwise). No effect on gameplay.
-  window.__newseyDebug = { player: player, room: function () { return currentRoom && currentRoom.label; } };
+  window.__newseyDebug = {
+    player: player,
+    room: function () { return currentRoom && currentRoom.label; },
+    startDuel: startDuel,
+    duel: function () { return window.NewseyDuel.debug(); }
+  };
 })();
