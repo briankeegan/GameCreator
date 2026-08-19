@@ -16,7 +16,7 @@ html, body {
   padding: 8px;
   background: #120a20;
   color: #f1e9ff;
-  min-height: 100%;
+  height: 100%;
   box-sizing: border-box;
 }
 
@@ -30,11 +30,16 @@ html, body {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   background: #0d0618;
 }
-/* On a narrow phone the 640x400 (8:5) box is short, so a fixed-em dialogue
-   panel ends up eating a huge share of it. Give the whole stage more height
-   to work with there. */
+/* A fixed aspect-ratio left a big empty gap below the game on a tall phone
+   screen (touch controls + menu don't come close to filling the rest of
+   the viewport) — reported live as "this rooms are tiny". Below 480px let
+   the stage flex-grow to actually fill the remaining vertical space
+   instead of stopping at a fixed ratio; the canvas already stretches to
+   whatever box size it's given (#scene below), so this just means more of
+   the screen is spent on the room instead of blank background. */
 @media (max-width: 480px) {
-  .stage { aspect-ratio: 640 / 620; }
+  .game-area { display: flex; flex-direction: column; }
+  .stage { aspect-ratio: auto; flex: 1 1 auto; min-height: 0; width: 100%; }
 }
 
 #scene {
