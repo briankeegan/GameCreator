@@ -802,18 +802,15 @@ async function freshPage(browser, url, errors) {
   await page.close();
 
   // ---- Requisition: earn it, unlock a loadout, fly the next run with it --
-  // Tapping a LOCKED chip only previews it — a confirm button in the detail
-  // box is what actually spends Requisition to unlock it. But once a
-  // loadout is owned, switching to it is free, so the tap itself arms it —
-  // no separate confirm to click on top of that. (An earlier version
-  // required a confirm click even for switching between owned loadouts,
-  // which read as the tap doing nothing: "does not seem to actually
-  // select what I chose.")
+  // Tapping a chip only PREVIEWS it — a separate confirm button in the
+  // detail box actually unlocks/selects. (Clubhouse: a single tap that
+  // both bought and armed a loadout at once read as unclear — "you select
+  // the next one, it shows what's available, then you confirm.")
   page = await freshPage(browser, url, errors);
   // A deep loss, forced directly rather than played out — engine.test.js
   // already covers the reward math and the Hold contents of each loadout
   // headlessly; this is here to prove the real DOM wiring (the overlay's
-  // picker, the unlock-vs-switch split, New Ship actually reading the pick).
+  // picker, the two-step confirm flow, New Ship actually reading the pick).
   await page.evaluate(() => {
     window.__hhState.levelId = 34;
     window.__hhState.hull = 0;
@@ -828,41 +825,18 @@ async function freshPage(browser, url, errors) {
   );
   const escortChip = page.locator("#loadoutPicker button", { hasText: "Escort" });
   await escortChip.click();
-  assert.strictEqual(await escortChip.evaluate((el) => el.classList.contains("selected")), true, "tapping a LOCKED chip previews it");
-  assert.strictEqual(
-    await page.locator("#loadoutPicker button", { hasText: "Escort Start ✓" }).count(),
-    0,
-    "previewing a locked loadout does not arm it — nothing costs Requisition until confirmed"
-  );
+  assert.strictEqual(await escortChip.evaluate((el) => el.classList.contains("selected")), true, "tapping the chip previews it");
   const confirmBtn = page.locator("#loadoutDetail .loadout-confirm");
   assert.strictEqual(await confirmBtn.textContent(), "Unlock — 10 req.", "30 banked covers the 10 cost, so it's enabled, not short");
   assert.strictEqual(await confirmBtn.isDisabled(), false);
   await confirmBtn.click();
-  assert.strictEqual(
-    await page.locator("#loadoutDetail .loadout-status").textContent(),
-    "This is flying next.",
-    "unlocking spends the Requisition AND arms it in one deliberate tap — the confirm button is gone now, replaced by a plain status line"
-  );
-  assert.strictEqual(await page.locator("#loadoutDetail .loadout-confirm").count(), 0, "nothing left to confirm once it's owned");
+  assert.strictEqual(await confirmBtn.textContent(), "This is flying next", "confirming re-renders the same box, now showing it's armed");
+  assert.strictEqual(await confirmBtn.isDisabled(), true, "no reason to re-confirm what's already selected");
   assert.strictEqual(
     await page.locator("#loadoutPicker button", { hasText: "Escort Start ✓" }).count(),
     1,
     "the chip itself picks up the check mark once it's the active pick"
   );
-
-  // Switching back to an already-owned loadout (Standard was always
-  // owned) is a single tap — no confirm button anywhere in the flow.
-  const standardChip = page.locator("#loadoutPicker button", { hasText: "Standard" });
-  await standardChip.click();
-  assert.strictEqual(
-    await page.locator("#loadoutPicker button", { hasText: "Standard ✓" }).count(),
-    1,
-    "one tap on an owned chip arms it directly, no separate confirm"
-  );
-  assert.strictEqual(await page.locator("#loadoutDetail .loadout-confirm").count(), 0, "switching between owned loadouts never shows a confirm button");
-  // ...and back to Escort Start, same single tap, to actually fly it next.
-  await page.locator("#loadoutPicker button", { hasText: "Escort" }).click();
-  assert.strictEqual(await page.locator("#loadoutPicker button", { hasText: "Escort Start ✓" }).count(), 1);
 
   await page.click("#restartBtn");
   await page.waitForFunction(() => window.__hhState.status === "playing");
