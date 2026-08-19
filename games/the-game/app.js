@@ -55,7 +55,7 @@
       lastArt = s.art;
       setPortrait(s.art);
     }
-    if (s.who) {
+    if (s.who && !s.narration) {
       var c = CHARACTERS[s.who] || { name: s.who, color: "#fff" };
       speakerEl.textContent = c.name;
       speakerEl.style.color = c.color;
@@ -63,6 +63,7 @@
       speakerEl.textContent = "";
     }
     lineEl.textContent = s.text;
+    lineEl.classList.toggle("narration", !!s.narration);
   }
 
   function setPortrait(id) {
@@ -293,25 +294,42 @@
     });
   }
 
+  // Portraits we have are head-and-shoulders busts, not full-body walk
+  // sprites — drawing one as a stretched rectangle in the middle of the
+  // room reads as a broken floating photo. Draw it as a round token
+  // instead, anchored to a ground shadow, so it unmistakably reads as
+  // "a person standing on the floor" instead of "an image pasted in".
   function drawNpc(npc) {
     var entry = loadArt(npc.art);
     var c = CHARACTERS[npc.id] || { name: npc.id, color: "#8a5cf6" };
+    var r = 11;
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath(); ctx.ellipse(npc.x, npc.y + 3, r * 0.8, r * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.save();
+    ctx.beginPath(); ctx.arc(npc.x, npc.y - r, r, 0, Math.PI * 2); ctx.closePath(); ctx.clip();
     if (entry && entry.ok) {
-      ctx.drawImage(entry.img, npc.x - 12, npc.y - 24, 24, 32);
+      ctx.drawImage(entry.img, npc.x - r, npc.y - r * 2, r * 2, r * 2);
     } else {
       ctx.fillStyle = c.color;
-      ctx.fillRect(npc.x - 8, npc.y - 22, 16, 22);
-      ctx.beginPath(); ctx.arc(npc.x, npc.y - 26, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillRect(npc.x - r, npc.y - r * 2, r * 2, r * 2);
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(c.name.charAt(0), npc.x, npc.y - r + 3);
     }
+    ctx.restore();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.beginPath(); ctx.arc(npc.x, npc.y - r, r, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = "#fff";
     ctx.font = "7px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(c.name, npc.x, npc.y - 30);
+    ctx.fillText(c.name, npc.x, npc.y - r * 2 - 5);
     // proximity glow
     var d = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h / 2));
     if (d < 26) {
       ctx.strokeStyle = "rgba(255,255,255,0.55)";
-      ctx.beginPath(); ctx.arc(npc.x, npc.y - 12, 16, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(npc.x, npc.y - r, r + 4, 0, Math.PI * 2); ctx.stroke();
     }
   }
 

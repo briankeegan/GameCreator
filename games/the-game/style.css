@@ -168,6 +168,13 @@ html, body {
   line-height: 1.32;
   white-space: pre-line;
 }
+/* Narration (memory / internal thought / scene description) is not a
+   character speaking out loud — style it as a caption, not a quote, so
+   it reads distinctly from actual spoken dialogue. */
+.line.narration {
+  font-style: italic;
+  opacity: 0.82;
+}
 /* A real, clearly-tappable "next" control — not just a hint someone has to
    notice on their own. Always bottom-right of the dialogue panel. */
 .advance {
