@@ -22,13 +22,15 @@ are ephemeral; this file is the source of truth. Keep it updated as things land.
    send multiple images at once — user had to upload them to the CLI session
    instead. Fix `shared/clubhouse.js` + the worker `upload-image` flow.
 4. **Build the new game — a Panel Attack clone** (Tetris Attack / Puzzle League
-   style). The user has a copy in one of their repos — find it, study/play it,
-   then build using the saved plot + inspiration art.
+   style). Reference source: **`briankeegan/panel-game`** (a Lua/LÖVE2D fork of
+   Panel Attack, default branch `beta`) — match colored panels in rows/columns
+   of 3+, gravity, chains attack the opponent. Study it, then build a web
+   (JS/canvas) version in this framework using the saved plot + inspiration art.
 
 ## Open questions (need user input)
-- Which game do the inspiration images belong to — the new Panel Attack game, or
-  `Newsey-the-game` (created recently)? Is the plot in a Clubhouse thread already?
-- Which of the user's repos holds the Panel Attack copy to reference?
+- Which game entry do the inspiration images belong to — a brand-new Panel
+  Attack game, or `Newsey-the-game` (created recently)? Where is the written
+  plot (a Clubhouse thread? paste it?) so it can be saved next to the art.
 
 ## Reliability fixes already shipped (autopilot)
 - Sweep ALL unanswered messages per run (burst-safe).
