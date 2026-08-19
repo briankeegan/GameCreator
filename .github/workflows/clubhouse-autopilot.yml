@@ -507,8 +507,19 @@ jobs:
 
       # Deterministic: if any step above failed, the thread still gets an answer
       # instead of going mysteriously silent.
+      #
+      # `cancelled()` matters as much as `failure()` here: when the job-level
+      # timeout fires (or a runner dies), GitHub CANCELS the job rather than
+      # failing it, and a plain `failure()` step is skipped — which is exactly
+      # how a wedged apt-get once ate a Dog Punk message with no retry and no
+      # reply. Steps guarded with cancelled() still get to run during the
+      # cancellation grace period, so the thread gets its answer either way.
+      # Note the trade-off: cancelling a run by hand also re-dispatches it. To
+      # actually stop a thread, flip its `autopilot` flag off in games.json (or
+      # disable this workflow) rather than cancelling runs.
       - name: Retry or report failure
-        if: failure() && steps.ctx.outputs.enabled == 'true'
+        if: (failure() || cancelled()) && steps.ctx.outputs.enabled == 'true'
+        timeout-minutes: 5
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
