@@ -50,10 +50,10 @@ window.NEWSEY_STORY = (function () {
   // that is playable (ROOMS.house below): Chuck's arrival, finding the
   // cartridge and the note are real in-room dialogue, not narration.
   // DREAM_CUTSCENE is a second, later narrated beat — triggered by
-  // interacting with the TV in ROOMS.house — covering the part that can't
-  // be walked-around yet (actually playing Puzzle Attack; there's no
-  // matching-panels mechanic built yet, see BACKLOG) through the deal that
-  // drops her into Infinity.
+  // interacting with the TV in ROOMS.house — covering the night she plays the
+  // cartridge, through the deal that drops her into Infinity. The panel game
+  // itself IS playable now (duel.js): every NPC with a `duel` block below
+  // opens a real Panel Attack match.
   var INTRO_CUTSCENE = [
     { bg: "childhood", who: "nella", art: "nella_child", narration: true, text: "Age nine. My first video game: \"Puzzle Attack.\" Match three, or get smashed flat. I was obsessed." },
     { bg: "mall", who: "nella", narration: true, text: "Age ten. A Puzzle Attack tournament at the mall — my hero May 2000 was competing. Then the screaming started." },
@@ -138,8 +138,23 @@ window.NEWSEY_STORY = (function () {
             "Hello, and welcome to Infinity! You may notice your appearance has changed — that's your magical avatar.",
             "Your bracelet is copper, to reflect your rank, and aquamarine for your playstyle. These can change.",
             "Practice here, or head to the lounge for a meal and a battle, or the library to study. Don't be afraid to challenge anyone — it's the only way to grow stronger!",
-            "Whatever you need, you can find here. Now… take your first steps out that door."
-          ]
+            "Here — a practice bout, on the house. Match three, clear the board, and send what you clear at me."
+          ],
+          // The gentle one: this is the tutorial duel, so the board is slow and
+          // the host plays badly on purpose.
+          duel: {
+            level: 2, difficulty: "gentle", theme: "pink", playerLevel: 1,
+            winLine: "The host claps, delighted. \"Oh, that's promising. Truly.\"",
+            loseLine: "The host tuts. \"You'll get there. Everyone does — eventually.\"",
+            afterWin: [
+              "Wonderful! You have the hands for it. Most arrivals don't.",
+              "Go on then — the lounge is through that door. Try someone who'll actually fight back."
+            ],
+            afterLoss: [
+              "No shame in it. The panels don't care how you feel about them.",
+              "Try me again whenever you like. I have nothing but time — you don't."
+            ]
+          }
         }
       ]
     },
@@ -158,16 +173,44 @@ window.NEWSEY_STORY = (function () {
           lines: [
             "Hello there. They call me Kat. What's your name?",
             "I'll buy you a drink — if you duel me. No better way to learn!",
-            "Come find me by the portal when you're ready to duel."
+            "Chains, dear. Clear one thing so another thing falls into place. That's the whole game."
           ],
-          duel: true
+          // The plot's first real duel: chains matter, garbage arrives as slabs.
+          duel: {
+            level: 3, difficulty: "steady", theme: "pink", playerLevel: 2,
+            winLine: "Kat tips her hat as the last slab lands on her side. \"Well! Aren't you a find.\"",
+            loseLine: "Kat's chain buries you a slab at a time. \"Ah — too slow, dear.\"",
+            afterWin: [
+              "That drink is yours, and you've earned it.",
+              "Careful who you challenge next, though. Not everyone here duels for fun."
+            ],
+            afterLoss: [
+              "Don't sulk. Watch what I did: I never cleared just one thing at a time.",
+              "Again, whenever you like. The bar isn't going anywhere."
+            ]
+          }
         },
         {
           id: "may", x: 220, y: 158, art: "may", sprite: "may_top",
           lines: [
             "You again? Stay out of my way.",
-            "Something doesn't add up about the new arrivals lately. Watch yourself."
-          ]
+            "Something doesn't add up about the new arrivals lately. Watch yourself.",
+            "…Fine. If you want to know what a champion plays like, put your hands on the panels."
+          ],
+          // The champion. Her board runs cursed red and she does not miss much.
+          duel: {
+            level: 5, difficulty: "sharp", theme: "red", playerLevel: 3,
+            winLine: "May 2000 stares at her dead board a long time. \"…Who taught you that?\"",
+            loseLine: "The board goes red and stays red. May doesn't even watch it land.",
+            afterWin: [
+              "Nobody beats me. Nobody has, since the mall.",
+              "…Come back. I want to see that again, and I want to see it slower."
+            ],
+            afterLoss: [
+              "That's what it looks like. That's what it always looked like.",
+              "Go practice. I'll still be here."
+            ]
+          }
         },
         {
           id: "timothy", x: 258, y: 168, art: "timothy", sprite: "timothy_top",
