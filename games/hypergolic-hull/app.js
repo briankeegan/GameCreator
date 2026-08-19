@@ -208,6 +208,13 @@ let shipVisible = false;
 let systemsContext = "ship";
 // Self-destruct is a two-step: the first tap arms it, the second means it.
 let selfDestructArmed = false;
+// True for the whole blast animation, not just until the click handler
+// returns — updateSystems() rebuilds #selfDestructBtn from scratch on
+// every render, and selfDestructArmed alone stays true until playScuttle()
+// resolves, so a render mid-animation (any other cause, not just this
+// button) would otherwise hand back a fresh, enabled CONFIRM button and
+// let a second tap queue a second blast concurrently.
+let scuttling = false;
 // Set when the current "lost" overlay was reached by scuttling rather than
 // dying, so it can read "Charges Blown" instead of "Flagship Destroyed" —
 // same overlay, same loadout picker, different framing.
@@ -3701,7 +3708,13 @@ function updateLoadoutDetail() {
     }
     selectedLoadout = previewedLoadout;
     persistUnlocks();
-    updateLoadoutPicker();
+    // A full render, not just updateLoadoutPicker() — unlocking spends
+    // Requisition, and the "X banked" line just above the picker only
+    // gets touched by updateHud(). Calling the narrower refresh left that
+    // number stale (still the pre-spend total) until whatever redrew the
+    // overlay next, same pattern every other state-changing click in this
+    // file already follows (see the Outpost's buy button via handleAction).
+    render();
   });
   loadoutDetailEl.appendChild(confirm);
 }
@@ -4065,13 +4078,16 @@ function updateShipOverlay() {
     const scuttle = document.createElement("button");
     scuttle.id = "selfDestructBtn";
     scuttle.className = "self-destruct" + (selfDestructArmed ? " armed" : "");
-    scuttle.textContent = selfDestructArmed ? "CONFIRM — SCUTTLE THE SHIP" : "Scuttling Charges";
+    scuttle.textContent = scuttling ? "CHARGES AWAY" : selfDestructArmed ? "CONFIRM — SCUTTLE THE SHIP" : "Scuttling Charges";
+    scuttle.disabled = scuttling;
     scuttle.addEventListener("click", async () => {
+      if (scuttling) return; // already mid-blast — see the `scuttling` declaration
       if (selfDestructArmed) {
         // Watch her go first. The screen stays put through the blast, then
         // the death overlay comes up same as any other run ending — same
         // Requisition payout, same loadout picker to arm the next hull —
         // "New Ship" there is what actually starts the fresh run.
+        scuttling = true;
         scuttle.disabled = true;
         scuttle.textContent = "CHARGES AWAY";
         warnText.textContent = "Charges blown. It has been an honour.";
@@ -4080,6 +4096,7 @@ function updateShipOverlay() {
         selfDestructArmed = false;
         voluntaryScuttle = true;
         state.status = "lost";
+        scuttling = false;
         render();
         return;
       }
@@ -4090,9 +4107,11 @@ function updateShipOverlay() {
     const warn = document.createElement("p");
     warnText = warn;
     warn.className = "ship-note self-destruct-note";
-    warn.textContent = selfDestructArmed
-      ? "Charges armed. Tap again and we scuttle her — this ship and everything in the hold."
-      : "Blow the charges and start over in a fresh hull. Nothing carries over.";
+    warn.textContent = scuttling
+      ? "Charges blown. It has been an honour."
+      : selfDestructArmed
+        ? "Charges armed. Tap again and we scuttle her — this ship and everything in the hold."
+        : "Blow the charges and start over in a fresh hull. Nothing carries over.";
     shipHardpointsEl.appendChild(warn);
   }
 }

@@ -653,13 +653,23 @@ async function freshPage(browser, url, errors) {
     assert.ok(await page.locator("#outpostDetail .outpost-buy").isVisible(), "with a separate button to actually buy");
 
     // The box never changes size between offers, so the shelf and Undock
-    // don't move under your thumb while you're comparing things.
-    const undockY = async () => Math.round((await page.locator("#outpostCloseBtn").boundingBox()).y);
-    const seen = new Set([await undockY()]);
+    // don't move under your thumb while you're comparing things — that
+    // used to actually fail intermittently for a real reason (see style.css:
+    // .outpost-detail was missing flex-shrink:0, so a sector with less
+    // vertical room to spare would squeeze the "fixed height" box, and by a
+    // different amount depending on the previewed offer's own content).
+    // The frame-settle here is just cheap insurance against measuring a
+    // boundingBox() before the browser has actually painted the click's
+    // effect, on top of the real fix.
+    const settledY = async () => {
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      return Math.round((await page.locator("#outpostCloseBtn").boundingBox()).y);
+    };
+    const seen = new Set([await settledY()]);
     const count = await page.locator("#outpostOffers button").count();
     for (let i = 0; i < count; i++) {
       await page.click(`#outpostOffers button >> nth=${i}`);
-      seen.add(await undockY());
+      seen.add(await settledY());
     }
     assert.strictEqual(seen.size, 1, `Undock stays put while browsing the shelf (saw ${[...seen].join(", ")})`);
   }

@@ -538,6 +538,11 @@
     // charge, same damage, more ground), which the roster rule forbids.
     demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", shape: "ring", range: 2, minRange: 2, damage: 1, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, places: true, blast: 1 },
   };
+  // Static data, read everywhere, written nowhere — frozen so an
+  // accidental mutation (a helper that "just tweaks" a weapon object for
+  // display, say) throws instead of silently changing that weapon for
+  // every ship in the game for the rest of the session.
+  deepFreeze(WEAPONS);
 
   // Each enemy type is its own small data block: how tough it is (hp), what
   // it hits back with (a WEAPONS entry), how it moves, and its reactor
@@ -600,6 +605,7 @@
     ablativePlating: { id: "ablativePlating", label: "Ablative Plating", kind: "armor", hullBonus: 1, w: 1, h: 2 },
     stationAnchor: { id: "stationAnchor", label: "Station Anchor", kind: "utility", w: 1, h: 1 },
   };
+  deepFreeze(EQUIPMENT); // same reasoning as WEAPONS above
 
   // Can `id`'s tile sit at (x, y) — inside the grid, overlapping nothing?
   // `ignoreIndex` excludes the tile's own current placement while moving it.
@@ -1043,6 +1049,22 @@
     },
   };
 
+  // Recursively locks an object graph against mutation. Every ENEMY_TYPES
+  // entry's hold/ship below is meant to be read, never written — one
+  // shared object per class, handed to every instance of it for the
+  // program's whole lifetime (see enemyShip). Nothing currently mutates
+  // one in place, but nothing stopped it either: a future "sort items for
+  // display" helper or a debug panel touching `.hold.items` directly would
+  // silently corrupt every Interceptor/Cruiser/etc. for the rest of the
+  // session with no error at the call site. Freezing turns that into a
+  // TypeError right where it happens instead.
+  function deepFreeze(obj) {
+    for (const value of Object.values(obj)) {
+      if (value && typeof value === "object" && !Object.isFrozen(value)) deepFreeze(value);
+    }
+    return Object.freeze(obj);
+  }
+
   // Derived once per class at load — the holds above are static, so this
   // is the same object every caller sees, and no code anywhere is allowed
   // to hand-author what a class "has".
@@ -1059,6 +1081,12 @@
     }
     def.ship = deriveShip(def.hold);
     def.maxHull = def.hull + def.ship.hullBonus;
+    // Freeze the hold/ship only — not `def` itself and not ENEMY_TYPES as
+    // a whole, since engine.test.js deliberately registers a temporary
+    // extra class (`__testHulk`) as a fixture and needs to keep being able
+    // to do that.
+    deepFreeze(def.hold);
+    deepFreeze(def.ship);
   }
 
   // What a given contact can do right now — its class's derived profile.

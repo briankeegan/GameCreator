@@ -23,6 +23,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      # Every push to main deployed straight to production with no
+      # automated check at all — several hot-fix commits this session
+      # shipped on trust that `node .../engine.test.js` had been run by
+      # hand first. These are each game's headless rules-engine suite:
+      # deterministic, no browser, seconds to run. browser.test.js is
+      # deliberately NOT run here — it needs Playwright/Chromium and has
+      # shown real timing flakiness in this environment, which would risk
+      # blocking every game's deploy over one game's unrelated animation
+      # timing, worse than the gap it would close.
+      - name: Run headless engine tests
+        run: |
+          status=0
+          for f in games/*/engine.test.js; do
+            echo "== $f =="
+            node "$f" || status=1
+          done
+          exit $status
       # Same mechanism HayleysGame's clubhouse already uses in production —
       # after chasing several more elaborate "fixes" here that each added a
       # new bug of their own, reverted back to exactly this.
