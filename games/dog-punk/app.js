@@ -120,61 +120,117 @@ function loadSprite(src) {
   img.src = src;
   return state;
 }
-const heroDown = loadSprite("hero_down.png");
-const heroUp = loadSprite("hero_up.png");
-const heroSide = loadSprite("hero_side.png");
-const ratSide = loadSprite("rat_side.png");
-// Second walk-cycle frame per direction: same pose/outfit, opposite leg
-// forward — alternated with the base frame above while actually moving.
-const heroDownWalk2 = loadSprite("hero_down_walk2.png");
-const heroUpWalk2 = loadSprite("hero_up_walk2.png");
-const heroSideWalk2 = loadSprite("hero_side_walk2.png");
-const ratSideWalk2 = loadSprite("rat_side_walk2.png");
-// Dedicated attack-pose frames — a real drawn mid-swing/mid-pounce pose per
-// facing, not just the idle/walk frame stretched — swapped in for the
-// entire attack window so the weapon/claws visibly slash instead of the
-// character just lunging while holding the same standing pose.
-const heroAtkDown = loadSprite("hero_atk_down.png");
-const heroAtkUp = loadSprite("hero_atk_up.png");
-const heroAtkSide = loadSprite("hero_atk_side.png");
-const ratAtkSide = loadSprite("rat_atk_side.png");
+
+// HERO ART: one generated SPRITE SHEET (hero_sheet.png) — 3 columns
+// (idle, walk, attack) x 3 rows (facing down, facing side, facing up),
+// square cells, cut up at load into the nine frames below.
+//
+// WHY A SHEET AND NOT NINE PNGs: every hero frame used to be its own
+// independently generated image, so fur colour, mohawk colour, body
+// proportions and pixel scale drifted between frames — walking visibly
+// changed the character's breed every other step, and regenerating one
+// frame at a time could never converge because each new frame just drifted
+// somewhere else. Frames cut from ONE image cannot drift: they were drawn
+// together in a single generation, share one quantised palette, and are
+// normalised to a common scale and foot baseline (see art-src/assemble.py,
+// which also keys the generated background out to transparency).
+const HERO_SHEET_COLS = 3;
+const HERO_SHEET_ROWS = 3;
+function sliceSheet(src, cols, rows) {
+  // Same { img, ready } shape loadSprite returns, so drawAnimatedSprite
+  // neither knows nor cares that these are canvases cut from one image.
+  const frames = [];
+  for (let i = 0; i < cols * rows; i++) frames.push({ img: null, ready: false });
+  const sheet = new Image();
+  sheet.onload = () => {
+    const cw = Math.floor(sheet.width / cols);
+    const ch = Math.floor(sheet.height / rows);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cv = document.createElement("canvas");
+        cv.width = cw;
+        cv.height = ch;
+        const cx = cv.getContext("2d");
+        // Keep the pixels chunky through the cut — the sheet IS pixel art.
+        cx.imageSmoothingEnabled = false;
+        cx.drawImage(sheet, c * cw, r * ch, cw, ch, 0, 0, cw, ch);
+        const f = frames[r * cols + c];
+        f.img = cv;
+        f.ready = true;
+      }
+    }
+  };
+  // If the sheet ever fails to load, every frame stays ready:false and
+  // drawAnimatedSprite falls back to the drawn-in-code hero, same as before.
+  sheet.src = src;
+  return frames;
+}
+const HERO = sliceSheet("hero_sheet.png", HERO_SHEET_COLS, HERO_SHEET_ROWS);
+const heroDown = HERO[0];
+const heroDownWalk2 = HERO[1];
+const heroAtkDown = HERO[2];
+const heroSide = HERO[3];
+const heroSideWalk2 = HERO[4];
+const heroAtkSide = HERO[5];
+const heroUp = HERO[6];
+const heroUpWalk2 = HERO[7];
+const heroAtkUp = HERO[8];
+
+// GROUND ART: one generated strip of four 64px tiles — mossy junkyard
+// ground, cracked concrete, rusted fence wall, scrap-crate obstacle — cut the
+// same way as the sprite sheets. Falls back to the hand-drawn tiles below if
+// the strip fails to load, so the level is never invisible.
+const TILES = sliceSheet("tiles.png", 4, 1);
+const TILE_GROUND = 0, TILE_CONCRETE = 1, TILE_WALL = 2, TILE_CRATE = 3;
+
+// Enemies come off their own sheet, cut exactly the same way and snapped to
+// the SAME locked palette (art-style.json) — that is what keeps the rats
+// looking like they belong in the same game as Beverly, instead of a
+// finely-textured realistic rodent standing next to a flat cartoon dog.
+const RAT = sliceSheet("rat_sheet.png", 3, 1);
+const ratSide = RAT[0];
+const ratSideWalk2 = RAT[1];
+const ratAtkSide = RAT[2];
 
 // facing (+ walk-cycle step) -> { sprite, mirror }
-// hero_side.png / rat_side.png are both drawn facing LEFT natively, so
-// "left" is the unmirrored case and "right" is the one that needs the flip
-// — get this backwards and the sprite visibly walks/lunges the wrong way
-// whenever it should be facing right (moonwalking bug, fixed 2026-08-17).
-// NOTE: this mirror logic was actually correct — the real bug (found in a
-// later pass, same day) was that hero_side_walk2.png itself had been drawn
-// facing RIGHT while hero_side.png faced LEFT, so every other walk-cycle
-// frame flipped backwards regardless of the code. Regenerated hero_side_
-// walk2.png facing LEFT to match — always keep every "_side"/"_side_walk2"/
-// "_atk_side" art asset facing the same native direction, or this class of
-// bug recurs.
+// The sheet's side row is drawn facing RIGHT, so "right" is the unmirrored
+// case and "left" is the one that needs the flip. (The old per-frame PNGs
+// faced LEFT and this was the other way round — if the character ever
+// moonwalks again, this is the first thing to check, along with whether a
+// newly generated sheet's side row faces the same way this one does.)
+// The rats' PNGs still face LEFT, hence the opposite test in ratSpriteFor.
 function heroSpriteFor(facing, step) {
   if (facing === "up") return { s: step ? heroUpWalk2 : heroUp, mirror: false };
-  if (facing === "left") return { s: step ? heroSideWalk2 : heroSide, mirror: false };
-  if (facing === "right") return { s: step ? heroSideWalk2 : heroSide, mirror: true };
+  if (facing === "left") return { s: step ? heroSideWalk2 : heroSide, mirror: true };
+  if (facing === "right") return { s: step ? heroSideWalk2 : heroSide, mirror: false };
   return { s: step ? heroDownWalk2 : heroDown, mirror: false };
 }
 function ratSpriteFor(facing, step) {
-  return { s: step ? ratSideWalk2 : ratSide, mirror: facing === "right" };
+  return { s: step ? ratSideWalk2 : ratSide, mirror: facing === "left" };
 }
 // Attack-pose lookups (ignore the walk-cycle `step` arg — same signature as
 // the walk lookups above so drawAnimatedSprite can call either one).
 function heroAttackSpriteFor(facing) {
   if (facing === "up") return { s: heroAtkUp, mirror: false };
-  if (facing === "left") return { s: heroAtkSide, mirror: false };
-  if (facing === "right") return { s: heroAtkSide, mirror: true };
+  if (facing === "left") return { s: heroAtkSide, mirror: true };
+  if (facing === "right") return { s: heroAtkSide, mirror: false };
   return { s: heroAtkDown, mirror: false };
 }
 function ratAttackSpriteFor(facing) {
-  return { s: ratAtkSide, mirror: facing === "right" };
+  return { s: ratAtkSide, mirror: facing === "left" };
 }
 
 // ---- DOM ----
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
+// Pixel art: never let the browser interpolate, or the chunky pixels blur.
+ctx.imageSmoothingEnabled = false;
+
+// Every sheet uses a 256px cell around a 4px art-pixel grid, so drawing all
+// sheet-based characters at ONE cell size is what makes an art pixel the same
+// size on screen for every one of them. Relative size lives in the art
+// (Beverly fills 168px of her cell, a rat 104px), never in this number.
+const SPRITE_CELL = 64;
 const heartsEl = document.getElementById("hearts");
 const enemyCountEl = document.getElementById("enemyCount");
 const winOverlay = document.getElementById("winOverlay");
@@ -494,6 +550,30 @@ function update(dt, now) {
 // ---- drawing ----
 function drawTile(c, r, ch, gateOpen) {
   const x = c * TILE, y = r * TILE;
+
+  // Generated tiles when they're loaded; the drawn-in-code version below is
+  // the fallback. Concrete is sprinkled deterministically through the mossy
+  // ground so the floor isn't one flat repeat (and never a chessboard).
+  const patch = (c * 7 + r * 13) % 5 === 0;
+  if (TILES[TILE_GROUND].ready) {
+    const floor = TILES[patch ? TILE_CONCRETE : TILE_GROUND];
+    ctx.drawImage(floor.img, x, y, TILE, TILE);
+    if (ch === "2") {
+      ctx.drawImage(TILES[TILE_WALL].img, x, y, TILE, TILE);
+    } else if (ch === "3") {
+      ctx.drawImage(TILES[TILE_CRATE].img, x, y, TILE, TILE);
+    } else if (ch === "G") {
+      // The gate reads as state, not material: tint the floor red while it's
+      // locked, green once every enemy is down.
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = gateOpen ? "#2f5d34" : "#6b2f2f";
+      ctx.fillRect(x, y, TILE, TILE);
+      ctx.restore();
+    }
+    return;
+  }
+
   if (ch === "2") {
     ctx.fillStyle = "#5c4a34";
     ctx.fillRect(x, y, TILE, TILE);
@@ -664,7 +744,7 @@ function render(now) {
     // the pounce swaps to a real drawn attack pose (jaws open, claws out)
     // instead of just stretching the idle art, so the lunge reads as an
     // actual attack animation rather than a squashed walk frame.
-    drawAnimatedSprite(lunging ? ratAttackSpriteFor : ratSpriteFor, en.facing, en.x, en.y - 6, 34,
+    drawAnimatedSprite(lunging ? ratAttackSpriteFor : ratSpriteFor, en.facing, en.x, en.y - 6, SPRITE_CELL,
       { moving: en.moving && !lunging, phase: en.animPhase, scaleX, scaleY },
       (x, y, facing, sx, sy, step) => drawRatFallback(x, y, facing, en.hitFlash, sx, sy, step, lunging));
   }
@@ -715,7 +795,7 @@ function render(now) {
     // swept out through the slash) instead of just lunging/stretching the
     // idle-standing art — that stretch alone read as a body-check, not a
     // weapon swing.
-    drawAnimatedSprite(attacking ? heroAttackSpriteFor : heroSpriteFor, p.facing, p.x, p.y - 10, 44,
+    drawAnimatedSprite(attacking ? heroAttackSpriteFor : heroSpriteFor, p.facing, p.x, p.y - 10, SPRITE_CELL,
       { moving: p.moving, phase: p.animPhase, offsetX, offsetY, scaleX, scaleY },
       (x, y, facing, sx, sy, step) => drawHeroFallback(x, y, facing, now < p.invulnUntil, sx, sy, step, attacking, attackT));
   }

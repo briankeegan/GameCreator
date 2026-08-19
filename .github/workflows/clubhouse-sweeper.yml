@@ -104,9 +104,13 @@ jobs:
                 echo "PR #$pr ($gid): comment $cid already swept — not re-dispatching."
                 continue
               fi
-              gh api --method POST "repos/$REPO/issues/comments/$cid/reactions" \
-                -f content=eyes >/dev/null 2>&1 \
-                || echo "::warning::could not mark comment $cid as claimed — dispatching anyway"
+              if ! err=$(gh api --method POST -H "Accept: application/vnd.github+json" \
+                           "repos/$REPO/issues/comments/$cid/reactions" \
+                           -f content=eyes 2>&1 >/dev/null); then
+                # Surface WHY, not just that it failed: without the marker the
+                # exactly-once bound is gone, so this must not fail quietly.
+                echo "::error::could not mark comment $cid as claimed — dispatching anyway, but this message can be swept again: $err"
+              fi
 
               echo "::warning::PR #$pr ($gid): message ${age}m old and unanswered — the event path did not handle it. Dispatching autopilot."
               gh workflow run clubhouse-autopilot.yml --ref main \
