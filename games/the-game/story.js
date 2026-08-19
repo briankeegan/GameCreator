@@ -35,58 +35,61 @@ window.NEWSEY_STORY = (function () {
   };
 
   // ---- 1. CUTSCENE: the backstory, up through waking in Infinity ----------
+  // Kept SHORT on purpose — this is a game, not a book. The plot's full prose
+  // is reference/the-game/PLOT.md; it's a blueprint for what to BUILD (scenes,
+  // art, rooms), not text to put on screen. Every bg id here gets its own
+  // generated scene, so the picture carries the setting — the line under it
+  // only needs to carry the beat. Real back-and-forth exchanges are kept as
+  // actual dialogue; solo narration is cut to one line per moment.
   var CUTSCENE = [
-    { bg: "code", text: "It was all one great big code. If you could read the code in time, you could survive. If you couldn't… you'd be smashed flat." },
-    { bg: "childhood", who: "nella", art: "nella_child", text: "I was nine when I was given a video game for my birthday. Being a gamer in the 90s wasn't cool. Being a gamer GIRL? Multiply that by a million." },
-    { who: "nella", text: "It was called \"Puzzle Attack.\" Simple enough: match three or more bricks to clear them before they rise up and smash you flat." },
-    { who: "nella", text: "Maybe it's because I'm neurodivergent, but making matches was… soothing. I played for hours. Soon I'd beaten every mode on the hardest difficulty." },
-
-    { bg: "mall", who: "nella", text: "When I was ten, there was a Puzzle Attack competition at the local mall. My hero, May 2000 — a pink-haired girl kicking serious ass — was going to be there. I begged Dad to take me." },
-    { who: "nella", text: "Then… people were screaming. Running. The smell of something burning. A stampede. My father's face, white with terror. We barely made it out." },
-    { bg: "news", who: "news", art: null, text: "Six dead. Twenty-three injured. Authorities say the flashing light patterns in \"Puzzle Attack\" triggered aggression — players became enraged and attacked one another." },
-    { who: "nella", text: "The game was pulled from shelves. Copies turned in to be destroyed. The developer, Boxley Company, went under. Dad destroyed my copy." },
-    { who: "nella", text: "And that was the last I heard of Puzzle Attack. For twenty years." },
-
-    { bg: "rain", who: "nella", art: "nella", text: "The rain was so heavy I could barely see the last car leave. It was my driveway now. Dad got sick while I was finishing grad school. Last week… he died." },
-    { who: "nella", text: "He left me the house and a life insurance policy. I didn't NEED to go back to my degree. But then — what would be the purpose of anything?" },
-    { bg: "porch", who: "chuck", art: "chuck", text: "Nella! Hurry up and get out of the rain!" },
-    { who: "nella", text: "Chuck. My oldest friend, soaked through, a burger bag from my favorite joint tucked under his red flannel. He'd taken off work at the lumberyard just to check on me." },
-    { who: "chuck", text: "I'm so sorry for your loss, Nella." },
-
-    { bg: "kitchen", who: "chuck", text: "I wasn't sure it was the right time, but… when we were clearing your dad's basement, I found something." },
-    { who: "chuck", art: "chuck_box", text: "It said \"Cups and Plates\" on the outside. I almost skipped it." },
-    { bg: "cartridge", who: "nella", art: "nella", text: "Inside was a game cartridge. I knew it instantly. My old \"Puzzle Attack.\" A note was taped to the back." },
-    { who: "dad", art: "note", text: "My Nella — I know how much you loved this game, and you played it for hours without issue. I didn't have the heart to throw it away. Maybe you'll play again someday. Love, Dad." },
-    { who: "nella", art: "nella", text: "A tear fell on the note. I peeled the tape back to save it — and it lifted part of the label, revealing… a tiny black button hidden underneath the cartridge." },
-    { who: "nella", text: "I pressed it. Click. Nothing obvious changed. But maybe… maybe Dad left me a message inside the game itself. I was grasping at straws. I clung to the idea anyway." },
-
-    { bg: "crt", who: "chuck", art: "chuck", text: "\"Match the red, white, and yellow ends!\" — I know already, sheesh! …There. Channel 3. Ready, Nella?" },
-    { who: "nella", art: "nella", text: "The menu bloomed to life, that nostalgic 8-bit theme humming through the speakers. I picked campaign, Hard. The screen turned pink." },
-    { who: "nella", text: "Twenty years gone, and my hands remembered everything. Chains, defenses, huge attacks. I tore through Hard mode." },
-    { who: "nella", text: "After the credits: press the bumpers on Hard to unlock the HARDEST difficulty. The screen went red. The enemies got meaner. But nothing else changed. No message." },
-    { who: "chuck", art: "chuck", text: "Nella… I don't think your dad left a secret in a video game. I know it's tough. He's the only family you had. But this sounds insane." },
-    { who: "nella", art: "nella_scream", text: "Something tore out of me. I screamed. For the grief. For the rage. For the fear I'd carried since I was ten. Chuck sat stunned, then quietly got up and went home." },
-    { who: "nella", art: "nella", text: "I couldn't blame him. But I wasn't ready to give up. Maybe if I beat the hardest difficulty, there'd be another code. And that code would be Dad's message." },
-    { who: "nella", text: "I played all night. And into the morning." },
-
-    { bg: "crt_red", who: "nella", text: "8 AM. My eyes burned. My hands ached. One more, I told myself. The final boss. Maybe it was the pressure — but I played the game of my life. I beat it." },
-    { who: "nella", text: "A shiver ran through me. Out of the black faded handwriting — deep red, like blood. The victory music played, but… wrong. Distorted. In the wrong key." },
-    { bg: "latin", who: "nella", text: "\"Omne ignotum pro magnifico.\" I looked it up. \"Everything unknown appears magnificent.\" Latin. In an American game. It made no sense." },
-    { bg: "chaos", who: "nella", text: "The screen bled red. A skull. Beside it, a symbol — a circle with arrows pointing outward. The music stopped dead." },
-    { who: "nella", text: "Black letters appeared: \"A deal is struck. Proceed? Press Start and Select.\"  I should have been terrified. Instead I was thrilled — a clue from Dad. I pressed Start and Select." },
-    { bg: "", text: "The world faded to black." },
-
-    { bg: "bedroom", who: "nella", art: "nella_demon", text: "I woke on a satin bed in a room like something out of a castle. Paintings of spellcasting. A mahogany desk. A piano. And a mirror, floor to ceiling." },
-    { who: "nella", text: "I screamed. My reflection had red horns pushing through my hair. Glowing red eyes. Fangs. A dark red robe. On my wrist, a copper bracelet set with pale blue gems. I'd become… some kind of demon." },
-    { bg: "mirror", who: "devil", art: "devil", text: "Hello, and welcome to Infinity! Your appearance reflects your magical avatar. The bracelet — copper for your rank, aquamarine for your playstyle. These can change." },
-    { who: "devil", text: "Practice here, or head to the lounge for a meal and a battle, or the library to study. Challenge anyone you see fit — it's the only way to grow stronger! Now… take your first steps out that door." },
-    { who: "nella", art: "nella_demon", text: "The little devil pointed to the door and vanished. I pinched myself. It hurt. Everything about this felt like a dream I couldn't wake from. With no way home, I went through the door." }
+    { bg: "childhood", who: "nella", art: "nella_child", text: "Age nine. My first video game: \"Puzzle Attack.\" Match three, or get smashed flat. I was obsessed." },
+    { bg: "mall", who: "nella", text: "Age ten. A Puzzle Attack tournament at the mall — my hero May 2000 was competing. Then the screaming started." },
+    { bg: "news", who: "news", art: null, text: "Six dead. Twenty-three injured. \"Puzzle Attack\" is pulled from shelves, banned nationwide." },
+    { bg: "rain", who: "nella", art: "nella", text: "Twenty years later. My father just died. It's just me and this house now." },
+    { bg: "porch", who: "chuck", art: "chuck", text: "Nella! Get out of the rain!" },
+    { who: "nella", text: "Chuck. My oldest friend." },
+    { who: "chuck", text: "I'm so sorry, Nella." },
+    { bg: "kitchen", who: "chuck", art: "chuck_box", text: "Clearing your dad's basement — I found something." },
+    { bg: "cartridge", who: "nella", art: "nella", text: "My old Puzzle Attack cartridge. A note taped to the back." },
+    { who: "dad", art: "note", text: "My Nella — maybe you'll play again someday. Love, Dad." },
+    { who: "nella", text: "Peeling the note off revealed a hidden button. I pressed it." },
+    { bg: "crt", who: "chuck", art: "chuck", text: "Ready, Nella?" },
+    { who: "nella", art: "nella", text: "Twenty years gone, and my hands remembered everything." },
+    { who: "chuck", art: "chuck", text: "Nella, I don't think your dad hid a secret in a video game. This sounds insane." },
+    { who: "nella", art: "nella_scream", text: "The scream came from somewhere I didn't know I had." },
+    { who: "nella", text: "I played through the night." },
+    { bg: "crt_red", who: "nella", text: "8 AM. One more try. I beat it — the run of my life." },
+    { bg: "latin", who: "nella", text: "\"Omne ignotum pro magnifico.\" Handwritten. Blood-red. Not part of the game." },
+    { bg: "chaos", who: "nella", text: "A skull. A chaos symbol. \"A deal is struck. Proceed?\"" },
+    { who: "nella", text: "I pressed Start and Select." },
+    { bg: "", text: "The world faded to black." }
+    // Cutscene ends here. What happens next — waking up, the horns in the
+    // mirror, the devil's welcome — is no longer narrated: it's the first
+    // playable room (see ROOMS.bedroom below). You wake up, walk to the
+    // mirror yourself, and walk out the door yourself.
   ];
 
   // ---- 2. WALK-AROUND: rooms, exits, and NPCs to talk to ------------------
   // Coordinates are in a 320x200 virtual room (matches the other games' 2x
   // pixel-scale convention). player start position is per-room.
   var ROOMS = {
+    bedroom: {
+      bg: "bedroom",
+      label: "Your Room, Infinity",
+      playerStart: { x: 150, y: 150 },
+      exits: [ { x: 300, y: 150, w: 20, h: 40, to: "lounge", label: "→ Out the door" } ],
+      npcs: [
+        {
+          id: "devil", x: 150, y: 90, art: "devil",
+          lines: [
+            "Hello, and welcome to Infinity! You may notice your appearance has changed — that's your magical avatar.",
+            "Your bracelet is copper, to reflect your rank, and aquamarine for your playstyle. These can change.",
+            "Practice here, or head to the lounge for a meal and a battle, or the library to study. Don't be afraid to challenge anyone — it's the only way to grow stronger!",
+            "Whatever you need, you can find here. Now… take your first steps out that door."
+          ]
+        }
+      ]
+    },
     lounge: {
       bg: "lounge",
       label: "The Lounge",
