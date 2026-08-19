@@ -41,6 +41,22 @@
   }
   function bgUrl(id) { return id ? "url('art/bg-" + id + ".png'), " : ""; }
 
+  // Every character sprite is its own independent AI generation, so their
+  // natural width:height ratios vary a lot even when all are tightly
+  // trimmed with no padding (confirmed: 1.18 up to 2.15 across the current
+  // set) — rendering each at a fixed height with its own raw ratio made
+  // some characters look unnaturally thin/elongated standing next to
+  // others, reported live as sprites "getting stretched". Clamp the
+  // rendered width to a plausible human-silhouette range at a given
+  // height so no single sprite reads as squished or stretched relative to
+  // its neighbors, regardless of how tightly its own source was cropped.
+  function spriteDrawSize(img, targetH) {
+    var w = targetH * (img.naturalWidth / img.naturalHeight);
+    var minW = targetH * 0.5, maxW = targetH * 0.95;
+    w = Math.max(minW, Math.min(maxW, w));
+    return { w: w, h: targetH };
+  }
+
   // Warm the cache for every art/bg id the game can possibly need, right at
   // boot, so nobody ever sees the fallback flash while a portrait or NPC
   // sprite that's about to be shown is still on the wire — the network
@@ -382,7 +398,7 @@
 
     if (hasSprite) {
       var img = spriteEntry.img;
-      var h = 30, w = h * (img.naturalWidth / img.naturalHeight);
+      var size = spriteDrawSize(img, 30), w = size.w, h = size.h;
       ctx.drawImage(img, npc.x - w / 2, npc.y - h, w, h);
       headTop = npc.y - h;
     } else {
@@ -438,7 +454,7 @@
     if (!(entry && entry.ok)) entry = loadArt("nella_top"); // fallback while directional art is missing
     if (entry && entry.ok) {
       var img = entry.img;
-      var h = 30, w = h * (img.naturalWidth / img.naturalHeight);
+      var size = spriteDrawSize(img, 30), w = size.w, h = size.h;
       var cx = player.x + player.w / 2, feetY = player.y + player.h;
       var mirror = player.facing === "right" || (player.facing === "left" && wantId === "nella_top");
       ctx.save();
