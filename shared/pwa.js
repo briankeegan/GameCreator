@@ -10,8 +10,27 @@
   const swPath = script.dataset.sw || "sw.js";
 
   if ("serviceWorker" in navigator) {
+    // Auto-update: when a newly-deployed service worker takes control, reload
+    // once so fresh art/code shows immediately — no manual double-refresh or
+    // force-close. Guarded to only fire when the page was ALREADY controlled
+    // (i.e. this is an update, not the first-ever visit), and only once.
+    if (navigator.serviceWorker.controller) {
+      var reloadingForUpdate = false;
+      navigator.serviceWorker.addEventListener("controllerchange", function () {
+        if (reloadingForUpdate) return;
+        reloadingForUpdate = true;
+        window.location.reload();
+      });
+    }
     window.addEventListener("load", function () {
-      navigator.serviceWorker.register(swPath).catch(function () {});
+      navigator.serviceWorker.register(swPath).then(function (reg) {
+        // Proactively check for a new worker now and whenever the tab regains
+        // focus, so a deploy lands promptly instead of waiting for a cold nav.
+        reg.update().catch(function () {});
+        document.addEventListener("visibilitychange", function () {
+          if (document.visibilityState === "visible") reg.update().catch(function () {});
+        });
+      }).catch(function () {});
     });
   }
 

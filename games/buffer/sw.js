@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("buffer-v2", [
+GCRegisterServiceWorker("buffer-v3", [
   "./",
   "./index.html",
   "./style.css",
