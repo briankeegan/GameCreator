@@ -312,7 +312,7 @@
 
     if (hasSprite) {
       var img = spriteEntry.img;
-      var h = 46, w = h * (img.naturalWidth / img.naturalHeight);
+      var h = 30, w = h * (img.naturalWidth / img.naturalHeight);
       ctx.drawImage(img, npc.x - w / 2, npc.y - h, w, h);
       headTop = npc.y - h;
     } else {
@@ -349,17 +349,17 @@
     }
   }
 
-  // Only one standing sprite exists ("nella_walk", full body, facing
-  // forward) — not a 4-direction walk-cycle set. Mirror it horizontally
-  // for "left" so at least left/right read correctly; up/down reuse the
-  // same forward-facing art rather than showing her back (no art for
-  // that exists, and forward-facing-always is far less broken-looking
-  // than stretching/guessing a rear view).
+  // Only one standing sprite exists ("nella_top", small top-down full
+  // body, facing forward) — not a 4-direction walk-cycle set. Mirror it
+  // horizontally for "left" so at least left/right read correctly;
+  // up/down reuse the same forward-facing art rather than showing her
+  // back (no art for that exists, and forward-facing-always is far less
+  // broken-looking than stretching/guessing a rear view).
   function drawPlayer() {
-    var entry = loadArt("nella_walk");
+    var entry = loadArt("nella_top");
     if (entry && entry.ok) {
       var img = entry.img;
-      var h = 50, w = h * (img.naturalWidth / img.naturalHeight);
+      var h = 30, w = h * (img.naturalWidth / img.naturalHeight);
       var cx = player.x + player.w / 2, feetY = player.y + player.h;
       ctx.save();
       if (player.facing === "left") {

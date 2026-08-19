@@ -94,7 +94,7 @@ window.NEWSEY_STORY = (function () {
       exits: [ { x: 300, y: 150, w: 20, h: 40, to: "lounge", label: "→ Out the door" } ],
       npcs: [
         {
-          id: "devil", x: 150, y: 155, art: "devil", sprite: "devil",
+          id: "devil", x: 150, y: 155, art: "devil", sprite: "devil_top",
           lines: [
             "Hello, and welcome to Infinity! You may notice your appearance has changed — that's your magical avatar.",
             "Your bracelet is copper, to reflect your rank, and aquamarine for your playstyle. These can change.",
@@ -112,7 +112,7 @@ window.NEWSEY_STORY = (function () {
       exits: [ { x: 300, y: 150, w: 20, h: 40, to: "library", label: "→ Library" } ],
       npcs: [
         {
-          id: "kat", x: 150, y: 162, art: "kat", sprite: "kat",
+          id: "kat", x: 150, y: 162, art: "kat", sprite: "kat_top",
           lines: [
             "Hello there. They call me Kat. What's your name?",
             "I'll buy you a drink — if you duel me. No better way to learn!",
@@ -121,14 +121,14 @@ window.NEWSEY_STORY = (function () {
           duel: true
         },
         {
-          id: "may", x: 220, y: 158, art: "may", sprite: "may_full",
+          id: "may", x: 220, y: 158, art: "may", sprite: "may_top",
           lines: [
             "You again? Stay out of my way.",
             "Something doesn't add up about the new arrivals lately. Watch yourself."
           ]
         },
         {
-          id: "timothy", x: 258, y: 168, art: "timothy", sprite: "timothy_full",
+          id: "timothy", x: 258, y: 168, art: "timothy", sprite: "timothy_top",
           lines: [
             "Now, now — that's no way to welcome the new people.",
             "My bracelet's all diamond. Yours will get there too, given time."
@@ -143,7 +143,7 @@ window.NEWSEY_STORY = (function () {
       exits: [ { x: 0, y: 150, w: 20, h: 40, to: "lounge", label: "← Lounge" } ],
       npcs: [
         {
-          id: "michael", x: 120, y: 160, art: "michael", sprite: "michael_full",
+          id: "michael", x: 120, y: 160, art: "michael", sprite: "michael_top",
           lines: [
             "Oh, hello Nella! Nice to see you here. What can I get you?",
             "I'm a detective. I was investigating Puzzle Attack.",
@@ -151,7 +151,7 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "john", x: 260, y: 155, art: "john", sprite: "john_full",
+          id: "john", x: 260, y: 155, art: "john", sprite: "john_top",
           lines: [
             "I am John Boxley. Creator of Puzzle Attack. I am trapped in Infinity. And now, so are you.",
             "A deal was struck for your soul, in exchange for magical powers. It didn't work the way I thought it would.",
