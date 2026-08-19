@@ -1,0 +1,9 @@
+{
+  "camera": "Character portrait or scene, centered, filling the frame with a little headroom, three-quarter or straight-on angle.",
+  "style": "Painterly chunky-pixel 16-bit RPG cutscene-portrait art (NOT flat NES/SNES sprite art) — large visible square pixel blocks but with dramatic cinematic rim-lighting, soft painterly shading gradients within each pixel block, moody atmospheric depth, a subtle vignette toward the frame edges. Confident thick dark outlines around the subject.",
+  "palette": "Saturated, warm-vs-cool contrast (amber/gold light against deep purple, indigo, or crimson shadow). Backgrounds run darker and more desaturated than the subject so the subject pops.",
+  "background": "A full, atmospheric scene appropriate to the subject (not a plain color/void) — matches the cinematic-portrait look, never a flat cut-out background.",
+  "constraints": "Single clear subject/focal point. No text, no logos, no watermark, no UI elements, no borders/frames baked into the image.",
+  "pixelArt": true,
+  "pixelGrid": 128
+}
