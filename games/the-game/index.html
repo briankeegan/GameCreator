@@ -25,18 +25,21 @@
       <div class="room-label" id="roomLabel"></div>
       <div class="interact-hint" id="interactHint" hidden>tap / press Z to talk</div>
 
-      <!-- CUTSCENE MODE: an overlay that covers the canvas during the intro. -->
+      <!-- CUTSCENE MODE: an overlay that covers the canvas during the intro.
+           Art zone on top, a SOLID dialogue panel below it — never overlapping. -->
       <div class="cutscene" id="cutscene" role="button" tabindex="0" aria-label="Story. Tap to continue.">
-        <div class="bg" id="bg"></div>
-        <div class="vignette"></div>
-        <div class="portrait-wrap" id="portraitWrap">
-          <img class="portrait" id="portrait" alt="" />
-          <div class="portrait-fallback" id="portraitFallback"></div>
+        <div class="cutscene-art">
+          <div class="bg" id="bg"></div>
+          <div class="vignette"></div>
+          <div class="portrait-wrap" id="portraitWrap">
+            <img class="portrait" id="portrait" alt="" />
+            <div class="portrait-fallback" id="portraitFallback"></div>
+          </div>
         </div>
         <div class="dialogue" id="dialogue">
           <div class="speaker" id="speaker"></div>
           <div class="line" id="line"></div>
-          <div class="advance" id="advance">tap ▸</div>
+          <div class="advance" id="advance">Next ▶</div>
         </div>
       </div>
 
@@ -49,7 +52,7 @@
         <div class="talk-body">
           <div class="talk-speaker" id="talkSpeaker"></div>
           <div class="talk-line" id="talkLine"></div>
-          <div class="advance" id="talkAdvance">tap ▸</div>
+          <div class="advance" id="talkAdvance">Next ▶</div>
         </div>
       </div>
 
