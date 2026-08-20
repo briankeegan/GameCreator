@@ -252,35 +252,81 @@ jobs:
                guess — make no file changes and use your reply (step 4) to ask
                for the specific clarification you need.
 
-            3. IMAGES — you can GENERATE art and then REVIEW it in this run.
+            3. ART — you can GENERATE art and REVIEW it inside this run.
                Do NOT write a PNG yourself (binary files corrupt) and do NOT
-               hand-draw pixels. Instead:
-                 a. Trigger a generation by POSTing to the local image service
-                    (it holds the OpenAI key — you do not, and must not try to):
-                      curl -s -X POST http://127.0.0.1:8791/generate \
-                        -H 'content-type: application/json' \
-                        -d '{"prompt":"<vivid description>",
-                             "output_path":"games/<gameId>/<name>.png",
-                             "game":"<gameId>"}'
-                    Include "game":"<gameId>" to match that game's established
-                    art style (needs games/<gameId>/art-style.json; create one
-                    first, modeled on games/hypergolic-hull/art-style.json, if
-                    it's a new set). Omit "game" for a freeform one-off. The
-                    call BLOCKS ~30-60s and returns JSON once the PNG is written
-                    to output_path — that wait is expected, just let it finish.
-                 b. THEN Read that output_path PNG and actually look at it.
-                    Judge whether it matches the request and the game's look.
-                 c. If it's wrong, call /generate again with the SAME
-                    output_path and a revised prompt to replace it. The response
-                    includes "remaining" — you have a limited number of
-                    generations per run; revise deliberately, don't burn them.
-                 d. When it looks good, reference it in the game code WITH a
-                    canvas/vector fallback so the game still plays if the image
-                    is ever missing.
+               hand-draw pixels.
+
+               READ games/<gameId>/art-style.json FIRST. It is the game's art
+               contract. If its "_status" still says UNFILLED TEMPLATE, fill it
+               in for THIS game before generating anything — decide the camera,
+               the rendering language, the character and enemy descriptions —
+               and fill lockedPalette from the first sheet you approve. If the
+               file is missing entirely, copy games/_template/art-style.json and
+               fill that in. games/dog-punk/art-style.json is a worked example.
+
+               GENERATE SHEETS, NEVER SINGLE FRAMES. This is the rule that
+               matters most and the one previous runs kept breaking. A sprite
+               generated on its own is drawn from scratch, so its colours,
+               proportions and pixel scale do not match the frames beside it —
+               Dog Punk shipped a hero whose front view and side view were
+               visibly different dogs, and five rounds of regenerating single
+               frames never converged, because each new frame drifted somewhere
+               else. Generate ONE image holding a whole row of frames (idle,
+               walk, attack) and cut it up. Frames drawn together cannot drift.
+
+               a. Generate a row by POSTing to the local image service (it holds
+                  the OpenAI key — you do not, and must not try to):
+                    curl -s -X POST http://127.0.0.1:8791/generate \
+                      -H 'content-type: application/json' \
+                      -d '{"prompt":"<see below>",
+                           "output_path":"games/<gameId>/art-src/<name>_raw.png",
+                           "game":"<gameId>","size":"1536x1024"}'
+                  Raw generations go under art-src/ — they are source material,
+                  not shipped art. The call BLOCKS ~30-60s; let it finish.
+
+                  The prompt must state, every time: the row's frames left to
+                  right; that all frames are THE SAME character with identical
+                  colours, outfit, proportions and pixel scale; the rendering
+                  style from art-style.json; a SOLID FLAT PURE WHITE background
+                  (asking for transparency returns a beige wash — the cutter
+                  keys white out for you); and that nothing may touch or be cut
+                  off by any edge, with a clear gap between neighbouring
+                  sprites. Bottom-row clipping and overlapping sprites are the
+                  two failures that waste generations, so say both explicitly.
+
+               b. Cut the raw into a shipped sheet with the shared cutter:
+                    python3 .github/art/build_sheet.py \
+                      --style games/<gameId>/art-style.json \
+                      --out games/<gameId>/<name>_sheet.png \
+                      --row games/<gameId>/art-src/<raw>.png [--row ...] \
+                      [--blobs] [--body-height N]
+                  One --row per output row, in order. --blobs when sprites in
+                  the raw overlap horizontally. --body-height sets how much of
+                  the cell the character fills: that is where relative size
+                  between characters lives (a rat is smaller than the hero
+                  because of this number), NEVER in per-character draw sizes —
+                  every sheet-based character is drawn at ONE on-screen cell
+                  size so their pixels match. Run `--help` for details.
+
+               c. THEN Read the OUTPUT sheet and actually look at it. Check the
+                  character is recognisably the same in every frame, that its
+                  defining feature (mohawk, hat, weapon) is visible in ALL of
+                  them including attacks, and that nothing is clipped. If it is
+                  wrong, regenerate the ROW — never patch one frame.
+
+               d. Reference the sheet in the game code by cutting it at load
+                  into per-frame canvases (games/dog-punk/app.js sliceSheet() is
+                  the pattern), and keep a canvas/vector fallback so the game
+                  still plays if the image is missing. Add the sheet to the
+                  game's sw.js precache list and drop any files it replaces.
+
+               The /generate response includes "remaining" — you have a limited
+               number of generations per run. A sheet costs one for a whole row,
+               which is the point. If you run out with nothing great, keep the
+               best attempt and SAY SO in your reply.
+
                For a simple FLAT icon or logo, skip all this and write an inline
-               .svg file (SVG over PNG per CLAUDE.md). If you run out of
-               generations with nothing great, keep the best attempt and SAY SO
-               in your reply so the human can ask for a redo.
+               .svg file (SVG over PNG per CLAUDE.md).
 
             4. Write your chat reply as plain Markdown — the message body ONLY,
                with NO "**Claude says:**" prefix and NO "[v0.N]" stamp (the
@@ -327,7 +373,11 @@ jobs:
         timeout-minutes: 6
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          MAX_GENERATIONS: '6'
+          # A single character row is one generation, so a full set (front,
+          # side, back, plus enemies) needs roughly this many in one pass. At 6
+          # a 'redo the art' request could not physically finish, and reported
+          # success on a partial job instead.
+          MAX_GENERATIONS: '12'
         run: |
           set -euo pipefail
           # ImageMagick may already be on the runner image; only install if it
@@ -371,7 +421,7 @@ jobs:
           set +e
           claude --bare -p "$(cat .autopilot/prompt.txt)" \
             --permission-mode bypassPermissions \
-            --model claude-sonnet-5 \
+            --model claude-opus-5 \
             --max-turns 120 \
             --allowedTools "Read,Edit,MultiEdit,Write,Glob,Grep,Bash" \
             --output-format json > .autopilot/result.json 2> .autopilot/claude.err

@@ -198,7 +198,11 @@ async function ghCreateClubhousePR(env, gameId, name) {
   );
 }
 
-const TEMPLATE_FILES = ["index.html", "style.css", "app.js", "manifest.webmanifest", "sw.js", "icons/icon.svg"];
+// art-style.json is scaffolded UNFILLED on purpose: it carries the rules that
+// stop generated art from drifting frame to frame, and the first art request
+// for the game fills in its look and locks its palette. A game created
+// without one silently repeats the mistake Dog Punk spent five rounds on.
+const TEMPLATE_FILES = ["index.html", "style.css", "app.js", "manifest.webmanifest", "sw.js", "icons/icon.svg", "art-style.json"];
 
 // Chat image attachments land here, never touching main directly.
 function safeImageFilename(name) {
@@ -217,7 +221,7 @@ export default {
     }
     if (request.method !== "POST") {
       return json(200, {
-        relay: "gc-r8",
+        relay: "gc-r9",
         settings: {
           GAMES_KV: env.GAMES_KV ? "bound" : "MISSING",
           GITHUB_TOKEN: env.GITHUB_TOKEN ? "set" : "MISSING",
