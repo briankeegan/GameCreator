@@ -112,6 +112,47 @@ first generation is usually the one that ships:
 8. **`medium` quality is enough** for flat cartoon pixel art; `high` is for a
    showcase asset, and costs about four times as much.
 
+## Obvious to a person, invisible to a generator
+
+Every line here is a rule a human would never break and a generator breaks
+routinely. State them in the prompt, every time — the canonical prompts
+already do:
+
+- **The body stays square to the camera** in the front and back rows. Rotating
+  into a three-quarter pose to suggest movement makes a character walking
+  toward you read as walking sideways.
+- **A step is drawn per view**: fore/aft split in the side row, lifted knee in
+  the front and back rows. A leg moving toward the camera is invisible.
+- **The defining feature survives every frame** — mohawk, hat, horns — from
+  behind and mid-attack included. It is the first thing to vanish.
+- **The same character, every frame**: species, build, palette, and the
+  `lockedDetails` from `art-style.json` (sleeves, ears, which hand holds the
+  weapon).
+- **A back view is a body, not a hairstyle**: head, shoulders, torso, legs,
+  feet — not a shapeless mass of hair with no visible body under it.
+- **The weapon stays in the same hand** across walk and attack sheets.
+- **A blade slashes, it doesn't poke**: an arc across the body, not a thrust
+  with the blade pointed along the direction of travel.
+- **The standing frame is standing**: feet together, no stride, no lean, and
+  drawn from its own row's angle.
+- **Nothing touches the edge of the image**, and sprites never overlap each
+  other.
+
+## What the checker cannot decide
+
+`verify_sheet.py` covers the mechanical half — clipping, frame count,
+duplicate frames, missing neutral, detached specks, off-palette colour. It
+deliberately does not judge:
+
+- whether a row is actually drawn from the view it was asked for;
+- whether the legs read as a walk or as a muddle;
+- whether debris is *touching* the character (any connectivity test sees that
+  as part of the silhouette);
+- whether it looks good.
+
+Those need eyes, which is the point: the tool exists so the eyes are spent on
+the half that needs them, not on counting frames.
+
 ## Files
 
 ```

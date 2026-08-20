@@ -20,6 +20,13 @@ least one generation in this repo:
                frame 0 is to frame 2, there is no real idle frame and the
                character freezes mid-stride when it stops — the exact bug
                reported on Dog Punk.
+  SPECKS       loose fragments floating beside the character — background
+               that survived keying, or bits drawn detached. Only catches
+               fragments that are genuinely SEPARATE from the silhouette:
+               debris the generator drew touching a leg is part of the shape
+               as far as any connectivity test is concerned, and stays a
+               judgment call. Ditto "the legs are a muddle" — see the note
+               below on what this tool does not check.
   PALETTE      (shipped sheets) a pixel outside the game's lockedPalette,
                meaning something bypassed the cutter.
 
@@ -82,6 +89,31 @@ def _diff(a, b):
 NEUTRAL_RATIO = 0.70
 
 
+def _components(mask):
+    """Sizes of the connected opaque regions in a frame."""
+    from collections import deque
+    h, w = mask.shape
+    seen = np.zeros((h, w), bool)
+    sizes = []
+    for sy in range(h):
+        for sx in range(w):
+            if not mask[sy, sx] or seen[sy, sx]:
+                continue
+            seen[sy, sx] = True
+            q = deque([(sy, sx)])
+            n = 0
+            while q:
+                y, x = q.popleft()
+                n += 1
+                for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    ny, nx = y + dy, x + dx
+                    if 0 <= ny < h and 0 <= nx < w and mask[ny, nx] and not seen[ny, nx]:
+                        seen[ny, nx] = True
+                        q.append((ny, nx))
+            sizes.append(n)
+    return sizes
+
+
 def check_raw(path, frames_expected, blobs, walk, tol):
     problems = []
     img = bs.key_background(path, tol=tol)
@@ -118,6 +150,27 @@ def check_raw(path, frames_expected, blobs, walk, tol):
                 problems.append(
                     f'{path}: IDENTICAL — frames {i} and {j} are the same drawing (diff {d:.1f}); '
                     'they are supposed to be different poses.')
+
+    # SPECKS: a frame should be essentially one connected shape. Small
+    # detached blobs are keying leftovers or drawing debris. The threshold is
+    # generous (2% of the biggest piece) so a legitimately separate element —
+    # a thrown weapon, a detached ear tip — is not flagged, while the pixel
+    # confetti that shipped between Beverly's legs is.
+    for idx, fr in enumerate(cut):
+        comps = _components(np.array(fr)[:, :, 3] > 0)
+        if len(comps) > 1:
+            big = max(comps)
+            # A size WINDOW, not just an upper bound. Below 0.2% of the main
+            # shape a fragment is a pixel or two — invisible once the sprite is
+            # drawn at 64px, and flagging it just trains people to ignore the
+            # checker. Above 2% it is probably a real detached element.
+            junk = [c for c in comps if c != big and big * 0.002 <= c <= big * 0.02]
+            if junk:
+                shown = ', '.join(f'{j}px' for j in sorted(junk, reverse=True)[:4])
+                problems.append(
+                    f'{path}: SPECKS — frame {idx} has {len(junk)} loose fragment(s) ({shown}) '
+                    'detached from the character. Keying leftovers or drawing debris; in-game they '
+                    'read as dirt around the sprite.')
 
     # NO NEUTRAL: the middle frame must stand apart from the two steps.
     if walk and len(cut) == 3:
