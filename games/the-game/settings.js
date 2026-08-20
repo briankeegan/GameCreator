@@ -56,7 +56,24 @@ window.NewseySettings = (function () {
     { id: "up", label: "Up" },
     { id: "down", label: "Down" }
   ];
-  var STICK_DEADZONE = 0.45;
+  // A single fixed threshold chatters: a stick sitting right at rest near
+  // 0.45 (worn/drifting analog sticks are common — "Joy-Con drift" is the
+  // well-known version of this) flips the read in and out of "pressed"
+  // every frame, even with a hand nowhere near the stick and the d-pad
+  // held steady instead. Reported live as the character continuously
+  // swapping left/right (or up/down) while walking one direction. Fix is
+  // ordinary hysteresis: a higher bar to count as newly pressed than to
+  // stay pressed, so noise hovering near one threshold can't retrigger it
+  // every frame. Persists across calls (module-level, not per-caller) —
+  // walking-around and duel controls are never active at the same time.
+  var STICK_ENGAGE = 0.5, STICK_RELEASE = 0.3;
+  var stickHeld = { left: false, right: false, up: false, down: false };
+  function stickFlag(dir, raw) {
+    var was = stickHeld[dir];
+    var now = was ? raw > STICK_RELEASE : raw > STICK_ENGAGE;
+    stickHeld[dir] = now;
+    return now;
+  }
 
   var saved = window.GCStorage.get(gameId, "settings", null);
   var settings = merge(DEFAULTS, saved);
@@ -139,10 +156,10 @@ window.NewseySettings = (function () {
       }
       // left stick, for pads whose d-pad reports as axes
       var x = pad.axes[0] || 0, y = pad.axes[1] || 0;
-      if (x < -STICK_DEADZONE) state.left = true;
-      if (x > STICK_DEADZONE) state.right = true;
-      if (y < -STICK_DEADZONE) state.up = true;
-      if (y > STICK_DEADZONE) state.down = true;
+      if (stickFlag("left", -x)) state.left = true;
+      if (stickFlag("right", x)) state.right = true;
+      if (stickFlag("up", -y)) state.up = true;
+      if (stickFlag("down", y)) state.down = true;
     }
     return state;
   }
