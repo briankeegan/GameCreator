@@ -2,8 +2,11 @@
 # It exists to be measured: every prop's ground point, height, width and COUNT
 # comes off it. Substitute {{ROOM}} and go.
 #
-# Generate at 1536x1024 through "Generate game asset" so it inherits the game's
-# camera, palette and rendering from art-style.json.
+# Generate with `room.py generate <game> <room> scene --desc "..."` (or the
+# "Generate room pass" Action). room.py wraps this in the game's camera,
+# palette and rendering from art-style.json — do NOT route it through
+# "Generate game asset", which refuses to write bg-*.png and never knew about
+# the three passes anyway.
 
 {{ROOM}} — the room as a complete scene, exactly as it should look, with
 everything in it. Composed as a finished picture: the floor filling the lower

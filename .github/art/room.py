@@ -300,6 +300,29 @@ def main():
              "props": "3_prop_sheet.txt"}[which]
         return open(os.path.join(HERE, "room_prompts", f), encoding="utf-8").read()
 
+    # The game's camera, palette and rendering, exactly as
+    # generate-game-asset.yml assembles them. room.py did NOT do this: its
+    # prompts went to imagegen.py unstyled, while imagegen.py's own comment
+    # promised "every prompt that reaches here was already built from that
+    # same art-style.json by its front door". The pass-1 prompt file still
+    # said to run it through "Generate game asset" — which is where the
+    # styling lived — so when room.py generate was added, the camera was
+    # quietly dropped. It cost a Lounge scene rendered at eye level, in a
+    # game where every other room is top-down.
+    def styled(game_dir, body):
+        path = os.path.join(game_dir, "art-style.json")
+        if not os.path.exists(path):
+            print("error: no %s — a room needs the game's camera and palette, or it "
+                  "comes back in a different world from every other room." % path,
+                  file=sys.stderr)
+            raise SystemExit(1)
+        import json
+        st = json.load(open(path, encoding="utf-8"))
+        return ("%s %s. %s Color palette: %s Background: %s %s"
+                % (st.get("camera", ""), body, st.get("style", ""),
+                   st.get("palette", ""), st.get("background", ""),
+                   st.get("constraints", "")))
+
     def pass_prompt(which, room, floor, n, items, strip_notes=False):
         text = pass_template(which)
         if strip_notes:
@@ -337,8 +360,9 @@ def main():
             return 1
         out = os.path.join(a.game.rstrip("/"), "art-src",
                            PASS_PATH[a.which] % a.room)
-        prompt = pass_prompt(a.which, (a.desc or "").strip() or a.room,
-                             a.floor, a.n, a.items, strip_notes=True)
+        prompt = styled(a.game.rstrip("/"),
+                        pass_prompt(a.which, (a.desc or "").strip() or a.room,
+                                    a.floor, a.n, a.items, strip_notes=True))
         if not imagegen.generate(" ".join(prompt.split()), out,
                                  quality=a.quality, force=a.force):
             return 0
