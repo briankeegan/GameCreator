@@ -979,8 +979,10 @@
     // letter of their name stamped on it ("T", for The Front Door) sitting in
     // the middle of the floor. They get a small glowing marker over the thing
     // itself instead, and a word telling you what it does when you're close.
-    if (npc.savePoint) { drawMarker(npc, "#ffd166", "SAVE"); return; }
-    if (npc.marker) { drawMarker(npc, c.color, npc.marker); return; }
+    // No floating marker over scenery you can use — the bed looks like a bed
+    // and the TV looks like a TV. Walking up and pressing the talk button is
+    // how you use anything, everywhere, and the pause menu saves too.
+    if (npc.savePoint || npc.marker) return;
     var spriteEntry = npc.sprite ? loadArt(npc.sprite) : null;
     var hasSprite = spriteEntry && spriteEntry.ok && spriteEntry.img.naturalHeight;
 
@@ -1010,32 +1012,6 @@
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = "rgba(255,255,255,0.85)";
       ctx.beginPath(); ctx.arc(npc.x, npc.y - r, r, 0, Math.PI * 2); ctx.stroke();
-    }
-
-  }
-
-  // A slow pulsing diamond over a save point, in the same gold as the exit
-  // labels so it reads as "interactive scenery" at a glance.
-  // label: the word shown under the marker once you're close enough to use
-  // it ("SAVE", "OPEN", "ENTER"). `true` means marker with no label.
-  function drawMarker(npc, color, label) {
-    var pulse = 0.65 + 0.35 * Math.sin(Date.now() / 380);
-    var y = npc.y - 10 - Math.sin(Date.now() / 700) * 1.5;
-    ctx.save();
-    ctx.globalAlpha = pulse;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(npc.x, y - 5); ctx.lineTo(npc.x + 4, y); ctx.lineTo(npc.x, y + 5); ctx.lineTo(npc.x - 4, y);
-    ctx.closePath(); ctx.fill();
-    ctx.globalAlpha = pulse * 0.35;
-    ctx.beginPath(); ctx.arc(npc.x, y, 9, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-    var d = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h / 2));
-    if (d < 26 && typeof label === "string") {
-      ctx.fillStyle = color;
-      ctx.font = "bold 7px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(label, npc.x, y + 16);
     }
   }
 
