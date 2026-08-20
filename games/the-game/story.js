@@ -111,13 +111,46 @@ window.NEWSEY_STORY = (function () {
   // listed and locked, which is both what the door shows her and an honest
   // account of what is built.
   var RUNE_DOOR = [
-    { label: "Library", to: "library", arriveAt: { x: 220, y: 118 } },
-    { label: "Anarchy Garden", to: "garden", arriveAt: { x: 145, y: 168 } },
-    { label: "Kyran's Lab", to: "lab", arriveAt: { x: 226, y: 118 } },
+    { label: "Library", to: "library", arriveAt: { x: 220, y: 150 }, arriveFacing: "down" },
+    { label: "Anarchy Garden", to: "garden", arriveAt: { x: 144, y: 140 }, arriveFacing: "up" },
+    { label: "Kyran's Lab", to: "lab", arriveAt: { x: 210, y: 130 }, arriveFacing: "left" },
     { label: "Observatory", locked: "The word doesn't take your finger. Not yet." },
     { label: "Basement", locked: "The word doesn't take your finger. Not yet." },
     { label: "Office", locked: "The word doesn't take your finger. Not yet." }
   ];
+
+  // EXIT / DOOR CONVENTION — every `exits[]` entry needs THREE things, not
+  // just `to` and `arriveAt`. Getting only two of three shipped live twice
+  // and had to be fixed after the fact:
+  //   1. `arriveFacing`: "up"/"down"/"left"/"right". Without it the player
+  //      keeps whatever direction she was last walking before she touched
+  //      the trigger — she reads as materializing in the new room instead
+  //      of stepping through a door. Pick the direction that matches
+  //      actually walking OUT of that doorway (away from the wall it's in).
+  //   2. `arriveAt` must be real, unobstructed floor in the DESTINATION
+  //      room — check against that room's `floorPoly`/`obstacles`, not by
+  //      eyeballing the number.
+  //   3. `arriveAt` must have real clearance from every OTHER exit trigger
+  //      in the destination room, in all four directions — not just the
+  //      matching return door. Landing close enough to a different exit
+  //      that a single accidental keypress crosses back into it reads as
+  //      the room "bouncing" you straight back out (reported live: two
+  //      door pairs did exactly this, one bedroom<->lounge, one
+  //      lounge<->library — an arrival point that happened to sit ~20px
+  //      from an unrelated door in that room). A door you have to walk the
+  //      full width of the room to deliberately reach is fine; the bug is
+  //      only ever "one lucky/unlucky keytap sends you right back."
+  //
+  // `.github/scripts/check_room_exits.mjs` checks all three automatically —
+  // run `node .github/scripts/check_room_exits.mjs games/the-game/story.js`
+  // after touching any exit or arriveAt, or trust the "Verify room exits"
+  // step in `.github/workflows/pages.yml` (same gate as the engine tests,
+  // runs on every push to main). Don't add/move a door by feel and skip
+  // it — that's exactly how both bugs above shipped.
+  //
+  // A `rune: true` exit is the one exception to (1) and (2): it has no fixed
+  // destination at all, it opens the rune door's picker instead (see
+  // openRuneDoor in app.js), so it carries neither `to` nor `arriveAt`.
 
   // ROOM SHAPES — every room's walkable area is `floorPoly`, the drawn floor
   // traced as a polygon in the game's 320x200 room coordinates. These rooms
@@ -155,7 +188,7 @@ window.NEWSEY_STORY = (function () {
       // The doorway is an actual hole in the art (transparent), so the floor
       // stops at its threshold — the trigger sits on that threshold.
       exits: [ { x: 140, y: 152, w: 44, h: 16, to: "house",
-                 arriveAt: { x: 150, y: 130 } } ],
+                 arriveAt: { x: 150, y: 130 }, arriveFacing: "down" } ],
       // Furniture footprints, kept as the fallback alongside floorPoly.
       obstacles: [
         { x: 56, y: 98, w: 58, h: 30 },   // the bed
@@ -179,7 +212,7 @@ window.NEWSEY_STORY = (function () {
       // still the TV (which plays DREAM_CUTSCENE), but you came down these to
       // answer the door, so they go back up.
       exits: [
-        { x: 216, y: 90, w: 34, h: 14, to: "home_bedroom", arriveAt: { x: 196, y: 122 } }
+        { x: 216, y: 90, w: 34, h: 14, to: "home_bedroom", arriveAt: { x: 196, y: 122 }, arriveFacing: "down" }
       ],
       // Furniture where it actually meets the floor: the table with the
       // moving boxes, the lantern table by the front door, and the little
@@ -260,7 +293,7 @@ window.NEWSEY_STORY = (function () {
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
       floorPoly: [[52,100],[285,100],[272,186],[64,186]],
       exits: [
-        { x: 223, y: 90, w: 28, h: 16, to: "lounge", arriveAt: { x: 90, y: 122 } }
+        { x: 223, y: 90, w: 28, h: 16, to: "lounge", arriveAt: { x: 90, y: 149 }, arriveFacing: "right" }
       ],
       // Furniture footprints where they actually meet the floor (the old boxes
       // reached far into the room, and the bed's box covered the doorway, so
@@ -323,7 +356,7 @@ window.NEWSEY_STORY = (function () {
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
       floorPoly: [[245,100],[68,100],[32,140],[58,188],[228,188],[270,140]],
       exits: [
-        { x: 80, y: 86, w: 34, h: 18, to: "bedroom", arriveAt: { x: 228, y: 132 } },
+        { x: 80, y: 86, w: 34, h: 18, to: "bedroom", arriveAt: { x: 228, y: 160 }, arriveFacing: "left" },
         // Not a doorway to one room any more — this is the black rune door,
         // and where it puts you is a choice (see RUNE_DOOR above and
         // openRuneDoor in app.js). The first push lands you in the Garden by
@@ -342,7 +375,7 @@ window.NEWSEY_STORY = (function () {
           lines: [
             "Hello there. They call me Kat. What's your name?",
             "I'll buy you a drink — if you duel me. No better way to learn!",
-            "Step through the mirror in your room when you're ready — I'll be waiting on the other side."
+            "Step through the portal when you're ready — I'll be waiting on the other side."
           ],
           setsFlag: "duelInvite"
         },
@@ -351,7 +384,7 @@ window.NEWSEY_STORY = (function () {
           lines: [
             "You again? Stay out of my way.",
             "Something doesn't add up about the new arrivals lately. Watch yourself.",
-            "…Fine. If you want to know what a champion plays like, meet me through the mirror in your room."
+            "…Fine. If you want to know what a champion plays like, meet me through the portal."
           ],
           setsFlag: "duelInvite"
         },
@@ -398,7 +431,7 @@ window.NEWSEY_STORY = (function () {
       // flagstone hexagon between the two banks of stands.
       floorPoly: [[66,100],[250,100],[292,140],[283,186],[42,186],[30,140]],
       exits: [
-        { x: 224, y: 84, w: 26, h: 18, to: "lounge", arriveAt: { x: 97, y: 146 } }
+        { x: 224, y: 84, w: 26, h: 18, to: "lounge", arriveAt: { x: 97, y: 146 }, arriveFacing: "right" }
       ],
       obstacles: [ { x: 0, y: 88, w: 66, h: 20 }, { x: 250, y: 88, w: 70, h: 20 } ], // the stands
       npcs: [
@@ -475,7 +508,7 @@ window.NEWSEY_STORY = (function () {
       obstacles: [],
       exits: [
         // the path leaving through the gap in the wall, back the way she came
-        { x: 128, y: 184, w: 56, h: 14, to: "lounge", arriveAt: { x: 152, y: 160 } }
+        { x: 134, y: 182, w: 34, h: 16, to: "lounge", arriveAt: { x: 152, y: 125 }, arriveFacing: "down" }
       ],
       npcs: [
         {
@@ -505,7 +538,7 @@ window.NEWSEY_STORY = (function () {
         { x: 252, y: 96, w: 32, h: 24 }    // the instrument cart
       ],
       exits: [
-        { x: 224, y: 88, w: 26, h: 18, to: "lounge", arriveAt: { x: 152, y: 160 } }
+        { x: 224, y: 88, w: 26, h: 18, to: "lounge", arriveAt: { x: 152, y: 125 }, arriveFacing: "down" }
       ],
       npcs: [
         {
@@ -532,7 +565,7 @@ window.NEWSEY_STORY = (function () {
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
       floorPoly: [[50,100],[274,100],[274,188],[50,188]],
       exits: [
-        { x: 228, y: 84, w: 24, h: 18, to: "lounge", arriveAt: { x: 152, y: 160 } }
+        { x: 228, y: 84, w: 24, h: 18, to: "lounge", arriveAt: { x: 152, y: 125 }, arriveFacing: "right" }
       ],
       obstacles: [ { x: 160, y: 92, w: 66, h: 22 } ], // armchair + candle table
       npcs: [

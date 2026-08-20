@@ -121,6 +121,61 @@ design discussion. `shared/` holds the components every game reuses
     is the same size for all of them.
   - Raw generations go in `games/<id>/art-src/`; shipped sheets are rebuilt
     from them, never hand-edited.
+- **Every rule that matters gets three pieces: RULE -> TOOL -> GATE.** A rule
+  written only in prose gets ignored; a checker nobody runs catches nothing; a
+  CI failure with no explanation sends whoever hit it digging through a script
+  to find out what they did wrong. So:
+  1. **Rule** — plain English, stating what and *why*, sitting where someone
+     would be editing (the comment above the thing, or the standard doc).
+  2. **Tool** — a script that decides it mechanically, runnable by hand.
+  3. **Gate** — a `pages.yml` step that runs the tool on every push, so a
+     violation fails the build instead of shipping.
+  Existing instances: room exits (`EXIT / DOOR CONVENTION` comment ->
+  `.github/scripts/check_room_exits.mjs` -> "Verify room exits"), and art
+  (`.github/art/CHARACTER_SHEETS.md` -> `.github/art/verify_sheet.py` ->
+  "Verify shipped sprite sheets" / "Verify character frame sets"). Add all three
+  pieces together or the rule will not hold.
+- **New games ship sprite SHEETS. Individual frame files are legacy.** Newsey
+  predates the standard and ships nine files per character; that is supported
+  and gated, but is not the pattern to copy — a per-file set can lose one
+  frame (the character then flickers or freezes), each file trims to its own
+  aspect ratio so sprites drift out of proportion with each other, and it
+  costs a request per frame. Cutting one image at load makes all three
+  impossible. Don't migrate Newsey for its own sake; do start any new game on
+  sheets.
+- **Checks are game-type dependent, and the type is DETECTED, not
+  configured.** Because both layouts exist, the art gate globs for both — so a
+  new game is covered the moment it has art, with no per-game config to forget
+  to update.
+- **A fuzzy check warns; an unambiguous one fails.** Missing or duplicated
+  frames are facts, so they fail the build. "This middle frame isn't really a
+  neutral pose" is a threshold on an image-difference metric — it prints a
+  warning instead, because a borderline-but-correct set must never block a
+  deploy. Thresholds get calibrated against real art and the numbers recorded
+  next to them: `verify_sheet.py`'s first threshold passed every bad row, its
+  second failed a correct one, and the comment above `NEUTRAL_RATIO` lists
+  both so the next person doesn't re-derive it.
+- **Standards for this kind of game live in two documents, and they apply to
+  every new game of the same shape — not just the one they were written
+  from:** `.github/art/CHARACTER_SHEETS.md` (characters: walk frames,
+  attack frames, directions, locked details) and `docs/ROOM_ART_STANDARD.md`
+  (rooms: framing, emptiness, exits, and how the walkable-floor mask is
+  authored). Read them before generating art for a top-down game; extend
+  them when a generation exposes a gap, rather than solving it once in one
+  game's head.
+- **Character sheets follow one standard: `.github/art/CHARACTER_SHEETS.md`.**
+  Walk is 3 columns `[step, NEUTRAL, step]`; ATTACK is its own sheet, also 3
+  columns, `[wind-up, STRIKE, recover]`, with damage landing on the strike
+  frame — three frames because one lunging pose reads as a shove, and
+  because attacks are where weapons vary (swap the sheet, keep the timing).
+  Both are 3 rows: down, side-drawn-facing-RIGHT, up. Canonical prompts are
+  `.github/art/walkgrid_prompt.txt` and `.github/art/attacksheet_prompt.txt`
+  — use them instead of writing a new one, and fix them in place when a
+  generation exposes a gap.
+- **Details that drift belong in `art-style.json`, not in a prompt you
+  retype.** Sleeves vs sleeveless, ears, which hand holds the weapon —
+  Beverly's jacket came back sleeved in some frames and sleeveless in
+  others, which is what `lockedDetails` now exists to prevent.
 - **Top-down games with directional walking follow the RPG-Maker charset
   convention.** This is the convention for that kind of game (the-game /
   Newsey is the reference implementation) — a game with a different camera

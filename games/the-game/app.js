@@ -333,13 +333,20 @@
 
   // at: optional { x, y } to arrive at — a door hands over the spot in front
   // of the matching door on the other side, so you step out where you should
-  // instead of teleporting to the middle of the room.
-  function enterRoom(roomId, at) {
+  // instead of teleporting to the middle of the room. facing: optional
+  // arrival direction — without it she kept whatever direction she was
+  // last walking before she hit the exit trigger, which reads as just
+  // jumping into the next space rather than actually stepping through a
+  // door. Reported live: crossing bedroom<->lounge should turn her to face
+  // away from that door (right leaving the bedroom, left leaving the
+  // lounge), not carry over her old facing.
+  function enterRoom(roomId, at, facing) {
     currentRoom = ROOMS[roomId];
     exitsArmed = false;
     player.inBed = false;
     player.bedSlide = null;
     bedPush = 0;
+    if (facing) player.facing = facing;
     var spot = at && at.x !== undefined ? at : currentRoom.playerStart;
     // The mask may not have loaded yet on the very first room; re-place her
     // once it has, so a spawn point that lands off the floor still resolves.
@@ -702,14 +709,47 @@
   // A prop is { art, x, y, h, base: { rx, ry } } — x/y is where it MEETS THE
   // GROUND, h is how tall it draws, and base is the ellipse at its foot that
   // nothing can walk into.
+  // How much smaller a thing draws because of where it stands. A room painted
+  // in perspective gets steadily further away toward the top of the frame, so
+  // props drawn at one fixed size in it can read as the same object
+  // teleporting between two scales. A room declares the ramp once:
+  //
+  //   depthScale: { nearY, farY, far }
+  //
+  // 1.0 at nearY (the front edge of the walkable floor), `far` at farY (the
+  // back), straight line between, clamped outside. Rooms without one are
+  // unaffected, and most rooms should NOT have one: take the sizes off the
+  // composed scene first, and only add a ramp if that scene actually drew the
+  // far things smaller. The Anarchy Garden's didn't, and ramping it there is
+  // what made its statues read as tiny ornaments.
+  function depthAt(room, groundY) {
+    var d = room && room.depthScale;
+    if (!d) return 1;
+    var span = d.nearY - d.farY;
+    if (!span) return 1;
+    var t = Math.max(0, Math.min(1, (groundY - d.farY) / span));
+    return d.far + (1 - d.far) * t;
+  }
+
+  // A prop's footprint is either an ellipse at its foot — { rx, ry }, right for
+  // anything with a round-ish base like a tree or a statue — or a rectangle —
+  // { w, h }, which is what a wall or the coping of a pool actually is; an
+  // ellipse can't describe those and leaves walkable gaps at the corners.
+  // A prop with no base at all (flowers, grass tufts) is walked straight over.
   function blockedByProp(room, feetX, feetY) {
     var props = room.props;
     if (!props) return false;
     for (var i = 0; i < props.length; i++) {
       var p = props[i];
       if (!p.base) continue;
-      var dx = (feetX - p.x) / p.base.rx, dy = (feetY - p.y) / p.base.ry;
-      if (dx * dx + dy * dy < 1) return true;
+      var ds = depthAt(room, p.y);
+      if (p.base.w !== undefined) {
+        if (Math.abs(feetX - p.x) < (p.base.w * ds) / 2 &&
+            Math.abs(feetY - p.y) < (p.base.h * ds) / 2) return true;
+      } else {
+        var dx = (feetX - p.x) / (p.base.rx * ds), dy = (feetY - p.y) / (p.base.ry * ds);
+        if (dx * dx + dy * dy < 1) return true;
+      }
     }
     return false;
   }
@@ -1036,7 +1076,7 @@
         onExit = true;
         if (exitsArmed) {
           if (ex.rune) openRuneDoor();
-          else enterRoom(ex.to, ex.arriveAt);
+          else enterRoom(ex.to, ex.arriveAt, ex.arriveFacing);
         }
       }
     });
@@ -1277,16 +1317,34 @@
     var entry = loadArt(prop.art);
     if (!entry || !entry.ok || !entry.img.naturalHeight) return;
     var img = entry.img;
-    var h = prop.h || 40;
+    // prop.h is its height AT THE FRONT of the room; the depth ramp does the
+    // rest, so one number describes the prop and the room describes the space.
+    var ds = depthAt(currentRoom, prop.y);
+    var h = (prop.h || 40) * ds;
     var w = h * (img.naturalWidth / img.naturalHeight);
-    // A pool of shadow where it meets the ground, the same way every character
-    // gets one — without it a tree reads as pasted onto the grass.
-    if (prop.base) {
-      ctx.fillStyle = "rgba(0,0,0,0.30)";
-      ctx.beginPath();
-      ctx.ellipse(prop.x, prop.y, prop.base.rx, prop.base.ry, 0, 0, Math.PI * 2);
-      ctx.fill();
+    if (prop.flat) {
+      // Ground cover lying ON the floor: centred on its spot, no foot point,
+      // no shadow — it isn't standing up, so it can't cast one.
+      ctx.drawImage(img, prop.x - w / 2, prop.y - h / 2, w, h);
+      return;
     }
+    // A soft pool of shade sized to the SPRITE, not to its collision base. A
+    // hard ellipse the size of the footprint left the fountain's stone basin
+    // with a dark smudge in the middle of it and nothing under its rim, which
+    // is what read as the whole thing hovering.
+    var sw = w * 0.44, sh = sw * 0.30;
+    ctx.save();
+    ctx.translate(prop.x, prop.y - sh * 0.15);
+    ctx.scale(1, sh / sw);
+    var shade = ctx.createRadialGradient(0, 0, sw * 0.15, 0, 0, sw);
+    shade.addColorStop(0, "rgba(0,0,0,0.34)");
+    shade.addColorStop(0.65, "rgba(0,0,0,0.16)");
+    shade.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = shade;
+    ctx.beginPath();
+    ctx.arc(0, 0, sw, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
     ctx.drawImage(img, prop.x - w / 2, prop.y - h, w, h);
   }
 
@@ -1521,10 +1579,14 @@
     ctx.clearRect(0, 0, VW, VH);
     if (!currentRoom || !running) return;
     drawRoomBg();
+    (currentRoom.props || []).forEach(function (p) { if (p.flat) drawProp(p); });
     drawExits();
     // sort by y so things lower on screen draw on top (cheap depth)
     var entities = roomNpcs(currentRoom).map(function (n) { return { y: n.y, draw: function () { drawNpc(n); } }; });
     (currentRoom.props || []).forEach(function (p) {
+      // A FLAT prop is ground cover and was painted with the floor above. Sort
+      // it and the player's own feet would sometimes vanish behind a flower.
+      if (p.flat) return;
       entities.push({ y: p.y, draw: function () { drawProp(p); } });
     });
     entities.push({ y: player.y + player.h, draw: drawPlayer });

@@ -135,33 +135,33 @@ actually renders, not the literal prompt text:
 
 Output files per character: `<id>_down_0/1/2.png`, `<id>_left_0/1/2.png`,
 `<id>_up_0/1/2.png` (9 files, frame index 1 = neutral/idle in every
-direction). Wire into `app.js` the same way `FACING_FRAMES_HUMAN` does —
-a per-NPC facing+frame lookup, generalized off the existing player code
-(`WALK_SEQUENCE = [1,0,1,2]`), driven by the NPC's wander direction
-instead of keyboard input.
+direction). Wired into `app.js` via `NPC_FACING_FRAMES` (`npcDirFrames()`),
+a per-NPC facing+frame lookup generalized off the player's own
+`FACING_FRAMES_HUMAN` pattern (`WALK_SEQUENCE = [1,0,1,2]`) — driven by the
+NPC's wander direction/state (`updateNpcWander` tracks `facing`/`walking`/
+`walkPhase` on the same wander-state object) instead of keyboard input. An
+id absent from `NPC_FACING_FRAMES` just falls back to the old static
+sprite/bust, so this was safe to land before every character had a sheet.
 
 ## Status
+
+All 9 characters done — every wandering NPC in the game now has real
+per-direction walk animation instead of a static sprite sliding around.
 
 | Character  | Reference used         | Walk sheet | Notes |
 |------------|-------------------------|:----------:|-------|
 | Nella (Infinity/demon avatar) | `nella.png` | ✅ done | `nella_down/left/up_0/1/2.png` |
 | Nella (human, pre-transformation) | `nella_human_top.png` | ✅ done | `nella_human_down/left/up_0/1/2.png`, wired via `FACING_FRAMES_HUMAN` |
-| Chuck      | `chuck_top.png`          | ❌ not started | |
-| Devil      | `devil_top.png`          | ❌ not started | |
-| Kat        | `kat_top.png`            | ❌ not started | |
-| May        | `may_top.png`            | ❌ not started | |
-| Timothy    | `timothy_top.png`        | ❌ not started | |
-| Michael    | `michael_top.png`        | ❌ not started | |
-| John       | `john_top.png`           | ❌ not started | |
+| Chuck      | `chuck_top.png`          | ✅ done | `chuck_down/left/up_0/1/2.png`, wired via `NPC_FACING_FRAMES` |
+| Devil      | `devil_top.png`          | ✅ done, but **unused** | Has a sheet (`devil_down/left/up_0/1/2.png`) from before the story changed — the devil isn't a standing character any more (see below), so this art doesn't currently render anywhere. Left in place in case a standing-devil moment is wanted later. |
+| Kat        | `kat_top.png`            | ✅ done | `kat_down/left/up_0/1/2.png`, wired via `NPC_FACING_FRAMES` |
+| May        | `may_top.png`            | ✅ done | `may_down/left/up_0/1/2.png`, wired via `NPC_FACING_FRAMES` |
+| Timothy    | `timothy_top.png`        | ✅ done | `timothy_down/left/up_0/1/2.png`, wired via `NPC_FACING_FRAMES` |
+| Michael    | `michael_top.png`        | ✅ done | `michael_down/left/up_0/1/2.png`, wired via `NPC_FACING_FRAMES` |
+| John       | `john_top.png`           | ✅ done | `john_down/left/up_0/1/2.png`, wired via `NPC_FACING_FRAMES` |
 
 TV is a prop, not a character — no walk cycle needed. The bed/save-point
-and the lounge portal are also non-characters.
-
-## Order of work
-
-1. One test generation to confirm the grid/slicing still works for a
-   *different* character than Nella (this file's recipe was only ever
-   proven once). Human Nella first — it's the most-flagged gap.
-2. Once verified, the remaining 7 follow the same recipe.
-3. Generalize `drawPlayer`'s `FACING_FRAMES` pattern into `drawNpc` so
-   wandering NPCs actually animate instead of gliding.
+and the lounge portal are also non-characters. The devil is now a
+mirror-triggered popup (`marker: true` on his story.js entry, no sprite),
+not a standing character — see the "devil is a mirror popup" commit — so
+his walk sheet above is currently unused, not a bug.
