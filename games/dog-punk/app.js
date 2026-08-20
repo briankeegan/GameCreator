@@ -178,15 +178,31 @@ function sliceSheet(src, cols, rows) {
   return frames;
 }
 const HERO = sliceSheet("hero_sheet.png", HERO_SHEET_COLS, HERO_SHEET_ROWS);
-const heroDown = HERO[0];
-const heroDownWalk2 = HERO[1];
-const heroAtkDown = HERO[2];
-const heroSide = HERO[3];
-const heroSideWalk2 = HERO[4];
-const heroAtkSide = HERO[5];
-const heroUp = HERO[6];
-const heroUpWalk2 = HERO[7];
-const heroAtkUp = HERO[8];
+
+// RPG-Maker charset convention — see .github/art/CHARACTER_SHEETS.md. The
+// three columns are [step, NEUTRAL, step]: column 1 is a real standing-still
+// pose, not a stride.
+//
+// The old sheet's columns were [idle, walk, attack], and its "idle" column was
+// itself a mid-stride drawing. Standing still therefore showed a walking pose
+// — reported live as being stuck walking when facing left or right, and only
+// visible left/right because the front and back rows happened to have been
+// drawn legs-together. Attacks now come off their own sheet (HERO_ATK), which
+// is what freed the third column to be a second step.
+const COL_STEP_A = 0, COL_NEUTRAL = 1, COL_STEP_B = 2;
+// middle -> step -> middle -> step. Cycling 0,1,2 straight through never
+// returns to neutral between steps and reads as a shuffle.
+const WALK_SEQUENCE = [COL_NEUTRAL, COL_STEP_A, COL_NEUTRAL, COL_STEP_B];
+// One beat per quarter turn of the phase, so a full four-pose cycle takes the
+// same 2*PI the old two-pose alternation did: same walking speed, twice the
+// poses.
+const WALK_BEAT = Math.PI / 2;
+const HERO_ROW = { down: 0, side: 1, up: 2 };
+function heroFrame(row, col) { return HERO[row * HERO_SHEET_COLS + col]; }
+// Kept for the attack fallback path below, which still names them.
+const heroAtkDown = heroFrame(HERO_ROW.down, COL_NEUTRAL);
+const heroAtkSide = heroFrame(HERO_ROW.side, COL_NEUTRAL);
+const heroAtkUp = heroFrame(HERO_ROW.up, COL_NEUTRAL);
 
 // ATTACK ART: a second sheet, same 3x3 shape and same 256px cell as the hero
 // sheet, but its three columns are three CONSECUTIVE MOMENTS of one weapon
@@ -235,13 +251,17 @@ const ratAtkUp = RAT[8];
 // moonwalks again, this is the first thing to check, along with whether a
 // newly generated sheet's side row faces the same way this one does.)
 // The rats' PNGs still face LEFT, hence the opposite test in ratSpriteFor.
-function heroSpriteFor(facing, step) {
-  if (facing === "up") return { s: step ? heroUpWalk2 : heroUp, mirror: false };
-  if (facing === "left") return { s: step ? heroSideWalk2 : heroSide, mirror: true };
-  if (facing === "right") return { s: step ? heroSideWalk2 : heroSide, mirror: false };
-  return { s: step ? heroDownWalk2 : heroDown, mirror: false };
+function heroSpriteFor(facing, col) {
+  if (facing === "up") return { s: heroFrame(HERO_ROW.up, col), mirror: false };
+  if (facing === "left") return { s: heroFrame(HERO_ROW.side, col), mirror: true };
+  if (facing === "right") return { s: heroFrame(HERO_ROW.side, col), mirror: false };
+  return { s: heroFrame(HERO_ROW.down, col), mirror: false };
 }
-function ratSpriteFor(facing, step) {
+// The rat sheet is still the older [idle, walk, attack] shape, so the hero's
+// walk column collapses to "standing or stepping" here. When the rats are next
+// regenerated they get the same [step, neutral, step] layout and this goes.
+function ratSpriteFor(facing, col) {
+  const step = col !== COL_NEUTRAL;
   if (facing === "up") return { s: step ? ratUpWalk2 : ratUp, mirror: false };
   if (facing === "left") return { s: step ? ratSideWalk2 : ratSide, mirror: true };
   if (facing === "right") return { s: step ? ratSideWalk2 : ratSide, mirror: false };
@@ -797,8 +817,12 @@ function tintedFrame(img, color) {
 function drawAnimatedSprite(spriteFor, facing, x, y, size, anim, fallback) {
   // ~2 steps per phase cycle; phase advances with distance moved (see
   // update()), so cadence scales with actual movement speed.
-  const step = anim.moving && Math.sin(anim.phase) > 0;
-  const { s, mirror } = spriteFor(facing, step);
+  // Standing still is ALWAYS the neutral column, so a character never freezes
+  // mid-stride the moment it stops.
+  const walkCol = anim.moving
+    ? WALK_SEQUENCE[Math.floor(anim.phase / WALK_BEAT) % WALK_SEQUENCE.length]
+    : COL_NEUTRAL;
+  const { s, mirror } = spriteFor(facing, walkCol);
   const stepSquash = anim.moving ? Math.abs(Math.sin(anim.phase * 2)) * 0.05 : 0;
   const bobY = anim.moving ? -Math.abs(Math.sin(anim.phase)) * 3 : 0;
   const scaleX = (anim.scaleX ?? 1) + stepSquash;
@@ -822,7 +846,9 @@ function drawAnimatedSprite(spriteFor, facing, x, y, size, anim, fallback) {
     }
     ctx.restore();
   } else {
-    fallback(x + dx, y + dy, facing, scaleX, scaleY, step);
+    // The drawn-in-code fallback only has two poses, so the four-beat walk
+    // column collapses back to "stepping or not" for it.
+    fallback(x + dx, y + dy, facing, scaleX, scaleY, walkCol !== COL_NEUTRAL);
   }
 }
 
