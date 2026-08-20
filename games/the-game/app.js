@@ -259,7 +259,7 @@
 
   var currentRoom = null;
   var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down" };
-  var walkPhase = 0, isWalking = false; // drives the procedural walk-bob (see drawPlayer)
+  var walkPhase = 0, isWalking = false; // drives real walk-frame cycling (see drawPlayer)
   var keys = {};
   var talking = null; // { npc, lineIndex }
   var running = false; // true only while a file is loaded and being played
@@ -468,7 +468,7 @@
       var tryY = clampToFloor(currentRoom, player.x, player.y + dy * player.speed * dt);
       if (!blockedByObstacle(currentRoom, player.x, tryY.y)) player.y = tryY.y;
       isWalking = true;
-      walkPhase += dt * 9; // bob speed; unrelated to player.speed so it stays readable
+      walkPhase += dt * 9; // frame-cycle speed (~3 pose changes/sec); unrelated to player.speed so it stays readable
     } else {
       isWalking = false;
     }
@@ -587,21 +587,33 @@
     }
   }
 
-  // Only one standing sprite exists ("nella_top", small top-down full
-  // body, facing forward) — not a 4-direction walk-cycle set. Mirror it
-  // horizontally for "left" so at least left/right read correctly;
-  // up/down reuse the same forward-facing art rather than showing her
-  // back (no art for that exists, and forward-facing-always is far less
-  // broken-looking than stretching/guessing a rear view).
-  // Real per-direction art: down/up/left are distinct sprites (extracted
-  // from a generated walk-cycle sheet — see nella_walksheet.png), right
-  // reuses "left" mirrored since a 2D side profile facing right is just
-  // that same art flipped. Falls back to the single forward-facing
-  // "nella_top" sprite (mirrored for left) if the directional art isn't
-  // available, then to the plain colored blob.
-  var FACING_ART = { down: "nella_down", up: "nella_up", left: "nella_left", right: "nella_left" };
+  // Real per-direction, real per-frame art: down/left/up each have 3
+  // actual generated frames (extracted from a walk-cycle sheet — see
+  // nella_walksheet.png), cycled while moving — not a single static image
+  // with a code-side bob. Right reuses "left" mirrored, since a 2D side
+  // profile facing right is the same art flipped. Falls back to the
+  // single forward-facing "nella_top" sprite (mirrored for left) if the
+  // directional frames aren't available, then to the plain colored blob.
+  var FACING_FRAMES = {
+    down: ["nella_down_0", "nella_down_1", "nella_down_2"],
+    up: ["nella_up_0", "nella_up_1", "nella_up_2"],
+    left: ["nella_left_0", "nella_left_1", "nella_left_2"],
+    right: ["nella_left_0", "nella_left_1", "nella_left_2"]
+  };
   function drawPlayer() {
-    var wantId = FACING_ART[player.facing] || "nella_down";
+    // Before the Infinity transformation (ROOMS.house), Nella has to be
+    // her ordinary human self — the directional frames above are all her
+    // POST-transformation demon avatar (horns/red eyes), which showed up
+    // in the real-world house scene where she shouldn't have them yet.
+    // Only one human sprite exists (no directional/frame set), used for
+    // every facing while in that form — she barely moves in that room.
+    var human = currentRoom && currentRoom.playerForm === "human";
+    var frames = FACING_FRAMES[player.facing] || FACING_FRAMES.down;
+    // 3 real frames cycled by walkPhase while moving; frame 0 (idle pose)
+    // while standing still, so she doesn't look like she's still walking
+    // in place after stopping.
+    var frameIdx = isWalking ? Math.floor(walkPhase) % 3 : 0;
+    var wantId = human ? "nella_human_top" : frames[frameIdx];
     var entry = loadArt(wantId);
     if (!(entry && entry.ok)) entry = loadArt("nella_top"); // fallback while directional art is missing
     if (entry && entry.ok) {
@@ -609,18 +621,13 @@
       var size = spriteDrawSize(img, 30), w = size.w, h = size.h;
       var cx = player.x + player.w / 2, feetY = player.y + player.h;
       var mirror = player.facing === "right" || (player.facing === "left" && wantId === "nella_top");
-      // No real walk-cycle animation frames exist — a small vertical bob
-      // while moving is a cheap, code-only stand-in that still reads as
-      // "walking" instead of a sprite sliding perfectly still across the
-      // floor. abs() so it bobs up-down-up-down rather than up-then-snap.
-      var bob = isWalking ? Math.abs(Math.sin(walkPhase)) * 2 : 0;
       ctx.save();
       if (mirror) {
         ctx.translate(cx, 0);
         ctx.scale(-1, 1);
-        ctx.drawImage(img, -w / 2, feetY - h - bob, w, h);
+        ctx.drawImage(img, -w / 2, feetY - h, w, h);
       } else {
-        ctx.drawImage(img, cx - w / 2, feetY - h - bob, w, h);
+        ctx.drawImage(img, cx - w / 2, feetY - h, w, h);
       }
       ctx.restore();
       return;

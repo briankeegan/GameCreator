@@ -95,6 +95,8 @@ window.NEWSEY_STORY = (function () {
       bg: "house",
       label: "Your Father's House",
       playerStart: { x: 150, y: 155 },
+      // Before the deal/transformation — Nella is still fully human here.
+      playerForm: "human",
       // No walkable exit — you leave by finishing the TV conversation
       // (which plays DREAM_CUTSCENE and lands you in ROOMS.bedroom).
       exits: [],
