@@ -80,6 +80,31 @@ board onto their sprite, it squashes flat, and then it dissolves and re-forms
 in one piece before the result card — driven off the existing
 `s.over`/`s.overDelay` path with a longer delay, not a new loop.
 
+**Shipped, and then corrected once.** The first version dropped five
+anonymous grey slabs sized to the board, which read as scenery falling rather
+than as the game itself coming down. What falls now is the LOSER'S ACTUAL
+BOARD: `startCrush` snapshots every live panel where it is being drawn that
+frame — colour, column, garbage or not — `drawBoard` renders that side empty
+for the rest of the crush, and the panels rain down in their own columns and
+heap on the duellist. The queued garbage stays slabs, because those ARE the
+concrete slabs of the plot, and lands last on top of the heap.
+
+Three things that had to be right and were not, first time:
+- The panels **shrink as they fall**, from board size to `floorRoom * 0.26`.
+  The floor is further away than the board, and in the WIDE layout the floor
+  strip is barely taller than one cell — full-size panels buried the score
+  line and read as the stack sliding down rather than falling on anybody.
+- Everything downstream is timed off `crush.impact` (when the last thing
+  lands), not off `CRUSH_FALL`. A full board takes longer to come down than a
+  nearly-empty one, and keyed to the constant she flattened while half the
+  board was still in the air — and `overDelay`'s fixed 150 cut the re-forming
+  short in the common case, since topping out with a high stack IS how you
+  lose.
+- The rubble **dissolves with her**. "I seemed to dissolve, and then reappear
+  in front of Kat in one piece" — left on the floor it meant she re-formed
+  standing inside her own board, and the result card came up over a pile with
+  nobody visible under it.
+
 Watch the phone case. `cell` is already width-bound at ~29px on a 390px
 screen, so the floor strip costs height that is there; on a SHORT wide window
 it is not, so cap the strip the way `orbRoom` is capped and let the board win.
