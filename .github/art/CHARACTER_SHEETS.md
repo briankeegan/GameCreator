@@ -389,10 +389,25 @@ if that is what its code path wants. But a NEW GAME uses sheets.
   readable rows, so his back view was never cut at all. Both runs reported
   success.
 
+  **And the cutter itself was eating May's hair.** The reason her head kept
+  coming back half-missing was never the generation: the divider-removal pass
+  keys out magenta, her hair *is* magenta (sampled at `(236,62,91)`), and the
+  colour test that hunts the divider matched every pixel of her head. She came
+  out with a thin dark outline where her hair had been in the front and side
+  rows, and a headless coat in the back row. A character cannot be told from a
+  gridline by colour when they are the same colour — so it is settled by
+  geometry instead: cells are cut from the END of one green gutter to the
+  START of the next, never through their middles, so no divider pixel is
+  inside the crop and there is nothing to remove.
+
   Three things now stop that, and all three are needed:
-  1. `slice_walksheet.py` **refuses** any grid that is not 3–4 rows of 3,
-     instead of cutting cells out of guessed boundaries. A sheet with no
-     grid is a failed *generation*, not a cutting problem — regenerate it.
+  1. `slice_walksheet.py` **cuts on the green gutters** when the magenta grid
+     does not resolve to 3–4 rows of 3, and refuses only if the green fails
+     too. The background is the one thing the model cannot forget to draw,
+     because it is what it draws the characters on. It also **drops a
+     trailing row far shorter than its siblings** — the cropped bottom row
+     this document already warned about, which is where the headless frames
+     came from.
   2. `generate-walksheet.yml` **deletes the character's existing frames
      before slicing.** Its completeness check asks "is there a file here",
      and a file from the previous generation answers yes: that is precisely
