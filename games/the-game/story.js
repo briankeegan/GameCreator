@@ -31,6 +31,7 @@ window.NEWSEY_STORY = (function () {
     kat:     { name: "Kat",          color: "#27ae60" },
     john:    { name: "John Boxley",  color: "#6c5ce7" },
     timothy: { name: "Timothy",      color: "#dfe6e9" },
+    rex:     { name: "Rex",          color: "#c9a227" },
     kyran:   { name: "Kyran",        color: "#00b894" },
     michael: { name: "Michael",      color: "#74b9ff" },
     diamond: { name: "Diamond",      color: "#fd79a8" },
@@ -411,7 +412,7 @@ window.NEWSEY_STORY = (function () {
           // Flavor only here — per the plot, the Lounge is "the bar + portals
           // to duels", not the duel itself. Kat's actual fight happens in
           // ROOMS.arena, reached through the portal below.
-          id: "kat", x: 170, y: 162, art: "kat", sprite: "kat_top",
+          id: "kat", x: 180, y: 162, art: "kat", sprite: "kat_top",
           lines: [
             "Hello there. They call me Kat. What's your name?",
             "I'll buy you a drink — if you duel me. No better way to learn!",
@@ -420,7 +421,7 @@ window.NEWSEY_STORY = (function () {
           setsFlag: "duelInvite"
         },
         {
-          id: "may", x: 130, y: 168, art: "may", sprite: "may_top",
+          id: "may", x: 128, y: 132, art: "may", sprite: "may_top",
           lines: [
             "You again? Stay out of my way.",
             "Something doesn't add up about the new arrivals lately. Watch yourself.",
@@ -429,10 +430,49 @@ window.NEWSEY_STORY = (function () {
           setsFlag: "duelInvite"
         },
         {
-          id: "timothy", x: 206, y: 172, art: "timothy", sprite: "timothy_top",
+          id: "timothy", x: 216, y: 148, art: "timothy", sprite: "timothy_top",
           lines: [
-            "Now, now — that's no way to welcome the new people.",
+            "Now, now — that's no way to welcome the new people. This is Rex. Be nice.",
             "My bracelet's all diamond. Yours will get there too, given time."
+          ]
+        },
+        {
+          // "You are NO COPPER RANKED PLAYER. So, WHO ARE YOU?" — May has him
+          // by the collar when Nella walks in, and he says nothing at all,
+          // which is the entire point of him.
+          id: "rex", x: 146, y: 132, art: "rex", sprite: "rex_top",
+          lines: [
+            "The scruffy man in the deep-gold robe watches you look at his bracelet.",
+            "Copper, set with amethysts. May said that meant something.",
+            "He smirks, and says nothing."
+          ]
+        },
+        // Kat's table — "Anyway, that's the gang! Michael, Diamond, Eric, and
+        // Magma." Michael keeps his coffee shop in the library; the other
+        // three are here.
+        {
+          id: "diamond", x: 118, y: 168, art: "diamond", sprite: "diamond_top",
+          lines: [
+            "I'm Diamond. I'm the only person you really need to meet around here.",
+            "Don't listen to Eric. He thinks the sun rises on Anarchy.",
+            "Copper and aquamarine, is it? Sweet. Everyone starts somewhere."
+          ]
+        },
+        {
+          id: "eric", x: 140, y: 174, art: "eric", sprite: "eric_top",
+          lines: [
+            "She only wishes she was the star around here. I'm afraid that honour goes to Anarchy.",
+            "I'm Eric. Ignore the two of us, we do this constantly.",
+            "…Had. Anarchy HAD. Nobody's seen him since he got out, if he got out."
+          ]
+        },
+        {
+          id: "magma", x: 168, y: 176, art: "magma", sprite: "magma_top",
+          lines: [
+            "…I'm Magma.",
+            "You're staring. Everyone stares the first time.",
+            "I'm not trying to scare you. I just refuse to hide who I am any more.",
+            "…Sorry. That was for Kat, not for you."
           ]
         },
         {
