@@ -25,6 +25,7 @@ window.NEWSEY_STORY = (function () {
     devil:   { name: "???",          color: "#e84393" },
     tv:      { name: "Old TV",       color: "#5a4a7a" },
     portal:  { name: "The Portal",   color: "#00cec9" },
+    bed:     { name: "Your Bed",     color: "#ffd166" },
     may:     { name: "May 2000",     color: "#e84393" },
     kat:     { name: "Kat",          color: "#27ae60" },
     john:    { name: "John Boxley",  color: "#6c5ce7" },
@@ -133,6 +134,18 @@ window.NEWSEY_STORY = (function () {
       exits: [ { x: 262, y: 95, w: 20, h: 45, to: "lounge", label: "→ Out the door" } ],
       obstacles: [ { x: 15, y: 60, w: 55, h: 75 }, { x: 150, y: 65, w: 85, h: 45 } ],
       npcs: [
+        {
+          // The bed is the game's save point — stand at its foot and
+          // interact. `savePoint` makes app.js write the file when the lines
+          // finish, and draw a gold marker over it instead of a character
+          // token. Positioned just below the bed obstacle (which ends at
+          // y=110) so the player can actually stand within reach of it.
+          id: "bed", x: 192, y: 118, art: null, sprite: null, savePoint: true,
+          lines: [
+            "Your bed. Copper sheets, aquamarine pillow — Infinity matched them to your bracelet.",
+            "You lie down for a moment and let the day settle."
+          ]
+        },
         {
           id: "devil", x: 150, y: 155, art: "devil", sprite: "devil_top",
           lines: [

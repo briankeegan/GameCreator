@@ -29,7 +29,11 @@
       var siblings = Array.prototype.filter.call(gameArea.children, function (el) { return el !== stageEl; });
       var usedHeight = siblings.reduce(function (sum, el) {
         var cs = getComputedStyle(el);
-        return cs.display === "none" ? sum : sum + el.getBoundingClientRect().height;
+        // Out-of-flow siblings (the menu layer, the toast) overlay the area
+        // rather than taking space in the column — counting their height
+        // would shrink the stage to nothing whenever a menu is open.
+        if (cs.display === "none" || cs.position === "absolute" || cs.position === "fixed") return sum;
+        return sum + el.getBoundingClientRect().height;
       }, 0);
       var gaStyles = getComputedStyle(gameArea);
       var gap = parseFloat(gaStyles.rowGap || gaStyles.gap || "0") * siblings.length;
@@ -56,9 +60,22 @@
   var ROOMS = STORY.ROOMS;
 
   // ---------- persistence ----------
-  var save = window.GCStorage.get(gameId, "save", { introSeen: false, room: "house", duelsWon: {} });
-  if (!save.duelsWon) save.duelsWon = {}; // saves made before duels existed
-  function persist() { window.GCStorage.set(gameId, "save", save); }
+  // The game no longer owns a single anonymous save. A file (1..3) is chosen
+  // on the file-select screen and loaded by menu.js via beginFile() below;
+  // until that happens `save` is null and the world isn't running at all.
+  // Everything the world remembers lives in that one object, so a save is a
+  // single write and a load is a single read.
+  var SAVES = window.NewseySaves;
+  var save = null;        // the active file's data
+  var activeSlot = null;  // 1..3, or null while we're sitting on a menu
+  var sinceFlush = 0;     // seconds played since the last write (see update)
+  function persist() {
+    if (activeSlot == null || !save) return;
+    save.pos = { x: player.x, y: player.y };
+    save.lines = npcLineCounters;
+    SAVES.write(activeSlot, save);
+    sinceFlush = 0;
+  }
 
   // ---------- art loading (graceful fallback) ----------
   var artCache = {};
@@ -222,9 +239,6 @@
   }
   cutsceneEl.addEventListener("click", advanceCutscene);
   cutsceneEl.addEventListener("keydown", function (e) { if (e.key === " " || e.key === "Enter") advanceCutscene(); });
-  document.getElementById("restartBtn").addEventListener("click", function () {
-    startCutscene(STORY.INTRO_CUTSCENE, function () { enterRoom("house"); });
-  });
 
   // =========================================================================
   // WALK-AROUND MODE
@@ -248,20 +262,29 @@
   var walkPhase = 0, isWalking = false; // drives the procedural walk-bob (see drawPlayer)
   var keys = {};
   var talking = null; // { npc, lineIndex }
+  var running = false; // true only while a file is loaded and being played
+  var paused = false;  // true while the pause menu is up
   var lastTime = null;
   var npcLineCounters = {}; // remembers which line to show next per NPC (repeat visits)
 
   function enterRoom(roomId) {
     currentRoom = ROOMS[roomId];
-    save.room = roomId;
-    persist();
     roomLabelEl.textContent = currentRoom.label;
     player.x = currentRoom.playerStart.x;
     player.y = currentRoom.playerStart.y;
+    if (save) { save.room = roomId; persist(); } // walking through a door autosaves
   }
 
   // ---- input ----
   window.addEventListener("keydown", function (e) {
+    // Escape / Enter is START on a console pad: it opens the pause menu, and
+    // the menu itself handles closing again. Never while a duel is running —
+    // that screen has its own forfeit button and its own key handling.
+    if ((e.key === "Escape" || e.key === "p" || e.key === "P") && running && !window.NewseyDuel.isActive()) {
+      window.NewseyMenu.togglePause();
+      e.preventDefault();
+      return;
+    }
     keys[e.key] = true;
     if (talking && (e.key === "z" || e.key === "Z" || e.key === " " || e.key === "Enter")) {
       advanceTalk();
@@ -346,6 +369,8 @@
         startCutscene(STORY[wasTalking.npc.cutscene], function () { enterRoom("bedroom"); });
       }
       if (wasTalking.npc.gotoRoom) enterRoom(wasTalking.npc.gotoRoom);
+      // A bed is a save point: finishing its "lines" is the save.
+      if (wasTalking.npc.savePoint) { persist(); window.NewseyMenu.toast("Game saved."); }
       return;
     }
     npcLineCounters[key] = talking.lineIndex;
@@ -359,6 +384,9 @@
   function startDuel(npc) {
     var config = (typeof npc.duel === "object" && npc.duel) || {};
     var character = CHARACTERS[npc.id] || {};
+    // The duel screen owns the stage while it's up — it has its own forfeit
+    // button, and pausing wouldn't stop its clock anyway, so the ☰ goes away.
+    document.getElementById("menuBtn").hidden = true;
     window.NewseyDuel.start({
       playerName: CHARACTERS.nella.name,
       playerLevel: config.playerLevel || 2,
@@ -372,10 +400,11 @@
         loseLine: config.loseLine
       },
       onEnd: function (outcome) {
+        document.getElementById("menuBtn").hidden = !running;
         if (outcome.result === "win") {
           save.duelsWon[npc.id] = (save.duelsWon[npc.id] || 0) + 1;
-          persist();
         }
+        persist();
         var lines = outcome.result === "win" ? config.afterWin : config.afterLoss;
         if (outcome.result !== "quit" && lines && lines.length) {
           talking = {
@@ -411,6 +440,16 @@
     return false;
   }
   function update(dt) {
+    if (!running || paused) return;
+    // Playtime is wall-clock time with the game actually in front of you —
+    // menus and pauses don't count, same as the clock on a cartridge file
+    // select. Flushed to storage every 20s so quitting the tab mid-session
+    // doesn't lose the whole session's worth of clock.
+    if (save) {
+      save.playSeconds += dt;
+      sinceFlush += dt;
+      if (sinceFlush > 20) persist();
+    }
     if (talking || window.NewseyDuel.isActive()) return;
     var dx = 0, dy = 0;
     if (keys["ArrowLeft"] || keys["a"] || touchDir === "left") dx -= 1;
@@ -482,6 +521,10 @@
   // photo floating mid-air.
   function drawNpc(npc) {
     var c = CHARACTERS[npc.id] || { name: npc.id, color: "#8a5cf6" };
+    // A save point is a piece of furniture already painted into the room's
+    // background art, not a person — so it gets a small glowing marker
+    // hovering over it instead of the round bust token used for characters.
+    if (npc.savePoint) { drawSavePoint(npc); return; }
     var spriteEntry = npc.sprite ? loadArt(npc.sprite) : null;
     var hasSprite = spriteEntry && spriteEntry.ok && spriteEntry.img.naturalHeight;
 
@@ -518,6 +561,29 @@
     if (d < 26) {
       ctx.strokeStyle = "rgba(255,255,255,0.55)";
       ctx.beginPath(); ctx.ellipse(npc.x, npc.y + 3, 15, 4.6, 0, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+
+  // A slow pulsing diamond over a save point, in the same gold as the exit
+  // labels so it reads as "interactive scenery" at a glance.
+  function drawSavePoint(npc) {
+    var pulse = 0.65 + 0.35 * Math.sin(Date.now() / 380);
+    var y = npc.y - 10 - Math.sin(Date.now() / 700) * 1.5;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = "#ffd166";
+    ctx.beginPath();
+    ctx.moveTo(npc.x, y - 5); ctx.lineTo(npc.x + 4, y); ctx.lineTo(npc.x, y + 5); ctx.lineTo(npc.x - 4, y);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = pulse * 0.35;
+    ctx.beginPath(); ctx.arc(npc.x, y, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    var d = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h / 2));
+    if (d < 26) {
+      ctx.fillStyle = "#ffd166";
+      ctx.font = "bold 7px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("SAVE", npc.x, y + 16);
     }
   }
 
@@ -573,7 +639,7 @@
 
   function render() {
     ctx.clearRect(0, 0, VW, VH);
-    if (!currentRoom) return;
+    if (!currentRoom || !running) return;
     drawRoomBg();
     drawExits();
     // sort by y so things lower on screen draw on top (cheap depth)
@@ -592,26 +658,98 @@
     requestAnimationFrame(loop);
   }
 
-  // ---------- boot ----------
-  if (save.introSeen) {
-    cutsceneEl.classList.add("hidden");
-    enterRoom(save.room || "house");
-  } else {
-    startCutscene(STORY.INTRO_CUTSCENE, function () {
-      save.introSeen = true;
-      persist();
-      enterRoom("house");
-    });
-    currentRoom = ROOMS[save.room || "house"];
-    player.x = currentRoom.playerStart.x; player.y = currentRoom.playerStart.y;
+  // ---------- shell API ----------
+  // menu.js owns the title screen, the file select and the pause menu; it
+  // drives the world through these. Nothing below auto-starts — the game only
+  // begins once a file has actually been chosen.
+  function clearTransientState() {
+    if (window.NewseyDuel.isActive()) window.NewseyDuel.stop();
+    talkBox.hidden = true;
+    talking = null;
+    keys = {};
+    touchDir = null;
+    cutsceneDoneCallback = null;
   }
+
+  // slot: 1..3. fresh: true for NEW GAME (play the intro), false for CONTINUE.
+  function beginFile(slot, fresh) {
+    activeSlot = slot;
+    save = fresh ? SAVES.blank() : (SAVES.read(slot) || SAVES.blank());
+    npcLineCounters = save.lines || {};
+    clearTransientState();
+    running = true;
+    paused = false;
+    sinceFlush = 0;
+    if (save.introSeen) {
+      cutsceneEl.classList.add("hidden");
+      if (isTouch) document.getElementById("touchControls").hidden = false;
+      // enterRoom autosaves, which rewrites save.pos with the room's start
+      // position — so read the saved spot out first, then put her back on it.
+      var savedPos = save.pos;
+      enterRoom(save.room || "house");
+      if (savedPos) { player.x = savedPos.x; player.y = savedPos.y; }
+    } else {
+      startCutscene(STORY.INTRO_CUTSCENE, function () {
+        save.introSeen = true;
+        enterRoom("house");
+      });
+      currentRoom = ROOMS[save.room || "house"];
+      player.x = currentRoom.playerStart.x; player.y = currentRoom.playerStart.y;
+    }
+    persist();
+    sizeStage();
+  }
+
+  function quitToTitle() {
+    if (running) persist();
+    running = false;
+    paused = false;
+    activeSlot = null;
+    save = null;
+    npcLineCounters = {};
+    clearTransientState();
+    cutsceneEl.classList.add("hidden");
+    document.getElementById("touchControls").hidden = true;
+    interactHint.hidden = true;
+    roomLabelEl.textContent = "";
+    currentRoom = null;
+    sizeStage();
+  }
+
+  window.NewseyGame = {
+    beginFile: beginFile,
+    quitToTitle: quitToTitle,
+    save: persist,
+    isRunning: function () { return running; },
+    setPaused: function (v) {
+      paused = !!v;
+      if (paused) { keys = {}; touchDir = null; } // don't come back mid-stride
+    },
+    activeSlot: function () { return activeSlot; },
+    state: function () { return save; },
+    // Whether the pause menu should offer "Save" — during a cutscene there is
+    // no room/position worth writing yet.
+    canSave: function () { return running && cutsceneEl.classList.contains("hidden"); }
+  };
+
+  // The tab closing / going to the background is the one moment the player
+  // can't tell us they're leaving, so flush the clock and position then.
+  window.addEventListener("pagehide", function () { if (running) persist(); });
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden && running) persist();
+  });
+
   requestAnimationFrame(loop);
 
   // Read-only debug hook for automated testing (headless smoke tests can't
   // reach into this closure otherwise). No effect on gameplay.
   window.__newseyDebug = {
     player: player,
+    running: function () { return running; },
+    slot: function () { return activeSlot; },
+    save: function () { return save; },
     room: function () { return currentRoom && currentRoom.label; },
+    enterRoom: enterRoom,
     startDuel: startDuel,
     duel: function () { return window.NewseyDuel.debug(); }
   };

@@ -88,6 +88,9 @@
           </div>
         </div>
       </div>
+
+      <!-- Opens the pause menu while playing. -->
+      <button class="menu-btn" id="menuBtn" aria-label="Menu" hidden>☰</button>
     </div>
 
     <!-- Touch joystick, shown only on touch devices. -->
@@ -101,9 +104,73 @@
       <button class="interact-btn" id="interactBtn">talk</button>
     </div>
 
-    <div class="story-menu" id="storyMenu">
-      <button id="restartBtn" title="Replay the intro">↺ Replay intro</button>
+    <!-- ===== GAME SHELL: title, file select, pause.
+         Deliberately a sibling of .stage, not a child of it: the stage is a
+         fixed 640:400 letterbox, which on a phone is a short strip with a
+         menu's own content clipped inside it. Covering the whole game area
+         instead gives these screens the full space below the nav bar on
+         every screen size. ===== -->
+    <div class="menu-layer" id="menuLayer" hidden>
+      <!-- TITLE -->
+      <section class="menu-screen menu-title" id="menuTitle" hidden>
+        <div class="title-logo">PUZZLE<span>ATTACK</span></div>
+        <div class="title-sub">Newsey — the game</div>
+        <button class="title-start" id="titleStart">PRESS START</button>
+        <button class="title-continue" id="titleContinue" hidden>CONTINUE</button>
+      </section>
+
+      <!-- FILE SELECT -->
+      <section class="menu-screen" id="menuFiles" hidden>
+        <h2 class="menu-h" id="filesTitle">SELECT FILE</h2>
+        <div class="file-list" id="fileList"></div>
+        <div class="mode-row">
+          <button class="mode-btn on" data-mode="play">PLAY</button>
+          <button class="mode-btn" data-mode="copy">COPY</button>
+          <button class="mode-btn" data-mode="erase">ERASE</button>
+        </div>
+        <p class="menu-note" id="fileNote"></p>
+        <button class="menu-back" id="filesBack">‹ Back to title</button>
+      </section>
+
+      <!-- PAUSE -->
+      <section class="menu-screen" id="menuPause" hidden>
+        <h2 class="menu-h">PAUSED</h2>
+        <div class="menu-meta" id="pauseMeta"></div>
+        <div class="menu-items">
+          <button id="pauseResume">Resume</button>
+          <button id="pauseSave">Save game</button>
+          <button id="pauseHelp">Controls</button>
+          <button id="pauseQuit">Save &amp; quit to title</button>
+          <button class="danger" id="pauseErase">Erase this file</button>
+        </div>
+      </section>
+
+      <!-- CONTROLS -->
+      <section class="menu-screen" id="menuHelp" hidden>
+        <h2 class="menu-h">CONTROLS</h2>
+        <dl class="help-list">
+          <dt>Move</dt><dd>Arrow keys / WASD, or the on-screen d-pad</dd>
+          <dt>Talk / interact</dt><dd>Z, Space or Enter — or tap the screen</dd>
+          <dt>Menu</dt><dd>Esc or P, or the ☰ button</dd>
+          <dt>Duel</dt><dd>Tap two panels side by side to swap, or arrows + Z</dd>
+          <dt>Saving</dt><dd>The game saves itself when you change rooms and after every duel. Sleep in your bed in Infinity, or use Save game here, to save on the spot.</dd>
+        </dl>
+        <button class="menu-back" id="helpBack">‹ Back</button>
+      </section>
+
+      <!-- CONFIRM (destructive actions only) -->
+      <div class="menu-confirm" id="menuConfirm" hidden>
+        <div class="confirm-card">
+          <p id="confirmText"></p>
+          <div class="confirm-row">
+            <button class="danger" id="confirmYes">OK</button>
+            <button id="confirmNo">Cancel</button>
+          </div>
+        </div>
+      </div>
     </div>
+
+    <div class="menu-toast" id="menuToast" hidden></div>
   </main>
 
   <div class="install-banner" id="installBanner">
@@ -126,7 +193,9 @@
   <script src="panel-engine.js"></script>
   <script src="panel-cpu.js"></script>
   <script src="duel.js"></script>
+  <script src="saves.js"></script>
   <script src="app.js"></script>
+  <script src="menu.js"></script>
   <script src="../../shared/pwa.js" data-sw="sw.js"></script>
 </body>
 </html>
