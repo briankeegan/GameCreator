@@ -733,17 +733,22 @@
     var step = Math.min(d, WANDER_SPEED * dt);
     var nx = npc.x + (dx / d) * step, ny = npc.y + (dy / d) * step;
     // Nobody wanders off the floor either — same mask, same question — and
+    if (!isFloor(room, nx, ny)) { pickWanderTarget(w); w.walking = false; return; }
+    // A scripted entrance (see entryFrom/pendingEntranceTalk) skips both the
+    // doorway-clearance block below and the player-proximity block further
+    // down: he starts AT the door by definition (that's where entryFrom
+    // puts him) and the player is always standing right there to have
+    // opened it, so both checks would otherwise fire on his very first step
+    // and strand him — confirmed live via browser.test.js, and confirmed
+    // again once the player-proximity fix alone wasn't enough: he'd move a
+    // few px, get flagged as "in the doorway", and pickWanderTarget would
+    // hand him an unrelated random wander point instead of continuing home.
+    // Someone being let in isn't "parking in the door" or "walking into you"
+    // the way a wandering NPC's random drift would be.
+    if (w.scriptedEntry) { npc.x = nx; npc.y = ny; w.walking = true; w.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"); w.walkPhase = (w.walkPhase || 0) + dt * 9; return; }
     // nobody parks in a doorway: someone standing in the door blocks the way
     // through until you shove them aside, which reads as a broken door.
-    if (!isFloor(room, nx, ny) || inDoorway(room, nx, ny)) { pickWanderTarget(w); w.walking = false; return; }
-    // A scripted entrance (see entryFrom/pendingEntranceTalk) skips the
-    // player-proximity block below: you're always standing right at the
-    // door to have opened it, so the very first step of "come inside" would
-    // otherwise read as walking toward the player and get blocked forever —
-    // confirmed live, Chuck never took a single step in from the door.
-    // Someone being let in isn't "walking into" you the way a wandering
-    // NPC's random drift would be.
-    if (w.scriptedEntry) { npc.x = nx; npc.y = ny; w.walking = true; w.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"); w.walkPhase = (w.walkPhase || 0) + dt * 9; return; }
+    if (inDoorway(room, nx, ny)) { pickWanderTarget(w); w.walking = false; return; }
     var pd = Math.hypot(nx - (player.x + player.w / 2), ny - (player.y + player.h));
     var curPd = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h));
     // Block a step that would walk INTO the player, but never one that's
