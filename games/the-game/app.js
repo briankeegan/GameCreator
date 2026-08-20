@@ -716,23 +716,30 @@
     // through this check with nothing to catch it.
     if (npc.savePoint || npc.marker || npc._noWander) return;
     var w = ensureWanderState(npc);
-    if (w.pause > 0) { w.pause -= dt; return; }
+    if (w.pause > 0) { w.pause -= dt; w.walking = false; return; }
     var dx = w.tx - npc.x, dy = w.ty - npc.y, d = Math.hypot(dx, dy);
-    if (d < 1.5) { pickWanderTarget(w); w.pause = 1 + Math.random() * 2.5; return; }
+    if (d < 1.5) { pickWanderTarget(w); w.pause = 1 + Math.random() * 2.5; w.walking = false; return; }
     var step = Math.min(d, WANDER_SPEED * dt);
     var nx = npc.x + (dx / d) * step, ny = npc.y + (dy / d) * step;
     // Nobody wanders off the floor either — same mask, same question — and
     // nobody parks in a doorway: someone standing in the door blocks the way
     // through until you shove them aside, which reads as a broken door.
-    if (!isFloor(room, nx, ny) || inDoorway(room, nx, ny)) { pickWanderTarget(w); return; }
+    if (!isFloor(room, nx, ny) || inDoorway(room, nx, ny)) { pickWanderTarget(w); w.walking = false; return; }
     var pd = Math.hypot(nx - (player.x + player.w / 2), ny - (player.y + player.h));
     var curPd = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h));
     // Block a step that would walk INTO the player, but never one that's
     // increasing the distance — otherwise a step-aside (registerPush, whose
     // whole target is "away from the player") could never actually clear the
     // same radius it's trying to escape.
-    if (pd < NPC_COLLIDE_RADIUS + 4 && pd < curPd) return;
+    if (pd < NPC_COLLIDE_RADIUS + 4 && pd < curPd) { w.walking = false; return; }
+    // Same facing+phase bookkeeping drawPlayer keeps for the player, so an
+    // NPC with real walk frames (see NPC_FACING_FRAMES) animates the same
+    // way instead of gliding — a static sprite sliding across the floor was
+    // the very thing this whole walk-cycle effort exists to get rid of.
     npc.x = nx; npc.y = ny;
+    w.walking = true;
+    w.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+    w.walkPhase = (w.walkPhase || 0) + dt * 9;
   }
   // Walking into someone and holding it blocks forever otherwise — a real
   // wall is fine to just stop at, a person shouldn't be. After ~2s of
@@ -987,13 +994,39 @@
     // itself instead, and a word telling you what it does when you're close.
     if (npc.savePoint) { drawMarker(npc, "#ffd166", "SAVE"); return; }
     if (npc.marker) { drawMarker(npc, c.color, npc.marker); return; }
+    // Real walk frames, if this character has a sheet (NPC_FACING_FRAMES),
+    // take priority over the single static sprite — same idea as the player:
+    // a body standing still still looks like it's gliding across the floor
+    // if the art never changes while wander moves it around.
+    var walkSet = NPC_FACING_FRAMES[npc.id];
+    var walkEntry = null, walkMirror = false;
+    if (walkSet) {
+      var w2 = npc._wander;
+      var facing = (w2 && w2.facing) || "down";
+      var frames = walkSet[facing] || walkSet.down;
+      var frameIdx = (w2 && w2.walking) ? WALK_SEQUENCE[Math.floor(w2.walkPhase || 0) % WALK_SEQUENCE.length] : 1;
+      var candidate = loadArt(frames[frameIdx]);
+      if (candidate && candidate.ok) { walkEntry = candidate; walkMirror = facing === "right"; }
+    }
     var spriteEntry = npc.sprite ? loadArt(npc.sprite) : null;
-    var hasSprite = spriteEntry && spriteEntry.ok && spriteEntry.img.naturalHeight;
+    var hasSprite = !walkEntry && spriteEntry && spriteEntry.ok && spriteEntry.img.naturalHeight;
 
     ctx.fillStyle = "rgba(0,0,0,0.4)";
     ctx.beginPath(); ctx.ellipse(npc.x, npc.y, 11, 3.4, 0, 0, Math.PI * 2); ctx.fill();
 
-    if (hasSprite) {
+    if (walkEntry) {
+      var wimg = walkEntry.img;
+      var wsize = spriteDrawSize(wimg, 30), ww = wsize.w, wh = wsize.h;
+      ctx.save();
+      if (walkMirror) {
+        ctx.translate(npc.x, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(wimg, -ww / 2, npc.y - wh, ww, wh);
+      } else {
+        ctx.drawImage(wimg, npc.x - ww / 2, npc.y - wh, ww, wh);
+      }
+      ctx.restore();
+    } else if (hasSprite) {
       var img = spriteEntry.img;
       var size = spriteDrawSize(img, 30), w = size.w, h = size.h;
       ctx.drawImage(img, npc.x - w / 2, npc.y - h, w, h);
@@ -1067,6 +1100,38 @@
     left: ["nella_human_left_0", "nella_human_left_1", "nella_human_left_2"],
     right: ["nella_human_left_0", "nella_human_left_1", "nella_human_left_2"]
   };
+  // Standard RPG-Maker charset convention, shared by drawPlayer and drawNpc:
+  // frame 1 (the MIDDLE of the 3) is the neutral standing pose, used both at
+  // rest and as the walk cycle's resting beat — frames 0/2 are the two
+  // mirrored step poses. Cycling 0,1,2 on repeat never actually returns to
+  // neutral mid-walk and, worse, uses frame 0 — a mid-step pose — for idle,
+  // so a character freezes mid-stride the instant it stops moving.
+  var WALK_SEQUENCE = [1, 0, 1, 2];
+  // Same <id>_<dir>_<frame> naming slice_walksheet.py writes, one entry per
+  // NPC that has a real walk sheet — id absent from this table just means
+  // "no walk art yet", and drawNpc falls back to its static sprite/bust the
+  // same as it always has, so adding a character here is the only wiring a
+  // freshly-generated sheet needs.
+  function npcDirFrames(id) {
+    return {
+      down: [id + "_down_0", id + "_down_1", id + "_down_2"],
+      up: [id + "_up_0", id + "_up_1", id + "_up_2"],
+      left: [id + "_left_0", id + "_left_1", id + "_left_2"],
+      right: [id + "_left_0", id + "_left_1", id + "_left_2"]
+    };
+  }
+  var NPC_FACING_FRAMES = {};
+  ["chuck", "devil", "kat", "may", "timothy", "michael", "john"].forEach(function (id) {
+    NPC_FACING_FRAMES[id] = npcDirFrames(id);
+  });
+  // Best-effort preload, same reasoning as the player's — loadArt() on an id
+  // with no file behind it yet just never resolves ok, which drawNpc already
+  // treats as "no walk art, use the fallback", so this is safe to run before
+  // any of these sheets exist.
+  Object.keys(NPC_FACING_FRAMES).forEach(function (id) {
+    var set = NPC_FACING_FRAMES[id];
+    Object.keys(set).forEach(function (dir) { set[dir].forEach(loadArt); });
+  });
   // loadArt() kicks off an async Image load and returns ok:false until it
   // fires — fine for most art, but drawPlayer() doesn't wait: the FIRST time
   // any given directional frame is needed (e.g. the very first step in a new
@@ -1085,13 +1150,6 @@
     var human = currentRoom && currentRoom.playerForm === "human";
     var frameSet = human ? FACING_FRAMES_HUMAN : FACING_FRAMES;
     var frames = frameSet[player.facing] || frameSet.down;
-    // Standard RPG-Maker charset convention: frame 1 (the MIDDLE of the 3)
-    // is the neutral standing pose, used both at rest and as the walk
-    // cycle's resting beat — frames 0/2 are the two mirrored step poses.
-    // Cycling 0,1,2 on repeat (as this used to) never actually returns to
-    // neutral mid-walk and, worse, used frame 0 — a mid-step pose — for
-    // idle, so she'd freeze mid-stride the instant she stopped moving.
-    var WALK_SEQUENCE = [1, 0, 1, 2];
     var frameIdx = isWalking ? WALK_SEQUENCE[Math.floor(walkPhase) % WALK_SEQUENCE.length] : 1;
     var wantId = frames[frameIdx];
     var entry = loadArt(wantId);
