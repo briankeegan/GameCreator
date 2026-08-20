@@ -99,6 +99,14 @@ window.NEWSEY_STORY = (function () {
     "…Chuck. It has to be Chuck."
   ];
 
+  // ROOM SHAPES — every room's walkable area is `floorPoly`, the drawn floor
+  // traced as a polygon in the game's 320x200 room coordinates. These rooms
+  // are painted in perspective (the lounge and the arena are six-sided, the
+  // others are trapezoids narrowing toward the back wall), so a rectangle can
+  // never fit one: sized to the front edge it lets you walk off into the
+  // black behind the room, sized to the back edge it fences you out of the
+  // front half. Traced against a coordinate grid rendered over each
+  // background — don't adjust these by feel, re-render the grid.
   var ROOMS = {
     // The real world, before any of it: your own childhood bedroom upstairs
     // in your father's house. The game opens here, out of the black at the
@@ -106,7 +114,7 @@ window.NEWSEY_STORY = (function () {
     home_bedroom: {
       bg: "home_bedroom",
       label: "Your Old Room",
-      playerStart: { x: 140, y: 125 },
+      playerStart: { x: 152, y: 128 },
       playerForm: "human",
       // Where you're lying when the screen fades up, and where you stand the
       // moment you move. app.js reads both (see player.inBed).
@@ -114,21 +122,22 @@ window.NEWSEY_STORY = (function () {
       // The top edge of the blanket in the art — she's drawn clipped to above
       // this line while asleep, so the covers cover her.
       bedClipY: 88,
-      wakeSpot: { x: 140, y: 125 },
+      wakeSpot: { x: 152, y: 128 },
       // Everything below is read straight off bg-home_bedroom.png against the
       // 320x200 virtual grid. This art frames the room inside a dark border,
       // so the generic floor rect would let you walk out through the walls,
       // and the door is drawn centre-right rather than hard right, so the
       // exit strip sits under where the door actually is.
-      floor: { x: 58, y: 100, w: 210, h: 72 },
-      exits: [ { x: 180, y: 100, w: 32, h: 16, to: "house", label: "Downstairs",
+      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
+      floorPoly: [[68,100],[276,100],[272,182],[72,182]],
+      exits: [ { x: 188, y: 98, w: 34, h: 16, to: "house", label: "Downstairs",
                  arriveAt: { x: 228, y: 112 } } ],
       // The bed (back-left, foot toward the viewer), the nightstand beside
       // it, and the moving boxes stacked against the right wall.
       obstacles: [
-        { x: 55, y: 60, w: 78, h: 92 },
-        { x: 116, y: 62, w: 42, h: 44 },
-        { x: 233, y: 55, w: 44, h: 57 }
+        { x: 80, y: 58, w: 64, h: 98 },    // the bed
+        { x: 115, y: 55, w: 36, h: 52 },   // nightstand + lamp
+        { x: 232, y: 52, w: 46, h: 65 }    // moving boxes
       ],
       npcs: []
     },
@@ -141,12 +150,13 @@ window.NEWSEY_STORY = (function () {
       // Read off bg-house.png against the 320x200 grid: the room's walls are
       // at x 64 and x 284 and the floor runs from y 100 to y 178. Without
       // this the generic floor rect let you walk out through both walls.
-      floor: { x: 64, y: 100, w: 220, h: 78 },
+      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
+      floorPoly: [[64,100],[292,100],[292,187],[64,187]],
       // The lit archway on the right is the stairs. The story's real exit is
       // still the TV (which plays DREAM_CUTSCENE), but you came down these to
       // answer the door, so they go back up.
       exits: [
-        { x: 216, y: 90, w: 44, h: 14, to: "home_bedroom", arriveAt: { x: 190, y: 122 } }
+        { x: 216, y: 90, w: 34, h: 14, to: "home_bedroom", arriveAt: { x: 196, y: 122 } }
       ],
       // Furniture where it actually meets the floor: the table with the
       // moving boxes, the lantern table by the front door, and the little
@@ -154,7 +164,7 @@ window.NEWSEY_STORY = (function () {
       obstacles: [
         { x: 100, y: 78, w: 78, h: 34 },
         { x: 64, y: 98, w: 34, h: 10 },
-        { x: 246, y: 96, w: 30, h: 12 }
+        { x: 252, y: 96, w: 28, h: 12 }
       ],
       npcs: [
         {
@@ -209,16 +219,18 @@ window.NEWSEY_STORY = (function () {
       // is what takes you through. Nothing else on screen is an exit.
       // bg-bedroom.png: arched door on the right wall, opening x 222-248,
       // threshold on the floor at y ~103.
-      floor: { x: 52, y: 100, w: 232, h: 76 },
+      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
+      floorPoly: [[52,100],[285,100],[272,186],[64,186]],
       exits: [
-        { x: 208, y: 92, w: 26, h: 16, to: "lounge", arriveAt: { x: 150, y: 150 } }
+        { x: 223, y: 90, w: 28, h: 16, to: "lounge", arriveAt: { x: 150, y: 150 } }
       ],
       // Furniture footprints where they actually meet the floor (the old boxes
       // reached far into the room, and the bed's box covered the doorway, so
       // the door could not be walked into at all).
       obstacles: [
-        { x: 62, y: 95, w: 44, h: 16 },   // mirror
-        { x: 112, y: 92, w: 92, h: 24 }   // bed + nightstand
+        { x: 52, y: 95, w: 36, h: 14 },   // mirror
+        { x: 120, y: 92, w: 90, h: 26 },  // bed
+        { x: 202, y: 95, w: 22, h: 13 }   // nightstand
       ],
       npcs: [
         {
@@ -262,7 +274,7 @@ window.NEWSEY_STORY = (function () {
     lounge: {
       bg: "lounge",
       label: "The Lounge",
-      playerStart: { x: 60, y: 150 },
+      playerStart: { x: 100, y: 150 },
       // Hand-placed from bg-lounge.png: the doorway to the library is on
       // the right wall; the bar counter spans most of the back wall and
       // is blocked off so the player can't walk through/behind it.
@@ -270,14 +282,15 @@ window.NEWSEY_STORY = (function () {
       // x 210-240, floor at y ~82) to the library. The way back to your room is
       // the doorway you came in through, at the bottom edge of the room —
       // the art has none there, so app.js draws that frame itself.
-      floor: { x: 58, y: 100, w: 232, h: 82 },
+      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
+      floorPoly: [[75,100],[252,100],[288,140],[262,188],[92,188],[50,140]],
       exits: [
         { x: 206, y: 86, w: 34, h: 18, to: "library", arriveAt: { x: 215, y: 140 } },
         { x: 132, y: 182, w: 56, h: 10, to: "bedroom", drawn: "threshold", arriveAt: { x: 228, y: 132 } }
       ],
       // The bar's footprint on the floor (the old box sat entirely above the
       // walkable area, so it blocked nothing).
-      obstacles: [ { x: 55, y: 95, w: 135, h: 32 } ],
+      obstacles: [ { x: 55, y: 95, w: 110, h: 30 } ], // the bar's footprint
       npcs: [
         {
           // Flavor only here — per the plot, the Lounge is "the bar + portals
@@ -322,11 +335,12 @@ window.NEWSEY_STORY = (function () {
       label: "The Arena",
       playerStart: { x: 150, y: 165 },
       // bg-arena.png: the arch is at x 233-267, floor at y ~82.
-      floor: { x: 52, y: 100, w: 232, h: 78 },
+      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
+      floorPoly: [[52,96],[286,96],[292,140],[272,186],[72,186],[44,140]],
       exits: [
         { x: 232, y: 84, w: 34, h: 20, to: "lounge", arriveAt: { x: 150, y: 150 } }
       ],
-      obstacles: [ { x: 48, y: 92, w: 140, h: 14 } ], // the tiered stone benches
+      obstacles: [ { x: 45, y: 88, w: 180, h: 14 } ], // the tiered stone benches
       npcs: [
         {
           id: "kat", x: 100, y: 155, art: "kat", sprite: "kat_top",
@@ -382,11 +396,12 @@ window.NEWSEY_STORY = (function () {
       // (the previous x:0 placement didn't match the art at all — the
       // bookshelves occupy the whole left wall and are blocked off).
       // bg-library.png: the arch is at x 210-242, floor at y ~78.
-      floor: { x: 66, y: 100, w: 202, h: 84 },
+      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
+      floorPoly: [[50,100],[274,100],[274,188],[50,188]],
       exits: [
-        { x: 206, y: 82, w: 34, h: 20, to: "lounge", arriveAt: { x: 215, y: 140 } }
+        { x: 228, y: 84, w: 24, h: 18, to: "lounge", arriveAt: { x: 215, y: 140 } }
       ],
-      obstacles: [ { x: 163, y: 92, w: 62, h: 22 } ], // armchair + candle table
+      obstacles: [ { x: 160, y: 92, w: 66, h: 22 } ], // armchair + candle table
       npcs: [
         {
           id: "michael", x: 120, y: 160, art: "michael", sprite: "michael_top",

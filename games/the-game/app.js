@@ -551,18 +551,39 @@
   }
 
   // ---- movement + collision ----
-  // Every room has a walkable "floor" rect (falls back to a generic one if
-  // a room doesn't define its own) plus an optional list of "obstacles" —
-  // furniture/counters the player can't walk into. Without this the player
-  // could walk anywhere on the whole canvas, including through walls and
-  // furniture drawn near the back of the room.
+  // Where you can stand is the floor the artist actually drew, and nowhere
+  // else. These rooms are drawn in perspective — the lounge and the arena are
+  // six-sided, the rest are trapezoids narrowing toward the back wall — so a
+  // rectangle can never be right: sized to the front edge it lets you walk
+  // off into the black at the back, sized to the back edge it fences you out
+  // of half the room. Each room carries a `floorPoly`, its floor traced as a
+  // polygon in room coordinates, and the test is simply "are her feet inside
+  // it". `obstacles` still handle furniture standing ON that floor.
   var DEFAULT_FLOOR = { x: 16, y: 95, w: VW - 32, h: VH - 95 - 10 };
-  function clampToFloor(room, x, y) {
+
+  // Standard even-odd ray cast. Called a few times per frame per mover, on
+  // polygons of half a dozen points — nothing worth optimising.
+  function pointInPoly(poly, x, y) {
+    var inside = false;
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      var xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  // fx, fy: the FEET, not the top-left of the collision box — a character
+  // stands on one point, and that point is what has to be on the floor.
+  function onFloor(room, fx, fy) {
+    if (room.floorPoly) return pointInPoly(room.floorPoly, fx, fy);
     var f = room.floor || DEFAULT_FLOOR;
-    return {
-      x: Math.max(f.x, Math.min(f.x + f.w - player.w, x)),
-      y: Math.max(f.y, Math.min(f.y + f.h - player.h, y))
-    };
+    return fx >= f.x && fx <= f.x + f.w && fy >= f.y && fy <= f.y + f.h;
+  }
+
+  // Can a body whose box top-left is (x, y) stand here? Floor and furniture
+  // in one question, so every mover asks it the same way.
+  function canStand(room, x, y) {
+    return onFloor(room, x + player.w / 2, y + player.h) && !blockedByObstacle(room, x, y);
   }
   function blockedByObstacle(room, x, y) {
     var obstacles = room.obstacles || [];
@@ -618,10 +639,9 @@
     var step = Math.min(d, WANDER_SPEED * dt);
     var nx = npc.x + (dx / d) * step, ny = npc.y + (dy / d) * step;
     // Never wander into an obstacle, off the floor, into another NPC, or
-    // into the player — reuse the same checks movement uses.
-    var f = clampToFloor(room, nx - player.w / 2, ny - player.h);
-    nx = f.x + player.w / 2; ny = f.y + player.h;
-    if (blockedByObstacle(room, nx - player.w / 2, ny - player.h)) { pickWanderTarget(w); return; }
+    // into the player — the same canStand() the player's own movement uses,
+    // so nobody can drift out onto the black either.
+    if (!canStand(room, nx - player.w / 2, ny - player.h)) { pickWanderTarget(w); return; }
     var pd = Math.hypot(nx - (player.x + player.w / 2), ny - (player.y + player.h));
     var curPd = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h));
     // Block a step that would walk INTO the player, but never one that's
@@ -644,8 +664,15 @@
     var w = ensureWanderState(npc);
     var dx = npc.x - (player.x + player.w / 2), dy = npc.y - (player.y + player.h);
     var d = Math.hypot(dx, dy) || 1;
-    var f = clampToFloor(room, npc.x + (dx / d) * PUSH_STEP - player.w / 2, npc.y + (dy / d) * PUSH_STEP - player.h);
-    w.tx = f.x + player.w / 2; w.ty = f.y + player.h;
+    // Step aside away from the player, but only as far as there is still
+    // floor: back off toward where they stand until the spot is legal, so a
+    // shove against a wall can't push someone out into the black.
+    var tx = npc.x, ty = npc.y;
+    for (var step = PUSH_STEP; step >= 4; step -= 4) {
+      var cx = npc.x + (dx / d) * step, cy = npc.y + (dy / d) * step;
+      if (canStand(room, cx - player.w / 2, cy - player.h)) { tx = cx; ty = cy; break; }
+    }
+    w.tx = tx; w.ty = ty;
     w.homeX = w.tx; w.homeY = w.ty; // step-aside becomes their new "home" — they don't snap back into the player
     w.pause = 0;
     pushedNpc = null; pushTimer = 0;
@@ -702,14 +729,16 @@
       // Try each axis independently so the player can slide along a wall
       // or obstacle instead of fully stopping the moment either axis hits
       // something.
-      var tryX = clampToFloor(currentRoom, player.x + dx * player.speed * dt, player.y);
-      var blockerX = npcAt(currentRoom, tryX.x, player.y);
-      if (blockerX && !blockedByObstacle(currentRoom, tryX.x, player.y)) registerPush(currentRoom, blockerX, dt);
-      if (!blockerX && !blockedByObstacle(currentRoom, tryX.x, player.y)) player.x = tryX.x;
-      var tryY = clampToFloor(currentRoom, player.x, player.y + dy * player.speed * dt);
-      var blockerY = npcAt(currentRoom, player.x, tryY.y);
-      if (blockerY && !blockedByObstacle(currentRoom, player.x, tryY.y)) registerPush(currentRoom, blockerY, dt);
-      if (!blockerY && !blockedByObstacle(currentRoom, player.x, tryY.y)) player.y = tryY.y;
+      var tryX = { x: player.x + dx * player.speed * dt, y: player.y };
+      var okX = canStand(currentRoom, tryX.x, player.y);
+      var blockerX = okX ? npcAt(currentRoom, tryX.x, player.y) : null;
+      if (blockerX) registerPush(currentRoom, blockerX, dt);
+      else if (okX) player.x = tryX.x;
+      var tryY = { x: player.x, y: player.y + dy * player.speed * dt };
+      var okY = canStand(currentRoom, player.x, tryY.y);
+      var blockerY = okY ? npcAt(currentRoom, player.x, tryY.y) : null;
+      if (blockerY) registerPush(currentRoom, blockerY, dt);
+      else if (okY) player.y = tryY.y;
       isWalking = true;
       walkPhase += dt * 9; // frame-cycle speed (~3 pose changes/sec); unrelated to player.speed so it stays readable
     } else {
