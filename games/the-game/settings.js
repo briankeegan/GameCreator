@@ -129,7 +129,9 @@ window.NewseySettings = (function () {
     return key;
   }
 
-  // ---------- the settings panel ----------
+  // ---------- the controls screen ----------
+  // The UI lives inline on the menu's CONTROLS screen (menu.js owns showing
+  // and hiding it) — deliberately not a panel stacked on top of the menu.
   var els = null;
   var capturing = null;  // the action waiting for a key press
   var captureQueue = []; // remaining actions in a "set all keys" run
@@ -138,9 +140,7 @@ window.NewseySettings = (function () {
   function grab() {
     if (els) return els;
     els = {
-      panel: document.getElementById("settingsPanel"),
       list: document.getElementById("settingsKeys"),
-      close: document.getElementById("settingsClose"),
       reset: document.getElementById("settingsReset"),
       setAll: document.getElementById("settingsSetAll"),
       status: document.getElementById("settingsStatus"),
@@ -154,7 +154,6 @@ window.NewseySettings = (function () {
       capturing = captureQueue.shift();
       render();
     });
-    els.close.addEventListener("click", close);
     els.reset.addEventListener("click", function () {
       settings = merge(DEFAULTS, null);
       capturing = null;
@@ -241,20 +240,26 @@ window.NewseySettings = (function () {
     });
   }
 
-  function open() {
+  // Called by menu.js when the CONTROLS screen is shown.
+  function refresh() {
     grab();
     capturing = null;
     captureQueue = [];
     settingAll = false;
     render();
-    els.panel.hidden = false;
   }
 
-  function close() {
+  // Anything that wants the controls screen goes through the menu, so there is
+  // only ever one layer on screen.
+  function open() {
+    if (window.NewseyMenu) window.NewseyMenu.showControls();
+  }
+
+  function cancelCapture() {
     capturing = null;
     captureQueue = [];
     settingAll = false;
-    if (els) els.panel.hidden = true;
+    if (els) render();
   }
 
   return {
@@ -264,8 +269,11 @@ window.NewseySettings = (function () {
     isTouchDevice: isTouchDevice,
     keysFor: function (action) { return (settings.keys[action] || []).slice(); },
     open: open,
-    close: close,
-    isOpen: function () { return !!(els && !els.panel.hidden); },
+    refresh: refresh,
+    cancelCapture: cancelCapture,
+    // True only while a key press is being captured for a rebind — that is the
+    // moment the game must not act on keys.
+    isCapturing: function () { return !!capturing; },
     onChange: function (cb) { listeners.push(cb); }
   };
 })();

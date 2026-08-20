@@ -280,7 +280,7 @@
   // hardcodes a binding any more.
   var SETTINGS = window.NewseySettings;
   window.addEventListener("keydown", function (e) {
-    if (SETTINGS.isOpen()) return; // the controls menu is capturing keys
+    if (SETTINGS.isCapturing()) return; // a rebind is waiting for this key
     // Escape / Enter is START on a console pad: it opens the pause menu, and
     // the menu itself handles closing again. Never while a duel is running —
     // that screen has its own forfeit button and its own key handling.
@@ -313,8 +313,7 @@
   SETTINGS.onChange(applyControlsSetting);
   applyControlsSetting();
 
-  // The pause menu's CONTROLS screen is the way in to rebinding.
-  document.getElementById("helpCustomise").addEventListener("click", function () { SETTINGS.open(); });
+
   var touchDir = null;
   document.querySelectorAll("#dpad button").forEach(function (btn) {
     var dir = btn.dataset.dir;
@@ -464,7 +463,7 @@
   var padInteractWasDown = false;
 
   function update(dt) {
-    if (!running || paused || SETTINGS.isOpen()) return;
+    if (!running || paused) return;
     // Playtime is wall-clock time with the game actually in front of you —
     // menus and pauses don't count, same as the clock on a cartridge file
     // select. Flushed to storage every 20s so quitting the tab mid-session

@@ -138,7 +138,8 @@ window.NewseyDuel = (function () {
 
   function bindInput() {
     handlers.keydown = function (e) {
-      if (!state || SETTINGS.isOpen()) return; // the controls menu owns the keys
+      if (!state || SETTINGS.isCapturing()) return; // a rebind owns the keys
+      if (window.NewseyMenu && window.NewseyMenu.current()) return; // menu is up
       state.keys[e.key] = true;
       state.keyLatch[e.key] = true; // a very short tap must survive one frame
       if (e.key === "Escape") { quit(); return; }
@@ -162,7 +163,7 @@ window.NewseyDuel = (function () {
     window.addEventListener("resize", handlers.resize);
 
     els.quit.onclick = quit;
-    els.settings.onclick = function () { SETTINGS.open(); };
+    els.settings.onclick = function () { window.NewseyMenu.showControls(); };
     els.resultBtn.onclick = function () { finish(); };
     // Every on-screen control is a HOLD, not a click: directions repeat through
     // the engine's own key-repeat, raise keeps raising while held, and swap is
@@ -330,7 +331,9 @@ window.NewseyDuel = (function () {
 
   function step() {
     var s = state;
-    if (SETTINGS.isOpen()) return; // paused: nothing rises while the menu is up
+    // Paused while any menu screen is up: nothing rises while the player is
+    // reading a menu.
+    if (window.NewseyMenu && window.NewseyMenu.current()) return;
     if (s.countdown > 0) { s.countdown--; return; }
     if (s.over) {
       if (s.overDelay > 0 && --s.overDelay === 0) showResult();

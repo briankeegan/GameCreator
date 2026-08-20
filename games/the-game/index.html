@@ -145,19 +145,40 @@
         </div>
       </section>
 
-      <!-- CONTROLS -->
+      <!-- CONTROLS: the real thing, inline on this screen — the toggle and the
+           key list live here rather than in a panel stacked on top. -->
       <section class="menu-screen" id="menuHelp" hidden>
         <h2 class="menu-h">CONTROLS</h2>
+
+        <div class="settings-block">
+          <div class="settings-block-title">On-screen buttons</div>
+          <div class="settings-modes" id="settingsControls">
+            <button data-mode="auto">Auto</button>
+            <button data-mode="on">Always on</button>
+            <button data-mode="off">Off</button>
+          </div>
+          <p class="settings-note">Auto shows them on touch screens only. A game controller works
+            whenever one is plugged in — d-pad or stick to move, A to talk or swap, B to raise.</p>
+        </div>
+
+        <div class="settings-block">
+          <div class="settings-block-title">Keys</div>
+          <div class="settings-status" id="settingsStatus" hidden></div>
+          <div id="settingsKeys"></div>
+          <button class="settings-setall" id="settingsSetAll">Set all keys…</button>
+        </div>
+
         <dl class="help-list">
-          <dt>Move</dt><dd>Arrow keys / WASD, or the on-screen d-pad</dd>
-          <dt>Talk / interact</dt><dd>Z, Space or Enter — or tap the screen</dd>
+          <dt>Talk / interact</dt><dd>Or just tap the screen</dd>
+          <dt>Duel</dt><dd>Tap two panels side by side to swap them, or drag one sideways</dd>
           <dt>Menu</dt><dd>Esc or P, or the ☰ button</dd>
-          <dt>Duel</dt><dd>Tap two panels side by side to swap, or arrows + Z</dd>
-          <dt>Controller</dt><dd>Any gamepad works — d-pad or stick to move, A to talk or swap, B to raise</dd>
-          <dt>Saving</dt><dd>The game saves itself when you change rooms and after every duel. Sleep in your bed in Infinity, or use Save game here, to save on the spot.</dd>
+          <dt>Saving</dt><dd>The game saves itself when you change rooms and after every duel. Sleep in your bed in Infinity, or use Save game, to save on the spot.</dd>
         </dl>
-        <button class="menu-customise" id="helpCustomise">⚙ Customise controls…</button>
-        <button class="menu-back" id="helpBack">‹ Back</button>
+
+        <div class="settings-actions">
+          <button id="settingsReset">Reset to defaults</button>
+          <button class="menu-back" id="helpBack">‹ Back</button>
+        </div>
       </section>
 
       <!-- CONFIRM (destructive actions only) -->
@@ -173,33 +194,6 @@
     </div>
 
     <div class="menu-toast" id="menuToast" hidden></div>
-    <!-- Controls menu: on-screen pad on/off, and every key rebindable. Shared
-         by the walk-around and the duel (settings.js). -->
-    <div class="settings-panel" id="settingsPanel" hidden>
-      <div class="settings-card">
-        <h2>Controls</h2>
-        <div class="settings-block">
-          <div class="settings-block-title">On-screen buttons</div>
-          <div class="settings-modes" id="settingsControls">
-            <button data-mode="auto">Auto</button>
-            <button data-mode="on">Always on</button>
-            <button data-mode="off">Off</button>
-          </div>
-          <p class="settings-note">Auto shows them on touch screens only. A game controller works
-            whenever one is plugged in — d-pad or stick to move, A to swap or talk, B to raise.</p>
-        </div>
-        <div class="settings-block">
-          <div class="settings-block-title">Keys</div>
-          <div class="settings-status" id="settingsStatus" hidden></div>
-          <div id="settingsKeys"></div>
-          <button class="settings-setall" id="settingsSetAll">Set all keys…</button>
-        </div>
-        <div class="settings-actions">
-          <button id="settingsReset">Reset to defaults</button>
-          <button id="settingsClose" class="primary">Done</button>
-        </div>
-      </div>
-    </div>
   </main>
 
   <div class="install-banner" id="installBanner">
