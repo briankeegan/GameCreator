@@ -34,8 +34,13 @@ Usage:
                  --row raw_front.png --row raw_side.png:1 --row raw_back.png \
                  [--body-height 168] [--blobs] [--cols 3]
 
-  --row FILE[:N]  one output row per flag, in order. N picks which row of a
-                  multi-row raw image to use (default 0).
+  --row FILE[:N][@H]  one output row per flag, in order. N picks which row of
+                  a multi-row raw image to use (default 0). H overrides
+                  --body-height for THAT row, which matters whenever a
+                  character is a different height from different angles: a
+                  four-legged animal is tall from the front and long-and-low
+                  from the side, so scaling both rows to one height makes the
+                  side view look like a different, much bigger animal.
   --blobs         cut frames as connected blobs instead of at empty gutters;
                   use when sprites in the raw image overlap horizontally.
   --body-height   height in pixels of the row's idle frame inside its cell.
@@ -236,9 +241,10 @@ def snap_palette(im, pal):
     return Image.fromarray(a.astype('uint8'))
 
 
-def build(rows, out_path, pal, body_h, cols):
+def build(rows, out_path, pal, body_heights, cols):
     sheet = Image.new('RGBA', (CELL * cols, CELL * len(rows)), (0, 0, 0, 0))
     for ri, row in enumerate(rows):
+        body_h = body_heights[ri] if isinstance(body_heights, list) else body_heights
         row = [trim(f) for f in row][:cols]
         if not row:
             raise SystemExit('a row came back empty — check the raw image framing')
@@ -274,13 +280,15 @@ def main():
         print(f'note: {args.style} has no lockedPalette — shipping the generated colours as-is. '
               'Add one so this game\'s art cannot drift between sheets.', file=sys.stderr)
 
-    rows = []
+    rows, heights = [], []
     for spec in args.row:
+        spec, _, h = spec.partition('@')
         path, _, idx = spec.partition(':')
         img = key_background(path, tol=args.tol)
         rows.append(frames_by_blob(img, want=args.cols) if args.blobs
                     else frames_by_gutter(img, int(idx or 0)))
-    build(rows, args.out, pal, args.body_height, args.cols)
+        heights.append(int(h) if h else args.body_height)
+    build(rows, args.out, pal, heights, args.cols)
 
 
 if __name__ == '__main__':

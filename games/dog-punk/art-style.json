@@ -1,34 +1,41 @@
 {
   "_readme": "Dog Punk art rules. These are not suggestions: art-src/assemble.py enforces the palette, scale, baseline and pixel grid mechanically, and any prompt for new art MUST follow the generation rules below. The reason all of this exists: every sprite used to be generated as its own image, so colours, proportions and pixel scale drifted frame to frame and the character visibly changed breed while walking. Consistency comes from generating a WHOLE SHEET in ONE image and then snapping it to the locked palette here.",
-
   "sheetRule": "NEVER generate a single frame on its own. Every character or enemy is generated as ONE image containing ALL of its frames for a given direction — idle, walk, attack, left to right — because frames drawn in the same image share proportions, palette and pixel scale by construction. A missing direction gets its own one-row image (front / side / back), never a single replacement frame dropped into an existing set.",
-
   "camera": "Top-down/three-quarter overworld view (SNES Zelda: A Link to the Past scale). Characters stand upright facing the viewer (front row), in strict side profile FACING RIGHT (side row — the code mirrors it for left), or seen from behind (back row).",
-
   "style": "Chunky 16-bit cartoon mascot pixel art. BIG SIMPLE SHAPES, a THICK BLACK OUTLINE around the whole silhouette and around each major internal shape (head vs jacket vs boots), large flat blocks of solid colour, big readable cartoon eyes. Shading only as 2-3 hard-edged flat bands per surface. STRICTLY FORBIDDEN, and the most common failure: fur texture, speckling, dithering, per-pixel noise, crosshatch, gradients, airbrushed shading, anti-aliasing, painterly or photo-realistic rendering. Any single colour block must be one uniform value when zoomed in. Enemies use the SAME cartoon language as the hero — a realistically rendered, finely textured creature next to a flat cartoon dog reads as two different games and is an instant reject.",
-
   "background": "SOLID FLAT PURE WHITE (#FFFFFF), completely uniform — NOT transparent. Asking the generator for transparency reliably produces a beige or gradient wash instead; the pipeline (art-src/sheet.py) keys the flat white out to real transparency afterwards, which only works if the background is uniform and the sprite has its black outline.",
-
   "framing": "The whole set must sit well inside the frame with a wide empty margin on all four sides — nothing touching or cut off by any edge (the bottom row is what gets clipped in practice, so state this explicitly in every prompt). Sprites must NOT overlap or touch each other: leave a clear gap between neighbours, or the cutter cannot separate them.",
-
   "lockedPalette": [
-    "#14121a", "#f0a35a", "#e0791c", "#b54d1a", "#7a4a24", "#4e2e15",
-    "#ff5c9a", "#e8306f", "#a01a4c", "#3d434f", "#2a2e38", "#171a21",
-    "#3fa093", "#2e7d74", "#1d5a55", "#dfe4ea", "#8c95a0", "#f4f0e6",
-    "#8a7a62", "#6b5c48", "#d98a7a", "#a85f52"
+    "#14121a",
+    "#f0a35a",
+    "#e0791c",
+    "#b54d1a",
+    "#7a4a24",
+    "#4e2e15",
+    "#ff5c9a",
+    "#e8306f",
+    "#a01a4c",
+    "#3d434f",
+    "#2a2e38",
+    "#171a21",
+    "#3fa093",
+    "#2e7d74",
+    "#1d5a55",
+    "#dfe4ea",
+    "#8c95a0",
+    "#f4f0e6",
+    "#8a7a62",
+    "#6b5c48",
+    "#d98a7a",
+    "#a85f52"
   ],
   "paletteRule": "assemble.py maps EVERY pixel of EVERY sheet to the nearest colour in lockedPalette, so the hero and the enemies cannot drift apart no matter how the generator renders them. Add a colour here only when a genuinely new material appears, and never remove one that shipped art depends on.",
-
+  "sizeRule": "Every sheet uses the same 256px cell and the same 4px art-pixel grid, and every sheet-based character is drawn at ONE on-screen cell size, so an art pixel is the same size for all of them. Relative size lives in the art — a smaller creature gets a smaller --body-height — never in per-character draw sizes. A character whose height changes with the angle (a four-legged animal is tall from the front but long and low from the side) needs a PER-ROW height: --row raw.png@88. Scaling every row to one height makes the side view look like a different, much bigger animal — that is what happened to the rats before the per-row flag existed.",
   "mainCharacter": "Beverly: a stocky punk-rock DOG (rounded floppy ears, dog snout, small black nose — not a bear, wolf or fox). Warm orange-tan fur, a TALL unmissable hot-pink mohawk that must be clearly visible in every single frame including attacks, a dark charcoal studded leather jacket, teal shorts, brown boots, and a small silver dagger.",
-
-  "enemy": "Junk Rat: a chunky CARTOON junkyard rat in the same flat mascot style as Beverly, standing UPRIGHT on its hind feet like a cartoon mascot (not a low crawling four-legged rodent) — rounded grey-brown body, short arms, big round pink-lined ears, big white cartoon eyes with black pupils, small pink nose, simple buck teeth, one flat grey scrap-metal shoulder plate, flat pink tail. Like the hero it has THREE rows of art: facing the viewer (down), side profile facing RIGHT (mirrored for left), and seen from behind (up). No fur texture, no realistic rodent anatomy.",
-
+  "enemy": "Junk Rat: a chunky CARTOON junkyard rat in the same flat mascot style as Beverly. It walks on ALL FOURS — a low, long, hunched four-legged body with its belly near the ground, head out front. It is NOT upright, NOT bipedal, NOT a mouse standing on its hind feet: a regeneration once made it upright and it read as a different creature entirely, so treat 'standing up' as an instant reject. Grey-brown body, lighter belly, flat pink ears, a long plain pink tail trailing behind, big white cartoon eyes with black pupils, simple buck teeth, one flat grey scrap-metal shoulder plate. Like the hero it has THREE rows: facing the viewer (down), side profile facing RIGHT (mirrored for left), and seen from behind (up). No fur texture, no realistic rodent anatomy.",
   "frames": "Per direction, in this order: idle, walk (one clearly different mid-stride pose — the code alternates it with idle for the walk cycle), attack (a real drawn attack pose: weapon swept out, or jaws open and claws out).",
-
   "constraints": "No text, no labels, no numbers, no grid or graph-paper lines, no cell borders, no frames, no boxes, no drop shadows, no ground shadow, no UI, no watermarks.",
-
-  "pipeline": "Raw generations live in games/dog-punk/art-src/. The shipped sheets are rebuilt from them with the shared cutter (.github/art/build_sheet.py), never hand-edited:\n  python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_sheet.png --row games/dog-punk/art-src/hero_front_raw.png --row games/dog-punk/art-src/hero_sheet_raw.png:1 --row games/dog-punk/art-src/hero_back_raw.png\n  python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/rat_sheet.png --row games/dog-punk/art-src/rat_front_raw.png --row games/dog-punk/art-src/rat_side_raw4.png --row games/dog-punk/art-src/rat_back_raw.png --blobs --body-height 104\nThose two commands reproduce the shipped sheets byte for byte.",
-
+  "pipeline": "Raw generations live in games/dog-punk/art-src/. The shipped sheets are rebuilt from them with the shared cutter (.github/art/build_sheet.py), never hand-edited:\n  python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_sheet.png --row games/dog-punk/art-src/hero_front_raw.png --row games/dog-punk/art-src/hero_sheet_raw.png:1 --row games/dog-punk/art-src/hero_back_raw.png\n  python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/rat_sheet.png --row games/dog-punk/art-src/rat_front_quad_raw.png@104 --row games/dog-punk/art-src/rat_sheet_raw3.png@88 --row games/dog-punk/art-src/rat_back_quad_raw.png@100 --blobs\nThose two commands reproduce the shipped sheets byte for byte.",
   "pixelArt": true,
   "pixelGrid": 32
 }
