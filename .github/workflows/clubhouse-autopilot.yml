@@ -320,26 +320,41 @@ jobs:
                frames never converged. Generate ONE image holding a whole row
                of frames and cut it up. Frames drawn together cannot drift.
 
-               a. Generate a row by POSTing to the local image service (it holds
-                  the OpenAI key — you do not, and must not try to):
+               a. CHARACTER ROWS — one command, the same one a person or
+                  another Claude session runs outside this workflow:
+                    python3 .github/art/generate_row.py \
+                      --game <gameId> --character <id> \
+                      --view front|side|back [--kind walk|attack] \
+                      [--description "..."] [--force]
+                  It builds the prompt from the canonical prompt file plus that
+                  game's art-style.json, generates ONE ROW on a landscape
+                  canvas, VERIFIES it, and DELETES it if it fails — so a bad row
+                  cannot sit in art-src/ waiting to be picked up by a later
+                  build. It routes through the in-run image broker
+                  automatically; you have no OpenAI key and must not look for
+                  one. Add --print-prompt to see the prompt without generating
+                  or spending anything.
+
+                  Any OTHER image (a tile, an icon, a room pass) still goes
+                  through the broker directly:
                     curl -s -X POST http://127.0.0.1:8791/generate \
                       -H 'content-type: application/json' \
                       -d '{"prompt":"<see below>",
                            "output_path":"games/<gameId>/art-src/<name>_raw.png",
                            "game":"<gameId>","size":"1536x1024"}'
-                  Raw generations go under art-src/ — they are source material,
-                  not shipped art. The call BLOCKS ~30-60s; let it finish.
+                  The call BLOCKS ~30-60s; let it finish. Raw generations go
+                  under art-src/ — source material, not shipped art.
 
-                  DO NOT WRITE THE PROMPT FROM SCRATCH. The canonical prompts
-                  are files, and they carry rules a fresh prompt always leaves
-                  out: .github/art/walkgrid_prompt.txt (walk row),
-                  .github/art/attacksheet_prompt.txt (attack row),
-                  .github/art/room_prompts/*.txt (the three room passes — or
-                  run `python3 .github/art/room.py prompt scene|plate|props`
-                  to print one filled in). Read the file, fill in its
-                  placeholders from art-style.json, send that. If a generation
-                  exposes a gap in a prompt, FIX THE PROMPT FILE — that is how
-                  the next run inherits what this one learned.
+                  DO NOT WRITE A PROMPT FROM SCRATCH. The canonical prompts are
+                  files, and they carry rules a fresh prompt always leaves out:
+                  .github/art/walkgrid_prompt.txt (walk),
+                  .github/art/attacksheet_prompt.txt (attack),
+                  .github/art/room_prompts/*.txt (the three room passes — or run
+                  `python3 .github/art/room.py prompt scene|plate|props` to print
+                  one filled in). If a generation exposes a gap in a prompt, FIX
+                  THE PROMPT FILE. That is how the next run inherits what this
+                  one learned; a better prompt typed into one curl call dies
+                  with this run.
 
                b. Cut the raw into a shipped sheet with the shared cutter:
                     python3 .github/art/build_sheet.py \
@@ -362,11 +377,12 @@ jobs:
                   `props`, `check`, `verify`; see the room standard.
 
                c. VERIFY IT MECHANICALLY, then LOOK AT IT. Both, in that order:
-                    python3 .github/art/verify_sheet.py raw <raw>.png \
-                            --frames 3 --walk [--mirrored]
                     python3 .github/art/verify_sheet.py sheet <sheet>.png \
                             --style games/<gameId>/art-style.json
-                  (--mirrored on a front or back row, never on a side row.)
+                  (generate_row.py already ran the raw check for rows it made.
+                  For a row generated any other way, run it yourself:
+                  `verify_sheet.py raw <raw>.png --frames 3 --walk [--mirrored]`
+                  — --mirrored on a front or back row, never on a side row.)
                   It catches clipping, wrong frame count, duplicate frames, a
                   missing neutral, detached specks, off-palette colour and the
                   same-foot-twice repeat. It cannot judge whether the drawing
@@ -394,13 +410,12 @@ jobs:
                WALK CYCLES: which pipeline depends on how the game ships its
                art, and both are one dispatch — do not hand-roll either.
                  - SHEET-BASED games (the standard for anything new, Dog Punk
-                   is the reference): dispatch
-                   .github/workflows/generate-walkrow.yml — inputs are game,
-                   character and view (front/side/back). It builds the prompt
-                   from walkgrid_prompt.txt plus art-style.json, generates one
-                   row on a landscape canvas, verifies it, and commits it only
-                   if it passes. Then cut all three rows with build_sheet.py
-                   --build-steps 0,2.
+                   is the reference): run generate_row.py once per view, as in
+                   (a) above, then cut all three rows with build_sheet.py
+                   --build-steps 0,2. (Outside this workflow the same thing is
+                   the "Generate walk row" Action, which is a button on that
+                   same script — you cannot dispatch a workflow from inside
+                   one, so call the script.)
                  - PER-FILE games (Newsey/the-game, legacy but supported):
                    dispatch .github/workflows/generate-walksheet.yml, which
                    generates a 4x3 grid, slices it into <id>_<dir>_<n>.png and

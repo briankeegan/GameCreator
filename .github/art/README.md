@@ -84,7 +84,7 @@ in from the game's `art-style.json`.
 
 | Action | Use for |
 |---|---|
-| **Generate walk row** (`generate-walkrow.yml`) | A verified walk row for a sheet-based game. Builds the prompt, generates, **verifies, and commits only if it passes**. |
+| **Generate walk row** (`generate-walkrow.yml`) | A verified walk row for a sheet-based game. It is a button on `generate_row.py` — same code the autopilot runs. |
 | **Generate walksheet** (`generate-walksheet.yml`) | The legacy per-file walk set (Newsey). |
 | **Generate game asset** (`generate-game-asset.yml`) | Any image that must match a game's established look; reads its `art-style.json`. |
 | **Generate image** (`generate-image.yml`) | Freeform one-offs, or a game with no `art-style.json` yet. |
@@ -94,6 +94,32 @@ in from the game's `art-style.json`.
 `quality` defaults to `medium` (enough for flat cartoon pixel art; `high` costs
 about four times as much) and `force` is off, so re-running a batch never pays
 twice for art that already exists.
+
+## The one front door for a character row
+
+```
+python3 .github/art/generate_row.py --game <id> --character <id> --view front|side|back \
+        [--kind walk|attack] [--print-prompt] [--force]
+```
+
+[`generate_row.py`](generate_row.py) builds the prompt from the canonical
+prompt file plus the game's `art-style.json`, generates ONE row on a landscape
+canvas, verifies it, and **deletes it if it fails** — a bad row cannot sit in
+`art-src/` waiting to be picked up by a later build.
+
+**Everyone runs this same script.** A person or a Claude session runs it
+locally, or presses the "Generate walk row" Action, which is a button on it.
+The Clubhouse autopilot cannot dispatch a workflow from inside one, so it calls
+the script directly. The only difference is transport, and the script picks it:
+a broker on `127.0.0.1:8791` if one is listening (the autopilot's, which holds
+the key the model deliberately does not have and caps generations per run),
+otherwise `OPENAI_API_KEY`. `--print-prompt` shows the prompt without spending
+anything.
+
+Before this existed the recipe was inlined in the Action and restated in prose
+in the autopilot's prompt. They drifted, and the autopilot's copy was the stale
+one — still generating the legacy frame layout long after the standard changed.
+Two callers, one script, is the fix.
 
 ## Cutters and builders
 
