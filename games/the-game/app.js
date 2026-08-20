@@ -802,22 +802,31 @@
     left: ["nella_left_0", "nella_left_1", "nella_left_2"],
     right: ["nella_left_0", "nella_left_1", "nella_left_2"]
   };
+  // Before the Infinity transformation (ROOMS.house) Nella is her ordinary
+  // human self — a separate walk-cycle sheet, same 3-frame-per-direction
+  // shape as the demon avatar above (right mirrors left, same as it does).
+  var FACING_FRAMES_HUMAN = {
+    down: ["nella_human_down_0", "nella_human_down_1", "nella_human_down_2"],
+    up: ["nella_human_up_0", "nella_human_up_1", "nella_human_up_2"],
+    left: ["nella_human_left_0", "nella_human_left_1", "nella_human_left_2"],
+    right: ["nella_human_left_0", "nella_human_left_1", "nella_human_left_2"]
+  };
   function drawPlayer() {
-    // Before the Infinity transformation (ROOMS.house), Nella has to be
-    // her ordinary human self — the directional frames above are all her
-    // POST-transformation demon avatar (horns/red eyes), which showed up
-    // in the real-world house scene where she shouldn't have them yet.
-    // Only one human sprite exists (no directional/frame set), used for
-    // every facing while in that form — she barely moves in that room.
     var human = currentRoom && currentRoom.playerForm === "human";
-    var frames = FACING_FRAMES[player.facing] || FACING_FRAMES.down;
+    var frameSet = human ? FACING_FRAMES_HUMAN : FACING_FRAMES;
+    var frames = frameSet[player.facing] || frameSet.down;
     // 3 real frames cycled by walkPhase while moving; frame 0 (idle pose)
     // while standing still, so she doesn't look like she's still walking
     // in place after stopping.
     var frameIdx = isWalking ? Math.floor(walkPhase) % 3 : 0;
-    var wantId = human ? "nella_human_top" : frames[frameIdx];
+    var wantId = frames[frameIdx];
     var entry = loadArt(wantId);
-    if (!(entry && entry.ok)) entry = loadArt("nella_top"); // fallback while directional art is missing
+    // Fallback while a directional frame is missing: the form's single
+    // static portrait, forward-facing — needs the same left-mirror the
+    // directional frames get, tracked separately since wantId no longer
+    // says "nella_top" once a fallback swaps the actual entry.
+    var usedFallback = !(entry && entry.ok);
+    if (usedFallback) entry = loadArt(human ? "nella_human_top" : "nella_top");
     // Same ground shadow every NPC gets — the player was the one figure in
     // the scene standing on nothing, a mismatch reported live as "floating".
     ctx.fillStyle = "rgba(0,0,0,0.4)";
@@ -828,7 +837,7 @@
       var img = entry.img;
       var size = spriteDrawSize(img, 30), w = size.w, h = size.h;
       var cx = player.x + player.w / 2, feetY = player.y + player.h;
-      var mirror = player.facing === "right" || (player.facing === "left" && wantId === "nella_top");
+      var mirror = player.facing === "right" || (player.facing === "left" && usedFallback);
       ctx.save();
       if (mirror) {
         ctx.translate(cx, 0);
