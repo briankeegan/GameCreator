@@ -444,6 +444,25 @@ function renderMarkdown(text) {
 // visitor bubble. Unmarked comments (issue housekeeping) are skipped.
 var MARKER = /^\*\*(.+?) says:\*\*\s*/;
 
+// The autopilot keeps ONE live-progress comment on the thread, edited in place
+// as its run goes ("generating …", "checked … passed"). It is not a chat
+// message and must never become a bubble — but silence for twelve minutes is
+// exactly what made people ask whether the thing was broken, so it shows as a
+// quiet status line under the thread while it is the newest comment. Once
+// Claude's reply lands after it, it stops being current and disappears.
+var WORKING_MARKER = /^\*\*Claude is working:\*\*\s*/;
+
+function parseWorking(comments) {
+  for (var i = comments.length - 1; i >= 0; i--) {
+    var body = comments[i].body || "";
+    if (WORKING_MARKER.test(body)) {
+      return body.replace(WORKING_MARKER, "").replace(/\n\n_Live progress[^]*$/, "").trim();
+    }
+    if (MARKER.test(body)) return null;   // a real message is newer — run is over
+  }
+  return null;
+}
+
 function parseComments(comments) {
   var messages = [];
   for (var i = 0; i < comments.length; i++) {
@@ -473,6 +492,36 @@ function friendlyTime(iso) {
   var d = new Date(iso);
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
     " " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function renderWorking(text) {
+  var el = document.getElementById("working");
+  if (!el) {
+    if (!text) return;
+    el = document.createElement("div");
+    el.id = "working";
+    el.className = "thread-status working";
+    threadEl.parentNode.insertBefore(el, threadEl.nextSibling);
+  }
+  if (!text) { el.style.display = "none"; return; }
+  el.style.display = "block";
+  // Show the latest line big and the rest as the trail behind it — what it is
+  // doing NOW is the thing being asked.
+  var lines = text.split("\n").filter(function (l) { return l.trim(); });
+  var latest = lines[lines.length - 1].replace(/^-\s*/, "");
+  el.innerHTML = "";
+  var head = document.createElement("div");
+  head.className = "working-now";
+  head.textContent = "Claude is working — " + latest;
+  el.appendChild(head);
+  if (lines.length > 1) {
+    var trail = document.createElement("div");
+    trail.className = "working-trail";
+    trail.textContent = lines.slice(0, -1).map(function (l) {
+      return l.replace(/^-\s*/, "");
+    }).join(" · ");
+    el.appendChild(trail);
+  }
 }
 
 function renderMessages(messages) {
@@ -545,6 +594,7 @@ function refreshThread() {
     .then(function (comments) {
       threadStatusEl.style.display = "none";
       renderMessages(parseComments(comments));
+      renderWorking(parseWorking(comments));
     })
     .catch(function () {
       threadStatusEl.style.display = "block";

@@ -63,6 +63,7 @@ import numpy as np
 from PIL import Image
 
 import build_sheet as bs
+from imagegen import status as _announce   # one status hook for the whole pipeline
 
 
 def _norm(im, size=(64, 64)):
@@ -377,12 +378,15 @@ def main():
         for w in soft:
             print(f'WARNING {w}', file=sys.stderr)
 
+    subject = getattr(args, 'image', None) or args.char_id
     for p in problems:
         print(p, file=sys.stderr)
     if problems:
         print(f'{len(problems)} problem(s).', file=sys.stderr)
+        _announce(f'checked {subject} — FAILED ({len(problems)} problem(s))')
         sys.exit(1)
-    print(f'{getattr(args, "image", None) or args.char_id}: OK')
+    _announce(f'checked {subject} — passed')
+    print(f'{subject}: OK')
 
 
 if __name__ == '__main__':

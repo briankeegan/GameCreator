@@ -23,6 +23,7 @@ import base64
 import json
 import os
 import pathlib
+import subprocess
 import sys
 import time
 import urllib.error
@@ -87,6 +88,28 @@ def _via_openai(prompt, out_abs, size, quality):
     print(f'generated via OpenAI -> {out_abs}')
 
 
+def status(line):
+    """Announce a step to whoever is watching, if anyone is.
+
+    GC_STATUS_HOOK points at a script that posts progress somewhere a human can
+    see it — in the Clubhouse autopilot that is a live-updating comment on the
+    thread's PR. Unset (a person at a terminal, an Action), this just prints.
+
+    The point of doing it HERE rather than having the model narrate: a line
+    only appears because an image was actually requested. A model describing
+    its own progress is the report that has already proved untrustworthy —
+    earlier autopilot runs reported success on art that never changed.
+    """
+    print(f'[art] {line}', flush=True)
+    hook = os.environ.get('GC_STATUS_HOOK')
+    if not hook:
+        return
+    try:
+        subprocess.run([hook, line], timeout=30, check=False)
+    except Exception as e:                              # never fail a run over a status line
+        print(f'[art] (status hook failed: {e})', file=sys.stderr)
+
+
 def generate(prompt, out_rel, size='1536x1024', quality='medium', force=False):
     """Generate one image to a repo-relative path. Returns False if skipped."""
     out_abs = ROOT / out_rel
@@ -95,6 +118,7 @@ def generate(prompt, out_rel, size='1536x1024', quality='medium', force=False):
               'Nothing was billed.')
         return False
     out_abs.parent.mkdir(parents=True, exist_ok=True)
+    status(f'generating {out_rel} ({size}, {quality}) — this takes 30-60s')
     if broker_health():
         _via_broker(prompt, out_rel, size, quality)
     elif os.environ.get('OPENAI_API_KEY'):
@@ -105,4 +129,5 @@ def generate(prompt, out_rel, size='1536x1024', quality='medium', force=False):
                  'A model is never given the key directly.')
     if not out_abs.exists() or not out_abs.stat().st_size:
         sys.exit(f'the backend reported success but wrote nothing to {out_rel}')
+    status(f'generated {out_rel}')
     return True

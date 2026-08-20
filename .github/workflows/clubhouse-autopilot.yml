@@ -209,6 +209,22 @@ jobs:
             echo "EOF_${{ github.run_id }}"
           } >> "$GITHUB_OUTPUT"
 
+      # LIVE PROGRESS. One comment on the thread's PR, edited in place as the
+      # run goes, so a human can see the run is alive instead of staring at
+      # silence for twelve minutes. Emitted by the workflow and by the art
+      # tools themselves (GC_STATUS_HOOK below) — deliberately NOT by the
+      # model, because a model narrating its own progress is the report that
+      # already proved untrustworthy here.
+      - name: Say we picked it up
+        if: steps.ctx.outputs.enabled == 'true'
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GC_STATUS_PR: ${{ steps.ctx.outputs.pr }}
+        run: |
+          mkdir -p .autopilot
+          .github/autopilot/status.sh "picked up your message — run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
       - name: Prepare scratch dir (model drops its outputs here; never committed)
         run: mkdir -p .autopilot
 
@@ -444,6 +460,18 @@ jobs:
                For a simple FLAT icon or logo, skip all this and write an inline
                .svg file (SVG over PNG per CLAUDE.md).
 
+            3b. SAY WHAT YOU ARE DOING, briefly, at the points where the run
+               would otherwise go quiet for minutes:
+                 .github/autopilot/status.sh "rebuilding the garden's prop sheet"
+               It edits ONE comment on the thread, so extra lines cost nothing
+               and notify nobody. The art tools already announce every
+               generation and every check by themselves — do NOT repeat those.
+               Use it for the gaps between: starting on a room, rewriting a
+               chunk of game code, running the game's tests. Three or four
+               lines across a run is right; a line per file edit is noise.
+               Never claim something is done here — a status line is "starting
+               X", and what actually happened goes in the reply.
+
             4. Write your chat reply as plain Markdown — the message body ONLY,
                with NO "**Claude says:**" prefix and NO "[v0.N]" stamp (the
                workflow adds both) — to .autopilot/reply.md
@@ -521,6 +549,14 @@ jobs:
       # through the broker on localhost, so the model's blast radius stays
       # bounded to file edits. Bash is allowed (it needs curl for the broker)
       # and Read is how it reviews the generated PNGs.
+      - name: Say we are working
+        if: steps.ctx.outputs.enabled == 'true'
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GC_STATUS_PR: ${{ steps.ctx.outputs.pr }}
+        run: .github/autopilot/status.sh "reading the thread and working on the change"
+
       - name: Handle the Clubhouse message (headless Claude)
         if: steps.ctx.outputs.enabled == 'true'
         # If the model hangs (stuck API call, wedged broker curl, etc.), kill it
@@ -529,6 +565,11 @@ jobs:
         timeout-minutes: 30
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # The art tools call this on every generation and every check, so
+          # progress appears without the model being asked to narrate.
+          GC_STATUS_HOOK: ${{ github.workspace }}/.github/autopilot/status.sh
+          GC_STATUS_PR: ${{ steps.ctx.outputs.pr }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -uo pipefail
           # Capture stdout(JSON) + stderr to files and DON'T let set -e abort
@@ -594,6 +635,20 @@ jobs:
       # Deterministic: land the model's edits on main via a fresh auto-merged
       # PR, then deploy. Only the content paths are staged, so .autopilot/ and
       # any stray files never get committed.
+      - name: Say we are shipping
+        if: success() && steps.ctx.outputs.enabled == 'true'
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GC_STATUS_PR: ${{ steps.ctx.outputs.pr }}
+        run: |
+          changed=$(git status --porcelain | wc -l | tr -d ' ')
+          if [ "$changed" = "0" ]; then
+            .github/autopilot/status.sh "no file changes needed — writing the reply"
+          else
+            .github/autopilot/status.sh "smoke test passed; shipping $changed changed file(s) and deploying"
+          fi
+
       - name: Land changes on main and deploy
         if: success() && steps.ctx.outputs.enabled == 'true'
         timeout-minutes: 10
@@ -711,6 +766,8 @@ jobs:
           [ -z "$N" ] && N='?'
           gh pr comment ${{ steps.ctx.outputs.pr }} --repo ${{ github.repository }} \
             --body "$(printf '**Claude says:**\n\n%s\n\n[v0.%s]' "$body" "$N")"
+          # Close out the live status so it does not sit there looking mid-run.
+          GC_STATUS_PR=${{ steps.ctx.outputs.pr }} .github/autopilot/status.sh "done - reply posted below"
 
       # Deterministic: if any step above failed, the thread still gets an answer
       # instead of going mysteriously silent.
@@ -731,6 +788,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
+          GC_STATUS_PR=${{ steps.ctx.outputs.pr }} .github/autopilot/status.sh \
+            "run failed or was cancelled - see ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           ATTEMPT="${{ github.event.inputs.attempt || '1' }}"
           MAX=3
           if [ "$ATTEMPT" -lt "$MAX" ]; then

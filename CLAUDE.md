@@ -72,6 +72,21 @@ design discussion. `shared/` holds the components every game reuses
   and the workflow's `ctx` step reads it (deriving the game id from the PR's
   `clubhouse/<id>` head branch) to decide whether to act — a manual
   `workflow_dispatch` bypasses the flag so you can always test a game.
+- **An autopilot run reports its own progress, and the model doesn't write
+  it.** One comment on the thread's PR, marked `**Claude is working:**` and
+  EDITED IN PLACE as the run goes (edits notify nobody; a dozen separate
+  comments would make the thread unusable). Lines come from
+  `.github/autopilot/status.sh`, called by the workflow at its checkpoints and
+  by the art tools themselves via `GC_STATUS_HOOK` — so "generating
+  games/x/art-src/y.png" appears because an image was actually requested, not
+  because a model said so. That distinction is the point: runs have reported
+  success on art that never changed. The model may add a coarse line for the
+  gaps (starting a room, a big code rewrite); it must not restate what the
+  tools already announce, and must not claim completion there. The Clubhouse
+  page surfaces the newest such comment as a live status line under the
+  thread (`parseWorking` in `shared/clubhouse.js`), which disappears as soon
+  as a real reply lands after it. A status line never fails a run: no PR, no
+  token, no `gh` — it prints and exits 0.
 - **Autopilot has a backstop — don't hand-nurse it.**
   `.github/workflows/clubhouse-sweeper.yml` runs every 15 min and asks the
   only question that matters: does any autopilot thread have a human
