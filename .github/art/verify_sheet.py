@@ -310,6 +310,10 @@ def check_sheet(path, style, rows, cols):
     return problems, soft
 
 
+# See the CROPPED check in check_frames for how this was calibrated.
+FRAME_ASPECT_SPREAD = 1.45
+
+
 def check_frames(art_dir, char_id, dirs):
     """The walk-cycle rules, applied to individual frame files.
 
@@ -320,6 +324,7 @@ def check_frames(art_dir, char_id, dirs):
     """
     import os
     problems, soft = [], []
+    shapes = []          # (aspect, label, w, h) for every frame in the whole set
     for d in dirs:
         paths = [os.path.join(art_dir, f'{char_id}_{d}_{n}.png') for n in (0, 1, 2)]
         missing = [p for p in paths if not os.path.exists(p)]
@@ -329,6 +334,8 @@ def check_frames(art_dir, char_id, dirs):
                 + '. A partial set animates as a character that flickers or freezes.')
             continue
         fr = [Image.open(p).convert('RGBA') for p in paths]
+        for n, im in enumerate(fr):
+            shapes.append((im.width / im.height, f'{d}_{n}', im.width, im.height))
         for i in range(3):
             for j in range(i + 1, 3):
                 if _diff(fr[i], fr[j]) < 3.0:
@@ -339,6 +346,39 @@ def check_frames(art_dir, char_id, dirs):
                 f'{char_id} ({d}): NO NEUTRAL — frame 1 is not a distinct standing pose '
                 f'(middle-vs-steps {d01:.1f}/{d12:.1f}, steps-vs-each-other {d02:.1f}). '
                 'Idle will look like walking on the spot.')
+
+    # CROPPED — the whole set is one character standing on one floor, tightly
+    # trimmed, so every frame should have roughly the same width:height. A
+    # frame far wider than its siblings is one where part of the character
+    # fell outside the image.
+    #
+    # This is the check that would have caught May. Her nine frames shipped
+    # with the crown of her head sliced off in every front and side pose and
+    # NO HEAD AT ALL in the three back ones — just a collar and a pair of
+    # floating antler wisps — and nothing failed, because a set can be
+    # complete, distinct and correctly posed while still being decapitated.
+    # It was found by a person looking at the screen and asking why May had
+    # half a face, which is exactly the failure mode a forgiving runtime is
+    # supposed to have a build-time check beside.
+    #
+    # Calibrated against the real set (CLAUDE.md: record the numbers). Every
+    # healthy character here spreads 1.09 (Kat) to 1.39 (the devil, whose
+    # side profile is genuinely much narrower than his front view). May's
+    # broken set spread 1.55 — her headless up_1 is 127x148, ar 0.86, against
+    # a left_2 of 120x217, ar 0.55. 1.45 sits between the two with room for a
+    # character whose profile is narrower still.
+    if len(shapes) >= 6:
+        shapes.sort()
+        lo, hi = shapes[0], shapes[-1]
+        spread = hi[0] / lo[0] if lo[0] else 0
+        if spread > FRAME_ASPECT_SPREAD:
+            problems.append(
+                f'{char_id}: CROPPED — {hi[1]} is far wider for its height than {lo[1]} '
+                f'(spread {spread:.2f}, limit {FRAME_ASPECT_SPREAD}). '
+                f'{hi[1]} is {hi[2]}x{hi[3]} (ratio {hi[0]:.2f}), {lo[1]} is {lo[2]}x{lo[3]} '
+                f'(ratio {lo[0]:.2f}). Every frame is the same character trimmed the same '
+                'way, so one that is much squatter than the rest has had part of the '
+                'character — usually the top of the head — cut off by the frame edge.')
     return problems, soft
 
 

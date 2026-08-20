@@ -318,7 +318,8 @@ normalises scale afterwards regardless.
 
 (The Newsey pipeline does use a single 4x3 grid — with magenta gridlines on
 green cells, which gives the model a much stronger layout signal, and even
-there the bottom row was the thing that came back cropped.)
+there the bottom row was the thing that came back cropped. It also drops the
+gridlines outright often enough to need a checker; see "Two cutters" below.)
 
 ## Sheets are the standard; individual frame files are legacy
 
@@ -354,6 +355,28 @@ if that is what its code path wants. But a NEW GAME uses sheets.
   gridlines on chroma-green (#00FF00) cells, flood-keyed and sliced into
   individual `<id>_<dir>_<n>.png` files. Use when the game wants the
   generator's own rendering preserved per frame.
+
+  **The gridlines are the single point of failure, and the model does drop
+  them.** May's sheet came back with the art perfect — pink hair, royal-blue
+  robe, three clean rows, every head whole — and *zero magenta pixels
+  anywhere in the image*. With no dividers to find, the slicer reported
+  "1 rows x 11 cols" and wrote three 30x343 slivers of coat as her
+  front-facing walk cycle. Chuck's came back with gridlines but only two
+  readable rows, so his back view was never cut at all. Both runs reported
+  success.
+
+  Three things now stop that, and all three are needed:
+  1. `slice_walksheet.py` **refuses** any grid that is not 3–4 rows of 3,
+     instead of cutting cells out of guessed boundaries. A sheet with no
+     grid is a failed *generation*, not a cutting problem — regenerate it.
+  2. `generate-walksheet.yml` **deletes the character's existing frames
+     before slicing.** Its completeness check asks "is there a file here",
+     and a file from the previous generation answers yes: that is precisely
+     how May kept her old antlered, decapitated cycle through a regeneration
+     that had already drawn her correctly.
+  3. That workflow then runs `verify_sheet.py frames` before committing,
+     because present is not the same as usable — nine real files that happen
+     to be slivers pass a existence check and fail this one.
 
 Both produce the same *semantics* above; they differ only in how much the art
 is normalised afterwards.
