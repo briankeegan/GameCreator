@@ -133,10 +133,19 @@ design discussion. `shared/` holds the components every game reuses
   Existing instances: room exits (`EXIT / DOOR CONVENTION` comment ->
   `.github/scripts/check_room_exits.mjs` -> "Verify room exits"), art
   (`.github/art/CHARACTER_SHEETS.md` -> `.github/art/verify_sheet.py` ->
-  "Verify shipped sprite sheets" / "Verify character frame sets"), and rooms
+  "Verify shipped sprite sheets" / "Verify character frame sets"), rooms
   (`docs/ROOM_ART_STANDARD.md` -> `.github/art/room.py verify` -> "Verify room
-  props and floor plates"). Add all three
-  pieces together or the rule will not hold.
+  props and floor plates"), and art references (the header comment in
+  `.github/scripts/check_art_refs.mjs` -> that script -> "Verify art
+  references"). Add all three pieces together or the rule will not hold.
+- **A forgiving runtime needs a strict build.** The game deliberately survives
+  missing art — `loadArt()` on an id with no file never resolves ok, so an NPC
+  draws as a coloured circle with its initial in it and the game stays
+  playable. The cost is that a missing file fails NOTHING: it ships, and it is
+  found when a person looks at the screen and asks why there is a K standing
+  in the lab. Any fallback this graceful needs a build-time check beside it,
+  or it hides the thing it was meant to soften. `check_art_refs.mjs` is that
+  check for art ids.
 - **New games ship sprite SHEETS. Individual frame files are legacy.** Newsey
   predates the standard and ships nine files per character; that is supported
   and gated, but is not the pattern to copy — a per-file set can lose one
@@ -420,6 +429,16 @@ design discussion. `shared/` holds the components every game reuses
     experimental images, for a game that doesn't have an `art-style.json`
     yet, and — importantly — for **anything that is not a room or an in-room
     sprite**: cutscene illustrations and character portraits.
+    - **`force: true` or it silently does nothing.** The skip-if-exists guard
+      is there so a re-run of a partly-failed batch doesn't re-bill for art
+      you already have — but it also means a REGENERATION of a bad image
+      succeeds, commits nothing, and leaves the bad file in place. Two
+      cutscene backdrops were re-dispatched, reported success, and were still
+      the wrong picture. If you are replacing an existing file, pass `force`.
+    - Portraits get cropped by `.github/art/make_portrait.py`, not by eye —
+      generate the bust on flat white, then let the tool key it, square it
+      anchored at the TOP and resize. Cropping portraits by hand is how they
+      end up at four different zoom levels beside each other.
   - **"Generate game asset" applies the room camera to EVERYTHING.** Its
     `art-style.json` says "top-down RPG interior room view", and that wins
     over the prompt even when the prompt says, in capitals, to ignore it.
