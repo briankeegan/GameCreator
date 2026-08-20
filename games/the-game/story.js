@@ -186,6 +186,11 @@ window.NEWSEY_STORY = (function () {
         },
         {
           id: "chuck", x: 108, y: 126, art: "chuck", sprite: "chuck_top",
+          // Where he starts the instant the door opens — the door's own
+          // spot, x/y above — so app.js can walk him from there to his real
+          // resting spot instead of having him simply appear already
+          // standing in the room.
+          entryFrom: { x: 74, y: 106 },
           needs: "chuckIn",
           lines: [
             "Nella! Get out of the rain!",
@@ -197,7 +202,7 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "tv", x: 230, y: 160, art: null, sprite: "tv_top",
+          id: "tv", x: 230, y: 160, art: null, sprite: "tv_top", _noWander: true,
           lines: [
             "The old CRT. Dusty cables, a game console still plugged in.",
             "Twenty years gone, and your hands remember everything."
@@ -247,7 +252,16 @@ window.NEWSEY_STORY = (function () {
       ],
       npcs: [
         {
-          id: "devil", x: 150, y: 155, art: "devil", sprite: "devil_top",
+          // The plot has no one standing in this room: you walk up to the
+          // mirror, see yourself with horns, and the devil pops up IN the
+          // mirror like a TV, welcomes you, then it's over — not a
+          // character who lives here. `marker: true` makes this purely an
+          // interact point at the mirror's own spot (it gets the floor's pool
+          // of light, nothing standing up); talking still shows him as the
+          // speaker (CHARACTERS.devil) exactly like it did as a standing NPC.
+          // The bed beside it is no longer an interactable at all — you get
+          // INTO it (app.js, player.bedSlide), and that's what saves.
+          id: "devil", x: 70, y: 102, art: "devil", sprite: null, marker: true,
           lines: [
             "Hello, and welcome to Infinity! You may notice your appearance has changed — that's your magical avatar.",
             "Your bracelet is copper, to reflect your rank, and aquamarine for your playstyle. These can change.",
