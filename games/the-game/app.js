@@ -339,13 +339,20 @@
 
   // at: optional { x, y } to arrive at — a door hands over the spot in front
   // of the matching door on the other side, so you step out where you should
-  // instead of teleporting to the middle of the room.
-  function enterRoom(roomId, at) {
+  // instead of teleporting to the middle of the room. facing: optional
+  // arrival direction — without it she kept whatever direction she was
+  // last walking before she hit the exit trigger, which reads as just
+  // jumping into the next space rather than actually stepping through a
+  // door. Reported live: crossing bedroom<->lounge should turn her to face
+  // away from that door (right leaving the bedroom, left leaving the
+  // lounge), not carry over her old facing.
+  function enterRoom(roomId, at, facing) {
     currentRoom = ROOMS[roomId];
     exitsArmed = false;
     player.inBed = false;
     player.bedSlide = null;
     bedPush = 0;
+    if (facing) player.facing = facing;
     var spot = at && at.x !== undefined ? at : currentRoom.playerStart;
     // The mask may not have loaded yet on the very first room; re-place her
     // once it has, so a spawn point that lands off the floor still resolves.
@@ -961,7 +968,7 @@
       if (player.x + player.w > ex.x && player.x < ex.x + ex.w &&
           player.y + player.h > ex.y && player.y < ex.y + ex.h) {
         onExit = true;
-        if (exitsArmed) enterRoom(ex.to, ex.arriveAt);
+        if (exitsArmed) enterRoom(ex.to, ex.arriveAt, ex.arriveFacing);
       }
     });
     if (!onExit) exitsArmed = true;

@@ -99,6 +99,35 @@ window.NEWSEY_STORY = (function () {
     "…Chuck. It has to be Chuck."
   ];
 
+  // EXIT / DOOR CONVENTION — every `exits[]` entry needs THREE things, not
+  // just `to` and `arriveAt`. Getting only two of three shipped live twice
+  // and had to be fixed after the fact:
+  //   1. `arriveFacing`: "up"/"down"/"left"/"right". Without it the player
+  //      keeps whatever direction she was last walking before she touched
+  //      the trigger — she reads as materializing in the new room instead
+  //      of stepping through a door. Pick the direction that matches
+  //      actually walking OUT of that doorway (away from the wall it's in).
+  //   2. `arriveAt` must be real, unobstructed floor in the DESTINATION
+  //      room — check against that room's `floorPoly`/`obstacles`, not by
+  //      eyeballing the number.
+  //   3. `arriveAt` must have real clearance from every OTHER exit trigger
+  //      in the destination room, in all four directions — not just the
+  //      matching return door. Landing close enough to a different exit
+  //      that a single accidental keypress crosses back into it reads as
+  //      the room "bouncing" you straight back out (reported live: two
+  //      door pairs did exactly this, one bedroom<->lounge, one
+  //      lounge<->library — an arrival point that happened to sit ~20px
+  //      from an unrelated door in that room). A door you have to walk the
+  //      full width of the room to deliberately reach is fine; the bug is
+  //      only ever "one lucky/unlucky keytap sends you right back."
+  //
+  // `.github/scripts/check_room_exits.mjs` checks all three automatically —
+  // run `node .github/scripts/check_room_exits.mjs games/the-game/story.js`
+  // after touching any exit or arriveAt, or trust the "Verify room exits"
+  // step in `.github/workflows/pages.yml` (same gate as the engine tests,
+  // runs on every push to main). Don't add/move a door by feel and skip
+  // it — that's exactly how both bugs above shipped.
+
   // ROOM SHAPES — every room's walkable area is `floorPoly`, the drawn floor
   // traced as a polygon in the game's 320x200 room coordinates. These rooms
   // are painted in perspective (the lounge and the arena are six-sided, the
@@ -135,7 +164,7 @@ window.NEWSEY_STORY = (function () {
       // The doorway is an actual hole in the art (transparent), so the floor
       // stops at its threshold — the trigger sits on that threshold.
       exits: [ { x: 140, y: 152, w: 44, h: 16, to: "house",
-                 arriveAt: { x: 150, y: 130 } } ],
+                 arriveAt: { x: 150, y: 130 }, arriveFacing: "down" } ],
       // Furniture footprints, kept as the fallback alongside floorPoly.
       obstacles: [
         { x: 56, y: 98, w: 58, h: 30 },   // the bed
@@ -159,7 +188,7 @@ window.NEWSEY_STORY = (function () {
       // still the TV (which plays DREAM_CUTSCENE), but you came down these to
       // answer the door, so they go back up.
       exits: [
-        { x: 216, y: 90, w: 34, h: 14, to: "home_bedroom", arriveAt: { x: 196, y: 122 } }
+        { x: 216, y: 90, w: 34, h: 14, to: "home_bedroom", arriveAt: { x: 196, y: 122 }, arriveFacing: "down" }
       ],
       // Furniture where it actually meets the floor: the table with the
       // moving boxes, the lantern table by the front door, and the little
@@ -240,7 +269,7 @@ window.NEWSEY_STORY = (function () {
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
       floorPoly: [[52,100],[285,100],[272,186],[64,186]],
       exits: [
-        { x: 223, y: 90, w: 28, h: 16, to: "lounge", arriveAt: { x: 90, y: 122 } }
+        { x: 223, y: 90, w: 28, h: 16, to: "lounge", arriveAt: { x: 90, y: 149 }, arriveFacing: "right" }
       ],
       // Furniture footprints where they actually meet the floor (the old boxes
       // reached far into the room, and the bed's box covered the doorway, so
@@ -303,8 +332,8 @@ window.NEWSEY_STORY = (function () {
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
       floorPoly: [[245,100],[68,100],[32,140],[58,188],[228,188],[270,140]],
       exits: [
-        { x: 80, y: 86, w: 34, h: 18, to: "bedroom", arriveAt: { x: 228, y: 132 } },
-        { x: 132, y: 182, w: 56, h: 10, to: "library", drawn: "threshold", arriveAt: { x: 220, y: 118 } }
+        { x: 80, y: 86, w: 34, h: 18, to: "bedroom", arriveAt: { x: 228, y: 160 }, arriveFacing: "left" },
+        { x: 132, y: 182, w: 56, h: 10, to: "library", drawn: "threshold", arriveAt: { x: 220, y: 150 }, arriveFacing: "down" }
       ],
       // The bar's footprint on the floor (the old box sat entirely above the
       // walkable area, so it blocked nothing).
@@ -374,7 +403,7 @@ window.NEWSEY_STORY = (function () {
       // flagstone hexagon between the two banks of stands.
       floorPoly: [[66,100],[250,100],[292,140],[283,186],[42,186],[30,140]],
       exits: [
-        { x: 224, y: 84, w: 26, h: 18, to: "lounge", arriveAt: { x: 97, y: 146 } }
+        { x: 224, y: 84, w: 26, h: 18, to: "lounge", arriveAt: { x: 97, y: 146 }, arriveFacing: "right" }
       ],
       obstacles: [ { x: 0, y: 88, w: 66, h: 20 }, { x: 250, y: 88, w: 70, h: 20 } ], // the stands
       npcs: [
@@ -437,7 +466,7 @@ window.NEWSEY_STORY = (function () {
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
       floorPoly: [[50,100],[274,100],[274,188],[50,188]],
       exits: [
-        { x: 228, y: 84, w: 24, h: 18, to: "lounge", arriveAt: { x: 152, y: 156 } }
+        { x: 228, y: 84, w: 24, h: 18, to: "lounge", arriveAt: { x: 152, y: 125 }, arriveFacing: "right" }
       ],
       obstacles: [ { x: 160, y: 92, w: 66, h: 22 } ], // armchair + candle table
       npcs: [
