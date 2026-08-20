@@ -1337,7 +1337,14 @@
   // Risk of Rain 2's item-tier weighting (commons dominate the pool,
   // legendaries are the exception) — commons should show up constantly,
   // rares should feel like an event when they do.
-  const RARITY_WEIGHT = { common: 10, uncommon: 4, rare: 1 };
+  // Retuned when the weapon count went from three to nine. There are only
+  // three commons (reinforce / shield / reactor) but at weight 10 they were
+  // soaking up two thirds of every roll, so a shelf was three stat bumps
+  // and the guns — six of which are rare — almost never appeared: measured
+  // across forty runs, two Beam Lances and one Arc Projector were bought in
+  // total. A dock has to be a real chance to change the ship, not a vending
+  // machine for hull points.
+  const RARITY_WEIGHT = { common: 6, uncommon: 4, rare: 2 };
 
   // Weighted sample of `count` items from `items`, no repeats, heavier
   // items more likely each draw — the standard "shrinking roulette wheel":
@@ -1430,10 +1437,29 @@
       // Shapes arrive one at a time so each one gets to be a lesson: the
       // crowd answer, then standoff, then the gun that beats cover, then
       // the one that covers what a lane can't, then the sniper.
-      if (o.id === "railgun") return levelId >= 8;
-      if (o.id === "flankTubes") return levelId >= 8;
+      // The rule this list encodes: a gun goes on a shelf a sector or two
+      // after the thing it answers turns up, so buying it is a response to
+      // something you've met rather than a lottery ticket. Four weapons
+      // were added without a line here and fell through to "any depth",
+      // which is how a Missile Pod could sit on the Sector 2 shelf years
+      // before anything launches at you.
+      //
+      // Depth is the ENEMY's arrival, plus a sector to have met it:
+      //   flakBurst  2  — crowds start in the campaign.
+      //   arcBeam    3  — the Sentry Line, the first thing that outranges
+      //                   you and won't come to you.
+      //   beamLance  3  — the Picket reaches five hexes from Sector 2, and
+      //                   reach is the only honest answer to reach.
+      //   mortar     6  — cover starts mattering.
+      //   railgun    8  — the Railgun Destroyer's own gun.
+      //   flankTubes 8  — the Lancer's.
+      //   missilePod 8  — the Carrier's.
+      //   arcProjector / demolitionCharge 8 — the Cutter's and the
+      //                   Demolitionist's, and both land at depth 8.
+      if (o.id === "railgun" || o.id === "flankTubes" || o.id === "missilePod") return levelId >= 8;
+      if (o.id === "arcProjector" || o.id === "demolitionCharge") return levelId >= 8;
       if (o.id === "mortar") return levelId >= 6;
-      if (o.id === "arcBeam" || o.id === "hardpoint") return levelId >= 3;
+      if (o.id === "arcBeam" || o.id === "hardpoint" || o.id === "beamLance") return levelId >= 3;
       if (o.id === "flakBurst") return levelId >= 2;
       return true; // reinforce / shield / reactor: basic dock trade at any depth
     });
@@ -1474,6 +1500,16 @@
     // is what they happen to have; this one is the trade that keeps the
     // crawl survivable at all.
     if (!carried.has("shieldGenerator")) force("shield");
+    // ...and the same promise about guns. Flying on nothing but the
+    // starting Autocannon means every fight is at contact, which against a
+    // roster that reaches three and five hexes is not a strategy, it's a
+    // countdown. If a yard has any second gun in stock it will find you
+    // one — after that you're on the roll like everyone else.
+    const armed = WEAPON_SYSTEM_KEYS.filter((k) => k !== "autocannon" && carried.has(k));
+    if (!armed.length) {
+      const guns = stock.filter((o) => WEAPON_SYSTEM_KEYS.includes(o.id) && !ids.includes(o.id));
+      if (guns.length) force(guns[Math.floor(rng() * guns.length)].id);
+    }
     // Sector 3 is the Sentry Line — the first sector with something that
     // outranges you and won't come to you. The weapon that answers it has
     // to be ON THE SHELF there, not left to the roll, or the lesson is

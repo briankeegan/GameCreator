@@ -1083,20 +1083,33 @@ assert.notDeepStrictEqual(
   outpostRunFixture(950, 2, 0).outpostOfferIds,
   "a different run seed can deal Sector 950 a genuinely different shop — replaying a sector isn't guaranteed identical anymore"
 );
-// Rarity actually weights the roll: sampled with the bad-luck guarantee
-// held off (raresSkipped reset every sample), commons should show up far
-// more than rares purely from the weighting, not the guarantee.
+// Rarity actually weights the roll. Measured PER ITEM, not per tier: there
+// are three commons and six rares now, so counting whole tiers said rares
+// were winning when each individual rare was still much scarcer than each
+// individual common. Sampled with the guarantees held off — a ship with no
+// second gun is promised one, and a ship with no screen is promised that,
+// so a fixture flying naked measures the promises rather than the roll.
 {
   const tally = {};
+  const kitted = ["shieldGenerator", "arcBeam"]; // nothing forced: has a screen, has a second gun
   for (let levelId = 950; levelId < 1050; levelId++) {
-    const s = outpostRunFixture(levelId, 99, 0);
+    const s = Engine.createGameState(
+      {
+        id: levelId, radius: 2,
+        playerStart: { q: 0, r: 0 }, exit: { q: 2, r: 0 }, outpost: { q: -2, r: 0 },
+        enemies: [], hazards: [], exitRule: "all-enemies-dead",
+      },
+      { runSeed: 99, raresSkipped: 0, extraActions: kitted.filter((k) => Engine.WEAPON_SYSTEM_KEYS.includes(k)) }
+    );
+    for (const it of kitted) if (!s.hold.items.some((h) => h.id === it)) s.hold.items.push({ id: it, x: 0, y: 0 });
     for (const id of s.outpostOfferIds) tally[id] = (tally[id] || 0) + 1;
   }
-  const commonCount = (tally.reinforce || 0) + (tally.reactor || 0);
-  const rareCount = (tally.mortar || 0) + (tally.flankTubes || 0) + (tally.railgun || 0);
+  const perItem = (ids) => ids.reduce((n, id) => n + (tally[id] || 0), 0) / ids.length;
+  const commonEach = perItem(["reinforce", "reactor"]);
+  const rareEach = perItem(["mortar", "flankTubes", "railgun", "missilePod", "arcProjector", "demolitionCharge"]);
   assert.ok(
-    commonCount > rareCount * 2,
-    `common items (${commonCount} sightings) show up meaningfully more than rare ones (${rareCount}) — rarity weighting is real, not cosmetic`
+    commonEach > rareEach * 1.5,
+    `each common (${commonEach.toFixed(1)} sightings) turns up meaningfully more than each rare (${rareEach.toFixed(1)}) — rarity weighting is real, not cosmetic`
   );
 }
 // Prices roll within a modest band of the pool's listed cost — a real
