@@ -114,7 +114,7 @@ window.NEWSEY_STORY = (function () {
     home_bedroom: {
       bg: "home_bedroom",
       label: "Your Old Room",
-      playerStart: { x: 128, y: 120 },
+      playerStart: { x: 116, y: 112 },
       playerForm: "human",
       // All measured off the regenerated bg-home_bedroom.png at the game's
       // 320x200 scale. The room has no door on any wall now — the way out is
@@ -126,7 +126,7 @@ window.NEWSEY_STORY = (function () {
       // The top edge of the blanket in the art — she's drawn clipped to above
       // this line while asleep, so the covers cover her.
       bedClipY: 87,
-      wakeSpot: { x: 128, y: 120 },
+      wakeSpot: { x: 116, y: 112 },
       // The drawn floor, kept as the fallback for before the walk mask loads.
       floorPoly: [[58,100],[248,100],[248,186],[58,186]],
       // The doorway is an actual hole in the art (transparent), so the floor
