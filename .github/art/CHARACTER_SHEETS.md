@@ -57,6 +57,14 @@ this, which is the reason to use it rather than writing a fresh one. Three frame
 lunging pose reads as a shove, and because attacks are where weapons vary —
 swapping a weapon swaps the attack sheet and the timing code is untouched.
 
+**The columns mean the same thing in every row.** Front, side and back all
+use left-forward / standing / right-forward; the only thing that changes
+between rows is the camera angle. That is what lets one playback sequence
+drive every direction, and it is why a row that quietly reinterprets its
+columns (a "neutral" that is really a third stride, or a standing frame drawn
+from a different angle than its own row) breaks the cycle in that direction
+only — the hardest kind of bug to spot, because the other directions look fine.
+
 ## Directions
 
 Three rows, in order: **down, side (drawn facing RIGHT), up.**
@@ -66,6 +74,28 @@ for players and NPCs alike. A side row that is not a true side profile
 therefore breaks both horizontal directions at once — and a "neutral" frame
 that quietly turns to face the viewer makes the character spin to camera every
 other beat while walking.
+
+## The recipe that works (use it; don't re-derive it)
+
+Settled after a long run of failures, all recorded above. Follow it and the
+first generation is usually the one that ships:
+
+1. **One row per image**, landscape 1536x1024, three sprites across.
+2. **Flat pure white background**, keyed out afterwards — never ask for
+   transparency, it comes back as a beige wash.
+3. **Name the foot** (left forward / standing / right forward) and state the
+   row's camera angle **per frame**, including on the standing frame.
+4. **State the margin**: wide empty space on all four sides, clear gaps
+   between sprites, nothing touching an edge.
+5. **List the locked details** from the game's `art-style.json` in the prompt
+   — sleeves, ears, which hand holds the weapon.
+6. **Verify before cutting**: `verify_sheet.py raw <row>.png --frames 3 --walk`.
+   It fails on clipping, wrong frame count, duplicate frames and a missing
+   neutral. Cutting an unverified row is how a bad set reaches the game.
+7. **Cut with `build_sheet.py`**, one `--row` per direction, `@height` per row
+   if the character is a different height from different angles.
+8. **`medium` quality is enough** for flat cartoon pixel art; `high` is for a
+   showcase asset, and costs about four times as much.
 
 ## Files
 
