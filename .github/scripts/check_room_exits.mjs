@@ -69,43 +69,79 @@ const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 let problems = 0;
 // The rune door's destinations are exits in everything but name: same
 // arriveAt/arriveFacing contract, same chance of landing off the floor.
-for (const dest of RUNE_DOOR) {
-  if (dest.locked) continue;
-  const label = `rune door -> ${dest.to} @ (${dest.arriveAt?.x},${dest.arriveAt?.y})`;
-  const room = ROOMS[dest.to];
-  if (!room) { console.log(`FAIL ${label}: "${dest.to}" is not a room`); problems++; continue; }
-  if (!dest.arriveFacing) { console.log(`FAIL ${label}: no arriveFacing set`); problems++; }
-  if (!dest.arriveAt) { console.log(`FAIL ${label}: no arriveAt set`); problems++; continue; }
-  if (!onFloor(room, dest.arriveAt.x, dest.arriveAt.y)) {
-    console.log(`FAIL ${label}: does not land on floor`); problems++;
-  }
+// A door is one of a PAIR. It carries a `link`, and the door it comes out of
+// is whichever door (or linked NPC, for the lounge's portal) in the
+// destination room shares that link. Where you land is worked out at runtime
+// from that partner, so there is nothing here about coordinates — the things
+// that CAN go wrong are structural: a link with no partner, a room nothing
+// leads into, a door that names a room that doesn't exist.
+//
+// This replaced a set of rules about hand-typed `arriveAt` values. Those
+// rules all passed while the Library, the Garden and the Lab put you down on
+// the same square of lounge floor, nowhere near the door you walked through:
+// each landing spot was independently valid and no rule compared the two
+// sides of a door to each other.
+
+function linkPartners(room, link) {
+  const doors = (room.exits || []).filter((e) => e.link === link);
+  const npcs = (room.npcs || []).filter((n) => n.link === link);
+  return doors.length + npcs.length;
 }
+
+const reachable = new Set();
 
 for (const [roomId, room] of Object.entries(ROOMS)) {
   for (const ex of room.exits || []) {
-    // A `rune: true` exit has no fixed destination — it opens the rune door's
-    // destination picker instead. Its destinations are checked in their own
-    // pass below, against the same rules.
-    if (ex.rune) continue;
-    const label = `${roomId} -> ${ex.to} @ (${ex.arriveAt?.x},${ex.arriveAt?.y})`;
-    const dest = ROOMS[ex.to];
-    if (!dest) { console.log(`FAIL ${label}: "${ex.to}" is not a room`); problems++; continue; }
-    if (!ex.arriveFacing) { console.log(`FAIL ${label}: no arriveFacing set`); problems++; }
-    if (!ex.arriveAt) { console.log(`FAIL ${roomId} -> ${ex.to}: no arriveAt set`); problems++; continue; }
-    const { x, y } = ex.arriveAt;
-    if (!onFloor(dest, x, y)) { console.log(`FAIL ${label}: not on ${ex.to}'s floor`); problems++; }
-    const obs = hitBox(dest.obstacles, x, y);
-    if (obs) { console.log(`FAIL ${label}: lands inside an obstacle ${JSON.stringify(obs)}`); problems++; }
-    const bounces = [];
-    for (const [dirName, [dx, dy]] of Object.entries(DIRS)) {
-      let bx = x, by = y;
-      for (let step = 1; step <= ACCIDENTAL_BOUNCE_PX; step++) {
-        bx += dx; by += dy;
-        if (hitBox(dest.exits, bx, by)) { bounces.push(`${dirName}@${step}px`); break; }
-      }
+    // A `rune: true` exit opens the destination picker rather than leading
+    // anywhere itself, but it is still one half of a link — every room the
+    // picker can reach comes back out through it.
+    const to = ex.to;
+    const label = `${roomId} -> ${to || "rune door"}`;
+    if (!ex.link) { console.log(`FAIL ${label}: no link — a door has to name the door it pairs with`); problems++; continue; }
+    if (ex.rune && !to) continue;
+    const dest = ROOMS[to];
+    if (!dest) { console.log(`FAIL ${label}: "${to}" is not a room`); problems++; continue; }
+    reachable.add(to);
+    const partners = linkPartners(dest, ex.link);
+    if (partners === 0) {
+      console.log(`FAIL ${label}: nothing in ${to} carries link "${ex.link}" — you would arrive nowhere near a door`);
+      problems++;
+    } else if (partners > 1) {
+      console.log(`FAIL ${label}: ${to} has ${partners} things carrying link "${ex.link}" — which one do you come out of?`);
+      problems++;
     }
-    if (bounces.length) { console.log(`FAIL ${label}: accidental-bounce risk (${bounces.join(", ")})`); problems++; }
+  }
+  for (const npc of room.npcs || []) {
+    if (npc.gotoRoom) {
+      if (!ROOMS[npc.gotoRoom]) { console.log(`FAIL ${roomId} npc "${npc.id}" -> "${npc.gotoRoom}" is not a room`); problems++; continue; }
+      reachable.add(npc.gotoRoom);
+      if (!npc.link) { console.log(`FAIL ${roomId} npc "${npc.id}": walks you to ${npc.gotoRoom} with no link, so there is no door to come back out of`); problems++; }
+    }
   }
 }
+
+// The rune door's picker is the other half of every rune-linked room.
+for (const dest of RUNE_DOOR) {
+  if (dest.locked) continue;
+  const label = `rune door -> ${dest.to}`;
+  const room = ROOMS[dest.to];
+  if (!room) { console.log(`FAIL ${label}: "${dest.to}" is not a room`); problems++; continue; }
+  reachable.add(dest.to);
+  if (!dest.link) { console.log(`FAIL ${label}: no link`); problems++; continue; }
+  if (linkPartners(room, dest.link) === 0) {
+    console.log(`FAIL ${label}: nothing in ${dest.to} carries link "${dest.link}"`);
+    problems++;
+  }
+}
+
+// A room you can leave but never enter is a room nobody will ever see. The
+// first room of the game is the one legitimate exception.
+const START = "home_bedroom";
+for (const roomId of Object.keys(ROOMS)) {
+  if (roomId === START || reachable.has(roomId)) continue;
+  console.log(`FAIL ${roomId}: nothing leads into this room — it can be left but never entered`);
+  problems++;
+}
+
 if (problems === 0) console.log(`OK — every exit in ${storyPath} checks out.`);
 else { console.log(`\n${problems} problem(s) found.`); process.exit(1); }

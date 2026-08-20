@@ -340,14 +340,83 @@
   // door. Reported live: crossing bedroom<->lounge should turn her to face
   // away from that door (right leaving the bedroom, left leaving the
   // lounge), not carry over her old facing.
-  function enterRoom(roomId, at, facing) {
+  // ---- doors are PAIRS ----
+  // A door carries a `link`, and the door it comes out of is the one in the
+  // destination room with the same link. Where you land and which way you
+  // face are then WORKED OUT from that partner's own rectangle — step out of
+  // it into the room, turn your back on it — instead of being two numbers
+  // typed in by hand on the other side of the file.
+  //
+  // Typed numbers were the bug. Nothing tied one side of a door to the other,
+  // so they drifted: the Library, the Garden and the Lab all put you down on
+  // the same square of lounge floor, nowhere near the rune door you had just
+  // walked through, and coming downstairs left you in the middle of the room
+  // rather than at the stairs.
+  var STEP_OUT = [
+    { dir: "down",  dx: 0,  dy: 1  },
+    { dir: "up",    dx: 0,  dy: -1 },
+    { dir: "right", dx: 1,  dy: 0  },
+    { dir: "left",  dx: -1, dy: 0  }
+  ];
+
+  function linkedDoor(room, link) {
+    var found = null;
+    (room.exits || []).forEach(function (ex) { if (ex.link === link) found = ex; });
+    if (found) return { x: found.x + found.w / 2, y: found.y + found.h / 2, rect: found };
+    // The lounge's way into the arena is a portal you talk to, not a doorway
+    // you walk through — so an NPC can be the far side of a link too.
+    (room.npcs || []).forEach(function (n) { if (n.link === link) found = { x: n.x, y: n.y, rect: null }; });
+    return found && found.rect === null ? found : found;
+  }
+
+  // Walk out from the partner door until there is floor to stand on that
+  // isn't inside any exit trigger — that last part is what stops you landing
+  // on the door and being sent straight back.
+  function arrivalFrom(room, link) {
+    var door = linkedDoor(room, link);
+    if (!door) return null;
+    for (var d = 0; d < STEP_OUT.length; d++) {
+      var s = STEP_OUT[d];
+      for (var dist = 12; dist <= 44; dist += 4) {
+        var fx = door.x + s.dx * dist, fy = door.y + s.dy * dist;
+        var x = fx - player.w / 2, y = fy - player.h;
+        if (!canStand(room, x, y)) continue;
+        // Not merely OFF the trigger — CLEAR of it. A doorstep chosen with
+        // no margin sat one pixel outside the lounge's door, and the nudge
+        // that keeps her on the floor was enough to push her back onto it.
+        // Standing on a door with exits disarmed is a dead end: the door
+        // won't fire until you step off, and she never did.
+        if (overlapsAnyExit(room, x, y, DOORSTEP_CLEARANCE)) continue;
+        return { x: x, y: y, facing: s.dir };
+      }
+    }
+    return null;
+  }
+
+  var DOORSTEP_CLEARANCE = 8;
+  function overlapsAnyExit(room, x, y, pad) {
+    var p = pad || 0, hit = false;
+    (room.exits || []).forEach(function (ex) {
+      if (x + player.w > ex.x - p && x < ex.x + ex.w + p &&
+          y + player.h > ex.y - p && y < ex.y + ex.h + p) hit = true;
+    });
+    return hit;
+  }
+
+  // link: which door you came through. Where you land and which way you face
+  // are then derived from that door's PARTNER in the room you're entering.
+  // `at`/`facing` remain for arrivals that aren't a door at all — a cutscene
+  // handing over, a save file being loaded.
+  function enterRoom(roomId, at, facing, link) {
     currentRoom = ROOMS[roomId];
     exitsArmed = false;
     player.inBed = false;
     player.bedSlide = null;
     bedPush = 0;
-    if (facing) player.facing = facing;
-    var spot = at && at.x !== undefined ? at : currentRoom.playerStart;
+    var derived = link ? arrivalFrom(currentRoom, link) : null;
+    if (derived) player.facing = derived.facing;
+    else if (facing) player.facing = facing;
+    var spot = derived || (at && at.x !== undefined ? at : currentRoom.playerStart);
     // The mask may not have loaded yet on the very first room; re-place her
     // once it has, so a spawn point that lands off the floor still resolves.
     placeOnFloor(currentRoom, spot.x, spot.y);
@@ -360,6 +429,19 @@
       // re-placing her then dumped her on the floorboards beside the bed as a
       // head with no body, which is how this was spotted.
       if (player.inBed) return;
+      // Work the doorstep out AGAIN now the mask is really here. The first
+      // pass had to fall back to the room's rough polygon, which can name a
+      // spot the mask then rejects — and the nudge that followed was free to
+      // shove her onto the very door she'd just stepped out of, which sent
+      // her straight back. Re-deriving is exact; nudging was a guess.
+      if (link) {
+        var redo = arrivalFrom(room, link);
+        if (redo) {
+          player.x = redo.x; player.y = redo.y; player.facing = redo.facing;
+          exitsArmed = false;
+          return;
+        }
+      }
       if (!canStand(room, player.x, player.y)) placeOnFloor(room, player.x, player.y);
     }, 50);
     if (save) { save.room = roomId; persist(); } // walking through a door autosaves
@@ -383,7 +465,7 @@
     if (!runeDoorKnown()) {
       // The accidental first trip. Sent somewhere she didn't choose, which is
       // the whole reason she ever meets Kyran.
-      enterRoom("garden");
+      enterRoom("garden", null, null, "rune");
       showNarration([
         "The door is black marble, carved over with runes, and heavier than it looks.",
         "You push where a handle ought to be. It gives, creaking.",
@@ -403,7 +485,7 @@
       } else {
         b.onclick = function () {
           closeRuneDoor();
-          enterRoom(dest.to, dest.arriveAt, dest.arriveFacing);
+          enterRoom(dest.to, dest.arriveAt, dest.arriveFacing, dest.link);
         };
       }
       runeListEl.appendChild(b);
@@ -572,7 +654,7 @@
           fadeFromBlack();
         }, true);
       }
-      if (wasTalking.npc.gotoRoom) enterRoom(wasTalking.npc.gotoRoom);
+      if (wasTalking.npc.gotoRoom) enterRoom(wasTalking.npc.gotoRoom, null, null, wasTalking.npc.link);
       // Opening the front door flips a story flag: the door itself stops
       // existing and Chuck starts existing, both via roomNpcs() above.
       if (wasTalking.npc.setsFlag && save) {
@@ -1083,7 +1165,7 @@
         onExit = true;
         if (exitsArmed) {
           if (ex.rune) openRuneDoor();
-          else enterRoom(ex.to, ex.arriveAt, ex.arriveFacing);
+          else enterRoom(ex.to, ex.arriveAt, ex.arriveFacing, ex.link);
         }
       }
     });
@@ -1743,6 +1825,16 @@
     npcs: function () { return roomNpcs(currentRoom).map(function (n) { return { id: n.id, x: n.x, y: n.y }; }); },
     talking: function () { return talking ? { npcId: talking.npc.id, lineIndex: talking.lineIndex } : null; },
     enterRoom: enterRoom,
+    exitsArmed: function () { return exitsArmed; },
+    exitOverlaps: function () {
+      return (currentRoom.exits || []).map(function (ex, i) {
+        return { i: i, to: ex.to || (ex.rune ? "RUNE" : "?"),
+          hit: (player.x + player.w > ex.x && player.x < ex.x + ex.w &&
+                player.y + player.h > ex.y && player.y < ex.y + ex.h) };
+      });
+    },
+    arrivalFrom: function (roomId, link) { return arrivalFrom(ROOMS[roomId], link); },
+    linkedDoor: function (roomId, link) { return linkedDoor(ROOMS[roomId], link); },
     putToBed: putToBed,
     startDuel: startDuel,
     duel: function () { return window.NewseyDuel.debug(); }
