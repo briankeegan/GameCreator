@@ -79,6 +79,39 @@ window.NEWSEY_STORY = (function () {
     // is not narrated either, it's ROOMS.bedroom (Infinity).
   ];
 
+  // JOHN_CUTSCENE — the chapter's hinge, and the one beat that was compressed
+  // into four lines of room dialogue when it is the whole point of the
+  // chapter. Plays the FIRST time you sleep in the Infinity bed: you wake to
+  // a knock, and John is in the doorway.
+  //
+  // Straight from the verbatim plot, in its order. Two new backgrounds carry
+  // the two images that matter — the chaos symbol she draws on the mirror in
+  // lipstick, and the mirror turning into a screen showing her own body.
+  var JOHN_CUTSCENE = [
+    { bg: "bedroom", who: "nella", narration: true, text: "Knocking. I pulled the blanket around me and froze. I wasn't ready to face anyone." },
+    { who: "john", art: "john", text: "Nella. Open the door." },
+    { who: "nella", narration: true, text: "Instead of an answer, the door opened on its own." },
+    { who: "john", art: "john", text: "Nella, I'm glad you have finally arrived. I am here to welcome you to Infinity, and to explain why it is you are here." },
+    { who: "john", art: "john", text: "Nella, you can't leave." },
+    { who: "nella", art: "nella", text: "Who are you?" },
+    { who: "john", art: "john", text: "I am John. John Boxley. Founder of the Boxley Game Development Company. Creator of Puzzle Attack. And I am trapped in Infinity. And now, so are you." },
+    { bg: "mirror_symbol", who: "nella", narration: true, text: "I took a lipstick off the vanity and drew the symbol on the mirror — a circle, with arrows inside it pointing outward." },
+    { who: "john", art: "john", text: "That is the symbol for chaos. The deal that was struck was for your soul, in exchange for magical powers." },
+    { who: "john", art: "john", text: "…It didn't work the way that I thought it would." },
+    { who: "nella", art: "nella", text: "Am I dead?" },
+    { who: "john", art: "john", text: "Not yet." },
+    { bg: "mirror_body", who: "nella", narration: true, text: "He wiped the lipstick away with his sleeve and tapped the glass. The mirror turned into a screen. And on the screen, I saw myself." },
+    { who: "nella", narration: true, text: "Not the avatar. Me. Cross-legged in front of the television, gone grey, my eyes rolled back, a little blood at my ear." },
+    { who: "nella", art: "nella_scream", text: "What do you mean, \"not yet\"? What's WRONG with me?" },
+    { who: "john", art: "john", text: "You must return to your body within one hour of initiating the ritual, or you will die." },
+    { who: "john", art: "john", text: "Time works differently here. A day in Infinity is a minute in the real world. So you still have fifty-nine minutes and about thirty seconds." },
+    { who: "nella", art: "nella", text: "Does that mean everyone else here is dead?" },
+    { who: "john", art: "john", text: "I suppose that depends on your philosophy of life. But yes — for all of us, there is no physical body left. There is nowhere to go." },
+    { who: "nella", narration: true, text: "I sank to my knees. He waited. After a while he offered me a hand up, and I took it, and I let the man who trapped me here hold me." },
+    { who: "john", art: "john", text: "I'm sorry, Nella." },
+    { who: "john", art: "john", text: "When you're ready, come see me at the library. I'll be waiting for you." }
+  ];
+
   // ---- 2. WALK-AROUND: rooms, exits, and NPCs to talk to ------------------
   // Coordinates are in a 320x200 virtual room (matches the other games' 2x
   // pixel-scale convention). player start position is per-room.
@@ -642,12 +675,25 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "john", x: 225, y: 158, art: "john", sprite: "john_top",
+          id: "johnStranger", x: 225, y: 158, art: "john", sprite: "john_top",
+          unless: "johnToldMe",
+          counterKey: "john_before",
           lines: [
-            "I am John Boxley. Creator of Puzzle Attack. I am trapped in Infinity. And now, so are you.",
-            "A deal was struck for your soul, in exchange for magical powers. It didn't work the way I thought it would.",
-            "You must return to your body within one hour of the ritual, or you will die. A day in Infinity is a minute in the real world.",
-            "Only one player has ever escaped Infinity. When you're ready to hear how… come find me here."
+            "A hooded man, hunched, tired enough to fall asleep standing up.",
+            "He looks at you as though he already knows your name, and says nothing at all."
+          ]
+        },
+        {
+          // Before the mirror scene he is a stranger in a hood who knows your
+          // name; after it, he is the man who told you what you are. The
+          // reveal lives in JOHN_CUTSCENE now, so these are the follow-up.
+          id: "john", x: 225, y: 158, art: "john", sprite: "john_top",
+          needs: "johnToldMe",
+          lines: [
+            "You came. Good. Sit, if you like — nobody here is in a hurry but you.",
+            "Only one player has ever escaped Infinity. Anarchy. Anthony, before that.",
+            "I have several theories about how he did it and no proof of any of them. That is the honest answer, and I am done lying to you.",
+            "Keep duelling. Whatever the way out is, it runs through the panels — I built them, and they are the only thing here that is really mine."
           ]
         }
       ]
@@ -655,5 +701,6 @@ window.NEWSEY_STORY = (function () {
   };
 
   return { CHARACTERS: CHARACTERS, INTRO_CUTSCENE: INTRO_CUTSCENE, DREAM_CUTSCENE: DREAM_CUTSCENE,
+           JOHN_CUTSCENE: JOHN_CUTSCENE,
            WAKE_LINES: WAKE_LINES, ROOMS: ROOMS, RUNE_DOOR: RUNE_DOOR };
 })();

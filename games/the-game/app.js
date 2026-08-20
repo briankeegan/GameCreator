@@ -945,6 +945,26 @@
     bedLock = false;
   }
 
+  // The night's sleep the plot has between arriving and being told what you
+  // are. Fade down on her asleep, play the scene, and put her back on her feet
+  // beside the bed with the flag set — after which John is a person she has
+  // met rather than a stranger in the library.
+  function sleepIntoJohnScene() {
+    save.flags.johnToldMe = true;
+    persist();
+    fadeToBlack(function () {
+      startCutscene(STORY.JOHN_CUTSCENE, function () {
+        player.inBed = false;
+        player.bedSlide = null;
+        var spot = currentRoom.wakeSpot || currentRoom.playerStart;
+        placeOnFloor(currentRoom, spot.x, spot.y);
+        player.facing = "down";
+        persist();
+        fadeFromBlack();
+      }, true);
+    });
+  }
+
   // into: true climbs in, false gets up. Either way it's a movement over a
   // few frames, not a teleport — with the blanket line sliding down off her
   // (or back up over her) so she comes out from under the covers.
@@ -1018,6 +1038,13 @@
           // walk up to and talk at any more, you just get into it.
           persist();
           window.NewseyMenu.toast("Game saved.");
+          // …and the first time you sleep in the Infinity bed, you wake to a
+          // knock. That is where the plot puts John's scene, and it is the
+          // one beat the game had compressed into four lines of room
+          // dialogue. Fires once, on that bed only.
+          if (currentRoom === ROOMS.bedroom && save && !save.flags.johnToldMe) {
+            sleepIntoJohnScene();
+          }
         }
       }
       return;
