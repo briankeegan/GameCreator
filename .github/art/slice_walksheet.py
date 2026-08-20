@@ -17,10 +17,16 @@ import numpy as np
 def find_gridlines(im):
     a = np.array(im.convert("RGB"))
     h, w, _ = a.shape
-    # The model renders "magenta" softer than pure #FF00FF (observed ~ (201,124,168))
-    # — key on R and B both clearly dominating G, not an exact hue.
+    # The model renders "magenta" all over the map — a softer desaturated
+    # pink (observed ~ (201,124,168)) in some sheets, a near-hot-pink with a
+    # much lower blue channel (observed ~ (255,0,110), which the old b>140
+    # floor here missed completely — Kat's sheet sliced as "0 gridlines
+    # found" and silently fell back to guessed even-thirds bounds, leaving a
+    # visible sliver of real divider line at the top of several frames) in
+    # others. Key on G being clearly dominated by BOTH R and B — true across
+    # every observed shade — rather than an absolute floor on B itself.
     r, g, b = a[:, :, 0].astype(int), a[:, :, 1].astype(int), a[:, :, 2].astype(int)
-    mag_mask = (r > 140) & (b > 140) & (g < r - 40) & (g < b - 20)
+    mag_mask = (r > 140) & (b > 50) & (g < r - 40) & (g < b - 20)
     row_frac = mag_mask.mean(axis=1)
     col_frac = mag_mask.mean(axis=0)
     # Row dividers run edge-to-edge (rarely crossed by a character), so a high
@@ -83,7 +89,7 @@ def cut_and_trim(im, y0, y1, x0, x1):
     # kill any stray magenta fringe from the divider line too, dilated a
     # couple px since a soft divider leaves a faint halo of its own.
     r, g, b = a[:, :, 0].astype(int), a[:, :, 1].astype(int), a[:, :, 2].astype(int)
-    mag = (r > 120) & (b > 120) & (g < r - 25) & (g < b - 10)
+    mag = (r > 120) & (b > 40) & (g < r - 25) & (g < b - 10)
     dil = mag.copy()
     for dy in (-3, -2, -1, 0, 1, 2, 3):
         for dx in (-3, -2, -1, 0, 1, 2, 3):
