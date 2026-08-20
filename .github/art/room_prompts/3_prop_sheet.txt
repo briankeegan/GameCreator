@@ -1,0 +1,30 @@
+# PASS 3 — everything you CANNOT walk on, plus flat ground cover. Substitute
+# {{N}} and {{ITEMS}}, then cut with:
+#   python3 .github/art/room.py props games/<id> <room> name1 name2 ...
+#
+# TWO TO FOUR ITEMS PER SHEET. A request for five portrait busts side by side
+# came back as a single close-up of one of them.
+#
+# Flat ground cover (flowers, tufts, a rug) goes on its own sheet — see the
+# variant at the bottom — because it is drawn from directly above, not upright.
+
+A SHEET OF {{N}} PROPS, drawn side by side in ONE image so they share a palette,
+a light and a scale. The background of the whole image must be FLAT PURE WHITE
+(#FFFFFF), completely uniform, with a crisp hard edge against each prop, a wide
+band of flat white between them so they never touch, and a generous white margin
+all round.
+
+All props drawn from the SAME gently-angled top-down RPG view the game's rooms
+use, standing upright, each sitting on the same invisible ground line at the
+bottom, seen whole from base to top, casting no shadow.
+
+LEFT TO RIGHT: {{ITEMS}}
+
+Rich saturated pixel-art rendering with confident dark outlines, matching this
+game's room art. No ground, no grass, no scene, no room, no people, no text —
+only the props on flat white.
+
+# ---- variant: FLAT ground cover ------------------------------------------
+# ...These are FLAT patches seen from directly above, lying on the ground like a
+# rug — NOT standing up, NO stems seen from the side, NO height, NO shadow. Each
+# patch roughly oval and about twice as wide as it is tall.

@@ -55,6 +55,27 @@ jobs:
           done
           exit $status
 
+      # Rooms built to the three-pass standard (docs/ROOM_ART_STANDARD.md):
+      # the background is ONLY the walkable surface and everything else is a
+      # prop, so the collision mask is the plate's own silhouette. Every check
+      # in `room.py verify` is a bug that actually shipped — a plate that
+      # didn't fill the frame (which is the ROOM being smaller than its frame,
+      # since the plate is the walkable area), a playerStart sitting inside its
+      # own exit trigger so the door never armed, a prop footprint covering a
+      # doorway, art that doesn't exist, flat ground cover carrying a
+      # footprint, and dead floorPoly/obstacles contradicting the mask. Rule ->
+      # tool -> gate, same as the room exits and the sprite sheets above.
+      - name: Verify room props and floor plates
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          status=0
+          for d in games/*/; do
+            [ -f "$d/story.js" ] || continue
+            echo "== $d =="
+            python3 .github/art/room.py verify "${d%/}" || status=1
+          done
+          exit $status
+
       # Shipped sprite sheets: no empty cells (the cutter silently produced
       # nothing for one) and no colour outside the game's lockedPalette (art
       # that bypassed the cutter). Both have happened. Rule lives in

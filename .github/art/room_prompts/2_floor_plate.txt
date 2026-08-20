@@ -1,0 +1,23 @@
+# PASS 2 — the walkable surface, and ONLY that. This one ships as
+# art/bg-<room>.png, and because it IS the walkable area its silhouette becomes
+# the collision mask. Substitute {{ROOM}} and {{FLOOR}}, then run:
+#   python3 .github/art/room.py plate games/<id> <room>
+#
+# Say the exclusion twice. "An empty room" is not how these models read a room,
+# and a plate that comes back with a wall or a pool in it silently becomes
+# walkable floor.
+
+{{ROOM}} — WALKABLE SURFACE ONLY. This image is the GROUND YOU CAN WALK ON and
+nothing else.
+
+Draw, on a background of FLAT PURE WHITE (#FFFFFF) with a crisp hard edge: one
+single connected shape of {{FLOOR}}, seen from the same gently-angled top-down
+RPG view as the game's rooms, filling most of the frame. Texture it richly —
+grain, wear, subtle colour variation — so it reads as a real surface rather
+than a flat fill.
+
+CRITICAL: absolutely NOTHING else in the frame. No walls, no water, no pools, no
+waterfalls, no fences, no trees, no statues, no fountains, no furniture, no
+flowers, no bushes, no people, no sky, no horizon, no background scenery of any
+kind, and no shadow cast by anything that isn't drawn. Everything that is not
+{{FLOOR}} must be FLAT PURE WHITE. No text.

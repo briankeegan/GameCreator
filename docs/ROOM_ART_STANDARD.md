@@ -229,54 +229,59 @@ width so she can stand at an edge without clipping into what is beside her.
 
 ---
 
-## 7. Pipeline — the tools, in order
+## 7. Pipeline — one front door
 
-Every step is a tool. None of this is meant to be done by eye: every single
-thing that went wrong with the reference room went wrong by eye and was
-invisible in the numbers.
+`.github/art/room.py` is the whole thing. Five scripts is four too many to
+remember at 11pm.
 
 ```
-# ---- pass 1: the composed scene ------------------------------------------
-#   generate it, keep it, never ship it -> art-src/<room>_scene.png
+room.py prompt scene --room "The Anarchy Garden"
+room.py prompt plate --room "The Anarchy Garden" --floor "mown grass and a flagstone path"
+room.py prompt props --n 2 --items "(1) a cherry tree; (2) a weeping-woman fountain"
+        # canned prompts, filled in — paste into "Generate game asset"
 
-# ---- pass 2: the walkable surface ----------------------------------------
-#   generate "the ground you can walk on and nothing else"
-#                                        -> art-src/<room>_floor.png
-#   then make it fill the frame:
-python3 .github/art/fit_plate.py \
-        games/<id>/art-src/<room>_floor.png \
-        games/<id>/art/bg-<room>.png --margin 3
-
-#   add <room> to FLOOR_PLATE_ROOMS, then the mask is free:
-python3 .github/art/build_walkmask.py games/<id> <room>
-python3 .github/art/show_walkmask.py games/<id> <room>    # and LOOK at it
-
-# ---- pass 3: props -------------------------------------------------------
-python3 .github/art/build_props.py \
-        games/<id>/art-src/<room>_props.png \
-        games/<id>/art  prop_cherry prop_fountain     # names, left to right
-
-# ---- placing them --------------------------------------------------------
-#   measure the composed scene: every non-floor object's ground point, height
-#   and width, with an overlay of what it found
-python3 .github/art/measure_props.py games/<id>/art-src/<room>_scene.png \
-        --floor grass --floor path --overlay /tmp/measured.png
-
-#   write the props block, then CHECK IT against the scene it came from
-python3 .github/art/preview_room.py games/<id> <room> \
-        --scene games/<id>/art-src/<room>_scene.png --mode side
-#   (--mode blend lays them over each other like tracing paper instead)
-
-#   optionally let it fit each prop: searches a window around each current
-#   position and scale for the best silhouette match and prints a corrected
-#   block. A SUGGESTION — it scores against a colour mask, so busy ground
-#   cover pulls it around.
-python3 .github/art/preview_room.py games/<id> <room> \
-        --scene games/<id>/art-src/<room>_scene.png --fit --floor grass --floor path
-
-# ---- doors ---------------------------------------------------------------
-node .github/scripts/check_room_exits.mjs games/<id>/story.js
+room.py plate  games/<id> <room>              # fit the plate + rebuild its mask
+room.py props  games/<id> <room> name1 name2  # cut a prop sheet, left to right
+room.py check  games/<id> <room>              # render the overlays to look at
+room.py verify games/<id>                     # the gate; runs in CI
 ```
+
+The order of a whole room:
+
+1. `room.py prompt scene …` → generate → keep at `art-src/<room>_scene.png`.
+   **Never shipped.** Measure everything off it — position, height, width, and
+   how MANY of each thing there are.
+2. `room.py prompt plate …` → generate → `art-src/<room>_floor.png`.
+3. `room.py plate games/<id> <room>` — fits the plate to the frame and rebuilds
+   the mask. Add the room to `FLOOR_PLATE_ROOMS` first.
+4. `room.py prompt props …` → generate → `art-src/<room>_props.png`, then
+   `room.py props games/<id> <room> prop_a prop_b`.
+5. Write the `props:` block from your pass-1 measurements.
+6. `room.py check games/<id> <room>` — **and actually look at both pictures.**
+7. `room.py verify games/<id>` and `check_room_exits.mjs`.
+8. Walk it in-game.
+
+The individual scripts are still there and still documented by `--help`:
+`fit_plate.py`, `build_props.py`, `build_walkmask.py`, `show_walkmask.py`,
+`measure_props.py`, `preview_room.py` (which also has a `--fit` mode that
+searches for each prop's best match and prints a corrected block — a
+suggestion, since it scores against a colour mask and busy ground cover pulls
+it around).
+
+### The gate
+
+`room.py verify` runs on every push (`pages.yml`, "Verify room props and floor
+plates"). Every check in it is a bug that shipped, and each was proved to fire
+by breaking the room on purpose:
+
+- a floor plate that doesn't fill the frame — since the plate IS the walkable
+  area, that is the room being smaller than its own frame;
+- `playerStart` inside its own exit trigger, so the door never arms;
+- a prop footprint covering a doorway, making it unreachable;
+- a prop pointing at art that doesn't exist — renders as nothing, silently;
+- flat ground cover carrying a footprint, or a standing prop missing one;
+- dead `floorPoly`/`obstacles` on a floor-plate room, contradicting the mask;
+- a walk mask that no longer matches its plate.
 
 **`--mode side` is the step that finds things.** The assembled room next to the
 scene it came from shows in one look everything the numbers hide. All four of

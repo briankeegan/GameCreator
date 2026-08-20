@@ -131,9 +131,11 @@ design discussion. `shared/` holds the components every game reuses
   3. **Gate** — a `pages.yml` step that runs the tool on every push, so a
      violation fails the build instead of shipping.
   Existing instances: room exits (`EXIT / DOOR CONVENTION` comment ->
-  `.github/scripts/check_room_exits.mjs` -> "Verify room exits"), and art
+  `.github/scripts/check_room_exits.mjs` -> "Verify room exits"), art
   (`.github/art/CHARACTER_SHEETS.md` -> `.github/art/verify_sheet.py` ->
-  "Verify shipped sprite sheets" / "Verify character frame sets"). Add all three
+  "Verify shipped sprite sheets" / "Verify character frame sets"), and rooms
+  (`docs/ROOM_ART_STANDARD.md` -> `.github/art/room.py verify` -> "Verify room
+  props and floor plates"). Add all three
   pieces together or the rule will not hold.
 - **New games ship sprite SHEETS. Individual frame files are legacy.** Newsey
   predates the standard and ships nine files per character; that is supported
@@ -222,6 +224,11 @@ design discussion. `shared/` holds the components every game reuses
     techniques that failed at the old version), a prop can be moved or
     replaced without regenerating the room, and scenery finally has depth —
     a painted tree is something you can only ever be fenced away from.
+  - **One front door: `.github/art/room.py`** — `prompt` (canned prompts for
+    each pass), `plate` (fit the floor plate + rebuild its mask), `props` (cut
+    a sheet), `check` (render the overlays), `verify` (the gate, wired into
+    `pages.yml`). Every check in `verify` is a bug that shipped, and each was
+    proved to fire by breaking a room on purpose.
   - **The shareable write-up is `docs/ROOM_ART_STANDARD.md`** — the rule, why
     it exists, how to prompt each layer, the pipeline commands and a
     checklist, written to be handed to someone who has never seen this repo.
