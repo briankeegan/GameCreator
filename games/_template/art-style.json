@@ -1,32 +1,20 @@
 {
   "_readme": "Art rules for TEMPLATE_GAME_NAME. Scaffolded empty — the first time this game needs art, FILL THIS IN before generating anything, then keep every later asset to it. These are not decoration: .github/art/build_sheet.py reads lockedPalette and enforces it on every sheet, so whatever is written here is what ships. The reason this file exists: art generated one frame at a time drifts — colours, proportions and pixel scale change between frames, and the character visibly changes identity while animating. Nothing catches that except rules applied mechanically.",
-
   "_status": "UNFILLED TEMPLATE — replace the descriptive fields with this game's actual look, and fill lockedPalette from the first sheet you generate.",
-
   "sheetRule": "NEVER generate a single frame on its own. Generate a WHOLE ROW of frames in ONE image — idle, walk, attack, left to right — because frames drawn together share proportions, palette and pixel scale by construction. A missing direction gets its own one-row image (front / side / back), never a single frame dropped into an existing set.",
-
   "camera": "DESCRIBE: the viewing angle every asset shares (e.g. top-down overworld, side-on platformer, three-quarter). Side views should all face the SAME direction; the game mirrors them.",
-
   "style": "DESCRIBE: the rendering language every asset shares — line weight, outline, how many colours, how shading works. Be explicit about what is FORBIDDEN, since that is what drifts: e.g. no dithering, no gradients, no anti-aliasing, no texture inside a colour block, no photo-realism. Enemies must use the SAME language as the hero; a finely-rendered creature next to a flat cartoon one reads as two different games.",
-
   "background": "SOLID FLAT PURE WHITE (#FFFFFF), completely uniform — NOT transparent. Asking the generator for transparency reliably produces a beige or gradient wash instead; build_sheet.py keys the flat white out afterwards, which works as long as the background is uniform and the subject has an outline.",
-
   "framing": "The whole set sits well inside the frame with a wide empty margin on all four sides — nothing touching or cut off by any edge (the bottom row is what gets clipped in practice, so say so explicitly in every prompt). Sprites must NOT overlap or touch: leave a clear gap between neighbours, or they cannot be cut apart cleanly.",
-
   "lockedPalette": [],
   "paletteRule": "FILL THIS IN with the hex colours of this game's first approved sheet (10-25 of them). build_sheet.py maps EVERY pixel of EVERY sheet to the nearest colour here, so once it is set, no later asset can drift into a different colour world. Add a colour only when a genuinely new material appears; never remove one that shipped art depends on.",
-
   "sizeRule": "Every sheet uses the same cell and the same art-pixel grid, and every sheet-based character is drawn at ONE on-screen cell size, so an art pixel is the same size for all of them. Relative size lives in the art — pass a smaller --body-height for a smaller creature — never in per-character draw sizes.",
-
   "mainCharacter": "DESCRIBE: species/build, silhouette, outfit, and the one or two features that must be unmistakable in EVERY frame including attacks (the feature that quietly vanishes in some frames is the usual failure).",
-
   "enemies": "DESCRIBE: the enemies, explicitly in the same rendering language as the main character.",
-
   "frames": "Per direction, in this order: idle, walk (a clearly different mid-stride pose — the code alternates it with idle), attack (a real drawn attack pose, not the idle stretched).",
-
+  "walkCycle": "FOR A TOP-DOWN GAME WITH DIRECTIONAL MOVEMENT: follow the repo character-sheet standard in .github/art/CHARACTER_SHEETS.md — walk is 3 rows (down, side-facing-RIGHT, up) x 3 columns [step, NEUTRAL, step], played [1,0,1,2] with idle pinned to the neutral column so nothing freezes mid-stride; attack is the same 3 rows x 3 columns [wind-up, STRIKE, recover] with damage landing on the strike frame; RIGHT is the side row mirrored with scale(-1,1) and is never drawn. Canonical prompts live in .github/art/walkgrid_prompt.txt and .github/art/attacksheet_prompt.txt — use them rather than writing your own.",
   "constraints": "No text, no labels, no numbers, no grid or graph-paper lines, no cell borders, no frames, no boxes, no drop shadows, no ground shadow, no UI, no watermarks.",
-
   "pipeline": "Raw generations live in games/TEMPLATE_GAME_ID/art-src/. Turn them into a shipped sheet with the shared cutter:\n  python3 .github/art/build_sheet.py --style games/TEMPLATE_GAME_ID/art-style.json --out games/TEMPLATE_GAME_ID/<name>_sheet.png --row art-src/<raw>.png [--row ...] [--blobs] [--body-height N]\nIt keys the background, cuts frames, scales each row by one factor, snaps to the art-pixel grid and the locked palette, and lays the frames out on a common baseline. Never hand-edit a shipped sheet — re-run the cutter.",
-
-  "pixelArt": true
+  "pixelArt": true,
+  "lockedDetails": "FILL THIS IN as soon as a character exists: the details that must be identical in every frame of every sheet — sleeves vs sleeveless, ears up or down, which hand holds the weapon, anything small enough to be forgotten when a prompt is retyped. A detail that lives only in the prompt you happened to type WILL change in the next generation."
 }

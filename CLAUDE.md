@@ -121,6 +121,57 @@ design discussion. `shared/` holds the components every game reuses
     is the same size for all of them.
   - Raw generations go in `games/<id>/art-src/`; shipped sheets are rebuilt
     from them, never hand-edited.
+- **Standards for this kind of game live in two documents, and they apply to
+  every new game of the same shape — not just the one they were written
+  from:** `.github/art/CHARACTER_SHEETS.md` (characters: walk frames,
+  attack frames, directions, locked details) and `docs/ROOM_ART_STANDARD.md`
+  (rooms: framing, emptiness, exits, and how the walkable-floor mask is
+  authored). Read them before generating art for a top-down game; extend
+  them when a generation exposes a gap, rather than solving it once in one
+  game's head.
+- **Character sheets follow one standard: `.github/art/CHARACTER_SHEETS.md`.**
+  Walk is 3 columns `[step, NEUTRAL, step]`; ATTACK is its own sheet, also 3
+  columns, `[wind-up, STRIKE, recover]`, with damage landing on the strike
+  frame — three frames because one lunging pose reads as a shove, and
+  because attacks are where weapons vary (swap the sheet, keep the timing).
+  Both are 3 rows: down, side-drawn-facing-RIGHT, up. Canonical prompts are
+  `.github/art/walkgrid_prompt.txt` and `.github/art/attacksheet_prompt.txt`
+  — use them instead of writing a new one, and fix them in place when a
+  generation exposes a gap.
+- **Details that drift belong in `art-style.json`, not in a prompt you
+  retype.** Sleeves vs sleeveless, ears, which hand holds the weapon —
+  Beverly's jacket came back sleeved in some frames and sleeveless in
+  others, which is what `lockedDetails` now exists to prevent.
+- **Top-down games with directional walking follow the RPG-Maker charset
+  convention.** This is the convention for that kind of game (the-game /
+  Newsey is the reference implementation) — a game with a different camera
+  or no walking doesn't need it, but any new top-down one should start
+  here rather than inventing its own frame scheme. Three frames per
+  character per direction, named `<id>_<dir>_<0|1|2>.png`:
+  - **Frame 1 (the MIDDLE one) is a true NEUTRAL pose** — standing still, legs
+    together, arms relaxed. It is used BOTH when idle AND as the resting beat
+    mid-walk. Frames 0 and 2 are the two mirrored step poses.
+  - While moving, playback is **`[1, 0, 1, 2]`** on a loop (middle → step →
+    middle → step) — NOT a 0→1→2 cycle. The instant movement stops it snaps
+    back to frame 1, so a character never freezes mid-stride. Asking the
+    generator for "three different walking poses" produces a set with no
+    correct idle frame and is the single most expensive way to get this wrong.
+  - **RIGHT is not its own art.** It reuses the LEFT frames mirrored with
+    `ctx.scale(-1, 1)` — for the player and every NPC alike. Only down, left
+    and up are ever generated. A LEFT row that isn't a true side profile
+    therefore breaks both directions at once.
+  - Generating a new character's set is ONE dispatch:
+    `.github/workflows/generate-walksheet.yml` (game, character id,
+    description, optional reference art). It builds the prompt from
+    `.github/art/walksheet_prompt.txt` — the single copy of the recipe, edit
+    it there — generates the 4x3 sheet, slices it with
+    `.github/art/slice_walksheet.py`, checks the full set came out, and
+    commits the frames. Wiring the character into the game's facing-frames
+    table is still a code change.
+  - Background for these sheets is **chroma-key green (#00FF00)** with magenta
+    (#FF00FF) gridlines, not white: white anti-aliases into a pale halo the
+    slicer can't fully remove. `games/the-game/WALK_SHEETS.md` records why,
+    and what else was tried.
   - **The generator will not draw a technical diagram of its own picture.**
     Tried, for room collision: one prompt asking for a two-panel sheet —
     the finished room on the left, the same room's walkable floor filled
@@ -131,6 +182,24 @@ design discussion. `shared/` holds the components every game reuses
     it will not draw a second, schematic view of a scene it just painted.
     Collision data has to be authored against the art afterwards — which
     is what `.github/art/build_walkmask.py` does.
+
+## Newsey ("the-game") — the plot is the spec
+
+- The game is an adaptation of a plot the owner wrote. `reference/the-game/
+  PLOT.md` is a DISTILLATION of it; the VERBATIM plot is the owner's long
+  comment on Clubhouse PR #30 (`clubhouse/the-game`). Read the verbatim one
+  before deciding what the game should be — the distilled file has lost
+  detail that turned out to decide things (it says "the Lounge (bar +
+  portals to duels)"; the original says the bar is on the right side and the
+  portal doorways are on the left, and that settled which way to mirror the
+  room).
+- Where the game and the plot disagree, the plot wins unless the owner says
+  otherwise. That call has been made once already: the duel portal could not
+  move to the bedroom mirror, because the plot reserves that mirror as the
+  menu/screen.
+- `games/the-game/TODO.md` carries the running list, including the design
+  for the duel-as-arena staging and John's mirror scene. Update it when the
+  owner adds to the list; don't keep the plan only in chat.
 
 ## Handling a clubhouse request
 
