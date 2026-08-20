@@ -1040,6 +1040,20 @@
     left: ["nella_human_left_0", "nella_human_left_1", "nella_human_left_2"],
     right: ["nella_human_left_0", "nella_human_left_1", "nella_human_left_2"]
   };
+  // loadArt() kicks off an async Image load and returns ok:false until it
+  // fires — fine for most art, but drawPlayer() doesn't wait: the FIRST time
+  // any given directional frame is needed (e.g. the very first step in a new
+  // direction, worst-case right after a hard refresh with a cold cache) it
+  // reads as "missing" for a frame or two and falls back to the single
+  // forward-facing portrait, mirrored — a visible flip to a totally different
+  // pose before the real frame lands. Reported live as "it flips left and
+  // right when I walk left". Kicking every frame's load off up front, before
+  // she ever takes a step, means by the time a direction is actually pressed
+  // the image is already loaded (or loading) and drawPlayer never needs the
+  // fallback.
+  [FACING_FRAMES, FACING_FRAMES_HUMAN].forEach(function (set) {
+    Object.keys(set).forEach(function (dir) { set[dir].forEach(loadArt); });
+  });
   function drawPlayer() {
     var human = currentRoom && currentRoom.playerForm === "human";
     var frameSet = human ? FACING_FRAMES_HUMAN : FACING_FRAMES;
