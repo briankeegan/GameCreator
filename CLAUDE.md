@@ -121,6 +121,32 @@ design discussion. `shared/` holds the components every game reuses
     is the same size for all of them.
   - Raw generations go in `games/<id>/art-src/`; shipped sheets are rebuilt
     from them, never hand-edited.
+- **Walk cycles follow the RPG-Maker charset convention.** Three frames per
+  character per direction, named `<id>_<dir>_<0|1|2>.png`:
+  - **Frame 1 (the MIDDLE one) is a true NEUTRAL pose** — standing still, legs
+    together, arms relaxed. It is used BOTH when idle AND as the resting beat
+    mid-walk. Frames 0 and 2 are the two mirrored step poses.
+  - While moving, playback is **`[1, 0, 1, 2]`** on a loop (middle → step →
+    middle → step) — NOT a 0→1→2 cycle. The instant movement stops it snaps
+    back to frame 1, so a character never freezes mid-stride. Asking the
+    generator for "three different walking poses" produces a set with no
+    correct idle frame and is the single most expensive way to get this wrong.
+  - **RIGHT is not its own art.** It reuses the LEFT frames mirrored with
+    `ctx.scale(-1, 1)` — for the player and every NPC alike. Only down, left
+    and up are ever generated. A LEFT row that isn't a true side profile
+    therefore breaks both directions at once.
+  - Generating a new character's set is ONE dispatch:
+    `.github/workflows/generate-walksheet.yml` (game, character id,
+    description, optional reference art). It builds the prompt from
+    `.github/art/walksheet_prompt.txt` — the single copy of the recipe, edit
+    it there — generates the 4x3 sheet, slices it with
+    `.github/art/slice_walksheet.py`, checks the full set came out, and
+    commits the frames. Wiring the character into the game's facing-frames
+    table is still a code change.
+  - Background for these sheets is **chroma-key green (#00FF00)** with magenta
+    (#FF00FF) gridlines, not white: white anti-aliases into a pale halo the
+    slicer can't fully remove. `games/the-game/WALK_SHEETS.md` records why,
+    and what else was tried.
   - **The generator will not draw a technical diagram of its own picture.**
     Tried, for room collision: one prompt asking for a two-panel sheet —
     the finished room on the left, the same room's walkable floor filled

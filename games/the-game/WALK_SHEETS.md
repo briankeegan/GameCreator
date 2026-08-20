@@ -35,6 +35,15 @@ classic green-screen color, chosen because it's rare in character
 palettes (verify per-character: don't use green for a character who
 actually wears green).
 
+**The recipe now has ONE canonical copy**, `.github/art/walksheet_prompt.txt`,
+and one-dispatch tooling around it:
+`.github/workflows/generate-walksheet.yml` (game, character id, description,
+optional references) builds the prompt from that file, generates the sheet,
+slices it with `.github/art/slice_walksheet.py`, verifies the full 3x3 set came
+out, and commits the frames. Edit the recipe there — the copy below is kept as
+the explanation of WHY it reads the way it does, not as a second source to
+retype from.
+
 Prompt template — fill in `{...}`:
 
 > A top-down RPG character walk-cycle sprite sheet, RPG-Maker-charset
