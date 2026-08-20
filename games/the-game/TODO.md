@@ -105,28 +105,38 @@ Three things that had to be right and were not, first time:
   standing inside her own board, and the result card came up over a pile with
   nobody visible under it.
 
-And two more after watching it: the panels fell as a tidy top-down wave, which
-reads as the board being *dismantled*, and they landed as intact squares
-stacked on her rather than crushed together.
-- **The collapse is scattered.** Each panel starts falling at its own moment
-  inside a `CRUSH_STAGGER` window — mostly a per-panel hash, with enough row
-  bias left in that the top still tends to go first. Deterministic, so the
-  same board always collapses the same way. The hash matters: the first one
-  XOR'd two big multiples of row and col and took it mod 997, which for
-  single-digit inputs barely moved — the cascade used half its window and
-  clumped, and the check caught it.
-- **The heap squashes.** `HEAP_SQUASH` is how flat each panel goes,
-  `HEAP_COLLAPSE` how far the pile settles, and they are separate numbers:
-  driving both off one factor turned the heap into a six-pixel smear with no
-  panel readable in it. Layer spacing is squeezed to fit the floor strip
-  rather than the depth being clamped — clamping stacked everything past the
-  cap at one spot, so a full board came down as three visible layers with the
-  rest hidden underneath, which is exactly the "they just land on top of you"
-  read. Squeezing means a fuller board makes a *denser* heap.
+**How it actually works, after five wrong versions.** The board's bottom edge
+is a GATE holding the stack up. When you lose, the gate disappears left to
+right, a column at a time; each column drops the moment its support goes, so
+the board collapses as a wave running across it. Every block falls straight
+down its own column under gravity and lands on whatever is already there —
+the arena floor, or the top of the block below it. Blocks never change size,
+never rotate, never move sideways, and never move up. The pile that results is
+her board with the gaps closed, sitting on the floor, on top of her. She is
+what squashes; the blocks are rigid.
 
-Watch the phone case. `cell` is already width-bound at ~29px on a 390px
-screen, so the floor strip costs height that is there; on a SHORT wide window
-it is not, so cap the strip the way `orbRoom` is capped and let the board win.
+The wrong versions, kept because each one names a trap:
+1. **Five anonymous grey slabs.** Read as scenery falling, not as the game.
+2. **The real panels, shrinking on the way down.** There is no perspective
+   change between the board and a floor a few pixels below it — the shrink
+   existed only to make a pre-computed pile fit in the wide layout's short
+   floor strip.
+3. **Panels squashing flat on landing.** Backwards. They crushed the person;
+   they do not crush themselves.
+4. **A full per-block physics sim** — scattered release order, tumbling,
+   bouncing, a height map, rolling off slopes. It spent its time building
+   scree: blocks skating out to both walls, blocks resting in mid-air over
+   gaps, and a heap that climbed hundreds of pixels UP the screen, so it read
+   as blocks rising while every one of them was falling. Conserving each
+   block's footprint means a 552px board has to go somewhere, and it went up.
+5. **The gate sliding out sideways.** There is nowhere for a board-width slab
+   to slide to; it read as an object flying off screen rather than as the
+   floor giving way. It disappears in place instead.
+
+The checks are the ones those failures earned: every block is board size and
+stays board size, nothing ever moves up, nothing comes to rest in mid-air
+(a settled block's bottom is the floor or another block's top), and the
+columns release left to right.
 
 ## John's mirror scene
 

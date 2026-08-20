@@ -382,7 +382,13 @@ window.NewseyDuel = (function () {
     // reading a menu.
     if (window.NewseyMenu && window.NewseyMenu.current()) return;
     if (s.countdown > 0) { s.countdown--; return; }
-    if (s.crush) s.crush.t++;
+    if (s.crush) {
+      stepCrush();
+      // The moment she is whole again, hand over to the result card.
+      var done = s.crush.restAt !== null &&
+                 s.crush.t >= s.crush.restAt + CRUSH_HOLD + CRUSH_GONE + CRUSH_BACK;
+      if (done && s.overDelay > 1) s.overDelay = 1;
+    }
     if (s.cheer > 0) s.cheer = Math.max(0, s.cheer - 0.012);
     if (s.over) {
       if (s.overDelay > 0 && --s.overDelay === 0) {
@@ -418,12 +424,13 @@ window.NewseyDuel = (function () {
       // comes down on them, they squash, dissolve, and re-form — and only then
       // does the card come up.
       startCrush(s.over === "win" ? "foe" : "player");
-      // Long enough for the WHOLE sequence, derived rather than guessed: a
-      // full board takes longer to come down than a nearly-empty one, and a
-      // fixed 150 cut the re-forming short whenever the loser topped out with
-      // a high stack — which is the common case, since that IS how you lose.
-      s.overDelay = Math.round(s.crush.impact + CRUSH_FLAT + CRUSH_GONE +
-                               CRUSH_BACK + 30);
+      // The card waits for the SIMULATION, not a countdown: how long the
+      // blocks take to stop moving depends on how many there were and how
+      // they piled, and no number computed up front knows that. overDelay is
+      // only a backstop now — stepCrush pulls it to 1 the frame the whole
+      // sequence finishes, and this cap means a wedged block can still never
+      // leave the match hanging.
+      s.overDelay = CRUSH_MAX_FALL + CRUSH_HOLD + CRUSH_GONE + CRUSH_BACK + 60;
     }
   }
 
@@ -747,23 +754,19 @@ window.NewseyDuel = (function () {
     // The crush: flattened, then gone, then whole again.
     var squash = 1, spread = 1, alpha = 1;
     if (crush) {
-      // Timed off the crush's OWN impact frame rather than CRUSH_FALL: what
-      // falls is a whole board plus the queued slabs, staggered, so the
-      // moment the mass is actually on her depends on how full her stack was.
-      // Keyed to the constant instead, she flattened while half the board was
-      // still in the air.
-      var k = crush.t, imp = crush.impact;
-      if (k < imp) {
-        // still standing, watching them come down
-      } else if (k < imp + CRUSH_FLAT) {
-        var f = (k - imp) / CRUSH_FLAT;
-        squash = 1 - 0.78 * f; spread = 1 + 0.55 * f;
-      } else if (k < imp + CRUSH_FLAT + CRUSH_GONE) {
-        var f2 = (k - imp - CRUSH_FLAT) / CRUSH_GONE;
-        squash = 0.22; spread = 1.55; alpha = 1 - f2;
-      } else {
-        var f3 = Math.min(1, (k - imp - CRUSH_FLAT - CRUSH_GONE) / CRUSH_BACK);
-        squash = 0.22 + 0.78 * f3; spread = 1.55 - 0.55 * f3; alpha = f3;
+      // SHE is the thing that squashes — the blocks are rigid. How far she
+      // goes down tracks how much of the board has actually landed on her
+      // (crushFlatten), so a nearly-empty board barely presses her and a full
+      // one puts her on the floor, without a frame count deciding it.
+      var f = crushFlatten(crush);
+      var fade = crushFade(crush);
+      squash = 1 - 0.78 * f;
+      spread = 1 + 0.55 * f;
+      alpha = fade.fighter;
+      // ...and she comes back whole, so the squash unwinds as she re-forms.
+      if (fade.back !== undefined) {
+        squash = 0.22 + 0.78 * fade.back;
+        spread = 1.55 - 0.55 * fade.back;
       }
     }
 
@@ -832,281 +835,336 @@ window.NewseyDuel = (function () {
     }
   }
 
-  // How long each beat of the crush lasts, in frames at 60Hz. CRUSH_STAGGER
-  // is the window the board empties over — panels start falling at scattered
-  // moments inside it, so the collapse cascades instead of dropping as one
-  // slab of board. CRUSH_FLAT is also the beat the landed heap squashes down
-  // over, so the pile finishes compacting exactly as the fighter does.
-  var CRUSH_FALL = 26, CRUSH_STAGGER = 30, CRUSH_FLAT = 12,
-      CRUSH_GONE = 26, CRUSH_BACK = 20;
-  // What the heap compresses to. "the concrete slabs fell and literally
-  // smashed me flat" — panels that keep their square shape read as blocks set
-  // down on top of her, so they lose two thirds of their height, spread as
-  // they go, and the whole pile collapses toward the floor with them.
-  // Two separate numbers, and they have to be: HEAP_SQUASH is how flat each
-  // PANEL goes, HEAP_COLLAPSE how far the PILE settles. Driving both off one
-  // factor at 0.34 turned the heap into a six-pixel smear of colour bands
-  // with no panel readable in it — flat, but flat like a spill rather than
-  // like a stack of blocks that came down on somebody.
-  var HEAP_SQUASH = 0.5, HEAP_SPREAD = 1.32, HEAP_COLLAPSE = 0.55;
+  // WHEN YOU LOSE, YOUR BOARD FALLS ON YOU.
+  //
+  // The board's bottom edge is the SLAB HOLDING IT ALL UP, and it gets pulled
+  // out from under her — withdrawing left to right. As each column loses its
+  // support that column drops, so the stack collapses as a wave running
+  // across the board rather than all at once. Every block falls straight down
+  // its own column until it lands on whatever is already down there: the
+  // arena floor, or the top of the block below it. That is the whole model.
+  // Blocks stay in their columns, they stay on top of each other, and the
+  // pile ends up being her board with the gaps closed, on the floor, on her.
+  //
+  // Getting here took four wrong versions, all of them clever:
+  //   * Five anonymous grey slabs. Read as scenery falling, not as the game.
+  //   * The real panels, but SHRINKING on the way down. There is no
+  //     perspective change between the board and a floor a few pixels below
+  //     it; the shrink existed only to make a pre-computed pile fit.
+  //   * Panels SQUASHING flat when they landed. Backwards — the blocks are
+  //     the rigid things here. She is what squashes.
+  //   * A per-block physics sim with a height map, scattered release order,
+  //     tumbling, bouncing and rolling. It spent its time building scree
+  //     slopes: blocks skating out to both walls, blocks hanging in mid-air
+  //     over gaps, and a heap that climbed hundreds of pixels UP the screen,
+  //     so it read as blocks rising while every one of them was falling.
+  // Every one of those simulated something nobody asked for. Things fall
+  // down, and they stay on top of each other.
+  var CRUSH_GRAVITY = 0.62;    // px per frame squared
+  var CRUSH_COL_STEP = 5;      // frames the slab takes to clear one column
+  var CRUSH_HOLD = 14;         // beat where it sits there, buried
+  var CRUSH_GONE = 26, CRUSH_BACK = 20;
+  var CRUSH_MAX_FALL = 240;    // backstop, so nothing can leave the match hanging
+
+  // Which sides of a falling garbage cell are outer edges, from where its
+  // slab-mates actually are right now. Two cells are joined when they belong
+  // to the same slab and their rects are still touching — so a slab that has
+  // sheared in half down the middle grows a new border down the split, which
+  // is what it should look like.
+  function crushGarbageEdges(c, blk) {
+    var e = { top: true, bottom: true, left: true, right: true };
+    var tol = Math.max(1, blk.w * 0.08);
+    for (var i = 0; i < c.blocks.length; i++) {
+      var o = c.blocks[i];
+      if (o === blk || !o.garbage || o.garbageId !== blk.garbageId) continue;
+      var dx = o.x - blk.x, dy = o.y - blk.y;
+      if (Math.abs(dy) < tol) {
+        if (Math.abs(dx - blk.w) < tol) e.right = false;
+        if (Math.abs(dx + blk.w) < tol) e.left = false;
+      } else if (Math.abs(dx) < tol) {
+        if (Math.abs(dy - blk.w) < tol) e.bottom = false;
+        if (Math.abs(dy + blk.w) < tol) e.top = false;
+      }
+    }
+    return e;
+  }
 
   function startCrush(side) {
     var L = state.layout, cell = L.cell;
     var pos = side === "player" ? L.player : L.foe;
     var stack = side === "player" ? state.player : state.foe;
     var g = groundLine();
-    var pieces = [];
+    var blocks = [];
 
-    // THE LOSER'S OWN BOARD IS WHAT FALLS. It used to be five anonymous grey
-    // slabs sized to the board, which read as scenery dropping rather than as
-    // the game itself coming down — "the attacks that Kat had created as
-    // represented by large concrete slabs" are the garbage, but what buries
-    // her is her own stack. Every panel is snapshotted exactly where it is
-    // being drawn this frame, and drawBoard then renders that side empty for
-    // the rest of the crush, so what rains down is precisely what was up
-    // there a frame ago: same colours, same columns, same shape.
+    // Snapshot the board EXACTLY as drawBoard is drawing it this frame — same
+    // columns, same rows, same rise, same cell size. drawBoard then renders
+    // that side empty, so what falls is precisely what was up there rather
+    // than a re-creation of it.
     var bottom = pos.y + L.boardH;
     var rise = ((16 - stack.displacement) / 16) * cell;
-    var cx = pos.x + L.boardW / 2;
-
-    // The panels SHRINK on the way down, from their size on the board to the
-    // size of rubble lying on the arena floor. Two reasons, and the second is
-    // why it isn't optional: the floor is further away than the board, so a
-    // panel that kept its board size would be a boulder next to a duellist
-    // drawn at floorRoom * 0.92; and in the wide layout the floor strip is
-    // barely taller than one cell, so a full-size pile buried the score line
-    // and read as the stack sliding down rather than falling on anybody.
-    // 0.26 of the floor strip, not 0.17: heapCap divides the strip by this, so
-    // a bigger panel just means a shorter pile of the same total height — but
-    // it is legibly a PANEL rather than a speck. At 0.17 the wide layout's
-    // heap was fifteen pixels tall and read as a smear.
-    var landCell = Math.max(4, Math.min(cell, L.floorRoom * 0.26));
-    var pileX = cx - (E.WIDTH * landCell) / 2;   // the heap is centred on HER
-
-    // How deep each column's pile goes, counted BEFORE anything is placed, so
-    // the layer spacing can be squeezed to fit the floor strip. Clamping the
-    // depth instead — which is what this did first — stacked every panel past
-    // the cap at the identical spot: a full board came down as three visible
-    // layers and a hidden pile underneath, which is exactly the "they just
-    // land on top of you" read. Squeezing the spacing instead means a fuller
-    // board makes a DENSER heap, panels overlapping each other more, which is
-    // what being crushed together should look like.
-    var counts = {}, maxCount = 1;
-    for (var cr = 1; cr <= E.HEIGHT + 1; cr++) {
-      for (var cc = 1; cc <= E.WIDTH; cc++) {
-        var cp = stack.panelAt(cr, cc);
-        if (!cp || cp.color === 0 || cp.state === "popped") continue;
-        counts[cc] = (counts[cc] || 0) + 1;
-        if (counts[cc] > maxCount) maxCount = counts[cc];
-      }
-    }
-    var layerStep = Math.min(landCell * 0.92,
-      (L.floorRoom * 0.85 - landCell) / Math.max(1, maxCount - 1));
-    layerStep = Math.max(landCell * 0.16, layerStep);
-    var perCol = {};
     for (var row = 1; row <= E.HEIGHT + 1; row++) {
       for (var col = 1; col <= E.WIDTH; col++) {
         var p = stack.panelAt(row, col);
         if (!p || p.color === 0 || p.state === "popped") continue;
-        var depth = perCol[col] || 0;
-        perCol[col] = depth + 1;
-        // A little scatter, deterministic per panel: a heap of rubble, not a
-        // second board stood on the floor.
-        var jit = ((row * 7 + col * 13) % 5 - 2) * landCell * 0.16;
-        // THE ORDER IS SCATTERED, not a tidy top-down wave. Ordering purely
-        // by row swept the board clean one line at a time, which reads as the
-        // board being dismantled; ordering purely at random reads as noise.
-        // So: mostly a per-panel shuffle, with enough row bias left in that
-        // the top of the stack still tends to go first. The hash is
-        // deterministic, so the same board always collapses the same way and
-        // a screenshot check can't be flaky.
-        // A proper integer mix, not one XOR. The first version XOR'd two big
-        // multiples of row and col and took it mod 997, which for row and col
-        // in single digits barely moved: the cascade used half its window and
-        // clumped. The shift-and-multiply pass is what actually spreads small
-        // inputs across the range.
-        var h = (row * 374761393 + col * 668265263) >>> 0;
-        h = (h ^ (h >>> 13)) >>> 0;
-        h = Math.imul(h, 1274126177) >>> 0;
-        var shuffle = ((h >>> 8) & 0xffff) / 0xffff;
-        var rowBias = (E.HEIGHT + 1 - row) / (E.HEIGHT + 1);
-        pieces.push({
-          x0: pos.x + (col - 1) * cell,
-          y0: bottom - row * cell - rise,
-          s0: cell,
-          x1: pileX + (col - 1) * landCell + jit,
-          s1: landCell,
-          // How far up the heap this one sits, in pixels, so the squash can
-          // collapse the whole pile toward the floor rather than flattening
-          // each panel where it lies.
-          lift: depth * layerStep,
+        // A garbage cell is only bordered where its neighbour is not part of
+        // the SAME slab — that is what makes a row of them read as one
+        // concrete block instead of six outlined empty boxes. The edges have
+        // to be worked out PER FRAME from where the blocks actually are (see
+        // crushGarbageEdges), not baked in here: columns let go at different
+        // moments as the slab withdraws, so a garbage row shears apart on the
+        // way down, and flags captured off the intact board leave the halves
+        // drawn as open-ended boxes with a side missing.
+        var face = p.isGarbage &&
+                   p.xOffset === Math.floor((p.gWidth - 1) / 2) &&
+                   p.yOffset === Math.floor((p.gHeight - 1) / 2);
+        blocks.push({
+          col: col,
+          x: pos.x + (col - 1) * cell,
+          y: bottom - row * cell - rise,
+          w: cell, h: cell,
+          vy: 0,
           color: p.color,
           garbage: !!p.isGarbage,
-          delay: (rowBias * 0.4 + shuffle * 0.6) * CRUSH_STAGGER,
-          spin: ((col + row) % 2 ? 1 : -1) * (0.18 + (row % 3) * 0.07)
+          garbageId: p.garbageId,
+          face: face,
+          // A column falls the moment the slab clears IT — so the collapse
+          // runs left to right with the withdrawal, and a column's own blocks
+          // all let go together, keeping their order on the way down.
+          release: (col - 1) * CRUSH_COL_STEP,
+          settled: false
         });
       }
     }
 
-    // ...and the garbage still queued overhead comes with it. Those ARE the
-    // concrete slabs of the plot, so they stay slabs, and they land last,
-    // on top of everything her own board left.
-    var slabs = [];
-    var head = g - L.floorRoom * 0.92 - 6;
-    var queued = Math.max(1, Math.min(5, stack.incoming.length));
+    // The garbage queued overhead comes down last, still slabs, landing on
+    // top of everything her board left.
+    var slabH = Math.max(4, L.floorRoom * 0.17);
+    var queued = Math.min(5, stack.incoming.length);
+    var lastRelease = 0;
+    for (var b = 0; b < blocks.length; b++) {
+      if (blocks[b].release > lastRelease) lastRelease = blocks[b].release;
+    }
     for (var i = 0; i < queued; i++) {
-      slabs.push({
-        from: head - i * 9,
-        // After the whole stagger window, so the slabs are genuinely the
-        // last thing down — tied to a row count instead, they landed in the
-        // middle of the cascade once the panels stopped falling in row order.
-        delay: CRUSH_STAGGER + 4 + i * 2,
-        sway: (i % 2 ? 1 : -1) * (2 + i)
+      blocks.push({
+        col: 0,                              // spans the board, see crushRestFor
+        x: pos.x + L.boardW * 0.17 + (i % 2 ? 1 : -1) * (2 + i),
+        y: g - L.floorRoom * 0.92 - 6 - i * (slabH + 3),
+        w: L.boardW * 0.66, h: slabH,
+        vy: 0, slab: true,
+        release: lastRelease + 6 + i * 3,
+        settled: false
       });
     }
 
-    // When the last thing lands. Everything downstream — the flatten, the
-    // dust, how long the result card waits — is measured from this rather
-    // than from CRUSH_FALL, so tuning the fall can't desync them.
-    var last = 0;
-    for (var a = 0; a < pieces.length; a++) last = Math.max(last, pieces[a].delay);
-    for (var b = 0; b < slabs.length; b++) last = Math.max(last, slabs[b].delay);
-    state.crush = { side: side, t: 0, pieces: pieces, slabs: slabs, pos: pos,
-                    stack: stack, impact: last + CRUSH_FALL };
+    // Where the next block to land in each column comes to rest. Starts at
+    // the arena floor; every landing lifts it by that block's height. This is
+    // the whole of the collision model, and it is why nothing can float, roll
+    // away, or stack into a pile that is anything but its column's contents.
+    var colTop = {};
+    for (var cc = 0; cc <= E.WIDTH; cc++) colTop[cc] = g;
+
+    state.crush = {
+      side: side, t: 0, pos: pos, stack: stack, ground: g,
+      cell: cell, boardBottom: bottom, boardW: L.boardW,
+      blocks: blocks, colTop: colTop,
+      moving: blocks.length,
+      contacts: 0,
+      restAt: null
+    };
   }
 
-  // Same gradient, same rounded corner, same glyph drawPanel gives it in the
-  // stack, so a falling panel is recognisably the panel that was just sitting
-  // there.
-  // One loose panel, drawn off the board about its CENTRE, with width and
-  // height given separately so a landed one can be squashed. Kept separate
-  // from drawPanel because that one needs a live engine panel and its stack
-  // for neighbour lookups, and these are a snapshot with neither.
-  function drawLoosePanel(ctx, piece, cx, cy, w, h, rot) {
+  // What a block rests on. A panel sees only its own column. A slab spans the
+  // board, so it rests on the highest column under it — it is one wide rigid
+  // thing and cannot sink into the gaps.
+  function crushRestFor(c, blk) {
+    if (!blk.slab) return c.colTop[blk.col];
+    var top = c.ground;
+    for (var col = 1; col <= E.WIDTH; col++) {
+      if (c.colTop[col] < top) top = c.colTop[col];
+    }
+    return top;
+  }
+
+  function crushLand(c, blk) {
+    if (!blk.slab) { c.colTop[blk.col] -= blk.h; return; }
+    var to = crushRestFor(c, blk) - blk.h;
+    for (var col = 1; col <= E.WIDTH; col++) {
+      if (c.colTop[col] > to) c.colTop[col] = to;
+    }
+  }
+
+  function stepCrush() {
+    var c = state.crush;
+    if (!c) return;
+    c.t++;
+    if (c.restAt !== null) return;
+
+    for (var i = 0; i < c.blocks.length; i++) {
+      var blk = c.blocks[i];
+      if (blk.settled || c.t < blk.release) continue;
+      blk.vy += CRUSH_GRAVITY;
+      blk.y += blk.vy;
+      var rest = crushRestFor(c, blk) - blk.h;
+      if (blk.y >= rest) {
+        blk.y = rest;
+        blk.vy = 0;
+        blk.settled = true;
+        c.moving--;
+        c.contacts++;
+        crushLand(c, blk);
+      }
+    }
+
+    if (c.moving <= 0 || c.t > CRUSH_MAX_FALL) {
+      for (var j = 0; j < c.blocks.length; j++) c.blocks[j].settled = true;
+      c.restAt = c.t;
+    }
+  }
+
+  // How flat the loser is: she goes down as the blocks actually pile onto
+  // her, not on a timer. A nearly-empty board barely presses her; a full one
+  // puts her on the floor.
+  function crushFlatten(c) {
+    if (!c) return 0;
+    if (c.restAt !== null) return 1;
+    return Math.min(1, c.contacts / Math.max(1, c.blocks.length * 0.55));
+  }
+
+  // Dissolve, then whole again: "I seemed to dissolve, and then reappear in
+  // front of Kat in one piece." The pile and the fighter both run off this,
+  // so it can't outlive her and leave the result card sitting over a heap
+  // with nobody visible under it.
+  function crushFade(c) {
+    if (!c || c.restAt === null) return { rubble: 1, fighter: 1 };
+    var k = c.t - c.restAt - CRUSH_HOLD;
+    if (k <= 0) return { rubble: 1, fighter: 1 };
+    if (k < CRUSH_GONE) {
+      var f = 1 - k / CRUSH_GONE;
+      return { rubble: f, fighter: f };
+    }
+    var b = Math.min(1, (k - CRUSH_GONE) / CRUSH_BACK);
+    return { rubble: 0, fighter: b, back: b };
+  }
+
+  // One block of the falling board. Same gradient, corner and glyph drawPanel
+  // gives it in the stack, so what comes down is recognisably what was
+  // sitting there. Kept separate from drawPanel because that one needs a live
+  // engine panel and its stack for neighbour lookups, and this is a snapshot
+  // with neither.
+  function drawLoosePanel(ctx, blk) {
     var pal = state.palette;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(rot);
-    if (piece.garbage) {
-      ctx.fillStyle = piece.color === 9 ? "#4a2f6a" : "#6a4a2f";
-      ctx.fillRect(-w / 2, -h / 2, w, h);
-      ctx.strokeStyle = "#c9a7ff";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(-w / 2, -h / 2, w, h);
-    } else {
-      var inset = Math.max(1, Math.round(Math.min(w, h) * 0.06));
-      var iw = w - inset * 2, ih = h - inset * 2;
-      var color = pal.colors[piece.color] || "#888";
-      var grad = ctx.createLinearGradient(0, -ih / 2, 0, ih / 2);
-      grad.addColorStop(0, lighten(color, 0.25));
-      grad.addColorStop(1, color);
-      ctx.fillStyle = grad;
-      roundRect(ctx, -iw / 2, -ih / 2, iw, ih, Math.max(2, Math.min(iw, ih) * 0.16));
+    if (blk.slab) {
+      var sg = ctx.createLinearGradient(0, blk.y, 0, blk.y + blk.h);
+      sg.addColorStop(0, "#9aa0ad");
+      sg.addColorStop(0.5, "#6d7482");
+      sg.addColorStop(1, "#40454f");
+      ctx.fillStyle = sg;
+      roundRect(ctx, blk.x, blk.y, blk.w, blk.h, 2);
       ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,0.35)";
+      ctx.strokeStyle = "rgba(20,18,26,0.75)";
       ctx.lineWidth = 1;
       ctx.stroke();
-      // The glyph squashes with the panel rather than staying a circle on a
-      // flattened block, which is what gave the first squash away.
-      ctx.save();
-      ctx.scale(1, Math.max(0.15, ih / Math.max(1, iw)));
-      drawShape(ctx, SHAPES[piece.color], 0, 0, iw * 0.26);
-      ctx.restore();
+      return;
     }
+    if (blk.garbage) {
+      var gx = blk.x, gy = blk.y, gc = blk.w;
+      var e = crushGarbageEdges(state.crush, blk);
+      ctx.save();
+      ctx.fillStyle = blk.color === 9 ? "#4a2f6a" : "#6a4a2f";
+      ctx.fillRect(gx, gy, gc, gc);
+      ctx.strokeStyle = "#c9a7ff";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (!e || e.top) { ctx.moveTo(gx, gy); ctx.lineTo(gx + gc, gy); }
+      if (!e || e.bottom) { ctx.moveTo(gx, gy + gc); ctx.lineTo(gx + gc, gy + gc); }
+      if (!e || e.left) { ctx.moveTo(gx, gy); ctx.lineTo(gx, gy + gc); }
+      if (!e || e.right) { ctx.moveTo(gx + gc, gy); ctx.lineTo(gx + gc, gy + gc); }
+      ctx.stroke();
+      // the slab's face, on its centre cell, same as on the board
+      if (blk.face) {
+        ctx.fillStyle = "rgba(255,255,255,0.75)";
+        var r = gc * 0.1;
+        ctx.beginPath(); ctx.arc(gx + gc * 0.35, gy + gc * 0.42, r, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(gx + gc * 0.65, gy + gc * 0.42, r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillRect(gx + gc * 0.3, gy + gc * 0.68, gc * 0.4, Math.max(1, gc * 0.07));
+      }
+      ctx.restore();
+      return;
+    }
+    var cell = blk.w;
+    var inset = Math.max(1, Math.round(cell * 0.06));
+    var size = cell - inset * 2;
+    var color = pal.colors[blk.color] || "#888";
+    ctx.save();
+    ctx.translate(blk.x + inset, blk.y + inset);
+    var grad = ctx.createLinearGradient(0, 0, 0, size);
+    grad.addColorStop(0, lighten(color, 0.25));
+    grad.addColorStop(1, color);
+    ctx.fillStyle = grad;
+    roundRect(ctx, 0, 0, size, size, Math.max(2, cell * 0.16));
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    drawShape(ctx, SHAPES[blk.color], size / 2, size / 2, size * 0.26);
     ctx.restore();
   }
 
   function drawCrushFall() {
     var c = state.crush;
     if (!c) return;
-    var ctx = els.ctx, L = state.layout;
-    var g = groundLine();
-    var cx = c.pos.x + L.boardW / 2;
+    var ctx = els.ctx;
+    var fade = crushFade(c);
+    if (fade.rubble <= 0) return;
 
-    // The rubble dissolves WITH her. "I seemed to dissolve, and then reappear
-    // in front of Kat in one piece" — if the heap outlives the dissolve she
-    // re-forms standing inside her own board, and the result card comes up
-    // over a pile with nobody visible under it, which is how this first
-    // looked. So the pile fades on exactly the CRUSH_GONE beat the fighter
-    // does, and is gone before CRUSH_BACK brings her back.
-    var gone = c.impact + CRUSH_FLAT;
-    if (c.t >= gone + CRUSH_GONE) return;
-    var fade = c.t <= gone ? 1 : 1 - (c.t - gone) / CRUSH_GONE;
     ctx.save();
-    ctx.globalAlpha = fade;
+    ctx.globalAlpha = fade.rubble;
 
-    // The board's panels, on their way down — and then squashing flat.
-    for (var i = 0; i < c.pieces.length; i++) {
-      var pc = c.pieces[i];
-      var k = Math.max(0, Math.min(1, (c.t - pc.delay) / CRUSH_FALL));
-      // How far THIS panel has compressed. It starts the moment this panel
-      // lands, so an early one is already flattening while a late one is
-      // still in the air, and they all finish together at impact + FLAT.
-      var sq = Math.max(0, Math.min(1,
-        (c.t - (pc.delay + CRUSH_FALL)) / CRUSH_FLAT));
-      var hs = 1 - (1 - HEAP_SQUASH) * sq;   // loses height under the weight
-      var ws = 1 + (HEAP_SPREAD - 1) * sq;   // and spreads sideways as it does
-
-      var e = k * k;                         // dropped, not lowered
-      var size = pc.s0 + (pc.s1 - pc.s0) * e;
-      var w = size * ws, h = size * hs;
-
-      // Where it comes to rest: the whole heap collapses with the panels, so
-      // the pile ends as a flat mat on the floor rather than a neat stack of
-      // squashed blocks each sitting at its old height.
-      // HEAP_SPREAD pushes the outer columns outward as they flatten, which
-      // on a phone walked the left edge of the pile off the canvas — the
-      // player's board sits close to the frame edge there.
-      var restCx = cx + (pc.x1 + pc.s1 / 2 - cx) * ws;
-      restCx = Math.max(w / 2 + 2, Math.min(L.w - w / 2 - 2, restCx));
-      var restCy = g - h / 2 - pc.lift * (1 - (1 - HEAP_COLLAPSE) * sq);
-
-      var fromCx = pc.x0 + pc.s0 / 2, fromCy = pc.y0 + pc.s0 / 2;
-      drawLoosePanel(ctx, pc,
-                     fromCx + (restCx - fromCx) * e,
-                     fromCy + (restCy - fromCy) * e,
-                     w, h,
-                     // spin while airborne, land square: a panel resting at an
-                     // angle reads as debris, and these are still the game's
-                     // own panels.
-                     pc.spin * (1 - e) * (1 - k));
-    }
-
-    // Then the queued slabs, on top of the heap.
-    var slabW = L.boardW * 0.66, slabH = Math.max(4, L.floorRoom * 0.17);
-    for (var j = 0; j < c.slabs.length; j++) {
-      var sl = c.slabs[j];
-      var sk = Math.max(0, Math.min(1, (c.t - sl.delay) / CRUSH_FALL));
-      if (sk <= 0) continue;
-      var se = sk * sk;
-      var sy = sl.from + (g - 3 - j * (slabH * 0.55) - sl.from) * se;
-      ctx.save();
-      ctx.translate(cx + sl.sway * (1 - se), sy);
-      var grad2 = ctx.createLinearGradient(0, -slabH / 2, 0, slabH / 2);
-      grad2.addColorStop(0, "#9aa0ad");
-      grad2.addColorStop(0.5, "#6d7482");
-      grad2.addColorStop(1, "#40454f");
-      ctx.fillStyle = grad2;
-      roundRect(ctx, -slabW / 2, -slabH / 2, slabW, slabH, 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(20,18,26,0.75)";
+    // THE GATE. It is what the board has been standing on all match, and when
+    // you lose it GOES — vanishing left to right, a column at a time, so you
+    // can see why each column lets go instead of columns just deciding to
+    // fall. Its left end is the release front: everything left of it is
+    // already unsupported and on its way down.
+    // Drawn earlier as a bar sliding out sideways, which made no sense —
+    // there is nowhere for a board-width slab to slide TO, and it read as an
+    // object flying off the screen rather than as the floor giving way.
+    var gone = (c.t / CRUSH_COL_STEP) * c.cell;
+    var gateLeft = c.pos.x + gone;
+    var gateRight = c.pos.x + c.boardW;
+    if (gateLeft < gateRight) {
+      // Thick enough to read as the thing holding the board up. At 0.16 of a
+      // cell it sat on the board's own frame line and vanished into it.
+      var sh = Math.max(4, c.cell * 0.24);
+      var sy = c.boardBottom + 2;
+      var sg = ctx.createLinearGradient(0, sy, 0, sy + sh);
+      sg.addColorStop(0, "#9aa0ad");
+      sg.addColorStop(0.55, "#6d7482");
+      sg.addColorStop(1, "#3a3f49");
+      ctx.fillStyle = sg;
+      ctx.fillRect(gateLeft, sy, gateRight - gateLeft, sh);
+      ctx.strokeStyle = "rgba(20,18,26,0.8)";
       ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.restore();
+      ctx.strokeRect(gateLeft, sy, gateRight - gateLeft, sh);
+      // the edge that is currently dissolving, so the front is visible
+      ctx.fillStyle = "rgba(255,209,102,0.55)";
+      ctx.fillRect(gateLeft, sy, Math.max(2, c.cell * 0.06), sh);
     }
 
+    for (var i = 0; i < c.blocks.length; i++) drawLoosePanel(ctx, c.blocks[i]);
     ctx.restore();
 
-    // dust where they land
-    if (c.t > c.impact && c.t < c.impact + CRUSH_FLAT + 10) {
-      var d = (c.t - c.impact) / (CRUSH_FLAT + 10);
+    // Dust, kicked up while blocks are still arriving. Tied to landings
+    // rather than a frame number, so it puffs when things actually hit.
+    if (c.restAt === null && c.contacts > 0) {
+      var d = Math.min(1, c.contacts / Math.max(1, c.blocks.length));
+      var gx = c.pos.x + state.layout.boardW / 2;
       ctx.save();
-      ctx.globalAlpha = 0.5 * (1 - d);
+      ctx.globalAlpha = 0.3 * (1 - d) + 0.08;
       ctx.fillStyle = "#c9c2d6";
       for (var q = 0; q < 7; q++) {
         var a = q * 0.9;
         ctx.beginPath();
-        ctx.arc(cx + Math.cos(a) * (10 + d * 40), g - 2 - Math.sin(a) * d * 12,
+        ctx.arc(gx + Math.cos(a) * (12 + d * 46), c.ground - 2 - Math.sin(a) * d * 14,
                 2.5 + d * 3, 0, Math.PI * 2);
         ctx.fill();
       }
@@ -1549,16 +1607,23 @@ window.NewseyDuel = (function () {
         // coming down rather than a handful of anonymous slabs.
         crush: state.crush && {
           side: state.crush.side, t: state.crush.t,
-          panels: state.crush.pieces.length,
-          slabs: state.crush.slabs.length,
-          impact: state.crush.impact,
-          colors: state.crush.pieces.map(function (p) { return p.color; }),
+          panels: state.crush.blocks.filter(function (p) { return !p.slab; }).length,
+          slabs: state.crush.blocks.filter(function (p) { return !!p.slab; }).length,
+          moving: state.crush.moving,
+          contacts: state.crush.contacts,
+          restAt: state.crush.restAt,
+          ground: state.crush.ground,
+          // Every block's size and where it is, so a check can assert they
+          // never shrink, never rise, and never come to rest in mid-air.
+          sizes: state.crush.blocks.map(function (p) { return p.w; }),
+          tops: state.crush.blocks.map(function (p) { return Math.round(p.y); }),
+          bots: state.crush.blocks.map(function (p) { return Math.round(p.y + p.h); }),
+          colors: state.crush.blocks.filter(function (p) { return !p.slab; })
+                       .map(function (p) { return p.color; }),
           // When each one starts falling, in board order, so a check can see
           // that the collapse is SCATTERED rather than a tidy top-down wave.
-          delays: state.crush.pieces.map(function (p) { return p.delay; }),
-          stagger: CRUSH_STAGGER,
-          // How flat the heap ends up, so the squash can't quietly go away.
-          squash: HEAP_SQUASH
+          delays: state.crush.blocks.filter(function (p) { return !p.slab; })
+                       .map(function (p) { return p.release; })
         },
         autoplay: function (difficulty) {
           state.autopilot = new window.PanelCpu.Cpu(state.player, {
