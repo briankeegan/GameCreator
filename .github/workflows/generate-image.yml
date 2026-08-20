@@ -53,6 +53,30 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
+      # A room background is NOT a game asset you can ask for here. Rooms are
+      # three passes (docs/ROOM_ART_STANDARD.md) and go through the "Generate
+      # room pass" Action, which is a button on .github/art/room.py. Asking
+      # this Action for one produces the OLD kind of room — scenery painted
+      # into the background — which silently invalidates that room's walk mask
+      # and every collision number measured against the picture it replaced.
+      #
+      # This guard exists because that is exactly what happened: bg-lounge.png
+      # was regenerated through here, landed, and nothing objected until a
+      # human noticed the room was broken.
+      - name: Refuse room backgrounds
+        env:
+          OUTPUT_PATH: ${{ inputs.output_path }}
+        run: |
+          case "$OUTPUT_PATH" in
+            */art/bg-*.png)
+              echo "::error::$OUTPUT_PATH is a ROOM BACKGROUND."
+              echo "Rooms are generated in three passes — use the 'Generate room pass'"
+              echo "Action (game, room, pass=scene|plate|props), or run"
+              echo "  python3 .github/art/room.py generate <game> <room> <pass>"
+              echo "See docs/ROOM_ART_STANDARD.md and .github/art/README.md."
+              exit 1;;
+          esac
+
       - name: Checkout
         uses: actions/checkout@v4
 

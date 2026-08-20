@@ -50,6 +50,19 @@ FLOOR_PLATE_ROOMS = {
     "garden",
 }
 
+# EVERY ROOM BELOW IS LEGACY. Do not copy this shape for a new room, and do
+# not read it as "how rooms work here" — it is how they worked before the
+# three-pass standard, and it is the majority only because these rooms predate
+# it. Each entry is hand-measured against a picture with its scenery painted
+# in, which means every one of these numbers silently becomes wrong the moment
+# that picture is regenerated.
+#
+# A new room, or a regenerated one, goes in FLOOR_PLATE_ROOMS above and has NO
+# entry here: its background is the walkable surface, its walls and furniture
+# are props, and its mask is the picture's own silhouette. See
+# docs/ROOM_ART_STANDARD.md, and generate it with .github/art/room.py — never
+# through "Generate game asset", which makes the old kind of picture and is
+# now blocked from writing bg-*.png for exactly that reason.
 ROOMS = {
     # bounds: for art drawn as a full rectangle with a dark border painted in,
     # where the alpha silhouette can't tell room from frame.

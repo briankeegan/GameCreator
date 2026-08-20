@@ -89,8 +89,78 @@ def read_room(game_dir, room):
                 has_obstacles=re.search(r"obstacles:\s*\[\s*\{", block) is not None)
 
 
+# A room's walk mask must be exactly what its CURRENT art produces. Checking
+# that by content, not by timestamps: a timestamp check cried wolf the first
+# time it saw a revert (art restored to its original bytes, mask identical,
+# but the commit was newer), and it can't see an art change committed in the
+# same commit as a stale mask either. Rebuild it in memory and compare.
+#
+# Until now this was only checked for floor-plate rooms — which left the
+# LEGACY rooms, still the majority, with no check at all. bg-lounge.png was
+# regenerated through the wrong Action, landed, and nothing objected: the
+# mask, the floorPoly and every obstacle in that room still described the
+# picture it had replaced.
+def stale_masks(game_dir):
+    art = os.path.join(game_dir, "art")
+    if not os.path.isdir(art):
+        return []
+    sys.path.insert(0, HERE)
+    try:
+        import build_walkmask as bw
+    except Exception as e:
+        return ["could not import build_walkmask (%s) — mask freshness unchecked" % e]
+    from PIL import Image
+    out = []
+    for name in sorted(os.listdir(art)):
+        if not name.startswith("bg-") or not name.endswith(".png"):
+            continue
+        room = name[3:-4]
+        mask_path = os.path.join(art, "walk-%s.png" % room)
+        if not os.path.exists(mask_path):
+            continue      # not every bg- is a room: cutscene backdrops share the prefix
+        if room not in bw.FLOOR_PLATE_ROOMS and room not in bw.ROOMS:
+            continue      # a background with a mask but no recipe — nothing to compare against
+        try:
+            want = rebuild_mask(bw, game_dir, room)
+        except Exception as e:
+            out.append("%s: could not rebuild its mask to compare (%s)" % (room, e))
+            continue
+        have = np.asarray(Image.open(mask_path).convert("L")) > 127
+        if want.shape != have.shape:
+            out.append("%s: walk-%s.png is %s, the art makes %s" % (room, room, have.shape, want.shape))
+        elif int((want ^ have).sum()) > 64:
+            out.append("%s: walk-%s.png doesn't match what bg-%s.png produces (%d px differ) "
+                       "— the art changed and the mask wasn't rebuilt. Run "
+                       "`python3 .github/art/build_walkmask.py %s %s`."
+                       % (room, room, room, int((want ^ have).sum()), game_dir, room))
+    return out
+
+
+def rebuild_mask(bw, game_dir, room):
+    """What build_walkmask would write for `room`, as an array, without writing."""
+    from PIL import Image, ImageDraw, ImageFilter
+    src = os.path.join(game_dir, "art", "bg-%s.png" % room)
+    alpha = Image.open(src).convert("RGBA").resize((bw.W, bw.H), Image.BILINEAR).split()[3]
+    mask = alpha.point(lambda a: 255 if a > 40 else 0)
+    if room not in bw.FLOOR_PLATE_ROOMS:
+        spec = bw.ROOMS[room]
+        draw = ImageDraw.Draw(mask)
+        draw.rectangle([0, 0, bw.W, spec["floorTop"]], fill=0)
+        if spec.get("bounds"):
+            x0, y0, x1, y1 = spec["bounds"]
+            draw.rectangle([0, 0, x0, bw.H], fill=0)
+            draw.rectangle([x1, 0, bw.W, bw.H], fill=0)
+            draw.rectangle([0, y1, bw.W, bw.H], fill=0)
+        for poly in spec["blocks"]:
+            draw.polygon(poly, fill=0)
+    for _ in range(bw.EROSION):
+        mask = mask.filter(ImageFilter.MinFilter(3))
+    return np.asarray(mask.convert("1").convert("L")) > 127
+
+
 def verify(game_dir):
     problems = []
+    problems += stale_masks(game_dir)
     plate_rooms = floor_plate_rooms()
     art = os.path.join(game_dir, "art")
     for room in sorted(plate_rooms):
