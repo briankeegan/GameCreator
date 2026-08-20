@@ -256,7 +256,6 @@
   ctx.imageSmoothingEnabled = false;
 
   var roomLabelEl = document.getElementById("roomLabel");
-  var interactHint = document.getElementById("interactHint");
   var talkBox = document.getElementById("talkBox");
   var talkPortrait = document.getElementById("talkPortrait");
   var talkPortraitFallback = document.getElementById("talkPortraitFallback");
@@ -611,7 +610,6 @@
       }
     });
     if (!onExit) exitsArmed = true;
-    interactHint.hidden = !nearestNpc();
     currentRoom.npcs.forEach(function (npc) { updateNpcWander(currentRoom, npc, dt); });
   }
 
@@ -918,7 +916,6 @@
     clearTransientState();
     cutsceneEl.classList.add("hidden");
     document.getElementById("touchControls").hidden = true;
-    interactHint.hidden = true;
     roomLabelEl.textContent = "";
     currentRoom = null;
     sizeStage();

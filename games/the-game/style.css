@@ -71,21 +71,6 @@ html, body {
   color: #e8d9ff;
 }
 
-.interact-hint {
-  position: absolute;
-  /* Along the top, where the room name used to be: the bottom edge of a room
-     can now hold a doorway (the way back), and the hint sat right on it. */
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(10, 5, 20, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 20px;
-  padding: 4px 12px;
-  font-size: 0.75rem;
-  pointer-events: none;
-}
-
 /* ---- Cutscene: a fixed art zone on top, a SOLID non-overlapping dialogue
    panel pinned below it — never a translucent box floating over the art, so
    nothing gets covered on a short mobile screen. ---- */
