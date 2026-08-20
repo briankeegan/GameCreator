@@ -413,8 +413,16 @@ design discussion. `shared/` holds the components every game reuses
     which is impossible if it weren't being called).
   - **"Generate image"** is freeform: inputs are just `prompt`,
     `output_path`, `size`. No persisted style — use it for one-off/
-    experimental images, or for a game that doesn't have an
-    `art-style.json` yet.
+    experimental images, for a game that doesn't have an `art-style.json`
+    yet, and — importantly — for **anything that is not a room or an in-room
+    sprite**: cutscene illustrations and character portraits.
+  - **"Generate game asset" applies the room camera to EVERYTHING.** Its
+    `art-style.json` says "top-down RPG interior room view", and that wins
+    over the prompt even when the prompt says, in capitals, to ignore it.
+    Three generations were burned learning this in one sitting: two cutscene
+    illustrations of a mirror seen straight-on and a sheet of two portrait
+    busts all came back as top-down rooms with a rug on the floor. If what
+    you want is not seen from the room camera, use "Generate image".
   - **"Generate game asset"** is for a consistent set: inputs are `game`,
     `asset` (what's different about THIS image), `output_path`, `size`.
     It reads `games/<game>/art-style.json` (fields: `camera`, `style`,

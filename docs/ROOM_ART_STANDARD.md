@@ -202,6 +202,13 @@ white marble statue.)
 **Keep sheets small.** A request for five portrait busts side by side came back
 as a single close-up of one of them. Two to four items is reliable; more is not.
 
+**Only rooms and in-room sprites go through the styled Action.** `art-style.json`
+pins the camera to "top-down RPG interior room view", and that beats the prompt
+even when the prompt says in capitals to ignore it — two straight-on cutscene
+illustrations and a sheet of portrait busts all came back as top-down rooms with
+a rug on the floor. Anything seen from another angle wants the freeform
+"Generate image" and a hand-written prompt.
+
 ---
 
 ## 6. Why the mask can't be generated or detected
