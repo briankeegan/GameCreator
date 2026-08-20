@@ -163,10 +163,20 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+
+          # CLEAR THE OLD FRAMES FIRST. The completeness check below asks "is
+          # there a file here", and a file left over from a PREVIOUS
+          # generation answers yes — so a slice that produced nothing for a
+          # row passed, the stale art got committed unchanged, and the run
+          # reported success. That is how May kept her old antlered,
+          # decapitated walk cycle through a regeneration that had already
+          # drawn her correctly, and how Chuck kept a bald orange back view
+          # after his sheet only yielded two rows. Deleting first means the
+          # check can only ever be satisfied by art this run actually cut.
+          rm -f "games/$GAME/art/${CHAR}"_{down,left,up}_{0,1,2}.png
+
           python3 .github/art/slice_walksheet.py "$SHEET" "games/$GAME/art" "$CHAR"
-          # A sheet the model framed badly can slice into a wrong number of
-          # frames and still "succeed" — fail here instead of committing a
-          # half-set that only shows up as a broken animation in-game.
+
           missing=""
           for dir in down left up; do
             for n in 0 1 2; do
@@ -178,6 +188,12 @@ jobs:
             echo "::error::slicer did not produce the full 3x3 set — missing:$missing"
             exit 1
           fi
+
+          # Present is not the same as usable. A sheet whose gridlines were
+          # misread cuts nine real files that happen to be slivers of coat, so
+          # run the same checker the build gate runs — it fails a set with a
+          # missing, duplicated or CROPPED frame.
+          python3 .github/art/verify_sheet.py frames "games/$GAME/art" "$CHAR" 
 
       - name: Commit the frames
         if: steps.gen.outputs.skipped != 'true'

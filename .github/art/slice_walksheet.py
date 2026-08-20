@@ -206,6 +206,29 @@ def main():
     n_rows = len(row_bounds) - 1
     n_cols = len(col_bounds) - 1
     print(f"detected grid: {n_rows} rows x {n_cols} cols")
+
+    # REFUSE AN IMPLAUSIBLE GRID rather than cutting something out of it.
+    #
+    # The whole method depends on the model actually drawing the magenta
+    # gridlines it was asked for, and it does not always: May's sheet came
+    # back with the art perfect — pink hair, blue robe, full heads, three
+    # clean rows — and ZERO magenta pixels anywhere in the image. With no row
+    # dividers to find, this happily reported "1 rows x 11 cols" and wrote
+    # three 30x343 slivers of coat as her front-facing walk cycle.
+    #
+    # A real sheet is 3 or 4 rows of 3. Anything else means the gridlines
+    # were not found, and every frame cut from it is meaningless — so stop
+    # here, loudly, instead of handing garbage to the next step. The caller
+    # can regenerate; a sheet with no grid is a failed generation, not a
+    # cutting problem.
+    if not (3 <= n_rows <= 4) or n_cols != 3:
+        raise SystemExit(
+            f"{sheet_path}: NO USABLE GRID — detected {n_rows} rows x {n_cols} cols, "
+            "expected 3 or 4 rows of 3. The magenta (#FF00FF) gridlines are "
+            "missing or unreadable, so the cell boundaries below are guesses "
+            "and every frame cut from them would be a slice of whatever "
+            "happened to be there. Regenerate the sheet."
+        )
     # The model reliably delivers 3 rows (down/left/up) regardless of a 4-row
     # ask — that's actually sufficient, RIGHT is mirrored from LEFT in-game.
     # Only fall back to the 4-row down/left/right/up mapping if a sheet
