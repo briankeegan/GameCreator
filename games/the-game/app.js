@@ -618,12 +618,16 @@
       // A duel can be a set: `firstTo: 5` on the NPC's duel block makes it
       // best-of, the way Kat's is in the plot ("First to five wins").
       firstTo: config.firstTo || 1,
+      // The duel screen stands both fighters on the arena floor under their
+      // own board, so it needs to know what they look like.
+      playerSprite: (save && save.room === "house") ? "nella_human_top" : "nella_top",
       opponent: {
         id: npc.id,
         name: config.name || character.name || npc.id,
         level: config.level || 3,
         difficulty: config.difficulty || "steady",
         theme: config.theme || "pink",
+        sprite: npc.sprite || (npc.id + "_top"),
         winLine: config.winLine,
         loseLine: config.loseLine
       },
