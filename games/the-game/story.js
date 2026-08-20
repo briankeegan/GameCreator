@@ -364,44 +364,78 @@ window.NEWSEY_STORY = (function () {
     lounge: {
       bg: "lounge",
       label: "The Lounge",
-      playerStart: { x: 206, y: 128 },
-      // bg-lounge.png is MIRRORED (the PNG itself was flipped horizontally,
-      // and build_walkmask.py's block for the bar with it), so the room now
-      // reads the way the map actually works: your room's door is on ITS
-      // right wall, so you come into this one through the arch on ITS LEFT,
-      // and the bar runs along the back-right. Every x below is 320-x of the
-      // measurements taken off the original art.
-      // The two ways out: the drawn arch on the back-left wall (opening
-      // x 80-114, floor at y ~86) back to your room, and the doorway at the
-      // bottom edge, toward the viewer, down to the library — the art has
-      // none there, so app.js draws that frame itself.
-      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[245,100],[68,100],[32,140],[58,188],[228,188],[270,140]],
+      // REGENERATED TO THE THREE-PASS STANDARD (docs/ROOM_ART_STANDARD.md).
+      // bg-lounge.png is the plank floor and NOTHING else, so its own
+      // silhouette is the collision mask and this room carries no floorPoly
+      // and no obstacles — everything you cannot walk on is a prop below.
+      // The old room was a single painted picture whose bar footprint had been
+      // measured by hand, and the picture was later regenerated underneath the
+      // measurements; that is the failure this shape exists to prevent.
+      //
+      // Laid out from art-src/lounge_scene.png, per the plot: "The bar was off
+      // to the right side... On the left, there were groups of people standing
+      // around several doorways." So the bar runs along the right, and the
+      // three ways out sit along the back wall left of it, at the x the scene
+      // draws them:
+      //     the arch   x 54-88   -> your room
+      //     the rune door x 110-146 -> wherever it feels like (RUNE_DOOR)
+      //     the portal x 166-204  -> the arena
+      // The back wall is six panels of prop_wall_* laid side by side at 57px
+      // centres, which is why the openings land on those centres. Their
+      // footprints form a continuous blocking band across the top of the
+      // floor, so the wall is a thing you walk up to rather than a line the
+      // mask happens to stop at.
+      playerStart: { x: 152, y: 150 },
+      props: [
+        // --- the back wall, left to right. Same h and w on every panel so the
+        // brick courses line up; the openings are panels 2, 3 and 4.
+        { art: "prop_wall_plain",  x: 13,  y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
+        { art: "prop_wall_arch",   x: 70,  y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
+        { art: "prop_wall_rune",   x: 127, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
+        { art: "prop_wall_portal", x: 184, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
+        { art: "prop_wall_plain",  x: 241, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
+        { art: "prop_wall_plain",  x: 298, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
+        // --- the bar, along the right. The shelf stands against the wall and
+        // the counter in front of it, so the player sorts between them.
+        { art: "prop_backbar", x: 272, y: 80,  h: 54, w: 100, base: { w: 100, h: 8 } },
+        { art: "prop_bar",     x: 266, y: 106, h: 44, w: 108, base: { w: 108, h: 16 } },
+        // --- tables down the left, where the scene puts them. Clear of the
+        // rune door's approach (see the corridor note under npcs).
+        { art: "prop_table", x: 34, y: 116, h: 30, base: { rx: 11, ry: 5 } },
+        { art: "prop_stool", x: 56, y: 120, h: 20, base: { rx: 6,  ry: 3 } },
+        { art: "prop_table", x: 30, y: 176, h: 30, base: { rx: 11, ry: 5 } },
+        { art: "prop_stool", x: 54, y: 180, h: 20, base: { rx: 6,  ry: 3 } },
+        { art: "prop_stool", x: 10, y: 172, h: 20, base: { rx: 6,  ry: 3 } }
+      ],
+      // Every exit is a band of floor directly under the doorway its wall
+      // panel draws — you stand on the threshold, you go through. They sit
+      // 2px below the wall's footprint, which is as close as a trigger can be
+      // to a door you cannot walk into.
       exits: [
-        { x: 80, y: 86, w: 34, h: 18, to: "bedroom", link: "yourDoor" },
+        { x: 54, y: 76, w: 34, h: 14, to: "bedroom", link: "yourDoor" },
         // Not a doorway to one room any more — this is the black rune door,
         // and where it puts you is a choice (see RUNE_DOOR above and
         // openRuneDoor in app.js). The first push lands you in the Garden by
         // accident, exactly as it does in the plot.
-        { x: 132, y: 182, w: 56, h: 10, rune: true, link: "rune", drawn: "threshold" }
+        { x: 110, y: 76, w: 36, h: 14, rune: true, link: "rune" },
+        // The portal to the duelling arena. It used to be an NPC you talked
+        // to, because no room art had ever drawn one; prop_wall_portal draws
+        // it now, so it is a door like the others and pairs with the arena's.
+        { x: 166, y: 76, w: 38, h: 14, to: "arena", link: "portal" }
       ],
-      // The bar's footprint on the floor (the old box sat entirely above the
-      // walkable area, so it blocked nothing).
-      obstacles: [ { x: 155, y: 95, w: 110, h: 30 } ], // the bar's footprint
-      // NOBODY STANDS IN FRONT OF THE RUNE DOOR. The trigger band is
-      // x 132-188 at y 182-192 and the player walks down the middle of the
-      // room to reach it, so an NPC anywhere in x 136-184 below y 160 fences
-      // off the room's main exit. That is exactly what happened the first
-      // time Kat's table was placed: Eric and Magma sat either side of the
-      // approach, and the walk test could no longer get through the door at
-      // all. Kat's table is therefore split around the corridor, not across
-      // it, and folk-test.js checks the corridor stays empty.
+      // NOBODY STANDS IN FRONT OF THE RUNE DOOR. Its trigger is x 110-146 and
+      // the player walks up the middle of the room to reach it, so an NPC
+      // anywhere in x 104-152 below y 90 fences off the room's main exit. That
+      // is exactly what happened the first time Kat's table was placed: Eric
+      // and Magma sat either side of the approach and the walk test could no
+      // longer get through the door at all. The tables are therefore split
+      // around the corridor, not across it, and folk-test.js checks it.
       npcs: [
         {
           // Flavor only here — per the plot, the Lounge is "the bar + portals
           // to duels", not the duel itself. Kat's actual fight happens in
-          // ROOMS.arena, reached through the portal below.
-          id: "kat", x: 204, y: 158, art: "kat", sprite: "kat_top",
+          // ROOMS.arena, through the portal on the back wall.
+          id: "kat", x: 214, y: 132, art: "kat", sprite: "kat_top",
           lines: [
             "Hello there. They call me Kat. What's your name?",
             "I'll buy you a drink — if you duel me. No better way to learn!",
@@ -410,7 +444,7 @@ window.NEWSEY_STORY = (function () {
           setsFlag: "duelInvite"
         },
         {
-          id: "may", x: 128, y: 132, art: "may", sprite: "may_top",
+          id: "may", x: 76, y: 128, art: "may", sprite: "may_top",
           lines: [
             "You again? Stay out of my way.",
             "Something doesn't add up about the new arrivals lately. Watch yourself.",
@@ -419,7 +453,7 @@ window.NEWSEY_STORY = (function () {
           setsFlag: "duelInvite"
         },
         {
-          id: "timothy", x: 222, y: 140, art: "timothy", sprite: "timothy_top",
+          id: "timothy", x: 244, y: 152, art: "timothy", sprite: "timothy_top",
           lines: [
             "Now, now, May. That's not how we WELCOME the new people. This is Rex. Be nice.",
             "My bracelet's all diamond. Yours will get there too, given time."
@@ -429,7 +463,7 @@ window.NEWSEY_STORY = (function () {
           // "You are NO COPPER RANKED PLAYER. So, WHO ARE YOU?" — May has him
           // by the collar when Nella walks in, and he says nothing at all,
           // which is the entire point of him.
-          id: "rex", x: 146, y: 132, art: "rex", sprite: "rex_top",
+          id: "rex", x: 62, y: 152, art: "rex", sprite: "rex_top",
           lines: [
             "The scruffy man in the deep-gold robe watches you look at his bracelet.",
             "Copper, set with amethysts. May said that meant something.",
@@ -438,9 +472,9 @@ window.NEWSEY_STORY = (function () {
         },
         // Kat's table — "Anyway, that's the gang! Michael, Diamond, Eric, and
         // Magma." Michael keeps his coffee shop in the library; the other
-        // three are here.
+        // three are here, all on the bar side of the corridor.
         {
-          id: "diamond", x: 196, y: 178, art: "diamond", sprite: "diamond_top",
+          id: "diamond", x: 224, y: 180, art: "diamond", sprite: "diamond_top",
           lines: [
             "I'm Diamond. I'm the only person you really need to meet around here.",
             "Don't listen to Eric. He thinks the sun rises on Anarchy.",
@@ -448,7 +482,7 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "eric", x: 116, y: 164, art: "eric", sprite: "eric_top",
+          id: "eric", x: 180, y: 158, art: "eric", sprite: "eric_top",
           lines: [
             "She only wishes she was the star around here. I'm afraid that honour goes to Anarchy.",
             "I'm Eric. Ignore the two of us, we do this constantly.",
@@ -456,7 +490,7 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "magma", x: 124, y: 180, art: "magma", sprite: "magma_top",
+          id: "magma", x: 196, y: 186, art: "magma", sprite: "magma_top",
           lines: [
             "…I'm Magma.",
             // The plot's actual beat: it happens DURING the handshake, before
@@ -467,24 +501,6 @@ window.NEWSEY_STORY = (function () {
             "I'm not trying to scare you. I just refuse to hide who I am any more.",
             "…Sorry. That was for Kat, not for you."
           ]
-        },
-        {
-          // PLOT.md: "the Lounge (bar + portals to duels)". The lounge art
-          // doesn't draw one, so it reads as a pool of light on the floor —
-          // the same flat glow a doorway gets, not a token standing up in the
-          // middle of the room. It stands on the LEFT of the room because the
-          // plot puts it there: "The bar was off to the right side... On the
-          // left, there were groups of people standing around several
-          // doorways that appeared to open into a swirling, purple void."
-          // Stepping through always works; the arena on the other side is
-          // empty until somebody in here agrees to meet you (duelInvite).
-          id: "portal", x: 104, y: 150, art: null, sprite: null, marker: "ENTER", link: "portal",
-          look: "portal",
-          lines: [
-            "A doorway standing open onto a swirling purple void. It hums like a board about to rise.",
-            "You step through."
-          ],
-          gotoRoom: "arena"
         }
       ]
     },

@@ -48,6 +48,12 @@ FLOOR_PLATE_ROOMS = {
     # waterfalls, the wall, the trees and the fountains are all props drawn on
     # top of it — so this set membership is the whole of its collision data.
     "garden",
+    # Regenerated to the three-pass standard. bg-lounge.png is the plank floor
+    # and nothing else: the back wall, its three ways out (the arch, the black
+    # rune door, the red portal), the bar and the furniture are all props drawn
+    # on top of it. Before this, the bar's footprint was hand-measured off a
+    # painted picture, and the picture had been regenerated underneath it.
+    "lounge",
 }
 
 # EVERY ROOM BELOW IS LEGACY. Do not copy this shape for a new room, and do
@@ -80,16 +86,6 @@ ROOMS = {
         "blocks": [
             [(20, 96), (74, 96), (76, 110), (22, 110)],          # mirror
             [(116, 96), (200, 96), (202, 118), (120, 118)],      # bed + nightstand
-        ],
-    },
-    "lounge": {
-        "floorTop": 95,
-        "blocks": [
-            # The bar. bg-lounge.png was mirrored horizontally so the arch
-            # sits on the LEFT wall (you come out of your room's right-hand
-            # door, so you come into this room from its left); the bar mirrored
-            # with it, hence the x values being 320-x of the originals.
-            [(302, 95), (168, 95), (168, 112), (284, 135), (302, 128)],  # the bar
         ],
     },
     "library": {

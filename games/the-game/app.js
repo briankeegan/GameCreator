@@ -1493,8 +1493,10 @@
     // and the mirror looks like a mirror. Walking up and pressing the talk
     // button is how you use anything, everywhere. What a marker gets instead
     // is the same flat pool of light on the floor a doorway gets: lying down
-    // in the scene rather than standing up in it. The one thing the room art
-    // never draws is the lounge's portal, so that one is drawn outright.
+    // in the scene rather than standing up in it. drawPortal is what a room
+    // whose art has no portal in it falls back to; the Lounge used to be one,
+    // and since it was regenerated to the three-pass standard its portal is a
+    // wall panel (prop_wall_portal) and an ordinary paired door, not an NPC.
     if (npc.marker) {
       if (npc.look === "portal") drawPortal(npc); else drawFloorGlow(npc);
       return;

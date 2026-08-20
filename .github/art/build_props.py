@@ -47,7 +47,35 @@ def keyed(img):
     if (alpha < 8).mean() > 0.05:
         return alpha > 128
     near_white = (arr[..., :3].astype(np.int16) > 255 - WHITE_TOL).all(axis=2)
-    return ~near_white
+    return dehalo(~near_white, arr)
+
+
+# A hard white key leaves the anti-aliased rim behind: the pixels where the
+# prop's outline fades into the background sit at luma ~190-225, above the
+# prop and below the key's threshold, so they survive as a pale fringe. On a
+# prop that stands ON something it is not subtle — the Lounge's wall panels
+# shipped with a 3px chalky line along their base, which read as a strip of
+# pale floor running the width of the room where the wall met the planks.
+#
+# Widening WHITE_TOL is the wrong fix: it eats genuinely light art (the
+# fountain's white marble) everywhere, not just at the edge. This only ever
+# removes pixels that are BOTH very light AND on the current boundary, three
+# rounds of it, so an interior highlight is untouched however white it is.
+HALO_LUMA = 195
+HALO_ROUNDS = 3
+
+
+def dehalo(mask, arr):
+    lum = arr[..., :3].mean(axis=2)
+    for _ in range(HALO_ROUNDS):
+        inner = mask.copy()
+        inner[1:, :] &= mask[:-1, :]
+        inner[:-1, :] &= mask[1:, :]
+        inner[:, 1:] &= mask[:, :-1]
+        inner[:, :-1] &= mask[:, 1:]
+        edge = mask & ~inner
+        mask = mask & ~(edge & (lum > HALO_LUMA))
+    return mask
 
 
 def blobs(mask):
