@@ -327,7 +327,7 @@
 
   var currentRoom = null;
   var exitsArmed = true; // false until the player steps clear of every doorway
-  var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down", inBed: false, gettingUp: null };
+  var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down", inBed: false, bedSlide: null };
   var walkPhase = 0, isWalking = false; // drives real walk-frame cycling (see drawPlayer)
   var lastGoodPlayerFrame = null; // last successfully-loaded frame drawPlayer showed — see drawPlayer
   var keys = {};
@@ -344,7 +344,8 @@
     currentRoom = ROOMS[roomId];
     exitsArmed = false;
     player.inBed = false;
-    player.gettingUp = null;
+    player.bedSlide = null;
+    bedPush = 0;
     var spot = at && at.x !== undefined ? at : currentRoom.playerStart;
     // The mask may not have loaded yet on the very first room; re-place her
     // once it has, so a spawn point that lands off the floor still resolves.
@@ -504,7 +505,12 @@
       if (wasTalking.npc.duel) startDuel(wasTalking.npc);
       if (wasTalking.npc.cutscene) {
         startCutscene(STORY[wasTalking.npc.cutscene], function () {
+          // You arrive in Infinity the same way you arrived in the game: in
+          // bed, coming up out of the black. Waking on your feet in the middle
+          // of a strange room read as a teleport, not as waking up.
           enterRoom("bedroom");
+          putToBed();
+          persist();
           fadeFromBlack();
         }, true);
       }
@@ -522,8 +528,6 @@
         roomNpcs(currentRoom).forEach(function (n) { if (n.id === wasTalking.npc.thenTalk) next = n; });
         if (next) { talking = { npc: next, lineIndex: npcLineCounters[next.id] || 0 }; renderTalk(); }
       }
-      // A bed is a save point: finishing its "lines" is the save.
-      if (wasTalking.npc.savePoint) { persist(); window.NewseyMenu.toast("Game saved."); }
       return;
     }
     npcLineCounters[key] = talking.lineIndex;
@@ -670,10 +674,8 @@
     player.y = spot.y - player.h;
   }
 
-  // NPCs are people (or furniture, for the save point), not floor markings —
-  // walking straight through one looked wrong and was reported live. Treated
-  // as a small circle at their feet; savePoint is skipped since a bed is
-  // already covered by the room's own furniture blocks.
+  // NPCs are people, not floor markings — walking straight through one looked
+  // wrong and was reported live. Treated as a small circle at their feet.
   var NPC_COLLIDE_RADIUS = 8;
   // Returns the blocking NPC (not just true/false) so a sustained shove can
   // be attributed to a specific person and made to step aside — see the push
@@ -683,7 +685,6 @@
     var present = roomNpcs(room);
     for (var i = 0; i < present.length; i++) {
       var npc = present[i];
-      if (npc.savePoint) continue;
       if (Math.hypot(cx - npc.x, cy - npc.y) < NPC_COLLIDE_RADIUS) return npc;
     }
     return null;
@@ -708,7 +709,7 @@
     w.ty = w.homeY + Math.sin(a) * r * 0.5; // flatter spread — rooms read wider than tall
   }
   function updateNpcWander(room, npc, dt) {
-    if (npc.savePoint || npc._noWander) return;
+    if (npc._noWander) return;
     var w = ensureWanderState(npc);
     if (w.pause > 0) { w.pause -= dt; return; }
     var dx = w.tx - npc.x, dy = w.ty - npc.y, d = Math.hypot(dx, dy);
@@ -759,6 +760,66 @@
   // otherwise re-trigger the conversation every frame.
   var padInteractWasDown = false;
 
+  // ---- bed ----
+  // Two rooms have a bed you sleep in (your old room upstairs, and the one
+  // Infinity gives you). Both declare the same three numbers in story.js:
+  // bedSpot (where she lies), bedClipY (the blanket line she's drawn behind)
+  // and wakeSpot (the floor she stands up onto). bedZone is the footprint you
+  // have to lean on to get back in.
+  var bedPush = 0;             // seconds spent walking into the bed
+  var BED_PUSH_TIME = 0.8;     // …before she climbs into it
+  // She climbs in while you're still holding the direction that put her
+  // there, and the first press while in bed means "get up" — so without this
+  // she bounced straight back out. Cleared the moment you let go.
+  var bedLock = false;
+
+  function putToBed() {
+    var bed = currentRoom && currentRoom.bedSpot;
+    if (!bed) return;
+    player.x = bed.x; player.y = bed.y;
+    player.facing = "down";
+    player.inBed = true;
+    player.bedSlide = null;
+    bedPush = 0;
+    bedLock = false;
+  }
+
+  // into: true climbs in, false gets up. Either way it's a movement over a
+  // few frames, not a teleport — with the blanket line sliding down off her
+  // (or back up over her) so she comes out from under the covers.
+  function startBedSlide(into) {
+    var room = currentRoom;
+    if (!room) return;
+    var to = into ? room.bedSpot : (room.wakeSpot || room.playerStart);
+    if (!to) return;
+    var clip = room.bedClipY !== undefined ? room.bedClipY : VH;
+    player.bedSlide = {
+      t: 0, dur: 0.6, into: !!into,
+      fromX: player.x, fromY: player.y,
+      toX: to.x, toY: to.y,
+      clipFrom: into ? VH : clip,
+      clipTo: into ? clip : VH
+    };
+    player.facing = into ? "up" : "down";
+    player.inBed = false;
+    bedPush = 0;
+  }
+
+  // Standing against the bed's footprint and still pressing toward it. dx/dy
+  // arrive normalised, so the dot product against the direction of the bed's
+  // middle is just "how squarely is she leaning on it".
+  function pushingIntoBed(room, dx, dy) {
+    var z = room.bedZone;
+    if (!z || !room.bedSpot) return false;
+    var fx = player.x + player.w / 2, fy = player.y + player.h;
+    if (fx < z.x - 14 || fx > z.x + z.w + 14) return false;
+    if (fy < z.y - 16 || fy > z.y + z.h + 18) return false;
+    var tx = (z.x + z.w / 2) - fx, ty = (z.y + z.h / 2) - fy;
+    var len = Math.sqrt(tx * tx + ty * ty);
+    if (len < 0.001) return true;
+    return (dx * tx + dy * ty) / len > 0.4;
+  }
+
   function update(dt) {
     if (!running || paused) return;
     // Playtime is wall-clock time with the game actually in front of you —
@@ -773,9 +834,9 @@
     // The gamepad's talk button is edge-triggered: held down it would
     // otherwise re-trigger every frame. It advances dialogue too, so a pad
     // alone can carry a whole conversation.
-    // Sliding out of bed: hold input until she's on her feet.
-    if (player.gettingUp) {
-      var g = player.gettingUp;
+    // Sliding into or out of bed: hold input until the slide finishes.
+    if (player.bedSlide) {
+      var g = player.bedSlide;
       g.t += dt;
       var k = Math.min(1, g.t / g.dur);
       // Ease in AND out: she pushes the covers back, swings out, and settles
@@ -786,7 +847,17 @@
       player.y = g.fromY + (g.toY - g.fromY) * ease;
       isWalking = true;
       walkPhase += dt * 9;
-      if (k >= 1) { player.gettingUp = null; isWalking = false; }
+      if (k >= 1) {
+        player.bedSlide = null;
+        isWalking = false;
+        if (g.into) {
+          player.inBed = true; bedPush = 0; bedLock = true;
+          // The bed IS the save point now — there is no invisible token to
+          // walk up to and talk at any more, you just get into it.
+          persist();
+          window.NewseyMenu.toast("Game saved.");
+        }
+      }
       return;
     }
 
@@ -809,20 +880,8 @@
     // walking straight off a mattress that is also an obstacle wouldn't work
     // anyway, since the bed blocks every direction out of it.
     if (player.inBed) {
-      if (dx || dy) {
-        // Getting up is a movement, not a teleport: she slides out from under
-        // the covers to the floor beside the bed over a few frames, and
-        // control picks up from wherever that lands her.
-        var spot = currentRoom.wakeSpot || currentRoom.playerStart;
-        player.gettingUp = {
-          t: 0, dur: 0.6,
-          fromX: player.x, fromY: player.y,
-          toX: spot.x, toY: spot.y,
-          clipFrom: currentRoom.bedClipY !== undefined ? currentRoom.bedClipY : VH
-        };
-        player.facing = "down";
-        player.inBed = false;
-      }
+      if (!dx && !dy) bedLock = false;
+      else if (!bedLock) startBedSlide(false);
       return;
     }
     if (dx || dy) {
@@ -843,8 +902,17 @@
       else if (okY) player.y = tryY;
       isWalking = true;
       walkPhase += dt * 9; // frame-cycle speed (~3 pose changes/sec); unrelated to player.speed so it stays readable
+      // Walking into the bed and staying there puts her back in it. No prompt
+      // and no marker over the bed: leaning on it is the gesture, the same way
+      // the first press out of it is "get up". The hold is what keeps it from
+      // firing on every accidental brush past the footboard.
+      if (pushingIntoBed(currentRoom, dx, dy)) {
+        bedPush += dt;
+        if (bedPush >= BED_PUSH_TIME) { startBedSlide(true); return; }
+      } else bedPush = 0;
     } else {
       isWalking = false;
+      bedPush = 0;
       pushedNpc = null; pushTimer = 0;
     }
     // exits
@@ -918,6 +986,83 @@
     });
   }
 
+  // The same shallow ellipse drawExits() lays on a threshold, centred on an
+  // interactable's own spot. Deliberately identical in shape and colour: one
+  // visual language for "you can go through this".
+  function drawFloorGlow(npc) {
+    var r = 15;
+    var px = player.x + player.w / 2, py = player.y + player.h;
+    var near = Math.hypot(px - npc.x, py - npc.y) < 30;
+    ctx.save();
+    ctx.translate(npc.x, npc.y);
+    ctx.scale(1, 0.42);
+    var glow = ctx.createRadialGradient(0, 0, 1, 0, 0, r);
+    glow.addColorStop(0, near ? "rgba(255,224,150,0.34)" : "rgba(255,209,102,0.13)");
+    glow.addColorStop(1, "rgba(255,209,102,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // PLOT.md / the verbatim plot: the lounge's duel portals are "doorways that
+  // appeared to open into a swirling, purple void". The room art doesn't draw
+  // one, and a generated PNG can't swirl, so it's drawn here: a standing oval
+  // of void with arms turning inside it, a hot rim, and the same pool of light
+  // on the floor every other way-through gets. It winds up as you approach.
+  function drawPortal(npc) {
+    var t = portalPhase;
+    var px = player.x + player.w / 2, py = player.y + player.h;
+    var d = Math.hypot(px - npc.x, py - npc.y);
+    var near = Math.max(0, Math.min(1, (46 - d) / 26)); // 0 far, 1 standing in it
+    var w = 15, h = 21;                                 // the doorway's opening
+    var cx = npc.x, cy = npc.y - h + 3;                 // stood on its own feet point
+
+    drawFloorGlow(npc);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(1, h / w);
+
+    // the void itself
+    var back = ctx.createRadialGradient(0, 0, 1, 0, 0, w);
+    back.addColorStop(0, "#05000c");
+    back.addColorStop(0.55, "rgba(58,12,110," + (0.85 + near * 0.15) + ")");
+    back.addColorStop(1, "rgba(120,40,200,0)");
+    ctx.fillStyle = back;
+    ctx.beginPath(); ctx.arc(0, 0, w, 0, Math.PI * 2); ctx.fill();
+
+    // arms of the swirl, wound in toward the middle
+    ctx.globalCompositeOperation = "lighter";
+    for (var a = 0; a < 4; a++) {
+      ctx.beginPath();
+      for (var k = 0; k <= 14; k++) {
+        var f = k / 14;
+        var r = w * (0.14 + f * 0.82);
+        var ang = a * Math.PI / 2 + t * (1.1 + near * 0.9) + f * 2.5;
+        var x = Math.cos(ang) * r, y = Math.sin(ang) * r;
+        if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = a % 2 ? "rgba(214,124,255," + (0.30 + near * 0.35) + ")"
+                              : "rgba(140,70,240," + (0.26 + near * 0.30) + ")";
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+    }
+    // the eye at the centre
+    var eye = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 0.3);
+    eye.addColorStop(0, "rgba(255,235,255," + (0.5 + near * 0.4) + ")");
+    eye.addColorStop(1, "rgba(200,120,255,0)");
+    ctx.fillStyle = eye;
+    ctx.beginPath(); ctx.arc(0, 0, w * 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
+
+    // hot rim, breathing
+    ctx.strokeStyle = "rgba(226,160,255," + (0.55 + near * 0.35) + ")";
+    ctx.lineWidth = 1.4 + Math.sin(t * 2) * 0.25;
+    ctx.beginPath(); ctx.arc(0, 0, w - 0.6, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
   function playerNearExit(ex) {
     var px = player.x + player.w / 2, py = player.y + player.h / 2;
     var dx = Math.max(ex.x - px, 0, px - (ex.x + ex.w));
@@ -979,10 +1124,15 @@
     // letter of their name stamped on it ("T", for The Front Door) sitting in
     // the middle of the floor. They get a small glowing marker over the thing
     // itself instead, and a word telling you what it does when you're close.
-    // No floating marker over scenery you can use — the bed looks like a bed
-    // and the TV looks like a TV. Walking up and pressing the talk button is
-    // how you use anything, everywhere, and the pause menu saves too.
-    if (npc.savePoint || npc.marker) return;
+    // No floating marker over scenery you can use — the door looks like a
+    // door. Walking up and pressing the talk button is how you use anything,
+    // everywhere. The one thing the art doesn't already draw is the lounge's
+    // portal, so a marker interactable gets the same flat pool of light on the
+    // floor a doorway gets — lying down in the scene, not standing up in it.
+    if (npc.marker) {
+      if (npc.look === "portal") drawPortal(npc); else drawFloorGlow(npc);
+      return;
+    }
     var spriteEntry = npc.sprite ? loadArt(npc.sprite) : null;
     var hasSprite = spriteEntry && spriteEntry.ok && spriteEntry.img.naturalHeight;
 
@@ -1090,7 +1240,7 @@
     // Same ground shadow every NPC gets — the player was the one figure in
     // the scene standing on nothing, a mismatch reported live as "floating".
     // Not while she's in bed: she isn't on the floor, she's on a mattress.
-    if (!player.inBed && !player.gettingUp) {
+    if (!player.inBed && !player.bedSlide) {
       ctx.fillStyle = "rgba(0,0,0,0.4)";
       ctx.beginPath();
       ctx.ellipse(player.x + player.w / 2, player.y + player.h, 11, 3.4, 0, 0, Math.PI * 2);
@@ -1109,13 +1259,14 @@
         ctx.beginPath();
         ctx.rect(0, 0, VW, currentRoom.bedClipY);
         ctx.clip();
-      } else if (player.gettingUp) {
-        // The blanket line drops away as she comes out from under it, so she
-        // emerges rather than appearing whole beside the bed.
-        var g2 = player.gettingUp;
+      } else if (player.bedSlide) {
+        // The blanket line drops away as she comes out from under it (and
+        // closes back over her going the other way), so she emerges from the
+        // covers rather than appearing whole beside the bed.
+        var g2 = player.bedSlide;
         var slide = Math.min(1, (g2.t / g2.dur) / 0.75);
         ctx.beginPath();
-        ctx.rect(0, 0, VW, g2.clipFrom + (VH - g2.clipFrom) * slide);
+        ctx.rect(0, 0, VW, g2.clipFrom + (g2.clipTo - g2.clipFrom) * slide);
         ctx.clip();
       }
       if (mirror) {
@@ -1152,10 +1303,13 @@
     entities.forEach(function (e) { e.draw(); });
   }
 
+  var portalPhase = 0;   // free-running, so the portal keeps turning while paused
+
   function loop(t) {
     if (lastTime === null) lastTime = t;
     var dt = Math.min(0.05, (t - lastTime) / 1000);
     lastTime = t;
+    portalPhase += dt;
     update(dt);
     render();
     requestAnimationFrame(loop);
@@ -1169,6 +1323,8 @@
     if (window.NewseyDuel.isActive()) window.NewseyDuel.stop();
     clearFade();
     player.inBed = false;
+    player.bedSlide = null;
+    bedPush = 0;
     talkBox.hidden = true;
     talking = null;
     keys = {};
@@ -1201,9 +1357,7 @@
       startCutscene(STORY.INTRO_CUTSCENE, function () {
         save.introSeen = true;
         enterRoom("home_bedroom");
-        var bed = currentRoom.bedSpot;
-        if (bed) { player.x = bed.x; player.y = bed.y; }
-        player.inBed = true;
+        putToBed();
         persist();
         fadeFromBlack(function () { showNarration(STORY.WAKE_LINES); });
       }, true);
@@ -1271,6 +1425,7 @@
     room: function () { return currentRoom && currentRoom.label; },
     npcIds: function () { return roomNpcs(currentRoom).map(function (n) { return n.id; }); },
     enterRoom: enterRoom,
+    putToBed: putToBed,
     startDuel: startDuel,
     duel: function () { return window.NewseyDuel.debug(); }
   };
