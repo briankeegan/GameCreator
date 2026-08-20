@@ -26,18 +26,86 @@ toward the camera is foreshortened to nothing.** State it per row:
 - **Side row** — a true fore/aft split: one foot planted ahead of the body,
   the other behind, a clear gap between them. This is the only row where the
   step reads as displacement.
-- **Front and back rows** — the step is SMALL. Both legs stay vertical and
-  clearly separated with background visible between them; one boot lifts a
-  couple of pixels (heel up, knee barely bent) while the other stays planted,
-  and the arms swing. That is all the room there is.
+- **Front and back rows** — see below. The step is SMALL, and most of the
+  animation is not in the legs at all.
 
-  Do not ask for a high knee or a march step. It was tried, twice: "left foot
-  forward" on a front view produced a muddle of legs with the difference
-  invisible, and the over-correction — thigh raised to horizontal — merged the
-  raised leg into the body and shipped as a brown blob where the legs should
-  be. At 16-bit scale a character's legs are perhaps ten pixels tall; a raised
-  thigh has nowhere to go. **What sells a front-on walk at this size is the
-  arm swing and a one-pixel body bob, not the legs.**
+### How a front or back walk is actually built
+
+The side view is easy: the legs scissor and the eye reads it. Front-on, the
+legs move almost entirely *toward and away from the camera*, where they are
+foreshortened to nothing — so a front walk drawn by describing the legs comes
+back as a muddle. Three attempts on Dog Punk failed exactly that way ("left
+foot forward" → invisible difference; "thigh raised" → a brown blob; "boot
+lifted a couple of pixels" → readable but still not a walk).
+
+The convention every pixel-art walk cycle tutorial converges on — RPG-Maker
+charsets, the finalbossblues walk-cycle series, the Lospec tutorials — builds
+the row out of four rules, and only one of them is about legs:
+
+1. **The head and torso are drawn ONCE and reused unchanged in all three
+   frames.** Same pixels, same position. Only the limbs and the vertical
+   offset differ. This is the single biggest one: when the head redraws
+   frame-to-frame, the character reads as jittering rather than walking, and
+   every "random bits in it" complaint against these rows traced back to a
+   body that was redrawn each frame.
+2. **The two step frames sit ONE PIXEL LOWER than the standing frame.** The
+   body dips as weight transfers. One pixel, on a ~64px sprite — it is the
+   bob, and it is felt more than seen.
+3. **The arms swing as a pendulum, and they carry the animation.** Opposite
+   arm to lifted leg: left boot up ⇒ RIGHT arm forward. Same-side arm and leg
+   is a waddle, and it is what an unspecified prompt produces about half the
+   time. To fake depth on a flat front view, draw the arm swinging *back*
+   slightly **smaller and darker**, and the arm swinging *forward* slightly
+   **larger and brighter**.
+4. **The legs do the bare minimum: lift, plant, push.** Both legs vertical,
+   clearly separated with background visible between them, one boot raised a
+   couple of pixels (heel up, knee barely bent), the other flat. Nothing more
+   fits — at this scale a character's legs are perhaps ten pixels tall, and a
+   raised thigh has nowhere to go.
+
+The tutorials are honest that (4) "does not accurately portray the movement of
+walking". It is the standard compromise, and it works *because* (1)–(3) are
+carrying it. Drop the reused torso or the arm swing and the leg lift alone
+reads as a twitch.
+
+The middle frame is the odd one out and stays simple: both feet flat on the
+ground at the same height, both legs straight, both arms hanging straight
+down, no dip. It is the standing pose, symmetrical.
+
+### …and then don't ask for it. Build it.
+
+All four rules above go in the prompt and they help, but they do not hold. The
+step frames are the ones a generator draws worst: across a dozen Dog Punk rows
+the standing frame came back clean nearly every time — two legs, a gap between
+them, both feet flat — while the step frames fused the legs into a dark mass,
+crossed them, splayed them sideways, or lifted **the same foot in both**, which
+is what "is the same foot moving twice?" looks like from the sofa. Six front
+rows in a row did the last one, including ones that named the feet, named the
+*viewer's* left and right, and asked outright for "frame 3 is frame 1
+mirrored".
+
+So ask for the pose it draws well and construct the two it does not:
+
+```
+python3 .github/art/build_sheet.py … --build-steps 0,2
+```
+
+The neutral frame's legs are separated by a gap of background. The cutter finds
+that gap, lifts the leg on one side of it — that is a step — then lifts the
+other, which is the opposite step. What this buys, all of it by construction
+rather than by hope:
+
+- the two steps are true opposites, so the same-foot repeat cannot happen;
+- everything above the legs is *the same pixels* in all three frames, which is
+  rule 1 enforced instead of requested;
+- the middle frame is a true neutral, because it is the frame that was drawn;
+- one clean pose per row is all a generation has to land.
+
+It costs the arm swing (rule 3) between the two step frames, which at 64px is
+a couple of pixels. That is a good trade for a walk that reads.
+
+**Only for front and back rows.** A side stride is a fore/aft split, not a
+lift, and the same cutter flag on a side row would produce nonsense.
 
 Frames 0 and 2 swap which leg does the work: left lifted, then right lifted
 (front/back), or left forward, then right forward (side).
@@ -102,20 +170,32 @@ other beat while walking.
 Settled after a long run of failures, all recorded above. Follow it and the
 first generation is usually the one that ships:
 
+0. **Use the Action**: `.github/workflows/generate-walkrow.yml` (game,
+   character, view). It does steps 1-6 below — builds the prompt from
+   `walkgrid_prompt.txt` plus the game's `art-style.json`, generates one row,
+   verifies it, and commits it only if it passes. The steps are written out
+   here because the Action is only that recipe made executable; if you are
+   doing it by hand, do these.
 1. **One row per image**, landscape 1536x1024, three sprites across.
 2. **Flat pure white background**, keyed out afterwards — never ask for
    transparency, it comes back as a beige wash.
 3. **Name the foot** (left forward / standing / right forward) and state the
-   row's camera angle **per frame**, including on the standing frame.
+   row's camera angle **per frame**, including on the standing frame. On a
+   front or back row also say: same head and torso in all three frames,
+   opposite arm to the lifted boot, body one pixel lower on the step frames.
 4. **State the margin**: wide empty space on all four sides, clear gaps
    between sprites, nothing touching an edge.
 5. **List the locked details** from the game's `art-style.json` in the prompt
    — sleeves, ears, which hand holds the weapon.
-6. **Verify before cutting**: `verify_sheet.py raw <row>.png --frames 3 --walk`.
-   It fails on clipping, wrong frame count, duplicate frames and a missing
-   neutral. Cutting an unverified row is how a bad set reaches the game.
-7. **Cut with `build_sheet.py`**, one `--row` per direction, `@height` per row
-   if the character is a different height from different angles.
+6. **Verify before cutting**: `verify_sheet.py raw <row>.png --frames 3 --walk`,
+   adding `--mirrored` on a front or back row. It fails on clipping, wrong
+   frame count, duplicate frames, a missing neutral, and the same foot lifted
+   in both step frames. Cutting an unverified row is how a bad set reaches the
+   game.
+7. **Cut with `build_sheet.py`**, one `--row` per direction, `--build-steps 0,2`
+   so the front and back steps are constructed rather than trusted, and
+   `@height` per row if the character is a different height from different
+   angles.
 8. **`medium` quality is enough** for flat cartoon pixel art; `high` is for a
    showcase asset, and costs about four times as much.
 
@@ -128,8 +208,13 @@ already do:
 - **The body stays square to the camera** in the front and back rows. Rotating
   into a three-quarter pose to suggest movement makes a character walking
   toward you read as walking sideways.
-- **A step is drawn per view**: fore/aft split in the side row, lifted knee in
+- **A step is drawn per view**: fore/aft split in the side row, lifted boot in
   the front and back rows. A leg moving toward the camera is invisible.
+- **The head and torso do not redraw between frames of a row.** Same pixels,
+  same place; only limbs and a one-pixel body dip change.
+- **Opposite arm to lifted leg.** Left boot up, right arm forward. Same-side
+  arm and leg is a waddle, and a prompt that does not say so gets one about
+  half the time.
 - **The defining feature survives every frame** — mohawk, hat, horns — from
   behind and mid-attack included. It is the first thing to vanish.
 - **The same character, every frame**: species, build, palette, and the
@@ -137,6 +222,16 @@ already do:
   weapon).
 - **A back view is a body, not a hairstyle**: head, shoulders, torso, legs,
   feet — not a shapeless mass of hair with no visible body under it.
+- **The head is a separate shape from the shoulders.** Say it explicitly, and
+  say what separates them: a head narrower than the shoulders, sitting above
+  the shoulder line, with background visible on both sides of it. Two
+  consecutive back rows for Dog Punk came back as one wide orange lump with a
+  mohawk on top and no head at all — from behind there is no face to anchor
+  the head, so the generator merges it into the torso unless told not to.
+- **Both legs and both boots visible in every frame**, with background between
+  them. "Legs vertical and separated" is not enough on its own: the step
+  frames still came back with the two legs fused into one brown mass while the
+  standing frame was fine.
 - **The weapon stays in the same hand** across walk and attack sheets.
 - **A blade slashes, it doesn't poke**: an arc across the body, not a thrust
   with the blade pointed along the direction of travel.
@@ -163,6 +258,15 @@ deliberately does not judge:
 
 Those need eyes, which is the point: the tool exists so the eyes are spent on
 the half that needs them, not on counting frames.
+
+One of these was tried mechanically and abandoned, so it is not tried again:
+"the head and torso must not redraw between frames" looks measurable — compare
+the top third of each frame and flag a row where it changes as much as the
+rest. Measured on real rows it does not discriminate at all. Frames are cropped
+independently before comparison, so a one-pixel difference in crop moves the
+whole head; the ratio came out 0.86 on the side row that was accepted by eye
+and 0.53 on the front row that was rejected — backwards. The rule stays in the
+prompt, where it demonstrably helps; it does not become a gate.
 
 ## Files
 
@@ -192,6 +296,25 @@ one `--row` per output row for exactly this reason.
 
 The cost is the same three images either way; the difference is that a bad
 grid wastes the whole generation, while a bad row wastes one third of it.
+
+## Don't generate a row from a reference image
+
+The obvious fix for rows drifting apart — generate the front and back rows
+*from* the approved side row, using "Generate referenced asset"
+(OpenAI `/v1/images/edits`) — was tried three times for Dog Punk and is worse
+than plain text generation, every time:
+
+- the output came back at visibly lower detail than the reference, with the
+  chunky pixel grid smeared;
+- the palette drifted anyway (orange-tan fur returned as flat yellow in one
+  run, dark brown in another) — the exact thing referencing was supposed to
+  prevent;
+- one row still rotated its third frame into a three-quarter pose.
+
+Referencing is for matching a *look* on a one-off asset (a scene, a portrait).
+For a sprite row, the text prompt plus the game's `art-style.json` and the
+cutter's palette snap holds the character together better, and the cutter
+normalises scale afterwards regardless.
 
 (The Newsey pipeline does use a single 4x3 grid — with magenta gridlines on
 green cells, which gives the model a much stronger layout signal, and even
