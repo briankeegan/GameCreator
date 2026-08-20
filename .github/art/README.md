@@ -162,6 +162,7 @@ Two callers, one script, is the fix.
 | [`verify_sheet.py`](verify_sheet.py) | Clipping, wrong frame count, duplicate frames, detached specks, off-palette colour, empty cells; and same-foot-twice in `raw --mirrored` mode. | A middle frame that is not a distinct neutral; same-foot-twice on a built sheet, which cannot tell a walk sheet from a legacy `[idle, walk, attack]` one. |
 | `room.py verify` | Props and floor plates — every check in it is a bug that shipped, each proved to fire by breaking a room on purpose. | — |
 | [`../scripts/check_art_registry.mjs`](../scripts/check_art_registry.mjs) | A tool, prompt or standard that is not listed on this page, or a path listed here that does not exist. | — |
+| [`../scripts/check_art_refs.mjs`](../scripts/check_art_refs.mjs) | An art id a game's `story.js` names with no file behind it, or a character with a hole in its nine walk frames. The runtime falls back to a coloured initial, so nothing else ever notices. | — |
 
 An unambiguous fact fails; a threshold on a metric warns. A borderline-but-
 correct set must never block a deploy, and a checker that cries wolf gets
