@@ -164,6 +164,12 @@
           <div class="settings-block-title">Keys</div>
           <div class="settings-status" id="settingsStatus" hidden></div>
           <div id="settingsKeys"></div>
+          <!-- Focused when a rebind starts on a touch device: it is what makes
+               the on-screen keyboard appear, so a key can actually be pressed
+               on a phone. Invisible, never typed into. -->
+          <input id="settingsKeyGrabber" class="settings-grabber" type="text"
+                 autocomplete="off" autocorrect="off" autocapitalize="off"
+                 spellcheck="false" aria-hidden="true" tabindex="-1" />
           <button class="settings-setall" id="settingsSetAll">Set all keys…</button>
         </div>
 

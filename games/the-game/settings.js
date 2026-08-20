@@ -143,6 +143,7 @@ window.NewseySettings = (function () {
       list: document.getElementById("settingsKeys"),
       reset: document.getElementById("settingsReset"),
       setAll: document.getElementById("settingsSetAll"),
+      grabber: document.getElementById("settingsKeyGrabber"),
       status: document.getElementById("settingsStatus"),
       modes: document.querySelectorAll("#settingsControls button")
     };
@@ -152,6 +153,7 @@ window.NewseySettings = (function () {
       captureQueue = ACTIONS.map(function (a) { return a.id; });
       settingAll = true;
       capturing = captureQueue.shift();
+      openKeyboardIfNeeded();
       render();
     });
     els.reset.addEventListener("click", function () {
@@ -171,6 +173,17 @@ window.NewseySettings = (function () {
         });
       })(els.modes[i]);
     }
+    // Some on-screen keyboards report keydown as "Unidentified" and only
+    // deliver the character through an input event, so take it from there too.
+    if (els.grabber) {
+      els.grabber.addEventListener("input", function () {
+        var typed = els.grabber.value;
+        els.grabber.value = "";
+        if (!capturing || !typed) return;
+        assignKey(typed.charAt(typed.length - 1));
+      });
+    }
+
     // Capturing a rebind has to beat the game's own key handling, so it runs
     // in the capture phase and stops the event there.
     window.addEventListener("keydown", function (e) {
@@ -181,20 +194,43 @@ window.NewseySettings = (function () {
         capturing = null;
         captureQueue = [];
         settingAll = false;
-      } else {
-        settings.keys[capturing] = [e.key];
-        persist();
-        capturing = captureQueue.length ? captureQueue.shift() : null;
-        if (!capturing) settingAll = false;
+        closeKeyboard();
+        render();
+      } else if (e.key && e.key !== "Unidentified") {
+        assignKey(e.key);
       }
-      render();
     }, true);
     return els;
+  }
+
+  // On a phone there is no keyboard until something asks for one. Focusing a
+  // hidden input from the tap that started the rebind is what raises it, so
+  // "press a key" is a thing the player can actually do there.
+  function openKeyboardIfNeeded() {
+    if (!els || !els.grabber || !isTouchDevice()) return;
+    try {
+      els.grabber.value = "";
+      els.grabber.focus({ preventScroll: true });
+    } catch (e) { /* not fatal — a hardware keyboard still works */ }
+  }
+  function closeKeyboard() {
+    if (els && els.grabber) els.grabber.blur();
   }
 
   function labelFor(actionId) {
     for (var i = 0; i < ACTIONS.length; i++) if (ACTIONS[i].id === actionId) return ACTIONS[i].label;
     return actionId;
+  }
+
+  // Binds one pressed key to whatever action is currently capturing, then
+  // moves on to the next one if this is a "set all keys" run.
+  function assignKey(key) {
+    if (!capturing) return;
+    settings.keys[capturing] = [key];
+    persist();
+    capturing = captureQueue.length ? captureQueue.shift() : null;
+    if (!capturing) { settingAll = false; closeKeyboard(); }
+    render();
   }
 
   function render() {
@@ -231,6 +267,7 @@ window.NewseySettings = (function () {
         : settings.keys[action.id].map(keyLabel).join(" / ");
       button.addEventListener("click", function () {
         capturing = capturing === action.id ? null : action.id;
+        if (capturing) openKeyboardIfNeeded(); else closeKeyboard();
         render();
       });
 
@@ -259,6 +296,7 @@ window.NewseySettings = (function () {
     capturing = null;
     captureQueue = [];
     settingAll = false;
+    closeKeyboard();
     if (els) render();
   }
 

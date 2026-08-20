@@ -799,3 +799,14 @@ html, body {
 .menu-toast.show { opacity: 1; }
 .menu-toast[hidden] { display: none; }
 
+/* Invisible, but must stay focusable — display:none or visibility:hidden would
+   stop it raising the on-screen keyboard. */
+.settings-grabber {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  border: 0;
+  padding: 0;
+  pointer-events: none;
+}

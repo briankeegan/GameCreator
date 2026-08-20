@@ -301,9 +301,18 @@
     }
     keys[e.key] = true;
     var pressed = {}; pressed[e.key] = true;
-    if (talking && SETTINGS.isDown("interact", pressed)) {
-      advanceTalk();
-      e.preventDefault();
+    if (SETTINGS.isDown("interact", pressed)) {
+      // The talk key both STARTS a conversation and advances one. It used to
+      // only advance, so walking up to someone and pressing it did nothing at
+      // all — tapping them was the only way in, which read as the key binding
+      // being broken.
+      if (talking) {
+        advanceTalk();
+        e.preventDefault();
+      } else if (running && !window.NewseyDuel.isActive() && cutsceneEl.classList.contains("hidden")) {
+        tryInteract();
+        e.preventDefault();
+      }
     }
   });
   window.addEventListener("keyup", function (e) { keys[e.key] = false; });
