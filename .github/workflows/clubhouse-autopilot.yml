@@ -520,12 +520,38 @@ jobs:
           # above already gated this change, so a direct push is safe. This
           # mirrors what generate-image.yml already does successfully.)
           git commit -m "Clubhouse request (automated) — PR #${{ steps.ctx.outputs.pr }}"
+          # Land on main. Two different things can go wrong here and they need
+          # opposite handling:
+          #   - a PUSH RACE (someone else pushed between our pull and our push)
+          #     is transient — pull again and retry.
+          #   - a REBASE CONFLICT (someone edited the same files) is not. The
+          #     old loop retried straight through it WITHOUT aborting the failed
+          #     rebase, so every later attempt died on "Pulling is not possible
+          #     because you have unmerged files" — six guaranteed-useless
+          #     retries, then a generic "hit a snag" with the real cause buried
+          #     in the log. Abort the rebase so the tree is clean, and stop with
+          #     a diagnostic naming the conflicting files.
           pushed=""
           for i in 1 2 3 4 5 6; do
-            if git pull --rebase origin main && git push origin HEAD:main; then pushed="yes"; break; fi
-            echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+            if git pull --rebase origin main; then
+              if git push origin HEAD:main; then pushed="yes"; break; fi
+              echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2)); continue
+            fi
+            conflicts=$(git diff --name-only --diff-filter=U | paste -sd', ' -)
+            git rebase --abort 2>/dev/null || true
+            echo "::error::rebase conflict against main in: ${conflicts:-unknown}"
+            {
+              printf 'My change collided with something else that landed on `main` while I was working'
+              [ -n "$conflicts" ] && printf ' — both sides changed: `%s`' "$conflicts"
+              printf '.\n\nI stopped rather than guess which version to keep. Ask me again and I will redo it on top of the current code.\n'
+            } > .autopilot/failure.md
+            exit 1
           done
-          if [ -z "$pushed" ]; then echo "::error::Could not push to main after retries"; exit 1; fi
+          if [ -z "$pushed" ]; then
+            echo "::error::Could not push to main after retries (push kept racing)"
+            printf 'I could not land the change: every push raced with another change going into `main`. Ask me again and I will retry.\n' > .autopilot/failure.md
+            exit 1
+          fi
 
           # A GITHUB_TOKEN push doesn't trigger Pages (recursion guard), so
           # dispatch the deploy explicitly.
