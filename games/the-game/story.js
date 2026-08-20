@@ -95,6 +95,8 @@ window.NEWSEY_STORY = (function () {
       bg: "house",
       label: "Your Father's House",
       playerStart: { x: 150, y: 155 },
+      // Before the deal/transformation — Nella is still fully human here.
+      playerForm: "human",
       // No walkable exit — you leave by finishing the TV conversation
       // (which plays DREAM_CUTSCENE and lands you in ROOMS.bedroom).
       exits: [],
@@ -131,8 +133,25 @@ window.NEWSEY_STORY = (function () {
       // Hand-placed from bg-bedroom.png: the door is on the right wall,
       // the mirror stands on the left and the bed is back-center-right —
       // both are blocked off so the player can't walk through them.
-      exits: [ { x: 262, y: 95, w: 20, h: 45, to: "lounge", label: "→ Out the door" } ],
-      obstacles: [ { x: 15, y: 60, w: 55, h: 75 }, { x: 150, y: 65, w: 85, h: 45 } ],
+      // arriveAt drops you a step INSIDE the next room, in front of the door
+      // you came out of — never on its threshold, or holding the same
+      // direction would walk you straight back through.
+      // Every exit box below was measured against the room's own background
+      // art (overlaid on the PNG at the game's 320x200 scale, not guessed):
+      // the box IS the drawn doorway, so walking into the picture of the door
+      // is what takes you through. Nothing else on screen is an exit.
+      // bg-bedroom.png: arched door on the right wall, opening x 222-248,
+      // threshold on the floor at y ~103.
+      exits: [
+        { x: 222, y: 90, w: 26, h: 16, to: "lounge", arriveAt: { x: 150, y: 150 } }
+      ],
+      // Furniture footprints where they actually meet the floor (the old boxes
+      // reached far into the room, and the bed's box covered the doorway, so
+      // the door could not be walked into at all).
+      obstacles: [
+        { x: 22, y: 95, w: 50, h: 12 },   // mirror
+        { x: 118, y: 95, w: 97, h: 13 }   // bed + nightstand
+      ],
       npcs: [
         {
           // The bed is the game's save point — stand at its foot and
@@ -179,8 +198,17 @@ window.NEWSEY_STORY = (function () {
       // Hand-placed from bg-lounge.png: the doorway to the library is on
       // the right wall; the bar counter spans most of the back wall and
       // is blocked off so the player can't walk through/behind it.
-      exits: [ { x: 262, y: 95, w: 20, h: 45, to: "library", label: "→ Library" } ],
-      obstacles: [ { x: 30, y: 55, w: 190, h: 38 } ],
+      // bg-lounge.png draws ONE door: the arch on the back-right wall (opening
+      // x 210-240, floor at y ~82) to the library. The way back to your room is
+      // the doorway you came in through, at the bottom edge of the room —
+      // the art has none there, so app.js draws that frame itself.
+      exits: [
+        { x: 210, y: 82, w: 30, h: 20, to: "library", arriveAt: { x: 215, y: 140 } },
+        { x: 132, y: 182, w: 56, h: 10, to: "bedroom", drawn: "threshold", arriveAt: { x: 228, y: 132 } }
+      ],
+      // The bar's footprint on the floor (the old box sat entirely above the
+      // walkable area, so it blocked nothing).
+      obstacles: [ { x: 26, y: 95, w: 130, h: 38 } ],
       npcs: [
         {
           // Flavor only here — per the plot, the Lounge is "the bar + portals
@@ -224,7 +252,11 @@ window.NEWSEY_STORY = (function () {
       bg: "arena",
       label: "The Arena",
       playerStart: { x: 150, y: 165 },
-      exits: [ { x: 262, y: 95, w: 20, h: 45, to: "lounge", label: "→ Back through the portal" } ],
+      // bg-arena.png: the arch is at x 233-267, floor at y ~82.
+      exits: [
+        { x: 233, y: 80, w: 34, h: 22, to: "lounge", arriveAt: { x: 150, y: 150 } }
+      ],
+      obstacles: [ { x: 16, y: 95, w: 86, h: 12 } ], // the stone benches
       npcs: [
         {
           id: "kat", x: 100, y: 155, art: "kat", sprite: "kat_top",
@@ -279,8 +311,11 @@ window.NEWSEY_STORY = (function () {
       // lounge is actually on the right side of the room, not the left
       // (the previous x:0 placement didn't match the art at all — the
       // bookshelves occupy the whole left wall and are blocked off).
-      exits: [ { x: 262, y: 95, w: 20, h: 45, to: "lounge", label: "→ Lounge" } ],
-      obstacles: [ { x: 0, y: 55, w: 170, h: 70 } ],
+      // bg-library.png: the arch is at x 210-242, floor at y ~78.
+      exits: [
+        { x: 210, y: 78, w: 32, h: 24, to: "lounge", arriveAt: { x: 215, y: 140 } }
+      ],
+      obstacles: [ { x: 150, y: 95, w: 62, h: 16 } ], // armchair + candle table
       npcs: [
         {
           id: "michael", x: 120, y: 160, art: "michael", sprite: "michael_top",
@@ -291,7 +326,7 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "john", x: 260, y: 155, art: "john", sprite: "john_top",
+          id: "john", x: 225, y: 158, art: "john", sprite: "john_top",
           lines: [
             "I am John Boxley. Creator of Puzzle Attack. I am trapped in Infinity. And now, so are you.",
             "A deal was struck for your soul, in exchange for magical powers. It didn't work the way I thought it would.",

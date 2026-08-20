@@ -71,19 +71,6 @@ html, body {
   color: #e8d9ff;
 }
 
-.interact-hint {
-  position: absolute;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(10, 5, 20, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 20px;
-  padding: 4px 12px;
-  font-size: 0.75rem;
-  pointer-events: none;
-}
-
 /* ---- Cutscene: a fixed art zone on top, a SOLID non-overlapping dialogue
    panel pinned below it — never a translucent box floating over the art, so
    nothing gets covered on a short mobile screen. ---- */
@@ -313,6 +300,7 @@ html, body {
   width: 100%;
   margin: 0 auto;
 }
+.duel-controls[hidden] { display: none; }
 .duel-dpad { flex: 0 0 auto; }
 .duel-dpad button { touch-action: none; }
 .duel-swap {
@@ -453,6 +441,96 @@ html, body {
   cursor: pointer;
   opacity: 0.7;
   padding: 4px 6px;
+}
+
+/* ---- Controls screen bits (settings.js) ----
+   These live INSIDE the menu's CONTROLS screen, not in a panel of their own:
+   one layer, not two stacked. ---- */
+.settings-block { width: 100%; margin-bottom: 14px; }
+.settings-block-title {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.6;
+  margin-bottom: 6px;
+}
+.settings-modes { display: flex; gap: 6px; }
+.settings-modes button {
+  flex: 1 1 0;
+  padding: 10px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f1e9ff;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.settings-modes button.active { background: #8a5cf6; border-color: #c4b0ff; font-weight: 700; }
+.settings-note { font-size: 0.68rem; opacity: 0.65; line-height: 1.4; margin: 8px 0 0; }
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.settings-label { font-size: 0.85rem; }
+.settings-where {
+  font-size: 0.62rem;
+  opacity: 0.5;
+  font-style: normal;
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.settings-key {
+  min-width: 108px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f1e9ff;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.settings-key.capturing { background: #ffd166; color: #2a1a00; border-color: #ffd166; }
+.settings-status {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 209, 102, 0.16);
+  border: 1px solid #ffd166;
+  color: #ffd166;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.settings-status[hidden] { display: none; }
+.settings-setall {
+  margin-top: 10px;
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  background: none;
+  color: #cbb9ee;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.settings-actions { display: flex; gap: 8px; justify-content: center; margin-top: 6px; }
+.settings-actions button {
+  padding: 9px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: none;
+  color: #cbb9ee;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
 }
 
 /* =========================================================================
@@ -694,6 +772,8 @@ html, body {
   cursor: pointer;
 }
 
+
+
 /* ---- "Game saved." toast ---- */
 .menu-toast {
   /* Pinned to the top, not the bottom: the pause/file screens are vertically
@@ -718,3 +798,42 @@ html, body {
 }
 .menu-toast.show { opacity: 1; }
 .menu-toast[hidden] { display: none; }
+
+/* Invisible, but must stay focusable — display:none or visibility:hidden would
+   stop it raising the on-screen keyboard. */
+.settings-grabber {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  border: 0;
+  padding: 0;
+  pointer-events: none;
+}
+.settings-badges { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.settings-pad {
+  min-width: 54px;
+  padding: 9px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(167, 139, 250, 0.5);
+  background: rgba(138, 92, 246, 0.18);
+  color: #d9ccff;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.settings-pad.capturing { background: #ffd166; color: #2a1a00; border-color: #ffd166; }
+.settings-choice {
+  padding: 8px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f1e9ff;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.settings-choice.active { background: #8a5cf6; border-color: #c4b0ff; font-weight: 700; }
+/* D-pad on the right for left-handed play — the row simply reverses. */
+.duel-controls.pad-right, .touch-controls.pad-right { flex-direction: row-reverse; }

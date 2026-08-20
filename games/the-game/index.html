@@ -23,7 +23,6 @@
       <!-- WALK-AROUND MODE: a real top-down room, always underneath. -->
       <canvas id="scene" width="640" height="400" aria-label="Infinity. Walk up to someone to talk."></canvas>
       <div class="room-label" id="roomLabel"></div>
-      <div class="interact-hint" id="interactHint" hidden>tap / press Z to talk</div>
 
       <!-- CUTSCENE MODE: an overlay that covers the canvas during the intro.
            Art zone on top, a SOLID dialogue panel below it — never overlapping. -->
@@ -64,6 +63,7 @@
         <div class="duel-bar">
           <div class="duel-topline">
             <button class="duel-btn duel-small" id="duelQuit">✕ forfeit</button>
+            <button class="duel-btn duel-small" id="duelSettings" title="Controls and key bindings">⚙</button>
             <div class="duel-hint" id="duelHint"></div>
           </div>
           <!-- On-screen controls: the same scheme as the original game — move a
@@ -144,17 +144,51 @@
         </div>
       </section>
 
-      <!-- CONTROLS -->
+      <!-- CONTROLS: the real thing, inline on this screen — the toggle and the
+           key list live here rather than in a panel stacked on top. -->
       <section class="menu-screen" id="menuHelp" hidden>
         <h2 class="menu-h">CONTROLS</h2>
+
+        <div class="settings-block">
+          <div class="settings-block-title">On-screen buttons</div>
+          <div class="settings-modes" id="settingsControls">
+            <button data-mode="auto">Auto</button>
+            <button data-mode="on">Always on</button>
+            <button data-mode="off">Off</button>
+          </div>
+          <p class="settings-note">Auto shows them on touch screens only. A game controller works
+            whenever one is plugged in — d-pad or stick to move, A to talk or swap, B to raise.</p>
+        </div>
+
+        <div class="settings-block">
+          <div class="settings-block-title">What each button does</div>
+          <div id="settingsButtons"></div>
+        </div>
+
+        <div class="settings-block">
+          <div class="settings-block-title">Keys and controller</div>
+          <div class="settings-status" id="settingsStatus" hidden></div>
+          <div id="settingsKeys"></div>
+          <!-- Focused when a rebind starts on a touch device: it is what makes
+               the on-screen keyboard appear, so a key can actually be pressed
+               on a phone. Invisible, never typed into. -->
+          <input id="settingsKeyGrabber" class="settings-grabber" type="text"
+                 autocomplete="off" autocorrect="off" autocapitalize="off"
+                 spellcheck="false" aria-hidden="true" tabindex="-1" />
+          <button class="settings-setall" id="settingsSetAll">Set all keys…</button>
+        </div>
+
         <dl class="help-list">
-          <dt>Move</dt><dd>Arrow keys / WASD, or the on-screen d-pad</dd>
-          <dt>Talk / interact</dt><dd>Z, Space or Enter — or tap the screen</dd>
+          <dt>Talk / interact</dt><dd>Or just tap the screen</dd>
+          <dt>Duel</dt><dd>Tap two panels side by side to swap them, or drag one sideways</dd>
           <dt>Menu</dt><dd>Esc or P, or the ☰ button</dd>
-          <dt>Duel</dt><dd>Tap two panels side by side to swap, or arrows + Z</dd>
-          <dt>Saving</dt><dd>The game saves itself when you change rooms and after every duel. Sleep in your bed in Infinity, or use Save game here, to save on the spot.</dd>
+          <dt>Saving</dt><dd>The game saves itself when you change rooms and after every duel. Sleep in your bed in Infinity, or use Save game, to save on the spot.</dd>
         </dl>
-        <button class="menu-back" id="helpBack">‹ Back</button>
+
+        <div class="settings-actions">
+          <button id="settingsReset">Reset to defaults</button>
+          <button class="menu-back" id="helpBack">‹ Back</button>
+        </div>
       </section>
 
       <!-- CONFIRM (destructive actions only) -->
@@ -188,6 +222,7 @@
           data-version="v1"
           data-root="../../"></script>
   <script src="../../shared/storage.js"></script>
+  <script src="settings.js"></script>
   <script src="story.js"></script>
   <script src="panel-engine.js"></script>
   <script src="panel-cpu.js"></script>

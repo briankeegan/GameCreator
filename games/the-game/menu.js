@@ -41,13 +41,14 @@ window.NewseyMenu = (function () {
     hideConfirm();
     if (name === "files") renderFiles();
     if (name === "pause") renderPauseMeta();
+    if (name === "help") window.NewseySettings.refresh();
   }
   function hide() {
     current = null;
     layer.hidden = true;
     Object.keys(screens).forEach(function (k) { screens[k].hidden = true; });
     hideConfirm();
-    menuBtn.hidden = !window.NewseyGame.isRunning();
+    menuBtn.hidden = !window.NewseyGame.canPause();
   }
 
   var toastTimer = null;
@@ -214,10 +215,26 @@ window.NewseyMenu = (function () {
     window.NewseyGame.setPaused(false);
     hide();
   }
+  // The controls screen, reachable from the pause menu AND from inside a duel
+  // (its ⚙). During a duel the world is already frozen, so only the walking
+  // game needs pausing here.
+  function showControls() {
+    if (!window.NewseyDuel.isActive()) window.NewseyGame.setPaused(true);
+    show("help");
+  }
+
+  // Leaving the controls screen goes back where you came from: the pause menu
+  // normally, straight back to the board if a duel is waiting underneath.
+  function leaveControls() {
+    window.NewseySettings.cancelCapture();
+    if (window.NewseyDuel.isActive()) hide();
+    else show("pause");
+  }
+
   function togglePause() {
     if (current === "pause") closePause();
     else if (current === null) openPause();
-    else if (current === "help") show("pause");
+    else if (current === "help") leaveControls();
   }
 
   menuBtn.addEventListener("click", openPause);
@@ -228,7 +245,7 @@ window.NewseyMenu = (function () {
     renderPauseMeta();
   });
   document.getElementById("pauseHelp").addEventListener("click", function () { show("help"); });
-  document.getElementById("helpBack").addEventListener("click", function () { show("pause"); });
+  document.getElementById("helpBack").addEventListener("click", leaveControls);
   document.getElementById("pauseQuit").addEventListener("click", function () {
     // Quitting saves first, so "quit" is never a way to lose progress —
     // erasing a file is the only thing that throws a game away.
@@ -249,7 +266,7 @@ window.NewseyMenu = (function () {
     if (e.key !== "Escape") return;
     if (!confirmBox.hidden) { hideConfirm(); e.preventDefault(); return; }
     if (current === "files") { showTitle(); e.preventDefault(); }
-    else if (current === "help") { show("pause"); e.preventDefault(); }
+    else if (current === "help") { leaveControls(); e.preventDefault(); }
     else if (current === "pause") { closePause(); e.preventDefault(); }
   });
 
@@ -257,5 +274,6 @@ window.NewseyMenu = (function () {
   showTitle();
 
   return { togglePause: togglePause, toast: toast, showTitle: showTitle,
+           showControls: showControls,
            startFile: startFile, current: function () { return current; } };
 })();

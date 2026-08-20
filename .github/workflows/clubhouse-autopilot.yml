@@ -111,9 +111,39 @@ jobs:
         with:
           node-version: '22'
 
+      # The npm package is a thin wrapper: the real executable ships as a
+      # platform-specific OPTIONAL dependency that postinstall fetches. When
+      # that doesn't happen the install still "succeeds", and the failure only
+      # shows up later as the model step dying instantly with "claude native
+      # binary not installed" — which reads like a model failure and gets
+      # retried three times for nothing. Verify here, self-heal, and fail loudly
+      # at the step that is actually broken.
       - name: Install Claude Code CLI
         timeout-minutes: 8
-        run: npm install -g @anthropic-ai/claude-code
+        run: |
+          set -uo pipefail
+          npm install -g @anthropic-ai/claude-code
+          if ! claude --version >/dev/null 2>&1; then
+            # Re-running postinstall alone is NOT enough: the native package
+            # itself is missing, so it just reports "Native package ... not
+            # found" again. Install that package explicitly first — its own
+            # error message names it, so we don't have to duplicate the
+            # platform-detection logic — then re-run postinstall so it can copy
+            # the binary into place. Verified end to end from a broken install.
+            echo "::warning::claude CLI not runnable after install — installing its native package"
+            ROOT=$(npm root -g)
+            NATIVE=$(node "$ROOT/@anthropic-ai/claude-code/install.cjs" 2>&1 \
+                     | grep -o '@anthropic-ai/claude-code-[a-z0-9-]\+' | head -1)
+            if [ -n "$NATIVE" ]; then
+              echo "installing $NATIVE"
+              npm install -g "$NATIVE"
+              node "$ROOT/@anthropic-ai/claude-code/install.cjs" || true
+            fi
+          fi
+          if ! claude --version; then
+            echo "::error::Claude CLI is installed but not runnable (native binary missing)"
+            exit 1
+          fi
 
       # Normalize the two trigger shapes (manual dispatch vs. real comment) into
       # one set of values the rest of the job uses, so nothing below branches on
@@ -520,12 +550,53 @@ jobs:
           # above already gated this change, so a direct push is safe. This
           # mirrors what generate-image.yml already does successfully.)
           git commit -m "Clubhouse request (automated) — PR #${{ steps.ctx.outputs.pr }}"
+          # Anything the model changed OUTSIDE the content allowlist — .github/**
+          # most of all, since the art instructions send it to
+          # .github/art/build_sheet.py — is deliberately not shipped: the model
+          # must not be able to edit its own workflow (it has no GitHub token
+          # for exactly this reason). But LEAVING those edits in the tree makes
+          # every `git pull --rebase` below refuse with "cannot pull with
+          # rebase: You have unstaged changes", so the loop can never succeed —
+          # six retries and a snag, with the change already committed locally
+          # and no way to land it. Drop them, loudly.
+          leftover=$(git diff --name-only)
+          if [ -n "$leftover" ]; then
+            echo "::warning::discarding edits outside the shippable paths: $(printf '%s' "$leftover" | paste -sd', ' -)"
+            git checkout -- .
+          fi
+
+          # Land on main. Two different things can go wrong here and they need
+          # opposite handling:
+          #   - a PUSH RACE (someone else pushed between our pull and our push)
+          #     is transient — pull again and retry.
+          #   - a REBASE CONFLICT (someone edited the same files) is not. The
+          #     old loop retried straight through it WITHOUT aborting the failed
+          #     rebase, so every later attempt died on "Pulling is not possible
+          #     because you have unmerged files" — six guaranteed-useless
+          #     retries, then a generic "hit a snag" with the real cause buried
+          #     in the log. Abort the rebase so the tree is clean, and stop with
+          #     a diagnostic naming the conflicting files.
           pushed=""
           for i in 1 2 3 4 5 6; do
-            if git pull --rebase origin main && git push origin HEAD:main; then pushed="yes"; break; fi
-            echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+            if git pull --rebase origin main; then
+              if git push origin HEAD:main; then pushed="yes"; break; fi
+              echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2)); continue
+            fi
+            conflicts=$(git diff --name-only --diff-filter=U | paste -sd', ' -)
+            git rebase --abort 2>/dev/null || true
+            echo "::error::rebase conflict against main in: ${conflicts:-unknown}"
+            {
+              printf 'My change collided with something else that landed on `main` while I was working'
+              [ -n "$conflicts" ] && printf ' — both sides changed: `%s`' "$conflicts"
+              printf '.\n\nI stopped rather than guess which version to keep. Ask me again and I will redo it on top of the current code.\n'
+            } > .autopilot/failure.md
+            exit 1
           done
-          if [ -z "$pushed" ]; then echo "::error::Could not push to main after retries"; exit 1; fi
+          if [ -z "$pushed" ]; then
+            echo "::error::Could not push to main after retries (push kept racing)"
+            printf 'I could not land the change: every push raced with another change going into `main`. Ask me again and I will retry.\n' > .autopilot/failure.md
+            exit 1
+          fi
 
           # A GITHUB_TOKEN push doesn't trigger Pages (recursion guard), so
           # dispatch the deploy explicitly.
