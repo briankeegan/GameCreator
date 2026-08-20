@@ -280,7 +280,6 @@
   function finishCutscene() {
     cutsceneEl.classList.add("hidden");
     applyControlsSetting();
-    document.getElementById("menuBtn").hidden = !running;
     sizeStage();
     var cb = cutsceneDoneCallback;
     cutsceneDoneCallback = null;
@@ -298,11 +297,6 @@
     portraitFallback.hidden = true;
     cutsceneEl.classList.remove("hidden");
     applyControlsSetting();
-    // A cutscene is never pausable (own tap-to-advance, no world to pause
-    // into) — the ☰ button showing here was a real bug: menu.js's hide()
-    // sets it visible purely from `running`, which flips true the instant
-    // beginFile() starts, before the intro has even begun playing.
-    document.getElementById("menuBtn").hidden = true;
     sizeStage();
     renderCutsceneLine();
   }
@@ -550,9 +544,6 @@
   function startDuel(npc) {
     var config = (typeof npc.duel === "object" && npc.duel) || {};
     var character = CHARACTERS[npc.id] || {};
-    // The duel screen owns the stage while it's up — it has its own forfeit
-    // button, and pausing wouldn't stop its clock anyway, so the ☰ goes away.
-    document.getElementById("menuBtn").hidden = true;
     window.NewseyDuel.start({
       playerName: CHARACTERS.nella.name,
       playerLevel: config.playerLevel || 2,
@@ -566,7 +557,6 @@
         loseLine: config.loseLine
       },
       onEnd: function (outcome) {
-        document.getElementById("menuBtn").hidden = !running;
         if (outcome.result === "win") {
           save.duelsWon[npc.id] = (save.duelsWon[npc.id] || 0) + 1;
         }
@@ -1267,12 +1257,27 @@
     entities.forEach(function (e) { e.draw(); });
   }
 
+  // Whether the ☰ shows is derived from state, every frame, rather than
+  // toggled at each place a duel or a cutscene starts and stops. It used to be
+  // toggled, and every new way for one of those to end was another way to
+  // leave the button hidden with no menu reachable — which is exactly what
+  // removing the forfeit button would have done, since NewseyDuel.stop()
+  // never ran the duel's onEnd.
+  var menuBtnEl = document.getElementById("menuBtn");
+  function syncMenuButton() {
+    var show = running && !window.NewseyDuel.isActive() &&
+               cutsceneEl.classList.contains("hidden") &&
+               !(window.NewseyMenu && window.NewseyMenu.current());
+    if (menuBtnEl.hidden === show) menuBtnEl.hidden = !show;
+  }
+
   function loop(t) {
     if (lastTime === null) lastTime = t;
     var dt = Math.min(0.05, (t - lastTime) / 1000);
     lastTime = t;
     update(dt);
     render();
+    syncMenuButton();
     requestAnimationFrame(loop);
   }
 
@@ -1358,10 +1363,9 @@
     // Whether the pause menu should offer "Save" — during a cutscene there is
     // no room/position worth writing yet.
     canSave: function () { return running && cutsceneEl.classList.contains("hidden"); },
-    // Whether the ☰ button should be shown at all. Not just `running`: menu.js's
-    // hide() (called right after beginFile() starts a fresh file's intro
-    // cutscene) was clobbering the menuBtn.hidden=true that startCutscene()
-    // had just set, because it only ever checked isRunning().
+    // Whether the ☰ button should be shown at all. Nothing outside this file
+    // sets it any more — syncMenuButton() derives it every frame — but the
+    // menu still asks, to decide whether Escape can open a pause menu.
     canPause: function () { return running && cutsceneEl.classList.contains("hidden"); }
   };
 

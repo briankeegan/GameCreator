@@ -39,7 +39,6 @@ window.NewseyDuel = (function () {
     els = {
       screen: el("duelScreen"),
       canvas: el("duelCanvas"),
-      quit: el("duelQuit"),
       raise: el("duelRaise"),
       swap: el("duelSwap"),
       controls: document.querySelector(".duel-controls"),
@@ -151,7 +150,6 @@ window.NewseyDuel = (function () {
       if (window.NewseyMenu && window.NewseyMenu.current()) return; // menu is up
       state.keys[e.key] = true;
       state.keyLatch[e.key] = true; // a very short tap must survive one frame
-      if (e.key === "Escape") { quit(); return; }
       if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].indexOf(e.key) !== -1) e.preventDefault();
     };
     handlers.keyup = function (e) { if (state) state.keys[e.key] = false; };
@@ -171,7 +169,6 @@ window.NewseyDuel = (function () {
     handlers.resize = function () { resize(); };
     window.addEventListener("resize", handlers.resize);
 
-    els.quit.onclick = quit;
     els.resultBtn.onclick = function () { finish(); };
     // Every on-screen control is a HOLD, not a click: directions repeat through
     // the engine's own key-repeat, raise keeps raising while held, and swap is
@@ -309,13 +306,6 @@ window.NewseyDuel = (function () {
       swap: on("swap") || !!(pad && pad.interact),
       raise: on("raise")
     };
-  }
-
-  function quit() {
-    if (!state) return;
-    var onEnd = state.onEnd;
-    stop();
-    onEnd({ result: "quit" });
   }
 
   function finish() {
