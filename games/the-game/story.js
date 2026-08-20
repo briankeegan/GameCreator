@@ -112,7 +112,7 @@ window.NEWSEY_STORY = (function () {
   // account of what is built.
   var RUNE_DOOR = [
     { label: "Library", to: "library", arriveAt: { x: 220, y: 150 }, arriveFacing: "down" },
-    { label: "Anarchy Garden", to: "garden", arriveAt: { x: 150, y: 158 }, arriveFacing: "up" },
+    { label: "Anarchy Garden", to: "garden", arriveAt: { x: 150, y: 138 }, arriveFacing: "up" },
     { label: "Kyran's Lab", to: "lab", arriveAt: { x: 210, y: 130 }, arriveFacing: "left" },
     { label: "Observatory", locked: "The word doesn't take your finger. Not yet." },
     { label: "Basement", locked: "The word doesn't take your finger. Not yet." },
@@ -510,7 +510,11 @@ window.NEWSEY_STORY = (function () {
     garden: {
       bg: "garden",
       label: "The Anarchy Garden",
-      playerStart: { x: 150, y: 158 },
+      // Clear of the exit trigger below. Standing ON a doorway when the room
+      // loads means it never arms — doors stay disarmed until you step off
+      // them — so you can walk into it all day and nothing happens. Found by
+      // the walk test, which is exactly what it is for.
+      playerStart: { x: 150, y: 138 },
       props: [
         // the far bank: waterfalls first so the pool sorts in front of them
         { art: "prop_waterfall", x: 112, y: 24, h: 62, base: { w: 30, h: 8 } },
@@ -539,7 +543,7 @@ window.NEWSEY_STORY = (function () {
       ],
       exits: [
         // the path leaving through the gap in the wall, back the way she came
-        { x: 142, y: 172, w: 34, h: 14, to: "lounge", arriveAt: { x: 152, y: 125 }, arriveFacing: "down" }
+        { x: 142, y: 166, w: 34, h: 16, to: "lounge", arriveAt: { x: 152, y: 125 }, arriveFacing: "down" }
       ],
       npcs: [
         {
