@@ -418,7 +418,12 @@ window.NewseyDuel = (function () {
       // comes down on them, they squash, dissolve, and re-form — and only then
       // does the card come up.
       startCrush(s.over === "win" ? "foe" : "player");
-      s.overDelay = 150;
+      // Long enough for the WHOLE sequence, derived rather than guessed: a
+      // full board takes longer to come down than a nearly-empty one, and a
+      // fixed 150 cut the re-forming short whenever the loser topped out with
+      // a high stack — which is the common case, since that IS how you lose.
+      s.overDelay = Math.round(s.crush.impact + CRUSH_FLAT + CRUSH_GONE +
+                               CRUSH_BACK + 30);
     }
   }
 
@@ -591,10 +596,12 @@ window.NewseyDuel = (function () {
 
     drawBoard(s.player, L.player, true);
     drawBoard(s.foe, L.foe, false);
-    drawSlabs(s.player, L.player);
-    drawSlabs(s.foe, L.foe);
+    // Once the crush starts, the loser's queued slabs are falling rather than
+    // hanging, so drawCrushFall owns them from that frame on.
+    if (!s.crush || s.crush.side !== "player") drawSlabs(s.player, L.player);
+    if (!s.crush || s.crush.side !== "foe") drawSlabs(s.foe, L.foe);
     drawDuellists();
-    drawCrushSlabs();
+    drawCrushFall();
     drawAttacks();
     drawCards();
     drawHud();
@@ -740,17 +747,22 @@ window.NewseyDuel = (function () {
     // The crush: flattened, then gone, then whole again.
     var squash = 1, spread = 1, alpha = 1;
     if (crush) {
-      var k = crush.t;
-      if (k < CRUSH_FALL) {
+      // Timed off the crush's OWN impact frame rather than CRUSH_FALL: what
+      // falls is a whole board plus the queued slabs, staggered, so the
+      // moment the mass is actually on her depends on how full her stack was.
+      // Keyed to the constant instead, she flattened while half the board was
+      // still in the air.
+      var k = crush.t, imp = crush.impact;
+      if (k < imp) {
         // still standing, watching them come down
-      } else if (k < CRUSH_FALL + CRUSH_FLAT) {
-        var f = (k - CRUSH_FALL) / CRUSH_FLAT;
+      } else if (k < imp + CRUSH_FLAT) {
+        var f = (k - imp) / CRUSH_FLAT;
         squash = 1 - 0.78 * f; spread = 1 + 0.55 * f;
-      } else if (k < CRUSH_FALL + CRUSH_FLAT + CRUSH_GONE) {
-        var f2 = (k - CRUSH_FALL - CRUSH_FLAT) / CRUSH_GONE;
+      } else if (k < imp + CRUSH_FLAT + CRUSH_GONE) {
+        var f2 = (k - imp - CRUSH_FLAT) / CRUSH_GONE;
         squash = 0.22; spread = 1.55; alpha = 1 - f2;
       } else {
-        var f3 = Math.min(1, (k - CRUSH_FALL - CRUSH_FLAT - CRUSH_GONE) / CRUSH_BACK);
+        var f3 = Math.min(1, (k - imp - CRUSH_FLAT - CRUSH_GONE) / CRUSH_BACK);
         squash = 0.22 + 0.78 * f3; spread = 1.55 - 0.55 * f3; alpha = f3;
       }
     }
@@ -824,42 +836,180 @@ window.NewseyDuel = (function () {
   var CRUSH_FALL = 26, CRUSH_FLAT = 12, CRUSH_GONE = 26, CRUSH_BACK = 20;
 
   function startCrush(side) {
-    var L = state.layout;
+    var L = state.layout, cell = L.cell;
     var pos = side === "player" ? L.player : L.foe;
     var stack = side === "player" ? state.player : state.foe;
-    var n = Math.max(3, Math.min(7, stack.incoming.length + 3));
+    var g = groundLine();
+    var pieces = [];
+
+    // THE LOSER'S OWN BOARD IS WHAT FALLS. It used to be five anonymous grey
+    // slabs sized to the board, which read as scenery dropping rather than as
+    // the game itself coming down — "the attacks that Kat had created as
+    // represented by large concrete slabs" are the garbage, but what buries
+    // her is her own stack. Every panel is snapshotted exactly where it is
+    // being drawn this frame, and drawBoard then renders that side empty for
+    // the rest of the crush, so what rains down is precisely what was up
+    // there a frame ago: same colours, same columns, same shape.
+    var bottom = pos.y + L.boardH;
+    var rise = ((16 - stack.displacement) / 16) * cell;
+    var cx = pos.x + L.boardW / 2;
+
+    // The panels SHRINK on the way down, from their size on the board to the
+    // size of rubble lying on the arena floor. Two reasons, and the second is
+    // why it isn't optional: the floor is further away than the board, so a
+    // panel that kept its board size would be a boulder next to a duellist
+    // drawn at floorRoom * 0.92; and in the wide layout the floor strip is
+    // barely taller than one cell, so a full-size pile buried the score line
+    // and read as the stack sliding down rather than falling on anybody.
+    // 0.26 of the floor strip, not 0.17: heapCap divides the strip by this, so
+    // a bigger panel just means a shorter pile of the same total height — but
+    // it is legibly a PANEL rather than a speck. At 0.17 the wide layout's
+    // heap was fifteen pixels tall and read as a smear.
+    var landCell = Math.max(4, Math.min(cell, L.floorRoom * 0.26));
+    var pileX = cx - (E.WIDTH * landCell) / 2;   // the heap is centred on HER
+    var heapCap = Math.max(2, Math.floor(L.floorRoom / landCell) - 1);
+    var perCol = {};
+    for (var row = 1; row <= E.HEIGHT + 1; row++) {
+      for (var col = 1; col <= E.WIDTH; col++) {
+        var p = stack.panelAt(row, col);
+        if (!p || p.color === 0 || p.state === "popped") continue;
+        var depth = Math.min(perCol[col] || 0, heapCap);
+        perCol[col] = (perCol[col] || 0) + 1;
+        // A little scatter, deterministic per panel: a heap of rubble, not a
+        // second board stood on the floor.
+        var jit = ((row * 7 + col * 13) % 5 - 2) * landCell * 0.16;
+        pieces.push({
+          x0: pos.x + (col - 1) * cell,
+          y0: bottom - row * cell - rise,
+          s0: cell,
+          x1: pileX + (col - 1) * landCell + jit,
+          // The lowest panel in a column lands on the floor and the ones
+          // above heap on it, so the pile keeps the shape the board had.
+          y1: g - landCell - depth * landCell * 0.92,
+          s1: landCell,
+          color: p.color,
+          garbage: !!p.isGarbage,
+          // Top of the stack goes first: it has the furthest to fall, and it
+          // is what she is looking up at.
+          delay: (E.HEIGHT + 1 - row) * 1.1 + (col % 3),
+          spin: ((col + row) % 2 ? 1 : -1) * (0.18 + (row % 3) * 0.07)
+        });
+      }
+    }
+
+    // ...and the garbage still queued overhead comes with it. Those ARE the
+    // concrete slabs of the plot, so they stay slabs, and they land last,
+    // on top of everything her own board left.
     var slabs = [];
-    var head = groundLine() - L.floorRoom * 0.92 - 6;
-    for (var i = 0; i < n; i++) {
+    var head = g - L.floorRoom * 0.92 - 6;
+    var queued = Math.max(1, Math.min(5, stack.incoming.length));
+    for (var i = 0; i < queued; i++) {
       slabs.push({
         from: head - i * 9,
-        delay: i * 2,
+        delay: (E.HEIGHT + 1) * 1.1 + 4 + i * 2,
         sway: (i % 2 ? 1 : -1) * (2 + i)
       });
     }
-    state.crush = { side: side, t: 0, slabs: slabs, pos: pos };
+
+    // When the last thing lands. Everything downstream — the flatten, the
+    // dust, how long the result card waits — is measured from this rather
+    // than from CRUSH_FALL, so tuning the fall can't desync them.
+    var last = 0;
+    for (var a = 0; a < pieces.length; a++) last = Math.max(last, pieces[a].delay);
+    for (var b = 0; b < slabs.length; b++) last = Math.max(last, slabs[b].delay);
+    state.crush = { side: side, t: 0, pieces: pieces, slabs: slabs, pos: pos,
+                    stack: stack, impact: last + CRUSH_FALL };
   }
 
-  function drawCrushSlabs() {
+  // One loose panel, drawn off the board: same gradient, same rounded corner,
+  // same glyph as drawPanel gives it in the stack, so a falling panel is
+  // recognisably the panel that was just sitting there. Kept separate rather
+  // than reusing drawPanel because that one needs a live engine panel and its
+  // stack for neighbour lookups, and these are a snapshot with neither.
+  function drawLoosePanel(ctx, piece, x, y, cell, rot) {
+    var pal = state.palette;
+    ctx.save();
+    ctx.translate(x + cell / 2, y + cell / 2);
+    ctx.rotate(rot);
+    if (piece.garbage) {
+      ctx.fillStyle = piece.color === 9 ? "#4a2f6a" : "#6a4a2f";
+      ctx.fillRect(-cell / 2, -cell / 2, cell, cell);
+      ctx.strokeStyle = "#c9a7ff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-cell / 2, -cell / 2, cell, cell);
+    } else {
+      var inset = Math.max(1, Math.round(cell * 0.06));
+      var size = cell - inset * 2;
+      var color = pal.colors[piece.color] || "#888";
+      var grad = ctx.createLinearGradient(0, -size / 2, 0, size / 2);
+      grad.addColorStop(0, lighten(color, 0.25));
+      grad.addColorStop(1, color);
+      ctx.fillStyle = grad;
+      roundRect(ctx, -size / 2, -size / 2, size, size, Math.max(2, cell * 0.16));
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.35)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      drawShape(ctx, SHAPES[piece.color], 0, 0, size * 0.26);
+    }
+    ctx.restore();
+  }
+
+  function drawCrushFall() {
     var c = state.crush;
     if (!c) return;
     var ctx = els.ctx, L = state.layout;
     var g = groundLine();
     var cx = c.pos.x + L.boardW / 2;
+
+    // The rubble dissolves WITH her. "I seemed to dissolve, and then reappear
+    // in front of Kat in one piece" — if the heap outlives the dissolve she
+    // re-forms standing inside her own board, and the result card comes up
+    // over a pile with nobody visible under it, which is how this first
+    // looked. So the pile fades on exactly the CRUSH_GONE beat the fighter
+    // does, and is gone before CRUSH_BACK brings her back.
+    var gone = c.impact + CRUSH_FLAT;
+    if (c.t >= gone + CRUSH_GONE) return;
+    var fade = c.t <= gone ? 1 : 1 - (c.t - gone) / CRUSH_GONE;
+    ctx.save();
+    ctx.globalAlpha = fade;
+
+    // The board's panels, on their way down.
+    for (var i = 0; i < c.pieces.length; i++) {
+      var pc = c.pieces[i];
+      var k = Math.max(0, Math.min(1, (c.t - pc.delay) / CRUSH_FALL));
+      if (k <= 0) {
+        // Still up on the board. drawBoard is no longer drawing this side, so
+        // it has to be drawn here or the stack blinks out before it falls.
+        drawLoosePanel(ctx, pc, pc.x0, pc.y0, pc.s0, 0);
+        continue;
+      }
+      var e = k * k;                       // dropped, not lowered
+      drawLoosePanel(ctx, pc,
+                     pc.x0 + (pc.x1 - pc.x0) * e,
+                     pc.y0 + (pc.y1 - pc.y0) * e,
+                     pc.s0 + (pc.s1 - pc.s0) * e,
+                     // spin while airborne, land square: a panel resting at an
+                     // angle reads as debris, and these are still the game's
+                     // own panels.
+                     pc.spin * (1 - e) * (1 - k));
+    }
+
+    // Then the queued slabs, on top of the heap.
     var slabW = L.boardW * 0.66, slabH = Math.max(4, L.floorRoom * 0.17);
-    for (var i = 0; i < c.slabs.length; i++) {
-      var sl = c.slabs[i];
-      var k = Math.max(0, Math.min(1, (c.t - sl.delay) / CRUSH_FALL));
-      // accelerate: they are being dropped, not lowered
-      var e = k * k;
-      var y = sl.from + (g - 3 - i * (slabH * 0.55) - sl.from) * e;
+    for (var j = 0; j < c.slabs.length; j++) {
+      var sl = c.slabs[j];
+      var sk = Math.max(0, Math.min(1, (c.t - sl.delay) / CRUSH_FALL));
+      if (sk <= 0) continue;
+      var se = sk * sk;
+      var sy = sl.from + (g - 3 - j * (slabH * 0.55) - sl.from) * se;
       ctx.save();
-      ctx.translate(cx + sl.sway * (1 - e), y);
-      var grad = ctx.createLinearGradient(0, -slabH / 2, 0, slabH / 2);
-      grad.addColorStop(0, "#9aa0ad");
-      grad.addColorStop(0.5, "#6d7482");
-      grad.addColorStop(1, "#40454f");
-      ctx.fillStyle = grad;
+      ctx.translate(cx + sl.sway * (1 - se), sy);
+      var grad2 = ctx.createLinearGradient(0, -slabH / 2, 0, slabH / 2);
+      grad2.addColorStop(0, "#9aa0ad");
+      grad2.addColorStop(0.5, "#6d7482");
+      grad2.addColorStop(1, "#40454f");
+      ctx.fillStyle = grad2;
       roundRect(ctx, -slabW / 2, -slabH / 2, slabW, slabH, 2);
       ctx.fill();
       ctx.strokeStyle = "rgba(20,18,26,0.75)";
@@ -867,14 +1017,17 @@ window.NewseyDuel = (function () {
       ctx.stroke();
       ctx.restore();
     }
+
+    ctx.restore();
+
     // dust where they land
-    if (c.t > CRUSH_FALL && c.t < CRUSH_FALL + CRUSH_FLAT + 10) {
-      var d = (c.t - CRUSH_FALL) / (CRUSH_FLAT + 10);
+    if (c.t > c.impact && c.t < c.impact + CRUSH_FLAT + 10) {
+      var d = (c.t - c.impact) / (CRUSH_FLAT + 10);
       ctx.save();
       ctx.globalAlpha = 0.5 * (1 - d);
       ctx.fillStyle = "#c9c2d6";
-      for (var j = 0; j < 7; j++) {
-        var a = j * 0.9;
+      for (var q = 0; q < 7; q++) {
+        var a = q * 0.9;
         ctx.beginPath();
         ctx.arc(cx + Math.cos(a) * (10 + d * 40), g - 2 - Math.sin(a) * d * 12,
                 2.5 + d * 3, 0, Math.PI * 2);
@@ -948,7 +1101,12 @@ window.NewseyDuel = (function () {
     // The board slides up as the stack rises: displacement counts 16 -> 0.
     var rise = ((16 - stack.displacement) / 16) * cell;
     var bottom = y + L.boardH;
-    for (var row = 0; row <= E.HEIGHT + 1; row++) {
+    // While the crush runs, the loser's panels are falling on them (see
+    // startCrush) — drawing them here as well would show the same stack in
+    // two places at once.
+    var emptied = !!(state.crush &&
+                     (state.crush.side === "player") === !!isPlayer);
+    for (var row = 0; !emptied && row <= E.HEIGHT + 1; row++) {
       for (var col = 1; col <= E.WIDTH; col++) {
         var p = stack.panelAt(row, col);
         if (!p || p.color === 0) continue;
@@ -1234,8 +1392,17 @@ window.NewseyDuel = (function () {
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
     ctx.fillStyle = "rgba(255,255,255,0.7)";
-    ctx.fillText("score " + s.player.score, L.player.x + L.boardW / 2, L.player.y + L.boardH + 15);
-    ctx.fillText("score " + s.foe.score, L.foe.x + L.boardW / 2, L.foe.y + L.boardH + 15);
+    // The loser's score line sits in the gap between their board and the
+    // arena floor, which is exactly where their board lands on them. Drawn
+    // through the rubble it reads as a rendering fault, and the game is over
+    // anyway — the result card is a second away.
+    var crushed = s.crush && s.crush.side;
+    if (crushed !== "player") {
+      ctx.fillText("score " + s.player.score, L.player.x + L.boardW / 2, L.player.y + L.boardH + 15);
+    }
+    if (crushed !== "foe") {
+      ctx.fillText("score " + s.foe.score, L.foe.x + L.boardW / 2, L.foe.y + L.boardH + 15);
+    }
     if (s.firstTo > 1) {
       ctx.fillStyle = "#ffd166";
       ctx.fillText(s.wins.player + " — " + s.wins.foe + "   (first to " + s.firstTo + ")",
@@ -1301,6 +1468,15 @@ window.NewseyDuel = (function () {
           cell: state.layout.cell, height: state.layout.boardH
         },
         clock: state.player.clock,
+        // What the crush is made of, so a check can assert it is the BOARD
+        // coming down rather than a handful of anonymous slabs.
+        crush: state.crush && {
+          side: state.crush.side, t: state.crush.t,
+          panels: state.crush.pieces.length,
+          slabs: state.crush.slabs.length,
+          impact: state.crush.impact,
+          colors: state.crush.pieces.map(function (p) { return p.color; })
+        },
         autoplay: function (difficulty) {
           state.autopilot = new window.PanelCpu.Cpu(state.player, {
             difficulty: difficulty || "brutal", seed: 99

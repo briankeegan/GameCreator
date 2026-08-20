@@ -90,6 +90,20 @@
 // (see ATTACK_TIME / heroAttackSpriteFor). If the attack sheet is missing, the
 // old single pose off hero_sheet.png is still used, and the canvas fallback
 // still swings its own drawn blade — nothing hard-depends on the new file.
+// 2026-08-20 (room art) — the level was four 64px tiles: mossy green ground,
+// concrete, a wooden fence and a crate. It read as GRAPH PAPER, because every
+// tile had been generated with this game's character rule ("thick black
+// outline around the whole silhouette") and none of them tiled, so the floor
+// was 200 outlined squares with visible seams, and a 1-in-5 sprinkle of a much
+// paler concrete tile on top of that made a chessboard of it. Redone as seven
+// 32px tiles off two generations (art-src/tiles_ground_raw.png,
+// tiles_objects_raw.png), cut by games/dog-punk/art-src/build_tiles.py, which makes the
+// floor tiles wrap and snaps every pixel to the new `environmentPalette` in
+// art-style.json. The level is now a scrapyard alley: cracked asphalt with
+// scrap and concrete slabs, rusted corrugated fence, tyre-and-drum junk piles,
+// oil puddles, and a real chained gate that swings open when the room clears.
+// See drawTile/floorTileFor for the anti-repetition rules, and
+// art-src/tileset_prompt.txt for the prompt to regenerate from.
 const GAME_ID = "dog-punk";
 const TILE = 32;
 const COLS = 16;
@@ -98,7 +112,11 @@ const ROWS = 12;
 // '2' wall/fence, '.' walkable grass, '3' junk-pile obstacle, 'G' gate
 // (walkable once cleared, otherwise blocks), 'P' player spawn (walkable).
 const MAP = [
-  "2222222GG222222",
+  // Every row must be exactly COLS long. The top row used to be 15 characters
+  // — one short — so the top-right corner had no wall character at all: not
+  // solid (undefined isn't in SOLID), so you could stand inside the fence, and
+  // drawn as floor, which is the pale square in that corner of the old level.
+  "2222222GG2222222",
   "2..............2",
   "2..333.....333.2",
   "2..............2",
@@ -214,12 +232,61 @@ const heroAtkUp = heroFrame(HERO_ROW.up, COL_NEUTRAL);
 const HERO_ATK = sliceSheet("hero_attack_sheet.png", 3, 3);
 const ATTACK_FRAMES = 3;
 
-// GROUND ART: one generated strip of four 64px tiles — mossy junkyard
-// ground, cracked concrete, rusted fence wall, scrap-crate obstacle — cut the
-// same way as the sprite sheets. Falls back to the hand-drawn tiles below if
-// the strip fails to load, so the level is never invisible.
-const TILES = sliceSheet("tiles.png", 4, 1);
-const TILE_GROUND = 0, TILE_CONCRETE = 1, TILE_WALL = 2, TILE_CRATE = 3;
+// ROOM ART: one generated strip of seven 32px tiles, cut the same way as the
+// sprite sheets. Falls back to the hand-drawn tiles below if the strip fails
+// to load, so the level is never invisible.
+//
+// 32px, not 64: the canvas is 512x384 and a tile is drawn at TILE=32, so a
+// 64px tile was being nearest-neighbour halved on its way to the screen and
+// half its pixels never reached the player. One art pixel = one canvas pixel
+// now, the same as the character sheets.
+//
+// The old four tiles read as GRAPH PAPER — a grid of squares, not a place —
+// for two reasons, both fixed in the art rather than here. (1) Every tile
+// carried the thick black outline art-style.json asks for, which is right for
+// a character silhouette and fatal for a floor: 200 outlined squares are 200
+// visible cell borders. (2) Nothing was seamless, so each tile ended where the
+// next began. The floor tiles are now generated as borderless texture swatches
+// and made to wrap by build_tiles.py; see art-src/tileset_prompt.txt.
+const TILE_COUNT = 7;
+const TILES = sliceSheet("tiles.png", TILE_COUNT, 1);
+const TILE_GROUND = 0, TILE_GROUND_ALT = 1, TILE_CONCRETE = 2, TILE_WALL = 3,
+      TILE_JUNK = 4, TILE_GATE = 5, TILE_PUDDLE = 6;
+
+// One tile drawn 200 times is a pattern; the eye finds it instantly. Two
+// things break it up, both driven by a hash of the cell so the level looks
+// the same every run (a random floor that reshuffles on reload is worse than
+// a repetitive one):
+//   * each floor tile is flipped horizontally and/or vertically,
+//   * the material is chosen per cell — mostly plain asphalt, occasional
+//     scrap-strewn asphalt, and clustered slabs of concrete (clustered, not
+//     sprinkled: a 1-in-5 sprinkle of a pale tile is a chessboard, which is
+//     exactly what the old floor looked like).
+function cellHash(a, b) {
+  let n = (Math.imul(a, 374761393) + Math.imul(b, 668265263)) | 0;
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+}
+function floorTileFor(c, r) {
+  // >>1 makes the concrete decision per 2x2 block, so slabs come out as
+  // patches of floor rather than lone squares.
+  if (cellHash(c >> 1, r >> 1) > 0.86 || cellHash(c, r) > 0.97) return TILE_CONCRETE;
+  return cellHash(c * 5 + 3, r * 9 + 1) > 0.86 ? TILE_GROUND_ALT : TILE_GROUND;
+}
+// Draw a tile into cell (c,r), optionally mirrored, optionally squeezed toward
+// one side of the cell (which is how the gate swings open).
+function blitTile(idx, c, r, flipX, flipY, squeeze, side) {
+  const t = TILES[idx];
+  if (!t || !t.ready) return;
+  const x = c * TILE, y = r * TILE;
+  const w = squeeze ? Math.max(3, Math.round(TILE * squeeze)) : TILE;
+  const ox = squeeze ? (side === "right" ? TILE - w : 0) : 0;
+  ctx.save();
+  ctx.translate(x + ox + w / 2, y + TILE / 2);
+  ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+  ctx.drawImage(t.img, -w / 2, -TILE / 2, w, TILE);
+  ctx.restore();
+}
 
 // Enemies come off their own sheet, cut exactly the same way and snapped to
 // the SAME locked palette (art-style.json) — that is what keeps the rats
@@ -640,60 +707,72 @@ function update(dt, now) {
 function drawTile(c, r, ch, gateOpen) {
   const x = c * TILE, y = r * TILE;
 
+  const flipX = cellHash(c * 3 + 1, r * 5 + 2) > 0.5;
+  const flipY = cellHash(c * 7 + 5, r * 11 + 3) > 0.5;
+
   // Generated tiles when they're loaded; the drawn-in-code version below is
-  // the fallback. Concrete is sprinkled deterministically through the mossy
-  // ground so the floor isn't one flat repeat (and never a chessboard).
-  const patch = (c * 7 + r * 13) % 5 === 0;
+  // the fallback.
   if (TILES[TILE_GROUND].ready) {
-    const floor = TILES[patch ? TILE_CONCRETE : TILE_GROUND];
-    ctx.drawImage(floor.img, x, y, TILE, TILE);
+    blitTile(floorTileFor(c, r), c, r, flipX, flipY);
     if (ch === "2") {
-      ctx.drawImage(TILES[TILE_WALL].img, x, y, TILE, TILE);
+      // Corrugated fence panel. Only the horizontal flip is used: flipping
+      // ribs top to bottom does nothing, but it would fight the tile's own
+      // light direction.
+      blitTile(TILE_WALL, c, r, flipX, false);
     } else if (ch === "3") {
-      ctx.drawImage(TILES[TILE_CRATE].img, x, y, TILE, TILE);
+      blitTile(TILE_JUNK, c, r, flipX, false);
     } else if (ch === "G") {
-      // The gate reads as state, not material: tint the floor red while it's
-      // locked, green once every enemy is down.
-      ctx.save();
-      ctx.globalAlpha = 0.55;
-      ctx.fillStyle = gateOpen ? "#2f5d34" : "#6b2f2f";
-      ctx.fillRect(x, y, TILE, TILE);
-      ctx.restore();
+      // The gate is drawn art now, not a red/green tint over the floor. Shut,
+      // it's a chained scrap-pipe panel filling the doorway; cleared, the two
+      // leaves swing back against their posts and the way out is open floor
+      // you can see through — the state reads as the gate having MOVED, which
+      // a colour swatch never did.
+      const side = MAP[r][c - 1] === "G" ? "right" : "left";
+      blitTile(TILE_GATE, c, r, side === "right", false, gateOpen ? 0.22 : 1, side);
+    } else if (cellHash(c * 13 + 2, r * 17 + 9) > 0.92) {
+      // Oil puddles and weed tufts, sparsely, on open floor only: the litter
+      // that makes a repeating surface look like a place rather than a texture.
+      blitTile(TILE_PUDDLE, c, r, flipX, flipY);
     }
     return;
   }
 
+  // ---- fallback (tiles.png missing/failed): same junkyard, drawn in code ----
   if (ch === "2") {
-    ctx.fillStyle = "#5c4a34";
+    ctx.fillStyle = "#6b3418";
     ctx.fillRect(x, y, TILE, TILE);
-    ctx.fillStyle = "#3d3122";
-    for (let i = 0; i < 3; i++) ctx.fillRect(x + 4 + i * 9, y + 4, 5, TILE - 8);
+    ctx.fillStyle = "#3d3f47";
+    for (let i = 0; i < 4; i++) ctx.fillRect(x + 3 + i * 8, y, 3, TILE);
     return;
   }
-  if (ch === "G") {
-    ctx.fillStyle = gateOpen ? "#2f5d34" : "#6b2f2f";
-    ctx.fillRect(x, y, TILE, TILE);
-    ctx.strokeStyle = "#1c1c1c";
-    ctx.strokeRect(x + 2, y + 2, TILE - 4, TILE - 4);
-    return;
-  }
-  // grass base for everything else (drawn first, obstacles layered after)
-  ctx.fillStyle = (c + r) % 2 === 0 ? "#3a4a2c" : "#354427";
+  // asphalt base for everything else (drawn first, obstacles layered after)
+  ctx.fillStyle = (c + r) % 2 === 0 ? "#2f3038" : "#2a2b33";
   ctx.fillRect(x, y, TILE, TILE);
-  if (ch === "3") {
-    ctx.fillStyle = "#7a6a52";
-    ctx.fillRect(x + 4, y + 8, TILE - 8, TILE - 12);
-    ctx.fillStyle = "#5a4d3a";
-    ctx.fillRect(x + 4, y + 8, TILE - 8, 4);
-    ctx.fillStyle = "#2a2418";
-    ctx.strokeRect(x + 4, y + 8, TILE - 8, TILE - 12);
-  } else {
-    // sprinkle a few blades of grass texture
-    if ((c * 7 + r * 13) % 5 === 0) {
-      ctx.fillStyle = "#4a5c38";
-      ctx.fillRect(x + 6, y + 20, 2, 8);
-      ctx.fillRect(x + 20, y + 14, 2, 8);
+  if (ch === "G") {
+    if (!gateOpen) {
+      ctx.fillStyle = "#6b3418";
+      for (let i = 0; i < 5; i++) ctx.fillRect(x + 2 + i * 6, y + 2, 3, TILE - 4);
+      ctx.fillStyle = "#8c95a0";
+      ctx.fillRect(x, y + 13, TILE, 3);
+    } else {
+      ctx.fillStyle = "#6b3418";
+      ctx.fillRect(MAP[r][c - 1] === "G" ? x + TILE - 5 : x, y + 2, 5, TILE - 4);
     }
+    return;
+  }
+  if (ch === "3") {
+    ctx.fillStyle = "#22232a";
+    ctx.fillRect(x + 3, y + 9, TILE - 6, TILE - 12);
+    ctx.fillStyle = "#9a4d1c";
+    ctx.fillRect(x + 16, y + 12, 12, TILE - 16);
+    ctx.fillStyle = "#14121a";
+    ctx.strokeRect(x + 3, y + 9, TILE - 6, TILE - 12);
+  } else if (cellHash(c * 13 + 2, r * 17 + 9) > 0.92) {
+    ctx.fillStyle = "#14121a";
+    ctx.fillRect(x + 8, y + 12, 14, 8);
+    ctx.fillStyle = "#5c7238";
+    ctx.fillRect(x + 5, y + 10, 2, 4);
+    ctx.fillRect(x + 24, y + 20, 2, 4);
   }
 }
 
