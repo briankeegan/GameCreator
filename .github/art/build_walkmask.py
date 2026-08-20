@@ -81,6 +81,30 @@ ROOMS = {
             [(250, 100), (320, 100), (320, 190), (283, 190), (292, 140)],
         ],
     },
+    # The one OUTDOOR room. Its background is a bare GROUND PLATE — the trees
+    # and the weeping fountains are props (see `props` in story.js), drawn as
+    # their own sprites so the player can walk behind them. So the only things
+    # this mask has to fence off are the pool at the back and the low garden
+    # wall; everything standing up off the grass fences itself.
+    "garden": {
+        "floorTop": 40,
+        "bounds": (4, 40, 316, 198),
+        "blocks": [
+            # the low wall, either side of the gap the path passes through
+            [(0, 141), (114, 141), (114, 161), (0, 161)],
+            [(188, 141), (320, 141), (320, 161), (188, 161)],
+        ],
+    },
+    "lab": {
+        "floorTop": 100,
+        "bounds": (36, 100, 286, 186),
+        "blocks": [
+            [(80, 96), (222, 96), (222, 112), (80, 112)],   # the workbench
+            # The cart is pulled clear of the doorway's approach — its box
+            # reached across the arch and fenced the only way out of the room.
+            [(252, 96), (284, 96), (284, 120), (252, 120)], # the instrument cart
+        ],
+    },
     "house": {
         "floorTop": 100,
         "blocks": [

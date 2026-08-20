@@ -80,6 +80,13 @@ window.NewseyDuel = (function () {
       foe: foe,
       cpu: new window.PanelCpu.Cpu(foe, { difficulty: opponent.difficulty || "steady", seed: seed + 55 }),
       opponent: opponent,
+      // A duel can be a SET rather than a single game — Kat's is "first to
+      // five wins", straight out of the plot. firstTo 1 (the default) behaves
+      // exactly as a single game always did.
+      seed: seed,
+      playerLevel: opts.playerLevel || 2,
+      firstTo: Math.max(1, opts.firstTo || 1),
+      wins: { player: 0, foe: 0 },
       palette: PALETTES[opponent.theme === "red" ? "red" : "pink"],
       countdown: COUNTDOWN_FRAMES,
       over: null,
@@ -372,7 +379,9 @@ window.NewseyDuel = (function () {
     if (window.NewseyMenu && window.NewseyMenu.current()) return;
     if (s.countdown > 0) { s.countdown--; return; }
     if (s.over) {
-      if (s.overDelay > 0 && --s.overDelay === 0) showResult();
+      if (s.overDelay > 0 && --s.overDelay === 0) {
+        if (setDecided()) showResult(); else showRoundCard();
+      }
       stepEffects();
       return;
     }
@@ -396,6 +405,7 @@ window.NewseyDuel = (function () {
     if (s.player.gameOver || s.foe.gameOver) {
       // If both die on the same frame the player gets the benefit of the doubt.
       s.over = s.foe.gameOver ? "win" : "lose";
+      if (s.over === "win") s.wins.player++; else s.wins.foe++;
       s.overDelay = 90;
     }
   }
@@ -448,6 +458,45 @@ window.NewseyDuel = (function () {
     }
   }
 
+  function setDecided() {
+    var s = state;
+    return s.wins.player >= s.firstTo || s.wins.foe >= s.firstTo;
+  }
+
+  // Between games of a set: the running score and a button that deals the
+  // next board, rather than the card that ends the whole thing.
+  function showRoundCard() {
+    var s = state, won = s.over === "win";
+    var them = s.opponent.name || "Opponent";
+    els.resultTitle.textContent = won ? "GAME TO YOU" : "GAME TO " + them.toUpperCase();
+    els.resultTitle.style.color = won ? "#ffd166" : "#ff6b6b";
+    els.resultText.textContent = s.player.name + " " + s.wins.player + " — " +
+      s.wins.foe + " " + them + ". First to " + s.firstTo + " takes the set.";
+    els.resultBtn.textContent = "Next game ▸";
+    els.resultBtn.onclick = function () { els.result.hidden = true; nextGame(); };
+    els.result.hidden = false;
+  }
+
+  // Fresh boards, same set. The seed moves on with the score so the next game
+  // isn't the same board again.
+  function nextGame() {
+    var s = state, o = s.opponent;
+    s.seed = (s.seed + s.wins.player * 7919 + s.wins.foe * 104729 + 13) >>> 0;
+    s.player = new E.Stack({ level: s.playerLevel, seed: s.seed, name: s.player.name });
+    s.foe = new E.Stack({ level: o.level || 3, seed: s.seed + 101, name: s.foe.name });
+    s.cpu = new window.PanelCpu.Cpu(s.foe, { difficulty: o.difficulty || "steady", seed: s.seed + 55 });
+    s.over = null;
+    s.overDelay = 0;
+    s.countdown = COUNTDOWN_FRAMES;
+    s.effects = [];
+    s.cards = [];
+    s.selection = null;
+    s.pointer = null;
+    s.latched = {};
+    s.keyLatch = {};
+    s.tick = 0;
+  }
+
   function showResult() {
     var opponent = state.opponent || {};
     var won = state.over === "win";
@@ -458,6 +507,8 @@ window.NewseyDuel = (function () {
     els.resultText.textContent = won
       ? (opponent.winLine || ((opponent.name || "They") + " bows out. The slabs land on their side of the glass."))
       : (opponent.loseLine || ((opponent.name || "They") + " stacks it up faster than you can clear. Not this time."));
+    els.resultBtn.textContent = "Back to Infinity ▸";
+    els.resultBtn.onclick = function () { finish(); };
     els.result.hidden = false;
   }
 
@@ -942,6 +993,11 @@ window.NewseyDuel = (function () {
     ctx.fillStyle = "rgba(255,255,255,0.7)";
     ctx.fillText("score " + s.player.score, L.player.x + L.boardW / 2, L.player.y + L.boardH + 15);
     ctx.fillText("score " + s.foe.score, L.foe.x + L.boardW / 2, L.foe.y + L.boardH + 15);
+    if (s.firstTo > 1) {
+      ctx.fillStyle = "#ffd166";
+      ctx.fillText(s.wins.player + " — " + s.wins.foe + "   (first to " + s.firstTo + ")",
+                   L.w / 2, L.player.y - 10);
+    }
 
     // stop time: the pause you earn from a chain/combo, the thing that keeps
     // you alive when topped out
@@ -978,11 +1034,16 @@ window.NewseyDuel = (function () {
     // Hook for the headless smoke test: read the match state, and (only when
     // asked) hand the player's board to a CPU so a duel can be played out
     // without a human at the keyboard.
+    // Headless tests need to reach into the live stacks (to top a board out
+    // without playing five real games, say). Not for game code to use.
+    raw: function () { return state; },
     debug: function () {
       if (!state) return null;
       return {
         countdown: state.countdown,
         over: state.over,
+        firstTo: state.firstTo,
+        wins: { player: state.wins.player, foe: state.wins.foe },
         playerFill: state.player.fillRatio(),
         foeFill: state.foe.fillRatio(),
         playerScore: state.player.score,

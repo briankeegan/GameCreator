@@ -151,6 +151,31 @@ design discussion. `shared/` holds the components every game reuses
     (#FF00FF) gridlines, not white: white anti-aliases into a pale halo the
     slicer can't fully remove. `games/the-game/WALK_SHEETS.md` records why,
     and what else was tried.
+- **A room is generated in TWO LAYERS: a ground plate, then props.** Do not
+  ask for a room with its furniture painted in — that was the old way and
+  everything downstream fought it. Layer 1 is the GROUND PLATE: floor, the
+  walls behind it, doorways, and nothing that stands up off the floor out in
+  the room. Layer 2 is a PROP SHEET: every free-standing thing — a tree, a
+  fountain, a table — drawn side by side in ONE image on flat white, upright,
+  whole, on a common ground line, cut apart by `.github/art/build_props.py`.
+  The game places props from `props: [{ art, x, y, h, base }]` on the room,
+  sorts them against the player by foot position, and blocks the `base`
+  ellipse — so you walk BEHIND a tree and stop at its trunk.
+  - Three things this buys, all of which were problems: the walkable-floor
+    mask becomes a wall line plus a rectangle instead of a hand
+    reverse-engineering job (`build_walkmask.py` documents the five
+    techniques that failed at the old version), a prop can be moved or
+    replaced without regenerating the room, and scenery finally has depth —
+    a painted tree is something you can only ever be fenced away from.
+  - **The shareable write-up is `docs/ROOM_ART_STANDARD.md`** — the rule, why
+    it exists, how to prompt each layer, the pipeline commands and a
+    checklist, written to be handed to someone who has never seen this repo.
+    `games/the-game/art-style.json` carries the same rule in the form the
+    image Action reads, so a prompt only has to say WHICH LAYER it wants. The
+    Anarchy Garden is the reference room.
+  - Ask for flat pure white behind a prop sheet, never transparency (same
+    reason as sprite sheets). If a sheet does come back with real alpha,
+    `build_props.py` uses it — keying white would eat a white marble statue.
   - **The generator will not draw a technical diagram of its own picture.**
     Tried, for room collision: one prompt asking for a two-panel sheet —
     the finished room on the left, the same room's walkable floor filled

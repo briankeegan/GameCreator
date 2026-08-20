@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("the-game-v40", [
+GCRegisterServiceWorker("the-game-v41", [
   "./",
   "./index.html",
   "./style.css",
@@ -23,5 +23,7 @@ GCRegisterServiceWorker("the-game-v40", [
   "./art/walk-library.png",
   "./art/walk-arena.png",
   "./art/walk-house.png",
+  "./art/walk-garden.png",
+  "./art/walk-lab.png",
   "./icons/icon.svg",
 ]);

@@ -193,6 +193,27 @@ Things spotted while working. Don't act on these without a nod from the owner.
   line, which a straight wall line cut across, and the house's candle
   table, which you could walk through.
 
+## Rooms are two layers now
+
+Full write-up, shareable on its own: **`docs/ROOM_ART_STANDARD.md`**.
+
+A room's background is a GROUND PLATE — floor, walls, doorways, and nothing
+standing up off the floor. Everything free-standing is a PROP: generated as a
+sheet on flat white, cut apart by `.github/art/build_props.py`, and placed on
+the room as `props: [{ art, x, y, h, base: { rx, ry } }]` where x/y is where
+it MEETS THE GROUND. `app.js` sorts props into the same y-order list as the
+player and the NPCs, so you walk behind one, and blocks the `base` ellipse, so
+you stop at its trunk.
+
+The Anarchy Garden is the reference: `bg-garden.png` is bare grass, path,
+pool and wall; the cherry trees and the weeping fountains are props. Its walk
+mask is four lines of declaration because the plate has nothing in it to
+subtract.
+
+Do not go back to painting furniture into a room. It cost us the mask (five
+failed techniques, all recorded in `build_walkmask.py`), it made scenery flat,
+and moving one object meant regenerating the whole picture.
+
 ## Collision — how to change it
 
 `.github/art/build_walkmask.py` owns it. Each room declares its wall line
