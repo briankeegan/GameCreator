@@ -179,22 +179,9 @@ html, body {
 }
 /* A real, clearly-tappable "next" control — not just a hint someone has to
    notice on their own. Always bottom-right of the dialogue panel. */
-.advance {
-  align-self: flex-end;
-  flex: 0 0 auto;
-  margin-top: 4px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 4px 11px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  animation: pulse 1.6s ease-in-out infinite;
-}
-@keyframes pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+/* The dialogue panels used to carry a pulsing "Next ▶" chip. Removed: the
+   whole panel is the tap target, on both the cutscene and the talk box, so
+   the chip was decoration that read like the only way to advance. */
 
 /* ---- Talk box (walk-around mode) ---- */
 .talk-box {
