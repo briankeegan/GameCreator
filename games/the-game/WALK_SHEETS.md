@@ -77,6 +77,26 @@ broken one. Revisit real back-view walk animation later if it matters.
 RIGHT isn't generated even when asked for — it's LEFT mirrored in code
 (a side profile flipped is identical), same as the player already does.
 
+**The LEFT/RIGHT middle column can fail even with the standalone-reference
+trick above.** Human-Nella's first LEFT sheet shipped with all three frames
+being mid-stride (no neutral at all — missed in review because only the
+DOWN row's middle frame was checked closely, not LEFT's). Regenerating with
+explicit "column 2 is NOT a walking pose" wording still didn't produce a
+neutral middle frame. What did work: generate the neutral pose as its own
+**standalone single reference image** first (exact recipe as the back-view
+fix above), which came out perfect — but then using that image as the
+reference for a fresh 1×3 walk-cycle grid drifted the *middle* column's
+camera angle back to front-facing, even though the two step-frame columns
+correctly stayed in profile. Fallback that actually worked: don't trust one
+generation to deliver all 3 correct frames — **manually combine sources**,
+taking the two step-pose frames from the walk-cycle grid attempt and the
+neutral frame from the standalone reference image (sliced with the same
+`cut_and_trim()`, called directly rather than through the grid-detecting
+`main()`). Lesson: always visually check the STOP pose in-game per
+direction, not just an aggregate contact-sheet glance — a wrong middle
+frame reads fine in a still image and only shows up as "legs still walking"
+once the character actually stops.
+
 Slicing (`.github/art/slice_walksheet.py`) — tuned to what the model
 actually renders, not the literal prompt text:
 - the "magenta" divider often renders as a softer, desaturated pink

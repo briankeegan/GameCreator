@@ -126,9 +126,14 @@
     if (!id) return null;
     if (artCache[id]) return artCache[id];
     var img = new Image();
-    var entry = { img: img, ok: false };
+    // ok stays false while the load is still in flight AND if it genuinely
+    // fails — failed distinguishes the two, since a caller falling back to
+    // placeholder art on "still loading" (as opposed to "will never load")
+    // is a visible flicker to something wrong, not a graceful degrade. See
+    // drawPlayer's lastGoodPlayerFrame for why that distinction matters.
+    var entry = { img: img, ok: false, failed: false };
     img.onload = function () { entry.ok = true; };
-    img.onerror = function () { entry.ok = false; };
+    img.onerror = function () { entry.failed = true; };
     img.src = "art/" + id + ".png";
     artCache[id] = entry;
     return entry;
@@ -324,6 +329,7 @@
   var exitsArmed = true; // false until the player steps clear of every doorway
   var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down", inBed: false };
   var walkPhase = 0, isWalking = false; // drives real walk-frame cycling (see drawPlayer)
+  var lastGoodPlayerFrame = null; // last successfully-loaded frame drawPlayer showed — see drawPlayer
   var keys = {};
   var talking = null; // { npc, lineIndex }
   var running = false; // true only while a file is loaded and being played
@@ -1043,6 +1049,20 @@
     left: ["nella_human_left_0", "nella_human_left_1", "nella_human_left_2"],
     right: ["nella_human_left_0", "nella_human_left_1", "nella_human_left_2"]
   };
+  // loadArt() kicks off an async Image load and returns ok:false until it
+  // fires — fine for most art, but drawPlayer() doesn't wait: the FIRST time
+  // any given directional frame is needed (e.g. the very first step in a new
+  // direction, worst-case right after a hard refresh with a cold cache) it
+  // reads as "missing" for a frame or two and falls back to the single
+  // forward-facing portrait, mirrored — a visible flip to a totally different
+  // pose before the real frame lands. Reported live as "it flips left and
+  // right when I walk left". Kicking every frame's load off up front, before
+  // she ever takes a step, means by the time a direction is actually pressed
+  // the image is already loaded (or loading) and drawPlayer never needs the
+  // fallback.
+  [FACING_FRAMES, FACING_FRAMES_HUMAN].forEach(function (set) {
+    Object.keys(set).forEach(function (dir) { set[dir].forEach(loadArt); });
+  });
   function drawPlayer() {
     var human = currentRoom && currentRoom.playerForm === "human";
     var frameSet = human ? FACING_FRAMES_HUMAN : FACING_FRAMES;
@@ -1057,12 +1077,28 @@
     var frameIdx = isWalking ? WALK_SEQUENCE[Math.floor(walkPhase) % WALK_SEQUENCE.length] : 1;
     var wantId = frames[frameIdx];
     var entry = loadArt(wantId);
-    // Fallback while a directional frame is missing: the form's single
-    // static portrait, forward-facing — needs the same left-mirror the
-    // directional frames get, tracked separately since wantId no longer
-    // says "nella_top" once a fallback swaps the actual entry.
-    var usedFallback = !(entry && entry.ok);
-    if (usedFallback) entry = loadArt(human ? "nella_human_top" : "nella_top");
+    var pending = entry && !entry.ok && !entry.failed;
+    // Fallback while a directional frame is genuinely missing (not just
+    // still loading — see loadArt): the form's single static portrait,
+    // forward-facing, needs the same left-mirror the directional frames
+    // get, tracked separately since wantId no longer says "nella_top" once
+    // a fallback swaps the actual entry.
+    var usedFallback = entry && entry.failed;
+    if (usedFallback) {
+      entry = loadArt(human ? "nella_human_top" : "nella_top");
+    } else if (pending && lastGoodPlayerFrame) {
+      // Still loading (e.g. the very first time this direction is needed,
+      // right after a hard refresh) — hold whatever was drawn last instead
+      // of flashing the fallback portrait for a frame. That flash-to-a-
+      // different-pose, mirrored on top of it, was reported live as "it
+      // flips left and right when I walk left": a real timing race, not an
+      // art bug, since it only ever lasted until the real frame finished
+      // loading a moment later.
+      entry = lastGoodPlayerFrame.entry;
+      usedFallback = lastGoodPlayerFrame.usedFallback;
+    } else if (!pending) {
+      lastGoodPlayerFrame = { entry: entry, usedFallback: usedFallback };
+    }
     // Same ground shadow every NPC gets — the player was the one figure in
     // the scene standing on nothing, a mismatch reported live as "floating".
     // Not while she's in bed: she isn't on the floor, she's on a mattress.
