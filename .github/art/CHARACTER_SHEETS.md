@@ -26,11 +26,18 @@ toward the camera is foreshortened to nothing.** State it per row:
 - **Side row** — a true fore/aft split: one foot planted ahead of the body,
   the other behind, a clear gap between them. This is the only row where the
   step reads as displacement.
-- **Front and back rows** — one leg LIFTED: knee bent, that foot clearly
-  higher off the ground than the other, the other leg straight and planted.
-  The step reads as height, not depth. Asking for "left foot forward" on a
-  front view produces two legs in a muddle with the difference invisible —
-  which is exactly what shipped and had to be regenerated.
+- **Front and back rows** — the step is SMALL. Both legs stay vertical and
+  clearly separated with background visible between them; one boot lifts a
+  couple of pixels (heel up, knee barely bent) while the other stays planted,
+  and the arms swing. That is all the room there is.
+
+  Do not ask for a high knee or a march step. It was tried, twice: "left foot
+  forward" on a front view produced a muddle of legs with the difference
+  invisible, and the over-correction — thigh raised to horizontal — merged the
+  raised leg into the body and shipped as a brown blob where the legs should
+  be. At 16-bit scale a character's legs are perhaps ten pixels tall; a raised
+  thigh has nowhere to go. **What sells a front-on walk at this size is the
+  arm swing and a one-pixel body bob, not the legs.**
 
 Frames 0 and 2 swap which leg does the work: left lifted, then right lifted
 (front/back), or left forward, then right forward (side).
