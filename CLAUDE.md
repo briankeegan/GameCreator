@@ -121,6 +121,19 @@ design discussion. `shared/` holds the components every game reuses
     is the same size for all of them.
   - Raw generations go in `games/<id>/art-src/`; shipped sheets are rebuilt
     from them, never hand-edited.
+- **Character sheets follow one standard: `.github/art/CHARACTER_SHEETS.md`.**
+  Walk is 3 columns `[step, NEUTRAL, step]`; ATTACK is its own sheet, also 3
+  columns, `[wind-up, STRIKE, recover]`, with damage landing on the strike
+  frame — three frames because one lunging pose reads as a shove, and
+  because attacks are where weapons vary (swap the sheet, keep the timing).
+  Both are 3 rows: down, side-drawn-facing-RIGHT, up. Canonical prompts are
+  `.github/art/walkgrid_prompt.txt` and `.github/art/attacksheet_prompt.txt`
+  — use them instead of writing a new one, and fix them in place when a
+  generation exposes a gap.
+- **Details that drift belong in `art-style.json`, not in a prompt you
+  retype.** Sleeves vs sleeveless, ears, which hand holds the weapon —
+  Beverly's jacket came back sleeved in some frames and sleeveless in
+  others, which is what `lockedDetails` now exists to prevent.
 - **Top-down games with directional walking follow the RPG-Maker charset
   convention.** This is the convention for that kind of game (the-game /
   Newsey is the reference implementation) — a game with a different camera
