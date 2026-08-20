@@ -21,13 +21,13 @@
 
   "mainCharacter": "Beverly: a stocky punk-rock DOG (rounded floppy ears, dog snout, small black nose — not a bear, wolf or fox). Warm orange-tan fur, a TALL unmissable hot-pink mohawk that must be clearly visible in every single frame including attacks, a dark charcoal studded leather jacket, teal shorts, brown boots, and a small silver dagger.",
 
-  "enemy": "Junk Rat: a chunky CARTOON junkyard rat in the same flat mascot style as Beverly — simple rounded grey-brown body, flat pink ear and tail, big white cartoon eyes with black pupils, simple buck teeth, one flat grey scrap-metal shoulder plate. Side profile facing RIGHT. No fur texture, no realistic detail.",
+  "enemy": "Junk Rat: a chunky CARTOON junkyard rat in the same flat mascot style as Beverly, standing UPRIGHT on its hind feet like a cartoon mascot (not a low crawling four-legged rodent) — rounded grey-brown body, short arms, big round pink-lined ears, big white cartoon eyes with black pupils, small pink nose, simple buck teeth, one flat grey scrap-metal shoulder plate, flat pink tail. Like the hero it has THREE rows of art: facing the viewer (down), side profile facing RIGHT (mirrored for left), and seen from behind (up). No fur texture, no realistic rodent anatomy.",
 
   "frames": "Per direction, in this order: idle, walk (one clearly different mid-stride pose — the code alternates it with idle for the walk cycle), attack (a real drawn attack pose: weapon swept out, or jaws open and claws out).",
 
   "constraints": "No text, no labels, no numbers, no grid or graph-paper lines, no cell borders, no frames, no boxes, no drop shadows, no ground shadow, no UI, no watermarks.",
 
-  "pipeline": "Raw generations live in games/dog-punk/art-src/. The shipped sheets are rebuilt from them with the shared cutter (.github/art/build_sheet.py), never hand-edited:\n  python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_sheet.png --row games/dog-punk/art-src/hero_front_raw.png --row games/dog-punk/art-src/hero_sheet_raw.png:1 --row games/dog-punk/art-src/hero_back_raw.png\n  python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/rat_sheet.png --row games/dog-punk/art-src/rat_sheet_raw3.png --blobs --body-height 104\nThose two commands reproduce the shipped sheets byte for byte.",
+  "pipeline": "Raw generations live in games/dog-punk/art-src/. The shipped sheets are rebuilt from them with the shared cutter (.github/art/build_sheet.py), never hand-edited:\n  python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_sheet.png --row games/dog-punk/art-src/hero_front_raw.png --row games/dog-punk/art-src/hero_sheet_raw.png:1 --row games/dog-punk/art-src/hero_back_raw.png\n  python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/rat_sheet.png --row games/dog-punk/art-src/rat_front_raw.png --row games/dog-punk/art-src/rat_side_raw4.png --row games/dog-punk/art-src/rat_back_raw.png --blobs --body-height 104\nThose two commands reproduce the shipped sheets byte for byte.",
 
   "pixelArt": true,
   "pixelGrid": 32
