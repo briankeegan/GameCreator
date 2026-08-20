@@ -815,10 +815,14 @@
     var human = currentRoom && currentRoom.playerForm === "human";
     var frameSet = human ? FACING_FRAMES_HUMAN : FACING_FRAMES;
     var frames = frameSet[player.facing] || frameSet.down;
-    // 3 real frames cycled by walkPhase while moving; frame 0 (idle pose)
-    // while standing still, so she doesn't look like she's still walking
-    // in place after stopping.
-    var frameIdx = isWalking ? Math.floor(walkPhase) % 3 : 0;
+    // Standard RPG-Maker charset convention: frame 1 (the MIDDLE of the 3)
+    // is the neutral standing pose, used both at rest and as the walk
+    // cycle's resting beat — frames 0/2 are the two mirrored step poses.
+    // Cycling 0,1,2 on repeat (as this used to) never actually returns to
+    // neutral mid-walk and, worse, used frame 0 — a mid-step pose — for
+    // idle, so she'd freeze mid-stride the instant she stopped moving.
+    var WALK_SEQUENCE = [1, 0, 1, 2];
+    var frameIdx = isWalking ? WALK_SEQUENCE[Math.floor(walkPhase) % WALK_SEQUENCE.length] : 1;
     var wantId = frames[frameIdx];
     var entry = loadArt(wantId);
     // Fallback while a directional frame is missing: the form's single
