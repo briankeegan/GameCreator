@@ -129,7 +129,7 @@ window.NEWSEY_STORY = (function () {
       // and the door is drawn centre-right rather than hard right, so the
       // exit strip sits under where the door actually is.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[68,100],[276,100],[272,182],[72,182]],
+      floorPoly: [[60,97],[278,97],[276,190],[62,190]],
       exits: [ { x: 188, y: 98, w: 34, h: 16, to: "house", label: "Downstairs",
                  arriveAt: { x: 228, y: 112 } } ],
       // The bed (back-left, foot toward the viewer), the nightstand beside
@@ -151,7 +151,7 @@ window.NEWSEY_STORY = (function () {
       // at x 64 and x 284 and the floor runs from y 100 to y 178. Without
       // this the generic floor rect let you walk out through both walls.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[64,100],[292,100],[292,187],[64,187]],
+      floorPoly: [[57,95],[294,95],[294,190],[57,190]],
       // The lit archway on the right is the stairs. The story's real exit is
       // still the TV (which plays DREAM_CUTSCENE), but you came down these to
       // answer the door, so they go back up.
@@ -220,7 +220,7 @@ window.NEWSEY_STORY = (function () {
       // bg-bedroom.png: arched door on the right wall, opening x 222-248,
       // threshold on the floor at y ~103.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[52,100],[285,100],[272,186],[64,186]],
+      floorPoly: [[105,105],[245,105],[262,150],[235,188],[100,188],[68,150]],
       exits: [
         { x: 223, y: 90, w: 28, h: 16, to: "lounge", arriveAt: { x: 150, y: 150 } }
       ],
@@ -283,7 +283,7 @@ window.NEWSEY_STORY = (function () {
       // the doorway you came in through, at the bottom edge of the room —
       // the art has none there, so app.js draws that frame itself.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[75,100],[252,100],[288,140],[262,188],[92,188],[50,140]],
+      floorPoly: [[95,100],[238,100],[287,147],[255,190],[105,190],[52,148]],
       exits: [
         { x: 206, y: 86, w: 34, h: 18, to: "library", arriveAt: { x: 215, y: 140 } },
         { x: 132, y: 182, w: 56, h: 10, to: "bedroom", drawn: "threshold", arriveAt: { x: 228, y: 132 } }
@@ -336,7 +336,7 @@ window.NEWSEY_STORY = (function () {
       playerStart: { x: 150, y: 165 },
       // bg-arena.png: the arch is at x 233-267, floor at y ~82.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[52,96],[286,96],[292,140],[272,186],[72,186],[44,140]],
+      floorPoly: [[58,100],[120,94],[190,88],[250,94],[288,104],[294,124],[292,146],[274,166],[236,178],[170,186],[110,182],[62,170],[42,154],[36,134],[42,116],[48,106]],
       exits: [
         { x: 232, y: 84, w: 34, h: 20, to: "lounge", arriveAt: { x: 150, y: 150 } }
       ],
@@ -397,7 +397,7 @@ window.NEWSEY_STORY = (function () {
       // bookshelves occupy the whole left wall and are blocked off).
       // bg-library.png: the arch is at x 210-242, floor at y ~78.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[50,100],[274,100],[274,188],[50,188]],
+      floorPoly: [[47,96],[278,96],[278,193],[47,193]],
       exits: [
         { x: 228, y: 84, w: 24, h: 18, to: "lounge", arriveAt: { x: 215, y: 140 } }
       ],
