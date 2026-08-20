@@ -173,6 +173,34 @@ design discussion. `shared/` holds the components every game reuses
   configured.** Because both layouts exist, the art gate globs for both — so a
   new game is covered the moment it has art, with no per-game config to forget
   to update.
+- **A slow test is debugged with a probe, not with re-runs — and a grid test
+  COLLECTS.** `browser.test.js` takes ~4 minutes. Fixing it one failed
+  assertion at a time costs a run per assertion, and each run only ever
+  answers one question. Two rules came out of doing it the wrong way:
+  1. When it fails, write a throwaway script in the scratchpad that boots
+     the one case and DUMPS state (position, room, npcs, exit overlaps).
+     ~20 seconds, and it tells you what is actually happening instead of
+     what the assertion guessed. The failure that started this reported
+     "opening the door makes Chuck exist" — three steps downstream of the
+     real problem, which was that she never reached the door at all.
+  2. A loop over N cases must gather its failures and assert the list at
+     the end. Throwing on the first one turns "which doors are broken?"
+     into one question per run.
+- **A test must not assert a value the code DERIVES.** The door grid named
+  the exact facing each arrival should end on; `arrivalFrom` computes that
+  by walking outward from the partner door until it finds somewhere you
+  can stand, so those were a snapshot of one day's room art and went stale
+  the moment a room was regenerated. Assert the invariant instead — you end
+  in the right room, and you land clear of every doorway (standing in one
+  means it never arms, which IS the ping-pong bug). Beware the
+  invariant-shaped non-invariant: "you don't arrive facing back the way you
+  walked" sounds right and is false for any door in a back wall — walk UP
+  into the Lounge and you arrive facing DOWN, into the room.
+- **Walk a test character in axis legs, never a diagonal, and never for a
+  fixed number of milliseconds.** A diagonal from the house's stairs to its
+  front door clips the stairs trigger and walks her back upstairs; a held
+  key polled from Node overshoots the target by half a room. Legs plus a
+  short homing loop is the shape that survives a room being re-laid-out.
 - **A fuzzy check warns; an unambiguous one fails.** Missing or duplicated
   frames are facts, so they fail the build. "This middle frame isn't really a
   neutral pose" is a threshold on an image-difference metric — it prints a
