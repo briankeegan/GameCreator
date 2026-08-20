@@ -64,6 +64,7 @@
         <div class="duel-bar">
           <div class="duel-topline">
             <button class="duel-btn duel-small" id="duelQuit">✕ forfeit</button>
+            <button class="duel-btn duel-small" id="duelSettings" title="Controls and key bindings">⚙</button>
             <div class="duel-hint" id="duelHint"></div>
           </div>
           <!-- On-screen controls: the same scheme as the original game — move a
@@ -102,7 +103,36 @@
     </div>
 
     <div class="story-menu" id="storyMenu">
+      <button id="settingsBtn" title="Controls and key bindings">⚙ Controls</button>
       <button id="restartBtn" title="Replay the intro">↺ Replay intro</button>
+    </div>
+
+    <!-- Controls menu: on-screen pad on/off, and every key rebindable. Shared
+         by the walk-around and the duel (settings.js). -->
+    <div class="settings-panel" id="settingsPanel" hidden>
+      <div class="settings-card">
+        <h2>Controls</h2>
+        <div class="settings-block">
+          <div class="settings-block-title">On-screen buttons</div>
+          <div class="settings-modes" id="settingsControls">
+            <button data-mode="auto">Auto</button>
+            <button data-mode="on">Always on</button>
+            <button data-mode="off">Off</button>
+          </div>
+          <p class="settings-note">Auto shows them on touch screens only. A game controller works
+            whenever one is plugged in — d-pad or stick to move, A to swap or talk, B to raise.</p>
+        </div>
+        <div class="settings-block">
+          <div class="settings-block-title">Keys</div>
+          <div class="settings-status" id="settingsStatus" hidden></div>
+          <div id="settingsKeys"></div>
+          <button class="settings-setall" id="settingsSetAll">Set all keys…</button>
+        </div>
+        <div class="settings-actions">
+          <button id="settingsReset">Reset to defaults</button>
+          <button id="settingsClose" class="primary">Done</button>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -122,6 +152,7 @@
           data-version="v1"
           data-root="../../"></script>
   <script src="../../shared/storage.js"></script>
+  <script src="settings.js"></script>
   <script src="story.js"></script>
   <script src="panel-engine.js"></script>
   <script src="panel-cpu.js"></script>

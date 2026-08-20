@@ -84,6 +84,11 @@ shared file:
    input, countdown, attack animations, result). Talking to a duellist in a
    room opens it; wins are saved per opponent. Not ported, deliberately:
    shock/metal panels, rollback/netplay, replays, puzzle modes.
+   ✅ Controls menu (`games/the-game/settings.js`, "⚙ Controls" under the
+   stage and in the duel bar): on-screen pad auto/on/off, every action
+   rebindable (arrows + WASD by default), and gamepad support via the
+   Gamepad API (d-pad or stick to move, A swap/talk, B raise). Both modes
+   read their bindings from it, and opening it pauses a duel.
    Possible next: an opponent portrait beside their board, sound, and a
    smarter CPU (it plays single swaps only — it never plans a chain).
 5. **No animated walk-cycle sprite sheets** — each character (including
