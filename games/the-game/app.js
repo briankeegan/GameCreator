@@ -1777,6 +1777,12 @@
     enterRoom: enterRoom,
     putToBed: putToBed,
     startDuel: startDuel,
+    // Exposed so a test asks the GAME whether a spot is blocked instead of
+    // reimplementing the rule. The garden walk test used to carry its own
+    // copy of the ellipse maths, which drifted twice over: it crashed on the
+    // first rect base (`{w,h}` has no `rx`) and it never applied depthAt()'s
+    // scale, so it disagreed with the game about every prop's real footprint.
+    blockedAt: function (x, y) { return blockedByProp(currentRoom, x, y); },
     duel: function () { return window.NewseyDuel.debug(); }
   };
 })();

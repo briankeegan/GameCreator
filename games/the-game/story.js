@@ -407,12 +407,20 @@ window.NEWSEY_STORY = (function () {
       // The bar's footprint on the floor (the old box sat entirely above the
       // walkable area, so it blocked nothing).
       obstacles: [ { x: 155, y: 95, w: 110, h: 30 } ], // the bar's footprint
+      // NOBODY STANDS IN FRONT OF THE RUNE DOOR. The trigger band is
+      // x 132-188 at y 182-192 and the player walks down the middle of the
+      // room to reach it, so an NPC anywhere in x 136-184 below y 160 fences
+      // off the room's main exit. That is exactly what happened the first
+      // time Kat's table was placed: Eric and Magma sat either side of the
+      // approach, and the walk test could no longer get through the door at
+      // all. Kat's table is therefore split around the corridor, not across
+      // it, and folk-test.js checks the corridor stays empty.
       npcs: [
         {
           // Flavor only here — per the plot, the Lounge is "the bar + portals
           // to duels", not the duel itself. Kat's actual fight happens in
           // ROOMS.arena, reached through the portal below.
-          id: "kat", x: 180, y: 162, art: "kat", sprite: "kat_top",
+          id: "kat", x: 204, y: 158, art: "kat", sprite: "kat_top",
           lines: [
             "Hello there. They call me Kat. What's your name?",
             "I'll buy you a drink — if you duel me. No better way to learn!",
@@ -430,7 +438,7 @@ window.NEWSEY_STORY = (function () {
           setsFlag: "duelInvite"
         },
         {
-          id: "timothy", x: 216, y: 148, art: "timothy", sprite: "timothy_top",
+          id: "timothy", x: 222, y: 140, art: "timothy", sprite: "timothy_top",
           lines: [
             "Now, now, May. That's not how we WELCOME the new people. This is Rex. Be nice.",
             "My bracelet's all diamond. Yours will get there too, given time."
@@ -451,7 +459,7 @@ window.NEWSEY_STORY = (function () {
         // Magma." Michael keeps his coffee shop in the library; the other
         // three are here.
         {
-          id: "diamond", x: 118, y: 168, art: "diamond", sprite: "diamond_top",
+          id: "diamond", x: 196, y: 178, art: "diamond", sprite: "diamond_top",
           lines: [
             "I'm Diamond. I'm the only person you really need to meet around here.",
             "Don't listen to Eric. He thinks the sun rises on Anarchy.",
@@ -459,7 +467,7 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "eric", x: 140, y: 174, art: "eric", sprite: "eric_top",
+          id: "eric", x: 116, y: 164, art: "eric", sprite: "eric_top",
           lines: [
             "She only wishes she was the star around here. I'm afraid that honour goes to Anarchy.",
             "I'm Eric. Ignore the two of us, we do this constantly.",
@@ -467,7 +475,7 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "magma", x: 168, y: 176, art: "magma", sprite: "magma_top",
+          id: "magma", x: 124, y: 180, art: "magma", sprite: "magma_top",
           lines: [
             "…I'm Magma.",
             // The plot's actual beat: it happens DURING the handshake, before

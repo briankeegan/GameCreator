@@ -73,6 +73,13 @@
           <!-- No forfeit button: a duel ends by being played out. -->
           <div class="duel-topline">
             <div class="duel-hint" id="duelHint"></div>
+            <!-- The duel hides the world's ☰ (syncMenuButton), so without this
+                 there is no way off the board to the controls screen on a
+                 phone — and the duel is the one screen where rebinding SWAP
+                 and RAISE actually matters. menu.js's showControls/
+                 leaveControls already handle the mid-duel case; this is the
+                 button they were written for. -->
+            <button class="duel-gear" id="duelSettings" aria-label="Controls">⚙</button>
           </div>
           <!-- On-screen controls: the same scheme as the original game — move a
                two-wide cursor, press swap. Works with touch or mouse, and the

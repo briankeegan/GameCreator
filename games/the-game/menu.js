@@ -236,6 +236,9 @@ window.NewseyMenu = (function () {
   }
 
   menuBtn.addEventListener("click", openPause);
+  // The duel's own ⚙ — same screen, reached from the board (see showControls).
+  var duelGear = document.getElementById("duelSettings");
+  if (duelGear) duelGear.addEventListener("click", showControls);
   document.getElementById("pauseResume").addEventListener("click", closePause);
   document.getElementById("pauseSave").addEventListener("click", function () {
     window.NewseyGame.save();
