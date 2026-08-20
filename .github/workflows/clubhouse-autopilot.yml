@@ -523,7 +523,65 @@ jobs:
             echo "-----BEGIN HISTORY-----"
             printf '%s\n' "$HISTORY"
             echo "-----END HISTORY-----"
+
+            # TELL THE MODEL WHAT IS ALREADY BROKEN.
+            #
+            # The art checkers no longer fail the site deploy (one game's bad
+            # art was taking every game down with it), so a problem they find
+            # has to reach someone or it is just a warning in a log nobody
+            # opens. The run that is about to work on this game is exactly the
+            # someone: it has the tools, the art contract and the budget open
+            # in front of it. Pre-existing problems in OTHER games are listed
+            # too but explicitly not this run's job — a Dog Punk request must
+            # not turn into a Newsey art pass.
+            if [ -s .autopilot/art_problems.txt ]; then
+              echo ""
+              echo "ART PROBLEMS ALREADY ON MAIN (found by the same checkers you"
+              echo "run before shipping — these are pre-existing, not caused by you):"
+              echo "-----BEGIN ART PROBLEMS-----"
+              cat .autopilot/art_problems.txt
+              echo "-----END ART PROBLEMS-----"
+              echo "If any of these are in THIS game and related to what you were"
+              echo "asked for, fix them as part of this pass and say so. If they are"
+              echo "in another game, or unrelated, LEAVE THEM ALONE and do not"
+              echo "mention them — they belong to that game's thread."
+            fi
           } >> .autopilot/prompt.txt
+
+      # Run the art checkers up front, so the model is TOLD what is already
+      # broken rather than finding out from a warning in a CI log it will never
+      # read. Never fatal: these are pre-existing problems, and refusing to
+      # handle a chat message because some other game's art is wrong would be
+      # absurd.
+      - name: Collect pre-existing art problems
+        if: steps.ctx.outputs.enabled == 'true'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: |
+          set -uo pipefail
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          : > .autopilot/art_problems.txt
+          for sheet in games/*/*_sheet.png; do
+            [ -e "$sheet" ] || continue
+            g=$(dirname "$sheet"); st="$g/art-style.json"
+            if [ -f "$st" ]; then a="--style $st"; else a=""; fi
+            python3 .github/art/verify_sheet.py sheet "$sheet" $a >/dev/null 2>>.autopilot/art_problems.txt || true
+          done
+          for strip in games/*/tiles.png; do
+            [ -e "$strip" ] || continue
+            python3 .github/art/tileset.py verify "$(dirname "$strip")" >/dev/null 2>>.autopilot/art_problems.txt || true
+          done
+          for f in games/*/art/*_down_1.png; do
+            [ -e "$f" ] || continue
+            d=$(dirname "$f")
+            python3 .github/art/verify_sheet.py frames "$d" "$(basename "$f" _down_1.png)" \
+              >/dev/null 2>>.autopilot/art_problems.txt || true
+          done
+          # Warnings are advisory and there are a lot of them; only the hard
+          # problems are worth a run's attention.
+          grep -v '^WARNING' .autopilot/art_problems.txt > .autopilot/tmp$$ 2>/dev/null || true
+          mv .autopilot/tmp$$ .autopilot/art_problems.txt 2>/dev/null || true
+          echo "pre-existing art problems:"; cat .autopilot/art_problems.txt || true
 
       # Start the local image service BEFORE the model runs. It holds the
       # OpenAI key in ITS OWN environment — the model step below does NOT set

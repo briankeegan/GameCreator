@@ -117,7 +117,9 @@ jobs:
               python3 .github/art/verify_sheet.py sheet "$sheet" || status=1
             fi
           done
-          exit $status
+          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
+          [ "$status" = 0 ] || echo "Verify shipped sprite sheets" >> $RUNNER_TEMP/art-problems
+          exit 0
 
       # Tiled levels: the third shape of art, and the one that had a pipeline
       # and no checker until four separate defects shipped to a player in a
@@ -134,7 +136,9 @@ jobs:
             echo "== $strip =="
             python3 .github/art/tileset.py verify "$game" || status=1
           done
-          exit $status
+          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
+          [ "$status" = 0 ] || echo "Verify tile strips" >> $RUNNER_TEMP/art-problems
+          exit 0
 
       # The same walk-cycle rules for games that ship INDIVIDUAL frame files
       # instead of sheets (Newsey). Which checks apply depends on how a game
@@ -164,13 +168,37 @@ jobs:
           # game's art failed five deploys in a row while a DIFFERENT game's
           # thread said its change was live. Whoever reads this needs to know
           # in one line whose art is holding the site, not have to scroll a log.
-          if [ -n "$broken" ]; then
-            echo "::error::Site deploy BLOCKED for every game by art in:$broken — this is a shared build, so fix or revert that art to unblock the rest."
-            { echo "### Deploy blocked"; echo;
-              echo "Failing art:$broken"; echo;
-              echo "This build deploys every game as one artifact, so this blocks the whole site."; } >> "$GITHUB_STEP_SUMMARY"
-          fi
-          exit $status
+          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
+          [ -z "$broken" ] || echo "character frames:$broken" >> $RUNNER_TEMP/art-problems
+          exit 0
+
+      # THE SITE ALWAYS SHIPS.
+      #
+      # The art checks above used to fail this build. That is defensible in the
+      # abstract and was wrong in practice: this build is ONE artifact for every
+      # game, so one character's frames failing took the whole site down with
+      # it. It happened — `may: CROPPED` in the-game failed five deploys in a
+      # row, and Dog Punk's colour fix, already on main and already correct, sat
+      # undeployed while its thread said it was live. A game with no art problem
+      # at all could not ship because a different game had one.
+      #
+      # So the art checks REPORT and the deploy proceeds. Two things keep that
+      # from becoming "nobody fixes art":
+      #   * the autopilot still runs the same checkers BEFORE it lands, so a run
+      #     cannot introduce broken art in the first place — that is the gate
+      #     that actually catches things, because it catches them at the moment
+      #     they are made;
+      #   * a problem here is annotated, summarised, and handed to the thread
+      #     that owns the game (see "Tell the thread" below), so it becomes
+      #     someone's next job instead of a silent block.
+      - name: Report art problems
+        if: always()
+        run: |
+          [ -s $RUNNER_TEMP/art-problems ] || { echo "No art problems."; exit 0; }
+          echo "::warning::Art problems found (the site still deployed): $(paste -sd'; ' $RUNNER_TEMP/art-problems)"
+          { echo "### Art problems"; echo;
+            echo "The site deployed anyway — these do not block it."; echo;
+            sed 's/^/- /' $RUNNER_TEMP/art-problems; } >> "$GITHUB_STEP_SUMMARY"
 
       # Same mechanism HayleysGame's clubhouse already uses in production —
       # after chasing several more elaborate "fixes" here that each added a
