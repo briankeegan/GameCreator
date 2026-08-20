@@ -1,0 +1,198 @@
+name: Generate character walk sheet
+
+# ONE DISPATCH PER CHARACTER. Before this existed, giving a new character
+# real walk animation meant three manual steps done in the right order:
+# hand-copy the recipe prompt out of games/the-game/WALK_SHEETS.md, fill in
+# the description, run "Generate image" (or "Generate referenced asset") with
+# the right size, then check out the result and run
+# .github/art/slice_walksheet.py by hand to cut the grid into frames. Every
+# one of those was a place to drift — a reworded prompt, a forgotten column
+# convention, a sheet that never got sliced.
+#
+# This does all three from one form: build the canonical prompt, generate,
+# slice, commit. The prompt lives in .github/art/walksheet_prompt.txt so the
+# recipe has exactly ONE copy; edit it there and every future character
+# inherits the fix.
+#
+# What comes out: games/<game>/art/<id>_<dir>_<0|1|2>.png for down, left and
+# up (RIGHT is not generated — the game mirrors LEFT with scale(-1,1)), plus
+# the raw sheet kept alongside as <id>_walksheet.png for reference.
+#
+# Wiring the frames into the game is still a code change (add the character to
+# that game's facing-frames table) — this Action only produces the art.
+on:
+  workflow_dispatch:
+    inputs:
+      game:
+        description: "Game id, e.g. the-game"
+        required: true
+        type: string
+      character_id:
+        description: "Art id for the character, e.g. nella_human — frames are written as <id>_<dir>_<n>.png"
+        required: true
+        type: string
+      description:
+        description: "Who the character is: build, hair, clothing, colours, distinguishing features"
+        required: true
+        type: string
+      references:
+        description: "Optional comma-separated repo-relative reference PNGs to match likeness (e.g. games/the-game/art/nella_top.png)"
+        required: false
+        type: string
+      size:
+        description: "Sheet size — a 4x3 grid wants the tall one"
+        required: false
+        type: choice
+        options:
+          - "1024x1536"
+          - "1024x1024"
+          - "1536x1024"
+        default: "1024x1536"
+      quality:
+        description: "Render quality — cost rises steeply: low < medium < high"
+        required: false
+        type: choice
+        options:
+          - "low"
+          - "medium"
+          - "high"
+        default: "high"
+      force:
+        description: "Regenerate even if the sheet already exists"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  walksheet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Build the canonical walk-sheet prompt
+        id: prompt
+        env:
+          CHARACTER: ${{ inputs.description }}
+        run: |
+          set -euo pipefail
+          # Single source of truth for the recipe — never retype it inline.
+          prompt=$(python3 - <<'PY'
+          import os
+          tpl = open('.github/art/walksheet_prompt.txt').read().strip()
+          print(tpl.replace('{CHARACTER}', os.environ['CHARACTER']))
+          PY
+          )
+          {
+            echo "text<<PROMPT_EOF"
+            echo "$prompt"
+            echo "PROMPT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate the sheet
+        id: gen
+        timeout-minutes: 12
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PROMPT: ${{ steps.prompt.outputs.text }}
+          GAME: ${{ inputs.game }}
+          CHAR: ${{ inputs.character_id }}
+          REFERENCES: ${{ inputs.references }}
+          SIZE: ${{ inputs.size }}
+          QUALITY: ${{ inputs.quality }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -uo pipefail
+          SHEET="games/$GAME/art/${CHAR}_walksheet.png"
+          if [ -s "$SHEET" ] && [ "$FORCE" != "true" ]; then
+            echo "::notice::$SHEET already exists — skipping (re-run with force=true)."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p "$(dirname "$SHEET")"
+
+          # With references we use /images/edits so the likeness is actually
+          # derived from the supplied art; without, plain /images/generations.
+          ARGS=(-F "model=gpt-image-1" -F "prompt=${PROMPT}" -F "size=${SIZE}" -F "quality=${QUALITY}")
+          URL=https://api.openai.com/v1/images/generations
+          if [ -n "$REFERENCES" ]; then
+            URL=https://api.openai.com/v1/images/edits
+            IFS=',' read -ra REFS <<< "$REFERENCES"
+            for ref in "${REFS[@]}"; do
+              r=$(echo "$ref" | xargs)
+              [ -z "$r" ] && continue
+              [ -f "$r" ] || { echo "::error::Reference not found: $r"; exit 1; }
+              ARGS+=(-F "image[]=@${r}")
+            done
+          fi
+
+          ok=""
+          for attempt in 1 2 3 4 5; do
+            resp=$(curl -sS -w '\n%{http_code}' "$URL" \
+              -H "Authorization: Bearer $OPENAI_API_KEY" "${ARGS[@]}" || true)
+            code=$(printf '%s' "$resp" | tail -n1)
+            body=$(printf '%s' "$resp" | sed '$d')
+            [ "$code" = "200" ] && { ok=1; break; }
+            err=$(printf '%s' "$body" | jq -r '.error.message // empty' 2>/dev/null)
+            if [ "$code" = "429" ] || [ "$code" = "000" ] || [ "${code#5}" != "$code" ]; then
+              wait=$((attempt * 15 + RANDOM % 8))
+              echo "Transient (HTTP $code, attempt $attempt): ${err:-no body} — retrying in ${wait}s"
+              sleep "$wait"; continue
+            fi
+            echo "::error::OpenAI API error (HTTP $code): ${err:-unknown}"; exit 1
+          done
+          [ -n "$ok" ] || { echo "::error::Still failing after retries"; exit 1; }
+
+          printf '%s' "$body" | jq -r '.data[0].b64_json' | base64 -d > "$SHEET"
+          [ -s "$SHEET" ] || { echo "::error::Sheet is empty — generation failed"; exit 1; }
+          echo "sheet=$SHEET" >> "$GITHUB_OUTPUT"
+
+      - name: Slice the grid into frames
+        if: steps.gen.outputs.skipped != 'true'
+        timeout-minutes: 6
+        env:
+          GAME: ${{ inputs.game }}
+          CHAR: ${{ inputs.character_id }}
+          SHEET: ${{ steps.gen.outputs.sheet }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          python3 .github/art/slice_walksheet.py "$SHEET" "games/$GAME/art" "$CHAR"
+          # A sheet the model framed badly can slice into a wrong number of
+          # frames and still "succeed" — fail here instead of committing a
+          # half-set that only shows up as a broken animation in-game.
+          missing=""
+          for dir in down left up; do
+            for n in 0 1 2; do
+              f="games/$GAME/art/${CHAR}_${dir}_${n}.png"
+              [ -s "$f" ] || missing="$missing $f"
+            done
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::slicer did not produce the full 3x3 set — missing:$missing"
+            exit 1
+          fi
+
+      - name: Commit the frames
+        if: steps.gen.outputs.skipped != 'true'
+        env:
+          GAME: ${{ inputs.game }}
+          CHAR: ${{ inputs.character_id }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "games/$GAME/art/${CHAR}_"*.png
+          if git diff --cached --quiet; then echo "Nothing changed."; exit 0; fi
+          git commit -m "Walk sheet for ${CHAR} (${GAME}): 3-frame RPG-Maker cycle, down/left/up"
+          for i in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+          done
+          echo "::error::could not push after retries"; exit 1

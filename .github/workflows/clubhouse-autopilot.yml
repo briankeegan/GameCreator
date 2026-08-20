@@ -355,6 +355,21 @@ jobs:
                which is the point. If you run out with nothing great, keep the
                best attempt and SAY SO in your reply.
 
+               WALK CYCLES have their own convention and their own one-shot
+               Action — do not hand-roll them. Three frames per direction,
+               <id>_<dir>_<0|1|2>.png, where the MIDDLE frame (1) is a true
+               NEUTRAL standing pose used both for idle and as the resting beat
+               mid-walk; frames 0 and 2 are the two mirrored step poses;
+               playback while moving is [1,0,1,2], snapping back to 1 the
+               moment movement stops. RIGHT is never drawn — it is LEFT
+               mirrored with scale(-1,1) — so the LEFT row must be a true side
+               profile. Generate the whole set by dispatching
+               .github/workflows/generate-walksheet.yml (it builds the prompt
+               from .github/art/walksheet_prompt.txt, generates, slices and
+               commits); the code side is adding the character to that game's
+               facing-frames table. See CLAUDE.md and
+               games/the-game/WALK_SHEETS.md.
+
                For a simple FLAT icon or logo, skip all this and write an inline
                .svg file (SVG over PNG per CLAUDE.md).
 
