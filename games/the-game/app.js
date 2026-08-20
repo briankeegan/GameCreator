@@ -218,6 +218,7 @@
   function endCutscene() {
     cutsceneEl.classList.add("hidden");
     applyControlsSetting();
+    document.getElementById("menuBtn").hidden = !running;
     sizeStage();
     var cb = cutsceneDoneCallback;
     cutsceneDoneCallback = null;
@@ -234,6 +235,11 @@
     portraitFallback.hidden = true;
     cutsceneEl.classList.remove("hidden");
     applyControlsSetting();
+    // A cutscene is never pausable (own tap-to-advance, no world to pause
+    // into) — the ☰ button showing here was a real bug: menu.js's hide()
+    // sets it visible purely from `running`, which flips true the instant
+    // beginFile() starts, before the intro has even begun playing.
+    document.getElementById("menuBtn").hidden = true;
     sizeStage();
     renderCutsceneLine();
   }
@@ -284,7 +290,8 @@
     // Escape / Enter is START on a console pad: it opens the pause menu, and
     // the menu itself handles closing again. Never while a duel is running —
     // that screen has its own forfeit button and its own key handling.
-    if ((e.key === "Escape" || e.key === "p" || e.key === "P") && running && !window.NewseyDuel.isActive()) {
+    if ((e.key === "Escape" || e.key === "p" || e.key === "P") && running &&
+        cutsceneEl.classList.contains("hidden") && !window.NewseyDuel.isActive()) {
       window.NewseyMenu.togglePause();
       e.preventDefault();
       return;
@@ -770,7 +777,12 @@
     state: function () { return save; },
     // Whether the pause menu should offer "Save" — during a cutscene there is
     // no room/position worth writing yet.
-    canSave: function () { return running && cutsceneEl.classList.contains("hidden"); }
+    canSave: function () { return running && cutsceneEl.classList.contains("hidden"); },
+    // Whether the ☰ button should be shown at all. Not just `running`: menu.js's
+    // hide() (called right after beginFile() starts a fresh file's intro
+    // cutscene) was clobbering the menuBtn.hidden=true that startCutscene()
+    // had just set, because it only ever checked isRunning().
+    canPause: function () { return running && cutsceneEl.classList.contains("hidden"); }
   };
 
   // The tab closing / going to the background is the one moment the player
