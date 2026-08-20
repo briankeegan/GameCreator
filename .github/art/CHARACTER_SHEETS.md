@@ -20,6 +20,21 @@ standard: `docs/ROOM_ART_STANDARD.md`.
 | 1 | **neutral** — standing still, both feet together under the body |
 | 2 | mid-step, **RIGHT foot forward**, left foot back |
 
+**A stride is drawn differently depending on the row, because a leg moving
+toward the camera is foreshortened to nothing.** State it per row:
+
+- **Side row** — a true fore/aft split: one foot planted ahead of the body,
+  the other behind, a clear gap between them. This is the only row where the
+  step reads as displacement.
+- **Front and back rows** — one leg LIFTED: knee bent, that foot clearly
+  higher off the ground than the other, the other leg straight and planted.
+  The step reads as height, not depth. Asking for "left foot forward" on a
+  front view produces two legs in a muddle with the difference invisible —
+  which is exactly what shipped and had to be regenerated.
+
+Frames 0 and 2 swap which leg does the work: left lifted, then right lifted
+(front/back), or left forward, then right forward (side).
+
 Name the actual foot in the prompt. "One leg forward" and "the opposite leg
 forward" is too vague to hold: a generated back row came back with frame 0 as
 a real stride and frames 1 and 2 as two near-identical standing poses, so the
