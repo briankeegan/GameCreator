@@ -365,6 +365,63 @@
     if (save) { save.room = roomId; persist(); } // walking through a door autosaves
   }
 
+  // ---- the black rune door ----
+  // The plot's way around Infinity, and the only door that asks you a
+  // question. The FIRST push doesn't: "She wasn't sure how to open the door,
+  // but decided to push where she guessed a handle could be... The room was
+  // not the library" — so the first time it just dumps you in the Garden.
+  // Kyran is the one who tells you about the chaos rune, and after that the
+  // carvings resolve into words you can pick from.
+  var runeEl = document.getElementById("runeDoor");
+  var runeTitleEl = document.getElementById("runeTitle");
+  var runeListEl = document.getElementById("runeList");
+  var runeOpen = false;
+
+  function runeDoorKnown() { return !!(save && save.flags && save.flags.runeDoorLearned); }
+
+  function openRuneDoor() {
+    if (!runeDoorKnown()) {
+      // The accidental first trip. Sent somewhere she didn't choose, which is
+      // the whole reason she ever meets Kyran.
+      enterRoom("garden");
+      showNarration([
+        "The door is black marble, carved over with runes, and heavier than it looks.",
+        "You push where a handle ought to be. It gives, creaking.",
+        "This is not the library."
+      ]);
+      return;
+    }
+    runeOpen = true;
+    runeTitleEl.textContent = "You put your palm on the chaos symbol. The carvings fade, and words come up in white paint.";
+    runeListEl.innerHTML = "";
+    STORY.RUNE_DOOR.forEach(function (dest) {
+      var b = document.createElement("button");
+      b.textContent = dest.label + (dest.locked ? "" : "");
+      if (dest.locked) {
+        b.className = "locked";
+        b.onclick = function () { runeTitleEl.textContent = dest.locked; };
+      } else {
+        b.onclick = function () {
+          closeRuneDoor();
+          enterRoom(dest.to, dest.arriveAt);
+        };
+      }
+      runeListEl.appendChild(b);
+    });
+    runeEl.hidden = false;
+  }
+
+  function closeRuneDoor() {
+    runeOpen = false;
+    runeEl.hidden = true;
+  }
+  document.getElementById("runeBack").onclick = function () {
+    closeRuneDoor();
+    // Step back off the threshold, or the next frame opens it again.
+    player.y -= 14;
+    exitsArmed = false;
+  };
+
   // ---- input ----
   // Which key does what is the player's choice (settings.js) — nothing here
   // hardcodes a binding any more.
@@ -558,6 +615,9 @@
     window.NewseyDuel.start({
       playerName: CHARACTERS.nella.name,
       playerLevel: config.playerLevel || 2,
+      // A duel can be a set: `firstTo: 5` on the NPC's duel block makes it
+      // best-of, the way Kat's is in the plot ("First to five wins").
+      firstTo: config.firstTo || 1,
       opponent: {
         id: npc.id,
         name: config.name || character.name || npc.id,
@@ -640,6 +700,60 @@
   }
 
   // A doorway plus a margin — kept clear of wandering NPCs.
+  // ---- props ----
+  // Scenery that stands UP off the floor — a tree, a fountain — drawn as its
+  // own sprite rather than painted into the background, so it can sort against
+  // the player by foot position: walk above its base and you pass behind it,
+  // walk into the base and you stop. Painted into the background it could only
+  // ever be a flat picture you either walked over or were fenced away from.
+  // A prop is { art, x, y, h, base: { rx, ry } } — x/y is where it MEETS THE
+  // GROUND, h is how tall it draws, and base is the ellipse at its foot that
+  // nothing can walk into.
+  // How much smaller a thing draws because of where it stands. A room painted
+  // in perspective gets steadily further away toward the top of the frame, so
+  // props drawn at one fixed size in it can read as the same object
+  // teleporting between two scales. A room declares the ramp once:
+  //
+  //   depthScale: { nearY, farY, far }
+  //
+  // 1.0 at nearY (the front edge of the walkable floor), `far` at farY (the
+  // back), straight line between, clamped outside. Rooms without one are
+  // unaffected, and most rooms should NOT have one: take the sizes off the
+  // composed scene first, and only add a ramp if that scene actually drew the
+  // far things smaller. The Anarchy Garden's didn't, and ramping it there is
+  // what made its statues read as tiny ornaments.
+  function depthAt(room, groundY) {
+    var d = room && room.depthScale;
+    if (!d) return 1;
+    var span = d.nearY - d.farY;
+    if (!span) return 1;
+    var t = Math.max(0, Math.min(1, (groundY - d.farY) / span));
+    return d.far + (1 - d.far) * t;
+  }
+
+  // A prop's footprint is either an ellipse at its foot — { rx, ry }, right for
+  // anything with a round-ish base like a tree or a statue — or a rectangle —
+  // { w, h }, which is what a wall or the coping of a pool actually is; an
+  // ellipse can't describe those and leaves walkable gaps at the corners.
+  // A prop with no base at all (flowers, grass tufts) is walked straight over.
+  function blockedByProp(room, feetX, feetY) {
+    var props = room.props;
+    if (!props) return false;
+    for (var i = 0; i < props.length; i++) {
+      var p = props[i];
+      if (!p.base) continue;
+      var ds = depthAt(room, p.y);
+      if (p.base.w !== undefined) {
+        if (Math.abs(feetX - p.x) < (p.base.w * ds) / 2 &&
+            Math.abs(feetY - p.y) < (p.base.h * ds) / 2) return true;
+      } else {
+        var dx = (feetX - p.x) / (p.base.rx * ds), dy = (feetY - p.y) / (p.base.ry * ds);
+        if (dx * dx + dy * dy < 1) return true;
+      }
+    }
+    return false;
+  }
+
   var DOOR_CLEARANCE = 10;
   function inDoorway(room, feetX, feetY) {
     var exits = room.exits || [];
@@ -653,7 +767,8 @@
 
   // Can she stand with her feet here?
   function canStand(room, x, y) {
-    return isFloor(room, x + player.w / 2, y + player.h);
+    return isFloor(room, x + player.w / 2, y + player.h) &&
+           !blockedByProp(room, x + player.w / 2, y + player.h);
   }
 
   // Nearest floor to a point, searched outward in rings. Used whenever
@@ -732,8 +847,10 @@
     if (d < 1.5) { pickWanderTarget(w); w.pause = 1 + Math.random() * 2.5; w.walking = false; return; }
     var step = Math.min(d, WANDER_SPEED * dt);
     var nx = npc.x + (dx / d) * step, ny = npc.y + (dy / d) * step;
-    // Nobody wanders off the floor either — same mask, same question — and
-    if (!isFloor(room, nx, ny)) { pickWanderTarget(w); w.walking = false; return; }
+    // Nobody wanders off the floor or through a solid prop either — same
+    // question either way, and both are real obstacles regardless of why
+    // the NPC is moving, so they apply even during a scripted entrance.
+    if (!isFloor(room, nx, ny) || blockedByProp(room, nx, ny)) { pickWanderTarget(w); w.walking = false; return; }
     // A scripted entrance (see entryFrom/pendingEntranceTalk) skips both the
     // doorway-clearance block below and the player-proximity block further
     // down: he starts AT the door by definition (that's where entryFrom
@@ -743,8 +860,8 @@
     // again once the player-proximity fix alone wasn't enough: he'd move a
     // few px, get flagged as "in the doorway", and pickWanderTarget would
     // hand him an unrelated random wander point instead of continuing home.
-    // Someone being let in isn't "parking in the door" or "walking into you"
-    // the way a wandering NPC's random drift would be.
+    // Someone being let in isn't "parking in the door" or "walking into
+    // you" the way a wandering NPC's random drift would be.
     if (w.scriptedEntry) { npc.x = nx; npc.y = ny; w.walking = true; w.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"); w.walkPhase = (w.walkPhase || 0) + dt * 9; return; }
     // nobody parks in a doorway: someone standing in the door blocks the way
     // through until you shove them aside, which reads as a broken door.
@@ -861,6 +978,7 @@
   }
 
   function update(dt) {
+    if (runeOpen) return;
     if (!running || paused) return;
     // Playtime is wall-clock time with the game actually in front of you —
     // menus and pauses don't count, same as the clock on a cartridge file
@@ -963,7 +1081,10 @@
       if (player.x + player.w > ex.x && player.x < ex.x + ex.w &&
           player.y + player.h > ex.y && player.y < ex.y + ex.h) {
         onExit = true;
-        if (exitsArmed) enterRoom(ex.to, ex.arriveAt, ex.arriveFacing);
+        if (exitsArmed) {
+          if (ex.rune) openRuneDoor();
+          else enterRoom(ex.to, ex.arriveAt, ex.arriveFacing);
+        }
       }
     });
     if (!onExit) exitsArmed = true;
@@ -1197,6 +1318,46 @@
   // exists yet, and to a plain colored circle with an initial when neither
   // exists — always anchored to a ground shadow so nothing reads as a
   // photo floating mid-air.
+  // A prop draws from its own foot point upward, at its natural aspect, so a
+  // tree is as tall as its art says rather than squeezed into a cell.
+  function drawProp(prop) {
+    var entry = loadArt(prop.art);
+    if (!entry || !entry.ok || !entry.img.naturalHeight) return;
+    var img = entry.img;
+    // prop.h is its height AT THE FRONT of the room; the depth ramp does the
+    // rest, so one number describes the prop and the room describes the space.
+    var ds = depthAt(currentRoom, prop.y);
+    var h = (prop.h || 40) * ds;
+    // Width follows the art's own aspect, so a tree keeps its proportions.
+    // A prop may override it: a pool or a run of wall has to span the room,
+    // and its aspect is whatever the sheet happened to draw it at.
+    var w = (prop.w !== undefined ? prop.w : h * (img.naturalWidth / img.naturalHeight)) * ds;
+    if (prop.flat) {
+      // Ground cover lying ON the floor: centred on its spot, no foot point,
+      // no shadow — it isn't standing up, so it can't cast one.
+      ctx.drawImage(img, prop.x - w / 2, prop.y - h / 2, w, h);
+      return;
+    }
+    // A soft pool of shade sized to the SPRITE, not to its collision base. A
+    // hard ellipse the size of the footprint left the fountain's stone basin
+    // with a dark smudge in the middle of it and nothing under its rim, which
+    // is what read as the whole thing hovering.
+    var sw = w * 0.44, sh = sw * 0.30;
+    ctx.save();
+    ctx.translate(prop.x, prop.y - sh * 0.15);
+    ctx.scale(1, sh / sw);
+    var shade = ctx.createRadialGradient(0, 0, sw * 0.15, 0, 0, sw);
+    shade.addColorStop(0, "rgba(0,0,0,0.34)");
+    shade.addColorStop(0.65, "rgba(0,0,0,0.16)");
+    shade.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = shade;
+    ctx.beginPath();
+    ctx.arc(0, 0, sw, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.drawImage(img, prop.x - w / 2, prop.y - h, w, h);
+  }
+
   function drawNpc(npc) {
     var c = CHARACTERS[npc.id] || { name: npc.id, color: "#8a5cf6" };
     // Some interactables are scenery already painted into the room art — a
@@ -1428,9 +1589,16 @@
     ctx.clearRect(0, 0, VW, VH);
     if (!currentRoom || !running) return;
     drawRoomBg();
+    (currentRoom.props || []).forEach(function (p) { if (p.flat) drawProp(p); });
     drawExits();
     // sort by y so things lower on screen draw on top (cheap depth)
     var entities = roomNpcs(currentRoom).map(function (n) { return { y: n.y, draw: function () { drawNpc(n); } }; });
+    (currentRoom.props || []).forEach(function (p) {
+      // A FLAT prop is ground cover and was painted with the floor above. Sort
+      // it and the player's own feet would sometimes vanish behind a flower.
+      if (p.flat) return;
+      entities.push({ y: p.y, draw: function () { drawProp(p); } });
+    });
     entities.push({ y: player.y + player.h, draw: drawPlayer });
     entities.sort(function (a, b) { return a.y - b.y; });
     entities.forEach(function (e) { e.draw(); });
@@ -1473,6 +1641,7 @@
     player.inBed = false;
     player.bedSlide = null;
     bedPush = 0;
+    closeRuneDoor();
     talkBox.hidden = true;
     talking = null;
     keys = {};

@@ -99,6 +99,26 @@ window.NEWSEY_STORY = (function () {
     "…Chuck. It has to be Chuck."
   ];
 
+  // The black marble door at the end of the hallway. In the plot Nella pushes
+  // it once by guess and lands somewhere she didn't mean to; afterwards Kyran
+  // tells her to "touch the rune of the chaos symbol", and the carvings resolve
+  // into words she can pick from:
+  //
+  //   "Nella looked through the words: Observatory, Basement, Garden (Closed),
+  //    Office... and Library."
+  //
+  // The three that go somewhere are the three that exist. The other three are
+  // listed and locked, which is both what the door shows her and an honest
+  // account of what is built.
+  var RUNE_DOOR = [
+    { label: "Library", to: "library", arriveAt: { x: 220, y: 150 }, arriveFacing: "down" },
+    { label: "Anarchy Garden", to: "garden", arriveAt: { x: 150, y: 158 }, arriveFacing: "up" },
+    { label: "Kyran's Lab", to: "lab", arriveAt: { x: 210, y: 130 }, arriveFacing: "left" },
+    { label: "Observatory", locked: "The word doesn't take your finger. Not yet." },
+    { label: "Basement", locked: "The word doesn't take your finger. Not yet." },
+    { label: "Office", locked: "The word doesn't take your finger. Not yet." }
+  ];
+
   // EXIT / DOOR CONVENTION — every `exits[]` entry needs THREE things, not
   // just `to` and `arriveAt`. Getting only two of three shipped live twice
   // and had to be fixed after the fact:
@@ -127,6 +147,10 @@ window.NEWSEY_STORY = (function () {
   // step in `.github/workflows/pages.yml` (same gate as the engine tests,
   // runs on every push to main). Don't add/move a door by feel and skip
   // it — that's exactly how both bugs above shipped.
+  //
+  // A `rune: true` exit is the one exception to (1) and (2): it has no fixed
+  // destination at all, it opens the rune door's picker instead (see
+  // openRuneDoor in app.js), so it carries neither `to` nor `arriveAt`.
 
   // ROOM SHAPES — every room's walkable area is `floorPoly`, the drawn floor
   // traced as a polygon in the game's 320x200 room coordinates. These rooms
@@ -340,7 +364,11 @@ window.NEWSEY_STORY = (function () {
       floorPoly: [[245,100],[68,100],[32,140],[58,188],[228,188],[270,140]],
       exits: [
         { x: 80, y: 86, w: 34, h: 18, to: "bedroom", arriveAt: { x: 228, y: 160 }, arriveFacing: "left" },
-        { x: 132, y: 182, w: 56, h: 10, to: "library", drawn: "threshold", arriveAt: { x: 220, y: 150 }, arriveFacing: "down" }
+        // Not a doorway to one room any more — this is the black rune door,
+        // and where it puts you is a choice (see RUNE_DOOR above and
+        // openRuneDoor in app.js). The first push lands you in the Garden by
+        // accident, exactly as it does in the plot.
+        { x: 132, y: 182, w: 56, h: 10, rune: true, drawn: "threshold" }
       ],
       // The bar's footprint on the floor (the old box sat entirely above the
       // walkable area, so it blocked nothing).
@@ -420,11 +448,14 @@ window.NEWSEY_STORY = (function () {
           needs: "duelInvite",     // the arena is empty until someone agrees to meet you
           lines: [
             "There you are. Ready?",
-            "Chains, dear. Clear one thing so another thing falls into place. That's the whole game."
+            "Chains, dear. Clear one thing so another thing falls into place. That's the whole game.",
+            "First to five. Don't sulk when it's over — nobody wins their first set."
           ],
-          // The plot's first real duel: chains matter, garbage arrives as slabs.
+          // The plot's first real duel: chains matter, garbage arrives as slabs,
+          // and it is a SET, not one board — "First to five wins," Nella
+          // says, and then loses it 5-1.
           duel: {
-            level: 3, difficulty: "steady", theme: "pink", playerLevel: 2,
+            level: 3, difficulty: "steady", theme: "pink", playerLevel: 2, firstTo: 5,
             winLine: "Kat tips her hat as the last slab lands on her side. \"Well! Aren't you a find.\"",
             loseLine: "Kat's chain buries you a slab at a time. \"Ah — too slow, dear.\"",
             afterWin: [
@@ -458,6 +489,98 @@ window.NEWSEY_STORY = (function () {
               "Go practice. I'll still be here."
             ]
           }
+        }
+      ]
+    },
+    // "The room was not the library, but instead, it appeared to be outdoors in
+    // a green garden covered with pools, water falls, and statues... Above her
+    // head, there was a sign covered in winding rose bushes that said,
+    // 'Anarchy Garden.'"
+    // THE REFERENCE ROOM for the three-pass art standard
+    // (docs/ROOM_ART_STANDARD.md). bg-garden.png is grass and path and NOTHING
+    // else, so the walk mask is its own silhouette and there is nothing to
+    // declare — no floorPoly, no floorTop, no obstacles. Everything you can see
+    // that is not grass is a prop below, which is also why the pool and the
+    // waterfalls can eventually be animated.
+    //
+    // Positions and sizes are measured off the composed scene kept in
+    // art-src/, not chosen by eye: fountains ~56px tall, trees ~78px and hard
+    // against the edges so their canopies crop. No depthScale — that scene
+    // drew the far fountains the same size as the near ones.
+    garden: {
+      bg: "garden",
+      label: "The Anarchy Garden",
+      playerStart: { x: 150, y: 158 },
+      props: [
+        // the far bank: waterfalls first so the pool sorts in front of them
+        { art: "prop_waterfall", x: 112, y: 24, h: 62, base: { w: 30, h: 8 } },
+        { art: "prop_waterfall", x: 208, y: 24, h: 62, base: { w: 30, h: 8 } },
+        { art: "prop_pool",      x: 160, y: 28, h: 44, w: 224, base: { w: 210, h: 14 } },
+        // the low wall along the near edge, either side of the gap the path
+        // passes through
+        { art: "prop_wall", x: 86,  y: 190, h: 24, w: 104, base: { w: 104, h: 10 } },
+        { art: "prop_wall", x: 236, y: 190, h: 24, w: 104, base: { w: 104, h: 10 } },
+        // ground cover — walked straight over, painted with the floor
+        { art: "prop_flowers_white",  x: 84,  y: 96,  h: 16, flat: true },
+        { art: "prop_flowers_white",  x: 108, y: 138, h: 14, flat: true },
+        { art: "prop_flowers_orange", x: 236, y: 104, h: 16, flat: true },
+        { art: "prop_flowers_orange", x: 214, y: 148, h: 14, flat: true },
+        { art: "prop_bramble",        x: 70,  y: 122, h: 15, flat: true },
+        { art: "prop_bramble",        x: 250, y: 68,  h: 13, flat: true },
+        { art: "prop_tuft",           x: 128, y: 172, h: 12, flat: true },
+        // the standing scenery
+        { art: "prop_cherry",   x: 72,  y: 72,  h: 78, base: { rx: 14, ry: 5 } },
+        { art: "prop_cherry",   x: 62,  y: 152, h: 78, base: { rx: 14, ry: 5 } },
+        { art: "prop_cherry",   x: 252, y: 82,  h: 78, base: { rx: 14, ry: 5 } },
+        { art: "prop_fountain", x: 122, y: 58,  h: 56, base: { rx: 15, ry: 6 } },
+        { art: "prop_fountain", x: 214, y: 58,  h: 56, base: { rx: 15, ry: 6 } },
+        { art: "prop_fountain", x: 96,  y: 108, h: 56, base: { rx: 15, ry: 6 } },
+        { art: "prop_fountain", x: 228, y: 132, h: 56, base: { rx: 15, ry: 6 } }
+      ],
+      exits: [
+        // the path leaving through the gap in the wall, back the way she came
+        { x: 142, y: 172, w: 34, h: 14, to: "lounge", arriveAt: { x: 152, y: 125 }, arriveFacing: "down" }
+      ],
+      npcs: [
+        {
+          id: "kyran", x: 186, y: 118, art: "kyran", sprite: "kyran_top",
+          lines: [
+            "Did you ladies eat my CryBerries? …Ah. Just you. You shouldn't have done that.",
+            "Here — the effects wear off after fifteen minutes, but this will sort you out instantly.",
+            "You really shouldn't eat anything outside the tavern. This garden is full of experimental plants I'm still analysing.",
+            "I'm Kyran, head of Infinity's research department. And you must be Nella. Welcome.",
+            "This garden is supposed to be off limits, you know. How did you even get here?",
+            "…You just opened the black door. You are full of surprises. Head back the way you came, and when you reach it, touch the rune of the chaos symbol.",
+            "Oh — and stop by my lab later. I have something to show you."
+          ],
+          setsFlag: "runeDoorLearned"
+        }
+      ]
+    },
+    lab: {
+      bg: "lab",
+      label: "Kyran's Lab",
+      playerStart: { x: 150, y: 150 },
+      // bg-lab.png: the arch out is on the back-right at x 224-258, its
+      // threshold where the tile floor starts at y ~104.
+      floorPoly: [[40,104],[286,104],[286,184],[40,184]],
+      obstacles: [
+        { x: 80, y: 96, w: 142, h: 16 },   // the workbench
+        { x: 252, y: 96, w: 32, h: 24 }    // the instrument cart
+      ],
+      exits: [
+        { x: 224, y: 88, w: 26, h: 18, to: "lounge", arriveAt: { x: 152, y: 125 }, arriveFacing: "down" }
+      ],
+      npcs: [
+        {
+          id: "kyran", x: 150, y: 128, art: "kyran", sprite: "kyran_top",
+          counterKey: "kyran_lab",
+          lines: [
+            "You came. Good. Mind the cloches — half of what's under them is still deciding what it is.",
+            "The CryBerries were an accident. So was most of the good work here.",
+            "Everything in Infinity is code underneath, Nella. Panels, robes, bracelets, us. I'm trying to read it.",
+            "If anyone gets out of here, it will be because they understood the code well enough to lie to it."
+          ]
         }
       ]
     },
@@ -499,5 +622,5 @@ window.NEWSEY_STORY = (function () {
   };
 
   return { CHARACTERS: CHARACTERS, INTRO_CUTSCENE: INTRO_CUTSCENE, DREAM_CUTSCENE: DREAM_CUTSCENE,
-           WAKE_LINES: WAKE_LINES, ROOMS: ROOMS };
+           WAKE_LINES: WAKE_LINES, ROOMS: ROOMS, RUNE_DOOR: RUNE_DOOR };
 })();

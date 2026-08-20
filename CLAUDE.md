@@ -121,6 +121,40 @@ design discussion. `shared/` holds the components every game reuses
     is the same size for all of them.
   - Raw generations go in `games/<id>/art-src/`; shipped sheets are rebuilt
     from them, never hand-edited.
+- **Every rule that matters gets three pieces: RULE -> TOOL -> GATE.** A rule
+  written only in prose gets ignored; a checker nobody runs catches nothing; a
+  CI failure with no explanation sends whoever hit it digging through a script
+  to find out what they did wrong. So:
+  1. **Rule** — plain English, stating what and *why*, sitting where someone
+     would be editing (the comment above the thing, or the standard doc).
+  2. **Tool** — a script that decides it mechanically, runnable by hand.
+  3. **Gate** — a `pages.yml` step that runs the tool on every push, so a
+     violation fails the build instead of shipping.
+  Existing instances: room exits (`EXIT / DOOR CONVENTION` comment ->
+  `.github/scripts/check_room_exits.mjs` -> "Verify room exits"), and art
+  (`.github/art/CHARACTER_SHEETS.md` -> `.github/art/verify_sheet.py` ->
+  "Verify shipped sprite sheets" / "Verify character frame sets"). Add all three
+  pieces together or the rule will not hold.
+- **New games ship sprite SHEETS. Individual frame files are legacy.** Newsey
+  predates the standard and ships nine files per character; that is supported
+  and gated, but is not the pattern to copy — a per-file set can lose one
+  frame (the character then flickers or freezes), each file trims to its own
+  aspect ratio so sprites drift out of proportion with each other, and it
+  costs a request per frame. Cutting one image at load makes all three
+  impossible. Don't migrate Newsey for its own sake; do start any new game on
+  sheets.
+- **Checks are game-type dependent, and the type is DETECTED, not
+  configured.** Because both layouts exist, the art gate globs for both — so a
+  new game is covered the moment it has art, with no per-game config to forget
+  to update.
+- **A fuzzy check warns; an unambiguous one fails.** Missing or duplicated
+  frames are facts, so they fail the build. "This middle frame isn't really a
+  neutral pose" is a threshold on an image-difference metric — it prints a
+  warning instead, because a borderline-but-correct set must never block a
+  deploy. Thresholds get calibrated against real art and the numbers recorded
+  next to them: `verify_sheet.py`'s first threshold passed every bad row, its
+  second failed a correct one, and the comment above `NEUTRAL_RATIO` lists
+  both so the next person doesn't re-derive it.
 - **Standards for this kind of game live in two documents, and they apply to
   every new game of the same shape — not just the one they were written
   from:** `.github/art/CHARACTER_SHEETS.md` (characters: walk frames,
@@ -172,6 +206,31 @@ design discussion. `shared/` holds the components every game reuses
     (#FF00FF) gridlines, not white: white anti-aliases into a pale halo the
     slicer can't fully remove. `games/the-game/WALK_SHEETS.md` records why,
     and what else was tried.
+- **A room is generated in TWO LAYERS: a ground plate, then props.** Do not
+  ask for a room with its furniture painted in — that was the old way and
+  everything downstream fought it. Layer 1 is the GROUND PLATE: floor, the
+  walls behind it, doorways, and nothing that stands up off the floor out in
+  the room. Layer 2 is a PROP SHEET: every free-standing thing — a tree, a
+  fountain, a table — drawn side by side in ONE image on flat white, upright,
+  whole, on a common ground line, cut apart by `.github/art/build_props.py`.
+  The game places props from `props: [{ art, x, y, h, base }]` on the room,
+  sorts them against the player by foot position, and blocks the `base`
+  ellipse — so you walk BEHIND a tree and stop at its trunk.
+  - Three things this buys, all of which were problems: the walkable-floor
+    mask becomes a wall line plus a rectangle instead of a hand
+    reverse-engineering job (`build_walkmask.py` documents the five
+    techniques that failed at the old version), a prop can be moved or
+    replaced without regenerating the room, and scenery finally has depth —
+    a painted tree is something you can only ever be fenced away from.
+  - **The shareable write-up is `docs/ROOM_ART_STANDARD.md`** — the rule, why
+    it exists, how to prompt each layer, the pipeline commands and a
+    checklist, written to be handed to someone who has never seen this repo.
+    `games/the-game/art-style.json` carries the same rule in the form the
+    image Action reads, so a prompt only has to say WHICH LAYER it wants. The
+    Anarchy Garden is the reference room.
+  - Ask for flat pure white behind a prop sheet, never transparency (same
+    reason as sprite sheets). If a sheet does come back with real alpha,
+    `build_props.py` uses it — keying white would eat a white marble statue.
   - **The generator will not draw a technical diagram of its own picture.**
     Tried, for room collision: one prompt asking for a two-panel sheet —
     the finished room on the left, the same room's walkable floor filled

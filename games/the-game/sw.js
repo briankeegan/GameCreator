@@ -23,5 +23,7 @@ GCRegisterServiceWorker("the-game-v41", [
   "./art/walk-library.png",
   "./art/walk-arena.png",
   "./art/walk-house.png",
+  "./art/walk-garden.png",
+  "./art/walk-lab.png",
   "./icons/icon.svg",
 ]);

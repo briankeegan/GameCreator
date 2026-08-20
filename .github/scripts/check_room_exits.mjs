@@ -44,6 +44,7 @@ if (!storyExports) {
   process.exit(2);
 }
 const ROOMS = storyExports.ROOMS;
+const RUNE_DOOR = storyExports.RUNE_DOOR || [];
 
 function pointInPoly(poly, x, y) {
   let inside = false;
@@ -66,8 +67,26 @@ function hitBox(boxes, x, y) {
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 
 let problems = 0;
+// The rune door's destinations are exits in everything but name: same
+// arriveAt/arriveFacing contract, same chance of landing off the floor.
+for (const dest of RUNE_DOOR) {
+  if (dest.locked) continue;
+  const label = `rune door -> ${dest.to} @ (${dest.arriveAt?.x},${dest.arriveAt?.y})`;
+  const room = ROOMS[dest.to];
+  if (!room) { console.log(`FAIL ${label}: "${dest.to}" is not a room`); problems++; continue; }
+  if (!dest.arriveFacing) { console.log(`FAIL ${label}: no arriveFacing set`); problems++; }
+  if (!dest.arriveAt) { console.log(`FAIL ${label}: no arriveAt set`); problems++; continue; }
+  if (!onFloor(room, dest.arriveAt.x, dest.arriveAt.y)) {
+    console.log(`FAIL ${label}: does not land on floor`); problems++;
+  }
+}
+
 for (const [roomId, room] of Object.entries(ROOMS)) {
   for (const ex of room.exits || []) {
+    // A `rune: true` exit has no fixed destination — it opens the rune door's
+    // destination picker instead. Its destinations are checked in their own
+    // pass below, against the same rules.
+    if (ex.rune) continue;
     const label = `${roomId} -> ${ex.to} @ (${ex.arriveAt?.x},${ex.arriveAt?.y})`;
     const dest = ROOMS[ex.to];
     if (!dest) { console.log(`FAIL ${label}: "${ex.to}" is not a room`); problems++; continue; }
