@@ -173,7 +173,7 @@ def _components(mask):
     return sizes
 
 
-def check_raw(path, frames_expected, blobs, walk, tol, mirrored=False):
+def check_raw(path, frames_expected, blobs, walk, tol, mirrored=False, steps_built=False):
     problems = []
     img = bs.key_background(path, tol=tol)
     a = np.array(img)
@@ -242,13 +242,96 @@ def check_raw(path, frames_expected, blobs, walk, tol, mirrored=False):
         if mirrored:
             verdict = _same_foot_twice(cut[0], cut[2])
             if verdict and verdict[1]:
-                problems.append(
+                msg = (
                     f'{path}: SAME FOOT TWICE — the two step frames are not opposite steps '
                     f'(mirrored/plain leg diff {verdict[0]:.2f}, must be under {MIRROR_STEP_MAX}). '
                     'The same boot is lifted in both, so one leg never moves. Regenerate asking '
                     "for frame 3 to be frame 1's mirror image from the waist down, naming the "
                     "legs by the VIEWER'S left and right.")
+                if steps_built:
+                    # A WARNING, not a failure, when the caller is going to
+                    # BUILD both step frames out of the standing frame
+                    # (build_sheet.py --build-steps 0,2), which is the standard
+                    # recipe for every front and back row. The frames this
+                    # check looks at are then thrown away before anything
+                    # ships, so failing on them deletes a row for a defect that
+                    # cannot reach the game — and CHARACTER_SHEETS.md openly
+                    # says the generator draws these two badly and that only
+                    # the middle frame has to land. Two perfectly usable rows
+                    # were binned exactly that way, at a generation each,
+                    # before this flag existed. The shipped sheet is still
+                    # gated: check_sheet runs the same comparison on the built
+                    # rows, where the steps are real.
+                    print(f'WARNING (steps will be rebuilt): {msg}', file=sys.stderr)
+                else:
+                    problems.append(msg)
     return problems
+
+
+# COLOUR DRIFT BETWEEN ROWS. Each row of a sheet is a separate generation, so
+# each one picks its own shade of the character — and the palette snap does NOT
+# save you: it maps every pixel to the NEAREST lockedPalette colour, and a
+# palette wide enough to hold fur, fur shadow and brown boots contains both a
+# light orange and a mid brown, so a row drawn one step darker snaps to a
+# different entry and ships as a different-coloured animal. Dog Punk shipped a
+# hero whose front and back rows were light orange (#f0a35a, 17% of the row)
+# and whose side row was mid brown (#f0a35a: 4.2%) — she changed colour when
+# you walked left, and no check saw it for a dozen rounds.
+#
+# WARNS, never fails, and the reason is measured rather than assumed. Two
+# obvious metrics were tried first and BOTH rank the corrected sheet as worse
+# than the broken one, because rows legitimately show different amounts of each
+# material (a back view is mostly jacket, a side view mostly head and snout):
+#   mean colour of the row in Lab, dE between rows: broken sheet 9.0/10.1/13.9,
+#     corrected sheet 6.9/11.4/16.8  <- worse on the pair that matters
+#   histogram overlap between rows:  broken 0.54/0.73/0.55,
+#     corrected 0.76/0.69/0.61       <- also worse on one pair
+# What does discriminate is a colour that carries a LOT of one row and is
+# essentially absent from another. Measured shares, biggest offender per sheet:
+#   dog-punk hero (broken)  #f0a35a  17%  vs  4.2%   ratio 0.25  <- the bug
+#   dog-punk rat (shipped)  #8a7a62  21%  vs  1.6%   ratio 0.08  <- real drift
+#   dog-punk hero (fixed)   #3d434f  11%  vs  2.4%   ratio 0.22  <- legitimate:
+#     a jacket highlight visible from behind and not from the front
+# So the trigger is 15% of a row (above the legitimate case) with under 30% of
+# that share elsewhere (above the two real ones). It stays a warning because
+# that last line is exactly the kind of false positive a gate must not have.
+DRIFT_SHARE = 0.15
+DRIFT_RATIO = 0.30
+
+
+def _colour_drift(path, a, rows, ch):
+    hist = []
+    for r in range(rows):
+        px = a[r * ch:(r + 1) * ch][a[r * ch:(r + 1) * ch][:, :, 3] > 128][:, :3]
+        if not len(px):
+            return []
+        cols, counts = np.unique(px, axis=0, return_counts=True)
+        hist.append({tuple(int(v) for v in c): float(n) / counts.sum()
+                     for c, n in zip(cols, counts)})
+    out = []
+    for i in range(rows):
+        for j in range(rows):
+            if i == j:
+                continue
+            for col, share in hist[i].items():
+                # The OUTLINE is excluded. Every sprite is drawn in the same
+                # near-black, but how much of a frame is outline depends on how
+                # busy the silhouette is, so it swings 28% to 8% between rows of
+                # a perfectly consistent sheet and drowns the real findings.
+                if max(col) < 40:
+                    continue
+                other = hist[j].get(col, 0.0)
+                if share >= DRIFT_SHARE and other < DRIFT_RATIO * share:
+                    out.append(
+                        f'{path}: COLOUR DRIFT — row {i} is #%02x%02x%02x over {share * 100:.0f}%% '
+                        'of its pixels and row %d is only %.1f%%. The rows were drawn as separate '
+                        'generations and landed in different colour worlds, so the character '
+                        'changes colour when it turns. Fix it in the PROMPT: put the exact hex per '
+                        'material in the game\'s art-style.json "lockedColours" and regenerate the '
+                        'odd row — the palette snap cannot fix this, it only maps each pixel to the '
+                        'nearest allowed colour. (A WARNING: a row can legitimately show more of a '
+                        'material than another.)' % (col + (j, other * 100)))
+    return out
 
 
 def check_sheet(path, style, rows, cols):
@@ -294,6 +377,9 @@ def check_sheet(path, style, rows, cols):
                     'constructs both steps from the standing frame. (A WARNING, not a failure: '
                     'a sheet cannot say whether its columns are [step, NEUTRAL, step] or the '
                     'legacy [idle, walk, attack], and on a legacy sheet this means nothing.)')
+
+    if rows > 1:
+        soft += _colour_drift(path, a, rows, ch)
 
     pal = bs.load_palette(style) if style else None
     if pal is not None:
@@ -393,6 +479,10 @@ def main():
     r.add_argument('--walk', action='store_true', help='also require a distinct neutral middle frame')
     r.add_argument('--mirrored', action='store_true',
                    help='front/back row: the two step frames must be opposite (mirrored) steps')
+    r.add_argument('--steps-built', action='store_true',
+                   help='the two step frames will be BUILT from the standing frame by '
+                        'build_sheet.py --build-steps, so a same-foot-twice verdict on them '
+                        'warns instead of failing (they never reach the game)')
     r.add_argument('--tol', type=int, default=22)
 
     s = sub.add_parser('sheet', help='check a built sheet')
@@ -408,7 +498,8 @@ def main():
 
     args = ap.parse_args()
     if args.mode == 'raw':
-        problems = check_raw(args.image, args.frames, args.blobs, args.walk, args.tol, args.mirrored)
+        problems = check_raw(args.image, args.frames, args.blobs, args.walk, args.tol,
+                             args.mirrored, args.steps_built)
     elif args.mode == 'frames':
         problems, soft = check_frames(args.art_dir, args.char_id, args.dirs.split(','))
         for w in soft:

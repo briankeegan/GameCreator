@@ -67,7 +67,50 @@ def build_prompt(game, view, description=None):
         # Locked details go in EVERY prompt, from the file, never from memory —
         # they are the details that drift when a prompt is retyped.
         char = f'{char} LOCKED DETAILS, identical in every frame: {locked}'
+    colours = colour_anchors(style, args_character(description, style))
+    if colours:
+        char = f'{char} {colours}'
     return char, style
+
+
+def args_character(description, style):
+    """Which lockedColours entry this row is for — the main character unless a
+    --description was passed, in which case try to match it by name."""
+    if not description:
+        return 'mainCharacter'
+    table = style.get('lockedColours') or {}
+    for key in table:
+        if key != 'mainCharacter' and key.lower() in description.lower():
+            return key
+    return 'mainCharacter'
+
+
+def colour_anchors(style, who):
+    """EXACT HEX per material, stated in the prompt.
+
+    THE FAILURE THIS FIXES, in full, because it cost this repo a dozen rounds:
+    a prompt that says "warm orange-tan fur" leaves the generator free to pick
+    the shade, and it picks a different one every image. build_sheet.py then
+    snaps each pixel to the nearest lockedPalette colour — but a palette wide
+    enough to hold fur, its shadow and brown boots contains BOTH a light orange
+    and a mid brown, so a row drawn one step darker lands on a different
+    palette entry and ships as a different-coloured animal. Dog Punk shipped a
+    hero whose front and back rows were light orange and whose side row was
+    mid-brown; walking left after walking down changed the dog's colour.
+
+    Palette enforcement cannot fix this on its own: nearest-colour snapping
+    preserves whatever the generator chose. The choice has to be removed at the
+    prompt, which is what this does — the hexes come from the game's contract,
+    so every row of every sheet asks for the same values.
+    """
+    table = style.get('lockedColours') or {}
+    entry = table.get(who) or table.get('mainCharacter')
+    if not entry:
+        return ''
+    if isinstance(entry, dict):
+        entry = '; '.join(f'{k} {v}' for k, v in entry.items())
+    return ('EXACT COLOURS — use these hex values and no other shades of them, '
+            'flat and unmodulated, the same in every frame: ' + entry + '.')
 
 
 def fill(template_path, char, view):
@@ -123,12 +166,30 @@ def main():
     if args.kind == 'walk':
         cmd.append('--walk')
         if args.view != 'side':
-            cmd.append('--mirrored')
+            # --steps-built with it: a front or back row's two step frames are
+            # rebuilt from its standing frame by build_sheet.py --build-steps,
+            # which is the standard recipe, so a same-foot-twice verdict on the
+            # DRAWN steps is reported and not fatal — the frames it is judging
+            # are discarded before anything ships, and the built ones are gated
+            # on the sheet instead. Deleting the row for it throws away a good
+            # standing frame (and a generation) over a defect that cannot reach
+            # the game; that happened twice in one run before this was here.
+            cmd += ['--mirrored', '--steps-built']
     if subprocess.run(cmd).returncode:
-        out_abs.unlink(missing_ok=True)
-        sys.exit(f'\n{out_rel} FAILED verification and was deleted, so it cannot reach a '
-                 'sheet later. Read the messages above: fix the prompt file (never a '
-                 'one-off prompt — the fix has to outlive this run) and generate again.')
+        # QUARANTINED, not deleted. The guarantee that matters is that a failed
+        # row cannot be picked up by a later build — every build command names
+        # an exact art-src/ path — and moving it one directory down keeps that
+        # while leaving the evidence. Deleting it outright cost this repo real
+        # time: a row that failed with "found 0 sprites" could not be looked
+        # at, so there was no way to tell a badly drawn row (regenerate) from a
+        # well-drawn row on a dirty non-white background (key it and keep it).
+        reject = out_abs.parent / 'rejected' / out_abs.name
+        reject.parent.mkdir(parents=True, exist_ok=True)
+        out_abs.replace(reject)
+        sys.exit(f'\n{out_rel} FAILED verification and was moved to '
+                 f'{reject.relative_to(ROOT)}, so it cannot reach a sheet later. Read the '
+                 'messages above, LOOK at the rejected file, then fix the prompt file (never '
+                 'a one-off prompt — the fix has to outlive this run) and generate again.')
     print(f'{out_rel}: generated and verified')
 
 

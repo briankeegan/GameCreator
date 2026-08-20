@@ -26,8 +26,12 @@ from. Dog Punk is the reference for characters, the Anarchy Garden in
 
 **Every game has an art contract: `games/<id>/art-style.json`.** Camera,
 rendering language, `lockedPalette` (enforced by the cutter, not merely
-described), `lockedDetails` (the things that drift — sleeves, ears, which hand
-holds the weapon), and the exact commands that rebuild that game's art. New
+described), `lockedColours` (the exact hex per material, quoted into every
+generated row — the palette only enforces *membership*, so without this a row
+drawn a shade darker snaps to a different palette entry and the character
+changes colour when it turns), `lockedDetails` (the things that drift —
+sleeves, ears, which hand holds the weapon), and the exact commands that
+rebuild that game's art. New
 games are scaffolded an unfilled one from `games/_template/`. Fill it in before
 generating anything, and put a detail there the moment you catch it drifting.
 
