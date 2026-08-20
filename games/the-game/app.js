@@ -403,7 +403,7 @@
       } else {
         b.onclick = function () {
           closeRuneDoor();
-          enterRoom(dest.to, dest.arriveAt);
+          enterRoom(dest.to, dest.arriveAt, dest.arriveFacing);
         };
       }
       runeListEl.appendChild(b);

@@ -106,8 +106,20 @@ function launchBrowser() {
 async function freshPage(browser, url, errors, viewport) {
   const page = await browser.newPage({ viewport: viewport || { width: 900, height: 700 } });
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
+  // A failed resource load surfaces as BOTH a generic "Failed to load
+  // resource" console error (no URL in the text — Chrome doesn't put one
+  // there) and, precisely, as this response event. Skip the generic one
+  // and record the response instead: it's strictly more useful (the
+  // actual URL, to filter a specific known-missing asset by name) and
+  // avoids double-counting the same failure two different, differently
+  // shaped ways.
   page.on("console", (msg) => {
-    if (msg.type() === "error") errors.push("console: " + msg.text());
+    if (msg.type() === "error" && !/^Failed to load resource:/.test(msg.text())) {
+      errors.push("console: " + msg.text());
+    }
+  });
+  page.on("response", (res) => {
+    if (res.status() >= 400) errors.push(`http ${res.status()}: ${res.url()}`);
   });
   await page.goto(url);
   await page.evaluate(() => localStorage.clear());
@@ -139,11 +151,30 @@ const KEY_FOR_DIRECTION = { up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft",
 // its own story data (however that game exposes it — the-game reads
 // `window.NEWSEY_STORY.ROOMS[id].exits`) and call this instead of typing
 // coordinates by hand.
-function approachPosition(exitBox, direction, margin = 15) {
+//
+// Only two of the four directions are margin-sensitive. "down" starts
+// ABOVE the box and "right" starts to its LEFT — both put the player's
+// own bounding box (unknown to this generic helper) reaching toward the
+// box, so the gap has to clear the player's full width/height on that
+// axis or it still overlaps at the computed "outside" position (this
+// silently reproduces the exact never-crosses bug the helper exists to
+// prevent, just from an insufficient margin instead of a hand-picked
+// coordinate — the-game's player is 14x18, and the previous default, 15,
+// was short on the down axis). "up" and "left" start PAST the box's far
+// edge, so any positive gap keeps them outside regardless of player
+// size — which is why they use a small fixed CLEAR instead of reusing
+// `margin`: a big margin pushed an "up" approach in the-game's lounge far
+// enough past its target box to land squarely on the room's `portal` NPC,
+// a `marker: true` fixture that (unlike a wandering NPC) can never be
+// pushed aside once collided with, permanently freezing that door
+// crossing. Pass an explicit `margin` bigger than this default if your
+// game's player sprite is larger than 24px on the down/right axis.
+function approachPosition(exitBox, direction, margin = 24) {
+  const CLEAR = 6;
   const cx = exitBox.x + exitBox.w / 2, cy = exitBox.y + exitBox.h / 2;
-  if (direction === "up") return { x: cx, y: exitBox.y + exitBox.h + margin };
+  if (direction === "up") return { x: cx, y: exitBox.y + exitBox.h + CLEAR };
   if (direction === "down") return { x: cx, y: exitBox.y - margin };
-  if (direction === "left") return { x: exitBox.x + exitBox.w + margin, y: cy };
+  if (direction === "left") return { x: exitBox.x + exitBox.w + CLEAR, y: cy };
   if (direction === "right") return { x: exitBox.x - margin, y: cy };
   throw new Error("approachPosition: direction must be up/down/left/right, got " + direction);
 }
