@@ -188,6 +188,17 @@ design discussion. `shared/` holds the components every game reuses
   `.github/scripts/check_art_registry.mjs` on every push, both directions: a
   tool or prompt that isn't listed fails the build, and so does a path listed
   there that doesn't exist. Add a tool, add its row.
+- **THREE SHAPES OF LEVEL ART, and picking the right one first is the whole
+  job:** a grid of repeating tiles (`docs/TILED_LEVEL_STANDARD.md`,
+  `tileset.py` — Dog Punk), one picture per room (`docs/ROOM_ART_STANDARD.md`,
+  `room.py` — Newsey), and characters (`.github/art/CHARACTER_SHEETS.md`,
+  `generate_row.py`). A tiled level was the shape with a pipeline and no
+  checker, and four separate defects reached a player in one pass: floor tiles
+  carrying the character rule's black outline (graph paper), tiles that never
+  went through the cutter's seamless step, concrete drawn as a flat block that
+  reads as a missing texture, and near-black puddles that read as holes in the
+  ground. Plus a fifth no checker can see — the level map using the boundary
+  WALL's tile for interior obstacles, so fence planks lay flat on the floor.
 - **Standards for this kind of game live in two documents, and they apply to
   every new game of the same shape — not just the one they were written
   from:** `.github/art/CHARACTER_SHEETS.md` (characters: walk frames,
@@ -196,9 +207,20 @@ design discussion. `shared/` holds the components every game reuses
   authored). Read them before generating art for a top-down game; extend
   them when a generation exposes a gap, rather than solving it once in one
   game's head.
+- **The autopilot OWNS the shared art layer.** Its commit allowlist covers
+  `.github/art/` and `docs/` as well as `games/`, so a run can fix a canonical
+  prompt, promote a helper to a shared tool, or extend a standard, and keep it.
+  Before that it could not: a run needed a tile cutter, could not write to
+  `.github/art/`, and left a private copy in `games/dog-punk/art-src/` with a
+  docstring asking for it to be promoted one day. Every shared lesson would
+  have gone the same way. It still cannot touch `.github/workflows/`,
+  `.github/scripts/` or `.github/autopilot/` — the harness that bounds it and
+  the trip-wires that grade it — and a run that edits an art CHECKER says so
+  loudly in its log.
 - **One front door per kind of art, and EVERY caller uses it — including
   auto mode.** `.github/art/generate_row.py` for a character row (walk or
-  attack), `.github/art/room.py generate` for one of a room's three passes.
+  attack), `.github/art/room.py generate` for one of a room's three passes,
+  `.github/art/tileset.py generate` for one of a tiled level's two sheets.
   Each builds the prompt from the canonical prompt file plus the game's
   `art-style.json`, generates into the canonical path the next step reads
   back, and refuses to run on an incomplete prompt; `generate_row.py` also

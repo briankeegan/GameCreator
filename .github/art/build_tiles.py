@@ -6,18 +6,20 @@ game: the one whose level is a grid of repeating tiles (this one) rather than
 one picture per room (Newsey — that is .github/art/room.py). The prompt that
 feeds it is tileset_prompt.txt next door.
 
-It sits in this game's art-src/ rather than in .github/art/ only because the
-Clubhouse autopilot can commit under games/ and nothing else. It is not
-Dog-Punk-specific — every path it touches comes off the command line and the
-palette comes out of --style — so promote it to .github/art/build_tiles.py
-(with a row in .github/art/README.md, which the registry check requires) the
-first time a second tiled game needs it.
+Normally reached through `.github/art/tileset.py`, the front door — the same
+shape as room.py for rooms and generate_row.py for characters. Call it directly
+when you want a cut with no generation:
 
-    python3 games/dog-punk/art-src/build_tiles.py \
+    python3 .github/art/build_tiles.py \
         --style games/dog-punk/art-style.json \
         --out   games/dog-punk/tiles.png \
         --tile  texture:games/dog-punk/art-src/tiles_ground_raw.png:0 \
         --tile  object:games/dog-punk/art-src/tiles_objects_raw.png:1
+
+(It was written into games/dog-punk/art-src/ by an autopilot run, whose own
+docstring explained why: the run's commit allowlist covered games/ and nothing
+else, so a shared tool could not be put in a shared place. That allowlist now
+admits .github/art/, which is what this file's move records.)
 
 One --tile per output cell, left to right, each naming which raw sheet it comes
 off and which item in that sheet (0-based, left to right). Two kinds:

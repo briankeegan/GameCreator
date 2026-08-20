@@ -17,7 +17,8 @@ from. Dog Punk is the reference for characters, the Anarchy Garden in
 | I want to… | Read | Then run |
 |---|---|---|
 | draw or fix a **character** | [`CHARACTER_SHEETS.md`](CHARACTER_SHEETS.md) | Actions → **Generate walk row**, then `build_sheet.py` |
-| draw or fix a **room** | [`../../docs/ROOM_ART_STANDARD.md`](../../docs/ROOM_ART_STANDARD.md) | `room.py prompt …`, then `room.py plate` / `props` / `check` |
+| draw or fix a **room** (one picture per room) | [`../../docs/ROOM_ART_STANDARD.md`](../../docs/ROOM_ART_STANDARD.md) | `room.py generate`, then `room.py plate` / `props` / `check` |
+| draw or fix a **tiled level** (a grid of repeating tiles) | [`../../docs/TILED_LEVEL_STANDARD.md`](../../docs/TILED_LEVEL_STANDARD.md) | `tileset.py generate`, then `cut` / `verify` / `check` |
 | add a **one-off image** (icon, title art) | — | Actions → **Generate image** (or write an inline `.svg`) |
 | draw a **dialogue portrait** | this page, `make_portrait.py`'s docstring | Actions → **Generate image**, then `make_portrait.py` |
 | keep a **set** of images consistent | that game's `art-style.json` | Actions → **Generate game asset** |
@@ -61,6 +62,7 @@ for the next kind of art:
 | File | Covers |
 |---|---|
 | [`CHARACTER_SHEETS.md`](CHARACTER_SHEETS.md) | Sheet layout, walk frames `[step, NEUTRAL, step]`, attack frames `[wind-up, STRIKE, recover]`, directions and mirroring, how a front/back walk is built, the recipe that works, and what the checker cannot decide. |
+| [`../../docs/TILED_LEVEL_STANDARD.md`](../../docs/TILED_LEVEL_STANDARD.md) | Tiled levels: the two sheets, the five defects that shipped in one pass (no outline on a floor, the seam is the cutter's job, a flat block is a missing texture, dark reads as a hole, an interior obstacle is not the boundary wall), contrast, pipeline and checklist. |
 | [`../../docs/ROOM_ART_STANDARD.md`](../../docs/ROOM_ART_STANDARD.md) | The three passes — composed scene (measured, never shipped), ground plate (shipped, and its own collision mask), prop sheet — prop placement, sizing and the pipeline. Written to hand to someone who has never seen this repo. |
 | `games/<id>/art-style.json` | One game's contract: camera, style, palette, locked details, rebuild commands. |
 
@@ -77,6 +79,8 @@ exposes a gap, **fix the prompt file**; that is how the next person inherits it.
 | [`room_prompts/1_composed_scene.txt`](room_prompts/1_composed_scene.txt) | Room pass 1 — the scene that gets measured. |
 | [`room_prompts/2_floor_plate.txt`](room_prompts/2_floor_plate.txt) | Room pass 2 — the walkable surface, and nothing else. |
 | [`room_prompts/3_prop_sheet.txt`](room_prompts/3_prop_sheet.txt) | Room pass 3 — everything you cannot walk on, side by side. |
+| [`tileset_prompts/1_ground_sheet.txt`](tileset_prompts/1_ground_sheet.txt) | Tiled level — the floor and wall materials. NO OUTLINE is the rule that matters. |
+| [`tileset_prompts/2_object_sheet.txt`](tileset_prompts/2_object_sheet.txt) | Tiled level — obstacles, gates, puddles, cut out on flat white. |
 
 `python3 room.py prompt scene|plate|props` prints a room prompt already filled
 in from the game's `art-style.json`.
@@ -85,6 +89,7 @@ in from the game's `art-style.json`.
 
 | Action | Use for |
 |---|---|
+| **Generate tileset sheet** (`generate-tileset-sheet.yml`) | One of a tiled level's two sheets. A button on `tileset.py generate`. |
 | **Generate room pass** (`generate-room-pass.yml`) | One of a room's three passes. A button on `room.py generate` — same code the autopilot runs. |
 | **Generate walk row** (`generate-walkrow.yml`) | A verified walk row for a sheet-based game. It is a button on `generate_row.py` — same code the autopilot runs. |
 | **Generate walksheet** (`generate-walksheet.yml`) | The legacy per-file walk set (Newsey). |
@@ -99,15 +104,15 @@ twice for art that already exists.
 
 ## The one front door — same shape for both kinds of art
 
-|  | character row | room pass |
-|---|---|---|
-| **command** | `generate_row.py --game <id> --character <id> --view front\|side\|back [--kind walk\|attack]` | `room.py generate <gameDir> <room> scene\|plate\|props` |
-| **Action** (a button on it) | Generate walk row | Generate room pass |
-| **autopilot** | runs the same command | runs the same command |
-| **prompt from** | `walkgrid_prompt.txt` / `attacksheet_prompt.txt` + `art-style.json` | `room_prompts/*.txt` + `art-style.json` |
-| **transport** | `imagegen.py` — broker if listening, else `OPENAI_API_KEY` | same |
-| **writes to** | `art-src/<char>_<view>_raw.png` | `art-src/<room>_{scene,floor,props}.png` |
-| **then** | `build_sheet.py … --build-steps 0,2` | `room.py plate` / `props`, then `check`, then `verify` |
+|  | character row | room pass | tileset sheet |
+|---|---|---|---|
+| **command** | `generate_row.py --game <id> --character <id> --view front\|side\|back` | `room.py generate <gameDir> <room> scene\|plate\|props` | `tileset.py generate <gameDir> ground\|objects` |
+| **Action** (a button on it) | Generate walk row | Generate room pass | Generate tileset sheet |
+| **autopilot** | runs the same command | runs the same command | runs the same command |
+| **prompt from** | `walkgrid_prompt.txt` / `attacksheet_prompt.txt` + `art-style.json` | `room_prompts/*.txt` | `tileset_prompts/*.txt` |
+| **transport** | `imagegen.py` — broker if listening, else `OPENAI_API_KEY` | same | same |
+| **writes to** | `art-src/<char>_<view>_raw.png` | `art-src/<room>_{scene,floor,props}.png` | `art-src/tiles_{ground,objects}_raw.png` |
+| **then** | `build_sheet.py … --build-steps 0,2` | `room.py plate` / `props`, then `check` | `tileset.py cut`, then `verify`, then `check` |
 
 Both refuse to run on an incomplete prompt, and `generate_row.py` deletes a row
 that fails verification so it cannot be picked up by a later build. Add
@@ -146,6 +151,9 @@ Two callers, one script, is the fix.
 |---|---|
 | [`build_sheet.py`](build_sheet.py) | Raw rows → shipped sheet: keys the background, cuts at gutters or blobs, one scale per row, snaps to the art-pixel grid and the locked palette, common foot baseline. `--build-steps` constructs front/back step frames; `--mirror-step` mirrors just the second one. |
 | [`slice_walksheet.py`](slice_walksheet.py) | The other cutter: a chroma-green 4x3 grid → individual `<id>_<dir>_<n>.png` files. |
+| [`tileset.py`](tileset.py) | The one front door for tiled levels: `generate`, `cut`, `check`, `verify`, `prompt`. |
+| [`build_tiles.py`](build_tiles.py) | Cuts tile sheets into a shipped strip. Makes `texture:` tiles SEAMLESS — a generator will not draw a tile that repeats, so the seam is made here. |
+| [`preview_tiles.py`](preview_tiles.py) | Lays the tile strip out as a floor: each tile once, each floor tile repeated (a grid shows here or nowhere), and a mixed field. |
 | [`room.py`](room.py) | The one front door for rooms: `generate`, `prompt`, `plate`, `props`, `check`, `verify`. |
 | [`imagegen.py`](imagegen.py) | The shared transport both front doors call. Picks the in-run broker if one is listening, otherwise `OPENAI_API_KEY`; never hands a model the key. |
 | [`build_props.py`](build_props.py) | Cuts a prop sheet into one transparent PNG per prop. |
@@ -160,6 +168,7 @@ Two callers, one script, is the fix.
 | Tool | Fails the build on | Warns on |
 |---|---|---|
 | [`verify_sheet.py`](verify_sheet.py) | Clipping, wrong frame count, duplicate frames, detached specks, off-palette colour, empty cells; and same-foot-twice in `raw --mirrored` mode. | A middle frame that is not a distinct neutral; same-foot-twice on a built sheet, which cannot tell a walk sheet from a legacy `[idle, walk, attack]` one. |
+| [`verify_tiles.py`](verify_tiles.py) (`tileset.py verify`) | A floor tile that does not wrap, a tile that is a flat block of colour. | A tile dark enough to read as a hole; a floor that camouflages the characters. |
 | `room.py verify` | Props and floor plates — every check in it is a bug that shipped, each proved to fire by breaking a room on purpose. | — |
 | [`../scripts/check_art_registry.mjs`](../scripts/check_art_registry.mjs) | A tool, prompt or standard that is not listed on this page, or a path listed here that does not exist. | — |
 | [`../scripts/check_art_refs.mjs`](../scripts/check_art_refs.mjs) | An art id a game's `story.js` names with no file behind it, or a character with a hole in its nine walk frames. The runtime falls back to a coloured initial, so nothing else ever notices. | — |

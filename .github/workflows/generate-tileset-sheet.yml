@@ -1,0 +1,94 @@
+name: Generate tileset sheet
+
+# The tiled-level equivalent of "Generate walk row" / "Generate room pass", and
+# a button on the same script a person or the Clubhouse autopilot runs:
+# .github/art/tileset.py generate. See docs/TILED_LEVEL_STANDARD.md.
+on:
+  workflow_dispatch:
+    inputs:
+      game:
+        description: "Game id, e.g. dog-punk"
+        required: true
+        type: string
+      sheet:
+        description: "ground = the floor and wall materials (seamless textures); objects = obstacles, gates, puddles (cut out on white)"
+        required: true
+        type: choice
+        options: ["ground", "objects"]
+      n:
+        description: "How many tiles are on the sheet"
+        required: true
+        type: string
+      items:
+        description: "What they are, left to right, e.g. 'cracked asphalt; concrete slab; rusted fence'"
+        required: true
+        type: string
+      quality:
+        description: "Render quality — medium is usually enough; high costs ~4x."
+        required: false
+        type: choice
+        options: ["low", "medium", "high"]
+        default: "medium"
+      force:
+        description: "Regenerate (and re-bill) even if the file already exists."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate the sheet
+        id: gen
+        timeout-minutes: 20
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          case "${{ inputs.sheet }}" in
+            ground)  out="games/${{ inputs.game }}/art-src/tiles_ground_raw.png" ;;
+            objects) out="games/${{ inputs.game }}/art-src/tiles_objects_raw.png" ;;
+          esac
+          echo "out=$out" >> "$GITHUB_OUTPUT"
+          python3 .github/art/tileset.py generate "games/${{ inputs.game }}" "${{ inputs.sheet }}" \
+            --n "${{ inputs.n }}" --items "${{ inputs.items }}" \
+            --quality "${{ inputs.quality }}" \
+            ${{ inputs.force && '--force' || '' }}
+
+      - name: Commit the raw
+        timeout-minutes: 5
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ steps.gen.outputs.out }}"
+          if git commit -m "Generate tileset sheet: ${{ inputs.game }} ${{ inputs.sheet }}"; then
+            for i in 1 2 3 4 5 6; do
+              if git pull --rebase origin main && git push; then exit 0; fi
+              echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+            done
+            echo "::error::Could not push after retries"; exit 1
+          fi
+
+      - name: Next step
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'MD'
+          Wrote `${{ steps.gen.outputs.out }}`.
+
+          It is a RAW. Cut it into the shipped strip, one `--tile` per cell, left to right:
+
+          ```
+          python3 .github/art/tileset.py cut games/${{ inputs.game }} \
+            --tile texture:${{ steps.gen.outputs.out }}:0 \
+            --tile object:games/${{ inputs.game }}/art-src/tiles_objects_raw.png:0
+          ```
+
+          Then `tileset.py verify games/${{ inputs.game }}` (the gate) and
+          `tileset.py check games/${{ inputs.game }}` — **and look at it**.
+          The full standard is `docs/TILED_LEVEL_STANDARD.md`.
+          MD

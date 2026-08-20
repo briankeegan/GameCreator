@@ -119,6 +119,23 @@ jobs:
           done
           exit $status
 
+      # Tiled levels: the third shape of art, and the one that had a pipeline
+      # and no checker until four separate defects shipped to a player in a
+      # single pass. Detected, not configured: a game with a tiles.png has a
+      # tile strip. Rule in docs/TILED_LEVEL_STANDARD.md, decided by
+      # verify_tiles.py, tripped here.
+      - name: Verify tile strips
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          status=0
+          for strip in games/*/tiles.png; do
+            [ -e "$strip" ] || continue
+            game=$(dirname "$strip")
+            echo "== $strip =="
+            python3 .github/art/tileset.py verify "$game" || status=1
+          done
+          exit $status
+
       # The same walk-cycle rules for games that ship INDIVIDUAL frame files
       # instead of sheets (Newsey). Which checks apply depends on how a game
       # ships its art, so the shape is detected rather than configured: any

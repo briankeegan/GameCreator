@@ -97,13 +97,13 @@
 // was 200 outlined squares with visible seams, and a 1-in-5 sprinkle of a much
 // paler concrete tile on top of that made a chessboard of it. Redone as seven
 // 32px tiles off two generations (art-src/tiles_ground_raw.png,
-// tiles_objects_raw.png), cut by games/dog-punk/art-src/build_tiles.py, which makes the
+// tiles_objects_raw.png), cut by .github/art/tileset.py, which makes the
 // floor tiles wrap and snaps every pixel to the new `environmentPalette` in
 // art-style.json. The level is now a scrapyard alley: cracked asphalt with
 // scrap and concrete slabs, rusted corrugated fence, tyre-and-drum junk piles,
 // oil puddles, and a real chained gate that swings open when the room clears.
 // See drawTile/floorTileFor for the anti-repetition rules, and
-// art-src/tileset_prompt.txt for the prompt to regenerate from.
+// docs/TILED_LEVEL_STANDARD.md for the standard and how to regenerate.
 const GAME_ID = "dog-punk";
 const TILE = 32;
 const COLS = 16;
@@ -247,7 +247,7 @@ const ATTACK_FRAMES = 3;
 // a character silhouette and fatal for a floor: 200 outlined squares are 200
 // visible cell borders. (2) Nothing was seamless, so each tile ended where the
 // next began. The floor tiles are now generated as borderless texture swatches
-// and made to wrap by build_tiles.py; see art-src/tileset_prompt.txt.
+// and made to wrap by .github/art/build_tiles.py; see docs/TILED_LEVEL_STANDARD.md.
 const TILE_COUNT = 7;
 const TILES = sliceSheet("tiles.png", TILE_COUNT, 1);
 const TILE_GROUND = 0, TILE_GROUND_ALT = 1, TILE_CONCRETE = 2, TILE_WALL = 3,

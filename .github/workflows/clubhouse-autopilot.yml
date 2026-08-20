@@ -293,6 +293,17 @@ jobs:
             2. If it's a clear design ask, implement it by EDITING FILES under
                games/<gameId>/ (or worker/worker.js, shared/, games.json as
                appropriate). Leave the edits in the working tree — do not commit.
+               YOU MAY ALSO EDIT THE SHARED ART LAYER — .github/art/ (tools,
+               prompts, standards) and docs/ — and those edits SHIP. Use it:
+               when a generation exposes a gap in a canonical prompt, fix the
+               prompt file; when you find yourself writing a helper a second
+               game would want, put it in .github/art/ with a row in
+               .github/art/README.md (a push with an unregistered tool fails
+               CI). A fix that lives only in this run's game folder is a fix
+               the next run has to make again. You cannot edit .github/
+               workflows/, .github/scripts/ or .github/autopilot/ — the
+               harness that bounds you and the checks that grade you — and
+               edits there are dropped.
                If you touch worker/worker.js, bump its `relay: "gc-rN"` marker.
                If the ask is ambiguous or architecturally significant, do NOT
                guess — make no file changes and use your reply (step 4) to ask
@@ -350,6 +361,20 @@ jobs:
                   automatically; you have no OpenAI key and must not look for
                   one. Add --print-prompt to see the prompt without generating
                   or spending anything.
+
+                  TILED LEVELS (a level that is a grid of repeating tiles,
+                  like Dog Punk — as opposed to one picture per room):
+                    python3 .github/art/tileset.py generate <gameDir> \
+                      ground|objects --n N --items "..."
+                    python3 .github/art/tileset.py cut <gameDir> --tile ...
+                    python3 .github/art/tileset.py verify <gameDir>
+                    python3 .github/art/tileset.py check <gameDir>   # then LOOK
+                  Read docs/TILED_LEVEL_STANDARD.md first. The one rule that
+                  has already cost a level: a floor tile must have NO OUTLINE
+                  and must be cut as a `texture:`, which is what makes it
+                  seamless — the game's character rule says "thick black
+                  outline", and applying that to a floor tile turns the level
+                  into graph paper.
 
                   ROOMS — same shape, same transport, one pass at a time:
                     python3 .github/art/room.py generate <gameDir> <room> \
@@ -657,7 +682,26 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -uo pipefail
-          CONTENT='games shared worker admin games.json app.js style.css index.html'
+          # WHAT A RUN MAY SHIP. The art layer is IN here on purpose: the
+          # instructions tell a run to fix the canonical prompt file when a
+          # generation exposes a gap, and to reach for the shared cutters — and
+          # a run that cannot COMMIT those is told to improve something it has
+          # no way to keep. That is not hypothetical. A run needed a tile
+          # cutter, could not write one to .github/art/, and put a private copy
+          # under games/dog-punk/art-src/ instead; its own docstring says so,
+          # and asks for the file to be promoted when a second game needs it.
+          # Every shared thing a run learns would have gone the same way.
+          #
+          # What stays OUT, and why the line is drawn exactly here:
+          #   .github/workflows/  the run must not rewrite the harness that
+          #                       bounds it (it has no GitHub token for the
+          #                       same reason)
+          #   .github/scripts/    the pages.yml trip-wires that judge its work
+          #   .github/autopilot/  the broker that holds the OpenAI key, and the
+          #                       status hook that reports on the run
+          # So: it can improve the art layer it works in; it cannot edit the
+          # thing that grades it or the thing that fences it.
+          CONTENT='games shared worker admin docs .github/art games.json app.js style.css index.html'
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A -- $CONTENT 2>/dev/null || true
@@ -690,12 +734,22 @@ jobs:
           # permitted to create or approve pull requests" — and the smoke test
           # above already gated this change, so a direct push is safe. This
           # mirrors what generate-image.yml already does successfully.)
+          # A run may improve the art layer, checkers included — but a weakened
+          # checker is the one edit that hides its own consequences, so say so
+          # out loud rather than letting it land quietly in a 20-file diff.
+          touched_gates=$(git diff --cached --name-only -- '.github/art/verify_*' || true)
+          if [ -n "$touched_gates" ]; then
+            echo "::warning::this run modified art CHECKERS: $(printf '%s' "$touched_gates" | paste -sd', ' -) — review that diff before trusting the run's own 'checks passed'."
+          fi
           git commit -m "Clubhouse request (automated) — PR #${{ steps.ctx.outputs.pr }}"
-          # Anything the model changed OUTSIDE the content allowlist — .github/**
-          # most of all, since the art instructions send it to
-          # .github/art/build_sheet.py — is deliberately not shipped: the model
-          # must not be able to edit its own workflow (it has no GitHub token
-          # for exactly this reason). But LEAVING those edits in the tree makes
+          # Anything the model changed OUTSIDE the content allowlist — its own
+          # workflow, the CI trip-wires, the broker — is deliberately not
+          # shipped: a run must not be able to edit the harness that bounds it
+          # or the checks that grade it (it has no GitHub token for exactly
+          # this reason). The shared ART layer is inside the allowlist, so a
+          # run CAN now keep a better prompt or a promoted cutter, which is the
+          # whole point of telling it to fix those. But LEAVING dropped edits
+          # in the tree makes
           # every `git pull --rebase` below refuse with "cannot pull with
           # rebase: You have unstaged changes", so the loop can never succeed —
           # six retries and a snag, with the change already committed locally

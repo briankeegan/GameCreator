@@ -1,0 +1,26 @@
+# PASS 2 of a tiled level — OBJECT TILES: obstacles, gates, puddles, anything
+# drawn ON TOP of a floor tile. Cut out on flat white and keyed to
+# transparency. Cut them with
+#   python3 .github/art/build_tiles.py --tile object:<raw>:<index>
+#
+# Generate as its OWN image, never in the same picture as the texture swatches:
+# a swatch and a cut-out object drawn together come back at different scales.
+#
+# Substitute {{N}} and {{ITEMS}}. Generate ONE image at 1536x1024.
+# The whole standard: docs/TILED_LEVEL_STANDARD.md
+
+A SHEET OF {{N}} SEPARATE TOP-DOWN OBJECTS for a 16-bit tile game, drawn side by
+side in ONE image on a background of FLAT PURE WHITE (#FFFFFF), completely
+uniform, with a crisp hard edge against each object, a wide band of flat white
+between them so they never touch, and a generous white margin all round.
+
+Each object is seen from the SAME slightly-angled top-down view, sits square
+inside its own invisible square cell with a little clearance on every side, is
+whole (nothing cropped), and casts NO shadow.
+
+LEFT TO RIGHT: {{ITEMS}}
+
+Chunky 16-bit pixel art: big simple shapes, a dark outline around each object,
+flat blocks of solid colour, 3-4 hard-edged values per material. No gradients,
+no anti-aliasing, no dithering, no fur/grain/noise texture. No ground, no floor,
+no scene, no text, no grid lines, no drop shadows, no people, no characters.

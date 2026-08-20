@@ -1,0 +1,35 @@
+# PASS 1 of a tiled level — TEXTURE TILES: the floor and the walls. Opaque,
+# they FILL their square edge to edge, and they REPEAT. Cut them with
+#   python3 .github/art/build_tiles.py --tile texture:<raw>:<index>
+# which makes them seamless; a generator will not draw a tile that repeats,
+# however loudly it is asked, so the seam is fixed in the cutter, not here.
+#
+# Substitute {{N}} and {{ITEMS}}. Generate ONE image at 1536x1024.
+# The whole standard: docs/TILED_LEVEL_STANDARD.md
+#
+# THE MISTAKE THAT COST A LEVEL: a game's art-style.json usually says "thick
+# black outline around the whole silhouette", which is right for a character
+# and catastrophic for a floor tile — every tile then carries a dark border and
+# the finished level reads as graph paper. Say NO OUTLINE, NO BORDER, TEXTURE
+# RUNS OFF ALL FOUR EDGES, every time.
+
+A SHEET OF {{N}} SEAMLESS TEXTURE TILES for a 16-bit top-down game, drawn side
+by side as {{N}} equal SQUARES in ONE image so they share a palette, a light and
+a pixel scale, separated by a wide band of FLAT PURE WHITE (#FFFFFF) and with a
+generous white margin all round. Each square is one MATERIAL seen from
+DIRECTLY ABOVE.
+
+CRITICAL, and the usual failure: each square is a REPEATING TEXTURE SWATCH, not
+an object and not a picture. NO outline, NO border, NO frame, NO vignette and no
+darkened edge around a square — the texture must run right off all four of its
+edges, so that copies of the tile laid edge to edge look like one continuous
+surface. No single big feature centred in a square, no obvious middle: keep the
+detail small, even and spread across the whole square.
+
+LEFT TO RIGHT: {{ITEMS}}
+
+Chunky 16-bit pixel art on a visible coarse pixel grid: flat blocks of solid
+colour, hard edges, 3-4 values per material. No gradients, no airbrushing, no
+anti-aliasing, no dithering, no noise or grain, no photographic texture. No
+text, no numbers, no grid lines, no cell borders, no drop shadows, no people, no
+characters.
