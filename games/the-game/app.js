@@ -1321,7 +1321,10 @@
     // rest, so one number describes the prop and the room describes the space.
     var ds = depthAt(currentRoom, prop.y);
     var h = (prop.h || 40) * ds;
-    var w = h * (img.naturalWidth / img.naturalHeight);
+    // Width follows the art's own aspect, so a tree keeps its proportions.
+    // A prop may override it: a pool or a run of wall has to span the room,
+    // and its aspect is whatever the sheet happened to draw it at.
+    var w = (prop.w !== undefined ? prop.w : h * (img.naturalWidth / img.naturalHeight)) * ds;
     if (prop.flat) {
       // Ground cover lying ON the floor: centred on its spot, no foot point,
       // no shadow — it isn't standing up, so it can't cast one.

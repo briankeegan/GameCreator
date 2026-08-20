@@ -8,7 +8,17 @@ the art — a flood fill leaks up the wall where floor and wall meet in a
 gradient, and climbing columns from the bottom stops dead at a grout line
 or a rune painted on the floor.
 
-So the floor is authored, but never guessed at:
+THE SHORT VERSION, for a room made the current way: put the room's name in
+FLOOR_PLATE_ROOMS and you are done. Its background art is ONLY the surface you
+can walk on — grass, floorboards, path — with every wall, pool, tree and table
+generated separately as a prop and drawn on top. So the walkable mask is that
+picture's own silhouette. Nothing to measure, nothing to declare, and nothing
+that can drift out of step with the art, because the art IS the declaration.
+See docs/ROOM_ART_STANDARD.md.
+
+Everything below is the OLDER way, kept working for rooms whose backgrounds
+still have their scenery painted into them. There the floor is authored, but
+never guessed at:
 
   * The room's OUTLINE comes from the art itself — the alpha silhouette of
     the background PNG, which is exact and free. That is what makes the
@@ -32,6 +42,14 @@ EROSION = 4
 
 # floorTop: the row where the back wall meets the floor.
 # blocks:   what stands ON the floor, as polygons following what is drawn.
+FLOOR_PLATE_ROOMS = {
+    # The Anarchy Garden is the reference room for the three-pass standard:
+    # bg-garden.png is grass and path and NOTHING else — the pool, the
+    # waterfalls, the wall, the trees and the fountains are all props drawn on
+    # top of it — so this set membership is the whole of its collision data.
+    "garden",
+}
+
 ROOMS = {
     # bounds: for art drawn as a full rectangle with a dark border painted in,
     # where the alpha silhouette can't tell room from frame.
@@ -86,15 +104,6 @@ ROOMS = {
     # their own sprites so the player can walk behind them. So the only things
     # this mask has to fence off are the pool at the back and the low garden
     # wall; everything standing up off the grass fences itself.
-    "garden": {
-        "floorTop": 40,
-        "bounds": (4, 40, 316, 198),
-        "blocks": [
-            # the low wall, either side of the gap the path passes through
-            [(0, 141), (114, 141), (114, 161), (0, 161)],
-            [(188, 141), (320, 141), (320, 161), (188, 161)],
-        ],
-    },
     "lab": {
         "floorTop": 100,
         "bounds": (36, 100, 286, 186),
@@ -116,12 +125,20 @@ ROOMS = {
 
 
 def build(game_dir, room):
-    spec = ROOMS[room]
     src = os.path.join(game_dir, "art", "bg-%s.png" % room)
     art = Image.open(src).convert("RGBA").resize((W, H), Image.BILINEAR)
     alpha = art.split()[3]
 
-    # walkable = inside the room's own silhouette, below the wall line
+    # THE CURRENT WAY. The background IS the walkable surface and nothing else,
+    # so the mask is simply its own silhouette. Nothing to declare, and nothing
+    # that can drift out of step with the art. Prefer this for every new room.
+    if room in FLOOR_PLATE_ROOMS:
+        return finish(alpha.point(lambda a: 255 if a > 40 else 0), game_dir, room)
+
+    # THE OLDER WAY, for rooms whose art still has its scenery painted in: the
+    # outline comes from the alpha silhouette, but the wall line and everything
+    # standing on the floor have to be measured by hand against the picture.
+    spec = ROOMS[room]
     mask = alpha.point(lambda a: 255 if a > 40 else 0)
     draw = ImageDraw.Draw(mask)
     draw.rectangle([0, 0, W, spec["floorTop"]], fill=0)
@@ -133,6 +150,14 @@ def build(game_dir, room):
     for poly in spec["blocks"]:
         draw.polygon(poly, fill=0)
 
+    return finish(mask, game_dir, room)
+
+
+def finish(mask, game_dir, room):
+    """Erode by about half a character's width and write the 1-bit PNG.
+
+    The erosion is why she can stand at the edge of the floor without her
+    sprite clipping into whatever is beside her."""
     for _ in range(EROSION):
         mask = mask.filter(ImageFilter.MinFilter(3))
 
@@ -144,5 +169,5 @@ def build(game_dir, room):
 
 if __name__ == "__main__":
     game = sys.argv[1] if len(sys.argv) > 1 else "games/the-game"
-    for r in (sys.argv[2:] or list(ROOMS)):
+    for r in (sys.argv[2:] or sorted(set(ROOMS) | FLOOR_PLATE_ROOMS)):
         build(game, r)

@@ -112,7 +112,7 @@ window.NEWSEY_STORY = (function () {
   // account of what is built.
   var RUNE_DOOR = [
     { label: "Library", to: "library", arriveAt: { x: 220, y: 150 }, arriveFacing: "down" },
-    { label: "Anarchy Garden", to: "garden", arriveAt: { x: 144, y: 140 }, arriveFacing: "up" },
+    { label: "Anarchy Garden", to: "garden", arriveAt: { x: 150, y: 158 }, arriveFacing: "up" },
     { label: "Kyran's Lab", to: "lab", arriveAt: { x: 210, y: 130 }, arriveFacing: "left" },
     { label: "Observatory", locked: "The word doesn't take your finger. Not yet." },
     { label: "Basement", locked: "The word doesn't take your finger. Not yet." },
@@ -489,30 +489,54 @@ window.NEWSEY_STORY = (function () {
     // a green garden covered with pools, water falls, and statues... Above her
     // head, there was a sign covered in winding rose bushes that said,
     // 'Anarchy Garden.'"
+    // THE REFERENCE ROOM for the three-pass art standard
+    // (docs/ROOM_ART_STANDARD.md). bg-garden.png is grass and path and NOTHING
+    // else, so the walk mask is its own silhouette and there is nothing to
+    // declare — no floorPoly, no floorTop, no obstacles. Everything you can see
+    // that is not grass is a prop below, which is also why the pool and the
+    // waterfalls can eventually be animated.
+    //
+    // Positions and sizes are measured off the composed scene kept in
+    // art-src/, not chosen by eye: fountains ~56px tall, trees ~78px and hard
+    // against the edges so their canopies crop. No depthScale — that scene
+    // drew the far fountains the same size as the near ones.
     garden: {
       bg: "garden",
       label: "The Anarchy Garden",
-      playerStart: { x: 145, y: 168 },
-      // The background is a bare ground plate: grass, the path, the pool and
-      // waterfalls across the back, and the low wall the path passes through.
-      // Everything that stands up off the grass is a prop below, so you can
-      // walk BEHIND a tree instead of being fenced off by a painted one.
-      floorPoly: [[8,40],[312,40],[312,198],[8,198]],
+      playerStart: { x: 150, y: 158 },
       props: [
-        { art: "prop_cherry",   x: 46,  y: 126, h: 66, base: { rx: 13, ry: 5 } },
-        { art: "prop_cherry",   x: 272, y: 126, h: 66, base: { rx: 13, ry: 5 } },
-        { art: "prop_fountain", x: 92,  y: 68,  h: 46, base: { rx: 15, ry: 6 } },
-        { art: "prop_fountain", x: 236, y: 68,  h: 46, base: { rx: 15, ry: 6 } },
-        { art: "prop_fountain", x: 232, y: 182, h: 46, base: { rx: 15, ry: 6 } }
+        // the far bank: waterfalls first so the pool sorts in front of them
+        { art: "prop_waterfall", x: 112, y: 24, h: 62, base: { w: 30, h: 8 } },
+        { art: "prop_waterfall", x: 208, y: 24, h: 62, base: { w: 30, h: 8 } },
+        { art: "prop_pool",      x: 160, y: 28, h: 44, w: 224, base: { w: 210, h: 14 } },
+        // the low wall along the near edge, either side of the gap the path
+        // passes through
+        { art: "prop_wall", x: 86,  y: 190, h: 24, w: 104, base: { w: 104, h: 10 } },
+        { art: "prop_wall", x: 236, y: 190, h: 24, w: 104, base: { w: 104, h: 10 } },
+        // ground cover — walked straight over, painted with the floor
+        { art: "prop_flowers_white",  x: 84,  y: 96,  h: 16, flat: true },
+        { art: "prop_flowers_white",  x: 108, y: 138, h: 14, flat: true },
+        { art: "prop_flowers_orange", x: 236, y: 104, h: 16, flat: true },
+        { art: "prop_flowers_orange", x: 214, y: 148, h: 14, flat: true },
+        { art: "prop_bramble",        x: 70,  y: 122, h: 15, flat: true },
+        { art: "prop_bramble",        x: 250, y: 68,  h: 13, flat: true },
+        { art: "prop_tuft",           x: 128, y: 172, h: 12, flat: true },
+        // the standing scenery
+        { art: "prop_cherry",   x: 72,  y: 72,  h: 78, base: { rx: 14, ry: 5 } },
+        { art: "prop_cherry",   x: 62,  y: 152, h: 78, base: { rx: 14, ry: 5 } },
+        { art: "prop_cherry",   x: 252, y: 82,  h: 78, base: { rx: 14, ry: 5 } },
+        { art: "prop_fountain", x: 122, y: 58,  h: 56, base: { rx: 15, ry: 6 } },
+        { art: "prop_fountain", x: 214, y: 58,  h: 56, base: { rx: 15, ry: 6 } },
+        { art: "prop_fountain", x: 96,  y: 108, h: 56, base: { rx: 15, ry: 6 } },
+        { art: "prop_fountain", x: 228, y: 132, h: 56, base: { rx: 15, ry: 6 } }
       ],
-      obstacles: [],
       exits: [
         // the path leaving through the gap in the wall, back the way she came
-        { x: 134, y: 182, w: 34, h: 16, to: "lounge", arriveAt: { x: 152, y: 125 }, arriveFacing: "down" }
+        { x: 142, y: 172, w: 34, h: 14, to: "lounge", arriveAt: { x: 152, y: 125 }, arriveFacing: "down" }
       ],
       npcs: [
         {
-          id: "kyran", x: 200, y: 110, art: "kyran", sprite: "kyran_top",
+          id: "kyran", x: 186, y: 118, art: "kyran", sprite: "kyran_top",
           lines: [
             "Did you ladies eat my CryBerries? …Ah. Just you. You shouldn't have done that.",
             "Here — the effects wear off after fifteen minutes, but this will sort you out instantly.",
