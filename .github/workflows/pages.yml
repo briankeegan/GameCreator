@@ -76,6 +76,16 @@ jobs:
           done
           exit $status
 
+      # The art index (.github/art/README.md) is the one page that says what
+      # exists and which tool to reach for. It is only useful if it is true,
+      # so it is checked both ways: a tool or prompt that isn't listed fails
+      # here, and so does a path listed there that doesn't exist. Rule ->
+      # tool -> gate, applied to the index itself — because the failure it
+      # prevents already happened at a larger scale, when the autopilot's
+      # private COPY of the art rules drifted months behind the standard.
+      - name: Verify the art index
+        run: node .github/scripts/check_art_registry.mjs
+
       # Shipped sprite sheets: no empty cells (the cutter silently produced
       # nothing for one), no colour outside the game's lockedPalette (art
       # that bypassed the cutter), and — as a warning — a front or back row

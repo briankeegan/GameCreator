@@ -294,81 +294,140 @@ jobs:
                file is missing entirely, copy games/_template/art-style.json and
                fill that in. games/dog-punk/art-style.json is a worked example.
 
+               READ THE STANDARD FOR WHAT YOU ARE DRAWING, FIRST. These
+               are the repo's art rules, kept in one place each so they cannot
+               go stale in two. Everything below is only the part that is
+               specific to running inside this workflow — the standards
+               themselves are:
+
+                 .github/art/CHARACTER_SHEETS.md   characters: sheet layout,
+                   walk and attack frames, directions, the recipe that works,
+                   and the failures behind every rule in it.
+                 docs/ROOM_ART_STANDARD.md          rooms: the THREE PASSES
+                   (composed scene -> ground plate -> prop sheet), prompting
+                   each one, prop placement and sizing, and the pipeline.
+                 games/<gameId>/art-style.json      that game's own contract.
+
+               Read the relevant one with the Read tool BEFORE generating.
+               Runs that skipped this shipped art that had to be redone.
+
                GENERATE SHEETS, NEVER SINGLE FRAMES. This is the rule that
                matters most and the one previous runs kept breaking. A sprite
                generated on its own is drawn from scratch, so its colours,
                proportions and pixel scale do not match the frames beside it —
                Dog Punk shipped a hero whose front view and side view were
                visibly different dogs, and five rounds of regenerating single
-               frames never converged, because each new frame drifted somewhere
-               else. Generate ONE image holding a whole row of frames (idle,
-               walk, attack) and cut it up. Frames drawn together cannot drift.
+               frames never converged. Generate ONE image holding a whole row
+               of frames and cut it up. Frames drawn together cannot drift.
 
-               a. Generate a row by POSTing to the local image service (it holds
-                  the OpenAI key — you do not, and must not try to):
+               a. CHARACTER ROWS — one command, the same one a person or
+                  another Claude session runs outside this workflow:
+                    python3 .github/art/generate_row.py \
+                      --game <gameId> --character <id> \
+                      --view front|side|back [--kind walk|attack] \
+                      [--description "..."] [--force]
+                  It builds the prompt from the canonical prompt file plus that
+                  game's art-style.json, generates ONE ROW on a landscape
+                  canvas, VERIFIES it, and DELETES it if it fails — so a bad row
+                  cannot sit in art-src/ waiting to be picked up by a later
+                  build. It routes through the in-run image broker
+                  automatically; you have no OpenAI key and must not look for
+                  one. Add --print-prompt to see the prompt without generating
+                  or spending anything.
+
+                  Any OTHER image (a tile, an icon, a room pass) still goes
+                  through the broker directly:
                     curl -s -X POST http://127.0.0.1:8791/generate \
                       -H 'content-type: application/json' \
                       -d '{"prompt":"<see below>",
                            "output_path":"games/<gameId>/art-src/<name>_raw.png",
                            "game":"<gameId>","size":"1536x1024"}'
-                  Raw generations go under art-src/ — they are source material,
-                  not shipped art. The call BLOCKS ~30-60s; let it finish.
+                  The call BLOCKS ~30-60s; let it finish. Raw generations go
+                  under art-src/ — source material, not shipped art.
 
-                  The prompt must state, every time: the row's frames left to
-                  right; that all frames are THE SAME character with identical
-                  colours, outfit, proportions and pixel scale; the rendering
-                  style from art-style.json; a SOLID FLAT PURE WHITE background
-                  (asking for transparency returns a beige wash — the cutter
-                  keys white out for you); and that nothing may touch or be cut
-                  off by any edge, with a clear gap between neighbouring
-                  sprites. Bottom-row clipping and overlapping sprites are the
-                  two failures that waste generations, so say both explicitly.
+                  DO NOT WRITE A PROMPT FROM SCRATCH. The canonical prompts are
+                  files, and they carry rules a fresh prompt always leaves out:
+                  .github/art/walkgrid_prompt.txt (walk),
+                  .github/art/attacksheet_prompt.txt (attack),
+                  .github/art/room_prompts/*.txt (the three room passes — or run
+                  `python3 .github/art/room.py prompt scene|plate|props` to print
+                  one filled in). If a generation exposes a gap in a prompt, FIX
+                  THE PROMPT FILE. That is how the next run inherits what this
+                  one learned; a better prompt typed into one curl call dies
+                  with this run.
 
                b. Cut the raw into a shipped sheet with the shared cutter:
                     python3 .github/art/build_sheet.py \
                       --style games/<gameId>/art-style.json \
                       --out games/<gameId>/<name>_sheet.png \
                       --row games/<gameId>/art-src/<raw>.png [--row ...] \
-                      [--blobs] [--body-height N]
-                  One --row per output row, in order. --blobs when sprites in
-                  the raw overlap horizontally. --body-height sets how much of
-                  the cell the character fills: that is where relative size
-                  between characters lives (a rat is smaller than the hero
-                  because of this number), NEVER in per-character draw sizes —
-                  every sheet-based character is drawn at ONE on-screen cell
-                  size so their pixels match. Run `--help` for details.
+                      [--build-steps 0,2] [--blobs] [--body-height N]
+                  One --row per output row, in order. --build-steps 0,2 on a
+                  three-row walk sheet builds the front and back rows' TWO STEP
+                  FRAMES out of their standing frame, because the generator
+                  will not draw opposite steps — six rows in a row lifted the
+                  same foot twice, so the character walked with one leg. Use it
+                  on every walk sheet; only the middle frame of those rows then
+                  has to be drawn well. --blobs when sprites in the raw overlap
+                  horizontally. --body-height sets how much of the cell the
+                  character fills: that is where relative size between
+                  characters lives (a rat is smaller than the hero because of
+                  this number), NEVER in per-character draw sizes. `--help` for
+                  the rest. Rooms use .github/art/room.py instead — `plate`,
+                  `props`, `check`, `verify`; see the room standard.
 
-               c. THEN Read the OUTPUT sheet and actually look at it. Check the
-                  character is recognisably the same in every frame, that its
-                  defining feature (mohawk, hat, weapon) is visible in ALL of
-                  them including attacks, and that nothing is clipped. If it is
-                  wrong, regenerate the ROW — never patch one frame.
+               c. VERIFY IT MECHANICALLY, then LOOK AT IT. Both, in that order:
+                    python3 .github/art/verify_sheet.py sheet <sheet>.png \
+                            --style games/<gameId>/art-style.json
+                  (generate_row.py already ran the raw check for rows it made.
+                  For a row generated any other way, run it yourself:
+                  `verify_sheet.py raw <raw>.png --frames 3 --walk [--mirrored]`
+                  — --mirrored on a front or back row, never on a side row.)
+                  It catches clipping, wrong frame count, duplicate frames, a
+                  missing neutral, detached specks, off-palette colour and the
+                  same-foot-twice repeat. It cannot judge whether the drawing
+                  is right, so THEN Read the output sheet and look: same
+                  character in every frame, defining feature (mohawk, hat,
+                  weapon) visible in ALL of them including attacks, nothing
+                  clipped. If it is wrong, regenerate the ROW — never patch one
+                  frame. pages.yml runs these same checks on push, so a sheet
+                  that fails here fails the deploy anyway.
 
                d. Reference the sheet in the game code by cutting it at load
                   into per-frame canvases (games/dog-punk/app.js sliceSheet() is
                   the pattern), and keep a canvas/vector fallback so the game
                   still plays if the image is missing. Add the sheet to the
-                  game's sw.js precache list and drop any files it replaces.
+                  game's sw.js precache list, BUMP that file's cache name, and
+                  drop any files it replaces. Without the bump, browsers keep
+                  serving the old art and the change looks like it never
+                  shipped.
 
                The /generate response includes "remaining" — you have a limited
                number of generations per run. A sheet costs one for a whole row,
                which is the point. If you run out with nothing great, keep the
                best attempt and SAY SO in your reply.
 
-               WALK CYCLES have their own convention and their own one-shot
-               Action — do not hand-roll them. Three frames per direction,
-               <id>_<dir>_<0|1|2>.png, where the MIDDLE frame (1) is a true
-               NEUTRAL standing pose used both for idle and as the resting beat
-               mid-walk; frames 0 and 2 are the two mirrored step poses;
-               playback while moving is [1,0,1,2], snapping back to 1 the
-               moment movement stops. RIGHT is never drawn — it is LEFT
-               mirrored with scale(-1,1) — so the LEFT row must be a true side
-               profile. Generate the whole set by dispatching
-               .github/workflows/generate-walksheet.yml (it builds the prompt
-               from .github/art/walksheet_prompt.txt, generates, slices and
-               commits); the code side is adding the character to that game's
-               facing-frames table. See CLAUDE.md and
-               games/the-game/WALK_SHEETS.md.
+               WALK CYCLES: which pipeline depends on how the game ships its
+               art, and both are one dispatch — do not hand-roll either.
+                 - SHEET-BASED games (the standard for anything new, Dog Punk
+                   is the reference): run generate_row.py once per view, as in
+                   (a) above, then cut all three rows with build_sheet.py
+                   --build-steps 0,2. (Outside this workflow the same thing is
+                   the "Generate walk row" Action, which is a button on that
+                   same script — you cannot dispatch a workflow from inside
+                   one, so call the script.)
+                 - PER-FILE games (Newsey/the-game, legacy but supported):
+                   dispatch .github/workflows/generate-walksheet.yml, which
+                   generates a 4x3 grid, slices it into <id>_<dir>_<n>.png and
+                   commits. See games/the-game/WALK_SHEETS.md.
+               Either way the frame convention is the same and is in
+               CHARACTER_SHEETS.md: three frames per direction, the MIDDLE one
+               a true NEUTRAL standing pose used both for idle and as the
+               resting beat mid-walk, playback [1,0,1,2] while moving snapping
+               back to 1 the moment it stops, and RIGHT never drawn — it is the
+               side row mirrored with scale(-1,1), so that row must be a true
+               side profile. The code side is adding the character to that
+               game's facing-frames table.
 
                For a simple FLAT icon or logo, skip all this and write an inline
                .svg file (SVG over PNG per CLAUDE.md).

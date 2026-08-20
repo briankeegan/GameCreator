@@ -1,1 +1,37 @@
-A 16-bit SNES-style PIXEL ART character ATTACK sheet on a SOLID FLAT PURE WHITE background (#FFFFFF, completely uniform). Layout: 3 ROWS by 3 COLUMNS of sprites, evenly spaced, with a wide empty white margin on all four sides and a clear white gap between every sprite — nothing may touch, overlap or be cut off by any edge, especially the bottom row. Every sprite is the SAME character at the SAME size and the SAME pixel scale. THE CHARACTER, drawn identically in all nine frames: {CHARACTER}. THE THREE COLUMNS are ONE SWING of the weapon, left to right. It is a SLASH — an arcing sweep across the body — NOT a stab, NOT a thrust, NOT the weapon pointed straight ahead like a spear (asking for 'an attack' produces a stab by default, which is wrong for a bladed weapon): Column 1 = WIND-UP, the weapon pulled back and raised on one side, arm cocked, body coiled, blade angled away from the target before any contact. Column 2 = STRIKE, mid-slash — the weapon sweeping through an ARC across the front of the body at the moment it connects, blade angled across the direction of travel rather than pointing along it, arm extended through the swing; the biggest, clearest pose of the three. Column 3 = RECOVER, the follow-through — the weapon carried past the target and down on the far side of the arc, body settling back. THE THREE ROWS are directions, and the direction must hold across ALL THREE frames of its row without exception: Row 1 = seen from the FRONT, facing the viewer, attacking toward the viewer. Row 2 = strict SIDE PROFILE FACING RIGHT — head in profile, nose pointing right, one shoulder to the viewer, in all three frames including the wind-up and the recovery; never turned to face the viewer. Row 3 = seen from BEHIND — the back of the head and body, NO face, NO eyes, attacking away from the viewer. ART STYLE: chunky flat cartoon pixel art, big simple shapes, flat solid colours, a thick black outline, no anti-aliasing, no gradients, no dithering, no texture inside a colour block. Nothing else in the image: no grid lines, no boxes, no frames, no labels, no text, no numbers, no shadows, and NO GROUND LINE — no floor bar, platform, plinth, baseline stripe or patch of ground drawn under the feet. The character floats on empty background; the game draws its own floor.
+CANONICAL ATTACK-ROW PROMPT — one image per direction, landscape 1536x1024.
+Fill {CHARACTER} from the game's art-style.json (including its lockedDetails)
+and keep exactly ONE of the three {VIEW} blocks. `generate_row.py --kind
+attack` does both for you. Do not ask for a 3x3 grid: square canvases clip the
+bottom row and tall ones drop a column — the same failure the walk rows hit.
+See CHARACTER_SHEETS.md.
+
+---8<--- PROMPT STARTS ---8<---
+
+A 16-bit SNES-style PIXEL ART sprite row on a SOLID FLAT PURE WHITE background (#FFFFFF, completely uniform). Exactly THREE sprites side by side in the middle of the image, evenly spaced, with a wide empty white margin on all four sides and a clear white gap between them — nothing touching, overlapping, or cut off by any edge. All three are the SAME character at the SAME size and the SAME pixel scale.
+
+THE CHARACTER, drawn identically in all three frames: {CHARACTER}
+
+{VIEW}
+
+THE THREE FRAMES ARE ONE SWING of the weapon, left to right. It is a SLASH — an arcing sweep across the body — NOT a stab, NOT a thrust, NOT the weapon pointed straight ahead like a spear. Asking for "an attack" produces a stab by default, which is wrong for a bladed weapon, so each frame is spelled out: FRAME 1 = WIND-UP, the weapon pulled back and raised on one side, arm cocked, body coiled, blade angled away from the target before any contact. FRAME 2 = STRIKE, mid-slash — the weapon sweeping through an ARC across the front of the body at the moment it connects, blade angled across the direction of travel rather than pointing along it, arm extended through the swing. This is the biggest, clearest pose of the three, and it is the frame the game deals damage on. FRAME 3 = RECOVER, the follow-through — the weapon carried past the target and down on the far side of the arc, body settling back.
+
+The weapon stays in the SAME HAND as on the character's walk sheet, in all three frames.
+
+ART STYLE: chunky flat cartoon pixel art, big simple shapes, flat solid colours, a thick black outline, no anti-aliasing, no gradients, no dithering, no texture inside a colour block. Draw NO GROUND — no floor line, no bar or plinth under the feet, no platform, no shadow; the character floats on empty white and the game draws its own floor. Nothing else in the image: no grid lines, no boxes, no frames, no labels, no text, no numbers.
+
+---8<--- PROMPT ENDS ---8<---
+
+
+{VIEW} = FRONT ROW
+------------------
+THE VIEW: all three sprites seen from the FRONT, facing the viewer, attacking toward the viewer, shoulders square to the camera. Both ears visible. The swing arcs across the front of the body, which is what makes a slash read at this angle — the blade must never simply grow toward the camera.
+
+
+{VIEW} = SIDE ROW
+-----------------
+THE VIEW: all three sprites in strict SIDE PROFILE FACING RIGHT — head in profile, nose pointing right, one shoulder to the viewer — in all three frames including the wind-up and the recovery. Never turned to face the viewer. This is the row where the arc is most visible, so make the sweep unmistakable.
+
+
+{VIEW} = BACK ROW
+-----------------
+THE VIEW: all three sprites seen from BEHIND — the back of the head and body, NO face, NO eyes, NO snout — attacking away from the viewer, shoulders square to the camera. The character's defining feature (mohawk, hat, horns) must still be visible from behind, mid-swing included; it is the first thing to vanish in an attack row.
