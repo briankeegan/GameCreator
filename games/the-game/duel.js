@@ -42,6 +42,8 @@ window.NewseyDuel = (function () {
       quit: el("duelQuit"),
       raise: el("duelRaise"),
       swap: el("duelSwap"),
+      settings: el("duelSettings"),
+      controls: document.querySelector(".duel-controls"),
       dpad: document.querySelectorAll(".duel-dpad button"),
       result: el("duelResult"),
       resultTitle: el("duelResultTitle"),
@@ -50,6 +52,7 @@ window.NewseyDuel = (function () {
       hint: el("duelHint")
     };
     els.ctx = els.canvas.getContext("2d");
+    SETTINGS.onChange(applyControlsSetting); // registered once, with the elements
     return els;
   }
 
@@ -104,7 +107,8 @@ window.NewseyDuel = (function () {
     els.screen.hidden = false;
     els.result.hidden = true;
     els.hint.textContent = "tap two panels side by side to swap them, or drag one sideways"
-      + (isTouch() ? "" : " · arrows + Z work too");
+      + (isTouch() ? "" : " · keyboard and controller work too");
+    applyControlsSetting();
     bindInput();
     resize();
     state.last = null;
@@ -119,7 +123,13 @@ window.NewseyDuel = (function () {
     state = null;
   }
 
-  function isTouch() { return matchMedia("(hover: none) and (pointer: coarse)").matches; }
+  var SETTINGS = window.NewseySettings;
+  function isTouch() { return SETTINGS.isTouchDevice(); }
+
+  // The on-screen pad is the player's choice (settings.js), on both screens.
+  function applyControlsSetting() {
+    if (els) els.controls.hidden = !SETTINGS.showOnScreenControls();
+  }
 
   // =========================================================================
   // INPUT
@@ -128,7 +138,7 @@ window.NewseyDuel = (function () {
 
   function bindInput() {
     handlers.keydown = function (e) {
-      if (!state) return;
+      if (!state || SETTINGS.isOpen()) return; // the controls menu owns the keys
       state.keys[e.key] = true;
       state.keyLatch[e.key] = true; // a very short tap must survive one frame
       if (e.key === "Escape") { quit(); return; }
@@ -152,6 +162,7 @@ window.NewseyDuel = (function () {
     window.addEventListener("resize", handlers.resize);
 
     els.quit.onclick = quit;
+    els.settings.onclick = function () { SETTINGS.open(); };
     els.resultBtn.onclick = function () { finish(); };
     // Every on-screen control is a HOLD, not a click: directions repeat through
     // the engine's own key-repeat, raise keeps raising while held, and swap is
@@ -259,8 +270,9 @@ window.NewseyDuel = (function () {
     }
   }
 
-  // Keyboard and the on-screen buttons feed the same input — either can drive
-  // the whole game.
+  // Keyboard, on-screen buttons and gamepad all feed the same input — any one
+  // of them can drive the whole game. Which key does what comes from
+  // settings.js, so a rebind applies here too.
   function readKeyboard() {
     var b = state.buttons, latched = state.latched, keyLatch = state.keyLatch;
     var keys = state.keys;
@@ -270,13 +282,17 @@ window.NewseyDuel = (function () {
     function held(flag) { return b[flag] || latched[flag]; }
     state.latched = {};   // every latched press survives exactly one frame
     state.keyLatch = {};
+    var pad = SETTINGS.gamepad();
+    function on(action) {
+      return !!(SETTINGS.isDown(action, k) || held(action) || (pad && pad[action]));
+    }
     return {
-      left: !!(k.ArrowLeft || k.a || k.A || held("left")),
-      right: !!(k.ArrowRight || k.d || k.D || held("right")),
-      up: !!(k.ArrowUp || k.w || k.W || held("up")),
-      down: !!(k.ArrowDown || k.s || k.S || held("down")),
-      swap: !!(k.z || k.Z || k.x || k.X || k[" "] || k.Enter || held("swap")),
-      raise: !!(k.Shift || k.r || k.R || held("raise"))
+      left: on("left"),
+      right: on("right"),
+      up: on("up"),
+      down: on("down"),
+      swap: on("swap") || !!(pad && pad.interact),
+      raise: on("raise")
     };
   }
 
@@ -314,6 +330,7 @@ window.NewseyDuel = (function () {
 
   function step() {
     var s = state;
+    if (SETTINGS.isOpen()) return; // paused: nothing rises while the menu is up
     if (s.countdown > 0) { s.countdown--; return; }
     if (s.over) {
       if (s.overDelay > 0 && --s.overDelay === 0) showResult();

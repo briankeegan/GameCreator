@@ -200,7 +200,7 @@
   }
   function endCutscene() {
     cutsceneEl.classList.add("hidden");
-    if (isTouch) document.getElementById("touchControls").hidden = false;
+    applyControlsSetting();
     sizeStage();
     var cb = cutsceneDoneCallback;
     cutsceneDoneCallback = null;
@@ -216,7 +216,7 @@
     portraitImg.hidden = true;
     portraitFallback.hidden = true;
     cutsceneEl.classList.remove("hidden");
-    if (isTouch) document.getElementById("touchControls").hidden = true;
+    applyControlsSetting();
     sizeStage();
     renderCutsceneLine();
   }
@@ -261,17 +261,34 @@
   }
 
   // ---- input ----
+  // Which key does what is the player's choice (settings.js) — nothing here
+  // hardcodes a binding any more.
+  var SETTINGS = window.NewseySettings;
   window.addEventListener("keydown", function (e) {
+    if (SETTINGS.isOpen()) return; // the controls menu is capturing keys
     keys[e.key] = true;
-    if (talking && (e.key === "z" || e.key === "Z" || e.key === " " || e.key === "Enter")) {
+    var pressed = {}; pressed[e.key] = true;
+    if (talking && SETTINGS.isDown("interact", pressed)) {
       advanceTalk();
       e.preventDefault();
     }
   });
   window.addEventListener("keyup", function (e) { keys[e.key] = false; });
 
-  var isTouch = matchMedia("(hover: none) and (pointer: coarse)").matches;
-  if (isTouch) { document.getElementById("touchControls").hidden = false; sizeStage(); }
+  var touchControlsEl = document.getElementById("touchControls");
+  // The on-screen pad follows the setting, not the device: someone on a laptop
+  // can turn it on, someone on a tablet with a keyboard can turn it off.
+  function applyControlsSetting() {
+    var wanted = SETTINGS.showOnScreenControls() && !cutsceneVisible();
+    if (touchControlsEl.hidden === !wanted) return;
+    touchControlsEl.hidden = !wanted;
+    sizeStage();
+  }
+  function cutsceneVisible() { return !cutsceneEl.classList.contains("hidden"); }
+  SETTINGS.onChange(applyControlsSetting);
+  applyControlsSetting();
+
+  document.getElementById("settingsBtn").addEventListener("click", function () { SETTINGS.open(); });
   var touchDir = null;
   document.querySelectorAll("#dpad button").forEach(function (btn) {
     var dir = btn.dataset.dir;
@@ -409,13 +426,23 @@
     }
     return false;
   }
+  // A gamepad's "talk" button is edge-triggered here: held down it would
+  // otherwise re-trigger the conversation every frame.
+  var padInteractWasDown = false;
+
   function update(dt) {
-    if (talking || window.NewseyDuel.isActive()) return;
+    if (talking || window.NewseyDuel.isActive() || SETTINGS.isOpen()) return;
+    var pad = SETTINGS.gamepad();
+    if (pad) {
+      if (pad.interact && !padInteractWasDown) tryInteract();
+      padInteractWasDown = pad.interact;
+      if (talking) return;
+    }
     var dx = 0, dy = 0;
-    if (keys["ArrowLeft"] || keys["a"] || touchDir === "left") dx -= 1;
-    if (keys["ArrowRight"] || keys["d"] || touchDir === "right") dx += 1;
-    if (keys["ArrowUp"] || keys["w"] || touchDir === "up") dy -= 1;
-    if (keys["ArrowDown"] || keys["s"] || touchDir === "down") dy += 1;
+    if (SETTINGS.isDown("left", keys) || touchDir === "left" || (pad && pad.left)) dx -= 1;
+    if (SETTINGS.isDown("right", keys) || touchDir === "right" || (pad && pad.right)) dx += 1;
+    if (SETTINGS.isDown("up", keys) || touchDir === "up" || (pad && pad.up)) dy -= 1;
+    if (SETTINGS.isDown("down", keys) || touchDir === "down" || (pad && pad.down)) dy += 1;
     if (dx || dy) {
       var len = Math.sqrt(dx * dx + dy * dy);
       dx /= len; dy /= len;
@@ -604,6 +631,9 @@
     currentRoom = ROOMS[save.room || "house"];
     player.x = currentRoom.playerStart.x; player.y = currentRoom.playerStart.y;
   }
+  // Only now is it settled whether the intro is showing, which is what decides
+  // if the pad belongs on screen — the earlier call ran before that was known.
+  applyControlsSetting();
   requestAnimationFrame(loop);
 
   // Read-only debug hook for automated testing (headless smoke tests can't
