@@ -127,6 +127,9 @@ window.NEWSEY_STORY = (function () {
       // this line while asleep, so the covers cover her.
       bedClipY: 87,
       wakeSpot: { x: 116, y: 112 },
+      // Lean into this footprint for a moment and she climbs back in — it's
+      // the bed's obstacle box below, which is where the bed meets the floor.
+      bedZone: { x: 56, y: 98, w: 58, h: 30 },
       // The drawn floor, kept as the fallback for before the walk mask loads.
       floorPoly: [[58,100],[248,100],[248,186],[58,186]],
       // The doorway is an actual hole in the art (transparent), so the floor
@@ -212,6 +215,16 @@ window.NEWSEY_STORY = (function () {
       bg: "bedroom",
       label: "Your Room, Infinity",
       playerStart: { x: 150, y: 150 },
+      // Waking up in Infinity works like waking up at home — measured off
+      // bg-bedroom.png at 320x200: the pillow sits around x 145-180 / y 59-70,
+      // with the duvet's top edge at y ~70. She lies with her head on the
+      // pillow and is drawn clipped to above that edge.
+      bedSpot: { x: 155, y: 62 },
+      bedClipY: 70,
+      // The floorboards at the near-left corner of the bed, clear of both the
+      // bed's own footprint and the save-point token standing at its foot.
+      wakeSpot: { x: 130, y: 132 },
+      bedZone: { x: 120, y: 92, w: 90, h: 26 },
       // Hand-placed from bg-bedroom.png: the door is on the right wall,
       // the mirror stands on the left and the bed is back-center-right —
       // both are blocked off so the player can't walk through them.
@@ -227,7 +240,7 @@ window.NEWSEY_STORY = (function () {
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
       floorPoly: [[52,100],[285,100],[272,186],[64,186]],
       exits: [
-        { x: 223, y: 90, w: 28, h: 16, to: "lounge", arriveAt: { x: 150, y: 150 } }
+        { x: 223, y: 90, w: 28, h: 16, to: "lounge", arriveAt: { x: 90, y: 122 } }
       ],
       // Furniture footprints where they actually meet the floor (the old boxes
       // reached far into the room, and the bed's box covered the doorway, so
@@ -239,25 +252,15 @@ window.NEWSEY_STORY = (function () {
       ],
       npcs: [
         {
-          // The bed is the game's save point — stand at its foot and
-          // interact. `savePoint` makes app.js write the file when the lines
-          // finish, and draw a gold marker over it instead of a character
-          // token. Positioned just below the bed obstacle (which ends at
-          // y=110) so the player can actually stand within reach of it.
-          id: "bed", x: 155, y: 120, art: null, sprite: null, savePoint: true,
-          lines: [
-            "Your bed. Copper sheets, aquamarine pillow — Infinity matched them to your bracelet.",
-            "You lie down for a moment and let the day settle."
-          ]
-        },
-        {
           // The plot has no one standing in this room: you walk up to the
           // mirror, see yourself with horns, and the devil pops up IN the
           // mirror like a TV, welcomes you, then it's over — not a
-          // character who lives here. `marker: true` (no label, unlike
-          // "SAVE"/"OPEN") makes this purely an invisible interact point at
-          // the mirror's own spot; talking still shows him as the speaker
-          // (CHARACTERS.devil) exactly like it did as a standing NPC.
+          // character who lives here. `marker: true` makes this purely an
+          // interact point at the mirror's own spot (it gets the floor's pool
+          // of light, nothing standing up); talking still shows him as the
+          // speaker (CHARACTERS.devil) exactly like it did as a standing NPC.
+          // The bed beside it is no longer an interactable at all — you get
+          // INTO it (app.js, player.bedSlide), and that's what saves.
           id: "devil", x: 70, y: 102, art: "devil", sprite: null, marker: true,
           lines: [
             "Hello, and welcome to Infinity! You may notice your appearance has changed — that's your magical avatar.",
@@ -286,56 +289,66 @@ window.NEWSEY_STORY = (function () {
     lounge: {
       bg: "lounge",
       label: "The Lounge",
-      playerStart: { x: 100, y: 150 },
-      // Hand-placed from bg-lounge.png: the doorway to the library is on
-      // the right wall; the bar counter spans most of the back wall and
-      // is blocked off so the player can't walk through/behind it.
-      // bg-lounge.png draws ONE door: the arch on the back-right wall (opening
-      // x 210-240, floor at y ~82) to the library. The way back to your room is
-      // the doorway you came in through, at the bottom edge of the room —
-      // the art has none there, so app.js draws that frame itself.
+      playerStart: { x: 206, y: 128 },
+      // bg-lounge.png is MIRRORED (the PNG itself was flipped horizontally,
+      // and build_walkmask.py's block for the bar with it), so the room now
+      // reads the way the map actually works: your room's door is on ITS
+      // right wall, so you come into this one through the arch on ITS LEFT,
+      // and the bar runs along the back-right. Every x below is 320-x of the
+      // measurements taken off the original art.
+      // The two ways out: the drawn arch on the back-left wall (opening
+      // x 80-114, floor at y ~86) back to your room, and the doorway at the
+      // bottom edge, toward the viewer, down to the library — the art has
+      // none there, so app.js draws that frame itself.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[75,100],[252,100],[288,140],[262,188],[92,188],[50,140]],
+      floorPoly: [[245,100],[68,100],[32,140],[58,188],[228,188],[270,140]],
       exits: [
-        { x: 206, y: 86, w: 34, h: 18, to: "library", arriveAt: { x: 215, y: 140 } },
-        { x: 132, y: 182, w: 56, h: 10, to: "bedroom", drawn: "threshold", arriveAt: { x: 228, y: 132 } }
+        { x: 80, y: 86, w: 34, h: 18, to: "bedroom", arriveAt: { x: 228, y: 132 } },
+        { x: 132, y: 182, w: 56, h: 10, to: "library", drawn: "threshold", arriveAt: { x: 220, y: 118 } }
       ],
       // The bar's footprint on the floor (the old box sat entirely above the
       // walkable area, so it blocked nothing).
-      obstacles: [ { x: 55, y: 95, w: 110, h: 30 } ], // the bar's footprint
+      obstacles: [ { x: 155, y: 95, w: 110, h: 30 } ], // the bar's footprint
       npcs: [
         {
           // Flavor only here — per the plot, the Lounge is "the bar + portals
           // to duels", not the duel itself. Kat's actual fight happens in
           // ROOMS.arena, reached through the portal below.
-          id: "kat", x: 150, y: 162, art: "kat", sprite: "kat_top",
+          id: "kat", x: 170, y: 162, art: "kat", sprite: "kat_top",
           lines: [
             "Hello there. They call me Kat. What's your name?",
             "I'll buy you a drink — if you duel me. No better way to learn!",
-            "Head to the portal when you're ready — I'll be waiting on the other side."
-          ]
+            "Step through the mirror in your room when you're ready — I'll be waiting on the other side."
+          ],
+          setsFlag: "duelInvite"
         },
         {
-          id: "may", x: 220, y: 158, art: "may", sprite: "may_top",
+          id: "may", x: 100, y: 158, art: "may", sprite: "may_top",
           lines: [
             "You again? Stay out of my way.",
             "Something doesn't add up about the new arrivals lately. Watch yourself.",
-            "…Fine. If you want to know what a champion plays like, meet me through the portal."
-          ]
+            "…Fine. If you want to know what a champion plays like, meet me through the mirror in your room."
+          ],
+          setsFlag: "duelInvite"
         },
         {
-          id: "timothy", x: 258, y: 168, art: "timothy", sprite: "timothy_top",
+          id: "timothy", x: 206, y: 172, art: "timothy", sprite: "timothy_top",
           lines: [
             "Now, now — that's no way to welcome the new people.",
             "My bracelet's all diamond. Yours will get there too, given time."
           ]
         },
         {
-          // The plot: "the Lounge (bar + portals to duels)" — this is that
-          // portal. No art generated yet, renders as a fallback token.
-          id: "portal", x: 82, y: 150, art: null, sprite: null, marker: "ENTER",
+          // PLOT.md: "the Lounge (bar + portals to duels)". The lounge art
+          // doesn't draw one, so it reads as a pool of light on the floor —
+          // the same flat glow a doorway gets, not a token standing up in the
+          // middle of the room. Mirrored with the rest of the room (was x 82).
+          // Stepping through always works; the arena on the other side is
+          // empty until somebody in here agrees to meet you (duelInvite).
+          id: "portal", x: 238, y: 150, art: null, sprite: null, marker: "ENTER",
+          look: "portal",
           lines: [
-            "A shimmering doorway, humming with the same pink-and-red glow as a panel board.",
+            "A doorway standing open onto a swirling purple void. It hums like a board about to rise.",
             "You step through."
           ],
           gotoRoom: "arena"
@@ -350,13 +363,14 @@ window.NEWSEY_STORY = (function () {
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
       floorPoly: [[52,96],[286,96],[292,140],[272,186],[72,186],[44,140]],
       exits: [
-        { x: 232, y: 84, w: 34, h: 20, to: "lounge", arriveAt: { x: 150, y: 150 } }
+        { x: 232, y: 84, w: 34, h: 20, to: "lounge", arriveAt: { x: 224, y: 128 } }
       ],
       obstacles: [ { x: 45, y: 88, w: 180, h: 14 } ], // the tiered stone benches
       npcs: [
         {
           id: "kat", x: 100, y: 155, art: "kat", sprite: "kat_top",
           counterKey: "kat_arena", // separate dialogue progress from lounge-Kat
+          needs: "duelInvite",     // the arena is empty until someone agrees to meet you
           lines: [
             "There you are. Ready?",
             "Chains, dear. Clear one thing so another thing falls into place. That's the whole game."
@@ -379,6 +393,7 @@ window.NEWSEY_STORY = (function () {
         {
           id: "may", x: 220, y: 158, art: "may", sprite: "may_top",
           counterKey: "may_arena",
+          needs: "duelInvite",
           lines: [
             "…Fine. If you want to know what a champion plays like, put your hands on the panels."
           ],
@@ -411,7 +426,7 @@ window.NEWSEY_STORY = (function () {
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
       floorPoly: [[50,100],[274,100],[274,188],[50,188]],
       exits: [
-        { x: 228, y: 84, w: 24, h: 18, to: "lounge", arriveAt: { x: 215, y: 140 } }
+        { x: 228, y: 84, w: 24, h: 18, to: "lounge", arriveAt: { x: 152, y: 156 } }
       ],
       obstacles: [ { x: 160, y: 92, w: 66, h: 22 } ], // armchair + candle table
       npcs: [
