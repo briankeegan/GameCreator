@@ -208,22 +208,35 @@ design discussion. `shared/` holds the components every game reuses
     (#FF00FF) gridlines, not white: white anti-aliases into a pale halo the
     slicer can't fully remove. `games/the-game/WALK_SHEETS.md` records why,
     and what else was tried.
-- **A room is generated in TWO LAYERS: a ground plate, then props.** Do not
-  ask for a room with its furniture painted in — that was the old way and
-  everything downstream fought it. Layer 1 is the GROUND PLATE: floor, the
-  walls behind it, doorways, and nothing that stands up off the floor out in
-  the room. Layer 2 is a PROP SHEET: every free-standing thing — a tree, a
-  fountain, a table — drawn side by side in ONE image on flat white, upright,
-  whole, on a common ground line, cut apart by `.github/art/build_props.py`.
-  The game places props from `props: [{ art, x, y, h, base }]` on the room,
-  sorts them against the player by foot position, and blocks the `base`
-  ellipse — so you walk BEHIND a tree and stop at its trunk.
-  - Three things this buys, all of which were problems: the walkable-floor
-    mask becomes a wall line plus a rectangle instead of a hand
-    reverse-engineering job (`build_walkmask.py` documents the five
-    techniques that failed at the old version), a prop can be moved or
-    replaced without regenerating the room, and scenery finally has depth —
-    a painted tree is something you can only ever be fenced away from.
+- **A room is generated in THREE PASSES.** Do not ask for a room with its
+  scenery painted in — that was the old way and everything downstream fought
+  it.
+  1. **A COMPOSED SCENE**, kept in `art-src/<room>_scene.png` and NEVER
+     shipped. It exists to be MEASURED: every prop's ground point, height,
+     width and *count* comes off it. Skipping this is what makes a room look
+     like objects were sprinkled on a lawn, and it is the only reliable answer
+     to sizing — the Anarchy Garden's scene drew all four fountains the same
+     height regardless of depth, and eyeballing them smaller with a depth ramp
+     on is what made them read as trinkets.
+  2. **THE WALKABLE SURFACE and nothing else**, which is the shipped
+     background. Because the plate IS the walkable area, the collision mask is
+     its own silhouette — the room goes in `FLOOR_PLATE_ROOMS` and there is
+     nothing else to declare.
+  3. **EVERYTHING YOU CANNOT WALK ON, as props** — walls, water, trees,
+     statues — drawn side by side in ONE image on flat white and cut apart by
+     `build_props.py`. Plus flat ground cover (`flat: true`), which you *can*
+     walk over but which still isn't part of the plate.
+
+  The game places props from `props: [{ art, x, y, h, w, flat, base }]`, sorts
+  them against the player by foot position, and blocks the `base` — an ellipse
+  `{rx,ry}` for anything round-ish, a rect `{w,h}` for a wall or a pool coping,
+  since an ellipse leaves walkable gaps at their corners.
+  - Four things this buys, all of which were problems: the walkable-floor mask
+    stops being hand-authored entirely (`build_walkmask.py` documents the five
+    techniques that failed at recovering a floor from a finished picture), a
+    prop can be moved or replaced without regenerating the room, scenery gets
+    depth — a painted tree is something you can only ever be fenced away from —
+    and the water can be animated, which is impossible while it is paint.
   - **One front door: `.github/art/room.py`** — `prompt` (canned prompts for
     each pass), `plate` (fit the floor plate + rebuild its mask), `props` (cut
     a sheet), `check` (render the overlays), `verify` (the gate, wired into
@@ -233,8 +246,14 @@ design discussion. `shared/` holds the components every game reuses
     it exists, how to prompt each layer, the pipeline commands and a
     checklist, written to be handed to someone who has never seen this repo.
     `games/the-game/art-style.json` carries the same rule in the form the
-    image Action reads, so a prompt only has to say WHICH LAYER it wants. The
+    image Action reads, so a prompt only has to say WHICH PASS it wants — and
+    `room.py prompt scene|plate|props` prints those prompts filled in. The
     Anarchy Garden is the reference room.
+  - **`room.py check` renders two pictures and you have to LOOK at them.** The
+    assembled room beside the composed scene is the step that finds things:
+    a plate that never filled its frame, statues at two thirds size, three
+    patches of ground cover where the scene has drifts. Every one of those was
+    invisible in the numbers and obvious in one glance at the side-by-side.
   - Ask for flat pure white behind a prop sheet, never transparency (same
     reason as sprite sheets). If a sheet does come back with real alpha,
     `build_props.py` uses it — keying white would eat a white marble statue.
