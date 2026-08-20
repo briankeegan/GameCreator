@@ -114,30 +114,30 @@ window.NEWSEY_STORY = (function () {
     home_bedroom: {
       bg: "home_bedroom",
       label: "Your Old Room",
-      playerStart: { x: 152, y: 128 },
+      playerStart: { x: 116, y: 112 },
       playerForm: "human",
+      // All measured off the regenerated bg-home_bedroom.png at the game's
+      // 320x200 scale. The room has no door on any wall now — the way out is
+      // the doorway drawn into the BOTTOM edge, toward the viewer, so leaving
+      // means walking down and out of frame the way you actually would.
       // Where you're lying when the screen fades up, and where you stand the
       // moment you move. app.js reads both (see player.inBed).
-      bedSpot: { x: 74, y: 80 },
+      bedSpot: { x: 84, y: 81 },
       // The top edge of the blanket in the art — she's drawn clipped to above
       // this line while asleep, so the covers cover her.
-      bedClipY: 88,
-      wakeSpot: { x: 152, y: 128 },
-      // Everything below is read straight off bg-home_bedroom.png against the
-      // 320x200 virtual grid. This art frames the room inside a dark border,
-      // so the generic floor rect would let you walk out through the walls,
-      // and the door is drawn centre-right rather than hard right, so the
-      // exit strip sits under where the door actually is.
-      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[68,100],[276,100],[272,182],[72,182]],
-      exits: [ { x: 188, y: 98, w: 34, h: 16, to: "house", label: "Downstairs",
-                 arriveAt: { x: 228, y: 112 } } ],
-      // The bed (back-left, foot toward the viewer), the nightstand beside
-      // it, and the moving boxes stacked against the right wall.
+      bedClipY: 87,
+      wakeSpot: { x: 116, y: 112 },
+      // The drawn floor, kept as the fallback for before the walk mask loads.
+      floorPoly: [[58,100],[248,100],[248,186],[58,186]],
+      // The doorway is an actual hole in the art (transparent), so the floor
+      // stops at its threshold — the trigger sits on that threshold.
+      exits: [ { x: 140, y: 152, w: 44, h: 16, to: "house",
+                 arriveAt: { x: 150, y: 130 } } ],
+      // Furniture footprints, kept as the fallback alongside floorPoly.
       obstacles: [
-        { x: 80, y: 58, w: 64, h: 98 },    // the bed
-        { x: 115, y: 55, w: 36, h: 52 },   // nightstand + lamp
-        { x: 232, y: 52, w: 46, h: 65 }    // moving boxes
+        { x: 56, y: 98, w: 58, h: 30 },   // the bed
+        { x: 110, y: 96, w: 30, h: 6 },   // nightstand + lamp
+        { x: 190, y: 96, w: 60, h: 10 }   // moving boxes
       ],
       npcs: []
     },
@@ -183,6 +183,11 @@ window.NEWSEY_STORY = (function () {
         },
         {
           id: "chuck", x: 108, y: 126, art: "chuck", sprite: "chuck_top",
+          // Where he starts the instant the door opens — the door's own
+          // spot, x/y above — so app.js can walk him from there to his real
+          // resting spot instead of having him simply appear already
+          // standing in the room.
+          entryFrom: { x: 74, y: 106 },
           needs: "chuckIn",
           lines: [
             "Nella! Get out of the rain!",
@@ -194,7 +199,7 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "tv", x: 230, y: 160, art: null, sprite: "tv_top",
+          id: "tv", x: 230, y: 160, art: null, sprite: "tv_top", _noWander: true,
           lines: [
             "The old CRT. Dusty cables, a game console still plugged in.",
             "Twenty years gone, and your hands remember everything."
@@ -246,7 +251,14 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "devil", x: 150, y: 155, art: "devil", sprite: "devil_top",
+          // The plot has no one standing in this room: you walk up to the
+          // mirror, see yourself with horns, and the devil pops up IN the
+          // mirror like a TV, welcomes you, then it's over — not a
+          // character who lives here. `marker: true` (no label, unlike
+          // "SAVE"/"OPEN") makes this purely an invisible interact point at
+          // the mirror's own spot; talking still shows him as the speaker
+          // (CHARACTERS.devil) exactly like it did as a standing NPC.
+          id: "devil", x: 70, y: 102, art: "devil", sprite: null, marker: true,
           lines: [
             "Hello, and welcome to Infinity! You may notice your appearance has changed — that's your magical avatar.",
             "Your bracelet is copper, to reflect your rank, and aquamarine for your playstyle. These can change.",

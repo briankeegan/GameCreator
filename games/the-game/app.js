@@ -327,7 +327,7 @@
 
   var currentRoom = null;
   var exitsArmed = true; // false until the player steps clear of every doorway
-  var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down", inBed: false };
+  var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down", inBed: false, gettingUp: null };
   var walkPhase = 0, isWalking = false; // drives real walk-frame cycling (see drawPlayer)
   var lastGoodPlayerFrame = null; // last successfully-loaded frame drawPlayer showed — see drawPlayer
   var keys = {};
@@ -344,6 +344,7 @@
     currentRoom = ROOMS[roomId];
     exitsArmed = false;
     player.inBed = false;
+    player.gettingUp = null;
     var spot = at && at.x !== undefined ? at : currentRoom.playerStart;
     // The mask may not have loaded yet on the very first room; re-place her
     // once it has, so a spawn point that lands off the floor still resolves.
@@ -351,10 +352,13 @@
     var room = currentRoom, tries = 0;
     var settle = setInterval(function () {
       if (currentRoom !== room || ++tries > 40) return clearInterval(settle);
-      if (walkMask(room).ready) {
-        clearInterval(settle);
-        if (!canStand(room, player.x, player.y)) placeOnFloor(room, player.x, player.y);
-      }
+      if (!walkMask(room).ready) return;
+      clearInterval(settle);
+      // Asleep in bed is the one time she is legitimately not on the floor —
+      // re-placing her then dumped her on the floorboards beside the bed as a
+      // head with no body, which is how this was spotted.
+      if (player.inBed) return;
+      if (!canStand(room, player.x, player.y)) placeOnFloor(room, player.x, player.y);
     }, 50);
     if (save) { save.room = roomId; persist(); } // walking through a door autosaves
   }
@@ -516,7 +520,20 @@
       if (wasTalking.npc.thenTalk) {
         var next = null;
         roomNpcs(currentRoom).forEach(function (n) { if (n.id === wasTalking.npc.thenTalk) next = n; });
-        if (next) { talking = { npc: next, lineIndex: npcLineCounters[next.id] || 0 }; renderTalk(); }
+        if (next && next.entryFrom) {
+          // He's appearing for the first time this flag flip — spawn him at
+          // the door and walk him to his real spot instead of having him
+          // simply materialize already standing in the room. Reported live
+          // ("he just appears in the room") right after his walk cycle
+          // landed, which is what makes this worth doing now — no walk
+          // frames, no visible walk-in either way.
+          var home = { x: next.x, y: next.y };
+          next.x = next.entryFrom.x; next.y = next.entryFrom.y;
+          next._wander = { homeX: home.x, homeY: home.y, tx: home.x, ty: home.y, pause: 0, scriptedEntry: true };
+          pendingEntranceTalk = next;
+        } else if (next) {
+          talking = { npc: next, lineIndex: npcLineCounters[next.id] || 0 }; renderTalk();
+        }
       }
       // A bed is a save point: finishing its "lines" is the save.
       if (wasTalking.npc.savePoint) { persist(); window.NewseyMenu.toast("Game saved."); }
@@ -704,25 +721,46 @@
     w.ty = w.homeY + Math.sin(a) * r * 0.5; // flatter spread — rooms read wider than tall
   }
   function updateNpcWander(room, npc, dt) {
-    if (npc.savePoint || npc._noWander) return;
+    // Anything drawn as a fixed marker (a door, a portal) or furniture with
+    // no wander opt-out set is scenery, not a person — its x/y is either a
+    // hitbox tied to a fixed spot in the room art, or a prop that was never
+    // meant to move. Reported live as "the console floating around the
+    // room": the tv object has a sprite but no savePoint/marker, so it fell
+    // through this check with nothing to catch it.
+    if (npc.savePoint || npc.marker || npc._noWander) return;
     var w = ensureWanderState(npc);
-    if (w.pause > 0) { w.pause -= dt; return; }
+    if (w.pause > 0) { w.pause -= dt; w.walking = false; return; }
     var dx = w.tx - npc.x, dy = w.ty - npc.y, d = Math.hypot(dx, dy);
-    if (d < 1.5) { pickWanderTarget(w); w.pause = 1 + Math.random() * 2.5; return; }
+    if (d < 1.5) { pickWanderTarget(w); w.pause = 1 + Math.random() * 2.5; w.walking = false; return; }
     var step = Math.min(d, WANDER_SPEED * dt);
     var nx = npc.x + (dx / d) * step, ny = npc.y + (dy / d) * step;
     // Nobody wanders off the floor either — same mask, same question — and
     // nobody parks in a doorway: someone standing in the door blocks the way
     // through until you shove them aside, which reads as a broken door.
-    if (!isFloor(room, nx, ny) || inDoorway(room, nx, ny)) { pickWanderTarget(w); return; }
+    if (!isFloor(room, nx, ny) || inDoorway(room, nx, ny)) { pickWanderTarget(w); w.walking = false; return; }
+    // A scripted entrance (see entryFrom/pendingEntranceTalk) skips the
+    // player-proximity block below: you're always standing right at the
+    // door to have opened it, so the very first step of "come inside" would
+    // otherwise read as walking toward the player and get blocked forever —
+    // confirmed live, Chuck never took a single step in from the door.
+    // Someone being let in isn't "walking into" you the way a wandering
+    // NPC's random drift would be.
+    if (w.scriptedEntry) { npc.x = nx; npc.y = ny; w.walking = true; w.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"); w.walkPhase = (w.walkPhase || 0) + dt * 9; return; }
     var pd = Math.hypot(nx - (player.x + player.w / 2), ny - (player.y + player.h));
     var curPd = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h));
     // Block a step that would walk INTO the player, but never one that's
     // increasing the distance — otherwise a step-aside (registerPush, whose
     // whole target is "away from the player") could never actually clear the
     // same radius it's trying to escape.
-    if (pd < NPC_COLLIDE_RADIUS + 4 && pd < curPd) return;
+    if (pd < NPC_COLLIDE_RADIUS + 4 && pd < curPd) { w.walking = false; return; }
+    // Same facing+phase bookkeeping drawPlayer keeps for the player, so an
+    // NPC with real walk frames (see NPC_FACING_FRAMES) animates the same
+    // way instead of gliding — a static sprite sliding across the floor was
+    // the very thing this whole walk-cycle effort exists to get rid of.
     npc.x = nx; npc.y = ny;
+    w.walking = true;
+    w.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+    w.walkPhase = (w.walkPhase || 0) + dt * 9;
   }
   // Walking into someone and holding it blocks forever otherwise — a real
   // wall is fine to just stop at, a person shouldn't be. After ~2s of
@@ -730,6 +768,10 @@
   // the current floor), then resume their normal wander from there.
   var PUSH_THRESHOLD = 2, PUSH_STEP = 22;
   var pushedNpc = null, pushTimer = 0;
+  // An NPC walking in through a door (see thenTalk/entryFrom above) whose
+  // dialogue is held until they've actually arrived — checked each frame in
+  // update(), not opened the instant the flag flips.
+  var pendingEntranceTalk = null;
   function registerPush(room, npc, dt) {
     if (npc !== pushedNpc) { pushedNpc = npc; pushTimer = 0; }
     pushTimer += dt;
@@ -769,6 +811,23 @@
     // The gamepad's talk button is edge-triggered: held down it would
     // otherwise re-trigger every frame. It advances dialogue too, so a pad
     // alone can carry a whole conversation.
+    // Sliding out of bed: hold input until she's on her feet.
+    if (player.gettingUp) {
+      var g = player.gettingUp;
+      g.t += dt;
+      var k = Math.min(1, g.t / g.dur);
+      // Ease in AND out: she pushes the covers back, swings out, and settles
+      // on her feet. A pure ease-out put her beside the bed in two frames,
+      // which is the teleport this replaced.
+      var ease = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+      player.x = g.fromX + (g.toX - g.fromX) * ease;
+      player.y = g.fromY + (g.toY - g.fromY) * ease;
+      isWalking = true;
+      walkPhase += dt * 9;
+      if (k >= 1) { player.gettingUp = null; isWalking = false; }
+      return;
+    }
+
     var pad = SETTINGS.gamepad();
     if (pad) {
       if (pad.interact && !padInteractWasDown) {
@@ -789,8 +848,16 @@
     // anyway, since the bed blocks every direction out of it.
     if (player.inBed) {
       if (dx || dy) {
+        // Getting up is a movement, not a teleport: she slides out from under
+        // the covers to the floor beside the bed over a few frames, and
+        // control picks up from wherever that lands her.
         var spot = currentRoom.wakeSpot || currentRoom.playerStart;
-        player.x = spot.x; player.y = spot.y;
+        player.gettingUp = {
+          t: 0, dur: 0.6,
+          fromX: player.x, fromY: player.y,
+          toX: spot.x, toY: spot.y,
+          clipFrom: currentRoom.bedClipY !== undefined ? currentRoom.bedClipY : VH
+        };
         player.facing = "down";
         player.inBed = false;
       }
@@ -831,6 +898,16 @@
     });
     if (!onExit) exitsArmed = true;
     roomNpcs(currentRoom).forEach(function (npc) { updateNpcWander(currentRoom, npc, dt); });
+    if (pendingEntranceTalk) {
+      var pw = pendingEntranceTalk._wander;
+      if (Math.hypot(pendingEntranceTalk.x - pw.homeX, pendingEntranceTalk.y - pw.homeY) < 2) {
+        var arrived = pendingEntranceTalk;
+        pendingEntranceTalk = null;
+        pw.scriptedEntry = false; // back to normal wander rules once he's actually in the room
+        talking = { npc: arrived, lineIndex: npcLineCounters[arrived.id] || 0 };
+        renderTalk();
+      }
+    }
   }
 
   // ---- rendering ----
@@ -867,39 +944,25 @@
       var cx = ex.x + ex.w / 2;
       var cy = ex.y + ex.h - 2;
       var near = playerNearExit(ex);
-      var glow = ctx.createRadialGradient(cx, cy, 1, cx, cy, ex.w * 0.75);
-      glow.addColorStop(0, near ? "rgba(255,224,150,0.42)" : "rgba(255,209,102,0.18)");
+      // Light pools on the floor of a doorway — it lies flat, so it is drawn
+      // flat: a wide, shallow ellipse, brighter as you get close. No marker,
+      // no label; a door looks like a door.
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(1, 0.42);
+      var glow = ctx.createRadialGradient(0, 0, 1, 0, 0, ex.w * 0.8);
+      glow.addColorStop(0, near ? "rgba(255,224,150,0.34)" : "rgba(255,209,102,0.13)");
       glow.addColorStop(1, "rgba(255,209,102,0)");
       ctx.fillStyle = glow;
-      ctx.fillRect(ex.x - ex.w / 2, ex.y - ex.h, ex.w * 2, ex.h * 3);
+      ctx.beginPath();
+      ctx.arc(0, 0, ex.w * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
 
       // The drawn doorway goes ON TOP of its own glow — painted under it, the
       // light washed straight through the opening and it read as a lit box.
       if (ex.drawn === "threshold") drawThreshold(ex);
 
-      // A glow alone left people guessing which openings were real. Every
-      // exit now also carries the same pulsing marker the interactable
-      // scenery uses, so "you can go through here" reads the same way
-      // everywhere, and names where it goes once you're standing on it.
-      var pulse = 0.6 + 0.4 * Math.sin(Date.now() / 380);
-      var my = ex.y + ex.h / 2 - Math.sin(Date.now() / 700) * 1.2;
-      ctx.save();
-      ctx.globalAlpha = pulse * (near ? 1 : 0.7);
-      ctx.fillStyle = "#ffd166";
-      ctx.beginPath();
-      ctx.moveTo(cx, my - 4.5); ctx.lineTo(cx + 3.5, my); ctx.lineTo(cx, my + 4.5); ctx.lineTo(cx - 3.5, my);
-      ctx.closePath(); ctx.fill();
-      ctx.restore();
-      if (near) {
-        var dest = ROOMS[ex.to];
-        ctx.fillStyle = "#ffd166";
-        ctx.font = "bold 7px sans-serif";
-        ctx.textAlign = "center";
-        // Below the doorway for a normal wall exit, above it for the one that
-        // sits on the room's bottom edge — either way it lands on the floor.
-        ctx.fillText(ex.label || (dest ? dest.label : ""), cx,
-          ex.y > VH * 0.8 ? ex.y - 4 : ex.y + ex.h + 9);
-      }
     });
   }
 
@@ -966,13 +1029,39 @@
     // itself instead, and a word telling you what it does when you're close.
     if (npc.savePoint) { drawMarker(npc, "#ffd166", "SAVE"); return; }
     if (npc.marker) { drawMarker(npc, c.color, npc.marker); return; }
+    // Real walk frames, if this character has a sheet (NPC_FACING_FRAMES),
+    // take priority over the single static sprite — same idea as the player:
+    // a body standing still still looks like it's gliding across the floor
+    // if the art never changes while wander moves it around.
+    var walkSet = NPC_FACING_FRAMES[npc.id];
+    var walkEntry = null, walkMirror = false;
+    if (walkSet) {
+      var w2 = npc._wander;
+      var facing = (w2 && w2.facing) || "down";
+      var frames = walkSet[facing] || walkSet.down;
+      var frameIdx = (w2 && w2.walking) ? WALK_SEQUENCE[Math.floor(w2.walkPhase || 0) % WALK_SEQUENCE.length] : 1;
+      var candidate = loadArt(frames[frameIdx]);
+      if (candidate && candidate.ok) { walkEntry = candidate; walkMirror = facing === "right"; }
+    }
     var spriteEntry = npc.sprite ? loadArt(npc.sprite) : null;
-    var hasSprite = spriteEntry && spriteEntry.ok && spriteEntry.img.naturalHeight;
+    var hasSprite = !walkEntry && spriteEntry && spriteEntry.ok && spriteEntry.img.naturalHeight;
 
     ctx.fillStyle = "rgba(0,0,0,0.4)";
     ctx.beginPath(); ctx.ellipse(npc.x, npc.y, 11, 3.4, 0, 0, Math.PI * 2); ctx.fill();
 
-    if (hasSprite) {
+    if (walkEntry) {
+      var wimg = walkEntry.img;
+      var wsize = spriteDrawSize(wimg, 30), ww = wsize.w, wh = wsize.h;
+      ctx.save();
+      if (walkMirror) {
+        ctx.translate(npc.x, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(wimg, -ww / 2, npc.y - wh, ww, wh);
+      } else {
+        ctx.drawImage(wimg, npc.x - ww / 2, npc.y - wh, ww, wh);
+      }
+      ctx.restore();
+    } else if (hasSprite) {
       var img = spriteEntry.img;
       var size = spriteDrawSize(img, 30), w = size.w, h = size.h;
       ctx.drawImage(img, npc.x - w / 2, npc.y - h, w, h);
@@ -999,28 +1088,20 @@
 
   }
 
-  // A slow pulsing diamond over a save point, in the same gold as the exit
-  // labels so it reads as "interactive scenery" at a glance.
-  // label: the word shown under the marker once you're close enough to use
-  // it ("SAVE", "OPEN", "ENTER"). `true` means marker with no label.
+  // label: the word shown once you're close enough to use the thing
+  // ("SAVE", "OPEN", "ENTER").
+  // Used to draw a pulsing, bobbing diamond over every fixed interactable
+  // (the door, the portal, the bed/save point) at all times — reported live
+  // as "diamonds floating" around the room. Just the proximity label now:
+  // it still tells you what a thing does once you're close enough to use
+  // it, without a shape hovering over it from across the room.
   function drawMarker(npc, color, label) {
-    var pulse = 0.65 + 0.35 * Math.sin(Date.now() / 380);
-    var y = npc.y - 10 - Math.sin(Date.now() / 700) * 1.5;
-    ctx.save();
-    ctx.globalAlpha = pulse;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(npc.x, y - 5); ctx.lineTo(npc.x + 4, y); ctx.lineTo(npc.x, y + 5); ctx.lineTo(npc.x - 4, y);
-    ctx.closePath(); ctx.fill();
-    ctx.globalAlpha = pulse * 0.35;
-    ctx.beginPath(); ctx.arc(npc.x, y, 9, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
     var d = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h / 2));
     if (d < 26 && typeof label === "string") {
       ctx.fillStyle = color;
       ctx.font = "bold 7px sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(label, npc.x, y + 16);
+      ctx.fillText(label, npc.x, npc.y - 14);
     }
   }
 
@@ -1046,6 +1127,38 @@
     left: ["nella_human_left_0", "nella_human_left_1", "nella_human_left_2"],
     right: ["nella_human_left_0", "nella_human_left_1", "nella_human_left_2"]
   };
+  // Standard RPG-Maker charset convention, shared by drawPlayer and drawNpc:
+  // frame 1 (the MIDDLE of the 3) is the neutral standing pose, used both at
+  // rest and as the walk cycle's resting beat — frames 0/2 are the two
+  // mirrored step poses. Cycling 0,1,2 on repeat never actually returns to
+  // neutral mid-walk and, worse, uses frame 0 — a mid-step pose — for idle,
+  // so a character freezes mid-stride the instant it stops moving.
+  var WALK_SEQUENCE = [1, 0, 1, 2];
+  // Same <id>_<dir>_<frame> naming slice_walksheet.py writes, one entry per
+  // NPC that has a real walk sheet — id absent from this table just means
+  // "no walk art yet", and drawNpc falls back to its static sprite/bust the
+  // same as it always has, so adding a character here is the only wiring a
+  // freshly-generated sheet needs.
+  function npcDirFrames(id) {
+    return {
+      down: [id + "_down_0", id + "_down_1", id + "_down_2"],
+      up: [id + "_up_0", id + "_up_1", id + "_up_2"],
+      left: [id + "_left_0", id + "_left_1", id + "_left_2"],
+      right: [id + "_left_0", id + "_left_1", id + "_left_2"]
+    };
+  }
+  var NPC_FACING_FRAMES = {};
+  ["chuck", "devil", "kat", "may", "timothy", "michael", "john"].forEach(function (id) {
+    NPC_FACING_FRAMES[id] = npcDirFrames(id);
+  });
+  // Best-effort preload, same reasoning as the player's — loadArt() on an id
+  // with no file behind it yet just never resolves ok, which drawNpc already
+  // treats as "no walk art, use the fallback", so this is safe to run before
+  // any of these sheets exist.
+  Object.keys(NPC_FACING_FRAMES).forEach(function (id) {
+    var set = NPC_FACING_FRAMES[id];
+    Object.keys(set).forEach(function (dir) { set[dir].forEach(loadArt); });
+  });
   // loadArt() kicks off an async Image load and returns ok:false until it
   // fires — fine for most art, but drawPlayer() doesn't wait: the FIRST time
   // any given directional frame is needed (e.g. the very first step in a new
@@ -1064,13 +1177,6 @@
     var human = currentRoom && currentRoom.playerForm === "human";
     var frameSet = human ? FACING_FRAMES_HUMAN : FACING_FRAMES;
     var frames = frameSet[player.facing] || frameSet.down;
-    // Standard RPG-Maker charset convention: frame 1 (the MIDDLE of the 3)
-    // is the neutral standing pose, used both at rest and as the walk
-    // cycle's resting beat — frames 0/2 are the two mirrored step poses.
-    // Cycling 0,1,2 on repeat (as this used to) never actually returns to
-    // neutral mid-walk and, worse, used frame 0 — a mid-step pose — for
-    // idle, so she'd freeze mid-stride the instant she stopped moving.
-    var WALK_SEQUENCE = [1, 0, 1, 2];
     var frameIdx = isWalking ? WALK_SEQUENCE[Math.floor(walkPhase) % WALK_SEQUENCE.length] : 1;
     var wantId = frames[frameIdx];
     var entry = loadArt(wantId);
@@ -1099,7 +1205,7 @@
     // Same ground shadow every NPC gets — the player was the one figure in
     // the scene standing on nothing, a mismatch reported live as "floating".
     // Not while she's in bed: she isn't on the floor, she's on a mattress.
-    if (!player.inBed) {
+    if (!player.inBed && !player.gettingUp) {
       ctx.fillStyle = "rgba(0,0,0,0.4)";
       ctx.beginPath();
       ctx.ellipse(player.x + player.w / 2, player.y + player.h, 11, 3.4, 0, 0, Math.PI * 2);
@@ -1117,6 +1223,14 @@
       if (player.inBed && currentRoom && currentRoom.bedClipY !== undefined) {
         ctx.beginPath();
         ctx.rect(0, 0, VW, currentRoom.bedClipY);
+        ctx.clip();
+      } else if (player.gettingUp) {
+        // The blanket line drops away as she comes out from under it, so she
+        // emerges rather than appearing whole beside the bed.
+        var g2 = player.gettingUp;
+        var slide = Math.min(1, (g2.t / g2.dur) / 0.75);
+        ctx.beginPath();
+        ctx.rect(0, 0, VW, g2.clipFrom + (VH - g2.clipFrom) * slide);
         ctx.clip();
       }
       if (mirror) {
@@ -1271,6 +1385,8 @@
     save: function () { return save; },
     room: function () { return currentRoom && currentRoom.label; },
     npcIds: function () { return roomNpcs(currentRoom).map(function (n) { return n.id; }); },
+    npcs: function () { return roomNpcs(currentRoom).map(function (n) { return { id: n.id, x: n.x, y: n.y }; }); },
+    talking: function () { return talking ? { npcId: talking.npc.id, lineIndex: talking.lineIndex } : null; },
     enterRoom: enterRoom,
     startDuel: startDuel,
     duel: function () { return window.NewseyDuel.debug(); }
