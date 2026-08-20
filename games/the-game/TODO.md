@@ -282,7 +282,11 @@ new session — rewrite them as needed. What they cover, worth re-covering:
    takes over, and the flag survives a reload.
 5. **The bed** — lean into `bedZone` and she climbs in, which writes the
    file; press away and she gets back out.
-6. **Swapping** — all three gestures: drag sideways, tap the seam between
+6. **Doors** — every door pairs by `link`; leaving one puts you a stride
+   outside its partner, facing away. And the one that matters most: HOLD
+   the direction into a door and don't let go — you must cross once and
+   stay, not bounce between two rooms forever.
+7. **Swapping** — all three gestures: drag sideways, tap the seam between
    two panels, tap one panel then its neighbour. Wait for
    `NewseyDuel.debug().countdown === 0` first or every swap is refused.
 7. **The room a check is aimed at.** Derive probe coordinates from the data

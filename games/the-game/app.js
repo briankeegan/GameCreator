@@ -321,6 +321,13 @@
 
   var currentRoom = null;
   var exitsArmed = true; // false until the player steps clear of every doorway
+  // Doors also stay shut until you LET GO of the direction that took you
+  // through one. You come out of a door facing away from it but still
+  // holding the key that walked you into it — and that key points straight
+  // back at the door you just came out of, so holding it walked you back and
+  // forth between two rooms forever. Stepping clear isn't enough to fix that:
+  // the doorstep is only a stride from the door by design. A fresh press is.
+  var doorNeedsRelease = false;
   var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down", inBed: false, bedSlide: null };
   var walkPhase = 0, isWalking = false; // drives real walk-frame cycling (see drawPlayer)
   var lastGoodPlayerFrame = null; // last successfully-loaded frame drawPlayer showed — see drawPlayer
@@ -413,6 +420,7 @@
     player.inBed = false;
     player.bedSlide = null;
     bedPush = 0;
+    if (link) doorNeedsRelease = true;
     var derived = link ? arrivalFrom(currentRoom, link) : null;
     if (derived) player.facing = derived.facing;
     else if (facing) player.facing = facing;
@@ -1182,6 +1190,8 @@
         if (bedPush >= BED_PUSH_TIME) { startBedSlide(true); return; }
       } else bedPush = 0;
     } else {
+      // Nothing held: the door you came through is usable again.
+      doorNeedsRelease = false;
       isWalking = false;
       bedPush = 0;
       pushedNpc = null; pushTimer = 0;
@@ -1194,7 +1204,7 @@
       if (player.x + player.w > ex.x && player.x < ex.x + ex.w &&
           player.y + player.h > ex.y && player.y < ex.y + ex.h) {
         onExit = true;
-        if (exitsArmed) {
+        if (exitsArmed && !doorNeedsRelease) {
           if (ex.rune) openRuneDoor();
           else enterRoom(ex.to, ex.arriveAt, ex.arriveFacing, ex.link);
         }
