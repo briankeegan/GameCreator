@@ -121,6 +121,33 @@ design discussion. `shared/` holds the components every game reuses
     is the same size for all of them.
   - Raw generations go in `games/<id>/art-src/`; shipped sheets are rebuilt
     from them, never hand-edited.
+- **Every rule that matters gets three pieces: RULE -> TOOL -> GATE.** A rule
+  written only in prose gets ignored; a checker nobody runs catches nothing; a
+  CI failure with no explanation sends whoever hit it digging through a script
+  to find out what they did wrong. So:
+  1. **Rule** — plain English, stating what and *why*, sitting where someone
+     would be editing (the comment above the thing, or the standard doc).
+  2. **Tool** — a script that decides it mechanically, runnable by hand.
+  3. **Gate** — a `pages.yml` step that runs the tool on every push, so a
+     violation fails the build instead of shipping.
+  Existing instances: room exits (`EXIT / DOOR CONVENTION` comment ->
+  `.github/scripts/check_room_exits.mjs` -> "Verify room exits"), and art
+  (`.github/art/CHARACTER_SHEETS.md` -> `.github/art/verify_sheet.py` ->
+  "Verify shipped sprite sheets" / "Verify character frame sets"). Add all three
+  pieces together or the rule will not hold.
+- **Checks are game-type dependent, and the type is DETECTED, not
+  configured.** Dog Punk ships sprite sheets; Newsey ships individual
+  `<id>_<dir>_<n>.png` frames — a sheet-shaped gate silently covers nothing in
+  a game that has no sheets. The art gate globs for both shapes, so a new game
+  is covered the moment it has art, with no per-game config to forget.
+- **A fuzzy check warns; an unambiguous one fails.** Missing or duplicated
+  frames are facts, so they fail the build. "This middle frame isn't really a
+  neutral pose" is a threshold on an image-difference metric — it prints a
+  warning instead, because a borderline-but-correct set must never block a
+  deploy. Thresholds get calibrated against real art and the numbers recorded
+  next to them: `verify_sheet.py`'s first threshold passed every bad row, its
+  second failed a correct one, and the comment above `NEUTRAL_RATIO` lists
+  both so the next person doesn't re-derive it.
 - **Standards for this kind of game live in two documents, and they apply to
   every new game of the same shape — not just the one they were written
   from:** `.github/art/CHARACTER_SHEETS.md` (characters: walk frames,

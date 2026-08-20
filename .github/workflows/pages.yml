@@ -54,6 +54,50 @@ jobs:
             node .github/scripts/check_room_exits.mjs "$f" || status=1
           done
           exit $status
+
+      # Shipped sprite sheets: no empty cells (the cutter silently produced
+      # nothing for one) and no colour outside the game's lockedPalette (art
+      # that bypassed the cutter). Both have happened. Rule lives in
+      # .github/art/CHARACTER_SHEETS.md, enforcement in verify_sheet.py, and
+      # this step is what stops either being ignored. Geometry is inferred
+      # from the 256px cell size, so a new sheet is covered automatically.
+      - name: Verify shipped sprite sheets
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          status=0
+          for sheet in games/*/*_sheet.png; do
+            [ -e "$sheet" ] || continue
+            game=$(dirname "$sheet")
+            style="$game/art-style.json"
+            echo "== $sheet =="
+            if [ -f "$style" ]; then
+              python3 .github/art/verify_sheet.py sheet "$sheet" --style "$style" || status=1
+            else
+              python3 .github/art/verify_sheet.py sheet "$sheet" || status=1
+            fi
+          done
+          exit $status
+
+      # The same walk-cycle rules for games that ship INDIVIDUAL frame files
+      # instead of sheets (Newsey). Which checks apply depends on how a game
+      # ships its art, so the shape is detected rather than configured: any
+      # <id>_down_1.png in a game's art/ directory is a character with a frame
+      # set. Missing/duplicate frames fail; "no neutral" warns, because that
+      # one is a fuzzy metric and a borderline-but-correct set must not block
+      # a deploy.
+      - name: Verify character frame sets
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          status=0
+          for f in games/*/art/*_down_1.png; do
+            [ -e "$f" ] || continue
+            dir=$(dirname "$f")
+            char=$(basename "$f" _down_1.png)
+            echo "== $char ($dir) =="
+            python3 .github/art/verify_sheet.py frames "$dir" "$char" || status=1
+          done
+          exit $status
+
       # Same mechanism HayleysGame's clubhouse already uses in production —
       # after chasing several more elaborate "fixes" here that each added a
       # new bug of their own, reverted back to exactly this.
