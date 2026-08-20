@@ -19,6 +19,7 @@ from. Dog Punk is the reference for characters, the Anarchy Garden in
 | draw or fix a **character** | [`CHARACTER_SHEETS.md`](CHARACTER_SHEETS.md) | Actions → **Generate walk row**, then `build_sheet.py` |
 | draw or fix a **room** | [`../../docs/ROOM_ART_STANDARD.md`](../../docs/ROOM_ART_STANDARD.md) | `room.py prompt …`, then `room.py plate` / `props` / `check` |
 | add a **one-off image** (icon, title art) | — | Actions → **Generate image** (or write an inline `.svg`) |
+| draw a **dialogue portrait** | this page, `make_portrait.py`'s docstring | Actions → **Generate image**, then `make_portrait.py` |
 | keep a **set** of images consistent | that game's `art-style.json` | Actions → **Generate game asset** |
 | know whether art is **good enough to ship** | this page, "Checks" below | `verify_sheet.py`, `room.py verify` |
 
@@ -132,6 +133,7 @@ Two callers, one script, is the fix.
 | [`fit_plate.py`](fit_plate.py) | Fits a generated floor plate to the room frame. |
 | [`build_walkmask.py`](build_walkmask.py) | Builds a room's walkable-floor mask, and records the five techniques that failed at recovering one from finished art. |
 | [`measure_props.py`](measure_props.py) | Reads prop sizes and ground points off the composed scene. |
+| [`make_portrait.py`](make_portrait.py) | Raw bust generation → shipped talk-box portrait: keys the flat ground, crops to the subject, squares it anchored at the TOP so the crop eats chest instead of face, flattens onto the talk box's cream and resizes to 768. |
 | [`preview_room.py`](preview_room.py) / [`show_walkmask.py`](show_walkmask.py) | Render the pictures you have to actually look at. |
 
 ## Checks (the gate half — all of these run in `pages.yml`)

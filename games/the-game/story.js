@@ -432,7 +432,7 @@ window.NEWSEY_STORY = (function () {
         {
           id: "timothy", x: 216, y: 148, art: "timothy", sprite: "timothy_top",
           lines: [
-            "Now, now — that's no way to welcome the new people. This is Rex. Be nice.",
+            "Now, now, May. That's not how we WELCOME the new people. This is Rex. Be nice.",
             "My bracelet's all diamond. Yours will get there too, given time."
           ]
         },
@@ -470,6 +470,10 @@ window.NEWSEY_STORY = (function () {
           id: "magma", x: 168, y: 176, art: "magma", sprite: "magma_top",
           lines: [
             "…I'm Magma.",
+            // The plot's actual beat: it happens DURING the handshake, before
+            // she has said anything else, and Nella's jaw drops. Narrating it
+            // as its own line is the only way to land it in a talk box.
+            "You reach out to shake her hand, and her face moves under yours — features ageing a few years, hair growing long. She watches you watch it happen.",
             "You're staring. Everyone stares the first time.",
             "I'm not trying to scare you. I just refuse to hide who I am any more.",
             "…Sorry. That was for Kat, not for you."
