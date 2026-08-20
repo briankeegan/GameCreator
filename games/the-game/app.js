@@ -700,12 +700,16 @@
       // A duel can be a set: `firstTo: 5` on the NPC's duel block makes it
       // best-of, the way Kat's is in the plot ("First to five wins").
       firstTo: config.firstTo || 1,
+      // The duel screen stands both fighters on the arena floor under their
+      // own board, so it needs to know what they look like.
+      playerSprite: (save && save.room === "house") ? "nella_human_top" : "nella_top",
       opponent: {
         id: npc.id,
         name: config.name || character.name || npc.id,
         level: config.level || 3,
         difficulty: config.difficulty || "steady",
         theme: config.theme || "pink",
+        sprite: npc.sprite || (npc.id + "_top"),
         winLine: config.winLine,
         loseLine: config.loseLine
       },
@@ -1023,6 +1027,26 @@
     bedLock = false;
   }
 
+  // The night's sleep the plot has between arriving and being told what you
+  // are. Fade down on her asleep, play the scene, and put her back on her feet
+  // beside the bed with the flag set — after which John is a person she has
+  // met rather than a stranger in the library.
+  function sleepIntoJohnScene() {
+    save.flags.johnToldMe = true;
+    persist();
+    fadeToBlack(function () {
+      startCutscene(STORY.JOHN_CUTSCENE, function () {
+        player.inBed = false;
+        player.bedSlide = null;
+        var spot = currentRoom.wakeSpot || currentRoom.playerStart;
+        placeOnFloor(currentRoom, spot.x, spot.y);
+        player.facing = "down";
+        persist();
+        fadeFromBlack();
+      }, true);
+    });
+  }
+
   // into: true climbs in, false gets up. Either way it's a movement over a
   // few frames, not a teleport — with the blanket line sliding down off her
   // (or back up over her) so she comes out from under the covers.
@@ -1096,6 +1120,13 @@
           // walk up to and talk at any more, you just get into it.
           persist();
           window.NewseyMenu.toast("Game saved.");
+          // …and the first time you sleep in the Infinity bed, you wake to a
+          // knock. That is where the plot puts John's scene, and it is the
+          // one beat the game had compressed into four lines of room
+          // dialogue. Fires once, on that bed only.
+          if (currentRoom === ROOMS.bedroom && save && !save.flags.johnToldMe) {
+            sleepIntoJohnScene();
+          }
         }
       }
       return;
@@ -1559,7 +1590,8 @@
     };
   }
   var NPC_FACING_FRAMES = {};
-  ["chuck", "devil", "kat", "may", "timothy", "michael", "john"].forEach(function (id) {
+  ["chuck", "devil", "kat", "may", "timothy", "michael", "john",
+   "rex", "kyran", "diamond", "eric", "magma"].forEach(function (id) {
     NPC_FACING_FRAMES[id] = npcDirFrames(id);
   });
   // Best-effort preload, same reasoning as the player's — loadArt() on an id
@@ -1837,6 +1869,12 @@
     linkedDoor: function (roomId, link) { return linkedDoor(ROOMS[roomId], link); },
     putToBed: putToBed,
     startDuel: startDuel,
+    // Exposed so a test asks the GAME whether a spot is blocked instead of
+    // reimplementing the rule. The garden walk test used to carry its own
+    // copy of the ellipse maths, which drifted twice over: it crashed on the
+    // first rect base (`{w,h}` has no `rx`) and it never applied depthAt()'s
+    // scale, so it disagreed with the game about every prop's real footprint.
+    blockedAt: function (x, y) { return blockedByProp(currentRoom, x, y); },
     duel: function () { return window.NewseyDuel.debug(); }
   };
 })();

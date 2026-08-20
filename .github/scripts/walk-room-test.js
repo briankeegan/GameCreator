@@ -64,11 +64,18 @@ let fails=0; const ok=(n,c,x)=>{console.log((c?'  ok  ':'  FAIL')+'  '+n+(x===un
     await page.evaluate(([x,y])=>__newseyDebug.enterRoom('garden',{x,y}),[fromX,fromY]);
     await page.waitForTimeout(200); await walk(key,ms); return await feet();
   };
-  let f = await into(90,130,'ArrowUp',1800);
-  ok('walking up into the near fountain stops at its base', f.y > 108, JSON.stringify(f));
-  f = await into(66,100,'ArrowUp',1800);
-  ok('walking up into a cherry tree stops at its trunk', f.y > 72, JSON.stringify(f));
-  f = await into(150,60,'ArrowUp',2200);
+  const propOf = (art, n=0)=>page.evaluate(([art,n])=>{
+    const ps = NEWSEY_STORY.ROOMS.garden.props.filter(p=>p.art===art);
+    return ps[n] || null; }, [art,n]);
+  const fountain = await propOf('prop_fountain', 2);   // the near-left one
+  const tree = await propOf('prop_cherry', 0);
+  let f = await into(fountain.x - 6, fountain.y + 30, 'ArrowUp', 1800);
+  ok('walking up into a fountain stops at its base', f.y > fountain.y - 4,
+     JSON.stringify(f) + ' vs base y=' + fountain.y);
+  f = await into(tree.x + 2, tree.y + 36, 'ArrowUp', 1800);
+  ok('walking up into a cherry tree stops at its trunk', f.y > tree.y - 6,
+     JSON.stringify(f) + ' vs base y=' + tree.y);
+  f = await into(160, 100, 'ArrowUp', 2400);
   ok('you cannot walk into the pool', await onMask(), JSON.stringify(f));
 
   // flowers must NOT block
@@ -85,8 +92,10 @@ let fails=0; const ok=(n,c,x)=>{console.log((c?'  ok  ':'  FAIL')+'  '+n+(x===un
   },[x,y]);
   ok('flower patches block nothing', !(await blocked(84,96)) && !(await blocked(236,104)));
   ok('a fountain base does block', await blocked(96,108));
-  ok('the wall does block', await blocked(86,190));
-  ok('the gap in the wall does not', !(await blocked(158,190)));
+  const wall = await propOf('prop_wall', 0);
+  ok('the wall does block', await blocked(wall.x, wall.y - 2),
+     'wall at ' + wall.x + ',' + wall.y);
+  ok('the gap in the wall does not', !(await blocked(162, wall.y - 2)));
 
   // the way out
   await page.evaluate(()=>__newseyDebug.enterRoom('garden'));

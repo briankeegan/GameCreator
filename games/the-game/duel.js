@@ -85,6 +85,9 @@ window.NewseyDuel = (function () {
       // exactly as a single game always did.
       seed: seed,
       playerLevel: opts.playerLevel || 2,
+      playerSprite: opts.playerSprite || "nella_top",
+      foeSprite: opponent.sprite || (opponent.id ? opponent.id + "_top" : null),
+      crush: null,
       firstTo: Math.max(1, opts.firstTo || 1),
       wins: { player: 0, foe: 0 },
       palette: PALETTES[opponent.theme === "red" ? "red" : "pink"],
@@ -92,7 +95,8 @@ window.NewseyDuel = (function () {
       over: null,
       overDelay: 0,
       acc: 0,
-      tick: 0,     // frames since the match began — drives the orb/ribbon motion
+      tick: 0,
+      cheer: 0,   // 0..1, spikes on a big chain and decays — the crowd reacts     // frames since the match began — drives the orb/ribbon motion
       last: null,
       keys: {},
       buttons: { left: false, right: false, up: false, down: false, swap: false, raise: false },
@@ -378,6 +382,8 @@ window.NewseyDuel = (function () {
     // reading a menu.
     if (window.NewseyMenu && window.NewseyMenu.current()) return;
     if (s.countdown > 0) { s.countdown--; return; }
+    if (s.crush) s.crush.t++;
+    if (s.cheer > 0) s.cheer = Math.max(0, s.cheer - 0.012);
     if (s.over) {
       if (s.overDelay > 0 && --s.overDelay === 0) {
         if (setDecided()) showResult(); else showRoundCard();
@@ -406,7 +412,13 @@ window.NewseyDuel = (function () {
       // If both die on the same frame the player gets the benefit of the doubt.
       s.over = s.foe.gameOver ? "win" : "lose";
       if (s.over === "win") s.wins.player++; else s.wins.foe++;
-      s.overDelay = 90;
+      // "the concrete slabs fell and literally smashed me flat, I felt the
+      // crunch of my own bones. I seemed to dissolve, and then reappear in
+      // front of Kat in one piece." Everything queued over the loser's board
+      // comes down on them, they squash, dissolve, and re-form — and only then
+      // does the card come up.
+      startCrush(s.over === "win" ? "foe" : "player");
+      s.overDelay = 150;
     }
   }
 
@@ -415,7 +427,10 @@ window.NewseyDuel = (function () {
     for (var i = 0; i < events.length; i++) {
       var ev = events[i];
       if (ev.type === "match") {
-        if (ev.chain && ev.chainCounter > 1) addCard(isPlayer, ev.row, ev.col, "x" + ev.chainCounter, "#ffd166");
+        if (ev.chain && ev.chainCounter > 1) {
+          addCard(isPlayer, ev.row, ev.col, "x" + ev.chainCounter, "#ffd166");
+          state.cheer = Math.min(1, state.cheer + 0.25 * ev.chainCounter);
+        }
         else if (ev.size > 3) addCard(isPlayer, ev.row, ev.col, ev.size + " combo", "#7ee6ff");
       } else if (ev.type === "pop") {
         addSparks(isPlayer, ev.row, ev.col, ev.garbage ? "#c9a7ff" : null);
@@ -487,6 +502,7 @@ window.NewseyDuel = (function () {
     s.cpu = new window.PanelCpu.Cpu(s.foe, { difficulty: o.difficulty || "steady", seed: s.seed + 55 });
     s.over = null;
     s.overDelay = 0;
+    s.crush = null;
     s.countdown = COUNTDOWN_FRAMES;
     s.effects = [];
     s.cards = [];
@@ -536,7 +552,13 @@ window.NewseyDuel = (function () {
     // boards grow to fill the whole frame and it gets squashed against the
     // top edge with the ribbons bulging out sideways to reach it.
     var orbRoom = Math.round(Math.max(40, Math.min(104, h * 0.14)));
-    var topBar = 26 + orbRoom, bottomBar = 20, gap = Math.max(14, Math.round(w * 0.05));
+    // ...and a strip along the bottom for the duellists themselves. The plot
+    // has them standing on the arena floor looking UP at the panels and at the
+    // slabs balanced overhead — "about 10 feet directly above me" — so the
+    // board is something they stand under, not a box floating on a gradient.
+    var floorRoom = Math.round(Math.max(30, Math.min(76, h * 0.11)));
+    var topBar = 26 + orbRoom, bottomBar = 18 + floorRoom;
+    var gap = Math.max(14, Math.round(w * 0.05));
     var cellW = Math.floor((w - gap - 16) / (E.WIDTH * 2));
     var cellH = Math.floor((h - topBar - bottomBar) / E.HEIGHT);
     var cell = Math.max(8, Math.min(cellW, cellH));
@@ -546,7 +568,7 @@ window.NewseyDuel = (function () {
     var y0 = Math.round(topBar + (h - topBar - bottomBar - boardH) / 2);
     state.layout = {
       cell: cell, boardW: boardW, boardH: boardH, gap: gap, w: w, h: h,
-      orbRoom: orbRoom,
+      orbRoom: orbRoom, floorRoom: floorRoom, bottomBar: bottomBar,
       player: { x: x0, y: y0 },
       foe: { x: x0 + boardW + gap, y: y0 }
     };
@@ -564,10 +586,15 @@ window.NewseyDuel = (function () {
     bg.addColorStop(1, "#0b0410");
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, L.w, L.h);
+    drawCrowd();
     drawArena();
 
     drawBoard(s.player, L.player, true);
     drawBoard(s.foe, L.foe, false);
+    drawSlabs(s.player, L.player);
+    drawSlabs(s.foe, L.foe);
+    drawDuellists();
+    drawCrushSlabs();
     drawAttacks();
     drawCards();
     drawHud();
@@ -667,6 +694,224 @@ window.NewseyDuel = (function () {
     }
   }
 
+  // =========================================================================
+  // THE ARENA FLOOR — the duellists, the slabs over them, and the crush
+  // =========================================================================
+
+  // Sprite art, loaded once and cached. A duel that can't find a character's
+  // art draws a plain silhouette rather than a letter in a disc: this screen
+  // is the one place a fallback token would be unmissable.
+  var sprites = {};
+  function sprite(id) {
+    if (!id) return null;
+    if (!(id in sprites)) {
+      var img = new Image();
+      img.src = "art/" + id + ".png";
+      sprites[id] = { img: img, ok: false };
+      img.onload = function () { sprites[id].ok = true; };
+      img.onerror = function () { sprites[id].ok = false; };
+    }
+    return sprites[id];
+  }
+
+  function groundLine() {
+    var L = state.layout;
+    return L.h - L.bottomBar + L.floorRoom - 6;
+  }
+
+  function drawDuellists() {
+    var L = state.layout, s = state;
+    var g = groundLine();
+    // facing each other across the arena
+    drawFighter(s.playerSprite, L.player.x + L.boardW / 2, g, false,
+                s.crush && s.crush.side === "player" ? s.crush : null, "#ffd166");
+    drawFighter(s.foeSprite, L.foe.x + L.boardW / 2, g, true,
+                s.crush && s.crush.side === "foe" ? s.crush : null, "#ff9ecb");
+  }
+
+  function drawFighter(id, cx, groundY, mirror, crush, tint) {
+    var ctx = els.ctx, L = state.layout;
+    var h = L.floorRoom * 0.92, w = h * 0.62;
+    var entry = sprite(id);
+    if (entry && entry.ok && entry.img.naturalHeight) {
+      w = h * (entry.img.naturalWidth / entry.img.naturalHeight);
+    }
+
+    // The crush: flattened, then gone, then whole again.
+    var squash = 1, spread = 1, alpha = 1;
+    if (crush) {
+      var k = crush.t;
+      if (k < CRUSH_FALL) {
+        // still standing, watching them come down
+      } else if (k < CRUSH_FALL + CRUSH_FLAT) {
+        var f = (k - CRUSH_FALL) / CRUSH_FLAT;
+        squash = 1 - 0.78 * f; spread = 1 + 0.55 * f;
+      } else if (k < CRUSH_FALL + CRUSH_FLAT + CRUSH_GONE) {
+        var f2 = (k - CRUSH_FALL - CRUSH_FLAT) / CRUSH_GONE;
+        squash = 0.22; spread = 1.55; alpha = 1 - f2;
+      } else {
+        var f3 = Math.min(1, (k - CRUSH_FALL - CRUSH_FLAT - CRUSH_GONE) / CRUSH_BACK);
+        squash = 0.22 + 0.78 * f3; spread = 1.55 - 0.55 * f3; alpha = f3;
+      }
+    }
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    // a shadow, so nobody stands on nothing
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(cx, groundY, w * 0.42 * spread, Math.max(2, h * 0.07), 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.translate(cx, groundY);
+    ctx.scale(mirror ? -spread : spread, squash);
+    if (entry && entry.ok && entry.img.naturalHeight) {
+      ctx.drawImage(entry.img, -w / 2, -h, w, h);
+    } else {
+      // a silhouette: a body and a head, in the character's own colour
+      ctx.fillStyle = tint;
+      ctx.globalAlpha = alpha * 0.85;
+      roundRect(ctx, -w * 0.34, -h * 0.72, w * 0.68, h * 0.72, w * 0.18);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, -h * 0.82, h * 0.17, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Slabs waiting overhead. Several hundred pounds each, balanced as if by
+  // magic — so they hang, and they sway a little, and they are obviously
+  // going to land on somebody.
+  function drawSlabs(stack, pos) {
+    var ctx = els.ctx, L = state.layout, s = state;
+    var n = Math.min(5, stack.incoming.length);
+    if (!n) return;
+    // Over the DUELLIST's head, not over the board — "I nervously looked up
+    // and saw the attacks that Kat had created as represented by large
+    // concrete slabs... balanced as if by magic about 10 feet directly above
+    // me." Hung over the board instead they also collided with the name
+    // plates and the set tally, which is how this got noticed.
+    var slabW = L.boardW * 0.52, slabH = Math.max(4, L.floorRoom * 0.15);
+    var cx = pos.x + L.boardW / 2;
+    var head = groundLine() - L.floorRoom * 0.92 - 6;
+    for (var i = 0; i < n; i++) {
+      var sway = Math.sin(s.tick / 26 + i * 1.3) * 2.2;
+      var y = head - i * (slabH + 3);
+      ctx.save();
+      ctx.translate(cx + sway, y);
+      var g = ctx.createLinearGradient(0, -slabH / 2, 0, slabH / 2);
+      g.addColorStop(0, "#9aa0ad");
+      g.addColorStop(0.5, "#6d7482");
+      g.addColorStop(1, "#40454f");
+      ctx.fillStyle = g;
+      roundRect(ctx, -slabW / 2, -slabH / 2, slabW, slabH, 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(20,18,26,0.7)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (stack.incoming.length > n) {
+      ctx.fillStyle = "rgba(230,225,240,0.8)";
+      ctx.font = "bold 9px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("+" + (stack.incoming.length - n), cx, head - n * (slabH + 3) - 4);
+    }
+  }
+
+  // How long each beat of the crush lasts, in frames at 60Hz.
+  var CRUSH_FALL = 26, CRUSH_FLAT = 12, CRUSH_GONE = 26, CRUSH_BACK = 20;
+
+  function startCrush(side) {
+    var L = state.layout;
+    var pos = side === "player" ? L.player : L.foe;
+    var stack = side === "player" ? state.player : state.foe;
+    var n = Math.max(3, Math.min(7, stack.incoming.length + 3));
+    var slabs = [];
+    var head = groundLine() - L.floorRoom * 0.92 - 6;
+    for (var i = 0; i < n; i++) {
+      slabs.push({
+        from: head - i * 9,
+        delay: i * 2,
+        sway: (i % 2 ? 1 : -1) * (2 + i)
+      });
+    }
+    state.crush = { side: side, t: 0, slabs: slabs, pos: pos };
+  }
+
+  function drawCrushSlabs() {
+    var c = state.crush;
+    if (!c) return;
+    var ctx = els.ctx, L = state.layout;
+    var g = groundLine();
+    var cx = c.pos.x + L.boardW / 2;
+    var slabW = L.boardW * 0.66, slabH = Math.max(4, L.floorRoom * 0.17);
+    for (var i = 0; i < c.slabs.length; i++) {
+      var sl = c.slabs[i];
+      var k = Math.max(0, Math.min(1, (c.t - sl.delay) / CRUSH_FALL));
+      // accelerate: they are being dropped, not lowered
+      var e = k * k;
+      var y = sl.from + (g - 3 - i * (slabH * 0.55) - sl.from) * e;
+      ctx.save();
+      ctx.translate(cx + sl.sway * (1 - e), y);
+      var grad = ctx.createLinearGradient(0, -slabH / 2, 0, slabH / 2);
+      grad.addColorStop(0, "#9aa0ad");
+      grad.addColorStop(0.5, "#6d7482");
+      grad.addColorStop(1, "#40454f");
+      ctx.fillStyle = grad;
+      roundRect(ctx, -slabW / 2, -slabH / 2, slabW, slabH, 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(20,18,26,0.75)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
+    // dust where they land
+    if (c.t > CRUSH_FALL && c.t < CRUSH_FALL + CRUSH_FLAT + 10) {
+      var d = (c.t - CRUSH_FALL) / (CRUSH_FLAT + 10);
+      ctx.save();
+      ctx.globalAlpha = 0.5 * (1 - d);
+      ctx.fillStyle = "#c9c2d6";
+      for (var j = 0; j < 7; j++) {
+        var a = j * 0.9;
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(a) * (10 + d * 40), g - 2 - Math.sin(a) * d * 12,
+                2.5 + d * 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // The stands, and the people in them. "He pointed to the 'stands', which I
+  // hadn't noticed being in this library-like stadium. I saw most of the
+  // people who were at the bar standing up there and cheering." Drawn rather
+  // than generated: they are twenty pixels tall and nobody will ever look at
+  // one closely.
+  var CROWD = 26;
+  function drawCrowd() {
+    var ctx = els.ctx, L = state.layout, s = state;
+    var rows = 2;
+    var top = 8;
+    for (var r = 0; r < rows; r++) {
+      var y = top + r * 9;
+      for (var i = 0; i < CROWD; i++) {
+        // a fixed pseudo-random spread, so the crowd doesn't shimmer
+        var seed = (i * 73 + r * 131) % 97;
+        var x = (i + (seed % 5) * 0.12) * (L.w / CROWD) + (r ? L.w / CROWD / 2 : 0);
+        // they bob, and they bob harder just after somebody lands a big chain
+        var lift = Math.sin(s.tick / 12 + seed) * (1 + s.cheer * 2.5);
+        var hue = 200 + (seed % 7) * 18;
+        ctx.fillStyle = "hsla(" + hue + ",22%," + (26 + (seed % 4) * 4) + "%,0.85)";
+        ctx.beginPath();
+        ctx.arc(x, y - lift, 2.1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(x - 1.9, y - lift + 1.4, 3.8, 4.4);
+      }
+    }
+  }
+
   function boardShake(stack) {
     if (stack.shakeTime <= 0) return 0;
     return Math.sin(stack.shakeTime * 1.6) * Math.min(4, stack.shakeTime / 6);
@@ -726,11 +971,9 @@ window.NewseyDuel = (function () {
     ctx.textAlign = isPlayer ? "left" : "right";
     ctx.fillText(stack.name, isPlayer ? x : x + L.boardW, pos.y - 10);
 
-    if (stack.incoming.length) {
-      ctx.fillStyle = "#ff5470";
-      ctx.textAlign = isPlayer ? "right" : "left";
-      ctx.fillText("▼ " + stack.incoming.length, isPlayer ? x + L.boardW : x, pos.y - 10);
-    }
+    // Incoming garbage is drawn as the slabs it is (drawSlabs), not counted in
+    // a corner — the plot has her look UP and see them balanced overhead, and
+    // a number can't be looked up at.
 
     drawEffects(isPlayer, x, y, cell, bottom, rise);
     if (isPlayer && !stack.gameOver) {

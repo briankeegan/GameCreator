@@ -72,6 +72,21 @@ design discussion. `shared/` holds the components every game reuses
   and the workflow's `ctx` step reads it (deriving the game id from the PR's
   `clubhouse/<id>` head branch) to decide whether to act — a manual
   `workflow_dispatch` bypasses the flag so you can always test a game.
+- **An autopilot run reports its own progress, and the model doesn't write
+  it.** One comment on the thread's PR, marked `**Claude is working:**` and
+  EDITED IN PLACE as the run goes (edits notify nobody; a dozen separate
+  comments would make the thread unusable). Lines come from
+  `.github/autopilot/status.sh`, called by the workflow at its checkpoints and
+  by the art tools themselves via `GC_STATUS_HOOK` — so "generating
+  games/x/art-src/y.png" appears because an image was actually requested, not
+  because a model said so. That distinction is the point: runs have reported
+  success on art that never changed. The model may add a coarse line for the
+  gaps (starting a room, a big code rewrite); it must not restate what the
+  tools already announce, and must not claim completion there. The Clubhouse
+  page surfaces the newest such comment as a live status line under the
+  thread (`parseWorking` in `shared/clubhouse.js`), which disappears as soon
+  as a real reply lands after it. A status line never fails a run: no PR, no
+  token, no `gh` — it prints and exits 0.
 - **Autopilot has a backstop — don't hand-nurse it.**
   `.github/workflows/clubhouse-sweeper.yml` runs every 15 min and asks the
   only question that matters: does any autopilot thread have a human
@@ -131,10 +146,21 @@ design discussion. `shared/` holds the components every game reuses
   3. **Gate** — a `pages.yml` step that runs the tool on every push, so a
      violation fails the build instead of shipping.
   Existing instances: room exits (`EXIT / DOOR CONVENTION` comment ->
-  `.github/scripts/check_room_exits.mjs` -> "Verify room exits"), and art
+  `.github/scripts/check_room_exits.mjs` -> "Verify room exits"), art
   (`.github/art/CHARACTER_SHEETS.md` -> `.github/art/verify_sheet.py` ->
-  "Verify shipped sprite sheets" / "Verify character frame sets"). Add all three
-  pieces together or the rule will not hold.
+  "Verify shipped sprite sheets" / "Verify character frame sets"), rooms
+  (`docs/ROOM_ART_STANDARD.md` -> `.github/art/room.py verify` -> "Verify room
+  props and floor plates"), and art references (the header comment in
+  `.github/scripts/check_art_refs.mjs` -> that script -> "Verify art
+  references"). Add all three pieces together or the rule will not hold.
+- **A forgiving runtime needs a strict build.** The game deliberately survives
+  missing art — `loadArt()` on an id with no file never resolves ok, so an NPC
+  draws as a coloured circle with its initial in it and the game stays
+  playable. The cost is that a missing file fails NOTHING: it ships, and it is
+  found when a person looks at the screen and asks why there is a K standing
+  in the lab. Any fallback this graceful needs a build-time check beside it,
+  or it hides the thing it was meant to soften. `check_art_refs.mjs` is that
+  check for art ids.
 - **New games ship sprite SHEETS. Individual frame files are legacy.** Newsey
   predates the standard and ships nine files per character; that is supported
   and gated, but is not the pattern to copy — a per-file set can lose one
@@ -155,6 +181,13 @@ design discussion. `shared/` holds the components every game reuses
   next to them: `verify_sheet.py`'s first threshold passed every bad row, its
   second failed a correct one, and the comment above `NEUTRAL_RATIO` lists
   both so the next person doesn't re-derive it.
+- **THE ART INDEX IS `.github/art/README.md`. Start there, every time.** One
+  page listing every standard, prompt, generator, cutter and check, with a
+  "I want to… / read this / run this" table at the top, so nobody has to
+  already know what exists. It is checked by
+  `.github/scripts/check_art_registry.mjs` on every push, both directions: a
+  tool or prompt that isn't listed fails the build, and so does a path listed
+  there that doesn't exist. Add a tool, add its row.
 - **Standards for this kind of game live in two documents, and they apply to
   every new game of the same shape — not just the one they were written
   from:** `.github/art/CHARACTER_SHEETS.md` (characters: walk frames,
@@ -163,6 +196,29 @@ design discussion. `shared/` holds the components every game reuses
   authored). Read them before generating art for a top-down game; extend
   them when a generation exposes a gap, rather than solving it once in one
   game's head.
+- **One front door per kind of art, and EVERY caller uses it — including
+  auto mode.** `.github/art/generate_row.py` for a character row (walk or
+  attack), `.github/art/room.py generate` for one of a room's three passes.
+  Each builds the prompt from the canonical prompt file plus the game's
+  `art-style.json`, generates into the canonical path the next step reads
+  back, and refuses to run on an incomplete prompt; `generate_row.py` also
+  verifies and DELETES a row that fails, so it can never be picked up by a
+  later build. Both share one transport, `.github/art/imagegen.py`, which
+  picks the in-run image broker if one is listening and otherwise
+  `OPENAI_API_KEY` — a model is never handed the key. So the same command
+  works interactively, in the "Generate walk row" / "Generate room pass"
+  Actions (which are buttons on those scripts), and inside the autopilot,
+  which cannot dispatch a workflow from inside one. Before this the row recipe
+  was inlined in an Action AND restated in the autopilot's prompt, and rooms
+  could only PRINT a prompt for someone to carry to a generator by hand.
+- **Point at a standard; never copy it.** The Clubhouse autopilot carried its
+  own copy of the art rules in its prompt, and it drifted: it was still
+  telling runs to generate `[idle, walk, attack]` rows long after the standard
+  became `[step, NEUTRAL, step]`, knew nothing about `verify_sheet.py`, and
+  had never heard of the room pipeline at all. Its instructions now say
+  "read `CHARACTER_SHEETS.md` / `ROOM_ART_STANDARD.md` first" and carry only
+  what is specific to running inside that workflow. Anywhere else a rule
+  would be restated — a workflow prompt, a game's README — link instead.
 - **Character sheets follow one standard: `.github/art/CHARACTER_SHEETS.md`.**
   Walk is 3 columns `[step, NEUTRAL, step]`; ATTACK is its own sheet, also 3
   columns, `[wind-up, STRIKE, recover]`, with damage landing on the strike
@@ -206,28 +262,52 @@ design discussion. `shared/` holds the components every game reuses
     (#FF00FF) gridlines, not white: white anti-aliases into a pale halo the
     slicer can't fully remove. `games/the-game/WALK_SHEETS.md` records why,
     and what else was tried.
-- **A room is generated in TWO LAYERS: a ground plate, then props.** Do not
-  ask for a room with its furniture painted in — that was the old way and
-  everything downstream fought it. Layer 1 is the GROUND PLATE: floor, the
-  walls behind it, doorways, and nothing that stands up off the floor out in
-  the room. Layer 2 is a PROP SHEET: every free-standing thing — a tree, a
-  fountain, a table — drawn side by side in ONE image on flat white, upright,
-  whole, on a common ground line, cut apart by `.github/art/build_props.py`.
-  The game places props from `props: [{ art, x, y, h, base }]` on the room,
-  sorts them against the player by foot position, and blocks the `base`
-  ellipse — so you walk BEHIND a tree and stop at its trunk.
-  - Three things this buys, all of which were problems: the walkable-floor
-    mask becomes a wall line plus a rectangle instead of a hand
-    reverse-engineering job (`build_walkmask.py` documents the five
-    techniques that failed at the old version), a prop can be moved or
-    replaced without regenerating the room, and scenery finally has depth —
-    a painted tree is something you can only ever be fenced away from.
+- **A room is generated in THREE PASSES.** Do not ask for a room with its
+  scenery painted in — that was the old way and everything downstream fought
+  it.
+  1. **A COMPOSED SCENE**, kept in `art-src/<room>_scene.png` and NEVER
+     shipped. It exists to be MEASURED: every prop's ground point, height,
+     width and *count* comes off it. Skipping this is what makes a room look
+     like objects were sprinkled on a lawn, and it is the only reliable answer
+     to sizing — the Anarchy Garden's scene drew all four fountains the same
+     height regardless of depth, and eyeballing them smaller with a depth ramp
+     on is what made them read as trinkets.
+  2. **THE WALKABLE SURFACE and nothing else**, which is the shipped
+     background. Because the plate IS the walkable area, the collision mask is
+     its own silhouette — the room goes in `FLOOR_PLATE_ROOMS` and there is
+     nothing else to declare.
+  3. **EVERYTHING YOU CANNOT WALK ON, as props** — walls, water, trees,
+     statues — drawn side by side in ONE image on flat white and cut apart by
+     `build_props.py`. Plus flat ground cover (`flat: true`), which you *can*
+     walk over but which still isn't part of the plate.
+
+  The game places props from `props: [{ art, x, y, h, w, flat, base }]`, sorts
+  them against the player by foot position, and blocks the `base` — an ellipse
+  `{rx,ry}` for anything round-ish, a rect `{w,h}` for a wall or a pool coping,
+  since an ellipse leaves walkable gaps at their corners.
+  - Four things this buys, all of which were problems: the walkable-floor mask
+    stops being hand-authored entirely (`build_walkmask.py` documents the five
+    techniques that failed at recovering a floor from a finished picture), a
+    prop can be moved or replaced without regenerating the room, scenery gets
+    depth — a painted tree is something you can only ever be fenced away from —
+    and the water can be animated, which is impossible while it is paint.
+  - **One front door: `.github/art/room.py`** — `prompt` (canned prompts for
+    each pass), `plate` (fit the floor plate + rebuild its mask), `props` (cut
+    a sheet), `check` (render the overlays), `verify` (the gate, wired into
+    `pages.yml`). Every check in `verify` is a bug that shipped, and each was
+    proved to fire by breaking a room on purpose.
   - **The shareable write-up is `docs/ROOM_ART_STANDARD.md`** — the rule, why
     it exists, how to prompt each layer, the pipeline commands and a
     checklist, written to be handed to someone who has never seen this repo.
     `games/the-game/art-style.json` carries the same rule in the form the
-    image Action reads, so a prompt only has to say WHICH LAYER it wants. The
+    image Action reads, so a prompt only has to say WHICH PASS it wants — and
+    `room.py prompt scene|plate|props` prints those prompts filled in. The
     Anarchy Garden is the reference room.
+  - **`room.py check` renders two pictures and you have to LOOK at them.** The
+    assembled room beside the composed scene is the step that finds things:
+    a plate that never filled its frame, statues at two thirds size, three
+    patches of ground cover where the scene has drifts. Every one of those was
+    invisible in the numbers and obvious in one glance at the side-by-side.
   - Ask for flat pure white behind a prop sheet, never transparency (same
     reason as sprite sheets). If a sheet does come back with real alpha,
     `build_props.py` uses it — keying white would eat a white marble statue.
@@ -361,8 +441,26 @@ design discussion. `shared/` holds the components every game reuses
     which is impossible if it weren't being called).
   - **"Generate image"** is freeform: inputs are just `prompt`,
     `output_path`, `size`. No persisted style — use it for one-off/
-    experimental images, or for a game that doesn't have an
-    `art-style.json` yet.
+    experimental images, for a game that doesn't have an `art-style.json`
+    yet, and — importantly — for **anything that is not a room or an in-room
+    sprite**: cutscene illustrations and character portraits.
+    - **`force: true` or it silently does nothing.** The skip-if-exists guard
+      is there so a re-run of a partly-failed batch doesn't re-bill for art
+      you already have — but it also means a REGENERATION of a bad image
+      succeeds, commits nothing, and leaves the bad file in place. Two
+      cutscene backdrops were re-dispatched, reported success, and were still
+      the wrong picture. If you are replacing an existing file, pass `force`.
+    - Portraits get cropped by `.github/art/make_portrait.py`, not by eye —
+      generate the bust on flat white, then let the tool key it, square it
+      anchored at the TOP and resize. Cropping portraits by hand is how they
+      end up at four different zoom levels beside each other.
+  - **"Generate game asset" applies the room camera to EVERYTHING.** Its
+    `art-style.json` says "top-down RPG interior room view", and that wins
+    over the prompt even when the prompt says, in capitals, to ignore it.
+    Three generations were burned learning this in one sitting: two cutscene
+    illustrations of a mirror seen straight-on and a sheet of two portrait
+    busts all came back as top-down rooms with a rug on the floor. If what
+    you want is not seen from the room camera, use "Generate image".
   - **"Generate game asset"** is for a consistent set: inputs are `game`,
     `asset` (what's different about THIS image), `output_path`, `size`.
     It reads `games/<game>/art-style.json` (fields: `camera`, `style`,

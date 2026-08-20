@@ -55,9 +55,50 @@ jobs:
           done
           exit $status
 
+      # Rooms built to the three-pass standard (docs/ROOM_ART_STANDARD.md):
+      # the background is ONLY the walkable surface and everything else is a
+      # prop, so the collision mask is the plate's own silhouette. Every check
+      # in `room.py verify` is a bug that actually shipped — a plate that
+      # didn't fill the frame (which is the ROOM being smaller than its frame,
+      # since the plate is the walkable area), a playerStart sitting inside its
+      # own exit trigger so the door never armed, a prop footprint covering a
+      # doorway, art that doesn't exist, flat ground cover carrying a
+      # footprint, and dead floorPoly/obstacles contradicting the mask. Rule ->
+      # tool -> gate, same as the room exits and the sprite sheets above.
+      - name: Verify room props and floor plates
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          status=0
+          for d in games/*/; do
+            [ -f "$d/story.js" ] || continue
+            echo "== $d =="
+            python3 .github/art/room.py verify "${d%/}" || status=1
+          done
+          exit $status
+
+      # The art index (.github/art/README.md) is the one page that says what
+      # exists and which tool to reach for. It is only useful if it is true,
+      # so it is checked both ways: a tool or prompt that isn't listed fails
+      # here, and so does a path listed there that doesn't exist. Rule ->
+      # tool -> gate, applied to the index itself — because the failure it
+      # prevents already happened at a larger scale, when the autopilot's
+      # private COPY of the art rules drifted months behind the standard.
+      - name: Verify the art index
+        run: node .github/scripts/check_art_registry.mjs
+
+      # Every art id a game NAMES must have a file behind it. The game is
+      # deliberately forgiving at runtime — a missing portrait draws the
+      # character's initial in a coloured circle instead — which means a
+      # missing file never fails anything and ships unnoticed. That is how a
+      # K ended up standing in Kyran's lab. Forgiving runtime, strict build.
+      - name: Verify art references
+        run: node .github/scripts/check_art_refs.mjs
+
       # Shipped sprite sheets: no empty cells (the cutter silently produced
-      # nothing for one) and no colour outside the game's lockedPalette (art
-      # that bypassed the cutter). Both have happened. Rule lives in
+      # nothing for one), no colour outside the game's lockedPalette (art
+      # that bypassed the cutter), and — as a warning — a front or back row
+      # whose two step frames lift the same foot, which makes a character walk
+      # with one leg. All three have happened. Rule lives in
       # .github/art/CHARACTER_SHEETS.md, enforcement in verify_sheet.py, and
       # this step is what stops either being ignored. Geometry is inferred
       # from the 256px cell size, so a new sheet is covered automatically.

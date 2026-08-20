@@ -1,0 +1,15 @@
+# PASS 1 — the composed scene. Kept in art-src/<room>_scene.png, NEVER shipped.
+# It exists to be measured: every prop's ground point, height, width and COUNT
+# comes off it. Substitute {{ROOM}} and go.
+#
+# Generate at 1536x1024 through "Generate game asset" so it inherits the game's
+# camera, palette and rendering from art-style.json.
+
+{{ROOM}} — the room as a complete scene, exactly as it should look, with
+everything in it. Composed as a finished picture: the floor filling the lower
+half of the frame and open enough to walk across, the scenery and furniture
+placed the way a person would place them, and the far wall or horizon visible
+behind so the space has a back.
+
+STRICTLY no people, no characters, no figures, no silhouettes anywhere. No text,
+no signage, no labels, no readable lettering of any kind.

@@ -31,6 +31,7 @@ window.NEWSEY_STORY = (function () {
     kat:     { name: "Kat",          color: "#27ae60" },
     john:    { name: "John Boxley",  color: "#6c5ce7" },
     timothy: { name: "Timothy",      color: "#dfe6e9" },
+    rex:     { name: "Rex",          color: "#c9a227" },
     kyran:   { name: "Kyran",        color: "#00b894" },
     michael: { name: "Michael",      color: "#74b9ff" },
     diamond: { name: "Diamond",      color: "#fd79a8" },
@@ -77,6 +78,39 @@ window.NEWSEY_STORY = (function () {
     { bg: "", narration: true, text: "The world faded to black." }
     // After this: waking up, the horns in the mirror, the devil's welcome —
     // is not narrated either, it's ROOMS.bedroom (Infinity).
+  ];
+
+  // JOHN_CUTSCENE — the chapter's hinge, and the one beat that was compressed
+  // into four lines of room dialogue when it is the whole point of the
+  // chapter. Plays the FIRST time you sleep in the Infinity bed: you wake to
+  // a knock, and John is in the doorway.
+  //
+  // Straight from the verbatim plot, in its order. Two new backgrounds carry
+  // the two images that matter — the chaos symbol she draws on the mirror in
+  // lipstick, and the mirror turning into a screen showing her own body.
+  var JOHN_CUTSCENE = [
+    { bg: "bedroom", who: "nella", narration: true, text: "Knocking. I pulled the blanket around me and froze. I wasn't ready to face anyone." },
+    { who: "john", art: "john", text: "Nella. Open the door." },
+    { who: "nella", narration: true, text: "Instead of an answer, the door opened on its own." },
+    { who: "john", art: "john", text: "Nella, I'm glad you have finally arrived. I am here to welcome you to Infinity, and to explain why it is you are here." },
+    { who: "john", art: "john", text: "Nella, you can't leave." },
+    { who: "nella", art: "nella", text: "Who are you?" },
+    { who: "john", art: "john", text: "I am John. John Boxley. Founder of the Boxley Game Development Company. Creator of Puzzle Attack. And I am trapped in Infinity. And now, so are you." },
+    { bg: "mirror_symbol", who: "nella", narration: true, text: "I took a lipstick off the vanity and drew the symbol on the mirror — a circle, with arrows inside it pointing outward." },
+    { who: "john", art: "john", text: "That is the symbol for chaos. The deal that was struck was for your soul, in exchange for magical powers." },
+    { who: "john", art: "john", text: "…It didn't work the way that I thought it would." },
+    { who: "nella", art: "nella", text: "Am I dead?" },
+    { who: "john", art: "john", text: "Not yet." },
+    { bg: "mirror_body", who: "nella", narration: true, text: "He wiped the lipstick away with his sleeve and tapped the glass. The mirror turned into a screen. And on the screen, I saw myself." },
+    { who: "nella", narration: true, text: "Not the avatar. Me. Cross-legged in front of the television, gone grey, my eyes rolled back, a little blood at my ear." },
+    { who: "nella", art: "nella_scream", text: "What do you mean, \"not yet\"? What's WRONG with me?" },
+    { who: "john", art: "john", text: "You must return to your body within one hour of initiating the ritual, or you will die." },
+    { who: "john", art: "john", text: "Time works differently here. A day in Infinity is a minute in the real world. So you still have fifty-nine minutes and about thirty seconds." },
+    { who: "nella", art: "nella", text: "Does that mean everyone else here is dead?" },
+    { who: "john", art: "john", text: "I suppose that depends on your philosophy of life. But yes — for all of us, there is no physical body left. There is nowhere to go." },
+    { who: "nella", narration: true, text: "I sank to my knees. He waited. After a while he offered me a hand up, and I took it, and I let the man who trapped me here hold me." },
+    { who: "john", art: "john", text: "I'm sorry, Nella." },
+    { who: "john", art: "john", text: "When you're ready, come see me at the library. I'll be waiting for you." }
   ];
 
   // ---- 2. WALK-AROUND: rooms, exits, and NPCs to talk to ------------------
@@ -270,9 +304,8 @@ window.NEWSEY_STORY = (function () {
       // Hand-placed from bg-bedroom.png: the door is on the right wall,
       // the mirror stands on the left and the bed is back-center-right —
       // both are blocked off so the player can't walk through them.
-      // arriveAt drops you a step INSIDE the next room, in front of the door
-      // you came out of — never on its threshold, or holding the same
-      // direction would walk you straight back through.
+      // Where you land coming the other way is derived from this door's
+      // partner, not written here — see EXIT / DOOR CONVENTION above.
       // Every exit box below was measured against the room's own background
       // art (overlaid on the PNG at the game's 320x200 scale, not guessed):
       // the box IS the drawn doorway, so walking into the picture of the door
@@ -355,12 +388,20 @@ window.NEWSEY_STORY = (function () {
       // The bar's footprint on the floor (the old box sat entirely above the
       // walkable area, so it blocked nothing).
       obstacles: [ { x: 155, y: 95, w: 110, h: 30 } ], // the bar's footprint
+      // NOBODY STANDS IN FRONT OF THE RUNE DOOR. The trigger band is
+      // x 132-188 at y 182-192 and the player walks down the middle of the
+      // room to reach it, so an NPC anywhere in x 136-184 below y 160 fences
+      // off the room's main exit. That is exactly what happened the first
+      // time Kat's table was placed: Eric and Magma sat either side of the
+      // approach, and the walk test could no longer get through the door at
+      // all. Kat's table is therefore split around the corridor, not across
+      // it, and folk-test.js checks the corridor stays empty.
       npcs: [
         {
           // Flavor only here — per the plot, the Lounge is "the bar + portals
           // to duels", not the duel itself. Kat's actual fight happens in
           // ROOMS.arena, reached through the portal below.
-          id: "kat", x: 170, y: 162, art: "kat", sprite: "kat_top",
+          id: "kat", x: 204, y: 158, art: "kat", sprite: "kat_top",
           lines: [
             "Hello there. They call me Kat. What's your name?",
             "I'll buy you a drink — if you duel me. No better way to learn!",
@@ -369,7 +410,7 @@ window.NEWSEY_STORY = (function () {
           setsFlag: "duelInvite"
         },
         {
-          id: "may", x: 130, y: 168, art: "may", sprite: "may_top",
+          id: "may", x: 128, y: 132, art: "may", sprite: "may_top",
           lines: [
             "You again? Stay out of my way.",
             "Something doesn't add up about the new arrivals lately. Watch yourself.",
@@ -378,10 +419,53 @@ window.NEWSEY_STORY = (function () {
           setsFlag: "duelInvite"
         },
         {
-          id: "timothy", x: 206, y: 172, art: "timothy", sprite: "timothy_top",
+          id: "timothy", x: 222, y: 140, art: "timothy", sprite: "timothy_top",
           lines: [
-            "Now, now — that's no way to welcome the new people.",
+            "Now, now, May. That's not how we WELCOME the new people. This is Rex. Be nice.",
             "My bracelet's all diamond. Yours will get there too, given time."
+          ]
+        },
+        {
+          // "You are NO COPPER RANKED PLAYER. So, WHO ARE YOU?" — May has him
+          // by the collar when Nella walks in, and he says nothing at all,
+          // which is the entire point of him.
+          id: "rex", x: 146, y: 132, art: "rex", sprite: "rex_top",
+          lines: [
+            "The scruffy man in the deep-gold robe watches you look at his bracelet.",
+            "Copper, set with amethysts. May said that meant something.",
+            "He smirks, and says nothing."
+          ]
+        },
+        // Kat's table — "Anyway, that's the gang! Michael, Diamond, Eric, and
+        // Magma." Michael keeps his coffee shop in the library; the other
+        // three are here.
+        {
+          id: "diamond", x: 196, y: 178, art: "diamond", sprite: "diamond_top",
+          lines: [
+            "I'm Diamond. I'm the only person you really need to meet around here.",
+            "Don't listen to Eric. He thinks the sun rises on Anarchy.",
+            "Copper and aquamarine, is it? Sweet. Everyone starts somewhere."
+          ]
+        },
+        {
+          id: "eric", x: 116, y: 164, art: "eric", sprite: "eric_top",
+          lines: [
+            "She only wishes she was the star around here. I'm afraid that honour goes to Anarchy.",
+            "I'm Eric. Ignore the two of us, we do this constantly.",
+            "…Had. Anarchy HAD. Nobody's seen him since he got out, if he got out."
+          ]
+        },
+        {
+          id: "magma", x: 124, y: 180, art: "magma", sprite: "magma_top",
+          lines: [
+            "…I'm Magma.",
+            // The plot's actual beat: it happens DURING the handshake, before
+            // she has said anything else, and Nella's jaw drops. Narrating it
+            // as its own line is the only way to land it in a talk box.
+            "You reach out to shake her hand, and her face moves under yours — features ageing a few years, hair growing long. She watches you watch it happen.",
+            "You're staring. Everyone stares the first time.",
+            "I'm not trying to scare you. I just refuse to hide who I am any more.",
+            "…Sorry. That was for Kat, not for you."
           ]
         },
         {
@@ -496,36 +580,65 @@ window.NEWSEY_STORY = (function () {
       // loads means it never arms — doors stay disarmed until you step off
       // them — so you can walk into it all day and nothing happens. Found by
       // the walk test, which is exactly what it is for.
-      playerStart: { x: 150, y: 138 },
+      playerStart: { x: 152, y: 146 },
+      // Placed on the numbers MEASURED off the composed scene in art-src/,
+      // then checked with:
+      //   python3 .github/art/preview_room.py games/the-game garden \
+      //           --scene games/the-game/art-src/garden_scene.png --mode blend
+      // which lays the assembled room over that scene like tracing paper. A
+      // prop at the wrong size or in the wrong place shows up instantly as a
+      // doubled edge; read off a grid by eye it does not, which is how the
+      // statues first shipped at two thirds of their size.
+      // Placed on the numbers MEASURED off the composed scene in art-src/,
+      // then checked with:
+      //   python3 .github/art/preview_room.py games/the-game garden \
+      //           --scene games/the-game/art-src/garden_scene.png --mode side
+      // which puts the assembled room next to the scene it came from. Every
+      // problem this room had was invisible in the numbers and obvious there:
+      // a plate that didn't fill the frame, statues at two thirds size, three
+      // flower patches where the scene had drifts of them.
       props: [
-        // the far bank: waterfalls first so the pool sorts in front of them
-        { art: "prop_waterfall", x: 112, y: 24, h: 62, base: { w: 30, h: 8 } },
-        { art: "prop_waterfall", x: 208, y: 24, h: 62, base: { w: 30, h: 8 } },
-        { art: "prop_pool",      x: 160, y: 28, h: 44, w: 224, base: { w: 210, h: 14 } },
-        // the low wall along the near edge, either side of the gap the path
-        // passes through
-        { art: "prop_wall", x: 86,  y: 190, h: 24, w: 104, base: { w: 104, h: 10 } },
-        { art: "prop_wall", x: 236, y: 190, h: 24, w: 104, base: { w: 104, h: 10 } },
-        // ground cover — walked straight over, painted with the floor
-        { art: "prop_flowers_white",  x: 84,  y: 96,  h: 16, flat: true },
-        { art: "prop_flowers_white",  x: 108, y: 138, h: 14, flat: true },
-        { art: "prop_flowers_orange", x: 236, y: 104, h: 16, flat: true },
-        { art: "prop_flowers_orange", x: 214, y: 148, h: 14, flat: true },
-        { art: "prop_bramble",        x: 70,  y: 122, h: 15, flat: true },
-        { art: "prop_bramble",        x: 250, y: 68,  h: 13, flat: true },
-        { art: "prop_tuft",           x: 128, y: 172, h: 12, flat: true },
-        // the standing scenery
-        { art: "prop_cherry",   x: 72,  y: 72,  h: 78, base: { rx: 14, ry: 5 } },
-        { art: "prop_cherry",   x: 62,  y: 152, h: 78, base: { rx: 14, ry: 5 } },
-        { art: "prop_cherry",   x: 252, y: 82,  h: 78, base: { rx: 14, ry: 5 } },
-        { art: "prop_fountain", x: 122, y: 58,  h: 56, base: { rx: 15, ry: 6 } },
-        { art: "prop_fountain", x: 214, y: 58,  h: 56, base: { rx: 15, ry: 6 } },
-        { art: "prop_fountain", x: 96,  y: 108, h: 56, base: { rx: 15, ry: 6 } },
-        { art: "prop_fountain", x: 228, y: 132, h: 56, base: { rx: 15, ry: 6 } }
+        // the far bank — waterfalls first so the pool sorts in front of them
+        { art: "prop_waterfall", x: 116, y: 68, h: 86, w: 58, base: { w: 58, h: 86 } },
+        { art: "prop_waterfall", x: 204, y: 68, h: 86, w: 58, base: { w: 58, h: 86 } },
+        { art: "prop_pool",      x: 160, y: 64, h: 44, w: 250, base: { w: 240, h: 16 } },
+        // the low wall along the near edge, either side of the path's gap
+        { art: "prop_wall", x: 74,  y: 196, h: 26, w: 132, base: { w: 132, h: 12 } },
+        { art: "prop_wall", x: 250, y: 196, h: 26, w: 132, base: { w: 132, h: 12 } },
+        // Ground cover, walked straight over. The composed scene has DRIFTS of
+        // these, not three tidy patches — sparse cover is the other half of
+        // why the first assembly read so much emptier than the scene.
+        { art: "prop_flowers_white",  x: 66,  y: 150, h: 44, flat: true },
+        { art: "prop_flowers_white",  x: 100, y: 166, h: 40, flat: true },
+        { art: "prop_flowers_white",  x: 46,  y: 176, h: 40, flat: true },
+        { art: "prop_flowers_white",  x: 238, y: 128, h: 40, flat: true },
+        { art: "prop_flowers_white",  x: 262, y: 150, h: 36, flat: true },
+        { art: "prop_flowers_orange", x: 268, y: 108, h: 44, flat: true },
+        { art: "prop_flowers_orange", x: 246, y: 168, h: 44, flat: true },
+        { art: "prop_flowers_orange", x: 284, y: 138, h: 40, flat: true },
+        { art: "prop_flowers_orange", x: 44,  y: 106, h: 40, flat: true },
+        { art: "prop_bramble",        x: 118, y: 126, h: 27, flat: true },
+        { art: "prop_bramble",        x: 96,  y: 138, h: 23, flat: true },
+        { art: "prop_bramble",        x: 268, y: 182, h: 27, flat: true },
+        { art: "prop_bramble",        x: 240, y: 190, h: 23, flat: true },
+        { art: "prop_tuft",           x: 196, y: 108, h: 20, flat: true },
+        { art: "prop_tuft",           x: 132, y: 176, h: 20, flat: true },
+        // The standing scenery, at the composed scene's own sizes. Trees are
+        // BIG — ~94px — and hard against the frame edges so their canopies run
+        // off the side; that crop is what makes it read as a corner of a real
+        // garden. Statues ~56px and ALL THE SAME SIZE: that scene did not
+        // shrink the far ones, which is why this room has no depthScale.
+        { art: "prop_cherry",   x: 54,  y: 96,  h: 94, base: { rx: 15, ry: 5 } },
+        { art: "prop_cherry",   x: 36,  y: 168, h: 94, base: { rx: 15, ry: 5 } },
+        { art: "prop_cherry",   x: 286, y: 112, h: 94, base: { rx: 15, ry: 5 } },
+        { art: "prop_fountain", x: 84,  y: 128, h: 58, base: { rx: 15, ry: 6 } },
+        { art: "prop_fountain", x: 140, y: 106, h: 58, base: { rx: 15, ry: 6 } },
+        { art: "prop_fountain", x: 216, y: 106, h: 58, base: { rx: 15, ry: 6 } },
+        { art: "prop_fountain", x: 224, y: 172, h: 58, base: { rx: 15, ry: 6 } }
       ],
       exits: [
         // the path leaving through the gap in the wall, back the way she came
-        { x: 142, y: 166, w: 34, h: 16, to: "lounge", link: "rune" }
+        { x: 146, y: 178, w: 34, h: 14, to: "lounge", link: "rune" }
       ],
       npcs: [
         {
@@ -595,12 +708,25 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "john", x: 225, y: 158, art: "john", sprite: "john_top",
+          id: "johnStranger", x: 225, y: 158, art: "john", sprite: "john_top",
+          unless: "johnToldMe",
+          counterKey: "john_before",
           lines: [
-            "I am John Boxley. Creator of Puzzle Attack. I am trapped in Infinity. And now, so are you.",
-            "A deal was struck for your soul, in exchange for magical powers. It didn't work the way I thought it would.",
-            "You must return to your body within one hour of the ritual, or you will die. A day in Infinity is a minute in the real world.",
-            "Only one player has ever escaped Infinity. When you're ready to hear how… come find me here."
+            "A hooded man, hunched, tired enough to fall asleep standing up.",
+            "He looks at you as though he already knows your name, and says nothing at all."
+          ]
+        },
+        {
+          // Before the mirror scene he is a stranger in a hood who knows your
+          // name; after it, he is the man who told you what you are. The
+          // reveal lives in JOHN_CUTSCENE now, so these are the follow-up.
+          id: "john", x: 225, y: 158, art: "john", sprite: "john_top",
+          needs: "johnToldMe",
+          lines: [
+            "You came. Good. Sit, if you like — nobody here is in a hurry but you.",
+            "Only one player has ever escaped Infinity. Anarchy. Anthony, before that.",
+            "I have several theories about how he did it and no proof of any of them. That is the honest answer, and I am done lying to you.",
+            "Keep duelling. Whatever the way out is, it runs through the panels — I built them, and they are the only thing here that is really mine."
           ]
         }
       ]
@@ -608,5 +734,6 @@ window.NEWSEY_STORY = (function () {
   };
 
   return { CHARACTERS: CHARACTERS, INTRO_CUTSCENE: INTRO_CUTSCENE, DREAM_CUTSCENE: DREAM_CUTSCENE,
+           JOHN_CUTSCENE: JOHN_CUTSCENE,
            WAKE_LINES: WAKE_LINES, ROOMS: ROOMS, RUNE_DOOR: RUNE_DOOR };
 })();

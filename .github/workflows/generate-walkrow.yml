@@ -1,0 +1,123 @@
+name: Generate walk row
+
+# ONE dispatch that produces a verified walk row for a sheet-based game.
+#
+# It exists because the alternative — hand-assembling a 3000-character prompt
+# per row, generating, and eyeballing the result — is how a dozen bad rows got
+# generated for Dog Punk.
+#
+# THE WORK IS NOT IN THIS FILE. It is in .github/art/generate_row.py, which
+# builds the prompt from walkgrid_prompt.txt plus the game's art-style.json,
+# generates ONE ROW on a landscape canvas, verifies it, and deletes it if it
+# fails. This Action is only the button: checkout, run that script, commit.
+# The Clubhouse autopilot runs the SAME script — it cannot dispatch a workflow
+# from inside a workflow, so it calls it directly and the script routes through
+# the in-run image broker instead of OpenAI. One recipe, two transports. The
+# previous arrangement had the recipe inlined here and restated in prose in the
+# autopilot's prompt, and the two drifted; that is the whole reason the script
+# exists.
+#
+# A failed row costs the generation and nothing else: it is deleted and not
+# committed, so it cannot quietly end up in a sheet. Cutting rows into a sheet
+# is still a deliberate build_sheet.py step, because which rows make up which
+# sheet is a decision, not something to guess.
+on:
+  workflow_dispatch:
+    inputs:
+      game:
+        description: "Game id, e.g. dog-punk (reads games/<id>/art-style.json)"
+        required: true
+        type: string
+      character:
+        description: "Character id, used for the filename: art-src/<character>_<view>_raw.png"
+        required: true
+        type: string
+      view:
+        description: "Which row"
+        required: true
+        type: choice
+        options:
+          - front
+          - side
+          - back
+      description:
+        description: "The character, in words. Leave blank to use the game's art-style.json mainCharacter."
+        required: false
+        type: string
+      quality:
+        description: "Render quality — medium is enough for flat cartoon pixel art; high costs ~4x."
+        required: false
+        type: choice
+        options:
+          - "low"
+          - "medium"
+          - "high"
+        default: "medium"
+      force:
+        description: "Regenerate (and re-bill) even if the output already exists."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate and verify the row
+        id: gen
+        timeout-minutes: 20
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          echo "out=games/${{ inputs.game }}/art-src/${{ inputs.character }}_${{ inputs.view }}_raw.png" >> "$GITHUB_OUTPUT"
+          python3 .github/art/generate_row.py \
+            --game "${{ inputs.game }}" \
+            --character "${{ inputs.character }}" \
+            --view "${{ inputs.view }}" \
+            --quality "${{ inputs.quality }}" \
+            ${{ inputs.description && format('--description "{0}"', inputs.description) || '' }} \
+            ${{ inputs.force && '--force' || '' }}
+
+      - name: Commit the raw
+        timeout-minutes: 5
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ steps.gen.outputs.out }}"
+          if git commit -m "Generate walk row: ${{ inputs.game }} ${{ inputs.character }} ${{ inputs.view }}"; then
+            for i in 1 2 3 4 5 6; do
+              if git pull --rebase origin main && git push; then exit 0; fi
+              echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+            done
+            echo "::error::Could not push after retries"; exit 1
+          fi
+
+      - name: Next step
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'MD'
+          Row generated and verified: `${{ steps.gen.outputs.out }}`
+
+          It is a RAW, not shipped art. Cut it into the sheet when all three
+          rows exist:
+
+          ```
+          python3 .github/art/build_sheet.py \
+            --style games/${{ inputs.game }}/art-style.json \
+            --out games/${{ inputs.game }}/${{ inputs.character }}_sheet.png \
+            --row games/${{ inputs.game }}/art-src/${{ inputs.character }}_front_raw.png \
+            --row games/${{ inputs.game }}/art-src/${{ inputs.character }}_side_raw.png \
+            --row games/${{ inputs.game }}/art-src/${{ inputs.character }}_back_raw.png \
+            --build-steps 0,2
+          ```
+
+          `--build-steps 0,2` builds both step frames of the front and back
+          rows from their standing frame, so those two rows only need a good
+          MIDDLE frame. Then bump the game's `sw.js` cache name.
+          MD

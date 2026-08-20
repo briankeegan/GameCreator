@@ -56,12 +56,14 @@ Exits non-zero if any check fails, printing one line per problem.
 
 import argparse
 import json
+import os
 import sys
 
 import numpy as np
 from PIL import Image
 
 import build_sheet as bs
+from imagegen import status as _announce   # one status hook for the whole pipeline
 
 
 def _norm(im, size=(64, 64)):
@@ -89,6 +91,63 @@ def _diff(a, b):
 NEUTRAL_RATIO = 0.70
 
 
+# SAME FOOT TWICE. In a front or back row the two step frames are opposite
+# steps, so their leg bands are near MIRROR IMAGES of each other. When a
+# generator draws one step pose and then repeats it, the bands match better
+# UN-mirrored — the character then walks with the same foot twice and the
+# other leg never moves, which is exactly what it looks like.
+#
+# Compared on the bottom 22% of the silhouette only (the legs), normalised to
+# 48x16 so independent crops don't matter. The number is
+# diff(f0, mirror(f2)) / diff(f0, f2): below 1.0 the steps alternate, above
+# 1.0 the same foot is up twice. Measured:
+#   dog-punk back v5    0.25   <- alternates
+#   dog-punk back v12   0.74   <- alternates, the row that shipped
+#   dog-punk back v7    0.84   <- alternates
+#   dog-punk back v6    1.00   <- ambiguous (both boots flat in every frame)
+#   dog-punk back v11   1.02   <- ambiguous
+#   dog-punk front v3   1.68   <- same foot twice; shipped, and spotted by eye
+#   dog-punk front v5   1.85   <- same foot twice
+#   dog-punk back v10   2.00   <- same foot twice
+# The gate sits at 1.10, so the ambiguous rows pass: a row is failed only when
+# the mirrored comparison is clearly WORSE, which cannot happen when the steps
+# are genuine opposites.
+#
+# ONLY for front and back rows, which is why it is opt-in (--mirrored). A SIDE
+# row scores 1.63 while being perfectly correct: mirroring a right-facing
+# profile turns it into a left-facing one, so the comparison is meaningless
+# there. Its steps are checked by eye, as a fore/aft split always has been.
+MIRROR_STEP_MAX = 1.10
+
+
+def _leg_band(im, frac=0.22, size=(48, 16)):
+    """The bottom slice of a frame's silhouette, normalised for comparison."""
+    a = np.array(im.convert('RGBA'))
+    alpha = a[:, :, 3] > 0
+    ys, xs = np.nonzero(alpha)
+    if len(ys) == 0:
+        return None
+    y0, y1, x0, x1 = ys.min(), ys.max(), xs.min(), xs.max()
+    band = alpha[y1 - int((y1 - y0 + 1) * frac):y1 + 1, x0:x1 + 1]
+    if band.size == 0:
+        return None
+    im8 = Image.fromarray((band * 255).astype('uint8')).resize(size, Image.NEAREST)
+    return np.array(im8) > 127
+
+
+def _same_foot_twice(f0, f2):
+    """None if undecidable, else (ratio, is_same_foot)."""
+    a, b = _leg_band(f0), _leg_band(f2)
+    if a is None or b is None:
+        return None
+    plain = float(np.abs(a.astype(int) - b.astype(int)).mean())
+    mirror = float(np.abs(a.astype(int) - b[:, ::-1].astype(int)).mean())
+    if plain == 0:
+        return None
+    ratio = mirror / plain
+    return ratio, ratio > MIRROR_STEP_MAX
+
+
 def _components(mask):
     """Sizes of the connected opaque regions in a frame."""
     from collections import deque
@@ -114,7 +173,7 @@ def _components(mask):
     return sizes
 
 
-def check_raw(path, frames_expected, blobs, walk, tol):
+def check_raw(path, frames_expected, blobs, walk, tol, mirrored=False):
     problems = []
     img = bs.key_background(path, tol=tol)
     a = np.array(img)
@@ -180,11 +239,20 @@ def check_raw(path, frames_expected, blobs, walk, tol):
                 f'{path}: NO NEUTRAL — the middle frame is not a distinct standing pose '
                 f'(middle-vs-steps {d01:.1f}/{d12:.1f}, steps-vs-each-other {d02:.1f}). '
                 'Idle will look like walking on the spot.')
+        if mirrored:
+            verdict = _same_foot_twice(cut[0], cut[2])
+            if verdict and verdict[1]:
+                problems.append(
+                    f'{path}: SAME FOOT TWICE — the two step frames are not opposite steps '
+                    f'(mirrored/plain leg diff {verdict[0]:.2f}, must be under {MIRROR_STEP_MAX}). '
+                    'The same boot is lifted in both, so one leg never moves. Regenerate asking '
+                    "for frame 3 to be frame 1's mirror image from the waist down, naming the "
+                    "legs by the VIEWER'S left and right.")
     return problems
 
 
 def check_sheet(path, style, rows, cols):
-    problems = []
+    problems, soft = [], []
     a = np.array(Image.open(path).convert('RGBA'))
     h, w = a.shape[:2]
     # Every shipped sheet is laid out in CELL-sized cells, so the geometry can
@@ -202,6 +270,31 @@ def check_sheet(path, style, rows, cols):
             if not (cell[:, :, 3] > 0).any():
                 problems.append(f'{path}: EMPTY CELL at row {r}, col {c} — the cutter produced nothing there.')
 
+    # SAME FOOT TWICE, on the front and back rows. Rows 0 and 2 of a 3x3 sheet
+    # are the camera-on views, whose two step frames must be mirror opposites;
+    # the side row (1) is skipped — see the note on MIRROR_STEP_MAX — and an
+    # attack sheet is skipped by name, its outer frames being wind-up and
+    # recover rather than steps.
+    #
+    # WARNS rather than fails, unlike the same check in raw mode. A built sheet
+    # carries no record of what its columns mean: Dog Punk's rat sheet is the
+    # legacy [idle, walk, attack] layout, where "the two step frames" do not
+    # exist and the number is meaningless. In raw mode the caller passes
+    # --mirrored, which IS that assertion, so there it fails the build.
+    if rows == 3 and cols == 3 and 'attack' not in os.path.basename(path):
+        for r, name in ((0, 'front'), (2, 'back')):
+            fr = [Image.fromarray(a[r * ch:(r + 1) * ch, c * cw:(c + 1) * cw]) for c in (0, 2)]
+            verdict = _same_foot_twice(*fr)
+            if verdict and verdict[1]:
+                soft.append(
+                    f'{path}: SAME FOOT TWICE in the {name} row — its two step frames are not '
+                    f'opposite steps (mirrored/plain leg diff {verdict[0]:.2f}, must be under '
+                    f'{MIRROR_STEP_MAX}). The same boot is lifted in both, so one leg never '
+                    'moves. Rebuild that row with build_sheet.py --build-steps, which '
+                    'constructs both steps from the standing frame. (A WARNING, not a failure: '
+                    'a sheet cannot say whether its columns are [step, NEUTRAL, step] or the '
+                    'legacy [idle, walk, attack], and on a legacy sheet this means nothing.)')
+
     pal = bs.load_palette(style) if style else None
     if pal is not None:
         px = a[a[:, :, 3] > 0][:, :3].astype(np.int32)
@@ -214,7 +307,7 @@ def check_sheet(path, style, rows, cols):
                 problems.append(
                     f'{path}: PALETTE — {len(stray)} colour(s) outside lockedPalette ({shown}'
                     + (', …' if len(stray) > 6 else '') + '). Something bypassed the cutter.')
-    return problems
+    return problems, soft
 
 
 def check_frames(art_dir, char_id, dirs):
@@ -258,6 +351,8 @@ def main():
     r.add_argument('--frames', type=int, default=3)
     r.add_argument('--blobs', action='store_true')
     r.add_argument('--walk', action='store_true', help='also require a distinct neutral middle frame')
+    r.add_argument('--mirrored', action='store_true',
+                   help='front/back row: the two step frames must be opposite (mirrored) steps')
     r.add_argument('--tol', type=int, default=22)
 
     s = sub.add_parser('sheet', help='check a built sheet')
@@ -273,20 +368,25 @@ def main():
 
     args = ap.parse_args()
     if args.mode == 'raw':
-        problems = check_raw(args.image, args.frames, args.blobs, args.walk, args.tol)
+        problems = check_raw(args.image, args.frames, args.blobs, args.walk, args.tol, args.mirrored)
     elif args.mode == 'frames':
         problems, soft = check_frames(args.art_dir, args.char_id, args.dirs.split(','))
         for w in soft:
             print(f'WARNING {w}', file=sys.stderr)
     else:
-        problems = check_sheet(args.image, args.style, args.rows, args.cols)
+        problems, soft = check_sheet(args.image, args.style, args.rows, args.cols)
+        for w in soft:
+            print(f'WARNING {w}', file=sys.stderr)
 
+    subject = getattr(args, 'image', None) or args.char_id
     for p in problems:
         print(p, file=sys.stderr)
     if problems:
         print(f'{len(problems)} problem(s).', file=sys.stderr)
+        _announce(f'checked {subject} — FAILED ({len(problems)} problem(s))')
         sys.exit(1)
-    print(f'{getattr(args, "image", None) or args.char_id}: OK')
+    _announce(f'checked {subject} — passed')
+    print(f'{subject}: OK')
 
 
 if __name__ == '__main__':
