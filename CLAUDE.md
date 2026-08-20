@@ -121,6 +121,16 @@ design discussion. `shared/` holds the components every game reuses
     is the same size for all of them.
   - Raw generations go in `games/<id>/art-src/`; shipped sheets are rebuilt
     from them, never hand-edited.
+  - **The generator will not draw a technical diagram of its own picture.**
+    Tried, for room collision: one prompt asking for a two-panel sheet —
+    the finished room on the left, the same room's walkable floor filled
+    flat green on black on the right, so the mask would be authored with
+    the art and could never drift out of register with it. gpt-image-1
+    drew a cropped room in the left panel and left the right one blank
+    white. It will draw a sheet of THINGS (a walk cycle, a set of props);
+    it will not draw a second, schematic view of a scene it just painted.
+    Collision data has to be authored against the art afterwards — which
+    is what `.github/art/build_walkmask.py` does.
 
 ## Handling a clubhouse request
 

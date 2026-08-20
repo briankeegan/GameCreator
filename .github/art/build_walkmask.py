@@ -65,15 +65,24 @@ ROOMS = {
         ],
     },
     "arena": {
-        "floorTop": 96,
+        # The benches curve, so a straight floorTop across the room either
+        # fences the player off the floor that rises at the sides or lets
+        # them stand on the lowest tier. Cut high and let the bench block
+        # follow the curve instead.
+        "floorTop": 84,
         "blocks": [
-            [(16, 95), (112, 95), (104, 112), (16, 118)],        # stone benches
+            # the tiered stone benches, along their bottom edge
+            [(0, 84), (40, 96), (90, 90), (150, 84), (150, 60), (0, 60)],
+            [(0, 84), (0, 124), (34, 110), (44, 100), (40, 96)],
+            # the right-hand wall base, which sits lower than the benches do
+            [(252, 84), (320, 84), (320, 108), (300, 100), (262, 92)],
         ],
     },
     "house": {
         "floorTop": 100,
         "blocks": [
             [(104, 96), (214, 96), (214, 122), (104, 122)],      # kitchen table
+            [(250, 96), (284, 96), (284, 128), (250, 128)],      # round candle table
         ],
     },
 }
