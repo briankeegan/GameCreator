@@ -121,7 +121,11 @@ design discussion. `shared/` holds the components every game reuses
     is the same size for all of them.
   - Raw generations go in `games/<id>/art-src/`; shipped sheets are rebuilt
     from them, never hand-edited.
-- **Walk cycles follow the RPG-Maker charset convention.** Three frames per
+- **Top-down games with directional walking follow the RPG-Maker charset
+  convention.** This is the convention for that kind of game (the-game /
+  Newsey is the reference implementation) — a game with a different camera
+  or no walking doesn't need it, but any new top-down one should start
+  here rather than inventing its own frame scheme. Three frames per
   character per direction, named `<id>_<dir>_<0|1|2>.png`:
   - **Frame 1 (the MIDDLE one) is a true NEUTRAL pose** — standing still, legs
     together, arms relaxed. It is used BOTH when idle AND as the resting beat
