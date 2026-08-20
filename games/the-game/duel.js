@@ -832,8 +832,23 @@ window.NewseyDuel = (function () {
     }
   }
 
-  // How long each beat of the crush lasts, in frames at 60Hz.
-  var CRUSH_FALL = 26, CRUSH_FLAT = 12, CRUSH_GONE = 26, CRUSH_BACK = 20;
+  // How long each beat of the crush lasts, in frames at 60Hz. CRUSH_STAGGER
+  // is the window the board empties over — panels start falling at scattered
+  // moments inside it, so the collapse cascades instead of dropping as one
+  // slab of board. CRUSH_FLAT is also the beat the landed heap squashes down
+  // over, so the pile finishes compacting exactly as the fighter does.
+  var CRUSH_FALL = 26, CRUSH_STAGGER = 30, CRUSH_FLAT = 12,
+      CRUSH_GONE = 26, CRUSH_BACK = 20;
+  // What the heap compresses to. "the concrete slabs fell and literally
+  // smashed me flat" — panels that keep their square shape read as blocks set
+  // down on top of her, so they lose two thirds of their height, spread as
+  // they go, and the whole pile collapses toward the floor with them.
+  // Two separate numbers, and they have to be: HEAP_SQUASH is how flat each
+  // PANEL goes, HEAP_COLLAPSE how far the PILE settles. Driving both off one
+  // factor at 0.34 turned the heap into a six-pixel smear of colour bands
+  // with no panel readable in it — flat, but flat like a spill rather than
+  // like a stack of blocks that came down on somebody.
+  var HEAP_SQUASH = 0.5, HEAP_SPREAD = 1.32, HEAP_COLLAPSE = 0.55;
 
   function startCrush(side) {
     var L = state.layout, cell = L.cell;
@@ -867,31 +882,67 @@ window.NewseyDuel = (function () {
     // heap was fifteen pixels tall and read as a smear.
     var landCell = Math.max(4, Math.min(cell, L.floorRoom * 0.26));
     var pileX = cx - (E.WIDTH * landCell) / 2;   // the heap is centred on HER
-    var heapCap = Math.max(2, Math.floor(L.floorRoom / landCell) - 1);
+
+    // How deep each column's pile goes, counted BEFORE anything is placed, so
+    // the layer spacing can be squeezed to fit the floor strip. Clamping the
+    // depth instead — which is what this did first — stacked every panel past
+    // the cap at the identical spot: a full board came down as three visible
+    // layers and a hidden pile underneath, which is exactly the "they just
+    // land on top of you" read. Squeezing the spacing instead means a fuller
+    // board makes a DENSER heap, panels overlapping each other more, which is
+    // what being crushed together should look like.
+    var counts = {}, maxCount = 1;
+    for (var cr = 1; cr <= E.HEIGHT + 1; cr++) {
+      for (var cc = 1; cc <= E.WIDTH; cc++) {
+        var cp = stack.panelAt(cr, cc);
+        if (!cp || cp.color === 0 || cp.state === "popped") continue;
+        counts[cc] = (counts[cc] || 0) + 1;
+        if (counts[cc] > maxCount) maxCount = counts[cc];
+      }
+    }
+    var layerStep = Math.min(landCell * 0.92,
+      (L.floorRoom * 0.85 - landCell) / Math.max(1, maxCount - 1));
+    layerStep = Math.max(landCell * 0.16, layerStep);
     var perCol = {};
     for (var row = 1; row <= E.HEIGHT + 1; row++) {
       for (var col = 1; col <= E.WIDTH; col++) {
         var p = stack.panelAt(row, col);
         if (!p || p.color === 0 || p.state === "popped") continue;
-        var depth = Math.min(perCol[col] || 0, heapCap);
-        perCol[col] = (perCol[col] || 0) + 1;
+        var depth = perCol[col] || 0;
+        perCol[col] = depth + 1;
         // A little scatter, deterministic per panel: a heap of rubble, not a
         // second board stood on the floor.
         var jit = ((row * 7 + col * 13) % 5 - 2) * landCell * 0.16;
+        // THE ORDER IS SCATTERED, not a tidy top-down wave. Ordering purely
+        // by row swept the board clean one line at a time, which reads as the
+        // board being dismantled; ordering purely at random reads as noise.
+        // So: mostly a per-panel shuffle, with enough row bias left in that
+        // the top of the stack still tends to go first. The hash is
+        // deterministic, so the same board always collapses the same way and
+        // a screenshot check can't be flaky.
+        // A proper integer mix, not one XOR. The first version XOR'd two big
+        // multiples of row and col and took it mod 997, which for row and col
+        // in single digits barely moved: the cascade used half its window and
+        // clumped. The shift-and-multiply pass is what actually spreads small
+        // inputs across the range.
+        var h = (row * 374761393 + col * 668265263) >>> 0;
+        h = (h ^ (h >>> 13)) >>> 0;
+        h = Math.imul(h, 1274126177) >>> 0;
+        var shuffle = ((h >>> 8) & 0xffff) / 0xffff;
+        var rowBias = (E.HEIGHT + 1 - row) / (E.HEIGHT + 1);
         pieces.push({
           x0: pos.x + (col - 1) * cell,
           y0: bottom - row * cell - rise,
           s0: cell,
           x1: pileX + (col - 1) * landCell + jit,
-          // The lowest panel in a column lands on the floor and the ones
-          // above heap on it, so the pile keeps the shape the board had.
-          y1: g - landCell - depth * landCell * 0.92,
           s1: landCell,
+          // How far up the heap this one sits, in pixels, so the squash can
+          // collapse the whole pile toward the floor rather than flattening
+          // each panel where it lies.
+          lift: depth * layerStep,
           color: p.color,
           garbage: !!p.isGarbage,
-          // Top of the stack goes first: it has the furthest to fall, and it
-          // is what she is looking up at.
-          delay: (E.HEIGHT + 1 - row) * 1.1 + (col % 3),
+          delay: (rowBias * 0.4 + shuffle * 0.6) * CRUSH_STAGGER,
           spin: ((col + row) % 2 ? 1 : -1) * (0.18 + (row % 3) * 0.07)
         });
       }
@@ -906,7 +957,10 @@ window.NewseyDuel = (function () {
     for (var i = 0; i < queued; i++) {
       slabs.push({
         from: head - i * 9,
-        delay: (E.HEIGHT + 1) * 1.1 + 4 + i * 2,
+        // After the whole stagger window, so the slabs are genuinely the
+        // last thing down — tied to a row count instead, they landed in the
+        // middle of the cascade once the panels stopped falling in row order.
+        delay: CRUSH_STAGGER + 4 + i * 2,
         sway: (i % 2 ? 1 : -1) * (2 + i)
       });
     }
@@ -921,36 +975,43 @@ window.NewseyDuel = (function () {
                     stack: stack, impact: last + CRUSH_FALL };
   }
 
-  // One loose panel, drawn off the board: same gradient, same rounded corner,
-  // same glyph as drawPanel gives it in the stack, so a falling panel is
-  // recognisably the panel that was just sitting there. Kept separate rather
-  // than reusing drawPanel because that one needs a live engine panel and its
-  // stack for neighbour lookups, and these are a snapshot with neither.
-  function drawLoosePanel(ctx, piece, x, y, cell, rot) {
+  // Same gradient, same rounded corner, same glyph drawPanel gives it in the
+  // stack, so a falling panel is recognisably the panel that was just sitting
+  // there.
+  // One loose panel, drawn off the board about its CENTRE, with width and
+  // height given separately so a landed one can be squashed. Kept separate
+  // from drawPanel because that one needs a live engine panel and its stack
+  // for neighbour lookups, and these are a snapshot with neither.
+  function drawLoosePanel(ctx, piece, cx, cy, w, h, rot) {
     var pal = state.palette;
     ctx.save();
-    ctx.translate(x + cell / 2, y + cell / 2);
+    ctx.translate(cx, cy);
     ctx.rotate(rot);
     if (piece.garbage) {
       ctx.fillStyle = piece.color === 9 ? "#4a2f6a" : "#6a4a2f";
-      ctx.fillRect(-cell / 2, -cell / 2, cell, cell);
+      ctx.fillRect(-w / 2, -h / 2, w, h);
       ctx.strokeStyle = "#c9a7ff";
       ctx.lineWidth = 2;
-      ctx.strokeRect(-cell / 2, -cell / 2, cell, cell);
+      ctx.strokeRect(-w / 2, -h / 2, w, h);
     } else {
-      var inset = Math.max(1, Math.round(cell * 0.06));
-      var size = cell - inset * 2;
+      var inset = Math.max(1, Math.round(Math.min(w, h) * 0.06));
+      var iw = w - inset * 2, ih = h - inset * 2;
       var color = pal.colors[piece.color] || "#888";
-      var grad = ctx.createLinearGradient(0, -size / 2, 0, size / 2);
+      var grad = ctx.createLinearGradient(0, -ih / 2, 0, ih / 2);
       grad.addColorStop(0, lighten(color, 0.25));
       grad.addColorStop(1, color);
       ctx.fillStyle = grad;
-      roundRect(ctx, -size / 2, -size / 2, size, size, Math.max(2, cell * 0.16));
+      roundRect(ctx, -iw / 2, -ih / 2, iw, ih, Math.max(2, Math.min(iw, ih) * 0.16));
       ctx.fill();
       ctx.strokeStyle = "rgba(0,0,0,0.35)";
       ctx.lineWidth = 1;
       ctx.stroke();
-      drawShape(ctx, SHAPES[piece.color], 0, 0, size * 0.26);
+      // The glyph squashes with the panel rather than staying a circle on a
+      // flattened block, which is what gave the first squash away.
+      ctx.save();
+      ctx.scale(1, Math.max(0.15, ih / Math.max(1, iw)));
+      drawShape(ctx, SHAPES[piece.color], 0, 0, iw * 0.26);
+      ctx.restore();
     }
     ctx.restore();
   }
@@ -974,21 +1035,37 @@ window.NewseyDuel = (function () {
     ctx.save();
     ctx.globalAlpha = fade;
 
-    // The board's panels, on their way down.
+    // The board's panels, on their way down — and then squashing flat.
     for (var i = 0; i < c.pieces.length; i++) {
       var pc = c.pieces[i];
       var k = Math.max(0, Math.min(1, (c.t - pc.delay) / CRUSH_FALL));
-      if (k <= 0) {
-        // Still up on the board. drawBoard is no longer drawing this side, so
-        // it has to be drawn here or the stack blinks out before it falls.
-        drawLoosePanel(ctx, pc, pc.x0, pc.y0, pc.s0, 0);
-        continue;
-      }
-      var e = k * k;                       // dropped, not lowered
+      // How far THIS panel has compressed. It starts the moment this panel
+      // lands, so an early one is already flattening while a late one is
+      // still in the air, and they all finish together at impact + FLAT.
+      var sq = Math.max(0, Math.min(1,
+        (c.t - (pc.delay + CRUSH_FALL)) / CRUSH_FLAT));
+      var hs = 1 - (1 - HEAP_SQUASH) * sq;   // loses height under the weight
+      var ws = 1 + (HEAP_SPREAD - 1) * sq;   // and spreads sideways as it does
+
+      var e = k * k;                         // dropped, not lowered
+      var size = pc.s0 + (pc.s1 - pc.s0) * e;
+      var w = size * ws, h = size * hs;
+
+      // Where it comes to rest: the whole heap collapses with the panels, so
+      // the pile ends as a flat mat on the floor rather than a neat stack of
+      // squashed blocks each sitting at its old height.
+      // HEAP_SPREAD pushes the outer columns outward as they flatten, which
+      // on a phone walked the left edge of the pile off the canvas — the
+      // player's board sits close to the frame edge there.
+      var restCx = cx + (pc.x1 + pc.s1 / 2 - cx) * ws;
+      restCx = Math.max(w / 2 + 2, Math.min(L.w - w / 2 - 2, restCx));
+      var restCy = g - h / 2 - pc.lift * (1 - (1 - HEAP_COLLAPSE) * sq);
+
+      var fromCx = pc.x0 + pc.s0 / 2, fromCy = pc.y0 + pc.s0 / 2;
       drawLoosePanel(ctx, pc,
-                     pc.x0 + (pc.x1 - pc.x0) * e,
-                     pc.y0 + (pc.y1 - pc.y0) * e,
-                     pc.s0 + (pc.s1 - pc.s0) * e,
+                     fromCx + (restCx - fromCx) * e,
+                     fromCy + (restCy - fromCy) * e,
+                     w, h,
                      // spin while airborne, land square: a panel resting at an
                      // angle reads as debris, and these are still the game's
                      // own panels.
@@ -1475,7 +1552,13 @@ window.NewseyDuel = (function () {
           panels: state.crush.pieces.length,
           slabs: state.crush.slabs.length,
           impact: state.crush.impact,
-          colors: state.crush.pieces.map(function (p) { return p.color; })
+          colors: state.crush.pieces.map(function (p) { return p.color; }),
+          // When each one starts falling, in board order, so a check can see
+          // that the collapse is SCATTERED rather than a tidy top-down wave.
+          delays: state.crush.pieces.map(function (p) { return p.delay; }),
+          stagger: CRUSH_STAGGER,
+          // How flat the heap ends up, so the squash can't quietly go away.
+          squash: HEAP_SQUASH
         },
         autoplay: function (difficulty) {
           state.autopilot = new window.PanelCpu.Cpu(state.player, {

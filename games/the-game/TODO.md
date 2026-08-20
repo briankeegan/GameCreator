@@ -105,6 +105,25 @@ Three things that had to be right and were not, first time:
   standing inside her own board, and the result card came up over a pile with
   nobody visible under it.
 
+And two more after watching it: the panels fell as a tidy top-down wave, which
+reads as the board being *dismantled*, and they landed as intact squares
+stacked on her rather than crushed together.
+- **The collapse is scattered.** Each panel starts falling at its own moment
+  inside a `CRUSH_STAGGER` window — mostly a per-panel hash, with enough row
+  bias left in that the top still tends to go first. Deterministic, so the
+  same board always collapses the same way. The hash matters: the first one
+  XOR'd two big multiples of row and col and took it mod 997, which for
+  single-digit inputs barely moved — the cascade used half its window and
+  clumped, and the check caught it.
+- **The heap squashes.** `HEAP_SQUASH` is how flat each panel goes,
+  `HEAP_COLLAPSE` how far the pile settles, and they are separate numbers:
+  driving both off one factor turned the heap into a six-pixel smear with no
+  panel readable in it. Layer spacing is squeezed to fit the floor strip
+  rather than the depth being clamped — clamping stacked everything past the
+  cap at one spot, so a full board came down as three visible layers with the
+  rest hidden underneath, which is exactly the "they just land on top of you"
+  read. Squeezing means a fuller board makes a *denser* heap.
+
 Watch the phone case. `cell` is already width-bound at ~29px on a 390px
 screen, so the floor strip costs height that is there; on a SHORT wide window
 it is not, so cap the strip the way `orbRoom` is capped and let the board win.
