@@ -318,7 +318,7 @@ window.NEWSEY_STORY = (function () {
           lines: [
             "Hello there. They call me Kat. What's your name?",
             "I'll buy you a drink — if you duel me. No better way to learn!",
-            "Step through the mirror in your room when you're ready — I'll be waiting on the other side."
+            "Step through the portal when you're ready — I'll be waiting on the other side."
           ],
           setsFlag: "duelInvite"
         },
@@ -327,7 +327,7 @@ window.NEWSEY_STORY = (function () {
           lines: [
             "You again? Stay out of my way.",
             "Something doesn't add up about the new arrivals lately. Watch yourself.",
-            "…Fine. If you want to know what a champion plays like, meet me through the mirror in your room."
+            "…Fine. If you want to know what a champion plays like, meet me through the portal."
           ],
           setsFlag: "duelInvite"
         },
