@@ -37,7 +37,6 @@ window.NewseyMenu = (function () {
     current = name;
     layer.hidden = false;
     Object.keys(screens).forEach(function (k) { screens[k].hidden = k !== name; });
-    menuBtn.hidden = true;
     hideConfirm();
     if (name === "files") renderFiles();
     if (name === "pause") renderPauseMeta();
@@ -48,7 +47,6 @@ window.NewseyMenu = (function () {
     layer.hidden = true;
     Object.keys(screens).forEach(function (k) { screens[k].hidden = true; });
     hideConfirm();
-    menuBtn.hidden = !window.NewseyGame.canPause();
   }
 
   var toastTimer = null;

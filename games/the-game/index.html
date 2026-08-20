@@ -59,9 +59,8 @@
       <div class="duel-screen" id="duelScreen" hidden>
         <canvas id="duelCanvas"></canvas>
         <div class="duel-bar">
+          <!-- No forfeit button: a duel ends by being played out. -->
           <div class="duel-topline">
-            <button class="duel-btn duel-small" id="duelQuit">✕ forfeit</button>
-            <button class="duel-btn duel-small" id="duelSettings" title="Controls and key bindings">⚙</button>
             <div class="duel-hint" id="duelHint"></div>
           </div>
           <!-- On-screen controls: the same scheme as the original game — move a
@@ -74,8 +73,13 @@
               <button data-dir="right">▶</button>
               <button data-dir="down">▼</button>
             </div>
-            <button class="duel-btn duel-swap" id="duelSwap">SWAP</button>
-            <button class="duel-btn duel-raise" id="duelRaise">RAISE</button>
+            <!-- Grouped so the row is [pad] … [actions], the same two-item
+                 shape as the walk-around controls. Three loose items put SWAP
+                 in the middle of the screen instead of under a thumb. -->
+            <div class="duel-actions">
+              <button class="duel-btn duel-swap" id="duelSwap">SWAP</button>
+              <button class="duel-btn duel-raise" id="duelRaise">RAISE</button>
+            </div>
           </div>
         </div>
         <div class="duel-result" id="duelResult" hidden>

@@ -221,8 +221,17 @@ new session — rewrite them as needed. What they cover, worth re-covering:
    migration of a legacy `gc:the-game:save`.
 2. **Save point** — the bed is in interact range from the floor below it,
    its dialogue saves the file, and line progress persists.
-3. **Duels** — ☰ hides during a duel, Escape won't pause one, forfeit
-   restores the button, quitting to title tears a live duel down.
+3. **Duels** — ☰ hides during a duel, Escape neither pauses nor ends one
+   (there is no forfeit), quitting to title tears a live duel down.
+4. **The opening** — the intro fades to black and back up on her asleep in
+   bed, the knocking reads, moving gets her up (wait out `player.bedSlide`
+   before driving her anywhere), downstairs, open the front door, Chuck
+   takes over, and the flag survives a reload.
+5. **The bed** — lean into `bedZone` and she climbs in, which writes the
+   file; press away and she gets back out.
+6. **Swapping** — all three gestures: drag sideways, tap the seam between
+   two panels, tap one panel then its neighbour. Wait for
+   `NewseyDuel.debug().countdown === 0` first or every swap is refused.
 
 Plus the repo's own gate: `node .github/autopilot/smoke-test.js
 games/the-game/index.html` (needs `playwright` installed at the repo root —
