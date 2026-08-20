@@ -494,34 +494,46 @@ function friendlyTime(iso) {
     " " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+// Renders as a bubble IN the thread, not a status panel floating below it —
+// it's Claude talking about what it's doing, so it belongs in the
+// conversation the same way any other reply from Claude does. Lives inside
+// threadEl so it scrolls and stacks with everything else; renderMessages
+// wipes threadEl's innerHTML whenever the message set changes, which would
+// silently orphan a stale copy of this element, so it's always removed and
+// (if there's still text) freshly re-appended at the end on every call.
 function renderWorking(text) {
-  var el = document.getElementById("working");
-  if (!el) {
-    if (!text) return;
-    el = document.createElement("div");
-    el.id = "working";
-    el.className = "thread-status working";
-    threadEl.parentNode.insertBefore(el, threadEl.nextSibling);
+  var existing = document.getElementById("working");
+  if (existing) existing.remove();
+  var thinkingEl = document.getElementById("thinkingNote");
+  if (!text) {
+    return;
   }
-  if (!text) { el.style.display = "none"; return; }
-  el.style.display = "block";
-  // Show the latest line big and the rest as the trail behind it — what it is
-  // doing NOW is the thing being asked.
+  // The working bubble already says something concrete is happening — the
+  // generic "Claude is thinking…" placeholder under it would just be noise.
+  if (thinkingEl) thinkingEl.classList.remove("visible");
   var lines = text.split("\n").filter(function (l) { return l.trim(); });
   var latest = lines[lines.length - 1].replace(/^-\s*/, "");
-  el.innerHTML = "";
-  var head = document.createElement("div");
-  head.className = "working-now";
-  head.textContent = "Claude is working — " + latest;
-  el.appendChild(head);
+  var bubble = document.createElement("div");
+  bubble.id = "working";
+  bubble.className = "bubble claude working";
+  var who = document.createElement("span");
+  who.className = "who";
+  who.textContent = "Claude";
+  bubble.appendChild(who);
+  var body = document.createElement("div");
+  body.className = "msg-body working-now";
+  body.textContent = "is working — " + latest;
+  bubble.appendChild(body);
   if (lines.length > 1) {
     var trail = document.createElement("div");
     trail.className = "working-trail";
     trail.textContent = lines.slice(0, -1).map(function (l) {
       return l.replace(/^-\s*/, "");
     }).join(" · ");
-    el.appendChild(trail);
+    bubble.appendChild(trail);
   }
+  threadEl.appendChild(bubble);
+  threadEl.scrollTop = threadEl.scrollHeight;
 }
 
 function renderMessages(messages) {

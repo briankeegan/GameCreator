@@ -275,18 +275,17 @@ body { display: flex; flex-direction: column; height: 100svh; }
 .msg-body img { max-width: 100%; border-radius: 10px; display: block; margin: 0 0 8px; }
 
 /* Live progress from an autopilot run — one comment on the PR, edited in
-   place, surfaced here while it is the newest thing in the thread. Not a
-   message bubble: it is transient, it is not addressed to anyone, and it
-   vanishes the moment Claude's actual reply lands after it. It exists because
-   a run answers in about twelve minutes and the silence before that is what
-   made people ask whether the thing was broken. */
-.thread-status.working { text-align: left; padding: 8px 12px; margin: 4px 0 10px;
-  border-left: 3px solid #7bb0a0; background: rgba(123, 176, 160, 0.10);
-  border-radius: 0 6px 6px 0; }
-.working-now { color: #d8cfc6; font-size: 0.8rem; }
+   place, surfaced here while it is the newest thing in the thread. Renders
+   as an ordinary Claude bubble (it IS Claude, talking about what it's doing)
+   rather than a separate panel: it's transient and vanishes the moment
+   Claude's actual reply lands after it, but it belongs in the conversation
+   flow, not off to the side of it. It exists because a run answers in about
+   twelve minutes and the silence before that is what made people ask
+   whether the thing was broken. */
+.bubble.working { opacity: 0.82; }
 .working-now::before { content: "●"; color: #7bb0a0; margin-right: 6px;
   animation: workingPulse 1.4s ease-in-out infinite; display: inline-block; }
-.working-trail { color: #9a8f86; font-size: 0.68rem; margin-top: 3px; line-height: 1.4; }
+.working-trail { color: rgba(255, 255, 255, 0.55); font-size: 0.72rem; margin-top: 5px; line-height: 1.4; }
 @keyframes workingPulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .working-now::before { animation: none; opacity: 1; }
