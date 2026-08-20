@@ -1056,58 +1056,89 @@
 
   // PLOT.md / the verbatim plot: the lounge's duel portals are "doorways that
   // appeared to open into a swirling, purple void". The room art doesn't draw
-  // one, and a generated PNG can't swirl, so it's drawn here: a standing oval
-  // of void with arms turning inside it, a hot rim, and the same pool of light
-  // on the floor every other way-through gets. It winds up as you approach.
+  // one and a generated PNG can't swirl, so it's drawn here — as a DOORWAY,
+  // stone jambs and an arched head, with the void standing inside it. Drawn as
+  // a disc first, it read as a ball sitting on the floor rather than something
+  // you walk through. It winds up as you approach.
   function drawPortal(npc) {
     var t = portalPhase;
     var px = player.x + player.w / 2, py = player.y + player.h;
-    var d = Math.hypot(px - npc.x, py - npc.y);
-    var near = Math.max(0, Math.min(1, (46 - d) / 26)); // 0 far, 1 standing in it
-    var w = 15, h = 21;                                 // the doorway's opening
-    var cx = npc.x, cy = npc.y - h + 3;                 // stood on its own feet point
+    var near = Math.max(0, Math.min(1, (46 - Math.hypot(px - npc.x, py - npc.y)) / 26));
+    var w = 13, h = 34;            // the opening: half-width, full height
+    var frame = 3;                 // thickness of the stone surround
 
     drawFloorGlow(npc);
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(1, h / w);
 
-    // the void itself
-    var back = ctx.createRadialGradient(0, 0, 1, 0, 0, w);
-    back.addColorStop(0, "#05000c");
-    back.addColorStop(0.55, "rgba(58,12,110," + (0.85 + near * 0.15) + ")");
-    back.addColorStop(1, "rgba(120,40,200,0)");
-    ctx.fillStyle = back;
-    ctx.beginPath(); ctx.arc(0, 0, w, 0, Math.PI * 2); ctx.fill();
-
-    // arms of the swirl, wound in toward the middle
-    ctx.globalCompositeOperation = "lighter";
-    for (var a = 0; a < 4; a++) {
+    // The arch, twice: once as stone, once as the hole in it.
+    function arch(hw, hh) {
       ctx.beginPath();
-      for (var k = 0; k <= 14; k++) {
-        var f = k / 14;
-        var r = w * (0.14 + f * 0.82);
-        var ang = a * Math.PI / 2 + t * (1.1 + near * 0.9) + f * 2.5;
+      ctx.moveTo(-hw, 0);
+      ctx.lineTo(-hw, -(hh - hw));
+      ctx.arc(0, -(hh - hw), hw, Math.PI, 0);
+      ctx.lineTo(hw, 0);
+      ctx.closePath();
+    }
+    ctx.save();
+    ctx.translate(npc.x, npc.y);
+
+    ctx.fillStyle = "#2a2036";
+    arch(w + frame, h + frame); ctx.fill();
+    ctx.fillStyle = "#3a2f4c";
+    arch(w + frame - 1.2, h + frame - 1.2); ctx.fill();
+
+    ctx.save();
+    arch(w, h); ctx.clip();
+
+    // the void, filling the opening
+    var cy = -h * 0.55, rad = h * 0.55;
+    ctx.save();
+    ctx.translate(0, cy);
+    ctx.scale(w / rad, 1);
+    var back = ctx.createRadialGradient(0, 0, 1, 0, 0, rad);
+    back.addColorStop(0, "#06000e");
+    back.addColorStop(0.5, "rgba(58,12,110," + (0.9 + near * 0.1) + ")");
+    back.addColorStop(1, "rgba(120,40,200,0.55)");
+    ctx.fillStyle = back;
+    ctx.beginPath(); ctx.arc(0, 0, rad * 1.6, 0, Math.PI * 2); ctx.fill();
+
+    // arms winding in toward the middle
+    ctx.globalCompositeOperation = "lighter";
+    for (var a = 0; a < 5; a++) {
+      ctx.beginPath();
+      for (var k = 0; k <= 16; k++) {
+        var f = k / 16;
+        var r = rad * (0.1 + f * 1.0);
+        var ang = a * (Math.PI * 2 / 5) + t * (1.0 + near * 0.9) + f * 2.8;
         var x = Math.cos(ang) * r, y = Math.sin(ang) * r;
         if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.strokeStyle = a % 2 ? "rgba(214,124,255," + (0.30 + near * 0.35) + ")"
                               : "rgba(140,70,240," + (0.26 + near * 0.30) + ")";
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = 1.7;
       ctx.stroke();
     }
+    // motes pulled in along the arms
+    for (var m = 0; m < 7; m++) {
+      var mf = ((t * 0.42 + m / 7) % 1);
+      var mr = rad * (1.05 - mf);
+      var ma = m * 1.7 + t * 1.5 + mf * 5;
+      ctx.fillStyle = "rgba(240,205,255," + (0.7 * (1 - Math.abs(mf - 0.5) * 2) + 0.1) + ")";
+      ctx.beginPath(); ctx.arc(Math.cos(ma) * mr, Math.sin(ma) * mr, 0.9, 0, Math.PI * 2); ctx.fill();
+    }
     // the eye at the centre
-    var eye = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 0.3);
-    eye.addColorStop(0, "rgba(255,235,255," + (0.5 + near * 0.4) + ")");
+    var eye = ctx.createRadialGradient(0, 0, 0, 0, 0, rad * 0.34);
+    eye.addColorStop(0, "rgba(255,240,255," + (0.55 + near * 0.4) + ")");
     eye.addColorStop(1, "rgba(200,120,255,0)");
     ctx.fillStyle = eye;
-    ctx.beginPath(); ctx.arc(0, 0, w * 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, rad * 0.34, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
     ctx.globalCompositeOperation = "source-over";
+    ctx.restore();
 
-    // hot rim, breathing
+    // hot rim around the opening, breathing
     ctx.strokeStyle = "rgba(226,160,255," + (0.55 + near * 0.35) + ")";
-    ctx.lineWidth = 1.4 + Math.sin(t * 2) * 0.25;
-    ctx.beginPath(); ctx.arc(0, 0, w - 0.6, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 1.3 + Math.sin(t * 2) * 0.25;
+    arch(w - 0.5, h - 0.5); ctx.stroke();
     ctx.restore();
   }
 
