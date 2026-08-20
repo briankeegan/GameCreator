@@ -6,3 +6,7 @@
 # Playwright is installed on demand to run games/*/browser.test.js — the repo
 # itself has no build system and ships nothing from here.
 node_modules/
+
+# stray bytecode from running the art pipeline locally
+__pycache__/
+*.pyc

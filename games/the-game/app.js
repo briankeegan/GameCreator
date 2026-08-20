@@ -469,6 +469,83 @@
     }
     return false;
   }
+  // NPCs are people (or furniture, for the save point), not floor markings —
+  // walking straight through one looked wrong and was reported live. Treated
+  // as a small circle at their feet; savePoint is skipped since a bed is
+  // already covered by the room's own obstacles list.
+  var NPC_COLLIDE_RADIUS = 8;
+  // Returns the blocking NPC (not just true/false) so a sustained shove can
+  // be attributed to a specific person and made to step aside — see the push
+  // handling in update().
+  function npcAt(room, x, y) {
+    var cx = x + player.w / 2, cy = y + player.h;
+    for (var i = 0; i < room.npcs.length; i++) {
+      var npc = room.npcs[i];
+      if (npc.savePoint) continue;
+      if (Math.hypot(cx - npc.x, cy - npc.y) < NPC_COLLIDE_RADIUS) return npc;
+    }
+    return null;
+  }
+  // ---- NPC wandering ----
+  // Small, slow drift around each NPC's spawn point so a room doesn't read as
+  // a row of statues. Deliberately gentle (short radius, slow speed) — these
+  // are people standing around talking, not patrolling guards, and they must
+  // stay reachable for dialogue. State lives on the npc object itself so it
+  // persists as long as the room does; (re)initialized the first time a room's
+  // NPCs are seen.
+  var WANDER_RADIUS = 18, WANDER_SPEED = 12;
+  function ensureWanderState(npc) {
+    if (npc._wander) return npc._wander;
+    var w = { homeX: npc.x, homeY: npc.y, tx: npc.x, ty: npc.y, pause: Math.random() * 2 };
+    npc._wander = w;
+    return w;
+  }
+  function pickWanderTarget(w) {
+    var a = Math.random() * Math.PI * 2, r = Math.random() * WANDER_RADIUS;
+    w.tx = w.homeX + Math.cos(a) * r;
+    w.ty = w.homeY + Math.sin(a) * r * 0.5; // flatter spread — rooms read wider than tall
+  }
+  function updateNpcWander(room, npc, dt) {
+    if (npc.savePoint || npc._noWander) return;
+    var w = ensureWanderState(npc);
+    if (w.pause > 0) { w.pause -= dt; return; }
+    var dx = w.tx - npc.x, dy = w.ty - npc.y, d = Math.hypot(dx, dy);
+    if (d < 1.5) { pickWanderTarget(w); w.pause = 1 + Math.random() * 2.5; return; }
+    var step = Math.min(d, WANDER_SPEED * dt);
+    var nx = npc.x + (dx / d) * step, ny = npc.y + (dy / d) * step;
+    // Never wander into an obstacle, off the floor, into another NPC, or
+    // into the player — reuse the same checks movement uses.
+    var f = clampToFloor(room, nx - player.w / 2, ny - player.h);
+    nx = f.x + player.w / 2; ny = f.y + player.h;
+    if (blockedByObstacle(room, nx - player.w / 2, ny - player.h)) { pickWanderTarget(w); return; }
+    var pd = Math.hypot(nx - (player.x + player.w / 2), ny - (player.y + player.h));
+    var curPd = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h));
+    // Block a step that would walk INTO the player, but never one that's
+    // increasing the distance — otherwise a step-aside (registerPush, whose
+    // whole target is "away from the player") could never actually clear the
+    // same radius it's trying to escape.
+    if (pd < NPC_COLLIDE_RADIUS + 4 && pd < curPd) return;
+    npc.x = nx; npc.y = ny;
+  }
+  // Walking into someone and holding it blocks forever otherwise — a real
+  // wall is fine to just stop at, a person shouldn't be. After ~2s of
+  // sustained shove they step out of the way (away from the player, along
+  // the current floor), then resume their normal wander from there.
+  var PUSH_THRESHOLD = 2, PUSH_STEP = 22;
+  var pushedNpc = null, pushTimer = 0;
+  function registerPush(room, npc, dt) {
+    if (npc !== pushedNpc) { pushedNpc = npc; pushTimer = 0; }
+    pushTimer += dt;
+    if (pushTimer < PUSH_THRESHOLD) return;
+    var w = ensureWanderState(npc);
+    var dx = npc.x - (player.x + player.w / 2), dy = npc.y - (player.y + player.h);
+    var d = Math.hypot(dx, dy) || 1;
+    var f = clampToFloor(room, npc.x + (dx / d) * PUSH_STEP - player.w / 2, npc.y + (dy / d) * PUSH_STEP - player.h);
+    w.tx = f.x + player.w / 2; w.ty = f.y + player.h;
+    w.homeX = w.tx; w.homeY = w.ty; // step-aside becomes their new "home" — they don't snap back into the player
+    w.pause = 0;
+    pushedNpc = null; pushTimer = 0;
+  }
   // A gamepad's "talk" button is edge-triggered here: held down it would
   // otherwise re-trigger the conversation every frame.
   var padInteractWasDown = false;
@@ -509,13 +586,18 @@
       // or obstacle instead of fully stopping the moment either axis hits
       // something.
       var tryX = clampToFloor(currentRoom, player.x + dx * player.speed * dt, player.y);
-      if (!blockedByObstacle(currentRoom, tryX.x, player.y)) player.x = tryX.x;
+      var blockerX = npcAt(currentRoom, tryX.x, player.y);
+      if (blockerX && !blockedByObstacle(currentRoom, tryX.x, player.y)) registerPush(currentRoom, blockerX, dt);
+      if (!blockerX && !blockedByObstacle(currentRoom, tryX.x, player.y)) player.x = tryX.x;
       var tryY = clampToFloor(currentRoom, player.x, player.y + dy * player.speed * dt);
-      if (!blockedByObstacle(currentRoom, player.x, tryY.y)) player.y = tryY.y;
+      var blockerY = npcAt(currentRoom, player.x, tryY.y);
+      if (blockerY && !blockedByObstacle(currentRoom, player.x, tryY.y)) registerPush(currentRoom, blockerY, dt);
+      if (!blockerY && !blockedByObstacle(currentRoom, player.x, tryY.y)) player.y = tryY.y;
       isWalking = true;
       walkPhase += dt * 9; // frame-cycle speed (~3 pose changes/sec); unrelated to player.speed so it stays readable
     } else {
       isWalking = false;
+      pushedNpc = null; pushTimer = 0;
     }
     // exits
     // Doors stay disarmed until you step off them, so arriving in a doorway
@@ -530,6 +612,7 @@
     });
     if (!onExit) exitsArmed = true;
     interactHint.hidden = !nearestNpc();
+    currentRoom.npcs.forEach(function (npc) { updateNpcWander(currentRoom, npc, dt); });
   }
 
   // ---- rendering ----
@@ -641,7 +724,7 @@
     var hasSprite = spriteEntry && spriteEntry.ok && spriteEntry.img.naturalHeight;
 
     ctx.fillStyle = "rgba(0,0,0,0.4)";
-    ctx.beginPath(); ctx.ellipse(npc.x, npc.y + 3, 11, 3.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(npc.x, npc.y, 11, 3.4, 0, 0, Math.PI * 2); ctx.fill();
 
     if (hasSprite) {
       var img = spriteEntry.img;
@@ -672,7 +755,7 @@
     var d = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h / 2));
     if (d < 26) {
       ctx.strokeStyle = "rgba(255,255,255,0.55)";
-      ctx.beginPath(); ctx.ellipse(npc.x, npc.y + 3, 15, 4.6, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(npc.x, npc.y, 15, 4.6, 0, 0, Math.PI * 2); ctx.stroke();
     }
   }
 
@@ -728,6 +811,12 @@
     var wantId = human ? "nella_human_top" : frames[frameIdx];
     var entry = loadArt(wantId);
     if (!(entry && entry.ok)) entry = loadArt("nella_top"); // fallback while directional art is missing
+    // Same ground shadow every NPC gets — the player was the one figure in
+    // the scene standing on nothing, a mismatch reported live as "floating".
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath();
+    ctx.ellipse(player.x + player.w / 2, player.y + player.h, 11, 3.4, 0, 0, Math.PI * 2);
+    ctx.fill();
     if (entry && entry.ok) {
       var img = entry.img;
       var size = spriteDrawSize(img, 30), w = size.w, h = size.h;
