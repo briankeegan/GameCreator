@@ -235,14 +235,6 @@ window.NewseyMenu = (function () {
     window.NewseyGame.save();
     showTitle();
   });
-  document.getElementById("pauseErase").addEventListener("click", function () {
-    var slot = window.NewseyGame.activeSlot();
-    confirm("Erase File " + slot + " and go back to the title? Everything on it is gone for good.", "ERASE", function () {
-      SAVES.erase(slot);
-      showTitle();
-      toast("File " + slot + " erased.");
-    });
-  });
 
   // ---------- keys ----------
   // On the title screen any key is START, the way it always was. Elsewhere
