@@ -293,7 +293,7 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "john", x: 260, y: 155, art: "john", sprite: "john_top",
+          id: "john", x: 225, y: 158, art: "john", sprite: "john_top",
           lines: [
             "I am John Boxley. Creator of Puzzle Attack. I am trapped in Infinity. And now, so are you.",
             "A deal was struck for your soul, in exchange for magical powers. It didn't work the way I thought it would.",
