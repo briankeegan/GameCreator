@@ -35,29 +35,40 @@ Things spotted while working. Don't act on these without a nod from the owner.
 
 ## Done
 
-- **Game shell** (`ffd5673`) — title screen, three save files, file select
-  with PLAY/COPY/ERASE, pause menu, save point at the Infinity bed, autosave,
+- **Game shell** — title screen, three save files, file select with
+  PLAY/COPY/ERASE, pause menu, save point at the Infinity bed, autosave,
   playtime clock, resume-where-you-stood, migration of the old single save
   into File 1.
-- **Replay intro removed** (`ffd5673`) — starting a new file plays it.
-- **Erase is start-screen only** (`ddf36da`) — dropped from the pause menu.
-- **No more "Next ▶" chips** (`44f7874`) — the whole dialogue panel is the
-  tap target, so the chip was decoration that read like the only way through.
-- **Portraits stopped bleeding across cutscene slides** (`44f7874`) — a
-  portrait belongs to its own line now. Child Nella appears on the opening
-  line only; the mid-scream face no longer sits through four calm lines.
+- **Replay intro removed**; **erase is start-screen only**.
+- **No more "Next ▶" chips**, and **portraits stopped bleeding across
+  cutscene slides** — a portrait belongs to its own line now.
 - **A real opening** — the intro fades to black on its last slide and comes
   back up on Nella asleep in her own room upstairs (new room
   `home_bedroom`, new background art), knocking at the front door. Move to
   get out of bed, take the stairs down, and the closed door in the living
-  room is now something you open — which is what brings Chuck inside. The
-  dream cutscene fades the same way, since its last line says it does.
-- **Every room got real walls and marked doors** — each room now has its own
-  `floor` rect measured off its art (the shared default was wider than every
-  room, so you could walk out through the walls), the front door and the
-  lounge portal draw as glowing markers instead of a disc with a letter
-  stamped on it, and every doorway carries the same pulsing marker plus the
-  name of where it goes once you're standing on it.
+  room is what brings Chuck inside. The dream cutscene fades the same way.
+- **Walking is bounded by the floor the artist drew.** Per-room
+  `art/walk-<room>.png` masks, baked by `.github/art/build_walkmask.py`
+  (white = walkable), sampled under her feet. Corrected the arena's bench
+  line, which a straight wall line cut across, and the house's candle
+  table, which you could walk through.
+
+## Collision — how to change it
+
+`.github/art/build_walkmask.py` owns it. Each room declares its wall line
+and what stands on its floor; the room's OUTLINE comes free from the art's
+own silhouette, which is what makes the diagonal corners right. Re-run
+`python3 .github/art/build_walkmask.py games/the-game [room ...]` after
+changing a background, and LOOK at the result before believing it.
+
+Five things were tried and failed before this, worth not repeating: a
+rectangle (no room here is one), a hand-traced polygon per room (magic
+numbers that go stale the moment a background is regenerated), a flood
+fill of the black around a room (leaks up any wall where floor and wall
+meet in a gradient, and can't tell a wall face from the floor beside it),
+climbing each column to the first hard edge (stops on a grout line, and on
+the rune painted on the arena floor), and asking the image generator to
+draw the mask alongside the room in one sheet (see CLAUDE.md — it won't).
 
 ## Testing
 
