@@ -251,7 +251,14 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "devil", x: 150, y: 155, art: "devil", sprite: "devil_top",
+          // The plot has no one standing in this room: you walk up to the
+          // mirror, see yourself with horns, and the devil pops up IN the
+          // mirror like a TV, welcomes you, then it's over — not a
+          // character who lives here. `marker: true` (no label, unlike
+          // "SAVE"/"OPEN") makes this purely an invisible interact point at
+          // the mirror's own spot; talking still shows him as the speaker
+          // (CHARACTERS.devil) exactly like it did as a standing NPC.
+          id: "devil", x: 70, y: 102, art: "devil", sprite: null, marker: true,
           lines: [
             "Hello, and welcome to Infinity! You may notice your appearance has changed — that's your magical avatar.",
             "Your bracelet is copper, to reflect your rank, and aquamarine for your playstyle. These can change.",
