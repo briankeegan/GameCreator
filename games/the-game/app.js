@@ -345,10 +345,13 @@
     var room = currentRoom, tries = 0;
     var settle = setInterval(function () {
       if (currentRoom !== room || ++tries > 40) return clearInterval(settle);
-      if (walkMask(room).ready) {
-        clearInterval(settle);
-        if (!canStand(room, player.x, player.y)) placeOnFloor(room, player.x, player.y);
-      }
+      if (!walkMask(room).ready) return;
+      clearInterval(settle);
+      // Asleep in bed is the one time she is legitimately not on the floor —
+      // re-placing her then dumped her on the floorboards beside the bed as a
+      // head with no body, which is how this was spotted.
+      if (player.inBed) return;
+      if (!canStand(room, player.x, player.y)) placeOnFloor(room, player.x, player.y);
     }, 50);
     if (save) { save.room = roomId; persist(); } // walking through a door autosaves
   }

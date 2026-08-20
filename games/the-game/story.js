@@ -118,7 +118,7 @@ window.NEWSEY_STORY = (function () {
       playerForm: "human",
       // Where you're lying when the screen fades up, and where you stand the
       // moment you move. app.js reads both (see player.inBed).
-      bedSpot: { x: 74, y: 80 },
+      bedSpot: { x: 82, y: 82 },
       // The top edge of the blanket in the art — she's drawn clipped to above
       // this line while asleep, so the covers cover her.
       bedClipY: 88,
