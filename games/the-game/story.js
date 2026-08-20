@@ -183,6 +183,11 @@ window.NEWSEY_STORY = (function () {
         },
         {
           id: "chuck", x: 108, y: 126, art: "chuck", sprite: "chuck_top",
+          // Where he starts the instant the door opens — the door's own
+          // spot, x/y above — so app.js can walk him from there to his real
+          // resting spot instead of having him simply appear already
+          // standing in the room.
+          entryFrom: { x: 74, y: 106 },
           needs: "chuckIn",
           lines: [
             "Nella! Get out of the rain!",

@@ -520,7 +520,20 @@
       if (wasTalking.npc.thenTalk) {
         var next = null;
         roomNpcs(currentRoom).forEach(function (n) { if (n.id === wasTalking.npc.thenTalk) next = n; });
-        if (next) { talking = { npc: next, lineIndex: npcLineCounters[next.id] || 0 }; renderTalk(); }
+        if (next && next.entryFrom) {
+          // He's appearing for the first time this flag flip — spawn him at
+          // the door and walk him to his real spot instead of having him
+          // simply materialize already standing in the room. Reported live
+          // ("he just appears in the room") right after his walk cycle
+          // landed, which is what makes this worth doing now — no walk
+          // frames, no visible walk-in either way.
+          var home = { x: next.x, y: next.y };
+          next.x = next.entryFrom.x; next.y = next.entryFrom.y;
+          next._wander = { homeX: home.x, homeY: home.y, tx: home.x, ty: home.y, pause: 0, scriptedEntry: true };
+          pendingEntranceTalk = next;
+        } else if (next) {
+          talking = { npc: next, lineIndex: npcLineCounters[next.id] || 0 }; renderTalk();
+        }
       }
       // A bed is a save point: finishing its "lines" is the save.
       if (wasTalking.npc.savePoint) { persist(); window.NewseyMenu.toast("Game saved."); }
@@ -725,6 +738,14 @@
     // nobody parks in a doorway: someone standing in the door blocks the way
     // through until you shove them aside, which reads as a broken door.
     if (!isFloor(room, nx, ny) || inDoorway(room, nx, ny)) { pickWanderTarget(w); w.walking = false; return; }
+    // A scripted entrance (see entryFrom/pendingEntranceTalk) skips the
+    // player-proximity block below: you're always standing right at the
+    // door to have opened it, so the very first step of "come inside" would
+    // otherwise read as walking toward the player and get blocked forever —
+    // confirmed live, Chuck never took a single step in from the door.
+    // Someone being let in isn't "walking into" you the way a wandering
+    // NPC's random drift would be.
+    if (w.scriptedEntry) { npc.x = nx; npc.y = ny; w.walking = true; w.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"); w.walkPhase = (w.walkPhase || 0) + dt * 9; return; }
     var pd = Math.hypot(nx - (player.x + player.w / 2), ny - (player.y + player.h));
     var curPd = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h));
     // Block a step that would walk INTO the player, but never one that's
@@ -747,6 +768,10 @@
   // the current floor), then resume their normal wander from there.
   var PUSH_THRESHOLD = 2, PUSH_STEP = 22;
   var pushedNpc = null, pushTimer = 0;
+  // An NPC walking in through a door (see thenTalk/entryFrom above) whose
+  // dialogue is held until they've actually arrived — checked each frame in
+  // update(), not opened the instant the flag flips.
+  var pendingEntranceTalk = null;
   function registerPush(room, npc, dt) {
     if (npc !== pushedNpc) { pushedNpc = npc; pushTimer = 0; }
     pushTimer += dt;
@@ -873,6 +898,16 @@
     });
     if (!onExit) exitsArmed = true;
     roomNpcs(currentRoom).forEach(function (npc) { updateNpcWander(currentRoom, npc, dt); });
+    if (pendingEntranceTalk) {
+      var pw = pendingEntranceTalk._wander;
+      if (Math.hypot(pendingEntranceTalk.x - pw.homeX, pendingEntranceTalk.y - pw.homeY) < 2) {
+        var arrived = pendingEntranceTalk;
+        pendingEntranceTalk = null;
+        pw.scriptedEntry = false; // back to normal wander rules once he's actually in the room
+        talking = { npc: arrived, lineIndex: npcLineCounters[arrived.id] || 0 };
+        renderTalk();
+      }
+    }
   }
 
   // ---- rendering ----
@@ -1053,28 +1088,20 @@
 
   }
 
-  // A slow pulsing diamond over a save point, in the same gold as the exit
-  // labels so it reads as "interactive scenery" at a glance.
-  // label: the word shown under the marker once you're close enough to use
-  // it ("SAVE", "OPEN", "ENTER"). `true` means marker with no label.
+  // label: the word shown once you're close enough to use the thing
+  // ("SAVE", "OPEN", "ENTER").
+  // Used to draw a pulsing, bobbing diamond over every fixed interactable
+  // (the door, the portal, the bed/save point) at all times — reported live
+  // as "diamonds floating" around the room. Just the proximity label now:
+  // it still tells you what a thing does once you're close enough to use
+  // it, without a shape hovering over it from across the room.
   function drawMarker(npc, color, label) {
-    var pulse = 0.65 + 0.35 * Math.sin(Date.now() / 380);
-    var y = npc.y - 10 - Math.sin(Date.now() / 700) * 1.5;
-    ctx.save();
-    ctx.globalAlpha = pulse;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(npc.x, y - 5); ctx.lineTo(npc.x + 4, y); ctx.lineTo(npc.x, y + 5); ctx.lineTo(npc.x - 4, y);
-    ctx.closePath(); ctx.fill();
-    ctx.globalAlpha = pulse * 0.35;
-    ctx.beginPath(); ctx.arc(npc.x, y, 9, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
     var d = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h / 2));
     if (d < 26 && typeof label === "string") {
       ctx.fillStyle = color;
       ctx.font = "bold 7px sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(label, npc.x, y + 16);
+      ctx.fillText(label, npc.x, npc.y - 14);
     }
   }
 
@@ -1358,6 +1385,8 @@
     save: function () { return save; },
     room: function () { return currentRoom && currentRoom.label; },
     npcIds: function () { return roomNpcs(currentRoom).map(function (n) { return n.id; }); },
+    npcs: function () { return roomNpcs(currentRoom).map(function (n) { return { id: n.id, x: n.x, y: n.y }; }); },
+    talking: function () { return talking ? { npcId: talking.npc.id, lineIndex: talking.lineIndex } : null; },
     enterRoom: enterRoom,
     startDuel: startDuel,
     duel: function () { return window.NewseyDuel.debug(); }
