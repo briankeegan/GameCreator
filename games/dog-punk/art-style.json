@@ -27,7 +27,7 @@
 
   "constraints": "No text, no labels, no numbers, no grid or graph-paper lines, no cell borders, no frames, no boxes, no drop shadows, no ground shadow, no UI, no watermarks.",
 
-  "pipeline": "art-src/ holds the raw generated images and the two scripts that turn them into shipped sheets: sheet.py (flood-key the flat background to transparency; cut frames at empty gutters) and assemble.py (cut overlapping frames as connected blobs, trim, scale a whole row by ONE factor so the character can't change size between frames, snap to a 4px pixel grid, map to lockedPalette, and lay the frames out on a common foot baseline). Regenerate a sheet by re-running assemble.py — do not hand-edit the shipped PNGs.",
+  "pipeline": "Raw generations live in games/dog-punk/art-src/. The shipped sheets are rebuilt from them with the shared cutter (.github/art/build_sheet.py), never hand-edited:\n  python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_sheet.png --row games/dog-punk/art-src/hero_front_raw.png --row games/dog-punk/art-src/hero_sheet_raw.png:1 --row games/dog-punk/art-src/hero_back_raw.png\n  python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/rat_sheet.png --row games/dog-punk/art-src/rat_sheet_raw3.png --blobs --body-height 104\nThose two commands reproduce the shipped sheets byte for byte.",
 
   "pixelArt": true,
   "pixelGrid": 32

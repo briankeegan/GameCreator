@@ -9,6 +9,7 @@ html, body {
 }
 
 .game-area {
+  position: relative; /* the menu layer + toast absolutely fill this box */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -401,20 +402,7 @@ html, body {
   font-weight: 800;
 }
 
-.story-menu {
-  width: 100%;
-  max-width: 640px;
-  display: flex;
-  justify-content: flex-end;
-}
-.story-menu button {
-  background: none;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #cbb9ee;
-  border-radius: 16px;
-  padding: 5px 12px;
-  font-size: 0.75rem;
-}
+
 
 @media (hover: none) and (pointer: coarse) {
   .touch-controls { display: flex !important; }
@@ -475,7 +463,10 @@ html, body {
 .settings-panel {
   position: fixed;
   inset: 0;
-  z-index: 70;
+  /* Above the duel (60) AND above the title/pause menu layer (100) and its
+     confirm dialog (110) — the controls screen opens from inside the pause
+     menu, so it has to land on top of it. */
+  z-index: 120;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -544,6 +535,245 @@ html, body {
   font-weight: 700;
   cursor: pointer;
 }
+
+/* =========================================================================
+   GAME SHELL — title screen, file select, pause menu.
+   Fills the whole .game-area (not just the letterboxed stage) and sits above
+   every layer in it, so an open menu covers the entire game and nothing
+   underneath can be clicked or typed into by accident.
+   ========================================================================= */
+.menu-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  background: radial-gradient(ellipse at 50% 35%, #2a1350 0%, #0b0416 70%);
+  color: #f1e9ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+.menu-layer[hidden] { display: none; }
+
+.menu-screen {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  overflow-y: auto;
+}
+.menu-screen[hidden] { display: none; }
+
+/* ---- title ---- */
+.title-logo {
+  font-family: system-ui, sans-serif;
+  font-weight: 900;
+  font-size: clamp(1.9rem, 9vw, 3.4rem);
+  letter-spacing: 0.12em;
+  line-height: 0.95;
+  text-align: center;
+  color: #ffd166;
+  text-shadow: 0 0 24px rgba(255, 209, 102, 0.45), 0 4px 0 #7a3b00;
+}
+.title-logo span {
+  display: block;
+  color: #e84393;
+  text-shadow: 0 0 24px rgba(232, 67, 147, 0.5), 0 4px 0 #4a0d2a;
+}
+.title-sub {
+  font-size: 0.8rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin-bottom: 8px;
+}
+.title-start, .title-continue {
+  border: none;
+  border-radius: 22px;
+  padding: 12px 26px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.title-start {
+  background: #ffd166;
+  color: #2a1a00;
+  animation: pressStart 1.5s ease-in-out infinite;
+}
+@keyframes pressStart { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .title-start { animation: none; } }
+.title-continue {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #f1e9ff;
+  letter-spacing: 0.06em;
+  font-size: 0.78rem;
+  padding: 9px 18px;
+}
+
+/* ---- shared menu furniture ---- */
+.menu-h {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.2em;
+  color: #ffd166;
+}
+.menu-meta { font-size: 0.72rem; opacity: 0.75; }
+.menu-note { margin: 0; font-size: 0.7rem; opacity: 0.65; text-align: center; }
+.menu-back {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #cbb9ee;
+  border-radius: 16px;
+  padding: 6px 14px;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+/* ---- file select ---- */
+.file-list {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.file-slot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f1e9ff;
+  cursor: pointer;
+  font: inherit;
+}
+.file-slot:active, .file-slot:hover { background: rgba(255, 255, 255, 0.14); }
+.file-slot.selected { border-color: #ffd166; box-shadow: 0 0 0 1px #ffd166 inset; }
+.file-slot.empty { opacity: 0.6; }
+.file-num {
+  flex: 0 0 auto;
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 209, 102, 0.18);
+  color: #ffd166;
+  font-weight: 900;
+  font-size: 0.8rem;
+}
+.file-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.file-where { font-size: 0.82rem; font-weight: 700; }
+.file-stats { font-size: 0.68rem; opacity: 0.7; }
+
+.mode-row { display: flex; gap: 6px; }
+.mode-btn {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: none;
+  color: #cbb9ee;
+  border-radius: 14px;
+  padding: 5px 14px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+.mode-btn.on { background: #ffd166; border-color: #ffd166; color: #2a1a00; }
+
+/* ---- pause ---- */
+.menu-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 300px;
+}
+.menu-items button {
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+  color: #f1e9ff;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.menu-items button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.15); }
+.menu-items button:disabled { opacity: 0.35; cursor: default; }
+.menu-items button.danger, .confirm-row button.danger {
+  border-color: rgba(232, 67, 147, 0.6);
+  color: #ff9ec7;
+}
+
+/* The ☰ button while playing: small, out of the way, always reachable. */
+.menu-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 70;
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(10, 5, 20, 0.65);
+  color: #f1e9ff;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.menu-btn[hidden] { display: none; }
+
+/* ---- controls list ---- */
+.help-list {
+  margin: 0;
+  width: 100%;
+  max-width: 420px;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+.help-list dt { font-weight: 800; color: #ffd166; margin-top: 7px; }
+.help-list dd { margin: 1px 0 0; opacity: 0.85; }
+
+/* ---- confirm ---- */
+.menu-confirm {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 1, 8, 0.85);
+  padding: 16px;
+}
+.menu-confirm[hidden] { display: none; }
+.confirm-card {
+  max-width: 320px;
+  text-align: center;
+  background: #1a0f30;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+}
+.confirm-card p { margin: 0 0 14px; font-size: 0.82rem; line-height: 1.4; }
+.confirm-row { display: flex; gap: 8px; justify-content: center; }
+.confirm-row button {
+  padding: 8px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f1e9ff;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
 .settings-key.capturing { background: #ffd166; color: #2a1a00; border-color: #ffd166; }
 .settings-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
 .settings-actions button {
@@ -576,5 +806,46 @@ html, body {
   background: none;
   color: #cbb9ee;
   font-size: 0.78rem;
+  cursor: pointer;
+}
+
+
+/* ---- "Game saved." toast ---- */
+.menu-toast {
+  /* Pinned to the top, not the bottom: the pause/file screens are vertically
+     centred, so a bottom-anchored toast landed straight on top of their
+     last menu item. */
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  z-index: 110;
+  background: rgba(10, 5, 20, 0.9);
+  border: 1px solid rgba(255, 209, 102, 0.6);
+  color: #ffd166;
+  border-radius: 18px;
+  padding: 6px 16px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.menu-toast.show { opacity: 1; }
+.menu-toast[hidden] { display: none; }
+
+/* The controls menu opens from the pause menu, so it has to sit above it. */
+.menu-customise {
+  display: block;
+  width: 100%;
+  margin: 10px 0 6px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(138, 92, 246, 0.25);
+  color: #f1e9ff;
+  font-size: 0.8rem;
+  font-weight: 700;
   cursor: pointer;
 }
