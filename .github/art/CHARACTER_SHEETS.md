@@ -16,9 +16,16 @@ standard: `docs/ROOM_ART_STANDARD.md`.
 
 | col | pose |
 |-----|------|
-| 0 | mid-step, one leg forward |
-| 1 | **neutral** — legs straight and together, arms relaxed |
-| 2 | mid-step, the opposite leg forward (mirror of 0) |
+| 0 | mid-step, **LEFT foot forward**, right foot back |
+| 1 | **neutral** — standing still, both feet together under the body |
+| 2 | mid-step, **RIGHT foot forward**, left foot back |
+
+Name the actual foot in the prompt. "One leg forward" and "the opposite leg
+forward" is too vague to hold: a generated back row came back with frame 0 as
+a real stride and frames 1 and 2 as two near-identical standing poses, so the
+cycle read as a character bobbing rather than walking. Left-forward / stand /
+right-forward is unambiguous, and it makes the two step frames true opposites,
+which is what gives the cycle its swing.
 
 Column 1 is a true standing-still pose and is used **both** when idle **and**
 as the resting beat mid-walk. Playback while moving is `[1, 0, 1, 2]` on a
