@@ -977,6 +977,8 @@
   // reach into this closure otherwise). No effect on gameplay.
   window.__newseyDebug = {
     player: player,
+    isWalking: function () { return isWalking; },
+    walkPhase: function () { return walkPhase; },
     running: function () { return running; },
     slot: function () { return activeSlot; },
     save: function () { return save; },
