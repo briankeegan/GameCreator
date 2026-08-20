@@ -551,33 +551,135 @@
   }
 
   // ---- movement + collision ----
-  // Where you can stand is the floor the artist actually drew, and nowhere
-  // else. These rooms are drawn in perspective — the lounge and the arena are
-  // six-sided, the rest are trapezoids narrowing toward the back wall — so a
-  // rectangle can never be right: sized to the front edge it lets you walk
-  // off into the black at the back, sized to the back edge it fences you out
-  // of half the room. Each room carries a `floorPoly`, its floor traced as a
-  // polygon in room coordinates, and the test is simply "are her feet inside
-  // it". `obstacles` still handle furniture standing ON that floor.
-  var DEFAULT_FLOOR = { x: 16, y: 95, w: VW - 32, h: VH - 95 - 10 };
+  // Where you can walk is READ OUT OF THE ROOM'S OWN ARTWORK, once, the first
+  // time you enter it — not hand-authored per room.
+  //
+  // Hand-authoring it was the wrong idea twice over. A rectangle can't fit
+  // rooms drawn in perspective, and hand-tracing a polygon round each one is
+  // a pile of magic numbers that has to be re-eyeballed every time a
+  // background is regenerated — which, in this repo, is often.
+  //
+  // The picture already knows the answer. Everything outside a room is
+  // painted near-black and touches the edge of the image, so:
+  //   1. flood that void inward from the border,
+  //   2. open it (erode then dilate) so leaks down dark mortar seams and
+  //      plank shadows close up while the real void, which is thick, stays,
+  //   3. walkable = everything the flood didn't reach, below the room's
+  //      wall/floor line.
+  // That line is the one thing pixels can't tell us — nothing distinguishes a
+  // dark wall from the floor's own shadow — so it stays as `floorTop`, one
+  // number per room. Everything else is measured.
+  var MASK_W = VW, MASK_H = VH;   // mask is in room coordinates, 1:1
+  var maskCache = {};
 
-  // Standard even-odd ray cast. Called a few times per frame per mover, on
-  // polygons of half a dozen points — nothing worth optimising.
-  function pointInPoly(poly, x, y) {
-    var inside = false;
-    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      var xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
-      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  function buildWalkMask(room) {
+    var entry = loadArt("bg-" + room.bg);
+    if (!entry || !entry.ok || !entry.img.naturalWidth) return null;
+    var c = document.createElement("canvas");
+    c.width = MASK_W; c.height = MASK_H;
+    var g = c.getContext("2d");
+    g.drawImage(entry.img, 0, 0, MASK_W, MASK_H);
+    var data;
+    try { data = g.getImageData(0, 0, MASK_W, MASK_H).data; }
+    catch (err) { return null; } // tainted canvas (file:// with no CORS)
+
+    var n = MASK_W * MASK_H;
+    var voidMask = new Uint8Array(n);
+    var stack = [];
+    function seed(x, y) {
+      var k = y * MASK_W + x, i = k * 4;
+      if (voidMask[k]) return;
+      if (Math.max(data[i], data[i + 1], data[i + 2]) >= VOID_LEVEL) return;
+      voidMask[k] = 1; stack.push(k);
     }
-    return inside;
+    for (var x = 0; x < MASK_W; x++) { seed(x, 0); seed(x, MASK_H - 1); }
+    for (var y = 0; y < MASK_H; y++) { seed(0, y); seed(MASK_W - 1, y); }
+    while (stack.length) {
+      var k = stack.pop(), kx = k % MASK_W, ky = (k - kx) / MASK_W;
+      if (kx > 0) seed(kx - 1, ky);
+      if (kx < MASK_W - 1) seed(kx + 1, ky);
+      if (ky > 0) seed(kx, ky - 1);
+      if (ky < MASK_H - 1) seed(kx, ky + 1);
+    }
+    voidMask = openMask(voidMask, VOID_OPEN);
+
+    // The wall/floor line. Detecting it from pixels was tried twice and
+    // failed twice: a straight cut across the room fences you out of floor
+    // that rises at the sides, and walking up each column to the first hard
+    // edge stops at anything PAINTED on the floor — the arena's summoning
+    // circle is a hard edge and it is still floor. So this one thing is
+    // given, as `backEdge`: a handful of points along the room's back edge,
+    // interpolated across the width. Straight-walled rooms need two. It is
+    // the only hand-authored number left; the room's shape, which is the part
+    // that actually changes when a background is regenerated, is measured.
+    var edge = room.backEdge || [[0, room.floorTop || 100], [MASK_W, room.floorTop || 100]];
+    var walk = new Uint8Array(n);
+    for (var yy = 0; yy < MASK_H; yy++) {
+      for (var xx = 0; xx < MASK_W; xx++) {
+        var kk = yy * MASK_W + xx;
+        walk[kk] = (yy >= backEdgeAt(edge, xx) && !voidMask[kk]) ? 1 : 0;
+      }
+    }
+    return walk;
+  }
+
+  // Linear interpolation along the back-edge polyline, clamped at both ends.
+  function backEdgeAt(edge, x) {
+    if (x <= edge[0][0]) return edge[0][1];
+    for (var i = 1; i < edge.length; i++) {
+      if (x <= edge[i][0]) {
+        var x0 = edge[i - 1][0], y0 = edge[i - 1][1], x1 = edge[i][0], y1 = edge[i][1];
+        return y0 + (y1 - y0) * (x - x0) / (x1 - x0 || 1);
+      }
+    }
+    return edge[edge.length - 1][1];
+  }
+
+  // How black "the black" has to be, and how thick a leak has to be to
+  // survive. Separable box erode/dilate — a leak down a mortar line is a few
+  // pixels wide, the void around a room is tens.
+  var VOID_LEVEL = 28, VOID_OPEN = 3;
+  function openMask(src, r) { return morphMask(morphMask(src, r, true), r, false); }
+  function morphMask(src, r, erode) {
+    var tmp = new Uint8Array(src.length), dst = new Uint8Array(src.length);
+    function read(buf, x, y) {
+      // Outside the image counts as void, so the frame isn't eroded away.
+      if (x < 0 || y < 0 || x >= MASK_W || y >= MASK_H) return 1;
+      return buf[y * MASK_W + x];
+    }
+    var x, y, i, v;
+    for (y = 0; y < MASK_H; y++) for (x = 0; x < MASK_W; x++) {
+      v = erode ? 1 : 0;
+      for (i = -r; i <= r; i++) { var a = read(src, x + i, y); v = erode ? (v && a) : (v || a); }
+      tmp[y * MASK_W + x] = v ? 1 : 0;
+    }
+    for (y = 0; y < MASK_H; y++) for (x = 0; x < MASK_W; x++) {
+      v = erode ? 1 : 0;
+      for (i = -r; i <= r; i++) { var b = read(tmp, x, y + i); v = erode ? (v && b) : (v || b); }
+      dst[y * MASK_W + x] = v ? 1 : 0;
+    }
+    return dst;
+  }
+
+  // The mask needs the background decoded, which it may not be on the very
+  // first frame in a room. Until it is, fall back to the room's floorTop line
+  // and the full width — generous rather than blocking, so nobody is ever
+  // frozen in place waiting on an image.
+  function walkMask(room) {
+    if (maskCache[room.bg] !== undefined) return maskCache[room.bg];
+    var m = buildWalkMask(room);
+    if (m) maskCache[room.bg] = m;   // only cache a real one; retry next frame
+    return m;
   }
 
   // fx, fy: the FEET, not the top-left of the collision box — a character
   // stands on one point, and that point is what has to be on the floor.
   function onFloor(room, fx, fy) {
-    if (room.floorPoly) return pointInPoly(room.floorPoly, fx, fy);
-    var f = room.floor || DEFAULT_FLOOR;
-    return fx >= f.x && fx <= f.x + f.w && fy >= f.y && fy <= f.y + f.h;
+    var x = Math.round(fx), y = Math.round(fy);
+    if (x < 0 || y < 0 || x >= MASK_W || y >= MASK_H) return false;
+    var m = walkMask(room);
+    if (!m) return y >= (room.floorTop === undefined ? 100 : room.floorTop) && y < MASK_H - 6;
+    return m[y * MASK_W + x] === 1;
   }
 
   // Can a body whose box top-left is (x, y) stand here? Floor and furniture
@@ -585,6 +687,7 @@
   function canStand(room, x, y) {
     return onFloor(room, x + player.w / 2, y + player.h) && !blockedByObstacle(room, x, y);
   }
+
   function blockedByObstacle(room, x, y) {
     var obstacles = room.obstacles || [];
     for (var i = 0; i < obstacles.length; i++) {
@@ -1168,6 +1271,7 @@
     save: function () { return save; },
     room: function () { return currentRoom && currentRoom.label; },
     npcIds: function () { return roomNpcs(currentRoom).map(function (n) { return n.id; }); },
+    walkMask: function () { return currentRoom ? walkMask(currentRoom) : null; },
     enterRoom: enterRoom,
     startDuel: startDuel,
     duel: function () { return window.NewseyDuel.debug(); }

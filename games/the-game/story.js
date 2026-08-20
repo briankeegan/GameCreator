@@ -99,14 +99,25 @@ window.NEWSEY_STORY = (function () {
     "…Chuck. It has to be Chuck."
   ];
 
-  // ROOM SHAPES — every room's walkable area is `floorPoly`, the drawn floor
-  // traced as a polygon in the game's 320x200 room coordinates. These rooms
-  // are painted in perspective (the lounge and the arena are six-sided, the
-  // others are trapezoids narrowing toward the back wall), so a rectangle can
-  // never fit one: sized to the front edge it lets you walk off into the
-  // black behind the room, sized to the back edge it fences you out of the
-  // front half. Traced against a coordinate grid rendered over each
-  // background — don't adjust these by feel, re-render the grid.
+  // ROOM SHAPES — a room does NOT carry its walkable area as data. app.js
+  // reads it out of the room's own background image the first time you walk
+  // in (see buildWalkMask): the void around a room is painted near-black and
+  // touches the edge of the image, so flooding that in from the border and
+  // taking everything it didn't reach gives the room's real shape, whatever
+  // perspective it's drawn in.
+  //
+  // This is the walkable-area mask every 2D adventure engine uses (AGS calls
+  // it exactly that and lets you import one as a PNG) — with the mask derived
+  // from the art instead of painted by hand, because in this repo a room's
+  // background gets regenerated often and a hand-painted mask would silently
+  // go stale against it.
+  //
+  // `backEdge` is the one thing that has to be given: the room's wall/floor
+  // line, as a few points interpolated across the width. Two points for a
+  // straight back wall; the arena needs more because its tiered benches curve.
+  // Detecting it from pixels was tried and failed — a hard edge on the floor
+  // (the arena's summoning circle) looks exactly like a wall base, and no
+  // threshold separates a dark wall from the floor's own shadow.
   var ROOMS = {
     // The real world, before any of it: your own childhood bedroom upstairs
     // in your father's house. The game opens here, out of the black at the
@@ -129,7 +140,7 @@ window.NEWSEY_STORY = (function () {
       // and the door is drawn centre-right rather than hard right, so the
       // exit strip sits under where the door actually is.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[60,97],[278,97],[276,190],[62,190]],
+      backEdge: [[0,97],[320,97]],
       exits: [ { x: 188, y: 98, w: 34, h: 16, to: "house", label: "Downstairs",
                  arriveAt: { x: 228, y: 112 } } ],
       // The bed (back-left, foot toward the viewer), the nightstand beside
@@ -151,7 +162,7 @@ window.NEWSEY_STORY = (function () {
       // at x 64 and x 284 and the floor runs from y 100 to y 178. Without
       // this the generic floor rect let you walk out through both walls.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[57,95],[294,95],[294,190],[57,190]],
+      backEdge: [[0,95],[320,95]],
       // The lit archway on the right is the stairs. The story's real exit is
       // still the TV (which plays DREAM_CUTSCENE), but you came down these to
       // answer the door, so they go back up.
@@ -220,7 +231,7 @@ window.NEWSEY_STORY = (function () {
       // bg-bedroom.png: arched door on the right wall, opening x 222-248,
       // threshold on the floor at y ~103.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[105,105],[245,105],[262,150],[235,188],[100,188],[68,150]],
+      backEdge: [[0,104],[110,104],[240,102],[320,102]],
       exits: [
         { x: 223, y: 90, w: 28, h: 16, to: "lounge", arriveAt: { x: 150, y: 150 } }
       ],
@@ -283,7 +294,7 @@ window.NEWSEY_STORY = (function () {
       // the doorway you came in through, at the bottom edge of the room —
       // the art has none there, so app.js draws that frame itself.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[95,100],[238,100],[287,147],[255,190],[105,190],[52,148]],
+      backEdge: [[0,100],[320,100]],
       exits: [
         { x: 206, y: 86, w: 34, h: 18, to: "library", arriveAt: { x: 215, y: 140 } },
         { x: 132, y: 182, w: 56, h: 10, to: "bedroom", drawn: "threshold", arriveAt: { x: 228, y: 132 } }
@@ -336,7 +347,7 @@ window.NEWSEY_STORY = (function () {
       playerStart: { x: 150, y: 165 },
       // bg-arena.png: the arch is at x 233-267, floor at y ~82.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[58,100],[120,94],[190,88],[250,94],[288,104],[294,124],[292,146],[274,166],[236,178],[170,186],[110,182],[62,170],[42,154],[36,134],[42,116],[48,106]],
+      backEdge: [[0,120],[40,104],[90,94],[150,86],[210,86],[260,92],[300,102],[320,110]],
       exits: [
         { x: 232, y: 84, w: 34, h: 20, to: "lounge", arriveAt: { x: 150, y: 150 } }
       ],
@@ -397,7 +408,7 @@ window.NEWSEY_STORY = (function () {
       // bookshelves occupy the whole left wall and are blocked off).
       // bg-library.png: the arch is at x 210-242, floor at y ~78.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[47,96],[278,96],[278,193],[47,193]],
+      backEdge: [[0,96],[320,96]],
       exits: [
         { x: 228, y: 84, w: 24, h: 18, to: "lounge", arriveAt: { x: 215, y: 140 } }
       ],
