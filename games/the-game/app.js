@@ -327,7 +327,7 @@
 
   var currentRoom = null;
   var exitsArmed = true; // false until the player steps clear of every doorway
-  var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down", inBed: false };
+  var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down", inBed: false, gettingUp: null };
   var walkPhase = 0, isWalking = false; // drives real walk-frame cycling (see drawPlayer)
   var lastGoodPlayerFrame = null; // last successfully-loaded frame drawPlayer showed — see drawPlayer
   var keys = {};
@@ -344,6 +344,7 @@
     currentRoom = ROOMS[roomId];
     exitsArmed = false;
     player.inBed = false;
+    player.gettingUp = null;
     var spot = at && at.x !== undefined ? at : currentRoom.playerStart;
     // The mask may not have loaded yet on the very first room; re-place her
     // once it has, so a spawn point that lands off the floor still resolves.
@@ -772,6 +773,23 @@
     // The gamepad's talk button is edge-triggered: held down it would
     // otherwise re-trigger every frame. It advances dialogue too, so a pad
     // alone can carry a whole conversation.
+    // Sliding out of bed: hold input until she's on her feet.
+    if (player.gettingUp) {
+      var g = player.gettingUp;
+      g.t += dt;
+      var k = Math.min(1, g.t / g.dur);
+      // Ease in AND out: she pushes the covers back, swings out, and settles
+      // on her feet. A pure ease-out put her beside the bed in two frames,
+      // which is the teleport this replaced.
+      var ease = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+      player.x = g.fromX + (g.toX - g.fromX) * ease;
+      player.y = g.fromY + (g.toY - g.fromY) * ease;
+      isWalking = true;
+      walkPhase += dt * 9;
+      if (k >= 1) { player.gettingUp = null; isWalking = false; }
+      return;
+    }
+
     var pad = SETTINGS.gamepad();
     if (pad) {
       if (pad.interact && !padInteractWasDown) {
@@ -792,8 +810,16 @@
     // anyway, since the bed blocks every direction out of it.
     if (player.inBed) {
       if (dx || dy) {
+        // Getting up is a movement, not a teleport: she slides out from under
+        // the covers to the floor beside the bed over a few frames, and
+        // control picks up from wherever that lands her.
         var spot = currentRoom.wakeSpot || currentRoom.playerStart;
-        player.x = spot.x; player.y = spot.y;
+        player.gettingUp = {
+          t: 0, dur: 0.6,
+          fromX: player.x, fromY: player.y,
+          toX: spot.x, toY: spot.y,
+          clipFrom: currentRoom.bedClipY !== undefined ? currentRoom.bedClipY : VH
+        };
         player.facing = "down";
         player.inBed = false;
       }
@@ -1088,7 +1114,7 @@
     // Same ground shadow every NPC gets — the player was the one figure in
     // the scene standing on nothing, a mismatch reported live as "floating".
     // Not while she's in bed: she isn't on the floor, she's on a mattress.
-    if (!player.inBed) {
+    if (!player.inBed && !player.gettingUp) {
       ctx.fillStyle = "rgba(0,0,0,0.4)";
       ctx.beginPath();
       ctx.ellipse(player.x + player.w / 2, player.y + player.h, 11, 3.4, 0, 0, Math.PI * 2);
@@ -1106,6 +1132,14 @@
       if (player.inBed && currentRoom && currentRoom.bedClipY !== undefined) {
         ctx.beginPath();
         ctx.rect(0, 0, VW, currentRoom.bedClipY);
+        ctx.clip();
+      } else if (player.gettingUp) {
+        // The blanket line drops away as she comes out from under it, so she
+        // emerges rather than appearing whole beside the bed.
+        var g2 = player.gettingUp;
+        var slide = Math.min(1, (g2.t / g2.dur) / 0.75);
+        ctx.beginPath();
+        ctx.rect(0, 0, VW, g2.clipFrom + (VH - g2.clipFrom) * slide);
         ctx.clip();
       }
       if (mirror) {
