@@ -132,6 +132,24 @@ design discussion. `shared/` holds the components every game reuses
     Collision data has to be authored against the art afterwards — which
     is what `.github/art/build_walkmask.py` does.
 
+## Newsey ("the-game") — the plot is the spec
+
+- The game is an adaptation of a plot the owner wrote. `reference/the-game/
+  PLOT.md` is a DISTILLATION of it; the VERBATIM plot is the owner's long
+  comment on Clubhouse PR #30 (`clubhouse/the-game`). Read the verbatim one
+  before deciding what the game should be — the distilled file has lost
+  detail that turned out to decide things (it says "the Lounge (bar +
+  portals to duels)"; the original says the bar is on the right side and the
+  portal doorways are on the left, and that settled which way to mirror the
+  room).
+- Where the game and the plot disagree, the plot wins unless the owner says
+  otherwise. That call has been made once already: the duel portal could not
+  move to the bedroom mirror, because the plot reserves that mirror as the
+  menu/screen.
+- `games/the-game/TODO.md` carries the running list, including the design
+  for the duel-as-arena staging and John's mirror scene. Update it when the
+  owner adds to the list; don't keep the plan only in chat.
+
 ## Handling a clubhouse request
 
 1. If it's a clear game-design ask: implement it in the relevant
