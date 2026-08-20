@@ -111,9 +111,39 @@ jobs:
         with:
           node-version: '22'
 
+      # The npm package is a thin wrapper: the real executable ships as a
+      # platform-specific OPTIONAL dependency that postinstall fetches. When
+      # that doesn't happen the install still "succeeds", and the failure only
+      # shows up later as the model step dying instantly with "claude native
+      # binary not installed" — which reads like a model failure and gets
+      # retried three times for nothing. Verify here, self-heal, and fail loudly
+      # at the step that is actually broken.
       - name: Install Claude Code CLI
         timeout-minutes: 8
-        run: npm install -g @anthropic-ai/claude-code
+        run: |
+          set -uo pipefail
+          npm install -g @anthropic-ai/claude-code
+          if ! claude --version >/dev/null 2>&1; then
+            # Re-running postinstall alone is NOT enough: the native package
+            # itself is missing, so it just reports "Native package ... not
+            # found" again. Install that package explicitly first — its own
+            # error message names it, so we don't have to duplicate the
+            # platform-detection logic — then re-run postinstall so it can copy
+            # the binary into place. Verified end to end from a broken install.
+            echo "::warning::claude CLI not runnable after install — installing its native package"
+            ROOT=$(npm root -g)
+            NATIVE=$(node "$ROOT/@anthropic-ai/claude-code/install.cjs" 2>&1 \
+                     | grep -o '@anthropic-ai/claude-code-[a-z0-9-]\+' | head -1)
+            if [ -n "$NATIVE" ]; then
+              echo "installing $NATIVE"
+              npm install -g "$NATIVE"
+              node "$ROOT/@anthropic-ai/claude-code/install.cjs" || true
+            fi
+          fi
+          if ! claude --version; then
+            echo "::error::Claude CLI is installed but not runnable (native binary missing)"
+            exit 1
+          fi
 
       # Normalize the two trigger shapes (manual dispatch vs. real comment) into
       # one set of values the rest of the job uses, so nothing below branches on
@@ -520,6 +550,21 @@ jobs:
           # above already gated this change, so a direct push is safe. This
           # mirrors what generate-image.yml already does successfully.)
           git commit -m "Clubhouse request (automated) — PR #${{ steps.ctx.outputs.pr }}"
+          # Anything the model changed OUTSIDE the content allowlist — .github/**
+          # most of all, since the art instructions send it to
+          # .github/art/build_sheet.py — is deliberately not shipped: the model
+          # must not be able to edit its own workflow (it has no GitHub token
+          # for exactly this reason). But LEAVING those edits in the tree makes
+          # every `git pull --rebase` below refuse with "cannot pull with
+          # rebase: You have unstaged changes", so the loop can never succeed —
+          # six retries and a snag, with the change already committed locally
+          # and no way to land it. Drop them, loudly.
+          leftover=$(git diff --name-only)
+          if [ -n "$leftover" ]; then
+            echo "::warning::discarding edits outside the shippable paths: $(printf '%s' "$leftover" | paste -sd', ' -)"
+            git checkout -- .
+          fi
+
           # Land on main. Two different things can go wrong here and they need
           # opposite handling:
           #   - a PUSH RACE (someone else pushed between our pull and our push)
