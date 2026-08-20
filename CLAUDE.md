@@ -157,6 +157,13 @@ design discussion. `shared/` holds the components every game reuses
   next to them: `verify_sheet.py`'s first threshold passed every bad row, its
   second failed a correct one, and the comment above `NEUTRAL_RATIO` lists
   both so the next person doesn't re-derive it.
+- **THE ART INDEX IS `.github/art/README.md`. Start there, every time.** One
+  page listing every standard, prompt, generator, cutter and check, with a
+  "I want to… / read this / run this" table at the top, so nobody has to
+  already know what exists. It is checked by
+  `.github/scripts/check_art_registry.mjs` on every push, both directions: a
+  tool or prompt that isn't listed fails the build, and so does a path listed
+  there that doesn't exist. Add a tool, add its row.
 - **Standards for this kind of game live in two documents, and they apply to
   every new game of the same shape — not just the one they were written
   from:** `.github/art/CHARACTER_SHEETS.md` (characters: walk frames,
@@ -165,6 +172,14 @@ design discussion. `shared/` holds the components every game reuses
   authored). Read them before generating art for a top-down game; extend
   them when a generation exposes a gap, rather than solving it once in one
   game's head.
+- **Point at a standard; never copy it.** The Clubhouse autopilot carried its
+  own copy of the art rules in its prompt, and it drifted: it was still
+  telling runs to generate `[idle, walk, attack]` rows long after the standard
+  became `[step, NEUTRAL, step]`, knew nothing about `verify_sheet.py`, and
+  had never heard of the room pipeline at all. Its instructions now say
+  "read `CHARACTER_SHEETS.md` / `ROOM_ART_STANDARD.md` first" and carry only
+  what is specific to running inside that workflow. Anywhere else a rule
+  would be restated — a workflow prompt, a game's README — link instead.
 - **Character sheets follow one standard: `.github/art/CHARACTER_SHEETS.md`.**
   Walk is 3 columns `[step, NEUTRAL, step]`; ATTACK is its own sheet, also 3
   columns, `[wind-up, STRIKE, recover]`, with damage landing on the strike
