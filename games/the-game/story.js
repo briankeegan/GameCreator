@@ -204,7 +204,7 @@ window.NEWSEY_STORY = (function () {
       floorPoly: [[58,100],[248,100],[248,186],[58,186]],
       // The doorway is an actual hole in the art (transparent), so the floor
       // stops at its threshold — the trigger sits on that threshold.
-      exits: [ { x: 140, y: 152, w: 44, h: 16, to: "house", link: "stairs" } ],
+      exits: [ { x: 133, y: 153, w: 50, h: 22, to: "house", link: "stairs" } ],
       // Furniture footprints, kept as the fallback alongside floorPoly.
       obstacles: [
         { x: 56, y: 98, w: 58, h: 30 },   // the bed
@@ -228,7 +228,7 @@ window.NEWSEY_STORY = (function () {
       // still the TV (which plays DREAM_CUTSCENE), but you came down these to
       // answer the door, so they go back up.
       exits: [
-        { x: 216, y: 90, w: 34, h: 14, to: "home_bedroom", link: "stairs" }
+        { x: 217, y: 78, w: 42, h: 20, to: "home_bedroom", link: "stairs" }
       ],
       // Furniture where it actually meets the floor: the table with the
       // moving boxes, the lantern table by the front door, and the little
@@ -315,7 +315,14 @@ window.NEWSEY_STORY = (function () {
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
       floorPoly: [[52,100],[285,100],[272,186],[64,186]],
       exits: [
-        { x: 223, y: 90, w: 28, h: 16, to: "lounge", link: "yourDoor" }
+        // THE WAY BACK IS THE NEAR EDGE, not a door in a wall. You reach this
+        // room by walking UP through the Lounge's back wall, so you arrive at
+        // the bottom of it and you leave the same way you came in — down, off
+        // the near edge. The Anarchy Garden has always worked this way; this
+        // is the rest of the map agreeing with it. drawn: "threshold" makes
+        // app.js draw the doorway frame, since no art can show a door at the
+        // edge the camera is standing on.
+        { x: 150, y: 174, w: 40, h: 14, to: "lounge", link: "yourDoor", drawn: "threshold" }
       ],
       // Furniture footprints where they actually meet the floor (the old boxes
       // reached far into the room, and the bed's box covered the doorway, so
@@ -398,9 +405,14 @@ window.NEWSEY_STORY = (function () {
         // --- the back wall, left to right. Same h and w on every panel so the
         // brick courses line up; the openings are panels 2, 3 and 4.
         { art: "prop_wall_plain",  x: 13,  y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
-        { art: "prop_wall_arch",   x: 70,  y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
-        { art: "prop_wall_rune",   x: 127, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
-        { art: "prop_wall_portal", x: 184, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
+        // door: true — these three panels ARE the doorways, so they carry no
+        // footprint and their own exit trigger sits on top of them. You have
+        // to walk up and TOUCH the drawn door to go through it; a band of
+        // floor below the door reads as the trigger being in the wrong place,
+        // which is the complaint this room started from.
+        { art: "prop_wall_arch",   x: 70,  y: 70, h: 82, w: 58, door: true },
+        { art: "prop_wall_rune",   x: 127, y: 70, h: 82, w: 58, door: true },
+        { art: "prop_wall_portal", x: 184, y: 70, h: 82, w: 58, door: true },
         { art: "prop_wall_plain",  x: 241, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
         { art: "prop_wall_plain",  x: 298, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
         // --- the bar, along the right. The shelf stands against the wall and
@@ -419,17 +431,21 @@ window.NEWSEY_STORY = (function () {
       // panel draws — you stand on the threshold, you go through. They sit
       // 2px below the wall's footprint, which is as close as a trigger can be
       // to a door you cannot walk into.
+      // y 52-76 is the band the player's own body (18px tall) occupies when
+      // she is standing against the wall with her feet on the last walkable
+      // row — so crossing means touching the drawn doorway, not stepping on a
+      // rectangle of floor underneath it.
       exits: [
-        { x: 54, y: 76, w: 34, h: 14, to: "bedroom", link: "yourDoor" },
+        { x: 54, y: 52, w: 34, h: 24, to: "bedroom", link: "yourDoor" },
         // Not a doorway to one room any more — this is the black rune door,
         // and where it puts you is a choice (see RUNE_DOOR above and
         // openRuneDoor in app.js). The first push lands you in the Garden by
         // accident, exactly as it does in the plot.
-        { x: 110, y: 76, w: 36, h: 14, rune: true, link: "rune" },
+        { x: 110, y: 52, w: 36, h: 24, rune: true, link: "rune" },
         // The portal to the duelling arena. It used to be an NPC you talked
         // to, because no room art had ever drawn one; prop_wall_portal draws
         // it now, so it is a door like the others and pairs with the arena's.
-        { x: 166, y: 76, w: 38, h: 14, to: "arena", link: "portal" }
+        { x: 166, y: 52, w: 38, h: 24, to: "arena", link: "portal" }
       ],
       // NOBODY STANDS IN FRONT OF THE RUNE DOOR. Its trigger is x 110-146 and
       // the player walks up the middle of the room to reach it, so an NPC
@@ -528,7 +544,7 @@ window.NEWSEY_STORY = (function () {
       // flagstone hexagon between the two banks of stands.
       floorPoly: [[66,100],[250,100],[292,140],[283,186],[42,186],[30,140]],
       exits: [
-        { x: 224, y: 84, w: 26, h: 18, to: "lounge", link: "portal" }
+        { x: 230, y: 78, w: 30, h: 20, to: "lounge", link: "portal" }
       ],
       obstacles: [ { x: 0, y: 88, w: 66, h: 20 }, { x: 250, y: 88, w: 70, h: 20 } ], // the stands
       npcs: [
@@ -692,7 +708,14 @@ window.NEWSEY_STORY = (function () {
         { x: 252, y: 96, w: 32, h: 24 }    // the instrument cart
       ],
       exits: [
-        { x: 224, y: 88, w: 26, h: 18, to: "lounge", link: "rune" }
+        // THE WAY BACK IS THE NEAR EDGE, not a door in a wall. You reach this
+        // room by walking UP through the Lounge's back wall, so you arrive at
+        // the bottom of it and you leave the same way you came in — down, off
+        // the near edge. The Anarchy Garden has always worked this way; this
+        // is the rest of the map agreeing with it. drawn: "threshold" makes
+        // app.js draw the doorway frame, since no art can show a door at the
+        // edge the camera is standing on.
+        { x: 143, y: 172, w: 40, h: 14, to: "lounge", link: "rune", drawn: "threshold" }
       ],
       npcs: [
         {
@@ -719,7 +742,14 @@ window.NEWSEY_STORY = (function () {
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
       floorPoly: [[50,100],[274,100],[274,188],[50,188]],
       exits: [
-        { x: 228, y: 84, w: 24, h: 18, to: "lounge", link: "rune" }
+        // THE WAY BACK IS THE NEAR EDGE, not a door in a wall. You reach this
+        // room by walking UP through the Lounge's back wall, so you arrive at
+        // the bottom of it and you leave the same way you came in — down, off
+        // the near edge. The Anarchy Garden has always worked this way; this
+        // is the rest of the map agreeing with it. drawn: "threshold" makes
+        // app.js draw the doorway frame, since no art can show a door at the
+        // edge the camera is standing on.
+        { x: 142, y: 176, w: 40, h: 14, to: "lounge", link: "rune", drawn: "threshold" }
       ],
       obstacles: [ { x: 160, y: 92, w: 66, h: 22 } ], // armchair + candle table
       npcs: [

@@ -73,7 +73,7 @@ def read_room(game_dir, room):
         if bm:
             base = {k: int(v) for k, v in re.findall(r"(\w+):\s*(-?\d+)", bm.group(1))}
         props.append(dict(art=art, x=num("x", rest), y=num("y", rest), h=num("h", rest),
-                          flat="flat: true" in rest, base=base))
+                          flat="flat: true" in rest, door="door: true" in rest, base=base))
 
     exits = []
     em = re.search(r"exits:\s*\[(.*?)\n      \]", block, re.S)
@@ -269,11 +269,16 @@ def verify(game_dir):
             if p["flat"] and p["base"]:
                 problems.append("%s: flat prop '%s' has a base — flat ground cover is "
                                 "walked over" % (room, p["art"]))
-            if not p["flat"] and not p["base"]:
+            # A prop marked door: true IS a doorway. It deliberately has no
+            # footprint (you walk into it to go through) and its own exit
+            # trigger sits ON it, so both of the checks below would fire on a
+            # correct room. Putting the trigger on the floor UNDER the door
+            # instead is what made doors read as being in the wrong place.
+            if not p["flat"] and not p["base"] and not p["door"]:
                 problems.append("%s: standing prop '%s' has no base — you walk through it"
                                 % (room, p["art"]))
             # a footprint on a doorway makes the door unreachable
-            if p["base"] and p["x"] is not None:
+            if p["base"] and p["x"] is not None and not p["door"]:
                 if "w" in p["base"]:
                     hw, hh = p["base"]["w"] / 2, p["base"]["h"] / 2
                 else:

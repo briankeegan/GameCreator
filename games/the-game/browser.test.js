@@ -292,15 +292,19 @@ async function bootWithSave(page, url, patchSave) {
   // invariant and is not one: walk UP out of the bedroom into the Lounge and
   // you arrive facing DOWN, because the door you came through is in the
   // Lounge's BACK wall and down is into the room.
+  // `direction` follows the map: the Lounge's back wall is NORTH, so you
+  // leave the Lounge going UP into your room / the rune door's destination,
+  // and every one of those rooms sends you back DOWN off its near edge. Only
+  // the portal is allowed to be special.
   const DOOR_CASES = [
     { room: "home_bedroom", to: "house", direction: "down", wantRoom: "Your Father's House" },
     { room: "house", to: "home_bedroom", direction: "up", wantRoom: "Your Old Room" },
-    { room: "bedroom", to: "lounge", direction: "up", wantRoom: "The Lounge" },
+    { room: "bedroom", to: "lounge", direction: "down", wantRoom: "The Lounge" },
     { room: "lounge", to: "bedroom", direction: "up", wantRoom: "Your Room, Infinity" },
-    { room: "library", to: "lounge", direction: "up", wantRoom: "The Lounge" },
+    { room: "library", to: "lounge", direction: "down", wantRoom: "The Lounge" },
     { room: "arena", to: "lounge", direction: "up", wantRoom: "The Lounge" },
     { room: "garden", to: "lounge", direction: "down", wantRoom: "The Lounge" },
-    { room: "lab", to: "lounge", direction: "up", wantRoom: "The Lounge" },
+    { room: "lab", to: "lounge", direction: "down", wantRoom: "The Lounge" },
   ];
   const doorFailures = [];
   for (const c of DOOR_CASES) {
@@ -406,7 +410,13 @@ async function bootWithSave(page, url, patchSave) {
     await page.waitForTimeout(250);
     const s2 = await getState(page);
     assert.strictEqual(s2.room, "The Library", "picking Library from the rune door actually goes there");
-    assert.strictEqual(s2.facing, "down", "…and applies its arriveFacing");
+    // Not a compass direction — see the note above DOOR_CASES. The Library's
+    // way back is its near edge now, so arriving there faces you UP, into the
+    // room; this used to demand "down", which is the one facing it must never
+    // use because it points straight back out of the door.
+    const runeOverlaps = await page.evaluate(() => window.__newseyDebug.exitOverlaps());
+    assert.ok(!runeOverlaps.some((o) => o.hit),
+      "…and lands clear of the Library's own doorway, so it arms");
     await page.close();
   }
 
