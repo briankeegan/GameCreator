@@ -208,7 +208,7 @@ window.NEWSEY_STORY = (function () {
       ],
       // The bar's footprint on the floor (the old box sat entirely above the
       // walkable area, so it blocked nothing).
-      obstacles: [ { x: 26, y: 95, w: 130, h: 38 } ],
+      obstacles: [ { x: 26, y: 95, w: 122, h: 33 } ],
       npcs: [
         {
           // Flavor only here — per the plot, the Lounge is "the bar + portals
@@ -315,7 +315,7 @@ window.NEWSEY_STORY = (function () {
       exits: [
         { x: 210, y: 78, w: 32, h: 24, to: "lounge", arriveAt: { x: 215, y: 140 } }
       ],
-      obstacles: [ { x: 150, y: 95, w: 62, h: 16 } ], // armchair + candle table
+      obstacles: [ { x: 148, y: 95, w: 66, h: 20 } ], // armchair + candle table
       npcs: [
         {
           id: "michael", x: 120, y: 160, art: "michael", sprite: "michael_top",
