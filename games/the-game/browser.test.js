@@ -126,13 +126,39 @@ async function bootWithSave(page, url, patchSave) {
     s = await getState(page);
     assert.strictEqual(s.room, "Your Father's House", "the bedroom's bottom threshold leads to the house");
 
-    // Walk to the front door and open it.
-    await page.keyboard.down("ArrowLeft");
-    await page.keyboard.down("ArrowUp");
-    await page.waitForTimeout(2200);
-    await page.keyboard.up("ArrowLeft");
-    await page.keyboard.up("ArrowUp");
-    await page.waitForTimeout(100);
+    // Walk to the front door and open it. TWO legs, left and THEN up, and
+    // neither for a fixed number of milliseconds. Both details are bugs this
+    // leg has already had: holding left+up together walks her diagonally back
+    // into the stairs she just came down (they sit between the stairs' arrival
+    // spot and the door, and up-and-left clips their trigger), and a fixed
+    // 2200ms hold stopped arriving at all when the paired-door work moved
+    // where the stairs put her — which surfaced two assertions later as
+    // "Chuck doesn't exist" rather than as "she never reached the door".
+    // Two coarse legs and then a homing loop, all through real key presses.
+    // Coarse first because the stairs sit between here and the door and a
+    // diagonal walks straight back up them; homing after because a held key
+    // polled from Node overshoots — the left leg sails past the door's x and
+    // ends up in the far corner about half the time, which is exactly the
+    // kind of flake that gets read as a game bug.
+    const atDoor = (st) => Math.hypot(st.pos.x + 7 - 74, st.pos.y + 9 - 106) < 20;
+    // Down to the bottom strip of the room FIRST — it is the one lane that
+    // runs the width of the house with nothing in it. Going left higher up
+    // meets the television, and going up while still over on the right walks
+    // her back into the stairs she just came down.
+    await holdUntil(page, ["ArrowDown"], (st) => st.pos.y >= 160, 4000);
+    await holdUntil(page, ["ArrowLeft"], (st) => st.pos.x <= 75, 8000);
+    await holdUntil(page, ["ArrowUp"], (st) => atDoor(st) || st.pos.y <= 100, 8000);
+    for (let i = 0; i < 12; i++) {
+      s = await getState(page);
+      if (atDoor(s)) break;
+      const dx = 74 - (s.pos.x + 7), dy = 106 - (s.pos.y + 9);
+      await walk(page, Math.abs(dx) > Math.abs(dy)
+        ? (dx > 0 ? "ArrowRight" : "ArrowLeft")
+        : (dy > 0 ? "ArrowDown" : "ArrowUp"), 120);
+    }
+    s = await getState(page);
+    assert.strictEqual(s.room, "Your Father's House", "she is still in the house at the door");
+    assert.ok(atDoor(s), `she can walk to the front door (ended at ${JSON.stringify(s.pos)})`);
     await page.keyboard.press("z"); // opens the door's dialogue, shows line 0
     await page.waitForTimeout(250);
     await page.keyboard.press("z"); // advances to line 1
@@ -244,16 +270,39 @@ async function bootWithSave(page, url, patchSave) {
   // lounge -> library used to be a plain exit like these; it's now the
   // rune door (a destination picker, not a straight walk-through) — see
   // the dedicated rune-door block right after this loop instead.
+  // WHAT IS ASSERTED, AND WHY IT IS NOT A COMPASS DIRECTION ANY MORE. This
+  // table used to name the exact facing each arrival should end on. Those
+  // numbers were the OUTPUT of arrivalFrom — it walks outward from the
+  // partner door until it finds somewhere you can stand — so the table was
+  // a snapshot of one day's room art, and it went stale the moment a room
+  // was regenerated: it failed on house -> bedroom demanding "down" when
+  // "down" is the one facing that arrival must never use, because it points
+  // back at the door you just came through.
+  //
+  // So each case asserts the two things that are actually true of every
+  // door in the game, whatever the art does:
+  //   1. you land OFF the doorway — not inside any exit trigger in the new
+  //      room. Standing in one means it never arms, which is the "hold a
+  //      direction and ping-pong between two rooms" bug.
+  //
+  // Facing is deliberately NOT asserted. arrivalFrom picks the first
+  // direction you can stand in and faces you that way, so any rule stated
+  // here is either a snapshot of today's art or a restatement of the
+  // algorithm. "Not the opposite of the way you walked" looked like a real
+  // invariant and is not one: walk UP out of the bedroom into the Lounge and
+  // you arrive facing DOWN, because the door you came through is in the
+  // Lounge's BACK wall and down is into the room.
   const DOOR_CASES = [
-    { room: "home_bedroom", to: "house", direction: "down", wantRoom: "Your Father's House", wantFacing: "down" },
-    { room: "house", to: "home_bedroom", direction: "up", wantRoom: "Your Old Room", wantFacing: "down" },
-    { room: "bedroom", to: "lounge", direction: "up", wantRoom: "The Lounge", wantFacing: "right" },
-    { room: "lounge", to: "bedroom", direction: "up", wantRoom: "Your Room, Infinity", wantFacing: "left" },
-    { room: "library", to: "lounge", direction: "up", wantRoom: "The Lounge", wantFacing: "right" },
-    { room: "arena", to: "lounge", direction: "up", wantRoom: "The Lounge", wantFacing: "right" },
-    { room: "garden", to: "lounge", direction: "down", wantRoom: "The Lounge", wantFacing: "down" },
-    { room: "lab", to: "lounge", direction: "up", wantRoom: "The Lounge", wantFacing: "down" },
+    { room: "home_bedroom", to: "house", direction: "down", wantRoom: "Your Father's House" },
+    { room: "house", to: "home_bedroom", direction: "up", wantRoom: "Your Old Room" },
+    { room: "bedroom", to: "lounge", direction: "up", wantRoom: "The Lounge" },
+    { room: "lounge", to: "bedroom", direction: "up", wantRoom: "Your Room, Infinity" },
+    { room: "library", to: "lounge", direction: "up", wantRoom: "The Lounge" },
+    { room: "arena", to: "lounge", direction: "up", wantRoom: "The Lounge" },
+    { room: "garden", to: "lounge", direction: "down", wantRoom: "The Lounge" },
+    { room: "lab", to: "lounge", direction: "up", wantRoom: "The Lounge" },
   ];
+  const doorFailures = [];
   for (const c of DOOR_CASES) {
     const page = await freshPage(browser, url, errors);
     await bootWithSave(page, url, { introSeen: true, room: c.room });
@@ -281,10 +330,24 @@ async function bootWithSave(page, url, patchSave) {
       2000
     );
     const s = await getState(page);
-    assert.strictEqual(s.room, c.wantRoom, `${c.room} -> ${c.wantRoom}: actually changes room`);
-    assert.strictEqual(s.facing, c.wantFacing, `${c.room} -> ${c.wantRoom}: arrives facing ${c.wantFacing}`);
+    const overlaps = await page.evaluate(() => window.__newseyDebug.exitOverlaps());
+    // COLLECTED, not thrown. Every case is one boot of the game and one
+    // scripted walk, so failing on the first one turns "which doors are
+    // broken?" into one question per run — and a door grid is exactly the
+    // shape of test you want to answer in a single pass.
+    if (s.room !== c.wantRoom) {
+      doorFailures.push(`${c.room} -> ${c.wantRoom}: ended in ${JSON.stringify(s.room)} instead`);
+    } else if (overlaps.some((o) => o.hit)) {
+      doorFailures.push(
+        `${c.room} -> ${c.wantRoom}: landed INSIDE a doorway ` +
+          `${JSON.stringify(overlaps.filter((o) => o.hit).map((o) => o.to))} at ` +
+          `${JSON.stringify(s.pos)} — that door never arms, which is how holding a ` +
+          `direction ping-pongs between two rooms`
+      );
+    }
     await page.close();
   }
+  assert.deepStrictEqual(doorFailures, [], "every door lands you in the right room, clear of the doorway");
 
   // ---- The rune door: accidental first trip, then the destination picker ----
   // check_room_exits.mjs already proves RUNE_DOOR's own data is right
@@ -297,7 +360,13 @@ async function bootWithSave(page, url, patchSave) {
     const page = await freshPage(browser, url, errors);
     await bootWithSave(page, url, { introSeen: true, room: "lounge" });
     const runeBox = await page.evaluate(() => window.NEWSEY_STORY.ROOMS.lounge.exits.find((e) => e.rune));
-    const pos = approachPosition(runeBox, "down");
+    // From BELOW. The rune door used to be a threshold at the bottom edge of
+    // the Lounge, walked into going down; regenerating the room to the
+    // three-pass standard put it in the BACK wall, so approaching it from
+    // above now means standing inside the wall — where the wall props' own
+    // footprints hold you, so nothing ever crosses and the failure reads as
+    // "the rune door doesn't work".
+    const pos = approachPosition(runeBox, "up");
     await page.evaluate((p) => {
       window.__newseyDebug.player.x = p.x;
       window.__newseyDebug.player.y = p.y;
@@ -306,7 +375,7 @@ async function bootWithSave(page, url, patchSave) {
     // Garden by accident, with narration explaining it — never the picker.
     await holdKeyUntilInPage(
       page,
-      "ArrowDown",
+      "ArrowUp",
       new Function("return window.__newseyDebug.room() === " + JSON.stringify("The Anarchy Garden")),
       2000
     );
@@ -319,14 +388,20 @@ async function bootWithSave(page, url, patchSave) {
     const page = await freshPage(browser, url, errors);
     await bootWithSave(page, url, { introSeen: true, room: "lounge", flags: { runeDoorLearned: true } });
     const runeBox = await page.evaluate(() => window.NEWSEY_STORY.ROOMS.lounge.exits.find((e) => e.rune));
-    const pos = approachPosition(runeBox, "down");
+    // From BELOW. The rune door used to be a threshold at the bottom edge of
+    // the Lounge, walked into going down; regenerating the room to the
+    // three-pass standard put it in the BACK wall, so approaching it from
+    // above now means standing inside the wall — where the wall props' own
+    // footprints hold you, so nothing ever crosses and the failure reads as
+    // "the rune door doesn't work".
+    const pos = approachPosition(runeBox, "up");
     await page.evaluate((p) => {
       window.__newseyDebug.player.x = p.x;
       window.__newseyDebug.player.y = p.y;
     }, pos);
     // Once learned, crossing opens the destination picker instead of
     // moving on its own — wait for the panel, not a room change.
-    await holdKeyUntilInPage(page, "ArrowDown", new Function("return !document.getElementById('runeDoor').hidden"), 2000);
+    await holdKeyUntilInPage(page, "ArrowUp", new Function("return !document.getElementById('runeDoor').hidden"), 2000);
     await page.click("#runeList >> text=Library");
     await page.waitForTimeout(250);
     const s2 = await getState(page);
