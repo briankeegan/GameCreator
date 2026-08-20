@@ -77,6 +77,48 @@ def flood_fill_background(rgb, seed_mask):
                 q.append((ny, nx))
     return visited
 
+def largest_component_only(alpha):
+    """Zero out every opaque region except the single largest connected
+    blob. A generation occasionally leaves small disconnected specks of
+    non-green debris near a character (confirmed live: May's sheet had a
+    scatter of thin, disconnected dark-maroon wisps floating above her
+    actual hair, with real background visible in the gaps between them —
+    not a fringe/color problem at all, just a broken hair silhouette at the
+    top of that one cell) which no color threshold can distinguish from
+    real content since they aren't background-colored. Keeping only the
+    biggest connected mass — always the character's own body — discards
+    that debris regardless of its color. Same BFS shape as
+    flood_fill_background, just over opaque pixels instead of background."""
+    h, w = alpha.shape
+    mask = alpha > 10
+    visited = np.zeros((h, w), dtype=bool)
+    best = None
+    for sy in range(h):
+        for sx in range(w):
+            if not mask[sy, sx] or visited[sy, sx]:
+                continue
+            q = deque([(sy, sx)])
+            visited[sy, sx] = True
+            comp = [(sy, sx)]
+            while q:
+                y, x = q.popleft()
+                for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    ny, nx = y + dy, x + dx
+                    if 0 <= ny < h and 0 <= nx < w and mask[ny, nx] and not visited[ny, nx]:
+                        visited[ny, nx] = True
+                        q.append((ny, nx))
+                        comp.append((ny, nx))
+            if best is None or len(comp) > len(best):
+                best = comp
+    if best is None:
+        return alpha
+    keep = np.zeros((h, w), dtype=bool)
+    for y, x in best:
+        keep[y, x] = True
+    out = alpha.copy()
+    out[~keep] = 0
+    return out
+
 def cut_and_trim(im, y0, y1, x0, x1):
     cell = im.crop((x0 + 4, y0 + 4, x1 - 4, y1 - 4)).convert("RGBA")
     a = np.array(cell)
@@ -87,14 +129,40 @@ def cut_and_trim(im, y0, y1, x0, x1):
     bg = flood_fill_background(a[:, :, :3], border)
     a[bg, 3] = 0
     # kill any stray magenta fringe from the divider line too, dilated a
-    # couple px since a soft divider leaves a faint halo of its own.
+    # couple px since a soft divider leaves a faint halo of its own. Where
+    # the divider blends into a DARK character pixel (e.g. dark-red hair
+    # right at a cell's top edge) the blend comes out dark too — confirmed
+    # live at (71,0,34), fully opaque, which a brightness floor alone can't
+    # see. Relative dominance (G clearly overpowered by both R and B) catches
+    # that regardless of brightness — but a character whose own hair/clothes
+    # ARE a saturated red (confirmed live: May's hair sampled at (236,62,91),
+    # which trips the same relative test) makes this genuinely ambiguous by
+    # color alone anywhere in the cell. A divider can only ever have bled
+    # into the crop right at its outer edge, so restrict the relative test to
+    # a thin border band — real hair deep inside the cell is never at risk,
+    # only pixels close enough to the edge to plausibly be blend fringe.
     r, g, b = a[:, :, 0].astype(int), a[:, :, 1].astype(int), a[:, :, 2].astype(int)
-    mag = (r > 120) & (b > 40) & (g < r - 25) & (g < b - 10)
+    EDGE = 8
+    edge_band = np.zeros((h, w), dtype=bool)
+    edge_band[:EDGE, :] = edge_band[-EDGE:, :] = edge_band[:, :EDGE] = edge_band[:, -EDGE:] = True
+    # r>g+30/b>g+15 (relative dominance) still let real hair through at the
+    # ragged edge of the blend gradient — some blend pixels pass, some don't,
+    # by a few units either way, leaving a speckle of survivors instead of a
+    # clean removal (confirmed live: May's hair, whose OWN saturated red also
+    # satisfies relative dominance, made the margin too thin to separate the
+    # two). What actually distinguishes a magenta divider from any character
+    # color at every shade seen so far, including its dark blend into hair,
+    # is G sitting almost exactly at zero (a divider is drawn G-less on
+    # purpose, precisely so it keys out against G-heavy green) — real hair
+    # samples at g=62+, nowhere close.
+    mag = ((r > 120) & (b > 40) & (g < r - 25) & (g < b - 10)) | \
+          (edge_band & (g < 20) & (r > 30))
     dil = mag.copy()
     for dy in (-3, -2, -1, 0, 1, 2, 3):
         for dx in (-3, -2, -1, 0, 1, 2, 3):
             dil |= np.roll(np.roll(mag, dy, axis=0), dx, axis=1)
     a[dil, 3] = 0
+    a[:, :, 3] = largest_component_only(a[:, :, 3])
     out = Image.fromarray(a, "RGBA")
     alpha = np.array(out.split()[-1])
     mask = alpha > 10

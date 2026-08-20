@@ -104,7 +104,7 @@ window.NewseyDuel = (function () {
 
     els.screen.hidden = false;
     els.result.hidden = true;
-    els.hint.textContent = "tap two panels side by side to swap them, or drag one sideways"
+    els.hint.textContent = "tap between two panels to swap them, or drag one sideways"
       + (isTouch() ? "" : " · keyboard and controller work too");
     applyControlsSetting();
     applyButtonMapping();
@@ -227,7 +227,12 @@ window.NewseyDuel = (function () {
     var col = Math.floor((x - b.x) / layout.cell) + 1;
     var row = Math.floor((b.y + layout.boardH - y - rise) / layout.cell) + 1;
     if (col < 1 || col > E.WIDTH || row < 1 || row > E.HEIGHT) return null;
-    return { row: row, col: col };
+    // fx is where the tap landed ACROSS the cell, 0 at its left edge and 1 at
+    // its right — what tells a tap on a panel apart from a tap on the seam
+    // between two of them.
+    var fx = ((x - b.x) / layout.cell) % 1;
+    if (fx < 0) fx += 1;
+    return { row: row, col: col, fx: fx };
   }
 
   function pointerDown(e) {
@@ -271,6 +276,18 @@ window.NewseyDuel = (function () {
     var cell = cellAt(e);
     if (!cell) { state.selection = null; return; }
 
+    // Tapping the SEAM between two panels swaps that pair outright — no
+    // selecting one and then the other. It's the gesture the board invites:
+    // the thing you want to move is the boundary, not either panel. Works
+    // against an empty cell too; the engine already allows swapping a panel
+    // into a hole, and refuses the swap if it isn't legal.
+    var seam = seamAt(cell);
+    if (seam !== null) {
+      state.player.touchSwap(cell.row, seam);
+      state.selection = null;
+      return;
+    }
+
     var selection = state.selection;
     if (selection && selection.row === cell.row && Math.abs(selection.col - cell.col) === 1) {
       state.player.touchSwap(cell.row, Math.min(selection.col, cell.col));
@@ -280,6 +297,19 @@ window.NewseyDuel = (function () {
     } else {
       state.selection = { row: cell.row, col: cell.col };
     }
+  }
+
+  // How close to a cell edge counts as tapping the seam rather than the
+  // panel. Narrow enough that a tap aimed at a panel still selects it.
+  var SEAM_BAND = 0.22;
+  // Returns the LEFT column of the pair a seam-tap is asking to swap, or null
+  // if the tap was on a panel rather than a seam. The board's outer edges are
+  // not seams — there is nothing on the far side to swap with.
+  function seamAt(cell) {
+    if (cell.fx === undefined) return null;
+    if (cell.fx < SEAM_BAND && cell.col > 1) return cell.col - 1;
+    if (cell.fx > 1 - SEAM_BAND && cell.col < E.WIDTH) return cell.col;
+    return null;
   }
 
   // Keyboard, on-screen buttons and gamepad all feed the same input — any one

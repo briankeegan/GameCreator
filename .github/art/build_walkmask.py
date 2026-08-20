@@ -54,7 +54,11 @@ ROOMS = {
     "lounge": {
         "floorTop": 95,
         "blocks": [
-            [(18, 95), (152, 95), (152, 112), (36, 135), (18, 128)],  # the bar
+            # The bar. bg-lounge.png was mirrored horizontally so the arch
+            # sits on the LEFT wall (you come out of your room's right-hand
+            # door, so you come into this room from its left); the bar mirrored
+            # with it, hence the x values being 320-x of the originals.
+            [(302, 95), (168, 95), (168, 112), (284, 135), (302, 128)],  # the bar
         ],
     },
     "library": {

@@ -277,22 +277,26 @@ html, body {
 }
 /* Move + swap + raise: the whole control scheme, on screen, always. Without
    this the game is unplayable on a phone and undiscoverable on a desktop. */
+/* Same box as .touch-controls, deliberately: the pad and the action button
+   land in the same places on screen in a duel as they do walking around, so
+   your thumbs don't have to move when the game changes mode. */
 .duel-controls {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  max-width: 560px;   /* on a wide screen the pad belongs under the thumbs,
-                         not stretched across the whole monitor */
+  gap: 12px;
+  max-width: 640px;
   width: 100%;
   margin: 0 auto;
+  padding: 4px 0;
+  box-sizing: border-box;
 }
 .duel-controls[hidden] { display: none; }
 .duel-dpad { flex: 0 0 auto; }
+.duel-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .duel-dpad button { touch-action: none; }
 .duel-swap {
-  flex: 1 1 auto;
-  max-width: 260px;
+  flex: 0 0 auto;
   padding: 16px 10px;
   font-size: 0.95rem;
   background: rgba(138, 92, 246, 0.35);
