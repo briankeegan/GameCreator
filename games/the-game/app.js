@@ -264,6 +264,7 @@
   var talkLine = document.getElementById("talkLine");
 
   var currentRoom = null;
+  var exitsArmed = true; // false until the player steps clear of every doorway
   var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down" };
   var walkPhase = 0, isWalking = false; // drives real walk-frame cycling (see drawPlayer)
   var keys = {};
@@ -273,11 +274,14 @@
   var lastTime = null;
   var npcLineCounters = {}; // remembers which line to show next per NPC (repeat visits)
 
-  function enterRoom(roomId) {
+  // at: optional { x, y } to arrive at — a door hands over the spot in front
+  // of the matching door on the other side, so you step out where you should
+  // instead of teleporting to the middle of the room.
+  function enterRoom(roomId, at) {
     currentRoom = ROOMS[roomId];
-    roomLabelEl.textContent = currentRoom.label;
-    player.x = currentRoom.playerStart.x;
-    player.y = currentRoom.playerStart.y;
+    exitsArmed = false;
+    player.x = (at && at.x !== undefined) ? at.x : currentRoom.playerStart.x;
+    player.y = (at && at.y !== undefined) ? at.y : currentRoom.playerStart.y;
     if (save) { save.room = roomId; persist(); } // walking through a door autosaves
   }
 
@@ -514,12 +518,17 @@
       isWalking = false;
     }
     // exits
+    // Doors stay disarmed until you step off them, so arriving in a doorway
+    // can't immediately throw you back through it.
+    var onExit = false;
     currentRoom.exits.forEach(function (ex) {
       if (player.x + player.w > ex.x && player.x < ex.x + ex.w &&
           player.y + player.h > ex.y && player.y < ex.y + ex.h) {
-        enterRoom(ex.to);
+        onExit = true;
+        if (exitsArmed) enterRoom(ex.to, ex.arriveAt);
       }
     });
+    if (!onExit) exitsArmed = true;
     interactHint.hidden = !nearestNpc();
   }
 
@@ -542,15 +551,77 @@
     for (var gx = 0; gx < VW; gx += 20) { ctx.beginPath(); ctx.moveTo(gx, 26); ctx.lineTo(gx, VH); ctx.stroke(); }
   }
 
+  // Every exit box is placed on the door that the room's art actually draws
+  // (measured per room in story.js), so there is nothing to highlight except
+  // the doorway itself: a warm pool of light on its threshold, and the name of
+  // where it goes once you are close enough to use it. The old version painted
+  // a yellow slab wherever the box happened to be, which is what made doors
+  // look like they were in the wrong place.
+  // An exit marked drawn: "threshold" has no door in the art — it is the way
+  // you came in, at the bottom edge of the room — so we draw the frame too.
   function drawExits() {
     currentRoom.exits.forEach(function (ex) {
-      ctx.fillStyle = "rgba(255,209,102,0.25)";
-      ctx.fillRect(ex.x, ex.y, ex.w, ex.h);
-      ctx.fillStyle = "#ffd166";
-      ctx.font = "8px sans-serif";
-      ctx.textAlign = ex.x < VW / 2 ? "left" : "right";
-      ctx.fillText(ex.label, ex.x < VW / 2 ? ex.x + ex.w + 4 : ex.x - 4, ex.y + ex.h / 2 + 3);
+      // No label: the doorway is the sign. A pool of warm light on its
+      // threshold, brighter as you approach, is all the hint it needs.
+      var cx = ex.x + ex.w / 2;
+      var cy = ex.y + ex.h - 2;
+      var near = playerNearExit(ex);
+      var glow = ctx.createRadialGradient(cx, cy, 1, cx, cy, ex.w * 0.75);
+      glow.addColorStop(0, near ? "rgba(255,224,150,0.42)" : "rgba(255,209,102,0.18)");
+      glow.addColorStop(1, "rgba(255,209,102,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(ex.x - ex.w / 2, ex.y - ex.h, ex.w * 2, ex.h * 3);
+
+      // The drawn doorway goes ON TOP of its own glow — painted under it, the
+      // light washed straight through the opening and it read as a lit box.
+      if (ex.drawn === "threshold") drawThreshold(ex);
     });
+  }
+
+  function playerNearExit(ex) {
+    var px = player.x + player.w / 2, py = player.y + player.h / 2;
+    var dx = Math.max(ex.x - px, 0, px - (ex.x + ex.w));
+    var dy = Math.max(ex.y - py, 0, py - (ex.y + ex.h));
+    return Math.sqrt(dx * dx + dy * dy) < 26;
+  }
+
+  // A doorway painted onto the bottom edge of the room, for rooms whose art
+  // only drew one door. It reads as an opening in the near wall — a dark
+  // stairwell mouth with a frame around it and a step down into it — so the
+  // way back is something you can see rather than an invisible line.
+  function drawThreshold(ex) {
+    var x = ex.x, y = ex.y, w = ex.w, h = ex.h;
+    var post = Math.max(4, Math.round(w * 0.12));
+    var inner = { x: x + post, w: w - post * 2 };
+    ctx.save();
+
+    // the opening: darker as it goes down, and slightly narrower at the back
+    var mouth = ctx.createLinearGradient(0, y - 2, 0, y + h + 6);
+    mouth.addColorStop(0, "rgba(8,4,14,0.75)");
+    mouth.addColorStop(1, "rgba(4,2,8,0.97)");
+    ctx.fillStyle = mouth;
+    ctx.beginPath();
+    ctx.moveTo(inner.x + 3, y);
+    ctx.lineTo(inner.x + inner.w - 3, y);
+    ctx.lineTo(inner.x + inner.w, VH);
+    ctx.lineTo(inner.x, VH);
+    ctx.closePath();
+    ctx.fill();
+
+    // a step catching the room's light, so the mouth reads as going DOWN
+    ctx.fillStyle = "rgba(255,220,170,0.14)";
+    ctx.fillRect(inner.x + 2, y, inner.w - 4, 2);
+
+    // frame: two posts and a lintel, in the same wood as the room's trim
+    ctx.fillStyle = "#5a3a24";
+    ctx.fillRect(x, y - 4, post, VH - y + 4);
+    ctx.fillRect(x + w - post, y - 4, post, VH - y + 4);
+    ctx.fillRect(x, y - 4, w, 4);
+    ctx.fillStyle = "#7a5233";
+    ctx.fillRect(x, y - 4, w, 1);
+    ctx.fillRect(x, y - 4, 1, VH - y + 4);
+    ctx.fillRect(x + w - 1, y - 4, 1, VH - y + 4);
+    ctx.restore();
   }
 
   // Prefer a real standing sprite (npc.sprite — a full-body, transparent-

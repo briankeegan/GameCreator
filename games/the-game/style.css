@@ -73,7 +73,9 @@ html, body {
 
 .interact-hint {
   position: absolute;
-  bottom: 10px;
+  /* Along the top, where the room name used to be: the bottom edge of a room
+     can now hold a doorway (the way back), and the hint sat right on it. */
+  top: 8px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(10, 5, 20, 0.75);
