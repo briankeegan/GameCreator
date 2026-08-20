@@ -112,7 +112,7 @@ window.NEWSEY_STORY = (function () {
   // account of what is built.
   var RUNE_DOOR = [
     { label: "Library", to: "library", arriveAt: { x: 220, y: 150 }, arriveFacing: "down" },
-    { label: "Anarchy Garden", to: "garden", arriveAt: { x: 150, y: 138 }, arriveFacing: "up" },
+    { label: "Anarchy Garden", to: "garden", arriveAt: { x: 152, y: 146 }, arriveFacing: "up" },
     { label: "Kyran's Lab", to: "lab", arriveAt: { x: 210, y: 130 }, arriveFacing: "left" },
     { label: "Observatory", locked: "The word doesn't take your finger. Not yet." },
     { label: "Basement", locked: "The word doesn't take your finger. Not yet." },
@@ -507,36 +507,65 @@ window.NEWSEY_STORY = (function () {
       // loads means it never arms — doors stay disarmed until you step off
       // them — so you can walk into it all day and nothing happens. Found by
       // the walk test, which is exactly what it is for.
-      playerStart: { x: 150, y: 138 },
+      playerStart: { x: 152, y: 146 },
+      // Placed on the numbers MEASURED off the composed scene in art-src/,
+      // then checked with:
+      //   python3 .github/art/preview_room.py games/the-game garden \
+      //           --scene games/the-game/art-src/garden_scene.png --mode blend
+      // which lays the assembled room over that scene like tracing paper. A
+      // prop at the wrong size or in the wrong place shows up instantly as a
+      // doubled edge; read off a grid by eye it does not, which is how the
+      // statues first shipped at two thirds of their size.
+      // Placed on the numbers MEASURED off the composed scene in art-src/,
+      // then checked with:
+      //   python3 .github/art/preview_room.py games/the-game garden \
+      //           --scene games/the-game/art-src/garden_scene.png --mode side
+      // which puts the assembled room next to the scene it came from. Every
+      // problem this room had was invisible in the numbers and obvious there:
+      // a plate that didn't fill the frame, statues at two thirds size, three
+      // flower patches where the scene had drifts of them.
       props: [
-        // the far bank: waterfalls first so the pool sorts in front of them
-        { art: "prop_waterfall", x: 112, y: 24, h: 62, base: { w: 30, h: 8 } },
-        { art: "prop_waterfall", x: 208, y: 24, h: 62, base: { w: 30, h: 8 } },
-        { art: "prop_pool",      x: 160, y: 28, h: 44, w: 224, base: { w: 210, h: 14 } },
-        // the low wall along the near edge, either side of the gap the path
-        // passes through
-        { art: "prop_wall", x: 86,  y: 190, h: 24, w: 104, base: { w: 104, h: 10 } },
-        { art: "prop_wall", x: 236, y: 190, h: 24, w: 104, base: { w: 104, h: 10 } },
-        // ground cover — walked straight over, painted with the floor
-        { art: "prop_flowers_white",  x: 84,  y: 96,  h: 16, flat: true },
-        { art: "prop_flowers_white",  x: 108, y: 138, h: 14, flat: true },
-        { art: "prop_flowers_orange", x: 236, y: 104, h: 16, flat: true },
-        { art: "prop_flowers_orange", x: 214, y: 148, h: 14, flat: true },
-        { art: "prop_bramble",        x: 70,  y: 122, h: 15, flat: true },
-        { art: "prop_bramble",        x: 250, y: 68,  h: 13, flat: true },
-        { art: "prop_tuft",           x: 128, y: 172, h: 12, flat: true },
-        // the standing scenery
-        { art: "prop_cherry",   x: 72,  y: 72,  h: 78, base: { rx: 14, ry: 5 } },
-        { art: "prop_cherry",   x: 62,  y: 152, h: 78, base: { rx: 14, ry: 5 } },
-        { art: "prop_cherry",   x: 252, y: 82,  h: 78, base: { rx: 14, ry: 5 } },
-        { art: "prop_fountain", x: 122, y: 58,  h: 56, base: { rx: 15, ry: 6 } },
-        { art: "prop_fountain", x: 214, y: 58,  h: 56, base: { rx: 15, ry: 6 } },
-        { art: "prop_fountain", x: 96,  y: 108, h: 56, base: { rx: 15, ry: 6 } },
-        { art: "prop_fountain", x: 228, y: 132, h: 56, base: { rx: 15, ry: 6 } }
+        // the far bank — waterfalls first so the pool sorts in front of them
+        { art: "prop_waterfall", x: 116, y: 68, h: 86, w: 58, base: { w: 58, h: 86 } },
+        { art: "prop_waterfall", x: 204, y: 68, h: 86, w: 58, base: { w: 58, h: 86 } },
+        { art: "prop_pool",      x: 160, y: 64, h: 44, w: 250, base: { w: 240, h: 16 } },
+        // the low wall along the near edge, either side of the path's gap
+        { art: "prop_wall", x: 74,  y: 196, h: 26, w: 132, base: { w: 132, h: 12 } },
+        { art: "prop_wall", x: 250, y: 196, h: 26, w: 132, base: { w: 132, h: 12 } },
+        // Ground cover, walked straight over. The composed scene has DRIFTS of
+        // these, not three tidy patches — sparse cover is the other half of
+        // why the first assembly read so much emptier than the scene.
+        { art: "prop_flowers_white",  x: 66,  y: 150, h: 44, flat: true },
+        { art: "prop_flowers_white",  x: 100, y: 166, h: 40, flat: true },
+        { art: "prop_flowers_white",  x: 46,  y: 176, h: 40, flat: true },
+        { art: "prop_flowers_white",  x: 238, y: 128, h: 40, flat: true },
+        { art: "prop_flowers_white",  x: 262, y: 150, h: 36, flat: true },
+        { art: "prop_flowers_orange", x: 268, y: 108, h: 44, flat: true },
+        { art: "prop_flowers_orange", x: 246, y: 168, h: 44, flat: true },
+        { art: "prop_flowers_orange", x: 284, y: 138, h: 40, flat: true },
+        { art: "prop_flowers_orange", x: 44,  y: 106, h: 40, flat: true },
+        { art: "prop_bramble",        x: 118, y: 126, h: 27, flat: true },
+        { art: "prop_bramble",        x: 96,  y: 138, h: 23, flat: true },
+        { art: "prop_bramble",        x: 268, y: 182, h: 27, flat: true },
+        { art: "prop_bramble",        x: 240, y: 190, h: 23, flat: true },
+        { art: "prop_tuft",           x: 196, y: 108, h: 20, flat: true },
+        { art: "prop_tuft",           x: 132, y: 176, h: 20, flat: true },
+        // The standing scenery, at the composed scene's own sizes. Trees are
+        // BIG — ~94px — and hard against the frame edges so their canopies run
+        // off the side; that crop is what makes it read as a corner of a real
+        // garden. Statues ~56px and ALL THE SAME SIZE: that scene did not
+        // shrink the far ones, which is why this room has no depthScale.
+        { art: "prop_cherry",   x: 54,  y: 96,  h: 94, base: { rx: 15, ry: 5 } },
+        { art: "prop_cherry",   x: 36,  y: 168, h: 94, base: { rx: 15, ry: 5 } },
+        { art: "prop_cherry",   x: 286, y: 112, h: 94, base: { rx: 15, ry: 5 } },
+        { art: "prop_fountain", x: 84,  y: 128, h: 58, base: { rx: 15, ry: 6 } },
+        { art: "prop_fountain", x: 140, y: 106, h: 58, base: { rx: 15, ry: 6 } },
+        { art: "prop_fountain", x: 216, y: 106, h: 58, base: { rx: 15, ry: 6 } },
+        { art: "prop_fountain", x: 224, y: 172, h: 58, base: { rx: 15, ry: 6 } }
       ],
       exits: [
         // the path leaving through the gap in the wall, back the way she came
-        { x: 142, y: 166, w: 34, h: 16, to: "lounge", arriveAt: { x: 152, y: 125 }, arriveFacing: "down" }
+        { x: 146, y: 178, w: 34, h: 14, to: "lounge", arriveAt: { x: 152, y: 125 }, arriveFacing: "down" }
       ],
       npcs: [
         {
