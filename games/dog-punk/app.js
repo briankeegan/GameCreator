@@ -4,8 +4,8 @@
 // the Past's opening area — walk out, clear the room's enemies, the gate
 // at the top opens, walk through it to clear the level.
 //
-// Art: hero_down/hero_up/hero_side.png (+ _walk2 variants) and rat_side.png
-// (+ _walk2) are generated pixel-art sprites that ship alongside this file
+// Art: hero_sheet.png and rat_sheet.png are generated 3x3 pixel-art sprite
+// sheets (idle/walk/attack x down/side/up) that ship alongside this file
 // (same-origin — never fetched cross-origin, and never sampled with
 // getImageData/toDataURL, only ever drawImage'd). Each direction has TWO
 // real drawn frames — a standing/base pose and an opposite-leg mid-stride
@@ -109,10 +109,10 @@ const ENEMY_SPAWNS = [
 ];
 
 // ---- sprites (same-origin PNGs shipped with this game) ----
-// Hero: 3 real frames (down/up/side) cover all 4 facing directions —
-// "side" is mirrored horizontally for left vs right. Rat: 1 real frame
-// (side), mirrored the same way; rats don't get distinct up/down art but
-// still turn to face their movement/attack direction and animate.
+// Hero AND rat both ship a 3x3 sheet: columns idle/walk/attack, rows
+// facing-down / facing-side (drawn facing right, mirrored for left) /
+// facing-up. That covers all four facings with real drawn art for both,
+// so nothing is ever drawn in profile while it walks up or down.
 function loadSprite(src) {
   const img = new Image();
   const state = { img, ready: false };
@@ -187,10 +187,24 @@ const TILE_GROUND = 0, TILE_CONCRETE = 1, TILE_WALL = 2, TILE_CRATE = 3;
 // the SAME locked palette (art-style.json) — that is what keeps the rats
 // looking like they belong in the same game as Beverly, instead of a
 // finely-textured realistic rodent standing next to a flat cartoon dog.
-const RAT = sliceSheet("rat_sheet.png", 3, 1);
-const ratSide = RAT[0];
-const ratSideWalk2 = RAT[1];
-const ratAtkSide = RAT[2];
+//
+// The rat sheet is now the SAME shape as the hero's: 3 columns (idle, walk,
+// attack) x 3 rows (facing down, facing side-right, facing up). It used to be
+// a single side-view row, so a rat walking straight up or straight down was
+// drawn in right/left profile — it only ever looked correct while it happened
+// to be moving sideways. All three rows were generated as one matched set of
+// the same upright cartoon rat (art-src/rat_front_raw, rat_side_raw4,
+// rat_back_raw) so the character cannot change shape when it turns.
+const RAT = sliceSheet("rat_sheet.png", 3, 3);
+const ratDown = RAT[0];
+const ratDownWalk2 = RAT[1];
+const ratAtkDown = RAT[2];
+const ratSide = RAT[3];
+const ratSideWalk2 = RAT[4];
+const ratAtkSide = RAT[5];
+const ratUp = RAT[6];
+const ratUpWalk2 = RAT[7];
+const ratAtkUp = RAT[8];
 
 // facing (+ walk-cycle step) -> { sprite, mirror }
 // The sheet's side row is drawn facing RIGHT, so "right" is the unmirrored
@@ -206,7 +220,10 @@ function heroSpriteFor(facing, step) {
   return { s: step ? heroDownWalk2 : heroDown, mirror: false };
 }
 function ratSpriteFor(facing, step) {
-  return { s: step ? ratSideWalk2 : ratSide, mirror: facing === "left" };
+  if (facing === "up") return { s: step ? ratUpWalk2 : ratUp, mirror: false };
+  if (facing === "left") return { s: step ? ratSideWalk2 : ratSide, mirror: true };
+  if (facing === "right") return { s: step ? ratSideWalk2 : ratSide, mirror: false };
+  return { s: step ? ratDownWalk2 : ratDown, mirror: false };
 }
 // Attack-pose lookups (ignore the walk-cycle `step` arg — same signature as
 // the walk lookups above so drawAnimatedSprite can call either one).
@@ -217,7 +234,10 @@ function heroAttackSpriteFor(facing) {
   return { s: heroAtkDown, mirror: false };
 }
 function ratAttackSpriteFor(facing) {
-  return { s: ratAtkSide, mirror: facing === "left" };
+  if (facing === "up") return { s: ratAtkUp, mirror: false };
+  if (facing === "left") return { s: ratAtkSide, mirror: true };
+  if (facing === "right") return { s: ratAtkSide, mirror: false };
+  return { s: ratAtkDown, mirror: false };
 }
 
 // ---- DOM ----
@@ -512,13 +532,12 @@ function update(dt, now) {
         if (en.wanderT <= 0) {
           en.wanderT = 1 + Math.random() * 1.5;
           // Cardinal patrol steps, not a free diagonal angle: reads much
-          // more like a Zelda-style patrolling enemy, and it's weighted
-          // toward left/right because that's the rats' real dedicated
-          // sprite (a mirrored side view) — vertical legs still happen
-          // regularly so they do walk up/down, just less often than they
-          // walk left/right.
-          const roll = Math.random();
-          const dir = roll < 0.4 ? "left" : roll < 0.8 ? "right" : roll < 0.9 ? "up" : "down";
+          // more like a Zelda-style patrolling enemy. All four directions are
+          // now equally likely — the old left/right bias only existed because
+          // the rats had no up/down art, and now they do (rat_sheet.png has a
+          // front row and a back row), so a rat walking up faces up and one
+          // walking down faces down.
+          const dir = ["left", "right", "up", "down"][Math.floor(Math.random() * 4)];
           en.wanderDx = dir === "left" ? -0.5 : dir === "right" ? 0.5 : 0;
           en.wanderDy = dir === "up" ? -0.5 : dir === "down" ? 0.5 : 0;
         }
@@ -692,7 +711,9 @@ function drawRatFallback(x, y, facing, hitFlash, squashX, squashY, step, attacki
     ctx.fillRect(-9, 1, 2, 2);
     ctx.fillStyle = "#5c4c34";
     ctx.fillRect(-14, -2, 6, 3); // extended claw
-  } else {
+  } else if (facing !== "up") {
+    // eyes — omitted when the rat is walking away from the camera, so even
+    // the fallback art turns around instead of staring backwards at you.
     ctx.fillStyle = "#c0392b";
     ctx.fillRect(-6, -4, 2, 2);
     ctx.fillRect(4, -4, 2, 2);
