@@ -174,6 +174,7 @@
   // request already happened seconds earlier while they were reading the
   // previous line.
   (function preloadAllArt() {
+    Object.keys(ROOMS).forEach(function (id) { loadArt("walk-" + ROOMS[id].bg); });
     [STORY.INTRO_CUTSCENE, STORY.DREAM_CUTSCENE].forEach(function (list) {
       list.forEach(function (s) {
         if (s.art) loadArt(s.art);
@@ -566,13 +567,26 @@
   //      plank shadows close up while the real void, which is thick, stays,
   //   3. walkable = everything the flood didn't reach, below the room's
   //      wall/floor line.
-  // That line is the one thing pixels can't tell us — nothing distinguishes a
-  // dark wall from the floor's own shadow — so it stays as `floorTop`, one
-  // number per room. Everything else is measured.
+  // What the flood can't tell us is which of that outline is floor and which
+  // is a wall FACE standing in front of it — a wall is painted, not black, so
+  // it survives. That part is given, as `wallCut` (see below).
   var MASK_W = VW, MASK_H = VH;   // mask is in room coordinates, 1:1
   var maskCache = {};
 
   function buildWalkMask(room) {
+    // A room can ship its walkable area as a picture: art/walk-<bg>.png, the
+    // room's floor filled flat white on black. That's the authored form every
+    // 2D adventure engine uses, and it's exact — nothing is being guessed at
+    // from a painted image. These are cut out of a two-panel sheet that draws
+    // the room and its floor plan together in one generation, so the mask
+    // cannot drift out of register with the art it belongs to.
+    var authored = readMaskImage(room);
+    if (authored) return authored;
+
+    // No authored mask: fall back to reading the room's shape out of the
+    // background itself. Good enough to walk around in, and it means a room
+    // whose art was just regenerated is never unplayable while its mask is
+    // still being made.
     var entry = loadArt("bg-" + room.bg);
     if (!entry || !entry.ok || !entry.img.naturalWidth) return null;
     var c = document.createElement("canvas");
@@ -586,10 +600,21 @@
     var n = MASK_W * MASK_H;
     var voidMask = new Uint8Array(n);
     var stack = [];
+    // "Near-black" has to be relative, not a fixed number. Your Old Room is
+    // lit by one lamp at night and its far floorboards are darker than the
+    // walls of every other room, so a fixed cutoff ate the floor out from
+    // under it. Scale the cutoff to how dark the picture actually is, and
+    // require the void to be NEUTRAL as well as dark — unlit floorboards keep
+    // their warm tint, the void outside the room doesn't.
+    var level = voidLevel(data, n);
+    function isVoid(i) {
+      var r = data[i], g2 = data[i + 1], b = data[i + 2];
+      var mx = Math.max(r, g2, b);
+      return mx < level && (mx - Math.min(r, g2, b)) < 14;
+    }
     function seed(x, y) {
       var k = y * MASK_W + x, i = k * 4;
-      if (voidMask[k]) return;
-      if (Math.max(data[i], data[i + 1], data[i + 2]) >= VOID_LEVEL) return;
+      if (voidMask[k] || !isVoid(i)) return;
       voidMask[k] = 1; stack.push(k);
     }
     for (var x = 0; x < MASK_W; x++) { seed(x, 0); seed(x, MASK_H - 1); }
@@ -603,42 +628,75 @@
     }
     voidMask = openMask(voidMask, VOID_OPEN);
 
-    // The wall/floor line. Detecting it from pixels was tried twice and
-    // failed twice: a straight cut across the room fences you out of floor
-    // that rises at the sides, and walking up each column to the first hard
-    // edge stops at anything PAINTED on the floor — the arena's summoning
-    // circle is a hard edge and it is still floor. So this one thing is
-    // given, as `backEdge`: a handful of points along the room's back edge,
-    // interpolated across the width. Straight-walled rooms need two. It is
-    // the only hand-authored number left; the room's shape, which is the part
-    // that actually changes when a background is regenerated, is measured.
-    var edge = room.backEdge || [[0, room.floorTop || 100], [MASK_W, room.floorTop || 100]];
+    // Now cut the walls off. The flood gives the room's OUTLINE, which is the
+    // hard part and comes free — the front edge's curve, the corners, whatever
+    // the artist drew. What it can't give is which of that outline is floor
+    // and which is a wall FACE standing in front of it: a wall is painted, not
+    // black, so it survives the flood. In the lounge that's the two angled
+    // walls down the sides as well as the back one, which is why a single
+    // horizontal "floor starts here" line was never going to be enough.
+    //
+    // So each room carries `wallCut`, a polygon whose only job is to exclude
+    // walls. It has to be accurate where it runs along a wall base and can be
+    // as sloppy as it likes everywhere else, because the flood already decides
+    // the outer boundary. Walkable = inside the flood AND inside that polygon.
+    var cut = room.wallCut;
     var walk = new Uint8Array(n);
     for (var yy = 0; yy < MASK_H; yy++) {
       for (var xx = 0; xx < MASK_W; xx++) {
         var kk = yy * MASK_W + xx;
-        walk[kk] = (yy >= backEdgeAt(edge, xx) && !voidMask[kk]) ? 1 : 0;
+        if (voidMask[kk]) continue;
+        walk[kk] = (!cut || pointInPoly(cut, xx, yy)) ? 1 : 0;
       }
     }
     return walk;
   }
 
-  // Linear interpolation along the back-edge polyline, clamped at both ends.
-  function backEdgeAt(edge, x) {
-    if (x <= edge[0][0]) return edge[0][1];
-    for (var i = 1; i < edge.length; i++) {
-      if (x <= edge[i][0]) {
-        var x0 = edge[i - 1][0], y0 = edge[i - 1][1], x1 = edge[i][0], y1 = edge[i][1];
-        return y0 + (y1 - y0) * (x - x0) / (x1 - x0 || 1);
-      }
+  // Standard even-odd ray cast.
+  function pointInPoly(poly, x, y) {
+    var inside = false;
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      var xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
     }
-    return edge[edge.length - 1][1];
+    return inside;
   }
 
-  // How black "the black" has to be, and how thick a leak has to be to
-  // survive. Separable box erode/dilate — a leak down a mortar line is a few
-  // pixels wide, the void around a room is tens.
-  var VOID_LEVEL = 28, VOID_OPEN = 3;
+  // Reads art/walk-<bg>.png if the room has one. Any pixel that is more light
+  // than dark counts as walkable, so the mask can be authored as white-on-
+  // black without worrying about the exact shade or about anti-aliased edges.
+  function readMaskImage(room) {
+    var entry = loadArt("walk-" + room.bg);
+    if (!entry || !entry.ok || !entry.img.naturalWidth) return null;
+    var c = document.createElement("canvas");
+    c.width = MASK_W; c.height = MASK_H;
+    var g = c.getContext("2d");
+    g.drawImage(entry.img, 0, 0, MASK_W, MASK_H);
+    var data;
+    try { data = g.getImageData(0, 0, MASK_W, MASK_H).data; } catch (err) { return null; }
+    var out = new Uint8Array(MASK_W * MASK_H);
+    for (var i = 0; i < out.length; i++) {
+      var j = i * 4;
+      out[i] = (data[j + 3] > 128 && (data[j] + data[j + 1] + data[j + 2]) > 300) ? 1 : 0;
+    }
+    return out;
+  }
+
+  // How black "the black" has to be, as a fraction of the picture's own
+  // brightness, clamped so a blown-out or a pitch-dark room both stay sane.
+  function voidLevel(data, n) {
+    var hist = new Uint32Array(256), i;
+    for (i = 0; i < n; i++) {
+      var j = i * 4;
+      hist[Math.max(data[j], data[j + 1], data[j + 2])]++;
+    }
+    var half = n >> 1, seen = 0, median = 128;
+    for (i = 0; i < 256; i++) { seen += hist[i]; if (seen >= half) { median = i; break; } }
+    return Math.max(12, Math.min(34, Math.round(median * 0.26)));
+  }
+  // How thick a leak has to be to survive the opening. A leak down a mortar
+  // line is a few pixels wide; the void around a room is tens.
+  var VOID_OPEN = 3;
   function openMask(src, r) { return morphMask(morphMask(src, r, true), r, false); }
   function morphMask(src, r, erode) {
     var tmp = new Uint8Array(src.length), dst = new Uint8Array(src.length);
@@ -662,9 +720,9 @@
   }
 
   // The mask needs the background decoded, which it may not be on the very
-  // first frame in a room. Until it is, fall back to the room's floorTop line
-  // and the full width — generous rather than blocking, so nobody is ever
-  // frozen in place waiting on an image.
+  // first frame in a room. Until it is, fall back to the wall-cut polygon on
+  // its own — generous rather than blocking, so nobody is ever frozen in
+  // place waiting on an image.
   function walkMask(room) {
     if (maskCache[room.bg] !== undefined) return maskCache[room.bg];
     var m = buildWalkMask(room);
@@ -678,7 +736,7 @@
     var x = Math.round(fx), y = Math.round(fy);
     if (x < 0 || y < 0 || x >= MASK_W || y >= MASK_H) return false;
     var m = walkMask(room);
-    if (!m) return y >= (room.floorTop === undefined ? 100 : room.floorTop) && y < MASK_H - 6;
+    if (!m) return !room.wallCut || pointInPoly(room.wallCut, x, y);
     return m[y * MASK_W + x] === 1;
   }
 
