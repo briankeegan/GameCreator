@@ -147,13 +147,29 @@ jobs:
         run: |
           python3 -m pip install --quiet --disable-pip-version-check pillow numpy
           status=0
+          broken=""
           for f in games/*/art/*_down_1.png; do
             [ -e "$f" ] || continue
             dir=$(dirname "$f")
             char=$(basename "$f" _down_1.png)
             echo "== $char ($dir) =="
-            python3 .github/art/verify_sheet.py frames "$dir" "$char" || status=1
+            if ! python3 .github/art/verify_sheet.py frames "$dir" "$char"; then
+              status=1
+              broken="$broken $(printf '%s' "$dir" | cut -d/ -f2)/$char"
+            fi
           done
+          # NAME THE CULPRIT. This build is one artifact for every game, so a
+          # single character's frames failing blocks the whole site — which is
+          # correct (half a site cannot be deployed) but was invisible: one
+          # game's art failed five deploys in a row while a DIFFERENT game's
+          # thread said its change was live. Whoever reads this needs to know
+          # in one line whose art is holding the site, not have to scroll a log.
+          if [ -n "$broken" ]; then
+            echo "::error::Site deploy BLOCKED for every game by art in:$broken — this is a shared build, so fix or revert that art to unblock the rest."
+            { echo "### Deploy blocked"; echo;
+              echo "Failing art:$broken"; echo;
+              echo "This build deploys every game as one artifact, so this blocks the whole site."; } >> "$GITHUB_STEP_SUMMARY"
+          fi
           exit $status
 
       # Same mechanism HayleysGame's clubhouse already uses in production —

@@ -675,6 +675,7 @@ jobs:
           fi
 
       - name: Land changes on main and deploy
+        id: land
         if: success() && steps.ctx.outputs.enabled == 'true'
         timeout-minutes: 10
         env:
@@ -797,14 +798,69 @@ jobs:
           # dispatch the deploy explicitly.
           gh workflow run pages.yml --ref main
           echo "Pushed to main and dispatched Pages deploy."
+          echo "deployed=1" >> "$GITHUB_OUTPUT"
 
       # (Art is generated + reviewed in-run via the broker and written straight
       # into games/**, so it's committed alongside the code by "Land changes"
       # above — no separate image-dispatch step is needed anymore.)
 
+      # WAIT FOR THE DEPLOY, AND SAY SO IF IT FAILED.
+      #
+      # "Shipped" used to mean "pushed to main", and the reply was written and
+      # posted while the deploy was still running. That produced the worst
+      # possible outcome for the person asking: a confident "shipped it, hard
+      # refresh once" for a change that never reached the site. It happened for
+      # real — five Pages deploys in a row failed on ONE game's art check
+      # (`may: CROPPED`, in a different game entirely), so another game's
+      # colour fix sat on main for fifteen minutes while its thread said it was
+      # live. Nothing reported it, because nothing was watching.
+      #
+      # So the run now waits for its own deploy and reports what actually
+      # happened. Bounded and non-fatal: a deploy that is merely slow must not
+      # fail a run whose work is already safely on main.
+      - name: Wait for the deploy
+        id: deploy
+        if: success() && steps.ctx.outputs.enabled == 'true' && steps.land.outputs.deployed == '1'
+        timeout-minutes: 8
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          sha=$(git rev-parse HEAD)
+          echo "watching Pages for $sha"
+          for i in $(seq 1 40); do
+            read -r st concl < <(gh run list --workflow pages.yml --limit 5 \
+              --json headSha,status,conclusion \
+              --jq "[.[] | select(.headSha==\"$sha\")][0] | \"\(.status) \(.conclusion // \"-\")\"" 2>/dev/null) || true
+            case "${st:-}" in
+              completed)
+                echo "result=$concl" >> "$GITHUB_OUTPUT"
+                if [ "$concl" = "success" ]; then
+                  echo "deploy succeeded"; exit 0
+                fi
+                # Name the step that failed, so the follow-up is actionable
+                # rather than a link someone has to go and read.
+                rid=$(gh run list --workflow pages.yml --limit 5 --json headSha,databaseId \
+                        --jq "[.[] | select(.headSha==\"$sha\")][0].databaseId")
+                gh run view "$rid" --log-failed 2>/dev/null \
+                  | grep -oE '(FAILED \([0-9]+ problem|[a-z_]+: (CROPPED|SEAMS|FLAT|EMPTY|MISSING)[^\n]*)' \
+                  | head -3 > .autopilot/deploy_failure.txt || true
+                echo "::warning::Pages deploy FAILED for $sha"
+                cat .autopilot/deploy_failure.txt || true
+                exit 0
+                ;;
+              "") echo "  (no Pages run for this sha yet, $i)";;
+              *)  echo "  $st ($i)";;
+            esac
+            sleep 12
+          done
+          echo "result=timeout" >> "$GITHUB_OUTPUT"
+          echo "::warning::gave up waiting on the Pages deploy — it may still be running"
+
       # Deterministic: wrap the model's reply body with the marker + the correct
-      # version stamp (latest SUCCESSFUL pages.yml run — the just-dispatched
-      # deploy is still in_progress, so `--status success` gives what's live).
+      # version stamp (latest SUCCESSFUL pages.yml run — a failed deploy means
+      # the stamp shows the version that is genuinely live, not this one).
       - name: Post Claude's reply to the thread
         if: success() && steps.ctx.outputs.enabled == 'true'
         env:
@@ -818,6 +874,18 @@ jobs:
           fi
           N=$(gh run list --workflow pages.yml --status success --limit 1 --json number --jq '.[0].number' 2>/dev/null)
           [ -z "$N" ] && N='?'
+          # A change that did not deploy is not shipped, and the reply must not
+          # claim otherwise — the model wrote it before the deploy finished and
+          # cannot know. Append the truth rather than editing its words.
+          case "${{ steps.deploy.outputs.result }}" in
+            failure)
+              why=$(cat .autopilot/deploy_failure.txt 2>/dev/null | sed 's/^/  /')
+              body="$(printf '%s\n\n---\n\n**Not live yet.** The change is on `main`, but the site deploy failed, so what you see is still the previous version. This is usually another game'"'"'s art check failing the shared build — it blocks every game, not just this one.\n\n```\n%s\n```\n\nNothing to do on your side: the next successful deploy carries this change with it.' "$body" "${why:-  (see the Pages run)}")"
+              ;;
+            timeout)
+              body="$(printf '%s\n\n---\n\n_The deploy was still running when I posted this — the change is on `main` and will be live shortly._' "$body")"
+              ;;
+          esac
           gh pr comment ${{ steps.ctx.outputs.pr }} --repo ${{ github.repository }} \
             --body "$(printf '**Claude says:**\n\n%s\n\n[v0.%s]' "$body" "$N")"
           # Close out the live status so it does not sit there looking mid-run.
