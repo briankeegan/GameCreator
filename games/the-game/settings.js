@@ -17,6 +17,7 @@ window.NewseySettings = (function () {
   // several keys; rebinding replaces them with the one you press.
   var DEFAULTS = {
     onScreenControls: "auto", // auto (touch devices) | on | off
+    padSide: "left",          // which side of the screen the on-screen d-pad sits
     keys: {
       up: ["ArrowUp", "w"],
       down: ["ArrowDown", "s"],
@@ -25,7 +26,16 @@ window.NewseySettings = (function () {
       interact: ["z", "Enter"],
       swap: ["z", " "],
       raise: ["Shift", "r"]
-    }
+    },
+    // Gamepad button indices per action, standard layout: d-pad 12-15, face
+    // buttons 0-3, shoulders 4-7. Rebindable by pressing a button on the pad.
+    pad: {
+      up: [12], down: [13], left: [14], right: [15],
+      interact: [0, 2], swap: [0, 2], raise: [1, 3, 4, 5, 6, 7]
+    },
+    // What the two on-screen action buttons do. On a phone these ARE the
+    // controls, so they are the mapping that actually matters there.
+    buttons: { primary: "swap", secondary: "raise" }
   };
 
   var ACTIONS = [
@@ -38,12 +48,14 @@ window.NewseySettings = (function () {
     { id: "raise", label: "Raise the stack", where: "duel" }
   ];
 
-  // Standard gamepad mapping (navigator.getGamepads, "standard" layout):
-  // d-pad 12-15, face buttons 0-3, shoulders 4-7. Sticks are axes 0/1.
-  var PAD_BUTTONS = {
-    up: [12], down: [13], left: [14], right: [15],
-    interact: [0, 2], swap: [0, 2], raise: [1, 3, 4, 5, 6, 7]
-  };
+  // The two on-screen action buttons can be set to any of these.
+  var BUTTON_CHOICES = [
+    { id: "swap", label: "Swap" },
+    { id: "raise", label: "Raise" },
+    { id: "interact", label: "Talk" },
+    { id: "up", label: "Up" },
+    { id: "down", label: "Down" }
+  ];
   var STICK_DEADZONE = 0.45;
 
   var saved = window.GCStorage.get(gameId, "settings", null);
@@ -51,17 +63,30 @@ window.NewseySettings = (function () {
   var listeners = [];
 
   function merge(defaults, stored) {
-    var out = { onScreenControls: defaults.onScreenControls, keys: {} };
-    for (var id in defaults.keys) out.keys[id] = defaults.keys[id].slice();
+    var out = {
+      onScreenControls: defaults.onScreenControls,
+      padSide: defaults.padSide,
+      keys: {}, pad: {},
+      buttons: { primary: defaults.buttons.primary, secondary: defaults.buttons.secondary }
+    };
+    var id;
+    for (id in defaults.keys) out.keys[id] = defaults.keys[id].slice();
+    for (id in defaults.pad) out.pad[id] = defaults.pad[id].slice();
     if (stored) {
       if (stored.onScreenControls) out.onScreenControls = stored.onScreenControls;
-      if (stored.keys) {
-        for (var key in stored.keys) {
-          if (out.keys[key] && stored.keys[key] && stored.keys[key].length) {
-            out.keys[key] = stored.keys[key].slice();
+      if (stored.padSide) out.padSide = stored.padSide;
+      if (stored.buttons) {
+        if (stored.buttons.primary) out.buttons.primary = stored.buttons.primary;
+        if (stored.buttons.secondary) out.buttons.secondary = stored.buttons.secondary;
+      }
+      ["keys", "pad"].forEach(function (group) {
+        if (!stored[group]) return;
+        for (var key in stored[group]) {
+          if (out[group][key] && stored[group][key] && stored[group][key].length) {
+            out[group][key] = stored[group][key].slice();
           }
         }
-      }
+      });
     }
     return out;
   }
@@ -105,8 +130,8 @@ window.NewseySettings = (function () {
       var pad = pads[p];
       if (!pad || !pad.connected) continue;
       state = state || { up: false, down: false, left: false, right: false, interact: false, swap: false, raise: false };
-      for (var action in PAD_BUTTONS) {
-        var indexes = PAD_BUTTONS[action];
+      for (var action in settings.pad) {
+        var indexes = settings.pad[action];
         for (var i = 0; i < indexes.length; i++) {
           var button = pad.buttons[indexes[i]];
           if (button && (button.pressed || button.value > 0.5)) state[action] = true;
@@ -122,6 +147,49 @@ window.NewseySettings = (function () {
     return state;
   }
 
+  // While a pad rebind is waiting, poll the gamepad for the first button that
+  // goes down and bind that. Polling is the only way — the Gamepad API has no
+  // button events.
+  var padPollHandle = null;
+  function startPadCapture() {
+    stopPadCapture();
+    var wasDown = {};
+    var poll = function () {
+      if (!capturingPad) return;
+      var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (var p = 0; p < pads.length; p++) {
+        var pad = pads[p];
+        if (!pad || !pad.connected) continue;
+        for (var b = 0; b < pad.buttons.length; b++) {
+          var down = pad.buttons[b] && (pad.buttons[b].pressed || pad.buttons[b].value > 0.5);
+          if (down && !wasDown[b]) {
+            settings.pad[capturingPad] = [b];
+            persist();
+            capturingPad = null;
+            stopPadCapture();
+            render();
+            return;
+          }
+          wasDown[b] = down;
+        }
+      }
+      padPollHandle = requestAnimationFrame(poll);
+    };
+    padPollHandle = requestAnimationFrame(poll);
+  }
+  function stopPadCapture() {
+    if (padPollHandle) cancelAnimationFrame(padPollHandle);
+    padPollHandle = null;
+  }
+
+  function padLabel(action) {
+    var buttons = settings.pad[action] || [];
+    if (!buttons.length) return "—";
+    var names = { 0: "A", 1: "B", 2: "X", 3: "Y", 4: "LB", 5: "RB", 6: "LT", 7: "RT",
+      12: "▲", 13: "▼", 14: "◀", 15: "▶" };
+    return buttons.slice(0, 2).map(function (b) { return names[b] || ("btn " + b); }).join(" / ");
+  }
+
   function keyLabel(key) {
     if (key === " ") return "Space";
     if (key.indexOf("Arrow") === 0) return { ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→" }[key];
@@ -133,7 +201,8 @@ window.NewseySettings = (function () {
   // The UI lives inline on the menu's CONTROLS screen (menu.js owns showing
   // and hiding it) — deliberately not a panel stacked on top of the menu.
   var els = null;
-  var capturing = null;  // the action waiting for a key press
+  var capturing = null;    // the action waiting for a key press
+  var capturingPad = null; // the action waiting for a controller button
   var captureQueue = []; // remaining actions in a "set all keys" run
   var settingAll = false;
 
@@ -145,6 +214,7 @@ window.NewseySettings = (function () {
       setAll: document.getElementById("settingsSetAll"),
       grabber: document.getElementById("settingsKeyGrabber"),
       status: document.getElementById("settingsStatus"),
+      buttons: document.getElementById("settingsButtons"),
       modes: document.querySelectorAll("#settingsControls button")
     };
     els.setAll.addEventListener("click", function () {
@@ -235,7 +305,10 @@ window.NewseySettings = (function () {
 
   function render() {
     var ui = grab();
-    if (capturing) {
+    if (capturingPad) {
+      ui.status.textContent = "Press a button on your controller for " + labelFor(capturingPad) + " · tap again to cancel";
+      ui.status.hidden = false;
+    } else if (capturing) {
       var step = ACTIONS.length - captureQueue.length;
       ui.status.textContent = settingAll
         ? "Press a key for " + labelFor(capturing) + " (" + step + "/" + ACTIONS.length + ") · Esc to stop"
@@ -260,27 +333,104 @@ window.NewseySettings = (function () {
       where.textContent = action.where === "duel" ? "duel" : (action.where === "world" ? "world" : "");
       label.appendChild(where);
 
-      var button = document.createElement("button");
-      button.className = "settings-key" + (capturing === action.id ? " capturing" : "");
-      button.textContent = capturing === action.id
+      var badges = document.createElement("span");
+      badges.className = "settings-badges";
+
+      var keyBtn = document.createElement("button");
+      keyBtn.className = "settings-key" + (capturing === action.id ? " capturing" : "");
+      keyBtn.textContent = capturing === action.id
         ? "press a key…"
         : settings.keys[action.id].map(keyLabel).join(" / ");
-      button.addEventListener("click", function () {
+      keyBtn.addEventListener("click", function () {
+        capturingPad = null;
+        stopPadCapture();
         capturing = capturing === action.id ? null : action.id;
         if (capturing) openKeyboardIfNeeded(); else closeKeyboard();
         render();
       });
 
+      var padBtn = document.createElement("button");
+      padBtn.className = "settings-pad" + (capturingPad === action.id ? " capturing" : "");
+      padBtn.textContent = capturingPad === action.id ? "press a button…" : padLabel(action.id);
+      padBtn.title = "Controller button";
+      padBtn.addEventListener("click", function () {
+        capturing = null;
+        closeKeyboard();
+        capturingPad = capturingPad === action.id ? null : action.id;
+        if (capturingPad) startPadCapture(); else stopPadCapture();
+        render();
+      });
+
+      badges.appendChild(keyBtn);
+      badges.appendChild(padBtn);
       row.appendChild(label);
-      row.appendChild(button);
+      row.appendChild(badges);
       ui.list.appendChild(row);
     });
+
+    renderButtonMapping(ui);
+  }
+
+  // The on-screen buttons: which action each one performs, and which side the
+  // d-pad sits on. On a phone this is the mapping that actually does anything,
+  // since there is no keyboard to press while playing.
+  function renderButtonMapping(ui) {
+    if (!ui.buttons) return;
+    ui.buttons.innerHTML = "";
+    [["primary", "Button 1"], ["secondary", "Button 2"]].forEach(function (pair) {
+      var slot = pair[0];
+      var row = document.createElement("div");
+      row.className = "settings-row";
+      var label = document.createElement("span");
+      label.className = "settings-label";
+      label.textContent = pair[1];
+      var choices = document.createElement("span");
+      choices.className = "settings-badges";
+      BUTTON_CHOICES.forEach(function (choice) {
+        var b = document.createElement("button");
+        b.className = "settings-choice" + (settings.buttons[slot] === choice.id ? " active" : "");
+        b.textContent = choice.label;
+        b.addEventListener("click", function () {
+          settings.buttons[slot] = choice.id;
+          persist();
+          render();
+        });
+        choices.appendChild(b);
+      });
+      row.appendChild(label);
+      row.appendChild(choices);
+      ui.buttons.appendChild(row);
+    });
+
+    var sideRow = document.createElement("div");
+    sideRow.className = "settings-row";
+    var sideLabel = document.createElement("span");
+    sideLabel.className = "settings-label";
+    sideLabel.textContent = "D-pad side";
+    var sides = document.createElement("span");
+    sides.className = "settings-badges";
+    [["left", "Left"], ["right", "Right"]].forEach(function (pair) {
+      var b = document.createElement("button");
+      b.className = "settings-choice" + (settings.padSide === pair[0] ? " active" : "");
+      b.textContent = pair[1];
+      b.addEventListener("click", function () {
+        settings.padSide = pair[0];
+        persist();
+        render();
+      });
+      sides.appendChild(b);
+    });
+    sideRow.appendChild(sideLabel);
+    sideRow.appendChild(sides);
+    ui.buttons.appendChild(sideRow);
   }
 
   // Called by menu.js when the CONTROLS screen is shown.
   function refresh() {
     grab();
     capturing = null;
+    capturingPad = null;
+    stopPadCapture();
     captureQueue = [];
     settingAll = false;
     render();
@@ -294,6 +444,8 @@ window.NewseySettings = (function () {
 
   function cancelCapture() {
     capturing = null;
+    capturingPad = null;
+    stopPadCapture();
     captureQueue = [];
     settingAll = false;
     closeKeyboard();
@@ -306,6 +458,14 @@ window.NewseySettings = (function () {
     showOnScreenControls: showOnScreenControls,
     isTouchDevice: isTouchDevice,
     keysFor: function (action) { return (settings.keys[action] || []).slice(); },
+    // Which action an on-screen button performs: "primary" or "secondary".
+    buttonAction: function (slot) { return settings.buttons[slot]; },
+    buttonLabel: function (slot) {
+      var id = settings.buttons[slot];
+      for (var i = 0; i < BUTTON_CHOICES.length; i++) if (BUTTON_CHOICES[i].id === id) return BUTTON_CHOICES[i].label;
+      return id;
+    },
+    padSide: function () { return settings.padSide; },
     open: open,
     refresh: refresh,
     cancelCapture: cancelCapture,

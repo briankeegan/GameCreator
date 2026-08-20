@@ -52,7 +52,7 @@ window.NewseyDuel = (function () {
       hint: el("duelHint")
     };
     els.ctx = els.canvas.getContext("2d");
-    SETTINGS.onChange(applyControlsSetting); // registered once, with the elements
+    SETTINGS.onChange(function () { applyControlsSetting(); applyButtonMapping(); });
     return els;
   }
 
@@ -109,6 +109,7 @@ window.NewseyDuel = (function () {
     els.hint.textContent = "tap two panels side by side to swap them, or drag one sideways"
       + (isTouch() ? "" : " · keyboard and controller work too");
     applyControlsSetting();
+    applyButtonMapping();
     bindInput();
     resize();
     state.last = null;
@@ -128,7 +129,16 @@ window.NewseyDuel = (function () {
 
   // The on-screen pad is the player's choice (settings.js), on both screens.
   function applyControlsSetting() {
-    if (els) els.controls.hidden = !SETTINGS.showOnScreenControls();
+    if (!els) return;
+    els.controls.hidden = !SETTINGS.showOnScreenControls();
+    els.controls.classList.toggle("pad-right", SETTINGS.padSide() === "right");
+  }
+
+  // Button faces say what they actually do, so the mapping is visible.
+  function applyButtonMapping() {
+    if (!els) return;
+    els.swap.textContent = SETTINGS.buttonLabel("primary").toUpperCase();
+    els.raise.textContent = SETTINGS.buttonLabel("secondary").toUpperCase();
   }
 
   // =========================================================================
@@ -168,21 +178,27 @@ window.NewseyDuel = (function () {
     // Every on-screen control is a HOLD, not a click: directions repeat through
     // the engine's own key-repeat, raise keeps raising while held, and swap is
     // edge-detected engine-side so holding it doesn't spam swaps.
-    holdButton(els.raise, "raise");
-    holdButton(els.swap, "swap");
+    // These two buttons do whatever they are mapped to (settings.js) — on a
+    // phone they ARE the controls, so the mapping has to reach them.
+    holdButton(els.swap, function () { return SETTINGS.buttonAction("primary"); });
+    holdButton(els.raise, function () { return SETTINGS.buttonAction("secondary"); });
     for (var i = 0; i < els.dpad.length; i++) holdButton(els.dpad[i], els.dpad[i].dataset.dir);
   }
 
   // Binds one on-screen button to one input flag for as long as it is held.
+  // `flag` may be a function, for buttons whose action the player can change.
   function holdButton(button, flag) {
+    var resolve = typeof flag === "function" ? flag : function () { return flag; };
+    var held = null;
     var set = function (e) {
       e.preventDefault();
-      if (state) { state.buttons[flag] = true; state.latched[flag] = true; }
+      held = resolve();
+      if (state) { state.buttons[held] = true; state.latched[held] = true; }
       if (button.setPointerCapture && e.pointerId !== undefined) {
         try { button.setPointerCapture(e.pointerId); } catch (err) { /* not fatal */ }
       }
     };
-    var clear = function () { if (state) state.buttons[flag] = false; };
+    var clear = function () { if (state && held) state.buttons[held] = false; };
     button.onpointerdown = set;
     button.onpointerup = clear;
     button.onpointercancel = clear;

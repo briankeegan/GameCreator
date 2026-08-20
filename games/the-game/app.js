@@ -321,6 +321,7 @@
   // The on-screen pad follows the setting, not the device: someone on a laptop
   // can turn it on, someone on a tablet with a keyboard can turn it off.
   function applyControlsSetting() {
+    touchControlsEl.classList.toggle("pad-right", SETTINGS.padSide() === "right");
     // Only while a file is actually being played: the title and file-select
     // screens are their own thing and have no use for a walking d-pad.
     var wanted = running && SETTINGS.showOnScreenControls() && !cutsceneVisible();
@@ -344,6 +345,9 @@
     btn.addEventListener("mouseup", clear);
     btn.addEventListener("mouseleave", clear);
   });
+  // The world's action button does whatever "Button 1" is mapped to; if that
+  // is a duel action (swap/raise) it still talks here, since talking is the
+  // only thing to do in a room.
   document.getElementById("interactBtn").addEventListener("click", function () {
     if (talking) advanceTalk(); else tryInteract();
   });
@@ -758,12 +762,6 @@
       ctx.beginPath(); ctx.arc(npc.x, npc.y - r, r, 0, Math.PI * 2); ctx.stroke();
     }
 
-    // proximity glow, hugging the ground shadow so it reads as a floor ring
-    var d = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h / 2));
-    if (d < 26) {
-      ctx.strokeStyle = "rgba(255,255,255,0.55)";
-      ctx.beginPath(); ctx.ellipse(npc.x, npc.y, 15, 4.6, 0, 0, Math.PI * 2); ctx.stroke();
-    }
   }
 
   // A slow pulsing diamond over a save point, in the same gold as the exit
