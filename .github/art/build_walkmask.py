@@ -36,12 +36,12 @@ ROOMS = {
     # bounds: for art drawn as a full rectangle with a dark border painted in,
     # where the alpha silhouette can't tell room from frame.
     "home_bedroom": {
-        "floorTop": 96,
-        "bounds": (52, 96, 286, 188),
+        "floorTop": 98,
+        "bounds": (56, 98, 250, 190),
         "blocks": [
-            [(48, 96), (118, 96), (118, 138), (48, 138)],   # the bed
-            [(118, 96), (158, 96), (158, 102), (118, 102)], # nightstand
-            [(236, 96), (288, 96), (288, 106), (236, 106)], # moving boxes
+            [(52, 98), (114, 98), (114, 128), (52, 128)],   # the bed
+            [(110, 98), (142, 98), (142, 104), (110, 104)], # nightstand
+            [(188, 98), (252, 98), (252, 108), (188, 108)], # moving boxes
         ],
     },
     "bedroom": {
@@ -65,15 +65,24 @@ ROOMS = {
         ],
     },
     "arena": {
-        "floorTop": 96,
+        # The benches curve, so a straight floorTop across the room either
+        # fences the player off the floor that rises at the sides or lets
+        # them stand on the lowest tier. Cut high and let the bench block
+        # follow the curve instead.
+        "floorTop": 84,
         "blocks": [
-            [(16, 95), (112, 95), (104, 112), (16, 118)],        # stone benches
+            # the tiered stone benches, along their bottom edge
+            [(0, 84), (40, 96), (90, 90), (150, 84), (150, 60), (0, 60)],
+            [(0, 84), (0, 124), (34, 110), (44, 100), (40, 96)],
+            # the right-hand wall base, which sits lower than the benches do
+            [(252, 84), (320, 84), (320, 108), (300, 100), (262, 92)],
         ],
     },
     "house": {
         "floorTop": 100,
         "blocks": [
             [(104, 96), (214, 96), (214, 122), (104, 122)],      # kitchen table
+            [(250, 96), (284, 96), (284, 128), (250, 128)],      # round candle table
         ],
     },
 }

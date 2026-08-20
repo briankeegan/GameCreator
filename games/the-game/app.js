@@ -351,10 +351,13 @@
     var room = currentRoom, tries = 0;
     var settle = setInterval(function () {
       if (currentRoom !== room || ++tries > 40) return clearInterval(settle);
-      if (walkMask(room).ready) {
-        clearInterval(settle);
-        if (!canStand(room, player.x, player.y)) placeOnFloor(room, player.x, player.y);
-      }
+      if (!walkMask(room).ready) return;
+      clearInterval(settle);
+      // Asleep in bed is the one time she is legitimately not on the floor —
+      // re-placing her then dumped her on the floorboards beside the bed as a
+      // head with no body, which is how this was spotted.
+      if (player.inBed) return;
+      if (!canStand(room, player.x, player.y)) placeOnFloor(room, player.x, player.y);
     }, 50);
     if (save) { save.room = roomId; persist(); } // walking through a door autosaves
   }
@@ -867,39 +870,25 @@
       var cx = ex.x + ex.w / 2;
       var cy = ex.y + ex.h - 2;
       var near = playerNearExit(ex);
-      var glow = ctx.createRadialGradient(cx, cy, 1, cx, cy, ex.w * 0.75);
-      glow.addColorStop(0, near ? "rgba(255,224,150,0.42)" : "rgba(255,209,102,0.18)");
+      // Light pools on the floor of a doorway — it lies flat, so it is drawn
+      // flat: a wide, shallow ellipse, brighter as you get close. No marker,
+      // no label; a door looks like a door.
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(1, 0.42);
+      var glow = ctx.createRadialGradient(0, 0, 1, 0, 0, ex.w * 0.8);
+      glow.addColorStop(0, near ? "rgba(255,224,150,0.34)" : "rgba(255,209,102,0.13)");
       glow.addColorStop(1, "rgba(255,209,102,0)");
       ctx.fillStyle = glow;
-      ctx.fillRect(ex.x - ex.w / 2, ex.y - ex.h, ex.w * 2, ex.h * 3);
+      ctx.beginPath();
+      ctx.arc(0, 0, ex.w * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
 
       // The drawn doorway goes ON TOP of its own glow — painted under it, the
       // light washed straight through the opening and it read as a lit box.
       if (ex.drawn === "threshold") drawThreshold(ex);
 
-      // A glow alone left people guessing which openings were real. Every
-      // exit now also carries the same pulsing marker the interactable
-      // scenery uses, so "you can go through here" reads the same way
-      // everywhere, and names where it goes once you're standing on it.
-      var pulse = 0.6 + 0.4 * Math.sin(Date.now() / 380);
-      var my = ex.y + ex.h / 2 - Math.sin(Date.now() / 700) * 1.2;
-      ctx.save();
-      ctx.globalAlpha = pulse * (near ? 1 : 0.7);
-      ctx.fillStyle = "#ffd166";
-      ctx.beginPath();
-      ctx.moveTo(cx, my - 4.5); ctx.lineTo(cx + 3.5, my); ctx.lineTo(cx, my + 4.5); ctx.lineTo(cx - 3.5, my);
-      ctx.closePath(); ctx.fill();
-      ctx.restore();
-      if (near) {
-        var dest = ROOMS[ex.to];
-        ctx.fillStyle = "#ffd166";
-        ctx.font = "bold 7px sans-serif";
-        ctx.textAlign = "center";
-        // Below the doorway for a normal wall exit, above it for the one that
-        // sits on the room's bottom edge — either way it lands on the floor.
-        ctx.fillText(ex.label || (dest ? dest.label : ""), cx,
-          ex.y > VH * 0.8 ? ex.y - 4 : ex.y + ex.h + 9);
-      }
     });
   }
 
