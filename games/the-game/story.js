@@ -100,10 +100,6 @@ window.NEWSEY_STORY = (function () {
       // No walkable exit — you leave by finishing the TV conversation
       // (which plays DREAM_CUTSCENE and lands you in ROOMS.bedroom).
       exits: [],
-      // Hand-placed from looking at bg-house.png: the kitchen table (with
-      // the moving boxes on it) sits back-center, so it's blocked off —
-      // otherwise the player could walk straight through it.
-      obstacles: [ { x: 110, y: 78, w: 100, h: 42 } ],
       npcs: [
         {
           id: "chuck", x: 110, y: 160, art: "chuck", sprite: "chuck_top",
@@ -130,27 +126,8 @@ window.NEWSEY_STORY = (function () {
       bg: "bedroom",
       label: "Your Room, Infinity",
       playerStart: { x: 150, y: 150 },
-      // Hand-placed from bg-bedroom.png: the door is on the right wall,
-      // the mirror stands on the left and the bed is back-center-right —
-      // both are blocked off so the player can't walk through them.
-      // arriveAt drops you a step INSIDE the next room, in front of the door
-      // you came out of — never on its threshold, or holding the same
-      // direction would walk you straight back through.
-      // Every exit box below was measured against the room's own background
-      // art (overlaid on the PNG at the game's 320x200 scale, not guessed):
-      // the box IS the drawn doorway, so walking into the picture of the door
-      // is what takes you through. Nothing else on screen is an exit.
-      // bg-bedroom.png: arched door on the right wall, opening x 222-248,
-      // threshold on the floor at y ~103.
       exits: [
         { x: 222, y: 90, w: 26, h: 16, to: "lounge", arriveAt: { x: 150, y: 150 } }
-      ],
-      // Furniture footprints where they actually meet the floor (the old boxes
-      // reached far into the room, and the bed's box covered the doorway, so
-      // the door could not be walked into at all).
-      obstacles: [
-        { x: 22, y: 95, w: 50, h: 12 },   // mirror
-        { x: 118, y: 95, w: 97, h: 13 }   // bed + nightstand
       ],
       npcs: [
         {
@@ -194,21 +171,11 @@ window.NEWSEY_STORY = (function () {
     lounge: {
       bg: "lounge",
       label: "The Lounge",
-      playerStart: { x: 60, y: 150 },
-      // Hand-placed from bg-lounge.png: the doorway to the library is on
-      // the right wall; the bar counter spans most of the back wall and
-      // is blocked off so the player can't walk through/behind it.
-      // bg-lounge.png draws ONE door: the arch on the back-right wall (opening
-      // x 210-240, floor at y ~82) to the library. The way back to your room is
-      // the doorway you came in through, at the bottom edge of the room —
-      // the art has none there, so app.js draws that frame itself.
+      playerStart: { x: 140, y: 150 },
       exits: [
         { x: 210, y: 82, w: 30, h: 20, to: "library", arriveAt: { x: 215, y: 140 } },
         { x: 132, y: 182, w: 56, h: 10, to: "bedroom", drawn: "threshold", arriveAt: { x: 228, y: 132 } }
       ],
-      // The bar's footprint on the floor (the old box sat entirely above the
-      // walkable area, so it blocked nothing).
-      obstacles: [ { x: 26, y: 95, w: 122, h: 33 } ],
       npcs: [
         {
           // Flavor only here — per the plot, the Lounge is "the bar + portals
@@ -255,8 +222,7 @@ window.NEWSEY_STORY = (function () {
       // bg-arena.png: the arch is at x 233-267, floor at y ~82.
       exits: [
         { x: 233, y: 80, w: 34, h: 22, to: "lounge", arriveAt: { x: 150, y: 150 } }
-      ],
-      obstacles: [ { x: 16, y: 95, w: 86, h: 12 } ], // the stone benches
+      ], // the stone benches
       npcs: [
         {
           id: "kat", x: 100, y: 155, art: "kat", sprite: "kat_top",
@@ -307,15 +273,9 @@ window.NEWSEY_STORY = (function () {
       bg: "library",
       label: "The Library",
       playerStart: { x: 150, y: 165 },
-      // Hand-placed from bg-library.png: the exit archway back to the
-      // lounge is actually on the right side of the room, not the left
-      // (the previous x:0 placement didn't match the art at all — the
-      // bookshelves occupy the whole left wall and are blocked off).
-      // bg-library.png: the arch is at x 210-242, floor at y ~78.
       exits: [
         { x: 210, y: 78, w: 32, h: 24, to: "lounge", arriveAt: { x: 215, y: 140 } }
-      ],
-      obstacles: [ { x: 148, y: 95, w: 66, h: 20 } ], // armchair + candle table
+      ], // armchair + candle table
       npcs: [
         {
           id: "michael", x: 120, y: 160, art: "michael", sprite: "michael_top",

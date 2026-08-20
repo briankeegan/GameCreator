@@ -281,8 +281,18 @@
   function enterRoom(roomId, at) {
     currentRoom = ROOMS[roomId];
     exitsArmed = false;
-    player.x = (at && at.x !== undefined) ? at.x : currentRoom.playerStart.x;
-    player.y = (at && at.y !== undefined) ? at.y : currentRoom.playerStart.y;
+    var spot = at && at.x !== undefined ? at : currentRoom.playerStart;
+    // The mask may not have loaded yet on the very first room; re-place her
+    // once it has, so a spawn point that lands off the floor still resolves.
+    placeOnFloor(currentRoom, spot.x, spot.y);
+    var room = currentRoom, tries = 0;
+    var settle = setInterval(function () {
+      if (currentRoom !== room || ++tries > 40) return clearInterval(settle);
+      if (walkMask(room).ready) {
+        clearInterval(settle);
+        if (!canStand(room, player.x, player.y)) placeOnFloor(room, player.x, player.y);
+      }
+    }, 50);
     if (save) { save.room = roomId; persist(); } // walking through a door autosaves
   }
 
@@ -462,31 +472,97 @@
   }
 
   // ---- movement + collision ----
-  // Every room has a walkable "floor" rect (falls back to a generic one if
-  // a room doesn't define its own) plus an optional list of "obstacles" —
-  // furniture/counters the player can't walk into. Without this the player
-  // could walk anywhere on the whole canvas, including through walls and
-  // furniture drawn near the back of the room.
-  var DEFAULT_FLOOR = { x: 16, y: 95, w: VW - 32, h: VH - 95 - 10 };
-  function clampToFloor(room, x, y) {
-    var f = room.floor || DEFAULT_FLOOR;
-    return {
-      x: Math.max(f.x, Math.min(f.x + f.w - player.w, x)),
-      y: Math.max(f.y, Math.min(f.y + f.h - player.h, y))
+  // ---- collision: she can only walk on the floor ----
+  // What counts as floor isn't guessed at runtime. It's baked from each
+  // room's own background art into art/walk-<room>.png by
+  // .github/art/build_walkmask.py (white = floor): the room's silhouette
+  // below its wall line, minus whatever stands on the floor. Diagonal walls,
+  // angled corners and furniture are therefore exactly what the picture
+  // shows. All this code does is ask whether the pixel under her feet is
+  // floor.
+  var walkMasks = {};
+  function walkMask(room) {
+    var id = room.bg;
+    if (walkMasks[id]) return walkMasks[id];
+    var entry = { ready: false, data: null };
+    walkMasks[id] = entry;
+    var img = new Image();
+    img.onload = function () {
+      var off = document.createElement("canvas");
+      off.width = VW; off.height = VH;
+      var octx = off.getContext("2d");
+      octx.drawImage(img, 0, 0, VW, VH);
+      entry.data = octx.getImageData(0, 0, VW, VH).data;
+      entry.ready = true;
     };
+    img.src = "art/walk-" + id + ".png";
+    return entry;
   }
-  function blockedByObstacle(room, x, y) {
-    var obstacles = room.obstacles || [];
-    for (var i = 0; i < obstacles.length; i++) {
-      var o = obstacles[i];
-      if (x + player.w > o.x && x < o.x + o.w && y + player.h > o.y && y < o.y + o.h) return true;
+
+  // While a mask is still loading (or if one is missing) fall back to a plain
+  // rectangle, so she can always move rather than being frozen by the network.
+  var FALLBACK_FLOOR = { x: 22, y: 102, w: VW - 44, h: 84 };
+
+  function isFloor(room, feetX, feetY) {
+    var mask = walkMask(room);
+    if (!mask.ready) {
+      return feetX >= FALLBACK_FLOOR.x && feetX <= FALLBACK_FLOOR.x + FALLBACK_FLOOR.w &&
+             feetY >= FALLBACK_FLOOR.y && feetY <= FALLBACK_FLOOR.y + FALLBACK_FLOOR.h;
+    }
+    var x = Math.round(feetX), y = Math.round(feetY);
+    if (x < 0 || y < 0 || x >= VW || y >= VH) return false;
+    return mask.data[(y * VW + x) * 4] > 127;
+  }
+
+  // A doorway plus a margin — kept clear of wandering NPCs.
+  var DOOR_CLEARANCE = 10;
+  function inDoorway(room, feetX, feetY) {
+    var exits = room.exits || [];
+    for (var i = 0; i < exits.length; i++) {
+      var e = exits[i];
+      if (feetX > e.x - DOOR_CLEARANCE && feetX < e.x + e.w + DOOR_CLEARANCE &&
+          feetY > e.y - DOOR_CLEARANCE && feetY < e.y + e.h + DOOR_CLEARANCE) return true;
     }
     return false;
   }
+
+  // Can she stand with her feet here?
+  function canStand(room, x, y) {
+    return isFloor(room, x + player.w / 2, y + player.h);
+  }
+
+  // Nearest floor to a point, searched outward in rings. Used whenever
+  // someone is placed in a room: a spawn point that misses the floor by a few
+  // pixels would otherwise leave them wedged, since every direction out of it
+  // is also not-floor.
+  function nearestFloor(room, feetX, feetY) {
+    // Also refuses a spot someone else is standing on: arriving on top of an
+    // NPC leaves you wedged against them until you shove them aside.
+    function free(x, y) {
+      return isFloor(room, x, y) && !npcAt(room, x - player.w / 2, y - player.h);
+    }
+    if (free(feetX, feetY)) return { x: feetX, y: feetY };
+    for (var r = 2; r <= 90; r += 2) {
+      for (var a = 0; a < 32; a++) {
+        var ang = (a / 32) * Math.PI * 2;
+        var x = feetX + Math.cos(ang) * r, y = feetY + Math.sin(ang) * r;
+        if (free(x, y)) return { x: x, y: y };
+      }
+    }
+    return { x: feetX, y: feetY };
+  }
+
+  // Place her by her FEET, on floor.
+  function placeOnFloor(room, x, y) {
+    var spot = nearestFloor(room, x + player.w / 2, y + player.h);
+    player.x = spot.x - player.w / 2;
+    player.y = spot.y - player.h;
+  }
+
   // NPCs are people (or furniture, for the save point), not floor markings —
   // walking straight through one looked wrong and was reported live. Treated
   // as a small circle at their feet; savePoint is skipped since a bed is
-  // already covered by the room's own obstacles list.
+  // already covered by the room's own furniture blocks.
   var NPC_COLLIDE_RADIUS = 8;
   // Returns the blocking NPC (not just true/false) so a sustained shove can
   // be attributed to a specific person and made to step aside — see the push
@@ -527,11 +603,10 @@
     if (d < 1.5) { pickWanderTarget(w); w.pause = 1 + Math.random() * 2.5; return; }
     var step = Math.min(d, WANDER_SPEED * dt);
     var nx = npc.x + (dx / d) * step, ny = npc.y + (dy / d) * step;
-    // Never wander into an obstacle, off the floor, into another NPC, or
-    // into the player — reuse the same checks movement uses.
-    var f = clampToFloor(room, nx - player.w / 2, ny - player.h);
-    nx = f.x + player.w / 2; ny = f.y + player.h;
-    if (blockedByObstacle(room, nx - player.w / 2, ny - player.h)) { pickWanderTarget(w); return; }
+    // Nobody wanders off the floor either — same mask, same question — and
+    // nobody parks in a doorway: someone standing in the door blocks the way
+    // through until you shove them aside, which reads as a broken door.
+    if (!isFloor(room, nx, ny) || inDoorway(room, nx, ny)) { pickWanderTarget(w); return; }
     var pd = Math.hypot(nx - (player.x + player.w / 2), ny - (player.y + player.h));
     var curPd = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h));
     // Block a step that would walk INTO the player, but never one that's
@@ -554,8 +629,11 @@
     var w = ensureWanderState(npc);
     var dx = npc.x - (player.x + player.w / 2), dy = npc.y - (player.y + player.h);
     var d = Math.hypot(dx, dy) || 1;
-    var f = clampToFloor(room, npc.x + (dx / d) * PUSH_STEP - player.w / 2, npc.y + (dy / d) * PUSH_STEP - player.h);
-    w.tx = f.x + player.w / 2; w.ty = f.y + player.h;
+    var stepX = npc.x + (dx / d) * PUSH_STEP, stepY = npc.y + (dy / d) * PUSH_STEP;
+    // Step aside onto floor only; if that way is a wall, stay put and let the
+    // next shove try from a different angle.
+    if (!isFloor(room, stepX, stepY) || inDoorway(room, stepX, stepY)) { pushedNpc = null; pushTimer = 0; return; }
+    w.tx = stepX; w.ty = stepY;
     w.homeX = w.tx; w.homeY = w.ty; // step-aside becomes their new "home" — they don't snap back into the player
     w.pause = 0;
     pushedNpc = null; pushTimer = 0;
@@ -596,17 +674,20 @@
       var len = Math.sqrt(dx * dx + dy * dy);
       dx /= len; dy /= len;
       player.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
-      // Try each axis independently so the player can slide along a wall
-      // or obstacle instead of fully stopping the moment either axis hits
-      // something.
-      var tryX = clampToFloor(currentRoom, player.x + dx * player.speed * dt, player.y);
-      var blockerX = npcAt(currentRoom, tryX.x, player.y);
-      if (blockerX && !blockedByObstacle(currentRoom, tryX.x, player.y)) registerPush(currentRoom, blockerX, dt);
-      if (!blockerX && !blockedByObstacle(currentRoom, tryX.x, player.y)) player.x = tryX.x;
-      var tryY = clampToFloor(currentRoom, player.x, player.y + dy * player.speed * dt);
-      var blockerY = npcAt(currentRoom, player.x, tryY.y);
-      if (blockerY && !blockedByObstacle(currentRoom, player.x, tryY.y)) registerPush(currentRoom, blockerY, dt);
-      if (!blockerY && !blockedByObstacle(currentRoom, player.x, tryY.y)) player.y = tryY.y;
+      // Each axis is tried on its own, so meeting a wall on one still lets
+      // her slide along it on the other.
+      var tryX = player.x + dx * player.speed * dt;
+      if (canStand(currentRoom, tryX, player.y)) {
+        var blockerX = npcAt(currentRoom, tryX, player.y);
+        if (blockerX) registerPush(currentRoom, blockerX, dt);
+        else player.x = tryX;
+      }
+      var tryY = player.y + dy * player.speed * dt;
+      if (canStand(currentRoom, player.x, tryY)) {
+        var blockerY = npcAt(currentRoom, player.x, tryY);
+        if (blockerY) registerPush(currentRoom, blockerY, dt);
+        else player.y = tryY;
+      }
       isWalking = true;
       walkPhase += dt * 9; // frame-cycle speed (~3 pose changes/sec); unrelated to player.speed so it stays readable
     } else {
