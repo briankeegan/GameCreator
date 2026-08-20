@@ -5,9 +5,10 @@ expensive failures here were never "the drawing is bad" — they were the art
 and the code disagreeing about what a frame *means*, or the same character
 being drawn slightly differently in two images.
 
-Applies to top-down games with directional movement (Dog Punk, Newsey). A game
-with a different camera can ignore it, but should not invent a second scheme
-for the same job.
+Applies to top-down games with directional movement (Dog Punk, Newsey) and to
+every new game of that shape. A game with a different camera can ignore it,
+but should not invent a second scheme for the same job. Rooms have their own
+standard: `docs/ROOM_ART_STANDARD.md`.
 
 ## Frames
 

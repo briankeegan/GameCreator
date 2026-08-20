@@ -121,6 +121,14 @@ design discussion. `shared/` holds the components every game reuses
     is the same size for all of them.
   - Raw generations go in `games/<id>/art-src/`; shipped sheets are rebuilt
     from them, never hand-edited.
+- **Standards for this kind of game live in two documents, and they apply to
+  every new game of the same shape — not just the one they were written
+  from:** `.github/art/CHARACTER_SHEETS.md` (characters: walk frames,
+  attack frames, directions, locked details) and `docs/ROOM_ART_STANDARD.md`
+  (rooms: framing, emptiness, exits, and how the walkable-floor mask is
+  authored). Read them before generating art for a top-down game; extend
+  them when a generation exposes a gap, rather than solving it once in one
+  game's head.
 - **Character sheets follow one standard: `.github/art/CHARACTER_SHEETS.md`.**
   Walk is 3 columns `[step, NEUTRAL, step]`; ATTACK is its own sheet, also 3
   columns, `[wind-up, STRIKE, recover]`, with damage landing on the strike
