@@ -135,11 +135,18 @@ design discussion. `shared/` holds the components every game reuses
   (`.github/art/CHARACTER_SHEETS.md` -> `.github/art/verify_sheet.py` ->
   "Verify shipped sprite sheets" / "Verify character frame sets"). Add all three
   pieces together or the rule will not hold.
+- **New games ship sprite SHEETS. Individual frame files are legacy.** Newsey
+  predates the standard and ships nine files per character; that is supported
+  and gated, but is not the pattern to copy — a per-file set can lose one
+  frame (the character then flickers or freezes), each file trims to its own
+  aspect ratio so sprites drift out of proportion with each other, and it
+  costs a request per frame. Cutting one image at load makes all three
+  impossible. Don't migrate Newsey for its own sake; do start any new game on
+  sheets.
 - **Checks are game-type dependent, and the type is DETECTED, not
-  configured.** Dog Punk ships sprite sheets; Newsey ships individual
-  `<id>_<dir>_<n>.png` frames — a sheet-shaped gate silently covers nothing in
-  a game that has no sheets. The art gate globs for both shapes, so a new game
-  is covered the moment it has art, with no per-game config to forget.
+  configured.** Because both layouts exist, the art gate globs for both — so a
+  new game is covered the moment it has art, with no per-game config to forget
+  to update.
 - **A fuzzy check warns; an unambiguous one fails.** Missing or duplicated
   frames are facts, so they fail the build. "This middle frame isn't really a
   neutral pose" is a threshold on an image-difference metric — it prints a

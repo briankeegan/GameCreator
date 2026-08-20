@@ -93,6 +93,30 @@ grid wastes the whole generation, while a bad row wastes one third of it.
 green cells, which gives the model a much stronger layout signal, and even
 there the bottom row was the thing that came back cropped.)
 
+## Sheets are the standard; individual frame files are legacy
+
+**New characters ship as SHEETS** — one PNG per animation, cut at load. Newsey
+predates this and ships each frame as its own file
+(`<id>_<dir>_<n>.png`, nine files per character plus a walk sheet kept only as
+source). That layout is supported and gated, but it is **not the pattern to
+copy**:
+
+- nine files per character per animation is nine chances for one to be
+  missing, stale, or trimmed to a different size than its neighbours — and a
+  set with a missing frame renders as a character that flickers or freezes;
+- each file is trimmed independently, so their natural width:height ratios
+  drift (Newsey's range from 1.18 to 2.15) and the game needs a clamp to stop
+  sprites reading as stretched next to each other;
+- one HTTP request per frame instead of one per animation.
+
+A sheet makes all three impossible: the frames are cut from one image, so
+they cannot go missing individually, cannot be scaled inconsistently, and
+arrive together.
+
+Do not migrate Newsey for its own sake — it works, and rewriting working art
+plumbing is not free. New characters there can still be added as frame files
+if that is what its code path wants. But a NEW GAME uses sheets.
+
 ## Two cutters, pick by game
 
 - **`build_sheet.py`** (Dog Punk): rows generated on flat white, cut at the
