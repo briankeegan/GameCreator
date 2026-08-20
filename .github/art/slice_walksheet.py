@@ -3,10 +3,14 @@
 generation recipe) into trimmed per-direction, per-frame files.
 
 Usage: slice_walksheet.py <sheet.png> <out_dir> <char_id>
-Writes <char_id>_down_0/1/2.png, <char_id>_left_0/1/2.png, <char_id>_up_0/1/2.png.
+4-column sheet (idle, contact, passing, opposite-contact): writes
+<char_id>_<dir>_idle.png (straight-leg standing pose) plus
+<char_id>_<dir>_0/1/2.png (the 3-frame walk cycle) for dir in down/left/up.
+3-column sheet (no idle column): writes only _0/1/2.png.
 RIGHT is never written — mirror LEFT in code, same as the player already does.
 """
 import sys, os
+from collections import deque
 from PIL import Image
 import numpy as np
 
@@ -35,15 +39,49 @@ def find_gridlines(im):
         return [int(sum(g) / len(g)) for g in groups]
     return group(row_lines, 3), group(col_lines, 8)
 
+def flood_fill_background(rgb, seed_mask):
+    """BFS flood-fill from every True pixel in seed_mask through neighbors
+    that are 'background-like' (green-dominant — still plausibly part of the
+    chroma backdrop including its anti-aliased edge toward the character).
+    A flat color threshold alone leaves a halo of blended edge pixels behind
+    (confirmed live: a visible white/gray speckle ring around every sprite);
+    flood-filling from the border follows that blend all the way to the
+    character's true edge instead. Also correctly leaves alone any
+    background-colored pixel trapped INSIDE the silhouette, since it's never
+    reached from the border."""
+    h, w, _ = rgb.shape
+    r, g, b = rgb[:, :, 0].astype(int), rgb[:, :, 1].astype(int), rgb[:, :, 2].astype(int)
+    # Loose enough to catch the anti-aliased blend toward the character (soft
+    # edges are the whole reason this exists), tight enough not to eat real
+    # character color (none of this game's characters wear green).
+    bg_like = (g > r + 15) & (g > b + 15) & (g > 60)
+    visited = np.zeros((h, w), dtype=bool)
+    q = deque()
+    ys, xs = np.where(seed_mask)
+    for y, x in zip(ys, xs):
+        if bg_like[y, x] and not visited[y, x]:
+            visited[y, x] = True
+            q.append((y, x))
+    while q:
+        y, x = q.popleft()
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            ny, nx = y + dy, x + dx
+            if 0 <= ny < h and 0 <= nx < w and not visited[ny, nx] and bg_like[ny, nx]:
+                visited[ny, nx] = True
+                q.append((ny, nx))
+    return visited
+
 def cut_and_trim(im, y0, y1, x0, x1):
     cell = im.crop((x0 + 4, y0 + 4, x1 - 4, y1 - 4)).convert("RGBA")
     a = np.array(cell)
-    # key white background to transparent
-    white = (a[:, :, 0] > 235) & (a[:, :, 1] > 235) & (a[:, :, 2] > 235)
-    a[white, 3] = 0
-    # also kill stray magenta fringe from anti-aliasing at the crop edge —
-    # dilate the mask by a few px since a soft/blurred divider leaves a faint
-    # halo the raw color test alone doesn't fully catch.
+    h, w, _ = a.shape
+    # Flood-fill the chroma-green background from the crop's border inward.
+    border = np.zeros((h, w), dtype=bool)
+    border[0, :] = border[-1, :] = border[:, 0] = border[:, -1] = True
+    bg = flood_fill_background(a[:, :, :3], border)
+    a[bg, 3] = 0
+    # kill any stray magenta fringe from the divider line too, dilated a
+    # couple px since a soft divider leaves a faint halo of its own.
     r, g, b = a[:, :, 0].astype(int), a[:, :, 1].astype(int), a[:, :, 2].astype(int)
     mag = (r > 120) & (b > 120) & (g < r - 25) & (g < b - 10)
     dil = mag.copy()
@@ -67,19 +105,29 @@ def main():
     print("row gridlines:", row_lines)
     print("col gridlines:", col_lines)
     w, h = im.size
-    # Rows run edge-to-edge with no separate border line, so the canvas top/
-    # bottom double as the outer bounds. Columns are sometimes framed by an
-    # explicit left/right border line inset from the canvas edge — in that
-    # case the detected lines already ARE the complete boundary set, and
-    # prepending/appending the canvas edge would add a bogus empty column.
-    def build_bounds(lines, extent, edge_margin=40):
-        has_left_border = lines and lines[0] > edge_margin
-        has_right_border = lines and (extent - lines[-1]) > edge_margin
-        bounds = list(lines)
-        if not has_left_border: bounds = [0] + bounds
-        if not has_right_border: bounds = bounds + [extent]
-        return bounds
-    row_bounds = [0] + row_lines + [h]
+    # Whether the detected lines are pure INTERIOR dividers (need the canvas
+    # edges added as the outer bounds) or already include explicit left/right
+    # BORDER lines (in which case adding the canvas edge too would create a
+    # bogus sliver "column") varies sheet to sheet — some generations frame
+    # the grid with a border inset from the edge, some don't. Try both
+    # interpretations and keep whichever gives the most uniform segment
+    # widths — the real grid was asked for as equal-size cells, so the
+    # correct interpretation is the one that actually looks equal-size.
+    def build_bounds(lines, extent):
+        if not lines: return [0, extent]
+        candidates = [[0] + lines + [extent]]
+        if len(lines) >= 2: candidates.append(list(lines))
+        # A 1-segment candidate trivially has zero variance (nothing to
+        # compare against) and would always "win" on that alone — exclude
+        # it unless it's the only option, since a real grid has >=2 cells.
+        multi = [c for c in candidates if len(c) > 2]
+        candidates = multi or candidates
+        def variance(bounds):
+            widths = [bounds[i + 1] - bounds[i] for i in range(len(bounds) - 1)]
+            avg = sum(widths) / len(widths)
+            return sum((x - avg) ** 2 for x in widths)
+        return min(candidates, key=variance)
+    row_bounds = build_bounds(row_lines, h)
     col_bounds = build_bounds(col_lines, w)
     n_rows = len(row_bounds) - 1
     n_cols = len(col_bounds) - 1
