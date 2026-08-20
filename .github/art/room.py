@@ -303,6 +303,9 @@ def main():
     p = sub.add_parser("props", help="cut a prop sheet")
     p.add_argument("game"); p.add_argument("room"); p.add_argument("names", nargs="+")
     p.add_argument("--src")
+    p.add_argument("--trim-bottom", type=float, default=0,
+                   help="drop this %% off the bottom of every prop — for a sheet "
+                        "that drew a scrap of ground under each item")
 
     p = sub.add_parser("check", help="render the overlays a human has to look at")
     p.add_argument("game"); p.add_argument("room")
@@ -440,8 +443,9 @@ def main():
 
     if a.cmd == "props":
         src = a.src or os.path.join(game, "art-src", "%s_props.png" % a.room)
+        extra = ["--trim-bottom", a.trim_bottom] if a.trim_bottom else []
         return sh("python3", os.path.join(HERE, "build_props.py"), src,
-                  os.path.join(game, "art"), *a.names)
+                  os.path.join(game, "art"), *extra, *a.names)
 
     if a.cmd == "check":
         scene = os.path.join(game, "art-src", "%s_scene.png" % a.room)

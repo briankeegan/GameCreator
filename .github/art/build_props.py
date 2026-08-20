@@ -23,7 +23,14 @@ sprites do. So they are drawn together in one image and cut apart here.
 The game scales a prop by HEIGHT when it draws it (see `props` in story.js), so
 what matters here is that each prop is trimmed tight and keeps its shape.
 
-Usage: build_props.py <sheet.png> <out-dir> <name> [<name> ...]
+Usage: build_props.py <sheet.png> <out-dir> [--trim-bottom N] <name> [<name> ...]
+
+--trim-bottom drops N rows off the bottom of every prop on the sheet, as a
+percentage of that prop's own height. A sheet often draws a scrap of GROUND
+under each item even when the prompt asks for none — the Lounge's wall panels
+came back standing on a pale threshold, which assembled into a chalky line
+running the width of the room where the wall met the floor. It is part of the
+picture, not a keying artefact, so nothing automatic can tell it from art.
 """
 import sys, os
 from PIL import Image
@@ -108,7 +115,13 @@ def main():
         print(__doc__)
         return 2
     sheet_path, out_dir = sys.argv[1], sys.argv[2]
-    names = sys.argv[3:]
+    rest = sys.argv[3:]
+    trim_pct = 0.0
+    if "--trim-bottom" in rest:
+        i = rest.index("--trim-bottom")
+        trim_pct = float(rest[i + 1])
+        rest = rest[:i] + rest[i + 2:]
+    names = rest
 
     img = Image.open(sheet_path).convert("RGBA")
     mask = keyed(img)
@@ -129,6 +142,11 @@ def main():
         ys = [y for y, _ in pts]
         xs = [x for _, x in pts]
         y0, y1, x0, x1 = min(ys), max(ys) + 1, min(xs), max(xs) + 1
+        if trim_pct:
+            y1 = max(y0 + 1, y1 - int(round((y1 - y0) * trim_pct / 100.0)))
+            pts = [(y, x) for y, x in pts if y < y1]
+            ys = [y for y, _ in pts]
+            xs = [x for _, x in pts]
         cut = np.zeros((y1 - y0, x1 - x0, 4), dtype=np.uint8)
         # only this blob's pixels — a neighbouring prop overlapping the same
         # bounding box must not come along for the ride

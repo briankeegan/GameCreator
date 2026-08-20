@@ -387,6 +387,14 @@ window.NEWSEY_STORY = (function () {
       // mask happens to stop at.
       playerStart: { x: 152, y: 150 },
       props: [
+        // --- the side walls, drawn edge-on and turned in toward the room, one
+        // down each margin. They are drawn LAST-sorting (a foot below the
+        // frame) so they pass in front of the back wall's corners the way a
+        // side wall actually does. Nothing is blocked by their footprints —
+        // the floor plate is fitted with a 12px margin, so the strip each one
+        // stands on was never walkable in the first place.
+        { art: "prop_wall_left",  x: 5,   y: 206, h: 152, w: 26, base: { w: 26, h: 8 } },
+        { art: "prop_wall_right", x: 315, y: 206, h: 152, w: 26, base: { w: 26, h: 8 } },
         // --- the back wall, left to right. Same h and w on every panel so the
         // brick courses line up; the openings are panels 2, 3 and 4.
         { art: "prop_wall_plain",  x: 13,  y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
