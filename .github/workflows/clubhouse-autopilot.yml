@@ -111,9 +111,26 @@ jobs:
         with:
           node-version: '22'
 
+      # The npm package is a thin wrapper: the real executable ships as a
+      # platform-specific OPTIONAL dependency that postinstall fetches. When
+      # that doesn't happen the install still "succeeds", and the failure only
+      # shows up later as the model step dying instantly with "claude native
+      # binary not installed" — which reads like a model failure and gets
+      # retried three times for nothing. Verify here, self-heal, and fail loudly
+      # at the step that is actually broken.
       - name: Install Claude Code CLI
         timeout-minutes: 8
-        run: npm install -g @anthropic-ai/claude-code
+        run: |
+          set -uo pipefail
+          npm install -g @anthropic-ai/claude-code
+          if ! claude --version >/dev/null 2>&1; then
+            echo "::warning::claude CLI did not come up after install — running its postinstall manually"
+            node "$(npm root -g)/@anthropic-ai/claude-code/install.cjs" || true
+          fi
+          if ! claude --version; then
+            echo "::error::Claude CLI is installed but not runnable (native binary missing)"
+            exit 1
+          fi
 
       # Normalize the two trigger shapes (manual dispatch vs. real comment) into
       # one set of values the rest of the job uses, so nothing below branches on
