@@ -208,6 +208,52 @@ def frames_by_blob(img, want=3, min_frac=0.02):
 
 # ---------------------------------------------------------------- normalising
 
+def strip_baseline(im, min_rows=4):
+    """Drop a drawn ground line/platform from under a sprite's feet.
+
+    The prompts forbid one and generators keep drawing one anyway — a
+    character standing on nothing seems to read as wrong to them. It has come
+    back three times now: dark (keyed away by luck), and pale grey twice
+    (survived keying and shipped as a bar under the boots).
+
+    It cannot be found by connectivity — it touches the boots — and not by
+    width either: this one was NARROWER than the character's shoulders, so
+    "wider than the body" missed it. What identifies it is that the bottom
+    band is a nearly UNIFORM PALE SLAB spanning most of the sprite's width,
+    sitting under feet that are a completely different colour. So: walk up
+    from the bottom while each row is mostly one pale colour and wide, and cut
+    there.
+
+    Guard: only strips a band at least `min_rows` tall, so a pale sole or a
+    light shoe edge is never eaten. A character in white boots would need
+    --keep-baseline.
+    """
+    a = np.array(im)
+    alpha = a[:, :, 3] > 0
+    h, w = alpha.shape
+    if h < 20:
+        return im
+    max_w = alpha.sum(axis=1).max() or 1
+    cut = h
+    for y in range(h - 1, int(h * 0.75), -1):
+        row = a[y][alpha[y]]
+        if len(row) < max_w * 0.4:
+            break
+        rgb = row[:, :3].astype(np.int32)
+        luma = rgb.mean(axis=1)
+        pale = luma > 175
+        if pale.mean() < 0.75:
+            break
+        # near-uniform: the pale pixels are all about the same colour
+        if rgb[pale].std(axis=0).mean() > 14:
+            break
+        cut = y
+    if cut >= h - min_rows:
+        return im
+    print(f'  stripped a {h - cut}px ground line from a frame')
+    return im.crop((0, 0, w, cut))
+
+
 def trim(im):
     bb = im.getbbox()
     return im.crop(bb) if bb else im
@@ -245,7 +291,7 @@ def build(rows, out_path, pal, body_heights, cols):
     sheet = Image.new('RGBA', (CELL * cols, CELL * len(rows)), (0, 0, 0, 0))
     for ri, row in enumerate(rows):
         body_h = body_heights[ri] if isinstance(body_heights, list) else body_heights
-        row = [trim(f) for f in row][:cols]
+        row = [trim(strip_baseline(trim(f))) for f in row][:cols]
         if not row:
             raise SystemExit('a row came back empty — check the raw image framing')
         # ONE scale for the row, from its idle frame: the character must not

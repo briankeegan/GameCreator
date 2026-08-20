@@ -238,7 +238,14 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "chuck", x: 108, y: 126, art: "chuck", sprite: "chuck_top",
+          // y126 (the original spot) reads fine in a still image but isn't
+          // actually on the room's real floor mask — it's under the
+          // moving-boxes table's footprint, which extends lower than the
+          // coarse `obstacles` rect above suggests. Never mattered while he
+          // just materialized here; became a real bug once he had to walk
+          // to it (he'd approach, get flagged off-floor a few px short, and
+          // wander off toward a random nearby point instead of arriving).
+          id: "chuck", x: 108, y: 134, art: "chuck", sprite: "chuck_top",
           // Where he starts the instant the door opens — the door's own
           // spot, x/y above — so app.js can walk him from there to his real
           // resting spot instead of having him simply appear already
