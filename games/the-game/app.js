@@ -159,7 +159,6 @@
   var lineEl = document.getElementById("line");
   var cIndex = 0;
   var lastBg = "";
-  var lastArt = undefined;
   var activeCutscene = STORY.INTRO_CUTSCENE;
   var cutsceneDoneCallback = null;
 
@@ -171,10 +170,13 @@
         ? bgUrl(s.bg) + fallbackGradient(s.bg)
         : "";
     }
-    if (s.art !== undefined) {
-      lastArt = s.art;
-      setPortrait(s.art);
-    }
+    // A portrait belongs to its own line and nothing else. This used to only
+    // change when a slide named `art`, so a face stayed on screen across every
+    // following slide that didn't — the child Nella narrated "age ten" a year
+    // later with the same nine-year-old portrait, and her mid-scream face sat
+    // there through four calm lines of the dream. A slide that wants a face
+    // names one; every other slide shows none.
+    setPortrait(s.art);
     if (s.who && !s.narration) {
       var c = CHARACTERS[s.who] || { name: s.who, color: "#fff" };
       speakerEl.textContent = c.name;
@@ -230,7 +232,7 @@
   function startCutscene(list, onDone) {
     activeCutscene = list;
     cutsceneDoneCallback = onDone;
-    cIndex = 0; lastBg = ""; lastArt = undefined;
+    cIndex = 0; lastBg = "";
     portraitImg.hidden = true;
     portraitFallback.hidden = true;
     cutsceneEl.classList.remove("hidden");
