@@ -42,7 +42,6 @@ window.NewseyDuel = (function () {
       quit: el("duelQuit"),
       raise: el("duelRaise"),
       swap: el("duelSwap"),
-      settings: el("duelSettings"),
       controls: document.querySelector(".duel-controls"),
       dpad: document.querySelectorAll(".duel-dpad button"),
       result: el("duelResult"),
@@ -173,7 +172,6 @@ window.NewseyDuel = (function () {
     window.addEventListener("resize", handlers.resize);
 
     els.quit.onclick = quit;
-    els.settings.onclick = function () { window.NewseyMenu.showControls(); };
     els.resultBtn.onclick = function () { finish(); };
     // Every on-screen control is a HOLD, not a click: directions repeat through
     // the engine's own key-repeat, raise keeps raising while held, and swap is
