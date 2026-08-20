@@ -137,6 +137,10 @@ already do:
   drawn from its own row's angle.
 - **Nothing touches the edge of the image**, and sprites never overlap each
   other.
+- **No ground line under the feet.** Given "no shadows" a generator will
+  still often draw a floor bar or plinth for the character to stand on; it
+  gets cut into the sprite and ships as a black stripe under the boots. The
+  character floats on empty background — the game draws its own floor.
 
 ## What the checker cannot decide
 
