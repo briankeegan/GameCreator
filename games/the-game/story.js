@@ -323,7 +323,7 @@ window.NEWSEY_STORY = (function () {
           setsFlag: "duelInvite"
         },
         {
-          id: "may", x: 100, y: 158, art: "may", sprite: "may_top",
+          id: "may", x: 130, y: 168, art: "may", sprite: "may_top",
           lines: [
             "You again? Stay out of my way.",
             "Something doesn't add up about the new arrivals lately. Watch yourself.",
@@ -342,10 +342,13 @@ window.NEWSEY_STORY = (function () {
           // PLOT.md: "the Lounge (bar + portals to duels)". The lounge art
           // doesn't draw one, so it reads as a pool of light on the floor —
           // the same flat glow a doorway gets, not a token standing up in the
-          // middle of the room. Mirrored with the rest of the room (was x 82).
+          // middle of the room. It stands on the LEFT of the room because the
+          // plot puts it there: "The bar was off to the right side... On the
+          // left, there were groups of people standing around several
+          // doorways that appeared to open into a swirling, purple void."
           // Stepping through always works; the arena on the other side is
           // empty until somebody in here agrees to meet you (duelInvite).
-          id: "portal", x: 238, y: 150, art: null, sprite: null, marker: "ENTER",
+          id: "portal", x: 104, y: 150, art: null, sprite: null, marker: "ENTER",
           look: "portal",
           lines: [
             "A doorway standing open onto a swirling purple void. It hums like a board about to rise.",
@@ -358,17 +361,25 @@ window.NEWSEY_STORY = (function () {
     arena: {
       bg: "arena",
       label: "The Arena",
-      playerStart: { x: 150, y: 165 },
-      // bg-arena.png: the arch is at x 233-267, floor at y ~82.
-      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[52,96],[286,96],[292,140],[272,186],[72,186],[44,140]],
+      // Regenerated to the plot: "a room about as large as a high school
+      // gymnasium, but that looked like a library. In the middle of the
+      // ceiling was a gigantic swirling golden orb" — bookshelf walls, tiered
+      // stands, the cracked orb with its two ribbons hanging down, and two
+      // duelling platforms in the flagstones fifteen paces apart. You arrive
+      // standing on the near one.
+      playerStart: { x: 111, y: 124 },
+      // bg-arena.png: the archway out is on the right at x 226-250, its foot
+      // meeting the stands at y ~84.
+      // The drawn floor, traced as a polygon (see ROOM SHAPES above) — the
+      // flagstone hexagon between the two banks of stands.
+      floorPoly: [[66,100],[250,100],[292,140],[283,186],[42,186],[30,140]],
       exits: [
-        { x: 232, y: 84, w: 34, h: 20, to: "lounge", arriveAt: { x: 224, y: 128 } }
+        { x: 224, y: 84, w: 26, h: 18, to: "lounge", arriveAt: { x: 97, y: 146 } }
       ],
-      obstacles: [ { x: 45, y: 88, w: 180, h: 14 } ], // the tiered stone benches
+      obstacles: [ { x: 0, y: 88, w: 66, h: 20 }, { x: 250, y: 88, w: 70, h: 20 } ], // the stands
       npcs: [
         {
-          id: "kat", x: 100, y: 155, art: "kat", sprite: "kat_top",
+          id: "kat", x: 200, y: 132, art: "kat", sprite: "kat_top",   // the far duelling platform
           counterKey: "kat_arena", // separate dialogue progress from lounge-Kat
           needs: "duelInvite",     // the arena is empty until someone agrees to meet you
           lines: [
@@ -391,7 +402,7 @@ window.NEWSEY_STORY = (function () {
           }
         },
         {
-          id: "may", x: 220, y: 158, art: "may", sprite: "may_top",
+          id: "may", x: 232, y: 168, art: "may", sprite: "may_top",
           counterKey: "may_arena",
           needs: "duelInvite",
           lines: [

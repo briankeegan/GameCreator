@@ -85,6 +85,7 @@ window.NewseyDuel = (function () {
       over: null,
       overDelay: 0,
       acc: 0,
+      tick: 0,     // frames since the match began — drives the orb/ribbon motion
       last: null,
       keys: {},
       buttons: { left: false, right: false, up: false, down: false, swap: false, raise: false },
@@ -358,6 +359,7 @@ window.NewseyDuel = (function () {
     state.acc += elapsed;
     while (state.acc >= FRAME) {
       state.acc -= FRAME;
+      state.tick++;
       step();
     }
     render();
@@ -478,7 +480,12 @@ window.NewseyDuel = (function () {
   // stage is 8:5 on desktop and much taller on a phone, so nothing here can be
   // a fixed pixel size.
   function layout(w, h) {
-    var topBar = 26, bottomBar = 20, gap = Math.max(14, Math.round(w * 0.05));
+    // The top bar carries the two names AND the orb the ribbons unroll from
+    // (see drawArena) — the orb needs its own room reserved here, or the
+    // boards grow to fill the whole frame and it gets squashed against the
+    // top edge with the ribbons bulging out sideways to reach it.
+    var orbRoom = Math.round(Math.max(40, Math.min(104, h * 0.14)));
+    var topBar = 26 + orbRoom, bottomBar = 20, gap = Math.max(14, Math.round(w * 0.05));
     var cellW = Math.floor((w - gap - 16) / (E.WIDTH * 2));
     var cellH = Math.floor((h - topBar - bottomBar) / E.HEIGHT);
     var cell = Math.max(8, Math.min(cellW, cellH));
@@ -488,6 +495,7 @@ window.NewseyDuel = (function () {
     var y0 = Math.round(topBar + (h - topBar - bottomBar - boardH) / 2);
     state.layout = {
       cell: cell, boardW: boardW, boardH: boardH, gap: gap, w: w, h: h,
+      orbRoom: orbRoom,
       player: { x: x0, y: y0 },
       foe: { x: x0 + boardW + gap, y: y0 }
     };
@@ -505,6 +513,7 @@ window.NewseyDuel = (function () {
     bg.addColorStop(1, "#0b0410");
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, L.w, L.h);
+    drawArena();
 
     drawBoard(s.player, L.player, true);
     drawBoard(s.foe, L.foe, false);
@@ -512,6 +521,99 @@ window.NewseyDuel = (function () {
     drawCards();
     drawHud();
     if (s.countdown > 0) drawCountdown();
+  }
+
+  // The plot describes exactly what a duel looks like from inside the arena:
+  // "In the middle of the ceiling was a gigantic swirling golden orb... The
+  // giant golden orb in the middle of the map suddenly cracked, and from it
+  // unrolled two gigantic golden ribbons. On the ribbons, there were the same
+  // shapes from the game Puzzle Attack." So the two boards are not floating
+  // panels on a gradient — they ARE the ribbons, and this draws the orb they
+  // hang from and the ribbons behind the panels.
+  function drawArena() {
+    var ctx = els.ctx, L = state.layout, t = state.tick / 60;
+    var r = Math.max(9, Math.min(L.orbRoom * 0.42, L.gap * 1.1, 30));
+    var ox = L.w / 2, oy = 26 + L.orbRoom * 0.5;
+
+    ribbon(L.player, -1);
+    ribbon(L.foe, 1);
+
+    ctx.save();
+    ctx.translate(ox, oy);
+    var glow = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 2.2);
+    glow.addColorStop(0, "rgba(255,196,84,0.26)");
+    glow.addColorStop(1, "rgba(255,170,60,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(0, 0, r * 2.2, 0, Math.PI * 2); ctx.fill();
+
+    var body = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.1, 0, 0, r);
+    body.addColorStop(0, "#ffe9a8");
+    body.addColorStop(0.55, "#f0a93c");
+    body.addColorStop(1, "#8a4a12");
+    ctx.fillStyle = body;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+
+    // the crack it split along, and the swirl still turning under the surface
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.clip();
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = "#fff0c0";
+    ctx.lineWidth = Math.max(1, r * 0.07);
+    for (var a = 0; a < 3; a++) {
+      ctx.beginPath();
+      for (var k = 0; k <= 10; k++) {
+        var f = k / 10, rr = r * (0.15 + f * 0.8);
+        var ang = a * 2.1 + t * 0.8 + f * 2.2;
+        var x = Math.cos(ang) * rr, y = Math.sin(ang) * rr;
+        if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "rgba(60,24,6,0.85)";
+    ctx.lineWidth = Math.max(1, r * 0.1);
+    ctx.beginPath();
+    ctx.moveTo(-r, -r * 0.35);
+    ctx.lineTo(-r * 0.3, -r * 0.1);
+    ctx.lineTo(-r * 0.45, r * 0.25);
+    ctx.lineTo(r * 0.25, r * 0.05);
+    ctx.lineTo(r, r * 0.4);
+    ctx.stroke();
+    ctx.restore();
+    ctx.restore();
+
+    // A band of gold running from under the orb down past the board, so the
+    // panels read as sitting ON it rather than in a floating box. The control
+    // points stay inside the span it has to cover — pushed outside, the curve
+    // bulged into a blob that swallowed the whole screen.
+    function ribbon(pos, side) {
+      var topInX = ox + side * r * 0.12, topOutX = ox + side * r * 0.62;
+      var topY = oy + r * 0.7;
+      var bx0 = pos.x - 7, bx1 = pos.x + L.boardW + 7;
+      var outX = side < 0 ? bx0 : bx1, inX = side < 0 ? bx1 : bx0;
+      var shoulder = pos.y - 5, foot = pos.y + L.boardH + 9;
+      var midY = (topY + shoulder) / 2;
+      var sway = Math.sin(t * 1.1 + side) * Math.min(8, L.gap * 0.2);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(topOutX, topY);
+      ctx.quadraticCurveTo(topOutX + sway, midY, outX, shoulder);
+      ctx.lineTo(outX, foot);
+      ctx.lineTo(inX, foot);
+      ctx.lineTo(inX, shoulder);
+      ctx.quadraticCurveTo(topInX + sway, midY, topInX, topY);
+      ctx.closePath();
+      var g = ctx.createLinearGradient(0, topY, 0, foot);
+      g.addColorStop(0, "#f4c15a");
+      g.addColorStop(0.3, "#d99a35");
+      g.addColorStop(1, "#7d4e13");
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,232,168,0.5)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   function boardShake(stack) {
@@ -537,7 +639,10 @@ window.NewseyDuel = (function () {
     ctx.beginPath();
     ctx.rect(x, y, L.boardW, L.boardH);
     ctx.clip();
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    // Nearly opaque: the gold ribbon runs behind the board (drawArena), and a
+    // translucent playfield let it wash through as a flat olive slab instead
+    // of reading as panels lying ON a ribbon.
+    ctx.fillStyle = "rgba(10,4,18,0.86)";
     ctx.fillRect(x, y, L.boardW, L.boardH);
     for (var g = 1; g < E.WIDTH; g++) {
       ctx.fillStyle = pal.grid;
@@ -562,16 +667,18 @@ window.NewseyDuel = (function () {
     }
     ctx.restore();
 
-    // name plate + incoming garbage warning
+    // Name plate on the OUTER top corner and the incoming-garbage warning on
+    // the inner one: the ribbon narrows to its neck between the two boards, so
+    // a name pinned to the inner corner sat on top of the gold and vanished.
     ctx.fillStyle = isPlayer ? "#ffd166" : "#ff9ecb";
     ctx.font = "bold " + Math.max(9, Math.round(cell * 0.42)) + "px system-ui, sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillText(stack.name, x, pos.y - 8);
+    ctx.textAlign = isPlayer ? "left" : "right";
+    ctx.fillText(stack.name, isPlayer ? x : x + L.boardW, pos.y - 10);
 
     if (stack.incoming.length) {
       ctx.fillStyle = "#ff5470";
-      ctx.textAlign = "right";
-      ctx.fillText("▼ " + stack.incoming.length, x + L.boardW, pos.y - 8);
+      ctx.textAlign = isPlayer ? "right" : "left";
+      ctx.fillText("▼ " + stack.incoming.length, isPlayer ? x + L.boardW : x, pos.y - 10);
     }
 
     drawEffects(isPlayer, x, y, cell, bottom, rise);

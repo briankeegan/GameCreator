@@ -251,6 +251,9 @@ ctx.imageSmoothingEnabled = false;
 // size on screen for every one of them. Relative size lives in the art
 // (Beverly fills 168px of her cell, a rat 104px), never in this number.
 const SPRITE_CELL = 64;
+// How long an enemy stays lit up after taking a hit (seconds). Doubles as
+// that enemy's brief i-frame window, so one swing can't multi-hit.
+const HIT_FLASH_TIME = 0.3;
 const heartsEl = document.getElementById("hearts");
 const enemyCountEl = document.getElementById("enemyCount");
 const winOverlay = document.getElementById("winOverlay");
@@ -449,7 +452,13 @@ function update(dt, now) {
       if (!en.alive || en.hitFlash > 0) continue;
       if (rectsOverlap(hx, hy, 26, 26, en.x, en.y, en.w, en.h)) {
         en.hp -= 1;
-        en.hitFlash = 0.25;
+        en.hitFlash = HIT_FLASH_TIME;
+        // cosmetic impact spark at the point of contact (same particle
+        // system as the death burst, just red/short) — the flash says
+        // "that one landed", the spark says where.
+        state.deathFx.push({
+          x: (en.x + hx) / 2, y: (en.y + hy) / 2, t: 0, dur: 0.22, spark: true,
+        });
         const kdx = en.x - p.x, kdy = en.y - p.y;
         const klen = Math.hypot(kdx, kdy) || 1;
         en.kbx = (kdx / klen) * 90;
@@ -693,7 +702,10 @@ function drawRatFallback(x, y, facing, hitFlash, squashX, squashY, step, attacki
   ctx.fillStyle = "#4a3d28";
   ctx.fillRect(step ? -8 : -4, 6, 4, 5);
   ctx.fillRect(step ? 4 : 8, 6, 4, 5);
-  ctx.fillStyle = hitFlash > 0 ? "#ffffff" : "#8a7a5c";
+  // same damage tell as the sheet path: white on the frame of impact, then
+  // hot red for the rest of the flash window.
+  ctx.fillStyle = hitFlash > HIT_FLASH_TIME * 0.85 ? "#ffffff"
+    : hitFlash > 0 ? "#e02a2a" : "#8a7a5c";
   ctx.beginPath();
   ctx.ellipse(0, 0, 11, 8, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -721,6 +733,29 @@ function drawRatFallback(x, y, facing, hitFlash, squashX, squashY, step, attacki
   ctx.restore();
 }
 
+// HIT FLASH: recolours a whole sprite frame to one flat colour, keeping its
+// silhouette, by compositing a filled rect through the frame's own alpha.
+// Done on a scratch canvas with `source-in` rather than by reading pixels,
+// because the sheets can be canvas-tainting and getImageData would throw.
+const tintScratch = document.createElement("canvas");
+const tintCtx = tintScratch.getContext("2d");
+function tintedFrame(img, color) {
+  const w = img.width, h = img.height;
+  if (tintScratch.width !== w || tintScratch.height !== h) {
+    tintScratch.width = w;
+    tintScratch.height = h;
+  }
+  tintCtx.globalCompositeOperation = "source-over";
+  tintCtx.clearRect(0, 0, w, h);
+  tintCtx.imageSmoothingEnabled = false;
+  tintCtx.drawImage(img, 0, 0);
+  tintCtx.globalCompositeOperation = "source-in";
+  tintCtx.fillStyle = color;
+  tintCtx.fillRect(0, 0, w, h);
+  tintCtx.globalCompositeOperation = "source-over";
+  return tintScratch;
+}
+
 // Draws a directional sprite with a real 2-frame pixel walk cycle (swaps to
 // the opposite-leg drawn frame on alternating steps while moving) plus a
 // bob/squash and an optional extra offset (used for the attack lunge).
@@ -741,6 +776,16 @@ function drawAnimatedSprite(spriteFor, facing, x, y, size, anim, fallback) {
     ctx.translate(x + dx, y + dy);
     ctx.scale((mirror ? -1 : 1) * scaleX, scaleY);
     ctx.drawImage(s.img, -size / 2, -size / 2, size, size);
+    // damage flash: a white pop on the frame of impact that decays into a
+    // hot red wash over the sprite's own silhouette, so a hit reads as a
+    // hit even when the knockback is short or the enemy is against a wall.
+    const flash = anim.flash || 0;
+    if (flash > 0) {
+      ctx.globalAlpha = Math.min(1, flash * 1.15);
+      ctx.drawImage(tintedFrame(s.img, flash > 0.85 ? "#ffffff" : "#e02a2a"),
+        -size / 2, -size / 2, size, size);
+      ctx.globalAlpha = 1;
+    }
     ctx.restore();
   } else {
     fallback(x + dx, y + dy, facing, scaleX, scaleY, step);
@@ -772,8 +817,15 @@ function render(now) {
     // the pounce swaps to a real drawn attack pose (jaws open, claws out)
     // instead of just stretching the idle art, so the lunge reads as an
     // actual attack animation rather than a squashed walk frame.
+    // getting hit: flat white on impact decaying to red (see
+    // drawAnimatedSprite), plus a recoil squash, so damage is unmistakable.
+    const flash = Math.max(0, en.hitFlash) / HIT_FLASH_TIME;
+    if (flash > 0) {
+      scaleX *= 1 + flash * 0.16;
+      scaleY *= 1 - flash * 0.12;
+    }
     drawAnimatedSprite(lunging ? ratAttackSpriteFor : ratSpriteFor, en.facing, en.x, en.y - 6, SPRITE_CELL,
-      { moving: en.moving && !lunging, phase: en.animPhase, scaleX, scaleY },
+      { moving: en.moving && !lunging, phase: en.animPhase, scaleX, scaleY, flash },
       (x, y, facing, sx, sy, step) => drawRatFallback(x, y, facing, en.hitFlash, sx, sy, step, lunging));
   }
 
@@ -783,16 +835,22 @@ function render(now) {
   for (const fx of state.deathFx) {
     const t = fx.t / fx.dur; // 0..1
     const alpha = 1 - t;
-    const spread = 4 + t * 22;
+    const spread = fx.spark ? 3 + t * 14 : 4 + t * 22;
     ctx.save();
     ctx.globalAlpha = Math.max(0, alpha);
-    const bits = [
+    // `spark: true` = a non-fatal hit: a tight red/white puff at the point of
+    // impact. Otherwise it's the death burst: scrap flying off in all
+    // directions as the rat comes apart.
+    const bits = fx.spark ? [
+      [-1, -0.6, "#ffffff"], [1, -0.6, "#e02a2a"], [-0.6, 1, "#e02a2a"],
+      [0.9, 1, "#ffffff"], [0, -1.2, "#e02a2a"],
+    ] : [
       [-1, -1, "#8a7a5c"], [1, -1, "#5c4c34"], [-1, 1, "#5c4c34"],
       [1, 1, "#8a7a5c"], [0, -1.3, "#c0392b"], [0, 1.3, "#8a7a5c"],
     ];
     for (const [bx, by, color] of bits) {
       ctx.fillStyle = color;
-      const size = 4 * (1 - t * 0.6);
+      const size = (fx.spark ? 3 : 4) * (1 - t * 0.6);
       ctx.fillRect(fx.x + bx * spread - size / 2, fx.y - 6 + by * spread - size / 2, size, size);
     }
     ctx.restore();

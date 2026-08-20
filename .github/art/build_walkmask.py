@@ -69,17 +69,16 @@ ROOMS = {
         ],
     },
     "arena": {
-        # The benches curve, so a straight floorTop across the room either
-        # fences the player off the floor that rises at the sides or lets
-        # them stand on the lowest tier. Cut high and let the bench block
-        # follow the curve instead.
-        "floorTop": 84,
+        # Regenerated art (the plot's "library-like stadium"): tiered stands
+        # ring the room on both sides and the flagstone duelling floor is the
+        # hexagon between them. floorTop is the line where the stands' bottom
+        # step meets that floor at the back wall.
+        "floorTop": 100,
         "blocks": [
-            # the tiered stone benches, along their bottom edge
-            [(0, 84), (40, 96), (90, 90), (150, 84), (150, 60), (0, 60)],
-            [(0, 84), (0, 124), (34, 110), (44, 100), (40, 96)],
-            # the right-hand wall base, which sits lower than the benches do
-            [(252, 84), (320, 84), (320, 108), (300, 100), (262, 92)],
+            # the left-hand stands, along the edge where they meet the floor
+            [(0, 100), (66, 100), (30, 140), (42, 190), (0, 190)],
+            # the right-hand stands, same
+            [(250, 100), (320, 100), (320, 190), (283, 190), (292, 140)],
         ],
     },
     "house": {
