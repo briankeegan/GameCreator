@@ -15,31 +15,13 @@ Rules of the road for whoever picks this up:
 
 Owner's list from the plot audit (2026-08-20), in the order it was given.
 The audit itself is in **Where the plot lives** below — read that first.
+Items that are done have moved to **Done**; what is left is here.
 
 1. ~~The 59-minute timer~~ — **ignored on purpose.** John says it out loud
    and nothing counts down. The owner has looked at this and does not want a
    clock. Don't add one, and don't re-raise it.
 
-2. **The Anarchy Garden and Kyran's Lab.** Two of the plot's Places with no
-   room behind them. Garden: open-air, waterfalls, pools, marble
-   crying-woman fountains whose water is their tears, cherry blossom, a
-   stone path, blackberry bushes with fist-sized CryBerries, a rose-covered
-   sign. Lab: interior, experimental plants in jars, tablets, a bench. Both
-   need generated backgrounds, `build_walkmask.py` entries, floor polygons
-   traced against the new art, and `story.js` rooms. The garden is OUTDOORS,
-   so its prompt has to override `art-style.json`'s orthogonal-interior
-   camera rule in so many words or it will come back as a room with walls.
-
-3. **The black rune door.** The plot's navigation: a black marble door
-   carved with runes. Push it and you land somewhere you didn't mean to
-   (that is how Nella hits the Garden); touch the chaos rune and the
-   carvings resolve into a list — Observatory, Basement, Garden (Closed),
-   Office, Library — and touching one dissolves the door onto that room.
-   Replaces the lounge's bottom doorway. Library, Garden and Lab go
-   somewhere; Observatory, Basement and Office are listed and locked, which
-   is what the plot shows and is honest about what exists.
-
-4. **Rex, Diamond, Eric, Magma, Kyran.** Five plot characters with no NPC
+2. **Rex, Diamond, Eric, Magma, Kyran.** Five plot characters with no NPC
    anywhere (Rex isn't even in `CHARACTERS`). Rex — scruffy red hair,
    deep-gold robe, copper bracelet with amethysts; smirks and says nothing
    while May has him by the collar. Diamond — black hair with rainbow
@@ -48,24 +30,37 @@ The audit itself is in **Where the plot lives** below — read that first.
    to Anarchy". Magma — very young shapeshifter whose face shifts mid
    handshake, sensitive about her avatar, storms out. Kyran — head of
    research, lab coat and tablet, CryBerries, "stop by my lab later".
-   Diamond/Eric/Magma sit at Kat's lounge table, Rex stands in the lounge,
-   Kyran is in the Garden and his Lab.
+   Diamond/Eric/Magma sit at Kat's lounge table, Rex stands in the lounge.
 
-5. **John's mirror scene** — the chapter's hinge, currently four compressed
-   lines in the library. Plan below, under **John's mirror scene**.
+   **Kyran is placed in the Garden and the Lab ALREADY and renders as a
+   fallback "K" token**, because his art doesn't exist yet — that is the
+   most visible loose end in the game right now. A five-bust sheet was
+   tried and came back as a single close-up of Rex
+   (`art-src/lounge_folk.png`, still uncut). Generate portraits in twos, or
+   one at a time for a portrait; the sheet rule is about animation frames
+   drifting, and a single bust has nothing to drift against.
 
-6. **The duel is fought standing under the ribbons** — the big one. Design
+3. **John's mirror scene** — the chapter's hinge, currently four compressed
+   lines in the library. Beat-by-beat plan below, under **John's mirror
+   scene**.
+
+4. **The duel is fought standing under the ribbons** — the big one. Design
    below, under **What a duel should look like**.
 
-7. **Kat's arena duel is first to five.** A `set: { firstTo: 5 }` block on a
-   duel config; running tally under the names; a short interstitial with the
-   score and a Next button between games; the real result card only when
-   someone reaches the target. Matches "First to five wins" and the 5-1 loss.
-
-8. **Spectators in the arena stands.** "He pointed to the 'stands'... most of
+5. **Spectators in the arena stands.** "He pointed to the 'stands'... most of
    the people who were at the bar standing up there and cheering." Small
    silhouettes bobbing along the stands behind the orb, brighter after a big
-   chain. Procedural — no generated art. Needs 6 first.
+   chain. Procedural — no generated art. Needs 4 first.
+
+## Loose ends worth knowing about
+
+- **Kyran renders as a "K"** — see item 2. Nothing else in the game is
+  currently drawing a fallback token.
+- **The garden's pool and waterfalls are static.** They are props now rather
+  than paint, which is what makes animating them possible; nothing animates
+  them yet. Scrolling the water is the obvious first move.
+- **`art-src/lounge_folk.png` is an uncut Rex portrait.** Cut it or
+  regenerate it when item 2 gets picked up.
 
 ## What a duel should look like
 
@@ -193,26 +188,33 @@ Things spotted while working. Don't act on these without a nod from the owner.
   line, which a straight wall line cut across, and the house's candle
   table, which you could walk through.
 
-## Rooms are two layers now
+## Rooms are three passes now
 
 Full write-up, shareable on its own: **`docs/ROOM_ART_STANDARD.md`**.
+One front door for all of it: **`.github/art/room.py`**.
 
-A room's background is a GROUND PLATE — floor, walls, doorways, and nothing
-standing up off the floor. Everything free-standing is a PROP: generated as a
-sheet on flat white, cut apart by `.github/art/build_props.py`, and placed on
-the room as `props: [{ art, x, y, h, base: { rx, ry } }]` where x/y is where
-it MEETS THE GROUND. `app.js` sorts props into the same y-order list as the
-player and the NPCs, so you walk behind one, and blocks the `base` ellipse, so
-you stop at its trunk.
+1. **A composed scene** (`art-src/<room>_scene.png`) — never shipped. It
+   exists to be MEASURED: every prop's ground point, height, width and count
+   comes off it.
+2. **The walkable surface and nothing else** — the shipped background. Its
+   silhouette IS the collision mask, so the room goes in `FLOOR_PLATE_ROOMS`
+   and there is nothing else to declare.
+3. **Everything you cannot walk on, as props** — plus flat ground cover you
+   can walk over. Placed at the numbers from pass 1.
 
-The Anarchy Garden is the reference: `bg-garden.png` is bare grass, path,
-pool and wall; the cherry trees and the weeping fountains are props. Its walk
-mask is four lines of declaration because the plate has nothing in it to
-subtract.
+```
+room.py prompt scene|plate|props   canned prompts, filled in
+room.py plate  games/<id> <room>   fit the plate + rebuild its mask
+room.py props  games/<id> <room> name1 name2 ...
+room.py check  games/<id> <room>   render the overlays — LOOK at them
+room.py verify games/<id>          the gate, also runs in CI
+```
 
-Do not go back to painting furniture into a room. It cost us the mask (five
-failed techniques, all recorded in `build_walkmask.py`), it made scenery flat,
-and moving one object meant regenerating the whole picture.
+The Anarchy Garden is the reference room. Its walk mask is one line.
+
+**Do not go back to painting scenery into a room.** It cost the mask (five
+failed techniques, recorded in `build_walkmask.py`), it made scenery flat, and
+moving one object meant regenerating the whole picture.
 
 ## Collision — how to change it
 
