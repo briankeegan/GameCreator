@@ -300,6 +300,12 @@ design discussion. `shared/` holds the components every game reuses
     `ctx.scale(-1, 1)` — for the player and every NPC alike. Only down, left
     and up are ever generated. A LEFT row that isn't a true side profile
     therefore breaks both directions at once.
+  - **Read `games/the-game/WALK_SHEETS.md` before regenerating one of these.**
+    It lists the failures this grid repeats — the back row comes back as a
+    hair blob or with its step frames cropped off the canvas — and it is now
+    linked from the art index, which is the page that says to start there
+    every time. It was not, which is how a session burned two generations
+    rediscovering the back-row failure it already documents.
   - Generating a new character's set is ONE dispatch:
     `.github/workflows/generate-walksheet.yml` (game, character id,
     description, optional reference art). It builds the prompt from

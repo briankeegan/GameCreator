@@ -16,7 +16,8 @@ from. Dog Punk is the reference for characters, the Anarchy Garden in
 
 | I want to… | Read | Then run |
 |---|---|---|
-| draw or fix a **character** | [`CHARACTER_SHEETS.md`](CHARACTER_SHEETS.md) | Actions → **Generate walk row**, then `build_sheet.py` |
+| draw or fix a **character** (sheet games) | [`CHARACTER_SHEETS.md`](CHARACTER_SHEETS.md) | Actions → **Generate walk row**, then `build_sheet.py` |
+| draw or fix a **character** (per-file games: Newsey) | [`CHARACTER_SHEETS.md`](CHARACTER_SHEETS.md) **and** [`../../games/the-game/WALK_SHEETS.md`](../../games/the-game/WALK_SHEETS.md) — read the second one BEFORE regenerating, it lists the failures this grid repeats | Actions → **Generate character walk sheet** |
 | draw or fix a **room** (one picture per room) | [`../../docs/ROOM_ART_STANDARD.md`](../../docs/ROOM_ART_STANDARD.md) | `room.py generate`, then `room.py plate` / `props` / `check` |
 | draw or fix a **tiled level** (a grid of repeating tiles) | [`../../docs/TILED_LEVEL_STANDARD.md`](../../docs/TILED_LEVEL_STANDARD.md) | `tileset.py generate`, then `cut` / `verify` / `check` |
 | add a **one-off image** (icon, title art) | — | Actions → **Generate image** (or write an inline `.svg`) |
@@ -68,6 +69,7 @@ for the next kind of art:
 | [`CHARACTER_SHEETS.md`](CHARACTER_SHEETS.md) | Sheet layout, walk frames `[step, NEUTRAL, step]`, attack frames `[wind-up, STRIKE, recover]`, directions and mirroring, how a front/back walk is built, the recipe that works, and what the checker cannot decide. |
 | [`../../docs/TILED_LEVEL_STANDARD.md`](../../docs/TILED_LEVEL_STANDARD.md) | Tiled levels: the two sheets, the five defects that shipped in one pass (no outline on a floor, the seam is the cutter's job, a flat block is a missing texture, dark reads as a hole, an interior obstacle is not the boundary wall), contrast, pipeline and checklist. |
 | [`../../docs/ROOM_ART_STANDARD.md`](../../docs/ROOM_ART_STANDARD.md) | The three passes — composed scene (measured, never shipped), ground plate (shipped, and its own collision mask), prop sheet — prop placement, sizing and the pipeline. Written to hand to someone who has never seen this repo. |
+| [`../../games/the-game/WALK_SHEETS.md`](../../games/the-game/WALK_SHEETS.md) | The per-file walk-set recipe (Newsey shape, `slice_walksheet.py`): what the 4-row grid reliably gets wrong (the back row), why the background is chroma green and the divider magenta, why the key colour must be checked against the character, and the per-character status table. |
 | `games/<id>/art-style.json` | One game's contract: camera, style, palette, locked details, rebuild commands. |
 
 ## Prompts — fill these in, don't write new ones

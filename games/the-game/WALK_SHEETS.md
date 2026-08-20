@@ -35,6 +35,21 @@ classic green-screen color, chosen because it's rare in character
 palettes (verify per-character: don't use green for a character who
 actually wears green).
 
+**Wrong thing #3 — that same clash rule was never extended to the
+DIVIDER, and it cost the most.** The line above says: check the key colour
+against the character. It was written about the green background, and the
+magenta gridlines are a key colour too. May's hair is magenta — sampled at
+`(236,62,91)` — and the pass that removes the divider by colour matched
+every pixel of her head. She came out of the cutter with her hair deleted:
+a face with a thin dark outline where it used to be in the front and side
+rows, and a headless coat in the back row. Three separate generations were
+drawn correctly and destroyed on the way in, and the failure was reported
+as a bad generation every time. The fix is not a better colour test — a
+character and a gridline that are the same colour cannot be separated by
+colour. **Cells are cut from the END of one green gutter to the START of
+the next**, never through their middles, so no divider pixel is inside the
+crop and there is nothing to remove. See "Slicing" below.
+
 **The recipe now has ONE canonical copy**, `.github/art/walksheet_prompt.txt`,
 and one-dispatch tooling around it:
 `.github/workflows/generate-walksheet.yml` (game, character id, description,
@@ -44,29 +59,15 @@ out, and commits the frames. Edit the recipe there — the copy below is kept as
 the explanation of WHY it reads the way it does, not as a second source to
 retype from.
 
-Prompt template — fill in `{...}`:
+The prompt itself is NOT reproduced here any more. It used to be, "kept as
+the explanation of WHY it reads the way it does" — and it drifted anyway: the
+copy below this line still asked for 2px dividers and described the slicing
+as a magenta-keying step long after both had changed. A second copy of a
+recipe is a second thing to keep in sync, and this one lost. Read
+`.github/art/walksheet_prompt.txt`; it is the only copy.
 
-> A top-down RPG character walk-cycle sprite sheet, RPG-Maker-charset
-> convention, laid out as a precise grid with THIN SOLID MAGENTA
-> (#FF00FF) DIVIDER LINES, 2px wide, separating every row and column,
-> clearly visible for mechanical slicing. Every cell's background must be
-> flat, solid, pure CHROMA-KEY GREEN (#00FF00), completely uniform, crisp
-> hard edge against the character. Grid: 4 rows × 3 columns, each cell
-> the exact same size. CRITICAL, every cell without exception: the
-> character must be a FULL BODY figure, head down to feet, visible
-> feet/shoes, filling nearly the full cell height — NEVER a bust, NEVER
-> cropped at the waist/hip. Character centered, same scale everywhere.
-> RPG-Maker 3-frame walk cycle per row: Column 2 (middle) = neutral
-> standing pose, straight legs together, arms relaxed — what the
-> character looks like standing still. Column 1 = mid-step, left leg
-> forward, weight shifted, opposite arm swung. Column 3 = mid-step, right
-> leg forward, exact mirror of column 1. Row 1 (top) = facing DOWN. Row 2
-> = facing LEFT in profile. Row 3 = facing RIGHT in profile, mirror of
-> Row 2. Row 4 (bottom) = facing UP, back view — CRITICAL even from
-> behind: full standing body, head with hair, shoulders, torso, legs,
-> visible feet — NOT a shapeless blob of hair with no visible body. The
-> character: {character description}. Use the reference ONLY for
-> design/color likeness, not pose/crop.
+What is worth recording here is what the prompt CANNOT fix, which is the rest
+of this page.
 
 **The back-view (Row 4/UP) fails inside a 4-row grid, reliably, across
 many attempts** — the model either draws only a hair blob with no body,
