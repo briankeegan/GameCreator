@@ -24,6 +24,10 @@ on:
           - scene
           - plate
           - props
+      desc:
+        description: "PASS 1 mainly — what the room CONTAINS, e.g. 'a tavern, bar along the back-right, three doorways down the left'. Defaults to the room id, which is usually too thin to draw from."
+        required: false
+        type: string
       floor:
         description: "PASS 2 only — what the floor is made of, e.g. 'mossy flagstones'"
         required: false
@@ -73,6 +77,7 @@ jobs:
           python3 .github/art/room.py generate "games/${{ inputs.game }}" "${{ inputs.room }}" \
             "${{ inputs.pass }}" \
             --quality "${{ inputs.quality }}" \
+            ${{ inputs.desc && format('--desc "{0}"', inputs.desc) || '' }} \
             ${{ inputs.floor && format('--floor "{0}"', inputs.floor) || '' }} \
             ${{ inputs.n && format('--n "{0}"', inputs.n) || '' }} \
             ${{ inputs.items && format('--items "{0}"', inputs.items) || '' }} \

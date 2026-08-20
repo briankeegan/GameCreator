@@ -272,6 +272,13 @@ def main():
     p = sub.add_parser("generate", help="generate one pass into its canonical path")
     p.add_argument("game"); p.add_argument("room")
     p.add_argument("which", choices=["scene", "plate", "props"])
+    # The room id names the FILE; this says what is actually IN the room. They
+    # used to be the same string, so the only way to describe a room to the
+    # generator was to put the description in its id — which then named the
+    # file too. Pass 1 gets "lounge — the room as a complete scene", which is
+    # not enough to draw a lounge from.
+    p.add_argument("--desc", default="",
+                   help="what the room contains (pass 1). Defaults to the room id.")
     p.add_argument("--floor", default="", help="what the floor is made of (pass 2)")
     p.add_argument("--n", default="", help="how many props are on the sheet (pass 3)")
     p.add_argument("--items", default="", help="what the props are (pass 3)")
@@ -330,8 +337,8 @@ def main():
             return 1
         out = os.path.join(a.game.rstrip("/"), "art-src",
                            PASS_PATH[a.which] % a.room)
-        prompt = pass_prompt(a.which, a.room, a.floor, a.n, a.items,
-                             strip_notes=True)
+        prompt = pass_prompt(a.which, (a.desc or "").strip() or a.room,
+                             a.floor, a.n, a.items, strip_notes=True)
         if not imagegen.generate(" ".join(prompt.split()), out,
                                  quality=a.quality, force=a.force):
             return 0
