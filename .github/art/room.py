@@ -23,6 +23,9 @@ remember at 11pm. This is the front door:
   * a flat prop carrying a `base`, or a standing prop missing one.
   * a floor-plate room still declaring floorPoly/obstacles — dead data that
     contradicts the mask and sends the next reader the wrong way.
+  * art-style.json restating the room recipe — it is prepended to every pass
+    prompt, so a stale copy there overrides the real one. Cost: a floor plate
+    generated on a painted vignette instead of on flat white.
   * a mask that no longer matches its plate, i.e. someone changed the art and
     forgot to rebuild.
 """
@@ -158,8 +161,54 @@ def rebuild_mask(bw, game_dir, room):
     return np.asarray(mask.convert("1").convert("L")) > 127
 
 
+# The game's art-style.json is prepended to EVERY prompt for that game, pass
+# prompts included — so anything it says about how a room is built wins over
+# the pass prompt it is sitting in front of. It drifted exactly that way once:
+# it still described the old TWO-LAYER room ("a ROOM GROUND PLATE: a complete
+# floor AND ITS SURROUNDING ARCHITECTURE", "a door MUST be on the back-right
+# wall") long after the standard became three passes, and the lounge's pass-2
+# plate duly came back as planks in a painted brown vignette — which keys to
+# nothing, so the whole frame would have been walkable.
+#
+# So: art-style.json carries the CAMERA, the RENDERING and the PALETTE. The
+# recipe lives in .github/art/room_prompts/ and docs/ROOM_ART_STANDARD.md, in
+# one copy. This fails the build on the vocabulary that only the recipe has any
+# business using — a word list, so it is a fact and not a judgement call.
+# Phrases only the recipe uses. Deliberately NOT the bare word "walkable" —
+# "a clearly readable walkable space" is a fair thing for a style to ask for,
+# and a check that fires on a correct file is worse than no check (see the
+# threshold note in verify_sheet.py). Each of these names a mechanism instead.
+STYLE_MUST_NOT_SAY = [
+    "ground plate", "layer 1", "layer 2", "two layers", "back-right wall",
+    "walk mask", "walkable-floor mask", "walkable floor mask", "collision",
+    "build_props", "exit trigger", "walkable exit",
+]
+
+
+def style_drift(game_dir):
+    path = os.path.join(game_dir, "art-style.json")
+    if not os.path.exists(path):
+        return []
+    import json
+    st = json.load(open(path, encoding="utf-8"))
+    out = []
+    for field in ("camera", "style", "palette", "background", "constraints"):
+        body = (st.get(field) or "").lower()
+        for phrase in STYLE_MUST_NOT_SAY:
+            if phrase in body:
+                out.append("art-style.json: %s says %r — that is the room RECIPE, "
+                           "which lives in .github/art/room_prompts/ and "
+                           "docs/ROOM_ART_STANDARD.md. This file is prepended to "
+                           "every pass prompt, so a stale copy here overrides the "
+                           "real one. Carry the camera, the rendering and the "
+                           "palette; point at the standard for the rest."
+                           % (field, phrase))
+    return out
+
+
 def verify(game_dir):
     problems = []
+    problems += style_drift(game_dir)
     problems += stale_masks(game_dir)
     plate_rooms = floor_plate_rooms()
     art = os.path.join(game_dir, "art")
