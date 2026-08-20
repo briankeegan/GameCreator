@@ -77,8 +77,10 @@ jobs:
           exit $status
 
       # Shipped sprite sheets: no empty cells (the cutter silently produced
-      # nothing for one) and no colour outside the game's lockedPalette (art
-      # that bypassed the cutter). Both have happened. Rule lives in
+      # nothing for one), no colour outside the game's lockedPalette (art
+      # that bypassed the cutter), and — as a warning — a front or back row
+      # whose two step frames lift the same foot, which makes a character walk
+      # with one leg. All three have happened. Rule lives in
       # .github/art/CHARACTER_SHEETS.md, enforcement in verify_sheet.py, and
       # this step is what stops either being ignored. Geometry is inferred
       # from the 256px cell size, so a new sheet is covered automatically.

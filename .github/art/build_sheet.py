@@ -227,6 +227,14 @@ def strip_baseline(im, min_rows=4):
     Guard: only strips a band at least `min_rows` tall, so a pale sole or a
     light shoe edge is never eaten. A character in white boots would need
     --keep-baseline.
+
+    A DARK bar is handled too, on the same shape test but a much stricter
+    width (85% instead of 40%): the back-view rows came back standing on a
+    solid
+    black line, which survived keying because it is not pale, and which then
+    welded the two legs together — enough to defeat the gap detection that
+    build_steps needs. A boot sole is dark and near-uniform as well, but it is
+    one boot wide; the bar spans the whole sprite.
     """
     a = np.array(im)
     alpha = a[:, :, 3] > 0
@@ -234,20 +242,26 @@ def strip_baseline(im, min_rows=4):
     if h < 20:
         return im
     max_w = alpha.sum(axis=1).max() or 1
-    cut = h
-    for y in range(h - 1, int(h * 0.75), -1):
-        row = a[y][alpha[y]]
-        if len(row) < max_w * 0.4:
-            break
-        rgb = row[:, :3].astype(np.int32)
-        luma = rgb.mean(axis=1)
-        pale = luma > 175
-        if pale.mean() < 0.75:
-            break
-        # near-uniform: the pale pixels are all about the same colour
-        if rgb[pale].std(axis=0).mean() > 14:
-            break
-        cut = y
+
+    def scan(pale_side):
+        want_w = 0.4 if pale_side else 0.85
+        cut = h
+        for y in range(h - 1, int(h * 0.75), -1):
+            row = a[y][alpha[y]]
+            if len(row) < max_w * want_w:
+                break
+            rgb = row[:, :3].astype(np.int32)
+            luma = rgb.mean(axis=1)
+            hit = luma > 175 if pale_side else luma < 70
+            if hit.mean() < 0.75:
+                break
+            # near-uniform: the matching pixels are all about the same colour
+            if rgb[hit].std(axis=0).mean() > 14:
+                break
+            cut = y
+        return cut
+
+    cut = min(scan(True), scan(False))
     if cut >= h - min_rows:
         return im
     print(f'  stripped a {h - cut}px ground line from a frame')
@@ -287,13 +301,140 @@ def snap_palette(im, pal):
     return Image.fromarray(a.astype('uint8'))
 
 
-def build(rows, out_path, pal, body_heights, cols):
+# THE STEP FRAMES OF A FRONT OR BACK ROW ARE MIRROR OPPOSITES, and the
+# generator will not draw them that way. Six consecutive front rows for Dog
+# Punk came back with the SAME boot lifted in both step frames — the character
+# then walks with one leg while the other never moves, which is what
+# "is the same foot moving twice?" looks like. Naming the feet, naming the
+# viewer's left and right, and asking outright for "frame 3 is frame 1
+# mirrored" all failed; it is not a prompt problem.
+#
+# So the row is constructed instead of asked for. Frame 2 keeps frame 0's body
+# and gets frame 0's LEGS FLIPPED left-to-right. Everything above the leg band
+# is untouched, which also satisfies the standard's "same head and torso in
+# every frame" rule, and keeps a hand-held weapon in the same hand — a full
+# mirror would swap it, and a dagger jumping between paws every other beat is
+# worse than no arm swing.
+#
+# The band is the bottom LEG_FRAC of the sprite's own silhouette, so it scales
+# with whatever was drawn. 0.30 covers boots and bare leg on Beverly at both
+# camera angles without reaching the jacket hem.
+LEG_FRAC = 0.30
+
+
+def mirror_legs(step_frame):
+    """Frame 0 with its legs flipped: the opposite step, by construction."""
+    im = step_frame.convert('RGBA')
+    a = np.array(im)
+    ys, xs = np.nonzero(a[:, :, 3] > 0)
+    if len(ys) == 0:
+        return im
+    y0, y1, x0, x1 = ys.min(), ys.max(), xs.min(), xs.max()
+    top = y1 - int((y1 - y0 + 1) * LEG_FRAC)
+    band = a[top:y1 + 1, x0:x1 + 1]
+    a[top:y1 + 1, x0:x1 + 1] = band[:, ::-1]
+    return Image.fromarray(a)
+
+
+# THE WHOLE FRONT/BACK ROW BUILT FROM ITS NEUTRAL FRAME.
+#
+# mirror_legs above fixes the second step, but it still needs a good FIRST
+# step, and that is the frame generators draw worst: across a dozen Dog Punk
+# rows the standing frame came back clean nearly every time — two legs, a gap
+# between them, both boots flat — while the step frames fused the legs into a
+# dark mass, crossed them, or splayed them sideways. That is not surprising:
+# a character standing still is the pose the model has seen a million of.
+#
+# So ask for the pose it draws well, and construct the two it does not. The
+# neutral frame's legs are separated by a gap of background; find that gap,
+# lift the leg on one side of it, and that is a step. Lift the other and that
+# is the opposite step. Everything above the legs is the same pixels in all
+# three frames, which is the "reuse the head and torso" rule enforced rather
+# than requested — and it removes the drifting head, the fused legs, the
+# same-foot-twice repeat and the missing neutral in one move.
+#
+# LIFT_FRAC of the sprite's height, so it scales with the drawing. 0.035 is
+# about three art pixels on a Dog Punk hero: enough to read at 64px, small
+# enough not to look like a march.
+LIFT_FRAC = 0.035
+
+
+def _leg_gap(alpha, x0, x1, top, bottom):
+    """Column of the gap between the two legs, or None if they are fused.
+
+    Takes an INK mask, not raw alpha. The gap between a character's legs is
+    often an enclosed pocket of background that survived keying — it is too
+    small for key_background's interior-hole pass, which has a minimum size so
+    it cannot eat an eye white — so by alpha alone the legs read as fused.
+    """
+    band = alpha[top:bottom + 1, x0:x1 + 1]
+    if band.size == 0:
+        return None
+    counts = band.sum(axis=0)
+    w = len(counts)
+    lo, hi = int(w * 0.30), int(w * 0.70)          # only look near the middle
+    if hi <= lo:
+        return None
+    mid = counts[lo:hi]
+    col = lo + int(np.argmin(mid))
+    # A real gap is a column with far less ink than the legs beside it.
+    if mid.min() > 0.5 * counts.max():
+        return None
+    return x0 + col
+
+
+def build_steps(neutral):
+    """A cleaned standing frame and the two opposite step frames built from it."""
+    im = neutral.convert('RGBA')
+    a = np.array(im)
+    alpha = a[:, :, 3] > 0
+    ink = alpha & (a[:, :, :3].mean(axis=2) < 230)
+    ys, xs = np.nonzero(alpha)
+    if len(ys) == 0:
+        return None
+    y0, y1, x0, x1 = ys.min(), ys.max(), xs.min(), xs.max()
+    h = y1 - y0 + 1
+    top = y1 - int(h * LEG_FRAC)
+    gap = _leg_gap(ink, x0, x1, top, y1)
+    if gap is None:
+        return None
+    lift = max(1, int(round(h * LIFT_FRAC)))
+    # Clear that leftover pale pocket, or the lifted leg drags a white sliver
+    # up with it and the gap shows as a bar hanging off the boot.
+    a = a.copy()
+    band = a[top:y1 + 1, x0:x1 + 1]
+    band[(band[:, :, 3] > 0) & (band[:, :, :3].mean(axis=2) >= 230)] = 0
+
+    def stepped(left_side):
+        b = a.copy()
+        sl = slice(x0, gap) if left_side else slice(gap, x1 + 1)
+        leg = b[top:y1 + 1, sl].copy()
+        b[top:y1 + 1, sl] = 0                       # clear, then paste higher
+        b[top - lift:y1 + 1 - lift, sl] = leg
+        return Image.fromarray(b)
+
+    return stepped(True), Image.fromarray(a), stepped(False)
+
+
+def build(rows, out_path, pal, body_heights, cols, mirror_rows=(), step_rows=()):
     sheet = Image.new('RGBA', (CELL * cols, CELL * len(rows)), (0, 0, 0, 0))
     for ri, row in enumerate(rows):
         body_h = body_heights[ri] if isinstance(body_heights, list) else body_heights
         row = [trim(strip_baseline(trim(f))) for f in row][:cols]
         if not row:
             raise SystemExit('a row came back empty — check the raw image framing')
+        if ri in step_rows and len(row) >= 2:
+            built = build_steps(row[1])
+            if built is None:
+                raise SystemExit(
+                    f'row {ri}: --build-steps needs a standing frame whose two legs are '
+                    'separated by a gap of background, and frame 1 has none. Regenerate that '
+                    'row; the middle frame is the only one that has to be right.')
+            row = list(built)
+            print(f'  row {ri}: built both step frames from the standing frame')
+        if ri in mirror_rows and len(row) >= 3:
+            row[2] = mirror_legs(row[0])
+            print(f'  row {ri}: built the second step by mirroring the first step\'s legs')
         # ONE scale for the row, from its idle frame: the character must not
         # change size between idle, walking and attacking.
         scale = body_h / row[0].size[1]
@@ -319,6 +460,15 @@ def main():
     ap.add_argument('--cols', type=int, default=3, help='frames per row (default 3: idle, walk, attack)')
     ap.add_argument('--blobs', action='store_true', help='cut by connected blob (use when sprites overlap)')
     ap.add_argument('--tol', type=int, default=22, help='background keying tolerance')
+    ap.add_argument('--mirror-step', metavar='ROWS', default='',
+                    help='comma-separated row indices whose third frame should be built by '
+                         'mirroring the first frame\'s legs (front/back walk rows — see '
+                         'mirror_legs above). Never use it on a side row.')
+    ap.add_argument('--build-steps', metavar='ROWS', default='',
+                    help='comma-separated row indices whose TWO step frames should be built '
+                         'from the standing middle frame by lifting each leg in turn '
+                         '(front/back walk rows — see build_steps above). Only the middle '
+                         'frame of such a row has to be drawn well. Never use it on a side row.')
     args = ap.parse_args()
 
     pal = load_palette(args.style)
@@ -334,7 +484,9 @@ def main():
         rows.append(frames_by_blob(img, want=args.cols) if args.blobs
                     else frames_by_gutter(img, int(idx or 0)))
         heights.append(int(h) if h else args.body_height)
-    build(rows, args.out, pal, heights, args.cols)
+    mirror_rows = {int(x) for x in args.mirror_step.split(',') if x.strip()}
+    step_rows = {int(x) for x in args.build_steps.split(',') if x.strip()}
+    build(rows, args.out, pal, heights, args.cols, mirror_rows, step_rows)
 
 
 if __name__ == '__main__':
