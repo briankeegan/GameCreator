@@ -17,5 +17,11 @@ GCRegisterServiceWorker("the-game-v34", [
   "../../shared/nav.css",
   "../../shared/pwa.js",
   "../../shared/storage.js",
+  "./art/walk-home_bedroom.png",
+  "./art/walk-bedroom.png",
+  "./art/walk-lounge.png",
+  "./art/walk-library.png",
+  "./art/walk-arena.png",
+  "./art/walk-house.png",
   "./icons/icon.svg",
 ]);

@@ -174,7 +174,6 @@
   // request already happened seconds earlier while they were reading the
   // previous line.
   (function preloadAllArt() {
-    Object.keys(ROOMS).forEach(function (id) { loadArt("walk-" + ROOMS[id].bg); });
     [STORY.INTRO_CUTSCENE, STORY.DREAM_CUTSCENE].forEach(function (list) {
       list.forEach(function (s) {
         if (s.art) loadArt(s.art);
@@ -339,8 +338,18 @@
     currentRoom = ROOMS[roomId];
     exitsArmed = false;
     player.inBed = false;
-    player.x = (at && at.x !== undefined) ? at.x : currentRoom.playerStart.x;
-    player.y = (at && at.y !== undefined) ? at.y : currentRoom.playerStart.y;
+    var spot = at && at.x !== undefined ? at : currentRoom.playerStart;
+    // The mask may not have loaded yet on the very first room; re-place her
+    // once it has, so a spawn point that lands off the floor still resolves.
+    placeOnFloor(currentRoom, spot.x, spot.y);
+    var room = currentRoom, tries = 0;
+    var settle = setInterval(function () {
+      if (currentRoom !== room || ++tries > 40) return clearInterval(settle);
+      if (walkMask(room).ready) {
+        clearInterval(settle);
+        if (!canStand(room, player.x, player.y)) placeOnFloor(room, player.x, player.y);
+      }
+    }, 50);
     if (save) { save.room = roomId; persist(); } // walking through a door autosaves
   }
 
@@ -552,107 +561,34 @@
   }
 
   // ---- movement + collision ----
-  // Where you can walk is READ OUT OF THE ROOM'S OWN ARTWORK, once, the first
-  // time you enter it — not hand-authored per room.
-  //
-  // Hand-authoring it was the wrong idea twice over. A rectangle can't fit
-  // rooms drawn in perspective, and hand-tracing a polygon round each one is
-  // a pile of magic numbers that has to be re-eyeballed every time a
-  // background is regenerated — which, in this repo, is often.
-  //
-  // The picture already knows the answer. Everything outside a room is
-  // painted near-black and touches the edge of the image, so:
-  //   1. flood that void inward from the border,
-  //   2. open it (erode then dilate) so leaks down dark mortar seams and
-  //      plank shadows close up while the real void, which is thick, stays,
-  //   3. walkable = everything the flood didn't reach, below the room's
-  //      wall/floor line.
-  // What the flood can't tell us is which of that outline is floor and which
-  // is a wall FACE standing in front of it — a wall is painted, not black, so
-  // it survives. That part is given, as `wallCut` (see below).
-  var MASK_W = VW, MASK_H = VH;   // mask is in room coordinates, 1:1
-  var maskCache = {};
-
-  function buildWalkMask(room) {
-    // A room can ship its walkable area as a picture: art/walk-<bg>.png, the
-    // room's floor filled flat white on black. That's the authored form every
-    // 2D adventure engine uses, and it's exact — nothing is being guessed at
-    // from a painted image. These are cut out of a two-panel sheet that draws
-    // the room and its floor plan together in one generation, so the mask
-    // cannot drift out of register with the art it belongs to.
-    var authored = readMaskImage(room);
-    if (authored) return authored;
-
-    // No authored mask: fall back to reading the room's shape out of the
-    // background itself. Good enough to walk around in, and it means a room
-    // whose art was just regenerated is never unplayable while its mask is
-    // still being made.
-    var entry = loadArt("bg-" + room.bg);
-    if (!entry || !entry.ok || !entry.img.naturalWidth) return null;
-    var c = document.createElement("canvas");
-    c.width = MASK_W; c.height = MASK_H;
-    var g = c.getContext("2d");
-    g.drawImage(entry.img, 0, 0, MASK_W, MASK_H);
-    var data;
-    try { data = g.getImageData(0, 0, MASK_W, MASK_H).data; }
-    catch (err) { return null; } // tainted canvas (file:// with no CORS)
-
-    var n = MASK_W * MASK_H;
-    var voidMask = new Uint8Array(n);
-    var stack = [];
-    // "Near-black" has to be relative, not a fixed number. Your Old Room is
-    // lit by one lamp at night and its far floorboards are darker than the
-    // walls of every other room, so a fixed cutoff ate the floor out from
-    // under it. Scale the cutoff to how dark the picture actually is, and
-    // require the void to be NEUTRAL as well as dark — unlit floorboards keep
-    // their warm tint, the void outside the room doesn't.
-    var level = voidLevel(data, n);
-    function isVoid(i) {
-      var r = data[i], g2 = data[i + 1], b = data[i + 2];
-      var mx = Math.max(r, g2, b);
-      return mx < level && (mx - Math.min(r, g2, b)) < 14;
-    }
-    function seed(x, y) {
-      var k = y * MASK_W + x, i = k * 4;
-      if (voidMask[k] || !isVoid(i)) return;
-      voidMask[k] = 1; stack.push(k);
-    }
-    for (var x = 0; x < MASK_W; x++) { seed(x, 0); seed(x, MASK_H - 1); }
-    for (var y = 0; y < MASK_H; y++) { seed(0, y); seed(MASK_W - 1, y); }
-    while (stack.length) {
-      var k = stack.pop(), kx = k % MASK_W, ky = (k - kx) / MASK_W;
-      if (kx > 0) seed(kx - 1, ky);
-      if (kx < MASK_W - 1) seed(kx + 1, ky);
-      if (ky > 0) seed(kx, ky - 1);
-      if (ky < MASK_H - 1) seed(kx, ky + 1);
-    }
-    voidMask = openMask(voidMask, VOID_OPEN);
-
-    // Now cut the walls off. The flood gives the room's OUTLINE, which is the
-    // hard part and comes free — the front edge's curve, the corners, whatever
-    // the artist drew. What it can't give is which of that outline is floor
-    // and which is a wall FACE standing in front of it: a wall is painted, not
-    // black, so it survives the flood. In the lounge that's the two angled
-    // walls down the sides as well as the back one, which is why a single
-    // horizontal "floor starts here" line was never going to be enough.
-    //
-    // So each room carries `wallCut`, a polygon whose only job is to exclude
-    // walls. It has to be accurate where it runs along a wall base and can be
-    // as sloppy as it likes everywhere else, because the flood already decides
-    // the outer boundary. Walkable = inside the flood AND inside that polygon.
-    var cut = room.wallCut;
-    var walk = new Uint8Array(n);
-    for (var yy = 0; yy < MASK_H; yy++) {
-      for (var xx = 0; xx < MASK_W; xx++) {
-        var kk = yy * MASK_W + xx;
-        if (voidMask[kk]) continue;
-        walk[kk] = (!cut || pointInPoly(cut, xx, yy)) ? 1 : 0;
-      }
-    }
-    return walk;
+  // ---- collision: she can only walk on the floor ----
+  // What counts as floor isn't guessed at runtime. It's baked from each
+  // room's own background art into art/walk-<room>.png by
+  // .github/art/build_walkmask.py (white = floor): the room's silhouette
+  // below its wall line, minus whatever stands on the floor. Diagonal walls,
+  // angled corners and furniture drawn in perspective are therefore exactly
+  // what the picture shows, which no hand-written shape can promise. All this
+  // code does is ask whether the pixel under someone's feet is floor.
+  var walkMasks = {};
+  function walkMask(room) {
+    var id = room.bg;
+    if (walkMasks[id]) return walkMasks[id];
+    var entry = { ready: false, data: null };
+    walkMasks[id] = entry;
+    var img = new Image();
+    img.onload = function () {
+      var off = document.createElement("canvas");
+      off.width = VW; off.height = VH;
+      var octx = off.getContext("2d");
+      octx.drawImage(img, 0, 0, VW, VH);
+      entry.data = octx.getImageData(0, 0, VW, VH).data;
+      entry.ready = true;
+    };
+    img.src = "art/walk-" + id + ".png";
+    return entry;
   }
 
-  // Standard even-odd ray cast.
+  // Standard even-odd ray cast, used by the fallbacks below.
   function pointInPoly(poly, x, y) {
     var inside = false;
     for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -662,102 +598,72 @@
     return inside;
   }
 
-  // Reads art/walk-<bg>.png if the room has one. Any pixel that is more light
-  // than dark counts as walkable, so the mask can be authored as white-on-
-  // black without worrying about the exact shade or about anti-aliased edges.
-  function readMaskImage(room) {
-    var entry = loadArt("walk-" + room.bg);
-    if (!entry || !entry.ok || !entry.img.naturalWidth) return null;
-    var c = document.createElement("canvas");
-    c.width = MASK_W; c.height = MASK_H;
-    var g = c.getContext("2d");
-    g.drawImage(entry.img, 0, 0, MASK_W, MASK_H);
-    var data;
-    try { data = g.getImageData(0, 0, MASK_W, MASK_H).data; } catch (err) { return null; }
-    var out = new Uint8Array(MASK_W * MASK_H);
-    for (var i = 0; i < out.length; i++) {
-      var j = i * 4;
-      out[i] = (data[j + 3] > 128 && (data[j] + data[j + 1] + data[j + 2]) > 300) ? 1 : 0;
+  // While a mask is still loading — or if one is missing for a room — fall
+  // back to the room's traced floorPoly, and then to a plain rectangle, so
+  // nobody is ever frozen in place by a slow network.
+  var FALLBACK_FLOOR = { x: 22, y: 102, w: VW - 44, h: 84 };
+
+  function isFloor(room, feetX, feetY) {
+    var mask = walkMask(room);
+    if (!mask.ready) {
+      if (room.floorPoly) return pointInPoly(room.floorPoly, feetX, feetY);
+      return feetX >= FALLBACK_FLOOR.x && feetX <= FALLBACK_FLOOR.x + FALLBACK_FLOOR.w &&
+             feetY >= FALLBACK_FLOOR.y && feetY <= FALLBACK_FLOOR.y + FALLBACK_FLOOR.h;
     }
-    return out;
+    var x = Math.round(feetX), y = Math.round(feetY);
+    if (x < 0 || y < 0 || x >= VW || y >= VH) return false;
+    return mask.data[(y * VW + x) * 4] > 127;
   }
 
-  // How black "the black" has to be, as a fraction of the picture's own
-  // brightness, clamped so a blown-out or a pitch-dark room both stay sane.
-  function voidLevel(data, n) {
-    var hist = new Uint32Array(256), i;
-    for (i = 0; i < n; i++) {
-      var j = i * 4;
-      hist[Math.max(data[j], data[j + 1], data[j + 2])]++;
-    }
-    var half = n >> 1, seen = 0, median = 128;
-    for (i = 0; i < 256; i++) { seen += hist[i]; if (seen >= half) { median = i; break; } }
-    return Math.max(12, Math.min(34, Math.round(median * 0.26)));
-  }
-  // How thick a leak has to be to survive the opening. A leak down a mortar
-  // line is a few pixels wide; the void around a room is tens.
-  var VOID_OPEN = 3;
-  function openMask(src, r) { return morphMask(morphMask(src, r, true), r, false); }
-  function morphMask(src, r, erode) {
-    var tmp = new Uint8Array(src.length), dst = new Uint8Array(src.length);
-    function read(buf, x, y) {
-      // Outside the image counts as void, so the frame isn't eroded away.
-      if (x < 0 || y < 0 || x >= MASK_W || y >= MASK_H) return 1;
-      return buf[y * MASK_W + x];
-    }
-    var x, y, i, v;
-    for (y = 0; y < MASK_H; y++) for (x = 0; x < MASK_W; x++) {
-      v = erode ? 1 : 0;
-      for (i = -r; i <= r; i++) { var a = read(src, x + i, y); v = erode ? (v && a) : (v || a); }
-      tmp[y * MASK_W + x] = v ? 1 : 0;
-    }
-    for (y = 0; y < MASK_H; y++) for (x = 0; x < MASK_W; x++) {
-      v = erode ? 1 : 0;
-      for (i = -r; i <= r; i++) { var b = read(tmp, x, y + i); v = erode ? (v && b) : (v || b); }
-      dst[y * MASK_W + x] = v ? 1 : 0;
-    }
-    return dst;
-  }
-
-  // The mask needs the background decoded, which it may not be on the very
-  // first frame in a room. Until it is, fall back to the wall-cut polygon on
-  // its own — generous rather than blocking, so nobody is ever frozen in
-  // place waiting on an image.
-  function walkMask(room) {
-    if (maskCache[room.bg] !== undefined) return maskCache[room.bg];
-    var m = buildWalkMask(room);
-    if (m) maskCache[room.bg] = m;   // only cache a real one; retry next frame
-    return m;
-  }
-
-  // fx, fy: the FEET, not the top-left of the collision box — a character
-  // stands on one point, and that point is what has to be on the floor.
-  function onFloor(room, fx, fy) {
-    var x = Math.round(fx), y = Math.round(fy);
-    if (x < 0 || y < 0 || x >= MASK_W || y >= MASK_H) return false;
-    var m = walkMask(room);
-    if (!m) return !room.wallCut || pointInPoly(room.wallCut, x, y);
-    return m[y * MASK_W + x] === 1;
-  }
-
-  // Can a body whose box top-left is (x, y) stand here? Floor and furniture
-  // in one question, so every mover asks it the same way.
-  function canStand(room, x, y) {
-    return onFloor(room, x + player.w / 2, y + player.h) && !blockedByObstacle(room, x, y);
-  }
-
-  function blockedByObstacle(room, x, y) {
-    var obstacles = room.obstacles || [];
-    for (var i = 0; i < obstacles.length; i++) {
-      var o = obstacles[i];
-      if (x + player.w > o.x && x < o.x + o.w && y + player.h > o.y && y < o.y + o.h) return true;
+  // A doorway plus a margin — kept clear of wandering NPCs.
+  var DOOR_CLEARANCE = 10;
+  function inDoorway(room, feetX, feetY) {
+    var exits = room.exits || [];
+    for (var i = 0; i < exits.length; i++) {
+      var e = exits[i];
+      if (feetX > e.x - DOOR_CLEARANCE && feetX < e.x + e.w + DOOR_CLEARANCE &&
+          feetY > e.y - DOOR_CLEARANCE && feetY < e.y + e.h + DOOR_CLEARANCE) return true;
     }
     return false;
   }
+
+  // Can she stand with her feet here?
+  function canStand(room, x, y) {
+    return isFloor(room, x + player.w / 2, y + player.h);
+  }
+
+  // Nearest floor to a point, searched outward in rings. Used whenever
+  // someone is placed in a room: a spawn point that misses the floor by a few
+  // pixels would otherwise leave them wedged, since every direction out of it
+  // is also not-floor.
+  function nearestFloor(room, feetX, feetY) {
+    // Also refuses a spot someone else is standing on: arriving on top of an
+    // NPC leaves you wedged against them until you shove them aside.
+    function free(x, y) {
+      return isFloor(room, x, y) && !npcAt(room, x - player.w / 2, y - player.h);
+    }
+    if (free(feetX, feetY)) return { x: feetX, y: feetY };
+    for (var r = 2; r <= 90; r += 2) {
+      for (var a = 0; a < 32; a++) {
+        var ang = (a / 32) * Math.PI * 2;
+        var x = feetX + Math.cos(ang) * r, y = feetY + Math.sin(ang) * r;
+        if (free(x, y)) return { x: x, y: y };
+      }
+    }
+    return { x: feetX, y: feetY };
+  }
+
+  // Place her by her FEET, on floor.
+  function placeOnFloor(room, x, y) {
+    var spot = nearestFloor(room, x + player.w / 2, y + player.h);
+    player.x = spot.x - player.w / 2;
+    player.y = spot.y - player.h;
+  }
+
   // NPCs are people (or furniture, for the save point), not floor markings —
   // walking straight through one looked wrong and was reported live. Treated
   // as a small circle at their feet; savePoint is skipped since a bed is
-  // already covered by the room's own obstacles list.
+  // already covered by the room's own furniture blocks.
   var NPC_COLLIDE_RADIUS = 8;
   // Returns the blocking NPC (not just true/false) so a sustained shove can
   // be attributed to a specific person and made to step aside — see the push
@@ -799,10 +705,10 @@
     if (d < 1.5) { pickWanderTarget(w); w.pause = 1 + Math.random() * 2.5; return; }
     var step = Math.min(d, WANDER_SPEED * dt);
     var nx = npc.x + (dx / d) * step, ny = npc.y + (dy / d) * step;
-    // Never wander into an obstacle, off the floor, into another NPC, or
-    // into the player — the same canStand() the player's own movement uses,
-    // so nobody can drift out onto the black either.
-    if (!canStand(room, nx - player.w / 2, ny - player.h)) { pickWanderTarget(w); return; }
+    // Nobody wanders off the floor either — same mask, same question — and
+    // nobody parks in a doorway: someone standing in the door blocks the way
+    // through until you shove them aside, which reads as a broken door.
+    if (!isFloor(room, nx, ny) || inDoorway(room, nx, ny)) { pickWanderTarget(w); return; }
     var pd = Math.hypot(nx - (player.x + player.w / 2), ny - (player.y + player.h));
     var curPd = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h));
     // Block a step that would walk INTO the player, but never one that's
@@ -827,11 +733,12 @@
     var d = Math.hypot(dx, dy) || 1;
     // Step aside away from the player, but only as far as there is still
     // floor: back off toward where they stand until the spot is legal, so a
-    // shove against a wall can't push someone out into the black.
+    // shove against a wall can't push someone out into the black — and never
+    // into a doorway.
     var tx = npc.x, ty = npc.y;
     for (var step = PUSH_STEP; step >= 4; step -= 4) {
       var cx = npc.x + (dx / d) * step, cy = npc.y + (dy / d) * step;
-      if (canStand(room, cx - player.w / 2, cy - player.h)) { tx = cx; ty = cy; break; }
+      if (isFloor(room, cx, cy) && !inDoorway(room, cx, cy)) { tx = cx; ty = cy; break; }
     }
     w.tx = tx; w.ty = ty;
     w.homeX = w.tx; w.homeY = w.ty; // step-aside becomes their new "home" — they don't snap back into the player
@@ -887,19 +794,18 @@
       var len = Math.sqrt(dx * dx + dy * dy);
       dx /= len; dy /= len;
       player.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
-      // Try each axis independently so the player can slide along a wall
-      // or obstacle instead of fully stopping the moment either axis hits
-      // something.
-      var tryX = { x: player.x + dx * player.speed * dt, y: player.y };
-      var okX = canStand(currentRoom, tryX.x, player.y);
-      var blockerX = okX ? npcAt(currentRoom, tryX.x, player.y) : null;
+      // Try each axis independently so she can slide along a wall instead of
+      // stopping dead the moment either axis meets one.
+      var tryX = player.x + dx * player.speed * dt;
+      var okX = canStand(currentRoom, tryX, player.y);
+      var blockerX = okX ? npcAt(currentRoom, tryX, player.y) : null;
       if (blockerX) registerPush(currentRoom, blockerX, dt);
-      else if (okX) player.x = tryX.x;
-      var tryY = { x: player.x, y: player.y + dy * player.speed * dt };
-      var okY = canStand(currentRoom, player.x, tryY.y);
-      var blockerY = okY ? npcAt(currentRoom, player.x, tryY.y) : null;
+      else if (okX) player.x = tryX;
+      var tryY = player.y + dy * player.speed * dt;
+      var okY = canStand(currentRoom, player.x, tryY);
+      var blockerY = okY ? npcAt(currentRoom, player.x, tryY) : null;
       if (blockerY) registerPush(currentRoom, blockerY, dt);
-      else if (okY) player.y = tryY.y;
+      else if (okY) player.y = tryY;
       isWalking = true;
       walkPhase += dt * 9; // frame-cycle speed (~3 pose changes/sec); unrelated to player.speed so it stays readable
     } else {
@@ -1134,6 +1040,20 @@
     left: ["nella_human_left_0", "nella_human_left_1", "nella_human_left_2"],
     right: ["nella_human_left_0", "nella_human_left_1", "nella_human_left_2"]
   };
+  // loadArt() kicks off an async Image load and returns ok:false until it
+  // fires — fine for most art, but drawPlayer() doesn't wait: the FIRST time
+  // any given directional frame is needed (e.g. the very first step in a new
+  // direction, worst-case right after a hard refresh with a cold cache) it
+  // reads as "missing" for a frame or two and falls back to the single
+  // forward-facing portrait, mirrored — a visible flip to a totally different
+  // pose before the real frame lands. Reported live as "it flips left and
+  // right when I walk left". Kicking every frame's load off up front, before
+  // she ever takes a step, means by the time a direction is actually pressed
+  // the image is already loaded (or loading) and drawPlayer never needs the
+  // fallback.
+  [FACING_FRAMES, FACING_FRAMES_HUMAN].forEach(function (set) {
+    Object.keys(set).forEach(function (dir) { set[dir].forEach(loadArt); });
+  });
   function drawPlayer() {
     var human = currentRoom && currentRoom.playerForm === "human";
     var frameSet = human ? FACING_FRAMES_HUMAN : FACING_FRAMES;
@@ -1329,7 +1249,6 @@
     save: function () { return save; },
     room: function () { return currentRoom && currentRoom.label; },
     npcIds: function () { return roomNpcs(currentRoom).map(function (n) { return n.id; }); },
-    walkMask: function () { return currentRoom ? walkMask(currentRoom) : null; },
     enterRoom: enterRoom,
     startDuel: startDuel,
     duel: function () { return window.NewseyDuel.debug(); }
