@@ -26,6 +26,7 @@ window.NEWSEY_STORY = (function () {
     tv:      { name: "Old TV",       color: "#5a4a7a" },
     portal:  { name: "The Portal",   color: "#00cec9" },
     bed:     { name: "Your Bed",     color: "#ffd166" },
+    frontDoor: { name: "The Front Door", color: "#b9975b" },
     may:     { name: "May 2000",     color: "#e84393" },
     kat:     { name: "Kat",          color: "#27ae60" },
     john:    { name: "John Boxley",  color: "#6c5ce7" },
@@ -90,19 +91,99 @@ window.NEWSEY_STORY = (function () {
   // read as standing on furniture instead of the floor. Keeping everyone
   // in this band keeps them visually grounded regardless of what the
   // background art behind them looks like.
+  // What you get on the first fade-in, lying in your own bed. Not an NPC —
+  // app.js shows these through the talk box with no speaker and no portrait.
+  var WAKE_LINES = [
+    "Knock. Knock. Knock.",
+    "Someone's at the front door. At this hour, in this rain.",
+    "…Chuck. It has to be Chuck."
+  ];
+
+  // ROOM SHAPES — every room's walkable area is `floorPoly`, the drawn floor
+  // traced as a polygon in the game's 320x200 room coordinates. These rooms
+  // are painted in perspective (the lounge and the arena are six-sided, the
+  // others are trapezoids narrowing toward the back wall), so a rectangle can
+  // never fit one: sized to the front edge it lets you walk off into the
+  // black behind the room, sized to the back edge it fences you out of the
+  // front half. Traced against a coordinate grid rendered over each
+  // background — don't adjust these by feel, re-render the grid.
   var ROOMS = {
+    // The real world, before any of it: your own childhood bedroom upstairs
+    // in your father's house. The game opens here, out of the black at the
+    // end of the intro.
+    home_bedroom: {
+      bg: "home_bedroom",
+      label: "Your Old Room",
+      playerStart: { x: 152, y: 128 },
+      playerForm: "human",
+      // Where you're lying when the screen fades up, and where you stand the
+      // moment you move. app.js reads both (see player.inBed).
+      bedSpot: { x: 74, y: 80 },
+      // The top edge of the blanket in the art — she's drawn clipped to above
+      // this line while asleep, so the covers cover her.
+      bedClipY: 88,
+      wakeSpot: { x: 152, y: 128 },
+      // Everything below is read straight off bg-home_bedroom.png against the
+      // 320x200 virtual grid. This art frames the room inside a dark border,
+      // so the generic floor rect would let you walk out through the walls,
+      // and the door is drawn centre-right rather than hard right, so the
+      // exit strip sits under where the door actually is.
+      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
+      floorPoly: [[68,100],[276,100],[272,182],[72,182]],
+      exits: [ { x: 188, y: 98, w: 34, h: 16, to: "house", label: "Downstairs",
+                 arriveAt: { x: 228, y: 112 } } ],
+      // The bed (back-left, foot toward the viewer), the nightstand beside
+      // it, and the moving boxes stacked against the right wall.
+      obstacles: [
+        { x: 80, y: 58, w: 64, h: 98 },    // the bed
+        { x: 115, y: 55, w: 36, h: 52 },   // nightstand + lamp
+        { x: 232, y: 52, w: 46, h: 65 }    // moving boxes
+      ],
+      npcs: []
+    },
     house: {
       bg: "house",
       label: "Your Father's House",
-      playerStart: { x: 150, y: 155 },
+      playerStart: { x: 150, y: 145 },
       // Before the deal/transformation — Nella is still fully human here.
       playerForm: "human",
-      // No walkable exit — you leave by finishing the TV conversation
-      // (which plays DREAM_CUTSCENE and lands you in ROOMS.bedroom).
-      exits: [],
+      // Read off bg-house.png against the 320x200 grid: the room's walls are
+      // at x 64 and x 284 and the floor runs from y 100 to y 178. Without
+      // this the generic floor rect let you walk out through both walls.
+      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
+      floorPoly: [[64,100],[292,100],[292,187],[64,187]],
+      // The lit archway on the right is the stairs. The story's real exit is
+      // still the TV (which plays DREAM_CUTSCENE), but you came down these to
+      // answer the door, so they go back up.
+      exits: [
+        { x: 216, y: 90, w: 34, h: 14, to: "home_bedroom", arriveAt: { x: 196, y: 122 } }
+      ],
+      // Furniture where it actually meets the floor: the table with the
+      // moving boxes, the lantern table by the front door, and the little
+      // round candle table on the right.
+      obstacles: [
+        { x: 100, y: 78, w: 78, h: 34 },
+        { x: 64, y: 98, w: 34, h: 10 },
+        { x: 252, y: 96, w: 28, h: 12 }
+      ],
       npcs: [
         {
-          id: "chuck", x: 110, y: 160, art: "chuck", sprite: "chuck_top",
+          // The closed wooden door on the back-left wall of bg-house.png.
+          // It's the front door, and it's the whole reason you came down.
+          // Disappears once Chuck is inside — `unless` hides an NPC after a
+          // flag is set, `needs` shows one only after it is.
+          id: "frontDoor", x: 74, y: 106, art: null, sprite: null, marker: "OPEN",
+          unless: "chuckIn",
+          setsFlag: "chuckIn",
+          thenTalk: "chuck",
+          lines: [
+            "The knocking again, louder. Rain hammering the porch behind it.",
+            "You turn the latch and pull the door open."
+          ]
+        },
+        {
+          id: "chuck", x: 108, y: 126, art: "chuck", sprite: "chuck_top",
+          needs: "chuckIn",
           lines: [
             "Nella! Get out of the rain!",
             "I'm so sorry, Nella.",
@@ -126,8 +207,30 @@ window.NEWSEY_STORY = (function () {
       bg: "bedroom",
       label: "Your Room, Infinity",
       playerStart: { x: 150, y: 150 },
+      // Hand-placed from bg-bedroom.png: the door is on the right wall,
+      // the mirror stands on the left and the bed is back-center-right —
+      // both are blocked off so the player can't walk through them.
+      // arriveAt drops you a step INSIDE the next room, in front of the door
+      // you came out of — never on its threshold, or holding the same
+      // direction would walk you straight back through.
+      // Every exit box below was measured against the room's own background
+      // art (overlaid on the PNG at the game's 320x200 scale, not guessed):
+      // the box IS the drawn doorway, so walking into the picture of the door
+      // is what takes you through. Nothing else on screen is an exit.
+      // bg-bedroom.png: arched door on the right wall, opening x 222-248,
+      // threshold on the floor at y ~103.
+      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
+      floorPoly: [[52,100],[285,100],[272,186],[64,186]],
       exits: [
-        { x: 222, y: 90, w: 26, h: 16, to: "lounge", arriveAt: { x: 150, y: 150 } }
+        { x: 223, y: 90, w: 28, h: 16, to: "lounge", arriveAt: { x: 150, y: 150 } }
+      ],
+      // Furniture footprints where they actually meet the floor (the old boxes
+      // reached far into the room, and the bed's box covered the doorway, so
+      // the door could not be walked into at all).
+      obstacles: [
+        { x: 52, y: 95, w: 36, h: 14 },   // mirror
+        { x: 120, y: 92, w: 90, h: 26 },  // bed
+        { x: 202, y: 95, w: 22, h: 13 }   // nightstand
       ],
       npcs: [
         {
@@ -136,7 +239,7 @@ window.NEWSEY_STORY = (function () {
           // finish, and draw a gold marker over it instead of a character
           // token. Positioned just below the bed obstacle (which ends at
           // y=110) so the player can actually stand within reach of it.
-          id: "bed", x: 192, y: 118, art: null, sprite: null, savePoint: true,
+          id: "bed", x: 155, y: 120, art: null, sprite: null, savePoint: true,
           lines: [
             "Your bed. Copper sheets, aquamarine pillow — Infinity matched them to your bracelet.",
             "You lie down for a moment and let the day settle."
@@ -171,11 +274,23 @@ window.NEWSEY_STORY = (function () {
     lounge: {
       bg: "lounge",
       label: "The Lounge",
-      playerStart: { x: 140, y: 150 },
+      playerStart: { x: 100, y: 150 },
+      // Hand-placed from bg-lounge.png: the doorway to the library is on
+      // the right wall; the bar counter spans most of the back wall and
+      // is blocked off so the player can't walk through/behind it.
+      // bg-lounge.png draws ONE door: the arch on the back-right wall (opening
+      // x 210-240, floor at y ~82) to the library. The way back to your room is
+      // the doorway you came in through, at the bottom edge of the room —
+      // the art has none there, so app.js draws that frame itself.
+      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
+      floorPoly: [[75,100],[252,100],[288,140],[262,188],[92,188],[50,140]],
       exits: [
-        { x: 210, y: 82, w: 30, h: 20, to: "library", arriveAt: { x: 215, y: 140 } },
+        { x: 206, y: 86, w: 34, h: 18, to: "library", arriveAt: { x: 215, y: 140 } },
         { x: 132, y: 182, w: 56, h: 10, to: "bedroom", drawn: "threshold", arriveAt: { x: 228, y: 132 } }
       ],
+      // The bar's footprint on the floor (the old box sat entirely above the
+      // walkable area, so it blocked nothing).
+      obstacles: [ { x: 55, y: 95, w: 110, h: 30 } ], // the bar's footprint
       npcs: [
         {
           // Flavor only here — per the plot, the Lounge is "the bar + portals
@@ -206,7 +321,7 @@ window.NEWSEY_STORY = (function () {
         {
           // The plot: "the Lounge (bar + portals to duels)" — this is that
           // portal. No art generated yet, renders as a fallback token.
-          id: "portal", x: 60, y: 100, art: null, sprite: null,
+          id: "portal", x: 82, y: 150, art: null, sprite: null, marker: "ENTER",
           lines: [
             "A shimmering doorway, humming with the same pink-and-red glow as a panel board.",
             "You step through."
@@ -220,9 +335,12 @@ window.NEWSEY_STORY = (function () {
       label: "The Arena",
       playerStart: { x: 150, y: 165 },
       // bg-arena.png: the arch is at x 233-267, floor at y ~82.
+      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
+      floorPoly: [[52,96],[286,96],[292,140],[272,186],[72,186],[44,140]],
       exits: [
-        { x: 233, y: 80, w: 34, h: 22, to: "lounge", arriveAt: { x: 150, y: 150 } }
-      ], // the stone benches
+        { x: 232, y: 84, w: 34, h: 20, to: "lounge", arriveAt: { x: 150, y: 150 } }
+      ],
+      obstacles: [ { x: 45, y: 88, w: 180, h: 14 } ], // the tiered stone benches
       npcs: [
         {
           id: "kat", x: 100, y: 155, art: "kat", sprite: "kat_top",
@@ -273,9 +391,17 @@ window.NEWSEY_STORY = (function () {
       bg: "library",
       label: "The Library",
       playerStart: { x: 150, y: 165 },
+      // Hand-placed from bg-library.png: the exit archway back to the
+      // lounge is actually on the right side of the room, not the left
+      // (the previous x:0 placement didn't match the art at all — the
+      // bookshelves occupy the whole left wall and are blocked off).
+      // bg-library.png: the arch is at x 210-242, floor at y ~78.
+      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
+      floorPoly: [[50,100],[274,100],[274,188],[50,188]],
       exits: [
-        { x: 210, y: 78, w: 32, h: 24, to: "lounge", arriveAt: { x: 215, y: 140 } }
-      ], // armchair + candle table
+        { x: 228, y: 84, w: 24, h: 18, to: "lounge", arriveAt: { x: 215, y: 140 } }
+      ],
+      obstacles: [ { x: 160, y: 92, w: 66, h: 22 } ], // armchair + candle table
       npcs: [
         {
           id: "michael", x: 120, y: 160, art: "michael", sprite: "michael_top",
@@ -298,5 +424,6 @@ window.NEWSEY_STORY = (function () {
     }
   };
 
-  return { CHARACTERS: CHARACTERS, INTRO_CUTSCENE: INTRO_CUTSCENE, DREAM_CUTSCENE: DREAM_CUTSCENE, ROOMS: ROOMS };
+  return { CHARACTERS: CHARACTERS, INTRO_CUTSCENE: INTRO_CUTSCENE, DREAM_CUTSCENE: DREAM_CUTSCENE,
+           WAKE_LINES: WAKE_LINES, ROOMS: ROOMS };
 })();

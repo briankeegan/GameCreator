@@ -33,6 +33,17 @@ EROSION = 4
 # floorTop: the row where the back wall meets the floor.
 # blocks:   what stands ON the floor, as polygons following what is drawn.
 ROOMS = {
+    # bounds: for art drawn as a full rectangle with a dark border painted in,
+    # where the alpha silhouette can't tell room from frame.
+    "home_bedroom": {
+        "floorTop": 96,
+        "bounds": (52, 96, 286, 188),
+        "blocks": [
+            [(48, 96), (118, 96), (118, 138), (48, 138)],   # the bed
+            [(118, 96), (158, 96), (158, 102), (118, 102)], # nightstand
+            [(236, 96), (288, 96), (288, 106), (236, 106)], # moving boxes
+        ],
+    },
     "bedroom": {
         "floorTop": 100,
         "blocks": [
@@ -78,6 +89,11 @@ def build(game_dir, room):
     mask = alpha.point(lambda a: 255 if a > 40 else 0)
     draw = ImageDraw.Draw(mask)
     draw.rectangle([0, 0, W, spec["floorTop"]], fill=0)
+    if spec.get("bounds"):
+        x0, y0, x1, y1 = spec["bounds"]
+        draw.rectangle([0, 0, x0, H], fill=0)
+        draw.rectangle([x1, 0, W, H], fill=0)
+        draw.rectangle([0, y1, W, H], fill=0)
     for poly in spec["blocks"]:
         draw.polygon(poly, fill=0)
 

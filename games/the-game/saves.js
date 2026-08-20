@@ -23,6 +23,7 @@ window.NewseySaves = (function () {
       pos: null,
       duelsWon: {},   // opponent id -> times beaten
       lines: {},      // npc id -> how far through their dialogue you are
+      flags: {},      // one-off story switches, e.g. chuckIn once you let him in
       playSeconds: 0,
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -40,6 +41,7 @@ window.NewseySaves = (function () {
     b.pos = data.pos && typeof data.pos.x === "number" ? { x: data.pos.x, y: data.pos.y } : null;
     b.duelsWon = data.duelsWon || {};
     b.lines = data.lines || {};
+    b.flags = data.flags || {};
     b.playSeconds = data.playSeconds || 0;
     b.createdAt = data.createdAt || Date.now();
     b.updatedAt = data.updatedAt || b.createdAt;

@@ -71,11 +71,54 @@
   var sinceFlush = 0;     // seconds played since the last write (see update)
   function persist() {
     if (activeSlot == null || !save) return;
-    save.pos = { x: player.x, y: player.y };
+    // If she's still lying down, save the spot she'd stand up onto — loading
+    // straight back into the mattress would put her inside its obstacle.
+    save.pos = (player.inBed && currentRoom && currentRoom.wakeSpot)
+      ? { x: currentRoom.wakeSpot.x, y: currentRoom.wakeSpot.y }
+      : { x: player.x, y: player.y };
     save.lines = npcLineCounters;
     SAVES.write(activeSlot, save);
     sinceFlush = 0;
   }
+
+  // ---------- story flags ----------
+  // One-off switches the world reads — "has Chuck been let in yet". They live
+  // in the save file, so a door you opened stays open across a reload.
+  function flags() { return (save && save.flags) || {}; }
+  // The NPCs actually present in a room right now. `needs: "x"` means the NPC
+  // only exists once flag x is set; `unless: "x"` means it stops existing once
+  // it is. Everything that looks at a room's people goes through here —
+  // interaction, collision, wandering, drawing — so an NPC can never be
+  // invisible but still solid, or visible but not there.
+  function roomNpcs(room) {
+    if (!room) return [];
+    var f = flags();
+    return room.npcs.filter(function (npc) {
+      if (npc.needs && !f[npc.needs]) return false;
+      if (npc.unless && f[npc.unless]) return false;
+      return true;
+    });
+  }
+
+  // ---------- fade to / from black ----------
+  // A plain black sheet over the whole stage, used at the seams: the intro
+  // hands over to the world behind it, and the dream's last line ("the world
+  // faded to black") gets to actually mean it.
+  var fadeEl = document.getElementById("fade");
+  var FADE_MS = 700;
+  function fadeToBlack(done) {
+    fadeEl.classList.add("on");
+    setTimeout(done, FADE_MS);
+  }
+  function fadeFromBlack(done) {
+    // Wait one frame with the room already drawn underneath before the sheet
+    // starts lifting, or the first thing revealed is a blank canvas.
+    requestAnimationFrame(function () {
+      fadeEl.classList.remove("on");
+      if (done) setTimeout(done, FADE_MS);
+    });
+  }
+  function clearFade() { fadeEl.classList.remove("on"); }
 
   // ---------- art loading (graceful fallback) ----------
   var artCache = {};
@@ -161,6 +204,7 @@
   var lastBg = "";
   var activeCutscene = STORY.INTRO_CUTSCENE;
   var cutsceneDoneCallback = null;
+  var cutsceneFadeOnEnd = false;
 
   function renderCutsceneLine() {
     var s = activeCutscene[cIndex];
@@ -217,7 +261,18 @@
     if (cIndex >= activeCutscene.length) { endCutscene(); return; }
     renderCutsceneLine();
   }
+  // A cutscene that ends on a fade holds the screen black across the
+  // hand-off, so whoever gets the callback can set the next room up unseen
+  // and lift the fade themselves.
   function endCutscene() {
+    if (cutsceneFadeOnEnd) {
+      cutsceneFadeOnEnd = false;
+      fadeToBlack(finishCutscene);
+      return;
+    }
+    finishCutscene();
+  }
+  function finishCutscene() {
     cutsceneEl.classList.add("hidden");
     applyControlsSetting();
     document.getElementById("menuBtn").hidden = !running;
@@ -229,9 +284,10 @@
   // list: which cutscene array to play. onDone: called once it finishes
   // (decides which room to land in — the two cutscenes go to different
   // rooms, so this isn't hardcoded here).
-  function startCutscene(list, onDone) {
+  function startCutscene(list, onDone, fadeOnEnd) {
     activeCutscene = list;
     cutsceneDoneCallback = onDone;
+    cutsceneFadeOnEnd = !!fadeOnEnd;
     cIndex = 0; lastBg = "";
     portraitImg.hidden = true;
     portraitFallback.hidden = true;
@@ -266,7 +322,7 @@
 
   var currentRoom = null;
   var exitsArmed = true; // false until the player steps clear of every doorway
-  var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down" };
+  var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down", inBed: false };
   var walkPhase = 0, isWalking = false; // drives real walk-frame cycling (see drawPlayer)
   var keys = {};
   var talking = null; // { npc, lineIndex }
@@ -281,6 +337,7 @@
   function enterRoom(roomId, at) {
     currentRoom = ROOMS[roomId];
     exitsArmed = false;
+    player.inBed = false;
     var spot = at && at.x !== undefined ? at : currentRoom.playerStart;
     // The mask may not have loaded yet on the very first room; re-place her
     // once it has, so a spawn point that lands off the floor still resolves.
@@ -372,7 +429,7 @@
   function nearestNpc() {
     if (!currentRoom) return null;
     var best = null, bestD = 26;
-    currentRoom.npcs.forEach(function (npc) {
+    roomNpcs(currentRoom).forEach(function (npc) {
       var dx = (npc.x) - (player.x + player.w / 2);
       var dy = (npc.y) - (player.y + player.h / 2);
       var d = Math.sqrt(dx * dx + dy * dy);
@@ -389,8 +446,24 @@
     renderTalk();
   }
 
+  // Lines with nobody saying them — the knocking that wakes you, a door
+  // being opened. Same box as a conversation, minus the face and nameplate.
+  function showNarration(lines) {
+    talking = { npc: { id: "_narration", narration: true, art: null, lines: lines,
+                       counterKey: "_narration" }, lineIndex: 0 };
+    renderTalk();
+  }
+
   function renderTalk() {
     var npc = talking.npc;
+    if (npc.narration) {
+      talkSpeaker.textContent = "";
+      talkLine.textContent = npc.lines[talking.lineIndex];
+      talkPortrait.hidden = true;
+      talkPortraitFallback.hidden = true;
+      talkBox.hidden = false;
+      return;
+    }
     var c = CHARACTERS[npc.id] || { name: npc.id, color: "#4a2f7a" };
     talkSpeaker.textContent = c.name;
     talkSpeaker.style.color = c.color;
@@ -420,9 +493,25 @@
       talking = null;
       if (wasTalking.npc.duel) startDuel(wasTalking.npc);
       if (wasTalking.npc.cutscene) {
-        startCutscene(STORY[wasTalking.npc.cutscene], function () { enterRoom("bedroom"); });
+        startCutscene(STORY[wasTalking.npc.cutscene], function () {
+          enterRoom("bedroom");
+          fadeFromBlack();
+        }, true);
       }
       if (wasTalking.npc.gotoRoom) enterRoom(wasTalking.npc.gotoRoom);
+      // Opening the front door flips a story flag: the door itself stops
+      // existing and Chuck starts existing, both via roomNpcs() above.
+      if (wasTalking.npc.setsFlag && save) {
+        save.flags[wasTalking.npc.setsFlag] = true;
+        persist();
+      }
+      // …and he speaks up straight away, rather than making you walk over and
+      // press talk at the man you just let in out of the rain.
+      if (wasTalking.npc.thenTalk) {
+        var next = null;
+        roomNpcs(currentRoom).forEach(function (n) { if (n.id === wasTalking.npc.thenTalk) next = n; });
+        if (next) { talking = { npc: next, lineIndex: npcLineCounters[next.id] || 0 }; renderTalk(); }
+      }
       // A bed is a save point: finishing its "lines" is the save.
       if (wasTalking.npc.savePoint) { persist(); window.NewseyMenu.toast("Game saved."); }
       return;
@@ -477,9 +566,9 @@
   // room's own background art into art/walk-<room>.png by
   // .github/art/build_walkmask.py (white = floor): the room's silhouette
   // below its wall line, minus whatever stands on the floor. Diagonal walls,
-  // angled corners and furniture are therefore exactly what the picture
-  // shows. All this code does is ask whether the pixel under her feet is
-  // floor.
+  // angled corners and furniture drawn in perspective are therefore exactly
+  // what the picture shows, which no hand-written shape can promise. All this
+  // code does is ask whether the pixel under someone's feet is floor.
   var walkMasks = {};
   function walkMask(room) {
     var id = room.bg;
@@ -499,13 +588,25 @@
     return entry;
   }
 
-  // While a mask is still loading (or if one is missing) fall back to a plain
-  // rectangle, so she can always move rather than being frozen by the network.
+  // Standard even-odd ray cast, used by the fallbacks below.
+  function pointInPoly(poly, x, y) {
+    var inside = false;
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      var xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  // While a mask is still loading — or if one is missing for a room — fall
+  // back to the room's traced floorPoly, and then to a plain rectangle, so
+  // nobody is ever frozen in place by a slow network.
   var FALLBACK_FLOOR = { x: 22, y: 102, w: VW - 44, h: 84 };
 
   function isFloor(room, feetX, feetY) {
     var mask = walkMask(room);
     if (!mask.ready) {
+      if (room.floorPoly) return pointInPoly(room.floorPoly, feetX, feetY);
       return feetX >= FALLBACK_FLOOR.x && feetX <= FALLBACK_FLOOR.x + FALLBACK_FLOOR.w &&
              feetY >= FALLBACK_FLOOR.y && feetY <= FALLBACK_FLOOR.y + FALLBACK_FLOOR.h;
     }
@@ -569,8 +670,9 @@
   // handling in update().
   function npcAt(room, x, y) {
     var cx = x + player.w / 2, cy = y + player.h;
-    for (var i = 0; i < room.npcs.length; i++) {
-      var npc = room.npcs[i];
+    var present = roomNpcs(room);
+    for (var i = 0; i < present.length; i++) {
+      var npc = present[i];
       if (npc.savePoint) continue;
       if (Math.hypot(cx - npc.x, cy - npc.y) < NPC_COLLIDE_RADIUS) return npc;
     }
@@ -629,11 +731,16 @@
     var w = ensureWanderState(npc);
     var dx = npc.x - (player.x + player.w / 2), dy = npc.y - (player.y + player.h);
     var d = Math.hypot(dx, dy) || 1;
-    var stepX = npc.x + (dx / d) * PUSH_STEP, stepY = npc.y + (dy / d) * PUSH_STEP;
-    // Step aside onto floor only; if that way is a wall, stay put and let the
-    // next shove try from a different angle.
-    if (!isFloor(room, stepX, stepY) || inDoorway(room, stepX, stepY)) { pushedNpc = null; pushTimer = 0; return; }
-    w.tx = stepX; w.ty = stepY;
+    // Step aside away from the player, but only as far as there is still
+    // floor: back off toward where they stand until the spot is legal, so a
+    // shove against a wall can't push someone out into the black — and never
+    // into a doorway.
+    var tx = npc.x, ty = npc.y;
+    for (var step = PUSH_STEP; step >= 4; step -= 4) {
+      var cx = npc.x + (dx / d) * step, cy = npc.y + (dy / d) * step;
+      if (isFloor(room, cx, cy) && !inDoorway(room, cx, cy)) { tx = cx; ty = cy; break; }
+    }
+    w.tx = tx; w.ty = ty;
     w.homeX = w.tx; w.homeY = w.ty; // step-aside becomes their new "home" — they don't snap back into the player
     w.pause = 0;
     pushedNpc = null; pushTimer = 0;
@@ -670,24 +777,35 @@
     if (SETTINGS.isDown("right", keys) || touchDir === "right" || (pad && pad.right)) dx += 1;
     if (SETTINGS.isDown("up", keys) || touchDir === "up" || (pad && pad.up)) dy -= 1;
     if (SETTINGS.isDown("down", keys) || touchDir === "down" || (pad && pad.down)) dy += 1;
+    // Lying in bed: the first press is "get up", not a step. She stands on
+    // the floor beside the bed and control is normal from the next frame —
+    // walking straight off a mattress that is also an obstacle wouldn't work
+    // anyway, since the bed blocks every direction out of it.
+    if (player.inBed) {
+      if (dx || dy) {
+        var spot = currentRoom.wakeSpot || currentRoom.playerStart;
+        player.x = spot.x; player.y = spot.y;
+        player.facing = "down";
+        player.inBed = false;
+      }
+      return;
+    }
     if (dx || dy) {
       var len = Math.sqrt(dx * dx + dy * dy);
       dx /= len; dy /= len;
       player.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
-      // Each axis is tried on its own, so meeting a wall on one still lets
-      // her slide along it on the other.
+      // Try each axis independently so she can slide along a wall instead of
+      // stopping dead the moment either axis meets one.
       var tryX = player.x + dx * player.speed * dt;
-      if (canStand(currentRoom, tryX, player.y)) {
-        var blockerX = npcAt(currentRoom, tryX, player.y);
-        if (blockerX) registerPush(currentRoom, blockerX, dt);
-        else player.x = tryX;
-      }
+      var okX = canStand(currentRoom, tryX, player.y);
+      var blockerX = okX ? npcAt(currentRoom, tryX, player.y) : null;
+      if (blockerX) registerPush(currentRoom, blockerX, dt);
+      else if (okX) player.x = tryX;
       var tryY = player.y + dy * player.speed * dt;
-      if (canStand(currentRoom, player.x, tryY)) {
-        var blockerY = npcAt(currentRoom, player.x, tryY);
-        if (blockerY) registerPush(currentRoom, blockerY, dt);
-        else player.y = tryY;
-      }
+      var okY = canStand(currentRoom, player.x, tryY);
+      var blockerY = okY ? npcAt(currentRoom, player.x, tryY) : null;
+      if (blockerY) registerPush(currentRoom, blockerY, dt);
+      else if (okY) player.y = tryY;
       isWalking = true;
       walkPhase += dt * 9; // frame-cycle speed (~3 pose changes/sec); unrelated to player.speed so it stays readable
     } else {
@@ -706,7 +824,7 @@
       }
     });
     if (!onExit) exitsArmed = true;
-    currentRoom.npcs.forEach(function (npc) { updateNpcWander(currentRoom, npc, dt); });
+    roomNpcs(currentRoom).forEach(function (npc) { updateNpcWander(currentRoom, npc, dt); });
   }
 
   // ---- rendering ----
@@ -717,7 +835,7 @@
       return;
     }
     // Fallback: flat tinted room with a floor/wall split, deterministic per room.
-    var hues = { lounge: 20, library: 265, house: 35, bedroom: 300, arena: 45 };
+    var hues = { lounge: 20, library: 265, house: 35, bedroom: 300, arena: 45, home_bedroom: 215 };
     var h = hues[currentRoom.bg] !== undefined ? hues[currentRoom.bg] : 250;
     ctx.fillStyle = "hsl(" + h + ",30%,14%)";
     ctx.fillRect(0, 0, VW, VH);
@@ -752,6 +870,30 @@
       // The drawn doorway goes ON TOP of its own glow — painted under it, the
       // light washed straight through the opening and it read as a lit box.
       if (ex.drawn === "threshold") drawThreshold(ex);
+
+      // A glow alone left people guessing which openings were real. Every
+      // exit now also carries the same pulsing marker the interactable
+      // scenery uses, so "you can go through here" reads the same way
+      // everywhere, and names where it goes once you're standing on it.
+      var pulse = 0.6 + 0.4 * Math.sin(Date.now() / 380);
+      var my = ex.y + ex.h / 2 - Math.sin(Date.now() / 700) * 1.2;
+      ctx.save();
+      ctx.globalAlpha = pulse * (near ? 1 : 0.7);
+      ctx.fillStyle = "#ffd166";
+      ctx.beginPath();
+      ctx.moveTo(cx, my - 4.5); ctx.lineTo(cx + 3.5, my); ctx.lineTo(cx, my + 4.5); ctx.lineTo(cx - 3.5, my);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+      if (near) {
+        var dest = ROOMS[ex.to];
+        ctx.fillStyle = "#ffd166";
+        ctx.font = "bold 7px sans-serif";
+        ctx.textAlign = "center";
+        // Below the doorway for a normal wall exit, above it for the one that
+        // sits on the room's bottom edge — either way it lands on the floor.
+        ctx.fillText(ex.label || (dest ? dest.label : ""), cx,
+          ex.y > VH * 0.8 ? ex.y - 4 : ex.y + ex.h + 9);
+      }
     });
   }
 
@@ -810,10 +952,14 @@
   // photo floating mid-air.
   function drawNpc(npc) {
     var c = CHARACTERS[npc.id] || { name: npc.id, color: "#8a5cf6" };
-    // A save point is a piece of furniture already painted into the room's
-    // background art, not a person — so it gets a small glowing marker
-    // hovering over it instead of the round bust token used for characters.
-    if (npc.savePoint) { drawSavePoint(npc); return; }
+    // Some interactables are scenery already painted into the room art — a
+    // bed, a door, a portal — not people. Drawing them as the round bust
+    // token every character gets produced a floating disc with the first
+    // letter of their name stamped on it ("T", for The Front Door) sitting in
+    // the middle of the floor. They get a small glowing marker over the thing
+    // itself instead, and a word telling you what it does when you're close.
+    if (npc.savePoint) { drawMarker(npc, "#ffd166", "SAVE"); return; }
+    if (npc.marker) { drawMarker(npc, c.color, npc.marker); return; }
     var spriteEntry = npc.sprite ? loadArt(npc.sprite) : null;
     var hasSprite = spriteEntry && spriteEntry.ok && spriteEntry.img.naturalHeight;
 
@@ -849,12 +995,14 @@
 
   // A slow pulsing diamond over a save point, in the same gold as the exit
   // labels so it reads as "interactive scenery" at a glance.
-  function drawSavePoint(npc) {
+  // label: the word shown under the marker once you're close enough to use
+  // it ("SAVE", "OPEN", "ENTER"). `true` means marker with no label.
+  function drawMarker(npc, color, label) {
     var pulse = 0.65 + 0.35 * Math.sin(Date.now() / 380);
     var y = npc.y - 10 - Math.sin(Date.now() / 700) * 1.5;
     ctx.save();
     ctx.globalAlpha = pulse;
-    ctx.fillStyle = "#ffd166";
+    ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(npc.x, y - 5); ctx.lineTo(npc.x + 4, y); ctx.lineTo(npc.x, y + 5); ctx.lineTo(npc.x - 4, y);
     ctx.closePath(); ctx.fill();
@@ -862,11 +1010,11 @@
     ctx.beginPath(); ctx.arc(npc.x, y, 9, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
     var d = Math.hypot(npc.x - (player.x + player.w / 2), npc.y - (player.y + player.h / 2));
-    if (d < 26) {
-      ctx.fillStyle = "#ffd166";
+    if (d < 26 && typeof label === "string") {
+      ctx.fillStyle = color;
       ctx.font = "bold 7px sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("SAVE", npc.x, y + 16);
+      ctx.fillText(label, npc.x, y + 16);
     }
   }
 
@@ -896,10 +1044,14 @@
     var human = currentRoom && currentRoom.playerForm === "human";
     var frameSet = human ? FACING_FRAMES_HUMAN : FACING_FRAMES;
     var frames = frameSet[player.facing] || frameSet.down;
-    // 3 real frames cycled by walkPhase while moving; frame 0 (idle pose)
-    // while standing still, so she doesn't look like she's still walking
-    // in place after stopping.
-    var frameIdx = isWalking ? Math.floor(walkPhase) % 3 : 0;
+    // Standard RPG-Maker charset convention: frame 1 (the MIDDLE of the 3)
+    // is the neutral standing pose, used both at rest and as the walk
+    // cycle's resting beat — frames 0/2 are the two mirrored step poses.
+    // Cycling 0,1,2 on repeat (as this used to) never actually returns to
+    // neutral mid-walk and, worse, used frame 0 — a mid-step pose — for
+    // idle, so she'd freeze mid-stride the instant she stopped moving.
+    var WALK_SEQUENCE = [1, 0, 1, 2];
+    var frameIdx = isWalking ? WALK_SEQUENCE[Math.floor(walkPhase) % WALK_SEQUENCE.length] : 1;
     var wantId = frames[frameIdx];
     var entry = loadArt(wantId);
     // Fallback while a directional frame is missing: the form's single
@@ -910,16 +1062,27 @@
     if (usedFallback) entry = loadArt(human ? "nella_human_top" : "nella_top");
     // Same ground shadow every NPC gets — the player was the one figure in
     // the scene standing on nothing, a mismatch reported live as "floating".
-    ctx.fillStyle = "rgba(0,0,0,0.4)";
-    ctx.beginPath();
-    ctx.ellipse(player.x + player.w / 2, player.y + player.h, 11, 3.4, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // Not while she's in bed: she isn't on the floor, she's on a mattress.
+    if (!player.inBed) {
+      ctx.fillStyle = "rgba(0,0,0,0.4)";
+      ctx.beginPath();
+      ctx.ellipse(player.x + player.w / 2, player.y + player.h, 11, 3.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
     if (entry && entry.ok) {
       var img = entry.img;
       var size = spriteDrawSize(img, 30), w = size.w, h = size.h;
       var cx = player.x + player.w / 2, feetY = player.y + player.h;
       var mirror = player.facing === "right" || (player.facing === "left" && usedFallback);
       ctx.save();
+      // In bed: clip her off at the room's blanket line so the covers read as
+      // covering her. A standing sprite parked on a mattress otherwise looks
+      // like someone standing on the bed, which is the opposite of asleep.
+      if (player.inBed && currentRoom && currentRoom.bedClipY !== undefined) {
+        ctx.beginPath();
+        ctx.rect(0, 0, VW, currentRoom.bedClipY);
+        ctx.clip();
+      }
       if (mirror) {
         ctx.translate(cx, 0);
         ctx.scale(-1, 1);
@@ -948,7 +1111,7 @@
     drawRoomBg();
     drawExits();
     // sort by y so things lower on screen draw on top (cheap depth)
-    var entities = currentRoom.npcs.map(function (n) { return { y: n.y, draw: function () { drawNpc(n); } }; });
+    var entities = roomNpcs(currentRoom).map(function (n) { return { y: n.y, draw: function () { drawNpc(n); } }; });
     entities.push({ y: player.y + player.h, draw: drawPlayer });
     entities.sort(function (a, b) { return a.y - b.y; });
     entities.forEach(function (e) { e.draw(); });
@@ -969,6 +1132,8 @@
   // begins once a file has actually been chosen.
   function clearTransientState() {
     if (window.NewseyDuel.isActive()) window.NewseyDuel.stop();
+    clearFade();
+    player.inBed = false;
     talkBox.hidden = true;
     talking = null;
     keys = {};
@@ -982,6 +1147,7 @@
     save = fresh ? SAVES.blank() : (SAVES.read(slot) || SAVES.blank());
     npcLineCounters = save.lines || {};
     clearTransientState();
+    clearFade();
     running = true;
     paused = false;
     sinceFlush = 0;
@@ -994,11 +1160,19 @@
       enterRoom(save.room || "house");
       if (savedPos) { player.x = savedPos.x; player.y = savedPos.y; }
     } else {
+      // The intro fades to black on its last slide and hands over behind it:
+      // you come up out of the black already in your own bed, upstairs, with
+      // someone knocking at the front door.
       startCutscene(STORY.INTRO_CUTSCENE, function () {
         save.introSeen = true;
-        enterRoom("house");
-      });
-      currentRoom = ROOMS[save.room || "house"];
+        enterRoom("home_bedroom");
+        var bed = currentRoom.bedSpot;
+        if (bed) { player.x = bed.x; player.y = bed.y; }
+        player.inBed = true;
+        persist();
+        fadeFromBlack(function () { showNarration(STORY.WAKE_LINES); });
+      }, true);
+      currentRoom = ROOMS[save.room || "home_bedroom"];
       player.x = currentRoom.playerStart.x; player.y = currentRoom.playerStart.y;
     }
     persist();
@@ -1054,10 +1228,13 @@
   // reach into this closure otherwise). No effect on gameplay.
   window.__newseyDebug = {
     player: player,
+    isWalking: function () { return isWalking; },
+    walkPhase: function () { return walkPhase; },
     running: function () { return running; },
     slot: function () { return activeSlot; },
     save: function () { return save; },
     room: function () { return currentRoom && currentRoom.label; },
+    npcIds: function () { return roomNpcs(currentRoom).map(function (n) { return n.id; }); },
     enterRoom: enterRoom,
     startDuel: startDuel,
     duel: function () { return window.NewseyDuel.debug(); }
