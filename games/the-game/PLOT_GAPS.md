@@ -10,12 +10,8 @@ is agreed — it exists so the gap is written down instead of re-derived.
 
 ## Story beats
 
-- **The man at your door.** Straight after the mirror's welcome: *"I was
-  shaken out of my thoughts by a knock at the door… 'Nella. Open the door.'
-  It was a male voice and it sounded like someone my age. The voice had a
-  tone of authority… Instead of an answer, the door opened on its own. In my
-  doorway stood a man in—"*. Not in the game at all: you wake, talk to the
-  mirror, and the room is empty after that.
+All the ones that were listed here are built. The knock at your door —
+*"Nella. Open the door."* — now plays when you get out of bed in Infinity.
 
 ## Systems
 
