@@ -707,7 +707,13 @@
     w.ty = w.homeY + Math.sin(a) * r * 0.5; // flatter spread — rooms read wider than tall
   }
   function updateNpcWander(room, npc, dt) {
-    if (npc.savePoint || npc._noWander) return;
+    // Anything drawn as a fixed marker (a door, a portal) or furniture with
+    // no wander opt-out set is scenery, not a person — its x/y is either a
+    // hitbox tied to a fixed spot in the room art, or a prop that was never
+    // meant to move. Reported live as "the console floating around the
+    // room": the tv object has a sprite but no savePoint/marker, so it fell
+    // through this check with nothing to catch it.
+    if (npc.savePoint || npc.marker || npc._noWander) return;
     var w = ensureWanderState(npc);
     if (w.pause > 0) { w.pause -= dt; return; }
     var dx = w.tx - npc.x, dy = w.ty - npc.y, d = Math.hypot(dx, dy);

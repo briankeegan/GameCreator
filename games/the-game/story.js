@@ -194,7 +194,7 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "tv", x: 230, y: 160, art: null, sprite: "tv_top",
+          id: "tv", x: 230, y: 160, art: null, sprite: "tv_top", _noWander: true,
           lines: [
             "The old CRT. Dusty cables, a game console still plugged in.",
             "Twenty years gone, and your hands remember everything."
