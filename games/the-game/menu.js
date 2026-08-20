@@ -47,7 +47,7 @@ window.NewseyMenu = (function () {
     layer.hidden = true;
     Object.keys(screens).forEach(function (k) { screens[k].hidden = true; });
     hideConfirm();
-    menuBtn.hidden = !window.NewseyGame.isRunning();
+    menuBtn.hidden = !window.NewseyGame.canPause();
   }
 
   var toastTimer = null;

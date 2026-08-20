@@ -778,7 +778,12 @@
     state: function () { return save; },
     // Whether the pause menu should offer "Save" — during a cutscene there is
     // no room/position worth writing yet.
-    canSave: function () { return running && cutsceneEl.classList.contains("hidden"); }
+    canSave: function () { return running && cutsceneEl.classList.contains("hidden"); },
+    // Whether the ☰ button should be shown at all. Not just `running`: menu.js's
+    // hide() (called right after beginFile() starts a fresh file's intro
+    // cutscene) was clobbering the menuBtn.hidden=true that startCutscene()
+    // had just set, because it only ever checked isRunning().
+    canPause: function () { return running && cutsceneEl.classList.contains("hidden"); }
   };
 
   // The tab closing / going to the background is the one moment the player
