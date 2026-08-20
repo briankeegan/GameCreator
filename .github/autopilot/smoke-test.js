@@ -25,7 +25,14 @@ const targets = process.argv.slice(2);
 if (!targets.length) { console.log('No runtime targets — skipping smoke test.'); process.exit(0); }
 
 const ROOT = process.cwd();
-const PORT = 8123;
+// PORT 0 = let the OS pick a free one. It used to be hardcoded to 8123, and
+// that threw away a complete, successful run: the model had spent 18 minutes
+// rebuilding a level, and had left its own little HTTP server on 8123 from
+// testing the game (which the instructions actively encourage — looking at the
+// result is the point). The smoke test then died with EADDRINUSE, the job
+// failed, and every file the run had produced was discarded. The port a
+// previous process happens to hold must never be able to bin someone's work.
+const PORT = 0;
 
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
@@ -66,6 +73,7 @@ function serve() {
 (async () => {
   const server = serve();
   await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
+  const port = server.address().port;
 
   const browser = await chromium.launch();
   const failures = [];
@@ -94,7 +102,7 @@ function serve() {
     });
 
     try {
-      await page.goto(`http://127.0.0.1:${PORT}/${t}`, { waitUntil: 'load', timeout: 20000 });
+      await page.goto(`http://127.0.0.1:${port}/${t}`, { waitUntil: 'load', timeout: 20000 });
       await page.waitForTimeout(1800); // let init / first paint / fetches run
       const rendered = await page.evaluate(() => {
         const c = document.querySelector('canvas');
