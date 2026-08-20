@@ -238,14 +238,25 @@ width so she can stand at an edge without clipping into what is beside her.
 
 ## 7. Pipeline — one front door
 
-`.github/art/room.py` is the whole thing. Five scripts is four too many to
-remember at 11pm.
+`.github/art/room.py` is the whole thing, generation included. Five scripts is
+four too many to remember at 11pm.
+
+**Every caller runs the same command.** A person at a terminal, the "Generate
+room pass" Action (which is only a button on this script), and the Clubhouse
+autopilot — which cannot dispatch a workflow from inside one, so it calls the
+script directly. `room.py generate` picks its transport itself
+(`.github/art/imagegen.py`): the in-run image broker if one is listening,
+otherwise `OPENAI_API_KEY`. A model is never handed the key. Characters work
+exactly the same way through `generate_row.py`; see `.github/art/README.md`.
 
 ```
-room.py prompt scene --room "The Anarchy Garden"
-room.py prompt plate --room "The Anarchy Garden" --floor "mown grass and a flagstone path"
-room.py prompt props --n 2 --items "(1) a cherry tree; (2) a weeping-woman fountain"
-        # canned prompts, filled in — paste into "Generate game asset"
+room.py generate games/<id> <room> scene --room "The Anarchy Garden"
+room.py generate games/<id> <room> plate --floor "mown grass and a flagstone path"
+room.py generate games/<id> <room> props --n 2 --items "(1) a cherry tree; (2) a fountain"
+        # builds the prompt, generates, writes to the path the next step reads
+        # back. Refuses to run if the prompt still has a hole in it.
+
+room.py prompt scene|plate|props …            # just print it, generate nothing
 
 room.py plate  games/<id> <room>              # fit the plate + rebuild its mask
 room.py props  games/<id> <room> name1 name2  # cut a prop sheet, left to right
@@ -255,14 +266,14 @@ room.py verify games/<id>                     # the gate; runs in CI
 
 The order of a whole room:
 
-1. `room.py prompt scene …` → generate → keep at `art-src/<room>_scene.png`.
-   **Never shipped.** Measure everything off it — position, height, width, and
-   how MANY of each thing there are.
-2. `room.py prompt plate …` → generate → `art-src/<room>_floor.png`.
+1. `room.py generate … scene` → `art-src/<room>_scene.png`. **Never shipped.**
+   Measure everything off it — position, height, width, and how MANY of each
+   thing there are.
+2. `room.py generate … plate --floor "…"` → `art-src/<room>_floor.png`.
 3. `room.py plate games/<id> <room>` — fits the plate to the frame and rebuilds
    the mask. Add the room to `FLOOR_PLATE_ROOMS` first.
-4. `room.py prompt props …` → generate → `art-src/<room>_props.png`, then
-   `room.py props games/<id> <room> prop_a prop_b`.
+4. `room.py generate … props --n N --items "…"` → `art-src/<room>_props.png`,
+   then `room.py props games/<id> <room> prop_a prop_b`.
 5. Write the `props:` block from your pass-1 measurements.
 6. `room.py check games/<id> <room>` — **and actually look at both pictures.**
 7. `room.py verify games/<id>` and `check_room_exits.mjs`.

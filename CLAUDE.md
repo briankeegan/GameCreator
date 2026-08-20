@@ -172,17 +172,21 @@ design discussion. `shared/` holds the components every game reuses
   authored). Read them before generating art for a top-down game; extend
   them when a generation exposes a gap, rather than solving it once in one
   game's head.
-- **One front door per kind of art, and every caller uses it.**
-  `.github/art/generate_row.py` for a character row (walk or attack),
-  `.github/art/room.py` for a room. It builds the prompt from the canonical
-  prompt file plus the game's `art-style.json`, generates one landscape row,
-  verifies it, and DELETES it if it fails, so a bad row can never be picked up
-  by a later build. Transport is chosen automatically — the in-run image
-  broker if one is listening, otherwise `OPENAI_API_KEY` — so the same command
-  works interactively, in the "Generate walk row" Action (which is just a
-  button on it), and inside the autopilot, which cannot dispatch a workflow
-  from inside one. Before this the recipe was inlined in the Action AND
-  restated in the autopilot's prompt; they drifted.
+- **One front door per kind of art, and EVERY caller uses it — including
+  auto mode.** `.github/art/generate_row.py` for a character row (walk or
+  attack), `.github/art/room.py generate` for one of a room's three passes.
+  Each builds the prompt from the canonical prompt file plus the game's
+  `art-style.json`, generates into the canonical path the next step reads
+  back, and refuses to run on an incomplete prompt; `generate_row.py` also
+  verifies and DELETES a row that fails, so it can never be picked up by a
+  later build. Both share one transport, `.github/art/imagegen.py`, which
+  picks the in-run image broker if one is listening and otherwise
+  `OPENAI_API_KEY` — a model is never handed the key. So the same command
+  works interactively, in the "Generate walk row" / "Generate room pass"
+  Actions (which are buttons on those scripts), and inside the autopilot,
+  which cannot dispatch a workflow from inside one. Before this the row recipe
+  was inlined in an Action AND restated in the autopilot's prompt, and rooms
+  could only PRINT a prompt for someone to carry to a generator by hand.
 - **Point at a standard; never copy it.** The Clubhouse autopilot carried its
   own copy of the art rules in its prompt, and it drifted: it was still
   telling runs to generate `[idle, walk, attack]` rows long after the standard

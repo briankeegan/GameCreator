@@ -335,26 +335,38 @@ jobs:
                   one. Add --print-prompt to see the prompt without generating
                   or spending anything.
 
-                  Any OTHER image (a tile, an icon, a room pass) still goes
-                  through the broker directly:
+                  ROOMS — same shape, same transport, one pass at a time:
+                    python3 .github/art/room.py generate <gameDir> <room> \
+                      scene|plate|props [--floor "..."] [--n N] [--items "..."]
+                  Read docs/ROOM_ART_STANDARD.md FIRST — a room is THREE
+                  PASSES and doing them out of order wastes all three. In
+                  short: `scene` is a composed picture you MEASURE and never
+                  ship; `plate` is the walkable surface and nothing else, and
+                  becomes the collision mask, so run `room.py plate <gameDir>
+                  <room>` after it; `props` is everything you cannot walk on,
+                  drawn side by side in one image, cut with `room.py props
+                  <gameDir> <room> <name>...`. Then `room.py check` and LOOK at
+                  the two pictures it renders, and `room.py verify` before you
+                  finish.
+
+                  Any OTHER image (a tile, a one-off icon) goes through the
+                  broker directly:
                     curl -s -X POST http://127.0.0.1:8791/generate \
                       -H 'content-type: application/json' \
-                      -d '{"prompt":"<see below>",
+                      -d '{"prompt":"...",
                            "output_path":"games/<gameId>/art-src/<name>_raw.png",
                            "game":"<gameId>","size":"1536x1024"}'
                   The call BLOCKS ~30-60s; let it finish. Raw generations go
                   under art-src/ — source material, not shipped art.
 
-                  DO NOT WRITE A PROMPT FROM SCRATCH. The canonical prompts are
-                  files, and they carry rules a fresh prompt always leaves out:
-                  .github/art/walkgrid_prompt.txt (walk),
-                  .github/art/attacksheet_prompt.txt (attack),
-                  .github/art/room_prompts/*.txt (the three room passes — or run
-                  `python3 .github/art/room.py prompt scene|plate|props` to print
-                  one filled in). If a generation exposes a gap in a prompt, FIX
-                  THE PROMPT FILE. That is how the next run inherits what this
-                  one learned; a better prompt typed into one curl call dies
-                  with this run.
+                  DO NOT WRITE A PROMPT FROM SCRATCH for anything that has a
+                  canonical one. generate_row.py and room.py generate already
+                  use those files; they carry rules a fresh prompt always
+                  leaves out. If a generation exposes a gap, FIX THE PROMPT
+                  FILE (.github/art/walkgrid_prompt.txt,
+                  attacksheet_prompt.txt, room_prompts/*.txt). That is how the
+                  next run inherits what this one learned; a better prompt
+                  typed into one curl call dies with this run.
 
                b. Cut the raw into a shipped sheet with the shared cutter:
                     python3 .github/art/build_sheet.py \

@@ -199,16 +199,84 @@ def main():
     p.add_argument("--n", default="{{N}}")
     p.add_argument("--items", default="{{ITEMS}}")
 
+    p = sub.add_parser("generate", help="generate one pass into its canonical path")
+    p.add_argument("game"); p.add_argument("room")
+    p.add_argument("which", choices=["scene", "plate", "props"])
+    p.add_argument("--floor", default="", help="what the floor is made of (pass 2)")
+    p.add_argument("--n", default="", help="how many props are on the sheet (pass 3)")
+    p.add_argument("--items", default="", help="what the props are (pass 3)")
+    p.add_argument("--quality", default="medium", choices=["low", "medium", "high"])
+    p.add_argument("--force", action="store_true",
+                   help="regenerate (and re-bill) even if the file already exists")
+
     a = ap.parse_args()
 
-    if a.cmd == "prompt":
+    # WHERE EACH PASS LANDS. plate and props are read back by `room.py plate`
+    # and `room.py props`, so the names are not a convention to remember — they
+    # are the contract between the passes. The scene is never shipped: it is
+    # the thing you MEASURE, and `check` puts it beside the assembled room.
+    PASS_PATH = {"scene": "%s_scene.png", "plate": "%s_floor.png",
+                 "props": "%s_props.png"}
+
+    def pass_template(which):
         f = {"scene": "1_composed_scene.txt", "plate": "2_floor_plate.txt",
-             "props": "3_prop_sheet.txt"}[a.which]
-        text = open(os.path.join(HERE, "room_prompts", f), encoding="utf-8").read()
-        for k, v in (("{{ROOM}}", a.room), ("{{FLOOR}}", a.floor),
-                     ("{{N}}", a.n), ("{{ITEMS}}", a.items)):
+             "props": "3_prop_sheet.txt"}[which]
+        return open(os.path.join(HERE, "room_prompts", f), encoding="utf-8").read()
+
+    def pass_prompt(which, room, floor, n, items, strip_notes=False):
+        text = pass_template(which)
+        if strip_notes:
+            # The leading # block is guidance for whoever is reading the file,
+            # not part of the prompt. Sending it to the generator asks it to
+            # draw the instructions.
+            text = "\n".join(l for l in text.splitlines() if not l.startswith("#"))
+        for k, v in (("{{ROOM}}", room), ("{{FLOOR}}", floor),
+                     ("{{N}}", n), ("{{ITEMS}}", items)):
             text = text.replace(k, v)
-        print(text)
+        return text.strip()
+
+    if a.cmd == "generate":
+        # Same transport as characters: an in-run broker if one is listening,
+        # otherwise OPENAI_API_KEY. See .github/art/imagegen.py. This exists so
+        # that "redo the room" is the same shape of job as "redo the walk
+        # cycle" — before it, rooms could only PRINT a prompt, and whoever
+        # asked had to carry the text to a generator by hand and save the
+        # result to exactly the right filename for the next pass to find it.
+        sys.path.insert(0, HERE)
+        import imagegen
+        # Check the ARGUMENTS, not the filled text: substituting an empty
+        # string removes the placeholder, so "is {{FLOOR}} still in there?"
+        # can never catch a missing one. What reaches the generator instead is
+        # a sentence with a hole in it, and it draws something to fill it.
+        template = pass_template(a.which)
+        need = {"{{ROOM}}": ("room name", a.room), "{{FLOOR}}": ("--floor", a.floor),
+                "{{N}}": ("--n", a.n), "{{ITEMS}}": ("--items", a.items)}
+        missing = [name for k, (name, val) in need.items()
+                   if k in template and not str(val).strip()]
+        if missing:
+            print("error: the %s prompt needs %s. Run `room.py prompt %s` to see "
+                  "what it is asking for." % (a.which, ", ".join(missing), a.which),
+                  file=sys.stderr)
+            return 1
+        out = os.path.join(a.game.rstrip("/"), "art-src",
+                           PASS_PATH[a.which] % a.room)
+        prompt = pass_prompt(a.which, a.room, a.floor, a.n, a.items,
+                             strip_notes=True)
+        if not imagegen.generate(" ".join(prompt.split()), out,
+                                 quality=a.quality, force=a.force):
+            return 0
+        print("\nwrote %s" % out)
+        nxt = {"scene": "MEASURE it — every prop's ground point, height, width "
+                        "and COUNT comes off this image. It is never shipped.",
+               "plate": "room.py plate %s %s   (fits it and rebuilds the mask)"
+                        % (a.game, a.room),
+               "props": "room.py props %s %s <name>... (left to right)"
+                        % (a.game, a.room)}[a.which]
+        print("next: %s" % nxt)
+        return 0
+
+    if a.cmd == "prompt":
+        print(pass_prompt(a.which, a.room, a.floor, a.n, a.items))
         return 0
 
     game = a.game.rstrip("/")

@@ -1,0 +1,111 @@
+name: Generate room pass
+
+# The room equivalent of "Generate walk row", and a button on the same script a
+# person or the Clubhouse autopilot runs: .github/art/room.py generate. Rooms
+# are THREE PASSES (docs/ROOM_ART_STANDARD.md) and this does one of them, into
+# the canonical path the next pass reads back — so "redo the room" is the same
+# shape of job as "redo the walk cycle", from any caller.
+on:
+  workflow_dispatch:
+    inputs:
+      game:
+        description: "Game id, e.g. the-game"
+        required: true
+        type: string
+      room:
+        description: "Room id, e.g. garden"
+        required: true
+        type: string
+      pass:
+        description: "Which pass — scene is measured and never shipped; plate is the walkable surface; props is everything you cannot walk on"
+        required: true
+        type: choice
+        options:
+          - scene
+          - plate
+          - props
+      floor:
+        description: "PASS 2 only — what the floor is made of, e.g. 'mossy flagstones'"
+        required: false
+        type: string
+      n:
+        description: "PASS 3 only — how many props are on the sheet"
+        required: false
+        type: string
+      items:
+        description: "PASS 3 only — what the props are, left to right"
+        required: false
+        type: string
+      quality:
+        description: "Render quality — medium is usually enough; high costs ~4x."
+        required: false
+        type: choice
+        options: ["low", "medium", "high"]
+        default: "medium"
+      force:
+        description: "Regenerate (and re-bill) even if the file already exists."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate the pass
+        id: gen
+        timeout-minutes: 20
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          case "${{ inputs.pass }}" in
+            scene) out="games/${{ inputs.game }}/art-src/${{ inputs.room }}_scene.png" ;;
+            plate) out="games/${{ inputs.game }}/art-src/${{ inputs.room }}_floor.png" ;;
+            props) out="games/${{ inputs.game }}/art-src/${{ inputs.room }}_props.png" ;;
+          esac
+          echo "out=$out" >> "$GITHUB_OUTPUT"
+          python3 .github/art/room.py generate "games/${{ inputs.game }}" "${{ inputs.room }}" \
+            "${{ inputs.pass }}" \
+            --quality "${{ inputs.quality }}" \
+            ${{ inputs.floor && format('--floor "{0}"', inputs.floor) || '' }} \
+            ${{ inputs.n && format('--n "{0}"', inputs.n) || '' }} \
+            ${{ inputs.items && format('--items "{0}"', inputs.items) || '' }} \
+            ${{ inputs.force && '--force' || '' }}
+
+      - name: Commit the raw
+        timeout-minutes: 5
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ steps.gen.outputs.out }}"
+          if git commit -m "Generate room pass: ${{ inputs.game }} ${{ inputs.room }} ${{ inputs.pass }}"; then
+            for i in 1 2 3 4 5 6; do
+              if git pull --rebase origin main && git push; then exit 0; fi
+              echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+            done
+            echo "::error::Could not push after retries"; exit 1
+          fi
+
+      - name: Next step
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'MD'
+          Wrote `${{ steps.gen.outputs.out }}` (pass: **${{ inputs.pass }}**).
+
+          A room is three passes — see `docs/ROOM_ART_STANDARD.md`. What comes next:
+
+          - **scene** — MEASURE it. Every prop's ground point, height, width and
+            *count* comes off this image. It is never shipped.
+          - **plate** — `python3 .github/art/room.py plate games/${{ inputs.game }} ${{ inputs.room }}`
+            (fits it and rebuilds the collision mask, which is the plate's own silhouette).
+          - **props** — `python3 .github/art/room.py props games/${{ inputs.game }} ${{ inputs.room }} <name>...`
+            in left-to-right order.
+
+          Then `room.py check` and **look at both pictures**, and `room.py verify`
+          before you call it done.
+          MD

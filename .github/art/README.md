@@ -85,6 +85,7 @@ in from the game's `art-style.json`.
 
 | Action | Use for |
 |---|---|
+| **Generate room pass** (`generate-room-pass.yml`) | One of a room's three passes. A button on `room.py generate` — same code the autopilot runs. |
 | **Generate walk row** (`generate-walkrow.yml`) | A verified walk row for a sheet-based game. It is a button on `generate_row.py` — same code the autopilot runs. |
 | **Generate walksheet** (`generate-walksheet.yml`) | The legacy per-file walk set (Newsey). |
 | **Generate game asset** (`generate-game-asset.yml`) | Any image that must match a game's established look; reads its `art-style.json`. |
@@ -96,7 +97,24 @@ in from the game's `art-style.json`.
 about four times as much) and `force` is off, so re-running a batch never pays
 twice for art that already exists.
 
-## The one front door for a character row
+## The one front door — same shape for both kinds of art
+
+|  | character row | room pass |
+|---|---|---|
+| **command** | `generate_row.py --game <id> --character <id> --view front\|side\|back [--kind walk\|attack]` | `room.py generate <gameDir> <room> scene\|plate\|props` |
+| **Action** (a button on it) | Generate walk row | Generate room pass |
+| **autopilot** | runs the same command | runs the same command |
+| **prompt from** | `walkgrid_prompt.txt` / `attacksheet_prompt.txt` + `art-style.json` | `room_prompts/*.txt` + `art-style.json` |
+| **transport** | `imagegen.py` — broker if listening, else `OPENAI_API_KEY` | same |
+| **writes to** | `art-src/<char>_<view>_raw.png` | `art-src/<room>_{scene,floor,props}.png` |
+| **then** | `build_sheet.py … --build-steps 0,2` | `room.py plate` / `props`, then `check`, then `verify` |
+
+Both refuse to run on an incomplete prompt, and `generate_row.py` deletes a row
+that fails verification so it cannot be picked up by a later build. Add
+`--print-prompt` (rows) or use `room.py prompt` (rooms) to see the prompt
+without spending anything.
+
+## Detail: the character row
 
 ```
 python3 .github/art/generate_row.py --game <id> --character <id> --view front|side|back \
@@ -128,7 +146,8 @@ Two callers, one script, is the fix.
 |---|---|
 | [`build_sheet.py`](build_sheet.py) | Raw rows → shipped sheet: keys the background, cuts at gutters or blobs, one scale per row, snaps to the art-pixel grid and the locked palette, common foot baseline. `--build-steps` constructs front/back step frames; `--mirror-step` mirrors just the second one. |
 | [`slice_walksheet.py`](slice_walksheet.py) | The other cutter: a chroma-green 4x3 grid → individual `<id>_<dir>_<n>.png` files. |
-| [`room.py`](room.py) | The one front door for rooms: `prompt`, `plate`, `props`, `check`, `verify`. |
+| [`room.py`](room.py) | The one front door for rooms: `generate`, `prompt`, `plate`, `props`, `check`, `verify`. |
+| [`imagegen.py`](imagegen.py) | The shared transport both front doors call. Picks the in-run broker if one is listening, otherwise `OPENAI_API_KEY`; never hands a model the key. |
 | [`build_props.py`](build_props.py) | Cuts a prop sheet into one transparent PNG per prop. |
 | [`fit_plate.py`](fit_plate.py) | Fits a generated floor plate to the room frame. |
 | [`build_walkmask.py`](build_walkmask.py) | Builds a room's walkable-floor mask, and records the five techniques that failed at recovering one from finished art. |

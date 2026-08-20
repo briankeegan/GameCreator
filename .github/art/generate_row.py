@@ -16,18 +16,12 @@ to read the canonical prompt file and fill it in by hand. Two copies of one
 recipe, and the usual thing happened: the copies drifted, and the autopilot's
 was the stale one.
 
-So the recipe lives here, once, and the two callers differ only in TRANSPORT:
-
-  * OPENAI_API_KEY in the environment  -> call OpenAI directly (what an Action
-    does; the key is a repo secret and never reaches a model).
-  * a broker listening on 127.0.0.1:8791 -> POST to it (what the autopilot
-    does; the model in that run deliberately has no key, so the broker holds
-    it and enforces a per-run generation cap).
-
-Detection is automatic and the broker wins, so the same command works in both
-places with nothing to remember. Everything else — which prompt file, how the
-character description is assembled, the canvas, the retries, and the
-verification — is identical by construction rather than by discipline.
+So the recipe lives here, once, and the two callers differ only in TRANSPORT —
+which .github/art/imagegen.py picks for them (an in-run broker if one is
+listening, otherwise OPENAI_API_KEY; a model is never handed the key either
+way). Everything else — which prompt file, how the character description is
+assembled, the canvas, and the verification — is identical by construction
+rather than by discipline.
 
 WHAT IT GUARANTEES
 ------------------
@@ -42,17 +36,15 @@ door, .github/art/room.py, for the same reason.
 
 import argparse
 import json
-import os
 import pathlib
 import re
 import subprocess
 import sys
-import time
-import urllib.error
-import urllib.request
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
-BROKER = os.environ.get('GC_IMAGE_BROKER', 'http://127.0.0.1:8791')
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import imagegen                                     # noqa: E402  (shared transport)
+
+ROOT = imagegen.ROOT
 PROMPTS = {'walk': '.github/art/walkgrid_prompt.txt',
            'attack': '.github/art/attacksheet_prompt.txt'}
 # Landscape, always. A 3x3 grid on a square canvas clips its bottom row and on
@@ -95,61 +87,6 @@ def fill(template_path, char, view):
     return ' '.join(prompt.split())
 
 
-def broker_alive():
-    try:
-        with urllib.request.urlopen(f'{BROKER}/health', timeout=2) as r:
-            return json.loads(r.read())
-    except Exception:
-        return None
-
-
-def via_broker(prompt, out_rel, quality):
-    payload = json.dumps({'prompt': prompt, 'output_path': out_rel,
-                          'size': SIZE, 'quality': quality}).encode()
-    # No "game" field on purpose: the broker would prepend its own art-style
-    # framing, and this prompt already carries it from the same file.
-    req = urllib.request.Request(f'{BROKER}/generate', data=payload,
-                                 headers={'content-type': 'application/json'})
-    try:
-        with urllib.request.urlopen(req, timeout=300) as r:
-            body = json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        body = json.loads(e.read() or b'{}')
-        sys.exit(f'broker refused: {body.get("error", e)}')
-    print(f'generated via broker ({body.get("remaining", "?")} generation(s) left this run)')
-
-
-def via_openai(prompt, out_abs, quality):
-    key = os.environ['OPENAI_API_KEY']
-    payload = json.dumps({'model': 'gpt-image-1', 'prompt': prompt,
-                          'size': SIZE, 'quality': quality, 'n': 1}).encode()
-    # A rejected request is not billed, so retrying the rate limit costs
-    # nothing — it just stops a batch failing against the per-minute cap.
-    for attempt in range(1, 7):
-        req = urllib.request.Request('https://api.openai.com/v1/images/generations',
-                                     data=payload,
-                                     headers={'Authorization': f'Bearer {key}',
-                                              'Content-Type': 'application/json'})
-        try:
-            with urllib.request.urlopen(req, timeout=600) as r:
-                data = json.loads(r.read())
-            break
-        except urllib.error.HTTPError as e:
-            body = (e.read() or b'').decode()
-            if e.code == 429 or e.code >= 500:
-                wait = attempt * 15
-                print(f'rate-limited/transient (HTTP {e.code}, attempt {attempt}) — '
-                      f'retrying in {wait}s', file=sys.stderr)
-                time.sleep(wait)
-                continue
-            sys.exit(f'OpenAI API error (HTTP {e.code}): {body[:400]}')
-    else:
-        sys.exit('Still rate-limited after retries — try again later.')
-    import base64
-    out_abs.write_bytes(base64.b64decode(data['data'][0]['b64_json']))
-    print(f'generated via OpenAI -> {out_abs}')
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -175,21 +112,8 @@ def main():
     suffix = '_raw.png' if args.kind == 'walk' else '_atk_raw.png'
     out_rel = f'games/{args.game}/art-src/{args.character}_{args.view}{suffix}'
     out_abs = ROOT / out_rel
-    if out_abs.exists() and out_abs.stat().st_size and not args.force:
-        print(f'{out_rel} already exists — skipping (pass --force to regenerate). '
-              'Nothing was billed.')
+    if not imagegen.generate(prompt, out_rel, SIZE, args.quality, args.force):
         return
-    out_abs.parent.mkdir(parents=True, exist_ok=True)
-
-    if broker_alive():
-        via_broker(prompt, out_rel, args.quality)
-    elif os.environ.get('OPENAI_API_KEY'):
-        via_openai(prompt, out_abs, args.quality)
-    else:
-        sys.exit('No image backend: start the broker (.github/autopilot/image-broker.js) '
-                 'or set OPENAI_API_KEY. A model is never given the key directly.')
-    if not out_abs.exists() or not out_abs.stat().st_size:
-        sys.exit('the backend reported success but wrote nothing')
 
     # THE GATE. --mirrored only on the camera-on views: mirroring a side
     # profile turns it into the other direction, so the test is meaningless
