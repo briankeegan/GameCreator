@@ -14,9 +14,23 @@ side in ONE image on a background of FLAT PURE WHITE (#FFFFFF), completely
 uniform, with a crisp hard edge against each object, a wide band of flat white
 between them so they never touch, and a generous white margin all round.
 
+FRAMING, and the failure that wastes this generation: the FIRST object gets
+pushed off the LEFT edge of the image and comes back sliced in half. Leave a
+band of empty white at least a tenth of the image wide BEFORE the first object
+and AFTER the last one, and centre the group. Nothing may touch or cross any
+edge of the image.
+
 Each object is seen from the SAME slightly-angled top-down view, sits square
 inside its own invisible square cell with a little clearance on every side, is
 whole (nothing cropped), and casts NO shadow.
+
+Anything that LIES FLAT on the ground — a puddle, a stain, a grate, a drain —
+must carry a light rim or a bright highlight across its surface. A dark solid
+blob on a dark floor reads as a HOLE punched through the level; that shipped
+once. Anything that STANDS UP — a crate, a pile, a barrel, a gate — must show
+its top and its front, and have a visibly darker base where it meets the
+ground, so it reads as an object standing on the floor rather than a decal
+printed on it.
 
 LEFT TO RIGHT: {{ITEMS}}
 

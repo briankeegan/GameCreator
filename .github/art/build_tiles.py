@@ -62,34 +62,51 @@ BG_LUM = 205      # a pixel this bright and this grey is background/soft shadow
 BG_SAT = 16       # ... the generator draws a light grey drop shadow it was told not to
 
 
-def load_items(raw_path):
-    """Split one raw sheet into its items, left to right, by column profile.
+def _bands(mask, axis, minimum):
+    """Runs of "there is ink somewhere along this line", along one axis."""
+    on_line = mask.any(axis=axis)
+    bands, run = [], None
+    for i, on in enumerate(on_line):
+        if on and run is None:
+            run = i
+        elif not on and run is not None:
+            if i - run > minimum:
+                bands.append((run, i))
+            run = None
+    if run is not None and len(on_line) - run > minimum:
+        bands.append((run, len(on_line)))
+    return bands
 
-    Column bands rather than connected components on purpose: an item can be
-    several separate blobs (a puddle with weed tufts around it), and those must
-    stay one item.
+
+def load_items(raw_path):
+    """Split one raw sheet into its items, in READING ORDER, by ink profile.
+
+    Bands rather than connected components on purpose: an item can be several
+    separate blobs (a puddle with weed tufts around it), and those must stay
+    one item.
+
+    ROWS FIRST, THEN COLUMNS. The prompt asks for the items side by side in one
+    line, and for three or four of them on a landscape canvas that is usually
+    what comes back — but ask for four and the generator will happily lay them
+    out as a 2x2 GRID instead, because a grid fits the canvas better. A
+    column-only split then reads each column of that grid as ONE tall item, so
+    `--tile texture:raw:2` silently cuts a square out of the wrong material.
+    That cost a level pass. Detecting the row bands first makes both layouts cut
+    the same, and a single row is just the one-band case.
     """
     im = Image.open(raw_path).convert('RGB')
     a = np.asarray(im).astype(np.int16)
     lum = a.max(axis=2)
     sat = a.max(axis=2) - a.min(axis=2)
     ink = ~((lum >= BG_LUM) & (sat <= BG_SAT))
-    cols = ink.any(axis=0)
-    items, run = [], None
-    for x, on in enumerate(cols):
-        if on and run is None:
-            run = x
-        elif not on and run is not None:
-            if x - run > im.width // 40:
-                items.append((run, x))
-            run = None
-    if run is not None:
-        items.append((run, im.width))
     out = []
-    for x0, x1 in items:
-        rows = ink[:, x0:x1].any(axis=1)
-        ys = np.nonzero(rows)[0]
-        out.append((im.crop((x0, ys[0], x1, ys[-1] + 1)), ink[ys[0]:ys[-1] + 1, x0:x1]))
+    for y0, y1 in _bands(ink, 1, im.height // 40) or [(0, im.height)]:
+        strip = ink[y0:y1]
+        for x0, x1 in _bands(strip, 0, im.width // 40):
+            rows = strip[:, x0:x1].any(axis=1)
+            ys = np.nonzero(rows)[0]
+            t, b = y0 + int(ys[0]), y0 + int(ys[-1]) + 1
+            out.append((im.crop((x0, t, x1, b)), ink[t:b, x0:x1]))
     return out
 
 

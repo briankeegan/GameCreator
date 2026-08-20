@@ -69,6 +69,31 @@ And one that is not a defect but a constant: **one art pixel = one screen
 pixel.** Dog Punk's first tiles were 64px drawn at 32, so half of every tile
 never reached the screen.
 
+## Three more, from the pass that fixed those
+
+6. **QUIET IS NOT BLANK.** Told to keep the floor low-contrast, the generator
+   returns a smooth photographic surface with fine grain on it; scaled to 32px
+   that is a **flat block of colour**, which is defect 3 again from the other
+   direction. A floor wants a NARROW value range whose values are SEPARATE
+   FLAT STEPS — 3-4 of them, hard-edged, each pointable-at. Both halves of
+   that sentence are in the canonical prompt now because dropping either one
+   fails.
+
+7. **DETAIL HAS TO SURVIVE THE DOWNSCALE, AND THE CROP IS THE ZOOM CONTROL.**
+   A 460px swatch scaled to 32px is a 14x reduction: anything finer than about
+   an eighth of the square averages to nothing. Two knobs fix it — say
+   "blown-up 32x32 pixel image, big square art pixels" in the prompt, and cut a
+   SUB-SQUARE (`texture:raw:0:0.43,0.43,0.6`) rather than the whole swatch, so
+   less is being averaged. Measured on the Dog Punk asphalt: whole swatch,
+   detail 6.9 (FLAT, fails); half swatch, detail 9.9 (passes).
+
+8. **THE SHEET MAY COME BACK AS A GRID.** Ask for four tiles side by side on a
+   landscape canvas and the generator often lays them out 2x2 instead, because
+   a grid fits the canvas better. `build_tiles.py` splits **rows first, then
+   columns**, so a grid and a row cut identically — before that it read each
+   column of a grid as one tall item and `--tile texture:raw:2` quietly cut a
+   square out of the wrong material.
+
 ---
 
 ## Contrast is part of the level, not the characters
@@ -121,7 +146,10 @@ it.
 
 - [ ] Floor tiles have no outline, no border, no vignette, no centred feature.
 - [ ] Floor tiles were cut as `texture:` (so they are seamless).
-- [ ] No tile is a flat block of colour.
+- [ ] No tile is a flat block of colour — the crop is small enough that the
+      material's detail survives being scaled to tile size.
+- [ ] Two floor materials that sit side by side are close in brightness, or
+      the level chequers.
 - [ ] Nothing lying on the ground is so dark it reads as a hole.
 - [ ] Interior obstacles use an OBJECT tile, not the boundary wall's texture.
 - [ ] One art pixel is one screen pixel.

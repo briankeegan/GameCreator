@@ -12,6 +12,12 @@
 # and catastrophic for a floor tile — every tile then carries a dark border and
 # the finished level reads as graph paper. Say NO OUTLINE, NO BORDER, TEXTURE
 # RUNS OFF ALL FOUR EDGES, every time.
+#
+# THE MISTAKE THAT COST THE SECOND LEVEL: the floor came back as fist-sized
+# cobbles with bright ochre patches — correct as a picture of asphalt, and a
+# loud chequered mess once each square was 32 pixels on screen with a character
+# standing on it. A floor is BACKGROUND. The QUIET FLOOR and TILE-SIZED DETAIL
+# paragraphs below are what stop that, and they are not optional.
 
 A SHEET OF {{N}} SEAMLESS TEXTURE TILES for a 16-bit top-down game, drawn side
 by side as {{N}} equal SQUARES in ONE image so they share a palette, a light and
@@ -26,10 +32,49 @@ edges, so that copies of the tile laid edge to edge look like one continuous
 surface. No single big feature centred in a square, no obvious middle: keep the
 detail small, even and spread across the whole square.
 
+QUIET FLOOR. A floor material is the BACKGROUND of the level, never the subject.
+Keep it LOW CONTRAST: one base colour plus two or three close neighbours, all
+within a narrow value range, and nothing on it that jumps out — no bright
+patches, no near-black stains, no strong colour accents, no bold shapes. A
+character has to stand on this and stay readable, so the floor stays quieter and
+darker than any character will be. Where two floor materials sit side by side in
+the level they must be close in brightness; a pale material next to a dark one
+turns the level into a chessboard.
+
+QUIET IS NOT BLANK, and this is the other half of the same rule. The range is
+narrow; inside it the values are SEPARATE, FLAT STEPS with hard edges — you
+should be able to point at each one. A smooth, softly-blended, photographic
+surface is what comes back if this is not said, and it arrives as a flat block
+of colour that reads as an asset that failed to load.
+
+TILE-SIZED DETAIL, and it is a NARROW window at both ends. Each square is going
+to be shrunk to about 32 pixels across. Every feature on it must be between a
+SIXTEENTH and an EIGHTH of the square wide — chunky mottled patches, short
+cracks a few pixels long, the odd 2-3 pixel fleck — spread evenly, with no
+obvious middle.
+
+Too big and too small both fail, and each has cost a pass:
+  * cobbles, flagstones, planks or bricks drawn a quarter of a square across
+    become enormous slabs, and the level reads as a loud pattern;
+  * photographic GRIT, sand, fine speckle or hairline scratches AVERAGE AWAY
+    when the swatch is scaled down, and the tile arrives as a FLAT BLOCK OF
+    COLOUR, which reads as an asset that failed to load.
+Draw the material as if it were already only 32 pixels across: visible chunky
+pixel-scale mottling in 3-4 flat values, not a photograph of a surface.
+
+WALLS ARE THE ONE EXCEPTION TO "SEEN FROM DIRECTLY ABOVE": a wall material is
+drawn FACE-ON, as the vertical surface a player looks at, so it reads as
+something standing up. A wall drawn as a top view lies flat in the level and
+reads as planks dropped on the ground. A wall may be higher contrast than a
+floor — it is the boundary of the level and should be visible as one.
+
 LEFT TO RIGHT: {{ITEMS}}
 
 Chunky 16-bit pixel art on a visible coarse pixel grid: flat blocks of solid
-colour, hard edges, 3-4 values per material. No gradients, no airbrushing, no
+colour, hard edges, 3-4 values per material. Draw each square as a BLOWN-UP
+32x32 PIXEL IMAGE — the art pixels are big visible squares, about a thirtieth of
+the square's width each, aligned to a grid, every one a single flat colour. Not
+a photograph of a material, and not a smooth surface with grain sprinkled on it. No gradients, no airbrushing, no
 anti-aliasing, no dithering, no noise or grain, no photographic texture. No
 text, no numbers, no grid lines, no cell borders, no drop shadows, no people, no
 characters.

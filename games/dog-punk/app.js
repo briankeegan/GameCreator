@@ -104,13 +104,33 @@
 // oil puddles, and a real chained gate that swings open when the room clears.
 // See drawTile/floorTileFor for the anti-repetition rules, and
 // docs/TILED_LEVEL_STANDARD.md for the standard and how to regenerate.
+// 2026-08-20 (room art, second pass) — that first tile set was still wrong and
+// was rejected on sight. The floor came back as fist-sized cobbles with ochre
+// patches: correct as a picture of asphalt, a loud chequered mess at 32px with
+// a dog standing on it. The "rusted corrugated fence" came back as planks and
+// was used for interior blocks as well as the boundary, so it lay flat in the
+// middle of the yard. Regenerated both sheets against a tightened prompt
+// (quiet floor, tile-sized detail, walls drawn FACE-ON) and re-cut: the floor
+// is now dark asphalt in three close values, concrete is dimmed until slabs
+// stop chequering, the fence stands up and only ever runs round the edge, and
+// interior obstacles are two OBJECT tiles — a tyre-and-drum pile and a scrap
+// crate. The oil puddle is gone; see TILE_COUNT below.
 const GAME_ID = "dog-punk";
 const TILE = 32;
 const COLS = 16;
 const ROWS = 12;
 
-// '2' wall/fence, '.' walkable grass, '3' junk-pile obstacle, 'G' gate
-// (walkable once cleared, otherwise blocks), 'P' player spawn (walkable).
+// '2' boundary fence, '.' walkable asphalt, '3' tyre-and-drum pile and '4'
+// scrap-crate obstacle, 'G' gate (walkable once cleared, otherwise blocks),
+// 'P' player spawn (walkable).
+//
+// INTERIOR OBSTACLES ARE NOT THE BOUNDARY WALL. They used to be: blocks of
+// '2' sat in the middle of the yard, so the corrugated-fence TEXTURE was
+// drawn flat on the floor and read as planks someone had dropped, not as
+// something you cannot walk through. Obstacles are objects with a visible
+// base ('3' and '4'); '2' now only ever runs round the edge of the level.
+// See docs/TILED_LEVEL_STANDARD.md, defect 5 — it is a level-map bug rather
+// than an art bug, which is why no checker catches it.
 const MAP = [
   // Every row must be exactly COLS long. The top row used to be 15 characters
   // — one short — so the top-right corner had no wall character at all: not
@@ -118,19 +138,19 @@ const MAP = [
   // drawn as floor, which is the pale square in that corner of the old level.
   "2222222GG2222222",
   "2..............2",
-  "2..333.....333.2",
+  "2..34.......43.2",
   "2..............2",
-  "2....22....22..2",
+  "2....43....34..2",
   "2..............2",
-  "2..3......3....2",
+  "2..4......3....2",
   "2..............2",
-  "2....2222......2",
+  "2....3443......2",
   "2..............2",
   "2......P.......2",
   "2222222222222222",
 ];
 
-const SOLID = new Set(["2", "3"]);
+const SOLID = new Set(["2", "3", "4"]);
 
 const ENEMY_SPAWNS = [
   { c: 4, r: 1 },
@@ -251,7 +271,12 @@ const ATTACK_FRAMES = 3;
 const TILE_COUNT = 7;
 const TILES = sliceSheet("tiles.png", TILE_COUNT, 1);
 const TILE_GROUND = 0, TILE_GROUND_ALT = 1, TILE_CONCRETE = 2, TILE_WALL = 3,
-      TILE_JUNK = 4, TILE_GATE = 5, TILE_PUDDLE = 6;
+      TILE_JUNK = 4, TILE_CRATE = 5, TILE_GATE = 6;
+// There is no puddle tile any more. There was, and it was a near-black slick:
+// scattered over a dark floor it read as HOLES punched through the level
+// (docs/TILED_LEVEL_STANDARD.md, defect 4), and brightening it only turned the
+// holes grey. Floor litter is the scrap-strewn asphalt variant below instead —
+// it is the same material as the floor, so it can never punch through it.
 
 // One tile drawn 200 times is a pattern; the eye finds it instantly. Two
 // things break it up, both driven by a hash of the cell so the level looks
@@ -721,6 +746,8 @@ function drawTile(c, r, ch, gateOpen) {
       blitTile(TILE_WALL, c, r, flipX, false);
     } else if (ch === "3") {
       blitTile(TILE_JUNK, c, r, flipX, false);
+    } else if (ch === "4") {
+      blitTile(TILE_CRATE, c, r, flipX, false);
     } else if (ch === "G") {
       // The gate is drawn art now, not a red/green tint over the floor. Shut,
       // it's a chained scrap-pipe panel filling the doorway; cleared, the two
@@ -729,10 +756,6 @@ function drawTile(c, r, ch, gateOpen) {
       // a colour swatch never did.
       const side = MAP[r][c - 1] === "G" ? "right" : "left";
       blitTile(TILE_GATE, c, r, side === "right", false, gateOpen ? 0.22 : 1, side);
-    } else if (cellHash(c * 13 + 2, r * 17 + 9) > 0.92) {
-      // Oil puddles and weed tufts, sparsely, on open floor only: the litter
-      // that makes a repeating surface look like a place rather than a texture.
-      blitTile(TILE_PUDDLE, c, r, flipX, flipY);
     }
     return;
   }
@@ -767,12 +790,25 @@ function drawTile(c, r, ch, gateOpen) {
     ctx.fillRect(x + 16, y + 12, 12, TILE - 16);
     ctx.fillStyle = "#14121a";
     ctx.strokeRect(x + 3, y + 9, TILE - 6, TILE - 12);
-  } else if (cellHash(c * 13 + 2, r * 17 + 9) > 0.92) {
+  } else if (ch === "4") {
+    // scrap crate: same silhouette family as the drawn tile, so the fallback
+    // level still has two kinds of obstacle rather than one repeated shape.
+    ctx.fillStyle = "#5a5d66";
+    ctx.fillRect(x + 4, y + 7, TILE - 8, TILE - 11);
+    ctx.fillStyle = "#3d3f47";
+    ctx.fillRect(x + 4, y + TILE - 8, TILE - 8, 4);
+    ctx.fillStyle = "#9aa0a2";
+    ctx.fillRect(x + 7, y + 10, TILE - 14, 3);
     ctx.fillStyle = "#14121a";
-    ctx.fillRect(x + 8, y + 12, 14, 8);
-    ctx.fillStyle = "#5c7238";
-    ctx.fillRect(x + 5, y + 10, 2, 4);
-    ctx.fillRect(x + 24, y + 20, 2, 4);
+    ctx.strokeRect(x + 4, y + 7, TILE - 8, TILE - 11);
+  } else if (cellHash(c * 13 + 2, r * 17 + 9) > 0.92) {
+    // Scrap litter, matching the shipped tiles: chips of metal ON the asphalt,
+    // never a dark blob (which reads as a hole in the floor).
+    ctx.fillStyle = "#5a5d66";
+    ctx.fillRect(x + 9, y + 14, 4, 2);
+    ctx.fillRect(x + 20, y + 21, 3, 2);
+    ctx.fillStyle = "#7b8184";
+    ctx.fillRect(x + 14, y + 9, 2, 2);
   }
 }
 
