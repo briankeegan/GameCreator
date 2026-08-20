@@ -1,0 +1,66 @@
+# A TILE SHEET for this game's tiled level. Rooms in a room-per-picture game
+# use .github/art/room_prompts/ instead — this is the other shape, where the
+# level is a grid of repeating 32px tiles.
+#
+# Substitute {{N}} and {{ITEMS}}, generate ONE image at 1536x1024 (the broker,
+# or the "Generate image" Action) into art-src/, then cut it with:
+#   python3 games/dog-punk/art-src/build_tiles.py --style <art-style.json> \
+#       --out games/<id>/tiles.png --tile kind:<raw>:<index>[:crop][:brightness]
+#
+# TWO VARIANTS, and which one you want depends on how the tile is drawn over
+# the floor. Generate each variant as its OWN image: a texture swatch and a
+# cut-out object drawn in the same picture come back at different scales.
+#
+#   A. TEXTURE TILES — the floor and the walls. Opaque, they FILL their square
+#      edge to edge, and they REPEAT, so the four edges have to be able to sit
+#      next to a copy of themselves.
+#   B. OBJECT TILES — obstacles, gates, puddles. Drawn ON TOP of a floor tile,
+#      so they are cut out on flat white and keyed to transparency.
+#
+# THE MISTAKE THAT COST A ROOM: a game's art-style.json usually says "thick
+# black outline around the whole silhouette", which is right for a character
+# and catastrophic for a floor tile — every tile then carries a dark border and
+# the finished level reads as graph paper, a grid of squares, not a place. Say
+# NO OUTLINE, NO BORDER, TEXTURE RUNS OFF ALL FOUR EDGES for variant A, in the
+# prompt, every time. Object tiles keep their outline; floors must not have one.
+
+# ---- variant A: TEXTURE TILES ---------------------------------------------
+
+A SHEET OF {{N}} SEAMLESS TEXTURE TILES for a 16-bit top-down game, drawn side
+by side as {{N}} equal SQUARES in ONE image so they share a palette, a light and
+a pixel scale, separated by a wide band of FLAT PURE WHITE (#FFFFFF) and with a
+generous white margin all round. Each square is one MATERIAL seen from
+DIRECTLY ABOVE.
+
+CRITICAL, and the usual failure: each square is a REPEATING TEXTURE SWATCH, not
+an object and not a picture. NO outline, NO border, NO frame, NO vignette and no
+darkened edge around a square — the texture must run right off all four of its
+edges, so that copies of the tile laid edge to edge look like one continuous
+surface. No single big feature centred in a square, no obvious middle: keep the
+detail small, even and spread across the whole square.
+
+LEFT TO RIGHT: {{ITEMS}}
+
+Chunky 16-bit pixel art on a visible coarse pixel grid: flat blocks of solid
+colour, hard edges, 3-4 values per material. No gradients, no airbrushing, no
+anti-aliasing, no dithering, no noise or grain, no photographic texture. No
+text, no numbers, no grid lines, no cell borders, no drop shadows, no people, no
+characters.
+
+# ---- variant B: OBJECT TILES ----------------------------------------------
+
+A SHEET OF {{N}} SEPARATE TOP-DOWN OBJECTS for a 16-bit tile game, drawn side by
+side in ONE image on a background of FLAT PURE WHITE (#FFFFFF), completely
+uniform, with a crisp hard edge against each object, a wide band of flat white
+between them so they never touch, and a generous white margin all round.
+
+Each object is seen from the SAME slightly-angled top-down view, sits square
+inside its own invisible square cell with a little clearance on every side, is
+whole (nothing cropped), and casts NO shadow.
+
+LEFT TO RIGHT: {{ITEMS}}
+
+Chunky 16-bit pixel art: big simple shapes, a dark outline around each object,
+flat blocks of solid colour, 3-4 hard-edged values per material. No gradients,
+no anti-aliasing, no dithering, no fur/grain/noise texture. No ground, no floor,
+no scene, no text, no grid lines, no drop shadows, no people, no characters.
