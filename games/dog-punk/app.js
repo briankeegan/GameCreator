@@ -78,6 +78,18 @@
 // walk-cycle swap logic below was already correct (loads all 8 PNGs, swaps
 // on `animPhase`, falls back to canvas if any fail to load) — the sprites
 // were being shown, they just alternated between two mismatched drawings.
+// 2026-08-20 — the attack is now a real THREE-FRAME SLASH in every direction,
+// off its own generated sheet (hero_attack_sheet.png, 3 cols x 3 rows: swing
+// wind-up / mid-slash / follow-through x facing-down / facing-side / facing-up,
+// side mirrored for left). Before this, "attacking" meant holding ONE drawn
+// pose (the third column of hero_sheet.png) for the whole 220ms window while a
+// procedural lunge and arc played over it — a single static pose can't show a
+// blade travelling, so it read as a shove with a decal, not a swing. The three
+// frames were generated as one row per direction so the character cannot drift
+// between them, and the frame is picked from how far through the swing we are
+// (see ATTACK_TIME / heroAttackSpriteFor). If the attack sheet is missing, the
+// old single pose off hero_sheet.png is still used, and the canvas fallback
+// still swings its own drawn blade — nothing hard-depends on the new file.
 const GAME_ID = "dog-punk";
 const TILE = 32;
 const COLS = 16;
@@ -176,6 +188,16 @@ const heroUp = HERO[6];
 const heroUpWalk2 = HERO[7];
 const heroAtkUp = HERO[8];
 
+// ATTACK ART: a second sheet, same 3x3 shape and same 256px cell as the hero
+// sheet, but its three columns are three CONSECUTIVE MOMENTS of one weapon
+// swing (wind-up, mid-slash, follow-through) rather than idle/walk/attack.
+// Rows are the same three facings, and the side row is mirrored for left, so
+// all four directions get the full slash. Generated one row per direction, so
+// the three frames of a swing share a palette, proportions and pixel scale by
+// construction — the whole reason the swing doesn't strobe between drawings.
+const HERO_ATK = sliceSheet("hero_attack_sheet.png", 3, 3);
+const ATTACK_FRAMES = 3;
+
 // GROUND ART: one generated strip of four 64px tiles — mossy junkyard
 // ground, cracked concrete, rusted fence wall, scrap-crate obstacle — cut the
 // same way as the sprite sheets. Falls back to the hand-drawn tiles below if
@@ -225,13 +247,21 @@ function ratSpriteFor(facing, step) {
   if (facing === "right") return { s: step ? ratSideWalk2 : ratSide, mirror: false };
   return { s: step ? ratDownWalk2 : ratDown, mirror: false };
 }
-// Attack-pose lookups (ignore the walk-cycle `step` arg — same signature as
-// the walk lookups above so drawAnimatedSprite can call either one).
-function heroAttackSpriteFor(facing) {
-  if (facing === "up") return { s: heroAtkUp, mirror: false };
-  if (facing === "left") return { s: heroAtkSide, mirror: true };
-  if (facing === "right") return { s: heroAtkSide, mirror: false };
-  return { s: heroAtkDown, mirror: false };
+// Attack-pose lookups. The hero's takes a swing-frame index (0 wind-up,
+// 1 mid-slash, 2 follow-through) instead of the walk-cycle `step`, so the
+// blade actually travels through the swing in every direction; render()
+// derives that index from how far through the attack window we are.
+// Per-frame fallback: any frame the attack sheet didn't provide drops back to
+// the single attack pose on hero_sheet.png, so a missing/failed sheet degrades
+// to the old behaviour rather than to no hero at all.
+function heroAttackSpriteFor(facing, frame) {
+  const row = facing === "up" ? 2 : (facing === "left" || facing === "right") ? 1 : 0;
+  const mirror = facing === "left";
+  const i = Math.max(0, Math.min(ATTACK_FRAMES - 1, frame | 0));
+  const f = HERO_ATK[row * ATTACK_FRAMES + i];
+  if (f && f.ready) return { s: f, mirror };
+  const legacy = row === 2 ? heroAtkUp : row === 1 ? heroAtkSide : heroAtkDown;
+  return { s: legacy, mirror };
 }
 function ratAttackSpriteFor(facing) {
   if (facing === "up") return { s: ratAtkUp, mirror: false };
@@ -251,6 +281,10 @@ ctx.imageSmoothingEnabled = false;
 // size on screen for every one of them. Relative size lives in the art
 // (Beverly fills 168px of her cell, a rat 104px), never in this number.
 const SPRITE_CELL = 64;
+// How long one swing lasts (ms). Long enough that each of the three slash
+// frames gets a visible ~90ms on screen — at the old 220ms the wind-up and
+// follow-through flickered past too fast to read as a swing.
+const ATTACK_TIME = 270;
 // How long an enemy stays lit up after taking a hit (seconds). Doubles as
 // that enemy's brief i-frame window, so one swing can't multi-hit.
 const HIT_FLASH_TIME = 0.3;
@@ -436,8 +470,8 @@ function update(dt, now) {
     attackQueued = false;
     if (now >= p.attackCooldownUntil) {
       p.attackStartAt = now;
-      p.attackUntil = now + 220;
-      p.attackCooldownUntil = now + 380;
+      p.attackUntil = now + ATTACK_TIME;
+      p.attackCooldownUntil = now + ATTACK_TIME + 160;
     }
   }
   const attacking = now < p.attackUntil;
@@ -859,7 +893,9 @@ function render(now) {
   const p = state.player;
   const blinking = now < p.invulnUntil && Math.floor(now / 100) % 2 === 0;
   const attacking = now < p.attackUntil;
-  const attackT = attacking ? 1 - (p.attackUntil - now) / 220 : 0; // 0..1 through the swing
+  const attackT = attacking ? 1 - (p.attackUntil - now) / ATTACK_TIME : 0; // 0..1 through the swing
+  // which of the three drawn slash frames that progress lands on
+  const attackFrame = Math.min(ATTACK_FRAMES - 1, Math.floor(Math.max(0, attackT) * ATTACK_FRAMES));
   let offsetX = 0, offsetY = 0, scaleX = 1, scaleY = 1;
   if (attacking) {
     const [fx, fy] = FACING_VEC[p.facing];
@@ -877,11 +913,12 @@ function render(now) {
     scaleX = 1 - breathe * 0.5;
   }
   if (!blinking) {
-    // during the attack window, swap to a real drawn mid-swing pose (blade
-    // swept out through the slash) instead of just lunging/stretching the
-    // idle-standing art — that stretch alone read as a body-check, not a
-    // weapon swing.
-    drawAnimatedSprite(attacking ? heroAttackSpriteFor : heroSpriteFor, p.facing, p.x, p.y - 10, SPRITE_CELL,
+    // during the attack window, play the three drawn slash frames for this
+    // facing (wind-up -> mid-slash -> follow-through) instead of holding one
+    // pose while the sprite lunges — a still pose plus a stretch read as a
+    // body-check; a travelling blade reads as a swing.
+    const swingSpriteFor = (facing) => heroAttackSpriteFor(facing, attackFrame);
+    drawAnimatedSprite(attacking ? swingSpriteFor : heroSpriteFor, p.facing, p.x, p.y - 10, SPRITE_CELL,
       { moving: p.moving, phase: p.animPhase, offsetX, offsetY, scaleX, scaleY },
       (x, y, facing, sx, sy, step) => drawHeroFallback(x, y, facing, now < p.invulnUntil, sx, sy, step, attacking, attackT));
   }
