@@ -120,6 +120,71 @@
   }
   function clearFade() { fadeEl.classList.remove("on"); }
 
+  // ---------- the portal ----------
+  // The portal is the one door in the game allowed to be special, so going
+  // through it is not a cut. It is a prop now rather than paint (see the
+  // three-pass room standard), which is what makes this possible at all: the
+  // swirl can be drawn over, and the crossing can take time.
+  //
+  // Two halves, both driven from `portalFx`:
+  //   "in"  — the swirl blooms out of the doorway and swallows the screen.
+  //           The room changes behind it, unseen.
+  //   "out" — it collapses back into the doorway you have just come out of.
+  // Movement is frozen for the duration; update() returns early while it runs,
+  // the same way it does for a talk box, so you cannot walk out of your own
+  // transition.
+  var PORTAL_MS = 460;
+  var portalFx = null;   // { t, phase, x, y, then }
+  function portalActive() { return portalFx !== null; }
+  function startPortal(x, y, then) {
+    portalFx = { t: 0, phase: "in", x: x, y: y, then: then };
+  }
+  function updatePortal(dt) {
+    if (!portalFx) return;
+    portalFx.t += dt * 1000;
+    if (portalFx.t < PORTAL_MS) return;
+    if (portalFx.phase === "in") {
+      var then = portalFx.then;
+      if (then) then();
+      // Come out of the door on THIS side — wherever the arrival put us.
+      portalFx = { t: 0, phase: "out",
+                   x: player.x + player.w / 2, y: player.y + player.h / 2, then: null };
+    } else {
+      portalFx = null;
+    }
+  }
+  // Drawn last, over everything, in screen space.
+  function drawPortalFx() {
+    if (!portalFx) return;
+    var k = Math.max(0, Math.min(1, portalFx.t / PORTAL_MS));
+    if (portalFx.phase === "out") k = 1 - k;
+    var maxR = Math.hypot(VW, VH) * 0.62;
+    var r = Math.max(0.001, maxR * (k * k));            // eases out of the door
+    var g = ctx.createRadialGradient(portalFx.x, portalFx.y, 0,
+                                     portalFx.x, portalFx.y, r);
+    g.addColorStop(0.00, "rgba(255,236,246,0.96)");
+    g.addColorStop(0.30, "rgba(214,42,80,0.95)");
+    g.addColorStop(0.72, "rgba(96,18,74,0.92)");
+    g.addColorStop(1.00, "rgba(20,4,26,0)");
+    ctx.save();
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, VW, VH);
+    // Arms of the swirl, so it turns rather than just growing.
+    ctx.globalCompositeOperation = "lighter";
+    ctx.translate(portalFx.x, portalFx.y);
+    ctx.rotate(portalPhase * 3.2 + k * 5);
+    for (var i = 0; i < 5; i++) {
+      ctx.rotate(Math.PI * 2 / 5);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(r * 0.45, r * 0.18, r * 0.92, r * 0.62);
+      ctx.lineWidth = Math.max(1, r * 0.06);
+      ctx.strokeStyle = "rgba(255,150,190," + (0.30 * (1 - Math.abs(k - 0.5) * 1.4)) + ")";
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   // ---------- art loading (graceful fallback) ----------
   var artCache = {};
   function loadArt(id) {
@@ -1093,6 +1158,10 @@
 
   function update(dt) {
     if (runeOpen) return;
+    // The portal has hold of her. Freezing here rather than only blocking
+    // input means she also cannot be pushed, wandered into, or walked out of
+    // the doorway by a still-held arrow key while the swirl is on screen.
+    if (portalActive()) return;
     if (!running || paused) return;
     // Playtime is wall-clock time with the game actually in front of you —
     // menus and pauses don't count, same as the clock on a cartridge file
@@ -1206,7 +1275,15 @@
         onExit = true;
         if (exitsArmed && !doorNeedsRelease) {
           if (ex.rune) openRuneDoor();
-          else enterRoom(ex.to, ex.arriveAt, ex.arriveFacing, ex.link);
+          else if (ex.link === "portal") {
+            // Out of the doorway itself, not out of the player — the bloom
+            // has to start where the swirl is drawn or it reads as the screen
+            // flashing rather than the portal taking you.
+            var to = ex.to, at = ex.arriveAt, face = ex.arriveFacing, link = ex.link;
+            startPortal(ex.x + ex.w / 2, ex.y + ex.h / 2, function () {
+              enterRoom(to, at, face, link);
+            });
+          } else enterRoom(ex.to, ex.arriveAt, ex.arriveFacing, ex.link);
         }
       }
     });
@@ -1728,6 +1805,7 @@
     entities.push({ y: player.y + player.h, draw: drawPlayer });
     entities.sort(function (a, b) { return a.y - b.y; });
     entities.forEach(function (e) { e.draw(); });
+    drawPortalFx();
   }
 
   // Whether the ☰ shows is derived from state, every frame, rather than
@@ -1751,6 +1829,7 @@
     var dt = Math.min(0.05, (t - lastTime) / 1000);
     lastTime = t;
     portalPhase += dt;
+    updatePortal(dt);
     update(dt);
     render();
     syncMenuButton();
@@ -1764,6 +1843,7 @@
   function clearTransientState() {
     if (window.NewseyDuel.isActive()) window.NewseyDuel.stop();
     clearFade();
+    portalFx = null;
     player.inBed = false;
     player.bedSlide = null;
     bedPush = 0;

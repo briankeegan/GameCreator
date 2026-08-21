@@ -431,21 +431,21 @@ window.NEWSEY_STORY = (function () {
       // panel draws — you stand on the threshold, you go through. They sit
       // 2px below the wall's footprint, which is as close as a trigger can be
       // to a door you cannot walk into.
-      // y 52-76 is the band the player's own body (18px tall) occupies when
+      // y 44-70 is the band the player's own body (18px tall) occupies when
       // she is standing against the wall with her feet on the last walkable
       // row — so crossing means touching the drawn doorway, not stepping on a
       // rectangle of floor underneath it.
       exits: [
-        { x: 54, y: 52, w: 34, h: 24, to: "bedroom", link: "yourDoor" },
+        { x: 54, y: 44, w: 34, h: 26, to: "bedroom", link: "yourDoor" },
         // Not a doorway to one room any more — this is the black rune door,
         // and where it puts you is a choice (see RUNE_DOOR above and
         // openRuneDoor in app.js). The first push lands you in the Garden by
         // accident, exactly as it does in the plot.
-        { x: 110, y: 52, w: 36, h: 24, rune: true, link: "rune" },
+        { x: 110, y: 44, w: 36, h: 26, rune: true, link: "rune" },
         // The portal to the duelling arena. It used to be an NPC you talked
         // to, because no room art had ever drawn one; prop_wall_portal draws
         // it now, so it is a door like the others and pairs with the arena's.
-        { x: 166, y: 52, w: 38, h: 24, to: "arena", link: "portal" }
+        { x: 166, y: 44, w: 38, h: 26, to: "arena", link: "portal" }
       ],
       // NOBODY STANDS IN FRONT OF THE RUNE DOOR. Its trigger is x 110-146 and
       // the player walks up the middle of the room to reach it, so an NPC
