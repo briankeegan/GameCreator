@@ -22,6 +22,38 @@ W, H = 320, 200
 WHITE_TOL = 26
 
 
+# A PLATE IS LIT ON ITS OWN, AND THE ROOM IS NOT.
+#
+# Pass 2 asks for a floor texture on flat white, so the generator lights it
+# evenly and brightly — it has no idea it is going to be laid under a moody
+# candlelit room. Every room assembled tonight came out markedly paler and
+# flatter than the scene it was measured from, in a way that is invisible in
+# any number and unmissable the moment you put the two side by side.
+#
+# So the plate is tone-matched to the floor of its own scene: take the median
+# colour of the scene BELOW the wall/floor line, take the median of the plate,
+# and scale the plate per channel so the two agree. Median rather than mean so
+# a bright rug or a lantern pool in the scene cannot drag it, and a scale
+# rather than a fixed tint so the plate keeps its own texture and contrast.
+def match_tone(plate, scene_path):
+    from PIL import Image as _I
+    scene = _I.open(scene_path).convert("RGB").resize((W, H), _I.LANCZOS)
+    sa = np.asarray(scene).astype(np.float32)
+    # the floor is the bottom third: below anything standing against the wall
+    ref = np.median(sa[int(H * 0.72):, :, :].reshape(-1, 3), axis=0)
+    pa = np.asarray(plate).astype(np.float32)
+    opaque = pa[..., 3] > 40
+    if not opaque.any():
+        return plate
+    have = np.median(pa[..., :3][opaque], axis=0)
+    gain = np.clip(ref / np.maximum(have, 1.0), 0.25, 2.5)
+    rgb = np.clip(pa[..., :3] * gain, 0, 255)
+    out = np.dstack([rgb, pa[..., 3:4]]).astype(np.uint8)
+    print("   tone-matched to %s: gain %.2f/%.2f/%.2f"
+          % (scene_path.split("/")[-1], gain[0], gain[1], gain[2]))
+    return _I.fromarray(out, "RGBA")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("src")
@@ -30,6 +62,9 @@ def main():
                     help="px of frame left around the floor, at 320x200")
     ap.add_argument("--keep-aspect", action="store_true",
                     help="don't stretch; fit inside the frame instead")
+    ap.add_argument("--match", metavar="SCENE",
+                    help="tone-match the plate to the floor of this composed "
+                         "scene (pass 1). Strongly recommended: see match_tone.")
     a = ap.parse_args()
 
     im = Image.open(a.src).convert("RGBA")
@@ -53,6 +88,8 @@ def main():
         k = min(tw / cut.width, th / cut.height)
         tw, th = max(1, int(cut.width * k)), max(1, int(cut.height * k))
     cut = cut.resize((tw, th), Image.LANCZOS)
+    if a.match:
+        cut = match_tone(cut, a.match)
 
     out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     out.alpha_composite(cut, ((W - tw) // 2, (H - th) // 2))

@@ -8,6 +8,7 @@ remember at 11pm. This is the front door:
   room.py props  <game> <room> <name>...   cut a pass-3 prop sheet
   room.py check  <game> <room>   render the overlays a human has to look at
   room.py verify <game>          the gate: every mistake we actually made
+  room.py approve <game> <room>  sign off pass 1 — pass 2 and 3 refuse without it
   room.py prompt <pass>          print the canned prompt for a generation pass
 
 `verify` is the one that runs in CI. Every check in it is a bug that shipped:
@@ -243,6 +244,110 @@ def shipped_scenes(game_dir):
     return out
 
 
+# EVERY ROOM HAS A SAVED SPEC, THE WAY EVERY CHARACTER HAS ONE.
+#
+# A character's look does not live in whatever prompt somebody typed that day —
+# it lives in art-style.json's lockedDetails and lockedColours, because details
+# retyped from memory drift (Beverly's ears kept coming back brown). Rooms had
+# no such thing. Every regeneration was a fresh paragraph typed by hand, so the
+# Lounge came back three times with three different walls, and once with a
+# right-hand door and no left-hand one — because the paragraph that mentioned
+# the left-hand door was not the paragraph that got sent.
+#
+# So a room is a file: games/<id>/rooms/<room>.json
+#
+#   name      what the room is called in game
+#   summary   what the room IS, one or two sentences
+#   floor     what the player walks on — this is pass 2's whole prompt
+#   doors     one entry per way out: which WALL it is in and what it looks
+#             like. THE MAP DECIDES THESE. A room asked for without them gets
+#             doors wherever the generator feels like putting them.
+#   contains  the things standing in the room — these become pass 3's sheet
+#
+# All three passes are built from it, so regenerating a room is the same
+# request every time and the map cannot drift out of the art.
+def spec_path(game_dir, room):
+    return os.path.join(game_dir, "rooms", "%s.json" % room)
+
+
+def load_spec(game_dir, room):
+    import json
+    try:
+        return json.load(open(spec_path(game_dir, room), encoding="utf-8"))
+    except OSError:
+        return None
+
+
+WALL_PHRASE = {
+    "back": "in the BACK WALL",
+    "back-left": "in the BACK WALL, left of centre",
+    "back-right": "in the BACK WALL, right of centre",
+    "left": "at the FAR LEFT EDGE of the frame, in the left-hand side wall, "
+            "seen edge-on with its face turned to the right",
+    "right": "at the FAR RIGHT EDGE of the frame, in the right-hand side wall, "
+             "seen edge-on with its face turned to the left",
+    "near": "a gap in the low rail along the NEAR EDGE, where the floor runs "
+            "off the bottom of the picture toward the viewer",
+}
+
+
+def spec_doors(spec):
+    parts = []
+    for d in spec.get("doors", []):
+        where = WALL_PHRASE.get(d.get("wall", "back"), d.get("wall", ""))
+        parts.append("%s %s" % (d.get("look", "an open doorway"), where))
+    if not parts:
+        return "NO door and NO doorway anywhere in any wall — the walls are unbroken."
+    return ("The ways out of this room, and there are no others: "
+            + "; ".join(parts) + ".")
+
+
+def spec_scene_desc(spec):
+    return "%s %s %s The floor is %s." % (
+        spec.get("summary", ""), spec_doors(spec),
+        (" ".join(spec.get("contains", []))), spec.get("floor", "a plain floor"))
+
+
+# PASS 1 IS A DECISION POINT, NOT A STEP TO WALK PAST.
+#
+# Everything downstream is measured off the composed scene, so a scene that is
+# wrong makes every later pass wrong too — and none of it is repairable. The
+# Victorian bedroom's first scene came back an isometric CORNER room. Before
+# anyone noticed, it had been given a floor plate, three prop sheets and two
+# full assemblies, all of which had to be thrown away, because a rectangular
+# plate does not fit a diamond floor and props measured off a corner view land
+# at the wrong depth.
+#
+# The cost is entirely front-loaded and entirely avoidable: LOOK at the scene,
+# and if it is not right, regenerate the scene and nothing else. So pass 2 and
+# pass 3 refuse to run until someone has recorded that they looked.
+#
+#   room.py approve <game> <room>     after opening art-src/<room>_scene.png
+#
+# The approval is a digest of that scene, so regenerating it revokes it.
+def scene_ok_path(game_dir, room):
+    return os.path.join(game_dir, "art-src", "%s_scene_ok.txt" % room)
+
+
+def scene_digest(game_dir, room):
+    import hashlib
+    path = os.path.join(game_dir, "art-src", "%s_scene.png" % room)
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def scene_approved(game_dir, room):
+    want = scene_digest(game_dir, room)
+    if want is None:
+        return False
+    try:
+        return open(scene_ok_path(game_dir, room), encoding="utf-8").read().strip() == want
+    except OSError:
+        return False
+
+
 def style_drift(game_dir):
     path = os.path.join(game_dir, "art-style.json")
     if not os.path.exists(path):
@@ -439,6 +544,10 @@ def main():
     p.add_argument("game"); p.add_argument("room")
     p.add_argument("--out", default="/tmp")
 
+    p = sub.add_parser("approve", help="record that you have LOOKED at pass 1 "
+                                       "and it is right — unlocks pass 2 and 3")
+    p.add_argument("game"); p.add_argument("room")
+
     p = sub.add_parser("verify", help="the CI gate")
     p.add_argument("game")
 
@@ -457,6 +566,13 @@ def main():
     # generator was to put the description in its id — which then named the
     # file too. Pass 1 gets "lounge — the room as a complete scene", which is
     # not enough to draw a lounge from.
+    p.add_argument("--doors", default="",
+                   help="PASS 1, required: which WALL each way out is in, e.g. "
+                        "'a door in the LEFT wall, an arch in the BACK wall left "
+                        "of centre'. The map decides these; asked without them "
+                        "the generator puts doors where it likes, which is how "
+                        "the Lounge came back with a right-hand door and no "
+                        "left-hand one.")
     p.add_argument("--desc", default="",
                    help="what the room contains (pass 1). Defaults to the room id.")
     p.add_argument("--floor", default="", help="what the floor is made of (pass 2)")
@@ -515,7 +631,7 @@ def main():
             text = text.replace(k, v)
         return text.strip()
 
-    if a.cmd == "generate":
+
         # Same transport as characters: an in-run broker if one is listening,
         # otherwise OPENAI_API_KEY. See .github/art/imagegen.py. This exists so
         # that "redo the room" is the same shape of job as "redo the walk
@@ -540,9 +656,24 @@ def main():
             return 1
         out = os.path.join(a.game.rstrip("/"), "art-src",
                            PASS_PATH[a.which] % a.room)
+        spec = load_spec(game, a.room)
+        if spec is None:
+            print("REFUSING: games/%s/rooms/%s.json does not exist.\n"
+                  "  Every room has a saved spec, the way every character has "
+                  "lockedDetails — what the room is, what it contains, what its "
+                  "floor is, and WHICH WALL each way out is in. A prompt retyped "
+                  "from memory is how the same room comes back three times with "
+                  "three different walls and a door on the wrong side.\n"
+                  "  Write it, then generate."
+                  % (os.path.basename(game), a.room), file=sys.stderr)
+            return 1
+        desc = (a.desc or "").strip() or spec_scene_desc(spec)
+        floor = (a.floor or "").strip() or spec.get("floor", "")
+        items = (a.items or "").strip() or "; ".join(spec.get("contains", []))
+        n = (a.n or "").strip() or str(len(spec.get("contains", [])) or 2)
         prompt = styled(a.game.rstrip("/"),
-                        pass_prompt(a.which, (a.desc or "").strip() or a.room,
-                                    a.floor, a.n, a.items, strip_notes=True))
+                        pass_prompt(a.which, desc, floor, n, items,
+                                    strip_notes=True))
         if not imagegen.generate(" ".join(prompt.split()), out,
                                  quality=a.quality, force=a.force):
             return 0
@@ -562,10 +693,39 @@ def main():
 
     game = a.game.rstrip("/")
 
+    if a.cmd == "approve":
+        d = scene_digest(game, a.room)
+        if d is None:
+            print("no composed scene at games/.../art-src/%s_scene.png — "
+                  "generate pass 1 first" % a.room, file=sys.stderr)
+            return 1
+        with open(scene_ok_path(game, a.room), "w", encoding="utf-8") as f:
+            f.write(d + "\n")
+        print("approved %s's composed scene. pass 2 and pass 3 are unlocked "
+              "until it is regenerated." % a.room)
+        return 0
+
+    if a.cmd == "generate":
+        if a.which in ("plate", "props") and not scene_approved(game, a.room):
+            print("REFUSING: nobody has signed off %s's composed scene.\n"
+                  "  Everything downstream is MEASURED off it, so a wrong scene "
+                  "makes every later pass wrong and none of it is repairable — "
+                  "a corner-view scene once cost a plate, three prop sheets and "
+                  "two assemblies before anyone noticed.\n"
+                  "  Open games/%s/art-src/%s_scene.png. If it is right, run:\n"
+                  "    python3 .github/art/room.py approve %s %s\n"
+                  "  If it is not, regenerate THE SCENE and nothing else."
+                  % (a.room, os.path.basename(game), a.room, game, a.room),
+                  file=sys.stderr)
+            return 1
+
     if a.cmd == "plate":
         src = a.src or os.path.join(game, "art-src", "%s_floor.png" % a.room)
+        scene = os.path.join(game, "art-src", "%s_scene.png" % a.room)
+        extra = ["--match", scene] if os.path.exists(scene) else []
         rc = sh("python3", os.path.join(HERE, "fit_plate.py"), src,
-                os.path.join(game, "art", "bg-%s.png" % a.room), "--margin", a.margin)
+                os.path.join(game, "art", "bg-%s.png" % a.room),
+                "--margin", a.margin, *extra)
         if rc: return rc
         return sh("python3", os.path.join(HERE, "build_walkmask.py"), game, a.room)
 

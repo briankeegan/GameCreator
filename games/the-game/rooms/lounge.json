@@ -1,0 +1,16 @@
+{
+  "name": "The Lounge",
+  "_why": "The hub of Infinity's map. Four ways out, and WHICH WALL each is in is decided by the map in story.js — see the diagram on ROOMS.lounge — not by whatever the generator felt like drawing.",
+  "summary": "A warm, crowded tavern lounge in a magical realm, in dark blue-grey brick above dark timber wainscot with one continuous rail running the full width of the back wall at the same height all the way across, lit by candles and lanterns.",
+  "floor": "warm honey-brown wooden plank floorboards, many narrow boards running left to right with staggered end joints, visible grain, knots and scuffed wear",
+  "doors": [
+    { "wall": "back-left", "look": "ONE open arched stone doorway, empty and warmly lit from beyond", "to": "library" },
+    { "wall": "back", "look": "ONE tall stone arch completely filled by a glowing swirling RED portal, spiralling inward to a hot bright centre", "to": "arena" },
+    { "wall": "left", "look": "ONE open arched stone doorway, empty and warmly lit from beyond", "to": "bedroom" },
+    { "wall": "right", "look": "ONE open arched stone doorway, empty and warmly lit from beyond", "to": "lab" }
+  ],
+  "contains": [
+    "a long wooden BAR COUNTER standing along the RIGHT-HAND END of the back wall, with a tall shelf of coloured bottles behind it",
+    "two small round wooden tables with stools, off to the LEFT on the open floor"
+  ]
+}
