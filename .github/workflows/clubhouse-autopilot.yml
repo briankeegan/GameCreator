@@ -239,17 +239,41 @@ jobs:
       # Deterministic context: pull the whole thread and inject it into the
       # prompt so the model always has it. A run-id-derived heredoc delimiter
       # makes it impossible for a malicious comment to break out of the block.
+      # THE THREAD IS COMPRESSED BEFORE IT IS PAID FOR.
+      #
+      # The whole thread used to go into every run verbatim. Dog Punk's is ~60
+      # comments, many of them long — several are the autopilot's own
+      # multi-paragraph "here is what shipped and why" replies. That is a large
+      # input on every run, and a message that fails and retries pays for it
+      # three times. Measured on a thread that size: 68KB down to about 7KB.
+      #
+      # The last few messages stay VERBATIM, because that is what the run is
+      # answering and the exact words matter. Everything older is summarised by
+      # HAIKU — the cheapest model there is — into a brief of what the game is,
+      # what the owner has decided, what shipped and what is outstanding. Old
+      # thread text is background: a run needs to know the rat sheet was
+      # regenerated onto the standard, not the four paragraphs about it.
+      #
+      # Failure here is never fatal: no key, API down, timeout — it falls back
+      # to a plain tail and carries on. A summariser that can stop a message
+      # being answered is worse than an expensive prompt.
       - id: history
-        name: Fetch thread history
+        name: Fetch and compress thread history
+        timeout-minutes: 5
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          gh pr view ${{ steps.ctx.outputs.pr }} --repo ${{ github.repository }} \
+            --json title,body,comments \
+            --jq '"# " + .title + "\n\n" + (.body // "") + "\n\n=== comments (oldest first) ===\n" + ([.comments[] | "**" + (.author.login // "unknown") + "**:\n" + (.body // "")] | join("\n\n---\n\n"))' \
+            > .autopilot/thread_raw.txt || echo "(could not load thread history)" > .autopilot/thread_raw.txt
+          node .github/autopilot/compress-history.js \
+            < .autopilot/thread_raw.txt > .autopilot/thread.txt \
+            || cp .autopilot/thread_raw.txt .autopilot/thread.txt
           {
             echo "thread<<EOF_${{ github.run_id }}"
-            gh pr view ${{ steps.ctx.outputs.pr }} --repo ${{ github.repository }} \
-              --json title,body,comments \
-              --jq '"# " + .title + "\n\n" + (.body // "") + "\n\n=== comments (oldest first) ===\n" + ([.comments[] | "**" + (.author.login // "unknown") + "**:\n" + (.body // "")] | join("\n\n---\n\n"))' \
-              || echo "(could not load thread history)"
+            cat .autopilot/thread.txt
             echo "EOF_${{ github.run_id }}"
           } >> "$GITHUB_OUTPUT"
 
@@ -525,9 +549,18 @@ jobs:
             printf '%s\n' "$MESSAGE"
             echo "-----END MOST RECENT MESSAGE-----"
             echo ""
-            echo "Full thread history (oldest first). Your own '**Claude says:**'"
-            echo "replies mark what you've already handled; EVERY user message"
-            echo "after your most recent such reply is outstanding — address them all:"
+            echo "Thread history. The RECENT messages are verbatim; anything older"
+            echo "has been summarised into a brief at the top (the thread runs to tens"
+            echo "of thousands of words and sending all of it on every run is what"
+            echo "exhausted the API budget). Preferences the owner states are STANDING"
+            echo "instructions even when they appear in the summary."
+            echo ""
+            echo "Your own '**Claude says:**' replies mark what you have already"
+            echo "handled; EVERY user message after your most recent such reply is"
+            echo "outstanding — address them all. Work that out from the VERBATIM"
+            echo "section: it is kept precisely so the recent exchange is exact. If the"
+            echo "verbatim section opens mid-conversation with no reply of yours in it,"
+            echo "treat every user message in it as outstanding:"
             echo "-----BEGIN HISTORY-----"
             printf '%s\n' "$HISTORY"
             echo "-----END HISTORY-----"
