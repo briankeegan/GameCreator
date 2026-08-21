@@ -60,6 +60,12 @@ FLOOR_PLATE_ROOMS = {
     # gap in the balustrade. The old art painted a door on the right-hand wall
     # that the map no longer had any use for.
     "bedroom",
+    # Regenerated with the grid map: the Lounge is WEST of the lab, so the
+    # lab's way out is a door in its west wall; the library sits between the
+    # Lounge (south, off its near edge) and the Anarchy Garden (north, through
+    # the arch in its bookcase wall).
+    "lab",
+    "library",
 }
 
 # EVERY ROOM BELOW IS LEGACY. Do not copy this shape for a new room, and do
@@ -87,13 +93,6 @@ ROOMS = {
             [(188, 98), (252, 98), (252, 108), (188, 108)], # moving boxes
         ],
     },
-    "library": {
-        "floorTop": 96,
-        "blocks": [
-            [(148, 96), (192, 96), (194, 116), (150, 116)],      # armchair
-            [(192, 98), (218, 98), (218, 118), (192, 118)],      # candle table
-        ],
-    },
     "arena": {
         # Regenerated art (the plot's "library-like stadium"): tiered stands
         # ring the room on both sides and the flagstone duelling floor is the
@@ -112,16 +111,6 @@ ROOMS = {
     # their own sprites so the player can walk behind them. So the only things
     # this mask has to fence off are the pool at the back and the low garden
     # wall; everything standing up off the grass fences itself.
-    "lab": {
-        "floorTop": 100,
-        "bounds": (36, 100, 286, 186),
-        "blocks": [
-            [(80, 96), (222, 96), (222, 112), (80, 112)],   # the workbench
-            # The cart is pulled clear of the doorway's approach — its box
-            # reached across the arch and fenced the only way out of the room.
-            [(252, 96), (284, 96), (284, 120), (252, 120)], # the instrument cart
-        ],
-    },
     "house": {
         "floorTop": 100,
         "blocks": [

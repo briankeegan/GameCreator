@@ -684,25 +684,32 @@ window.NEWSEY_STORY = (function () {
     lab: {
       bg: "lab",
       label: "Kyran's Lab",
+      // THE LOUNGE IS WEST OF THIS ROOM. Out of the door in the west wall
+      // here, in through the Lounge's east door — see the map on ROOMS.lounge.
+      // Regenerated to docs/ROOM_ART_STANDARD.md: bg-lab.png is the flagstone
+      // floor and nothing else, so the walk mask is its own silhouette and
+      // there is no floorPoly and no obstacles. The old art painted a door on
+      // the RIGHT wall, which the map does not use.
       playerStart: { x: 150, y: 150 },
-      // bg-lab.png: the arch out is on the back-right at x 224-258, its
-      // threshold where the tile floor starts at y ~104.
-      floorPoly: [[40,104],[286,104],[286,184],[40,184]],
-      obstacles: [
-        { x: 80, y: 96, w: 142, h: 16 },   // the workbench
-        { x: 252, y: 96, w: 32, h: 24 }    // the instrument cart
+      props: [
+        // h 88, not 120: measured off the scene, where the shelf sits high on
+        // the wall and the jars are about 26px tall. At the height they were
+        // first placed they read as barrels.
+        { art: "prop_lab_wall", x: 54,  y: 128, h: 88, w: 112, base: { w: 112, h: 8 } },
+        { art: "prop_lab_wall", x: 162, y: 128, h: 88, w: 112, base: { w: 112, h: 8 } },
+        { art: "prop_lab_wall", x: 270, y: 128, h: 88, w: 112, base: { w: 112, h: 8 } },
+        // the way west, to the Lounge. door: true — it IS the doorway, so it
+        // carries no footprint and its trigger sits on it.
+        { art: "prop_lab_door", x: 18, y: 150, h: 80, w: 28, door: true },
+        { art: "prop_lab_bench",   x: 162, y: 136, h: 40, w: 124, base: { w: 120, h: 10 } },
+        { art: "prop_lab_cabinet", x: 252, y: 132, h: 58, base: { w: 34, h: 10 } },
+        { art: "prop_lab_cart",    x: 74,  y: 166, h: 40, base: { rx: 10, ry: 4 } }
       ],
       exits: [
-        // THE LOUNGE IS WEST OF THIS ROOM: out of the west door here, in
-        // through the Lounge's east door.
-        // x 42, not x 4: this room's walkable floor starts at x 40, so a
-        // trigger against the frame edge was somewhere she could never stand.
-        { x: 42, y: 112, w: 26, h: 42, to: "lounge", link: "eastDoor" }
-      ],
-      // the way west, to the Lounge — drawn, so the door you use is a door
-      // you can see.
-      props: [
-        { art: "prop_door_west", x: 50, y: 154, h: 96, w: 26, door: true }
+        // y 124, clear of the wall panels' footprint: the leftmost panel
+        // blocks y 112-120 across the room, and a trigger overlapping it is a
+        // door you cannot reach.
+        { x: 6, y: 136, w: 28, h: 36, to: "lounge", link: "eastDoor" }
       ],
       npcs: [
         {
@@ -720,25 +727,32 @@ window.NEWSEY_STORY = (function () {
     library: {
       bg: "library",
       label: "The Library",
-      playerStart: { x: 150, y: 165 },
-      // Hand-placed from bg-library.png: the exit archway back to the
-      // lounge is actually on the right side of the room, not the left
-      // (the previous x:0 placement didn't match the art at all — the
-      // bookshelves occupy the whole left wall and are blocked off).
-      // bg-library.png: the arch is at x 210-242, floor at y ~78.
-      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[50,100],[274,100],[274,188],[50,188]],
-      exits: [
-        // THE LOUNGE IS SOUTH of the library and the Anarchy Garden is NORTH.
-        // Down off the near edge takes you back to the Lounge's north arch;
-        // the door in the back wall goes on up into the Garden.
-        { x: 142, y: 176, w: 40, h: 14, to: "lounge", link: "northArch", drawn: "threshold" },
-        { x: 142, y: 84, w: 36, h: 24, to: "garden", link: "gardenPath" }
-      ],
+      // BETWEEN THE LOUNGE AND THE GARDEN. The Lounge is SOUTH — down off the
+      // near edge, in through its north arch — and the Anarchy Garden is
+      // NORTH, through the arch in the bookcase wall. See the map on
+      // ROOMS.lounge.
+      // Regenerated to docs/ROOM_ART_STANDARD.md: bg-library.png is the
+      // flagstone floor and nothing else, so the walk mask is its own
+      // silhouette and there is no floorPoly and no obstacles.
+      playerStart: { x: 150, y: 150 },
       props: [
-        { art: "prop_wall_arch", x: 160, y: 104, h: 84, w: 60, door: true }
+        { art: "prop_bed_rug", x: 156, y: 152, h: 42, w: 96, flat: true },
+        // w overlaps its neighbour: butted exactly, the bright floor showed
+        // between the panels as two pale pillars either side of the doorway.
+        { art: "prop_lib_shelf", x: 52,  y: 104, h: 92, w: 116, base: { w: 110, h: 8 } },
+        { art: "prop_lib_door",  x: 160, y: 104, h: 92, w: 116, door: true },
+        { art: "prop_lib_shelf", x: 268, y: 104, h: 92, w: 116, base: { w: 110, h: 8 } },
+        { art: "prop_lib_chair", x: 78,  y: 122, h: 46, base: { w: 24, h: 10 } },
+        { art: "prop_lib_table", x: 106, y: 120, h: 32, base: { rx: 7, ry: 3 } }
       ],
-      obstacles: [ { x: 160, y: 92, w: 66, h: 22 } ], // armchair + candle table
+      exits: [
+        // south, off the near edge, back to the Lounge's north arch. No art
+        // can draw a door at the edge the camera stands on, so app.js draws
+        // the frame itself.
+        { x: 140, y: 178, w: 40, h: 16, to: "lounge", link: "northArch", drawn: "threshold" },
+        // north, through the arch in the bookcase wall, up into the Garden
+        { x: 142, y: 76, w: 36, h: 26, to: "garden", link: "gardenPath" }
+      ],
       npcs: [
         {
           id: "michael", x: 120, y: 160, art: "michael", sprite: "michael_top",

@@ -49,7 +49,11 @@ def read_props(story_path, room):
     be one more thing to keep working."""
     src = open(story_path, encoding="utf-8").read()
     start = src.index("\n    %s: {" % room)
-    end = src.index("\n    },", start)
+    # The LAST room in ROOMS has no trailing comma — see the same note in
+    # room.py's read_room. This used to die with a ValueError, and room.py
+    # check swallowed it and printed "LOOK AT THESE" over no picture at all.
+    end = min(i for i in (src.find("\n    },", start), src.find("\n    }\n", start))
+              if i != -1)
     block = src[start:end]
     props = []
     for m in re.finditer(r"\{\s*art:\s*\"([^\"]+)\"([^}]*(?:\{[^}]*\}[^}]*)*)\}", block):

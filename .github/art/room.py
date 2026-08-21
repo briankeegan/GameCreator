@@ -23,6 +23,9 @@ remember at 11pm. This is the front door:
   * a flat prop carrying a `base`, or a standing prop missing one.
   * a floor-plate room still declaring floorPoly/obstacles — dead data that
     contradicts the mask and sends the next reader the wrong way.
+  * a room nobody rendered the overlay for since its art last changed —
+    the one step of the process with no gate was the one that kept being
+    skipped, so now it has one.
   * a pass-1 COMPOSED SCENE shipped as the room background. It looks finished,
     so it is the tempting shortcut, and it throws away the mask, the depth and
     every prop's independence in one move.
@@ -61,7 +64,13 @@ def read_room(game_dir, room):
         start = src.index("\n    %s: {" % room)
     except ValueError:
         return None
-    end = src.index("\n    },", start)
+    # The LAST room in ROOMS has no trailing comma, so "\n    }," never
+    # matches it and verify used to die with a ValueError instead of checking
+    # it. A gate that crashes on a valid file is worse than no gate: it does
+    # not say what is wrong, and the room it cannot read is the one it never
+    # checks.
+    end = min(i for i in (src.find("\n    },", start), src.find("\n    }\n", start))
+              if i != -1)
     block = src[start:end]
 
     def num(key, where=block):
@@ -255,11 +264,75 @@ def style_drift(game_dir):
     return out
 
 
+# THE OVERLAY IS A STEP OF THE PROCESS, SO IT IS GATED LIKE ONE.
+#
+# `room.py check` renders the assembled room beside the scene it was measured
+# from, and the standard calls it "the step that finds things". It is also the
+# step most easily skipped, because skipping it costs nothing at the time and
+# everything later: props at two thirds size, a rug that was never made, a
+# camera that was wrong three passes back. Every one of those shipped, was
+# invisible in the numbers, and was obvious in one glance at the side-by-side.
+#
+# Prose did not make it happen. So `check` now records WHAT IT LOOKED AT — a
+# digest of the plate, every prop the room places, and the scene — and verify
+# fails when that record is missing or no longer matches. You cannot ship a
+# room whose art changed after the last time somebody rendered the overlay.
+#
+# It cannot force a person to actually look. It can guarantee there was a
+# current picture in front of them, which is the part a machine can check.
+def room_digest(game_dir, room):
+    import hashlib
+    h = hashlib.sha256()
+    art = os.path.join(game_dir, "art")
+    paths = [os.path.join(art, "bg-%s.png" % room),
+             os.path.join(game_dir, "art-src", "%s_scene.png" % room)]
+    r = read_room(game_dir, room)
+    for pr in (r["props"] if r else []):
+        paths.append(os.path.join(art, pr["art"] + ".png"))
+    for path in paths:
+        h.update(os.path.basename(path).encode())
+        try:
+            with open(path, "rb") as f:
+                h.update(f.read())
+        except OSError:
+            h.update(b"<missing>")
+    # the placement numbers matter too: moving a prop changes the picture
+    h.update(repr(r["props"] if r else []).encode())
+    return h.hexdigest()
+
+
+def checked_path(game_dir, room):
+    return os.path.join(game_dir, "art-src", "%s_checked.txt" % room)
+
+
+def unchecked_rooms(game_dir):
+    out = []
+    for room in sorted(floor_plate_rooms()):
+        if read_room(game_dir, room) is None:
+            continue
+        want = room_digest(game_dir, room)
+        path = checked_path(game_dir, room)
+        try:
+            have = open(path, encoding="utf-8").read().strip()
+        except OSError:
+            have = None
+        if have != want:
+            out.append("%s: nobody has looked at this room since its art last "
+                       "changed. Run `python3 .github/art/room.py check %s %s`, "
+                       "OPEN the side-by-side it writes, and fix what it shows "
+                       "you — it is the step that finds props at the wrong size, "
+                       "scenery the scene has and the room does not, and a "
+                       "camera that was wrong three passes ago."
+                       % (room, game_dir, room))
+    return out
+
+
 def verify(game_dir):
     problems = []
     problems += style_drift(game_dir)
     problems += shipped_scenes(game_dir)
     problems += stale_masks(game_dir)
+    problems += unchecked_rooms(game_dir)
     plate_rooms = floor_plate_rooms()
     art = os.path.join(game_dir, "art")
     for room in sorted(plate_rooms):
@@ -507,14 +580,24 @@ def main():
         sh("python3", os.path.join(HERE, "show_walkmask.py"), game, a.room,
            os.path.join(a.out, "walk-%s.png" % a.room))
         if os.path.exists(scene):
-            sh("python3", os.path.join(HERE, "preview_room.py"), game, a.room,
-               "--scene", scene, "--mode", "side",
-               "--out", os.path.join(a.out, "side-%s.png" % a.room))
+            rc = sh("python3", os.path.join(HERE, "preview_room.py"), game, a.room,
+                    "--scene", scene, "--mode", "side",
+                    "--out", os.path.join(a.out, "side-%s.png" % a.room))
         else:
             print("no composed scene at %s — pass 1 is what you measure from, keep it"
                   % scene)
-            sh("python3", os.path.join(HERE, "preview_room.py"), game, a.room,
-               "--out", os.path.join(a.out, "room-%s.png" % a.room))
+            rc = sh("python3", os.path.join(HERE, "preview_room.py"), game, a.room,
+                    "--out", os.path.join(a.out, "room-%s.png" % a.room))
+        # rc, not a bare print: `check` used to announce "LOOK AT THESE" even
+        # when preview_room.py had died and rendered nothing, which is the
+        # worst possible outcome for the one step whose entire job is to make
+        # a person look at a picture.
+        if rc:
+            print("\nthe overlay did NOT render — fix that before trusting anything above",
+                  file=sys.stderr)
+            return rc
+        with open(checked_path(game, a.room), "w", encoding="utf-8") as f:
+            f.write(room_digest(game, a.room) + "\n")
         print("\nLOOK AT THESE. The side-by-side is the step that finds things.")
         return 0
 
