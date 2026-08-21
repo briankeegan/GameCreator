@@ -19,7 +19,7 @@
 - **The floor fills the LOWER HALF of the frame** and is open. The lower half is where the player actually exists.
 - **Depth belongs to props** , not to the plate. The far wall, the shelving, the pool — all of it is pass 3.
 ### Doors are art AND code
-- **A room's own `playerStart` must not sit inside its own exit trigger.** Doors stay disarmed until you step off them — that is what stops an arrival throwing you straight back out — so a spawn point on a threshold means the door never arms at all, and you can walk into it forever with nothing happening. This shipped once and was found by the walk test in §8.
+- **How a door BEHAVES is not this document's business — it is [`DOOR_STANDARD.md`](DOOR_STANDARD.md), and that is the one to read before moving a way out of a room.** What belongs here is the half a room generation decides: which wall the doorway is drawn in, and that it is drawn at all. The two halves are checked against each other — the room's spec names the wall, the exit trigger is a rectangle in code, and `check_room_exits.mjs` fails the build when they disagree.
 ### Lighting and palette come from the game, not the prompt
 ## 4. Placing and sizing props
 ### Use the numbers from pass 1

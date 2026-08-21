@@ -99,10 +99,13 @@ def read_room(game_dir, room):
     em = re.search(r"exits:\s*\[(.*?)\n      \]", block, re.S)
     if em:
         for line in re.finditer(r"\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}", em.group(1)):
+            # The first four x/y/w/h numbers in the entry are the trigger
+            # rectangle. There used to be a second case here for entries that
+            # also carried an `arriveAt` point; nothing carries one any more
+            # (DOOR_STANDARD.md §2 — arrival is derived, never typed) and both
+            # branches did the same thing regardless.
             t = line.group(1)
-            if "arriveAt" in t and re.search(r"\bx:\s*-?\d+", t):
-                exits.append({k: int(v) for k, v in re.findall(r"\b([xywh]):\s*(-?\d+)", t)[:4]})
-            elif re.search(r"\bx:\s*-?\d+", t):
+            if re.search(r"\bx:\s*-?\d+", t):
                 exits.append({k: int(v) for k, v in re.findall(r"\b([xywh]):\s*(-?\d+)", t)[:4]})
 
     ps = re.search(r"playerStart:\s*\{\s*x:\s*(-?\d+),\s*y:\s*(-?\d+)", block)
