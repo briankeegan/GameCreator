@@ -150,7 +150,7 @@ const ROWS = 12;
 // See docs/TILED_LEVEL_STANDARD.md, defect 5 — it is a level-map bug rather
 // than an art bug, which is why no checker catches it.
 //
-// CHAPTER 1 is nine of these rooms end to end (ROOMS below), not one. Every
+// CHAPTER 1 is fifteen of these rooms end to end (ROOMS below), not one. Every
 // room is the same COLSxROWS grid with its FORWARD gate ('G') on the same
 // top-centre two cells and its forward-entry spawn ('P') on the same
 // bottom-centre cell as every other room, on purpose — that's what "the
@@ -166,11 +166,15 @@ const ROWS = 12;
 // (buildRoomState again), same as a classic Zelda screen re-populating its
 // enemies when you leave and return: retreating is always safe, it just
 // isn't a permanent shortcut past a fight you haven't actually won yet.
-// Rooms are grouped into three ZONES of three, each its own colour wash
+// Rooms are grouped into three ZONES of five, each its own colour wash
 // (see `tint` on ROOMS and render()) so the chapter doesn't read as one
-// grey yard on a loop: Scrapyard (untinted, unchanged from before this
-// pass) -> Rail Yard (cool teal, introduces the Scrap Drone) -> Rust
-// Quarter (warm rust, introduces the Junk Brute) -> Town.
+// grey yard on a loop: Scrapyard (untinted) -> Rail Yard (cool teal,
+// introduces the Scrap Drone) -> Rust Quarter (warm rust, introduces the
+// Junk Brute) -> Town. Each zone cycles clear/switches/push rooms with a
+// DIFFERENT obstacle layout every time (e.g. Junk Bridge vs Junk Courtyard
+// are both "solve a puzzle then fight" rooms but neither reuses the
+// other's map), so five rooms in the same zone still each look and play
+// distinctly rather than being one room repeated five times.
 const ALLEY_MAP = [
   // Every row must be exactly COLS long. The top row used to be 15 characters
   // — one short — so the top-right corner had no wall character at all: not
@@ -189,6 +193,24 @@ const ALLEY_MAP = [
   "2......P.......2",
   "2222222222222222",
 ];
+// Scrap Catwalk: a second "clear the yard" room between the Alley and the
+// Bridge, so the zone isn't just one clear-room before its puzzle — same
+// obstacle vocabulary (tyre piles '3', crates '4'), different arrangement,
+// more enemies than the Alley.
+const CATWALK_MAP = [
+  "2222222GG2222222",
+  "2......B.......2",
+  "2.4..4....4..4.2",
+  "2..............2",
+  "2....3....3....2",
+  "2..............2",
+  "2....3....3....2",
+  "2..............2",
+  "2.4..4....4..4.2",
+  "2..............2",
+  "2......P.......2",
+  "2222222HH2222222",
+];
 const BRIDGE_MAP = [
   "2222222GG2222222",
   "2......B.......2",
@@ -200,6 +222,23 @@ const BRIDGE_MAP = [
   "2..............2",
   "2..3.......4...2",
   "2..............2",
+  "2......P.......2",
+  "2222222HH2222222",
+];
+// Junk Courtyard: a second switches room before the zone's Back Gate, with
+// its own switch layout (not GATEROOM_MAP's) so the two switch-hunt rooms
+// in this zone don't feel like the same room twice.
+const COURTYARD_MAP = [
+  "2222222GG2222222",
+  "2......B.......2",
+  "2....3....3....2",
+  "2..............2",
+  "2.S............2",
+  "2..............2",
+  "2............S.2",
+  "2..............2",
+  "2....3....3....2",
+  "2......S.......2",
   "2......P.......2",
   "2222222HH2222222",
 ];
@@ -217,7 +256,7 @@ const GATEROOM_MAP = [
   "2......P.......2",
   "2222222HH2222222",
 ];
-// ---- Rail Yard zone (rooms 4-6): introduces the Scrap Drone. ----
+// ---- Rail Yard zone (rooms 6-10): introduces the Scrap Drone. ----
 const RAIL_ENTRANCE_MAP = [
   "2222222GG2222222",
   "2......B.......2",
@@ -246,6 +285,36 @@ const RAIL_OVERPASS_MAP = [
   "2......P.......2",
   "2222222HH2222222",
 ];
+// Signal Tower: a second clear room in the Rail Yard, mixed drone/rat.
+const SIGNAL_TOWER_MAP = [
+  "2222222GG2222222",
+  "2......B.......2",
+  "2..3........3..2",
+  "2..............2",
+  "2.......4......2",
+  "2..............2",
+  "2..3........3..2",
+  "2..............2",
+  "2.......4......2",
+  "2..............2",
+  "2......P.......2",
+  "2222222HH2222222",
+];
+// Rail Switchyard: a second switches room, before the Drone Nest.
+const SWITCHYARD_MAP = [
+  "2222222GG2222222",
+  "2......B.......2",
+  "2S...........S.2",
+  "2..............2",
+  "2....44....44..2",
+  "2..............2",
+  "2..............2",
+  "2....44....44..2",
+  "2..............2",
+  "2..........S...2",
+  "2......P.......2",
+  "2222222HH2222222",
+];
 const DRONE_NEST_MAP = [
   "2222222GG2222222",
   "2......B.......2",
@@ -260,7 +329,7 @@ const DRONE_NEST_MAP = [
   "2..S...P.......2",
   "2222222HH2222222",
 ];
-// ---- Rust Quarter zone (rooms 7-9): introduces the Junk Brute. ----
+// ---- Rust Quarter zone (rooms 11-15): introduces the Junk Brute. ----
 const RUST_GATE_MAP = [
   "2222222GG2222222",
   "2......B.......2",
@@ -270,6 +339,22 @@ const RUST_GATE_MAP = [
   "2..............2",
   "2..............2",
   "2...44....44...2",
+  "2..............2",
+  "2..............2",
+  "2......P.......2",
+  "2222222HH2222222",
+];
+// Slag Pit: a second clear room, first place the Brute shares a room with
+// the Foundry's push puzzle instead of standing alone in an open yard.
+const SLAG_PIT_MAP = [
+  "2222222GG2222222",
+  "2......B.......2",
+  "2..............2",
+  "2..44....44....2",
+  "2..............2",
+  "2......33......2",
+  "2..............2",
+  "2..44....44....2",
   "2..............2",
   "2..............2",
   "2......P.......2",
@@ -286,6 +371,21 @@ const FOUNDRY_MAP = [
   "2.....X........2",
   "2..............2",
   "2..4........4..2",
+  "2......P.......2",
+  "2222222HH2222222",
+];
+// Smelter: a second switches room before Town Gate, own switch layout.
+const SMELTER_MAP = [
+  "2222222GG2222222",
+  "2......B.......2",
+  "2....4....4....2",
+  "2S.............2",
+  "2..............2",
+  "2......4.......2",
+  "2..............2",
+  "2..............2",
+  "2.............S2",
+  "2......S.......2",
   "2......P.......2",
   "2222222HH2222222",
 ];
@@ -322,11 +422,30 @@ const ROOMS = [
     enemySpawns: [{ c: 4, r: 1, type: "rat" }, { c: 12, r: 3, type: "rat" }, { c: 10, r: 8, type: "rat" }],
   },
   {
+    id: "catwalk",
+    name: "Scrap Catwalk",
+    map: CATWALK_MAP,
+    type: "clear",
+    enemySpawns: [
+      { c: 5, r: 3, type: "rat" },
+      { c: 10, r: 3, type: "rat" },
+      { c: 7, r: 7, type: "rat" },
+      { c: 3, r: 9, type: "rat" },
+    ],
+  },
+  {
     id: "bridge",
     name: "Junk Bridge",
     map: BRIDGE_MAP,
     type: "push", // gate opens once a crate rests on a switch tile AND enemies are cleared
     enemySpawns: [{ c: 3, r: 2, type: "rat" }, { c: 12, r: 8, type: "rat" }],
+  },
+  {
+    id: "courtyard",
+    name: "Junk Courtyard",
+    map: COURTYARD_MAP,
+    type: "switches",
+    enemySpawns: [{ c: 7, r: 2, type: "rat" }, { c: 4, r: 6, type: "rat" }, { c: 11, r: 8, type: "rat" }],
   },
   {
     id: "gate",
@@ -344,12 +463,28 @@ const ROOMS = [
     enemySpawns: [{ c: 4, r: 3, type: "drone" }, { c: 11, r: 3, type: "drone" }, { c: 7, r: 6, type: "rat" }],
   },
   {
+    id: "signalTower",
+    name: "Signal Tower",
+    map: SIGNAL_TOWER_MAP,
+    type: "clear",
+    tint: TINT_RAIL,
+    enemySpawns: [{ c: 3, r: 3, type: "drone" }, { c: 12, r: 3, type: "drone" }, { c: 7, r: 9, type: "rat" }],
+  },
+  {
     id: "railOverpass",
     name: "Rail Overpass",
     map: RAIL_OVERPASS_MAP,
     type: "push",
     tint: TINT_RAIL,
     enemySpawns: [{ c: 12, r: 2, type: "drone" }, { c: 3, r: 8, type: "rat" }],
+  },
+  {
+    id: "switchyard",
+    name: "Rail Switchyard",
+    map: SWITCHYARD_MAP,
+    type: "switches",
+    tint: TINT_RAIL,
+    enemySpawns: [{ c: 4, r: 3, type: "drone" }, { c: 11, r: 3, type: "drone" }, { c: 7, r: 8, type: "drone" }],
   },
   {
     id: "droneNest",
@@ -368,12 +503,28 @@ const ROOMS = [
     enemySpawns: [{ c: 7, r: 5, type: "brute" }, { c: 3, r: 2, type: "rat" }, { c: 12, r: 9, type: "rat" }],
   },
   {
+    id: "slagPit",
+    name: "Slag Pit",
+    map: SLAG_PIT_MAP,
+    type: "clear",
+    tint: TINT_RUST,
+    enemySpawns: [{ c: 7, r: 4, type: "brute" }, { c: 3, r: 2, type: "rat" }, { c: 12, r: 8, type: "rat" }],
+  },
+  {
     id: "foundry",
     name: "Scrap Foundry",
     map: FOUNDRY_MAP,
     type: "push",
     tint: TINT_RUST,
     enemySpawns: [{ c: 7, r: 5, type: "brute" }, { c: 3, r: 8, type: "rat" }],
+  },
+  {
+    id: "smelter",
+    name: "Smelter",
+    map: SMELTER_MAP,
+    type: "switches",
+    tint: TINT_RUST,
+    enemySpawns: [{ c: 7, r: 6, type: "brute" }, { c: 3, r: 4, type: "drone" }, { c: 12, r: 4, type: "drone" }],
   },
   {
     id: "townGate",
