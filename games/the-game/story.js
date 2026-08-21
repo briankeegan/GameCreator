@@ -877,7 +877,11 @@ window.NEWSEY_STORY = (function () {
       // silhouette and there is no floorPoly and no obstacles.
       playerStart: { x: 150, y: 150 },
       props: [
-        { art: "prop_lib_rug", x: 232, y: 152, h: 46, w: 92, flat: true },
+        // Re-measured off the scene (measure_blob.py grabcut and canny
+        // agreed): --rect 180,95,130,65 -> bbox 182,97-307,157. The old
+        // 92x46 at (232,152) was a guess, smaller and lower than the rug
+        // the scene actually draws.
+        { art: "prop_lib_rug", x: 245, y: 128, h: 60, w: 124, flat: true },
         // The bookcase wall, with the arch to the Garden cut through its
         // middle. w overlaps its neighbour: butted exactly, the floor showed
         // between the panels as pale pillars either side of the doorway.
@@ -890,13 +894,20 @@ window.NEWSEY_STORY = (function () {
         { art: "prop_lib_door",  x: 160, y: 63, h: 63, w: 116, door: true },
         { art: "prop_lib_shelf", x: 268, y: 63, h: 63, w: 116, behind: true, base: { w: 110, h: 8 } },
         // Michael's reading corner on the left, the writing desk on the right.
-        // The ladder leans forward off the wall, so its foot sits well past
-        // the wall seam — measured directly off the scene (top rail ~y=27,
-        // foot/casters ~y=81), not the old guessed y=104,h=76.
-        { art: "prop_lib_ladder", x: 56,  y: 81, h: 54, base: { w: 18, h: 6 } },
-        { art: "prop_lib_chair",  x: 30,  y: 122, h: 40, base: { w: 22, h: 8 } },
-        { art: "prop_lib_table",  x: 58,  y: 124, h: 26, base: { rx: 6, ry: 3 } },
-        { art: "prop_lib_desk",   x: 252, y: 122, h: 34, w: 50, base: { w: 46, h: 8 } }
+        // Every prop below was re-measured straight off library_scene.png with
+        // measure_blob.py (grabcut/canny, whichever contrasted) — the old
+        // numbers were guesses like the wall was, not read off anything, and
+        // are gone now rather than kept as a stale cross-check.
+        // Leans forward off the wall, foot well past the seam: top rail
+        // ~y=27, foot/casters ~y=81 (--rect 42,3,28,90 --method canny).
+        { art: "prop_lib_ladder", x: 56,  y: 81,  h: 54, base: { w: 18, h: 6 } },
+        // --rect 0,65,55,80 --method canny -> bbox 12,79-55,140.
+        { art: "prop_lib_chair",  x: 33,  y: 140, h: 61, base: { w: 22, h: 8 } },
+        // --rect 42,88,26,40 --method canny -> bbox 42,88-68,122.
+        { art: "prop_lib_table",  x: 55,  y: 122, h: 34, w: 26, base: { rx: 6, ry: 3 } },
+        // Read directly off a pixel grid (desk+chair-back as one piece, art's
+        // own composition): legs meet floor ~y=105, chair-back top ~y=68.
+        { art: "prop_lib_desk",   x: 255, y: 105, h: 37, w: 55, base: { w: 46, h: 8 } }
       ],
       exits: [
         // south, off the near edge, back to the Lounge's north arch. No art
