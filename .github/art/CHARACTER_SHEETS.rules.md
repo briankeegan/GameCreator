@@ -14,6 +14,7 @@
 - **Front and back rows** — see below. The step is SMALL, and most of the animation is not in the legs at all.
 ### How a front or back walk is actually built
 ### …and then don't ask for it. Build it.
+- **Cut every walk sheet with `build_sheet.py --build-steps 0,2`.** It builds the front and back rows' two step frames out of their own standing frame by lifting each leg in turn, so the steps are opposite BY CONSTRUCTION and only the middle frame has to be drawn well. Six front rows in a row lifted the same foot twice before this existed, which draws a character walking with one leg.
 - **Only for front and back rows.** A side stride is a fore/aft split, not a lift, and the same cutter flag on a side row would produce nonsense.
 - **Attack — 3 frames per direction: `[wind-up, strike, recover]`**
 | col | pose |

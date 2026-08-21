@@ -366,216 +366,102 @@ jobs:
                Do NOT write a PNG yourself (binary files corrupt) and do NOT
                hand-draw pixels.
 
-               READ games/<gameId>/art-style.json FIRST. It is the game's art
-               contract. If its "_status" still says UNFILLED TEMPLATE, fill it
-               in for THIS game before generating anything — decide the camera,
-               the rendering language, the character and enemy descriptions —
-               and fill lockedPalette from the first sheet you approve. If the
-               file is missing entirely, copy games/_template/art-style.json and
-               fill that in. games/dog-punk/art-style.json is a worked example.
+               CONTEXT DISCIPLINE — read narrowly or you will spend this run
+               compacting instead of working, and compaction is where a run
+               loses the thread: more than one has reported success on a job it
+               had half-forgotten. A game's app.js is ~13k tokens; a full art
+               standard 2-7k. Read the RULES CARD not the standard, and only
+               the one that matches the request. Never Read a whole large
+               source file — `grep -n "sliceSheet" games/<id>/app.js`, then
+               `sed -n '240,300p'` on the lines it names; you are editing a
+               function, not auditing a file. Review art from the ~768x768
+               shipped sheet, never the 1536x1024 raw. Do not re-read what you
+               already have.
 
-               READ THE STANDARD FOR WHAT YOU ARE DRAWING, FIRST. These
-               are the repo's art rules, kept in one place each so they cannot
-               go stale in two. Everything below is only the part that is
-               specific to running inside this workflow — the standards
-               themselves are:
+               EVERYTHING BELOW IS ONLY WHAT IS SPECIFIC TO RUNNING IN HERE.
+               The rules live in the standards and are enforced by the tools,
+               so this does not restate them — restating is how two copies of a
+               rule end up disagreeing.
 
-                 .github/art/CHARACTER_SHEETS.md   characters: sheet layout,
-                   walk and attack frames, directions, the recipe that works,
-                   and the failures behind every rule in it.
-                 docs/ROOM_ART_STANDARD.md          rooms: the THREE PASSES
-                   (composed scene -> ground plate -> prop sheet), prompting
-                   each one, prop placement and sizing, and the pipeline.
-                 games/<gameId>/art-style.json      that game's own contract.
+               FIRST, read exactly two things:
+                 games/<gameId>/art-style.json   the game's contract: palette,
+                   character specs, what must never drift. If its "_status"
+                   still says UNFILLED TEMPLATE, fill it in for THIS game
+                   before generating anything (games/dog-punk is a worked
+                   example). If it is missing, copy games/_template/.
+                 the RULES CARD for what you are drawing — and only that one:
+                   .github/art/CHARACTER_SHEETS.rules.md   characters
+                   docs/ROOM_ART_STANDARD.rules.md         rooms
+                   docs/TILED_LEVEL_STANDARD.rules.md      tiled levels
+                 Each card is the rules with the history stripped out,
+                 extracted from the full standard (same name, no `.rules`) and
+                 CI-checked against it, so it is never stale. Open the full
+                 standard only when a rule makes no sense without its reason.
+                 Runs that skipped this shipped art that had to be redone.
 
-               Read the relevant one with the Read tool BEFORE generating.
-               Runs that skipped this shipped art that had to be redone.
+               THEN use the front door for that kind of art. Each one builds
+               the prompt from the canonical prompt file plus the game's
+               contract, generates, and VERIFIES before it returns — so a bad
+               row cannot reach a sheet. Run `--help`; do not reconstruct the
+               flags from memory, and do not write a prompt from scratch:
 
-               CONTEXT DISCIPLINE — read narrowly, or you will spend the run
-               compacting instead of working. Your context is finite and
-               compaction is where a run loses the thread: more than one has
-               reported success on a job it had half-forgotten. Measured here,
-               a game's app.js is ~13k tokens, CLAUDE.md ~10k, each art
-               standard 2-7k. Reading four of those leaves little room to
-               think.
-                 * Read the RULES CARD, not the standard: every standard has a
-                   `<name>.rules.md` beside it holding the same rules with the
-                   history stripped out (CHARACTER_SHEETS.rules.md is ~2.5k
-                   tokens against the standard's ~7k). It is extracted from the
-                   standard by .github/art/rules_card.py and CI fails if the two
-                   disagree, so it is never out of date. Open the full standard
-                   only when a rule does not make sense and you need the reason.
-                 * ONE of them, the one that matches the request — characters OR
-                   rooms OR tiled levels, not all three.
-                 * NEVER `Read` a whole big source file. Find the part you
-                   need: `grep -n "sliceSheet\|HERO_ROW" games/<id>/app.js`
-                   then `sed -n '240,300p'` on the lines it names. You are
-                   editing a function, not auditing a file.
-                 * Review art from the SHIPPED sheet (about 768x768), never the
-                   1536x1024 raw — same information, a quarter of the tokens —
-                   and only after verify_sheet.py has passed it, so you are
-                   spending eyes on the half a checker cannot judge.
-                 * Do not re-read a file you have already read; you still have
-                   it.
+                 characters   python3 .github/art/generate_row.py --game <id> \
+                                --character <id> --view front|side|back \
+                                [--kind walk|attack]
+                              then cut with .github/art/build_sheet.py
+                 rooms        python3 .github/art/room.py generate <gameDir> \
+                                <room> scene|plate|props   (then plate/props/check)
+                 tiled levels python3 .github/art/tileset.py generate <gameDir> \
+                                ground|objects   (then cut/verify/check)
 
-               GENERATE SHEETS, NEVER SINGLE FRAMES. This is the rule that
-               matters most and the one previous runs kept breaking. A sprite
-               generated on its own is drawn from scratch, so its colours,
-               proportions and pixel scale do not match the frames beside it —
-               Dog Punk shipped a hero whose front view and side view were
-               visibly different dogs, and five rounds of regenerating single
-               frames never converged. Generate ONE image holding a whole row
-               of frames and cut it up. Frames drawn together cannot drift.
+               They route through the in-run image broker automatically (it
+               holds the OpenAI key; you do not have it and must not try to
+               use it). A call blocks ~30-60s — let it finish. Raws land in
+               art-src/ and are source material, never shipped.
 
-               a. CHARACTER ROWS — one command, the same one a person or
-                  another Claude session runs outside this workflow:
-                    python3 .github/art/generate_row.py \
-                      --game <gameId> --character <id> \
-                      --view front|side|back [--kind walk|attack] \
-                      [--description "..."] [--force]
-                  It builds the prompt from the canonical prompt file plus that
-                  game's art-style.json, generates ONE ROW on a landscape
-                  canvas, VERIFIES it, and DELETES it if it fails — so a bad row
-                  cannot sit in art-src/ waiting to be picked up by a later
-                  build. It routes through the in-run image broker
-                  automatically; you have no OpenAI key and must not look for
-                  one. Add --print-prompt to see the prompt without generating
-                  or spending anything.
+               If a game already has a rebuild script (games/<id>/rebuild-art.sh)
+               it reproduces that game's shipped art from its raws exactly —
+               read it before inventing a command.
 
-                  TILED LEVELS (a level that is a grid of repeating tiles,
-                  like Dog Punk — as opposed to one picture per room):
-                    python3 .github/art/tileset.py generate <gameDir> \
-                      ground|objects --n N --items "..."
-                    python3 .github/art/tileset.py cut <gameDir> --tile ...
-                    python3 .github/art/tileset.py verify <gameDir>
-                    python3 .github/art/tileset.py check <gameDir>   # then LOOK
-                  Read docs/TILED_LEVEL_STANDARD.md first. The one rule that
-                  has already cost a level: a floor tile must have NO OUTLINE
-                  and must be cut as a `texture:`, which is what makes it
-                  seamless — the game's character rule says "thick black
-                  outline", and applying that to a floor tile turns the level
-                  into graph paper.
+               THE ONE RULE WORTH REPEATING HERE, because breaking it is what
+               cost this repo the most: GENERATE WHOLE ROWS, NEVER SINGLE
+               FRAMES. A sprite generated alone is drawn from scratch and its
+               colours, proportions and pixel scale will not match the frames
+               beside it. Dog Punk shipped a hero whose front and side views
+               were visibly different dogs, and five rounds of regenerating
+               single frames never converged. If art is wrong, regenerate the
+               ROW.
 
-                  ROOMS — same shape, same transport, one pass at a time:
-                    python3 .github/art/room.py generate <gameDir> <room> \
-                      scene|plate|props [--floor "..."] [--n N] [--items "..."]
-                  Read docs/ROOM_ART_STANDARD.md FIRST — a room is THREE
-                  PASSES and doing them out of order wastes all three. In
-                  short: `scene` is a composed picture you MEASURE and never
-                  ship; `plate` is the walkable surface and nothing else, and
-                  becomes the collision mask, so run `room.py plate <gameDir>
-                  <room>` after it; `props` is everything you cannot walk on,
-                  drawn side by side in one image, cut with `room.py props
-                  <gameDir> <room> <name>...`. Then `room.py check` and LOOK at
-                  the two pictures it renders, and `room.py verify` before you
-                  finish.
+               VERIFY, THEN LOOK. `verify_sheet.py` (or `tileset.py verify`)
+               decides the mechanical half — clipping, frame count, duplicates,
+               palette, a material the spec says is always present going
+               missing. It cannot judge whether the drawing is any good, so
+               after it passes, Read the SHIPPED sheet (~768x768, not the
+               1536x1024 raw) and look. pages.yml runs the same checks, so
+               anything failing here is visible on main anyway.
 
-                  Any OTHER image (a tile, a one-off icon) goes through the
-                  broker directly:
-                    curl -s -X POST http://127.0.0.1:8791/generate \
-                      -H 'content-type: application/json' \
-                      -d '{"prompt":"...",
-                           "output_path":"games/<gameId>/art-src/<name>_raw.png",
-                           "game":"<gameId>","size":"1536x1024"}'
-                  The call BLOCKS ~30-60s; let it finish. Raw generations go
-                  under art-src/ — source material, not shipped art.
+               WIRING IT IN: cut the sheet at load into per-frame canvases
+               (games/dog-punk/app.js sliceSheet() is the pattern), keep the
+               existing canvas fallback so the game still plays if an image is
+               missing, add the file to that game's sw.js precache list, and
+               drop what it replaces.
 
-                  DO NOT WRITE A PROMPT FROM SCRATCH for anything that has a
-                  canonical one. generate_row.py and room.py generate already
-                  use those files; they carry rules a fresh prompt always
-                  leaves out. If a generation exposes a gap, FIX THE PROMPT
-                  FILE (.github/art/walkgrid_prompt.txt,
-                  attacksheet_prompt.txt, room_prompts/*.txt). That is how the
-                  next run inherits what this one learned; a better prompt
-                  typed into one curl call dies with this run.
+               The /generate response includes "remaining" — a limited number
+               of generations per run. A whole row costs one, which is the
+               point. If you run out with nothing good, keep the best attempt
+               and SAY SO in your reply.
 
-               b. Cut the raw into a shipped sheet with the shared cutter:
-                    python3 .github/art/build_sheet.py \
-                      --style games/<gameId>/art-style.json \
-                      --out games/<gameId>/<name>_sheet.png \
-                      --row games/<gameId>/art-src/<raw>.png [--row ...] \
-                      [--build-steps 0,2] [--blobs] [--body-height N]
-                  One --row per output row, in order. --build-steps 0,2 on a
-                  three-row walk sheet builds the front and back rows' TWO STEP
-                  FRAMES out of their standing frame, because the generator
-                  will not draw opposite steps — six rows in a row lifted the
-                  same foot twice, so the character walked with one leg. Use it
-                  on every walk sheet; only the middle frame of those rows then
-                  has to be drawn well. --blobs when sprites in the raw overlap
-                  horizontally. --body-height sets how much of the cell the
-                  character fills: that is where relative size between
-                  characters lives (a rat is smaller than the hero because of
-                  this number), NEVER in per-character draw sizes. `--help` for
-                  the rest. Rooms use .github/art/room.py instead — `plate`,
-                  `props`, `check`, `verify`; see the room standard.
+               For a simple FLAT icon or logo, skip all this and write an
+               inline .svg (SVG over PNG).
 
-               c. VERIFY IT MECHANICALLY, then LOOK AT IT. Both, in that order:
-                    python3 .github/art/verify_sheet.py sheet <sheet>.png \
-                            --style games/<gameId>/art-style.json
-                  (generate_row.py already ran the raw check for rows it made.
-                  For a row generated any other way, run it yourself:
-                  `verify_sheet.py raw <raw>.png --frames 3 --walk [--mirrored]`
-                  — --mirrored on a front or back row, never on a side row.)
-                  It catches clipping, wrong frame count, duplicate frames, a
-                  missing neutral, detached specks, off-palette colour and the
-                  same-foot-twice repeat. It cannot judge whether the drawing
-                  is right, so THEN Read the output sheet and look: same
-                  character in every frame, defining feature (mohawk, hat,
-                  weapon) visible in ALL of them including attacks, nothing
-                  clipped. If it is wrong, regenerate the ROW — never patch one
-                  frame. pages.yml runs these same checks on push, so a sheet
-                  that fails here fails the deploy anyway.
-
-               d. Reference the sheet in the game code by cutting it at load
-                  into per-frame canvases (games/dog-punk/app.js sliceSheet() is
-                  the pattern), and keep a canvas/vector fallback so the game
-                  still plays if the image is missing. Add the sheet to the
-                  game's sw.js precache list, BUMP that file's cache name, and
-                  drop any files it replaces. Without the bump, browsers keep
-                  serving the old art and the change looks like it never
-                  shipped.
-
-               The /generate response includes "remaining" — you have a limited
-               number of generations per run. A sheet costs one for a whole row,
-               which is the point. If you run out with nothing great, keep the
-               best attempt and SAY SO in your reply.
-
-               WALK CYCLES: which pipeline depends on how the game ships its
-               art, and both are one dispatch — do not hand-roll either.
-                 - SHEET-BASED games (the standard for anything new, Dog Punk
-                   is the reference): run generate_row.py once per view, as in
-                   (a) above, then cut all three rows with build_sheet.py
-                   --build-steps 0,2. (Outside this workflow the same thing is
-                   the "Generate walk row" Action, which is a button on that
-                   same script — you cannot dispatch a workflow from inside
-                   one, so call the script.)
-                 - PER-FILE games (Newsey/the-game, legacy but supported):
-                   dispatch .github/workflows/generate-walksheet.yml, which
-                   generates a 4x3 grid, slices it into <id>_<dir>_<n>.png and
-                   commits. See games/the-game/WALK_SHEETS.md.
-               Either way the frame convention is the same and is in
-               CHARACTER_SHEETS.md: three frames per direction, the MIDDLE one
-               a true NEUTRAL standing pose used both for idle and as the
-               resting beat mid-walk, playback [1,0,1,2] while moving snapping
-               back to 1 the moment it stops, and RIGHT never drawn — it is the
-               side row mirrored with scale(-1,1), so that row must be a true
-               side profile. The code side is adding the character to that
-               game's facing-frames table.
-
-               For a simple FLAT icon or logo, skip all this and write an inline
-               .svg file (SVG over PNG per CLAUDE.md).
-
-            3b. SAY WHAT YOU ARE DOING, briefly, at the points where the run
-               would otherwise go quiet for minutes:
-                 .github/autopilot/status.sh "rebuilding the garden's prop sheet"
-               It edits ONE comment on the thread, so extra lines cost nothing
-               and notify nobody. The art tools already announce every
-               generation and every check by themselves — do NOT repeat those.
-               Use it for the gaps between: starting on a room, rewriting a
-               chunk of game code, running the game's tests. Three or four
-               lines across a run is right; a line per file edit is noise.
-               Never claim something is done here — a status line is "starting
-               X", and what actually happened goes in the reply.
+               For a ONE-OFF image that is none of the three kinds above (a
+               title screen, say), post to the broker yourself — but build the
+               prompt from the game's art-style.json so it matches everything
+               else, and Read the result:
+                 curl -s -X POST http://127.0.0.1:8791/generate \
+                   -H 'content-type: application/json' \
+                   -d '{"prompt":"...","output_path":"games/<id>/<name>.png",
+                        "size":"1536x1024"}'
 
             4. Write your chat reply as plain Markdown — the message body ONLY,
                with NO "**Claude says:**" prefix and NO "[v0.N]" stamp (the

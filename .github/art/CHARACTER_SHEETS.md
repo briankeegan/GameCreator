@@ -86,9 +86,11 @@ mirrored".
 
 So ask for the pose it draws well and construct the two it does not:
 
-```
-python3 .github/art/build_sheet.py … --build-steps 0,2
-```
+**Cut every walk sheet with `build_sheet.py --build-steps 0,2`.** It builds the
+front and back rows' two step frames out of their own standing frame by lifting
+each leg in turn, so the steps are opposite BY CONSTRUCTION and only the middle
+frame has to be drawn well. Six front rows in a row lifted the same foot twice
+before this existed, which draws a character walking with one leg.
 
 The neutral frame's legs are separated by a gap of background. The cutter finds
 that gap, lifts the leg on one side of it — that is a step — then lifts the
