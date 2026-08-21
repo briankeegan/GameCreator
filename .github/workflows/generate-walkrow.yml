@@ -120,7 +120,16 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "${{ steps.gen.outputs.out }}"
+          # THE WHOLE art-src/ DIR, NOT JUST THE ONE FILE. imagegen.py's
+          # generate() also writes provenance to art-src/generated.json on
+          # every successful generation, which this step never staged — so
+          # the raw got committed but generated.json's edit sat unstaged,
+          # and the very next `git pull --rebase` (needed whenever something
+          # else pushed to main in the meantime, which on a busy night is
+          # often) refused with "cannot pull with rebase: you have unstaged
+          # changes", 6 retries, and a lost generation — the commit only
+          # ever existed on this ephemeral runner and vanished with it.
+          git add -A -- "games/${{ inputs.game }}/art-src"
           if git commit -m "Generate walk row: ${{ inputs.game }} ${{ inputs.character }} ${{ inputs.view }}"; then
             for i in 1 2 3 4 5 6; do
               if git pull --rebase origin main && git push; then exit 0; fi
