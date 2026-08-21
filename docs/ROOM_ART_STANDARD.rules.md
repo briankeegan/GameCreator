@@ -22,6 +22,8 @@
 - **A room's own `playerStart` must not sit inside its own exit trigger.** Doors stay disarmed until you step off them — that is what stops an arrival throwing you straight back out — so a spawn point on a threshold means the door never arms at all, and you can walk into it forever with nothing happening. This shipped once and was found by the walk test in §8.
 ### Lighting and palette come from the game, not the prompt
 ## 4. Placing and sizing props
+### Measure the wall before you measure anything that stands against it
+- **This is the first measurement in the room, before any prop's.** Everything that stands flush against the back wall — a mirror, a nightstand, a shelf, a cabinet — has to share the wall's own floor line (the Y where the wall panels' art meets the floor), or it reads as floating with a strip of bare wall showing under it. Get the wall's line wrong, or skip measuring it and just inherit whatever `y` an earlier pass happened to use, and every prop placed against it inherits the error — each one individually "measured correctly off the scene" can still be wrong TOGETHER, the same way the wall's own tiled copies have to agree with EACH OTHER (§ "Wall bands are tiled…") and not just with the frame edges.
 ### Use the numbers from pass 1
 - **First choice, every time: the position and size the composed scene used.** Measure them, then use them. They are a composition that already proved it works. Only invent a position when the floor plate came back with the path or the doorway somewhere the scene didn't have it — and then move the prop the smallest distance that clears it.
 ### Sizing, and when NOT to use a depth ramp

@@ -20,8 +20,9 @@
   "_measured_why": "Read off bedroom_scene.png against room.py grid's labelled pixel overlay (by hand) or room.py measure's CV segmentation (grabcut for colour-contrasting objects, canny for low-contrast ones with strong edges) — automated matching between a scene and its independently-generated props was tried (pixel/gradient correlation, ORB feature matching + RANSAC) and does not work, see docs/ROOM_ART_STANDARD.md §5, which is a DIFFERENT problem from within-scene measurement. room.py sizecheck holds story.js to these forever after; re-measure if the scene or the prop art changes and update both together.",
   "measured": {
     "prop_bed_rug": { "x": 157, "y": 134, "h": 58, "w": 195 },
-    "prop_bed_mirror": { "x": 53, "y": 93, "h": 83, "w": 48 },
+    "prop_bed_mirror": { "x": 53, "y": 102, "h": 92, "w": 46 },
     "prop_bed_bed": { "x": 162, "y": 113, "h": 99, "w": 79 },
     "prop_bed_trunk": { "x": 163, "y": 153, "h": 32, "w": 53 }
-  }
+  },
+  "_mirror_departure": "prop_bed_mirror's measured y/h are NOT a literal scene reading (that's y=93, h=83 — a few px short of the wall's own measured floor line at y=102, same bug as the lab's cabinet: a real gap of wainscot visible below it in a live screenshot). Grounded to y=102 to match the wall panels it stands flush against instead; w recomputed to keep the spec's locked 1:2 ratio at the new h. The nightstand (no measured: entry, never had one) got the same treatment directly in story.js."
 }

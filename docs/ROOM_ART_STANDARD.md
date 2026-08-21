@@ -131,6 +131,37 @@ palette, rendering technique and light logic live in that game's
 
 Getting this wrong is what makes a room look like objects were sprinkled on it.
 
+### Measure the wall before you measure anything that stands against it
+
+**This is the first measurement in the room, before any prop's.** Everything
+that stands flush against the back wall — a mirror, a nightstand, a shelf, a
+cabinet — has to share the wall's own floor line (the Y where the wall panels'
+art meets the floor), or it reads as floating with a strip of bare wall
+showing under it. Get the wall's line wrong, or skip measuring it and just
+inherit whatever `y` an earlier pass happened to use, and every prop placed
+against it inherits the error — each one individually "measured correctly
+off the scene" can still be wrong TOGETHER, the same way the wall's own
+tiled copies have to agree with EACH OTHER (§ "Wall bands are tiled…") and
+not just with the frame edges.
+
+This is exactly what happened in the bedroom: the mirror and the nightstand
+were each measured off the scene independently and landed a few pixels short
+of the wall panels' own floor line — each individually plausible, both
+visibly floating once assembled, on the SAME wall, next to furniture (the
+bed) that WAS grounded correctly. Fixed by re-measuring the wall's own line
+first and grounding both to it, not by re-measuring each prop again in
+isolation.
+
+`room.py verify` now watches for this automatically — `grounding_problems()`
+prints a NOTE for any non-flat, non-`behind` prop whose `y` sits meaningfully
+short of its room's wall line, naming the gap in pixels. It can only ever be
+a NOTE: plenty of furniture legitimately stands forward of the wall on
+purpose (a workbench, a table), and nothing in the numbers alone can tell
+"flush against the wall, floating" from "forward of it on purpose" — a human
+still has to look at a render and decide. But the prompt to look is now
+automatic, on every room, every push, instead of depending on someone
+noticing a strip of wall in a screenshot.
+
 ### Use the numbers from pass 1
 
 **First choice, every time: the position and size the composed scene used.**

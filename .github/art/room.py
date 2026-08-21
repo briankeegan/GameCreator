@@ -681,6 +681,52 @@ def aspect_distortion_problems(room, props, widths, art_dir):
     return problems
 
 
+# A prop measured correctly against the SCENE can still be wrong if the
+# thing it's measured relative to — the wall it stands against — was
+# itself measured wrong, or if the prop's own art simply doesn't reach as
+# far down as the wall does. The bedroom's mirror and nightstand were both
+# found this way: each individually "correct" (their y/h came straight off
+# the scene, same as everything else), but a few px short of the wall
+# panels' own measured floor line, which read as a strip of bare wainscot
+# under both of them in a live screenshot — the exact same bug the lab's
+# cabinet had. "I measured this prop" isn't enough; it has to be measured
+# against the SAME baseline as whatever it's standing next to, the same
+# way the wall's own tiled copies all have to agree with EACH OTHER (see
+# backdrop_coverage_problems above) — grounding is that same idea applied
+# to one prop and the wall behind it, not just wall tiles against each
+# other.
+#
+# This can only ever be a NOTE, not a FAIL: plenty of correctly-placed
+# furniture sits well forward of the wall's own floor line on purpose (the
+# lab's bench included — it read completely fine on a render despite its
+# y being 15px short of that room's wall), and nothing in the numbers
+# alone can tell "flush against the wall, floating" from "deliberately
+# forward of it, fine". A human has to look at each one.
+GROUND_NOTE = 3    # px of slack before even a NOTE — measurement isn't pixel-exact
+
+
+def grounding_problems(room, props):
+    wall_ys = [p["y"] for p in props if (p["behind"] or p["door"]) and not p["flat"] and p["y"] is not None]
+    if not wall_ys:
+        return []
+    wall_y = max(set(wall_ys), key=wall_ys.count)    # the wall band's own floor line
+    problems = []
+    for p in props:
+        if p["flat"] or p["behind"] or p["door"] or not p["base"]:
+            continue
+        if p["y"] is None:
+            continue
+        if p["y"] < wall_y - GROUND_NOTE:
+            print("NOTE %s: '%s' at y=%d is %dpx short of this room's wall "
+                  "line (y=%d) — LOOK at a render: if it's meant to stand "
+                  "flush against that wall, this is the same 'floating' bug "
+                  "the bedroom's mirror/nightstand and the lab's cabinet "
+                  "had; if it's meant to stand forward of the wall on "
+                  "purpose, it's fine as is."
+                  % (room, p["art"], p["y"], wall_y - p["y"], wall_y), file=sys.stderr)
+    return problems
+
+
 def verify(game_dir):
     problems = []
     problems += style_drift(game_dir)
@@ -724,6 +770,7 @@ def verify(game_dir):
 
         problems += backdrop_coverage_problems(room, r["props"], r["widths"], art)
         problems += aspect_distortion_problems(room, r["props"], r["widths"], art)
+        problems += grounding_problems(room, r["props"])
 
         # dead collision data
         if r["has_floorpoly"]:

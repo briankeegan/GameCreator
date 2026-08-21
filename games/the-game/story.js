@@ -383,8 +383,15 @@ window.NEWSEY_STORY = (function () {
         // metal bands give canny's edge detector plenty to find. See
         // CLAUDE.md's "before hand-rolling an algorithm" note for why these
         // two, not a hand-rolled flood fill.
-        { art: "prop_bed_mirror", x: 53,  y: 93,  h: 83, w: 48, base: { w: 40, h: 8 } },
-        { art: "prop_bed_nightstand", x: 96, y: 88, h: 40, base: { w: 20, h: 8 } },
+        // Both grounded to y=102, the wall's own measured floor line (same
+        // one the wall panels sit on) — their earlier y (93, 88) was each a
+        // few px short of it, same bug as the lab's cabinet: a real gap of
+        // wainscot visible below both in a live screenshot. h taken up to
+        // keep each one's top where it was; w recomputed to match (mirror
+        // keeps its locked 1:2 ratio off the new h; the nightstand has none
+        // declared, so it still follows the art's own aspect automatically).
+        { art: "prop_bed_mirror", x: 53,  y: 102, h: 92, w: 46, base: { w: 40, h: 8 } },
+        { art: "prop_bed_nightstand", x: 96, y: 102, h: 54, base: { w: 20, h: 8 } },
         { art: "prop_bed_bed",   x: 162, y: 113, h: 99, w: 79, base: { w: 72, h: 14 } },
         { art: "prop_bed_trunk", x: 163, y: 153, h: 32, w: 53, base: { w: 48, h: 9 } },
       ],
