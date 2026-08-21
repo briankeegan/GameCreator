@@ -43,6 +43,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import imagegen                                     # noqa: E402  (shared transport)
+import profiles                                    # noqa: E402  (per-kind settings)
 
 ROOT = imagegen.ROOT
 PROMPTS = {'walk': '.github/art/walkgrid_prompt.txt',
@@ -50,7 +51,8 @@ PROMPTS = {'walk': '.github/art/walkgrid_prompt.txt',
 # Landscape, always. A 3x3 grid on a square canvas clips its bottom row and on
 # a tall canvas silently drops a column; a single row of three on 1536x1024 has
 # not failed yet. See CHARACTER_SHEETS.md.
-SIZE = '1536x1024'
+# Canvas, quality, background and which verification flags apply all live in
+# profiles.py, keyed by what is being drawn — see the reasoning there.
 
 
 def args_character(description, style):
@@ -186,8 +188,9 @@ def main():
     ap.add_argument('--view', required=True, choices=['front', 'side', 'back'])
     ap.add_argument('--kind', default='walk', choices=['walk', 'attack'])
     ap.add_argument('--description', help='override the art-style.json mainCharacter')
-    ap.add_argument('--quality', default='medium', choices=['low', 'medium', 'high'],
-                    help='medium is enough for flat cartoon pixel art; high costs ~4x')
+    ap.add_argument('--quality', default=None, choices=['low', 'medium', 'high'],
+                    help='default comes from profiles.py for this kind of art; '
+                         'medium is enough for flat cartoon pixel art, high costs ~4x')
     ap.add_argument('--force', action='store_true',
                     help='regenerate (and re-bill) even if the output already exists')
     ap.add_argument('--print-prompt', action='store_true',
@@ -203,35 +206,19 @@ def main():
     suffix = '_raw.png' if args.kind == 'walk' else '_atk_raw.png'
     out_rel = f'games/{args.game}/art-src/{args.character}_{args.view}{suffix}'
     out_abs = ROOT / out_rel
-    if not imagegen.generate(prompt, out_rel, SIZE, args.quality, args.force):
+    prof = profiles.get(args.kind)
+    if not imagegen.generate(prompt, out_rel, prof['size'],
+                             args.quality or prof['quality'], args.force,
+                             background=prof['background'],
+                             model=prof['model']):
         return
 
-    # THE GATE. --mirrored only on the camera-on views: mirroring a side
-    # profile turns it into the other direction, so the test is meaningless
-    # there (see MIRROR_STEP_MAX in verify_sheet.py).
-    cmd = [sys.executable, str(ROOT / '.github/art/verify_sheet.py'), 'raw', str(out_abs),
-           '--frames', '3']
-    if args.kind == 'attack':
-        # COUNT ATTACK FRAMES AS BLOBS, NOT BY GUTTER. A swung blade reaches
-        # into the white gap between sprites, so two frames touch and a
-        # gutter-based count reports "found 2 sprites, expected 3" on art that
-        # is perfectly good. build_sheet.py has always been given --blobs for
-        # attack sheets — the cutter knew; the verifier did not, and it
-        # rejected two rows for it before anyone noticed the flag was missing
-        # on one side of the same pipeline.
-        cmd.append('--blobs')
-    if args.kind == 'walk':
-        cmd.append('--walk')
-        if args.view != 'side':
-            # --steps-built with it: a front or back row's two step frames are
-            # rebuilt from its standing frame by build_sheet.py --build-steps,
-            # which is the standard recipe, so a same-foot-twice verdict on the
-            # DRAWN steps is reported and not fatal — the frames it is judging
-            # are discarded before anything ships, and the built ones are gated
-            # on the sheet instead. Deleting the row for it throws away a good
-            # standing frame (and a generation) over a defect that cannot reach
-            # the game; that happened twice in one run before this was here.
-            cmd += ['--mirrored', '--steps-built']
+    # THE GATE. Which flags apply is a property of what was drawn, so it comes
+    # from the profile rather than from an if-ladder here that has to be kept
+    # in step with the cutter's.
+    flags = profiles.verify_args(args.kind, args.view)
+    cmd = [sys.executable, str(ROOT / '.github/art/verify_sheet.py'), 'raw',
+           str(out_abs)] + (flags or [])
     if subprocess.run(cmd).returncode:
         # QUARANTINED, not deleted. The guarantee that matters is that a failed
         # row cannot be picked up by a later build — every build command names

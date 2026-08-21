@@ -89,10 +89,13 @@ def main():
 
     if a.cmd == "generate":
         sys.path.insert(0, HERE)
-        import imagegen
+        import imagegen, profiles
+        prof = profiles.get("tileset_" + a.which)
         out = os.path.join(game, "art-src", RAW[a.which])
-        if not imagegen.generate(fill(a.which, a.n, a.items, strip_notes=True),
-                                 out, quality=a.quality, force=a.force):
+        if not imagegen.generate(fill(a.which, a.n, a.items, strip_notes=True), out,
+                                 size=prof["size"], quality=a.quality or prof["quality"],
+                                 force=a.force, background=prof["background"],
+                                 model=prof["model"]):
             return 0
         print("\nwrote %s\nnext: tileset.py cut %s --tile ... (one per shipped tile, "
               "left to right)" % (out, game))

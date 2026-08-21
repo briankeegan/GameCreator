@@ -41,13 +41,71 @@ def broker_health():
         return None
 
 
-def _via_broker(prompt, out_rel, size, quality):
+# WHAT THE API ACCEPTS. Checked against the docs, not remembered. Anything not
+# in here is rejected before a request is made, because the API ignores
+# unknown fields silently — a typo would mean generating at the wrong settings
+# for weeks and never being told.
+ALLOWED = {
+    "model": {"gpt-image-1", "gpt-image-2"},
+    # gpt-image-2 also takes 2048x2048 and "auto"; gpt-image-1 does not.
+    "size": {"gpt-image-1": {"1024x1024", "1024x1536", "1536x1024"},
+             "gpt-image-2": {"1024x1024", "1024x1536", "1536x1024", "2048x2048", "auto"}},
+    "quality": {"low", "medium", "high", "auto"},
+    # "auto" is gpt-image-2 only.
+    "background": {"transparent", "opaque", "auto"},
+    "output_format": {"png", "jpeg", "webp"},
+    "moderation": {"auto", "low"},          # gpt-image-2 only
+}
+
+
+def build_request(cfg, prompt):
+    """Turn a generation profile into the exact API payload, or fail loudly.
+
+    THE POINT OF THIS FUNCTION. The two transports used to build their own
+    payloads, and they drifted: the broker sent `background` and the direct
+    OpenAI path did not, so the same profile produced different images
+    depending on who was asking — which is precisely what a shared transport
+    was written to prevent. Now both call this.
+    """
+    model = cfg.get("model", "gpt-image-1")
+    if model not in ALLOWED["model"]:
+        raise ValueError(f'unknown model {model!r}; the API takes {sorted(ALLOWED["model"])}')
+    payload = {"model": model, "prompt": prompt, "n": 1}
+
+    size = cfg.get("size", "1024x1024")
+    if size not in ALLOWED["size"][model]:
+        raise ValueError(f'{model} does not take size {size!r}; it takes '
+                         f'{sorted(ALLOWED["size"][model])}')
+    payload["size"] = size
+
+    for key in ("quality", "background", "output_format", "moderation"):
+        val = cfg.get(key)
+        if val is None:
+            continue
+        if val not in ALLOWED[key]:
+            raise ValueError(f'{key}={val!r} is not accepted; the API takes '
+                             f'{sorted(ALLOWED[key])}')
+        if val == "auto" and model == "gpt-image-1" and key in ("background", "size"):
+            raise ValueError(f'{key}="auto" is gpt-image-2 only')
+        if key == "moderation" and model == "gpt-image-1":
+            raise ValueError("moderation is gpt-image-2 only")
+        payload[key] = val
+
+    # background: transparent needs a format that HAS transparency.
+    if payload.get("background") == "transparent" and payload.get("output_format", "png") == "jpeg":
+        raise ValueError('background="transparent" needs output_format png or webp, not jpeg')
+    return payload
+
+
+def _via_broker(prompt, out_rel, cfg):
+    payload = dict(build_request(cfg, prompt))
+    payload.pop("model", None)          # the broker owns the model + the key
+    payload.update({"output_path": out_rel,
+                    "transparent": cfg.get("background") == "transparent"})
     # No "game" field on purpose: the broker would prepend its own art-style
     # framing, and every prompt that reaches here was already built from that
     # same art-style.json by its front door.
-    payload = json.dumps({'prompt': prompt, 'output_path': out_rel,
-                          'size': size, 'quality': quality}).encode()
-    req = urllib.request.Request(f'{BROKER}/generate', data=payload,
+    req = urllib.request.Request(f'{BROKER}/generate', data=json.dumps(payload).encode(),
                                  headers={'content-type': 'application/json'})
     try:
         with urllib.request.urlopen(req, timeout=300) as r:
@@ -58,10 +116,9 @@ def _via_broker(prompt, out_rel, size, quality):
     print(f'generated via broker ({body.get("remaining", "?")} generation(s) left this run)')
 
 
-def _via_openai(prompt, out_abs, size, quality):
+def _via_openai(prompt, out_abs, cfg):
     key = os.environ['OPENAI_API_KEY']
-    payload = json.dumps({'model': 'gpt-image-1', 'prompt': prompt,
-                          'size': size, 'quality': quality, 'n': 1}).encode()
+    payload = json.dumps(build_request(cfg, prompt)).encode()
     # A rejected request is not billed, so retrying a rate limit costs nothing
     # — it just stops a batch failing against the per-minute image cap.
     for attempt in range(1, 7):
@@ -88,46 +145,35 @@ def _via_openai(prompt, out_abs, size, quality):
     print(f'generated via OpenAI -> {out_abs}')
 
 
-def status(line):
-    """Announce a step to whoever is watching, if anyone is.
+def generate(prompt, out_rel, size='1536x1024', quality='medium', force=False,
+             background=None, model='gpt-image-1', output_format=None, moderation=None):
+    """Generate one image to a repo-relative path. Returns False if skipped.
 
-    GC_STATUS_HOOK points at a script that posts progress somewhere a human can
-    see it — in the Clubhouse autopilot that is a live-updating comment on the
-    thread's PR. Unset (a person at a terminal, an Action), this just prints.
-
-    The point of doing it HERE rather than having the model narrate: a line
-    only appears because an image was actually requested. A model describing
-    its own progress is the report that has already proved untrustworthy —
-    earlier autopilot runs reported success on art that never changed.
+    Every caller passes settings from .github/art/profiles.py, keyed by what is
+    being drawn. Nothing here decides them; this decides only how the request is
+    made and that both transports make it identically.
     """
-    print(f'[art] {line}', flush=True)
-    hook = os.environ.get('GC_STATUS_HOOK')
-    if not hook:
-        return
-    try:
-        subprocess.run([hook, line], timeout=30, check=False)
-    except Exception as e:                              # never fail a run over a status line
-        print(f'[art] (status hook failed: {e})', file=sys.stderr)
+    cfg = {"model": model, "size": size, "quality": quality}
+    for k, v in (("background", background), ("output_format", output_format),
+                 ("moderation", moderation)):
+        if v is not None:
+            cfg[k] = v
+    build_request(cfg, prompt)          # validate BEFORE anything is billed
 
-
-def generate(prompt, out_rel, size='1536x1024', quality='medium', force=False):
-    """Generate one image to a repo-relative path. Returns False if skipped."""
     out_abs = ROOT / out_rel
     if out_abs.exists() and out_abs.stat().st_size and not force:
         print(f'{out_rel} already exists — skipping (pass force to regenerate). '
               'Nothing was billed.')
         return False
     out_abs.parent.mkdir(parents=True, exist_ok=True)
-    status(f'generating {out_rel} ({size}, {quality}) — this takes 30-60s')
     if broker_health():
-        _via_broker(prompt, out_rel, size, quality)
+        _via_broker(prompt, out_rel, cfg)
     elif os.environ.get('OPENAI_API_KEY'):
-        _via_openai(prompt, out_abs, size, quality)
+        _via_openai(prompt, out_abs, cfg)
     else:
         sys.exit('No image backend: start the broker '
                  '(.github/autopilot/image-broker.js) or set OPENAI_API_KEY. '
                  'A model is never given the key directly.')
     if not out_abs.exists() or not out_abs.stat().st_size:
         sys.exit(f'the backend reported success but wrote nothing to {out_rel}')
-    status(f'generated {out_rel}')
     return True

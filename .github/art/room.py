@@ -639,7 +639,8 @@ def main():
         # asked had to carry the text to a generator by hand and save the
         # result to exactly the right filename for the next pass to find it.
         sys.path.insert(0, HERE)
-        import imagegen
+        import imagegen, profiles
+        prof = profiles.get("room_" + a.which)
         # Check the ARGUMENTS, not the filled text: substituting an empty
         # string removes the placeholder, so "is {{FLOOR}} still in there?"
         # can never catch a missing one. What reaches the generator instead is
@@ -675,7 +676,9 @@ def main():
                         pass_prompt(a.which, desc, floor, n, items,
                                     strip_notes=True))
         if not imagegen.generate(" ".join(prompt.split()), out,
-                                 quality=a.quality, force=a.force):
+                                 size=prof["size"], quality=a.quality or prof["quality"],
+                                 force=a.force, background=prof["background"],
+                                 model=prof["model"]):
             return 0
         print("\nwrote %s" % out)
         nxt = {"scene": "MEASURE it — every prop's ground point, height, width "

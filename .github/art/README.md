@@ -178,6 +178,8 @@ Two callers, one script, is the fix.
 | [`../autopilot/select-context.js`](../autopilot/select-context.js) | Classifies a Clubhouse message and INLINES the matching rules card + character specs into the run's prompt, so the run never has to pick or open one. |
 | [`../autopilot/check-reply.js`](../autopilot/check-reply.js) | Compares a run's reply against the files it actually changed, and appends a correction when it claims work that did not happen. |
 | [`../autopilot/sync-precache.js`](../autopilot/sync-precache.js) | Finds service-worker precache entries pointing at files that no longer exist — one 404 there and the SW never installs. `--fix` drops them. |
+| [`profiles.py`](profiles.py) | Generation settings per KIND of art — model, canvas, quality, background, and which verification flags apply — with the reason for each. Every front door reads it; the model is one line here for all of them. |
+| [`imagegen.py`](imagegen.py) | The one place an image request is built and sent. Validates every setting against what the API actually accepts, so a wrong value fails loudly instead of being silently ignored, and both transports send an identical payload. |
 | [`rules_card.py`](rules_card.py) | Extracts the `<standard>.rules.md` cards a run reads — same rules, history stripped. `--check` fails CI when a card no longer matches its standard. |
 | [`verify_tiles.py`](verify_tiles.py) (`tileset.py verify`) | A floor tile that does not wrap, a tile that is a flat block of colour. | A tile dark enough to read as a hole; a floor that camouflages the characters. |
 | `room.py verify` | Props and floor plates — every check in it is a bug that shipped, each proved to fire by breaking a room on purpose. | — |
