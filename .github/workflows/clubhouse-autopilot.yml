@@ -972,6 +972,46 @@ jobs:
             "run failed or was cancelled - see ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           ATTEMPT="${{ github.event.inputs.attempt || '1' }}"
           MAX=3
+
+          # SOME FAILURES ARE NOT TRANSIENT, AND RETRYING THEM IS A LIE.
+          #
+          # The retry loop assumed every failure was worth another go. Then the
+          # Anthropic budget ran out, and the model returned:
+          #
+          #   API Error: 400 You have reached your specified API usage limits.
+          #   You will regain access on 2026-09-01 at 00:00 UTC.
+          #
+          # Three attempts, three "that run hit a snag — retrying automatically,
+          # give it about 10 minutes" comments, half an hour, and a closing note
+          # that a human should look — none of which said the one thing that
+          # mattered: nothing will run until the budget resets, so waiting is
+          # pointless. The person asking was left thinking their art request was
+          # being worked on.
+          #
+          # So: read the model's own error and stop immediately on the ones that
+          # cannot come right by themselves — quota exhausted, bad credentials,
+          # no permission. Say what happened and what unblocks it.
+          fatal=""
+          err=$(jq -r '.result // .error // ""' .autopilot/result.json 2>/dev/null || true)
+          case "$err" in
+            *"usage limits"*|*"credit balance"*|*"quota"*)
+              when=$(printf '%s' "$err" | grep -oE 'regain access on [0-9-]+ at [0-9:]+ UTC' || true)
+              fatal="The automated runs are out of API budget, so nothing can run on this thread until it resets${when:+ — it says you $when}. This is not something retrying will fix, so I stopped rather than post the same 'hit a snag' three times. Raising the spend limit on the Anthropic account (or waiting for the reset) is what unblocks it. Everything already pushed to \`main\` is unaffected and is live."
+              ;;
+            *"authentication_error"*|*"invalid x-api-key"*|*"401"*)
+              fatal="The automated runs cannot authenticate — the ANTHROPIC_API_KEY secret is missing, expired or revoked. Retrying will not fix it; the key needs replacing in the repo secrets."
+              ;;
+            *"permission_error"*|*"403"*)
+              fatal="The automated runs were refused (permission error), which retrying will not fix. The API key's permissions need looking at."
+              ;;
+          esac
+          if [ -n "$fatal" ]; then
+            echo "::error::not retrying — $err"
+            gh pr comment ${{ steps.ctx.outputs.pr }} --repo "$REPO" \
+              --body "$(printf '**Claude says:**\n\n%s' "$fatal")"
+            exit 0
+          fi
+
           if [ "$ATTEMPT" -lt "$MAX" ]; then
             # Transient failures are common; re-dispatch (with attempt+1). The
             # retry run waits ~10 min at its start before re-attempting. The run
