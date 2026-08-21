@@ -321,10 +321,14 @@ window.NEWSEY_STORY = (function () {
         { art: "prop_bed_wall", x: 53,  y: 102, h: 112, w: 116, behind: true, base: { w: 112, h: 8 } },
         { art: "prop_bed_wall", x: 160, y: 102, h: 112, w: 116, behind: true, base: { w: 112, h: 8 } },
         { art: "prop_bed_wall", x: 267, y: 102, h: 112, w: 116, behind: true, base: { w: 112, h: 8 } },
-        // the balustrade along the near edge, in two runs with the way out
-        // between them (x 130-190)
-        { art: "prop_bed_rail", x: 64,  y: 199, h: 30, w: 128, base: { w: 128, h: 10 } },
-        { art: "prop_bed_rail", x: 256, y: 199, h: 30, w: 128, base: { w: 128, h: 10 } },
+        // the balustrade along the near edge, unbroken. It used to run in two
+        // pieces with a gap between them, from when this room's own near edge
+        // was the way out — the map moved that door to the east wall and left
+        // a break in the rail that led nowhere, which read as a second exit
+        // that silently refused to open. Closed with overlap, the same way
+        // the back wall's panels overlap to hide their own seams.
+        { art: "prop_bed_rail", x: 40,  y: 199, h: 30, w: 160, base: { w: 160, h: 10 } },
+        { art: "prop_bed_rail", x: 180, y: 199, h: 30, w: 160, base: { w: 160, h: 10 } },
         // the furniture, at the numbers the composed scene draws it at
         { art: "prop_bed_mirror",     x: 50,  y: 114, h: 96, base: { w: 32, h: 10 } },
         { art: "prop_bed_nightstand", x: 116, y: 104, h: 50, base: { w: 22, h: 8 } },
@@ -332,21 +336,22 @@ window.NEWSEY_STORY = (function () {
         // vertical cut separates them (the trunk stands in front of the bed's
         // own right-hand post), which is also how the scene composes them.
         { art: "prop_bed_bed", x: 226, y: 134, h: 118, w: 134, base: { w: 122, h: 18 } },
-        // the way east, to the Lounge
-        // A carved Victorian architrave, not the castle arch this room used to
-        // borrow from the Lounge. The ARCH/DOORWAY is the subject of the
-        // picture and the wall is a sliver of framing — asked for the other
-        // way round it comes back as a wall with an unusable door in it.
-        { art: "prop_bd_door_e", x: 296, y: 180, h: 108, w: 46, door: true, behind: true }
       ],
       // THE LOUNGE IS EAST OF THIS ROOM, so the way out is a door in the EAST
       // wall: you walk right out of here and come in the Lounge's west door.
+      //
+      // Not drawn as generated art. Three side-doorway attempts across this
+      // room and the Lounge each failed a different way (wrong material,
+      // wrong proportion, right but drifting from the room's own wall art
+      // room to room), and the owner asked to stop fighting the generator on
+      // exactly this shape of art and use a plain breach in the wall instead
+      // — drawSideBreach in app.js, a code-drawn notch, not a picture.
       exits: [
         // y 148-190: below the four-poster's footprint (which ends at 143) and
         // above the balustrade's (which starts at 194). Both would otherwise
         // sit on this trigger, and a footprint on a doorway is a door you can
         // see and cannot reach.
-        { x: 276, y: 148, w: 40, h: 42, to: "lounge", link: "westDoor" }
+        { x: 276, y: 148, w: 40, h: 42, to: "lounge", link: "westDoor", drawn: "sidebreach" }
       ],
       npcs: [
         {
@@ -429,8 +434,8 @@ window.NEWSEY_STORY = (function () {
         // any width that left room to walk, the opening was a few pixels wide
         // and simply disappeared. Asked for as "the arch fills the image, the
         // brick is a sliver of framing", it came back usable at once.
-        { art: "prop_lg_door_w", x: 24,  y: 178, h: 104, w: 44, door: true, behind: true },
-        { art: "prop_lg_door_e", x: 296, y: 178, h: 104, w: 44, door: true, behind: true },
+        // West and east doorways are breaches, not generated art — see the
+        // note by ROOMS.bedroom's exit for why.
         // the bar along the right end of the back wall, where the plot puts it
         { art: "prop_backbar", x: 238, y: 62, h: 44, w: 88, base: { w: 88, h: 6 } },
         // Stops short of the EAST doorway's approach: run out to the frame
@@ -449,10 +454,10 @@ window.NEWSEY_STORY = (function () {
       // player, so crossing means standing in the opening rather than on a
       // rectangle of floor near it.
       exits: [
-        { x: 4,   y: 118, w: 38, h: 58, to: "bedroom", link: "westDoor" },
+        { x: 4,   y: 118, w: 38, h: 58, to: "bedroom", link: "westDoor", drawn: "sidebreach" },
         { x: 92,  y: 46,  w: 32, h: 26, to: "library", link: "northArch" },
         { x: 149, y: 46,  w: 32, h: 26, to: "arena",   link: "portal" },
-        { x: 278, y: 118, w: 38, h: 58, to: "lab",     link: "eastDoor" }
+        { x: 278, y: 118, w: 38, h: 58, to: "lab",     link: "eastDoor", drawn: "sidebreach" }
       ],
       npcs: [
         {
@@ -719,7 +724,8 @@ window.NEWSEY_STORY = (function () {
         { art: "prop_lab_shelf", x: 158, y: 92, h: 52, w: 124, behind: true },
         // the way west, to the Lounge. door: true — it IS the doorway, so it
         // carries no footprint and its trigger sits on it.
-        { art: "prop_lab_door", x: 18, y: 192, h: 116, w: 28, door: true, behind: true },
+        // West doorway is a breach, not generated art — see the note by
+        // ROOMS.bedroom's exit for why.
         { art: "prop_lab_bench",   x: 166, y: 138, h: 44, w: 122, base: { w: 118, h: 10 } },
         { art: "prop_lab_cabinet", x: 268, y: 134, h: 60, base: { w: 32, h: 10 } },
         { art: "prop_lab_cart",    x: 254, y: 172, h: 46, base: { rx: 11, ry: 4 } }
@@ -728,7 +734,7 @@ window.NEWSEY_STORY = (function () {
         // y 124, clear of the wall panels' footprint: the leftmost panel
         // blocks y 112-120 across the room, and a trigger overlapping it is a
         // door you cannot reach.
-        { x: 2, y: 136, w: 28, h: 54, to: "lounge", link: "eastDoor" }
+        { x: 2, y: 136, w: 28, h: 54, to: "lounge", link: "eastDoor", drawn: "sidebreach" }
       ],
       npcs: [
         {

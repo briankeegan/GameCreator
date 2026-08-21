@@ -1,18 +1,20 @@
 {
   "name": "Your Room, Infinity",
-  "_why": "The plot calls it 'your Victorian bedroom (giant mirror = menu/screen)'. The Lounge is EAST of it, so its one ordinary way out is a door in the RIGHT-hand wall — the map in story.js decides that, not the generator.",
-  "summary": "An opulent VICTORIAN bedroom inside a magical realm — rich, strange and enchanted, not a rustic cottage room. The back wall runs flat and straight across the top of the frame: deep indigo damask wallpaper with gold filigree above dark carved timber wainscot, one continuous moulded picture rail between them at the same height all the way across, and brass sconces burning small violet flames.",
+  "_why": "The plot calls it 'your Victorian bedroom (giant mirror = menu/screen)'. The Lounge is EAST of it, so its one ordinary way out is a door in the RIGHT-hand wall — the map in story.js decides that, not the generator. Regenerated because the bed and mirror were drawn at a tilted 3/4 product-shot angle, foot-to-headboard running diagonally across the frame, instead of this game's flat top-down camera — the only room where that happened, and it broke the sleep interaction: the bed's open foot end (where a character climbs in) did not face the viewer at all.",
+  "summary": "An opulent VICTORIAN bedroom inside a magical realm — rich, strange and enchanted, not a rustic cottage room. The back wall runs flat and straight across the top of the frame, seen face-on: deep indigo damask wallpaper with gold filigree above dark carved timber wainscot, one continuous moulded picture rail between them at the same height all the way across, and brass sconces burning small violet flames.",
   "_wall_why": "A floor-plate room ships ONLY its floor, so the room's own back wall is a PROP and has to be generated like one. Leaving it out of the spec is how a room ends up with one piece of wall art repeated across the whole back.",
   "wall": "a wide upright rectangular slab of deep indigo damask wallpaper with gold filigree above dark carved timber wainscot, a moulded picture rail between them, one brass sconce burning a small violet flame, and NO door and NO opening",
   "floor": "dark polished PARQUET flooring, small hardwood blocks laid in a herringbone pattern, deep reddish-brown walnut with a waxed sheen, fine grain and subtle wear",
+  "camera": "TOP-DOWN, exactly like every other room and every other prop in this game — NOT a 3/4 isometric product-shot angle, NOT a diagonal furniture-catalogue view. The bed and the mirror are drawn from directly above and slightly in front, the SAME angle as the back wall and the floor, so they read as objects standing in a top-down room rather than pasted-in concept art.",
   "doors": [
     { "wall": "right", "look": "ONE open doorway framed by a carved dark-wood architrave with a moulded pediment — not stone, not a castle arch — with a warmly lit passage receding through it over a patterned runner on dark parquet", "to": "lounge" }
   ],
   "contains": [
-    "an ENORMOUS floor-to-ceiling MIRROR in a heavy carved gilt frame, far taller than a person, its glass glowing faintly violet, standing against the back wall on the left",
+    "an ENORMOUS floor-to-ceiling MIRROR in a heavy carved gilt frame, far taller than a person, its glass glowing faintly violet, standing flat against the back wall and facing SQUARE-ON toward the viewer — not turned to a side angle — on the left",
     "a marble-topped VICTORIAN NIGHTSTAND with a lit three-branch brass candelabra on it",
-    "an ORNATE FOUR-POSTER BED with carved dark-wood posts, a deep purple velvet canopy with gold tassels, seen from the foot, with a brass-bound steamer TRUNK at its foot",
+    "an ORNATE FOUR-POSTER BED with carved dark-wood posts and a deep purple velvet canopy, drawn TOP-DOWN and SQUARE TO THE ROOM like the wall behind it: the headboard flush against the back wall at the TOP of the bed, the FOOT of the bed — open, no headboard, the end a person climbs in from — at the BOTTOM of the bed nearest the viewer. NOT drawn on the diagonal, NOT viewed from a 3/4 corner angle.",
+    "a brass-bound steamer TRUNK with a domed lid, standing on the floor beside the bed's foot, drawn separately from the bed as its own object with its own base",
     "a patterned crimson and indigo ORIENTAL RUG lying flat on the parquet",
-    "a low carved wooden BALUSTRADE along the near edge, broken by a gap in the middle"
+    "a low carved wooden BALUSTRADE running the full width along the near edge, unbroken, with no gap"
   ]
 }

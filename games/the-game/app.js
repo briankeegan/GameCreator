@@ -1294,6 +1294,7 @@
       // The drawn doorway goes ON TOP of its own glow — painted under it, the
       // light washed straight through the opening and it read as a lit box.
       if (ex.drawn === "threshold") drawThreshold(ex);
+      if (ex.drawn === "sidebreach") drawSideBreach(ex);
 
     });
   }
@@ -1449,6 +1450,49 @@
     ctx.fillRect(x, y - 4, w, 1);
     ctx.fillRect(x, y - 4, 1, VH - y + 4);
     ctx.fillRect(x + w - 1, y - 4, 1, VH - y + 4);
+    ctx.restore();
+  }
+
+  // A breach in the LEFT or RIGHT wall — for a side doorway. Generated art
+  // failed here three separate times (wrong material, wrong proportion, and
+  // even the version that finally looked right in isolation still had to be
+  // regenerated per room and kept drifting from that room's own wall art —
+  // see CLAUDE.md's account of the Lounge's side doors). This never drifts,
+  // because it isn't a picture of anything: same idea as drawThreshold,
+  // rotated 90 degrees — a dark notch that recedes toward the frame edge,
+  // with a lit sliver on the near jamb and a plain wooden lintel above and
+  // below, so the way through reads as an opening you can see and walk into.
+  function drawSideBreach(ex) {
+    var x = ex.x, y = ex.y, w = ex.w, h = ex.h;
+    var dir = (x + w / 2 < VW / 2) ? "left" : "right";
+    var collar = Math.max(4, Math.round(h * 0.12));
+    var top = y + collar, bot = y + h - collar;
+    var edgeX = dir === "left" ? 0 : VW;
+    var nearX = dir === "left" ? x + w : x;
+    ctx.save();
+
+    var mouth = ctx.createLinearGradient(nearX, 0, edgeX, 0);
+    mouth.addColorStop(0, "rgba(8,4,14,0.7)");
+    mouth.addColorStop(1, "rgba(4,2,8,0.98)");
+    ctx.fillStyle = mouth;
+    ctx.beginPath();
+    ctx.moveTo(nearX, top + 3);
+    ctx.lineTo(nearX, bot - 3);
+    ctx.lineTo(edgeX, bot);
+    ctx.lineTo(edgeX, top);
+    ctx.closePath();
+    ctx.fill();
+
+    // a lit sliver on the near jamb, catching the room's own light
+    ctx.fillStyle = "rgba(255,220,170,0.16)";
+    ctx.fillRect(dir === "left" ? nearX - 2 : nearX, top, 2, bot - top);
+
+    // lintel above and below, same wood tone as the rest of the room's trim
+    ctx.fillStyle = "#5a3a24";
+    var fx = dir === "left" ? 0 : x;
+    var fw = dir === "left" ? nearX : VW - x;
+    ctx.fillRect(fx, top - 3, fw, 3);
+    ctx.fillRect(fx, bot, fw, 3);
     ctx.restore();
   }
 
