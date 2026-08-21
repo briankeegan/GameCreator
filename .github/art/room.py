@@ -631,6 +631,37 @@ def main():
             text = text.replace(k, v)
         return text.strip()
 
+    if a.cmd == "prompt":
+        print(pass_prompt(a.which, a.room, a.floor, a.n, a.items))
+        return 0
+
+    game = a.game.rstrip("/")
+
+    if a.cmd == "approve":
+        d = scene_digest(game, a.room)
+        if d is None:
+            print("no composed scene at games/.../art-src/%s_scene.png — "
+                  "generate pass 1 first" % a.room, file=sys.stderr)
+            return 1
+        with open(scene_ok_path(game, a.room), "w", encoding="utf-8") as f:
+            f.write(d + "\n")
+        print("approved %s's composed scene. pass 2 and pass 3 are unlocked "
+              "until it is regenerated." % a.room)
+        return 0
+
+    if a.cmd == "generate":
+        if a.which in ("plate", "props") and not scene_approved(game, a.room):
+            print("REFUSING: nobody has signed off %s's composed scene.\n"
+                  "  Everything downstream is MEASURED off it, so a wrong scene "
+                  "makes every later pass wrong and none of it is repairable — "
+                  "a corner-view scene once cost a plate, three prop sheets and "
+                  "two assemblies before anyone noticed.\n"
+                  "  Open games/%s/art-src/%s_scene.png. If it is right, run:\n"
+                  "    python3 .github/art/room.py approve %s %s\n"
+                  "  If it is not, regenerate THE SCENE and nothing else."
+                  % (a.room, os.path.basename(game), a.room, game, a.room),
+                  file=sys.stderr)
+            return 1
 
         # Same transport as characters: an in-run broker if one is listening,
         # otherwise OPENAI_API_KEY. See .github/art/imagegen.py. This exists so
@@ -690,38 +721,6 @@ def main():
         print("next: %s" % nxt)
         return 0
 
-    if a.cmd == "prompt":
-        print(pass_prompt(a.which, a.room, a.floor, a.n, a.items))
-        return 0
-
-    game = a.game.rstrip("/")
-
-    if a.cmd == "approve":
-        d = scene_digest(game, a.room)
-        if d is None:
-            print("no composed scene at games/.../art-src/%s_scene.png — "
-                  "generate pass 1 first" % a.room, file=sys.stderr)
-            return 1
-        with open(scene_ok_path(game, a.room), "w", encoding="utf-8") as f:
-            f.write(d + "\n")
-        print("approved %s's composed scene. pass 2 and pass 3 are unlocked "
-              "until it is regenerated." % a.room)
-        return 0
-
-    if a.cmd == "generate":
-        if a.which in ("plate", "props") and not scene_approved(game, a.room):
-            print("REFUSING: nobody has signed off %s's composed scene.\n"
-                  "  Everything downstream is MEASURED off it, so a wrong scene "
-                  "makes every later pass wrong and none of it is repairable — "
-                  "a corner-view scene once cost a plate, three prop sheets and "
-                  "two assemblies before anyone noticed.\n"
-                  "  Open games/%s/art-src/%s_scene.png. If it is right, run:\n"
-                  "    python3 .github/art/room.py approve %s %s\n"
-                  "  If it is not, regenerate THE SCENE and nothing else."
-                  % (a.room, os.path.basename(game), a.room, game, a.room),
-                  file=sys.stderr)
-            return 1
-
     if a.cmd == "plate":
         src = a.src or os.path.join(game, "art-src", "%s_floor.png" % a.room)
         scene = os.path.join(game, "art-src", "%s_scene.png" % a.room)
@@ -773,6 +772,16 @@ def main():
             return 1
         print("OK — every floor-plate room in %s checks out." % game)
         return 0
+
+    # NO SUBCOMMAND HANDLED IT. This is not reachable through normal use —
+    # argparse rejects an unknown command — but it is exactly what happens when
+    # an edit detaches a branch's body from its `if`, which is how `generate`
+    # came to print nothing, generate nothing and exit 0. A front door that
+    # reports success having done nothing is the failure this repo has paid for
+    # more than once, so the fall-through is loud.
+    print("room.py: nothing handled %r — a subcommand's body has been detached "
+          "from its branch." % a.cmd, file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":
