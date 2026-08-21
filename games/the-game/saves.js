@@ -1,17 +1,15 @@
 // Save files for Newsey — the "three slots on the file-select screen" model
 // every cartridge-era RPG shipped with.
 //
-// One localStorage key per file (gc:the-game:slot1..3) plus a pointer at the
-// file that was played last (so the title screen's CONTINUE knows where to go).
-// A file is a single JSON blob holding everything the world remembers; the
-// game writes it whole and reads it whole, so there is no partial-save state
-// to reason about.
+// The slot mechanics (which localStorage keys, which slot was played last,
+// copy/erase/list) now live in shared/save-slots.js, generic enough for any
+// game that wants a file-select screen instead of one bare GCStorage key.
+// This file is what's left once that's factored out: Newsey's own save
+// SHAPE (blank()/normalize()), its version stamp, and a one-time migration
+// of the pre-slot single save that predates shared/save-slots.js entirely.
 window.NewseySaves = (function () {
   var gameId = "the-game";
-  var SLOT_COUNT = 3;
   var VERSION = 1;
-
-  function key(i) { return "slot" + i; }
 
   // A brand-new file. `pos` stays null until the player has actually moved,
   // so a fresh file drops you at the room's own start position.
@@ -48,74 +46,39 @@ window.NewseySaves = (function () {
     return b;
   }
 
+  var slots = window.GCSaveSlots.create(gameId, { slots: 3, blank: blank, normalize: normalize });
+
   // Before file slots existed the game kept one unnamed save at
   // gc:the-game:save. Anyone who was mid-playthrough when this shipped would
   // otherwise open the game to three empty files and lose it, so the old save
-  // is promoted to File 1 the first time this runs and then removed.
+  // is promoted to File 1 the first time this runs and then removed. This
+  // predates shared/save-slots.js (a NEW game consuming that module has no
+  // such legacy key), so it stays here rather than in the shared module.
   (function migrateLegacySave() {
     var legacy = window.GCStorage.get(gameId, "save", null);
     if (!legacy) return;
-    if (!window.GCStorage.get(gameId, key(1), null)) {
+    if (!slots.read(1)) {
       var f = normalize(legacy);
       f.createdAt = f.updatedAt = Date.now();
-      window.GCStorage.set(gameId, key(1), f);
-      window.GCStorage.set(gameId, "lastSlot", 1);
+      slots.write(1, f);
     }
     window.GCStorage.remove(gameId, "save");
   })();
 
-  function read(i) {
-    return normalize(window.GCStorage.get(gameId, key(i), null));
-  }
-
   function write(i, data) {
     data.version = VERSION;
-    data.updatedAt = Date.now();
-    window.GCStorage.set(gameId, key(i), data);
-    window.GCStorage.set(gameId, "lastSlot", i);
-  }
-
-  function erase(i) {
-    window.GCStorage.remove(gameId, key(i));
-    if (lastSlot() === i) window.GCStorage.remove(gameId, "lastSlot");
-  }
-
-  function copy(from, to) {
-    var src = read(from);
-    if (!src) return false;
-    src.createdAt = Date.now();
-    write(to, src);
-    return true;
-  }
-
-  function lastSlot() {
-    var i = window.GCStorage.get(gameId, "lastSlot", null);
-    return (i >= 1 && i <= SLOT_COUNT && read(i)) ? i : null;
-  }
-
-  function list() {
-    var out = [];
-    for (var i = 1; i <= SLOT_COUNT; i++) out.push({ index: i, data: read(i) });
-    return out;
-  }
-
-  // "2:07" — hours:minutes, the way a file-select screen shows a clock.
-  function formatPlaytime(seconds) {
-    var s = Math.max(0, Math.floor(seconds || 0));
-    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
-    if (h > 0) return h + ":" + (m < 10 ? "0" : "") + m;
-    return m + ":" + (Math.floor(s % 60) < 10 ? "0" : "") + Math.floor(s % 60);
+    slots.write(i, data);
   }
 
   return {
-    SLOT_COUNT: SLOT_COUNT,
+    SLOT_COUNT: slots.SLOT_COUNT,
     blank: blank,
-    read: read,
+    read: slots.read,
     write: write,
-    erase: erase,
-    copy: copy,
-    list: list,
-    lastSlot: lastSlot,
-    formatPlaytime: formatPlaytime
+    erase: slots.erase,
+    copy: slots.copy,
+    list: slots.list,
+    lastSlot: slots.lastSlot,
+    formatPlaytime: window.GCSaveSlots.formatPlaytime
   };
 })();

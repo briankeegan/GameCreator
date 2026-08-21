@@ -17,6 +17,8 @@ GCRegisterServiceWorker("the-game-v68", [
   "../../shared/nav.css",
   "../../shared/pwa.js",
   "../../shared/storage.js",
+  "../../shared/controls.js",
+  "../../shared/save-slots.js",
   "./art/walk-home_bedroom.png",
   "./art/walk-bedroom.png",
   "./art/walk-lounge.png",
