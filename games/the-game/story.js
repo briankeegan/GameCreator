@@ -287,21 +287,29 @@ window.NEWSEY_STORY = (function () {
       // as the house back home rather than anywhere in Infinity, and it painted
       // a door on its right-hand wall that the map no longer uses.
       //
-      // THERE IS NO DOOR IN ANY WALL. You get here by walking UP through the
-      // Lounge's back wall, so you arrive at the near edge and you leave the
-      // same way you came in — down, through the gap in the balustrade. Same
-      // shape as the Anarchy Garden's gap in its low wall.
+      // The way out is the east wall's sidebreach (see exits, below) —
+      // straight into the Lounge's west door. The near-edge balustrade is
+      // NOT a way out any more: it used to have a gap for exactly that, and
+      // it read as a second exit that silently refused to open, so it's
+      // closed (see the rail props) now that the map moved the door east.
       //
       // bg-bedroom.png is the parquet and nothing else, so the walk mask is
       // its own silhouette: no floorPoly, no obstacles.
       playerStart: { x: 150, y: 150 },
       // Measured off art-src/bedroom_scene.png: she lies with her head on the
       // pillow up under the canopy, drawn clipped to above the quilt's edge.
-      bedSpot: { x: 224, y: 100 },
-      bedClipY: 108,
-      // Parquet at the near-left corner of the bed, clear of its footprint.
-      wakeSpot: { x: 174, y: 150 },
-      bedZone: { x: 182, y: 126, w: 88, h: 24 },
+      // Recomputed against the regenerated bed art (prop_bed_bed, cut alone
+      // this time, foot toward the viewer). bedSpot sits on the pillows —
+      // measured as a fraction of the CUT IMAGE itself (0.41 down from its
+      // top), not the scene, since that is what's actually drawn on screen.
+      bedSpot: { x: 161, y: 53 },
+      bedClipY: 65,
+      // On the rug at the bed's foot, clear of the bed's and the trunk's own
+      // footprints.
+      wakeSpot: { x: 161, y: 168 },
+      // The floor in front of the bed's foot and the trunk, where you stand
+      // and press UP to climb in.
+      bedZone: { x: 126, y: 120, w: 70, h: 26 },
       props: [
         // Ground cover first: flat, walked straight over, no footprint. The
         // scene has always had this rug; the first assembly of this room did
@@ -310,32 +318,46 @@ window.NEWSEY_STORY = (function () {
         // a floor is wider than it is deep. Without it the room gets a tall
         // narrow mat standing in the middle of the parquet.
         { art: "prop_bed_rug", x: 152, y: 142, h: 54, w: 120, flat: true },
-        // Measured off art-src/bedroom_scene.png, which is drawn the way every
-        // room in this game is drawn: ONE flat back wall across the top, floor
-        // a rectangle below it. There are NO SIDE WALLS — the scene has none,
-        // the Anarchy Garden has none, and the pair this room had were the
-        // whole reason its wainscot line would not meet at the corners.
-        // w overlaps its neighbour by a few px: the panel art carries a dark
-        // edge, and butted exactly they draw as three visible seams down the
-        // back wall.
-        { art: "prop_bed_wall", x: 53,  y: 102, h: 112, w: 116, behind: true, base: { w: 112, h: 8 } },
-        { art: "prop_bed_wall", x: 160, y: 102, h: 112, w: 116, behind: true, base: { w: 112, h: 8 } },
-        { art: "prop_bed_wall", x: 267, y: 102, h: 112, w: 116, behind: true, base: { w: 112, h: 8 } },
-        // the balustrade along the near edge, unbroken. It used to run in two
-        // pieces with a gap between them, from when this room's own near edge
-        // was the way out — the map moved that door to the east wall and left
-        // a break in the rail that led nowhere, which read as a second exit
-        // that silently refused to open. Closed with overlap, the same way
-        // the back wall's panels overlap to hide their own seams.
-        { art: "prop_bed_rail", x: 40,  y: 199, h: 30, w: 160, base: { w: 160, h: 10 } },
-        { art: "prop_bed_rail", x: 180, y: 199, h: 30, w: 160, base: { w: 160, h: 10 } },
-        // the furniture, at the numbers the composed scene draws it at
-        { art: "prop_bed_mirror",     x: 50,  y: 114, h: 96, base: { w: 32, h: 10 } },
-        { art: "prop_bed_nightstand", x: 116, y: 104, h: 50, base: { w: 22, h: 8 } },
-        // bed + trunk are one prop: they came off the sheet touching and no
-        // vertical cut separates them (the trunk stands in front of the bed's
-        // own right-hand post), which is also how the scene composes them.
-        { art: "prop_bed_bed", x: 226, y: 134, h: 118, w: 134, base: { w: 122, h: 18 } },
+        // The back wall, tiled at its OWN aspect ratio rather than stretched
+        // to cover fewer, wider panels — five copies at native proportions,
+        // each overlapping its neighbour by ~4px to hide the seam, instead of
+        // three copies stretched 1.75x wide. A single image asked to cover a
+        // span it wasn't drawn for reads as smeared brick and warped wallpaper
+        // — reported straight from a screenshot, and confirmed by checking the
+        // math: h=112 at this art's native aspect wants w=66, not the w=116
+        // this used to carry.
+        { art: "prop_bed_wall", x: -6,  y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_bed_wall", x: 60,  y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_bed_wall", x: 126, y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_bed_wall", x: 192, y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_bed_wall", x: 258, y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
+        // the balustrade along the near edge, unbroken, tiled the same way —
+        // native aspect, several copies, instead of two copies each stretched
+        // to 3.5x their own width (the worst offender: w=160 against a native
+        // w of 46 at this h). It used to run in two pieces with a gap between
+        // them too, from when this room's own near edge was the way out —
+        // the map moved that door to the east wall and left a break that led
+        // nowhere, which read as a second exit that silently refused to open.
+        { art: "prop_bed_rail", x: -4,  y: 199, h: 30, base: { w: 46, h: 10 } },
+        { art: "prop_bed_rail", x: 42,  y: 199, h: 30, base: { w: 46, h: 10 } },
+        { art: "prop_bed_rail", x: 88,  y: 199, h: 30, base: { w: 46, h: 10 } },
+        { art: "prop_bed_rail", x: 134, y: 199, h: 30, base: { w: 46, h: 10 } },
+        { art: "prop_bed_rail", x: 180, y: 199, h: 30, base: { w: 46, h: 10 } },
+        { art: "prop_bed_rail", x: 226, y: 199, h: 30, base: { w: 46, h: 10 } },
+        { art: "prop_bed_rail", x: 272, y: 199, h: 30, base: { w: 46, h: 10 } },
+        // The furniture, regenerated: the bed and mirror had been drawn at a
+        // tilted 3/4 product-shot angle (reported from a screenshot — the
+        // bed's open foot faced off to the lower-left instead of the viewer,
+        // which is why the sleep interaction read as broken) instead of this
+        // room's top-down camera. Fixed at the source — see the "camera"
+        // field in rooms/bedroom.json — and cut as three separate objects
+        // instead of one bed+trunk merger, so nothing here needs an explicit
+        // w that fights the art's own aspect ratio. Only h is given; width
+        // follows the art.
+        { art: "prop_bed_mirror", x: 62,  y: 88,  h: 74, base: { w: 30, h: 8 } },
+        { art: "prop_bed_nightstand", x: 96, y: 88, h: 40, base: { w: 20, h: 8 } },
+        { art: "prop_bed_bed",   x: 161, y: 112, h: 99, base: { w: 78, h: 14 } },
+        { art: "prop_bed_trunk", x: 161, y: 148, h: 30, base: { w: 24, h: 10 } },
       ],
       // THE LOUNGE IS EAST OF THIS ROOM, so the way out is a door in the EAST
       // wall: you walk right out of here and come in the Lounge's west door.
@@ -347,11 +369,17 @@ window.NEWSEY_STORY = (function () {
       // exactly this shape of art and use a plain breach in the wall instead
       // — drawSideBreach in app.js, a code-drawn notch, not a picture.
       exits: [
-        // y 148-190: below the four-poster's footprint (which ends at 143) and
+        // y 148-184: below the four-poster's footprint (which ends at 143) and
         // above the balustrade's (which starts at 194). Both would otherwise
         // sit on this trigger, and a footprint on a doorway is a door you can
-        // see and cannot reach.
-        { x: 276, y: 148, w: 40, h: 42, to: "lounge", link: "westDoor", drawn: "sidebreach" }
+        // see and cannot reach. Shorter than that span allows: the regenerated
+        // floor's own bottom edge dips a few px right under this door (measured
+        // off walk-bedroom.png — a fully open row at y<=186, pinched to two
+        // slivers at y 188-190), so the box is centred at y=166 (feet at 184),
+        // clear of the dip, instead of at the old centre of 169 (feet at 187,
+        // inside it) — which read as a door you could walk toward and never
+        // reach.
+        { x: 276, y: 148, w: 40, h: 36, to: "lounge", link: "westDoor", drawn: "sidebreach" }
       ],
       npcs: [
         {
