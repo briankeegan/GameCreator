@@ -303,12 +303,18 @@ async function bootWithSave(page, url, patchSave) {
   const DOOR_CASES = [
     { room: "home_bedroom", to: "house", direction: "down", wantRoom: "Your Father's House" },
     { room: "house", to: "home_bedroom", direction: "up", wantRoom: "Your Old Room" },
-    { room: "bedroom", to: "lounge", direction: "down", wantRoom: "The Lounge" },
-    { room: "lounge", to: "bedroom", direction: "up", wantRoom: "Your Room, Infinity" },
+    // Infinity is a grid: out of one side, in through the matching side of
+    // the room next door.
+    { room: "bedroom", to: "lounge", direction: "right", wantRoom: "The Lounge" },
+    { room: "lounge", to: "bedroom", direction: "left", wantRoom: "Your Room, Infinity" },
+    { room: "lounge", to: "lab", direction: "right", wantRoom: "Kyran's Lab" },
+    { room: "lab", to: "lounge", direction: "left", wantRoom: "The Lounge" },
+    { room: "lounge", to: "library", direction: "up", wantRoom: "The Library" },
     { room: "library", to: "lounge", direction: "down", wantRoom: "The Lounge" },
+    { room: "library", to: "garden", direction: "up", wantRoom: "The Anarchy Garden" },
+    { room: "garden", to: "library", direction: "down", wantRoom: "The Library" },
+    // the portal, the one door allowed to be special
     { room: "arena", to: "lounge", direction: "up", wantRoom: "The Lounge" },
-    { room: "garden", to: "lounge", direction: "down", wantRoom: "The Lounge" },
-    { room: "lab", to: "lounge", direction: "down", wantRoom: "The Lounge" },
   ];
   const doorFailures = [];
   for (const c of DOOR_CASES) {
@@ -357,72 +363,10 @@ async function bootWithSave(page, url, patchSave) {
   }
   assert.deepStrictEqual(doorFailures, [], "every door lands you in the right room, clear of the doorway");
 
-  // ---- The rune door: accidental first trip, then the destination picker ----
-  // check_room_exits.mjs already proves RUNE_DOOR's own data is right
-  // (every unlocked destination has an arriveFacing) — this exists because
-  // that alone wasn't enough: the picker's click handler read dest.to and
-  // dest.arriveAt but had never been wired to actually pass dest.arriveFacing
-  // through to enterRoom, so the data being correct never mattered. Only a
-  // real click-through could have caught that.
-  {
-    const page = await freshPage(browser, url, errors);
-    await bootWithSave(page, url, { introSeen: true, room: "lounge" });
-    const runeBox = await page.evaluate(() => window.NEWSEY_STORY.ROOMS.lounge.exits.find((e) => e.rune));
-    // From BELOW. The rune door used to be a threshold at the bottom edge of
-    // the Lounge, walked into going down; regenerating the room to the
-    // three-pass standard put it in the BACK wall, so approaching it from
-    // above now means standing inside the wall — where the wall props' own
-    // footprints hold you, so nothing ever crosses and the failure reads as
-    // "the rune door doesn't work".
-    const pos = approachPosition(runeBox, "up");
-    await page.evaluate((p) => {
-      window.__newseyDebug.player.x = p.x;
-      window.__newseyDebug.player.y = p.y;
-    }, pos);
-    // The first push (runeDoorLearned not set yet) sends you to the
-    // Garden by accident, with narration explaining it — never the picker.
-    await holdKeyUntilInPage(
-      page,
-      "ArrowUp",
-      new Function("return window.__newseyDebug.room() === " + JSON.stringify("The Anarchy Garden")),
-      2000
-    );
-    const s1 = await getState(page);
-    assert.strictEqual(s1.room, "The Anarchy Garden", "the first, unlearned push through the rune door lands in the Garden by accident");
-    assert.ok(s1.talking && s1.talking.npcId === "_narration", "…with narration explaining the accident");
-    await page.close();
-  }
-  {
-    const page = await freshPage(browser, url, errors);
-    await bootWithSave(page, url, { introSeen: true, room: "lounge", flags: { runeDoorLearned: true } });
-    const runeBox = await page.evaluate(() => window.NEWSEY_STORY.ROOMS.lounge.exits.find((e) => e.rune));
-    // From BELOW. The rune door used to be a threshold at the bottom edge of
-    // the Lounge, walked into going down; regenerating the room to the
-    // three-pass standard put it in the BACK wall, so approaching it from
-    // above now means standing inside the wall — where the wall props' own
-    // footprints hold you, so nothing ever crosses and the failure reads as
-    // "the rune door doesn't work".
-    const pos = approachPosition(runeBox, "up");
-    await page.evaluate((p) => {
-      window.__newseyDebug.player.x = p.x;
-      window.__newseyDebug.player.y = p.y;
-    }, pos);
-    // Once learned, crossing opens the destination picker instead of
-    // moving on its own — wait for the panel, not a room change.
-    await holdKeyUntilInPage(page, "ArrowUp", new Function("return !document.getElementById('runeDoor').hidden"), 2000);
-    await page.click("#runeList >> text=Library");
-    await page.waitForTimeout(250);
-    const s2 = await getState(page);
-    assert.strictEqual(s2.room, "The Library", "picking Library from the rune door actually goes there");
-    // Not a compass direction — see the note above DOOR_CASES. The Library's
-    // way back is its near edge now, so arriving there faces you UP, into the
-    // room; this used to demand "down", which is the one facing it must never
-    // use because it points straight back out of the door.
-    const runeOverlaps = await page.evaluate(() => window.__newseyDebug.exitOverlaps());
-    assert.ok(!runeOverlaps.some((o) => o.hit),
-      "…and lands clear of the Library's own doorway, so it arms");
-    await page.close();
-  }
+  // The black rune door and its list of six destinations are GONE. A picker
+  // is not a map — one doorway cannot be three rooms — so every room it used
+  // to reach is now somewhere on the grid with a door of its own, covered by
+  // DOOR_CASES above.
 
   // ---- Wandering NPCs actually move (not frozen, not erroring) ----
   {

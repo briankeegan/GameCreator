@@ -144,15 +144,6 @@ window.NEWSEY_STORY = (function () {
   // The three that go somewhere are the three that exist. The other three are
   // listed and locked, which is both what the door shows her and an honest
   // account of what is built.
-  var RUNE_DOOR = [
-    { label: "Library", to: "library", link: "rune" },
-    { label: "Anarchy Garden", to: "garden", link: "rune" },
-    { label: "Kyran's Lab", to: "lab", link: "rune" },
-    { label: "Observatory", locked: "The word doesn't take your finger. Not yet." },
-    { label: "Basement", locked: "The word doesn't take your finger. Not yet." },
-    { label: "Office", locked: "The word doesn't take your finger. Not yet." }
-  ];
-
   // EXIT / DOOR CONVENTION — a door is one of a PAIR, not a one-way trip with
   // a destination typed next to it.
   //
@@ -340,13 +331,14 @@ window.NEWSEY_STORY = (function () {
         // bed + trunk are one prop: they came off the sheet touching and no
         // vertical cut separates them (the trunk stands in front of the bed's
         // own right-hand post), which is also how the scene composes them.
-        { art: "prop_bed_bed", x: 226, y: 134, h: 118, w: 134, base: { w: 122, h: 18 } }
+        { art: "prop_bed_bed", x: 226, y: 134, h: 118, w: 134, base: { w: 122, h: 18 } },
+        // the way east, to the Lounge
+        { art: "prop_door_east", x: 308, y: 150, h: 96, w: 26, door: true }
       ],
+      // THE LOUNGE IS EAST OF THIS ROOM, so the way out is a door in the EAST
+      // wall: you walk right out of here and come in the Lounge's west door.
       exits: [
-        // THE WAY BACK IS THE NEAR EDGE — the gap in the balustrade. drawn:
-        // "threshold" makes app.js draw the doorway frame, since no art can
-        // show a door at the edge the camera is standing on.
-        { x: 142, y: 174, w: 40, h: 16, to: "lounge", link: "yourDoor", drawn: "threshold" }
+        { x: 292, y: 108, w: 24, h: 42, to: "lounge", link: "westDoor" }
       ],
       npcs: [
         {
@@ -387,89 +379,66 @@ window.NEWSEY_STORY = (function () {
     lounge: {
       bg: "lounge",
       label: "The Lounge",
-      // REGENERATED TO THE THREE-PASS STANDARD (docs/ROOM_ART_STANDARD.md).
-      // bg-lounge.png is the plank floor and NOTHING else, so its own
-      // silhouette is the collision mask and this room carries no floorPoly
-      // and no obstacles — everything you cannot walk on is a prop below.
-      // The old room was a single painted picture whose bar footprint had been
-      // measured by hand, and the picture was later regenerated underneath the
-      // measurements; that is the failure this shape exists to prevent.
+      // THE HUB OF THE MAP. Infinity is laid out as a grid and every ordinary
+      // door is a physical pair on it — you go out one side and come in the
+      // matching side of the room next door:
       //
-      // Laid out from art-src/lounge_scene.png, per the plot: "The bar was off
-      // to the right side... On the left, there were groups of people standing
-      // around several doorways." So the bar runs along the right, and the
-      // three ways out sit along the back wall left of it, at the x the scene
-      // draws them:
-      //     the arch   x 54-88   -> your room
-      //     the rune door x 110-146 -> wherever it feels like (RUNE_DOOR)
-      //     the portal x 166-204  -> the arena
-      // The back wall is six panels of prop_wall_* laid side by side at 57px
-      // centres, which is why the openings land on those centres. Their
-      // footprints form a continuous blocking band across the top of the
-      // floor, so the wall is a thing you walk up to rather than a line the
-      // mask happens to stop at.
+      //                 [ garden ]
+      //                      |
+      //                 [ library ]
+      //                      |
+      //     [ bedroom ] — [ LOUNGE ] — [ lab ]
+      //
+      // so this room has a door in its WEST wall (your room), one in its EAST
+      // wall (Kyran's lab) and an arch in its NORTH wall (the library). The
+      // red portal in the north wall is the ONE thing allowed to be special:
+      // it goes to the arena, which is nowhere on the grid.
+      //
+      // It replaced a black rune door that popped up a LIST of six
+      // destinations. A picker is not a map — one doorway cannot be three
+      // rooms — so nothing in Infinity could be laid out in a way that made
+      // sense, and on a phone the panel was taller than the screen.
+      //
+      // Built to docs/ROOM_ART_STANDARD.md: bg-lounge.png is the plank floor
+      // and nothing else, so the walk mask is its own silhouette and there is
+      // no floorPoly and no obstacles.
       playerStart: { x: 152, y: 150 },
       props: [
-        // --- the side walls, drawn edge-on and turned in toward the room, one
-        // down each margin. They are drawn LAST-sorting (a foot below the
-        // frame) so they pass in front of the back wall's corners the way a
-        // side wall actually does. Nothing is blocked by their footprints —
-        // the floor plate is fitted with a 12px margin, so the strip each one
-        // stands on was never walkable in the first place.
-        { art: "prop_wall_left",  x: 5,   y: 206, h: 152, w: 26, base: { w: 26, h: 8 } },
-        { art: "prop_wall_right", x: 315, y: 206, h: 152, w: 26, base: { w: 26, h: 8 } },
-        // --- the back wall, left to right. Same h and w on every panel so the
-        // brick courses line up; the openings are panels 2, 3 and 4.
-        { art: "prop_wall_plain",  x: 13,  y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
-        // door: true — these three panels ARE the doorways, so they carry no
-        // footprint and their own exit trigger sits on top of them. You have
-        // to walk up and TOUCH the drawn door to go through it; a band of
-        // floor below the door reads as the trigger being in the wrong place,
-        // which is the complaint this room started from.
-        { art: "prop_wall_arch",   x: 70,  y: 70, h: 82, w: 58, door: true },
-        { art: "prop_wall_rune",   x: 127, y: 70, h: 82, w: 58, door: true },
-        { art: "prop_wall_portal", x: 184, y: 70, h: 82, w: 58, door: true },
-        { art: "prop_wall_plain",  x: 241, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
-        { art: "prop_wall_plain",  x: 298, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
-        // --- the bar, along the right. The shelf stands against the wall and
-        // the counter in front of it, so the player sorts between them.
-        { art: "prop_backbar", x: 272, y: 80,  h: 54, w: 100, base: { w: 100, h: 8 } },
-        { art: "prop_bar",     x: 266, y: 106, h: 44, w: 108, base: { w: 108, h: 16 } },
-        // --- tables down the left, where the scene puts them. Clear of the
-        // rune door's approach (see the corridor note under npcs).
-        { art: "prop_table", x: 34, y: 116, h: 30, base: { rx: 11, ry: 5 } },
-        { art: "prop_stool", x: 56, y: 120, h: 20, base: { rx: 6,  ry: 3 } },
-        { art: "prop_table", x: 30, y: 176, h: 30, base: { rx: 11, ry: 5 } },
-        { art: "prop_stool", x: 54, y: 180, h: 20, base: { rx: 6,  ry: 3 } },
-        { art: "prop_stool", x: 10, y: 172, h: 20, base: { rx: 6,  ry: 3 } }
+        // --- the way west and the way east: a doorway in each side wall,
+        // drawn edge-on and turned in toward the room. door: true, so they
+        // carry no footprint and their trigger sits ON them — you walk into
+        // the drawn doorway to use it.
+        { art: "prop_door_west", x: 12,  y: 150, h: 96, w: 26, door: true },
+        { art: "prop_door_east", x: 308, y: 150, h: 96, w: 26, door: true },
+        // --- the back wall, left to right, with the arch north to the library
+        // and the portal north to the arena.
+        // The portal sits LEFT of the bar. Right of it, the bar's bottle shelf
+        // is drawn in front of the wall and swallowed it whole.
+        { art: "prop_wall_plain",  x: 34,  y: 70, h: 82, w: 64, base: { w: 64, h: 8 } },
+        { art: "prop_wall_arch",   x: 98,  y: 70, h: 82, w: 62, door: true },
+        { art: "prop_wall_portal", x: 160, y: 70, h: 82, w: 62, door: true },
+        { art: "prop_wall_plain",  x: 222, y: 70, h: 82, w: 64, base: { w: 64, h: 8 } },
+        { art: "prop_wall_plain",  x: 286, y: 70, h: 82, w: 64, base: { w: 64, h: 8 } },
+        // --- the bar, along the right, where the plot puts it
+        { art: "prop_backbar", x: 244, y: 80,  h: 54, w: 84, base: { w: 84, h: 8 } },
+        // short of the east doorway: the bar used to run into it, and a
+        // footprint on a doorway is a door you cannot reach.
+        { art: "prop_bar",     x: 238, y: 106, h: 44, w: 90, base: { w: 90, h: 16 } },
+        // --- tables down the left
+        { art: "prop_table", x: 46, y: 116, h: 30, base: { rx: 11, ry: 5 } },
+        { art: "prop_stool", x: 68, y: 120, h: 20, base: { rx: 6,  ry: 3 } },
+        { art: "prop_table", x: 42, y: 176, h: 30, base: { rx: 11, ry: 5 } },
+        { art: "prop_stool", x: 66, y: 180, h: 20, base: { rx: 6,  ry: 3 } }
       ],
-      // Every exit is a band of floor directly under the doorway its wall
-      // panel draws — you stand on the threshold, you go through. They sit
-      // 2px below the wall's footprint, which is as close as a trigger can be
-      // to a door you cannot walk into.
-      // y 44-70 is the band the player's own body (18px tall) occupies when
-      // she is standing against the wall with her feet on the last walkable
-      // row — so crossing means touching the drawn doorway, not stepping on a
-      // rectangle of floor underneath it.
+      // Each trigger sits ON its own drawn doorway and is as tall as the
+      // player, so crossing means standing in the opening rather than on a
+      // rectangle of floor near it.
       exits: [
-        { x: 54, y: 44, w: 34, h: 26, to: "bedroom", link: "yourDoor" },
-        // Not a doorway to one room any more — this is the black rune door,
-        // and where it puts you is a choice (see RUNE_DOOR above and
-        // openRuneDoor in app.js). The first push lands you in the Garden by
-        // accident, exactly as it does in the plot.
-        { x: 110, y: 44, w: 36, h: 26, rune: true, link: "rune" },
-        // The portal to the duelling arena. It used to be an NPC you talked
-        // to, because no room art had ever drawn one; prop_wall_portal draws
-        // it now, so it is a door like the others and pairs with the arena's.
-        { x: 166, y: 44, w: 38, h: 26, to: "arena", link: "portal" }
+        { x: 4,   y: 108, w: 24, h: 42, to: "bedroom", link: "westDoor" },
+        { x: 78,  y: 44,  w: 40, h: 26, to: "library", link: "northArch" },
+        { x: 140, y: 44,  w: 40, h: 26, to: "arena",   link: "portal" },
+        { x: 292, y: 108, w: 24, h: 42, to: "lab",     link: "eastDoor" }
       ],
-      // NOBODY STANDS IN FRONT OF THE RUNE DOOR. Its trigger is x 110-146 and
-      // the player walks up the middle of the room to reach it, so an NPC
-      // anywhere in x 104-152 below y 90 fences off the room's main exit. That
-      // is exactly what happened the first time Kat's table was placed: Eric
-      // and Magma sat either side of the approach and the walk test could no
-      // longer get through the door at all. The tables are therefore split
-      // around the corridor, not across it, and folk-test.js checks it.
       npcs: [
         {
           // Flavor only here — per the plot, the Lounge is "the bar + portals
@@ -693,8 +662,9 @@ window.NEWSEY_STORY = (function () {
         { art: "prop_fountain", x: 224, y: 172, h: 58, base: { rx: 15, ry: 6 } }
       ],
       exits: [
-        // the path leaving through the gap in the wall, back the way she came
-        { x: 146, y: 178, w: 34, h: 14, to: "lounge", link: "rune" }
+        // The path leaves through the gap in the near wall, SOUTH, into the
+        // Library — which is the room between the Garden and the Lounge.
+        { x: 146, y: 178, w: 34, h: 14, to: "library", link: "gardenPath" }
       ],
       npcs: [
         {
@@ -705,10 +675,9 @@ window.NEWSEY_STORY = (function () {
             "You really shouldn't eat anything outside the tavern. This garden is full of experimental plants I'm still analysing.",
             "I'm Kyran, head of Infinity's research department. And you must be Nella. Welcome.",
             "This garden is supposed to be off limits, you know. How did you even get here?",
-            "…You just opened the black door. You are full of surprises. Head back the way you came, and when you reach it, touch the rune of the chaos symbol.",
+            "…You walked in off the path? You are full of surprises. Head back down through the gap in the wall and you will come out in the library.",
             "Oh — and stop by my lab later. I have something to show you."
-          ],
-          setsFlag: "runeDoorLearned"
+          ]
         }
       ]
     },
@@ -724,14 +693,16 @@ window.NEWSEY_STORY = (function () {
         { x: 252, y: 96, w: 32, h: 24 }    // the instrument cart
       ],
       exits: [
-        // THE WAY BACK IS THE NEAR EDGE, not a door in a wall. You reach this
-        // room by walking UP through the Lounge's back wall, so you arrive at
-        // the bottom of it and you leave the same way you came in — down, off
-        // the near edge. The Anarchy Garden has always worked this way; this
-        // is the rest of the map agreeing with it. drawn: "threshold" makes
-        // app.js draw the doorway frame, since no art can show a door at the
-        // edge the camera is standing on.
-        { x: 143, y: 172, w: 40, h: 14, to: "lounge", link: "rune", drawn: "threshold" }
+        // THE LOUNGE IS WEST OF THIS ROOM: out of the west door here, in
+        // through the Lounge's east door.
+        // x 42, not x 4: this room's walkable floor starts at x 40, so a
+        // trigger against the frame edge was somewhere she could never stand.
+        { x: 42, y: 112, w: 26, h: 42, to: "lounge", link: "eastDoor" }
+      ],
+      // the way west, to the Lounge — drawn, so the door you use is a door
+      // you can see.
+      props: [
+        { art: "prop_door_west", x: 50, y: 154, h: 96, w: 26, door: true }
       ],
       npcs: [
         {
@@ -758,14 +729,14 @@ window.NEWSEY_STORY = (function () {
       // The drawn floor, traced as a polygon (see ROOM SHAPES above).
       floorPoly: [[50,100],[274,100],[274,188],[50,188]],
       exits: [
-        // THE WAY BACK IS THE NEAR EDGE, not a door in a wall. You reach this
-        // room by walking UP through the Lounge's back wall, so you arrive at
-        // the bottom of it and you leave the same way you came in — down, off
-        // the near edge. The Anarchy Garden has always worked this way; this
-        // is the rest of the map agreeing with it. drawn: "threshold" makes
-        // app.js draw the doorway frame, since no art can show a door at the
-        // edge the camera is standing on.
-        { x: 142, y: 176, w: 40, h: 14, to: "lounge", link: "rune", drawn: "threshold" }
+        // THE LOUNGE IS SOUTH of the library and the Anarchy Garden is NORTH.
+        // Down off the near edge takes you back to the Lounge's north arch;
+        // the door in the back wall goes on up into the Garden.
+        { x: 142, y: 176, w: 40, h: 14, to: "lounge", link: "northArch", drawn: "threshold" },
+        { x: 142, y: 84, w: 36, h: 24, to: "garden", link: "gardenPath" }
+      ],
+      props: [
+        { art: "prop_wall_arch", x: 160, y: 104, h: 84, w: 60, door: true }
       ],
       obstacles: [ { x: 160, y: 92, w: 66, h: 22 } ], // armchair + candle table
       npcs: [
@@ -805,5 +776,5 @@ window.NEWSEY_STORY = (function () {
 
   return { CHARACTERS: CHARACTERS, INTRO_CUTSCENE: INTRO_CUTSCENE, DREAM_CUTSCENE: DREAM_CUTSCENE,
            JOHN_CUTSCENE: JOHN_CUTSCENE,
-           WAKE_LINES: WAKE_LINES, ROOMS: ROOMS, RUNE_DOOR: RUNE_DOOR };
+           WAKE_LINES: WAKE_LINES, ROOMS: ROOMS };
 })();

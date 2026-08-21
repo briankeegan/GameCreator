@@ -520,63 +520,6 @@
     if (save) { save.room = roomId; persist(); } // walking through a door autosaves
   }
 
-  // ---- the black rune door ----
-  // The plot's way around Infinity, and the only door that asks you a
-  // question. The FIRST push doesn't: "She wasn't sure how to open the door,
-  // but decided to push where she guessed a handle could be... The room was
-  // not the library" — so the first time it just dumps you in the Garden.
-  // Kyran is the one who tells you about the chaos rune, and after that the
-  // carvings resolve into words you can pick from.
-  var runeEl = document.getElementById("runeDoor");
-  var runeTitleEl = document.getElementById("runeTitle");
-  var runeListEl = document.getElementById("runeList");
-  var runeOpen = false;
-
-  function runeDoorKnown() { return !!(save && save.flags && save.flags.runeDoorLearned); }
-
-  function openRuneDoor() {
-    if (!runeDoorKnown()) {
-      // The accidental first trip. Sent somewhere she didn't choose, which is
-      // the whole reason she ever meets Kyran.
-      enterRoom("garden", null, null, "rune");
-      showNarration([
-        "The door is black marble, carved over with runes, and heavier than it looks.",
-        "You push where a handle ought to be. It gives, creaking.",
-        "This is not the library."
-      ]);
-      return;
-    }
-    runeOpen = true;
-    runeTitleEl.textContent = "You put your palm on the chaos symbol. The carvings fade, and words come up in white paint.";
-    runeListEl.innerHTML = "";
-    STORY.RUNE_DOOR.forEach(function (dest) {
-      var b = document.createElement("button");
-      b.textContent = dest.label + (dest.locked ? "" : "");
-      if (dest.locked) {
-        b.className = "locked";
-        b.onclick = function () { runeTitleEl.textContent = dest.locked; };
-      } else {
-        b.onclick = function () {
-          closeRuneDoor();
-          enterRoom(dest.to, dest.arriveAt, dest.arriveFacing, dest.link);
-        };
-      }
-      runeListEl.appendChild(b);
-    });
-    runeEl.hidden = false;
-  }
-
-  function closeRuneDoor() {
-    runeOpen = false;
-    runeEl.hidden = true;
-  }
-  document.getElementById("runeBack").onclick = function () {
-    closeRuneDoor();
-    // Step back off the threshold, or the next frame opens it again.
-    player.y -= 14;
-    exitsArmed = false;
-  };
-
   // ---- input ----
   // Which key does what is the player's choice (settings.js) — nothing here
   // hardcodes a binding any more.
@@ -1157,7 +1100,6 @@
   }
 
   function update(dt) {
-    if (runeOpen) return;
     // The portal has hold of her. Freezing here rather than only blocking
     // input means she also cannot be pushed, wandered into, or walked out of
     // the doorway by a still-held arrow key while the swirl is on screen.
@@ -1274,8 +1216,7 @@
           player.y + player.h > ex.y && player.y < ex.y + ex.h) {
         onExit = true;
         if (exitsArmed && !doorNeedsRelease) {
-          if (ex.rune) openRuneDoor();
-          else if (ex.link === "portal") {
+          if (ex.link === "portal") {
             // Out of the doorway itself, not out of the player — the bloom
             // has to start where the swirl is drawn or it reads as the screen
             // flashing rather than the portal taking you.
@@ -1847,7 +1788,6 @@
     player.inBed = false;
     player.bedSlide = null;
     bedPush = 0;
-    closeRuneDoor();
     talkBox.hidden = true;
     talking = null;
     keys = {};
@@ -1952,7 +1892,7 @@
     exitsArmed: function () { return exitsArmed; },
     exitOverlaps: function () {
       return (currentRoom.exits || []).map(function (ex, i) {
-        return { i: i, to: ex.to || (ex.rune ? "RUNE" : "?"),
+        return { i: i, to: ex.to || "?",
           hit: (player.x + player.w > ex.x && player.x < ex.x + ex.w &&
                 player.y + player.h > ex.y && player.y < ex.y + ex.h) };
       });
