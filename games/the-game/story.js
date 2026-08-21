@@ -278,58 +278,156 @@ window.NEWSEY_STORY = (function () {
       // as the house back home rather than anywhere in Infinity, and it painted
       // a door on its right-hand wall that the map no longer uses.
       //
-      // THERE IS NO DOOR IN ANY WALL. You get here by walking UP through the
-      // Lounge's back wall, so you arrive at the near edge and you leave the
-      // same way you came in — down, through the gap in the balustrade. Same
-      // shape as the Anarchy Garden's gap in its low wall.
+      // The way out is the east wall's sidebreach (see exits, below) —
+      // straight into the Lounge's west door. The near-edge balustrade is
+      // NOT a way out any more: it used to have a gap for exactly that, and
+      // it read as a second exit that silently refused to open, so it's
+      // closed (see the rail props) now that the map moved the door east.
       //
       // bg-bedroom.png is the parquet and nothing else, so the walk mask is
       // its own silhouette: no floorPoly, no obstacles.
       playerStart: { x: 150, y: 150 },
       // Measured off art-src/bedroom_scene.png: she lies with her head on the
       // pillow up under the canopy, drawn clipped to above the quilt's edge.
-      bedSpot: { x: 224, y: 100 },
-      bedClipY: 108,
-      // Parquet at the near-left corner of the bed, clear of its footprint.
-      wakeSpot: { x: 174, y: 150 },
-      bedZone: { x: 182, y: 126, w: 88, h: 24 },
+      // bedSpot sits on the pillows — a fraction of the CUT IMAGE's own
+      // height (0.4848 down from its top for the pillow, 0.5859 down for
+      // the quilt's clip line), not the scene, since that's what's
+      // actually drawn on screen. Recomputed again when prop_bed_bed's h
+      // grew from 99 to 116 (see the props block below — the top stayed
+      // put, only the bottom moved), since both of these are measured
+      // from that same top.
+      bedSpot: { x: 161, y: 70 },
+      bedClipY: 82,
+      // On the rug at the bed's foot, clear of the bed's and the trunk's own
+      // footprints.
+      wakeSpot: { x: 161, y: 168 },
+      // The floor in front of the bed's foot and the trunk, where you stand
+      // and press UP to climb in.
+      bedZone: { x: 126, y: 120, w: 70, h: 26 },
       props: [
         // Ground cover first: flat, walked straight over, no footprint. The
         // scene has always had this rug; the first assembly of this room did
-        // not, which is exactly the kind of thing only the side-by-side finds.
-        // w is forced: the sheet drew the rug portrait, and a rug lying across
-        // a floor is wider than it is deep. Without it the room gets a tall
-        // narrow mat standing in the middle of the parquet.
-        { art: "prop_bed_rug", x: 152, y: 142, h: 54, w: 120, flat: true },
-        // Measured off art-src/bedroom_scene.png, which is drawn the way every
-        // room in this game is drawn: ONE flat back wall across the top, floor
-        // a rectangle below it. There are NO SIDE WALLS — the scene has none,
-        // the Anarchy Garden has none, and the pair this room had were the
-        // whole reason its wainscot line would not meet at the corners.
-        // w overlaps its neighbour by a few px: the panel art carries a dark
-        // edge, and butted exactly they draw as three visible seams down the
-        // back wall.
-        { art: "prop_bed_wall", x: 53,  y: 102, h: 112, w: 116, behind: true, base: { w: 112, h: 8 } },
-        { art: "prop_bed_wall", x: 160, y: 102, h: 112, w: 116, behind: true, base: { w: 112, h: 8 } },
-        { art: "prop_bed_wall", x: 267, y: 102, h: 112, w: 116, behind: true, base: { w: 112, h: 8 } },
-        // the balustrade along the near edge, in two runs with the way out
-        // between them (x 130-190)
-        { art: "prop_bed_rail", x: 64,  y: 199, h: 30, w: 128, base: { w: 128, h: 10 } },
-        { art: "prop_bed_rail", x: 256, y: 199, h: 30, w: 128, base: { w: 128, h: 10 } },
-        // the furniture, at the numbers the composed scene draws it at
-        { art: "prop_bed_mirror",     x: 50,  y: 114, h: 96, base: { w: 32, h: 10 } },
-        { art: "prop_bed_nightstand", x: 116, y: 104, h: 50, base: { w: 22, h: 8 } },
-        // bed + trunk are one prop: they came off the sheet touching and no
-        // vertical cut separates them (the trunk stands in front of the bed's
-        // own right-hand post), which is also how the scene composes them.
-        { art: "prop_bed_bed", x: 226, y: 134, h: 118, w: 134, base: { w: 122, h: 18 } },
-        // the way east, to the Lounge
-        { art: "prop_door_east", x: 308, y: 192, h: 116, w: 28, door: true, behind: true }
+        // not, which is exactly the kind of thing only the side-by-side finds
+        // — and even the side-by-side missed how badly undersized this was: w
+        // was 120, less than the ~225 the rug actually measures at its widest
+        // (its perspective trapezoid in the scene runs from about x40 to x270
+        // at the near edge). Only the BLEND overlay — the assembled room
+        // composited semi-transparent on top of the scene, not laid beside it
+        // — shows this: a mismatch in POSITION doubles an edge, but a
+        // mismatch in SIZE just makes the whole shape read as two nested
+        // outlines, which two pictures side by side at their own separate
+        // scales cannot show at all. w is forced rather than derived from the
+        // art's own aspect: the sheet drew the rug portrait, and a rug lying
+        // across a floor is wider than it is deep.
+        { art: "prop_bed_rug", x: 157, y: 134, h: 58, w: 195, flat: true },
+        // The back wall, tiled at its OWN aspect ratio rather than stretched
+        // to cover fewer, wider panels — a single image asked to cover a span
+        // it wasn't drawn for reads as smeared brick and warped wallpaper,
+        // reported straight from a screenshot. EIGHT copies, not five: this
+        // art has been re-cut twice since the count was last checked against
+        // it (each cut is a fresh sheet, so its exact pixel aspect isn't
+        // guaranteed to hold), and its native aspect had quietly drifted to
+        // where five copies left a ~30px gap of bare floor showing through
+        // the wall on the right — invisible to every other check, since
+        // sizecheck only diffs one prop's own numbers and the side-by-side
+        // frames the room's furniture, not its bare edges. Caught by eye (a
+        // player asked "what happened with the wall"), then made permanent:
+        // room.py verify now unions every behind/door prop sharing a wall
+        // band's y and fails if the band stops reaching both frame edges —
+        // see backdrop_coverage_problems in room.py. Recompute the copy count
+        // the same way if this art is re-cut again: native w at h=112,
+        // spaced at (w - 4) so neighbours overlap ~4px, enough copies for the
+        // last one's right edge to clear 320.
+        { art: "prop_bed_wall", x: -6,  y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 38,  y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 82,  y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 126, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 170, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 214, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 258, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 302, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        // the balustrade along the near edge, unbroken. Re-cut alongside the
+        // proportion-locked furniture regen, and its own native aspect
+        // dropped from 12.1:1 to 7.6:1 (a taller, less impossibly-thin strip)
+        // — h bumped from 30 to 44 to keep ONE copy spanning the room's full
+        // width at the new aspect (30 would now draw only ~228px, leaving
+        // bare floor at both edges).
+        { art: "prop_bed_rail", x: 160, y: 199, h: 44, base: { w: 308, h: 10 } },
+        // The furniture, proportion-locked and regenerated a second time:
+        // the bed and mirror had first been drawn at a tilted 3/4
+        // product-shot angle (fixed via the room's "camera" field), and once
+        // that was fixed they still drew narrower relative to their height
+        // than the scene's own versions — a live screenshot is what showed
+        // it, not the side-by-side or the blend, since "the right shape at
+        // the wrong size" doesn't ghost the way a wrong position does. Two
+        // regeneration rounds still didn't fully close the gap (mirror art
+        // aspect only reached 0.46 of the scene's measured 0.58, bed 0.53 of
+        // 0.80), so x/y/h/w for all three pieces here are the scene's own
+        // measured proportions, not the art's — a deliberate, commented
+        // exception to "let width follow the art", forcing w to match what
+        // the scene actually shows instead of spending a third generation
+        // round chasing it. Measured with `room.py measure` (see
+        // measure_blob.py): grabcut for the mirror and bed, which contrast
+        // clean from their background by colour; canny edge/contour
+        // detection for the trunk, which grabcut could not segment — its
+        // warm brown/gold is too close to the similarly warm rug beneath it
+        // for a colour-region model, but the trunk's straight sides and
+        // metal bands give canny's edge detector plenty to find. See
+        // CLAUDE.md's "before hand-rolling an algorithm" note for why these
+        // two, not a hand-rolled flood fill.
+        // Both grounded to y=110, the wall's own floor line — and that
+        // number itself was wrong once already: first read by eye off a
+        // brightened crop as ~102, which was still visibly high on a
+        // render (reported directly — "the bed's too high, everything's a
+        // little too high"). Re-measured properly instead of re-guessing:
+        // per-row gradient across three clean vertical strips of the scene
+        // (no furniture in the way) all agree the wainscot-to-parquet edge
+        // is at y=109-110, not 102 — confirmed by drawing both lines over
+        // the scene and looking, the same "look before trusting it" rule
+        // as everything else measured this way. The wall panels above and
+        // both of these move together off the corrected line; h taken up
+        // on each to keep its top where it was, w recomputed to match
+        // (mirror keeps its locked 1:2 ratio off the new h; the nightstand
+        // has none declared, so it still follows the art's own aspect).
+        { art: "prop_bed_mirror", x: 53,  y: 109, h: 99, w: 50, base: { w: 40, h: 8 } },
+        { art: "prop_bed_nightstand", x: 96, y: 109, h: 61, base: { w: 20, h: 8 } },
+        // prop_bed_bed's own art ends at the mattress/quilt edge — no
+        // footboard drawn, confirmed by opening the file: flat transparent
+        // background right where the scene's own footboard is. Measuring
+        // it (GrabCut) only ever finds that shorter shape, which read as
+        // "the bed's too high AND not big enough" and, at the old y=113,
+        // left a gap of bare rug between the bed's cut-off bottom edge and
+        // the trunk instead of the two touching the way the scene shows.
+        // Not a paid regen right now — moved down and sized up instead so
+        // the trunk (drawn after it, y=153 > 130, so on top) sits across
+        // the missing-footboard edge and covers it, the same kind of
+        // deliberate placement departure as the Lounge's tables. Top stays
+        // at 14 (the canopy finials, unaffected by any of this); h/w grow
+        // to match, aspect held at the art's own 79:99.
+        { art: "prop_bed_bed",   x: 162, y: 130, h: 116, w: 93, base: { w: 85, h: 16 } },
+        { art: "prop_bed_trunk", x: 163, y: 153, h: 32, w: 53, base: { w: 48, h: 9 } },
       ],
       // THE LOUNGE IS EAST OF THIS ROOM, so the way out is a door in the EAST
       // wall: you walk right out of here and come in the Lounge's west door.
+      //
+      // Not drawn as generated art. Three side-doorway attempts across this
+      // room and the Lounge each failed a different way (wrong material,
+      // wrong proportion, right but drifting from the room's own wall art
+      // room to room), and the owner asked to stop fighting the generator on
+      // exactly this shape of art and use a plain breach in the wall instead
+      // — drawSideBreach in app.js, a code-drawn notch, not a picture.
       exits: [
-        { x: 290, y: 120, w: 28, h: 70, to: "lounge", link: "westDoor" }
+        // y 148-184: below the four-poster's footprint (which ends at 143) and
+        // above the balustrade's (which starts at 194). Both would otherwise
+        // sit on this trigger, and a footprint on a doorway is a door you can
+        // see and cannot reach. Shorter than that span allows: the regenerated
+        // floor's own bottom edge dips a few px right under this door (measured
+        // off walk-bedroom.png — a fully open row at y<=186, pinched to two
+        // slivers at y 188-190), so the box is centred at y=166 (feet at 184),
+        // clear of the dip, instead of at the old centre of 169 (feet at 187,
+        // inside it) — which read as a door you could walk toward and never
+        // reach.
+        { x: 276, y: 148, w: 40, h: 36, to: "lounge", link: "westDoor", drawn: "sidebreach" }
       ],
       npcs: [
         {
@@ -407,8 +505,13 @@ window.NEWSEY_STORY = (function () {
         { art: "prop_lg_wall",   x: 278, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
         { art: "prop_lg_wall",   x: 335, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
         // the way west and the way east, in the side walls at the frame edges
-        { art: "prop_door_west", x: 10,  y: 140, h: 74, w: 24, door: true, behind: true },
-        { art: "prop_door_east", x: 310, y: 140, h: 74, w: 24, door: true, behind: true },
+        // The ARCH is the prop, not a wall with an arch in it. The first two
+        // attempts drew a tall strip that was seven eighths plain brick, so at
+        // any width that left room to walk, the opening was a few pixels wide
+        // and simply disappeared. Asked for as "the arch fills the image, the
+        // brick is a sliver of framing", it came back usable at once.
+        // West and east doorways are breaches, not generated art — see the
+        // note by ROOMS.bedroom's exit for why.
         // the bar along the right end of the back wall, where the plot puts it
         { art: "prop_backbar", x: 238, y: 62, h: 44, w: 88, base: { w: 88, h: 6 } },
         // Stops short of the EAST doorway's approach: run out to the frame
@@ -427,10 +530,10 @@ window.NEWSEY_STORY = (function () {
       // player, so crossing means standing in the opening rather than on a
       // rectangle of floor near it.
       exits: [
-        { x: 2,   y: 92,  w: 26, h: 50, to: "bedroom", link: "westDoor" },
+        { x: 4,   y: 118, w: 38, h: 58, to: "bedroom", link: "westDoor", drawn: "sidebreach" },
         { x: 92,  y: 46,  w: 32, h: 26, to: "library", link: "northArch" },
         { x: 149, y: 46,  w: 32, h: 26, to: "arena",   link: "portal" },
-        { x: 294, y: 92,  w: 26, h: 50, to: "lab",     link: "eastDoor" }
+        { x: 278, y: 118, w: 38, h: 58, to: "lab",     link: "eastDoor", drawn: "sidebreach" }
       ],
       npcs: [
         {
@@ -685,28 +788,69 @@ window.NEWSEY_STORY = (function () {
       // the RIGHT wall, which the map does not use.
       playerStart: { x: 150, y: 150 },
       props: [
-        // h 88, not 120: measured off the scene, where the shelf sits high on
-        // the wall and the jars are about 26px tall. At the height they were
-        // first placed they read as barrels.
-        // The back wall: plain stone, with the pinned chart on the left panel
-        // and the jar shelf hung on the middle one — measured off the scene,
-        // which has ONE shelf with bare stone either side of it, not three.
-        { art: "prop_lab_chart", x: 52,  y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
-        { art: "prop_lab_plain", x: 160, y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
-        { art: "prop_lab_plain", x: 268, y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
-        { art: "prop_lab_shelf", x: 158, y: 92, h: 52, w: 124, behind: true },
+        // The back wall: three panels, bare stone either side of ONE shelf —
+        // same convention as the bedroom, run through the same tools this
+        // time (room.py grid / measure). Found two real bugs neither the
+        // side-by-side nor a first read had caught: `prop_lab_chart` (a
+        // pinned parchment) was cut from the same sheet as `prop_lab_plain`
+        // — same 620x767 art — but the room's own spec never asks for a
+        // chart and the approved scene has no parchment anywhere on this
+        // wall, just bare stone; it was leftover art from before this room
+        // was rebuilt to the three-pass standard, wired in without checking
+        // it against the scene. Replaced with a second `prop_lab_plain`.
+        // `prop_lab_shelf` isn't a small furniture overlay — its own art is
+        // a FULL wall panel with the shelf and jars painted onto its own
+        // baked-in stone (385x353, not transparent), the same idea as
+        // `prop_lab_plain` but with a shelf on it. Declaring it at its own
+        // small y/h (92/52, forced to an undistorted-looking-but-wrong
+        // w:124) sat it at the wrong height AND cropped/squeezed its baked
+        // background out of registry with its neighbours' stone — that
+        // mismatched rectangle was the second bug. Given the exact same
+        // box as the panel it replaces (x/y/h/w identical to prop_lab_plain)
+        // instead, its own background lines up with theirs by construction.
+        // y=89, not the old 122: room.py wallseam --method canny at this
+        // room's door jamb (stone-on-stone floor/wall is too low-contrast
+        // for the default gradient method — the same reason grabcut needed
+        // canny as a fallback for the trunk) found the jamb's own base at
+        // y=89, a strong, visually-confirmed edge. 122 was itself a guess
+        // that had never been measured — the bench and cabinet's "grounded
+        // 15px short of the wall" NOTEs earlier were checked against that
+        // same wrong number, which is exactly why they're gone now: both
+        // were already correct against the REAL wall line the whole time.
+        { art: "prop_lab_plain", x: 52,  y: 89, h: 75, w: 114, behind: true, base: { w: 114, h: 8 } },
+        { art: "prop_lab_shelf", x: 160, y: 89, h: 75, w: 114, behind: true, base: { w: 114, h: 8 } },
+        { art: "prop_lab_plain", x: 268, y: 89, h: 75, w: 114, behind: true, base: { w: 114, h: 8 } },
         // the way west, to the Lounge. door: true — it IS the doorway, so it
         // carries no footprint and its trigger sits on it.
-        { art: "prop_lab_door", x: 18, y: 192, h: 116, w: 28, door: true, behind: true },
-        { art: "prop_lab_bench",   x: 166, y: 138, h: 44, w: 122, base: { w: 118, h: 10 } },
-        { art: "prop_lab_cabinet", x: 268, y: 134, h: 60, base: { w: 32, h: 10 } },
-        { art: "prop_lab_cart",    x: 254, y: 172, h: 46, base: { rx: 11, ry: 4 } }
+        // West doorway is a breach, not generated art — see the note by
+        // ROOMS.bedroom's exit for why.
+        //
+        // bench/cabinet/cart: all three read notably smaller than their own
+        // reference scene — same "tiny prop" bug the bedroom's furniture
+        // had, never caught here because this room was never actually
+        // measured against its scene before. GrabCut couldn't segment any
+        // of the three (cluttered glassware over wood reads as one blob of
+        // similar warm tones to GrabCut's colour model, the same failure
+        // mode as the bedroom's trunk but worse — canny's edge tangle over
+        // that much clutter didn't separate the object from the noise
+        // either), so these are `room.py grid` manual readings, cross-
+        // checked at 4x zoom against three separate crops.
+        { art: "prop_lab_bench",   x: 157, y: 107, h: 67, w: 134, base: { w: 128, h: 10 } },
+        // Reverted a departure that turned out to be a mistake, not a fix:
+        // this was moved to y=107 (from its scene-measured y=92) on the
+        // theory it was "floating short of the wall" — but that compared
+        // it against the wall's OLD, never-actually-measured y=122. Now
+        // that the wall itself is properly measured at y=89 (see above),
+        // the cabinet's original scene reading (y=92) is 3px forward of
+        // the real wall line — already correct, nothing to ground it to.
+        { art: "prop_lab_cabinet", x: 269, y: 92, h: 79, w: 62, base: { w: 56, h: 10 } },
+        { art: "prop_lab_cart",    x: 269, y: 168, h: 64, w: 56,  base: { rx: 24, ry: 6 } }
       ],
       exits: [
         // y 124, clear of the wall panels' footprint: the leftmost panel
         // blocks y 112-120 across the room, and a trigger overlapping it is a
         // door you cannot reach.
-        { x: 2, y: 136, w: 28, h: 54, to: "lounge", link: "eastDoor" }
+        { x: 2, y: 136, w: 28, h: 54, to: "lounge", link: "eastDoor", drawn: "sidebreach" }
       ],
       npcs: [
         {

@@ -117,35 +117,57 @@ function derivableArrival(room, link) {
   return false;
 }
 
-// Which wall a door is in, worked out from the room itself rather than from a
-// hardcoded canvas size: the room's extent is its floor plus everything it
-// puts on that floor. Used only to compare against what the room SPEC says the
-// art was drawn with — see checkDeclaredWalls.
-function roomBounds(room) {
+// Which wall a door is in, worked out from the game's own frame rather than a
+// hardcoded canvas size. It has to be the frame every room SHARES, not one
+// room's own geometry: a floor-plate room declares no floorPoly at all, so
+// bounds taken from a single room collapse to whatever that room happens to
+// list — for the bedroom, its one exit, which then sat dead-centre of its own
+// "room" and was reported as being in whichever wall rounding preferred.
+//
+// Props are deliberately EXCLUDED from the frame. They overhang it on purpose
+// (a wall panel starts at x = -6 so the wall runs off the edge of the picture),
+// and letting them set the bounds stretches the frame sideways until every
+// side door reads as a near-wall one.
+function gameBounds(ROOMS) {
   const xs = [], ys = [];
-  for (const [x, y] of room.floorPoly || []) { xs.push(x); ys.push(y); }
-  for (const ex of room.exits || []) { xs.push(ex.x, ex.x + ex.w); ys.push(ex.y, ex.y + ex.h); }
+  for (const room of Object.values(ROOMS)) {
+    for (const [x, y] of room.floorPoly || []) { xs.push(x); ys.push(y); }
+    for (const ex of room.exits || []) { xs.push(ex.x, ex.x + ex.w); ys.push(ex.y, ex.y + ex.h); }
+  }
   if (!xs.length) return null;
   return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
 }
-function wallOf(room, ex) {
-  const b = roomBounds(room);
+
+// A SIDE door is one hard against the left or right edge of the frame; a
+// back/near door is one high or low in it. Testing the sides FIRST matters:
+// the floor of a top-down room lives in the lower half of the frame, so a
+// perfectly ordinary side door sits low and "which edge is nearest in pixels"
+// calls it a near-wall door every time. That is what this check first did.
+//
+// Calibrated on the rooms that exist, as fractions of the frame. Side doors:
+// 0.93 and 0.93 (bedroom and lounge, right), 0.07 and 0.04 (lounge and lab,
+// left). The nearest a NON-side door gets to either edge is 0.33 (the lounge's
+// back-left arch), so 0.15 sits with a wide margin on both sides. Vertically,
+// back doors are at 0.09 and near doors at 0.99, against a 0.35/0.75 split.
+const SIDE_FRAC = 0.15, BACK_FRAC = 0.35, NEAR_FRAC = 0.75;
+function wallOf(b, ex) {
   if (!b) return null;
   const cx = ex.x + ex.w / 2, cy = ex.y + ex.h / 2;
-  const d = { back: cy - b.y0, near: b.y1 - cy, left: cx - b.x0, right: b.x1 - cx };
-  const wall = Object.keys(d).reduce((a, k) => (d[k] < d[a] ? k : a), "back");
-  if (wall !== "back" && wall !== "near") return wall;
-  // A back/near door is further described by which third of the wall it is
-  // in, because that is how the room specs name them ("back-left").
-  const third = (cx - b.x0) / (b.x1 - b.x0);
-  return third < 0.34 ? `${wall}-left` : third > 0.66 ? `${wall}-right` : wall;
+  const fx = (cx - b.x0) / (b.x1 - b.x0), fy = (cy - b.y0) / (b.y1 - b.y0);
+  if (fx <= SIDE_FRAC) return "left";
+  if (fx >= 1 - SIDE_FRAC) return "right";
+  const wall = fy <= BACK_FRAC ? "back" : fy >= NEAR_FRAC ? "near" : null;
+  if (!wall) return null;   // mid-frame and mid-wall: nothing to say, so say nothing
+  // A back/near door is further described by which third of the wall it is in,
+  // because that is how the room specs name them ("back-left").
+  return fx < 0.34 ? `${wall}-left` : fx > 0.66 ? `${wall}-right` : wall;
 }
 
 // A room's SPEC (games/<id>/rooms/<room>.json) says which wall each way out
 // was DRAWN in — the art was generated from it. The exit trigger is code. When
 // those two disagree the doorway is painted in one wall and armed in another,
 // and no art check and no pairing check can see it.
-function checkDeclaredWalls(gameDir, roomId, room) {
+function checkDeclaredWalls(gameDir, roomId, room, bounds) {
   const specPath = path.join(gameDir, "rooms", `${roomId}.json`);
   if (!existsSync(specPath)) return;                     // not every room has a spec yet
   let spec;
@@ -165,7 +187,7 @@ function checkDeclaredWalls(gameDir, roomId, room) {
       fail(`${roomId}: ${specPath} says a door to "${decl.to}" is drawn in the ${decl.wall} wall, but no exit in story.js leads there — the doorway is painted and nothing arms it`);
       continue;
     }
-    const actual = wallOf(room, ex);
+    const actual = wallOf(bounds, ex);
     // "back" vs "back-left" is a difference in thirds, not in walls; only a
     // genuine wall swap (a door drawn in the back, armed on the right) is
     // worth failing a build over.
@@ -180,6 +202,7 @@ function checkDeclarative(gameDir, storyPath) {
   const ROOMS = story.ROOMS;
   const RUNE_DOOR = story.RUNE_DOOR || [];
   const START = story.START_ROOM || "home_bedroom";
+  const bounds = gameBounds(ROOMS);
   const reachable = new Set();
 
   for (const [roomId, room] of Object.entries(ROOMS)) {
@@ -223,7 +246,7 @@ function checkDeclarative(gameDir, storyPath) {
       fail(`${roomId}: playerStart (${st.x},${st.y}) is on top of one of this room's own doorways — the door never arms and the player is stuck`);
     }
 
-    checkDeclaredWalls(gameDir, roomId, room);
+    checkDeclaredWalls(gameDir, roomId, room, bounds);
   }
 
   for (const dest of RUNE_DOOR) {
@@ -253,6 +276,30 @@ const cellsOf = (map, ch) => {
 };
 const key = (cells) => cells.map((p) => `${p.c},${p.r}`).sort().join(" ");
 
+// Which boundary a gate is in, and which boundary a spawn stands against. A
+// spawn is one cell INSIDE the wall (you cannot stand in the wall), so it is
+// classified by the boundary it is nearest rather than by sitting on one.
+function gateSide(cells, COLS, ROWS) {
+  const p = cells[0];
+  if (p.r === 0) return "top";
+  if (p.r === ROWS - 1) return "bottom";
+  if (p.c === 0) return "left";
+  if (p.c === COLS - 1) return "right";
+  return null;
+}
+function spawnSide(p, COLS, ROWS) {
+  if (p.r <= 1) return "top";
+  if (p.r >= ROWS - 2) return "bottom";
+  if (p.c <= 1) return "left";
+  if (p.c >= COLS - 2) return "right";
+  return null;
+}
+const OPPOSITE = { top: "bottom", bottom: "top", left: "right", right: "left" };
+// How far out of line with the gate a spawn may be, in cells. Every real pair
+// in Dog Punk is 0 — the spawn sits inside the gate's own span — so 1 is a
+// margin, not a fudge.
+const ALIGN_TOLERANCE = 1;
+
 function checkGrid(roomsPath, gateChar = "G", spawnChar = "P") {
   global.window = {};
   eval(readFileSync(roomsPath, "utf8"));
@@ -262,7 +309,7 @@ function checkGrid(roomsPath, gateChar = "G", spawnChar = "P") {
     process.exit(2);
   }
   const { COLS, ROWS, ROOMS, SOLID } = data;
-  let gateKey = null, spawnKey = null, gateRoom = null, spawnRoom = null;
+  const seen = [];
 
   for (const room of ROOMS) {
     const id = room.id || "(unnamed)";
@@ -286,16 +333,6 @@ function checkGrid(roomsPath, gateChar = "G", spawnChar = "P") {
         fail(`${id}: gate cell (${g.c},${g.r}) is not in the room's boundary wall`);
       }
     }
-    // The grid shape's whole advantage is that arrival is a constant. It only
-    // holds while every room agrees where the gate and the spawn are: move
-    // room 2's gate and you walk out the top of room 1 and arrive somewhere
-    // unrelated, with nothing to notice it — the derived shape's checks
-    // cannot fire here because there is no partner to disagree with.
-    if (gateKey === null) { gateKey = key(gate); gateRoom = id; }
-    else if (key(gate) !== gateKey) fail(`${id}: its gate is at ${key(gate)} but ${gateRoom}'s is at ${gateKey} — every room's gate must be in the same cells, or walking out of one room puts you somewhere else in the next`);
-    if (spawnKey === null) { spawnKey = key(spawn); spawnRoom = id; }
-    else if (key(spawn) !== spawnKey) fail(`${id}: its spawn is at ${key(spawn)} but ${spawnRoom}'s is at ${spawnKey} — every room's spawn must be in the same cell`);
-
     // Arriving ON the way out is the grid version of landing on a doorstep
     // that throws you straight back: you would clear the room and be sent
     // onward before touching anything.
@@ -304,6 +341,40 @@ function checkGrid(roomsPath, gateChar = "G", spawnChar = "P") {
       fail(`${id}: the spawn (${s.c},${s.r}) is touching the gate — you arrive already leaving`);
     }
     if (SOLID && SOLID.has && SOLID.has(map[s.r][s.c])) fail(`${id}: the spawn cell is solid`);
+
+    seen.push({ id, gate, spawn: s, gside: gateSide(gate, COLS, ROWS), sside: spawnSide(s, COLS, ROWS) });
+  }
+
+  // THE PAIRING RULE, in the form a grid takes it. In the derived shape a door
+  // names its partner and arrival is computed from it; here the partner is
+  // implicit — the next room in the list — and arrival is a fixed cell. So the
+  // thing to check is that those two agree: you leave through one room's wall
+  // and arrive against the FACING wall of the next, lined up with the way you
+  // came out. Get it wrong and you walk out of one room and appear somewhere
+  // unrelated in the next, with nothing to notice it, because there is no
+  // partner to disagree with.
+  //
+  // This started life as "every room's gate is in the same cells". That was
+  // true of a chapter which was one straight column of three rooms and false
+  // the moment it grew to fifteen and started turning corners — the rule was a
+  // description of one level's layout rather than of what makes doors work.
+  for (let i = 0; i < seen.length - 1; i++) {
+    const a = seen[i], b = seen[i + 1];
+    if (!a.gside) { fail(`${a.id}: can't tell which wall its gate is in`); continue; }
+    if (!b.sside) { fail(`${b.id}: its spawn (${b.spawn.c},${b.spawn.r}) is not against any wall — there is no doorway it could have come through`); continue; }
+    if (b.sside !== OPPOSITE[a.gside]) {
+      fail(`${a.id} -> ${b.id}: you leave through the ${a.gside} wall but arrive against ${b.id}'s ${b.sside} wall — walking out one side and in the same side means the world folds back on itself`);
+      continue;
+    }
+    // Lined up across the shared edge: leaving by the 8th column means
+    // arriving in about the 8th column, not at the far end of the next room.
+    const horizontal = a.gside === "top" || a.gside === "bottom";
+    const span = a.gate.map((g) => (horizontal ? g.c : g.r));
+    const at = horizontal ? b.spawn.c : b.spawn.r;
+    const off = Math.max(Math.min(...span) - at, at - Math.max(...span), 0);
+    if (off > ALIGN_TOLERANCE) {
+      fail(`${a.id} -> ${b.id}: the gate spans ${Math.min(...span)}-${Math.max(...span)} but you arrive at ${at}, ${off} cells out of line — the street jumps sideways under the player`);
+    }
   }
 }
 

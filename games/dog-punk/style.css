@@ -70,6 +70,21 @@ body {
 
 #enemyCount { font-variant-numeric: tabular-nums; }
 
+/* Pause/settings button — same HUD text color as everything else here, no
+   background, so it reads as part of the HUD bar rather than a new widget
+   bolted onto it. */
+.hud-btn {
+  background: transparent;
+  border: none;
+  color: #d7dcc4;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+  opacity: 0.85;
+}
+.hud-btn:hover { opacity: 1; }
+
 .board-wrap {
   flex: 1 1 0%;
   min-height: 0;
@@ -130,6 +145,68 @@ body {
   border-radius: 8px;
   cursor: pointer;
   font-size: 1rem;
+}
+
+/* Settings/pause panel — same .run-overlay backdrop as win/lose/intro, with
+   its own inner frame matching #board's own dark-slate/near-black framing
+   so it reads as "part of this game" rather than an imported widget. */
+.settings-panel {
+  background: #22232a;
+  border: 3px solid #14121a;
+  border-radius: 10px;
+  padding: 16px 20px;
+  width: 100%;
+  max-width: 300px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 0.85rem;
+  color: #d7dcc4;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-key {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-width: 60px;
+}
+.settings-key.capturing { background: #f2b179; color: #2f2013; border-color: #f2b179; }
+.settings-status {
+  font-size: 0.78rem;
+  color: #f2b179;
+  min-height: 1.2em;
+}
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.settings-actions button { flex: 1 1 0; font-size: 0.85rem; padding: 8px 10px; }
+.settings-reset {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #fff !important;
+}
+/* Hidden but focusable — some on-screen keyboards only report a captured
+   key through an input event, not keydown, so this is what raises one
+   during a mobile rebind (same technique Newsey's settings.js uses). */
+.settings-grabber {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  border: 0;
+  padding: 0;
+  pointer-events: none;
 }
 
 /* Room-to-room transition ("Junk Bridge", etc.) — a brief non-blocking

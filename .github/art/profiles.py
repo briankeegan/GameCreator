@@ -126,7 +126,65 @@ PROFILES = {
         "size": "1536x1024", "quality": "medium", "background": "opaque",
         "verify": None,
     },
+
+    # THE OTHER TWO KINDS OF ART A GAME NEEDS, BEYOND CHARACTERS/ROOMS/TILES.
+    #
+    # These used to be one unbounded "freeform" escape hatch — any prompt, any
+    # size, any background, decided by whoever typed the workflow_dispatch
+    # form. That is how Trebor ended up with 200 card icons on a transparent
+    # background and 8 that were not: nothing said what a "card icon" was
+    # SUPPOSED to be, so nothing could catch when one drifted from it.
+    #
+    # A KIND is a rule, not a request. Add one here whenever a game needs a
+    # shape of art that doesn't fit an existing kind — a ship silhouette, a
+    # card face, a UI badge — rather than reaching for raw flags. That is the
+    # whole point of this table: the next "ship icon" gets a kind of its own
+    # when it is needed, not a one-off prompt nobody can hold to a standard.
+    "icon": {
+        "model": MODEL, "size": "1024x1024", "quality": "medium",
+        "background": "transparent",
+        "verify": None,
+        "note": "A single item dropped onto the game's own UI as a sprite — a "
+                "card, a weapon, a ship, a badge. ALWAYS transparent: it has to "
+                "sit on whatever background the UI already has, not carry its own.",
+    },
+    "cutscene": {
+        "model": MODEL, "size": "1536x1024", "quality": "medium",
+        "background": "opaque",
+        "verify": None,
+        "note": "Full-bleed narrative art meant to fill its own frame — a "
+                "splash screen, a story illustration. Opaque on purpose: this "
+                "is the one kind where the background IS the picture.",
+    },
 }
+
+# Which kinds a human or model may ask for with NO dedicated front door — a
+# one-off icon or cutscene, typed by hand. Character rows, room passes and
+# tile sheets are NOT here: they have their own front doors (generate_row.py,
+# room.py, tileset.py) that build the prompt from a spec and verify before
+# anything ships, and imagegen.py's own `--kind` CLI choices are restricted to
+# exactly this tuple so a person cannot reach for a raw `walk` or `room_scene`
+# generation and skip that verification.
+NO_FRONT_DOOR_KINDS = ("icon", "cutscene")
+
+# Which kinds the THREE FRONT DOORS may generate as, when their request has to
+# cross the broker. generate_row.py, room.py and tileset.py hold no API key of
+# their own — a Clubhouse run deliberately keeps it out of the model's
+# environment — so their own generations go through the same local broker as
+# everything else, and the broker (.github/autopilot/image-broker.js) will
+# only resolve a `kind` it can find in `profiles.FREEFORM_KINDS` by name. That
+# file cannot import a differently-named constant, so this name has to be the
+# one thing both "kinds with no front door" (safe from any caller) and "kinds
+# ONLY the three front doors ask for" belong to. What actually keeps a raw
+# curl from using a pipeline kind to clobber a SHIPPED sheet unverified is the
+# broker's separate, unconditional refusal of any output path under
+# `art-src/` — which is exactly why `imagegen._via_broker` stages a pipeline
+# generation one directory outside `art-src/` and moves it into place itself
+# once the broker has written it, rather than asking the broker to write
+# there directly. See imagegen.py's `_via_broker` for that half of the fix.
+PIPELINE_KINDS = ("walk", "attack", "room_scene", "room_plate", "room_props",
+                  "tileset_ground", "tileset_objects")
+FREEFORM_KINDS = NO_FRONT_DOOR_KINDS + PIPELINE_KINDS
 
 
 def get(kind):

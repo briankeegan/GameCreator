@@ -178,6 +178,25 @@ design discussion. `shared/` holds the components every game reuses
   props and floor plates"), and art references (the header comment in
   `.github/scripts/check_art_refs.mjs` -> that script -> "Verify art
   references"). Add all three pieces together or the rule will not hold.
+- **Before hand-rolling an algorithm, find the established tool.** A prop
+  needed its real bounding box measured off a composed scene, and the first
+  instinct was a flood fill written from scratch — grow a region from a
+  seed pixel, tolerance-match each new neighbour. It doesn't work on this
+  art: a single seed in the bedroom's bed had no usable tolerance at all,
+  jumping from "1 pixel" to "71% of the whole frame" with nothing in
+  between, because the object is several genuinely different colours and a
+  step-by-step walk can't tell "an edge inside the object" from "the edge
+  of the object" — a well-known limitation, not a bug to keep tuning
+  through. OpenCV's GrabCut — the actual standard tool for exactly this,
+  decades of use behind it — solved it in one call, no tolerance to guess:
+  given a generous rectangle, it fits foreground/background colour models
+  and finds a real segmentation via graph cuts. `pip install
+  opencv-python-headless` and reach for `cv2.grabCut` (or the equivalent
+  library for whatever the problem actually is) before writing a bespoke
+  version of a solved problem. Ask "what field studies this?" before
+  "how would I implement this?" — segmentation, template matching, feature
+  matching, and outlier rejection are all names of fields with existing
+  tools, not blank pages.
 - **A forgiving runtime needs a strict build.** The game deliberately survives
   missing art — `loadArt()` on an id with no file never resolves ok, so an NPC
   draws as a coloured circle with its initial in it and the game stays
@@ -409,11 +428,21 @@ design discussion. `shared/` holds the components every game reuses
     image Action reads, so a prompt only has to say WHICH PASS it wants — and
     `room.py prompt scene|plate|props` prints those prompts filled in. The
     Anarchy Garden is the reference room.
-  - **`room.py check` renders two pictures and you have to LOOK at them.** The
-    assembled room beside the composed scene is the step that finds things:
-    a plate that never filled its frame, statues at two thirds size, three
-    patches of ground cover where the scene has drifts. Every one of those was
-    invisible in the numbers and obvious in one glance at the side-by-side.
+  - **`room.py check` renders three pictures and you have to LOOK at all of
+    them, because side-by-side and blend catch different mistakes and neither
+    substitutes for the other.** The assembled room beside the composed scene
+    (side-by-side) is the step that finds things: a plate that never filled
+    its frame, statues at two thirds size, three patches of ground cover
+    where the scene has drifts. Every one of those was invisible in the
+    numbers and obvious in one glance at the side-by-side. But side-by-side
+    puts two pictures at their OWN separate scales next to each other, which
+    makes it blind to one whole class of mistake: a rug drawn at less than
+    half the width it needed turned into "a smaller picture of a smaller
+    rug" and passed a signed-off side-by-side clean. The assembled room
+    composited semi-transparent ON TOP of the scene (blend) is what actually
+    catches that — a size or position error shows up as an unmissable
+    doubled or ghosted edge. Found and fixed this way, after the room above
+    had already been signed off once on the side-by-side alone.
   - Ask for flat pure white behind a prop sheet, never transparency (same
     reason as sprite sheets). If a sheet does come back with real alpha,
     `build_props.py` uses it — keying white would eat a white marble statue.

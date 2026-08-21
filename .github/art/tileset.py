@@ -95,7 +95,7 @@ def main():
         if not imagegen.generate(fill(a.which, a.n, a.items, strip_notes=True), out,
                                  size=prof["size"], quality=a.quality or prof["quality"],
                                  force=a.force, background=prof["background"],
-                                 model=prof["model"]):
+                                 model=prof["model"], kind="tileset_" + a.which):
             return 0
         print("\nwrote %s\nnext: tileset.py cut %s --tile ... (one per shipped tile, "
               "left to right)" % (out, game))

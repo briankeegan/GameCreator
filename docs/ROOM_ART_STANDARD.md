@@ -134,6 +134,109 @@ palette, rendering technique and light logic live in that game's
 
 Getting this wrong is what makes a room look like objects were sprinkled on it.
 
+### Measure the wall before you measure anything that stands against it
+
+**This is the first measurement in the room, before any prop's.** Everything
+that stands flush against the back wall — a mirror, a nightstand, a shelf, a
+cabinet — has to share the wall's own floor line (the Y where the wall panels'
+art meets the floor), or it reads as floating with a strip of bare wall
+showing under it. Get the wall's line wrong, or skip measuring it and just
+inherit whatever `y` an earlier pass happened to use, and every prop placed
+against it inherits the error — each one individually "measured correctly
+off the scene" can still be wrong TOGETHER, the same way the wall's own
+tiled copies have to agree with EACH OTHER (§ "Wall bands are tiled…") and
+not just with the frame edges.
+
+This is exactly what happened in the bedroom, TWICE, before it was actually
+fixed. First pass: the mirror and the nightstand were each measured off the
+scene independently and landed a few pixels short of the wall panels' own
+declared floor line (y=102) — each individually plausible, both visibly
+floating once assembled. Grounded to that line and re-signed-off. Second
+pass: the whole room still read as "a little too high" on a live screenshot
+— because y=102 was ITSELF wrong. It had been read by eye off a brightened
+crop of the scene, which is a guess with a picture next to it, not a
+measurement. The wall, the mirror and the nightstand were all consistently
+grounded to the SAME wrong number, so nothing about them disagreed with each
+other — the exact failure mode `grounding_problems()` (below) cannot catch,
+because it trusts the wall's own declared y as correct.
+
+**So the wall's own line needs a real measurement too, not just something
+grounded to.** `room.py wallseam <game> <room> --strip x0,x1 [--strip x0,x1
+...] [--method gradient|canny]` (`wall_seam.py`) finds it properly, and has
+two methods for two different kinds of wall — the same "pick the tool that
+fits the material" reasoning as `measure_blob.py`'s grabcut/canny choice.
+`--method gradient` (default): a wall-to-floor seam is a horizontal edge, so
+it shows up as a row-to-row jump in average brightness across a vertical
+strip with nothing but bare wall/floor in it — works when the wall and
+floor are different COLOURS (the bedroom's blue wallpaper over dark
+parquet). `--method canny`: some rooms have a wall and floor close to the
+same colour (the lab: both grey-green stone), so there's no colour jump to
+find — gradient returns a low, inconsistent signal there. Canny edge
+detection finds LOCAL edges instead — the wall's block coursing and the
+floor's flagstone joints are still visually distinct patterns at the same
+overall brightness, so the row where edge density changes still marks the
+seam. Either method: give it at least two clean strips from different parts
+of the frame — if their answers disagree by more than a few px, at least
+one is crossing something that isn't bare wall/floor (furniture, a shadow, a
+rug edge, the curve of an archway) and needs re-picking; the tool says so
+rather than averaging two different measurements into a third wrong number.
+
+Two real finds this way: the bedroom's seam (y=109, not the never-measured
+102 it had been placed at — three clean strips of wallpaper-over-parquet
+agreed to the pixel with `--method gradient`), and the lab's (y=89, not the
+also-never-measured 122 — `--method gradient` couldn't commit on the
+stone-on-stone wall, but `--method canny` at the door jamb's own base, well
+clear of the archway's curve, found a strong, consistent edge). Both
+confirmed by drawing the line over the scene and looking, same as everything
+else measured this way — and both corrections were bigger than "a few
+pixels off": the lab's wall was declared 33px lower than its real line,
+which is also why furniture that had been "regrounded" against the wrong
+wall value (the cabinet, moved from its correct scene reading of y=92 to a
+wrong y=107) needed un-fixing once the real line was known. A wrong
+reference doesn't just mismeasure the thing measured against it — it can
+make an already-correct number look wrong and get "fixed" into an actual
+error.
+
+Record the answer as `wallSeam` in the room's `rooms/<room>.json` (see the
+bedroom's for the exact command used). Two checks read it, in `room.py
+verify`:
+
+- `wall_seam_problems()` — a real FAIL, not a NOTE, if the wall band's own
+  declared y in story.js ever drifts from the recorded `wallSeam` by more
+  than a few px. This is one fact with a right answer, the same as
+  `measured:`/`sizecheck` for a prop's own numbers, so it holds like one.
+- `grounding_problems()` — prints a NOTE for any non-flat, non-`behind` prop
+  whose `y` sits meaningfully short of the wall line (the recorded
+  `wallSeam` if the room has one; the wall band's own current y, with a
+  warning that it's unverified, if it doesn't). This one can only ever be a
+  NOTE: plenty of furniture legitimately stands forward of the wall on
+  purpose (a workbench, a table — the lab's bench reads completely fine
+  despite failing this exact check), and nothing in the numbers alone can
+  tell "flush against the wall, floating" from "forward of it on purpose" —
+  a human still has to look at a render and decide. But the prompt to look
+  is automatic now, on every room, every push, instead of depending on
+  someone noticing a strip of wall in a screenshot.
+
+**A floor's tile SCALE is a countable fact too, not something to eyeball —
+and a re-fit doesn't fix a wrong scale on its own.** The lab's floor plate
+was drawn with flagstones roughly 3x the size of the scene's own, invisible
+in a side-by-side (both floors "look like flagstone floors" at a glance,
+just at different densities) and unaffected by `room.py plate`'s fit/tone-
+match step, which resizes and recolours the WHOLE image without touching
+what's drawn on it. `room.py tilescale <game> <room> --row y0,y1
+[--against-plate]` (`tile_scale.py`) counts tiles the way `wall_seam.py`
+counts a seam: a clean row of floor has a joint (mortar line, plank seam)
+between every tile, which is a real, countable column-to-column brightness
+spike, not a matter of opinion. Count the scene's own row once, and that
+count is the exact target for a regeneration prompt — "roughly 21 stones
+span the full width", not "small flagstones", which is what actually closed
+the gap: a first regeneration asked for "small" and still came back at
+roughly half the scene's density (11 vs 21), a second asked for the counted
+number specifically and landed close (16 vs 22, visually consistent). Not
+every floor has discrete joints to count — grass, dirt, a seamless texture
+gives this tool nothing to measure, same limitation as `wall_seam.py` on a
+low-contrast wall.
+
 ### Use the numbers from pass 1
 
 **First choice, every time: the position and size the composed scene used.**
@@ -217,6 +320,115 @@ white marble statue.)
 
 **Keep sheets small.** A request for five portrait busts side by side came back
 as a single close-up of one of them. Two to four items is reliable; more is not.
+
+**Lock every free-standing prop's shape and orientation, the same way a
+character's proportions get locked.** Pass 1 and pass 3 both draw from the
+exact same `contains` sentence, in one call each — but "the same words" does
+not mean "the same picture": two independent generations from identical text
+can still draw two different objects. The bedroom's spec asked for "a
+brass-bound steamer trunk with a domed lid" and got a low flat-topped chest in
+the composed scene and a tall tilted barrel in the prop sheet — both are
+honest readings of "domed lid", so the words were the bug. A vague noun phrase
+leaves the model to invent the rest, and it does not invent the same thing
+twice. Say the shape as an unambiguous, once-only fact, and rule out the
+readings that go wrong: not just "a trunk" but "a low, wide, FLAT-TOPPED
+rectangular box — NOT domed, NOT rounded, NOT barrel-shaped"; not just "the
+bed" but "drawn TOP-DOWN and SQUARE TO THE ROOM … NOT drawn on the diagonal".
+Every entry describing a piece of furniture (not ambient floor cover like a
+rug) should carry this same pair — a positive shape statement plus the
+negative of whatever the model tends to substitute — because that pairing is
+what turned the trunk's SHAPE from a barrel into the right flat-topped box.
+
+**Shape is not the same fact as proportion, and locking one does not lock
+the other.** The trunk's second generation drew the correct shape at roughly
+a third of the width it actually needed — "NOT domed, NOT barrel-shaped"
+says what the object IS, nothing about how WIDE it reads next to its own
+height, and the same gap cost the mirror and the bed a regeneration too, all
+three found the same way: `room.py grid` against the approved scene, reading
+real numbers off a ruler instead of eyeballing. So every entry that locks a
+shape must ALSO state an explicit width-to-height ratio, sourced the same
+way — not "wide", a number: "the frame's width is about HALF its height — a
+1:2 rectangle", not "a low wide chest" but "width AT LEAST TWICE its
+height — a 2:1 rectangle". This is a real gate, not just a habit to
+remember: `room.py generate <game> <room> props` prints a NOTE (not a
+refusal — it can see that a number is missing, not that a present one is
+right) naming any entry that carries a shape lock (a `NOT ...` constraint)
+with no `N:M` ratio anywhere in it, before a penny is spent on that
+generation.
+
+Shape and proportion together are still not everything: a wrong shape or
+size is exactly the kind of thing `room.py check`'s side-by-side and blend
+are for, so look at each prop in them individually, not just the room's
+overall composition at a glance.
+
+**Why automated matching against the scene doesn't work, and what to do
+instead.** A prop's size and position are numbers, and a human reading them
+off a picture makes the same kind of mistake typing does: the bedroom's rug
+was declared at less than half its actual width, and its bed was drawn 14px
+too tall, both signed off once on the side-by-side before being caught. The
+obvious fix is to have code measure it — search the scene for wherever the
+prop's own art matches best, the way `preview_room.py --fit` already does for
+an OUTDOOR room's floor-colour silhouette. It does not generalise to an
+interior room's furniture, and this was tested rather than assumed: four
+methods — raw pixel difference, normalised cross-correlation, edge/gradient
+correlation, and ORB feature matching with RANSAC (the actual standard
+technique for "same object, different image") — were all tried against the
+bedroom's bed, a case with a known-correct answer to check against. None of
+them found it. The pixel/gradient methods systematically preferred smaller,
+blurrier scales that loosely resembled many places instead of the one
+correct one; ORB found only a handful of unstable keypoint matches and
+produced a transform implying the bed was taller than the room. The common
+cause: the scene and its props are independently generated, and while they
+read as the same object to a person, they are not similar enough at the
+pixel or feature level for correlation-based matching to lock onto — the
+same thing `measure_props.py`'s own docstring already found for silhouette
+matching, from a different angle.
+
+So the reliable measurement is real numbers read off a picture with a ruler
+on it, and there are two ways to read that ruler: `room.py grid <game>
+<room> [--crop x0,y0,x1,y1]` renders the scene at the game's own 320x200
+scale with a labelled pixel grid for a human to read by eye, and `room.py
+measure <game> <room> <name> --rect x,y,w,h [--method grabcut|canny]` finds
+the object's precise bbox with CV instead (see below — this is a DIFFERENT
+problem from the cross-image matching that doesn't work, and it does work).
+Either way, do this once per prop, write the result into that room's
+`rooms/<room>.json` under `measured: { "prop_id": { x, y, h, w } }` (same
+fields, same meaning, as a `props:` entry in story.js), and `room.py
+sizecheck` — wired into `verify`, so it's a permanent CI gate — holds every
+future edit to within 15% of that reading for as long as the room exists.
+The measuring can be manual or CV-assisted; the ENFORCEMENT that a later
+edit can't silently drift away from it is what's automatic either way, and
+that's the part that was actually missing.
+
+**`room.py measure` — a real tool for a different, tractable problem.** The
+matching above failed because it's a CROSS-image problem: two independently
+generated pictures of "the same" object, correlated against each other. Given
+just ONE picture — the scene you already have — and asked to find one
+object's own edges within it, established CV solves this cleanly, and a
+hand-rolled flood fill (grow a region from a seed pixel, add a neighbour
+within a colour tolerance) does not: tried first on the bedroom's bed, it had
+no usable tolerance window at all — 11 kept the fill to one pixel, 12 leaked
+to 71% of the whole frame — because the object is itself several genuinely
+different colours (purple canopy, brown-and-gold posts) whose internal edges
+are close in magnitude to the edge against the background. `room.py measure`
+wraps two real tools instead (see `measure_blob.py`), and keeps BOTH rather
+than picking a winner, because which one works depends on the object:
+  - `--method grabcut` (default) — `cv2.grabCut`: given a generous rectangle
+    with background margin, it fits foreground/background colour models and
+    segments via graph cuts, a global optimum rather than a local pixel walk.
+    Use it when the object contrasts from what's behind it BY COLOUR. Solved
+    the bed and the mirror in one call each, agreeing with a manual
+    re-measurement to a couple of pixels.
+  - `--method canny` — Canny edge detection + `cv2.findContours`: finds
+    intensity-gradient edges, not colour regions, so it works when an object
+    is LOW-CONTRAST in colour but has strong internal edges (straight sides,
+    bands, rivets). GrabCut found nothing foreground on the bedroom's trunk
+    across several rectangles — its warm brown/gold sits too close to the
+    similarly warm rug beneath it for a colour model to discriminate — canny
+    found it in one pass, within a few pixels of a manual grid reading.
+Both print an overlay to look at before trusting the number, same as every
+other step in this pipeline — a tool result is not a signed-off measurement
+until a human has actually looked at the picture it produced.
 
 **Only rooms and in-room sprites go through the styled Action.** `art-style.json`
 pins the camera to "top-down RPG interior room view", and that beats the prompt
@@ -362,7 +574,63 @@ by breaking the room on purpose:
 - a prop pointing at art that doesn't exist — renders as nothing, silently;
 - flat ground cover carrying a footprint, or a standing prop missing one;
 - dead `floorPoly`/`obstacles` on a floor-plate room, contradicting the mask;
-- a walk mask that no longer matches its plate.
+- a walk mask that no longer matches its plate;
+- a tiled wall band (`behind`/`door` props sharing a Y, sized from their own
+  art's aspect, not stretched) that no longer reaches both frame edges — see
+  "Wall bands are tiled, and a re-cut can silently break their coverage"
+  below;
+- a prop with a forced `w` stretched past 5x from its own art's aspect ratio
+  — see "A forced w/h can silently stretch a prop into a different shape"
+  below. Below 5x it prints a NOTE instead of failing: a fuzzy check warns,
+  it doesn't fail the build (same rule as `verify_sheet.py`'s neutral-frame
+  threshold) — several props in this game sit at 2-4x stretch and read
+  completely fine, so the fail line only trips for the unambiguous case;
+- a room's wall band declared at a Y that doesn't match its recorded
+  `wallSeam` — see "Measure the wall before you measure anything that
+  stands against it" above. A prop standing meaningfully short of that
+  line gets a NOTE, not a FAIL, for the same reason as the stretch check:
+  some furniture is forward of the wall on purpose, and only a human
+  looking at a render can tell that apart from actually floating.
+
+**Wall bands are tiled, and a re-cut can silently break their coverage.** A
+back wall (or any backdrop spanning wider than one image) is tiled at its own
+native aspect rather than stretched — a single image asked to cover a span it
+wasn't drawn for reads as smeared brick and warped wallpaper. That means the
+number of copies needed depends on the art's own pixel aspect, which a re-cut
+can quietly change: the bedroom's wall was measured at 5 copies covering the
+frame, then the same art id got re-cut twice more for unrelated reasons, and
+nobody re-checked whether 5 copies still added up to the frame width. They
+didn't — a ~30px strip of bare floor showed through the wall on the right,
+above where anyone looks in `room.py check`'s overlays (they frame the room's
+furniture, not its bare edges) and outside what `sizecheck` catches (it diffs
+one prop's own numbers, not "do N tiled copies still sum to the frame"). A
+player noticed it in a live screenshot; `room.py verify` now catches it
+itself — it unions the on-screen span of every `behind`/`door` prop sharing a
+wall band's Y (several DIFFERENT arts can share one band, e.g. a wall tile
+either side of a generated arch or portal — the check unions all of them
+together, not one art's copies in isolation) and fails if that union stops
+reaching both frame edges or leaves a gap between pieces. If a re-cut ever
+changes a tiled backdrop's aspect again: recompute the copy count as native
+w at the declared h, spaced at `w - 4` so neighbours overlap ~4px to hide the
+seam, enough copies for the last one's right edge to clear the frame width.
+
+**A forced w/h can silently stretch a prop into a different shape than its
+own art.** Nothing checks that a prop's declared box is even roughly the
+same shape as the picture being squeezed into it — measuring correctly off
+the scene doesn't help, because the measurement and the render use the
+same numbers, so a consistently-wrong box never reads as a mismatch against
+itself. The bedroom's rug was found exactly this way: `x/y/h/w` matched the
+scene's real footprint, but the rug ART underneath it was a PORTRAIT rug
+(0.50 wide-to-tall) forced into a box nearly SEVEN times as wide as tall — a
+6.8x stretch, reported as "the rug is stretched" off a live screenshot, not
+by anything in the pipeline. `room.py verify` now computes this ratio for
+every forced-`w` prop and prints a NOTE past 1.8x, failing only past 5x —
+calibrated against this game's own props: several sit at 2-4x and looked
+completely fine on a render (a symmetric medallion rug or a front-on
+furniture panel doesn't reveal a stretch the way a directional runner rug
+does), so a first version that failed at 2.5x was wrong about three props
+that had already been looked at and accepted. LOOK at a render before
+deciding a NOTE needs fixing — the number alone can't tell you.
 
 **`--mode side` is the step that finds things.** The assembled room next to the
 scene it came from shows in one look everything the numbers hide. All four of

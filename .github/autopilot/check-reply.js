@@ -30,6 +30,24 @@
 
 const fs = require("fs");
 
+// A claim phrase can appear negated ("No new art was needed") and still
+// match the bare "says" pattern — caught for real on Dog Punk: "No new art
+// was needed or generated" tripped the same check as claiming art WAS
+// regenerated, because "new art" is a literal substring of that sentence.
+// So a match only counts if it isn't immediately preceded by a negation —
+// scanning ALL matches (not just the first) so one negated mention earlier
+// in a long reply can't hide a real, unnegated claim later on.
+function hasUnnegatedMatch(text, re) {
+  const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+  let m;
+  while ((m = g.exec(text))) {
+    const before = text.slice(Math.max(0, m.index - 20), m.index);
+    if (!/\b(no|not|n't|without|never|none)\W*$/i.test(before)) return true;
+    if (m.index === g.lastIndex) g.lastIndex++; // guard against zero-length matches
+  }
+  return false;
+}
+
 const CLAIMS = [
   { what: "art was regenerated",
     says: /\b(regenerat\w+|redid|redrew|redraw\w*|new (sheet|sprite|tile|art)|fresh (sheet|art))\b/i,
@@ -62,7 +80,7 @@ function main() {
   }
 
   for (const c of CLAIMS) {
-    if (!c.says.test(reply)) continue;
+    if (!hasUnnegatedMatch(reply, c.says)) continue;
     if (files.some((f) => c.needs.test(f))) continue;
     if (files.length === 0 && shipped) continue;            // already said above
     notes.push(`this reply says ${c.what}, but nothing matching that changed ` +

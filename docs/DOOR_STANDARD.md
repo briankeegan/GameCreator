@@ -64,21 +64,28 @@ exits" step in `pages.yml`. The art half is measured by
   room table is data (`games/<id>/story.js`), each exit is a rectangle with a
   `link`, and arrival is computed. Newsey is the reference. This shape buys
   freedom and pays for it with everything in §2 and §5.
-- **CONSTANT — every room the same grid, the way out always in the same
-  cells.** Arrival is not computed because it does not vary: you walk out the
-  top of one room and start on the bottom cell of the next. Dog Punk is the
-  reference, and it has never had a door bug, because it never gave itself the
-  chance to have one.
+- **CONSTANT — every room the same grid, each way out a fixed cell in a
+  boundary wall.** Arrival is not computed, because it does not vary: you leave
+  by one room's wall and start on a fixed cell against the facing wall of the
+  next. Dog Punk is the reference, and it has never had a door bug, because it
+  never gave itself the chance to have one.
 - **Pick CONSTANT if the game can live with it.** Doors work "much better" in
   the grid shape and it is worth being honest about why: not better code, a
   stricter constraint. Arrival is a fact rather than a computation, and the
-  ping-pong of §5 is impossible because the way out is at the far end of the
-  room from where you arrive.
-- **The constant shape's advantage holds only while every room agrees.** Move
-  one room's gate and you walk out the top of the previous room and arrive
-  somewhere unrelated, with nothing to notice it — there is no partner to
-  disagree with. So the checker requires every room's gate cells and spawn cell
-  to be identical across the whole game.
+  ping-pong of §5 is impossible because you arrive against the wall opposite
+  the one you left by, a whole room away from any way out.
+- **In the constant shape the partner is IMPLICIT — the next room — and that is
+  exactly what has to be checked.** You leave through one room's wall and
+  arrive against the FACING wall of the next, lined up with the way you came
+  out. Get it wrong and you walk out of one room and appear somewhere unrelated
+  in the next, with nothing to notice it, because there is no partner to
+  disagree with. So the checker pairs consecutive rooms: opposite walls, and
+  aligned across the shared edge to within a cell.
+- **Do not mistake one level's LAYOUT for the rule.** This check began as
+  "every room's gate is in the same cells", which was true while Dog Punk's
+  chapter was a single straight column of three rooms and false the moment it
+  grew to fifteen and started turning corners. A rule that describes today's
+  map fails the first time the map is good.
 
 ## 4. Where a door may go
 
@@ -156,7 +163,7 @@ proved to fire by breaking a room on purpose.
 | A `playerStart` parked on the room's own doorway | `check_room_exits.mjs` | "Verify room exits" |
 | Art and code disagreeing about which wall a door is in | `check_room_exits.mjs` | "Verify room exits" |
 | A wall name the room generator doesn't understand | `check_room_exits.mjs` | "Verify room exits" |
-| A grid game whose rooms disagree about where the gate or spawn is | `check_room_exits.mjs` | "Verify room exits" |
+| A grid game where you leave by one wall and arrive against the same wall, or land out of line with the way out you came through | `check_room_exits.mjs` | "Verify room exits" |
 | A grid map with a short row, no gate, or a spawn touching the gate | `check_room_exits.mjs` | "Verify room exits" |
 | A trigger armed somewhere the player cannot stand | `room.py verify` | "Verify room props and floor plates" |
 | A prop footprint covering a doorway | `room.py verify` | "Verify room props and floor plates" |

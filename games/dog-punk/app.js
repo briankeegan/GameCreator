@@ -129,13 +129,63 @@
 // a fixed cell, and the switch plates are drawn procedurally from
 // `environmentPalette` — see drawCrate/drawSwitchPlate — because both are
 // gameplay affordances, not level scenery.
+// 2026-08-21 (second pass — feedback: "all the rooms look the same, same
+// shape, you only go up; the enemies have the same attack patterns; the
+// puzzles are repeated and annoying") — three independent fixes, all data/
+// logic, no new art:
+//   1. Rooms now vary which WALL their forward gate is cut into (top/left/
+//      right), not always the top, so the chapter is an actual snaking
+//      street with real turns instead of one corridor walked straight up
+//      14 times. See the ROOMS comment above the room list and
+//      gateOrientation() for how a side-wall door is drawn.
+//   2. Every enemy kind now runs its OWN attack (`attackKind` on
+//      ENEMY_KINDS) instead of all three sharing one coil-then-dash state
+//      machine with different numbers: the rat still pounces, the drone
+//      fires a projectile and kites instead of ever biting, the brute
+//      charges further and then has a real vulnerable recovery window.
+//      See the ENEMY_KINDS comment and the enemy loop in update().
+//   3. Puzzle rooms cut from 9 of 15 down to 6, spread across four
+//      distinct mechanics (push / any-order switches / NEW ordered
+//      "sequence" / plain fights) instead of 6 of the 9 being the same
+//      find-3-plates room with a different floor pattern. See the comment
+//      above the ROOMS list.
 const GAME_ID = "dog-punk";
-// The maps, gate/spawn cells and per-room win conditions live in rooms.js —
-// plain data, no DOM — so a tool can read them without running the game.
-// See docs/DOOR_STANDARD.md §8 and .github/scripts/check_room_exits.mjs.
-const DOGPUNK_ROOMS = window.DOGPUNK_ROOMS;
-const TILE = DOGPUNK_ROOMS.TILE, COLS = DOGPUNK_ROOMS.COLS, ROWS = DOGPUNK_ROOMS.ROWS;
-const SOLID = DOGPUNK_ROOMS.SOLID, ROOMS = DOGPUNK_ROOMS.ROOMS;
+
+// ---- checkpoint save (resume where you left off) ----
+// One auto-save slot via shared/save-slots.js (also used by Newsey, which
+// uses 3 — Dog Punk is one short chapter, not something you'd keep multiple
+// playthroughs of, so one is enough here). Records only what's needed to
+// resume at a room's entrance — which room, hp, elapsed time — NOT exact
+// enemy/crate/projectile state. That's deliberate: every room already gets
+// rebuilt fresh via buildRoomState() whenever you enter it (see
+// transitionToRoom below, and resetRoom on death), so "resume at this
+// room's start" is already how the game treats leaving and re-entering a
+// room — serializing the mid-fight state verbatim would be fragile for no
+// real benefit.
+function blankSave() {
+  return { roomIndex: 0, hp: 3, maxHp: 3, elapsedBefore: 0, createdAt: Date.now(), updatedAt: Date.now() };
+}
+function normalizeSave(data) {
+  if (!data || typeof data !== "object") return null;
+  const b = blankSave();
+  b.roomIndex = (typeof data.roomIndex === "number" && data.roomIndex >= 0 && data.roomIndex < ROOMS.length) ? data.roomIndex : 0;
+  b.maxHp = typeof data.maxHp === "number" ? data.maxHp : 3;
+  b.hp = typeof data.hp === "number" ? Math.min(Math.max(data.hp, 1), b.maxHp) : b.maxHp;
+  b.elapsedBefore = typeof data.elapsedBefore === "number" ? data.elapsedBefore : 0;
+  b.createdAt = data.createdAt || Date.now();
+  b.updatedAt = data.updatedAt || b.createdAt;
+  return b;
+}
+const SAVES = window.GCSaveSlots.create(GAME_ID, { slots: 1, blank: blankSave, normalize: normalizeSave });
+
+// The maps, gate/spawn cells, per-room win conditions and zone tints live in
+// rooms.js — plain data, no DOM — so a tool can read them without running the
+// game. See docs/DOOR_STANDARD.md §8 and .github/scripts/check_room_exits.mjs.
+const DP_LEVEL = window.DOGPUNK_ROOMS;
+const TILE = DP_LEVEL.TILE, COLS = DP_LEVEL.COLS, ROWS = DP_LEVEL.ROWS;
+const SOLID = DP_LEVEL.SOLID, ROOMS = DP_LEVEL.ROOMS;
+const TINT_RAIL = DP_LEVEL.TINT_RAIL, TINT_RUST = DP_LEVEL.TINT_RUST;
+
 // The live tile grid for whatever room is current — a mutable copy of that
 // room's map with any 'X' (crate start) swapped for plain floor, because
 // once the room is running the crate is a dynamic object (state.crates),
@@ -253,10 +303,43 @@ const ATTACK_FRAMES = 3;
 // visible cell borders. (2) Nothing was seamless, so each tile ended where the
 // next began. The floor tiles are now generated as borderless texture swatches
 // and made to wrap by .github/art/build_tiles.py; see docs/TILED_LEVEL_STANDARD.md.
-const TILE_COUNT = 7;
+// 2026-08-21 (zone art) — the complaint was "all the rooms look the same,
+// same shapes": every room in all three zones drew from this SAME 7-tile
+// strip (asphalt/concrete/fence/tyre-pile/crate), and the only thing that
+// changed between Scrapyard, Rail Yard and Rust Quarter was a translucent
+// colour wash over that one floor (see TINT_RAIL/TINT_RUST below) — a filter,
+// not different scenery. The strip is now 19 tiles: the original 7, plus a
+// second 4-texture+2-object set for each of the other two zones (their own
+// floor material, their own wall, their own obstacle SHAPES — a chain-link
+// fence and a signal box read as a different place even before the tint is
+// applied, which a recoloured asphalt tile never could). The chained gate
+// (index 6) is the one tile every zone still shares — it's a gameplay
+// affordance the player has to recognise on sight as "the exit", so it stays
+// visually consistent rather than getting reskinned per zone. See ZONE_TILES
+// and currentTileSet() for how a room picks its bank.
+const TILE_COUNT = 19;
 const TILES = sliceSheet("tiles.png", TILE_COUNT, 1);
 const TILE_GROUND = 0, TILE_GROUND_ALT = 1, TILE_CONCRETE = 2, TILE_WALL = 3,
       TILE_JUNK = 4, TILE_CRATE = 5, TILE_GATE = 6;
+// Rail Yard (rail ballast gravel, chain-link fence, a rail-tie/cable stack
+// and a hazard-striped signal box) and Rust Quarter (scorched slag, a
+// rock-block quarry wall, a slag-rubble heap and a rusted smelter drum) —
+// each its own 4 ground + 2 object tiles, cut from their own generations
+// (see rebuild-art.sh) directly after the original 7 in the same strip.
+const ZONE_TILES = {
+  scrapyard: { ground: TILE_GROUND, groundAlt: TILE_GROUND_ALT, concrete: TILE_CONCRETE, wall: TILE_WALL, junk: TILE_JUNK, crate: TILE_CRATE },
+  rail:      { ground: 7, groundAlt: 8, concrete: 9, wall: 10, junk: 11, crate: 12 },
+  rust:      { ground: 13, groundAlt: 14, concrete: 15, wall: 16, junk: 17, crate: 18 },
+};
+// Which bank the CURRENT room draws from — keyed off the same `tint` the
+// room already carries, so a room doesn't need a second field that could
+// drift out of sync with its zone.
+function currentTileSet() {
+  const room = ROOMS[state.roomIndex];
+  if (room && room.tint === TINT_RAIL) return ZONE_TILES.rail;
+  if (room && room.tint === TINT_RUST) return ZONE_TILES.rust;
+  return ZONE_TILES.scrapyard;
+}
 // There is no puddle tile any more. There was, and it was a near-black slick:
 // scattered over a dark floor it read as HOLES punched through the level
 // (docs/TILED_LEVEL_STANDARD.md, defect 4), and brightening it only turned the
@@ -279,22 +362,41 @@ function cellHash(a, b) {
 }
 function floorTileFor(c, r) {
   // >>1 makes the concrete decision per 2x2 block, so slabs come out as
-  // patches of floor rather than lone squares.
-  if (cellHash(c >> 1, r >> 1) > 0.86 || cellHash(c, r) > 0.97) return TILE_CONCRETE;
-  return cellHash(c * 5 + 3, r * 9 + 1) > 0.86 ? TILE_GROUND_ALT : TILE_GROUND;
+  // patches of floor rather than lone squares. Indices come from the
+  // CURRENT room's zone (see ZONE_TILES/currentTileSet), not a fixed
+  // constant, so Rail Yard and Rust Quarter floors are their own material.
+  const ts = currentTileSet();
+  if (cellHash(c >> 1, r >> 1) > 0.86 || cellHash(c, r) > 0.97) return ts.concrete;
+  return cellHash(c * 5 + 3, r * 9 + 1) > 0.86 ? ts.groundAlt : ts.ground;
 }
 // Draw a tile into cell (c,r), optionally mirrored, optionally squeezed toward
 // one side of the cell (which is how the gate swings open).
-function blitTile(idx, c, r, flipX, flipY, squeeze, side) {
+// `axis` ("x", the default, or "y") is which way `squeeze` shrinks the tile
+// — added for side-wall gates (see drawTile): a gate on the left/right
+// boundary is a VERTICAL pair of cells, so "open" has to shrink each cell's
+// HEIGHT toward its own outer edge (top cell up, bottom cell down) the same
+// way a top/bottom gate's cells shrink WIDTH toward their own outer edge.
+// `side` means "left"/"right" under axis "x" and "top"/"bottom" under axis
+// "y" — which of the pair this cell is, so it shrinks away from its
+// partner rather than both cells shrinking toward the same corner.
+function blitTile(idx, c, r, flipX, flipY, squeeze, side, axis) {
   const t = TILES[idx];
   if (!t || !t.ready) return;
   const x = c * TILE, y = r * TILE;
-  const w = squeeze ? Math.max(3, Math.round(TILE * squeeze)) : TILE;
-  const ox = squeeze ? (side === "right" ? TILE - w : 0) : 0;
   ctx.save();
-  ctx.translate(x + ox + w / 2, y + TILE / 2);
-  ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
-  ctx.drawImage(t.img, -w / 2, -TILE / 2, w, TILE);
+  if (axis === "y") {
+    const h = squeeze ? Math.max(3, Math.round(TILE * squeeze)) : TILE;
+    const oy = squeeze ? (side === "bottom" ? TILE - h : 0) : 0;
+    ctx.translate(x + TILE / 2, y + oy + h / 2);
+    ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+    ctx.drawImage(t.img, -TILE / 2, -h / 2, TILE, h);
+  } else {
+    const w = squeeze ? Math.max(3, Math.round(TILE * squeeze)) : TILE;
+    const ox = squeeze ? (side === "right" ? TILE - w : 0) : 0;
+    ctx.translate(x + ox + w / 2, y + TILE / 2);
+    ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+    ctx.drawImage(t.img, -w / 2, -TILE / 2, w, TILE);
+  }
   ctx.restore();
 }
 
@@ -320,6 +422,36 @@ const ratAtkSide = RAT[5];
 const ratUp = RAT[6];
 const ratUpWalk2 = RAT[7];
 const ratAtkUp = RAT[8];
+
+// Drone and Brute: two more enemy kinds, introduced past the original three
+// rooms (see ROOMS below) — same 3x3 sheet shape as the rat, generated and
+// cut the same way against the same locked palette (art-style.json's
+// `characters.drone`/`characters.brute`), so a mixed room never reads as two
+// different games. The Drone is a fast, fragile floating scrap-can (dies in
+// one hit, sees you from further off); the Brute is a slow, tanky
+// scrap-armored dog (takes four hits, hits harder on the way in). Both use
+// the exact same [idle,walk,attack] x [down,side,up] layout as RAT above.
+const DRONE = sliceSheet("drone_sheet.png", 3, 3);
+const droneDown = DRONE[0];
+const droneDownWalk2 = DRONE[1];
+const droneAtkDown = DRONE[2];
+const droneSide = DRONE[3];
+const droneSideWalk2 = DRONE[4];
+const droneAtkSide = DRONE[5];
+const droneUp = DRONE[6];
+const droneUpWalk2 = DRONE[7];
+const droneAtkUp = DRONE[8];
+
+const BRUTE = sliceSheet("brute_sheet.png", 3, 3);
+const bruteDown = BRUTE[0];
+const bruteDownWalk2 = BRUTE[1];
+const bruteAtkDown = BRUTE[2];
+const bruteSide = BRUTE[3];
+const bruteSideWalk2 = BRUTE[4];
+const bruteAtkSide = BRUTE[5];
+const bruteUp = BRUTE[6];
+const bruteUpWalk2 = BRUTE[7];
+const bruteAtkUp = BRUTE[8];
 
 // facing (+ walk-cycle step) -> { sprite, mirror }
 // The sheet's side row is drawn facing RIGHT, so "right" is the unmirrored
@@ -366,6 +498,84 @@ function ratAttackSpriteFor(facing) {
   if (facing === "right") return { s: ratAtkSide, mirror: false };
   return { s: ratAtkDown, mirror: false };
 }
+function droneSpriteFor(facing, col) {
+  const step = col !== COL_NEUTRAL;
+  if (facing === "up") return { s: step ? droneUpWalk2 : droneUp, mirror: false };
+  if (facing === "left") return { s: step ? droneSideWalk2 : droneSide, mirror: true };
+  if (facing === "right") return { s: step ? droneSideWalk2 : droneSide, mirror: false };
+  return { s: step ? droneDownWalk2 : droneDown, mirror: false };
+}
+function droneAttackSpriteFor(facing) {
+  if (facing === "up") return { s: droneAtkUp, mirror: false };
+  if (facing === "left") return { s: droneAtkSide, mirror: true };
+  if (facing === "right") return { s: droneAtkSide, mirror: false };
+  return { s: droneAtkDown, mirror: false };
+}
+function bruteSpriteFor(facing, col) {
+  const step = col !== COL_NEUTRAL;
+  if (facing === "up") return { s: step ? bruteUpWalk2 : bruteUp, mirror: false };
+  if (facing === "left") return { s: step ? bruteSideWalk2 : bruteSide, mirror: true };
+  if (facing === "right") return { s: step ? bruteSideWalk2 : bruteSide, mirror: false };
+  return { s: step ? bruteDownWalk2 : bruteDown, mirror: false };
+}
+function bruteAttackSpriteFor(facing) {
+  if (facing === "up") return { s: bruteAtkUp, mirror: false };
+  if (facing === "left") return { s: bruteAtkSide, mirror: true };
+  if (facing === "right") return { s: bruteAtkSide, mirror: false };
+  return { s: bruteAtkDown, mirror: false };
+}
+
+// Per-enemy-kind stats and art lookups, keyed by the `type` used in a room's
+// `enemySpawns` (see ROOMS below; unset/unknown types fall back to "rat" in
+// buildRoomState). Behaviour code (update()'s enemy loop, render()'s enemy
+// draw loop) reads speed/hp/range/sprite lookups off the ENEMY instance
+// (copied from here at spawn time in buildRoomState) rather than off this
+// table directly, so it stays oblivious to how many kinds exist.
+// `attackKind` is what actually made the three enemies play differently
+// feel identical before this pass: all three ran the exact same coil-then-
+// dash-into-contact state machine and only their numbers (speed/hp/range)
+// changed, which reads as "the same attack" with a different stat block,
+// not a different enemy. Each kind now drives its own branch in update()'s
+// enemy loop (search `en.attackKind`) instead of sharing one:
+//   "pounce" (rat)  — unchanged: short coil, short dash, contact damage.
+//   "ranged" (drone) — never closes to bite. Coils, then FIRES a projectile
+//     (state.projectiles) at the player's position and holds — the only one
+//     of the three that can hurt Beverly without being adjacent to her —
+//     and backs away if she gets inside `retreatRange` instead of standing
+//     there to be hit, so it plays like a hovering skirmisher, not a rat
+//     with wings.
+//   "charge" (brute) — a much longer telegraph, then a fast dash that
+//     travels FAR (further than a rat's pounce) and, whether or not it
+//     connects, ends in a `recover` window where it's stationary and can't
+//     act — overcommitting is the risk that makes it different from just a
+//     slower rat, and the recover window is the player's real punish.
+const ENEMY_KINDS = {
+  rat: {
+    id: "rat", w: 22, h: 20, speed: 55, hp: 2,
+    detectRange: 100, attackRange: 34, lungeMult: 3.4,
+    attackKind: "pounce", windupTime: 0.28, lungeTime: 0.16,
+    spriteFor: ratSpriteFor, attackSpriteFor: ratAttackSpriteFor, fallback: drawRatFallback,
+  },
+  // Fast and fragile: sees you from further off, but one hit from Beverly's
+  // dagger ends it — a "kill it before it pins you down" threat rather than
+  // a slugging match. Never bites; see `attackKind: "ranged"` above.
+  drone: {
+    id: "drone", w: 20, h: 20, speed: 85, hp: 1,
+    detectRange: 150, attackRange: 130, retreatRange: 70, lungeMult: 0,
+    attackKind: "ranged", windupTime: 0.4, fireTime: 0.18, projectileSpeed: 210, cooldownMs: 1100,
+    spriteFor: droneSpriteFor, attackSpriteFor: droneAttackSpriteFor, fallback: drawDroneFallback,
+  },
+  // Slow and tanky: takes four hits and hits like a truck, but its detection
+  // range is short and it's easy to outrun — a "don't get cornered" threat.
+  // See `attackKind: "charge"` above for what makes its attack a different
+  // RISK, not just a slower version of the rat's.
+  brute: {
+    id: "brute", w: 30, h: 26, speed: 40, hp: 4,
+    detectRange: 90, attackRange: 46, lungeMult: 4.6,
+    attackKind: "charge", windupTime: 0.5, lungeTime: 0.4, recoverTime: 0.6,
+    spriteFor: bruteSpriteFor, attackSpriteFor: bruteAttackSpriteFor, fallback: drawBruteFallback,
+  },
+};
 
 // ---- DOM ----
 const canvas = document.getElementById("board");
@@ -393,6 +603,16 @@ const winTimeEl = document.getElementById("winTime");
 const loseOverlay = document.getElementById("loseOverlay");
 const winRetryBtn = document.getElementById("winRetryBtn");
 const loseRetryBtn = document.getElementById("loseRetryBtn");
+const continueOverlay = document.getElementById("continueOverlay");
+const continueRoomNameEl = document.getElementById("continueRoomName");
+const continueBtn = document.getElementById("continueBtn");
+const continueRestartBtn = document.getElementById("continueRestartBtn");
+const pauseBtn = document.getElementById("pauseBtn");
+const settingsOverlay = document.getElementById("settingsOverlay");
+const settingsKeysEl = document.getElementById("settingsKeys");
+const settingsStatusEl = document.getElementById("settingsStatus");
+const settingsResetBtn = document.getElementById("settingsResetBtn");
+const settingsResumeBtn = document.getElementById("settingsResumeBtn");
 const dpad = document.getElementById("dpad");
 const attackBtn = document.getElementById("attackBtn");
 const roomToastEl = document.getElementById("roomToast");
@@ -411,7 +631,7 @@ const introPortraitCtx = introPortrait ? introPortrait.getContext("2d") : null;
 const INTRO_LINES = [
   "Scrapyard Alley, after dark. Beverly's run these lanes since she could walk.",
   "Lately the junk rats have been swarming closer to the fence line than they ever used to — like something's pushed them out of the deep scrap.",
-  "Past the alley, past the bridge, past the back gate: Town. Streetlights, real food, somewhere that isn't scrap metal.",
+  "Past the alley, past the rail yard, past the rust quarter: Town. Streetlights, real food, somewhere that isn't scrap metal.",
   "She checks the mohawk in a cracked side-mirror and grips the dagger. Let's ride.",
 ];
 let introActive = true;
@@ -443,7 +663,30 @@ function advanceIntro() {
 }
 introBtn.addEventListener("click", advanceIntro);
 introOverlay.addEventListener("click", (e) => { if (e.target === introOverlay) advanceIntro(); });
-renderIntro();
+
+// A returning player skips straight past the cutscene they've already seen
+// — the intro is scene-setting for a first run, not something to sit through
+// again every time the tab reopens.
+const existingSave = SAVES.read(1);
+if (existingSave) {
+  introOverlay.hidden = true;
+  continueRoomNameEl.textContent = `Last seen at: ${ROOMS[existingSave.roomIndex].name}`;
+  continueOverlay.hidden = false;
+} else {
+  renderIntro();
+}
+continueBtn.addEventListener("click", () => {
+  continueOverlay.hidden = true;
+  resumeFromCheckpoint(existingSave);
+  introActive = false;
+  attackQueued = false;
+});
+continueRestartBtn.addEventListener("click", () => {
+  SAVES.erase(1);
+  continueOverlay.hidden = true;
+  introOverlay.hidden = false;
+  renderIntro();
+});
 
 function showRoomToast(text) {
   if (!roomToastEl) return;
@@ -454,30 +697,101 @@ function showRoomToast(text) {
 }
 
 // ---- input ----
-const keys = new Set();
-const KEY_DIRS = {
-  ArrowUp: "up", KeyW: "up",
-  ArrowDown: "down", KeyS: "down",
-  ArrowLeft: "left", KeyA: "left",
-  ArrowRight: "right", KeyD: "right",
-};
+// Rebindable keyboard + gamepad mapping lives in shared/controls.js (also
+// used by Newsey) — this is the logic layer only, so the actual Paused
+// panel below is dog-punk's own markup/CSS, not an imported look.
+const CONTROLS = window.GCControls.create(GAME_ID, {
+  actions: [
+    { id: "up", label: "Up" }, { id: "down", label: "Down" },
+    { id: "left", label: "Left" }, { id: "right", label: "Right" },
+    { id: "attack", label: "Attack" },
+  ],
+  // e.key values (not e.code) — shared/controls.js's own key-matching and
+  // display labels (keyLabel()) assume that space, so a rebind screen shows
+  // "Space"/"W" correctly instead of raw codes like "KeyW".
+  defaultKeys: {
+    up: ["ArrowUp", "w"], down: ["ArrowDown", "s"],
+    left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"],
+    attack: [" ", "z", "j"],
+  },
+  defaultPad: { up: [12], down: [13], left: [14], right: [15], attack: [0, 2] },
+  grabberEl: document.getElementById("controlsKeyGrabber"),
+});
+
+const liveKeys = {};
 let touchDirs = new Set();
 let attackQueued = false;
 
 window.addEventListener("keydown", (e) => {
+  if (CONTROLS.isCapturing() || CONTROLS.isCapturingPad()) return; // a rebind owns this key
   if (introActive) {
-    if (e.code === "Space" || e.code === "Enter") { advanceIntro(); e.preventDefault(); }
+    if (e.key === " " || e.key === "Enter") { advanceIntro(); e.preventDefault(); }
     return;
   }
-  if (KEY_DIRS[e.code]) { keys.add(KEY_DIRS[e.code]); e.preventDefault(); }
-  if (e.code === "Space" || e.code === "KeyZ" || e.code === "KeyJ") {
+  if (paused) {
+    if (e.key === "Escape") closeSettings();
+    return; // don't queue movement/attack while the pause screen is open
+  }
+  liveKeys[e.key] = true;
+  if (CONTROLS.isDown("up", { [e.key]: true }) || CONTROLS.isDown("down", { [e.key]: true }) ||
+      CONTROLS.isDown("left", { [e.key]: true }) || CONTROLS.isDown("right", { [e.key]: true })) {
+    e.preventDefault();
+  }
+  if (CONTROLS.isDown("attack", { [e.key]: true })) {
     attackQueued = true;
     e.preventDefault();
   }
 });
-window.addEventListener("keyup", (e) => {
-  if (KEY_DIRS[e.code]) keys.delete(KEY_DIRS[e.code]);
-});
+window.addEventListener("keyup", (e) => { delete liveKeys[e.key]; });
+
+// ---- pause / controls screen ----
+// Dog Punk had no pause concept at all before this — the gear button and
+// this overlay are new, but built from the same .run-overlay backdrop and
+// button styling every other screen here already uses (see style.css), so
+// it reads as part of the game rather than an imported settings widget.
+let paused = false;
+
+function renderSettingsRows() {
+  settingsKeysEl.innerHTML = "";
+  CONTROLS.actions.forEach((action) => {
+    const capturingThis = CONTROLS.isCapturing() === action.id;
+    const row = document.createElement("div");
+    row.className = "settings-row";
+    const label = document.createElement("span");
+    label.textContent = action.label;
+    const keyBtn = document.createElement("button");
+    keyBtn.className = "settings-key" + (capturingThis ? " capturing" : "");
+    keyBtn.textContent = capturingThis
+      ? "press a key…"
+      : CONTROLS.keysFor(action.id).map(CONTROLS.keyLabel).join(" / ");
+    keyBtn.addEventListener("click", () => {
+      const wasCapturingThis = CONTROLS.isCapturing() === action.id;
+      if (wasCapturingThis) CONTROLS.cancelKeyCapture();
+      else CONTROLS.beginKeyCapture(action.id, { onAssign: renderSettingsRows, onCancel: renderSettingsRows });
+      renderSettingsRows();
+    });
+    row.appendChild(label);
+    row.appendChild(keyBtn);
+    settingsKeysEl.appendChild(row);
+  });
+  settingsStatusEl.hidden = !CONTROLS.isCapturing();
+  settingsStatusEl.textContent = CONTROLS.isCapturing() ? "Press a key · Esc to cancel" : "";
+}
+
+function openSettings() {
+  paused = true;
+  settingsOverlay.hidden = false;
+  renderSettingsRows();
+}
+function closeSettings() {
+  CONTROLS.cancelKeyCapture();
+  settingsOverlay.hidden = true;
+  paused = false;
+}
+
+pauseBtn.addEventListener("click", () => { if (!introActive && !state.won && !state.lost) openSettings(); });
+settingsResumeBtn.addEventListener("click", closeSettings);
+settingsResetBtn.addEventListener("click", () => { CONTROLS.reset(); renderSettingsRows(); });
 
 function bindHold(el, onDown, onUp) {
   if (!el) return;
@@ -508,28 +822,49 @@ function buildRoomState(idx) {
   const room = ROOMS[idx];
   MAP = room.map.map((row) => row.replace(/X/g, "."));
   let spawn = { x: 7 * TILE + TILE / 2, y: 10 * TILE + TILE / 2 };
+  // 'B' is the BACK-gate arrival point — where you land after retreating in
+  // through this room's 'H' tile from the room after it — set just under
+  // this room's own forward gate. Rooms with no predecessor (room 0) never
+  // use it. Falls back to `spawn` so a room without a 'B' marker can't hand
+  // back an undefined coordinate.
+  let backSpawn = null;
   const crates = [];
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const ch = room.map[r][c];
       if (ch === "P") spawn = { x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 };
+      if (ch === "B") backSpawn = { x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 };
       if (ch === "X") crates.push({ x: c * TILE + TILE / 2, y: r * TILE + TILE / 2, w: 26, h: 26, isCrate: true });
     }
   }
-  const enemies = room.enemySpawns.map((s) => ({
-    x: s.c * TILE + TILE / 2, y: s.r * TILE + TILE / 2,
-    w: 22, h: 20, speed: 55,
-    hp: 2, alive: true, facing: "down",
-    wanderT: Math.random() * 2, wanderDx: 0, wanderDy: 0,
-    hitFlash: 0,
-    animPhase: 0, moving: false,
-    // attack state machine: idle (seek/wander) -> windup (telegraph,
-    // holds still) -> lunge (fast dash, deals contact damage once) -> back
-    // to idle with a cooldown. Only the lunge can hurt the player.
-    atkState: "idle", atkTimer: 0, atkDuration: 0,
-    attackCooldownUntil: 0, lungeDx: 0, lungeDy: 0, hasHitThisLunge: false,
-  }));
-  return { spawn, crates, enemies };
+  if (!backSpawn) backSpawn = spawn;
+  const enemies = room.enemySpawns.map((s) => {
+    const kind = ENEMY_KINDS[s.type] || ENEMY_KINDS.rat;
+    return {
+      x: s.c * TILE + TILE / 2, y: s.r * TILE + TILE / 2,
+      type: kind.id,
+      w: kind.w, h: kind.h, speed: kind.speed,
+      detectRange: kind.detectRange, attackRange: kind.attackRange, lungeMult: kind.lungeMult,
+      // `attackKind` and its timings drive the per-kind branch in update()'s
+      // enemy loop — see the ENEMY_KINDS comment for what each kind means.
+      attackKind: kind.attackKind, windupTime: kind.windupTime,
+      lungeTime: kind.lungeTime, fireTime: kind.fireTime, recoverTime: kind.recoverTime,
+      retreatRange: kind.retreatRange || 0, projectileSpeed: kind.projectileSpeed,
+      cooldownMs: kind.cooldownMs || 900,
+      hp: kind.hp, alive: true, facing: "down",
+      wanderT: Math.random() * 2, wanderDx: 0, wanderDy: 0,
+      hitFlash: 0,
+      animPhase: 0, moving: false,
+      // attack state machine: idle (seek/wander) -> windup (telegraph, holds
+      // still) -> then EITHER lunge (pounce/charge: fast dash, contact
+      // damage) or fire (ranged: stays put, launches a projectile) -> for
+      // "charge" only, a recover window that can't move or act -> back to
+      // idle with a cooldown. See ENEMY_KINDS for which kind uses which.
+      atkState: "idle", atkTimer: 0, atkDuration: 0,
+      attackCooldownUntil: 0, lungeDx: 0, lungeDy: 0, hasHitThisLunge: false,
+    };
+  });
+  return { spawn, backSpawn, crates, enemies };
 }
 
 function freshState() {
@@ -559,25 +894,68 @@ function freshState() {
     // update()'s attack-hit section (spawn) and render() (draw+fade). Never
     // read by collision/gate/win logic, so it can't affect gameplay timing.
     deathFx: [],
+    // Scrap Drone bolts — see the "ranged" branch of the enemy attack loop
+    // in update() (spawn) and render() (draw/advance). Reset every room
+    // load exactly like deathFx: a projectile mid-flight when you leave a
+    // room has no business surviving into the next one.
+    projectiles: [],
   };
 }
 
-// Called when the player walks through an open gate into a NON-final room.
-// Keeps hp and the chapter clock running (state.startTime untouched) —
-// only the room-local fields are replaced — so the chapter is one
-// continuous run across all three rooms, not three separate best-times.
-function transitionToRoom(idx) {
+// Called when the player walks through an open forward gate ('G', entry
+// "forward") OR a back gate ('H', entry "backward") — see the ROOMS comment
+// and the gate-check in update(). Keeps hp and the chapter clock running
+// (state.startTime untouched) — only the room-local fields are replaced —
+// so the chapter is one continuous run across every room, not one
+// best-time per room. "backward" arrivals land at the room's `backSpawn`
+// (just under its own forward gate) instead of its usual `spawn`.
+function transitionToRoom(idx, entry) {
   const built = buildRoomState(idx);
+  const at = entry === "backward" ? built.backSpawn : built.spawn;
   state.roomIndex = idx;
-  state.player.x = built.spawn.x;
-  state.player.y = built.spawn.y;
+  state.player.x = at.x;
+  state.player.y = at.y;
   state.player.kbx = 0; state.player.kby = 0;
   state.player.attackUntil = 0; state.player.attackCooldownUntil = 0;
   state.enemies = built.enemies;
   state.crates = built.crates;
   state.switchesHit = new Set();
   state.deathFx = [];
+  state.projectiles = [];
   showRoomToast(ROOMS[idx].name);
+  saveCheckpoint();
+}
+
+// Checkpoints at the entrance of whichever room the player is currently
+// in. Called from transitionToRoom, so retreating through a back gate
+// re-anchors the checkpoint there too — same as it already re-rolls that
+// room fresh (see transitionToRoom's own comment on backward entries).
+function saveCheckpoint() {
+  SAVES.write(1, {
+    roomIndex: state.roomIndex,
+    hp: state.player.hp,
+    maxHp: state.player.maxHp,
+    elapsedBefore: (performance.now() - state.startTime) / 1000,
+  });
+}
+
+// Rebuilds the saved room fresh (same as any other room entry) and restores
+// the checkpointed hp and chapter clock. Called once, from the "Continue"
+// button, before the intro cutscene's own boot logic hands off to update().
+function resumeFromCheckpoint(save) {
+  const built = buildRoomState(save.roomIndex);
+  state.roomIndex = save.roomIndex;
+  state.player.x = built.spawn.x;
+  state.player.y = built.spawn.y;
+  state.player.hp = save.hp;
+  state.player.maxHp = save.maxHp;
+  state.enemies = built.enemies;
+  state.crates = built.crates;
+  state.switchesHit = new Set();
+  state.deathFx = [];
+  state.projectiles = [];
+  state.startTime = performance.now() - save.elapsedBefore * 1000;
+  showRoomToast(ROOMS[save.roomIndex].name);
 }
 
 // Called on death: respawns in the CURRENT room with full hp, rather than
@@ -595,6 +973,7 @@ function resetRoom() {
   state.crates = built.crates;
   state.switchesHit = new Set();
   state.deathFx = [];
+  state.projectiles = [];
   state.lost = false;
   loseOverlay.hidden = true;
   lastHudHp = null;
@@ -635,6 +1014,7 @@ function isSolidFor(entity, px, py, gateOpen) {
   for (const [cx, cy] of corners) {
     const t = tileAt(cx, cy);
     if (t === "G") { if (!gateOpen) return true; continue; }
+    if (t === "H") continue; // back gate: always open, see ROOMS comment
     if (SOLID.has(t)) return true;
   }
   if (crateBlocking(entity, px, py)) return true;
@@ -668,17 +1048,20 @@ function moveEntity(entity, dx, dy, gateOpen, pusher) {
 
 // ---- update ----
 function update(dt, now) {
-  if (state.won || state.lost || introActive) return;
+  if (state.won || state.lost || introActive || paused) return;
   const p = state.player;
   const gateOpen = isGateOpen();
 
-  // movement input
+  // movement input — keyboard (via shared/controls.js), touch d-pad, and
+  // gamepad (new: dog-punk had no controller support before this) all merge
+  // into the same four directions.
   let dx = 0, dy = 0;
-  const active = new Set([...keys, ...touchDirs]);
-  if (active.has("up")) dy -= 1;
-  if (active.has("down")) dy += 1;
-  if (active.has("left")) dx -= 1;
-  if (active.has("right")) dx += 1;
+  const pad = CONTROLS.gamepad();
+  if (CONTROLS.isDown("up", liveKeys) || touchDirs.has("up") || (pad && pad.up)) dy -= 1;
+  if (CONTROLS.isDown("down", liveKeys) || touchDirs.has("down") || (pad && pad.down)) dy += 1;
+  if (CONTROLS.isDown("left", liveKeys) || touchDirs.has("left") || (pad && pad.left)) dx -= 1;
+  if (CONTROLS.isDown("right", liveKeys) || touchDirs.has("right") || (pad && pad.right)) dx += 1;
+  if (pad && pad.attack) attackQueued = true;
   if (dx !== 0 || dy !== 0) {
     const len = Math.hypot(dx, dy) || 1;
     dx = (dx / len);
@@ -698,13 +1081,30 @@ function update(dt, now) {
     moveEntity(p, dx * p.speed * dt, dy * p.speed * dt, gateOpen, true);
   }
 
-  // Back Gate puzzle: stepping onto a switch tile activates it permanently
-  // for the rest of the room (a memory/exploration puzzle — find all three —
-  // rather than a timing one). Harmless to check in every room; only the
-  // "switches" room type ever has an 'S' tile to find.
+  // Switch puzzle: stepping onto a switch tile activates it permanently for
+  // the rest of the room (a memory/exploration puzzle — find them all —
+  // rather than a timing one). Harmless to check in every room; only
+  // "switches"/"sequence" rooms ever have an 'S' tile to find.
+  //
+  // "sequence" rooms (Drone Nest, Smelter) additionally enforce ORDER: a
+  // plate only activates if it's the next one in `room.switchTiles` (the
+  // order they're numbered in, drawn by drawSwitchPlate) — stepping on plate
+  // 3 before plate 2 does nothing yet, rather than counting it early or
+  // punishing the wrong guess by resetting progress. `state.switchesHit`
+  // doubles as the "how many done" count for both room types precisely
+  // because entries are only ever added in valid order for "sequence" too.
   {
     const pc = Math.floor(p.x / TILE), pr = Math.floor(p.y / TILE);
-    if (MAP[pr] && MAP[pr][pc] === "S") state.switchesHit.add(pr * COLS + pc);
+    if (MAP[pr] && MAP[pr][pc] === "S") {
+      const room = ROOMS[state.roomIndex];
+      const key = pr * COLS + pc;
+      if (room.type === "sequence") {
+        const next = room.switchTiles[state.switchesHit.size];
+        if (next && next.r === pr && next.c === pc) state.switchesHit.add(key);
+      } else {
+        state.switchesHit.add(key);
+      }
+    }
   }
 
   // walk-cycle animation: advance a phase clock while actually moving under
@@ -764,9 +1164,9 @@ function update(dt, now) {
     }
   }
 
-  // enemies
-  const ATTACK_RANGE = 34;
-  const DETECT_RANGE = 100;
+  // enemies — detect/attack range and lunge speed are now per-enemy (see
+  // ENEMY_KINDS/buildRoomState) instead of one shared constant, so a Drone
+  // spots you from further off than a Rat and a Brute lunges slower.
   for (const en of state.enemies) {
     if (!en.alive) continue;
     if (en.hitFlash > 0) en.hitFlash -= dt;
@@ -783,20 +1183,40 @@ function update(dt, now) {
       const dxp = p.x - en.x, dyp = p.y - en.y;
       en.facing = Math.abs(dxp) > Math.abs(dyp) ? (dxp > 0 ? "right" : "left") : (dyp > 0 ? "down" : "up");
       if (en.atkTimer <= 0) {
-        en.atkState = "lunge";
-        en.atkTimer = en.atkDuration = 0.16;
         const len = Math.hypot(dxp, dyp) || 1;
         en.lungeDx = dxp / len;
         en.lungeDy = dyp / len;
-        en.hasHitThisLunge = false;
+        if (en.attackKind === "ranged") {
+          // Fires here, at the end of the telegraph, aimed at the player's
+          // CURRENT position — a straight-line shot, not a homing one, so
+          // sidestepping after the coil is a real dodge. "fire" itself is
+          // just the drone holding its pose for one beat; the projectile is
+          // its own object from here on (see the update below).
+          en.atkState = "fire";
+          en.atkTimer = en.atkDuration = en.fireTime;
+          state.projectiles.push({
+            x: en.x, y: en.y, dx: en.lungeDx, dy: en.lungeDy,
+            speed: en.projectileSpeed, life: 1.6, w: 8, h: 8,
+          });
+        } else {
+          en.atkState = "lunge";
+          en.atkTimer = en.atkDuration = en.lungeTime;
+          en.hasHitThisLunge = false;
+        }
       }
+    } else if (en.atkState === "fire") {
+      // Recoil beat after loosing the shot — no movement, no damage here
+      // (the projectile itself is what can hurt the player); just holds the
+      // attack pose until its own cooldown lets it act again.
+      en.atkTimer -= dt;
+      if (en.atkTimer <= 0) { en.atkState = "idle"; en.attackCooldownUntil = now + en.cooldownMs; }
     } else if (en.atkState === "lunge") {
       // the actual attack: a fast committed dash — this is the only window
       // that can damage the player, so a hit always has a visible "wind up
-      // then pounce" tell before it, not just silent contact.
+      // then pounce/charge" tell before it, not just silent contact.
       en.atkTimer -= dt;
       en.moving = true;
-      moveEntity(en, en.lungeDx * en.speed * 3.4 * dt, en.lungeDy * en.speed * 3.4 * dt, gateOpen);
+      moveEntity(en, en.lungeDx * en.speed * en.lungeMult * dt, en.lungeDy * en.speed * en.lungeMult * dt, gateOpen);
       if (!en.hasHitThisLunge && now >= p.invulnUntil &&
           rectsOverlap(p.x, p.y, p.w, p.h, en.x, en.y, en.w, en.h)) {
         en.hasHitThisLunge = true;
@@ -812,15 +1232,41 @@ function update(dt, now) {
         }
       }
       if (en.atkTimer <= 0) {
-        en.atkState = "idle";
-        en.attackCooldownUntil = now + 900;
+        // Only the Brute's "charge" overcommits into a recovery window —
+        // the rat's pounce is a quick, low-risk jab and goes straight back
+        // to idle, same as always.
+        if (en.attackKind === "charge") {
+          en.atkState = "recover";
+          en.atkTimer = en.atkDuration = en.recoverTime;
+        } else {
+          en.atkState = "idle";
+          en.attackCooldownUntil = now + en.cooldownMs;
+        }
       }
+    } else if (en.atkState === "recover") {
+      // Dazed after a charge, whether or not it connected — planted in
+      // place, can't move or act. This is the actual punish window the
+      // Brute's longer telegraph is trading against; skipping it would
+      // leave "charge" just a faster pounce with extra steps.
+      en.atkTimer -= dt;
+      if (en.atkTimer <= 0) { en.atkState = "idle"; en.attackCooldownUntil = now + en.cooldownMs; }
     } else {
       const distToPlayer = Math.hypot(p.x - en.x, p.y - en.y);
-      if (distToPlayer < ATTACK_RANGE && now >= en.attackCooldownUntil) {
+      if (en.attackKind === "ranged" && distToPlayer < en.retreatRange) {
+        // Too close for a hovering shooter — back off instead of standing
+        // there to get bitten, so getting in its face is a real answer to
+        // it, not just free damage on top of dodging the bolt. Checked
+        // regardless of cooldown (unlike the windup trigger below) so it
+        // doesn't rush back in for the 1.1s between shots.
+        en.moving = true;
+        const ex = (en.x - p.x) / (distToPlayer || 1);
+        const ey = (en.y - p.y) / (distToPlayer || 1);
+        moveEntity(en, ex * en.speed * dt, ey * en.speed * dt, gateOpen);
+        en.facing = Math.abs(ex) > Math.abs(ey) ? (ex > 0 ? "right" : "left") : (ey > 0 ? "down" : "up");
+      } else if (distToPlayer < en.attackRange && now >= en.attackCooldownUntil) {
         en.atkState = "windup";
-        en.atkTimer = en.atkDuration = 0.28;
-      } else if (distToPlayer < DETECT_RANGE) {
+        en.atkTimer = en.atkDuration = en.windupTime;
+      } else if (distToPlayer < en.detectRange) {
         en.moving = true;
         const ex = (p.x - en.x) / (distToPlayer || 1);
         const ey = (p.y - en.y) / (distToPlayer || 1);
@@ -850,6 +1296,33 @@ function update(dt, now) {
     else en.animPhase *= 0.9;
   }
 
+  // Scrap Drone bolts — spawned in the "ranged" branch above. A straight
+  // line at fixed speed; dies on a wall, on the player (dealing the same
+  // one point of damage/knockback a lunge does, same invuln window so it
+  // can't stack with a rat's bite in the same instant), or on its own
+  // timeout so a shot fired into an empty corner doesn't outlive the room.
+  if (state.projectiles.length) {
+    for (const pr of state.projectiles) {
+      pr.x += pr.dx * pr.speed * dt;
+      pr.y += pr.dy * pr.speed * dt;
+      pr.life -= dt;
+      if (SOLID.has(tileAt(pr.x, pr.y))) { pr.life = 0; continue; }
+      if (now >= p.invulnUntil && rectsOverlap(p.x, p.y, p.w, p.h, pr.x, pr.y, pr.w, pr.h)) {
+        pr.life = 0;
+        p.hp -= 1;
+        p.invulnUntil = now + 900;
+        const klen = Math.hypot(pr.dx, pr.dy) || 1;
+        p.kbx = (pr.dx / klen) * 130;
+        p.kby = (pr.dy / klen) * 130;
+        if (p.hp <= 0) {
+          state.lost = true;
+          loseOverlay.hidden = false;
+        }
+      }
+    }
+    state.projectiles = state.projectiles.filter((pr) => pr.life > 0);
+  }
+
   // advance/prune the cosmetic death-burst particles (see attack-hit section
   // above for where they're spawned).
   if (state.deathFx.length) {
@@ -861,21 +1334,30 @@ function update(dt, now) {
   // Every room but the last just loads the next one (with a brief non-
   // blocking toast, not a stopping overlay) — that continuity is the point,
   // see the ROOMS comment. Only the LAST room's gate ends the chapter.
-  if (gateOpen) {
-    const t = tileAt(p.x, p.y);
-    if (t === "G") {
-      if (state.roomIndex < ROOMS.length - 1) {
-        transitionToRoom(state.roomIndex + 1);
-      } else {
-        state.won = true;
-        state.elapsed = (now - state.startTime) / 1000;
-        const best = GCStorage.get(GAME_ID, "chapter1BestSeconds", null);
-        if (best === null || state.elapsed < best) GCStorage.set(GAME_ID, "chapter1BestSeconds", state.elapsed);
-        winTimeEl.textContent = `Chapter 1 cleared in ${state.elapsed.toFixed(1)}s` +
-          (best !== null ? ` (best: ${Math.min(best, state.elapsed).toFixed(1)}s)` : "");
-        winOverlay.hidden = false;
-      }
+  const standingTile = tileAt(p.x, p.y);
+  if (gateOpen && standingTile === "G") {
+    if (state.roomIndex < ROOMS.length - 1) {
+      transitionToRoom(state.roomIndex + 1, "forward");
+    } else {
+      state.won = true;
+      state.elapsed = (now - state.startTime) / 1000;
+      SAVES.erase(1); // chapter complete — nothing left to resume
+      const best = GCStorage.get(GAME_ID, "chapter1BestSecondsV2", null);
+      if (best === null || state.elapsed < best) GCStorage.set(GAME_ID, "chapter1BestSecondsV2", state.elapsed);
+      winTimeEl.textContent = `Chapter 1 cleared in ${state.elapsed.toFixed(1)}s` +
+        (best !== null ? ` (best: ${Math.min(best, state.elapsed).toFixed(1)}s)` : "");
+      winOverlay.hidden = false;
     }
+  }
+  // back gate: 'H', always walkable, always open (see isSolidFor/drawTile) —
+  // steps you back into the PREVIOUS room, arriving near ITS forward gate
+  // rather than at its usual bottom spawn. Room 0 has no back gate (nothing
+  // before it). Retreating re-rolls that room fresh (buildRoomState again),
+  // same as a Zelda screen resetting its enemies when you leave and return —
+  // it is not a permanent "cleared" flag, on purpose: simpler, and it means
+  // fleeing a fight you're losing doesn't hand you a shortcut past it.
+  if (standingTile === "H" && state.roomIndex > 0) {
+    transitionToRoom(state.roomIndex - 1, "backward");
   }
 }
 
@@ -890,9 +1372,11 @@ function isGateOpen() {
   if (!state.enemies.every((e) => !e.alive)) return false;
   const room = ROOMS[state.roomIndex];
   if (room.type === "push") return state.crates.some((cr) => crateOnSwitch(room, cr));
-  if (room.type === "switches") {
-    return room.switchTiles.length > 0 &&
-      room.switchTiles.every((s) => state.switchesHit.has(s.r * COLS + s.c));
+  if (room.type === "switches" || room.type === "sequence") {
+    // Same completion test for both — "sequence" only differs in HOW a
+    // plate is allowed to join switchesHit (see the switch-detection code
+    // in update()), not in what "done" means.
+    return room.switchTiles.length > 0 && state.switchesHit.size >= room.switchTiles.length;
   }
   return true;
 }
@@ -903,6 +1387,23 @@ function crateOnSwitch(room, cr) {
 }
 
 // ---- drawing ----
+// A gate/back-gate is always a 2-cell pair, but which way the pair runs
+// depends on which wall it's cut into: a top/bottom-wall gate is a
+// horizontal pair (see CATWALK_MAP's "GG" in its own top/bottom rows), a
+// left/right-wall gate is a VERTICAL pair (see BRIDGE_MAP's "H"/"H" stacked
+// in column 0) — added when rooms started putting doors on side walls (see
+// the ROOMS comment) instead of only ever the top. `axis` says which way
+// blitTile's `squeeze` should shrink the tile when the gate is open; `side`
+// says which half of the pair THIS cell is, so it shrinks away from its
+// partner instead of both cells shrinking toward the same corner.
+function gateOrientation(c, r) {
+  const isGate = (ch) => ch === "G" || ch === "H";
+  if (c > 0 && isGate(MAP[r][c - 1])) return { axis: "x", side: "right" };
+  if (c < COLS - 1 && isGate(MAP[r][c + 1])) return { axis: "x", side: "left" };
+  if (r > 0 && isGate(MAP[r - 1][c])) return { axis: "y", side: "bottom" };
+  return { axis: "y", side: "top" };
+}
+
 function drawTile(c, r, ch, gateOpen) {
   const x = c * TILE, y = r * TILE;
 
@@ -912,24 +1413,30 @@ function drawTile(c, r, ch, gateOpen) {
   // Generated tiles when they're loaded; the drawn-in-code version below is
   // the fallback.
   if (TILES[TILE_GROUND].ready) {
+    const ts = currentTileSet();
     blitTile(floorTileFor(c, r), c, r, flipX, flipY);
     if (ch === "2") {
-      // Corrugated fence panel. Only the horizontal flip is used: flipping
-      // ribs top to bottom does nothing, but it would fight the tile's own
-      // light direction.
-      blitTile(TILE_WALL, c, r, flipX, false);
+      // Boundary wall. Only the horizontal flip is used: flipping ribs/mesh
+      // top to bottom does nothing, but it would fight the tile's own light
+      // direction. Which art this is (corrugated fence / chain-link / rock
+      // wall) follows the room's own zone, same as the floor.
+      blitTile(ts.wall, c, r, flipX, false);
     } else if (ch === "3") {
-      blitTile(TILE_JUNK, c, r, flipX, false);
+      blitTile(ts.junk, c, r, flipX, false);
     } else if (ch === "4") {
-      blitTile(TILE_CRATE, c, r, flipX, false);
-    } else if (ch === "G") {
+      blitTile(ts.crate, c, r, flipX, false);
+    } else if (ch === "G" || ch === "H") {
       // The gate is drawn art now, not a red/green tint over the floor. Shut,
       // it's a chained scrap-pipe panel filling the doorway; cleared, the two
       // leaves swing back against their posts and the way out is open floor
       // you can see through — the state reads as the gate having MOVED, which
-      // a colour swatch never did.
-      const side = MAP[r][c - 1] === "G" ? "right" : "left";
-      blitTile(TILE_GATE, c, r, side === "right", false, gateOpen ? 0.22 : 1, side);
+      // a colour swatch never did. 'H' is the room's BACK gate (see ROOMS
+      // comment) — the way you already came from, so it's drawn permanently
+      // open ('open' forced true) instead of reading isGateOpen().
+      const open = ch === "H" ? true : gateOpen;
+      const { axis, side } = gateOrientation(c, r);
+      const flip = side === "right" || side === "bottom";
+      blitTile(TILE_GATE, c, r, axis === "x" && flip, axis === "y" && flip, open ? 0.22 : 1, side, axis);
     }
     return;
   }
@@ -945,15 +1452,21 @@ function drawTile(c, r, ch, gateOpen) {
   // asphalt base for everything else (drawn first, obstacles layered after)
   ctx.fillStyle = (c + r) % 2 === 0 ? "#2f3038" : "#2a2b33";
   ctx.fillRect(x, y, TILE, TILE);
-  if (ch === "G") {
-    if (!gateOpen) {
+  if (ch === "G" || ch === "H") {
+    const open = ch === "H" ? true : gateOpen;
+    if (!open) {
       ctx.fillStyle = "#6b3418";
       for (let i = 0; i < 5; i++) ctx.fillRect(x + 2 + i * 6, y + 2, 3, TILE - 4);
       ctx.fillStyle = "#8c95a0";
       ctx.fillRect(x, y + 13, TILE, 3);
     } else {
+      const { axis, side } = gateOrientation(c, r);
       ctx.fillStyle = "#6b3418";
-      ctx.fillRect(MAP[r][c - 1] === "G" ? x + TILE - 5 : x, y + 2, 5, TILE - 4);
+      if (axis === "x") {
+        ctx.fillRect(side === "right" ? x + TILE - 5 : x, y + 2, 5, TILE - 4);
+      } else {
+        ctx.fillRect(x + 2, side === "bottom" ? y + TILE - 5 : y, TILE - 4, 5);
+      }
     }
     return;
   }
@@ -992,15 +1505,31 @@ function drawTile(c, r, ch, gateOpen) {
 // scenery, so it doesn't belong in tiles.png or its `environmentPalette`
 // generation pass — but it's still built FROM that palette so it reads as
 // part of the same junkyard rather than a UI element floating over it.
-function drawSwitchPlate(c, r, active) {
+// `label` (a 1-based order number) and `isNext` are only ever passed for
+// "sequence" rooms (see the render() call site) — a "switches" room's
+// plates stay unlabelled since any order is fine. `isNext` gets a warm
+// pulse so the room is always telling you which plate to find next instead
+// of leaving order-enforcement as an invisible rule you find by trial and
+// error, which is exactly the kind of thing that reads as "annoying".
+function drawSwitchPlate(c, r, active, label, isNext) {
   const x = c * TILE, y = r * TILE;
-  ctx.fillStyle = active ? "#5c7238" : "#5a5d66";
+  const pulse = isNext ? 0.65 + Math.sin(performance.now() / 220) * 0.2 : 1;
+  ctx.fillStyle = active ? "#5c7238" : isNext ? "#8a6a2e" : "#5a5d66";
+  ctx.globalAlpha = pulse;
   ctx.fillRect(x + 6, y + 6, TILE - 12, TILE - 12);
-  ctx.strokeStyle = active ? "#3a4a2a" : "#2f3038";
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = active ? "#3a4a2a" : isNext ? "#e8b03a" : "#2f3038";
   ctx.lineWidth = 2;
   ctx.strokeRect(x + 6, y + 6, TILE - 12, TILE - 12);
   ctx.fillStyle = active ? "#c3c6c2" : "#7b8184";
   ctx.fillRect(x + 11, y + 11, TILE - 22, TILE - 22);
+  if (label) {
+    ctx.fillStyle = "#14121a";
+    ctx.font = "bold 14px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(label), x + TILE / 2, y + TILE / 2 + 1);
+  }
 }
 
 // The Junk Bridge puzzle's pushable crate: same silhouette as the static
@@ -1009,8 +1538,9 @@ function drawSwitchPlate(c, r, active) {
 // cell — it moves, the wall-mounted one never does.
 function drawCrate(cr) {
   const x = cr.x - TILE / 2, y = cr.y - TILE / 2;
-  if (TILES[TILE_CRATE] && TILES[TILE_CRATE].ready) {
-    ctx.drawImage(TILES[TILE_CRATE].img, x, y, TILE, TILE);
+  const crateIdx = currentTileSet().crate;
+  if (TILES[crateIdx] && TILES[crateIdx].ready) {
+    ctx.drawImage(TILES[crateIdx].img, x, y, TILE, TILE);
     return;
   }
   ctx.fillStyle = "#5a5d66";
@@ -1113,6 +1643,77 @@ function drawRatFallback(x, y, facing, hitFlash, squashX, squashY, step, attacki
   ctx.restore();
 }
 
+// Drone canvas fallback: a floating tin-can body (no legs, per art-style.json
+// — it never touches the ground even in the drawn-in-code version) with one
+// glowing lens that flares white/red on hit, same damage-tell convention as
+// every other fallback here.
+function drawDroneFallback(x, y, facing, hitFlash, squashX, squashY, step, attacking) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale((facing === "left" ? -1 : 1) * squashX, squashY);
+  ctx.fillStyle = "rgba(0,0,0,0.2)";
+  ctx.beginPath();
+  ctx.ellipse(0, 11, 9, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#5a5d66";
+  ctx.beginPath();
+  ctx.ellipse(0, -1, 10, 9, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // bent antennae, tilted opposite ways for a slight "hover jitter" read.
+  ctx.strokeStyle = "#3d434f";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-4, -8); ctx.lineTo(-7 + (step ? 1 : 0), -15);
+  ctx.moveTo(4, -8); ctx.lineTo(7 - (step ? 1 : 0), -15);
+  ctx.stroke();
+  ctx.fillStyle = attacking ? "#ffffff" : hitFlash > HIT_FLASH_TIME * 0.85 ? "#ffffff"
+    : hitFlash > 0 ? "#e02a2a" : "#e8306f";
+  ctx.beginPath();
+  ctx.ellipse(2, -1, 5, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Brute canvas fallback: bigger and lower than the rat, welded scrap plate
+// across the back, jutting tusks — same silhouette language as
+// drawRatFallback (ground shadow, hit-flash body, legs swap on `step`) just
+// scaled up and darker, so a missing sheet still reads as "the big one".
+function drawBruteFallback(x, y, facing, hitFlash, squashX, squashY, step, attacking) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale((facing === "left" ? -1 : 1) * squashX, squashY);
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.beginPath();
+  ctx.ellipse(0, 15, 16, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#2e2418";
+  ctx.fillRect(step ? -12 : -6, 9, 6, 7);
+  ctx.fillRect(step ? 6 : 12, 9, 6, 7);
+  ctx.fillStyle = hitFlash > HIT_FLASH_TIME * 0.85 ? "#ffffff"
+    : hitFlash > 0 ? "#e02a2a" : "#4e2e15";
+  ctx.beginPath();
+  ctx.ellipse(0, 2, 17, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // welded scrap plate across the back.
+  ctx.fillStyle = "#5a5d66";
+  ctx.fillRect(-11, -8, 22, 9);
+  ctx.fillStyle = "#8c95a0";
+  ctx.fillRect(-9, -6, 6, 3);
+  ctx.fillRect(2, -6, 6, 3);
+  if (attacking) {
+    ctx.fillStyle = "#1b1b1b";
+    ctx.fillRect(-13, -4, 9, 8);
+    ctx.fillStyle = "#f4f0e6";
+    ctx.fillRect(-13, -4, 3, 3);
+    ctx.fillRect(-13, 1, 3, 3);
+  } else if (facing !== "up") {
+    ctx.fillStyle = "#f4f0e6";
+    ctx.fillRect(-9, -2, 2, 2);
+    ctx.fillRect(6, -2, 2, 2);
+  }
+  ctx.restore();
+}
+
 // HIT FLASH: recolours a whole sprite frame to one flat colour, keeping its
 // silhouette, by compositing a filled rect through the frame's own alpha.
 // Done on a scratch canvas with `source-in` rather than by reading pixels,
@@ -1185,48 +1786,106 @@ function render(now) {
     for (let c = 0; c < COLS; c++) drawTile(c, r, MAP[r][c], gateOpen);
   }
 
+  // Per-zone colour wash: the same tile art recoloured per zone (a
+  // `multiply` fill over the whole board), same trick as a Zelda dungeon
+  // reusing its overworld tileset in a different light — cheap, and it's
+  // the difference between "nine rooms of identical grey asphalt" and
+  // being able to tell which third of the chapter you're in at a glance.
+  // See ROOMS below for which zone gets which tint; the original three
+  // rooms are left untinted (home turf, unchanged from before this pass).
+  const zoneTint = ROOMS[state.roomIndex].tint;
+  if (zoneTint) {
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = zoneTint.alpha;
+    ctx.fillStyle = zoneTint.color;
+    ctx.fillRect(0, 0, COLS * TILE, ROWS * TILE);
+    ctx.restore();
+  }
+
   // Puzzle markers, drawn on top of the floor and under everything that
   // stands on it (crates, characters) — see drawSwitchPlate. Each switch
-  // lights up independently once stepped on ("switches" rooms); the Junk
-  // Bridge room has exactly one, lit while a crate currently rests on it
-  // (not permanently, so pushing the crate back off it re-locks the gate).
+  // lights up independently once stepped on ("switches"/"sequence" rooms);
+  // the Junk Bridge room has exactly one, lit while a crate currently rests
+  // on it (not permanently, so pushing the crate back off it re-locks the
+  // gate). "sequence" rooms additionally get a 1-based number per plate and
+  // a pulse on whichever one is next, off `room.switchTiles`' own order —
+  // the same order update()'s switch-detection code enforces, so the plate
+  // that glows is always the one that's actually next, never out of sync.
   const room = ROOMS[state.roomIndex];
-  for (const s of room.switchTiles) {
+  const isSequence = room.type === "sequence";
+  room.switchTiles.forEach((s, i) => {
     const active = room.type === "push"
       ? state.crates.some((cr) => Math.floor(cr.x / TILE) === s.c && Math.floor(cr.y / TILE) === s.r)
       : state.switchesHit.has(s.r * COLS + s.c);
-    drawSwitchPlate(s.c, s.r, active);
-  }
+    drawSwitchPlate(s.c, s.r, active, isSequence ? i + 1 : null, isSequence && !active && i === state.switchesHit.size);
+  });
   for (const cr of state.crates) drawCrate(cr);
 
   for (const en of state.enemies) {
     if (!en.alive) continue;
     let scaleX = 1, scaleY = 1;
     const lunging = en.atkState === "lunge";
+    const firing = en.atkState === "fire";
+    // "recover" (Brute only, after a charge) deliberately falls through to
+    // the plain idle pose/scale below — dazed and still is the point, see
+    // the ENEMY_KINDS/update() comments on `attackKind: "charge"`.
     if (en.atkState === "windup") {
-      // coil up before pouncing.
+      // coil up before attacking — a longer, deeper coil for a Brute's
+      // charge than a Rat's pounce, since `atkDuration` is already its own
+      // per-kind `windupTime` (see ENEMY_KINDS), so this needs no branch.
       const t = 1 - en.atkTimer / (en.atkDuration || 1);
       scaleX = 1 + t * 0.18;
       scaleY = 1 - t * 0.22;
     } else if (lunging) {
-      // stretched out mid-pounce, direction-of-travel dependent.
+      // stretched out mid-pounce/charge, direction-of-travel dependent.
       const horiz = Math.abs(en.lungeDx) >= Math.abs(en.lungeDy);
       scaleX = horiz ? 1.3 : 0.9;
       scaleY = horiz ? 0.85 : 1.3;
+    } else if (firing) {
+      // small recoil kick opposite the shot, direction-of-travel dependent
+      // — sells the shot without a physical lunge, since a Drone never
+      // actually closes the distance for "ranged".
+      const horiz = Math.abs(en.lungeDx) >= Math.abs(en.lungeDy);
+      scaleX = horiz ? 0.88 : 1.06;
+      scaleY = horiz ? 1.06 : 0.88;
     }
-    // the pounce swaps to a real drawn attack pose (jaws open, claws out)
-    // instead of just stretching the idle art, so the lunge reads as an
-    // actual attack animation rather than a squashed walk frame.
-    // getting hit: flat white on impact decaying to red (see
-    // drawAnimatedSprite), plus a recoil squash, so damage is unmistakable.
+    // the pounce/charge/shot swaps to a real drawn attack pose instead of
+    // just stretching the idle art, so it reads as an actual attack
+    // animation rather than a squashed walk frame. Getting hit: flat white
+    // on impact decaying to red (see drawAnimatedSprite), plus a recoil
+    // squash, so damage is unmistakable.
     const flash = Math.max(0, en.hitFlash) / HIT_FLASH_TIME;
     if (flash > 0) {
       scaleX *= 1 + flash * 0.16;
       scaleY *= 1 - flash * 0.12;
     }
-    drawAnimatedSprite(lunging ? ratAttackSpriteFor : ratSpriteFor, en.facing, en.x, en.y - 6, SPRITE_CELL,
-      { moving: en.moving && !lunging, phase: en.animPhase, scaleX, scaleY, flash },
-      (x, y, facing, sx, sy, step) => drawRatFallback(x, y, facing, en.hitFlash, sx, sy, step, lunging));
+    const kind = ENEMY_KINDS[en.type] || ENEMY_KINDS.rat;
+    const attackPose = lunging || firing;
+    drawAnimatedSprite(attackPose ? kind.attackSpriteFor : kind.spriteFor, en.facing, en.x, en.y - 6, SPRITE_CELL,
+      { moving: en.moving && !attackPose, phase: en.animPhase, scaleX, scaleY, flash },
+      (x, y, facing, sx, sy, step) => kind.fallback(x, y, facing, en.hitFlash, sx, sy, step, attackPose));
+  }
+
+  // Scrap Drone bolts — a small glowing core (the drone's own lens colour,
+  // so a shot reads as "part of the same thing that fired it") with a short
+  // motion-blur tail drawn back along its own direction of travel, so a
+  // fast-moving 8px square doesn't just read as a blinking dot.
+  for (const pr of state.projectiles) {
+    ctx.save();
+    ctx.strokeStyle = "#e8306f";
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(pr.x, pr.y);
+    ctx.lineTo(pr.x - pr.dx * 14, pr.y - pr.dy * 14);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.ellipse(pr.x, pr.y, 4, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   // scrap-burst death animation: small squares kick outward from where a
@@ -1343,6 +2002,7 @@ function puzzleStatus() {
   const room = ROOMS[state.roomIndex];
   if (room.type === "push") return "Push the crate onto the switch";
   if (room.type === "switches") return `Switches ${state.switchesHit.size}/${room.switchTiles.length}`;
+  if (room.type === "sequence") return `Hit switch ${Math.min(state.switchesHit.size + 1, room.switchTiles.length)} of ${room.switchTiles.length}`;
   return "Gate open!";
 }
 
@@ -1365,7 +2025,7 @@ function resetChapter() {
   introActive = false;
   winOverlay.hidden = true;
   loseOverlay.hidden = true;
-  keys.clear();
+  for (const k in liveKeys) delete liveKeys[k];
   touchDirs.clear();
   lastHudHp = null;
   heartsEl.classList.remove("hit");
@@ -1377,7 +2037,7 @@ winRetryBtn.addEventListener("click", resetChapter);
 // chapter — dying in the Back Gate room shouldn't cost the alley and the
 // bridge again.
 loseRetryBtn.addEventListener("click", () => {
-  keys.clear();
+  for (const k in liveKeys) delete liveKeys[k];
   touchDirs.clear();
   heartsEl.classList.remove("hit");
   resetRoom();

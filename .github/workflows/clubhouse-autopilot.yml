@@ -49,6 +49,10 @@ on:
         description: 'Retry attempt number (internal — the failure path re-dispatches with this incremented, up to 3)'
         required: false
         default: '1'
+      continue_pass:
+        description: 'Auto-continuation pass number (internal — a run that timed out but shipped real progress re-dispatches with this incremented, up to 6, instead of waiting on a human to ask again)'
+        required: false
+        default: '1'
       model:
         description: 'Model for this run. Default Sonnet. Opus costs many times more per run and exhausted the account API budget in a day when it was the default — pick it only for work that genuinely needs it.'
         required: false
@@ -89,9 +93,15 @@ jobs:
     runs-on: ubuntu-latest
     # Hard cap on the whole job so a hang can never hold the per-thread queue
     # lock for GitHub's default 6 hours (which stalled every queued message
-    # behind it). The model step has its own tighter timeout below. Sized to
-    # fit the retry backoff (~10 min) + the 30-min model cap + overhead.
-    timeout-minutes: 55
+    # behind it). The model step has its own tighter timeout below.
+    #
+    # Sized for the WORST case, not the typical one: the model step now
+    # continues past its own 30-min timeout (continue-on-error, see that
+    # step) so a slow run's real progress can still be smoke-tested and
+    # landed instead of discarded — so this cap has to fit setup (~15) + the
+    # 30-min model cap + smoke-test (15) + land (10) + reply/retry overhead,
+    # not just the model cap plus a little slack like before.
+    timeout-minutes: 80
     permissions:
       contents: write        # push the change branch
       pull-requests: write   # open + merge the change PR, post the reply comment
@@ -458,14 +468,21 @@ jobs:
                For a simple FLAT icon or logo, skip all this and write an
                inline .svg (SVG over PNG).
 
-               For a ONE-OFF image that is none of the three kinds above (a
-               title screen, say), post to the broker yourself — but build the
-               prompt from the game's art-style.json so it matches everything
-               else, and Read the result:
+               For art with no front door — an ICON dropped onto the UI (a
+               card, a weapon), or a full-bleed CUTSCENE illustration — post
+               to the broker with a "kind": "icon" or "kind": "cutscene". The
+               broker looks up size/quality/background from that kind in
+               .github/art/profiles.py; it does not take raw flags, and it
+               REFUSES any output_path under art-src/ or a kind that is not
+               one of those two — both enforced, not just asked for. If the
+               game needs a shape of art that is neither of those (a ship
+               silhouette, a UI badge), say so in your reply rather than
+               forcing it into "icon" — a new kind gets added to profiles.py,
+               it is not something to approximate:
                  curl -s -X POST http://127.0.0.1:8791/generate \
                    -H 'content-type: application/json' \
                    -d '{"prompt":"...","output_path":"games/<id>/<name>.png",
-                        "size":"1536x1024"}'
+                        "kind":"icon"}'
 
             4. Write your chat reply as plain Markdown — the message body ONLY,
                with NO "**Claude says:**" prefix and NO "[v0.N]" stamp (the
@@ -599,6 +616,18 @@ jobs:
           # a 'redo the art' request could not physically finish, and reported
           # success on a partial job instead.
           MAX_GENERATIONS: '12'
+          # DETERMINISTIC STOP, NOT A PROMPT ASKING NICELY. The model step
+          # below is killed at 30 min regardless of how much real progress it
+          # made — MAX_GENERATIONS alone doesn't prevent that (a run can stay
+          # well under 12 generations and still get killed by the clock;
+          # verification, re-generation on a failed check, and git work all
+          # cost time without touching that counter). So the broker also
+          # refuses /generate once GEN_TIME_BUDGET_MIN has elapsed since IT
+          # started (a few seconds before the model step below), leaving the
+          # remaining ~10 of the 30 minutes for verify/commit/reply instead of
+          # a mid-write SIGKILL. See image-broker.js's header for the full
+          # reasoning.
+          GEN_TIME_BUDGET_MIN: '20'
         run: |
           set -euo pipefail
           # ImageMagick may already be on the runner image; only install if it
@@ -635,10 +664,28 @@ jobs:
         run: .github/autopilot/status.sh "reading the thread and working on the change"
 
       - name: Handle the Clubhouse message (headless Claude)
+        id: model
         if: steps.ctx.outputs.enabled == 'true'
         # If the model hangs (stuck API call, wedged broker curl, etc.), kill it
-        # here instead of letting it block the thread for hours. On timeout this
-        # step fails and the failure reply fires, freeing the queue.
+        # here instead of letting it block the thread for hours.
+        #
+        # continue-on-error: TIMING OUT USED TO THROW AWAY EVERYTHING. A
+        # timeout killed this step, which skipped smoke-test/land (both gated
+        # on success()) via the SAME path as a real crash — so three full
+        # 30-minute attempts on a big multi-character request (Dog Punk,
+        # 2026-08-21 04:44-05:25 UTC) each did real, verified art work and
+        # committed NONE of it, because the process was SIGKILLed before it
+        # ever reached the git-commit step later in the job. 90 minutes,
+        # three "hit a snag" replies, and nothing shipped.
+        #
+        # continue-on-error absorbs the timeout so success() stays true and
+        # the pipeline keeps going: smoke-test still gates what ships (so a
+        # timeout that left the tree genuinely broken still gets caught), but
+        # a timeout that left real, working progress on disk now lands it
+        # instead of discarding it. steps.model.outcome (not .conclusion,
+        # which this rewrites to 'success') is checked below to tell a
+        # timeout-with-real-progress apart from a timeout-with-nothing.
+        continue-on-error: true
         timeout-minutes: 30
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -802,6 +849,17 @@ jobs:
           # What actually changed, for check-reply.js to hold the reply to.
           git diff --cached --name-only > .autopilot/changed.txt || true
           if git diff --cached --quiet; then
+            # A timed-out/crashed model step with NOTHING staged is a real
+            # failure, not "reply-only" — falling through here would let the
+            # generic post-reply fallback claim "I've handled your message"
+            # over zero actual work. Fail so the retry/report-failure step
+            # fires instead, same as before this step could run past a model
+            # timeout at all.
+            if [ "${{ steps.model.outcome }}" = "failure" ]; then
+              echo "::error::model step failed/timed out and produced no changes to ship"
+              printf 'I ran out of time and had nothing finished to show for it — no partial work to ship. Ask me again and I will pick this back up.\n' > .autopilot/failure.md
+              exit 1
+            fi
             echo "No file changes — reply-only, nothing to ship."
             : > .autopilot/changed.txt
             exit 0
@@ -972,6 +1030,11 @@ jobs:
           node .github/autopilot/check-reply.js "$body_file" .autopilot/changed.txt || true
           if [ -s "$body_file" ]; then
             body=$(cat "$body_file")
+          elif [ "${{ steps.model.outcome }}" = "failure" ]; then
+            # The model hit its timeout before it got to write reply.md, but
+            # land-changes only reaches here when it actually had something
+            # real staged — so this is genuine partial progress, not silence.
+            body="I ran out of time partway through this and had to stop, but what I'd finished before the cutoff just shipped — take a look. If anything from your message is still missing, ask again and I'll pick up where I left off."
           else
             body="I've handled your message — take a look at the thread and the latest changes."
           fi
@@ -993,6 +1056,42 @@ jobs:
             --body "$(printf '**Claude says:**\n\n%s\n\n[v0.%s]' "$body" "$N")"
           # Close out the live status so it does not sit there looking mid-run.
           GC_STATUS_PR=${{ steps.ctx.outputs.pr }} .github/autopilot/status.sh "done - reply posted below"
+
+      # AUTO-CONTINUE A TIMED-OUT-BUT-PRODUCTIVE RUN, so a big ask (a whole
+      # character roster) doesn't sit there needing a human to notice the
+      # reply said "ask again" and actually ask again. The condition here is
+      # the same deterministic signal the reply step above already uses —
+      # steps.model.outcome == 'failure' (the 30-min kill fired) alongside
+      # steps.land.outputs.deployed == '1' (there was real, smoke-tested
+      # progress, not nothing) — so this only fires for the exact case the
+      # timeout-doesn't-discard-progress fix was built for, never for a run
+      # that finished cleanly or one that made no progress at all (that path
+      # is failure()-gated below, unchanged).
+      #
+      # Bounded at 6 passes so a request that is simply too large (or stuck
+      # regenerating the same failing asset every pass) hands back to a human
+      # instead of looping forever — same shape as the retry cap below, sized
+      # larger because each pass here did real, useful work, unlike a retry.
+      - name: Continue automatically if more work remains
+        if: success() && steps.ctx.outputs.enabled == 'true' && steps.model.outcome == 'failure' && steps.land.outputs.deployed == '1'
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PASS="${{ github.event.inputs.continue_pass || '1' }}"
+          CONT_MAX=6
+          if [ "$PASS" -lt "$CONT_MAX" ]; then
+            NEXT=$((PASS + 1))
+            echo "Pass $PASS/$CONT_MAX shipped partial progress — continuing automatically as pass $NEXT."
+            gh workflow run clubhouse-autopilot.yml --ref main \
+              -f pr_number="${{ steps.ctx.outputs.pr }}" \
+              -f message="(automatic continuation — address all outstanding requests in this thread)" \
+              -f attempt="1" \
+              -f continue_pass="$NEXT" \
+              || echo "::warning::could not schedule the continuation — the thread's own reply still tells the owner to ask again"
+          else
+            echo "Reached the $CONT_MAX-pass continuation cap — leaving it to the reply already posted (asks the owner to send another message)."
+          fi
 
       # Deterministic: if any step above failed, the thread still gets an answer
       # instead of going mysteriously silent.

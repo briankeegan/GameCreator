@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("dog-punk-v29", [
+GCRegisterServiceWorker("dog-punk-v35", [
   "./",
   "./index.html",
   "./style.css",
@@ -10,9 +10,13 @@ GCRegisterServiceWorker("dog-punk-v29", [
   "../../shared/nav.css",
   "../../shared/pwa.js",
   "../../shared/storage.js",
+  "../../shared/controls.js",
+  "../../shared/save-slots.js",
   "./icons/icon.svg",
   "./hero_sheet.png",
   "./hero_attack_sheet.png",
   "./rat_sheet.png",
+  "./drone_sheet.png",
+  "./brute_sheet.png",
   "./tiles.png",
 ]);

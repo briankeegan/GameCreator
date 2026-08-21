@@ -26,6 +26,7 @@
       <div class="hud-title" id="hudTitle">Chapter 1 &middot; Scrapyard Alley</div>
       <div class="hud-right">
         <span id="enemyCount">3 left</span>
+        <button class="hud-btn" id="pauseBtn" aria-label="Pause / controls">&#9881;&#xFE0E;</button>
       </div>
     </div>
 
@@ -49,6 +50,28 @@
           <canvas class="intro-portrait" id="introPortrait" width="64" height="64"></canvas>
           <p id="introText"></p>
           <button id="introBtn">Next</button>
+        </div>
+
+        <div class="run-overlay" id="continueOverlay" hidden>
+          <h2>Welcome back</h2>
+          <p id="continueRoomName"></p>
+          <div class="settings-actions" style="width: 100%; max-width: 260px;">
+            <button id="continueBtn">Continue</button>
+            <button class="settings-reset" id="continueRestartBtn">Start Over</button>
+          </div>
+        </div>
+
+        <div class="run-overlay" id="settingsOverlay" hidden>
+          <div class="settings-panel">
+            <h2 style="margin: 0 0 8px;">Paused</h2>
+            <div id="settingsKeys"></div>
+            <p class="settings-status" id="settingsStatus" hidden></p>
+            <div class="settings-actions">
+              <button class="settings-reset" id="settingsResetBtn">Reset keys</button>
+              <button id="settingsResumeBtn">Resume</button>
+            </div>
+          </div>
+          <input class="settings-grabber" id="controlsKeyGrabber" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" tabindex="-1" aria-hidden="true" />
         </div>
       </div>
     </div>
@@ -80,6 +103,8 @@
           data-version="v1"
           data-root="../../"></script>
   <script src="../../shared/storage.js"></script>
+  <script src="../../shared/controls.js"></script>
+  <script src="../../shared/save-slots.js"></script>
   <script src="rooms.js"></script>
   <script src="app.js"></script>
   <script src="../../shared/pwa.js" data-sw="sw.js"></script>
