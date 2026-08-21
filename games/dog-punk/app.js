@@ -129,6 +129,26 @@
 // a fixed cell, and the switch plates are drawn procedurally from
 // `environmentPalette` — see drawCrate/drawSwitchPlate — because both are
 // gameplay affordances, not level scenery.
+// 2026-08-21 (second pass — feedback: "all the rooms look the same, same
+// shape, you only go up; the enemies have the same attack patterns; the
+// puzzles are repeated and annoying") — three independent fixes, all data/
+// logic, no new art:
+//   1. Rooms now vary which WALL their forward gate is cut into (top/left/
+//      right), not always the top, so the chapter is an actual snaking
+//      street with real turns instead of one corridor walked straight up
+//      14 times. See the ROOMS comment above the room list and
+//      gateOrientation() for how a side-wall door is drawn.
+//   2. Every enemy kind now runs its OWN attack (`attackKind` on
+//      ENEMY_KINDS) instead of all three sharing one coil-then-dash state
+//      machine with different numbers: the rat still pounces, the drone
+//      fires a projectile and kites instead of ever biting, the brute
+//      charges further and then has a real vulnerable recovery window.
+//      See the ENEMY_KINDS comment and the enemy loop in update().
+//   3. Puzzle rooms cut from 9 of 15 down to 6, spread across four
+//      distinct mechanics (push / any-order switches / NEW ordered
+//      "sequence" / plain fights) instead of 6 of the 9 being the same
+//      find-3-plates room with a different floor pattern. See the comment
+//      above the ROOMS list.
 const GAME_ID = "dog-punk";
 const TILE = 32;
 const COLS = 16;
@@ -197,14 +217,34 @@ const ALLEY_MAP = [
 // Bridge, so the zone isn't just one clear-room before its puzzle — same
 // obstacle vocabulary (tyre piles '3', crates '4'), different arrangement,
 // more enemies than the Alley.
+// 2026-08-21 (second pass) — every room used to be the exact same COLSxROWS
+// rectangle with its forward gate on the top wall and its spawn on the
+// bottom wall, so the chapter read as one corridor walked straight up 14
+// times. Rooms now vary which WALL the forward gate sits on (top/left/
+// right — see the `exitWall` note on each map below), so roughly half the
+// transitions are an actual turn, not another flight north: catwalk exits
+// EAST into bridge, bridge (entering from its own WEST wall) exits NORTH
+// into courtyard, courtyard exits WEST into gate, and so on down the
+// chapter (see the ROOMS list below for the exact per-room entry/exit
+// pattern — the two are independent per room, so a hallway can turn a
+// corner). A door on a side wall is a 2-cell vertical 'G'/'H' pair instead
+// of horizontal (see drawTile's orientation check and blitTile's `axis`
+// param) — the game already treated 'G'/'H' as plain characters found
+// anywhere on the grid, so this needed no change to collision or the gate-
+// open check, only to where the letters are written and how the door art
+// is oriented when drawn. Verified with a standalone BFS/structural check
+// (every room: exactly 16-wide rows, boundary solid except at a declared
+// gate, G/H always a real adjacent pair, P and every G/H mutually
+// reachable, no enemy spawn sitting on a solid tile) before this shipped —
+// see the check script referenced in this pass's chat reply.
 const CATWALK_MAP = [
-  "2222222GG2222222",
-  "2......B.......2",
+  "2222222222222222",
+  "2..............2",
   "2.4..4....4..4.2",
   "2..............2",
   "2....3....3....2",
-  "2..............2",
-  "2....3....3....2",
+  "2.............BG",
+  "2....3....3....G",
   "2..............2",
   "2.4..4....4..4.2",
   "2..............2",
@@ -217,28 +257,28 @@ const BRIDGE_MAP = [
   "2...4......4...2",
   "2..............2",
   "2......S.......2",
-  "2..............2",
-  "2....X.....3...2",
+  "HP.............2",
+  "H......X...3...2",
   "2..............2",
   "2..3.......4...2",
   "2..............2",
-  "2......P.......2",
-  "2222222HH2222222",
+  "2..............2",
+  "2222222222222222",
 ];
-// Junk Courtyard: a second switches room before the zone's Back Gate, with
-// its own switch layout (not GATEROOM_MAP's) so the two switch-hunt rooms
-// in this zone don't feel like the same room twice.
+// Junk Courtyard: a straight fight (no switch hunt — see the ROOMS comment
+// on puzzle variety) between the Bridge's push puzzle and the Back Gate's
+// switch hunt, so those two puzzle rooms aren't back to back.
 const COURTYARD_MAP = [
-  "2222222GG2222222",
-  "2......B.......2",
-  "2....3....3....2",
-  "2..............2",
-  "2.S............2",
-  "2..............2",
-  "2............S.2",
+  "2222222222222222",
   "2..............2",
   "2....3....3....2",
-  "2......S.......2",
+  "2..............2",
+  "2.4............2",
+  "GB.............2",
+  "G..............2",
+  "2..............2",
+  "2....3....3....2",
+  "2..............2",
   "2......P.......2",
   "2222222HH2222222",
 ];
@@ -248,13 +288,13 @@ const GATEROOM_MAP = [
   "2..S........S..2",
   "2..............2",
   "2......4.......2",
-  "2..............2",
-  "2...3......3...2",
+  "2.............PH",
+  "2...3......3...H",
   "2..............2",
   "2.......S......2",
   "2..............2",
-  "2......P.......2",
-  "2222222HH2222222",
+  "2..............2",
+  "2222222222222222",
 ];
 // ---- Rail Yard zone (rooms 6-10): introduces the Scrap Drone. ----
 const RAIL_ENTRANCE_MAP = [
@@ -271,47 +311,48 @@ const RAIL_ENTRANCE_MAP = [
   "2......P.......2",
   "2222222HH2222222",
 ];
+// Signal Tower: a second clear room in the Rail Yard, mixed drone/rat.
+const SIGNAL_TOWER_MAP = [
+  "2222222222222222",
+  "2..............2",
+  "2..3........3..2",
+  "2..............2",
+  "2.......4......2",
+  "2.............BG",
+  "2..3........3..G",
+  "2..............2",
+  "2.......4......2",
+  "2..............2",
+  "2......P.......2",
+  "2222222HH2222222",
+];
 const RAIL_OVERPASS_MAP = [
   "2222222GG2222222",
   "2......B.......2",
   "2.4............2",
-  "2.......S......2",
   "2..............2",
   "2..3........3..2",
-  "2..............2",
-  "2....X.........2",
+  "HP.............2",
+  "H..............2",
+  "2....4.........2",
   "2..............2",
   "2............4.2",
-  "2......P.......2",
-  "2222222HH2222222",
+  "2..............2",
+  "2222222222222222",
 ];
-// Signal Tower: a second clear room in the Rail Yard, mixed drone/rat.
-const SIGNAL_TOWER_MAP = [
-  "2222222GG2222222",
-  "2......B.......2",
-  "2..3........3..2",
-  "2..............2",
-  "2.......4......2",
-  "2..............2",
-  "2..3........3..2",
-  "2..............2",
-  "2.......4......2",
-  "2..............2",
-  "2......P.......2",
-  "2222222HH2222222",
-];
-// Rail Switchyard: a second switches room, before the Drone Nest.
+// Rail Switchyard: a straight fight (no switch hunt — see COURTYARD_MAP)
+// between the Overpass push puzzle and the Drone Nest's sequence puzzle.
 const SWITCHYARD_MAP = [
-  "2222222GG2222222",
-  "2......B.......2",
-  "2S...........S.2",
+  "2222222222222222",
   "2..............2",
-  "2....44....44..2",
   "2..............2",
   "2..............2",
   "2....44....44..2",
+  "GB.............2",
+  "G..............2",
+  "2....44....44..2",
   "2..............2",
-  "2..........S...2",
+  "2..............2",
   "2......P.......2",
   "2222222HH2222222",
 ];
@@ -321,13 +362,13 @@ const DRONE_NEST_MAP = [
   "2.S............2",
   "2..............2",
   "2....33....44..2",
-  "2..............2",
-  "2..............2",
+  "2.............PH",
+  "2..............H",
   "2....44....33..2",
   "2..............2",
   "2..........S...2",
-  "2..S...P.......2",
-  "2222222HH2222222",
+  "2..S...........2",
+  "2222222222222222",
 ];
 // ---- Rust Quarter zone (rooms 11-15): introduces the Junk Brute. ----
 const RUST_GATE_MAP = [
@@ -347,13 +388,13 @@ const RUST_GATE_MAP = [
 // Slag Pit: a second clear room, first place the Brute shares a room with
 // the Foundry's push puzzle instead of standing alone in an open yard.
 const SLAG_PIT_MAP = [
-  "2222222GG2222222",
-  "2......B.......2",
+  "2222222222222222",
+  "2..............2",
   "2..............2",
   "2..44....44....2",
   "2..............2",
-  "2......33......2",
-  "2..............2",
+  "2......33.....BG",
+  "2..............G",
   "2..44....44....2",
   "2..............2",
   "2..............2",
@@ -366,23 +407,24 @@ const FOUNDRY_MAP = [
   "2..4........4..2",
   "2..............2",
   "2......S.......2",
-  "2..3........3..2",
-  "2..............2",
+  "HP.............2",
+  "H..3........3..2",
   "2.....X........2",
   "2..............2",
   "2..4........4..2",
-  "2......P.......2",
-  "2222222HH2222222",
+  "2..............2",
+  "2222222222222222",
 ];
-// Smelter: a second switches room before Town Gate, own switch layout.
+// Smelter: a sequence puzzle (see ROOMS comment) with its own switch
+// layout and order, not a repeat of Drone Nest's.
 const SMELTER_MAP = [
-  "2222222GG2222222",
-  "2......B.......2",
+  "2222222222222222",
+  "2..............2",
   "2....4....4....2",
   "2S.............2",
   "2..............2",
-  "2......4.......2",
-  "2..............2",
+  "GB.............2",
+  "G........4.....2",
   "2..............2",
   "2.............S2",
   "2......S.......2",
@@ -395,13 +437,13 @@ const TOWN_GATE_MAP = [
   "2.S..3....3..S.2",
   "2..............2",
   "2..............2",
-  "2......44......2",
-  "2..............2",
+  "2......44.....PH",
+  "2..............H",
   "2..............2",
   "2.3..........3.2",
   "2.......S......2",
-  "2......P.......2",
-  "2222222HH2222222",
+  "2..............2",
+  "2222222222222222",
 ];
 
 const SOLID = new Set(["2", "3", "4"]);
@@ -413,6 +455,23 @@ const SOLID = new Set(["2", "3", "4"]);
 const TINT_RAIL = { color: "#274a57", alpha: 0.3 };
 const TINT_RUST = { color: "#5a2e12", alpha: 0.24 };
 
+// 2026-08-21 (second pass) — 6 of the 9 zones' "not just a fight" rooms used
+// to be the exact same mechanic (`type: "switches"`, find 3 plates in any
+// order) with only the floor pattern changed, which is why solving it a
+// third and fourth time read as "the puzzles are repeated" rather than as
+// three different puzzles. Puzzle rooms are now spread across FOUR distinct
+// mechanics and cut from 9 of 15 rooms to 6, so most of the chapter is
+// straight combat with a puzzle as a change of pace, not the default:
+//   - "push"     Bridge, Foundry (2 rooms) — shove the crate onto the plate.
+//   - "switches" Back Gate, Town Gate (2 rooms) — find 3 plates, any order;
+//                kept ONLY for these two zone-ending gates so the "you must
+//                search the room" beat still exists, just not six times.
+//   - "sequence" Drone Nest, Smelter (2 rooms) — NEW: the same 3-plate idea,
+//                but numbered and order-enforced (see drawSwitchPlate/
+//                isGateOpen/puzzleStatus) — a real step up in what the
+//                puzzle is asking, not a reskin of "switches".
+//   - "clear"    the other 9 rooms — Junk Courtyard and Rail Switchyard
+//                used to be "switches" rooms and are now straight fights.
 const ROOMS = [
   {
     id: "alley",
@@ -444,8 +503,14 @@ const ROOMS = [
     id: "courtyard",
     name: "Junk Courtyard",
     map: COURTYARD_MAP,
-    type: "switches",
-    enemySpawns: [{ c: 7, r: 2, type: "rat" }, { c: 4, r: 6, type: "rat" }, { c: 11, r: 8, type: "rat" }],
+    // A straight fight, not a fourth switch hunt — see the puzzle-variety
+    // note above the ROOMS list. Four rats (one more than Alley/Catwalk)
+    // so cutting the puzzle doesn't make the room feel thin.
+    type: "clear",
+    enemySpawns: [
+      { c: 7, r: 2, type: "rat" }, { c: 4, r: 6, type: "rat" },
+      { c: 13, r: 4, type: "rat" }, { c: 3, r: 9, type: "rat" },
+    ],
   },
   {
     id: "gate",
@@ -474,15 +539,23 @@ const ROOMS = [
     id: "railOverpass",
     name: "Rail Overpass",
     map: RAIL_OVERPASS_MAP,
-    type: "push",
+    // Was a second push room; Bridge already teaches the push mechanic and
+    // Foundry repeats it later in the Rust Quarter, so this is a straight
+    // fight instead — one more drone than before to keep it from feeling
+    // thin now that the crate/switch is gone.
+    type: "clear",
     tint: TINT_RAIL,
-    enemySpawns: [{ c: 12, r: 2, type: "drone" }, { c: 3, r: 8, type: "rat" }],
+    enemySpawns: [
+      { c: 12, r: 2, type: "drone" }, { c: 3, r: 8, type: "rat" }, { c: 9, r: 9, type: "drone" },
+    ],
   },
   {
     id: "switchyard",
     name: "Rail Switchyard",
     map: SWITCHYARD_MAP,
-    type: "switches",
+    // A straight fight, not a third find-any-order switch room — see the
+    // puzzle-variety note above the ROOMS list.
+    type: "clear",
     tint: TINT_RAIL,
     enemySpawns: [{ c: 4, r: 3, type: "drone" }, { c: 11, r: 3, type: "drone" }, { c: 7, r: 8, type: "drone" }],
   },
@@ -490,7 +563,11 @@ const ROOMS = [
     id: "droneNest",
     name: "Drone Nest",
     map: DRONE_NEST_MAP,
-    type: "switches",
+    // Sequence, not find-any-order: the three plates must be hit in the
+    // order they're numbered (see drawSwitchPlate/isGateOpen and the
+    // ROOMS comment above) — a real puzzle instead of "walk over 3 things
+    // in whatever order", and not a repeat of Back Gate's mechanic.
+    type: "sequence",
     tint: TINT_RAIL,
     enemySpawns: [{ c: 5, r: 3, type: "drone" }, { c: 10, r: 3, type: "drone" }, { c: 7, r: 6, type: "drone" }],
   },
@@ -522,7 +599,9 @@ const ROOMS = [
     id: "smelter",
     name: "Smelter",
     map: SMELTER_MAP,
-    type: "switches",
+    // Sequence, same as Drone Nest, but its own switch layout/order — the
+    // Rust Quarter's version of the ordered puzzle, not a repeat of it.
+    type: "sequence",
     tint: TINT_RUST,
     enemySpawns: [{ c: 7, r: 6, type: "brute" }, { c: 3, r: 4, type: "drone" }, { c: 12, r: 4, type: "drone" }],
   },
@@ -700,16 +779,32 @@ function floorTileFor(c, r) {
 }
 // Draw a tile into cell (c,r), optionally mirrored, optionally squeezed toward
 // one side of the cell (which is how the gate swings open).
-function blitTile(idx, c, r, flipX, flipY, squeeze, side) {
+// `axis` ("x", the default, or "y") is which way `squeeze` shrinks the tile
+// — added for side-wall gates (see drawTile): a gate on the left/right
+// boundary is a VERTICAL pair of cells, so "open" has to shrink each cell's
+// HEIGHT toward its own outer edge (top cell up, bottom cell down) the same
+// way a top/bottom gate's cells shrink WIDTH toward their own outer edge.
+// `side` means "left"/"right" under axis "x" and "top"/"bottom" under axis
+// "y" — which of the pair this cell is, so it shrinks away from its
+// partner rather than both cells shrinking toward the same corner.
+function blitTile(idx, c, r, flipX, flipY, squeeze, side, axis) {
   const t = TILES[idx];
   if (!t || !t.ready) return;
   const x = c * TILE, y = r * TILE;
-  const w = squeeze ? Math.max(3, Math.round(TILE * squeeze)) : TILE;
-  const ox = squeeze ? (side === "right" ? TILE - w : 0) : 0;
   ctx.save();
-  ctx.translate(x + ox + w / 2, y + TILE / 2);
-  ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
-  ctx.drawImage(t.img, -w / 2, -TILE / 2, w, TILE);
+  if (axis === "y") {
+    const h = squeeze ? Math.max(3, Math.round(TILE * squeeze)) : TILE;
+    const oy = squeeze ? (side === "bottom" ? TILE - h : 0) : 0;
+    ctx.translate(x + TILE / 2, y + oy + h / 2);
+    ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+    ctx.drawImage(t.img, -TILE / 2, -h / 2, TILE, h);
+  } else {
+    const w = squeeze ? Math.max(3, Math.round(TILE * squeeze)) : TILE;
+    const ox = squeeze ? (side === "right" ? TILE - w : 0) : 0;
+    ctx.translate(x + ox + w / 2, y + TILE / 2);
+    ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+    ctx.drawImage(t.img, -w / 2, -TILE / 2, w, TILE);
+  }
   ctx.restore();
 }
 
@@ -844,26 +939,48 @@ function bruteAttackSpriteFor(facing) {
 // draw loop) reads speed/hp/range/sprite lookups off the ENEMY instance
 // (copied from here at spawn time in buildRoomState) rather than off this
 // table directly, so it stays oblivious to how many kinds exist.
+// `attackKind` is what actually made the three enemies play differently
+// feel identical before this pass: all three ran the exact same coil-then-
+// dash-into-contact state machine and only their numbers (speed/hp/range)
+// changed, which reads as "the same attack" with a different stat block,
+// not a different enemy. Each kind now drives its own branch in update()'s
+// enemy loop (search `en.attackKind`) instead of sharing one:
+//   "pounce" (rat)  — unchanged: short coil, short dash, contact damage.
+//   "ranged" (drone) — never closes to bite. Coils, then FIRES a projectile
+//     (state.projectiles) at the player's position and holds — the only one
+//     of the three that can hurt Beverly without being adjacent to her —
+//     and backs away if she gets inside `retreatRange` instead of standing
+//     there to be hit, so it plays like a hovering skirmisher, not a rat
+//     with wings.
+//   "charge" (brute) — a much longer telegraph, then a fast dash that
+//     travels FAR (further than a rat's pounce) and, whether or not it
+//     connects, ends in a `recover` window where it's stationary and can't
+//     act — overcommitting is the risk that makes it different from just a
+//     slower rat, and the recover window is the player's real punish.
 const ENEMY_KINDS = {
   rat: {
     id: "rat", w: 22, h: 20, speed: 55, hp: 2,
     detectRange: 100, attackRange: 34, lungeMult: 3.4,
+    attackKind: "pounce", windupTime: 0.28, lungeTime: 0.16,
     spriteFor: ratSpriteFor, attackSpriteFor: ratAttackSpriteFor, fallback: drawRatFallback,
   },
-  // Fast and fragile: sees you from further off and closes quickly, but one
-  // hit from Beverly's dagger ends it — a "kill it before it reaches you"
-  // threat rather than a slugging match.
+  // Fast and fragile: sees you from further off, but one hit from Beverly's
+  // dagger ends it — a "kill it before it pins you down" threat rather than
+  // a slugging match. Never bites; see `attackKind: "ranged"` above.
   drone: {
     id: "drone", w: 20, h: 20, speed: 85, hp: 1,
-    detectRange: 150, attackRange: 40, lungeMult: 4.2,
+    detectRange: 150, attackRange: 130, retreatRange: 70, lungeMult: 0,
+    attackKind: "ranged", windupTime: 0.4, fireTime: 0.18, projectileSpeed: 210, cooldownMs: 1100,
     spriteFor: droneSpriteFor, attackSpriteFor: droneAttackSpriteFor, fallback: drawDroneFallback,
   },
   // Slow and tanky: takes four hits and hits like a truck, but its detection
-  // range is short and it's easy to outrun — a "don't get cornered" threat
-  // rather than a speed check.
+  // range is short and it's easy to outrun — a "don't get cornered" threat.
+  // See `attackKind: "charge"` above for what makes its attack a different
+  // RISK, not just a slower version of the rat's.
   brute: {
     id: "brute", w: 30, h: 26, speed: 40, hp: 4,
-    detectRange: 90, attackRange: 38, lungeMult: 2.6,
+    detectRange: 90, attackRange: 46, lungeMult: 4.6,
+    attackKind: "charge", windupTime: 0.5, lungeTime: 0.4, recoverTime: 0.6,
     spriteFor: bruteSpriteFor, attackSpriteFor: bruteAttackSpriteFor, fallback: drawBruteFallback,
   },
 };
@@ -1032,13 +1149,21 @@ function buildRoomState(idx) {
       type: kind.id,
       w: kind.w, h: kind.h, speed: kind.speed,
       detectRange: kind.detectRange, attackRange: kind.attackRange, lungeMult: kind.lungeMult,
+      // `attackKind` and its timings drive the per-kind branch in update()'s
+      // enemy loop — see the ENEMY_KINDS comment for what each kind means.
+      attackKind: kind.attackKind, windupTime: kind.windupTime,
+      lungeTime: kind.lungeTime, fireTime: kind.fireTime, recoverTime: kind.recoverTime,
+      retreatRange: kind.retreatRange || 0, projectileSpeed: kind.projectileSpeed,
+      cooldownMs: kind.cooldownMs || 900,
       hp: kind.hp, alive: true, facing: "down",
       wanderT: Math.random() * 2, wanderDx: 0, wanderDy: 0,
       hitFlash: 0,
       animPhase: 0, moving: false,
-      // attack state machine: idle (seek/wander) -> windup (telegraph,
-      // holds still) -> lunge (fast dash, deals contact damage once) -> back
-      // to idle with a cooldown. Only the lunge can hurt the player.
+      // attack state machine: idle (seek/wander) -> windup (telegraph, holds
+      // still) -> then EITHER lunge (pounce/charge: fast dash, contact
+      // damage) or fire (ranged: stays put, launches a projectile) -> for
+      // "charge" only, a recover window that can't move or act -> back to
+      // idle with a cooldown. See ENEMY_KINDS for which kind uses which.
       atkState: "idle", atkTimer: 0, atkDuration: 0,
       attackCooldownUntil: 0, lungeDx: 0, lungeDy: 0, hasHitThisLunge: false,
     };
@@ -1073,6 +1198,11 @@ function freshState() {
     // update()'s attack-hit section (spawn) and render() (draw+fade). Never
     // read by collision/gate/win logic, so it can't affect gameplay timing.
     deathFx: [],
+    // Scrap Drone bolts — see the "ranged" branch of the enemy attack loop
+    // in update() (spawn) and render() (draw/advance). Reset every room
+    // load exactly like deathFx: a projectile mid-flight when you leave a
+    // room has no business surviving into the next one.
+    projectiles: [],
   };
 }
 
@@ -1095,6 +1225,7 @@ function transitionToRoom(idx, entry) {
   state.crates = built.crates;
   state.switchesHit = new Set();
   state.deathFx = [];
+  state.projectiles = [];
   showRoomToast(ROOMS[idx].name);
 }
 
@@ -1113,6 +1244,7 @@ function resetRoom() {
   state.crates = built.crates;
   state.switchesHit = new Set();
   state.deathFx = [];
+  state.projectiles = [];
   state.lost = false;
   loseOverlay.hidden = true;
   lastHudHp = null;
@@ -1217,13 +1349,30 @@ function update(dt, now) {
     moveEntity(p, dx * p.speed * dt, dy * p.speed * dt, gateOpen, true);
   }
 
-  // Back Gate puzzle: stepping onto a switch tile activates it permanently
-  // for the rest of the room (a memory/exploration puzzle — find all three —
-  // rather than a timing one). Harmless to check in every room; only the
-  // "switches" room type ever has an 'S' tile to find.
+  // Switch puzzle: stepping onto a switch tile activates it permanently for
+  // the rest of the room (a memory/exploration puzzle — find them all —
+  // rather than a timing one). Harmless to check in every room; only
+  // "switches"/"sequence" rooms ever have an 'S' tile to find.
+  //
+  // "sequence" rooms (Drone Nest, Smelter) additionally enforce ORDER: a
+  // plate only activates if it's the next one in `room.switchTiles` (the
+  // order they're numbered in, drawn by drawSwitchPlate) — stepping on plate
+  // 3 before plate 2 does nothing yet, rather than counting it early or
+  // punishing the wrong guess by resetting progress. `state.switchesHit`
+  // doubles as the "how many done" count for both room types precisely
+  // because entries are only ever added in valid order for "sequence" too.
   {
     const pc = Math.floor(p.x / TILE), pr = Math.floor(p.y / TILE);
-    if (MAP[pr] && MAP[pr][pc] === "S") state.switchesHit.add(pr * COLS + pc);
+    if (MAP[pr] && MAP[pr][pc] === "S") {
+      const room = ROOMS[state.roomIndex];
+      const key = pr * COLS + pc;
+      if (room.type === "sequence") {
+        const next = room.switchTiles[state.switchesHit.size];
+        if (next && next.r === pr && next.c === pc) state.switchesHit.add(key);
+      } else {
+        state.switchesHit.add(key);
+      }
+    }
   }
 
   // walk-cycle animation: advance a phase clock while actually moving under
@@ -1302,17 +1451,37 @@ function update(dt, now) {
       const dxp = p.x - en.x, dyp = p.y - en.y;
       en.facing = Math.abs(dxp) > Math.abs(dyp) ? (dxp > 0 ? "right" : "left") : (dyp > 0 ? "down" : "up");
       if (en.atkTimer <= 0) {
-        en.atkState = "lunge";
-        en.atkTimer = en.atkDuration = 0.16;
         const len = Math.hypot(dxp, dyp) || 1;
         en.lungeDx = dxp / len;
         en.lungeDy = dyp / len;
-        en.hasHitThisLunge = false;
+        if (en.attackKind === "ranged") {
+          // Fires here, at the end of the telegraph, aimed at the player's
+          // CURRENT position — a straight-line shot, not a homing one, so
+          // sidestepping after the coil is a real dodge. "fire" itself is
+          // just the drone holding its pose for one beat; the projectile is
+          // its own object from here on (see the update below).
+          en.atkState = "fire";
+          en.atkTimer = en.atkDuration = en.fireTime;
+          state.projectiles.push({
+            x: en.x, y: en.y, dx: en.lungeDx, dy: en.lungeDy,
+            speed: en.projectileSpeed, life: 1.6, w: 8, h: 8,
+          });
+        } else {
+          en.atkState = "lunge";
+          en.atkTimer = en.atkDuration = en.lungeTime;
+          en.hasHitThisLunge = false;
+        }
       }
+    } else if (en.atkState === "fire") {
+      // Recoil beat after loosing the shot — no movement, no damage here
+      // (the projectile itself is what can hurt the player); just holds the
+      // attack pose until its own cooldown lets it act again.
+      en.atkTimer -= dt;
+      if (en.atkTimer <= 0) { en.atkState = "idle"; en.attackCooldownUntil = now + en.cooldownMs; }
     } else if (en.atkState === "lunge") {
       // the actual attack: a fast committed dash — this is the only window
       // that can damage the player, so a hit always has a visible "wind up
-      // then pounce" tell before it, not just silent contact.
+      // then pounce/charge" tell before it, not just silent contact.
       en.atkTimer -= dt;
       en.moving = true;
       moveEntity(en, en.lungeDx * en.speed * en.lungeMult * dt, en.lungeDy * en.speed * en.lungeMult * dt, gateOpen);
@@ -1331,14 +1500,40 @@ function update(dt, now) {
         }
       }
       if (en.atkTimer <= 0) {
-        en.atkState = "idle";
-        en.attackCooldownUntil = now + 900;
+        // Only the Brute's "charge" overcommits into a recovery window —
+        // the rat's pounce is a quick, low-risk jab and goes straight back
+        // to idle, same as always.
+        if (en.attackKind === "charge") {
+          en.atkState = "recover";
+          en.atkTimer = en.atkDuration = en.recoverTime;
+        } else {
+          en.atkState = "idle";
+          en.attackCooldownUntil = now + en.cooldownMs;
+        }
       }
+    } else if (en.atkState === "recover") {
+      // Dazed after a charge, whether or not it connected — planted in
+      // place, can't move or act. This is the actual punish window the
+      // Brute's longer telegraph is trading against; skipping it would
+      // leave "charge" just a faster pounce with extra steps.
+      en.atkTimer -= dt;
+      if (en.atkTimer <= 0) { en.atkState = "idle"; en.attackCooldownUntil = now + en.cooldownMs; }
     } else {
       const distToPlayer = Math.hypot(p.x - en.x, p.y - en.y);
-      if (distToPlayer < en.attackRange && now >= en.attackCooldownUntil) {
+      if (en.attackKind === "ranged" && distToPlayer < en.retreatRange) {
+        // Too close for a hovering shooter — back off instead of standing
+        // there to get bitten, so getting in its face is a real answer to
+        // it, not just free damage on top of dodging the bolt. Checked
+        // regardless of cooldown (unlike the windup trigger below) so it
+        // doesn't rush back in for the 1.1s between shots.
+        en.moving = true;
+        const ex = (en.x - p.x) / (distToPlayer || 1);
+        const ey = (en.y - p.y) / (distToPlayer || 1);
+        moveEntity(en, ex * en.speed * dt, ey * en.speed * dt, gateOpen);
+        en.facing = Math.abs(ex) > Math.abs(ey) ? (ex > 0 ? "right" : "left") : (ey > 0 ? "down" : "up");
+      } else if (distToPlayer < en.attackRange && now >= en.attackCooldownUntil) {
         en.atkState = "windup";
-        en.atkTimer = en.atkDuration = 0.28;
+        en.atkTimer = en.atkDuration = en.windupTime;
       } else if (distToPlayer < en.detectRange) {
         en.moving = true;
         const ex = (p.x - en.x) / (distToPlayer || 1);
@@ -1367,6 +1562,33 @@ function update(dt, now) {
 
     if (en.moving) en.animPhase += dt * 10;
     else en.animPhase *= 0.9;
+  }
+
+  // Scrap Drone bolts — spawned in the "ranged" branch above. A straight
+  // line at fixed speed; dies on a wall, on the player (dealing the same
+  // one point of damage/knockback a lunge does, same invuln window so it
+  // can't stack with a rat's bite in the same instant), or on its own
+  // timeout so a shot fired into an empty corner doesn't outlive the room.
+  if (state.projectiles.length) {
+    for (const pr of state.projectiles) {
+      pr.x += pr.dx * pr.speed * dt;
+      pr.y += pr.dy * pr.speed * dt;
+      pr.life -= dt;
+      if (SOLID.has(tileAt(pr.x, pr.y))) { pr.life = 0; continue; }
+      if (now >= p.invulnUntil && rectsOverlap(p.x, p.y, p.w, p.h, pr.x, pr.y, pr.w, pr.h)) {
+        pr.life = 0;
+        p.hp -= 1;
+        p.invulnUntil = now + 900;
+        const klen = Math.hypot(pr.dx, pr.dy) || 1;
+        p.kbx = (pr.dx / klen) * 130;
+        p.kby = (pr.dy / klen) * 130;
+        if (p.hp <= 0) {
+          state.lost = true;
+          loseOverlay.hidden = false;
+        }
+      }
+    }
+    state.projectiles = state.projectiles.filter((pr) => pr.life > 0);
   }
 
   // advance/prune the cosmetic death-burst particles (see attack-hit section
@@ -1417,9 +1639,11 @@ function isGateOpen() {
   if (!state.enemies.every((e) => !e.alive)) return false;
   const room = ROOMS[state.roomIndex];
   if (room.type === "push") return state.crates.some((cr) => crateOnSwitch(room, cr));
-  if (room.type === "switches") {
-    return room.switchTiles.length > 0 &&
-      room.switchTiles.every((s) => state.switchesHit.has(s.r * COLS + s.c));
+  if (room.type === "switches" || room.type === "sequence") {
+    // Same completion test for both — "sequence" only differs in HOW a
+    // plate is allowed to join switchesHit (see the switch-detection code
+    // in update()), not in what "done" means.
+    return room.switchTiles.length > 0 && state.switchesHit.size >= room.switchTiles.length;
   }
   return true;
 }
@@ -1430,6 +1654,23 @@ function crateOnSwitch(room, cr) {
 }
 
 // ---- drawing ----
+// A gate/back-gate is always a 2-cell pair, but which way the pair runs
+// depends on which wall it's cut into: a top/bottom-wall gate is a
+// horizontal pair (see CATWALK_MAP's "GG" in its own top/bottom rows), a
+// left/right-wall gate is a VERTICAL pair (see BRIDGE_MAP's "H"/"H" stacked
+// in column 0) — added when rooms started putting doors on side walls (see
+// the ROOMS comment) instead of only ever the top. `axis` says which way
+// blitTile's `squeeze` should shrink the tile when the gate is open; `side`
+// says which half of the pair THIS cell is, so it shrinks away from its
+// partner instead of both cells shrinking toward the same corner.
+function gateOrientation(c, r) {
+  const isGate = (ch) => ch === "G" || ch === "H";
+  if (c > 0 && isGate(MAP[r][c - 1])) return { axis: "x", side: "right" };
+  if (c < COLS - 1 && isGate(MAP[r][c + 1])) return { axis: "x", side: "left" };
+  if (r > 0 && isGate(MAP[r - 1][c])) return { axis: "y", side: "bottom" };
+  return { axis: "y", side: "top" };
+}
+
 function drawTile(c, r, ch, gateOpen) {
   const x = c * TILE, y = r * TILE;
 
@@ -1458,8 +1699,9 @@ function drawTile(c, r, ch, gateOpen) {
       // comment) — the way you already came from, so it's drawn permanently
       // open ('open' forced true) instead of reading isGateOpen().
       const open = ch === "H" ? true : gateOpen;
-      const side = (MAP[r][c - 1] === "G" || MAP[r][c - 1] === "H") ? "right" : "left";
-      blitTile(TILE_GATE, c, r, side === "right", false, open ? 0.22 : 1, side);
+      const { axis, side } = gateOrientation(c, r);
+      const flip = side === "right" || side === "bottom";
+      blitTile(TILE_GATE, c, r, axis === "x" && flip, axis === "y" && flip, open ? 0.22 : 1, side, axis);
     }
     return;
   }
@@ -1483,8 +1725,13 @@ function drawTile(c, r, ch, gateOpen) {
       ctx.fillStyle = "#8c95a0";
       ctx.fillRect(x, y + 13, TILE, 3);
     } else {
+      const { axis, side } = gateOrientation(c, r);
       ctx.fillStyle = "#6b3418";
-      ctx.fillRect((MAP[r][c - 1] === "G" || MAP[r][c - 1] === "H") ? x + TILE - 5 : x, y + 2, 5, TILE - 4);
+      if (axis === "x") {
+        ctx.fillRect(side === "right" ? x + TILE - 5 : x, y + 2, 5, TILE - 4);
+      } else {
+        ctx.fillRect(x + 2, side === "bottom" ? y + TILE - 5 : y, TILE - 4, 5);
+      }
     }
     return;
   }
@@ -1523,15 +1770,31 @@ function drawTile(c, r, ch, gateOpen) {
 // scenery, so it doesn't belong in tiles.png or its `environmentPalette`
 // generation pass — but it's still built FROM that palette so it reads as
 // part of the same junkyard rather than a UI element floating over it.
-function drawSwitchPlate(c, r, active) {
+// `label` (a 1-based order number) and `isNext` are only ever passed for
+// "sequence" rooms (see the render() call site) — a "switches" room's
+// plates stay unlabelled since any order is fine. `isNext` gets a warm
+// pulse so the room is always telling you which plate to find next instead
+// of leaving order-enforcement as an invisible rule you find by trial and
+// error, which is exactly the kind of thing that reads as "annoying".
+function drawSwitchPlate(c, r, active, label, isNext) {
   const x = c * TILE, y = r * TILE;
-  ctx.fillStyle = active ? "#5c7238" : "#5a5d66";
+  const pulse = isNext ? 0.65 + Math.sin(performance.now() / 220) * 0.2 : 1;
+  ctx.fillStyle = active ? "#5c7238" : isNext ? "#8a6a2e" : "#5a5d66";
+  ctx.globalAlpha = pulse;
   ctx.fillRect(x + 6, y + 6, TILE - 12, TILE - 12);
-  ctx.strokeStyle = active ? "#3a4a2a" : "#2f3038";
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = active ? "#3a4a2a" : isNext ? "#e8b03a" : "#2f3038";
   ctx.lineWidth = 2;
   ctx.strokeRect(x + 6, y + 6, TILE - 12, TILE - 12);
   ctx.fillStyle = active ? "#c3c6c2" : "#7b8184";
   ctx.fillRect(x + 11, y + 11, TILE - 22, TILE - 22);
+  if (label) {
+    ctx.fillStyle = "#14121a";
+    ctx.font = "bold 14px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(label), x + TILE / 2, y + TILE / 2 + 1);
+  }
 }
 
 // The Junk Bridge puzzle's pushable crate: same silhouette as the static
@@ -1806,47 +2069,87 @@ function render(now) {
 
   // Puzzle markers, drawn on top of the floor and under everything that
   // stands on it (crates, characters) — see drawSwitchPlate. Each switch
-  // lights up independently once stepped on ("switches" rooms); the Junk
-  // Bridge room has exactly one, lit while a crate currently rests on it
-  // (not permanently, so pushing the crate back off it re-locks the gate).
+  // lights up independently once stepped on ("switches"/"sequence" rooms);
+  // the Junk Bridge room has exactly one, lit while a crate currently rests
+  // on it (not permanently, so pushing the crate back off it re-locks the
+  // gate). "sequence" rooms additionally get a 1-based number per plate and
+  // a pulse on whichever one is next, off `room.switchTiles`' own order —
+  // the same order update()'s switch-detection code enforces, so the plate
+  // that glows is always the one that's actually next, never out of sync.
   const room = ROOMS[state.roomIndex];
-  for (const s of room.switchTiles) {
+  const isSequence = room.type === "sequence";
+  room.switchTiles.forEach((s, i) => {
     const active = room.type === "push"
       ? state.crates.some((cr) => Math.floor(cr.x / TILE) === s.c && Math.floor(cr.y / TILE) === s.r)
       : state.switchesHit.has(s.r * COLS + s.c);
-    drawSwitchPlate(s.c, s.r, active);
-  }
+    drawSwitchPlate(s.c, s.r, active, isSequence ? i + 1 : null, isSequence && !active && i === state.switchesHit.size);
+  });
   for (const cr of state.crates) drawCrate(cr);
 
   for (const en of state.enemies) {
     if (!en.alive) continue;
     let scaleX = 1, scaleY = 1;
     const lunging = en.atkState === "lunge";
+    const firing = en.atkState === "fire";
+    // "recover" (Brute only, after a charge) deliberately falls through to
+    // the plain idle pose/scale below — dazed and still is the point, see
+    // the ENEMY_KINDS/update() comments on `attackKind: "charge"`.
     if (en.atkState === "windup") {
-      // coil up before pouncing.
+      // coil up before attacking — a longer, deeper coil for a Brute's
+      // charge than a Rat's pounce, since `atkDuration` is already its own
+      // per-kind `windupTime` (see ENEMY_KINDS), so this needs no branch.
       const t = 1 - en.atkTimer / (en.atkDuration || 1);
       scaleX = 1 + t * 0.18;
       scaleY = 1 - t * 0.22;
     } else if (lunging) {
-      // stretched out mid-pounce, direction-of-travel dependent.
+      // stretched out mid-pounce/charge, direction-of-travel dependent.
       const horiz = Math.abs(en.lungeDx) >= Math.abs(en.lungeDy);
       scaleX = horiz ? 1.3 : 0.9;
       scaleY = horiz ? 0.85 : 1.3;
+    } else if (firing) {
+      // small recoil kick opposite the shot, direction-of-travel dependent
+      // — sells the shot without a physical lunge, since a Drone never
+      // actually closes the distance for "ranged".
+      const horiz = Math.abs(en.lungeDx) >= Math.abs(en.lungeDy);
+      scaleX = horiz ? 0.88 : 1.06;
+      scaleY = horiz ? 1.06 : 0.88;
     }
-    // the pounce swaps to a real drawn attack pose (jaws open, claws out)
-    // instead of just stretching the idle art, so the lunge reads as an
-    // actual attack animation rather than a squashed walk frame.
-    // getting hit: flat white on impact decaying to red (see
-    // drawAnimatedSprite), plus a recoil squash, so damage is unmistakable.
+    // the pounce/charge/shot swaps to a real drawn attack pose instead of
+    // just stretching the idle art, so it reads as an actual attack
+    // animation rather than a squashed walk frame. Getting hit: flat white
+    // on impact decaying to red (see drawAnimatedSprite), plus a recoil
+    // squash, so damage is unmistakable.
     const flash = Math.max(0, en.hitFlash) / HIT_FLASH_TIME;
     if (flash > 0) {
       scaleX *= 1 + flash * 0.16;
       scaleY *= 1 - flash * 0.12;
     }
     const kind = ENEMY_KINDS[en.type] || ENEMY_KINDS.rat;
-    drawAnimatedSprite(lunging ? kind.attackSpriteFor : kind.spriteFor, en.facing, en.x, en.y - 6, SPRITE_CELL,
-      { moving: en.moving && !lunging, phase: en.animPhase, scaleX, scaleY, flash },
-      (x, y, facing, sx, sy, step) => kind.fallback(x, y, facing, en.hitFlash, sx, sy, step, lunging));
+    const attackPose = lunging || firing;
+    drawAnimatedSprite(attackPose ? kind.attackSpriteFor : kind.spriteFor, en.facing, en.x, en.y - 6, SPRITE_CELL,
+      { moving: en.moving && !attackPose, phase: en.animPhase, scaleX, scaleY, flash },
+      (x, y, facing, sx, sy, step) => kind.fallback(x, y, facing, en.hitFlash, sx, sy, step, attackPose));
+  }
+
+  // Scrap Drone bolts — a small glowing core (the drone's own lens colour,
+  // so a shot reads as "part of the same thing that fired it") with a short
+  // motion-blur tail drawn back along its own direction of travel, so a
+  // fast-moving 8px square doesn't just read as a blinking dot.
+  for (const pr of state.projectiles) {
+    ctx.save();
+    ctx.strokeStyle = "#e8306f";
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(pr.x, pr.y);
+    ctx.lineTo(pr.x - pr.dx * 14, pr.y - pr.dy * 14);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.ellipse(pr.x, pr.y, 4, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   // scrap-burst death animation: small squares kick outward from where a
@@ -1963,6 +2266,7 @@ function puzzleStatus() {
   const room = ROOMS[state.roomIndex];
   if (room.type === "push") return "Push the crate onto the switch";
   if (room.type === "switches") return `Switches ${state.switchesHit.size}/${room.switchTiles.length}`;
+  if (room.type === "sequence") return `Hit switch ${Math.min(state.switchesHit.size + 1, room.switchTiles.length)} of ${room.switchTiles.length}`;
   return "Gate open!";
 }
 
