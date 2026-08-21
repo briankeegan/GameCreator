@@ -353,6 +353,17 @@ design discussion. `shared/` holds the components every game reuses
     (#FF00FF) gridlines, not white: white anti-aliases into a pale halo the
     slicer can't fully remove. `games/the-game/WALK_SHEETS.md` records why,
     and what else was tried.
+- **THE ROOM PROCESS IS A NUMBERED LIST WITH A GATE ON EVERY STEP, and it is
+  in `docs/ROOM_ART_STANDARD.md` §7. Read it before touching a room.** Every
+  step there was skipped at least once and each skip cost money, so each one
+  now has something that refuses to proceed without it: a room has a saved
+  SPEC (`games/<id>/rooms/<room>.json` — what it is, what it contains, its
+  floor, and WHICH WALL each way out is in, because the map decides that and a
+  prompt retyped from memory does not); pass 2 and pass 3 REFUSE to run until
+  somebody has looked at pass 1 and run `room.py approve`; and `room.py verify`
+  fails for any room whose art or placement changed since the last time anyone
+  rendered the side-by-side overlay. Approving a scene costs one image;
+  discovering the same problem three passes later costs six.
 - **A room is generated in THREE PASSES.** Do not ask for a room with its
   scenery painted in — that was the old way and everything downstream fought
   it.

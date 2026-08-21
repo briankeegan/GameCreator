@@ -251,6 +251,36 @@ width so she can stand at an edge without clipping into what is beside her.
 
 ## 7. Pipeline — one front door
 
+### THE STEPS, IN ORDER, AND WHAT ENFORCES EACH ONE
+
+Every step below has a gate, because every step below was skipped at least once
+and each skip cost real money. A step with no gate is a step that does not
+happen. Read this list before touching a room; it is the whole process.
+
+| # | Step | Enforced by |
+|---|------|-------------|
+| 0 | **Write the room's spec** — `games/<id>/rooms/<room>.json`: what the room is, what it contains, its floor, and WHICH WALL each way out is in. The map decides the doors. | `room.py generate` refuses without it |
+| 1 | **Generate the scene** (pass 1) from that spec | `room.py generate <game> <room> scene` |
+| 2 | **LOOK at the scene. Regenerate it until it is right. Change nothing else.** A wrong scene makes every later pass wrong, and none of it is repairable. | `room.py approve <game> <room>` — pass 2 and 3 refuse until you do, and regenerating the scene revokes it |
+| 3 | **Generate the plate** (pass 2) and fit it | `room.py plate` — tone-matches it to the scene's own floor |
+| 4 | **Generate the props** (pass 3) and cut them | `room.py props` |
+| 5 | **Place them at the numbers the scene used** | `measure_props.py` (exteriors only — see its header for the interior gap) |
+| 6 | **Render the overlay and LOOK at it** | `room.py check`, and `room.py verify` FAILS for any room whose art or placement changed since the last one was rendered |
+| 7 | **Wire the doors** — every exit on its own drawn doorway, every door a pair | `check_room_exits.mjs` |
+| 8 | **Run the gate** | `room.py verify`, in `pages.yml` |
+
+**Step 2 is the one that pays.** The Victorian bedroom's first scene came back
+an isometric corner room; it was given a floor plate, three prop sheets and two
+full assemblies before anyone noticed. All of it was thrown away. Regenerating
+one scene costs one image; discovering the problem at step 6 costs six.
+
+**Step 6 is the one that finds things.** Every sizing error in this project was
+invisible in the numbers and obvious the moment the assembled room was put next
+to its scene: statues at two thirds size, a rug the scene had that the room
+never got, props at twice the height they should be, a floor lit like a
+showroom under a candlelit room.
+
+
 `.github/art/room.py` is the whole thing, generation included. Five scripts is
 four too many to remember at 11pm.
 
