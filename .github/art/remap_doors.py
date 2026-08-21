@@ -288,6 +288,11 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("game_dir")
     ap.add_argument("--write", action="store_true", help="apply to story.js")
+    ap.add_argument("--check", action="store_true",
+                    help="the CI gate: fail if any door can only be grazed. A PROPOSED "
+                         "move never fails a build — this tool cannot see prop collision, "
+                         "so its proposals are advice and a fuzzy check must not block a "
+                         "deploy. A door nobody can enter is a fact, and does.")
     ap.add_argument("--skip", nargs="*", default=[], help="room ids to leave alone")
     a = ap.parse_args()
 
@@ -366,6 +371,18 @@ def main():
         print("\nwrote %s" % story_path)
     print("\n%d door(s) would move, %d already on their opening, %d grazed rather than "
           "entered." % (moved, unchanged, shallow))
+    if a.check:
+        if shallow:
+            print("\nFAIL: %d door(s) can only be grazed. A trigger a player can reach by "
+                  "less than %dpx is a door in the data and a dead end in play — that is "
+                  "how the Arena's way out passed every other check while walking one "
+                  "direction out of the spawn went straight past it into the wall.\n"
+                  "Fix with: python3 .github/art/remap_doors.py <game> --write, or move "
+                  "the trigger onto the doorway the art draws."
+                  % (shallow, MIN_ENTRY_DEPTH))
+            sys.exit(1)
+        print("OK — every door can be entered, not just grazed.")
+        return
     print("A move is a PROPOSAL: prop collision is invisible here, so run the "
           "reachability sweep (games/<id>/browser.test.js) before believing it.")
 

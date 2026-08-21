@@ -52,6 +52,32 @@ jobs:
       - name: Verify room exits
         run: node .github/scripts/check_room_exits.mjs
 
+      # A DOOR HAS TO BE ENTERED, NOT GRAZED — and that is a number, so it is
+      # gated. The Arena's way out was armed above the walkable platform and
+      # could be reached by exactly ONE pixel of the player's box: the link was
+      # paired, the destination real, the arrival derivable, and the browser
+      # door test walked it green, because that test teleports the player next
+      # to a trigger and steps in. It proves a door FIRES, never that anyone
+      # can reach it. Holding one direction out of the spawn went straight past
+      # it into the wall.
+      #
+      # remap_doors.py measures how deeply a player can get onto each trigger,
+      # off the room's own art. Every working door in Newsey measures 13-14px;
+      # that Arena rectangle measured 1. --check fails on the unambiguous half
+      # only: a door nobody can enter is a fact, while the tool's PROPOSALS to
+      # move a trigger are advice (it cannot see prop collision) and a fuzzy
+      # check must never block a deploy.
+      - name: Verify doors can be entered
+        run: |
+          status=0
+          for d in games/*/story.js; do
+            g=$(dirname "$d")
+            [ -d "$g/art" ] || continue
+            echo "== $g =="
+            python3 .github/art/remap_doors.py "$g" --check || status=1
+          done
+          exit $status
+
       # Rooms built to the three-pass standard (docs/ROOM_ART_STANDARD.md):
       # the background is ONLY the walkable surface and everything else is a
       # prop, so the collision mask is the plate's own silhouette. Every check
