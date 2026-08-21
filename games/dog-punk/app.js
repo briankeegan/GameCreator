@@ -2409,20 +2409,18 @@ function render(now) {
     scaleY = 1 + breathe;
     scaleX = 1 - breathe * 0.5;
   }
-  if (!blinking) {
-    // during the attack window, play the three drawn slash frames for this
-    // facing (wind-up -> mid-slash -> follow-through) instead of holding one
-    // pose while the sprite lunges — a still pose plus a stretch read as a
-    // body-check; a travelling blade reads as a swing.
-    const swingSpriteFor = (facing) => heroAttackSpriteFor(facing, attackFrame);
-    drawAnimatedSprite(attacking ? swingSpriteFor : heroSpriteFor, p.facing, p.x, p.y - 10, SPRITE_CELL,
-      { moving: p.moving, phase: p.animPhase, offsetX, offsetY, scaleX, scaleY },
-      (x, y, facing, sx, sy, step) => drawHeroFallback(x, y, facing, now < p.invulnUntil, sx, sy, step, attacking, attackT));
-  }
-
   // attack: a quick slash arc sweeping across the facing direction, not
   // just a static ring — sells the swing as an action, not a hitbox debug
-  // circle.
+  // circle. Drawn BEHIND the hero sprite (before it, not after) on purpose:
+  // this used to be drawn on top, and the arc's own near-white stroke
+  // (#f4f0e6) sweeps close enough to head height — especially early in a
+  // side-facing swing — that it read as "her face turned white" rather than
+  // as a blade. The art was never the problem (checked both sheets' face-
+  // region pixels directly: no white in either, same magenta/orange/outline
+  // palette) — this was a z-order bug, present since the file was first
+  // written, not a regression in any art-generation pass. Drawing it first
+  // means the hero sprite (which already covers this same area) always
+  // renders on top, so the arc only shows where it extends past her.
   if (attacking) {
     const baseAngle = FACING_ANGLE[p.facing];
     const sweep = 2.0; // radians of total swing
@@ -2440,6 +2438,17 @@ function render(now) {
     ctx.arc(hx, hy, reach, startA, progressA);
     ctx.stroke();
     ctx.restore();
+  }
+
+  if (!blinking) {
+    // during the attack window, play the three drawn slash frames for this
+    // facing (wind-up -> mid-slash -> follow-through) instead of holding one
+    // pose while the sprite lunges — a still pose plus a stretch read as a
+    // body-check; a travelling blade reads as a swing.
+    const swingSpriteFor = (facing) => heroAttackSpriteFor(facing, attackFrame);
+    drawAnimatedSprite(attacking ? swingSpriteFor : heroSpriteFor, p.facing, p.x, p.y - 10, SPRITE_CELL,
+      { moving: p.moving, phase: p.animPhase, offsetX, offsetY, scaleX, scaleY },
+      (x, y, facing, sx, sy, step) => drawHeroFallback(x, y, facing, now < p.invulnUntil, sx, sy, step, attacking, attackT));
   }
 }
 
