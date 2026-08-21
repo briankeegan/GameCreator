@@ -579,6 +579,40 @@ def _view_shares(path, materials, rows=3):
     return out
 
 
+def check_provenance(game_dir, char_id):
+    """All of one character's art should come off the same generator.
+
+    Two sheets generated on different models are two different styles standing
+    next to each other. Beverly's walk came off gpt-image-1 and her attack off
+    gpt-image-2, and the difference is obvious the moment she swings — but
+    every existing check passed, because they compare colours and both sheets
+    were on-palette. Style is not a colour.
+
+    Provenance is what makes it decidable, so imagegen.py records the settings
+    beside every raw it writes (art-src/generated.json) and this reads them.
+    WARNS rather than fails: mixed provenance is a reason to look, and old art
+    predating the manifest has none at all, which must not fail a build.
+    """
+    man_path = os.path.join(game_dir, 'art-src', 'generated.json')
+    if not os.path.isfile(man_path):
+        return []
+    try:
+        man = json.loads(open(man_path).read())
+    except Exception:
+        return []
+    mine = {k: v for k, v in man.items() if k.startswith(char_id + '_')}
+    models = {}
+    for name, info in mine.items():
+        models.setdefault(info.get('model', 'unknown'), []).append(name)
+    if len(models) < 2:
+        return []
+    parts = '; '.join(f'{m}: {len(f)} row(s)' for m, f in sorted(models.items()))
+    return [f'{game_dir}/{char_id}: MIXED GENERATORS — this character\'s art was drawn by '
+            f'more than one model ({parts}). Sheets from different generators are visibly '
+            'different styles side by side, whatever the palette says. Regenerate the odd '
+            'ones so the whole character comes off one generator.']
+
+
 def check_character(game_dir, char_id, rows=3):
     """Compare every sheet of one character, view by view."""
     style_path = os.path.join(game_dir, 'art-style.json')
@@ -641,7 +675,7 @@ def check_character(game_dir, char_id, rows=3):
     shares = {os.path.basename(p): _view_shares(p, materials, rows) for p in sheets}
 
     view_names = ['down', 'side', 'up'][:rows]
-    hard, soft = [], list((spec or {}).get('_notes', []))
+    hard, soft = [], list((spec or {}).get('_notes', [])) + check_provenance(game_dir, char_id)
     names = list(shares)
     for v in range(rows):
         for hexc in materials:

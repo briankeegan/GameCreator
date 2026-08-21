@@ -201,4 +201,20 @@ def generate(prompt, out_rel, size='1536x1024', quality='medium', force=False,
                  'A model is never given the key directly.')
     if not out_abs.exists() or not out_abs.stat().st_size:
         sys.exit(f'the backend reported success but wrote nothing to {out_rel}')
+
+    # RECORD WHAT DREW IT. Two sheets of one character generated on different
+    # models are visibly two different styles standing next to each other —
+    # Beverly's walk came off gpt-image-1 and her attack off gpt-image-2, and
+    # the difference is obvious the moment she swings. Nothing could see that:
+    # the colour check compares palettes, and both sheets were on-palette.
+    #
+    # The provenance is the one thing that makes it decidable, and it is free
+    # to write down at the moment of generation. verify_sheet.py reads it.
+    try:
+        man_path = out_abs.parent / 'generated.json'
+        man = json.loads(man_path.read_text()) if man_path.exists() else {}
+        man[out_abs.name] = {k: v for k, v in cfg.items() if k != 'prompt'}
+        man_path.write_text(json.dumps(man, indent=1, sort_keys=True) + '\n')
+    except Exception as e:
+        print(f'(could not record provenance: {e})', file=sys.stderr)
     return True
