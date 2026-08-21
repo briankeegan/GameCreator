@@ -13,8 +13,30 @@
 // 1000 images" — can't run up a bill. A rejected/failed request is not billed
 // and does not count against the cap.
 //
+// A SECOND cap, GEN_TIME_BUDGET_MIN, bounds wall-clock instead of count. The
+// model step that talks to this broker has its own hard timeout (currently
+// 30 min) and gets SIGKILLed at it — which used to mean a run doing real,
+// correct work (several characters generated and verified) lost all of it,
+// because the kill happens mid-operation with no chance to commit or even
+// write a reply. MAX_GENERATIONS alone doesn't prevent that: a real run
+// (2026-08-21, Dog Punk drone+brute) used only 9 of its 12 generations and
+// still got killed by the clock — verification, re-generation on a failed
+// check, and git bookkeeping all cost time without touching the counter.
+// This broker is the one deterministic checkpoint every unit of art work
+// passes through, so it's where the wall-clock budget is enforced too: once
+// GEN_TIME_BUDGET_MIN has elapsed since the broker started (which happens
+// right before the model step), every /generate call gets refused with a
+// 429 telling the model to stop and wrap up — same mechanism, same message
+// shape, as the existing MAX_GENERATIONS cap. That leaves the remaining
+// minutes of the model step's own timeout for the fast stuff (verify,
+// commit, write the reply) so a run finishes on its own terms instead of
+// being killed mid-write. This is enforcement, not a prompt asking the
+// model to watch the clock — the same reason MAX_GENERATIONS is a counter
+// in code and not an instruction to "please don't overdo it".
+//
 // Env: OPENAI_API_KEY (required), MAX_GENERATIONS (default 6),
-//      BROKER_PORT (default 8791). Node 22+ (uses global fetch).
+//      GEN_TIME_BUDGET_MIN (default 20), BROKER_PORT (default 8791).
+//      Node 22+ (uses global fetch).
 
 const http = require('http');
 const fs = require('fs');
@@ -23,6 +45,8 @@ const { execFileSync } = require('child_process');
 
 const PORT = parseInt(process.env.BROKER_PORT || '8791', 10);
 const MAX = parseInt(process.env.MAX_GENERATIONS || '6', 10);
+const TIME_BUDGET_MS = parseInt(process.env.GEN_TIME_BUDGET_MIN || '20', 10) * 60000;
+const START = Date.now();
 const KEY = process.env.OPENAI_API_KEY;
 const ROOT = process.cwd();
 
@@ -114,7 +138,10 @@ function reply(res, code, obj) {
 
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
-    return reply(res, 200, { ok: true, used, remaining: Math.max(0, MAX - used), max: MAX });
+    return reply(res, 200, {
+      ok: true, used, remaining: Math.max(0, MAX - used), max: MAX,
+      time_remaining_min: Math.max(0, Math.round((TIME_BUDGET_MS - (Date.now() - START)) / 60000)),
+    });
   }
   if (req.method !== 'POST' || req.url !== '/generate') return reply(res, 404, { ok: false, error: 'not found' });
 
@@ -188,6 +215,14 @@ const server = http.createServer((req, res) => {
 
     if (used >= MAX) {
       return reply(res, 429, { ok: false, error: `generation cap reached (${MAX} per run) — keep the best image you already have and note it in your reply`, remaining: 0 });
+    }
+    const elapsed = Date.now() - START;
+    if (elapsed >= TIME_BUDGET_MS) {
+      const budgetMin = Math.round(TIME_BUDGET_MS / 60000);
+      return reply(res, 429, { ok: false, error:
+        `time budget for this run is used up (${budgetMin} min of art generation) — stop generating ` +
+        'new art now. Finish verifying and committing what you already have, and describe what shipped ' +
+        '(and what is still outstanding) in your reply.', remaining: 0, time_remaining_min: 0 });
     }
 
     try {

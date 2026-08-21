@@ -610,6 +610,18 @@ jobs:
           # a 'redo the art' request could not physically finish, and reported
           # success on a partial job instead.
           MAX_GENERATIONS: '12'
+          # DETERMINISTIC STOP, NOT A PROMPT ASKING NICELY. The model step
+          # below is killed at 30 min regardless of how much real progress it
+          # made — MAX_GENERATIONS alone doesn't prevent that (a run can stay
+          # well under 12 generations and still get killed by the clock;
+          # verification, re-generation on a failed check, and git work all
+          # cost time without touching that counter). So the broker also
+          # refuses /generate once GEN_TIME_BUDGET_MIN has elapsed since IT
+          # started (a few seconds before the model step below), leaving the
+          # remaining ~10 of the 30 minutes for verify/commit/reply instead of
+          # a mid-write SIGKILL. See image-broker.js's header for the full
+          # reasoning.
+          GEN_TIME_BUDGET_MIN: '20'
         run: |
           set -euo pipefail
           # ImageMagick may already be on the runner image; only install if it
