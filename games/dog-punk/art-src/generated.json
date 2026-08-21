@@ -1,4 +1,40 @@
 {
+ "brute_back_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "brute_front_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "brute_side_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "drone_back_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "drone_front_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "drone_side_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
  "hero_atk_back_raw.png": {
   "background": "opaque",
   "model": "gpt-image-1",

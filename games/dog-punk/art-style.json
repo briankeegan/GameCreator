@@ -18,6 +18,7 @@
     "#3d434f",
     "#2a2e38",
     "#171a21",
+    "#5a5d66",
     "#3fa093",
     "#2e7d74",
     "#1d5a55",
@@ -56,7 +57,7 @@
     "mainCharacter": "fur #f0a35a with #e0791c shading and #b54d1a in the deepest creases; EARS #f0a35a with #e0791c shading — the same golden as the coat, NEVER #7a4a24 or any brown (brown is the BOOTS only); muzzle and cheeks #f4f0e6, inner ear #f4f0e6; nose and all outlines #14121a; mohawk #ff5c9a with #e8306f shading; leather jacket #2a2e38 with #3d434f highlights and #dfe4ea studs; shorts #3fa093 with #2e7d74 shading; boots #7a4a24 with #4e2e15 soles; dagger blade #dfe4ea with a #8c95a0 edge and a #4e2e15 grip; tongue #d98a7a",
     "Junk Rat": "body fur #8a7a62 with #6b5c48 shading; belly #dfe4ea; ears, nose, paws and tail #d98a7a; eyes #f4f0e6 with #14121a pupils; buck teeth #f4f0e6; scrap-metal shoulder plate #8c95a0; all outlines #14121a"
   },
-  "lockedColoursRule": "EXACT hex per material, quoted into every generated row by .github/art/generate_row.py. The palette snap alone cannot hold a character together: it maps each pixel to the NEAREST lockedPalette colour, and this palette necessarily contains both a light orange (fur) and a mid brown (boots), so a row the generator happened to draw one step darker snapped to the browns and shipped as a different-coloured dog. That is exactly what happened — front and back rows light orange, side row mid-brown, so Beverly changed colour when you walked left. The shade has to stop being the generator's choice.",
+  "lockedColoursRule": "EXACT hex per material, quoted into every generated row by .github/art/generate_row.py. The palette snap alone cannot hold a character together: it maps each pixel to the NEAREST lockedPalette colour, and this palette necessarily contains both a light orange (fur) and a mid brown (boots), so a row the generator happened to draw one step darker snapped to the browns and shipped as a different-coloured dog. That is exactly what happened — front and back rows light orange, side row mid-brown, so Beverly changed colour when you walked left. The shade has to stop being the generator's choice. COROLLARY, caught while adding the Scrap Drone: every hex named here MUST already be a literal member of `lockedPalette` below — the snap maps to the NEAREST palette entry regardless of what a spec says, so naming a shade that ISN'T in `lockedPalette` lets the snap pick for you again. The drone's mid-grey metal shading (`#5a5d66`, sampled directly off its own generated art) was closer to the rat's warm brown fur shade (`#6b5c48`) than to any grey actually in the palette, and shipped olive-brown until `#5a5d66` was added to `lockedPalette` as a genuinely new material (cold metal, distinct from every warm tone already there) rather than trying to make the drone's grey fit an existing warm slot.",
   "lockedDetails": "Details that MUST be identical in every frame of every sheet, because they are exactly what drifts when a prompt is retyped: Beverly's leather jacket ALWAYS HAS FULL LONG SLEEVES covering both arms to the wrist — never sleeveless, never a vest, never bare shoulders (a generated set came back sleeved in some frames and sleeveless in others). Both floppy ears always visible and hanging down, and DRAWN IN THE SAME GOLDEN FUR AS HER COAT — never brown, never a darker shade than her body (they kept coming back boot-brown, which reads as a different breed of dog). Her coat is FLAT and straight, never curly or woolly. The mohawk is always tall, always hot pink, always visible including from behind and mid-attack. The dagger is always in the same hand. PROPORTIONS, which drift between sheets as badly as colour does: she is about THREE AND A HALF HEADS TALL, the head roughly a quarter of her total height — not a chibi with a head half its own height, not a realistic six-head adult. The walk sheet and the attack sheet must read as the same build. Add to this list whenever a detail is caught drifting; never rely on remembering it.",
   "frameStandard": "Follows the repo character-sheet standard, .github/art/CHARACTER_SHEETS.md: walk sheet is 3 rows (down, side-facing-RIGHT, up) x 3 columns [step, NEUTRAL, step] with playback [1,0,1,2] and idle pinned to the neutral column; attack sheet is the same 3 rows x 3 columns [wind-up, STRIKE, recover] with damage landing on the strike frame. RIGHT is the side row mirrored, never drawn. Prompts come from .github/art/walkgrid_prompt.txt and .github/art/attacksheet_prompt.txt.",
   "enemy": "Junk Rat: a chunky CARTOON junkyard rat in the same flat mascot style as Beverly. It walks on ALL FOURS — a low, long, hunched four-legged body with its belly near the ground, head out front. It is NOT upright, NOT bipedal, NOT a mouse standing on its hind feet: a regeneration once made it upright and it read as a different creature entirely, so treat 'standing up' as an instant reject. Grey-brown body, lighter belly, flat pink ears, a long plain pink tail trailing behind, big white cartoon eyes with black pupils, simple buck teeth, one flat grey scrap-metal shoulder plate. Like the hero it has THREE rows: facing the viewer (down), side profile facing RIGHT (mirrored for left), and seen from behind (up). No fur texture, no realistic rodent anatomy.",
@@ -174,6 +175,77 @@
       "neverDraw": [
         "standing upright on hind legs",
         "a cartoon-mouse silhouette"
+      ]
+    },
+    "drone": {
+      "name": "Scrap Drone",
+      "species": "a small hovering junkyard drone cobbled together from tin-can scrap — NO LEGS AND NO WHEELS, it floats just above the ground. A round dented tin-can body, two bent crooked propeller blades sticking out the top like ears, a single round glowing lens for an eye, one or two thin bent wire antennae. Same flat cartoon-mascot language as Beverly and the Junk Rat: big simple shapes, thick black outline, no fine detail. Not a robot with legs, not a flying-saucer UFO, not a bird or insect — a chunk of floating junk with one eye.",
+      "materials": {
+        "shell": {
+          "base": "#8c95a0",
+          "shade": "#5a5d66",
+          "appears": "always",
+          "note": "dented tin-can body, riveted panels"
+        },
+        "trim": {
+          "base": "#3d434f",
+          "shade": "#2a2e38",
+          "appears": "always",
+          "note": "dark underside and propeller struts"
+        },
+        "lens": {
+          "base": "#e8306f",
+          "shade": "#a01a4c",
+          "appears": "always",
+          "note": "single round glowing eye-lens — the only warm colour on it, always lit"
+        },
+        "outline": {
+          "base": "#14121a",
+          "appears": "always"
+        }
+      },
+      "neverDraw": [
+        "legs, feet, wheels or treads touching the ground",
+        "a humanoid or animal body",
+        "a flying-saucer UFO silhouette",
+        "a face, mouth or teeth — one round eye-lens only"
+      ]
+    },
+    "brute": {
+      "name": "Junk Brute",
+      "species": "a hulking junkyard mutt bolted into welded scrap-metal armor — same flat cartoon-mascot language as Beverly and the Junk Rat, ON ALL FOURS like the rat but much bigger, heavier and lower to the ground: a thick neck, a wide low stance, small angry eyes, a jagged chunk of scrap plating welded across its back and shoulders like a shell, jutting lower tusks. Not upright, not bipedal — treat 'standing on hind legs' as an instant reject exactly as for the rat.",
+      "materials": {
+        "fur": {
+          "base": "#6b5c48",
+          "shade": "#4e2e15",
+          "appears": "always",
+          "note": "darker and duller than the rat's fur — a bigger, meaner animal, not just a scaled-up rat"
+        },
+        "armor": {
+          "base": "#8c95a0",
+          "shade": "#5a5d66",
+          "appears": "always",
+          "note": "welded scrap plates across the back and shoulders"
+        },
+        "eyes": {
+          "base": "#f4f0e6",
+          "pupil": "#14121a",
+          "appears": "front and side views"
+        },
+        "teeth": {
+          "base": "#f4f0e6",
+          "appears": "always",
+          "note": "jutting lower tusks"
+        },
+        "outline": {
+          "base": "#14121a",
+          "appears": "always"
+        }
+      },
+      "neverDraw": [
+        "standing upright on hind legs",
+        "a bipedal posture",
+        "an upright armored golem or robot walking on two legs — this is a DOG on four legs wearing scrap armor, not a suit of armor with a dog's head; the failure to watch for especially FROM BEHIND is a wide two-legged armored back that reads as a robot"
       ]
     }
   }

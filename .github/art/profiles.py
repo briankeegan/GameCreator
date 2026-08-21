@@ -158,12 +158,33 @@ PROFILES = {
     },
 }
 
-# Which kinds the freeform CLI (imagegen.py) is allowed to generate. Character
-# rows, room passes and tile sheets are NOT here — those have their own front
-# doors (generate_row.py, room.py, tileset.py) that build the prompt from a
-# spec and verify before anything ships, and this list must never grow to
-# include them.
-FREEFORM_KINDS = ("icon", "cutscene")
+# Which kinds a human or model may ask for with NO dedicated front door — a
+# one-off icon or cutscene, typed by hand. Character rows, room passes and
+# tile sheets are NOT here: they have their own front doors (generate_row.py,
+# room.py, tileset.py) that build the prompt from a spec and verify before
+# anything ships, and imagegen.py's own `--kind` CLI choices are restricted to
+# exactly this tuple so a person cannot reach for a raw `walk` or `room_scene`
+# generation and skip that verification.
+NO_FRONT_DOOR_KINDS = ("icon", "cutscene")
+
+# Which kinds the THREE FRONT DOORS may generate as, when their request has to
+# cross the broker. generate_row.py, room.py and tileset.py hold no API key of
+# their own — a Clubhouse run deliberately keeps it out of the model's
+# environment — so their own generations go through the same local broker as
+# everything else, and the broker (.github/autopilot/image-broker.js) will
+# only resolve a `kind` it can find in `profiles.FREEFORM_KINDS` by name. That
+# file cannot import a differently-named constant, so this name has to be the
+# one thing both "kinds with no front door" (safe from any caller) and "kinds
+# ONLY the three front doors ask for" belong to. What actually keeps a raw
+# curl from using a pipeline kind to clobber a SHIPPED sheet unverified is the
+# broker's separate, unconditional refusal of any output path under
+# `art-src/` — which is exactly why `imagegen._via_broker` stages a pipeline
+# generation one directory outside `art-src/` and moves it into place itself
+# once the broker has written it, rather than asking the broker to write
+# there directly. See imagegen.py's `_via_broker` for that half of the fix.
+PIPELINE_KINDS = ("walk", "attack", "room_scene", "room_plate", "room_props",
+                  "tileset_ground", "tileset_objects")
+FREEFORM_KINDS = NO_FRONT_DOOR_KINDS + PIPELINE_KINDS
 
 
 def get(kind):

@@ -29,6 +29,8 @@ THE MIDDLE FRAME IS THE ONE THAT MATTERS. Frame 2 (the middle one) = STANDING ST
 
 Frames 1 and 3 are mid-step: one foot lifted two or three pixels off the ground (heel up, leg still vertical), the other flat and planted, the opposite arm swung forward, body one pixel lower than frame 2. Frame 3 is the opposite step to frame 1. These two are drawn as a fallback — the cutter normally replaces them — so do not sacrifice the middle frame for them.
 
+IF THE CHARACTER WALKS ON FOUR LEGS: a front view hides a quadruped stride almost completely — from head-on, one raised front paw looks nearly identical to the standing pose, and a checker comparing the three frames for a genuinely different silhouette will reject a row where all three read as "the same standing dog" (this has happened). Exaggerate past what looks natural: frame 2 (standing) is squarely upright and symmetrical, weight centred, head level. Frames 1 and 3 each dip the whole front half of the body diagonally a few pixels to ONE side with the head tilted the same way (frame 3 the opposite side from frame 1), as if caught mid-lunge, in addition to lifting a front paw — the body-tilt is what a checker (and a player) can actually see at this scale; a lifted paw alone is not enough.
+
 
 {VIEW} = SIDE ROW
 -----------------

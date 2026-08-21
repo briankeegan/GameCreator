@@ -756,7 +756,7 @@ def main():
         if not imagegen.generate(" ".join(prompt.split()), out,
                                  size=prof["size"], quality=a.quality or prof["quality"],
                                  force=a.force, background=prof["background"],
-                                 model=prof["model"]):
+                                 model=prof["model"], kind="room_" + a.which):
             return 0
         print("\nwrote %s" % out)
         nxt = {"scene": "MEASURE it — every prop's ground point, height, width "

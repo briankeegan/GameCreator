@@ -210,7 +210,7 @@ def main():
     if not imagegen.generate(prompt, out_rel, prof['size'],
                              args.quality or prof['quality'], args.force,
                              background=prof['background'],
-                             model=prof['model']):
+                             model=prof['model'], kind=args.kind):
         return
 
     # THE GATE. Which flags apply is a property of what was drawn, so it comes
