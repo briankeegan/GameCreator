@@ -62,6 +62,20 @@ design discussion. `shared/` holds the components every game reuses
   skipping the name+secret form entirely, on ANY game — no per-game secret
   lookup needed. Falls back to the normal per-game saved login if the
   admin token is missing/stale.
+- **The autopilot runs on SONNET, and that is a cost decision, not a quality
+  oversight.** It was switched to Opus as an "improvement" and the account's
+  API budget — around $100 — was gone inside a day, which stopped every thread
+  until the monthly reset, since the autopilot has no other way to run. Better
+  answers bought with eleven days of total unavailability is a bad trade at any
+  quality gap. It is also the wrong shape of work to pay Opus for: a run reads
+  a message, edits game files, calls scripts that already carry the expensive
+  lessons (the cutters, the verifiers, the canonical prompts, the character
+  specs), and writes a reply — the judgement was deliberately moved INTO the
+  tooling so the model would not have to supply it. Override per run with the
+  `model` dispatch input when something genuinely needs it. Cost multipliers to
+  keep in mind before raising anything: every run sends the whole thread
+  history, `--max-turns 120`, `MAX_GENERATIONS: 12` images, and up to 3 retries
+  — so one message can be three full runs.
 - **Per-game autopilot toggle.** Each game chooses how its Clubhouse
   messages are handled, via an `"autopilot": true` flag on its `games.json`
   entry (absent = off). OFF (default) = manual: a subscribed session handles

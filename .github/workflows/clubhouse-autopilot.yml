@@ -49,6 +49,14 @@ on:
         description: 'Retry attempt number (internal — the failure path re-dispatches with this incremented, up to 3)'
         required: false
         default: '1'
+      model:
+        description: 'Model for this run. Default Sonnet. Opus costs many times more per run and exhausted the account API budget in a day when it was the default — pick it only for work that genuinely needs it.'
+        required: false
+        type: choice
+        options:
+          - claude-sonnet-5
+          - claude-opus-5
+        default: claude-sonnet-5
   # LIVE TRIGGER — a new comment on any Clubhouse PR fires this (the job's
   # `if:` then gates it to real, non-bot, non-Claude messages on opted-in games).
   issue_comment:
@@ -648,6 +656,27 @@ jobs:
         timeout-minutes: 30
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # WHICH MODEL A RUN USES, AND WHY THE DEFAULT IS SONNET.
+          #
+          # This was switched to Opus as an "improvement". The account's API
+          # budget — about $100 — was gone inside a day, which then stopped
+          # EVERY thread dead until the monthly reset, because the autopilot has
+          # no other way to run. That trade is bad at any quality difference:
+          # slightly better answers, bought with the whole system being
+          # unavailable for eleven days.
+          #
+          # A run here is also not a hard reasoning problem. It reads a chat
+          # message, edits game files, calls scripts that already encode the
+          # expensive lessons (build_sheet.py, the verifiers, the canonical
+          # prompts, the character specs), and writes a reply. The judgement was
+          # deliberately moved into the tooling and the standards so the model
+          # would not have to supply it — which is exactly the shape of work
+          # Sonnet is right for.
+          #
+          # Override per run with the `model` input when something genuinely
+          # needs it, rather than paying Opus rates on every "make the enemies
+          # flash red".
+          AUTOPILOT_MODEL: ${{ github.event.inputs.model || 'claude-sonnet-5' }}
           # The art tools call this on every generation and every check, so
           # progress appears without the model being asked to narrate.
           GC_STATUS_HOOK: ${{ github.workspace }}/.github/autopilot/status.sh
@@ -661,7 +690,7 @@ jobs:
           set +e
           claude --bare -p "$(cat .autopilot/prompt.txt)" \
             --permission-mode bypassPermissions \
-            --model claude-opus-5 \
+            --model "${AUTOPILOT_MODEL:-claude-sonnet-5}" \
             --max-turns 120 \
             --allowedTools "Read,Edit,MultiEdit,Write,Glob,Grep,Bash" \
             --output-format json > .autopilot/result.json 2> .autopilot/claude.err
