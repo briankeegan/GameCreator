@@ -416,6 +416,10 @@ def checked_path(game_dir, room):
     return os.path.join(game_dir, "art-src", "%s_checked.txt" % room)
 
 
+def rendered_path(game_dir, room):
+    return os.path.join(game_dir, "art-src", "%s_rendered.txt" % room)
+
+
 def unchecked_rooms(game_dir):
     out = []
     for room in sorted(floor_plate_rooms()):
@@ -428,13 +432,15 @@ def unchecked_rooms(game_dir):
         except OSError:
             have = None
         if have != want:
-            out.append("%s: nobody has looked at this room since its art last "
+            out.append("%s: nobody has signed off this room since its art last "
                        "changed. Run `python3 .github/art/room.py check %s %s`, "
-                       "OPEN the side-by-side it writes, and fix what it shows "
-                       "you — it is the step that finds props at the wrong size, "
+                       "OPEN the side-by-side it writes, fix what it shows you — "
+                       "it is the step that finds props at the wrong size, "
                        "scenery the scene has and the room does not, and a "
-                       "camera that was wrong three passes ago."
-                       % (room, game_dir, room))
+                       "camera that was wrong three passes ago — and then "
+                       "`room.py signoff %s %s`. Rendering is not looking, so "
+                       "check alone does not clear this."
+                       % (room, game_dir, room, game_dir, room))
     return out
 
 
@@ -557,6 +563,10 @@ def main():
 
     p = sub.add_parser("approve", help="record that you have LOOKED at pass 1 "
                                        "and it is right — unlocks pass 2 and 3")
+    p.add_argument("game"); p.add_argument("room")
+
+    p = sub.add_parser("signoff", help="record that you have LOOKED at the "
+                                       "assembled room and it is right")
     p.add_argument("game"); p.add_argument("room")
 
     p = sub.add_parser("verify", help="the CI gate")
@@ -777,9 +787,44 @@ def main():
             print("\nthe overlay did NOT render — fix that before trusting anything above",
                   file=sys.stderr)
             return rc
-        with open(checked_path(game, a.room), "w", encoding="utf-8") as f:
+        # RENDERING IS NOT LOOKING. This used to write the sign-off digest
+        # right here, which meant the gate asking "has anyone looked at this
+        # room?" was satisfied by running the renderer — nobody had to open
+        # the picture. It was caught the only way it could be: the files
+        # turned up as unexpected uncommitted changes after a session ran
+        # `check` on three rooms it had NOT approved, one of which was
+        # visibly wrong (planks at the wrong scale, the scene's four-stool
+        # tables rendered as a single stool).
+        #
+        # So `check` records only that the overlay was rendered for THIS
+        # art, and `signoff` is the separate, deliberate act. signoff refuses
+        # unless this marker matches, so you cannot sign off a room you never
+        # rendered either.
+        with open(rendered_path(game, a.room), "w", encoding="utf-8") as f:
             f.write(room_digest(game, a.room) + "\n")
         print("\nLOOK AT THESE. The side-by-side is the step that finds things.")
+        print("When you have LOOKED and it is right:")
+        print("  python3 .github/art/room.py signoff %s %s" % (game, a.room))
+        return 0
+
+    if a.cmd == "signoff":
+        want = room_digest(game, a.room)
+        try:
+            rendered = open(rendered_path(game, a.room), encoding="utf-8").read().strip()
+        except OSError:
+            rendered = None
+        if rendered != want:
+            print("nothing to sign off: the overlays have not been rendered for "
+                  "%s's current art. Run\n"
+                  "  python3 .github/art/room.py check %s %s\n"
+                  "then OPEN what it writes, and come back." % (a.room, game, a.room),
+                  file=sys.stderr)
+            return 1
+        with open(checked_path(game, a.room), "w", encoding="utf-8") as f:
+            f.write(want + "\n")
+        print("signed off %s. This says a person looked at the side-by-side and "
+              "it was right — it will go stale the moment the art or the props "
+              "change." % a.room)
         return 0
 
     if a.cmd == "verify":

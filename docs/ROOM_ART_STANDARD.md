@@ -265,7 +265,7 @@ happen. Read this list before touching a room; it is the whole process.
 | 3 | **Generate the plate** (pass 2) and fit it | `room.py plate` — tone-matches it to the scene's own floor |
 | 4 | **Generate the props** (pass 3) and cut them | `room.py props` |
 | 5 | **Place them at the numbers the scene used** | `measure_props.py` (exteriors only — see its header for the interior gap) |
-| 6 | **Render the overlay and LOOK at it** | `room.py check`, and `room.py verify` FAILS for any room whose art or placement changed since the last one was rendered |
+| 6 | **Render the overlay, LOOK at it, then say so** | `room.py check` renders; `room.py signoff <game> <room>` is the separate act that records you looked. `room.py verify` FAILS for any room not signed off since its art or placement last changed — and `check` alone does NOT clear it |
 | 7 | **Wire the doors** — every exit on its own drawn doorway, every door a pair | `check_room_exits.mjs` |
 | 8 | **Run the gate** | `room.py verify`, in `pages.yml` |
 
@@ -303,7 +303,8 @@ room.py prompt scene|plate|props …            # just print it, generate nothin
 
 room.py plate  games/<id> <room>              # fit the plate + rebuild its mask
 room.py props  games/<id> <room> name1 name2  # cut a prop sheet, left to right
-room.py check  games/<id> <room>              # render the overlays to look at
+room.py check   games/<id> <room>             # render the overlays to look at
+room.py signoff games/<id> <room>             # after LOOKING: record that it is right
 room.py verify games/<id>                     # the gate; runs in CI
 ```
 
@@ -319,6 +320,22 @@ The order of a whole room:
    then `room.py props games/<id> <room> prop_a prop_b`.
 5. Write the `props:` block from your pass-1 measurements.
 6. `room.py check games/<id> <room>` — **and actually look at both pictures.**
+   Then `room.py signoff games/<id> <room>`.
+
+   **Rendering is not looking, and the tool used to conflate them.** `check`
+   wrote the sign-off digest itself, the moment it finished rendering — so the
+   gate asking "has anyone looked at this room?" was answered by running the
+   renderer, with nobody opening the picture. It surfaced the only way it
+   could: as unexpected uncommitted changes after a session ran `check` on
+   three rooms it had *not* approved, one of them visibly wrong (floor planks
+   at the wrong scale, the scene's four-stool tables assembled as a single
+   stool and a candle). Had those been committed, the build would have gone
+   green over art nobody had accepted.
+
+   So the two are separate now, and each refuses the other's shortcut:
+   `check` records only that the overlay was rendered for *this* art, and
+   `signoff` refuses unless that marker matches — you cannot sign off a room
+   you never rendered, and rendering one does not sign it off.
 7. `room.py verify games/<id>` and `check_room_exits.mjs`.
 8. Walk it in-game.
 
