@@ -3,11 +3,29 @@
   "_why": "The hub of Infinity's map. Four ways out, and WHICH WALL each is in is decided by the map in story.js — see the diagram on ROOMS.lounge — not by whatever the generator felt like drawing.",
   "summary": "A warm, crowded tavern lounge in a magical realm, in dark blue-grey brick above dark timber wainscot with one continuous rail running the full width of the back wall at the same height all the way across, lit by candles and lanterns.",
   "floor": "warm honey-brown wooden plank floorboards, many narrow boards running left to right with staggered end joints, visible grain, knots and scuffed wear",
+  "_wall_why": "A floor-plate room ships ONLY its floor, so the room's own back wall is a PROP and has to be generated like one. Leaving it out of the spec is how the lab ended up with its jar shelf repeated three times across the wall — there was no plain panel to put either side of it.",
+  "wall": "a wide upright rectangular slab of dark blue-grey brick wall above dark timber wainscot with a continuous moulded rail between them, a small lit lantern on it, and NOTHING else — no shelf, no door, no opening",
   "doors": [
-    { "wall": "back-left", "look": "ONE open arched stone doorway, empty and warmly lit from beyond", "to": "library" },
-    { "wall": "back", "look": "ONE tall stone arch completely filled by a glowing swirling RED portal, spiralling inward to a hot bright centre", "to": "arena" },
-    { "wall": "left", "look": "ONE open arched stone doorway, empty and warmly lit from beyond", "to": "bedroom" },
-    { "wall": "right", "look": "ONE open arched stone doorway, empty and warmly lit from beyond", "to": "lab" }
+    {
+      "wall": "back-left",
+      "look": "ONE open arched stone doorway, empty and warmly lit from beyond",
+      "to": "library"
+    },
+    {
+      "wall": "back",
+      "look": "ONE tall stone arch completely filled by a glowing swirling RED portal, spiralling inward to a hot bright centre",
+      "to": "arena"
+    },
+    {
+      "wall": "left",
+      "look": "ONE open arched stone doorway, empty and warmly lit from beyond",
+      "to": "bedroom"
+    },
+    {
+      "wall": "right",
+      "look": "ONE open arched stone doorway, empty and warmly lit from beyond",
+      "to": "lab"
+    }
   ],
   "contains": [
     "a long wooden BAR COUNTER standing along the RIGHT-HAND END of the back wall, with a tall shelf of coloured bottles behind it",

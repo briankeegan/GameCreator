@@ -3,8 +3,14 @@
   "_why": "Kyran is Infinity's head of research. The Lounge is WEST of this room, so its one ordinary way out is a door in the LEFT wall — the map in story.js decides that, not the generator.",
   "summary": "An alchemical laboratory in a magical realm, in cold grey-green stone block, lit by lanterns and by the glow of what is in the glassware.",
   "floor": "many small grey-green flagstones in staggered courses with fine mortar joints, cool mid-toned stone, softly lit rather than bright, with mottling, chips and wear",
+  "_wall_why": "A floor-plate room ships ONLY its floor, so the room's own back wall is a PROP and has to be generated like one. Leaving it out of the spec is how the lab ended up with its jar shelf repeated three times across the wall — there was no plain panel to put either side of it.",
+  "wall": "a wide upright rectangular slab of cold grey-green stone block wall and NOTHING else on it — no shelf, no jars, no lantern, no door, no opening, just bare coursed stone",
   "doors": [
-    { "wall": "left", "look": "ONE open arched doorway in the grey-green stone, empty and warmly lit from beyond", "to": "lounge" }
+    {
+      "wall": "left",
+      "look": "ONE open arched doorway in the grey-green stone, empty and warmly lit from beyond",
+      "to": "lounge"
+    }
   ],
   "contains": [
     "ONE heavy timber SHELF on the back wall holding big round glass jars of glowing green and amber fluid and a lit lantern, in the MIDDLE of the wall only, with bare stone either side of it",

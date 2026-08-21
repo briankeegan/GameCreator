@@ -3,9 +3,19 @@
   "_why": "The plot calls it a city of bookshelves. It sits BETWEEN the Lounge (south, off the near edge) and the Anarchy Garden (north, through the bookcase wall) — the map in story.js decides that.",
   "summary": "A vast warm hushed library in a magical realm: floor-to-ceiling dark timber bookcases packed with old leather-bound books, their shelf lines running at the same height all the way across, lit by brass reading lamps glowing amber.",
   "floor": "many small warm sandy-grey flagstones in staggered courses with fine dark mortar joints, a warm mid-tone lit by candlelight, muted rather than bright, with mottling and wear",
+  "_wall_why": "A floor-plate room ships ONLY its floor, so the room's own back wall is a PROP and has to be generated like one. Leaving it out of the spec is how the lab ended up with its jar shelf repeated three times across the wall — there was no plain panel to put either side of it.",
+  "wall": "a wide upright rectangular slab of floor-to-ceiling dark timber bookcase packed with old leather-bound books, a brass reading lamp glowing amber on it, and NO door and NO opening",
   "doors": [
-    { "wall": "back", "look": "ONE open arched doorway cut through the bookcases, lit soft green from beyond", "to": "garden" },
-    { "wall": "near", "look": "the way back down to the Lounge", "to": "lounge" }
+    {
+      "wall": "back",
+      "look": "ONE open arched doorway cut through the bookcases, lit soft green from beyond",
+      "to": "garden"
+    },
+    {
+      "wall": "near",
+      "look": "the way back down to the Lounge",
+      "to": "lounge"
+    }
   ],
   "contains": [
     "a rolling library LADDER leaning against the bookcases on the left",

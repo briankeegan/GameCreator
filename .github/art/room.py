@@ -693,8 +693,11 @@ def main():
             return 1
         desc = (a.desc or "").strip() or spec_scene_desc(spec)
         floor = (a.floor or "").strip() or spec.get("floor", "")
-        items = (a.items or "").strip() or "; ".join(spec.get("contains", []))
-        n = (a.n or "").strip() or str(len(spec.get("contains", [])) or 2)
+        # The room's own back wall is a prop like everything else, and it goes
+        # FIRST on the sheet so it is never the thing that gets forgotten.
+        sheet = ([spec["wall"]] if spec.get("wall") else []) + spec.get("contains", [])
+        items = (a.items or "").strip() or "; ".join(sheet)
+        n = (a.n or "").strip() or str(len(sheet) or 2)
 
         template = pass_template(a.which)
         need = {"{{ROOM}}": ("room name", desc), "{{FLOOR}}": ("--floor or spec.floor", floor),
