@@ -890,11 +890,19 @@ window.NEWSEY_STORY = (function () {
         // The bookcase wall, with the arch to the Garden cut through its
         // middle. w overlaps its neighbour: butted exactly, the floor showed
         // between the panels as pale pillars either side of the doorway.
-        { art: "prop_lib_shelf", x: 52,  y: 104, h: 92, w: 116, behind: true, base: { w: 110, h: 8 } },
-        { art: "prop_lib_door",  x: 160, y: 104, h: 92, w: 116, door: true },
-        { art: "prop_lib_shelf", x: 268, y: 104, h: 92, w: 116, behind: true, base: { w: 110, h: 8 } },
-        // Michael's reading corner on the left, the writing desk on the right
-        { art: "prop_lib_ladder", x: 56,  y: 104, h: 76, base: { w: 18, h: 6 } },
+        // y/h were never actually measured — declared at a guessed y=104,
+        // h=92. room.py wallseam (gradient, three clean strips, agreed
+        // within 3px) puts the real seam at y=63: the shelves fill the top
+        // ~third of the frame, cropped by the top edge, not a wall reaching
+        // halfway down. See rooms/library.json's wallSeam.
+        { art: "prop_lib_shelf", x: 52,  y: 63, h: 63, w: 116, behind: true, base: { w: 110, h: 8 } },
+        { art: "prop_lib_door",  x: 160, y: 63, h: 63, w: 116, door: true },
+        { art: "prop_lib_shelf", x: 268, y: 63, h: 63, w: 116, behind: true, base: { w: 110, h: 8 } },
+        // Michael's reading corner on the left, the writing desk on the right.
+        // The ladder leans forward off the wall, so its foot sits well past
+        // the wall seam — measured directly off the scene (top rail ~y=27,
+        // foot/casters ~y=81), not the old guessed y=104,h=76.
+        { art: "prop_lib_ladder", x: 56,  y: 81, h: 54, base: { w: 18, h: 6 } },
         { art: "prop_lib_chair",  x: 30,  y: 122, h: 40, base: { w: 22, h: 8 } },
         { art: "prop_lib_table",  x: 58,  y: 124, h: 26, base: { rx: 6, ry: 3 } },
         { art: "prop_lib_desk",   x: 252, y: 122, h: 34, w: 50, base: { w: 46, h: 8 } }

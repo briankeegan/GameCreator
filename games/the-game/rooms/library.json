@@ -5,6 +5,8 @@
   "floor": "many small warm sandy-grey flagstones in staggered courses with fine dark mortar joints, a warm mid-tone lit by candlelight, muted rather than bright, with mottling and wear",
   "_wall_why": "A floor-plate room ships ONLY its floor, so the room's own back wall is a PROP and has to be generated like one. Leaving it out of the spec is how the lab ended up with its jar shelf repeated three times across the wall — there was no plain panel to put either side of it.",
   "wall": "a wide upright rectangular slab of floor-to-ceiling dark timber bookcase packed with old leather-bound books, a brass reading lamp glowing amber on it, and NO door and NO opening",
+  "wallSeam": 63,
+  "_wallSeam_why": "Never actually measured before — the shelf/door props were declared at a guessed y=104,h=92. `python3 .github/art/room.py wallseam games/the-game library --strip 25,35 --strip 60,75 --strip 212,225 --search 55,90` (gradient method: the bookshelf's dark timber against the pale flagstone floor is high-contrast, unlike the lab's stone-on-stone) gave y=65/62/62 — agreed within 3px, called at y=63 — and the overlay confirmed all three lines sit right on the wood-trim-to-floor line. That's much higher up the frame than 104: the shelves fill only the top third, cropped by the top edge, not reaching halfway down. Same class of bug as the lab's cabinet: a value nobody had measured, quietly wrong the whole time.",
   "doors": [
     {
       "wall": "back",

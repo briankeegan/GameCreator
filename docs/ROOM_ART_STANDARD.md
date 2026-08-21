@@ -178,21 +178,28 @@ one is crossing something that isn't bare wall/floor (furniture, a shadow, a
 rug edge, the curve of an archway) and needs re-picking; the tool says so
 rather than averaging two different measurements into a third wrong number.
 
-Two real finds this way: the bedroom's seam (y=109, not the never-measured
+Three real finds this way: the bedroom's seam (y=109, not the never-measured
 102 it had been placed at — three clean strips of wallpaper-over-parquet
-agreed to the pixel with `--method gradient`), and the lab's (y=89, not the
+agreed to the pixel with `--method gradient`), the lab's (y=89, not the
 also-never-measured 122 — `--method gradient` couldn't commit on the
 stone-on-stone wall, but `--method canny` at the door jamb's own base, well
-clear of the archway's curve, found a strong, consistent edge). Both
-confirmed by drawing the line over the scene and looking, same as everything
-else measured this way — and both corrections were bigger than "a few
-pixels off": the lab's wall was declared 33px lower than its real line,
-which is also why furniture that had been "regrounded" against the wrong
-wall value (the cabinet, moved from its correct scene reading of y=92 to a
-wrong y=107) needed un-fixing once the real line was known. A wrong
-reference doesn't just mismeasure the thing measured against it — it can
-make an already-correct number look wrong and get "fixed" into an actual
-error.
+clear of the archway's curve, found a strong, consistent edge), and the
+library's (y=63, not the also-never-measured 104 — high-contrast dark
+timber over pale flagstone, `--method gradient` agreed to the pixel across
+three strips). Both the bedroom and lab corrections were "a wall a bit lower
+than declared"; the library's was the opposite and much bigger — the wall
+band was declared 41px TOO LOW, at nearly half the frame's height, when the
+scene shows the bookcases filling only the top third, cropped by the top
+edge, not reaching down to meet a much lower floor. Same root cause as the
+other two (a `y`/`h` pair nobody had ever actually measured), and it also
+took the room's ladder with it: leaning against the wall, its `y` had been
+grounded to that same wrong 104 and needed remeasuring off the scene
+directly (top rail ~y=27, foot/casters ~y=81) once the wall line was known.
+All three confirmed by drawing the line over the scene and looking, same as
+everything else measured this way. A wrong reference doesn't just mismeasure
+the thing measured against it — it can make an already-correct number look
+wrong and get "fixed" into an actual error, or leave an actually-wrong one
+unquestioned for lack of anything to disagree with it.
 
 Record the answer as `wallSeam` in the room's `rooms/<room>.json` (see the
 bedroom's for the exact command used). Two checks read it, in `room.py
