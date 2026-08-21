@@ -162,7 +162,7 @@ Two callers, one script, is the fix.
 | [`build_tiles.py`](build_tiles.py) | Cuts tile sheets into a shipped strip. Makes `texture:` tiles SEAMLESS — a generator will not draw a tile that repeats, so the seam is made here. |
 | [`preview_tiles.py`](preview_tiles.py) | Lays the tile strip out as a floor: each tile once, each floor tile repeated (a grid shows here or nowhere), and a mixed field. |
 | [`room.py`](room.py) | The one front door for rooms: `generate`, `prompt`, `plate`, `props`, `check`, `verify`. |
-| [`imagegen.py`](imagegen.py) | The shared transport both front doors call. Picks the in-run broker if one is listening, otherwise `OPENAI_API_KEY`; never hands a model the key. |
+| [`imagegen.py`](imagegen.py) | Also a CLI (`python3 imagegen.py --prompt ... --output ...`) — the front door for freeform one-off art. "Generate image" and "Generate game asset" call it instead of their own curl, so a title screen or an icon goes through the same validation, model choice and provenance manifest as a character row. | The shared transport both front doors call. Picks the in-run broker if one is listening, otherwise `OPENAI_API_KEY`; never hands a model the key. |
 | [`build_props.py`](build_props.py) | Cuts a prop sheet into one transparent PNG per prop. |
 | [`fit_plate.py`](fit_plate.py) | Fits a generated floor plate to the room frame. |
 | [`build_walkmask.py`](build_walkmask.py) | Builds a room's walkable-floor mask, and records the five techniques that failed at recovering one from finished art. |

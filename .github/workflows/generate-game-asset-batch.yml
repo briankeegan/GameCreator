@@ -69,18 +69,17 @@ jobs:
             echo "::group::[$((i + 1))/$count] $path"
             prompt="${camera} ${asset}. ${style} Color palette: ${palette} Background: ${background} ${constraints}"
             mkdir -p "$(dirname "$path")"
-            resp=$(curl -sS https://api.openai.com/v1/images/generations \
-              -H "Authorization: Bearer $OPENAI_API_KEY" \
-              -H "Content-Type: application/json" \
-              -d "$(jq -n --arg prompt "$prompt" --arg size "$SIZE" \
-                    '{model: "gpt-image-1", prompt: $prompt, size: $size, quality: "high", background: "transparent", n: 1}')")
-            err=$(echo "$resp" | jq -r '.error.message // empty')
-            if [ -n "$err" ]; then
-              echo "::error::OpenAI API error for $path: $err"
+            # THE SAME TRANSPORT EVERY OTHER GENERATOR USES — this used to be
+            # its own curl+jq with no retry at all (worse than the single-asset
+            # Action, which at least backed off on 429) and model hardcoded to
+            # gpt-image-1. One bad item must not kill the rest of the batch, so
+            # a failure here is caught and the loop continues.
+            if ! python3 .github/art/imagegen.py --prompt "$prompt" --output "$path" \
+                 --size "$SIZE" --quality high --background transparent --force; then
+              echo "::error::generation failed for $path"
               echo "::endgroup::"
               continue
             fi
-            echo "$resp" | jq -r '.data[0].b64_json' | base64 -d > "$path"
             if [ ! -s "$path" ]; then
               echo "::warning::Empty output for $path, skipping"
               echo "::endgroup::"

@@ -218,3 +218,47 @@ def generate(prompt, out_rel, size='1536x1024', quality='medium', force=False,
     except Exception as e:
         print(f'(could not record provenance: {e})', file=sys.stderr)
     return True
+
+
+# ONE-OFF / FREEFORM CLI. The front door for art that is not a character row,
+# a room pass, or a tile sheet — a title screen, a flat icon, a card. Exists so
+# "Generate image" and "Generate game asset" (the two Actions for exactly that
+# kind of one-off art) call THIS instead of hand-rolling their own curl+jq.
+#
+# They used to. Both had their own retry loop, both had `model: "gpt-image-1"`
+# typed into a jq filter, and both were invisible to everything this file now
+# does: request validation against what the API actually accepts, one place
+# that decides the model, and the provenance manifest. A prompt built two
+# different ways calling two different HTTP clients is exactly the kind of
+# divergence this repo keeps finding the expensive way.
+def _cli():
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__ or 'Generate one image.')
+    ap.add_argument('--prompt', required=True)
+    ap.add_argument('--output', required=True, help='repo-relative output path')
+    ap.add_argument('--size', default='1024x1024')
+    ap.add_argument('--quality', default='medium', choices=['low', 'medium', 'high', 'auto'])
+    ap.add_argument('--background', choices=['transparent', 'opaque', 'auto'])
+    ap.add_argument('--model', default=None,
+                    help='defaults to profiles.py MODEL — the one place that decides it')
+    ap.add_argument('--force', action='store_true')
+    a = ap.parse_args()
+
+    model = a.model
+    if not model:
+        try:
+            sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+            import profiles
+            model = profiles.MODEL
+        except Exception:
+            model = 'gpt-image-1'
+
+    ok = generate(a.prompt, a.output, size=a.size, quality=a.quality,
+                 force=a.force, background=a.background, model=model)
+    if not ok:
+        return   # already exists, not forced — not an error
+    print(f'wrote {a.output}')
+
+
+if __name__ == '__main__':
+    _cli()

@@ -71,6 +71,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # MODEL COMES FROM THE SAME PLACE AS EVERY OTHER GENERATOR, EVEN THOUGH
+      # THIS ENDPOINT IS DIFFERENT. /images/edits (multipart, reference-image
+      # input) is not the JSON call imagegen.py's build_request() validates —
+      # unifying the transport itself is real follow-up work, not done here,
+      # and not worth guessing at with no key in this environment to test a
+      # multipart call against. But the model string being retyped in a FOURTH
+      # place is exactly the divergence that put two different generators'
+      # art in one character sheet tonight, so at minimum that one value comes
+      # from profiles.py rather than being hardcoded again.
+      - name: Resolve model
+        id: model
+        run: |
+          echo "model=$(python3 -c 'import sys; sys.path.insert(0,".github/art"); import profiles; print(profiles.MODEL)')" >> "$GITHUB_OUTPUT"
+
       - name: Build prompt (asset + optional art-style.json framing)
         id: style
         env:
@@ -136,7 +150,7 @@ jobs:
           for attempt in 1 2 3 4 5 6; do
             resp=$(curl -sS -w '\n%{http_code}' https://api.openai.com/v1/images/edits \
               -H "Authorization: Bearer $OPENAI_API_KEY" \
-              -F "model=gpt-image-1" \
+              -F "model=${{ steps.model.outputs.model }}" \
               "${IMG_ARGS[@]}" \
               -F "prompt=${PROMPT}" \
               -F "size=${SIZE}" \
