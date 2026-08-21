@@ -309,9 +309,18 @@ def spec_doors(spec):
 
 
 def spec_scene_desc(spec):
-    return "%s %s %s The floor is %s." % (
-        spec.get("summary", ""), spec_doors(spec),
-        (" ".join(spec.get("contains", []))), spec.get("floor", "a plain floor"))
+    # A spec's own "camera" field was silently dropped here — nothing read it,
+    # so the bedroom's furniture came back drawn at a tilted 3/4 angle with no
+    # per-room camera guidance to say otherwise, and the room said "you need
+    # to correct how you describe things" was the real fix, not a repositioned
+    # trigger. game-wide art-style.json still sets the room's overall camera;
+    # this is for the cases that need saying AGAIN, specific to what a room
+    # contains — e.g. "the furniture is top-down like the wall behind it."
+    cam = spec.get("camera", "")
+    return "%s%s %s %s The floor is %s." % (
+        spec.get("summary", ""), (" " + cam) if cam else "",
+        spec_doors(spec), (" ".join(spec.get("contains", []))),
+        spec.get("floor", "a plain floor"))
 
 
 # PASS 1 IS A DECISION POINT, NOT A STEP TO WALK PAST.
