@@ -333,7 +333,7 @@ window.NEWSEY_STORY = (function () {
         // own right-hand post), which is also how the scene composes them.
         { art: "prop_bed_bed", x: 226, y: 134, h: 118, w: 134, base: { w: 122, h: 18 } },
         // the way east, to the Lounge
-        { art: "prop_door_east", x: 308, y: 150, h: 96, w: 26, door: true }
+        { art: "prop_door_east", x: 308, y: 150, h: 96, w: 26, door: true, behind: true }
       ],
       // THE LOUNGE IS EAST OF THIS ROOM, so the way out is a door in the EAST
       // wall: you walk right out of here and come in the Lounge's west door.
@@ -408,8 +408,8 @@ window.NEWSEY_STORY = (function () {
         // drawn edge-on and turned in toward the room. door: true, so they
         // carry no footprint and their trigger sits ON them — you walk into
         // the drawn doorway to use it.
-        { art: "prop_door_west", x: 12,  y: 150, h: 96, w: 26, door: true },
-        { art: "prop_door_east", x: 308, y: 150, h: 96, w: 26, door: true },
+        { art: "prop_door_west", x: 12,  y: 150, h: 96, w: 26, door: true, behind: true },
+        { art: "prop_door_east", x: 308, y: 150, h: 96, w: 26, door: true, behind: true },
         // --- the back wall, left to right, with the arch north to the library
         // and the portal north to the arena.
         // The portal sits LEFT of the bar. Right of it, the bar's bottle shelf
@@ -700,7 +700,7 @@ window.NEWSEY_STORY = (function () {
         { art: "prop_lab_wall", x: 270, y: 128, h: 88, w: 112, base: { w: 112, h: 8 } },
         // the way west, to the Lounge. door: true — it IS the doorway, so it
         // carries no footprint and its trigger sits on it.
-        { art: "prop_lab_door", x: 18, y: 150, h: 80, w: 28, door: true },
+        { art: "prop_lab_door", x: 18, y: 150, h: 80, w: 28, door: true, behind: true },
         { art: "prop_lab_bench",   x: 162, y: 136, h: 40, w: 124, base: { w: 120, h: 10 } },
         { art: "prop_lab_cabinet", x: 252, y: 132, h: 58, base: { w: 34, h: 10 } },
         { art: "prop_lab_cart",    x: 74,  y: 166, h: 40, base: { rx: 10, ry: 4 } }

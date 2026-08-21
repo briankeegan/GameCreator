@@ -1733,14 +1733,19 @@
     ctx.clearRect(0, 0, VW, VH);
     if (!currentRoom || !running) return;
     drawRoomBg();
-    (currentRoom.props || []).forEach(function (p) { if (p.flat) drawProp(p); });
+    // behind: true — a WALL is always behind you. A side-wall doorway is drawn
+    // down the edge of the frame, so its foot sits low, and sorted by foot it
+    // drew IN FRONT of anyone who walked in through it: you arrived and
+    // vanished inside the doorway with no way to see yourself. Walls do not
+    // sort; they are the room.
+    (currentRoom.props || []).forEach(function (p) { if (p.flat || p.behind) drawProp(p); });
     drawExits();
     // sort by y so things lower on screen draw on top (cheap depth)
     var entities = roomNpcs(currentRoom).map(function (n) { return { y: n.y, draw: function () { drawNpc(n); } }; });
     (currentRoom.props || []).forEach(function (p) {
       // A FLAT prop is ground cover and was painted with the floor above. Sort
       // it and the player's own feet would sometimes vanish behind a flower.
-      if (p.flat) return;
+      if (p.flat || p.behind) return;
       entities.push({ y: p.y, draw: function () { drawProp(p); } });
     });
     entities.push({ y: player.y + player.h, draw: drawPlayer });
