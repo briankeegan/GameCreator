@@ -341,36 +341,28 @@ window.NEWSEY_STORY = (function () {
         { art: "prop_bed_wall", x: 126, y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
         { art: "prop_bed_wall", x: 192, y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
         { art: "prop_bed_wall", x: 258, y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
-        // the balustrade along the near edge, unbroken. The regenerated sheet
-        // cut this as ONE long run (three posts, not a single repeatable
-        // module — build_props.py's own row-clustering fix, see its commit,
-        // is what stopped this from being cut into the WRONG prop's name
-        // entirely), and at native aspect (12.125:1) one copy at h=30 is
-        // already wider than the room — no tiling needed, just centred with
-        // a few px of bleed past each edge into the frame.
-        { art: "prop_bed_rail", x: 160, y: 199, h: 30, base: { w: 308, h: 10 } },
-        // The furniture, regenerated: the bed and mirror had been drawn at a
-        // tilted 3/4 product-shot angle (reported from a screenshot — the
-        // bed's open foot faced off to the lower-left instead of the viewer,
-        // which is why the sleep interaction read as broken) instead of this
-        // room's top-down camera. Fixed at the source — see the "camera"
-        // field in rooms/bedroom.json — and cut as three separate objects
-        // instead of one bed+trunk merger, so nothing here needs an explicit
-        // w that fights the art's own aspect ratio. Only h is given; width
-        // follows the art.
-        { art: "prop_bed_mirror", x: 62,  y: 88,  h: 74, base: { w: 30, h: 8 } },
+        // the balustrade along the near edge, unbroken. Re-cut alongside the
+        // proportion-locked furniture regen, and its own native aspect
+        // dropped from 12.1:1 to 7.6:1 (a taller, less impossibly-thin strip)
+        // — h bumped from 30 to 44 to keep ONE copy spanning the room's full
+        // width at the new aspect (30 would now draw only ~228px, leaving
+        // bare floor at both edges).
+        { art: "prop_bed_rail", x: 160, y: 199, h: 44, base: { w: 308, h: 10 } },
+        // The furniture, proportion-locked and regenerated a second time:
+        // the bed and mirror had first been drawn at a tilted 3/4
+        // product-shot angle (fixed via the room's "camera" field), and once
+        // that was fixed they still drew narrower relative to their height
+        // than the scene's own versions — a live screenshot is what showed
+        // it, not the side-by-side or the blend, since "the right shape at
+        // the wrong size" doesn't ghost the way a wrong position does.
+        // rooms/bedroom.json's contains entries now state explicit N:M
+        // width-to-height ratios (mirror 1:2, bed 4:5, trunk 2:1, all
+        // measured off the scene with room.py grid) instead of adjectives.
+        // Only h is given here; width follows the art's now-corrected aspect.
+        { art: "prop_bed_mirror", x: 62,  y: 88,  h: 74, base: { w: 32, h: 8 } },
         { art: "prop_bed_nightstand", x: 96, y: 88, h: 40, base: { w: 20, h: 8 } },
-        // h corrected from 99 to 85, measured fresh off the fine-grid crop:
-        // the canopy top sits at y~27 in the scene, not y~13 (112-99), which
-        // is what h=99 was drawing — 14px of canopy sticking up into the
-        // wall that the blend overlay showed as a doubled/ghosted top edge.
-        // base narrowed to match: the art's own width at h=85 is ~42px
-        // (posts included, same crop as before), and 78 was drawn from the
-        // OLD wider bed's numbers, left unchanged when this one was cut —
-        // nearly double the new art's actual width, fencing off floor on
-        // both sides that reads as open in the room.
-        { art: "prop_bed_bed",   x: 161, y: 112, h: 85, base: { w: 38, h: 14 } },
-        { art: "prop_bed_trunk", x: 161, y: 148, h: 30, base: { w: 24, h: 10 } },
+        { art: "prop_bed_bed",   x: 161, y: 112, h: 85, base: { w: 40, h: 14 } },
+        { art: "prop_bed_trunk", x: 161, y: 148, h: 30, base: { w: 34, h: 10 } },
       ],
       // THE LOUNGE IS EAST OF THIS ROOM, so the way out is a door in the EAST
       // wall: you walk right out of here and come in the Lounge's west door.
