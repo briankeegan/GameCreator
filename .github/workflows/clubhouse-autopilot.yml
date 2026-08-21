@@ -187,6 +187,16 @@ jobs:
           echo "pr=$PR" >> "$GITHUB_OUTPUT"
           echo "title=$TITLE" >> "$GITHUB_OUTPUT"
 
+          # The game id, for BOTH trigger paths. It used to be derived only
+          # inside the issue_comment branch and never exported, so anything
+          # downstream wanting it got an empty string — which is a silent wrong
+          # path, not an error.
+          GAME=$(gh pr view "$PR" --repo "$REPO" --json headRefName \
+                   --jq '.headRefName' 2>/dev/null || echo "")
+          GAME="${GAME#clubhouse/}"
+          echo "game=$GAME" >> "$GITHUB_OUTPUT"
+          echo "Game: '${GAME:-<unknown>}'"
+
           # PER-GAME AUTOPILOT GATE. Only games that opted in (games.json entry
           # with "autopilot": true) get handled automatically — every other
           # game's chat is left for a subscribed session to handle manually.
@@ -363,8 +373,7 @@ jobs:
                workflows/, .github/scripts/ or .github/autopilot/ — the
                harness that bounds you and the checks that grade you — and
                edits there are dropped.
-               If you touch worker/worker.js, bump its `relay: "gc-rN"` marker.
-               If the ask is ambiguous or architecturally significant, do NOT
+                           If the ask is ambiguous or architecturally significant, do NOT
                guess — make no file changes and use your reply (step 4) to ask
                for the specific clarification you need.
 
@@ -435,8 +444,9 @@ jobs:
                WIRING IT IN: cut the sheet at load into per-frame canvases
                (games/dog-punk/app.js sliceSheet() is the pattern), keep the
                existing canvas fallback so the game still plays if an image is
-               missing, add the file to that game's sw.js precache list, and
-               drop what it replaces.
+               missing, and add the file to that game's sw.js precache list.
+               (Stale entries and the cache version are handled for you after
+               you finish.)
 
                The /generate response includes "remaining" — a limited number
                of generations per run. A whole row costs one, which is the
@@ -462,7 +472,6 @@ jobs:
                this change — describe what you built, don't say it's "still
                generating."
 
-          Never merge or close this PR — it is a permanently-open chat thread.
           PROMPT_HEADER
           {
             echo ""
@@ -490,6 +499,22 @@ jobs:
             echo "-----BEGIN HISTORY-----"
             printf '%s\n' "$HISTORY"
             echo "-----END HISTORY-----"
+
+            # THE RULES FOR THIS REQUEST, CHOSEN BY SCRIPT.
+            # The prompt used to ask the run to pick the right rules card and
+            # read only that one. Asking has three failure modes a script does
+            # not have — wrong card, all three cards, or none and work from
+            # memory — and runs here have done all three. select-context.js
+            # classifies the message and inlines the matching card(s), so there
+            # is no choice to get wrong and no file to open.
+            printf '%s' "$MESSAGE" > .autopilot/msg.txt
+            # No redirect: this whole block already writes to prompt.txt, so the
+            # script's stdout lands in the prompt and its stderr goes to the job
+            # log, which is exactly right. Redirecting here put the log line
+            # INSIDE the prompt.
+            node .github/autopilot/select-context.js .autopilot/msg.txt \
+              "games/${{ steps.ctx.outputs.game }}" \
+              || echo "(context selection failed — open the rules card yourself)"
 
             # TELL THE MODEL WHAT IS ALREADY BROKEN.
             #
@@ -753,8 +778,30 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A -- $CONTENT 2>/dev/null || true
 
+          # SCRIPTED, NOT ASKED FOR. Both of these were lines in the prompt
+          # telling the run to remember something. Remembering is what a script
+          # is for; the sw.js cache-name bump below has worked this way for a
+          # while and never once been forgotten.
+          if ! git diff --cached --quiet -- worker/worker.js; then
+            if perl -i -pe 's/(relay:\s*"gc-r)(\d+)(")/$1 . ($2 + 1) . $3/e' worker/worker.js \
+               && ! git diff --quiet -- worker/worker.js; then
+              git add worker/worker.js
+              echo "Bumped the relay marker (worker.js changed)."
+            else
+              echo "::warning::worker.js changed but the relay marker could not be bumped."
+            fi
+          fi
+          # A precache entry pointing at a file that no longer exists makes
+          # cache.addAll() 404, and the service worker then never installs at
+          # all — one renamed sprite kills a game's whole offline mode.
+          node .github/autopilot/sync-precache.js --fix || true
+          git add -A -- $CONTENT 2>/dev/null || true
+
+          # What actually changed, for check-reply.js to hold the reply to.
+          git diff --cached --name-only > .autopilot/changed.txt || true
           if git diff --cached --quiet; then
             echo "No file changes — reply-only, nothing to ship."
+            : > .autopilot/changed.txt
             exit 0
           fi
 
@@ -913,6 +960,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           body_file=".autopilot/reply.md"
+          # HOLD THE REPLY TO THE DIFF. The reply is written by the same model
+          # that did the work, from the same context — so when that context has
+          # been compacted or the job was half-finished, it describes work that
+          # did not happen, confidently. That has happened here repeatedly, and
+          # every time it was visible in one line of `git diff --name-only`.
+          # This appends a correction; it never blocks, because a reply that
+          # does not appear is the failure this whole system exists to remove.
+          node .github/autopilot/check-reply.js "$body_file" .autopilot/changed.txt || true
           if [ -s "$body_file" ]; then
             body=$(cat "$body_file")
           else
