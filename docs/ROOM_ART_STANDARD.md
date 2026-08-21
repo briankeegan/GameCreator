@@ -468,7 +468,33 @@ by breaking the room on purpose:
 - a prop pointing at art that doesn't exist — renders as nothing, silently;
 - flat ground cover carrying a footprint, or a standing prop missing one;
 - dead `floorPoly`/`obstacles` on a floor-plate room, contradicting the mask;
-- a walk mask that no longer matches its plate.
+- a walk mask that no longer matches its plate;
+- a tiled wall band (`behind`/`door` props sharing a Y, sized from their own
+  art's aspect, not stretched) that no longer reaches both frame edges — see
+  "Wall bands are tiled, and a re-cut can silently break their coverage"
+  below.
+
+**Wall bands are tiled, and a re-cut can silently break their coverage.** A
+back wall (or any backdrop spanning wider than one image) is tiled at its own
+native aspect rather than stretched — a single image asked to cover a span it
+wasn't drawn for reads as smeared brick and warped wallpaper. That means the
+number of copies needed depends on the art's own pixel aspect, which a re-cut
+can quietly change: the bedroom's wall was measured at 5 copies covering the
+frame, then the same art id got re-cut twice more for unrelated reasons, and
+nobody re-checked whether 5 copies still added up to the frame width. They
+didn't — a ~30px strip of bare floor showed through the wall on the right,
+above where anyone looks in `room.py check`'s overlays (they frame the room's
+furniture, not its bare edges) and outside what `sizecheck` catches (it diffs
+one prop's own numbers, not "do N tiled copies still sum to the frame"). A
+player noticed it in a live screenshot; `room.py verify` now catches it
+itself — it unions the on-screen span of every `behind`/`door` prop sharing a
+wall band's Y (several DIFFERENT arts can share one band, e.g. a wall tile
+either side of a generated arch or portal — the check unions all of them
+together, not one art's copies in isolation) and fails if that union stops
+reaching both frame edges or leaves a gap between pieces. If a re-cut ever
+changes a tiled backdrop's aspect again: recompute the copy count as native
+w at the declared h, spaced at `w - 4` so neighbours overlap ~4px to hide the
+seam, enough copies for the last one's right edge to clear the frame width.
 
 **`--mode side` is the step that finds things.** The assembled room next to the
 scene it came from shows in one look everything the numbers hide. All four of

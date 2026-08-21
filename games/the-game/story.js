@@ -329,18 +329,31 @@ window.NEWSEY_STORY = (function () {
         // across a floor is wider than it is deep.
         { art: "prop_bed_rug", x: 157, y: 134, h: 58, w: 195, flat: true },
         // The back wall, tiled at its OWN aspect ratio rather than stretched
-        // to cover fewer, wider panels — five copies at native proportions,
-        // each overlapping its neighbour by ~4px to hide the seam, instead of
-        // three copies stretched 1.75x wide. A single image asked to cover a
-        // span it wasn't drawn for reads as smeared brick and warped wallpaper
-        // — reported straight from a screenshot, and confirmed by checking the
-        // math: h=112 at this art's native aspect wants w=66, not the w=116
-        // this used to carry.
-        { art: "prop_bed_wall", x: -6,  y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
-        { art: "prop_bed_wall", x: 60,  y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
-        { art: "prop_bed_wall", x: 126, y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
-        { art: "prop_bed_wall", x: 192, y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
-        { art: "prop_bed_wall", x: 258, y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
+        // to cover fewer, wider panels — a single image asked to cover a span
+        // it wasn't drawn for reads as smeared brick and warped wallpaper,
+        // reported straight from a screenshot. EIGHT copies, not five: this
+        // art has been re-cut twice since the count was last checked against
+        // it (each cut is a fresh sheet, so its exact pixel aspect isn't
+        // guaranteed to hold), and its native aspect had quietly drifted to
+        // where five copies left a ~30px gap of bare floor showing through
+        // the wall on the right — invisible to every other check, since
+        // sizecheck only diffs one prop's own numbers and the side-by-side
+        // frames the room's furniture, not its bare edges. Caught by eye (a
+        // player asked "what happened with the wall"), then made permanent:
+        // room.py verify now unions every behind/door prop sharing a wall
+        // band's y and fails if the band stops reaching both frame edges —
+        // see backdrop_coverage_problems in room.py. Recompute the copy count
+        // the same way if this art is re-cut again: native w at h=112,
+        // spaced at (w - 4) so neighbours overlap ~4px, enough copies for the
+        // last one's right edge to clear 320.
+        { art: "prop_bed_wall", x: -6,  y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 38,  y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 82,  y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 126, y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 170, y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 214, y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 258, y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 302, y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
         // the balustrade along the near edge, unbroken. Re-cut alongside the
         // proportion-locked furniture regen, and its own native aspect
         // dropped from 12.1:1 to 7.6:1 (a taller, less impossibly-thin strip)

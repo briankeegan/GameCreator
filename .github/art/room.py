@@ -49,6 +49,13 @@ remember at 11pm. This is the front door:
     and wrong this way; see the "why automated matching doesn't work here"
     note in docs/ROOM_ART_STANDARD.md §5 for why this is a stored human
     reading rather than something verify derives itself.
+  * a tiled wall band (behind/door props sharing a Y, sized from their own
+    art aspect, never stretched) that no longer reaches both frame edges —
+    the bedroom's back wall was measured at 5 copies covering the frame,
+    then got re-cut twice more and silently stopped, leaving a strip of
+    floor showing through the wall above where the side-by-side or a
+    signed-off room ever looks (it frames the furniture, not the bare
+    edges). A player asked "what happened with the wall" before this did.
 """
 import sys, os, re, subprocess, argparse
 import numpy as np
@@ -93,6 +100,7 @@ def read_room(game_dir, room):
         return int(m.group(1)) if m else None
 
     props = []
+    widths = []
     # FIELD ORDER MUST NOT MATTER. This regex once stopped at the nested
     # base: {...}, so `behind: true` written after it was invisible to every
     # check and to the preview — the lab's wall panels silently kept sorting
@@ -104,9 +112,18 @@ def read_room(game_dir, room):
         bm = re.search(r"base:\s*\{([^}]*)\}", rest)
         if bm:
             base = {k: int(v) for k, v in re.findall(r"(\w+):\s*(-?\d+)", bm.group(1))}
+        # w is deliberately NOT part of this dict: room_digest hashes
+        # repr(props) to decide whether a room needs re-signoff, and adding a
+        # key here would retroactively invalidate every room's signoff, in
+        # every game, the moment this ships — not because any art or
+        # placement actually changed, just because the dict grew a field.
+        # backdrop_coverage_problems() below wants it, so it's threaded
+        # through separately as widths (a sibling list, not a dict key) —
+        # see there.
         props.append(dict(art=art, x=num("x", rest), y=num("y", rest), h=num("h", rest),
                           flat="flat: true" in rest, door="door: true" in rest,
                           behind="behind: true" in rest, base=base))
+        widths.append(num("w", rest))
 
     exits = []
     em = re.search(r"exits:\s*\[(.*?)\n      \]", block, re.S)
@@ -119,7 +136,7 @@ def read_room(game_dir, room):
                 exits.append({k: int(v) for k, v in re.findall(r"\b([xywh]):\s*(-?\d+)", t)[:4]})
 
     ps = re.search(r"playerStart:\s*\{\s*x:\s*(-?\d+),\s*y:\s*(-?\d+)", block)
-    return dict(props=props, exits=exits,
+    return dict(props=props, widths=widths, exits=exits,
                 playerStart=(int(ps.group(1)), int(ps.group(2))) if ps else None,
                 has_floorpoly="floorPoly:" in block,
                 has_obstacles=re.search(r"obstacles:\s*\[\s*\{", block) is not None)
@@ -520,6 +537,76 @@ def measured_size_problems(game_dir, margin=0.15):
     return problems
 
 
+# A `behind: true` (or `door: true`) prop, left to size itself from its own
+# aspect (no forced w — a stretched tile reads as smeared brick and warped
+# wallpaper, which is why that's the convention), silently stops covering the
+# frame the moment that art gets re-cut and its aspect changes: the bedroom's
+# back wall was measured at 5 copies covering the frame when its width was
+# w=66 at h=112, and nobody re-checked after two later re-cuts quietly
+# shrank that to w=48 — leaving a 40px strip on the right where the floor
+# showed through the wall band, above where a player would ever look at the
+# side-by-side (which frames the room's furniture, not its bare edges) and
+# invisible to sizecheck (it diffs one number against one measurement, not
+# "do these tiled copies still add up to the frame"). This mirrors
+# drawProp()'s own width formula exactly, so it can only be as wrong as the
+# game itself.
+#
+# Grouped by Y, not by art: a wall band is routinely built from several
+# DIFFERENT arts side by side (the lounge's is wall/wall/arch/portal/wall/
+# wall/wall — the arch and portal are doorways, not repeats of the wall
+# tile), and checking one art's own copies in isolation flags every one of
+# those gaps as a bug when another prop at the same Y already fills it. The
+# first version of this check did exactly that and was wrong about all
+# three non-bedroom rooms it flagged — union the whole band before judging
+# it, the same way a person looking at the picture would.
+def backdrop_coverage_problems(room, props, widths, art_dir):
+    problems = []
+    by_y = {}
+    for p, decl_w in zip(props, widths):
+        if (p["behind"] or p["door"]) and not p["flat"] and p["h"]:
+            by_y.setdefault(p["y"], []).append((p, decl_w))
+    for y, entries in by_y.items():
+        if len(entries) < 2:
+            continue    # a single wall-mounted piece (a shelf, a sconce) isn't
+                        # trying to span the frame — only a TILED band is
+        spans = []
+        for p, decl_w in entries:
+            w = decl_w
+            if not w:
+                path = os.path.join(art_dir, p["art"] + ".png")
+                if not os.path.exists(path):
+                    w = None    # reported elsewhere as missing art
+                else:
+                    iw, ih = Image.open(path).size
+                    w = p["h"] * iw / ih
+            if w:
+                spans.append((p["x"] - w / 2, p["x"] + w / 2))
+        if not spans:
+            continue
+        spans.sort()
+        # merge overlapping/touching spans into runs, tolerating the ~4px
+        # deliberate overlap this convention uses to hide seams
+        runs = [list(spans[0])]
+        for a, b in spans[1:]:
+            if a - runs[-1][1] <= 2:
+                runs[-1][1] = max(runs[-1][1], b)
+            else:
+                runs.append([a, b])
+        if runs[0][0] > 2:
+            problems.append("%s: the wall band at y=%d leaves %.0fpx of the "
+                            "frame's LEFT edge uncovered — floor shows through "
+                            "the wall there" % (room, y, runs[0][0]))
+        if runs[-1][1] < W - 2:
+            problems.append("%s: the wall band at y=%d leaves %.0fpx of the "
+                            "frame's RIGHT edge uncovered — floor shows through "
+                            "the wall there" % (room, y, W - runs[-1][1]))
+        for (a0, a1), (b0, _) in zip(runs, runs[1:]):
+            problems.append("%s: the wall band at y=%d has a %.0fpx gap — "
+                            "floor shows through the wall there"
+                            % (room, y, b0 - a1))
+    return problems
+
+
 def verify(game_dir):
     problems = []
     problems += style_drift(game_dir)
@@ -560,6 +647,8 @@ def verify(game_dir):
                     problems.append("%s: walk mask has %d px outside its floor plate — "
                                     "the art changed and the mask wasn't rebuilt"
                                     % (room, stray))
+
+        problems += backdrop_coverage_problems(room, r["props"], r["widths"], art)
 
         # dead collision data
         if r["has_floorpoly"]:
