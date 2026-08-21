@@ -398,8 +398,15 @@ jobs:
                a game's app.js is ~13k tokens, CLAUDE.md ~10k, each art
                standard 2-7k. Reading four of those leaves little room to
                think.
-                 * ONE standard, the one that matches the request — characters
-                   OR rooms OR tiled levels, not all three.
+                 * Read the RULES CARD, not the standard: every standard has a
+                   `<name>.rules.md` beside it holding the same rules with the
+                   history stripped out (CHARACTER_SHEETS.rules.md is ~2.5k
+                   tokens against the standard's ~7k). It is extracted from the
+                   standard by .github/art/rules_card.py and CI fails if the two
+                   disagree, so it is never out of date. Open the full standard
+                   only when a rule does not make sense and you need the reason.
+                 * ONE of them, the one that matches the request — characters OR
+                   rooms OR tiled levels, not all three.
                  * NEVER `Read` a whole big source file. Find the part you
                    need: `grep -n "sliceSheet\|HERO_ROW" games/<id>/app.js`
                    then `sed -n '240,300p'` on the lines it names. You are

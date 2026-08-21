@@ -121,6 +121,19 @@ jobs:
           [ "$status" = 0 ] || echo "Verify shipped sprite sheets" >> $RUNNER_TEMP/art-problems
           exit 0
 
+      # The short rules cards a Clubhouse run reads are EXTRACTED from the
+      # standards, never written alongside them — two copies of one truth is
+      # this repo's signature failure. This fails the build if a card no longer
+      # matches its standard, because a run obeying rules nobody agreed to any
+      # more is worse than a run reading the long version.
+      - name: Verify rules cards match their standards
+        run: |
+          status=0
+          for std in .github/art/CHARACTER_SHEETS.md docs/ROOM_ART_STANDARD.md docs/TILED_LEVEL_STANDARD.md; do
+            python3 .github/art/rules_card.py --check "$std" || status=1
+          done
+          exit $status
+
       # CHARACTER SPECS. The checks above look at one sheet at a time, and the
       # thing that shipped next was invisible to all of them: Beverly's mohawk
       # is 2.2% of her walking front row and 0.1% of her ATTACKING front row —
