@@ -159,21 +159,40 @@ because it trusts the wall's own declared y as correct.
 
 **So the wall's own line needs a real measurement too, not just something
 grounded to.** `room.py wallseam <game> <room> --strip x0,x1 [--strip x0,x1
-...]` (`wall_seam.py`) finds it properly: a wall-to-floor seam is a
-horizontal edge, so it shows up as a row-to-row jump in average brightness
-across a vertical strip with nothing but bare wall/floor in it. Give it at
-least two clean strips from different parts of the frame — if their answers
-disagree by more than a few px, at least one is crossing something that
-isn't bare wall/floor (furniture, a shadow, a rug edge) and needs re-picking;
-the tool says so rather than averaging two different measurements into a
-third wrong number. This is how the bedroom's real seam (y=109, not 102) was
-found: three clean strips agreed to the pixel, confirmed by drawing the line
-over the scene and looking, same as everything else measured this way. Not
-every room has strips with enough contrast for this to work — the lab's wall
-and floor are both similar grey-green stone, and the tool's own low-gradient
-warning is the correct outcome there, not a bug to work around; that room's
-`wallSeam` is honestly left unrecorded until a better method is found,
-rather than guessed just to silence a NOTE.
+...] [--method gradient|canny]` (`wall_seam.py`) finds it properly, and has
+two methods for two different kinds of wall — the same "pick the tool that
+fits the material" reasoning as `measure_blob.py`'s grabcut/canny choice.
+`--method gradient` (default): a wall-to-floor seam is a horizontal edge, so
+it shows up as a row-to-row jump in average brightness across a vertical
+strip with nothing but bare wall/floor in it — works when the wall and
+floor are different COLOURS (the bedroom's blue wallpaper over dark
+parquet). `--method canny`: some rooms have a wall and floor close to the
+same colour (the lab: both grey-green stone), so there's no colour jump to
+find — gradient returns a low, inconsistent signal there. Canny edge
+detection finds LOCAL edges instead — the wall's block coursing and the
+floor's flagstone joints are still visually distinct patterns at the same
+overall brightness, so the row where edge density changes still marks the
+seam. Either method: give it at least two clean strips from different parts
+of the frame — if their answers disagree by more than a few px, at least
+one is crossing something that isn't bare wall/floor (furniture, a shadow, a
+rug edge, the curve of an archway) and needs re-picking; the tool says so
+rather than averaging two different measurements into a third wrong number.
+
+Two real finds this way: the bedroom's seam (y=109, not the never-measured
+102 it had been placed at — three clean strips of wallpaper-over-parquet
+agreed to the pixel with `--method gradient`), and the lab's (y=89, not the
+also-never-measured 122 — `--method gradient` couldn't commit on the
+stone-on-stone wall, but `--method canny` at the door jamb's own base, well
+clear of the archway's curve, found a strong, consistent edge). Both
+confirmed by drawing the line over the scene and looking, same as everything
+else measured this way — and both corrections were bigger than "a few
+pixels off": the lab's wall was declared 33px lower than its real line,
+which is also why furniture that had been "regrounded" against the wrong
+wall value (the cabinet, moved from its correct scene reading of y=92 to a
+wrong y=107) needed un-fixing once the real line was known. A wrong
+reference doesn't just mismeasure the thing measured against it — it can
+make an already-correct number look wrong and get "fixed" into an actual
+error.
 
 Record the answer as `wallSeam` in the room's `rooms/<room>.json` (see the
 bedroom's for the exact command used). Two checks read it, in `room.py

@@ -817,9 +817,18 @@ window.NEWSEY_STORY = (function () {
         // mismatched rectangle was the second bug. Given the exact same
         // box as the panel it replaces (x/y/h/w identical to prop_lab_plain)
         // instead, its own background lines up with theirs by construction.
-        { art: "prop_lab_plain", x: 52,  y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
-        { art: "prop_lab_shelf", x: 160, y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
-        { art: "prop_lab_plain", x: 268, y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
+        // y=89, not the old 122: room.py wallseam --method canny at this
+        // room's door jamb (stone-on-stone floor/wall is too low-contrast
+        // for the default gradient method — the same reason grabcut needed
+        // canny as a fallback for the trunk) found the jamb's own base at
+        // y=89, a strong, visually-confirmed edge. 122 was itself a guess
+        // that had never been measured — the bench and cabinet's "grounded
+        // 15px short of the wall" NOTEs earlier were checked against that
+        // same wrong number, which is exactly why they're gone now: both
+        // were already correct against the REAL wall line the whole time.
+        { art: "prop_lab_plain", x: 52,  y: 89, h: 75, w: 114, behind: true, base: { w: 114, h: 8 } },
+        { art: "prop_lab_shelf", x: 160, y: 89, h: 75, w: 114, behind: true, base: { w: 114, h: 8 } },
+        { art: "prop_lab_plain", x: 268, y: 89, h: 75, w: 114, behind: true, base: { w: 114, h: 8 } },
         // the way west, to the Lounge. door: true — it IS the doorway, so it
         // carries no footprint and its trigger sits on it.
         // West doorway is a breach, not generated art — see the note by
@@ -836,20 +845,14 @@ window.NEWSEY_STORY = (function () {
         // either), so these are `room.py grid` manual readings, cross-
         // checked at 4x zoom against three separate crops.
         { art: "prop_lab_bench",   x: 157, y: 107, h: 67, w: 134, base: { w: 128, h: 10 } },
-        // The cabinet's own art stops abruptly at y=92 in the scene with
-        // bare wall drawn below it, no legs, no floor contact — a real
-        // inconsistency in the approved scene itself (every other floor-
-        // standing piece in this room, the bench included, sits on the
-        // same y=107 floor line the wall panels use). Read literally, its
-        // ground point sits mid-wall and reads as floating in the
-        // assembled room — reported directly off a live screenshot, the
-        // same way the bedroom's furniture sizing was. A deliberate,
-        // documented departure from the scene's own numbers, same as the
-        // Lounge's tables/bar being nudged off the scene's positions for
-        // door clearance: grounded to y=107 to match the bench, h taken
-        // up to 94 to keep its top (where the jars sit) at the same
-        // height, w scaled with it at the art's native aspect.
-        { art: "prop_lab_cabinet", x: 269, y: 107, h: 94, w: 56,  base: { w: 50, h: 10 } },
+        // Reverted a departure that turned out to be a mistake, not a fix:
+        // this was moved to y=107 (from its scene-measured y=92) on the
+        // theory it was "floating short of the wall" — but that compared
+        // it against the wall's OLD, never-actually-measured y=122. Now
+        // that the wall itself is properly measured at y=89 (see above),
+        // the cabinet's original scene reading (y=92) is 3px forward of
+        // the real wall line — already correct, nothing to ground it to.
+        { art: "prop_lab_cabinet", x: 269, y: 92, h: 79, w: 62, base: { w: 56, h: 10 } },
         { art: "prop_lab_cart",    x: 269, y: 168, h: 64, w: 56,  base: { rx: 24, ry: 6 } }
       ],
       exits: [

@@ -18,6 +18,13 @@ remember at 11pm. This is the front door:
                                     floor — the baseline every wall panel
                                     and every prop against it must share —
                                     instead of reading it off a crop by eye
+  room.py tilescale <game> <room> --row y0,y1 [--against-plate]
+                                    COUNT how many floor tiles span the
+                                    room's width, and compare the scene's
+                                    own count against the shipped plate's —
+                                    a tile SCALE mismatch (plate 2x too
+                                    coarse) is a countable fact, not an
+                                    eyeball call
   room.py sizecheck <game> [room]   diff story.js against a room's measured:
                                     block from rooms/<room>.json
   room.py verify    <game>          the gate: every mistake we actually made
@@ -939,7 +946,28 @@ def main():
                    help="x0,x1 — a vertical strip with nothing but bare "
                         "wall/floor in it. Repeatable; use at least 2.")
     p.add_argument("--search", default="0,199")
+    p.add_argument("--method", choices=["gradient", "canny"], default="gradient",
+                   help="gradient: colour jump — use when wall and floor "
+                        "are different colours. canny: edge density — use "
+                        "when they're close to the same colour (e.g. the "
+                        "lab's stone-on-stone) and gradient won't commit.")
     p.add_argument("--out", help="default /tmp/wallseam-<room>.png")
+
+    p = sub.add_parser("tilescale", help="count how many floor tiles span "
+                                         "a room's width, and compare the "
+                                         "scene's own count against the "
+                                         "shipped plate's — a floor's tile "
+                                         "SCALE is a real countable fact, "
+                                         "not something to eyeball. See "
+                                         "tile_scale.py")
+    p.add_argument("game"); p.add_argument("room")
+    p.add_argument("--row", required=True, help="y0,y1 — a clean strip of "
+                   "floor, no furniture, no rug")
+    p.add_argument("--against-plate", action="store_true",
+                   help="also count the shipped art/bg-<room>.png and "
+                        "print the ratio — the exact target count to feed "
+                        "back into a regeneration prompt")
+    p.add_argument("--out", help="default /tmp/tilescale-<room>.png")
 
     p = sub.add_parser("sizecheck", help="compare story.js's declared prop "
                                          "sizes/positions against a room's "
@@ -1294,7 +1322,7 @@ def main():
         out = a.out or ("/tmp/wallseam-%s.png" % a.room)
         cmd = ["python3", os.path.join(HERE, "wall_seam.py"),
                os.path.join(game, "art-src", "%s_scene.png" % a.room),
-               "--search", a.search, "--out", out]
+               "--search", a.search, "--method", a.method, "--out", out]
         for s in a.strip:
             cmd += ["--strip", s]
         rc = sh(*cmd)
@@ -1304,6 +1332,22 @@ def main():
               "grounding a wall panel or any prop standing against it to "
               "it. Every wall panel and every flush-mounted prop in the "
               "room should share this Y." % out)
+        return 0
+
+    if a.cmd == "tilescale":
+        out = a.out or ("/tmp/tilescale-%s.png" % a.room)
+        cmd = ["python3", os.path.join(HERE, "tile_scale.py"),
+               os.path.join(game, "art-src", "%s_scene.png" % a.room),
+               "--row", a.row, "--out", out]
+        if a.against_plate:
+            cmd += ["--against", os.path.join(game, "art", "bg-%s.png" % a.room)]
+        rc = sh(*cmd)
+        if rc:
+            return rc
+        print("\nLOOK at %s before trusting the count. If regenerating the "
+              "plate, feed the scene's own count back as the exact target "
+              "('roughly N stones span the full width'), not an adjective."
+              % out)
         return 0
 
     if a.cmd == "sizecheck":
