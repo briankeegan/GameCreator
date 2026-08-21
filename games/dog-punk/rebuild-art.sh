@@ -23,10 +23,22 @@ echo "== the hero's walk sheet =="
 python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_sheet.png --row games/dog-punk/art-src/hero_front_raw.png --row games/dog-punk/art-src/hero_side_raw.png --row games/dog-punk/art-src/walk_back_v13_raw.png --build-steps 0,2
 
 echo "== clean the attack raws (see note below) =="
-python3 games/dog-punk/art-src/clean_raw.py games/dog-punk/art-src/hero_atk_front_raw.png games/dog-punk/art-src/hero_atk_side_raw.png games/dog-punk/art-src/hero_atk_back_raw.png
+# NAMING FIX: this used to clean hero_atk_<view>_raw.png (the OLD naming, from
+# before generate_row.py/generate-walkrow.yml standardised on
+# hero_<view>_atk_raw.png), while the sheet below was already built from the
+# NEW-named files. So this step ran, printed "wrote ...", and its output was
+# never read by anything — the actual attack raws never got the ground-shadow
+# cleanup this step exists for. The stale old-named files (and their dead
+# _clean outputs) also confused generate_row.py's style-ref auto-picker, which
+# matches ANY hero_*_raw.png: it compared a freshly regenerated side row
+# against hero_atk_back_raw.png (the unused old file) instead of the real
+# hero_back_atk_raw.png, and rejected good art for not matching art nothing
+# ships from. Old-named duplicates deleted; this now cleans and builds from
+# the same files.
+python3 games/dog-punk/art-src/clean_raw.py games/dog-punk/art-src/hero_front_atk_raw.png games/dog-punk/art-src/hero_side_atk_raw.png games/dog-punk/art-src/hero_back_atk_raw.png
 
 echo "== the hero's attack sheet =="
-python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_attack_sheet.png --row games/dog-punk/art-src/hero_front_atk_raw.png --row games/dog-punk/art-src/hero_side_atk_raw.png --row games/dog-punk/art-src/hero_back_atk_raw.png --blobs
+python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_attack_sheet.png --row games/dog-punk/art-src/hero_front_atk_raw_clean.png --row games/dog-punk/art-src/hero_side_atk_raw_clean.png --row games/dog-punk/art-src/hero_back_atk_raw_clean.png --blobs
 
 echo "== the rats' sheet =="
 python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/rat_sheet.png --row games/dog-punk/art-src/rat_front_quad_raw.png@104 --row games/dog-punk/art-src/rat_sheet_raw3.png@88 --row games/dog-punk/art-src/rat_back_quad_raw.png@100 --blobs

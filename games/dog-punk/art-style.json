@@ -89,7 +89,8 @@
         },
         "muzzle": {
           "base": "#f4f0e6",
-          "appears": "front and side views"
+          "appears": "front and side views",
+          "note": "A SMALL snout patch only — proportionate to a normal dog muzzle, no more than about a fifth of the head's area. The side-view attack row drew this as a large pale wedge covering most of the lower face, which measured (Python/PIL, muzzle-colour pixels as % of the sprite) at 2.7-2.8% of total sprite area versus 0% on the same view's walk row — not an open-mouth expression, an oversized muzzle."
         },
         "mohawk": {
           "base": "#ff5c9a",
