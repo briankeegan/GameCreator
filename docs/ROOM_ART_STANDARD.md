@@ -144,23 +144,56 @@ off the scene" can still be wrong TOGETHER, the same way the wall's own
 tiled copies have to agree with EACH OTHER (§ "Wall bands are tiled…") and
 not just with the frame edges.
 
-This is exactly what happened in the bedroom: the mirror and the nightstand
-were each measured off the scene independently and landed a few pixels short
-of the wall panels' own floor line — each individually plausible, both
-visibly floating once assembled, on the SAME wall, next to furniture (the
-bed) that WAS grounded correctly. Fixed by re-measuring the wall's own line
-first and grounding both to it, not by re-measuring each prop again in
-isolation.
+This is exactly what happened in the bedroom, TWICE, before it was actually
+fixed. First pass: the mirror and the nightstand were each measured off the
+scene independently and landed a few pixels short of the wall panels' own
+declared floor line (y=102) — each individually plausible, both visibly
+floating once assembled. Grounded to that line and re-signed-off. Second
+pass: the whole room still read as "a little too high" on a live screenshot
+— because y=102 was ITSELF wrong. It had been read by eye off a brightened
+crop of the scene, which is a guess with a picture next to it, not a
+measurement. The wall, the mirror and the nightstand were all consistently
+grounded to the SAME wrong number, so nothing about them disagreed with each
+other — the exact failure mode `grounding_problems()` (below) cannot catch,
+because it trusts the wall's own declared y as correct.
 
-`room.py verify` now watches for this automatically — `grounding_problems()`
-prints a NOTE for any non-flat, non-`behind` prop whose `y` sits meaningfully
-short of its room's wall line, naming the gap in pixels. It can only ever be
-a NOTE: plenty of furniture legitimately stands forward of the wall on
-purpose (a workbench, a table), and nothing in the numbers alone can tell
-"flush against the wall, floating" from "forward of it on purpose" — a human
-still has to look at a render and decide. But the prompt to look is now
-automatic, on every room, every push, instead of depending on someone
-noticing a strip of wall in a screenshot.
+**So the wall's own line needs a real measurement too, not just something
+grounded to.** `room.py wallseam <game> <room> --strip x0,x1 [--strip x0,x1
+...]` (`wall_seam.py`) finds it properly: a wall-to-floor seam is a
+horizontal edge, so it shows up as a row-to-row jump in average brightness
+across a vertical strip with nothing but bare wall/floor in it. Give it at
+least two clean strips from different parts of the frame — if their answers
+disagree by more than a few px, at least one is crossing something that
+isn't bare wall/floor (furniture, a shadow, a rug edge) and needs re-picking;
+the tool says so rather than averaging two different measurements into a
+third wrong number. This is how the bedroom's real seam (y=109, not 102) was
+found: three clean strips agreed to the pixel, confirmed by drawing the line
+over the scene and looking, same as everything else measured this way. Not
+every room has strips with enough contrast for this to work — the lab's wall
+and floor are both similar grey-green stone, and the tool's own low-gradient
+warning is the correct outcome there, not a bug to work around; that room's
+`wallSeam` is honestly left unrecorded until a better method is found,
+rather than guessed just to silence a NOTE.
+
+Record the answer as `wallSeam` in the room's `rooms/<room>.json` (see the
+bedroom's for the exact command used). Two checks read it, in `room.py
+verify`:
+
+- `wall_seam_problems()` — a real FAIL, not a NOTE, if the wall band's own
+  declared y in story.js ever drifts from the recorded `wallSeam` by more
+  than a few px. This is one fact with a right answer, the same as
+  `measured:`/`sizecheck` for a prop's own numbers, so it holds like one.
+- `grounding_problems()` — prints a NOTE for any non-flat, non-`behind` prop
+  whose `y` sits meaningfully short of the wall line (the recorded
+  `wallSeam` if the room has one; the wall band's own current y, with a
+  warning that it's unverified, if it doesn't). This one can only ever be a
+  NOTE: plenty of furniture legitimately stands forward of the wall on
+  purpose (a workbench, a table — the lab's bench reads completely fine
+  despite failing this exact check), and nothing in the numbers alone can
+  tell "flush against the wall, floating" from "forward of it on purpose" —
+  a human still has to look at a render and decide. But the prompt to look
+  is automatic now, on every room, every push, instead of depending on
+  someone noticing a strip of wall in a screenshot.
 
 ### Use the numbers from pass 1
 
@@ -509,7 +542,13 @@ by breaking the room on purpose:
   below. Below 5x it prints a NOTE instead of failing: a fuzzy check warns,
   it doesn't fail the build (same rule as `verify_sheet.py`'s neutral-frame
   threshold) — several props in this game sit at 2-4x stretch and read
-  completely fine, so the fail line only trips for the unambiguous case.
+  completely fine, so the fail line only trips for the unambiguous case;
+- a room's wall band declared at a Y that doesn't match its recorded
+  `wallSeam` — see "Measure the wall before you measure anything that
+  stands against it" above. A prop standing meaningfully short of that
+  line gets a NOTE, not a FAIL, for the same reason as the stretch check:
+  some furniture is forward of the wall on purpose, and only a human
+  looking at a render can tell that apart from actually floating.
 
 **Wall bands are tiled, and a re-cut can silently break their coverage.** A
 back wall (or any backdrop spanning wider than one image) is tiled at its own

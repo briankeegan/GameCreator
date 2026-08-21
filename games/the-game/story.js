@@ -346,14 +346,14 @@ window.NEWSEY_STORY = (function () {
         // the same way if this art is re-cut again: native w at h=112,
         // spaced at (w - 4) so neighbours overlap ~4px, enough copies for the
         // last one's right edge to clear 320.
-        { art: "prop_bed_wall", x: -6,  y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
-        { art: "prop_bed_wall", x: 38,  y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
-        { art: "prop_bed_wall", x: 82,  y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
-        { art: "prop_bed_wall", x: 126, y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
-        { art: "prop_bed_wall", x: 170, y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
-        { art: "prop_bed_wall", x: 214, y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
-        { art: "prop_bed_wall", x: 258, y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
-        { art: "prop_bed_wall", x: 302, y: 102, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: -6,  y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 38,  y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 82,  y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 126, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 170, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 214, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 258, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 302, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
         // the balustrade along the near edge, unbroken. Re-cut alongside the
         // proportion-locked furniture regen, and its own native aspect
         // dropped from 12.1:1 to 7.6:1 (a taller, less impossibly-thin strip)
@@ -383,15 +383,22 @@ window.NEWSEY_STORY = (function () {
         // metal bands give canny's edge detector plenty to find. See
         // CLAUDE.md's "before hand-rolling an algorithm" note for why these
         // two, not a hand-rolled flood fill.
-        // Both grounded to y=102, the wall's own measured floor line (same
-        // one the wall panels sit on) — their earlier y (93, 88) was each a
-        // few px short of it, same bug as the lab's cabinet: a real gap of
-        // wainscot visible below both in a live screenshot. h taken up to
-        // keep each one's top where it was; w recomputed to match (mirror
-        // keeps its locked 1:2 ratio off the new h; the nightstand has none
-        // declared, so it still follows the art's own aspect automatically).
-        { art: "prop_bed_mirror", x: 53,  y: 102, h: 92, w: 46, base: { w: 40, h: 8 } },
-        { art: "prop_bed_nightstand", x: 96, y: 102, h: 54, base: { w: 20, h: 8 } },
+        // Both grounded to y=110, the wall's own floor line — and that
+        // number itself was wrong once already: first read by eye off a
+        // brightened crop as ~102, which was still visibly high on a
+        // render (reported directly — "the bed's too high, everything's a
+        // little too high"). Re-measured properly instead of re-guessing:
+        // per-row gradient across three clean vertical strips of the scene
+        // (no furniture in the way) all agree the wainscot-to-parquet edge
+        // is at y=109-110, not 102 — confirmed by drawing both lines over
+        // the scene and looking, the same "look before trusting it" rule
+        // as everything else measured this way. The wall panels above and
+        // both of these move together off the corrected line; h taken up
+        // on each to keep its top where it was, w recomputed to match
+        // (mirror keeps its locked 1:2 ratio off the new h; the nightstand
+        // has none declared, so it still follows the art's own aspect).
+        { art: "prop_bed_mirror", x: 53,  y: 109, h: 99, w: 50, base: { w: 40, h: 8 } },
+        { art: "prop_bed_nightstand", x: 96, y: 109, h: 61, base: { w: 20, h: 8 } },
         { art: "prop_bed_bed",   x: 162, y: 113, h: 99, w: 79, base: { w: 72, h: 14 } },
         { art: "prop_bed_trunk", x: 163, y: 153, h: 32, w: 53, base: { w: 48, h: 9 } },
       ],

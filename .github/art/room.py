@@ -13,6 +13,11 @@ remember at 11pm. This is the front door:
                                     MEASURE a prop's precise bbox off the
                                     composed scene with CV (grabcut or
                                     canny), instead of reading it by eye
+  room.py wallseam  <game> <room> --strip x0,x1 [--strip x0,x1 ...]
+                                    MEASURE where the back wall meets the
+                                    floor — the baseline every wall panel
+                                    and every prop against it must share —
+                                    instead of reading it off a crop by eye
   room.py sizecheck <game> [room]   diff story.js against a room's measured:
                                     block from rooms/<room>.json
   room.py verify    <game>          the gate: every mistake we actually made
@@ -703,13 +708,57 @@ def aspect_distortion_problems(room, props, widths, art_dir):
 # alone can tell "flush against the wall, floating" from "deliberately
 # forward of it, fine". A human has to look at each one.
 GROUND_NOTE = 3    # px of slack before even a NOTE — measurement isn't pixel-exact
+WALL_SEAM_FAIL = 3  # px the wall band may drift from its recorded wallSeam before failing
 
 
-def grounding_problems(room, props):
+# The gap this closes: grounding_problems() (below) checks every OTHER prop
+# against the wall band's y — but until this existed, it took that y from
+# whatever story.js currently says, which means it could never catch the
+# wall band ITSELF being wrong. That's exactly what happened: the wall was
+# placed at y=102 by eye, everything grounded to it inherited the error,
+# and a check that trusts story.js's own wall y as ground truth would have
+# called that consistent-and-wrong state correct forever.
+#
+# So this is the SAME discipline as `measured:` + `sizecheck` for props,
+# applied to the wall itself: `wall_seam.py` (a real tool — row-gradient
+# across clean strips of the scene, not a guess) finds the true seam ONCE,
+# a human looks at the overlay and records it as `wallSeam` in the room's
+# spec, and this is what holds every future edit to that recorded number
+# forever — a real FAIL, not a NOTE, because "does the wall band's own y
+# match what was actually measured" is a single fact with a right answer,
+# not a judgement call the way "is this prop supposed to be forward of the
+# wall" is.
+def wall_seam_problems(room, props, spec):
+    want = (spec or {}).get("wallSeam")
+    if want is None:
+        return []    # never measured — nothing to hold this room to yet
     wall_ys = [p["y"] for p in props if (p["behind"] or p["door"]) and not p["flat"] and p["y"] is not None]
     if not wall_ys:
         return []
-    wall_y = max(set(wall_ys), key=wall_ys.count)    # the wall band's own floor line
+    bad = sorted(set(y for y in wall_ys if abs(y - want) > WALL_SEAM_FAIL))
+    if not bad:
+        return []
+    return ["%s: the wall band is declared at y=%s but its recorded "
+           "wallSeam (room.py wallseam, looked at and recorded once) is "
+           "%d — re-measure with room.py wallseam if the scene changed, or "
+           "fix the wall panels' y if they drifted"
+           % (room, bad, want)]
+
+
+def grounding_problems(room, props, spec):
+    want = (spec or {}).get("wallSeam")
+    wall_ys = [p["y"] for p in props if (p["behind"] or p["door"]) and not p["flat"] and p["y"] is not None]
+    if want is not None:
+        wall_y = want
+    elif wall_ys:
+        wall_y = max(set(wall_ys), key=wall_ys.count)    # unverified fallback — see NOTE below
+        print("NOTE %s: no wallSeam recorded in rooms/%s.json — grounding is "
+              "being checked against the wall band's OWN declared y (%d), "
+              "which is exactly what let it drift undetected once already. "
+              "Run `room.py wallseam` and record the answer."
+              % (room, room, wall_y), file=sys.stderr)
+    else:
+        return []
     problems = []
     for p in props:
         if p["flat"] or p["behind"] or p["door"] or not p["base"]:
@@ -768,9 +817,11 @@ def verify(game_dir):
                                     "the art changed and the mask wasn't rebuilt"
                                     % (room, stray))
 
+        spec = load_spec(game_dir, room)
         problems += backdrop_coverage_problems(room, r["props"], r["widths"], art)
         problems += aspect_distortion_problems(room, r["props"], r["widths"], art)
-        problems += grounding_problems(room, r["props"])
+        problems += wall_seam_problems(room, r["props"], spec)
+        problems += grounding_problems(room, r["props"], spec)
 
         # dead collision data
         if r["has_floorpoly"]:
@@ -875,6 +926,20 @@ def main():
     p.add_argument("--top", type=int, default=3)
     p.add_argument("--pick", type=int, default=0)
     p.add_argument("--out", help="default /tmp/measure-<room>-<name>.png")
+
+    p = sub.add_parser("wallseam", help="find the Y where a room's back "
+                                        "wall meets its floor — the "
+                                        "baseline every wall panel and "
+                                        "every prop standing against it "
+                                        "has to share — instead of "
+                                        "reading it by eye off a crop. "
+                                        "See wall_seam.py")
+    p.add_argument("game"); p.add_argument("room")
+    p.add_argument("--strip", action="append", required=True,
+                   help="x0,x1 — a vertical strip with nothing but bare "
+                        "wall/floor in it. Repeatable; use at least 2.")
+    p.add_argument("--search", default="0,199")
+    p.add_argument("--out", help="default /tmp/wallseam-<room>.png")
 
     p = sub.add_parser("sizecheck", help="compare story.js's declared prop "
                                          "sizes/positions against a room's "
@@ -1223,6 +1288,22 @@ def main():
               "into rooms/%s.json's measured: block. If it's wrong, try the "
               "other --method, a different --rect, or (canny) a different "
               "--pick." % (a.name, out, a.room))
+        return 0
+
+    if a.cmd == "wallseam":
+        out = a.out or ("/tmp/wallseam-%s.png" % a.room)
+        cmd = ["python3", os.path.join(HERE, "wall_seam.py"),
+               os.path.join(game, "art-src", "%s_scene.png" % a.room),
+               "--search", a.search, "--out", out]
+        for s in a.strip:
+            cmd += ["--strip", s]
+        rc = sh(*cmd)
+        if rc:
+            return rc
+        print("\nThat's the wall's own floor line — LOOK at %s before "
+              "grounding a wall panel or any prop standing against it to "
+              "it. Every wall panel and every flush-mounted prop in the "
+              "room should share this Y." % out)
         return 0
 
     if a.cmd == "sizecheck":
