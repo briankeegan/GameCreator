@@ -318,9 +318,9 @@ window.NEWSEY_STORY = (function () {
         // w overlaps its neighbour by a few px: the panel art carries a dark
         // edge, and butted exactly they draw as three visible seams down the
         // back wall.
-        { art: "prop_bed_wall", x: 53,  y: 102, h: 112, w: 116, base: { w: 112, h: 8 } },
-        { art: "prop_bed_wall", x: 160, y: 102, h: 112, w: 116, base: { w: 112, h: 8 } },
-        { art: "prop_bed_wall", x: 267, y: 102, h: 112, w: 116, base: { w: 112, h: 8 } },
+        { art: "prop_bed_wall", x: 53,  y: 102, h: 112, w: 116, behind: true, base: { w: 112, h: 8 } },
+        { art: "prop_bed_wall", x: 160, y: 102, h: 112, w: 116, behind: true, base: { w: 112, h: 8 } },
+        { art: "prop_bed_wall", x: 267, y: 102, h: 112, w: 116, behind: true, base: { w: 112, h: 8 } },
         // the balustrade along the near edge, in two runs with the way out
         // between them (x 130-190)
         { art: "prop_bed_rail", x: 64,  y: 199, h: 30, w: 128, base: { w: 128, h: 10 } },
@@ -333,12 +333,12 @@ window.NEWSEY_STORY = (function () {
         // own right-hand post), which is also how the scene composes them.
         { art: "prop_bed_bed", x: 226, y: 134, h: 118, w: 134, base: { w: 122, h: 18 } },
         // the way east, to the Lounge
-        { art: "prop_door_east", x: 308, y: 150, h: 96, w: 26, door: true, behind: true }
+        { art: "prop_door_east", x: 308, y: 192, h: 116, w: 28, door: true, behind: true }
       ],
       // THE LOUNGE IS EAST OF THIS ROOM, so the way out is a door in the EAST
       // wall: you walk right out of here and come in the Lounge's west door.
       exits: [
-        { x: 292, y: 108, w: 24, h: 42, to: "lounge", link: "westDoor" }
+        { x: 290, y: 120, w: 28, h: 70, to: "lounge", link: "westDoor" }
       ],
       npcs: [
         {
@@ -408,36 +408,39 @@ window.NEWSEY_STORY = (function () {
         // drawn edge-on and turned in toward the room. door: true, so they
         // carry no footprint and their trigger sits ON them — you walk into
         // the drawn doorway to use it.
-        { art: "prop_door_west", x: 12,  y: 150, h: 96, w: 26, door: true, behind: true },
-        { art: "prop_door_east", x: 308, y: 150, h: 96, w: 26, door: true, behind: true },
+        { art: "prop_door_west", x: 12, y: 192, h: 116, w: 28, door: true, behind: true },
+        { art: "prop_door_east", x: 308, y: 192, h: 116, w: 28, door: true, behind: true },
         // --- the back wall, left to right, with the arch north to the library
         // and the portal north to the arena.
         // The portal sits LEFT of the bar. Right of it, the bar's bottle shelf
         // is drawn in front of the wall and swallowed it whole.
-        { art: "prop_wall_plain",  x: 34,  y: 70, h: 82, w: 64, base: { w: 64, h: 8 } },
-        { art: "prop_wall_arch",   x: 98,  y: 70, h: 82, w: 62, door: true },
-        { art: "prop_wall_portal", x: 160, y: 70, h: 82, w: 62, door: true },
-        { art: "prop_wall_plain",  x: 222, y: 70, h: 82, w: 64, base: { w: 64, h: 8 } },
-        { art: "prop_wall_plain",  x: 286, y: 70, h: 82, w: 64, base: { w: 64, h: 8 } },
+        { art: "prop_wall_plain",  x: 34,  y: 70, h: 82, w: 64, behind: true, base: { w: 64, h: 8 } },
+        { art: "prop_wall_arch",   x: 98,  y: 70, h: 82, w: 62, door: true, behind: true },
+        { art: "prop_wall_portal", x: 160, y: 70, h: 82, w: 62, door: true, behind: true },
+        { art: "prop_wall_plain",  x: 222, y: 70, h: 82, w: 64, behind: true, base: { w: 64, h: 8 } },
+        { art: "prop_wall_plain",  x: 286, y: 70, h: 82, w: 64, behind: true, base: { w: 64, h: 8 } },
         // --- the bar, along the right, where the plot puts it
         { art: "prop_backbar", x: 244, y: 80,  h: 54, w: 84, base: { w: 84, h: 8 } },
         // short of the east doorway: the bar used to run into it, and a
         // footprint on a doorway is a door you cannot reach.
         { art: "prop_bar",     x: 238, y: 106, h: 44, w: 90, base: { w: 90, h: 16 } },
         // --- tables down the left
-        { art: "prop_table", x: 46, y: 116, h: 30, base: { rx: 11, ry: 5 } },
-        { art: "prop_stool", x: 68, y: 120, h: 20, base: { rx: 6,  ry: 3 } },
-        { art: "prop_table", x: 42, y: 176, h: 30, base: { rx: 11, ry: 5 } },
-        { art: "prop_stool", x: 66, y: 180, h: 20, base: { rx: 6,  ry: 3 } }
+        // Clear of the WEST DOORWAY's approach. Placed against the left edge
+        // they fenced it off: the walk test could reach x 31 and no further,
+        // so the door could be seen and never used.
+        { art: "prop_table", x: 74, y: 120, h: 30, base: { rx: 11, ry: 5 } },
+        { art: "prop_stool", x: 96, y: 124, h: 20, base: { rx: 6,  ry: 3 } },
+        { art: "prop_table", x: 70, y: 178, h: 30, base: { rx: 11, ry: 5 } },
+        { art: "prop_stool", x: 92, y: 182, h: 20, base: { rx: 6,  ry: 3 } }
       ],
       // Each trigger sits ON its own drawn doorway and is as tall as the
       // player, so crossing means standing in the opening rather than on a
       // rectangle of floor near it.
       exits: [
-        { x: 4,   y: 108, w: 24, h: 42, to: "bedroom", link: "westDoor" },
+        { x: 2,   y: 120, w: 28, h: 70, to: "bedroom", link: "westDoor" },
         { x: 78,  y: 44,  w: 40, h: 26, to: "library", link: "northArch" },
         { x: 140, y: 44,  w: 40, h: 26, to: "arena",   link: "portal" },
-        { x: 292, y: 108, w: 24, h: 42, to: "lab",     link: "eastDoor" }
+        { x: 290, y: 120, w: 28, h: 70, to: "lab",     link: "eastDoor" }
       ],
       npcs: [
         {
@@ -695,21 +698,25 @@ window.NEWSEY_STORY = (function () {
         // h 88, not 120: measured off the scene, where the shelf sits high on
         // the wall and the jars are about 26px tall. At the height they were
         // first placed they read as barrels.
-        { art: "prop_lab_wall", x: 54,  y: 128, h: 88, w: 112, base: { w: 112, h: 8 } },
-        { art: "prop_lab_wall", x: 162, y: 128, h: 88, w: 112, base: { w: 112, h: 8 } },
-        { art: "prop_lab_wall", x: 270, y: 128, h: 88, w: 112, base: { w: 112, h: 8 } },
+        // The back wall: plain stone, with the pinned chart on the left panel
+        // and the jar shelf hung on the middle one — measured off the scene,
+        // which has ONE shelf with bare stone either side of it, not three.
+        { art: "prop_lab_chart", x: 52,  y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
+        { art: "prop_lab_plain", x: 160, y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
+        { art: "prop_lab_plain", x: 268, y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
+        { art: "prop_lab_shelf", x: 158, y: 92, h: 52, w: 124, behind: true },
         // the way west, to the Lounge. door: true — it IS the doorway, so it
         // carries no footprint and its trigger sits on it.
-        { art: "prop_lab_door", x: 18, y: 150, h: 80, w: 28, door: true, behind: true },
-        { art: "prop_lab_bench",   x: 162, y: 136, h: 40, w: 124, base: { w: 120, h: 10 } },
-        { art: "prop_lab_cabinet", x: 252, y: 132, h: 58, base: { w: 34, h: 10 } },
-        { art: "prop_lab_cart",    x: 74,  y: 166, h: 40, base: { rx: 10, ry: 4 } }
+        { art: "prop_lab_door", x: 18, y: 192, h: 116, w: 28, door: true, behind: true },
+        { art: "prop_lab_bench",   x: 166, y: 138, h: 44, w: 122, base: { w: 118, h: 10 } },
+        { art: "prop_lab_cabinet", x: 268, y: 134, h: 60, base: { w: 32, h: 10 } },
+        { art: "prop_lab_cart",    x: 254, y: 172, h: 46, base: { rx: 11, ry: 4 } }
       ],
       exits: [
         // y 124, clear of the wall panels' footprint: the leftmost panel
         // blocks y 112-120 across the room, and a trigger overlapping it is a
         // door you cannot reach.
-        { x: 6, y: 136, w: 28, h: 36, to: "lounge", link: "eastDoor" }
+        { x: 2, y: 136, w: 28, h: 54, to: "lounge", link: "eastDoor" }
       ],
       npcs: [
         {
@@ -736,14 +743,18 @@ window.NEWSEY_STORY = (function () {
       // silhouette and there is no floorPoly and no obstacles.
       playerStart: { x: 150, y: 150 },
       props: [
-        { art: "prop_bed_rug", x: 156, y: 152, h: 42, w: 96, flat: true },
-        // w overlaps its neighbour: butted exactly, the bright floor showed
-        // between the panels as two pale pillars either side of the doorway.
-        { art: "prop_lib_shelf", x: 52,  y: 104, h: 92, w: 116, base: { w: 110, h: 8 } },
+        { art: "prop_lib_rug", x: 232, y: 152, h: 46, w: 92, flat: true },
+        // The bookcase wall, with the arch to the Garden cut through its
+        // middle. w overlaps its neighbour: butted exactly, the floor showed
+        // between the panels as pale pillars either side of the doorway.
+        { art: "prop_lib_shelf", x: 52,  y: 104, h: 92, w: 116, behind: true, base: { w: 110, h: 8 } },
         { art: "prop_lib_door",  x: 160, y: 104, h: 92, w: 116, door: true },
-        { art: "prop_lib_shelf", x: 268, y: 104, h: 92, w: 116, base: { w: 110, h: 8 } },
-        { art: "prop_lib_chair", x: 78,  y: 122, h: 46, base: { w: 24, h: 10 } },
-        { art: "prop_lib_table", x: 106, y: 120, h: 32, base: { rx: 7, ry: 3 } }
+        { art: "prop_lib_shelf", x: 268, y: 104, h: 92, w: 116, behind: true, base: { w: 110, h: 8 } },
+        // Michael's reading corner on the left, the writing desk on the right
+        { art: "prop_lib_ladder", x: 56,  y: 104, h: 76, base: { w: 18, h: 6 } },
+        { art: "prop_lib_chair",  x: 30,  y: 122, h: 40, base: { w: 22, h: 8 } },
+        { art: "prop_lib_table",  x: 58,  y: 124, h: 26, base: { rx: 6, ry: 3 } },
+        { art: "prop_lib_desk",   x: 252, y: 122, h: 34, w: 50, base: { w: 46, h: 8 } }
       ],
       exits: [
         // south, off the near edge, back to the Lounge's north arch. No art

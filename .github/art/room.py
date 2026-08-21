@@ -79,6 +79,11 @@ def read_room(game_dir, room):
         return int(m.group(1)) if m else None
 
     props = []
+    # FIELD ORDER MUST NOT MATTER. This regex once stopped at the nested
+    # base: {...}, so `behind: true` written after it was invisible to every
+    # check and to the preview — the lab's wall panels silently kept sorting
+    # against the player and drew over the doorway they surround. The pattern
+    # below spans the whole entry including nested objects.
     for m in re.finditer(r"\{\s*art:\s*\"([^\"]+)\"((?:[^{}]|\{[^{}]*\})*)\}", block):
         art, rest = m.group(1), m.group(2)
         base = None
@@ -86,7 +91,8 @@ def read_room(game_dir, room):
         if bm:
             base = {k: int(v) for k, v in re.findall(r"(\w+):\s*(-?\d+)", bm.group(1))}
         props.append(dict(art=art, x=num("x", rest), y=num("y", rest), h=num("h", rest),
-                          flat="flat: true" in rest, door="door: true" in rest, base=base))
+                          flat="flat: true" in rest, door="door: true" in rest,
+                          behind="behind: true" in rest, base=base))
 
     exits = []
     em = re.search(r"exits:\s*\[(.*?)\n      \]", block, re.S)
@@ -502,7 +508,12 @@ def verify(game_dir):
             # trigger sits ON it, so both of the checks below would fire on a
             # correct room. Putting the trigger on the floor UNDER the door
             # instead is what made doors read as being in the wrong place.
-            if not p["flat"] and not p["base"] and not p["door"]:
+            # behind: true means the prop is drawn with the background — it is
+            # part of the WALL (a shelf hung on it, a doorway through it), and
+            # the wall panels it sits on already carry the footprint. Requiring
+            # it to block again would put an invisible wall in front of the
+            # wall.
+            if not p["flat"] and not p["base"] and not p["door"] and not p["behind"]:
                 problems.append("%s: standing prop '%s' has no base — you walk through it"
                                 % (room, p["art"]))
             # a footprint on a doorway makes the door unreachable

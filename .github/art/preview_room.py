@@ -62,7 +62,8 @@ def read_props(story_path, room):
             mm = re.search(r"\b%s:\s*(-?\d+)" % key, rest)
             return int(mm.group(1)) if mm else None
         props.append(dict(art=art, x=num("x"), y=num("y"), h=num("h"),
-                          w=num("w"), flat=("flat: true" in rest)))
+                          w=num("w"), flat=("flat: true" in rest),
+                          behind=("behind: true" in rest)))
     return props
 
 
@@ -75,7 +76,14 @@ def compose(game_dir, room):
     props = read_props(os.path.join(game_dir, "story.js"), room)
     # flat ground cover paints with the floor; everything else sorts by its
     # ground point, exactly as app.js does
-    for p in [q for q in props if q["flat"]] + sorted([q for q in props if not q["flat"]],
+    # THE PREVIEW MUST COMPOSE THE WAY THE GAME DOES, or the one picture the
+    # process makes you look at is not the picture the player sees. `behind`
+    # props are the room's own wall: app.js draws them with the background, in
+    # list order, and never sorts them against anyone. Without this the lab's
+    # jar shelf vanished behind its own wall panels in every overlay while
+    # rendering correctly in the game.
+    for p in [q for q in props if q["flat"] or q["behind"]] + \
+             sorted([q for q in props if not (q["flat"] or q["behind"])],
                                                       key=lambda q: q["y"]):
         path = os.path.join(art, p["art"] + ".png")
         if not os.path.exists(path):

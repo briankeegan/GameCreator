@@ -39,8 +39,11 @@ def match_tone(plate, scene_path):
     from PIL import Image as _I
     scene = _I.open(scene_path).convert("RGB").resize((W, H), _I.LANCZOS)
     sa = np.asarray(scene).astype(np.float32)
-    # the floor is the bottom third: below anything standing against the wall
-    ref = np.median(sa[int(H * 0.72):, :, :].reshape(-1, 3), axis=0)
+    # Sample the MIDDLE of the floor, not the very bottom. The bottom strip of
+    # a composed scene is its most shadowed — these rooms are lit from the back
+    # wall — so referencing it dragged the lab's plate almost black while its
+    # wall stayed pale, inverting the room against its own scene.
+    ref = np.median(sa[int(H * 0.62):int(H * 0.86), :, :].reshape(-1, 3), axis=0)
     pa = np.asarray(plate).astype(np.float32)
     opaque = pa[..., 3] > 40
     if not opaque.any():
