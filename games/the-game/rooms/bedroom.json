@@ -1,0 +1,18 @@
+{
+  "name": "Your Room, Infinity",
+  "_why": "The plot calls it 'your Victorian bedroom (giant mirror = menu/screen)'. The Lounge is EAST of it, so its one ordinary way out is a door in the RIGHT-hand wall — the map in story.js decides that, not the generator.",
+  "summary": "An opulent VICTORIAN bedroom inside a magical realm — rich, strange and enchanted, not a rustic cottage room. The back wall runs flat and straight across the top of the frame: deep indigo damask wallpaper with gold filigree above dark carved timber wainscot, one continuous moulded picture rail between them at the same height all the way across, and brass sconces burning small violet flames.",
+  "_wall_why": "A floor-plate room ships ONLY its floor, so the room's own back wall is a PROP and has to be generated like one. Leaving it out of the spec is how a room ends up with one piece of wall art repeated across the whole back.",
+  "wall": "a wide upright rectangular slab of deep indigo damask wallpaper with gold filigree above dark carved timber wainscot, a moulded picture rail between them, one brass sconce burning a small violet flame, and NO door and NO opening",
+  "floor": "dark polished PARQUET flooring, small hardwood blocks laid in a herringbone pattern, deep reddish-brown walnut with a waxed sheen, fine grain and subtle wear",
+  "doors": [
+    { "wall": "right", "look": "ONE open doorway framed by a carved dark-wood architrave with a moulded pediment — not stone, not a castle arch — with a warmly lit passage receding through it over a patterned runner on dark parquet", "to": "lounge" }
+  ],
+  "contains": [
+    "an ENORMOUS floor-to-ceiling MIRROR in a heavy carved gilt frame, far taller than a person, its glass glowing faintly violet, standing against the back wall on the left",
+    "a marble-topped VICTORIAN NIGHTSTAND with a lit three-branch brass candelabra on it",
+    "an ORNATE FOUR-POSTER BED with carved dark-wood posts, a deep purple velvet canopy with gold tassels, seen from the foot, with a brass-bound steamer TRUNK at its foot",
+    "a patterned crimson and indigo ORIENTAL RUG lying flat on the parquet",
+    "a low carved wooden BALUSTRADE along the near edge, broken by a gap in the middle"
+  ]
+}
