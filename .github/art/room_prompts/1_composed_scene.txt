@@ -14,5 +14,18 @@ half of the frame and open enough to walk across, the scenery and furniture
 placed the way a person would place them, and the far wall or horizon visible
 behind so the space has a back.
 
+CAMERA, and this decides everything downstream: ONE FLAT BACK WALL running
+straight across the top of the frame, seen face-on, with the floor as a plain
+RECTANGLE below it. This is NOT an isometric corner view: do not draw two walls
+meeting at a corner, do not turn the room so the floor becomes a diamond, and
+do not angle the back wall away from the viewer. Everything along the back wall
+sits at the same height on screen, left to right.
+
+(A corner view is the failure that keeps coming back, and it cannot be repaired
+afterwards. Its floor is a diamond, so the pass-2 plate does not fit it; its
+skirting or wainscot runs diagonally, so no side-wall prop can ever line up
+with it; and the two walls recede in different directions, so props measured
+off it land at the wrong depth. It has to be regenerated.)
+
 STRICTLY no people, no characters, no figures, no silhouettes anywhere. No text,
 no signage, no labels, no readable lettering of any kind.

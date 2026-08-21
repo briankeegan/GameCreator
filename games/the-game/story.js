@@ -290,47 +290,54 @@ window.NEWSEY_STORY = (function () {
     bedroom: {
       bg: "bedroom",
       label: "Your Room, Infinity",
+      // REGENERATED TO THE THREE-PASS STANDARD (docs/ROOM_ART_STANDARD.md), as
+      // the room the plot actually describes: "your Victorian bedroom (giant
+      // mirror = menu/screen)". The old art was a rustic timber room that read
+      // as the house back home rather than anywhere in Infinity, and it painted
+      // a door on its right-hand wall that the map no longer uses.
+      //
+      // THERE IS NO DOOR IN ANY WALL. You get here by walking UP through the
+      // Lounge's back wall, so you arrive at the near edge and you leave the
+      // same way you came in — down, through the gap in the balustrade. Same
+      // shape as the Anarchy Garden's gap in its low wall.
+      //
+      // bg-bedroom.png is the parquet and nothing else, so the walk mask is
+      // its own silhouette: no floorPoly, no obstacles.
       playerStart: { x: 150, y: 150 },
-      // Waking up in Infinity works like waking up at home — measured off
-      // bg-bedroom.png at 320x200: the pillow sits around x 145-180 / y 59-70,
-      // with the duvet's top edge at y ~70. She lies with her head on the
-      // pillow and is drawn clipped to above that edge.
-      bedSpot: { x: 155, y: 62 },
-      bedClipY: 70,
-      // The floorboards at the near-left corner of the bed, clear of both the
-      // bed's own footprint and the save-point token standing at its foot.
-      wakeSpot: { x: 130, y: 132 },
-      bedZone: { x: 120, y: 92, w: 90, h: 26 },
-      // Hand-placed from bg-bedroom.png: the door is on the right wall,
-      // the mirror stands on the left and the bed is back-center-right —
-      // both are blocked off so the player can't walk through them.
-      // Where you land coming the other way is derived from this door's
-      // partner, not written here — see EXIT / DOOR CONVENTION above.
-      // Every exit box below was measured against the room's own background
-      // art (overlaid on the PNG at the game's 320x200 scale, not guessed):
-      // the box IS the drawn doorway, so walking into the picture of the door
-      // is what takes you through. Nothing else on screen is an exit.
-      // bg-bedroom.png: arched door on the right wall, opening x 222-248,
-      // threshold on the floor at y ~103.
-      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[52,100],[285,100],[272,186],[64,186]],
-      exits: [
-        // THE WAY BACK IS THE NEAR EDGE, not a door in a wall. You reach this
-        // room by walking UP through the Lounge's back wall, so you arrive at
-        // the bottom of it and you leave the same way you came in — down, off
-        // the near edge. The Anarchy Garden has always worked this way; this
-        // is the rest of the map agreeing with it. drawn: "threshold" makes
-        // app.js draw the doorway frame, since no art can show a door at the
-        // edge the camera is standing on.
-        { x: 150, y: 174, w: 40, h: 14, to: "lounge", link: "yourDoor", drawn: "threshold" }
+      // Measured off art-src/bedroom_scene.png: she lies with her head on the
+      // pillow up under the canopy, drawn clipped to above the quilt's edge.
+      bedSpot: { x: 214, y: 96 },
+      bedClipY: 104,
+      // Parquet at the near-left corner of the bed, clear of its footprint.
+      wakeSpot: { x: 168, y: 146 },
+      bedZone: { x: 176, y: 122, w: 84, h: 24 },
+      props: [
+        // the back wall, three panels of the same papered section
+        { art: "prop_bed_wall", x: 60,  y: 74, h: 86, w: 106, base: { w: 106, h: 8 } },
+        { art: "prop_bed_wall", x: 160, y: 74, h: 86, w: 106, base: { w: 106, h: 8 } },
+        { art: "prop_bed_wall", x: 260, y: 74, h: 86, w: 106, base: { w: 106, h: 8 } },
+        // The side walls run the FULL height of the frame and the back wall
+        // panels sit BETWEEN them, so the corners meet instead of the side
+        // wall starting halfway down with back wall showing above it.
+        { art: "prop_bed_wall_left",  x: 6,   y: 212, h: 214, w: 28, base: { w: 28, h: 8 } },
+        { art: "prop_bed_wall_right", x: 314, y: 212, h: 214, w: 28, base: { w: 28, h: 8 } },
+        // the balustrade along the near edge, in two runs with the way out
+        // between them (x 130-190)
+        { art: "prop_bed_rail", x: 66,  y: 196, h: 30, w: 128, base: { w: 128, h: 10 } },
+        { art: "prop_bed_rail", x: 254, y: 196, h: 30, w: 128, base: { w: 128, h: 10 } },
+        // the furniture, at the numbers the composed scene draws them at
+        { art: "prop_bed_mirror",     x: 50,  y: 108, h: 100, base: { w: 34, h: 10 } },
+        { art: "prop_bed_nightstand", x: 132, y: 98,  h: 56,  base: { w: 24, h: 8 } },
+        // bed + trunk are one prop: they came off the sheet touching and no
+        // vertical cut separates them (the trunk stands in front of the bed's
+        // own right-hand post), which is also how the scene composes them.
+        { art: "prop_bed_bed", x: 221, y: 132, h: 126, w: 142, base: { w: 128, h: 18 } }
       ],
-      // Furniture footprints where they actually meet the floor (the old boxes
-      // reached far into the room, and the bed's box covered the doorway, so
-      // the door could not be walked into at all).
-      obstacles: [
-        { x: 52, y: 95, w: 36, h: 14 },   // mirror
-        { x: 120, y: 92, w: 90, h: 26 },  // bed
-        { x: 202, y: 95, w: 22, h: 13 }   // nightstand
+      exits: [
+        // THE WAY BACK IS THE NEAR EDGE — the gap in the balustrade. drawn:
+        // "threshold" makes app.js draw the doorway frame, since no art can
+        // show a door at the edge the camera is standing on.
+        { x: 142, y: 174, w: 40, h: 16, to: "lounge", link: "yourDoor", drawn: "threshold" }
       ],
       npcs: [
         {
@@ -343,7 +350,7 @@ window.NEWSEY_STORY = (function () {
           // speaker (CHARACTERS.devil) exactly like it did as a standing NPC.
           // The bed beside it is no longer an interactable at all — you get
           // INTO it (app.js, player.bedSlide), and that's what saves.
-          id: "devil", x: 70, y: 102, art: "devil", sprite: null, marker: true,
+          id: "devil", x: 50, y: 106, art: "devil", sprite: null, marker: true,
           lines: [
             "Hello, and welcome to Infinity! You may notice your appearance has changed — that's your magical avatar.",
             "Your bracelet is copper, to reflect your rank, and aquamarine for your playstyle. These can change.",

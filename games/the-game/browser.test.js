@@ -240,10 +240,14 @@ async function bootWithSave(page, url, patchSave) {
     // true, no standing sprite) — walk to it and confirm talking to it
     // works, without playing the duel it offers out (out of scope here,
     // same call hypergolic-hull's own test makes about its end-game crawl).
-    // devil is at (70,102); nearestNpc() measures from (player.x+w/2,
-    // player.y+h), so the top-left target is offset by (-7,-18).
-    s = await holdUntil(page, ["ArrowLeft", "ArrowUp"], (st) => Math.hypot(st.pos.x - 63, st.pos.y - 84) < 20, 4000);
-    assert.ok(Math.hypot(s.pos.x - 63, s.pos.y - 84) < 20, "actually reached the mirror");
+    // devil sits ON the mirror, which moved when the room was regenerated to
+    // the plot's Victorian bedroom — it is at (50,106) now. nearestNpc()
+    // measures from (player.x+w/2, player.y+h), so the top-left target is
+    // offset by (-7,-18); she stands just below the mirror's footprint.
+    const atMirror = (st) => Math.hypot(st.pos.x - 43, st.pos.y - 96) < 20;
+    await holdUntil(page, ["ArrowLeft"], (st) => st.pos.x <= 46, 5000);
+    s = await holdUntil(page, ["ArrowUp"], atMirror, 5000);
+    assert.ok(atMirror(s), `actually reached the mirror (ended at ${JSON.stringify(s.pos)})`);
     await page.keyboard.press("z");
     await page.waitForTimeout(250);
     s = await getState(page);

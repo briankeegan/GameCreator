@@ -54,6 +54,12 @@ FLOOR_PLATE_ROOMS = {
     # on top of it. Before this, the bar's footprint was hand-measured off a
     # painted picture, and the picture had been regenerated underneath it.
     "lounge",
+    # Regenerated to the standard as the plot's VICTORIAN bedroom, and with no
+    # door in any wall: you reach it by walking UP through the Lounge's back
+    # wall, so you arrive at its near edge and leave the same way, through the
+    # gap in the balustrade. The old art painted a door on the right-hand wall
+    # that the map no longer had any use for.
+    "bedroom",
 }
 
 # EVERY ROOM BELOW IS LEGACY. Do not copy this shape for a new room, and do
@@ -79,13 +85,6 @@ ROOMS = {
             [(52, 98), (114, 98), (114, 128), (52, 128)],   # the bed
             [(110, 98), (142, 98), (142, 104), (110, 104)], # nightstand
             [(188, 98), (252, 98), (252, 108), (188, 108)], # moving boxes
-        ],
-    },
-    "bedroom": {
-        "floorTop": 100,
-        "blocks": [
-            [(20, 96), (74, 96), (76, 110), (22, 110)],          # mirror
-            [(116, 96), (200, 96), (202, 118), (120, 118)],      # bed + nightstand
         ],
     },
     "library": {
