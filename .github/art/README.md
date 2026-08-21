@@ -161,12 +161,13 @@ Two callers, one script, is the fix.
 | [`tileset.py`](tileset.py) | The one front door for tiled levels: `generate`, `cut`, `check`, `verify`, `prompt`. |
 | [`build_tiles.py`](build_tiles.py) | Cuts tile sheets into a shipped strip. Makes `texture:` tiles SEAMLESS — a generator will not draw a tile that repeats, so the seam is made here. |
 | [`preview_tiles.py`](preview_tiles.py) | Lays the tile strip out as a floor: each tile once, each floor tile repeated (a grid shows here or nowhere), and a mixed field. |
-| [`room.py`](room.py) | The one front door for rooms: `generate`, `prompt`, `plate`, `props`, `check`, `verify`. |
+| [`room.py`](room.py) | The one front door for rooms: `generate`, `prompt`, `plate`, `props`, `check`, `grid`, `sizecheck`, `verify`. |
 | [`imagegen.py`](imagegen.py) | Also a CLI (`python3 imagegen.py --kind icon\|cutscene --prompt ... --output ...`) — the front door for art with no other front door. Takes a KIND, not raw flags; profiles.py's `NO_FRONT_DOOR_KINDS` decides which ones exist here. Refuses any output path under `art-src/` — that belongs to the three real front doors. | The shared transport both front doors call. Picks the in-run broker if one is listening, otherwise `OPENAI_API_KEY`; never hands a model the key. When it does pick the broker, every caller — including the three front doors, which hold no key of their own — must pass `generate(..., kind=...)` naming its own profiles.py entry, because the broker (which only trusts `art-src/` writes from those front doors, not from a raw curl) derives the actual size/quality/background/model from that `kind` itself and stages a front door's output one directory outside `art-src/` before moving it into place. |
 | [`build_props.py`](build_props.py) | Cuts a prop sheet into one transparent PNG per prop. |
 | [`fit_plate.py`](fit_plate.py) | Fits a generated floor plate to the room frame. |
 | [`build_walkmask.py`](build_walkmask.py) | Builds a room's walkable-floor mask, and records the five techniques that failed at recovering one from finished art. |
-| [`measure_props.py`](measure_props.py) | Reads prop sizes and ground points off the composed scene. |
+| [`measure_props.py`](measure_props.py) | Reads prop sizes and ground points off the composed scene by floor colour — only works on an outdoor room; see its own docstring. |
+| [`grid_overlay.py`](grid_overlay.py) | Called by `room.py grid`. Renders a scene with a labelled pixel grid so a human can MEASURE a prop by hand — automated matching against an interior scene was tried (pixel/gradient correlation, ORB+RANSAC) and doesn't work; see `docs/ROOM_ART_STANDARD.md` §5. Feeds `room.py sizecheck`'s `measured:` blocks. |
 | [`make_portrait.py`](make_portrait.py) | Raw bust generation → shipped talk-box portrait: keys the flat ground, crops to the subject, squares it anchored at the TOP so the crop eats chest instead of face, flattens onto the talk box's cream and resizes to 768. |
 | [`preview_room.py`](preview_room.py) / [`show_walkmask.py`](show_walkmask.py) | Render the pictures you have to actually look at. |
 

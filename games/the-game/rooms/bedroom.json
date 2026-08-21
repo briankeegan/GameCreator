@@ -16,5 +16,10 @@
     "a brass-bound wooden CHEST at the bed's foot: a low, wide, FLAT-TOPPED rectangular box with a FLAT lid — NOT domed, NOT rounded, NOT barrel-shaped or cylindrical — banded with horizontal brass strips and a brass clasp on its front face. Drawn TOP-DOWN and SQUARE TO THE ROOM like the bed beside it, its long side facing the viewer, sitting flush on the floor — NOT tilted, NOT turned to an angle — as its own separate object with its own base.",
     "a patterned crimson and indigo ORIENTAL RUG lying flat on the parquet",
     "a low carved wooden BALUSTRADE running the full width along the near edge, unbroken, with no gap"
-  ]
+  ],
+  "_measured_why": "Read off room.py grid's labelled pixel overlay against bedroom_scene.png, by hand — automated matching between a scene and its independently-generated props was tried (pixel/gradient correlation, ORB feature matching + RANSAC) and does not work, see docs/ROOM_ART_STANDARD.md §5. room.py sizecheck holds story.js to these forever after; re-measure with room.py grid if the scene or the prop art changes and update both together.",
+  "measured": {
+    "prop_bed_rug": { "x": 157, "y": 134, "h": 58, "w": 195 },
+    "prop_bed_bed": { "x": 161, "y": 112, "h": 85 }
+  }
 }

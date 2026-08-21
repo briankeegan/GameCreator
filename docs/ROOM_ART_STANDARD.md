@@ -236,6 +236,40 @@ There is no automated check for this: a wrong shape is exactly the kind of
 thing `room.py check`'s side-by-side is for, so look at each prop in it
 individually, not just the room's overall composition at a glance.
 
+**Why automated matching against the scene doesn't work, and what to do
+instead.** A prop's size and position are numbers, and a human reading them
+off a picture makes the same kind of mistake typing does: the bedroom's rug
+was declared at less than half its actual width, and its bed was drawn 14px
+too tall, both signed off once on the side-by-side before being caught. The
+obvious fix is to have code measure it — search the scene for wherever the
+prop's own art matches best, the way `preview_room.py --fit` already does for
+an OUTDOOR room's floor-colour silhouette. It does not generalise to an
+interior room's furniture, and this was tested rather than assumed: four
+methods — raw pixel difference, normalised cross-correlation, edge/gradient
+correlation, and ORB feature matching with RANSAC (the actual standard
+technique for "same object, different image") — were all tried against the
+bedroom's bed, a case with a known-correct answer to check against. None of
+them found it. The pixel/gradient methods systematically preferred smaller,
+blurrier scales that loosely resembled many places instead of the one
+correct one; ORB found only a handful of unstable keypoint matches and
+produced a transform implying the bed was taller than the room. The common
+cause: the scene and its props are independently generated, and while they
+read as the same object to a person, they are not similar enough at the
+pixel or feature level for correlation-based matching to lock onto — the
+same thing `measure_props.py`'s own docstring already found for silhouette
+matching, from a different angle.
+
+So the reliable measurement is a human reading real numbers off a picture
+with a ruler on it: `room.py grid <game> <room> [--crop x0,y0,x1,y1]` renders
+the scene at the game's own 320x200 scale with a labelled pixel grid. Do this
+once per prop, write the result into that room's `rooms/<room>.json` under
+`measured: { "prop_id": { x, y, h, w } }` (same fields, same meaning, as a
+`props:` entry in story.js), and `room.py sizecheck` — wired into `verify`,
+so it's a permanent CI gate — holds every future edit to within 15% of that
+reading for as long as the room exists. The measuring is manual and stays
+manual; the ENFORCEMENT that a later edit can't silently drift away from it
+is what's automatic, and that's the part that was actually missing.
+
 **Only rooms and in-room sprites go through the styled Action.** `art-style.json`
 pins the camera to "top-down RPG interior room view", and that beats the prompt
 even when the prompt says in capitals to ignore it — two straight-on cutscene

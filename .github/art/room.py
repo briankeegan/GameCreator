@@ -4,12 +4,16 @@
 The standard is three passes and five scripts, which is four too many things to
 remember at 11pm. This is the front door:
 
-  room.py plate  <game> <room>   fit the pass-2 floor plate + rebuild its mask
-  room.py props  <game> <room> <name>...   cut a pass-3 prop sheet
-  room.py check  <game> <room>   render the overlays a human has to look at
-  room.py verify <game>          the gate: every mistake we actually made
-  room.py approve <game> <room>  sign off pass 1 — pass 2 and 3 refuse without it
-  room.py prompt <pass>          print the canned prompt for a generation pass
+  room.py plate     <game> <room>   fit the pass-2 floor plate + rebuild its mask
+  room.py props     <game> <room> <name>...   cut a pass-3 prop sheet
+  room.py check     <game> <room>   render the overlays a human has to look at
+  room.py grid      <game> <room>   render the scene with a labelled pixel grid,
+                                    to MEASURE a prop by eye — see sizecheck
+  room.py sizecheck <game> [room]   diff story.js against a room's measured:
+                                    block from rooms/<room>.json
+  room.py verify    <game>          the gate: every mistake we actually made
+  room.py approve   <game> <room>   sign off pass 1 — pass 2 and 3 refuse without it
+  room.py prompt    <pass>          print the canned prompt for a generation pass
 
 `verify` is the one that runs in CI. Every check in it is a bug that shipped:
 
@@ -35,6 +39,12 @@ remember at 11pm. This is the front door:
     generated on a painted vignette instead of on flat white.
   * a mask that no longer matches its plate, i.e. someone changed the art and
     forgot to rebuild.
+  * a declared prop size/position drifted more than 15% from what a human
+    measured off the scene with `room.py grid` (rooms/<room>.json's
+    measured: block) — the bedroom's rug and bed both shipped signed-off
+    and wrong this way; see the "why automated matching doesn't work here"
+    note in docs/ROOM_ART_STANDARD.md §5 for why this is a stored human
+    reading rather than something verify derives itself.
 """
 import sys, os, re, subprocess, argparse
 import numpy as np
@@ -453,12 +463,66 @@ def unchecked_rooms(game_dir):
     return out
 
 
+# A ROOM'S measured: BLOCK, ONCE WRITTEN, HOLDS story.js TO IT FOREVER. The
+# measurement itself is a human step (see room.py grid, and the "why
+# automated matching doesn't work here" note in docs/ROOM_ART_STANDARD.md
+# §5) — but it only has to happen once per prop. After that, this is a plain
+# arithmetic diff with no image analysis in it at all, so it's cheap enough
+# to run on every push. It's also what actually caught the bedroom's rug
+# (39% under its measured width) and bed (16% off its measured canopy
+# height) when simulated against this check after the fact — both would
+# have failed the build immediately instead of shipping.
+def measured_size_problems(game_dir, margin=0.15):
+    sys.path.insert(0, HERE)
+    import preview_room as pr
+
+    problems = []
+    rooms = []
+    rooms_dir = os.path.join(game_dir, "rooms")
+    if os.path.isdir(rooms_dir):
+        for fn in sorted(os.listdir(rooms_dir)):
+            if fn.endswith(".json"):
+                rid = fn[:-5]
+                if (load_spec(game_dir, rid) or {}).get("measured"):
+                    rooms.append(rid)
+
+    story_path = os.path.join(game_dir, "story.js")
+    for room in rooms:
+        measured = (load_spec(game_dir, room) or {}).get("measured") or {}
+        by_art = {}
+        for p in pr.read_props(story_path, room):
+            by_art.setdefault(p["art"], []).append(p)
+        for art, want in measured.items():
+            entries = by_art.get(art)
+            if not entries:
+                problems.append("%s: measured %s, but story.js has no prop "
+                                "using that art in this room" % (room, art))
+                continue
+            for p in entries:
+                for key in ("h", "w", "x", "y"):
+                    if key not in want or not want[key]:
+                        continue
+                    have = p.get(key)
+                    if have is None:
+                        continue
+                    delta = abs(have - want[key]) / abs(want[key])
+                    if delta > margin:
+                        problems.append(
+                            "%s: %s's declared %s is %s, measured off the "
+                            "scene it's %s — %.0f%% off (margin %.0f%%). "
+                            "Re-check with `room.py grid %s %s`."
+                            % (room, art, key, have, want[key], delta * 100,
+                               margin * 100, game_dir, room))
+    return problems
+
+
 def verify(game_dir):
     problems = []
     problems += style_drift(game_dir)
     problems += shipped_scenes(game_dir)
     problems += stale_masks(game_dir)
     problems += unchecked_rooms(game_dir)
+    problems += measured_size_problems(game_dir)
     plate_rooms = floor_plate_rooms()
     art = os.path.join(game_dir, "art")
     for room in sorted(plate_rooms):
@@ -569,6 +633,30 @@ def main():
     p = sub.add_parser("check", help="render the overlays a human has to look at")
     p.add_argument("game"); p.add_argument("room")
     p.add_argument("--out", default="/tmp")
+
+    p = sub.add_parser("grid", help="render the composed scene with a labelled "
+                                    "pixel grid, to MEASURE a prop by eye — "
+                                    "automated matching against the scene "
+                                    "doesn't work here, see grid_overlay.py")
+    p.add_argument("game"); p.add_argument("room")
+    p.add_argument("--crop", help="x0,y0,x1,y1 in 320x200 room space")
+    p.add_argument("--step", type=int, default=10)
+    p.add_argument("--zoom", type=int, default=4)
+    p.add_argument("--out", default="/tmp/grid.png")
+
+    p = sub.add_parser("sizecheck", help="compare story.js's declared prop "
+                                         "sizes/positions against a room's "
+                                         "measured: block (see rooms/<room>.json) "
+                                         "— the gate that needs a human "
+                                         "measurement once, then holds forever")
+    p.add_argument("game"); p.add_argument("room", nargs="?",
+                   help="one room, or every room with a measured: block if omitted")
+    p.add_argument("--margin", type=float, default=0.15,
+                   help="fraction of the measured value a declared value may "
+                        "differ by before this fails. Calibrated on the "
+                        "bedroom: the rug was 39%% short, the bed's canopy "
+                        "was 16%% off — 0.15 catches both without demanding "
+                        "pixel-exact agreement with a human's own reading.")
 
     p = sub.add_parser("approve", help="record that you have LOOKED at pass 1 "
                                        "and it is right — unlocks pass 2 and 3")
@@ -842,6 +930,39 @@ def main():
               "which the side-by-side cannot show at all.")
         print("When you have LOOKED and it is right:")
         print("  python3 .github/art/room.py signoff %s %s" % (game, a.room))
+        return 0
+
+    if a.cmd == "grid":
+        rc = sh("python3", os.path.join(HERE, "grid_overlay.py"),
+                os.path.join(game, "art-src", "%s_scene.png" % a.room),
+                "--step", a.step, "--zoom", a.zoom, "--out", a.out,
+                *(["--crop", a.crop] if a.crop else []))
+        if rc:
+            return rc
+        print("\nRead the ground point (x, y) and height a prop needs off this "
+              "picture, then write it into rooms/%s.json's measured: block — "
+              "that's what `sizecheck` holds story.js to from now on. See "
+              "docs/ROOM_ART_STANDARD.md §5 for why this is a human step: "
+              "automated matching against the scene was tried and doesn't "
+              "work, it isn't a shortcut waiting to be found." % a.room)
+        return 0
+
+    if a.cmd == "sizecheck":
+        if a.room and not (load_spec(game, a.room) or {}).get("measured"):
+            print("%s: no measured: block in rooms/%s.json — nothing to check. "
+                  "Take one with `room.py grid %s %s`."
+                  % (a.room, a.room, game, a.room))
+            return 0
+        problems = measured_size_problems(game, margin=a.margin)
+        if a.room:
+            problems = [p for p in problems if p.startswith(a.room + ":")]
+        if problems:
+            for msg in problems:
+                print("FAIL " + msg)
+            return 1
+        print("OK — every measured prop in %s is within %.0f%% of its "
+              "story.js declaration"
+              % (a.room if a.room else game, a.margin * 100))
         return 0
 
     if a.cmd == "signoff":
