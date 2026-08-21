@@ -215,6 +215,27 @@ white marble statue.)
 **Keep sheets small.** A request for five portrait busts side by side came back
 as a single close-up of one of them. Two to four items is reliable; more is not.
 
+**Lock every free-standing prop's shape and orientation, the same way a
+character's proportions get locked.** Pass 1 and pass 3 both draw from the
+exact same `contains` sentence, in one call each — but "the same words" does
+not mean "the same picture": two independent generations from identical text
+can still draw two different objects. The bedroom's spec asked for "a
+brass-bound steamer trunk with a domed lid" and got a low flat-topped chest in
+the composed scene and a tall tilted barrel in the prop sheet — both are
+honest readings of "domed lid", so the words were the bug. A vague noun phrase
+leaves the model to invent the rest, and it does not invent the same thing
+twice. Say the shape as an unambiguous, once-only fact, and rule out the
+readings that go wrong: not just "a trunk" but "a low, wide, FLAT-TOPPED
+rectangular box — NOT domed, NOT rounded, NOT barrel-shaped"; not just "the
+bed" but "drawn TOP-DOWN and SQUARE TO THE ROOM … NOT drawn on the diagonal".
+Every entry describing a piece of furniture (not ambient floor cover like a
+rug) should carry this same pair — a positive shape statement plus the
+negative of whatever the model tends to substitute — because that pairing is
+what turned the bed's own entry from three failed generations into one.
+There is no automated check for this: a wrong shape is exactly the kind of
+thing `room.py check`'s side-by-side is for, so look at each prop in it
+individually, not just the room's overall composition at a glance.
+
 **Only rooms and in-room sprites go through the styled Action.** `art-style.json`
 pins the camera to "top-down RPG interior room view", and that beats the prompt
 even when the prompt says in capitals to ignore it — two straight-on cutscene

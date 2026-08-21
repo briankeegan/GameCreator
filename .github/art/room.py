@@ -721,7 +721,16 @@ def main():
                   "  Write it, then generate."
                   % (os.path.basename(game), a.room), file=sys.stderr)
             return 1
-        desc = (a.desc or "").strip() or spec_scene_desc(spec)
+        # {{ROOM}} anchors pass 1 and pass 2 to the room's own character —
+        # both templates open with it. Pass 3 needs the same anchor, but not
+        # the FULL scene description: spec_scene_desc() restates every item
+        # in `contains`, which pass 3 already lists in full via {{ITEMS}} —
+        # doubling it up would just bury the one new thing this is for
+        # (the room's vibe) in a repeat of what's already there. So props
+        # gets just the summary: enough to tie a prop back to "this is an
+        # opulent Victorian bedroom", not a second copy of its own item list.
+        desc = (a.desc or "").strip() or (
+            spec.get("summary", "") if a.which == "props" else spec_scene_desc(spec))
         floor = (a.floor or "").strip() or spec.get("floor", "")
         # The room's own back wall is a prop like everything else, and it goes
         # FIRST on the sheet so it is never the thing that gets forgotten.

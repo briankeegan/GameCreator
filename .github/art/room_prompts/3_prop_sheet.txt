@@ -1,12 +1,23 @@
 # PASS 3 — everything you CANNOT walk on, plus flat ground cover. Substitute
-# {{N}} and {{ITEMS}}, then cut with:
+# {{ROOM}}, {{N}} and {{ITEMS}}, then cut with:
 #   python3 .github/art/room.py props games/<id> <room> name1 name2 ...
 #
 # TWO TO FOUR ITEMS PER SHEET. A request for five portrait busts side by side
 # came back as a single close-up of one of them.
 #
+# {{ROOM}} is the room's own summary (its `spec.summary`, not the full
+# scene description — that would just restate {{ITEMS}} a second time). Pass
+# 1 and pass 2 both open with this same anchor; pass 3 used to skip it
+# entirely, so each prop was generated as an isolated object with no sense of
+# which room it belongs in. That gap is exactly how the same "steamer trunk
+# with a domed lid" wording drew a flat chest in the composed scene and a
+# tilted barrel on the prop sheet — two independent generations of the same
+# text, with nothing tying either one back to the room's own character.
+#
 # Flat ground cover (flowers, tufts, a rug) goes on its own sheet — see the
 # variant at the bottom — because it is drawn from directly above, not upright.
+
+This sheet is for: {{ROOM}}
 
 A SHEET OF {{N}} PROPS, drawn side by side in ONE image so they share a palette,
 a light and a scale. The background of the whole image must be FLAT PURE WHITE
