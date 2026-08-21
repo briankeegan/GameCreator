@@ -769,23 +769,47 @@ window.NEWSEY_STORY = (function () {
       // the RIGHT wall, which the map does not use.
       playerStart: { x: 150, y: 150 },
       props: [
-        // h 88, not 120: measured off the scene, where the shelf sits high on
-        // the wall and the jars are about 26px tall. At the height they were
-        // first placed they read as barrels.
-        // The back wall: plain stone, with the pinned chart on the left panel
-        // and the jar shelf hung on the middle one — measured off the scene,
-        // which has ONE shelf with bare stone either side of it, not three.
-        { art: "prop_lab_chart", x: 52,  y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
-        { art: "prop_lab_plain", x: 160, y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
+        // The back wall: three panels, bare stone either side of ONE shelf —
+        // same convention as the bedroom, run through the same tools this
+        // time (room.py grid / measure). Found two real bugs neither the
+        // side-by-side nor a first read had caught: `prop_lab_chart` (a
+        // pinned parchment) was cut from the same sheet as `prop_lab_plain`
+        // — same 620x767 art — but the room's own spec never asks for a
+        // chart and the approved scene has no parchment anywhere on this
+        // wall, just bare stone; it was leftover art from before this room
+        // was rebuilt to the three-pass standard, wired in without checking
+        // it against the scene. Replaced with a second `prop_lab_plain`.
+        // `prop_lab_shelf` isn't a small furniture overlay — its own art is
+        // a FULL wall panel with the shelf and jars painted onto its own
+        // baked-in stone (385x353, not transparent), the same idea as
+        // `prop_lab_plain` but with a shelf on it. Declaring it at its own
+        // small y/h (92/52, forced to an undistorted-looking-but-wrong
+        // w:124) sat it at the wrong height AND cropped/squeezed its baked
+        // background out of registry with its neighbours' stone — that
+        // mismatched rectangle was the second bug. Given the exact same
+        // box as the panel it replaces (x/y/h/w identical to prop_lab_plain)
+        // instead, its own background lines up with theirs by construction.
+        { art: "prop_lab_plain", x: 52,  y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
+        { art: "prop_lab_shelf", x: 160, y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
         { art: "prop_lab_plain", x: 268, y: 122, h: 108, w: 114, behind: true, base: { w: 114, h: 8 } },
-        { art: "prop_lab_shelf", x: 158, y: 92, h: 52, w: 124, behind: true },
         // the way west, to the Lounge. door: true — it IS the doorway, so it
         // carries no footprint and its trigger sits on it.
         // West doorway is a breach, not generated art — see the note by
         // ROOMS.bedroom's exit for why.
-        { art: "prop_lab_bench",   x: 166, y: 138, h: 44, w: 122, base: { w: 118, h: 10 } },
-        { art: "prop_lab_cabinet", x: 268, y: 134, h: 60, base: { w: 32, h: 10 } },
-        { art: "prop_lab_cart",    x: 254, y: 172, h: 46, base: { rx: 11, ry: 4 } }
+        //
+        // bench/cabinet/cart: all three read notably smaller than their own
+        // reference scene — same "tiny prop" bug the bedroom's furniture
+        // had, never caught here because this room was never actually
+        // measured against its scene before. GrabCut couldn't segment any
+        // of the three (cluttered glassware over wood reads as one blob of
+        // similar warm tones to GrabCut's colour model, the same failure
+        // mode as the bedroom's trunk but worse — canny's edge tangle over
+        // that much clutter didn't separate the object from the noise
+        // either), so these are `room.py grid` manual readings, cross-
+        // checked at 4x zoom against three separate crops.
+        { art: "prop_lab_bench",   x: 157, y: 107, h: 67, w: 134, base: { w: 128, h: 10 } },
+        { art: "prop_lab_cabinet", x: 269, y: 92,  h: 79, w: 62,  base: { w: 56, h: 10 } },
+        { art: "prop_lab_cart",    x: 269, y: 168, h: 64, w: 56,  base: { rx: 24, ry: 6 } }
       ],
       exits: [
         // y 124, clear of the wall panels' footprint: the leftmost panel

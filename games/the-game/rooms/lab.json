@@ -17,5 +17,11 @@
     "a long cluttered ALCHEMIST'S WORKBENCH of dark timber below the shelf, covered in glass retorts, coiled copper tubing, a bubbling flask over a burner and a brass balance",
     "a tall wooden APOTHECARY CABINET of many small labelled drawers against the wall on the right",
     "a wheeled brass INSTRUMENT CART with a glowing green glass sphere on it, standing out on the open floor"
-  ]
+  ],
+  "_measured_why": "Read off lab_scene.png against room.py grid's labelled pixel overlay (by hand — room.py measure's grabcut and canny both failed on all three: cluttered glassware over dark wood reads as one blob of similar warm tones to grabcut's colour model, and canny's edge tangle over that much clutter didn't separate the object from the noise either). room.py sizecheck holds story.js to these forever after; re-measure if the scene or the prop art changes and update both together.",
+  "measured": {
+    "prop_lab_bench": { "x": 157, "y": 107, "h": 67, "w": 134 },
+    "prop_lab_cabinet": { "x": 269, "y": 92, "h": 79, "w": 62 },
+    "prop_lab_cart": { "x": 269, "y": 168, "h": 64, "w": 56 }
+  }
 }
