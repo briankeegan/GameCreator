@@ -29,6 +29,19 @@ the path somewhere else and nothing where you expect it.
 
 Keep it at `art-src/<room>_scene.png`.
 
+**Do not ship it, and beware how reasonable shipping it will sound.** The scene
+is a finished-looking picture of the room, so copying it to
+`art/bg-<room>.png` appears to save two passes and produces a room that looks
+right immediately. Every cost lands later, and all of them are permanent:
+the walkable floor cannot be recovered from a finished picture (§6 lists the
+five techniques that failed), painted scenery is something you can only ever be
+fenced away from rather than walk behind, water that is paint can never move,
+and moving one object means regenerating the whole room. This is the rule most
+likely to be argued away in the moment — it was argued away out loud once, by
+someone who had just read this page — so it is also checked:
+`room.py verify` fails the build when a shipped background is the same picture
+as its scene, and that check runs in `pages.yml` on every push.
+
 ### Pass 2 — the WALKABLE SURFACE, and only that
 
 Regenerate the room as **just the ground you can stand on** — grass,

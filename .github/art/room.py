@@ -23,6 +23,9 @@ remember at 11pm. This is the front door:
   * a flat prop carrying a `base`, or a standing prop missing one.
   * a floor-plate room still declaring floorPoly/obstacles — dead data that
     contradicts the mask and sends the next reader the wrong way.
+  * a pass-1 COMPOSED SCENE shipped as the room background. It looks finished,
+    so it is the tempting shortcut, and it throws away the mask, the depth and
+    every prop's independence in one move.
   * art-style.json restating the room recipe — it is prepended to every pass
     prompt, so a stale copy there overrides the real one. Cost: a floor plate
     generated on a painted vignette instead of on flat white.
@@ -185,6 +188,52 @@ STYLE_MUST_NOT_SAY = [
 ]
 
 
+# A pass-1 composed scene is MEASURED and NEVER SHIPPED. It is the one rule of
+# the three-pass standard with the most obvious shortcut behind it: the scene
+# is a finished-looking picture of the room, so copying it to art/bg-<room>.png
+# "works" — the room looks right immediately, and every cost lands later. The
+# floor cannot be recovered from it (build_walkmask.py records the five
+# techniques that failed), the scenery is paint so you can never walk behind
+# it, the water can never move, and moving one object means regenerating the
+# whole picture. That is the entire reason the standard exists.
+#
+# Prose did not stop it: this check exists because shipping the scene was
+# proposed out loud, as a saving, by someone who had just read the standard.
+SCENE_SHIP_TOL = 0.045      # mean per-channel difference, 0-1, over the frame
+
+
+def shipped_scenes(game_dir):
+    art = os.path.join(game_dir, "art")
+    src = os.path.join(game_dir, "art-src")
+    if not (os.path.isdir(art) and os.path.isdir(src)):
+        return []
+    out = []
+    for name in sorted(os.listdir(src)):
+        if not name.endswith("_scene.png"):
+            continue
+        room = name[:-len("_scene.png")]
+        bg = os.path.join(art, "bg-%s.png" % room)
+        if not os.path.exists(bg):
+            continue
+        try:
+            a = np.asarray(Image.open(bg).convert("RGB").resize((W, H), Image.LANCZOS)).astype(float)
+            b = np.asarray(Image.open(os.path.join(src, name)).convert("RGB")
+                           .resize((W, H), Image.LANCZOS)).astype(float)
+        except Exception as e:
+            out.append("%s: could not compare bg against its scene (%s)" % (room, e))
+            continue
+        diff = float(np.abs(a - b).mean()) / 255.0
+        if diff < SCENE_SHIP_TOL:
+            out.append("%s: art/bg-%s.png IS art-src/%s (mean difference %.3f, "
+                       "under %.3f). A composed scene is pass 1 — it is MEASURED "
+                       "and never shipped. The shipped background is pass 2, the "
+                       "walkable surface and nothing else, because its silhouette "
+                       "is the collision mask. See docs/ROOM_ART_STANDARD.md and "
+                       "run `room.py plate %s %s`."
+                       % (room, room, name, diff, SCENE_SHIP_TOL, game_dir, room))
+    return out
+
+
 def style_drift(game_dir):
     path = os.path.join(game_dir, "art-style.json")
     if not os.path.exists(path):
@@ -209,6 +258,7 @@ def style_drift(game_dir):
 def verify(game_dir):
     problems = []
     problems += style_drift(game_dir)
+    problems += shipped_scenes(game_dir)
     problems += stale_masks(game_dir)
     plate_rooms = floor_plate_rooms()
     art = os.path.join(game_dir, "art")
