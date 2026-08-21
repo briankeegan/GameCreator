@@ -150,6 +150,34 @@
 //      find-3-plates room with a different floor pattern. See the comment
 //      above the ROOMS list.
 const GAME_ID = "dog-punk";
+
+// ---- checkpoint save (resume where you left off) ----
+// One auto-save slot via shared/save-slots.js (also used by Newsey, which
+// uses 3 — Dog Punk is one short chapter, not something you'd keep multiple
+// playthroughs of, so one is enough here). Records only what's needed to
+// resume at a room's entrance — which room, hp, elapsed time — NOT exact
+// enemy/crate/projectile state. That's deliberate: every room already gets
+// rebuilt fresh via buildRoomState() whenever you enter it (see
+// transitionToRoom below, and resetRoom on death), so "resume at this
+// room's start" is already how the game treats leaving and re-entering a
+// room — serializing the mid-fight state verbatim would be fragile for no
+// real benefit.
+function blankSave() {
+  return { roomIndex: 0, hp: 3, maxHp: 3, elapsedBefore: 0, createdAt: Date.now(), updatedAt: Date.now() };
+}
+function normalizeSave(data) {
+  if (!data || typeof data !== "object") return null;
+  const b = blankSave();
+  b.roomIndex = (typeof data.roomIndex === "number" && data.roomIndex >= 0 && data.roomIndex < ROOMS.length) ? data.roomIndex : 0;
+  b.maxHp = typeof data.maxHp === "number" ? data.maxHp : 3;
+  b.hp = typeof data.hp === "number" ? Math.min(Math.max(data.hp, 1), b.maxHp) : b.maxHp;
+  b.elapsedBefore = typeof data.elapsedBefore === "number" ? data.elapsedBefore : 0;
+  b.createdAt = data.createdAt || Date.now();
+  b.updatedAt = data.updatedAt || b.createdAt;
+  return b;
+}
+const SAVES = window.GCSaveSlots.create(GAME_ID, { slots: 1, blank: blankSave, normalize: normalizeSave });
+
 const TILE = 32;
 const COLS = 16;
 const ROWS = 12;
@@ -1047,6 +1075,16 @@ const winTimeEl = document.getElementById("winTime");
 const loseOverlay = document.getElementById("loseOverlay");
 const winRetryBtn = document.getElementById("winRetryBtn");
 const loseRetryBtn = document.getElementById("loseRetryBtn");
+const continueOverlay = document.getElementById("continueOverlay");
+const continueRoomNameEl = document.getElementById("continueRoomName");
+const continueBtn = document.getElementById("continueBtn");
+const continueRestartBtn = document.getElementById("continueRestartBtn");
+const pauseBtn = document.getElementById("pauseBtn");
+const settingsOverlay = document.getElementById("settingsOverlay");
+const settingsKeysEl = document.getElementById("settingsKeys");
+const settingsStatusEl = document.getElementById("settingsStatus");
+const settingsResetBtn = document.getElementById("settingsResetBtn");
+const settingsResumeBtn = document.getElementById("settingsResumeBtn");
 const dpad = document.getElementById("dpad");
 const attackBtn = document.getElementById("attackBtn");
 const roomToastEl = document.getElementById("roomToast");
@@ -1097,7 +1135,30 @@ function advanceIntro() {
 }
 introBtn.addEventListener("click", advanceIntro);
 introOverlay.addEventListener("click", (e) => { if (e.target === introOverlay) advanceIntro(); });
-renderIntro();
+
+// A returning player skips straight past the cutscene they've already seen
+// — the intro is scene-setting for a first run, not something to sit through
+// again every time the tab reopens.
+const existingSave = SAVES.read(1);
+if (existingSave) {
+  introOverlay.hidden = true;
+  continueRoomNameEl.textContent = `Last seen at: ${ROOMS[existingSave.roomIndex].name}`;
+  continueOverlay.hidden = false;
+} else {
+  renderIntro();
+}
+continueBtn.addEventListener("click", () => {
+  continueOverlay.hidden = true;
+  resumeFromCheckpoint(existingSave);
+  introActive = false;
+  attackQueued = false;
+});
+continueRestartBtn.addEventListener("click", () => {
+  SAVES.erase(1);
+  continueOverlay.hidden = true;
+  introOverlay.hidden = false;
+  renderIntro();
+});
 
 function showRoomToast(text) {
   if (!roomToastEl) return;
@@ -1108,30 +1169,101 @@ function showRoomToast(text) {
 }
 
 // ---- input ----
-const keys = new Set();
-const KEY_DIRS = {
-  ArrowUp: "up", KeyW: "up",
-  ArrowDown: "down", KeyS: "down",
-  ArrowLeft: "left", KeyA: "left",
-  ArrowRight: "right", KeyD: "right",
-};
+// Rebindable keyboard + gamepad mapping lives in shared/controls.js (also
+// used by Newsey) — this is the logic layer only, so the actual Paused
+// panel below is dog-punk's own markup/CSS, not an imported look.
+const CONTROLS = window.GCControls.create(GAME_ID, {
+  actions: [
+    { id: "up", label: "Up" }, { id: "down", label: "Down" },
+    { id: "left", label: "Left" }, { id: "right", label: "Right" },
+    { id: "attack", label: "Attack" },
+  ],
+  // e.key values (not e.code) — shared/controls.js's own key-matching and
+  // display labels (keyLabel()) assume that space, so a rebind screen shows
+  // "Space"/"W" correctly instead of raw codes like "KeyW".
+  defaultKeys: {
+    up: ["ArrowUp", "w"], down: ["ArrowDown", "s"],
+    left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"],
+    attack: [" ", "z", "j"],
+  },
+  defaultPad: { up: [12], down: [13], left: [14], right: [15], attack: [0, 2] },
+  grabberEl: document.getElementById("controlsKeyGrabber"),
+});
+
+const liveKeys = {};
 let touchDirs = new Set();
 let attackQueued = false;
 
 window.addEventListener("keydown", (e) => {
+  if (CONTROLS.isCapturing() || CONTROLS.isCapturingPad()) return; // a rebind owns this key
   if (introActive) {
-    if (e.code === "Space" || e.code === "Enter") { advanceIntro(); e.preventDefault(); }
+    if (e.key === " " || e.key === "Enter") { advanceIntro(); e.preventDefault(); }
     return;
   }
-  if (KEY_DIRS[e.code]) { keys.add(KEY_DIRS[e.code]); e.preventDefault(); }
-  if (e.code === "Space" || e.code === "KeyZ" || e.code === "KeyJ") {
+  if (paused) {
+    if (e.key === "Escape") closeSettings();
+    return; // don't queue movement/attack while the pause screen is open
+  }
+  liveKeys[e.key] = true;
+  if (CONTROLS.isDown("up", { [e.key]: true }) || CONTROLS.isDown("down", { [e.key]: true }) ||
+      CONTROLS.isDown("left", { [e.key]: true }) || CONTROLS.isDown("right", { [e.key]: true })) {
+    e.preventDefault();
+  }
+  if (CONTROLS.isDown("attack", { [e.key]: true })) {
     attackQueued = true;
     e.preventDefault();
   }
 });
-window.addEventListener("keyup", (e) => {
-  if (KEY_DIRS[e.code]) keys.delete(KEY_DIRS[e.code]);
-});
+window.addEventListener("keyup", (e) => { delete liveKeys[e.key]; });
+
+// ---- pause / controls screen ----
+// Dog Punk had no pause concept at all before this — the gear button and
+// this overlay are new, but built from the same .run-overlay backdrop and
+// button styling every other screen here already uses (see style.css), so
+// it reads as part of the game rather than an imported settings widget.
+let paused = false;
+
+function renderSettingsRows() {
+  settingsKeysEl.innerHTML = "";
+  CONTROLS.actions.forEach((action) => {
+    const capturingThis = CONTROLS.isCapturing() === action.id;
+    const row = document.createElement("div");
+    row.className = "settings-row";
+    const label = document.createElement("span");
+    label.textContent = action.label;
+    const keyBtn = document.createElement("button");
+    keyBtn.className = "settings-key" + (capturingThis ? " capturing" : "");
+    keyBtn.textContent = capturingThis
+      ? "press a key…"
+      : CONTROLS.keysFor(action.id).map(CONTROLS.keyLabel).join(" / ");
+    keyBtn.addEventListener("click", () => {
+      const wasCapturingThis = CONTROLS.isCapturing() === action.id;
+      if (wasCapturingThis) CONTROLS.cancelKeyCapture();
+      else CONTROLS.beginKeyCapture(action.id, { onAssign: renderSettingsRows, onCancel: renderSettingsRows });
+      renderSettingsRows();
+    });
+    row.appendChild(label);
+    row.appendChild(keyBtn);
+    settingsKeysEl.appendChild(row);
+  });
+  settingsStatusEl.hidden = !CONTROLS.isCapturing();
+  settingsStatusEl.textContent = CONTROLS.isCapturing() ? "Press a key · Esc to cancel" : "";
+}
+
+function openSettings() {
+  paused = true;
+  settingsOverlay.hidden = false;
+  renderSettingsRows();
+}
+function closeSettings() {
+  CONTROLS.cancelKeyCapture();
+  settingsOverlay.hidden = true;
+  paused = false;
+}
+
+pauseBtn.addEventListener("click", () => { if (!introActive && !state.won && !state.lost) openSettings(); });
+settingsResumeBtn.addEventListener("click", closeSettings);
+settingsResetBtn.addEventListener("click", () => { CONTROLS.reset(); renderSettingsRows(); });
 
 function bindHold(el, onDown, onUp) {
   if (!el) return;
@@ -1263,6 +1395,39 @@ function transitionToRoom(idx, entry) {
   state.deathFx = [];
   state.projectiles = [];
   showRoomToast(ROOMS[idx].name);
+  saveCheckpoint();
+}
+
+// Checkpoints at the entrance of whichever room the player is currently
+// in. Called from transitionToRoom, so retreating through a back gate
+// re-anchors the checkpoint there too — same as it already re-rolls that
+// room fresh (see transitionToRoom's own comment on backward entries).
+function saveCheckpoint() {
+  SAVES.write(1, {
+    roomIndex: state.roomIndex,
+    hp: state.player.hp,
+    maxHp: state.player.maxHp,
+    elapsedBefore: (performance.now() - state.startTime) / 1000,
+  });
+}
+
+// Rebuilds the saved room fresh (same as any other room entry) and restores
+// the checkpointed hp and chapter clock. Called once, from the "Continue"
+// button, before the intro cutscene's own boot logic hands off to update().
+function resumeFromCheckpoint(save) {
+  const built = buildRoomState(save.roomIndex);
+  state.roomIndex = save.roomIndex;
+  state.player.x = built.spawn.x;
+  state.player.y = built.spawn.y;
+  state.player.hp = save.hp;
+  state.player.maxHp = save.maxHp;
+  state.enemies = built.enemies;
+  state.crates = built.crates;
+  state.switchesHit = new Set();
+  state.deathFx = [];
+  state.projectiles = [];
+  state.startTime = performance.now() - save.elapsedBefore * 1000;
+  showRoomToast(ROOMS[save.roomIndex].name);
 }
 
 // Called on death: respawns in the CURRENT room with full hp, rather than
@@ -1355,17 +1520,20 @@ function moveEntity(entity, dx, dy, gateOpen, pusher) {
 
 // ---- update ----
 function update(dt, now) {
-  if (state.won || state.lost || introActive) return;
+  if (state.won || state.lost || introActive || paused) return;
   const p = state.player;
   const gateOpen = isGateOpen();
 
-  // movement input
+  // movement input — keyboard (via shared/controls.js), touch d-pad, and
+  // gamepad (new: dog-punk had no controller support before this) all merge
+  // into the same four directions.
   let dx = 0, dy = 0;
-  const active = new Set([...keys, ...touchDirs]);
-  if (active.has("up")) dy -= 1;
-  if (active.has("down")) dy += 1;
-  if (active.has("left")) dx -= 1;
-  if (active.has("right")) dx += 1;
+  const pad = CONTROLS.gamepad();
+  if (CONTROLS.isDown("up", liveKeys) || touchDirs.has("up") || (pad && pad.up)) dy -= 1;
+  if (CONTROLS.isDown("down", liveKeys) || touchDirs.has("down") || (pad && pad.down)) dy += 1;
+  if (CONTROLS.isDown("left", liveKeys) || touchDirs.has("left") || (pad && pad.left)) dx -= 1;
+  if (CONTROLS.isDown("right", liveKeys) || touchDirs.has("right") || (pad && pad.right)) dx += 1;
+  if (pad && pad.attack) attackQueued = true;
   if (dx !== 0 || dy !== 0) {
     const len = Math.hypot(dx, dy) || 1;
     dx = (dx / len);
@@ -1645,6 +1813,7 @@ function update(dt, now) {
     } else {
       state.won = true;
       state.elapsed = (now - state.startTime) / 1000;
+      SAVES.erase(1); // chapter complete — nothing left to resume
       const best = GCStorage.get(GAME_ID, "chapter1BestSecondsV2", null);
       if (best === null || state.elapsed < best) GCStorage.set(GAME_ID, "chapter1BestSecondsV2", state.elapsed);
       winTimeEl.textContent = `Chapter 1 cleared in ${state.elapsed.toFixed(1)}s` +
@@ -2328,7 +2497,7 @@ function resetChapter() {
   introActive = false;
   winOverlay.hidden = true;
   loseOverlay.hidden = true;
-  keys.clear();
+  for (const k in liveKeys) delete liveKeys[k];
   touchDirs.clear();
   lastHudHp = null;
   heartsEl.classList.remove("hit");
@@ -2340,7 +2509,7 @@ winRetryBtn.addEventListener("click", resetChapter);
 // chapter — dying in the Back Gate room shouldn't cost the alley and the
 // bridge again.
 loseRetryBtn.addEventListener("click", () => {
-  keys.clear();
+  for (const k in liveKeys) delete liveKeys[k];
   touchDirs.clear();
   heartsEl.classList.remove("hit");
   resetRoom();
