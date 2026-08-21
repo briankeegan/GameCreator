@@ -132,6 +132,41 @@ body {
   font-size: 1rem;
 }
 
+/* Room-to-room transition ("Junk Bridge", etc.) — a brief non-blocking
+   banner, not an overlay: clearing a room's gate should feel continuous,
+   not stop the game the way the chapter-end/lose overlays do. */
+.room-toast {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(12, 12, 16, 0.86);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 6px 16px;
+  border-radius: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  white-space: nowrap;
+}
+.room-toast.show { opacity: 1; }
+
+/* Intro cutscene portrait: Beverly's own idle sheet frame, blown up with the
+   same crisp pixel scaling as the board so it doesn't look like a different
+   piece of art dropped in for one screen. */
+.intro-portrait {
+  width: 96px;
+  height: 96px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.cutscene-overlay p {
+  max-width: 380px;
+  line-height: 1.4;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

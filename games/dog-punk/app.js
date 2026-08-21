@@ -115,6 +115,20 @@
 // stop chequering, the fence stands up and only ever runs round the edge, and
 // interior obstacles are two OBJECT tiles — a tyre-and-drum pile and a scrap
 // crate. The oil puddle is gone; see TILE_COUNT below.
+// 2026-08-21 (Chapter 1) — this used to be one room ("Level 1: Scrapyard
+// Alley", clear it, done). It's now three rooms end to end — Scrapyard
+// Alley (unchanged) -> Junk Bridge (push a crate onto a switch) -> Back
+// Gate (find and stand on three switches) — behind a short dialogue
+// cutscene, ending with "Beverly Reaches Town" instead of "Alley Cleared".
+// See the ROOMS comment below for the room list/shape and how they line up
+// gate-to-spawn, isGateOpen() for what "cleared" means per room type, and
+// freshState/transitionToRoom/resetRoom for how state moves between rooms
+// (hp and the chapter clock carry across a room transition; dying only
+// resets the room you died in, not the whole chapter). No new art: the
+// crate reuses the existing scrap-crate tile at a live position instead of
+// a fixed cell, and the switch plates are drawn procedurally from
+// `environmentPalette` — see drawCrate/drawSwitchPlate — because both are
+// gameplay affordances, not level scenery.
 const GAME_ID = "dog-punk";
 const TILE = 32;
 const COLS = 16;
@@ -122,7 +136,11 @@ const ROWS = 12;
 
 // '2' boundary fence, '.' walkable asphalt, '3' tyre-and-drum pile and '4'
 // scrap-crate obstacle, 'G' gate (walkable once cleared, otherwise blocks),
-// 'P' player spawn (walkable).
+// 'P' player spawn (walkable), 'X' a PUSHABLE crate's starting tile (turned
+// into a dynamic object at room load, see buildRoomState — the '.' under it
+// is what the tile grid actually holds once the room is running), 'S' a
+// puzzle switch/pressure plate (walkable floor, drawn with a marker on top;
+// see drawSwitchPlate).
 //
 // INTERIOR OBSTACLES ARE NOT THE BOUNDARY WALL. They used to be: blocks of
 // '2' sat in the middle of the yard, so the corrugated-fence TEXTURE was
@@ -131,7 +149,17 @@ const ROWS = 12;
 // base ('3' and '4'); '2' now only ever runs round the edge of the level.
 // See docs/TILED_LEVEL_STANDARD.md, defect 5 — it is a level-map bug rather
 // than an art bug, which is why no checker catches it.
-const MAP = [
+//
+// CHAPTER 1 is three of these rooms end to end (ROOMS below), not one. Every
+// room is the same COLSxROWS grid with its gate on the same top-centre two
+// cells and its spawn ('P') on the same bottom-centre cell as every other
+// room, on purpose — that's what "the levels fit together" means here: you
+// walk out the top of one and into the bottom of the next and the street
+// hasn't jumped sideways under you. Room 1 (unchanged from before) is a pure
+// fight; room 2 is a block-pushing puzzle (push the crate onto the switch);
+// room 3 is an exploration puzzle (find and stand on all three switches).
+// Clearing room 3's gate ends the chapter instead of loading a room 4.
+const ALLEY_MAP = [
   // Every row must be exactly COLS long. The top row used to be 15 characters
   // — one short — so the top-right corner had no wall character at all: not
   // solid (undefined isn't in SOLID), so you could stand inside the fence, and
@@ -149,14 +177,77 @@ const MAP = [
   "2......P.......2",
   "2222222222222222",
 ];
+const BRIDGE_MAP = [
+  "2222222GG2222222",
+  "2..............2",
+  "2...4......4...2",
+  "2..............2",
+  "2......S.......2",
+  "2..............2",
+  "2....X.....3...2",
+  "2..............2",
+  "2..3.......4...2",
+  "2..............2",
+  "2......P.......2",
+  "2222222222222222",
+];
+const GATEROOM_MAP = [
+  "2222222GG2222222",
+  "2..............2",
+  "2..S........S..2",
+  "2..............2",
+  "2......4.......2",
+  "2..............2",
+  "2...3......3...2",
+  "2..............2",
+  "2.......S......2",
+  "2..............2",
+  "2......P.......2",
+  "2222222222222222",
+];
 
 const SOLID = new Set(["2", "3", "4"]);
 
-const ENEMY_SPAWNS = [
-  { c: 4, r: 1 },
-  { c: 12, r: 3 },
-  { c: 10, r: 8 },
+const ROOMS = [
+  {
+    id: "alley",
+    name: "Scrapyard Alley",
+    map: ALLEY_MAP,
+    type: "clear",
+    enemySpawns: [{ c: 4, r: 1 }, { c: 12, r: 3 }, { c: 10, r: 8 }],
+  },
+  {
+    id: "bridge",
+    name: "Junk Bridge",
+    map: BRIDGE_MAP,
+    type: "push", // gate opens once a crate rests on a switch tile AND enemies are cleared
+    enemySpawns: [{ c: 3, r: 2 }, { c: 12, r: 8 }],
+  },
+  {
+    id: "gate",
+    name: "Back Gate",
+    map: GATEROOM_MAP,
+    type: "switches", // gate opens once every switch tile has been stepped on AND enemies are cleared
+    enemySpawns: [{ c: 7, r: 2 }, { c: 3, r: 6 }, { c: 12, r: 6 }],
+  },
 ];
+// Precompute each room's switch-tile coordinates once, from its own map —
+// never recomputed per-frame, and never drifts from the map because it's
+// read off the same source of truth the tile grid uses.
+for (const room of ROOMS) {
+  room.switchTiles = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (room.map[r][c] === "S") room.switchTiles.push({ c, r });
+    }
+  }
+}
+// The live tile grid for whatever room is current — a mutable copy of that
+// room's map with any 'X' (crate start) swapped for plain floor, because
+// once the room is running the crate is a dynamic object (state.crates),
+// not a static tile; leaving the 'X' in the grid would make that cell
+// permanently solid even after the crate has been pushed off it.
+let MAP = ROOMS[0].map;
 
 // ---- sprites (same-origin PNGs shipped with this game) ----
 // Hero AND rat both ship a 3x3 sheet: columns idle/walk/attack, rows
@@ -402,6 +493,7 @@ const ATTACK_TIME = 270;
 const HIT_FLASH_TIME = 0.3;
 const heartsEl = document.getElementById("hearts");
 const enemyCountEl = document.getElementById("enemyCount");
+const hudTitleEl = document.getElementById("hudTitle");
 const winOverlay = document.getElementById("winOverlay");
 const winTimeEl = document.getElementById("winTime");
 const loseOverlay = document.getElementById("loseOverlay");
@@ -409,6 +501,63 @@ const winRetryBtn = document.getElementById("winRetryBtn");
 const loseRetryBtn = document.getElementById("loseRetryBtn");
 const dpad = document.getElementById("dpad");
 const attackBtn = document.getElementById("attackBtn");
+const roomToastEl = document.getElementById("roomToast");
+const introOverlay = document.getElementById("introOverlay");
+const introTextEl = document.getElementById("introText");
+const introBtn = document.getElementById("introBtn");
+const introPortrait = document.getElementById("introPortrait");
+const introPortraitCtx = introPortrait ? introPortrait.getContext("2d") : null;
+
+// ---- chapter intro cutscene ----
+// A few lines of scene-setting before the first room's gameplay starts,
+// shown over the (already-loaded, already-rendering) alley itself rather
+// than a separate blank screen — update() is gated on introActive below so
+// nothing moves or takes input while it's up, but render()/renderHud() keep
+// running so the room isn't a black box behind the text.
+const INTRO_LINES = [
+  "Scrapyard Alley, after dark. Beverly's run these lanes since she could walk.",
+  "Lately the junk rats have been swarming closer to the fence line than they ever used to — like something's pushed them out of the deep scrap.",
+  "Past the alley, past the bridge, past the back gate: Town. Streetlights, real food, somewhere that isn't scrap metal.",
+  "She checks the mohawk in a cracked side-mirror and grips the dagger. Let's ride.",
+];
+let introActive = true;
+let introStep = 0;
+function drawIntroPortrait() {
+  if (!introPortraitCtx) return;
+  const f = heroFrame(HERO_ROW.down, COL_NEUTRAL);
+  introPortraitCtx.imageSmoothingEnabled = false;
+  introPortraitCtx.clearRect(0, 0, introPortrait.width, introPortrait.height);
+  if (f && f.ready) introPortraitCtx.drawImage(f.img, 0, 0, introPortrait.width, introPortrait.height);
+}
+function renderIntro() {
+  introTextEl.textContent = INTRO_LINES[introStep];
+  introBtn.textContent = introStep < INTRO_LINES.length - 1 ? "Next" : "Head Out";
+  drawIntroPortrait();
+}
+function advanceIntro() {
+  if (!introActive) return;
+  if (introStep < INTRO_LINES.length - 1) {
+    introStep += 1;
+    renderIntro();
+    return;
+  }
+  introActive = false;
+  introOverlay.hidden = true;
+  attackQueued = false; // discard any attack-button tap that landed on the cutscene
+  // The chapter clock starts when play actually begins, not while reading.
+  state.startTime = performance.now();
+}
+introBtn.addEventListener("click", advanceIntro);
+introOverlay.addEventListener("click", (e) => { if (e.target === introOverlay) advanceIntro(); });
+renderIntro();
+
+function showRoomToast(text) {
+  if (!roomToastEl) return;
+  roomToastEl.textContent = text;
+  roomToastEl.classList.add("show");
+  clearTimeout(showRoomToast._t);
+  showRoomToast._t = setTimeout(() => roomToastEl.classList.remove("show"), 1600);
+}
 
 // ---- input ----
 const keys = new Set();
@@ -422,6 +571,10 @@ let touchDirs = new Set();
 let attackQueued = false;
 
 window.addEventListener("keydown", (e) => {
+  if (introActive) {
+    if (e.code === "Space" || e.code === "Enter") { advanceIntro(); e.preventDefault(); }
+    return;
+  }
   if (KEY_DIRS[e.code]) { keys.add(KEY_DIRS[e.code]); e.preventDefault(); }
   if (e.code === "Space" || e.code === "KeyZ" || e.code === "KeyJ") {
     attackQueued = true;
@@ -451,16 +604,46 @@ if (dpad) {
 bindHold(attackBtn, () => { attackQueued = true; }, () => {});
 
 // ---- game state ----
-function freshState() {
+// Everything that's PER-ROOM (the tile grid, its spawn point, its enemies,
+// its crates) is built by this one function so a fresh chapter start, a
+// room-to-room transition and a post-death respawn can never disagree about
+// what "room idx, freshly entered" looks like — see freshState/
+// transitionToRoom/resetRoom, all three just call this and splice the
+// result into whichever fields they own.
+function buildRoomState(idx) {
+  const room = ROOMS[idx];
+  MAP = room.map.map((row) => row.replace(/X/g, "."));
   let spawn = { x: 7 * TILE + TILE / 2, y: 10 * TILE + TILE / 2 };
+  const crates = [];
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
-      if (MAP[r][c] === "P") spawn = { x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 };
+      const ch = room.map[r][c];
+      if (ch === "P") spawn = { x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 };
+      if (ch === "X") crates.push({ x: c * TILE + TILE / 2, y: r * TILE + TILE / 2, w: 26, h: 26, isCrate: true });
     }
   }
+  const enemies = room.enemySpawns.map((s) => ({
+    x: s.c * TILE + TILE / 2, y: s.r * TILE + TILE / 2,
+    w: 22, h: 20, speed: 55,
+    hp: 2, alive: true, facing: "down",
+    wanderT: Math.random() * 2, wanderDx: 0, wanderDy: 0,
+    hitFlash: 0,
+    animPhase: 0, moving: false,
+    // attack state machine: idle (seek/wander) -> windup (telegraph,
+    // holds still) -> lunge (fast dash, deals contact damage once) -> back
+    // to idle with a cooldown. Only the lunge can hurt the player.
+    atkState: "idle", atkTimer: 0, atkDuration: 0,
+    attackCooldownUntil: 0, lungeDx: 0, lungeDy: 0, hasHitThisLunge: false,
+  }));
+  return { spawn, crates, enemies };
+}
+
+function freshState() {
+  const built = buildRoomState(0);
   return {
+    roomIndex: 0,
     player: {
-      x: spawn.x, y: spawn.y, w: 22, h: 22,
+      x: built.spawn.x, y: built.spawn.y, w: 22, h: 22,
       speed: 130, facing: "down",
       hp: 3, maxHp: 3,
       invulnUntil: 0,
@@ -469,19 +652,11 @@ function freshState() {
       animPhase: 0, moving: false,
       breathePhase: 0,
     },
-    enemies: ENEMY_SPAWNS.map((s) => ({
-      x: s.c * TILE + TILE / 2, y: s.r * TILE + TILE / 2,
-      w: 22, h: 20, speed: 55,
-      hp: 2, alive: true, facing: "down",
-      wanderT: Math.random() * 2, wanderDx: 0, wanderDy: 0,
-      hitFlash: 0,
-      animPhase: 0, moving: false,
-      // attack state machine: idle (seek/wander) -> windup (telegraph,
-      // holds still) -> lunge (fast dash, deals contact damage once) -> back
-      // to idle with a cooldown. Only the lunge can hurt the player.
-      atkState: "idle", atkTimer: 0, atkDuration: 0,
-      attackCooldownUntil: 0, lungeDx: 0, lungeDy: 0, hasHitThisLunge: false,
-    })),
+    enemies: built.enemies,
+    crates: built.crates,
+    // Back Gate puzzle: which switch tiles (encoded as row*COLS+col) have
+    // been stepped on this room. Reset every room load — see isGateOpen.
+    switchesHit: new Set(),
     startTime: performance.now(),
     elapsed: 0,
     won: false,
@@ -493,6 +668,44 @@ function freshState() {
   };
 }
 
+// Called when the player walks through an open gate into a NON-final room.
+// Keeps hp and the chapter clock running (state.startTime untouched) —
+// only the room-local fields are replaced — so the chapter is one
+// continuous run across all three rooms, not three separate best-times.
+function transitionToRoom(idx) {
+  const built = buildRoomState(idx);
+  state.roomIndex = idx;
+  state.player.x = built.spawn.x;
+  state.player.y = built.spawn.y;
+  state.player.kbx = 0; state.player.kby = 0;
+  state.player.attackUntil = 0; state.player.attackCooldownUntil = 0;
+  state.enemies = built.enemies;
+  state.crates = built.crates;
+  state.switchesHit = new Set();
+  state.deathFx = [];
+  showRoomToast(ROOMS[idx].name);
+}
+
+// Called on death: respawns in the CURRENT room with full hp, rather than
+// sending the player back to room 1 — losing a fight in the Back Gate room
+// shouldn't cost the two rooms before it.
+function resetRoom() {
+  const built = buildRoomState(state.roomIndex);
+  state.player.x = built.spawn.x;
+  state.player.y = built.spawn.y;
+  state.player.hp = state.player.maxHp;
+  state.player.kbx = 0; state.player.kby = 0;
+  state.player.invulnUntil = 0;
+  state.player.attackUntil = 0; state.player.attackCooldownUntil = 0;
+  state.enemies = built.enemies;
+  state.crates = built.crates;
+  state.switchesHit = new Set();
+  state.deathFx = [];
+  state.lost = false;
+  loseOverlay.hidden = true;
+  lastHudHp = null;
+}
+
 let state = freshState();
 
 // ---- collision ----
@@ -501,6 +714,21 @@ function tileAt(px, py) {
   const r = Math.floor(py / TILE);
   if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return "2";
   return MAP[r][c];
+}
+
+function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return Math.abs(ax - bx) < (aw + bw) / 2 && Math.abs(ay - by) < (ah + bh) / 2;
+}
+
+// The Junk Bridge puzzle's crate (state.crates) is a dynamic obstacle, not a
+// tile, so it can't be tested by tileAt — this is the crate equivalent of
+// checking SOLID, called from isSolidFor exactly the way the tile check is.
+function crateBlocking(entity, px, py) {
+  for (const cr of state.crates) {
+    if (entity.isCrate && cr === entity) continue; // a crate never blocks itself
+    if (rectsOverlap(px, py, entity.w, entity.h, cr.x, cr.y, cr.w, cr.h)) return cr;
+  }
+  return null;
 }
 
 function isSolidFor(entity, px, py, gateOpen) {
@@ -515,29 +743,40 @@ function isSolidFor(entity, px, py, gateOpen) {
     if (t === "G") { if (!gateOpen) return true; continue; }
     if (SOLID.has(t)) return true;
   }
+  if (crateBlocking(entity, px, py)) return true;
   return false;
 }
 
-function moveEntity(entity, dx, dy, gateOpen) {
+// `pusher` (only ever true for the player's own voluntary movement — see
+// update()) lets a crate in the way be shoved one puzzle-push at a time: the
+// crate is moved first with pusher=false (so IT can be blocked by a wall or
+// another crate but can never in turn push one), and only if that clears the
+// way does the pusher itself move into the tile. Knockback and enemies never
+// push crates, so a rat can't shove the puzzle solved by accident.
+function moveEntity(entity, dx, dy, gateOpen, pusher) {
   if (dx !== 0) {
     const nx = entity.x + dx;
+    if (pusher) {
+      const cr = crateBlocking(entity, nx, entity.y);
+      if (cr) moveEntity(cr, dx, 0, gateOpen, false);
+    }
     if (!isSolidFor(entity, nx, entity.y, gateOpen)) entity.x = nx;
   }
   if (dy !== 0) {
     const ny = entity.y + dy;
+    if (pusher) {
+      const cr = crateBlocking(entity, entity.x, ny);
+      if (cr) moveEntity(cr, 0, dy, gateOpen, false);
+    }
     if (!isSolidFor(entity, entity.x, ny, gateOpen)) entity.y = ny;
   }
 }
 
-function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
-  return Math.abs(ax - bx) < (aw + bw) / 2 && Math.abs(ay - by) < (ah + bh) / 2;
-}
-
 // ---- update ----
 function update(dt, now) {
-  if (state.won || state.lost) return;
+  if (state.won || state.lost || introActive) return;
   const p = state.player;
-  const gateOpen = state.enemies.every((e) => !e.alive);
+  const gateOpen = isGateOpen();
 
   // movement input
   let dx = 0, dy = 0;
@@ -560,7 +799,18 @@ function update(dt, now) {
     p.kbx *= 0.86;
     p.kby *= 0.86;
   } else {
-    moveEntity(p, dx * p.speed * dt, dy * p.speed * dt, gateOpen);
+    // pusher=true: this is the player's own footwork, the only movement in
+    // the game allowed to shove the Junk Bridge crate.
+    moveEntity(p, dx * p.speed * dt, dy * p.speed * dt, gateOpen, true);
+  }
+
+  // Back Gate puzzle: stepping onto a switch tile activates it permanently
+  // for the rest of the room (a memory/exploration puzzle — find all three —
+  // rather than a timing one). Harmless to check in every room; only the
+  // "switches" room type ever has an 'S' tile to find.
+  {
+    const pc = Math.floor(p.x / TILE), pr = Math.floor(p.y / TILE);
+    if (MAP[pr] && MAP[pr][pc] === "S") state.switchesHit.add(pr * COLS + pc);
   }
 
   // walk-cycle animation: advance a phase clock while actually moving under
@@ -713,19 +963,49 @@ function update(dt, now) {
     state.deathFx = state.deathFx.filter((fx) => fx.t < fx.dur);
   }
 
-  // win check: standing on the gate tile once every enemy is down
+  // gate check: standing on the gate tile once its room's condition is met.
+  // Every room but the last just loads the next one (with a brief non-
+  // blocking toast, not a stopping overlay) — that continuity is the point,
+  // see the ROOMS comment. Only the LAST room's gate ends the chapter.
   if (gateOpen) {
     const t = tileAt(p.x, p.y);
     if (t === "G") {
-      state.won = true;
-      state.elapsed = (now - state.startTime) / 1000;
-      const best = GCStorage.get(GAME_ID, "level1BestSeconds", null);
-      if (best === null || state.elapsed < best) GCStorage.set(GAME_ID, "level1BestSeconds", state.elapsed);
-      winTimeEl.textContent = `Cleared in ${state.elapsed.toFixed(1)}s` +
-        (best !== null ? ` (best: ${Math.min(best, state.elapsed).toFixed(1)}s)` : "");
-      winOverlay.hidden = false;
+      if (state.roomIndex < ROOMS.length - 1) {
+        transitionToRoom(state.roomIndex + 1);
+      } else {
+        state.won = true;
+        state.elapsed = (now - state.startTime) / 1000;
+        const best = GCStorage.get(GAME_ID, "chapter1BestSeconds", null);
+        if (best === null || state.elapsed < best) GCStorage.set(GAME_ID, "chapter1BestSeconds", state.elapsed);
+        winTimeEl.textContent = `Chapter 1 cleared in ${state.elapsed.toFixed(1)}s` +
+          (best !== null ? ` (best: ${Math.min(best, state.elapsed).toFixed(1)}s)` : "");
+        winOverlay.hidden = false;
+      }
     }
   }
+}
+
+// Whether the CURRENT room's gate should be open: every room needs its
+// enemies cleared, and the puzzle rooms need their extra condition on top —
+// see the ROOMS comment for what each room `type` means. Centralised here
+// (update() and render() both used to recompute the plain "enemies cleared"
+// version separately, which is exactly the kind of duplicated rule that
+// drifts the moment only one copy gets the puzzle condition added) so both
+// callers always agree.
+function isGateOpen() {
+  if (!state.enemies.every((e) => !e.alive)) return false;
+  const room = ROOMS[state.roomIndex];
+  if (room.type === "push") return state.crates.some((cr) => crateOnSwitch(room, cr));
+  if (room.type === "switches") {
+    return room.switchTiles.length > 0 &&
+      room.switchTiles.every((s) => state.switchesHit.has(s.r * COLS + s.c));
+  }
+  return true;
+}
+
+function crateOnSwitch(room, cr) {
+  const c = Math.floor(cr.x / TILE), r = Math.floor(cr.y / TILE);
+  return room.switchTiles.some((s) => s.c === c && s.r === r);
 }
 
 // ---- drawing ----
@@ -810,6 +1090,43 @@ function drawTile(c, r, ch, gateOpen) {
     ctx.fillStyle = "#7b8184";
     ctx.fillRect(x + 14, y + 9, 2, 2);
   }
+}
+
+// Puzzle switch/pressure plate, drawn procedurally rather than as a
+// generated tile: it's a gameplay marker sitting ON the floor (like the
+// slash arc or the HUD hearts elsewhere in this file), not a piece of level
+// scenery, so it doesn't belong in tiles.png or its `environmentPalette`
+// generation pass — but it's still built FROM that palette so it reads as
+// part of the same junkyard rather than a UI element floating over it.
+function drawSwitchPlate(c, r, active) {
+  const x = c * TILE, y = r * TILE;
+  ctx.fillStyle = active ? "#5c7238" : "#5a5d66";
+  ctx.fillRect(x + 6, y + 6, TILE - 12, TILE - 12);
+  ctx.strokeStyle = active ? "#3a4a2a" : "#2f3038";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 6, y + 6, TILE - 12, TILE - 12);
+  ctx.fillStyle = active ? "#c3c6c2" : "#7b8184";
+  ctx.fillRect(x + 11, y + 11, TILE - 22, TILE - 22);
+}
+
+// The Junk Bridge puzzle's pushable crate: same silhouette as the static
+// scrap-crate tile ('4') so it visually reads as "a crate" the instant it
+// appears, just drawn at its own live pixel position instead of a fixed
+// cell — it moves, the wall-mounted one never does.
+function drawCrate(cr) {
+  const x = cr.x - TILE / 2, y = cr.y - TILE / 2;
+  if (TILES[TILE_CRATE] && TILES[TILE_CRATE].ready) {
+    ctx.drawImage(TILES[TILE_CRATE].img, x, y, TILE, TILE);
+    return;
+  }
+  ctx.fillStyle = "#5a5d66";
+  ctx.fillRect(x + 4, y + 7, TILE - 8, TILE - 11);
+  ctx.fillStyle = "#3d3f47";
+  ctx.fillRect(x + 4, y + TILE - 8, TILE - 8, 4);
+  ctx.fillStyle = "#9aa0a2";
+  ctx.fillRect(x + 7, y + 10, TILE - 14, 3);
+  ctx.fillStyle = "#14121a";
+  ctx.strokeRect(x + 4, y + 7, TILE - 8, TILE - 11);
 }
 
 // Facing -> unit vector, used for lunge offsets and slash-arc placement.
@@ -968,11 +1285,25 @@ function drawAnimatedSprite(spriteFor, facing, x, y, size, anim, fallback) {
 }
 
 function render(now) {
-  const gateOpen = state.enemies.every((e) => !e.alive);
+  const gateOpen = isGateOpen();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) drawTile(c, r, MAP[r][c], gateOpen);
   }
+
+  // Puzzle markers, drawn on top of the floor and under everything that
+  // stands on it (crates, characters) — see drawSwitchPlate. Each switch
+  // lights up independently once stepped on ("switches" rooms); the Junk
+  // Bridge room has exactly one, lit while a crate currently rests on it
+  // (not permanently, so pushing the crate back off it re-locks the gate).
+  const room = ROOMS[state.roomIndex];
+  for (const s of room.switchTiles) {
+    const active = room.type === "push"
+      ? state.crates.some((cr) => Math.floor(cr.x / TILE) === s.c && Math.floor(cr.y / TILE) === s.r)
+      : state.switchesHit.has(s.r * COLS + s.c);
+    drawSwitchPlate(s.c, s.r, active);
+  }
+  for (const cr of state.crates) drawCrate(cr);
 
   for (const en of state.enemies) {
     if (!en.alive) continue;
@@ -1105,7 +1436,20 @@ function renderHud() {
   }
   lastHudHp = p.hp;
   const left = state.enemies.filter((e) => e.alive).length;
-  enemyCountEl.textContent = left > 0 ? `${left} left` : "Gate open!";
+  enemyCountEl.textContent = left > 0 ? `${left} left` : (isGateOpen() ? "Gate open!" : puzzleStatus());
+  const room = ROOMS[state.roomIndex];
+  hudTitleEl.textContent = `Chapter 1 · ${room.name} (${state.roomIndex + 1}/${ROOMS.length})`;
+}
+
+// What to tell the player still stands between them and the open gate, once
+// the enemies are down — the puzzle rooms don't open just because the last
+// rat did, and without this the gate looking locked with "Gate open!" still
+// showing 0 enemies left read as broken rather than as a puzzle.
+function puzzleStatus() {
+  const room = ROOMS[state.roomIndex];
+  if (room.type === "push") return "Push the crate onto the switch";
+  if (room.type === "switches") return `Switches ${state.switchesHit.size}/${room.switchTiles.length}`;
+  return "Gate open!";
 }
 
 // ---- loop ----
@@ -1119,8 +1463,12 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
-function resetLevel() {
+// "Play Again" on the chapter-complete overlay: starts the whole chapter
+// over from room 1. Skips the cutscene (introActive stays false) — they've
+// just read it once already this session.
+function resetChapter() {
   state = freshState();
+  introActive = false;
   winOverlay.hidden = true;
   loseOverlay.hidden = true;
   keys.clear();
@@ -1129,7 +1477,16 @@ function resetLevel() {
   heartsEl.classList.remove("hit");
 }
 
-winRetryBtn.addEventListener("click", resetLevel);
-loseRetryBtn.addEventListener("click", resetLevel);
+winRetryBtn.addEventListener("click", resetChapter);
+// "Try Again" on death: retries only the room Beverly died in (resetRoom,
+// defined alongside freshState/transitionToRoom above), not the whole
+// chapter — dying in the Back Gate room shouldn't cost the alley and the
+// bridge again.
+loseRetryBtn.addEventListener("click", () => {
+  keys.clear();
+  touchDirs.clear();
+  heartsEl.classList.remove("hit");
+  resetRoom();
+});
 
 requestAnimationFrame((t) => { lastT = t; requestAnimationFrame(loop); });
