@@ -404,43 +404,42 @@ window.NEWSEY_STORY = (function () {
       // no floorPoly and no obstacles.
       playerStart: { x: 152, y: 150 },
       props: [
-        // --- the way west and the way east: a doorway in each side wall,
-        // drawn edge-on and turned in toward the room. door: true, so they
-        // carry no footprint and their trigger sits ON them — you walk into
-        // the drawn doorway to use it.
-        { art: "prop_door_west", x: 12, y: 192, h: 116, w: 28, door: true, behind: true },
-        { art: "prop_door_east", x: 308, y: 192, h: 116, w: 28, door: true, behind: true },
-        // --- the back wall, left to right, with the arch north to the library
-        // and the portal north to the arena.
-        // The portal sits LEFT of the bar. Right of it, the bar's bottle shelf
-        // is drawn in front of the wall and swallowed it whole.
-        { art: "prop_wall_plain",  x: 34,  y: 70, h: 82, w: 64, behind: true, base: { w: 64, h: 8 } },
-        { art: "prop_wall_arch",   x: 98,  y: 70, h: 82, w: 62, door: true, behind: true },
-        { art: "prop_wall_portal", x: 160, y: 70, h: 82, w: 62, door: true, behind: true },
-        { art: "prop_wall_plain",  x: 222, y: 70, h: 82, w: 64, behind: true, base: { w: 64, h: 8 } },
-        { art: "prop_wall_plain",  x: 286, y: 70, h: 82, w: 64, behind: true, base: { w: 64, h: 8 } },
-        // --- the bar, along the right, where the plot puts it
-        { art: "prop_backbar", x: 244, y: 80,  h: 54, w: 84, base: { w: 84, h: 8 } },
-        // short of the east doorway: the bar used to run into it, and a
-        // footprint on a doorway is a door you cannot reach.
-        { art: "prop_bar",     x: 238, y: 106, h: 44, w: 90, base: { w: 90, h: 16 } },
-        // --- tables down the left
-        // Clear of the WEST DOORWAY's approach. Placed against the left edge
-        // they fenced it off: the walk test could reach x 31 and no further,
-        // so the door could be seen and never used.
-        { art: "prop_table", x: 74, y: 120, h: 30, base: { rx: 11, ry: 5 } },
-        { art: "prop_stool", x: 96, y: 124, h: 20, base: { rx: 6,  ry: 3 } },
-        { art: "prop_table", x: 70, y: 178, h: 30, base: { rx: 11, ry: 5 } },
-        { art: "prop_stool", x: 92, y: 182, h: 20, base: { rx: 6,  ry: 3 } }
+        // MEASURED off art-src/lounge_scene.png at 320x200, not placed by eye:
+        // the arch's lit opening is x 100-115 and the portal's x 154-174, so
+        // the wall is seven panels of the same brick at a 57px pitch with the
+        // arch on 107 and the portal on 164. The wall meets the floor at y 72.
+        { art: "prop_lg_wall",   x: -7,  y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_lg_wall",   x: 50,  y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_lg_arch",   x: 107, y: 72, h: 76, w: 60, door: true, behind: true },
+        { art: "prop_lg_portal", x: 164, y: 72, h: 76, w: 60, door: true, behind: true },
+        { art: "prop_lg_wall",   x: 221, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_lg_wall",   x: 278, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_lg_wall",   x: 335, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        // the way west and the way east, in the side walls at the frame edges
+        { art: "prop_door_west", x: 10,  y: 140, h: 74, w: 24, door: true, behind: true },
+        { art: "prop_door_east", x: 310, y: 140, h: 74, w: 24, door: true, behind: true },
+        // the bar along the right end of the back wall, where the plot puts it
+        { art: "prop_backbar", x: 238, y: 62, h: 44, w: 88, base: { w: 88, h: 6 } },
+        // Stops short of the EAST doorway's approach: run out to the frame
+        // edge and its footprint sits on the door, which is a door you can
+        // see and never reach.
+        { art: "prop_bar",     x: 236, y: 88, h: 32, w: 92, base: { w: 92, h: 12 } },
+        // The scene has these tables hard against the left wall. They are
+        // nudged right because there they fenced off the WEST DOORWAY — the
+        // walk test could reach x 31 and no further.
+        { art: "prop_table", x: 74, y: 106, h: 30, base: { rx: 12, ry: 5 } },
+        { art: "prop_stool", x: 96, y: 110, h: 20, base: { rx: 6,  ry: 3 } },
+        { art: "prop_table", x: 70, y: 160, h: 30, base: { rx: 12, ry: 5 } },
+        { art: "prop_stool", x: 92, y: 164, h: 20, base: { rx: 6,  ry: 3 } }
       ],
       // Each trigger sits ON its own drawn doorway and is as tall as the
       // player, so crossing means standing in the opening rather than on a
       // rectangle of floor near it.
       exits: [
-        { x: 2,   y: 120, w: 28, h: 70, to: "bedroom", link: "westDoor" },
-        { x: 78,  y: 44,  w: 40, h: 26, to: "library", link: "northArch" },
-        { x: 140, y: 44,  w: 40, h: 26, to: "arena",   link: "portal" },
-        { x: 290, y: 120, w: 28, h: 70, to: "lab",     link: "eastDoor" }
+        { x: 2,   y: 92,  w: 26, h: 50, to: "bedroom", link: "westDoor" },
+        { x: 92,  y: 46,  w: 32, h: 26, to: "library", link: "northArch" },
+        { x: 149, y: 46,  w: 32, h: 26, to: "arena",   link: "portal" },
+        { x: 294, y: 92,  w: 26, h: 50, to: "lab",     link: "eastDoor" }
       ],
       npcs: [
         {
