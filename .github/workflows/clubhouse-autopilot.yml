@@ -257,25 +257,46 @@ jobs:
       # Failure here is never fatal: no key, API down, timeout — it falls back
       # to a plain tail and carries on. A summariser that can stop a message
       # being answered is worse than an expensive prompt.
+      # PER-COMMENT DIGESTS, CACHED ACROSS RUNS. A Claude reply is compacted by
+      # Haiku exactly ONCE in its life, not once per run that reads the thread.
+      # Without this, every run pays to re-summarise the same unchanged text —
+      # which is the mistake the first version of this made.
+      - name: Restore thread digests
+        uses: actions/cache/restore@v4
+        with:
+          path: .autopilot/digests.json
+          key: clubhouse-digests-${{ steps.ctx.outputs.pr }}-${{ github.run_id }}
+          restore-keys: clubhouse-digests-${{ steps.ctx.outputs.pr }}-
+
       - id: history
         name: Fetch and compress thread history
-        timeout-minutes: 5
+        timeout-minutes: 6
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          # JSON, not pre-joined text: the compressor classifies each comment
+          # (noise / the owner's words / Claude's reply) and treats them
+          # differently, which it cannot do once they are one string.
           gh pr view ${{ steps.ctx.outputs.pr }} --repo ${{ github.repository }} \
-            --json title,body,comments \
-            --jq '"# " + .title + "\n\n" + (.body // "") + "\n\n=== comments (oldest first) ===\n" + ([.comments[] | "**" + (.author.login // "unknown") + "**:\n" + (.body // "")] | join("\n\n---\n\n"))' \
-            > .autopilot/thread_raw.txt || echo "(could not load thread history)" > .autopilot/thread_raw.txt
-          node .github/autopilot/compress-history.js \
-            < .autopilot/thread_raw.txt > .autopilot/thread.txt \
-            || cp .autopilot/thread_raw.txt .autopilot/thread.txt
+            --json comments --jq '.comments' > .autopilot/comments.json \
+            || echo '[]' > .autopilot/comments.json
+          node .github/autopilot/compress-history.js --cache .autopilot/digests.json \
+            < .autopilot/comments.json > .autopilot/thread.txt \
+            || jq -r '.[] | "**" + (.author.login // "unknown") + "**:\n" + (.body // "")' \
+                 .autopilot/comments.json > .autopilot/thread.txt
           {
             echo "thread<<EOF_${{ github.run_id }}"
             cat .autopilot/thread.txt
             echo "EOF_${{ github.run_id }}"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Save thread digests
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .autopilot/digests.json
+          key: clubhouse-digests-${{ steps.ctx.outputs.pr }}-${{ github.run_id }}
 
       # THE ONLY MODEL STEP. Headless Claude CLI on the fresh main working tree.
       # `--bare` skips hooks/MCP/CLAUDE.md for a clean, reproducible CI run;

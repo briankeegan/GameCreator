@@ -76,6 +76,17 @@ design discussion. `shared/` holds the components every game reuses
   keep in mind before raising anything: every run sends the whole thread
   history, `--max-turns 120`, `MAX_GENERATIONS: 12` images, and up to 3 retries
   — so one message can be three full runs.
+- **A run's context is built to a plan, not just handed the thread:
+  `docs/AUTOPILOT_CONTEXT.md`.** Measured on a 60-comment thread, Claude's own
+  replies are 76% of the bytes, live-progress panels 19%, retry/failure notices
+  3%, and THE OWNER'S MESSAGES 2%. So noise is deleted outright (deterministic,
+  free), the owner's messages are NEVER compacted (2% of bytes, 100% of the
+  instructions, and preferences stated once in passing must hold forever), and
+  Claude's replies are compacted by HAIKU once per comment and cached by comment
+  id across runs — so a reply is summarised once in its life and a typical run
+  makes zero API calls to build its context. 47KB -> 11KB measured. Every
+  failure path falls back to a plain tail: a summariser that can stop a message
+  being answered is worse than an expensive prompt.
 - **Per-game autopilot toggle.** Each game chooses how its Clubhouse
   messages are handled, via an `"autopilot": true` flag on its `games.json`
   entry (absent = off). OFF (default) = manual: a subscribed session handles
