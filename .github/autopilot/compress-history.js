@@ -116,7 +116,7 @@ async function haiku(text) {
     // Not JSON (an older caller, or gh failed): pass it through untouched
     // rather than dropping the thread on the floor.
     console.error(`[compress] input is not a comments array (${e.message}) — passing through`);
-    process.stdout.write(raw);
+    process.stdout.write(raw.replace(/\n*$/, "\n"));
     return;
   }
 
@@ -165,7 +165,15 @@ async function haiku(text) {
   }
   out.push(`=== THE LAST ${tail.length} MESSAGES, VERBATIM ===`);
   out.push(tail.map((c) => c.body).join("\n\n---\n\n"));
-  const result = out.join("\n");
+  // ALWAYS end with a newline. Without one, the caller's
+  //   { echo "thread<<EOF"; cat thread.txt; echo "EOF"; } >> $GITHUB_OUTPUT
+  // puts the delimiter on the same line as the last message, GitHub reports
+  // "Invalid value. Matching delimiter not found", and the step fails AFTER
+  // all the work is done — the compressor logged a perfect run (86 comments,
+  // 29 noise dropped, 76KB -> 14.8KB, 23 Haiku calls) and the job died on the
+  // next line. The previous version got away with it because `gh` happened to
+  // end its output with a newline.
+  const result = out.join("\n").replace(/\n*$/, "\n");
   process.stdout.write(result);
   console.error(
     `[compress] ${comments.length} comments, ${dropped} noise dropped; ` +

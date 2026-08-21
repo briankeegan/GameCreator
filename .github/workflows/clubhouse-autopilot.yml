@@ -285,6 +285,11 @@ jobs:
             < .autopilot/comments.json > .autopilot/thread.txt \
             || jq -r '.[] | "**" + (.author.login // "unknown") + "**:\n" + (.body // "")' \
                  .autopilot/comments.json > .autopilot/thread.txt
+          # Belt to the compressor's braces: a heredoc delimiter must start its
+          # own line, and a file with no trailing newline silently glues it to
+          # the last message. That failed a whole run AFTER its work was done.
+          [ -s .autopilot/thread.txt ] || echo "(thread unavailable)" > .autopilot/thread.txt
+          printf '\n' >> .autopilot/thread.txt
           {
             echo "thread<<EOF_${{ github.run_id }}"
             cat .autopilot/thread.txt
