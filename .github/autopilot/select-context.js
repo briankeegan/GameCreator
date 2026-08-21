@@ -36,6 +36,13 @@ const KINDS = [
     re: /\b(room|background|bg|scene|prop|furniture|floor plate|walkmask|doorway|interior|garden|lounge|bedroom)/i },
   { card: "docs/TILED_LEVEL_STANDARD.rules.md", name: "tiled levels",
     re: /\b(tile|tileset|tiled|level art|ground|terrain|wall|fence|floor|map)/i },
+  // Doors are the one kind here that is as much code as art — a doorway is
+  // drawn in a wall AND armed by a rectangle, and the standard is what keeps
+  // those two agreeing. So this card is selected on the ART test below being
+  // bypassed for it: a request to move a door is usually not phrased as art
+  // at all ("you come out of the library in the wrong place").
+  { card: "docs/DOOR_STANDARD.rules.md", name: "doors", always: true,
+    re: /\b(door|doorway|exit|entrance|gate|portal|arriv|spawn|walk (in|out)|come out|room to room|between rooms|stairs)/i },
 ];
 
 // Art at all? If the request is "make the enemies flash red when hit" there is
@@ -50,8 +57,11 @@ function main() {
 
   const out = [];
   const picked = [];
-  if (ART.test(msg)) {
-    for (const k of KINDS) if (k.re.test(msg)) picked.push(k);
+  for (const k of KINDS) {
+    // `always` kinds are matched on their own keywords whether or not the
+    // request reads as an art request at all — see the door card's comment.
+    if (!k.always && !ART.test(msg)) continue;
+    if (k.re.test(msg)) picked.push(k);
   }
 
   if (picked.length) {

@@ -403,27 +403,21 @@
   var lastTime = null;
   var npcLineCounters = {}; // remembers which line to show next per NPC (repeat visits)
 
-  // at: optional { x, y } to arrive at — a door hands over the spot in front
-  // of the matching door on the other side, so you step out where you should
-  // instead of teleporting to the middle of the room. facing: optional
-  // arrival direction — without it she kept whatever direction she was
-  // last walking before she hit the exit trigger, which reads as just
-  // jumping into the next space rather than actually stepping through a
-  // door. Reported live: crossing bedroom<->lounge should turn her to face
-  // away from that door (right leaving the bedroom, left leaving the
-  // lounge), not carry over her old facing.
   // ---- doors are PAIRS ----
-  // A door carries a `link`, and the door it comes out of is the one in the
-  // destination room with the same link. Where you land and which way you
-  // face are then WORKED OUT from that partner's own rectangle — step out of
-  // it into the room, turn your back on it — instead of being two numbers
-  // typed in by hand on the other side of the file.
+  // THE RULES, AND WHY EACH ONE EXISTS: docs/DOOR_STANDARD.md — §2 for derived
+  // arrival, §5 for the disarm and key-release that stop a door bouncing you
+  // straight back. Fix a rule there, not here.
   //
-  // Typed numbers were the bug. Nothing tied one side of a door to the other,
-  // so they drifted: the Library, the Garden and the Lab all put you down on
-  // the same square of lounge floor, nowhere near the rune door you had just
-  // walked through, and coming downstairs left you in the middle of the room
-  // rather than at the stairs.
+  // What the code below does, so this file is not cryptic: a door carries a
+  // `link`, and the door it comes out of is the one in the destination room
+  // with the same link. Where you land and which way you face are WORKED OUT
+  // from that partner's own rectangle — step out of it into the room, turn
+  // your back on it. Nothing about an arrival is typed anywhere, which is why
+  // an exit's only job is to name its link and its destination.
+  //
+  // The order of STEP_OUT is the order the directions are tried, so it is
+  // load-bearing: down first, because a door in a back wall is the common
+  // case and stepping down out of it walks you into the room.
   var STEP_OUT = [
     { dir: "down",  dx: 0,  dy: 1  },
     { dir: "up",    dx: 0,  dy: -1 },
@@ -1220,11 +1214,11 @@
             // Out of the doorway itself, not out of the player — the bloom
             // has to start where the swirl is drawn or it reads as the screen
             // flashing rather than the portal taking you.
-            var to = ex.to, at = ex.arriveAt, face = ex.arriveFacing, link = ex.link;
+            var to = ex.to, link = ex.link;
             startPortal(ex.x + ex.w / 2, ex.y + ex.h / 2, function () {
-              enterRoom(to, at, face, link);
+              enterRoom(to, null, null, link);
             });
-          } else enterRoom(ex.to, ex.arriveAt, ex.arriveFacing, ex.link);
+          } else enterRoom(ex.to, null, null, ex.link);
         }
       }
     });

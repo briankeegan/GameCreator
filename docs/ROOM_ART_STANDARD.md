@@ -108,16 +108,19 @@ wires exits by coordinates; if the art puts the door somewhere else, the player
 walks through a wall or stands in a doorway that does nothing. A room whose door
 moved is worth regenerating, not working around.
 
-In Newsey each exit carries `to`, `arriveAt` (real unobstructed floor in the
-destination, with clearance from every *other* exit there) and `arriveFacing`
-(without it the player reads as materialising rather than stepping through).
-`check_room_exits.mjs` enforces all three.
+**How a door BEHAVES is not this document's business — it is
+[`DOOR_STANDARD.md`](DOOR_STANDARD.md), and that is the one to read before
+moving a way out of a room.** What belongs here is the half a room generation
+decides: which wall the doorway is drawn in, and that it is drawn at all. The
+two halves are checked against each other — the room's spec names the wall, the
+exit trigger is a rectangle in code, and `check_room_exits.mjs` fails the build
+when they disagree.
 
-**A room's own `playerStart` must not sit inside its own exit trigger.** Doors
-stay disarmed until you step off them — that is what stops an arrival throwing
-you straight back out — so a spawn point on a threshold means the door never
-arms at all, and you can walk into it forever with nothing happening. This
-shipped once and was found by the walk test in §8.
+This section used to carry the door rules itself, in the shape they had before
+they were fixed: `arriveAt` and `arriveFacing`, two numbers and a direction
+typed on the far side of the file from the door they belonged to. They have not
+existed for some time. That is exactly the drift the "point at a standard,
+never copy it" rule exists to stop, and it is why this paragraph is a link now.
 
 ### Lighting and palette come from the game, not the prompt
 

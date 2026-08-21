@@ -144,29 +144,20 @@ window.NEWSEY_STORY = (function () {
   // The three that go somewhere are the three that exist. The other three are
   // listed and locked, which is both what the door shows her and an honest
   // account of what is built.
-  // EXIT / DOOR CONVENTION — a door is one of a PAIR, not a one-way trip with
-  // a destination typed next to it.
+  // EXIT / DOOR CONVENTION — THE RULES ARE IN docs/DOOR_STANDARD.md. Read it
+  // before adding or moving a way out of a room; this comment deliberately
+  // does not restate them, because the copy in a workflow prompt drifted
+  // months behind the standard once already and nobody could tell which was
+  // stale.
   //
-  // Every door carries a `link`. The door you come OUT of is whichever door in
-  // the destination room shares that link (an NPC can carry one too — the
-  // lounge's portal is the far side of the arena's doorway). Where you land
-  // and which way you face are worked out from that partner's own rectangle at
-  // runtime: step out of it into the room, with your back to it. There is
-  // deliberately nothing here to type.
+  // The short version, so this file is not cryptic: a door is one half of a
+  // PAIR. It carries a `link`, and the door you come out of is whichever door
+  // (or linked NPC, for the lounge's portal) in the destination room shares
+  // that link. Where you land and which way you face are worked out from that
+  // partner at runtime, so there is deliberately nothing here to type.
   //
-  // It used to be `arriveAt` + `arriveFacing`, two numbers and a direction
-  // written on the far side of the file from the door they belonged to. They
-  // drifted, because nothing tied the two halves of a door together: the
-  // Library, the Anarchy Garden and Kyran's Lab all put you down on the SAME
-  // square of lounge floor, nowhere near the rune door you had just walked
-  // through, and coming downstairs left you in the middle of your father's
-  // living room rather than at the stairs. Every one of those values was
-  // individually valid — on the floor, not in a wall — and every check passed.
-  //
-  // `.github/scripts/check_room_exits.mjs` enforces the pairing (run by hand,
-  // or the "Verify room exits" step in pages.yml runs it on any story.js
-  // change): every door needs a link, exactly one thing in the destination
-  // must carry it, and no room may be one you can leave but never enter.
+  // `.github/scripts/check_room_exits.mjs` is the gate, and it runs on every
+  // push as the "Verify room exits" step in pages.yml.
 
   var ROOMS = {
     // The real world, before any of it: your own childhood bedroom upstairs

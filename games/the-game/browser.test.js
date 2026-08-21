@@ -2,12 +2,13 @@
 // intro cutscene, waking in bed, walking to and opening the front door,
 // Chuck walking in and talking, the TV's dream cutscene, and arriving in
 // Infinity. Then a focused pass over every room-to-room door (arrival
-// facing + landing spot, per the EXIT / DOOR CONVENTION in story.js) and
+// facing + landing spot, per docs/DOOR_STANDARD.md — §6 is what a door test
+// is allowed to assert, and it is worth reading before adding a case) and
 // a sanity check that wandering NPCs actually move. Complements
 // check_room_exits.mjs, which validates the door DATA statically; this
 // drives the real DOM/canvas/input path check_room_exits.mjs can't see at
-// all — the entrance-walk collision bug and the missing arriveFacing both
-// existed in valid-looking data and only showed up by actually playing.
+// all — the entrance-walk collision bug and an arrival that faced the wrong
+// way both existed in valid-looking data and only showed up by playing.
 //
 //   NODE_PATH="$(npm root -g)" node games/the-game/browser.test.js
 //
