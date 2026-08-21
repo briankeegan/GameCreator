@@ -211,6 +211,15 @@ def main():
     # there (see MIRROR_STEP_MAX in verify_sheet.py).
     cmd = [sys.executable, str(ROOT / '.github/art/verify_sheet.py'), 'raw', str(out_abs),
            '--frames', '3']
+    if args.kind == 'attack':
+        # COUNT ATTACK FRAMES AS BLOBS, NOT BY GUTTER. A swung blade reaches
+        # into the white gap between sprites, so two frames touch and a
+        # gutter-based count reports "found 2 sprites, expected 3" on art that
+        # is perfectly good. build_sheet.py has always been given --blobs for
+        # attack sheets — the cutter knew; the verifier did not, and it
+        # rejected two rows for it before anyone noticed the flag was missing
+        # on one side of the same pipeline.
+        cmd.append('--blobs')
     if args.kind == 'walk':
         cmd.append('--walk')
         if args.view != 'side':
