@@ -299,13 +299,14 @@ window.NEWSEY_STORY = (function () {
       // Measured off art-src/bedroom_scene.png: she lies with her head on the
       // pillow up under the canopy, drawn clipped to above the quilt's edge.
       // bedSpot sits on the pillows — a fraction of the CUT IMAGE's own
-      // height (0.41 down from its top for the pillow, 0.68 down for the
-      // quilt's clip line), not the scene, since that's what's actually
-      // drawn on screen. Recomputed again when prop_bed_bed's h dropped from
-      // 99 to 85 (see the props block below — the top of the canopy moved
-      // down 14px), since both of these are measured from that same top.
-      bedSpot: { x: 161, y: 62 },
-      bedClipY: 72,
+      // height (0.4848 down from its top for the pillow, 0.5859 down for
+      // the quilt's clip line), not the scene, since that's what's
+      // actually drawn on screen. Recomputed again when prop_bed_bed's h
+      // grew from 99 to 116 (see the props block below — the top stayed
+      // put, only the bottom moved), since both of these are measured
+      // from that same top.
+      bedSpot: { x: 161, y: 70 },
+      bedClipY: 82,
       // On the rug at the bed's foot, clear of the bed's and the trunk's own
       // footprints.
       wakeSpot: { x: 161, y: 168 },
@@ -399,7 +400,20 @@ window.NEWSEY_STORY = (function () {
         // has none declared, so it still follows the art's own aspect).
         { art: "prop_bed_mirror", x: 53,  y: 109, h: 99, w: 50, base: { w: 40, h: 8 } },
         { art: "prop_bed_nightstand", x: 96, y: 109, h: 61, base: { w: 20, h: 8 } },
-        { art: "prop_bed_bed",   x: 162, y: 113, h: 99, w: 79, base: { w: 72, h: 14 } },
+        // prop_bed_bed's own art ends at the mattress/quilt edge — no
+        // footboard drawn, confirmed by opening the file: flat transparent
+        // background right where the scene's own footboard is. Measuring
+        // it (GrabCut) only ever finds that shorter shape, which read as
+        // "the bed's too high AND not big enough" and, at the old y=113,
+        // left a gap of bare rug between the bed's cut-off bottom edge and
+        // the trunk instead of the two touching the way the scene shows.
+        // Not a paid regen right now — moved down and sized up instead so
+        // the trunk (drawn after it, y=153 > 130, so on top) sits across
+        // the missing-footboard edge and covers it, the same kind of
+        // deliberate placement departure as the Lounge's tables. Top stays
+        // at 14 (the canopy finials, unaffected by any of this); h/w grow
+        // to match, aspect held at the art's own 79:99.
+        { art: "prop_bed_bed",   x: 162, y: 130, h: 116, w: 93, base: { w: 85, h: 16 } },
         { art: "prop_bed_trunk", x: 163, y: 153, h: 32, w: 53, base: { w: 48, h: 9 } },
       ],
       // THE LOUNGE IS EAST OF THIS ROOM, so the way out is a door in the EAST
