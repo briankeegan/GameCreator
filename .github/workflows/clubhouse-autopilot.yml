@@ -49,6 +49,10 @@ on:
         description: 'Retry attempt number (internal — the failure path re-dispatches with this incremented, up to 3)'
         required: false
         default: '1'
+      continue_pass:
+        description: 'Auto-continuation pass number (internal — a run that timed out but shipped real progress re-dispatches with this incremented, up to 6, instead of waiting on a human to ask again)'
+        required: false
+        default: '1'
       model:
         description: 'Model for this run. Default Sonnet. Opus costs many times more per run and exhausted the account API budget in a day when it was the default — pick it only for work that genuinely needs it.'
         required: false
@@ -1050,6 +1054,42 @@ jobs:
             --body "$(printf '**Claude says:**\n\n%s\n\n[v0.%s]' "$body" "$N")"
           # Close out the live status so it does not sit there looking mid-run.
           GC_STATUS_PR=${{ steps.ctx.outputs.pr }} .github/autopilot/status.sh "done - reply posted below"
+
+      # AUTO-CONTINUE A TIMED-OUT-BUT-PRODUCTIVE RUN, so a big ask (a whole
+      # character roster) doesn't sit there needing a human to notice the
+      # reply said "ask again" and actually ask again. The condition here is
+      # the same deterministic signal the reply step above already uses —
+      # steps.model.outcome == 'failure' (the 30-min kill fired) alongside
+      # steps.land.outputs.deployed == '1' (there was real, smoke-tested
+      # progress, not nothing) — so this only fires for the exact case the
+      # timeout-doesn't-discard-progress fix was built for, never for a run
+      # that finished cleanly or one that made no progress at all (that path
+      # is failure()-gated below, unchanged).
+      #
+      # Bounded at 6 passes so a request that is simply too large (or stuck
+      # regenerating the same failing asset every pass) hands back to a human
+      # instead of looping forever — same shape as the retry cap below, sized
+      # larger because each pass here did real, useful work, unlike a retry.
+      - name: Continue automatically if more work remains
+        if: success() && steps.ctx.outputs.enabled == 'true' && steps.model.outcome == 'failure' && steps.land.outputs.deployed == '1'
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PASS="${{ github.event.inputs.continue_pass || '1' }}"
+          CONT_MAX=6
+          if [ "$PASS" -lt "$CONT_MAX" ]; then
+            NEXT=$((PASS + 1))
+            echo "Pass $PASS/$CONT_MAX shipped partial progress — continuing automatically as pass $NEXT."
+            gh workflow run clubhouse-autopilot.yml --ref main \
+              -f pr_number="${{ steps.ctx.outputs.pr }}" \
+              -f message="(automatic continuation — address all outstanding requests in this thread)" \
+              -f attempt="1" \
+              -f continue_pass="$NEXT" \
+              || echo "::warning::could not schedule the continuation — the thread's own reply still tells the owner to ask again"
+          else
+            echo "Reached the $CONT_MAX-pass continuation cap — leaving it to the reply already posted (asks the owner to send another message)."
+          fi
 
       # Deterministic: if any step above failed, the thread still gets an answer
       # instead of going mysteriously silent.
