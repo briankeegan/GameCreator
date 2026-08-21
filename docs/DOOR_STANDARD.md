@@ -165,6 +165,7 @@ proved to fire by breaking a room on purpose.
 | A wall name the room generator doesn't understand | `check_room_exits.mjs` | "Verify room exits" |
 | A grid game where you leave by one wall and arrive against the same wall, or land out of line with the way out you came through | `check_room_exits.mjs` | "Verify room exits" |
 | A grid map with a short row, no gate, or a spawn touching the gate | `check_room_exits.mjs` | "Verify room exits" |
+| A door-data file the game never loads, or never precaches | `check_room_exits.mjs` | "Verify room exits" |
 | A trigger armed somewhere the player cannot stand | `room.py verify` | "Verify room props and floor plates" |
 | A prop footprint covering a doorway | `room.py verify` | "Verify room props and floor plates" |
 
@@ -185,6 +186,13 @@ proved to fire by breaking a room on purpose.
   moment it publishes one, with no list to remember to update.
 - **Behaviour stays in `app.js`.** The data file is the level; what a door
   *does* when you touch it is code.
+- **Load it AND precache it.** A door-data file the game does not load kills
+  the game at startup on the missing global; one it does not list in `sw.js`
+  works online and breaks the moment the PWA is offline, which is the failure
+  nobody hits until they are on a train. Both are checked — `sync-precache.js`
+  deliberately answers only "does every listed file exist", never "is every
+  needed file listed", so this half belongs to the door gate. Dog Punk shipped
+  the second of these for exactly as long as it took the check to be written.
 
 ## 9. Checklist
 

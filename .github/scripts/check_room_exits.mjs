@@ -391,6 +391,27 @@ function detect() {
   return targets;
 }
 
+// A door-data file the game does not actually LOAD is worse than none: the
+// game dies at startup on the missing global. One it does not PRECACHE works
+// online and breaks the moment the PWA is offline, which is the failure nobody
+// hits until they are on a train. Both are plain text searches, so neither is
+// a judgement call — sync-precache.js deliberately answers only "does every
+// listed file exist", not "is every needed file listed", so this half belongs
+// to whoever owns the file. That is this gate.
+function checkWiring(dir, file) {
+  const rel = "./" + path.basename(file);
+  for (const [page, what] of [["index.html", "load"], ["sw.js", "precache"]]) {
+    const p = path.join(dir, page);
+    if (!existsSync(p)) continue;
+    const src = readFileSync(p, "utf8");
+    if (!src.includes(path.basename(file))) {
+      fail(`${dir}: ${page} does not ${what} ${rel} — ` + (what === "load"
+        ? "the game dies at startup on the missing global"
+        : "the game works online and breaks the moment the PWA is offline"));
+    }
+  }
+}
+
 const arg = process.argv[2];
 const targets = arg
   ? [{ kind: path.basename(arg) === "rooms.js" ? "grid" : "declarative", dir: path.dirname(arg), file: arg }]
@@ -402,6 +423,7 @@ if (!targets.length) {
 }
 for (const t of targets) {
   console.log(`== ${t.file} (${t.kind}) ==`);
+  checkWiring(t.dir, t.file);
   if (t.kind === "grid") checkGrid(t.file);
   else checkDeclarative(t.dir, t.file);
 }

@@ -46,6 +46,7 @@
 | A wall name the room generator doesn't understand | `check_room_exits.mjs` | "Verify room exits" |
 | A grid game where you leave by one wall and arrive against the same wall, or land out of line with the way out you came through | `check_room_exits.mjs` | "Verify room exits" |
 | A grid map with a short row, no gate, or a spawn touching the gate | `check_room_exits.mjs` | "Verify room exits" |
+| A door-data file the game never loads, or never precaches | `check_room_exits.mjs` | "Verify room exits" |
 | A trigger armed somewhere the player cannot stand | `room.py verify` | "Verify room props and floor plates" |
 | A prop footprint covering a doorway | `room.py verify` | "Verify room props and floor plates" |
 - **None of these ask a model anything.** Every one is a number a script computes — a rectangle overlap, a pixel count against a walk mask, a set comparison between two rooms' maps. That is deliberate: the judgement was moved into the tooling so no run has to supply it.
@@ -53,4 +54,5 @@
 - **Publish the door data as plain data, in its own file, with no DOM in it.** That is the whole cost of admission, and it is what the checker detects. Rooms that live inside `app.js` beside `document.getElementById` cannot be read by any tool without a browser, so they cannot be checked at all — which is why Dog Punk's maps were moved out to `games/dog-punk/rooms.js`.
 - **Which games are checked is DETECTED, never configured** — `story.js` for the derived shape, `rooms.js` for the grid shape. A new game is covered the moment it publishes one, with no list to remember to update.
 - **Behaviour stays in `app.js`.** The data file is the level; what a door
+- **Load it AND precache it.** A door-data file the game does not load kills the game at startup on the missing global; one it does not list in `sw.js` works online and breaks the moment the PWA is offline, which is the failure nobody hits until they are on a train. Both are checked — `sync-precache.js` deliberately answers only "does every listed file exist", never "is every needed file listed", so this half belongs to the door gate. Dog Punk shipped the second of these for exactly as long as it took the check to be written.
 ## 9. Checklist
