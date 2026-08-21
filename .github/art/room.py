@@ -676,18 +676,10 @@ def main():
         # string removes the placeholder, so "is {{FLOOR}} still in there?"
         # can never catch a missing one. What reaches the generator instead is
         # a sentence with a hole in it, and it draws something to fill it.
-        template = pass_template(a.which)
-        need = {"{{ROOM}}": ("room name", a.room), "{{FLOOR}}": ("--floor", a.floor),
-                "{{N}}": ("--n", a.n), "{{ITEMS}}": ("--items", a.items)}
-        missing = [name for k, (name, val) in need.items()
-                   if k in template and not str(val).strip()]
-        if missing:
-            print("error: the %s prompt needs %s. Run `room.py prompt %s` to see "
-                  "what it is asking for." % (a.which, ", ".join(missing), a.which),
-                  file=sys.stderr)
-            return 1
-        out = os.path.join(a.game.rstrip("/"), "art-src",
-                           PASS_PATH[a.which] % a.room)
+        # RESOLVE FROM THE SPEC FIRST. The placeholder check below reads these
+        # values, so filling them in afterwards meant every spec-driven pass 2
+        # and pass 3 was rejected for "needs --floor" while the answer sat in
+        # the room's own spec file.
         spec = load_spec(game, a.room)
         if spec is None:
             print("REFUSING: games/%s/rooms/%s.json does not exist.\n"
@@ -703,6 +695,19 @@ def main():
         floor = (a.floor or "").strip() or spec.get("floor", "")
         items = (a.items or "").strip() or "; ".join(spec.get("contains", []))
         n = (a.n or "").strip() or str(len(spec.get("contains", [])) or 2)
+
+        template = pass_template(a.which)
+        need = {"{{ROOM}}": ("room name", desc), "{{FLOOR}}": ("--floor or spec.floor", floor),
+                "{{N}}": ("--n", n), "{{ITEMS}}": ("--items or spec.contains", items)}
+        missing = [name for k, (name, val) in need.items()
+                   if k in template and not str(val).strip()]
+        if missing:
+            print("error: the %s prompt needs %s. Run `room.py prompt %s` to see "
+                  "what it is asking for." % (a.which, ", ".join(missing), a.which),
+                  file=sys.stderr)
+            return 1
+        out = os.path.join(a.game.rstrip("/"), "art-src",
+                           PASS_PATH[a.which] % a.room)
         prompt = styled(a.game.rstrip("/"),
                         pass_prompt(a.which, desc, floor, n, items,
                                     strip_notes=True))
