@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("the-game-v58", [
+GCRegisterServiceWorker("the-game-v59", [
   "./",
   "./index.html",
   "./style.css",

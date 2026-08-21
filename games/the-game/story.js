@@ -331,20 +331,14 @@ window.NEWSEY_STORY = (function () {
         { art: "prop_bed_wall", x: 126, y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
         { art: "prop_bed_wall", x: 192, y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
         { art: "prop_bed_wall", x: 258, y: 102, h: 112, behind: true, base: { w: 60, h: 8 } },
-        // the balustrade along the near edge, unbroken, tiled the same way —
-        // native aspect, several copies, instead of two copies each stretched
-        // to 3.5x their own width (the worst offender: w=160 against a native
-        // w of 46 at this h). It used to run in two pieces with a gap between
-        // them too, from when this room's own near edge was the way out —
-        // the map moved that door to the east wall and left a break that led
-        // nowhere, which read as a second exit that silently refused to open.
-        { art: "prop_bed_rail", x: -4,  y: 199, h: 30, base: { w: 46, h: 10 } },
-        { art: "prop_bed_rail", x: 42,  y: 199, h: 30, base: { w: 46, h: 10 } },
-        { art: "prop_bed_rail", x: 88,  y: 199, h: 30, base: { w: 46, h: 10 } },
-        { art: "prop_bed_rail", x: 134, y: 199, h: 30, base: { w: 46, h: 10 } },
-        { art: "prop_bed_rail", x: 180, y: 199, h: 30, base: { w: 46, h: 10 } },
-        { art: "prop_bed_rail", x: 226, y: 199, h: 30, base: { w: 46, h: 10 } },
-        { art: "prop_bed_rail", x: 272, y: 199, h: 30, base: { w: 46, h: 10 } },
+        // the balustrade along the near edge, unbroken. The regenerated sheet
+        // cut this as ONE long run (three posts, not a single repeatable
+        // module — build_props.py's own row-clustering fix, see its commit,
+        // is what stopped this from being cut into the WRONG prop's name
+        // entirely), and at native aspect (12.125:1) one copy at h=30 is
+        // already wider than the room — no tiling needed, just centred with
+        // a few px of bleed past each edge into the frame.
+        { art: "prop_bed_rail", x: 160, y: 199, h: 30, base: { w: 308, h: 10 } },
         // The furniture, regenerated: the bed and mirror had been drawn at a
         // tilted 3/4 product-shot angle (reported from a screenshot — the
         // bed's open foot faced off to the lower-left instead of the viewer,
