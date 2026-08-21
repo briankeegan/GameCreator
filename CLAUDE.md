@@ -405,11 +405,21 @@ design discussion. `shared/` holds the components every game reuses
     image Action reads, so a prompt only has to say WHICH PASS it wants — and
     `room.py prompt scene|plate|props` prints those prompts filled in. The
     Anarchy Garden is the reference room.
-  - **`room.py check` renders two pictures and you have to LOOK at them.** The
-    assembled room beside the composed scene is the step that finds things:
-    a plate that never filled its frame, statues at two thirds size, three
-    patches of ground cover where the scene has drifts. Every one of those was
-    invisible in the numbers and obvious in one glance at the side-by-side.
+  - **`room.py check` renders three pictures and you have to LOOK at all of
+    them, because side-by-side and blend catch different mistakes and neither
+    substitutes for the other.** The assembled room beside the composed scene
+    (side-by-side) is the step that finds things: a plate that never filled
+    its frame, statues at two thirds size, three patches of ground cover
+    where the scene has drifts. Every one of those was invisible in the
+    numbers and obvious in one glance at the side-by-side. But side-by-side
+    puts two pictures at their OWN separate scales next to each other, which
+    makes it blind to one whole class of mistake: a rug drawn at less than
+    half the width it needed turned into "a smaller picture of a smaller
+    rug" and passed a signed-off side-by-side clean. The assembled room
+    composited semi-transparent ON TOP of the scene (blend) is what actually
+    catches that — a size or position error shows up as an unmissable
+    doubled or ghosted edge. Found and fixed this way, after the room above
+    had already been signed off once on the side-by-side alone.
   - Ask for flat pure white behind a prop sheet, never transparency (same
     reason as sprite sheets). If a sheet does come back with real alpha,
     `build_props.py` uses it — keying white would eat a white marble statue.

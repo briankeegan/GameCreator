@@ -792,6 +792,23 @@ def main():
             rc = sh("python3", os.path.join(HERE, "preview_room.py"), game, a.room,
                     "--scene", scene, "--mode", "side",
                     "--out", os.path.join(a.out, "side-%s.png" % a.room))
+            # side-by-side and blend catch DIFFERENT mistakes, and neither
+            # substitutes for the other. Side puts two pictures at their own
+            # separate scales next to each other — great for style, colour,
+            # "does this look like the same room", useless for size: a prop
+            # drawn at half the right width just reads as "a smaller picture
+            # of a smaller rug", not as wrong. Blend composites the assembled
+            # room semi-transparent ON TOP of the scene, so a size or position
+            # error shows up as an unmissable doubled or ghosted edge — which
+            # is exactly how the bedroom's rug (w half of what it needed to
+            # be) and bed (14px of canopy drawn into the wall) were found,
+            # AFTER this room had already passed the side-by-side and been
+            # signed off once. Rendered every time now, not just when someone
+            # remembers to ask for --mode blend by hand.
+            if not rc:
+                rc = sh("python3", os.path.join(HERE, "preview_room.py"), game, a.room,
+                        "--scene", scene, "--mode", "blend",
+                        "--out", os.path.join(a.out, "blend-%s.png" % a.room))
         else:
             print("no composed scene at %s — pass 1 is what you measure from, keep it"
                   % scene)
@@ -820,7 +837,9 @@ def main():
         # rendered either.
         with open(rendered_path(game, a.room), "w", encoding="utf-8") as f:
             f.write(room_digest(game, a.room) + "\n")
-        print("\nLOOK AT THESE. The side-by-side is the step that finds things.")
+        print("\nLOOK AT THESE — both of them. The side-by-side finds style and "
+              "content mistakes; the blend finds SIZE and POSITION mistakes, "
+              "which the side-by-side cannot show at all.")
         print("When you have LOOKED and it is right:")
         print("  python3 .github/art/room.py signoff %s %s" % (game, a.room))
         return 0
