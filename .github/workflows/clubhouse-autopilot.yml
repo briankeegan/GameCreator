@@ -89,9 +89,15 @@ jobs:
     runs-on: ubuntu-latest
     # Hard cap on the whole job so a hang can never hold the per-thread queue
     # lock for GitHub's default 6 hours (which stalled every queued message
-    # behind it). The model step has its own tighter timeout below. Sized to
-    # fit the retry backoff (~10 min) + the 30-min model cap + overhead.
-    timeout-minutes: 55
+    # behind it). The model step has its own tighter timeout below.
+    #
+    # Sized for the WORST case, not the typical one: the model step now
+    # continues past its own 30-min timeout (continue-on-error, see that
+    # step) so a slow run's real progress can still be smoke-tested and
+    # landed instead of discarded — so this cap has to fit setup (~15) + the
+    # 30-min model cap + smoke-test (15) + land (10) + reply/retry overhead,
+    # not just the model cap plus a little slack like before.
+    timeout-minutes: 80
     permissions:
       contents: write        # push the change branch
       pull-requests: write   # open + merge the change PR, post the reply comment
@@ -640,10 +646,28 @@ jobs:
         run: .github/autopilot/status.sh "reading the thread and working on the change"
 
       - name: Handle the Clubhouse message (headless Claude)
+        id: model
         if: steps.ctx.outputs.enabled == 'true'
         # If the model hangs (stuck API call, wedged broker curl, etc.), kill it
-        # here instead of letting it block the thread for hours. On timeout this
-        # step fails and the failure reply fires, freeing the queue.
+        # here instead of letting it block the thread for hours.
+        #
+        # continue-on-error: TIMING OUT USED TO THROW AWAY EVERYTHING. A
+        # timeout killed this step, which skipped smoke-test/land (both gated
+        # on success()) via the SAME path as a real crash — so three full
+        # 30-minute attempts on a big multi-character request (Dog Punk,
+        # 2026-08-21 04:44-05:25 UTC) each did real, verified art work and
+        # committed NONE of it, because the process was SIGKILLed before it
+        # ever reached the git-commit step later in the job. 90 minutes,
+        # three "hit a snag" replies, and nothing shipped.
+        #
+        # continue-on-error absorbs the timeout so success() stays true and
+        # the pipeline keeps going: smoke-test still gates what ships (so a
+        # timeout that left the tree genuinely broken still gets caught), but
+        # a timeout that left real, working progress on disk now lands it
+        # instead of discarding it. steps.model.outcome (not .conclusion,
+        # which this rewrites to 'success') is checked below to tell a
+        # timeout-with-real-progress apart from a timeout-with-nothing.
+        continue-on-error: true
         timeout-minutes: 30
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -807,6 +831,17 @@ jobs:
           # What actually changed, for check-reply.js to hold the reply to.
           git diff --cached --name-only > .autopilot/changed.txt || true
           if git diff --cached --quiet; then
+            # A timed-out/crashed model step with NOTHING staged is a real
+            # failure, not "reply-only" — falling through here would let the
+            # generic post-reply fallback claim "I've handled your message"
+            # over zero actual work. Fail so the retry/report-failure step
+            # fires instead, same as before this step could run past a model
+            # timeout at all.
+            if [ "${{ steps.model.outcome }}" = "failure" ]; then
+              echo "::error::model step failed/timed out and produced no changes to ship"
+              printf 'I ran out of time and had nothing finished to show for it — no partial work to ship. Ask me again and I will pick this back up.\n' > .autopilot/failure.md
+              exit 1
+            fi
             echo "No file changes — reply-only, nothing to ship."
             : > .autopilot/changed.txt
             exit 0
@@ -977,6 +1012,11 @@ jobs:
           node .github/autopilot/check-reply.js "$body_file" .autopilot/changed.txt || true
           if [ -s "$body_file" ]; then
             body=$(cat "$body_file")
+          elif [ "${{ steps.model.outcome }}" = "failure" ]; then
+            # The model hit its timeout before it got to write reply.md, but
+            # land-changes only reaches here when it actually had something
+            # real staged — so this is genuine partial progress, not silence.
+            body="I ran out of time partway through this and had to stop, but what I'd finished before the cutoff just shipped — take a look. If anything from your message is still missing, ask again and I'll pick up where I left off."
           else
             body="I've handled your message — take a look at the thread and the latest changes."
           fi
