@@ -1,0 +1,252 @@
+{
+  "_readme": "Dog Punk art rules. These are not suggestions: art-src/assemble.py enforces the palette, scale, baseline and pixel grid mechanically, and any prompt for new art MUST follow the generation rules below. The reason all of this exists: every sprite used to be generated as its own image, so colours, proportions and pixel scale drifted frame to frame and the character visibly changed breed while walking. Consistency comes from generating a WHOLE SHEET in ONE image and then snapping it to the locked palette here.",
+  "sheetRule": "NEVER generate a single frame on its own. Every character or enemy is generated as ONE image containing ALL of its frames for a given direction — idle, walk, attack, left to right — because frames drawn in the same image share proportions, palette and pixel scale by construction. A missing direction gets its own one-row image (front / side / back), never a single replacement frame dropped into an existing set.",
+  "camera": "Top-down/three-quarter overworld view (SNES Zelda: A Link to the Past scale). Characters stand upright facing the viewer (front row), in strict side profile FACING RIGHT (side row — the code mirrors it for left), or seen from behind (back row).",
+  "style": "Chunky 16-bit cartoon mascot pixel art. BIG SIMPLE SHAPES, a THICK BLACK OUTLINE around the whole silhouette and around each major internal shape (head vs jacket vs boots), large flat blocks of solid colour, big readable cartoon eyes. Shading only as 2-3 hard-edged flat bands per surface. STRICTLY FORBIDDEN, and the most common failure: fur texture, speckling, dithering, per-pixel noise, crosshatch, gradients, airbrushed shading, anti-aliasing, painterly or photo-realistic rendering. Any single colour block must be one uniform value when zoomed in. Enemies use the SAME cartoon language as the hero — a realistically rendered, finely textured creature next to a flat cartoon dog reads as two different games and is an instant reject.",
+  "background": "SOLID FLAT PURE WHITE (#FFFFFF), completely uniform — NOT transparent. Asking the generator for transparency reliably produces a beige or gradient wash instead; the pipeline (art-src/sheet.py) keys the flat white out to real transparency afterwards, which only works if the background is uniform and the sprite has its black outline.",
+  "framing": "The whole set must sit well inside the frame with a wide empty margin on all four sides — nothing touching or cut off by any edge (the bottom row is what gets clipped in practice, so state this explicitly in every prompt). Sprites must NOT overlap or touch each other: leave a clear gap between neighbours, or the cutter cannot separate them.",
+  "lockedPalette": [
+    "#14121a",
+    "#f0a35a",
+    "#e0791c",
+    "#b54d1a",
+    "#7a4a24",
+    "#4e2e15",
+    "#ff5c9a",
+    "#e8306f",
+    "#a01a4c",
+    "#3d434f",
+    "#2a2e38",
+    "#171a21",
+    "#5a5d66",
+    "#3fa093",
+    "#2e7d74",
+    "#1d5a55",
+    "#dfe4ea",
+    "#8c95a0",
+    "#f4f0e6",
+    "#8a7a62",
+    "#6b5c48",
+    "#d98a7a",
+    "#a85f52"
+  ],
+  "paletteRule": "assemble.py maps EVERY pixel of EVERY sheet to the nearest colour in lockedPalette, so the hero and the enemies cannot drift apart no matter how the generator renders them. Add a colour here only when a genuinely new material appears, and never remove one that shipped art depends on.",
+  "environmentPalette": [
+    "#14121a",
+    "#22232a",
+    "#2f3038",
+    "#3d3f47",
+    "#5a5d66",
+    "#2a1e14",
+    "#4e3a24",
+    "#6b5233",
+    "#8a6c46",
+    "#6b3418",
+    "#9a4d1c",
+    "#c2661f",
+    "#3a4a2a",
+    "#5c7238",
+    "#7b8184",
+    "#9aa0a2",
+    "#c3c6c2"
+  ],
+  "environmentPaletteRule": "The LEVEL's palette, enforced by .github/art/build_tiles.py exactly as lockedPalette is enforced on characters by build_sheet.py — every pixel of every tile is snapped to the nearest colour here. It is kept separate from lockedPalette because the ground must not be able to lend its colours to Beverly, nor she hers to the ground, but the two sets are deliberately neighbours: the same charcoal, the same rust-orange family, the same warm browns, so the junkyard looks like the place the dog came from. Junkyard asphalt, packed dirt, rusted steel, weeds, cracked concrete.",
+  "sizeRule": "Every sheet uses the same 256px cell and the same 4px art-pixel grid, and every sheet-based character is drawn at ONE on-screen cell size, so an art pixel is the same size for all of them. Relative size lives in the art — a smaller creature gets a smaller --body-height — never in per-character draw sizes. A character whose height changes with the angle (a four-legged animal is tall from the front but long and low from the side) needs a PER-ROW height: --row raw.png@88. Scaling every row to one height makes the side view look like a different, much bigger animal — that is what happened to the rats before the per-row flag existed.",
+  "mainCharacter": "Beverly: a stocky punk-rock GOLDEN DOODLE (rounded floppy ears, dog snout, small black nose — not a bear, wolf or fox). Her coat is FLAT and straight, NEVER curly, woolly, fluffy or shaggy — a doodle drawn with curls reads as a different breed and at 16-bit scale the curls turn into noise. Warm golden fur, a TALL unmissable hot-pink mohawk that must be clearly visible in every single frame including attacks, a dark charcoal studded leather jacket, teal shorts, brown boots, and a small silver dagger.",
+  "lockedColours": {
+    "mainCharacter": "fur #f0a35a with #e0791c shading and #b54d1a in the deepest creases; EARS #f0a35a with #e0791c shading — the same golden as the coat, NEVER #7a4a24 or any brown (brown is the BOOTS only); muzzle and cheeks #f4f0e6, inner ear #f4f0e6; nose and all outlines #14121a; mohawk #ff5c9a with #e8306f shading; leather jacket #2a2e38 with #3d434f highlights and #dfe4ea studs; shorts #3fa093 with #2e7d74 shading; boots #7a4a24 with #4e2e15 soles; dagger blade #dfe4ea with a #8c95a0 edge and a #4e2e15 grip; tongue #d98a7a",
+    "Junk Rat": "body fur #8a7a62 with #6b5c48 shading; belly #dfe4ea; ears, nose, paws and tail #d98a7a; eyes #f4f0e6 with #14121a pupils; buck teeth #f4f0e6; scrap-metal shoulder plate #8c95a0; all outlines #14121a"
+  },
+  "lockedColoursRule": "EXACT hex per material, quoted into every generated row by .github/art/generate_row.py. The palette snap alone cannot hold a character together: it maps each pixel to the NEAREST lockedPalette colour, and this palette necessarily contains both a light orange (fur) and a mid brown (boots), so a row the generator happened to draw one step darker snapped to the browns and shipped as a different-coloured dog. That is exactly what happened — front and back rows light orange, side row mid-brown, so Beverly changed colour when you walked left. The shade has to stop being the generator's choice. COROLLARY, caught while adding the Scrap Drone: every hex named here MUST already be a literal member of `lockedPalette` below — the snap maps to the NEAREST palette entry regardless of what a spec says, so naming a shade that ISN'T in `lockedPalette` lets the snap pick for you again. The drone's mid-grey metal shading (`#5a5d66`, sampled directly off its own generated art) was closer to the rat's warm brown fur shade (`#6b5c48`) than to any grey actually in the palette, and shipped olive-brown until `#5a5d66` was added to `lockedPalette` as a genuinely new material (cold metal, distinct from every warm tone already there) rather than trying to make the drone's grey fit an existing warm slot.",
+  "lockedDetails": "Details that MUST be identical in every frame of every sheet, because they are exactly what drifts when a prompt is retyped: Beverly's leather jacket ALWAYS HAS FULL LONG SLEEVES covering both arms to the wrist — never sleeveless, never a vest, never bare shoulders (a generated set came back sleeved in some frames and sleeveless in others). Both floppy ears always visible and hanging down, and DRAWN IN THE SAME GOLDEN FUR AS HER COAT — never brown, never a darker shade than her body (they kept coming back boot-brown, which reads as a different breed of dog). Her coat is FLAT and straight, never curly or woolly. The mohawk is always tall, always hot pink, always visible including from behind and mid-attack. The dagger is always in the same hand. PROPORTIONS, which drift between sheets as badly as colour does: she is about THREE AND A HALF HEADS TALL, the head roughly a quarter of her total height — not a chibi with a head half its own height, not a realistic six-head adult. The walk sheet and the attack sheet must read as the same build. Add to this list whenever a detail is caught drifting; never rely on remembering it.",
+  "frameStandard": "Follows the repo character-sheet standard, .github/art/CHARACTER_SHEETS.md: walk sheet is 3 rows (down, side-facing-RIGHT, up) x 3 columns [step, NEUTRAL, step] with playback [1,0,1,2] and idle pinned to the neutral column; attack sheet is the same 3 rows x 3 columns [wind-up, STRIKE, recover] with damage landing on the strike frame. RIGHT is the side row mirrored, never drawn. Prompts come from .github/art/walkgrid_prompt.txt and .github/art/attacksheet_prompt.txt.",
+  "enemy": "Junk Rat: a chunky CARTOON junkyard rat in the same flat mascot style as Beverly. It walks on ALL FOURS — a low, long, hunched four-legged body with its belly near the ground, head out front. It is NOT upright, NOT bipedal, NOT a mouse standing on its hind feet: a regeneration once made it upright and it read as a different creature entirely, so treat 'standing up' as an instant reject. Grey-brown body, lighter belly, flat pink ears, a long plain pink tail trailing behind, big white cartoon eyes with black pupils, simple buck teeth, one flat grey scrap-metal shoulder plate. Like the hero it has THREE rows: facing the viewer (down), side profile facing RIGHT (mirrored for left), and seen from behind (up). No fur texture, no realistic rodent anatomy.",
+  "frames": "Per direction, in this order: idle, walk (one clearly different mid-stride pose — the code alternates it with idle for the walk cycle), attack (a real drawn attack pose: weapon swept out, or jaws open and claws out). The HERO additionally has a second sheet whose three columns are three consecutive moments of ONE weapon swing — wind-up, mid-slash, follow-through — because a single held pose cannot show a blade travelling and reads as a shove, not a slash. Generate those three as ONE row per direction: the swing frames must be the same drawing moving, and separate generations drift.",
+  "constraints": "No text, no labels, no numbers, no grid or graph-paper lines, no cell borders, no frames, no boxes, no drop shadows, no ground shadow, no UI, no watermarks.",
+  "pipeline": "Shipped art is rebuilt from art-src/ by games/dog-punk/rebuild-art.sh (`--verify` to run the gates after), never hand-edited. That script carries the exact commands and the reason behind each flag; it lives outside this file because 5.6KB of prose commands were being read into context every time anything opened this contract for the palette.",
+  "pixelArt": true,
+  "pixelGrid": 32,
+  "generationNotes": "Two failure modes cost generations here, both about FRAMING rather than content. (1) Ask for THREE sprites per row, not four or five: at four the model zooms in and crops the outer sprites off the edges every time. (2) Post to the broker with \"transparent\": false — with a game id the broker defaults to transparent, which trims and squashes the result to a 512x512 square and destroys a wide sprite row. State the view in EVERY sprite ('all three are the same right-facing side profile, never a back view'), or the third frame of a row quietly turns around.",
+  "tileRule": "The LEVEL is a grid of 32px tiles, not a painted room (that is docs/ROOM_ART_STANDARD.md, a different shape of game). Two kinds, generated and cut through .github/art/tileset.py (the front door; prompts in .github/art/tileset_prompts/, cutter .github/art/build_tiles.py, gate .github/art/verify_tiles.py). The whole standard is docs/TILED_LEVEL_STANDARD.md: TEXTURE tiles (floor, walls) which are opaque, fill the cell and must WRAP, and OBJECT tiles (junk pile, scrap crate, gate) which are cut out on flat white and drawn over a floor tile, and which are what an INTERIOR obstacle must be — the fence texture is the level's boundary only, and using it inland lays planks flat on the ground. The rule that matters, because breaking it is what made the first level look like graph paper: a floor tile must have NO OUTLINE and NO BORDER — the 'thick black outline' in `style` above is a CHARACTER rule and must never be applied to a floor or wall tile, or every cell of the level draws its own border and the room becomes a grid of squares. Tiles are 32px because the canvas is 512x384 and a tile is drawn at 32: one art pixel, one screen pixel, same as the character cells.",
+  "characterSpecRule": "EVERY animated character has an entry in `characters` below, and that entry is the single source of truth for what the character looks like. Prompts are BUILT from it (.github/art/generate_row.py quotes it verbatim) and sheets are CHECKED against it (.github/art/verify_sheet.py character). A detail that lives only in a prompt someone typed will drift on the next generation; a detail here cannot, because something fails when it does. Add to a spec the moment you catch a detail drifting — that is what it is for. See .github/art/CHARACTER_SHEETS.md.",
+  "characters": {
+    "hero": {
+      "name": "Beverly",
+      "species": "a stocky punk-rock GOLDEN DOODLE — dog snout, small black nose, rounded floppy ears. Not a bear, wolf or fox.",
+      "materials": {
+        "fur": {
+          "base": "#f0a35a",
+          "shade": "#e0791c",
+          "deep": "#b54d1a",
+          "appears": "always",
+          "note": "Coat is FLAT and straight, NEVER curly, woolly or shaggy — a doodle drawn with curls reads as a different breed and at this scale the curls become noise."
+        },
+        "ears": {
+          "base": "#f0a35a",
+          "shade": "#e0791c",
+          "appears": "always",
+          "note": "The SAME golden as the coat. NEVER brown — brown is the boots and nothing else. They kept coming back boot-brown, which reads as a different breed from the neck up."
+        },
+        "muzzle": {
+          "base": "#f4f0e6",
+          "appears": "front and side views"
+        },
+        "mohawk": {
+          "base": "#ff5c9a",
+          "shade": "#e8306f",
+          "appears": "always",
+          "note": "A TALL upright hot-pink crest, unmissable, visible from behind and mid-attack. NOT a flat cap, NOT a beret, NOT a swept-back crest — it flattened into a cap in two separate attack sheets, and it is the single feature that makes her recognisable at 32px."
+        },
+        "jacket": {
+          "base": "#2a2e38",
+          "highlight": "#3d434f",
+          "studs": "#dfe4ea",
+          "appears": "always",
+          "note": "Dark charcoal studded leather with FULL LONG SLEEVES to the wrist — never sleeveless, never a vest, never bare shoulders. The base tone must stay the dominant one: when the highlight takes over instead, the jacket reads as having changed colour between animations."
+        },
+        "shorts": {
+          "base": "#3fa093",
+          "shade": "#2e7d74",
+          "appears": "front and side views"
+        },
+        "boots": {
+          "base": "#7a4a24",
+          "sole": "#4e2e15",
+          "appears": "always",
+          "note": "The ONLY brown on the character."
+        },
+        "dagger": {
+          "blade": "#dfe4ea",
+          "edge": "#8c95a0",
+          "grip": "#4e2e15",
+          "appears": "attack sheets",
+          "hand": "always the same hand"
+        },
+        "tongue": {
+          "base": "#d98a7a",
+          "appears": "attack sheets"
+        },
+        "outline": {
+          "base": "#14121a",
+          "appears": "always"
+        }
+      },
+      "neverDraw": [
+        "a curly or woolly coat",
+        "brown ears",
+        "a sleeveless jacket or bare arms",
+        "a flat cap, beret or swept-back crest in place of the mohawk",
+        "the dagger in the other hand"
+      ]
+    },
+    "rat": {
+      "name": "Junk Rat",
+      "species": "a hunched junkyard RAT on ALL FOURS. Bipedal or upright-standing is an instant reject — a pass once rewrote this to 'standing upright like a cartoon mascot' and shipped a sheet of upright mice.",
+      "materials": {
+        "fur": {
+          "base": "#8a7a62",
+          "shade": "#6b5c48",
+          "appears": "always"
+        },
+        "belly": {
+          "base": "#dfe4ea",
+          "appears": "front and side views"
+        },
+        "extremities": {
+          "base": "#d98a7a",
+          "appears": "always",
+          "note": "ears, nose, paws and tail"
+        },
+        "eyes": {
+          "base": "#f4f0e6",
+          "pupil": "#14121a",
+          "appears": "front and side views"
+        },
+        "plate": {
+          "base": "#8c95a0",
+          "appears": "always",
+          "note": "scrap-metal shoulder plate"
+        },
+        "outline": {
+          "base": "#14121a",
+          "appears": "always"
+        }
+      },
+      "neverDraw": [
+        "standing upright on hind legs",
+        "a cartoon-mouse silhouette"
+      ]
+    },
+    "drone": {
+      "name": "Scrap Drone",
+      "species": "a small hovering junkyard drone cobbled together from tin-can scrap — NO LEGS AND NO WHEELS, it floats just above the ground. A round dented tin-can body, two bent crooked propeller blades sticking out the top like ears, a single round glowing lens for an eye, one or two thin bent wire antennae. Same flat cartoon-mascot language as Beverly and the Junk Rat: big simple shapes, thick black outline, no fine detail. Not a robot with legs, not a flying-saucer UFO, not a bird or insect — a chunk of floating junk with one eye.",
+      "materials": {
+        "shell": {
+          "base": "#8c95a0",
+          "shade": "#5a5d66",
+          "appears": "always",
+          "note": "dented tin-can body, riveted panels"
+        },
+        "trim": {
+          "base": "#3d434f",
+          "shade": "#2a2e38",
+          "appears": "always",
+          "note": "dark underside and propeller struts"
+        },
+        "lens": {
+          "base": "#e8306f",
+          "shade": "#a01a4c",
+          "appears": "always",
+          "note": "single round glowing eye-lens — the only warm colour on it, always lit"
+        },
+        "outline": {
+          "base": "#14121a",
+          "appears": "always"
+        }
+      },
+      "neverDraw": [
+        "legs, feet, wheels or treads touching the ground",
+        "a humanoid or animal body",
+        "a flying-saucer UFO silhouette",
+        "a face, mouth or teeth — one round eye-lens only"
+      ]
+    },
+    "brute": {
+      "name": "Junk Brute",
+      "species": "a hulking junkyard mutt bolted into welded scrap-metal armor — same flat cartoon-mascot language as Beverly and the Junk Rat, ON ALL FOURS like the rat but much bigger, heavier and lower to the ground: a thick neck, a wide low stance, small angry eyes, a jagged chunk of scrap plating welded across its back and shoulders like a shell, jutting lower tusks. Not upright, not bipedal — treat 'standing on hind legs' as an instant reject exactly as for the rat.",
+      "materials": {
+        "fur": {
+          "base": "#6b5c48",
+          "shade": "#4e2e15",
+          "appears": "always",
+          "note": "darker and duller than the rat's fur — a bigger, meaner animal, not just a scaled-up rat"
+        },
+        "armor": {
+          "base": "#8c95a0",
+          "shade": "#5a5d66",
+          "appears": "always",
+          "note": "welded scrap plates across the back and shoulders"
+        },
+        "eyes": {
+          "base": "#f4f0e6",
+          "pupil": "#14121a",
+          "appears": "front and side views"
+        },
+        "teeth": {
+          "base": "#f4f0e6",
+          "appears": "always",
+          "note": "jutting lower tusks"
+        },
+        "outline": {
+          "base": "#14121a",
+          "appears": "always"
+        }
+      },
+      "neverDraw": [
+        "standing upright on hind legs",
+        "a bipedal posture",
+        "an upright armored golem or robot walking on two legs — this is a DOG on four legs wearing scrap armor, not a suit of armor with a dog's head; the failure to watch for especially FROM BEHIND is a wide two-legged armored back that reads as a robot"
+      ]
+    }
+  }
+}
