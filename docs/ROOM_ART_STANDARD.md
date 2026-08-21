@@ -214,6 +214,26 @@ verify`:
   is automatic now, on every room, every push, instead of depending on
   someone noticing a strip of wall in a screenshot.
 
+**A floor's tile SCALE is a countable fact too, not something to eyeball —
+and a re-fit doesn't fix a wrong scale on its own.** The lab's floor plate
+was drawn with flagstones roughly 3x the size of the scene's own, invisible
+in a side-by-side (both floors "look like flagstone floors" at a glance,
+just at different densities) and unaffected by `room.py plate`'s fit/tone-
+match step, which resizes and recolours the WHOLE image without touching
+what's drawn on it. `room.py tilescale <game> <room> --row y0,y1
+[--against-plate]` (`tile_scale.py`) counts tiles the way `wall_seam.py`
+counts a seam: a clean row of floor has a joint (mortar line, plank seam)
+between every tile, which is a real, countable column-to-column brightness
+spike, not a matter of opinion. Count the scene's own row once, and that
+count is the exact target for a regeneration prompt — "roughly 21 stones
+span the full width", not "small flagstones", which is what actually closed
+the gap: a first regeneration asked for "small" and still came back at
+roughly half the scene's density (11 vs 21), a second asked for the counted
+number specifically and landed close (16 vs 22, visually consistent). Not
+every floor has discrete joints to count — grass, dirt, a seamless texture
+gives this tool nothing to measure, same limitation as `wall_seam.py` on a
+low-contrast wall.
+
 ### Use the numbers from pass 1
 
 **First choice, every time: the position and size the composed scene used.**
