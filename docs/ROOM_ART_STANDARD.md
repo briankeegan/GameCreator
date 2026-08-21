@@ -231,10 +231,29 @@ bed" but "drawn TOP-DOWN and SQUARE TO THE ROOM … NOT drawn on the diagonal".
 Every entry describing a piece of furniture (not ambient floor cover like a
 rug) should carry this same pair — a positive shape statement plus the
 negative of whatever the model tends to substitute — because that pairing is
-what turned the bed's own entry from three failed generations into one.
-There is no automated check for this: a wrong shape is exactly the kind of
-thing `room.py check`'s side-by-side is for, so look at each prop in it
-individually, not just the room's overall composition at a glance.
+what turned the trunk's SHAPE from a barrel into the right flat-topped box.
+
+**Shape is not the same fact as proportion, and locking one does not lock
+the other.** The trunk's second generation drew the correct shape at roughly
+a third of the width it actually needed — "NOT domed, NOT barrel-shaped"
+says what the object IS, nothing about how WIDE it reads next to its own
+height, and the same gap cost the mirror and the bed a regeneration too, all
+three found the same way: `room.py grid` against the approved scene, reading
+real numbers off a ruler instead of eyeballing. So every entry that locks a
+shape must ALSO state an explicit width-to-height ratio, sourced the same
+way — not "wide", a number: "the frame's width is about HALF its height — a
+1:2 rectangle", not "a low wide chest" but "width AT LEAST TWICE its
+height — a 2:1 rectangle". This is a real gate, not just a habit to
+remember: `room.py generate <game> <room> props` prints a NOTE (not a
+refusal — it can see that a number is missing, not that a present one is
+right) naming any entry that carries a shape lock (a `NOT ...` constraint)
+with no `N:M` ratio anywhere in it, before a penny is spent on that
+generation.
+
+Shape and proportion together are still not everything: a wrong shape or
+size is exactly the kind of thing `room.py check`'s side-by-side and blend
+are for, so look at each prop in them individually, not just the room's
+overall composition at a glance.
 
 **Why automated matching against the scene doesn't work, and what to do
 instead.** A prop's size and position are numbers, and a human reading them

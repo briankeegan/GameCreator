@@ -826,6 +826,33 @@ def main():
         items = (a.items or "").strip() or "; ".join(sheet)
         n = (a.n or "").strip() or str(len(sheet) or 2)
 
+        # A LOCKED SHAPE WITHOUT LOCKED PROPORTIONS IS STILL UNSPECIFIED. The
+        # bedroom's trunk went from "a domed lid" (drew as a barrel) to "a
+        # FLAT-TOPPED box — NOT domed, NOT barrel-shaped" (drew the right
+        # SHAPE, at roughly a third the width the scene actually needed) —
+        # the negative-constraint pattern fixes what an object IS, not how
+        # WIDE it reads next to its own height, and three props (the mirror,
+        # the bed, the chest) all needed a second regeneration for exactly
+        # that. So: any entry that already locks a shape (carries a NOT ...
+        # constraint, the docs/ROOM_ART_STANDARD.md §5 pattern) must ALSO
+        # carry an explicit N:M width-to-height ratio, sourced from
+        # `room.py grid` against the approved scene — not a description
+        # this refuses to run without, only a REMINDER, because getting the
+        # actual number wrong is not this check's job and never will be;
+        # only "did anyone write one down" is.
+        if a.which == "props":
+            RATIO = re.compile(r"\d+\s*:\s*\d+")
+            unratioed = [s[:70] + ("…" if len(s) > 70 else "")
+                        for s in sheet if " NOT " in s and not RATIO.search(s)]
+            if unratioed:
+                print("NOTE: these locked-shape entries have no explicit N:M "
+                      "width-to-height ratio — measure one off the scene with "
+                      "`room.py grid %s %s` before spending on this generation, "
+                      "or it can come back the right SHAPE at the wrong SIZE "
+                      "again:" % (game, a.room), file=sys.stderr)
+                for s in unratioed:
+                    print("  - %s" % s, file=sys.stderr)
+
         template = pass_template(a.which)
         need = {"{{ROOM}}": ("room name", desc), "{{FLOOR}}": ("--floor or spec.floor", floor),
                 "{{N}}": ("--n", n), "{{ITEMS}}": ("--items or spec.contains", items)}
