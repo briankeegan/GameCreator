@@ -224,11 +224,29 @@ def main():
     # against raw — a raw and a cut sheet are not on the same scale and
     # comparing them passes everything. Newest first, since that is what the
     # rest of the character is being brought toward.
-    others = sorted((p for p in out_abs.parent.glob(f'{args.character}_*_raw.png')
-                     if p != out_abs and 'rejected' not in str(p)),
-                    key=lambda p: p.stat().st_mtime, reverse=True)
-    if others:
-        cmd += ['--style-ref', str(others[0])]
+    # NEWEST BY COMMIT DATE, NOT BY MTIME. git does not preserve mtimes: a
+    # fresh CI checkout writes every file at the same instant, so "the most
+    # recent file on disk" is arbitrary there. It picked a raw from an old
+    # generation as the reference and rejected a good row for not matching art
+    # nobody has used in weeks. Ask git, which actually knows.
+    ref = None
+    cands = [p for p in out_abs.parent.glob(f'{args.character}_*_raw.png')
+             if p != out_abs and 'rejected' not in str(p)]
+    if cands:
+        try:
+            newest = subprocess.run(
+                ['git', 'log', '-1', '--format=%H', '--name-only', '--'] +
+                [str(c.relative_to(ROOT)) for c in cands],
+                cwd=ROOT, capture_output=True, text=True, timeout=30).stdout.split('\n')
+            named = [l.strip() for l in newest if l.strip().endswith('_raw.png')]
+            if named:
+                ref = ROOT / named[0]
+        except Exception:
+            ref = None
+        if ref is None or not ref.is_file():
+            ref = sorted(cands)[0]
+    if ref:
+        cmd += ['--style-ref', str(ref)]
     if subprocess.run(cmd).returncode:
         # QUARANTINED, not deleted. The guarantee that matters is that a failed
         # row cannot be picked up by a later build — every build command names
