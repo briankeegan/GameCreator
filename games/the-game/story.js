@@ -612,27 +612,34 @@ window.NEWSEY_STORY = (function () {
     arena: {
       bg: "arena",
       label: "The Arena",
-      // Regenerated to the plot: "a room about as large as a high school
-      // gymnasium, but that looked like a library. In the middle of the
-      // ceiling was a gigantic swirling golden orb" — bookshelf walls, tiered
-      // stands, the cracked orb with its two ribbons hanging down, and two
-      // duelling platforms in the flagstones fifteen paces apart. You arrive
-      // standing on the near one.
+      // The plot's own words (Clubhouse PR #30): "a room about as large as a
+      // high school gymnasium, but that looked like a library. In the middle
+      // of the ceiling was a gigantic swirling golden orb." Kat and Nella
+      // "jumped through the portal together" to get here — the plot never
+      // draws a door in this room, only the portal that brought them in.
+      //
+      // bg-arena.png is the ORIGINAL generated room (bookshelves, stands,
+      // the orb+ribbons, the two duelling platforms) edited directly rather
+      // than regenerated: the doorway that used to sit on the right wall is
+      // cloned over with the bookshelf either side of it, and the SAME red
+      // swirl used for ROOMS.lounge's portal (prop_lg_portal.png, cropped to
+      // just the vortex — no stone arch, since this isn't a doorway) is
+      // composited onto the floor at the front, matching the plot's own
+      // portal rather than inventing a new one. Regenerating from scratch
+      // was tried first and came back a different room in a different
+      // style; editing the art everyone already liked was the right call.
       playerStart: { x: 111, y: 124 },
-      // bg-arena.png: the archway out is on the right at x 226-250, its foot
-      // meeting the stands at y ~84.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above) — the
-      // flagstone hexagon between the two banks of stands.
+      // flagstone hexagon between the two banks of stands. Unchanged: the
+      // door removal and the portal are both within this same floor, not
+      // outside it.
       floorPoly: [[66,100],[250,100],[292,140],[283,186],[42,186],[30,140]],
       exits: [
-        { x: 224, y: 98, w: 34, h: 22, to: "lounge", link: "portal" }
-        // REMAPPED off the art (walk-arena.png), not typed by eye. It used
-        // to sit at (230,78) — up in the STANDS, above the top edge of the
-        // walkable platform (y=105). The only foot position whose body box
-        // could touch it grazed its corner by ONE pixel, so holding right
-        // out of the spawn walked you straight past it into the wall and
-        // the Arena was a dead end in practice. It now straddles the
-        // platform edge directly under the tunnel mouth, where you walk.
+        // The portal, measured off bg-arena.png at 320x200 (234,213,45,120
+        // at the art's native 512x341, scaled): its lower half, where you'd
+        // actually walk into the swirl. y's centre sits at 0.84 of the
+        // frame — comfortably "near" — matching what it visually is.
+        { x: 146, y: 155, w: 28, h: 28, to: "lounge", link: "portal" }
       ],
       obstacles: [ { x: 0, y: 88, w: 66, h: 20 }, { x: 250, y: 88, w: 70, h: 20 } ], // the stands
       npcs: [
