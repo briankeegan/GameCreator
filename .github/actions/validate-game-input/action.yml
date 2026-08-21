@@ -1,0 +1,37 @@
+name: Validate game input
+description: >
+  Catches a game id passed with the games/ prefix already on it — every
+  generation workflow builds its own paths as games/${{ inputs.game }}/...,
+  so a caller who pastes the game's directory instead of its bare id (e.g.
+  "games/the-game" instead of "the-game") silently doubles the prefix into
+  games/games/the-game/..., which does not exist. One workflow shipped with
+  this exact mistake and ran a full job — installed dependencies, spent the
+  first minutes of its timeout budget — before failing deep inside a Python
+  script with an error about a completely different thing (a missing
+  sign-off file), because that was the first place the wrong path actually
+  got checked. This is the same mistake caught in one step, before anything
+  downstream runs or a penny of API budget is at risk. One copy, every
+  generation workflow calls it — see .github/art/README.md for the list.
+
+inputs:
+  game:
+    description: "The game input exactly as the workflow received it"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        game="${{ inputs.game }}"
+        if [[ "$game" == games/* ]]; then
+          echo "::error::game is '$game' — that already has the games/ prefix "\
+               "this workflow adds itself (every path it builds is "\
+               "games/\$game/...). Pass just the id, e.g. 'the-game', not "\
+               "'games/the-game'."
+          exit 1
+        fi
+        if [[ ! -d "games/$game" ]]; then
+          echo "::error::games/$game does not exist — check the game id."
+          exit 1
+        fi

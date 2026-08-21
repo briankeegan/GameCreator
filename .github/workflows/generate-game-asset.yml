@@ -69,6 +69,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - uses: ./.github/actions/validate-game-input
+        with:
+          game: ${{ inputs.game }}
+
       # Combines the game's fixed style (camera/style/palette/background/
       # constraints from art-style.json) with the per-image `asset`
       # description into one prompt. Written to GITHUB_OUTPUT via a
