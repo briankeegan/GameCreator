@@ -66,5 +66,115 @@
   "pixelArt": true,
   "pixelGrid": 32,
   "generationNotes": "Two failure modes cost generations here, both about FRAMING rather than content. (1) Ask for THREE sprites per row, not four or five: at four the model zooms in and crops the outer sprites off the edges every time. (2) Post to the broker with \"transparent\": false — with a game id the broker defaults to transparent, which trims and squashes the result to a 512x512 square and destroys a wide sprite row. State the view in EVERY sprite ('all three are the same right-facing side profile, never a back view'), or the third frame of a row quietly turns around.",
-  "tileRule": "The LEVEL is a grid of 32px tiles, not a painted room (that is docs/ROOM_ART_STANDARD.md, a different shape of game). Two kinds, generated and cut through .github/art/tileset.py (the front door; prompts in .github/art/tileset_prompts/, cutter .github/art/build_tiles.py, gate .github/art/verify_tiles.py). The whole standard is docs/TILED_LEVEL_STANDARD.md: TEXTURE tiles (floor, walls) which are opaque, fill the cell and must WRAP, and OBJECT tiles (junk pile, scrap crate, gate) which are cut out on flat white and drawn over a floor tile, and which are what an INTERIOR obstacle must be — the fence texture is the level's boundary only, and using it inland lays planks flat on the ground. The rule that matters, because breaking it is what made the first level look like graph paper: a floor tile must have NO OUTLINE and NO BORDER — the 'thick black outline' in `style` above is a CHARACTER rule and must never be applied to a floor or wall tile, or every cell of the level draws its own border and the room becomes a grid of squares. Tiles are 32px because the canvas is 512x384 and a tile is drawn at 32: one art pixel, one screen pixel, same as the character cells."
+  "tileRule": "The LEVEL is a grid of 32px tiles, not a painted room (that is docs/ROOM_ART_STANDARD.md, a different shape of game). Two kinds, generated and cut through .github/art/tileset.py (the front door; prompts in .github/art/tileset_prompts/, cutter .github/art/build_tiles.py, gate .github/art/verify_tiles.py). The whole standard is docs/TILED_LEVEL_STANDARD.md: TEXTURE tiles (floor, walls) which are opaque, fill the cell and must WRAP, and OBJECT tiles (junk pile, scrap crate, gate) which are cut out on flat white and drawn over a floor tile, and which are what an INTERIOR obstacle must be — the fence texture is the level's boundary only, and using it inland lays planks flat on the ground. The rule that matters, because breaking it is what made the first level look like graph paper: a floor tile must have NO OUTLINE and NO BORDER — the 'thick black outline' in `style` above is a CHARACTER rule and must never be applied to a floor or wall tile, or every cell of the level draws its own border and the room becomes a grid of squares. Tiles are 32px because the canvas is 512x384 and a tile is drawn at 32: one art pixel, one screen pixel, same as the character cells.",
+  "characterSpecRule": "EVERY animated character has an entry in `characters` below, and that entry is the single source of truth for what the character looks like. Prompts are BUILT from it (.github/art/generate_row.py quotes it verbatim) and sheets are CHECKED against it (.github/art/verify_sheet.py character). A detail that lives only in a prompt someone typed will drift on the next generation; a detail here cannot, because something fails when it does. Add to a spec the moment you catch a detail drifting — that is what it is for. See .github/art/CHARACTER_SHEETS.md.",
+  "characters": {
+    "hero": {
+      "name": "Beverly",
+      "species": "a stocky punk-rock GOLDEN DOODLE — dog snout, small black nose, rounded floppy ears. Not a bear, wolf or fox.",
+      "materials": {
+        "fur": {
+          "base": "#f0a35a",
+          "shade": "#e0791c",
+          "deep": "#b54d1a",
+          "appears": "always",
+          "note": "Coat is FLAT and straight, NEVER curly, woolly or shaggy — a doodle drawn with curls reads as a different breed and at this scale the curls become noise."
+        },
+        "ears": {
+          "base": "#f0a35a",
+          "shade": "#e0791c",
+          "appears": "always",
+          "note": "The SAME golden as the coat. NEVER brown — brown is the boots and nothing else. They kept coming back boot-brown, which reads as a different breed from the neck up."
+        },
+        "muzzle": {
+          "base": "#f4f0e6",
+          "appears": "front and side views"
+        },
+        "mohawk": {
+          "base": "#ff5c9a",
+          "shade": "#e8306f",
+          "appears": "always",
+          "note": "A TALL upright hot-pink crest, unmissable, visible from behind and mid-attack. NOT a flat cap, NOT a beret, NOT a swept-back crest — it flattened into a cap in two separate attack sheets, and it is the single feature that makes her recognisable at 32px."
+        },
+        "jacket": {
+          "base": "#2a2e38",
+          "highlight": "#3d434f",
+          "studs": "#dfe4ea",
+          "appears": "always",
+          "note": "Dark charcoal studded leather with FULL LONG SLEEVES to the wrist — never sleeveless, never a vest, never bare shoulders. The base tone must stay the dominant one: when the highlight takes over instead, the jacket reads as having changed colour between animations."
+        },
+        "shorts": {
+          "base": "#3fa093",
+          "shade": "#2e7d74",
+          "appears": "front and side views"
+        },
+        "boots": {
+          "base": "#7a4a24",
+          "sole": "#4e2e15",
+          "appears": "always",
+          "note": "The ONLY brown on the character."
+        },
+        "dagger": {
+          "blade": "#dfe4ea",
+          "edge": "#8c95a0",
+          "grip": "#4e2e15",
+          "appears": "attack sheets",
+          "hand": "always the same hand"
+        },
+        "tongue": {
+          "base": "#d98a7a",
+          "appears": "attack sheets"
+        },
+        "outline": {
+          "base": "#14121a",
+          "appears": "always"
+        }
+      },
+      "neverDraw": [
+        "a curly or woolly coat",
+        "brown ears",
+        "a sleeveless jacket or bare arms",
+        "a flat cap, beret or swept-back crest in place of the mohawk",
+        "the dagger in the other hand"
+      ]
+    },
+    "rat": {
+      "name": "Junk Rat",
+      "species": "a hunched junkyard RAT on ALL FOURS. Bipedal or upright-standing is an instant reject — a pass once rewrote this to 'standing upright like a cartoon mascot' and shipped a sheet of upright mice.",
+      "materials": {
+        "fur": {
+          "base": "#8a7a62",
+          "shade": "#6b5c48",
+          "appears": "always"
+        },
+        "belly": {
+          "base": "#dfe4ea",
+          "appears": "front and side views"
+        },
+        "extremities": {
+          "base": "#d98a7a",
+          "appears": "always",
+          "note": "ears, nose, paws and tail"
+        },
+        "eyes": {
+          "base": "#f4f0e6",
+          "pupil": "#14121a",
+          "appears": "front and side views"
+        },
+        "plate": {
+          "base": "#8c95a0",
+          "appears": "always",
+          "note": "scrap-metal shoulder plate"
+        },
+        "outline": {
+          "base": "#14121a",
+          "appears": "always"
+        }
+      },
+      "neverDraw": [
+        "standing upright on hind legs",
+        "a cartoon-mouse silhouette"
+      ]
+    }
+  }
 }

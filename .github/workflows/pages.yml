@@ -121,6 +121,28 @@ jobs:
           [ "$status" = 0 ] || echo "Verify shipped sprite sheets" >> $RUNNER_TEMP/art-problems
           exit 0
 
+      # CHARACTER SPECS. The checks above look at one sheet at a time, and the
+      # thing that shipped next was invisible to all of them: Beverly's mohawk
+      # is 2.2% of her walking front row and 0.1% of her ATTACKING front row —
+      # it stops being drawn when she swings. Each sheet passed alone. Nothing
+      # compared them, so nothing could see it.
+      - name: Verify character consistency across sheets
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          status=0
+          for style in games/*/art-style.json; do
+            [ -e "$style" ] || continue
+            game=$(dirname "$style")
+            chars=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(' '.join((d.get('characters') or {}).keys()))" "$style")
+            for char in $chars; do
+              echo "== $char ($game) =="
+              python3 .github/art/verify_sheet.py character "$game" "$char" || status=1
+            done
+          done
+          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
+          [ "$status" = 0 ] || echo "character consistency" >> $RUNNER_TEMP/art-problems
+          exit 0
+
       # Tiled levels: the third shape of art, and the one that had a pipeline
       # and no checker until four separate defects shipped to a player in a
       # single pass. Detected, not configured: a game with a tiles.png has a

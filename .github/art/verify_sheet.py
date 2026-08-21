@@ -57,6 +57,8 @@ Exits non-zero if any check fails, printing one line per problem.
 import argparse
 import json
 import os
+import glob
+import re
 import sys
 
 import numpy as np
@@ -468,6 +470,149 @@ def check_frames(art_dir, char_id, dirs):
     return problems, soft
 
 
+# CONSISTENCY ACROSS A CHARACTER'S SHEETS, view by view.
+#
+# The row-to-row check above compares rows WITHIN one sheet. It cannot see the
+# failure that actually shipped next: Beverly's mohawk is 2.2% of her walking
+# front row and 0.1% of her ATTACKING front row — it simply stops being drawn
+# when she swings — and her jacket's base/highlight balance inverts between the
+# two sheets, which reads as the jacket changing colour mid-swing. Every sheet
+# passed on its own. Nothing compared them.
+#
+# The comparison has to be LIKE FOR LIKE: the same view across different
+# sheets. Comparing a front row against a back row is meaningless — a back view
+# is legitimately all jacket and no snout, and Beverly's shorts are 0% from
+# behind in every sheet, correctly, because her jacket covers them. But her
+# front view walking and her front view attacking are the same character from
+# the same camera, so a material that carries one and vanishes from the other
+# is a promise the art contract made and the generation broke.
+#
+# Materials come from lockedColours in the game's art-style.json — the hexes
+# someone wrote down precisely because they must not drift. If a game has not
+# declared any, there is nothing to check and this says so rather than guessing.
+#
+# Thresholds, measured on Dog Punk's hero (the sheets that prompted this):
+#   VANISHED, hard: present at >=1.0% of a view in one sheet and <0.25% of the
+#     SAME view in another. Mohawk front 2.2% -> 0.1%, side 2.0% -> 0.0%. The
+#     legitimate zero cases (shorts from behind) are 0.0% in BOTH sheets and so
+#     are never flagged.
+#   SWING, warn: same view, same material, share ratio worse than 2.5x with at
+#     least 3% in the larger. Jacket base from behind 5.9% -> 12.4% (2.1x) sits
+#     just under, jacket highlight 11.0% -> 5.2% (2.1x) likewise; both are
+#     visible but arguable, which is what a warning is for.
+VANISH_PRESENT = 0.010
+VANISH_GONE = 0.0025
+SWING_RATIO = 2.5
+SWING_FLOOR = 0.03
+
+
+def _view_shares(path, materials, rows=3):
+    """Share of each named material in each row of a sheet."""
+    img = Image.open(path).convert('RGBA')
+    rh = img.height // rows
+    out = []
+    for r in range(rows):
+        a = np.asarray(img.crop((0, r * rh, img.width, (r + 1) * rh)))
+        px = a[..., :3][a[..., 3] > 0]
+        total = max(len(px), 1)
+        row = {}
+        for hexc, rgb in materials.items():
+            row[hexc] = float((px == np.array(rgb)).all(axis=1).sum()) / total
+        out.append(row)
+    return out
+
+
+def check_character(game_dir, char_id, rows=3):
+    """Compare every sheet of one character, view by view."""
+    style_path = os.path.join(game_dir, 'art-style.json')
+    if not os.path.isfile(style_path):
+        return [], [f'{game_dir}: no art-style.json — nothing to check against.']
+    style = json.loads(open(style_path).read())
+
+    # THE SPEC IS WHAT MAKES THIS CHECKABLE. Without it, "this colour is in one
+    # sheet and not the other" cannot be judged: Beverly's mohawk vanishing
+    # from her attack sheet is a bug, and her dagger blade appearing only in
+    # that same sheet is correct — she draws it to swing it. Both look
+    # identical to a checker counting pixels. `appears: always` is the line
+    # between them, which is why a character spec is infrastructure and not
+    # documentation.
+    spec = (style.get('characters') or {}).get(char_id)
+    materials, always, conditional = {}, set(), set()
+    if spec:
+        for mat, info in (spec.get('materials') or {}).items():
+            if not isinstance(info, dict):
+                continue
+            appears = str(info.get('appears', 'always')).lower()
+            for role, hexc in info.items():
+                if role == 'appears' or not (isinstance(hexc, str) and hexc.startswith('#')):
+                    continue
+                h = hexc[1:].lower()
+                materials[h] = [int(h[i:i + 2], 16) for i in (0, 2, 4)]
+                (always if appears == 'always' else conditional).add(h)
+        # A HEX SHARED BY TWO MATERIALS CANNOT BE ATTRIBUTED. Beverly's jacket
+        # studs and her dagger blade are both #dfe4ea: the studs are on her in
+        # every frame, the blade only when she swings. Counting that colour
+        # says nothing about either, so it cannot be required — the first run
+        # of this check duly "failed" the walk sheet for having no blade in it.
+        # Requiring it only when it is unambiguous keeps the check honest;
+        # sharing a hex between an always and a conditional material is really
+        # the spec's problem to fix, so say so.
+        for h in sorted(always & conditional):
+            soft_note = (f'{game_dir}/{char_id}: #{h} is used by both an always-present and a '
+                         'conditional material in the spec, so its presence cannot be checked. '
+                         'Give one of them its own colour if it matters.')
+            spec.setdefault('_notes', []).append(soft_note)
+        always -= conditional
+    else:
+        # No spec for this character yet: fall back to the flat lockedColours
+        # hex list, and warn rather than fail, since nothing declares which of
+        # those are meant to be on every frame.
+        locked = style.get('lockedColours') or {}
+        text = ' '.join(v for v in locked.values() if isinstance(v, str))
+        for h in sorted(set(re.findall(r'#([0-9a-fA-F]{6})', text))):
+            materials[h.lower()] = [int(h[i:i + 2], 16) for i in (0, 2, 4)]
+    if not materials:
+        return [], [f'{game_dir}: no spec for "{char_id}" in art-style.json `characters`, and '
+                    'no lockedColours to fall back on — so nothing about this character is '
+                    'enforceable and every generation is free to redraw it differently. '
+                    'Write the spec; see .github/art/CHARACTER_SHEETS.md.']
+
+    sheets = sorted(glob.glob(os.path.join(game_dir, f'{char_id}*_sheet.png')))
+    if len(sheets) < 2:
+        return [], []                      # nothing to compare against
+
+    shares = {os.path.basename(p): _view_shares(p, materials, rows) for p in sheets}
+
+    view_names = ['down', 'side', 'up'][:rows]
+    hard, soft = [], list((spec or {}).get('_notes', []))
+    names = list(shares)
+    for v in range(rows):
+        for hexc in materials:
+            vals = [(n, shares[n][v][hexc]) for n in names]
+            hi_n, hi = max(vals, key=lambda t: t[1])
+            lo_n, lo = min(vals, key=lambda t: t[1])
+            must = hexc in always
+            if must and hi >= VANISH_PRESENT and lo < VANISH_GONE:
+                hard.append(
+                    f'{game_dir}/{char_id}: MATERIAL VANISHED — #{hexc} is {hi * 100:.1f}% of '
+                    f'the {view_names[v]} view in {hi_n} and {lo * 100:.1f}% in {lo_n}. It is a '
+                    'locked colour, so it is meant to be on the character in every sheet — the '
+                    'same character from the same camera cannot lose a whole material when the '
+                    'animation changes. The spec says this material appears ALWAYS. '
+                    'Regenerate the row that lost it, quoting the spec.')
+            elif (not must) and hi >= VANISH_PRESENT and lo < VANISH_GONE:
+                pass          # the spec says this one is conditional — a drawn blade, a
+                              # lolling tongue. Present in one animation and not another is
+                              # exactly what it is supposed to do.
+            elif hi >= SWING_FLOOR and lo > 0 and hi / lo > SWING_RATIO:
+                soft.append(
+                    f'{game_dir}/{char_id}: MATERIAL SWING — #{hexc} is {hi * 100:.1f}% of the '
+                    f'{view_names[v]} view in {hi_n} but {lo * 100:.1f}% in {lo_n} ({hi / lo:.1f}x). '
+                    'Same character, same camera: if this is a base tone and its highlight '
+                    'trading places, the garment reads as changing colour between animations.')
+    return hard, soft
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='mode', required=True)
@@ -491,6 +636,11 @@ def main():
     s.add_argument('--rows', type=int, default=None, help='default: inferred from the 256px cell size')
     s.add_argument('--cols', type=int, default=None)
 
+    c = sub.add_parser('character', help="compare all of one character's sheets, view by view")
+    c.add_argument('game_dir')
+    c.add_argument('char_id')
+    c.add_argument('--rows', type=int, default=3)
+
     f = sub.add_parser('frames', help='check a set of individual <id>_<dir>_<n>.png frames')
     f.add_argument('art_dir')
     f.add_argument('char_id')
@@ -500,6 +650,10 @@ def main():
     if args.mode == 'raw':
         problems = check_raw(args.image, args.frames, args.blobs, args.walk, args.tol,
                              args.mirrored, args.steps_built)
+    elif args.mode == 'character':
+        problems, soft = check_character(args.game_dir, args.char_id, args.rows)
+        for w in soft:
+            print(f'WARNING {w}', file=sys.stderr)
     elif args.mode == 'frames':
         problems, soft = check_frames(args.art_dir, args.char_id, args.dirs.split(','))
         for w in soft:
@@ -509,7 +663,7 @@ def main():
         for w in soft:
             print(f'WARNING {w}', file=sys.stderr)
 
-    subject = getattr(args, 'image', None) or args.char_id
+    subject = getattr(args, 'image', None) or getattr(args, 'char_id', '?')
     for p in problems:
         print(p, file=sys.stderr)
     if problems:

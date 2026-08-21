@@ -278,6 +278,16 @@ design discussion. `shared/` holds the components every game reuses
   `.github/art/walkgrid_prompt.txt` and `.github/art/attacksheet_prompt.txt`
   — use them instead of writing a new one, and fix them in place when a
   generation exposes a gap.
+- **EVERY character has a SPEC, and the spec is what makes consistency
+  enforceable.** `characters.<id>` in that game's `art-style.json`: species,
+  per-material hexes, `appears` (always / conditional), `proportions`,
+  `neverDraw`. Prompts are BUILT from it (`generate_row.py`) and sheets are
+  CHECKED against it (`verify_sheet.py character`, gated in `pages.yml`), so a
+  detail written there cannot drift the way one typed into a prompt does. The
+  `appears` field is what makes the check possible at all: Beverly's mohawk
+  vanishing from her attack sheet is a bug, her dagger blade appearing only in
+  that sheet is correct, and nothing counting pixels can tell those apart
+  without it. Add to a spec the moment a detail is caught drifting.
 - **Details that drift belong in `art-style.json`, not in a prompt you
   retype.** Sleeves vs sleeveless, ears, which hand holds the weapon —
   Beverly's jacket came back sleeved in some frames and sleeveless in

@@ -53,26 +53,6 @@ PROMPTS = {'walk': '.github/art/walkgrid_prompt.txt',
 SIZE = '1536x1024'
 
 
-def build_prompt(game, view, description=None):
-    style_path = ROOT / 'games' / game / 'art-style.json'
-    if not style_path.is_file():
-        sys.exit(f'{style_path} does not exist — every game needs its art contract '
-                 'before any art is generated. Copy games/_template/art-style.json.')
-    style = json.loads(style_path.read_text())
-    char = description or style.get('mainCharacter')
-    if not char:
-        sys.exit('No character description given and art-style.json has no mainCharacter.')
-    locked = style.get('lockedDetails')
-    if locked:
-        # Locked details go in EVERY prompt, from the file, never from memory —
-        # they are the details that drift when a prompt is retyped.
-        char = f'{char} LOCKED DETAILS, identical in every frame: {locked}'
-    colours = colour_anchors(style, args_character(description, style))
-    if colours:
-        char = f'{char} {colours}'
-    return char, style
-
-
 def args_character(description, style):
     """Which lockedColours entry this row is for — the main character unless a
     --description was passed, in which case try to match it by name."""
@@ -113,6 +93,74 @@ def colour_anchors(style, who):
             'flat and unmodulated, the same in every frame: ' + entry + '.')
 
 
+def spec_to_prompt(spec):
+    """Turn a character spec into the description the generator is given.
+
+    The spec is the single source of truth (see `characterSpecRule` in a game's
+    art-style.json). Building the prompt FROM it every time is the half that
+    PREVENTS drift; verify_sheet.py checking finished sheets against the same
+    spec is the half that CATCHES it when prevention fails. A detail that lives
+    only in a prompt someone typed survives exactly one generation — that is
+    how Beverly lost her mohawk in the attack sheet while every prompt anyone
+    wrote still said "tall pink mohawk".
+    """
+    parts = [f"{spec.get('name', 'the character')}: {spec.get('species', '')}".strip()]
+    mats = []
+    for mat, info in (spec.get('materials') or {}).items():
+        if not isinstance(info, dict):
+            continue
+        cols = ', '.join(f'{role} {hexc}' for role, hexc in info.items()
+                         if isinstance(hexc, str) and hexc.startswith('#'))
+        bit = f'{mat} ({cols})' if cols else mat
+        if str(info.get('appears', 'always')).lower() == 'always':
+            bit += ' — MUST be clearly visible in EVERY frame'
+        if info.get('note'):
+            bit += f'. {info["note"]}'
+        mats.append(bit)
+    if mats:
+        parts.append('EXACT MATERIALS AND COLOURS — every frame uses these and no others: '
+                     + '; '.join(mats) + '.')
+    if spec.get('proportions'):
+        parts.append(spec['proportions'])
+    if spec.get('neverDraw'):
+        parts.append('NEVER, in any frame: ' + '; '.join(spec['neverDraw']) + '.')
+    return ' '.join(parts)
+
+
+def build_prompt(game, view, description=None, character='hero'):
+    style_path = ROOT / 'games' / game / 'art-style.json'
+    if not style_path.is_file():
+        sys.exit(f'{style_path} does not exist — every game needs its art contract '
+                 'before any art is generated. Copy games/_template/art-style.json.')
+    style = json.loads(style_path.read_text())
+
+    spec = (style.get('characters') or {}).get(character)
+    if description:
+        char = description
+    elif spec:
+        return spec_to_prompt(spec), style
+    else:
+        char = style.get('mainCharacter')
+        if not char:
+            sys.exit(f'No spec for "{character}" in art-style.json `characters`, no '
+                     '--description, and no mainCharacter to fall back on. Write the '
+                     'character spec (see .github/art/CHARACTER_SHEETS.md) — without it '
+                     'nothing about this character is repeatable between generations.')
+        print(f'note: no `characters.{character}` spec; falling back to the old prose '
+              'mainCharacter field. Prose drifts between generations and cannot be '
+              'checked — writing the spec is what stops that.', file=sys.stderr)
+    locked = style.get('lockedDetails')
+    if locked:
+        char = f'{char} LOCKED DETAILS, identical in every frame: {locked}'
+    # Only on the no-spec path: a spec already carries its hexes per material,
+    # and repeating the whole lockedColours blob after it just says the same
+    # thing twice in a less specific way.
+    anchors = colour_anchors(style, args_character(description, style))
+    if anchors:
+        char = f'{char} {anchors}'
+    return char, style
+
+
 def fill(template_path, char, view):
     text = (ROOT / template_path).read_text()
     if '---8<--- PROMPT STARTS ---8<---' not in text:
@@ -146,7 +194,7 @@ def main():
                     help='print the assembled prompt and stop — no generation, no cost')
     args = ap.parse_args()
 
-    char, _ = build_prompt(args.game, args.view, args.description)
+    char, _ = build_prompt(args.game, args.view, args.description, args.character)
     prompt = fill(PROMPTS[args.kind], char, args.view)
     if args.print_prompt:
         print(prompt)

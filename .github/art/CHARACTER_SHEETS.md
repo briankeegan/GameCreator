@@ -420,6 +420,59 @@ if that is what its code path wants. But a NEW GAME uses sheets.
 Both produce the same *semantics* above; they differ only in how much the art
 is normalised afterwards.
 
+## The character spec — the thing that makes consistency enforceable
+
+Every animated character has an entry under `characters` in its game's
+`art-style.json`, written **before** any of its art is generated. That entry is
+the single source of truth, and it is used twice:
+
+- **Prompts are built from it.** `generate_row.py` turns the spec into the
+  description it sends, every time. Nobody retypes it, so nobody can leave a
+  bit out.
+- **Sheets are checked against it.** `verify_sheet.py character <gameDir> <id>`
+  compares every sheet of that character **view by view** and fails when a
+  material the spec marks `appears: always` is present in one sheet and gone
+  from another.
+
+```jsonc
+"characters": {
+  "hero": {
+    "name": "Beverly",
+    "species": "a stocky punk-rock GOLDEN DOODLE — dog snout, floppy ears. Not a bear, wolf or fox.",
+    "materials": {
+      "mohawk": { "base": "#ff5c9a", "shade": "#e8306f", "appears": "always",
+                  "note": "A TALL upright crest. NOT a flat cap, NOT a beret." },
+      "dagger": { "blade": "#dfe4ea", "grip": "#4e2e15", "appears": "attack sheets" }
+    },
+    "proportions": "about three and a half heads tall, head roughly a quarter of total height",
+    "neverDraw": ["a curly coat", "brown ears", "a sleeveless jacket"]
+  }
+}
+```
+
+**`appears` is the field that makes the check possible at all.** Beverly's
+mohawk disappearing from her attack sheet is a bug; her dagger blade appearing
+only in that same sheet is correct — she draws it to swing it. To anything
+counting pixels those are identical. `appears: always` is the only thing that
+separates them, which is why the spec is infrastructure rather than
+documentation.
+
+Two rules learned building it:
+
+- **A colour shared by an always material and a conditional one cannot be
+  required.** Beverly's jacket studs and her dagger blade are both `#dfe4ea`,
+  so its presence proves nothing about either — the first version of the check
+  duly failed her walk sheet for containing no blade. Shared hexes are dropped
+  from enforcement and flagged as a spec problem to fix.
+- **Compare like with like.** A front view and a back view legitimately show
+  different materials — Beverly's shorts are 0% from behind in every sheet
+  because her jacket covers them. Only the *same view across different sheets*
+  is a fair comparison.
+
+**Add to a spec the moment a detail is caught drifting.** That is the entire
+point of it: the mohawk note, the "ears are never brown" note and the flat-coat
+note are all things that shipped wrong first.
+
 ## Consistency is a written rule, not a re-description
 
 Anything that must not change between generations belongs in that game's

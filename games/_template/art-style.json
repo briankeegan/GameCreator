@@ -19,5 +19,24 @@
   "lockedColours": {
     "mainCharacter": "FILL THIS IN with the EXACT hex per material — 'fur #f0a35a with #e0791c shading; jacket #2a2e38; boots #7a4a24; …'. .github/art/generate_row.py quotes it into every generated row. lockedPalette is NOT enough on its own: build_sheet.py maps each pixel to the NEAREST allowed colour, so a palette holding both a light fur colour and a brown boot colour lets a row drawn one step darker snap to the browns and ship as a different-coloured character. That is exactly how Dog Punk's hero came out light orange from the front and mid brown from the side. Add one key per character (the key is matched against the --description passed for that row)."
   },
-  "lockedDetails": "FILL THIS IN as soon as a character exists: the details that must be identical in every frame of every sheet — sleeves vs sleeveless, ears up or down, which hand holds the weapon, anything small enough to be forgotten when a prompt is retyped. A detail that lives only in the prompt you happened to type WILL change in the next generation."
+  "lockedDetails": "FILL THIS IN as soon as a character exists: the details that must be identical in every frame of every sheet — sleeves vs sleeveless, ears up or down, which hand holds the weapon, anything small enough to be forgotten when a prompt is retyped. A detail that lives only in the prompt you happened to type WILL change in the next generation.",
+  "characterSpecRule": "EVERY animated character gets an entry in `characters` below BEFORE any of its art is generated. That entry is the single source of truth: prompts are BUILT from it (.github/art/generate_row.py) and finished sheets are CHECKED against it (.github/art/verify_sheet.py character), so a detail written here cannot quietly drift the way one typed into a prompt does. `appears: always` on a material means it must be visible in every frame of every sheet and is enforced; anything else (a drawn weapon, a lolling tongue) is expected to come and go. See .github/art/CHARACTER_SHEETS.md.",
+  "characters": {
+    "hero": {
+      "name": "TODO — the character's name",
+      "species": "TODO — what it is, in one sentence, including what it must NOT be mistaken for",
+      "materials": {
+        "TODO-material": {
+          "base": "#000000",
+          "shade": "#000000",
+          "appears": "always",
+          "note": "TODO — anything about this material that has drifted or would be easy to get wrong"
+        }
+      },
+      "proportions": "TODO — e.g. about three and a half heads tall, head roughly a quarter of total height",
+      "neverDraw": [
+        "TODO — the specific wrong things a generator keeps producing"
+      ]
+    }
+  }
 }
