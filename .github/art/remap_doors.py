@@ -48,11 +48,17 @@ from PIL import Image
 W, H = 320, 200
 PLAYER_W, PLAYER_H = 14, 18      # must match app.js's player.w/h
 
-# How the trigger straddles the lip of the floor. Mostly inside, because that
-# is the part you can stand on; enough outside that walking into the wall
-# crosses it. Both in world pixels, and both roughly a stride at the player's
-# 70px/s — a trigger thinner than this can be stepped over between frames.
-INSIDE, OUTSIDE = 16, 8
+# How the trigger straddles the lip of the floor: a thin BAND across it, more
+# of it outside than in. It used to be 16 inside / 8 out, and the result was
+# rectangles up to 38x58 — a third of the room's height for one doorway, which
+# reads as a zone rather than a door. Measured before shrinking: depth (how far
+# into a trigger a player can get, the number that actually decides whether a
+# door works) holds at 14px all the way down to a 6px inside, and only falls to
+# 12px at 4. Pushing the outside further does nothing at all — 8, 12, 16, 20
+# and 24 all give identical reach and depth, since the extra only extends into
+# wall nobody can stand on. So: thin, and biased outward so walking at the wall
+# crosses it.
+INSIDE, OUTSIDE = 6, 10
 MIN_SPAN, MAX_SPAN = 20, 64      # a doorway's width along its own wall
 
 # How far into a doorway a player must be able to get for it to count as a
@@ -60,6 +66,42 @@ MIN_SPAN, MAX_SPAN = 20, 64      # a doorway's width along its own wall
 # see the run this tool prints; the Arena's old (230,78) rectangle scored 1px
 # and was a dead end in play, while every working door scores far more.
 MIN_ENTRY_DEPTH = 6
+
+# Placement keeps HEADROOM above that failure line. Pushing a door out until it
+# is exactly at the minimum passes the gate today and fails it the first time
+# the room is regenerated and the floor edge moves two pixels — the placement
+# rule and the failure rule must not be the same number, or every door sits one
+# pixel from breaking. So slide out while the door is still comfortably
+# walkable, and let the gate catch anything that later drifts below.
+PLACE_MIN_DEPTH = 2 * MIN_ENTRY_DEPTH
+
+# How far the floor must poke out beyond the rest of its wall before that counts
+# as a DOORWAY rather than the edge of the picture. Its own number on purpose:
+# it was originally INSIDE, and when the band was thinned from 16 to 6 the
+# definition of "doorway" quietly loosened with it and two walls that had no
+# opening suddenly had one. What a doorway is cannot depend on how thick we
+# happen to draw the trigger.
+NOTCH_PROMINENCE = 16
+
+# WHERE A TRIGGER SITS ACROSS ITS WALL, and WHICH PERIMETER that means.
+#
+# A door is the edge of the room, so the trigger belongs pushed out to the
+# perimeter rather than sitting on open floor a player can walk past. But the
+# perimeter is the WALKABLE FLOOR's own boundary, not the edge of the picture,
+# and in this game those are nowhere near each other: a room is drawn with its
+# wall band across the top of the frame, so the floor's back edge is at y=46 in
+# the Lounge while the frame's is at y=0.
+#
+# Measured, by pinning every trigger 1px inside the FRAME instead:
+#   house  stairs      1038 reachable positions -> 0, depth 14px -> 0px
+#   library gardenPath 3116 -> 1900
+#   lounge northArch   1935 -> 1150
+#   lounge portal      1935 -> 1150
+# The house's floor never reaches the top of its frame at all, so that door
+# becomes unreachable outright. Pinning to the floor's lip is what these
+# numbers say to do, and it is what the triggers already do — the Lounge's back
+# doors sit at y=46, which IS its floor's back edge.
+PERIMETER_INSET = 1
 
 SIDES = {"left": (-1, 0), "right": (1, 0), "back": (0, -1), "near": (0, 1)}
 
@@ -97,7 +139,7 @@ def wall_of(fr, e):
     return "back" if fy <= 0.5 else "near"
 
 
-def opening(mask, side, near_at):
+def opening(mask, side, near_at):  # noqa: D401
     """The doorway on `side`, as (span_lo, span_hi, lip).
 
     A doorway is the notch where the walkable floor reaches furthest toward its
@@ -152,15 +194,83 @@ def opening(mask, side, near_at):
 # y=0 — the top edge of the frame — and cut their reachable footprint roughly
 # in half. So when a room offers neither source, it refuses instead of
 # guessing: no proposal is much cheaper than a confident wrong one.
-def derive_from_prop(prop, side):
+def clamp(r):
+    """Keep a trigger inside the picture. at_perimeter() works from the floor's
+    lip, and in a room whose plate runs to the frame that lip IS the frame — so
+    a band straddling it lands half outside, at y=-3 or x=305 on a 320-wide
+    room. Half a trigger off the edge is half a trigger."""
+    r = dict(r)
+    r["x"] = max(0, min(r["x"], W - r["w"]))
+    r["y"] = max(0, min(r["y"], H - r["h"]))
+    return r
+
+
+def at_perimeter(side, span_start, span, lip):
+    """Lay a trigger along `side`, pushed out to the floor's own lip.
+
+    `lip` is where the walkable floor ends on that side. The trigger straddles
+    it: mostly inside, so you can stand on it, and OUTSIDE px past it so
+    walking at the wall crosses it rather than stopping beside it."""
+    if side == "left":
+        return clamp({"x": lip - OUTSIDE, "y": span_start, "w": INSIDE + OUTSIDE, "h": span})
+    if side == "right":
+        return clamp({"x": lip - INSIDE, "y": span_start, "w": INSIDE + OUTSIDE, "h": span})
+    if side == "back":
+        return clamp({"x": span_start, "y": lip - OUTSIDE, "w": span, "h": INSIDE + OUTSIDE})
+    return clamp({"x": span_start, "y": lip - INSIDE, "w": span, "h": INSIDE + OUTSIDE})
+
+
+def push_out(mask, side, r):
+    """Slide the band OUTWARD as far as it will go and still be a door.
+
+    "As far out as possible" is not a feeling — it is the last pixel at which a
+    player can still get MIN_ENTRY_DEPTH onto the trigger. Step outward one
+    pixel at a time, keep the last position that passes, and stop at the edge
+    of the picture. A door pinned at the outermost edge regardless would be
+    unreachable in any room whose floor does not touch its frame, which is most
+    of them here — the house's floor never reaches the top of its own picture.
+    """
+    dx, dy = SIDES[side]
+    best = dict(r)
+    cur = dict(r)
+    for _ in range(64):
+        nxt = dict(cur)
+        nxt["x"] += dx
+        nxt["y"] += dy
+        if nxt["x"] < 0 or nxt["y"] < 0 or nxt["x"] + nxt["w"] > W or nxt["y"] + nxt["h"] > H:
+            break
+        if entry_depth(mask, nxt) < PLACE_MIN_DEPTH:
+            break
+        cur = nxt
+        best = nxt
+    return best
+
+
+def floor_lip(mask, side, at):
+    """Where the walkable floor ends on `side`, near position `at` along it."""
+    horizontal = side in ("left", "right")
+    lo, hi = max(0, int(at) - 24), min((H if horizontal else W), int(at) + 24)
+    vals = []
+    for i in range(lo, hi):
+        line = mask[i, :] if horizontal else mask[:, i]
+        idx = np.where(line)[0]
+        if len(idx):
+            vals.append(idx.min() if side in ("left", "back") else idx.max())
+    if not vals:
+        return None
+    return int(min(vals) if side in ("left", "back") else max(vals))
+
+
+def derive_from_prop(mask, prop, side):
     """A door prop is placed by its FOOT, so its (x, y) is where the doorway
-    meets the floor. The trigger straddles that line."""
+    meets the floor — that gives the span along the wall. The depth axis comes
+    from at_perimeter()."""
     span = int(min(max((prop.get("w") or MIN_SPAN) * 0.55, MIN_SPAN), MAX_SPAN))
-    if side in ("left", "right"):
-        return {"x": int(prop["x"] - (INSIDE + OUTSIDE) / 2), "y": int(prop["y"] - span / 2),
-                "w": INSIDE + OUTSIDE, "h": span}
-    return {"x": int(prop["x"] - span / 2), "y": int(prop["y"] - INSIDE),
-            "w": span, "h": INSIDE + OUTSIDE}
+    centre = prop["y"] if side in ("left", "right") else prop["x"]
+    lip = floor_lip(mask, side, centre)
+    if lip is None:
+        return None
+    return push_out(mask, side, at_perimeter(side, int(centre - span / 2), span, lip))
 
 
 def nearest_door_prop(doors, e, side, fr):
@@ -203,7 +313,7 @@ def has_notch(mask, side):
     best = reach.min() if side in ("left", "back") else reach.max()
     # the notch has to stand out from the body of the wall by more than a
     # stride, or it is not a doorway, it is the edge of the picture
-    return abs(best - np.median(reach)) >= INSIDE
+    return abs(best - np.median(reach)) >= NOTCH_PROMINENCE
 
 
 def derive(mask, side, e):
@@ -215,16 +325,7 @@ def derive(mask, side, e):
     lo, hi, lip = op
     span = min(max(hi - lo + 1, MIN_SPAN), MAX_SPAN)
     mid = (lo + hi) / 2
-    a = int(round(mid - span / 2))
-    dx, dy = SIDES[side]
-    # inside is against the direction the wall lies in
-    if side == "left":
-        return {"x": lip - OUTSIDE, "y": a, "w": INSIDE + OUTSIDE, "h": span}
-    if side == "right":
-        return {"x": lip - INSIDE, "y": a, "w": INSIDE + OUTSIDE, "h": span}
-    if side == "back":
-        return {"x": a, "y": lip - OUTSIDE, "w": span, "h": INSIDE + OUTSIDE}
-    return {"x": a, "y": lip - INSIDE, "w": span, "h": INSIDE + OUTSIDE}
+    return push_out(mask, side, at_perimeter(side, int(round(mid - span / 2)), span, lip))
 
 
 def entry_depth(mask, r):
@@ -288,8 +389,24 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("game_dir")
     ap.add_argument("--write", action="store_true", help="apply to story.js")
+    ap.add_argument("--inside", type=int, default=None,
+                    help="how far a trigger reaches back onto the floor, in px "
+                         "(default %d). This is most of a trigger's bulk." % INSIDE)
+    ap.add_argument("--outside", type=int, default=None,
+                    help="how far past the floor's lip a trigger reaches, in px "
+                         "(default %d). Raising it pushes doors further OUT into the "
+                         "wall, so walking at the wall crosses them sooner." % OUTSIDE)
+    ap.add_argument("--check", action="store_true",
+                    help="the CI gate: fail if any door can only be grazed. A PROPOSED "
+                         "move never fails a build — this tool cannot see prop collision, "
+                         "so its proposals are advice and a fuzzy check must not block a "
+                         "deploy. A door nobody can enter is a fact, and does.")
     ap.add_argument("--skip", nargs="*", default=[], help="room ids to leave alone")
     a = ap.parse_args()
+    if a.outside is not None:
+        globals()["OUTSIDE"] = a.outside
+    if a.inside is not None:
+        globals()["INSIDE"] = a.inside
 
     rooms = read_rooms(a.game_dir)
     fr = frame(rooms)
@@ -320,7 +437,7 @@ def main():
                 shallow += 1
             prop = nearest_door_prop(rooms[rid].get("doors"), e, side, fr)
             if prop:
-                new, src = derive_from_prop(prop, side), "prop " + prop["art"]
+                new, src = derive_from_prop(mask, prop, side), "prop " + prop["art"]
             elif has_notch(mask, side):
                 new, src = derive(mask, side, e), "floor notch"
             else:
@@ -336,10 +453,13 @@ def main():
             now, now_d = standable_overlap(mask, new), entry_depth(mask, new)
             same = all(new[k] == e[k] for k in "xywh")
             shift = max(abs(new["x"] - e["x"]), abs(new["y"] - e["y"]))
-            # Never take a proposal that makes the door HARDER to reach. The
-            # authored value was measured off the art by a person; this tool is
-            # only worth obeying where it can show the art disagrees.
-            if now < was:
+            # Judge a proposal on DEPTH, not on how many standable positions
+            # touch it. Position count was the first guard and it is a proxy
+            # for AREA: it refuses every smaller rectangle by construction,
+            # which blocked exactly the change that was wanted — shrinking
+            # 38x58 triggers to a thin band. Depth is what decides whether a
+            # door can be entered; area is what makes it look like a room.
+            if now_d < MIN_ENTRY_DEPTH:
                 print("%-13s %-11s %-5s keeps (%3d,%3d) %2dx%-2d  reach %-5d depth %2dpx "
                       "(%s would give %d/%dpx — worse, ignored)"
                       % (rid, e["link"], side, e["x"], e["y"], e["w"], e["h"], was, was_d,
@@ -366,6 +486,18 @@ def main():
         print("\nwrote %s" % story_path)
     print("\n%d door(s) would move, %d already on their opening, %d grazed rather than "
           "entered." % (moved, unchanged, shallow))
+    if a.check:
+        if shallow:
+            print("\nFAIL: %d door(s) can only be grazed. A trigger a player can reach by "
+                  "less than %dpx is a door in the data and a dead end in play — that is "
+                  "how the Arena's way out passed every other check while walking one "
+                  "direction out of the spawn went straight past it into the wall.\n"
+                  "Fix with: python3 .github/art/remap_doors.py <game> --write, or move "
+                  "the trigger onto the doorway the art draws."
+                  % (shallow, MIN_ENTRY_DEPTH))
+            sys.exit(1)
+        print("OK — every door can be entered, not just grazed.")
+        return
     print("A move is a PROPOSAL: prop collision is invisible here, so run the "
           "reachability sweep (games/<id>/browser.test.js) before believing it.")
 

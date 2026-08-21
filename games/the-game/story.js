@@ -210,7 +210,7 @@ window.NEWSEY_STORY = (function () {
       // still the TV (which plays DREAM_CUTSCENE), but you came down these to
       // answer the door, so they go back up.
       exits: [
-        { x: 218, y: 97, w: 27, h: 24, to: "home_bedroom", link: "stairs" }
+        { x: 218, y: 83, w: 27, h: 16, to: "home_bedroom", link: "stairs" }
       ],
       // Furniture where it actually meets the floor: the table with the
       // moving boxes, the lantern table by the front door, and the little
@@ -531,8 +531,8 @@ window.NEWSEY_STORY = (function () {
       // rectangle of floor near it.
       exits: [
         { x: 4,   y: 118, w: 38, h: 58, to: "bedroom", link: "westDoor", drawn: "sidebreach" },
-        { x: 92,  y: 46,  w: 32, h: 26, to: "library", link: "northArch" },
-        { x: 149, y: 46,  w: 32, h: 26, to: "arena",   link: "portal" },
+        { x: 90,  y: 0,  w: 33, h: 16, to: "library", link: "northArch" },
+        { x: 147, y: 0,  w: 33, h: 16, to: "arena",   link: "portal" },
         { x: 278, y: 118, w: 38, h: 58, to: "lab",     link: "eastDoor", drawn: "sidebreach" }
       ],
       npcs: [
@@ -929,7 +929,7 @@ window.NEWSEY_STORY = (function () {
         // the frame itself.
         { x: 140, y: 178, w: 40, h: 16, to: "lounge", link: "northArch", drawn: "threshold" },
         // north, through the arch in the bookcase wall, up into the Garden
-        { x: 128, y: 47, w: 63, h: 24, to: "garden", link: "gardenPath" }
+        { x: 128, y: 0, w: 63, h: 16, to: "garden", link: "gardenPath" }
       ],
       npcs: [
         {

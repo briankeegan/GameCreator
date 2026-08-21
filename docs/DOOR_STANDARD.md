@@ -111,7 +111,11 @@ exits" step in `pages.yml`. The art half is measured by
   Arena's way out was armed up in the stands above the walkable platform and
   scored ONE pixel: every structural check passed, the browser door test passed,
   and holding a direction out of the spawn walked straight past it into the wall.
-  Every working door in Newsey measures 13-14px, so the floor is set at 6.
+  Every working door in Newsey measures 13-14px, so the floor is set at 6, and
+  `remap_doors.py <game> --check` is the "Verify doors can be entered" step in
+  `pages.yml`. It fails on the unambiguous half only — a door nobody can enter
+  is a fact; the tool's proposals to MOVE a trigger are advice, since it cannot
+  see prop collision, and a fuzzy check must never block a deploy.
 - **The check that catches this walks the room with the GAME's own collision.**
   A static model built on the walk mask called that Arena door reachable,
   because the mask knows where the floor is and knows nothing about the benches
@@ -189,6 +193,7 @@ proved to fire by breaking a room on purpose.
 | A grid game where you leave by one wall and arrive against the same wall, or land out of line with the way out you came through | `check_room_exits.mjs` | "Verify room exits" |
 | A grid map with a short row, no gate, or a spawn touching the gate | `check_room_exits.mjs` | "Verify room exits" |
 | A door-data file the game never loads, or never precaches | `check_room_exits.mjs` | "Verify room exits" |
+| A trigger a player can only graze rather than enter | `remap_doors.py --check` | "Verify doors can be entered" |
 | A trigger armed somewhere the player cannot stand | `room.py verify` | "Verify room props and floor plates" |
 | A prop footprint covering a doorway | `room.py verify` | "Verify room props and floor plates" |
 
