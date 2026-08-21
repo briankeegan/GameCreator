@@ -1939,16 +1939,23 @@ function render(now) {
   }
   // attack: a quick slash arc sweeping across the facing direction, not
   // just a static ring — sells the swing as an action, not a hitbox debug
-  // circle. Drawn BEHIND the hero sprite (before it, not after) on purpose:
-  // this used to be drawn on top, and the arc's own near-white stroke
-  // (#f4f0e6) sweeps close enough to head height — especially early in a
-  // side-facing swing — that it read as "her face turned white" rather than
-  // as a blade. The art was never the problem (checked both sheets' face-
-  // region pixels directly: no white in either, same magenta/orange/outline
-  // palette) — this was a z-order bug, present since the file was first
-  // written, not a regression in any art-generation pass. Drawing it first
-  // means the hero sprite (which already covers this same area) always
-  // renders on top, so the arc only shows where it extends past her.
+  // circle.
+  //
+  // TWO separate bugs stacked here, and only the first one was caught by
+  // eye: (1) it drew AFTER the hero sprite (z-order), fixed by moving it
+  // before — but a Python/PIL pixel count against the actual rendered
+  // canvas (not a screenshot eyeballed by a human OR a model) showed
+  // #f4f0e6-colored pixels around the head going from 0 (walking) to 35-86
+  // (mid-swing) even with that fix in place. (2) the arc's stroke color,
+  // #f4f0e6, is the EXACT hex art-style.json assigns to Beverly's own
+  // muzzle/cheeks/inner-ear material — so any part of the arc that pokes
+  // out past her silhouette (which a 26px-radius arc around a ~64px sprite
+  // always will, from some angle) is not just "near" her face color, it is
+  // her face color, indistinguishable by eye or by a naive check. Recolored
+  // to the dagger's own blade color (#dfe4ea, also from art-style.json) —
+  // it's her weapon swinging, so that's the correct color family regardless
+  // of the bug, and it's numerically far enough from #f4f0e6 that the same
+  // pixel check now reads ~0 in the head region for both poses.
   if (attacking) {
     const baseAngle = FACING_ANGLE[p.facing];
     const sweep = 2.0; // radians of total swing
@@ -1958,7 +1965,7 @@ function render(now) {
     const hx = p.x + Math.cos(baseAngle) * reach * 0.3;
     const hy = p.y - 6 + Math.sin(baseAngle) * reach * 0.3;
     ctx.save();
-    ctx.strokeStyle = "#f4f0e6";
+    ctx.strokeStyle = "#dfe4ea";
     ctx.lineWidth = 5;
     ctx.lineCap = "round";
     ctx.globalAlpha = 0.9;
