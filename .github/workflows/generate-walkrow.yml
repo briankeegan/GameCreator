@@ -7,7 +7,8 @@ name: Generate walk row
 # generated for Dog Punk.
 #
 # THE WORK IS NOT IN THIS FILE. It is in .github/art/generate_row.py, which
-# builds the prompt from walkgrid_prompt.txt plus the game's art-style.json,
+# builds the prompt from walkgrid_prompt.txt or attacksheet_prompt.txt (see the
+# `kind` input) plus the game's art-style.json,
 # generates ONE ROW on a landscape canvas, verifies it, and deletes it if it
 # fails. This Action is only the button: checkout, run that script, commit.
 # The Clubhouse autopilot runs the SAME script — it cannot dispatch a workflow
@@ -40,6 +41,14 @@ on:
           - front
           - side
           - back
+      kind:
+        description: "walk = the [step, NEUTRAL, step] walk row. attack = the [wind-up, STRIKE, recover] slash row."
+        required: false
+        type: choice
+        options:
+          - walk
+          - attack
+        default: walk
       description:
         description: "The character, in words. Leave blank to use the game's art-style.json mainCharacter."
         required: false
@@ -76,11 +85,15 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           python3 -m pip install --quiet --disable-pip-version-check pillow numpy
-          echo "out=games/${{ inputs.game }}/art-src/${{ inputs.character }}_${{ inputs.view }}_raw.png" >> "$GITHUB_OUTPUT"
+          # Attack rows land on a different suffix (generate_row.py owns that
+          # naming); mirror it here so the commit step stages the right file.
+          if [ "${{ inputs.kind }}" = "attack" ]; then sfx="_atk_raw.png"; else sfx="_raw.png"; fi
+          echo "out=games/${{ inputs.game }}/art-src/${{ inputs.character }}_${{ inputs.view }}$sfx" >> "$GITHUB_OUTPUT"
           python3 .github/art/generate_row.py \
             --game "${{ inputs.game }}" \
             --character "${{ inputs.character }}" \
             --view "${{ inputs.view }}" \
+            --kind "${{ inputs.kind }}" \
             --quality "${{ inputs.quality }}" \
             ${{ inputs.description && format('--description "{0}"', inputs.description) || '' }} \
             ${{ inputs.force && '--force' || '' }}
