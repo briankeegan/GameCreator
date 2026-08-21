@@ -398,6 +398,8 @@ jobs:
                    .github/art/CHARACTER_SHEETS.rules.md   characters
                    docs/ROOM_ART_STANDARD.rules.md         rooms
                    docs/TILED_LEVEL_STANDARD.rules.md      tiled levels
+                   docs/DOOR_STANDARD.rules.md             doors / ways
+                                                           between rooms
                  Each card is the rules with the history stripped out,
                  extracted from the full standard (same name, no `.rules`) and
                  CI-checked against it, so it is never stale. Open the full

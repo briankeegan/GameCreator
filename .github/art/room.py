@@ -43,6 +43,7 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 W, H = 320, 200
 PLATE_FILL_MIN = 0.55      # a plate should cover at least this much of the frame
+EXIT_ON_FLOOR_MIN = 0.15   # how much of an exit trigger must be walkable (see verify)
 DOOR_CLEARANCE = 12        # px a prop's footprint must keep off an exit trigger
 
 
@@ -492,15 +493,37 @@ def verify(game_dir):
             problems.append("%s: floor-plate room still declares obstacles — props carry "
                             "their own footprints" % room)
 
-        # playerStart must not sit in an exit trigger
-        if r["playerStart"] and r["exits"]:
-            px, py = r["playerStart"]
+        # A DOORWAY YOU CANNOT STAND ON IS NOT A DOOR. The wall a door is
+        # drawn in comes from the room's spec, the trigger that arms it is a
+        # rectangle in story.js, and nothing but pixels can say whether the
+        # two ended up in the same place: measure how much of the trigger sits
+        # on walkable floor. A door armed against a wall, or out past the edge
+        # of the plate, scores ~0 and can never be reached — while every
+        # structural check passes, because the pairing is perfect and the
+        # destination is real.
+        #
+        # Calibrated against the rooms that exist: the LOWEST real trigger is
+        # the lounge's east door to the lab at 37.8% walkable (a side-wall
+        # door is half doorframe by nature), the highest are the back-wall
+        # arches at 100%. 15% is therefore ~2.5x clear of the worst correct
+        # door and still fails anything armed off the floor entirely.
+        #
+        # playerStart is checked by the door gate, not here — see
+        # .github/scripts/check_room_exits.mjs, which covers every room rather
+        # than only the floor-plate ones and applies the same doorstep
+        # clearance the runtime does.
+        if r["exits"] and os.path.exists(os.path.join(art, "walk-%s.png" % room)):
+            m = np.asarray(Image.open(os.path.join(art, "walk-%s.png" % room))
+                           .convert("L").resize((W, H), Image.NEAREST)) > 127
             for ex in r["exits"]:
-                if all(k in ex for k in "xywh"):
-                    if (px + 14 > ex["x"] and px < ex["x"] + ex["w"] and
-                            py + 18 > ex["y"] and py < ex["y"] + ex["h"]):
-                        problems.append("%s: playerStart (%d,%d) is inside an exit trigger "
-                                        "— the door never arms" % (room, px, py))
+                if not all(k in ex for k in "xywh"):
+                    continue
+                sub = m[max(0, ex["y"]):ex["y"] + ex["h"], max(0, ex["x"]):ex["x"] + ex["w"]]
+                if sub.size and float(sub.mean()) < EXIT_ON_FLOOR_MIN:
+                    problems.append("%s: the exit trigger at (%d,%d) is only %.0f%% on "
+                                    "walkable floor — the doorway is armed somewhere the "
+                                    "player cannot stand, so the door can never fire"
+                                    % (room, ex["x"], ex["y"], float(sub.mean()) * 100))
 
         for p in r["props"]:
             path = os.path.join(art, p["art"] + ".png")

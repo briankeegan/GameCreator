@@ -424,6 +424,8 @@
   // the same square of lounge floor, nowhere near the rune door you had just
   // walked through, and coming downstairs left you in the middle of the room
   // rather than at the stairs.
+  // The rules these implement, and why each exists: docs/DOOR_STANDARD.md
+  // (§2 derived arrival, §5 disarm + release). Fix a rule there, not here.
   var STEP_OUT = [
     { dir: "down",  dx: 0,  dy: 1  },
     { dir: "up",    dx: 0,  dy: -1 },

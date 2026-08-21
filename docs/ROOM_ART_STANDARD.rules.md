@@ -42,9 +42,24 @@
 - **Pass 2 exists precisely so none of this is needed.**
 - **Re-run it after changing any room's background.**
 ## 7. Pipeline — one front door
+### THE STEPS, IN ORDER, AND WHAT ENFORCES EACH ONE
+| # | Step | Enforced by |
+|---|------|-------------|
+| 0 | **Write the room's spec** — `games/<id>/rooms/<room>.json`: what the room is, what it contains, its floor, and WHICH WALL each way out is in. The map decides the doors. | `room.py generate` refuses without it |
+| 1 | **Generate the scene** (pass 1) from that spec | `room.py generate <game> <room> scene` |
+| 2 | **LOOK at the scene. Regenerate it until it is right. Change nothing else.** A wrong scene makes every later pass wrong, and none of it is repairable. | `room.py approve <game> <room>` — pass 2 and 3 refuse until you do, and regenerating the scene revokes it |
+| 3 | **Generate the plate** (pass 2) and fit it | `room.py plate` — tone-matches it to the scene's own floor |
+| 4 | **Generate the props** (pass 3) and cut them | `room.py props` |
+| 5 | **Place them at the numbers the scene used** | `measure_props.py` (exteriors only — see its header for the interior gap) |
+| 6 | **Render the overlay, LOOK at it, then say so** | `room.py check` renders; `room.py signoff <game> <room>` is the separate act that records you looked. `room.py verify` FAILS for any room not signed off since its art or placement last changed — and `check` alone does NOT clear it |
+| 7 | **Wire the doors** — every exit on its own drawn doorway, every door a pair | `check_room_exits.mjs` |
+| 8 | **Run the gate** | `room.py verify`, in `pages.yml` |
+- **Step 2 is the one that pays.** The Victorian bedroom's first scene came back an isometric corner room; it was given a floor plate, three prop sheets and two full assemblies before anyone noticed. All of it was thrown away. Regenerating one scene costs one image; discovering the problem at step 6 costs six.
+- **Step 6 is the one that finds things.** Every sizing error in this project was invisible in the numbers and obvious the moment the assembled room was put next to its scene: statues at two thirds size, a rug the scene had that the room never got, props at twice the height they should be, a floor lit like a showroom under a candlelit room.
 - **Every caller runs the same command.** A person at a terminal, the "Generate room pass" Action (which is only a button on this script), and the Clubhouse autopilot — which cannot dispatch a workflow from inside one, so it calls the script directly. `room.py generate` picks its transport itself (`.github/art/imagegen.py`): the in-run image broker if one is listening, otherwise `OPENAI_API_KEY`. A model is never handed the key. Characters work exactly the same way through `generate_row.py`; see `.github/art/README.md`.
 # builds the prompt, generates, writes to the path the next step reads
 # back. Refuses to run if the prompt still has a hole in it.
+- **Rendering is not looking, and the tool used to conflate them.** `check` wrote the sign-off digest itself, the moment it finished rendering — so the gate asking "has anyone looked at this room?" was answered by running the renderer, with nobody opening the picture. It surfaced the only way it could: as unexpected uncommitted changes after a session ran `check` on three rooms it had *not* approved, one of them visibly wrong (floor planks at the wrong scale, the scene's four-stool tables assembled as a single stool and a candle). Had those been committed, the build would have gone green over art nobody had accepted.
 ### The gate
 - **`--mode side` is the step that finds things.** The assembled room next to the scene it came from shows in one look everything the numbers hide. All four of the reference room's problems were found this way and none were findable any other way:
 | what it looked like | what it actually was |

@@ -170,9 +170,9 @@ design discussion. `shared/` holds the components every game reuses
   2. **Tool** — a script that decides it mechanically, runnable by hand.
   3. **Gate** — a `pages.yml` step that runs the tool on every push, so a
      violation fails the build instead of shipping.
-  Existing instances: room exits (`EXIT / DOOR CONVENTION` comment ->
-  `.github/scripts/check_room_exits.mjs` -> "Verify room exits"), art
-  (`.github/art/CHARACTER_SHEETS.md` -> `.github/art/verify_sheet.py` ->
+  Existing instances: doors (`docs/DOOR_STANDARD.md` ->
+  `.github/scripts/check_room_exits.mjs` + `room.py verify` -> "Verify room
+  exits"), art (`.github/art/CHARACTER_SHEETS.md` -> `.github/art/verify_sheet.py` ->
   "Verify shipped sprite sheets" / "Verify character frame sets"), rooms
   (`docs/ROOM_ART_STANDARD.md` -> `.github/art/room.py verify` -> "Verify room
   props and floor plates"), and art references (the header comment in
@@ -241,6 +241,19 @@ design discussion. `shared/` holds the components every game reuses
   `.github/scripts/check_art_registry.mjs` on every push, both directions: a
   tool or prompt that isn't listed fails the build, and so does a path listed
   there that doesn't exist. Add a tool, add its row.
+- **DOORS HAVE ONE STANDARD FOR EVERY GAME: `docs/DOOR_STANDARD.md`.** A door
+  is one half of a PAIR carrying a `link`; arrival is DERIVED from the partner
+  at runtime and never typed. Typed `arriveAt`/`arriveFacing` values drifted
+  until the Library, the Garden and the Lab all put the player on the same
+  square of lounge floor — each value individually valid, every check passing,
+  because nothing compared the two sides of a door. Two shapes are covered:
+  DERIVED (Newsey — any room shape, doors in any wall) and CONSTANT (Dog Punk —
+  every room the same grid, gate and spawn in the same cells always). Doors
+  work better in Dog Punk because of the stricter constraint, not better code:
+  arrival is a fact there rather than a computation. Prefer CONSTANT when a
+  game can live with it. A game is checked as soon as it PUBLISHES its door
+  data in a file with no DOM in it (`story.js` or `rooms.js`) — detected, never
+  configured, which is why dog-punk's maps moved out of `app.js`.
 - **THREE SHAPES OF LEVEL ART, and picking the right one first is the whole
   job:** a grid of repeating tiles (`docs/TILED_LEVEL_STANDARD.md`,
   `tileset.py` — Dog Punk), one picture per room (`docs/ROOM_ART_STANDARD.md`,

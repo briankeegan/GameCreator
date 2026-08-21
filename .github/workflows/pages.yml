@@ -40,20 +40,17 @@ jobs:
             node "$f" || status=1
           done
           exit $status
-      # Every door needs arriveFacing + a landing spot that's real floor and
-      # clear of every OTHER exit in that room — two room pairs shipped
-      # without that (arriveFacing missing entirely, and separately two door
-      # pairs landing close enough to an unrelated door to "bounce" a player
-      # right back out on one accidental keypress) before this existed. See
-      # the EXIT / DOOR CONVENTION comment in each game's story.js.
+      # THE DOOR GATE — docs/DOOR_STANDARD.md. A door is one half of a pair,
+      # arrival is derived from the partner rather than typed, and a doorway
+      # has to be drawn in the wall its trigger is armed in. Every one of
+      # those was learned by shipping the opposite: three rooms putting the
+      # player down on the same square of lounge floor nowhere near the door
+      # she walked through, and a spawn point parked on a doorway so the door
+      # never armed at all. The checker finds every game itself — a game is
+      # covered as soon as it publishes its door data (§8), with no list here
+      # to forget to update.
       - name: Verify room exits
-        run: |
-          status=0
-          for f in games/*/story.js; do
-            echo "== $f =="
-            node .github/scripts/check_room_exits.mjs "$f" || status=1
-          done
-          exit $status
+        run: node .github/scripts/check_room_exits.mjs
 
       # Rooms built to the three-pass standard (docs/ROOM_ART_STANDARD.md):
       # the background is ONLY the walkable surface and everything else is a
@@ -129,7 +126,7 @@ jobs:
       - name: Verify rules cards match their standards
         run: |
           status=0
-          for std in .github/art/CHARACTER_SHEETS.md docs/ROOM_ART_STANDARD.md docs/TILED_LEVEL_STANDARD.md; do
+          for std in .github/art/CHARACTER_SHEETS.md docs/ROOM_ART_STANDARD.md docs/TILED_LEVEL_STANDARD.md docs/DOOR_STANDARD.md; do
             python3 .github/art/rules_card.py --check "$std" || status=1
           done
           exit $status
