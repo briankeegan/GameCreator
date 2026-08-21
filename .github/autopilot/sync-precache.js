@@ -18,8 +18,24 @@
  *
  * Script what is decidable. Do not dress a guess up as a check.
  *
- *   node sync-precache.js            report; exit 1 if any entry is stale
- *   node sync-precache.js --fix      drop the stale entries
+ * A SECOND decidable check lives here too: a game whose own JS calls
+ * window.GCControls.create(...) or window.GCSaveSlots.create(...) (the
+ * shared/controls.js and shared/save-slots.js modules) but doesn't load
+ * that script in its index.html, or doesn't precache it in sw.js, ships
+ * broken (ReferenceError at load) or goes stale offline (works online,
+ * breaks the moment the PWA is actually offline) — caught for real
+ * migrating Dog Punk onto both modules by hand, where every one of these
+ * was a separate thing to remember. "Does this game's code reference the
+ * module" and "is the module's script tag/precache entry present" are both
+ * plain text search, not a judgement call, so it belongs in this same gate
+ * rather than staying something a human (or a model) has to remember.
+ *
+ *   node sync-precache.js            report; exit 1 if anything is wrong
+ *   node sync-precache.js --fix      drop stale entries (does NOT add
+ *                                    missing shared-module wiring — see
+ *                                    .github/tools/adopt-shared-module.js
+ *                                    for that, which is a judgement call
+ *                                    about WHERE to insert a script tag)
  */
 
 const fs = require("fs");
@@ -49,17 +65,45 @@ function main() {
       return !fs.existsSync(path.join(ROOT, rel));
     });
 
-    if (!stale.length) { console.log(`${dir}: ${listed.length} precache entries, all present`); continue; }
-    bad += stale.length;
-    for (const e of stale) {
-      console.log(`${dir}: STALE precache entry "${e}" — the file does not exist, so ` +
-                  `cache.addAll() 404s and the service worker never installs.`);
+    if (stale.length) {
+      bad += stale.length;
+      for (const e of stale) {
+        console.log(`${dir}: STALE precache entry "${e}" — the file does not exist, so ` +
+                    `cache.addAll() 404s and the service worker never installs.`);
+      }
+      if (fix) {
+        const kept = listed.filter((e) => !stale.includes(e));
+        const body = kept.map((e) => `  "${e}",`).join("\n");
+        fs.writeFileSync(swPath, sw.replace(m[0], `GCRegisterServiceWorker("${m[1]}", [\n${body}\n])`));
+        console.log(`${dir}: removed ${stale.length} stale entr(y|ies)`);
+      }
+    } else {
+      console.log(`${dir}: ${listed.length} precache entries, all present`);
     }
-    if (fix) {
-      const kept = listed.filter((e) => !stale.includes(e));
-      const body = kept.map((e) => `  "${e}",`).join("\n");
-      fs.writeFileSync(swPath, sw.replace(m[0], `GCRegisterServiceWorker("${m[1]}", [\n${body}\n])`));
-      console.log(`${dir}: removed ${stale.length} stale entr(y|ies)`);
+
+    // SECOND CHECK: a game using shared/controls.js or shared/save-slots.js
+    // must load it (index.html) and precache it (sw.js) — see the file
+    // header for why this is decidable rather than a judgement call.
+    const gameJsFiles = fs.readdirSync(path.join(ROOT, dir))
+      .filter((f) => f.endsWith(".js"))
+      .map((f) => fs.readFileSync(path.join(ROOT, dir, f), "utf8"))
+      .join("\n");
+    const htmlPath = path.join(ROOT, dir, "index.html");
+    const html = fs.existsSync(htmlPath) ? fs.readFileSync(htmlPath, "utf8") : "";
+    const SHARED_MODULES = [
+      { ref: /\bGCControls\.create\b/, file: "../../shared/controls.js", name: "shared/controls.js" },
+      { ref: /\bGCSaveSlots\.create\b/, file: "../../shared/save-slots.js", name: "shared/save-slots.js" },
+    ];
+    for (const mod of SHARED_MODULES) {
+      if (!mod.ref.test(gameJsFiles)) continue;
+      const missing = [];
+      if (!html.includes(mod.file)) missing.push("index.html (no <script> tag)");
+      if (!listed.includes(mod.file)) missing.push("sw.js (not precached)");
+      if (missing.length) {
+        bad += missing.length;
+        console.log(`${dir}: uses ${mod.name} but it's missing from ${missing.join(" and ")} — ` +
+                    `offline mode will 404 or the game will throw. See .github/tools/adopt-shared-module.js.`);
+      }
     }
   }
   if (bad && !fix) process.exit(1);
