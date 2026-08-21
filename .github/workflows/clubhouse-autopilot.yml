@@ -391,6 +391,26 @@ jobs:
                Read the relevant one with the Read tool BEFORE generating.
                Runs that skipped this shipped art that had to be redone.
 
+               CONTEXT DISCIPLINE — read narrowly, or you will spend the run
+               compacting instead of working. Your context is finite and
+               compaction is where a run loses the thread: more than one has
+               reported success on a job it had half-forgotten. Measured here,
+               a game's app.js is ~13k tokens, CLAUDE.md ~10k, each art
+               standard 2-7k. Reading four of those leaves little room to
+               think.
+                 * ONE standard, the one that matches the request — characters
+                   OR rooms OR tiled levels, not all three.
+                 * NEVER `Read` a whole big source file. Find the part you
+                   need: `grep -n "sliceSheet\|HERO_ROW" games/<id>/app.js`
+                   then `sed -n '240,300p'` on the lines it names. You are
+                   editing a function, not auditing a file.
+                 * Review art from the SHIPPED sheet (about 768x768), never the
+                   1536x1024 raw — same information, a quarter of the tokens —
+                   and only after verify_sheet.py has passed it, so you are
+                   spending eyes on the half a checker cannot judge.
+                 * Do not re-read a file you have already read; you still have
+                   it.
+
                GENERATE SHEETS, NEVER SINGLE FRAMES. This is the rule that
                matters most and the one previous runs kept breaking. A sprite
                generated on its own is drawn from scratch, so its colours,
