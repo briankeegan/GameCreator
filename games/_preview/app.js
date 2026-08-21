@@ -1853,3 +1853,14 @@ loseRetryBtn.addEventListener("click", () => {
 });
 
 requestAnimationFrame((t) => { lastT = t; requestAnimationFrame(loop); });
+
+// ---- SCRATCH DEBUG HOOK, preview copy only, never in the shipped file ----
+(function () {
+  const qs = new URLSearchParams(location.search);
+  if (!qs.has("debugRoom")) return;
+  const idx = parseInt(qs.get("debugRoom"), 10) || 0;
+  for (let i = 0; i < 10; i++) advanceIntro();
+  transitionToRoom(idx, "forward");
+  state.player.x = 8 * TILE;
+  state.player.y = 6 * TILE;
+})();

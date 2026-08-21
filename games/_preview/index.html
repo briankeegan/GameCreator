@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Dog Punk</title>
+  <meta name="theme-color" content="#2f3b52" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Dog Punk" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon.svg" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="../../shared/nav.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Header (All Games / title / chat) is injected by nav.js below. -->
+
+  <main class="game-area" id="gameArea">
+    <div class="hud" id="hud">
+      <div class="hud-left">
+        <div class="hearts" id="hearts"></div>
+      </div>
+      <div class="hud-title" id="hudTitle">Chapter 1 &middot; Scrapyard Alley</div>
+      <div class="hud-right">
+        <span id="enemyCount">3 left</span>
+      </div>
+    </div>
+
+    <div class="board-wrap" id="boardWrap">
+      <div class="board-frame">
+        <canvas id="board" width="512" height="384"></canvas>
+        <p class="sr-only">Move: Arrow keys / WASD. Attack: Space.</p>
+        <div class="room-toast" id="roomToast"></div>
+
+        <div class="run-overlay" id="winOverlay" hidden>
+          <h2>Beverly Reaches Town!</h2>
+          <p id="winTime"></p>
+          <button id="winRetryBtn">Play Again</button>
+        </div>
+        <div class="run-overlay" id="loseOverlay" hidden>
+          <h2>Beverly Got Scrapped</h2>
+          <p>The junk rats got the best of her this time.</p>
+          <button id="loseRetryBtn">Try Again</button>
+        </div>
+        <div class="run-overlay cutscene-overlay" id="introOverlay">
+          <canvas class="intro-portrait" id="introPortrait" width="64" height="64"></canvas>
+          <p id="introText"></p>
+          <button id="introBtn">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="touch-controls" id="touchControls">
+      <div class="dpad" id="dpad">
+        <button class="dpad-btn dpad-up" data-dir="up" aria-label="Up">&#9650;</button>
+        <button class="dpad-btn dpad-left" data-dir="left" aria-label="Left">&#9664;</button>
+        <button class="dpad-btn dpad-right" data-dir="right" aria-label="Right">&#9654;</button>
+        <button class="dpad-btn dpad-down" data-dir="down" aria-label="Down">&#9660;</button>
+      </div>
+      <button class="attack-btn" id="attackBtn" aria-label="Attack">&#9876;&#xFE0E;</button>
+    </div>
+  </main>
+
+  <div class="install-banner" id="installBanner">
+    <img class="install-banner-icon" src="icons/icon.svg" alt="" />
+    <div class="install-banner-text" id="installBannerText">
+      Install this game: tap <span class="share-glyph" aria-label="Share">&#x2B06;&#xFE0E;</span>
+      then <strong>Add to Home Screen</strong>
+    </div>
+    <button class="install-banner-btn" id="installBannerBtn" hidden>Install</button>
+    <button class="install-banner-close" id="installBannerClose" aria-label="Dismiss">&times;</button>
+  </div>
+
+  <script src="../../shared/nav.js"
+          data-game-id="dog-punk"
+          data-game-name="Dog Punk"
+          data-version="v1"
+          data-root="../../"></script>
+  <script src="../../shared/storage.js"></script>
+  <script src="app.js"></script>
+  <script src="../../shared/pwa.js" data-sw="sw.js"></script>
+</body>
+</html>
