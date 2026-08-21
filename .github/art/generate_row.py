@@ -219,19 +219,33 @@ def main():
     flags = profiles.verify_args(args.kind, args.view)
     cmd = [sys.executable, str(ROOT / '.github/art/verify_sheet.py'), 'raw',
            str(out_abs)] + (flags or [])
-    # STYLE REFERENCE: another raw of the same character, so a row drawn in a
-    # different style than the rest is caught before it reaches a sheet. Raw
-    # against raw — a raw and a cut sheet are not on the same scale and
-    # comparing them passes everything. Newest first, since that is what the
-    # rest of the character is being brought toward.
+    # STYLE REFERENCE: another raw of the same character AND SAME KIND, so a
+    # row drawn in a different style than the rest is caught before it
+    # reaches a sheet. Raw against raw — a raw and a cut sheet are not on the
+    # same scale and comparing them passes everything. Newest first, since
+    # that is what the rest of the character is being brought toward.
     # NEWEST BY COMMIT DATE, NOT BY MTIME. git does not preserve mtimes: a
     # fresh CI checkout writes every file at the same instant, so "the most
     # recent file on disk" is arbitrary there. It picked a raw from an old
     # generation as the reference and rejected a good row for not matching art
     # nobody has used in weeks. Ask git, which actually knows.
+    #
+    # EXACT NAME MATCH, NOT A LOOSE GLOB. This used to be
+    # f'{character}_*_raw.png' — matching ANY file shaped like that, from ANY
+    # era of this character's naming history. Dog Punk had a legacy
+    # hero_atk_back_raw.png (predating this tool's own hero_back_atk_raw.png
+    # convention) still sitting in art-src/, never used by the actual build —
+    # and the loose glob picked it as the reference for a fresh regeneration,
+    # rejecting good art twice for "different style" against a file nothing
+    # ships from. A candidate now has to be the SAME shape this tool itself
+    # would write (character_view_raw.png for walk, character_view_atk_raw.png
+    # for attack) — a stray or renamed-convention file simply isn't a
+    # candidate, for this character or any other.
     ref = None
-    cands = [p for p in out_abs.parent.glob(f'{args.character}_*_raw.png')
-             if p != out_abs and 'rejected' not in str(p)]
+    valid_views = ('front', 'side', 'back')
+    cands = [p for p in out_abs.parent.glob(f'{args.character}_*{suffix}')
+             if p != out_abs and 'rejected' not in str(p)
+             and p.name in {f'{args.character}_{v}{suffix}' for v in valid_views}]
     if cands:
         try:
             newest = subprocess.run(
