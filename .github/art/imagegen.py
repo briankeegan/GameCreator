@@ -220,29 +220,28 @@ def generate(prompt, out_rel, size='1536x1024', quality='medium', force=False,
     return True
 
 
-# ONE-OFF / FREEFORM CLI. The front door for art that is not a character row,
-# a room pass, or a tile sheet — a title screen, a flat icon, a card. Exists so
-# "Generate image" and "Generate game asset" (the two Actions for exactly that
-# kind of one-off art) call THIS instead of hand-rolling their own curl+jq.
-#
-# They used to. Both had their own retry loop, both had `model: "gpt-image-1"`
-# typed into a jq filter, and both were invisible to everything this file now
-# does: request validation against what the API actually accepts, one place
-# that decides the model, and the provenance manifest. A prompt built two
-# different ways calling two different HTTP clients is exactly the kind of
-# divergence this repo keeps finding the expensive way.
+# THE CLI FOR ART WITH NO OTHER FRONT DOOR — icons, cutscenes, whatever the
+# next kind turns out to be. It does NOT take raw size/quality/background
+# flags; it takes a --kind, and profiles.py decides the rest. That is the
+# whole fix for the bug this replaced: a fully freeform call (any prompt, any
+# size, any background, decided per workflow_dispatch form) is how Trebor got
+# 200 transparent card icons and 8 opaque ones — nothing said what a "card
+# icon" was SUPPOSED to be, so nothing could hold one to the standard the
+# other 200 already set. A kind is a rule; raw flags are a request.
 def _cli():
     import argparse
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import profiles
+
     ap = argparse.ArgumentParser(description=__doc__ or 'Generate one image.')
+    ap.add_argument('--kind', required=True, choices=profiles.FREEFORM_KINDS,
+                    help='which entry in profiles.py PROFILES to generate as — '
+                         'add a new one there before adding a new kind here')
     ap.add_argument('--prompt', required=True)
     ap.add_argument('--output', required=True, help='repo-relative output path')
-    ap.add_argument('--size', default='1024x1024')
-    ap.add_argument('--quality', default='medium', choices=['low', 'medium', 'high', 'auto'])
-    ap.add_argument('--background', choices=['transparent', 'opaque', 'auto'])
-    ap.add_argument('--model', default=None,
-                    help='defaults to profiles.py MODEL — the one place that decides it')
     ap.add_argument('--force', action='store_true')
     a = ap.parse_args()
+    prof = profiles.get(a.kind)
 
     # REFUSE TO OWN A FRONT DOOR'S TERRITORY. art-src/ is exclusively where
     # generate_row.py, room.py and tileset.py write and read from — a
@@ -270,20 +269,12 @@ def _cli():
             'Use imagegen.py directly only for art with no front door — an icon, a '
             'title screen, a logo.')
 
-    model = a.model
-    if not model:
-        try:
-            sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-            import profiles
-            model = profiles.MODEL
-        except Exception:
-            model = 'gpt-image-1'
-
-    ok = generate(a.prompt, a.output, size=a.size, quality=a.quality,
-                 force=a.force, background=a.background, model=model)
+    ok = generate(a.prompt, a.output, size=prof['size'], quality=prof['quality'],
+                 force=a.force, background=prof['background'], model=prof['model'])
     if not ok:
         return   # already exists, not forced — not an error
-    print(f'wrote {a.output}')
+    print(f'wrote {a.output} (kind={a.kind}: {prof["size"]}, {prof["quality"]}, '
+         f'background={prof["background"]})')
 
 
 if __name__ == '__main__':

@@ -124,10 +124,40 @@ const server = http.createServer((req, res) => {
     let body;
     try { body = JSON.parse(raw); } catch (_) { return reply(res, 400, { ok: false, error: 'invalid JSON body' }); }
 
-    let { prompt, output_path, size, quality, transparent, game,
-          model, background, output_format, moderation } = body;
-    size = size || '1024x1024';
-    quality = quality || 'medium';
+    let { prompt, output_path, game, kind } = body;
+
+    // KIND, NOT RAW FLAGS. This endpoint used to take size/quality/background
+    // straight off the request body — any prompt, any settings, decided by
+    // whoever wrote the curl call. That is how Trebor got 200 transparent
+    // card icons and 8 opaque ones: nothing said what a "card icon" was
+    // SUPPOSED to be, so nothing could hold a stray one to the standard the
+    // other 200 already set. profiles.py is the one place that decides size,
+    // quality, background and model now — for the CLI (imagegen.py) and for
+    // this endpoint alike, so a run cannot get different settings depending
+    // on which door it called through.
+    if (!kind) {
+      return reply(res, 400, { ok: false, error:
+        'kind is required — which entry in .github/art/profiles.py PROFILES this is. ' +
+        'Ask for a new one to be added there before treating this as a generic bucket.' });
+    }
+    let prof;
+    try {
+      const out = execFileSync('python3', ['-c',
+        'import sys,json; sys.path.insert(0,".github/art"); import profiles; ' +
+        'print(json.dumps(profiles.get(sys.argv[1]) if sys.argv[1] in profiles.FREEFORM_KINDS ' +
+        'else {"_error": "not a freeform kind"}))', kind],
+        { cwd: ROOT, encoding: 'utf8' });
+      prof = JSON.parse(out);
+    } catch (e) {
+      return reply(res, 400, { ok: false, error: `could not resolve kind "${kind}": ${e.message}` });
+    }
+    if (prof._error) {
+      return reply(res, 400, { ok: false, error:
+        `"${kind}" is not a freeform kind (profiles.py FREEFORM_KINDS). A character row, ` +
+        'room pass or tile sheet has its own front door and must not come through here.' });
+    }
+    const { size, quality, background, model } = prof;
+    const transparent = background === 'transparent';
 
     // Path safety: only inside the repo, under games/, no traversal.
     if (!output_path || output_path.includes('..') || path.isAbsolute(output_path) || !output_path.startsWith('games/') || !output_path.endsWith('.png')) {
@@ -148,12 +178,11 @@ const server = http.createServer((req, res) => {
         'art with no front door (an icon, a title screen).' });
     }
 
-    // A game id means: match that game's art style and cut out on transparent.
+    // A game id means: match that game's art style.
     if (game) {
       const sp = styledPrompt(game, prompt || '');
       if (!sp) return reply(res, 400, { ok: false, error: `games/${game}/art-style.json not found — create it first or omit "game" for a freeform image` });
       prompt = sp;
-      if (transparent === undefined) transparent = true;
     }
     if (!prompt) return reply(res, 400, { ok: false, error: 'prompt is required' });
 
@@ -162,8 +191,7 @@ const server = http.createServer((req, res) => {
     }
 
     try {
-      const buf = await generate({ prompt, size, quality, transparent: !!transparent,
-                                   model, background, output_format, moderation });
+      const buf = await generate({ prompt, size, quality, transparent, model, background });
       const abs = path.join(ROOT, output_path);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, buf);

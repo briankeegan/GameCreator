@@ -126,7 +126,44 @@ PROFILES = {
         "size": "1536x1024", "quality": "medium", "background": "opaque",
         "verify": None,
     },
+
+    # THE OTHER TWO KINDS OF ART A GAME NEEDS, BEYOND CHARACTERS/ROOMS/TILES.
+    #
+    # These used to be one unbounded "freeform" escape hatch — any prompt, any
+    # size, any background, decided by whoever typed the workflow_dispatch
+    # form. That is how Trebor ended up with 200 card icons on a transparent
+    # background and 8 that were not: nothing said what a "card icon" was
+    # SUPPOSED to be, so nothing could catch when one drifted from it.
+    #
+    # A KIND is a rule, not a request. Add one here whenever a game needs a
+    # shape of art that doesn't fit an existing kind — a ship silhouette, a
+    # card face, a UI badge — rather than reaching for raw flags. That is the
+    # whole point of this table: the next "ship icon" gets a kind of its own
+    # when it is needed, not a one-off prompt nobody can hold to a standard.
+    "icon": {
+        "model": MODEL, "size": "1024x1024", "quality": "medium",
+        "background": "transparent",
+        "verify": None,
+        "note": "A single item dropped onto the game's own UI as a sprite — a "
+                "card, a weapon, a ship, a badge. ALWAYS transparent: it has to "
+                "sit on whatever background the UI already has, not carry its own.",
+    },
+    "cutscene": {
+        "model": MODEL, "size": "1536x1024", "quality": "medium",
+        "background": "opaque",
+        "verify": None,
+        "note": "Full-bleed narrative art meant to fill its own frame — a "
+                "splash screen, a story illustration. Opaque on purpose: this "
+                "is the one kind where the background IS the picture.",
+    },
 }
+
+# Which kinds the freeform CLI (imagegen.py) is allowed to generate. Character
+# rows, room passes and tile sheets are NOT here — those have their own front
+# doors (generate_row.py, room.py, tileset.py) that build the prompt from a
+# spec and verify before anything ships, and this list must never grow to
+# include them.
+FREEFORM_KINDS = ("icon", "cutscene")
 
 
 def get(kind):

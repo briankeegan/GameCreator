@@ -19,15 +19,6 @@ on:
         description: 'JSON array: [{"asset":"...","path":"games/<game>/icons/x.png"}, ...]'
         required: true
         type: string
-      size:
-        description: "Image size for every item in the batch"
-        required: false
-        type: choice
-        options:
-          - "1024x1024"
-          - "1024x1536"
-          - "1536x1024"
-        default: "1024x1024"
 
 permissions:
   contents: write
@@ -47,7 +38,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GAME: ${{ inputs.game }}
           ASSETS: ${{ inputs.assets }}
-          SIZE: ${{ inputs.size }}
         run: |
           set -euo pipefail
           STYLE_FILE="games/$GAME/art-style.json"
@@ -74,8 +64,7 @@ jobs:
             # Action, which at least backed off on 429) and model hardcoded to
             # gpt-image-1. One bad item must not kill the rest of the batch, so
             # a failure here is caught and the loop continues.
-            if ! python3 .github/art/imagegen.py --prompt "$prompt" --output "$path" \
-                 --size "$SIZE" --quality high --background transparent --force; then
+            if ! python3 .github/art/imagegen.py --kind icon --prompt "$prompt" --output "$path" --force; then
               echo "::error::generation failed for $path"
               echo "::endgroup::"
               continue
@@ -93,6 +82,18 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # BUMP THE PWA CACHE VERSION. Committing new art into a game's tree
+          # with no cache-name change means the service worker keeps serving
+          # the OLD file forever — the exact "the art never changed" bug this
+          # repo already paid to learn, now via a door that never got the fix.
+          # Same one-liner clubhouse-autopilot.yml's landing step uses.
+          GAME="${{ inputs.game }}"
+          SW="games/$GAME/sw.js"
+          if [ -f "$SW" ] && perl -i -pe 's/(GCRegisterServiceWorker\("[^"]*?-v)(\d+)(")/$1 . ($2 + 1) . $3/e' "$SW" && ! git diff --quiet -- "$SW"; then
+            git add "$SW"
+            echo "Bumped PWA cache version in $SW"
+          fi
+          node .github/autopilot/sync-precache.js --fix >/dev/null 2>&1 || true
           git add games/${{ inputs.game }}/icons
           git commit -m "Generate game asset batch (${{ inputs.game }})" || { echo "Nothing to commit"; exit 0; }
           for i in 1 2 3 4 5 6; do

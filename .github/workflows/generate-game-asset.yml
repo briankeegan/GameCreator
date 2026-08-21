@@ -28,24 +28,7 @@ on:
         description: "Where to save it in the repo, e.g. games/hypergolic-hull/icons/enemy-interceptor.png"
         required: true
         type: string
-      size:
-        description: "Image size"
-        required: false
-        type: choice
-        options:
-          - "1024x1024"
-          - "1024x1536"
-          - "1536x1024"
-        default: "1024x1024"
-      quality:
-        description: "Render quality — cost rises steeply: low < medium < high. Default medium; bump to high only when the asset really warrants it."
-        required: false
-        type: choice
-        options:
-          - "low"
-          - "medium"
-          - "high"
-        default: "medium"
+
       force:
         description: "Regenerate (and re-bill) even if the output file already exists. Off by default so re-running a batch never pays twice."
         required: false
@@ -134,11 +117,9 @@ jobs:
           fi
           mkdir -p "$(dirname '${{ inputs.output_path }}')"
           python3 .github/art/imagegen.py \
+            --kind icon \
             --prompt "$PROMPT" \
             --output "${{ inputs.output_path }}" \
-            --size "${{ inputs.size }}" \
-            --quality "${{ inputs.quality }}" \
-            --background transparent \
             --force
 
       # Downscale to a web-friendly sprite size so a set of assets doesn't
@@ -180,6 +161,18 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # BUMP THE PWA CACHE VERSION. Committing new art into a game's tree
+          # with no cache-name change means the service worker keeps serving
+          # the OLD file forever — the exact "the art never changed" bug this
+          # repo already paid to learn, now via a door that never got the fix.
+          # Same one-liner clubhouse-autopilot.yml's landing step uses.
+          GAME="${{ inputs.game }}"
+          SW="games/$GAME/sw.js"
+          if [ -f "$SW" ] && perl -i -pe 's/(GCRegisterServiceWorker\("[^"]*?-v)(\d+)(")/$1 . ($2 + 1) . $3/e' "$SW" && ! git diff --quiet -- "$SW"; then
+            git add "$SW"
+            echo "Bumped PWA cache version in $SW"
+          fi
+          node .github/autopilot/sync-precache.js --fix >/dev/null 2>&1 || true
           git add "${{ inputs.output_path }}"
           git commit -m "Generate game asset (${{ inputs.game }}): ${{ inputs.asset }}" || { echo "Nothing to commit"; exit 0; }
           for i in 1 2 3 4 5 6; do

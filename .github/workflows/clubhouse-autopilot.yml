@@ -456,16 +456,21 @@ jobs:
                For a simple FLAT icon or logo, skip all this and write an
                inline .svg (SVG over PNG).
 
-               For a ONE-OFF image that is none of the three kinds above (a
-               title screen, say), post to the broker yourself — but build the
-               prompt from the game's art-style.json so it matches everything
-               else, and Read the result. The broker REFUSES any output_path
-               under art-src/ — that is exclusively the three front doors'
-               territory, enforced, not just asked for:
+               For art with no front door — an ICON dropped onto the UI (a
+               card, a weapon), or a full-bleed CUTSCENE illustration — post
+               to the broker with a "kind": "icon" or "kind": "cutscene". The
+               broker looks up size/quality/background from that kind in
+               .github/art/profiles.py; it does not take raw flags, and it
+               REFUSES any output_path under art-src/ or a kind that is not
+               one of those two — both enforced, not just asked for. If the
+               game needs a shape of art that is neither of those (a ship
+               silhouette, a UI badge), say so in your reply rather than
+               forcing it into "icon" — a new kind gets added to profiles.py,
+               it is not something to approximate:
                  curl -s -X POST http://127.0.0.1:8791/generate \
                    -H 'content-type: application/json' \
                    -d '{"prompt":"...","output_path":"games/<id>/<name>.png",
-                        "size":"1536x1024"}'
+                        "kind":"icon"}'
 
             4. Write your chat reply as plain Markdown — the message body ONLY,
                with NO "**Claude says:**" prefix and NO "[v0.N]" stamp (the
