@@ -244,6 +244,32 @@ def _cli():
     ap.add_argument('--force', action='store_true')
     a = ap.parse_args()
 
+    # REFUSE TO OWN A FRONT DOOR'S TERRITORY. art-src/ is exclusively where
+    # generate_row.py, room.py and tileset.py write and read from — a
+    # character row, a room pass, and a tile sheet all live there, and only
+    # those three scripts know how to build the right prompt for one, wire in
+    # the character spec, pick the right verification flags, and retry a
+    # rejected attempt. A freeform call that happened to write into art-src/
+    # would produce a file that LOOKS like a properly-generated row but has
+    # none of that behind it — never checked, never retried, invisible to the
+    # gates that only look inside sheets built through the real pipeline.
+    #
+    # This is not a style guideline, it is a hard stop: don't ask the model to
+    # remember which door to use when the path alone already says.
+    out_parts = pathlib.PurePosixPath(a.output.replace('\\', '/')).parts
+    if 'art-src' in out_parts:
+        sys.exit(
+            f'{a.output} is inside an art-src/ directory, which belongs to the front '
+            'doors, not this freeform CLI:\n'
+            '  a character row  -> .github/art/generate_row.py --game <id> --character '
+            '<id> --view front|side|back\n'
+            '  a room pass      -> .github/art/room.py generate <gameDir> <room> '
+            'scene|plate|props\n'
+            '  a tile sheet     -> .github/art/tileset.py generate <gameDir> '
+            'ground|objects\n'
+            'Use imagegen.py directly only for art with no front door — an icon, a '
+            'title screen, a logo.')
+
     model = a.model
     if not model:
         try:

@@ -133,6 +133,20 @@ const server = http.createServer((req, res) => {
     if (!output_path || output_path.includes('..') || path.isAbsolute(output_path) || !output_path.startsWith('games/') || !output_path.endsWith('.png')) {
       return reply(res, 400, { ok: false, error: 'output_path must be a games/**/<name>.png path inside the repo' });
     }
+    // SAME GUARD AS THE FREEFORM CLI (imagegen.py), for the same reason: this
+    // is the raw one-off escape hatch, reachable by a plain curl from inside a
+    // run, and art-src/ is exclusively the three front doors' territory. A
+    // curl straight to this endpoint with an art-src/ path would produce a
+    // file that looks like a properly generated row — no verification, no
+    // retry, no character-spec check, invisible to the gates that only look
+    // inside sheets built through the real pipeline.
+    if (output_path.split('/').includes('art-src')) {
+      return reply(res, 400, { ok: false, error:
+        `${output_path} is inside art-src/, which belongs to the front doors, not a ` +
+        'direct broker call: generate_row.py for a character row, room.py generate for ' +
+        'a room pass, tileset.py generate for a tile sheet. Use this endpoint only for ' +
+        'art with no front door (an icon, a title screen).' });
+    }
 
     // A game id means: match that game's art style and cut out on transparent.
     if (game) {

@@ -459,7 +459,9 @@ jobs:
                For a ONE-OFF image that is none of the three kinds above (a
                title screen, say), post to the broker yourself — but build the
                prompt from the game's art-style.json so it matches everything
-               else, and Read the result:
+               else, and Read the result. The broker REFUSES any output_path
+               under art-src/ — that is exclusively the three front doors'
+               territory, enforced, not just asked for:
                  curl -s -X POST http://127.0.0.1:8791/generate \
                    -H 'content-type: application/json' \
                    -d '{"prompt":"...","output_path":"games/<id>/<name>.png",
