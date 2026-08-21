@@ -426,6 +426,49 @@ FRAME_ASPECT_SPREAD = 1.45
 # deploy.
 STANCE_RATIO = 0.90
 
+# WHICH WAY THE SIDE ROW LOOKS.
+#
+# app.js draws the _left_ frames AS-IS when a character walks left and mirrors
+# them for right (`walkMirror = facing === "right"`), so every _left_ frame
+# must face LEFT. A frame that faces right is drawn backwards — and when only
+# SOME frames in a row are reversed, the character flips back and forth on
+# every step, which is what a player sees and reports first. nella_human
+# shipped with two of her three left frames reversed and kyran with one.
+#
+# Measured on the FACE, not the silhouette: a walking body's outline mirrors
+# almost perfectly (silhouette IoU called every one of these consistent), but
+# a profile's skin sits on the side it looks toward and its hair behind. So:
+# centroid of skin-toned pixels in the head band, relative to the head's own
+# centre, as a fraction of head width. Negative is looking left.
+#
+# Calibrated on the real set: correctly-facing rows land between -0.06 and
+# -0.22, reversed frames between +0.11 and +0.25 — the sign itself is the
+# signal, with a dead band for frames where it cannot be read at all. John is
+# hooded and returns nothing; Eric and Timothy sit at ±0.03 because their
+# side poses are nearly front-on. Those are skipped rather than guessed at.
+FACING_DEADBAND = 0.05
+
+
+def _face_side(im):
+    """Where the face sits within the head: -ve looking left, +ve right."""
+    import numpy as np
+    a = np.array(im.convert("RGBA")).astype(int)
+    op = a[..., 3] > 40
+    rows = np.where(op.any(axis=1))[0]
+    if not len(rows):
+        return None
+    lo, hi = rows[0], rows[-1]
+    hm = np.zeros_like(op)
+    hm[lo:lo + max(1, int((hi - lo) * 0.38))] = True
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    skin = op & hm & (r > 110) & (r > g + 18) & (g >= b - 10) & (b < r - 25)
+    head = op & hm
+    if skin.sum() < 12 or head.sum() < 12:
+        return None
+    hx = np.where(head.any(axis=0))[0]
+    span = max(1, hx[-1] - hx[0])
+    return ((np.argwhere(skin)[:, 1]).mean() - (hx[0] + hx[-1]) / 2) / span
+
 
 def _foot_spread(im):
     """Width of the silhouette at the feet, as a fraction of sprite width."""
@@ -491,6 +534,21 @@ def check_frames(art_dir, char_id, dirs):
                     'pose, not a stand, so this character keeps striding after they stop '
                     'moving. Generate the standing pose on its own and combine it in — '
                     'see games/the-game/WALK_SHEETS.md.')
+
+        if d in ("left", "right"):
+            sides = [_face_side(f) for f in fr]
+            wrong = [i for i, v in enumerate(sides)
+                     if v is not None and v > FACING_DEADBAND]
+            if wrong:
+                readable = [f'{v:+.2f}' if v is not None else 'n/a' for v in sides]
+                problems.append(
+                    f'{char_id} ({d}): REVERSED — frame(s) '
+                    + ', '.join(str(i) for i in wrong)
+                    + f' face RIGHT (face offsets {", ".join(readable)}). app.js draws '
+                    'these as-is when walking left and mirrors them for right, so a '
+                    'right-facing frame walks backwards — and a row where only some '
+                    'frames are reversed makes the character flip direction on every '
+                    'step. Mirror the listed frame(s) horizontally.')
 
     # CROPPED — the whole set is one character standing on one floor, tightly
     # trimmed, so every frame should have roughly the same width:height. A
