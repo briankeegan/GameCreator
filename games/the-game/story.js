@@ -333,12 +333,20 @@ window.NEWSEY_STORY = (function () {
         // own right-hand post), which is also how the scene composes them.
         { art: "prop_bed_bed", x: 226, y: 134, h: 118, w: 134, base: { w: 122, h: 18 } },
         // the way east, to the Lounge
-        { art: "prop_door_east", x: 308, y: 192, h: 116, w: 28, door: true, behind: true }
+        // A carved Victorian architrave, not the castle arch this room used to
+        // borrow from the Lounge. The ARCH/DOORWAY is the subject of the
+        // picture and the wall is a sliver of framing — asked for the other
+        // way round it comes back as a wall with an unusable door in it.
+        { art: "prop_bd_door_e", x: 296, y: 180, h: 108, w: 46, door: true, behind: true }
       ],
       // THE LOUNGE IS EAST OF THIS ROOM, so the way out is a door in the EAST
       // wall: you walk right out of here and come in the Lounge's west door.
       exits: [
-        { x: 290, y: 120, w: 28, h: 70, to: "lounge", link: "westDoor" }
+        // y 148-190: below the four-poster's footprint (which ends at 143) and
+        // above the balustrade's (which starts at 194). Both would otherwise
+        // sit on this trigger, and a footprint on a doorway is a door you can
+        // see and cannot reach.
+        { x: 276, y: 148, w: 40, h: 42, to: "lounge", link: "westDoor" }
       ],
       npcs: [
         {
