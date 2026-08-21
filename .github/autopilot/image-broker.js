@@ -43,9 +43,22 @@ function styledPrompt(game, asset) {
 
 // One OpenAI image call, with retry on 429 (per-minute image cap) / transient
 // 5xx. Returns the decoded PNG buffer, or throws on a non-retryable error.
-async function generate({ prompt, size, quality, transparent }) {
-  const payload = { model: 'gpt-image-1', prompt, size, quality, n: 1 };
-  if (transparent) payload.background = 'transparent';
+// THE MODEL COMES FROM THE CALLER, NOT FROM HERE. It was hardcoded to
+// gpt-image-1 while .github/art/profiles.py had moved every front door to
+// gpt-image-2 — so an Action generated on one model and a Clubhouse run, going
+// through this broker, generated on the other. Same profile, different image,
+// depending on who asked. That is the exact divergence the shared transport
+// exists to prevent, and it survived the change that was supposed to end it
+// because this file builds its own payload.
+//
+// Callers send the settings; this adds only the credential and the cap.
+async function generate({ prompt, size, quality, transparent, model, background,
+                          output_format, moderation }) {
+  const payload = { model: model || 'gpt-image-1', prompt, size, quality, n: 1 };
+  if (background) payload.background = background;
+  else if (transparent) payload.background = 'transparent';
+  if (output_format) payload.output_format = output_format;
+  if (moderation) payload.moderation = moderation;
   let lastErr = 'unknown';
   for (let attempt = 1; attempt <= 6; attempt++) {
     let res;
@@ -111,7 +124,8 @@ const server = http.createServer((req, res) => {
     let body;
     try { body = JSON.parse(raw); } catch (_) { return reply(res, 400, { ok: false, error: 'invalid JSON body' }); }
 
-    let { prompt, output_path, size, quality, transparent, game } = body;
+    let { prompt, output_path, size, quality, transparent, game,
+          model, background, output_format, moderation } = body;
     size = size || '1024x1024';
     quality = quality || 'medium';
 
@@ -134,7 +148,8 @@ const server = http.createServer((req, res) => {
     }
 
     try {
-      const buf = await generate({ prompt, size, quality, transparent: !!transparent });
+      const buf = await generate({ prompt, size, quality, transparent: !!transparent,
+                                   model, background, output_format, moderation });
       const abs = path.join(ROOT, output_path);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, buf);

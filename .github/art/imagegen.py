@@ -33,6 +33,27 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 BROKER = os.environ.get('GC_IMAGE_BROKER', 'http://127.0.0.1:8791')
 
 
+def status(line):
+    """Announce a step to whoever is watching, if anyone is.
+
+    GC_STATUS_HOOK points at a script that posts progress somewhere a human can
+    see it — in the Clubhouse autopilot that is a live-updating comment on the
+    thread's PR. Unset (a person at a terminal, an Action), this just prints.
+
+    The point of doing it HERE rather than having the model narrate: a line
+    only appears because an image was actually requested. A model describing
+    its own progress is the report that has already proved untrustworthy —
+    earlier autopilot runs reported success on art that never changed.
+    """
+    print(f'[art] {line}', flush=True)
+    hook = os.environ.get('GC_STATUS_HOOK')
+    if not hook:
+        return
+    try:
+        subprocess.run([hook, line], timeout=30, check=False)
+    except Exception as e:                              # never fail a run over a status line
+        print(f'[art] (status hook failed: {e})', file=sys.stderr)
+
 def broker_health():
     try:
         with urllib.request.urlopen(f'{BROKER}/health', timeout=2) as r:
@@ -98,8 +119,12 @@ def build_request(cfg, prompt):
 
 
 def _via_broker(prompt, out_rel, cfg):
+    # SEND THE MODEL. It used to be stripped here on the belief that the broker
+    # owned it — and the broker had it hardcoded, so a Clubhouse run silently
+    # generated on a different model from an Action running the same profile.
+    # Both halves of a shared transport have to agree about who decides; the
+    # caller decides, and the broker adds only the credential and the cap.
     payload = dict(build_request(cfg, prompt))
-    payload.pop("model", None)          # the broker owns the model + the key
     payload.update({"output_path": out_rel,
                     "transparent": cfg.get("background") == "transparent"})
     # No "game" field on purpose: the broker would prepend its own art-style
