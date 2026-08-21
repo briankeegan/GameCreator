@@ -17,9 +17,11 @@
     "a patterned crimson and indigo ORIENTAL RUG lying flat on the parquet",
     "a low carved wooden BALUSTRADE running the full width along the near edge, unbroken, with no gap"
   ],
-  "_measured_why": "Read off room.py grid's labelled pixel overlay against bedroom_scene.png, by hand — automated matching between a scene and its independently-generated props was tried (pixel/gradient correlation, ORB feature matching + RANSAC) and does not work, see docs/ROOM_ART_STANDARD.md §5. room.py sizecheck holds story.js to these forever after; re-measure with room.py grid if the scene or the prop art changes and update both together.",
+  "_measured_why": "Read off bedroom_scene.png against room.py grid's labelled pixel overlay (by hand) or room.py measure's CV segmentation (grabcut for colour-contrasting objects, canny for low-contrast ones with strong edges) — automated matching between a scene and its independently-generated props was tried (pixel/gradient correlation, ORB feature matching + RANSAC) and does not work, see docs/ROOM_ART_STANDARD.md §5, which is a DIFFERENT problem from within-scene measurement. room.py sizecheck holds story.js to these forever after; re-measure if the scene or the prop art changes and update both together.",
   "measured": {
     "prop_bed_rug": { "x": 157, "y": 134, "h": 58, "w": 195 },
-    "prop_bed_bed": { "x": 161, "y": 112, "h": 85 }
+    "prop_bed_mirror": { "x": 53, "y": 93, "h": 83, "w": 48 },
+    "prop_bed_bed": { "x": 162, "y": 113, "h": 99, "w": 79 },
+    "prop_bed_trunk": { "x": 163, "y": 153, "h": 32, "w": 53 }
   }
 }

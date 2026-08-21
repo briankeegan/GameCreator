@@ -354,15 +354,26 @@ window.NEWSEY_STORY = (function () {
         // that was fixed they still drew narrower relative to their height
         // than the scene's own versions — a live screenshot is what showed
         // it, not the side-by-side or the blend, since "the right shape at
-        // the wrong size" doesn't ghost the way a wrong position does.
-        // rooms/bedroom.json's contains entries now state explicit N:M
-        // width-to-height ratios (mirror 1:2, bed 4:5, trunk 2:1, all
-        // measured off the scene with room.py grid) instead of adjectives.
-        // Only h is given here; width follows the art's now-corrected aspect.
-        { art: "prop_bed_mirror", x: 62,  y: 88,  h: 74, base: { w: 32, h: 8 } },
+        // the wrong size" doesn't ghost the way a wrong position does. Two
+        // regeneration rounds still didn't fully close the gap (mirror art
+        // aspect only reached 0.46 of the scene's measured 0.58, bed 0.53 of
+        // 0.80), so x/y/h/w for all three pieces here are the scene's own
+        // measured proportions, not the art's — a deliberate, commented
+        // exception to "let width follow the art", forcing w to match what
+        // the scene actually shows instead of spending a third generation
+        // round chasing it. Measured with `room.py measure` (see
+        // measure_blob.py): grabcut for the mirror and bed, which contrast
+        // clean from their background by colour; canny edge/contour
+        // detection for the trunk, which grabcut could not segment — its
+        // warm brown/gold is too close to the similarly warm rug beneath it
+        // for a colour-region model, but the trunk's straight sides and
+        // metal bands give canny's edge detector plenty to find. See
+        // CLAUDE.md's "before hand-rolling an algorithm" note for why these
+        // two, not a hand-rolled flood fill.
+        { art: "prop_bed_mirror", x: 53,  y: 93,  h: 83, w: 48, base: { w: 40, h: 8 } },
         { art: "prop_bed_nightstand", x: 96, y: 88, h: 40, base: { w: 20, h: 8 } },
-        { art: "prop_bed_bed",   x: 161, y: 112, h: 85, base: { w: 40, h: 14 } },
-        { art: "prop_bed_trunk", x: 161, y: 148, h: 30, base: { w: 34, h: 10 } },
+        { art: "prop_bed_bed",   x: 162, y: 113, h: 99, w: 79, base: { w: 72, h: 14 } },
+        { art: "prop_bed_trunk", x: 163, y: 153, h: 32, w: 53, base: { w: 48, h: 9 } },
       ],
       // THE LOUNGE IS EAST OF THIS ROOM, so the way out is a door in the EAST
       // wall: you walk right out of here and come in the Lounge's west door.

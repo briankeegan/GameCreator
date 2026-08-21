@@ -178,6 +178,25 @@ design discussion. `shared/` holds the components every game reuses
   props and floor plates"), and art references (the header comment in
   `.github/scripts/check_art_refs.mjs` -> that script -> "Verify art
   references"). Add all three pieces together or the rule will not hold.
+- **Before hand-rolling an algorithm, find the established tool.** A prop
+  needed its real bounding box measured off a composed scene, and the first
+  instinct was a flood fill written from scratch — grow a region from a
+  seed pixel, tolerance-match each new neighbour. It doesn't work on this
+  art: a single seed in the bedroom's bed had no usable tolerance at all,
+  jumping from "1 pixel" to "71% of the whole frame" with nothing in
+  between, because the object is several genuinely different colours and a
+  step-by-step walk can't tell "an edge inside the object" from "the edge
+  of the object" — a well-known limitation, not a bug to keep tuning
+  through. OpenCV's GrabCut — the actual standard tool for exactly this,
+  decades of use behind it — solved it in one call, no tolerance to guess:
+  given a generous rectangle, it fits foreground/background colour models
+  and finds a real segmentation via graph cuts. `pip install
+  opencv-python-headless` and reach for `cv2.grabCut` (or the equivalent
+  library for whatever the problem actually is) before writing a bespoke
+  version of a solved problem. Ask "what field studies this?" before
+  "how would I implement this?" — segmentation, template matching, feature
+  matching, and outlier rejection are all names of fields with existing
+  tools, not blank pages.
 - **A forgiving runtime needs a strict build.** The game deliberately survives
   missing art — `loadArt()` on an id with no file never resolves ok, so an NPC
   draws as a coloured circle with its initial in it and the game stays

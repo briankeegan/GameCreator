@@ -9,6 +9,10 @@ remember at 11pm. This is the front door:
   room.py check     <game> <room>   render the overlays a human has to look at
   room.py grid      <game> <room>   render the scene with a labelled pixel grid,
                                     to MEASURE a prop by eye — see sizecheck
+  room.py measure   <game> <room> <name> --rect x,y,w,h
+                                    MEASURE a prop's precise bbox off the
+                                    composed scene with CV (grabcut or
+                                    canny), instead of reading it by eye
   room.py sizecheck <game> [room]   diff story.js against a room's measured:
                                     block from rooms/<room>.json
   room.py verify    <game>          the gate: every mistake we actually made
@@ -644,6 +648,23 @@ def main():
     p.add_argument("--zoom", type=int, default=4)
     p.add_argument("--out", default="/tmp/grid.png")
 
+    p = sub.add_parser("measure", help="measure one prop's precise bbox off "
+                                       "the composed scene with CV (grabcut "
+                                       "or canny) instead of reading grid "
+                                       "coordinates by eye — see "
+                                       "measure_blob.py")
+    p.add_argument("game"); p.add_argument("room"); p.add_argument("name")
+    p.add_argument("--rect", required=True,
+                   help="x,y,w,h in 320x200 room space — a box around the "
+                        "prop, generous for grabcut, snug is fine for canny")
+    p.add_argument("--method", choices=["grabcut", "canny"], default="grabcut")
+    p.add_argument("--iters", type=int, default=5)
+    p.add_argument("--canny-lo", type=int, default=30)
+    p.add_argument("--canny-hi", type=int, default=90)
+    p.add_argument("--top", type=int, default=3)
+    p.add_argument("--pick", type=int, default=0)
+    p.add_argument("--out", help="default /tmp/measure-<room>-<name>.png")
+
     p = sub.add_parser("sizecheck", help="compare story.js's declared prop "
                                          "sizes/positions against a room's "
                                          "measured: block (see rooms/<room>.json) "
@@ -972,6 +993,25 @@ def main():
               "docs/ROOM_ART_STANDARD.md §5 for why this is a human step: "
               "automated matching against the scene was tried and doesn't "
               "work, it isn't a shortcut waiting to be found." % a.room)
+        return 0
+
+    if a.cmd == "measure":
+        out = a.out or ("/tmp/measure-%s-%s.png" % (a.room, a.name))
+        cmd = ["python3", os.path.join(HERE, "measure_blob.py"),
+               os.path.join(game, "art-src", "%s_scene.png" % a.room),
+               "--rect", a.rect, "--method", a.method, "--out", out]
+        if a.method == "grabcut":
+            cmd += ["--iters", str(a.iters)]
+        else:
+            cmd += ["--canny-lo", str(a.canny_lo), "--canny-hi", str(a.canny_hi),
+                    "--top", str(a.top), "--pick", str(a.pick)]
+        rc = sh(*cmd)
+        if rc:
+            return rc
+        print("\nThat measurement is for '%s' — LOOK at %s before writing it "
+              "into rooms/%s.json's measured: block. If it's wrong, try the "
+              "other --method, a different --rect, or (canny) a different "
+              "--pick." % (a.name, out, a.room))
         return 0
 
     if a.cmd == "sizecheck":

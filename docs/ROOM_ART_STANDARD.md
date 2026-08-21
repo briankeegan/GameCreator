@@ -278,16 +278,51 @@ pixel or feature level for correlation-based matching to lock onto — the
 same thing `measure_props.py`'s own docstring already found for silhouette
 matching, from a different angle.
 
-So the reliable measurement is a human reading real numbers off a picture
-with a ruler on it: `room.py grid <game> <room> [--crop x0,y0,x1,y1]` renders
-the scene at the game's own 320x200 scale with a labelled pixel grid. Do this
-once per prop, write the result into that room's `rooms/<room>.json` under
-`measured: { "prop_id": { x, y, h, w } }` (same fields, same meaning, as a
-`props:` entry in story.js), and `room.py sizecheck` — wired into `verify`,
-so it's a permanent CI gate — holds every future edit to within 15% of that
-reading for as long as the room exists. The measuring is manual and stays
-manual; the ENFORCEMENT that a later edit can't silently drift away from it
-is what's automatic, and that's the part that was actually missing.
+So the reliable measurement is real numbers read off a picture with a ruler
+on it, and there are two ways to read that ruler: `room.py grid <game>
+<room> [--crop x0,y0,x1,y1]` renders the scene at the game's own 320x200
+scale with a labelled pixel grid for a human to read by eye, and `room.py
+measure <game> <room> <name> --rect x,y,w,h [--method grabcut|canny]` finds
+the object's precise bbox with CV instead (see below — this is a DIFFERENT
+problem from the cross-image matching that doesn't work, and it does work).
+Either way, do this once per prop, write the result into that room's
+`rooms/<room>.json` under `measured: { "prop_id": { x, y, h, w } }` (same
+fields, same meaning, as a `props:` entry in story.js), and `room.py
+sizecheck` — wired into `verify`, so it's a permanent CI gate — holds every
+future edit to within 15% of that reading for as long as the room exists.
+The measuring can be manual or CV-assisted; the ENFORCEMENT that a later
+edit can't silently drift away from it is what's automatic either way, and
+that's the part that was actually missing.
+
+**`room.py measure` — a real tool for a different, tractable problem.** The
+matching above failed because it's a CROSS-image problem: two independently
+generated pictures of "the same" object, correlated against each other. Given
+just ONE picture — the scene you already have — and asked to find one
+object's own edges within it, established CV solves this cleanly, and a
+hand-rolled flood fill (grow a region from a seed pixel, add a neighbour
+within a colour tolerance) does not: tried first on the bedroom's bed, it had
+no usable tolerance window at all — 11 kept the fill to one pixel, 12 leaked
+to 71% of the whole frame — because the object is itself several genuinely
+different colours (purple canopy, brown-and-gold posts) whose internal edges
+are close in magnitude to the edge against the background. `room.py measure`
+wraps two real tools instead (see `measure_blob.py`), and keeps BOTH rather
+than picking a winner, because which one works depends on the object:
+  - `--method grabcut` (default) — `cv2.grabCut`: given a generous rectangle
+    with background margin, it fits foreground/background colour models and
+    segments via graph cuts, a global optimum rather than a local pixel walk.
+    Use it when the object contrasts from what's behind it BY COLOUR. Solved
+    the bed and the mirror in one call each, agreeing with a manual
+    re-measurement to a couple of pixels.
+  - `--method canny` — Canny edge detection + `cv2.findContours`: finds
+    intensity-gradient edges, not colour regions, so it works when an object
+    is LOW-CONTRAST in colour but has strong internal edges (straight sides,
+    bands, rivets). GrabCut found nothing foreground on the bedroom's trunk
+    across several rectangles — its warm brown/gold sits too close to the
+    similarly warm rug beneath it for a colour model to discriminate — canny
+    found it in one pass, within a few pixels of a manual grid reading.
+Both print an overlay to look at before trusting the number, same as every
+other step in this pipeline — a tool result is not a signed-off measurement
+until a human has actually looked at the picture it produced.
 
 **Only rooms and in-room sprites go through the styled Action.** `art-style.json`
 pins the camera to "top-down RPG interior room view", and that beats the prompt
