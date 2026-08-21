@@ -306,32 +306,41 @@ window.NEWSEY_STORY = (function () {
       playerStart: { x: 150, y: 150 },
       // Measured off art-src/bedroom_scene.png: she lies with her head on the
       // pillow up under the canopy, drawn clipped to above the quilt's edge.
-      bedSpot: { x: 214, y: 96 },
-      bedClipY: 104,
+      bedSpot: { x: 224, y: 100 },
+      bedClipY: 108,
       // Parquet at the near-left corner of the bed, clear of its footprint.
-      wakeSpot: { x: 168, y: 146 },
-      bedZone: { x: 176, y: 122, w: 84, h: 24 },
+      wakeSpot: { x: 174, y: 150 },
+      bedZone: { x: 182, y: 126, w: 88, h: 24 },
       props: [
-        // the back wall, three panels of the same papered section
-        { art: "prop_bed_wall", x: 60,  y: 74, h: 86, w: 106, base: { w: 106, h: 8 } },
-        { art: "prop_bed_wall", x: 160, y: 74, h: 86, w: 106, base: { w: 106, h: 8 } },
-        { art: "prop_bed_wall", x: 260, y: 74, h: 86, w: 106, base: { w: 106, h: 8 } },
-        // The side walls run the FULL height of the frame and the back wall
-        // panels sit BETWEEN them, so the corners meet instead of the side
-        // wall starting halfway down with back wall showing above it.
-        { art: "prop_bed_wall_left",  x: 6,   y: 212, h: 214, w: 28, base: { w: 28, h: 8 } },
-        { art: "prop_bed_wall_right", x: 314, y: 212, h: 214, w: 28, base: { w: 28, h: 8 } },
+        // Ground cover first: flat, walked straight over, no footprint. The
+        // scene has always had this rug; the first assembly of this room did
+        // not, which is exactly the kind of thing only the side-by-side finds.
+        // w is forced: the sheet drew the rug portrait, and a rug lying across
+        // a floor is wider than it is deep. Without it the room gets a tall
+        // narrow mat standing in the middle of the parquet.
+        { art: "prop_bed_rug", x: 152, y: 142, h: 54, w: 120, flat: true },
+        // Measured off art-src/bedroom_scene.png, which is drawn the way every
+        // room in this game is drawn: ONE flat back wall across the top, floor
+        // a rectangle below it. There are NO SIDE WALLS — the scene has none,
+        // the Anarchy Garden has none, and the pair this room had were the
+        // whole reason its wainscot line would not meet at the corners.
+        // w overlaps its neighbour by a few px: the panel art carries a dark
+        // edge, and butted exactly they draw as three visible seams down the
+        // back wall.
+        { art: "prop_bed_wall", x: 53,  y: 102, h: 112, w: 116, base: { w: 112, h: 8 } },
+        { art: "prop_bed_wall", x: 160, y: 102, h: 112, w: 116, base: { w: 112, h: 8 } },
+        { art: "prop_bed_wall", x: 267, y: 102, h: 112, w: 116, base: { w: 112, h: 8 } },
         // the balustrade along the near edge, in two runs with the way out
         // between them (x 130-190)
-        { art: "prop_bed_rail", x: 66,  y: 196, h: 30, w: 128, base: { w: 128, h: 10 } },
-        { art: "prop_bed_rail", x: 254, y: 196, h: 30, w: 128, base: { w: 128, h: 10 } },
-        // the furniture, at the numbers the composed scene draws them at
-        { art: "prop_bed_mirror",     x: 50,  y: 108, h: 100, base: { w: 34, h: 10 } },
-        { art: "prop_bed_nightstand", x: 132, y: 98,  h: 56,  base: { w: 24, h: 8 } },
+        { art: "prop_bed_rail", x: 64,  y: 199, h: 30, w: 128, base: { w: 128, h: 10 } },
+        { art: "prop_bed_rail", x: 256, y: 199, h: 30, w: 128, base: { w: 128, h: 10 } },
+        // the furniture, at the numbers the composed scene draws it at
+        { art: "prop_bed_mirror",     x: 50,  y: 114, h: 96, base: { w: 32, h: 10 } },
+        { art: "prop_bed_nightstand", x: 116, y: 104, h: 50, base: { w: 22, h: 8 } },
         // bed + trunk are one prop: they came off the sheet touching and no
         // vertical cut separates them (the trunk stands in front of the bed's
         // own right-hand post), which is also how the scene composes them.
-        { art: "prop_bed_bed", x: 221, y: 132, h: 126, w: 142, base: { w: 128, h: 18 } }
+        { art: "prop_bed_bed", x: 226, y: 134, h: 118, w: 134, base: { w: 122, h: 18 } }
       ],
       exits: [
         // THE WAY BACK IS THE NEAR EDGE — the gap in the balustrade. drawn:
@@ -350,7 +359,7 @@ window.NEWSEY_STORY = (function () {
           // speaker (CHARACTERS.devil) exactly like it did as a standing NPC.
           // The bed beside it is no longer an interactable at all — you get
           // INTO it (app.js, player.bedSlide), and that's what saves.
-          id: "devil", x: 50, y: 106, art: "devil", sprite: null, marker: true,
+          id: "devil", x: 50, y: 112, art: "devil", sprite: null, marker: true,
           lines: [
             "Hello, and welcome to Infinity! You may notice your appearance has changed — that's your magical avatar.",
             "Your bracelet is copper, to reflect your rank, and aquamarine for your playstyle. These can change.",
