@@ -416,8 +416,13 @@ window.NEWSEY_STORY = (function () {
         { art: "prop_lg_wall",   x: 278, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
         { art: "prop_lg_wall",   x: 335, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
         // the way west and the way east, in the side walls at the frame edges
-        { art: "prop_door_west", x: 10,  y: 140, h: 74, w: 24, door: true, behind: true },
-        { art: "prop_door_east", x: 310, y: 140, h: 74, w: 24, door: true, behind: true },
+        // The ARCH is the prop, not a wall with an arch in it. The first two
+        // attempts drew a tall strip that was seven eighths plain brick, so at
+        // any width that left room to walk, the opening was a few pixels wide
+        // and simply disappeared. Asked for as "the arch fills the image, the
+        // brick is a sliver of framing", it came back usable at once.
+        { art: "prop_lg_door_w", x: 24,  y: 178, h: 104, w: 44, door: true, behind: true },
+        { art: "prop_lg_door_e", x: 296, y: 178, h: 104, w: 44, door: true, behind: true },
         // the bar along the right end of the back wall, where the plot puts it
         { art: "prop_backbar", x: 238, y: 62, h: 44, w: 88, base: { w: 88, h: 6 } },
         // Stops short of the EAST doorway's approach: run out to the frame
@@ -436,10 +441,10 @@ window.NEWSEY_STORY = (function () {
       // player, so crossing means standing in the opening rather than on a
       // rectangle of floor near it.
       exits: [
-        { x: 2,   y: 92,  w: 26, h: 50, to: "bedroom", link: "westDoor" },
+        { x: 4,   y: 118, w: 38, h: 58, to: "bedroom", link: "westDoor" },
         { x: 92,  y: 46,  w: 32, h: 26, to: "library", link: "northArch" },
         { x: 149, y: 46,  w: 32, h: 26, to: "arena",   link: "portal" },
-        { x: 294, y: 92,  w: 26, h: 50, to: "lab",     link: "eastDoor" }
+        { x: 278, y: 118, w: 38, h: 58, to: "lab",     link: "eastDoor" }
       ],
       npcs: [
         {
