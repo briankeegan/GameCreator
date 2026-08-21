@@ -747,10 +747,43 @@ const ATTACK_FRAMES = 3;
 // visible cell borders. (2) Nothing was seamless, so each tile ended where the
 // next began. The floor tiles are now generated as borderless texture swatches
 // and made to wrap by .github/art/build_tiles.py; see docs/TILED_LEVEL_STANDARD.md.
-const TILE_COUNT = 7;
+// 2026-08-21 (zone art) — the complaint was "all the rooms look the same,
+// same shapes": every room in all three zones drew from this SAME 7-tile
+// strip (asphalt/concrete/fence/tyre-pile/crate), and the only thing that
+// changed between Scrapyard, Rail Yard and Rust Quarter was a translucent
+// colour wash over that one floor (see TINT_RAIL/TINT_RUST below) — a filter,
+// not different scenery. The strip is now 19 tiles: the original 7, plus a
+// second 4-texture+2-object set for each of the other two zones (their own
+// floor material, their own wall, their own obstacle SHAPES — a chain-link
+// fence and a signal box read as a different place even before the tint is
+// applied, which a recoloured asphalt tile never could). The chained gate
+// (index 6) is the one tile every zone still shares — it's a gameplay
+// affordance the player has to recognise on sight as "the exit", so it stays
+// visually consistent rather than getting reskinned per zone. See ZONE_TILES
+// and currentTileSet() for how a room picks its bank.
+const TILE_COUNT = 19;
 const TILES = sliceSheet("tiles.png", TILE_COUNT, 1);
 const TILE_GROUND = 0, TILE_GROUND_ALT = 1, TILE_CONCRETE = 2, TILE_WALL = 3,
       TILE_JUNK = 4, TILE_CRATE = 5, TILE_GATE = 6;
+// Rail Yard (rail ballast gravel, chain-link fence, a rail-tie/cable stack
+// and a hazard-striped signal box) and Rust Quarter (scorched slag, a
+// rock-block quarry wall, a slag-rubble heap and a rusted smelter drum) —
+// each its own 4 ground + 2 object tiles, cut from their own generations
+// (see rebuild-art.sh) directly after the original 7 in the same strip.
+const ZONE_TILES = {
+  scrapyard: { ground: TILE_GROUND, groundAlt: TILE_GROUND_ALT, concrete: TILE_CONCRETE, wall: TILE_WALL, junk: TILE_JUNK, crate: TILE_CRATE },
+  rail:      { ground: 7, groundAlt: 8, concrete: 9, wall: 10, junk: 11, crate: 12 },
+  rust:      { ground: 13, groundAlt: 14, concrete: 15, wall: 16, junk: 17, crate: 18 },
+};
+// Which bank the CURRENT room draws from — keyed off the same `tint` the
+// room already carries, so a room doesn't need a second field that could
+// drift out of sync with its zone.
+function currentTileSet() {
+  const room = ROOMS[state.roomIndex];
+  if (room && room.tint === TINT_RAIL) return ZONE_TILES.rail;
+  if (room && room.tint === TINT_RUST) return ZONE_TILES.rust;
+  return ZONE_TILES.scrapyard;
+}
 // There is no puddle tile any more. There was, and it was a near-black slick:
 // scattered over a dark floor it read as HOLES punched through the level
 // (docs/TILED_LEVEL_STANDARD.md, defect 4), and brightening it only turned the
@@ -773,9 +806,12 @@ function cellHash(a, b) {
 }
 function floorTileFor(c, r) {
   // >>1 makes the concrete decision per 2x2 block, so slabs come out as
-  // patches of floor rather than lone squares.
-  if (cellHash(c >> 1, r >> 1) > 0.86 || cellHash(c, r) > 0.97) return TILE_CONCRETE;
-  return cellHash(c * 5 + 3, r * 9 + 1) > 0.86 ? TILE_GROUND_ALT : TILE_GROUND;
+  // patches of floor rather than lone squares. Indices come from the
+  // CURRENT room's zone (see ZONE_TILES/currentTileSet), not a fixed
+  // constant, so Rail Yard and Rust Quarter floors are their own material.
+  const ts = currentTileSet();
+  if (cellHash(c >> 1, r >> 1) > 0.86 || cellHash(c, r) > 0.97) return ts.concrete;
+  return cellHash(c * 5 + 3, r * 9 + 1) > 0.86 ? ts.groundAlt : ts.ground;
 }
 // Draw a tile into cell (c,r), optionally mirrored, optionally squeezed toward
 // one side of the cell (which is how the gate swings open).
@@ -1680,16 +1716,18 @@ function drawTile(c, r, ch, gateOpen) {
   // Generated tiles when they're loaded; the drawn-in-code version below is
   // the fallback.
   if (TILES[TILE_GROUND].ready) {
+    const ts = currentTileSet();
     blitTile(floorTileFor(c, r), c, r, flipX, flipY);
     if (ch === "2") {
-      // Corrugated fence panel. Only the horizontal flip is used: flipping
-      // ribs top to bottom does nothing, but it would fight the tile's own
-      // light direction.
-      blitTile(TILE_WALL, c, r, flipX, false);
+      // Boundary wall. Only the horizontal flip is used: flipping ribs/mesh
+      // top to bottom does nothing, but it would fight the tile's own light
+      // direction. Which art this is (corrugated fence / chain-link / rock
+      // wall) follows the room's own zone, same as the floor.
+      blitTile(ts.wall, c, r, flipX, false);
     } else if (ch === "3") {
-      blitTile(TILE_JUNK, c, r, flipX, false);
+      blitTile(ts.junk, c, r, flipX, false);
     } else if (ch === "4") {
-      blitTile(TILE_CRATE, c, r, flipX, false);
+      blitTile(ts.crate, c, r, flipX, false);
     } else if (ch === "G" || ch === "H") {
       // The gate is drawn art now, not a red/green tint over the floor. Shut,
       // it's a chained scrap-pipe panel filling the doorway; cleared, the two
@@ -1803,8 +1841,9 @@ function drawSwitchPlate(c, r, active, label, isNext) {
 // cell — it moves, the wall-mounted one never does.
 function drawCrate(cr) {
   const x = cr.x - TILE / 2, y = cr.y - TILE / 2;
-  if (TILES[TILE_CRATE] && TILES[TILE_CRATE].ready) {
-    ctx.drawImage(TILES[TILE_CRATE].img, x, y, TILE, TILE);
+  const crateIdx = currentTileSet().crate;
+  if (TILES[crateIdx] && TILES[crateIdx].ready) {
+    ctx.drawImage(TILES[crateIdx].img, x, y, TILE, TILE);
     return;
   }
   ctx.fillStyle = "#5a5d66";
