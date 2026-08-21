@@ -219,6 +219,16 @@ def main():
     flags = profiles.verify_args(args.kind, args.view)
     cmd = [sys.executable, str(ROOT / '.github/art/verify_sheet.py'), 'raw',
            str(out_abs)] + (flags or [])
+    # STYLE REFERENCE: another raw of the same character, so a row drawn in a
+    # different style than the rest is caught before it reaches a sheet. Raw
+    # against raw — a raw and a cut sheet are not on the same scale and
+    # comparing them passes everything. Newest first, since that is what the
+    # rest of the character is being brought toward.
+    others = sorted((p for p in out_abs.parent.glob(f'{args.character}_*_raw.png')
+                     if p != out_abs and 'rejected' not in str(p)),
+                    key=lambda p: p.stat().st_mtime, reverse=True)
+    if others:
+        cmd += ['--style-ref', str(others[0])]
     if subprocess.run(cmd).returncode:
         # QUARANTINED, not deleted. The guarantee that matters is that a failed
         # row cannot be picked up by a later build — every build command names

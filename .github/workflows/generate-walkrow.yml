@@ -89,14 +89,27 @@ jobs:
           # naming); mirror it here so the commit step stages the right file.
           if [ "${{ inputs.kind }}" = "attack" ]; then sfx="_atk_raw.png"; else sfx="_raw.png"; fi
           echo "out=games/${{ inputs.game }}/art-src/${{ inputs.character }}_${{ inputs.view }}$sfx" >> "$GITHUB_OUTPUT"
-          python3 .github/art/generate_row.py \
-            --game "${{ inputs.game }}" \
-            --character "${{ inputs.character }}" \
-            --view "${{ inputs.view }}" \
-            --kind "${{ inputs.kind }}" \
-            --quality "${{ inputs.quality }}" \
-            ${{ inputs.description && format('--description "{0}"', inputs.description) || '' }} \
-            ${{ inputs.force && '--force' || '' }}
+          gen() {
+            python3 .github/art/generate_row.py \
+              --game "${{ inputs.game }}" \
+              --character "${{ inputs.character }}" \
+              --view "${{ inputs.view }}" \
+              --kind "${{ inputs.kind }}" \
+              --quality "${{ inputs.quality }}" \
+              ${{ inputs.description && format('--description "{0}"', inputs.description) || '' }} \
+              "$@"
+          }
+          # RETRY ONCE. A row rejected by the gate is usually the generator
+          # having an off attempt — a clipped subject, a row drawn in a
+          # different style — not a broken pipeline. One more costs one image
+          # and usually lands; a person re-dispatching by hand costs a round
+          # trip, and tonight cost several. Bounded at one, because two
+          # rejections in a row mean something is actually wrong and the log
+          # is worth reading.
+          gen ${{ inputs.force && '--force' || '' }} || {
+            echo "::warning::first attempt was rejected by the gate — retrying once"
+            gen --force
+          }
 
       - name: Commit the raw
         timeout-minutes: 5

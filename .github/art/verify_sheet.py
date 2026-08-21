@@ -637,38 +637,73 @@ def _view_shares(path, materials, rows=3):
     return out
 
 
-def check_provenance(game_dir, char_id):
-    """All of one character's art should come off the same generator.
+# STYLE, MEASURED. Two rows can be perfectly on-palette and still be obviously
+# different drawings — Beverly's walk and attack sheets were, and the person
+# looking at them said so while every check passed. What differs is not colour
+# but HOW MUCH BLACK OUTLINE the drawing carries: one generator wires every
+# shape heavily, another draws the same character with half as much. That is
+# what "the art wires look different" meant, and it is measurable.
+#
+# COMPARE LIKE WITH LIKE, which the first version of this got wrong. A raw and
+# a cut sheet are not on the same scale — the same art measures 0.230 as a raw
+# and 0.142 once cut and palette-snapped, because downscaling averages thin
+# outlines away. Comparing across the two silently passed the exact mismatch it
+# was written to catch. Both sides are normalised to a common sprite height
+# here, and a raw is only ever compared against another RAW.
+#
+# Measured, normalised, on the real art:
+#     one style     0.230  0.247                    (spread 1.07)
+#     one style     0.329  0.352  0.394             (spread 1.20)
+#     across        0.230 vs 0.394                  (1.71)
+#                   0.247 vs 0.352                  (1.43)
+#                   0.247 vs 0.329                  (1.33)  <- the near pair
+#
+# STYLE_MAX at 1.40 sits well above every same-style spread and catches the
+# clear mismatches. Being honest about what that buys: the closest cross-style
+# pair, 1.33, slips under it. Pulling the limit down to 1.25 would catch that
+# one and start firing on same-style art, and a gate that rejects good art is
+# one people learn to force past. This catches the mismatch you can see across
+# the room; a subtle one still needs eyes.
+STYLE_MAX = 1.40
+STYLE_HEIGHT = 168        # the body height these sheets are drawn at
 
-    Two sheets generated on different models are two different styles standing
-    next to each other. Beverly's walk came off gpt-image-1 and her attack off
-    gpt-image-2, and the difference is obvious the moment she swings — but
-    every existing check passed, because they compare colours and both sheets
-    were on-palette. Style is not a colour.
 
-    Provenance is what makes it decidable, so imagegen.py records the settings
-    beside every raw it writes (art-src/generated.json) and this reads them.
-    WARNS rather than fails: mixed provenance is a reason to look, and old art
-    predating the manifest has none at all, which must not fail a build.
-    """
-    man_path = os.path.join(game_dir, 'art-src', 'generated.json')
-    if not os.path.isfile(man_path):
-        return []
+def outline_fraction(a, opaque):
+    """Share of the sprite that is near-black outline."""
+    lum = a[..., :3].astype(np.float32) @ np.array([0.299, 0.587, 0.114], np.float32)
+    return float(((lum < 40) & opaque).sum() / max(opaque.sum(), 1))
+
+
+def style_score(path):
+    """Outline fraction of a RAW, normalised to a common sprite height."""
+    img = bs.key_background(path)
+    a = np.array(img)
+    op = a[..., 3] > 0
+    ys, xs = np.nonzero(op)
+    if len(ys) < 50:
+        return None
+    img = img.crop((int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1))
+    img = img.resize((max(1, img.width * STYLE_HEIGHT // img.height), STYLE_HEIGHT), Image.BOX)
+    a = np.array(img)
+    return outline_fraction(a, a[..., 3] > 0)
+
+
+def check_style(path, ref_path):
+    """Is this row drawn in the same style as the character's existing art?"""
     try:
-        man = json.loads(open(man_path).read())
-    except Exception:
-        return []
-    mine = {k: v for k, v in man.items() if k.startswith(char_id + '_')}
-    models = {}
-    for name, info in mine.items():
-        models.setdefault(info.get('model', 'unknown'), []).append(name)
-    if len(models) < 2:
-        return []
-    parts = '; '.join(f'{m}: {len(f)} row(s)' for m, f in sorted(models.items()))
-    return [f'{game_dir}/{char_id}: MIXED GENERATORS — this character\'s art was drawn by '
-            f'more than one model ({parts}). Sheets from different generators are visibly '
-            'different styles side by side, whatever the palette says. Regenerate the odd '
-            'ones so the whole character comes off one generator.']
+        mine, ref = style_score(path), style_score(ref_path)
+        if mine is None or ref is None:
+            return []
+        ratio = max(mine, ref) / max(min(mine, ref), 1e-6)
+        if ratio > STYLE_MAX:
+            return [f'{path}: DIFFERENT STYLE — {mine:.3f} outline against {ref:.3f} in '
+                    f'{os.path.basename(ref_path)} ({ratio:.2f}x, limit {STYLE_MAX}). Same '
+                    'character, visibly different drawing: side by side these will not read '
+                    'as one set. Regenerate this row, or regenerate the rest to match if the '
+                    'new look is the one you want.']
+    except Exception as e:
+        print(f'(style check skipped: {e})', file=sys.stderr)
+    return []
 
 
 def check_character(game_dir, char_id, rows=3):
@@ -733,7 +768,7 @@ def check_character(game_dir, char_id, rows=3):
     shares = {os.path.basename(p): _view_shares(p, materials, rows) for p in sheets}
 
     view_names = ['down', 'side', 'up'][:rows]
-    hard, soft = [], list((spec or {}).get('_notes', [])) + check_provenance(game_dir, char_id)
+    hard, soft = [], list((spec or {}).get('_notes', []))
     names = list(shares)
     for v in range(rows):
         for hexc in materials:
@@ -767,6 +802,7 @@ def main():
     sub = ap.add_subparsers(dest='mode', required=True)
 
     r = sub.add_parser('raw', help='check a generated row before cutting')
+    r.add_argument('--style-ref', help='an existing sheet this row must match the style of')
     r.add_argument('image')
     r.add_argument('--frames', type=int, default=3)
     r.add_argument('--blobs', action='store_true')
@@ -799,6 +835,8 @@ def main():
     if args.mode == 'raw':
         problems = check_raw(args.image, args.frames, args.blobs, args.walk, args.tol,
                              args.mirrored, args.steps_built)
+        if args.style_ref and os.path.isfile(args.style_ref):
+            problems += check_style(args.image, args.style_ref)
     elif args.mode == 'character':
         problems, soft = check_character(args.game_dir, args.char_id, args.rows)
         for w in soft:
