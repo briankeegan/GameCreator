@@ -459,8 +459,16 @@ design discussion. `shared/` holds the components every game reuses
   AND now doubles as a universal per-game secret-word override so admin
   can enter any game's Clubhouse without knowing its individual secret
   word (see "Admin bypasses the gate" above). Also dashboard-only.
-- Cloud sandboxes here usually can't reach `*.workers.dev`, `*.github.io`,
-  or `api.cloudflare.com` directly — verify Worker/Pages changes via the
+- **`briankeegan.github.io` IS reachable from a cloud sandbox here — check the
+  live site directly rather than inferring from a green workflow.** This file
+  said otherwise for a long time and it was never tested; the cost was real.
+  "Did it deploy?" kept being answered with the Pages run's status, which only
+  says the machinery ran — a deploy can go green having faithfully shipped a
+  file that never changed. Use `.github/scripts/check_deployed.sh [ref] [path…]`:
+  it fetches the file from the live site, hashes it, and compares it to the ref.
+  That is the question that matters, and it is one curl away.
+- Cloud sandboxes here usually can't reach `*.workers.dev` or
+  `api.cloudflare.com` directly — verify Worker/Pages changes via the
   GitHub API (commits, Actions run status, file contents) or ask the owner
   to check, rather than assuming a fetch failure means something's broken.
 - Binary files (PNG) don't survive the Contents API reliably through these
