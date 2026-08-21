@@ -1,7 +1,7 @@
 name: Validate game input
 description: >
   Catches a game id passed with the games/ prefix already on it — every
-  generation workflow builds its own paths as games/${{ inputs.game }}/...,
+  generation workflow builds its own paths as games/<the game input>/...,
   so a caller who pastes the game's directory instead of its bare id (e.g.
   "games/the-game" instead of "the-game") silently doubles the prefix into
   games/games/the-game/..., which does not exist. One workflow shipped with
