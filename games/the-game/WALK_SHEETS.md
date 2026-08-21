@@ -107,32 +107,49 @@ direction, not just an aggregate contact-sheet glance — a wrong middle
 frame reads fine in a still image and only shows up as "legs still walking"
 once the character actually stops.
 
-Slicing (`.github/art/slice_walksheet.py`) — tuned to what the model
-actually renders, not the literal prompt text:
-- the "magenta" divider often renders as a softer, desaturated pink
-  (observed RGB ≈ (201,124,168)), not pure #FF00FF — key on R and B both
-  clearly exceeding G, not an exact hue match.
-- row dividers run edge-to-edge reliably (threshold ~0.5 is fine). Column
-  dividers get interrupted by arms/feet in some rows and can read as low
-  as ~25-30% coverage — too high a threshold misses a real one entirely.
-- whether the detected lines are pure interior dividers (need canvas
-  edges added as outer bounds) or already include explicit border lines
-  near-but-not-at the edge varies sheet to sheet, unpredictably. Try
-  both interpretations and keep whichever gives the most uniform segment
-  widths (excluding any 1-segment candidate, which trivially has zero
-  variance and would always "win" on that alone) — a real grid was asked
-  for as equal cells, so the correct interpretation is the one that
-  actually looks equal-size.
-- flood-fill the chroma-green background inward from the crop's border
-  (follows the anti-aliased blend to the character's true edge, and
-  correctly leaves alone any background-colored pixel trapped inside the
-  silhouette, e.g. in shadow, since it's never reached from the border).
-- still dilate-kill leftover magenta fringe from the divider line itself,
-  THEN crop tight to content on all four edges. Skipping that final tight
-  crop is how John's regenerated sprite once got ~14% invisible padding
-  below his feet — his shadow was correctly placed by the code, but the
-  sprite's own bottom edge (where the draw box ends) landed below where
-  his feet actually were.
+**That fallback is a command now, and the check for it is automatic.** Two
+reasons it had to become both:
+
+- The last step above ("sliced with the same `cut_and_trim()`, called
+  directly rather than through the grid-detecting `main()`") described a
+  python call somebody had to write by hand. A recipe whose final step is
+  "write some code" gets followed once, written down, and then not followed
+  again — which is exactly what happened: twelve of fourteen characters
+  shipped side rows with no standing frame in them. It is
+  `slice_walksheet.py single <image> <out-dir> <id> <dir> [index]`.
+- The defect was invisible to the checker. `NEUTRAL_RATIO` asks how
+  DIFFERENT the three frames are from each other; three mid-stride poses
+  that differ nicely from one another sail through it. `STANCE_RATIO` asks
+  the question that matters — is frame 1 a person standing still — by
+  measuring the width of the silhouette at the FEET: a stand has them
+  together, a stride has them apart. Side row only, because the standard
+  says the side row is the only one where the step is real displacement.
+
+The whole fix, per character:
+
+```sh
+# 1. generate the standing side pose ALONE (Actions -> Generate referenced
+#    asset, referencing that character's own _left_0 and _top), into
+#    games/the-game/art-src/<id>_left_stand.png
+# 2. cut it into the neutral slot, keeping the two step frames from the grid
+python3 .github/art/slice_walksheet.py single \
+    games/the-game/art-src/<id>_left_stand.png games/the-game/art <id> left 1
+# 3. confirm the checker agrees it is now a stand
+python3 .github/art/verify_sheet.py frames games/the-game/art <id>
+```
+
+Slicing is `.github/art/slice_walksheet.py`. **Its behaviour is not described
+here.** Every tuning decision in it — why the divider is keyed on relative
+channel dominance rather than an exact hue, why the two grid interpretations
+are both tried, why the background is flood-filled from the border instead of
+thresholded, why the final crop is tight, and why cells are cut between the
+green gutters rather than through them — is written in the comments beside the
+code that does it, next to the sample values that forced each choice. Read it
+there.
+
+This page had a copy of that list. It drifted: it still described the cutter
+as removing the divider by colour after that had been replaced, which is the
+failure mode it was written to prevent.
 
 Output files per character: `<id>_down_0/1/2.png`, `<id>_left_0/1/2.png`,
 `<id>_up_0/1/2.png` (9 files, frame index 1 = neutral/idle in every
@@ -146,23 +163,25 @@ sprite/bust, so this was safe to land before every character had a sheet.
 
 ## Status
 
-All 9 characters done — every wandering NPC in the game now has real
-per-direction walk animation instead of a static sprite sliding around.
+**Not listed here.** This page used to carry a per-character table of which
+sheets were done. It said May ✅ and Chuck ✅ while May's frames had her hair
+deleted and no head in the back row, and Chuck's were a bald man in an orange
+suit instead of the moustached one in his portrait — and it did not mention
+Rex, Diamond, Eric, Magma or Kyran at all, who had been added since. A
+hand-kept list of what is finished is a claim, and claims rot.
 
-| Character  | Reference used         | Walk sheet | Notes |
-|------------|-------------------------|:----------:|-------|
-| Nella (Infinity/demon avatar) | `nella.png` | ✅ done | `nella_down/left/up_0/1/2.png` |
-| Nella (human, pre-transformation) | `nella_human_top.png` | ✅ done | `nella_human_down/left/up_0/1/2.png`, wired via `FACING_FRAMES_HUMAN` |
-| Chuck      | `chuck_top.png`          | ✅ done | `chuck_down/left/up_0/1/2.png`, wired via `NPC_FACING_FRAMES` |
-| Devil      | `devil_top.png`          | ✅ done, but **unused** | Has a sheet (`devil_down/left/up_0/1/2.png`) from before the story changed — the devil isn't a standing character any more (see below), so this art doesn't currently render anywhere. Left in place in case a standing-devil moment is wanted later. |
-| Kat        | `kat_top.png`            | ✅ done | `kat_down/left/up_0/1/2.png`, wired via `NPC_FACING_FRAMES` |
-| May        | `may_top.png`            | ✅ done | `may_down/left/up_0/1/2.png`, wired via `NPC_FACING_FRAMES` |
-| Timothy    | `timothy_top.png`        | ✅ done | `timothy_down/left/up_0/1/2.png`, wired via `NPC_FACING_FRAMES` |
-| Michael    | `michael_top.png`        | ✅ done | `michael_down/left/up_0/1/2.png`, wired via `NPC_FACING_FRAMES` |
-| John       | `john_top.png`           | ✅ done | `john_down/left/up_0/1/2.png`, wired via `NPC_FACING_FRAMES` |
+Ask the tooling instead. It reads the actual files:
 
-TV is a prop, not a character — no walk cycle needed. The bed/save-point
-and the lounge portal are also non-characters. The devil is now a
-mirror-triggered popup (`marker: true` on his story.js entry, no sprite),
-not a standing character — see the "devil is a mirror popup" commit — so
-his walk sheet above is currently unused, not a bug.
+```sh
+# every character's frame set: missing, duplicated, cropped, no-neutral
+for ch in $(ls games/the-game/art/*_down_0.png | sed 's#.*/##;s/_down_0.png//'); do
+  python3 .github/art/verify_sheet.py frames games/the-game/art "$ch"
+done
+```
+
+The same checker runs on every push (`pages.yml`, "Verify character frame
+sets"), so a set that is broken cannot sit here being described as done.
+
+Which characters are WIRED to their frames is likewise a fact about the code,
+not about this page — `NPC_FACING_FRAMES` in `app.js` is the list, and an id
+absent from it falls back to the static sprite rather than breaking.

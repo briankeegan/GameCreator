@@ -278,7 +278,33 @@ def cut_and_trim(im, y0, y1, x0, x1, inset=4, divider_free=False):
         return out  # empty cell, leave as-is (caller should notice)
     return out.crop((cols.min(), rows.min(), cols.max() + 1, rows.max() + 1))
 
+def single(image_path, out_dir, char_id, direction, index=1):
+    """Cut ONE standalone pose into one frame file.
+
+    This is the last step of the fix WALK_SHEETS.md documents for a row that
+    came back with no standing pose in it: generate the neutral on its own
+    (which comes back right), then "manually combine sources, taking the two
+    step-pose frames from the walk-cycle grid attempt and the neutral frame
+    from the standalone reference image (sliced with the same cut_and_trim(),
+    called directly rather than through the grid-detecting main())".
+
+    That last clause described a python call somebody had to write by hand,
+    which is the kind of step that gets skipped — the recipe was followed
+    once, written down, and then not followed again. It is a command now.
+    """
+    im = Image.open(image_path)
+    w, h = im.size
+    frame = cut_and_trim(im, 0, h, 0, w, inset=0, divider_free=True)
+    out_path = os.path.join(out_dir, f"{char_id}_{direction}_{index}.png")
+    frame.save(out_path)
+    print("wrote", out_path, frame.size)
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "single":
+        # single <image> <out_dir> <char_id> <direction> [index]
+        idx = int(sys.argv[6]) if len(sys.argv) > 6 else 1
+        return single(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], idx)
     sheet_path, out_dir, char_id = sys.argv[1], sys.argv[2], sys.argv[3]
     im = Image.open(sheet_path)
     row_lines, col_lines = find_gridlines(im)

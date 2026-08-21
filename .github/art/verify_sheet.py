@@ -401,6 +401,47 @@ def check_sheet(path, style, rows, cols):
 # See the CROPPED check in check_frames for how this was calibrated.
 FRAME_ASPECT_SPREAD = 1.45
 
+# STANDING vs MID-STRIDE, measured at the feet.
+#
+# NEUTRAL_RATIO below compares how DIFFERENT the three frames are from each
+# other, which does not answer the question that matters: is frame 1 a person
+# standing still? A row of three mid-stride poses that differ nicely from one
+# another passes it, and then the character stops walking and keeps swinging
+# their legs. That is the defect a player actually reports, and it shipped on
+# twelve of fourteen characters' side rows while the difference metric was
+# green — the failure games/the-game/WALK_SHEETS.md already describes:
+# "all three frames being mid-stride (no neutral at all — missed in review
+# because only the DOWN row's middle frame was checked closely)".
+#
+# A stand has the feet together; a stride has them apart. Measure the width
+# of the silhouette in the bottom 18% (the feet) as a fraction of the
+# sprite's width, and require frame 1 to be meaningfully NARROWER than both
+# steps. Calibrated on the real set: nella_human's correct side row scores
+# 0.52 and Kat's 0.86, while every one of the twelve broken rows scores 0.97
+# to 1.11 — a gap wide enough that 0.90 sits clear of both.
+#
+# A WARNING, not a failure: the threshold is a proxy for a pose, a long robe
+# hides the feet (John's row is 1.00 wide in all three frames because he has
+# no visible legs at all), and a borderline-but-fine set must never block a
+# deploy.
+STANCE_RATIO = 0.90
+
+
+def _foot_spread(im):
+    """Width of the silhouette at the feet, as a fraction of sprite width."""
+    import numpy as np
+    a = np.array(im.convert("RGBA"))
+    m = a[..., 3] > 40
+    rows = np.where(m.any(axis=1))[0]
+    if not len(rows):
+        return None
+    lo, hi = rows[0], rows[-1]
+    band = m[int(hi - (hi - lo) * 0.18):hi + 1]
+    cols = np.where(band.any(axis=0))[0]
+    if not len(cols):
+        return None
+    return (cols[-1] - cols[0] + 1) / m.shape[1]
+
 
 def check_frames(art_dir, char_id, dirs):
     """The walk-cycle rules, applied to individual frame files.
@@ -434,6 +475,22 @@ def check_frames(art_dir, char_id, dirs):
                 f'{char_id} ({d}): NO NEUTRAL — frame 1 is not a distinct standing pose '
                 f'(middle-vs-steps {d01:.1f}/{d12:.1f}, steps-vs-each-other {d02:.1f}). '
                 'Idle will look like walking on the spot.')
+        # SIDE ROW ONLY. CHARACTER_SHEETS.md: the side row is "the only row
+        # where the step reads as displacement" — a front or back step is
+        # deliberately small, and most of that animation is not in the legs
+        # at all. Measuring foot spread there warns on almost every healthy
+        # character, which is how a checker becomes noise nobody reads.
+        sp = [_foot_spread(f) for f in fr] if d in ("left", "right") else [None] * 3
+        if all(x is not None for x in sp) and min(sp[0], sp[2]) > 0:
+            ratio = sp[1] / min(sp[0], sp[2])
+            if ratio > STANCE_RATIO:
+                soft.append(
+                    f'{char_id} ({d}): MID-STRIDE IDLE — frame 1 stands as wide at the '
+                    f'feet as the step frames (spread {sp[0]:.2f}/{sp[1]:.2f}/{sp[2]:.2f}, '
+                    f'ratio {ratio:.2f}, wants <= {STANCE_RATIO}). It is another walking '
+                    'pose, not a stand, so this character keeps striding after they stop '
+                    'moving. Generate the standing pose on its own and combine it in — '
+                    'see games/the-game/WALK_SHEETS.md.')
 
     # CROPPED — the whole set is one character standing on one floor, tightly
     # trimmed, so every frame should have roughly the same width:height. A
