@@ -384,6 +384,70 @@ async function bootWithSave(page, url, patchSave) {
     await page.close();
   }
 
+  // ---- CAN YOU ACTUALLY WALK TO EVERY DOOR? ----
+  //
+  // The door grid above proves a door WORKS. It does not prove a player can
+  // REACH it: every case teleports the player next to the trigger and then
+  // walks one step into it. The Arena's way out passed that test for as long
+  // as it existed while being armed up in the STANDS, above the top edge of
+  // the walkable platform — the only foot position whose body box touched it
+  // grazed one corner by a single pixel, so holding right out of the spawn
+  // walked straight past it into the wall and the room was a dead end.
+  //
+  // So: flood the room from where you actually arrive, and ask whether the
+  // region you can walk to includes anything that touches each trigger.
+  // Crucially it floods through the GAME's own canStand — a static model
+  // built on the walk mask alone called that Arena door reachable, because
+  // the mask knows about floor and knows nothing about the benches. A test
+  // that carries its own copy of the collision rules is a test that drifts.
+  const unreachable = [];
+  for (const roomId of Object.keys(await (async () => {
+    const p = await freshPage(browser, url, errors);
+    const r = await p.evaluate(() => window.NEWSEY_STORY.ROOMS);
+    await p.close();
+    return r;
+  })())) {
+    const page = await freshPage(browser, url, errors);
+    await bootWithSave(page, url, { introSeen: true, room: roomId });
+    // The walk mask is a PNG. Flooding before it loads makes a room look like
+    // solid wall; the player is by definition standing, so wait until the
+    // game agrees they are.
+    await page.waitForFunction(
+      () => { const D = window.__newseyDebug; return D && D.canStand(D.player.x, D.player.y); },
+      { timeout: 8000 }
+    ).catch(() => {});
+    const bad = await page.evaluate((rid) => {
+      const D = window.__newseyDebug, R = window.NEWSEY_STORY.ROOMS[rid];
+      const W = 320, H = 200, PW = 14, PH = 18, STEP = 2;
+      const k = (x, y) => y * W + x;
+      const sx = Math.round(D.player.x), sy = Math.round(D.player.y);
+      const seen = new Set([k(sx, sy)]), q = [[sx, sy]];
+      while (q.length) {
+        const [x, y] = q.pop();
+        for (const [dx, dy] of [[STEP, 0], [-STEP, 0], [0, STEP], [0, -STEP]]) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx > W - PW || ny > H - PH || seen.has(k(nx, ny))) continue;
+          if (!D.canStand(nx, ny)) continue;
+          seen.add(k(nx, ny)); q.push([nx, ny]);
+        }
+      }
+      return (R.exits || []).filter((e) => {
+        for (const key of seen) {
+          const x = key % W, y = (key - x) / W;
+          if (x + PW > e.x && x < e.x + e.w && y + PH > e.y && y < e.y + e.h) return false;
+        }
+        return true;
+      }).map((e) => `${rid} -> ${e.to} (${e.link})`);
+    }, roomId);
+    unreachable.push(...bad);
+    await page.close();
+  }
+  assert.deepStrictEqual(
+    unreachable, [],
+    "every exit trigger must be reachable on foot from where the player arrives — " +
+    "a door nobody can walk to is a dead end however well it fires"
+  );
+
   await browser.close();
   server.close();
 

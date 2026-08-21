@@ -99,6 +99,29 @@ exits" step in `pages.yml`. The art half is measured by
   `.github/art/room.py`). An unrecognised name is not a typo the prompt
   survives: it is pasted into the generator's prompt as a bare word and the
   doorway comes back wherever the model felt like putting it.
+- **Do not type a trigger's four numbers. Derive them, with
+  `.github/art/remap_doors.py <game>`.** It reads the doorway out of the art —
+  the door prop's own footprint in a floor-plate room, the notch in the walkable
+  floor in a painted one — and refuses to propose anything for a wall where it
+  has neither, because a confident wrong answer costs more than no answer. Run
+  against every room with the notch rule alone it wanted to drag all four of the
+  Lounge's doors to the top edge of the frame.
+- **A door has to be ENTERED, not grazed, and that is a number you can measure.**
+  `remap_doors.py` reports how deeply a player can get onto each trigger. The
+  Arena's way out was armed up in the stands above the walkable platform and
+  scored ONE pixel: every structural check passed, the browser door test passed,
+  and holding a direction out of the spawn walked straight past it into the wall.
+  Every working door in Newsey measures 13-14px, so the floor is set at 6.
+- **The check that catches this walks the room with the GAME's own collision.**
+  A static model built on the walk mask called that Arena door reachable,
+  because the mask knows where the floor is and knows nothing about the benches
+  in front of it. The reachability sweep in `browser.test.js` floods the room
+  through `canStand` from where the player actually arrives — a test carrying
+  its own copy of the collision rules is a test that drifts away from the game.
+- **A door test that teleports the player next to a trigger proves the door
+  FIRES, not that anyone can reach it.** That is the hole the Arena sat in for
+  as long as it existed. Both tests are worth having; only one of them is about
+  reachability.
 - **A doorway you cannot stand on is not a door.** The trigger has to sit on
   walkable floor. `room.py verify` measures how much of each trigger's
   rectangle is inside the room's walk mask and fails below 15% — calibrated

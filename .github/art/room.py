@@ -84,8 +84,8 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 W, H = 320, 200
+PLAYER_W, PLAYER_H = 14, 18   # must match app.js's player.w/h
 PLATE_FILL_MIN = 0.55      # a plate should cover at least this much of the frame
-EXIT_ON_FLOOR_MIN = 0.15   # how much of an exit trigger must be walkable (see verify)
 DOOR_CLEARANCE = 12        # px a prop's footprint must keep off an exit trigger
 
 
@@ -787,6 +787,21 @@ def grounding_problems(room, props, spec):
     return problems
 
 
+def reachable_trigger(mask, ex, pw=PLAYER_W, ph=PLAYER_H):
+    """Can the player stand somewhere that touches this trigger?
+
+    Feet are the point (x + pw/2, y + ph) and must be on the mask; the body box
+    is [x, x+pw) x [y, y+ph) and must overlap the trigger. See verify() for why
+    this replaced a percentage."""
+    h, w = mask.shape
+    for y in range(max(0, ex["y"] - ph + 1), min(h - ph, ex["y"] + ex["h"])):
+        for x in range(max(0, ex["x"] - pw + 1), min(w - pw, ex["x"] + ex["w"])):
+            fy, fx = y + ph, x + pw // 2
+            if fy < h and fx < w and mask[fy, fx]:
+                return True
+    return False
+
+
 def verify(game_dir):
     problems = []
     problems += style_drift(game_dir)
@@ -842,37 +857,37 @@ def verify(game_dir):
             problems.append("%s: floor-plate room still declares obstacles — props carry "
                             "their own footprints" % room)
 
-        # A DOORWAY YOU CANNOT STAND ON IS NOT A DOOR. The wall a door is
-        # drawn in comes from the room's spec, the trigger that arms it is a
-        # rectangle in story.js, and nothing but pixels can say whether the
-        # two ended up in the same place: measure how much of the trigger sits
-        # on walkable floor. A door armed against a wall, or out past the edge
-        # of the plate, scores ~0 and can never be reached — while every
-        # structural check passes, because the pairing is perfect and the
-        # destination is real.
+        # A DOORWAY YOU CANNOT REACH IS NOT A DOOR — but ask the question the
+        # RUNTIME asks, which is not the one this check first asked.
         #
-        # Calibrated against the rooms that exist: the LOWEST real trigger is
-        # the lounge's east door to the lab at 37.8% walkable (a side-wall
-        # door is half doorframe by nature), the highest are the back-wall
-        # arches at 100%. 15% is therefore ~2.5x clear of the worst correct
-        # door and still fails anything armed off the floor entirely.
+        # Version one measured what fraction of the trigger rectangle sat on
+        # walkable floor, and that is the wrong quantity. A trigger fires when
+        # the player's BODY box overlaps it, and the body is 18px tall standing
+        # on feet that are a single point on the floor — so a doorway drawn
+        # high in a back wall is entered by standing BELOW it, with the trigger
+        # entirely off the floor and perfectly reachable. Measured on the rooms
+        # that exist, the house's stairs and the arena's portal both score 0%
+        # walkable and both are reachable in play; the check would have called
+        # two working doors broken the moment anyone looked at a non-plate room.
+        # It survived only because floor-plate rooms happen to draw their doors
+        # low. A calibrated threshold on the wrong quantity is worse than no
+        # check: it fails correct work and passes the case it was aimed at.
         #
-        # playerStart is checked by the door gate, not here — see
-        # .github/scripts/check_room_exits.mjs, which covers every room rather
-        # than only the floor-plate ones and applies the same doorstep
-        # clearance the runtime does.
-        if r["exits"] and os.path.exists(os.path.join(art, "walk-%s.png" % room)):
-            m = np.asarray(Image.open(os.path.join(art, "walk-%s.png" % room))
-                           .convert("L").resize((W, H), Image.NEAREST)) > 127
+        # So: is there ANY standable foot position whose player box overlaps
+        # this trigger? That is a yes/no fact about the art, with no threshold
+        # to tune, and it is exactly what the game will do.
+        mp = os.path.join(art, "walk-%s.png" % room)
+        if r["exits"] and os.path.exists(mp):
+            mask = np.asarray(Image.open(mp).convert("L")
+                              .resize((W, H), Image.NEAREST)) > 127
             for ex in r["exits"]:
                 if not all(k in ex for k in "xywh"):
                     continue
-                sub = m[max(0, ex["y"]):ex["y"] + ex["h"], max(0, ex["x"]):ex["x"] + ex["w"]]
-                if sub.size and float(sub.mean()) < EXIT_ON_FLOOR_MIN:
-                    problems.append("%s: the exit trigger at (%d,%d) is only %.0f%% on "
-                                    "walkable floor — the doorway is armed somewhere the "
-                                    "player cannot stand, so the door can never fire"
-                                    % (room, ex["x"], ex["y"], float(sub.mean()) * 100))
+                if not reachable_trigger(mask, ex):
+                    problems.append(
+                        "%s: nothing can stand anywhere that touches the exit trigger at "
+                        "(%d,%d) — the doorway is armed somewhere the player can never "
+                        "reach, so the door can never fire" % (room, ex["x"], ex["y"]))
 
         for p in r["props"]:
             path = os.path.join(art, p["art"] + ".png")

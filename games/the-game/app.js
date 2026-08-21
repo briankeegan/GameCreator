@@ -1950,6 +1950,13 @@
     // first rect base (`{w,h}` has no `rx`) and it never applied depthAt()'s
     // scale, so it disagreed with the game about every prop's real footprint.
     blockedAt: function (x, y) { return blockedByProp(currentRoom, x, y); },
+    // Ask the GAME whether a spot is standable, rather than a test carrying its
+    // own copy of floor + prop collision. The door-reachability sweep floods
+    // the room through this, which is the only way its answer can't drift from
+    // what a player actually experiences — a static model that knew about the
+    // walk mask but not about prop bases called the Arena's way out reachable
+    // while the player was jammed against a bench.
+    canStand: function (x, y) { return canStand(currentRoom, x, y); },
     duel: function () { return window.NewseyDuel.debug(); }
   };
 })();

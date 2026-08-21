@@ -210,7 +210,7 @@ window.NEWSEY_STORY = (function () {
       // still the TV (which plays DREAM_CUTSCENE), but you came down these to
       // answer the door, so they go back up.
       exits: [
-        { x: 217, y: 78, w: 42, h: 20, to: "home_bedroom", link: "stairs" }
+        { x: 218, y: 97, w: 27, h: 24, to: "home_bedroom", link: "stairs" }
       ],
       // Furniture where it actually meets the floor: the table with the
       // moving boxes, the lantern table by the front door, and the little
@@ -625,7 +625,14 @@ window.NEWSEY_STORY = (function () {
       // flagstone hexagon between the two banks of stands.
       floorPoly: [[66,100],[250,100],[292,140],[283,186],[42,186],[30,140]],
       exits: [
-        { x: 230, y: 78, w: 30, h: 20, to: "lounge", link: "portal" }
+        { x: 224, y: 98, w: 34, h: 22, to: "lounge", link: "portal" }
+        // REMAPPED off the art (walk-arena.png), not typed by eye. It used
+        // to sit at (230,78) — up in the STANDS, above the top edge of the
+        // walkable platform (y=105). The only foot position whose body box
+        // could touch it grazed its corner by ONE pixel, so holding right
+        // out of the spawn walked you straight past it into the wall and
+        // the Arena was a dead end in practice. It now straddles the
+        // platform edge directly under the tunnel mouth, where you walk.
       ],
       obstacles: [ { x: 0, y: 88, w: 66, h: 20 }, { x: 250, y: 88, w: 70, h: 20 } ], // the stands
       npcs: [
@@ -915,7 +922,7 @@ window.NEWSEY_STORY = (function () {
         // the frame itself.
         { x: 140, y: 178, w: 40, h: 16, to: "lounge", link: "northArch", drawn: "threshold" },
         // north, through the arch in the bookcase wall, up into the Garden
-        { x: 142, y: 76, w: 36, h: 26, to: "garden", link: "gardenPath" }
+        { x: 128, y: 47, w: 63, h: 24, to: "garden", link: "gardenPath" }
       ],
       npcs: [
         {
