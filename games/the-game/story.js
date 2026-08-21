@@ -298,12 +298,14 @@ window.NEWSEY_STORY = (function () {
       playerStart: { x: 150, y: 150 },
       // Measured off art-src/bedroom_scene.png: she lies with her head on the
       // pillow up under the canopy, drawn clipped to above the quilt's edge.
-      // Recomputed against the regenerated bed art (prop_bed_bed, cut alone
-      // this time, foot toward the viewer). bedSpot sits on the pillows —
-      // measured as a fraction of the CUT IMAGE itself (0.41 down from its
-      // top), not the scene, since that is what's actually drawn on screen.
-      bedSpot: { x: 161, y: 53 },
-      bedClipY: 65,
+      // bedSpot sits on the pillows — a fraction of the CUT IMAGE's own
+      // height (0.41 down from its top for the pillow, 0.68 down for the
+      // quilt's clip line), not the scene, since that's what's actually
+      // drawn on screen. Recomputed again when prop_bed_bed's h dropped from
+      // 99 to 85 (see the props block below — the top of the canopy moved
+      // down 14px), since both of these are measured from that same top.
+      bedSpot: { x: 161, y: 62 },
+      bedClipY: 72,
       // On the rug at the bed's foot, clear of the bed's and the trunk's own
       // footprints.
       wakeSpot: { x: 161, y: 168 },
@@ -313,11 +315,19 @@ window.NEWSEY_STORY = (function () {
       props: [
         // Ground cover first: flat, walked straight over, no footprint. The
         // scene has always had this rug; the first assembly of this room did
-        // not, which is exactly the kind of thing only the side-by-side finds.
-        // w is forced: the sheet drew the rug portrait, and a rug lying across
-        // a floor is wider than it is deep. Without it the room gets a tall
-        // narrow mat standing in the middle of the parquet.
-        { art: "prop_bed_rug", x: 152, y: 142, h: 54, w: 120, flat: true },
+        // not, which is exactly the kind of thing only the side-by-side finds
+        // — and even the side-by-side missed how badly undersized this was: w
+        // was 120, less than the ~225 the rug actually measures at its widest
+        // (its perspective trapezoid in the scene runs from about x40 to x270
+        // at the near edge). Only the BLEND overlay — the assembled room
+        // composited semi-transparent on top of the scene, not laid beside it
+        // — shows this: a mismatch in POSITION doubles an edge, but a
+        // mismatch in SIZE just makes the whole shape read as two nested
+        // outlines, which two pictures side by side at their own separate
+        // scales cannot show at all. w is forced rather than derived from the
+        // art's own aspect: the sheet drew the rug portrait, and a rug lying
+        // across a floor is wider than it is deep.
+        { art: "prop_bed_rug", x: 157, y: 134, h: 58, w: 195, flat: true },
         // The back wall, tiled at its OWN aspect ratio rather than stretched
         // to cover fewer, wider panels — five copies at native proportions,
         // each overlapping its neighbour by ~4px to hide the seam, instead of
@@ -350,7 +360,16 @@ window.NEWSEY_STORY = (function () {
         // follows the art.
         { art: "prop_bed_mirror", x: 62,  y: 88,  h: 74, base: { w: 30, h: 8 } },
         { art: "prop_bed_nightstand", x: 96, y: 88, h: 40, base: { w: 20, h: 8 } },
-        { art: "prop_bed_bed",   x: 161, y: 112, h: 99, base: { w: 78, h: 14 } },
+        // h corrected from 99 to 85, measured fresh off the fine-grid crop:
+        // the canopy top sits at y~27 in the scene, not y~13 (112-99), which
+        // is what h=99 was drawing — 14px of canopy sticking up into the
+        // wall that the blend overlay showed as a doubled/ghosted top edge.
+        // base narrowed to match: the art's own width at h=85 is ~42px
+        // (posts included, same crop as before), and 78 was drawn from the
+        // OLD wider bed's numbers, left unchanged when this one was cut —
+        // nearly double the new art's actual width, fencing off floor on
+        // both sides that reads as open in the room.
+        { art: "prop_bed_bed",   x: 161, y: 112, h: 85, base: { w: 38, h: 14 } },
         { art: "prop_bed_trunk", x: 161, y: 148, h: 30, base: { w: 24, h: 10 } },
       ],
       // THE LOUNGE IS EAST OF THIS ROOM, so the way out is a door in the EAST
