@@ -55,6 +55,35 @@ const isNoise = (b) => NOISE.some((re) => re.test(b.trim()));
 const strip = (b) => STRIP.reduce((acc, re) => acc.replace(re, ""), b).trim();
 const isClaude = (b) => /^\*\*Claude says:\*\*/.test(b.trim());
 
+// CROSS-MESSAGE REPEATS. Auto-continue (clubhouse-autopilot.yml) means
+// several of Claude's own replies can land back to back on the same
+// request, and each one tends to re-state "already shipped and
+// re-confirmed working: ..." for ground a PRIOR reply already covered —
+// caught for real on Dog Punk, where a later reply's status bullets
+// repeated an earlier reply's almost line for line. Per-comment Haiku
+// compaction can't catch this: each comment is compacted in isolation, with
+// no idea what a neighbour already said. So after compaction, drop any line
+// that's a near-duplicate of one already emitted earlier in the SAME
+// compaction pass — cheap, deterministic, no extra model call. Short/
+// structural lines (separators, blank lines, brief headers) are left alone
+// so a repeated "---" or a two-word heading can't falsely collapse.
+function normalizeLine(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+function dedupeLines(text) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of text.split("\n")) {
+    const key = normalizeLine(raw);
+    if (key.length > 20) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
+    out.push(raw);
+  }
+  return out.join("\n");
+}
+
 function readStdin() {
   return new Promise((res) => {
     let d = "";
@@ -160,7 +189,7 @@ async function haiku(text) {
     out.push("The owner's messages are verbatim. Claude's replies are compacted to");
     out.push("what changed. Anything the owner states is a STANDING instruction.");
     out.push("");
-    out.push(lines.join("\n\n---\n\n"));
+    out.push(dedupeLines(lines.join("\n\n---\n\n")));
     out.push("");
   }
   out.push(`=== THE LAST ${tail.length} MESSAGES, VERBATIM ===`);
