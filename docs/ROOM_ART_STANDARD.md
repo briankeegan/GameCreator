@@ -472,7 +472,13 @@ by breaking the room on purpose:
 - a tiled wall band (`behind`/`door` props sharing a Y, sized from their own
   art's aspect, not stretched) that no longer reaches both frame edges — see
   "Wall bands are tiled, and a re-cut can silently break their coverage"
-  below.
+  below;
+- a prop with a forced `w` stretched past 5x from its own art's aspect ratio
+  — see "A forced w/h can silently stretch a prop into a different shape"
+  below. Below 5x it prints a NOTE instead of failing: a fuzzy check warns,
+  it doesn't fail the build (same rule as `verify_sheet.py`'s neutral-frame
+  threshold) — several props in this game sit at 2-4x stretch and read
+  completely fine, so the fail line only trips for the unambiguous case.
 
 **Wall bands are tiled, and a re-cut can silently break their coverage.** A
 back wall (or any backdrop spanning wider than one image) is tiled at its own
@@ -495,6 +501,24 @@ reaching both frame edges or leaves a gap between pieces. If a re-cut ever
 changes a tiled backdrop's aspect again: recompute the copy count as native
 w at the declared h, spaced at `w - 4` so neighbours overlap ~4px to hide the
 seam, enough copies for the last one's right edge to clear the frame width.
+
+**A forced w/h can silently stretch a prop into a different shape than its
+own art.** Nothing checks that a prop's declared box is even roughly the
+same shape as the picture being squeezed into it — measuring correctly off
+the scene doesn't help, because the measurement and the render use the
+same numbers, so a consistently-wrong box never reads as a mismatch against
+itself. The bedroom's rug was found exactly this way: `x/y/h/w` matched the
+scene's real footprint, but the rug ART underneath it was a PORTRAIT rug
+(0.50 wide-to-tall) forced into a box nearly SEVEN times as wide as tall — a
+6.8x stretch, reported as "the rug is stretched" off a live screenshot, not
+by anything in the pipeline. `room.py verify` now computes this ratio for
+every forced-`w` prop and prints a NOTE past 1.8x, failing only past 5x —
+calibrated against this game's own props: several sit at 2-4x and looked
+completely fine on a render (a symmetric medallion rug or a front-on
+furniture panel doesn't reveal a stretch the way a directional runner rug
+does), so a first version that failed at 2.5x was wrong about three props
+that had already been looked at and accepted. LOOK at a render before
+deciding a NOTE needs fixing — the number alone can't tell you.
 
 **`--mode side` is the step that finds things.** The assembled room next to the
 scene it came from shows in one look everything the numbers hide. All four of

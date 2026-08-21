@@ -808,7 +808,20 @@ window.NEWSEY_STORY = (function () {
         // either), so these are `room.py grid` manual readings, cross-
         // checked at 4x zoom against three separate crops.
         { art: "prop_lab_bench",   x: 157, y: 107, h: 67, w: 134, base: { w: 128, h: 10 } },
-        { art: "prop_lab_cabinet", x: 269, y: 92,  h: 79, w: 62,  base: { w: 56, h: 10 } },
+        // The cabinet's own art stops abruptly at y=92 in the scene with
+        // bare wall drawn below it, no legs, no floor contact — a real
+        // inconsistency in the approved scene itself (every other floor-
+        // standing piece in this room, the bench included, sits on the
+        // same y=107 floor line the wall panels use). Read literally, its
+        // ground point sits mid-wall and reads as floating in the
+        // assembled room — reported directly off a live screenshot, the
+        // same way the bedroom's furniture sizing was. A deliberate,
+        // documented departure from the scene's own numbers, same as the
+        // Lounge's tables/bar being nudged off the scene's positions for
+        // door clearance: grounded to y=107 to match the bench, h taken
+        // up to 94 to keep its top (where the jars sit) at the same
+        // height, w scaled with it at the art's native aspect.
+        { art: "prop_lab_cabinet", x: 269, y: 107, h: 94, w: 56,  base: { w: 50, h: 10 } },
         { art: "prop_lab_cart",    x: 269, y: 168, h: 64, w: 56,  base: { rx: 24, ry: 6 } }
       ],
       exits: [

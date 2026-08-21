@@ -56,6 +56,15 @@ remember at 11pm. This is the front door:
     floor showing through the wall above where the side-by-side or a
     signed-off room ever looks (it frames the furniture, not the bare
     edges). A player asked "what happened with the wall" before this did.
+  * a prop with a forced w/h whose aspect ratio doesn't come close to its
+    own art's aspect ratio — the bedroom's rug was measured correctly
+    against the scene and then force-stretched 6.8x to fit a portrait
+    image into a landscape box, which reads as smeared and isn't caught
+    by anything else: sizecheck only compares numbers to a human
+    measurement, never to the art itself, and the overlays show the same
+    distorted stretch in both the scene reading and the assembled room,
+    so it never reads as a mismatch. A player reported "the rug is
+    stretched" before this did.
 """
 import sys, os, re, subprocess, argparse
 import numpy as np
@@ -607,6 +616,71 @@ def backdrop_coverage_problems(room, props, widths, art_dir):
     return problems
 
 
+# A prop with a forced `w` renders at whatever aspect ratio x/h gives it,
+# regardless of what the art itself actually looks like — nothing checks
+# that the two are even roughly the same picture. The bedroom's rug is how
+# this was found: measured correctly off the scene at x/y/h/w matching its
+# real footprint, but the art it was measured against was a PORTRAIT rug
+# (0.50 wide-to-tall) forced into a 3.36-wide-to-tall box — a 6.8x stretch,
+# reported directly as "the rug is stretched" off a live screenshot, not
+# caught by sizecheck (which only compares one prop's numbers to a human
+# measurement, never to the art's own shape) or by the side-by-side/blend
+# overlays (both show the SAME distorted stretch in the assembled room as
+# whatever the measurement produced, so a consistently-wrong number never
+# reads as a mismatch against itself).
+#
+# Calibrated against this repo's own real props, not a guess — a first
+# version of this check FAILED at 2.5x and turned out to be wrong to: the
+# library's rug (3.46x) and the lounge's bar and backbar (2.70x, 3.69x)
+# all read completely fine on an actual screenshot, distortion and all —
+# a symmetric medallion pattern or a front-on furniture panel doesn't
+# reveal a stretch the way a directional runner rug does, and none of
+# those three had a canvas-vs-content padding difference to explain it
+# away (their alpha bbox is the full canvas). So stretch alone can't
+# reliably tell "looks fine" from "looks broken" — it's a FUZZY signal,
+# same as the neutral-frame ratio in verify_sheet.py, and gets the same
+# treatment: warn, don't fail, in the band where a real prop has already
+# been looked at and accepted. WARN starts at 1.8x (worth a look). FAIL
+# only past 5.0x — comfortably clear of every prop measured when this was
+# calibrated (3.69x was the worst of the accepted ones) and comfortably
+# under the one confirmed, reported-by-a-player bug (the bedroom's rug,
+# 6.77x: a portrait rug forced into a box nearly SEVEN times as wide as
+# tall).
+WARN_STRETCH = 1.8
+FAIL_STRETCH = 5.0
+
+
+def aspect_distortion_problems(room, props, widths, art_dir):
+    problems = []
+    for p, w in zip(props, widths):
+        if not w or not p["h"]:
+            continue    # no forced w means no distortion is even possible —
+                        # width follows the art's own aspect by construction
+        path = os.path.join(art_dir, p["art"] + ".png")
+        if not os.path.exists(path):
+            continue    # reported elsewhere as missing art
+        iw, ih = Image.open(path).size
+        native = iw / ih
+        declared = w / p["h"]
+        stretch = max(declared / native, native / declared)
+        if stretch <= WARN_STRETCH:
+            continue
+        msg = ("%s: '%s' is declared %dx%d (aspect %.2f) but its own art is "
+              "%dx%d (aspect %.2f) — a %.1fx stretch."
+              % (room, p["art"], w, p["h"], declared, iw, ih, native, stretch))
+        if stretch > FAIL_STRETCH:
+            problems.append(msg + " The art doesn't match the shape it's "
+                            "being forced into; re-measure against the art's "
+                            "own proportions or regenerate it at the right "
+                            "shape, don't just force the box wider/taller.")
+        else:
+            print("NOTE " + msg + " Under the fail threshold — LOOK at a "
+                  "render before deciding whether this one actually needs "
+                  "fixing; some props tolerate this and some don't.",
+                  file=sys.stderr)
+    return problems
+
+
 def verify(game_dir):
     problems = []
     problems += style_drift(game_dir)
@@ -649,6 +723,7 @@ def verify(game_dir):
                                     % (room, stray))
 
         problems += backdrop_coverage_problems(room, r["props"], r["widths"], art)
+        problems += aspect_distortion_problems(room, r["props"], r["widths"], art)
 
         # dead collision data
         if r["has_floorpoly"]:
