@@ -1,0 +1,15 @@
+{
+  "name": "Kyran's Lab",
+  "_why": "Kyran is Infinity's head of research. The Lounge is WEST of this room, so its one ordinary way out is a door in the LEFT wall — the map in story.js decides that, not the generator.",
+  "summary": "An alchemical laboratory in a magical realm, in cold grey-green stone block, lit by lanterns and by the glow of what is in the glassware.",
+  "floor": "many small grey-green flagstones in staggered courses with fine mortar joints, cool mid-toned stone, softly lit rather than bright, with mottling, chips and wear",
+  "doors": [
+    { "wall": "left", "look": "ONE open arched doorway in the grey-green stone, empty and warmly lit from beyond", "to": "lounge" }
+  ],
+  "contains": [
+    "ONE heavy timber SHELF on the back wall holding big round glass jars of glowing green and amber fluid and a lit lantern, in the MIDDLE of the wall only, with bare stone either side of it",
+    "a long cluttered ALCHEMIST'S WORKBENCH of dark timber below the shelf, covered in glass retorts, coiled copper tubing, a bubbling flask over a burner and a brass balance",
+    "a tall wooden APOTHECARY CABINET of many small labelled drawers against the wall on the right",
+    "a wheeled brass INSTRUMENT CART with a glowing green glass sphere on it, standing out on the open floor"
+  ]
+}

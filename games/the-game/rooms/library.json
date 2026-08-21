@@ -1,0 +1,16 @@
+{
+  "name": "The Library",
+  "_why": "The plot calls it a city of bookshelves. It sits BETWEEN the Lounge (south, off the near edge) and the Anarchy Garden (north, through the bookcase wall) — the map in story.js decides that.",
+  "summary": "A vast warm hushed library in a magical realm: floor-to-ceiling dark timber bookcases packed with old leather-bound books, their shelf lines running at the same height all the way across, lit by brass reading lamps glowing amber.",
+  "floor": "many small warm sandy-grey flagstones in staggered courses with fine dark mortar joints, a warm mid-tone lit by candlelight, muted rather than bright, with mottling and wear",
+  "doors": [
+    { "wall": "back", "look": "ONE open arched doorway cut through the bookcases, lit soft green from beyond", "to": "garden" },
+    { "wall": "near", "look": "the way back down to the Lounge", "to": "lounge" }
+  ],
+  "contains": [
+    "a rolling library LADDER leaning against the bookcases on the left",
+    "a deep buttoned oxblood leather ARMCHAIR with a small round candle table beside it",
+    "a WRITING DESK with an open book and an inkwell",
+    "a patterned crimson reading RUG lying flat on the floor"
+  ]
+}
