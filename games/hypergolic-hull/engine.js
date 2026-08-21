@@ -1791,6 +1791,14 @@
       boardHexes: buildBoardHexes(level),
       actions: ["sublight"], // derived from the Hold below (syncHoldDerived)
       playerPos: { q: level.playerStart.q, r: level.playerStart.r },
+      // Which hull art the flagship shows — set once, at the top of the
+      // run, from whichever loadout was actually picked (buildHold reads
+      // this same carryOver field to build the kit). Carried through
+      // carryOver every sector after, same as runSeed — so buying a Shield
+      // Generator mid-run as a Standard start doesn't suddenly make the
+      // ship LOOK like Escort Start. What you picked at the outset is what
+      // you fly, cosmetically, for the whole run.
+      startingLoadout: (carryOver && carryOver.startingLoadout) || "standard",
       // Hull damage is PERMANENT across jumps — warping doesn't patch a
       // breached deck ("why is hull repaired between every jump? doesn't
       // make any sense"). Only an Outpost repair puts pips back. A fresh
