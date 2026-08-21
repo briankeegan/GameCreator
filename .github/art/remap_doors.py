@@ -61,6 +61,26 @@ MIN_SPAN, MAX_SPAN = 20, 64      # a doorway's width along its own wall
 # and was a dead end in play, while every working door scores far more.
 MIN_ENTRY_DEPTH = 6
 
+# WHERE A TRIGGER SITS ACROSS ITS WALL, and WHICH PERIMETER that means.
+#
+# A door is the edge of the room, so the trigger belongs pushed out to the
+# perimeter rather than sitting on open floor a player can walk past. But the
+# perimeter is the WALKABLE FLOOR's own boundary, not the edge of the picture,
+# and in this game those are nowhere near each other: a room is drawn with its
+# wall band across the top of the frame, so the floor's back edge is at y=46 in
+# the Lounge while the frame's is at y=0.
+#
+# Measured, by pinning every trigger 1px inside the FRAME instead:
+#   house  stairs      1038 reachable positions -> 0, depth 14px -> 0px
+#   library gardenPath 3116 -> 1900
+#   lounge northArch   1935 -> 1150
+#   lounge portal      1935 -> 1150
+# The house's floor never reaches the top of its frame at all, so that door
+# becomes unreachable outright. Pinning to the floor's lip is what these
+# numbers say to do, and it is what the triggers already do — the Lounge's back
+# doors sit at y=46, which IS its floor's back edge.
+PERIMETER_INSET = 1
+
 SIDES = {"left": (-1, 0), "right": (1, 0), "back": (0, -1), "near": (0, 1)}
 
 
@@ -152,15 +172,46 @@ def opening(mask, side, near_at):
 # y=0 — the top edge of the frame — and cut their reachable footprint roughly
 # in half. So when a room offers neither source, it refuses instead of
 # guessing: no proposal is much cheaper than a confident wrong one.
-def derive_from_prop(prop, side):
+def at_perimeter(side, span_start, span, lip):
+    """Lay a trigger along `side`, pushed out to the floor's own lip.
+
+    `lip` is where the walkable floor ends on that side. The trigger straddles
+    it: mostly inside, so you can stand on it, and OUTSIDE px past it so
+    walking at the wall crosses it rather than stopping beside it."""
+    if side == "left":
+        return {"x": lip - OUTSIDE, "y": span_start, "w": INSIDE + OUTSIDE, "h": span}
+    if side == "right":
+        return {"x": lip - INSIDE, "y": span_start, "w": INSIDE + OUTSIDE, "h": span}
+    if side == "back":
+        return {"x": span_start, "y": lip - OUTSIDE, "w": span, "h": INSIDE + OUTSIDE}
+    return {"x": span_start, "y": lip - INSIDE, "w": span, "h": INSIDE + OUTSIDE}
+
+
+def floor_lip(mask, side, at):
+    """Where the walkable floor ends on `side`, near position `at` along it."""
+    horizontal = side in ("left", "right")
+    lo, hi = max(0, int(at) - 24), min((H if horizontal else W), int(at) + 24)
+    vals = []
+    for i in range(lo, hi):
+        line = mask[i, :] if horizontal else mask[:, i]
+        idx = np.where(line)[0]
+        if len(idx):
+            vals.append(idx.min() if side in ("left", "back") else idx.max())
+    if not vals:
+        return None
+    return int(min(vals) if side in ("left", "back") else max(vals))
+
+
+def derive_from_prop(mask, prop, side):
     """A door prop is placed by its FOOT, so its (x, y) is where the doorway
-    meets the floor. The trigger straddles that line."""
+    meets the floor — that gives the span along the wall. The depth axis comes
+    from at_perimeter()."""
     span = int(min(max((prop.get("w") or MIN_SPAN) * 0.55, MIN_SPAN), MAX_SPAN))
-    if side in ("left", "right"):
-        return {"x": int(prop["x"] - (INSIDE + OUTSIDE) / 2), "y": int(prop["y"] - span / 2),
-                "w": INSIDE + OUTSIDE, "h": span}
-    return {"x": int(prop["x"] - span / 2), "y": int(prop["y"] - INSIDE),
-            "w": span, "h": INSIDE + OUTSIDE}
+    centre = prop["y"] if side in ("left", "right") else prop["x"]
+    lip = floor_lip(mask, side, centre)
+    if lip is None:
+        return None
+    return at_perimeter(side, int(centre - span / 2), span, lip)
 
 
 def nearest_door_prop(doors, e, side, fr):
@@ -215,16 +266,7 @@ def derive(mask, side, e):
     lo, hi, lip = op
     span = min(max(hi - lo + 1, MIN_SPAN), MAX_SPAN)
     mid = (lo + hi) / 2
-    a = int(round(mid - span / 2))
-    dx, dy = SIDES[side]
-    # inside is against the direction the wall lies in
-    if side == "left":
-        return {"x": lip - OUTSIDE, "y": a, "w": INSIDE + OUTSIDE, "h": span}
-    if side == "right":
-        return {"x": lip - INSIDE, "y": a, "w": INSIDE + OUTSIDE, "h": span}
-    if side == "back":
-        return {"x": a, "y": lip - OUTSIDE, "w": span, "h": INSIDE + OUTSIDE}
-    return {"x": a, "y": lip - INSIDE, "w": span, "h": INSIDE + OUTSIDE}
+    return at_perimeter(side, int(round(mid - span / 2)), span, lip)
 
 
 def entry_depth(mask, r):
@@ -325,7 +367,7 @@ def main():
                 shallow += 1
             prop = nearest_door_prop(rooms[rid].get("doors"), e, side, fr)
             if prop:
-                new, src = derive_from_prop(prop, side), "prop " + prop["art"]
+                new, src = derive_from_prop(mask, prop, side), "prop " + prop["art"]
             elif has_notch(mask, side):
                 new, src = derive(mask, side, e), "floor notch"
             else:
