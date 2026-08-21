@@ -30,5 +30,7 @@
   "contains": [
     "a long wooden BAR COUNTER standing along the RIGHT-HAND END of the back wall, with a tall shelf of coloured bottles behind it",
     "two small round wooden tables with stools, off to the LEFT on the open floor"
-  ]
+  ],
+  "wallSeam": 72,
+  "_wallSeam_why": "72, which is where this room's own wall panels are grounded in story.js. It was briefly recorded as 47: that number came from running room.py wallseam against art-src/lounge_scene.png, and the composed SCENE is a different picture from the shipped room — it is generated to be MEASURED for prop sizes, never to be shipped, and its wall line does not land where the assembled room's does. room.py verify caught the disagreement immediately by comparing the seam against the wall panels' declared y. Measure the seam on what ships."
 }

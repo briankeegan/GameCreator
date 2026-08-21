@@ -215,25 +215,14 @@ def stale_masks(game_dir):
 
 
 def rebuild_mask(bw, game_dir, room):
-    """What build_walkmask would write for `room`, as an array, without writing."""
-    from PIL import Image, ImageDraw, ImageFilter
-    src = os.path.join(game_dir, "art", "bg-%s.png" % room)
-    alpha = Image.open(src).convert("RGBA").resize((bw.W, bw.H), Image.BILINEAR).split()[3]
-    mask = alpha.point(lambda a: 255 if a > 40 else 0)
-    if room not in bw.FLOOR_PLATE_ROOMS:
-        spec = bw.ROOMS[room]
-        draw = ImageDraw.Draw(mask)
-        draw.rectangle([0, 0, bw.W, spec["floorTop"]], fill=0)
-        if spec.get("bounds"):
-            x0, y0, x1, y1 = spec["bounds"]
-            draw.rectangle([0, 0, x0, bw.H], fill=0)
-            draw.rectangle([x1, 0, bw.W, bw.H], fill=0)
-            draw.rectangle([0, y1, bw.W, bw.H], fill=0)
-        for poly in spec["blocks"]:
-            draw.polygon(poly, fill=0)
-    for _ in range(bw.EROSION):
-        mask = mask.filter(ImageFilter.MinFilter(3))
-    return np.asarray(mask.convert("1").convert("L")) > 127
+    """What build_walkmask would write for `room`, as an array, without writing.
+
+    It ASKS build_walkmask rather than repeating it. This function used to
+    carry its own copy of the recipe, and the copy went stale the moment the
+    floor-plate branch learned to clip at a room's wallSeam: every room in the
+    game was suddenly reported as having an out-of-date mask, by a checker that
+    was itself the out-of-date thing."""
+    return np.asarray(bw.compute(game_dir, room).convert("1").convert("L")) > 127
 
 
 # The game's art-style.json is prepended to EVERY prompt for that game, pass
