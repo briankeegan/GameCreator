@@ -107,6 +107,13 @@ function resolveThread() {
     })
     .then(function (data) {
       prNumber = data.prNumber;
+      // A 200 with no prNumber in it is the shape this fails in, and it used
+      // to sail straight through: the gate opened, the thread panel appeared,
+      // and refreshThread() then returned silently forever on `if (!prNumber)`.
+      // What the person saw was "opening the clubhouse door…" for all
+      // eternity, on EVERY game, with no error anywhere. Fail here instead,
+      // where there is still something useful to say.
+      if (!prNumber) throw new Error("no-thread");
     });
 }
 
@@ -126,10 +133,12 @@ function enterClubhouse(name, secret, mode) {
       openClubhouse(name, secret);
     })
     .catch(function (err) {
-      if (mode === "admin") {
+      if (mode === "admin" && err.message !== "no-thread") {
         // Stale or rotated admin passkey — quietly fall back to a normal
         // per-game login attempt instead of surfacing a scary error to
-        // someone who never manually tried to log in.
+        // someone who never manually tried to log in. But "there is no thread
+        // for this game" is NOT a passkey problem, and falling back on it
+        // hides the actual fault behind a login form that cannot ever work.
         tryPerGameSavedLogin();
         return;
       }
@@ -142,6 +151,10 @@ function enterClubhouse(name, secret, mode) {
       showGateError(
         err.message === "wrong-secret"
           ? "That's not the secret word. Try again!"
+          : err.message === "no-thread"
+          ? "This game has no chat thread configured yet. An admin can add one in " +
+            "admin/ with \u201cAdd existing game's chat\u201d. (If every game shows this, " +
+            "the relay itself is out of date — check its version marker.)"
           : "Couldn't reach the clubhouse. Check your internet and try again."
       );
     })
@@ -601,7 +614,15 @@ function fetchThread() {
 }
 
 function refreshThread() {
-  if (!prNumber) return;
+  // Belt to the braces in resolveThread(): never sit on the loading message
+  // with nothing happening. A page that is stuck must say it is stuck.
+  if (!prNumber) {
+    threadStatusEl.style.display = "block";
+    threadStatusEl.textContent =
+      "This game's chat isn't wired up — the relay didn't say which thread to open. " +
+      "An admin can fix it in admin/ with \u201cAdd existing game's chat\u201d.";
+    return;
+  }
   fetchThread()
     .then(function (comments) {
       threadStatusEl.style.display = "none";
