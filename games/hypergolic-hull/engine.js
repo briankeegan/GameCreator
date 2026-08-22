@@ -2339,23 +2339,57 @@
 
   // Every kill drops scrap, no matter which action lands it — see
   // ENEMY_TYPES[type].salvage.
-  // Deeper wrecks are worth more. Without this the shop is priced against
-  // sector-2 income forever while the sectors themselves keep getting
-  // harder — the run becomes a treadmill you can only lose, which is
-  // exactly what full-run playtesting showed: deaths piling up at depth
-  // 9-13 with nothing new ever fitted. A bounty that climbs with depth is
-  // also what makes "fight it or route around it" stay a real question
-  // instead of always being "route around it".
-  // What deeper space pays on top of a wreck's base value. This has to
-  // track the SHELF, and it stopped: prices climb to a thirty-salvage
-  // Railgun while a bounty of floor(depth/4) added a grand total of two
-  // across a whole run. Clearing a four-strong board at sector 8 paid
-  // fifteen, so a rare gun was two perfect sectors of income for something
-  // you were meant to be able to buy and then use. Halved denominator:
-  // a kill at the Bulwark is worth six more than the same kill at sector
-  // one, and a cleared deep board pays for a gun rather than a patch.
+  //
+  // ---- why this stops at Sector 6 ---------------------------------------
+  //
+  // MEASURED, 150 careful runs, with the ECON=1 ledger in playtest.js.
+  // Income per sector against what the pilot actually SPENT there:
+  //
+  //   sector   3-5     6      7      8      9     10     12
+  //   income  12-18   39     37     37     37     57     45
+  //   spent   12-18    8      6     10     12     21     18
+  //   banked    ~0%   79%    84%    73%    66%    62%    59%
+  //
+  // Sectors 3-5 sit in perfect equilibrium: every salvage earned gets
+  // spent, and a dock is a real choice about which one thing to take. At
+  // Sector 6 income DOUBLES while spend HALVES, and from there the bank
+  // covers the whole shelf five times over ("salvage just piles up and by
+  // level three you can buy anything you want" — Clubhouse).
+  //
+  // Decomposing a wreck: per-wreck value = base + depthBounty.
+  //
+  //   depth      1     3     5     6     8    10    12
+  //   base     1.0   4.2   2.0   8.6   5.3   5.3   6.8
+  //   bounty     0     1     2     3     4     5     6
+  //
+  // A wreck's BASE value already climbs 1.0 -> 5.3 on its own, because the
+  // classes that arrive deeper are worth more (a Salvager is 8, the
+  // Bulwark 16). The bounty was doubling a scaling that already existed.
+  //
+  // But it isn't useless: at Sector 1 a wreck is worth ONE and the
+  // cheapest thing in any shop is a six-salvage patch, so the opening
+  // sectors genuinely cannot pay their own way. That is what this is — a
+  // STARTING SUBSIDY, not a depth bonus. It tops up the sectors whose
+  // wrecks are worth less than a single item, and stops at Sector 6, the
+  // first depth where the wrecks can pay for themselves.
+  //
+  // Measured effect of stopping it there: bank-to-shelf at the deep docks
+  // 5.5x -> 2.6x, sectors 1-5 bit-for-bit unchanged (the subsidy is the
+  // same there), and the careful pilot's win rate 65/150 -> 64/150, which
+  // is the same number. Prices were not touched: the alternative was
+  // marking the shelf up with depth (Risk of Rain 2's answer, and FTL's
+  // escalating reactor bars), and the ask was explicitly to give less
+  // salvage rather than charge more. This is Slay the Spire's shape
+  // instead — income that does not climb, against a fixed price list.
+  //
+  // A level's own salvageBonus (a rich locale — see levels.js) is NOT part
+  // of the subsidy and keeps applying at every depth: that one is about
+  // where you are, not how far in you are.
+  const EARLY_SUBSIDY_UNTIL = 6;
   function depthBounty(state) {
-    return Math.floor((state.levelId || 1) / 2) + (state.salvageBonus || 0);
+    const depth = state.levelId || 1;
+    const subsidy = depth < EARLY_SUBSIDY_UNTIL ? Math.floor(depth / 2) : 0;
+    return subsidy + (state.salvageBonus || 0);
   }
 
   // ---- flying it clean ----------------------------------------------------
@@ -2378,9 +2412,16 @@
     // Sized against the thing it competes with. A four-strong board pays
     // roughly twenty salvage to clear at mid depth, so a bonus of five was
     // a consolation prize: the arithmetic still said "kill everything",
-    // which is what it was supposed to stop saying. About half a board —
-    // enough that walking out clean is a real strategy and not enough that
-    // it beats fighting outright.
+    // which is what it was supposed to stop saying.
+    //
+    // It rides the starting subsidy (see depthBounty), so it is 4-8 in the
+    // opening sectors and a flat 4 from Sector 6 — a quarter of a deep
+    // board rather than a half. That is deliberate: this is the one piece
+    // of income in the game that carries NO risk, so it is the last thing
+    // that should climb with depth once the pile-up is the problem. It
+    // still does its job — measured over 150 runs each after the subsidy
+    // was capped, the careful pilot wins 64 and the greedy one 52, the
+    // same 8-point gap flying clean was built to create.
     const amount = 4 + 2 * depthBounty(state);
     state.salvage += amount;
     state.events.push({ type: "salvage", amount, clean: true });

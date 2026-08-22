@@ -860,15 +860,40 @@ assert.deepStrictEqual(Engine.outpostOffers(salvageState), [], "not standing on 
 Engine.applySublight(salvageState, { q: 0, r: -1 });
 Engine.applyFire(salvageState);
 assert.strictEqual(salvageState.enemies[0].alive, false, "the FIRE volley kills the adjacent Interceptor");
-// A wreck is worth its type's value PLUS a depth bounty — deeper sectors
-// pay better, so the shop keeps up with the sectors instead of staying
-// priced against sector 2 forever.
+// A wreck is worth its type's value, full stop, at any depth from Sector 6
+// on — see EARLY_SUBSIDY_UNTIL in engine.js. This fixture's level id is
+// 992, so it is well past the subsidy. Asserted as the flat value rather
+// than by re-deriving the subsidy formula: a test that recomputes what the
+// code computes passes whatever the code does.
 assert.strictEqual(
   salvageState.salvage,
-  Engine.ENEMY_TYPES.interceptor.salvage + Math.floor(salvageLevel.id / 2),
-  "a kill drops its type's salvage value, scaled by how deep the sector is"
+  Engine.ENEMY_TYPES.interceptor.salvage,
+  "a deep wreck drops exactly its type's salvage value — no depth bonus on top"
 );
 assert.ok(salvageState.events.some((e) => e.type === "salvage"), "a kill emits a salvage event for the UI to animate");
+
+// ---- the starting subsidy, both directions ------------------------------
+//
+// The opening sectors pay a top-up because a Sector 1 wreck is worth ONE
+// and the cheapest thing in any shop is a six-salvage patch; from Sector 6
+// the wrecks are worth enough to pay their own way and the top-up stops.
+// Checked from BOTH sides, because a bug in either direction is invisible
+// from the other: a subsidy that never fires makes the opening unplayable,
+// and one that never stops is the pile-up it was capped to fix.
+{
+  const bounty = (levelId) => {
+    const lvl = { ...salvageLevel, id: levelId };
+    const st = Engine.createGameState(lvl);
+    Engine.applySublight(st, { q: 0, r: -1 });
+    Engine.applyFire(st);
+    return st.salvage - Engine.ENEMY_TYPES.interceptor.salvage;
+  };
+  assert.strictEqual(bounty(2), 1, "Sector 2 tops a wreck up by one");
+  assert.strictEqual(bounty(4), 2, "Sector 4 tops a wreck up by two");
+  assert.strictEqual(bounty(5), 2, "Sector 5 is the last sector that gets the top-up");
+  assert.strictEqual(bounty(6), 0, "Sector 6 pays a wreck exactly what it is worth");
+  assert.strictEqual(bounty(12), 0, "and so does the deepest sector in the game");
+}
 // Ending the approach MOVE adjacent to the live Interceptor ate its shot
 // (one action per turn — that's the rule). Reset hull: the shop test
 // below manages its own damage explicitly.
