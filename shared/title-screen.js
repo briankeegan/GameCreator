@@ -23,6 +23,17 @@
 // in its own menu code; a single-checkpoint game like Dog Punk can wire
 // this directly to its one save.
 //
+// A title screen that's just a logo and a button reads as a placeholder,
+// not as YOUR game — the fix is showing the game's own art, not a shared
+// look. onShow exists for exactly that: it fires every time show() runs
+// (including the very first call, before art may have finished loading —
+// call TITLE.refresh() again once your assets report ready if you draw a
+// sprite frame), so a game can redraw a portrait, roll a random tagline,
+// or refresh anything else that should look current whenever the title
+// layer comes back (e.g. after Continue's target dies and returns here).
+// What gets drawn is entirely the game's own business — this module never
+// touches a canvas itself, same as it never touches your save's shape.
+//
 // Usage:
 //   const TITLE = GCTitleScreen.create(gameId, {
 //     layerEl: document.getElementById("titleLayer"),
@@ -30,6 +41,7 @@
 //     continueBtn: document.getElementById("titleContinue"),   // optional
 //     hasSave: () => !!SAVES.read(1),
 //     continueLabel: () => "Continue",                          // optional
+//     onShow: () => drawMyHeroPortrait(),                       // optional
 //     onStart: () => { ...begin a new run... },
 //     onContinue: () => { ...resume from save... },             // optional, defaults to onStart
 //   });
@@ -54,6 +66,7 @@ window.GCTitleScreen = {
         continueBtn.hidden = !has;
         if (has && opts.continueLabel) continueBtn.textContent = opts.continueLabel();
       }
+      if (opts.onShow) opts.onShow();
     }
     function hide() {
       layerEl.hidden = true;

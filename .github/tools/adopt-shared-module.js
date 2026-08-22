@@ -146,7 +146,16 @@ function main() {
     console.log("    startBtn, continueBtn, hasSave, onStart, onContinue}). Call .show()");
     console.log("    once on boot — nothing else should run before it. If your game has no");
     console.log("    save yet, adopt save-slots FIRST so hasSave() has something real to");
-    console.log("    check. See games/dog-punk/app.js (search \"TITLE\") once wired.");
+    console.log("    check.");
+    console.log("    A LOGO AND A BUTTON IS A PLACEHOLDER, NOT A TITLE SCREEN — it will pass");
+    console.log("    every mechanical check here while looking like it could be any game's");
+    console.log("    title screen (this happened on Dog Punk). If the game has its own");
+    console.log("    character art, pass onShow to draw it on the title layer, the same way");
+    console.log("    a chapter-intro cutscene draws a portrait — see games/dog-punk/app.js");
+    console.log("    (search \"drawTitlePortrait\") for a worked example, and");
+    console.log("    shared/title-screen.js's header for the onShow contract. sync-precache.js");
+    console.log("    warns (does not fail) if onShow is missing, in case a game genuinely has");
+    console.log("    no art to show.");
   }
   console.log("Run node .github/autopilot/sync-precache.js after to confirm the wiring gate passes.");
 }
