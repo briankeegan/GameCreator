@@ -603,10 +603,9 @@ const winTimeEl = document.getElementById("winTime");
 const loseOverlay = document.getElementById("loseOverlay");
 const winRetryBtn = document.getElementById("winRetryBtn");
 const loseRetryBtn = document.getElementById("loseRetryBtn");
-const continueOverlay = document.getElementById("continueOverlay");
-const continueRoomNameEl = document.getElementById("continueRoomName");
-const continueBtn = document.getElementById("continueBtn");
-const continueRestartBtn = document.getElementById("continueRestartBtn");
+const titleLayer = document.getElementById("titleLayer");
+const titleStart = document.getElementById("titleStart");
+const titleContinue = document.getElementById("titleContinue");
 const pauseBtn = document.getElementById("pauseBtn");
 const settingsOverlay = document.getElementById("settingsOverlay");
 const settingsKeysEl = document.getElementById("settingsKeys");
@@ -664,29 +663,35 @@ function advanceIntro() {
 introBtn.addEventListener("click", advanceIntro);
 introOverlay.addEventListener("click", (e) => { if (e.target === introOverlay) advanceIntro(); });
 
-// A returning player skips straight past the cutscene they've already seen
-// — the intro is scene-setting for a first run, not something to sit through
-// again every time the tab reopens.
-const existingSave = SAVES.read(1);
-if (existingSave) {
-  introOverlay.hidden = true;
-  continueRoomNameEl.textContent = `Last seen at: ${ROOMS[existingSave.roomIndex].name}`;
-  continueOverlay.hidden = false;
-} else {
-  renderIntro();
-}
-continueBtn.addEventListener("click", () => {
-  continueOverlay.hidden = true;
-  resumeFromCheckpoint(existingSave);
-  introActive = false;
-  attackQueued = false;
+// The title screen (shared/title-screen.js) is the real boot gate — nothing
+// plays until Start or Continue is pressed there. Start erases any existing
+// checkpoint and plays the chapter-intro cutscene before a new run; Continue
+// skips the cutscene (a returning player has read it once already) and
+// resumes straight into the last checkpoint. The shared module owns only
+// showing/hiding the title layer and deciding whether Continue is offered —
+// this save's shape and what happens on each button are Dog Punk's own.
+const TITLE = window.GCTitleScreen.create(GAME_ID, {
+  layerEl: titleLayer,
+  startBtn: titleStart,
+  continueBtn: titleContinue,
+  hasSave: () => !!SAVES.read(1),
+  continueLabel: () => {
+    const save = SAVES.read(1);
+    return save ? `Continue — ${ROOMS[save.roomIndex].name}` : "Continue";
+  },
+  onStart: () => {
+    SAVES.erase(1);
+    introActive = true;
+    introOverlay.hidden = false;
+    renderIntro();
+  },
+  onContinue: () => {
+    resumeFromCheckpoint(SAVES.read(1));
+    introActive = false;
+    attackQueued = false;
+  },
 });
-continueRestartBtn.addEventListener("click", () => {
-  SAVES.erase(1);
-  continueOverlay.hidden = true;
-  introOverlay.hidden = false;
-  renderIntro();
-});
+TITLE.show();
 
 function showRoomToast(text) {
   if (!roomToastEl) return;

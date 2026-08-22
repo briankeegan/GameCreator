@@ -19,6 +19,16 @@
   <!-- Header (All Games / title / chat) is injected by nav.js below. -->
 
   <main class="game-area" id="gameArea">
+    <!-- Full-screen boot gate — shared/title-screen.js shows/hides this and
+         decides START vs CONTINUE; everything inside is Dog Punk's own
+         look, matching the run-overlay palette used everywhere else here. -->
+    <div class="title-layer" id="titleLayer">
+      <div class="title-logo">DOG<span>PUNK</span></div>
+      <p class="title-sub">Chapter 1 &middot; Scrapyard Alley</p>
+      <button class="title-start" id="titleStart">Start</button>
+      <button class="title-continue" id="titleContinue" hidden>Continue</button>
+    </div>
+
     <div class="hud" id="hud">
       <div class="hud-left">
         <div class="hearts" id="hearts"></div>
@@ -46,19 +56,10 @@
           <p>The junk rats got the best of her this time.</p>
           <button id="loseRetryBtn">Try Again</button>
         </div>
-        <div class="run-overlay cutscene-overlay" id="introOverlay">
+        <div class="run-overlay cutscene-overlay" id="introOverlay" hidden>
           <canvas class="intro-portrait" id="introPortrait" width="64" height="64"></canvas>
           <p id="introText"></p>
           <button id="introBtn">Next</button>
-        </div>
-
-        <div class="run-overlay" id="continueOverlay" hidden>
-          <h2>Welcome back</h2>
-          <p id="continueRoomName"></p>
-          <div class="settings-actions" style="width: 100%; max-width: 260px;">
-            <button id="continueBtn">Continue</button>
-            <button class="settings-reset" id="continueRestartBtn">Start Over</button>
-          </div>
         </div>
 
         <div class="run-overlay" id="settingsOverlay" hidden>
@@ -103,6 +104,7 @@
           data-version="v1"
           data-root="../../"></script>
   <script src="../../shared/storage.js"></script>
+  <script src="../../shared/title-screen.js"></script>
   <script src="../../shared/controls.js"></script>
   <script src="../../shared/save-slots.js"></script>
   <script src="rooms.js"></script>

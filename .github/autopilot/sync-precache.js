@@ -19,8 +19,9 @@
  * Script what is decidable. Do not dress a guess up as a check.
  *
  * A SECOND decidable check lives here too: a game whose own JS calls
- * window.GCControls.create(...) or window.GCSaveSlots.create(...) (the
- * shared/controls.js and shared/save-slots.js modules) but doesn't load
+ * window.GCControls.create(...), window.GCSaveSlots.create(...), or
+ * window.GCTitleScreen.create(...) (the shared/controls.js,
+ * shared/save-slots.js and shared/title-screen.js modules) but doesn't load
  * that script in its index.html, or doesn't precache it in sw.js, ships
  * broken (ReferenceError at load) or goes stale offline (works online,
  * breaks the moment the PWA is actually offline) — caught for real
@@ -93,6 +94,7 @@ function main() {
     const SHARED_MODULES = [
       { ref: /\bGCControls\.create\b/, file: "../../shared/controls.js", name: "shared/controls.js" },
       { ref: /\bGCSaveSlots\.create\b/, file: "../../shared/save-slots.js", name: "shared/save-slots.js" },
+      { ref: /\bGCTitleScreen\.create\b/, file: "../../shared/title-screen.js", name: "shared/title-screen.js" },
     ];
     for (const mod of SHARED_MODULES) {
       if (!mod.ref.test(gameJsFiles)) continue;
