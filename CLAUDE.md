@@ -161,6 +161,15 @@ design discussion. `shared/` holds the components every game reuses
     is the same size for all of them.
   - Raw generations go in `games/<id>/art-src/`; shipped sheets are rebuilt
     from them, never hand-edited.
+- **A GATE THAT ONLY RUNS WHEN SOMEBODY REMEMBERS IS NOT A GATE.** Newsey's
+  door checks — arrival, direction, roundtrip, reachability — all existed, all
+  passed, and all ran nowhere. Every door defect this session was found by the
+  owner playing the game and reporting it, while the checks that would have
+  caught them sat in the repo unrun. They run on every push now
+  (`.github/workflows/browser-checks.yml`), kept OUT of `pages.yml` because
+  browser flakiness must not block every game's deploy — a separate workflow
+  goes red on its own instead. If a check needs a browser, it still needs a
+  home; give it one rather than leaving it to memory.
 - **Every rule that matters gets three pieces: RULE -> TOOL -> GATE.** A rule
   written only in prose gets ignored; a checker nobody runs catches nothing; a
   CI failure with no explanation sends whoever hit it digging through a script

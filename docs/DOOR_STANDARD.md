@@ -318,6 +318,21 @@ exits" step in `pages.yml`. The art half is measured by
 
 ## 7. The checks
 
+**They run on every push now** (`.github/workflows/browser-checks.yml`).
+Before that, every browser-level door check was hand-run — which meant the
+only thing between a broken door and a player was somebody remembering to
+type the command. Nobody did: doors that arrived in the wrong place, fired
+when brushed, trapped you walking back, and showed rooms half-loaded were all
+found by PLAYING, one report at a time.
+
+They stay out of `pages.yml` on purpose (see the comment there): they need
+Playwright and have shown real timing flakiness, and one game's flaky timing
+must never block every game's deploy. A separate workflow is how both are
+true at once — it can go red without taking the site with it. A failing run
+retries once and only a second failure is reported, so a flake does not
+become a red check nobody chases.
+
+
 Rule → tool → gate, the same as everything else here. Every check listed was
 proved to fire by breaking a room on purpose.
 
