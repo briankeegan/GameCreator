@@ -478,6 +478,19 @@
     //   24+ hexes 3-4 charge     a lane down every axis
     //   the board 4 charge       the Railgun, and it costs the most salvage
     //
+    // WHAT THE SALVAGE PRICES ARE BASED ON, since it isn't the coverage
+    // table. Each gun was flown from Sector 1 by the same pilot over the
+    // same forty seeds, one gun at a time, and the honest result is that
+    // they are worth about the SAME: no second gun at all leaves the
+    // median run ending at depth 4, and almost every one of them takes it
+    // to depth 8. The differences between guns sit inside the noise at
+    // that sample size.
+    //
+    // So the salvage spread is deliberately narrow — 6 to 20, not 6 to 30.
+    // A five-fold price range was a claim about relative value that
+    // nothing measured supports. The differentiation that IS real lives in
+    // the energy cost, which is a rate of fire you can feel every round.
+    //
     // The three lane guns are a strict ladder, and have to be: a Railgun's
     // line swallows an Arc Projector's, which swallows a Beam Lance's, so
     // each one up costs another charge — 3, 4, 5 — or the one below it is
@@ -557,13 +570,20 @@
     // rather than geometry, and the only one that reliably threatens a
     // crowd — including its own side, which is exactly why the class that
     // carries it refuses to throw one near a friend (see INHIBITIONS).
-        // Thrown to exactly two hexes — a short lob, deliberately. The blast
+        // Minimum TWO. At one, the blast — which covers a full ring around
+    // where it lands — reaches back over the hex you threw it from, so
+    // you blow yourself up. The hostiles never did this because
+    // INHIBITIONS.blastSafe counts the thrower; the player had no such
+    // protection and it showed. Measured with the real pilot: every other
+    // gun took the median run from depth 4 to depth 8, and this one took
+    // it to depth 2 — the only weapon in the game that made you worse.
+    // Thrown to between two and three hexes. The blast
     // covers a full ring around where it lands, so from two out the
     // thrower is standing one hex clear of its own bomb and no further:
     // it has to come in close and then live with what it did. Reaching
     // three as well would have made it a strictly better Mortar (same
     // charge, same damage, more ground), which the roster rule forbids.
-    demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", shape: "ring", range: 3, minRange: 1, damage: 1, targets: "one", energyCost: 3, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, places: true, blast: 1 },
+    demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", shape: "ring", range: 3, minRange: 2, damage: 1, targets: "one", energyCost: 3, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, places: true, blast: 1 },
   };
   // Static data, read everywhere, written nowhere — frozen so an
   // accidental mutation (a helper that "just tweaks" a weapon object for
@@ -1378,22 +1398,32 @@
     // The bottom of the shelf: the one thing an early run can actually
     // afford outright, and the only gun that asks which way you're facing.
     { id: "prowCannon", label: "Prow Cannon (1x2 — a wedge two deep off the nose)", cost: 6, rarity: "common" },
-    { id: "siegeMaul", label: "Siege Maul (2x2 — contact only, 2 dmg — it goes through screens)", cost: 13, rarity: "uncommon" },
+    { id: "siegeMaul", label: "Siege Maul (2x2 — contact only, 2 dmg — it goes through screens)", cost: 12, rarity: "uncommon" },
     { id: "flakBurst", label: "Flak Burst (2x2 — everything touching us, at once)", cost: 10, rarity: "uncommon" },
     { id: "arcBeam", label: "Arc Beam (2x2 — the ring at two. Nothing closer.)", cost: 9, rarity: "uncommon" },
-    { id: "beamLance", label: "Beam Lance (1x3 — two to five down any axis, nothing adjacent)", cost: 20, rarity: "rare" },
-    { id: "mortar", label: "Mortar (2x2 — lands at three, straight over the rocks)", cost: 14, rarity: "rare" },
-    { id: "flankTubes", label: "Flank Tubes (1x3 — the gaps at two, 2 dmg)", cost: 16, rarity: "rare" },
-    { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 30, rarity: "rare" },
-    { id: "missilePod", label: "Missile Pod (2x2 — it flies itself, 2 dmg)", cost: 18, rarity: "rare" },
+    { id: "beamLance", label: "Beam Lance (1x3 — two to five down any axis, nothing adjacent)", cost: 14, rarity: "rare" },
+    { id: "mortar", label: "Mortar (2x2 — lands at three, straight over the rocks)", cost: 13, rarity: "rare" },
+    { id: "flankTubes", label: "Flank Tubes (1x3 — the gaps at two, 2 dmg)", cost: 15, rarity: "rare" },
+    { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 20, rarity: "rare" },
+    { id: "missilePod", label: "Missile Pod (2x2 — it flies itself, 2 dmg)", cost: 16, rarity: "rare" },
     // Cheap because it's slow: same reach as the Beam Lance, one round in
     // three. The gun you buy when what you need is to out-range something,
     // not to out-shoot it.
-    { id: "arcProjector", label: "Arc Projector (1x3 — one to five down any axis, contact included)", cost: 24, rarity: "rare" },
+    { id: "arcProjector", label: "Arc Projector (1x3 — one to five down any axis, contact included)", cost: 18, rarity: "rare" },
     // Priced with the Mortar, and for the same reason: it's the answer to
     // ground rather than to a ship. It threatens seven hexes at once and
     // it does not care what's standing on them, including you.
-    { id: "demolitionCharge", label: "Demolition Charge (2x2 — lobbed up to three, a two-round fuse, seven hexes)", cost: 15, rarity: "rare" },
+    // The cheapest rare, and priced there on measurement rather than on
+    // how impressive its footprint looks. Flown from Sector 1 by the same
+    // pilot as every other gun it managed 80 shots for 7 kills and took
+    // the median run DOWN to depth 2 — the only weapon that makes a ship
+    // worse. A two-round fuse cannot catch a one-hull ship that moves
+    // every round; it is a weapon for ground you can force something
+    // through, and against the roster in this game that situation is rare.
+    // It stays on the shelf because it is genuinely good in a hostile's
+    // hands and nothing here is enemy-only, but it is not sold as an
+    // upgrade.
+    { id: "demolitionCharge", label: "Demolition Charge (2x2 — lobbed two or three, a two-round fuse, seven hexes)", cost: 10, rarity: "rare" },
   ];
 
   // Roughly Slay the Spire's shop odds (~54/37/9 common/uncommon/rare) and
