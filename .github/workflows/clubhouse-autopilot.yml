@@ -1112,17 +1112,52 @@ jobs:
       # Note the trade-off: cancelling a run by hand also re-dispatches it. To
       # actually stop a thread, flip its `autopilot` flag off in games.json (or
       # disable this workflow) rather than cancelling runs.
+      #
+      # `!= 'false'` here, not `== 'true'`: if "Resolve thread context" itself
+      # is what failed/timed out, its `enabled` output was never set (empty,
+      # neither string), and requiring `== 'true'` used to skip this whole step
+      # — no status update, no retry, no reply, nothing, for the one step whose
+      # failure most needs a retry (it runs before anything else can). The only
+      # case that should genuinely skip this is `enabled == 'false'`, meaning
+      # ctx itself SUCCEEDED and told us this game opted out — that's a real,
+      # deliberate "leave this thread alone", not a failure. Retrying blind
+      # when ctx failed costs at most one extra run: if the game turns out to
+      # be disabled, that retry's own ctx step sets enabled=false and every
+      # later step (including this one) skips on the next pass, so it can't
+      # loop or spam a disabled game's thread.
       - name: Retry or report failure
-        if: (failure() || cancelled()) && steps.ctx.outputs.enabled == 'true'
+        if: (failure() || cancelled()) && steps.ctx.outputs.enabled != 'false'
         timeout-minutes: 5
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          # Fall back to the raw event when ctx never ran/finished — same
+          # values ctx itself would have derived them from, so a retry
+          # dispatched from here still carries a real PR number.
+          PR: ${{ steps.ctx.outputs.pr || github.event.inputs.pr_number || github.event.issue.number }}
         run: |
-          GC_STATUS_PR=${{ steps.ctx.outputs.pr }} .github/autopilot/status.sh \
+          GC_STATUS_PR="$PR" .github/autopilot/status.sh \
             "run failed or was cancelled - see ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           ATTEMPT="${{ github.event.inputs.attempt || '1' }}"
           MAX=3
+
+          # DON'T REDO WORK THAT'S ALREADY LIVE. If "Land changes on main and
+          # deploy" already succeeded — the model's edits are committed and
+          # pushed — and something AFTER that (waiting on the deploy, posting
+          # the reply) is what failed or got cancelled, a normal retry would
+          # re-run the model step from scratch on a thread that still has no
+          # "**Claude says:**" reply. It would see the same outstanding
+          # message and very likely redo the same edits, burning a full model
+          # pass (and a second deploy) for no new work. The change is already
+          # shipped either way, so just say that and stop instead of retrying.
+          if [ "${{ steps.land.outputs.deployed }}" = "1" ]; then
+            N=$(gh run list --workflow pages.yml --status success --limit 1 --json number --jq '.[0].number' 2>/dev/null)
+            [ -z "$N" ] && N='?'
+            gh pr comment "$PR" --repo "$REPO" \
+              --body "$(printf '**Claude says:**\n\nThe change already landed on `main` before this run got cut off partway through wrapping up, so it should be live now (or shortly) — [v0.%s]. I did not get to write my usual summary of what changed; ask and I will describe it, but there is no need to re-ask for the work itself.' "$N")" \
+              || echo "::error::could not post the already-shipped reply — the sweeper will pick this up in the next 15-min cycle."
+            exit 0
+          fi
 
           # SOME FAILURES ARE NOT TRANSIENT, AND RETRYING THEM IS A LIE.
           #
@@ -1158,7 +1193,7 @@ jobs:
           esac
           if [ -n "$fatal" ]; then
             echo "::error::not retrying — $err"
-            gh pr comment ${{ steps.ctx.outputs.pr }} --repo "$REPO" \
+            gh pr comment "$PR" --repo "$REPO" \
               --body "$(printf '**Claude says:**\n\n%s' "$fatal")" \
               || echo "::error::could not post the fatal-error reply — the thread's last comment is still the working-status marker; the sweeper will pick this up in the next 15-min cycle."
             exit 0
@@ -1171,11 +1206,11 @@ jobs:
             NEXT=$((ATTEMPT + 1))
             echo "Attempt $ATTEMPT/$MAX failed — scheduling retry $NEXT."
             gh workflow run clubhouse-autopilot.yml --ref main \
-              -f pr_number="${{ steps.ctx.outputs.pr }}" \
+              -f pr_number="$PR" \
               -f message="(automatic retry — address all outstanding requests in this thread)" \
               -f attempt="$NEXT" \
               || echo "::warning::could not schedule retry"
-            gh pr comment ${{ steps.ctx.outputs.pr }} --repo "$REPO" \
+            gh pr comment "$PR" --repo "$REPO" \
               --body "$(printf '**Claude says:**\n\nThat run hit a snag — retrying automatically (attempt %s of %s). Give it about 10 minutes.' "$NEXT" "$MAX")" \
               || echo "::error::could not post the retry-scheduled reply — the thread's last comment is still the working-status marker; the sweeper will pick this up in the next 15-min cycle."
           else
@@ -1186,7 +1221,7 @@ jobs:
             else
               body=$(printf 'Something went wrong while handling that. Details: %s/%s/actions/runs/%s' "${{ github.server_url }}" "$REPO" "${{ github.run_id }}")
             fi
-            gh pr comment ${{ steps.ctx.outputs.pr }} --repo "$REPO" \
+            gh pr comment "$PR" --repo "$REPO" \
               --body "$(printf '**Claude says:**\n\nI tried %s times and still could not get this to go through, so I have stopped to avoid burning more on it — a human should take a look.\n\n%s' "$MAX" "$body")" \
               || echo "::error::could not post the out-of-retries reply — the thread's last comment is still the working-status marker; the sweeper will pick this up in the next 15-min cycle."
           fi
