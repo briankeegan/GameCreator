@@ -127,6 +127,14 @@
   // constants without that +1.
   var GARBAGE_FLIGHT = GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1 + GARBAGE_DELAY_LAND_TIME;
 
+  // checkMatches.lua's TA (Tsu-Attack) score tables. Index 0 is always 0 —
+  // that's what makes a plain match (comboSize<=3, not chaining) score 0.
+  var SCORE_COMBO_TA = [0, 0, 0, 0, 20, 30, 50, 60, 70, 80, 100, 140, 170, 210, 250, 290, 340, 390, 440, 490, 550, 610, 680, 750, 820, 900, 980, 1060, 1150, 1240, 1330];
+  // Note index 1 is unused (0) — chain_counter jumps 0 -> 2 directly, never 1
+  // (Stack:incrementChainCounter), so index 2 (a x2 chain) is the first
+  // meaningful entry.
+  var SCORE_CHAIN_TA = [0, 0, 50, 80, 150, 300, 400, 500, 700, 900, 1100, 1300, 1500, 1800];
+
   // Deterministic RNG (mulberry32) so a duel replays identically from a seed —
   // Math.random would make the smoke test unreproducible.
   function makeRng(seed) {
@@ -886,7 +894,7 @@
       });
 
       if (isChainLink || comboSize > 3) this.pushGarbage(origin, isChainLink, comboSize);
-      this.score += comboSize * 10 + (comboSize > 3 ? (comboSize - 3) * 20 : 0);
+      this.updateScoreWithBonus(comboSize);
     }
 
     this.clearChainingFlags();
@@ -936,6 +944,36 @@
         }
       }
     }
+  };
+
+  // Stack:addScore — every score gain funnels through here so the 99999 cap
+  // (checkMatches.lua's "lol owned") always applies.
+  Stack.prototype.addScore = function (score) {
+    this.score += score;
+    if (this.score > 99999) this.score = 99999;
+  };
+
+  // Stack:updateScoreWithChain — always awarded, chaining or not (chainCounter
+  // is 0 outside a chain, and SCORE_CHAIN_TA[0] is 0, so a plain match adds
+  // nothing here). A chain longer than 13 links resets its bonus to 0 rather
+  // than clamping to the table's top entry — a faithfully-ported quirk, not
+  // a bug in this port.
+  Stack.prototype.updateScoreWithChain = function () {
+    var chainBonus = this.chainCounter;
+    if (chainBonus > 13) chainBonus = 0;
+    this.addScore(SCORE_CHAIN_TA[chainBonus]);
+  };
+
+  // Stack:updateScoreWithCombo.
+  Stack.prototype.updateScoreWithCombo = function (comboSize) {
+    if (comboSize > 3) this.addScore(SCORE_COMBO_TA[Math.min(30, comboSize)]);
+  };
+
+  // Stack:updateScoreWithBonus — call after chainCounter has already been
+  // incremented for this match.
+  Stack.prototype.updateScoreWithBonus = function (comboSize) {
+    this.updateScoreWithChain();
+    this.updateScoreWithCombo(comboSize);
   };
 
   // Stack:calculateStopTime, MODERN formula.
@@ -1143,10 +1181,10 @@
         this.displacement--;
         if (this.displacement === 1) {
           // the last pixel is handed to passive raise on the next frame
+          if (!this.preventManualRaise) this.addScore(1);
           this.manualRaise = false;
           this.riseTimer = 1;
           this.preventManualRaise = true;
-          this.score += 1;
         }
         this.manualRaiseYet = true;
       }
