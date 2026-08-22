@@ -220,6 +220,27 @@ exits" step in `pages.yml`. The art half is measured by
   Before adding a drawn door, open the room art and check there isn't one
   there already.
 
+- **YOU COME OUT WHERE YOU WOULD GO IN.** Arrival is the partner door's own
+  rectangle — the same spot you would walk into to come back — not a place
+  near it. Stepping out to a clear patch of floor puts you a stride into the
+  room from an opening you cannot see, which reads as being teleported in
+  rather than walking through a wall, and it makes the two sides of a door
+  impossible to line up by eye.
+  - Standing on the doorstep is safe *because* of the two rules below: a door
+    arrives disarmed, and stays shut until you let go of the direction that
+    brought you through. That pair is what makes landing on the trigger work,
+    and it is why the old `DOORSTEP_CLEARANCE` was never needed.
+  - Which way you face on arrival is the opposite of the partner door's own
+    entry direction — derived, not typed, like everything else about a door.
+  - Checked by `.github/scripts/door-arrival.test.js`, which asks the running
+    game for every door's arrival and fails unless it lands inside the partner
+    rectangle.
+  - **That test must VISIT each room before asking about it.** `canStand`
+    needs the room's walk mask decoded, and an unvisited room has none — so it
+    answers "you cannot stand anywhere", which is indistinguishable from a
+    door with no arrival. The first version of this test reported five broken
+    doors that were all fine.
+
 ## 5. Arriving without bouncing back
 
 - **Doors arrive DISARMED and re-arm only when you step clear of them.**
