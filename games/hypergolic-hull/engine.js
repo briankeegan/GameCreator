@@ -1396,9 +1396,14 @@
   // hardpoint unlock a little deeper, so uncommon; mortar/flankTubes/
   // railgun are the late, expensive, run-defining shapes, so rare.
   const OUTPOST_OFFER_POOL = [
-    // Eight, down from ten. Salvage income was rebalanced for a shelf that
-    // tops out at twenty; a patch at ten was priced against the old one.
-    { id: "repair", label: "Patch 1 Hull", cost: 8 },
+    // Six. It has walked down from ten as the rest of the economy moved —
+    // income was rebalanced for a shelf topping out at twenty, and then
+    // ranged classes stopped walking into their own dead zones, which made
+    // them meaningfully deadlier. Measured at that point: eight gave 19/20
+    // wins in 60, six gives 23/26, five gives 25/28. Six sits in the band
+    // the comparable games do (FTL on Hard is around 60% for a skilled
+    // human; these pilots are heuristics and should land under that).
+    { id: "repair", label: "Patch 1 Hull", cost: 6 },
     { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 10, rarity: "common" },
     // Shields aren't consumable purchases anymore — you buy the GENERATOR
     // (permanent +1 capacity, arrives raised), then re-raising a spent
@@ -2858,8 +2863,40 @@
       const closers = candidates.filter((c) => c.dist <= standoff);
       const bearsFrom = (list) => list.filter((c) => solutionKeys.has(hexKey(c.to)));
       const allowed = bearing.length ? closers : candidates;
-      const pool = bearsFrom(allowed).length ? bearsFrom(allowed) : closers.length ? closers : candidates;
-      const solutions = (enemy.idleRounds || 0) >= PATIENCE ? [] : firingPositions(state, enemy);
+      // NEVER STEP INSIDE YOUR OWN DEAD ZONE. A hex closer than the gun's
+      // minimum range is one it definitionally cannot fire from, so it is
+      // never a better destination than one it can — and yet the Picket
+      // moved into a Beam Lance's hole on 236 of its 1368 moves, with a
+      // hex outside it available on 233 of them. That is the "just moving
+      // as close as possible" you can see from the board: not a long gun
+      // choosing to brawl, a long gun walking somewhere it does nothing.
+      //
+      // Deliberately narrow. It does NOT let anything hold its range —
+      // preferring the far edge of the band, or even the middle, was tried
+      // and both are catastrophic (greedy 23 wins in 60 -> 1 and -> 0),
+      // because reach that keeps its distance cannot be answered by a ship
+      // that walks one hex a round. Long guns still close. They just stop
+      // closing past the point where they work.
+      // Which is the no-retreat rule colliding with must-move: standing at
+      // two with both lateral hexes blocked, the only step that isn't a
+      // retreat IS the step into the hole, so it took it. 129 times in a
+      // 25-seed sample.
+      const deadZone = Math.min(...ship.weapons.map((w) => w.minRange || 1));
+      const outside = (list) => list.filter((c) => c.dist >= deadZone);
+      // In order: close, but not into the hole; then anywhere that isn't
+      // the hole even if it isn't closer — that is not kiting, it is
+      // refusing to walk somewhere the gun cannot work; then, only if the
+      // hole is genuinely all there is, take it.
+      const pool = bearsFrom(allowed).length
+        ? bearsFrom(allowed)
+        : outside(closers).length
+          ? outside(closers)
+          : outside(candidates).length
+            ? outside(candidates)
+            : closers.length
+              ? closers
+              : candidates;
+      const solutions = firingPositions(state, enemy);
       if (solutions.length) {
         const nearestSolution = (h) =>
           solutions.reduce((best, s) => Math.min(best, hexDistance(h, s)), Infinity);
