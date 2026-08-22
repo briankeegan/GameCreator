@@ -59,7 +59,8 @@
 
   // LevelPresets "modern" 1-10, minus the shock-panel fields.
   function level(startingSpeed, colors, maxHealth, comboConstant, chainConstant,
-                dangerConstant, coefficient, dangerCoefficient, hover, garbageHover, flash, face, pop) {
+                dangerConstant, coefficient, dangerCoefficient, hover, garbageHover, flash, face, pop,
+                adjacentDenialFrequency) {
     return {
       startingSpeed: startingSpeed,
       colors: colors,
@@ -69,21 +70,26 @@
         dangerConstant: dangerConstant, coefficient: coefficient,
         dangerCoefficient: dangerCoefficient
       },
-      frames: { HOVER: hover, GARBAGE_HOVER: garbageHover, FLASH: flash, FACE: face, POP: pop }
+      frames: { HOVER: hover, GARBAGE_HOVER: garbageHover, FLASH: flash, FACE: face, POP: pop },
+      // How often a freshly-generated row rerolls a horizontally-adjacent
+      // same-color pair instead of accepting it (PanelGenerator.lua) — 0
+      // means never reroll (always allow pairs), 1 means always reroll
+      // (never spawn a pair). Levels 1-7 ramp from 0 to 6/7; 8-10 are all 1.
+      adjacentDenialFrequency: adjacentDenialFrequency
     };
   }
 
   var LEVELS = [
-    level(1, 5, 121, -20, 80, 160, 20, 20, 12, 41, 44, 20, 9),
-    level(5, 5, 101, -16, 77, 152, 18, 18, 12, 36, 44, 18, 9),
-    level(9, 5, 81, -12, 74, 144, 16, 16, 11, 31, 42, 17, 8),
-    level(13, 5, 66, -8, 71, 136, 14, 14, 10, 26, 42, 16, 8),
-    level(17, 5, 51, -3, 68, 128, 12, 12, 9, 21, 38, 15, 8),
-    level(21, 5, 41, 2, 65, 120, 10, 10, 6, 16, 36, 14, 8),
-    level(25, 5, 31, 7, 62, 112, 8, 8, 5, 13, 34, 13, 8),
-    level(29, 5, 21, 12, 60, 104, 6, 6, 4, 10, 32, 12, 7),
-    level(27, 6, 11, 17, 58, 96, 4, 4, 6, 7, 30, 11, 7),
-    level(32, 6, 1, 22, 56, 88, 2, 2, 6, 4, 28, 10, 7)
+    level(1, 5, 121, -20, 80, 160, 20, 20, 12, 41, 44, 20, 9, 0),
+    level(5, 5, 101, -16, 77, 152, 18, 18, 12, 36, 44, 18, 9, 1 / 7),
+    level(9, 5, 81, -12, 74, 144, 16, 16, 11, 31, 42, 17, 8, 2 / 7),
+    level(13, 5, 66, -8, 71, 136, 14, 14, 10, 26, 42, 16, 8, 3 / 7),
+    level(17, 5, 51, -3, 68, 128, 12, 12, 9, 21, 38, 15, 8, 4 / 7),
+    level(21, 5, 41, 2, 65, 120, 10, 10, 6, 16, 36, 14, 8, 5 / 7),
+    level(25, 5, 31, 7, 62, 112, 8, 8, 5, 13, 34, 13, 8, 6 / 7),
+    level(29, 5, 21, 12, 60, 104, 6, 6, 4, 10, 32, 12, 7, 1),
+    level(27, 6, 11, 17, 58, 96, 4, 4, 6, 7, 30, 11, 7, 1),
+    level(32, 6, 1, 22, 56, 88, 2, 2, 6, 4, 28, 10, 7, 1)
   ];
 
   // checkMatches.lua COMBO_GARBAGE: a combo of N panels sends these garbage
@@ -469,6 +475,14 @@
     this.height = HEIGHT;
     this.name = opts.name || "player";
     this.rng = makeRng(opts.seed || 1);
+    // PanelGenerator's adaptive horizontal-pair denial: NOT a per-pick
+    // probability roll — it tracks how many pair-rolls have actually been
+    // accepted vs denied over the stack's whole lifetime and denies the
+    // next one whenever the running denial RATE hasn't yet caught up to
+    // adjacentDenialFrequency. See generateRowColors.
+    this.adjacentDenialFrequency = this.levelData.adjacentDenialFrequency;
+    this.adjacentAccepted = 0;
+    this.adjacentDenied = 0;
 
     this.panels = [];
     this.panelIdCount = 0;
@@ -502,7 +516,7 @@
     this.panelsCleared = 0;
     this.score = 0;
 
-    this.curRow = 6;
+    this.curRow = 7; // Stack.lua:254 default
     this.curCol = 3; // cursor covers curCol and curCol + 1
     this.topCurRow = this.height - 1;
     this.queuedSwapRow = 0;
@@ -535,16 +549,67 @@
     return r;
   };
 
-  // Picks a color for (row, col) that cannot already be part of a match:
-  // never a third in a column, never a third in a row.
-  Stack.prototype.pickColor = function (row, col) {
-    var banned = {};
-    var p = this.panels;
-    if (row >= 2 && p[row - 1][col].color === p[row - 2][col].color) banned[p[row - 1][col].color] = true;
-    if (col >= 3 && p[row][col - 1].color === p[row][col - 2].color) banned[p[row][col - 1].color] = true;
-    var choices = [];
-    for (var c = 1; c <= this.colors; c++) if (!banned[c]) choices.push(c);
-    return choices[Math.floor(this.rng() * choices.length)];
+  // GeneratorSource:isBadRow — an entire generated row is rerolled if every
+  // color present in it appears exactly 0 or 2 times (too evenly "paired up"
+  // to read as random). row is a 1-indexed color array like this.panels[r].
+  function isBadRow(row) {
+    var counts = {};
+    for (var c = 1; c <= 9; c++) counts[c] = 0;
+    for (var col = 1; col < row.length; col++) counts[row[col]] = (counts[row[col]] || 0) + 1;
+    for (var color = 1; color <= 9; color++) {
+      var count = counts[color];
+      if (count !== 0 && count !== 2) return false;
+    }
+    return true;
+  }
+
+  // PanelGenerator:generatePanels — generates one full row of colors given
+  // the fixed neighbor row it can't vertically match (neighborColors, a
+  // 1-indexed array, or null/undefined for "no neighbor"). Never a third
+  // color in a row; a second-in-a-row (horizontal adjacency) is allowed or
+  // denied per this level's adjacentDenialFrequency, using the same
+  // lifetime accepted/denied counters as the reference (so the very first
+  // adjacent-pair roll of the whole game is always accepted, since
+  // 0/0 is NaN and NaN <= x is false). The whole row is rerolled if it ends
+  // up "bad" (see isBadRow).
+  Stack.prototype.generateRowColors = function (neighborColors) {
+    var row;
+    do {
+      row = [];
+      row[0] = null;
+      for (var n = 1; n <= W; n++) {
+        var previousTwoMatch = n > 2 && row[n - 1] === row[n - 2];
+        var belowColor = neighborColors ? neighborColors[n] : 0;
+        var color, nogood = true;
+        while (nogood) {
+          color = 1 + Math.floor(this.rng() * this.colors);
+          if (color === belowColor) {
+            nogood = true;
+          } else if (previousTwoMatch && color === row[n - 1]) {
+            nogood = true;
+          } else if (n > 1 && color === row[n - 1]) {
+            if (this.adjacentDenialFrequency >= 1) {
+              nogood = true;
+            } else if (this.adjacentDenialFrequency === 0) {
+              nogood = false;
+            } else {
+              var frequency = this.adjacentDenied / (this.adjacentAccepted + this.adjacentDenied);
+              if (frequency <= this.adjacentDenialFrequency) {
+                this.adjacentDenied++;
+                nogood = true;
+              } else {
+                this.adjacentAccepted++;
+                nogood = false;
+              }
+            }
+          } else {
+            nogood = false;
+          }
+        }
+        row[n] = color;
+      }
+    } while (isBadRow(row));
+    return row;
   };
 
   // GeneratorSource:getStartingBoardHeight — always 7, regardless of level.
@@ -558,10 +623,11 @@
   // instead of a dead-flat one — visible on literally the first frame of
   // every game, so it's not a subtle port detail.
   Stack.prototype.buildStartingBoard = function () {
+    var neighborColors = null;
     for (var row = 1; row <= STARTING_BOARD_HEIGHT; row++) {
-      for (var col = 1; col <= W; col++) {
-        this.panels[row][col].color = this.pickColor(row, col);
-      }
+      var rowColors = this.generateRowColors(neighborColors);
+      for (var col = 1; col <= W; col++) this.panels[row][col].color = rowColors[col];
+      neighborColors = rowColors;
     }
     var height = [];
     for (var c = 1; c <= W; c++) height[c] = STARTING_BOARD_HEIGHT;
@@ -580,19 +646,17 @@
   // Row 0 is the dimmed row waiting below the board. Its colors also may not
   // complete a match the moment it becomes row 1.
   Stack.prototype.fillNewRow = function (row) {
+    var above1 = this.panels[row + 1];
+    var neighborColors = null;
+    if (above1) {
+      neighborColors = [];
+      for (var col = 1; col <= W; col++) neighborColors[col] = above1[col].color;
+    }
+    var rowColors = this.generateRowColors(neighborColors);
     for (var col = 1; col <= W; col++) {
-      var banned = {};
-      var above1 = this.panels[row + 1] && this.panels[row + 1][col];
-      var above2 = this.panels[row + 2] && this.panels[row + 2][col];
-      if (above1 && above2 && above1.color !== 0 && above1.color === above2.color) banned[above1.color] = true;
-      if (col >= 3 && this.panels[row][col - 1].color === this.panels[row][col - 2].color) {
-        banned[this.panels[row][col - 1].color] = true;
-      }
-      var choices = [];
-      for (var c = 1; c <= this.colors; c++) if (!banned[c]) choices.push(c);
       var panel = this.panels[row][col];
       clearPanel(panel, true, true);
-      panel.color = choices[Math.floor(this.rng() * choices.length)];
+      panel.color = rowColors[col];
       panel.state = "dimmed";
     }
   };
