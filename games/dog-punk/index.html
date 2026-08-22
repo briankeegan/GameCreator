@@ -29,6 +29,28 @@
       <button class="title-continue" id="titleContinue" hidden>Continue</button>
     </div>
 
+    <!-- Three-file SELECT/COPY/ERASE screen, shared/file-select.js — reached
+         from Start. Same dark/pink palette as the title layer above. -->
+    <div class="title-layer" id="titleFiles" hidden>
+      <h2 class="files-heading" id="filesHeading">Select File</h2>
+      <div class="mode-row" id="filesModeRow">
+        <button class="mode-btn on" data-mode="play">Play</button>
+        <button class="mode-btn" data-mode="copy">Copy</button>
+        <button class="mode-btn" data-mode="erase">Erase</button>
+      </div>
+      <div class="file-list" id="dpFileList"></div>
+      <p class="files-note" id="dpFileNote"></p>
+      <button class="title-continue" id="filesBackBtn">Back</button>
+    </div>
+
+    <div class="run-overlay" id="dpConfirm" hidden>
+      <p id="dpConfirmText"></p>
+      <div class="settings-actions" style="width: 100%; max-width: 260px;">
+        <button class="settings-reset" id="dpConfirmYes">Yes</button>
+        <button id="dpConfirmNo">Cancel</button>
+      </div>
+    </div>
+
     <div class="hud" id="hud">
       <div class="hud-left">
         <div class="hearts" id="hearts"></div>
@@ -104,6 +126,7 @@
           data-version="v1"
           data-root="../../"></script>
   <script src="../../shared/storage.js"></script>
+  <script src="../../shared/file-select.js"></script>
   <script src="../../shared/title-screen.js"></script>
   <script src="../../shared/controls.js"></script>
   <script src="../../shared/save-slots.js"></script>

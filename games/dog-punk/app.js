@@ -176,7 +176,12 @@ function normalizeSave(data) {
   b.updatedAt = data.updatedAt || b.createdAt;
   return b;
 }
-const SAVES = window.GCSaveSlots.create(GAME_ID, { slots: 1, blank: blankSave, normalize: normalizeSave });
+const SAVES = window.GCSaveSlots.create(GAME_ID, { slots: 3, blank: blankSave, normalize: normalizeSave });
+// Which of the three files is actually being played — set the moment a
+// file is picked (fresh or resumed) in the title screen's file-select
+// wiring below, read by saveCheckpoint()/the chapter-complete erase so a
+// checkpoint always lands on the file the player chose.
+let activeSlot = 1;
 
 // The maps, gate/spawn cells, per-room win conditions and zone tints live in
 // rooms.js — plain data, no DOM — so a tool can read them without running the
@@ -613,6 +618,16 @@ const titleStart = document.getElementById("titleStart");
 const titleContinue = document.getElementById("titleContinue");
 const titlePortrait = document.getElementById("titlePortrait");
 const titlePortraitCtx = titlePortrait ? titlePortrait.getContext("2d") : null;
+const titleFiles = document.getElementById("titleFiles");
+const filesHeadingEl = document.getElementById("filesHeading");
+const filesModeRow = document.querySelectorAll("#filesModeRow .mode-btn");
+const dpFileList = document.getElementById("dpFileList");
+const dpFileNote = document.getElementById("dpFileNote");
+const filesBackBtn = document.getElementById("filesBackBtn");
+const dpConfirmOverlay = document.getElementById("dpConfirm");
+const dpConfirmText = document.getElementById("dpConfirmText");
+const dpConfirmYes = document.getElementById("dpConfirmYes");
+const dpConfirmNo = document.getElementById("dpConfirmNo");
 const pauseBtn = document.getElementById("pauseBtn");
 const settingsOverlay = document.getElementById("settingsOverlay");
 const settingsKeysEl = document.getElementById("settingsKeys");
@@ -689,31 +704,93 @@ function drawTitlePortrait() {
   titlePortraitCtx.restore();
 }
 
+// Erase/overwrite confirmation for the file-select screen below — Dog
+// Punk's own themed dialog (same .run-overlay language as win/lose/pause),
+// the "confirm" callback shared/file-select.js expects.
+let dpConfirmFn = null;
+function dogPunkConfirm(text, yesLabel, fn) {
+  dpConfirmText.textContent = text;
+  dpConfirmYes.textContent = yesLabel;
+  dpConfirmFn = fn;
+  dpConfirmOverlay.hidden = false;
+}
+dpConfirmYes.addEventListener("click", () => {
+  const fn = dpConfirmFn;
+  dpConfirmOverlay.hidden = true;
+  dpConfirmFn = null;
+  if (fn) fn();
+});
+dpConfirmNo.addEventListener("click", () => {
+  dpConfirmOverlay.hidden = true;
+  dpConfirmFn = null;
+});
+
+// Three-file SELECT/COPY/ERASE screen (shared/file-select.js), reached from
+// the title screen's Start. Picking an empty file plays the chapter-intro
+// cutscene before a new run; picking an existing one skips straight to its
+// checkpoint, same as Continue below does for the last-played file.
+function beginFile(index, isNew) {
+  activeSlot = index;
+  titleFiles.hidden = true;
+  if (isNew) {
+    introActive = true;
+    introOverlay.hidden = false;
+    renderIntro();
+  } else {
+    resumeFromCheckpoint(SAVES.read(index));
+    introActive = false;
+    attackQueued = false;
+  }
+}
+
+const FILES = window.GCFileSelect.create(GAME_ID, {
+  saves: SAVES,
+  listEl: dpFileList,
+  noteEl: dpFileNote,
+  modeButtons: filesModeRow,
+  renderSlotBody: (slot) => {
+    if (!slot.data) return "— Empty —";
+    return `${ROOMS[slot.data.roomIndex].name} · ${window.GCSaveSlots.formatPlaytime(slot.data.elapsedBefore)} · HP ${slot.data.hp}/${slot.data.maxHp}`;
+  },
+  onPlay: beginFile,
+  confirm: dogPunkConfirm,
+  onRender: () => {
+    filesHeadingEl.textContent = FILES.mode() === "play" ? "Select File"
+      : FILES.mode() === "copy" ? "Copy File" : "Erase File";
+  },
+});
+
+filesBackBtn.addEventListener("click", () => {
+  titleFiles.hidden = true;
+  TITLE.show();
+});
+
 // The title screen (shared/title-screen.js) is the real boot gate — nothing
-// plays until Start or Continue is pressed there. Start erases any existing
-// checkpoint and plays the chapter-intro cutscene before a new run; Continue
-// skips the cutscene (a returning player has read it once already) and
-// resumes straight into the last checkpoint. The shared module owns only
-// showing/hiding the title layer and deciding whether Continue is offered —
-// this save's shape and what happens on each button are Dog Punk's own.
+// plays until Start or Continue is pressed there. Start opens the file
+// screen above; Continue skips it and resumes straight into whichever file
+// was played last (the cutscene is scene-setting for a new file, not
+// something a returning player sits through again). The shared module owns
+// only showing/hiding the title layer and deciding whether Continue is
+// offered — this save's shape and what each button does are Dog Punk's own.
 const TITLE = window.GCTitleScreen.create(GAME_ID, {
   layerEl: titleLayer,
   startBtn: titleStart,
   continueBtn: titleContinue,
-  hasSave: () => !!SAVES.read(1),
+  hasSave: () => !!SAVES.lastSlot(),
   continueLabel: () => {
-    const save = SAVES.read(1);
+    const last = SAVES.lastSlot();
+    const save = last ? SAVES.read(last) : null;
     return save ? `Continue — ${ROOMS[save.roomIndex].name}` : "Continue";
   },
   onShow: drawTitlePortrait,
   onStart: () => {
-    SAVES.erase(1);
-    introActive = true;
-    introOverlay.hidden = false;
-    renderIntro();
+    titleFiles.hidden = false;
+    FILES.render();
   },
   onContinue: () => {
-    resumeFromCheckpoint(SAVES.read(1));
+    const last = SAVES.lastSlot();
+    activeSlot = last;
+    resumeFromCheckpoint(SAVES.read(last));
     introActive = false;
     attackQueued = false;
   },
@@ -963,7 +1040,7 @@ function transitionToRoom(idx, entry) {
 // re-anchors the checkpoint there too — same as it already re-rolls that
 // room fresh (see transitionToRoom's own comment on backward entries).
 function saveCheckpoint() {
-  SAVES.write(1, {
+  SAVES.write(activeSlot, {
     roomIndex: state.roomIndex,
     hp: state.player.hp,
     maxHp: state.player.maxHp,
@@ -1373,7 +1450,7 @@ function update(dt, now) {
     } else {
       state.won = true;
       state.elapsed = (now - state.startTime) / 1000;
-      SAVES.erase(1); // chapter complete — nothing left to resume
+      SAVES.erase(activeSlot); // chapter complete — nothing left to resume
       const best = GCStorage.get(GAME_ID, "chapter1BestSecondsV2", null);
       if (best === null || state.elapsed < best) GCStorage.set(GAME_ID, "chapter1BestSecondsV2", state.elapsed);
       winTimeEl.textContent = `Chapter 1 cleared in ${state.elapsed.toFixed(1)}s` +
