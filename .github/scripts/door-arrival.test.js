@@ -47,10 +47,10 @@ let fails=0;
    }
    return out;
  });
- console.log('from -> through -> arrives in        on the partner door?');
+ console.log('leaving        via          you arrive in    does it land on that door?');
  for(const r of rows){
    if(r.err){ console.log(`  ${r.id} ${r.link} -> ${r.dest}: ${r.err}`); if(r.err==='NO ARRIVAL')fails++; continue; }
-   const tag = r.on ? 'ON IT' : `OFF BY ${r.gap}px`;
+   const tag = r.on ? 'lands on the door' : `MISSES BY ${r.gap}px`;
    if(!r.on) fails++;
    console.log(`  ${r.id.padEnd(13)} ${r.link.padEnd(11)} -> ${r.dest.padEnd(13)} ${tag}  facing ${r.facing}`);
  }
