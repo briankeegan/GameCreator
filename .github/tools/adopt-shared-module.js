@@ -27,7 +27,7 @@
  * example, since Newsey already had its own settings/save system to
  * extract rather than build fresh.
  *
- *   node adopt-shared-module.js <gameId> <controls|save-slots|both>
+ *   node adopt-shared-module.js <gameId> <controls|save-slots|title-screen|all>
  */
 
 const fs = require("fs");
@@ -38,6 +38,7 @@ const ROOT = path.resolve(__dirname, "../..");
 const MODULES = {
   controls: "../../shared/controls.js",
   "save-slots": "../../shared/save-slots.js",
+  "title-screen": "../../shared/title-screen.js",
 };
 
 function wireHtml(htmlPath, modulePath) {
@@ -89,10 +90,10 @@ function wireServiceWorker(swPath, modulePath) {
 function main() {
   const [gameId, which] = process.argv.slice(2);
   if (!gameId || !which) {
-    console.error("usage: node adopt-shared-module.js <gameId> <controls|save-slots|both>");
+    console.error("usage: node adopt-shared-module.js <gameId> <controls|save-slots|title-screen|all>");
     process.exit(1);
   }
-  const modules = which === "both" ? Object.keys(MODULES) : [which];
+  const modules = (which === "all" || which === "both") ? Object.keys(MODULES) : [which];
   for (const name of modules) {
     if (!MODULES[name]) {
       console.error(`unknown module "${name}" — choices: ${Object.keys(MODULES).join(", ")}, both`);
@@ -137,6 +138,15 @@ function main() {
     console.log("    how many slots, and call SAVES.write()/.read() at the right moments");
     console.log("    (room transitions, etc.) — see games/dog-punk/app.js (search \"SAVES\")");
     console.log("    or games/the-game/saves.js for two differently-shaped examples.");
+  }
+  if (modules.includes("title-screen")) {
+    console.log("  - title-screen: a full-screen title layer (YOUR markup/CSS) covering");
+    console.log("    the whole game area, with a start button and (if you have a save)");
+    console.log("    a continue button, wired via GCTitleScreen.create(gameId, {layerEl,");
+    console.log("    startBtn, continueBtn, hasSave, onStart, onContinue}). Call .show()");
+    console.log("    once on boot — nothing else should run before it. If your game has no");
+    console.log("    save yet, adopt save-slots FIRST so hasSave() has something real to");
+    console.log("    check. See games/dog-punk/app.js (search \"TITLE\") once wired.");
   }
   console.log("Run node .github/autopilot/sync-precache.js after to confirm the wiring gate passes.");
 }
