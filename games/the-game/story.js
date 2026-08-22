@@ -635,12 +635,14 @@ window.NEWSEY_STORY = (function () {
       // outside it.
       floorPoly: [[66,100],[250,100],[292,140],[283,186],[42,186],[30,140]],
       exits: [
-        // The portal, measured off bg-arena.png at 320x200 (191,264,130,46
-        // at the art's native 512x341, scaled): wide and low, right at the
-        // front edge of the floor where an exit actually reads, not a tall
-        // doorway-shaped vortex. y's centre sits at 0.84 of the frame —
-        // comfortably "near" — matching what it visually is.
-        { x: 120, y: 155, w: 80, h: 27, to: "lounge", link: "portal" }
+        // The portal, measured off bg-arena.png at 320x200 (186,280,140,42
+        // at the art's native 512x341, scaled): pushed down to the very
+        // front edge of the walkable floor (floorPoly's own bottom bound is
+        // y=186) — right where an exit actually sits, not floating out on
+        // the open floor. The trigger itself is capped at y=185 so it stays
+        // inside the walk mask; the art bleeds a couple px past it into the
+        // bench trim, same as a real threshold would.
+        { x: 117, y: 160, w: 87, h: 25, to: "lounge", link: "portal" }
       ],
       obstacles: [ { x: 0, y: 88, w: 66, h: 20 }, { x: 250, y: 88, w: 70, h: 20 } ], // the stands
       npcs: [
