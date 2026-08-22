@@ -160,6 +160,34 @@ exits" step in `pages.yml`. The art half is measured by
 - **A room you can leave but never enter is a room nobody will ever see.** The
   first room of the game is the one legitimate exception.
 
+- **A DOOR IS ENTERED, NOT STOOD ON.** A door only opens for a player
+  *walking the way that door faces*: the door in the right-hand wall opens for
+  someone heading right, the arch in the back wall for someone heading up.
+  Overlap alone used to be enough, and the side doors' triggers are tall bands
+  down the edge of the room — so brushing the left wall on the way somewhere
+  else took you through the west door. It reads as the room grabbing you.
+  - The required direction is **derived from where the trigger sits**
+    (`exitEnterDir` in `app.js`), never typed beside it, for the same reason
+    arrival is derived: two values that must agree will eventually disagree. A
+    tall slot near the left edge is a door in the left wall; a wide band across
+    the bottom is the way out toward the viewer. `enter` on the exit overrides
+    it for anything that is not simply a hole in a wall.
+  - Because the shape decides the direction, a side door's trigger must be
+    **taller than it is wide** and a wall/near door's **wider than it is tall**.
+    That is also the honest shape for each: you cross a side doorway moving
+    sideways.
+  - Checked by `.github/scripts/door-direction.test.js`, which drives the real
+    game: standing on a door and walking the wrong way must not open it, and
+    walking into it the right way must.
+
+- **Only draw a door the ART does not already have.** `drawn: "threshold"`
+  exists for exits with no doorway painted in the room. The side doors carried
+  `drawn: "sidebreach"`, which painted a dark trapezoid from the trigger to the
+  frame edge over art that *already had* lit arches in both margins — a
+  hand-drawn gash unrelated to the picture underneath, 58px tall. Deleted.
+  Before adding a drawn door, open the room art and check there isn't one
+  there already.
+
 ## 5. Arriving without bouncing back
 
 - **Doors arrive DISARMED and re-arm only when you step clear of them.**

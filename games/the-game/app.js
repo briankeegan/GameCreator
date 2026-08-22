@@ -1209,7 +1209,17 @@
       if (player.x + player.w > ex.x && player.x < ex.x + ex.w &&
           player.y + player.h > ex.y && player.y < ex.y + ex.h) {
         onExit = true;
-        if (exitsArmed && !doorNeedsRelease) {
+        // A DOOR IS ENTERED, NOT STOOD ON. Overlap alone used to fire it, so
+        // brushing the left wall on the way somewhere else took you through
+        // the west door — and the side doors' triggers are tall bands down
+        // the edge of the room, so "on the way somewhere else" is most of the
+        // time. You now have to be WALKING THE WAY THE DOOR FACES: the door
+        // on the right opens for someone heading right, the arch in the back
+        // wall for someone heading up. Derived from where the trigger sits
+        // (exitEnterDir), never typed, so it cannot disagree with the wall
+        // the doorway is painted in.
+        if (exitsArmed && !doorNeedsRelease &&
+            isWalking && player.facing === exitEnterDir(ex)) {
           if (ex.link === "portal") {
             // Out of the doorway itself, not out of the player — the bloom
             // has to start where the swirl is drawn or it reads as the screen
@@ -1288,7 +1298,6 @@
       // The drawn doorway goes ON TOP of its own glow — painted under it, the
       // light washed straight through the opening and it read as a lit box.
       if (ex.drawn === "threshold") drawThreshold(ex);
-      if (ex.drawn === "sidebreach") drawSideBreach(ex);
 
     });
   }
@@ -1456,39 +1465,24 @@
   // rotated 90 degrees — a dark notch that recedes toward the frame edge,
   // with a lit sliver on the near jamb and a plain wooden lintel above and
   // below, so the way through reads as an opening you can see and walk into.
-  function drawSideBreach(ex) {
-    var x = ex.x, y = ex.y, w = ex.w, h = ex.h;
-    var dir = (x + w / 2 < VW / 2) ? "left" : "right";
-    var collar = Math.max(4, Math.round(h * 0.12));
-    var top = y + collar, bot = y + h - collar;
-    var edgeX = dir === "left" ? 0 : VW;
-    var nearX = dir === "left" ? x + w : x;
-    ctx.save();
-
-    var mouth = ctx.createLinearGradient(nearX, 0, edgeX, 0);
-    mouth.addColorStop(0, "rgba(8,4,14,0.7)");
-    mouth.addColorStop(1, "rgba(4,2,8,0.98)");
-    ctx.fillStyle = mouth;
-    ctx.beginPath();
-    ctx.moveTo(nearX, top + 3);
-    ctx.lineTo(nearX, bot - 3);
-    ctx.lineTo(edgeX, bot);
-    ctx.lineTo(edgeX, top);
-    ctx.closePath();
-    ctx.fill();
-
-    // a lit sliver on the near jamb, catching the room's own light
-    ctx.fillStyle = "rgba(255,220,170,0.16)";
-    ctx.fillRect(dir === "left" ? nearX - 2 : nearX, top, 2, bot - top);
-
-    // lintel above and below, same wood tone as the rest of the room's trim
-    ctx.fillStyle = "#5a3a24";
-    var fx = dir === "left" ? 0 : x;
-    var fw = dir === "left" ? nearX : VW - x;
-    ctx.fillRect(fx, top - 3, fw, 3);
-    ctx.fillRect(fx, bot, fw, 3);
-    ctx.restore();
+  // WHICH WAY YOU HAVE TO BE WALKING TO GO THROUGH A DOOR.
+  //
+  // Derived from where the trigger sits rather than typed beside it, for the
+  // same reason arrival is derived (DOOR_STANDARD.md §2): two values that
+  // must agree will eventually disagree. A tall slot against the left edge is
+  // a door in the left wall, so it wants someone heading left; a wide band
+  // across the bottom is the way out toward the viewer, so it wants "down".
+  // `enter` on the exit overrides it for anything that is not simply a hole
+  // in a wall.
+  function exitEnterDir(ex) {
+    if (ex.enter) return ex.enter;
+    if (ex._enter) return ex._enter;
+    var cx = ex.x + ex.w / 2, cy = ex.y + ex.h / 2;
+    ex._enter = (ex.w < ex.h) ? (cx < VW / 2 ? "left" : "right")
+                              : (cy < VH / 2 ? "up" : "down");
+    return ex._enter;
   }
+
 
   // Prefer a real standing sprite (npc.sprite — a full-body, transparent-
   // background image, feet-down) so the character actually looks like a

@@ -427,7 +427,7 @@ window.NEWSEY_STORY = (function () {
         // clear of the dip, instead of at the old centre of 169 (feet at 187,
         // inside it) — which read as a door you could walk toward and never
         // reach.
-        { x: 276, y: 148, w: 40, h: 36, to: "lounge", link: "westDoor", drawn: "sidebreach" }
+        { x: 296, y: 150, w: 18, h: 32, to: "lounge", link: "westDoor" }
       ],
       npcs: [
         {
@@ -530,10 +530,10 @@ window.NEWSEY_STORY = (function () {
       // player, so crossing means standing in the opening rather than on a
       // rectangle of floor near it.
       exits: [
-        { x: 4,   y: 118, w: 38, h: 58, to: "bedroom", link: "westDoor", drawn: "sidebreach" },
+        { x: 6,   y: 128, w: 18, h: 40, to: "bedroom", link: "westDoor" },
         { x: 90,  y: 55,  w: 33, h: 16, to: "library", link: "northArch" },
         { x: 147, y: 55,  w: 33, h: 16, to: "arena",   link: "portal" },
-        { x: 278, y: 118, w: 38, h: 58, to: "lab",     link: "eastDoor", drawn: "sidebreach" }
+        { x: 296, y: 128, w: 18, h: 40, to: "lab",     link: "eastDoor" }
       ],
       npcs: [
         {
@@ -869,7 +869,7 @@ window.NEWSEY_STORY = (function () {
         // y 124, clear of the wall panels' footprint: the leftmost panel
         // blocks y 112-120 across the room, and a trigger overlapping it is a
         // door you cannot reach.
-        { x: 2, y: 136, w: 28, h: 54, to: "lounge", link: "eastDoor", drawn: "sidebreach" }
+        { x: 6, y: 142, w: 18, h: 38, to: "lounge", link: "eastDoor" }
       ],
       npcs: [
         {
