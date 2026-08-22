@@ -119,7 +119,13 @@
   var GARBAGE_TRANSIT_TIME = 45;
   var GARBAGE_TELEGRAPH_TIME = 45;
   var GARBAGE_DELAY_LAND_TIME = 60;
-  var GARBAGE_FLIGHT = GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + GARBAGE_DELAY_LAND_TIME;
+  // GarbageQueue.lua's STAGING_DURATION is TRANSIT + TELEGRAPH + 1 (a
+  // historical "+1 to compensate for a compensation someone made," per its
+  // own comment) before garbage leaves staging into transit, then
+  // GARBAGE_DELAY_LAND_TIME more before it can land — so the real total is
+  // 151 frames, not the naive 150 you'd get by adding the three raw
+  // constants without that +1.
+  var GARBAGE_FLIGHT = GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1 + GARBAGE_DELAY_LAND_TIME;
 
   // Deterministic RNG (mulberry32) so a duel replays identically from a seed —
   // Math.random would make the smoke test unreproducible.
@@ -1020,12 +1026,24 @@
     return garbage.height > 1;
   };
 
+  // Stack:new — garbageSizeDropColumnMaps. Fixed for board width 6: each
+  // garbage width has its own repeating sequence of spawn columns (not
+  // every possible left-edge position), so e.g. width-2 garbage always
+  // lands at column 1, 3 or 5, cycling in that order, never 2 or 4.
+  var GARBAGE_DROP_COLUMN_MAPS = {
+    1: [1, 2, 3, 4, 5, 6],
+    2: [1, 3, 5],
+    3: [1, 4],
+    4: [1, 2, 3],
+    5: [1, 2],
+    6: [1]
+  };
+
   Stack.prototype.garbageSpawnColumn = function (width) {
-    var options = [];
-    for (var c = 1; c <= W - width + 1; c++) options.push(c);
+    var columns = GARBAGE_DROP_COLUMN_MAPS[width] || [1];
     var index = this.dropColumnIndex[width] || 0;
-    this.dropColumnIndex[width] = (index + 1) % options.length;
-    return options[index % options.length];
+    this.dropColumnIndex[width] = (index + 1) % columns.length;
+    return columns[index];
   };
 
   Stack.prototype.dropGarbage = function (width, height) {
