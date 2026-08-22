@@ -79,14 +79,26 @@ jobs:
               # them oldest-first) reliable. --jq runs per PAGE, so a plain
               # `last` would yield one row per page, not one overall.
               last=$(gh api "repos/$REPO/issues/$pr/comments?per_page=100" --paginate \
-                       --jq '.[] | {id, type: .user.type, body, created_at} | @base64' 2>/dev/null | tail -1)
+                       --jq '.[] | {id, type: .user.type, body, created_at, updated_at} | @base64' 2>/dev/null | tail -1)
               if [ -z "$last" ]; then echo "PR #$pr ($gid): no comments."; continue; fi
               c=$(printf '%s' "$last" | base64 -d)
 
               body=$(printf '%s' "$c" | jq -r '.body // ""')
               type=$(printf '%s' "$c" | jq -r '.type // ""')
               cid=$(printf '%s' "$c"  | jq -r '.id')
-              made=$(printf '%s' "$c" | jq -r '.created_at')
+              # updated_at, NOT created_at, for the age check below.
+              # status.sh PATCHES the SAME "Claude is working" comment in
+              # place every time a run hits a new checkpoint, so a job that's
+              # genuinely still alive and making progress keeps bumping
+              # updated_at — only created_at would stay frozen at whenever
+              # the run first posted, making a perfectly healthy 50-minute
+              # art-heavy request (well inside the 80-min job cap, nowhere
+              # near stuck) look "45 minutes stale" the moment it crossed the
+              # grace window, and get a wasteful duplicate run dispatched on
+              # top of the one already working. A truly crashed/hung run
+              # stops editing the comment entirely, so its updated_at goes
+              # stale exactly when it should.
+              made=$(printf '%s' "$c" | jq -r '.updated_at')
 
               # A finished reply always starts "**Claude says:**" — that's
               # answered. status.sh's own live-progress comment starts
