@@ -435,26 +435,41 @@
     return found && found.rect === null ? found : found;
   }
 
-  // Walk out from the partner door until there is floor to stand on that
-  // isn't inside any exit trigger — that last part is what stops you landing
-  // on the door and being sent straight back.
+  // YOU COME OUT WHERE YOU WOULD GO IN. Arrival is the partner door itself —
+  // the same rectangle you would walk into to come back — not a spot near it.
+  //
+  // This used to step OUT from the door until it found floor that was clear
+  // of every trigger by DOORSTEP_CLEARANCE, which put you a stride or more
+  // into the room from an opening you could not see. Going through a door and
+  // arriving somewhere that is not the matching door reads as being teleported
+  // into the room rather than walking through a wall, and it made the two
+  // sides of a door impossible to line up by eye.
+  //
+  // Standing on the trigger is safe, and by design: doors arrive DISARMED and
+  // re-arm only once you step clear (§5 of DOOR_STANDARD.md), and the door
+  // also stays shut until you let go of the direction that brought you here.
+  // That is exactly the pair of rules that makes landing ON the doorstep
+  // work, and it is why the clearance was never needed.
   function arrivalFrom(room, link) {
     var door = linkedDoor(room, link);
     if (!door) return null;
-    for (var d = 0; d < STEP_OUT.length; d++) {
-      var s = STEP_OUT[d];
-      for (var dist = 12; dist <= 44; dist += 4) {
-        var fx = door.x + s.dx * dist, fy = door.y + s.dy * dist;
-        var x = fx - player.w / 2, y = fy - player.h;
-        if (!canStand(room, x, y)) continue;
-        // Not merely OFF the trigger — CLEAR of it. A doorstep chosen with
-        // no margin sat one pixel outside the lounge's door, and the nudge
-        // that keeps her on the floor was enough to push her back onto it.
-        // Standing on a door with exits disarmed is a dead end: the door
-        // won't fire until you step off, and she never did.
-        if (overlapsAnyExit(room, x, y, DOORSTEP_CLEARANCE)) continue;
-        return { x: x, y: y, facing: s.dir };
-      }
+    // Face into the room: away from the door you just came out of. The
+    // partner's own entry direction says which way it faces, so the opposite
+    // is "inward" without anything being typed.
+    var back = { left: "right", right: "left", up: "down", down: "up" };
+    var inward = door.rect ? (back[exitEnterDir(door.rect)] || "down") : "down";
+    var step = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] }[inward];
+    // The doorstep is the trigger's centre. It can reach past the last
+    // walkable pixel — that is what makes a door something you walk INTO —
+    // so creep inward until there is floor under her feet.
+    for (var dist = 0; dist <= 40; dist += 2) {
+      var fx = door.x + step[0] * dist, fy = door.y + step[1] * dist;
+      // y is the TOP of the player and canStand tests the feet, so the feet
+      // go on the doorstep: fy - h, not fy - h/2. Getting that wrong lifted
+      // her half a body off the floor and no spot in the alcove passed, which
+      // read as "this door has nowhere to arrive".
+      var x = fx - player.w / 2, y = fy - player.h;
+      if (canStand(room, x, y)) return { x: x, y: y, facing: inward };
     }
     return null;
   }
