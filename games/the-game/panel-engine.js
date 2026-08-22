@@ -1229,8 +1229,24 @@
     }
   };
 
+  // The reference engine (Stack:checkGameOver) has TWO death conditions, not
+  // one — this port only ever had the first. Health hitting 0 while settled
+  // (shakeTime<=0) is the drain-while-topped-out path, gated behind
+  // advancePassiveRaise. But advancePassiveRaise returns early — skipping
+  // that entire health-drain block — whenever manualRaise is held (see its
+  // own comment), which makes it the WRONG place to also catch "you raised
+  // yourself into a topped-out board": while actively raising, health never
+  // moves, so a health check alone can never trigger. The reference's
+  // second condition is exactly that missing case: holding manual raise
+  // into an already-topped-out board (riseLock clear, so it isn't merely
+  // resolving an in-flight match) is instant death regardless of health —
+  // confirmed live: holding raise at the top of a full board never killed
+  // the player no matter how long it was held, because nothing was
+  // checking for it at all.
   Stack.prototype.checkGameOver = function () {
-    return this.health <= 0 && this.shakeTime <= 0;
+    if (this.health <= 0 && this.shakeTime <= 0) return true;
+    if (!this.riseLock && this.wasToppedOut && this.manualRaise) return true;
+    return false;
   };
 
   Stack.prototype.setGameOver = function () {
