@@ -40,6 +40,7 @@ const MODULES = {
   "save-slots": "../../shared/save-slots.js",
   "title-screen": "../../shared/title-screen.js",
   "file-select": "../../shared/file-select.js",
+  "touch-controls": "../../shared/touch-controls.js",
 };
 
 function wireHtml(htmlPath, modulePath) {
@@ -305,6 +306,16 @@ function main() {
     console.log("    it decides what a slot shows (room name, playtime, whatever this game");
     console.log("    tracks) — see games/the-game/menu.js (search \"GCFileSelect\") for the");
     console.log("    worked example this was extracted from.");
+  }
+  if (modules.includes("touch-controls")) {
+    console.log("  - touch-controls: replace any local \"hold this button\" helper with");
+    console.log("    GCTouchControls.bindHold(el, onDown, onUp) for every on-screen d-pad/");
+    console.log("    attack/action button. It sets the mobile-safety inline styles AND the");
+    console.log("    contextmenu/selectstart prevention itself — drop the equivalent");
+    console.log("    touch-action/user-select/-webkit-touch-callout CSS rules on those");
+    console.log("    buttons once migrated, so there's one source of truth, not two that can");
+    console.log("    drift. See games/dog-punk/app.js (search \"GCTouchControls\") for a");
+    console.log("    worked example.");
   }
   console.log("Run node .github/autopilot/sync-precache.js after to confirm the wiring gate passes.");
 }

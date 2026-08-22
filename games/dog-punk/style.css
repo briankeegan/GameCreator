@@ -417,16 +417,10 @@ body {
   color: #fff;
   border-radius: 8px;
   font-size: 1rem;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  /* iOS's long-press callout (copy/select/"Look Up", plus the magnifier)
-     fires on the held glyph independently of user-select and of the
-     pointerdown preventDefault() in app.js — this is the only thing that
-     actually suppresses it, which is what was popping up as "the google
-     thingy" when a button was held. */
-  -webkit-touch-callout: none;
-  -webkit-tap-highlight-color: transparent;
+  /* Mobile-safety properties (touch-action, user-select, -webkit-touch-
+     callout, tap-highlight) are applied inline by shared/touch-controls.js
+     (GCTouchControls.bindHold) — one source of truth instead of two that
+     can drift out of sync. */
 }
 .dpad-up { grid-column: 2; grid-row: 1; }
 .dpad-left { grid-column: 1; grid-row: 2; }
@@ -441,11 +435,8 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.3);
   color: #fff;
   font-size: 1.4rem;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  -webkit-tap-highlight-color: transparent;
+  /* Mobile-safety properties applied inline by GCTouchControls.bindHold —
+     see the note on .dpad-btn above. */
 }
 
 @media (hover: hover) and (pointer: fine) {

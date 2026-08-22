@@ -902,31 +902,13 @@ pauseBtn.addEventListener("click", () => { if (!introActive && !state.won && !st
 settingsResumeBtn.addEventListener("click", closeSettings);
 settingsResetBtn.addEventListener("click", () => { CONTROLS.reset(); renderSettingsRows(); });
 
-function bindHold(el, onDown, onUp) {
-  if (!el) return;
-  const down = (e) => { e.preventDefault(); onDown(); };
-  const up = (e) => { e.preventDefault(); onUp(); };
-  el.addEventListener("pointerdown", down);
-  el.addEventListener("pointerup", up);
-  el.addEventListener("pointercancel", up);
-  el.addEventListener("pointerleave", up);
-  // Holding a d-pad/attack button is exactly a mobile browser's "long
-  // press" gesture — without these it can still select the button's glyph
-  // and raise a "Search Google for ▲" / copy-and-share sheet mid-game, on
-  // top of the CSS user-select/touch-callout rules meant to stop the same
-  // thing (belt and suspenders: different engines trigger it off different
-  // events).
-  el.addEventListener("contextmenu", (e) => e.preventDefault());
-  el.addEventListener("selectstart", (e) => e.preventDefault());
-}
-
 if (dpad) {
   dpad.querySelectorAll("[data-dir]").forEach((btn) => {
     const dir = btn.dataset.dir;
-    bindHold(btn, () => touchDirs.add(dir), () => touchDirs.delete(dir));
+    window.GCTouchControls.bindHold(btn, () => touchDirs.add(dir), () => touchDirs.delete(dir));
   });
 }
-bindHold(attackBtn, () => { attackQueued = true; }, () => {});
+window.GCTouchControls.bindHold(attackBtn, () => { attackQueued = true; }, () => {});
 
 // ---- game state ----
 // Everything that's PER-ROOM (the tile grid, its spawn point, its enemies,
