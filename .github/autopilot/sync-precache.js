@@ -95,6 +95,7 @@ function main() {
       { ref: /\bGCControls\.create\b/, file: "../../shared/controls.js", name: "shared/controls.js" },
       { ref: /\bGCSaveSlots\.create\b/, file: "../../shared/save-slots.js", name: "shared/save-slots.js" },
       { ref: /\bGCTitleScreen\.create\b/, file: "../../shared/title-screen.js", name: "shared/title-screen.js" },
+      { ref: /\bGCFileSelect\.create\b/, file: "../../shared/file-select.js", name: "shared/file-select.js" },
     ];
     for (const mod of SHARED_MODULES) {
       if (!mod.ref.test(gameJsFiles)) continue;

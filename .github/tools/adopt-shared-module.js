@@ -27,7 +27,7 @@
  * example, since Newsey already had its own settings/save system to
  * extract rather than build fresh.
  *
- *   node adopt-shared-module.js <gameId> <controls|save-slots|title-screen|all>
+ *   node adopt-shared-module.js <gameId> <controls|save-slots|title-screen|file-select|all>
  */
 
 const fs = require("fs");
@@ -39,6 +39,7 @@ const MODULES = {
   controls: "../../shared/controls.js",
   "save-slots": "../../shared/save-slots.js",
   "title-screen": "../../shared/title-screen.js",
+  "file-select": "../../shared/file-select.js",
 };
 
 function wireHtml(htmlPath, modulePath) {
@@ -204,7 +205,7 @@ function gameDisplayName(gameId) {
 function main() {
   const [gameId, which] = process.argv.slice(2);
   if (!gameId || !which) {
-    console.error("usage: node adopt-shared-module.js <gameId> <controls|save-slots|title-screen|all>");
+    console.error("usage: node adopt-shared-module.js <gameId> <controls|save-slots|title-screen|file-select|all>");
     process.exit(1);
   }
   const modules = (which === "all" || which === "both") ? Object.keys(MODULES) : [which];
@@ -292,6 +293,18 @@ function main() {
     console.log("    and shared/title-screen.js's header for the onShow contract.");
     console.log("    sync-precache.js warns (does not fail) if onShow is missing, in case a");
     console.log("    game genuinely has no art to show.");
+  }
+  if (modules.includes("file-select")) {
+    console.log("  - file-select: only worth adopting if your game has MULTIPLE save slots");
+    console.log("    (adopt save-slots with slots > 1 first). Unlike title-screen this does");
+    console.log("    NOT scaffold a screen — it expects one already: a list container, a");
+    console.log("    per-slot button style, and (if you want PLAY/COPY/ERASE like Newsey)");
+    console.log("    mode-switch buttons with data-mode=\"play|copy|erase\". Wire it with");
+    console.log("    GCFileSelect.create(gameId, {saves: SAVES, listEl, renderSlotBody,");
+    console.log("    onPlay, modeButtons, noteEl, confirm}). renderSlotBody(slot) is YOURS —");
+    console.log("    it decides what a slot shows (room name, playtime, whatever this game");
+    console.log("    tracks) — see games/the-game/menu.js (search \"GCFileSelect\") for the");
+    console.log("    worked example this was extracted from.");
   }
   console.log("Run node .github/autopilot/sync-precache.js after to confirm the wiring gate passes.");
 }
