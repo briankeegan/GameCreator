@@ -135,6 +135,15 @@
   // meaningful entry.
   var SCORE_CHAIN_TA = [0, 0, 50, 80, 150, 300, 400, 500, 700, 900, 1100, 1300, 1500, 1800];
 
+  // consts.lua — the pre-match countdown. Physics (matches, rising, garbage)
+  // stays frozen from clock 0 through COUNTDOWN_START + COUNTDOWN_LENGTH; the
+  // cursor spends that window doing a scripted dance instead of sitting idle
+  // (Stack:runCountdown). See COUNTDOWN_TOTAL below and Stack.prototype.run.
+  var COUNTDOWN_START = 8;
+  var COUNTDOWN_LENGTH = 180;
+  var COUNTDOWN_CURSOR_SPEED = 4;
+  var COUNTDOWN_TOTAL = COUNTDOWN_START + COUNTDOWN_LENGTH;
+
   // Deterministic RNG (mulberry32) so a duel replays identically from a seed —
   // Math.random would make the smoke test unreproducible.
   function makeRng(seed) {
@@ -544,6 +553,16 @@
     this.topCurRow = this.height - 1;
     this.queuedSwapRow = 0;
     this.queuedSwapCol = 0;
+
+    // Stack:setCountdown(true) — on by default, matching every real duel;
+    // pass opts.countdown: false to skip it (headless engine tests that want
+    // physics running from frame 1 with no lead-in). stopWatchIsRunning
+    // mirrors the reference field of the same name: false gates runPhysics
+    // and garbage dropping off entirely until the countdown ends.
+    this.doCountdown = opts.countdown !== false;
+    this.stopWatchIsRunning = !this.doCountdown;
+    this.countdownTimer = null;
+    this.animatingCursorDuringCountdown = false;
 
     this.incoming = [];  // garbage that has arrived and is waiting for a gap
     this.outgoing = [];  // garbage this stack has sent, still in flight
@@ -1264,7 +1283,7 @@
 
   // ---------------- swapping ----------------
   Stack.prototype.canSwap = function (row, col) {
-    if (this.clock <= 1) return false;
+    if (this.doCountdown || this.clock <= 1) return false;
     if (row < 1 || row > this.height || col < 1 || col >= W) return false;
     var left = this.panels[row][col];
     var right = this.panels[row][col + 1];
@@ -1395,19 +1414,23 @@
 
     if (i.swap && !prev.swap) this.tryQueueSwap(this.curRow, this.curCol);
 
-    var dir = null;
-    if (i.up) dir = "up";
-    else if (i.down) dir = "down";
-    else if (i.left) dir = "left";
-    else if (i.right) dir = "right";
+    // The scripted countdown cursor dance (runCountdown) owns the cursor
+    // for this window — real input shouldn't fight it.
+    if (!this.animatingCursorDuringCountdown) {
+      var dir = null;
+      if (i.up) dir = "up";
+      else if (i.down) dir = "down";
+      else if (i.left) dir = "left";
+      else if (i.right) dir = "right";
 
-    if (dir !== this.cursorDirection) {
-      this.cursorDirection = dir;
-      this.cursorTimer = 0;
-      if (dir) this.moveCursor(dir);
-    } else if (dir) {
-      this.cursorTimer++;
-      if (this.cursorTimer >= DAS_DELAY) this.moveCursor(dir);
+      if (dir !== this.cursorDirection) {
+        this.cursorDirection = dir;
+        this.cursorTimer = 0;
+        if (dir) this.moveCursor(dir);
+      } else if (dir) {
+        this.cursorTimer++;
+        if (this.cursorTimer >= DAS_DELAY) this.moveCursor(dir);
+      }
     }
 
     if (i.raise && !this.preventManualRaise) {
@@ -1507,13 +1530,47 @@
     if (this.checkGameOver()) this.setGameOver();
   };
 
+  // Stack:runCountdown — riseLock stays forced on for the whole countdown
+  // (blocking rise/swap even before the cursor starts moving), and once the
+  // scripted cursor timer starts (at COUNTDOWN_START), it dances the cursor
+  // down 4 steps then left 2, then goes idle for a beat before handing the
+  // cursor back to the player right as physics resumes.
+  Stack.prototype.runCountdown = function () {
+    this.doCountdown = true;
+    this.riseLock = true;
+    if (this.clock === 0) {
+      this.animatingCursorDuringCountdown = true;
+      this.curRow = this.height - 1;
+    } else if (this.clock === COUNTDOWN_START) {
+      this.countdownTimer = COUNTDOWN_LENGTH;
+    }
+    if (this.countdownTimer !== null) {
+      var countDownFrame = COUNTDOWN_LENGTH - this.countdownTimer;
+      if (countDownFrame > 0 && countDownFrame % COUNTDOWN_CURSOR_SPEED === 0) {
+        var moveIndex = countDownFrame / COUNTDOWN_CURSOR_SPEED;
+        if (moveIndex <= 4) this.moveCursor("down");
+        else if (moveIndex <= 6) this.moveCursor("left");
+        else if (moveIndex === 10) this.animatingCursorDuringCountdown = false;
+      }
+      if (this.countdownTimer === 0) {
+        this.doCountdown = false;
+        this.countdownTimer = null;
+      }
+      if (this.countdownTimer !== null) this.countdownTimer--;
+    }
+  };
+
   // One frame. Call at a fixed 60 Hz.
   Stack.prototype.run = function () {
     if (this.gameOver) return;
-    this.runPhysics();
+    if (this.doCountdown && this.clock <= COUNTDOWN_TOTAL) {
+      this.runCountdown();
+      if (this.clock === COUNTDOWN_TOTAL) this.stopWatchIsRunning = true;
+    }
+    if (this.stopWatchIsRunning) this.runPhysics();
     this.applyInput();
     this.handleManualRaise();
-    if (this.shouldDropGarbage()) {
+    if (this.stopWatchIsRunning && this.shouldDropGarbage()) {
       var garbage = this.incoming.shift();
       this.dropGarbage(garbage.width, garbage.height);
     }
@@ -1547,6 +1604,7 @@
     WIDTH: W,
     HEIGHT: HEIGHT,
     GARBAGE_FLIGHT: GARBAGE_FLIGHT,
+    COUNTDOWN_TOTAL: COUNTDOWN_TOTAL,
     comboGarbage: comboGarbage,
     riseTime: riseTime,
     makeRng: makeRng

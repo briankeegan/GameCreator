@@ -11,7 +11,11 @@ window.NewseyDuel = (function () {
 
   var E = window.PanelEngine;
   var FRAME = 1000 / 60;
-  var COUNTDOWN_FRAMES = 180; // 3 seconds, same as the original
+  // The countdown itself is entirely panel-engine.js's call (Stack:runCountdown,
+  // 1:1 with the reference — riseLock held, cursor scripted, physics frozen
+  // until clock reaches this many frames). state.countdown here is only a
+  // derived readout for the overlay/input gating, never its own clock.
+  var COUNTDOWN_FRAMES = E.COUNTDOWN_TOTAL;
 
   // Panel colors. Each one also carries a shape, so panels stay tellable apart
   // when they flash, when the board goes red, and for anyone who reads shape
@@ -381,7 +385,16 @@ window.NewseyDuel = (function () {
     // Paused while any menu screen is up: nothing rises while the player is
     // reading a menu.
     if (window.NewseyMenu && window.NewseyMenu.current()) return;
-    if (s.countdown > 0) { s.countdown--; return; }
+    if (s.countdown > 0) {
+      // Both stacks still tick every frame during the countdown — the
+      // engine holds its own physics off internally (Stack:runCountdown)
+      // and drives the scripted cursor dance, so there's nothing left for
+      // this screen to gate beyond reading back how much is left.
+      s.player.run();
+      s.foe.run();
+      s.countdown = Math.max(0, E.COUNTDOWN_TOTAL - s.player.clock);
+      return;
+    }
     if (s.crush) {
       stepCrush();
       // The moment she is whole again, hand over to the result card.
