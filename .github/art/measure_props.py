@@ -37,6 +37,26 @@ Instead it measures the scene directly, which is what was wanted anyway:
 You then say which blob is which prop. That part is a judgement call and the
 tool does not pretend otherwise; everything measurable is measured.
 
+WHERE IT DOES NOT WORK YET, AND WHY
+-----------------------------------
+It works on the Anarchy Garden, whose floor is grass and path — colours nothing
+else in the scene has. It does NOT work on an INTERIOR room. Two reasons, both
+found by trying:
+
+  1. The lab's flagstones and its stone wall are the same grey at the same
+     brightness, so every floor class either matches both or neither. Colour
+     cannot separate them.
+  2. Restricting the search to below the wall/floor line does not save it:
+     in these rooms the furniture stands AGAINST the back wall, so a bench or
+     a cabinet is almost entirely above that line and only its base is below.
+
+So an interior room's props are still placed by eye, and that is a real gap —
+it is the step the room standard leans on hardest. What catches the damage
+meanwhile is `room.py check`, whose overlay is gated by room.py verify: a room
+whose art changed since anyone last rendered the side-by-side fails the build.
+Every sizing error tonight was invisible in the numbers and obvious in that
+picture.
+
 Usage:
   measure_props.py <scene.png> [--floor grass] [--floor path] [--min-px N]
                    [--overlay out.png]
@@ -55,6 +75,12 @@ FLOOR_CLASSES = {
     "path":  (30, 60, 0.20, 0.55, 1.00),
     "water": (150, 220, 0.10, 0.30, 1.00),
     "stone": (0, 360, 0.00, 0.15, 0.55),
+    # Added when the lab and the library were measured: their floors are pale
+    # flagstone, which is brighter and less saturated than anything above, so
+    # every class missed and the tool reported the whole frame as one prop.
+    # A measuring tool that cannot see the floor measures nothing.
+    "flagstone": (0, 360, 0.00, 0.40, 0.95),
+    "plank":     (10, 45, 0.25, 0.20, 0.85),
 }
 
 
@@ -71,12 +97,12 @@ def hsv(img):
 def foreground(scene, floors):
     """True where the scene is NOT floor — i.e. where an object is."""
     h, s, v = hsv(scene)
+    alpha = np.asarray(scene)[..., 3] > 40
     is_floor = np.zeros(h.shape, bool)
     for name in floors:
         lo, hi, slo, vlo, vhi = FLOOR_CLASSES[name]
         is_floor |= (h >= lo) & (h <= hi) & (s >= slo) & (v >= vlo) & (v <= vhi)
     # alpha 0 (outside the room) is not an object either
-    alpha = np.asarray(scene)[..., 3] > 40
     return (~is_floor) & alpha
 
 

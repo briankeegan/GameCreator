@@ -35,6 +35,46 @@ function armedWeapons(state) {
 // The best target for this round: for each living enemy, is there a facing
 // that puts it inside an armed weapon we can afford? Prefer the cheapest
 // weapon that reaches, and the weakest enemy it kills outright.
+// The nearest step toward somewhere one of our guns bears on something.
+// Prefers a destination outside the enemy threat map, and prefers the
+// gun with the longest reach — a shot you can take from outside what can
+// answer it is the whole reason reach costs what it costs.
+function firingSpot(state, threats, maxTrip) {
+  const weapons = armedWeapons(state);
+  if (!weapons.length) return null;
+  const enemies = Engine.livingEnemies(state);
+  if (!enemies.length) return null;
+  const steps = Engine.legalSublightTargets(state);
+  if (!steps.length) return null;
+  // Where could we shoot from at all? Score every hex on the board once.
+  let best = null;
+  for (const hex of state.boardHexes) {
+    if (Engine.hazardAt && Engine.hazardAt(state, hex)) continue;
+    if (Engine.enemyAt(state, hex)) continue;
+    let bears = null;
+    for (const w of weapons) {
+      for (let facing = 0; facing < 6; facing++) {
+        const reach = Engine.weaponHexes(hex, facing, w, state);
+        if (!enemies.some((e) => reach.some((h) => Engine.posEq(h, e)))) continue;
+        if (!bears || w.range > bears.range) bears = w;
+      }
+    }
+    if (!bears) continue;
+    const hot = threats.has(Engine.hexKey(hex)) ? 1 : 0;
+    const trip = Engine.hexDistance(state.playerPos, hex);
+    if (maxTrip != null && trip > maxTrip) continue;
+    // Outside the threat map first, then furthest-reaching gun, then
+    // closest to get to.
+    const score = hot * 1000 - bears.range * 10 + trip;
+    if (!best || score < best.score) best = { hex, score, trip };
+  }
+  if (!best || best.trip === 0) return null;
+  return steps.reduce(
+    (b, h) => (!b || Engine.hexDistance(h, best.hex) < Engine.hexDistance(b, best.hex) ? h : b),
+    null
+  );
+}
+
 function bestShot(state) {
   const weapons = armedWeapons(state).filter((w) => w.energyCost <= state.energy);
   const living = Engine.livingEnemies(state);
@@ -135,6 +175,37 @@ function routeStep(state, goal) {
   , null);
 }
 
+// What the careful pilot wants, in order — DERIVED from the shelf rather
+// than typed out. The hardcoded list was five items long and had not been
+// touched since the roster was four guns: it could not so much as consider
+// a Beam Lance, an Arc Projector, a Missile Pod, Flank Tubes, a Mortar, a
+// Siege Maul, a Prow Cannon or a Demolition Charge — eight of the eleven
+// weapons in the game. Measured, that alone was the gap: greedy bought 87
+// guns across 40 runs and careful bought 40, so careful arrived at the
+// deep end under-gunned no matter how well it flew.
+//
+// Guns first, longest reach first (a turn fires ONE gun, so range beats
+// another mount covering ground you already cover), then the upgrades.
+function wantList(state) {
+  const guns = Engine.OUTPOST_OFFER_POOL.filter((o) => Engine.WEAPON_SYSTEM_KEYS.includes(o.id))
+    .slice()
+    .sort((a, b) => {
+      const wa = Engine.WEAPONS[a.id];
+      const wb = Engine.WEAPONS[b.id];
+      // A launcher's "range" flatters it and a board-length lane is not
+      // four times a five-hex one, so reach is capped for ranking.
+      // Cheapest first, reach as the tie-break. Reach-first was tried and
+      // measured WORSE (careful 20 wins -> 15 of 60, stalls 6 -> 11): the
+      // expensive guns eat the salvage the ship needs for patches, and a
+      // long gun you bought instead of a hull point does not help you when
+      // something is already touching you.
+      const reach = (w) => Math.min(w.range, 5) - (w.places || w.launches ? 2 : 0);
+      return a.cost - b.cost || reach(wb) - reach(wa);
+    })
+    .map((o) => o.id);
+  return [...guns, "shield", "hardpoint", "reinforce", "reactor"];
+}
+
 // Shopping policy. A dock is the only place capability comes from, and
 // salvage spent on a trinket is salvage not spent on the gun that answers
 // the thing killing you — so the pilot banks rather than dribbles.
@@ -144,10 +215,39 @@ function shop(state, report) {
     Engine.applyOutpostPurchase(state, id);
     report.purchases[id] = (report.purchases[id] || 0) + 1;
   };
-  // Buyable means affordable and applicable. Something that doesn't fit
-  // yet still sells — it rides in cargo until a Hold Expansion, which is
-  // how the big spines get bought at all (fitFromCargo picks them up).
-  const has = (id) => Engine.outpostOffers(state).some((o) => o.id === id && o.affordable && o.applicable);
+  // Buyable means affordable, applicable AND — for a weapon — that there is
+  // somewhere to PUT it. The shelf sells things that don't fit (they ride
+  // in cargo until a Hold Expansion), and the shop screen says so plainly
+  // to a human. The pilots didn't read it: measured, the careful pilot
+  // bought a Railgun in 15 runs out of 40 and fired it exactly ZERO times,
+  // because a 1x4 spine does not fit a stock hold at ALL and just sat in
+  // cargo for the rest of the run. Twenty salvage — the dearest thing in
+  // the game — for nothing.
+  //
+  // A pilot that buys a gun it cannot install isn't a careless pilot, it's
+  // a broken instrument: it made the most expensive weapon in the game
+  // measure as worthless.
+  const offer = (id) => Engine.outpostOffers(state).find((o) => o.id === id);
+  const has = (id) => {
+    const o = offer(id);
+    if (!o || !o.affordable || !o.applicable) return false;
+    return o.fits !== false || Engine.WEAPON_SYSTEM_KEYS.indexOf(id) < 0;
+  };
+  // ...unless we buy the room first. If the thing we want needs space and
+  // a Hold Expansion is on this shelf, take the expansion.
+  // Buys the Hold Expansion when that's what's blocking a gun. Returns
+  // "bought" if it spent anything, so the caller can restart its loop —
+  // a purchase changes the shelf AND the salvage, and the greedy pilot's
+  // loop was iterating a snapshot taken before both, which threw
+  // "not enough salvage" and "not on offer here" out of the engine.
+  const roomFor = (id) => {
+    const o = offer(id);
+    if (!o || o.fits !== false) return "ok";
+    const expansion = offer("hardpoint");
+    if (!expansion || !expansion.affordable || !expansion.applicable) return "no";
+    buy("hardpoint");
+    return "bought";
+  };
 
   // 1. A hull you can fight with, before anything else — and at the last
   //    station before the Bulwark, every point of it. There is nothing
@@ -163,9 +263,15 @@ function shop(state, report) {
     let spent = true;
     while (spent) {
       spent = false;
-      for (const offer of Engine.outpostOffers(state)) {
-        if (!offer.affordable || !offer.applicable) continue;
-        buy(offer.id);
+      for (const o of Engine.outpostOffers(state)) {
+        if (!o.affordable || !o.applicable) continue;
+        // Same rule as above: don't spend on a gun with nowhere to go.
+        if (o.fits === false && Engine.WEAPON_SYSTEM_KEYS.includes(o.id)) {
+          const room = roomFor(o.id);
+          if (room === "bought") { spent = true; break; } // shelf moved — look again
+          if (room === "no") continue;
+        }
+        buy(o.id);
         spent = true;
         break;
       }
@@ -186,10 +292,10 @@ function shop(state, report) {
     // the old four and could not so much as consider a Mortar.
     const preference =
       process.env.GUN_PREF === "arc"
-        ? ["arcBeam", "flakBurst", "mortar", "flankTubes", "railgun"]
+        ? ["arcBeam", ...wantList(state)]
         : process.env.GUN_PREF === "railgun"
-          ? ["railgun", "arcBeam", "flakBurst", "mortar", "flankTubes"]
-          : ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun"];
+          ? ["railgun", ...wantList(state)]
+          : wantList(state);
     // Bank for the gun you actually want rather than grabbing whatever is
     // cheapest on the shelf — otherwise every run ends up flying the same
     // ship and the roster never gets tested.
@@ -209,7 +315,7 @@ function shop(state, report) {
     // early was tried and it's a trap: the Flak Burst costs salvage the
     // ship needs for reach and three charge a shot out of six, and runs
     // that led with it finished a third as often.
-    for (const id of ["arcBeam", "railgun", "shield", "hardpoint", "reinforce", "reactor", "flakBurst"]) {
+    for (const id of wantList(state)) {
       if (has(id)) buy(id);
     }
     // Don't die rich. Anything still on the shelf beats salvage in the
@@ -217,7 +323,7 @@ function shop(state, report) {
     let spending = true;
     while (spending && state.salvage >= 10) {
       spending = false;
-      for (const id of ["arcBeam", "railgun", "hardpoint", "reinforce", "reactor", "flakBurst", "shield"]) {
+      for (const id of wantList(state)) {
         if (has(id)) {
           buy(id);
           spending = true;
@@ -273,6 +379,7 @@ function makeRng(seed) {
 function playSector(state, report) {
   const MAX_ROUNDS = 220;
   let visitedOutpost = false;
+  let repositions = 0;
   for (let round = 0; round < MAX_ROUNDS; round++) {
     if (state.status !== "playing") return state.status;
 
@@ -369,6 +476,39 @@ function playSector(state, report) {
         continue;
       }
     }
+    // TAKE THE FIRING POSITION. A pilot that only ever closes or backs off
+    // can never use a gun with reach: measured, the careful pilot bought a
+    // Railgun in 15 runs out of 40 and fired it exactly ZERO times, because
+    // it kept retreating to somewhere nothing bore and then shot whatever
+    // walked into its Autocannon. Buying reach and never standing where it
+    // works isn't cautious play, it's passive play, and grading the design
+    // against it was measuring the harness.
+    //
+    // So: if nothing bears right now, step to the nearest hex where the
+    // best gun aboard WOULD bear on something — preferring hexes that are
+    // not themselves under threat. That is what skill with a long gun
+    // actually looks like, and it's the only way the shelf's expensive
+    // half gets tested at all.
+    // Bounded hard, because the first version wasn't and it ate the run:
+    // seeking a firing hex every round meant the ship never went to the
+    // gate or the dock at all — forty runs, zero finishes, both pilots.
+    // It only applies when there is a LONG gun to justify positioning for
+    // (a contact weapon's firing hex is just "next to it", which the chase
+    // below already handles), and only when that hex is a step or two
+    // away. Otherwise the goal wins.
+    // ...and capped per sector. Seeking a firing hex has no progress
+    // guarantee — the enemies move every round, so the "best" hex moves
+    // with them and the ship can chase it until the round limit. Measured,
+    // careful's stalls went 6 -> 11 out of 60 when this was uncapped.
+    const longGun = armedWeapons(state).some((w) => w.range >= 3);
+    if (PILOT !== "reckless" && !shot && longGun && repositions < 6 && Engine.livingEnemies(state).length) {
+      const spot = firingSpot(state, threats, 2);
+      if (spot) {
+        repositions++;
+        Engine.applySublight(state, spot);
+        continue;
+      }
+    }
     if (PILOT !== "reckless" && nearestChaser && !threatened && healthy && Engine.hexDistance(state.playerPos, nearestChaser) <= 3) {
       if (state.energy < state.maxEnergy) {
         Engine.applyRecharge(state);
@@ -409,7 +549,12 @@ function playSector(state, report) {
 function playRun(seed, report) {
   const LEVELS = Levels.LEVELS;
   const rng = makeRng(seed + 1);
-  let carryOver = null;
+  // START_GUN=<weaponKey> fits that gun from Sector 1, alongside the
+  // Autocannon. It's how a weapon's worth gets MEASURED rather than
+  // argued about: same pilot, same seeds, one thing different. A bespoke
+  // bench was tried first and got written wrong twice — this reuses the
+  // pilot that already plays the actual game.
+  let carryOver = process.env.START_GUN ? { extraActions: [process.env.START_GUN] } : null;
   let depth = 1;
   let variantId = null;
   for (; depth <= BOSS_DEPTH; depth++) {
@@ -420,7 +565,11 @@ function playRun(seed, report) {
       // seed too, so simulated runs exercise the same run-to-run Outpost
       // variance a real player gets, instead of every run rolling the
       // hand-authored sectors' shop/berth identically.
-      state = Engine.createGameState(level, { ...(carryOver || {}), runSeed: seed, hasPrevious: Boolean(carryOver) });
+      state = Engine.createGameState(level, {
+        ...(carryOver || {}),
+        runSeed: seed,
+        hasPrevious: Boolean(carryOver && carryOver.hold),
+      });
     } catch (err) {
       report.errors.push(`depth ${depth}: level failed to build — ${err.message}`);
       return { depth, outcome: "error" };

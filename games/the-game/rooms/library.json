@@ -1,0 +1,28 @@
+{
+  "name": "The Library",
+  "_why": "The plot calls it a city of bookshelves. It sits BETWEEN the Lounge (south, off the near edge) and the Anarchy Garden (north, through the bookcase wall) — the map in story.js decides that.",
+  "summary": "A vast warm hushed library in a magical realm: floor-to-ceiling dark timber bookcases packed with old leather-bound books, their shelf lines running at the same height all the way across, lit by brass reading lamps glowing amber.",
+  "floor": "many small warm sandy-grey flagstones in staggered courses with fine dark mortar joints, a warm mid-tone lit by candlelight, muted rather than bright, with mottling and wear",
+  "_wall_why": "A floor-plate room ships ONLY its floor, so the room's own back wall is a PROP and has to be generated like one. Leaving it out of the spec is how the lab ended up with its jar shelf repeated three times across the wall — there was no plain panel to put either side of it.",
+  "wall": "a wide upright rectangular slab of floor-to-ceiling dark timber bookcase packed with old leather-bound books, a brass reading lamp glowing amber on it, and NO door and NO opening",
+  "wallSeam": 63,
+  "_wallSeam_why": "Never actually measured before — the shelf/door props were declared at a guessed y=104,h=92. `python3 .github/art/room.py wallseam games/the-game library --strip 25,35 --strip 60,75 --strip 212,225 --search 55,90` (gradient method: the bookshelf's dark timber against the pale flagstone floor is high-contrast, unlike the lab's stone-on-stone) gave y=65/62/62 — agreed within 3px, called at y=63 — and the overlay confirmed all three lines sit right on the wood-trim-to-floor line. That's much higher up the frame than 104: the shelves fill only the top third, cropped by the top edge, not reaching halfway down. Same class of bug as the lab's cabinet: a value nobody had measured, quietly wrong the whole time.",
+  "doors": [
+    {
+      "wall": "back",
+      "look": "ONE open arched doorway cut through the bookcases, lit soft green from beyond",
+      "to": "garden"
+    },
+    {
+      "wall": "near",
+      "look": "the way back down to the Lounge",
+      "to": "lounge"
+    }
+  ],
+  "contains": [
+    "a rolling library LADDER leaning against the bookcases on the left",
+    "a deep buttoned oxblood leather ARMCHAIR with a small round candle table beside it",
+    "a WRITING DESK with an open book and an inkwell",
+    "a patterned crimson reading RUG lying flat on the floor"
+  ]
+}

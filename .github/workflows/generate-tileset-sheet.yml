@@ -44,6 +44,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: ./.github/actions/validate-game-input
+        with:
+          game: ${{ inputs.game }}
+
       - name: Generate the sheet
         id: gen
         timeout-minutes: 20

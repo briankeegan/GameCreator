@@ -45,6 +45,94 @@ def find_gridlines(im):
         return [int(sum(g) / len(g)) for g in groups]
     return group(row_lines, 3), group(col_lines, 8)
 
+
+def gutters_from_green(im, want_cols=3):
+    """Find the cell boundaries from the GREEN, ignoring the gridlines.
+
+    The magenta grid is the single point of failure in this pipeline and the
+    model drops it: May's sheet came back with the art perfect and ZERO
+    magenta pixels in the whole image; Chuck's had magenta but only two
+    readable row dividers. Two generations, two different ways of not having
+    a usable grid, and no amount of shouting in the prompt made it reliable.
+
+    But the cells sit on flat chroma-key green, so the boundaries do not need
+    the lines at all: a band of rows (or columns) that is almost entirely
+    green is the gap BETWEEN two cells. Same gutter technique build_sheet.py
+    uses against flat white — the background is the signal, and it is the one
+    thing the model cannot forget to draw, because it is what it draws the
+    characters ON.
+
+    Returns (row_bounds, col_bounds) ready to slice, or (None, None).
+    """
+    import numpy as np
+    a = np.array(im.convert("RGB")).astype(int)
+    h, w, _ = a.shape
+    r, g, b = a[:, :, 0], a[:, :, 1], a[:, :, 2]
+    green = (g > 110) & (g > r + 40) & (g > b + 40)
+
+    def bands(frac, span):
+        for thresh in (0.97, 0.94, 0.90, 0.86):
+            runs, start = [], None
+            for i in range(span):
+                if frac[i] >= thresh:
+                    if start is None: start = i
+                elif start is not None:
+                    runs.append([start, i]); start = None
+            if start is not None: runs.append([start, span])
+            runs = [x for x in runs if x[1] - x[0] >= 2]
+            # A gutter reads as TWO runs, because the gridline drawn down the
+            # middle of it is not green. Merge anything close enough to be
+            # one gap — without this the finder saw seven "gutters" in a
+            # three-gutter sheet and matched nothing.
+            merged = []
+            for run in runs:
+                if merged and run[0] - merged[-1][1] <= max(14, span * 0.012):
+                    merged[-1][1] = run[1]
+                else:
+                    merged.append(list(run))
+            inner = [x for x in merged if x[0] > span * 0.03 and x[1] < span * 0.97]
+            if not inner:
+                continue
+            # A cell runs from the END of one gutter to the START of the next.
+            # Taking the gutter's MIDPOINT instead would leave half of it —
+            # and therefore the divider line drawn down it — inside the cell,
+            # which is what forces a colour guess at removing the divider
+            # later. Cropping between the gutters means no divider pixel is
+            # ever in the crop and there is nothing to guess about.
+            outer = [x for x in merged if x not in inner]
+            head = max([x[1] for x in outer if x[1] <= inner[0][0]] + [0])
+            tail = min([x[0] for x in outer if x[0] >= inner[-1][1]] + [span])
+            edges = [head] + [c for x in inner for c in x] + [tail]
+            cells = [(edges[i], edges[i + 1]) for i in range(0, len(edges) - 1, 2)]
+            if len(cells) >= 2:
+                return cells
+        return None
+
+    rows = bands(green.mean(axis=1), h)
+    cols = bands(green.mean(axis=0), w)
+    if not rows or not cols:
+        return None, None
+
+    # DROP A CROPPED TRAILING ROW. The sheet is asked for as four rows and
+    # the model routinely delivers three full ones plus a sliver of a fourth
+    # falling off the bottom edge — CHARACTER_SHEETS.md already records the
+    # bottom row as the thing that comes back cropped. A band far shorter
+    # than its siblings is that sliver, and cutting frames from it produces
+    # headless half-characters, which is the bug this whole pass started on.
+    if len(rows) > 3:
+        heights = sorted(x[1] - x[0] for x in rows)
+        median = heights[len(heights) // 2]
+        rows = [x for x in rows if (x[1] - x[0]) >= median * 0.65]
+    if len(cols) > want_cols:
+        widths = sorted(x[1] - x[0] for x in cols)
+        med = widths[len(widths) // 2]
+        cols = [x for x in cols if (x[1] - x[0]) >= med * 0.65]
+
+    if not (3 <= len(rows) <= 4) or len(cols) != want_cols:
+        return None, None
+    return rows, cols
+
+
 def flood_fill_background(rgb, seed_mask):
     """BFS flood-fill from every True pixel in seed_mask through neighbors
     that are 'background-like' (green-dominant — still plausibly part of the
@@ -119,8 +207,8 @@ def largest_component_only(alpha):
     out[~keep] = 0
     return out
 
-def cut_and_trim(im, y0, y1, x0, x1):
-    cell = im.crop((x0 + 4, y0 + 4, x1 - 4, y1 - 4)).convert("RGBA")
+def cut_and_trim(im, y0, y1, x0, x1, inset=4, divider_free=False):
+    cell = im.crop((x0 + inset, y0 + inset, x1 - inset, y1 - inset)).convert("RGBA")
     a = np.array(cell)
     h, w, _ = a.shape
     # Flood-fill the chroma-green background from the crop's border inward.
@@ -155,8 +243,26 @@ def cut_and_trim(im, y0, y1, x0, x1):
     # is G sitting almost exactly at zero (a divider is drawn G-less on
     # purpose, precisely so it keys out against G-heavy green) — real hair
     # samples at g=62+, nowhere close.
-    mag = ((r > 120) & (b > 40) & (g < r - 25) & (g < b - 10)) | \
-          (edge_band & (g < 20) & (r > 30))
+    # THE UNRESTRICTED CLAUSE BELOW EATS MAGENTA-HAIRED CHARACTERS, and the
+    # comment above already knew it: May's hair samples at (236,62,91), which
+    # satisfies r>120, b>40, g<r-25 and g<b-10 on every pixel of her head.
+    # She came out of this cutter with her hair deleted — a face with a thin
+    # dark outline where it used to be in the front and side rows, and a
+    # headless coat in the back row. That is the "half a head" this whole
+    # audit started from: not a bad generation at all, but the cutter
+    # removing the character's defining feature because it is the same colour
+    # as the divider it is hunting for.
+    #
+    # It cannot be settled by colour — the divider and her hair ARE the same
+    # colour. It is settled by GEOMETRY instead: when the cell was cut
+    # between the green gutters rather than through their middles, no divider
+    # pixel can be inside the crop, so there is nothing to remove and the
+    # test is skipped entirely.
+    if divider_free:
+        mag = np.zeros((h, w), dtype=bool)
+    else:
+        mag = ((r > 120) & (b > 40) & (g < r - 25) & (g < b - 10)) | \
+              (edge_band & (g < 20) & (r > 30))
     dil = mag.copy()
     for dy in (-3, -2, -1, 0, 1, 2, 3):
         for dx in (-3, -2, -1, 0, 1, 2, 3):
@@ -172,7 +278,33 @@ def cut_and_trim(im, y0, y1, x0, x1):
         return out  # empty cell, leave as-is (caller should notice)
     return out.crop((cols.min(), rows.min(), cols.max() + 1, rows.max() + 1))
 
+def single(image_path, out_dir, char_id, direction, index=1):
+    """Cut ONE standalone pose into one frame file.
+
+    This is the last step of the fix WALK_SHEETS.md documents for a row that
+    came back with no standing pose in it: generate the neutral on its own
+    (which comes back right), then "manually combine sources, taking the two
+    step-pose frames from the walk-cycle grid attempt and the neutral frame
+    from the standalone reference image (sliced with the same cut_and_trim(),
+    called directly rather than through the grid-detecting main())".
+
+    That last clause described a python call somebody had to write by hand,
+    which is the kind of step that gets skipped — the recipe was followed
+    once, written down, and then not followed again. It is a command now.
+    """
+    im = Image.open(image_path)
+    w, h = im.size
+    frame = cut_and_trim(im, 0, h, 0, w, inset=0, divider_free=True)
+    out_path = os.path.join(out_dir, f"{char_id}_{direction}_{index}.png")
+    frame.save(out_path)
+    print("wrote", out_path, frame.size)
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "single":
+        # single <image> <out_dir> <char_id> <direction> [index]
+        idx = int(sys.argv[6]) if len(sys.argv) > 6 else 1
+        return single(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], idx)
     sheet_path, out_dir, char_id = sys.argv[1], sys.argv[2], sys.argv[3]
     im = Image.open(sheet_path)
     row_lines, col_lines = find_gridlines(im)
@@ -221,13 +353,29 @@ def main():
     # here, loudly, instead of handing garbage to the next step. The caller
     # can regenerate; a sheet with no grid is a failed generation, not a
     # cutting problem.
+    green_cut = False
+    cell_rows = cell_cols = None
+    # Fall back to the green gutters when the magenta grid did not resolve to
+    # something usable — decided HERE, on the finished grid, rather than on a
+    # raw count of detected lines: Chuck's sheet had three plausible-looking
+    # row dividers and still collapsed to a 2x3 grid.
+    if not (3 <= n_rows <= 4) or n_cols != 3:
+        g_rows, g_cols = gutters_from_green(im)
+        if g_rows and g_cols:
+            print(f"gridlines unusable ({n_rows}x{n_cols}) — cutting on the "
+                  f"green gutters instead: {len(g_rows)} rows x {len(g_cols)} cols")
+            cell_rows, cell_cols = g_rows, g_cols
+            n_rows, n_cols = len(g_rows), len(g_cols)
+            green_cut = True
+
     if not (3 <= n_rows <= 4) or n_cols != 3:
         raise SystemExit(
             f"{sheet_path}: NO USABLE GRID — detected {n_rows} rows x {n_cols} cols, "
             "expected 3 or 4 rows of 3. The magenta (#FF00FF) gridlines are "
-            "missing or unreadable, so the cell boundaries below are guesses "
-            "and every frame cut from them would be a slice of whatever "
-            "happened to be there. Regenerate the sheet."
+            "missing or unreadable AND the green gutters between the cells "
+            "did not resolve either, so any cell boundary would be a guess "
+            "and every frame cut from it a slice of whatever happened to be "
+            "there. Regenerate the sheet."
         )
     # The model reliably delivers 3 rows (down/left/up) regardless of a 4-row
     # ask — that's actually sufficient, RIGHT is mirrored from LEFT in-game.
@@ -239,9 +387,13 @@ def main():
         if name is None or name == "right":
             continue
         for c in range(min(n_cols, 3)):
-            y0, y1 = row_bounds[r], row_bounds[r + 1]
-            x0, x1 = col_bounds[c], col_bounds[c + 1]
-            frame = cut_and_trim(im, y0, y1, x0, x1)
+            if green_cut:
+                (y0, y1), (x0, x1) = cell_rows[r], cell_cols[c]
+            else:
+                y0, y1 = row_bounds[r], row_bounds[r + 1]
+                x0, x1 = col_bounds[c], col_bounds[c + 1]
+            frame = cut_and_trim(im, y0, y1, x0, x1, inset=0 if green_cut else 4,
+                                 divider_free=green_cut)
             out_path = os.path.join(out_dir, f"{char_id}_{name}_{c}.png")
             frame.save(out_path)
             print("wrote", out_path, frame.size)

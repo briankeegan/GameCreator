@@ -7,7 +7,8 @@ name: Generate walk row
 # generated for Dog Punk.
 #
 # THE WORK IS NOT IN THIS FILE. It is in .github/art/generate_row.py, which
-# builds the prompt from walkgrid_prompt.txt plus the game's art-style.json,
+# builds the prompt from walkgrid_prompt.txt or attacksheet_prompt.txt (see the
+# `kind` input) plus the game's art-style.json,
 # generates ONE ROW on a landscape canvas, verifies it, and deletes it if it
 # fails. This Action is only the button: checkout, run that script, commit.
 # The Clubhouse autopilot runs the SAME script — it cannot dispatch a workflow
@@ -40,6 +41,14 @@ on:
           - front
           - side
           - back
+      kind:
+        description: "walk = the [step, NEUTRAL, step] walk row. attack = the [wind-up, STRIKE, recover] slash row."
+        required: false
+        type: choice
+        options:
+          - walk
+          - attack
+        default: walk
       description:
         description: "The character, in words. Leave blank to use the game's art-style.json mainCharacter."
         required: false
@@ -69,6 +78,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - uses: ./.github/actions/validate-game-input
+        with:
+          game: ${{ inputs.game }}
+
       - name: Generate and verify the row
         id: gen
         timeout-minutes: 20
@@ -76,21 +89,47 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           python3 -m pip install --quiet --disable-pip-version-check pillow numpy
-          echo "out=games/${{ inputs.game }}/art-src/${{ inputs.character }}_${{ inputs.view }}_raw.png" >> "$GITHUB_OUTPUT"
-          python3 .github/art/generate_row.py \
-            --game "${{ inputs.game }}" \
-            --character "${{ inputs.character }}" \
-            --view "${{ inputs.view }}" \
-            --quality "${{ inputs.quality }}" \
-            ${{ inputs.description && format('--description "{0}"', inputs.description) || '' }} \
-            ${{ inputs.force && '--force' || '' }}
+          # Attack rows land on a different suffix (generate_row.py owns that
+          # naming); mirror it here so the commit step stages the right file.
+          if [ "${{ inputs.kind }}" = "attack" ]; then sfx="_atk_raw.png"; else sfx="_raw.png"; fi
+          echo "out=games/${{ inputs.game }}/art-src/${{ inputs.character }}_${{ inputs.view }}$sfx" >> "$GITHUB_OUTPUT"
+          gen() {
+            python3 .github/art/generate_row.py \
+              --game "${{ inputs.game }}" \
+              --character "${{ inputs.character }}" \
+              --view "${{ inputs.view }}" \
+              --kind "${{ inputs.kind }}" \
+              --quality "${{ inputs.quality }}" \
+              ${{ inputs.description && format('--description "{0}"', inputs.description) || '' }} \
+              "$@"
+          }
+          # RETRY ONCE. A row rejected by the gate is usually the generator
+          # having an off attempt — a clipped subject, a row drawn in a
+          # different style — not a broken pipeline. One more costs one image
+          # and usually lands; a person re-dispatching by hand costs a round
+          # trip, and tonight cost several. Bounded at one, because two
+          # rejections in a row mean something is actually wrong and the log
+          # is worth reading.
+          gen ${{ inputs.force && '--force' || '' }} || {
+            echo "::warning::first attempt was rejected by the gate — retrying once"
+            gen --force
+          }
 
       - name: Commit the raw
         timeout-minutes: 5
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "${{ steps.gen.outputs.out }}"
+          # THE WHOLE art-src/ DIR, NOT JUST THE ONE FILE. imagegen.py's
+          # generate() also writes provenance to art-src/generated.json on
+          # every successful generation, which this step never staged — so
+          # the raw got committed but generated.json's edit sat unstaged,
+          # and the very next `git pull --rebase` (needed whenever something
+          # else pushed to main in the meantime, which on a busy night is
+          # often) refused with "cannot pull with rebase: you have unstaged
+          # changes", 6 retries, and a lost generation — the commit only
+          # ever existed on this ephemeral runner and vanished with it.
+          git add -A -- "games/${{ inputs.game }}/art-src"
           if git commit -m "Generate walk row: ${{ inputs.game }} ${{ inputs.character }} ${{ inputs.view }}"; then
             for i in 1 2 3 4 5 6; do
               if git pull --rebase origin main && git push; then exit 0; fi

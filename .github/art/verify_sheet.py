@@ -57,6 +57,8 @@ Exits non-zero if any check fails, printing one line per problem.
 import argparse
 import json
 import os
+import glob
+import re
 import sys
 
 import numpy as np
@@ -173,7 +175,7 @@ def _components(mask):
     return sizes
 
 
-def check_raw(path, frames_expected, blobs, walk, tol, mirrored=False):
+def check_raw(path, frames_expected, blobs, walk, tol, mirrored=False, steps_built=False):
     problems = []
     img = bs.key_background(path, tol=tol)
     a = np.array(img)
@@ -242,13 +244,96 @@ def check_raw(path, frames_expected, blobs, walk, tol, mirrored=False):
         if mirrored:
             verdict = _same_foot_twice(cut[0], cut[2])
             if verdict and verdict[1]:
-                problems.append(
+                msg = (
                     f'{path}: SAME FOOT TWICE — the two step frames are not opposite steps '
                     f'(mirrored/plain leg diff {verdict[0]:.2f}, must be under {MIRROR_STEP_MAX}). '
                     'The same boot is lifted in both, so one leg never moves. Regenerate asking '
                     "for frame 3 to be frame 1's mirror image from the waist down, naming the "
                     "legs by the VIEWER'S left and right.")
+                if steps_built:
+                    # A WARNING, not a failure, when the caller is going to
+                    # BUILD both step frames out of the standing frame
+                    # (build_sheet.py --build-steps 0,2), which is the standard
+                    # recipe for every front and back row. The frames this
+                    # check looks at are then thrown away before anything
+                    # ships, so failing on them deletes a row for a defect that
+                    # cannot reach the game — and CHARACTER_SHEETS.md openly
+                    # says the generator draws these two badly and that only
+                    # the middle frame has to land. Two perfectly usable rows
+                    # were binned exactly that way, at a generation each,
+                    # before this flag existed. The shipped sheet is still
+                    # gated: check_sheet runs the same comparison on the built
+                    # rows, where the steps are real.
+                    print(f'WARNING (steps will be rebuilt): {msg}', file=sys.stderr)
+                else:
+                    problems.append(msg)
     return problems
+
+
+# COLOUR DRIFT BETWEEN ROWS. Each row of a sheet is a separate generation, so
+# each one picks its own shade of the character — and the palette snap does NOT
+# save you: it maps every pixel to the NEAREST lockedPalette colour, and a
+# palette wide enough to hold fur, fur shadow and brown boots contains both a
+# light orange and a mid brown, so a row drawn one step darker snaps to a
+# different entry and ships as a different-coloured animal. Dog Punk shipped a
+# hero whose front and back rows were light orange (#f0a35a, 17% of the row)
+# and whose side row was mid brown (#f0a35a: 4.2%) — she changed colour when
+# you walked left, and no check saw it for a dozen rounds.
+#
+# WARNS, never fails, and the reason is measured rather than assumed. Two
+# obvious metrics were tried first and BOTH rank the corrected sheet as worse
+# than the broken one, because rows legitimately show different amounts of each
+# material (a back view is mostly jacket, a side view mostly head and snout):
+#   mean colour of the row in Lab, dE between rows: broken sheet 9.0/10.1/13.9,
+#     corrected sheet 6.9/11.4/16.8  <- worse on the pair that matters
+#   histogram overlap between rows:  broken 0.54/0.73/0.55,
+#     corrected 0.76/0.69/0.61       <- also worse on one pair
+# What does discriminate is a colour that carries a LOT of one row and is
+# essentially absent from another. Measured shares, biggest offender per sheet:
+#   dog-punk hero (broken)  #f0a35a  17%  vs  4.2%   ratio 0.25  <- the bug
+#   dog-punk rat (shipped)  #8a7a62  21%  vs  1.6%   ratio 0.08  <- real drift
+#   dog-punk hero (fixed)   #3d434f  11%  vs  2.4%   ratio 0.22  <- legitimate:
+#     a jacket highlight visible from behind and not from the front
+# So the trigger is 15% of a row (above the legitimate case) with under 30% of
+# that share elsewhere (above the two real ones). It stays a warning because
+# that last line is exactly the kind of false positive a gate must not have.
+DRIFT_SHARE = 0.15
+DRIFT_RATIO = 0.30
+
+
+def _colour_drift(path, a, rows, ch):
+    hist = []
+    for r in range(rows):
+        px = a[r * ch:(r + 1) * ch][a[r * ch:(r + 1) * ch][:, :, 3] > 128][:, :3]
+        if not len(px):
+            return []
+        cols, counts = np.unique(px, axis=0, return_counts=True)
+        hist.append({tuple(int(v) for v in c): float(n) / counts.sum()
+                     for c, n in zip(cols, counts)})
+    out = []
+    for i in range(rows):
+        for j in range(rows):
+            if i == j:
+                continue
+            for col, share in hist[i].items():
+                # The OUTLINE is excluded. Every sprite is drawn in the same
+                # near-black, but how much of a frame is outline depends on how
+                # busy the silhouette is, so it swings 28% to 8% between rows of
+                # a perfectly consistent sheet and drowns the real findings.
+                if max(col) < 40:
+                    continue
+                other = hist[j].get(col, 0.0)
+                if share >= DRIFT_SHARE and other < DRIFT_RATIO * share:
+                    out.append(
+                        f'{path}: COLOUR DRIFT — row {i} is #%02x%02x%02x over {share * 100:.0f}%% '
+                        'of its pixels and row %d is only %.1f%%. The rows were drawn as separate '
+                        'generations and landed in different colour worlds, so the character '
+                        'changes colour when it turns. Fix it in the PROMPT: put the exact hex per '
+                        'material in the game\'s art-style.json "lockedColours" and regenerate the '
+                        'odd row — the palette snap cannot fix this, it only maps each pixel to the '
+                        'nearest allowed colour. (A WARNING: a row can legitimately show more of a '
+                        'material than another.)' % (col + (j, other * 100)))
+    return out
 
 
 def check_sheet(path, style, rows, cols):
@@ -295,6 +380,9 @@ def check_sheet(path, style, rows, cols):
                     'a sheet cannot say whether its columns are [step, NEUTRAL, step] or the '
                     'legacy [idle, walk, attack], and on a legacy sheet this means nothing.)')
 
+    if rows > 1:
+        soft += _colour_drift(path, a, rows, ch)
+
     pal = bs.load_palette(style) if style else None
     if pal is not None:
         px = a[a[:, :, 3] > 0][:, :3].astype(np.int32)
@@ -312,6 +400,90 @@ def check_sheet(path, style, rows, cols):
 
 # See the CROPPED check in check_frames for how this was calibrated.
 FRAME_ASPECT_SPREAD = 1.45
+
+# STANDING vs MID-STRIDE, measured at the feet.
+#
+# NEUTRAL_RATIO below compares how DIFFERENT the three frames are from each
+# other, which does not answer the question that matters: is frame 1 a person
+# standing still? A row of three mid-stride poses that differ nicely from one
+# another passes it, and then the character stops walking and keeps swinging
+# their legs. That is the defect a player actually reports, and it shipped on
+# twelve of fourteen characters' side rows while the difference metric was
+# green — the failure games/the-game/WALK_SHEETS.md already describes:
+# "all three frames being mid-stride (no neutral at all — missed in review
+# because only the DOWN row's middle frame was checked closely)".
+#
+# A stand has the feet together; a stride has them apart. Measure the width
+# of the silhouette in the bottom 18% (the feet) as a fraction of the
+# sprite's width, and require frame 1 to be meaningfully NARROWER than both
+# steps. Calibrated on the real set: nella_human's correct side row scores
+# 0.52 and Kat's 0.86, while every one of the twelve broken rows scores 0.97
+# to 1.11 — a gap wide enough that 0.90 sits clear of both.
+#
+# A WARNING, not a failure: the threshold is a proxy for a pose, a long robe
+# hides the feet (John's row is 1.00 wide in all three frames because he has
+# no visible legs at all), and a borderline-but-fine set must never block a
+# deploy.
+STANCE_RATIO = 0.90
+
+# WHICH WAY THE SIDE ROW LOOKS.
+#
+# app.js draws the _left_ frames AS-IS when a character walks left and mirrors
+# them for right (`walkMirror = facing === "right"`), so every _left_ frame
+# must face LEFT. A frame that faces right is drawn backwards — and when only
+# SOME frames in a row are reversed, the character flips back and forth on
+# every step, which is what a player sees and reports first. nella_human
+# shipped with two of her three left frames reversed and kyran with one.
+#
+# Measured on the FACE, not the silhouette: a walking body's outline mirrors
+# almost perfectly (silhouette IoU called every one of these consistent), but
+# a profile's skin sits on the side it looks toward and its hair behind. So:
+# centroid of skin-toned pixels in the head band, relative to the head's own
+# centre, as a fraction of head width. Negative is looking left.
+#
+# Calibrated on the real set: correctly-facing rows land between -0.06 and
+# -0.22, reversed frames between +0.11 and +0.25 — the sign itself is the
+# signal, with a dead band for frames where it cannot be read at all. John is
+# hooded and returns nothing; Eric and Timothy sit at ±0.03 because their
+# side poses are nearly front-on. Those are skipped rather than guessed at.
+FACING_DEADBAND = 0.05
+
+
+def _face_side(im):
+    """Where the face sits within the head: -ve looking left, +ve right."""
+    import numpy as np
+    a = np.array(im.convert("RGBA")).astype(int)
+    op = a[..., 3] > 40
+    rows = np.where(op.any(axis=1))[0]
+    if not len(rows):
+        return None
+    lo, hi = rows[0], rows[-1]
+    hm = np.zeros_like(op)
+    hm[lo:lo + max(1, int((hi - lo) * 0.38))] = True
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    skin = op & hm & (r > 110) & (r > g + 18) & (g >= b - 10) & (b < r - 25)
+    head = op & hm
+    if skin.sum() < 12 or head.sum() < 12:
+        return None
+    hx = np.where(head.any(axis=0))[0]
+    span = max(1, hx[-1] - hx[0])
+    return ((np.argwhere(skin)[:, 1]).mean() - (hx[0] + hx[-1]) / 2) / span
+
+
+def _foot_spread(im):
+    """Width of the silhouette at the feet, as a fraction of sprite width."""
+    import numpy as np
+    a = np.array(im.convert("RGBA"))
+    m = a[..., 3] > 40
+    rows = np.where(m.any(axis=1))[0]
+    if not len(rows):
+        return None
+    lo, hi = rows[0], rows[-1]
+    band = m[int(hi - (hi - lo) * 0.18):hi + 1]
+    cols = np.where(band.any(axis=0))[0]
+    if not len(cols):
+        return None
+    return (cols[-1] - cols[0] + 1) / m.shape[1]
 
 
 def check_frames(art_dir, char_id, dirs):
@@ -346,6 +518,37 @@ def check_frames(art_dir, char_id, dirs):
                 f'{char_id} ({d}): NO NEUTRAL — frame 1 is not a distinct standing pose '
                 f'(middle-vs-steps {d01:.1f}/{d12:.1f}, steps-vs-each-other {d02:.1f}). '
                 'Idle will look like walking on the spot.')
+        # SIDE ROW ONLY. CHARACTER_SHEETS.md: the side row is "the only row
+        # where the step reads as displacement" — a front or back step is
+        # deliberately small, and most of that animation is not in the legs
+        # at all. Measuring foot spread there warns on almost every healthy
+        # character, which is how a checker becomes noise nobody reads.
+        sp = [_foot_spread(f) for f in fr] if d in ("left", "right") else [None] * 3
+        if all(x is not None for x in sp) and min(sp[0], sp[2]) > 0:
+            ratio = sp[1] / min(sp[0], sp[2])
+            if ratio > STANCE_RATIO:
+                soft.append(
+                    f'{char_id} ({d}): MID-STRIDE IDLE — frame 1 stands as wide at the '
+                    f'feet as the step frames (spread {sp[0]:.2f}/{sp[1]:.2f}/{sp[2]:.2f}, '
+                    f'ratio {ratio:.2f}, wants <= {STANCE_RATIO}). It is another walking '
+                    'pose, not a stand, so this character keeps striding after they stop '
+                    'moving. Generate the standing pose on its own and combine it in — '
+                    'see games/the-game/WALK_SHEETS.md.')
+
+        if d in ("left", "right"):
+            sides = [_face_side(f) for f in fr]
+            wrong = [i for i, v in enumerate(sides)
+                     if v is not None and v > FACING_DEADBAND]
+            if wrong:
+                readable = [f'{v:+.2f}' if v is not None else 'n/a' for v in sides]
+                problems.append(
+                    f'{char_id} ({d}): REVERSED — frame(s) '
+                    + ', '.join(str(i) for i in wrong)
+                    + f' face RIGHT (face offsets {", ".join(readable)}). app.js draws '
+                    'these as-is when walking left and mirrors them for right, so a '
+                    'right-facing frame walks backwards — and a row where only some '
+                    'frames are reversed makes the character flip direction on every '
+                    'step. Mirror the listed frame(s) horizontally.')
 
     # CROPPED — the whole set is one character standing on one floor, tightly
     # trimmed, so every frame should have roughly the same width:height. A
@@ -382,17 +585,234 @@ def check_frames(art_dir, char_id, dirs):
     return problems, soft
 
 
+# CONSISTENCY ACROSS A CHARACTER'S SHEETS, view by view.
+#
+# The row-to-row check above compares rows WITHIN one sheet. It cannot see the
+# failure that actually shipped next: Beverly's mohawk is 2.2% of her walking
+# front row and 0.1% of her ATTACKING front row — it simply stops being drawn
+# when she swings — and her jacket's base/highlight balance inverts between the
+# two sheets, which reads as the jacket changing colour mid-swing. Every sheet
+# passed on its own. Nothing compared them.
+#
+# The comparison has to be LIKE FOR LIKE: the same view across different
+# sheets. Comparing a front row against a back row is meaningless — a back view
+# is legitimately all jacket and no snout, and Beverly's shorts are 0% from
+# behind in every sheet, correctly, because her jacket covers them. But her
+# front view walking and her front view attacking are the same character from
+# the same camera, so a material that carries one and vanishes from the other
+# is a promise the art contract made and the generation broke.
+#
+# Materials come from lockedColours in the game's art-style.json — the hexes
+# someone wrote down precisely because they must not drift. If a game has not
+# declared any, there is nothing to check and this says so rather than guessing.
+#
+# Thresholds, measured on Dog Punk's hero (the sheets that prompted this):
+#   VANISHED, hard: present at >=1.0% of a view in one sheet and <0.25% of the
+#     SAME view in another. Mohawk front 2.2% -> 0.1%, side 2.0% -> 0.0%. The
+#     legitimate zero cases (shorts from behind) are 0.0% in BOTH sheets and so
+#     are never flagged.
+#   SWING, warn: same view, same material, share ratio worse than 2.5x with at
+#     least 3% in the larger. Jacket base from behind 5.9% -> 12.4% (2.1x) sits
+#     just under, jacket highlight 11.0% -> 5.2% (2.1x) likewise; both are
+#     visible but arguable, which is what a warning is for.
+VANISH_PRESENT = 0.010
+VANISH_GONE = 0.0025
+SWING_RATIO = 2.5
+SWING_FLOOR = 0.03
+
+
+def _view_shares(path, materials, rows=3):
+    """Share of each named material in each row of a sheet."""
+    img = Image.open(path).convert('RGBA')
+    rh = img.height // rows
+    out = []
+    for r in range(rows):
+        a = np.asarray(img.crop((0, r * rh, img.width, (r + 1) * rh)))
+        px = a[..., :3][a[..., 3] > 0]
+        total = max(len(px), 1)
+        row = {}
+        for hexc, rgb in materials.items():
+            row[hexc] = float((px == np.array(rgb)).all(axis=1).sum()) / total
+        out.append(row)
+    return out
+
+
+# STYLE, MEASURED. Two rows can be perfectly on-palette and still be obviously
+# different drawings — Beverly's walk and attack sheets were, and the person
+# looking at them said so while every check passed. What differs is not colour
+# but HOW MUCH BLACK OUTLINE the drawing carries: one generator wires every
+# shape heavily, another draws the same character with half as much. That is
+# what "the art wires look different" meant, and it is measurable.
+#
+# COMPARE LIKE WITH LIKE, which the first version of this got wrong. A raw and
+# a cut sheet are not on the same scale — the same art measures 0.230 as a raw
+# and 0.142 once cut and palette-snapped, because downscaling averages thin
+# outlines away. Comparing across the two silently passed the exact mismatch it
+# was written to catch. Both sides are normalised to a common sprite height
+# here, and a raw is only ever compared against another RAW.
+#
+# Measured, normalised, on the real art:
+#     one style     0.230  0.247                    (spread 1.07)
+#     one style     0.329  0.352  0.394             (spread 1.20)
+#     across        0.230 vs 0.394                  (1.71)
+#                   0.247 vs 0.352                  (1.43)
+#                   0.247 vs 0.329                  (1.33)  <- the near pair
+#
+# STYLE_MAX at 1.40 sits well above every same-style spread and catches the
+# clear mismatches. Being honest about what that buys: the closest cross-style
+# pair, 1.33, slips under it. Pulling the limit down to 1.25 would catch that
+# one and start firing on same-style art, and a gate that rejects good art is
+# one people learn to force past. This catches the mismatch you can see across
+# the room; a subtle one still needs eyes.
+STYLE_MAX = 1.40
+STYLE_HEIGHT = 168        # the body height these sheets are drawn at
+
+
+def outline_fraction(a, opaque):
+    """Share of the sprite that is near-black outline."""
+    lum = a[..., :3].astype(np.float32) @ np.array([0.299, 0.587, 0.114], np.float32)
+    return float(((lum < 40) & opaque).sum() / max(opaque.sum(), 1))
+
+
+def style_score(path):
+    """Outline fraction of a RAW, normalised to a common sprite height."""
+    img = bs.key_background(path)
+    a = np.array(img)
+    op = a[..., 3] > 0
+    ys, xs = np.nonzero(op)
+    if len(ys) < 50:
+        return None
+    img = img.crop((int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1))
+    img = img.resize((max(1, img.width * STYLE_HEIGHT // img.height), STYLE_HEIGHT), Image.BOX)
+    a = np.array(img)
+    return outline_fraction(a, a[..., 3] > 0)
+
+
+def check_style(path, ref_path):
+    """Is this row drawn in the same style as the character's existing art?"""
+    try:
+        mine, ref = style_score(path), style_score(ref_path)
+        if mine is None or ref is None:
+            return []
+        ratio = max(mine, ref) / max(min(mine, ref), 1e-6)
+        if ratio > STYLE_MAX:
+            return [f'{path}: DIFFERENT STYLE — {mine:.3f} outline against {ref:.3f} in '
+                    f'{os.path.basename(ref_path)} ({ratio:.2f}x, limit {STYLE_MAX}). Same '
+                    'character, visibly different drawing: side by side these will not read '
+                    'as one set. Regenerate this row, or regenerate the rest to match if the '
+                    'new look is the one you want.']
+    except Exception as e:
+        print(f'(style check skipped: {e})', file=sys.stderr)
+    return []
+
+
+def check_character(game_dir, char_id, rows=3):
+    """Compare every sheet of one character, view by view."""
+    style_path = os.path.join(game_dir, 'art-style.json')
+    if not os.path.isfile(style_path):
+        return [], [f'{game_dir}: no art-style.json — nothing to check against.']
+    style = json.loads(open(style_path).read())
+
+    # THE SPEC IS WHAT MAKES THIS CHECKABLE. Without it, "this colour is in one
+    # sheet and not the other" cannot be judged: Beverly's mohawk vanishing
+    # from her attack sheet is a bug, and her dagger blade appearing only in
+    # that same sheet is correct — she draws it to swing it. Both look
+    # identical to a checker counting pixels. `appears: always` is the line
+    # between them, which is why a character spec is infrastructure and not
+    # documentation.
+    spec = (style.get('characters') or {}).get(char_id)
+    materials, always, conditional = {}, set(), set()
+    if spec:
+        for mat, info in (spec.get('materials') or {}).items():
+            if not isinstance(info, dict):
+                continue
+            appears = str(info.get('appears', 'always')).lower()
+            for role, hexc in info.items():
+                if role == 'appears' or not (isinstance(hexc, str) and hexc.startswith('#')):
+                    continue
+                h = hexc[1:].lower()
+                materials[h] = [int(h[i:i + 2], 16) for i in (0, 2, 4)]
+                (always if appears == 'always' else conditional).add(h)
+        # A HEX SHARED BY TWO MATERIALS CANNOT BE ATTRIBUTED. Beverly's jacket
+        # studs and her dagger blade are both #dfe4ea: the studs are on her in
+        # every frame, the blade only when she swings. Counting that colour
+        # says nothing about either, so it cannot be required — the first run
+        # of this check duly "failed" the walk sheet for having no blade in it.
+        # Requiring it only when it is unambiguous keeps the check honest;
+        # sharing a hex between an always and a conditional material is really
+        # the spec's problem to fix, so say so.
+        for h in sorted(always & conditional):
+            soft_note = (f'{game_dir}/{char_id}: #{h} is used by both an always-present and a '
+                         'conditional material in the spec, so its presence cannot be checked. '
+                         'Give one of them its own colour if it matters.')
+            spec.setdefault('_notes', []).append(soft_note)
+        always -= conditional
+    else:
+        # No spec for this character yet: fall back to the flat lockedColours
+        # hex list, and warn rather than fail, since nothing declares which of
+        # those are meant to be on every frame.
+        locked = style.get('lockedColours') or {}
+        text = ' '.join(v for v in locked.values() if isinstance(v, str))
+        for h in sorted(set(re.findall(r'#([0-9a-fA-F]{6})', text))):
+            materials[h.lower()] = [int(h[i:i + 2], 16) for i in (0, 2, 4)]
+    if not materials:
+        return [], [f'{game_dir}: no spec for "{char_id}" in art-style.json `characters`, and '
+                    'no lockedColours to fall back on — so nothing about this character is '
+                    'enforceable and every generation is free to redraw it differently. '
+                    'Write the spec; see .github/art/CHARACTER_SHEETS.md.']
+
+    sheets = sorted(glob.glob(os.path.join(game_dir, f'{char_id}*_sheet.png')))
+    if len(sheets) < 2:
+        return [], []                      # nothing to compare against
+
+    shares = {os.path.basename(p): _view_shares(p, materials, rows) for p in sheets}
+
+    view_names = ['down', 'side', 'up'][:rows]
+    hard, soft = [], list((spec or {}).get('_notes', []))
+    names = list(shares)
+    for v in range(rows):
+        for hexc in materials:
+            vals = [(n, shares[n][v][hexc]) for n in names]
+            hi_n, hi = max(vals, key=lambda t: t[1])
+            lo_n, lo = min(vals, key=lambda t: t[1])
+            must = hexc in always
+            if must and hi >= VANISH_PRESENT and lo < VANISH_GONE:
+                hard.append(
+                    f'{game_dir}/{char_id}: MATERIAL VANISHED — #{hexc} is {hi * 100:.1f}% of '
+                    f'the {view_names[v]} view in {hi_n} and {lo * 100:.1f}% in {lo_n}. It is a '
+                    'locked colour, so it is meant to be on the character in every sheet — the '
+                    'same character from the same camera cannot lose a whole material when the '
+                    'animation changes. The spec says this material appears ALWAYS. '
+                    'Regenerate the row that lost it, quoting the spec.')
+            elif (not must) and hi >= VANISH_PRESENT and lo < VANISH_GONE:
+                pass          # the spec says this one is conditional — a drawn blade, a
+                              # lolling tongue. Present in one animation and not another is
+                              # exactly what it is supposed to do.
+            elif hi >= SWING_FLOOR and lo > 0 and hi / lo > SWING_RATIO:
+                soft.append(
+                    f'{game_dir}/{char_id}: MATERIAL SWING — #{hexc} is {hi * 100:.1f}% of the '
+                    f'{view_names[v]} view in {hi_n} but {lo * 100:.1f}% in {lo_n} ({hi / lo:.1f}x). '
+                    'Same character, same camera: if this is a base tone and its highlight '
+                    'trading places, the garment reads as changing colour between animations.')
+    return hard, soft
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='mode', required=True)
 
     r = sub.add_parser('raw', help='check a generated row before cutting')
+    r.add_argument('--style-ref', help='an existing sheet this row must match the style of')
     r.add_argument('image')
     r.add_argument('--frames', type=int, default=3)
     r.add_argument('--blobs', action='store_true')
     r.add_argument('--walk', action='store_true', help='also require a distinct neutral middle frame')
     r.add_argument('--mirrored', action='store_true',
                    help='front/back row: the two step frames must be opposite (mirrored) steps')
+    r.add_argument('--steps-built', action='store_true',
+                   help='the two step frames will be BUILT from the standing frame by '
+                        'build_sheet.py --build-steps, so a same-foot-twice verdict on them '
+                        'warns instead of failing (they never reach the game)')
     r.add_argument('--tol', type=int, default=22)
 
     s = sub.add_parser('sheet', help='check a built sheet')
@@ -401,6 +821,11 @@ def main():
     s.add_argument('--rows', type=int, default=None, help='default: inferred from the 256px cell size')
     s.add_argument('--cols', type=int, default=None)
 
+    c = sub.add_parser('character', help="compare all of one character's sheets, view by view")
+    c.add_argument('game_dir')
+    c.add_argument('char_id')
+    c.add_argument('--rows', type=int, default=3)
+
     f = sub.add_parser('frames', help='check a set of individual <id>_<dir>_<n>.png frames')
     f.add_argument('art_dir')
     f.add_argument('char_id')
@@ -408,7 +833,14 @@ def main():
 
     args = ap.parse_args()
     if args.mode == 'raw':
-        problems = check_raw(args.image, args.frames, args.blobs, args.walk, args.tol, args.mirrored)
+        problems = check_raw(args.image, args.frames, args.blobs, args.walk, args.tol,
+                             args.mirrored, args.steps_built)
+        if args.style_ref and os.path.isfile(args.style_ref):
+            problems += check_style(args.image, args.style_ref)
+    elif args.mode == 'character':
+        problems, soft = check_character(args.game_dir, args.char_id, args.rows)
+        for w in soft:
+            print(f'WARNING {w}', file=sys.stderr)
     elif args.mode == 'frames':
         problems, soft = check_frames(args.art_dir, args.char_id, args.dirs.split(','))
         for w in soft:
@@ -418,7 +850,7 @@ def main():
         for w in soft:
             print(f'WARNING {w}', file=sys.stderr)
 
-    subject = getattr(args, 'image', None) or args.char_id
+    subject = getattr(args, 'image', None) or getattr(args, 'char_id', '?')
     for p in problems:
         print(p, file=sys.stderr)
     if problems:

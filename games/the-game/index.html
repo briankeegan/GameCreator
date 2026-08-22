@@ -53,17 +53,6 @@
         </div>
       </div>
 
-      <!-- THE BLACK RUNE DOOR: the carvings resolve into words you can pick
-           from. Not a room of its own — it opens over whichever room you
-           pushed the door from. -->
-      <div class="rune-door" id="runeDoor" hidden>
-        <div class="rune-panel">
-          <div class="rune-title" id="runeTitle"></div>
-          <div class="rune-list" id="runeList"></div>
-          <button class="rune-back" id="runeBack">step back</button>
-        </div>
-      </div>
-
       <!-- DUEL: the real Panel Attack board (duel.js drives it, panel-engine.js
            is the ported rules engine). Canvas sizes itself to this box, so it
            works in both the wide desktop stage and the tall phone one. -->
@@ -246,6 +235,8 @@
           data-version="v1"
           data-root="../../"></script>
   <script src="../../shared/storage.js"></script>
+  <script src="../../shared/controls.js"></script>
+  <script src="../../shared/save-slots.js"></script>
   <script src="settings.js"></script>
   <script src="story.js"></script>
   <script src="panel-engine.js"></script>

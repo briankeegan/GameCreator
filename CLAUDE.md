@@ -62,6 +62,31 @@ design discussion. `shared/` holds the components every game reuses
   skipping the name+secret form entirely, on ANY game — no per-game secret
   lookup needed. Falls back to the normal per-game saved login if the
   admin token is missing/stale.
+- **The autopilot runs on SONNET, and that is a cost decision, not a quality
+  oversight.** It was switched to Opus as an "improvement" and the account's
+  API budget — around $100 — was gone inside a day, which stopped every thread
+  until the monthly reset, since the autopilot has no other way to run. Better
+  answers bought with eleven days of total unavailability is a bad trade at any
+  quality gap. It is also the wrong shape of work to pay Opus for: a run reads
+  a message, edits game files, calls scripts that already carry the expensive
+  lessons (the cutters, the verifiers, the canonical prompts, the character
+  specs), and writes a reply — the judgement was deliberately moved INTO the
+  tooling so the model would not have to supply it. Override per run with the
+  `model` dispatch input when something genuinely needs it. Cost multipliers to
+  keep in mind before raising anything: every run sends the whole thread
+  history, `--max-turns 120`, `MAX_GENERATIONS: 12` images, and up to 3 retries
+  — so one message can be three full runs.
+- **A run's context is built to a plan, not just handed the thread:
+  `docs/AUTOPILOT_CONTEXT.md`.** Measured on a 60-comment thread, Claude's own
+  replies are 76% of the bytes, live-progress panels 19%, retry/failure notices
+  3%, and THE OWNER'S MESSAGES 2%. So noise is deleted outright (deterministic,
+  free), the owner's messages are NEVER compacted (2% of bytes, 100% of the
+  instructions, and preferences stated once in passing must hold forever), and
+  Claude's replies are compacted by HAIKU once per comment and cached by comment
+  id across runs — so a reply is summarised once in its life and a typical run
+  makes zero API calls to build its context. 47KB -> 11KB measured. Every
+  failure path falls back to a plain tail: a summariser that can stop a message
+  being answered is worse than an expensive prompt.
 - **Per-game autopilot toggle.** Each game chooses how its Clubhouse
   messages are handled, via an `"autopilot": true` flag on its `games.json`
   entry (absent = off). OFF (default) = manual: a subscribed session handles
@@ -145,14 +170,33 @@ design discussion. `shared/` holds the components every game reuses
   2. **Tool** — a script that decides it mechanically, runnable by hand.
   3. **Gate** — a `pages.yml` step that runs the tool on every push, so a
      violation fails the build instead of shipping.
-  Existing instances: room exits (`EXIT / DOOR CONVENTION` comment ->
-  `.github/scripts/check_room_exits.mjs` -> "Verify room exits"), art
-  (`.github/art/CHARACTER_SHEETS.md` -> `.github/art/verify_sheet.py` ->
+  Existing instances: doors (`docs/DOOR_STANDARD.md` ->
+  `.github/scripts/check_room_exits.mjs` + `room.py verify` -> "Verify room
+  exits"), art (`.github/art/CHARACTER_SHEETS.md` -> `.github/art/verify_sheet.py` ->
   "Verify shipped sprite sheets" / "Verify character frame sets"), rooms
   (`docs/ROOM_ART_STANDARD.md` -> `.github/art/room.py verify` -> "Verify room
   props and floor plates"), and art references (the header comment in
   `.github/scripts/check_art_refs.mjs` -> that script -> "Verify art
   references"). Add all three pieces together or the rule will not hold.
+- **Before hand-rolling an algorithm, find the established tool.** A prop
+  needed its real bounding box measured off a composed scene, and the first
+  instinct was a flood fill written from scratch — grow a region from a
+  seed pixel, tolerance-match each new neighbour. It doesn't work on this
+  art: a single seed in the bedroom's bed had no usable tolerance at all,
+  jumping from "1 pixel" to "71% of the whole frame" with nothing in
+  between, because the object is several genuinely different colours and a
+  step-by-step walk can't tell "an edge inside the object" from "the edge
+  of the object" — a well-known limitation, not a bug to keep tuning
+  through. OpenCV's GrabCut — the actual standard tool for exactly this,
+  decades of use behind it — solved it in one call, no tolerance to guess:
+  given a generous rectangle, it fits foreground/background colour models
+  and finds a real segmentation via graph cuts. `pip install
+  opencv-python-headless` and reach for `cv2.grabCut` (or the equivalent
+  library for whatever the problem actually is) before writing a bespoke
+  version of a solved problem. Ask "what field studies this?" before
+  "how would I implement this?" — segmentation, template matching, feature
+  matching, and outlier rejection are all names of fields with existing
+  tools, not blank pages.
 - **A forgiving runtime needs a strict build.** The game deliberately survives
   missing art — `loadArt()` on an id with no file never resolves ok, so an NPC
   draws as a coloured circle with its initial in it and the game stays
@@ -173,6 +217,25 @@ design discussion. `shared/` holds the components every game reuses
   configured.** Because both layouts exist, the art gate globs for both — so a
   new game is covered the moment it has art, with no per-game config to forget
   to update.
+- **A slow test is debugged with a probe, not with re-runs — and a grid test
+  COLLECTS.** `browser.test.js` takes ~4 minutes. Fixing it one failed
+  assertion at a time costs a run per assertion, and each run only ever
+  answers one question. Two rules came out of doing it the wrong way:
+  1. When it fails, write a throwaway script in the scratchpad that boots
+     the one case and DUMPS state (position, room, npcs, exit overlaps).
+     ~20 seconds, and it tells you what is actually happening instead of
+     what the assertion guessed. The failure that started this reported
+     "opening the door makes Chuck exist" — three steps downstream of the
+     real problem, which was that she never reached the door at all.
+  2. A loop over N cases must gather its failures and assert the list at
+     the end. Throwing on the first one turns "which doors are broken?"
+     into one question per run.
+- **A test must not assert a value the code DERIVES** — assert the invariant
+  instead. The full rule, the invariant-shaped non-invariant that catches
+  people out, and how to walk a test character without the walk itself being
+  the bug, are `docs/DOOR_STANDARD.md` §6. Kept there rather than here because
+  they were learned from doors and are checked alongside the rest of the door
+  rules; don't restate them in a third place.
 - **A fuzzy check warns; an unambiguous one fails.** Missing or duplicated
   frames are facts, so they fail the build. "This middle frame isn't really a
   neutral pose" is a threshold on an image-difference metric — it prints a
@@ -188,6 +251,19 @@ design discussion. `shared/` holds the components every game reuses
   `.github/scripts/check_art_registry.mjs` on every push, both directions: a
   tool or prompt that isn't listed fails the build, and so does a path listed
   there that doesn't exist. Add a tool, add its row.
+- **DOORS HAVE ONE STANDARD FOR EVERY GAME: `docs/DOOR_STANDARD.md`.** A door
+  is one half of a PAIR carrying a `link`; arrival is DERIVED from the partner
+  at runtime and never typed. Typed `arriveAt`/`arriveFacing` values drifted
+  until the Library, the Garden and the Lab all put the player on the same
+  square of lounge floor — each value individually valid, every check passing,
+  because nothing compared the two sides of a door. Two shapes are covered:
+  DERIVED (Newsey — any room shape, doors in any wall) and CONSTANT (Dog Punk —
+  every room the same grid, gate and spawn in the same cells always). Doors
+  work better in Dog Punk because of the stricter constraint, not better code:
+  arrival is a fact there rather than a computation. Prefer CONSTANT when a
+  game can live with it. A game is checked as soon as it PUBLISHES its door
+  data in a file with no DOM in it (`story.js` or `rooms.js`) — detected, never
+  configured, which is why dog-punk's maps moved out of `app.js`.
 - **THREE SHAPES OF LEVEL ART, and picking the right one first is the whole
   job:** a grid of repeating tiles (`docs/TILED_LEVEL_STANDARD.md`,
   `tileset.py` — Dog Punk), one picture per room (`docs/ROOM_ART_STANDARD.md`,
@@ -250,6 +326,16 @@ design discussion. `shared/` holds the components every game reuses
   `.github/art/walkgrid_prompt.txt` and `.github/art/attacksheet_prompt.txt`
   — use them instead of writing a new one, and fix them in place when a
   generation exposes a gap.
+- **EVERY character has a SPEC, and the spec is what makes consistency
+  enforceable.** `characters.<id>` in that game's `art-style.json`: species,
+  per-material hexes, `appears` (always / conditional), `proportions`,
+  `neverDraw`. Prompts are BUILT from it (`generate_row.py`) and sheets are
+  CHECKED against it (`verify_sheet.py character`, gated in `pages.yml`), so a
+  detail written there cannot drift the way one typed into a prompt does. The
+  `appears` field is what makes the check possible at all: Beverly's mohawk
+  vanishing from her attack sheet is a bug, her dagger blade appearing only in
+  that sheet is correct, and nothing counting pixels can tell those apart
+  without it. Add to a spec the moment a detail is caught drifting.
 - **Details that drift belong in `art-style.json`, not in a prompt you
   retype.** Sleeves vs sleeveless, ears, which hand holds the weapon —
   Beverly's jacket came back sleeved in some frames and sleeveless in
@@ -272,6 +358,12 @@ design discussion. `shared/` holds the components every game reuses
     `ctx.scale(-1, 1)` — for the player and every NPC alike. Only down, left
     and up are ever generated. A LEFT row that isn't a true side profile
     therefore breaks both directions at once.
+  - **Read `games/the-game/WALK_SHEETS.md` before regenerating one of these.**
+    It lists the failures this grid repeats — the back row comes back as a
+    hair blob or with its step frames cropped off the canvas — and it is now
+    linked from the art index, which is the page that says to start there
+    every time. It was not, which is how a session burned two generations
+    rediscovering the back-row failure it already documents.
   - Generating a new character's set is ONE dispatch:
     `.github/workflows/generate-walksheet.yml` (game, character id,
     description, optional reference art). It builds the prompt from
@@ -284,6 +376,17 @@ design discussion. `shared/` holds the components every game reuses
     (#FF00FF) gridlines, not white: white anti-aliases into a pale halo the
     slicer can't fully remove. `games/the-game/WALK_SHEETS.md` records why,
     and what else was tried.
+- **THE ROOM PROCESS IS A NUMBERED LIST WITH A GATE ON EVERY STEP, and it is
+  in `docs/ROOM_ART_STANDARD.md` §7. Read it before touching a room.** Every
+  step there was skipped at least once and each skip cost money, so each one
+  now has something that refuses to proceed without it: a room has a saved
+  SPEC (`games/<id>/rooms/<room>.json` — what it is, what it contains, its
+  floor, and WHICH WALL each way out is in, because the map decides that and a
+  prompt retyped from memory does not); pass 2 and pass 3 REFUSE to run until
+  somebody has looked at pass 1 and run `room.py approve`; and `room.py verify`
+  fails for any room whose art or placement changed since the last time anyone
+  rendered the side-by-side overlay. Approving a scene costs one image;
+  discovering the same problem three passes later costs six.
 - **A room is generated in THREE PASSES.** Do not ask for a room with its
   scenery painted in — that was the old way and everything downstream fought
   it.
@@ -325,11 +428,21 @@ design discussion. `shared/` holds the components every game reuses
     image Action reads, so a prompt only has to say WHICH PASS it wants — and
     `room.py prompt scene|plate|props` prints those prompts filled in. The
     Anarchy Garden is the reference room.
-  - **`room.py check` renders two pictures and you have to LOOK at them.** The
-    assembled room beside the composed scene is the step that finds things:
-    a plate that never filled its frame, statues at two thirds size, three
-    patches of ground cover where the scene has drifts. Every one of those was
-    invisible in the numbers and obvious in one glance at the side-by-side.
+  - **`room.py check` renders three pictures and you have to LOOK at all of
+    them, because side-by-side and blend catch different mistakes and neither
+    substitutes for the other.** The assembled room beside the composed scene
+    (side-by-side) is the step that finds things: a plate that never filled
+    its frame, statues at two thirds size, three patches of ground cover
+    where the scene has drifts. Every one of those was invisible in the
+    numbers and obvious in one glance at the side-by-side. But side-by-side
+    puts two pictures at their OWN separate scales next to each other, which
+    makes it blind to one whole class of mistake: a rug drawn at less than
+    half the width it needed turned into "a smaller picture of a smaller
+    rug" and passed a signed-off side-by-side clean. The assembled room
+    composited semi-transparent ON TOP of the scene (blend) is what actually
+    catches that — a size or position error shows up as an unmissable
+    doubled or ghosted edge. Found and fixed this way, after the room above
+    had already been signed off once on the side-by-side alone.
   - Ask for flat pure white behind a prop sheet, never transparency (same
     reason as sprite sheets). If a sheet does come back with real alpha,
     `build_props.py` uses it — keying white would eat a white marble statue.
@@ -425,8 +538,16 @@ design discussion. `shared/` holds the components every game reuses
   AND now doubles as a universal per-game secret-word override so admin
   can enter any game's Clubhouse without knowing its individual secret
   word (see "Admin bypasses the gate" above). Also dashboard-only.
-- Cloud sandboxes here usually can't reach `*.workers.dev`, `*.github.io`,
-  or `api.cloudflare.com` directly — verify Worker/Pages changes via the
+- **`briankeegan.github.io` IS reachable from a cloud sandbox here — check the
+  live site directly rather than inferring from a green workflow.** This file
+  said otherwise for a long time and it was never tested; the cost was real.
+  "Did it deploy?" kept being answered with the Pages run's status, which only
+  says the machinery ran — a deploy can go green having faithfully shipped a
+  file that never changed. Use `.github/scripts/check_deployed.sh [ref] [path…]`:
+  it fetches the file from the live site, hashes it, and compares it to the ref.
+  That is the question that matters, and it is one curl away.
+- Cloud sandboxes here usually can't reach `*.workers.dev` or
+  `api.cloudflare.com` directly — verify Worker/Pages changes via the
   GitHub API (commits, Actions run status, file contents) or ask the owner
   to check, rather than assuming a fetch failure means something's broken.
 - Binary files (PNG) don't survive the Contents API reliably through these

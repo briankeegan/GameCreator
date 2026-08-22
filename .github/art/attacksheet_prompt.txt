@@ -17,7 +17,7 @@ THE THREE FRAMES ARE ONE SWING of the weapon, left to right. It is a SLASH — a
 
 The weapon stays in the SAME HAND as on the character's walk sheet, in all three frames.
 
-ART STYLE: chunky flat cartoon pixel art, big simple shapes, flat solid colours, a thick black outline, no anti-aliasing, no gradients, no dithering, no texture inside a colour block. Draw NO GROUND — no floor line, no bar or plinth under the feet, no platform, no shadow; the character floats on empty white and the game draws its own floor. Nothing else in the image: no grid lines, no boxes, no frames, no labels, no text, no numbers.
+ART STYLE: chunky flat cartoon pixel art, big simple shapes, flat solid colours, a thick black outline, no anti-aliasing, no gradients, no dithering, no texture inside a colour block. Draw NO GROUND — no floor line, no bar or plinth under the feet, no platform, no shadow; the character floats on empty white and the game draws its own floor. Nothing else in the image: no grid lines, no boxes, no frames, no labels, no text, no numbers. FINAL CHECK, THE BACKGROUND: every pixel that is not one of the three sprites is PURE WHITE #FFFFFF. No backdrop, no vignette, no dark or coloured surround, no gradient, no scene, no border, no panel behind the characters. This is stated twice on purpose: a row that comes back on a dark or gradient background cannot be cut out and is rejected, and it is the failure that has wasted the most generations.
 
 ---8<--- PROMPT ENDS ---8<---
 

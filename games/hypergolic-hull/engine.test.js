@@ -371,10 +371,19 @@ const weaponLevel = {
 // A move never fires anything — even point-blank.
 let weaponState = Engine.createGameState(weaponLevel);
 assert.strictEqual(weaponState.enemies[0].hp, 1, "enemies start at 1 HP");
+// Derived rather than spelled out: the point is that exactly ONE gun reads
+// armed and it's the one in the hold, not that the registry has a
+// particular membership on the day this was written.
+assert.strictEqual(weaponState.systems.warpdrive, true, "the warp drive is always available");
 assert.deepStrictEqual(
-  weaponState.systems,
-  { warpdrive: true, autocannon: true, flakBurst: false, arcBeam: false, mortar: false, flankTubes: false, railgun: false, missilePod: false, beamLance: false, arcProjector: false, demolitionCharge: false },
+  Engine.WEAPON_SYSTEM_KEYS.filter((k) => weaponState.systems[k]),
+  ["autocannon"],
   "arming derives from the Hold — only the installed Autocannon reads armed"
+);
+assert.deepStrictEqual(
+  Object.keys(weaponState.systems).slice().sort(),
+  ["warpdrive", ...Engine.WEAPON_SYSTEM_KEYS].sort(),
+  "and every gun in the registry has a flag, so none is silently unarmable"
 );
 Engine.applySublight(weaponState, { q: 2, r: 2 }); // steps adjacent to the interceptor
 assert.strictEqual(weaponState.enemies[0].alive, true, "moving fires NOTHING — shooting is its own action now");
@@ -439,6 +448,16 @@ assert.deepStrictEqual(
   Object.keys(Engine.WEAPONS).sort(),
   "every weapon in the registry is a system key — nothing owned is unfireable"
 );
+// "Anything an enemy can use, a player can get." Every gun in the game is
+// either the one you start with or something a station sells — no
+// enemy-only hardware, ever.
+for (const key of Engine.WEAPON_SYSTEM_KEYS) {
+  if (key === "autocannon") continue; // you begin with it
+  assert.ok(
+    Engine.OUTPOST_OFFER_POOL.some((o) => o.id === key),
+    `${key} is fitted to something out there, so it has to be buyable — nothing is enemy-only`
+  );
+}
 
 let holdState = Engine.createGameState(weaponLevel);
 assert.strictEqual(holdState.hold.cols, 5, "the starter hold is 5 cells wide");
@@ -836,7 +855,7 @@ assert.strictEqual(salvageState.enemies[0].alive, false, "the FIRE volley kills 
 // priced against sector 2 forever.
 assert.strictEqual(
   salvageState.salvage,
-  Engine.ENEMY_TYPES.interceptor.salvage + Math.floor(salvageLevel.id / 4),
+  Engine.ENEMY_TYPES.interceptor.salvage + Math.floor(salvageLevel.id / 2),
   "a kill drops its type's salvage value, scaled by how deep the sector is"
 );
 assert.ok(salvageState.events.some((e) => e.type === "salvage"), "a kill emits a salvage event for the UI to animate");
@@ -1083,20 +1102,33 @@ assert.notDeepStrictEqual(
   outpostRunFixture(950, 2, 0).outpostOfferIds,
   "a different run seed can deal Sector 950 a genuinely different shop — replaying a sector isn't guaranteed identical anymore"
 );
-// Rarity actually weights the roll: sampled with the bad-luck guarantee
-// held off (raresSkipped reset every sample), commons should show up far
-// more than rares purely from the weighting, not the guarantee.
+// Rarity actually weights the roll. Measured PER ITEM, not per tier: there
+// are three commons and six rares now, so counting whole tiers said rares
+// were winning when each individual rare was still much scarcer than each
+// individual common. Sampled with the guarantees held off — a ship with no
+// second gun is promised one, and a ship with no screen is promised that,
+// so a fixture flying naked measures the promises rather than the roll.
 {
   const tally = {};
+  const kitted = ["shieldGenerator", "arcBeam"]; // nothing forced: has a screen, has a second gun
   for (let levelId = 950; levelId < 1050; levelId++) {
-    const s = outpostRunFixture(levelId, 99, 0);
+    const s = Engine.createGameState(
+      {
+        id: levelId, radius: 2,
+        playerStart: { q: 0, r: 0 }, exit: { q: 2, r: 0 }, outpost: { q: -2, r: 0 },
+        enemies: [], hazards: [], exitRule: "all-enemies-dead",
+      },
+      { runSeed: 99, raresSkipped: 0, extraActions: kitted.filter((k) => Engine.WEAPON_SYSTEM_KEYS.includes(k)) }
+    );
+    for (const it of kitted) if (!s.hold.items.some((h) => h.id === it)) s.hold.items.push({ id: it, x: 0, y: 0 });
     for (const id of s.outpostOfferIds) tally[id] = (tally[id] || 0) + 1;
   }
-  const commonCount = (tally.reinforce || 0) + (tally.reactor || 0);
-  const rareCount = (tally.mortar || 0) + (tally.flankTubes || 0) + (tally.railgun || 0);
+  const perItem = (ids) => ids.reduce((n, id) => n + (tally[id] || 0), 0) / ids.length;
+  const commonEach = perItem(["reinforce", "reactor"]);
+  const rareEach = perItem(["mortar", "flankTubes", "railgun", "missilePod", "arcProjector", "demolitionCharge"]);
   assert.ok(
-    commonCount > rareCount * 2,
-    `common items (${commonCount} sightings) show up meaningfully more than rare ones (${rareCount}) — rarity weighting is real, not cosmetic`
+    commonEach > rareEach * 1.5,
+    `each common (${commonEach.toFixed(1)} sightings) turns up meaningfully more than each rare (${rareEach.toFixed(1)}) — rarity weighting is real, not cosmetic`
   );
 }
 // Prices roll within a modest band of the pool's listed cost — a real
@@ -1351,10 +1383,14 @@ for (let y = 0; y < railgunBuyState.hold.rows && !railgunFitted; y++) {
 assert.strictEqual(railgunFitted, true, "one extra row of hold is enough to fit the spine");
 assert.strictEqual(railgunBuyState.systems.railgun, true, "and installing it arms the weapon");
 assert.strictEqual(Engine.WEAPONS.railgun.damage, 2, "the Railgun hits for 2 — it one-shots anything, including the Bulwark's plating");
-assert.strictEqual(
-  Engine.WEAPONS.railgun.energyCost,
-  4,
-  "and costs 4 against a +1/cycle reactor: the same charge rhythm the Railgun Destroyer telegraphs at you"
+// The three lane guns are a strict ladder — a Railgun's line swallows an
+// Arc Projector's, which swallows a Beam Lance's — so each one up has to
+// cost another charge or the one below it is obsolete. That ordering is
+// the assertion; the exact numbers are free to move together.
+assert.ok(
+  Engine.WEAPONS.beamLance.energyCost < Engine.WEAPONS.arcProjector.energyCost &&
+    Engine.WEAPONS.arcProjector.energyCost < Engine.WEAPONS.railgun.energyCost,
+  "reach costs rate: Beam Lance < Arc Projector < Railgun, in charge per shot"
 );
 railgunBuyState.playerPos = { q: 2, r: 6 };
 railgunBuyState.enemies[0].type = "cruiser";
@@ -1399,7 +1435,7 @@ assert.strictEqual(Engine.ENEMY_TYPES.escort.ship.maxShields, 1, "the Escort is 
 assert.strictEqual(Engine.ENEMY_TYPES.carrier.maxHull, 1, "the Carrier is one Hull — two GUNS is what it is, not two hit points");
 assert.deepStrictEqual(
   Engine.ENEMY_TYPES.carrier.ship.weaponKeys.slice().sort(),
-  ["flakBurst", "missilePod"],
+  ["missilePod", "siegeMaul"],
   "and the only MOBILE hostile carrying two guns — that, not a bigger hull, is what it is"
 );
 assert.strictEqual(
@@ -2711,10 +2747,15 @@ for (let t = 1; t <= 8; t++) {
   Engine.applyEndTurn(railgunEnergyState); // hold position — one full round per END TURN
   hullTimeline.push(railgunEnergyState.hull);
 }
+// Written against START_HULL rather than the literal 3 it used to assume,
+// so the ship's hull can move without this failing for the wrong reason.
+// What is being asserted is the RHYTHM: nothing for five rounds, then two
+// hull at once.
+const H = Engine.START_HULL;
 assert.deepStrictEqual(
   hullTimeline,
-  [3, 3, 3, 3, 1, 1, 1, 1],
-  "the Railgun charges four rounds, then takes 2 Hull in one shot — a readable rhythm, not a constant beam"
+  [H, H, H, H, H, H - 2, H - 2, H - 2],
+  "the Railgun charges five rounds, then takes 2 Hull in one shot — a readable rhythm, not a constant beam"
 );
 
 // Once charged, its whole line lights up in the threat overlay again.

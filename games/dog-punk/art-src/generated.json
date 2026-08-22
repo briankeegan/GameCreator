@@ -1,0 +1,190 @@
+{
+ "brute_back_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "brute_front_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "brute_side_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "drone_back_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "drone_front_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "drone_side_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_atk_back_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_atk_front_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_atk_side_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_attack_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_attack_v2_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_back_4f_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_back_atk_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_back_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_front_4f_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_front_atk_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_front_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_sheet_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_side_4f_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_side_4f_v2_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_side_atk_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_side_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_walk_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_walk_v2_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "rat_back_quad_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "rat_back_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "rat_front_quad_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "rat_front_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-1",
+  "note": "backfilled from commit time, not recorded at generation",
+  "quality": "medium",
+  "size": "1536x1024"
+ }
+}

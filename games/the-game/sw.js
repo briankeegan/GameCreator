@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("the-game-v47", [
+GCRegisterServiceWorker("the-game-v77", [
   "./",
   "./index.html",
   "./style.css",
@@ -17,6 +17,8 @@ GCRegisterServiceWorker("the-game-v47", [
   "../../shared/nav.css",
   "../../shared/pwa.js",
   "../../shared/storage.js",
+  "../../shared/controls.js",
+  "../../shared/save-slots.js",
   "./art/walk-home_bedroom.png",
   "./art/walk-bedroom.png",
   "./art/walk-lounge.png",

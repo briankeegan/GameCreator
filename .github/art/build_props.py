@@ -17,7 +17,9 @@ sprites do. So they are drawn together in one image and cut apart here.
   1. Key the flat white background out to real transparency (asking the
      generator for transparency returns a beige wash — see CLAUDE.md).
   2. Find each prop as a connected blob of non-background pixels, ignoring
-     specks, and take them left to right.
+     specks, and take them in reading order — top-to-bottom rows, left to
+     right within a row (see reading_order: a wide item on its own row, like
+     a balustrade rail, breaks a plain left-to-right sort).
   3. Trim each to its own bounding box and save it at its natural aspect.
 
 The game scales a prop by HEIGHT when it draws it (see `props` in story.js), so
@@ -110,6 +112,46 @@ def blobs(mask):
     return out
 
 
+# SORTING BY X ALONE ASSUMES ONE ROW. The bedroom's sheet asked for 7 props
+# — the balustrade rail included, its own item, wider than everything above
+# it — and the generator laid it out as 6 items in a row plus the rail on a
+# second row below rather than cramming 7 into one strip. A rail spanning the
+# full width has its mean x at the sheet's own centre, which lands in the
+# MIDDLE of the row above's left-to-right order: sorting purely by x put the
+# rail's art into the bed's name slot and shifted every name after it by one,
+# invisibly, because the tool never printed anything wrong — it found exactly
+# 7 blobs for 7 names, the failure mode "found N but expected M" can't catch.
+#
+# So: cluster into rows by vertical overlap first, THEN sort each row by x
+# and read rows top to bottom. A single-row sheet — everything this shipped
+# with until now — has exactly one row after clustering, which sorts by x
+# alone and is unchanged from before.
+def reading_order(found):
+    def bbox(pts):
+        ys = [y for y, _ in pts]
+        xs = [x for _, x in pts]
+        return min(ys), max(ys), sum(xs) / len(xs)
+
+    rows = []
+    for pts in sorted(found, key=lambda pts: bbox(pts)[0]):
+        y0, y1, cx = bbox(pts)
+        for row in rows:
+            if y0 <= row["y1"] and row["y0"] <= y1:
+                row["y0"] = min(row["y0"], y0)
+                row["y1"] = max(row["y1"], y1)
+                row["items"].append((cx, pts))
+                break
+        else:
+            rows.append({"y0": y0, "y1": y1, "items": [(cx, pts)]})
+
+    rows.sort(key=lambda r: r["y0"])
+    out = []
+    for row in rows:
+        row["items"].sort(key=lambda item: item[0])
+        out.extend(pts for _, pts in row["items"])
+    return out
+
+
 def main():
     if len(sys.argv) < 4:
         print(__doc__)
@@ -127,8 +169,8 @@ def main():
     mask = keyed(img)
     h, w = mask.shape
     found = [p for p in blobs(mask) if len(p) >= MIN_BLOB * h * w]
-    # left to right, by the blob's own centre
-    found.sort(key=lambda pts: sum(x for _, x in pts) / len(pts))
+    # reading order: top-to-bottom rows, left-to-right within a row
+    found = reading_order(found)
 
     if len(found) != len(names):
         print("found %d props but %d names given — check the sheet before "

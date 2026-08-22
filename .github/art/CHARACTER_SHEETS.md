@@ -86,9 +86,11 @@ mirrored".
 
 So ask for the pose it draws well and construct the two it does not:
 
-```
-python3 .github/art/build_sheet.py … --build-steps 0,2
-```
+**Cut every walk sheet with `build_sheet.py --build-steps 0,2`.** It builds the
+front and back rows' two step frames out of their own standing frame by lifting
+each leg in turn, so the steps are opposite BY CONSTRUCTION and only the middle
+frame has to be drawn well. Six front rows in a row lifted the same foot twice
+before this existed, which draws a character walking with one leg.
 
 The neutral frame's legs are separated by a gap of background. The cutter finds
 that gap, lifts the leg on one side of it — that is a step — then lifts the
@@ -192,6 +194,19 @@ first generation is usually the one that ships:
    frame count, duplicate frames, a missing neutral, and the same foot lifted
    in both step frames. Cutting an unverified row is how a bad set reaches the
    game.
+   Add `--steps-built` whenever the row's steps will be CONSTRUCTED by
+   `build_sheet.py --build-steps` (i.e. on every front and back row — step 7).
+   The same-foot verdict then warns instead of failing, because the frames it
+   judges are thrown away before anything ships; `generate_row.py` passes it
+   for you. Without it, a row with a perfectly good standing frame — the only
+   frame that row has to land — is binned for a defect that cannot reach the
+   game, at a generation each. That happened twice in one run.
+   A row that does fail is MOVED to `art-src/rejected/`, not deleted: nothing
+   points a build at that directory, so it still cannot reach a sheet, but you
+   can LOOK at it. That is the difference between "regenerate, the drawing is
+   wrong" and "keep it, only the background came back dirty" — a distinction
+   that is impossible to make once the file is gone, and two of the three
+   rejects in that same run turned out to be good drawings on a dark backdrop.
 7. **Cut with `build_sheet.py`**, one `--row` per direction, `--build-steps 0,2`
    so the front and back steps are constructed rather than trusted, and
    `@height` per row if the character is a different height from different
@@ -228,6 +243,17 @@ already do:
   consecutive back rows for Dog Punk came back as one wide orange lump with a
   mohawk on top and no head at all — from behind there is no face to anchor
   the head, so the generator merges it into the torso unless told not to.
+  **This is the least tractable rule on the list, and worth knowing before you
+  spend on it.** Four more Dog Punk back rows were generated against
+  progressively more explicit wording — outlined ears either side, a collar-
+  width neck, "no wider than half the shoulder width", the failure named in the
+  prompt — and all four came back as the same lump, three of them also dropping
+  the jacket off the torso to sit round the hips as a skirt with the chest left
+  in bare fur. The row that ships is still an older one. Budget one generation
+  for a back row, look at it, and if it lumps, keep the best back row you
+  already have rather than chasing it: it is the one view where the colour and
+  the outfit matter more than the anatomy, because the player is looking at the
+  character's back.
 - **Both legs and both boots visible in every frame**, with background between
   them. "Legs vertical and separated" is not enough on its own: the step
   frames still came back with the two legs fused into one brown mass while the
@@ -365,10 +391,25 @@ if that is what its code path wants. But a NEW GAME uses sheets.
   readable rows, so his back view was never cut at all. Both runs reported
   success.
 
+  **And the cutter itself was eating May's hair.** The reason her head kept
+  coming back half-missing was never the generation: the divider-removal pass
+  keys out magenta, her hair *is* magenta (sampled at `(236,62,91)`), and the
+  colour test that hunts the divider matched every pixel of her head. She came
+  out with a thin dark outline where her hair had been in the front and side
+  rows, and a headless coat in the back row. A character cannot be told from a
+  gridline by colour when they are the same colour — so it is settled by
+  geometry instead: cells are cut from the END of one green gutter to the
+  START of the next, never through their middles, so no divider pixel is
+  inside the crop and there is nothing to remove.
+
   Three things now stop that, and all three are needed:
-  1. `slice_walksheet.py` **refuses** any grid that is not 3–4 rows of 3,
-     instead of cutting cells out of guessed boundaries. A sheet with no
-     grid is a failed *generation*, not a cutting problem — regenerate it.
+  1. `slice_walksheet.py` **cuts on the green gutters** when the magenta grid
+     does not resolve to 3–4 rows of 3, and refuses only if the green fails
+     too. The background is the one thing the model cannot forget to draw,
+     because it is what it draws the characters on. It also **drops a
+     trailing row far shorter than its siblings** — the cropped bottom row
+     this document already warned about, which is where the headless frames
+     came from.
   2. `generate-walksheet.yml` **deletes the character's existing frames
      before slicing.** Its completeness check asks "is there a file here",
      and a file from the previous generation answers yes: that is precisely
@@ -381,6 +422,59 @@ if that is what its code path wants. But a NEW GAME uses sheets.
 Both produce the same *semantics* above; they differ only in how much the art
 is normalised afterwards.
 
+## The character spec — the thing that makes consistency enforceable
+
+Every animated character has an entry under `characters` in its game's
+`art-style.json`, written **before** any of its art is generated. That entry is
+the single source of truth, and it is used twice:
+
+- **Prompts are built from it.** `generate_row.py` turns the spec into the
+  description it sends, every time. Nobody retypes it, so nobody can leave a
+  bit out.
+- **Sheets are checked against it.** `verify_sheet.py character <gameDir> <id>`
+  compares every sheet of that character **view by view** and fails when a
+  material the spec marks `appears: always` is present in one sheet and gone
+  from another.
+
+```jsonc
+"characters": {
+  "hero": {
+    "name": "Beverly",
+    "species": "a stocky punk-rock GOLDEN DOODLE — dog snout, floppy ears. Not a bear, wolf or fox.",
+    "materials": {
+      "mohawk": { "base": "#ff5c9a", "shade": "#e8306f", "appears": "always",
+                  "note": "A TALL upright crest. NOT a flat cap, NOT a beret." },
+      "dagger": { "blade": "#dfe4ea", "grip": "#4e2e15", "appears": "attack sheets" }
+    },
+    "proportions": "about three and a half heads tall, head roughly a quarter of total height",
+    "neverDraw": ["a curly coat", "brown ears", "a sleeveless jacket"]
+  }
+}
+```
+
+**`appears` is the field that makes the check possible at all.** Beverly's
+mohawk disappearing from her attack sheet is a bug; her dagger blade appearing
+only in that same sheet is correct — she draws it to swing it. To anything
+counting pixels those are identical. `appears: always` is the only thing that
+separates them, which is why the spec is infrastructure rather than
+documentation.
+
+Two rules learned building it:
+
+- **A colour shared by an always material and a conditional one cannot be
+  required.** Beverly's jacket studs and her dagger blade are both `#dfe4ea`,
+  so its presence proves nothing about either — the first version of the check
+  duly failed her walk sheet for containing no blade. Shared hexes are dropped
+  from enforcement and flagged as a spec problem to fix.
+- **Compare like with like.** A front view and a back view legitimately show
+  different materials — Beverly's shorts are 0% from behind in every sheet
+  because her jacket covers them. Only the *same view across different sheets*
+  is a fair comparison.
+
+**Add to a spec the moment a detail is caught drifting.** That is the entire
+point of it: the mohawk note, the "ears are never brown" note and the flat-coat
+note are all things that shipped wrong first.
+
 ## Consistency is a written rule, not a re-description
 
 Anything that must not change between generations belongs in that game's
@@ -389,3 +483,54 @@ sleeves vs sleeveless, ears up vs down, which hand holds the weapon. If a
 detail is only in the prompt you happened to type, the next generation will
 change it. Dog Punk's jacket came back sleeved in some frames and sleeveless
 in others for exactly this reason.
+
+### `lockedColours`: the EXACT HEX PER MATERIAL, in every prompt
+
+`lockedPalette` is not enough, and believing it was cost Dog Punk a dozen
+rounds. The cutter maps every pixel to the NEAREST palette colour — it enforces
+*membership*, not *choice*. A palette wide enough to hold fur, fur shadow and
+brown boots contains both a light orange and a mid brown, so a row the
+generator happened to draw one step darker snaps to the browns and ships as a
+different-coloured animal. Dog Punk's front and back rows were `#f0a35a`; its
+side row was `#7a4a24`. Beverly changed colour when you walked left, and every
+regeneration of a single row just landed somewhere else again.
+
+The shade has to stop being the generator's choice, so `art-style.json` carries
+a `lockedColours` map and `generate_row.py` quotes it into EVERY row it builds:
+
+```json
+"lockedColours": {
+  "mainCharacter": "fur #f0a35a with #e0791c shading …; boots #7a4a24 …",
+  "Junk Rat": "body fur #8a7a62 with #6b5c48 shading; …"
+}
+```
+
+Keyed by character: `mainCharacter` by default, or the key whose name appears
+in the `--description` passed for that row. Write it out material by material —
+"fur", "jacket", "boots" — because a bare list of hexes gets distributed at
+random over the drawing.
+
+`verify_sheet.py sheet` warns when rows disagree anyway (`COLOUR DRIFT`), which
+is how you find out before a player does.
+
+### What a colour-drift gate CANNOT be, and the numbers
+
+Two metrics were tried as a hard gate first, and both rank the CORRECTED sheet
+worse than the broken one, because rows legitimately show different amounts of
+each material — a back view is mostly jacket, a side view mostly head and
+snout:
+
+| metric (per row pair) | broken sheet | corrected sheet |
+|---|---|---|
+| mean row colour, Lab dE | 9.0 / 10.1 / 13.9 | 6.9 / 11.4 / **16.8** |
+| colour-histogram overlap | 0.54 / 0.73 / 0.55 | 0.76 / 0.69 / **0.61** |
+
+What does discriminate is a colour carrying a large share of one row and
+almost none of another (outline colours excluded — their share swings with how
+busy a silhouette is). Measured, biggest offender per sheet: broken hero
+`#f0a35a` 17% vs 4.2%; the rat sheet as shipped `#8a7a62` 21% vs 1.6%; the
+corrected hero `#3d434f` 11% vs 2.4% — and that last one is *legitimate*, a
+jacket highlight visible from behind and not from the front. Trigger at 15% of
+a row with under 30% of that share elsewhere, and it separates them — but a
+metric with a known false positive of that shape stays a WARNING, never a
+build failure.

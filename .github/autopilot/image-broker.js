@@ -13,8 +13,30 @@
 // 1000 images" — can't run up a bill. A rejected/failed request is not billed
 // and does not count against the cap.
 //
+// A SECOND cap, GEN_TIME_BUDGET_MIN, bounds wall-clock instead of count. The
+// model step that talks to this broker has its own hard timeout (currently
+// 30 min) and gets SIGKILLed at it — which used to mean a run doing real,
+// correct work (several characters generated and verified) lost all of it,
+// because the kill happens mid-operation with no chance to commit or even
+// write a reply. MAX_GENERATIONS alone doesn't prevent that: a real run
+// (2026-08-21, Dog Punk drone+brute) used only 9 of its 12 generations and
+// still got killed by the clock — verification, re-generation on a failed
+// check, and git bookkeeping all cost time without touching the counter.
+// This broker is the one deterministic checkpoint every unit of art work
+// passes through, so it's where the wall-clock budget is enforced too: once
+// GEN_TIME_BUDGET_MIN has elapsed since the broker started (which happens
+// right before the model step), every /generate call gets refused with a
+// 429 telling the model to stop and wrap up — same mechanism, same message
+// shape, as the existing MAX_GENERATIONS cap. That leaves the remaining
+// minutes of the model step's own timeout for the fast stuff (verify,
+// commit, write the reply) so a run finishes on its own terms instead of
+// being killed mid-write. This is enforcement, not a prompt asking the
+// model to watch the clock — the same reason MAX_GENERATIONS is a counter
+// in code and not an instruction to "please don't overdo it".
+//
 // Env: OPENAI_API_KEY (required), MAX_GENERATIONS (default 6),
-//      BROKER_PORT (default 8791). Node 22+ (uses global fetch).
+//      GEN_TIME_BUDGET_MIN (default 20), BROKER_PORT (default 8791).
+//      Node 22+ (uses global fetch).
 
 const http = require('http');
 const fs = require('fs');
@@ -23,6 +45,8 @@ const { execFileSync } = require('child_process');
 
 const PORT = parseInt(process.env.BROKER_PORT || '8791', 10);
 const MAX = parseInt(process.env.MAX_GENERATIONS || '6', 10);
+const TIME_BUDGET_MS = parseInt(process.env.GEN_TIME_BUDGET_MIN || '20', 10) * 60000;
+const START = Date.now();
 const KEY = process.env.OPENAI_API_KEY;
 const ROOT = process.cwd();
 
@@ -43,9 +67,22 @@ function styledPrompt(game, asset) {
 
 // One OpenAI image call, with retry on 429 (per-minute image cap) / transient
 // 5xx. Returns the decoded PNG buffer, or throws on a non-retryable error.
-async function generate({ prompt, size, quality, transparent }) {
-  const payload = { model: 'gpt-image-1', prompt, size, quality, n: 1 };
-  if (transparent) payload.background = 'transparent';
+// THE MODEL COMES FROM THE CALLER, NOT FROM HERE. It was hardcoded to
+// gpt-image-1 while .github/art/profiles.py had moved every front door to
+// gpt-image-2 — so an Action generated on one model and a Clubhouse run, going
+// through this broker, generated on the other. Same profile, different image,
+// depending on who asked. That is the exact divergence the shared transport
+// exists to prevent, and it survived the change that was supposed to end it
+// because this file builds its own payload.
+//
+// Callers send the settings; this adds only the credential and the cap.
+async function generate({ prompt, size, quality, transparent, model, background,
+                          output_format, moderation }) {
+  const payload = { model: model || 'gpt-image-1', prompt, size, quality, n: 1 };
+  if (background) payload.background = background;
+  else if (transparent) payload.background = 'transparent';
+  if (output_format) payload.output_format = output_format;
+  if (moderation) payload.moderation = moderation;
   let lastErr = 'unknown';
   for (let attempt = 1; attempt <= 6; attempt++) {
     let res;
@@ -101,7 +138,10 @@ function reply(res, code, obj) {
 
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
-    return reply(res, 200, { ok: true, used, remaining: Math.max(0, MAX - used), max: MAX });
+    return reply(res, 200, {
+      ok: true, used, remaining: Math.max(0, MAX - used), max: MAX,
+      time_remaining_min: Math.max(0, Math.round((TIME_BUDGET_MS - (Date.now() - START)) / 60000)),
+    });
   }
   if (req.method !== 'POST' || req.url !== '/generate') return reply(res, 404, { ok: false, error: 'not found' });
 
@@ -111,30 +151,82 @@ const server = http.createServer((req, res) => {
     let body;
     try { body = JSON.parse(raw); } catch (_) { return reply(res, 400, { ok: false, error: 'invalid JSON body' }); }
 
-    let { prompt, output_path, size, quality, transparent, game } = body;
-    size = size || '1024x1024';
-    quality = quality || 'medium';
+    let { prompt, output_path, game, kind } = body;
+
+    // KIND, NOT RAW FLAGS. This endpoint used to take size/quality/background
+    // straight off the request body — any prompt, any settings, decided by
+    // whoever wrote the curl call. That is how Trebor got 200 transparent
+    // card icons and 8 opaque ones: nothing said what a "card icon" was
+    // SUPPOSED to be, so nothing could hold a stray one to the standard the
+    // other 200 already set. profiles.py is the one place that decides size,
+    // quality, background and model now — for the CLI (imagegen.py) and for
+    // this endpoint alike, so a run cannot get different settings depending
+    // on which door it called through.
+    if (!kind) {
+      return reply(res, 400, { ok: false, error:
+        'kind is required — which entry in .github/art/profiles.py PROFILES this is. ' +
+        'Ask for a new one to be added there before treating this as a generic bucket.' });
+    }
+    let prof;
+    try {
+      const out = execFileSync('python3', ['-c',
+        'import sys,json; sys.path.insert(0,".github/art"); import profiles; ' +
+        'print(json.dumps(profiles.get(sys.argv[1]) if sys.argv[1] in profiles.FREEFORM_KINDS ' +
+        'else {"_error": "not a freeform kind"}))', kind],
+        { cwd: ROOT, encoding: 'utf8' });
+      prof = JSON.parse(out);
+    } catch (e) {
+      return reply(res, 400, { ok: false, error: `could not resolve kind "${kind}": ${e.message}` });
+    }
+    if (prof._error) {
+      return reply(res, 400, { ok: false, error:
+        `"${kind}" is not a freeform kind (profiles.py FREEFORM_KINDS). A character row, ` +
+        'room pass or tile sheet has its own front door and must not come through here.' });
+    }
+    const { size, quality, background, model } = prof;
+    const transparent = background === 'transparent';
 
     // Path safety: only inside the repo, under games/, no traversal.
     if (!output_path || output_path.includes('..') || path.isAbsolute(output_path) || !output_path.startsWith('games/') || !output_path.endsWith('.png')) {
       return reply(res, 400, { ok: false, error: 'output_path must be a games/**/<name>.png path inside the repo' });
     }
+    // SAME GUARD AS THE FREEFORM CLI (imagegen.py), for the same reason: this
+    // is the raw one-off escape hatch, reachable by a plain curl from inside a
+    // run, and art-src/ is exclusively the three front doors' territory. A
+    // curl straight to this endpoint with an art-src/ path would produce a
+    // file that looks like a properly generated row — no verification, no
+    // retry, no character-spec check, invisible to the gates that only look
+    // inside sheets built through the real pipeline.
+    if (output_path.split('/').includes('art-src')) {
+      return reply(res, 400, { ok: false, error:
+        `${output_path} is inside art-src/, which belongs to the front doors, not a ` +
+        'direct broker call: generate_row.py for a character row, room.py generate for ' +
+        'a room pass, tileset.py generate for a tile sheet. Use this endpoint only for ' +
+        'art with no front door (an icon, a title screen).' });
+    }
 
-    // A game id means: match that game's art style and cut out on transparent.
+    // A game id means: match that game's art style.
     if (game) {
       const sp = styledPrompt(game, prompt || '');
       if (!sp) return reply(res, 400, { ok: false, error: `games/${game}/art-style.json not found — create it first or omit "game" for a freeform image` });
       prompt = sp;
-      if (transparent === undefined) transparent = true;
     }
     if (!prompt) return reply(res, 400, { ok: false, error: 'prompt is required' });
 
     if (used >= MAX) {
       return reply(res, 429, { ok: false, error: `generation cap reached (${MAX} per run) — keep the best image you already have and note it in your reply`, remaining: 0 });
     }
+    const elapsed = Date.now() - START;
+    if (elapsed >= TIME_BUDGET_MS) {
+      const budgetMin = Math.round(TIME_BUDGET_MS / 60000);
+      return reply(res, 429, { ok: false, error:
+        `time budget for this run is used up (${budgetMin} min of art generation) — stop generating ` +
+        'new art now. Finish verifying and committing what you already have, and describe what shipped ' +
+        '(and what is still outstanding) in your reply.', remaining: 0, time_remaining_min: 0 });
+    }
 
     try {
-      const buf = await generate({ prompt, size, quality, transparent: !!transparent });
+      const buf = await generate({ prompt, size, quality, transparent, model, background });
       const abs = path.join(ROOT, output_path);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, buf);

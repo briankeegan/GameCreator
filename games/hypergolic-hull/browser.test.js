@@ -801,6 +801,39 @@ async function freshPage(browser, url, errors) {
   );
   await page.close();
 
+  // ---- The ship's art is locked to the starting loadout, not live gear ----
+  // Reported live: "when you change equipment... your ship looks totally
+  // different... you pick your ship at start... and then have it for rest
+  // of run." Before this, the sprite was derived from CURRENT maxShields/
+  // maxHull, so fitting a Shield Generator mid-run as a Standard start made
+  // the ship suddenly look like Escort Start — a different ship, not an
+  // upgraded one. Board canvas and the Systems portrait both read
+  // flagshipSprite(), which now keys purely on state.startingLoadout.
+  page = await freshPage(browser, url, errors);
+  s = await getState(page);
+  assert.strictEqual(s.startingLoadout, "standard", "default run starts as Standard");
+  await page.click("#shipBtn");
+  await page.waitForTimeout(150);
+  const baseSrc = await page.locator("#shipPortrait").getAttribute("src");
+  assert.ok(baseSrc.endsWith("flagship.png"), "Standard shows the base hull");
+  await page.click("#shipCloseBtn");
+
+  // Simulate fitting a Shield Generator (whatever route it came from —
+  // starting kit or an Outpost buy, the ship is the same hardware either
+  // way) and confirm the art doesn't flip to Escort Start's look.
+  await page.evaluate(() => {
+    window.__hhState.maxShields = 1;
+    window.__hhState.shieldCharges = 1;
+    window.__hhState.maxHull = 5; // and a hull well past START_HULL, for good measure
+    window.render();
+  });
+  await page.click("#shipBtn");
+  await page.waitForTimeout(150);
+  const afterSrc = await page.locator("#shipPortrait").getAttribute("src");
+  assert.strictEqual(afterSrc, baseSrc, "gaining shields/hull mid-run does NOT change which hull art shows — it's locked to the starting loadout");
+  await page.click("#shipCloseBtn");
+  await page.close();
+
   // ---- loss branch: stand still and let Sector 1's Interceptor come ------
   // — its own 2 AP close the gap and fire, so a few passed rounds end the
   // run of a flagship that never defends itself.

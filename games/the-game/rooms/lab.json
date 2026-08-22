@@ -1,0 +1,29 @@
+{
+  "name": "Kyran's Lab",
+  "_why": "Kyran is Infinity's head of research. The Lounge is WEST of this room, so its one ordinary way out is a door in the LEFT wall — the map in story.js decides that, not the generator.",
+  "summary": "An alchemical laboratory in a magical realm, in cold grey-green stone block, lit by lanterns and by the glow of what is in the glassware.",
+  "floor": "many SMALL grey-green flagstones in staggered brick-bond courses, fine mortar joints, cool mid-toned stone, softly lit rather than bright, with mottling, chips and wear. PROPORTIONS, measured off this room's own reference scene: roughly 16 to 18 stones span the full width of the floor, each noticeably smaller than a standing character's own footprint. NOT large slabs — a floor with only 5 or 6 stones spanning its width is wrong, two to three times too large; the first generation drew exactly that and it read as a completely different, much coarser floor than the scene's own.",
+  "_wall_why": "A floor-plate room ships ONLY its floor, so the room's own back wall is a PROP and has to be generated like one. Leaving it out of the spec is how the lab ended up with its jar shelf repeated three times across the wall — there was no plain panel to put either side of it.",
+  "wall": "a wide upright rectangular slab of cold grey-green stone block wall and NOTHING else on it — no shelf, no jars, no lantern, no door, no opening, just bare coursed stone",
+  "doors": [
+    {
+      "wall": "left",
+      "look": "ONE open arched doorway in the grey-green stone, empty and warmly lit from beyond",
+      "to": "lounge"
+    }
+  ],
+  "contains": [
+    "ONE heavy timber SHELF on the back wall holding big round glass jars of glowing green and amber fluid and a lit lantern, in the MIDDLE of the wall only, with bare stone either side of it",
+    "a long cluttered ALCHEMIST'S WORKBENCH of dark timber below the shelf, covered in glass retorts, coiled copper tubing, a bubbling flask over a burner and a brass balance",
+    "a tall wooden APOTHECARY CABINET of many small labelled drawers against the wall on the right",
+    "a wheeled brass INSTRUMENT CART with a glowing green glass sphere on it, standing out on the open floor"
+  ],
+  "_measured_why": "Read off lab_scene.png against room.py grid's labelled pixel overlay (by hand — room.py measure's grabcut and canny both failed on all three: cluttered glassware over dark wood reads as one blob of similar warm tones to grabcut's colour model, and canny's edge tangle over that much clutter didn't separate the object from the noise either). room.py sizecheck holds story.js to these forever after; re-measure if the scene or the prop art changes and update both together.",
+  "measured": {
+    "prop_lab_bench": { "x": 157, "y": 107, "h": 67, "w": 134 },
+    "prop_lab_cabinet": { "x": 269, "y": 92, "h": 79, "w": 62 },
+    "prop_lab_cart": { "x": 269, "y": 168, "h": 64, "w": 56 }
+  },
+  "_wallSeam_why": "The Y where this room's wall panels meet the floor. `room.py wallseam --method gradient` couldn't commit here — the wall and floor are both similar grey-green stone, too low-contrast for a colour-jump method (see room.py verify's earlier NOTE, and wall_seam.py's own docstring on when to use gradient vs canny). `--method canny` at the door jamb's base (x=18,26, well clear of the arch's own curve, which contaminates strips closer to the opening) found a strong, visually-confirmed edge at y=89 — canny finds LOCAL edges (the jamb's stone coursing vs the floor's flagstone joints), not a colour jump, so it doesn't need the two surfaces to differ in overall brightness the way gradient does. Command: `room.py wallseam games/the-game lab --method canny --strip 18,26 --search 75,105`. This REPLACES an earlier, never-actually-measured guess of 122, which is also what had made the cabinet look like it needed grounding — checked against the real y=89, its own scene reading (y=92) was already correct, 3px forward of the wall.",
+  "wallSeam": 89
+}

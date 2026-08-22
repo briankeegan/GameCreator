@@ -120,6 +120,71 @@
   }
   function clearFade() { fadeEl.classList.remove("on"); }
 
+  // ---------- the portal ----------
+  // The portal is the one door in the game allowed to be special, so going
+  // through it is not a cut. It is a prop now rather than paint (see the
+  // three-pass room standard), which is what makes this possible at all: the
+  // swirl can be drawn over, and the crossing can take time.
+  //
+  // Two halves, both driven from `portalFx`:
+  //   "in"  — the swirl blooms out of the doorway and swallows the screen.
+  //           The room changes behind it, unseen.
+  //   "out" — it collapses back into the doorway you have just come out of.
+  // Movement is frozen for the duration; update() returns early while it runs,
+  // the same way it does for a talk box, so you cannot walk out of your own
+  // transition.
+  var PORTAL_MS = 460;
+  var portalFx = null;   // { t, phase, x, y, then }
+  function portalActive() { return portalFx !== null; }
+  function startPortal(x, y, then) {
+    portalFx = { t: 0, phase: "in", x: x, y: y, then: then };
+  }
+  function updatePortal(dt) {
+    if (!portalFx) return;
+    portalFx.t += dt * 1000;
+    if (portalFx.t < PORTAL_MS) return;
+    if (portalFx.phase === "in") {
+      var then = portalFx.then;
+      if (then) then();
+      // Come out of the door on THIS side — wherever the arrival put us.
+      portalFx = { t: 0, phase: "out",
+                   x: player.x + player.w / 2, y: player.y + player.h / 2, then: null };
+    } else {
+      portalFx = null;
+    }
+  }
+  // Drawn last, over everything, in screen space.
+  function drawPortalFx() {
+    if (!portalFx) return;
+    var k = Math.max(0, Math.min(1, portalFx.t / PORTAL_MS));
+    if (portalFx.phase === "out") k = 1 - k;
+    var maxR = Math.hypot(VW, VH) * 0.62;
+    var r = Math.max(0.001, maxR * (k * k));            // eases out of the door
+    var g = ctx.createRadialGradient(portalFx.x, portalFx.y, 0,
+                                     portalFx.x, portalFx.y, r);
+    g.addColorStop(0.00, "rgba(255,236,246,0.96)");
+    g.addColorStop(0.30, "rgba(214,42,80,0.95)");
+    g.addColorStop(0.72, "rgba(96,18,74,0.92)");
+    g.addColorStop(1.00, "rgba(20,4,26,0)");
+    ctx.save();
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, VW, VH);
+    // Arms of the swirl, so it turns rather than just growing.
+    ctx.globalCompositeOperation = "lighter";
+    ctx.translate(portalFx.x, portalFx.y);
+    ctx.rotate(portalPhase * 3.2 + k * 5);
+    for (var i = 0; i < 5; i++) {
+      ctx.rotate(Math.PI * 2 / 5);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(r * 0.45, r * 0.18, r * 0.92, r * 0.62);
+      ctx.lineWidth = Math.max(1, r * 0.06);
+      ctx.strokeStyle = "rgba(255,150,190," + (0.30 * (1 - Math.abs(k - 0.5) * 1.4)) + ")";
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   // ---------- art loading (graceful fallback) ----------
   var artCache = {};
   function loadArt(id) {
@@ -338,27 +403,21 @@
   var lastTime = null;
   var npcLineCounters = {}; // remembers which line to show next per NPC (repeat visits)
 
-  // at: optional { x, y } to arrive at — a door hands over the spot in front
-  // of the matching door on the other side, so you step out where you should
-  // instead of teleporting to the middle of the room. facing: optional
-  // arrival direction — without it she kept whatever direction she was
-  // last walking before she hit the exit trigger, which reads as just
-  // jumping into the next space rather than actually stepping through a
-  // door. Reported live: crossing bedroom<->lounge should turn her to face
-  // away from that door (right leaving the bedroom, left leaving the
-  // lounge), not carry over her old facing.
   // ---- doors are PAIRS ----
-  // A door carries a `link`, and the door it comes out of is the one in the
-  // destination room with the same link. Where you land and which way you
-  // face are then WORKED OUT from that partner's own rectangle — step out of
-  // it into the room, turn your back on it — instead of being two numbers
-  // typed in by hand on the other side of the file.
+  // THE RULES, AND WHY EACH ONE EXISTS: docs/DOOR_STANDARD.md — §2 for derived
+  // arrival, §5 for the disarm and key-release that stop a door bouncing you
+  // straight back. Fix a rule there, not here.
   //
-  // Typed numbers were the bug. Nothing tied one side of a door to the other,
-  // so they drifted: the Library, the Garden and the Lab all put you down on
-  // the same square of lounge floor, nowhere near the rune door you had just
-  // walked through, and coming downstairs left you in the middle of the room
-  // rather than at the stairs.
+  // What the code below does, so this file is not cryptic: a door carries a
+  // `link`, and the door it comes out of is the one in the destination room
+  // with the same link. Where you land and which way you face are WORKED OUT
+  // from that partner's own rectangle — step out of it into the room, turn
+  // your back on it. Nothing about an arrival is typed anywhere, which is why
+  // an exit's only job is to name its link and its destination.
+  //
+  // The order of STEP_OUT is the order the directions are tried, so it is
+  // load-bearing: down first, because a door in a back wall is the common
+  // case and stepping down out of it walks you into the room.
   var STEP_OUT = [
     { dir: "down",  dx: 0,  dy: 1  },
     { dir: "up",    dx: 0,  dy: -1 },
@@ -454,63 +513,6 @@
     }, 50);
     if (save) { save.room = roomId; persist(); } // walking through a door autosaves
   }
-
-  // ---- the black rune door ----
-  // The plot's way around Infinity, and the only door that asks you a
-  // question. The FIRST push doesn't: "She wasn't sure how to open the door,
-  // but decided to push where she guessed a handle could be... The room was
-  // not the library" — so the first time it just dumps you in the Garden.
-  // Kyran is the one who tells you about the chaos rune, and after that the
-  // carvings resolve into words you can pick from.
-  var runeEl = document.getElementById("runeDoor");
-  var runeTitleEl = document.getElementById("runeTitle");
-  var runeListEl = document.getElementById("runeList");
-  var runeOpen = false;
-
-  function runeDoorKnown() { return !!(save && save.flags && save.flags.runeDoorLearned); }
-
-  function openRuneDoor() {
-    if (!runeDoorKnown()) {
-      // The accidental first trip. Sent somewhere she didn't choose, which is
-      // the whole reason she ever meets Kyran.
-      enterRoom("garden", null, null, "rune");
-      showNarration([
-        "The door is black marble, carved over with runes, and heavier than it looks.",
-        "You push where a handle ought to be. It gives, creaking.",
-        "This is not the library."
-      ]);
-      return;
-    }
-    runeOpen = true;
-    runeTitleEl.textContent = "You put your palm on the chaos symbol. The carvings fade, and words come up in white paint.";
-    runeListEl.innerHTML = "";
-    STORY.RUNE_DOOR.forEach(function (dest) {
-      var b = document.createElement("button");
-      b.textContent = dest.label + (dest.locked ? "" : "");
-      if (dest.locked) {
-        b.className = "locked";
-        b.onclick = function () { runeTitleEl.textContent = dest.locked; };
-      } else {
-        b.onclick = function () {
-          closeRuneDoor();
-          enterRoom(dest.to, dest.arriveAt, dest.arriveFacing, dest.link);
-        };
-      }
-      runeListEl.appendChild(b);
-    });
-    runeEl.hidden = false;
-  }
-
-  function closeRuneDoor() {
-    runeOpen = false;
-    runeEl.hidden = true;
-  }
-  document.getElementById("runeBack").onclick = function () {
-    closeRuneDoor();
-    // Step back off the threshold, or the next frame opens it again.
-    player.y -= 14;
-    exitsArmed = false;
-  };
 
   // ---- input ----
   // Which key does what is the player's choice (settings.js) — nothing here
@@ -1092,7 +1094,10 @@
   }
 
   function update(dt) {
-    if (runeOpen) return;
+    // The portal has hold of her. Freezing here rather than only blocking
+    // input means she also cannot be pushed, wandered into, or walked out of
+    // the doorway by a still-held arrow key while the swirl is on screen.
+    if (portalActive()) return;
     if (!running || paused) return;
     // Playtime is wall-clock time with the game actually in front of you —
     // menus and pauses don't count, same as the clock on a cartridge file
@@ -1205,8 +1210,15 @@
           player.y + player.h > ex.y && player.y < ex.y + ex.h) {
         onExit = true;
         if (exitsArmed && !doorNeedsRelease) {
-          if (ex.rune) openRuneDoor();
-          else enterRoom(ex.to, ex.arriveAt, ex.arriveFacing, ex.link);
+          if (ex.link === "portal") {
+            // Out of the doorway itself, not out of the player — the bloom
+            // has to start where the swirl is drawn or it reads as the screen
+            // flashing rather than the portal taking you.
+            var to = ex.to, link = ex.link;
+            startPortal(ex.x + ex.w / 2, ex.y + ex.h / 2, function () {
+              enterRoom(to, null, null, link);
+            });
+          } else enterRoom(ex.to, null, null, ex.link);
         }
       }
     });
@@ -1276,6 +1288,7 @@
       // The drawn doorway goes ON TOP of its own glow — painted under it, the
       // light washed straight through the opening and it read as a lit box.
       if (ex.drawn === "threshold") drawThreshold(ex);
+      if (ex.drawn === "sidebreach") drawSideBreach(ex);
 
     });
   }
@@ -1431,6 +1444,49 @@
     ctx.fillRect(x, y - 4, w, 1);
     ctx.fillRect(x, y - 4, 1, VH - y + 4);
     ctx.fillRect(x + w - 1, y - 4, 1, VH - y + 4);
+    ctx.restore();
+  }
+
+  // A breach in the LEFT or RIGHT wall — for a side doorway. Generated art
+  // failed here three separate times (wrong material, wrong proportion, and
+  // even the version that finally looked right in isolation still had to be
+  // regenerated per room and kept drifting from that room's own wall art —
+  // see CLAUDE.md's account of the Lounge's side doors). This never drifts,
+  // because it isn't a picture of anything: same idea as drawThreshold,
+  // rotated 90 degrees — a dark notch that recedes toward the frame edge,
+  // with a lit sliver on the near jamb and a plain wooden lintel above and
+  // below, so the way through reads as an opening you can see and walk into.
+  function drawSideBreach(ex) {
+    var x = ex.x, y = ex.y, w = ex.w, h = ex.h;
+    var dir = (x + w / 2 < VW / 2) ? "left" : "right";
+    var collar = Math.max(4, Math.round(h * 0.12));
+    var top = y + collar, bot = y + h - collar;
+    var edgeX = dir === "left" ? 0 : VW;
+    var nearX = dir === "left" ? x + w : x;
+    ctx.save();
+
+    var mouth = ctx.createLinearGradient(nearX, 0, edgeX, 0);
+    mouth.addColorStop(0, "rgba(8,4,14,0.7)");
+    mouth.addColorStop(1, "rgba(4,2,8,0.98)");
+    ctx.fillStyle = mouth;
+    ctx.beginPath();
+    ctx.moveTo(nearX, top + 3);
+    ctx.lineTo(nearX, bot - 3);
+    ctx.lineTo(edgeX, bot);
+    ctx.lineTo(edgeX, top);
+    ctx.closePath();
+    ctx.fill();
+
+    // a lit sliver on the near jamb, catching the room's own light
+    ctx.fillStyle = "rgba(255,220,170,0.16)";
+    ctx.fillRect(dir === "left" ? nearX - 2 : nearX, top, 2, bot - top);
+
+    // lintel above and below, same wood tone as the rest of the room's trim
+    ctx.fillStyle = "#5a3a24";
+    var fx = dir === "left" ? 0 : x;
+    var fw = dir === "left" ? nearX : VW - x;
+    ctx.fillRect(fx, top - 3, fw, 3);
+    ctx.fillRect(fx, bot, fw, 3);
     ctx.restore();
   }
 
@@ -1715,19 +1771,25 @@
     ctx.clearRect(0, 0, VW, VH);
     if (!currentRoom || !running) return;
     drawRoomBg();
-    (currentRoom.props || []).forEach(function (p) { if (p.flat) drawProp(p); });
+    // behind: true — a WALL is always behind you. A side-wall doorway is drawn
+    // down the edge of the frame, so its foot sits low, and sorted by foot it
+    // drew IN FRONT of anyone who walked in through it: you arrived and
+    // vanished inside the doorway with no way to see yourself. Walls do not
+    // sort; they are the room.
+    (currentRoom.props || []).forEach(function (p) { if (p.flat || p.behind) drawProp(p); });
     drawExits();
     // sort by y so things lower on screen draw on top (cheap depth)
     var entities = roomNpcs(currentRoom).map(function (n) { return { y: n.y, draw: function () { drawNpc(n); } }; });
     (currentRoom.props || []).forEach(function (p) {
       // A FLAT prop is ground cover and was painted with the floor above. Sort
       // it and the player's own feet would sometimes vanish behind a flower.
-      if (p.flat) return;
+      if (p.flat || p.behind) return;
       entities.push({ y: p.y, draw: function () { drawProp(p); } });
     });
     entities.push({ y: player.y + player.h, draw: drawPlayer });
     entities.sort(function (a, b) { return a.y - b.y; });
     entities.forEach(function (e) { e.draw(); });
+    drawPortalFx();
   }
 
   // Whether the ☰ shows is derived from state, every frame, rather than
@@ -1751,6 +1813,7 @@
     var dt = Math.min(0.05, (t - lastTime) / 1000);
     lastTime = t;
     portalPhase += dt;
+    updatePortal(dt);
     update(dt);
     render();
     syncMenuButton();
@@ -1764,10 +1827,10 @@
   function clearTransientState() {
     if (window.NewseyDuel.isActive()) window.NewseyDuel.stop();
     clearFade();
+    portalFx = null;
     player.inBed = false;
     player.bedSlide = null;
     bedPush = 0;
-    closeRuneDoor();
     talkBox.hidden = true;
     talking = null;
     keys = {};
@@ -1872,7 +1935,7 @@
     exitsArmed: function () { return exitsArmed; },
     exitOverlaps: function () {
       return (currentRoom.exits || []).map(function (ex, i) {
-        return { i: i, to: ex.to || (ex.rune ? "RUNE" : "?"),
+        return { i: i, to: ex.to || "?",
           hit: (player.x + player.w > ex.x && player.x < ex.x + ex.w &&
                 player.y + player.h > ex.y && player.y < ex.y + ex.h) };
       });
@@ -1887,6 +1950,13 @@
     // first rect base (`{w,h}` has no `rx`) and it never applied depthAt()'s
     // scale, so it disagreed with the game about every prop's real footprint.
     blockedAt: function (x, y) { return blockedByProp(currentRoom, x, y); },
+    // Ask the GAME whether a spot is standable, rather than a test carrying its
+    // own copy of floor + prop collision. The door-reachability sweep floods
+    // the room through this, which is the only way its answer can't drift from
+    // what a player actually experiences — a static model that knew about the
+    // walk mask but not about prop bases called the Arena's way out reachable
+    // while the player was jammed against a bench.
+    canStand: function (x, y) { return canStand(currentRoom, x, y); },
     duel: function () { return window.NewseyDuel.debug(); }
   };
 })();

@@ -144,38 +144,20 @@ window.NEWSEY_STORY = (function () {
   // The three that go somewhere are the three that exist. The other three are
   // listed and locked, which is both what the door shows her and an honest
   // account of what is built.
-  var RUNE_DOOR = [
-    { label: "Library", to: "library", link: "rune" },
-    { label: "Anarchy Garden", to: "garden", link: "rune" },
-    { label: "Kyran's Lab", to: "lab", link: "rune" },
-    { label: "Observatory", locked: "The word doesn't take your finger. Not yet." },
-    { label: "Basement", locked: "The word doesn't take your finger. Not yet." },
-    { label: "Office", locked: "The word doesn't take your finger. Not yet." }
-  ];
-
-  // EXIT / DOOR CONVENTION — a door is one of a PAIR, not a one-way trip with
-  // a destination typed next to it.
+  // EXIT / DOOR CONVENTION — THE RULES ARE IN docs/DOOR_STANDARD.md. Read it
+  // before adding or moving a way out of a room; this comment deliberately
+  // does not restate them, because the copy in a workflow prompt drifted
+  // months behind the standard once already and nobody could tell which was
+  // stale.
   //
-  // Every door carries a `link`. The door you come OUT of is whichever door in
-  // the destination room shares that link (an NPC can carry one too — the
-  // lounge's portal is the far side of the arena's doorway). Where you land
-  // and which way you face are worked out from that partner's own rectangle at
-  // runtime: step out of it into the room, with your back to it. There is
-  // deliberately nothing here to type.
+  // The short version, so this file is not cryptic: a door is one half of a
+  // PAIR. It carries a `link`, and the door you come out of is whichever door
+  // (or linked NPC, for the lounge's portal) in the destination room shares
+  // that link. Where you land and which way you face are worked out from that
+  // partner at runtime, so there is deliberately nothing here to type.
   //
-  // It used to be `arriveAt` + `arriveFacing`, two numbers and a direction
-  // written on the far side of the file from the door they belonged to. They
-  // drifted, because nothing tied the two halves of a door together: the
-  // Library, the Anarchy Garden and Kyran's Lab all put you down on the SAME
-  // square of lounge floor, nowhere near the rune door you had just walked
-  // through, and coming downstairs left you in the middle of your father's
-  // living room rather than at the stairs. Every one of those values was
-  // individually valid — on the floor, not in a wall — and every check passed.
-  //
-  // `.github/scripts/check_room_exits.mjs` enforces the pairing (run by hand,
-  // or the "Verify room exits" step in pages.yml runs it on any story.js
-  // change): every door needs a link, exactly one thing in the destination
-  // must carry it, and no room may be one you can leave but never enter.
+  // `.github/scripts/check_room_exits.mjs` is the gate, and it runs on every
+  // push as the "Verify room exits" step in pages.yml.
 
   var ROOMS = {
     // The real world, before any of it: your own childhood bedroom upstairs
@@ -204,7 +186,7 @@ window.NEWSEY_STORY = (function () {
       floorPoly: [[58,100],[248,100],[248,186],[58,186]],
       // The doorway is an actual hole in the art (transparent), so the floor
       // stops at its threshold — the trigger sits on that threshold.
-      exits: [ { x: 140, y: 152, w: 44, h: 16, to: "house", link: "stairs" } ],
+      exits: [ { x: 133, y: 153, w: 50, h: 22, to: "house", link: "stairs" } ],
       // Furniture footprints, kept as the fallback alongside floorPoly.
       obstacles: [
         { x: 56, y: 98, w: 58, h: 30 },   // the bed
@@ -228,7 +210,7 @@ window.NEWSEY_STORY = (function () {
       // still the TV (which plays DREAM_CUTSCENE), but you came down these to
       // answer the door, so they go back up.
       exits: [
-        { x: 216, y: 90, w: 34, h: 14, to: "home_bedroom", link: "stairs" }
+        { x: 218, y: 83, w: 27, h: 16, to: "home_bedroom", link: "stairs" }
       ],
       // Furniture where it actually meets the floor: the table with the
       // moving boxes, the lantern table by the front door, and the little
@@ -290,40 +272,162 @@ window.NEWSEY_STORY = (function () {
     bedroom: {
       bg: "bedroom",
       label: "Your Room, Infinity",
+      // REGENERATED TO THE THREE-PASS STANDARD (docs/ROOM_ART_STANDARD.md), as
+      // the room the plot actually describes: "your Victorian bedroom (giant
+      // mirror = menu/screen)". The old art was a rustic timber room that read
+      // as the house back home rather than anywhere in Infinity, and it painted
+      // a door on its right-hand wall that the map no longer uses.
+      //
+      // The way out is the east wall's sidebreach (see exits, below) —
+      // straight into the Lounge's west door. The near-edge balustrade is
+      // NOT a way out any more: it used to have a gap for exactly that, and
+      // it read as a second exit that silently refused to open, so it's
+      // closed (see the rail props) now that the map moved the door east.
+      //
+      // bg-bedroom.png is the parquet and nothing else, so the walk mask is
+      // its own silhouette: no floorPoly, no obstacles.
       playerStart: { x: 150, y: 150 },
-      // Waking up in Infinity works like waking up at home — measured off
-      // bg-bedroom.png at 320x200: the pillow sits around x 145-180 / y 59-70,
-      // with the duvet's top edge at y ~70. She lies with her head on the
-      // pillow and is drawn clipped to above that edge.
-      bedSpot: { x: 155, y: 62 },
-      bedClipY: 70,
-      // The floorboards at the near-left corner of the bed, clear of both the
-      // bed's own footprint and the save-point token standing at its foot.
-      wakeSpot: { x: 130, y: 132 },
-      bedZone: { x: 120, y: 92, w: 90, h: 26 },
-      // Hand-placed from bg-bedroom.png: the door is on the right wall,
-      // the mirror stands on the left and the bed is back-center-right —
-      // both are blocked off so the player can't walk through them.
-      // Where you land coming the other way is derived from this door's
-      // partner, not written here — see EXIT / DOOR CONVENTION above.
-      // Every exit box below was measured against the room's own background
-      // art (overlaid on the PNG at the game's 320x200 scale, not guessed):
-      // the box IS the drawn doorway, so walking into the picture of the door
-      // is what takes you through. Nothing else on screen is an exit.
-      // bg-bedroom.png: arched door on the right wall, opening x 222-248,
-      // threshold on the floor at y ~103.
-      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[52,100],[285,100],[272,186],[64,186]],
-      exits: [
-        { x: 223, y: 90, w: 28, h: 16, to: "lounge", link: "yourDoor" }
+      // Measured off art-src/bedroom_scene.png: she lies with her head on the
+      // pillow up under the canopy, drawn clipped to above the quilt's edge.
+      // bedSpot sits on the pillows — a fraction of the CUT IMAGE's own
+      // height (0.4848 down from its top for the pillow, 0.5859 down for
+      // the quilt's clip line), not the scene, since that's what's
+      // actually drawn on screen. Recomputed again when prop_bed_bed's h
+      // grew from 99 to 116 (see the props block below — the top stayed
+      // put, only the bottom moved), since both of these are measured
+      // from that same top.
+      bedSpot: { x: 161, y: 70 },
+      bedClipY: 82,
+      // On the rug at the bed's foot, clear of the bed's and the trunk's own
+      // footprints.
+      wakeSpot: { x: 161, y: 168 },
+      // The floor in front of the bed's foot and the trunk, where you stand
+      // and press UP to climb in.
+      bedZone: { x: 126, y: 120, w: 70, h: 26 },
+      props: [
+        // Ground cover first: flat, walked straight over, no footprint. The
+        // scene has always had this rug; the first assembly of this room did
+        // not, which is exactly the kind of thing only the side-by-side finds
+        // — and even the side-by-side missed how badly undersized this was: w
+        // was 120, less than the ~225 the rug actually measures at its widest
+        // (its perspective trapezoid in the scene runs from about x40 to x270
+        // at the near edge). Only the BLEND overlay — the assembled room
+        // composited semi-transparent on top of the scene, not laid beside it
+        // — shows this: a mismatch in POSITION doubles an edge, but a
+        // mismatch in SIZE just makes the whole shape read as two nested
+        // outlines, which two pictures side by side at their own separate
+        // scales cannot show at all. w is forced rather than derived from the
+        // art's own aspect: the sheet drew the rug portrait, and a rug lying
+        // across a floor is wider than it is deep.
+        { art: "prop_bed_rug", x: 157, y: 134, h: 58, w: 195, flat: true },
+        // The back wall, tiled at its OWN aspect ratio rather than stretched
+        // to cover fewer, wider panels — a single image asked to cover a span
+        // it wasn't drawn for reads as smeared brick and warped wallpaper,
+        // reported straight from a screenshot. EIGHT copies, not five: this
+        // art has been re-cut twice since the count was last checked against
+        // it (each cut is a fresh sheet, so its exact pixel aspect isn't
+        // guaranteed to hold), and its native aspect had quietly drifted to
+        // where five copies left a ~30px gap of bare floor showing through
+        // the wall on the right — invisible to every other check, since
+        // sizecheck only diffs one prop's own numbers and the side-by-side
+        // frames the room's furniture, not its bare edges. Caught by eye (a
+        // player asked "what happened with the wall"), then made permanent:
+        // room.py verify now unions every behind/door prop sharing a wall
+        // band's y and fails if the band stops reaching both frame edges —
+        // see backdrop_coverage_problems in room.py. Recompute the copy count
+        // the same way if this art is re-cut again: native w at h=112,
+        // spaced at (w - 4) so neighbours overlap ~4px, enough copies for the
+        // last one's right edge to clear 320.
+        { art: "prop_bed_wall", x: -6,  y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 38,  y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 82,  y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 126, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 170, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 214, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 258, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        { art: "prop_bed_wall", x: 302, y: 109, h: 112, behind: true, base: { w: 44, h: 8 } },
+        // the balustrade along the near edge, unbroken. Re-cut alongside the
+        // proportion-locked furniture regen, and its own native aspect
+        // dropped from 12.1:1 to 7.6:1 (a taller, less impossibly-thin strip)
+        // — h bumped from 30 to 44 to keep ONE copy spanning the room's full
+        // width at the new aspect (30 would now draw only ~228px, leaving
+        // bare floor at both edges).
+        { art: "prop_bed_rail", x: 160, y: 199, h: 44, base: { w: 308, h: 10 } },
+        // The furniture, proportion-locked and regenerated a second time:
+        // the bed and mirror had first been drawn at a tilted 3/4
+        // product-shot angle (fixed via the room's "camera" field), and once
+        // that was fixed they still drew narrower relative to their height
+        // than the scene's own versions — a live screenshot is what showed
+        // it, not the side-by-side or the blend, since "the right shape at
+        // the wrong size" doesn't ghost the way a wrong position does. Two
+        // regeneration rounds still didn't fully close the gap (mirror art
+        // aspect only reached 0.46 of the scene's measured 0.58, bed 0.53 of
+        // 0.80), so x/y/h/w for all three pieces here are the scene's own
+        // measured proportions, not the art's — a deliberate, commented
+        // exception to "let width follow the art", forcing w to match what
+        // the scene actually shows instead of spending a third generation
+        // round chasing it. Measured with `room.py measure` (see
+        // measure_blob.py): grabcut for the mirror and bed, which contrast
+        // clean from their background by colour; canny edge/contour
+        // detection for the trunk, which grabcut could not segment — its
+        // warm brown/gold is too close to the similarly warm rug beneath it
+        // for a colour-region model, but the trunk's straight sides and
+        // metal bands give canny's edge detector plenty to find. See
+        // CLAUDE.md's "before hand-rolling an algorithm" note for why these
+        // two, not a hand-rolled flood fill.
+        // Both grounded to y=110, the wall's own floor line — and that
+        // number itself was wrong once already: first read by eye off a
+        // brightened crop as ~102, which was still visibly high on a
+        // render (reported directly — "the bed's too high, everything's a
+        // little too high"). Re-measured properly instead of re-guessing:
+        // per-row gradient across three clean vertical strips of the scene
+        // (no furniture in the way) all agree the wainscot-to-parquet edge
+        // is at y=109-110, not 102 — confirmed by drawing both lines over
+        // the scene and looking, the same "look before trusting it" rule
+        // as everything else measured this way. The wall panels above and
+        // both of these move together off the corrected line; h taken up
+        // on each to keep its top where it was, w recomputed to match
+        // (mirror keeps its locked 1:2 ratio off the new h; the nightstand
+        // has none declared, so it still follows the art's own aspect).
+        { art: "prop_bed_mirror", x: 53,  y: 109, h: 99, w: 50, base: { w: 40, h: 8 } },
+        { art: "prop_bed_nightstand", x: 96, y: 109, h: 61, base: { w: 20, h: 8 } },
+        // prop_bed_bed's own art ends at the mattress/quilt edge — no
+        // footboard drawn, confirmed by opening the file: flat transparent
+        // background right where the scene's own footboard is. Measuring
+        // it (GrabCut) only ever finds that shorter shape, which read as
+        // "the bed's too high AND not big enough" and, at the old y=113,
+        // left a gap of bare rug between the bed's cut-off bottom edge and
+        // the trunk instead of the two touching the way the scene shows.
+        // Not a paid regen right now — moved down and sized up instead so
+        // the trunk (drawn after it, y=153 > 130, so on top) sits across
+        // the missing-footboard edge and covers it, the same kind of
+        // deliberate placement departure as the Lounge's tables. Top stays
+        // at 14 (the canopy finials, unaffected by any of this); h/w grow
+        // to match, aspect held at the art's own 79:99.
+        { art: "prop_bed_bed",   x: 162, y: 130, h: 116, w: 93, base: { w: 85, h: 16 } },
+        { art: "prop_bed_trunk", x: 163, y: 153, h: 32, w: 53, base: { w: 48, h: 9 } },
       ],
-      // Furniture footprints where they actually meet the floor (the old boxes
-      // reached far into the room, and the bed's box covered the doorway, so
-      // the door could not be walked into at all).
-      obstacles: [
-        { x: 52, y: 95, w: 36, h: 14 },   // mirror
-        { x: 120, y: 92, w: 90, h: 26 },  // bed
-        { x: 202, y: 95, w: 22, h: 13 }   // nightstand
+      // THE LOUNGE IS EAST OF THIS ROOM, so the way out is a door in the EAST
+      // wall: you walk right out of here and come in the Lounge's west door.
+      //
+      // Not drawn as generated art. Three side-doorway attempts across this
+      // room and the Lounge each failed a different way (wrong material,
+      // wrong proportion, right but drifting from the room's own wall art
+      // room to room), and the owner asked to stop fighting the generator on
+      // exactly this shape of art and use a plain breach in the wall instead
+      // — drawSideBreach in app.js, a code-drawn notch, not a picture.
+      exits: [
+        // y 148-184: below the four-poster's footprint (which ends at 143) and
+        // above the balustrade's (which starts at 194). Both would otherwise
+        // sit on this trigger, and a footprint on a doorway is a door you can
+        // see and cannot reach. Shorter than that span allows: the regenerated
+        // floor's own bottom edge dips a few px right under this door (measured
+        // off walk-bedroom.png — a fully open row at y<=186, pinched to two
+        // slivers at y 188-190), so the box is centred at y=166 (feet at 184),
+        // clear of the dip, instead of at the old centre of 169 (feet at 187,
+        // inside it) — which read as a door you could walk toward and never
+        // reach.
+        { x: 276, y: 148, w: 40, h: 36, to: "lounge", link: "westDoor", drawn: "sidebreach" }
       ],
       npcs: [
         {
@@ -336,7 +440,7 @@ window.NEWSEY_STORY = (function () {
           // speaker (CHARACTERS.devil) exactly like it did as a standing NPC.
           // The bed beside it is no longer an interactable at all — you get
           // INTO it (app.js, player.bedSlide), and that's what saves.
-          id: "devil", x: 70, y: 102, art: "devil", sprite: null, marker: true,
+          id: "devil", x: 50, y: 112, art: "devil", sprite: null, marker: true,
           lines: [
             "Hello, and welcome to Infinity! You may notice your appearance has changed — that's your magical avatar.",
             "Your bracelet is copper, to reflect your rank, and aquamarine for your playstyle. These can change.",
@@ -364,80 +468,73 @@ window.NEWSEY_STORY = (function () {
     lounge: {
       bg: "lounge",
       label: "The Lounge",
-      // REGENERATED TO THE THREE-PASS STANDARD (docs/ROOM_ART_STANDARD.md).
-      // bg-lounge.png is the plank floor and NOTHING else, so its own
-      // silhouette is the collision mask and this room carries no floorPoly
-      // and no obstacles — everything you cannot walk on is a prop below.
-      // The old room was a single painted picture whose bar footprint had been
-      // measured by hand, and the picture was later regenerated underneath the
-      // measurements; that is the failure this shape exists to prevent.
+      // THE HUB OF THE MAP. Infinity is laid out as a grid and every ordinary
+      // door is a physical pair on it — you go out one side and come in the
+      // matching side of the room next door:
       //
-      // Laid out from art-src/lounge_scene.png, per the plot: "The bar was off
-      // to the right side... On the left, there were groups of people standing
-      // around several doorways." So the bar runs along the right, and the
-      // three ways out sit along the back wall left of it, at the x the scene
-      // draws them:
-      //     the arch   x 54-88   -> your room
-      //     the rune door x 110-146 -> wherever it feels like (RUNE_DOOR)
-      //     the portal x 166-204  -> the arena
-      // The back wall is six panels of prop_wall_* laid side by side at 57px
-      // centres, which is why the openings land on those centres. Their
-      // footprints form a continuous blocking band across the top of the
-      // floor, so the wall is a thing you walk up to rather than a line the
-      // mask happens to stop at.
+      //                 [ garden ]
+      //                      |
+      //                 [ library ]
+      //                      |
+      //     [ bedroom ] — [ LOUNGE ] — [ lab ]
+      //
+      // so this room has a door in its WEST wall (your room), one in its EAST
+      // wall (Kyran's lab) and an arch in its NORTH wall (the library). The
+      // red portal in the north wall is the ONE thing allowed to be special:
+      // it goes to the arena, which is nowhere on the grid.
+      //
+      // It replaced a black rune door that popped up a LIST of six
+      // destinations. A picker is not a map — one doorway cannot be three
+      // rooms — so nothing in Infinity could be laid out in a way that made
+      // sense, and on a phone the panel was taller than the screen.
+      //
+      // Built to docs/ROOM_ART_STANDARD.md: bg-lounge.png is the plank floor
+      // and nothing else, so the walk mask is its own silhouette and there is
+      // no floorPoly and no obstacles.
       playerStart: { x: 152, y: 150 },
       props: [
-        // --- the side walls, drawn edge-on and turned in toward the room, one
-        // down each margin. They are drawn LAST-sorting (a foot below the
-        // frame) so they pass in front of the back wall's corners the way a
-        // side wall actually does. Nothing is blocked by their footprints —
-        // the floor plate is fitted with a 12px margin, so the strip each one
-        // stands on was never walkable in the first place.
-        { art: "prop_wall_left",  x: 5,   y: 206, h: 152, w: 26, base: { w: 26, h: 8 } },
-        { art: "prop_wall_right", x: 315, y: 206, h: 152, w: 26, base: { w: 26, h: 8 } },
-        // --- the back wall, left to right. Same h and w on every panel so the
-        // brick courses line up; the openings are panels 2, 3 and 4.
-        { art: "prop_wall_plain",  x: 13,  y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
-        { art: "prop_wall_arch",   x: 70,  y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
-        { art: "prop_wall_rune",   x: 127, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
-        { art: "prop_wall_portal", x: 184, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
-        { art: "prop_wall_plain",  x: 241, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
-        { art: "prop_wall_plain",  x: 298, y: 70, h: 82, w: 58, base: { w: 58, h: 8 } },
-        // --- the bar, along the right. The shelf stands against the wall and
-        // the counter in front of it, so the player sorts between them.
-        { art: "prop_backbar", x: 272, y: 80,  h: 54, w: 100, base: { w: 100, h: 8 } },
-        { art: "prop_bar",     x: 266, y: 106, h: 44, w: 108, base: { w: 108, h: 16 } },
-        // --- tables down the left, where the scene puts them. Clear of the
-        // rune door's approach (see the corridor note under npcs).
-        { art: "prop_table", x: 34, y: 116, h: 30, base: { rx: 11, ry: 5 } },
-        { art: "prop_stool", x: 56, y: 120, h: 20, base: { rx: 6,  ry: 3 } },
-        { art: "prop_table", x: 30, y: 176, h: 30, base: { rx: 11, ry: 5 } },
-        { art: "prop_stool", x: 54, y: 180, h: 20, base: { rx: 6,  ry: 3 } },
-        { art: "prop_stool", x: 10, y: 172, h: 20, base: { rx: 6,  ry: 3 } }
+        // MEASURED off art-src/lounge_scene.png at 320x200, not placed by eye:
+        // the arch's lit opening is x 100-115 and the portal's x 154-174, so
+        // the wall is seven panels of the same brick at a 57px pitch with the
+        // arch on 107 and the portal on 164. The wall meets the floor at y 72.
+        { art: "prop_lg_wall",   x: -7,  y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_lg_wall",   x: 50,  y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_lg_arch",   x: 107, y: 72, h: 76, w: 60, door: true, behind: true },
+        { art: "prop_lg_portal", x: 164, y: 72, h: 76, w: 60, door: true, behind: true },
+        { art: "prop_lg_wall",   x: 221, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_lg_wall",   x: 278, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_lg_wall",   x: 335, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        // the way west and the way east, in the side walls at the frame edges
+        // The ARCH is the prop, not a wall with an arch in it. The first two
+        // attempts drew a tall strip that was seven eighths plain brick, so at
+        // any width that left room to walk, the opening was a few pixels wide
+        // and simply disappeared. Asked for as "the arch fills the image, the
+        // brick is a sliver of framing", it came back usable at once.
+        // West and east doorways are breaches, not generated art — see the
+        // note by ROOMS.bedroom's exit for why.
+        // the bar along the right end of the back wall, where the plot puts it
+        { art: "prop_backbar", x: 238, y: 62, h: 44, w: 88, base: { w: 88, h: 6 } },
+        // Stops short of the EAST doorway's approach: run out to the frame
+        // edge and its footprint sits on the door, which is a door you can
+        // see and never reach.
+        { art: "prop_bar",     x: 236, y: 88, h: 32, w: 92, base: { w: 92, h: 12 } },
+        // The scene has these tables hard against the left wall. They are
+        // nudged right because there they fenced off the WEST DOORWAY — the
+        // walk test could reach x 31 and no further.
+        { art: "prop_table", x: 74, y: 106, h: 30, base: { rx: 12, ry: 5 } },
+        { art: "prop_stool", x: 96, y: 110, h: 20, base: { rx: 6,  ry: 3 } },
+        { art: "prop_table", x: 70, y: 160, h: 30, base: { rx: 12, ry: 5 } },
+        { art: "prop_stool", x: 92, y: 164, h: 20, base: { rx: 6,  ry: 3 } }
       ],
-      // Every exit is a band of floor directly under the doorway its wall
-      // panel draws — you stand on the threshold, you go through. They sit
-      // 2px below the wall's footprint, which is as close as a trigger can be
-      // to a door you cannot walk into.
+      // Each trigger sits ON its own drawn doorway and is as tall as the
+      // player, so crossing means standing in the opening rather than on a
+      // rectangle of floor near it.
       exits: [
-        { x: 54, y: 76, w: 34, h: 14, to: "bedroom", link: "yourDoor" },
-        // Not a doorway to one room any more — this is the black rune door,
-        // and where it puts you is a choice (see RUNE_DOOR above and
-        // openRuneDoor in app.js). The first push lands you in the Garden by
-        // accident, exactly as it does in the plot.
-        { x: 110, y: 76, w: 36, h: 14, rune: true, link: "rune" },
-        // The portal to the duelling arena. It used to be an NPC you talked
-        // to, because no room art had ever drawn one; prop_wall_portal draws
-        // it now, so it is a door like the others and pairs with the arena's.
-        { x: 166, y: 76, w: 38, h: 14, to: "arena", link: "portal" }
+        { x: 4,   y: 118, w: 38, h: 58, to: "bedroom", link: "westDoor", drawn: "sidebreach" },
+        { x: 90,  y: 55,  w: 33, h: 16, to: "library", link: "northArch" },
+        { x: 147, y: 55,  w: 33, h: 16, to: "arena",   link: "portal" },
+        { x: 278, y: 118, w: 38, h: 58, to: "lab",     link: "eastDoor", drawn: "sidebreach" }
       ],
-      // NOBODY STANDS IN FRONT OF THE RUNE DOOR. Its trigger is x 110-146 and
-      // the player walks up the middle of the room to reach it, so an NPC
-      // anywhere in x 104-152 below y 90 fences off the room's main exit. That
-      // is exactly what happened the first time Kat's table was placed: Eric
-      // and Magma sat either side of the approach and the walk test could no
-      // longer get through the door at all. The tables are therefore split
-      // around the corridor, not across it, and folk-test.js checks it.
       npcs: [
         {
           // Flavor only here — per the plot, the Lounge is "the bar + portals
@@ -515,20 +612,39 @@ window.NEWSEY_STORY = (function () {
     arena: {
       bg: "arena",
       label: "The Arena",
-      // Regenerated to the plot: "a room about as large as a high school
-      // gymnasium, but that looked like a library. In the middle of the
-      // ceiling was a gigantic swirling golden orb" — bookshelf walls, tiered
-      // stands, the cracked orb with its two ribbons hanging down, and two
-      // duelling platforms in the flagstones fifteen paces apart. You arrive
-      // standing on the near one.
+      // The plot's own words (Clubhouse PR #30): "a room about as large as a
+      // high school gymnasium, but that looked like a library. In the middle
+      // of the ceiling was a gigantic swirling golden orb." Kat and Nella
+      // "jumped through the portal together" to get here — the plot never
+      // draws a door in this room, only the portal that brought them in.
+      //
+      // bg-arena.png is the ORIGINAL generated room (bookshelves, stands,
+      // the orb+ribbons, the two duelling platforms) edited directly rather
+      // than regenerated: the doorway that used to sit on the right wall is
+      // cloned over with the bookshelf either side of it, and the SAME red
+      // swirl used for ROOMS.lounge's portal (prop_lg_portal.png, cropped to
+      // just the vortex — no stone arch, since this isn't a doorway) is
+      // composited onto the floor at the front, matching the plot's own
+      // portal rather than inventing a new one. Regenerating from scratch
+      // was tried first and came back a different room in a different
+      // style; editing the art everyone already liked was the right call.
       playerStart: { x: 111, y: 124 },
-      // bg-arena.png: the archway out is on the right at x 226-250, its foot
-      // meeting the stands at y ~84.
       // The drawn floor, traced as a polygon (see ROOM SHAPES above) — the
-      // flagstone hexagon between the two banks of stands.
-      floorPoly: [[66,100],[250,100],[292,140],[283,186],[42,186],[30,140]],
+      // flagstone hexagon between the two banks of stands, PLUS a notch cut
+      // into its own bottom edge: the art's front bench is actually two
+      // short segments with a gap between them where the floor keeps going
+      // almost to the very edge of the frame. The original flat-186 bottom
+      // edge didn't include that gap at all, which is exactly where the
+      // portal (and its trigger) needed to sit — "the very bottom of the
+      // walkable area" is that notch, not the hexagon's average edge.
+      floorPoly: [[66,100],[250,100],[292,140],[283,186],[171,186],[171,198],[87,198],[87,186],[42,186],[30,140]],
       exits: [
-        { x: 224, y: 84, w: 26, h: 18, to: "lounge", link: "portal" }
+        // The portal, in the notch above, deliberately hung half off the
+        // bottom edge of the frame (drawn at pixel 171,303,130,52 of the
+        // art's native 512x341 — only the top ~38px are visible, the rest
+        // clipped by the canvas) so it reads as an exit, not scenery on the
+        // open floor. Trigger sits on its visible upper arc, within reach.
+        { x: 100, y: 168, w: 76, h: 28, to: "lounge", link: "portal" }
       ],
       obstacles: [ { x: 0, y: 88, w: 66, h: 20 }, { x: 250, y: 88, w: 70, h: 20 } ], // the stands
       npcs: [
@@ -661,8 +777,9 @@ window.NEWSEY_STORY = (function () {
         { art: "prop_fountain", x: 224, y: 172, h: 58, base: { rx: 15, ry: 6 } }
       ],
       exits: [
-        // the path leaving through the gap in the wall, back the way she came
-        { x: 146, y: 178, w: 34, h: 14, to: "lounge", link: "rune" }
+        // The path leaves through the gap in the near wall, SOUTH, into the
+        // Library — which is the room between the Garden and the Lounge.
+        { x: 146, y: 178, w: 34, h: 14, to: "library", link: "gardenPath" }
       ],
       npcs: [
         {
@@ -673,26 +790,86 @@ window.NEWSEY_STORY = (function () {
             "You really shouldn't eat anything outside the tavern. This garden is full of experimental plants I'm still analysing.",
             "I'm Kyran, head of Infinity's research department. And you must be Nella. Welcome.",
             "This garden is supposed to be off limits, you know. How did you even get here?",
-            "…You just opened the black door. You are full of surprises. Head back the way you came, and when you reach it, touch the rune of the chaos symbol.",
+            "…You walked in off the path? You are full of surprises. Head back down through the gap in the wall and you will come out in the library.",
             "Oh — and stop by my lab later. I have something to show you."
-          ],
-          setsFlag: "runeDoorLearned"
+          ]
         }
       ]
     },
     lab: {
       bg: "lab",
       label: "Kyran's Lab",
+      // THE LOUNGE IS WEST OF THIS ROOM. Out of the door in the west wall
+      // here, in through the Lounge's east door — see the map on ROOMS.lounge.
+      // Regenerated to docs/ROOM_ART_STANDARD.md: bg-lab.png is the flagstone
+      // floor and nothing else, so the walk mask is its own silhouette and
+      // there is no floorPoly and no obstacles. The old art painted a door on
+      // the RIGHT wall, which the map does not use.
       playerStart: { x: 150, y: 150 },
-      // bg-lab.png: the arch out is on the back-right at x 224-258, its
-      // threshold where the tile floor starts at y ~104.
-      floorPoly: [[40,104],[286,104],[286,184],[40,184]],
-      obstacles: [
-        { x: 80, y: 96, w: 142, h: 16 },   // the workbench
-        { x: 252, y: 96, w: 32, h: 24 }    // the instrument cart
+      props: [
+        // The back wall: three panels, bare stone either side of ONE shelf —
+        // same convention as the bedroom, run through the same tools this
+        // time (room.py grid / measure). Found two real bugs neither the
+        // side-by-side nor a first read had caught: `prop_lab_chart` (a
+        // pinned parchment) was cut from the same sheet as `prop_lab_plain`
+        // — same 620x767 art — but the room's own spec never asks for a
+        // chart and the approved scene has no parchment anywhere on this
+        // wall, just bare stone; it was leftover art from before this room
+        // was rebuilt to the three-pass standard, wired in without checking
+        // it against the scene. Replaced with a second `prop_lab_plain`.
+        // `prop_lab_shelf` isn't a small furniture overlay — its own art is
+        // a FULL wall panel with the shelf and jars painted onto its own
+        // baked-in stone (385x353, not transparent), the same idea as
+        // `prop_lab_plain` but with a shelf on it. Declaring it at its own
+        // small y/h (92/52, forced to an undistorted-looking-but-wrong
+        // w:124) sat it at the wrong height AND cropped/squeezed its baked
+        // background out of registry with its neighbours' stone — that
+        // mismatched rectangle was the second bug. Given the exact same
+        // box as the panel it replaces (x/y/h/w identical to prop_lab_plain)
+        // instead, its own background lines up with theirs by construction.
+        // y=89, not the old 122: room.py wallseam --method canny at this
+        // room's door jamb (stone-on-stone floor/wall is too low-contrast
+        // for the default gradient method — the same reason grabcut needed
+        // canny as a fallback for the trunk) found the jamb's own base at
+        // y=89, a strong, visually-confirmed edge. 122 was itself a guess
+        // that had never been measured — the bench and cabinet's "grounded
+        // 15px short of the wall" NOTEs earlier were checked against that
+        // same wrong number, which is exactly why they're gone now: both
+        // were already correct against the REAL wall line the whole time.
+        { art: "prop_lab_plain", x: 52,  y: 89, h: 75, w: 114, behind: true, base: { w: 114, h: 8 } },
+        { art: "prop_lab_shelf", x: 160, y: 89, h: 75, w: 114, behind: true, base: { w: 114, h: 8 } },
+        { art: "prop_lab_plain", x: 268, y: 89, h: 75, w: 114, behind: true, base: { w: 114, h: 8 } },
+        // the way west, to the Lounge. door: true — it IS the doorway, so it
+        // carries no footprint and its trigger sits on it.
+        // West doorway is a breach, not generated art — see the note by
+        // ROOMS.bedroom's exit for why.
+        //
+        // bench/cabinet/cart: all three read notably smaller than their own
+        // reference scene — same "tiny prop" bug the bedroom's furniture
+        // had, never caught here because this room was never actually
+        // measured against its scene before. GrabCut couldn't segment any
+        // of the three (cluttered glassware over wood reads as one blob of
+        // similar warm tones to GrabCut's colour model, the same failure
+        // mode as the bedroom's trunk but worse — canny's edge tangle over
+        // that much clutter didn't separate the object from the noise
+        // either), so these are `room.py grid` manual readings, cross-
+        // checked at 4x zoom against three separate crops.
+        { art: "prop_lab_bench",   x: 157, y: 107, h: 67, w: 134, base: { w: 128, h: 10 } },
+        // Reverted a departure that turned out to be a mistake, not a fix:
+        // this was moved to y=107 (from its scene-measured y=92) on the
+        // theory it was "floating short of the wall" — but that compared
+        // it against the wall's OLD, never-actually-measured y=122. Now
+        // that the wall itself is properly measured at y=89 (see above),
+        // the cabinet's original scene reading (y=92) is 3px forward of
+        // the real wall line — already correct, nothing to ground it to.
+        { art: "prop_lab_cabinet", x: 269, y: 92, h: 79, w: 62, base: { w: 56, h: 10 } },
+        { art: "prop_lab_cart",    x: 269, y: 168, h: 64, w: 56,  base: { rx: 24, ry: 6 } }
       ],
       exits: [
-        { x: 224, y: 88, w: 26, h: 18, to: "lounge", link: "rune" }
+        // y 124, clear of the wall panels' footprint: the leftmost panel
+        // blocks y 112-120 across the room, and a trigger overlapping it is a
+        // door you cannot reach.
+        { x: 2, y: 136, w: 28, h: 54, to: "lounge", link: "eastDoor", drawn: "sidebreach" }
       ],
       npcs: [
         {
@@ -710,18 +887,55 @@ window.NEWSEY_STORY = (function () {
     library: {
       bg: "library",
       label: "The Library",
-      playerStart: { x: 150, y: 165 },
-      // Hand-placed from bg-library.png: the exit archway back to the
-      // lounge is actually on the right side of the room, not the left
-      // (the previous x:0 placement didn't match the art at all — the
-      // bookshelves occupy the whole left wall and are blocked off).
-      // bg-library.png: the arch is at x 210-242, floor at y ~78.
-      // The drawn floor, traced as a polygon (see ROOM SHAPES above).
-      floorPoly: [[50,100],[274,100],[274,188],[50,188]],
-      exits: [
-        { x: 228, y: 84, w: 24, h: 18, to: "lounge", link: "rune" }
+      // BETWEEN THE LOUNGE AND THE GARDEN. The Lounge is SOUTH — down off the
+      // near edge, in through its north arch — and the Anarchy Garden is
+      // NORTH, through the arch in the bookcase wall. See the map on
+      // ROOMS.lounge.
+      // Regenerated to docs/ROOM_ART_STANDARD.md: bg-library.png is the
+      // flagstone floor and nothing else, so the walk mask is its own
+      // silhouette and there is no floorPoly and no obstacles.
+      playerStart: { x: 150, y: 150 },
+      props: [
+        // Re-measured off the scene (measure_blob.py grabcut and canny
+        // agreed): --rect 180,95,130,65 -> bbox 182,97-307,157. The old
+        // 92x46 at (232,152) was a guess, smaller and lower than the rug
+        // the scene actually draws.
+        { art: "prop_lib_rug", x: 245, y: 128, h: 60, w: 124, flat: true },
+        // The bookcase wall, with the arch to the Garden cut through its
+        // middle. w overlaps its neighbour: butted exactly, the floor showed
+        // between the panels as pale pillars either side of the doorway.
+        // y/h were never actually measured — declared at a guessed y=104,
+        // h=92. room.py wallseam (gradient, three clean strips, agreed
+        // within 3px) puts the real seam at y=63: the shelves fill the top
+        // ~third of the frame, cropped by the top edge, not a wall reaching
+        // halfway down. See rooms/library.json's wallSeam.
+        { art: "prop_lib_shelf", x: 52,  y: 63, h: 63, w: 116, behind: true, base: { w: 110, h: 8 } },
+        { art: "prop_lib_door",  x: 160, y: 63, h: 63, w: 116, door: true },
+        { art: "prop_lib_shelf", x: 268, y: 63, h: 63, w: 116, behind: true, base: { w: 110, h: 8 } },
+        // Michael's reading corner on the left, the writing desk on the right.
+        // Every prop below was re-measured straight off library_scene.png with
+        // measure_blob.py (grabcut/canny, whichever contrasted) — the old
+        // numbers were guesses like the wall was, not read off anything, and
+        // are gone now rather than kept as a stale cross-check.
+        // Leans forward off the wall, foot well past the seam: top rail
+        // ~y=27, foot/casters ~y=81 (--rect 42,3,28,90 --method canny).
+        { art: "prop_lib_ladder", x: 56,  y: 81,  h: 54, base: { w: 18, h: 6 } },
+        // --rect 0,65,55,80 --method canny -> bbox 12,79-55,140.
+        { art: "prop_lib_chair",  x: 33,  y: 140, h: 61, base: { w: 22, h: 8 } },
+        // --rect 42,88,26,40 --method canny -> bbox 42,88-68,122.
+        { art: "prop_lib_table",  x: 55,  y: 122, h: 34, w: 26, base: { rx: 6, ry: 3 } },
+        // Read directly off a pixel grid (desk+chair-back as one piece, art's
+        // own composition): legs meet floor ~y=105, chair-back top ~y=68.
+        { art: "prop_lib_desk",   x: 255, y: 105, h: 37, w: 55, base: { w: 46, h: 8 } }
       ],
-      obstacles: [ { x: 160, y: 92, w: 66, h: 22 } ], // armchair + candle table
+      exits: [
+        // south, off the near edge, back to the Lounge's north arch. No art
+        // can draw a door at the edge the camera stands on, so app.js draws
+        // the frame itself.
+        { x: 140, y: 178, w: 40, h: 16, to: "lounge", link: "northArch", drawn: "threshold" },
+        // north, through the arch in the bookcase wall, up into the Garden
+        { x: 128, y: 46, w: 63, h: 16, to: "garden", link: "gardenPath" }
+      ],
       npcs: [
         {
           id: "michael", x: 120, y: 160, art: "michael", sprite: "michael_top",
@@ -759,5 +973,5 @@ window.NEWSEY_STORY = (function () {
 
   return { CHARACTERS: CHARACTERS, INTRO_CUTSCENE: INTRO_CUTSCENE, DREAM_CUTSCENE: DREAM_CUTSCENE,
            JOHN_CUTSCENE: JOHN_CUTSCENE,
-           WAKE_LINES: WAKE_LINES, ROOMS: ROOMS, RUNE_DOOR: RUNE_DOOR };
+           WAKE_LINES: WAKE_LINES, ROOMS: ROOMS };
 })();

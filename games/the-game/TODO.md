@@ -39,6 +39,22 @@ Items that are done have moved to **Done**; what is left is here.
 
 ## Loose ends worth knowing about
 
+- **`art-style.json` carries the camera, not the recipe.** It is prepended to
+  EVERY prompt for this game, pass prompts included, so anything it says about
+  how a room is built outranks the pass prompt it sits in front of. It had
+  drifted back to the old TWO-LAYER room ("a ROOM GROUND PLATE: a complete
+  floor AND ITS SURROUNDING ARCHITECTURE") and the Lounge's floor plate duly
+  came back painted on a brown vignette — which keys to nothing, so the whole
+  frame would have been walkable. `room.py verify` now fails on recipe
+  vocabulary appearing in that file.
+- **`build_props` had been leaving the white rim on.** Pixels where a prop's
+  outline fades into the background sit above the prop's luma and below the
+  key's threshold, so they survived as a pale fringe — a chalky line along the
+  base of every wall panel, running the width of the room. `dehalo()` eats
+  boundary pixels that are BOTH very light and on the current edge.
+  `--trim-bottom` is the separate, manual case: a sheet that DREW a scrap of
+  ground under each item, which nothing automatic can tell from art.
+
 - **The garden's pool and waterfalls are static.** They are props now rather
   than paint, which is what makes animating them possible; nothing animates
   them yet. Scrolling the water is the obvious first move.
@@ -198,6 +214,23 @@ Things spotted while working. Don't act on these without a nod from the owner.
 
 ## Done
 
+- **The Lounge, regenerated to the three-pass standard.** The room the plot
+  leans on hardest was the last one built the old way — one painted picture,
+  a hand-measured `floorPoly`, a hand-measured box for the bar, two ways out.
+  Now: the plank floor is the whole of its collision data (it is in
+  `FLOOR_PLATE_ROOMS`; `floorPoly` and `obstacles` are gone), and everything
+  else is a prop — the back wall in four panels (plain, the stone arch, the
+  black rune door, the red portal), the two side walls, the bar counter and
+  its bottle shelf, tables and stools. The three ways out are DRAWN, at the x
+  the composed scene draws them, and each exit is a band of floor directly
+  under its own doorway instead of a rectangle somewhere below it.
+  - The portal stops being an NPC you talk to — it was one only because no
+    room art had ever drawn a portal — and becomes an ordinary paired door,
+    so `check_room_exits.mjs` can see it pair with the arena's.
+  - Three infrastructure fixes fell out of doing it, all in **Loose ends**:
+    `art-style.json` restating the room recipe, `build_props` leaving a white
+    halo, and the whole browser playthrough having been red beforehand.
+
 - **Kat's table, and Kyran** — Rex, Diamond, Eric, Magma and Kyran all have
   portraits and full walk sets, generated one dispatch each off the VERBATIM
   plot's descriptions rather than the distilled one. Rex's portrait is the
@@ -294,8 +327,22 @@ draw the mask alongside the room in one sheet (see CLAUDE.md — it won't).
 
 ## Testing
 
-Headless suites live outside the repo (scratchpad), so they don't survive a
-new session — rewrite them as needed. What they cover, worth re-covering:
+The real-UI playthrough is committed: `games/the-game/browser.test.js`, run
+with `NODE_PATH="$(npm root -g)" node games/the-game/browser.test.js`. It is
+deliberately NOT in the `pages.yml` gate (Playwright flakes there and would
+block every game's deploy over one game's timing), so RUN IT BY HAND before
+pushing a change to rooms, doors or the opening.
+
+**When it fails, do not iterate on it.** A run is ~4 minutes and each one
+answers exactly one question. Write a throwaway probe in the scratchpad that
+boots the single failing case and dumps state — `__newseyDebug` gives you
+`room()`, `player`, `npcs()`, `exitOverlaps()`, `arrivalFrom()` — and read
+what is actually happening. The last time this was ignored, "opening the door
+makes Chuck exist" turned out to mean she never reached the door, three
+assertions earlier. The door grid collects its failures and asserts the list
+at the end for the same reason.
+
+Other things worth covering, some still only ever covered by hand:
 
 1. **Shell flow** — boots to title; new game in a slot plays the intro; Escape
    pauses and freezes movement; save writes the slot; quit → reload →

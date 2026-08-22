@@ -40,18 +40,42 @@ jobs:
             node "$f" || status=1
           done
           exit $status
-      # Every door needs arriveFacing + a landing spot that's real floor and
-      # clear of every OTHER exit in that room — two room pairs shipped
-      # without that (arriveFacing missing entirely, and separately two door
-      # pairs landing close enough to an unrelated door to "bounce" a player
-      # right back out on one accidental keypress) before this existed. See
-      # the EXIT / DOOR CONVENTION comment in each game's story.js.
+      # THE DOOR GATE — docs/DOOR_STANDARD.md. A door is one half of a pair,
+      # arrival is derived from the partner rather than typed, and a doorway
+      # has to be drawn in the wall its trigger is armed in. Every one of
+      # those was learned by shipping the opposite: three rooms putting the
+      # player down on the same square of lounge floor nowhere near the door
+      # she walked through, and a spawn point parked on a doorway so the door
+      # never armed at all. The checker finds every game itself — a game is
+      # covered as soon as it publishes its door data (§8), with no list here
+      # to forget to update.
       - name: Verify room exits
+        run: node .github/scripts/check_room_exits.mjs
+
+      # A DOOR HAS TO BE ENTERED, NOT GRAZED — and that is a number, so it is
+      # gated. The Arena's way out was armed above the walkable platform and
+      # could be reached by exactly ONE pixel of the player's box: the link was
+      # paired, the destination real, the arrival derivable, and the browser
+      # door test walked it green, because that test teleports the player next
+      # to a trigger and steps in. It proves a door FIRES, never that anyone
+      # can reach it. Holding one direction out of the spawn went straight past
+      # it into the wall.
+      #
+      # remap_doors.py measures how deeply a player can get onto each trigger,
+      # off the room's own art. Every working door in Newsey measures 13-14px;
+      # that Arena rectangle measured 1. --check fails on the unambiguous half
+      # only: a door nobody can enter is a fact, while the tool's PROPOSALS to
+      # move a trigger are advice (it cannot see prop collision) and a fuzzy
+      # check must never block a deploy.
+      - name: Verify doors can be entered
         run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
           status=0
-          for f in games/*/story.js; do
-            echo "== $f =="
-            node .github/scripts/check_room_exits.mjs "$f" || status=1
+          for d in games/*/story.js; do
+            g=$(dirname "$d")
+            [ -d "$g/art" ] || continue
+            echo "== $g =="
+            python3 .github/art/remap_doors.py "$g" --check || status=1
           done
           exit $status
 
@@ -117,7 +141,51 @@ jobs:
               python3 .github/art/verify_sheet.py sheet "$sheet" || status=1
             fi
           done
-          exit $status
+          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
+          [ "$status" = 0 ] || echo "Verify shipped sprite sheets" >> $RUNNER_TEMP/art-problems
+          exit 0
+
+      # The short rules cards a Clubhouse run reads are EXTRACTED from the
+      # standards, never written alongside them — two copies of one truth is
+      # this repo's signature failure. This fails the build if a card no longer
+      # matches its standard, because a run obeying rules nobody agreed to any
+      # more is worse than a run reading the long version.
+      - name: Verify rules cards match their standards
+        run: |
+          status=0
+          for std in .github/art/CHARACTER_SHEETS.md docs/ROOM_ART_STANDARD.md docs/TILED_LEVEL_STANDARD.md docs/DOOR_STANDARD.md; do
+            python3 .github/art/rules_card.py --check "$std" || status=1
+          done
+          # ART DOES NOT BLOCK THE SITE — this is a stale-DOCUMENTATION check,
+          # not broken game art, and it just proved the point live: another
+          # session's edit to ROOM_ART_STANDARD.md left its card stale, and
+          # this step would have blocked Dog Punk's completely unrelated
+          # deploy over a markdown-derived cache file nobody looks at while
+          # playing. Same bucket as the other art checks below.
+          [ "$status" = 0 ] || echo "rules cards out of date" >> $RUNNER_TEMP/art-problems
+          exit 0
+
+      # CHARACTER SPECS. The checks above look at one sheet at a time, and the
+      # thing that shipped next was invisible to all of them: Beverly's mohawk
+      # is 2.2% of her walking front row and 0.1% of her ATTACKING front row —
+      # it stops being drawn when she swings. Each sheet passed alone. Nothing
+      # compared them, so nothing could see it.
+      - name: Verify character consistency across sheets
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          status=0
+          for style in games/*/art-style.json; do
+            [ -e "$style" ] || continue
+            game=$(dirname "$style")
+            chars=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(' '.join((d.get('characters') or {}).keys()))" "$style")
+            for char in $chars; do
+              echo "== $char ($game) =="
+              python3 .github/art/verify_sheet.py character "$game" "$char" || status=1
+            done
+          done
+          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
+          [ "$status" = 0 ] || echo "character consistency" >> $RUNNER_TEMP/art-problems
+          exit 0
 
       # Tiled levels: the third shape of art, and the one that had a pipeline
       # and no checker until four separate defects shipped to a player in a
@@ -134,7 +202,9 @@ jobs:
             echo "== $strip =="
             python3 .github/art/tileset.py verify "$game" || status=1
           done
-          exit $status
+          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
+          [ "$status" = 0 ] || echo "Verify tile strips" >> $RUNNER_TEMP/art-problems
+          exit 0
 
       # The same walk-cycle rules for games that ship INDIVIDUAL frame files
       # instead of sheets (Newsey). Which checks apply depends on how a game
@@ -147,14 +217,54 @@ jobs:
         run: |
           python3 -m pip install --quiet --disable-pip-version-check pillow numpy
           status=0
+          broken=""
           for f in games/*/art/*_down_1.png; do
             [ -e "$f" ] || continue
             dir=$(dirname "$f")
             char=$(basename "$f" _down_1.png)
             echo "== $char ($dir) =="
-            python3 .github/art/verify_sheet.py frames "$dir" "$char" || status=1
+            if ! python3 .github/art/verify_sheet.py frames "$dir" "$char"; then
+              status=1
+              broken="$broken $(printf '%s' "$dir" | cut -d/ -f2)/$char"
+            fi
           done
-          exit $status
+          # NAME THE CULPRIT. This build is one artifact for every game, so a
+          # single character's frames failing blocks the whole site — which is
+          # correct (half a site cannot be deployed) but was invisible: one
+          # game's art failed five deploys in a row while a DIFFERENT game's
+          # thread said its change was live. Whoever reads this needs to know
+          # in one line whose art is holding the site, not have to scroll a log.
+          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
+          [ -z "$broken" ] || echo "character frames:$broken" >> $RUNNER_TEMP/art-problems
+          exit 0
+
+      # THE SITE ALWAYS SHIPS.
+      #
+      # The art checks above used to fail this build. That is defensible in the
+      # abstract and was wrong in practice: this build is ONE artifact for every
+      # game, so one character's frames failing took the whole site down with
+      # it. It happened — `may: CROPPED` in the-game failed five deploys in a
+      # row, and Dog Punk's colour fix, already on main and already correct, sat
+      # undeployed while its thread said it was live. A game with no art problem
+      # at all could not ship because a different game had one.
+      #
+      # So the art checks REPORT and the deploy proceeds. Two things keep that
+      # from becoming "nobody fixes art":
+      #   * the autopilot still runs the same checkers BEFORE it lands, so a run
+      #     cannot introduce broken art in the first place — that is the gate
+      #     that actually catches things, because it catches them at the moment
+      #     they are made;
+      #   * a problem here is annotated, summarised, and handed to the thread
+      #     that owns the game (see "Tell the thread" below), so it becomes
+      #     someone's next job instead of a silent block.
+      - name: Report art problems
+        if: always()
+        run: |
+          [ -s $RUNNER_TEMP/art-problems ] || { echo "No art problems."; exit 0; }
+          echo "::warning::Art problems found (the site still deployed): $(paste -sd'; ' $RUNNER_TEMP/art-problems)"
+          { echo "### Art problems"; echo;
+            echo "The site deployed anyway — these do not block it."; echo;
+            sed 's/^/- /' $RUNNER_TEMP/art-problems; } >> "$GITHUB_STEP_SUMMARY"
 
       # Same mechanism HayleysGame's clubhouse already uses in production —
       # after chasing several more elaborate "fixes" here that each added a

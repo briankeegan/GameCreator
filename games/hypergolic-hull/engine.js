@@ -106,7 +106,7 @@
   // mechanic and Fighter Squadron was a free instant-kill living outside
   // the weapon/energy model. Everything left runs on the same
   // stats + energy + slots chassis.
-  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge"];
+  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge", "prowCannon", "siegeMaul"];
   // Purchase-only actions (see OUTPOST_OFFER_POOL/applyOutpostPurchase) —
   // never part of any level's own baked-in `actions` list, and excluded
   // from the default fallback below so they don't show up for free the
@@ -114,7 +114,7 @@
   // guaranteed claimable (free) at Sector 2's Outpost specifically (see
   // pickOutpostOfferIds), just no longer handed out automatically for
   // reaching the sector.
-  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge"];
+  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge", "prowCannon", "siegeMaul"];
   // Sectors that don't specify `actions` explicitly (Sector 4 "Full Fleet"
   // and every procedurally-generated sector) default to every action that
   // unlocks just by playing.
@@ -216,13 +216,26 @@
   // turns this from a pure-skill puzzle into a luck-and-skill crawl — room to
   // trade Hull for tempo, recover from a bad roll, and let salvage/repairs
   // matter. (Was 1: one-hit permadeath.)
-  // Three. Deliberately unforgiving: hull damage is permanent, repairs
-  // only exist at a dock, and a single mistake is most of the ship. Five
-  // and seven were both tried and both read as too soft — the crawl is
-  // supposed to be survived, not absorbed. What makes three playable
-  // rather than arbitrary is that the gate is always open: you are never
-  // required to trade hits, and a contact you route around costs nothing.
-  const START_HULL = 3;
+  // FIVE, and it moved because the enemies did. Three was right for a
+  // roster where half of it held station and the rest walked at you: hull
+  // damage is permanent, repairs only exist at a dock, and one mistake was
+  // most of the ship. Then every class went to full strength — the archer
+  // reaches five hexes and fires every round, the footman covers all six
+  // hexes touching it, nothing with an engine ever wastes a turn — and the
+  // ship never followed. Measured at three: sixty runs, three finishes,
+  // and half of them dead by Sector 4.
+  //
+  // Five is where the shape comes back rather than where the numbers look
+  // nice. At six the first SEVEN sectors cost nothing at all — sixty runs,
+  // sixty survivors, no attrition, the whole first half a formality. At
+  // five the early sectors wear you down without killing you (five hull in,
+  // 3.7 by depth 8) and the deep end is what ends runs, which is the curve
+  // this game is supposed to have. A quarter of well-flown runs finish.
+  //
+  // What keeps it from being softness is unchanged: the gate is always
+  // open, so you are never required to trade hits, and a contact you route
+  // around still costs nothing.
+  const START_HULL = 5;
 
   // Energy is a second resource, distinct from Hull (permanent damage,
   // repaired only at an Outpost) and salvage (a currency): it regenerates
@@ -465,7 +478,58 @@
     // BUY. (Its footprint does sit inside the Flak Burst's ring — that's
     // allowed, because the Burst costs three times as much a shot and the
     // roster rule is that covering more ground has to be paid for.)
+    // ---- HOW A GUN IS PRICED ------------------------------------------
+    //
+    // One rule, and everything below is on it: REACH COSTS RATE. The more
+    // ground a gun threatens, the less often it may fire and the more it
+    // costs to buy. A stock reactor makes one charge a round, so a weapon's
+    // energy cost IS its rate of fire — 1 is every round, 4 is every fourth.
+    //
+    //   6 hexes   1-2 charge     contact, and the off-axis gaps
+    //   12 hexes  2 charge       the ring at two
+    //   18 hexes  3 charge       the shell at three
+    //   24+ hexes 3-4 charge     a lane down every axis
+    //   the board 4 charge       the Railgun, and it costs the most salvage
+    //
+    // WHAT THE SALVAGE PRICES ARE BASED ON, since it isn't the coverage
+    // table. Each gun was flown from Sector 1 by the same pilot over the
+    // same forty seeds, one gun at a time, and the honest result is that
+    // they are worth about the SAME: no second gun at all leaves the
+    // median run ending at depth 4, and almost every one of them takes it
+    // to depth 8. The differences between guns sit inside the noise at
+    // that sample size.
+    //
+    // So the salvage spread is deliberately narrow — 6 to 20, not 6 to 30.
+    // A five-fold price range was a claim about relative value that
+    // nothing measured supports. The differentiation that IS real lives in
+    // the energy cost, which is a rate of fire you can feel every round.
+    //
+    // The three lane guns are a strict ladder, and have to be: a Railgun's
+    // line swallows an Arc Projector's, which swallows a Beam Lance's, so
+    // each one up costs another charge — 3, 4, 5 — or the one below it is
+    // simply obsolete. Same reason the Railgun is the dearest thing on any
+    // shelf.
+    //
+    // The Beam Lance broke this badly: 24 hexes for ONE charge, fired every
+    // round, at twelve salvage — comfortably the best thing in the game and
+    // nothing else was close. It was cheap because the Picket needs to fire
+    // every round (Hoplite's archer has no cooldown), which is a fact about
+    // that hull, not about the gun. A class is fast because of the
+    // generators it bolted on; the archer carries three of them now.
     autocannon: { id: "autocannon", label: "Autocannon", shape: "ring", range: 1, minRange: 1, damage: 1, targets: "one", energyCost: 1, speed: 3, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    // The cheapest reach in the game, and the only gun where which way you
+    // are pointing matters at all. A wedge two hexes deep off the nose:
+    // three lanes, six hexes, one charge, fires every round. Everything
+    // else is omnidirectional, so this is the one purchase that makes
+    // facing a decision — turn to bring it to bear, or buy something that
+    // doesn't care.
+    prowCannon: { id: "prowCannon", label: "Prow Cannon", shape: "arc", range: 2, damage: 1, targets: "one", energyCost: 1, speed: 3, pattern: FORWARD_ARC_PATTERN, slots: 1 },
+    // The screen-popper. An Escort's shield eats one hit whole however big
+    // it is, so a one-damage gun spends two rounds getting through where
+    // this spends one. Contact only, and it costs a Flak Burst's charge to
+    // hit a single target — you buy it for what it does to armour, not for
+    // coverage.
+    siegeMaul: { id: "siegeMaul", label: "Siege Maul", shape: "ring", range: 1, minRange: 1, damage: 2, targets: "one", energyCost: 3, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // The crowd answer: every adjacent contact at once, so being
     // surrounded stops being a death sentence. Reaches nothing further.
     flakBurst: { id: "flakBurst", label: "Flak Burst", shape: "ring", range: 1, minRange: 1, damage: 1, targets: "all", energyCost: 3, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
@@ -501,13 +565,13 @@
     // archer: it shoots five hexes down any axis, it CANNOT shoot anything
     // adjacent, and it walks to keep that gap open. Closing on it is the
     // answer, and closing costs you the rounds it spends shooting.
-    beamLance: { id: "beamLance", label: "Beam Lance", shape: "lane", range: 5, minRange: 2, damage: 1, targets: "one", energyCost: 1, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    beamLance: { id: "beamLance", label: "Beam Lance", shape: "lane", range: 5, minRange: 2, damage: 1, targets: "one", energyCost: 3, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // The Cutter's gun. Same six axes as the Beam Lance and one hex longer
     // at the near end — it can fire at CONTACT, so there is no inside-its-
     // guard to reach, which is the whole difference between the two. What
     // switches it off instead is its own side: see INHIBITIONS.beamClear.
-    arcProjector: { id: "arcProjector", label: "Arc Projector", shape: "lane", range: 5, minRange: 1, damage: 1, targets: "one", energyCost: 2, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
-    railgun: { id: "railgun", label: "Railgun", shape: "lane", range: 20, damage: 2, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    arcProjector: { id: "arcProjector", label: "Arc Projector", shape: "lane", range: 5, minRange: 1, damage: 1, targets: "one", energyCost: 4, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    railgun: { id: "railgun", label: "Railgun", shape: "lane", range: 20, damage: 2, targets: "one", energyCost: 5, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
     // Hoplite's Demolitionist, and the one question nothing else in this
     // game asks. Every other gun says "do not be standing HERE when I
     // fire"; this one says "this GROUND is going away." It doesn't damage
@@ -519,13 +583,20 @@
     // rather than geometry, and the only one that reliably threatens a
     // crowd — including its own side, which is exactly why the class that
     // carries it refuses to throw one near a friend (see INHIBITIONS).
-        // Thrown to exactly two hexes — a short lob, deliberately. The blast
+        // Minimum TWO. At one, the blast — which covers a full ring around
+    // where it lands — reaches back over the hex you threw it from, so
+    // you blow yourself up. The hostiles never did this because
+    // INHIBITIONS.blastSafe counts the thrower; the player had no such
+    // protection and it showed. Measured with the real pilot: every other
+    // gun took the median run from depth 4 to depth 8, and this one took
+    // it to depth 2 — the only weapon in the game that made you worse.
+    // Thrown to between two and three hexes. The blast
     // covers a full ring around where it lands, so from two out the
     // thrower is standing one hex clear of its own bomb and no further:
     // it has to come in close and then live with what it did. Reaching
     // three as well would have made it a strictly better Mortar (same
     // charge, same damage, more ground), which the roster rule forbids.
-    demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", shape: "ring", range: 3, minRange: 1, damage: 1, targets: "one", energyCost: 3, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, places: true, blast: 1 },
+    demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", shape: "ring", range: 3, minRange: 2, damage: 1, targets: "one", energyCost: 3, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, places: true, blast: 1 },
   };
   // Static data, read everywhere, written nowhere — frozen so an
   // accidental mutation (a helper that "just tweaks" a weapon object for
@@ -573,6 +644,8 @@
     flankTubes: { id: "flankTubes", label: "Flank Tubes", kind: "weapon", weaponKey: "flankTubes", w: 1, h: 3 },
     missilePod: { id: "missilePod", label: "Missile Pod", kind: "weapon", weaponKey: "missilePod", w: 2, h: 2 },
     arcProjector: { id: "arcProjector", label: "Arc Projector", kind: "weapon", weaponKey: "arcProjector", w: 1, h: 3 },
+    prowCannon: { id: "prowCannon", label: "Prow Cannon", kind: "weapon", weaponKey: "prowCannon", w: 1, h: 2 },
+    siegeMaul: { id: "siegeMaul", label: "Siege Maul", kind: "weapon", weaponKey: "siegeMaul", w: 2, h: 2 },
     demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", kind: "weapon", weaponKey: "demolitionCharge", w: 2, h: 2 },
     reactorCore: { id: "reactorCore", label: "Reactor Core", kind: "reactor", rechargeGain: 1, energyCapacity: 6, w: 2, h: 2 },
     sublightDrive: { id: "sublightDrive", label: "Sublight Drive", kind: "engine", moveRange: 1, w: 1, h: 3 },
@@ -635,7 +708,10 @@
   // derived from the Hold now (an installed weapon item sets its
   // systems[key] flag in deriveShip), but the key list itself is stable
   // engine data.
-  const WEAPON_SYSTEM_KEYS = ["autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge"];
+  // Derived, never typed. Hand-listing it went stale twice — a weapon
+  // missing from here is one the arming loop skips, so you can own a gun
+  // and be unable to fire it, with nothing anywhere reporting a problem.
+  const WEAPON_SYSTEM_KEYS = Object.keys(WEAPONS);
 
   // ---- what a hold makes a ship able to do -------------------------------
   //
@@ -821,10 +897,14 @@
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
+          // THREE generators. Hoplite's archer has no cooldown, and the
+          // honest way to give a class that is to bolt in the reactors to
+          // pay for it — not to make the gun itself cheap for everyone.
           { id: "beamLance", x: 1, y: 0 },
           { id: "sublightDrive", x: 0, y: 1 },
           { id: "microReactor", x: 2, y: 1 },
-          { id: "chargeBank", x: 2, y: 2 },
+          { id: "microReactor", x: 2, y: 2 },
+          { id: "microReactor", x: 2, y: 3 },
         ],
       },
     },
@@ -926,7 +1006,8 @@
           { id: "arcProjector", x: 1, y: 0 },
           { id: "sublightDrive", x: 0, y: 1 },
           { id: "microReactor", x: 2, y: 1 },
-          { id: "chargeBank", x: 2, y: 2 },
+          { id: "microReactor", x: 2, y: 2 },
+          { id: "chargeBank", x: 1, y: 3 },
         ],
       },
     },
@@ -942,7 +1023,12 @@
           { id: "shieldGenerator", x: 1, y: 0 },
           { id: "sublightDrive", x: 0, y: 1 },
           { id: "microReactor", x: 3, y: 1 },
-          { id: "autocannon", x: 1, y: 2 },
+          // A Prow Cannon, not an Autocannon: it has a blind side. With an
+          // omnidirectional gun this class was just an Interceptor wearing
+          // a screen — the same question, asked slower. Now the screen says
+          // "two hits" and the wedge says "or go round the back", and those
+          // are different answers.
+          { id: "prowCannon", x: 1, y: 2 },
         ],
       },
     },
@@ -958,7 +1044,11 @@
       hold: {
         cols: 5, rows: 6, blocked: ["0,0", "4,0", "0,5", "4,5"],
         items: [
-          { id: "flakBurst", x: 1, y: 0 },
+          // Siege Maul at contact instead of a Flak Burst. It is alone
+          // with you when you close on it, so hitting everything touching
+          // it was worth nothing; hitting for TWO makes the approach a
+          // real decision rather than a chip of hull.
+          { id: "siegeMaul", x: 1, y: 0 },
           { id: "missilePod", x: 3, y: 1 },
           { id: "sublightDrive", x: 0, y: 1 },
           { id: "microReactor", x: 3, y: 0 },
@@ -1288,6 +1378,8 @@
     missilePod: "missilePod",
     beamLance: "beamLance",
     arcProjector: "arcProjector",
+    prowCannon: "prowCannon",
+    siegeMaul: "siegeMaul",
     demolitionCharge: "demolitionCharge",
   };
 
@@ -1300,12 +1392,14 @@
   // hardpoint unlock a little deeper, so uncommon; mortar/flankTubes/
   // railgun are the late, expensive, run-defining shapes, so rare.
   const OUTPOST_OFFER_POOL = [
-    { id: "repair", label: "Patch 1 Hull", cost: 10 },
+    // Eight, down from ten. Salvage income was rebalanced for a shelf that
+    // tops out at twenty; a patch at ten was priced against the old one.
+    { id: "repair", label: "Patch 1 Hull", cost: 8 },
     { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 10, rarity: "common" },
     // Shields aren't consumable purchases anymore — you buy the GENERATOR
     // (permanent +1 capacity, arrives raised), then re-raising a spent
     // charge costs Energy and a turn (applyRaiseShields), not salvage.
-    { id: "shield", label: "Shield Generator (2x2 — raise-able charge)", cost: 8, rarity: "common" },
+    { id: "shield", label: "Shield Generator (2x2 — raise-able charge)", cost: 14, rarity: "common" },
     // The two "configurable limits" as purchases: your reactor cap (how
     // much Energy you can bank against expensive weapons) and your weapon
     // slots (how many systems can run at once) are both ship stats you
@@ -1316,28 +1410,49 @@
     // curve — each one answers a situation the others can't, and each is
     // the item a hostile class already carries (buy the gun that's been
     // shooting at you).
+    // The bottom of the shelf: the one thing an early run can actually
+    // afford outright, and the only gun that asks which way you're facing.
+    { id: "prowCannon", label: "Prow Cannon (1x2 — a wedge two deep off the nose)", cost: 6, rarity: "common" },
+    { id: "siegeMaul", label: "Siege Maul (2x2 — contact only, 2 dmg — it goes through screens)", cost: 12, rarity: "uncommon" },
     { id: "flakBurst", label: "Flak Burst (2x2 — everything touching us, at once)", cost: 10, rarity: "uncommon" },
-    { id: "arcBeam", label: "Arc Beam (2x2 — the ring at two. Nothing closer.)", cost: 8, rarity: "uncommon" },
-    { id: "beamLance", label: "Beam Lance (1x3 — two to five down any axis, nothing adjacent)", cost: 12, rarity: "uncommon" },
-    { id: "mortar", label: "Mortar (2x2 — lands at three, straight over the rocks)", cost: 14, rarity: "rare" },
-    { id: "flankTubes", label: "Flank Tubes (1x3 — the gaps at two, 2 dmg)", cost: 16, rarity: "rare" },
-    { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 24, rarity: "rare" },
-    { id: "missilePod", label: "Missile Pod (2x2 — it flies itself, 2 dmg)", cost: 18, rarity: "rare" },
+    { id: "arcBeam", label: "Arc Beam (2x2 — the ring at two. Nothing closer.)", cost: 9, rarity: "uncommon" },
+    { id: "beamLance", label: "Beam Lance (1x3 — two to five down any axis, nothing adjacent)", cost: 14, rarity: "rare" },
+    { id: "mortar", label: "Mortar (2x2 — lands at three, straight over the rocks)", cost: 13, rarity: "rare" },
+    { id: "flankTubes", label: "Flank Tubes (1x3 — the gaps at two, 2 dmg)", cost: 15, rarity: "rare" },
+    { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 20, rarity: "rare" },
+    { id: "missilePod", label: "Missile Pod (2x2 — it flies itself, 2 dmg)", cost: 16, rarity: "rare" },
     // Cheap because it's slow: same reach as the Beam Lance, one round in
     // three. The gun you buy when what you need is to out-range something,
     // not to out-shoot it.
-    { id: "arcProjector", label: "Arc Projector (1x3 — one to five down any axis, contact included)", cost: 13, rarity: "rare" },
+    { id: "arcProjector", label: "Arc Projector (1x3 — one to five down any axis, contact included)", cost: 18, rarity: "rare" },
     // Priced with the Mortar, and for the same reason: it's the answer to
     // ground rather than to a ship. It threatens seven hexes at once and
     // it does not care what's standing on them, including you.
-    { id: "demolitionCharge", label: "Demolition Charge (2x2 — lobbed up to three, a two-round fuse, seven hexes)", cost: 15, rarity: "rare" },
+    // The cheapest rare, and priced there on measurement rather than on
+    // how impressive its footprint looks. Flown from Sector 1 by the same
+    // pilot as every other gun it managed 80 shots for 7 kills and took
+    // the median run DOWN to depth 2 — the only weapon that makes a ship
+    // worse. A two-round fuse cannot catch a one-hull ship that moves
+    // every round; it is a weapon for ground you can force something
+    // through, and against the roster in this game that situation is rare.
+    // It stays on the shelf because it is genuinely good in a hostile's
+    // hands and nothing here is enemy-only, but it is not sold as an
+    // upgrade.
+    { id: "demolitionCharge", label: "Demolition Charge (2x2 — lobbed two or three, a two-round fuse, seven hexes)", cost: 10, rarity: "rare" },
   ];
 
   // Roughly Slay the Spire's shop odds (~54/37/9 common/uncommon/rare) and
   // Risk of Rain 2's item-tier weighting (commons dominate the pool,
   // legendaries are the exception) — commons should show up constantly,
   // rares should feel like an event when they do.
-  const RARITY_WEIGHT = { common: 10, uncommon: 4, rare: 1 };
+  // Retuned when the weapon count went from three to nine. There are only
+  // three commons (reinforce / shield / reactor) but at weight 10 they were
+  // soaking up two thirds of every roll, so a shelf was three stat bumps
+  // and the guns — six of which are rare — almost never appeared: measured
+  // across forty runs, two Beam Lances and one Arc Projector were bought in
+  // total. A dock has to be a real chance to change the ship, not a vending
+  // machine for hull points.
+  const RARITY_WEIGHT = { common: 6, uncommon: 4, rare: 2 };
 
   // Weighted sample of `count` items from `items`, no repeats, heavier
   // items more likely each draw — the standard "shrinking roulette wheel":
@@ -1430,11 +1545,33 @@
       // Shapes arrive one at a time so each one gets to be a lesson: the
       // crowd answer, then standoff, then the gun that beats cover, then
       // the one that covers what a lane can't, then the sniper.
-      if (o.id === "railgun") return levelId >= 8;
-      if (o.id === "flankTubes") return levelId >= 8;
+      // The rule this list encodes: a gun goes on a shelf a sector or two
+      // after the thing it answers turns up, so buying it is a response to
+      // something you've met rather than a lottery ticket. Four weapons
+      // were added without a line here and fell through to "any depth",
+      // which is how a Missile Pod could sit on the Sector 2 shelf years
+      // before anything launches at you.
+      //
+      // Depth is the ENEMY's arrival, plus a sector to have met it:
+      //   flakBurst  2  — crowds start in the campaign.
+      //   arcBeam    3  — the Sentry Line, the first thing that outranges
+      //                   you and won't come to you.
+      //   beamLance  3  — the Picket reaches five hexes from Sector 2, and
+      //                   reach is the only honest answer to reach.
+      //   mortar     6  — cover starts mattering.
+      //   railgun    8  — the Railgun Destroyer's own gun.
+      //   flankTubes 8  — the Lancer's.
+      //   missilePod 8  — the Carrier's.
+      //   arcProjector / demolitionCharge 8 — the Cutter's and the
+      //                   Demolitionist's, and both land at depth 8.
+      if (o.id === "railgun" || o.id === "flankTubes" || o.id === "missilePod") return levelId >= 8;
+      if (o.id === "arcProjector" || o.id === "demolitionCharge") return levelId >= 8;
       if (o.id === "mortar") return levelId >= 6;
+      if (o.id === "beamLance") return levelId >= 4;   // the Picket's own gun, met in Sector 2
+      if (o.id === "siegeMaul") return levelId >= 4;   // the Escort's screen, met in Sector 4
       if (o.id === "arcBeam" || o.id === "hardpoint") return levelId >= 3;
       if (o.id === "flakBurst") return levelId >= 2;
+      if (o.id === "prowCannon") return true;          // the cheap one, available from the off
       return true; // reinforce / shield / reactor: basic dock trade at any depth
     });
   }
@@ -1474,6 +1611,16 @@
     // is what they happen to have; this one is the trade that keeps the
     // crawl survivable at all.
     if (!carried.has("shieldGenerator")) force("shield");
+    // ...and the same promise about guns. Flying on nothing but the
+    // starting Autocannon means every fight is at contact, which against a
+    // roster that reaches three and five hexes is not a strategy, it's a
+    // countdown. If a yard has any second gun in stock it will find you
+    // one — after that you're on the roll like everyone else.
+    const armed = WEAPON_SYSTEM_KEYS.filter((k) => k !== "autocannon" && carried.has(k));
+    if (!armed.length) {
+      const guns = stock.filter((o) => WEAPON_SYSTEM_KEYS.includes(o.id) && !ids.includes(o.id));
+      if (guns.length) force(guns[Math.floor(rng() * guns.length)].id);
+    }
     // Sector 3 is the Sentry Line — the first sector with something that
     // outranges you and won't come to you. The weapon that answers it has
     // to be ON THE SHELF there, not left to the roll, or the lesson is
@@ -1689,6 +1836,14 @@
       boardHexes: buildBoardHexes(level),
       actions: ["sublight"], // derived from the Hold below (syncHoldDerived)
       playerPos: { q: level.playerStart.q, r: level.playerStart.r },
+      // Which hull art the flagship shows — set once, at the top of the
+      // run, from whichever loadout was actually picked (buildHold reads
+      // this same carryOver field to build the kit). Carried through
+      // carryOver every sector after, same as runSeed — so buying a Shield
+      // Generator mid-run as a Standard start doesn't suddenly make the
+      // ship LOOK like Escort Start. What you picked at the outset is what
+      // you fly, cosmetically, for the whole run.
+      startingLoadout: (carryOver && carryOver.startingLoadout) || "standard",
       // Hull damage is PERMANENT across jumps — warping doesn't patch a
       // breached deck ("why is hull repaired between every jump? doesn't
       // make any sense"). Only an Outpost repair puts pips back. A fresh
@@ -1797,6 +1952,11 @@
       maxAp: (carryOver && carryOver.maxAp) || START_AP,
       ap: (carryOver && carryOver.maxAp) || START_AP,
       turnCount: 0, // counts ROUNDS (full player phase + enemy phase), not single actions
+      // What the ship arrived with, so leaving unmarked can be paid for
+      // (awardCleanRun). Snapshotted here rather than derived from maxHull:
+      // you can arrive already damaged, and flying a sector clean from two
+      // hull is the same achievement as flying it clean from five.
+      hullAtSectorStart: null,
       status: "playing", // "playing" | "won" | "lost"
       log: [],
       events: [], // animation cues from the last action, e.g. {type:"kill",q,r}
@@ -1826,6 +1986,9 @@
     if (level.intro) pushLog(state, level.intro);
     // Everything the ship can DO derives from what's in the Hold.
     syncHoldDerived(state);
+    // Last, after every hull adjustment above has settled: the mark to beat
+    // for the clean-run bonus.
+    state.hullAtSectorStart = state.hull;
     return state;
   }
 
@@ -2174,8 +2337,45 @@
   // 9-13 with nothing new ever fitted. A bounty that climbs with depth is
   // also what makes "fight it or route around it" stay a real question
   // instead of always being "route around it".
+  // What deeper space pays on top of a wreck's base value. This has to
+  // track the SHELF, and it stopped: prices climb to a thirty-salvage
+  // Railgun while a bounty of floor(depth/4) added a grand total of two
+  // across a whole run. Clearing a four-strong board at sector 8 paid
+  // fifteen, so a rare gun was two perfect sectors of income for something
+  // you were meant to be able to buy and then use. Halved denominator:
+  // a kill at the Bulwark is worth six more than the same kill at sector
+  // one, and a cleared deep board pays for a gun rather than a patch.
   function depthBounty(state) {
-    return Math.floor((state.levelId || 1) / 4) + (state.salvageBonus || 0);
+    return Math.floor((state.levelId || 1) / 2) + (state.salvageBonus || 0);
+  }
+
+  // ---- flying it clean ----------------------------------------------------
+  //
+  // Every point of income in this game came from KILLING something, which
+  // meant good positioning paid nothing at all: a pilot that read the board
+  // and walked out untouched arrived at the next dock as poor as one that
+  // had been shot the whole way, and poorer than one that had stood and
+  // traded. Caution was economically punished, so the only route to a
+  // stronger ship was more fighting — which is the opposite of what this
+  // game says it is about, given the gate is always open.
+  //
+  // So leaving a sector without taking a single point of hull pays, on the
+  // same depth curve a wreck does. It is the one reward in the game for
+  // where you STOOD rather than what you shot, and it cannot be farmed:
+  // there is exactly one per sector and taking one hit anywhere in it is
+  // enough to lose it.
+  function awardCleanRun(state) {
+    if (state.hull < (state.hullAtSectorStart != null ? state.hullAtSectorStart : state.hull)) return;
+    // Sized against the thing it competes with. A four-strong board pays
+    // roughly twenty salvage to clear at mid depth, so a bonus of five was
+    // a consolation prize: the arithmetic still said "kill everything",
+    // which is what it was supposed to stop saying. About half a board —
+    // enough that walking out clean is a real strategy and not enough that
+    // it beats fighting outright.
+    const amount = 4 + 2 * depthBounty(state);
+    state.salvage += amount;
+    state.events.push({ type: "salvage", amount, clean: true });
+    pushLog(state, `Not a scratch on her — ${amount} salvage bonus.`);
   }
 
   function awardSalvage(state, enemyType) {
@@ -2894,6 +3094,7 @@
     state.ap -= 1;
     const usedExit = state.exits.find((e) => posEq(state.playerPos, e));
     if (usedExit && state.exitUnlocked) {
+      awardCleanRun(state);
       state.status = "won";
       state.usedExitVariant = usedExit.variantId;
       if (state.isBoss) {

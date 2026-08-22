@@ -4,11 +4,32 @@
 The standard is three passes and five scripts, which is four too many things to
 remember at 11pm. This is the front door:
 
-  room.py plate  <game> <room>   fit the pass-2 floor plate + rebuild its mask
-  room.py props  <game> <room> <name>...   cut a pass-3 prop sheet
-  room.py check  <game> <room>   render the overlays a human has to look at
-  room.py verify <game>          the gate: every mistake we actually made
-  room.py prompt <pass>          print the canned prompt for a generation pass
+  room.py plate     <game> <room>   fit the pass-2 floor plate + rebuild its mask
+  room.py props     <game> <room> <name>...   cut a pass-3 prop sheet
+  room.py check     <game> <room>   render the overlays a human has to look at
+  room.py grid      <game> <room>   render the scene with a labelled pixel grid,
+                                    to MEASURE a prop by eye — see sizecheck
+  room.py measure   <game> <room> <name> --rect x,y,w,h
+                                    MEASURE a prop's precise bbox off the
+                                    composed scene with CV (grabcut or
+                                    canny), instead of reading it by eye
+  room.py wallseam  <game> <room> --strip x0,x1 [--strip x0,x1 ...]
+                                    MEASURE where the back wall meets the
+                                    floor — the baseline every wall panel
+                                    and every prop against it must share —
+                                    instead of reading it off a crop by eye
+  room.py tilescale <game> <room> --row y0,y1 [--against-plate]
+                                    COUNT how many floor tiles span the
+                                    room's width, and compare the scene's
+                                    own count against the shipped plate's —
+                                    a tile SCALE mismatch (plate 2x too
+                                    coarse) is a countable fact, not an
+                                    eyeball call
+  room.py sizecheck <game> [room]   diff story.js against a room's measured:
+                                    block from rooms/<room>.json
+  room.py verify    <game>          the gate: every mistake we actually made
+  room.py approve   <game> <room>   sign off pass 1 — pass 2 and 3 refuse without it
+  room.py prompt    <pass>          print the canned prompt for a generation pass
 
 `verify` is the one that runs in CI. Every check in it is a bug that shipped:
 
@@ -23,11 +44,39 @@ remember at 11pm. This is the front door:
   * a flat prop carrying a `base`, or a standing prop missing one.
   * a floor-plate room still declaring floorPoly/obstacles — dead data that
     contradicts the mask and sends the next reader the wrong way.
+  * a room nobody rendered the overlay for since its art last changed —
+    the one step of the process with no gate was the one that kept being
+    skipped, so now it has one.
+  * a pass-1 COMPOSED SCENE shipped as the room background. It looks finished,
+    so it is the tempting shortcut, and it throws away the mask, the depth and
+    every prop's independence in one move.
   * art-style.json restating the room recipe — it is prepended to every pass
     prompt, so a stale copy there overrides the real one. Cost: a floor plate
     generated on a painted vignette instead of on flat white.
   * a mask that no longer matches its plate, i.e. someone changed the art and
     forgot to rebuild.
+  * a declared prop size/position drifted more than 15% from what a human
+    measured off the scene with `room.py grid` (rooms/<room>.json's
+    measured: block) — the bedroom's rug and bed both shipped signed-off
+    and wrong this way; see the "why automated matching doesn't work here"
+    note in docs/ROOM_ART_STANDARD.md §5 for why this is a stored human
+    reading rather than something verify derives itself.
+  * a tiled wall band (behind/door props sharing a Y, sized from their own
+    art aspect, never stretched) that no longer reaches both frame edges —
+    the bedroom's back wall was measured at 5 copies covering the frame,
+    then got re-cut twice more and silently stopped, leaving a strip of
+    floor showing through the wall above where the side-by-side or a
+    signed-off room ever looks (it frames the furniture, not the bare
+    edges). A player asked "what happened with the wall" before this did.
+  * a prop with a forced w/h whose aspect ratio doesn't come close to its
+    own art's aspect ratio — the bedroom's rug was measured correctly
+    against the scene and then force-stretched 6.8x to fit a portrait
+    image into a landscape box, which reads as smeared and isn't caught
+    by anything else: sizecheck only compares numbers to a human
+    measurement, never to the art itself, and the overlays show the same
+    distorted stretch in both the scene reading and the assembled room,
+    so it never reads as a mismatch. A player reported "the rug is
+    stretched" before this did.
 """
 import sys, os, re, subprocess, argparse
 import numpy as np
@@ -35,6 +84,7 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 W, H = 320, 200
+PLAYER_W, PLAYER_H = 14, 18   # must match app.js's player.w/h
 PLATE_FILL_MIN = 0.55      # a plate should cover at least this much of the frame
 DOOR_CLEARANCE = 12        # px a prop's footprint must keep off an exit trigger
 
@@ -58,7 +108,13 @@ def read_room(game_dir, room):
         start = src.index("\n    %s: {" % room)
     except ValueError:
         return None
-    end = src.index("\n    },", start)
+    # The LAST room in ROOMS has no trailing comma, so "\n    }," never
+    # matches it and verify used to die with a ValueError instead of checking
+    # it. A gate that crashes on a valid file is worse than no gate: it does
+    # not say what is wrong, and the room it cannot read is the one it never
+    # checks.
+    end = min(i for i in (src.find("\n    },", start), src.find("\n    }\n", start))
+              if i != -1)
     block = src[start:end]
 
     def num(key, where=block):
@@ -66,27 +122,46 @@ def read_room(game_dir, room):
         return int(m.group(1)) if m else None
 
     props = []
+    widths = []
+    # FIELD ORDER MUST NOT MATTER. This regex once stopped at the nested
+    # base: {...}, so `behind: true` written after it was invisible to every
+    # check and to the preview — the lab's wall panels silently kept sorting
+    # against the player and drew over the doorway they surround. The pattern
+    # below spans the whole entry including nested objects.
     for m in re.finditer(r"\{\s*art:\s*\"([^\"]+)\"((?:[^{}]|\{[^{}]*\})*)\}", block):
         art, rest = m.group(1), m.group(2)
         base = None
         bm = re.search(r"base:\s*\{([^}]*)\}", rest)
         if bm:
             base = {k: int(v) for k, v in re.findall(r"(\w+):\s*(-?\d+)", bm.group(1))}
+        # w is deliberately NOT part of this dict: room_digest hashes
+        # repr(props) to decide whether a room needs re-signoff, and adding a
+        # key here would retroactively invalidate every room's signoff, in
+        # every game, the moment this ships — not because any art or
+        # placement actually changed, just because the dict grew a field.
+        # backdrop_coverage_problems() below wants it, so it's threaded
+        # through separately as widths (a sibling list, not a dict key) —
+        # see there.
         props.append(dict(art=art, x=num("x", rest), y=num("y", rest), h=num("h", rest),
-                          flat="flat: true" in rest, base=base))
+                          flat="flat: true" in rest, door="door: true" in rest,
+                          behind="behind: true" in rest, base=base))
+        widths.append(num("w", rest))
 
     exits = []
     em = re.search(r"exits:\s*\[(.*?)\n      \]", block, re.S)
     if em:
         for line in re.finditer(r"\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}", em.group(1)):
+            # The first four x/y/w/h numbers in the entry are the trigger
+            # rectangle. There used to be a second case here for entries that
+            # also carried an `arriveAt` point; nothing carries one any more
+            # (DOOR_STANDARD.md §2 — arrival is derived, never typed) and both
+            # branches did the same thing regardless.
             t = line.group(1)
-            if "arriveAt" in t and re.search(r"\bx:\s*-?\d+", t):
-                exits.append({k: int(v) for k, v in re.findall(r"\b([xywh]):\s*(-?\d+)", t)[:4]})
-            elif re.search(r"\bx:\s*-?\d+", t):
+            if re.search(r"\bx:\s*-?\d+", t):
                 exits.append({k: int(v) for k, v in re.findall(r"\b([xywh]):\s*(-?\d+)", t)[:4]})
 
     ps = re.search(r"playerStart:\s*\{\s*x:\s*(-?\d+),\s*y:\s*(-?\d+)", block)
-    return dict(props=props, exits=exits,
+    return dict(props=props, widths=widths, exits=exits,
                 playerStart=(int(ps.group(1)), int(ps.group(2))) if ps else None,
                 has_floorpoly="floorPoly:" in block,
                 has_obstacles=re.search(r"obstacles:\s*\[\s*\{", block) is not None)
@@ -140,25 +215,14 @@ def stale_masks(game_dir):
 
 
 def rebuild_mask(bw, game_dir, room):
-    """What build_walkmask would write for `room`, as an array, without writing."""
-    from PIL import Image, ImageDraw, ImageFilter
-    src = os.path.join(game_dir, "art", "bg-%s.png" % room)
-    alpha = Image.open(src).convert("RGBA").resize((bw.W, bw.H), Image.BILINEAR).split()[3]
-    mask = alpha.point(lambda a: 255 if a > 40 else 0)
-    if room not in bw.FLOOR_PLATE_ROOMS:
-        spec = bw.ROOMS[room]
-        draw = ImageDraw.Draw(mask)
-        draw.rectangle([0, 0, bw.W, spec["floorTop"]], fill=0)
-        if spec.get("bounds"):
-            x0, y0, x1, y1 = spec["bounds"]
-            draw.rectangle([0, 0, x0, bw.H], fill=0)
-            draw.rectangle([x1, 0, bw.W, bw.H], fill=0)
-            draw.rectangle([0, y1, bw.W, bw.H], fill=0)
-        for poly in spec["blocks"]:
-            draw.polygon(poly, fill=0)
-    for _ in range(bw.EROSION):
-        mask = mask.filter(ImageFilter.MinFilter(3))
-    return np.asarray(mask.convert("1").convert("L")) > 127
+    """What build_walkmask would write for `room`, as an array, without writing.
+
+    It ASKS build_walkmask rather than repeating it. This function used to
+    carry its own copy of the recipe, and the copy went stale the moment the
+    floor-plate branch learned to clip at a room's wallSeam: every room in the
+    game was suddenly reported as having an out-of-date mask, by a checker that
+    was itself the out-of-date thing."""
+    return np.asarray(bw.compute(game_dir, room).convert("1").convert("L")) > 127
 
 
 # The game's art-style.json is prepended to EVERY prompt for that game, pass
@@ -185,6 +249,165 @@ STYLE_MUST_NOT_SAY = [
 ]
 
 
+# A pass-1 composed scene is MEASURED and NEVER SHIPPED. It is the one rule of
+# the three-pass standard with the most obvious shortcut behind it: the scene
+# is a finished-looking picture of the room, so copying it to art/bg-<room>.png
+# "works" — the room looks right immediately, and every cost lands later. The
+# floor cannot be recovered from it (build_walkmask.py records the five
+# techniques that failed), the scenery is paint so you can never walk behind
+# it, the water can never move, and moving one object means regenerating the
+# whole picture. That is the entire reason the standard exists.
+#
+# Prose did not stop it: this check exists because shipping the scene was
+# proposed out loud, as a saving, by someone who had just read the standard.
+SCENE_SHIP_TOL = 0.045      # mean per-channel difference, 0-1, over the frame
+
+
+def shipped_scenes(game_dir):
+    art = os.path.join(game_dir, "art")
+    src = os.path.join(game_dir, "art-src")
+    if not (os.path.isdir(art) and os.path.isdir(src)):
+        return []
+    out = []
+    for name in sorted(os.listdir(src)):
+        if not name.endswith("_scene.png"):
+            continue
+        room = name[:-len("_scene.png")]
+        bg = os.path.join(art, "bg-%s.png" % room)
+        if not os.path.exists(bg):
+            continue
+        try:
+            a = np.asarray(Image.open(bg).convert("RGB").resize((W, H), Image.LANCZOS)).astype(float)
+            b = np.asarray(Image.open(os.path.join(src, name)).convert("RGB")
+                           .resize((W, H), Image.LANCZOS)).astype(float)
+        except Exception as e:
+            out.append("%s: could not compare bg against its scene (%s)" % (room, e))
+            continue
+        diff = float(np.abs(a - b).mean()) / 255.0
+        if diff < SCENE_SHIP_TOL:
+            out.append("%s: art/bg-%s.png IS art-src/%s (mean difference %.3f, "
+                       "under %.3f). A composed scene is pass 1 — it is MEASURED "
+                       "and never shipped. The shipped background is pass 2, the "
+                       "walkable surface and nothing else, because its silhouette "
+                       "is the collision mask. See docs/ROOM_ART_STANDARD.md and "
+                       "run `room.py plate %s %s`."
+                       % (room, room, name, diff, SCENE_SHIP_TOL, game_dir, room))
+    return out
+
+
+# EVERY ROOM HAS A SAVED SPEC, THE WAY EVERY CHARACTER HAS ONE.
+#
+# A character's look does not live in whatever prompt somebody typed that day —
+# it lives in art-style.json's lockedDetails and lockedColours, because details
+# retyped from memory drift (Beverly's ears kept coming back brown). Rooms had
+# no such thing. Every regeneration was a fresh paragraph typed by hand, so the
+# Lounge came back three times with three different walls, and once with a
+# right-hand door and no left-hand one — because the paragraph that mentioned
+# the left-hand door was not the paragraph that got sent.
+#
+# So a room is a file: games/<id>/rooms/<room>.json
+#
+#   name      what the room is called in game
+#   summary   what the room IS, one or two sentences
+#   floor     what the player walks on — this is pass 2's whole prompt
+#   doors     one entry per way out: which WALL it is in and what it looks
+#             like. THE MAP DECIDES THESE. A room asked for without them gets
+#             doors wherever the generator feels like putting them.
+#   contains  the things standing in the room — these become pass 3's sheet
+#
+# All three passes are built from it, so regenerating a room is the same
+# request every time and the map cannot drift out of the art.
+def spec_path(game_dir, room):
+    return os.path.join(game_dir, "rooms", "%s.json" % room)
+
+
+def load_spec(game_dir, room):
+    import json
+    try:
+        return json.load(open(spec_path(game_dir, room), encoding="utf-8"))
+    except OSError:
+        return None
+
+
+WALL_PHRASE = {
+    "back": "in the BACK WALL",
+    "back-left": "in the BACK WALL, left of centre",
+    "back-right": "in the BACK WALL, right of centre",
+    "left": "at the FAR LEFT EDGE of the frame, in the left-hand side wall, "
+            "seen edge-on with its face turned to the right",
+    "right": "at the FAR RIGHT EDGE of the frame, in the right-hand side wall, "
+             "seen edge-on with its face turned to the left",
+    "near": "a gap in the low rail along the NEAR EDGE, where the floor runs "
+            "off the bottom of the picture toward the viewer",
+}
+
+
+def spec_doors(spec):
+    parts = []
+    for d in spec.get("doors", []):
+        where = WALL_PHRASE.get(d.get("wall", "back"), d.get("wall", ""))
+        parts.append("%s %s" % (d.get("look", "an open doorway"), where))
+    if not parts:
+        return "NO door and NO doorway anywhere in any wall — the walls are unbroken."
+    return ("The ways out of this room, and there are no others: "
+            + "; ".join(parts) + ".")
+
+
+def spec_scene_desc(spec):
+    # A spec's own "camera" field was silently dropped here — nothing read it,
+    # so the bedroom's furniture came back drawn at a tilted 3/4 angle with no
+    # per-room camera guidance to say otherwise, and the room said "you need
+    # to correct how you describe things" was the real fix, not a repositioned
+    # trigger. game-wide art-style.json still sets the room's overall camera;
+    # this is for the cases that need saying AGAIN, specific to what a room
+    # contains — e.g. "the furniture is top-down like the wall behind it."
+    cam = spec.get("camera", "")
+    return "%s%s %s %s The floor is %s." % (
+        spec.get("summary", ""), (" " + cam) if cam else "",
+        spec_doors(spec), (" ".join(spec.get("contains", []))),
+        spec.get("floor", "a plain floor"))
+
+
+# PASS 1 IS A DECISION POINT, NOT A STEP TO WALK PAST.
+#
+# Everything downstream is measured off the composed scene, so a scene that is
+# wrong makes every later pass wrong too — and none of it is repairable. The
+# Victorian bedroom's first scene came back an isometric CORNER room. Before
+# anyone noticed, it had been given a floor plate, three prop sheets and two
+# full assemblies, all of which had to be thrown away, because a rectangular
+# plate does not fit a diamond floor and props measured off a corner view land
+# at the wrong depth.
+#
+# The cost is entirely front-loaded and entirely avoidable: LOOK at the scene,
+# and if it is not right, regenerate the scene and nothing else. So pass 2 and
+# pass 3 refuse to run until someone has recorded that they looked.
+#
+#   room.py approve <game> <room>     after opening art-src/<room>_scene.png
+#
+# The approval is a digest of that scene, so regenerating it revokes it.
+def scene_ok_path(game_dir, room):
+    return os.path.join(game_dir, "art-src", "%s_scene_ok.txt" % room)
+
+
+def scene_digest(game_dir, room):
+    import hashlib
+    path = os.path.join(game_dir, "art-src", "%s_scene.png" % room)
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def scene_approved(game_dir, room):
+    want = scene_digest(game_dir, room)
+    if want is None:
+        return False
+    try:
+        return open(scene_ok_path(game_dir, room), encoding="utf-8").read().strip() == want
+    except OSError:
+        return False
+
+
 def style_drift(game_dir):
     path = os.path.join(game_dir, "art-style.json")
     if not os.path.exists(path):
@@ -206,10 +429,375 @@ def style_drift(game_dir):
     return out
 
 
+# THE OVERLAY IS A STEP OF THE PROCESS, SO IT IS GATED LIKE ONE.
+#
+# `room.py check` renders the assembled room beside the scene it was measured
+# from, and the standard calls it "the step that finds things". It is also the
+# step most easily skipped, because skipping it costs nothing at the time and
+# everything later: props at two thirds size, a rug that was never made, a
+# camera that was wrong three passes back. Every one of those shipped, was
+# invisible in the numbers, and was obvious in one glance at the side-by-side.
+#
+# Prose did not make it happen. So `check` now records WHAT IT LOOKED AT — a
+# digest of the plate, every prop the room places, and the scene — and verify
+# fails when that record is missing or no longer matches. You cannot ship a
+# room whose art changed after the last time somebody rendered the overlay.
+#
+# It cannot force a person to actually look. It can guarantee there was a
+# current picture in front of them, which is the part a machine can check.
+def room_digest(game_dir, room):
+    import hashlib
+    h = hashlib.sha256()
+    art = os.path.join(game_dir, "art")
+    paths = [os.path.join(art, "bg-%s.png" % room),
+             os.path.join(game_dir, "art-src", "%s_scene.png" % room)]
+    r = read_room(game_dir, room)
+    for pr in (r["props"] if r else []):
+        paths.append(os.path.join(art, pr["art"] + ".png"))
+    for path in paths:
+        h.update(os.path.basename(path).encode())
+        try:
+            with open(path, "rb") as f:
+                h.update(f.read())
+        except OSError:
+            h.update(b"<missing>")
+    # the placement numbers matter too: moving a prop changes the picture
+    h.update(repr(r["props"] if r else []).encode())
+    return h.hexdigest()
+
+
+def checked_path(game_dir, room):
+    return os.path.join(game_dir, "art-src", "%s_checked.txt" % room)
+
+
+def rendered_path(game_dir, room):
+    return os.path.join(game_dir, "art-src", "%s_rendered.txt" % room)
+
+
+def unchecked_rooms(game_dir):
+    out = []
+    for room in sorted(floor_plate_rooms()):
+        if read_room(game_dir, room) is None:
+            continue
+        want = room_digest(game_dir, room)
+        path = checked_path(game_dir, room)
+        try:
+            have = open(path, encoding="utf-8").read().strip()
+        except OSError:
+            have = None
+        if have != want:
+            out.append("%s: nobody has signed off this room since its art last "
+                       "changed. Run `python3 .github/art/room.py check %s %s`, "
+                       "OPEN the side-by-side it writes, fix what it shows you — "
+                       "it is the step that finds props at the wrong size, "
+                       "scenery the scene has and the room does not, and a "
+                       "camera that was wrong three passes ago — and then "
+                       "`room.py signoff %s %s`. Rendering is not looking, so "
+                       "check alone does not clear this."
+                       % (room, game_dir, room, game_dir, room))
+    return out
+
+
+# A ROOM'S measured: BLOCK, ONCE WRITTEN, HOLDS story.js TO IT FOREVER. The
+# measurement itself is a human step (see room.py grid, and the "why
+# automated matching doesn't work here" note in docs/ROOM_ART_STANDARD.md
+# §5) — but it only has to happen once per prop. After that, this is a plain
+# arithmetic diff with no image analysis in it at all, so it's cheap enough
+# to run on every push. It's also what actually caught the bedroom's rug
+# (39% under its measured width) and bed (16% off its measured canopy
+# height) when simulated against this check after the fact — both would
+# have failed the build immediately instead of shipping.
+def measured_size_problems(game_dir, margin=0.15):
+    sys.path.insert(0, HERE)
+    import preview_room as pr
+
+    problems = []
+    rooms = []
+    rooms_dir = os.path.join(game_dir, "rooms")
+    if os.path.isdir(rooms_dir):
+        for fn in sorted(os.listdir(rooms_dir)):
+            if fn.endswith(".json"):
+                rid = fn[:-5]
+                if (load_spec(game_dir, rid) or {}).get("measured"):
+                    rooms.append(rid)
+
+    story_path = os.path.join(game_dir, "story.js")
+    for room in rooms:
+        measured = (load_spec(game_dir, room) or {}).get("measured") or {}
+        by_art = {}
+        for p in pr.read_props(story_path, room):
+            by_art.setdefault(p["art"], []).append(p)
+        for art, want in measured.items():
+            entries = by_art.get(art)
+            if not entries:
+                problems.append("%s: measured %s, but story.js has no prop "
+                                "using that art in this room" % (room, art))
+                continue
+            for p in entries:
+                for key in ("h", "w", "x", "y"):
+                    if key not in want or not want[key]:
+                        continue
+                    have = p.get(key)
+                    if have is None:
+                        continue
+                    delta = abs(have - want[key]) / abs(want[key])
+                    if delta > margin:
+                        problems.append(
+                            "%s: %s's declared %s is %s, measured off the "
+                            "scene it's %s — %.0f%% off (margin %.0f%%). "
+                            "Re-check with `room.py grid %s %s`."
+                            % (room, art, key, have, want[key], delta * 100,
+                               margin * 100, game_dir, room))
+    return problems
+
+
+# A `behind: true` (or `door: true`) prop, left to size itself from its own
+# aspect (no forced w — a stretched tile reads as smeared brick and warped
+# wallpaper, which is why that's the convention), silently stops covering the
+# frame the moment that art gets re-cut and its aspect changes: the bedroom's
+# back wall was measured at 5 copies covering the frame when its width was
+# w=66 at h=112, and nobody re-checked after two later re-cuts quietly
+# shrank that to w=48 — leaving a 40px strip on the right where the floor
+# showed through the wall band, above where a player would ever look at the
+# side-by-side (which frames the room's furniture, not its bare edges) and
+# invisible to sizecheck (it diffs one number against one measurement, not
+# "do these tiled copies still add up to the frame"). This mirrors
+# drawProp()'s own width formula exactly, so it can only be as wrong as the
+# game itself.
+#
+# Grouped by Y, not by art: a wall band is routinely built from several
+# DIFFERENT arts side by side (the lounge's is wall/wall/arch/portal/wall/
+# wall/wall — the arch and portal are doorways, not repeats of the wall
+# tile), and checking one art's own copies in isolation flags every one of
+# those gaps as a bug when another prop at the same Y already fills it. The
+# first version of this check did exactly that and was wrong about all
+# three non-bedroom rooms it flagged — union the whole band before judging
+# it, the same way a person looking at the picture would.
+def backdrop_coverage_problems(room, props, widths, art_dir):
+    problems = []
+    by_y = {}
+    for p, decl_w in zip(props, widths):
+        if (p["behind"] or p["door"]) and not p["flat"] and p["h"]:
+            by_y.setdefault(p["y"], []).append((p, decl_w))
+    for y, entries in by_y.items():
+        if len(entries) < 2:
+            continue    # a single wall-mounted piece (a shelf, a sconce) isn't
+                        # trying to span the frame — only a TILED band is
+        spans = []
+        for p, decl_w in entries:
+            w = decl_w
+            if not w:
+                path = os.path.join(art_dir, p["art"] + ".png")
+                if not os.path.exists(path):
+                    w = None    # reported elsewhere as missing art
+                else:
+                    iw, ih = Image.open(path).size
+                    w = p["h"] * iw / ih
+            if w:
+                spans.append((p["x"] - w / 2, p["x"] + w / 2))
+        if not spans:
+            continue
+        spans.sort()
+        # merge overlapping/touching spans into runs, tolerating the ~4px
+        # deliberate overlap this convention uses to hide seams
+        runs = [list(spans[0])]
+        for a, b in spans[1:]:
+            if a - runs[-1][1] <= 2:
+                runs[-1][1] = max(runs[-1][1], b)
+            else:
+                runs.append([a, b])
+        if runs[0][0] > 2:
+            problems.append("%s: the wall band at y=%d leaves %.0fpx of the "
+                            "frame's LEFT edge uncovered — floor shows through "
+                            "the wall there" % (room, y, runs[0][0]))
+        if runs[-1][1] < W - 2:
+            problems.append("%s: the wall band at y=%d leaves %.0fpx of the "
+                            "frame's RIGHT edge uncovered — floor shows through "
+                            "the wall there" % (room, y, W - runs[-1][1]))
+        for (a0, a1), (b0, _) in zip(runs, runs[1:]):
+            problems.append("%s: the wall band at y=%d has a %.0fpx gap — "
+                            "floor shows through the wall there"
+                            % (room, y, b0 - a1))
+    return problems
+
+
+# A prop with a forced `w` renders at whatever aspect ratio x/h gives it,
+# regardless of what the art itself actually looks like — nothing checks
+# that the two are even roughly the same picture. The bedroom's rug is how
+# this was found: measured correctly off the scene at x/y/h/w matching its
+# real footprint, but the art it was measured against was a PORTRAIT rug
+# (0.50 wide-to-tall) forced into a 3.36-wide-to-tall box — a 6.8x stretch,
+# reported directly as "the rug is stretched" off a live screenshot, not
+# caught by sizecheck (which only compares one prop's numbers to a human
+# measurement, never to the art's own shape) or by the side-by-side/blend
+# overlays (both show the SAME distorted stretch in the assembled room as
+# whatever the measurement produced, so a consistently-wrong number never
+# reads as a mismatch against itself).
+#
+# Calibrated against this repo's own real props, not a guess — a first
+# version of this check FAILED at 2.5x and turned out to be wrong to: the
+# library's rug (3.46x) and the lounge's bar and backbar (2.70x, 3.69x)
+# all read completely fine on an actual screenshot, distortion and all —
+# a symmetric medallion pattern or a front-on furniture panel doesn't
+# reveal a stretch the way a directional runner rug does, and none of
+# those three had a canvas-vs-content padding difference to explain it
+# away (their alpha bbox is the full canvas). So stretch alone can't
+# reliably tell "looks fine" from "looks broken" — it's a FUZZY signal,
+# same as the neutral-frame ratio in verify_sheet.py, and gets the same
+# treatment: warn, don't fail, in the band where a real prop has already
+# been looked at and accepted. WARN starts at 1.8x (worth a look). FAIL
+# only past 5.0x — comfortably clear of every prop measured when this was
+# calibrated (3.69x was the worst of the accepted ones) and comfortably
+# under the one confirmed, reported-by-a-player bug (the bedroom's rug,
+# 6.77x: a portrait rug forced into a box nearly SEVEN times as wide as
+# tall).
+WARN_STRETCH = 1.8
+FAIL_STRETCH = 5.0
+
+
+def aspect_distortion_problems(room, props, widths, art_dir):
+    problems = []
+    for p, w in zip(props, widths):
+        if not w or not p["h"]:
+            continue    # no forced w means no distortion is even possible —
+                        # width follows the art's own aspect by construction
+        path = os.path.join(art_dir, p["art"] + ".png")
+        if not os.path.exists(path):
+            continue    # reported elsewhere as missing art
+        iw, ih = Image.open(path).size
+        native = iw / ih
+        declared = w / p["h"]
+        stretch = max(declared / native, native / declared)
+        if stretch <= WARN_STRETCH:
+            continue
+        msg = ("%s: '%s' is declared %dx%d (aspect %.2f) but its own art is "
+              "%dx%d (aspect %.2f) — a %.1fx stretch."
+              % (room, p["art"], w, p["h"], declared, iw, ih, native, stretch))
+        if stretch > FAIL_STRETCH:
+            problems.append(msg + " The art doesn't match the shape it's "
+                            "being forced into; re-measure against the art's "
+                            "own proportions or regenerate it at the right "
+                            "shape, don't just force the box wider/taller.")
+        else:
+            print("NOTE " + msg + " Under the fail threshold — LOOK at a "
+                  "render before deciding whether this one actually needs "
+                  "fixing; some props tolerate this and some don't.",
+                  file=sys.stderr)
+    return problems
+
+
+# A prop measured correctly against the SCENE can still be wrong if the
+# thing it's measured relative to — the wall it stands against — was
+# itself measured wrong, or if the prop's own art simply doesn't reach as
+# far down as the wall does. The bedroom's mirror and nightstand were both
+# found this way: each individually "correct" (their y/h came straight off
+# the scene, same as everything else), but a few px short of the wall
+# panels' own measured floor line, which read as a strip of bare wainscot
+# under both of them in a live screenshot — the exact same bug the lab's
+# cabinet had. "I measured this prop" isn't enough; it has to be measured
+# against the SAME baseline as whatever it's standing next to, the same
+# way the wall's own tiled copies all have to agree with EACH OTHER (see
+# backdrop_coverage_problems above) — grounding is that same idea applied
+# to one prop and the wall behind it, not just wall tiles against each
+# other.
+#
+# This can only ever be a NOTE, not a FAIL: plenty of correctly-placed
+# furniture sits well forward of the wall's own floor line on purpose (the
+# lab's bench included — it read completely fine on a render despite its
+# y being 15px short of that room's wall), and nothing in the numbers
+# alone can tell "flush against the wall, floating" from "deliberately
+# forward of it, fine". A human has to look at each one.
+GROUND_NOTE = 3    # px of slack before even a NOTE — measurement isn't pixel-exact
+WALL_SEAM_FAIL = 3  # px the wall band may drift from its recorded wallSeam before failing
+
+
+# The gap this closes: grounding_problems() (below) checks every OTHER prop
+# against the wall band's y — but until this existed, it took that y from
+# whatever story.js currently says, which means it could never catch the
+# wall band ITSELF being wrong. That's exactly what happened: the wall was
+# placed at y=102 by eye, everything grounded to it inherited the error,
+# and a check that trusts story.js's own wall y as ground truth would have
+# called that consistent-and-wrong state correct forever.
+#
+# So this is the SAME discipline as `measured:` + `sizecheck` for props,
+# applied to the wall itself: `wall_seam.py` (a real tool — row-gradient
+# across clean strips of the scene, not a guess) finds the true seam ONCE,
+# a human looks at the overlay and records it as `wallSeam` in the room's
+# spec, and this is what holds every future edit to that recorded number
+# forever — a real FAIL, not a NOTE, because "does the wall band's own y
+# match what was actually measured" is a single fact with a right answer,
+# not a judgement call the way "is this prop supposed to be forward of the
+# wall" is.
+def wall_seam_problems(room, props, spec):
+    want = (spec or {}).get("wallSeam")
+    if want is None:
+        return []    # never measured — nothing to hold this room to yet
+    wall_ys = [p["y"] for p in props if (p["behind"] or p["door"]) and not p["flat"] and p["y"] is not None]
+    if not wall_ys:
+        return []
+    bad = sorted(set(y for y in wall_ys if abs(y - want) > WALL_SEAM_FAIL))
+    if not bad:
+        return []
+    return ["%s: the wall band is declared at y=%s but its recorded "
+           "wallSeam (room.py wallseam, looked at and recorded once) is "
+           "%d — re-measure with room.py wallseam if the scene changed, or "
+           "fix the wall panels' y if they drifted"
+           % (room, bad, want)]
+
+
+def grounding_problems(room, props, spec):
+    want = (spec or {}).get("wallSeam")
+    wall_ys = [p["y"] for p in props if (p["behind"] or p["door"]) and not p["flat"] and p["y"] is not None]
+    if want is not None:
+        wall_y = want
+    elif wall_ys:
+        wall_y = max(set(wall_ys), key=wall_ys.count)    # unverified fallback — see NOTE below
+        print("NOTE %s: no wallSeam recorded in rooms/%s.json — grounding is "
+              "being checked against the wall band's OWN declared y (%d), "
+              "which is exactly what let it drift undetected once already. "
+              "Run `room.py wallseam` and record the answer."
+              % (room, room, wall_y), file=sys.stderr)
+    else:
+        return []
+    problems = []
+    for p in props:
+        if p["flat"] or p["behind"] or p["door"] or not p["base"]:
+            continue
+        if p["y"] is None:
+            continue
+        if p["y"] < wall_y - GROUND_NOTE:
+            print("NOTE %s: '%s' at y=%d is %dpx short of this room's wall "
+                  "line (y=%d) — LOOK at a render: if it's meant to stand "
+                  "flush against that wall, this is the same 'floating' bug "
+                  "the bedroom's mirror/nightstand and the lab's cabinet "
+                  "had; if it's meant to stand forward of the wall on "
+                  "purpose, it's fine as is."
+                  % (room, p["art"], p["y"], wall_y - p["y"], wall_y), file=sys.stderr)
+    return problems
+
+
+def reachable_trigger(mask, ex, pw=PLAYER_W, ph=PLAYER_H):
+    """Can the player stand somewhere that touches this trigger?
+
+    Feet are the point (x + pw/2, y + ph) and must be on the mask; the body box
+    is [x, x+pw) x [y, y+ph) and must overlap the trigger. See verify() for why
+    this replaced a percentage."""
+    h, w = mask.shape
+    for y in range(max(0, ex["y"] - ph + 1), min(h - ph, ex["y"] + ex["h"])):
+        for x in range(max(0, ex["x"] - pw + 1), min(w - pw, ex["x"] + ex["w"])):
+            fy, fx = y + ph, x + pw // 2
+            if fy < h and fx < w and mask[fy, fx]:
+                return True
+    return False
+
+
 def verify(game_dir):
     problems = []
     problems += style_drift(game_dir)
+    problems += shipped_scenes(game_dir)
     problems += stale_masks(game_dir)
+    problems += unchecked_rooms(game_dir)
+    problems += measured_size_problems(game_dir)
     plate_rooms = floor_plate_rooms()
     art = os.path.join(game_dir, "art")
     for room in sorted(plate_rooms):
@@ -244,6 +832,12 @@ def verify(game_dir):
                                     "the art changed and the mask wasn't rebuilt"
                                     % (room, stray))
 
+        spec = load_spec(game_dir, room)
+        problems += backdrop_coverage_problems(room, r["props"], r["widths"], art)
+        problems += aspect_distortion_problems(room, r["props"], r["widths"], art)
+        problems += wall_seam_problems(room, r["props"], spec)
+        problems += grounding_problems(room, r["props"], spec)
+
         # dead collision data
         if r["has_floorpoly"]:
             problems.append("%s: floor-plate room still declares floorPoly — dead data "
@@ -252,15 +846,37 @@ def verify(game_dir):
             problems.append("%s: floor-plate room still declares obstacles — props carry "
                             "their own footprints" % room)
 
-        # playerStart must not sit in an exit trigger
-        if r["playerStart"] and r["exits"]:
-            px, py = r["playerStart"]
+        # A DOORWAY YOU CANNOT REACH IS NOT A DOOR — but ask the question the
+        # RUNTIME asks, which is not the one this check first asked.
+        #
+        # Version one measured what fraction of the trigger rectangle sat on
+        # walkable floor, and that is the wrong quantity. A trigger fires when
+        # the player's BODY box overlaps it, and the body is 18px tall standing
+        # on feet that are a single point on the floor — so a doorway drawn
+        # high in a back wall is entered by standing BELOW it, with the trigger
+        # entirely off the floor and perfectly reachable. Measured on the rooms
+        # that exist, the house's stairs and the arena's portal both score 0%
+        # walkable and both are reachable in play; the check would have called
+        # two working doors broken the moment anyone looked at a non-plate room.
+        # It survived only because floor-plate rooms happen to draw their doors
+        # low. A calibrated threshold on the wrong quantity is worse than no
+        # check: it fails correct work and passes the case it was aimed at.
+        #
+        # So: is there ANY standable foot position whose player box overlaps
+        # this trigger? That is a yes/no fact about the art, with no threshold
+        # to tune, and it is exactly what the game will do.
+        mp = os.path.join(art, "walk-%s.png" % room)
+        if r["exits"] and os.path.exists(mp):
+            mask = np.asarray(Image.open(mp).convert("L")
+                              .resize((W, H), Image.NEAREST)) > 127
             for ex in r["exits"]:
-                if all(k in ex for k in "xywh"):
-                    if (px + 14 > ex["x"] and px < ex["x"] + ex["w"] and
-                            py + 18 > ex["y"] and py < ex["y"] + ex["h"]):
-                        problems.append("%s: playerStart (%d,%d) is inside an exit trigger "
-                                        "— the door never arms" % (room, px, py))
+                if not all(k in ex for k in "xywh"):
+                    continue
+                if not reachable_trigger(mask, ex):
+                    problems.append(
+                        "%s: nothing can stand anywhere that touches the exit trigger at "
+                        "(%d,%d) — the doorway is armed somewhere the player can never "
+                        "reach, so the door can never fire" % (room, ex["x"], ex["y"]))
 
         for p in r["props"]:
             path = os.path.join(art, p["art"] + ".png")
@@ -269,11 +885,21 @@ def verify(game_dir):
             if p["flat"] and p["base"]:
                 problems.append("%s: flat prop '%s' has a base — flat ground cover is "
                                 "walked over" % (room, p["art"]))
-            if not p["flat"] and not p["base"]:
+            # A prop marked door: true IS a doorway. It deliberately has no
+            # footprint (you walk into it to go through) and its own exit
+            # trigger sits ON it, so both of the checks below would fire on a
+            # correct room. Putting the trigger on the floor UNDER the door
+            # instead is what made doors read as being in the wrong place.
+            # behind: true means the prop is drawn with the background — it is
+            # part of the WALL (a shelf hung on it, a doorway through it), and
+            # the wall panels it sits on already carry the footprint. Requiring
+            # it to block again would put an invisible wall in front of the
+            # wall.
+            if not p["flat"] and not p["base"] and not p["door"] and not p["behind"]:
                 problems.append("%s: standing prop '%s' has no base — you walk through it"
                                 % (room, p["art"]))
             # a footprint on a doorway makes the door unreachable
-            if p["base"] and p["x"] is not None:
+            if p["base"] and p["x"] is not None and not p["door"]:
                 if "w" in p["base"]:
                     hw, hh = p["base"]["w"] / 2, p["base"]["h"] / 2
                 else:
@@ -311,6 +937,90 @@ def main():
     p.add_argument("game"); p.add_argument("room")
     p.add_argument("--out", default="/tmp")
 
+    p = sub.add_parser("grid", help="render the composed scene with a labelled "
+                                    "pixel grid, to MEASURE a prop by eye — "
+                                    "automated matching against the scene "
+                                    "doesn't work here, see grid_overlay.py")
+    p.add_argument("game"); p.add_argument("room")
+    p.add_argument("--crop", help="x0,y0,x1,y1 in 320x200 room space")
+    p.add_argument("--step", type=int, default=10)
+    p.add_argument("--zoom", type=int, default=4)
+    p.add_argument("--out", default="/tmp/grid.png")
+
+    p = sub.add_parser("measure", help="measure one prop's precise bbox off "
+                                       "the composed scene with CV (grabcut "
+                                       "or canny) instead of reading grid "
+                                       "coordinates by eye — see "
+                                       "measure_blob.py")
+    p.add_argument("game"); p.add_argument("room"); p.add_argument("name")
+    p.add_argument("--rect", required=True,
+                   help="x,y,w,h in 320x200 room space — a box around the "
+                        "prop, generous for grabcut, snug is fine for canny")
+    p.add_argument("--method", choices=["grabcut", "canny"], default="grabcut")
+    p.add_argument("--iters", type=int, default=5)
+    p.add_argument("--canny-lo", type=int, default=30)
+    p.add_argument("--canny-hi", type=int, default=90)
+    p.add_argument("--top", type=int, default=3)
+    p.add_argument("--pick", type=int, default=0)
+    p.add_argument("--out", help="default /tmp/measure-<room>-<name>.png")
+
+    p = sub.add_parser("wallseam", help="find the Y where a room's back "
+                                        "wall meets its floor — the "
+                                        "baseline every wall panel and "
+                                        "every prop standing against it "
+                                        "has to share — instead of "
+                                        "reading it by eye off a crop. "
+                                        "See wall_seam.py")
+    p.add_argument("game"); p.add_argument("room")
+    p.add_argument("--strip", action="append", required=True,
+                   help="x0,x1 — a vertical strip with nothing but bare "
+                        "wall/floor in it. Repeatable; use at least 2.")
+    p.add_argument("--search", default="0,199")
+    p.add_argument("--method", choices=["gradient", "canny"], default="gradient",
+                   help="gradient: colour jump — use when wall and floor "
+                        "are different colours. canny: edge density — use "
+                        "when they're close to the same colour (e.g. the "
+                        "lab's stone-on-stone) and gradient won't commit.")
+    p.add_argument("--out", help="default /tmp/wallseam-<room>.png")
+
+    p = sub.add_parser("tilescale", help="count how many floor tiles span "
+                                         "a room's width, and compare the "
+                                         "scene's own count against the "
+                                         "shipped plate's — a floor's tile "
+                                         "SCALE is a real countable fact, "
+                                         "not something to eyeball. See "
+                                         "tile_scale.py")
+    p.add_argument("game"); p.add_argument("room")
+    p.add_argument("--row", required=True, help="y0,y1 — a clean strip of "
+                   "floor, no furniture, no rug")
+    p.add_argument("--against-plate", action="store_true",
+                   help="also count the shipped art/bg-<room>.png and "
+                        "print the ratio — the exact target count to feed "
+                        "back into a regeneration prompt")
+    p.add_argument("--out", help="default /tmp/tilescale-<room>.png")
+
+    p = sub.add_parser("sizecheck", help="compare story.js's declared prop "
+                                         "sizes/positions against a room's "
+                                         "measured: block (see rooms/<room>.json) "
+                                         "— the gate that needs a human "
+                                         "measurement once, then holds forever")
+    p.add_argument("game"); p.add_argument("room", nargs="?",
+                   help="one room, or every room with a measured: block if omitted")
+    p.add_argument("--margin", type=float, default=0.15,
+                   help="fraction of the measured value a declared value may "
+                        "differ by before this fails. Calibrated on the "
+                        "bedroom: the rug was 39%% short, the bed's canopy "
+                        "was 16%% off — 0.15 catches both without demanding "
+                        "pixel-exact agreement with a human's own reading.")
+
+    p = sub.add_parser("approve", help="record that you have LOOKED at pass 1 "
+                                       "and it is right — unlocks pass 2 and 3")
+    p.add_argument("game"); p.add_argument("room")
+
+    p = sub.add_parser("signoff", help="record that you have LOOKED at the "
+                                       "assembled room and it is right")
+    p.add_argument("game"); p.add_argument("room")
+
     p = sub.add_parser("verify", help="the CI gate")
     p.add_argument("game")
 
@@ -329,6 +1039,13 @@ def main():
     # generator was to put the description in its id — which then named the
     # file too. Pass 1 gets "lounge — the room as a complete scene", which is
     # not enough to draw a lounge from.
+    p.add_argument("--doors", default="",
+                   help="PASS 1, required: which WALL each way out is in, e.g. "
+                        "'a door in the LEFT wall, an arch in the BACK wall left "
+                        "of centre'. The map decides these; asked without them "
+                        "the generator puts doors where it likes, which is how "
+                        "the Lounge came back with a right-hand door and no "
+                        "left-hand one.")
     p.add_argument("--desc", default="",
                    help="what the room contains (pass 1). Defaults to the room id.")
     p.add_argument("--floor", default="", help="what the floor is made of (pass 2)")
@@ -387,7 +1104,38 @@ def main():
             text = text.replace(k, v)
         return text.strip()
 
+    if a.cmd == "prompt":
+        print(pass_prompt(a.which, a.room, a.floor, a.n, a.items))
+        return 0
+
+    game = a.game.rstrip("/")
+
+    if a.cmd == "approve":
+        d = scene_digest(game, a.room)
+        if d is None:
+            print("no composed scene at games/.../art-src/%s_scene.png — "
+                  "generate pass 1 first" % a.room, file=sys.stderr)
+            return 1
+        with open(scene_ok_path(game, a.room), "w", encoding="utf-8") as f:
+            f.write(d + "\n")
+        print("approved %s's composed scene. pass 2 and pass 3 are unlocked "
+              "until it is regenerated." % a.room)
+        return 0
+
     if a.cmd == "generate":
+        if a.which in ("plate", "props") and not scene_approved(game, a.room):
+            print("REFUSING: nobody has signed off %s's composed scene.\n"
+                  "  Everything downstream is MEASURED off it, so a wrong scene "
+                  "makes every later pass wrong and none of it is repairable — "
+                  "a corner-view scene once cost a plate, three prop sheets and "
+                  "two assemblies before anyone noticed.\n"
+                  "  Open games/%s/art-src/%s_scene.png. If it is right, run:\n"
+                  "    python3 .github/art/room.py approve %s %s\n"
+                  "  If it is not, regenerate THE SCENE and nothing else."
+                  % (a.room, os.path.basename(game), a.room, game, a.room),
+                  file=sys.stderr)
+            return 1
+
         # Same transport as characters: an in-run broker if one is listening,
         # otherwise OPENAI_API_KEY. See .github/art/imagegen.py. This exists so
         # that "redo the room" is the same shape of job as "redo the walk
@@ -395,14 +1143,74 @@ def main():
         # asked had to carry the text to a generator by hand and save the
         # result to exactly the right filename for the next pass to find it.
         sys.path.insert(0, HERE)
-        import imagegen
+        import imagegen, profiles
+        prof = profiles.get("room_" + a.which)
         # Check the ARGUMENTS, not the filled text: substituting an empty
         # string removes the placeholder, so "is {{FLOOR}} still in there?"
         # can never catch a missing one. What reaches the generator instead is
         # a sentence with a hole in it, and it draws something to fill it.
+        # RESOLVE FROM THE SPEC FIRST. The placeholder check below reads these
+        # values, so filling them in afterwards meant every spec-driven pass 2
+        # and pass 3 was rejected for "needs --floor" while the answer sat in
+        # the room's own spec file.
+        spec = load_spec(game, a.room)
+        if spec is None:
+            print("REFUSING: games/%s/rooms/%s.json does not exist.\n"
+                  "  Every room has a saved spec, the way every character has "
+                  "lockedDetails — what the room is, what it contains, what its "
+                  "floor is, and WHICH WALL each way out is in. A prompt retyped "
+                  "from memory is how the same room comes back three times with "
+                  "three different walls and a door on the wrong side.\n"
+                  "  Write it, then generate."
+                  % (os.path.basename(game), a.room), file=sys.stderr)
+            return 1
+        # {{ROOM}} anchors pass 1 and pass 2 to the room's own character —
+        # both templates open with it. Pass 3 needs the same anchor, but not
+        # the FULL scene description: spec_scene_desc() restates every item
+        # in `contains`, which pass 3 already lists in full via {{ITEMS}} —
+        # doubling it up would just bury the one new thing this is for
+        # (the room's vibe) in a repeat of what's already there. So props
+        # gets just the summary: enough to tie a prop back to "this is an
+        # opulent Victorian bedroom", not a second copy of its own item list.
+        desc = (a.desc or "").strip() or (
+            spec.get("summary", "") if a.which == "props" else spec_scene_desc(spec))
+        floor = (a.floor or "").strip() or spec.get("floor", "")
+        # The room's own back wall is a prop like everything else, and it goes
+        # FIRST on the sheet so it is never the thing that gets forgotten.
+        sheet = ([spec["wall"]] if spec.get("wall") else []) + spec.get("contains", [])
+        items = (a.items or "").strip() or "; ".join(sheet)
+        n = (a.n or "").strip() or str(len(sheet) or 2)
+
+        # A LOCKED SHAPE WITHOUT LOCKED PROPORTIONS IS STILL UNSPECIFIED. The
+        # bedroom's trunk went from "a domed lid" (drew as a barrel) to "a
+        # FLAT-TOPPED box — NOT domed, NOT barrel-shaped" (drew the right
+        # SHAPE, at roughly a third the width the scene actually needed) —
+        # the negative-constraint pattern fixes what an object IS, not how
+        # WIDE it reads next to its own height, and three props (the mirror,
+        # the bed, the chest) all needed a second regeneration for exactly
+        # that. So: any entry that already locks a shape (carries a NOT ...
+        # constraint, the docs/ROOM_ART_STANDARD.md §5 pattern) must ALSO
+        # carry an explicit N:M width-to-height ratio, sourced from
+        # `room.py grid` against the approved scene — not a description
+        # this refuses to run without, only a REMINDER, because getting the
+        # actual number wrong is not this check's job and never will be;
+        # only "did anyone write one down" is.
+        if a.which == "props":
+            RATIO = re.compile(r"\d+\s*:\s*\d+")
+            unratioed = [s[:70] + ("…" if len(s) > 70 else "")
+                        for s in sheet if " NOT " in s and not RATIO.search(s)]
+            if unratioed:
+                print("NOTE: these locked-shape entries have no explicit N:M "
+                      "width-to-height ratio — measure one off the scene with "
+                      "`room.py grid %s %s` before spending on this generation, "
+                      "or it can come back the right SHAPE at the wrong SIZE "
+                      "again:" % (game, a.room), file=sys.stderr)
+                for s in unratioed:
+                    print("  - %s" % s, file=sys.stderr)
+
         template = pass_template(a.which)
-        need = {"{{ROOM}}": ("room name", a.room), "{{FLOOR}}": ("--floor", a.floor),
-                "{{N}}": ("--n", a.n), "{{ITEMS}}": ("--items", a.items)}
+        need = {"{{ROOM}}": ("room name", desc), "{{FLOOR}}": ("--floor or spec.floor", floor),
+                "{{N}}": ("--n", n), "{{ITEMS}}": ("--items or spec.contains", items)}
         missing = [name for k, (name, val) in need.items()
                    if k in template and not str(val).strip()]
         if missing:
@@ -413,10 +1221,12 @@ def main():
         out = os.path.join(a.game.rstrip("/"), "art-src",
                            PASS_PATH[a.which] % a.room)
         prompt = styled(a.game.rstrip("/"),
-                        pass_prompt(a.which, (a.desc or "").strip() or a.room,
-                                    a.floor, a.n, a.items, strip_notes=True))
+                        pass_prompt(a.which, desc, floor, n, items,
+                                    strip_notes=True))
         if not imagegen.generate(" ".join(prompt.split()), out,
-                                 quality=a.quality, force=a.force):
+                                 size=prof["size"], quality=a.quality or prof["quality"],
+                                 force=a.force, background=prof["background"],
+                                 model=prof["model"], kind="room_" + a.which):
             return 0
         print("\nwrote %s" % out)
         nxt = {"scene": "MEASURE it — every prop's ground point, height, width "
@@ -428,16 +1238,13 @@ def main():
         print("next: %s" % nxt)
         return 0
 
-    if a.cmd == "prompt":
-        print(pass_prompt(a.which, a.room, a.floor, a.n, a.items))
-        return 0
-
-    game = a.game.rstrip("/")
-
     if a.cmd == "plate":
         src = a.src or os.path.join(game, "art-src", "%s_floor.png" % a.room)
+        scene = os.path.join(game, "art-src", "%s_scene.png" % a.room)
+        extra = ["--match", scene] if os.path.exists(scene) else []
         rc = sh("python3", os.path.join(HERE, "fit_plate.py"), src,
-                os.path.join(game, "art", "bg-%s.png" % a.room), "--margin", a.margin)
+                os.path.join(game, "art", "bg-%s.png" % a.room),
+                "--margin", a.margin, *extra)
         if rc: return rc
         return sh("python3", os.path.join(HERE, "build_walkmask.py"), game, a.room)
 
@@ -452,15 +1259,163 @@ def main():
         sh("python3", os.path.join(HERE, "show_walkmask.py"), game, a.room,
            os.path.join(a.out, "walk-%s.png" % a.room))
         if os.path.exists(scene):
-            sh("python3", os.path.join(HERE, "preview_room.py"), game, a.room,
-               "--scene", scene, "--mode", "side",
-               "--out", os.path.join(a.out, "side-%s.png" % a.room))
+            rc = sh("python3", os.path.join(HERE, "preview_room.py"), game, a.room,
+                    "--scene", scene, "--mode", "side",
+                    "--out", os.path.join(a.out, "side-%s.png" % a.room))
+            # side-by-side and blend catch DIFFERENT mistakes, and neither
+            # substitutes for the other. Side puts two pictures at their own
+            # separate scales next to each other — great for style, colour,
+            # "does this look like the same room", useless for size: a prop
+            # drawn at half the right width just reads as "a smaller picture
+            # of a smaller rug", not as wrong. Blend composites the assembled
+            # room semi-transparent ON TOP of the scene, so a size or position
+            # error shows up as an unmissable doubled or ghosted edge — which
+            # is exactly how the bedroom's rug (w half of what it needed to
+            # be) and bed (14px of canopy drawn into the wall) were found,
+            # AFTER this room had already passed the side-by-side and been
+            # signed off once. Rendered every time now, not just when someone
+            # remembers to ask for --mode blend by hand.
+            if not rc:
+                rc = sh("python3", os.path.join(HERE, "preview_room.py"), game, a.room,
+                        "--scene", scene, "--mode", "blend",
+                        "--out", os.path.join(a.out, "blend-%s.png" % a.room))
         else:
             print("no composed scene at %s — pass 1 is what you measure from, keep it"
                   % scene)
-            sh("python3", os.path.join(HERE, "preview_room.py"), game, a.room,
-               "--out", os.path.join(a.out, "room-%s.png" % a.room))
-        print("\nLOOK AT THESE. The side-by-side is the step that finds things.")
+            rc = sh("python3", os.path.join(HERE, "preview_room.py"), game, a.room,
+                    "--out", os.path.join(a.out, "room-%s.png" % a.room))
+        # rc, not a bare print: `check` used to announce "LOOK AT THESE" even
+        # when preview_room.py had died and rendered nothing, which is the
+        # worst possible outcome for the one step whose entire job is to make
+        # a person look at a picture.
+        if rc:
+            print("\nthe overlay did NOT render — fix that before trusting anything above",
+                  file=sys.stderr)
+            return rc
+        # RENDERING IS NOT LOOKING. This used to write the sign-off digest
+        # right here, which meant the gate asking "has anyone looked at this
+        # room?" was satisfied by running the renderer — nobody had to open
+        # the picture. It was caught the only way it could be: the files
+        # turned up as unexpected uncommitted changes after a session ran
+        # `check` on three rooms it had NOT approved, one of which was
+        # visibly wrong (planks at the wrong scale, the scene's four-stool
+        # tables rendered as a single stool).
+        #
+        # So `check` records only that the overlay was rendered for THIS
+        # art, and `signoff` is the separate, deliberate act. signoff refuses
+        # unless this marker matches, so you cannot sign off a room you never
+        # rendered either.
+        with open(rendered_path(game, a.room), "w", encoding="utf-8") as f:
+            f.write(room_digest(game, a.room) + "\n")
+        print("\nLOOK AT THESE — both of them. The side-by-side finds style and "
+              "content mistakes; the blend finds SIZE and POSITION mistakes, "
+              "which the side-by-side cannot show at all.")
+        print("When you have LOOKED and it is right:")
+        print("  python3 .github/art/room.py signoff %s %s" % (game, a.room))
+        return 0
+
+    if a.cmd == "grid":
+        rc = sh("python3", os.path.join(HERE, "grid_overlay.py"),
+                os.path.join(game, "art-src", "%s_scene.png" % a.room),
+                "--step", a.step, "--zoom", a.zoom, "--out", a.out,
+                *(["--crop", a.crop] if a.crop else []))
+        if rc:
+            return rc
+        print("\nRead the ground point (x, y) and height a prop needs off this "
+              "picture, then write it into rooms/%s.json's measured: block — "
+              "that's what `sizecheck` holds story.js to from now on. See "
+              "docs/ROOM_ART_STANDARD.md §5 for why this is a human step: "
+              "automated matching against the scene was tried and doesn't "
+              "work, it isn't a shortcut waiting to be found." % a.room)
+        return 0
+
+    if a.cmd == "measure":
+        out = a.out or ("/tmp/measure-%s-%s.png" % (a.room, a.name))
+        cmd = ["python3", os.path.join(HERE, "measure_blob.py"),
+               os.path.join(game, "art-src", "%s_scene.png" % a.room),
+               "--rect", a.rect, "--method", a.method, "--out", out]
+        if a.method == "grabcut":
+            cmd += ["--iters", str(a.iters)]
+        else:
+            cmd += ["--canny-lo", str(a.canny_lo), "--canny-hi", str(a.canny_hi),
+                    "--top", str(a.top), "--pick", str(a.pick)]
+        rc = sh(*cmd)
+        if rc:
+            return rc
+        print("\nThat measurement is for '%s' — LOOK at %s before writing it "
+              "into rooms/%s.json's measured: block. If it's wrong, try the "
+              "other --method, a different --rect, or (canny) a different "
+              "--pick." % (a.name, out, a.room))
+        return 0
+
+    if a.cmd == "wallseam":
+        out = a.out or ("/tmp/wallseam-%s.png" % a.room)
+        cmd = ["python3", os.path.join(HERE, "wall_seam.py"),
+               os.path.join(game, "art-src", "%s_scene.png" % a.room),
+               "--search", a.search, "--method", a.method, "--out", out]
+        for s in a.strip:
+            cmd += ["--strip", s]
+        rc = sh(*cmd)
+        if rc:
+            return rc
+        print("\nThat's the wall's own floor line — LOOK at %s before "
+              "grounding a wall panel or any prop standing against it to "
+              "it. Every wall panel and every flush-mounted prop in the "
+              "room should share this Y." % out)
+        return 0
+
+    if a.cmd == "tilescale":
+        out = a.out or ("/tmp/tilescale-%s.png" % a.room)
+        cmd = ["python3", os.path.join(HERE, "tile_scale.py"),
+               os.path.join(game, "art-src", "%s_scene.png" % a.room),
+               "--row", a.row, "--out", out]
+        if a.against_plate:
+            cmd += ["--against", os.path.join(game, "art", "bg-%s.png" % a.room)]
+        rc = sh(*cmd)
+        if rc:
+            return rc
+        print("\nLOOK at %s before trusting the count. If regenerating the "
+              "plate, feed the scene's own count back as the exact target "
+              "('roughly N stones span the full width'), not an adjective."
+              % out)
+        return 0
+
+    if a.cmd == "sizecheck":
+        if a.room and not (load_spec(game, a.room) or {}).get("measured"):
+            print("%s: no measured: block in rooms/%s.json — nothing to check. "
+                  "Take one with `room.py grid %s %s`."
+                  % (a.room, a.room, game, a.room))
+            return 0
+        problems = measured_size_problems(game, margin=a.margin)
+        if a.room:
+            problems = [p for p in problems if p.startswith(a.room + ":")]
+        if problems:
+            for msg in problems:
+                print("FAIL " + msg)
+            return 1
+        print("OK — every measured prop in %s is within %.0f%% of its "
+              "story.js declaration"
+              % (a.room if a.room else game, a.margin * 100))
+        return 0
+
+    if a.cmd == "signoff":
+        want = room_digest(game, a.room)
+        try:
+            rendered = open(rendered_path(game, a.room), encoding="utf-8").read().strip()
+        except OSError:
+            rendered = None
+        if rendered != want:
+            print("nothing to sign off: the overlays have not been rendered for "
+                  "%s's current art. Run\n"
+                  "  python3 .github/art/room.py check %s %s\n"
+                  "then OPEN what it writes, and come back." % (a.room, game, a.room),
+                  file=sys.stderr)
+            return 1
+        with open(checked_path(game, a.room), "w", encoding="utf-8") as f:
+            f.write(want + "\n")
+        print("signed off %s. This says a person looked at the side-by-side and "
+              "it was right — it will go stale the moment the art or the props "
+              "change." % a.room)
         return 0
 
     if a.cmd == "verify":
@@ -472,6 +1427,16 @@ def main():
             return 1
         print("OK — every floor-plate room in %s checks out." % game)
         return 0
+
+    # NO SUBCOMMAND HANDLED IT. This is not reachable through normal use —
+    # argparse rejects an unknown command — but it is exactly what happens when
+    # an edit detaches a branch's body from its `if`, which is how `generate`
+    # came to print nothing, generate nothing and exit 0. A front door that
+    # reports success having done nothing is the failure this repo has paid for
+    # more than once, so the fall-through is loud.
+    print("room.py: nothing handled %r — a subcommand's body has been detached "
+          "from its branch." % a.cmd, file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":

@@ -45,7 +45,7 @@ const walk = (dir) => {
 walk(ART);
 
 // Standards live outside .github/art but are the point of the index.
-for (const doc of ["docs/ROOM_ART_STANDARD.md"]) {
+for (const doc of ["docs/ROOM_ART_STANDARD.md", "docs/DOOR_STANDARD.md"]) {
   if (existsSync(doc) && !listed(path.basename(doc))) {
     problems.push(`${doc} is not listed in ${INDEX}.`);
   }

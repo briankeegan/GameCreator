@@ -34,6 +34,7 @@ under her feet. Re-run after changing a room's background art.
 
 Usage: build_walkmask.py <game-dir> [room ...]
 """
+import json
 import sys, os
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -54,6 +55,18 @@ FLOOR_PLATE_ROOMS = {
     # on top of it. Before this, the bar's footprint was hand-measured off a
     # painted picture, and the picture had been regenerated underneath it.
     "lounge",
+    # Regenerated to the standard as the plot's VICTORIAN bedroom, and with no
+    # door in any wall: you reach it by walking UP through the Lounge's back
+    # wall, so you arrive at its near edge and leave the same way, through the
+    # gap in the balustrade. The old art painted a door on the right-hand wall
+    # that the map no longer had any use for.
+    "bedroom",
+    # Regenerated with the grid map: the Lounge is WEST of the lab, so the
+    # lab's way out is a door in its west wall; the library sits between the
+    # Lounge (south, off its near edge) and the Anarchy Garden (north, through
+    # the arch in its bookcase wall).
+    "lab",
+    "library",
 }
 
 # EVERY ROOM BELOW IS LEGACY. Do not copy this shape for a new room, and do
@@ -81,20 +94,6 @@ ROOMS = {
             [(188, 98), (252, 98), (252, 108), (188, 108)], # moving boxes
         ],
     },
-    "bedroom": {
-        "floorTop": 100,
-        "blocks": [
-            [(20, 96), (74, 96), (76, 110), (22, 110)],          # mirror
-            [(116, 96), (200, 96), (202, 118), (120, 118)],      # bed + nightstand
-        ],
-    },
-    "library": {
-        "floorTop": 96,
-        "blocks": [
-            [(148, 96), (192, 96), (194, 116), (150, 116)],      # armchair
-            [(192, 98), (218, 98), (218, 118), (192, 118)],      # candle table
-        ],
-    },
     "arena": {
         # Regenerated art (the plot's "library-like stadium"): tiered stands
         # ring the room on both sides and the flagstone duelling floor is the
@@ -113,16 +112,6 @@ ROOMS = {
     # their own sprites so the player can walk behind them. So the only things
     # this mask has to fence off are the pool at the back and the low garden
     # wall; everything standing up off the grass fences itself.
-    "lab": {
-        "floorTop": 100,
-        "bounds": (36, 100, 286, 186),
-        "blocks": [
-            [(80, 96), (222, 96), (222, 112), (80, 112)],   # the workbench
-            # The cart is pulled clear of the doorway's approach — its box
-            # reached across the arch and fenced the only way out of the room.
-            [(252, 96), (284, 96), (284, 120), (252, 120)], # the instrument cart
-        ],
-    },
     "house": {
         "floorTop": 100,
         "blocks": [
@@ -133,22 +122,65 @@ ROOMS = {
 }
 
 
-def build(game_dir, room):
+def wall_seam(game_dir, room):
+    """The y where this room's back wall meets its floor, from its spec.
+
+    Not only for interiors. An outdoor room has no back WALL but it still has a
+    back EDGE, and that is what the number means there: the Anarchy Garden's is
+    its water line. Relying on the pool prop to block instead did not work — its
+    base is 240px wide in a 320px room, so the player walked around both ends of
+    the water and on up to y=0, behind the waterfalls."""
+    p = os.path.join(game_dir, "rooms", "%s.json" % room)
+    if not os.path.exists(p):
+        return None
+    # NOT a bare except. The first version of this swallowed everything and
+    # returned None, so a missing `import json` reported "no seam" for every
+    # room in the game and the clip below silently did nothing — the masks
+    # rebuilt byte-identical and looked fine. A checker that cannot fail is
+    # worse than no checker; only a genuinely absent value may be None here.
+    with open(p) as fh:
+        return json.load(fh).get("wallSeam")
+
+
+def compute(game_dir, room):
+    """The mask for `room`, as a PIL image, WITHOUT writing it.
+
+    The single copy of this calculation. room.py's staleness check used to
+    carry its own, and the moment the floor-plate branch learned about
+    wallSeam the two disagreed and every room in the game was reported stale.
+    Two copies of a calculation is one copy too many; build() writes what this
+    returns and the checker compares against it."""
     src = os.path.join(game_dir, "art", "bg-%s.png" % room)
     art = Image.open(src).convert("RGBA").resize((W, H), Image.BILINEAR)
     alpha = art.split()[3]
+    mask = alpha.point(lambda a: 255 if a > 40 else 0)
 
-    # THE CURRENT WAY. The background IS the walkable surface and nothing else,
-    # so the mask is simply its own silhouette. Nothing to declare, and nothing
-    # that can drift out of step with the art. Prefer this for every new room.
+    # THE CURRENT WAY. The background is (almost) the walkable surface, so the
+    # mask is its own silhouette — nothing to declare and nothing that can drift
+    # out of step with the art. Prefer this for every new room.
     if room in FLOOR_PLATE_ROOMS:
-        return finish(alpha.point(lambda a: 255 if a > 40 else 0), game_dir, room)
+        # THE PLATE IS NOT ALWAYS ONLY THE FLOOR, and taking it on trust let the
+        # player walk into the walls of four rooms. "The background IS the
+        # walkable surface" is the RULE; what actually ships is whatever the
+        # generator drew, and for the Library, the Lounge and the Bedroom that
+        # is a picture whose top third is the back wall — plates covering 77-89%
+        # of the frame, so the mask called bookcases, bar and brickwork floor.
+        # Measured against the rooms that are right: the painted rooms put their
+        # floor's top edge at y=103-105 of 200.
+        #
+        # The room already records where its wall meets its floor — `wallSeam`,
+        # measured by `room.py wallseam` and looked at once by a person. Clip
+        # there. This is the one number that cannot be derived from the plate,
+        # because the plate is the thing that is wrong.
+        seam = wall_seam(game_dir, room)
+        if seam is not None:
+            ImageDraw.Draw(mask).rectangle([0, 0, W, seam], fill=0)
+        return erode(mask)
 
     # THE OLDER WAY, for rooms whose art still has its scenery painted in: the
     # outline comes from the alpha silhouette, but the wall line and everything
     # standing on the floor have to be measured by hand against the picture.
     spec = ROOMS[room]
-    mask = alpha.point(lambda a: 255 if a > 40 else 0)
     draw = ImageDraw.Draw(mask)
     draw.rectangle([0, 0, W, spec["floorTop"]], fill=0)
     if spec.get("bounds"):
@@ -159,17 +191,22 @@ def build(game_dir, room):
     for poly in spec["blocks"]:
         draw.polygon(poly, fill=0)
 
-    return finish(mask, game_dir, room)
+    return erode(mask)
 
 
-def finish(mask, game_dir, room):
-    """Erode by about half a character's width and write the 1-bit PNG.
+def erode(mask):
+    """Shrink by about half a character's width.
 
-    The erosion is why she can stand at the edge of the floor without her
-    sprite clipping into whatever is beside her."""
+    This is why she can stand at the edge of the floor without her sprite
+    clipping into whatever is beside her."""
     for _ in range(EROSION):
         mask = mask.filter(ImageFilter.MinFilter(3))
+    return mask
 
+
+def build(game_dir, room):
+    """Compute the mask and write it."""
+    mask = compute(game_dir, room)
     out = os.path.join(game_dir, "art", "walk-%s.png" % room)
     mask.convert("1").save(out)
     walkable = sum(1 for y in range(H) for x in range(W) if mask.getpixel((x, y)) > 127)

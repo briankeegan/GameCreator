@@ -370,6 +370,10 @@ function advanceSector() {
       raresSkipped: state.raresSkipped,
       // The Hold carries whole — the ship IS its equipment grid.
       hold: state.hold,
+      // Which loadout's art the ship shows — carried whole, same reason as
+      // runSeed/raresSkipped above (see the field's own comment in
+      // engine.js's createGameState).
+      startingLoadout: state.startingLoadout,
     },
     { keepWarpAnim: true, variantId: state.usedExitVariant }
   );
@@ -746,38 +750,30 @@ function drawHex(center, fill, stroke, lineWidth, fillAlpha) {
 // else about the rotation math has to change.
 const flagshipImg = new Image();
 flagshipImg.src = "icons/flagship.png";
-// The Mk2. Nothing used to change what your own ship looked like however
-// much you bolted into it; now the hull you fly visibly stops being the
-// one you started in, the moment it's carrying a second gun AND a screen.
-// Cosmetic only — it reads the Hold, it doesn't change it.
-const flagshipMk2Img = new Image();
-flagshipMk2Img.src = "icons/flagship-mk2.png";
-flagshipMk2Img.onload = () => draw();
-// Two more, one per alternate starting loadout (see Engine.STARTING_LOADOUTS)
-// — "different looking ships" for the ones that fly differently from turn
-// one, not just once you've bolted on a second gun and a screen the hard
-// way. Same reasoning as Mk2: reads the ship's stats, doesn't change them.
+flagshipImg.onload = () => draw();
+// One look per starting loadout (see Engine.STARTING_LOADOUTS) — "different
+// looking ships" for the choice made at the start of the run. Fixed for the
+// whole run, not read off live equipment: a look that changed the instant
+// you bolted on a second gun or a screen ("when you change equipment...
+// your ship looks totally different") read as the wrong ship, not an
+// upgrade — you pick your ship at the start and fly THAT one, cosmetically,
+// no matter what ends up in the Hold along the way.
 const flagshipEscortImg = new Image();
 flagshipEscortImg.src = "icons/flagship-escort.png";
 flagshipEscortImg.onload = () => draw();
 const flagshipArmoredImg = new Image();
 flagshipArmoredImg.src = "icons/flagship-armored.png";
 flagshipArmoredImg.onload = () => draw();
-// Shared by the live HUD (off the real ship) and the death-overlay's
-// loadout preview (off a hypothetical one) — same priority order either
-// way: the fully-upgraded Mk2 look wins over either single-trait look,
-// which wins over the plain hull.
-function pickFlagshipSprite({ guns, maxShields, maxHull }) {
-  if (guns >= 2 && maxShields > 0) return flagshipMk2Img;
-  if (maxShields > 0) return flagshipEscortImg;
-  if (maxHull > Engine.START_HULL) return flagshipArmoredImg;
-  return flagshipImg;
+const LOADOUT_SPRITES = { standard: flagshipImg, escort: flagshipEscortImg, salvager: flagshipArmoredImg };
+// Shared by the live HUD (the ship actually being flown) and the
+// death-overlay's loadout preview (a hypothetical one) — same lookup
+// either way, keyed purely on which loadout, never on current stats.
+function spriteForLoadout(loadoutId) {
+  return LOADOUT_SPRITES[loadoutId] || flagshipImg;
 }
 function flagshipSprite() {
-  const guns = Engine.WEAPON_SYSTEM_KEYS.filter((k) => state.systems && state.systems[k]).length;
-  return pickFlagshipSprite({ guns, maxShields: state.maxShields, maxHull: state.maxHull });
+  return spriteForLoadout(state.startingLoadout);
 }
-flagshipImg.onload = () => draw();
 const interceptorImg = new Image();
 interceptorImg.src = "icons/interceptor.png";
 interceptorImg.onload = () => draw();
@@ -3666,14 +3662,12 @@ function updateLoadoutDetail() {
   const owned = unlockedLoadouts.has(previewedLoadout);
   const active = selectedLoadout === previewedLoadout;
 
-  // The hull itself first — a fresh loadout never carries a second gun
-  // (weapons come from the sector, not the kit), so this only ever picks
-  // between the plain hull and whichever single-trait look this loadout's
-  // Shields/Hull earns it; Mk2 is a mid-run-only look.
+  // The hull itself first — same lookup flagshipSprite() uses, just keyed
+  // on the loadout being previewed instead of the run actually in flight.
   const body = document.createElement("div");
   const figure = document.createElement("img");
   figure.className = "loadout-ship-figure";
-  figure.src = pickFlagshipSprite({ guns: 1, maxShields: preview.maxShields, maxHull: preview.maxHull }).src;
+  figure.src = spriteForLoadout(previewedLoadout).src;
   figure.alt = preview.label;
   body.appendChild(figure);
   // Stats first, always visible even if the blurb wraps long enough to
