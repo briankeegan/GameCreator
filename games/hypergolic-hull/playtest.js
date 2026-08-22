@@ -409,7 +409,12 @@ function playSector(state, report) {
 function playRun(seed, report) {
   const LEVELS = Levels.LEVELS;
   const rng = makeRng(seed + 1);
-  let carryOver = null;
+  // START_GUN=<weaponKey> fits that gun from Sector 1, alongside the
+  // Autocannon. It's how a weapon's worth gets MEASURED rather than
+  // argued about: same pilot, same seeds, one thing different. A bespoke
+  // bench was tried first and got written wrong twice — this reuses the
+  // pilot that already plays the actual game.
+  let carryOver = process.env.START_GUN ? { extraActions: [process.env.START_GUN] } : null;
   let depth = 1;
   let variantId = null;
   for (; depth <= BOSS_DEPTH; depth++) {
@@ -420,7 +425,11 @@ function playRun(seed, report) {
       // seed too, so simulated runs exercise the same run-to-run Outpost
       // variance a real player gets, instead of every run rolling the
       // hand-authored sectors' shop/berth identically.
-      state = Engine.createGameState(level, { ...(carryOver || {}), runSeed: seed, hasPrevious: Boolean(carryOver) });
+      state = Engine.createGameState(level, {
+        ...(carryOver || {}),
+        runSeed: seed,
+        hasPrevious: Boolean(carryOver && carryOver.hold),
+      });
     } catch (err) {
       report.errors.push(`depth ${depth}: level failed to build — ${err.message}`);
       return { depth, outcome: "error" };
