@@ -1952,6 +1952,11 @@
       maxAp: (carryOver && carryOver.maxAp) || START_AP,
       ap: (carryOver && carryOver.maxAp) || START_AP,
       turnCount: 0, // counts ROUNDS (full player phase + enemy phase), not single actions
+      // What the ship arrived with, so leaving unmarked can be paid for
+      // (awardCleanRun). Snapshotted here rather than derived from maxHull:
+      // you can arrive already damaged, and flying a sector clean from two
+      // hull is the same achievement as flying it clean from five.
+      hullAtSectorStart: null,
       status: "playing", // "playing" | "won" | "lost"
       log: [],
       events: [], // animation cues from the last action, e.g. {type:"kill",q,r}
@@ -1981,6 +1986,9 @@
     if (level.intro) pushLog(state, level.intro);
     // Everything the ship can DO derives from what's in the Hold.
     syncHoldDerived(state);
+    // Last, after every hull adjustment above has settled: the mark to beat
+    // for the clean-run bonus.
+    state.hullAtSectorStart = state.hull;
     return state;
   }
 
@@ -2339,6 +2347,35 @@
   // one, and a cleared deep board pays for a gun rather than a patch.
   function depthBounty(state) {
     return Math.floor((state.levelId || 1) / 2) + (state.salvageBonus || 0);
+  }
+
+  // ---- flying it clean ----------------------------------------------------
+  //
+  // Every point of income in this game came from KILLING something, which
+  // meant good positioning paid nothing at all: a pilot that read the board
+  // and walked out untouched arrived at the next dock as poor as one that
+  // had been shot the whole way, and poorer than one that had stood and
+  // traded. Caution was economically punished, so the only route to a
+  // stronger ship was more fighting — which is the opposite of what this
+  // game says it is about, given the gate is always open.
+  //
+  // So leaving a sector without taking a single point of hull pays, on the
+  // same depth curve a wreck does. It is the one reward in the game for
+  // where you STOOD rather than what you shot, and it cannot be farmed:
+  // there is exactly one per sector and taking one hit anywhere in it is
+  // enough to lose it.
+  function awardCleanRun(state) {
+    if (state.hull < (state.hullAtSectorStart != null ? state.hullAtSectorStart : state.hull)) return;
+    // Sized against the thing it competes with. A four-strong board pays
+    // roughly twenty salvage to clear at mid depth, so a bonus of five was
+    // a consolation prize: the arithmetic still said "kill everything",
+    // which is what it was supposed to stop saying. About half a board —
+    // enough that walking out clean is a real strategy and not enough that
+    // it beats fighting outright.
+    const amount = 4 + 2 * depthBounty(state);
+    state.salvage += amount;
+    state.events.push({ type: "salvage", amount, clean: true });
+    pushLog(state, `Not a scratch on her — ${amount} salvage bonus.`);
   }
 
   function awardSalvage(state, enemyType) {
@@ -3057,6 +3094,7 @@
     state.ap -= 1;
     const usedExit = state.exits.find((e) => posEq(state.playerPos, e));
     if (usedExit && state.exitUnlocked) {
+      awardCleanRun(state);
       state.status = "won";
       state.usedExitVariant = usedExit.variantId;
       if (state.isBoss) {
