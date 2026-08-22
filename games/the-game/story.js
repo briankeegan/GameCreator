@@ -232,7 +232,7 @@ window.NEWSEY_STORY = (function () {
           thenTalk: "chuck",
           lines: [
             "The knocking again, louder. Rain hammering the porch behind it.",
-            "You turn the latch and pull the door open."
+            "You turn the latch and pull the door open. \"Chuck! Hurry up and get out of the rain!\""
           ]
         },
         {
@@ -251,10 +251,10 @@ window.NEWSEY_STORY = (function () {
           entryFrom: { x: 74, y: 106 },
           needs: "chuckIn",
           lines: [
-            "Nella! Get out of the rain!",
+            "Nella!",
             "I'm so sorry, Nella.",
             "Clearing your dad's basement, I found something — your old Puzzle Attack cartridge. There's a note taped to the back.",
-            "\"My Nella — maybe you'll play again someday. Love, Dad.\"",
+            "It's addressed to you. \"My Nella — maybe you'll play again someday. Love, Dad.\"",
             "There's a hidden button under the note. I think he wanted you to press it.",
             "The old console still works. Whenever you're ready… go take a look."
           ]

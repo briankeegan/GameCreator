@@ -52,6 +52,19 @@ jobs:
       - name: Verify room exits
         run: node .github/scripts/check_room_exits.mjs
 
+      # A game whose own JS calls GCControls.create()/GCSaveSlots.create()/
+      # GCTitleScreen.create() but is missing the matching <script> tag or
+      # precache entry ships a ReferenceError or goes stale offline — see
+      # sync-precache.js's header. This script existed for two commits
+      # tonight before anything actually ran it on push; it would have
+      # caught nothing until someone remembered to run it by hand, which is
+      # exactly the failure mode "rule -> tool -> gate" exists to close.
+      # Fails on real wiring gaps; only warns (never blocks) on the
+      # title-screen onShow check, since a text-only game legitimately has
+      # nothing to draw.
+      - name: Verify shared-module wiring
+        run: node .github/autopilot/sync-precache.js
+
       # A DOOR HAS TO BE ENTERED, NOT GRAZED — and that is a number, so it is
       # gated. The Arena's way out was armed above the walkable platform and
       # could be reached by exactly ONE pixel of the player's box: the link was

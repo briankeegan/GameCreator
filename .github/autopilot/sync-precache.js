@@ -95,6 +95,7 @@ function main() {
       { ref: /\bGCControls\.create\b/, file: "../../shared/controls.js", name: "shared/controls.js" },
       { ref: /\bGCSaveSlots\.create\b/, file: "../../shared/save-slots.js", name: "shared/save-slots.js" },
       { ref: /\bGCTitleScreen\.create\b/, file: "../../shared/title-screen.js", name: "shared/title-screen.js" },
+      { ref: /\bGCFileSelect\.create\b/, file: "../../shared/file-select.js", name: "shared/file-select.js" },
     ];
     for (const mod of SHARED_MODULES) {
       if (!mod.ref.test(gameJsFiles)) continue;
@@ -106,6 +107,23 @@ function main() {
         console.log(`${dir}: uses ${mod.name} but it's missing from ${missing.join(" and ")} — ` +
                     `offline mode will 404 or the game will throw. See .github/tools/adopt-shared-module.js.`);
       }
+    }
+
+    // THIRD CHECK, a WARNING not a failure (see the file header on why a
+    // fuzzy check warns instead of blocking): a game that calls
+    // GCTitleScreen.create(...) without ever passing onShow is very likely
+    // shipping the placeholder look — a logo, a subtitle, a button, none of
+    // it the game's own art. Caught for real on Dog Punk: the title screen
+    // passed every mechanical check (wired, precached, shows/hides
+    // correctly) while looking like it could be any game's title screen,
+    // because nothing on it came from the game itself. This can't be a hard
+    // fail — a genuinely text-only game has nothing to draw — so it warns,
+    // the same as the sheet-consistency checks in verify_sheet.py do for
+    // "this might not be right" facts that aren't unambiguous.
+    if (/\bGCTitleScreen\.create\b/.test(gameJsFiles) && !/\bonShow\s*:/.test(gameJsFiles)) {
+      console.log(`${dir}: adopts shared/title-screen.js without an onShow — if this game has its ` +
+                  `own character art, a title screen with none of it on screen reads as a placeholder, ` +
+                  `not a title screen. See shared/title-screen.js's header for the onShow pattern.`);
     }
   }
   if (bad && !fix) process.exit(1);
