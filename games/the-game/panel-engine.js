@@ -445,9 +445,13 @@
     return p.state === "normal" || p.state === "landing" || (p.matchAnyway && p.state === "hovering");
   }
 
+  // Panel.allowsSwap in the reference also allows "falling" — catching a
+  // panel mid-fall and redirecting it sideways is a core Panel-Attack
+  // mechanic, not an edge case. Missing here meant a falling panel could
+  // never be swapped at all.
   function allowsSwap(p) {
     if (p.dontSwap || p.isGarbage) return false;
-    return p.state === "normal" || p.state === "swapping" || p.state === "landing";
+    return p.state === "normal" || p.state === "swapping" || p.state === "landing" || p.state === "falling";
   }
 
   // =========================================================================
@@ -507,6 +511,9 @@
     this.incoming = [];  // garbage that has arrived and is waiting for a gap
     this.outgoing = [];  // garbage this stack has sent, still in flight
     this.garbageCreatedCount = 0;
+    // Highest garbageId that has ever legitimately been matched (either
+    // on-screen, or already matched before) — see getConnectedGarbagePanels.
+    this.highestGarbageIdMatched = 0;
     this.garbageLandedThisFrame = [];
     this.dropColumnIndex = {};
 
@@ -518,7 +525,7 @@
     this.prevInput = { left: false, right: false, up: false, down: false, swap: false, raise: false };
     this.cursorTimer = 0;
 
-    this.buildStartingBoard(opts.startRows === undefined ? 6 : opts.startRows);
+    this.buildStartingBoard();
   }
 
   Stack.prototype.makeEmptyRow = function (row) {
@@ -540,10 +547,31 @@
     return choices[Math.floor(this.rng() * choices.length)];
   };
 
-  Stack.prototype.buildStartingBoard = function (rows) {
-    for (var row = 1; row <= rows; row++) {
+  // GeneratorSource:getStartingBoardHeight — always 7, regardless of level.
+  var STARTING_BOARD_HEIGHT = 7;
+
+  // A fresh board is not a flat rectangle in the reference engine
+  // (GeneratorSource:generateStartingBoard) — it fills a full 7-row
+  // rectangle, then randomly clears 2*width panels, each time picking a
+  // random column and removing its CURRENT topmost occupied cell. That's
+  // what gives a new game a jagged, per-column-staggered starting board
+  // instead of a dead-flat one — visible on literally the first frame of
+  // every game, so it's not a subtle port detail.
+  Stack.prototype.buildStartingBoard = function () {
+    for (var row = 1; row <= STARTING_BOARD_HEIGHT; row++) {
       for (var col = 1; col <= W; col++) {
         this.panels[row][col].color = this.pickColor(row, col);
+      }
+    }
+    var height = [];
+    for (var c = 1; c <= W; c++) height[c] = STARTING_BOARD_HEIGHT;
+    var toRemove = 2 * W;
+    while (toRemove > 0) {
+      var idx = 1 + Math.floor(this.rng() * W);
+      if (height[idx] > 0) {
+        this.panels[height[idx]][idx].color = 0;
+        height[idx]--;
+        toRemove--;
       }
     }
     this.fillNewRow(0);
@@ -674,6 +702,20 @@
 
   // All garbage panels touched by this match, plus every garbage block those
   // touch in turn (garbage clears propagate block to block).
+  //
+  // Two guards a garbage panel must pass to be eligible, both ported from
+  // getConnectedGarbagePanels2 in the reference — missing either is a real,
+  // reachable bug, not a style nit:
+  //   - state === "normal": a garbage block keeps color 9 for its ENTIRE
+  //     multi-frame clear animation (state "matched", then "falling" for
+  //     its own bottom-row conversion) — without this, a second match
+  //     touching it mid-animation re-enters matchGarbagePanels, which
+  //     unconditionally decrements yOffset/gHeight and resets its timer a
+  //     second time, corrupting the block already clearing.
+  //   - on-screen OR already matched before (highestGarbageIdMatched):
+  //     stops garbage that spawned entirely above the visible board and
+  //     was never shown to the player from being insta-matched with 0 pop
+  //     time the instant it happens to touch a new match.
   Stack.prototype.getConnectedGarbagePanels = function (matchingPanels) {
     var stack = this;
     var ids = {};
@@ -681,10 +723,15 @@
     var queue = [];
     var deltas = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
+    function eligible(p) {
+      return p.isGarbage && p.color === 9 && p.state === "normal" &&
+        (p.row - p.yOffset <= stack.height || p.garbageId <= stack.highestGarbageIdMatched);
+    }
+
     function addNeighbourGarbage(row, col) {
       for (var d = 0; d < deltas.length; d++) {
         var p = stack.panelAt(row + deltas[d][0], col + deltas[d][1]);
-        if (p && p.isGarbage && p.color === 9 && !ids[p.garbageId]) {
+        if (p && eligible(p) && !ids[p.garbageId]) {
           ids[p.garbageId] = true;
           queue.push(p.garbageId);
         }
@@ -697,6 +744,7 @@
 
     while (queue.length) {
       var id = queue.shift();
+      this.highestGarbageIdMatched = Math.max(this.highestGarbageIdMatched, id);
       var block = [];
       for (var row = 1; row < this.panels.length; row++) {
         for (var col = 1; col <= W; col++) {
@@ -922,7 +970,12 @@
     var id = ++this.garbageCreatedCount;
     var shake = shakeFramesFor(width, height);
     for (var row = originRow; row < originRow + height; row++) {
-      if (row >= this.panels.length) break;
+      // Grow the row array instead of truncating — a tall enough chain
+      // garbage could need more headroom than has been allocated yet
+      // (rows only grow via newRow(), +1 per rise event), and silently
+      // dropping the remaining rows here means part of the attack just
+      // never gets created, with no error.
+      while (row >= this.panels.length) this.panels.push(this.makeEmptyRow(this.panels.length));
       for (var col = originCol; col < originCol + width; col++) {
         var p = this.panels[row][col];
         clearPanel(p, true, true);
