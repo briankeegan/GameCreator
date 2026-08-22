@@ -216,26 +216,30 @@
   // turns this from a pure-skill puzzle into a luck-and-skill crawl — room to
   // trade Hull for tempo, recover from a bad roll, and let salvage/repairs
   // matter. (Was 1: one-hit permadeath.)
-  // FIVE, and it moved because the enemies did. Three was right for a
-  // roster where half of it held station and the rest walked at you: hull
-  // damage is permanent, repairs only exist at a dock, and one mistake was
-  // most of the ship. Then every class went to full strength — the archer
-  // reaches five hexes and fires every round, the footman covers all six
-  // hexes touching it, nothing with an engine ever wastes a turn — and the
-  // ship never followed. Measured at three: sixty runs, three finishes,
-  // and half of them dead by Sector 4.
+  // THREE. It went to five for a while and came back, and the round trip
+  // is the useful part: five was compensating for something else being
+  // wrong. When every class went to full strength the run collapsed —
+  // sixty runs, three finishes — and more hull did paper over it, but at
+  // five the early sectors stopped costing anything and at six the first
+  // SEVEN did.
   //
-  // Five is where the shape comes back rather than where the numbers look
-  // nice. At six the first SEVEN sectors cost nothing at all — sixty runs,
-  // sixty survivors, no attrition, the whole first half a formality. At
-  // five the early sectors wear you down without killing you (five hull in,
-  // 3.7 by depth 8) and the deep end is what ends runs, which is the curve
-  // this game is supposed to have. A quarter of well-flown runs finish.
+  // The actual cause was BOARD SIZE. Nothing with an engine ever wastes a
+  // turn now, so every round spent crossing a sector is a round under
+  // fire, and our sectors were big enough that routing around a threat
+  // cost more hull than fighting it. Hoplite's floors are small and that
+  // is precisely why avoidance works there. Taking a row off the
+  // procedural boards (levels.js, SIZE_FOR_ROSTER) fixed it at the cause,
+  // and three hull works again — measured, it is now the CAREFUL pilot
+  // that finishes most (30 runs in 60 against greedy's 23, with no
+  // stalls), which is the first time in this game's history that flying
+  // well has beaten flying hard.
   //
-  // What keeps it from being softness is unchanged: the gate is always
-  // open, so you are never required to trade hits, and a contact you route
-  // around still costs nothing.
-  const START_HULL = 5;
+  // What makes three playable rather than arbitrary is unchanged: the gate
+  // is always open, you are never required to trade hits, and a contact
+  // you route around costs nothing — and now, since the boards are small
+  // enough to actually route across, that is a real option rather than a
+  // slogan.
+  const START_HULL = 3;
 
   // Energy is a second resource, distinct from Hull (permanent damage,
   // repaired only at an Outpost) and salvage (a currency): it regenerates
@@ -1392,9 +1396,14 @@
   // hardpoint unlock a little deeper, so uncommon; mortar/flankTubes/
   // railgun are the late, expensive, run-defining shapes, so rare.
   const OUTPOST_OFFER_POOL = [
-    // Eight, down from ten. Salvage income was rebalanced for a shelf that
-    // tops out at twenty; a patch at ten was priced against the old one.
-    { id: "repair", label: "Patch 1 Hull", cost: 8 },
+    // Six. It has walked down from ten as the rest of the economy moved —
+    // income was rebalanced for a shelf topping out at twenty, and then
+    // ranged classes stopped walking into their own dead zones, which made
+    // them meaningfully deadlier. Measured at that point: eight gave 19/20
+    // wins in 60, six gives 23/26, five gives 25/28. Six sits in the band
+    // the comparable games do (FTL on Hard is around 60% for a skilled
+    // human; these pilots are heuristics and should land under that).
+    { id: "repair", label: "Patch 1 Hull", cost: 6 },
     { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 10, rarity: "common" },
     // Shields aren't consumable purchases anymore — you buy the GENERATOR
     // (permanent +1 capacity, arrives raised), then re-raising a spent
@@ -1952,6 +1961,11 @@
       maxAp: (carryOver && carryOver.maxAp) || START_AP,
       ap: (carryOver && carryOver.maxAp) || START_AP,
       turnCount: 0, // counts ROUNDS (full player phase + enemy phase), not single actions
+      // What the ship arrived with, so leaving unmarked can be paid for
+      // (awardCleanRun). Snapshotted here rather than derived from maxHull:
+      // you can arrive already damaged, and flying a sector clean from two
+      // hull is the same achievement as flying it clean from five.
+      hullAtSectorStart: null,
       status: "playing", // "playing" | "won" | "lost"
       log: [],
       events: [], // animation cues from the last action, e.g. {type:"kill",q,r}
@@ -1981,6 +1995,9 @@
     if (level.intro) pushLog(state, level.intro);
     // Everything the ship can DO derives from what's in the Hold.
     syncHoldDerived(state);
+    // Last, after every hull adjustment above has settled: the mark to beat
+    // for the clean-run bonus.
+    state.hullAtSectorStart = state.hull;
     return state;
   }
 
@@ -2339,6 +2356,35 @@
   // one, and a cleared deep board pays for a gun rather than a patch.
   function depthBounty(state) {
     return Math.floor((state.levelId || 1) / 2) + (state.salvageBonus || 0);
+  }
+
+  // ---- flying it clean ----------------------------------------------------
+  //
+  // Every point of income in this game came from KILLING something, which
+  // meant good positioning paid nothing at all: a pilot that read the board
+  // and walked out untouched arrived at the next dock as poor as one that
+  // had been shot the whole way, and poorer than one that had stood and
+  // traded. Caution was economically punished, so the only route to a
+  // stronger ship was more fighting — which is the opposite of what this
+  // game says it is about, given the gate is always open.
+  //
+  // So leaving a sector without taking a single point of hull pays, on the
+  // same depth curve a wreck does. It is the one reward in the game for
+  // where you STOOD rather than what you shot, and it cannot be farmed:
+  // there is exactly one per sector and taking one hit anywhere in it is
+  // enough to lose it.
+  function awardCleanRun(state) {
+    if (state.hull < (state.hullAtSectorStart != null ? state.hullAtSectorStart : state.hull)) return;
+    // Sized against the thing it competes with. A four-strong board pays
+    // roughly twenty salvage to clear at mid depth, so a bonus of five was
+    // a consolation prize: the arithmetic still said "kill everything",
+    // which is what it was supposed to stop saying. About half a board —
+    // enough that walking out clean is a real strategy and not enough that
+    // it beats fighting outright.
+    const amount = 4 + 2 * depthBounty(state);
+    state.salvage += amount;
+    state.events.push({ type: "salvage", amount, clean: true });
+    pushLog(state, `Not a scratch on her — ${amount} salvage bonus.`);
   }
 
   function awardSalvage(state, enemyType) {
@@ -2817,8 +2863,40 @@
       const closers = candidates.filter((c) => c.dist <= standoff);
       const bearsFrom = (list) => list.filter((c) => solutionKeys.has(hexKey(c.to)));
       const allowed = bearing.length ? closers : candidates;
-      const pool = bearsFrom(allowed).length ? bearsFrom(allowed) : closers.length ? closers : candidates;
-      const solutions = (enemy.idleRounds || 0) >= PATIENCE ? [] : firingPositions(state, enemy);
+      // NEVER STEP INSIDE YOUR OWN DEAD ZONE. A hex closer than the gun's
+      // minimum range is one it definitionally cannot fire from, so it is
+      // never a better destination than one it can — and yet the Picket
+      // moved into a Beam Lance's hole on 236 of its 1368 moves, with a
+      // hex outside it available on 233 of them. That is the "just moving
+      // as close as possible" you can see from the board: not a long gun
+      // choosing to brawl, a long gun walking somewhere it does nothing.
+      //
+      // Deliberately narrow. It does NOT let anything hold its range —
+      // preferring the far edge of the band, or even the middle, was tried
+      // and both are catastrophic (greedy 23 wins in 60 -> 1 and -> 0),
+      // because reach that keeps its distance cannot be answered by a ship
+      // that walks one hex a round. Long guns still close. They just stop
+      // closing past the point where they work.
+      // Which is the no-retreat rule colliding with must-move: standing at
+      // two with both lateral hexes blocked, the only step that isn't a
+      // retreat IS the step into the hole, so it took it. 129 times in a
+      // 25-seed sample.
+      const deadZone = Math.min(...ship.weapons.map((w) => w.minRange || 1));
+      const outside = (list) => list.filter((c) => c.dist >= deadZone);
+      // In order: close, but not into the hole; then anywhere that isn't
+      // the hole even if it isn't closer — that is not kiting, it is
+      // refusing to walk somewhere the gun cannot work; then, only if the
+      // hole is genuinely all there is, take it.
+      const pool = bearsFrom(allowed).length
+        ? bearsFrom(allowed)
+        : outside(closers).length
+          ? outside(closers)
+          : outside(candidates).length
+            ? outside(candidates)
+            : closers.length
+              ? closers
+              : candidates;
+      const solutions = firingPositions(state, enemy);
       if (solutions.length) {
         const nearestSolution = (h) =>
           solutions.reduce((best, s) => Math.min(best, hexDistance(h, s)), Infinity);
@@ -3057,6 +3135,7 @@
     state.ap -= 1;
     const usedExit = state.exits.find((e) => posEq(state.playerPos, e));
     if (usedExit && state.exitUnlocked) {
+      awardCleanRun(state);
       state.status = "won";
       state.usedExitVariant = usedExit.variantId;
       if (state.isBoss) {

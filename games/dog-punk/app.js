@@ -221,7 +221,7 @@ function loadSprite(src) {
 // which also keys the generated background out to transparency).
 const HERO_SHEET_COLS = 3;
 const HERO_SHEET_ROWS = 3;
-function sliceSheet(src, cols, rows) {
+function sliceSheet(src, cols, rows, onReady) {
   // Same { img, ready } shape loadSprite returns, so drawAnimatedSprite
   // neither knows nor cares that these are canvases cut from one image.
   const frames = [];
@@ -244,13 +244,18 @@ function sliceSheet(src, cols, rows) {
         f.ready = true;
       }
     }
+    // The title screen may already be showing by the time this fires (it's
+    // the very first thing on screen, drawn before any image can possibly
+    // have loaded) — this is how anything that draws a hero frame on it
+    // gets a second chance to draw for real instead of staying blank.
+    if (onReady) onReady();
   };
   // If the sheet ever fails to load, every frame stays ready:false and
   // drawAnimatedSprite falls back to the drawn-in-code hero, same as before.
   sheet.src = src;
   return frames;
 }
-const HERO = sliceSheet("hero_sheet.png", HERO_SHEET_COLS, HERO_SHEET_ROWS);
+const HERO = sliceSheet("hero_sheet.png", HERO_SHEET_COLS, HERO_SHEET_ROWS, () => drawTitlePortrait());
 
 // RPG-Maker charset convention — see .github/art/CHARACTER_SHEETS.md. The
 // three columns are [step, NEUTRAL, step]: column 1 is a real standing-still
@@ -603,10 +608,11 @@ const winTimeEl = document.getElementById("winTime");
 const loseOverlay = document.getElementById("loseOverlay");
 const winRetryBtn = document.getElementById("winRetryBtn");
 const loseRetryBtn = document.getElementById("loseRetryBtn");
-const continueOverlay = document.getElementById("continueOverlay");
-const continueRoomNameEl = document.getElementById("continueRoomName");
-const continueBtn = document.getElementById("continueBtn");
-const continueRestartBtn = document.getElementById("continueRestartBtn");
+const titleLayer = document.getElementById("titleLayer");
+const titleStart = document.getElementById("titleStart");
+const titleContinue = document.getElementById("titleContinue");
+const titlePortrait = document.getElementById("titlePortrait");
+const titlePortraitCtx = titlePortrait ? titlePortrait.getContext("2d") : null;
 const pauseBtn = document.getElementById("pauseBtn");
 const settingsOverlay = document.getElementById("settingsOverlay");
 const settingsKeysEl = document.getElementById("settingsKeys");
@@ -664,29 +670,55 @@ function advanceIntro() {
 introBtn.addEventListener("click", advanceIntro);
 introOverlay.addEventListener("click", (e) => { if (e.target === introOverlay) advanceIntro(); });
 
-// A returning player skips straight past the cutscene they've already seen
-// — the intro is scene-setting for a first run, not something to sit through
-// again every time the tab reopens.
-const existingSave = SAVES.read(1);
-if (existingSave) {
-  introOverlay.hidden = true;
-  continueRoomNameEl.textContent = `Last seen at: ${ROOMS[existingSave.roomIndex].name}`;
-  continueOverlay.hidden = false;
-} else {
-  renderIntro();
+// The title screen shows Beverly herself (the side-view walk frame — the
+// same silhouette players spend the whole game looking at) rather than a
+// logo-and-button placeholder that could be any game's title screen. Drawn
+// via shared/title-screen.js's onShow hook, which also covers the sheet not
+// having finished loading yet the very first time this fires (see
+// sliceSheet's onReady callback above) — same hero frame, same mirroring.
+function drawTitlePortrait() {
+  if (!titlePortraitCtx) return;
+  const f = heroFrame(HERO_ROW.side, COL_NEUTRAL);
+  titlePortraitCtx.imageSmoothingEnabled = false;
+  titlePortraitCtx.clearRect(0, 0, titlePortrait.width, titlePortrait.height);
+  if (!f || !f.ready) return;
+  titlePortraitCtx.save();
+  titlePortraitCtx.translate(titlePortrait.width, 0);
+  titlePortraitCtx.scale(-1, 1); // side row faces right; mirror to face the logo
+  titlePortraitCtx.drawImage(f.img, 0, 0, titlePortrait.width, titlePortrait.height);
+  titlePortraitCtx.restore();
 }
-continueBtn.addEventListener("click", () => {
-  continueOverlay.hidden = true;
-  resumeFromCheckpoint(existingSave);
-  introActive = false;
-  attackQueued = false;
+
+// The title screen (shared/title-screen.js) is the real boot gate — nothing
+// plays until Start or Continue is pressed there. Start erases any existing
+// checkpoint and plays the chapter-intro cutscene before a new run; Continue
+// skips the cutscene (a returning player has read it once already) and
+// resumes straight into the last checkpoint. The shared module owns only
+// showing/hiding the title layer and deciding whether Continue is offered —
+// this save's shape and what happens on each button are Dog Punk's own.
+const TITLE = window.GCTitleScreen.create(GAME_ID, {
+  layerEl: titleLayer,
+  startBtn: titleStart,
+  continueBtn: titleContinue,
+  hasSave: () => !!SAVES.read(1),
+  continueLabel: () => {
+    const save = SAVES.read(1);
+    return save ? `Continue — ${ROOMS[save.roomIndex].name}` : "Continue";
+  },
+  onShow: drawTitlePortrait,
+  onStart: () => {
+    SAVES.erase(1);
+    introActive = true;
+    introOverlay.hidden = false;
+    renderIntro();
+  },
+  onContinue: () => {
+    resumeFromCheckpoint(SAVES.read(1));
+    introActive = false;
+    attackQueued = false;
+  },
 });
-continueRestartBtn.addEventListener("click", () => {
-  SAVES.erase(1);
-  continueOverlay.hidden = true;
-  introOverlay.hidden = false;
-  renderIntro();
-});
+TITLE.show();
 
 function showRoomToast(text) {
   if (!roomToastEl) return;

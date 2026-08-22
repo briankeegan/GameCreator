@@ -28,8 +28,6 @@ window.NewseyMenu = (function () {
   var toastEl = document.getElementById("menuToast");
 
   var current = null;       // which screen is showing, or null when playing
-  var fileMode = "play";    // play | copy | erase — the classic three-mode file select
-  var copySource = null;    // slot being copied FROM, once one is picked
   var onConfirm = null;
 
   // ---------- screen plumbing ----------
@@ -38,7 +36,7 @@ window.NewseyMenu = (function () {
     layer.hidden = false;
     Object.keys(screens).forEach(function (k) { screens[k].hidden = k !== name; });
     hideConfirm();
-    if (name === "files") renderFiles();
+    if (name === "files") FILES.render();
     if (name === "pause") renderPauseMeta();
     if (name === "help") window.NewseySettings.refresh();
   }
@@ -95,30 +93,26 @@ window.NewseyMenu = (function () {
   });
 
   // ---------- file select ----------
+  // The mode state machine and the copy/erase interaction now live in
+  // shared/file-select.js — none of that logic ever touched what a Newsey
+  // save actually looks like. What stays here is Newsey's own: what a slot
+  // shows (room name, playtime, duels won) and its own themed confirm().
   function roomName(id) { return (ROOMS[id] && ROOMS[id].label) || "Somewhere"; }
 
-  function renderFiles() {
-    filesTitle.textContent = fileMode === "play" ? "SELECT FILE"
-      : fileMode === "copy" ? "COPY FILE" : "ERASE FILE";
-    fileList.innerHTML = "";
-    SAVES.list().forEach(function (slot) {
-      var btn = document.createElement("button");
-      btn.className = "file-slot" + (slot.data ? "" : " empty");
-      if (copySource === slot.index) btn.classList.add("selected");
-      var num = document.createElement("span");
-      num.className = "file-num";
-      num.textContent = slot.index;
-      btn.appendChild(num);
+  var MODE_TITLES = { play: "SELECT FILE", copy: "COPY FILE", erase: "ERASE FILE" };
 
+  var FILES = window.GCFileSelect.create("the-game", {
+    saves: SAVES,
+    listEl: fileList,
+    noteEl: fileNote,
+    modeButtons: document.querySelectorAll("#menuFiles .mode-btn"),
+    renderSlotBody: function (slot) {
       var body = document.createElement("span");
-      body.className = "file-body";
       if (slot.data) {
         var wins = Object.keys(slot.data.duelsWon || {}).reduce(function (n, k) {
           return n + slot.data.duelsWon[k];
         }, 0);
-        body.innerHTML =
-          '<span class="file-where"></span>' +
-          '<span class="file-stats"></span>';
+        body.innerHTML = '<span class="file-where"></span><span class="file-stats"></span>';
         body.querySelector(".file-where").textContent =
           slot.data.introSeen ? roomName(slot.data.room) : "Just beginning…";
         body.querySelector(".file-stats").textContent =
@@ -127,67 +121,24 @@ window.NewseyMenu = (function () {
         body.innerHTML = '<span class="file-where"></span>';
         body.querySelector(".file-where").textContent = "— EMPTY —";
       }
-      btn.appendChild(body);
-      btn.addEventListener("click", function () { pickFile(slot); });
-      fileList.appendChild(btn);
-    });
-    fileNote.textContent =
-      fileMode === "play" ? "Pick a file to play. An empty file starts a new game."
-      : fileMode === "copy" ? (copySource ? "Now pick where to copy File " + copySource + "." : "Pick the file to copy.")
-      : "Pick a file to erase. This can't be undone.";
-    document.querySelectorAll("#menuFiles .mode-btn").forEach(function (b) {
-      b.classList.toggle("on", b.dataset.mode === fileMode);
-    });
-  }
-
-  function pickFile(slot) {
-    if (fileMode === "erase") {
-      if (!slot.data) { toast("That file is already empty."); return; }
-      confirm("Erase File " + slot.index + "? Everything on it is gone for good.", "ERASE", function () {
-        SAVES.erase(slot.index);
-        toast("File " + slot.index + " erased.");
-        renderFiles();
-      });
-      return;
-    }
-    if (fileMode === "copy") {
-      if (copySource === null) {
-        if (!slot.data) { toast("Nothing on that file to copy."); return; }
-        copySource = slot.index;
-        renderFiles();
-        return;
-      }
-      if (slot.index === copySource) { copySource = null; renderFiles(); return; }
-      var doCopy = function () {
-        SAVES.copy(copySource, slot.index);
-        toast("Copied to File " + slot.index + ".");
-        copySource = null;
-        fileMode = "play";
-        renderFiles();
-      };
-      if (slot.data) confirm("File " + slot.index + " already has a game on it. Overwrite it?", "OVERWRITE", doCopy);
-      else doCopy();
-      return;
-    }
-    // play
-    if (!slot.data) { startFile(slot.index, true); return; }
-    startFile(slot.index, false);
-  }
-
-  document.querySelectorAll("#menuFiles .mode-btn").forEach(function (b) {
-    b.addEventListener("click", function () {
-      fileMode = b.dataset.mode;
-      copySource = null;
-      renderFiles();
-    });
+      return body;
+    },
+    onPlay: function (index, isNew) { startFile(index, isNew); },
+    confirm: function (text, yesLabel, fn) { confirm(text, yesLabel, fn); },
+    onMessage: toast,
+    // filesTitle isn't file-select's concern (it's not even inside its list
+    // container) — kept here, driven off FILES.mode() on every re-render,
+    // including the ones triggered internally by erase/copy/mode-switch.
+    onRender: function () { filesTitle.textContent = MODE_TITLES[FILES.mode()]; },
   });
+
   document.getElementById("filesBack").addEventListener("click", function () {
-    fileMode = "play"; copySource = null;
+    FILES.setMode("play");
     showTitle();
   });
 
   function startFile(slot, fresh) {
-    fileMode = "play"; copySource = null;
+    FILES.setMode("play");
     window.NewseyGame.beginFile(slot, fresh);
     hide();
   }

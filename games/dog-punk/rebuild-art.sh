@@ -20,7 +20,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 echo "== the hero's walk sheet =="
-python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_sheet.png --row games/dog-punk/art-src/hero_front_raw.png --row games/dog-punk/art-src/hero_side_raw.png --row games/dog-punk/art-src/walk_back_v13_raw.png --build-steps 0,2
+python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_sheet.png --row games/dog-punk/art-src/hero_front_raw.png --row games/dog-punk/art-src/hero_side_raw.png --row games/dog-punk/art-src/hero_back_raw.png --build-steps 0,2
 
 echo "== clean the attack raws (see note below) =="
 # NAMING FIX: this used to clean hero_atk_<view>_raw.png (the OLD naming, from
@@ -117,16 +117,19 @@ echo "done."
 # Raw generations live in games/dog-punk/art-src/. The shipped sheets are
 # rebuilt from them with the shared cutter (.github/art/build_sheet.py), never
 # hand-edited:
-# Those commands reproduce the shipped sheets byte for byte. The front and
-# side walk rows were regenerated together against lockedColours
-# (hero_front_raw / hero_side_raw); the BACK row is still walk_back_v13_raw,
-# because three attempts at a new one came back as the documented orange-lump
-# back view (head merged into the shoulders, jacket dropped to the hips) and
-# they are kept in art-src/rejected/ so the next attempt can see what to beat.
-# The ATTACK sheet has not been regenerated against lockedColours yet: its fur
-# sits one palette step darker (#e0791c) than the walk sheet's (#f0a35a) and
-# its jacket loses its sleeves, so it is the next art job here — three rows,
-# one generation each. --build-steps 0,2 builds the front and back rows' TWO
+# Those commands reproduce the shipped sheets byte for byte. All six rows
+# (walk front/side/back, attack front/side/back) were regenerated together in
+# one coordinated pass so the two sheets would actually match each other
+# instead of pairing a fresh attack sheet against a walk sheet from a
+# different, older generation session — a real problem caught live: fixing
+# only the attack sheet's documented drift (fur one palette step darker than
+# walk's, jacket losing its sleeves) still left it generated in a different
+# session from the walk sheet, with no guarantee the two would read as the
+# same dog side by side. Earlier attempts at a fresh walk-back row came back
+# as the documented orange-lump view (head merged into the shoulders, jacket
+# dropped to the hips) — failed attempts are kept in art-src/rejected/ so the
+# next one can see what to beat, should this row ever need a redo.
+# --build-steps 0,2 builds the front and back rows' TWO
 # STEP FRAMES from their standing frame by lifting each leg in turn, because
 # the generator will not draw opposite steps — six front rows in a row lifted
 # the same foot twice. Only the middle frame of those rows has to be drawn

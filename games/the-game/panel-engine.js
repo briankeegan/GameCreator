@@ -493,6 +493,8 @@
     this.currentChain = null;
     this.nActive = 0;
     this.nPrevActive = 0;
+    this.swappingCount = 0;
+    this.swapStallBacklog = [];
     this.panelsCleared = 0;
     this.score = 0;
 
@@ -1074,9 +1076,53 @@
     return true;
   };
 
+  // ---- swap stalling (common/engine/WigglePay.lua in the reference engine)
+  // ----
+  // Topped out, a player who keeps swapping the SAME two cells back and
+  // forth ("wiggling") can stall death indefinitely for free: each swap
+  // sets that cell's panel to "swapping" for a few frames, which keeps
+  // hasActivePanels() true, which keeps riseLock true, which is exactly
+  // the condition advancePassiveRaise's health drain is gated behind —
+  // reported live as "you don't die when topped out". The reference
+  // engine's default behaviour (StackBehaviours.getV049Default:
+  // swapStallingMode 1, swapStallingPunish 4) exists specifically to close
+  // this: the first escape swap at a cell pair is free, but reversing that
+  // exact swap again (which is what a wiggle is) costs health, or is
+  // refused outright if there isn't enough left to pay for it. Simplified
+  // from the original's per-panel-id backlog to a plain (row, col) key —
+  // this port has no panel ids and no rollback netcode to be careful of,
+  // just the reported exploit: staying alive forever by wiggling.
+  var SWAP_STALLING_PUNISH = 4;
+
+  Stack.prototype.wigglePayActive = function () {
+    return this.wasToppedOut && this.stopTime === 0 && this.shakeTime === 0 &&
+      (this.nActive - this.swappingCount) === 0;
+  };
+
+  // Charges health for a repeated stalling swap, or refuses it outright
+  // when there isn't enough health to pay for it. Returns false only in
+  // the refusal case — tryQueueSwap must not queue the swap then.
+  Stack.prototype.applySwapStalling = function (row, col) {
+    if (!this.wigglePayActive()) {
+      this.swapStallBacklog.length = 0; // any non-stalling swap resets the log
+      return true;
+    }
+    for (var i = 0; i < this.swapStallBacklog.length; i++) {
+      var rec = this.swapStallBacklog[i];
+      if (rec.row === row && rec.col === col) {
+        if (this.health <= SWAP_STALLING_PUNISH) return false;
+        this.health -= SWAP_STALLING_PUNISH;
+        return true;
+      }
+    }
+    this.swapStallBacklog.push({ row: row, col: col });
+    return true;
+  };
+
   Stack.prototype.tryQueueSwap = function (row, col) {
     if (this.gameOver) return false;
     if (!this.canSwap(row, col)) return false;
+    if (!this.applySwapStalling(row, col)) return false;
     this.queuedSwapRow = row;
     this.queuedSwapCol = col;
     return true;

@@ -79,15 +79,13 @@
  },
  "hero_back_atk_raw.png": {
   "background": "opaque",
-  "model": "gpt-image-1",
-  "note": "backfilled from commit time, not recorded at generation",
+  "model": "gpt-image-2",
   "quality": "medium",
   "size": "1536x1024"
  },
  "hero_back_raw.png": {
   "background": "opaque",
-  "model": "gpt-image-1",
-  "note": "backfilled from commit time, not recorded at generation",
+  "model": "gpt-image-2",
   "quality": "medium",
   "size": "1536x1024"
  },
@@ -106,8 +104,7 @@
  },
  "hero_front_raw.png": {
   "background": "opaque",
-  "model": "gpt-image-1",
-  "note": "backfilled from commit time, not recorded at generation",
+  "model": "gpt-image-2",
   "quality": "medium",
   "size": "1536x1024"
  },
@@ -140,8 +137,7 @@
  },
  "hero_side_raw.png": {
   "background": "opaque",
-  "model": "gpt-image-1",
-  "note": "backfilled from commit time, not recorded at generation",
+  "model": "gpt-image-2",
   "quality": "medium",
   "size": "1536x1024"
  },

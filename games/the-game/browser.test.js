@@ -195,7 +195,14 @@ async function bootWithSave(page, url, patchSave) {
       "he actually walked to his real resting spot, not just teleported there"
     );
 
-    await clickAdvance(page, 7, 250); // Chuck's 6 lines
+    // He's already talking (lineIndex 0) the instant he arrives — no "open"
+    // click needed, unlike the door/TV, which show line 0 only after an
+    // explicit interact. 6 lines need exactly 6 more advances to finish; a
+    // click past that isn't a no-op — the canvas's click handler calls
+    // tryInteract() whenever nothing is being said, so an extra click while
+    // still standing next to Chuck reopens him at his last line instead of
+    // leaving talking null.
+    await clickAdvance(page, 6, 250);
     s = await getState(page);
     assert.strictEqual(s.talking, null, "Chuck's dialogue finishes cleanly");
 

@@ -96,7 +96,7 @@
           "base": "#ff5c9a",
           "shade": "#e8306f",
           "appears": "always",
-          "note": "A TALL upright hot-pink crest, unmissable, visible from behind and mid-attack. NOT a flat cap, NOT a beret, NOT a swept-back crest — it flattened into a cap in two separate attack sheets, and it is the single feature that makes her recognisable at 32px."
+          "note": "A TALL upright hot-pink crest, unmissable, visible from behind and mid-attack, running the height of the head from the nape to well above the ears — NOT a thin sliver, NOT a short tuft. Measured (Python/PIL, mohawk-colour pixels as % of sprite area) the walk sheet's back-view crest came back at roughly HALF the area of the attack sheet's back-view crest from the same character, same camera — draw it as large and dominant as the attack sheet's back view every time, not a smaller or shyer version. Also keep the BRIGHT base pink (#ff5c9a) as the dominant tone, with the darker shade (#e8306f) only as a thin edge — a crest that comes back mostly the darker shade reads as a duller, less saturated pink than the other views. NOT a flat cap, NOT a beret, NOT a swept-back crest — it flattened into a cap in two separate attack sheets, and it is the single feature that makes her recognisable at 32px."
         },
         "jacket": {
           "base": "#2a2e38",

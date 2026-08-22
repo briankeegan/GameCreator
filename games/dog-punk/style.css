@@ -117,6 +117,73 @@ body {
   touch-action: none;
 }
 
+/* The boot gate — covers the whole game-area (hud + board + touch controls)
+   until Start/Continue is pressed. Same [hidden]-must-win-the-cascade rule
+   as .run-overlay below, for the same reason. */
+.title-layer[hidden] { display: none; }
+.title-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  /* SOLID, not a gradient: a radial-gradient's falloff on a wide, short box
+     stays partially translucent for a while near the top/bottom edges (its
+     ellipse is sized to the farthest CORNER, so straight up/down from
+     centre reaches full opacity much later than the stop percentage
+     suggests) — this let the HUD bleed through faintly behind it, an
+     overlay that isn't showing has to actually vanish, not sit
+     mostly-invisible-until-it-isn't (same rule as .run-overlay[hidden]
+     above, discovered here for backgrounds instead of the hidden
+     attribute). The mohawk pink (#ff5c9a, Beverly's one unmistakable
+     colour) still carries the identity — via the portrait's glow and the
+     logo below — without betting on gradient maths lining up. */
+  background: #14121a;
+  color: #eef0e2;
+}
+.title-portrait {
+  width: 96px;
+  height: 96px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  filter: drop-shadow(0 0 14px rgba(255, 92, 154, 0.55));
+}
+.title-logo {
+  font-size: 2.6rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #eef0e2;
+  transform: skewX(-6deg);
+  text-shadow: 3px 3px 0 #14121a;
+}
+.title-logo span {
+  color: #ff5c9a;
+  text-shadow: 3px 3px 0 #14121a, 0 0 18px rgba(255, 92, 154, 0.6);
+}
+.title-start {
+  background: #ff5c9a;
+  color: #2f2013;
+  border: none;
+  font-weight: 700;
+  padding: 12px 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+.title-continue {
+  background: transparent;
+  color: #f2b179;
+  border: 2px solid #f2b179;
+  font-weight: 700;
+  padding: 10px 30px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
 /* display:flex below would silently override the `hidden` attribute (same
    specificity beats the UA [hidden] rule) — an overlay that isn't showing
    must actually vanish, not sit flexed-and-invisible-until-it-isn't. */
