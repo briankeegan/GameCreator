@@ -675,9 +675,26 @@
     }
   };
 
-  // A color for a row of panels converted from cleared garbage.
-  Stack.prototype.garbagePanelColor = function () {
-    return 1 + Math.floor(this.rng() * this.colors);
+  // GeneratorSource:clone always constructs the garbage-panel generator at
+  // adjacentDenialFrequency 1, regardless of level — so unlike the main
+  // board, colors converted from cleared garbage never repeat the color
+  // immediately before them, no exceptions. Since frequency>=1 makes the
+  // horizontal-adjacency check an unconditional deny, the 3rd-in-a-row rule
+  // (which only exists to catch what the 2nd-in-a-row check would otherwise
+  // let through) never actually triggers — so this reduces to "never match
+  // the previous pick." Converted colors don't correlate with vertical
+  // neighbors the way board rows do (garbage panel generation is its own
+  // independent stream in the reference), so there's no neighbor-row ban.
+  Stack.prototype.garbageRowColors = function (count) {
+    var colors = [];
+    for (var n = 0; n < count; n++) {
+      var color;
+      do {
+        color = 1 + Math.floor(this.rng() * this.colors);
+      } while (n > 0 && color === colors[n - 1]);
+      colors.push(color);
+    }
+    return colors;
   };
 
   Stack.prototype.panelAt = function (row, col) {
@@ -916,15 +933,22 @@
   };
 
   // The bottom row of cleared garbage takes on real colors (it turns into
-  // panels when its matched timer runs out).
+  // panels when its matched timer runs out). Colors are generated a whole
+  // converting row at a time (see garbageRowColors) rather than cell by
+  // cell, so the adjacency rule actually has neighbors to compare against.
   Stack.prototype.convertGarbagePanels = function (isChain) {
     for (var row = 1; row < this.panels.length; row++) {
+      var cols = [];
       for (var col = 1; col <= W; col++) {
         var p = this.panels[row][col];
-        if (p.yOffset === -1 && p.color === 9) {
-          p.color = this.garbagePanelColor();
-          if (isChain) p.chaining = true;
-        }
+        if (p.yOffset === -1 && p.color === 9) cols.push(col);
+      }
+      if (!cols.length) continue;
+      var colors = this.garbageRowColors(cols.length);
+      for (var i = 0; i < cols.length; i++) {
+        var panel = this.panels[row][cols[i]];
+        panel.color = colors[i];
+        if (isChain) panel.chaining = true;
       }
     }
   };
