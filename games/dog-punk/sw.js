@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("dog-punk-v42", [
+GCRegisterServiceWorker("dog-punk-v43", [
   "./",
   "./index.html",
   "./style.css",

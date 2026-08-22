@@ -116,6 +116,14 @@
     "2......P.......2",
     "2222222HH2222222",
   ];
+  // 2026-08-22 (puzzle pass) — Bridge USED TO be one crate, two rows below
+  // its one switch: push up twice and done, no thought required, which is
+  // why solving it read as "the same trivial nudge" rather than a puzzle at
+  // all. Now TWO crates must BOTH be resting on TWO switches at once (see
+  // isGateOpen's `every`, not `some`) and they don't take the same push:
+  // the row-6 crate still goes north onto its switch like before, but the
+  // row-8 crate must be pushed WEST three tiles onto its own switch — two
+  // genuinely different pushes in the same room, not one puzzle doubled.
   const BRIDGE_MAP = [
     "2222222GG2222222",
     "2......B.......2",
@@ -125,7 +133,7 @@
     "HP.............2",
     "H......X...3...2",
     "2..............2",
-    "2..3.......4...2",
+    "2..3..S..X.....2",
     "2..............2",
     "2..............2",
     "2222222222222222",
@@ -205,8 +213,9 @@
     "2..............2",
     "2222222222222222",
   ];
-  // Rail Switchyard: a straight fight (no switch hunt — see COURTYARD_MAP)
-  // between the Overpass push puzzle and the Drone Nest's sequence puzzle.
+  // Rail Switchyard: a "guard" room (see the puzzle-variety note above the
+  // ROOMS list) between the Overpass push puzzle and the Drone Nest's
+  // sequence puzzle — one drone here carries the key, not a plate anywhere.
   const SWITCHYARD_MAP = [
     "2222222222222222",
     "2..............2",
@@ -266,6 +275,12 @@
     "2......P.......2",
     "2222222HH2222222",
   ];
+  // Foundry's original crate/switch pair (row7 col5 -> row4 col7) was
+  // already an L-shaped push (right, then up) rather than a straight line,
+  // so it stays as-is; a second, independent crate/switch pair is added on
+  // row9 needing a straight push WEST instead, so Foundry asks for an
+  // L-push AND a straight push in the same room rather than repeating
+  // Bridge's own pair of pushes.
   const FOUNDRY_MAP = [
     "2222222GG2222222",
     "2......B.......2",
@@ -276,7 +291,7 @@
     "H..3........3..2",
     "2.....X........2",
     "2..............2",
-    "2..4........4..2",
+    "2..4.S..X...4..2",
     "2..............2",
     "2222222222222222",
   ];
@@ -324,19 +339,35 @@
   // to be the exact same mechanic (`type: "switches"`, find 3 plates in any
   // order) with only the floor pattern changed, which is why solving it a
   // third and fourth time read as "the puzzles are repeated" rather than as
-  // three different puzzles. Puzzle rooms are now spread across FOUR distinct
-  // mechanics and cut from 9 of 15 rooms to 6, so most of the chapter is
-  // straight combat with a puzzle as a change of pace, not the default:
-  //   - "push"     Bridge, Foundry (2 rooms) — shove the crate onto the plate.
+  // three different puzzles.
+  //
+  // 2026-08-22 (puzzle pass) — even after that split into four mechanics,
+  // "push" was still trivial (one crate, two tiles, one direction) and
+  // "switches"/"sequence" were both still fundamentally "walk onto the
+  // marked floor tile" underneath, which is why the complaint came back:
+  // more VARIANTS of the same verb still reads as repeated. This pass (a)
+  // makes both "push" rooms genuinely harder — TWO crates on TWO switches
+  // AT ONCE (isGateOpen uses `every`, not `some`), each needing a different
+  // push direction, not the same nudge twice — and (b) adds a FIFTH
+  // mechanic, "guard", that isn't plate-stepping at all: a specific marked
+  // enemy carries a key, and the gate needs that enemy dead and its key
+  // physically picked up, same as clearing the room but with one intent
+  // ("find and take out THAT one") instead of none. Five mechanics across
+  // 8 of 15 rooms now, no two adjacent puzzle rooms sharing one:
+  //   - "push"     Bridge, Foundry (2 rooms) — TWO crates onto TWO plates.
   //   - "switches" Back Gate, Town Gate (2 rooms) — find 3 plates, any order;
   //                kept ONLY for these two zone-ending gates so the "you must
   //                search the room" beat still exists, just not six times.
-  //   - "sequence" Drone Nest, Smelter (2 rooms) — NEW: the same 3-plate idea,
+  //   - "sequence" Drone Nest, Smelter (2 rooms) — the same 3-plate idea,
   //                but numbered and order-enforced (see drawSwitchPlate/
   //                isGateOpen/puzzleStatus) — a real step up in what the
   //                puzzle is asking, not a reskin of "switches".
-  //   - "clear"    the other 9 rooms — Junk Courtyard and Rail Switchyard
-  //                used to be "switches" rooms and are now straight fights.
+  //   - "guard"    Scrap Catwalk, Rail Switchyard (2 rooms) — NEW: kill the
+  //                marked enemy, collect the key it drops, THEN the room's
+  //                a normal "clear" gate (see isGateOpen/render/update's
+  //                key-drop section in app.js). No plate anywhere in it.
+  //   - "clear"    the other 7 rooms — straight fights, still the default
+  //                so a puzzle is a change of pace, not wall-to-wall.
   const ROOMS = [
     {
       id: "alley",
@@ -349,9 +380,14 @@
       id: "catwalk",
       name: "Scrap Catwalk",
       map: CATWALK_MAP,
-      type: "clear",
+      // "guard" (NEW, see the puzzle-variety note above the ROOMS list):
+      // one marked rat (a pulsing gold ring, see render()) carries the key
+      // — kill it, walk over the key it drops, gate opens once you're
+      // holding it AND every rat is down. Not a plate to find, a specific
+      // target to pick out of a fight.
+      type: "guard",
       enemySpawns: [
-        { c: 5, r: 3, type: "rat" },
+        { c: 5, r: 3, type: "rat", carriesKey: true },
         { c: 10, r: 3, type: "rat" },
         { c: 7, r: 7, type: "rat" },
         { c: 3, r: 9, type: "rat" },
@@ -361,7 +397,7 @@
       id: "bridge",
       name: "Junk Bridge",
       map: BRIDGE_MAP,
-      type: "push", // gate opens once a crate rests on a switch tile AND enemies are cleared
+      type: "push", // gate opens once BOTH crates rest on their own switch AND enemies are cleared
       enemySpawns: [{ c: 3, r: 2, type: "rat" }, { c: 12, r: 8, type: "rat" }],
     },
     {
@@ -418,11 +454,16 @@
       id: "switchyard",
       name: "Rail Switchyard",
       map: SWITCHYARD_MAP,
-      // A straight fight, not a third find-any-order switch room — see the
-      // puzzle-variety note above the ROOMS list.
-      type: "clear",
+      // "guard" again (see Catwalk), Rail Yard's own copy of the mechanic —
+      // a controller drone is the one holding the key this time, not a rat,
+      // so the target actually fits the room it's in.
+      type: "guard",
       tint: TINT_RAIL,
-      enemySpawns: [{ c: 4, r: 3, type: "drone" }, { c: 11, r: 3, type: "drone" }, { c: 7, r: 8, type: "drone" }],
+      enemySpawns: [
+        { c: 4, r: 3, type: "drone", carriesKey: true },
+        { c: 11, r: 3, type: "drone" },
+        { c: 7, r: 8, type: "drone" },
+      ],
     },
     {
       id: "droneNest",
