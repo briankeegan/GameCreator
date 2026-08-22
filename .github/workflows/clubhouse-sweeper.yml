@@ -88,8 +88,22 @@ jobs:
               cid=$(printf '%s' "$c"  | jq -r '.id')
               made=$(printf '%s' "$c" | jq -r '.created_at')
 
-              case "$body" in '**Claude says:**'*) echo "PR #$pr ($gid): answered."; continue;; esac
-              if [ "$type" = "Bot" ]; then echo "PR #$pr ($gid): last comment is a bot's — skipping."; continue; fi
+              # A finished reply always starts "**Claude says:**" — that's
+              # answered. status.sh's own live-progress comment starts
+              # "**Claude is working:**" and is ALSO bot-authored, so it used
+              # to fall into the generic "last comment is a bot's, skip"
+              # branch below — meaning a run that crashed after posting its
+              # working-status update but before ever replying left a thread
+              # permanently un-sweepable, forever, regardless of age. That
+              # comment means the opposite of answered: treat it as
+              # unanswered and fall through to the age check. Only OTHER
+              # bot comments (not ours, e.g. some unrelated integration)
+              # are skipped outright.
+              case "$body" in
+                '**Claude says:**'*) echo "PR #$pr ($gid): answered."; continue;;
+                '**Claude is working:**'*) : ;;
+                *) if [ "$type" = "Bot" ]; then echo "PR #$pr ($gid): last comment is a bot's — skipping."; continue; fi ;;
+              esac
 
               age=$(( (now - $(date -u -d "$made" +%s)) / 60 ))
               if [ "$age" -lt "$GRACE" ]; then
@@ -97,27 +111,42 @@ jobs:
                 continue
               fi
 
-              # Claim it. If the marker is already there, a previous sweep took
-              # this one and we do not dispatch again.
+              # If the marker is already there, a previous sweep took this one
+              # and we do not dispatch again.
               if gh api "repos/$REPO/issues/comments/$cid/reactions" \
                    --jq '.[] | select(.content == "eyes") | .user.login' 2>/dev/null | grep -q .; then
                 echo "PR #$pr ($gid): comment $cid already swept — not re-dispatching."
                 continue
               fi
+
+              # Dispatch BEFORE claiming, not after. Claiming first (the
+              # original order) meant a dispatch call that failed right after
+              # a successful claim left the comment permanently marked
+              # "swept" while the autopilot was never actually triggered —
+              # invisible and unrecoverable, since every future sweep would
+              # see the marker and skip it forever. Dispatching first means
+              # the failure mode of a flaky `gh workflow run` call is just
+              # "try again next sweep" instead of "silently drop this
+              # message forever". The sweeper's own concurrency group
+              # (cancel-in-progress, see top of file) rules out two sweeps
+              # racing each other, so there's no double-dispatch risk from
+              # reordering this.
+              echo "::warning::PR #$pr ($gid): message ${age}m old and unanswered — the event path did not handle it. Dispatching autopilot."
+              if ! gh workflow run clubhouse-autopilot.yml --ref main \
+                     -f pr_number="$pr" \
+                     -f message="(backstop sweep — this thread has an unanswered message; address all outstanding requests in it)" \
+                     -f attempt="1"; then
+                echo "::error::sweeper could not dispatch autopilot for PR #$pr — leaving it unclaimed so the next sweep retries."
+                continue
+              fi
               if ! err=$(gh api --method POST -H "Accept: application/vnd.github+json" \
                            "repos/$REPO/issues/comments/$cid/reactions" \
                            -f content=eyes 2>&1 >/dev/null); then
-                # Surface WHY, not just that it failed: without the marker the
-                # exactly-once bound is gone, so this must not fail quietly.
-                echo "::error::could not mark comment $cid as claimed — dispatching anyway, but this message can be swept again: $err"
+                # Dispatch already succeeded, so this is a minor miss, not a
+                # lost message: worst case the next sweep dispatches again
+                # for a run that's already in flight or done, not never.
+                echo "::warning::dispatched PR #$pr but could not mark comment $cid as claimed — it may be swept (and dispatched) again next cycle: $err"
               fi
-
-              echo "::warning::PR #$pr ($gid): message ${age}m old and unanswered — the event path did not handle it. Dispatching autopilot."
-              gh workflow run clubhouse-autopilot.yml --ref main \
-                -f pr_number="$pr" \
-                -f message="(backstop sweep — this thread has an unanswered message; address all outstanding requests in it)" \
-                -f attempt="1" \
-                || echo "::error::sweeper could not dispatch autopilot for PR #$pr"
             done
 
           echo "Sweep complete."

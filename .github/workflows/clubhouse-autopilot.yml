@@ -111,6 +111,7 @@ jobs:
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
+        timeout-minutes: 5
         with:
           ref: main
           fetch-depth: 0
@@ -120,12 +121,14 @@ jobs:
       # attempt 1 (a real message) never waits.
       - name: Retry backoff
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.attempt != '1'
+        timeout-minutes: 12
         run: |
           echo "Automatic retry (attempt ${{ github.event.inputs.attempt }}/3) — waiting 10 min for transient issues to clear."
           sleep 600
 
       - name: Set up Node
         uses: actions/setup-node@v4
+        timeout-minutes: 5
         with:
           node-version: '22'
 
@@ -168,6 +171,7 @@ jobs:
       # the event type.
       - id: ctx
         name: Resolve thread context
+        timeout-minutes: 5
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -283,6 +287,7 @@ jobs:
       # which is the mistake the first version of this made.
       - name: Restore thread digests
         uses: actions/cache/restore@v4
+        timeout-minutes: 3
         with:
           path: .autopilot/digests.json
           key: clubhouse-digests-${{ steps.ctx.outputs.pr }}-${{ github.run_id }}
@@ -319,6 +324,7 @@ jobs:
       - name: Save thread digests
         if: always()
         uses: actions/cache/save@v4
+        timeout-minutes: 3
         with:
           path: .autopilot/digests.json
           key: clubhouse-digests-${{ steps.ctx.outputs.pr }}-${{ github.run_id }}
@@ -1016,6 +1022,7 @@ jobs:
       # the stamp shows the version that is genuinely live, not this one).
       - name: Post Claude's reply to the thread
         if: success() && steps.ctx.outputs.enabled == 'true'
+        timeout-minutes: 3
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -1152,7 +1159,8 @@ jobs:
           if [ -n "$fatal" ]; then
             echo "::error::not retrying — $err"
             gh pr comment ${{ steps.ctx.outputs.pr }} --repo "$REPO" \
-              --body "$(printf '**Claude says:**\n\n%s' "$fatal")"
+              --body "$(printf '**Claude says:**\n\n%s' "$fatal")" \
+              || echo "::error::could not post the fatal-error reply — the thread's last comment is still the working-status marker; the sweeper will pick this up in the next 15-min cycle."
             exit 0
           fi
 
@@ -1168,7 +1176,8 @@ jobs:
               -f attempt="$NEXT" \
               || echo "::warning::could not schedule retry"
             gh pr comment ${{ steps.ctx.outputs.pr }} --repo "$REPO" \
-              --body "$(printf '**Claude says:**\n\nThat run hit a snag — retrying automatically (attempt %s of %s). Give it about 10 minutes.' "$NEXT" "$MAX")"
+              --body "$(printf '**Claude says:**\n\nThat run hit a snag — retrying automatically (attempt %s of %s). Give it about 10 minutes.' "$NEXT" "$MAX")" \
+              || echo "::error::could not post the retry-scheduled reply — the thread's last comment is still the working-status marker; the sweeper will pick this up in the next 15-min cycle."
           else
             # Out of retries — surface the specific diagnostic if a step wrote
             # one (e.g. the smoke test), else a generic message + run link.
@@ -1178,5 +1187,6 @@ jobs:
               body=$(printf 'Something went wrong while handling that. Details: %s/%s/actions/runs/%s' "${{ github.server_url }}" "$REPO" "${{ github.run_id }}")
             fi
             gh pr comment ${{ steps.ctx.outputs.pr }} --repo "$REPO" \
-              --body "$(printf '**Claude says:**\n\nI tried %s times and still could not get this to go through, so I have stopped to avoid burning more on it — a human should take a look.\n\n%s' "$MAX" "$body")"
+              --body "$(printf '**Claude says:**\n\nI tried %s times and still could not get this to go through, so I have stopped to avoid burning more on it — a human should take a look.\n\n%s' "$MAX" "$body")" \
+              || echo "::error::could not post the out-of-retries reply — the thread's last comment is still the working-status marker; the sweeper will pick this up in the next 15-min cycle."
           fi
