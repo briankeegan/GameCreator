@@ -255,6 +255,27 @@ exits" step in `pages.yml`. The art half is measured by
 
 ## 5. Arriving without bouncing back
 
+- **STEPPING CLEAR IS NO LONGER THE GATE — RELEASING THE KEY IS.** That rule
+  was written when arrival was a spot NEAR the door. Now you land ON it, so
+  "armed only once you are off every trigger" meant standing in a doorway
+  unable to use it: go through a door, turn round, walk back, and nothing
+  happens. Reported from play as getting stuck.
+  - Releasing is enough on its own. You arrive holding the direction that
+    brought you here, which is the OPPOSITE of the way this door faces, so it
+    cannot re-fire under a held key. Let go, press back, and you go back.
+  - Checked by `.github/scripts/door-roundtrip.test.js`: through a door, back
+    again, and through once more.
+- **A door transition is a FADE, and nothing may be shown half-loaded.**
+  Walking into a room while its art was still arriving showed the floor first
+  and then the props and people appearing one at a time — the game assembling
+  itself in front of the player. `whenRoomReady` holds the screen black until
+  the room's background, every prop and NPC id, and the walk mask are in, then
+  lifts. A missing file counts as ready (it degrades to placeholder art by
+  design), and there is a 3s cap so a slow asset shows late rather than never.
+  - A transition is now long enough to overlap another one, so it takes a
+    `transitioning` guard. Without it a second door can fire mid-fade and the
+    two arrivals fight over where you end up.
+
 - **Doors arrive DISARMED and re-arm only when you step clear of them.**
   Otherwise arriving in a doorway immediately throws you back through it.
 - **Stepping clear is not enough on its own: the door also stays shut until you
