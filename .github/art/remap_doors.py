@@ -423,11 +423,19 @@ def main():
                          "so its proposals are advice and a fuzzy check must not block a "
                          "deploy. A door nobody can enter is a fact, and does.")
     ap.add_argument("--skip", nargs="*", default=[], help="room ids to leave alone")
+    ap.add_argument("--prominence", type=int, default=None,
+                    help="how far a doorway's floor must poke past the rest of its wall "
+                         "before it counts as a doorway, in px (default %d). Lower it for "
+                         "a room whose opening is shallower than most — the Bedroom's is "
+                         "8px — and pair it with --skip so a looser rule is not let loose "
+                         "on rooms whose doors are already right." % NOTCH_PROMINENCE)
     a = ap.parse_args()
     if a.outside is not None:
         globals()["OUTSIDE"] = a.outside
     if a.inside is not None:
         globals()["INSIDE"] = a.inside
+    if a.prominence is not None:
+        globals()["NOTCH_PROMINENCE"] = a.prominence
 
     rooms = read_rooms(a.game_dir)
     fr = frame(rooms)
