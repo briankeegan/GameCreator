@@ -532,6 +532,16 @@ design discussion. `shared/` holds the components every game reuses
   warning. Never `git reset --hard` or chase "lost work" without doing this
   first — and never assume a hook's git warning is accurate without
   re-fetching, since the hook itself doesn't.
+  **Now also a tool + gate, not just a habit to remember:**
+  `.claude/hooks/session-start-git-sync.sh` (registered as a SessionStart
+  hook in `.claude/settings.json`) fetches origin for the current branch
+  and `main` at the start of every session and fast-forwards automatically
+  when local is behind with no local-only commits — the exact container-
+  reset case above. It deliberately never touches a branch that has
+  local-only commits (ahead, or diverged) — it only reports that gap,
+  since guessing wrong there means losing real work. This closes the loop
+  for the "silently stale checkout" half of the gotcha; the Stop-hook's
+  stale-ref half still needs the manual fetch-before-trusting habit above.
 - **Relay:** one shared Cloudflare Worker (`worker/worker.js`) used by
   every game's Clubhouse and by the Admin page — not one Worker per game.
   Per-game config (secret word + PR number) lives in a KV namespace
