@@ -702,10 +702,17 @@
     return this.panels[row][col];
   };
 
+  // Panel:dangerous — a non-garbage panel counts the instant it has a color,
+  // no matter its state (falling, swapping, matched...); only GARBAGE panels
+  // get a state exemption (falling garbage doesn't count as topped out yet).
+  // Applying the falling exemption to every panel, as this port used to,
+  // is more forgiving than the reference: a non-garbage panel mid-fall
+  // through the top row should already count as toppled.
   Stack.prototype.isToppedOut = function () {
     for (var col = 1; col <= W; col++) {
       var p = this.panels[this.height][col];
-      if (p.color !== 0 && p.state !== "falling") return true;
+      var dangerous = p.isGarbage ? p.state !== "falling" : p.color !== 0;
+      if (dangerous) return true;
     }
     return false;
   };
