@@ -47,4 +47,31 @@ window.GCTouchControls = {
     el.addEventListener("contextmenu", (e) => e.preventDefault());
     el.addEventListener("selectstart", (e) => e.preventDefault());
   },
+
+  // Lock an entire game surface against the same long-press "select +
+  // define/search" popup — NOT just the held buttons bindHold() covers.
+  //
+  // WHY THIS EXISTS. Dog Punk's dpad/attack buttons got the bindHold() fix
+  // and the popup kept happening anyway — because it wasn't firing on the
+  // buttons at all. It was firing on ordinary HUD text (a room name like
+  // "Rail Yard Entrance" in the hud-title/room-toast) that a thumb brushes
+  // while reaching for a button underneath. Any text anywhere in a touch
+  // game's UI is "holdable" from the browser's point of view — a game
+  // surface isn't a document, so nothing on it should be selectable. Call
+  // this once on the game's root container (e.g. #gameArea) in addition to
+  // bindHold() on the actual buttons.
+  //
+  // Usage:
+  //   GCTouchControls.lockSurface(document.getElementById("gameArea"));
+  lockSurface(el) {
+    if (!el) return;
+    // user-select and -webkit-touch-callout both inherit to every
+    // descendant, so setting them once on the container covers the HUD,
+    // toasts, overlays — anything added later needs nothing extra.
+    el.style.userSelect = "none";
+    el.style.webkitUserSelect = "none";
+    el.style.webkitTouchCallout = "none";
+    el.addEventListener("contextmenu", (e) => e.preventDefault());
+    el.addEventListener("selectstart", (e) => e.preventDefault());
+  },
 };

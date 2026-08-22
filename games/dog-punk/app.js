@@ -636,6 +636,8 @@ const settingsResetBtn = document.getElementById("settingsResetBtn");
 const settingsResumeBtn = document.getElementById("settingsResumeBtn");
 const dpad = document.getElementById("dpad");
 const attackBtn = document.getElementById("attackBtn");
+const gameAreaEl = document.getElementById("gameArea");
+window.GCTouchControls.lockSurface(gameAreaEl);
 const roomToastEl = document.getElementById("roomToast");
 const introOverlay = document.getElementById("introOverlay");
 const introTextEl = document.getElementById("introText");
