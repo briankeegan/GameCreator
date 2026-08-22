@@ -216,13 +216,26 @@
   // turns this from a pure-skill puzzle into a luck-and-skill crawl — room to
   // trade Hull for tempo, recover from a bad roll, and let salvage/repairs
   // matter. (Was 1: one-hit permadeath.)
-  // Three. Deliberately unforgiving: hull damage is permanent, repairs
-  // only exist at a dock, and a single mistake is most of the ship. Five
-  // and seven were both tried and both read as too soft — the crawl is
-  // supposed to be survived, not absorbed. What makes three playable
-  // rather than arbitrary is that the gate is always open: you are never
-  // required to trade hits, and a contact you route around costs nothing.
-  const START_HULL = 3;
+  // FIVE, and it moved because the enemies did. Three was right for a
+  // roster where half of it held station and the rest walked at you: hull
+  // damage is permanent, repairs only exist at a dock, and one mistake was
+  // most of the ship. Then every class went to full strength — the archer
+  // reaches five hexes and fires every round, the footman covers all six
+  // hexes touching it, nothing with an engine ever wastes a turn — and the
+  // ship never followed. Measured at three: sixty runs, three finishes,
+  // and half of them dead by Sector 4.
+  //
+  // Five is where the shape comes back rather than where the numbers look
+  // nice. At six the first SEVEN sectors cost nothing at all — sixty runs,
+  // sixty survivors, no attrition, the whole first half a formality. At
+  // five the early sectors wear you down without killing you (five hull in,
+  // 3.7 by depth 8) and the deep end is what ends runs, which is the curve
+  // this game is supposed to have. A quarter of well-flown runs finish.
+  //
+  // What keeps it from being softness is unchanged: the gate is always
+  // open, so you are never required to trade hits, and a contact you route
+  // around still costs nothing.
+  const START_HULL = 5;
 
   // Energy is a second resource, distinct from Hull (permanent damage,
   // repaired only at an Outpost) and salvage (a currency): it regenerates
@@ -1379,7 +1392,9 @@
   // hardpoint unlock a little deeper, so uncommon; mortar/flankTubes/
   // railgun are the late, expensive, run-defining shapes, so rare.
   const OUTPOST_OFFER_POOL = [
-    { id: "repair", label: "Patch 1 Hull", cost: 10 },
+    // Eight, down from ten. Salvage income was rebalanced for a shelf that
+    // tops out at twenty; a patch at ten was priced against the old one.
+    { id: "repair", label: "Patch 1 Hull", cost: 8 },
     { id: "reinforce", label: "Reinforce Hull (+1 Max)", cost: 10, rarity: "common" },
     // Shields aren't consumable purchases anymore — you buy the GENERATOR
     // (permanent +1 capacity, arrives raised), then re-raising a spent
