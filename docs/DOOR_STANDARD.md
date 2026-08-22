@@ -212,6 +212,18 @@ exits" step in `pages.yml`. The art half is measured by
     game: standing on a door and walking the wrong way must not open it, and
     walking into it the right way must.
 
+- **A drawn door is the size of the DOORWAY, never the size of the room.**
+  `drawThreshold` painted its mouth from the trigger down to the bottom edge
+  of the frame, so the Library's 16px-tall way out became a gaping shaft with
+  posts either side — "the bottom thing is way too big, it's just a massive
+  doorway". It draws within the trigger plus a small lip now. Same rule killed
+  the side-breach: a door you draw is the opening, not a gash toward the edge.
+- **A way out at the bottom of a room is a THIN band at the bottom.** You
+  arrive on a door and it re-arms only once you step clear of it, so a tall
+  trigger at the room's near edge means walking all the way up off it and back
+  down again to leave. The Arena's was 28px deep and did exactly that. Put it
+  just inside the floor's last walkable row.
+
 - **Only draw a door the ART does not already have.** `drawn: "threshold"`
   exists for exits with no doorway painted in the room. The side doors carried
   `drawn: "sidebreach"`, which painted a dark trapezoid from the trigger to the

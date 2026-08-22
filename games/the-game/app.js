@@ -1313,6 +1313,7 @@
       // The drawn doorway goes ON TOP of its own glow — painted under it, the
       // light washed straight through the opening and it read as a lit box.
       if (ex.drawn === "threshold") drawThreshold(ex);
+      if (ex.drawn === "sidedoor") drawSideDoor(ex);
 
     });
   }
@@ -1436,6 +1437,33 @@
   // only drew one door. It reads as an opening in the near wall — a dark
   // stairwell mouth with a frame around it and a step down into it — so the
   // way back is something you can see rather than an invisible line.
+  // A SIDE DOOR THE ART DOES NOT HAVE. The Lab's left wall is a flat plate
+  // with no arch painted on it and no door prop, so its way out was invisible
+  // — you had to already know it was there. This draws the opening and
+  // NOTHING ELSE: exactly the trigger's own rectangle, a dark slot with a lit
+  // jamb on the room side. The rule from the sidebreach that was deleted
+  // still holds — only draw a door the art lacks, and never draw past the
+  // doorway itself. That one painted a trapezoid out to the frame edge.
+  function drawSideDoor(ex) {
+    var x = ex.x, y = ex.y, w = ex.w, h = ex.h;
+    var facingLeft = (x + w / 2) < VW / 2;
+    ctx.save();
+    var mouth = ctx.createLinearGradient(facingLeft ? x + w : x, 0,
+                                         facingLeft ? x : x + w, 0);
+    mouth.addColorStop(0, "rgba(10,5,16,0.55)");
+    mouth.addColorStop(1, "rgba(4,2,8,0.95)");
+    ctx.fillStyle = mouth;
+    ctx.fillRect(x, y + 2, w, h - 4);
+    // the jamb the room's light catches, on the side you approach from
+    ctx.fillStyle = "rgba(255,220,170,0.18)";
+    ctx.fillRect(facingLeft ? x + w - 2 : x, y + 2, 2, h - 4);
+    // lintel and sill, in the room's trim wood
+    ctx.fillStyle = "#5a3a24";
+    ctx.fillRect(x, y, w, 2);
+    ctx.fillRect(x, y + h - 2, w, 2);
+    ctx.restore();
+  }
+
   function drawThreshold(ex) {
     var x = ex.x, y = ex.y, w = ex.w, h = ex.h;
     var post = Math.max(4, Math.round(w * 0.12));
@@ -1447,11 +1475,16 @@
     mouth.addColorStop(0, "rgba(8,4,14,0.75)");
     mouth.addColorStop(1, "rgba(4,2,8,0.97)");
     ctx.fillStyle = mouth;
+    // The mouth is as deep as the DOORWAY, not as deep as the room. It used
+    // to run to VH, so a 16px trigger painted a gaping 22px shaft down to the
+    // bottom edge of the frame with posts either side — reported from play as
+    // "the bottom thing is way too big, it's just a massive doorway".
+    var deep = y + h + 4;
     ctx.beginPath();
     ctx.moveTo(inner.x + 3, y);
     ctx.lineTo(inner.x + inner.w - 3, y);
-    ctx.lineTo(inner.x + inner.w, VH);
-    ctx.lineTo(inner.x, VH);
+    ctx.lineTo(inner.x + inner.w, deep);
+    ctx.lineTo(inner.x, deep);
     ctx.closePath();
     ctx.fill();
 
@@ -1461,8 +1494,8 @@
 
     // frame: two posts and a lintel, in the same wood as the room's trim
     ctx.fillStyle = "#5a3a24";
-    ctx.fillRect(x, y - 4, post, VH - y + 4);
-    ctx.fillRect(x + w - post, y - 4, post, VH - y + 4);
+    ctx.fillRect(x, y - 4, post, deep - y + 4);
+    ctx.fillRect(x + w - post, y - 4, post, deep - y + 4);
     ctx.fillRect(x, y - 4, w, 4);
     ctx.fillStyle = "#7a5233";
     ctx.fillRect(x, y - 4, w, 1);
