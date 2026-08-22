@@ -635,11 +635,12 @@ window.NEWSEY_STORY = (function () {
       // outside it.
       floorPoly: [[66,100],[250,100],[292,140],[283,186],[42,186],[30,140]],
       exits: [
-        // The portal, measured off bg-arena.png at 320x200 (234,213,45,120
-        // at the art's native 512x341, scaled): its lower half, where you'd
-        // actually walk into the swirl. y's centre sits at 0.84 of the
-        // frame — comfortably "near" — matching what it visually is.
-        { x: 146, y: 155, w: 28, h: 28, to: "lounge", link: "portal" }
+        // The portal, measured off bg-arena.png at 320x200 (191,264,130,46
+        // at the art's native 512x341, scaled): wide and low, right at the
+        // front edge of the floor where an exit actually reads, not a tall
+        // doorway-shaped vortex. y's centre sits at 0.84 of the frame —
+        // comfortably "near" — matching what it visually is.
+        { x: 120, y: 155, w: 80, h: 27, to: "lounge", link: "portal" }
       ],
       obstacles: [ { x: 0, y: 88, w: 66, h: 20 }, { x: 250, y: 88, w: 70, h: 20 } ], // the stands
       npcs: [
