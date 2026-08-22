@@ -56,3 +56,5 @@ THE OUTFIT IS THE SAME OUTFIT, SEEN FROM BEHIND. A jacket still covers the torso
 THE LEGS. In every frame BOTH legs and BOTH feet are fully visible below the torso as two separate vertical columns, with a clear gap of background between them. Never fuse the two legs into one mass, never cross them, never splay them sideways, never raise a thigh.
 
 THE MIDDLE FRAME IS THE ONE THAT MATTERS — same as the front row above. Frame 2 = standing still, both feet flat, legs straight and separated, arms hanging down. Frames 1 and 3 are mid-step fallbacks that the cutter normally replaces.
+
+FRAME 1 AND FRAME 3 MUST LIFT OPPOSITE FEET — this is not optional and has been the single most common failure on this view. Frame 1 = the LEFT foot (the viewer's left, i.e. screen-left) lifted with the heel up, the RIGHT foot flat and planted, the opposite arm swung. Frame 3 = the mirror of that: the RIGHT foot lifted, the LEFT foot flat and planted, arms swapped. If frame 3 repeats frame 1's lifted foot instead of mirroring it, the row is rejected — check this before finishing the image.
