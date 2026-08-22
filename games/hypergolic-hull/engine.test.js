@@ -2747,9 +2747,14 @@ for (let t = 1; t <= 8; t++) {
   Engine.applyEndTurn(railgunEnergyState); // hold position — one full round per END TURN
   hullTimeline.push(railgunEnergyState.hull);
 }
+// Written against START_HULL rather than the literal 3 it used to assume,
+// so the ship's hull can move without this failing for the wrong reason.
+// What is being asserted is the RHYTHM: nothing for five rounds, then two
+// hull at once.
+const H = Engine.START_HULL;
 assert.deepStrictEqual(
   hullTimeline,
-  [3, 3, 3, 3, 3, 1, 1, 1],
+  [H, H, H, H, H, H - 2, H - 2, H - 2],
   "the Railgun charges five rounds, then takes 2 Hull in one shot — a readable rhythm, not a constant beam"
 );
 
