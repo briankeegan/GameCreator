@@ -6,7 +6,7 @@ importScripts("../../shared/sw-core.js");
 // online, without bloating install time or needing this list kept in sync
 // with every new icon. Only assets that must work on a first-ever OFFLINE
 // launch (before anything's had a chance to be fetched once) belong here.
-GCRegisterServiceWorker("hypergolic-hull-v17", [
+GCRegisterServiceWorker("hypergolic-hull-v18", [
   "./",
   "./index.html",
   "./style.css",

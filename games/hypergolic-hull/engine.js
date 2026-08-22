@@ -2785,22 +2785,27 @@
       const pick = affordable.slice().sort((a, b) => a.energyCost - b.energyCost || b.damage - a.damage)[0];
       return { enemyId: enemy.id, type: "attack", weaponKey: pick.id };
     }
-    // In reach, but the reactor can't pay for the shot yet. An emplacement
-    // has no choice — it sits there and lets the bus climb (the charge
-    // pips under it say so). Anything with an ENGINE moves.
-    //
-    // This is Hoplite's rule, and it is the whole rule: a demon that can
-    // attack, attacks; a demon that can't, MOVES. Nothing in Hoplite ever
-    // spends a turn doing nothing, which is why its board always reads as
-    // a board full of things hunting you. Ours used to hold station and
-    // let the reactor climb — the Scout stood motionless 39% of its turns
-    // and the Carrier 54%, which from the other side of the board looks
-    // like a gun that's broken rather than one that's reloading.
-    //
-    // So this branch no longer exists for anything that can fly; a
-    // hostile with a drive and no shot this round falls straight through
-    // to the chase below, exactly like one that never had a shot.
-    if (bearing.length && !ship.hasDrive) return { enemyId: enemy.id, type: "wait" };
+    // In reach, but the reactor can't pay for the shot yet — hold and let
+    // the bus climb, drive or no drive. This USED to be drive-gated only
+    // (an emplacement has no other option; anything that could fly always
+    // chased instead, because the old Scout stood motionless 39% of its
+    // turns and the Carrier 54%, reading as a broken gun rather than a
+    // reloading one). That fix cost nothing back then: reactors ticked for
+    // free every round regardless of what an enemy did with its action, so
+    // making a driven hostile shuffle toward a better angle instead of
+    // sitting still was a pure readability win — it recharged at the same
+    // rate either way. It is not free anymore (see waitedThisPhase in
+    // enemyPhase — "1 to 1, nothing for free," same rule the flagship's
+    // own Reactor Core plays by), so a driven hostile that keeps moving
+    // instead of holding a shot it ALREADY has never recharges at all: its
+    // one gun goes permanently quiet after its first shell, which is worse
+    // than the old motionless-look bug ever was. Holding here only fires
+    // when the gun already bears from right where it's standing — moving
+    // could only trade a solved shot for an unsolved one — so this is not
+    // the general "no shot yet, stand around" case that caused the
+    // measured stalling; a hostile still without a solution at all falls
+    // straight through to the chase below exactly as before.
+    if (bearing.length) return { enemyId: enemy.id, type: "wait" };
     // No drive fitted, no flying — the same rule that grounds the
     // flagship with its engines pulled (see applySublight). That, and
     // nothing else, is what makes a Sentry an emplacement.
@@ -3028,8 +3033,27 @@
     // even though they do. Reported live: "I'm not seeing their energy
     // deplete."
     const hitters = [];
+    // Who spent their one action THIS ROUND holding fire with nothing
+    // better to do — the only ones who recharge (see below). Same rule as
+    // the flagship, which only gets its bus back by spending its own
+    // single action on Reactor Core instead of moving or firing — reactors
+    // used to tick for free on every living enemy regardless of what it
+    // did that round, which was the one place the two sides didn't
+    // actually share a rule. Reported live: "it needs to be 1 to 1.
+    // nothing for free." decideIntent's "wait" branch now covers both an
+    // emplacement with no other option AND a driven hostile that already
+    // has a solved shot it can't yet afford (see the comment there) —
+    // without that second case a driven gun would never recharge at all
+    // once broke, since it always prefers moving over idling. May still
+    // need a bigger battery here and there to stay a threat with this rule
+    // in place; that's a follow-up tuning pass, not a blocker to shipping
+    // the rule itself.
+    const waitedThisPhase = new Set();
     for (let apStep = 0; apStep < ENEMY_AP; apStep++) {
       const intents = livingEnemies(state).map((enemy) => ({ enemy, intent: decideIntent(state, enemy) }));
+      for (const { enemy, intent } of intents) {
+        if (intent.type === "wait") waitedThisPhase.add(enemy.id);
+      }
       const attackers = intents
         .filter(({ intent }) => intent.type === "attack")
         .sort((a, b) => (WEAPONS[b.intent.weaponKey].speed || 0) - (WEAPONS[a.intent.weaponKey].speed || 0));
@@ -3119,14 +3143,15 @@
       pushLog(state, (totalDamage > 1 ? `We are hit — hull down ${totalDamage}.` : "We are hit — hull down 1.") + energyNote);
     }
     state.turnCount += 1; // a ROUND has passed
-    // Enemy reactors tick once per ROUND, by exactly the rate their own
-    // generators produce — a Railgun's single Micro Reactor against a
-    // 4-energy slug IS the four-round telegraph; nothing scripts it. The
-    // flagship gets no passive tick: with only one action a round, an
-    // enemy that had to spend its turn cycling would simply stop being a
-    // threat, so this is the one place the two sides differ, and it's a
-    // consequence of the AP budget, not of enemies having private rules.
+    // Enemy reactors tick by exactly the rate their own generators produce
+    // — a Railgun's single Micro Reactor against a 4-energy slug IS the
+    // four-round telegraph; nothing scripts it — but ONLY for whoever
+    // spent this round's one action waiting (see waitedThisPhase above).
+    // Same rule the flagship plays by: recharging costs the turn you'd
+    // otherwise have spent moving or firing, for both sides now, not just
+    // one of them.
     for (const enemy of livingEnemies(state)) {
+      if (!waitedThisPhase.has(enemy.id)) continue;
       const ship = enemyShip(enemy);
       if (!ship) continue;
       enemy.energy = Math.min(enemy.maxEnergy, enemy.energy + ship.rechargeGain);

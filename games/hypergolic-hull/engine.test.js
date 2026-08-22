@@ -2834,7 +2834,14 @@ assert.strictEqual(closerState.hull, Engine.START_HULL, "moving was its whole tu
 Engine.applyEndTurn(closerState); // hold again: now it fires
 assert.strictEqual(closerState.hull, Engine.START_HULL - 1, "the following round it spends its point on the shot");
 
-// A cost-1 enemy is unchanged by the energy system: it fires every turn.
+// A cost-1 gun against a cost-1 reactor now ALTERNATES fire and recharge
+// rounds — same "1 to 1, nothing for free" rule the flagship's own
+// Reactor Core plays by: a shot that empties the bus costs the round
+// after it too, spent refilling instead of firing again. Recharging used
+// to tick for free every round no matter what the enemy's action was, so
+// a cost-1 gun never had a gap; now the round it recharges is a round it
+// doesn't shoot, exactly like a player who has to spend a turn on Reactor
+// Core instead of firing back.
 const chaserEnergyLevel = {
   id: 987,
   name: "chaser energy fixture",
@@ -2848,10 +2855,17 @@ const chaserEnergyLevel = {
   actions: ["sublight"], // no Autocannon — let it survive to attack repeatedly
 };
 const chaserEnergyState = Engine.createGameState(chaserEnergyLevel);
-Engine.applyEndTurn(chaserEnergyState); // its phase: closes to contact — that's its whole turn
-Engine.applyEndTurn(chaserEnergyState); // strike 1
-Engine.applyEndTurn(chaserEnergyState); // strike 2 — a cost-1 gun against +1/round never has a charge gap
-assert.strictEqual(chaserEnergyState.hull, Engine.START_HULL - 2, "a cost-1 chaser fires every round once in reach — no charge gap");
+const chaserHullTimeline = [];
+for (let t = 1; t <= 6; t++) {
+  Engine.applyEndTurn(chaserEnergyState);
+  chaserHullTimeline.push(chaserEnergyState.hull);
+}
+const CH = Engine.START_HULL;
+assert.deepStrictEqual(
+  chaserHullTimeline,
+  [CH, CH - 1, CH - 1, CH - 2, CH - 2, CH - 3],
+  "closes round 1, then alternates a shot with a recharge round — no shot two rounds running"
+);
 
 // ---- Asteroid fields: genuinely impassable terrain, distinct from a ------
 // blackhole's instant-destruction trap. Clubhouse feedback: "places you
