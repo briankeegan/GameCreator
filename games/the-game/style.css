@@ -14,7 +14,15 @@ html, body {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 8px;
+  /* Extra bottom padding lifts the touch/duel controls well clear of the
+     very bottom edge of the screen — both because that's where a phone
+     browser's own gesture strip lives (reported live as controls
+     "select[ing] it as text" when held near it) and because the install
+     banner is `position: fixed; bottom: 0` and was never accounted for
+     here, so it could sit on top of the controls unlike every other game
+     (compare dog-punk/style.css .game-area). --banner-space is set to the
+     banner's real height by shared/pwa.js when it's showing. */
+  padding: 8px 8px calc(28px + var(--banner-space));
   background: #120a20;
   color: #f1e9ff;
   height: 100%;
@@ -378,6 +386,16 @@ html, body {
   background: rgba(255, 255, 255, 0.08);
   color: #f1e9ff;
   font-size: 1rem;
+  /* Holding a direction (esp. left, held for a long walk) was landing on the
+     browser's own text-selection/callout gesture instead of just moving
+     Nella — reported live as "it often selects it as text". This selector
+     also matches the duel d-pad (class "dpad duel-dpad"), so one fix covers
+     both boards; every other game's on-screen buttons already carry both
+     of these (see dog-punk's .dpad-btn). */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 .dpad button[data-dir="up"] { grid-column: 2; grid-row: 1; }
 .dpad button[data-dir="left"] { grid-column: 1; grid-row: 2; }
@@ -390,6 +408,10 @@ html, body {
   background: #8a5cf6;
   color: #fff;
   font-weight: 800;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 
