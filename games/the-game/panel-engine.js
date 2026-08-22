@@ -236,6 +236,9 @@
   }
 
   function land(stack, p) {
+    // Stack:onLand — fires for every landing panel, garbage or not, before
+    // any garbage-specific handling runs.
+    stack.events.push({ type: "landed", row: p.row, col: p.col, garbage: !!p.isGarbage });
     if (p.isGarbage) {
       onGarbageLand(stack, p);
       p.state = "normal";
@@ -371,6 +374,12 @@
   function updatePopping(stack, p) {
     if (p.timer > 0) p.timer--;
     if (p.timer !== 0) return;
+    // Stack:onPop — a flat +10 per non-garbage panel that finishes popping,
+    // separate from (and in addition to) the combo/chain bonus awarded once
+    // per match in checkMatches. Garbage panels don't score here (they pop
+    // via a different path — see the isGarbage branch in updateMatched —
+    // and never reach this state).
+    stack.addScore(10);
     stack.events.push({ type: "pop", row: p.row, col: p.col, color: p.color, index: p.comboIndex, size: p.comboSize });
     if (p.comboSize === p.comboIndex) {
       popped(stack, p);
