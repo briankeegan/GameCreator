@@ -491,6 +491,24 @@ design discussion. `shared/` holds the components every game reuses
 
 ## Infrastructure notes
 
+- **Local git state in this sandbox is not trustworthy on its own — always
+  fetch before believing it.** Two recurring, unrelated failure modes, both
+  fixed the same way:
+  1. The local checkout has silently reverted mid-session to a stale commit
+     between tool calls (a container/workspace reset artifact, not a repo
+     bug) — `git status`/`git log` then lie about what's actually on
+     `origin/main`, and can make real, already-shipped work look lost.
+  2. The Stop-hook's "N unpushed commits" warning reads the LOCAL cached
+     `origin/<branch>` ref without fetching first — if that ref is stale
+     (e.g. right after pushing straight to `main` instead of the session
+     branch), it reports a large phantom unpushed count for a branch that
+     is actually fully in sync.
+  The fix for both is the same and takes one command: `git fetch origin
+  <branch> --quiet` then compare `git rev-parse HEAD` / `origin/<branch>`
+  before acting on either the working tree's apparent state or a hook's
+  warning. Never `git reset --hard` or chase "lost work" without doing this
+  first — and never assume a hook's git warning is accurate without
+  re-fetching, since the hook itself doesn't.
 - **Relay:** one shared Cloudflare Worker (`worker/worker.js`) used by
   every game's Clubhouse and by the Admin page — not one Worker per game.
   Per-game config (secret word + PR number) lives in a KV namespace

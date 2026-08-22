@@ -216,26 +216,30 @@
   // turns this from a pure-skill puzzle into a luck-and-skill crawl — room to
   // trade Hull for tempo, recover from a bad roll, and let salvage/repairs
   // matter. (Was 1: one-hit permadeath.)
-  // FIVE, and it moved because the enemies did. Three was right for a
-  // roster where half of it held station and the rest walked at you: hull
-  // damage is permanent, repairs only exist at a dock, and one mistake was
-  // most of the ship. Then every class went to full strength — the archer
-  // reaches five hexes and fires every round, the footman covers all six
-  // hexes touching it, nothing with an engine ever wastes a turn — and the
-  // ship never followed. Measured at three: sixty runs, three finishes,
-  // and half of them dead by Sector 4.
+  // THREE. It went to five for a while and came back, and the round trip
+  // is the useful part: five was compensating for something else being
+  // wrong. When every class went to full strength the run collapsed —
+  // sixty runs, three finishes — and more hull did paper over it, but at
+  // five the early sectors stopped costing anything and at six the first
+  // SEVEN did.
   //
-  // Five is where the shape comes back rather than where the numbers look
-  // nice. At six the first SEVEN sectors cost nothing at all — sixty runs,
-  // sixty survivors, no attrition, the whole first half a formality. At
-  // five the early sectors wear you down without killing you (five hull in,
-  // 3.7 by depth 8) and the deep end is what ends runs, which is the curve
-  // this game is supposed to have. A quarter of well-flown runs finish.
+  // The actual cause was BOARD SIZE. Nothing with an engine ever wastes a
+  // turn now, so every round spent crossing a sector is a round under
+  // fire, and our sectors were big enough that routing around a threat
+  // cost more hull than fighting it. Hoplite's floors are small and that
+  // is precisely why avoidance works there. Taking a row off the
+  // procedural boards (levels.js, SIZE_FOR_ROSTER) fixed it at the cause,
+  // and three hull works again — measured, it is now the CAREFUL pilot
+  // that finishes most (30 runs in 60 against greedy's 23, with no
+  // stalls), which is the first time in this game's history that flying
+  // well has beaten flying hard.
   //
-  // What keeps it from being softness is unchanged: the gate is always
-  // open, so you are never required to trade hits, and a contact you route
-  // around still costs nothing.
-  const START_HULL = 5;
+  // What makes three playable rather than arbitrary is unchanged: the gate
+  // is always open, you are never required to trade hits, and a contact
+  // you route around costs nothing — and now, since the boards are small
+  // enough to actually route across, that is a real option rather than a
+  // slogan.
+  const START_HULL = 3;
 
   // Energy is a second resource, distinct from Hull (permanent damage,
   // repaired only at an Outpost) and salvage (a currency): it regenerates

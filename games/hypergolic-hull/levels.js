@@ -635,13 +635,13 @@
     // that runs wide shrinks every hex to fit the screen's width while
     // leaving vertical room unused. Growth goes downrange, not sideways.
     const SIZE_FOR_ROSTER = {
-      1: [{ cols: 7, rows: 7 }, { cols: 7, rows: 8 }],
-      2: [{ cols: 7, rows: 8 }, { cols: 7, rows: 9 }],
-      3: [{ cols: 7, rows: 9 }, { cols: 7, rows: 10 }],
-      4: [{ cols: 9, rows: 9 }, { cols: 9, rows: 10 }],
-      5: [{ cols: 9, rows: 10 }, { cols: 9, rows: 11 }],
-      6: [{ cols: 9, rows: 11 }, { cols: 9, rows: 11 }],
-      7: [{ cols: 9, rows: 11 }, { cols: 9, rows: 11 }],
+      1: [{ cols: 7, rows: 7 }, { cols: 7, rows: 7 }],
+      2: [{ cols: 7, rows: 7 }, { cols: 7, rows: 8 }],
+      3: [{ cols: 7, rows: 8 }, { cols: 7, rows: 9 }],
+      4: [{ cols: 9, rows: 8 }, { cols: 9, rows: 9 }],
+      5: [{ cols: 9, rows: 9 }, { cols: 9, rows: 10 }],
+      6: [{ cols: 9, rows: 10 }, { cols: 9, rows: 10 }],
+      7: [{ cols: 9, rows: 10 }, { cols: 9, rows: 10 }],
     };
     const sizes = SIZE_FOR_ROSTER[roster];
     const shape = sizes[Math.floor(rng() * sizes.length)];
