@@ -630,19 +630,21 @@ window.NEWSEY_STORY = (function () {
       // style; editing the art everyone already liked was the right call.
       playerStart: { x: 111, y: 124 },
       // The drawn floor, traced as a polygon (see ROOM SHAPES above) — the
-      // flagstone hexagon between the two banks of stands. Unchanged: the
-      // door removal and the portal are both within this same floor, not
-      // outside it.
-      floorPoly: [[66,100],[250,100],[292,140],[283,186],[42,186],[30,140]],
+      // flagstone hexagon between the two banks of stands, PLUS a notch cut
+      // into its own bottom edge: the art's front bench is actually two
+      // short segments with a gap between them (pixel x 155-290 of 512,
+      // y up to ~338 of 341) where the floor keeps going almost to the very
+      // edge of the frame. The original flat-186 bottom edge didn't include
+      // that gap at all, which is exactly where the portal (and its trigger)
+      // needed to sit — "the very bottom of the walkable area" is that notch,
+      // not the hexagon's average edge.
+      floorPoly: [[66,100],[250,100],[292,140],[283,186],[181,186],[181,198],[97,198],[97,186],[42,186],[30,140]],
       exits: [
-        // The portal, measured off bg-arena.png at 320x200 (186,280,140,42
-        // at the art's native 512x341, scaled): pushed down to the very
-        // front edge of the walkable floor (floorPoly's own bottom bound is
-        // y=186) — right where an exit actually sits, not floating out on
-        // the open floor. The trigger itself is capped at y=185 so it stays
-        // inside the walk mask; the art bleeds a couple px past it into the
-        // bench trim, same as a real threshold would.
-        { x: 117, y: 160, w: 87, h: 25, to: "lounge", link: "portal" }
+        // The portal, in the notch above, measured off bg-arena.png at
+        // 320x200 (192,286,128,52 at the art's native 512x341, scaled) —
+        // its bottom edge sits 3px shy of the image's own bottom edge, and
+        // the trigger goes right up to the notch's floor limit (y=198).
+        { x: 120, y: 168, w: 80, h: 28, to: "lounge", link: "portal" }
       ],
       obstacles: [ { x: 0, y: 88, w: 66, h: 20 }, { x: 250, y: 88, w: 70, h: 20 } ], // the stands
       npcs: [
