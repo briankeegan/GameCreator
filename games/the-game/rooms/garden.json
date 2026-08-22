@@ -1,0 +1,4 @@
+{
+  "wallSeam": 64,
+  "_wallSeam_why": "The Anarchy Garden is outdoors and has no back WALL, but it has a back EDGE and that is what this number is: the water line. Its pool prop sits at y=64 with a base 240px wide in a 320px room, so the player could walk around both ends of the water and on up to y=0, behind the waterfalls and off the top of the lawn. Widening the pool's base would be a lie about where the art's water is; the truth is that the walkable lawn stops at the water, which is exactly what wallSeam means for this room."
+}

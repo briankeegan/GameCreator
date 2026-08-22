@@ -531,8 +531,8 @@ window.NEWSEY_STORY = (function () {
       // rectangle of floor near it.
       exits: [
         { x: 4,   y: 118, w: 38, h: 58, to: "bedroom", link: "westDoor", drawn: "sidebreach" },
-        { x: 90,  y: 0,  w: 33, h: 16, to: "library", link: "northArch" },
-        { x: 147, y: 0,  w: 33, h: 16, to: "arena",   link: "portal" },
+        { x: 90,  y: 55,  w: 33, h: 16, to: "library", link: "northArch" },
+        { x: 147, y: 55,  w: 33, h: 16, to: "arena",   link: "portal" },
         { x: 278, y: 118, w: 38, h: 58, to: "lab",     link: "eastDoor", drawn: "sidebreach" }
       ],
       npcs: [
@@ -930,7 +930,7 @@ window.NEWSEY_STORY = (function () {
         // the frame itself.
         { x: 140, y: 178, w: 40, h: 16, to: "lounge", link: "northArch", drawn: "threshold" },
         // north, through the arch in the bookcase wall, up into the Garden
-        { x: 128, y: 0, w: 63, h: 16, to: "garden", link: "gardenPath" }
+        { x: 128, y: 46, w: 63, h: 16, to: "garden", link: "gardenPath" }
       ],
       npcs: [
         {

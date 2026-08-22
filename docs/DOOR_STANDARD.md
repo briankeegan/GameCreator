@@ -126,6 +126,23 @@ exits" step in `pages.yml`. The art half is measured by
   FIRES, not that anyone can reach it.** That is the hole the Arena sat in for
   as long as it existed. Both tests are worth having; only one of them is about
   reachability.
+- **A ROOM HAS A WALL AND YOU CANNOT WALK INTO IT — check this before trusting
+  anything about a door.** Newsey's Library, Lounge, Bedroom and Anarchy Garden
+  all let the player walk to y=0, into the bookcases, over the bar and through
+  the back wall. Their floor plates cover 77-89% of the frame, so the walk mask
+  calls the wall band floor, and the wall props either carry no footprint or one
+  that does not span them. A door placed against that "floor" looks reachable
+  and is nonsense. Measured: the painted rooms put their floor's top edge at
+  y=103-105 of 200, and the three-pass standard says the floor fills the LOWER
+  HALF, so nothing should be standable in the top 15% of the frame.
+- **The only honest reachability check boots the game.**
+  `.github/scripts/check_door_reach.mjs` floods each room from where the player
+  arrives, through the game's own `canStand`, and reports per door how many
+  reachable positions touch it and how deeply it can be entered — plus how high
+  the player can walk, which is what catches a wall you can stand in. It is not
+  in `pages.yml` for the same reason `browser.test.js` is not: it needs
+  Playwright, and browser timing flakiness must never block every game's deploy.
+  Run it by hand after touching a room, a plate, or a door.
 - **A doorway you cannot stand on is not a door.** The trigger has to sit on
   walkable floor. `room.py verify` measures how much of each trigger's
   rectangle is inside the room's walk mask and fails below 15% — calibrated
