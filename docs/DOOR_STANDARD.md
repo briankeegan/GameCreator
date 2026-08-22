@@ -176,6 +176,14 @@ exits" step in `pages.yml`. The art half is measured by
 
 ## 6. What a test may assert about a door
 
+- **Never assert — or ASSUME — a value the room data determines.** The door
+  grid carried a hand-typed approach direction per case, and when the Arena's
+  portal moved from its right-hand wall to the bottom of the floor the case
+  still said "up": the test walked the player away from the door and reported
+  the door broken. The door was fine. Derive which way you walk into a door
+  from where the door is — and test the side walls FIRST, because a top-down
+  room's floor lives in the lower half of its frame, so an ordinary side door
+  sits low and "nearest edge in pixels" calls it a near door every time.
 - **Never assert a value the code DERIVES.** A door test that named the exact
   facing each arrival should end on was a snapshot of one day's room art, and
   it went stale the moment a room was regenerated.

@@ -297,25 +297,43 @@ async function bootWithSave(page, url, patchSave) {
   // invariant and is not one: walk UP out of the bedroom into the Lounge and
   // you arrive facing DOWN, because the door you came through is in the
   // Lounge's BACK wall and down is into the room.
-  // `direction` follows the map: the Lounge's back wall is NORTH, so you
-  // leave the Lounge going UP into your room / the rune door's destination,
-  // and every one of those rooms sends you back DOWN off its near edge. Only
-  // the portal is allowed to be special.
+  // WHICH WAY YOU WALK INTO A DOOR IS DERIVED, NEVER TYPED.
+  //
+  // This table used to carry a `direction` per case, and it went stale exactly
+  // the way a snapshot does: the Arena's portal moved from its right-hand wall
+  // to the bottom of the floor, the case still said "up", and the test walked
+  // the player away from the door and reported that the door was broken. The
+  // door was fine. A test must not assert — or assume — a value the room data
+  // already determines.
+  //
+  // You approach a door by walking AT the wall it is in, so the direction is
+  // the wall: a trigger hard against the left or right edge of the frame is a
+  // side door, and anything else is in the back wall or the near one depending
+  // on which half of the room it sits in. Testing the sides FIRST matters,
+  // because a top-down room's floor lives in the lower half of its frame, so an
+  // ordinary side door sits low and "nearest edge in pixels" calls it a near
+  // door every time — the same trap that caught check_room_exits.mjs.
+  const SIDE_FRAC = 0.15;
+  function approachDirection(e) {
+    const W = 320, H = 200;
+    const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
+    if (cx / W <= SIDE_FRAC) return "left";
+    if (cx / W >= 1 - SIDE_FRAC) return "right";
+    return cy < H / 2 ? "up" : "down";
+  }
+
   const DOOR_CASES = [
-    { room: "home_bedroom", to: "house", direction: "down", wantRoom: "Your Father's House" },
-    { room: "house", to: "home_bedroom", direction: "up", wantRoom: "Your Old Room" },
-    // Infinity is a grid: out of one side, in through the matching side of
-    // the room next door.
-    { room: "bedroom", to: "lounge", direction: "right", wantRoom: "The Lounge" },
-    { room: "lounge", to: "bedroom", direction: "left", wantRoom: "Your Room, Infinity" },
-    { room: "lounge", to: "lab", direction: "right", wantRoom: "Kyran's Lab" },
-    { room: "lab", to: "lounge", direction: "left", wantRoom: "The Lounge" },
-    { room: "lounge", to: "library", direction: "up", wantRoom: "The Library" },
-    { room: "library", to: "lounge", direction: "down", wantRoom: "The Lounge" },
-    { room: "library", to: "garden", direction: "up", wantRoom: "The Anarchy Garden" },
-    { room: "garden", to: "library", direction: "down", wantRoom: "The Library" },
-    // the portal, the one door allowed to be special
-    { room: "arena", to: "lounge", direction: "up", wantRoom: "The Lounge" },
+    { room: "home_bedroom", to: "house", wantRoom: "Your Father's House" },
+    { room: "house", to: "home_bedroom", wantRoom: "Your Old Room" },
+    { room: "bedroom", to: "lounge", wantRoom: "The Lounge" },
+    { room: "lounge", to: "bedroom", wantRoom: "Your Room, Infinity" },
+    { room: "lounge", to: "lab", wantRoom: "Kyran's Lab" },
+    { room: "lab", to: "lounge", wantRoom: "The Lounge" },
+    { room: "lounge", to: "library", wantRoom: "The Library" },
+    { room: "library", to: "lounge", wantRoom: "The Lounge" },
+    { room: "library", to: "garden", wantRoom: "The Anarchy Garden" },
+    { room: "garden", to: "library", wantRoom: "The Library" },
+    { room: "arena", to: "lounge", wantRoom: "The Lounge" },
   ];
   const doorFailures = [];
   for (const c of DOOR_CASES) {
@@ -325,7 +343,8 @@ async function bootWithSave(page, url, patchSave) {
       ({ room, to }) => window.NEWSEY_STORY.ROOMS[room].exits.find((e) => e.to === to),
       { room: c.room, to: c.to }
     );
-    const pos = approachPosition(exitBox, c.direction);
+    const direction = approachDirection(exitBox);
+    const pos = approachPosition(exitBox, direction);
     await page.evaluate((p) => {
       window.__newseyDebug.player.x = p.x;
       window.__newseyDebug.player.y = p.y;
@@ -340,7 +359,7 @@ async function bootWithSave(page, url, patchSave) {
     // outer-scope variables like `c`.
     await holdKeyUntilInPage(
       page,
-      KEY_FOR_DIRECTION[c.direction],
+      KEY_FOR_DIRECTION[direction],
       new Function("return window.__newseyDebug.room() === " + JSON.stringify(c.wantRoom)),
       2000
     );
