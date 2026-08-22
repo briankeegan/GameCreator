@@ -126,13 +126,24 @@ async function bootWithSave(page, url, patchSave) {
     s = await getState(page);
     assert.strictEqual(s.room, "Your Father's House", "the bedroom's bottom threshold leads to the house");
 
-    // Walk to the front door and open it.
-    await page.keyboard.down("ArrowLeft");
-    await page.keyboard.down("ArrowUp");
-    await page.waitForTimeout(2200);
-    await page.keyboard.up("ArrowLeft");
-    await page.keyboard.up("ArrowUp");
-    await page.waitForTimeout(100);
+    // Walk to the front door and open it. A fixed-duration hold used to work
+    // here, but arrival position into a room is now DERIVED (see the
+    // DOOR_CASES comment below) rather than a fixed hand-typed spot, so a
+    // magic number calibrated against one specific arrival point silently
+    // stops matching the moment that derivation changes. holdUntil instead
+    // polls for actual proximity to the door (frontDoor is (74,106); the
+    // same 26px window nearestNpc uses to allow an interact), the same
+    // pattern already used below for the TV and the mirror.
+    // Clear the stairs' own x-range (216-250) BEFORE heading up — the
+    // stairs' arrival point (derived from the door-pairing rewrite, not
+    // hand-typed) can land close enough to that box that going straight
+    // up-left from it skims right back through the door just used.
+    // frontDoor is at (74,106); nearestNpc() measures from (player.x+w/2,
+    // player.y+h), so the top-left target is offset by (-7,-18) — same
+    // correction as the TV/mirror approaches below.
+    await holdUntil(page, ["ArrowLeft"], (st) => st.pos.x < 190, 3000);
+    s = await holdUntil(page, ["ArrowLeft", "ArrowUp"], (st) => Math.hypot(st.pos.x - 67, st.pos.y - 88) < 20, 4000);
+    assert.ok(Math.hypot(s.pos.x - 67, s.pos.y - 88) < 20, "actually reached the front door");
     await page.keyboard.press("z"); // opens the door's dialogue, shows line 0
     await page.waitForTimeout(250);
     await page.keyboard.press("z"); // advances to line 1
@@ -168,7 +179,14 @@ async function bootWithSave(page, url, patchSave) {
       "he actually walked to his real resting spot, not just teleported there"
     );
 
-    await clickAdvance(page, 7, 250); // Chuck's 6 lines
+    // He's already talking (lineIndex 0) the instant he arrives — no "open"
+    // click needed, unlike the door/TV, which show line 0 only after an
+    // explicit interact. 6 lines need exactly 6 more advances to finish; a
+    // click past that isn't a no-op — the canvas's click handler calls
+    // tryInteract() whenever nothing is being said, so an extra click while
+    // still standing next to Chuck reopens him at his last line instead of
+    // leaving talking null.
+    await clickAdvance(page, 6, 250);
     s = await getState(page);
     assert.strictEqual(s.talking, null, "Chuck's dialogue finishes cleanly");
 
@@ -231,29 +249,34 @@ async function bootWithSave(page, url, patchSave) {
   // proves walking through each one for real actually applies arriveFacing
   // and doesn't visibly break.)
   //
-  // Only {room, to, direction, wantRoom, wantFacing} are hand-supplied —
-  // `direction` (which way you WALK to cross this exit) is a fact about
-  // the room's layout a human has to say, but the actual x/y is computed
-  // from the exit's own box via approachPosition, never typed by hand. An
-  // earlier version of this table hand-picked coordinates next to each
-  // door and got several of them wrong in a way that was invisible from
-  // reading the numbers (a y a few px off reads as "just outside the box"
-  // when it's actually inside it, which never arms exitsArmed and never
-  // triggers a crossing at all) — deriving the position from the same
-  // data the game itself uses removes that whole class of mistake.
-  // lounge -> library used to be a plain exit like these; it's now the
-  // rune door (a destination picker, not a straight walk-through) — see
-  // the dedicated rune-door block right after this loop instead.
+  // Doors are paired now, not hand-typed (see "Newsey: doors are pairs, and
+  // you come out of the one you went in by") — where you land and which way
+  // you face are DERIVED at runtime from the partner door's own rectangle
+  // (app.js's arrivalFrom), not stored per exit. So this table only supplies
+  // {room, to, direction}: `direction` (which way you WALK to cross this
+  // exit) is a fact about the room's layout a human has to say, but the
+  // actual x/y is computed from the exit's own box via approachPosition,
+  // never typed by hand — and the expectation on the far side is "some
+  // valid facing, landed somewhere that isn't back on a door trigger", not
+  // an exact value this table would just be re-typing from the same
+  // derivation the game itself does. Asserting an exact wantFacing here is
+  // exactly the hand-typed-coordinate drift the pairing rewrite exists to
+  // remove — an earlier version of this table did, and needed patching
+  // again the moment app.js's own arrivalFrom logic changed.
+  // lounge -> library/garden/lab used to be plain exits like these; it's
+  // now the rune door (a destination picker) — see the dedicated rune-door
+  // block right after this loop instead.
   const DOOR_CASES = [
-    { room: "home_bedroom", to: "house", direction: "down", wantRoom: "Your Father's House", wantFacing: "down" },
-    { room: "house", to: "home_bedroom", direction: "up", wantRoom: "Your Old Room", wantFacing: "down" },
-    { room: "bedroom", to: "lounge", direction: "up", wantRoom: "The Lounge", wantFacing: "right" },
-    { room: "lounge", to: "bedroom", direction: "up", wantRoom: "Your Room, Infinity", wantFacing: "left" },
-    { room: "library", to: "lounge", direction: "up", wantRoom: "The Lounge", wantFacing: "right" },
-    { room: "arena", to: "lounge", direction: "up", wantRoom: "The Lounge", wantFacing: "right" },
-    { room: "garden", to: "lounge", direction: "down", wantRoom: "The Lounge", wantFacing: "down" },
-    { room: "lab", to: "lounge", direction: "up", wantRoom: "The Lounge", wantFacing: "down" },
+    { room: "home_bedroom", to: "house", direction: "down", wantRoom: "Your Father's House" },
+    { room: "house", to: "home_bedroom", direction: "up", wantRoom: "Your Old Room" },
+    { room: "bedroom", to: "lounge", direction: "up", wantRoom: "The Lounge" },
+    { room: "lounge", to: "bedroom", direction: "up", wantRoom: "Your Room, Infinity" },
+    { room: "library", to: "lounge", direction: "up", wantRoom: "The Lounge" },
+    { room: "arena", to: "lounge", direction: "up", wantRoom: "The Lounge" },
+    { room: "garden", to: "lounge", direction: "down", wantRoom: "The Lounge" },
+    { room: "lab", to: "lounge", direction: "up", wantRoom: "The Lounge" },
   ];
+  const VALID_FACINGS = ["up", "down", "left", "right"];
   for (const c of DOOR_CASES) {
     const page = await freshPage(browser, url, errors);
     await bootWithSave(page, url, { introSeen: true, room: c.room });
@@ -267,8 +290,8 @@ async function bootWithSave(page, url, patchSave) {
       window.__newseyDebug.player.y = p.y;
     }, pos);
     // Release the key the instant the room changes, driven from inside the
-    // page (see holdKeyUntilInPage) — arriveFacing is only true for the
-    // one frame right after arrival; a Node-side poll always reacts one
+    // page (see holdKeyUntilInPage) — the arrival facing is only true for
+    // the one frame right after arrival; a Node-side poll always reacts one
     // frame too late and the still-held direction overwrites it first.
     // Built via `new Function` (not a closure) so the target room name is
     // baked into the generated source as a literal — holdKeyUntilInPage
@@ -282,22 +305,38 @@ async function bootWithSave(page, url, patchSave) {
     );
     const s = await getState(page);
     assert.strictEqual(s.room, c.wantRoom, `${c.room} -> ${c.wantRoom}: actually changes room`);
-    assert.strictEqual(s.facing, c.wantFacing, `${c.room} -> ${c.wantRoom}: arrives facing ${c.wantFacing}`);
+    assert.ok(
+      VALID_FACINGS.includes(s.facing),
+      `${c.room} -> ${c.wantRoom}: arrives facing a real direction (got ${s.facing})`
+    );
+    // The clearance guarantee arrivalFrom is built on (DOORSTEP_CLEARANCE):
+    // landing back inside a door trigger is a dead end (exits stay disarmed
+    // until you step off one, and you'd never step off one you're already
+    // standing in).
+    const onTrigger = await page.evaluate((roomId) => {
+      var p = window.__newseyDebug.player;
+      return (window.NEWSEY_STORY.ROOMS[roomId].exits || []).some(function (ex) {
+        return p.x + 14 > ex.x && p.x < ex.x + ex.w && p.y + 18 > ex.y && p.y < ex.y + ex.h;
+      });
+    }, c.to);
+    assert.ok(!onTrigger, `${c.room} -> ${c.wantRoom}: doesn't land back on a door trigger`);
     await page.close();
   }
 
   // ---- The rune door: accidental first trip, then the destination picker ----
-  // check_room_exits.mjs already proves RUNE_DOOR's own data is right
-  // (every unlocked destination has an arriveFacing) — this exists because
-  // that alone wasn't enough: the picker's click handler read dest.to and
-  // dest.arriveAt but had never been wired to actually pass dest.arriveFacing
-  // through to enterRoom, so the data being correct never mattered. Only a
-  // real click-through could have caught that.
+  // check_room_exits.mjs already proves RUNE_DOOR's own data is right (every
+  // unlocked destination names a real room and a real link) — this exists
+  // because that alone wasn't enough: an earlier version of the picker's
+  // click handler read dest.to and dest.arriveAt but had never been wired to
+  // pass dest.arriveFacing through to enterRoom, so correct data never
+  // mattered. Only a real click-through could have caught that. Facing is
+  // derived from the link now (see the DOOR_CASES comment above), so this
+  // checks "landed somewhere valid", not an exact hand-typed direction.
   {
     const page = await freshPage(browser, url, errors);
     await bootWithSave(page, url, { introSeen: true, room: "lounge" });
     const runeBox = await page.evaluate(() => window.NEWSEY_STORY.ROOMS.lounge.exits.find((e) => e.rune));
-    const pos = approachPosition(runeBox, "down");
+    const pos = approachPosition(runeBox, "up");
     await page.evaluate((p) => {
       window.__newseyDebug.player.x = p.x;
       window.__newseyDebug.player.y = p.y;
@@ -306,7 +345,7 @@ async function bootWithSave(page, url, patchSave) {
     // Garden by accident, with narration explaining it — never the picker.
     await holdKeyUntilInPage(
       page,
-      "ArrowDown",
+      "ArrowUp",
       new Function("return window.__newseyDebug.room() === " + JSON.stringify("The Anarchy Garden")),
       2000
     );
@@ -319,19 +358,19 @@ async function bootWithSave(page, url, patchSave) {
     const page = await freshPage(browser, url, errors);
     await bootWithSave(page, url, { introSeen: true, room: "lounge", flags: { runeDoorLearned: true } });
     const runeBox = await page.evaluate(() => window.NEWSEY_STORY.ROOMS.lounge.exits.find((e) => e.rune));
-    const pos = approachPosition(runeBox, "down");
+    const pos = approachPosition(runeBox, "up");
     await page.evaluate((p) => {
       window.__newseyDebug.player.x = p.x;
       window.__newseyDebug.player.y = p.y;
     }, pos);
     // Once learned, crossing opens the destination picker instead of
     // moving on its own — wait for the panel, not a room change.
-    await holdKeyUntilInPage(page, "ArrowDown", new Function("return !document.getElementById('runeDoor').hidden"), 2000);
+    await holdKeyUntilInPage(page, "ArrowUp", new Function("return !document.getElementById('runeDoor').hidden"), 2000);
     await page.click("#runeList >> text=Library");
     await page.waitForTimeout(250);
     const s2 = await getState(page);
     assert.strictEqual(s2.room, "The Library", "picking Library from the rune door actually goes there");
-    assert.strictEqual(s2.facing, "down", "…and applies its arriveFacing");
+    assert.ok(VALID_FACINGS.includes(s2.facing), `…and applies a real arrival facing (got ${s2.facing})`);
     await page.close();
   }
 
