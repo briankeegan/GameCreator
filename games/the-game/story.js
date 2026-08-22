@@ -497,13 +497,13 @@ window.NEWSEY_STORY = (function () {
         // the arch's lit opening is x 100-115 and the portal's x 154-174, so
         // the wall is seven panels of the same brick at a 57px pitch with the
         // arch on 107 and the portal on 164. The wall meets the floor at y 72.
-        { art: "prop_lg_wall",   x: -7,  y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
-        { art: "prop_lg_wall",   x: 50,  y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_lg_wall",   x: -7,  y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 6 } },
+        { art: "prop_lg_wall",   x: 50,  y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 6 } },
         { art: "prop_lg_arch",   x: 107, y: 72, h: 76, w: 60, door: true, behind: true },
         { art: "prop_lg_portal", x: 164, y: 72, h: 76, w: 60, door: true, behind: true },
         { art: "prop_lg_wall",   x: 221, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
-        { art: "prop_lg_wall",   x: 278, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
-        { art: "prop_lg_wall",   x: 335, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_lg_wall",   x: 278, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 6 } },
+        { art: "prop_lg_wall",   x: 335, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 6 } },
         // the way west and the way east, in the side walls at the frame edges
         // The ARCH is the prop, not a wall with an arch in it. The first two
         // attempts drew a tall strip that was seven eighths plain brick, so at
@@ -530,10 +530,10 @@ window.NEWSEY_STORY = (function () {
       // player, so crossing means standing in the opening rather than on a
       // rectangle of floor near it.
       exits: [
-        { x: 6,   y: 128, w: 18, h: 40, to: "bedroom", link: "westDoor" },
+        { x: 0,   y: 76, w: 20, h: 31, to: "bedroom", link: "westDoor" },
         { x: 90,  y: 55,  w: 33, h: 16, to: "library", link: "northArch" },
         { x: 147, y: 55,  w: 33, h: 16, to: "arena",   link: "portal" },
-        { x: 296, y: 128, w: 18, h: 40, to: "lab",     link: "eastDoor" }
+        { x: 300, y: 76, w: 20, h: 31, to: "lab",     link: "eastDoor" }
       ],
       npcs: [
         {

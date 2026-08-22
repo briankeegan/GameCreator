@@ -106,6 +106,38 @@ exits" step in `pages.yml`. The art half is measured by
   has neither, because a confident wrong answer costs more than no answer. Run
   against every room with the notch rule alone it wanted to drag all four of the
   Lounge's doors to the top edge of the frame.
+- **THE DIVOT IN THE FLOOR IS THE DOOR.** In a floor-plate room the doorway is
+  the alcove where the plate's walkable floor pokes out past the rest of its
+  wall. That alcove is the only honest source for the trigger — not a door
+  prop (there may not be one), not the painted art (a wall prop may be drawn
+  across it), and never four typed numbers.
+  - **The trigger spans the alcove as far as you can walk**, out to the last
+    walkable pixel and hard against the black. `--outside` is the knob:
+    `remap_doors.py <game> --outside N --write`, and `--skip` keeps it off the
+    rooms whose doors are already right. Newsey's side doors want `--outside
+    14`, which covers the full alcove; its back-wall doors are correct at the
+    default 10 and must not be swept along with them.
+  - **`remap_doors.py` must be able to SEE the alcove, and for a long time it
+    could not.** `NOTCH_PROMINENCE` was 16 while the Lounge's side alcoves are
+    10px and 12px deep, so the tool answered "no source to re-derive from" for
+    doorways it was looking straight at — and whoever needed the numbers
+    invented them. The invented triggers landed 50px below the alcove, half of
+    each one off the walkable floor, in a stretch of wall with no doorway in
+    it at all. The threshold is 9 now: under every real doorway measured here
+    (10, 12, and back-wall arches at 16+) and above the deepest wobble on a
+    wall that has none (9.0). A measuring tool that cannot see the thing it
+    measures does not merely fail — it sends people off to guess.
+  - **A wall prop drawn across the alcove hides the door and blocks it.** The
+    Lounge's five back-wall panels each carry a 60x8 footprint, and the outer
+    ones straddled both doorways: `room.py verify` failed them as unreachable,
+    which is how the alcoves were found in the first place. Trim the
+    footprint's lip clear of the opening (8 -> 6 there); do not move the
+    trigger to suit the prop.
+  - **A wall with no alcove has no door.** Newsey's Lab has a flat left wall
+    and the Bedroom's is 8px — neither is a doorway the tool will derive, and
+    a trigger authored there is a way out through a solid wall. Cut the
+    opening into the plate; do not paper over it with a rectangle.
+
 - **A door has to be ENTERED, not grazed, and that is a number you can measure.**
   `remap_doors.py` reports how deeply a player can get onto each trigger. The
   Arena's way out was armed up in the stands above the walkable platform and
