@@ -279,6 +279,10 @@ function shop(state, report) {
       // the question a shop asks — "can I have all of it" is, and a bank
       // that covers the lot means the visit had no decision in it.
       sweep: offers.reduce((m, o) => m + o.cost, 0),
+      // "Too easy to buy things" is not about the whole shelf — it is about
+      // whether the DEAREST thing on it is ever out of reach. If it never
+      // is, the shop has no choice in it, whatever the totals say.
+      topAfford: state.salvage >= offers.reduce((m, o) => Math.max(m, o.cost), 0),
       all: afford === offers.length,
     });
   }
@@ -789,6 +793,7 @@ console.log("gates taken:", report.gates);
         `  sector ${String(d).padStart(2)}  n=${String(rows.length).padStart(3)}` +
           `  avg bank ${avg(rows.map((r) => r.bank))}` +
           `  avg affordable ${avg(rows.map((r) => r.afford))}/${avg(rows.map((r) => r.shelf))}` +
+          `  dearest ${avg(rows.map((r) => r.dearest))}  affordable ${((rows.filter((r) => r.topAfford).length / rows.length) * 100).toFixed(0)}%` +
           `  bank/shelf ${avg(rows.map((r) => r.bank / Math.max(1, r.sweep)))}x` +
           `  whole shelf affordable ${((canBuyAll / rows.length) * 100).toFixed(0)}%`
       );

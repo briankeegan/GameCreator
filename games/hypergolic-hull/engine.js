@@ -1601,8 +1601,42 @@
     // enough — measured out as the Arc Beam never appearing at all across
     // sixty runs, and every run reaching the Bulwark with the Autocannon
     // it started with. A dock has to be a real chance to change the ship.
-    const rolled = weightedPickWithoutReplacement(stock, (o) => RARITY_WEIGHT[o.rarity] || 1, 3, rng);
-    const ids = ["repair", ...rolled.map((o) => o.id)];
+    // ---- the shelf has to have a TOP END -----------------------------------
+    //
+    // MEASURED, 150 careful runs. B is the bank at the dock, D the dearest
+    // thing on that shelf:
+    //
+    //   sector    2     3     4     5     6     7     8     9    10    12
+    //   B       4.4  22.4  25.0  15.7  22.8  40.4  57.3  61.5  67.5  82.3
+    //   D      13.5  13.4  13.4  12.9  12.9  13.1  14.4  14.4  14.2  20.0
+    //
+    // D is FLAT at about thirteen and a half from Sector 2 to Sector 10
+    // while the bank goes 4 -> 82, and the dearest item on offer was
+    // affordable on 92-100% of visits from Sector 3 on. That is the
+    // complaint verbatim: "by level three you can buy anything you want."
+    //
+    // The arsenal is not the problem — it HAS a top end (Flank Tubes 15,
+    // Missile Pod 16, Arc Projector 18, Railgun 20). Those four never
+    // reached a shelf, because all of them are `rare` (weight 2 against a
+    // common's 6) and they were competing with the cheap stock for all
+    // three slots. Rolling three times from one weighted bag deals three
+    // cheap things nearly every time, so the shop had no ceiling at all.
+    //
+    // So the third slot is a REACH: drawn from the dearest third of what
+    // is eligible here, rarity still deciding which item inside that band.
+    // The other two are rolled exactly as before, which is what keeps
+    // commons common — two thirds of the shelf is still pure rarity.
+    //
+    // A shop is only a decision while something on it is out of reach.
+    // This is Into the Breach's shape — the catalogue always exceeds the
+    // budget — and it costs nothing: not one price was changed.
+    const rolled = weightedPickWithoutReplacement(stock, (o) => RARITY_WEIGHT[o.rarity] || 1, 2, rng);
+    const byPrice = stock
+      .filter((o) => !rolled.includes(o))
+      .sort((a, b) => a.cost - b.cost || (a.id < b.id ? -1 : 1));
+    const reach = byPrice.slice(Math.floor((byPrice.length * 2) / 3));
+    if (reach.length) rolled.push(weightedPickWithoutReplacement(reach, (o) => RARITY_WEIGHT[o.rarity] || 1, 1, rng)[0]);
+    const ids = ["repair", ...rolled.filter(Boolean).map((o) => o.id)];
     // Both guarantees below APPEND and drop the last unforced entry,
     // rather than writing into the same slot — at sector 3 they used to
     // overwrite each other, so a ship with no screen could be promised one
@@ -2340,56 +2374,45 @@
   // Every kill drops scrap, no matter which action lands it — see
   // ENEMY_TYPES[type].salvage.
   //
-  // ---- why this stops at Sector 6 ---------------------------------------
+  // ---- income does not climb with depth ---------------------------------
   //
-  // MEASURED, 150 careful runs, with the ECON=1 ledger in playtest.js.
-  // Income per sector against what the pilot actually SPENT there:
+  // MEASURED, 150 careful runs, with the ECON=1 ledger in playtest.js. B is
+  // the bank at a dock, D the dearest thing on that shelf:
   //
-  //   sector   3-5     6      7      8      9     10     12
-  //   income  12-18   39     37     37     37     57     45
-  //   spent   12-18    8      6     10     12     21     18
-  //   banked    ~0%   79%    84%    73%    66%    62%    59%
+  //   sector    2     3     4     5     6     7     8     9    10    12
+  //   B       4.4  22.4  25.0  15.7  22.8  40.4  57.3  61.5  67.5  82.3
+  //   D      13.5  13.4  13.4  12.9  12.9  13.1  14.4  14.4  14.2  20.0
   //
-  // Sectors 3-5 sit in perfect equilibrium: every salvage earned gets
-  // spent, and a dock is a real choice about which one thing to take. At
-  // Sector 6 income DOUBLES while spend HALVES, and from there the bank
-  // covers the whole shelf five times over ("salvage just piles up and by
-  // level three you can buy anything you want" — Clubhouse).
+  // The dearest item on offer was affordable on 92-100% of visits from
+  // Sector 3 on — the complaint verbatim, "by level three you can buy
+  // anything you want". A run earned 217 salvage and spent about 80,
+  // against a complete fit-out (three guns, a screen, two upgrades, six
+  // patches) costing about 109. Income was twice what a ship can absorb.
   //
-  // Decomposing a wreck: per-wreck value = base + depthBounty.
+  // A wreck used to pay `base + floor(depth/2)`, and BOTH halves climbed:
   //
   //   depth      1     3     5     6     8    10    12
   //   base     1.0   4.2   2.0   8.6   5.3   5.3   6.8
   //   bounty     0     1     2     3     4     5     6
   //
-  // A wreck's BASE value already climbs 1.0 -> 5.3 on its own, because the
-  // classes that arrive deeper are worth more (a Salvager is 8, the
-  // Bulwark 16). The bounty was doubling a scaling that already existed.
+  // Base value already rises on its own, because the classes that arrive
+  // deeper are worth more (a Salvager is 8, the Bulwark 16). The depth
+  // bounty was doubling a scaling that already existed, and doubling the
+  // clean-run bonus on top of it.
   //
-  // But it isn't useless: at Sector 1 a wreck is worth ONE and the
-  // cheapest thing in any shop is a six-salvage patch, so the opening
-  // sectors genuinely cannot pay their own way. That is what this is — a
-  // STARTING SUBSIDY, not a depth bonus. It tops up the sectors whose
-  // wrecks are worth less than a single item, and stops at Sector 6, the
-  // first depth where the wrecks can pay for themselves.
+  // So there is no depth term at all any more: A WRECK IS WORTH WHAT IT IS
+  // WORTH. That is Slay the Spire's shape — an Act 3 fight pays about what
+  // an Act 1 fight pays, so a fixed price list stays a real decision for
+  // the whole run — and it was chosen over the alternative, marking the
+  // shelf up with depth (Risk of Rain 2's answer, and the same shape as
+  // FTL's escalating reactor bars), because charging more for the same
+  // gun deeper in is a worse lie than paying less for the same wreck.
   //
-  // Measured effect of stopping it there: bank-to-shelf at the deep docks
-  // 5.5x -> 2.6x, sectors 1-5 bit-for-bit unchanged (the subsidy is the
-  // same there), and the careful pilot's win rate 65/150 -> 64/150, which
-  // is the same number. Prices were not touched: the alternative was
-  // marking the shelf up with depth (Risk of Rain 2's answer, and FTL's
-  // escalating reactor bars), and the ask was explicitly to give less
-  // salvage rather than charge more. This is Slay the Spire's shape
-  // instead — income that does not climb, against a fixed price list.
-  //
-  // A level's own salvageBonus (a rich locale — see levels.js) is NOT part
-  // of the subsidy and keeps applying at every depth: that one is about
-  // where you are, not how far in you are.
-  const EARLY_SUBSIDY_UNTIL = 6;
-  function depthBounty(state) {
-    const depth = state.levelId || 1;
-    const subsidy = depth < EARLY_SUBSIDY_UNTIL ? Math.floor(depth / 2) : 0;
-    return subsidy + (state.salvageBonus || 0);
+  // What survives is a level's own salvageBonus — a rich locale, see
+  // levels.js. That one is about WHERE you are, not how far in you are,
+  // so it applies at every depth.
+  function localeBonus(state) {
+    return state.salvageBonus || 0;
   }
 
   // ---- flying it clean ----------------------------------------------------
@@ -2407,22 +2430,28 @@
   // where you STOOD rather than what you shot, and it cannot be farmed:
   // there is exactly one per sector and taking one hit anywhere in it is
   // enough to lose it.
+  const CLEAN_RUN_BONUS = 2;
   function awardCleanRun(state) {
     if (state.hull < (state.hullAtSectorStart != null ? state.hullAtSectorStart : state.hull)) return;
     // Sized against the thing it competes with. A four-strong board pays
-    // roughly twenty salvage to clear at mid depth, so a bonus of five was
-    // a consolation prize: the arithmetic still said "kill everything",
+    // roughly twenty salvage to clear, so a bonus of five was a
+    // consolation prize: the arithmetic still said "kill everything",
     // which is what it was supposed to stop saying.
     //
-    // It rides the starting subsidy (see depthBounty), so it is 4-8 in the
-    // opening sectors and a flat 4 from Sector 6 — a quarter of a deep
-    // board rather than a half. That is deliberate: this is the one piece
-    // of income in the game that carries NO risk, so it is the last thing
-    // that should climb with depth once the pile-up is the problem. It
-    // still does its job — measured over 150 runs each after the subsidy
-    // was capped, the careful pilot wins 64 and the greedy one 52, the
-    // same 8-point gap flying clean was built to create.
-    const amount = 4 + 2 * depthBounty(state);
+    // It used to be 4 + 2x the depth bounty, which made it 16 at the
+    // deepest sector — the single largest piece of RISK-FREE income in a
+    // game whose problem was a bank nobody could spend. Flat now, on the
+    // same principle as the wrecks: this is a reward for where you STOOD,
+    // and where you stood is no more impressive at Sector 12 than at
+    // Sector 3.
+    //
+    // Two is a third of a patch. It sounds small and it is not what makes
+    // caution pay — preserving HULL is. Measured over 150 runs a side with
+    // the whole system in place, the careful pilot wins 62 and the greedy
+    // one 48, the same gap flying clean was built to create; the whole
+    // arsenal at once (a flat 4) put careful at 96/150, which is not a
+    // game with a shop in it.
+    const amount = CLEAN_RUN_BONUS + 2 * localeBonus(state);
     state.salvage += amount;
     state.events.push({ type: "salvage", amount, clean: true });
     pushLog(state, `Not a scratch on her — ${amount} salvage bonus.`);
@@ -2430,7 +2459,7 @@
 
   function awardSalvage(state, enemyType) {
     const base = (ENEMY_TYPES[enemyType] || {}).salvage || 0;
-    const amount = base > 0 ? base + depthBounty(state) : 0;
+    const amount = base > 0 ? base + localeBonus(state) : 0;
     if (amount <= 0) return;
     state.salvage += amount;
     state.events.push({ type: "salvage", amount });
@@ -2444,7 +2473,7 @@
   //
   // ~65% a salvage windfall — bigger than one kill's worth, a real "found
   // something" moment, via the same amount the shop is priced against
-  // (depthBounty). ~35% a free item, but capped at common/uncommon — a
+  // (localeBonus). ~35% a free item, but capped at common/uncommon — a
   // free Railgun for zero salvage would gut the "weapons should be way
   // more expensive, you have to save up" curve the shop was tuned around,
   // and would bypass the shop's own rare-item scarcity accounting
@@ -2459,7 +2488,7 @@
       (o) => o.rarity === "common" || o.rarity === "uncommon"
     );
     if (rng() < DISCOVERY_SALVAGE_CHANCE || !commonOrUncommon.length) {
-      const amount = depthBounty(state) * 2 + 6;
+      const amount = localeBonus(state) * 2 + 6;
       state.salvage += amount;
       state.events.push({ type: "discovery", kind: "salvage", amount });
       return `+${amount} salvage`;

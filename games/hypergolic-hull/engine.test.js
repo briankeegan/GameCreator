@@ -872,27 +872,23 @@ assert.strictEqual(
 );
 assert.ok(salvageState.events.some((e) => e.type === "salvage"), "a kill emits a salvage event for the UI to animate");
 
-// ---- the starting subsidy, both directions ------------------------------
+// ---- a wreck is worth what it is worth, at every depth -------------------
 //
-// The opening sectors pay a top-up because a Sector 1 wreck is worth ONE
-// and the cheapest thing in any shop is a six-salvage patch; from Sector 6
-// the wrecks are worth enough to pay their own way and the top-up stops.
-// Checked from BOTH sides, because a bug in either direction is invisible
-// from the other: a subsidy that never fires makes the opening unplayable,
-// and one that never stops is the pile-up it was capped to fix.
+// There is no depth term in salvage any more — see localeBonus in engine.js.
+// Gated here because the bug it replaced was invisible from inside a single
+// sector: every individual payout looked reasonable, and only the bank
+// eleven sectors later showed that they had been climbing the whole way.
 {
-  const bounty = (levelId) => {
-    const lvl = { ...salvageLevel, id: levelId };
-    const st = Engine.createGameState(lvl);
+  const paid = (levelId) => {
+    const st = Engine.createGameState({ ...salvageLevel, id: levelId });
     Engine.applySublight(st, { q: 0, r: -1 });
     Engine.applyFire(st);
-    return st.salvage - Engine.ENEMY_TYPES.interceptor.salvage;
+    return st.salvage;
   };
-  assert.strictEqual(bounty(2), 1, "Sector 2 tops a wreck up by one");
-  assert.strictEqual(bounty(4), 2, "Sector 4 tops a wreck up by two");
-  assert.strictEqual(bounty(5), 2, "Sector 5 is the last sector that gets the top-up");
-  assert.strictEqual(bounty(6), 0, "Sector 6 pays a wreck exactly what it is worth");
-  assert.strictEqual(bounty(12), 0, "and so does the deepest sector in the game");
+  const worth = Engine.ENEMY_TYPES.interceptor.salvage;
+  for (const d of [1, 2, 4, 5, 6, 12, 992]) {
+    assert.strictEqual(paid(d), worth, `Sector ${d} pays an Interceptor exactly what it is worth`);
+  }
 }
 // Ending the approach MOVE adjacent to the live Interceptor ate its shot
 // (one action per turn — that's the rule). Reset hull: the shop test
@@ -1143,8 +1139,19 @@ assert.notDeepStrictEqual(
 // individual common. Sampled with the guarantees held off — a ship with no
 // second gun is promised one, and a ship with no screen is promised that,
 // so a fixture flying naked measures the promises rather than the roll.
+//
+// Counted EXCLUDING each shelf's dearest entry, because that slot is not
+// rolled on rarity at all — it is the reach slot (see pickOutpostOfferIds),
+// drawn from the dearest third of eligible stock so that a dock always
+// shows you something you cannot afford yet. In this pool expensive and
+// rare are very nearly the same items, so the reach slot shows a rare on
+// most deep visits BY DESIGN. That is not the rarity being cosmetic: a
+// rare's scarcity here is that you can seldom AFFORD it, which is checked
+// straight after this. What rarity still governs is the other two slots,
+// and that is what this counts.
 {
   const tally = {};
+  const reachTally = {};
   const kitted = ["shieldGenerator", "arcBeam"]; // nothing forced: has a screen, has a second gun
   for (let levelId = 950; levelId < 1050; levelId++) {
     const s = Engine.createGameState(
@@ -1156,14 +1163,28 @@ assert.notDeepStrictEqual(
       { runSeed: 99, raresSkipped: 0, extraActions: kitted.filter((k) => Engine.WEAPON_SYSTEM_KEYS.includes(k)) }
     );
     for (const it of kitted) if (!s.hold.items.some((h) => h.id === it)) s.hold.items.push({ id: it, x: 0, y: 0 });
-    for (const id of s.outpostOfferIds) tally[id] = (tally[id] || 0) + 1;
+    const priced = s.outpostOfferIds.map((id) => ({ id, cost: s.outpostOfferPrices[id] ?? 0 }));
+    const dearest = priced.reduce((m, o) => (o.cost > m.cost ? o : m), priced[0]);
+    reachTally[dearest.id] = (reachTally[dearest.id] || 0) + 1;
+    for (const o of priced) if (o.id !== dearest.id) tally[o.id] = (tally[o.id] || 0) + 1;
   }
-  const perItem = (ids) => ids.reduce((n, id) => n + (tally[id] || 0), 0) / ids.length;
-  const commonEach = perItem(["reinforce", "reactor"]);
-  const rareEach = perItem(["mortar", "flankTubes", "railgun", "missilePod", "arcProjector", "demolitionCharge"]);
+  const perItem = (ids, t) => ids.reduce((n, id) => n + (t[id] || 0), 0) / ids.length;
+  const RARES = ["mortar", "flankTubes", "railgun", "missilePod", "arcProjector", "demolitionCharge"];
+  const commonEach = perItem(["reinforce", "reactor"], tally);
+  const rareEach = perItem(RARES, tally);
   assert.ok(
     commonEach > rareEach * 1.5,
-    `each common (${commonEach.toFixed(1)} sightings) turns up meaningfully more than each rare (${rareEach.toFixed(1)}) — rarity weighting is real, not cosmetic`
+    `in the rarity-rolled slots each common (${commonEach.toFixed(1)} sightings) turns up meaningfully more than each rare (${rareEach.toFixed(1)})`
+  );
+  // ...and the reach slot is doing its job: at a depth where the heavy
+  // hardware is unlocked, the dearest thing on the shelf is one of it.
+  // Before the reach slot existed the dearest entry was a fourteen-salvage
+  // screen at every depth from 2 to 10 while the bank climbed to 82, which
+  // is how "you can buy anything you want" happens.
+  const reachIsHeavy = RARES.reduce((n, id) => n + (reachTally[id] || 0), 0);
+  assert.ok(
+    reachIsHeavy > 60,
+    `a deep shelf's dearest entry is heavy hardware (${reachIsHeavy}/100 visits) — the shop has a ceiling that rises`
   );
 }
 // Prices roll within a modest band of the pool's listed cost — a real
