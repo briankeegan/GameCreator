@@ -3018,6 +3018,16 @@
   function enemyPhase(state) {
     let totalDamage = 0;
     const firedThisPhase = new Set();
+    // Who actually landed a hit this round, and what their bus read right
+    // after paying for the shot — surfaced in the hit-report log below.
+    // Energy IS spent and regenerated on the same rule the flagship's own
+    // is (line below), but the single-line log never said so, and a fast
+    // reactor (an Interceptor's is back at max before the player's next
+    // turn even starts) meant a scanned contact's gauge never visibly
+    // showed the dip either — reads as "enemies don't actually use energy"
+    // even though they do. Reported live: "I'm not seeing their energy
+    // deplete."
+    const hitters = [];
     for (let apStep = 0; apStep < ENEMY_AP; apStep++) {
       const intents = livingEnemies(state).map((enemy) => ({ enemy, intent: decideIntent(state, enemy) }));
       const attackers = intents
@@ -3044,6 +3054,7 @@
           continue;
         }
         totalDamage += weapon.damage;
+        hitters.push({ type: enemy.type, energy: enemy.energy, maxEnergy: enemy.maxEnergy });
         state.events.push({
           type: "attack",
           enemyId: enemy.id,
@@ -3087,19 +3098,25 @@
     advanceCharges(state, (dmg) => {
       totalDamage += dmg;
     });
+    // The one-line-at-a-time log (see pushLog) means this is the ONLY
+    // message a round with a hit in it actually shows — so it's also the
+    // one place that can report a shooter actually paid energy for the
+    // shot, not a separate line that would just get overwritten by this one.
+    const lastHitter = hitters[hitters.length - 1];
+    const energyNote = lastHitter ? ` ${lastHitter.type.toUpperCase()} energy ${lastHitter.energy}/${lastHitter.maxEnergy}.` : "";
     if (totalDamage > 0 && state.shieldCharges > 0) {
       state.shieldCharges -= 1;
       state.events.push({ type: "shieldAbsorb", q: state.playerPos.q, r: state.playerPos.r });
       pushLog(
         state,
-        state.shieldCharges > 0
+        (state.shieldCharges > 0
           ? `Shields absorbed ${totalDamage} damage — ${state.shieldCharges} charge${state.shieldCharges === 1 ? "" : "s"} left.`
-          : `Shields absorbed ${totalDamage} damage — shields DOWN.`
+          : `Shields absorbed ${totalDamage} damage — shields DOWN.`) + energyNote
       );
     } else if (totalDamage > 0) {
       state.hull = Math.max(0, state.hull - totalDamage);
       state.events.push({ type: "damage", amount: totalDamage, q: state.playerPos.q, r: state.playerPos.r });
-      pushLog(state, totalDamage > 1 ? `We are hit — hull down ${totalDamage}.` : "We are hit — hull down 1.");
+      pushLog(state, (totalDamage > 1 ? `We are hit — hull down ${totalDamage}.` : "We are hit — hull down 1.") + energyNote);
     }
     state.turnCount += 1; // a ROUND has passed
     // Enemy reactors tick once per ROUND, by exactly the rate their own

@@ -786,6 +786,16 @@ assert.deepStrictEqual(
   railgunStart,
   "the Railgun does not move to chase either — it holds its hex"
 );
+// Enemies pay energy for a shot on the same rule the flagship does (see
+// enemyPhase), but nothing ever SAID so on screen — reported live: "I'm
+// not seeing their energy deplete." The single-line hit-report log is the
+// one place that can say it without adding a second line that would just
+// get overwritten (see pushLog's one-message-at-a-time design), so it
+// reports the shooter's energy right after paying for the shot.
+assert.ok(
+  railgunState.log[railgunState.log.length - 1].includes("RAILGUN energy 0/5"),
+  "the hit-report log names the shooter and its post-shot energy, so the spend is visible even though the reactor refills before the player's next glance at it"
+);
 
 // Off-axis, the Railgun's shot never reaches at all, no matter the range.
 const railgunOffAxisLevel = { ...railgunLevel, id: 996, playerStart: { q: 0, r: 5 } };
