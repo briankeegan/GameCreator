@@ -1047,9 +1047,15 @@
     }
     if (isChain) {
       if (!this.currentChain) {
+        // checkMatches.lua:784-790 — if a combo also fired from this same
+        // match, its card already occupies this row's telegraph slot, so
+        // the chain card renders one row higher instead of overlapping it.
+        // A fresh object, never a mutation of `origin` itself — that object
+        // is shared with the combo pieces already pushed above.
+        var chainOrigin = pieces.length > 0 ? { row: origin.row + 1, col: origin.col } : origin;
         this.currentChain = {
           width: W, height: 1, isChain: true,
-          frameEarned: this.clock, finalized: false, origin: origin
+          frameEarned: this.clock, finalized: false, origin: chainOrigin
         };
         this.outgoing.push(this.currentChain);
       } else {
