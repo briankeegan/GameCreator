@@ -26,9 +26,6 @@
 //   * shock/metal panels — a whole extra panel class for one attack type the
 //     plot never mentions; every level here runs with shockCap 0.
 //   * rollback/netplay, replays, puzzles, score modes — single-machine game.
-//   * PA's exact "matchAnyway" propagation through simultaneous swaps. The
-//     common cases (chain through a hover, chain out of cleared garbage) are
-//     ported; the rare swap-timing corner cases are not.
 (function (root) {
   "use strict";
 
@@ -280,7 +277,22 @@
       // Panels above a match that just finished popping are matchable for one
       // frame on entering hover (that is how a chain link is detected).
       // Panels above CLEARED GARBAGE are not — below.color is non-zero there.
-      p.matchAnyway = below.color === 0 || below.matchAnyway;
+      if (below.color === 0 || below.matchAnyway) {
+        p.matchAnyway = true;
+      } else {
+        // Swapping panels never carry matchAnyway themselves (Panel.lua:
+        // "swapping panels will never get the matchAnyway flag"), so if a
+        // chain-continuing pop is sitting one or more swaps below this
+        // panel, drill down past every swapping (and freshly-hovering,
+        // not-yet-matchAnyway) panel to find the real originating hover or
+        // empty cell before deciding whether this panel inherits it.
+        var source = below;
+        while (source.state === "swapping" ||
+          (source.stateChanged && source.propagatesChaining && !source.matchAnyway && source.state === "hovering")) {
+          source = panelBelow(stack, source);
+        }
+        if (source.propagatesChaining) p.matchAnyway = source.color === 0 || source.matchAnyway;
+      }
     }
     p.timer = hoverTime;
     p.stateChanged = true;
