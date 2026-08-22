@@ -632,19 +632,19 @@ window.NEWSEY_STORY = (function () {
       // The drawn floor, traced as a polygon (see ROOM SHAPES above) — the
       // flagstone hexagon between the two banks of stands, PLUS a notch cut
       // into its own bottom edge: the art's front bench is actually two
-      // short segments with a gap between them (pixel x 155-290 of 512,
-      // y up to ~338 of 341) where the floor keeps going almost to the very
-      // edge of the frame. The original flat-186 bottom edge didn't include
-      // that gap at all, which is exactly where the portal (and its trigger)
-      // needed to sit — "the very bottom of the walkable area" is that notch,
-      // not the hexagon's average edge.
-      floorPoly: [[66,100],[250,100],[292,140],[283,186],[181,186],[181,198],[97,198],[97,186],[42,186],[30,140]],
+      // short segments with a gap between them where the floor keeps going
+      // almost to the very edge of the frame. The original flat-186 bottom
+      // edge didn't include that gap at all, which is exactly where the
+      // portal (and its trigger) needed to sit — "the very bottom of the
+      // walkable area" is that notch, not the hexagon's average edge.
+      floorPoly: [[66,100],[250,100],[292,140],[283,186],[171,186],[171,198],[87,198],[87,186],[42,186],[30,140]],
       exits: [
-        // The portal, in the notch above, measured off bg-arena.png at
-        // 320x200 (192,286,128,52 at the art's native 512x341, scaled) —
-        // its bottom edge sits 3px shy of the image's own bottom edge, and
-        // the trigger goes right up to the notch's floor limit (y=198).
-        { x: 120, y: 168, w: 80, h: 28, to: "lounge", link: "portal" }
+        // The portal, in the notch above, deliberately hung half off the
+        // bottom edge of the frame (drawn at pixel 171,303,130,52 of the
+        // art's native 512x341 — only the top ~38px are visible, the rest
+        // clipped by the canvas) so it reads as an exit, not scenery on the
+        // open floor. Trigger sits on its visible upper arc, within reach.
+        { x: 100, y: 168, w: 76, h: 28, to: "lounge", link: "portal" }
       ],
       obstacles: [ { x: 0, y: 88, w: 66, h: 20 }, { x: 250, y: 88, w: 70, h: 20 } ], // the stands
       npcs: [
