@@ -217,6 +217,20 @@ design discussion. `shared/` holds the components every game reuses
   configured.** Because both layouts exist, the art gate globs for both — so a
   new game is covered the moment it has art, with no per-game config to forget
   to update.
+- **A SCREENSHOT THAT FAILS SILENTLY IS WORSE THAN NO SCREENSHOT**, because it
+  does not look like a failure — it looks like evidence. A shot script whose
+  locator was `#game` (this game's stage is `#stage`) timed out, wrote nothing,
+  and left the PREVIOUS run's images on disk. They were read as fresh, and
+  three rounds went into concluding a door marker "wasn't rendering" when it
+  had rendered the whole time. Take every screenshot through
+  `.github/scripts/shoot.js`, which does three things:
+  1. **deletes the target first**, so no stale file can survive a failed run;
+  2. **throws if nothing was written**, so a failure is a failure;
+  3. **burns the time and commit into the top of the image.** That is the one
+     that matters: the other two protect the script, but the deception happens
+     when a PERSON looks at the picture, and a stamped image says out loud
+     which run it is from. Read a screenshot with no stamp, or a stamp from an
+     older commit, and you are looking at the past.
 - **A slow test is debugged with a probe, not with re-runs — and a grid test
   COLLECTS.** `browser.test.js` takes ~4 minutes. Fixing it one failed
   assertion at a time costs a run per assertion, and each run only ever

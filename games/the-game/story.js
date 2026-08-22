@@ -644,7 +644,7 @@ window.NEWSEY_STORY = (function () {
         // art's native 512x341 — only the top ~38px are visible, the rest
         // clipped by the canvas) so it reads as an exit, not scenery on the
         // open floor. Trigger sits on its visible upper arc, within reach.
-        { x: 100, y: 168, w: 76, h: 28, to: "lounge", link: "portal" }
+        { x: 100, y: 182, w: 76, h: 12, to: "lounge", link: "portal" }
       ],
       obstacles: [ { x: 0, y: 88, w: 66, h: 20 }, { x: 250, y: 88, w: 70, h: 20 } ], // the stands
       npcs: [
@@ -869,7 +869,7 @@ window.NEWSEY_STORY = (function () {
         // y 124, clear of the wall panels' footprint: the leftmost panel
         // blocks y 112-120 across the room, and a trigger overlapping it is a
         // door you cannot reach.
-        { x: 6, y: 142, w: 18, h: 38, to: "lounge", link: "eastDoor" }
+        { x: 6, y: 142, w: 18, h: 38, to: "lounge", link: "eastDoor", drawn: "sidedoor" }
       ],
       npcs: [
         {
