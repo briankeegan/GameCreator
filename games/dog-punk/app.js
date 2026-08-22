@@ -910,6 +910,14 @@ function bindHold(el, onDown, onUp) {
   el.addEventListener("pointerup", up);
   el.addEventListener("pointercancel", up);
   el.addEventListener("pointerleave", up);
+  // Holding a d-pad/attack button is exactly a mobile browser's "long
+  // press" gesture — without these it can still select the button's glyph
+  // and raise a "Search Google for ▲" / copy-and-share sheet mid-game, on
+  // top of the CSS user-select/touch-callout rules meant to stop the same
+  // thing (belt and suspenders: different engines trigger it off different
+  // events).
+  el.addEventListener("contextmenu", (e) => e.preventDefault());
+  el.addEventListener("selectstart", (e) => e.preventDefault());
 }
 
 if (dpad) {

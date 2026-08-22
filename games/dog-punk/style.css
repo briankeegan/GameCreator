@@ -4,6 +4,15 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
+  /* `100%` resolves against the *layout* viewport, which on mobile Safari/
+     Chrome includes the strip the address/URL bar can retract into — so
+     the page is taller than what's actually visible, and anything pinned
+     to the bottom of that 100% (the touch controls) renders partly below
+     the real screen edge, in the gap between what you can see and the
+     page's full height. `100dvh` tracks the *actual* visible viewport as
+     the browser chrome shows/hides, so the fallback above only applies on
+     the handful of engines with no dvh support at all. */
+  height: 100dvh;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   /* junkyard dark, matching the level's environmentPalette (art-style.json)
      — the page used to be moss green, from when the floor was grass. */
@@ -16,6 +25,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  height: 100dvh;
 }
 
 .game-area {
@@ -25,7 +35,9 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 10px calc(8px + var(--banner-space));
+  /* env(safe-area-inset-bottom) keeps the controls clear of a phone's home
+     indicator / gesture bar, same as the install banner below already does. */
+  padding: 8px 10px calc(8px + var(--banner-space) + env(safe-area-inset-bottom));
   text-align: center;
   gap: 6px;
   overflow: hidden;
@@ -407,6 +419,14 @@ body {
   font-size: 1rem;
   touch-action: none;
   user-select: none;
+  -webkit-user-select: none;
+  /* iOS's long-press callout (copy/select/"Look Up", plus the magnifier)
+     fires on the held glyph independently of user-select and of the
+     pointerdown preventDefault() in app.js — this is the only thing that
+     actually suppresses it, which is what was popping up as "the google
+     thingy" when a button was held. */
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .dpad-up { grid-column: 2; grid-row: 1; }
 .dpad-left { grid-column: 1; grid-row: 2; }
@@ -423,6 +443,9 @@ body {
   font-size: 1.4rem;
   touch-action: none;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 @media (hover: hover) and (pointer: fine) {

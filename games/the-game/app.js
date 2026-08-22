@@ -393,6 +393,10 @@
   // forth between two rooms forever. Stepping clear isn't enough to fix that:
   // the doorstep is only a stride from the door by design. A fresh press is.
   var doorNeedsRelease = false;
+  // A door transition now takes a fade plus however long the next room's art
+  // needs. Without this, a second door could fire while the first was still
+  // in flight and the two arrivals would fight over where you end up.
+  var transitioning = false;
   var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down", inBed: false, bedSlide: null };
   var walkPhase = 0, isWalking = false; // drives real walk-frame cycling (see drawPlayer)
   var lastGoodPlayerFrame = null; // last successfully-loaded frame drawPlayer showed — see drawPlayer
@@ -482,6 +486,46 @@
           y + player.h > ex.y - p && y < ex.y + ex.h + p) hit = true;
     });
     return hit;
+  }
+
+  // IS THIS ROOM READY TO BE LOOKED AT?
+  //
+  // Every art id the room needs, plus its walk mask. loadArt/loadBg cache by
+  // id, so asking is also what starts the fetch — calling this on a room you
+  // are about to enter both tests it and warms it.
+  //
+  // `failed` counts as ready on purpose. A missing file resolves to a
+  // placeholder by design (that is why loadArt separates "still loading" from
+  // "will never load"), and waiting forever for art that is never coming
+  // would hang the door instead of degrading gracefully.
+  function roomReady(room) {
+    if (!room) return true;
+    var bg = loadBg(room.bg);
+    if (bg && !bg.ok) return false;
+    var ids = [];
+    (room.props || []).forEach(function (p) { if (p.art) ids.push(p.art); });
+    (room.npcs || []).forEach(function (n) {
+      if (n.art) ids.push(n.art);
+      if (n.sprite) ids.push(n.sprite);
+    });
+    for (var i = 0; i < ids.length; i++) {
+      var e = loadArt(ids[i]);
+      if (e && !e.ok && !e.failed) return false;
+    }
+    return walkMask(room).ready;
+  }
+
+  // Hold the screen black until it is. NEVER show a room part-loaded: props
+  // and NPCs popping in one at a time after the room is already on screen is
+  // the game assembling itself in front of the player. There is a cap so a
+  // slow or broken asset degrades to "shown late" rather than "never shown".
+  function whenRoomReady(room, done) {
+    var waited = 0;
+    (function poll() {
+      if (roomReady(room) || waited > 3000) return done();
+      waited += 50;
+      setTimeout(poll, 50);
+    })();
   }
 
   // link: which door you came through. Where you land and which way you face
@@ -1233,8 +1277,35 @@
         // wall for someone heading up. Derived from where the trigger sits
         // (exitEnterDir), never typed, so it cannot disagree with the wall
         // the doorway is painted in.
-        if (exitsArmed && !doorNeedsRelease &&
+        // NOT gated on stepping clear of the door any more. That rule was
+        // written when arrival was a spot NEAR the door; now you land ON it,
+        // so "armed only once you are off every trigger" meant standing in a
+        // doorway unable to use it — go through a door, try to walk straight
+        // back, and nothing happens. Reported from play as getting stuck.
+        //
+        // Releasing the key is the gate that still matters, and it is enough:
+        // you arrive holding the direction that brought you here, which is
+        // the OPPOSITE of the way this door faces, so it cannot re-fire under
+        // a held key. Let go and press back, and you go back — which is what
+        // walking through a door and turning round should do.
+        if (!doorNeedsRelease &&
             isWalking && player.facing === exitEnterDir(ex)) {
+          // GO THROUGH THE DOOR BEHIND A CURTAIN. Walking into a room while
+          // its art was still arriving showed the floor first and then the
+          // props and people appearing one at a time — the game assembling
+          // itself in front of you. Black out, load, then lift.
+          if (ex.link !== "portal") {
+            if (transitioning) return;
+            transitioning = true;
+            var toRoom = ROOMS[ex.to], toLink = ex.link;
+            fadeToBlack(function () {
+              enterRoom(ex.to, null, null, toLink);
+              whenRoomReady(toRoom, function () {
+                fadeFromBlack(function () { transitioning = false; });
+              });
+            });
+            return;
+          }
           if (ex.link === "portal") {
             // Out of the doorway itself, not out of the player — the bloom
             // has to start where the swirl is drawn or it reads as the screen

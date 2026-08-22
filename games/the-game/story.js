@@ -427,7 +427,7 @@ window.NEWSEY_STORY = (function () {
         // clear of the dip, instead of at the old centre of 169 (feet at 187,
         // inside it) — which read as a door you could walk toward and never
         // reach.
-        { x: 296, y: 118, w: 18, h: 24, to: "lounge", link: "westDoor" }
+        { x: 296, y: 114, w: 18, h: 23, to: "lounge", link: "westDoor" }
       ],
       npcs: [
         {
