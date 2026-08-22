@@ -69,6 +69,7 @@ jobs:
       # check must never block a deploy.
       - name: Verify doors can be entered
         run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
           status=0
           for d in games/*/story.js; do
             g=$(dirname "$d")
