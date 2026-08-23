@@ -385,6 +385,12 @@
 
   function boardPotential(board) { return potential(board.grid, board.height, board.width); }
 
+  function garbageCellCount(board) {
+    var n = 0;
+    for (var r = 1; r <= board.height; r++) for (var c = 1; c <= board.width; c++) if (board.grid[r][c] === -2) n++;
+    return n;
+  }
+
   // ---- SearchCpu ----
 
   function SearchCpu(stack, opts) {
@@ -440,6 +446,29 @@
     return board.maxHeight() >= board.height * this.dangerHeightFrac;
   };
 
+  // Shared scoring for every defensive-search tier: garbage cleared always
+  // wins first (that's the actual wall closing in), then chain length —
+  // weighted MUCH harder once the board is already topped out, mirroring
+  // Stack:awardStopTime's own dangerConstant/dangerCoefficient bonus,
+  // which pays out far more for a chain specifically while wasToppedOut
+  // than the same chain gets otherwise. That stop time doesn't stop
+  // garbage from landing, but it DOES pause the health-drain clock that
+  // is the actual killer once physically topped out — so once there,
+  // finding even a small chain over a same-size non-chain combo is the
+  // single highest-leverage thing this search can do.
+  SearchCpu.prototype._defensiveKey = function (res, garbageCleared, toppedOutNow) {
+    var comboSum = res.comboSizes.reduce(function (a, b) { return a + b; }, 0);
+    // Garbage-cleared stays the dominant term always — it is what most
+    // directly shrinks the actual danger. The chain bonus is a much
+    // smaller secondary term: it can't make this pick a move that clears
+    // less garbage, but it decisively breaks ties toward whichever
+    // similarly-good option also chains, for the stop-time payout.
+    var chainBonus = toppedOutNow && res.chainLength >= 2
+      ? res.chainLength * res.chainLength * 5000
+      : res.chainLength * 1000;
+    return garbageCleared * 1000000 + chainBonus + comboSum;
+  };
+
   // Pure survival: the biggest immediate clear, or (if none) the swap
   // that improves `potential` the most, searched progressively deeper
   // (1, then 2, then 3 swaps) until something is found. NEVER raises
@@ -448,14 +477,16 @@
   // scoring weights happen to produce.
   SearchCpu.prototype._bestDefensiveMove = function (board) {
     var best = null, bestKey = null, swaps = board.legalSwaps(), i;
+    var garbageBefore = garbageCellCount(board);
+    var toppedOutNow = board.maxHeight() >= board.height;
     for (i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
       var trial = board.clone();
       trial.swap(r, c);
       var res = trial.resolve();
       if (res.chainLength === 0) continue;
-      var comboSum = res.comboSizes.reduce(function (a, b) { return a + b; }, 0);
-      var key = res.chainLength * 1000 + comboSum;
+      var garbageCleared = garbageBefore - garbageCellCount(trial);
+      var key = this._defensiveKey(res, garbageCleared, toppedOutNow);
       if (bestKey === null || key > bestKey) { bestKey = key; best = [r, c]; }
     }
     if (best) return best;
@@ -470,13 +501,16 @@
     }
     if (gainMove && bestGain > 0) return gainMove;
 
-    var rescue = this._nPlyRescue(board, 2) || this._nPlyRescue(board, 3);
+    var rescue = this._nPlyRescue(board, 2) || this._nPlyRescue(board, 3) || this._nPlyRescue(board, 4);
     if (rescue) return rescue;
     return gainMove || null; // null means "raise" to the caller
   };
 
   SearchCpu.prototype._nPlyRescue = function (board, depth) {
+    var self = this;
     var best = null, bestKey = null;
+    var garbageBefore = garbageCellCount(board);
+    var toppedOutNow = board.maxHeight() >= board.height;
     var walk = function (trial, firstMove, remaining) {
       var swaps = trial.legalSwaps();
       for (var i = 0; i < swaps.length; i++) {
@@ -486,8 +520,8 @@
         var move = firstMove || [r, c];
         var res = step.resolve();
         if (res.chainLength > 0) {
-          var comboSum = res.comboSizes.reduce(function (a, b) { return a + b; }, 0);
-          var key = res.chainLength * 1000 + comboSum;
+          var garbageCleared = garbageBefore - garbageCellCount(step);
+          var key = self._defensiveKey(res, garbageCleared, toppedOutNow);
           if (bestKey === null || key > bestKey) { bestKey = key; best = move; }
           continue;
         }
@@ -684,7 +718,17 @@
     }
     this._lastSwap = [row, col];
     stack.touchSwap(row, col);
-    this.cooldown = Math.max(6, Math.round(this.reaction * (board.fillRatio() > this.dangerHeightFrac ? 0.55 : 1)));
+    // Under real pressure, speed IS the defense: every extra frame of
+    // cooldown is a frame garbage keeps stacking uncontested. Confirmed
+    // by stress-testing survival against a sustained garbage stream
+    // (games/the-game/ai/ only models a symmetric duel, not this — a
+    // one-sided firehose test caught what that missed): at the old 0.55x
+    // reaction, clear throughput fell behind incoming faster than any
+    // amount of smarter move-picking could make up. Near the 6-frame
+    // floor while in real danger closes that gap.
+    this.cooldown = board.fillRatio() > this.dangerHeightFrac
+      ? 6
+      : Math.max(6, Math.round(this.reaction * (board.fillRatio() > this.dangerHeightFrac * 0.85 ? 0.55 : 1)));
   };
 
   root.PanelCpu = { Cpu: Cpu, SearchCpu: SearchCpu, DIFFICULTIES: DIFFICULTIES };
