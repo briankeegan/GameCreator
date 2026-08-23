@@ -203,7 +203,18 @@ function wantList(state) {
       return a.cost - b.cost || reach(wb) - reach(wa);
     })
     .map((o) => o.id);
-  return [...guns, "shield", "hardpoint", "reinforce", "reactor"];
+  // Energy hardware is bought only when the ship is actually short of
+  // energy — never as "the next affordable thing". Reaching for it by
+  // price put 128 Charge Banks across 150 runs into holds that needed
+  // guns, and the careful pilot's win rate fell 58/150 -> 35/150. A
+  // battery holds charge, it does not make any: it is worth having only
+  // once there is something on the bus to spend it on. Short means the
+  // bus cannot cover the dearest gun aboard twice over — enough to fire
+  // it, take a turn, and fire it again.
+  const dearestShot = Math.max(1, ...armedWeapons(state).map((w) => w.energyCost || 1));
+  const energyShort = (state.maxEnergy || 0) < dearestShot * 2;
+  const power = energyShort ? ["reactor", "chargeBank"] : [];
+  return [...guns, "shield", "screenArray", "hardpoint", "reinforce", ...power];
 }
 
 // Shopping policy. A dock is the only place capability comes from, and

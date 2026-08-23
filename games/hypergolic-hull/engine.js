@@ -925,7 +925,7 @@
     // every other instinct in this game says to break up — is cover from
     // the one enemy you cannot out-position.
     demolitionist: {
-      hull: 1, salvage: 4, inhibition: "blastSafe",
+      hull: 1, salvage: 3, inhibition: "blastSafe",
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
@@ -943,7 +943,7 @@
     // parking behind a rock is no answer. Get inside three and it has
     // nothing; that hole is the whole answer to it.
     bombard: {
-      hull: 1, salvage: 3,
+      hull: 1, salvage: 2,
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
@@ -959,7 +959,7 @@
     // with it, or get inside it — standing diagonally off at two is the
     // one place it wants you.
     lancer: {
-      hull: 1, salvage: 3,
+      hull: 1, salvage: 2,
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
@@ -979,7 +979,7 @@
     // generator, so its first slug is telegraphed by a bus you can watch
     // filling, and it cannot both reposition and fire in the same round.
     railgun: {
-      hull: 1, salvage: 3, startsEmpty: true,
+      hull: 1, salvage: 2, startsEmpty: true,
       hold: {
         cols: 4, rows: 6, blocked: ["0,0", "3,0", "0,5", "3,5"],
         items: [
@@ -1003,7 +1003,7 @@
     // beam, so you do not out-position it, you position the things around
     // it and its own wingmen become your cover.
     cutter: {
-      hull: 1, salvage: 3, inhibition: "beamClear",
+      hull: 1, salvage: 2, inhibition: "beamClear",
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
@@ -1020,7 +1020,7 @@
     // here — everything takes exactly one more shot than you expect, and
     // a volley you were counting on to clear contact doesn't.
     escort: {
-      hull: 1, salvage: 3,
+      hull: 1, salvage: 2,
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
@@ -1044,7 +1044,7 @@
     // three of them plus an Escort's screen turned every deep board into
     // arithmetic (measured: it took the win rate from 48% to zero).
     carrier: {
-      hull: 1, salvage: 4,
+      hull: 1, salvage: 3,
       hold: {
         cols: 5, rows: 6, blocked: ["0,0", "4,0", "0,5", "4,5"],
         items: [
@@ -1069,7 +1069,7 @@
     // more than anything else on the board and every turn you spend
     // cracking it is a turn the things that CAN shoot get for free.
     salvager: {
-      hull: 1, salvage: 8,
+      hull: 1, salvage: 6,
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
@@ -1093,7 +1093,7 @@
     // of them finished — a last sector nobody beats is a wall with a name
     // on it, which is the exact note this level already carried.
     bulwark: {
-      hull: 1, salvage: 16, startsEmpty: true,
+      hull: 1, salvage: 13, startsEmpty: true,
       hold: {
         cols: 5, rows: 6, blocked: ["0,0", "4,0", "0,5", "4,5"],
         items: [
@@ -1374,6 +1374,8 @@
     reinforce: "ablativePlating",
     shield: "shieldGenerator",
     reactor: "microReactor",
+    screenArray: "shieldGenerator",
+    chargeBank: "chargeBank",
     flakBurst: "flakBurst",
     arcBeam: "arcBeam",
     mortar: "mortar",
@@ -1414,6 +1416,38 @@
     // slots (how many systems can run at once) are both ship stats you
     // grow at Outposts, not constants.
     { id: "reactor", label: "Reactor Upgrade (+1 Max Energy)", cost: 8, rarity: "common" },
+    // ---- the two ends of the range ---------------------------------------
+    //
+    // MEASURED: Slay the Spire's shelf spans 45 to 300 gold — a common card
+    // to a top relic, a 6.7x spread — against roughly 110 gold of income an
+    // act, so the dearest thing in a shop is TWO TO FOUR ACTS of income.
+    // This shelf spanned 6 to 20, a 3.3x spread, against about 17 salvage a
+    // sector: the dearest thing in the game was 1.2 sectors of income. That
+    // is why every deep dock read as affordable however hard the income
+    // side was tuned — there was nothing to save FOR.
+    //
+    // THE TOP RUNG HAS TO BE SOMETHING STACKING CHEAP ONES CANNOT REACH.
+    // Plating, reactors and hold rows all repeat, so a premium version of
+    // any of them is just a worse bulk rate. A Reactor Core was tried here
+    // first and was a trap for a reason worth writing down: the standard
+    // loadout ALREADY FLIES ONE (see STARTING_LOADOUTS), so it sold the
+    // ship capacity it had, and the careful pilot's win rate fell 58/150
+    // -> 49/150 buying 37 of them.
+    //
+    // A second screen is the one thing that was capped at one forever
+    // ("shield is really good" — Clubhouse, which is why the first went to
+    // 14), and a second charge is the biggest survivability step in the
+    // game. Two or three sectors of saving. Gated below on already flying
+    // the first: without one aboard this is a Shield Generator at double
+    // the price.
+    { id: "screenArray", label: "Screen Array (2x2 — a SECOND shield charge)", cost: 30, rarity: "rare" },
+    // The bottom: something a broke ship can still walk out with. FTL keeps
+    // a poor store visit useful by selling fuel and missiles well under
+    // system prices; everything here was 6 or more, so the Sector 2 dock
+    // was decorative — measured at a 3-salvage bank against a 6-salvage
+    // floor, spending ZERO, in every configuration ever tried. That
+    // unspendable money is exactly what makes Sector 3 easy.
+    { id: "chargeBank", label: "Charge Bank (1x2 — +2 Max Energy, holds it, makes none)", cost: 4, rarity: "common" },
     { id: "hardpoint", label: "Hold Expansion (+1 row of internal space)", cost: 12, rarity: "uncommon" },
     // The three weapons beyond your starting Autocannon, priced on a real
     // curve — each one answers a situation the others can't, and each is
@@ -1573,7 +1607,17 @@
       //   missilePod 8  — the Carrier's.
       //   arcProjector / demolitionCharge 8 — the Cutter's and the
       //                   Demolitionist's, and both land at depth 8.
-      if (o.id === "railgun" || o.id === "flankTubes" || o.id === "missilePod") return levelId >= 8;
+      // Five items used to land at 8 together, and nothing at all became
+      // eligible between 4 and 8 — so the dearest thing on a shelf could
+      // not rise for four sectors while the bank tripled, and Sector 7 was
+      // the worst dock in the game at 100% affordable. Staggered: the
+      // Lancer and the Carrier are already in the water by 6 and 7, so
+      // their guns are on schedule under the rule this list encodes (a gun
+      // goes on a shelf a sector or two after the thing it answers turns
+      // up). The Railgun stays at 8 as the top of the weapon range.
+      if (o.id === "railgun") return levelId >= 8;
+      if (o.id === "flankTubes") return levelId >= 6;   // the Lancer's
+      if (o.id === "missilePod") return levelId >= 7;   // the Carrier's
       if (o.id === "arcProjector" || o.id === "demolitionCharge") return levelId >= 8;
       if (o.id === "mortar") return levelId >= 6;
       if (o.id === "beamLance") return levelId >= 4;   // the Picket's own gun, met in Sector 2
@@ -1581,6 +1625,10 @@
       if (o.id === "arcBeam" || o.id === "hardpoint") return levelId >= 3;
       if (o.id === "flakBurst") return levelId >= 2;
       if (o.id === "prowCannon") return true;          // the cheap one, available from the off
+      // Only ever the SECOND screen, and only out where the boards are big
+      // enough to need it — see the pool entry.
+      if (o.id === "screenArray") return levelId >= 6 && carried.has("shieldGenerator");
+      if (o.id === "chargeBank") return true;          // the floor of the range, at any depth
       return true; // reinforce / shield / reactor: basic dock trade at any depth
     });
   }
@@ -1634,8 +1682,17 @@
     const byPrice = stock
       .filter((o) => !rolled.includes(o))
       .sort((a, b) => a.cost - b.cost || (a.id < b.id ? -1 : 1));
-    const reach = byPrice.slice(Math.floor((byPrice.length * 2) / 3));
-    if (reach.length) rolled.push(weightedPickWithoutReplacement(reach, (o) => RARITY_WEIGHT[o.rarity] || 1, 1, rng)[0]);
+    const reach = byPrice.slice(Math.floor((byPrice.length * 3) / 4));
+    // The band is the top QUARTER, not the top third: at a third it reaches
+    // down far enough that the dearest entry only averaged 16.7 salvage
+    // against the 14.2 it exists to beat. Drawn FLAT inside the band, not rarity-weighted. Rarity weighting
+    // here fights the slot's whole purpose: an uncommon weighs 4 against a
+    // rare's 2, so the dear slot skewed to the cheap end of its own band
+    // and the dearest entry only averaged 16.3 salvage against the 14.2 it
+    // was meant to beat. Rarity's job is done by the two slots above; this
+    // one exists to be expensive, and the band has already decided which
+    // items qualify.
+    if (reach.length) rolled.push(reach[Math.floor(rng() * reach.length)]);
     const ids = ["repair", ...rolled.filter(Boolean).map((o) => o.id)];
     // Both guarantees below APPEND and drop the last unforced entry,
     // rather than writing into the same slot — at sector 3 they used to
@@ -2457,6 +2514,16 @@
     pushLog(state, `Not a scratch on her — ${amount} salvage bonus.`);
   }
 
+  // Wreck values came down about a fifth across the board when the shelf
+  // learned to spend properly: more docks (see levels.js) and a range with
+  // a real top and bottom meant the careful pilot was converting salvage
+  // into ship far more efficiently, and its win rate went to 75/150 — well
+  // over the 35-45% band this difficulty is tuned to (FTL on Hard is around
+  // 60% for a skilled human; these pilots are heuristics and should land
+  // under that). Measured at the new values: careful 65/150, greedy 43/150.
+  // The cut went on the WRECKS rather than the clean-run bonus, which is
+  // already down to 2, and rather than on prices, because charging more for
+  // the same gun is the thing this economy has twice decided not to do.
   function awardSalvage(state, enemyType) {
     const base = (ENEMY_TYPES[enemyType] || {}).salvage || 0;
     const amount = base > 0 ? base + localeBonus(state) : 0;
@@ -3569,6 +3636,19 @@
       autoPlaceInHold(state.hold, "microReactor");
       syncHoldDerived(state);
       state.energy = Math.min(state.energy + 1, state.maxEnergy); // an upgrade should feel immediate
+    } else if (offer.id === "screenArray" || offer.id === "chargeBank") {
+      // Plain fitted hardware: stow it, place it, let deriveShip do the
+      // rest. Shield capacity and energy capacity are both summed off the
+      // hold (see deriveShip), so there is no stat to write here —
+      // installing the thing IS the upgrade, and a piece that will not fit
+      // rides in cargo doing nothing, same as any other.
+      const fittedId = OFFER_ITEM[offer.id];
+      noteStowed(state, fittedId, offer.label);
+      autoPlaceInHold(state.hold, fittedId);
+      syncHoldDerived(state);
+      state.energy = Math.min(state.energy, state.maxEnergy);
+      // A screen that fitted arrives raised, same as the first one.
+      if (offer.id === "screenArray") state.shieldCharges = Math.min(state.shieldCharges + 1, state.maxShields);
     } else if (offer.id === "hardpoint") {
       state.hold.rows += 1; // more internal space — the grid literally grows
     } else if (WEAPON_SYSTEM_KEYS.includes(offer.id)) {

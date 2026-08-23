@@ -1169,22 +1169,28 @@ assert.notDeepStrictEqual(
     for (const o of priced) if (o.id !== dearest.id) tally[o.id] = (tally[o.id] || 0) + 1;
   }
   const perItem = (ids, t) => ids.reduce((n, id) => n + (t[id] || 0), 0) / ids.length;
-  const RARES = ["mortar", "flankTubes", "railgun", "missilePod", "arcProjector", "demolitionCharge"];
+  const RARES = ["mortar", "flankTubes", "railgun", "missilePod", "arcProjector", "demolitionCharge", "screenArray"];
   const commonEach = perItem(["reinforce", "reactor"], tally);
   const rareEach = perItem(RARES, tally);
   assert.ok(
     commonEach > rareEach * 1.5,
     `in the rarity-rolled slots each common (${commonEach.toFixed(1)} sightings) turns up meaningfully more than each rare (${rareEach.toFixed(1)})`
   );
-  // ...and the reach slot is doing its job: at a depth where the heavy
-  // hardware is unlocked, the dearest thing on the shelf is one of it.
-  // Before the reach slot existed the dearest entry was a fourteen-salvage
-  // screen at every depth from 2 to 10 while the bank climbed to 82, which
-  // is how "you can buy anything you want" happens.
-  const reachIsHeavy = RARES.reduce((n, id) => n + (reachTally[id] || 0), 0);
+  // ...and the reach slot is doing its job. Asserted on the PRICE of the
+  // dearest entry, not on which item it is: what the shop needs is a
+  // ceiling that rises, and naming the items that count as "heavy" makes
+  // the test fail every time the arsenal gains a rung. Before the reach
+  // slot existed the dearest entry averaged 14.2 salvage at Sector 10 —
+  // and 13.4 at Sector 3 — while the bank climbed to 82, which is exactly
+  // how "you can buy anything you want" happens.
+  const dearestAvg =
+    Object.entries(reachTally).reduce((n, [id, hits]) => {
+      const o = Engine.OUTPOST_OFFER_POOL.find((x) => x.id === id);
+      return n + (o ? o.cost : 0) * hits;
+    }, 0) / 100;
   assert.ok(
-    reachIsHeavy > 60,
-    `a deep shelf's dearest entry is heavy hardware (${reachIsHeavy}/100 visits) — the shop has a ceiling that rises`
+    dearestAvg > 17,
+    `a deep shelf's dearest entry averages ${dearestAvg.toFixed(1)} salvage — the shop has a ceiling that rises`
   );
 }
 // Prices roll within a modest band of the pool's listed cost — a real
@@ -2398,7 +2404,8 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
       const level = generateLevel(depth, variant);
       if (level.isBoss || !level.outpost) continue;
       docks++;
-      berths.set(`${level.outpost.q},${level.outpost.r}`, true);
+      const berthKey = `${level.outpost.q},${level.outpost.r}`;
+      berths.set(berthKey, (berths.get(berthKey) || 0) + 1);
       assert.ok(
         Engine.hexDistance(level.playerStart, level.outpost) >= 4,
         `depth ${depth}: the dock is a trip, not something you spawn on top of`
@@ -2412,7 +2419,16 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
     }
   }
   assert.ok(berths.size >= 8, "stations berth all over the place, not in one corner forever");
-  assert.ok(berths.size > docks * 0.25, "and no single berth dominates the crawl");
+  // Measured as a SHARE of docks, not as a ratio against the dock count:
+  // the old form (berths.size > docks * 0.25) failed the moment stations
+  // got commoner, because more docks over the same berth pool is exactly
+  // what raising the dock rate does. Variety is "no one berth is where the
+  // station always is", and that is what this asks.
+  const commonest = Math.max(...berths.values());
+  assert.ok(
+    commonest < docks * 0.35,
+    `no single berth dominates the crawl (the commonest is ${commonest} of ${docks} docks)`
+  );
 }
 
 // ---- rare Discoveries: derelict wrecks, silent outposts, uncharted body -
