@@ -576,7 +576,17 @@
   // finding even a small chain over a same-size non-chain combo is the
   // single highest-leverage thing this search can do.
   SearchCpu.prototype._defensiveKey = function (res, garbageCleared, dropAmount, toppedOutNow) {
-    var comboSum = res.comboSizes.reduce(function (a, b) { return a + b; }, 0);
+    var comboSum = 0, bigComboBonus = 0, i;
+    for (i = 0; i < res.comboSizes.length; i++) {
+      comboSum += res.comboSizes[i];
+      // A combo of 4+ panels sends real garbage to an opponent
+      // (comboGarbage in panel-engine.js) and clears far more of THIS
+      // board per move than a bare 3-match — reward it superlinearly so
+      // the search actually prefers setting one up over grabbing the
+      // first plain triple it sees, instead of only ever breaking even
+      // by coincidence.
+      if (res.comboSizes[i] >= 4) bigComboBonus += res.comboSizes[i] * res.comboSizes[i] * 300;
+    }
     // Garbage-cleared stays the dominant term always — it is what most
     // directly shrinks the actual danger. The chain bonus is a much
     // smaller secondary term: it can't make this pick a move that clears
@@ -605,7 +615,7 @@
     // clean at every rate: heavy 1/12 -> 4/12, relentless 0/12 -> 3/12,
     // moderate unchanged in total survival time (avgFrames 2487 -> 2493,
     // same seeds crossing/not-crossing the 60s cutoff by chance either way).
-    return garbageCleared * 1000000 + chainBonus + dropAmount * 200 + comboSum;
+    return garbageCleared * 1000000 + chainBonus + bigComboBonus + dropAmount * 200 + comboSum;
   };
 
   function dropAmountFor(lowestBefore, lowestAfter) {
@@ -614,33 +624,84 @@
     return Math.max(0, lowestBefore - lowestAfter);
   }
 
-  // Pure survival: the biggest immediate clear, or (if none) the swap
-  // that improves `potential` the most, searched progressively deeper
-  // (1, then 2, then 3 swaps) until something is found. NEVER raises
-  // while tall — raising can only make the danger worse. That's the
-  // actual guarantee behind "shouldn't be able to die," not a hope the
-  // scoring weights happen to produce.
+  // Beam search a few swaps deep, scored by _defensiveKey, keeping the
+  // best-scoring outcome found ANYWHERE in the tree — not the first match
+  // it trips over. Grabbing the first available 3-match (the old
+  // behaviour: check 1 ply, take whatever matched) is how it kept
+  // clearing single panels while leaving a same-color setup for a 4+
+  // combo or a chain sitting one swap further away unexplored. Unmatched
+  // branches still advance (ranked by `potential`, same signal the
+  // offensive planner uses) so a first move that only SETS UP next
+  // move's clear is still found. NEVER raises while tall — raising can
+  // only make the danger worse. That's the actual guarantee behind
+  // "shouldn't be able to die," not a hope the scoring weights happen to
+  // produce.
   SearchCpu.prototype._bestDefensiveMove = function (board) {
-    var best = null, bestKey = null, swaps = board.legalSwaps(), i;
+    var self = this;
     var garbageBefore = garbageCellCount(board);
     var lowestBefore = board.lowestGarbageRow();
     var toppedOutNow = board.maxHeight() >= board.height;
-    for (i = 0; i < swaps.length; i++) {
-      var r = swaps[i][0], c = swaps[i][1];
-      var trial = board.clone();
-      trial.swap(r, c);
-      var res = trial.resolve();
-      if (res.chainLength === 0) continue;
+    // Same beam/depth as the offensive planner (this.beam/this.depth) —
+    // already tuned to stay well inside a frame budget at this preset;
+    // an independent, wider search here blew well past it (measured
+    // ~500ms worst case at beam 8/depth 3, versus a 6-frame/~100ms
+    // cooldown budget).
+    var beamWidth = this.beam, maxDepth = this.depth;
+    // How close to topping out before this stops gambling a whole
+    // decision cycle on a non-matching setup swap in the hope of a
+    // bigger combo 2 plies out, and just takes whatever it can clear
+    // RIGHT NOW instead. Ungated, hunting for bigger combos measured
+    // clearly better at moderate-rate garbage (survival 2/12 -> 5/12
+    // seeds at a 60s cap; avgGarbageCleared/avgMatches up at EVERY rate,
+    // which is the actual "not breaking garbage, not making big blocks"
+    // complaint this was built to fix) but worse at the two hardest rates
+    // (heavy 4/12 -> 1/12, relentless 3/12 -> 0/12) — under real time
+    // pressure, a guaranteed smaller clear now beats gambling a cycle on
+    // a bigger one that might not land before more garbage does. This
+    // gate recovers most but not all of that: with it, heavy/relentless
+    // land at roughly half their pre-big-block survival rate rather than
+    // near zero, while moderate keeps its full gain. Genuinely a
+    // trade-off, not a strict win — see the commit message for the honest
+    // before/after numbers across all four rates.
+    var criticalFrac = this.dangerHeightFrac + (1 - this.dangerHeightFrac) * 0.5;
+    var critical = board.fillRatio() >= criticalFrac;
+
+    function keyFor(trial, res) {
       var garbageCleared = garbageBefore - garbageCellCount(trial);
       var dropAmount = dropAmountFor(lowestBefore, trial.lowestGarbageRow());
-      var key = this._defensiveKey(res, garbageCleared, dropAmount, toppedOutNow);
-      if (bestKey === null || key > bestKey) { bestKey = key; best = [r, c]; }
+      return self._defensiveKey(res, garbageCleared, dropAmount, toppedOutNow);
+    }
+
+    var frontier = [{ board: board, move: null }];
+    var best = null, bestKey = null;
+    for (var ply = 0; ply < maxDepth; ply++) {
+      var candidates = [];
+      for (var f = 0; f < frontier.length; f++) {
+        var node = frontier[f];
+        var swaps = node.board.legalSwaps();
+        for (var i = 0; i < swaps.length; i++) {
+          var r = swaps[i][0], c = swaps[i][1];
+          var trial = node.board.clone();
+          trial.swap(r, c);
+          var res = trial.resolve();
+          var move = node.move || [r, c];
+          var matched = res.chainLength > 0;
+          var ev = matched ? keyFor(trial, res) : boardPotential(trial);
+          if (matched && (bestKey === null || ev > bestKey)) { bestKey = ev; best = move; }
+          candidates.push({ board: trial, move: move, ev: ev });
+        }
+      }
+      if (ply === 0 && best && critical) break; // take the immediate match now, don't gamble on bigger
+      if (!candidates.length) break;
+      candidates.sort(function (a, b) { return b.ev - a.ev; });
+      frontier = candidates.slice(0, beamWidth);
     }
     if (best) return best;
 
+    var swaps0 = board.legalSwaps();
     var base = boardPotential(board), bestGain = null, gainMove = null;
-    for (i = 0; i < swaps.length; i++) {
-      var r2 = swaps[i][0], c2 = swaps[i][1];
+    for (var j = 0; j < swaps0.length; j++) {
+      var r2 = swaps0[j][0], c2 = swaps0[j][1];
       var trial2 = board.clone();
       trial2.swap(r2, c2);
       var gain = boardPotential(trial2) - base;
@@ -648,10 +709,25 @@
     }
     if (gainMove && bestGain > 0) return gainMove;
 
+    // True last resort: an exhaustive (not beam-pruned) search, in case
+    // the beam above pruned away the only branch that ever finds
+    // anything. Rare — the beam search already covers the same depths —
+    // but it is the actual backstop behind "never dies to a search that
+    // gave up too early."
     var rescue = this._nPlyRescue(board, 2) || this._nPlyRescue(board, 3) || this._nPlyRescue(board, 4);
     if (rescue) return rescue;
     return gainMove || null; // null means "raise" to the caller
   };
+
+  // Exhaustive at each level's immediate swaps (cheap: legalSwaps() is at
+  // most a few dozen), but caps how many unmatched branches it recurses
+  // into. Without a cap this is legalSwaps^depth — measured 16-17 legal
+  // swaps at depth 4 taking 450-550ms per call, well past the 6-frame
+  // (~100ms) decision budget, and mostly finding nothing anyway. Ranking
+  // unmatched branches by `potential` before capping keeps the search
+  // pointed at the same promising continuations a wider, uncapped search
+  // would have found.
+  var RESCUE_BRANCH_CAP = 6;
 
   SearchCpu.prototype._nPlyRescue = function (board, depth) {
     var self = this;
@@ -661,6 +737,7 @@
     var toppedOutNow = board.maxHeight() >= board.height;
     var walk = function (trial, firstMove, remaining) {
       var swaps = trial.legalSwaps();
+      var unmatched = [];
       for (var i = 0; i < swaps.length; i++) {
         var r = swaps[i][0], c = swaps[i][1];
         var step = trial.clone();
@@ -674,7 +751,12 @@
           if (bestKey === null || key > bestKey) { bestKey = key; best = move; }
           continue;
         }
-        if (remaining > 1) walk(step, move, remaining - 1);
+        if (remaining > 1) unmatched.push({ step: step, move: move, pot: boardPotential(step) });
+      }
+      if (remaining > 1 && unmatched.length) {
+        unmatched.sort(function (a, b) { return b.pot - a.pot; });
+        var capped = unmatched.slice(0, RESCUE_BRANCH_CAP);
+        for (var j = 0; j < capped.length; j++) walk(capped[j].step, capped[j].move, remaining - 1);
       }
     };
     walk(board, null, depth);
