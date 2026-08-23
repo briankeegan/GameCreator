@@ -1,6 +1,6 @@
 importScripts("../../shared/sw-core.js");
 
-GCRegisterServiceWorker("dog-punk-v41", [
+GCRegisterServiceWorker("dog-punk-v43", [
   "./",
   "./index.html",
   "./style.css",
@@ -11,6 +11,7 @@ GCRegisterServiceWorker("dog-punk-v41", [
   "../../shared/nav.css",
   "../../shared/pwa.js",
   "../../shared/storage.js",
+  "../../shared/touch-controls.js",
   "../../shared/file-select.js",
   "../../shared/title-screen.js",
   "../../shared/controls.js",

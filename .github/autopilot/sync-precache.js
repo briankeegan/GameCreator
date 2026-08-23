@@ -96,6 +96,7 @@ function main() {
       { ref: /\bGCSaveSlots\.create\b/, file: "../../shared/save-slots.js", name: "shared/save-slots.js" },
       { ref: /\bGCTitleScreen\.create\b/, file: "../../shared/title-screen.js", name: "shared/title-screen.js" },
       { ref: /\bGCFileSelect\.create\b/, file: "../../shared/file-select.js", name: "shared/file-select.js" },
+      { ref: /\bGCTouchControls\.bindHold\b/, file: "../../shared/touch-controls.js", name: "shared/touch-controls.js" },
     ];
     for (const mod of SHARED_MODULES) {
       if (!mod.ref.test(gameJsFiles)) continue;
@@ -124,6 +125,20 @@ function main() {
       console.log(`${dir}: adopts shared/title-screen.js without an onShow — if this game has its ` +
                   `own character art, a title screen with none of it on screen reads as a placeholder, ` +
                   `not a title screen. See shared/title-screen.js's header for the onShow pattern.`);
+    }
+
+    // FOURTH CHECK, also a WARNING: a game that calls GCTouchControls.bindHold
+    // (the per-button hold fix) but never calls .lockSurface (the whole-
+    // surface fix) is very likely still exposed to the mobile long-press
+    // "select + define/search" popup on ordinary UI text — a HUD title, a
+    // toast, any button's own label — since bindHold() only touches the
+    // specific elements it's called on. This is exactly how Dog Punk shipped
+    // the button fix, reported success, and the bug kept happening: the
+    // popup was never firing on the buttons.
+    if (/\bGCTouchControls\.bindHold\b/.test(gameJsFiles) && !/\bGCTouchControls\.lockSurface\b/.test(gameJsFiles)) {
+      console.log(`${dir}: calls GCTouchControls.bindHold() without ever calling .lockSurface() — ` +
+                  `on-screen buttons are covered but other UI text (HUD, toasts) can still trigger the ` +
+                  `mobile long-press popup. See shared/touch-controls.js's header for the lockSurface pattern.`);
     }
   }
   if (bad && !fix) process.exit(1);

@@ -40,6 +40,7 @@ const MODULES = {
   "save-slots": "../../shared/save-slots.js",
   "title-screen": "../../shared/title-screen.js",
   "file-select": "../../shared/file-select.js",
+  "touch-controls": "../../shared/touch-controls.js",
 };
 
 function wireHtml(htmlPath, modulePath) {
@@ -305,6 +306,23 @@ function main() {
     console.log("    it decides what a slot shows (room name, playtime, whatever this game");
     console.log("    tracks) — see games/the-game/menu.js (search \"GCFileSelect\") for the");
     console.log("    worked example this was extracted from.");
+  }
+  if (modules.includes("touch-controls")) {
+    console.log("  - touch-controls, TWO calls, not one:");
+    console.log("    1. GCTouchControls.bindHold(el, onDown, onUp) for every on-screen d-pad/");
+    console.log("       attack/action button — sets the mobile-safety inline styles AND the");
+    console.log("       contextmenu/selectstart prevention. Drop the equivalent touch-action/");
+    console.log("       user-select/-webkit-touch-callout CSS rules on those buttons once");
+    console.log("       migrated, so there's one source of truth, not two that can drift.");
+    console.log("    2. GCTouchControls.lockSurface(el) ONCE on the game's root container");
+    console.log("       (e.g. #gameArea) — bindHold() alone still leaves the long-press popup");
+    console.log("       free to fire on ordinary UI text (a HUD title, a toast, any button's");
+    console.log("       label) that a thumb brushes reaching for a real button. lockSurface");
+    console.log("       covers the whole surface in one call because user-select and");
+    console.log("       -webkit-touch-callout both inherit to every descendant — skipping it");
+    console.log("       is how this bug shipped \"fixed\" on Dog Punk and then reappeared.");
+    console.log("    See games/dog-punk/app.js (search \"GCTouchControls\") for a worked");
+    console.log("    example of both.");
   }
   console.log("Run node .github/autopilot/sync-precache.js after to confirm the wiring gate passes.");
 }
