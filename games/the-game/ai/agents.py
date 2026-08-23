@@ -147,22 +147,61 @@ class SearchAgent:
     def _in_danger(self, board):
         return max_height(board) >= board.height * self.weights["danger_height_frac"]
 
+    def _defensive_key(self, chain_length, combo_sizes, garbage_cleared, drop_amount, topped_out_now):
+        """Shared scoring for every defensive tier. Garbage cells actually
+        cleared always wins first -- that's the wall closing in, directly
+        shrinking. Chain length is weighted far harder once the board is
+        ALREADY topped out, mirroring Stack:awardStopTime's own
+        dangerConstant/dangerCoefficient bonus (a chain while wasToppedOut
+        pays out far more stop time than the same chain otherwise) -- stop
+        time doesn't stop garbage from landing, but it pauses the
+        health-drain clock that's the actual killer once physically topped
+        out. `drop_amount` is how many rows the LOWEST garbage on the board
+        descended as a side effect of this match -- e.g. clearing the one
+        remaining support panel under an otherwise-unsupported slab, which
+        doesn't clear a single garbage cell itself but collapses the whole
+        slab down to where it's finally reachable. Confirmed as a real,
+        previously-unscored mechanic by reading supportedFromBelow directly
+        (panel-engine.js): a garbage block only needs ONE supporting column
+        anywhere under its full width to stay put, so a nearly-unsupported
+        slab can sit untouched indefinitely if nothing ever removes that
+        one pillar. Weighted well behind garbage_cleared (never worth
+        picking over an option that clears more outright) but well ahead of
+        combo_sum (this is what makes "quietly kick the support out" beat
+        "grab the biggest combo lying around" when both are on offer)."""
+        combo_sum = sum(combo_sizes)
+        chain_bonus = (chain_length * chain_length * 500000) if (topped_out_now and chain_length >= 2) \
+            else chain_length * 1000
+        return garbage_cleared * 1000000 + chain_bonus + drop_amount * 20000 + combo_sum
+
     def _best_defensive_move(self, board):
-        """The single legal swap that clears the most panels right now,
-        with the biggest chain winning ties -- pure survival, no planning
-        ahead. Falls back to raise only if literally nothing matches
-        (raising when the board is dangerously tall is exactly the wrong
-        move -- it can only make the danger worse -- so this NEVER raises;
-        that's the actual guarantee behind "shouldn't be able to die.")"""
+        """The single legal swap that does the most for survival right
+        now (see _defensive_key), searched progressively deeper (1, then
+        2/3/4 swaps) until something is found. Falls back to raise only if
+        literally nothing matches (raising when the board is dangerously
+        tall is exactly the wrong move -- it can only make the danger
+        worse -- so this NEVER raises; that's the actual guarantee behind
+        "shouldn't be able to die.")"""
         best = None
         best_key = None
+        garbage_before = sum(len(blk.cells) for blk in board.blocks.values())
+        lowest_before = board.lowest_garbage_row()
+        topped_out_now = max_height(board) >= board.height
         for (r, c) in board.legal_swaps():
             trial = board.clone()
             trial.swap(r, c)
             chain_length, combo_sizes, _score, _garbage = trial.resolve()
             if chain_length == 0:
                 continue
-            key = (chain_length, sum(combo_sizes), -r)
+            garbage_after = sum(len(blk.cells) for blk in trial.blocks.values())
+            lowest_after = trial.lowest_garbage_row()
+            drop_amount = 0
+            if lowest_before is not None and lowest_after is not None:
+                # row 0 is the BOTTOM, so a smaller row index is lower/closer
+                # to reachable -- "descended" means lowest_after < lowest_before.
+                drop_amount = max(0, lowest_before - lowest_after)
+            key = self._defensive_key(chain_length, combo_sizes, garbage_before - garbage_after,
+                                       drop_amount, topped_out_now)
             if best_key is None or key > best_key:
                 best_key = key
                 best = ("swap", r, c)
@@ -194,8 +233,8 @@ class SearchAgent:
         if gain_move is not None and best_gain > 0:
             return gain_move
 
-        for search_depth in (2, 3):
-            deeper = self._n_ply_rescue(board, search_depth)
+        for search_depth in (2, 3, 4):
+            deeper = self._n_ply_rescue(board, search_depth, garbage_before, lowest_before, topped_out_now)
             if deeper is not None:
                 return deeper
         if gain_move is not None:
@@ -204,15 +243,19 @@ class SearchAgent:
         # no move left that doesn't risk raising, so it's the only option.
         return ("raise",)
 
-    def _n_ply_rescue(self, board, depth):
-        """`depth` swaps deep, no evaluation beyond finding ANY match --
-        this only runs when shallower searches found nothing, so speed
-        matters more than optimality; the first matching sequence found
-        wins, with the biggest clear preferred among sequences sharing a
-        first move. Genuinely nowhere-to-move positions do exist (e.g. a
-        board packed solid with only one narrow gap of headroom); this
-        exists to make sure none of them are false alarms from a search
-        that just didn't look far enough."""
+    def _n_ply_rescue(self, board, depth, garbage_before, lowest_before, topped_out_now):
+        """`depth` swaps deep -- this only runs when shallower searches
+        found nothing, so it stops at the first PLY that finds any match
+        at all rather than searching every depth exhaustively, but among
+        matches found at that same depth it still picks by the shared
+        _defensive_key (garbage cleared, then chain, then the
+        pillar-collapse bonus) rather than just chain length -- finding
+        SOMETHING is the priority here, but it shouldn't ignore a
+        pillar-collapse sitting right next to a merely-adequate match.
+        Genuinely nowhere-to-move positions do exist (e.g. a board packed
+        solid with only one narrow gap of headroom); searching progressively
+        deeper is what tells those apart from a search that just didn't
+        look far enough."""
         best = None
         best_key = None
 
@@ -226,7 +269,13 @@ class SearchAgent:
                 move = first_move or (r, c)
                 chain_length, combo_sizes, _score, _garbage = step.resolve()
                 if chain_length > 0:
-                    key = (chain_length, sum(combo_sizes))
+                    garbage_after = sum(len(blk.cells) for blk in step.blocks.values())
+                    lowest_after = step.lowest_garbage_row()
+                    drop_amount = 0
+                    if lowest_before is not None and lowest_after is not None:
+                        drop_amount = max(0, lowest_before - lowest_after)
+                    key = self._defensive_key(chain_length, combo_sizes, garbage_before - garbage_after,
+                                               drop_amount, topped_out_now)
                     if best_key is None or key > best_key:
                         best_key = key
                         best = ("swap", move[0], move[1])

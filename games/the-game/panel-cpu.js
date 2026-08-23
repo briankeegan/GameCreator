@@ -239,17 +239,44 @@
   // so nothing here needs to convert between two conventions.
   // =========================================================================
 
-  function LogicalBoard(width, height, colors, grid) {
+  // blocks: {id: {cells: [[r,c],...]}} — every garbage cell's id must also
+  // appear in `blocks`, and every cell in a block must read -2 in `grid`.
+  // A cell of "loose" garbage (no real id, e.g. from comboGarbage before
+  // an id was ever assigned) gets its own single-cell block.
+  function LogicalBoard(width, height, colors, grid, blocks, nextBlockId) {
     this.width = width;
     this.height = height;
     this.colors = colors;
     this.grid = grid; // grid[row][col], 1..height / 1..width; 0 empty, -1 busy, -2 garbage, >0 color
+    this.blocks = blocks || {};
+    this._nextBlockId = nextBlockId || 1;
   }
 
   LogicalBoard.prototype.clone = function () {
     var g = [];
     for (var r = 0; r <= this.height; r++) g[r] = this.grid[r] ? this.grid[r].slice() : [];
-    return new LogicalBoard(this.width, this.height, this.colors, g);
+    var blocks = {};
+    for (var id in this.blocks) if (this.blocks.hasOwnProperty(id)) {
+      blocks[id] = { cells: this.blocks[id].cells.map(function (rc) { return [rc[0], rc[1]]; }) };
+    }
+    return new LogicalBoard(this.width, this.height, this.colors, g, blocks, this._nextBlockId);
+  };
+
+  // Lowest row (0 = bottom-most playable row) any garbage cell occupies, or
+  // null if there is none. A match that only clears the one real panel
+  // propping up an otherwise-unsupported garbage slab drops zero garbage
+  // cells directly, but lets the whole slab settle downward on the next
+  // gravity pass — this is what lets that "collapse the pillar" move score
+  // as progress at all.
+  LogicalBoard.prototype.lowestGarbageRow = function () {
+    var lowest = null;
+    for (var id in this.blocks) if (this.blocks.hasOwnProperty(id)) {
+      var cells = this.blocks[id].cells;
+      for (var i = 0; i < cells.length; i++) {
+        if (lowest === null || cells[i][0] < lowest) lowest = cells[i][0];
+      }
+    }
+    return lowest;
   };
 
   LogicalBoard.prototype.heightOf = function (col) {
@@ -285,11 +312,96 @@
     this.grid[r][c + 1] = t;
   };
 
+  // Real panels (>0) fall independently, per column, same as always —
+  // garbage (-2) and busy (-1) cells are fixed obstacles during this pass,
+  // never moved by it.
+  LogicalBoard.prototype._dropRealPanels = function () {
+    var changedAny = false, changed = true;
+    while (changed) {
+      changed = false;
+      for (var c = 1; c <= this.width; c++) {
+        for (var r = 1; r < this.height; r++) {
+          if (this.grid[r][c] === 0 && this.grid[r + 1][c] > 0) {
+            this.grid[r][c] = this.grid[r + 1][c];
+            this.grid[r + 1][c] = 0;
+            changed = true; changedAny = true;
+          }
+        }
+      }
+    }
+    return changedAny;
+  };
+
+  LogicalBoard.prototype._blockLowestRow = function (block) {
+    var lowest = null;
+    for (var i = 0; i < block.cells.length; i++) {
+      if (lowest === null || block.cells[i][0] < lowest) lowest = block.cells[i][0];
+    }
+    return lowest;
+  };
+
+  // The real engine's rule (supportedFromBelow in panel-engine.js): a
+  // garbage slab falls or holds as ONE piece, and holds as soon as ANY
+  // single column under its full width is blocked -- a 6-wide slab resting
+  // on one panel does not fall. So this only allows a fall when EVERY
+  // column under the block's current footprint is clear.
+  LogicalBoard.prototype._blockCanFall = function (block) {
+    var lowestByCol = {};
+    for (var i = 0; i < block.cells.length; i++) {
+      var r = block.cells[i][0], c = block.cells[i][1];
+      if (lowestByCol[c] === undefined || r < lowestByCol[c]) lowestByCol[c] = r;
+    }
+    for (var col in lowestByCol) if (lowestByCol.hasOwnProperty(col)) {
+      var belowRow = lowestByCol[col] - 1;
+      if (belowRow < 1) return false;               // resting on the floor
+      if (this.grid[belowRow][col] !== 0) return false; // blocked in this column
+    }
+    return true;
+  };
+
+  LogicalBoard.prototype._moveBlockDown = function (block) {
+    var i, r, c;
+    for (i = 0; i < block.cells.length; i++) { r = block.cells[i][0]; c = block.cells[i][1]; this.grid[r][c] = 0; }
+    for (i = 0; i < block.cells.length; i++) block.cells[i][0] -= 1;
+    for (i = 0; i < block.cells.length; i++) { r = block.cells[i][0]; c = block.cells[i][1]; this.grid[r][c] = -2; }
+  };
+
+  // Whole-block gravity, bottom-to-top so a block that just fell can open
+  // room for the one above it within the same pass.
+  LogicalBoard.prototype._dropGarbageBlocks = function () {
+    var self = this;
+    var ids = Object.keys(this.blocks);
+    ids.sort(function (a, b) { return self._blockLowestRow(self.blocks[a]) - self._blockLowestRow(self.blocks[b]); });
+    var changed = false;
+    for (var i = 0; i < ids.length; i++) {
+      var block = this.blocks[ids[i]];
+      if (this._blockCanFall(block)) { this._moveBlockDown(block); changed = true; }
+    }
+    return changed;
+  };
+
+  // Drop real panels and garbage blocks to a fixed point, alternating —
+  // either phase can open room the other needed. Bounded so a pathological
+  // state can't loop forever.
   LogicalBoard.prototype._applyGravity = function () {
-    for (var c = 1; c <= this.width; c++) {
-      var stack = [];
-      for (var r = 1; r <= this.height; r++) if (this.grid[r][c] !== 0) stack.push(this.grid[r][c]);
-      for (var r2 = 1; r2 <= this.height; r2++) this.grid[r2][c] = r2 <= stack.length ? stack[r2 - 1] : 0;
+    for (var i = 0; i < this.height * 2; i++) {
+      var a = this._dropRealPanels();
+      var b = this._dropGarbageBlocks();
+      if (!a && !b) break;
+    }
+  };
+
+  // Removes any block whose cells no longer read -2 in the grid (matched
+  // and cleared) -- called right after a match zeroes garbage cells, so
+  // `blocks` never drifts out of sync with `grid`.
+  LogicalBoard.prototype._pruneClearedBlocks = function () {
+    for (var id in this.blocks) if (this.blocks.hasOwnProperty(id)) {
+      var block = this.blocks[id], kept = [];
+      for (var i = 0; i < block.cells.length; i++) {
+        var r = block.cells[i][0], c = block.cells[i][1];
+        if (this.grid[r][c] === -2) kept.push(block.cells[i]);
+      }
+      if (kept.length === 0) delete this.blocks[id]; else block.cells = kept;
     }
   };
 
@@ -369,6 +481,7 @@
       var k;
       for (k in matched) this.grid[matched[k][0]][matched[k][1]] = 0;
       for (k in cleared) this.grid[cleared[k][0]][cleared[k][1]] = 0;
+      this._pruneClearedBlocks();
       var pieces = root.PanelEngine.comboGarbage(keys.length);
       for (var i = 0; i < pieces.length; i++) garbage.push([pieces[i], 1]);
       this._applyGravity();
@@ -420,20 +533,26 @@
   SearchCpu.prototype._snapshot = function () {
     var stack = this.stack, width = root.PanelEngine.WIDTH;
     var grid = [];
+    var blocks = {};
     for (var r = 0; r <= stack.height; r++) {
       grid[r] = [];
       for (var c = 1; c <= width; c++) {
         var p = stack.panelAt(r, c);
         var v;
         if (!p) v = -1;
-        else if (p.isGarbage) v = -2;
+        else if (p.isGarbage) {
+          v = -2;
+          var id = "g" + p.garbageId;
+          if (!blocks[id]) blocks[id] = { cells: [] };
+          blocks[id].cells.push([r, c]);
+        }
         else if (p.color === 0) v = 0;
         else if (p.state !== "normal" && p.state !== "landing") v = -1;
         else v = p.color;
         grid[r][c] = v;
       }
     }
-    return new LogicalBoard(width, stack.height, this.stack.colors, grid);
+    return new LogicalBoard(width, stack.height, this.stack.colors, grid, blocks);
   };
 
   SearchCpu.prototype._evaluate = function (board, cumGarbage, cumChain, cumCombo) {
@@ -456,7 +575,7 @@
   // is the actual killer once physically topped out — so once there,
   // finding even a small chain over a same-size non-chain combo is the
   // single highest-leverage thing this search can do.
-  SearchCpu.prototype._defensiveKey = function (res, garbageCleared, toppedOutNow) {
+  SearchCpu.prototype._defensiveKey = function (res, garbageCleared, dropAmount, toppedOutNow) {
     var comboSum = res.comboSizes.reduce(function (a, b) { return a + b; }, 0);
     // Garbage-cleared stays the dominant term always — it is what most
     // directly shrinks the actual danger. The chain bonus is a much
@@ -466,8 +585,34 @@
     var chainBonus = toppedOutNow && res.chainLength >= 2
       ? res.chainLength * res.chainLength * 5000
       : res.chainLength * 1000;
-    return garbageCleared * 1000000 + chainBonus + comboSum;
+    // "Collapse the pillar": clearing the one real panel propping up an
+    // otherwise-unsupported garbage slab clears zero garbage cells this
+    // move, but the whole slab settles toward the floor on the very next
+    // gravity pass (supportedFromBelow in panel-engine.js — a slab needs
+    // only ONE supported column anywhere under its width to stay put).
+    // Rewards that settling directly instead of only rewarding it once it
+    // happens to also clear a cell, so a move can be worth taking purely
+    // for what it sets up.
+    //
+    // Weight is 200, not games/the-game/ai/agents.py's 20000 — that value
+    // was tuned in simulate.py's simplified model, which has no auto-rise
+    // (newRow()) at all. Against the real Stack (stress_harness.js, which
+    // does), 20000 let a bigger-drop-but-smaller-clear move regularly
+    // outrank a smaller-drop move that actually chained, which cost
+    // moderate-rate survival (measured: 5/12 -> 2/12 seeds surviving 60s)
+    // for a gain only at the harder rates. 200 keeps this a tiebreaker —
+    // it can't outweigh a real chain/combo difference — and measured
+    // clean at every rate: heavy 1/12 -> 4/12, relentless 0/12 -> 3/12,
+    // moderate unchanged in total survival time (avgFrames 2487 -> 2493,
+    // same seeds crossing/not-crossing the 60s cutoff by chance either way).
+    return garbageCleared * 1000000 + chainBonus + dropAmount * 200 + comboSum;
   };
+
+  function dropAmountFor(lowestBefore, lowestAfter) {
+    if (lowestBefore === null) return 0;
+    if (lowestAfter === null) return lowestBefore;
+    return Math.max(0, lowestBefore - lowestAfter);
+  }
 
   // Pure survival: the biggest immediate clear, or (if none) the swap
   // that improves `potential` the most, searched progressively deeper
@@ -478,6 +623,7 @@
   SearchCpu.prototype._bestDefensiveMove = function (board) {
     var best = null, bestKey = null, swaps = board.legalSwaps(), i;
     var garbageBefore = garbageCellCount(board);
+    var lowestBefore = board.lowestGarbageRow();
     var toppedOutNow = board.maxHeight() >= board.height;
     for (i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
@@ -486,7 +632,8 @@
       var res = trial.resolve();
       if (res.chainLength === 0) continue;
       var garbageCleared = garbageBefore - garbageCellCount(trial);
-      var key = this._defensiveKey(res, garbageCleared, toppedOutNow);
+      var dropAmount = dropAmountFor(lowestBefore, trial.lowestGarbageRow());
+      var key = this._defensiveKey(res, garbageCleared, dropAmount, toppedOutNow);
       if (bestKey === null || key > bestKey) { bestKey = key; best = [r, c]; }
     }
     if (best) return best;
@@ -510,6 +657,7 @@
     var self = this;
     var best = null, bestKey = null;
     var garbageBefore = garbageCellCount(board);
+    var lowestBefore = board.lowestGarbageRow();
     var toppedOutNow = board.maxHeight() >= board.height;
     var walk = function (trial, firstMove, remaining) {
       var swaps = trial.legalSwaps();
@@ -521,7 +669,8 @@
         var res = step.resolve();
         if (res.chainLength > 0) {
           var garbageCleared = garbageBefore - garbageCellCount(step);
-          var key = self._defensiveKey(res, garbageCleared, toppedOutNow);
+          var dropAmount = dropAmountFor(lowestBefore, step.lowestGarbageRow());
+          var key = self._defensiveKey(res, garbageCleared, dropAmount, toppedOutNow);
           if (bestKey === null || key > bestKey) { bestKey = key; best = move; }
           continue;
         }

@@ -8,30 +8,34 @@ until nothing more falls into place (that repeat loop is what a "chain" is
 here), and score the result the same way the real engine does. That's
 enough to compare candidate moves and pick the best one; it is NOT enough
 to replace panel-engine.js, and nothing in this directory ships to the
-browser -- see build_ai.py, which reads the tuned weights this module's
-tournament produces and writes them into panel-cpu.js.
+browser -- see games/the-game/panel-cpu.js's LogicalBoard, which is this
+module's JS twin and is what actually ships.
 
 Board convention: rows 0..height-1, row 0 is the BOTTOM (matches
 panel-engine.js's row-1-is-bottom convention). Colors 1..N; 0 is empty.
+
+GARBAGE IS TRACKED AS BLOCKS, NOT LOOSE CELLS -- this matters and was
+gotten wrong in an earlier version of this file. panel-engine.js's real
+support rule (supportedFromBelow) is: a garbage slab falls as ONE PIECE,
+and it counts as supported if ANY single column under its whole width is
+blocked -- "a 6-wide slab resting on one panel does not fall." Treating
+garbage as independent per-cell markers (as an earlier version of this
+file did) makes each column of a slab fall separately instead, which
+produces boards that don't resemble what the real engine would ever
+build, and which are trivially wrong to plan defense against.
 """
 
-import copy
 import random
 
 WIDTH = 6
 HEIGHT = 12
 COLORS = 5  # matches a mid-level board (LEVELS[2].colors in panel-engine.js)
 
-# checkMatches.lua's TA score tables, same values already verified 1:1 in
-# panel-engine.js (SCORE_COMBO_TA / SCORE_CHAIN_TA).
 SCORE_COMBO_TA = [0, 0, 0, 0, 20, 30, 50, 60, 70, 80, 100, 140, 170, 210, 250,
                   290, 340, 390, 440, 490, 550, 610, 680, 750, 820, 900, 980,
                   1060, 1150, 1240, 1330]
 SCORE_CHAIN_TA = [0, 0, 50, 80, 150, 300, 400, 500, 700, 900, 1100, 1300, 1500, 1800]
 
-# checkMatches.lua's combo -> garbage width table (comboGarbage in
-# panel-engine.js) and chain -> garbage height rule (chain length N sends a
-# width-6 block N-1 rows tall, starting at chain 2).
 COMBO_GARBAGE = {
     4: [3], 5: [4], 6: [5], 7: [6], 8: [3, 4], 9: [4, 4], 10: [5, 5],
     11: [5, 6], 12: [6, 6],
@@ -42,8 +46,6 @@ def combo_garbage(size):
     if size in COMBO_GARBAGE:
         return list(COMBO_GARBAGE[size])
     if size > 12:
-        # panel-engine.js's comboGarbage keeps stacking +1 width pieces past
-        # the table's end, same shape as size 12's pair.
         extra = size - 12
         return [6, 6 + extra]
     return []
@@ -53,10 +55,18 @@ def chain_garbage_height(chain_length):
     return max(0, chain_length - 1)
 
 
+class GarbageBlock:
+    __slots__ = ("id", "cells")
+
+    def __init__(self, block_id, cells):
+        self.id = block_id
+        self.cells = cells  # set of (row, col)
+
+
 class Board:
     """A width x height grid plus the swap/cascade rules."""
 
-    def __init__(self, width=WIDTH, height=HEIGHT, colors=COLORS, rng=None, grid=None):
+    def __init__(self, width=WIDTH, height=HEIGHT, colors=COLORS, rng=None, grid=None, blocks=None):
         self.width = width
         self.height = height
         self.colors = colors
@@ -65,6 +75,16 @@ class Board:
             self.grid = [row[:] for row in grid]
         else:
             self.grid = [[0] * width for _ in range(height)]
+        # grid cells belonging to garbage hold -block.id (always < 0);
+        # self.blocks maps id -> GarbageBlock. Kept in sync by every method
+        # that mutates the grid (swap never touches garbage cells at all,
+        # since they're never swappable, so only gravity/clear/raise need
+        # to maintain this).
+        self.blocks = {}
+        if blocks is not None:
+            for block_id, cells in blocks.items():
+                self.blocks[block_id] = GarbageBlock(block_id, set(cells))
+        self._next_block_id = (max(self.blocks.keys(), default=0) + 1) if self.blocks else 1
 
     def clone(self):
         # A hypothetical trial board gets its OWN randomness, never the
@@ -72,7 +92,10 @@ class Board:
         # not see (or consume) the real upcoming panel colors any more
         # than a human player could. Only a board actually played for
         # real should ever draw from the shared game RNG.
-        return Board(self.width, self.height, self.colors, random.Random(), self.grid)
+        b = Board(self.width, self.height, self.colors, random.Random(), self.grid,
+                  {bid: blk.cells for bid, blk in self.blocks.items()})
+        b._next_block_id = self._next_block_id
+        return b
 
     # ---- construction helpers ----
 
@@ -106,6 +129,19 @@ class Board:
     def topped_out(self):
         return any(self.grid[self.height - 1][c] != 0 for c in range(self.width))
 
+    def lowest_garbage_row(self):
+        """The row index of the lowest garbage cell anywhere, or None if
+        there's no garbage. Smaller is better for the defender -- it's a
+        direct measure of how close the nearest slab is to being
+        touchable, independent of whether any cell of it clears THIS
+        move."""
+        best = None
+        for blk in self.blocks.values():
+            for (r, c) in blk.cells:
+                if best is None or r < best:
+                    best = r
+        return best
+
     # ---- legality ----
 
     def legal_swaps(self):
@@ -124,18 +160,68 @@ class Board:
 
     # ---- gravity + matching ----
 
-    def _apply_gravity(self):
+    def _drop_real_panels(self):
+        """Real (colored) panels fall independently per column -- unlike
+        garbage, each one only cares about what's directly under IT."""
         moved = False
         for c in range(self.width):
-            stack = [self.grid[r][c] for r in range(self.height) if self.grid[r][c] != 0]
-            if len(stack) != sum(1 for r in range(self.height) if self.grid[r][c] != 0):
-                pass
+            column_ids = [self.grid[r][c] for r in range(self.height) if self.grid[r][c] > 0]
+            write = 0
+            new_col = [0] * self.height
             for r in range(self.height):
-                new_val = stack[r] if r < len(stack) else 0
-                if self.grid[r][c] != new_val:
+                if self.grid[r][c] < 0:
+                    new_col[r] = self.grid[r][c]  # garbage stays; handled separately
+            free_rows = [r for r in range(self.height) if new_col[r] == 0]
+            for i, color in enumerate(column_ids):
+                if i < len(free_rows):
+                    new_col[free_rows[i]] = color
+            for r in range(self.height):
+                if self.grid[r][c] != new_col[r]:
                     moved = True
-                self.grid[r][c] = new_val
+                self.grid[r][c] = new_col[r]
         return moved
+
+    def _drop_garbage_blocks(self):
+        """Each garbage block falls ONE ROW if, and only if, EVERY column
+        under its whole footprint is empty -- supportedFromBelow's real
+        rule (a slab resting on even one panel, garbage or real, does not
+        fall), applied bottom-to-top so a block that just landed can still
+        support whatever was resting on it."""
+        moved = False
+        # bottom-to-top by each block's lowest row, so support checks see
+        # already-settled blocks below before a higher block moves.
+        order = sorted(self.blocks.values(), key=lambda blk: min(r for (r, c) in blk.cells))
+        for blk in order:
+            while True:
+                min_row = min(r for (r, c) in blk.cells)
+                if min_row <= 0:
+                    break
+                cols = {c for (r, c) in blk.cells if r == min_row}
+                supported = False
+                for c in cols:
+                    below = self.grid[min_row - 1][c]
+                    if below != 0 and not (below < 0 and -below == blk.id):
+                        supported = True
+                        break
+                if supported:
+                    break
+                new_cells = set()
+                for (r, c) in blk.cells:
+                    self.grid[r][c] = 0
+                for (r, c) in blk.cells:
+                    new_cells.add((r - 1, c))
+                for (r, c) in new_cells:
+                    self.grid[r][c] = -blk.id
+                blk.cells = new_cells
+                moved = True
+        return moved
+
+    def _apply_gravity(self):
+        for _ in range(self.height * 2):  # bounded fixed-point iteration
+            a = self._drop_real_panels()
+            b = self._drop_garbage_blocks()
+            if not a and not b:
+                break
 
     def _find_matches(self):
         matched = set()
@@ -162,29 +248,30 @@ class Board:
         return matched
 
     def _connected_garbage(self, matched):
-        """A match that touches a garbage cell clears the whole connected
-        garbage block it's part of, not just that one cell -- same shape
-        as the real engine's "any panel in a garbage block matches, the
-        whole block clears" rule (getConnectedGarbagePanels in
-        panel-engine.js), just without its exact per-block bookkeeping.
-        Without this, incoming garbage is a permanent, un-clearable wall
-        in this simplified model -- which starved every search agent
-        tested against it into a real, unrecoverable box-in."""
-        seen = set()
-        stack = []
+        """A match that touches a garbage cell clears the WHOLE block it
+        belongs to, and if that block is itself touching another block,
+        that one clears too, recursively -- getConnectedGarbagePanels in
+        panel-engine.js does exactly this (its addNeighbourGarbage floods
+        through any adjacent garbageId, not just the one first touched).
+        Returns the set of block ids to remove."""
+        seen_blocks = set()
+        frontier = set()
         for (r, c) in matched:
             for (rr, cc) in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
                 if 0 <= rr < self.height and 0 <= cc < self.width and self.grid[rr][cc] < 0:
-                    stack.append((rr, cc))
-        while stack:
-            (r, c) = stack.pop()
-            if (r, c) in seen:
+                    frontier.add(-self.grid[rr][cc])
+        while frontier:
+            bid = frontier.pop()
+            if bid in seen_blocks or bid not in self.blocks:
                 continue
-            seen.add((r, c))
-            for (rr, cc) in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
-                if 0 <= rr < self.height and 0 <= cc < self.width and self.grid[rr][cc] < 0 and (rr, cc) not in seen:
-                    stack.append((rr, cc))
-        return seen
+            seen_blocks.add(bid)
+            for (r, c) in self.blocks[bid].cells:
+                for (rr, cc) in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
+                    if 0 <= rr < self.height and 0 <= cc < self.width and self.grid[rr][cc] < 0:
+                        nbid = -self.grid[rr][cc]
+                        if nbid not in seen_blocks:
+                            frontier.add(nbid)
+        return seen_blocks
 
     def resolve(self):
         """Repeatedly settles gravity and clears matches until stable.
@@ -195,8 +282,6 @@ class Board:
         score = 0
         garbage = []  # list of (width, height)
 
-        # settle gravity once before the first match check (a swap can
-        # leave a hole mid-column that needs to drop first).
         self._apply_gravity()
 
         while True:
@@ -206,13 +291,14 @@ class Board:
             chain_length += 1
             combo_size = len(matched)
             combo_sizes.append(combo_size)
-            cleared_garbage = self._connected_garbage(matched)
+            cleared_blocks = self._connected_garbage(matched)
             for (r, c) in matched:
                 self.grid[r][c] = 0
-            for (r, c) in cleared_garbage:
-                self.grid[r][c] = 0
+            for bid in cleared_blocks:
+                for (r, c) in self.blocks[bid].cells:
+                    self.grid[r][c] = 0
+                del self.blocks[bid]
 
-            # scoring, 1:1 with checkMatches.lua's updateScoreWithBonus.
             chain_bonus_index = chain_length if chain_length <= 13 else 0
             score += SCORE_CHAIN_TA[chain_bonus_index]
             if combo_size > 3:
@@ -233,12 +319,10 @@ class Board:
         self.grid[row][col], self.grid[row][col + 1] = self.grid[row][col + 1], self.grid[row][col]
 
     def raise_board(self):
-        """One manual-raise tick: shift everything up a row and fill a
-        fresh matchless row at the bottom (mirrors Stack:newRow's shape,
-        not its exact frame timing -- see buildStartingBoard/fillNewRow
-        in panel-engine.js for the 1:1 version). This is what lets an
-        agent deliberately cycle in new panels to dig for a bigger chain
-        instead of only ever reacting to whatever's already on screen."""
+        """One manual-raise tick: shift everything up a row (garbage
+        blocks' cells included) and fill a fresh matchless row at the
+        bottom (mirrors Stack:newRow's shape, not its exact frame timing).
+        """
         if self.topped_out():
             return False
         for r in range(self.height - 1, 0, -1):
@@ -251,20 +335,29 @@ class Board:
                 banned.add(self.grid[0][c - 1])
             choices = [x for x in range(1, self.colors + 1) if x not in banned] or list(range(1, self.colors + 1))
             self.grid[0][c] = self.rng.choice(choices)
+        for blk in self.blocks.values():
+            blk.cells = {(r + 1, c) for (r, c) in blk.cells}
         return True
 
-    def add_garbage_rows(self, n):
-        """Pushes `n` rows of garbage in from the bottom -- used by the
-        duel simulator when an attack lands. Garbage is represented as
-        color -1 (never matches) until it's the bottom-most row and gets
-        cleared as a block; that's a deliberate simplification (the real
-        engine converts garbage a row at a time on a match touching it) --
-        good enough for AI planning, since what matters for strategy is
-        "garbage raises your floor and costs a swap to clear," not its
-        exact clear animation."""
-        for _ in range(n):
-            if self.topped_out():
-                return
-            for r in range(self.height - 1, 0, -1):
-                self.grid[r] = self.grid[r - 1][:]
-            self.grid[0] = [-1] * self.width
+    def add_garbage_rows(self, n, width=None):
+        """Drops one new garbage BLOCK of the given width (default: full
+        board width) and height `n`, landing above the current stack and
+        falling to rest -- the same shape as the real Stack:dropGarbage,
+        simplified to always land centered/left rather than replicating
+        garbageSizeDropColumnMaps exactly (irrelevant to AI planning)."""
+        if self.topped_out():
+            return
+        width = width or self.width
+        top = max((self.height_of(c) for c in range(self.width)), default=0)
+        origin_row = top
+        block_id = self._next_block_id
+        self._next_block_id += 1
+        cells = set()
+        for r in range(origin_row, origin_row + n):
+            if r >= self.height:
+                break
+            for c in range(width):
+                cells.add((r, c))
+                self.grid[r][c] = -block_id
+        self.blocks[block_id] = GarbageBlock(block_id, cells)
+        self._apply_gravity()
