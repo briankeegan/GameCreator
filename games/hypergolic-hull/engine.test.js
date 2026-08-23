@@ -1193,6 +1193,39 @@ assert.notDeepStrictEqual(
     `a deep shelf's dearest entry averages ${dearestAvg.toFixed(1)} salvage — the shop has a ceiling that rises`
   );
 }
+// ---- a dock does not restock what the last dock had ---------------------
+//
+// MEASURED before this rule existed: 30% of shelf slots were on the
+// previous shelf too and 67% of docks repeated at least one item, with the
+// always-offer-a-screen guarantee alone accounting for HALF of every repeat
+// in the game (539 of 1085). Gated because the failure is invisible from
+// inside one shelf — every individual roll is legal, and only two docks
+// side by side show that it is the same shop again.
+{
+  const berth = {
+    id: 9, radius: 3,
+    playerStart: { q: 0, r: 0 }, exit: { q: 3, r: 0 }, outpost: { q: -3, r: 0 },
+    enemies: [], hazards: [], exitRule: "all-enemies-dead",
+  };
+  let repeated = 0;
+  let slots = 0;
+  for (let runSeed = 0; runSeed < 120; runSeed++) {
+    const first = Engine.createGameState(berth, { runSeed });
+    const second = Engine.createGameState(
+      { ...berth, id: 10 },
+      { runSeed, hold: first.hold, outpostStockIds: first.outpostOfferIds }
+    );
+    const prev = first.outpostOfferIds.filter((id) => id !== "repair");
+    const now = second.outpostOfferIds.filter((id) => id !== "repair");
+    slots += now.length;
+    repeated += now.filter((id) => prev.includes(id)).length;
+  }
+  const share = repeated / slots;
+  assert.ok(
+    share < 0.1,
+    `back-to-back docks share ${(share * 100).toFixed(0)}% of their stock — a station is not the last station again`
+  );
+}
 // Prices roll within a modest band of the pool's listed cost — a real
 // swing ("a cheap Railgun!"), never enough to break the hand-tuned cost
 // curve ("weapons should be way more expensive... you have to save up").

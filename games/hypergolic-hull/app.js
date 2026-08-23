@@ -368,6 +368,7 @@ function advanceSector() {
       // across the whole run too — a dry streak follows you sector to
       // sector, same as the seed it's derived from.
       raresSkipped: state.raresSkipped,
+      outpostStockIds: state.outpostStockIds,
       // The Hold carries whole — the ship IS its equipment grid.
       hold: state.hold,
       // Which loadout's art the ship shows — carried whole, same reason as

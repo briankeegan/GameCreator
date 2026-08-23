@@ -269,7 +269,7 @@ function econMark(state, report, depth) {
   b.n++;
 }
 
-function shop(state, report) {
+function shop(state, report, firstLook) {
   if (PILOT === "reckless") return; // never docks, never spends
   // ECON=1 — the salvage ledger. "Too easy to buy things" is a claim about
   // the RATIO between the bank and the shelf, and neither number was ever
@@ -277,8 +277,17 @@ function shop(state, report) {
   // tell "the shop is generous" apart from "the guns are good". So on
   // every dock, record what the pilot walked in holding and what fraction
   // of the shelf that covered. Read, don't infer.
-  if (process.env.ECON) {
+  if (process.env.ECON && firstLook) {
     const offers = Engine.outpostOffers(state);
+    // How much of this shelf was on the LAST one? A shop that restocks what
+    // you just declined is not a shop, it is the same shop again.
+    const now = offers.map((o) => o.id).filter((id) => id !== "repair");
+    const prev = report.econ.lastShelf || [];
+    const same = now.filter((id) => prev.includes(id));
+    report.econ.repeats.push({ depth: state.levelId, n: now.length, same: same.length });
+    for (const id of same) report.econ.repeatBy[id] = (report.econ.repeatBy[id] || 0) + 1;
+    for (const id of now) (report.econ.seenThisRun = report.econ.seenThisRun || new Set()).add(id);
+    report.econ.lastShelf = now;
     const afford = offers.filter((o) => o.affordable).length;
     report.econ.docks.push({
       depth: state.levelId,
@@ -475,7 +484,12 @@ function playSector(state, report) {
     if (state.status !== "playing") return state.status;
 
     if (Engine.outpostAvailable(state)) {
-      shop(state, report);
+      // shop() is reached on EVERY round the ship is standing on the berth,
+      // not just the first — so the ECON ledger has to be told which call
+      // is the actual visit. Without that it recorded the same shelf several
+      // times over and compared it with itself, which reported a shelf-repeat
+      // rate that was mostly the harness looking twice.
+      shop(state, report, !visitedOutpost);
       visitedOutpost = true;
     }
 
@@ -646,6 +660,11 @@ function playRun(seed, report) {
   // bench was tried first and got written wrong twice — this reuses the
   // pilot that already plays the actual game.
   let carryOver = process.env.START_GUN ? { extraActions: [process.env.START_GUN] } : null;
+  if (process.env.ECON) {
+    if (report.econ.seenThisRun) report.econ.seenPerRun.push(report.econ.seenThisRun.size);
+    report.econ.seenThisRun = null;
+    report.econ.lastShelf = null; // a new run has no last shelf
+  }
   let depth = 1;
   let variantId = null;
   for (; depth <= BOSS_DEPTH; depth++) {
@@ -721,6 +740,7 @@ function playRun(seed, report) {
       // Carried so the rare-item bad-luck guarantee actually accumulates
       // across a simulated run instead of resetting every sector.
       raresSkipped: state.raresSkipped,
+      outpostStockIds: state.outpostStockIds,
     };
   }
   return { depth: depth - 1, outcome: "survived" };
@@ -742,7 +762,7 @@ function main() {
     deathLines: {},
     deathBoards: {},
     discoveries: {},
-    econ: { docks: [], arrive: [], income: {} },
+    econ: { docks: [], arrive: [], income: {}, repeats: [], repeatBy: {}, seenPerRun: [], lastShelf: null },
     errors: [],
   };
   if (process.env.ECON) econInstrument(report);
@@ -793,6 +813,22 @@ console.log("gates taken:", report.gates);
           `   | wrecks ${per(b2.wrecks).padStart(4)}  per wreck ${(b2.kills / Math.max(1, b2.wrecks)).toFixed(1)}` +
           `   SPENT ${per(b2.spent).padStart(5)}  banked ${(100 - (b2.spent / Math.max(1, b2.kills + b2.clean + b2.discovery)) * 100).toFixed(0)}%`
       );
+    }
+    {
+      const rs = report.econ.repeats;
+      const tot = rs.reduce((a, r) => a + r.n, 0);
+      const rep = rs.reduce((a, r) => a + r.same, 0);
+      const anyRepeat = rs.filter((r) => r.same > 0).length;
+      console.log(
+        `\nshelf repeats: ${rep}/${tot} slots (${((rep / tot) * 100).toFixed(0)}%) were on the previous shelf too;` +
+          ` ${((anyRepeat / rs.length) * 100).toFixed(0)}% of docks repeated at least one item`
+      );
+      console.log(
+        `  variety: a run is offered ${avg(report.econ.seenPerRun)} distinct items` +
+          ` out of a catalogue of ${Engine.OUTPOST_OFFER_POOL.length - 1}` +
+          ` (${((avg(report.econ.seenPerRun) / (Engine.OUTPOST_OFFER_POOL.length - 1)) * 100).toFixed(0)}%)`
+      );
+      console.log("  what repeats:", Object.entries(report.econ.repeatBy).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`).join("  "));
     }
     console.log("\nsalvage ledger — at the SHOP:");
     const docks = {};

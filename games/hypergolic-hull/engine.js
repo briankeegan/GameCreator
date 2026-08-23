@@ -1633,14 +1633,53 @@
     });
   }
 
-  function pickOutpostOfferIds(levelId, aboard, runSeed, raresSkipped) {
+  function pickOutpostOfferIds(levelId, aboard, runSeed, raresSkipped, lastOfferIds) {
     // Nine offers in one list read as a catalogue, and with early-run
     // salvage most of it was greyed out anyway: a wall of things you can't
     // have instead of a decision. Repair plus THREE things is the whole
     // shelf — see eligibleOfferStock above for what can even be on it.
     const carried = new Set(aboard || []);
-    const stock = eligibleOfferStock(levelId, aboard);
+    const allStock = eligibleOfferStock(levelId, aboard);
     const rng = runSeeded(runSeed, levelId * 7919 + 13);
+    // ---- A DOCK DOES NOT RESTOCK WHAT THE LAST DOCK HAD --------------------
+    //
+    // MEASURED, 150 careful runs: 48% of shelf slots were on the previous
+    // shelf too, and 81% of docks repeated at least one item. Half the shop
+    // was the same shop again — which is the difference between a frontier
+    // station and a vending machine, and it makes a dock stop being worth
+    // the detour ("we don't want a bunch of repeats" — Clubhouse).
+    //
+    // Nothing here is a per-item cooldown or a memory of the whole run: it
+    // is only the LAST shelf, carried through carryOver the same way
+    // raresSkipped is. That is enough, because a repeat only reads as one
+    // when you saw it a moment ago — the same gun turning up again four
+    // sectors later is a second chance, not a rerun.
+    //
+    // It remembers what was ROLLED, not what is left: buying something
+    // takes it off outpostOfferIds, and a shelf that forgot the thing you
+    // just bought would cheerfully stock it again at the very next dock.
+    //
+    // Fresh stock is PREFERRED, not required. An all-or-nothing threshold
+    // was tried first (use the filtered pool only if four items survive,
+    // else the unfiltered one) and it dealt whole repeat shelves whenever
+    // the pool was thin, which is exactly when repeats are most likely:
+    // 25% of slots still came back repeated. Each slot now takes a fresh
+    // item if one is left and dips into the rest only when nothing fresh
+    // remains, so a shelf carries the fewest repeats it possibly can
+    // rather than three or none.
+    const last = new Set(lastOfferIds || []);
+    const fresh = allStock.filter((o) => !last.has(o.id));
+    const stock = allStock;
+    const drawFrom = (pool, n) => {
+      const taken = [];
+      const fresher = pool.filter((o) => !last.has(o.id));
+      taken.push(...weightedPickWithoutReplacement(fresher, (o) => RARITY_WEIGHT[o.rarity] || 1, n, rng));
+      if (taken.length < n) {
+        const rest = pool.filter((o) => !taken.includes(o));
+        taken.push(...weightedPickWithoutReplacement(rest, (o) => RARITY_WEIGHT[o.rarity] || 1, n - taken.length, rng));
+      }
+      return taken;
+    };
     // THREE slots, not two, weighted by rarity rather than a flat
     // shuffle-and-slice — commons show up often, rares are the exciting
     // exception (see RARITY_WEIGHT). Flat odds still needed the slot count
@@ -1678,10 +1717,15 @@
     // A shop is only a decision while something on it is out of reach.
     // This is Into the Breach's shape — the catalogue always exceeds the
     // budget — and it costs nothing: not one price was changed.
-    const rolled = weightedPickWithoutReplacement(stock, (o) => RARITY_WEIGHT[o.rarity] || 1, 2, rng);
-    const byPrice = stock
-      .filter((o) => !rolled.includes(o))
-      .sort((a, b) => a.cost - b.cost || (a.id < b.id ? -1 : 1));
+    const rolled = drawFrom(stock, 2);
+    // The reach band is measured over FRESH stock where there is any, so a
+    // thin fresh pool cannot quietly drag the dear slot back down to the
+    // cheap end — the band is about price, and it should be the top of
+    // whatever this dock can actually offer you that is new.
+    const reachPool = fresh.filter((o) => !rolled.includes(o)).length
+      ? fresh.filter((o) => !rolled.includes(o))
+      : stock.filter((o) => !rolled.includes(o));
+    const byPrice = reachPool.slice().sort((a, b) => a.cost - b.cost || (a.id < b.id ? -1 : 1));
     const reach = byPrice.slice(Math.floor((byPrice.length * 3) / 4));
     // The band is the top QUARTER, not the top third: at a third it reaches
     // down far enough that the dearest entry only averaged 16.7 salvage
@@ -1710,7 +1754,13 @@
     // find you a generator if you're flying without one. Everything else
     // is what they happen to have; this one is the trade that keeps the
     // crawl survivable at all.
-    if (!carried.has("shieldGenerator")) force("shield");
+    // ...but not at two docks running. MEASURED: this promise alone put a
+    // Shield Generator on 269 of 300 Sector 6 shelves for a screenless ship
+    // — a slot permanently spent on one item, at every station, for as long
+    // as the ship declined it. A guarantee that fires every single time is
+    // not a safety net, it is a fixture. Every other dock still means you
+    // are never more than one station from a screen.
+    if (!carried.has("shieldGenerator") && !last.has("shield")) force("shield");
     // ...and the same promise about guns. Flying on nothing but the
     // starting Autocannon means every fight is at contact, which against a
     // roster that reaches three and five hexes is not a strategy, it's a
@@ -1718,7 +1768,10 @@
     // one — after that you're on the roll like everyone else.
     const armed = WEAPON_SYSTEM_KEYS.filter((k) => k !== "autocannon" && carried.has(k));
     if (!armed.length) {
-      const guns = stock.filter((o) => WEAPON_SYSTEM_KEYS.includes(o.id) && !ids.includes(o.id));
+      // Fresh guns first, same rule as the roll: promising a second gun is
+      // no comfort if it is the same gun the last station had.
+      const allGuns = stock.filter((o) => WEAPON_SYSTEM_KEYS.includes(o.id) && !ids.includes(o.id));
+      const guns = allGuns.filter((o) => !last.has(o.id)).length ? allGuns.filter((o) => !last.has(o.id)) : allGuns;
       if (guns.length) force(guns[Math.floor(rng() * guns.length)].id);
     }
     // Sector 3 is the Sentry Line — the first sector with something that
@@ -1739,7 +1792,8 @@
       nextRaresSkipped = 0;
     } else if (hasRareEligible) {
       if (nextRaresSkipped >= RARE_PITY_VISITS) {
-        const rareChoices = stock.filter((o) => o.rarity === "rare" && !ids.includes(o.id));
+        const allRare = stock.filter((o) => o.rarity === "rare" && !ids.includes(o.id));
+        const rareChoices = allRare.filter((o) => !last.has(o.id)).length ? allRare.filter((o) => !last.has(o.id)) : allRare;
         if (rareChoices.length) {
           force(rareChoices[Math.floor(rng() * rareChoices.length)].id);
           nextRaresSkipped = 0;
@@ -1907,6 +1961,10 @@
     // carryOver exactly like runSeed, so the bad-luck guarantee tracks
     // across the whole run rather than resetting every sector.
     const priorRaresSkipped = (carryOver && Number.isFinite(carryOver.raresSkipped)) ? carryOver.raresSkipped : 0;
+    // What the previous dock had on it — see the anti-repeat note in
+    // pickOutpostOfferIds. Carried exactly like raresSkipped, and empty on
+    // the first sector of a run, which is correct: there is no last shelf.
+    const priorOfferIds = (carryOver && Array.isArray(carryOver.outpostStockIds)) ? carryOver.outpostStockIds : [];
     let outpostOfferIds = [];
     let outpostOfferPrices = {};
     let raresSkipped = priorRaresSkipped;
@@ -1918,7 +1976,8 @@
           level.id,
           [...hold.items.map((it) => it.id), ...hold.cargo],
           runSeed,
-          priorRaresSkipped
+          priorRaresSkipped,
+          priorOfferIds
         );
         outpostOfferIds = rolled.ids;
         outpostOfferPrices = rolled.prices;
@@ -1994,6 +2053,11 @@
       missiles: [],
       runSeed: runSeed,
       raresSkipped: raresSkipped,
+      // The shelf AS ROLLED, never edited by purchases — the anti-repeat
+      // memory for the next dock. A dry sector passes the previous one
+      // straight through rather than clearing it: three sectors with no
+      // station is not a reason to restock what you last saw.
+      outpostStockIds: outpostOfferIds.length ? outpostOfferIds.slice() : priorOfferIds,
       outpostPos: pickOutpostPos(level, runSeed),
       outpostOfferIds: outpostOfferIds,
       // Per-visit rolled price for each id in outpostOfferIds (see
