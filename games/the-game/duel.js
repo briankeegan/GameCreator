@@ -17,6 +17,15 @@ window.NewseyDuel = (function () {
   // derived readout for the overlay/input gating, never its own clock.
   var COUNTDOWN_FRAMES = E.COUNTDOWN_TOTAL;
 
+  // "diamond" and "nightmare" are the SearchCpu presets (see panel-cpu.js);
+  // every other named difficulty is the older single-ply heuristic bot.
+  // One call site so nothing forgets which class a difficulty needs.
+  function makeCpu(stack, difficulty, seed) {
+    var Ctor = (difficulty === "diamond" || difficulty === "nightmare")
+      ? window.PanelCpu.SearchCpu : window.PanelCpu.Cpu;
+    return new Ctor(stack, { difficulty: difficulty || "steady", seed: seed });
+  }
+
   // Panel colors. Each one also carries a shape, so panels stay tellable apart
   // when they flash, when the board goes red, and for anyone who reads shape
   // faster than hue.
@@ -82,7 +91,7 @@ window.NewseyDuel = (function () {
     state = {
       player: player,
       foe: foe,
-      cpu: new window.PanelCpu.Cpu(foe, { difficulty: opponent.difficulty || "steady", seed: seed + 55 }),
+      cpu: makeCpu(foe, opponent.difficulty, seed + 55),
       opponent: opponent,
       // A duel can be a SET rather than a single game — Kat's is "first to
       // five wins", straight out of the plot. firstTo 1 (the default) behaves
@@ -524,7 +533,7 @@ window.NewseyDuel = (function () {
     s.seed = (s.seed + s.wins.player * 7919 + s.wins.foe * 104729 + 13) >>> 0;
     s.player = new E.Stack({ level: s.playerLevel, seed: s.seed, name: s.player.name });
     s.foe = new E.Stack({ level: o.level || 3, seed: s.seed + 101, name: s.foe.name });
-    s.cpu = new window.PanelCpu.Cpu(s.foe, { difficulty: o.difficulty || "steady", seed: s.seed + 55 });
+    s.cpu = makeCpu(s.foe, o.difficulty, s.seed + 55);
     s.over = null;
     s.overDelay = 0;
     s.crush = null;
@@ -1639,9 +1648,7 @@ window.NewseyDuel = (function () {
                        .map(function (p) { return p.release; })
         },
         autoplay: function (difficulty) {
-          state.autopilot = new window.PanelCpu.Cpu(state.player, {
-            difficulty: difficulty || "brutal", seed: 99
-          });
+          state.autopilot = makeCpu(state.player, difficulty || "brutal", 99);
         }
       };
     }

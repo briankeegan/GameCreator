@@ -583,8 +583,10 @@ window.NEWSEY_STORY = (function () {
           lines: [
             "I'm Diamond. I'm the only person you really need to meet around here.",
             "Don't listen to Eric. He thinks the sun rises on Anarchy.",
-            "Copper and aquamarine, is it? Sweet. Everyone starts somewhere."
-          ]
+            "Copper and aquamarine, is it? Sweet. Everyone starts somewhere.",
+            "Go on, then — the portal's right there. I don't lose. It's not arrogance if it's just true."
+          ],
+          setsFlag: "duelInvite"
         },
         {
           id: "eric", x: 180, y: 158, art: "eric", sprite: "eric_top",
@@ -693,6 +695,34 @@ window.NEWSEY_STORY = (function () {
             afterLoss: [
               "That's what it looks like. That's what it always looked like.",
               "Go practice. I'll still be here."
+            ]
+          }
+        },
+        {
+          id: "diamond", x: 140, y: 118, art: "diamond", sprite: "diamond_top",
+          counterKey: "diamond_arena",
+          needs: "duelInvite",
+          lines: [
+            "You made it. Good. I was starting to think you'd stay scared of the portal forever.",
+            "No cushion, no favors. Play like you mean it."
+          ],
+          // The rank's namesake, and the toughest opponent in the arena —
+          // difficulty "diamond" is the SearchCpu (games/the-game/panel-cpu.js),
+          // a genuinely PLANNING opponent (built and tournament-validated
+          // offline in games/the-game/ai/ before a line of it shipped here),
+          // scaled back from the tournament-proven config so a determined
+          // player can still take her.
+          duel: {
+            level: 6, difficulty: "diamond", theme: "pink", playerLevel: 3,
+            winLine: "Diamond studies her dead board like it lied to her. \"...Huh. Nobody's done that in a while.\"",
+            loseLine: "She never even looks rushed. \"Told you. Not arrogance.\"",
+            afterWin: [
+              "Fine. FINE. You're the real thing, then.",
+              "Don't let it go to your head. I'll want a rematch."
+            ],
+            afterLoss: [
+              "You held a chain going. That's more than most manage their first time against me.",
+              "Come back when you've got another one. I'll be here — I'm always here."
             ]
           }
         }
