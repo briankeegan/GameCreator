@@ -286,6 +286,7 @@ function shop(state, report, firstLook) {
     const same = now.filter((id) => prev.includes(id));
     report.econ.repeats.push({ depth: state.levelId, n: now.length, same: same.length });
     for (const id of same) report.econ.repeatBy[id] = (report.econ.repeatBy[id] || 0) + 1;
+    for (const id of now) (report.econ.seenThisRun = report.econ.seenThisRun || new Set()).add(id);
     report.econ.lastShelf = now;
     const afford = offers.filter((o) => o.affordable).length;
     report.econ.docks.push({
@@ -659,7 +660,11 @@ function playRun(seed, report) {
   // bench was tried first and got written wrong twice — this reuses the
   // pilot that already plays the actual game.
   let carryOver = process.env.START_GUN ? { extraActions: [process.env.START_GUN] } : null;
-  if (process.env.ECON) report.econ.lastShelf = null; // a new run has no last shelf
+  if (process.env.ECON) {
+    if (report.econ.seenThisRun) report.econ.seenPerRun.push(report.econ.seenThisRun.size);
+    report.econ.seenThisRun = null;
+    report.econ.lastShelf = null; // a new run has no last shelf
+  }
   let depth = 1;
   let variantId = null;
   for (; depth <= BOSS_DEPTH; depth++) {
@@ -757,7 +762,7 @@ function main() {
     deathLines: {},
     deathBoards: {},
     discoveries: {},
-    econ: { docks: [], arrive: [], income: {}, repeats: [], repeatBy: {}, lastShelf: null },
+    econ: { docks: [], arrive: [], income: {}, repeats: [], repeatBy: {}, seenPerRun: [], lastShelf: null },
     errors: [],
   };
   if (process.env.ECON) econInstrument(report);
@@ -817,6 +822,11 @@ console.log("gates taken:", report.gates);
       console.log(
         `\nshelf repeats: ${rep}/${tot} slots (${((rep / tot) * 100).toFixed(0)}%) were on the previous shelf too;` +
           ` ${((anyRepeat / rs.length) * 100).toFixed(0)}% of docks repeated at least one item`
+      );
+      console.log(
+        `  variety: a run is offered ${avg(report.econ.seenPerRun)} distinct items` +
+          ` out of a catalogue of ${Engine.OUTPOST_OFFER_POOL.length - 1}` +
+          ` (${((avg(report.econ.seenPerRun) / (Engine.OUTPOST_OFFER_POOL.length - 1)) * 100).toFixed(0)}%)`
       );
       console.log("  what repeats:", Object.entries(report.econ.repeatBy).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`).join("  "));
     }
