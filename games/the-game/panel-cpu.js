@@ -641,30 +641,39 @@
     var garbageBefore = garbageCellCount(board);
     var lowestBefore = board.lowestGarbageRow();
     var toppedOutNow = board.maxHeight() >= board.height;
-    // Same beam/depth as the offensive planner (this.beam/this.depth) —
-    // already tuned to stay well inside a frame budget at this preset;
-    // an independent, wider search here blew well past it (measured
-    // ~500ms worst case at beam 8/depth 3, versus a 6-frame/~100ms
-    // cooldown budget).
-    var beamWidth = this.beam, maxDepth = this.depth;
+    // Same beam width as the offensive planner (this.beam) — already
+    // tuned to stay well inside a frame budget at this preset; an
+    // independent, wider search here blew well past it (measured ~500ms
+    // worst case at beam 8/depth 3, versus a 6-frame/~100ms cooldown
+    // budget).
+    var beamWidth = this.beam;
     // How close to topping out before this stops gambling a whole
     // decision cycle on a non-matching setup swap in the hope of a
-    // bigger combo 2 plies out, and just takes whatever it can clear
-    // RIGHT NOW instead. Ungated, hunting for bigger combos measured
-    // clearly better at moderate-rate garbage (survival 2/12 -> 5/12
-    // seeds at a 60s cap; avgGarbageCleared/avgMatches up at EVERY rate,
-    // which is the actual "not breaking garbage, not making big blocks"
-    // complaint this was built to fix) but worse at the two hardest rates
-    // (heavy 4/12 -> 1/12, relentless 3/12 -> 0/12) — under real time
-    // pressure, a guaranteed smaller clear now beats gambling a cycle on
-    // a bigger one that might not land before more garbage does. This
-    // gate recovers most but not all of that: with it, heavy/relentless
-    // land at roughly half their pre-big-block survival rate rather than
-    // near zero, while moderate keeps its full gain. Genuinely a
-    // trade-off, not a strict win — see the commit message for the honest
-    // before/after numbers across all four rates.
+    // bigger combo further out, and just takes whatever it can clear
+    // RIGHT NOW instead — by capping the search to depth 1 (exhaustive,
+    // still cheap) rather than this.depth. Critically, this has to be
+    // decided BEFORE the search runs, not just by breaking early once
+    // ply 0 finds something: an earlier version only broke early on a
+    // ply-0 match, which meant that whenever ply 0 found NO match, a
+    // beam-limited ply 1 still ran even while critical, and taking
+    // whatever mediocre match it stumbled onto that way (instead of
+    // falling straight through to the potential-gain fallback, like the
+    // pre-big-block code did) measured WORSE than never searching deeper
+    // at all — confirmed by isolating it: forcing depth 1 in every way
+    // BUT this one still reproduced the regression exactly.
+    //
+    // With the depth cap actually gating the search (not just the
+    // break-early check above it), the trade-off mostly disappears: 20
+    // seeds/rate, 60s cap, real engine — light unaffected (20/20 both);
+    // moderate 4/20 -> 9/20; heavy 6/20 -> 5/20; relentless 4/20 -> 4/20.
+    // Heavy/relentless land within noise of the pre-big-block baseline
+    // instead of roughly halved, while moderate keeps its full gain and
+    // avgGarbageCleared/avgMatches are up at every rate — which is the
+    // actual "not breaking garbage, not making big blocks" complaint
+    // this was built to fix.
     var criticalFrac = this.dangerHeightFrac + (1 - this.dangerHeightFrac) * 0.5;
     var critical = board.fillRatio() >= criticalFrac;
+    var maxDepth = critical ? 1 : this.depth;
 
     function keyFor(trial, res) {
       var garbageCleared = garbageBefore - garbageCellCount(trial);
@@ -673,7 +682,7 @@
     }
 
     var frontier = [{ board: board, move: null }];
-    var best = null, bestKey = null;
+    var best = null, bestKey = null, bestClearsGarbage = false;
     for (var ply = 0; ply < maxDepth; ply++) {
       var candidates = [];
       for (var f = 0; f < frontier.length; f++) {
@@ -686,12 +695,29 @@
           var res = trial.resolve();
           var move = node.move || [r, c];
           var matched = res.chainLength > 0;
+          var garbageCleared = matched ? garbageBefore - garbageCellCount(trial) : 0;
           var ev = matched ? keyFor(trial, res) : boardPotential(trial);
-          if (matched && (bestKey === null || ev > bestKey)) { bestKey = ev; best = move; }
+          if (matched && (bestKey === null || ev > bestKey)) {
+            bestKey = ev; best = move; bestClearsGarbage = garbageCleared > 0;
+          }
           candidates.push({ board: trial, move: move, ev: ev });
         }
       }
-      if (ply === 0 && best && critical) break; // take the immediate match now, don't gamble on bigger
+      // Take it now rather than gambling a whole decision cycle on
+      // something bigger, whenever either: the board is critically
+      // close to topping out, or the immediate move already clears
+      // garbage. The garbage-clearing case matters even when not
+      // critical — this only runs while _inDanger() is already true, so
+      // an available garbage-clearing swap is exactly the thing this
+      // mode exists to take; searching deeper for a bigger REAL-panel
+      // combo instead measured worse at the two hardest attack rates
+      // (see the commit message), because the deeper "plan" assumes a
+      // board state that a fresh wave of incoming garbage can invalidate
+      // before its second move ever gets played. A ply-0 match that
+      // ONLY clears real panels (no garbage touched) still gets the
+      // deeper search, since there's nothing time-sensitive to protect
+      // by taking it immediately.
+      if (ply === 0 && best && (critical || bestClearsGarbage)) break;
       if (!candidates.length) break;
       candidates.sort(function (a, b) { return b.ev - a.ev; });
       frontier = candidates.slice(0, beamWidth);
