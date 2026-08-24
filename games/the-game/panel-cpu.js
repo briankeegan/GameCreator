@@ -279,6 +279,25 @@
     return lowest;
   };
 
+  // How many rows, counting up from the floor, are still entirely
+  // garbage-free — i.e. how much real-panel "runway" is left before the
+  // garbage wall starts. Every match that clears real panels WITHOUT
+  // touching garbage shrinks this and is never replenished by gravity
+  // (matched panels are just gone; only a fresh row from newRow()/raise
+  // refills the well) — a board can be short on danger height and still
+  // be dying, if this hits zero, because there is nothing left to build
+  // a match out of.
+  LogicalBoard.prototype.runwayHeight = function () {
+    var h = 0;
+    for (var r = 1; r <= this.height; r++) {
+      var hasGarbage = false;
+      for (var c = 1; c <= this.width; c++) if (this.grid[r][c] === -2) { hasGarbage = true; break; }
+      if (hasGarbage) break;
+      h = r;
+    }
+    return h;
+  };
+
   LogicalBoard.prototype.heightOf = function (col) {
     for (var r = this.height; r >= 1; r--) if (this.grid[r][col] > 0 || this.grid[r][col] === -2) return r;
     return 0;
@@ -632,10 +651,11 @@
   // combo or a chain sitting one swap further away unexplored. Unmatched
   // branches still advance (ranked by `potential`, same signal the
   // offensive planner uses) so a first move that only SETS UP next
-  // move's clear is still found. NEVER raises while tall — raising can
-  // only make the danger worse. That's the actual guarantee behind
-  // "shouldn't be able to die," not a hope the scoring weights happen to
-  // produce.
+  // move's clear is still found. Raises while tall ONLY when starved of
+  // real-panel material (see runwayHeight below) — every other path
+  // never raises while tall, since raising can only make the danger
+  // worse otherwise. That's the actual guarantee behind "shouldn't be
+  // able to die," not a hope the scoring weights happen to produce.
   SearchCpu.prototype._bestDefensiveMove = function (board) {
     var self = this;
     var garbageBefore = garbageCellCount(board);
@@ -722,7 +742,42 @@
       candidates.sort(function (a, b) { return b.ev - a.ev; });
       frontier = candidates.slice(0, beamWidth);
     }
-    if (best) return best;
+    // A match that clears real panels WITHOUT touching garbage doesn't
+    // just fail to help — it actively burns the one resource that
+    // rebuilds a match at all (runwayHeight — see its own comment).
+    // Matched panels are gone for good; only a fresh row from raising
+    // (or the slow automatic rise) puts more real panels in play. Once
+    // that runway is down to a couple of rows, taking a junk match
+    // anyway (or endlessly REARRANGING the same dwindling scraps via the
+    // potential-gain fallback below, which is just as much a dead end)
+    // is how the AI kept starving itself: matchEvents in the single
+    // digits and garbageCellsCleared stuck at 0 for an entire game,
+    // right up until there was nothing left to swap at all. A good
+    // player's actual rule: don't burn below ~3 rows of real panels —
+    // either clear garbage or raise instead. This applies even while
+    // critical (close to topping out): with the runway this thin,
+    // refusing to raise doesn't actually make things safer, since
+    // there's no material left to defend with anyway — confirmed
+    // measuring it gated to !critical only first, which left the fastest
+    // deaths (garbageCellsCleared stuck at 0, dying in ~18s) completely
+    // unchanged, because those are exactly the boards that hit critical
+    // almost immediately.
+    //
+    // Measured against the real engine (20 seeds/rate, 60s cap): light
+    // unaffected; moderate 9/20 -> 14/20 survived, avgGarbageCleared
+    // 61 -> 86; heavy survival count flat at 5/20 but avgFrames 2126 ->
+    // 2460 and avgGarbageCleared 54 -> 73 (worst-case instant deaths
+    // mostly gone — fewer seeds dying at ~18s with 0 garbage cleared);
+    // relentless dipped slightly (4/20 -> 3/20) — at that rate even a
+    // ~0.3s raise can cost more than it buys back. Net a clear win at
+    // every rate that has any slack at all, and roughly a wash at the
+    // one rate that doesn't.
+    var runwayLow = board.runwayHeight() < 3;
+    if (best) {
+      if (!bestClearsGarbage && runwayLow) return null;
+      return best;
+    }
+    if (runwayLow) return null;
 
     var swaps0 = board.legalSwaps();
     var base = boardPotential(board), bestGain = null, gainMove = null;
