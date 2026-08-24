@@ -1016,6 +1016,21 @@
 
     if (decision.kind === "raise") {
       this.raiseFrames = 20;
+      // A raise is a committed multi-frame action, unlike a swap: it
+      // needs ~16-20 held frames (Stack.handleManualRaise decrements
+      // displacement, which starts at 16, by 1 per frame) to actually
+      // deliver a fresh row. Tried sharing the swap cooldown's fast
+      // danger-mode floor (6 frames) here, on the theory that a raise
+      // held that briefly could still chain into the next one — it
+      // measured WORSE at every rate (moderate 14/20 -> 10/20 seeds
+      // surviving a 60s cap, heavy 5/20 -> 3/20). Cause: re-deciding
+      // before a raise completes lets a subsequent SWAP decision set
+      // riseLock, and Stack.handleManualRaise cancels an in-progress
+      // raise outright once riseLock goes true before manualRaiseYet —
+      // so the fast cooldown was mostly interrupting raises before they
+      // ever delivered a row, wasting the attempt entirely. `this.reaction`
+      // (30 frames for diamond) safely exceeds the ~16-20 needed, so a
+      // requested raise reliably finishes before anything can cancel it.
       this.cooldown = this.reaction;
       this._lastSwap = null;
       return;
