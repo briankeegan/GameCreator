@@ -78,5 +78,27 @@ module.exports.apply = function (cpu, name) {
     return;
   }
 
+  // ---- offense variants: same brain, different knobs. Measured by the
+  // harness's garbageCellsSent/sentPerSecond under a realistic incoming
+  // rate (0.67 cells/sec, the strongest real opponent's measured peak).
+  if (name === 'aggro_knobs') {
+    cpu.mistake = 0;
+    cpu.reaction = 18;
+    cpu.depth = 3;
+    cpu.beam = 8;
+    cpu.patience = 0.9;
+    cpu.patienceFillCeiling = 0.7;
+    return;
+  }
+  if (name === 'nightmare_knobs') {
+    cpu.mistake = 0;
+    cpu.reaction = 12;
+    cpu.depth = 4;
+    cpu.beam = 10;
+    cpu.patience = 0.85;
+    cpu.patienceFillCeiling = 0.5;
+    return;
+  }
+
   throw new Error('unknown strategy: ' + name);
 };

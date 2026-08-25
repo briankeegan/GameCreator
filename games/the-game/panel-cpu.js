@@ -39,17 +39,24 @@
     // purpose, so it is beatable. "nightmare" is the tournament-proven
     // config from games/the-game/ai/agents.py's SearchAgent.DEFAULT_WEIGHTS,
     // kept here for whenever a genuinely relentless opponent is wanted.
+    // chainExtend: mid-cascade chain continuation (the "massive garbage"
+    // knob — see _chainExtendMove). ON for both search presets; turn it
+    // OFF (chainExtend: false) when scaling a weaker character back from
+    // this brain, before touching anything else — it is the single
+    // biggest offense lever.
     diamond: {
       brain: "search", reaction: 30, mistake: 0.08,
       depth: 2, beam: 5, patience: 0.6, patienceFillCeiling: 0.5,
       dangerHeightFrac: 0.72, chainWeight: 380, comboWeight: 70,
-      garbageWeight: 90, heightPenalty: 60, potentialWeight: 5
+      garbageWeight: 90, heightPenalty: 60, potentialWeight: 5,
+      chainExtend: true
     },
     nightmare: {
       brain: "search", reaction: 12, mistake: 0,
       depth: 4, beam: 10, patience: 0.85, patienceFillCeiling: 0.5,
       dangerHeightFrac: 0.72, chainWeight: 380, comboWeight: 70,
-      garbageWeight: 90, heightPenalty: 60, potentialWeight: 5
+      garbageWeight: 90, heightPenalty: 60, potentialWeight: 5,
+      chainExtend: true
     }
   };
 
@@ -541,6 +548,7 @@
     this.garbageWeight = preset.garbageWeight;
     this.heightPenalty = preset.heightPenalty;
     this.potentialWeight = preset.potentialWeight;
+    this.chainExtend = opts.chainExtend !== undefined ? !!opts.chainExtend : preset.chainExtend !== false;
     this.rng = root.PanelEngine.makeRng(opts.seed || 4242);
     this.cooldown = Math.floor(this.reaction / 2);
     this.raiseFrames = 0;
@@ -572,6 +580,212 @@
       }
     }
     return new LogicalBoard(width, stack.height, this.stack.colors, grid, blocks);
+  };
+
+  // ---- manual chain extension ----
+  //
+  // The single biggest source of garbage in this game is a long CHAIN: a
+  // chain of length N sends (N-1) full-width rows — 6 cells per extra
+  // link, uncapped — while even a +8 combo sends only 7. And the way real
+  // players build long chains is not planning the whole thing in advance:
+  // it's MID-CASCADE play. When a match pops, every panel above it hovers
+  // (carrying the `chaining` flag, panel-engine.js enterHoverFromNormal),
+  // then falls; if it lands into a new match the chain extends. The
+  // cleared bottom row of a garbage block converts to chaining panels
+  // too. So while a pop is animating there is a ~60-100 frame window
+  // (FLASH + FACE + POP*n, then HOVER) to rearrange the STABLE panels
+  // underneath so the falling ones land into a match — extending the
+  // chain by another link, opening another window, repeat.
+  //
+  // The planner can't see any of this because _snapshot marks every
+  // non-normal panel as busy (-1): mid-cascade, the board it reasons
+  // about is missing exactly the panels that matter. These two methods
+  // close that gap, using only information a human also has (every
+  // hovering/falling panel's color is visible on screen):
+  //
+  // _cascadePrediction builds the board as it will be AFTER the cascade
+  // settles: popping panels vanish, in-flight panels drop straight down
+  // their columns (per-column order is preserved, so the k panels that
+  // fall in a column land as that column's top k real panels), garbage
+  // blocks re-settle via the same block gravity the model already has.
+  // Cells that will land carrying the chain flag are marked.
+  //
+  // _chainExtendMove then searches one swap among panels that are
+  // swappable RIGHT NOW, in the still-stable region below the
+  // disturbance, such that on the settled board a match forms that
+  // includes at least one chain-flagged cell — i.e. a swap made during
+  // the pop that catches the falling panels into the next link.
+  SearchCpu.prototype._cascadePrediction = function () {
+    var stack = this.stack, width = root.PanelEngine.WIDTH;
+    var grid = [], blocks = {};
+    var anyInFlight = false;
+    // per column: list of {color, chain} for real panels bottom->top, and
+    // the lowest disturbed row (below which the column is stable ground)
+    var disturbLow = [];
+    var colReal = [];
+    var r, c, p;
+
+    for (c = 1; c <= width; c++) { disturbLow[c] = stack.height + 1; colReal[c] = []; }
+    for (r = 0; r <= stack.height; r++) grid[r] = [];
+
+    for (c = 1; c <= width; c++) {
+      var sawDisturb = false;
+      for (r = 1; r <= stack.height; r++) {
+        p = stack.panelAt(r, c);
+        grid[r][c] = 0;
+        if (!p) continue;
+        if (p.isGarbage) {
+          if (p.state === "matched" && p.yOffset === -1) {
+            // bottom row of a clearing garbage block: becomes a real
+            // chaining panel, but its color isn't decided until it
+            // converts — occupies space, can't be planned into.
+            colReal[c].push({ color: -1, chain: false });
+            if (!sawDisturb) { sawDisturb = true; disturbLow[c] = r; }
+            anyInFlight = true;
+          } else {
+            var id = "g" + p.garbageId;
+            if (!blocks[id]) blocks[id] = { cells: [] };
+            blocks[id].cells.push([r, c]);
+            grid[r][c] = -2;
+          }
+          continue;
+        }
+        if (p.color === 0) continue;
+        if (p.state === "matched" || p.state === "popping") {
+          // vanishing — occupies no cell afterwards
+          if (!sawDisturb) { sawDisturb = true; disturbLow[c] = r; }
+          anyInFlight = true;
+          continue;
+        }
+        if (p.state === "hovering" || p.state === "falling") {
+          colReal[c].push({ color: p.color, chain: !!p.chaining });
+          if (!sawDisturb) { sawDisturb = true; disturbLow[c] = r; }
+          anyInFlight = true;
+          continue;
+        }
+        // normal / landing / swapping: part of the column as it stands.
+        // Above a disturbance it will fall — carrying the chain flag,
+        // since enterHoverFromNormal sets chaining on everything that
+        // hovers above a cleared cell. Below any disturbance it only
+        // chains if it already carries the flag.
+        colReal[c].push({ color: p.color, chain: sawDisturb || !!p.chaining });
+      }
+    }
+    if (!anyInFlight) return null;
+
+    // Lay each column's surviving real panels back down bottom-up around
+    // the garbage blocks, then let block gravity settle the rest.
+    for (c = 1; c <= width; c++) {
+      var stackIdx = 0;
+      for (r = 1; r <= stack.height && stackIdx < colReal[c].length; r++) {
+        if (grid[r][c] === -2) continue;
+        grid[r][c] = colReal[c][stackIdx].color === -1 ? -1 : colReal[c][stackIdx].color;
+        stackIdx++;
+      }
+    }
+    var predicted = new LogicalBoard(width, stack.height, stack.colors, grid, blocks);
+    predicted._applyGravity();
+
+    // Mark chain-flagged cells: per column, order among real panels is
+    // preserved through the compaction above and through gravity, so the
+    // i-th real panel from the bottom after settling is colReal[c][i].
+    var chainMarks = {};
+    for (c = 1; c <= width; c++) {
+      var idx = 0;
+      for (r = 1; r <= stack.height && idx < colReal[c].length; r++) {
+        var v = predicted.grid[r][c];
+        if (v === -2 || v === 0) continue;
+        if (colReal[c][idx].chain) chainMarks[r + ":" + c] = true;
+        idx++;
+      }
+    }
+    return { predicted: predicted, chainMarks: chainMarks, disturbLow: disturbLow };
+  };
+
+  // A decaying average of incoming attack volume — the AI's read on "is
+  // this opponent a firehose or an occasional slab," built from the same
+  // telegraph a human watches. Sampled every update(): add the cells of
+  // any newly queued incoming garbage, decay by 0.999/frame (~11.5s
+  // half-life — deliberately slow, because the average sawtooths between
+  // attacks and the trough must not dip under the threshold at rates
+  // that should stay blocked; at 0.998 it did, and a mixed ~1.2
+  // cells/sec smoke lost a seed through exactly that dip). Steady-state
+  // ranges: 4 cells every 6s (the strongest real opponent's peak)
+  // oscillates ~9-13; ~1.2 cells/sec mixed widths ~18-22; 6 cells every
+  // 1.5s ~50+. The threshold of 15 sits between the first two with
+  // margin on both sides.
+  // Starts PESSIMISTIC (30, over the threshold) rather than at zero:
+  // the opponent is assumed dangerous until ~40 quiet seconds prove
+  // otherwise. Started at zero, a genuinely dangerous rate takes ~20s
+  // of ramp-up before the average crosses the threshold, and that
+  // window is exactly when extensions fired and set up a death the
+  // fully-gated code avoids (one smoke seed died at 24s through it,
+  // reproducibly, at both decay constants tried).
+  SearchCpu.prototype._samplePressure = function () {
+    var stack = this.stack, cells = 0;
+    for (var i = 0; i < stack.incoming.length; i++) {
+      var g = stack.incoming[i];
+      if (!g._pressureCounted) { g._pressureCounted = true; cells += g.width * g.height; }
+    }
+    if (this._pressure === undefined) this._pressure = 30;
+    this._pressure = this._pressure * 0.999 + cells;
+    return this._pressure;
+  };
+
+  // How many garbage cells are sitting on the real stack right now.
+  SearchCpu.prototype._stackGarbageCells = function () {
+    var stack = this.stack, width = root.PanelEngine.WIDTH, n = 0;
+    for (var r = 1; r <= stack.height; r++) {
+      for (var c = 1; c <= width; c++) {
+        var p = stack.panelAt(r, c);
+        if (p && p.isGarbage) n++;
+      }
+    }
+    return n;
+  };
+
+  SearchCpu.prototype._chainExtendMove = function (requireGarbage) {
+    var info = this._cascadePrediction();
+    if (!info) return null;
+    var stack = this.stack, width = root.PanelEngine.WIDTH;
+    var predicted = info.predicted, chainMarks = info.chainMarks, disturbLow = info.disturbLow;
+    var garbageBefore = garbageCellCount(predicted);
+    var best = null, bestScore = null;
+
+    for (var r = 1; r <= stack.height; r++) {
+      for (var c = 1; c < width; c++) {
+        // both cells must be swappable NOW and in the stable region, so
+        // their predicted positions are their current positions
+        if (r >= disturbLow[c] || r >= disturbLow[c + 1]) continue;
+        if (!stack.canSwap(r, c)) continue;
+        var a = predicted.grid[r] ? predicted.grid[r][c] : 0;
+        var b = predicted.grid[r] ? predicted.grid[r][c + 1] : 0;
+        if (a <= 0 && b <= 0) continue;
+        if (a === b) continue;
+        var pa = stack.panelAt(r, c), pb = stack.panelAt(r, c + 1);
+        if (!pa || !pb) continue;
+        var okA = pa.color === 0 || pa.state === "normal" || pa.state === "landing";
+        var okB = pb.color === 0 || pb.state === "normal" || pb.state === "landing";
+        if (!okA || !okB) continue;
+
+        var trial = predicted.clone();
+        trial.swap(r, c);
+        var matched = trial._findMatches();
+        var touchesChain = false, size = 0, k;
+        for (k in matched) {
+          size++;
+          if (chainMarks[k]) touchesChain = true;
+        }
+        if (!touchesChain) continue;
+        // full value of the link: resolve for garbage-adjacency + cascades
+        var res = trial.resolve();
+        var gCleared = garbageBefore - garbageCellCount(trial);
+        if (requireGarbage && gCleared === 0) continue;
+        var score = size * 10 + res.chainLength * 100 + gCleared * 1000 + garbageCells(res.garbage);
+        if (bestScore === null || score > bestScore) { bestScore = score; best = [r, c]; }
+      }
+    }
+    return best;
   };
 
   SearchCpu.prototype._evaluate = function (board, cumGarbage, cumChain, cumCombo) {
@@ -772,7 +986,17 @@
     // ~0.3s raise can cost more than it buys back. Net a clear win at
     // every rate that has any slack at all, and roughly a wash at the
     // one rate that doesn't.
-    var runwayLow = board.runwayHeight() < 3;
+    // ...with one hard exception: NEVER ask for a raise while some
+    // column is already at the very top. Raising there doesn't add
+    // material — Stack.handleManualRaise sees wasToppedOut and runs the
+    // game-over check immediately, so it's pressing the lose button.
+    // Found via a probe of a real death: width-1 garbage had stacked one
+    // column to full height over an otherwise nearly-empty board, the
+    // runway guard saw garbage in the bottom rows, and it force-raised
+    // straight into game over — when the correct (and available) move
+    // was spreading the tower sideways, which is exactly what the
+    // fallbacks below do.
+    var runwayLow = board.runwayHeight() < 3 && board.maxHeight() < board.height;
     if (best) {
       if (!bestClearsGarbage && runwayLow) return null;
       return best;
@@ -995,6 +1219,8 @@
     var stack = this.stack;
     if (stack.gameOver) return;
 
+    var pressure = this._samplePressure(); // every frame, so the decay is honest
+
     if (this.raiseFrames > 0) {
       this.raiseFrames--;
       stack.setInput({ raise: true });
@@ -1003,6 +1229,44 @@
     }
 
     if (this.cooldown > 0) { this.cooldown--; return; }
+
+    // Chain extension outranks everything else while conditions allow:
+    // a cascade is mid-air RIGHT NOW, and a swap that catches it extends
+    // the chain — another full-width row sent per link, plus the
+    // engine's biggest stop-time payouts. The window closes when the
+    // panels land, so this can't wait a full reaction; cooldown drops to
+    // the floor to get a look at the NEXT link's window too.
+    //
+    // "While conditions allow" carries four gates, each one bought with
+    // a measured failure:
+    //   - pressure < 15 (the decaying attack-volume average above):
+    //     against a firehose opponent, every decision cycle belongs to
+    //     defense — ungated extension turned heavy-rate survival from
+    //     5/20 seeds to 0/20, and every instantaneous version of this
+    //     signal (incoming non-empty, backlog size) either failed to
+    //     protect heavy or blocked extension during every attack's
+    //     ~2.5s flight even against a slow opponent, which is where
+    //     most of the offense was being lost.
+    //   - backlog <= 6 cells: more than a slab's worth on the board is
+    //     a clearing job, not chain fuel.
+    //   - fill below the 0.85x pre-danger band (where the swap cooldown
+    //     starts accelerating): near-danger cycles are defense cycles.
+    //   - clock > 600: no offense in the opening seconds — extensions
+    //     there spend the well-mixed starting board that the defense is
+    //     about to need, which alone was the whole remaining heavy-rate
+    //     regression once the other gates were in place.
+    var extSafe = this.chainExtend &&
+      stack.fillRatio() < this.dangerHeightFrac * 0.85 &&
+      this._stackGarbageCells() <= 6 &&
+      pressure < 15 &&
+      stack.clock > 600;
+    var ext = extSafe ? this._chainExtendMove(false) : null;
+    if (ext) {
+      this._lastSwap = ext.slice();
+      stack.touchSwap(ext[0], ext[1]);
+      this.cooldown = 6;
+      return;
+    }
 
     var board = this._snapshot();
     var decision = this._choose(board);

@@ -26,11 +26,14 @@ var cpu = new PanelCpu.SearchCpu(stack, { difficulty: 'diamond', seed: seed + 55
 strategies.apply(cpu, strategyName);
 
 var cellsCleared = 0, garbageCellsCleared = 0, matchEvents = 0, biggestChainSeen = 0;
+var garbageCellsSent = 0; // what the AI throws BACK (the counterattack)
 var f;
 for (f = 0; f < maxFrames; f++) {
   if (f > 0 && f % framesPerAttack === 0) stack.receiveGarbage([{ width: attackWidth, height: attackHeight, isChain: false }]);
   cpu.update();
   stack.run();
+  var sent = stack.takeDeliverableGarbage();
+  for (var s = 0; s < sent.length; s++) garbageCellsSent += sent[s].width * sent[s].height;
   var evs = stack.drainEvents();
   for (var i = 0; i < evs.length; i++) {
     if (evs[i].type === 'match') {
@@ -48,5 +51,6 @@ console.log(JSON.stringify({
   attackWidth: attackWidth, attackHeight: attackHeight,
   survived: !stack.gameOver, framesAlive: f, secondsAlive: +(f / 60).toFixed(2),
   cellsCleared: cellsCleared, garbageCellsCleared: garbageCellsCleared,
-  matchEvents: matchEvents, biggestChainSeen: biggestChainSeen
+  matchEvents: matchEvents, biggestChainSeen: biggestChainSeen,
+  garbageCellsSent: garbageCellsSent, sentPerSecond: +(garbageCellsSent / (f / 60)).toFixed(3)
 }));
