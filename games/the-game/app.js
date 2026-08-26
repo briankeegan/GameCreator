@@ -763,23 +763,15 @@
   function startDuel(npc) {
     var config = (typeof npc.duel === "object" && npc.duel) || {};
     var character = CHARACTERS[npc.id] || {};
-    // Both sides play at the SAME Stack level, driven by this file's one
-    // difficulty setting (difficulty.js) — not per-NPC config.level/
+    // Both sides ALWAYS play at the SAME Stack level, driven by this file's
+    // one difficulty setting (difficulty.js) — not per-NPC config.level/
     // playerLevel, which is how the opponent ended up always a level or two
     // above the player in every duel with nobody having decided that on
-    // purpose. The character's own AI difficulty (gentle/steady/sharp/
-    // nightmare, below) is untouched — that's characterization, not this.
-    //
-    // EXCEPT a "nightmare"-difficulty opponent (currently just Diamond):
-    // story.js's comment on her duel says never to scale that fight back,
-    // and the global difficulty tier picking the board level would do
-    // exactly that on Easy/Medium/Hard — her board would run slower and
-    // with fewer colors than intended, even though her AI is still playing
-    // at full strength. So she always gets the top tier's level, regardless
-    // of what the player chose for the rest of the game.
-    var duelLevel = config.difficulty === "nightmare"
-      ? window.NewseyDifficulty.levelFor("nightmare")
-      : window.NewseyDifficulty.levelFor(save && save.difficulty);
+    // purpose. No exceptions, including Diamond: her edge is her AI playing
+    // at full "nightmare" strength (config.difficulty, below) — a rigged
+    // board on top of that isn't a harder fight, it's a different game. The
+    // chosen tier is how EVERY opponent plays, board included.
+    var duelLevel = window.NewseyDifficulty.levelFor(save && save.difficulty);
     window.NewseyDuel.start({
       playerName: CHARACTERS.nella.name,
       playerLevel: duelLevel,

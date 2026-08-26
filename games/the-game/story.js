@@ -714,8 +714,12 @@ window.NEWSEY_STORY = (function () {
           // deliberately weakened here at one point ("so a determined
           // player can still take her") — the ask was the actual ultimate,
           // undefeatable opponent, not a beatable one wearing its name.
-          // Never scale THIS duel back; add a genuinely weaker character
-          // instead if an easier arena fight is ever wanted.
+          // Never scale back THIS AI PRESET; add a genuinely weaker
+          // character instead if an easier arena fight is ever wanted.
+          // Her board's Stack level is NOT an exception to that, though —
+          // it follows the player's chosen difficulty tier like every other
+          // duel (app.js's startDuel). Her edge is playing that same board
+          // perfectly, not a rigged one under her.
           duel: {
             difficulty: "nightmare", theme: "pink",
             winLine: "Diamond studies her dead board like it lied to her. \"...Huh. Nobody's done that in a while.\"",
