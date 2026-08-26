@@ -281,6 +281,29 @@ jobs:
           # missing, duplicated or CROPPED frame.
           python3 .github/art/verify_sheet.py frames "games/$GAME/art" "$CHAR" 
 
+      # KEEP THE ART EVEN WHEN THE RUN FAILS. The verify step below the slicer
+      # is a gate on COMMITTING, but it was also, accidentally, a gate on the
+      # art continuing to exist: a sheet that generated perfectly and then
+      # tripped a checker died with the runner, and the only way to look at
+      # what was actually drawn was to pay for it again. Some of those failures
+      # are the checker being wrong for the character (a cat's tail widens its
+      # stride frames, which reads as CROPPED), and that call cannot be made
+      # from a log line — someone has to see the picture.
+      #
+      # So every run uploads what it drew, pass or fail. It also means a sheet
+      # can be reviewed WITHOUT being committed anywhere: download the
+      # artifact, look, and only then decide.
+      - name: Upload the sheet and frames for review
+        if: always() && steps.gen.outputs.skipped != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: walksheet-${{ inputs.game }}-${{ inputs.character_id }}
+          path: |
+            games/${{ inputs.game }}/art/${{ inputs.character_id }}_walksheet.png
+            games/${{ inputs.game }}/art/${{ inputs.character_id }}_*_*.png
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Commit the frames
         if: steps.gen.outputs.skipped != 'true'
         env:
