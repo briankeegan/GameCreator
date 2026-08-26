@@ -4,7 +4,14 @@
 // line of results to stdout. Invoked by Python via subprocess so experiments
 // stay statistically rigorous (many seeds, many configs) instead of eyeballed.
 //
-// Usage: node stress_harness.js <strategy> <framesPerAttack> <attackWidth> <attackHeight> <seed> <maxFrames>
+// Usage: node stress_harness.js <strategy> <framesPerAttack> <attackWidth> <attackHeight> <seed> <maxFrames> [difficulty|cfgJSON]
+//
+// difficulty/cfgJSON defaults to 'diamond' (the shipped, deliberately
+// weakened preset) for backward compat with earlier calls in this repo's
+// history -- but 'diamond' is NOT what "hardest player" should ever be
+// measured against. Pass 'nightmare', 'ultimate', or a JSON opts blob
+// ('{"difficulty":"nightmare","reaction":8}') to test what's actually
+// being tuned as the top tier.
 var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
@@ -17,12 +24,16 @@ var attackWidth = parseInt(args[2], 10);
 var attackHeight = parseInt(args[3], 10);
 var seed = parseInt(args[4], 10);
 var maxFrames = parseInt(args[5], 10);
+var cfgArg = args[6] || 'diamond';
 
 var PanelEngine = global.PanelEngine;
 var PanelCpu = global.PanelCpu;
 
+var cpuOpts = cfgArg[0] === '{' ? JSON.parse(cfgArg) : { difficulty: cfgArg };
+cpuOpts.seed = seed + 55;
+
 var stack = new PanelEngine.Stack({ level: 3, seed: seed, countdown: false });
-var cpu = new PanelCpu.SearchCpu(stack, { difficulty: 'diamond', seed: seed + 55 });
+var cpu = new PanelCpu.SearchCpu(stack, cpuOpts);
 strategies.apply(cpu, strategyName);
 
 var cellsCleared = 0, garbageCellsCleared = 0, matchEvents = 0, biggestChainSeen = 0;

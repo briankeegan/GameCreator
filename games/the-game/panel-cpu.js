@@ -49,14 +49,14 @@
       depth: 2, beam: 5, patience: 0.6, patienceFillCeiling: 0.5,
       dangerHeightFrac: 0.72, chainWeight: 380, comboWeight: 70,
       garbageWeight: 90, heightPenalty: 60, potentialWeight: 5,
-      chainExtend: true
+      chainExtend: true, sentWeight: 5000
     },
     nightmare: {
       brain: "search", reaction: 12, mistake: 0,
       depth: 4, beam: 10, patience: 0.85, patienceFillCeiling: 0.5,
       dangerHeightFrac: 0.72, chainWeight: 380, comboWeight: 70,
       garbageWeight: 90, heightPenalty: 60, potentialWeight: 5,
-      chainExtend: true
+      chainExtend: true, sentWeight: 5000
     }
   };
 
@@ -537,18 +537,38 @@
     var preset = DIFFICULTIES[opts.difficulty] || DIFFICULTIES.diamond;
     this.stack = stack;
     this.reaction = opts.reaction || preset.reaction;
-    this.mistake = opts.mistake === undefined ? preset.mistake : preset.mistake;
+    // BUG (fixed): both branches read preset.X, so a caller's opts.mistake
+    // / opts.patience were silently discarded and the preset value used
+    // regardless -- e.g. duel_harness.js JSON-config overrides of either
+    // never took effect. Cpu (above) has the correct opts.X : preset.X
+    // pattern; SearchCpu didn't match it.
+    this.mistake = opts.mistake === undefined ? preset.mistake : opts.mistake;
     this.depth = opts.depth || preset.depth;
     this.beam = opts.beam || preset.beam;
-    this.patience = opts.patience === undefined ? preset.patience : preset.patience;
-    this.patienceFillCeiling = preset.patienceFillCeiling;
-    this.dangerHeightFrac = preset.dangerHeightFrac;
-    this.chainWeight = preset.chainWeight;
-    this.comboWeight = preset.comboWeight;
-    this.garbageWeight = preset.garbageWeight;
-    this.heightPenalty = preset.heightPenalty;
-    this.potentialWeight = preset.potentialWeight;
+    this.patience = opts.patience === undefined ? preset.patience : opts.patience;
+    this.patienceFillCeiling = opts.patienceFillCeiling || preset.patienceFillCeiling;
+    this.dangerHeightFrac = opts.dangerHeightFrac || preset.dangerHeightFrac;
+    this.chainWeight = opts.chainWeight || preset.chainWeight;
+    this.comboWeight = opts.comboWeight || preset.comboWeight;
+    this.garbageWeight = opts.garbageWeight || preset.garbageWeight;
+    this.heightPenalty = opts.heightPenalty || preset.heightPenalty;
+    this.potentialWeight = opts.potentialWeight || preset.potentialWeight;
     this.chainExtend = opts.chainExtend !== undefined ? !!opts.chainExtend : preset.chainExtend !== false;
+    // The knobs that actually govern behavior once _inDanger() is true —
+    // which, at any genuinely heavy sustained rate, is nearly the whole
+    // game. reaction/depth/beam/mistake/patience all get overridden or
+    // capped once in danger (mistake never fires there, depth caps to 1
+    // once critical, cooldown floors regardless of reaction), so tuning
+    // "hardest" without touching THESE never changes survival under
+    // real pressure — confirmed: nightmare (faster reaction/deeper
+    // search, identical values below) measured no better than diamond
+    // at a sustained heavy rate.
+    this.criticalFactor = opts.criticalFactor !== undefined ? opts.criticalFactor : (preset.criticalFactor !== undefined ? preset.criticalFactor : 0.5);
+    this.runwayThreshold = opts.runwayThreshold !== undefined ? opts.runwayThreshold : (preset.runwayThreshold !== undefined ? preset.runwayThreshold : 3);
+    this.rescueBranchCap = opts.rescueBranchCap !== undefined ? opts.rescueBranchCap : (preset.rescueBranchCap !== undefined ? preset.rescueBranchCap : 6);
+    this.dropAmountWeight = opts.dropAmountWeight !== undefined ? opts.dropAmountWeight : (preset.dropAmountWeight !== undefined ? preset.dropAmountWeight : 200);
+    this.pressureThreshold = opts.pressureThreshold !== undefined ? opts.pressureThreshold : (preset.pressureThreshold !== undefined ? preset.pressureThreshold : 15);
+    this.sentWeight = opts.sentWeight !== undefined ? opts.sentWeight : (preset.sentWeight !== undefined ? preset.sentWeight : 50);
     this.rng = root.PanelEngine.makeRng(opts.seed || 4242);
     this.cooldown = Math.floor(this.reaction / 2);
     this.raiseFrames = 0;
@@ -848,7 +868,27 @@
     // clean at every rate: heavy 1/12 -> 4/12, relentless 0/12 -> 3/12,
     // moderate unchanged in total survival time (avgFrames 2487 -> 2493,
     // same seeds crossing/not-crossing the 60s cutoff by chance either way).
-    return garbageCleared * 1000000 + chainBonus + bigComboBonus + dropAmount * 200 + comboSum;
+    // What this move actually SENDS (comboGarbage(comboSize) per combo,
+    // plus a chainLength-1 full-width row for a chain of 2+ — the same
+    // rules panel-engine.js's own resolve()/checkMatches use) was never
+    // scored directly before this — only proxied through chainBonus and
+    // bigComboBonus, which correlate with it but aren't it: two moves
+    // tied on chain length and combo size can still differ in raw
+    // outgoing cells (e.g. one move's chain links are all combos of 4,
+    // the other's are all bare 3-matches — same chainBonus, very
+    // different comboGarbage output). Weighted well under the chain/
+    // combo terms so it only breaks ties between otherwise-similar
+    // defensive options toward whichever one ALSO attacks harder — it
+    // can't make this pick a worse defensive move for more offense.
+    // Weight (default/preset 5000, swept 0-100000 in 14-seed head-to-head
+    // batches at the heavy stress rate): 0-8000 all land on the same,
+    // strictly-better-than-off result (heavy: 583 -> 622 total cells
+    // sent across 14 seeds, ~+7%, survival time unchanged); above ~9000
+    // it starts occasionally overriding chainBonus/bigComboBonus on
+    // ties and total sent actually drops back down (603). 5000 sits in
+    // the middle of the flat plateau rather than at its edge.
+    var sentCells = garbageCells(res.garbage);
+    return garbageCleared * 1000000 + chainBonus + bigComboBonus + dropAmount * this.dropAmountWeight + sentCells * this.sentWeight + comboSum;
   };
 
   function dropAmountFor(lowestBefore, lowestAfter) {
@@ -905,7 +945,7 @@
     // avgGarbageCleared/avgMatches are up at every rate — which is the
     // actual "not breaking garbage, not making big blocks" complaint
     // this was built to fix.
-    var criticalFrac = this.dangerHeightFrac + (1 - this.dangerHeightFrac) * 0.5;
+    var criticalFrac = this.dangerHeightFrac + (1 - this.dangerHeightFrac) * this.criticalFactor;
     var critical = board.fillRatio() >= criticalFrac;
     var maxDepth = critical ? 1 : this.depth;
 
@@ -996,7 +1036,7 @@
     // straight into game over — when the correct (and available) move
     // was spreading the tower sideways, which is exactly what the
     // fallbacks below do.
-    var runwayLow = board.runwayHeight() < 3 && board.maxHeight() < board.height;
+    var runwayLow = board.runwayHeight() < this.runwayThreshold && board.maxHeight() < board.height;
     if (best) {
       if (!bestClearsGarbage && runwayLow) return null;
       return best;
@@ -1026,14 +1066,12 @@
 
   // Exhaustive at each level's immediate swaps (cheap: legalSwaps() is at
   // most a few dozen), but caps how many unmatched branches it recurses
-  // into. Without a cap this is legalSwaps^depth — measured 16-17 legal
-  // swaps at depth 4 taking 450-550ms per call, well past the 6-frame
-  // (~100ms) decision budget, and mostly finding nothing anyway. Ranking
-  // unmatched branches by `potential` before capping keeps the search
-  // pointed at the same promising continuations a wider, uncapped search
-  // would have found.
-  var RESCUE_BRANCH_CAP = 6;
-
+  // into via this.rescueBranchCap (default 6). Without a cap this is
+  // legalSwaps^depth — measured 16-17 legal swaps at depth 4 taking
+  // 450-550ms per call, well past the 6-frame (~100ms) decision budget,
+  // and mostly finding nothing anyway. Ranking unmatched branches by
+  // `potential` before capping keeps the search pointed at the same
+  // promising continuations a wider, uncapped search would have found.
   SearchCpu.prototype._nPlyRescue = function (board, depth) {
     var self = this;
     var best = null, bestKey = null;
@@ -1060,7 +1098,7 @@
       }
       if (remaining > 1 && unmatched.length) {
         unmatched.sort(function (a, b) { return b.pot - a.pot; });
-        var capped = unmatched.slice(0, RESCUE_BRANCH_CAP);
+        var capped = unmatched.slice(0, self.rescueBranchCap);
         for (var j = 0; j < capped.length; j++) walk(capped[j].step, capped[j].move, remaining - 1);
       }
     };
@@ -1258,7 +1296,7 @@
     var extSafe = this.chainExtend &&
       stack.fillRatio() < this.dangerHeightFrac * 0.85 &&
       this._stackGarbageCells() <= 6 &&
-      pressure < 15 &&
+      pressure < this.pressureThreshold &&
       stack.clock > 600;
     var ext = extSafe ? this._chainExtendMove(false) : null;
     if (ext) {
