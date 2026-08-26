@@ -3513,6 +3513,31 @@
     });
   }
 
+  // Several guns bearing on the same contact isn't automatically a
+  // decision worth asking about — only when picking one over another
+  // actually trades something off. One weapon is a no-brainer over the
+  // rest when it costs no MORE energy and deals no LESS damage than every
+  // other option that bears, with at least one of those strict — cheaper-
+  // or-equal AND stronger-or-equal always beats cheaper-but-weaker or
+  // costlier-but-not-harder, so there's nothing to weigh. A launcher or a
+  // charge is never auto-picked over anything (its hit lands later, on a
+  // footprint the target might not even be standing in by then), and
+  // neither is an AoE weapon (`targets: "all"`) — hitting everyone nearby
+  // versus hammering just the locked contact is a real tactical choice,
+  // not a number a straight damage comparison can settle. Returns the
+  // dominant weapon's id, or null when the player actually has to pick.
+  function dominantWeapon(weaponKeys) {
+    if (weaponKeys.length <= 1) return weaponKeys[0] || null;
+    const defs = weaponKeys.map((k) => WEAPONS[k]);
+    if (defs.some((w) => w.launches || w.places || w.targets !== "one")) return null;
+    for (const w of defs) {
+      const noWorse = defs.every((o) => o === w || (w.energyCost <= o.energyCost && w.damage >= o.damage));
+      const strictlyBetter = defs.some((o) => o !== w && (w.energyCost < o.energyCost || w.damage > o.damage));
+      if (noWorse && strictlyBetter) return w.id;
+    }
+    return null;
+  }
+
   function applyFire(state, targetEnemyId, weaponKey) {
     assertPlaying(state);
     const bearing = weaponsWithTargets(state);
@@ -3525,9 +3550,15 @@
         throw new Error(fitted ? `${fitted.weapon.label}: nothing in arc` : "That weapon isn't fitted");
       }
     } else {
-      // No choice made: fire the only gun that bears, or the cheapest one
-      // that does — a single-weapon ship never needs to be asked.
-      firing = bearing.slice().sort((a, b) => a.weapon.energyCost - b.weapon.energyCost)[0];
+      // No choice made: fire the only gun that bears, or the one that
+      // dominates the rest (see dominantWeapon) — a ship never needs to be
+      // asked when one option is simply better. Only a genuine trade-off
+      // falls back to the cheapest, since that's the least it could cost
+      // to answer with a shot when nothing named which one to fire.
+      const autoKey = dominantWeapon(bearing.map(({ systemKey }) => systemKey));
+      firing = autoKey
+        ? bearing.find(({ systemKey }) => systemKey === autoKey)
+        : bearing.slice().sort((a, b) => a.weapon.energyCost - b.weapon.energyCost)[0];
     }
     if (state.energy < firing.weapon.energyCost) {
       throw new Error(`${firing.weapon.label}: charge at ${state.energy} of ${firing.weapon.energyCost}`);
@@ -3778,6 +3809,7 @@
     applyFire,
     armedWeaponsFor,
     weaponsWithTargets,
+    dominantWeapon,
     applyRecharge,
     RECHARGE_ENERGY_GAIN,
     applyRaiseShields,

@@ -3205,6 +3205,58 @@ assert.deepStrictEqual(
       "with a wingman inside three of it, the lane goes quiet — and the overlay says so"
     );
   }
+
+  // dominantWeapon: several guns bearing on the same contact only counts
+  // as a real choice when picking one over another actually trades
+  // something off. Reported live: "unless there is an actual legitimate
+  // choice, I should just auto pick."
+  {
+    assert.strictEqual(Engine.dominantWeapon([]), null, "nothing bearing, nothing to pick");
+    assert.strictEqual(Engine.dominantWeapon(["autocannon"]), "autocannon", "one gun, no ceremony");
+    // Arc Beam: 1 damage / 2 energy. Mortar: 1 damage / 3 energy. Same
+    // damage, Arc Beam cheaper — no reason to ever pick Mortar here.
+    assert.strictEqual(
+      Engine.dominantWeapon(["arcBeam", "mortar"]),
+      "arcBeam",
+      "same damage, cheaper gun wins outright — auto-picked, no menu"
+    );
+    // Autocannon: 1 damage / 1 energy. Siege Maul: 2 damage / 3 energy —
+    // more expensive AND stronger is a real trade-off, not a no-brainer.
+    assert.strictEqual(
+      Engine.dominantWeapon(["autocannon", "siegeMaul"]),
+      null,
+      "cheap-and-weak vs costly-and-strong is a genuine choice"
+    );
+    // Autocannon and Prow Cannon: both 1 damage / 1 energy, identical on
+    // every axis — neither dominates, so it's still a choice (which arc,
+    // which flavor of the same shot), not a null decision to skip past.
+    assert.strictEqual(
+      Engine.dominantWeapon(["autocannon", "prowCannon"]),
+      null,
+      "two guns tied on cost and damage is not a no-brainer either"
+    );
+    // Arc Beam: 1 damage / 2 energy. Flank Tubes: 2 damage / 3 energy.
+    // Neither one is cheaper AND stronger than the other — still a choice.
+    assert.strictEqual(
+      Engine.dominantWeapon(["arcBeam", "flankTubes"]),
+      null,
+      "no gun that's simply better than the other stays a real choice"
+    );
+    // A launcher never gets auto-picked over a straight hit — its damage
+    // lands next round, on whatever hex it detonates on.
+    assert.strictEqual(
+      Engine.dominantWeapon(["autocannon", "missilePod"]),
+      null,
+      "a launcher's hit doesn't land now — never auto-picked over a direct shot"
+    );
+    // Flak Burst hits everyone in reach (targets: "all") — genuinely
+    // different from a single-target shot, even if it looks stronger.
+    assert.strictEqual(
+      Engine.dominantWeapon(["autocannon", "flakBurst"]),
+      null,
+      "an AoE gun is never auto-picked over a single-target one"
+    );
+  }
 }
 
 console.log("All golden-path assertions passed.");
