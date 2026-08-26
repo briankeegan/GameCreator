@@ -548,6 +548,24 @@
     this.patience = opts.patience === undefined ? preset.patience : opts.patience;
     this.patienceFillCeiling = opts.patienceFillCeiling || preset.patienceFillCeiling;
     this.dangerHeightFrac = opts.dangerHeightFrac || preset.dangerHeightFrac;
+    // A level with little health buffer (LEVELS' maxHealth crashes from 121
+    // at level 1 to 1 at level 10 -- panel-engine.js) leaves almost no room
+    // to recover once topped out, no matter how good the search is.
+    // Measured via ai/experiments/stress_harness.js: the SAME preset
+    // survives 3-4x longer and sends ~2x more garbage at Stack level 8/10
+    // when it starts defending at height 0.45 instead of a low-level-tuned
+    // 0.72 -- but that same lower threshold measurably HURTS at level 3,
+    // where the huge health buffer means panicking early only gives up
+    // offense-building time it didn't need. So: tighten based on the
+    // ACTUAL level being played (stack.levelData), once maxHealth crosses
+    // the point where getting topped out stops being recoverable, rather
+    // than a flat number tuned for one level and left to silently apply
+    // (badly) everywhere else. Only when the caller didn't explicitly pin
+    // a value, so a deliberate override (a tuning sweep, a future weaker
+    // character) still wins.
+    if (opts.dangerHeightFrac === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 51) {
+      this.dangerHeightFrac = Math.min(this.dangerHeightFrac, 0.45);
+    }
     this.chainWeight = opts.chainWeight || preset.chainWeight;
     this.comboWeight = opts.comboWeight || preset.comboWeight;
     this.garbageWeight = opts.garbageWeight || preset.garbageWeight;
