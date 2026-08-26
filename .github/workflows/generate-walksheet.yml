@@ -144,12 +144,24 @@ jobs:
           fi
           mkdir -p "$(dirname "$SHEET")"
 
-          # With references we use /images/edits so the likeness is actually
-          # derived from the supplied art; without, plain /images/generations.
-          ARGS=(-F "model=${{ steps.model.outputs.model }}" -F "prompt=${PROMPT}" -F "size=${SIZE}" -F "quality=${QUALITY}")
+          # TWO ENDPOINTS, TWO CONTENT TYPES, AND THEY ARE NOT INTERCHANGEABLE.
+          # This used to build multipart -F arguments unconditionally and post
+          # them to whichever URL it picked — so the NO-REFERENCE path could
+          # never work at all: /v1/images/generations is JSON-only and answered
+          # every single call with
+          #   HTTP 400 Unsupported content type: 'multipart/form-data'.
+          # It went unnoticed because every character to date was generated
+          # WITH a reference image, which takes the /edits branch, where
+          # multipart is correct. The first character asked for from a plain
+          # description failed instantly and looked like an API problem.
+          # So: references -> multipart to /images/edits. None -> JSON to
+          # /images/generations, body built by jq so the prompt cannot break
+          # the quoting.
+          ARGS=()
           URL=https://api.openai.com/v1/images/generations
           if [ -n "$REFERENCES" ]; then
             URL=https://api.openai.com/v1/images/edits
+            ARGS=(-F "model=${{ steps.model.outputs.model }}" -F "prompt=${PROMPT}" -F "size=${SIZE}" -F "quality=${QUALITY}")
             IFS=',' read -ra REFS <<< "$REFERENCES"
             for ref in "${REFS[@]}"; do
               r=$(echo "$ref" | xargs)
@@ -157,7 +169,47 @@ jobs:
               [ -f "$r" ] || { echo "::error::Reference not found: $r"; exit 1; }
               ARGS+=(-F "image[]=@${r}")
             done
+          else
+            body_json=$(jq -n \
+              --arg model "${{ steps.model.outputs.model }}" \
+              --arg prompt "$PROMPT" \
+              --arg size "$SIZE" \
+              --arg quality "$QUALITY" \
+              '{model: $model, prompt: $prompt, size: $size, quality: $quality, n: 1}')
+            ARGS=(-H "Content-Type: application/json" -d "$body_json")
           fi
+
+          # PRE-FLIGHT: the endpoint and the encoding have to agree, and that is
+          # decidable here for free. The bug this replaces cost a whole run to
+          # discover and read like an outage; this costs one string comparison
+          # and names the fix. Checked BEFORE the key is ever used, so a
+          # mismatch fails in under a second and bills nothing.
+          # Read the encoding off the ARGS THEMSELVES rather than trusting a
+          # variable set beside them — the point is to catch the branch above
+          # being edited into disagreeing with the endpoint, which a
+          # self-declared value cannot do.
+          has_json=no; has_form=no
+          for a in "${ARGS[@]}"; do
+            case "$a" in *"application/json"*) has_json=yes ;; esac
+            [ "$a" = "-F" ] && has_form=yes
+          done
+          encoding="unknown"
+          [ "$has_json" = yes ] && [ "$has_form" = no ] && encoding="json"
+          [ "$has_form" = yes ] && [ "$has_json" = no ] && encoding="multipart"
+          case "$URL:$encoding" in
+            *"/images/generations:json"|*"/images/edits:multipart") : ;;
+            *":unknown")
+              echo "::error::Request is neither cleanly JSON nor cleanly multipart (json=$has_json form=$has_form) — one branch of the endpoint choice above has been edited into building both, or neither."
+              exit 1 ;;
+            *"/images/generations:multipart")
+              echo "::error::Transport mismatch: sending multipart/form-data to /v1/images/generations, which is JSON-only — this ALWAYS returns HTTP 400 and never generates anything. Fix: build the request with jq into -d, as the no-references branch above does. (URL=$URL encoding=$encoding references='${REFERENCES}')"
+              exit 1 ;;
+            *"/images/edits:json")
+              echo "::error::Transport mismatch: sending JSON to /v1/images/edits, which needs multipart/form-data to carry the reference images. Fix: build -F arguments, as the references branch above does. (URL=$URL encoding=$encoding references='${REFERENCES}')"
+              exit 1 ;;
+            *) echo "::error::Unknown endpoint '$URL' — only /v1/images/generations and /v1/images/edits are supported here."; exit 1 ;;
+          esac
+          echo "Requesting $URL as $encoding (references: ${REFERENCES:-none})"
 
           ok=""
           for attempt in 1 2 3 4 5; do
@@ -172,7 +224,14 @@ jobs:
               echo "Transient (HTTP $code, attempt $attempt): ${err:-no body} — retrying in ${wait}s"
               sleep "$wait"; continue
             fi
-            echo "::error::OpenAI API error (HTTP $code): ${err:-unknown}"; exit 1
+            # A 400 here is nearly always OUR request being malformed, not an
+            # outage — say so, and say where to look, so the next person does
+            # not read it as "the API is down" and re-run it five times.
+            if [ "$code" = "400" ]; then
+              echo "::error::OpenAI REJECTED the request (HTTP 400) — the request this workflow built is wrong, retrying will not help. Message: ${err:-unknown}. Endpoint $URL, encoding $encoding, references '${REFERENCES:-none}', size $SIZE, quality $QUALITY. Check those against what that endpoint accepts; if it mentions content type, the endpoint/encoding pairing in the 'Generate the sheet' step is the thing to fix."
+              exit 1
+            fi
+            echo "::error::OpenAI API error (HTTP $code): ${err:-unknown} (endpoint $URL, encoding $encoding)"; exit 1
           done
           [ -n "$ok" ] || { echo "::error::Still failing after retries"; exit 1; }
 
