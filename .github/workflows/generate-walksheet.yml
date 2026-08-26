@@ -62,6 +62,11 @@ on:
         required: false
         type: boolean
         default: false
+      branch:
+        description: "Branch to check out and commit the frames to. Defaults to main; point it at a review branch to LOOK at a character before it ships."
+        required: false
+        type: string
+        default: "main"
 
 permissions:
   contents: write
@@ -71,10 +76,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # NOT ALWAYS main. Art is the one thing in this repo you cannot review
+      # from a diff — a sheet has to be looked at, and by the time it is on
+      # main it has shipped. Generating onto a branch means a character can be
+      # seen, rejected and regenerated without ever reaching the live site.
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ inputs.branch }}
 
       - uses: ./.github/actions/validate-game-input
         with:
@@ -218,6 +227,7 @@ jobs:
         env:
           GAME: ${{ inputs.game }}
           CHAR: ${{ inputs.character_id }}
+          BRANCH: ${{ inputs.branch }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -226,7 +236,7 @@ jobs:
           if git diff --cached --quiet; then echo "Nothing changed."; exit 0; fi
           git commit -m "Walk sheet for ${CHAR} (${GAME}): 3-frame RPG-Maker cycle, down/left/up"
           for i in 1 2 3 4 5; do
-            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            if git pull --rebase origin "$BRANCH" && git push origin "HEAD:$BRANCH"; then exit 0; fi
             echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
           done
           echo "::error::could not push after retries"; exit 1
