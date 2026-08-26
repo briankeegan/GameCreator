@@ -537,6 +537,25 @@
     var preset = DIFFICULTIES[opts.difficulty] || DIFFICULTIES.diamond;
     this.stack = stack;
     this.reaction = opts.reaction || preset.reaction;
+    // Faster reaction is a much sharper lever than dangerHeightFrac below,
+    // and a much less forgiving one: swept it the same way (stress_harness.js,
+    // 8 seeds/config) and it only pays off at the single most punishing
+    // level. At level 10 (maxHealth === 1) reaction 12 -> 8 is a clear,
+    // repeatable win (93269 -> 119315 total frames alive, 4/8 -> 6/8
+    // survived, 1276 -> 1597 garbage sent, 8 seeds). But it's NOT a smooth
+    // "faster is always better": the exact same change measurably HURTS at
+    // level 8 (maxHealth 21) even with more seeds to rule out noise
+    // (136734 -> 128004 frames, 2182 -> 1860 sent, 8 seeds) and badly hurts
+    // level 3 like dangerHeightFrac did (28871 -> 15849 frames, 4 seeds) --
+    // reacting faster everywhere burns the patience that builds real
+    // offense at levels with any margin at all. So this only tightens at
+    // the exact level that has none left (maxHealth <= 1, not the wider
+    // <= 51 band dangerHeightFrac uses) -- narrower on purpose, because the
+    // data doesn't support anything broader yet. Only when the caller
+    // didn't explicitly pin a value, same as dangerHeightFrac below.
+    if (opts.reaction === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.reaction = Math.min(this.reaction, 8);
+    }
     // BUG (fixed): both branches read preset.X, so a caller's opts.mistake
     // / opts.patience were silently discarded and the preset value used
     // regardless -- e.g. duel_harness.js JSON-config overrides of either
