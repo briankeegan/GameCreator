@@ -26,12 +26,20 @@
 // checking), several seeds each, compares aggregate survival time and
 // aggregate garbage sent.
 //
-// GATE: wire into pages.yml (see the door/art checks for the pattern)
-// once this repo has more than one "top tier" preset worth protecting
-// — right now it is a manual/CI-optional check because the two
-// presets it compares (nightmare vs diamond) are still being actively
-// tuned; promote it to a real always-run step once nightmare's numbers
-// stop moving.
+// GATE: wired into pages.yml as a real, blocking, deterministic step
+// (see "Verify nightmare AI preset is measurably harder than diamond").
+//
+// MAX_FRAMES is 5 minutes, not 60s — found the hard way. A round of
+// fixes (never idle while topped out; never raise within one row of
+// the top) improved BOTH presets, since that logic is shared, and at a
+// 60s cap the gap between them nearly vanished — not because nightmare
+// stopped being better, but because a 60-second sample is too short for
+// a small per-decision edge (faster reaction, deeper search) to
+// compound into a visible difference. The same seeds at 5 minutes show
+// it clearly (nightmare 2/6 seeds surviving the full run vs diamond's
+// 0/6, ~1.33x more total frames alive). Don't shrink this back down to
+// chase a faster CI step; it will silently stop testing what this file
+// is for.
 //
 // Usage: node check_preset_ordering.js [strongerName] [weakerName]
 var path = require('path');
@@ -41,7 +49,7 @@ var stronger = process.argv[2] || 'nightmare';
 var weaker = process.argv[3] || 'diamond';
 var SEEDS = [1, 2, 3, 4, 5, 6];
 var FRAMES_PER_ATTACK = 120, WIDTH = 4, HEIGHT = 1; // moderate rate: real slack for skill to matter
-var MAX_FRAMES = 3600; // 60s
+var MAX_FRAMES = 18000; // 5 minutes -- see the comment above for why not 60s
 // The bug this exists to catch is "no better than," not "worse than" —
 // a first draft of this check required only NOT_WORSE on both axes,
 // which a preset IDENTICAL to the one it's compared against trivially

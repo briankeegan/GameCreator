@@ -49,7 +49,7 @@ jobs:
       # nobody had actually set the "hardest" preset's values to differ
       # from the weaker one's. See check_preset_ordering.js's own header
       # for the full rule. Fully seeded/deterministic (not flaky like
-      # browser.test.js), ~15s: safe to block on. Fails loudly with the
+      # browser.test.js), ~40s: safe to block on. Fails loudly with the
       # exact knobs to check if "nightmare" ever drifts back to
       # indistinguishable from "diamond" again.
       - name: Verify nightmare AI preset is measurably harder than diamond

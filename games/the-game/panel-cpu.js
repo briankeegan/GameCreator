@@ -1026,17 +1026,21 @@
     // ~0.3s raise can cost more than it buys back. Net a clear win at
     // every rate that has any slack at all, and roughly a wash at the
     // one rate that doesn't.
-    // ...with one hard exception: NEVER ask for a raise while some
-    // column is already at the very top. Raising there doesn't add
-    // material — Stack.handleManualRaise sees wasToppedOut and runs the
-    // game-over check immediately, so it's pressing the lose button.
-    // Found via a probe of a real death: width-1 garbage had stacked one
-    // column to full height over an otherwise nearly-empty board, the
-    // runway guard saw garbage in the bottom rows, and it force-raised
-    // straight into game over — when the correct (and available) move
-    // was spreading the tower sideways, which is exactly what the
-    // fallbacks below do.
-    var runwayLow = board.runwayHeight() < this.runwayThreshold && board.maxHeight() < board.height;
+    // ...with one hard exception: NEVER ask for a raise within ONE ROW of
+    // the very top, not just already AT it. First found this needing a
+    // margin of exactly 0 (a probe of a real death: width-1 garbage had
+    // stacked one column to full height, the runway guard force-raised
+    // straight into game over instead of spreading the tower sideways,
+    // which its own fallbacks already do). That fix wasn't enough on its
+    // own: newRow() (panel-engine.js) re-indexes every existing panel's
+    // row by +1 when a raise delivers its row — so raising at maxHeight
+    // === height-1 tops the board out MECHANICALLY, from the raise's own
+    // action, with no new incoming garbage required at all. Confirmed via
+    // a second real death this margin closes: the AI decided to raise at
+    // maxHeight 11 of 12 (a board that looked perfectly safe), and died
+    // two frames later once that raise's own row delivery pushed it over.
+    var SAFE_RAISE_MARGIN = 1;
+    var runwayLow = board.runwayHeight() < this.runwayThreshold && board.maxHeight() < board.height - SAFE_RAISE_MARGIN;
     if (best) {
       if (!bestClearsGarbage && runwayLow) return null;
       return best;
@@ -1061,7 +1065,80 @@
     // gave up too early."
     var rescue = this._nPlyRescue(board, 2) || this._nPlyRescue(board, 3) || this._nPlyRescue(board, 4);
     if (rescue) return rescue;
-    return gainMove || null; // null means "raise" to the caller
+    if (gainMove) return gainMove;
+
+    // NEVER GO IDLE WHILE TOPPED OUT. This is the single highest-leverage
+    // rule in the whole file, discovered from the real death condition,
+    // not from tuning: Stack.checkGameOver (panel-engine.js) has exactly
+    // two ways to lose — health hitting 0, or holding raise into an
+    // already-topped-out board — and health ONLY decrements via
+    // advancePassiveRaise's toppedOut branch, which is gated behind
+    // `!riseLock && stopTime === 0`. riseLock is true whenever a swap is
+    // queued, a match is resolving, or the board is shaking
+    // (updateRiseLock). So a topped-out board that is NEVER fully idle —
+    // always has some swap in flight — can NEVER have its health
+    // decremented, no matter how much garbage is physically sitting on
+    // it. Confirmed directly: a bare loop that swaps literally anything
+    // every 5 frames, doing no matching or clearing at all, held health
+    // at its exact starting value through 90+ continuous seconds topped
+    // out at the heavy synthetic rate (0/12 seeds ever survived
+    // previously) — it only died once garbage physically buried every
+    // real panel and there was nothing left to swap at all. That is the
+    // OTHER half: this needs the clearing logic above it to keep real
+    // material flowing, or "never idle" alone just delays the same
+    // ending. Previously, this exact gap (no match, no potential gain,
+    // no rescue) fell through to raise — which is not just a missed
+    // chance to stay alive, it is checkGameOver's OTHER death condition
+    // the instant it isn't riseLocked (or, within SAFE_RAISE_MARGIN of
+    // the top, one row from being that condition — see its own comment
+    // above). _anyLegalSwap trades a random legal swap for that
+    // guaranteed-or-imminent loss whenever one exists.
+    if (board.maxHeight() >= board.height - SAFE_RAISE_MARGIN) {
+      var stall = this._anyLegalSwap(board);
+      if (stall) return stall;
+    }
+    return null; // null means "raise" to the caller — only reached with real margin AND zero legal swaps otherwise
+  };
+
+  // Any legal swap at all, for the "never go idle while topped out"
+  // last resort above — preferring one that differs from the last swap
+  // made, so two consecutive stall moves don't hit the real engine's
+  // swap-stalling punish (Stack.applySwapStalling) on the exact same
+  // (row, col) back to back. That check tracks every DISTINCT position
+  // used during a continuous topped-out-idle streak and only resets on
+  // a genuinely non-stalling swap (panel-engine.js's own comment: "any
+  // non-stalling swap resets the log") — which any real match this
+  // search finds already provides, so varying position is what buys
+  // room between those resets rather than exhausting the backlog first.
+  //
+  // Checks the REAL stack's canSwap, not board.legalSwaps() — this is
+  // the one place that mismatch is actively dangerous rather than just
+  // suboptimal. LogicalBoard's model of "swappable" is simpler than
+  // Stack.canSwap's: it has no idea a panel is unswappable because the
+  // panel ABOVE it is hovering ("can't pull a panel out from under a
+  // hovering one" — canSwap's own comment), among other real-time
+  // details it never tracked. A move the search proposes without that
+  // knowledge FAILS SILENTLY: touchSwap's return value was never
+  // checked anywhere in this file, so the AI believed it had acted,
+  // set its cooldown as if it had, and the board sat genuinely idle
+  // for the whole cooldown window instead. Confirmed as the actual
+  // cause of a real death: instrumenting touchSwap directly showed it
+  // returning false right as health was draining toward 0, at a moment
+  // _bestDefensiveMove had returned what LogicalBoard considered a
+  // perfectly legal move. Scanning the real stack directly for this
+  // one safety-critical fallback makes that failure mode structurally
+  // impossible here, whatever LogicalBoard does or doesn't model next.
+  SearchCpu.prototype._anyLegalSwap = function (board) {
+    var stack = this.stack, width = root.PanelEngine.WIDTH;
+    var fallback = null;
+    for (var r = 1; r <= stack.height; r++) {
+      for (var c = 1; c < width; c++) {
+        if (!stack.canSwap(r, c)) continue;
+        if (!this._lastSwap || this._lastSwap[0] !== r || this._lastSwap[1] !== c) return [r, c];
+        if (!fallback) fallback = [r, c];
+      }
+    }
+    return fallback; // only the exact last swap was ever legal -- take it anyway
   };
 
   // Exhaustive at each level's immediate swaps (cheap: legalSwaps() is at
@@ -1346,7 +1423,44 @@
       if (alt.length) { var pick = alt[Math.floor(this.rng() * alt.length)]; row = pick[0]; col = pick[1]; }
     }
     this._lastSwap = [row, col];
-    stack.touchSwap(row, col);
+    var swapped = stack.touchSwap(row, col);
+    // A move built from LogicalBoard can be illegal on the REAL stack
+    // and touchSwap fails SILENTLY — no exception, nothing queued.
+    // Two independent real checks LogicalBoard never modeled can each
+    // cause this: Stack.canSwap refuses a pull out from under a
+    // hovering panel above (its own comment), and even when canSwap
+    // passes, tryQueueSwap's second check (applySwapStalling) can still
+    // refuse — it punishes repeating the exact same (row,col) while
+    // topped out and otherwise idle, refusing outright once health is
+    // too low to pay the cost, which is precisely the moment survival
+    // matters most. Every call site here used to ignore touchSwap's
+    // return value entirely, so the AI believed it had acted, set its
+    // cooldown as if it had, and — while topped out — spent the whole
+    // window genuinely idle instead, which is exactly what
+    // Stack.checkGameOver's health-drain condition punishes. Confirmed
+    // as a real death's actual cause by instrumenting touchSwap
+    // directly: BOTH the original move and _anyLegalSwap's first
+    // (canSwap-only) proposal failed at the exact frame health hit 1,
+    // the second failure specifically via applySwapStalling.
+    //
+    // The fix here doesn't try to replicate that layered legality
+    // (canSwap + a stateful, health-dependent stalling check) a third
+    // time — it just tries REAL touchSwap calls, in order, across every
+    // board position, and stops at the first one that actually
+    // succeeds. Safe to attempt many: a canSwap failure never reaches
+    // applySwapStalling at all (tryQueueSwap short-circuits), and
+    // applySwapStalling's only refusal branch mutates nothing — it
+    // returns false immediately, before touching health or the
+    // backlog. So nothing here can make a subsequent attempt worse.
+    if (!swapped && board.maxHeight() >= board.height) {
+      var retryWidth = root.PanelEngine.WIDTH;
+      for (var rr = 1; rr <= stack.height && !swapped; rr++) {
+        for (var cc = 1; cc < retryWidth && !swapped; cc++) {
+          if (rr === row && cc === col) continue; // already just failed
+          if (stack.touchSwap(rr, cc)) { this._lastSwap = [rr, cc]; swapped = true; }
+        }
+      }
+    }
     // Under real pressure, speed IS the defense: every extra frame of
     // cooldown is a frame garbage keeps stacking uncontested. Confirmed
     // by stress-testing survival against a sustained garbage stream
@@ -1355,9 +1469,30 @@
     // reaction, clear throughput fell behind incoming faster than any
     // amount of smarter move-picking could make up. Near the 6-frame
     // floor while in real danger closes that gap.
-    this.cooldown = board.fillRatio() > this.dangerHeightFrac
-      ? 6
-      : Math.max(6, Math.round(this.reaction * (board.fillRatio() > this.dangerHeightFrac * 0.85 ? 0.55 : 1)));
+    //
+    // While topped out specifically, the floor drops further, to 3 —
+    // one below a swap's own animation length (Panel.lua-equivalent
+    // startSwap sets timer=4). This is not about reacting faster, it's
+    // about never dying: Stack.checkGameOver's health-drain condition
+    // only fires when the board is COMPLETELY idle while topped out
+    // (advancePassiveRaise, gated on !riseLock && stopTime===0, and
+    // riseLock covers exactly the frames a swap/match is active).
+    // Tried 4 first (matching the animation length exactly) and it still
+    // leaked one idle frame per cycle — cooldown counts down to 0 across
+    // `cooldown` FOLLOWING frames before the action fires again, so a
+    // cooldown of N produces an N+1 frame gap between actions, not N;
+    // confirmed by instrumenting a real death (seed 4, heavy rate) with
+    // cooldown=4: health still drained 39->37->35->...->0 one frame at
+    // a time despite _bestDefensiveMove finding a real move on literally
+    // every single decision. 3 closes that last frame; the same probe
+    // with cooldown=3 held health at its topped-out ceiling indefinitely
+    // instead. A real match's animation runs far longer than 4 frames on
+    // its own, so this never makes those any faster than they already were.
+    this.cooldown = board.maxHeight() >= board.height
+      ? 3
+      : board.fillRatio() > this.dangerHeightFrac
+        ? 6
+        : Math.max(6, Math.round(this.reaction * (board.fillRatio() > this.dangerHeightFrac * 0.85 ? 0.55 : 1)));
   };
 
   root.PanelCpu = { Cpu: Cpu, SearchCpu: SearchCpu, DIFFICULTIES: DIFFICULTIES };
