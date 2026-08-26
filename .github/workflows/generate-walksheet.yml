@@ -240,6 +240,7 @@ jobs:
           echo "sheet=$SHEET" >> "$GITHUB_OUTPUT"
 
       - name: Slice the grid into frames
+        id: slice
         if: steps.gen.outputs.skipped != 'true'
         timeout-minutes: 6
         env:
@@ -279,7 +280,19 @@ jobs:
           # misread cuts nine real files that happen to be slivers of coat, so
           # run the same checker the build gate runs — it fails a set with a
           # missing, duplicated or CROPPED frame.
-          python3 .github/art/verify_sheet.py frames "games/$GAME/art" "$CHAR" 
+          # RECORD the verdict, do not exit on it. The image is already paid
+          # for by this point, and killing the job here meant the commit step
+          # never ran and the art died with the runner — so a sheet rejected
+          # by a threshold cost a whole regeneration to look at again, and the
+          # regeneration drew a DIFFERENT character. The run still goes red
+          # (the "Verification verdict" step at the end), but only after the
+          # art has been put somewhere it can be recovered from.
+          if python3 .github/art/verify_sheet.py frames "games/$GAME/art" "$CHAR"; then
+            echo "verified=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "verified=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Frames failed verification — they are being kept for review, not shipped. See the artifact and, on a review branch, the commit."
+          fi
 
       # KEEP THE ART EVEN WHEN THE RUN FAILS. The verify step below the slicer
       # is a gate on COMMITTING, but it was also, accidentally, a gate on the
@@ -304,8 +317,13 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      # main is GATED, a review branch is not. Committing unverified art to
+      # main would ship it; committing it to a review branch is the only way
+      # to look at the exact picture that was drawn without paying to draw
+      # another one — and a regenerated sheet is never the same sheet, so
+      # "just run it again" cannot answer "is this one good?".
       - name: Commit the frames
-        if: steps.gen.outputs.skipped != 'true'
+        if: always() && steps.gen.outputs.skipped != 'true' && (steps.slice.outputs.verified == 'true' || inputs.branch != 'main')
         env:
           GAME: ${{ inputs.game }}
           CHAR: ${{ inputs.character_id }}
@@ -314,11 +332,44 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # NEVER COMMIT A HOLE. The slice step deletes the character's existing
+          # frames before cutting, so that the completeness check can only be
+          # satisfied by art this run actually produced. If slicing then fails,
+          # the working tree holds nine DELETIONS — and this step now runs on
+          # failure, so without this guard a broken run would commit the
+          # removal of the character's working art.
+          missing=""
+          for dir in down left up; do
+            for n in 0 1 2; do
+              f="games/$GAME/art/${CHAR}_${dir}_${n}.png"
+              [ -s "$f" ] || missing="$missing $f"
+            done
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::Not committing — the frame set is incomplete, so this run has nothing whole to keep:$missing"
+            exit 0
+          fi
+
           git add "games/$GAME/art/${CHAR}_"*.png
           if git diff --cached --quiet; then echo "Nothing changed."; exit 0; fi
-          git commit -m "Walk sheet for ${CHAR} (${GAME}): 3-frame RPG-Maker cycle, down/left/up"
+          if [ "${{ steps.slice.outputs.verified }}" = "true" ]; then
+            git commit -m "Walk sheet for ${CHAR} (${GAME}): 3-frame RPG-Maker cycle, down/left/up"
+          else
+            git commit \
+              -m "UNVERIFIED walk sheet for ${CHAR} (${GAME}) — kept for review, failed verify_sheet.py" \
+              -m "Committed to a review branch so the generated art is not lost. Do not merge to main until it passes, or until the checker is shown to be wrong for this character."
+          fi
           for i in 1 2 3 4 5; do
             if git pull --rebase origin "$BRANCH" && git push origin "HEAD:$BRANCH"; then exit 0; fi
             echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
           done
           echo "::error::could not push after retries"; exit 1
+
+      # The gate itself, moved to the end. Everything above has already saved
+      # the art; this is what makes the run red so a failure is still a
+      # failure.
+      - name: Verification verdict
+        if: always() && steps.slice.outputs.verified == 'false'
+        run: |
+          echo "::error::${{ inputs.character_id }}'s frames did not pass verify_sheet.py. The art was kept (artifact, and committed if this was a review branch) so it can be looked at without regenerating. Either fix the frames, or — if the checker is wrong for this character — fix the checker and say so in the commit."
+          exit 1
