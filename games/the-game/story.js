@@ -707,13 +707,16 @@ window.NEWSEY_STORY = (function () {
             "No cushion, no favors. Play like you mean it."
           ],
           // The rank's namesake, and the toughest opponent in the arena —
-          // difficulty "diamond" is the SearchCpu (games/the-game/panel-cpu.js),
-          // a genuinely PLANNING opponent (built and tournament-validated
-          // offline in games/the-game/ai/ before a line of it shipped here),
-          // scaled back from the tournament-proven config so a determined
-          // player can still take her.
+          // difficulty "nightmare" is the SearchCpu (games/the-game/panel-cpu.js)
+          // at its full tournament-validated strength (games/the-game/ai/),
+          // not the "diamond" preset scaled back from it. This was
+          // deliberately weakened here at one point ("so a determined
+          // player can still take her") — the ask was the actual ultimate,
+          // undefeatable opponent, not a beatable one wearing its name.
+          // Never scale THIS duel back; add a genuinely weaker character
+          // instead if an easier arena fight is ever wanted.
           duel: {
-            level: 6, difficulty: "diamond", theme: "pink", playerLevel: 3,
+            level: 6, difficulty: "nightmare", theme: "pink", playerLevel: 3,
             winLine: "Diamond studies her dead board like it lied to her. \"...Huh. Nobody's done that in a while.\"",
             loseLine: "She never even looks rushed. \"Told you. Not arrogance.\"",
             afterWin: [

@@ -40,6 +40,21 @@ jobs:
             node "$f" || status=1
           done
           exit $status
+
+      # A "hardest" AI preset silently performing NO BETTER than a weaker
+      # one has shipped TWICE without anyone noticing: once because the
+      # knobs that actually govern behavior under real pressure
+      # (danger-mode thresholds, not reaction/depth/beam) were hardcoded
+      # rather than tunable, and once because — after exposing them —
+      # nobody had actually set the "hardest" preset's values to differ
+      # from the weaker one's. See check_preset_ordering.js's own header
+      # for the full rule. Fully seeded/deterministic (not flaky like
+      # browser.test.js), ~15s: safe to block on. Fails loudly with the
+      # exact knobs to check if "nightmare" ever drifts back to
+      # indistinguishable from "diamond" again.
+      - name: Verify nightmare AI preset is measurably harder than diamond
+        run: node games/the-game/ai/experiments/check_preset_ordering.js nightmare diamond
+
       # THE DOOR GATE — docs/DOOR_STANDARD.md. A door is one half of a pair,
       # arrival is derived from the partner rather than typed, and a doorway
       # has to be drawn in the wall its trigger is armed in. Every one of
