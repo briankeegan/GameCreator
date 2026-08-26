@@ -763,9 +763,16 @@
   function startDuel(npc) {
     var config = (typeof npc.duel === "object" && npc.duel) || {};
     var character = CHARACTERS[npc.id] || {};
+    // Both sides play at the SAME Stack level, driven by this file's one
+    // difficulty setting (difficulty.js) — not per-NPC config.level/
+    // playerLevel, which is how the opponent ended up always a level or two
+    // above the player in every duel with nobody having decided that on
+    // purpose. The character's own AI difficulty (gentle/steady/sharp/
+    // nightmare, below) is untouched — that's characterization, not this.
+    var duelLevel = window.NewseyDifficulty.levelFor(save && save.difficulty);
     window.NewseyDuel.start({
       playerName: CHARACTERS.nella.name,
-      playerLevel: config.playerLevel || 2,
+      playerLevel: duelLevel,
       // A duel can be a set: `firstTo: 5` on the NPC's duel block makes it
       // best-of, the way Kat's is in the plot ("First to five wins").
       firstTo: config.firstTo || 1,
@@ -775,7 +782,7 @@
       opponent: {
         id: npc.id,
         name: config.name || character.name || npc.id,
-        level: config.level || 3,
+        level: duelLevel,
         difficulty: config.difficulty || "steady",
         theme: config.theme || "pink",
         sprite: npc.sprite || (npc.id + "_top"),
@@ -1952,9 +1959,14 @@
   }
 
   // slot: 1..3. fresh: true for NEW GAME (play the intro), false for CONTINUE.
-  function beginFile(slot, fresh) {
+  // difficultyId: only meaningful when fresh — the tier menu.js's new-file
+  // flow just asked the player to pick (difficulty.js's TIERS). Ignored on
+  // continue; an existing file keeps whatever it was created with, changed
+  // only via setDifficulty from the pause menu.
+  function beginFile(slot, fresh, difficultyId) {
     activeSlot = slot;
     save = fresh ? SAVES.blank() : (SAVES.read(slot) || SAVES.blank());
+    if (fresh && window.NewseyDifficulty.isValid(difficultyId)) save.difficulty = difficultyId;
     npcLineCounters = save.lines || {};
     clearTransientState();
     clearFade();
@@ -2013,6 +2025,16 @@
     },
     activeSlot: function () { return activeSlot; },
     state: function () { return save; },
+    // The active file's difficulty tier (difficulty.js's TIERS ids) and a
+    // way to change it mid-file, for the pause menu's DIFFICULTY screen —
+    // this is what makes it "adjustable after you started" rather than
+    // locked in at file creation.
+    difficulty: function () { return save ? save.difficulty : window.NewseyDifficulty.DEFAULT; },
+    setDifficulty: function (id) {
+      if (!save || !window.NewseyDifficulty.isValid(id)) return;
+      save.difficulty = id;
+      persist();
+    },
     // Whether the pause menu should offer "Save" — during a cutscene there is
     // no room/position worth writing yet.
     canSave: function () { return running && cutsceneEl.classList.contains("hidden"); },

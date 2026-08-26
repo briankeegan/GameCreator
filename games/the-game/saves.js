@@ -22,6 +22,11 @@ window.NewseySaves = (function () {
       duelsWon: {},   // opponent id -> times beaten
       lines: {},      // npc id -> how far through their dialogue you are
       flags: {},      // one-off story switches, e.g. chuckIn once you let him in
+      // Which of difficulty.js's TIERS this file plays at — both the player's
+      // and every opponent's Stack level, always matching (see difficulty.js's
+      // own header for why this exists). Chosen when the file is created,
+      // changeable any time after from the pause menu.
+      difficulty: window.NewseyDifficulty.DEFAULT,
       playSeconds: 0,
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -40,6 +45,7 @@ window.NewseySaves = (function () {
     b.duelsWon = data.duelsWon || {};
     b.lines = data.lines || {};
     b.flags = data.flags || {};
+    b.difficulty = window.NewseyDifficulty.isValid(data.difficulty) ? data.difficulty : window.NewseyDifficulty.DEFAULT;
     b.playSeconds = data.playSeconds || 0;
     b.createdAt = data.createdAt || Date.now();
     b.updatedAt = data.updatedAt || b.createdAt;

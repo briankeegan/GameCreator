@@ -447,10 +447,11 @@ window.NEWSEY_STORY = (function () {
             "Practice here, or head to the lounge for a meal and a battle, or the library to study. Don't be afraid to challenge anyone — it's the only way to grow stronger!",
             "Here — a practice bout, on the house. Match three, clear the board, and send what you clear at me."
           ],
-          // The gentle one: this is the tutorial duel, so the board is slow and
-          // the host plays badly on purpose.
+          // The gentle one: this is the tutorial duel, so the host plays badly
+          // on purpose. Board level (both sides, always matching) comes from
+          // the save's own difficulty tier (difficulty.js), not from here.
           duel: {
-            level: 2, difficulty: "gentle", theme: "pink", playerLevel: 1,
+            difficulty: "gentle", theme: "pink",
             winLine: "The host claps, delighted. \"Oh, that's promising. Truly.\"",
             loseLine: "The host tuts. \"You'll get there. Everyone does — eventually.\"",
             afterWin: [
@@ -663,7 +664,7 @@ window.NEWSEY_STORY = (function () {
           // and it is a SET, not one board — "First to five wins," Nella
           // says, and then loses it 5-1.
           duel: {
-            level: 3, difficulty: "steady", theme: "pink", playerLevel: 2, firstTo: 5,
+            difficulty: "steady", theme: "pink", firstTo: 5,
             winLine: "Kat tips her hat as the last slab lands on her side. \"Well! Aren't you a find.\"",
             loseLine: "Kat's chain buries you a slab at a time. \"Ah — too slow, dear.\"",
             afterWin: [
@@ -685,7 +686,7 @@ window.NEWSEY_STORY = (function () {
           ],
           // The champion. Her board runs cursed red and she does not miss much.
           duel: {
-            level: 5, difficulty: "sharp", theme: "red", playerLevel: 3,
+            difficulty: "sharp", theme: "red",
             winLine: "May 2000 stares at her dead board a long time. \"…Who taught you that?\"",
             loseLine: "The board goes red and stays red. May doesn't even watch it land.",
             afterWin: [
@@ -716,7 +717,7 @@ window.NEWSEY_STORY = (function () {
           // Never scale THIS duel back; add a genuinely weaker character
           // instead if an easier arena fight is ever wanted.
           duel: {
-            level: 6, difficulty: "nightmare", theme: "pink", playerLevel: 3,
+            difficulty: "nightmare", theme: "pink",
             winLine: "Diamond studies her dead board like it lied to her. \"...Huh. Nobody's done that in a while.\"",
             loseLine: "She never even looks rushed. \"Told you. Not arrogance.\"",
             afterWin: [
