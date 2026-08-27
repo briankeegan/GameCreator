@@ -32,8 +32,8 @@ on:
         required: true
         type: string
       description:
-        description: "Who the character is: build, hair, clothing, colours, distinguishing features"
-        required: true
+        description: "OPTIONAL extra note for this run only. The character itself comes from its spec in art-style.json — write the spec, do not describe them here."
+        required: false
         type: string
       references:
         description: "Optional comma-separated repo-relative reference PNGs to match likeness (e.g. games/the-game/art/nella_top.png)"
@@ -107,13 +107,52 @@ jobs:
         id: prompt
         env:
           CHARACTER: ${{ inputs.description }}
+          GAME: ${{ inputs.game }}
+          CHAR: ${{ inputs.character_id }}
         run: |
           set -euo pipefail
           # Single source of truth for the recipe — never retype it inline.
           prompt=$(python3 - <<'PY'
-          import os
+          import os, sys, json, pathlib
+          # NO SPEC, NO GENERATION.
+          #
+          # This step used to paste the dispatch's `description` straight into
+          # the prompt, so every regeneration was whatever somebody typed that
+          # day. That is how Rex came back as a smooth-faced youth in a scarf
+          # when his sprite and the plot both say a bearded man in a gold
+          # robe, and how May's antlers survived three rounds: nothing
+          # mechanical had any idea what these characters look like.
+          #
+          # The spec in art-style.json is the single source of truth, and the
+          # prompt is BUILT from it (spec_to_prompt, the same function
+          # generate_row.py uses) so nobody retypes it and nobody can leave a
+          # bit out. If a character has no spec, this fails and says to write
+          # one — the spec has to be saved BEFORE the art exists, or there is
+          # nothing to check the art against afterwards.
+          sys.path.insert(0, '.github/art')
+          from generate_row import spec_to_prompt
+          game, char = os.environ['GAME'], os.environ['CHAR']
+          style_path = pathlib.Path('games') / game / 'art-style.json'
+          if not style_path.is_file():
+              sys.exit(f'::error::{style_path} does not exist — every game needs its '
+                       'art contract before any art is generated.')
+          style = json.loads(style_path.read_text())
+          spec = (style.get('characters') or {}).get(char)
+          if not spec:
+              sys.exit(
+                  f'::error::No spec for "{char}" in {style_path} under `characters`. '
+                  'Write the character spec FIRST — species, per-material hexes, '
+                  '`appears`, proportions, neverDraw — then run this again. Without it '
+                  'the prompt is whatever someone typed today, nothing about the '
+                  'character is repeatable between generations, and verify_sheet.py has '
+                  'nothing to check the result against. See '
+                  '.github/art/CHARACTER_SHEETS.md.')
+          extra = (os.environ.get('CHARACTER') or '').strip()
+          built = spec_to_prompt(spec)
+          if extra:
+              built += ' ' + extra
           tpl = open('.github/art/walksheet_prompt.txt').read().strip()
-          print(tpl.replace('{CHARACTER}', os.environ['CHARACTER']))
+          print(tpl.replace('{CHARACTER}', built))
           PY
           )
           {

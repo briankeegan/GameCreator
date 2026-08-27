@@ -6,5 +6,566 @@
   "background": "For a PROP SHEET or a SPRITE SHEET: every item isolated on FLAT PURE WHITE (#FFFFFF), uniform, hard-edged, with a wide white band between items and a generous white margin — never transparency, which comes back as a beige wash. For a single CHARACTER SPRITE: isolated on a transparent background, no scene/ground/shadow drawn in. For anything else, the prompt says.",
   "constraints": "No text, no logos, no watermark, no UI elements, no borders/frames or vignette baked into the image. STRICTLY no people, characters or figures anywhere in a room or on a prop sheet — a stray figure standing in the scene is a confirmed failure mode. Architecture must be clean and orthogonal — walls meet the floor at a clear, readable line — and rich atmospheric lighting/colour is expected and desired, not a flaw. A character sprite must be full body head-to-feet, standing, facing the viewer — never a close-up bust crop — and isolated ONLY on plain transparent background with no scene, room, walls, furniture or floor drawn in. Any character wearing glasses must have clearly visible human eyes — pupils and eye whites — showing behind the lenses, never blank/hidden skin tone.",
   "pixelArt": true,
-  "pixelGrid": 128
+  "pixelGrid": 128,
+  "characterSpecRule": "EVERY character has an entry here, written BEFORE any of its art is generated, and the generators BUILD their prompt from it — nobody retypes a description. See .github/art/CHARACTER_SHEETS.md. `appears` is what makes checking possible: a material marked always must be visible in every frame of every sheet, while a conditional one may come and go. Add to a spec the moment a detail is caught drifting; that is the entire point of it.",
+  "characters": {
+    "nella": {
+      "name": "Nella (Infinity avatar)",
+      "species": "a human teenage girl as she appears inside Infinity — her magical avatar. Human build, not a demon or a beast; the horns are the only non-human feature.",
+      "materials": {
+        "horns": {
+          "base": "#c0392b",
+          "shade": "#7d2018",
+          "appears": "always",
+          "note": "TWO short curved red horns, one above each temple, pointing up and back. Small — not antlers, not a crown."
+        },
+        "hair": {
+          "base": "#1b1620",
+          "shade": "#0d0a10",
+          "appears": "always",
+          "note": "Very dark, thick, shoulder-length, slightly wild."
+        },
+        "glasses": {
+          "frame": "#2b2b33",
+          "appears": "front and side views",
+          "note": "Round lenses. Hidden by her hair from directly behind, which is correct."
+        },
+        "robe": {
+          "base": "#7b1f1f",
+          "shade": "#4a1010",
+          "appears": "always",
+          "note": "Dark crimson hooded robe, falling to mid-calf."
+        },
+        "bracelet": {
+          "band": "#b87333",
+          "gem": "#7fd4d4",
+          "appears": "front and side views",
+          "note": "Copper band set with aquamarine gems — her rank. Copper is the LOWEST rank; it must never read as gold."
+        },
+        "skin": {
+          "base": "#e0a06a",
+          "shade": "#a86f42",
+          "appears": "always"
+        }
+      },
+      "proportions": "About four heads tall, head roughly a quarter of total height; a teenager, not a child.",
+      "neverDraw": [
+        "a tail",
+        "wings",
+        "hooves or claws",
+        "a gold or silver bracelet",
+        "long straight hair",
+        "horns larger than her own head"
+      ]
+    },
+    "nella_human": {
+      "name": "Nella (real world)",
+      "species": "the same girl OUTSIDE Infinity, before the transformation — an ordinary human teenager in modern clothes. No magical features whatsoever.",
+      "materials": {
+        "hair": {
+          "base": "#4a3524",
+          "shade": "#2b1d13",
+          "appears": "always",
+          "note": "Dark brown, thick, shoulder-length. Same cut as her avatar, ordinary colour."
+        },
+        "glasses": {
+          "frame": "#2b2b33",
+          "appears": "front and side views"
+        },
+        "hoodie": {
+          "base": "#a8342a",
+          "shade": "#6d1f18",
+          "appears": "always",
+          "note": "Red zip-up hoodie — the everyday echo of the crimson robe."
+        },
+        "jeans": {
+          "base": "#2f3b4a",
+          "shade": "#1d2530",
+          "appears": "always"
+        },
+        "skin": {
+          "base": "#e0a06a",
+          "shade": "#a86f42",
+          "appears": "always"
+        }
+      },
+      "proportions": "Identical build to her avatar — the same girl. About four heads tall.",
+      "neverDraw": [
+        "horns",
+        "a robe",
+        "any bracelet",
+        "glowing eyes",
+        "fangs"
+      ]
+    },
+    "kat": {
+      "name": "Kat",
+      "species": "a charming adult human duellist, warm and theatrical.",
+      "materials": {
+        "tophat": {
+          "base": "#141118",
+          "shade": "#000000",
+          "appears": "always",
+          "note": "A BLACK TOP HAT, tall and flat-topped. It is her silhouette — never a cap, never bare-headed."
+        },
+        "hair": {
+          "base": "#161016",
+          "shade": "#000000",
+          "appears": "always",
+          "note": "Black, long, falling past the shoulders below the hat."
+        },
+        "glasses": {
+          "frame": "#2b2b33",
+          "appears": "front and side views"
+        },
+        "robe": {
+          "base": "#1c1a22",
+          "shade": "#0b0a0e",
+          "appears": "always",
+          "note": "Long black robe over a dark suit."
+        },
+        "bracelet": {
+          "band": "#d4af37",
+          "gem": "#2e9e5b",
+          "appears": "front and side views",
+          "note": "GOLD band with emerald gems — a rank above Timothy's silver, below diamond."
+        },
+        "skin": {
+          "base": "#e0a06a",
+          "shade": "#a86f42",
+          "appears": "always"
+        }
+      },
+      "proportions": "An adult, about four and a half heads tall including the hat.",
+      "neverDraw": [
+        "a bare head",
+        "a short brimmed cap instead of a top hat",
+        "blonde hair"
+      ]
+    },
+    "may": {
+      "name": "May 2000",
+      "species": "a human champion duellist and idol — hostile, grieving, sharp-featured. Fully human.",
+      "materials": {
+        "hair": {
+          "base": "#e8306f",
+          "shade": "#a81b4c",
+          "appears": "always",
+          "note": "BRIGHT MAGENTA-PINK, shoulder length. Her single most identifying feature. NOTE FOR CUTTERS: this is the same colour family as the sheet's magenta gridlines — see WALK_SHEETS.md; cells are cut between the green gutters so the divider is never keyed by colour."
+        },
+        "robe": {
+          "base": "#2f4b9c",
+          "shade": "#1b2c60",
+          "appears": "always",
+          "note": "Royal-blue open robe worn OVER the jacket."
+        },
+        "jacket": {
+          "base": "#16161c",
+          "shade": "#08080b",
+          "appears": "always",
+          "note": "Black leather jacket under the robe."
+        },
+        "shirt": {
+          "base": "#efe7dd",
+          "appears": "front and side views",
+          "note": "White pearled shirt, visible at the collar."
+        },
+        "jeans": {
+          "base": "#2b3550",
+          "shade": "#171d2c",
+          "appears": "always"
+        },
+        "boots": {
+          "base": "#141118",
+          "appears": "always"
+        },
+        "bracelet": {
+          "band": "#c0c4cc",
+          "gem": "#2f6fd0",
+          "appears": "front and side views",
+          "note": "SILVER band with sapphire gems."
+        },
+        "skin": {
+          "base": "#f0c8a8",
+          "shade": "#b98c68",
+          "appears": "always"
+        }
+      },
+      "proportions": "An adult, about four and a half heads tall.",
+      "neverDraw": [
+        "antlers",
+        "horns",
+        "animal ears or any animal feature",
+        "orange, brown or blonde hair",
+        "a gold bracelet",
+        "a friendly open smile"
+      ]
+    },
+    "timothy": {
+      "name": "Timothy",
+      "species": "an older, kindly human duellist — the highest-ranked of the group.",
+      "materials": {
+        "hair": {
+          "base": "#e8c15a",
+          "shade": "#a8863a",
+          "appears": "always",
+          "note": "Blonde, soft and slightly tousled."
+        },
+        "robe": {
+          "base": "#3a3a42",
+          "shade": "#212127",
+          "appears": "always",
+          "note": "Dark-grey robe."
+        },
+        "bracelet": {
+          "band": "#e8e8f0",
+          "gem": "#d8f0ff",
+          "appears": "front and side views",
+          "note": "ALL DIAMOND — the top rank. Bright, colourless, unmistakably not gold or silver."
+        },
+        "skin": {
+          "base": "#f0c8a8",
+          "shade": "#b98c68",
+          "appears": "always"
+        }
+      },
+      "proportions": "An adult, about four and a half heads tall.",
+      "neverDraw": [
+        "dark hair",
+        "a coloured gem in the bracelet",
+        "a top hat"
+      ]
+    },
+    "rex": {
+      "name": "Rex",
+      "species": "a scruffy, weathered adult human man with a full beard. Grown and unkempt — never a smooth-faced youth.",
+      "materials": {
+        "hair": {
+          "base": "#8c2f1c",
+          "shade": "#551a10",
+          "appears": "always",
+          "note": "Untidy dark-red hair."
+        },
+        "beard": {
+          "base": "#8c2f1c",
+          "shade": "#551a10",
+          "appears": "always",
+          "note": "FULL red-brown beard and moustache. He is never clean-shaven."
+        },
+        "robe": {
+          "base": "#b8860b",
+          "shade": "#7a5807",
+          "appears": "always",
+          "note": "Deep-gold / mustard robe with a wide collar."
+        },
+        "bracelet": {
+          "band": "#b87333",
+          "gem": "#9b59b6",
+          "appears": "front and side views",
+          "note": "COPPER band set with AMETHYSTS — the detail May is suspicious about. Copper with purple gems, never gold."
+        },
+        "skin": {
+          "base": "#e0a06a",
+          "shade": "#a86f42",
+          "appears": "always"
+        }
+      },
+      "proportions": "An adult man, about four and a half heads tall, slightly hunched.",
+      "neverDraw": [
+        "a clean-shaven face",
+        "a yellow scarf",
+        "earrings",
+        "pink or streaked hair",
+        "a youthful smooth face"
+      ]
+    },
+    "diamond": {
+      "name": "Diamond",
+      "species": "a confident adult human woman, the self-declared star of Kat's table.",
+      "materials": {
+        "hair": {
+          "base": "#141018",
+          "shade": "#000000",
+          "appears": "always",
+          "note": "Long BLACK hair."
+        },
+        "highlights": {
+          "green": "#3ad17a",
+          "blue": "#3a9ad1",
+          "pink": "#e05aa8",
+          "appears": "always",
+          "note": "RAINBOW streaks through the black hair — her name detail. Not chroma-key spill; they are meant to be there."
+        },
+        "jacket": {
+          "base": "#5b2d6e",
+          "shade": "#331840",
+          "appears": "always",
+          "note": "Purple jacket over dark clothes."
+        },
+        "skin": {
+          "base": "#c98a5c",
+          "shade": "#8f5e3c",
+          "appears": "always"
+        }
+      },
+      "proportions": "An adult, about four and a half heads tall.",
+      "neverDraw": [
+        "plain unstreaked hair",
+        "blonde hair",
+        "a robe"
+      ]
+    },
+    "eric": {
+      "name": "Eric",
+      "species": "a cheerful adult human man with a big warm laugh.",
+      "materials": {
+        "hair": {
+          "base": "#e8c15a",
+          "shade": "#a8863a",
+          "appears": "always",
+          "note": "Blonde."
+        },
+        "robe": {
+          "base": "#8a9a8a",
+          "shade": "#5b675b",
+          "appears": "always",
+          "note": "Grey-green robe over a plain shirt."
+        },
+        "skin": {
+          "base": "#f0c8a8",
+          "shade": "#b98c68",
+          "appears": "always"
+        }
+      },
+      "proportions": "An adult, about four and a half heads tall, broad.",
+      "neverDraw": [
+        "dark hair",
+        "a scowl",
+        "a top hat"
+      ]
+    },
+    "magma": {
+      "name": "Magma",
+      "species": "a young human shapeshifter, quiet and self-conscious about her avatar.",
+      "materials": {
+        "hair": {
+          "base": "#4a2418",
+          "shade": "#2a140d",
+          "appears": "always",
+          "note": "Dark brown, short bob."
+        },
+        "coat": {
+          "base": "#a8481f",
+          "shade": "#6d2c12",
+          "appears": "always",
+          "note": "Rust-orange coat — the ember in her name."
+        },
+        "skin": {
+          "base": "#e0a06a",
+          "shade": "#a86f42",
+          "appears": "always"
+        }
+      },
+      "proportions": "Young — slighter and shorter than the adults, about four heads tall.",
+      "neverDraw": [
+        "a confident grin",
+        "bright hair colours",
+        "a bracelet"
+      ]
+    },
+    "john": {
+      "name": "John Boxley",
+      "species": "the trapped creator of Puzzle Attack — an exhausted, hunched older human man, almost entirely hidden inside a hooded robe.",
+      "materials": {
+        "robe": {
+          "base": "#5a4632",
+          "shade": "#33271b",
+          "appears": "always",
+          "note": "Heavy brown HOODED robe, hood always UP, falling to the floor. It is his whole silhouette."
+        },
+        "hair": {
+          "base": "#4a3524",
+          "shade": "#2b1d13",
+          "appears": "front views only",
+          "note": "Brown, barely visible under the hood."
+        },
+        "skin": {
+          "base": "#c98a5c",
+          "shade": "#8f5e3c",
+          "appears": "front views only",
+          "note": "Only the face inside the hood, in shadow. NOTE: his robe hides his feet entirely, which is why the stance check cannot read him."
+        }
+      },
+      "proportions": "An adult man, hunched — reads shorter than the others, about four heads tall.",
+      "neverDraw": [
+        "the hood down",
+        "a bare head",
+        "visible legs or feet",
+        "a cheerful expression"
+      ]
+    },
+    "michael": {
+      "name": "Michael",
+      "species": "an adult human detective who runs a jazz coffee shop in the Library. Warm, watchful.",
+      "materials": {
+        "hair": {
+          "base": "#5a3a22",
+          "shade": "#33200f",
+          "appears": "always",
+          "note": "Brown, neat."
+        },
+        "robe": {
+          "base": "#6f9fc4",
+          "shade": "#3f6a8c",
+          "appears": "always",
+          "note": "LIGHT-BLUE robe — his most identifying colour."
+        },
+        "vest": {
+          "base": "#7a4a2a",
+          "shade": "#4d2c17",
+          "appears": "front and side views",
+          "note": "Brown suit vest under the robe."
+        },
+        "badge": {
+          "base": "#d4af37",
+          "appears": "never in walk sheets",
+          "note": "A hidden badge. He is a detective in secret — it is not drawn on a walk sheet."
+        },
+        "skin": {
+          "base": "#e8b48c",
+          "shade": "#a87a58",
+          "appears": "always"
+        }
+      },
+      "proportions": "An adult, about four and a half heads tall.",
+      "neverDraw": [
+        "a visible badge",
+        "a dark robe",
+        "a top hat"
+      ]
+    },
+    "kyran": {
+      "name": "Kyran",
+      "species": "Infinity's head of research — an adult black man in a lab coat, friendly and busy.",
+      "materials": {
+        "hair": {
+          "base": "#141018",
+          "shade": "#000000",
+          "appears": "always",
+          "note": "Short black hair."
+        },
+        "labcoat": {
+          "base": "#e8e8ea",
+          "shade": "#b0b0b6",
+          "appears": "always",
+          "note": "WHITE LAB COAT, open. His silhouette — never a robe."
+        },
+        "shirt": {
+          "base": "#1f8a8a",
+          "shade": "#125555",
+          "appears": "front and side views",
+          "note": "Teal shirt under the coat."
+        },
+        "trousers": {
+          "base": "#22222a",
+          "appears": "always"
+        },
+        "tablet": {
+          "base": "#2b2b33",
+          "screen": "#7fd4ff",
+          "appears": "portraits only",
+          "note": "He carries a tablet in art of him at work; a walk sheet does not need it."
+        },
+        "skin": {
+          "base": "#7a4a2a",
+          "shade": "#4d2c17",
+          "appears": "always",
+          "note": "Dark brown skin. This is a locked detail, not a lighting choice."
+        }
+      },
+      "proportions": "An adult, about four and a half heads tall.",
+      "neverDraw": [
+        "a fantasy robe",
+        "pale skin",
+        "a bare head"
+      ]
+    },
+    "chuck": {
+      "name": "Chuck",
+      "species": "Nella's middle-aged real-world friend. An ordinary man in everyday modern clothes — he is never inside Infinity, so he wears no robe and carries no bracelet.",
+      "materials": {
+        "hair": {
+          "base": "#5a3a22",
+          "shade": "#33200f",
+          "appears": "always",
+          "note": "Short brown hair. He is NOT bald — an early sprite drew him bald in an orange suit and it was wrong."
+        },
+        "moustache": {
+          "base": "#6b5a4a",
+          "shade": "#3f342a",
+          "appears": "always",
+          "note": "Large bushy grey-brown walrus moustache. His identifying feature."
+        },
+        "hoodie": {
+          "base": "#2e86c1",
+          "shade": "#1b5480",
+          "appears": "always",
+          "note": "Teal-blue zip-up hooded sweatshirt. Matches CHARACTERS.chuck.color in story.js."
+        },
+        "jeans": {
+          "base": "#2f3b4a",
+          "shade": "#1d2530",
+          "appears": "always"
+        },
+        "skin": {
+          "base": "#e8b48c",
+          "shade": "#a87a58",
+          "appears": "always"
+        }
+      },
+      "proportions": "A man in his forties, about four and a half heads tall, a little heavy.",
+      "neverDraw": [
+        "a bald head",
+        "an orange or rust suit",
+        "glasses",
+        "a robe",
+        "any bracelet"
+      ]
+    },
+    "devil": {
+      "name": "The Devil",
+      "species": "the mirror-popup host of Infinity — a smiling red-skinned devil. Charming rather than monstrous.",
+      "materials": {
+        "horns": {
+          "base": "#7d2018",
+          "shade": "#4a1010",
+          "appears": "always",
+          "note": "Two curved dark-red horns."
+        },
+        "skin": {
+          "base": "#d4553a",
+          "shade": "#8f3323",
+          "appears": "always",
+          "note": "Red skin — he is the only red-skinned character."
+        },
+        "robe": {
+          "base": "#2a1a2a",
+          "shade": "#150c15",
+          "appears": "always",
+          "note": "Dark plum robe with crimson trim."
+        },
+        "trim": {
+          "base": "#c0392b",
+          "appears": "always"
+        }
+      },
+      "proportions": "An adult, about four and a half heads tall.",
+      "neverDraw": [
+        "a monstrous or snarling face",
+        "wings",
+        "a pitchfork",
+        "human skin tone"
+      ]
+    }
+  }
 }
