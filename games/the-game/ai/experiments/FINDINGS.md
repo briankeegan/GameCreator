@@ -75,6 +75,43 @@ overfit to the synthetic tests. Individual files vary enormously (18.8s on
 `challenge-8-10` seed 2 to 231.7s on `challenge-8-2` seed 2) — the AI is
 not yet uniformly strong across all real attack shapes.
 
+## Round 2: search widening (shipped) + weight tuning (dead end)
+
+Two structural fixes shipped, both gated the same way (only at
+`stack.levelData.maxHealth <= 21`, i.e. levels 8/10; both measurably hurt
+levels 3/5 when tried ungated) and both timing-checked safe for real-time
+play before picking their value:
+
+| Change | Level 10 avg survival | Level 10 total sent |
+|---|---|---|
+| Baseline | 69.6s | 1138 |
+| + `rescueBranchCap` 6 -> 10 (worst-case decision: 62ms, safe; 15 measured 159ms, NOT safe) | 95.9s | 1575 |
+| + `depth` 4 -> 5 (agents.py's actual tournament-proven default, never previously ported; worst-case: 50.7ms) | **109.8s** | **2095** |
+
+That's +58% survival and +84% garbage sent over the original baseline,
+both from search WIDTH/DEPTH, not evaluation weights.
+
+Six weight variants tried on top of the above, all on the real 12-file
+benchmark, all a dead end:
+
+| Change | Avg survival | Total sent | Verdict |
+|---|---|---|---|
+| `beam` 10 -> 14 | 64.7s | 1054 | worse on both axes |
+| `garbageWeight` 90 -> 150 | 109.8s | 2095 | zero effect (already saturated) |
+| `patience` 0.85 -> 0.6 | 65.9s | 1098 | much worse |
+| `patience` 0.85 -> 0.95 | 106.0s | 1973 | slightly worse |
+| `patienceFillCeiling` 0.5 -> 0.65 | 109.8s | 2095 | zero effect |
+| `pressureThreshold` 15 -> 30 (looser chain-extend gate) | 76.0s | 1283 | much worse |
+
+Conclusion: `patience=0.85` is already a real local optimum (both
+directions measured worse), `garbageWeight`/`patienceFillCeiling` are
+already non-binding at real attack rates, and loosening the chain-extend
+gate reproduces the exact heavy-rate death this repo already has a
+comment about (search "ungated extension" in panel-cpu.js). The current
+hand-tuned weight space appears to be a genuine local optimum -- further
+gains likely need a structural change (see below), not another weight
+sweep.
+
 ## Open leads, not yet tried
 
 - **No telegraph modeled for incoming garbage.** The real engine gives
