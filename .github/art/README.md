@@ -27,6 +27,7 @@ from. Dog Punk is the reference for characters, the Anarchy Garden in
 | add a **one-off image** (icon, title art) | — | Actions → **Generate image** (or write an inline `.svg`) |
 | draw a **dialogue portrait** | that character's spec (`characters.<id>` in the game's `art-style.json`) — the portrait is built from it, exactly like the walk sheet, so the two cannot disagree | Actions → **Generate character portrait** (or `generate_portrait.py --game <id> --character <id>`) |
 | keep a **set** of images consistent | that game's `art-style.json` | Actions → **Generate game asset** |
+| recover art a failed run already **paid for** | [`vault.py`](vault.py)'s docstring | `vault.py restore <raw path>` — or just re-run the front door without `--force`, which restores by itself |
 | know whether art is **good enough to ship** | this page, "Checks" below | `verify_sheet.py`, `room.py verify` |
 
 **Every game has an art contract: `games/<id>/art-style.json`.** Camera,
@@ -168,6 +169,7 @@ Two callers, one script, is the fix.
 | [`build_tiles.py`](build_tiles.py) | Cuts tile sheets into a shipped strip. Makes `texture:` tiles SEAMLESS — a generator will not draw a tile that repeats, so the seam is made here. |
 | [`preview_tiles.py`](preview_tiles.py) | Lays the tile strip out as a floor: each tile once, each floor tile repeated (a grid shows here or nowhere), and a mixed field. |
 | [`room.py`](room.py) | The one front door for rooms: `generate`, `prompt`, `plate`, `props`, `check`, `grid`, `sizecheck`, `verify`. |
+| [`vault.py`](vault.py) | Keeps a raw generation on the `art-vault` branch the instant it exists, and restores it before a re-run spends. An image is billed the moment the API returns it and every step after is free, so any failure downstream — a failed checker, a cancelled job, a lost push race — used to cost a whole new picture, and a new one is never the same picture. Called by the front doors; never fails the caller. |
 | [`imagegen.py`](imagegen.py) | Also a CLI (`python3 imagegen.py --kind icon\|cutscene --prompt ... --output ...`) — the front door for art with no other front door. Takes a KIND, not raw flags; profiles.py's `NO_FRONT_DOOR_KINDS` decides which ones exist here. Refuses any output path under `art-src/` — that belongs to the three real front doors. | The shared transport both front doors call. Picks the in-run broker if one is listening, otherwise `OPENAI_API_KEY`; never hands a model the key. When it does pick the broker, every caller — including the three front doors, which hold no key of their own — must pass `generate(..., kind=...)` naming its own profiles.py entry, because the broker (which only trusts `art-src/` writes from those front doors, not from a raw curl) derives the actual size/quality/background/model from that `kind` itself and stages a front door's output one directory outside `art-src/` before moving it into place. |
 | [`build_props.py`](build_props.py) | Cuts a prop sheet into one transparent PNG per prop. |
 | [`fit_plate.py`](fit_plate.py) | Fits a generated floor plate to the room frame. |

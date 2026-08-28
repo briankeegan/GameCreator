@@ -80,6 +80,10 @@ jobs:
         with:
           game: ${{ inputs.game }}
 
+      # generate_portrait.py restores from the vault before spending and saves
+      # to it the instant a picture exists, so a re-run of a job that failed
+      # anywhere downstream re-crops the art it already has. It needs push
+      # rights on the art-vault branch, which the job's own token already has.
       - name: Generate and crop
         id: gen
         timeout-minutes: 12

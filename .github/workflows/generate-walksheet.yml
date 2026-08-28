@@ -183,6 +183,20 @@ jobs:
           fi
           mkdir -p "$(dirname "$SHEET")"
 
+          # NEVER PAY FOR THE SAME SHEET TWICE. If a previous run generated
+          # this one and then died downstream — a failed checker, a cancelled
+          # job, a lost push — it is in the vault and restoring it is free. The
+          # generation is the only billed step. force=true skips the restore on
+          # purpose: that is what asking for a NEW sheet means.
+          if [ "$FORCE" != "true" ]; then
+            python3 .github/art/vault.py restore "$SHEET" || true
+            if [ -s "$SHEET" ]; then
+              echo "::notice::recovered $SHEET from the vault — nothing billed."
+              echo "sheet=$SHEET" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
           # TWO ENDPOINTS, TWO CONTENT TYPES, AND THEY ARE NOT INTERCHANGEABLE.
           # This used to build multipart -F arguments unconditionally and post
           # them to whichever URL it picked — so the NO-REFERENCE path could
@@ -276,6 +290,13 @@ jobs:
 
           printf '%s' "$body" | jq -r '.data[0].b64_json' | base64 -d > "$SHEET"
           [ -s "$SHEET" ] || { echo "::error::Sheet is empty — generation failed"; exit 1; }
+
+          # SAVE IT IMMEDIATELY, before slicing, verifying or committing — all
+          # of which can fail, and none of which can be re-run for free if the
+          # picture is gone. Three separate failures have cost a full
+          # regeneration this way; see .github/art/vault.py.
+          python3 .github/art/vault.py save "$SHEET" || true
+
           echo "sheet=$SHEET" >> "$GITHUB_OUTPUT"
 
       - name: Slice the grid into frames
