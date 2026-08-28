@@ -1,4 +1,10 @@
 {
+ "chuck_portrait_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1024x1024"
+ },
  "diamond_portrait_raw.png": {
   "background": "opaque",
   "model": "gpt-image-2",
@@ -36,6 +42,12 @@
   "size": "1024x1024"
  },
  "nella_portrait_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1024x1024"
+ },
+ "nella_scream_portrait_raw.png": {
   "background": "opaque",
   "model": "gpt-image-2",
   "quality": "medium",
