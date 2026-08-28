@@ -322,6 +322,12 @@
   // pincer, and whatever's behind you gets a free round. That's the hole
   // the omnidirectional hardware is sold against.
   const FORWARD_ARC_PATTERN = [5, 0, 1];
+  // The three hexes behind the stern. The mirror of the forward arc, and a
+  // completely different tactical proposition: a forward gun rewards
+  // driving at things, a stern gun rewards giving ground while still
+  // shooting — which is the manoeuvre this game had no weapon for. Every
+  // gun in the roster pointed at what you were advancing on.
+  const REAR_ARC_PATTERN = [2, 3, 4];
 
   // Is there a clear line from `from` to `to`? Walks the hexes strictly
   // between the two and asks whether anything solid is standing in them.
@@ -410,14 +416,22 @@
     // one is a real answer to it.
     arc: (pos, facing, weapon, state, opts) => {
       const hexes = [];
-      const min = weapon.minRange || 1;
+      // ?? not ||: a minRange of ZERO is a real value (the Scuttling Charge
+      // drops on the hex you are standing on), and `0 || 1` quietly turned
+      // that weapon's footprint into nothing at all.
+      const min = weapon.minRange ?? 1;
       for (const offset of weapon.pattern) {
         const dir = (facing + offset + 6) % 6;
         let cur = pos;
         for (let step = 0; step < weapon.range; step++) {
           cur = neighbor(cur, dir);
           if (step + 1 >= min) hexes.push(cur);
-          if (state && blocksShot(state, cur, opts)) break;
+          // A piercing weapon is stopped by ROCK and by nothing else: it
+          // goes through the first hull and keeps going. That is the whole
+          // of its identity — a lane weapon's usual weakness is that a
+          // screen of cheap hulls soaks it, and this is the answer to a
+          // line of them.
+          if (state && (weapon.pierces ? isBlockingHazard(hazardAt(state, cur)) : blocksShot(state, cur, opts))) break;
         }
       }
       return hexes;
@@ -432,7 +446,7 @@
     ring: (pos, facing, weapon, state, opts) => {
       const hexes = [];
       const max = weapon.range;
-      const min = weapon.minRange || 1;
+      const min = weapon.minRange ?? 1; // see the note in arc: zero is a real minRange
       for (let dq = -max; dq <= max; dq++) {
         for (let dr = -max; dr <= max; dr++) {
           const cand = { q: pos.q + dq, r: pos.r + dr };
@@ -600,6 +614,34 @@
     // it has to come in close and then live with what it did. Reaching
     // three as well would have made it a strictly better Mortar (same
     // charge, same damage, more ground), which the roster rule forbids.
+    // ---- six guns that ask new questions -----------------------------------
+    //
+    // MEASURED first, because the obvious version of this does not work:
+    // adding SIX CLONES of existing guns — identical stats, so quality was
+    // not the variable — took the careful pilot from 70/150 to 43/150. A
+    // wider catalogue on a fixed three-slot shelf pulls a fixed budget
+    // toward guns and away from staying alive (reinforce 106 -> 62,
+    // hardpoint 76 -> 43). The upkeep slot in pickOutpostOfferIds is what
+    // pays for this arsenal existing at all; without it every one of these
+    // is a net loss however good it is.
+    //
+    // So each of the six is a QUESTION the roster could not previously
+    // ask, not another way to shoot forwards.
+    scattergun: { id: "scattergun", label: "Scattergun", shape: "arc", range: 2, damage: 1, targets: "all", energyCost: 2, speed: 2, pattern: FORWARD_ARC_PATTERN, slots: 1 },
+    sternBattery: { id: "sternBattery", label: "Stern Battery", shape: "arc", range: 3, damage: 1, targets: "one", energyCost: 2, speed: 2, pattern: REAR_ARC_PATTERN, slots: 1 },
+    piercingLance: { id: "piercingLance", label: "Piercing Lance", shape: "lane", range: 3, damage: 1, targets: "all", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, pierces: true },
+    // Push-only. Damage 0 is not a placeholder: what kills with these is
+    // the BOARD — a hull driven into rock, into another hull, or off the
+    // edge (see pushEnemyInDirection, which has had those rules in it the
+    // whole time with nothing calling them). Into the Breach is built on
+    // this verb and this game did not have it: every gun answered a
+    // contact by removing hull, none by moving it somewhere worse.
+    repulsorField: { id: "repulsorField", label: "Repulsor Field", shape: "ring", range: 1, damage: 0, targets: "all", energyCost: 2, speed: 3, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, pushes: true },
+    tractorBeam: { id: "tractorBeam", label: "Tractor Beam", shape: "ring", range: 3, minRange: 2, damage: 0, targets: "one", energyCost: 2, speed: 3, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, pulls: true },
+    // Dropped where you stand, not thrown. The one charge you can use
+    // while RETREATING: everything else in the roster needs you pointed at
+    // the thing you are trying to get away from.
+    scuttlingCharge: { id: "scuttlingCharge", label: "Scuttling Charge", shape: "ring", range: 0, minRange: 0, damage: 1, targets: "one", energyCost: 2, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, places: true, placesSelf: true, blast: 1 },
     demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", shape: "ring", range: 3, minRange: 2, damage: 1, targets: "one", energyCost: 3, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, places: true, blast: 1 },
   };
   // Static data, read everywhere, written nowhere — frozen so an
@@ -651,6 +693,17 @@
     prowCannon: { id: "prowCannon", label: "Prow Cannon", kind: "weapon", weaponKey: "prowCannon", w: 1, h: 2 },
     siegeMaul: { id: "siegeMaul", label: "Siege Maul", kind: "weapon", weaponKey: "siegeMaul", w: 2, h: 2 },
     demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", kind: "weapon", weaponKey: "demolitionCharge", w: 2, h: 2 },
+    // The six new guns as physical crates. Footprints are chosen so the
+    // arsenal still has to compete for the same hold: the two push weapons
+    // are small (they are utility, and a ship that fits nothing else is not
+    // going to win with them), the Piercing Lance is a long spine like the
+    // other lane weapons, and the Scattergun is a bulky forward mount.
+    scattergun: { id: "scattergun", label: "Scattergun", kind: "weapon", weaponKey: "scattergun", w: 2, h: 2 },
+    sternBattery: { id: "sternBattery", label: "Stern Battery", kind: "weapon", weaponKey: "sternBattery", w: 1, h: 2 },
+    piercingLance: { id: "piercingLance", label: "Piercing Lance", kind: "weapon", weaponKey: "piercingLance", w: 1, h: 3 },
+    repulsorField: { id: "repulsorField", label: "Repulsor Field", kind: "weapon", weaponKey: "repulsorField", w: 1, h: 2 },
+    tractorBeam: { id: "tractorBeam", label: "Tractor Beam", kind: "weapon", weaponKey: "tractorBeam", w: 1, h: 2 },
+    scuttlingCharge: { id: "scuttlingCharge", label: "Scuttling Charge", kind: "weapon", weaponKey: "scuttlingCharge", w: 1, h: 2 },
     reactorCore: { id: "reactorCore", label: "Reactor Core", kind: "reactor", rechargeGain: 1, energyCapacity: 6, w: 2, h: 2 },
     sublightDrive: { id: "sublightDrive", label: "Sublight Drive", kind: "engine", moveRange: 1, w: 1, h: 3 },
     shieldGenerator: { id: "shieldGenerator", label: "Shield Generator", kind: "shield", capacity: 1, w: 2, h: 2 },
@@ -848,7 +901,7 @@
     // fast it fills — is READ OFF THE HOLD by deriveShip, exactly as
     // yours is. Nothing here restates it.
     interceptor: {
-      hull: 1, salvage: 1,
+      hull: 1, salvage: 2,
       hold: {
         cols: 3, rows: 4, blocked: ["0,3", "2,3"],
         items: [
@@ -859,7 +912,7 @@
       },
     },
     cruiser: {
-      hull: 1, salvage: 2,
+      hull: 1, salvage: 3,
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
@@ -871,7 +924,7 @@
       },
     },
     sentry: {
-      hull: 1, salvage: 2,
+      hull: 1, salvage: 3,
       hold: {
         cols: 3, rows: 4, blocked: ["0,0", "2,0"],
         items: [
@@ -897,7 +950,7 @@
     // from the outside, and it is Hoplite's Demolitionist cadence — the
     // reach is real, and you get two free rounds to do something about it.
     picket: {
-      hull: 1, salvage: 2,
+      hull: 1, salvage: 3,
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
@@ -925,7 +978,7 @@
     // every other instinct in this game says to break up — is cover from
     // the one enemy you cannot out-position.
     demolitionist: {
-      hull: 1, salvage: 3, inhibition: "blastSafe",
+      hull: 1, salvage: 5, inhibition: "blastSafe",
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
@@ -943,7 +996,7 @@
     // parking behind a rock is no answer. Get inside three and it has
     // nothing; that hole is the whole answer to it.
     bombard: {
-      hull: 1, salvage: 2,
+      hull: 1, salvage: 3,
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
@@ -959,7 +1012,7 @@
     // with it, or get inside it — standing diagonally off at two is the
     // one place it wants you.
     lancer: {
-      hull: 1, salvage: 2,
+      hull: 1, salvage: 3,
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
@@ -979,7 +1032,7 @@
     // generator, so its first slug is telegraphed by a bus you can watch
     // filling, and it cannot both reposition and fire in the same round.
     railgun: {
-      hull: 1, salvage: 2, startsEmpty: true,
+      hull: 1, salvage: 3, startsEmpty: true,
       hold: {
         cols: 4, rows: 6, blocked: ["0,0", "3,0", "0,5", "3,5"],
         items: [
@@ -1003,7 +1056,7 @@
     // beam, so you do not out-position it, you position the things around
     // it and its own wingmen become your cover.
     cutter: {
-      hull: 1, salvage: 2, inhibition: "beamClear",
+      hull: 1, salvage: 3, inhibition: "beamClear",
       hold: {
         cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
         items: [
@@ -1020,7 +1073,7 @@
     // here — everything takes exactly one more shot than you expect, and
     // a volley you were counting on to clear contact doesn't.
     escort: {
-      hull: 1, salvage: 2,
+      hull: 1, salvage: 4,
       hold: {
         cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
         items: [
@@ -1044,7 +1097,7 @@
     // three of them plus an Escort's screen turned every deep board into
     // arithmetic (measured: it took the win rate from 48% to zero).
     carrier: {
-      hull: 1, salvage: 3,
+      hull: 1, salvage: 5,
       hold: {
         cols: 5, rows: 6, blocked: ["0,0", "4,0", "0,5", "4,5"],
         items: [
@@ -1069,14 +1122,119 @@
     // more than anything else on the board and every turn you spend
     // cracking it is a turn the things that CAN shoot get for free.
     salvager: {
-      hull: 1, salvage: 6,
+      hull: 1, salvage: 9,
       hold: {
-        cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
+        cols: 3, rows: 6, blocked: ["0,0", "2,0", "0,5", "2,5"],
         items: [
           { id: "sublightDrive", x: 1, y: 0 },
           { id: "ablativePlating", x: 0, y: 1 },
           { id: "ablativePlating", x: 2, y: 1 },
           { id: "microReactor", x: 0, y: 3 },
+          // One generator and a bank: capacity three against a lens that
+          // costs two, so it grabs every OTHER round and the gap is on the
+          // charge counter for you to read. A second generator was the
+          // other way to make it able to fire at all, and it pulled every
+          // single round — relentless is not the same as interesting.
+          { id: "chargeBank", x: 2, y: 3 },
+          // It used to carry nothing at all: "a decision about time, not a
+          // threat." Owner's call to change that, and it is the right one —
+          // "why would we have an enemy that can't hurt you?" An unarmed
+          // hull closes on you and then stands there, which is scenery with
+          // a price tag on it.
+          //
+          // It still deals NO DAMAGE, so the economics are untouched: it is
+          // worth more than anything else on the board and every turn spent
+          // cracking it is a free turn for the things that CAN shoot. What
+          // it does now is drag you a hex off your ground — into somebody
+          // else's arc, off the ring you had picked, out of your own gun's
+          // reach. It is dangerous because of what else is on the board,
+          // which is the most interesting way for a treasure to bite.
+          //
+          // And it is what the sprite always showed: grapples and a tractor
+          // lens, no gun anywhere on it (see ENEMY_SPRITES in app.js).
+          { id: "tractorBeam", x: 1, y: 3 },
+        ],
+      },
+    },
+    // ---- the third wave -----------------------------------------------
+    //
+    // Four classes, added for one reason: the engine enforces that nothing
+    // is player-only (see engine.test.js), and it also enforces that
+    // exactly ONE mobile class carries a second gun — the Carrier, because
+    // two guns is what the Carrier IS. Six new weapons therefore could not
+    // be bolted onto the existing roster without breaking one rule or the
+    // other. Two of them found homes that were already waiting (the
+    // Salvager's tractor lens, the Bulwark's need to move you off its one
+    // safe ring); these four carry the rest.
+    //
+    // Every one is the same crates in a different arrangement, and every
+    // stat below is read off the hold by deriveShip exactly as the
+    // flagship's is. Each is built around ONE gun and the bus to fire it
+    // on a rhythm — capacity 3 against a cost of 2 or 3, recharge 1, so a
+    // shot every second or third round with the gap visible on the charge
+    // counter.
+    corsair: {
+      hull: 1, salvage: 3,
+      hold: {
+        cols: 3, rows: 4, blocked: ["0,3", "2,3"],
+        items: [
+          { id: "scattergun", x: 0, y: 0 },
+          { id: "sublightDrive", x: 2, y: 0 },
+          { id: "microReactor", x: 0, y: 2 },
+          { id: "chargeBank", x: 1, y: 2 },
+        ],
+      },
+    },
+    // Fires ASTERN, which makes it the only class in the game that wants
+    // its back to you. The AI needs no special case for that: decideIntent
+    // already picks a hex the weapon bears from (firingPositions), and for
+    // this hull those hexes are the ones it reaches by withdrawing.
+    outrider: {
+      hull: 1, salvage: 3,
+      hold: {
+        cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
+        items: [
+          { id: "sternBattery", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 1 },
+          { id: "microReactor", x: 2, y: 1 },
+          { id: "chargeBank", x: 2, y: 2 },
+        ],
+      },
+    },
+    // Mines the ground it stands on rather than the ground you stand on —
+    // the Demolitionist throws, this leaves. Same blastSafe inhibition,
+    // which matters more here: a charge dropped underfoot catches the
+    // dropper unless it checks first.
+    sapper: {
+      hull: 1, salvage: 3, inhibition: "blastSafe",
+      hold: {
+        cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
+        items: [
+          { id: "scuttlingCharge", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 1 },
+          { id: "microReactor", x: 3, y: 1 },
+          { id: "chargeBank", x: 2, y: 2 },
+        ],
+      },
+    },
+    // The answer to hiding behind things. Every other lane weapon in the
+    // game stops at the first hull; this one does not, so an Escort's
+    // screen, a wreck line, or its own escorts are cover against
+    // everything else and no cover at all against this.
+    impaler: {
+      hull: 1, salvage: 5,
+      hold: {
+        cols: 3, rows: 5, blocked: ["0,0", "2,0", "0,4", "2,4"],
+        items: [
+          { id: "piercingLance", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 1 },
+          { id: "microReactor", x: 2, y: 1 },
+          { id: "chargeBank", x: 2, y: 2 },
+          // Four to fire the lance, so four on the bus and one a round to
+          // fill it: it shoots every fourth round, and those three rounds
+          // are the whole counterplay — you can see it coming and you have
+          // time to stop being on that axis.
+          { id: "microReactor", x: 1, y: 3 },
         ],
       },
     },
@@ -1093,12 +1251,17 @@
     // of them finished — a last sector nobody beats is a wall with a name
     // on it, which is the exact note this level already carried.
     bulwark: {
-      hull: 1, salvage: 13, startsEmpty: true,
+      hull: 1, salvage: 20, startsEmpty: true,
       hold: {
         cols: 5, rows: 6, blocked: ["0,0", "4,0", "0,5", "4,5"],
         items: [
           { id: "railgun", x: 1, y: 0 },
           { id: "flakBurst", x: 2, y: 0 },
+          // The fortress shoves. Its two guns already leave exactly one
+          // place to stand — off its axes, at two or three — and a
+          // Repulsor means holding that ground is not free: it can put you
+          // back on an axis, or into the rock you were using as cover.
+          { id: "repulsorField", x: 0, y: 1 },
           { id: "ablativePlating", x: 4, y: 1 },
           { id: "chargeBank", x: 3, y: 2 },
           { id: "chargeBank", x: 0, y: 3 },
@@ -1375,6 +1538,12 @@
     shield: "shieldGenerator",
     reactor: "microReactor",
     screenArray: "shieldGenerator",
+    scattergun: "scattergun",
+    sternBattery: "sternBattery",
+    piercingLance: "piercingLance",
+    repulsorField: "repulsorField",
+    tractorBeam: "tractorBeam",
+    scuttlingCharge: "scuttlingCharge",
     chargeBank: "chargeBank",
     flakBurst: "flakBurst",
     arcBeam: "arcBeam",
@@ -1463,6 +1632,17 @@
     { id: "mortar", label: "Mortar (2x2 — lands at three, straight over the rocks)", cost: 13, rarity: "rare" },
     { id: "flankTubes", label: "Flank Tubes (1x3 — the gaps at two, 2 dmg)", cost: 15, rarity: "rare" },
     { id: "railgun", label: "Railgun (1x4 — any axis, board-length, 2 dmg)", cost: 20, rarity: "rare" },
+    // Priced on the same rule as the rest — REACH COSTS RATE, see the note
+    // above the Autocannon. The two push weapons are the exception the rule
+    // does not cover: they do no damage at all, so they are priced against
+    // what a well-placed shove is worth (a hull into rock is a kill you did
+    // not have to pay charge for) rather than against reach.
+    { id: "scattergun", label: "Scattergun (2x2 — the wedge off the nose, everything in it at once)", cost: 8, rarity: "common" },
+    { id: "sternBattery", label: "Stern Battery (1x2 — three deep ASTERN: shoot while giving ground)", cost: 9, rarity: "common" },
+    { id: "scuttlingCharge", label: "Scuttling Charge (1x2 — dropped where you stand, seven hexes in two rounds)", cost: 9, rarity: "uncommon" },
+    { id: "repulsorField", label: "Repulsor Field (1x2 — shoves everything touching us one hex out)", cost: 11, rarity: "uncommon" },
+    { id: "tractorBeam", label: "Tractor Beam (1x2 — drags one contact a hex closer, from two or three)", cost: 11, rarity: "uncommon" },
+    { id: "piercingLance", label: "Piercing Lance (1x3 — three down every axis, THROUGH hulls)", cost: 17, rarity: "rare" },
     { id: "missilePod", label: "Missile Pod (2x2 — it flies itself, 2 dmg)", cost: 16, rarity: "rare" },
     // Cheap because it's slow: same reach as the Beam Lance, one round in
     // three. The gun you buy when what you need is to out-range something,
@@ -1625,6 +1805,23 @@
       if (o.id === "arcBeam" || o.id === "hardpoint") return levelId >= 3;
       if (o.id === "flakBurst") return levelId >= 2;
       if (o.id === "prowCannon") return true;          // the cheap one, available from the off
+      // Same rule as the rest of the list: a gun reaches a shelf a sector
+      // or two after the thing it answers turns up.
+      //   scattergun      2  — crowds start in the campaign, same as Flak.
+      //   sternBattery    3  — the Sentry Line: the first sector where
+      //                        backing off is the correct move.
+      //   scuttlingCharge 4  — something worth leaving behind you.
+      //   repulsorField   5  — boards get big enough to shove things into.
+      //   tractorBeam     6  — standoff classes are thick by then, and
+      //                        dragging one off its spacing is the answer.
+      //   piercingLance   8  — the Escort's screen is a LINE of hulls, and
+      //                        going through them is what this is for.
+      if (o.id === "scattergun") return levelId >= 2;
+      if (o.id === "sternBattery") return levelId >= 3;
+      if (o.id === "scuttlingCharge") return levelId >= 4;
+      if (o.id === "repulsorField") return levelId >= 5;
+      if (o.id === "tractorBeam") return levelId >= 6;
+      if (o.id === "piercingLance") return levelId >= 8;
       // Only ever the SECOND screen, and only out where the boards are big
       // enough to need it — see the pool entry.
       if (o.id === "screenArray") return levelId >= 6 && carried.has("shieldGenerator");
@@ -1717,7 +1914,28 @@
     // A shop is only a decision while something on it is out of reach.
     // This is Into the Breach's shape — the catalogue always exceeds the
     // budget — and it costs nothing: not one price was changed.
-    const rolled = drawFrom(stock, 2);
+    // ---- one slot is always UPKEEP -----------------------------------------
+    //
+    // MEASURED, and it is the opposite of what FTL's store shape suggests.
+    // Growing the catalogue at all costs wins on a three-slot shelf: adding
+    // four utility pieces took the careful pilot 70/150 -> 39/150, and
+    // adding six CLONES of existing guns — identical stats, so quality was
+    // not the variable — took it to 43/150. Reserving a slot for WEAPONS,
+    // FTL-style, made both worse still (54 and 30).
+    //
+    // The purchases said why. With more guns on the shelf the pilot bought
+    // reinforce 106 -> 62 and hardpoint 76 -> 43: a wider catalogue pulls a
+    // fixed budget toward whatever category dominates it, and ships came
+    // out over-gunned and under-armoured. Guns are what a player reaches
+    // for; staying alive is what a run needs. So the protected slot is the
+    // boring one.
+    //
+    // With it: 83/150 at today's catalogue, and 67/150 at twenty-three
+    // items — which is what makes the arsenal able to grow at all.
+    const UPKEEP_IDS = ["reinforce", "hardpoint", "reactor", "shield", "screenArray"];
+    const upkeep = stock.filter((o) => UPKEEP_IDS.includes(o.id));
+    const kept = upkeep.length ? drawFrom(upkeep, 1) : [];
+    const rolled = [...kept, ...drawFrom(stock.filter((o) => !kept.includes(o)), 2 - kept.length)];
     // The reach band is measured over FRESH stock where there is any, so a
     // thin fresh pool cannot quietly drag the dear slot back down to the
     // cheap end — the band is about price, and it should be the top of
@@ -2578,6 +2796,20 @@
     pushLog(state, `Not a scratch on her — ${amount} salvage bonus.`);
   }
 
+  // ...and then back UP by about half again when the arsenal grew from
+  // twelve weapons to eighteen and the roster from thirteen classes to
+  // seventeen. A wider shelf spreads a fixed budget: measured, patches
+  // bought per 150 runs fell 857 -> 424 and the careful pilot's win rate
+  // fell 70/150 -> 36/150, with the deaths overwhelmingly "arrived at depth
+  // 9 unpatched". At the values below it is 61/150 against a greedy 42/150.
+  // The Escort is a point above its neighbours because a screen means it
+  // takes an extra shot to crack, and the three that end a run early —
+  // Demolitionist, Carrier, Impaler — pay like it.
+  //
+  // The history, kept because the direction has now reversed twice and the
+  // reason is the same both times: this number tracks how many things are
+  // competing for a shelf slot, not how hard the game feels.
+  //
   // Wreck values came down about a fifth across the board when the shelf
   // learned to spend properly: more docks (see levels.js) and a range with
   // a real top and bottom meant the careful pilot was converting salvage
@@ -3147,7 +3379,11 @@
   function firePlayerWeapon(state, weapon, onHit, preferredTargetId) {
     const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon, state).map(hexKey));
     let targets = livingEnemies(state).filter((e) => hexKeys.has(hexKey(e)));
-    if (targets.length === 0) return; // nothing in range — no shot, no energy spent
+    // A charge dropped on your OWN hex has no target by definition, so the
+    // usual "nothing in range, no shot" bail would mean it could never
+    // fire at all. It is the one weapon here whose whole point is the
+    // ground you are leaving rather than anything you can see.
+    if (targets.length === 0 && !weapon.placesSelf) return; // no shot, no energy spent
     // A single-target weapon (targets: "one") puts its whole shot into ONE
     // contact: the target-locked one if it's in this weapon's reach,
     // otherwise the first thing it can hit. Multi-hit weapons strike
@@ -3177,7 +3413,7 @@
     // it. Whatever has walked into those by then is what it kills, which
     // may very well include you.
     if (weapon.places) {
-      placeCharge(state, targets[0], weapon, null);
+      placeCharge(state, weapon.placesSelf ? state.playerPos : targets[0], weapon, null);
       pushLog(state, `${weapon.label} set — two rounds on the fuse. Clear the area.`);
       return;
     }
@@ -3190,6 +3426,63 @@
       from: { q: state.playerPos.q, r: state.playerPos.r },
       targets: targets.map((v) => ({ q: v.q, r: v.r })),
     });
+    // ---- displacement, before anything else ------------------------------
+    //
+    // A push resolves BEFORE the shield check, because a screen stops
+    // damage and has nothing to say about being shoved. What kills is the
+    // board: pushEnemyInDirection has had the rules for rock, hulls and
+    // the map edge in it the whole time (Into the Breach's rules, near
+    // enough) with nothing in the game calling them.
+    //
+    // Sorted far-to-near for a PULL and near-to-far for a PUSH, so a row
+    // of ships cannot block itself: pushing the near one first leaves the
+    // hex behind it empty for the next, and pulling the far one first does
+    // the same in reverse. Unsorted, a repulsor firing into three contacts
+    // detonated two of them against each other by accident of array order.
+    if (weapon.pushes || weapon.pulls) {
+      const ordered = targets
+        .slice()
+        .sort((a, b) =>
+          weapon.pulls
+            ? hexDistance(state.playerPos, b) - hexDistance(state.playerPos, a)
+            : hexDistance(state.playerPos, a) - hexDistance(state.playerPos, b)
+        );
+      for (const victim of ordered) {
+        if (!victim.alive) continue;
+        // Chosen by DISTANCE, not by directionIndex: that one only names
+        // the direction between ADJACENT hexes and returns -1 otherwise, so
+        // a Tractor Beam reaching three would have silently pulled nothing
+        // at all. A push takes the step that ends furthest from the
+        // flagship, a pull the step that ends nearest — which is the right
+        // answer at any range and on any board shape.
+        // Straight along the line, wherever that line can be named. A push
+        // is only meaningful if it is DIRECTLY away — the first version
+        // scored the six neighbours by distance and took the first of the
+        // ties, which shoved a contact sideways past the rock it should
+        // have been driven into. For an adjacent target the direction is
+        // exact (directionIndex), and that covers both shipped weapons: a
+        // Repulsor only reaches contact, and a Tractor Beam's pull is the
+        // same direction reversed once the target is dragged in. At longer
+        // reach there is no single named direction, so it falls back to the
+        // best step by distance.
+        let dir = directionIndex(state.playerPos, victim);
+        if (dir >= 0) {
+          if (weapon.pulls) dir = (dir + 3) % 6;
+        } else {
+          let bestDist = null;
+          for (let d = 0; d < 6; d++) {
+            const dist = hexDistance(neighbor(victim, d), state.playerPos);
+            if (bestDist === null || (weapon.pushes ? dist > bestDist : dist < bestDist)) {
+              bestDist = dist;
+              dir = d;
+            }
+          }
+        }
+        if (dir < 0) continue;
+        pushEnemyInDirection(state, victim, dir, weapon.label);
+      }
+      if (!weapon.damage) return; // push-only: the board does the killing
+    }
     for (const victim of targets) {
       if (!victim.alive) continue; // an earlier target's push/collision in this same volley already took it out
       // A raised hostile screen eats the whole shot, exactly as yours eats
@@ -3276,6 +3569,44 @@
         if (weapon.places) {
           placeCharge(state, state.playerPos, weapon, enemy.id);
           pushLog(state, `${enemy.type.toUpperCase()} dropped a charge — two rounds, seven hexes.`);
+          continue;
+        }
+        // The flagship gets shoved too. A push weapon that only ever
+        // worked in one direction would have made every hostile carrying
+        // one strictly harmless (damage 0), and "anything an enemy can
+        // use, a player can get" has to mean the thing DOES something in
+        // both hands or the rule is decoration.
+        //
+        // Gentler rules than the ones ships get, deliberately. A hull
+        // driven into rock is destroyed; the flagship slams into it, stops,
+        // and takes one — because a shove that can kill outright from full
+        // hull is not a tactic you can read coming, it is a coin. Same at
+        // the board edge: you brace against it. Only the free hex actually
+        // moves you, and that is the interesting case anyway — off your
+        // ground, out of your gun's arc, into somebody else's.
+        if (weapon.pushes || weapon.pulls) {
+          const toward = directionIndex(enemy, state.playerPos);
+          const dir = toward < 0 ? -1 : weapon.pulls ? (toward + 3) % 6 : toward;
+          const dest = dir < 0 ? null : neighbor(state.playerPos, dir);
+          const blocked =
+            !dest || !onBoard(state, dest) || enemyAt(state, dest) || isBlockingHazard(hazardAt(state, dest));
+          if (blocked) {
+            // Nothing. A first pass had a blocked shove deal a point for
+            // slamming you into whatever stopped you, and it quietly made a
+            // DAMAGE-0 weapon able to take hull — which is exactly the
+            // thing the Salvager must never do (it costs you turns, not
+            // blood). A push that has nowhere to put you is a wasted shot,
+            // and reading the board so it has nowhere to put you is the
+            // counterplay.
+            pushLog(state, `${enemy.type.toUpperCase()} hauls at us — braced, nothing gives.`);
+          } else {
+            state.events.push({ type: "playerMove", from: { ...state.playerPos }, to: dest });
+            state.playerPos = { q: dest.q, r: dest.r };
+            pushLog(state, `${enemy.type.toUpperCase()} shoves us off our ground.`);
+            checkPlayerHazard(state);
+            if (state.status !== "playing") return;
+          }
+          hitters.push({ type: enemy.type, energy: enemy.energy, maxEnergy: enemy.maxEnergy });
           continue;
         }
         totalDamage += weapon.damage;
@@ -3508,6 +3839,11 @@
   // The guns that actually bear on something right now.
   function weaponsWithTargets(state) {
     return armedWeaponsFor(state).filter(({ weapon }) => {
+      // A charge dropped on your own hex always "bears" — there is nothing
+      // for it to aim at, and gating it on a visible target would mean the
+      // one weapon meant for covering a retreat could only be fired while
+      // something was already in reach of the guns.
+      if (weapon.placesSelf) return true;
       const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon, state).map(hexKey));
       return livingEnemies(state).some((e) => hexKeys.has(hexKey(e)));
     });
