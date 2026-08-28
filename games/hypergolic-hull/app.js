@@ -607,6 +607,17 @@ const WEAPON_FX = {
   mortar: { kind: "ring", color: "#ffe28a" },
   flankTubes: { kind: "bolt", color: "#8ad6ff" },
   railgun: { kind: "beam", color: "#ff5ad2", width: 3.5 },
+  // The new six. A push reads as a RING pulsing off the hull rather than a
+  // bolt going out to something — nothing is being shot, the space around
+  // the ship is being shoved — and the Tractor Beam is the same idea
+  // inverted, drawn as a beam because it does reach out and take hold of
+  // one thing.
+  scattergun: { kind: "bolt", color: "#ffc46b" },
+  sternBattery: { kind: "bolt", color: "#9fb4ff" },
+  piercingLance: { kind: "beam", color: "#c88aff", width: 3 },
+  repulsorField: { kind: "ring", color: "#7fe6ff" },
+  tractorBeam: { kind: "beam", color: "#7fe6ff", width: 2 },
+  scuttlingCharge: { kind: "ring", color: "#ffe28a" },
 };
 
 function scheduleAnims(events) {
@@ -800,6 +811,14 @@ for (const [type, file] of Object.entries({
   carrier: "icons/enemy-carrier.png",
   salvager: "icons/enemy-tug.png", // grapples and a tractor lens, no gun anywhere on it
   bulwark: "icons/enemy-bulwark.png",
+  // The third wave. drawShipImage falls through to the generated shapes for
+  // any class whose sprite is missing or still loading, so a new hostile is
+  // playable the moment the engine knows about it — but a coloured polygon
+  // is not a ship, so each of these has its own.
+  corsair: "icons/enemy-corsair.png",
+  outrider: "icons/enemy-outrider.png",
+  sapper: "icons/enemy-sapper.png",
+  impaler: "icons/enemy-impaler.png",
 })) {
   const img = new Image();
   img.src = file;
@@ -3446,8 +3465,19 @@ function describePattern(weapon) {
   // A charge is described by what it DOES, not by the ring it's thrown to
   // — "the ring at exactly two" is true and completely misleading about a
   // weapon whose point is the seven hexes it takes two rounds later.
+  if (weapon.placesSelf) {
+    return "dropped on the hex you are standing on — it takes that hex and every hex touching it, two rounds later";
+  }
   if (weapon.places) {
     return `lobbed ${weapon.range} out, then it takes that hex and every hex touching it, two rounds later`;
+  }
+  // Said before the shape, because WHAT it does to a contact matters more
+  // than where it reaches: neither of these takes a point of hull off
+  // anything, and reading "the ring at exactly one" without that is
+  // actively misleading.
+  if (weapon.pushes) return "shoves everything touching the hull one hex out — into rock, into each other, or off the map";
+  if (weapon.pulls) {
+    return `drags one contact from ${weapon.minRange || 1}-${weapon.range} a hex closer — off its ground, onto yours`;
   }
   if (weapon.shape === "ring") {
     const min = weapon.minRange || 1;
@@ -3455,6 +3485,9 @@ function describePattern(weapon) {
       return `the ring at exactly ${min} — nothing closer${weapon.ignoresCover ? ", and rock is no cover" : ""}`;
     }
     return `every hex touching the hull${weapon.targets === "all" ? ", all at once" : ""}`;
+  }
+  if (weapon.shape === "lane" && weapon.pierces) {
+    return `straight down any axis, ${weapon.minRange || 1} to ${weapon.range} — THROUGH hulls, stopped only by rock`;
   }
   if (weapon.shape === "lane") {
     // Two lances now, and they differ ONLY in which part of the lane they
@@ -3467,7 +3500,11 @@ function describePattern(weapon) {
   }
   if (weapon.shape === "offAxis") return "the six gaps between the axes, two out";
   if (weapon.shape === "arc") {
-    return `a wedge off the nose, ${weapon.range} deep`;
+    // A rear arc is the same maths and the opposite decision, so it must
+    // not read as "a wedge off the nose".
+    const astern = weapon.pattern && weapon.pattern.includes(3) && !weapon.pattern.includes(0);
+    const where = astern ? "a wedge ASTERN" : "a wedge off the nose";
+    return `${where}, ${weapon.range} deep${weapon.targets === "all" ? ", everything in it at once" : ""}`;
   }
   return "all directions";
 }

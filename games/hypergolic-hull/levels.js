@@ -555,7 +555,12 @@
             // Measured with it in this pool, the run fell off a cliff at
             // depth 7 (39 runs alive at 6, 23 at 7) and the death boards
             // were almost all cruiser+escort.
-            ["interceptor", "interceptor", "cruiser", "cruiser", "picket", "sentry", "salvager"]
+            // The Corsair lands here: a wedge two deep that hits
+            // everything in it, on a hull that closes. It is the same
+            // question the Cruiser asks (contact, in numbers) moved one hex
+            // further out, which is exactly the sort of small re-ask this
+            // stretch is for.
+            ["interceptor", "interceptor", "cruiser", "cruiser", "corsair", "picket", "sentry", "salvager"]
           : depth < 11
             ? // The shelf has had three or four passes by now: the Scout
               // (reach that fires every round) and the Mortar (reach that
@@ -566,13 +571,23 @@
               // shallow crawl both deal it), so what depth 8 adds is a
               // bomb landing while three other things are also asking you
               // to be somewhere.
-              ["interceptor", "cruiser", "picket", "cutter", "escort", "carrier", "demolitionist", "sentry", "bombard", "salvager"]
+              // Two more here. The Outrider is the first hull that shoots
+              // while WITHDRAWING — everything up to now either stood and
+              // traded or backed off and stopped shooting, so "close on it
+              // and it stops hurting you" quietly worked on the whole
+              // roster. The Sapper mines the ground it is leaving, which
+              // makes chasing anything across this stretch a real decision.
+              ["interceptor", "cruiser", "corsair", "picket", "cutter", "escort", "carrier", "demolitionist", "outrider", "sapper", "sentry", "bombard", "salvager"]
             : // Everything, including the two that shoot the length of the
               // board. The Interceptor stays in the pool — it was dropped
               // here at some point and that only made the deep end MORE
               // uniform, which is the exact problem this ladder exists to
               // avoid.
-              ["interceptor", "cruiser", "picket", "cutter", "escort", "carrier", "demolitionist", "sentry", "bombard", "lancer", "railgun", "salvager"];
+              // Everything, plus the Impaler — the one gun in the game
+              // that goes THROUGH a hull. Deep boards are where hostiles
+              // stack up in lines and where hiding behind one of them was
+              // the free answer to the other two.
+              ["interceptor", "cruiser", "corsair", "picket", "cutter", "escort", "carrier", "demolitionist", "outrider", "sapper", "impaler", "sentry", "bombard", "lancer", "railgun", "salvager"];
   }
 
   function generateLevel(depth, variantId) {

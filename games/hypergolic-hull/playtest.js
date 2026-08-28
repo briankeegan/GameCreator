@@ -199,8 +199,12 @@ function wantList(state) {
       // expensive guns eat the salvage the ship needs for patches, and a
       // long gun you bought instead of a hull point does not help you when
       // something is already touching you.
+      // Damage first, price second. A push weapon is worth having and is
+      // never worth having INSTEAD of something that shoots, so it sorts
+      // to the back of the list rather than out of it.
+      const shoots = (w) => (w.damage > 0 ? 0 : 1);
       const reach = (w) => Math.min(w.range, 5) - (w.places || w.launches ? 2 : 0);
-      return a.cost - b.cost || reach(wb) - reach(wa);
+      return shoots(wa) - shoots(wb) || a.cost - b.cost || reach(wb) - reach(wa);
     })
     .map((o) => o.id);
   // Energy hardware is bought only when the ship is actually short of
@@ -382,7 +386,14 @@ function shop(state, report, firstLook) {
 
   // 2. A second gun. Until there is one, everything else waits — this is
   //    the single biggest determinant of how deep a run gets.
-  const secondGun = () => armedWeapons(state).length >= 2;
+  // Counted in guns that DO DAMAGE. Two of the roster now do none at all —
+  // a Repulsor Field and a Tractor Beam kill by driving things into rock,
+  // which is a real way to win and not one this pilot can plan. Measured
+  // before the distinction existed: the shopping list is cheapest-gun-first,
+  // the Scattergun and the Repulsor are among the cheapest, and runs kept
+  // arriving at depth 9 with two mounts and no way to take a hull point off
+  // anything — 21 wins in 150 against 70 before the arsenal grew.
+  const secondGun = () => armedWeapons(state).filter((w) => w.damage > 0).length >= 2;
   if (!secondGun()) {
     // Which second gun the pilot reaches for. Both paths get played, so a
     // weapon that only looks good on paper shows up here as a worse

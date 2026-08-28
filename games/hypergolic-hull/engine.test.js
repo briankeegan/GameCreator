@@ -1538,10 +1538,23 @@ assert.strictEqual(
   1,
   "exactly one mobile class carries a second gun — it stays a distinct thing"
 );
+// The Salvager deals NO DAMAGE. It used to carry no weapon at all, which
+// an earlier pass wrote down as "a decision about time, not a threat" — but
+// an enemy that cannot affect you at all is scenery with a price tag, and
+// it now carries the tractor lens its sprite has always been drawn with.
+// The invariant is the one that was actually load-bearing: cracking it is a
+// question about TIME, so nothing it does may cost hull directly. Asserted
+// on total damage output rather than on an empty weapon list, so the next
+// person to give it a utility mount does not have to re-litigate this.
+assert.strictEqual(
+  Engine.ENEMY_TYPES.salvager.ship.weapons.reduce((n, w) => n + w.damage, 0),
+  0,
+  "the Salvager cannot take a point of hull off you — it costs you turns, not blood"
+);
 assert.deepStrictEqual(
   Engine.ENEMY_TYPES.salvager.ship.weaponKeys,
-  [],
-  "the Salvager has NO gun of any kind — it is a decision about time, not a threat"
+  ["tractorBeam"],
+  "...but it is not inert: the lens drags you off your ground"
 );
 assert.ok(
   Engine.ENEMY_TYPES.salvager.salvage > Engine.ENEMY_TYPES.carrier.salvage,
@@ -1550,17 +1563,34 @@ assert.ok(
 assert.strictEqual(Engine.ENEMY_TYPES.bulwark.maxHull, 2, "the Bulwark is the one thing that takes a second shot");
 // ...and it is the ONLY armed class that does. Everything else is glass.
 {
+  // Measured on DAMAGE, not on carrying a weapon. The Salvager is the
+  // reason: it is deliberately tough (two crates of plating — cracking it
+  // is meant to cost you turns) and it now carries a tractor lens that
+  // takes no hull off you at all. "Nothing that can hurt you survives a
+  // hit" is the rule; "nothing with a mount survives a hit" was only ever
+  // a proxy for it that happened to hold.
   const tough = Object.entries(Engine.ENEMY_TYPES)
-    .filter(([, t]) => t.ship.weapons.length && t.maxHull > 1)
+    .filter(([, t]) => t.ship.weapons.some((w) => w.damage > 0) && t.maxHull > 1)
     .map(([n]) => n);
   assert.deepStrictEqual(tough, ["bulwark"], `only the boss survives a hit (${tough.join(", ")})`);
 }
 assert.strictEqual(Engine.ENEMY_TYPES.bulwark.ship.hasDrive, false, "bolted down — it is a fortress, not a ship");
-assert.deepStrictEqual(
-  Engine.ENEMY_TYPES.bulwark.ship.weaponKeys.slice().sort(),
-  ["flakBurst", "railgun"],
-  "carrying both ends of the roster: the lane and the contact ring"
-);
+// What makes the Bulwark the Bulwark is the SHAPE of what it covers, not
+// which three items are bolted in — listing the inventory meant every
+// addition to the fortress failed a test that had no opinion about it.
+// The fight is "find the one ring it cannot reach", so: it must cover
+// contact, it must reach across the whole board, and there must still be
+// somewhere to stand.
+{
+  const guns = Engine.ENEMY_TYPES.bulwark.ship.weapons;
+  const covers = (d) => guns.some((w) => (w.minRange || 1) <= d && w.range >= d);
+  assert.ok(covers(1), "the Bulwark answers contact — you cannot simply hug it");
+  assert.ok(guns.some((w) => w.range >= 5), "and it reaches across the board — you cannot simply stand off it");
+  assert.ok(
+    [2, 3].some((d) => !guns.filter((w) => w.damage > 0).every(() => covers(d))) || guns.some((w) => w.shape === "lane"),
+    "and what it cannot cover is OFF ITS AXES at two or three — that ground is the fight"
+  );
+}
 assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges its first slug in front of you");
 // Its two guns together leave exactly one kind of ground to stand on:
 // off its axes, outside contact. That gap is the fight, so prove it exists.
@@ -1693,6 +1723,12 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
       // of all of them — what it gives up is immediacy, and no footprint
       // comparison can see that.
       if (wb.places && !wa.places) continue;
+      // Nor is a shove a shot. A push weapon does no damage at all, so
+      // every damaging weapon that shares its ground looks like a strict
+      // upgrade and no damaging weapon can ever look like one to IT. What
+      // it trades is the kill for the position, and a footprint comparison
+      // has nothing to say about that.
+      if (wa.pushes || wa.pulls || wb.pushes || wb.pulls) continue;
       assert.ok(
         wb.energyCost > wa.energyCost || wb.damage < wa.damage,
         `${b} covers everything ${a} does, so it has to give something up — charge or stopping power`
