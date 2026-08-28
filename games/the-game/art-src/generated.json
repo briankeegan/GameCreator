@@ -23,6 +23,12 @@
   "quality": "medium",
   "size": "1024x1024"
  },
+ "rex_portrait_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1024x1024"
+ },
  "timothy_portrait_raw.png": {
   "background": "opaque",
   "model": "gpt-image-2",
