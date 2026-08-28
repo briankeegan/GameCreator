@@ -11,13 +11,13 @@
   "characters": {
     "nella": {
       "name": "Nella (Infinity avatar)",
-      "species": "a human teenage girl as she appears inside Infinity — her magical avatar. Human build, not a demon or a beast; the horns are the only non-human feature.",
+      "species": "Nella's magical avatar inside Infinity. Plot: \"It looked like I had transformed into a demon of some sort\" — still recognisably herself, with horns, glowing red eyes and fangs added. Human build; the horns, eyes and fangs are the only changes.",
       "materials": {
         "horns": {
           "base": "#c0392b",
           "shade": "#7d2018",
           "appears": "always",
-          "note": "TWO short curved red horns, one above each temple, pointing up and back. Small — not antlers, not a crown."
+          "note": "TWO short curved bright-red horns POKING THROUGH her black hair — plot: \"a pair of bright red horns were poking through my black hair\". They emerge from the hair, not from a bare forehead. Small: not antlers, not a crown."
         },
         "hair": {
           "base": "#1b1620",
@@ -46,6 +46,17 @@
           "base": "#e0a06a",
           "shade": "#a86f42",
           "appears": "always"
+        },
+        "eyes": {
+          "base": "#ff2a2a",
+          "glow": "#ff8080",
+          "appears": "front and side views",
+          "note": "GLOWING RED eyes — plot: \"my eyes were glowing red\". Not merely red-tinted; they give off light."
+        },
+        "fangs": {
+          "base": "#f4f0e8",
+          "appears": "front views, when her mouth is open",
+          "note": "Plot: \"I had fangs.\" Small, not a monster's tusks."
         }
       },
       "proportions": "About four heads tall, head roughly a quarter of total height; a teenager, not a child.",
@@ -100,7 +111,7 @@
     },
     "kat": {
       "name": "Kat",
-      "species": "a charming adult human duellist, warm and theatrical.",
+      "species": "A charming adult human MAN — plot: \"a man I had never seen before who was wearing a black robe and a top hat. He had black hair, glasses, and a large smile\", and he speaks \"almost purring\". Warm, theatrical, immediately disarming.",
       "materials": {
         "tophat": {
           "base": "#141118",
@@ -317,7 +328,7 @@
     },
     "eric": {
       "name": "Eric",
-      "species": "a cheerful adult human man with a big warm laugh.",
+      "species": "A cheerful adult human man — plot: \"A young man with broad shoulders, blonde hair, and a gray robe\", whose \"laugh was comforting and warm\".",
       "materials": {
         "hair": {
           "base": "#e8c15a",
@@ -346,7 +357,7 @@
     },
     "magma": {
       "name": "Magma",
-      "species": "a young human shapeshifter, quiet and self-conscious about her avatar.",
+      "species": "A shapeshifter — plot: \"a short and very young woman... barely older than a child\", and as Nella shakes her hand \"her face shifted, features becoming a bit older, hair becoming longer. It was like she was Mystique from the X-Men\". Draw her YOUNG form; the shifting is a story beat, not a sprite.",
       "materials": {
         "hair": {
           "base": "#4a2418",
@@ -424,12 +435,12 @@
           "base": "#7a4a2a",
           "shade": "#4d2c17",
           "appears": "front and side views",
-          "note": "Brown suit vest under the robe."
+          "note": "Brown suit vest with GOLD BUTTONS over a white undershirt — plot's words, glimpsed when his robe slips off one shoulder."
         },
         "badge": {
           "base": "#d4af37",
           "appears": "never in walk sheets",
-          "note": "A hidden badge. He is a detective in secret — it is not drawn on a walk sheet."
+          "note": "A badge glimpsed under the robe — Nella wonders if he is a police officer. It is deliberately hidden, so it is never drawn on a walk sheet."
         },
         "skin": {
           "base": "#e8b48c",
@@ -446,7 +457,7 @@
     },
     "kyran": {
       "name": "Kyran",
-      "species": "Infinity's head of research — an adult black man in a lab coat, friendly and busy.",
+      "species": "Infinity's head of research. Plot: \"a man with dark hair and eyes who was wearing a lab coat and holding a tablet of some sort. He looked like a scientist\", with a dazzling smile.",
       "materials": {
         "hair": {
           "base": "#141018",
@@ -480,7 +491,7 @@
           "base": "#7a4a2a",
           "shade": "#4d2c17",
           "appears": "always",
-          "note": "Dark brown skin. This is a locked detail, not a lighting choice."
+          "note": "Dark brown skin. This comes from the inspiration art (PLOT.md: \"inspo: black scientist in the lab\"), not from the plot text, which says only \"dark hair and eyes\" — recorded so nobody mistakes it for a licence to change him."
         }
       },
       "proportions": "An adult, about four and a half heads tall.",
@@ -492,30 +503,35 @@
     },
     "chuck": {
       "name": "Chuck",
-      "species": "Nella's middle-aged real-world friend. An ordinary man in everyday modern clothes — he is never inside Infinity, so he wears no robe and carries no bracelet.",
+      "species": "Nella's real-world best friend since high school; works at a lumberyard, drives a dark blue pickup. Plot: \"He was a big guy, with dark curly hair and a large beard... Deep down, though, Chuck was a teddy bear.\" Imposing to a stranger, gentle in fact.",
       "materials": {
         "hair": {
-          "base": "#5a3a22",
-          "shade": "#33200f",
+          "base": "#2f2318",
+          "shade": "#1a1310",
           "appears": "always",
-          "note": "Short brown hair. He is NOT bald — an early sprite drew him bald in an orange suit and it was wrong."
+          "note": "DARK CURLY hair — plot's words. Not straight, not light brown, and he is not bald."
         },
-        "moustache": {
-          "base": "#6b5a4a",
-          "shade": "#3f342a",
+        "beard": {
+          "base": "#2f2318",
+          "shade": "#1a1310",
           "appears": "always",
-          "note": "Large bushy grey-brown walrus moustache. His identifying feature."
+          "note": "A LARGE BEARD, not a moustache. The shipped art gives him a walrus moustache and no beard; the plot says beard, and the plot wins."
         },
-        "hoodie": {
-          "base": "#2e86c1",
-          "shade": "#1b5480",
+        "flannel": {
+          "base": "#9c2f2a",
+          "shade": "#5f1a17",
           "appears": "always",
-          "note": "Teal-blue zip-up hooded sweatshirt. Matches CHARACTERS.chuck.color in story.js."
+          "note": "RED FLANNEL JACKET — plot: \"He pulled a brown paper bag out from under his red flannel jacket\". The teal-blue hoodie in the current art is not from the plot."
         },
         "jeans": {
           "base": "#2f3b4a",
           "shade": "#1d2530",
           "appears": "always"
+        },
+        "eyes": {
+          "base": "#3f6ea8",
+          "appears": "front views",
+          "note": "Deep blue — plot: \"I looked up into his deep blue eyes\"."
         },
         "skin": {
           "base": "#e8b48c",
@@ -523,11 +539,13 @@
           "appears": "always"
         }
       },
-      "proportions": "A man in his forties, about four and a half heads tall, a little heavy.",
+      "proportions": "A big man in his thirties — broader and taller than Nella, about four and a half heads tall.",
       "neverDraw": [
         "a bald head",
+        "a clean-shaven face",
+        "a moustache without a beard",
+        "straight hair",
         "an orange or rust suit",
-        "glasses",
         "a robe",
         "any bracelet"
       ]
