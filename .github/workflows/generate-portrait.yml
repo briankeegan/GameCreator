@@ -118,11 +118,33 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "games/${{ inputs.game }}/art" "games/${{ inputs.game }}/art-src" || true
+          # COMMIT WHAT THIS RUN MADE, AND NOTHING ELSE. This used to `git add`
+          # the game's whole art/ and art-src/ directories. That is harmless for
+          # one run and fatal for thirteen at once: a full batch of portraits
+          # ran alongside a full batch of walk sheets, and every portrait job
+          # swept up the frames its NEIGHBOURS were writing in the same minute.
+          # Each push then raced on files it had never touched, the rebase hit
+          # binary conflicts it could not resolve, and twelve of thirteen
+          # portraits failed to land — art that had already been generated and
+          # paid for. The script names the two files it wrote; only those are
+          # staged.
+          shipped='${{ steps.gen.outputs.shipped }}'
+          raw='${{ steps.gen.outputs.raw }}'
+          if [ -z "$shipped" ]; then
+            echo "::warning::the generator named no output file — nothing to commit."
+            exit 0
+          fi
+          git add -- "$shipped" ${raw:+"$raw"}
           if git diff --cached --quiet; then echo "Nothing changed."; exit 0; fi
           git commit -m "Portrait for ${{ inputs.character_id }} (${{ inputs.game }}), built from its spec"
+          # ABORT A FAILED REBASE BEFORE RETRYING. Without this the loop retried
+          # `git pull --rebase` while the tree was still mid-conflict, so every
+          # attempt died with "Pulling is not possible because you have unmerged
+          # files" — five identical failures that say nothing about the race
+          # that caused the first one.
           for i in 1 2 3 4 5; do
             if git pull --rebase origin "$BRANCH" && git push origin "HEAD:$BRANCH"; then exit 0; fi
-            echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+            git rebase --abort 2>/dev/null || true
+            echo "push race, retrying ($i)…"; sleep $((RANDOM % 8 + 2))
           done
           echo "::error::could not push after retries"; exit 1

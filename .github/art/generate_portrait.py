@@ -43,6 +43,7 @@ generator drew the right person. Look at the picture.
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -137,6 +138,20 @@ def main():
     subprocess.run([sys.executable, str(ROOT / '.github/art/make_portrait.py'),
                     str(raw_abs), str(out_abs)], check=True)
     print(f'{out_rel} <- {raw_rel}')
+
+    # NAME THE FILES THIS RUN WROTE, so the caller can commit exactly those and
+    # nothing else. The workflow used to `git add` the game's whole art/ and
+    # art-src/ directories, which is fine for one run and catastrophic for
+    # thirteen at once: each job swept up the walk-sheet frames its NEIGHBOURS
+    # were writing in the same minute, so every push raced on files it had no
+    # business touching and twelve of thirteen portraits died in rebase
+    # conflicts. A job commits what it made.
+    gh_out = os.environ.get('GITHUB_OUTPUT')
+    if gh_out:
+        with open(gh_out, 'a') as fh:
+            fh.write(f'shipped={out_rel}\n')
+            fh.write(f'raw={raw_rel}\n')
+
     print('LOOK AT IT. Nothing here can tell whether it drew the right person.')
 
 

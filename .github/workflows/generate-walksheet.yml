@@ -412,9 +412,15 @@ jobs:
               -m "UNVERIFIED walk sheet for ${CHAR} (${GAME}) — kept for review, failed verify_sheet.py" \
               -m "Committed to a review branch so the generated art is not lost. Do not merge to main until it passes, or until the checker is shown to be wrong for this character."
           fi
+          # A FAILED REBASE HAS TO BE ABORTED BEFORE THE NEXT ATTEMPT. Retrying
+          # `git pull --rebase` on a tree that is still mid-conflict can only
+          # ever produce "Pulling is not possible because you have unmerged
+          # files" — the same error five times, none of them about the race
+          # that caused the first one.
           for i in 1 2 3 4 5; do
             if git pull --rebase origin "$BRANCH" && git push origin "HEAD:$BRANCH"; then exit 0; fi
-            echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+            git rebase --abort 2>/dev/null || true
+            echo "push race, retrying ($i)…"; sleep $((RANDOM % 8 + 2))
           done
           echo "::error::could not push after retries"; exit 1
 
