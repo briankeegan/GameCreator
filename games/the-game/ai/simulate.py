@@ -348,8 +348,16 @@ class Board:
         if self.topped_out():
             return
         width = width or self.width
-        top = max((self.height_of(c) for c in range(self.width)), default=0)
-        origin_row = top
+        # BUG (fixed): this used to take the max over range(self.width) --
+        # ALL columns -- so a block narrower than the board (e.g. Combo
+        # Storm's 4-wide) landed on top of the board's TALLEST column even
+        # when its own footprint's columns were much shorter, placing it
+        # far higher than the real engine ever would (which drops it
+        # through empty space until ITS OWN columns are blocked --
+        # supportedFromBelow). Confirmed via training_survival.py: this
+        # made every burst bury the board several times faster than the
+        # real panel-engine.js numbers (training_harness.js) showed.
+        origin_row = max((self.height_of(c) for c in range(width)), default=0)
         block_id = self._next_block_id
         self._next_block_id += 1
         cells = set()
