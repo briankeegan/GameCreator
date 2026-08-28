@@ -5,6 +5,12 @@
   "quality": "medium",
   "size": "1024x1024"
  },
+ "devil_portrait_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1024x1024"
+ },
  "diamond_portrait_raw.png": {
   "background": "opaque",
   "model": "gpt-image-2",
