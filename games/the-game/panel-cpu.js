@@ -563,6 +563,24 @@
     // pattern; SearchCpu didn't match it.
     this.mistake = opts.mistake === undefined ? preset.mistake : opts.mistake;
     this.depth = opts.depth || preset.depth;
+    // agents.py's SearchAgent.DEFAULT_WEIGHTS -- the actual
+    // tournament-proven config this whole brain was validated against in
+    // Python before a line of it was ported here (see this file's own
+    // top-of-file comment) -- uses depth 5. nightmare shipped at 4
+    // instead; depth 5 was never actually ported. Measured
+    // (ai/experiments/attack_file_harness.js, real recorded human attack
+    // data, level 10): 95.9s/1575 sent -> 109.8s/2095 sent, on TOP of the
+    // rescueBranchCap improvement above (+14%/+33%). Same shape of
+    // trade-off as rescueBranchCap and gated identically: measurably
+    // HURTS level 3 (28871 -> 24187 frames) and mildly hurts level 5
+    // (34876 -> 32930), no effect at level 8 (still 4/4 full survival on
+    // the steady-pressure test) -- so tighten only at the same confirmed
+    // maxHealth <= 21 cutoff, and only when the caller didn't pin depth
+    // explicitly. Worst-case decision time measured at 50.7ms, safely
+    // under the ~100ms budget.
+    if (opts.depth === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 21) {
+      this.depth = Math.max(this.depth, 5);
+    }
     this.beam = opts.beam || preset.beam;
     this.patience = opts.patience === undefined ? preset.patience : opts.patience;
     this.patienceFillCeiling = opts.patienceFillCeiling || preset.patienceFillCeiling;
