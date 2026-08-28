@@ -603,6 +603,31 @@
     this.criticalFactor = opts.criticalFactor !== undefined ? opts.criticalFactor : (preset.criticalFactor !== undefined ? preset.criticalFactor : 0.5);
     this.runwayThreshold = opts.runwayThreshold !== undefined ? opts.runwayThreshold : (preset.runwayThreshold !== undefined ? preset.runwayThreshold : 3);
     this.rescueBranchCap = opts.rescueBranchCap !== undefined ? opts.rescueBranchCap : (preset.rescueBranchCap !== undefined ? preset.rescueBranchCap : 6);
+    // _nPlyRescue is the deep "is there ANY sequence that saves this"
+    // search -- the exact lever for "think ahead about what different
+    // sequences of breaks would produce" rather than only reacting to
+    // what's in front of it right now. Widening it (6 -> 10) is a real,
+    // measured win against REAL recorded human attack data
+    // (ai/experiments/attack_file_harness.js + FINDINGS.md): +38% on
+    // BOTH survival and garbage sent at level 10, and 3/4 -> 4/4 full
+    // survival at level 8 on the steady-pressure test
+    // (ai/experiments/stress_harness.js). But it is not free everywhere:
+    // the SAME widening measurably HURTS level 5 (34876 -> 28593 total
+    // frames, 4 seeds) and level 3 (28871 -> 24148) -- widening the
+    // rescue search burns decision cycles chasing a bigger immediate
+    // clear at levels with enough health margin that patience would have
+    // paid off better. Confirmed safe for real-time play up to 10 (62ms
+    // worst-case decision, under the ~100ms budget _bestDefensiveMove's
+    // own comment establishes); 15 is NOT safe (159ms measured) and 12
+    // is borderline (up to 105ms across seeds) -- stopped at 10. Gated
+    // the same way as dangerHeightFrac/reaction: only tightens when the
+    // caller didn't explicitly pin a value, and only at the level(s)
+    // actually measured to benefit -- narrower than dangerHeightFrac's
+    // maxHealth<=51 (level 5 measured WORSE here, unlike there), matching
+    // level 8's own maxHealth exactly as the confirmed cutoff.
+    if (opts.rescueBranchCap === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 21) {
+      this.rescueBranchCap = Math.max(this.rescueBranchCap, 10);
+    }
     this.dropAmountWeight = opts.dropAmountWeight !== undefined ? opts.dropAmountWeight : (preset.dropAmountWeight !== undefined ? preset.dropAmountWeight : 200);
     this.pressureThreshold = opts.pressureThreshold !== undefined ? opts.pressureThreshold : (preset.pressureThreshold !== undefined ? preset.pressureThreshold : 15);
     this.sentWeight = opts.sentWeight !== undefined ? opts.sentWeight : (preset.sentWeight !== undefined ? preset.sentWeight : 50);
