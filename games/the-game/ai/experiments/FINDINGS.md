@@ -112,6 +112,25 @@ hand-tuned weight space appears to be a genuine local optimum -- further
 gains likely need a structural change (see below), not another weight
 sweep.
 
+### Tried and reverted: explicit "merge separate garbage blocks" bonus
+
+Direct test of the "line up the garbage" idea: added a scoring bonus to
+`_defensiveKey` for a move that connects and clears TWO OR MORE
+previously-separate garbage blocks in one touch (`getConnectedGarbagePanels`
+already floods through any adjacent block once one is touched -- this
+just rewarded the search for setting that up, on top of the cell-count
+reward it already gets). Measured **zero effect** on the real 12-file
+benchmark (109.8s/2095, bit-for-bit identical) and zero effect at level 3.
+
+Conclusion: the "multiple separate blocks needing to be merged" situation
+this targets is specific to the synthetic Large Garbage drill (a single
+6x12 block landing repeatedly) -- real recorded human attack files don't
+fragment the board that way often enough for this to ever matter. Reverted
+rather than ship unproven complexity. The `rescueBranchCap`/`depth`
+widening already captures whatever "think ahead about what a sequence
+produces" benefit exists in real play, implicitly, without a
+special-cased heuristic.
+
 ## Open leads, not yet tried
 
 - **No telegraph modeled for incoming garbage.** The real engine gives
