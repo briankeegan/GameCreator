@@ -602,6 +602,9 @@
   function tryInteract() {
     var npc = nearestNpc();
     if (!npc) return;
+    // A marker whose whole job is opening a menu screen (the bedroom
+    // mirror — "the giant mirror is your screen") rather than talking.
+    if (npc.opensMenu) { window.NewseyMenu.showStatus(); return; }
     var idx = npcLineCounters[npc.id] || 0;
     talking = { npc: npc, lineIndex: idx };
     renderTalk();
