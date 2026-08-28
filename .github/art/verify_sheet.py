@@ -398,6 +398,12 @@ def check_sheet(path, style, rows, cols):
     return problems, soft
 
 
+# Chroma green left inside a sprite, as a % of its lit pixels. After the cutter
+# learned to remove enclosed pockets, 13 of 14 Newsey characters measure <=0.04%
+# and Diamond — whose hair really is partly green — 0.41%. Before the fix the
+# worst was 1.74%. 0.6 sits clear of both.
+CHROMA_RESIDUE_MAX = 0.6
+
 # See the CROPPED / OVERSIZED check in check_frames for how these were
 # calibrated, and for why the old width:height version had to go.
 FRAME_HEIGHT_MIN = 0.80
@@ -615,6 +621,47 @@ def check_frames(art_dir, char_id, dirs):
                     'frame far taller than its siblings was combined in from a separate '
                     'generation without being scaled to the row, so the character changes '
                     'size the instant this frame is shown.')
+
+    # CHROMA RESIDUE. These sheets are drawn on chroma-key green (#00FF00) and
+    # the cutter keys it out — but a flood fill starting at the border can only
+    # reach background CONNECTED to the border. Green sealed inside the
+    # silhouette (the gap between an arm and the body, the hole under a bent
+    # elbow, the space through hair) survives it completely, and shipped: a
+    # rind of bright green flecks measured at up to 1.74% of a frame's lit
+    # pixels across twelve of fourteen characters, found by looking at a
+    # contact sheet, not by any check.
+    #
+    # BLUE is the discriminator, not green. #00FF00 and its blends sit at
+    # b<60, while every green that legitimately appears in this art is far
+    # bluer — Diamond's green hair streak is #3ad17a (b=122) and Kyran's teal
+    # shirt #1f8a8a (b=138). Both survive; verified by counting their pixels
+    # before and after the cutter fix.
+    #
+    # THRESHOLD, calibrated on the real art: after the fix, thirteen of
+    # fourteen characters measure at or under 0.04% and Diamond — the one with
+    # actual green in her hair, some of which grazes the test — at 0.41%. A
+    # frame at 0.6% or more has residue, not art. This FAILS rather than
+    # warning: chroma green inside a sprite is a fact, not a judgment call.
+    for d in dirs:
+        for n in (0, 1, 2):
+            p = os.path.join(art_dir, f'{char_id}_{d}_{n}.png')
+            if not os.path.exists(p):
+                continue
+            arr = np.array(Image.open(p).convert('RGBA')).astype(int)
+            lit = arr[..., 3] > 8
+            if not lit.any():
+                continue
+            r_, g_, b_ = arr[..., 0], arr[..., 1], arr[..., 2]
+            residue = lit & (g_ > 110) & (g_ - r_ > 55) & (g_ - b_ > 55) & (b_ < 60)
+            pct = 100.0 * int(residue.sum()) / int(lit.sum())
+            if pct >= CHROMA_RESIDUE_MAX:
+                problems.append(
+                    f'{char_id}: CHROMA RESIDUE — {char_id}_{d}_{n}.png is {pct:.2f}% '
+                    f'un-keyed chroma green (limit {CHROMA_RESIDUE_MAX}%). Green sealed '
+                    'inside the silhouette is not reachable by a flood fill from the '
+                    'border; re-cut the sheet with the current slice_walksheet.py, which '
+                    'also removes it by colour. It costs nothing — the sheet is already '
+                    'in the repo.')
     return problems, soft
 
 

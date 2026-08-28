@@ -216,6 +216,27 @@ def cut_and_trim(im, y0, y1, x0, x1, inset=4, divider_free=False):
     border[0, :] = border[-1, :] = border[:, 0] = border[:, -1] = True
     bg = flood_fill_background(a[:, :, :3], border)
     a[bg, 3] = 0
+
+    # AND THE GREEN THE FLOOD FILL CANNOT REACH. A fill that starts at the
+    # border only removes background CONNECTED to the border, so chroma green
+    # sealed inside the silhouette survives it completely — the gap between an
+    # arm and the body, the hole under a bent elbow, the space through hair.
+    # That is where the shipped green flecks actually were: measured at up to
+    # 1.74% of a frame's lit pixels, in pockets whose bounding box does not
+    # touch any edge, at colours like (41,211,31) and (31,222,12) — the
+    # background itself, not a blend.
+    #
+    # An absolute colour test is safe for the CORE of those pockets precisely
+    # because #00FF00 is a colour no character may use (that is the entire
+    # point of picking it as the key, see games/the-game/WALK_SHEETS.md). The
+    # discriminator is BLUE: chroma green and its blends sit at b<60, while the
+    # greens that legitimately appear in this game's art are much bluer —
+    # Diamond's green hair streak is #3ad17a (b=122) and Kyran's teal shirt is
+    # #1f8a8a (b=138). Both are left untouched; verified by counting their
+    # pixels before and after.
+    rr0, gg0, bb0 = a[:, :, 0].astype(int), a[:, :, 1].astype(int), a[:, :, 2].astype(int)
+    chroma = (gg0 > 120) & (rr0 < 90) & (bb0 < 60)
+    a[chroma, 3] = 0
     # kill any stray magenta fringe from the divider line too, dilated a
     # couple px since a soft divider leaves a faint halo of its own. Where
     # the divider blends into a DARK character pixel (e.g. dark-red hair
@@ -269,6 +290,35 @@ def cut_and_trim(im, y0, y1, x0, x1, inset=4, divider_free=False):
             dil |= np.roll(np.roll(mag, dy, axis=0), dx, axis=1)
     a[dil, 3] = 0
     a[:, :, 3] = largest_component_only(a[:, :, 3])
+
+    # DESPILL THE KEYED EDGE. Flood-filling the chroma-key green removes the
+    # background but not the ANTI-ALIASED RING where the sprite blends into it:
+    # those pixels are part green, opaque, and inside the silhouette, so the
+    # fill stops at them. They shipped, and they are visible — a rind of bright
+    # green flecks along hair and shoulders, worst on the back rows, measured
+    # at up to 1.74% of a frame's lit pixels across twelve of fourteen
+    # characters.
+    #
+    # This is the standard compositing fix, not a bespoke one: in the thin band
+    # next to what was just keyed out, clamp G down to max(R, B). A spill pixel
+    # is green only because it was mixed with the background, so pulling green
+    # back to the level of the channels that ARE the character restores what
+    # was underneath.
+    #
+    # Restricted to the edge band on purpose, because green is a legitimate
+    # character colour: Kyran's teal shirt and Diamond's green hair streak both
+    # sit in the interior, where nothing touches them. At the very outline the
+    # art style puts a dark outline anyway, so a bright saturated green there
+    # is spill by construction.
+    keyed = a[:, :, 3] == 0
+    near_keyed = np.zeros_like(keyed)
+    for dy in (-2, -1, 0, 1, 2):
+        for dx in (-2, -1, 0, 1, 2):
+            near_keyed |= np.roll(np.roll(keyed, dy, axis=0), dx, axis=1)
+    rr, gg, bb = a[:, :, 0].astype(int), a[:, :, 1].astype(int), a[:, :, 2].astype(int)
+    spill = near_keyed & (a[:, :, 3] > 0) & (gg > rr + 25) & (gg > bb + 25)
+    a[spill, 1] = np.maximum(rr[spill], bb[spill])
+
     out = Image.fromarray(a, "RGBA")
     alpha = np.array(out.split()[-1])
     mask = alpha > 10
