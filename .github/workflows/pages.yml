@@ -220,6 +220,15 @@ jobs:
       - name: Verify the art vault round-trips
         run: bash .github/scripts/vault.test.sh
 
+      # AND THAT THE NET IS ATTACHED, not merely that it works. vault.test.sh
+      # passed the entire time the vault was doing nothing inside
+      # imagegen.generate() — a unit test of a safety net is not a test that
+      # anything is using it. This one drives the real transport with the
+      # backend stubbed out and asserts on WHETHER THE API WOULD BE CALLED,
+      # which is the only question money depends on. Costs nothing, needs no key.
+      - name: Verify the generation money path
+        run: python3 .github/scripts/generation.test.py
+
       - name: Verify character spec provenance
         run: node .github/scripts/check_character_specs.mjs
 

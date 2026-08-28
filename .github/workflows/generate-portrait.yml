@@ -99,6 +99,18 @@ jobs:
           [ "${{ inputs.force }}" = "true" ] && args+=(--force)
           python3 .github/art/generate_portrait.py "${args[@]}"
 
+      # DID THE SAFETY NET ACTUALLY ENGAGE? vault.py never fails its caller by
+      # design, and it duly broke inside CI while passing every local test and
+      # its own round-trip gate — so every run reported success and stored
+      # nothing, and the first anyone would have known is the next time a
+      # picture was lost. The unit test proves the net works; this proves it is
+      # ATTACHED, on the real path, in the real environment. By now the art is
+      # committed either way, so failing here loses nothing and makes a silent
+      # vault impossible to keep not noticing.
+      - name: Confirm the generation reached the vault
+        if: steps.gen.outputs.raw != ''
+        run: python3 .github/art/vault.py holds "${{ steps.gen.outputs.raw }}"
+
       # KEEP THE ART EVEN WHEN THE RUN FAILS — the image is billed the moment
       # it is drawn, and a portrait that dies with the runner costs a whole
       # regeneration to look at, which draws a DIFFERENT picture. Same lesson as

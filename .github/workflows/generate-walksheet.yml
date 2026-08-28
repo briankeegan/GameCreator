@@ -368,6 +368,14 @@ jobs:
             echo "::warning::Frames failed verification — they are being kept for review, not shipped. See the artifact and, on a review branch, the commit."
           fi
 
+      # PROVE THE SAFETY NET IS ATTACHED, not merely that it exists. See the
+      # same step in generate-portrait.yml for what this is protecting against:
+      # a vault that fails silently is worse than no vault, because it looks
+      # like one.
+      - name: Confirm the generation reached the vault
+        if: steps.gen.outputs.sheet != '' && steps.gen.outputs.skipped != 'true'
+        run: python3 .github/art/vault.py holds "${{ steps.gen.outputs.sheet }}"
+
       # KEEP THE ART EVEN WHEN THE RUN FAILS. The verify step below the slicer
       # is a gate on COMMITTING, but it was also, accidentally, a gate on the
       # art continuing to exist: a sheet that generated perfectly and then

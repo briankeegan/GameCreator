@@ -51,6 +51,20 @@ import tempfile
 BRANCH = 'art-vault'
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
+# FETCH INTO AN EXPLICIT REF, ALWAYS. `git fetch origin art-vault` sets
+# FETCH_HEAD and, in a normal clone, also updates refs/remotes/origin/art-vault
+# — but ONLY because the default refspec says to. A CI checkout does not have
+# the default refspec: actions/checkout configures a single-branch one
+# (+refs/heads/main:refs/remotes/origin/main), so the plain fetch appeared to
+# succeed and `origin/art-vault` still did not exist.
+#
+# That is the whole CI bug. Every save then concluded the vault branch did not
+# exist, built a fresh orphan, and pushed it at a branch that DID exist with
+# unrelated history — rejected as non-fast-forward, five times, silently,
+# because this module never fails its caller. It worked perfectly on a
+# developer machine, where the default refspec is present.
+REFSPEC = f'+refs/heads/{BRANCH}:refs/remotes/origin/{BRANCH}'
+
 
 def git(*args, check=False, quiet=True):
     return subprocess.run(['git', *args], cwd=ROOT, check=check,
@@ -70,7 +84,7 @@ def restore(path):
     if (ROOT / r).is_file() and (ROOT / r).stat().st_size:
         print(f'{r} already on disk — nothing to restore.')
         return True
-    if git('fetch', 'origin', BRANCH).returncode != 0:
+    if git('fetch', 'origin', REFSPEC).returncode != 0:
         print(f'no {BRANCH} branch yet — nothing to restore.')
         return False
     if git('checkout', f'origin/{BRANCH}', '--', r).returncode != 0:
@@ -103,7 +117,7 @@ def save(path):
     tmp = tempfile.mkdtemp(prefix='gc-vault-')
     wt = pathlib.Path(tmp) / 'wt'
     subprocess.run(['git', 'worktree', 'prune'], cwd=ROOT, capture_output=True)
-    git('fetch', 'origin', BRANCH)
+    git('fetch', 'origin', REFSPEC)
     exists = git('rev-parse', '--verify', f'origin/{BRANCH}').returncode == 0
     if exists:
         made = git('worktree', 'add', '--detach', str(wt), f'origin/{BRANCH}')
@@ -138,7 +152,7 @@ def save(path):
                               cwd=wt, capture_output=True).returncode == 0:
                 print(f'saved {r} to {BRANCH}.')
                 return True
-            subprocess.run(['git', 'fetch', 'origin', BRANCH], cwd=wt,
+            subprocess.run(['git', 'fetch', 'origin', REFSPEC], cwd=wt,
                            capture_output=True)
             if subprocess.run(['git', 'rebase', f'origin/{BRANCH}'], cwd=wt,
                               capture_output=True).returncode != 0:
@@ -156,12 +170,43 @@ def save(path):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def holds(path):
+    """Is this path actually in the vault? Exits non-zero if not.
+
+    THE ONE PLACE THE VAULT IS ALLOWED TO FAIL A CALLER — and it exists because
+    everything else about it is built not to. `save` swallows its own errors on
+    purpose, so when it broke in CI (and only in CI, while passing every local
+    test and its own round-trip gate) every run reported success and quietly
+    stored nothing. The unit test proved the tool works in isolation; nothing
+    asked whether the vault had actually RECEIVED anything from a real run.
+
+    So a generating job calls this after generating. By then the picture is
+    already committed by the job's own commit step, so failing here loses
+    nothing — it just makes a silent vault impossible to keep not noticing.
+    """
+    r = rel(path)
+    git('fetch', 'origin', REFSPEC)
+    found = git('cat-file', '-e', f'origin/{BRANCH}:{r}').returncode == 0
+    print(f'{r} {"is in" if found else "is NOT in"} the vault.')
+    return found
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('action', choices=['save', 'restore'])
+    ap.add_argument('action', choices=['save', 'restore', 'holds'])
     ap.add_argument('path', help='repo-relative path of the raw generation')
     args = ap.parse_args()
+
+    if args.action == 'holds':
+        if holds(args.path):
+            print('holds: ok')
+            return
+        sys.exit(f'error: {args.path} was generated but is NOT in the vault, so if anything '
+                 'downstream loses it the picture has to be bought again. The art itself is fine '
+                 '— this run still commits it — but the safety net did not engage. Check the '
+                 f'`{BRANCH}` push in the log above.')
+
     ok = save(args.path) if args.action == 'save' else restore(args.path)
     # Exit 0 either way. A vault miss is normal (nothing saved yet) and a vault
     # failure must never stop the art being made.
