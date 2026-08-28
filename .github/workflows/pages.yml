@@ -203,6 +203,13 @@ jobs:
       # ("cartoon", "little"). Every note read plausibly; none recorded whether
       # it was quoting or inventing. This is a fact about JSON, so it FAILS
       # rather than warning.
+      # THE BASE RULES EVERY GENERATOR OBEYS — .github/art/GENERATOR_RULES.md.
+      # Each was learned by losing something, and each was previously enforced
+      # by whoever remembered it, which is how the portrait generator ended up
+      # the only kind of character art with no front door and no spec behind it.
+      - name: Verify generator rules
+        run: node .github/scripts/check_generators.mjs
+
       # THE VAULT IS THE ONE TOOL WHOSE FAILURE IS INVISIBLE. vault.py never
       # fails its caller on purpose — losing the safety net must not also lose
       # the art it protects — so when it broke on its first run (worktree under

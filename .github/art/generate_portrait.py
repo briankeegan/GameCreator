@@ -120,16 +120,6 @@ def main():
     raw_rel = f'games/{args.game}/art-src/{stem}_portrait_raw.png'
     out_rel = args.output or f'games/{args.game}/art/{args.character}.png'
 
-    # NEVER PAY FOR THE SAME PICTURE TWICE. If a previous run generated this
-    # raw and then died downstream — a failed check, a cancelled job, a lost
-    # push race — it is in the vault, and restoring it costs nothing. The
-    # generation is the only expensive step; everything after it is free to
-    # redo. `--force` deliberately skips the restore: that is what asking for a
-    # NEW picture means.
-    if not args.force:
-        subprocess.run([sys.executable, str(ROOT / '.github/art/vault.py'),
-                        'restore', raw_rel], check=False)
-
     prof = profiles.get(KIND)
     generated = imagegen.generate(prompt, raw_rel, prof['size'],
                                   args.quality or prof['quality'], args.force,
@@ -138,13 +128,6 @@ def main():
     raw_abs = ROOT / raw_rel
     if not generated and not raw_abs.is_file():
         sys.exit('error: nothing generated and no raw on disk to crop.')
-
-    # SAVE IT IMMEDIATELY, before cropping, committing or anything else that
-    # can fail. The picture is billed the moment the API returns it; every step
-    # after this is free, so the vault push belongs here and nowhere later.
-    if generated:
-        subprocess.run([sys.executable, str(ROOT / '.github/art/vault.py'),
-                        'save', raw_rel], check=False)
 
     # CROP MECHANICALLY, ALWAYS — including when the generation was skipped
     # because the raw already existed. The raw is the expensive half; re-cutting
