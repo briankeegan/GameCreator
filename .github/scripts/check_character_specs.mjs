@@ -32,7 +32,13 @@
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 
-const VALID = new Set(['plot', 'design']);
+// THREE sources, not two. "owner" is a detail the owner decided directly in
+// conversation rather than in the source text — Kat's avatar has a cat's head,
+// which the plot only hints at ("almost purring", and the name). It carries the
+// same authority as "plot": do not change it without asking. Only "design" is
+// ours to revise freely. Keeping them apart is the whole point of this file —
+// the audit that started it found five details that had quietly become canon.
+const VALID = new Set(['plot', 'owner', 'design']);
 const problems = [];
 let checked = 0;
 
@@ -64,9 +70,9 @@ for (const game of readdirSync('games', { withFileTypes: true })) {
     for (const [mat, info] of Object.entries(mats)) {
       if (typeof info !== 'object' || info === null) continue;
       if (!('source' in info)) {
-        problems.push(`${where}.materials.${mat} has no "source" — say "plot" or "design"`);
+        problems.push(`${where}.materials.${mat} has no "source" — say "plot", "owner" or "design"`);
       } else if (!VALID.has(info.source)) {
-        problems.push(`${where}.materials.${mat} source="${info.source}" — must be "plot" or "design"`);
+        problems.push(`${where}.materials.${mat} source="${info.source}" — must be "plot", "owner" or "design"`);
       } else if (info.source === 'plot' && !adapted) {
         problems.push(`${where}.materials.${mat} claims source "plot", but ${path} has no "adaptedFrom"`);
       }

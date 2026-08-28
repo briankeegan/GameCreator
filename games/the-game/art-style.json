@@ -7,7 +7,7 @@
   "constraints": "No text, no logos, no watermark, no UI elements, no borders/frames or vignette baked into the image. STRICTLY no people, characters or figures anywhere in a room or on a prop sheet — a stray figure standing in the scene is a confirmed failure mode. Architecture must be clean and orthogonal — walls meet the floor at a clear, readable line — and rich atmospheric lighting/colour is expected and desired, not a flaw. A character sprite must be full body head-to-feet, standing, facing the viewer — never a close-up bust crop — and isolated ONLY on plain transparent background with no scene, room, walls, furniture or floor drawn in. Any character wearing glasses must have clearly visible human eyes — pupils and eye whites — showing behind the lenses, never blank/hidden skin tone.",
   "pixelArt": true,
   "pixelGrid": 128,
-  "characterSpecRule": "Every character drawn for this game has a spec under `characters.<id>`, and the spec is the single source of truth: `.github/art/generate_row.py` BUILDS the prompt from it and `.github/art/verify_sheet.py character` CHECKS finished sheets against it, so a detail written here cannot drift the way one typed into a prompt does. Generating art for a character with no spec is refused — write the spec first. Newsey is an adaptation, so every spec also carries its PROVENANCE, and that is not decoration: the art is regenerated from these specs, so anything invented here becomes canon. `plotQuote` is the verbatim text about that character from the owner's original plot (PR #30, comment 5344870145) — copied, never paraphrased. Every material carries `source`: \"plot\" means the quote states it and it must not be changed without the owner, \"design\" means we chose it and it is open to change. Audited against the verbatim plot on 2026-08-28; that pass found Eric's robe had drifted grey-green when the plot says gray twice, May's shredded robe had been drawn as a neat one, Rex had acquired Chuck's beard, John had aged from late thirties into an old man, and the Devil had lost the two words that describe him — cartoon, and little.",
+  "characterSpecRule": "Every character drawn for this game has a spec under `characters.<id>`, and the spec is the single source of truth: `.github/art/generate_row.py` BUILDS the prompt from it and `.github/art/verify_sheet.py character` CHECKS finished sheets against it, so a detail written here cannot drift the way one typed into a prompt does. Generating art for a character with no spec is refused — write the spec first. Newsey is an adaptation, so every spec also carries its PROVENANCE, and that is not decoration: the art is regenerated from these specs, so anything invented here becomes canon. `plotQuote` is the verbatim text about that character from the owner's original plot (PR #30, comment 5344870145) — copied, never paraphrased. Every material carries `source`, and there are three: \"plot\" means the quote states it; \"owner\" means the owner decided it directly in conversation (Kat's cat-face avatar) — it is not in the text but carries the same authority as if it were; \"design\" means we chose it and it is open to change. Only \"design\" may be changed without asking. Audited against the verbatim plot on 2026-08-28; that pass found Eric's robe had drifted grey-green when the plot says gray twice, May's shredded robe had been drawn as a neat one, Rex had acquired Chuck's beard, John had aged from late thirties into an old man, and the Devil had lost the two words that describe him — cartoon, and little.",
   "characters": {
     "nella": {
       "name": "Nella (Infinity avatar)",
@@ -126,34 +126,58 @@
     },
     "kat": {
       "name": "Kat",
-      "species": "A charming adult human MAN — plot: \"a man I had never seen before who was wearing a black robe and a top hat. He had black hair, glasses, and a large smile\", and he speaks \"almost purring\". Warm, theatrical, immediately disarming.",
-      "plotQuote": "a man I had never seen before who was wearing a black robe and a top hat. He had black hair, glasses, and a large smile. / said to me, almost purring. \"They call me Kat.\"",
+      "species": "Kat, in his Infinity AVATAR: a human man's body with a CAT'S HEAD. Everyone in the Lounge is wearing an avatar rather than their real face — Nella's own is a demon — and Kat's is a cat, which is where the name and the \"almost purring\" voice come from. Head: short-furred cat, upright triangular cat ears, a proper muzzle and nose, whiskers, slit-pupil cat eyes, a wide friendly cat grin. Body, hands and posture are an ordinary man's, dressed in the robe and hat below. Warm, theatrical, immediately disarming — a charming gentleman with a cat's head, NOT a feral or monstrous beast.",
+      "plotQuote": "a man I had never seen before who was wearing a black robe and a top hat. He had black hair, glasses, and a large smile. / said to me, almost purring. \"They call me Kat.\" / NOTE: the CAT HEAD is the owner's design decision for his avatar, not a line in the plot. The plot describes the avatar as it reads to Nella (a man, a hat, black hair, a large smile) and hints at the rest with \"almost purring\" and the name itself.",
       "materials": {
+        "head": {
+          "fur": "#2a2229",
+          "shade": "#151016",
+          "muzzle": "#d8cfc4",
+          "nose": "#c76a80",
+          "appears": "always",
+          "note": "A CAT'S HEAD on a man's shoulders — dark short fur, pale muzzle and chin, pink nose, whiskers, upright triangular ears. NOT a human face, NOT a cat mask over a human face, NOT a full cat body.",
+          "source": "owner"
+        },
+        "ears": {
+          "base": "#2a2229",
+          "inner": "#c98a94",
+          "appears": "always",
+          "note": "Two upright triangular cat ears with pink inner fur, standing UP THROUGH or IN FRONT OF the top hat brim so both the ears and the hat read at once. They are never flattened, never hidden by the hat.",
+          "source": "owner"
+        },
+        "eyes": {
+          "base": "#e8c15a",
+          "pupil": "#141118",
+          "appears": "front and side views",
+          "note": "Golden cat eyes with vertical slit pupils, behind the glasses. Friendly and amused, never predatory.",
+          "source": "owner"
+        },
         "tophat": {
           "base": "#141118",
           "shade": "#000000",
           "appears": "always",
-          "note": "A BLACK TOP HAT, tall and flat-topped. It is his silhouette — never a cap, never bare-headed.",
-          "source": "plot"
-        },
-        "hair": {
-          "base": "#161016",
-          "shade": "#000000",
-          "appears": "always",
-          "note": "Black, collar-length — short enough that the top hat stays the read.",
+          "note": "A BLACK TOP HAT, tall and flat-topped, worn over/between the ears. It is half his silhouette — never a cap, never bare-headed.",
           "source": "plot"
         },
         "glasses": {
           "frame": "#2b2b33",
           "appears": "front and side views",
+          "note": "Round spectacles, worn on the cat face.",
           "source": "plot"
         },
         "robe": {
           "base": "#1c1a22",
           "shade": "#0b0a0e",
           "appears": "always",
-          "note": "Long black robe over a dark suit.",
+          "note": "Long black robe over a dark suit, cut for a man's body.",
           "source": "plot"
+        },
+        "hands": {
+          "base": "#e0a06a",
+          "shade": "#a86f42",
+          "appears": "front and side views",
+          "note": "ORDINARY HUMAN HANDS — the avatar is a cat head on a man, so no paws and no claws.",
+          "source": "owner"
         },
         "bracelet": {
           "band": "#d4af37",
@@ -161,24 +185,23 @@
           "appears": "front and side views",
           "note": "Gold band with emerald gems. Never diamond — diamond is the top rank and belongs to Timothy.",
           "source": "design"
-        },
-        "skin": {
-          "base": "#e0a06a",
-          "shade": "#a86f42",
-          "appears": "always",
-          "source": "design"
         }
       },
-      "proportions": "An adult man, about four and a half heads tall including the hat.",
+      "proportions": "An adult man, about four and a half heads tall including the hat. Human proportions throughout; only the head is a cat's, and it is a normal head's size — not oversized or chibi.",
       "neverDraw": [
-        "a bare head",
-        "a short brimmed cap instead of a top hat",
-        "blonde hair"
+        "a human face",
+        "a full cat body, or a cat walking on four legs",
+        "a TAIL — the avatar is a cat head on a man, and a tail also widens the side stride frames enough to trip the cutter's CROPPED check",
+        "paws, claws or fur on the hands",
+        "a bare head, or a short brimmed cap instead of a top hat",
+        "ears flattened down or hidden under the hat",
+        "a snarl, fangs bared, or any predatory expression",
+        "blonde or ginger fur"
       ]
     },
     "may": {
       "name": "May 2000",
-      "species": "a human champion duellist and idol — \"beautiful\", pink-haired, and in the scene she is introduced in, furious and dishevelled. Fully human.",
+      "species": "a human champion duellist and idol — \"beautiful\", pink-haired, and in the scene she is introduced in, furious and dishevelled. Fully human, and drawn in exactly the same flat cel-shaded pixel style as the rest of this cast — no softer rendering, no painterly shading, no anime gloss that would make her look imported from another game.",
       "plotQuote": "a beautiful pink-haired woman stumbled out of the portal. She was wearing a silver bracelet that was decorated in dark sapphire gems and her royal blue robe was ripped to shreds, barely hanging on her shoulders, revealing her black leather jacket, white collared shirt decorated in pearls, blue jeans, and stylish black boots. / \"May 2000... my hero as a pink-haired gamer girl kicking some serious ass.\" / May scowled",
       "materials": {
         "hair": {
@@ -192,7 +215,7 @@
           "base": "#2f4b9c",
           "shade": "#1b2c60",
           "appears": "always",
-          "note": "Royal-blue robe RIPPED TO SHREDS, \"barely hanging on her shoulders\" — torn hem, ragged edges, hanging off one shoulder so the jacket and shirt underneath show. This is her silhouette; a neat open robe is wrong.",
+          "note": "A royal-blue robe of ordinary CLOTH that has been RIPPED TO SHREDS: torn straight down in ragged strips, frayed and uneven at the hem, hanging off one shoulder so the black leather jacket and the white shirt underneath show. It hangs CLOSE TO HER BODY like wrecked fabric — a coat that has lost a fight. It must NOT read as feathers, plumage, fronds, fur or wings, and must not billow out wider than her shoulders.",
           "source": "plot"
         },
         "jacket": {
@@ -236,9 +259,10 @@
       },
       "proportions": "An adult, about four and a half heads tall.",
       "neverDraw": [
-        "antlers",
-        "horns",
-        "animal ears or any animal feature",
+        "feathers, plumes, fronds or anything that reads as a bird",
+        "wings, or a robe spread wider than her own shoulders",
+        "a neat, whole or untorn robe",
+        "antlers, horns, animal ears or any animal feature",
         "orange, brown or blonde hair",
         "a gold bracelet",
         "a friendly open smile"
