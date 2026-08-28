@@ -138,9 +138,25 @@ jobs:
             echo "::warning::the generator named no output file — nothing to commit."
             exit 0
           fi
-          git add -- "$shipped" ${raw:+"$raw"}
+          manifest='${{ steps.gen.outputs.manifest }}'
+          git add -- "$shipped" ${raw:+"$raw"} ${manifest:+"$manifest"}
           if git diff --cached --quiet; then echo "Nothing changed."; exit 0; fi
           git commit -m "Portrait for ${{ inputs.character_id }} (${{ inputs.game }}), built from its spec"
+
+          # NOTHING LEFT IN THE TREE MAY BLOCK THE PUSH. `git pull --rebase`
+          # refuses to run while anything is unstaged, and a job that has
+          # already committed what it came to keep has no use for the rest — so
+          # anything still here is discarded rather than allowed to strand a
+          # picture that has been paid for. Reported first, because a stray
+          # write is a bug in whatever wrote it and should not go unnoticed
+          # just because it can no longer do damage.
+          leftover=$(git status --porcelain)
+          if [ -n "$leftover" ]; then
+            echo "::warning::discarding files this job wrote but did not commit:"
+            echo "$leftover"
+            git checkout -- . || true
+            git clean -fdq || true
+          fi
           # ABORT A FAILED REBASE BEFORE RETRYING. Without this the loop retried
           # `git pull --rebase` while the tree was still mid-conflict, so every
           # attempt died with "Pulling is not possible because you have unmerged

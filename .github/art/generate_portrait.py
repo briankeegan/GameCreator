@@ -165,9 +165,18 @@ def main():
     # conflicts. A job commits what it made.
     gh_out = os.environ.get('GITHUB_OUTPUT')
     if gh_out:
+        # EVERY file the run wrote, not just the two obvious ones. imagegen.py
+        # also updates a `generated.json` provenance manifest beside the raw,
+        # and leaving it out of the staged set is what actually killed twelve
+        # paid-for portraits: the commit succeeded, the manifest stayed
+        # unstaged, and `git pull --rebase` refuses to run on a dirty tree —
+        # "cannot pull with rebase: You have unstaged changes", five times,
+        # while the log talked about a push race that was not happening.
+        manifest = Path(raw_rel).parent / 'generated.json'
         with open(gh_out, 'a') as fh:
             fh.write(f'shipped={out_rel}\n')
             fh.write(f'raw={raw_rel}\n')
+            fh.write(f'manifest={manifest.as_posix()}\n')
 
     print('LOOK AT IT. Nothing here can tell whether it drew the right person.')
 
