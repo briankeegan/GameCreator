@@ -203,6 +203,16 @@ jobs:
       # ("cartoon", "little"). Every note read plausibly; none recorded whether
       # it was quoting or inventing. This is a fact about JSON, so it FAILS
       # rather than warning.
+      # THE VAULT IS THE ONE TOOL WHOSE FAILURE IS INVISIBLE. vault.py never
+      # fails its caller on purpose — losing the safety net must not also lose
+      # the art it protects — so when it broke on its first run (worktree under
+      # .git/, which git refuses) the job reported success and simply saved
+      # nothing. Nobody would have found out until the next time a generation
+      # was lost, which is precisely when it is supposed to be there. So the
+      # round-trip is proved on every push against a throwaway repo.
+      - name: Verify the art vault round-trips
+        run: bash .github/scripts/vault.test.sh
+
       - name: Verify character spec provenance
         run: node .github/scripts/check_character_specs.mjs
 

@@ -43,8 +43,10 @@ warns and returns. Losing the safety net must not lose the art as well.
 
 import argparse
 import pathlib
+import shutil
 import subprocess
 import sys
+import tempfile
 
 BRANCH = 'art-vault'
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -89,9 +91,18 @@ def save(path):
         return False
     # A worktree of its own, so saving cannot disturb the checkout the caller is
     # working in — the generator still has files staged and a branch checked out.
-    wt = ROOT / '.git' / 'gc-vault-wt'
-    subprocess.run(['git', 'worktree', 'remove', '--force', str(wt)],
-                   cwd=ROOT, capture_output=True)
+    #
+    # OUTSIDE the repository, and specifically NOT under .git/: git refuses to
+    # create a worktree inside the git directory, and because this function is
+    # built never to fail the caller, that refusal was completely silent. The
+    # first run with the vault enabled reported success, generated its portrait,
+    # and left no art-vault branch behind at all. A safety net that fails
+    # quietly is not a safety net — hence the self-test at the bottom of this
+    # file, which creates a throwaway repo and proves a save-then-restore
+    # round-trip actually works.
+    tmp = tempfile.mkdtemp(prefix='gc-vault-')
+    wt = pathlib.Path(tmp) / 'wt'
+    subprocess.run(['git', 'worktree', 'prune'], cwd=ROOT, capture_output=True)
     git('fetch', 'origin', BRANCH)
     exists = git('rev-parse', '--verify', f'origin/{BRANCH}').returncode == 0
     if exists:
@@ -142,6 +153,7 @@ def save(path):
     finally:
         subprocess.run(['git', 'worktree', 'remove', '--force', str(wt)],
                        cwd=ROOT, capture_output=True)
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def main():
