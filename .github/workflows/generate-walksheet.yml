@@ -32,8 +32,8 @@ on:
         required: true
         type: string
       description:
-        description: "Who the character is: build, hair, clothing, colours, distinguishing features"
-        required: true
+        description: "OPTIONAL extra note for this run only. The character itself comes from its spec in art-style.json — write the spec, do not describe them here."
+        required: false
         type: string
       references:
         description: "Optional comma-separated repo-relative reference PNGs to match likeness (e.g. games/the-game/art/nella_top.png)"
@@ -62,6 +62,11 @@ on:
         required: false
         type: boolean
         default: false
+      branch:
+        description: "Branch to check out and commit the frames to. Defaults to main; point it at a review branch to LOOK at a character before it ships."
+        required: false
+        type: string
+        default: "main"
 
 permissions:
   contents: write
@@ -71,10 +76,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # NOT ALWAYS main. Art is the one thing in this repo you cannot review
+      # from a diff — a sheet has to be looked at, and by the time it is on
+      # main it has shipped. Generating onto a branch means a character can be
+      # seen, rejected and regenerated without ever reaching the live site.
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ inputs.branch }}
 
       - uses: ./.github/actions/validate-game-input
         with:
@@ -98,13 +107,52 @@ jobs:
         id: prompt
         env:
           CHARACTER: ${{ inputs.description }}
+          GAME: ${{ inputs.game }}
+          CHAR: ${{ inputs.character_id }}
         run: |
           set -euo pipefail
           # Single source of truth for the recipe — never retype it inline.
           prompt=$(python3 - <<'PY'
-          import os
+          import os, sys, json, pathlib
+          # NO SPEC, NO GENERATION.
+          #
+          # This step used to paste the dispatch's `description` straight into
+          # the prompt, so every regeneration was whatever somebody typed that
+          # day. That is how Rex came back as a smooth-faced youth in a scarf
+          # when his sprite and the plot both say a bearded man in a gold
+          # robe, and how May's antlers survived three rounds: nothing
+          # mechanical had any idea what these characters look like.
+          #
+          # The spec in art-style.json is the single source of truth, and the
+          # prompt is BUILT from it (spec_to_prompt, the same function
+          # generate_row.py uses) so nobody retypes it and nobody can leave a
+          # bit out. If a character has no spec, this fails and says to write
+          # one — the spec has to be saved BEFORE the art exists, or there is
+          # nothing to check the art against afterwards.
+          sys.path.insert(0, '.github/art')
+          from generate_row import spec_to_prompt
+          game, char = os.environ['GAME'], os.environ['CHAR']
+          style_path = pathlib.Path('games') / game / 'art-style.json'
+          if not style_path.is_file():
+              sys.exit(f'::error::{style_path} does not exist — every game needs its '
+                       'art contract before any art is generated.')
+          style = json.loads(style_path.read_text())
+          spec = (style.get('characters') or {}).get(char)
+          if not spec:
+              sys.exit(
+                  f'::error::No spec for "{char}" in {style_path} under `characters`. '
+                  'Write the character spec FIRST — species, per-material hexes, '
+                  '`appears`, proportions, neverDraw — then run this again. Without it '
+                  'the prompt is whatever someone typed today, nothing about the '
+                  'character is repeatable between generations, and verify_sheet.py has '
+                  'nothing to check the result against. See '
+                  '.github/art/CHARACTER_SHEETS.md.')
+          extra = (os.environ.get('CHARACTER') or '').strip()
+          built = spec_to_prompt(spec)
+          if extra:
+              built += ' ' + extra
           tpl = open('.github/art/walksheet_prompt.txt').read().strip()
-          print(tpl.replace('{CHARACTER}', os.environ['CHARACTER']))
+          print(tpl.replace('{CHARACTER}', built))
           PY
           )
           {
@@ -135,12 +183,24 @@ jobs:
           fi
           mkdir -p "$(dirname "$SHEET")"
 
-          # With references we use /images/edits so the likeness is actually
-          # derived from the supplied art; without, plain /images/generations.
-          ARGS=(-F "model=${{ steps.model.outputs.model }}" -F "prompt=${PROMPT}" -F "size=${SIZE}" -F "quality=${QUALITY}")
+          # TWO ENDPOINTS, TWO CONTENT TYPES, AND THEY ARE NOT INTERCHANGEABLE.
+          # This used to build multipart -F arguments unconditionally and post
+          # them to whichever URL it picked — so the NO-REFERENCE path could
+          # never work at all: /v1/images/generations is JSON-only and answered
+          # every single call with
+          #   HTTP 400 Unsupported content type: 'multipart/form-data'.
+          # It went unnoticed because every character to date was generated
+          # WITH a reference image, which takes the /edits branch, where
+          # multipart is correct. The first character asked for from a plain
+          # description failed instantly and looked like an API problem.
+          # So: references -> multipart to /images/edits. None -> JSON to
+          # /images/generations, body built by jq so the prompt cannot break
+          # the quoting.
+          ARGS=()
           URL=https://api.openai.com/v1/images/generations
           if [ -n "$REFERENCES" ]; then
             URL=https://api.openai.com/v1/images/edits
+            ARGS=(-F "model=${{ steps.model.outputs.model }}" -F "prompt=${PROMPT}" -F "size=${SIZE}" -F "quality=${QUALITY}")
             IFS=',' read -ra REFS <<< "$REFERENCES"
             for ref in "${REFS[@]}"; do
               r=$(echo "$ref" | xargs)
@@ -148,7 +208,47 @@ jobs:
               [ -f "$r" ] || { echo "::error::Reference not found: $r"; exit 1; }
               ARGS+=(-F "image[]=@${r}")
             done
+          else
+            body_json=$(jq -n \
+              --arg model "${{ steps.model.outputs.model }}" \
+              --arg prompt "$PROMPT" \
+              --arg size "$SIZE" \
+              --arg quality "$QUALITY" \
+              '{model: $model, prompt: $prompt, size: $size, quality: $quality, n: 1}')
+            ARGS=(-H "Content-Type: application/json" -d "$body_json")
           fi
+
+          # PRE-FLIGHT: the endpoint and the encoding have to agree, and that is
+          # decidable here for free. The bug this replaces cost a whole run to
+          # discover and read like an outage; this costs one string comparison
+          # and names the fix. Checked BEFORE the key is ever used, so a
+          # mismatch fails in under a second and bills nothing.
+          # Read the encoding off the ARGS THEMSELVES rather than trusting a
+          # variable set beside them — the point is to catch the branch above
+          # being edited into disagreeing with the endpoint, which a
+          # self-declared value cannot do.
+          has_json=no; has_form=no
+          for a in "${ARGS[@]}"; do
+            case "$a" in *"application/json"*) has_json=yes ;; esac
+            [ "$a" = "-F" ] && has_form=yes
+          done
+          encoding="unknown"
+          [ "$has_json" = yes ] && [ "$has_form" = no ] && encoding="json"
+          [ "$has_form" = yes ] && [ "$has_json" = no ] && encoding="multipart"
+          case "$URL:$encoding" in
+            *"/images/generations:json"|*"/images/edits:multipart") : ;;
+            *":unknown")
+              echo "::error::Request is neither cleanly JSON nor cleanly multipart (json=$has_json form=$has_form) — one branch of the endpoint choice above has been edited into building both, or neither."
+              exit 1 ;;
+            *"/images/generations:multipart")
+              echo "::error::Transport mismatch: sending multipart/form-data to /v1/images/generations, which is JSON-only — this ALWAYS returns HTTP 400 and never generates anything. Fix: build the request with jq into -d, as the no-references branch above does. (URL=$URL encoding=$encoding references='${REFERENCES}')"
+              exit 1 ;;
+            *"/images/edits:json")
+              echo "::error::Transport mismatch: sending JSON to /v1/images/edits, which needs multipart/form-data to carry the reference images. Fix: build -F arguments, as the references branch above does. (URL=$URL encoding=$encoding references='${REFERENCES}')"
+              exit 1 ;;
+            *) echo "::error::Unknown endpoint '$URL' — only /v1/images/generations and /v1/images/edits are supported here."; exit 1 ;;
+          esac
+          echo "Requesting $URL as $encoding (references: ${REFERENCES:-none})"
 
           ok=""
           for attempt in 1 2 3 4 5; do
@@ -163,7 +263,14 @@ jobs:
               echo "Transient (HTTP $code, attempt $attempt): ${err:-no body} — retrying in ${wait}s"
               sleep "$wait"; continue
             fi
-            echo "::error::OpenAI API error (HTTP $code): ${err:-unknown}"; exit 1
+            # A 400 here is nearly always OUR request being malformed, not an
+            # outage — say so, and say where to look, so the next person does
+            # not read it as "the API is down" and re-run it five times.
+            if [ "$code" = "400" ]; then
+              echo "::error::OpenAI REJECTED the request (HTTP 400) — the request this workflow built is wrong, retrying will not help. Message: ${err:-unknown}. Endpoint $URL, encoding $encoding, references '${REFERENCES:-none}', size $SIZE, quality $QUALITY. Check those against what that endpoint accepts; if it mentions content type, the endpoint/encoding pairing in the 'Generate the sheet' step is the thing to fix."
+              exit 1
+            fi
+            echo "::error::OpenAI API error (HTTP $code): ${err:-unknown} (endpoint $URL, encoding $encoding)"; exit 1
           done
           [ -n "$ok" ] || { echo "::error::Still failing after retries"; exit 1; }
 
@@ -172,6 +279,7 @@ jobs:
           echo "sheet=$SHEET" >> "$GITHUB_OUTPUT"
 
       - name: Slice the grid into frames
+        id: slice
         if: steps.gen.outputs.skipped != 'true'
         timeout-minutes: 6
         env:
@@ -211,22 +319,96 @@ jobs:
           # misread cuts nine real files that happen to be slivers of coat, so
           # run the same checker the build gate runs — it fails a set with a
           # missing, duplicated or CROPPED frame.
-          python3 .github/art/verify_sheet.py frames "games/$GAME/art" "$CHAR" 
+          # RECORD the verdict, do not exit on it. The image is already paid
+          # for by this point, and killing the job here meant the commit step
+          # never ran and the art died with the runner — so a sheet rejected
+          # by a threshold cost a whole regeneration to look at again, and the
+          # regeneration drew a DIFFERENT character. The run still goes red
+          # (the "Verification verdict" step at the end), but only after the
+          # art has been put somewhere it can be recovered from.
+          if python3 .github/art/verify_sheet.py frames "games/$GAME/art" "$CHAR"; then
+            echo "verified=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "verified=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Frames failed verification — they are being kept for review, not shipped. See the artifact and, on a review branch, the commit."
+          fi
 
+      # KEEP THE ART EVEN WHEN THE RUN FAILS. The verify step below the slicer
+      # is a gate on COMMITTING, but it was also, accidentally, a gate on the
+      # art continuing to exist: a sheet that generated perfectly and then
+      # tripped a checker died with the runner, and the only way to look at
+      # what was actually drawn was to pay for it again. Some of those failures
+      # are the checker being wrong for the character (a cat's tail widens its
+      # stride frames, which reads as CROPPED), and that call cannot be made
+      # from a log line — someone has to see the picture.
+      #
+      # So every run uploads what it drew, pass or fail. It also means a sheet
+      # can be reviewed WITHOUT being committed anywhere: download the
+      # artifact, look, and only then decide.
+      - name: Upload the sheet and frames for review
+        if: always() && steps.gen.outputs.skipped != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: walksheet-${{ inputs.game }}-${{ inputs.character_id }}
+          path: |
+            games/${{ inputs.game }}/art/${{ inputs.character_id }}_walksheet.png
+            games/${{ inputs.game }}/art/${{ inputs.character_id }}_*_*.png
+          if-no-files-found: warn
+          retention-days: 14
+
+      # main is GATED, a review branch is not. Committing unverified art to
+      # main would ship it; committing it to a review branch is the only way
+      # to look at the exact picture that was drawn without paying to draw
+      # another one — and a regenerated sheet is never the same sheet, so
+      # "just run it again" cannot answer "is this one good?".
       - name: Commit the frames
-        if: steps.gen.outputs.skipped != 'true'
+        if: always() && steps.gen.outputs.skipped != 'true' && (steps.slice.outputs.verified == 'true' || inputs.branch != 'main')
         env:
           GAME: ${{ inputs.game }}
           CHAR: ${{ inputs.character_id }}
+          BRANCH: ${{ inputs.branch }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # NEVER COMMIT A HOLE. The slice step deletes the character's existing
+          # frames before cutting, so that the completeness check can only be
+          # satisfied by art this run actually produced. If slicing then fails,
+          # the working tree holds nine DELETIONS — and this step now runs on
+          # failure, so without this guard a broken run would commit the
+          # removal of the character's working art.
+          missing=""
+          for dir in down left up; do
+            for n in 0 1 2; do
+              f="games/$GAME/art/${CHAR}_${dir}_${n}.png"
+              [ -s "$f" ] || missing="$missing $f"
+            done
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::Not committing — the frame set is incomplete, so this run has nothing whole to keep:$missing"
+            exit 0
+          fi
+
           git add "games/$GAME/art/${CHAR}_"*.png
           if git diff --cached --quiet; then echo "Nothing changed."; exit 0; fi
-          git commit -m "Walk sheet for ${CHAR} (${GAME}): 3-frame RPG-Maker cycle, down/left/up"
+          if [ "${{ steps.slice.outputs.verified }}" = "true" ]; then
+            git commit -m "Walk sheet for ${CHAR} (${GAME}): 3-frame RPG-Maker cycle, down/left/up"
+          else
+            git commit \
+              -m "UNVERIFIED walk sheet for ${CHAR} (${GAME}) — kept for review, failed verify_sheet.py" \
+              -m "Committed to a review branch so the generated art is not lost. Do not merge to main until it passes, or until the checker is shown to be wrong for this character."
+          fi
           for i in 1 2 3 4 5; do
-            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            if git pull --rebase origin "$BRANCH" && git push origin "HEAD:$BRANCH"; then exit 0; fi
             echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
           done
           echo "::error::could not push after retries"; exit 1
+
+      # The gate itself, moved to the end. Everything above has already saved
+      # the art; this is what makes the run red so a failure is still a
+      # failure.
+      - name: Verification verdict
+        if: always() && steps.slice.outputs.verified == 'false'
+        run: |
+          echo "::error::${{ inputs.character_id }}'s frames did not pass verify_sheet.py. The art was kept (artifact, and committed if this was a review branch) so it can be looked at without regenerating. Either fix the frames, or — if the checker is wrong for this character — fix the checker and say so in the commit."
+          exit 1

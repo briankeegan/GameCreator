@@ -203,16 +203,116 @@ function wantList(state) {
       return a.cost - b.cost || reach(wb) - reach(wa);
     })
     .map((o) => o.id);
-  return [...guns, "shield", "hardpoint", "reinforce", "reactor"];
+  // Energy hardware is bought only when the ship is actually short of
+  // energy — never as "the next affordable thing". Reaching for it by
+  // price put 128 Charge Banks across 150 runs into holds that needed
+  // guns, and the careful pilot's win rate fell 58/150 -> 35/150. A
+  // battery holds charge, it does not make any: it is worth having only
+  // once there is something on the bus to spend it on. Short means the
+  // bus cannot cover the dearest gun aboard twice over — enough to fire
+  // it, take a turn, and fire it again.
+  const dearestShot = Math.max(1, ...armedWeapons(state).map((w) => w.energyCost || 1));
+  const energyShort = (state.maxEnergy || 0) < dearestShot * 2;
+  const power = energyShort ? ["reactor", "chargeBank"] : [];
+  return [...guns, "shield", "screenArray", "hardpoint", "reinforce", ...power];
 }
 
 // Shopping policy. A dock is the only place capability comes from, and
 // salvage spent on a trinket is salvage not spent on the gun that answers
 // the thing killing you — so the pilot banks rather than dribbles.
-function shop(state, report) {
+// Income by SOURCE, per sector (ECON=1). The engine CLEARS state.events at
+// the top of every action, so the tape can only be read immediately after
+// the call that wrote it — sampling it at the end of a sector reads the
+// last action and nothing else, which is how a first attempt at this
+// measured 116 salvage of income against a 205 bank and believed it.
+// So wrap every engine entry point once and read the tape it just wrote —
+// and mark each event object as counted, because the read-only queries
+// (outpostOffers, computeThreatHexes, livingEnemies) do NOT clear the tape,
+// so the same award is visible to dozens of later calls. Counting it every
+// time it was VISIBLE rather than once, when it HAPPENED, reported 3,300
+// salvage of income in a sector that pays about thirteen.
+let ECON_LEDGER = null;
+const ECON_SEEN = new WeakSet();
+function econInstrument(report) {
+  ECON_LEDGER = report.econ.income;
+  for (const key of Object.keys(Engine)) {
+    const fn = Engine[key];
+    if (typeof fn !== "function" || key === "createGameState") continue;
+    Engine[key] = function (...args) {
+      const out = fn.apply(this, args);
+      const st = args[0];
+      if (st && Array.isArray(st.events) && st.events.length) {
+        st.events = st.events.filter((ev) => {
+          if (ECON_SEEN.has(ev)) return true;
+          ECON_SEEN.add(ev);
+          ev.__econNew = true;
+          return true;
+        });
+        const d = st.levelId || 0;
+        const b = (ECON_LEDGER[d] = ECON_LEDGER[d] || { kills: 0, clean: 0, discovery: 0, wrecks: 0, spent: 0, n: 0 });
+        for (const ev of st.events) {
+          if (!ev.__econNew) continue;
+          ev.__econNew = false;
+          if (ev.type === "salvage") {
+            b[ev.clean ? "clean" : "kills"] += ev.amount || 0;
+            if (!ev.clean) b.wrecks += 1;
+          }
+          else if (ev.type === "discovery" && ev.kind === "salvage") b.discovery += ev.amount || 0;
+        }
+      }
+      return out;
+    };
+  }
+}
+function econMark(state, report, depth) {
+  const b = (report.econ.income[depth] = report.econ.income[depth] || { kills: 0, clean: 0, discovery: 0, wrecks: 0, spent: 0, n: 0 });
+  b.n++;
+}
+
+function shop(state, report, firstLook) {
   if (PILOT === "reckless") return; // never docks, never spends
+  // ECON=1 — the salvage ledger. "Too easy to buy things" is a claim about
+  // the RATIO between the bank and the shelf, and neither number was ever
+  // written down: income was tuned by watching win rates, which cannot
+  // tell "the shop is generous" apart from "the guns are good". So on
+  // every dock, record what the pilot walked in holding and what fraction
+  // of the shelf that covered. Read, don't infer.
+  if (process.env.ECON && firstLook) {
+    const offers = Engine.outpostOffers(state);
+    // How much of this shelf was on the LAST one? A shop that restocks what
+    // you just declined is not a shop, it is the same shop again.
+    const now = offers.map((o) => o.id).filter((id) => id !== "repair");
+    const prev = report.econ.lastShelf || [];
+    const same = now.filter((id) => prev.includes(id));
+    report.econ.repeats.push({ depth: state.levelId, n: now.length, same: same.length });
+    for (const id of same) report.econ.repeatBy[id] = (report.econ.repeatBy[id] || 0) + 1;
+    for (const id of now) (report.econ.seenThisRun = report.econ.seenThisRun || new Set()).add(id);
+    report.econ.lastShelf = now;
+    const afford = offers.filter((o) => o.affordable).length;
+    report.econ.docks.push({
+      depth: state.levelId,
+      bank: state.salvage,
+      shelf: offers.length,
+      afford,
+      dearest: offers.reduce((m, o) => Math.max(m, o.cost), 0),
+      // What the WHOLE shelf costs. "Can I afford this one thing" is not
+      // the question a shop asks — "can I have all of it" is, and a bank
+      // that covers the lot means the visit had no decision in it.
+      sweep: offers.reduce((m, o) => m + o.cost, 0),
+      // "Too easy to buy things" is not about the whole shelf — it is about
+      // whether the DEAREST thing on it is ever out of reach. If it never
+      // is, the shop has no choice in it, whatever the totals say.
+      topAfford: state.salvage >= offers.reduce((m, o) => Math.max(m, o.cost), 0),
+      all: afford === offers.length,
+    });
+  }
   const buy = (id) => {
+    const before = state.salvage;
     Engine.applyOutpostPurchase(state, id);
+    if (process.env.ECON) {
+      const b = (report.econ.income[state.levelId] = report.econ.income[state.levelId] || { kills: 0, clean: 0, discovery: 0, wrecks: 0, spent: 0, n: 0 });
+      b.spent += before - state.salvage;
+    }
     report.purchases[id] = (report.purchases[id] || 0) + 1;
   };
   // Buyable means affordable, applicable AND — for a weapon — that there is
@@ -384,7 +484,12 @@ function playSector(state, report) {
     if (state.status !== "playing") return state.status;
 
     if (Engine.outpostAvailable(state)) {
-      shop(state, report);
+      // shop() is reached on EVERY round the ship is standing on the berth,
+      // not just the first — so the ECON ledger has to be told which call
+      // is the actual visit. Without that it recorded the same shelf several
+      // times over and compared it with itself, which reported a shelf-repeat
+      // rate that was mostly the harness looking twice.
+      shop(state, report, !visitedOutpost);
       visitedOutpost = true;
     }
 
@@ -555,6 +660,11 @@ function playRun(seed, report) {
   // bench was tried first and got written wrong twice — this reuses the
   // pilot that already plays the actual game.
   let carryOver = process.env.START_GUN ? { extraActions: [process.env.START_GUN] } : null;
+  if (process.env.ECON) {
+    if (report.econ.seenThisRun) report.econ.seenPerRun.push(report.econ.seenThisRun.size);
+    report.econ.seenThisRun = null;
+    report.econ.lastShelf = null; // a new run has no last shelf
+  }
   let depth = 1;
   let variantId = null;
   for (; depth <= BOSS_DEPTH; depth++) {
@@ -584,6 +694,8 @@ function playRun(seed, report) {
       return { depth, outcome: "error" };
     }
     report.depthReached[depth] = (report.depthReached[depth] || 0) + 1;
+    if (process.env.ECON) report.econ.arrive.push({ depth, bank: salvageIn, out: state.salvage });
+    if (process.env.ECON) econMark(state, report, depth);
     if (process.env.VERBOSE) {
       console.log(
         `  d${String(depth).padStart(2)} ${String(outcome).padEnd(8)} hull ${hullIn}->${state.hull}/${state.maxHull}` +
@@ -628,6 +740,7 @@ function playRun(seed, report) {
       // Carried so the rare-item bad-luck guarantee actually accumulates
       // across a simulated run instead of resetting every sector.
       raresSkipped: state.raresSkipped,
+      outpostStockIds: state.outpostStockIds,
     };
   }
   return { depth: depth - 1, outcome: "survived" };
@@ -649,8 +762,10 @@ function main() {
     deathLines: {},
     deathBoards: {},
     discoveries: {},
+    econ: { docks: [], arrive: [], income: {}, repeats: [], repeatBy: {}, seenPerRun: [], lastShelf: null },
     errors: [],
   };
+  if (process.env.ECON) econInstrument(report);
   const outcomes = {};
   const deathDepths = [];
   for (let seed = 0; seed < runs; seed++) {
@@ -677,6 +792,60 @@ function main() {
   console.log(`recharges: ${report.recharges}, shields raised: ${report.shieldsRaised}`);
 console.log("gates taken:", report.gates);
   console.log("discoveries found:", report.discoveries);
+  if (process.env.ECON) {
+    const byDepth = (rows, key) => {
+      const m = {};
+      for (const r of rows) (m[r.depth] = m[r.depth] || []).push(r[key]);
+      return m;
+    };
+    console.log("\nsalvage ledger — bank on ARRIVAL at each sector:");
+    const arr = byDepth(report.econ.arrive, "bank");
+    for (const d of Object.keys(arr).sort((a, b) => a - b)) {
+      console.log(`  sector ${String(d).padStart(2)}  n=${String(arr[d].length).padStart(3)}  avg bank ${avg(arr[d])}`);
+    }
+    console.log("\nsalvage ledger — income per sector, by source:");
+    for (const d of Object.keys(report.econ.income).sort((a, b) => a - b)) {
+      const b2 = report.econ.income[d];
+      const per = (x) => (x / b2.n).toFixed(1);
+      console.log(
+        `  sector ${String(d).padStart(2)}  kills ${per(b2.kills).padStart(5)}  clean ${per(b2.clean).padStart(5)}` +
+          `  discovery ${per(b2.discovery).padStart(5)}  total ${per(b2.kills + b2.clean + b2.discovery).padStart(5)}` +
+          `   | wrecks ${per(b2.wrecks).padStart(4)}  per wreck ${(b2.kills / Math.max(1, b2.wrecks)).toFixed(1)}` +
+          `   SPENT ${per(b2.spent).padStart(5)}  banked ${(100 - (b2.spent / Math.max(1, b2.kills + b2.clean + b2.discovery)) * 100).toFixed(0)}%`
+      );
+    }
+    {
+      const rs = report.econ.repeats;
+      const tot = rs.reduce((a, r) => a + r.n, 0);
+      const rep = rs.reduce((a, r) => a + r.same, 0);
+      const anyRepeat = rs.filter((r) => r.same > 0).length;
+      console.log(
+        `\nshelf repeats: ${rep}/${tot} slots (${((rep / tot) * 100).toFixed(0)}%) were on the previous shelf too;` +
+          ` ${((anyRepeat / rs.length) * 100).toFixed(0)}% of docks repeated at least one item`
+      );
+      console.log(
+        `  variety: a run is offered ${avg(report.econ.seenPerRun)} distinct items` +
+          ` out of a catalogue of ${Engine.OUTPOST_OFFER_POOL.length - 1}` +
+          ` (${((avg(report.econ.seenPerRun) / (Engine.OUTPOST_OFFER_POOL.length - 1)) * 100).toFixed(0)}%)`
+      );
+      console.log("  what repeats:", Object.entries(report.econ.repeatBy).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`).join("  "));
+    }
+    console.log("\nsalvage ledger — at the SHOP:");
+    const docks = {};
+    for (const r of report.econ.docks) (docks[r.depth] = docks[r.depth] || []).push(r);
+    for (const d of Object.keys(docks).sort((a, b) => a - b)) {
+      const rows = docks[d];
+      const canBuyAll = rows.filter((r) => r.all).length;
+      console.log(
+        `  sector ${String(d).padStart(2)}  n=${String(rows.length).padStart(3)}` +
+          `  avg bank ${avg(rows.map((r) => r.bank))}` +
+          `  avg affordable ${avg(rows.map((r) => r.afford))}/${avg(rows.map((r) => r.shelf))}` +
+          `  dearest ${avg(rows.map((r) => r.dearest))}  affordable ${((rows.filter((r) => r.topAfford).length / rows.length) * 100).toFixed(0)}%` +
+          `  bank/shelf ${avg(rows.map((r) => r.bank / Math.max(1, r.sweep)))}x` +
+          `  whole shelf affordable ${((canBuyAll / rows.length) * 100).toFixed(0)}%`
+      );
+    }
+  }
   const top = (obj, n) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n);
   console.log("\nwhat the board looked like at death:");
   for (const [board, n] of top(report.deathBoards, 6)) console.log(`  ${n}x ${board}`);

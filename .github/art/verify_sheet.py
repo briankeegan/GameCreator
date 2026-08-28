@@ -398,8 +398,10 @@ def check_sheet(path, style, rows, cols):
     return problems, soft
 
 
-# See the CROPPED check in check_frames for how this was calibrated.
-FRAME_ASPECT_SPREAD = 1.45
+# See the CROPPED / OVERSIZED check in check_frames for how these were
+# calibrated, and for why the old width:height version had to go.
+FRAME_HEIGHT_MIN = 0.80
+FRAME_HEIGHT_MAX = 1.25
 
 # STANDING vs MID-STRIDE, measured at the feet.
 #
@@ -550,10 +552,7 @@ def check_frames(art_dir, char_id, dirs):
                     'frames are reversed makes the character flip direction on every '
                     'step. Mirror the listed frame(s) horizontally.')
 
-    # CROPPED — the whole set is one character standing on one floor, tightly
-    # trimmed, so every frame should have roughly the same width:height. A
-    # frame far wider than its siblings is one where part of the character
-    # fell outside the image.
+    # CROPPED / OVERSIZED — measured on HEIGHT, not on width:height.
     #
     # This is the check that would have caught May. Her nine frames shipped
     # with the crown of her head sliced off in every front and side pose and
@@ -564,24 +563,58 @@ def check_frames(art_dir, char_id, dirs):
     # half a face, which is exactly the failure mode a forgiving runtime is
     # supposed to have a build-time check beside.
     #
-    # Calibrated against the real set (CLAUDE.md: record the numbers). Every
-    # healthy character here spreads 1.09 (Kat) to 1.39 (the devil, whose
-    # side profile is genuinely much narrower than his front view). May's
-    # broken set spread 1.55 — her headless up_1 is 127x148, ar 0.86, against
-    # a left_2 of 120x217, ar 0.55. 1.45 sits between the two with room for a
-    # character whose profile is narrower still.
+    # It used to compare the widest frame's width:height against the
+    # narrowest's, on the stated assumption that "every frame is the same
+    # character trimmed the same way". That assumption is true of a PERSON and
+    # false of anything with a tail, a cape or a drawn weapon: a tail adds
+    # width to the stride frames and not to the standing ones, so the
+    # silhouette legitimately changes shape between frames — the exact
+    # signature the check read as "part of the character fell outside the
+    # frame". Its limit had been fitted to fourteen humans (1.09 to 1.39, with
+    # May's break at 1.55 and the line drawn at 1.45), so the first character
+    # with a tail came in at 1.46 and was rejected. A correct sheet costing a
+    # regeneration is the expensive kind of wrong.
+    #
+    # Height alone separates the two cleanly, because the failure and the
+    # false positive move different dimensions:
+    #   cropping cuts the top of the head off  -> the frame is SHORTER
+    #   a tail / cape / weapon sticks out      -> the frame is WIDER, same height
+    # Measured against the MEDIAN rather than the extremes, so one bad frame
+    # cannot drag the baseline it is being judged against.
+    #
+    # Calibrated on the real set (CLAUDE.md: record the numbers). Twelve
+    # healthy characters sit between 0.92 and 1.09 of their own median height.
+    # May's broken set puts up_1 at 0.68. The cat Kat sheet the old check
+    # rejected spans 0.98-1.04 and passes. Limits 0.80 and 1.25 leave real
+    # margin on both sides.
+    #
+    # The upper bound is not symmetry for its own sake — it caught two live
+    # defects the aspect check passed clean. nella left_1 is 295x664 against
+    # siblings of ~101x200 (3.32x its median), and nella_human left_1 is
+    # 289x656 against ~227x407 (1.83x): the standalone-neutral frame described
+    # in games/the-game/WALK_SHEETS.md, combined in without ever being scaled
+    # to the row it joined. The PLAYER triples in size the instant she stops
+    # walking sideways.
     if len(shapes) >= 6:
-        shapes.sort()
-        lo, hi = shapes[0], shapes[-1]
-        spread = hi[0] / lo[0] if lo[0] else 0
-        if spread > FRAME_ASPECT_SPREAD:
-            problems.append(
-                f'{char_id}: CROPPED — {hi[1]} is far wider for its height than {lo[1]} '
-                f'(spread {spread:.2f}, limit {FRAME_ASPECT_SPREAD}). '
-                f'{hi[1]} is {hi[2]}x{hi[3]} (ratio {hi[0]:.2f}), {lo[1]} is {lo[2]}x{lo[3]} '
-                f'(ratio {lo[0]:.2f}). Every frame is the same character trimmed the same '
-                'way, so one that is much squatter than the rest has had part of the '
-                'character — usually the top of the head — cut off by the frame edge.')
+        heights = sorted(sh[3] for sh in shapes)
+        mid = len(heights) // 2
+        median_h = heights[mid] if len(heights) % 2 else (heights[mid - 1] + heights[mid]) / 2
+        for ar, label, w, h in shapes:
+            rel = h / median_h if median_h else 0
+            if rel < FRAME_HEIGHT_MIN:
+                problems.append(
+                    f'{char_id}: CROPPED — {label} is {w}x{h}, only {rel:.2f} of this '
+                    f"set's median height {median_h:.0f} (wants >= {FRAME_HEIGHT_MIN}). "
+                    'Every frame is the same character standing on the same floor, so one '
+                    'much shorter than the rest has had part of the character — usually '
+                    'the top of the head — cut off by the frame edge.')
+            elif rel > FRAME_HEIGHT_MAX:
+                problems.append(
+                    f'{char_id}: OVERSIZED — {label} is {w}x{h}, {rel:.2f}x this '
+                    f"set's median height {median_h:.0f} (wants <= {FRAME_HEIGHT_MAX}). A "
+                    'frame far taller than its siblings was combined in from a separate '
+                    'generation without being scaled to the row, so the character changes '
+                    'size the instant this frame is shown.')
     return problems, soft
 
 

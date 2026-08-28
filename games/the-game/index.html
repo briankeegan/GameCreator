@@ -153,6 +153,7 @@
           <button id="pauseResume">Resume</button>
           <button id="pauseSave">Save game</button>
           <button id="pauseHelp">Controls</button>
+          <button id="pauseDifficulty">Difficulty</button>
           <button id="pauseQuit">Save &amp; quit to title</button>
         </div>
       </section>
@@ -165,6 +166,19 @@
         <div class="menu-meta" id="statusMeta"></div>
         <div class="status-rows" id="statusRows"></div>
         <button class="menu-back" id="statusBack">‹ Step back</button>
+      </section>
+
+      <!-- DIFFICULTY: one setting, shared by the player and every opponent
+           (see difficulty.js). Reached from file-select (choosing a NEW file)
+           and from the pause menu (adjusting the current one) — menu.js's
+           difficultyMode says which. -->
+      <section class="menu-screen" id="menuDifficulty" hidden>
+        <h2 class="menu-h" id="difficultyTitle">DIFFICULTY</h2>
+        <div class="settings-block">
+          <div class="settings-modes" id="difficultyList"></div>
+          <p class="settings-note" id="difficultyNote"></p>
+        </div>
+        <button class="menu-back" id="difficultyBack">‹ Back</button>
       </section>
 
       <!-- CONTROLS: the real thing, inline on this screen — the toggle and the
@@ -253,6 +267,7 @@
   <script src="panel-engine.js"></script>
   <script src="panel-cpu.js"></script>
   <script src="duel.js"></script>
+  <script src="difficulty.js"></script>
   <script src="saves.js"></script>
   <script src="app.js"></script>
   <script src="menu.js"></script>

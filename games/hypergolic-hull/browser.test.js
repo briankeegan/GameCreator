@@ -1426,6 +1426,12 @@ async function freshPage(browser, url, errors) {
       st.hazards = [];
       st.hull = st.maxHull;
       st.shieldCharges = 0;
+      // This fixture is about damage-mid-burn, not about arrival — but a
+      // real sector's exits are wherever they are, and the far end of a
+      // "long clear lane" is exactly where one tends to sit. Landing on it
+      // ends the run before the course has anything left to prove, so it's
+      // put out of reach for the length of this synthetic flight.
+      st.exits = [];
       // Put the flagship at one end of the longest column available.
       const col = st.playerPos.q;
       const lane = st.boardHexes.filter((h) => h.q === col).sort((a, b) => a.r - b.r);

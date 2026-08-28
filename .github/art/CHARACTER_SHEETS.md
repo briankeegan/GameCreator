@@ -471,6 +471,17 @@ Two rules learned building it:
   because her jacket covers them. Only the *same view across different sheets*
   is a fair comparison.
 
+**NO SPEC, NO GENERATION — the generator refuses.** A spec written *after* the
+art is a description of whatever came out; the point is to fix what the
+character is before anything draws them. `generate-walksheet.yml` looks the
+character up in `art-style.json` and fails with "write the character spec
+FIRST" if it is not there, and builds its prompt from the spec when it is. Its
+`description` input is now an optional extra note for one run, not the
+character — because a typed description is exactly what drifted: Rex came back
+a smooth-faced youth in a scarf against a sprite and a plot that both say a
+bearded man in a gold robe, and May's antlers survived three regenerations,
+because nothing mechanical had any idea what either of them looks like.
+
 **Add to a spec the moment a detail is caught drifting.** That is the entire
 point of it: the mohawk note, the "ears are never brown" note and the flat-coat
 note are all things that shipped wrong first.

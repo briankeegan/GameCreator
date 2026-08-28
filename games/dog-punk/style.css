@@ -4,6 +4,15 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
+  /* `100%` resolves against the *layout* viewport, which on mobile Safari/
+     Chrome includes the strip the address/URL bar can retract into — so
+     the page is taller than what's actually visible, and anything pinned
+     to the bottom of that 100% (the touch controls) renders partly below
+     the real screen edge, in the gap between what you can see and the
+     page's full height. `100dvh` tracks the *actual* visible viewport as
+     the browser chrome shows/hides, so the fallback above only applies on
+     the handful of engines with no dvh support at all. */
+  height: 100dvh;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   /* junkyard dark, matching the level's environmentPalette (art-style.json)
      — the page used to be moss green, from when the floor was grass. */
@@ -16,6 +25,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  height: 100dvh;
 }
 
 .game-area {
@@ -25,7 +35,9 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 10px calc(8px + var(--banner-space));
+  /* env(safe-area-inset-bottom) keeps the controls clear of a phone's home
+     indicator / gesture bar, same as the install banner below already does. */
+  padding: 8px 10px calc(8px + var(--banner-space) + env(safe-area-inset-bottom));
   text-align: center;
   gap: 6px;
   overflow: hidden;
@@ -183,6 +195,66 @@ body {
   cursor: pointer;
   font-size: 1rem;
 }
+
+/* Three-file select screen — same dark card as the title layer, retinted
+   from Newsey's own (games/the-game/style.css .file-slot etc.) with the
+   mohawk pink standing in for Newsey's gold accent. */
+.files-heading { margin: 0; font-size: 1.4rem; font-weight: 800; }
+.files-note { margin: 0; color: #d7dcc4; font-size: 0.85rem; text-align: center; }
+.mode-row { display: flex; gap: 6px; }
+.mode-btn {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: none;
+  color: #d7dcc4;
+  border-radius: 14px;
+  padding: 5px 14px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+.mode-btn.on { background: #ff5c9a; border-color: #ff5c9a; color: #201018; }
+.file-list {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.file-slot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #eef0e2;
+  cursor: pointer;
+  font: inherit;
+}
+.file-slot:active, .file-slot:hover { background: rgba(255, 255, 255, 0.14); }
+.file-slot.selected { border-color: #ff5c9a; box-shadow: 0 0 0 1px #ff5c9a inset; }
+.file-slot.empty { opacity: 0.6; }
+.file-num {
+  flex: 0 0 auto;
+  width: 24px; height: 24px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 92, 154, 0.2);
+  color: #ff5c9a;
+  font-weight: 900;
+  font-size: 0.75rem;
+}
+.file-body { font-size: 0.8rem; }
+
+/* dpConfirm has to sit ABOVE the file-select screen (z-index 20), since it's
+   the erase/overwrite confirmation shown while that screen is open — every
+   other .run-overlay only ever shows over the board, which title-layer/
+   titleFiles are never on top of at the same time. */
+#dpConfirm { z-index: 25; }
 
 /* display:flex below would silently override the `hidden` attribute (same
    specificity beats the UA [hidden] rule) — an overlay that isn't showing
@@ -345,8 +417,10 @@ body {
   color: #fff;
   border-radius: 8px;
   font-size: 1rem;
-  touch-action: none;
-  user-select: none;
+  /* Mobile-safety properties (touch-action, user-select, -webkit-touch-
+     callout, tap-highlight) are applied inline by shared/touch-controls.js
+     (GCTouchControls.bindHold) — one source of truth instead of two that
+     can drift out of sync. */
 }
 .dpad-up { grid-column: 2; grid-row: 1; }
 .dpad-left { grid-column: 1; grid-row: 2; }
@@ -361,8 +435,8 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.3);
   color: #fff;
   font-size: 1.4rem;
-  touch-action: none;
-  user-select: none;
+  /* Mobile-safety properties applied inline by GCTouchControls.bindHold —
+     see the note on .dpad-btn above. */
 }
 
 @media (hover: hover) and (pointer: fine) {

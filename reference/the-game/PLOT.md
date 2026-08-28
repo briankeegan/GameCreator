@@ -23,9 +23,21 @@ enter a duel. Menu has an 8-bit chiptune vibe; a darker/"cursed" mode turns the
 board **red** (vs the normal **pink**).
 
 ## Characters (for character art — map to inspiration images)
+
+> **Audited against the verbatim plot** (the owner's first comment on PR #30,
+> id 5344870145) on 2026-08-22. Every line below was checked against that text
+> and matches it. Two notes on provenance, so nobody has to re-derive them:
+> Michael's "detective" is an inference from the badge Nella glimpses and
+> wonders "maybe he was a police officer?"; Kyran's being black comes from the
+> inspiration art, not the text, which says only "dark hair and eyes".
+> **Kat is a man** in the plot ("a man... he had black hair, glasses, and a
+> large smile"), which this list does not say.
 - **Nella** — protagonist. Neurodivergent gamer; in Infinity her avatar has red
   horns, glowing red eyes, fangs, dark crimson robe, glasses; copper bracelet w/
   aquamarine gems.
+  (Verbatim: "a pair of bright red horns were poking through my black hair. I
+  still had my glasses, but my eyes were glowing red. I had fangs... a dark red
+  robe. On my wrist was a copper bracelet decorated in light blue gemstones.")
 - **May 2000** — pink-haired champion idol; royal-blue robe over black leather
   jacket/white pearled shirt/blue jeans/black boots; silver bracelet, sapphire
   gems. Hostile, grieving. (inspo: rock-star-with-wings / angry gamer girl.)

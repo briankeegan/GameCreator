@@ -106,6 +106,38 @@ exits" step in `pages.yml`. The art half is measured by
   has neither, because a confident wrong answer costs more than no answer. Run
   against every room with the notch rule alone it wanted to drag all four of the
   Lounge's doors to the top edge of the frame.
+- **THE DIVOT IN THE FLOOR IS THE DOOR.** In a floor-plate room the doorway is
+  the alcove where the plate's walkable floor pokes out past the rest of its
+  wall. That alcove is the only honest source for the trigger — not a door
+  prop (there may not be one), not the painted art (a wall prop may be drawn
+  across it), and never four typed numbers.
+  - **The trigger spans the alcove as far as you can walk**, out to the last
+    walkable pixel and hard against the black. `--outside` is the knob:
+    `remap_doors.py <game> --outside N --write`, and `--skip` keeps it off the
+    rooms whose doors are already right. Newsey's side doors want `--outside
+    14`, which covers the full alcove; its back-wall doors are correct at the
+    default 10 and must not be swept along with them.
+  - **`remap_doors.py` must be able to SEE the alcove, and for a long time it
+    could not.** `NOTCH_PROMINENCE` was 16 while the Lounge's side alcoves are
+    10px and 12px deep, so the tool answered "no source to re-derive from" for
+    doorways it was looking straight at — and whoever needed the numbers
+    invented them. The invented triggers landed 50px below the alcove, half of
+    each one off the walkable floor, in a stretch of wall with no doorway in
+    it at all. The threshold is 9 now: under every real doorway measured here
+    (10, 12, and back-wall arches at 16+) and above the deepest wobble on a
+    wall that has none (9.0). A measuring tool that cannot see the thing it
+    measures does not merely fail — it sends people off to guess.
+  - **A wall prop drawn across the alcove hides the door and blocks it.** The
+    Lounge's five back-wall panels each carry a 60x8 footprint, and the outer
+    ones straddled both doorways: `room.py verify` failed them as unreachable,
+    which is how the alcoves were found in the first place. Trim the
+    footprint's lip clear of the opening (8 -> 6 there); do not move the
+    trigger to suit the prop.
+  - **A wall with no alcove has no door.** Newsey's Lab has a flat left wall
+    and the Bedroom's is 8px — neither is a doorway the tool will derive, and
+    a trigger authored there is a way out through a solid wall. Cut the
+    opening into the plate; do not paper over it with a rectangle.
+
 - **A door has to be ENTERED, not grazed, and that is a number you can measure.**
   `remap_doors.py` reports how deeply a player can get onto each trigger. The
   Arena's way out was armed up in the stands above the walkable platform and
@@ -160,7 +192,89 @@ exits" step in `pages.yml`. The art half is measured by
 - **A room you can leave but never enter is a room nobody will ever see.** The
   first room of the game is the one legitimate exception.
 
+- **A DOOR IS ENTERED, NOT STOOD ON.** A door only opens for a player
+  *walking the way that door faces*: the door in the right-hand wall opens for
+  someone heading right, the arch in the back wall for someone heading up.
+  Overlap alone used to be enough, and the side doors' triggers are tall bands
+  down the edge of the room — so brushing the left wall on the way somewhere
+  else took you through the west door. It reads as the room grabbing you.
+  - The required direction is **derived from where the trigger sits**
+    (`exitEnterDir` in `app.js`), never typed beside it, for the same reason
+    arrival is derived: two values that must agree will eventually disagree. A
+    tall slot near the left edge is a door in the left wall; a wide band across
+    the bottom is the way out toward the viewer. `enter` on the exit overrides
+    it for anything that is not simply a hole in a wall.
+  - Because the shape decides the direction, a side door's trigger must be
+    **taller than it is wide** and a wall/near door's **wider than it is tall**.
+    That is also the honest shape for each: you cross a side doorway moving
+    sideways.
+  - Checked by `.github/scripts/door-direction.test.js`, which drives the real
+    game: standing on a door and walking the wrong way must not open it, and
+    walking into it the right way must.
+
+- **A drawn door is the size of the DOORWAY, never the size of the room.**
+  `drawThreshold` painted its mouth from the trigger down to the bottom edge
+  of the frame, so the Library's 16px-tall way out became a gaping shaft with
+  posts either side — "the bottom thing is way too big, it's just a massive
+  doorway". It draws within the trigger plus a small lip now. Same rule killed
+  the side-breach: a door you draw is the opening, not a gash toward the edge.
+- **A way out at the bottom of a room is a THIN band at the bottom.** You
+  arrive on a door and it re-arms only once you step clear of it, so a tall
+  trigger at the room's near edge means walking all the way up off it and back
+  down again to leave. The Arena's was 28px deep and did exactly that. Put it
+  just inside the floor's last walkable row.
+
+- **Only draw a door the ART does not already have.** `drawn: "threshold"`
+  exists for exits with no doorway painted in the room. The side doors carried
+  `drawn: "sidebreach"`, which painted a dark trapezoid from the trigger to the
+  frame edge over art that *already had* lit arches in both margins — a
+  hand-drawn gash unrelated to the picture underneath, 58px tall. Deleted.
+  Before adding a drawn door, open the room art and check there isn't one
+  there already.
+
+- **YOU COME OUT WHERE YOU WOULD GO IN.** Arrival is the partner door's own
+  rectangle — the same spot you would walk into to come back — not a place
+  near it. Stepping out to a clear patch of floor puts you a stride into the
+  room from an opening you cannot see, which reads as being teleported in
+  rather than walking through a wall, and it makes the two sides of a door
+  impossible to line up by eye.
+  - Standing on the doorstep is safe *because* of the two rules below: a door
+    arrives disarmed, and stays shut until you let go of the direction that
+    brought you through. That pair is what makes landing on the trigger work,
+    and it is why the old `DOORSTEP_CLEARANCE` was never needed.
+  - Which way you face on arrival is the opposite of the partner door's own
+    entry direction — derived, not typed, like everything else about a door.
+  - Checked by `.github/scripts/door-arrival.test.js`, which asks the running
+    game for every door's arrival and fails unless it lands inside the partner
+    rectangle.
+  - **That test must VISIT each room before asking about it.** `canStand`
+    needs the room's walk mask decoded, and an unvisited room has none — so it
+    answers "you cannot stand anywhere", which is indistinguishable from a
+    door with no arrival. The first version of this test reported five broken
+    doors that were all fine.
+
 ## 5. Arriving without bouncing back
+
+- **STEPPING CLEAR IS NO LONGER THE GATE — RELEASING THE KEY IS.** That rule
+  was written when arrival was a spot NEAR the door. Now you land ON it, so
+  "armed only once you are off every trigger" meant standing in a doorway
+  unable to use it: go through a door, turn round, walk back, and nothing
+  happens. Reported from play as getting stuck.
+  - Releasing is enough on its own. You arrive holding the direction that
+    brought you here, which is the OPPOSITE of the way this door faces, so it
+    cannot re-fire under a held key. Let go, press back, and you go back.
+  - Checked by `.github/scripts/door-roundtrip.test.js`: through a door, back
+    again, and through once more.
+- **A door transition is a FADE, and nothing may be shown half-loaded.**
+  Walking into a room while its art was still arriving showed the floor first
+  and then the props and people appearing one at a time — the game assembling
+  itself in front of the player. `whenRoomReady` holds the screen black until
+  the room's background, every prop and NPC id, and the walk mask are in, then
+  lifts. A missing file counts as ready (it degrades to placeholder art by
+  design), and there is a 3s cap so a slow asset shows late rather than never.
+  - A transition is now long enough to overlap another one, so it takes a
+    `transitioning` guard. Without it a second door can fire mid-fade and the
+    two arrivals fight over where you end up.
 
 - **Doors arrive DISARMED and re-arm only when you step clear of them.**
   Otherwise arriving in a doorway immediately throws you back through it.
@@ -203,6 +317,21 @@ exits" step in `pages.yml`. The art half is measured by
   question per four-minute run.
 
 ## 7. The checks
+
+**They run on every push now** (`.github/workflows/browser-checks.yml`).
+Before that, every browser-level door check was hand-run — which meant the
+only thing between a broken door and a player was somebody remembering to
+type the command. Nobody did: doors that arrived in the wrong place, fired
+when brushed, trapped you walking back, and showed rooms half-loaded were all
+found by PLAYING, one report at a time.
+
+They stay out of `pages.yml` on purpose (see the comment there): they need
+Playwright and have shown real timing flakiness, and one game's flaky timing
+must never block every game's deploy. A separate workflow is how both are
+true at once — it can go red without taking the site with it. A failing run
+retries once and only a second failure is reported, so a flake does not
+become a red check nobody chases.
+
 
 Rule → tool → gate, the same as everything else here. Every check listed was
 proved to fire by breaking a room on purpose.

@@ -75,8 +75,8 @@ window.NEWSEY_STORY = (function () {
     { bg: "chaos", who: "nella", narration: true, text: "A skull. A chaos symbol. \"A deal is struck. Proceed?\"" },
     { who: "nella", narration: true, text: "I pressed Start and Select." },
     { bg: "", narration: true, text: "The world faded to black." }
-    // After this: waking up, the horns in the mirror, the devil's welcome —
-    // is not narrated either, it's ROOMS.bedroom (Infinity).
+    // After this: waking up, the horns in the mirror — is not narrated
+    // either, it's ROOMS.bedroom (Infinity).
   ];
 
   // JOHN_CUTSCENE — the chapter's hinge, and the one beat that was compressed
@@ -426,7 +426,7 @@ window.NEWSEY_STORY = (function () {
         // clear of the dip, instead of at the old centre of 169 (feet at 187,
         // inside it) — which read as a door you could walk toward and never
         // reach.
-        { x: 276, y: 148, w: 40, h: 36, to: "lounge", link: "westDoor", drawn: "sidebreach" }
+        { x: 296, y: 114, w: 18, h: 23, to: "lounge", link: "westDoor" }
       ],
       npcs: [
         {
@@ -479,13 +479,13 @@ window.NEWSEY_STORY = (function () {
         // the arch's lit opening is x 100-115 and the portal's x 154-174, so
         // the wall is seven panels of the same brick at a 57px pitch with the
         // arch on 107 and the portal on 164. The wall meets the floor at y 72.
-        { art: "prop_lg_wall",   x: -7,  y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
-        { art: "prop_lg_wall",   x: 50,  y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_lg_wall",   x: -7,  y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 6 } },
+        { art: "prop_lg_wall",   x: 50,  y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 6 } },
         { art: "prop_lg_arch",   x: 107, y: 72, h: 76, w: 60, door: true, behind: true },
         { art: "prop_lg_portal", x: 164, y: 72, h: 76, w: 60, door: true, behind: true },
         { art: "prop_lg_wall",   x: 221, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
-        { art: "prop_lg_wall",   x: 278, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
-        { art: "prop_lg_wall",   x: 335, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 8 } },
+        { art: "prop_lg_wall",   x: 278, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 6 } },
+        { art: "prop_lg_wall",   x: 335, y: 72, h: 76, w: 60, behind: true, base: { w: 60, h: 6 } },
         // the way west and the way east, in the side walls at the frame edges
         // The ARCH is the prop, not a wall with an arch in it. The first two
         // attempts drew a tall strip that was seven eighths plain brick, so at
@@ -512,10 +512,10 @@ window.NEWSEY_STORY = (function () {
       // player, so crossing means standing in the opening rather than on a
       // rectangle of floor near it.
       exits: [
-        { x: 4,   y: 118, w: 38, h: 58, to: "bedroom", link: "westDoor", drawn: "sidebreach" },
+        { x: 0,   y: 76, w: 20, h: 31, to: "bedroom", link: "westDoor" },
         { x: 90,  y: 55,  w: 33, h: 16, to: "library", link: "northArch" },
         { x: 147, y: 55,  w: 33, h: 16, to: "arena",   link: "portal" },
-        { x: 278, y: 118, w: 38, h: 58, to: "lab",     link: "eastDoor", drawn: "sidebreach" }
+        { x: 300, y: 76, w: 20, h: 31, to: "lab",     link: "eastDoor" }
       ],
       npcs: [
         {
@@ -565,8 +565,10 @@ window.NEWSEY_STORY = (function () {
           lines: [
             "I'm Diamond. I'm the only person you really need to meet around here.",
             "Don't listen to Eric. He thinks the sun rises on Anarchy.",
-            "Copper and aquamarine, is it? Sweet. Everyone starts somewhere."
-          ]
+            "Copper and aquamarine, is it? Sweet. Everyone starts somewhere.",
+            "Go on, then — the portal's right there. I don't lose. It's not arrogance if it's just true."
+          ],
+          setsFlag: "duelInvite"
         },
         {
           id: "eric", x: 180, y: 158, art: "eric", sprite: "eric_top",
@@ -626,7 +628,7 @@ window.NEWSEY_STORY = (function () {
         // art's native 512x341 — only the top ~38px are visible, the rest
         // clipped by the canvas) so it reads as an exit, not scenery on the
         // open floor. Trigger sits on its visible upper arc, within reach.
-        { x: 100, y: 168, w: 76, h: 28, to: "lounge", link: "portal" }
+        { x: 100, y: 182, w: 76, h: 12, to: "lounge", link: "portal" }
       ],
       obstacles: [ { x: 0, y: 88, w: 66, h: 20 }, { x: 250, y: 88, w: 70, h: 20 } ], // the stands
       npcs: [
@@ -643,7 +645,7 @@ window.NEWSEY_STORY = (function () {
           // and it is a SET, not one board — "First to five wins," Nella
           // says, and then loses it 5-1.
           duel: {
-            level: 3, difficulty: "steady", theme: "pink", playerLevel: 2, firstTo: 5,
+            difficulty: "steady", theme: "pink", firstTo: 5,
             winLine: "Kat tips her hat as the last slab lands on her side. \"Well! Aren't you a find.\"",
             loseLine: "Kat's chain buries you a slab at a time. \"Ah — too slow, dear.\"",
             afterWin: [
@@ -665,7 +667,7 @@ window.NEWSEY_STORY = (function () {
           ],
           // The champion. Her board runs cursed red and she does not miss much.
           duel: {
-            level: 5, difficulty: "sharp", theme: "red", playerLevel: 3,
+            difficulty: "sharp", theme: "red",
             winLine: "May 2000 stares at her dead board a long time. \"…Who taught you that?\"",
             loseLine: "The board goes red and stays red. May doesn't even watch it land.",
             afterWin: [
@@ -675,6 +677,41 @@ window.NEWSEY_STORY = (function () {
             afterLoss: [
               "That's what it looks like. That's what it always looked like.",
               "Go practice. I'll still be here."
+            ]
+          }
+        },
+        {
+          id: "diamond", x: 140, y: 118, art: "diamond", sprite: "diamond_top",
+          counterKey: "diamond_arena",
+          needs: "duelInvite",
+          lines: [
+            "You made it. Good. I was starting to think you'd stay scared of the portal forever.",
+            "No cushion, no favors. Play like you mean it."
+          ],
+          // The rank's namesake, and the toughest opponent in the arena —
+          // difficulty "nightmare" is the SearchCpu (games/the-game/panel-cpu.js)
+          // at its full tournament-validated strength (games/the-game/ai/),
+          // not the "diamond" preset scaled back from it. This was
+          // deliberately weakened here at one point ("so a determined
+          // player can still take her") — the ask was the actual ultimate,
+          // undefeatable opponent, not a beatable one wearing its name.
+          // Never scale back THIS AI PRESET; add a genuinely weaker
+          // character instead if an easier arena fight is ever wanted.
+          // Her board's Stack level is NOT an exception to that, though —
+          // it follows the player's chosen difficulty tier like every other
+          // duel (app.js's startDuel). Her edge is playing that same board
+          // perfectly, not a rigged one under her.
+          duel: {
+            difficulty: "nightmare", theme: "pink",
+            winLine: "Diamond studies her dead board like it lied to her. \"...Huh. Nobody's done that in a while.\"",
+            loseLine: "She never even looks rushed. \"Told you. Not arrogance.\"",
+            afterWin: [
+              "Fine. FINE. You're the real thing, then.",
+              "Don't let it go to your head. I'll want a rematch."
+            ],
+            afterLoss: [
+              "You held a chain going. That's more than most manage their first time against me.",
+              "Come back when you've got another one. I'll be here — I'm always here."
             ]
           }
         }
@@ -851,7 +888,7 @@ window.NEWSEY_STORY = (function () {
         // y 124, clear of the wall panels' footprint: the leftmost panel
         // blocks y 112-120 across the room, and a trigger overlapping it is a
         // door you cannot reach.
-        { x: 2, y: 136, w: 28, h: 54, to: "lounge", link: "eastDoor", drawn: "sidebreach" }
+        { x: 6, y: 142, w: 18, h: 38, to: "lounge", link: "eastDoor", drawn: "sidedoor" }
       ],
       npcs: [
         {

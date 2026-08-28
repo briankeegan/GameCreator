@@ -10,3 +10,10 @@ node_modules/
 # stray bytecode from running the art pipeline locally
 __pycache__/
 *.pyc
+
+# Room sign-off RENDER MARKERS are local evidence, not shared state.
+# room.py check writes one to record that the overlays were rendered for the
+# art as it stands HERE; room.py signoff refuses unless it matches. Committing
+# them would let someone sign off a room on another machine without ever
+# rendering it, which is the whole thing that check is there to stop.
+games/*/art-src/*_rendered.txt

@@ -786,6 +786,16 @@ assert.deepStrictEqual(
   railgunStart,
   "the Railgun does not move to chase either — it holds its hex"
 );
+// Enemies pay energy for a shot on the same rule the flagship does (see
+// enemyPhase), but nothing ever SAID so on screen — reported live: "I'm
+// not seeing their energy deplete." The single-line hit-report log is the
+// one place that can say it without adding a second line that would just
+// get overwritten (see pushLog's one-message-at-a-time design), so it
+// reports the shooter's energy right after paying for the shot.
+assert.ok(
+  railgunState.log[railgunState.log.length - 1].includes("RAILGUN energy 0/5"),
+  "the hit-report log names the shooter and its post-shot energy, so the spend is visible even though the reactor refills before the player's next glance at it"
+);
 
 // Off-axis, the Railgun's shot never reaches at all, no matter the range.
 const railgunOffAxisLevel = { ...railgunLevel, id: 996, playerStart: { q: 0, r: 5 } };
@@ -850,15 +860,36 @@ assert.deepStrictEqual(Engine.outpostOffers(salvageState), [], "not standing on 
 Engine.applySublight(salvageState, { q: 0, r: -1 });
 Engine.applyFire(salvageState);
 assert.strictEqual(salvageState.enemies[0].alive, false, "the FIRE volley kills the adjacent Interceptor");
-// A wreck is worth its type's value PLUS a depth bounty — deeper sectors
-// pay better, so the shop keeps up with the sectors instead of staying
-// priced against sector 2 forever.
+// A wreck is worth its type's value, full stop, at any depth from Sector 6
+// on — see EARLY_SUBSIDY_UNTIL in engine.js. This fixture's level id is
+// 992, so it is well past the subsidy. Asserted as the flat value rather
+// than by re-deriving the subsidy formula: a test that recomputes what the
+// code computes passes whatever the code does.
 assert.strictEqual(
   salvageState.salvage,
-  Engine.ENEMY_TYPES.interceptor.salvage + Math.floor(salvageLevel.id / 2),
-  "a kill drops its type's salvage value, scaled by how deep the sector is"
+  Engine.ENEMY_TYPES.interceptor.salvage,
+  "a deep wreck drops exactly its type's salvage value — no depth bonus on top"
 );
 assert.ok(salvageState.events.some((e) => e.type === "salvage"), "a kill emits a salvage event for the UI to animate");
+
+// ---- a wreck is worth what it is worth, at every depth -------------------
+//
+// There is no depth term in salvage any more — see localeBonus in engine.js.
+// Gated here because the bug it replaced was invisible from inside a single
+// sector: every individual payout looked reasonable, and only the bank
+// eleven sectors later showed that they had been climbing the whole way.
+{
+  const paid = (levelId) => {
+    const st = Engine.createGameState({ ...salvageLevel, id: levelId });
+    Engine.applySublight(st, { q: 0, r: -1 });
+    Engine.applyFire(st);
+    return st.salvage;
+  };
+  const worth = Engine.ENEMY_TYPES.interceptor.salvage;
+  for (const d of [1, 2, 4, 5, 6, 12, 992]) {
+    assert.strictEqual(paid(d), worth, `Sector ${d} pays an Interceptor exactly what it is worth`);
+  }
+}
 // Ending the approach MOVE adjacent to the live Interceptor ate its shot
 // (one action per turn — that's the rule). Reset hull: the shop test
 // below manages its own damage explicitly.
@@ -1108,8 +1139,19 @@ assert.notDeepStrictEqual(
 // individual common. Sampled with the guarantees held off — a ship with no
 // second gun is promised one, and a ship with no screen is promised that,
 // so a fixture flying naked measures the promises rather than the roll.
+//
+// Counted EXCLUDING each shelf's dearest entry, because that slot is not
+// rolled on rarity at all — it is the reach slot (see pickOutpostOfferIds),
+// drawn from the dearest third of eligible stock so that a dock always
+// shows you something you cannot afford yet. In this pool expensive and
+// rare are very nearly the same items, so the reach slot shows a rare on
+// most deep visits BY DESIGN. That is not the rarity being cosmetic: a
+// rare's scarcity here is that you can seldom AFFORD it, which is checked
+// straight after this. What rarity still governs is the other two slots,
+// and that is what this counts.
 {
   const tally = {};
+  const reachTally = {};
   const kitted = ["shieldGenerator", "arcBeam"]; // nothing forced: has a screen, has a second gun
   for (let levelId = 950; levelId < 1050; levelId++) {
     const s = Engine.createGameState(
@@ -1121,14 +1163,67 @@ assert.notDeepStrictEqual(
       { runSeed: 99, raresSkipped: 0, extraActions: kitted.filter((k) => Engine.WEAPON_SYSTEM_KEYS.includes(k)) }
     );
     for (const it of kitted) if (!s.hold.items.some((h) => h.id === it)) s.hold.items.push({ id: it, x: 0, y: 0 });
-    for (const id of s.outpostOfferIds) tally[id] = (tally[id] || 0) + 1;
+    const priced = s.outpostOfferIds.map((id) => ({ id, cost: s.outpostOfferPrices[id] ?? 0 }));
+    const dearest = priced.reduce((m, o) => (o.cost > m.cost ? o : m), priced[0]);
+    reachTally[dearest.id] = (reachTally[dearest.id] || 0) + 1;
+    for (const o of priced) if (o.id !== dearest.id) tally[o.id] = (tally[o.id] || 0) + 1;
   }
-  const perItem = (ids) => ids.reduce((n, id) => n + (tally[id] || 0), 0) / ids.length;
-  const commonEach = perItem(["reinforce", "reactor"]);
-  const rareEach = perItem(["mortar", "flankTubes", "railgun", "missilePod", "arcProjector", "demolitionCharge"]);
+  const perItem = (ids, t) => ids.reduce((n, id) => n + (t[id] || 0), 0) / ids.length;
+  const RARES = ["mortar", "flankTubes", "railgun", "missilePod", "arcProjector", "demolitionCharge", "screenArray"];
+  const commonEach = perItem(["reinforce", "reactor"], tally);
+  const rareEach = perItem(RARES, tally);
   assert.ok(
     commonEach > rareEach * 1.5,
-    `each common (${commonEach.toFixed(1)} sightings) turns up meaningfully more than each rare (${rareEach.toFixed(1)}) — rarity weighting is real, not cosmetic`
+    `in the rarity-rolled slots each common (${commonEach.toFixed(1)} sightings) turns up meaningfully more than each rare (${rareEach.toFixed(1)})`
+  );
+  // ...and the reach slot is doing its job. Asserted on the PRICE of the
+  // dearest entry, not on which item it is: what the shop needs is a
+  // ceiling that rises, and naming the items that count as "heavy" makes
+  // the test fail every time the arsenal gains a rung. Before the reach
+  // slot existed the dearest entry averaged 14.2 salvage at Sector 10 —
+  // and 13.4 at Sector 3 — while the bank climbed to 82, which is exactly
+  // how "you can buy anything you want" happens.
+  const dearestAvg =
+    Object.entries(reachTally).reduce((n, [id, hits]) => {
+      const o = Engine.OUTPOST_OFFER_POOL.find((x) => x.id === id);
+      return n + (o ? o.cost : 0) * hits;
+    }, 0) / 100;
+  assert.ok(
+    dearestAvg > 17,
+    `a deep shelf's dearest entry averages ${dearestAvg.toFixed(1)} salvage — the shop has a ceiling that rises`
+  );
+}
+// ---- a dock does not restock what the last dock had ---------------------
+//
+// MEASURED before this rule existed: 30% of shelf slots were on the
+// previous shelf too and 67% of docks repeated at least one item, with the
+// always-offer-a-screen guarantee alone accounting for HALF of every repeat
+// in the game (539 of 1085). Gated because the failure is invisible from
+// inside one shelf — every individual roll is legal, and only two docks
+// side by side show that it is the same shop again.
+{
+  const berth = {
+    id: 9, radius: 3,
+    playerStart: { q: 0, r: 0 }, exit: { q: 3, r: 0 }, outpost: { q: -3, r: 0 },
+    enemies: [], hazards: [], exitRule: "all-enemies-dead",
+  };
+  let repeated = 0;
+  let slots = 0;
+  for (let runSeed = 0; runSeed < 120; runSeed++) {
+    const first = Engine.createGameState(berth, { runSeed });
+    const second = Engine.createGameState(
+      { ...berth, id: 10 },
+      { runSeed, hold: first.hold, outpostStockIds: first.outpostOfferIds }
+    );
+    const prev = first.outpostOfferIds.filter((id) => id !== "repair");
+    const now = second.outpostOfferIds.filter((id) => id !== "repair");
+    slots += now.length;
+    repeated += now.filter((id) => prev.includes(id)).length;
+  }
+  const share = repeated / slots;
+  assert.ok(
+    share < 0.1,
+    `back-to-back docks share ${(share * 100).toFixed(0)}% of their stock — a station is not the last station again`
   );
 }
 // Prices roll within a modest band of the pool's listed cost — a real
@@ -2342,7 +2437,8 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
       const level = generateLevel(depth, variant);
       if (level.isBoss || !level.outpost) continue;
       docks++;
-      berths.set(`${level.outpost.q},${level.outpost.r}`, true);
+      const berthKey = `${level.outpost.q},${level.outpost.r}`;
+      berths.set(berthKey, (berths.get(berthKey) || 0) + 1);
       assert.ok(
         Engine.hexDistance(level.playerStart, level.outpost) >= 4,
         `depth ${depth}: the dock is a trip, not something you spawn on top of`
@@ -2356,7 +2452,16 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
     }
   }
   assert.ok(berths.size >= 8, "stations berth all over the place, not in one corner forever");
-  assert.ok(berths.size > docks * 0.25, "and no single berth dominates the crawl");
+  // Measured as a SHARE of docks, not as a ratio against the dock count:
+  // the old form (berths.size > docks * 0.25) failed the moment stations
+  // got commoner, because more docks over the same berth pool is exactly
+  // what raising the dock rate does. Variety is "no one berth is where the
+  // station always is", and that is what this asks.
+  const commonest = Math.max(...berths.values());
+  assert.ok(
+    commonest < docks * 0.35,
+    `no single berth dominates the crawl (the commonest is ${commonest} of ${docks} docks)`
+  );
 }
 
 // ---- rare Discoveries: derelict wrecks, silent outposts, uncharted body -
@@ -2824,7 +2929,14 @@ assert.strictEqual(closerState.hull, Engine.START_HULL, "moving was its whole tu
 Engine.applyEndTurn(closerState); // hold again: now it fires
 assert.strictEqual(closerState.hull, Engine.START_HULL - 1, "the following round it spends its point on the shot");
 
-// A cost-1 enemy is unchanged by the energy system: it fires every turn.
+// A cost-1 gun against a cost-1 reactor now ALTERNATES fire and recharge
+// rounds — same "1 to 1, nothing for free" rule the flagship's own
+// Reactor Core plays by: a shot that empties the bus costs the round
+// after it too, spent refilling instead of firing again. Recharging used
+// to tick for free every round no matter what the enemy's action was, so
+// a cost-1 gun never had a gap; now the round it recharges is a round it
+// doesn't shoot, exactly like a player who has to spend a turn on Reactor
+// Core instead of firing back.
 const chaserEnergyLevel = {
   id: 987,
   name: "chaser energy fixture",
@@ -2838,10 +2950,17 @@ const chaserEnergyLevel = {
   actions: ["sublight"], // no Autocannon — let it survive to attack repeatedly
 };
 const chaserEnergyState = Engine.createGameState(chaserEnergyLevel);
-Engine.applyEndTurn(chaserEnergyState); // its phase: closes to contact — that's its whole turn
-Engine.applyEndTurn(chaserEnergyState); // strike 1
-Engine.applyEndTurn(chaserEnergyState); // strike 2 — a cost-1 gun against +1/round never has a charge gap
-assert.strictEqual(chaserEnergyState.hull, Engine.START_HULL - 2, "a cost-1 chaser fires every round once in reach — no charge gap");
+const chaserHullTimeline = [];
+for (let t = 1; t <= 6; t++) {
+  Engine.applyEndTurn(chaserEnergyState);
+  chaserHullTimeline.push(chaserEnergyState.hull);
+}
+const CH = Engine.START_HULL;
+assert.deepStrictEqual(
+  chaserHullTimeline,
+  [CH, CH - 1, CH - 1, CH - 2, CH - 2, CH - 3],
+  "closes round 1, then alternates a shot with a recharge round — no shot two rounds running"
+);
 
 // ---- Asteroid fields: genuinely impassable terrain, distinct from a ------
 // blackhole's instant-destruction trap. Clubhouse feedback: "places you
@@ -3084,6 +3203,58 @@ assert.deepStrictEqual(
       Engine.computeThreatHexes(escorted).has(Engine.hexKey(escorted.playerPos)),
       false,
       "with a wingman inside three of it, the lane goes quiet — and the overlay says so"
+    );
+  }
+
+  // dominantWeapon: several guns bearing on the same contact only counts
+  // as a real choice when picking one over another actually trades
+  // something off. Reported live: "unless there is an actual legitimate
+  // choice, I should just auto pick."
+  {
+    assert.strictEqual(Engine.dominantWeapon([]), null, "nothing bearing, nothing to pick");
+    assert.strictEqual(Engine.dominantWeapon(["autocannon"]), "autocannon", "one gun, no ceremony");
+    // Arc Beam: 1 damage / 2 energy. Mortar: 1 damage / 3 energy. Same
+    // damage, Arc Beam cheaper — no reason to ever pick Mortar here.
+    assert.strictEqual(
+      Engine.dominantWeapon(["arcBeam", "mortar"]),
+      "arcBeam",
+      "same damage, cheaper gun wins outright — auto-picked, no menu"
+    );
+    // Autocannon: 1 damage / 1 energy. Siege Maul: 2 damage / 3 energy —
+    // more expensive AND stronger is a real trade-off, not a no-brainer.
+    assert.strictEqual(
+      Engine.dominantWeapon(["autocannon", "siegeMaul"]),
+      null,
+      "cheap-and-weak vs costly-and-strong is a genuine choice"
+    );
+    // Autocannon and Prow Cannon: both 1 damage / 1 energy, identical on
+    // every axis — neither dominates, so it's still a choice (which arc,
+    // which flavor of the same shot), not a null decision to skip past.
+    assert.strictEqual(
+      Engine.dominantWeapon(["autocannon", "prowCannon"]),
+      null,
+      "two guns tied on cost and damage is not a no-brainer either"
+    );
+    // Arc Beam: 1 damage / 2 energy. Flank Tubes: 2 damage / 3 energy.
+    // Neither one is cheaper AND stronger than the other — still a choice.
+    assert.strictEqual(
+      Engine.dominantWeapon(["arcBeam", "flankTubes"]),
+      null,
+      "no gun that's simply better than the other stays a real choice"
+    );
+    // A launcher never gets auto-picked over a straight hit — its damage
+    // lands next round, on whatever hex it detonates on.
+    assert.strictEqual(
+      Engine.dominantWeapon(["autocannon", "missilePod"]),
+      null,
+      "a launcher's hit doesn't land now — never auto-picked over a direct shot"
+    );
+    // Flak Burst hits everyone in reach (targets: "all") — genuinely
+    // different from a single-target shot, even if it looks stronger.
+    assert.strictEqual(
+      Engine.dominantWeapon(["autocannon", "flakBurst"]),
+      null,
+      "an AoE gun is never auto-picked over a single-target one"
     );
   }
 }

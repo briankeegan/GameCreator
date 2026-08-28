@@ -81,7 +81,28 @@ PLACE_MIN_DEPTH = 2 * MIN_ENTRY_DEPTH
 # definition of "doorway" quietly loosened with it and two walls that had no
 # opening suddenly had one. What a doorway is cannot depend on how thick we
 # happen to draw the trigger.
-NOTCH_PROMINENCE = 16
+# How far a doorway's floor must poke past the rest of its wall before this
+# tool will believe it is a doorway.
+#
+# WAS 16, AND THAT IS WHY FOUR DOORS GOT TYPED BY HAND. The Lounge's side
+# doorways are alcoves 10px (left) and 12px (right) deep — plainly visible in
+# the plate, sitting at rows 78-107 of both side walls — and at 16 this tool
+# answered "no source to re-derive from" for both. A measuring tool that
+# cannot see a doorway it is looking straight at sends whoever needed the
+# numbers off to invent them, which is the one outcome this file exists to
+# prevent: the invented triggers landed 50px below the alcove, half of each
+# one off the walkable floor, with no art anywhere near them.
+#
+# 9 is under every real doorway measured here (10, 12, and the back-wall
+# arches at 16+) and above the noise on a wall that has none (the Lounge's
+# near edge, its deepest wobble 9.0 — and no door). MIN_ENTRY_DEPTH is 6, so
+# anything this tool accepts is still deep enough to stand in.
+#
+# The note below about the notch rule "wanting to drag all four of the
+# Lounge's doors to the top edge of the frame" was recorded as a failure. It
+# was not: the alcoves ARE at the top of those walls, and the doors were
+# authored in the wrong place. Measured beats remembered.
+NOTCH_PROMINENCE = 9
 
 # WHERE A TRIGGER SITS ACROSS ITS WALL, and WHICH PERIMETER that means.
 #
@@ -402,11 +423,19 @@ def main():
                          "so its proposals are advice and a fuzzy check must not block a "
                          "deploy. A door nobody can enter is a fact, and does.")
     ap.add_argument("--skip", nargs="*", default=[], help="room ids to leave alone")
+    ap.add_argument("--prominence", type=int, default=None,
+                    help="how far a doorway's floor must poke past the rest of its wall "
+                         "before it counts as a doorway, in px (default %d). Lower it for "
+                         "a room whose opening is shallower than most — the Bedroom's is "
+                         "8px — and pair it with --skip so a looser rule is not let loose "
+                         "on rooms whose doors are already right." % NOTCH_PROMINENCE)
     a = ap.parse_args()
     if a.outside is not None:
         globals()["OUTSIDE"] = a.outside
     if a.inside is not None:
         globals()["INSIDE"] = a.inside
+    if a.prominence is not None:
+        globals()["NOTCH_PROMINENCE"] = a.prominence
 
     rooms = read_rooms(a.game_dir)
     fr = frame(rooms)

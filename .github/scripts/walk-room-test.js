@@ -1,4 +1,5 @@
 const { chromium } = require('/home/user/GameCreator/node_modules/playwright');
+const { shoot } = require(require('path').join(__dirname, 'shoot.js'));
 const http = require('http'), fs = require('fs'), path = require('path');
 const ROOT='/home/user/GameCreator', PORT=8461, OUT='/tmp/claude-0/-home-user/e80c57f7-74a5-5949-a097-2632c64d4b5a/scratchpad';
 const MIME={'.html':'text/html','.js':'text/javascript','.json':'application/json','.css':'text/css','.png':'image/png','.svg':'image/svg+xml','.webmanifest':'application/manifest+json'};
@@ -105,7 +106,7 @@ let fails=0; const ok=(n,c,x)=>{console.log((c?'  ok  ':'  FAIL')+'  '+n+(x===un
 
   await page.evaluate(()=>__newseyDebug.enterRoom('garden'));
   await page.waitForTimeout(500);
-  await page.locator('#scene').screenshot({path: OUT+'/garden-final.png'});
+  await shoot(page.locator('#scene'), OUT+'/garden-final.png');
   console.log(fails?`\n${fails} FAILED`:'\nall passed');
   await browser.close(); server.close(); process.exit(fails?1:0);
 })();

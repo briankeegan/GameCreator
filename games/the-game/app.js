@@ -393,6 +393,10 @@
   // forth between two rooms forever. Stepping clear isn't enough to fix that:
   // the doorstep is only a stride from the door by design. A fresh press is.
   var doorNeedsRelease = false;
+  // A door transition now takes a fade plus however long the next room's art
+  // needs. Without this, a second door could fire while the first was still
+  // in flight and the two arrivals would fight over where you end up.
+  var transitioning = false;
   var player = { x: 60, y: 150, w: 14, h: 18, speed: 70, facing: "down", inBed: false, bedSlide: null };
   var walkPhase = 0, isWalking = false; // drives real walk-frame cycling (see drawPlayer)
   var lastGoodPlayerFrame = null; // last successfully-loaded frame drawPlayer showed — see drawPlayer
@@ -435,26 +439,41 @@
     return found && found.rect === null ? found : found;
   }
 
-  // Walk out from the partner door until there is floor to stand on that
-  // isn't inside any exit trigger — that last part is what stops you landing
-  // on the door and being sent straight back.
+  // YOU COME OUT WHERE YOU WOULD GO IN. Arrival is the partner door itself —
+  // the same rectangle you would walk into to come back — not a spot near it.
+  //
+  // This used to step OUT from the door until it found floor that was clear
+  // of every trigger by DOORSTEP_CLEARANCE, which put you a stride or more
+  // into the room from an opening you could not see. Going through a door and
+  // arriving somewhere that is not the matching door reads as being teleported
+  // into the room rather than walking through a wall, and it made the two
+  // sides of a door impossible to line up by eye.
+  //
+  // Standing on the trigger is safe, and by design: doors arrive DISARMED and
+  // re-arm only once you step clear (§5 of DOOR_STANDARD.md), and the door
+  // also stays shut until you let go of the direction that brought you here.
+  // That is exactly the pair of rules that makes landing ON the doorstep
+  // work, and it is why the clearance was never needed.
   function arrivalFrom(room, link) {
     var door = linkedDoor(room, link);
     if (!door) return null;
-    for (var d = 0; d < STEP_OUT.length; d++) {
-      var s = STEP_OUT[d];
-      for (var dist = 12; dist <= 44; dist += 4) {
-        var fx = door.x + s.dx * dist, fy = door.y + s.dy * dist;
-        var x = fx - player.w / 2, y = fy - player.h;
-        if (!canStand(room, x, y)) continue;
-        // Not merely OFF the trigger — CLEAR of it. A doorstep chosen with
-        // no margin sat one pixel outside the lounge's door, and the nudge
-        // that keeps her on the floor was enough to push her back onto it.
-        // Standing on a door with exits disarmed is a dead end: the door
-        // won't fire until you step off, and she never did.
-        if (overlapsAnyExit(room, x, y, DOORSTEP_CLEARANCE)) continue;
-        return { x: x, y: y, facing: s.dir };
-      }
+    // Face into the room: away from the door you just came out of. The
+    // partner's own entry direction says which way it faces, so the opposite
+    // is "inward" without anything being typed.
+    var back = { left: "right", right: "left", up: "down", down: "up" };
+    var inward = door.rect ? (back[exitEnterDir(door.rect)] || "down") : "down";
+    var step = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] }[inward];
+    // The doorstep is the trigger's centre. It can reach past the last
+    // walkable pixel — that is what makes a door something you walk INTO —
+    // so creep inward until there is floor under her feet.
+    for (var dist = 0; dist <= 40; dist += 2) {
+      var fx = door.x + step[0] * dist, fy = door.y + step[1] * dist;
+      // y is the TOP of the player and canStand tests the feet, so the feet
+      // go on the doorstep: fy - h, not fy - h/2. Getting that wrong lifted
+      // her half a body off the floor and no spot in the alcove passed, which
+      // read as "this door has nowhere to arrive".
+      var x = fx - player.w / 2, y = fy - player.h;
+      if (canStand(room, x, y)) return { x: x, y: y, facing: inward };
     }
     return null;
   }
@@ -467,6 +486,46 @@
           y + player.h > ex.y - p && y < ex.y + ex.h + p) hit = true;
     });
     return hit;
+  }
+
+  // IS THIS ROOM READY TO BE LOOKED AT?
+  //
+  // Every art id the room needs, plus its walk mask. loadArt/loadBg cache by
+  // id, so asking is also what starts the fetch — calling this on a room you
+  // are about to enter both tests it and warms it.
+  //
+  // `failed` counts as ready on purpose. A missing file resolves to a
+  // placeholder by design (that is why loadArt separates "still loading" from
+  // "will never load"), and waiting forever for art that is never coming
+  // would hang the door instead of degrading gracefully.
+  function roomReady(room) {
+    if (!room) return true;
+    var bg = loadBg(room.bg);
+    if (bg && !bg.ok) return false;
+    var ids = [];
+    (room.props || []).forEach(function (p) { if (p.art) ids.push(p.art); });
+    (room.npcs || []).forEach(function (n) {
+      if (n.art) ids.push(n.art);
+      if (n.sprite) ids.push(n.sprite);
+    });
+    for (var i = 0; i < ids.length; i++) {
+      var e = loadArt(ids[i]);
+      if (e && !e.ok && !e.failed) return false;
+    }
+    return walkMask(room).ready;
+  }
+
+  // Hold the screen black until it is. NEVER show a room part-loaded: props
+  // and NPCs popping in one at a time after the room is already on screen is
+  // the game assembling itself in front of the player. There is a cap so a
+  // slow or broken asset degrades to "shown late" rather than "never shown".
+  function whenRoomReady(room, done) {
+    var waited = 0;
+    (function poll() {
+      if (roomReady(room) || waited > 3000) return done();
+      waited += 50;
+      setTimeout(poll, 50);
+    })();
   }
 
   // link: which door you came through. Where you land and which way you face
@@ -707,9 +766,18 @@
   function startDuel(npc) {
     var config = (typeof npc.duel === "object" && npc.duel) || {};
     var character = CHARACTERS[npc.id] || {};
+    // Both sides ALWAYS play at the SAME Stack level, driven by this file's
+    // one difficulty setting (difficulty.js) — not per-NPC config.level/
+    // playerLevel, which is how the opponent ended up always a level or two
+    // above the player in every duel with nobody having decided that on
+    // purpose. No exceptions, including Diamond: her edge is her AI playing
+    // at full "nightmare" strength (config.difficulty, below) — a rigged
+    // board on top of that isn't a harder fight, it's a different game. The
+    // chosen tier is how EVERY opponent plays, board included.
+    var duelLevel = window.NewseyDifficulty.levelFor(save && save.difficulty);
     window.NewseyDuel.start({
       playerName: CHARACTERS.nella.name,
-      playerLevel: config.playerLevel || 2,
+      playerLevel: duelLevel,
       // A duel can be a set: `firstTo: 5` on the NPC's duel block makes it
       // best-of, the way Kat's is in the plot ("First to five wins").
       firstTo: config.firstTo || 1,
@@ -719,7 +787,7 @@
       opponent: {
         id: npc.id,
         name: config.name || character.name || npc.id,
-        level: config.level || 3,
+        level: duelLevel,
         difficulty: config.difficulty || "steady",
         theme: config.theme || "pink",
         sprite: npc.sprite || (npc.id + "_top"),
@@ -1212,7 +1280,44 @@
       if (player.x + player.w > ex.x && player.x < ex.x + ex.w &&
           player.y + player.h > ex.y && player.y < ex.y + ex.h) {
         onExit = true;
-        if (exitsArmed && !doorNeedsRelease) {
+        // A DOOR IS ENTERED, NOT STOOD ON. Overlap alone used to fire it, so
+        // brushing the left wall on the way somewhere else took you through
+        // the west door — and the side doors' triggers are tall bands down
+        // the edge of the room, so "on the way somewhere else" is most of the
+        // time. You now have to be WALKING THE WAY THE DOOR FACES: the door
+        // on the right opens for someone heading right, the arch in the back
+        // wall for someone heading up. Derived from where the trigger sits
+        // (exitEnterDir), never typed, so it cannot disagree with the wall
+        // the doorway is painted in.
+        // NOT gated on stepping clear of the door any more. That rule was
+        // written when arrival was a spot NEAR the door; now you land ON it,
+        // so "armed only once you are off every trigger" meant standing in a
+        // doorway unable to use it — go through a door, try to walk straight
+        // back, and nothing happens. Reported from play as getting stuck.
+        //
+        // Releasing the key is the gate that still matters, and it is enough:
+        // you arrive holding the direction that brought you here, which is
+        // the OPPOSITE of the way this door faces, so it cannot re-fire under
+        // a held key. Let go and press back, and you go back — which is what
+        // walking through a door and turning round should do.
+        if (!doorNeedsRelease &&
+            isWalking && player.facing === exitEnterDir(ex)) {
+          // GO THROUGH THE DOOR BEHIND A CURTAIN. Walking into a room while
+          // its art was still arriving showed the floor first and then the
+          // props and people appearing one at a time — the game assembling
+          // itself in front of you. Black out, load, then lift.
+          if (ex.link !== "portal") {
+            if (transitioning) return;
+            transitioning = true;
+            var toRoom = ROOMS[ex.to], toLink = ex.link;
+            fadeToBlack(function () {
+              enterRoom(ex.to, null, null, toLink);
+              whenRoomReady(toRoom, function () {
+                fadeFromBlack(function () { transitioning = false; });
+              });
+            });
+            return;
+          }
           if (ex.link === "portal") {
             // Out of the doorway itself, not out of the player — the bloom
             // has to start where the swirl is drawn or it reads as the screen
@@ -1291,7 +1396,7 @@
       // The drawn doorway goes ON TOP of its own glow — painted under it, the
       // light washed straight through the opening and it read as a lit box.
       if (ex.drawn === "threshold") drawThreshold(ex);
-      if (ex.drawn === "sidebreach") drawSideBreach(ex);
+      if (ex.drawn === "sidedoor") drawSideDoor(ex);
 
     });
   }
@@ -1415,6 +1520,33 @@
   // only drew one door. It reads as an opening in the near wall — a dark
   // stairwell mouth with a frame around it and a step down into it — so the
   // way back is something you can see rather than an invisible line.
+  // A SIDE DOOR THE ART DOES NOT HAVE. The Lab's left wall is a flat plate
+  // with no arch painted on it and no door prop, so its way out was invisible
+  // — you had to already know it was there. This draws the opening and
+  // NOTHING ELSE: exactly the trigger's own rectangle, a dark slot with a lit
+  // jamb on the room side. The rule from the sidebreach that was deleted
+  // still holds — only draw a door the art lacks, and never draw past the
+  // doorway itself. That one painted a trapezoid out to the frame edge.
+  function drawSideDoor(ex) {
+    var x = ex.x, y = ex.y, w = ex.w, h = ex.h;
+    var facingLeft = (x + w / 2) < VW / 2;
+    ctx.save();
+    var mouth = ctx.createLinearGradient(facingLeft ? x + w : x, 0,
+                                         facingLeft ? x : x + w, 0);
+    mouth.addColorStop(0, "rgba(10,5,16,0.55)");
+    mouth.addColorStop(1, "rgba(4,2,8,0.95)");
+    ctx.fillStyle = mouth;
+    ctx.fillRect(x, y + 2, w, h - 4);
+    // the jamb the room's light catches, on the side you approach from
+    ctx.fillStyle = "rgba(255,220,170,0.18)";
+    ctx.fillRect(facingLeft ? x + w - 2 : x, y + 2, 2, h - 4);
+    // lintel and sill, in the room's trim wood
+    ctx.fillStyle = "#5a3a24";
+    ctx.fillRect(x, y, w, 2);
+    ctx.fillRect(x, y + h - 2, w, 2);
+    ctx.restore();
+  }
+
   function drawThreshold(ex) {
     var x = ex.x, y = ex.y, w = ex.w, h = ex.h;
     var post = Math.max(4, Math.round(w * 0.12));
@@ -1426,11 +1558,16 @@
     mouth.addColorStop(0, "rgba(8,4,14,0.75)");
     mouth.addColorStop(1, "rgba(4,2,8,0.97)");
     ctx.fillStyle = mouth;
+    // The mouth is as deep as the DOORWAY, not as deep as the room. It used
+    // to run to VH, so a 16px trigger painted a gaping 22px shaft down to the
+    // bottom edge of the frame with posts either side — reported from play as
+    // "the bottom thing is way too big, it's just a massive doorway".
+    var deep = y + h + 4;
     ctx.beginPath();
     ctx.moveTo(inner.x + 3, y);
     ctx.lineTo(inner.x + inner.w - 3, y);
-    ctx.lineTo(inner.x + inner.w, VH);
-    ctx.lineTo(inner.x, VH);
+    ctx.lineTo(inner.x + inner.w, deep);
+    ctx.lineTo(inner.x, deep);
     ctx.closePath();
     ctx.fill();
 
@@ -1440,8 +1577,8 @@
 
     // frame: two posts and a lintel, in the same wood as the room's trim
     ctx.fillStyle = "#5a3a24";
-    ctx.fillRect(x, y - 4, post, VH - y + 4);
-    ctx.fillRect(x + w - post, y - 4, post, VH - y + 4);
+    ctx.fillRect(x, y - 4, post, deep - y + 4);
+    ctx.fillRect(x + w - post, y - 4, post, deep - y + 4);
     ctx.fillRect(x, y - 4, w, 4);
     ctx.fillStyle = "#7a5233";
     ctx.fillRect(x, y - 4, w, 1);
@@ -1459,39 +1596,24 @@
   // rotated 90 degrees — a dark notch that recedes toward the frame edge,
   // with a lit sliver on the near jamb and a plain wooden lintel above and
   // below, so the way through reads as an opening you can see and walk into.
-  function drawSideBreach(ex) {
-    var x = ex.x, y = ex.y, w = ex.w, h = ex.h;
-    var dir = (x + w / 2 < VW / 2) ? "left" : "right";
-    var collar = Math.max(4, Math.round(h * 0.12));
-    var top = y + collar, bot = y + h - collar;
-    var edgeX = dir === "left" ? 0 : VW;
-    var nearX = dir === "left" ? x + w : x;
-    ctx.save();
-
-    var mouth = ctx.createLinearGradient(nearX, 0, edgeX, 0);
-    mouth.addColorStop(0, "rgba(8,4,14,0.7)");
-    mouth.addColorStop(1, "rgba(4,2,8,0.98)");
-    ctx.fillStyle = mouth;
-    ctx.beginPath();
-    ctx.moveTo(nearX, top + 3);
-    ctx.lineTo(nearX, bot - 3);
-    ctx.lineTo(edgeX, bot);
-    ctx.lineTo(edgeX, top);
-    ctx.closePath();
-    ctx.fill();
-
-    // a lit sliver on the near jamb, catching the room's own light
-    ctx.fillStyle = "rgba(255,220,170,0.16)";
-    ctx.fillRect(dir === "left" ? nearX - 2 : nearX, top, 2, bot - top);
-
-    // lintel above and below, same wood tone as the rest of the room's trim
-    ctx.fillStyle = "#5a3a24";
-    var fx = dir === "left" ? 0 : x;
-    var fw = dir === "left" ? nearX : VW - x;
-    ctx.fillRect(fx, top - 3, fw, 3);
-    ctx.fillRect(fx, bot, fw, 3);
-    ctx.restore();
+  // WHICH WAY YOU HAVE TO BE WALKING TO GO THROUGH A DOOR.
+  //
+  // Derived from where the trigger sits rather than typed beside it, for the
+  // same reason arrival is derived (DOOR_STANDARD.md §2): two values that
+  // must agree will eventually disagree. A tall slot against the left edge is
+  // a door in the left wall, so it wants someone heading left; a wide band
+  // across the bottom is the way out toward the viewer, so it wants "down".
+  // `enter` on the exit overrides it for anything that is not simply a hole
+  // in a wall.
+  function exitEnterDir(ex) {
+    if (ex.enter) return ex.enter;
+    if (ex._enter) return ex._enter;
+    var cx = ex.x + ex.w / 2, cy = ex.y + ex.h / 2;
+    ex._enter = (ex.w < ex.h) ? (cx < VW / 2 ? "left" : "right")
+                              : (cy < VH / 2 ? "up" : "down");
+    return ex._enter;
   }
+
 
   // Prefer a real standing sprite (npc.sprite — a full-body, transparent-
   // background image, feet-down) so the character actually looks like a
@@ -1842,9 +1964,14 @@
   }
 
   // slot: 1..3. fresh: true for NEW GAME (play the intro), false for CONTINUE.
-  function beginFile(slot, fresh) {
+  // difficultyId: only meaningful when fresh — the tier menu.js's new-file
+  // flow just asked the player to pick (difficulty.js's TIERS). Ignored on
+  // continue; an existing file keeps whatever it was created with, changed
+  // only via setDifficulty from the pause menu.
+  function beginFile(slot, fresh, difficultyId) {
     activeSlot = slot;
     save = fresh ? SAVES.blank() : (SAVES.read(slot) || SAVES.blank());
+    if (fresh && window.NewseyDifficulty.isValid(difficultyId)) save.difficulty = difficultyId;
     npcLineCounters = save.lines || {};
     clearTransientState();
     clearFade();
@@ -1903,6 +2030,16 @@
     },
     activeSlot: function () { return activeSlot; },
     state: function () { return save; },
+    // The active file's difficulty tier (difficulty.js's TIERS ids) and a
+    // way to change it mid-file, for the pause menu's DIFFICULTY screen —
+    // this is what makes it "adjustable after you started" rather than
+    // locked in at file creation.
+    difficulty: function () { return save ? save.difficulty : window.NewseyDifficulty.DEFAULT; },
+    setDifficulty: function (id) {
+      if (!save || !window.NewseyDifficulty.isValid(id)) return;
+      save.difficulty = id;
+      persist();
+    },
     // Whether the pause menu should offer "Save" — during a cutscene there is
     // no room/position worth writing yet.
     canSave: function () { return running && cutsceneEl.classList.contains("hidden"); },

@@ -674,9 +674,20 @@
     // that's a property of WHERE you are: scrappers work the Breakers,
     // nobody is selling anything in the Deep. A dry stretch is a real
     // thing that happens to a run, and a reason to take the other gate.
+    // MEASURED: at a 0.6 base, two in five generated sectors had no dock at
+    // all, and a sector with nowhere to spend banks 100% of what it earns —
+    // Sector 11 did exactly that, immediately before the Bulwark, and it
+    // was one of the three biggest leaks in the economy (+12.6 salvage a
+    // run, against a total surplus of 52). FTL guarantees ONE TO THREE
+    // stores per sector by sector type and never leaves a run dry on a coin
+    // flip; a dry stretch there is a property of where you are, which is
+    // what the variant and locale deltas below already express. So the base
+    // rises and the deltas keep doing the work: an aggressive sector is
+    // still likelier to be dry than a quiet one, it just is not a 40%
+    // chance everywhere.
     const outpostChance = Math.min(
-      0.85,
-      Math.max(0.05, 0.6 + (variant ? variant.outpostChanceDelta : 0) + locale.outpostDelta)
+      0.9,
+      Math.max(0.05, 0.75 + (variant ? variant.outpostChanceDelta : 0) + locale.outpostDelta)
     );
     const hasOutpost = rng() < outpostChance;
 

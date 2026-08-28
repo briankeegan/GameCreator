@@ -368,6 +368,7 @@ function advanceSector() {
       // across the whole run too — a dry streak follows you sector to
       // sector, same as the seed it's derived from.
       raresSkipped: state.raresSkipped,
+      outpostStockIds: state.outpostStockIds,
       // The Hold carries whole — the ship IS its equipment grid.
       hold: state.hold,
       // Which loadout's art the ship shows — carried whole, same reason as
@@ -3369,8 +3370,11 @@ function updateSystems() {
   // once was never a decision — which gun answers this contact is the
   // decision, so each one is its own control, named for the hardware,
   // showing what it costs. A gun that doesn't bear on the locked contact
-  // is dead until it does. With a single weapon fitted there is nothing
-  // to choose, so a second tap on the hostile just fires it.
+  // is dead until it does. With a single weapon fitted, or with several
+  // fitted but one plainly the best of them (see dominantWeapon), there is
+  // nothing to choose, so a second tap on the hostile just fires it — the
+  // buttons stay here regardless, for the reach preview and for overriding
+  // the auto-pick by hand.
   const locked = targetedEnemyId ? state.enemies.find((e) => e.id === targetedEnemyId && e.alive) : null;
   weaponBtnsEl.innerHTML = "";
   for (const key of armedWeaponKeys()) {
@@ -5144,14 +5148,19 @@ canvas.addEventListener("click", (evt) => {
   if (enemy) {
     plannedPath = null;
     if (targetedEnemyId === enemy.id && enemyInReach(state, enemy)) {
-      // Second tap. One gun bears → fire it, no ceremony. Several bear →
-      // the choice IS the move, so the console's weapon buttons stay lit
-      // and the tap doesn't pick for you.
+      // Second tap. One gun bears → fire it, no ceremony. Several bear and
+      // one of them is simply better (no pricier, no weaker, than every
+      // other option) → fire that one, same as if it were the only gun —
+      // "pick the stronger one" isn't a decision either. Only a real
+      // trade-off (cheap-and-weak vs costly-and-strong, an AoE vs a single
+      // shot, a launcher/charge against a straight hit) leaves the console's
+      // weapon buttons lit for the player to choose from.
       const bearing = bearingWeapons(state, enemy);
-      if (bearing.length === 1) {
+      const auto = bearing.length === 1 ? bearing[0] : Engine.dominantWeapon(bearing);
+      if (auto) {
         const lockedTarget = targetedEnemyId;
         targetedEnemyId = null;
-        handleAction(() => Engine.applyFire(state, lockedTarget, bearing[0]));
+        handleAction(() => Engine.applyFire(state, lockedTarget, auto));
         return;
       }
       if (bearing.length > 1) {

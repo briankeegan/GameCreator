@@ -1,0 +1,69 @@
+name: Browser checks
+
+# THE DOOR TESTS RAN NOWHERE. Every one of them — direction, arrival,
+# roundtrip, reachability — was hand-run, which meant the only thing standing
+# between a broken door and a player was somebody remembering to type the
+# command. It wasn't remembered: doors that arrived in the wrong place, fired
+# when brushed, got you stuck walking back, and showed rooms half-loaded were
+# all found by playing the game, one report at a time.
+#
+# They are NOT in pages.yml, and that is deliberate — see the comment there.
+# Those need Playwright and have shown real timing flakiness in this
+# environment, and one game's flaky animation timing must never block every
+# game's deploy. A SEPARATE workflow is how both things can be true: this can
+# go red on its own without the site going down with it.
+#
+# A flake still costs a red check nobody should chase, so a failing run is
+# retried once and only a second failure is reported. That is the same bargain
+# the art Actions make with OpenAI's rate limiter: retry the transient, report
+# the real.
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "games/**"
+      - ".github/scripts/**"
+      - ".github/workflows/browser-checks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  doors:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright
+        timeout-minutes: 8
+        run: npm install --no-save playwright@1 && npx playwright install --with-deps chromium
+
+      - name: Door checks
+        timeout-minutes: 15
+        run: |
+          status=0
+          run_twice () {
+            echo "== $* =="
+            if node "$@"; then return 0; fi
+            echo "::warning::first attempt failed, retrying once in case it is timing flake: $*"
+            sleep 5
+            node "$@" || return 1
+          }
+          # Every door lands on its partner's rectangle — you come out where
+          # you would go in.
+          run_twice .github/scripts/door-arrival.test.js   || status=1
+          # A door opens only for someone walking the way it faces.
+          run_twice .github/scripts/door-direction.test.js || status=1
+          # Through a door, back again, and through once more.
+          run_twice .github/scripts/door-roundtrip.test.js || status=1
+          # Every door can actually be reached, through the GAME's own
+          # collision rather than a static model of it.
+          run_twice .github/scripts/check_door_reach.mjs games/the-game || status=1
+          exit $status

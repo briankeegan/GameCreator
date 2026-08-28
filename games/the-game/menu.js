@@ -15,7 +15,8 @@ window.NewseyMenu = (function () {
     files: document.getElementById("menuFiles"),
     pause: document.getElementById("menuPause"),
     help: document.getElementById("menuHelp"),
-    status: document.getElementById("menuStatus")
+    status: document.getElementById("menuStatus"),
+    difficulty: document.getElementById("menuDifficulty")
   };
   var fileList = document.getElementById("fileList");
   var fileNote = document.getElementById("fileNote");
@@ -28,9 +29,19 @@ window.NewseyMenu = (function () {
   var confirmYes = document.getElementById("confirmYes");
   var confirmNo = document.getElementById("confirmNo");
   var toastEl = document.getElementById("menuToast");
+  var difficultyTitle = document.getElementById("difficultyTitle");
+  var difficultyList = document.getElementById("difficultyList");
+  var difficultyNote = document.getElementById("difficultyNote");
+  var difficultyBack = document.getElementById("difficultyBack");
 
   var current = null;       // which screen is showing, or null when playing
   var onConfirm = null;
+  // The difficulty screen serves two different moments: choosing a NEW
+  // file's tier (nowhere to go back to but file select, no current tier to
+  // highlight) versus adjusting an in-progress file's (highlight the
+  // active one, land back on pause). One slot of state says which.
+  var difficultyMode = "adjust"; // "new" | "adjust"
+  var pendingNewSlot = null;
 
   // ---------- screen plumbing ----------
   function show(name) {
@@ -42,6 +53,7 @@ window.NewseyMenu = (function () {
     if (name === "pause") renderPauseMeta();
     if (name === "help") window.NewseySettings.refresh();
     if (name === "status") renderStatus();
+    if (name === "difficulty") renderDifficulty();
   }
   function hide() {
     current = null;
@@ -126,7 +138,10 @@ window.NewseyMenu = (function () {
       }
       return body;
     },
-    onPlay: function (index, isNew) { startFile(index, isNew); },
+    onPlay: function (index, isNew) {
+      if (isNew) { pendingNewSlot = index; difficultyMode = "new"; show("difficulty"); }
+      else startFile(index, false);
+    },
     confirm: function (text, yesLabel, fn) { confirm(text, yesLabel, fn); },
     onMessage: toast,
     // filesTitle isn't file-select's concern (it's not even inside its list
@@ -140,11 +155,50 @@ window.NewseyMenu = (function () {
     showTitle();
   });
 
-  function startFile(slot, fresh) {
+  function startFile(slot, fresh, difficultyId) {
     FILES.setMode("play");
-    window.NewseyGame.beginFile(slot, fresh);
+    window.NewseyGame.beginFile(slot, fresh, difficultyId);
     hide();
   }
+
+  // ---------- difficulty ----------
+  function renderDifficulty() {
+    var isNew = difficultyMode === "new";
+    difficultyTitle.textContent = isNew ? "CHOOSE DIFFICULTY" : "DIFFICULTY";
+    difficultyNote.textContent = isNew
+      ? "Both you and every opponent play at this level in every duel. You can change it later from the pause menu."
+      : "Both you and every opponent play at this level in every duel.";
+    var active = isNew ? null : window.NewseyGame.difficulty();
+    difficultyList.innerHTML = "";
+    window.NewseyDifficulty.TIERS.forEach(function (tier) {
+      var btn = document.createElement("button");
+      btn.textContent = tier.label;
+      if (tier.id === active) btn.classList.add("active");
+      btn.addEventListener("click", function () { pickDifficulty(tier.id); });
+      difficultyList.appendChild(btn);
+    });
+  }
+
+  function pickDifficulty(id) {
+    if (difficultyMode === "new") {
+      var slot = pendingNewSlot;
+      pendingNewSlot = null;
+      startFile(slot, true, id);
+    } else {
+      window.NewseyGame.setDifficulty(id);
+      toast(window.NewseyDifficulty.labelFor(id) + " difficulty set.");
+      show("pause");
+    }
+  }
+
+  document.getElementById("pauseDifficulty").addEventListener("click", function () {
+    difficultyMode = "adjust";
+    show("difficulty");
+  });
+  difficultyBack.addEventListener("click", function () {
+    if (difficultyMode === "new") { pendingNewSlot = null; show("files"); }
+    else show("pause");
+  });
 
   // ---------- pause ----------
   function renderPauseMeta() {
@@ -287,6 +341,7 @@ window.NewseyMenu = (function () {
     else if (current === "help") { leaveControls(); e.preventDefault(); }
     else if (current === "pause") { closePause(); e.preventDefault(); }
     else if (current === "status") { closeStatus(); e.preventDefault(); }
+    else if (current === "difficulty") { difficultyBack.click(); e.preventDefault(); }
   });
 
   // ---------- boot ----------

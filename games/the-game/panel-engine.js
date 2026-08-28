@@ -26,9 +26,6 @@
 //   * shock/metal panels — a whole extra panel class for one attack type the
 //     plot never mentions; every level here runs with shockCap 0.
 //   * rollback/netplay, replays, puzzles, score modes — single-machine game.
-//   * PA's exact "matchAnyway" propagation through simultaneous swaps. The
-//     common cases (chain through a hover, chain out of cleared garbage) are
-//     ported; the rare swap-timing corner cases are not.
 (function (root) {
   "use strict";
 
@@ -59,7 +56,8 @@
 
   // LevelPresets "modern" 1-10, minus the shock-panel fields.
   function level(startingSpeed, colors, maxHealth, comboConstant, chainConstant,
-                dangerConstant, coefficient, dangerCoefficient, hover, garbageHover, flash, face, pop) {
+                dangerConstant, coefficient, dangerCoefficient, hover, garbageHover, flash, face, pop,
+                adjacentDenialFrequency) {
     return {
       startingSpeed: startingSpeed,
       colors: colors,
@@ -69,21 +67,26 @@
         dangerConstant: dangerConstant, coefficient: coefficient,
         dangerCoefficient: dangerCoefficient
       },
-      frames: { HOVER: hover, GARBAGE_HOVER: garbageHover, FLASH: flash, FACE: face, POP: pop }
+      frames: { HOVER: hover, GARBAGE_HOVER: garbageHover, FLASH: flash, FACE: face, POP: pop },
+      // How often a freshly-generated row rerolls a horizontally-adjacent
+      // same-color pair instead of accepting it (PanelGenerator.lua) — 0
+      // means never reroll (always allow pairs), 1 means always reroll
+      // (never spawn a pair). Levels 1-7 ramp from 0 to 6/7; 8-10 are all 1.
+      adjacentDenialFrequency: adjacentDenialFrequency
     };
   }
 
   var LEVELS = [
-    level(1, 5, 121, -20, 80, 160, 20, 20, 12, 41, 44, 20, 9),
-    level(5, 5, 101, -16, 77, 152, 18, 18, 12, 36, 44, 18, 9),
-    level(9, 5, 81, -12, 74, 144, 16, 16, 11, 31, 42, 17, 8),
-    level(13, 5, 66, -8, 71, 136, 14, 14, 10, 26, 42, 16, 8),
-    level(17, 5, 51, -3, 68, 128, 12, 12, 9, 21, 38, 15, 8),
-    level(21, 5, 41, 2, 65, 120, 10, 10, 6, 16, 36, 14, 8),
-    level(25, 5, 31, 7, 62, 112, 8, 8, 5, 13, 34, 13, 8),
-    level(29, 5, 21, 12, 60, 104, 6, 6, 4, 10, 32, 12, 7),
-    level(27, 6, 11, 17, 58, 96, 4, 4, 6, 7, 30, 11, 7),
-    level(32, 6, 1, 22, 56, 88, 2, 2, 6, 4, 28, 10, 7)
+    level(1, 5, 121, -20, 80, 160, 20, 20, 12, 41, 44, 20, 9, 0),
+    level(5, 5, 101, -16, 77, 152, 18, 18, 12, 36, 44, 18, 9, 1 / 7),
+    level(9, 5, 81, -12, 74, 144, 16, 16, 11, 31, 42, 17, 8, 2 / 7),
+    level(13, 5, 66, -8, 71, 136, 14, 14, 10, 26, 42, 16, 8, 3 / 7),
+    level(17, 5, 51, -3, 68, 128, 12, 12, 9, 21, 38, 15, 8, 4 / 7),
+    level(21, 5, 41, 2, 65, 120, 10, 10, 6, 16, 36, 14, 8, 5 / 7),
+    level(25, 5, 31, 7, 62, 112, 8, 8, 5, 13, 34, 13, 8, 6 / 7),
+    level(29, 5, 21, 12, 60, 104, 6, 6, 4, 10, 32, 12, 7, 1),
+    level(27, 6, 11, 17, 58, 96, 4, 4, 6, 7, 30, 11, 7, 1),
+    level(32, 6, 1, 22, 56, 88, 2, 2, 6, 4, 28, 10, 7, 1)
   ];
 
   // checkMatches.lua COMBO_GARBAGE: a combo of N panels sends these garbage
@@ -113,7 +116,30 @@
   var GARBAGE_TRANSIT_TIME = 45;
   var GARBAGE_TELEGRAPH_TIME = 45;
   var GARBAGE_DELAY_LAND_TIME = 60;
-  var GARBAGE_FLIGHT = GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + GARBAGE_DELAY_LAND_TIME;
+  // GarbageQueue.lua's STAGING_DURATION is TRANSIT + TELEGRAPH + 1 (a
+  // historical "+1 to compensate for a compensation someone made," per its
+  // own comment) before garbage leaves staging into transit, then
+  // GARBAGE_DELAY_LAND_TIME more before it can land — so the real total is
+  // 151 frames, not the naive 150 you'd get by adding the three raw
+  // constants without that +1.
+  var GARBAGE_FLIGHT = GARBAGE_TRANSIT_TIME + GARBAGE_TELEGRAPH_TIME + 1 + GARBAGE_DELAY_LAND_TIME;
+
+  // checkMatches.lua's TA (Tsu-Attack) score tables. Index 0 is always 0 —
+  // that's what makes a plain match (comboSize<=3, not chaining) score 0.
+  var SCORE_COMBO_TA = [0, 0, 0, 0, 20, 30, 50, 60, 70, 80, 100, 140, 170, 210, 250, 290, 340, 390, 440, 490, 550, 610, 680, 750, 820, 900, 980, 1060, 1150, 1240, 1330];
+  // Note index 1 is unused (0) — chain_counter jumps 0 -> 2 directly, never 1
+  // (Stack:incrementChainCounter), so index 2 (a x2 chain) is the first
+  // meaningful entry.
+  var SCORE_CHAIN_TA = [0, 0, 50, 80, 150, 300, 400, 500, 700, 900, 1100, 1300, 1500, 1800];
+
+  // consts.lua — the pre-match countdown. Physics (matches, rising, garbage)
+  // stays frozen from clock 0 through COUNTDOWN_START + COUNTDOWN_LENGTH; the
+  // cursor spends that window doing a scripted dance instead of sitting idle
+  // (Stack:runCountdown). See COUNTDOWN_TOTAL below and Stack.prototype.run.
+  var COUNTDOWN_START = 8;
+  var COUNTDOWN_LENGTH = 180;
+  var COUNTDOWN_CURSOR_SPEED = 4;
+  var COUNTDOWN_TOTAL = COUNTDOWN_START + COUNTDOWN_LENGTH;
 
   // Deterministic RNG (mulberry32) so a duel replays identically from a seed —
   // Math.random would make the smoke test unreproducible.
@@ -216,6 +242,9 @@
   }
 
   function land(stack, p) {
+    // Stack:onLand — fires for every landing panel, garbage or not, before
+    // any garbage-specific handling runs.
+    stack.events.push({ type: "landed", row: p.row, col: p.col, garbage: !!p.isGarbage });
     if (p.isGarbage) {
       onGarbageLand(stack, p);
       p.state = "normal";
@@ -248,7 +277,22 @@
       // Panels above a match that just finished popping are matchable for one
       // frame on entering hover (that is how a chain link is detected).
       // Panels above CLEARED GARBAGE are not — below.color is non-zero there.
-      p.matchAnyway = below.color === 0 || below.matchAnyway;
+      if (below.color === 0 || below.matchAnyway) {
+        p.matchAnyway = true;
+      } else {
+        // Swapping panels never carry matchAnyway themselves (Panel.lua:
+        // "swapping panels will never get the matchAnyway flag"), so if a
+        // chain-continuing pop is sitting one or more swaps below this
+        // panel, drill down past every swapping (and freshly-hovering,
+        // not-yet-matchAnyway) panel to find the real originating hover or
+        // empty cell before deciding whether this panel inherits it.
+        var source = below;
+        while (source.state === "swapping" ||
+          (source.stateChanged && source.propagatesChaining && !source.matchAnyway && source.state === "hovering")) {
+          source = panelBelow(stack, source);
+        }
+        if (source.propagatesChaining) p.matchAnyway = source.color === 0 || source.matchAnyway;
+      }
     }
     p.timer = hoverTime;
     p.stateChanged = true;
@@ -351,6 +395,12 @@
   function updatePopping(stack, p) {
     if (p.timer > 0) p.timer--;
     if (p.timer !== 0) return;
+    // Stack:onPop — a flat +10 per non-garbage panel that finishes popping,
+    // separate from (and in addition to) the combo/chain bonus awarded once
+    // per match in checkMatches. Garbage panels don't score here (they pop
+    // via a different path — see the isGarbage branch in updateMatched —
+    // and never reach this state).
+    stack.addScore(10);
     stack.events.push({ type: "pop", row: p.row, col: p.col, color: p.color, index: p.comboIndex, size: p.comboSize });
     if (p.comboSize === p.comboIndex) {
       popped(stack, p);
@@ -445,9 +495,13 @@
     return p.state === "normal" || p.state === "landing" || (p.matchAnyway && p.state === "hovering");
   }
 
+  // Panel.allowsSwap in the reference also allows "falling" — catching a
+  // panel mid-fall and redirecting it sideways is a core Panel-Attack
+  // mechanic, not an edge case. Missing here meant a falling panel could
+  // never be swapped at all.
   function allowsSwap(p) {
     if (p.dontSwap || p.isGarbage) return false;
-    return p.state === "normal" || p.state === "swapping" || p.state === "landing";
+    return p.state === "normal" || p.state === "swapping" || p.state === "landing" || p.state === "falling";
   }
 
   // =========================================================================
@@ -465,6 +519,14 @@
     this.height = HEIGHT;
     this.name = opts.name || "player";
     this.rng = makeRng(opts.seed || 1);
+    // PanelGenerator's adaptive horizontal-pair denial: NOT a per-pick
+    // probability roll — it tracks how many pair-rolls have actually been
+    // accepted vs denied over the stack's whole lifetime and denies the
+    // next one whenever the running denial RATE hasn't yet caught up to
+    // adjacentDenialFrequency. See generateRowColors.
+    this.adjacentDenialFrequency = this.levelData.adjacentDenialFrequency;
+    this.adjacentAccepted = 0;
+    this.adjacentDenied = 0;
 
     this.panels = [];
     this.panelIdCount = 0;
@@ -498,15 +560,28 @@
     this.panelsCleared = 0;
     this.score = 0;
 
-    this.curRow = 6;
+    this.curRow = 7; // Stack.lua:254 default
     this.curCol = 3; // cursor covers curCol and curCol + 1
     this.topCurRow = this.height - 1;
     this.queuedSwapRow = 0;
     this.queuedSwapCol = 0;
 
+    // Stack:setCountdown(true) — on by default, matching every real duel;
+    // pass opts.countdown: false to skip it (headless engine tests that want
+    // physics running from frame 1 with no lead-in). stopWatchIsRunning
+    // mirrors the reference field of the same name: false gates runPhysics
+    // and garbage dropping off entirely until the countdown ends.
+    this.doCountdown = opts.countdown !== false;
+    this.stopWatchIsRunning = !this.doCountdown;
+    this.countdownTimer = null;
+    this.animatingCursorDuringCountdown = false;
+
     this.incoming = [];  // garbage that has arrived and is waiting for a gap
     this.outgoing = [];  // garbage this stack has sent, still in flight
     this.garbageCreatedCount = 0;
+    // Highest garbageId that has ever legitimately been matched (either
+    // on-screen, or already matched before) — see getConnectedGarbagePanels.
+    this.highestGarbageIdMatched = 0;
     this.garbageLandedThisFrame = [];
     this.dropColumnIndex = {};
 
@@ -518,7 +593,7 @@
     this.prevInput = { left: false, right: false, up: false, down: false, swap: false, raise: false };
     this.cursorTimer = 0;
 
-    this.buildStartingBoard(opts.startRows === undefined ? 6 : opts.startRows);
+    this.buildStartingBoard();
   }
 
   Stack.prototype.makeEmptyRow = function (row) {
@@ -528,22 +603,95 @@
     return r;
   };
 
-  // Picks a color for (row, col) that cannot already be part of a match:
-  // never a third in a column, never a third in a row.
-  Stack.prototype.pickColor = function (row, col) {
-    var banned = {};
-    var p = this.panels;
-    if (row >= 2 && p[row - 1][col].color === p[row - 2][col].color) banned[p[row - 1][col].color] = true;
-    if (col >= 3 && p[row][col - 1].color === p[row][col - 2].color) banned[p[row][col - 1].color] = true;
-    var choices = [];
-    for (var c = 1; c <= this.colors; c++) if (!banned[c]) choices.push(c);
-    return choices[Math.floor(this.rng() * choices.length)];
+  // GeneratorSource:isBadRow — an entire generated row is rerolled if every
+  // color present in it appears exactly 0 or 2 times (too evenly "paired up"
+  // to read as random). row is a 1-indexed color array like this.panels[r].
+  function isBadRow(row) {
+    var counts = {};
+    for (var c = 1; c <= 9; c++) counts[c] = 0;
+    for (var col = 1; col < row.length; col++) counts[row[col]] = (counts[row[col]] || 0) + 1;
+    for (var color = 1; color <= 9; color++) {
+      var count = counts[color];
+      if (count !== 0 && count !== 2) return false;
+    }
+    return true;
+  }
+
+  // PanelGenerator:generatePanels — generates one full row of colors given
+  // the fixed neighbor row it can't vertically match (neighborColors, a
+  // 1-indexed array, or null/undefined for "no neighbor"). Never a third
+  // color in a row; a second-in-a-row (horizontal adjacency) is allowed or
+  // denied per this level's adjacentDenialFrequency, using the same
+  // lifetime accepted/denied counters as the reference (so the very first
+  // adjacent-pair roll of the whole game is always accepted, since
+  // 0/0 is NaN and NaN <= x is false). The whole row is rerolled if it ends
+  // up "bad" (see isBadRow).
+  Stack.prototype.generateRowColors = function (neighborColors) {
+    var row;
+    do {
+      row = [];
+      row[0] = null;
+      for (var n = 1; n <= W; n++) {
+        var previousTwoMatch = n > 2 && row[n - 1] === row[n - 2];
+        var belowColor = neighborColors ? neighborColors[n] : 0;
+        var color, nogood = true;
+        while (nogood) {
+          color = 1 + Math.floor(this.rng() * this.colors);
+          if (color === belowColor) {
+            nogood = true;
+          } else if (previousTwoMatch && color === row[n - 1]) {
+            nogood = true;
+          } else if (n > 1 && color === row[n - 1]) {
+            if (this.adjacentDenialFrequency >= 1) {
+              nogood = true;
+            } else if (this.adjacentDenialFrequency === 0) {
+              nogood = false;
+            } else {
+              var frequency = this.adjacentDenied / (this.adjacentAccepted + this.adjacentDenied);
+              if (frequency <= this.adjacentDenialFrequency) {
+                this.adjacentDenied++;
+                nogood = true;
+              } else {
+                this.adjacentAccepted++;
+                nogood = false;
+              }
+            }
+          } else {
+            nogood = false;
+          }
+        }
+        row[n] = color;
+      }
+    } while (isBadRow(row));
+    return row;
   };
 
-  Stack.prototype.buildStartingBoard = function (rows) {
-    for (var row = 1; row <= rows; row++) {
-      for (var col = 1; col <= W; col++) {
-        this.panels[row][col].color = this.pickColor(row, col);
+  // GeneratorSource:getStartingBoardHeight — always 7, regardless of level.
+  var STARTING_BOARD_HEIGHT = 7;
+
+  // A fresh board is not a flat rectangle in the reference engine
+  // (GeneratorSource:generateStartingBoard) — it fills a full 7-row
+  // rectangle, then randomly clears 2*width panels, each time picking a
+  // random column and removing its CURRENT topmost occupied cell. That's
+  // what gives a new game a jagged, per-column-staggered starting board
+  // instead of a dead-flat one — visible on literally the first frame of
+  // every game, so it's not a subtle port detail.
+  Stack.prototype.buildStartingBoard = function () {
+    var neighborColors = null;
+    for (var row = 1; row <= STARTING_BOARD_HEIGHT; row++) {
+      var rowColors = this.generateRowColors(neighborColors);
+      for (var col = 1; col <= W; col++) this.panels[row][col].color = rowColors[col];
+      neighborColors = rowColors;
+    }
+    var height = [];
+    for (var c = 1; c <= W; c++) height[c] = STARTING_BOARD_HEIGHT;
+    var toRemove = 2 * W;
+    while (toRemove > 0) {
+      var idx = 1 + Math.floor(this.rng() * W);
+      if (height[idx] > 0) {
+        this.panels[height[idx]][idx].color = 0;
+        height[idx]--;
+        toRemove--;
       }
     }
     this.fillNewRow(0);
@@ -552,26 +700,41 @@
   // Row 0 is the dimmed row waiting below the board. Its colors also may not
   // complete a match the moment it becomes row 1.
   Stack.prototype.fillNewRow = function (row) {
+    var above1 = this.panels[row + 1];
+    var neighborColors = null;
+    if (above1) {
+      neighborColors = [];
+      for (var col = 1; col <= W; col++) neighborColors[col] = above1[col].color;
+    }
+    var rowColors = this.generateRowColors(neighborColors);
     for (var col = 1; col <= W; col++) {
-      var banned = {};
-      var above1 = this.panels[row + 1] && this.panels[row + 1][col];
-      var above2 = this.panels[row + 2] && this.panels[row + 2][col];
-      if (above1 && above2 && above1.color !== 0 && above1.color === above2.color) banned[above1.color] = true;
-      if (col >= 3 && this.panels[row][col - 1].color === this.panels[row][col - 2].color) {
-        banned[this.panels[row][col - 1].color] = true;
-      }
-      var choices = [];
-      for (var c = 1; c <= this.colors; c++) if (!banned[c]) choices.push(c);
       var panel = this.panels[row][col];
       clearPanel(panel, true, true);
-      panel.color = choices[Math.floor(this.rng() * choices.length)];
+      panel.color = rowColors[col];
       panel.state = "dimmed";
     }
   };
 
-  // A color for a row of panels converted from cleared garbage.
-  Stack.prototype.garbagePanelColor = function () {
-    return 1 + Math.floor(this.rng() * this.colors);
+  // GeneratorSource:clone always constructs the garbage-panel generator at
+  // adjacentDenialFrequency 1, regardless of level — so unlike the main
+  // board, colors converted from cleared garbage never repeat the color
+  // immediately before them, no exceptions. Since frequency>=1 makes the
+  // horizontal-adjacency check an unconditional deny, the 3rd-in-a-row rule
+  // (which only exists to catch what the 2nd-in-a-row check would otherwise
+  // let through) never actually triggers — so this reduces to "never match
+  // the previous pick." Converted colors don't correlate with vertical
+  // neighbors the way board rows do (garbage panel generation is its own
+  // independent stream in the reference), so there's no neighbor-row ban.
+  Stack.prototype.garbageRowColors = function (count) {
+    var colors = [];
+    for (var n = 0; n < count; n++) {
+      var color;
+      do {
+        color = 1 + Math.floor(this.rng() * this.colors);
+      } while (n > 0 && color === colors[n - 1]);
+      colors.push(color);
+    }
+    return colors;
   };
 
   Stack.prototype.panelAt = function (row, col) {
@@ -579,10 +742,17 @@
     return this.panels[row][col];
   };
 
+  // Panel:dangerous — a non-garbage panel counts the instant it has a color,
+  // no matter its state (falling, swapping, matched...); only GARBAGE panels
+  // get a state exemption (falling garbage doesn't count as topped out yet).
+  // Applying the falling exemption to every panel, as this port used to,
+  // is more forgiving than the reference: a non-garbage panel mid-fall
+  // through the top row should already count as toppled.
   Stack.prototype.isToppedOut = function () {
     for (var col = 1; col <= W; col++) {
       var p = this.panels[this.height][col];
-      if (p.color !== 0 && p.state !== "falling") return true;
+      var dangerous = p.isGarbage ? p.state !== "falling" : p.color !== 0;
+      if (dangerous) return true;
     }
     return false;
   };
@@ -674,6 +844,20 @@
 
   // All garbage panels touched by this match, plus every garbage block those
   // touch in turn (garbage clears propagate block to block).
+  //
+  // Two guards a garbage panel must pass to be eligible, both ported from
+  // getConnectedGarbagePanels2 in the reference — missing either is a real,
+  // reachable bug, not a style nit:
+  //   - state === "normal": a garbage block keeps color 9 for its ENTIRE
+  //     multi-frame clear animation (state "matched", then "falling" for
+  //     its own bottom-row conversion) — without this, a second match
+  //     touching it mid-animation re-enters matchGarbagePanels, which
+  //     unconditionally decrements yOffset/gHeight and resets its timer a
+  //     second time, corrupting the block already clearing.
+  //   - on-screen OR already matched before (highestGarbageIdMatched):
+  //     stops garbage that spawned entirely above the visible board and
+  //     was never shown to the player from being insta-matched with 0 pop
+  //     time the instant it happens to touch a new match.
   Stack.prototype.getConnectedGarbagePanels = function (matchingPanels) {
     var stack = this;
     var ids = {};
@@ -681,10 +865,15 @@
     var queue = [];
     var deltas = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
+    function eligible(p) {
+      return p.isGarbage && p.color === 9 && p.state === "normal" &&
+        (p.row - p.yOffset <= stack.height || p.garbageId <= stack.highestGarbageIdMatched);
+    }
+
     function addNeighbourGarbage(row, col) {
       for (var d = 0; d < deltas.length; d++) {
         var p = stack.panelAt(row + deltas[d][0], col + deltas[d][1]);
-        if (p && p.isGarbage && p.color === 9 && !ids[p.garbageId]) {
+        if (p && eligible(p) && !ids[p.garbageId]) {
           ids[p.garbageId] = true;
           queue.push(p.garbageId);
         }
@@ -697,6 +886,7 @@
 
     while (queue.length) {
       var id = queue.shift();
+      this.highestGarbageIdMatched = Math.max(this.highestGarbageIdMatched, id);
       var block = [];
       for (var row = 1; row < this.panels.length; row++) {
         for (var col = 1; col <= W; col++) {
@@ -768,7 +958,7 @@
       });
 
       if (isChainLink || comboSize > 3) this.pushGarbage(origin, isChainLink, comboSize);
-      this.score += comboSize * 10 + (comboSize > 3 ? (comboSize - 3) * 20 : 0);
+      this.updateScoreWithBonus(comboSize);
     }
 
     this.clearChainingFlags();
@@ -790,15 +980,22 @@
   };
 
   // The bottom row of cleared garbage takes on real colors (it turns into
-  // panels when its matched timer runs out).
+  // panels when its matched timer runs out). Colors are generated a whole
+  // converting row at a time (see garbageRowColors) rather than cell by
+  // cell, so the adjacency rule actually has neighbors to compare against.
   Stack.prototype.convertGarbagePanels = function (isChain) {
     for (var row = 1; row < this.panels.length; row++) {
+      var cols = [];
       for (var col = 1; col <= W; col++) {
         var p = this.panels[row][col];
-        if (p.yOffset === -1 && p.color === 9) {
-          p.color = this.garbagePanelColor();
-          if (isChain) p.chaining = true;
-        }
+        if (p.yOffset === -1 && p.color === 9) cols.push(col);
+      }
+      if (!cols.length) continue;
+      var colors = this.garbageRowColors(cols.length);
+      for (var i = 0; i < cols.length; i++) {
+        var panel = this.panels[row][cols[i]];
+        panel.color = colors[i];
+        if (isChain) panel.chaining = true;
       }
     }
   };
@@ -818,6 +1015,36 @@
         }
       }
     }
+  };
+
+  // Stack:addScore — every score gain funnels through here so the 99999 cap
+  // (checkMatches.lua's "lol owned") always applies.
+  Stack.prototype.addScore = function (score) {
+    this.score += score;
+    if (this.score > 99999) this.score = 99999;
+  };
+
+  // Stack:updateScoreWithChain — always awarded, chaining or not (chainCounter
+  // is 0 outside a chain, and SCORE_CHAIN_TA[0] is 0, so a plain match adds
+  // nothing here). A chain longer than 13 links resets its bonus to 0 rather
+  // than clamping to the table's top entry — a faithfully-ported quirk, not
+  // a bug in this port.
+  Stack.prototype.updateScoreWithChain = function () {
+    var chainBonus = this.chainCounter;
+    if (chainBonus > 13) chainBonus = 0;
+    this.addScore(SCORE_CHAIN_TA[chainBonus]);
+  };
+
+  // Stack:updateScoreWithCombo.
+  Stack.prototype.updateScoreWithCombo = function (comboSize) {
+    if (comboSize > 3) this.addScore(SCORE_COMBO_TA[Math.min(30, comboSize)]);
+  };
+
+  // Stack:updateScoreWithBonus — call after chainCounter has already been
+  // incremented for this match.
+  Stack.prototype.updateScoreWithBonus = function (comboSize) {
+    this.updateScoreWithChain();
+    this.updateScoreWithCombo(comboSize);
   };
 
   // Stack:calculateStopTime, MODERN formula.
@@ -851,9 +1078,15 @@
     }
     if (isChain) {
       if (!this.currentChain) {
+        // checkMatches.lua:784-790 — if a combo also fired from this same
+        // match, its card already occupies this row's telegraph slot, so
+        // the chain card renders one row higher instead of overlapping it.
+        // A fresh object, never a mutation of `origin` itself — that object
+        // is shared with the combo pieces already pushed above.
+        var chainOrigin = pieces.length > 0 ? { row: origin.row + 1, col: origin.col } : origin;
         this.currentChain = {
           width: W, height: 1, isChain: true,
-          frameEarned: this.clock, finalized: false, origin: origin
+          frameEarned: this.clock, finalized: false, origin: chainOrigin
         };
         this.outgoing.push(this.currentChain);
       } else {
@@ -908,12 +1141,24 @@
     return garbage.height > 1;
   };
 
+  // Stack:new — garbageSizeDropColumnMaps. Fixed for board width 6: each
+  // garbage width has its own repeating sequence of spawn columns (not
+  // every possible left-edge position), so e.g. width-2 garbage always
+  // lands at column 1, 3 or 5, cycling in that order, never 2 or 4.
+  var GARBAGE_DROP_COLUMN_MAPS = {
+    1: [1, 2, 3, 4, 5, 6],
+    2: [1, 3, 5],
+    3: [1, 4],
+    4: [1, 2, 3],
+    5: [1, 2],
+    6: [1]
+  };
+
   Stack.prototype.garbageSpawnColumn = function (width) {
-    var options = [];
-    for (var c = 1; c <= W - width + 1; c++) options.push(c);
+    var columns = GARBAGE_DROP_COLUMN_MAPS[width] || [1];
     var index = this.dropColumnIndex[width] || 0;
-    this.dropColumnIndex[width] = (index + 1) % options.length;
-    return options[index % options.length];
+    this.dropColumnIndex[width] = (index + 1) % columns.length;
+    return columns[index];
   };
 
   Stack.prototype.dropGarbage = function (width, height) {
@@ -922,7 +1167,12 @@
     var id = ++this.garbageCreatedCount;
     var shake = shakeFramesFor(width, height);
     for (var row = originRow; row < originRow + height; row++) {
-      if (row >= this.panels.length) break;
+      // Grow the row array instead of truncating — a tall enough chain
+      // garbage could need more headroom than has been allocated yet
+      // (rows only grow via newRow(), +1 per rise event), and silently
+      // dropping the remaining rows here means part of the attack just
+      // never gets created, with no error.
+      while (row >= this.panels.length) this.panels.push(this.makeEmptyRow(this.panels.length));
       for (var col = originCol; col < originCol + width; col++) {
         var p = this.panels[row][col];
         clearPanel(p, true, true);
@@ -1008,10 +1258,10 @@
         this.displacement--;
         if (this.displacement === 1) {
           // the last pixel is handed to passive raise on the next frame
+          if (!this.preventManualRaise) this.addScore(1);
           this.manualRaise = false;
           this.riseTimer = 1;
           this.preventManualRaise = true;
-          this.score += 1;
         }
         this.manualRaiseYet = true;
       }
@@ -1045,7 +1295,7 @@
 
   // ---------------- swapping ----------------
   Stack.prototype.canSwap = function (row, col) {
-    if (this.clock <= 1) return false;
+    if (this.doCountdown || this.clock <= 1) return false;
     if (row < 1 || row > this.height || col < 1 || col >= W) return false;
     var left = this.panels[row][col];
     var right = this.panels[row][col + 1];
@@ -1176,19 +1426,23 @@
 
     if (i.swap && !prev.swap) this.tryQueueSwap(this.curRow, this.curCol);
 
-    var dir = null;
-    if (i.up) dir = "up";
-    else if (i.down) dir = "down";
-    else if (i.left) dir = "left";
-    else if (i.right) dir = "right";
+    // The scripted countdown cursor dance (runCountdown) owns the cursor
+    // for this window — real input shouldn't fight it.
+    if (!this.animatingCursorDuringCountdown) {
+      var dir = null;
+      if (i.up) dir = "up";
+      else if (i.down) dir = "down";
+      else if (i.left) dir = "left";
+      else if (i.right) dir = "right";
 
-    if (dir !== this.cursorDirection) {
-      this.cursorDirection = dir;
-      this.cursorTimer = 0;
-      if (dir) this.moveCursor(dir);
-    } else if (dir) {
-      this.cursorTimer++;
-      if (this.cursorTimer >= DAS_DELAY) this.moveCursor(dir);
+      if (dir !== this.cursorDirection) {
+        this.cursorDirection = dir;
+        this.cursorTimer = 0;
+        if (dir) this.moveCursor(dir);
+      } else if (dir) {
+        this.cursorTimer++;
+        if (this.cursorTimer >= DAS_DELAY) this.moveCursor(dir);
+      }
     }
 
     if (i.raise && !this.preventManualRaise) {
@@ -1229,8 +1483,24 @@
     }
   };
 
+  // The reference engine (Stack:checkGameOver) has TWO death conditions, not
+  // one — this port only ever had the first. Health hitting 0 while settled
+  // (shakeTime<=0) is the drain-while-topped-out path, gated behind
+  // advancePassiveRaise. But advancePassiveRaise returns early — skipping
+  // that entire health-drain block — whenever manualRaise is held (see its
+  // own comment), which makes it the WRONG place to also catch "you raised
+  // yourself into a topped-out board": while actively raising, health never
+  // moves, so a health check alone can never trigger. The reference's
+  // second condition is exactly that missing case: holding manual raise
+  // into an already-topped-out board (riseLock clear, so it isn't merely
+  // resolving an in-flight match) is instant death regardless of health —
+  // confirmed live: holding raise at the top of a full board never killed
+  // the player no matter how long it was held, because nothing was
+  // checking for it at all.
   Stack.prototype.checkGameOver = function () {
-    return this.health <= 0 && this.shakeTime <= 0;
+    if (this.health <= 0 && this.shakeTime <= 0) return true;
+    if (!this.riseLock && this.wasToppedOut && this.manualRaise) return true;
+    return false;
   };
 
   Stack.prototype.setGameOver = function () {
@@ -1272,13 +1542,47 @@
     if (this.checkGameOver()) this.setGameOver();
   };
 
+  // Stack:runCountdown — riseLock stays forced on for the whole countdown
+  // (blocking rise/swap even before the cursor starts moving), and once the
+  // scripted cursor timer starts (at COUNTDOWN_START), it dances the cursor
+  // down 4 steps then left 2, then goes idle for a beat before handing the
+  // cursor back to the player right as physics resumes.
+  Stack.prototype.runCountdown = function () {
+    this.doCountdown = true;
+    this.riseLock = true;
+    if (this.clock === 0) {
+      this.animatingCursorDuringCountdown = true;
+      this.curRow = this.height - 1;
+    } else if (this.clock === COUNTDOWN_START) {
+      this.countdownTimer = COUNTDOWN_LENGTH;
+    }
+    if (this.countdownTimer !== null) {
+      var countDownFrame = COUNTDOWN_LENGTH - this.countdownTimer;
+      if (countDownFrame > 0 && countDownFrame % COUNTDOWN_CURSOR_SPEED === 0) {
+        var moveIndex = countDownFrame / COUNTDOWN_CURSOR_SPEED;
+        if (moveIndex <= 4) this.moveCursor("down");
+        else if (moveIndex <= 6) this.moveCursor("left");
+        else if (moveIndex === 10) this.animatingCursorDuringCountdown = false;
+      }
+      if (this.countdownTimer === 0) {
+        this.doCountdown = false;
+        this.countdownTimer = null;
+      }
+      if (this.countdownTimer !== null) this.countdownTimer--;
+    }
+  };
+
   // One frame. Call at a fixed 60 Hz.
   Stack.prototype.run = function () {
     if (this.gameOver) return;
-    this.runPhysics();
+    if (this.doCountdown && this.clock <= COUNTDOWN_TOTAL) {
+      this.runCountdown();
+      if (this.clock === COUNTDOWN_TOTAL) this.stopWatchIsRunning = true;
+    }
+    if (this.stopWatchIsRunning) this.runPhysics();
     this.applyInput();
     this.handleManualRaise();
-    if (this.shouldDropGarbage()) {
+    if (this.stopWatchIsRunning && this.shouldDropGarbage()) {
       var garbage = this.incoming.shift();
       this.dropGarbage(garbage.width, garbage.height);
     }
@@ -1312,6 +1616,7 @@
     WIDTH: W,
     HEIGHT: HEIGHT,
     GARBAGE_FLIGHT: GARBAGE_FLIGHT,
+    COUNTDOWN_TOTAL: COUNTDOWN_TOTAL,
     comboGarbage: comboGarbage,
     riseTime: riseTime,
     makeRng: makeRng

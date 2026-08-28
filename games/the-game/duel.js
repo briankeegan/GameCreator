@@ -11,7 +11,20 @@ window.NewseyDuel = (function () {
 
   var E = window.PanelEngine;
   var FRAME = 1000 / 60;
-  var COUNTDOWN_FRAMES = 180; // 3 seconds, same as the original
+  // The countdown itself is entirely panel-engine.js's call (Stack:runCountdown,
+  // 1:1 with the reference — riseLock held, cursor scripted, physics frozen
+  // until clock reaches this many frames). state.countdown here is only a
+  // derived readout for the overlay/input gating, never its own clock.
+  var COUNTDOWN_FRAMES = E.COUNTDOWN_TOTAL;
+
+  // "diamond" and "nightmare" are the SearchCpu presets (see panel-cpu.js);
+  // every other named difficulty is the older single-ply heuristic bot.
+  // One call site so nothing forgets which class a difficulty needs.
+  function makeCpu(stack, difficulty, seed) {
+    var Ctor = (difficulty === "diamond" || difficulty === "nightmare")
+      ? window.PanelCpu.SearchCpu : window.PanelCpu.Cpu;
+    return new Ctor(stack, { difficulty: difficulty || "steady", seed: seed });
+  }
 
   // Panel colors. Each one also carries a shape, so panels stay tellable apart
   // when they flash, when the board goes red, and for anyone who reads shape
@@ -78,7 +91,7 @@ window.NewseyDuel = (function () {
     state = {
       player: player,
       foe: foe,
-      cpu: new window.PanelCpu.Cpu(foe, { difficulty: opponent.difficulty || "steady", seed: seed + 55 }),
+      cpu: makeCpu(foe, opponent.difficulty, seed + 55),
       opponent: opponent,
       // A duel can be a SET rather than a single game — Kat's is "first to
       // five wins", straight out of the plot. firstTo 1 (the default) behaves
@@ -381,7 +394,16 @@ window.NewseyDuel = (function () {
     // Paused while any menu screen is up: nothing rises while the player is
     // reading a menu.
     if (window.NewseyMenu && window.NewseyMenu.current()) return;
-    if (s.countdown > 0) { s.countdown--; return; }
+    if (s.countdown > 0) {
+      // Both stacks still tick every frame during the countdown — the
+      // engine holds its own physics off internally (Stack:runCountdown)
+      // and drives the scripted cursor dance, so there's nothing left for
+      // this screen to gate beyond reading back how much is left.
+      s.player.run();
+      s.foe.run();
+      s.countdown = Math.max(0, E.COUNTDOWN_TOTAL - s.player.clock);
+      return;
+    }
     if (s.crush) {
       stepCrush();
       // The moment she is whole again, hand over to the result card.
@@ -511,7 +533,7 @@ window.NewseyDuel = (function () {
     s.seed = (s.seed + s.wins.player * 7919 + s.wins.foe * 104729 + 13) >>> 0;
     s.player = new E.Stack({ level: s.playerLevel, seed: s.seed, name: s.player.name });
     s.foe = new E.Stack({ level: o.level || 3, seed: s.seed + 101, name: s.foe.name });
-    s.cpu = new window.PanelCpu.Cpu(s.foe, { difficulty: o.difficulty || "steady", seed: s.seed + 55 });
+    s.cpu = makeCpu(s.foe, o.difficulty, s.seed + 55);
     s.over = null;
     s.overDelay = 0;
     s.crush = null;
@@ -1626,9 +1648,7 @@ window.NewseyDuel = (function () {
                        .map(function (p) { return p.release; })
         },
         autoplay: function (difficulty) {
-          state.autopilot = new window.PanelCpu.Cpu(state.player, {
-            difficulty: difficulty || "brutal", seed: 99
-          });
+          state.autopilot = makeCpu(state.player, difficulty || "brutal", 99);
         }
       };
     }
