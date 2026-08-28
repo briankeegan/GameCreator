@@ -315,6 +315,20 @@ jobs:
             exit 1
           fi
 
+          # THE STANDING SPRITE IS THE NEUTRAL WALK FRAME — copied, not drawn.
+          # <id>_top.png is what the overworld and the duel screen draw when a
+          # character is standing still, and it used to be its own generation.
+          # So every character had THREE pictures of themselves from three
+          # separate prompts (portrait, walk sheet, top), and the top one was
+          # the one nothing checked at all — Kat's was a different height and a
+          # different palette from his own walk cycle. The walk sheet already
+          # contains this exact pose: column 2 of the DOWN row is defined as
+          # "a true NEUTRAL STANDING pose", which is the same picture. Copying
+          # it costs nothing, makes the standing sprite physically incapable of
+          # drifting from the walking one, and removes a generation per
+          # character.
+          cp "games/$GAME/art/${CHAR}_down_1.png" "games/$GAME/art/${CHAR}_top.png"
+
           # Present is not the same as usable. A sheet whose gridlines were
           # misread cuts nine real files that happen to be slivers of coat, so
           # run the same checker the build gate runs — it fails a set with a

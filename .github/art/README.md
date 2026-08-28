@@ -25,7 +25,7 @@ from. Dog Punk is the reference for characters, the Anarchy Garden in
 | draw or fix a **tiled level** (a grid of repeating tiles) | [`../../docs/TILED_LEVEL_STANDARD.md`](../../docs/TILED_LEVEL_STANDARD.md) | `tileset.py generate`, then `cut` / `verify` / `check` |
 | write or change a **character spec** (required before generating that character) | `characterSpecRule` in that game's `art-style.json`; for an adapted game, its `adaptedFrom` source — never a distillation of it | `node ../scripts/check_character_specs.mjs`, then `verify_sheet.py character <game> <char>` |
 | add a **one-off image** (icon, title art) | — | Actions → **Generate image** (or write an inline `.svg`) |
-| draw a **dialogue portrait** | this page, `make_portrait.py`'s docstring | Actions → **Generate image**, then `make_portrait.py` |
+| draw a **dialogue portrait** | that character's spec (`characters.<id>` in the game's `art-style.json`) — the portrait is built from it, exactly like the walk sheet, so the two cannot disagree | Actions → **Generate character portrait** (or `generate_portrait.py --game <id> --character <id>`) |
 | keep a **set** of images consistent | that game's `art-style.json` | Actions → **Generate game asset** |
 | know whether art is **good enough to ship** | this page, "Checks" below | `verify_sheet.py`, `room.py verify` |
 
@@ -87,6 +87,7 @@ exposes a gap, **fix the prompt file**; that is how the next person inherits it.
 | [`walkgrid_prompt.txt`](walkgrid_prompt.txt) | A walk row, one image per direction. Keep one of its three `{VIEW}` blocks. |
 | [`attacksheet_prompt.txt`](attacksheet_prompt.txt) | An attack row — a slash across the body, not a thrust. |
 | [`walksheet_prompt.txt`](walksheet_prompt.txt) | The legacy 4x3 grid for per-file games (Newsey). |
+| [`portrait_prompt.txt`](portrait_prompt.txt) | A dialogue talk-box bust. Asks only for margin, never for framing — the API has no composition parameter, so the crop is done afterwards by `make_portrait.py`. |
 | [`room_prompts/1_composed_scene.txt`](room_prompts/1_composed_scene.txt) | Room pass 1 — the scene that gets measured. |
 | [`room_prompts/2_floor_plate.txt`](room_prompts/2_floor_plate.txt) | Room pass 2 — the walkable surface, and nothing else. |
 | [`room_prompts/3_prop_sheet.txt`](room_prompts/3_prop_sheet.txt) | Room pass 3 — everything you cannot walk on, side by side. |
@@ -102,6 +103,7 @@ in from the game's `art-style.json`.
 |---|---|
 | **Generate tileset sheet** (`generate-tileset-sheet.yml`) | One of a tiled level's two sheets. A button on `tileset.py generate`. |
 | **Generate room pass** (`generate-room-pass.yml`) | One of a room's three passes. A button on `room.py generate` — same code the autopilot runs. |
+| **Generate character portrait** (`generate-portrait.yml`) | A talk-box portrait built from the character's spec. A button on `generate_portrait.py` — the same refusal, the same prompt builder as the walk sheet. |
 | **Generate walk row** (`generate-walkrow.yml`) | A verified walk row for a sheet-based game. It is a button on `generate_row.py` — same code the autopilot runs. |
 | **Generate walksheet** (`generate-walksheet.yml`) | The legacy per-file walk set (Newsey). |
 | **Generate game asset** (`generate-game-asset.yml`) | Any image that must match a game's established look; reads its `art-style.json`. |
@@ -175,6 +177,7 @@ Two callers, one script, is the fix.
 | [`measure_blob.py`](measure_blob.py) | Called by `room.py measure`. Finds one object's precise bbox WITHIN a scene (a different, tractable problem from matching two separate images) via established CV — `cv2.grabCut` for objects that contrast from their background by colour, Canny edge detection + `cv2.findContours` for low-contrast objects with strong internal edges. A faster, more precise alternative to reading `grid_overlay.py`'s grid by eye; also feeds `room.py sizecheck`'s `measured:` blocks. Requires `opencv-python-headless` (human-run, not a CI dependency). |
 | [`wall_seam.py`](wall_seam.py) | Called by `room.py wallseam`. Finds the Y where a room's back wall meets its floor — the baseline every wall panel, and every prop standing flush against that wall, has to share — via row-gradient (`--method gradient`) or edge-density (`--method canny`, for a wall/floor too close in colour for a gradient) across clean vertical strips of the scene, instead of reading it off a crop by eye. Record the answer as a room's `wallSeam`; `wall_seam_problems()` in `room.py verify` FAILS if the wall band's own declared y ever drifts from it. |
 | [`tile_scale.py`](tile_scale.py) | Called by `room.py tilescale`. Counts how many floor tiles/flagstones/planks span a clean row of a scene, and with `--against` (or `room.py tilescale --against-plate`) counts a shipped floor plate's own row too and prints the ratio — a floor's tile SCALE is a countable fact, not an eyeball call: a regenerated plate came back 2x too coarse once and it wasn't visible in a side-by-side, only in the count. Feed the scene's own count back into a regeneration prompt as an exact target ("roughly N stones"), not an adjective ("small"). |
+| [`generate_portrait.py`](generate_portrait.py) | The front door for a dialogue portrait: refuses a character with no spec, builds the prompt from that spec with the SAME `spec_to_prompt()` the walk sheets use, generates a loose bust on flat white into `art-src/`, and crops it with `make_portrait.py`. Portraits were the last character art with no front door, which is why they stopped matching their sprites. |
 | [`make_portrait.py`](make_portrait.py) | Raw bust generation → shipped talk-box portrait: keys the flat ground, crops to the subject, squares it anchored at the TOP so the crop eats chest instead of face, flattens onto the talk box's cream and resizes to 768. |
 | [`preview_room.py`](preview_room.py) / [`show_walkmask.py`](show_walkmask.py) | Render the pictures you have to actually look at. |
 

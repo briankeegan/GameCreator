@@ -1,0 +1,128 @@
+name: Generate character portrait
+
+# ONE DISPATCH PER PORTRAIT, BUILT FROM THE CHARACTER'S SPEC.
+#
+# Portraits were the last kind of character art with no front door. Walk sheets
+# have been generated from `characters.<id>` in art-style.json for a while —
+# but the portrait beside them went through the freeform "Generate image"
+# Action, prompted with whatever prose somebody typed that day. So the two
+# pictures of the same person were drawn from two different descriptions, and
+# nothing mechanical could notice when they disagreed.
+#
+# They did disagree. The owner's report was "some characters don't match their
+# portraits". Rex's portrait was a different man from his sprite; Chuck's
+# invented a teal hoodie and a walrus moustache that appear nowhere in the plot
+# — and those inventions were then copied INTO the specs as though they were
+# facts, which is how a portrait becomes canon by accident.
+#
+# This runs .github/art/generate_portrait.py, which refuses a character with no
+# spec, builds the prompt with the same spec_to_prompt() the walk sheets use,
+# generates a loose bust on flat white, and crops it with make_portrait.py.
+# Framing is never asked for beyond "leave margin" — the API has no composition
+# parameter, so a portrait framed by the generator is framed differently every
+# time. Cropping it mechanically is what keeps four portraits at one zoom level.
+on:
+  workflow_dispatch:
+    inputs:
+      game:
+        description: "Game id, e.g. the-game"
+        required: true
+        type: string
+      character_id:
+        description: "Character id — must have a spec in that game's art-style.json"
+        required: true
+        type: string
+      output_path:
+        description: "OPTIONAL override, for an expression variant (e.g. games/the-game/art/nella_scream.png). Default is games/<game>/art/<id>.png"
+        required: false
+        type: string
+      note:
+        description: "OPTIONAL moment/expression for this run only (e.g. 'mid-scream', 'age nine'). WHO they are always comes from the spec — do not describe them here."
+        required: false
+        type: string
+      quality:
+        description: "Render quality — cost rises steeply: low < medium < high"
+        required: false
+        type: choice
+        options:
+          - "low"
+          - "medium"
+          - "high"
+        default: "medium"
+      force:
+        description: "Regenerate even if the raw already exists (a re-crop is free and happens either way)"
+        required: false
+        type: boolean
+        default: false
+      branch:
+        description: "Branch to check out and commit to. Defaults to main; point it at a review branch to LOOK at a portrait before it ships."
+        required: false
+        type: string
+        default: "main"
+
+permissions:
+  contents: write
+
+jobs:
+  portrait:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Art cannot be reviewed from a diff — a portrait has to be looked at,
+      # and by the time it is on main it has shipped. Same reasoning as the
+      # walk-sheet Action's branch input.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: ./.github/actions/validate-game-input
+        with:
+          game: ${{ inputs.game }}
+
+      - name: Generate and crop
+        id: gen
+        timeout-minutes: 12
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          args=(--game "${{ inputs.game }}" --character "${{ inputs.character_id }}")
+          [ -n "${{ inputs.output_path }}" ] && args+=(--output "${{ inputs.output_path }}")
+          [ -n "${{ inputs.note }}" ] && args+=(--note "${{ inputs.note }}")
+          args+=(--quality "${{ inputs.quality }}")
+          [ "${{ inputs.force }}" = "true" ] && args+=(--force)
+          python3 .github/art/generate_portrait.py "${args[@]}"
+
+      # KEEP THE ART EVEN WHEN THE RUN FAILS — the image is billed the moment
+      # it is drawn, and a portrait that dies with the runner costs a whole
+      # regeneration to look at, which draws a DIFFERENT picture. Same lesson as
+      # the walk-sheet Action.
+      - name: Upload for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portrait-${{ inputs.game }}-${{ inputs.character_id }}
+          path: |
+            games/${{ inputs.game }}/art-src/*_portrait_raw.png
+            games/${{ inputs.game }}/art/${{ inputs.character_id }}.png
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Commit the portrait
+        if: always()
+        env:
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "games/${{ inputs.game }}/art" "games/${{ inputs.game }}/art-src" || true
+          if git diff --cached --quiet; then echo "Nothing changed."; exit 0; fi
+          git commit -m "Portrait for ${{ inputs.character_id }} (${{ inputs.game }}), built from its spec"
+          for i in 1 2 3 4 5; do
+            if git pull --rebase origin "$BRANCH" && git push origin "HEAD:$BRANCH"; then exit 0; fi
+            echo "push race, retrying ($i)…"; sleep $((RANDOM % 6 + 2))
+          done
+          echo "::error::could not push after retries"; exit 1
