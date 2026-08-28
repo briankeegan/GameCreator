@@ -22,7 +22,6 @@ window.NEWSEY_STORY = (function () {
     dad:     { name: "Dad",          color: "#b9975b" },
     chuck:   { name: "Chuck",        color: "#2e86c1" },
     news:    { name: "News Anchor",  color: "#8a8f98" },
-    devil:   { name: "???",          color: "#e84393" },
     tv:      { name: "Old TV",       color: "#5a4a7a" },
     portal:  { name: "The Portal",   color: "#00cec9" },
     bed:     { name: "Your Bed",     color: "#ffd166" },
@@ -76,8 +75,8 @@ window.NEWSEY_STORY = (function () {
     { bg: "chaos", who: "nella", narration: true, text: "A skull. A chaos symbol. \"A deal is struck. Proceed?\"" },
     { who: "nella", narration: true, text: "I pressed Start and Select." },
     { bg: "", narration: true, text: "The world faded to black." }
-    // After this: waking up, the horns in the mirror, the devil's welcome —
-    // is not narrated either, it's ROOMS.bedroom (Infinity).
+    // After this: waking up, the horns in the mirror — is not narrated
+    // either, it's ROOMS.bedroom (Infinity).
   ];
 
   // JOHN_CUTSCENE — the chapter's hinge, and the one beat that was compressed
@@ -431,38 +430,20 @@ window.NEWSEY_STORY = (function () {
       ],
       npcs: [
         {
-          // The plot has no one standing in this room: you walk up to the
-          // mirror, see yourself with horns, and the devil pops up IN the
-          // mirror like a TV, welcomes you, then it's over — not a
-          // character who lives here. `marker: true` makes this purely an
-          // interact point at the mirror's own spot (it gets the floor's pool
-          // of light, nothing standing up); talking still shows him as the
-          // speaker (CHARACTERS.devil) exactly like it did as a standing NPC.
-          // The bed beside it is no longer an interactable at all — you get
-          // INTO it (app.js, player.bedSlide), and that's what saves.
-          id: "devil", x: 50, y: 112, art: "devil", sprite: null, marker: true,
-          lines: [
-            "Hello, and welcome to Infinity! You may notice your appearance has changed — that's your magical avatar.",
-            "Your bracelet is copper, to reflect your rank, and aquamarine for your playstyle. These can change.",
-            "Practice here, or head to the lounge for a meal and a battle, or the library to study. Don't be afraid to challenge anyone — it's the only way to grow stronger!",
-            "Here — a practice bout, on the house. Match three, clear the board, and send what you clear at me."
-          ],
-          // The gentle one: this is the tutorial duel, so the host plays badly
-          // on purpose. Board level (both sides, always matching) comes from
-          // the save's own difficulty tier (difficulty.js), not from here.
-          duel: {
-            difficulty: "gentle", theme: "pink",
-            winLine: "The host claps, delighted. \"Oh, that's promising. Truly.\"",
-            loseLine: "The host tuts. \"You'll get there. Everyone does — eventually.\"",
-            afterWin: [
-              "Wonderful! You have the hands for it. Most arrivals don't.",
-              "Go on then — the lounge is through that door. Try someone who'll actually fight back."
-            ],
-            afterLoss: [
-              "No shame in it. The panels don't care how you feel about them.",
-              "Try me again whenever you like. I have nothing but time — you don't."
-            ]
-          }
+          // The plot's own words: "the giant mirror is your screen" — it's
+          // how the devil appears in the first place, and PLOT_GAPS.md
+          // flagged that the game only ever used it for the one-time
+          // welcome. Rebuilt as what the plot actually describes: a status
+          // screen (rank, playstyle gem, duel record), opened directly by
+          // interacting with the mirror's own spot — no talk box, no NPC.
+          // `marker: true` keeps it a bare interact point (the floor's pool
+          // of light, nothing standing up); `opensMenu` is read by
+          // app.js's tryInteract() BEFORE the normal talk-box path, so it
+          // never touches npcLineCounters or CHARACTERS at all. The devil's
+          // welcome + practice duel that used to live here is cut, not
+          // triggered once and then replaced — the plot never re-describes
+          // it as a recurring beat once the mirror is a screen.
+          id: "mirror", x: 50, y: 112, marker: true, opensMenu: "status"
         }
       ]
     },

@@ -7,6 +7,7 @@
 window.NewseyMenu = (function () {
   var SAVES = window.NewseySaves;
   var ROOMS = window.NEWSEY_STORY.ROOMS;
+  var CHARACTERS = window.NEWSEY_STORY.CHARACTERS;
 
   var layer = document.getElementById("menuLayer");
   var screens = {
@@ -14,6 +15,7 @@ window.NewseyMenu = (function () {
     files: document.getElementById("menuFiles"),
     pause: document.getElementById("menuPause"),
     help: document.getElementById("menuHelp"),
+    status: document.getElementById("menuStatus"),
     difficulty: document.getElementById("menuDifficulty")
   };
   var fileList = document.getElementById("fileList");
@@ -50,6 +52,7 @@ window.NewseyMenu = (function () {
     if (name === "files") FILES.render();
     if (name === "pause") renderPauseMeta();
     if (name === "help") window.NewseySettings.refresh();
+    if (name === "status") renderStatus();
     if (name === "difficulty") renderDifficulty();
   }
   function hide() {
@@ -234,6 +237,68 @@ window.NewseyMenu = (function () {
     else show("pause");
   }
 
+  // ---------- status (the bedroom mirror) ----------
+  // The plot's own words: "the giant mirror is your screen." Read-only —
+  // rank, playstyle gem, duel record. Save/load/options stay in PAUSE.
+  //
+  // Rank is DERIVED from total wins, not a saved field: adding one would be
+  // save-schema churn for a number the win count already determines, and
+  // it can never drift out of sync with the record it's read off.
+  var RANKS = [
+    { min: 10, name: "Diamond", color: "#bfe9ff" },
+    { min: 6,  name: "Gold",    color: "#ffd166" },
+    { min: 3,  name: "Silver",  color: "#d9d9e3" },
+    { min: 0,  name: "Copper",  color: "#c9793f" }
+  ];
+  function rankFor(wins) {
+    for (var i = 0; i < RANKS.length; i++) if (wins >= RANKS[i].min) return RANKS[i];
+    return RANKS[RANKS.length - 1];
+  }
+  var statusMeta = document.getElementById("statusMeta");
+  var statusRows = document.getElementById("statusRows");
+  function statusRow(label, value) {
+    var row = document.createElement("div");
+    row.className = "status-row";
+    var l = document.createElement("span"); l.className = "status-label"; l.textContent = label;
+    var v = document.createElement("span"); v.className = "status-value"; v.textContent = value;
+    row.appendChild(l); row.appendChild(v);
+    return row;
+  }
+  function renderStatus() {
+    var s = window.NewseyGame.state();
+    statusRows.innerHTML = "";
+    if (!s) { statusMeta.textContent = ""; return; }
+    var wins = s.duelsWon || {};
+    var total = Object.keys(wins).reduce(function (n, k) { return n + wins[k]; }, 0);
+    var rank = rankFor(total);
+    statusMeta.textContent = "Copper, aquamarine — the bracelet you woke up wearing.";
+    statusRows.appendChild(statusRow("Rank", rank.name));
+    statusRows.appendChild(statusRow("Playstyle gem", "Aquamarine"));
+    statusRows.appendChild(statusRow("Duels won", String(total)));
+    var opponents = Object.keys(wins).filter(function (id) { return wins[id] > 0; });
+    if (!opponents.length) {
+      var empty = document.createElement("div");
+      empty.className = "status-row status-empty";
+      empty.textContent = "No duels won yet.";
+      statusRows.appendChild(empty);
+    } else {
+      opponents.sort(function (a, b) { return wins[b] - wins[a]; }).forEach(function (id) {
+        var name = (CHARACTERS[id] && CHARACTERS[id].name) || id;
+        statusRows.appendChild(statusRow("vs. " + name, String(wins[id])));
+      });
+    }
+  }
+  function openStatus() {
+    if (!window.NewseyGame.isRunning()) return;
+    if (window.NewseyDuel.isActive()) return;
+    window.NewseyGame.setPaused(true);
+    show("status");
+  }
+  function closeStatus() {
+    window.NewseyGame.setPaused(false);
+    hide();
+  }
+
   function togglePause() {
     if (current === "pause") closePause();
     else if (current === null) openPause();
@@ -258,6 +323,7 @@ window.NewseyMenu = (function () {
     window.NewseyGame.save();
     showTitle();
   });
+  document.getElementById("statusBack").addEventListener("click", closeStatus);
 
   // ---------- keys ----------
   // On the title screen any key is START, the way it always was. Elsewhere
@@ -274,6 +340,7 @@ window.NewseyMenu = (function () {
     if (current === "files") { showTitle(); e.preventDefault(); }
     else if (current === "help") { leaveControls(); e.preventDefault(); }
     else if (current === "pause") { closePause(); e.preventDefault(); }
+    else if (current === "status") { closeStatus(); e.preventDefault(); }
     else if (current === "difficulty") { difficultyBack.click(); e.preventDefault(); }
   });
 
@@ -281,6 +348,6 @@ window.NewseyMenu = (function () {
   showTitle();
 
   return { togglePause: togglePause, toast: toast, showTitle: showTitle,
-           showControls: showControls,
+           showControls: showControls, showStatus: openStatus,
            startFile: startFile, current: function () { return current; } };
 })();

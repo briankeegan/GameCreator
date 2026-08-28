@@ -736,6 +736,28 @@ html, body {
   color: #ff9ec7;
 }
 
+/* ---- status (the bedroom mirror) ---- */
+.status-rows {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.78rem;
+}
+.status-row .status-label { opacity: 0.75; }
+.status-row .status-value { font-weight: 700; color: #ffd166; text-align: right; }
+.status-row.status-empty { justify-content: center; opacity: 0.6; font-style: italic; }
+
 /* The ☰ button while playing: small, out of the way, always reachable. */
 .menu-btn {
   position: absolute;

@@ -158,6 +158,16 @@
         </div>
       </section>
 
+      <!-- STATUS: the bedroom mirror, per the plot ("the giant mirror is
+           your screen") — rank, playstyle gem, duel record. Read-only; save/
+           load/options stay in PAUSE, untouched. -->
+      <section class="menu-screen" id="menuStatus" hidden>
+        <h2 class="menu-h">YOUR REFLECTION</h2>
+        <div class="menu-meta" id="statusMeta"></div>
+        <div class="status-rows" id="statusRows"></div>
+        <button class="menu-back" id="statusBack">‹ Step back</button>
+      </section>
+
       <!-- DIFFICULTY: one setting, shared by the player and every opponent
            (see difficulty.js). Reached from file-select (choosing a NEW file)
            and from the pause menu (adjusting the current one) — menu.js's
