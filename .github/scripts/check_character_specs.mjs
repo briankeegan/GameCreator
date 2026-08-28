@@ -1,0 +1,87 @@
+#!/usr/bin/env node
+/**
+ * RULE: every character spec says where each of its details CAME FROM.
+ *
+ * Newsey is an adaptation of a plot the owner wrote, and the art is generated
+ * FROM these specs — `generate_row.py` builds the prompt out of them and
+ * `verify_sheet.py character` checks finished sheets against them. That makes
+ * the spec the place a detail becomes canon: regenerate the art and whatever is
+ * written here is what ships, whether or not the plot ever said it.
+ *
+ * An audit of the fourteen Newsey specs against the verbatim plot found five
+ * details that had quietly become facts: Eric's robe had drifted grey-green
+ * when the plot says "gray robe" twice, May's robe was drawn neat when the plot
+ * has it "ripped to shreds, barely hanging on her shoulders", Rex had grown
+ * Chuck's beard, John had aged from "late 30s" into an old man, and the Devil
+ * had lost the only two words that describe him — "cartoon" and "little".
+ * Nothing was wrong with any individual note; what was missing was any record
+ * of which notes were quoting and which were inventing.
+ *
+ * So each spec carries `plotQuote` — the verbatim source text, copied not
+ * paraphrased — and each material carries `source`: "plot" (the quote states
+ * it; don't change it without the owner) or "design" (we chose it; open to
+ * change). This script is the gate: a spec missing either, or claiming
+ * source "plot" while its game has no plotQuote to check against, fails.
+ *
+ * Only games that HAVE character specs are checked, and only games that set
+ * `"adaptedFrom"` in art-style.json are required to carry plotQuote — a game
+ * invented from scratch has no source text to quote, and every material in it
+ * is a design choice by definition.
+ *
+ * Run by hand:  node .github/scripts/check_character_specs.mjs
+ */
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+
+const VALID = new Set(['plot', 'design']);
+const problems = [];
+let checked = 0;
+
+for (const game of readdirSync('games', { withFileTypes: true })) {
+  if (!game.isDirectory() || game.name.startsWith('_')) continue;
+  const path = `games/${game.name}/art-style.json`;
+  if (!existsSync(path)) continue;
+
+  let style;
+  try {
+    style = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (err) {
+    problems.push(`${path}: not valid JSON — ${err.message}`);
+    continue;
+  }
+
+  const chars = style.characters;
+  if (!chars || !Object.keys(chars).length) continue;
+  const adapted = Boolean(style.adaptedFrom);
+
+  for (const [id, spec] of Object.entries(chars)) {
+    checked++;
+    const where = `${path}: characters.${id}`;
+    const mats = spec.materials || {};
+    if (!Object.keys(mats).length) {
+      problems.push(`${where} has no materials`);
+      continue;
+    }
+    for (const [mat, info] of Object.entries(mats)) {
+      if (typeof info !== 'object' || info === null) continue;
+      if (!('source' in info)) {
+        problems.push(`${where}.materials.${mat} has no "source" — say "plot" or "design"`);
+      } else if (!VALID.has(info.source)) {
+        problems.push(`${where}.materials.${mat} source="${info.source}" — must be "plot" or "design"`);
+      } else if (info.source === 'plot' && !adapted) {
+        problems.push(`${where}.materials.${mat} claims source "plot", but ${path} has no "adaptedFrom"`);
+      }
+    }
+    const claimsPlot = Object.values(mats).some((m) => m && m.source === 'plot');
+    if (claimsPlot && !String(spec.plotQuote || '').trim()) {
+      problems.push(`${where} has materials sourced to the plot but no "plotQuote" to check them against`);
+    }
+  }
+}
+
+if (problems.length) {
+  console.error('Character spec provenance problems:');
+  for (const p of problems) console.error(`  - ${p}`);
+  console.error('\nSee `characterSpecRule` in the game\'s art-style.json, and the header of this script.');
+  process.exit(1);
+}
+console.log(`Character spec provenance OK (${checked} spec${checked === 1 ? '' : 's'}).`);

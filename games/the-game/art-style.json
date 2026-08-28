@@ -7,56 +7,65 @@
   "constraints": "No text, no logos, no watermark, no UI elements, no borders/frames or vignette baked into the image. STRICTLY no people, characters or figures anywhere in a room or on a prop sheet — a stray figure standing in the scene is a confirmed failure mode. Architecture must be clean and orthogonal — walls meet the floor at a clear, readable line — and rich atmospheric lighting/colour is expected and desired, not a flaw. A character sprite must be full body head-to-feet, standing, facing the viewer — never a close-up bust crop — and isolated ONLY on plain transparent background with no scene, room, walls, furniture or floor drawn in. Any character wearing glasses must have clearly visible human eyes — pupils and eye whites — showing behind the lenses, never blank/hidden skin tone.",
   "pixelArt": true,
   "pixelGrid": 128,
-  "characterSpecRule": "EVERY character has an entry here, written BEFORE any of its art is generated, and the generators BUILD their prompt from it — nobody retypes a description. See .github/art/CHARACTER_SHEETS.md. `appears` is what makes checking possible: a material marked always must be visible in every frame of every sheet, while a conditional one may come and go. Add to a spec the moment a detail is caught drifting; that is the entire point of it.",
+  "characterSpecRule": "Every character drawn for this game has a spec under `characters.<id>`, and the spec is the single source of truth: `.github/art/generate_row.py` BUILDS the prompt from it and `.github/art/verify_sheet.py character` CHECKS finished sheets against it, so a detail written here cannot drift the way one typed into a prompt does. Generating art for a character with no spec is refused — write the spec first. Newsey is an adaptation, so every spec also carries its PROVENANCE, and that is not decoration: the art is regenerated from these specs, so anything invented here becomes canon. `plotQuote` is the verbatim text about that character from the owner's original plot (PR #30, comment 5344870145) — copied, never paraphrased. Every material carries `source`: \"plot\" means the quote states it and it must not be changed without the owner, \"design\" means we chose it and it is open to change. Audited against the verbatim plot on 2026-08-28; that pass found Eric's robe had drifted grey-green when the plot says gray twice, May's shredded robe had been drawn as a neat one, Rex had acquired Chuck's beard, John had aged from late thirties into an old man, and the Devil had lost the two words that describe him — cartoon, and little.",
   "characters": {
     "nella": {
       "name": "Nella (Infinity avatar)",
       "species": "Nella's magical avatar inside Infinity. Plot: \"It looked like I had transformed into a demon of some sort\" — still recognisably herself, with horns, glowing red eyes and fangs added. Human build; the horns, eyes and fangs are the only changes.",
+      "plotQuote": "It was still myself, but a pair of bright red horns were poking through my black hair. I still had my glasses, but my eyes were glowing red. I had fangs. It looked like I had transformed into a demon of some sort. I was wearing a dark red robe. On my wrist was a copper bracelet decorated in light blue gemstones. / \"It is copper, to reflect your ranking and aquamarine to reflect your dominant playstyle.\"",
       "materials": {
         "horns": {
           "base": "#c0392b",
           "shade": "#7d2018",
           "appears": "always",
-          "note": "TWO short curved bright-red horns POKING THROUGH her black hair — plot: \"a pair of bright red horns were poking through my black hair\". They emerge from the hair, not from a bare forehead. Small: not antlers, not a crown."
+          "note": "TWO short curved bright-red horns POKING THROUGH her black hair — plot: \"a pair of bright red horns were poking through my black hair\". They emerge from the hair, not from a bare forehead. Small: not antlers, not a crown.",
+          "source": "plot"
         },
         "hair": {
           "base": "#1b1620",
           "shade": "#0d0a10",
           "appears": "always",
-          "note": "Very dark, thick, shoulder-length, slightly wild."
+          "note": "Very dark, thick, shoulder-length, slightly wild.",
+          "source": "plot"
         },
         "glasses": {
           "frame": "#2b2b33",
           "appears": "front and side views",
-          "note": "Round lenses. Hidden by her hair from directly behind, which is correct."
+          "note": "Round lenses. Hidden by her hair from directly behind, which is correct.",
+          "source": "plot"
         },
         "robe": {
           "base": "#7b1f1f",
           "shade": "#4a1010",
           "appears": "always",
-          "note": "Dark crimson hooded robe, falling to mid-calf."
+          "note": "Dark crimson robe falling to mid-calf, NO HOOD — a hooded robe is John’s silhouette in this game.",
+          "source": "plot"
         },
         "bracelet": {
           "band": "#b87333",
           "gem": "#7fd4d4",
           "appears": "front and side views",
-          "note": "Copper band set with aquamarine gems — her rank. Copper is the LOWEST rank; it must never read as gold."
+          "note": "Copper band set with aquamarine gems — her rank. Copper is the LOWEST rank; it must never read as gold.",
+          "source": "plot"
         },
         "skin": {
           "base": "#e0a06a",
           "shade": "#a86f42",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         },
         "eyes": {
           "base": "#ff2a2a",
           "glow": "#ff8080",
           "appears": "front and side views",
-          "note": "GLOWING RED eyes — plot: \"my eyes were glowing red\". Not merely red-tinted; they give off light."
+          "note": "GLOWING RED eyes — plot: \"my eyes were glowing red\". Not merely red-tinted; they give off light.",
+          "source": "plot"
         },
         "fangs": {
           "base": "#f4f0e8",
           "appears": "front views, when her mouth is open",
-          "note": "Plot: \"I had fangs.\" Small, not a monster's tusks."
+          "note": "Plot: \"I had fangs.\" Small, not a monster's tusks.",
+          "source": "plot"
         }
       },
       "proportions": "About four heads tall, head roughly a quarter of total height; a teenager, not a child.",
@@ -71,33 +80,39 @@
     },
     "nella_human": {
       "name": "Nella (real world)",
-      "species": "the same girl OUTSIDE Infinity, before the transformation — an ordinary human teenager in modern clothes. No magical features whatsoever.",
+      "species": "the same girl OUTSIDE Infinity, before the transformation — an ordinary human woman in modern clothes. No magical features whatsoever. NOTE: the plot never describes what she wears in the real world; the clothes here are a design choice picked to echo her crimson robe, not a plot fact.",
+      "plotQuote": "(The plot never describes Nella out of game. Everything here is a design choice, chosen to echo her avatar.)",
       "materials": {
         "hair": {
-          "base": "#4a3524",
-          "shade": "#2b1d13",
+          "base": "#1b1620",
+          "shade": "#0d0a10",
           "appears": "always",
-          "note": "Dark brown, thick, shoulder-length. Same cut as her avatar, ordinary colour."
+          "note": "Black, thick, shoulder-length — identical to her avatar’s. The transformation adds horns, glowing eyes and fangs and changes nothing else.",
+          "source": "plot"
         },
         "glasses": {
           "frame": "#2b2b33",
-          "appears": "front and side views"
+          "appears": "front and side views",
+          "source": "plot"
         },
         "hoodie": {
           "base": "#a8342a",
           "shade": "#6d1f18",
           "appears": "always",
-          "note": "Red zip-up hoodie — the everyday echo of the crimson robe."
+          "note": "Red zip-up hoodie — the everyday echo of the crimson robe.",
+          "source": "design"
         },
         "jeans": {
           "base": "#2f3b4a",
           "shade": "#1d2530",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         },
         "skin": {
           "base": "#e0a06a",
           "shade": "#a86f42",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
       "proportions": "Identical build to her avatar — the same girl. About four heads tall.",
@@ -112,42 +127,49 @@
     "kat": {
       "name": "Kat",
       "species": "A charming adult human MAN — plot: \"a man I had never seen before who was wearing a black robe and a top hat. He had black hair, glasses, and a large smile\", and he speaks \"almost purring\". Warm, theatrical, immediately disarming.",
+      "plotQuote": "a man I had never seen before who was wearing a black robe and a top hat. He had black hair, glasses, and a large smile. / said to me, almost purring. \"They call me Kat.\"",
       "materials": {
         "tophat": {
           "base": "#141118",
           "shade": "#000000",
           "appears": "always",
-          "note": "A BLACK TOP HAT, tall and flat-topped. It is her silhouette — never a cap, never bare-headed."
+          "note": "A BLACK TOP HAT, tall and flat-topped. It is his silhouette — never a cap, never bare-headed.",
+          "source": "plot"
         },
         "hair": {
           "base": "#161016",
           "shade": "#000000",
           "appears": "always",
-          "note": "Black, long, falling past the shoulders below the hat."
+          "note": "Black, collar-length — short enough that the top hat stays the read.",
+          "source": "plot"
         },
         "glasses": {
           "frame": "#2b2b33",
-          "appears": "front and side views"
+          "appears": "front and side views",
+          "source": "plot"
         },
         "robe": {
           "base": "#1c1a22",
           "shade": "#0b0a0e",
           "appears": "always",
-          "note": "Long black robe over a dark suit."
+          "note": "Long black robe over a dark suit.",
+          "source": "plot"
         },
         "bracelet": {
           "band": "#d4af37",
           "gem": "#2e9e5b",
           "appears": "front and side views",
-          "note": "GOLD band with emerald gems — a rank above Timothy's silver, below diamond."
+          "note": "Gold band with emerald gems. Never diamond — diamond is the top rank and belongs to Timothy.",
+          "source": "design"
         },
         "skin": {
           "base": "#e0a06a",
           "shade": "#a86f42",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
-      "proportions": "An adult, about four and a half heads tall including the hat.",
+      "proportions": "An adult man, about four and a half heads tall including the hat.",
       "neverDraw": [
         "a bare head",
         "a short brimmed cap instead of a top hat",
@@ -156,50 +178,60 @@
     },
     "may": {
       "name": "May 2000",
-      "species": "a human champion duellist and idol — hostile, grieving, sharp-featured. Fully human.",
+      "species": "a human champion duellist and idol — \"beautiful\", pink-haired, and in the scene she is introduced in, furious and dishevelled. Fully human.",
+      "plotQuote": "a beautiful pink-haired woman stumbled out of the portal. She was wearing a silver bracelet that was decorated in dark sapphire gems and her royal blue robe was ripped to shreds, barely hanging on her shoulders, revealing her black leather jacket, white collared shirt decorated in pearls, blue jeans, and stylish black boots. / \"May 2000... my hero as a pink-haired gamer girl kicking some serious ass.\" / May scowled",
       "materials": {
         "hair": {
           "base": "#e8306f",
           "shade": "#a81b4c",
           "appears": "always",
-          "note": "BRIGHT MAGENTA-PINK, shoulder length. Her single most identifying feature. NOTE FOR CUTTERS: this is the same colour family as the sheet's magenta gridlines — see WALK_SHEETS.md; cells are cut between the green gutters so the divider is never keyed by colour."
+          "note": "BRIGHT MAGENTA-PINK, shoulder length. Her single most identifying feature. NOTE FOR CUTTERS: this is the same colour family as the sheet's magenta gridlines — see WALK_SHEETS.md; cells are cut between the green gutters so the divider is never keyed by colour.",
+          "source": "plot"
         },
         "robe": {
           "base": "#2f4b9c",
           "shade": "#1b2c60",
           "appears": "always",
-          "note": "Royal-blue open robe worn OVER the jacket."
+          "note": "Royal-blue robe RIPPED TO SHREDS, \"barely hanging on her shoulders\" — torn hem, ragged edges, hanging off one shoulder so the jacket and shirt underneath show. This is her silhouette; a neat open robe is wrong.",
+          "source": "plot"
         },
         "jacket": {
           "base": "#16161c",
           "shade": "#08080b",
           "appears": "always",
-          "note": "Black leather jacket under the robe."
+          "note": "Black leather jacket under the robe.",
+          "source": "plot"
         },
         "shirt": {
           "base": "#efe7dd",
           "appears": "front and side views",
-          "note": "White pearled shirt, visible at the collar."
+          "note": "White COLLARED shirt decorated in pearls, visible at the collar.",
+          "source": "plot"
         },
         "jeans": {
           "base": "#2b3550",
           "shade": "#171d2c",
-          "appears": "always"
+          "appears": "always",
+          "source": "plot"
         },
         "boots": {
           "base": "#141118",
-          "appears": "always"
+          "appears": "always",
+          "note": "Stylish black boots.",
+          "source": "plot"
         },
         "bracelet": {
           "band": "#c0c4cc",
           "gem": "#2f6fd0",
           "appears": "front and side views",
-          "note": "SILVER band with sapphire gems."
+          "note": "SILVER band with DARK sapphire gems.",
+          "source": "plot"
         },
         "skin": {
           "base": "#f0c8a8",
           "shade": "#b98c68",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
       "proportions": "An adult, about four and a half heads tall.",
@@ -214,30 +246,35 @@
     },
     "timothy": {
       "name": "Timothy",
-      "species": "an older, kindly human duellist — the highest-ranked of the group.",
+      "species": "a calm, kindly human duellist who steps in to defuse May — the highest-ranked of the group. The plot gives him no age; draw him as an adult, not visibly old.",
+      "plotQuote": "Said the second man. He was wearing a dark gray robe, and had blonde hair. He had on a bracelet that just looked like it was made of diamonds. / \"Something doesn’t add up about him, Timothy,\" she said",
       "materials": {
         "hair": {
           "base": "#e8c15a",
           "shade": "#a8863a",
           "appears": "always",
-          "note": "Blonde, soft and slightly tousled."
+          "note": "Blonde, soft and slightly tousled.",
+          "source": "plot"
         },
         "robe": {
           "base": "#3a3a42",
           "shade": "#212127",
           "appears": "always",
-          "note": "Dark-grey robe."
+          "note": "Dark-grey robe.",
+          "source": "plot"
         },
         "bracelet": {
           "band": "#e8e8f0",
           "gem": "#d8f0ff",
           "appears": "front and side views",
-          "note": "ALL DIAMOND — the top rank. Bright, colourless, unmistakably not gold or silver."
+          "note": "ALL DIAMOND — \"a bracelet that just looked like it was made of diamonds\", the top rank. Bright, colourless, unmistakably not gold or silver.",
+          "source": "plot"
         },
         "skin": {
           "base": "#f0c8a8",
           "shade": "#b98c68",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
       "proportions": "An adult, about four and a half heads tall.",
@@ -249,74 +286,85 @@
     },
     "rex": {
       "name": "Rex",
-      "species": "a scruffy, weathered adult human man with a full beard. Grown and unkempt — never a smooth-faced youth.",
+      "species": "an adult human man, \"scruffy in appearance\" but explicitly NOT dishevelled — unkempt hair and unshaven stubble on an otherwise tidy man. He smirks rather than smiles.",
+      "plotQuote": "The second person was a man, scruffy in appearance with red hair, and dressed in a deep gold robe. He was wearing a copper bracelet decorated in amethysts. Nothing about his appearance seemed disheveled, unlike the woman. / the red-haired man smirked",
       "materials": {
         "hair": {
           "base": "#8c2f1c",
           "shade": "#551a10",
           "appears": "always",
-          "note": "Untidy dark-red hair."
-        },
-        "beard": {
-          "base": "#8c2f1c",
-          "shade": "#551a10",
-          "appears": "always",
-          "note": "FULL red-brown beard and moustache. He is never clean-shaven."
+          "note": "Untidy dark-red hair — the plot says \"red hair\".",
+          "source": "plot"
         },
         "robe": {
           "base": "#b8860b",
           "shade": "#7a5807",
           "appears": "always",
-          "note": "Deep-gold / mustard robe with a wide collar."
+          "note": "DEEP GOLD robe with a wide collar. Note the tension the plot is pointing at: a deep gold robe above a COPPER bracelet.",
+          "source": "plot"
         },
         "bracelet": {
           "band": "#b87333",
           "gem": "#9b59b6",
           "appears": "front and side views",
-          "note": "COPPER band set with AMETHYSTS — the detail May is suspicious about. Copper with purple gems, never gold."
+          "note": "COPPER band set with AMETHYSTS — the detail May is suspicious about. Copper with purple gems, never gold.",
+          "source": "plot"
         },
         "skin": {
           "base": "#e0a06a",
           "shade": "#a86f42",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
+        },
+        "stubble": {
+          "base": "#8c2f1c",
+          "shade": "#551a10",
+          "appears": "front and side views",
+          "note": "Unshaven red-brown STUBBLE, NOT a full beard — the plot calls him \"scruffy in appearance\" and, in the same breath, says \"Nothing about his appearance seemed disheveled\".",
+          "source": "design"
         }
       },
-      "proportions": "An adult man, about four and a half heads tall, slightly hunched.",
+      "proportions": "An adult man, about four and a half heads tall.",
       "neverDraw": [
-        "a clean-shaven face",
+        "a full beard",
         "a yellow scarf",
         "earrings",
         "pink or streaked hair",
-        "a youthful smooth face"
+        "a warm open smile"
       ]
     },
     "diamond": {
       "name": "Diamond",
       "species": "a confident adult human woman, the self-declared star of Kat's table.",
+      "plotQuote": "a young woman with black hair and rainbow highlights who shoved her feminine, manicured hand towards me. / Diamond, tossing her hair back over her shoulder",
       "materials": {
         "hair": {
           "base": "#141018",
           "shade": "#000000",
           "appears": "always",
-          "note": "Long BLACK hair."
+          "note": "Long BLACK hair — she \"toss[es] her hair back over her shoulder\", so it is past shoulder length.",
+          "source": "plot"
         },
         "highlights": {
           "green": "#3ad17a",
           "blue": "#3a9ad1",
           "pink": "#e05aa8",
           "appears": "always",
-          "note": "RAINBOW streaks through the black hair — her name detail. Not chroma-key spill; they are meant to be there."
+          "note": "RAINBOW streaks through the black hair — her name detail. Not chroma-key spill; they are meant to be there.",
+          "source": "plot"
         },
         "jacket": {
           "base": "#5b2d6e",
           "shade": "#331840",
           "appears": "always",
-          "note": "Purple jacket over dark clothes."
+          "note": "Purple jacket over dark clothes.",
+          "source": "design"
         },
         "skin": {
           "base": "#c98a5c",
           "shade": "#8f5e3c",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
       "proportions": "An adult, about four and a half heads tall.",
@@ -328,27 +376,31 @@
     },
     "eric": {
       "name": "Eric",
-      "species": "A cheerful adult human man — plot: \"A young man with broad shoulders, blonde hair, and a gray robe\", whose \"laugh was comforting and warm\".",
+      "species": "A cheerful YOUNG human man — plot: \"A young man with broad shoulders, blonde hair, and a gray robe\", whose \"laugh was comforting and warm\".",
+      "plotQuote": "A young man with broad shoulders, blonde hair, and a gray robe, looked over at Diamond and started chuckling. His laugh was comforting and warm. / \"I’m Eric,\" said the man in the gray robe.",
       "materials": {
         "hair": {
           "base": "#e8c15a",
           "shade": "#a8863a",
           "appears": "always",
-          "note": "Blonde."
+          "note": "Blonde.",
+          "source": "plot"
         },
         "robe": {
-          "base": "#8a9a8a",
-          "shade": "#5b675b",
+          "base": "#9a9a9e",
+          "shade": "#63636a",
           "appears": "always",
-          "note": "Grey-green robe over a plain shirt."
+          "note": "PLAIN GRAY robe over a plain shirt — a mid neutral grey, lighter than Timothy’s \"dark gray\". No green in it.",
+          "source": "plot"
         },
         "skin": {
           "base": "#f0c8a8",
           "shade": "#b98c68",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
-      "proportions": "An adult, about four and a half heads tall, broad.",
+      "proportions": "A young adult, about four and a half heads tall, broad-shouldered.",
       "neverDraw": [
         "dark hair",
         "a scowl",
@@ -358,94 +410,116 @@
     "magma": {
       "name": "Magma",
       "species": "A shapeshifter — plot: \"a short and very young woman... barely older than a child\", and as Nella shakes her hand \"her face shifted, features becoming a bit older, hair becoming longer. It was like she was Mystique from the X-Men\". Draw her YOUNG form; the shifting is a story beat, not a sprite.",
+      "plotQuote": "a short and very young woman sitting at the corner of the table. She was barely older than a child. [As] I reached out my hand to shake hers, her face shifted, features becoming a bit older, hair becoming longer. / \"Princess, don’t go scaring the new girl!\" ... Magma scowled",
       "materials": {
         "hair": {
           "base": "#4a2418",
           "shade": "#2a140d",
           "appears": "always",
-          "note": "Dark brown, short bob."
+          "note": "Dark brown, SHORT bob — short so the shapeshift beat (\"hair becoming longer\") reads as a change.",
+          "source": "design"
         },
         "coat": {
           "base": "#a8481f",
           "shade": "#6d2c12",
           "appears": "always",
-          "note": "Rust-orange coat — the ember in her name."
+          "note": "Rust-orange coat, the ember in her name.",
+          "source": "design"
         },
         "skin": {
           "base": "#e0a06a",
           "shade": "#a86f42",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
       "proportions": "Young — slighter and shorter than the adults, about four heads tall.",
       "neverDraw": [
         "a confident grin",
-        "bright hair colours",
+        "an adult’s height or build",
         "a bracelet"
       ]
     },
     "john": {
       "name": "John Boxley",
-      "species": "the trapped creator of Puzzle Attack — an exhausted, hunched older human man, almost entirely hidden inside a hooded robe.",
+      "species": "the trapped creator of Puzzle Attack — a man in his LATE THIRTIES, not an old man: \"handsome features\" worn down by exhaustion, poor posture, back hunched, looking like he could fall asleep standing up, and mostly hidden inside a hooded robe.",
+      "plotQuote": "In my doorway stood a man in his late 30s with short brown hair and dark eyes. He had poor posture and his back was hunched. He looked like he could fall asleep at any moment. He looked unkempt and his handsome features were hidden by his hooded robe. / \"I am John. John Boxley.\"",
       "materials": {
         "robe": {
           "base": "#5a4632",
           "shade": "#33271b",
           "appears": "always",
-          "note": "Heavy brown HOODED robe, hood always UP, falling to the floor. It is his whole silhouette."
+          "note": "Heavy HOODED robe, hood always UP, falling to the floor — it is his whole silhouette.",
+          "source": "plot"
         },
         "hair": {
           "base": "#4a3524",
           "shade": "#2b1d13",
           "appears": "front views only",
-          "note": "Brown, barely visible under the hood."
+          "note": "SHORT brown hair, barely visible under the hood.",
+          "source": "plot"
         },
         "skin": {
           "base": "#c98a5c",
           "shade": "#8f5e3c",
           "appears": "front views only",
-          "note": "Only the face inside the hood, in shadow. NOTE: his robe hides his feet entirely, which is why the stance check cannot read him."
+          "note": "Only the face inside the hood, in shadow. NOTE: his robe hides his feet entirely, which is why the stance check cannot read him.",
+          "source": "design"
+        },
+        "eyes": {
+          "base": "#3a2a20",
+          "appears": "front views",
+          "note": "DARK eyes, deep-set — the plot returns twice to \"his deep eyes\" and \"the intensity of his gaze\".",
+          "source": "plot"
         }
       },
-      "proportions": "An adult man, hunched — reads shorter than the others, about four heads tall.",
+      "proportions": "A man in his late thirties, hunched — reads shorter than the others, about four heads tall. Hunched by exhaustion, not by age.",
       "neverDraw": [
         "the hood down",
         "a bare head",
         "visible legs or feet",
-        "a cheerful expression"
+        "a cheerful expression",
+        "white or grey hair",
+        "an old man’s face"
       ]
     },
     "michael": {
       "name": "Michael",
       "species": "an adult human detective who runs a jazz coffee shop in the Library. Warm, watchful.",
+      "plotQuote": "an elegant looking man with a friendly smile and brown hair. / The gesture made his light blue robe fall off of his right shoulder... It looked like he was wearing a brown suit vest with gold buttons and a white undershirt. I caught a glimpse of something shiny... It looked like a badge.",
       "materials": {
         "hair": {
           "base": "#5a3a22",
           "shade": "#33200f",
           "appears": "always",
-          "note": "Brown, neat."
+          "note": "Brown, neat.",
+          "source": "plot"
         },
         "robe": {
           "base": "#6f9fc4",
           "shade": "#3f6a8c",
           "appears": "always",
-          "note": "LIGHT-BLUE robe — his most identifying colour."
+          "note": "LIGHT-BLUE robe — his most identifying colour.",
+          "source": "plot"
         },
         "vest": {
           "base": "#7a4a2a",
           "shade": "#4d2c17",
           "appears": "front and side views",
-          "note": "Brown suit vest with GOLD BUTTONS over a white undershirt — plot's words, glimpsed when his robe slips off one shoulder."
+          "note": "Brown suit vest with GOLD BUTTONS over a white undershirt — plot's words, glimpsed when his robe slips off one shoulder.",
+          "source": "plot"
         },
         "badge": {
           "base": "#d4af37",
           "appears": "never in walk sheets",
-          "note": "A badge glimpsed under the robe — Nella wonders if he is a police officer. It is deliberately hidden, so it is never drawn on a walk sheet."
+          "note": "A badge glimpsed under the robe — Nella wonders if he is a police officer. It is deliberately hidden, so it is never drawn on a walk sheet.",
+          "source": "plot"
         },
         "skin": {
           "base": "#e8b48c",
           "shade": "#a87a58",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
       "proportions": "An adult, about four and a half heads tall.",
@@ -458,40 +532,53 @@
     "kyran": {
       "name": "Kyran",
       "species": "Infinity's head of research. Plot: \"a man with dark hair and eyes who was wearing a lab coat and holding a tablet of some sort. He looked like a scientist\", with a dazzling smile.",
+      "plotQuote": "a man with dark hair and eyes who was wearing a lab coat and holding a tablet of some sort. He looked like a scientist. / The man smiled, and his smile was dazzling. / Kyran laughed, deep and warm.",
       "materials": {
         "hair": {
           "base": "#141018",
           "shade": "#000000",
           "appears": "always",
-          "note": "Short black hair."
+          "note": "Short black hair.",
+          "source": "plot"
         },
         "labcoat": {
           "base": "#e8e8ea",
           "shade": "#b0b0b6",
           "appears": "always",
-          "note": "WHITE LAB COAT, open. His silhouette — never a robe."
+          "note": "WHITE LAB COAT, open. His silhouette — never a robe.",
+          "source": "plot"
         },
         "shirt": {
           "base": "#1f8a8a",
           "shade": "#125555",
           "appears": "front and side views",
-          "note": "Teal shirt under the coat."
+          "note": "Teal shirt under the open coat.",
+          "source": "design"
         },
         "trousers": {
           "base": "#22222a",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         },
         "tablet": {
           "base": "#2b2b33",
           "screen": "#7fd4ff",
           "appears": "portraits only",
-          "note": "He carries a tablet in art of him at work; a walk sheet does not need it."
+          "note": "He carries a tablet in art of him at work; a walk sheet does not need it.",
+          "source": "plot"
         },
         "skin": {
           "base": "#7a4a2a",
           "shade": "#4d2c17",
           "appears": "always",
-          "note": "Dark brown skin. This comes from the inspiration art (PLOT.md: \"inspo: black scientist in the lab\"), not from the plot text, which says only \"dark hair and eyes\" — recorded so nobody mistakes it for a licence to change him."
+          "note": "Dark brown skin. This comes from the inspiration art (PLOT.md: \"inspo: black scientist in the lab\"), not from the plot text, which says only \"dark hair and eyes\" — recorded so nobody mistakes it for a licence to change him.",
+          "source": "design"
+        },
+        "eyes": {
+          "base": "#2a1c14",
+          "appears": "front views",
+          "note": "Dark eyes — plot: \"a man with dark hair and eyes\".",
+          "source": "plot"
         }
       },
       "proportions": "An adult, about four and a half heads tall.",
@@ -504,39 +591,46 @@
     "chuck": {
       "name": "Chuck",
       "species": "Nella's real-world best friend since high school; works at a lumberyard, drives a dark blue pickup. Plot: \"He was a big guy, with dark curly hair and a large beard... Deep down, though, Chuck was a teddy bear.\" Imposing to a stranger, gentle in fact.",
+      "plotQuote": "He was a big guy, with dark curly hair and a large beard. Deep down, though, Chuck was a teddy bear. / He pulled a brown paper bag out from under his red flannel jacket / I looked up into his deep blue eyes",
       "materials": {
         "hair": {
           "base": "#2f2318",
           "shade": "#1a1310",
           "appears": "always",
-          "note": "DARK CURLY hair — plot's words. Not straight, not light brown, and he is not bald."
+          "note": "DARK CURLY hair — plot's words. Not straight, not light brown, and he is not bald.",
+          "source": "plot"
         },
         "beard": {
           "base": "#2f2318",
           "shade": "#1a1310",
           "appears": "always",
-          "note": "A LARGE BEARD, not a moustache. The shipped art gives him a walrus moustache and no beard; the plot says beard, and the plot wins."
+          "note": "A LARGE BEARD, not a moustache. The shipped art gives him a walrus moustache and no beard; the plot says beard, and the plot wins.",
+          "source": "plot"
         },
         "flannel": {
           "base": "#9c2f2a",
           "shade": "#5f1a17",
           "appears": "always",
-          "note": "RED FLANNEL JACKET — plot: \"He pulled a brown paper bag out from under his red flannel jacket\". The teal-blue hoodie in the current art is not from the plot."
+          "note": "RED FLANNEL JACKET — plot: \"He pulled a brown paper bag out from under his red flannel jacket\". The teal-blue hoodie in the current art is not from the plot.",
+          "source": "plot"
         },
         "jeans": {
           "base": "#2f3b4a",
           "shade": "#1d2530",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         },
         "eyes": {
           "base": "#3f6ea8",
           "appears": "front views",
-          "note": "Deep blue — plot: \"I looked up into his deep blue eyes\"."
+          "note": "Deep blue — plot: \"I looked up into his deep blue eyes\".",
+          "source": "plot"
         },
         "skin": {
           "base": "#e8b48c",
           "shade": "#a87a58",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
       "proportions": "A big man in his thirties — broader and taller than Nella, about four and a half heads tall.",
@@ -552,38 +646,46 @@
     },
     "devil": {
       "name": "The Devil",
-      "species": "the mirror-popup host of Infinity — a smiling red-skinned devil. Charming rather than monstrous.",
+      "species": "the mirror-popup host of Infinity — plot: \"A smiling CARTOON devil appeared in the mirror, as if it was a screen\", and later \"the LITTLE devil\". He is not a character in the world: he is a friendly mascot drawn ON a screen, in a flatter, rounder, more cartoonish style than everyone else in the game, and he is small.",
+      "plotQuote": "A smiling cartoon devil appeared in the mirror, as if it was a screen. / The little devil pointed to the doorway and then vanished.",
       "materials": {
         "horns": {
           "base": "#7d2018",
           "shade": "#4a1010",
           "appears": "always",
-          "note": "Two curved dark-red horns."
+          "note": "Two small curved horns, rounded and cartoonish.",
+          "source": "design"
         },
         "skin": {
           "base": "#d4553a",
           "shade": "#8f3323",
           "appears": "always",
-          "note": "Red skin — he is the only red-skinned character."
+          "note": "Red skin — he is the only red-skinned character.",
+          "source": "design"
         },
         "robe": {
           "base": "#2a1a2a",
           "shade": "#150c15",
           "appears": "always",
-          "note": "Dark plum robe with crimson trim."
+          "note": "Dark plum robe with crimson trim.",
+          "source": "design"
         },
         "trim": {
           "base": "#c0392b",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
-      "proportions": "An adult, about four and a half heads tall.",
+      "proportions": "SMALL and cartoonish — \"the little devil\". Roughly three heads tall with an oversized head, deliberately unlike the four-and-a-half-heads adults; he is a mascot on a screen, not a person in a room.",
       "neverDraw": [
         "a monstrous or snarling face",
         "wings",
         "a pitchfork",
-        "human skin tone"
+        "human skin tone",
+        "realistic proportions matching the other characters",
+        "a menacing expression"
       ]
     }
-  }
+  },
+  "adaptedFrom": "The owner's original plot, posted verbatim as the FIRST comment on Clubhouse PR #30 (comment id 5344870145, branch clubhouse/the-game). `reference/the-game/PLOT.md` is a distillation of it and has lost detail that turned out to decide things — read the comment, not the distillation, before changing anything a spec sources to \"plot\"."
 }

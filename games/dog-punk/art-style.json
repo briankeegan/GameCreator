@@ -79,57 +79,67 @@
           "shade": "#e0791c",
           "deep": "#b54d1a",
           "appears": "always",
-          "note": "Coat is FLAT and straight, NEVER curly, woolly or shaggy — a doodle drawn with curls reads as a different breed and at this scale the curls become noise."
+          "note": "Coat is FLAT and straight, NEVER curly, woolly or shaggy — a doodle drawn with curls reads as a different breed and at this scale the curls become noise.",
+          "source": "design"
         },
         "ears": {
           "base": "#f0a35a",
           "shade": "#e0791c",
           "appears": "always",
-          "note": "The SAME golden as the coat. NEVER brown — brown is the boots and nothing else. They kept coming back boot-brown, which reads as a different breed from the neck up."
+          "note": "The SAME golden as the coat. NEVER brown — brown is the boots and nothing else. They kept coming back boot-brown, which reads as a different breed from the neck up.",
+          "source": "design"
         },
         "muzzle": {
           "base": "#f4f0e6",
           "appears": "front and side views",
-          "note": "A SMALL snout patch only — proportionate to a normal dog muzzle, no more than about a fifth of the head's area. The side-view attack row drew this as a large pale wedge covering most of the lower face, which measured (Python/PIL, muzzle-colour pixels as % of the sprite) at 2.7-2.8% of total sprite area versus 0% on the same view's walk row — not an open-mouth expression, an oversized muzzle."
+          "note": "A SMALL snout patch only — proportionate to a normal dog muzzle, no more than about a fifth of the head's area. The side-view attack row drew this as a large pale wedge covering most of the lower face, which measured (Python/PIL, muzzle-colour pixels as % of the sprite) at 2.7-2.8% of total sprite area versus 0% on the same view's walk row — not an open-mouth expression, an oversized muzzle.",
+          "source": "design"
         },
         "mohawk": {
           "base": "#ff5c9a",
           "shade": "#e8306f",
           "appears": "always",
-          "note": "A TALL upright hot-pink crest, unmissable, visible from behind and mid-attack, running the height of the head from the nape to well above the ears — NOT a thin sliver, NOT a short tuft. Measured (Python/PIL, mohawk-colour pixels as % of sprite area) the walk sheet's back-view crest came back at roughly HALF the area of the attack sheet's back-view crest from the same character, same camera — draw it as large and dominant as the attack sheet's back view every time, not a smaller or shyer version. Also keep the BRIGHT base pink (#ff5c9a) as the dominant tone, with the darker shade (#e8306f) only as a thin edge — a crest that comes back mostly the darker shade reads as a duller, less saturated pink than the other views. NOT a flat cap, NOT a beret, NOT a swept-back crest — it flattened into a cap in two separate attack sheets, and it is the single feature that makes her recognisable at 32px."
+          "note": "A TALL upright hot-pink crest, unmissable, visible from behind and mid-attack, running the height of the head from the nape to well above the ears — NOT a thin sliver, NOT a short tuft. Measured (Python/PIL, mohawk-colour pixels as % of sprite area) the walk sheet's back-view crest came back at roughly HALF the area of the attack sheet's back-view crest from the same character, same camera — draw it as large and dominant as the attack sheet's back view every time, not a smaller or shyer version. Also keep the BRIGHT base pink (#ff5c9a) as the dominant tone, with the darker shade (#e8306f) only as a thin edge — a crest that comes back mostly the darker shade reads as a duller, less saturated pink than the other views. NOT a flat cap, NOT a beret, NOT a swept-back crest — it flattened into a cap in two separate attack sheets, and it is the single feature that makes her recognisable at 32px.",
+          "source": "design"
         },
         "jacket": {
           "base": "#2a2e38",
           "highlight": "#3d434f",
           "studs": "#dfe4ea",
           "appears": "always",
-          "note": "Dark charcoal studded leather with FULL LONG SLEEVES to the wrist — never sleeveless, never a vest, never bare shoulders. The base tone must stay the dominant one: when the highlight takes over instead, the jacket reads as having changed colour between animations."
+          "note": "Dark charcoal studded leather with FULL LONG SLEEVES to the wrist — never sleeveless, never a vest, never bare shoulders. The base tone must stay the dominant one: when the highlight takes over instead, the jacket reads as having changed colour between animations.",
+          "source": "design"
         },
         "shorts": {
           "base": "#3fa093",
           "shade": "#2e7d74",
-          "appears": "front and side views"
+          "appears": "front and side views",
+          "source": "design"
         },
         "boots": {
           "base": "#7a4a24",
           "sole": "#4e2e15",
           "appears": "always",
-          "note": "The ONLY brown on the character."
+          "note": "The ONLY brown on the character.",
+          "source": "design"
         },
         "dagger": {
           "blade": "#dfe4ea",
           "edge": "#8c95a0",
           "grip": "#4e2e15",
           "appears": "attack sheets",
-          "hand": "always the same hand"
+          "hand": "always the same hand",
+          "source": "design"
         },
         "tongue": {
           "base": "#d98a7a",
-          "appears": "attack sheets"
+          "appears": "attack sheets",
+          "source": "design"
         },
         "outline": {
           "base": "#14121a",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
       "neverDraw": [
@@ -147,30 +157,36 @@
         "fur": {
           "base": "#8a7a62",
           "shade": "#6b5c48",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         },
         "belly": {
           "base": "#dfe4ea",
-          "appears": "front and side views"
+          "appears": "front and side views",
+          "source": "design"
         },
         "extremities": {
           "base": "#d98a7a",
           "appears": "always",
-          "note": "ears, nose, paws and tail"
+          "note": "ears, nose, paws and tail",
+          "source": "design"
         },
         "eyes": {
           "base": "#f4f0e6",
           "pupil": "#14121a",
-          "appears": "front and side views"
+          "appears": "front and side views",
+          "source": "design"
         },
         "plate": {
           "base": "#8c95a0",
           "appears": "always",
-          "note": "scrap-metal shoulder plate"
+          "note": "scrap-metal shoulder plate",
+          "source": "design"
         },
         "outline": {
           "base": "#14121a",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
       "neverDraw": [
@@ -186,23 +202,27 @@
           "base": "#8c95a0",
           "shade": "#5a5d66",
           "appears": "always",
-          "note": "dented tin-can body, riveted panels"
+          "note": "dented tin-can body, riveted panels",
+          "source": "design"
         },
         "trim": {
           "base": "#3d434f",
           "shade": "#2a2e38",
           "appears": "always",
-          "note": "dark underside and propeller struts"
+          "note": "dark underside and propeller struts",
+          "source": "design"
         },
         "lens": {
           "base": "#e8306f",
           "shade": "#a01a4c",
           "appears": "always",
-          "note": "single round glowing eye-lens — the only warm colour on it, always lit"
+          "note": "single round glowing eye-lens — the only warm colour on it, always lit",
+          "source": "design"
         },
         "outline": {
           "base": "#14121a",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
       "neverDraw": [
@@ -220,27 +240,32 @@
           "base": "#6b5c48",
           "shade": "#4e2e15",
           "appears": "always",
-          "note": "darker and duller than the rat's fur — a bigger, meaner animal, not just a scaled-up rat"
+          "note": "darker and duller than the rat's fur — a bigger, meaner animal, not just a scaled-up rat",
+          "source": "design"
         },
         "armor": {
           "base": "#8c95a0",
           "shade": "#5a5d66",
           "appears": "always",
-          "note": "welded scrap plates across the back and shoulders"
+          "note": "welded scrap plates across the back and shoulders",
+          "source": "design"
         },
         "eyes": {
           "base": "#f4f0e6",
           "pupil": "#14121a",
-          "appears": "front and side views"
+          "appears": "front and side views",
+          "source": "design"
         },
         "teeth": {
           "base": "#f4f0e6",
           "appears": "always",
-          "note": "jutting lower tusks"
+          "note": "jutting lower tusks",
+          "source": "design"
         },
         "outline": {
           "base": "#14121a",
-          "appears": "always"
+          "appears": "always",
+          "source": "design"
         }
       },
       "neverDraw": [

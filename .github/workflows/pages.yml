@@ -193,6 +193,19 @@ jobs:
           [ "$status" = 0 ] || echo "rules cards out of date" >> $RUNNER_TEMP/art-problems
           exit 0
 
+      # SPEC PROVENANCE. Newsey is an adaptation, and its art is generated FROM
+      # these specs — so a detail invented in a spec becomes canon the next time
+      # anything is regenerated, indistinguishable from one the owner wrote. An
+      # audit of the fourteen specs found five that had: Eric's robe drifted
+      # grey-green against a plot that says "gray" twice, May's shredded robe
+      # drawn neat, Rex wearing Chuck's beard, John aged out of his late
+      # thirties, and the Devil missing the only two words describing him
+      # ("cartoon", "little"). Every note read plausibly; none recorded whether
+      # it was quoting or inventing. This is a fact about JSON, so it FAILS
+      # rather than warning.
+      - name: Verify character spec provenance
+        run: node .github/scripts/check_character_specs.mjs
+
       # CHARACTER SPECS. The checks above look at one sheet at a time, and the
       # thing that shipped next was invisible to all of them: Beverly's mohawk
       # is 2.2% of her walking front row and 0.1% of her ATTACKING front row —
