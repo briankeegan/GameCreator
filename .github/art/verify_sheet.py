@@ -934,8 +934,19 @@ def check_portrait_matches_sprite(game_dir, char_id):
         return [], []
     art = os.path.join(game_dir, 'art')
     portrait = os.path.join(art, f'{char_id}.png')
-    sprite = os.path.join(art, f'{char_id}_down_1.png')
-    if not (os.path.exists(portrait) and os.path.exists(sprite)):
+    # EVERY FRONT AND SIDE FRAME, not just the neutral one. Checking down_1
+    # alone would have missed the defect this check was written for: May's
+    # decapitation was total in the left and up rows and only a crop in the
+    # down row. A material that appears "always" appears in all of them.
+    #
+    # The BACK row is deliberately excluded. A back view legitimately hides
+    # anything front-facing — running it in flagged `skin` on six correct
+    # characters, since from behind you see hands and no face. That is the same
+    # distinction the spec's own `appears` field draws, applied to rows.
+    frames = [os.path.join(art, f'{char_id}_{d}_{n}.png')
+              for d in ('down', 'left') for n in (0, 1, 2)]
+    frames = [f for f in frames if os.path.exists(f)]
+    if not (os.path.exists(portrait) and frames):
         return [], []
 
     problems = []
@@ -948,9 +959,11 @@ def check_portrait_matches_sprite(game_dir, char_id):
         if not hexes:
             continue
         p = _colour_share(portrait, hexes)
-        s = _colour_share(sprite, hexes)
-        if p is None or s is None:
+        shares = [(_colour_share(f, hexes), f) for f in frames]
+        shares = [(v, f) for v, f in shares if v is not None]
+        if p is None or not shares:
             continue
+        s, worst_frame = min(shares)
         # ONE DIRECTION ONLY, and the asymmetry is real rather than a
         # convenience: a head-and-shoulders bust cannot show trousers, boots or
         # a wrist, but a full-body sprite CAN show everything a bust shows. So
@@ -962,7 +975,7 @@ def check_portrait_matches_sprite(game_dir, char_id):
         if p >= PORTRAIT_MAJOR and s < PORTRAIT_ABSENT:
             problems.append(
                 f'{char_id}: PORTRAIT/SPRITE MISMATCH — "{mat}" is {p:.1f}% of the portrait and '
-                f'only {s:.1f}% of {char_id}_down_1.png. They are two pictures of one person built '
+                f'only {s:.1f}% of {os.path.basename(worst_frame)}. They are two pictures of one person built '
                 f'from one spec; a colour that fills the portrait and is gone from the sprite means '
                 f'the generator drew someone else. A bust cannot show legs, so this is only checked '
                 f'in the direction where absence is always wrong. Regenerate whichever is off.')

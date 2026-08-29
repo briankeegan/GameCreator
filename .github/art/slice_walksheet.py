@@ -207,6 +207,42 @@ def largest_component_only(alpha):
     out[~keep] = 0
     return out
 
+
+def inset_to_green(im, y0, y1, x0, x1, start=4, limit=16):
+    """Grow the crop inset until its border ring is chroma green, and say so.
+
+    THE DIVIDER IS ONLY DANGEROUS IF IT IS INSIDE THE CROP. The colour test in
+    cut_and_trim() cannot separate a magenta gridline from magenta HAIR — May's
+    is (236,62,91) and satisfies every clause of it — so the only safe answer is
+    geometry: cut where no divider pixel can be.
+
+    That was already the reasoning behind the green-gutter path, and it worked;
+    what was missed is that the gutter path is the FALLBACK. A sheet with
+    readable gridlines takes the gridline path, which cut at the line centres
+    with a fixed 4px inset and then ran the colour test anyway — so a healthy
+    sheet was the dangerous one. May was decapitated in six of nine frames and
+    cropped in the other three, from a generation that was flawless.
+
+    So the inset is measured rather than assumed: widen it until the ring of
+    pixels around the crop is essentially all background green, which means the
+    divider and its blend are outside. Then no colour test is needed at all.
+    Returns (inset, clean) — clean=False if even `limit` did not get there, in
+    which case the caller keeps the colour test as a last resort.
+    """
+    a = np.array(im.convert("RGB"))
+    for inset in range(start, limit + 1):
+        yy0, yy1, xx0, xx1 = y0 + inset, y1 - inset, x0 + inset, x1 - inset
+        if yy1 - yy0 < 40 or xx1 - xx0 < 20:
+            break
+        cell = a[yy0:yy1, xx0:xx1]
+        ring = np.concatenate([cell[0, :], cell[-1, :], cell[:, 0], cell[:, -1]])
+        r, g, b = ring[:, 0].astype(int), ring[:, 1].astype(int), ring[:, 2].astype(int)
+        green = (g > 110) & (g - r > 55) & (g - b > 55)
+        if green.mean() >= 0.95:
+            return inset, True
+    return start, False
+
+
 def cut_and_trim(im, y0, y1, x0, x1, inset=4, divider_free=False):
     cell = im.crop((x0 + inset, y0 + inset, x1 - inset, y1 - inset)).convert("RGBA")
     a = np.array(cell)
@@ -439,11 +475,17 @@ def main():
         for c in range(min(n_cols, 3)):
             if green_cut:
                 (y0, y1), (x0, x1) = cell_rows[r], cell_cols[c]
+                inset, divider_free = 0, True
             else:
                 y0, y1 = row_bounds[r], row_bounds[r + 1]
                 x0, x1 = col_bounds[c], col_bounds[c + 1]
-            frame = cut_and_trim(im, y0, y1, x0, x1, inset=0 if green_cut else 4,
-                                 divider_free=green_cut)
+                # MEASURE the inset that clears the divider instead of assuming
+                # 4px does. When it does clear, the colour test — the one that
+                # cannot tell a magenta gridline from magenta hair — is skipped,
+                # exactly as on the gutter path.
+                inset, divider_free = inset_to_green(im, y0, y1, x0, x1)
+            frame = cut_and_trim(im, y0, y1, x0, x1, inset=inset,
+                                 divider_free=divider_free)
             out_path = os.path.join(out_dir, f"{char_id}_{name}_{c}.png")
             frame.save(out_path)
             print("wrote", out_path, frame.size)
