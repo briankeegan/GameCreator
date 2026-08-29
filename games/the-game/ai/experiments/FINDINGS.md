@@ -131,6 +131,61 @@ widening already captures whatever "think ahead about what a sequence
 produces" benefit exists in real play, implicitly, without a
 special-cased heuristic.
 
+## Round 3: queued-garbage awareness (shipped, gated)
+
+The "stop focusing on levers" instruction meant: stop A/B-sweeping
+existing weights/thresholds and fix an actual blind spot instead.
+
+**The blind spot:** `_snapshot()` builds the entire planning board from
+`stack.panelAt(r,c)` alone, which only reflects garbage that has already
+landed. `stack.incoming` (a FIFO of `{width,height,isChain}` blocks
+already committed and waiting their turn -- `shouldDropGarbage` lets only
+the front of the queue fall at a time) is invisible to `_inDanger` and
+therefore to the whole search, offense and defense alike, until each
+piece physically arrives. A burst that queues several pieces back to back
+means the danger was real the instant the queue filled -- but the AI
+doesn't react until the LAST piece has actually landed and tipped
+`maxHeight()` over the threshold, by which point there was no calm moment
+left to use.
+
+**The fix:** `_queuedGarbageHeight()` sums `stack.incoming` into an
+equivalent row-height (total cells / board width) and `_inDanger` adds it
+to `board.maxHeight()` before comparing against `dangerHeightFrac`.
+
+**Ungated, this helped level 3 and hurt everything else** -- the opposite
+gating direction from every other knob tuned this session:
+
+| Level | Ungated fix | Baseline | Verdict |
+|---|---|---|---|
+| 3 (stress_harness.js steady pressure, 4 seeds) | 42421 | 28871 | +47% |
+| 5 | 32022 | 34876 | -8% |
+| 8 | 63927 | 72000 (4/4 full survival) | -11%, loses full survival |
+| 10 (real 12-file benchmark) | 92.6s / 1627 sent | 109.8s / 2095 sent | worse on both axes |
+
+Diagnosis: levels 5/8/10 already have `dangerHeightFrac` tightened to
+0.45 (from earlier fixes this session). Stacking the queued-garbage
+projection on top of an already-aggressive threshold over-triggers danger
+mode there, forfeiting the offensive search too often. Level 3 is the
+only tested tier still at the lenient default (0.72), which is exactly
+where the projection helps instead of hurts.
+
+**Gated to `maxHealth > 51`** (the complement of `dangerHeightFrac`'s own
+`<=51` gate -- applies only where the threshold is still lenient, i.e.
+level 3 among the tested tiers):
+
+| Level | Gated fix | Baseline | Verdict |
+|---|---|---|---|
+| 3 (steady pressure, 4 seeds, framesPerAttack=60/w2/h2) | 39060 total frames alive | 15537 | +151% |
+| 5/8/10 | unaffected -- code path is algebraically identical to pre-fix (the `if` never executes when maxHealth<=51) | — | confirmed by real-benchmark re-run: 109.76s/2095, matching baseline exactly |
+
+`check_preset_ordering.js nightmare diamond`: still PASS
+(nightmare totalFrames=50948/totalSent=590 vs diamond 38025/565).
+
+Shipped. Level 3's numbers above use different stress-test parameters
+than the earlier ungated-fix table (60f/2w/2h vs the original run's
+params, which weren't recorded before compaction) -- both runs agree on
+direction and magnitude of the win, that's what matters here.
+
 ## Open leads, not yet tried
 
 - **No telegraph modeled for incoming garbage.** The real engine gives
