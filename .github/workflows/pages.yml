@@ -229,6 +229,30 @@ jobs:
       - name: Verify the generation money path
         run: python3 .github/scripts/generation.test.py
 
+      # THE CUTTER, tested as code rather than through art. It decapitated a
+      # character twice, the same way, from flawless generated sheets — her hair
+      # is the same colour as the gridlines it strips, and the first fix covered
+      # only the FALLBACK path, leaving healthy sheets exposed. Nothing could
+      # have caught either: verify_sheet's CROPPED test compares each frame to
+      # its siblings and is structurally blind to all nine being cut identically,
+      # and every other art check needs real art. These build synthetic sheets in
+      # memory — instant, exact, no API, no committed art.
+      - name: Verify the walk-sheet cutter
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          python3 .github/scripts/cutter.test.py
+
+      # AND THE CHECKERS THEMSELVES. A checker is the one kind of code whose
+      # bugs are silent by construction: one that never fires looks exactly like
+      # art that is fine, and one that fires on everything gets switched off. We
+      # have shipped both — a CROPPED test blind to all nine frames being cut
+      # identically, and a first-draft portrait check that flagged Kyran's
+      # trousers because a bust cannot show legs. So each gets both halves
+      # proved on synthetic art: the defect it must reject, and the
+      # correct-but-awkward case it must accept.
+      - name: Verify the art checkers fire (and stay quiet)
+        run: python3 .github/scripts/checks.test.py
+
       - name: Verify character spec provenance
         run: node .github/scripts/check_character_specs.mjs
 
