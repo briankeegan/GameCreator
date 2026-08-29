@@ -317,7 +317,82 @@ benchmark's honest current state is **86.50s avg survival, 1333 total
 sent** -- compare future changes against these numbers, not any of
 Rounds 1-3's pre-flight-delay-fix figures.
 
+## Round 6: full PvP replay decoding -- cracked the format, hit a real wall
+
+The remaining open lead from Round 4/5's notes: 23 full match replays in
+`panel-game/common/tests/engine/replays/` (real complete games, several
+level-10-vs-level-10), richer than the extracted `challenge-*.json`
+attack files since they carry the actual raw per-frame controller input
+for BOTH real players, not just when garbage arrived.
+
+**The format, reverse-engineered and confirmed against the real
+decoder** (`common/data/InputCompression.lua`'s `decompressInputString2`,
+called from `common/compatibility/ReplayV2.lua:220/249` -- reading the
+actual source, not guessing, is what caught a mistake a naive RLE parser
+made): `vs.in_buf` is P1's compressed input string, `vs.I` is P2's --
+backwards from what the field names alone suggest. Each frame is one
+character from a 64-symbol alphabet, 6 bits mapping to
+`[raise,swap,up,down,left,right]` (`KeyDataEncoding.lua`). A run of N
+identical frames compresses to `"<symbol><N>"`, EXCEPT when the symbol
+is itself a digit (positions 53-62 of the alphabet are '0'-'9', valid
+inputs in their own right) -- those runs wrap in parens, `"(11111)"`,
+since a bare digit run would be ambiguous with a count. Ported faithfully
+in `replay_decode.js`; `panel-engine.js`'s `Stack.setInput()` already
+accepts exactly this `{raise,swap,up,down,left,right}` shape with real
+DAS-based cursor movement, so decoded frames feed straight in.
+
+**First bug, found and fixed fast:** replaying P1's raw input against a
+freshly constructed `Stack` topped it out at EXACTLY frame 188 --
+`COUNTDOWN_START + COUNTDOWN_LENGTH` (8 + 180, `panel-engine.js`'s own
+constant). The recorded input stream includes the real pre-match
+countdown, during which physics stays frozen in the real game; passing
+`countdown:false` (this harness's default elsewhere) let a harmlessly-
+held raise input recorded during that frozen window act as a REAL raise
+from frame 0. Fixed by leaving countdown at its default (true) for this
+harness specifically.
+
+**The real wall: seeding with the replay's real seed does NOT reproduce
+the real match, because panel-engine.js uses mulberry32 for
+determinism (its own comment) while the real engine's panel colors come
+from `love.math.newRandomGenerator()`** -- LÖVE2D's engine-native RNG,
+implemented in its C++ source, not something readable from the Lua
+codebase at all. `GeneratorSource.lua` layers real complexity on top of
+that PRNG too: a "bad row" rejection-and-retry loop, adjacent-color-
+denial logic, separate panel/garbage generators with their own seeds.
+Reproducing this exactly would mean porting LÖVE's native RNG bit-for-
+bit AND replicating the full rejection-loop call order -- a real,
+separate reverse-engineering project, with a single missed random() call
+anywhere silently desyncing every color from that point on.
+
+**Confirmed this actually breaks the approach, not just theoretically:**
+traced a real replay's first 550 frames against a freshly (differently)
+seeded board -- 13 real swap attempts, matching the recorded human's
+exact timing, produced **zero matches**. A skilled player's swap choices
+are inherently color-dependent; without the real colors, their swaps
+land on essentially arbitrary pairs on a differently-seeded board, while
+their (real, normally-safe) raise usage keeps adding material nothing is
+clearing. Board topped from 30 to 60 filled cells in ~300 frames.
+
+**Conclusion: replaying a real match's raw inputs against the AI is not
+viable without porting LÖVE's exact RNG first** -- a large, separate,
+uncertain-payoff undertaking, not attempted this round. What IS shipped
+and real: `replay_decode.js` (validated -- decodes both players' full
+input streams correctly, `PanelGenerator`/`KeyDataEncoding` format
+confirmed against source) and `real_match_harness.js` (works correctly
+for what it does, countdown bug fixed, caveat documented in its own
+header). If a future session ports the real RNG, this tooling is ready
+to use immediately; until then, the `challenge-*.json` extracted-attack
+approach (Rounds 1-5) remains the actual benchmark.
+
 ## Open leads, not yet tried
+
+- **Porting LÖVE2D's `love.math.newRandomGenerator()` + `PanelGenerator`'s
+  full generation/rejection logic**, to make Round 6's replay tooling
+  actually usable for exact match reproduction. Large, separate,
+  uncertain-payoff -- not started. Would also be the strongest possible
+  correctness check for this whole reimplementation (does replaying a
+  real recorded match produce the SAME winner?), which is worth noting
+  as a reason it might be worth the investment despite the size.
 
 - **`raiseFillFrac=0.75` is a first reasoned default, not swept.** Round
   5 shipped the structural fix (cap relative to `dangerHeightFrac`, not
