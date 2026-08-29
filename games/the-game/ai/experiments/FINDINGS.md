@@ -186,7 +186,97 @@ than the earlier ungated-fix table (60f/2w/2h vs the original run's
 params, which weren't recorded before compaction) -- both runs agree on
 direction and magnitude of the win, that's what matters here.
 
+## Round 4: the benchmark itself was unfair -- and fixing it found a new weakness
+
+While waiting on Round 3's deploy, re-read `client/src/globals.lua` and
+`common/engine/GarbageQueue.lua`/`AttackEngine.lua` more closely. Real
+finding: attacks don't land the instant a chain finalizes. They spend
+`GARBAGE_FLIGHT` (151 frames = `GARBAGE_TRANSIT_TIME` 45 +
+`GARBAGE_TELEGRAPH_TIME` 45 + 1 + `GARBAGE_DELAY_LAND_TIME` 60, per
+`panel-engine.js`'s own comment on that constant) in staging/transit/
+telegraph before they reach the receiver. `duel.js` (the actual live
+game) already models this correctly: it gates `takeDeliverableGarbage()`
+on `frameEarned + GARBAGE_FLIGHT > clock` before ever calling
+`receiveGarbage()` on the other side.
+
+**`attack_file_harness.js` did not.** It called `stack.receiveGarbage()`
+directly at the attack file's raw recorded `startTime`/`chainEndTime` --
+the frame the ATTACKER's chain finalizes, with zero flight delay. Every
+"Nightmare" survival/GPM number in this file up through Round 3 was
+measured against attacks landing ~2.5 real seconds faster than the actual
+game ever delivers them.
+
+Fixed by scheduling every event `GARBAGE_FLIGHT` frames after its
+recorded time (a uniform shift, so inter-attack spacing and the
+cycle-repeat period are unaffected -- only the initial calm period before
+the very first attack, and equally the calm gap before each cycle
+repeats, gets 151 frames longer).
+
+**Expected this to make the benchmark easier (more warning = more time to
+prepare). It did the opposite:**
+
+| Config | Pre-fix (no flight delay) | Post-fix (151-frame flight delay) |
+|---|---|---|
+| nightmare | 109.76s / 2095 sent | **66.10s / 1141 sent** |
+| diamond | (not re-measured pre-fix this round) | 68.42s / 994 sent |
+
+Verified this isn't a bug in the shift arithmetic (single-file/seed
+debug: `cpu._snapshot().maxHeight()` sampled every 500 frames for both
+timings on `challenge-8-1.json` seed 1 -- both trajectories oscillate in
+the same 4-10 range, the delayed one just hits a fatal spike earlier,
+around frame 5000-6063 instead of 9960).
+
+**The real mechanism: auto-rise and the AI's own calm-mode play don't
+pause for the extra warning time.** The 151-frame shift only lengthens
+ONE thing per cycle -- the calm stretch before the first attack ever
+lands (all later gaps are preserved exactly, since a uniform shift
+cancels out in every other interval). During that longer calm stretch,
+`_choose()`'s calm-mode path (`_computePlan`/`_raiseOrBuild`, offense-
+seeking) keeps playing exactly as it would in a short calm stretch --
+it has no notion of "I'm being unusually free right now, dial back the
+risk." The AI uses the extra free time to keep building material/height
+for its own offense, and is measurably worse positioned once real
+pressure begins, compared to a run where the first attack interrupts it
+sooner.
+
+**This is a legitimate, structurally significant finding, not a benchmark
+artifact:** long calm stretches are a real feature of real matches (see
+the recorded `challenge-8-1.json` gaps above, hundreds of frames between
+some attacks), and `duel.js` gives the CPU the exact same
+un-pausing auto-rise + calm-mode logic against a real opponent. **The
+AI's calm-mode play has no self-limiting notion of accumulated risk over
+an extended idle period** -- it plays exactly the same whether the last
+attack was 10 frames ago or 2000. That is the next real structural gap,
+distinct from anything gated so far (all of which only ever touched
+`_inDanger`'s trigger point, not what calm-mode does before danger is
+ever triggered).
+
+Also notable: under corrected timing, nightmare's DEFENSIVE edge over
+diamond nearly disappears (66.1s vs 68.4s, essentially noise over 24
+samples) even though its OFFENSIVE edge holds clearly (1141 vs 994 sent,
++15%). `check_preset_ordering.js` is unaffected (it uses
+`stress_harness.js`'s synthetic steady pressure, not attack files, so it
+never had this bug) and still passes. But it means the real-benchmark
+picture for defense specifically needs re-establishing under the
+corrected harness before trusting any future defense-focused tuning
+against it.
+
+`attack_file_harness.js`'s fix committed as research-infra correctness
+(not a panel-cpu.js change, no redeploy needed) -- but it changes what
+"the real benchmark" reads from here on. Compare only against the
+corrected numbers above (66.10s/1141 for nightmare) going forward, not
+Round 2/3's numbers (109.8s/2095, 92.6s/1627, 109.76s/2095), which were
+all measured pre-fix.
+
 ## Open leads, not yet tried
+
+- **Calm-mode has no notion of accumulated idle risk.** The Round 4
+  finding above: `_choose()`'s calm-mode path plays identically whether
+  the last attack landed 10 or 2000 frames ago, and a long idle stretch
+  measurably leaves the AI worse-positioned once pressure resumes. A
+  fix would need some notion of "how long has it been calm" feeding back
+  into how aggressively calm-mode is willing to build/raise -- not yet
+  designed or attempted.
 
 - **No telegraph modeled for incoming garbage.** The real engine gives
   `GARBAGE_TELEGRAPH_TIME` (45 frames) of advance warning before an
