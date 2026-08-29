@@ -603,6 +603,22 @@
     if (opts.dangerHeightFrac === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 51) {
       this.dangerHeightFrac = Math.min(this.dangerHeightFrac, 0.45);
     }
+    // How much of dangerHeightFrac's own headroom calm-mode is allowed to
+    // spend proactively raising for material before it stops and holds
+    // instead (see _raiseOrBuild's comment). Measured (real 12-file
+    // benchmark, level 10): +31% survival / +17% sent (66.1s/1141 ->
+    // 86.5s/1333). Tried ungated first and it followed the SAME pattern
+    // every other knob in this file needed gating for: level 3's steady-
+    // pressure sum dropped 39060 -> 20639 (-47%, one seed falling from a
+    // full 15000-frame survival to 1117) -- at level 3, dangerHeightFrac
+    // is still the lenient 0.72 default, and 0.75 of that (0.54) cuts off
+    // proactive raising well before the AI is anywhere near real danger,
+    // costing tempo/material it didn't need to give up. Same maxHealth<=51
+    // gate as dangerHeightFrac's own tightening above: 1.0 leaves the
+    // hold-cap unreachable from calm mode (fillRatio can't reach
+    // dangerHeightFrac*1.0 while still below dangerHeightFrac) at lenient
+    // levels, 0.75 applies only where dangerHeightFrac is already tight.
+    this.raiseFillFrac = opts.raiseFillFrac !== undefined ? opts.raiseFillFrac : (preset.raiseFillFrac !== undefined ? preset.raiseFillFrac : (stack && stack.levelData && stack.levelData.maxHealth <= 51 ? 0.75 : 1.0));
     this.chainWeight = opts.chainWeight || preset.chainWeight;
     this.comboWeight = opts.comboWeight || preset.comboWeight;
     this.garbageWeight = opts.garbageWeight || preset.garbageWeight;
@@ -1391,10 +1407,36 @@
       if (bestGain === null || gain > bestGain) { bestGain = gain; best = [r, c]; }
     }
     if (best && bestGain > 0) return { kind: "swap", move: best };
+    // Round 4 finding (FINDINGS.md): this used to raise unconditionally
+    // whenever nothing improved potential, with no notion of how tall the
+    // board already is. During a long calm stretch that's a repeated
+    // decision, not a one-off -- every idle cycle with no improving swap
+    // defaulted to raising for fresh material, so the LONGER the calm
+    // period, the higher the board climbed purely from its own offense-
+    // seeking, before _inDanger's reactive threshold ever had a reason to
+    // fire. Fixing the real-attack-file benchmark's flight-delay bug (a
+    // measurement fix, not a behavior change) exposed this: correcting
+    // the timing gave the AI MORE calm runway per attack, and survival
+    // dropped (109.8s->66.1s on the real 12-file benchmark), because more
+    // calm time meant more unbounded raising before pressure resumed.
+    //
+    // FIRST ATTEMPT (measured, wrong): gated on
+    // `board.fillRatio() >= this.patienceFillCeiling` (0.5 default).
+    // Instrumented and confirmed dead code -- for every level whose
+    // dangerHeightFrac has been tightened below 0.5 (5/8/10, all at 0.45),
+    // _choose() routes to _inDanger's defensive path before fillRatio can
+    // ever reach 0.5, since _raiseOrBuild is only ever reached from calm
+    // mode (fillRatio < dangerHeightFrac). The hold branch fired 0 times
+    // in a 12000-frame instrumented trace; the real-benchmark numbers
+    // came back bit-for-bit identical to no fix at all (66.096s/1141).
+    // Fixed by gating relative to dangerHeightFrac itself (always reachable
+    // from calm mode) rather than the unrelated, independently-set
+    // patienceFillCeiling.
+    if (board.fillRatio() >= this.dangerHeightFrac * this.raiseFillFrac) return { kind: "hold" };
     return { kind: "raise" };
   };
 
-  // Returns {kind:"swap", move:[row,col]} or {kind:"raise"}.
+  // Returns {kind:"swap", move:[row,col]}, {kind:"raise"}, or {kind:"hold"}.
   SearchCpu.prototype._choose = function (board) {
     if (this._inDanger(board)) {
       this._plan = [];
@@ -1524,6 +1566,14 @@
       // requested raise reliably finishes before anything can cancel it.
       this.cooldown = this.reaction;
       this._lastSwap = null;
+      return;
+    }
+
+    if (decision.kind === "hold") {
+      // Genuinely do nothing this cycle -- see _raiseOrBuild's comment.
+      // stack.setInput({}) already ran above; just wait out a reaction
+      // before re-checking rather than spinning a swap or raise loop.
+      this.cooldown = this.reaction;
       return;
     }
 

@@ -268,15 +268,72 @@ corrected numbers above (66.10s/1141 for nightmare) going forward, not
 Round 2/3's numbers (109.8s/2095, 92.6s/1627, 109.76s/2095), which were
 all measured pre-fix.
 
+## Round 5: capping proactive raising (shipped, gated) -- fixes the Round 4 gap
+
+Direct fix for Round 4's finding: `_raiseOrBuild` used to raise
+unconditionally whenever no swap improved potential, with zero notion of
+how tall the board already is. Added a cap: once `board.fillRatio()`
+reaches `dangerHeightFrac * raiseFillFrac`, stop raising and hold instead
+(a new `{kind:"hold"}` decision, handled in `update()` by just waiting out
+a reaction).
+
+**First attempt (measured, wrong): capped at `patienceFillCeiling`**
+(0.5 flat). Instrumented with a counter on `_raiseOrBuild`'s return kind
+over a 12000-frame real-attack-file trace: `hold` fired **0** times.
+Real-benchmark numbers came back bit-for-bit identical to no fix at all
+(66.096s/1141). Cause: at every level whose `dangerHeightFrac` is already
+tightened to 0.45 (5/8/10), `_choose()` routes to `_inDanger`'s defensive
+path before `fillRatio` can ever reach 0.5 -- `_raiseOrBuild` is only
+ever reached from calm mode, where `fillRatio < dangerHeightFrac < 0.5`.
+An absolute cap independent of `dangerHeightFrac` is unreachable by
+construction whenever it sits above the level's own danger threshold.
+
+**Fixed: cap relative to `dangerHeightFrac` itself** (`dangerHeightFrac *
+raiseFillFrac`, always reachable from calm mode since
+`raiseFillFrac <= 1`). Re-instrumented the same trace: `hold` fired 139
+times, `raise` dropped from 113 to 40, and the single-file survival that
+motivated Round 4 went from dying at frame 6063 to frame 10076 -- better
+than even the pre-Round-4-bugfix baseline (9960).
+
+| Level | Metric | Before Round 5 | After Round 5 (ungated) | After Round 5 (gated, shipped) |
+|---|---|---|---|---|
+| 3 (steady pressure, 4 seeds, 60f/2w/2h) | total frames alive | 39060 | 20639 (-47%) | **39060 (reverted, exact match)** |
+| 10 (real 12-file benchmark) | avg survival / total sent | 66.10s / 1141 | 86.50s / 1333 (+31%/+17%) | **86.50s / 1333 (unchanged by gating)** |
+
+Ungated, this repeated the exact pattern every other knob in this file
+needed gating for: level 3's steady-pressure sum dropped 39060 -> 20639
+(-47%, one seed falling from a full 15000-frame survival to 1117) --
+`raiseFillFrac=0.75` against level 3's lenient `dangerHeightFrac=0.72`
+cuts off proactive raising at fill 0.54, well before real danger, costing
+tempo/material the AI didn't need to give up. Gated the same way as
+`dangerHeightFrac`'s own tightening (`maxHealth<=51`): `raiseFillFrac`
+defaults to 1.0 at lenient levels (mathematically unreachable from calm
+mode, so behaviorally identical to no cap) and 0.75 where
+`dangerHeightFrac` is already tight. `check_preset_ordering.js` (level 3
+only) unaffected: 50948/590 vs 38025/565, unchanged.
+
+Combined with Round 4's benchmark-fidelity fix, the real 12-file
+benchmark's honest current state is **86.50s avg survival, 1333 total
+sent** -- compare future changes against these numbers, not any of
+Rounds 1-3's pre-flight-delay-fix figures.
+
 ## Open leads, not yet tried
 
-- **Calm-mode has no notion of accumulated idle risk.** The Round 4
-  finding above: `_choose()`'s calm-mode path plays identically whether
-  the last attack landed 10 or 2000 frames ago, and a long idle stretch
-  measurably leaves the AI worse-positioned once pressure resumes. A
-  fix would need some notion of "how long has it been calm" feeding back
-  into how aggressively calm-mode is willing to build/raise -- not yet
-  designed or attempted.
+- **`raiseFillFrac=0.75` is a first reasoned default, not swept.** Round
+  5 shipped the structural fix (cap relative to `dangerHeightFrac`, not
+  an absolute level) but picked 0.75 by reasoning, not a sweep -- unlike
+  this session's "stop focusing on levers" directive for architecture
+  work, a narrow sweep of this ONE now-correctly-scoped value (e.g.
+  0.6-0.9) against the real benchmark is cheap and hasn't been done.
+- **Standard combined report tool: `full_report.js`.** One config, one
+  command, all four benchmark categories (comboStorm/factory/bigBlocks
+  training drills + the real 12-file "endless" average), one report --
+  survival as MM:SS plus sent-garbage broken down by type (small/big
+  combo, short/medium/long chain). `report.js` is the shared formatter
+  behind it and behind all the other harnesses' JSON+stderr output.
+  `harness_fidelity.test.js` regression-tests the two real-engine
+  behaviors (chain-as-one-block, GARBAGE_FLIGHT delay) that were each
+  silently wrong here once already.
 
 - **No telegraph modeled for incoming garbage.** The real engine gives
   `GARBAGE_TELEGRAPH_TIME` (45 frames) of advance warning before an

@@ -68,7 +68,7 @@
     return out;
   }
 
-  function printSummary(label, framesAlive, sentRecords) {
+  function formatSummary(label, framesAlive, sentRecords) {
     var s = summarize(sentRecords);
     var lines = [];
     lines.push('=== ' + label + ' ===');
@@ -80,13 +80,30 @@
       var pct = s.totalCells > 0 ? (100 * e.cells / s.totalCells).toFixed(0) : '0';
       lines.push('  ' + CATEGORY_LABEL[c] + ': ' + e.cells + ' cells (' + e.pieces + ' pieces, ' + pct + '%)');
     });
-    process.stderr.write(lines.join('\n') + '\n');
-    return s;
+    return { lines: lines, summary: s };
+  }
+
+  // For harnesses whose stdout is captured whole as JSON by other tooling
+  // (sweep_real.sh's `out=$(node ...)`) -- keeps the human-readable block
+  // off stdout so it can't corrupt that capture.
+  function printSummary(label, framesAlive, sentRecords) {
+    var f = formatSummary(label, framesAlive, sentRecords);
+    process.stderr.write(f.lines.join('\n') + '\n');
+    return f.summary;
+  }
+
+  // For a standalone report tool (full_report.js) with no JSON consumer
+  // capturing its stdout -- the summary IS the output a human reads.
+  function printSummaryToStdout(label, framesAlive, sentRecords) {
+    var f = formatSummary(label, framesAlive, sentRecords);
+    process.stdout.write(f.lines.join('\n') + '\n\n');
+    return f.summary;
   }
 
   module.exports = {
     mmss: mmss, classify: classify, summarize: summarize,
     summaryFields: summaryFields, printSummary: printSummary,
+    printSummaryToStdout: printSummaryToStdout,
     CATEGORY_ORDER: CATEGORY_ORDER, CATEGORY_LABEL: CATEGORY_LABEL
   };
 })();
