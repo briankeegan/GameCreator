@@ -91,4 +91,29 @@ if python3 .github/art/vault.py holds games/g/art-src/never_saved.png > /dev/nul
   echo "FAIL: holds exited 0 for a file that is NOT in the vault"; exit 1
 fi
 
-echo "vault round-trip OK (save, restore, byte-identical, miss handled, nothing staged, shallow clone, holds both ways)"
+# A RUNNER HAS NO GIT IDENTITY, and the vault runs before anything configures
+# one. `git commit` exits 128 with "Author identity unknown", and because save()
+# never fails its caller that came back as a single swallowed warning: every
+# save on CI died there while every local test passed, because a developer
+# machine has user.name set globally. So: run one save with HOME pointed at an
+# empty directory and no local identity, exactly like a fresh runner.
+cd "$tmp/shallow"
+git config --unset user.email 2>/dev/null || true
+git config --unset user.name 2>/dev/null || true
+printf 'NO-IDENTITY-PNG' > games/g/art-src/ident_raw.png
+HOME="$tmp/empty-home" XDG_CONFIG_HOME="$tmp/empty-home" GIT_CONFIG_GLOBAL=/dev/null \
+  python3 .github/art/vault.py save games/g/art-src/ident_raw.png > "$tmp/ident.log" 2>&1 || true
+grep -q '^save: ok$' "$tmp/ident.log" || { echo "FAIL: save needs a git identity it cannot assume it has (the CI case)"; cat "$tmp/ident.log"; exit 1; }
+git config user.email t@example.com
+git config user.name test
+
+# HOLDS MUST COMPARE CONTENT, NOT PRESENCE. A different picture saved earlier
+# under the same path answers "is there a file here" perfectly well — which is
+# how a regenerated sheet that failed to save was reported as safely vaulted.
+printf 'A-DIFFERENT-PICTURE' > games/g/art-src/ident_raw.png
+if python3 .github/art/vault.py holds games/g/art-src/ident_raw.png > "$tmp/mismatch.log" 2>&1; then
+  echo "FAIL: holds passed for a path whose vaulted content is a DIFFERENT picture"; cat "$tmp/mismatch.log"; exit 1
+fi
+grep -qi 'DIFFERENT PICTURE' "$tmp/mismatch.log" || { echo "FAIL: holds should say the vaulted copy is a different picture"; cat "$tmp/mismatch.log"; exit 1; }
+
+echo "vault round-trip OK (save, restore, byte-identical, miss handled, nothing staged, shallow clone, no git identity, holds compares content)"

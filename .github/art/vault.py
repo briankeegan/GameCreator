@@ -65,6 +65,18 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 # developer machine, where the default refspec is present.
 REFSPEC = f'+refs/heads/{BRANCH}:refs/remotes/origin/{BRANCH}'
 
+# THE VAULT BRINGS ITS OWN GIT IDENTITY. `git commit` exits 128 with "Author
+# identity unknown" when no user.name/user.email is set, and a GitHub runner has
+# none until a workflow step configures one. The generating job does configure
+# it — in its COMMIT step, which runs long after the vault save. So every save
+# on a runner died at the commit, and because this module never fails its caller
+# the whole thing was one swallowed warning.
+#
+# A utility that runs before anyone else's setup cannot depend on that setup.
+# Passed with -c so it applies to this command only and never touches the
+# caller's config.
+IDENT = ['-c', 'user.name=art-vault', '-c', 'user.email=art-vault@users.noreply.github.com']
+
 
 def git(*args, check=False, quiet=True):
     return subprocess.run(['git', *args], cwd=ROOT, check=check,
@@ -145,7 +157,7 @@ def save(path):
                           capture_output=True).returncode == 0:
             print(f'{r} already in the vault, unchanged.')
             return True
-        subprocess.run(['git', 'commit', '-qm', f'vault: {r}'], cwd=wt,
+        subprocess.run(['git', *IDENT, 'commit', '-qm', f'vault: {r}'], cwd=wt,
                        check=True, capture_output=True)
         for attempt in range(5):
             if subprocess.run(['git', 'push', 'origin', f'HEAD:{BRANCH}'],
@@ -186,9 +198,27 @@ def holds(path):
     """
     r = rel(path)
     git('fetch', 'origin', REFSPEC)
-    found = git('cat-file', '-e', f'origin/{BRANCH}:{r}').returncode == 0
-    print(f'{r} {"is in" if found else "is NOT in"} the vault.')
-    return found
+    if git('cat-file', '-e', f'origin/{BRANCH}:{r}').returncode != 0:
+        print(f'{r} is NOT in the vault.')
+        return False
+
+    # PRESENCE IS NOT ENOUGH — compare the CONTENT. Asking only "is there a file
+    # at this path" is answered by a DIFFERENT picture saved under the same name
+    # by an earlier run, which is exactly what happened: Kat's regenerated sheet
+    # failed to save, and holds reported ok because the previous Kat sheet was
+    # sitting at that path. A check satisfiable by something other than the
+    # thing it checks is the failure this repo keeps re-learning, and this is
+    # the fourth time — the earlier three are listed in generate-walksheet.yml.
+    local = git('hash-object', '--', r)
+    if local.returncode != 0:
+        print(f'{r} is in the vault, but is not on disk to compare against.')
+        return False
+    vaulted = git('rev-parse', f'origin/{BRANCH}:{r}')
+    same = local.stdout.strip() == vaulted.stdout.strip()
+    verdict = ('is in the vault, and matches' if same else
+               'IS IN THE VAULT BUT IS A DIFFERENT PICTURE — the copy this run made was NOT saved')
+    print(f'{r} {verdict}.')
+    return same
 
 
 def main():
@@ -202,7 +232,7 @@ def main():
         if holds(args.path):
             print('holds: ok')
             return
-        sys.exit(f'error: {args.path} was generated but is NOT in the vault, so if anything '
+        sys.exit(f'error: {args.path} was generated but this exact picture is NOT in the vault, so if anything '
                  'downstream loses it the picture has to be bought again. The art itself is fine '
                  '— this run still commits it — but the safety net did not engage. Check the '
                  f'`{BRANCH}` push in the log above.')
