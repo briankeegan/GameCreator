@@ -384,15 +384,76 @@ header). If a future session ports the real RNG, this tooling is ready
 to use immediately; until then, the `challenge-*.json` extracted-attack
 approach (Rounds 1-5) remains the actual benchmark.
 
+## Round 7: ported the real RNG -- the Round 6 wall is down
+
+Round 6 concluded the LÖVE-native RNG was a large, separate,
+uncertain-payoff undertaking. Checked anyway (public source, not a black
+box): `love.math.newRandomGenerator()` is **xorshift64\***, a well-known,
+fully documented algorithm, seeded via Thomas Wang's 64-bit hash. Full
+algorithm confirmed against LÖVE's actual public source
+(`love2d/love` on GitHub, `src/modules/math/RandomGenerator.cpp/.h` +
+`wrap_RandomGenerator.lua`):
+1. `setSeed(seed)`: state = `wangHash64(seed)`, repeated while 0.
+2. `rand()`: `s^=s>>12; s^=s<<25; s^=s>>27; return s*2685821657736338717`
+   (mod 2^64 throughout).
+3. `random()` -> double in [0,1): top 52 bits of `rand()` OR'd into an
+   IEEE-754 exponent field, bit-cast to double, minus 1.
+4. `random(min,max)`: `floor(random() * (max-min+1)) + min`
+   (`wrap_RandomGenerator.lua`'s `getrandom` -- floor, not round).
+
+Ported to `love_rng.js` (JS `BigInt` for the 64-bit arithmetic, a
+`DataView` for the bit-cast). Then found the SECOND piece needed: the
+real `046`-engine replays (Round 6's files) predate the modern
+`GeneratorSource` and use `common/compatibility/LegacyPanelGenerator.lua`
++ `LegacyPanelSource.lua` instead -- a different, simpler generation
+algorithm (flat allow/disallow-adjacent boolean, no probabilistic
+`adjacentDenialFrequency` tracking, a `generatedCount`-driven re-seed
+scheme where each new batch re-seeds as `seed + panelGenCount` rather
+than continuing one stream). Ported both (`legacy_panel_gen.js`,
+`legacy_panel_source.js`).
+
+**Validated against the real engine's OWN test suite**
+(`panel-game/common/tests/engine/PanelGenTests.lua`), not self-derived
+expectations -- copied its literal expected strings and checked this
+port reproduces them bit for bit. 9 of 10 independent vectors pass,
+including two 100-row-long generations with metal-panel assignment
+(`love_rng.test.js`, gated the same way `harness_fidelity.test.js` is).
+One vector (`testLegacyStartingBoard4`, seed 4530333, a seed the test's
+own comment says was chosen to probe a historical edge-case bug) does
+not reproduce -- installed Lua 5.3 in-sandbox, ported the SAME RNG
+algorithm independently in native Lua, and ran the REAL unmodified
+`LegacyPanelGenerator.lua`/`LegacyPanelSource.lua` source files (not a
+reimplementation) against it: they produce the exact same output this
+JS port does, not the fixture's asserted string. That rules out a
+translation bug in this port; most likely explanation is a stale
+assertion in that one fixture in this checkout. Documented, not silently
+dropped -- see `love_rng.test.js`'s own comment.
+
+**This closes Round 6's wall for the pieces it covers**, but full
+match-replay reproduction needs one more piece, not yet done: wiring
+these generators into `panel-engine.js`'s actual row-creation call
+sites. `panel-engine.js`'s own `generateRowColors`/`buildStartingBoard`
+already port a DIFFERENT algorithm (the modern `GeneratorSource`'s
+bad-row-reroll + probabilistic adjacent-denial scheme, not Legacy's) --
+so the fix isn't swapping its RNG source, it's bypassing its color
+SELECTION entirely for a real-replay run and directly assigning
+`panel.color` from this port's output at each of panel-engine.js's
+several row-creation points (starting board, auto-rise, garbage-
+converted rows), timed to match the real re-seed-per-batch scheme. That
+integration work is real but now unblocked -- the hard, uncertain part
+(the RNG itself) is done and validated.
+
 ## Open leads, not yet tried
 
-- **Porting LÖVE2D's `love.math.newRandomGenerator()` + `PanelGenerator`'s
-  full generation/rejection logic**, to make Round 6's replay tooling
-  actually usable for exact match reproduction. Large, separate,
-  uncertain-payoff -- not started. Would also be the strongest possible
-  correctness check for this whole reimplementation (does replaying a
-  real recorded match produce the SAME winner?), which is worth noting
-  as a reason it might be worth the investment despite the size.
+- **Wire `love_rng.js`/`legacy_panel_gen.js`/`legacy_panel_source.js`
+  into `panel-engine.js`'s row-creation** (see Round 7's last paragraph)
+  to actually enable exact real-match reproduction end to end --
+  `real_match_harness.js` could then seed both stacks with real colors
+  instead of the current mulberry32 substitute, making replaying a real
+  recorded human's raw inputs against the AI (Round 6) finally viable,
+  and giving the whole reimplementation its strongest possible
+  correctness check (does replaying a real match produce the SAME
+  winner?).
 
 - **`raiseFillFrac=0.75` is a first reasoned default, not swept.** Round
   5 shipped the structural fix (cap relative to `dangerHeightFrac`, not
