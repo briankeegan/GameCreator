@@ -267,6 +267,23 @@ design discussion. `shared/` holds the components every game reuses
   next to them: `verify_sheet.py`'s first threshold passed every bad row, its
   second failed a correct one, and the comment above `NEUTRAL_RATIO` lists
   both so the next person doesn't re-derive it.
+- **A GATE THAT CANNOT FAIL IS WORSE THAN NO GATE.** Every art check in this
+  repo ran on every push and NONE of them could fail: each ended `exit 0` after
+  appending its verdict to a file a later step printed as a `::warning::`. The
+  run went green, so a green Pages run said nothing whatever about the art while
+  looking exactly like it did — the screenshot-that-fails-silently problem
+  wearing a checkmark. A character shipped headless in six of nine frames past a
+  full set of them, and was found by the owner looking at the screen. The
+  reason they were declawed was real (pages.yml builds ONE artifact for every
+  game, so one character's frames took the whole site down, five deploys
+  running) and the answer is to SPLIT THE QUESTIONS, not soften the check: the
+  site always ships (`pages.yml`), the art is still wrong loudly
+  (`.github/workflows/art-checks.yml`, red on the commit, blocking nothing) —
+  the same split `browser-checks.yml` already uses. Two checks keep it honest,
+  because neither half is visible by eye: `gates.test.sh` breaks the repo eight
+  ways and fails if any checker passes the damage, and
+  `check_gate_wiring.mjs` fails any VERIFICATION step that records a failure and
+  then reports success.
 - **A PICTURE IS BILLED ONCE. The base rules every generator obeys are
   `.github/art/GENERATOR_RULES.md`, and they are checked
   (`check_generators.mjs`).** The expensive step is the API call; cutting,

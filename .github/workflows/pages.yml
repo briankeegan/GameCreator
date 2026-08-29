@@ -154,59 +154,20 @@ jobs:
       # .github/art/CHARACTER_SHEETS.md, enforcement in verify_sheet.py, and
       # this step is what stops either being ignored. Geometry is inferred
       # from the 256px cell size, so a new sheet is covered automatically.
-      - name: Verify shipped sprite sheets
-        run: |
-          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
-          status=0
-          for sheet in games/*/*_sheet.png; do
-            [ -e "$sheet" ] || continue
-            game=$(dirname "$sheet")
-            style="$game/art-style.json"
-            echo "== $sheet =="
-            if [ -f "$style" ]; then
-              python3 .github/art/verify_sheet.py sheet "$sheet" --style "$style" || status=1
-            else
-              python3 .github/art/verify_sheet.py sheet "$sheet" || status=1
-            fi
-          done
-          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
-          [ "$status" = 0 ] || echo "Verify shipped sprite sheets" >> $RUNNER_TEMP/art-problems
-          exit 0
+      # A GATE THAT CANNOT FAIL IS WORSE THAN NO GATE. Every art check here used
+      # to end in `exit 0` after recording its failure into a file that a later
+      # step printed as a warning — so the run went green and a green run said
+      # nothing about the art while looking exactly like it did. A character
+      # shipped headless past a full set of them. These two make that
+      # undetectable-by-eye class decidable: one proves each checker rejects the
+      # defect it exists for, the other that no check reports success it did not
+      # have.
+      - name: Verify the gates actually reject defects
+        run: bash .github/scripts/gates.test.sh
 
-      # The short rules cards a Clubhouse run reads are EXTRACTED from the
-      # standards, never written alongside them — two copies of one truth is
-      # this repo's signature failure. This fails the build if a card no longer
-      # matches its standard, because a run obeying rules nobody agreed to any
-      # more is worse than a run reading the long version.
-      - name: Verify rules cards match their standards
-        run: |
-          status=0
-          for std in .github/art/CHARACTER_SHEETS.md docs/ROOM_ART_STANDARD.md docs/TILED_LEVEL_STANDARD.md docs/DOOR_STANDARD.md; do
-            python3 .github/art/rules_card.py --check "$std" || status=1
-          done
-          # ART DOES NOT BLOCK THE SITE — this is a stale-DOCUMENTATION check,
-          # not broken game art, and it just proved the point live: another
-          # session's edit to ROOM_ART_STANDARD.md left its card stale, and
-          # this step would have blocked Dog Punk's completely unrelated
-          # deploy over a markdown-derived cache file nobody looks at while
-          # playing. Same bucket as the other art checks below.
-          [ "$status" = 0 ] || echo "rules cards out of date" >> $RUNNER_TEMP/art-problems
-          exit 0
+      - name: Verify no check reports success it did not have
+        run: node .github/scripts/check_gate_wiring.mjs
 
-      # SPEC PROVENANCE. Newsey is an adaptation, and its art is generated FROM
-      # these specs — so a detail invented in a spec becomes canon the next time
-      # anything is regenerated, indistinguishable from one the owner wrote. An
-      # audit of the fourteen specs found five that had: Eric's robe drifted
-      # grey-green against a plot that says "gray" twice, May's shredded robe
-      # drawn neat, Rex wearing Chuck's beard, John aged out of his late
-      # thirties, and the Devil missing the only two words describing him
-      # ("cartoon", "little"). Every note read plausibly; none recorded whether
-      # it was quoting or inventing. This is a fact about JSON, so it FAILS
-      # rather than warning.
-      # THE BASE RULES EVERY GENERATOR OBEYS — .github/art/GENERATOR_RULES.md.
-      # Each was learned by losing something, and each was previously enforced
-      # by whoever remembered it, which is how the portrait generator ended up
-      # the only kind of character art with no front door and no spec behind it.
       - name: Verify generator rules
         run: node .github/scripts/check_generators.mjs
 
@@ -269,117 +230,6 @@ jobs:
       # regenerated sheet promptly lost her pink hair (28% of her portrait,
       # 2.6% of her sprite, less pink than a black-haired character) and every
       # existing check passed it, because they all look at one artefact alone.
-      - name: Verify portraits match their sprites
-        run: |
-          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
-          status=0
-          for style in games/*/art-style.json; do
-            [ -e "$style" ] || continue
-            game=$(dirname "$style")
-            chars=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(' '.join((d.get('characters') or {}).keys()))" "$style")
-            for char in $chars; do
-              python3 .github/art/verify_sheet.py portrait "$game" "$char" || status=1
-            done
-          done
-          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
-          [ "$status" = 0 ] || echo "portrait/sprite mismatch" >> $RUNNER_TEMP/art-problems
-          exit 0
-
-      - name: Verify character consistency across sheets
-        run: |
-          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
-          status=0
-          for style in games/*/art-style.json; do
-            [ -e "$style" ] || continue
-            game=$(dirname "$style")
-            chars=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(' '.join((d.get('characters') or {}).keys()))" "$style")
-            for char in $chars; do
-              echo "== $char ($game) =="
-              python3 .github/art/verify_sheet.py character "$game" "$char" || status=1
-            done
-          done
-          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
-          [ "$status" = 0 ] || echo "character consistency" >> $RUNNER_TEMP/art-problems
-          exit 0
-
-      # Tiled levels: the third shape of art, and the one that had a pipeline
-      # and no checker until four separate defects shipped to a player in a
-      # single pass. Detected, not configured: a game with a tiles.png has a
-      # tile strip. Rule in docs/TILED_LEVEL_STANDARD.md, decided by
-      # verify_tiles.py, tripped here.
-      - name: Verify tile strips
-        run: |
-          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
-          status=0
-          for strip in games/*/tiles.png; do
-            [ -e "$strip" ] || continue
-            game=$(dirname "$strip")
-            echo "== $strip =="
-            python3 .github/art/tileset.py verify "$game" || status=1
-          done
-          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
-          [ "$status" = 0 ] || echo "Verify tile strips" >> $RUNNER_TEMP/art-problems
-          exit 0
-
-      # The same walk-cycle rules for games that ship INDIVIDUAL frame files
-      # instead of sheets (Newsey). Which checks apply depends on how a game
-      # ships its art, so the shape is detected rather than configured: any
-      # <id>_down_1.png in a game's art/ directory is a character with a frame
-      # set. Missing/duplicate frames fail; "no neutral" warns, because that
-      # one is a fuzzy metric and a borderline-but-correct set must not block
-      # a deploy.
-      - name: Verify character frame sets
-        run: |
-          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
-          status=0
-          broken=""
-          for f in games/*/art/*_down_1.png; do
-            [ -e "$f" ] || continue
-            dir=$(dirname "$f")
-            char=$(basename "$f" _down_1.png)
-            echo "== $char ($dir) =="
-            if ! python3 .github/art/verify_sheet.py frames "$dir" "$char"; then
-              status=1
-              broken="$broken $(printf '%s' "$dir" | cut -d/ -f2)/$char"
-            fi
-          done
-          # NAME THE CULPRIT. This build is one artifact for every game, so a
-          # single character's frames failing blocks the whole site — which is
-          # correct (half a site cannot be deployed) but was invisible: one
-          # game's art failed five deploys in a row while a DIFFERENT game's
-          # thread said its change was live. Whoever reads this needs to know
-          # in one line whose art is holding the site, not have to scroll a log.
-          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
-          [ -z "$broken" ] || echo "character frames:$broken" >> $RUNNER_TEMP/art-problems
-          exit 0
-
-      # THE SITE ALWAYS SHIPS.
-      #
-      # The art checks above used to fail this build. That is defensible in the
-      # abstract and was wrong in practice: this build is ONE artifact for every
-      # game, so one character's frames failing took the whole site down with
-      # it. It happened — `may: CROPPED` in the-game failed five deploys in a
-      # row, and Dog Punk's colour fix, already on main and already correct, sat
-      # undeployed while its thread said it was live. A game with no art problem
-      # at all could not ship because a different game had one.
-      #
-      # So the art checks REPORT and the deploy proceeds. Two things keep that
-      # from becoming "nobody fixes art":
-      #   * the autopilot still runs the same checkers BEFORE it lands, so a run
-      #     cannot introduce broken art in the first place — that is the gate
-      #     that actually catches things, because it catches them at the moment
-      #     they are made;
-      #   * a problem here is annotated, summarised, and handed to the thread
-      #     that owns the game (see "Tell the thread" below), so it becomes
-      #     someone's next job instead of a silent block.
-      - name: Report art problems
-        if: always()
-        run: |
-          [ -s $RUNNER_TEMP/art-problems ] || { echo "No art problems."; exit 0; }
-          echo "::warning::Art problems found (the site still deployed): $(paste -sd'; ' $RUNNER_TEMP/art-problems)"
-          { echo "### Art problems"; echo;
-            echo "The site deployed anyway — these do not block it."; echo;
-            sed 's/^/- /' $RUNNER_TEMP/art-problems; } >> "$GITHUB_STEP_SUMMARY"
 
       # Same mechanism HayleysGame's clubhouse already uses in production —
       # after chasing several more elaborate "fixes" here that each added a
