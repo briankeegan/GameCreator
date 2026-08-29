@@ -30,6 +30,7 @@ var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var strategies = require('./strategies.js');
+var report = require('./report.js');
 
 var args = process.argv.slice(2);
 var strategyName = args[0];
@@ -52,14 +53,14 @@ var cpu = new PanelCpu.SearchCpu(stack, cpuOpts);
 strategies.apply(cpu, strategyName);
 
 var cellsCleared = 0, garbageCellsCleared = 0, matchEvents = 0, biggestChainSeen = 0;
-var garbageCellsSent = 0; // what the AI throws BACK (the counterattack)
+var sentRecords = []; // what the AI throws BACK (the counterattack)
 var f;
 for (f = 0; f < maxFrames; f++) {
   if (f > 0 && f % framesPerAttack === 0) stack.receiveGarbage([{ width: attackWidth, height: attackHeight, isChain: false }]);
   cpu.update();
   stack.run();
   var sent = stack.takeDeliverableGarbage();
-  for (var s = 0; s < sent.length; s++) garbageCellsSent += sent[s].width * sent[s].height;
+  for (var s = 0; s < sent.length; s++) sentRecords.push({ width: sent[s].width, height: sent[s].height, isChain: sent[s].isChain });
   var evs = stack.drainEvents();
   for (var i = 0; i < evs.length; i++) {
     if (evs[i].type === 'match') {
@@ -72,11 +73,15 @@ for (f = 0; f < maxFrames; f++) {
   if (stack.gameOver) break;
 }
 
-console.log(JSON.stringify({
+report.printSummary(strategyName + ' seed=' + seed, f, sentRecords);
+
+var garbageCellsSent = report.summarize(sentRecords).totalCells;
+console.log(JSON.stringify(Object.assign({
   strategy: strategyName, seed: seed, framesPerAttack: framesPerAttack,
   attackWidth: attackWidth, attackHeight: attackHeight,
   survived: !stack.gameOver, framesAlive: f, secondsAlive: +(f / 60).toFixed(2),
+  survivedMMSS: report.mmss(f),
   cellsCleared: cellsCleared, garbageCellsCleared: garbageCellsCleared,
   matchEvents: matchEvents, biggestChainSeen: biggestChainSeen,
-  garbageCellsSent: garbageCellsSent, sentPerSecond: +(garbageCellsSent / (f / 60)).toFixed(3)
-}));
+  sentPerSecond: +(garbageCellsSent / (f / 60)).toFixed(3)
+}, report.summaryFields(sentRecords))));

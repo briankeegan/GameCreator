@@ -16,6 +16,7 @@
 var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
+var report = require('./report.js');
 
 var PanelEngine = global.PanelEngine;
 var PanelCpu = global.PanelCpu;
@@ -37,16 +38,16 @@ var b = new PanelEngine.Stack({ level: 6, seed: seed + 1, countdown: false });
 var cpuA = makeCpu(a, cfgA, seed + 100);
 var cpuB = makeCpu(b, cfgB, seed + 200);
 
-var sentA = 0, sentB = 0, chainA = 0, chainB = 0;
+var sentRecordsA = [], sentRecordsB = [], chainA = 0, chainB = 0;
 var f;
 for (f = 0; f < maxFrames; f++) {
   cpuA.update(); cpuB.update();
   a.run(); b.run();
   var ga = a.takeDeliverableGarbage();
-  for (var i = 0; i < ga.length; i++) sentA += ga[i].width * ga[i].height;
+  for (var i = 0; i < ga.length; i++) sentRecordsA.push({ width: ga[i].width, height: ga[i].height, isChain: ga[i].isChain });
   if (ga.length) b.receiveGarbage(ga);
   var gb = b.takeDeliverableGarbage();
-  for (var j = 0; j < gb.length; j++) sentB += gb[j].width * gb[j].height;
+  for (var j = 0; j < gb.length; j++) sentRecordsB.push({ width: gb[j].width, height: gb[j].height, isChain: gb[j].isChain });
   if (gb.length) a.receiveGarbage(gb);
   var evs = a.drainEvents();
   for (var k = 0; k < evs.length; k++) if (evs[k].type === 'match' && evs[k].chainCounter > chainA) chainA = evs[k].chainCounter;
@@ -56,8 +57,13 @@ for (f = 0; f < maxFrames; f++) {
 }
 
 var result = a.gameOver && b.gameOver ? 'draw' : a.gameOver ? 'B' : b.gameOver ? 'A' : 'timeout';
+report.printSummary('A(' + cfgA + ') seed=' + seed, f, sentRecordsA);
+report.printSummary('B(' + cfgB + ') seed=' + seed, f, sentRecordsB);
+
 console.log(JSON.stringify({
   a: cfgA, b: cfgB, seed: seed, winner: result,
-  frames: f, seconds: +(f / 60).toFixed(1),
-  sentA: sentA, sentB: sentB, biggestChainA: chainA, biggestChainB: chainB
+  frames: f, seconds: +(f / 60).toFixed(1), survivedMMSS: report.mmss(f),
+  sentA: report.summarize(sentRecordsA).totalCells, sentB: report.summarize(sentRecordsB).totalCells,
+  sentBreakdownA: report.summarize(sentRecordsA).byCat, sentBreakdownB: report.summarize(sentRecordsB).byCat,
+  biggestChainA: chainA, biggestChainB: chainB
 }));

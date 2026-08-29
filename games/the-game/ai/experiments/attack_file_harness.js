@@ -28,6 +28,8 @@ var fs = require('fs');
 var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
+var report = require('./report.js');
+var attackSchedule = require('./attack_schedule.js');
 
 var PanelEngine = global.PanelEngine;
 var PanelCpu = global.PanelCpu;
@@ -40,73 +42,13 @@ var stackLevel = parseInt(args[3], 10) || 3;
 var maxFrames = parseInt(args[4], 10) || 60 * 60 * 10; // 10 simulated minutes default
 
 var raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-var delayBeforeStart = raw.delayBeforeStart || 0;
-var delayBeforeRepeat = raw.delayBeforeRepeat || 0;
 
-// BUG (fixed): this used to call stack.receiveGarbage() directly at the
-// attack file's recorded startTime/chainEndTime -- the frame the SENDING
-// side's chain finalizes (AttackEngine.lua pushes onto outgoingGarbage at
-// exactly that frame). But the real engine still makes that garbage sit
-// in staging+transit+telegraph+land for PanelEngine.GARBAGE_FLIGHT (151)
-// frames before it actually reaches the receiver -- duel.js models this
-// correctly (takeDeliverableGarbage gates on frameEarned+GARBAGE_FLIGHT,
-// only then calls receiveGarbage), but this harness was delivering
-// instantly, ~2.5 real seconds faster than any real game ever does. That
-// made every benchmark run in FINDINGS.md strictly harsher than reality
-// -- the AI's true survival/GPM against these real attack files is
-// better than what was measured. Fixed by scheduling each event
-// GARBAGE_FLIGHT frames after its recorded time, same as the real
-// staging-to-landing pipeline.
-var GARBAGE_FLIGHT = PanelEngine.GARBAGE_FLIGHT;
-
-// Flatten into a list of {frame, width, height, isChain} events, exactly
-// matching AttackEngine.addAttackPatternsFromTable's expansion.
-var events = [];
-var maxStart = 0;
-(raw.attackPatterns || []).forEach(function (p) {
-  if (p.chain) {
-    // BUG (fixed): this used to deliver each chain link as its own
-    // immediate small block. GarbageQueue:addChainLink (the real engine)
-    // does something different -- a chain garbage piece stays STAGED
-    // (not yet in transit/deliverable) and GROWS by one row per link
-    // (currentChain.height += 1), only actually landing as ONE combined
-    // block once finalizeCurrentChain fires at chainEndTime. So an
-    // N-link chain is one 6-wide, N-tall block delivered all at once at
-    // the end, not N separate 6x1 (or 6x1..N) deliveries spread across
-    // the chain's own duration.
-    var times = Array.isArray(p.chain) ? p.chain : null;
-    var endTime = p.chainEndTime;
-    if (times && endTime !== undefined) {
-      var start = delayBeforeStart + endTime;
-      events.push({ frame: start + GARBAGE_FLIGHT, width: 6, height: times.length, isChain: true });
-      // Cycle-repeat window is a property of the sender's own schedule --
-      // GARBAGE_FLIGHT is a fixed delay applied uniformly to every
-      // delivery, so it must NOT be folded into maxStart (that would
-      // shift the whole repeating cycle later every time it repeats).
-      maxStart = Math.max(maxStart, start);
-      // The chain's own link times still push the cycle-repeat window out
-      // even though nothing lands until chainEndTime.
-      times.forEach(function (t) { maxStart = Math.max(maxStart, delayBeforeStart + t); });
-    }
-  } else {
-    var start = delayBeforeStart + p.startTime;
-    events.push({ frame: start + GARBAGE_FLIGHT, width: p.width, height: p.height || 1, isChain: false });
-    maxStart = Math.max(maxStart, start);
-  }
-});
-var cyclePeriod = delayBeforeRepeat + maxStart - delayBeforeStart;
-events.sort(function (a, b) { return a.frame - b.frame; });
-
-function eventsAt(f) {
-  if (cyclePeriod <= 0) return [];
-  var out = [];
-  for (var i = 0; i < events.length; i++) {
-    var e = events[i];
-    if (f < e.frame) continue;
-    if ((f - e.frame) % cyclePeriod === 0) out.push(e);
-  }
-  return out;
-}
+// See attack_schedule.js for the two real-engine behaviors this has to
+// stay faithful to (chain-as-one-block, GARBAGE_FLIGHT delay) and
+// harness_fidelity.test.js for the regression test that checks them.
+var schedule = attackSchedule.buildEventSchedule(raw, PanelEngine.GARBAGE_FLIGHT);
+var cyclePeriod = schedule.cyclePeriod;
+function eventsAt(f) { return attackSchedule.eventsAt(schedule, f); }
 
 var cpuOpts = cfgArg[0] === '{' ? JSON.parse(cfgArg) : { difficulty: cfgArg };
 cpuOpts.seed = seed + 55;
@@ -115,7 +57,7 @@ var stack = new PanelEngine.Stack({ level: stackLevel, seed: seed, countdown: fa
 var cpu = new PanelCpu.SearchCpu(stack, cpuOpts);
 
 var cellsCleared = 0, garbageCellsCleared = 0, matchEvents = 0, biggestChainSeen = 0;
-var garbageCellsSent = 0, attacksFired = 0;
+var sentRecords = [], attacksFired = 0;
 var f;
 for (f = 0; f < maxFrames; f++) {
   var fired = eventsAt(f);
@@ -126,7 +68,7 @@ for (f = 0; f < maxFrames; f++) {
   cpu.update();
   stack.run();
   var sent = stack.takeDeliverableGarbage();
-  for (var s = 0; s < sent.length; s++) garbageCellsSent += sent[s].width * sent[s].height;
+  for (var s = 0; s < sent.length; s++) sentRecords.push({ width: sent[s].width, height: sent[s].height, isChain: sent[s].isChain });
   var evs = stack.drainEvents();
   for (var j = 0; j < evs.length; j++) {
     if (evs[j].type === 'match') {
@@ -139,12 +81,16 @@ for (f = 0; f < maxFrames; f++) {
   if (stack.gameOver) break;
 }
 
-console.log(JSON.stringify({
+report.printSummary(path.basename(filePath) + ' seed=' + seed + ' L' + stackLevel, f, sentRecords);
+
+var garbageCellsSent = report.summarize(sentRecords).totalCells;
+console.log(JSON.stringify(Object.assign({
   file: path.basename(filePath), seed: seed, stackLevel: stackLevel,
   extraInfo: raw.extraInfo || null, cyclePeriodFrames: cyclePeriod,
   survived: !stack.gameOver, framesAlive: f, secondsAlive: +(f / 60).toFixed(2),
+  survivedMMSS: report.mmss(f),
   attacksFired: attacksFired,
   cellsCleared: cellsCleared, garbageCellsCleared: garbageCellsCleared,
   matchEvents: matchEvents, biggestChainSeen: biggestChainSeen,
-  garbageCellsSent: garbageCellsSent, sentPerSecond: +(garbageCellsSent / (f / 60)).toFixed(3)
-}));
+  sentPerSecond: +(garbageCellsSent / (f / 60)).toFixed(3)
+}, report.summaryFields(sentRecords))));
