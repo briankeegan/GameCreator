@@ -43,6 +43,22 @@ var raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 var delayBeforeStart = raw.delayBeforeStart || 0;
 var delayBeforeRepeat = raw.delayBeforeRepeat || 0;
 
+// BUG (fixed): this used to call stack.receiveGarbage() directly at the
+// attack file's recorded startTime/chainEndTime -- the frame the SENDING
+// side's chain finalizes (AttackEngine.lua pushes onto outgoingGarbage at
+// exactly that frame). But the real engine still makes that garbage sit
+// in staging+transit+telegraph+land for PanelEngine.GARBAGE_FLIGHT (151)
+// frames before it actually reaches the receiver -- duel.js models this
+// correctly (takeDeliverableGarbage gates on frameEarned+GARBAGE_FLIGHT,
+// only then calls receiveGarbage), but this harness was delivering
+// instantly, ~2.5 real seconds faster than any real game ever does. That
+// made every benchmark run in FINDINGS.md strictly harsher than reality
+// -- the AI's true survival/GPM against these real attack files is
+// better than what was measured. Fixed by scheduling each event
+// GARBAGE_FLIGHT frames after its recorded time, same as the real
+// staging-to-landing pipeline.
+var GARBAGE_FLIGHT = PanelEngine.GARBAGE_FLIGHT;
+
 // Flatten into a list of {frame, width, height, isChain} events, exactly
 // matching AttackEngine.addAttackPatternsFromTable's expansion.
 var events = [];
@@ -62,7 +78,11 @@ var maxStart = 0;
     var endTime = p.chainEndTime;
     if (times && endTime !== undefined) {
       var start = delayBeforeStart + endTime;
-      events.push({ frame: start, width: 6, height: times.length, isChain: true });
+      events.push({ frame: start + GARBAGE_FLIGHT, width: 6, height: times.length, isChain: true });
+      // Cycle-repeat window is a property of the sender's own schedule --
+      // GARBAGE_FLIGHT is a fixed delay applied uniformly to every
+      // delivery, so it must NOT be folded into maxStart (that would
+      // shift the whole repeating cycle later every time it repeats).
       maxStart = Math.max(maxStart, start);
       // The chain's own link times still push the cycle-repeat window out
       // even though nothing lands until chainEndTime.
@@ -70,7 +90,7 @@ var maxStart = 0;
     }
   } else {
     var start = delayBeforeStart + p.startTime;
-    events.push({ frame: start, width: p.width, height: p.height || 1, isChain: false });
+    events.push({ frame: start + GARBAGE_FLIGHT, width: p.width, height: p.height || 1, isChain: false });
     maxStart = Math.max(maxStart, start);
   }
 });
