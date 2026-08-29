@@ -237,6 +237,30 @@ jobs:
       # is 2.2% of her walking front row and 0.1% of her ATTACKING front row —
       # it stops being drawn when she swings. Each sheet passed alone. Nothing
       # compared them, so nothing could see it.
+      # PORTRAIT vs SPRITE — the check the whole session started from. The
+      # owner's report was "some characters don't match their portraits". The
+      # cause was that portraits had no front door, which is fixed: both are
+      # built from the same spec by the same function. But prompting them the
+      # same is not checking they came out the same, and nothing did — May's
+      # regenerated sheet promptly lost her pink hair (28% of her portrait,
+      # 2.6% of her sprite, less pink than a black-haired character) and every
+      # existing check passed it, because they all look at one artefact alone.
+      - name: Verify portraits match their sprites
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          status=0
+          for style in games/*/art-style.json; do
+            [ -e "$style" ] || continue
+            game=$(dirname "$style")
+            chars=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(' '.join((d.get('characters') or {}).keys()))" "$style")
+            for char in $chars; do
+              python3 .github/art/verify_sheet.py portrait "$game" "$char" || status=1
+            done
+          done
+          # ART DOES NOT BLOCK THE SITE. See "Report art problems" below.
+          [ "$status" = 0 ] || echo "portrait/sprite mismatch" >> $RUNNER_TEMP/art-problems
+          exit 0
+
       - name: Verify character consistency across sheets
         run: |
           python3 -m pip install --quiet --disable-pip-version-check pillow numpy

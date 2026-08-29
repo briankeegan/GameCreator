@@ -877,6 +877,98 @@ def check_character(game_dir, char_id, rows=3):
     return hard, soft
 
 
+
+# PORTRAIT vs SPRITE — the check the whole session started from.
+#
+# "Some characters don't match their portraits" was the original complaint, and
+# the root cause was that portraits had no front door: they were prompted by
+# hand while sprites were built from the spec. That is fixed —
+# generate_portrait.py and the walk-sheet Action now call the same
+# spec_to_prompt() on the same spec — but PROMPTING them the same is not the
+# same as CHECKING they came out the same, and nothing did.
+#
+# It went wrong immediately. May's regenerated walk sheet lost her pink hair
+# entirely: 0.9-2.9% pink across her nine frames against 28% in her portrait,
+# less pink than Diamond, who has BLACK hair. Her single most identifying
+# feature, and the plot's own description of her ("a pink-haired gamer girl"),
+# and every existing check passed it — they all look at one artefact at a time.
+#
+# WHAT IT DECIDES: a colour that is a major part of one picture of a character
+# must not be absent from the other. Run per spec'd material so the message can
+# name what went missing, and only for materials that `appears` "always" — a
+# bracelet is on a wrist and legitimately out of frame in a bust, which is
+# exactly the kind of false alarm that gets a checker ignored.
+#
+# THRESHOLDS, calibrated on the shipped cast: a material occupying >= 6% of one
+# picture's lit pixels and < 1.5% of the other is missing, not merely smaller.
+# Measured across the thirteen correct characters, no material trips it; May's
+# hair is 28% vs 2.6%.
+PORTRAIT_MAJOR = 6.0     # % of lit pixels that counts as "a major part of this picture"
+PORTRAIT_ABSENT = 1.5    # % below which the same material is effectively gone
+
+
+def _colour_share(path, hexes, tol=52):
+    """What fraction of a picture's lit pixels are near any of these colours."""
+    if not os.path.exists(path):
+        return None
+    a = np.array(Image.open(path).convert('RGBA')).astype(int)
+    lit = a[..., 3] > 8
+    n = int(lit.sum())
+    if not n:
+        return None
+    hit = np.zeros(a.shape[:2], dtype=bool)
+    for hx in hexes:
+        c = [int(hx[i:i + 2], 16) for i in (1, 3, 5)]
+        d = np.abs(a[..., 0] - c[0]) + np.abs(a[..., 1] - c[1]) + np.abs(a[..., 2] - c[2])
+        hit |= d < tol
+    return 100.0 * int((hit & lit).sum()) / n
+
+
+def check_portrait_matches_sprite(game_dir, char_id):
+    """Does the portrait show the same character as the walk frames?"""
+    style_path = os.path.join(game_dir, 'art-style.json')
+    if not os.path.isfile(style_path):
+        return [], []
+    spec = (json.load(open(style_path)).get('characters') or {}).get(char_id)
+    if not spec:
+        return [], []
+    art = os.path.join(game_dir, 'art')
+    portrait = os.path.join(art, f'{char_id}.png')
+    sprite = os.path.join(art, f'{char_id}_down_1.png')
+    if not (os.path.exists(portrait) and os.path.exists(sprite)):
+        return [], []
+
+    problems = []
+    for mat, info in (spec.get('materials') or {}).items():
+        if not isinstance(info, dict):
+            continue
+        if str(info.get('appears', 'always')).lower() != 'always':
+            continue
+        hexes = [v for v in info.values() if isinstance(v, str) and v.startswith('#')]
+        if not hexes:
+            continue
+        p = _colour_share(portrait, hexes)
+        s = _colour_share(sprite, hexes)
+        if p is None or s is None:
+            continue
+        # ONE DIRECTION ONLY, and the asymmetry is real rather than a
+        # convenience: a head-and-shoulders bust cannot show trousers, boots or
+        # a wrist, but a full-body sprite CAN show everything a bust shows. So
+        # "major in the portrait, gone from the sprite" is always a defect,
+        # while the reverse is usually just a bust being a bust — checking it
+        # flagged Kyran's trousers (26.7% of his sprite, 1.1% of his face) on
+        # the very first run, and a checker that cries wolf gets ignored, which
+        # costs more than the case it would have caught.
+        if p >= PORTRAIT_MAJOR and s < PORTRAIT_ABSENT:
+            problems.append(
+                f'{char_id}: PORTRAIT/SPRITE MISMATCH — "{mat}" is {p:.1f}% of the portrait and '
+                f'only {s:.1f}% of {char_id}_down_1.png. They are two pictures of one person built '
+                f'from one spec; a colour that fills the portrait and is gone from the sprite means '
+                f'the generator drew someone else. A bust cannot show legs, so this is only checked '
+                f'in the direction where absence is always wrong. Regenerate whichever is off.')
+    return problems, []
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='mode', required=True)
@@ -906,6 +998,10 @@ def main():
     c.add_argument('char_id')
     c.add_argument('--rows', type=int, default=3)
 
+    pv = sub.add_parser('portrait', help="does a character's portrait match their sprite?")
+    pv.add_argument('game_dir')
+    pv.add_argument('char_id')
+
     f = sub.add_parser('frames', help='check a set of individual <id>_<dir>_<n>.png frames')
     f.add_argument('art_dir')
     f.add_argument('char_id')
@@ -921,6 +1017,8 @@ def main():
         problems, soft = check_character(args.game_dir, args.char_id, args.rows)
         for w in soft:
             print(f'WARNING {w}', file=sys.stderr)
+    elif args.mode == 'portrait':
+        problems, soft = check_portrait_matches_sprite(args.game_dir, args.char_id)
     elif args.mode == 'frames':
         problems, soft = check_frames(args.art_dir, args.char_id, args.dirs.split(','))
         for w in soft:
