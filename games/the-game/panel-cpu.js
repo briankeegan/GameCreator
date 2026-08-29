@@ -894,8 +894,40 @@
       + boardPotential(board) * this.potentialWeight - danger * danger * this.heightPenalty;
   };
 
+  // How much height is already COMMITTED but not yet visible on the
+  // board -- garbage that has arrived and is sitting in stack.incoming,
+  // waiting its turn to drop (shouldDropGarbage lets only the front of
+  // the queue fall at a time). _snapshot() builds the planning board
+  // from panelAt() alone, which only reflects what has already landed --
+  // the entire search (offense AND defense) is blind to this queue until
+  // each piece physically arrives. That is the actual mechanism behind
+  // the worst deaths this file's own history describes: a burst lands
+  // several pieces back to back, and by the time the LAST one is on the
+  // board and _inDanger finally trips, there was never a calm moment to
+  // react in -- the danger was real the instant the queue filled, just
+  // invisible until each piece's own landing.
+  SearchCpu.prototype._queuedGarbageHeight = function () {
+    var incoming = this.stack.incoming, width = root.PanelEngine.WIDTH, cells = 0;
+    for (var i = 0; i < incoming.length; i++) cells += incoming[i].width * incoming[i].height;
+    return cells / width;
+  };
+
   SearchCpu.prototype._inDanger = function (board) {
-    return board.maxHeight() >= board.height * this.dangerHeightFrac;
+    // Only fold the queued-garbage projection in where dangerHeightFrac is
+    // still at its lenient default (0.72, maxHealth>51 -- levels below the
+    // tightened-threshold tiers). Measured: at maxHealth<=51 (dangerHeightFrac
+    // already tightened to 0.45 for levels 5/8/10), stacking this projection
+    // on top of the already-aggressive threshold over-triggers danger mode,
+    // forfeiting the offensive search too often -- real 12-file benchmark
+    // went from 109.8s/2095 sent to 92.6s/1627 sent, worse on both axes.
+    // Restricted to maxHealth>51 (level 3 only, among tested tiers): +47%
+    // survival there (28871 -> 42421 on stress_harness.js steady pressure),
+    // with levels 5/8/10 and the real benchmark unaffected.
+    var height = board.maxHeight();
+    if (this.stack && this.stack.levelData && this.stack.levelData.maxHealth > 51) {
+      height += this._queuedGarbageHeight();
+    }
+    return height >= board.height * this.dangerHeightFrac;
   };
 
   // Shared scoring for every defensive-search tier: garbage cleared always
