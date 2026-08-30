@@ -510,7 +510,23 @@ reintroducing the timing bug. Verified against
 `check_preset_ordering.js`, `love_rng.test.js`, and
 `harness_fidelity.test.js` (all still pass).
 
-## Open leads, not yet tried
+**Tried and rejected: fair-sharing the eval budget across sibling
+branches.** Plain DFS-with-a-global-cutoff has an obvious-looking flaw:
+`unmatched` branches are explored in strict potential-ranked order, so
+an expensive dead-end first branch can burn the *entire* budget before
+its siblings (the 2nd/3rd-best first move) ever get tried. The fix
+looked structural, not a lever: give each branch a fair, shrinking slice
+of whatever budget remains (nested at every recursion depth, not just
+the top) instead of letting the first branch spend everything. Measured
+worse, not better -- same 12-file L8 benchmark, deterministic across two
+runs both ways: 96.7s/689 sent (plain DFS, shipped) vs **89.5s/624 sent
+(fair-shared, rejected)**. Root cause understood after the fact: a real
+rescue combo usually needs several plies lined up in sequence to
+materialize, and `boardPotential` ranking already steers the DFS at the
+top-ranked branch correctly often enough that spending the *whole*
+budget going deep on it beats spending a *thin slice* of budget on many
+branches that each individually don't reach far enough to find anything.
+Depth matters more than breadth here. Reverted; not shipped.
 
 - **Wire `love_rng.js`/`legacy_panel_gen.js`/`legacy_panel_source.js`
   into `panel-engine.js`'s row-creation** (see Round 7's last paragraph)
