@@ -427,6 +427,12 @@ body {
 .dpad-right { grid-column: 3; grid-row: 2; }
 .dpad-down { grid-column: 2; grid-row: 2; }
 
+.action-btns {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
 .attack-btn {
   width: 68px;
   height: 68px;
@@ -435,6 +441,21 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.3);
   color: #fff;
   font-size: 1.4rem;
+  /* Mobile-safety properties applied inline by GCTouchControls.bindHold —
+     see the note on .dpad-btn above. */
+}
+
+/* Roll (dodge) — a second, smaller action button next to Attack. Teal to
+   match Beverly's shorts (#3fa093 in art-style.json) rather than reusing
+   Attack's red, so the two are never confused by color at a glance. */
+.roll-btn {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: #2e7d74;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  font-size: 1.1rem;
   /* Mobile-safety properties applied inline by GCTouchControls.bindHold —
      see the note on .dpad-btn above. */
 }
