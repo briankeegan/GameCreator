@@ -636,6 +636,28 @@
     // at a sustained heavy rate.
     this.criticalFactor = opts.criticalFactor !== undefined ? opts.criticalFactor : (preset.criticalFactor !== undefined ? preset.criticalFactor : 0.5);
     this.runwayThreshold = opts.runwayThreshold !== undefined ? opts.runwayThreshold : (preset.runwayThreshold !== undefined ? preset.runwayThreshold : 3);
+    // How much of already-in-flight garbage (this.stack.incoming, via
+    // _queuedGarbageHeight) counts against runway when deciding whether
+    // to raise proactively -- see _bestDefensiveMove's runwayLow. 0 is
+    // the old purely-reactive behavior, blind to anything not already
+    // landed. Fixes the specific, confirmed death this session found:
+    // a board can go PERMANENTLY dead (exhaustive uncapped search
+    // finding nothing at depth 6, FINDINGS.md Round 9) once the real
+    // panels left standing get too thin/fragmented, and by the time
+    // that's visible on the CURRENT board it's already too late --
+    // acting on garbage already known to be inbound, before it lands,
+    // is what actually prevents reaching that state, not any amount of
+    // smarter choosing once there. Swept 0/0.25/0.5/0.6/0.75/0.85/1/1.5/2/4
+    // against the real 12-file benchmark's 6 known-losing files at level
+    // 8 (FINDINGS.md Round 9) -- highly non-monotonic (small changes
+    // cascade into very different move sequences), 0.75 measured best
+    // (6 losses -> 5, at the cost of 2 previously-fine files regressing
+    // -- a real, partial, honestly-not-total win). Gated the same way as
+    // rescueBranchCap/depth (maxHealth<=21, the only tier measured).
+    this.queuedRunwayWeight = opts.queuedRunwayWeight !== undefined ? opts.queuedRunwayWeight : (preset.queuedRunwayWeight !== undefined ? preset.queuedRunwayWeight : 0);
+    if (opts.queuedRunwayWeight === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 21) {
+      this.queuedRunwayWeight = 0.75;
+    }
     this.rescueBranchCap = opts.rescueBranchCap !== undefined ? opts.rescueBranchCap : (preset.rescueBranchCap !== undefined ? preset.rescueBranchCap : 6);
     // _nPlyRescue is the deep "is there ANY sequence that saves this"
     // search -- the exact lever for "think ahead about what different
@@ -1202,7 +1224,18 @@
     // maxHeight 11 of 12 (a board that looked perfectly safe), and died
     // two frames later once that raise's own row delivery pushed it over.
     var SAFE_RAISE_MARGIN = 1;
-    var runwayLow = board.runwayHeight() < this.runwayThreshold && board.maxHeight() < board.height - SAFE_RAISE_MARGIN;
+    // Runway is purely reactive to the CURRENT board -- it has no idea a
+    // big block is already in flight (this.stack.incoming, ~151 frames
+    // out per GARBAGE_FLIGHT) and about to eat into it. Projecting that
+    // known-future cost in is what separates "raise now, while there's
+    // still material and room" from "wait until the runway is already
+    // gone" -- by the time it's gone the board can be topped out with
+    // zero legal matches ANYWHERE, permanently (confirmed via exhaustive
+    // uncapped search finding nothing at depth 6 on a real recorded
+    // attack file, FINDINGS.md). this.queuedRunwayWeight scales how much
+    // of the incoming height counts against runway -- under sweep.
+    var projectedRunway = board.runwayHeight() - this._queuedGarbageHeight() * this.queuedRunwayWeight;
+    var runwayLow = projectedRunway < this.runwayThreshold && board.maxHeight() < board.height - SAFE_RAISE_MARGIN;
     if (best) {
       if (!bestClearsGarbage && runwayLow) return null;
       return best;

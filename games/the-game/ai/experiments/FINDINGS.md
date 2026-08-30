@@ -545,6 +545,156 @@ breadth cut is cheap. Depth-vs-breadth in this search isn't a dial to
 tune per state; the existing flat cap already sits closer to right than
 either direction tried. Reverted; not shipped.
 
+## Round 9: the board can go permanently dead, and the fix has to act before it does
+
+Delivering the level-by-level real-benchmark report `full_report.js` was
+now producing surfaced a much sharper question than "how many seconds does
+it survive": each real `challenge-8-*.json` file's `extraInfo.matchLength`
+is the actual recorded human's own survival time against that exact real
+level-8 attack pattern, which then **loops forever**
+(`disableQueueLimit`/`delayBeforeRepeat`). That is the real success bar --
+not an arbitrary averaged number, but "does the AI survive at least as
+long as a real human did on this exact file." Checked against all 12
+files at level 8 (nightmare): **6 of 12 lost outright** (died before the
+human's own recorded time) -- challenge-8-1/5/6/7/8/10.
+
+**Root cause, confirmed not guessed:** every one of the 6 losses shares
+the same signature -- `board.fillRatio()` pinned at 1.0, `wasToppedOut`
+true, health draining to 0 over 50-100+ consecutive frames with ZERO
+legal swaps anywhere producing a match. Direct instrumentation on
+`challenge-8-5` (dies at 74.85s vs the human's 193s) found the exact
+death board: 46 of 72 cells garbage (64%), the surviving real panels
+split into small pockets by full-width garbage rows, none of which
+contains 3 of the same color. Proved this isn't a search-quality problem
+by running `_nPlyRescue` UNCAPPED (no budget, no branch cap) at
+increasing depth on that exact board: depth 6 (865,694 evaluations, ~8
+seconds -- absurdly beyond any real-time budget) still found **nothing**.
+The board is mathematically dead. No search, at any depth, can rescue a
+position where the answer doesn't exist. All 5 other losses show the
+same signature (checked directly: 375-770-frame streaks with zero legal
+matches, 63-74% garbage at death).
+
+This reframes the whole problem: a fix that scores candidate moves
+better **at the moment of crisis** cannot work, because by then there
+are no good candidates left to score -- confirmed by three attempts
+below, each individually reasonable, each measured to do nothing or
+worse:
+
+**Tried and rejected: `hasFullyGarbageRow` forcing `_inDanger` true.** A
+row that's 100% garbage is a permanent wall (no match can ever cross
+it -- see the comment left on `LogicalBoard.hasFullyGarbageRow` briefly
+in-tree during this round). Reasoned that reacting to a wall's mere
+EXISTENCE, sooner than fillRatio alone would, should help. It doesn't:
+`_inDanger` is **already true from frame 0** at level 8 (dangerHeightFrac
+0.45 is below the starting board's own 0.583 fillRatio), so `_choose`'s
+calm-mode path is essentially unreachable at this tier and the trigger
+is entirely redundant. Confirmed by direct diagnosis: `challenge-8-1`'s
+death frame was bit-for-bit identical (3253 frames, 27 sent) with and
+without the trigger. Measured net negative on the full 12-file set (two
+previously cap-surviving files started dying early). Reverted.
+
+**Tried and rejected: a `sealsBroken` tiebreak in `_defensiveKey`.**
+Reward matches that reduce the fully-garbage-row count, as a modest
+tiebreak alongside the existing `garbageCleared`/`chainBonus` terms.
+Measured as a complete no-op -- identical outcomes on all 12 files,
+bit-for-bit, at every weight tested including deliberately extreme ones.
+Reverted.
+
+**Tried and rejected: `strandedRealPanelCount`, a connectivity/flood-fill
+penalty for "building" (non-matching) moves.** The most structurally
+promising-looking of the three: flood-fill the board's non-garbage cells,
+penalize a candidate move that leaves more real panels outside the
+largest connected pocket. First wiring (into `_bestDefensiveMove`'s
+per-ply beam `ev` scoring) was **also** a complete no-op even at an
+absurd weight (100000) -- traced to a real bug: that scoring is entirely
+discarded whenever nothing matches at any ply, falling through to a
+SEPARATE `gainMove` loop (plain `boardPotential(trial)-base`, recomputed
+from scratch) that never consulted it. Fixed the wiring to apply the
+penalty there too -- **still zero effect**, even at the same extreme
+weight. The actual reason, found by direct measurement: a non-matching
+swap NEVER touches a garbage cell (`legalSwaps()` explicitly excludes
+any swap involving one), so garbage placement -- and therefore
+`strandedRealPanelCount` -- is **structurally invariant** across every
+candidate in that branch. The metric can never differentiate the moves
+it was scoring, at any weight, because the thing it measures cannot
+change without a match. Both attempts reverted; the underlying
+LogicalBoard helper deleted rather than left as dead infrastructure.
+
+**Shipped fix: `queuedRunwayWeight`, using garbage the search already
+had access to but wasn't using.** `_queuedGarbageHeight()` (Round 3's
+helper, summing `this.stack.incoming` -- garbage already committed and
+in flight, ~151 frames out via `GARBAGE_FLIGHT`, but not yet landed) was
+only ever wired into `_inDanger`'s danger-mode trigger, and even there
+only at `maxHealth>51` (Round 3 found it over-triggered defense at the
+tighter tiers). It was never wired into anything that decides WHAT TO DO
+about incoming pressure -- only whether to be worried about it. This
+round wires it into `_bestDefensiveMove`'s `runwayLow` check instead:
+`projectedRunway = board.runwayHeight() - _queuedGarbageHeight() *
+queuedRunwayWeight`, so the AI raises proactively (buying a fresh row of
+real material) while there's still time and room, instead of waiting
+until the runway is already gone and the board is already fragmenting.
+This is the one lever, among four tried, that changes EARLY-game
+decisions (before a crisis, while raising is still safe and useful) --
+which is the only place a fix for a many-moves-in-the-making death can
+actually act.
+
+**Sweep was highly non-monotonic** (small weight changes cascade into
+very different move sequences and RNG draws downstream -- not a smooth
+dial): 0/0.25/0.5/0.6/0.75/0.85/1/1.5/2/4 tested against the real 12-file
+benchmark at level 8. 0.25 (8 losses) and 0.6 (7 losses) were both worse
+than baseline's 6; **0.75 measured best (5 losses)**.
+
+| Level 8 file | Baseline (w=0) | w=0.75 | Human target |
+|---|---|---|---|
+| challenge-8-1 | LOST 3253f | **WIN 14040f (survived)** | 10440f |
+| challenge-8-5 | LOST 4491f | LOST 4235f | 11580f |
+| challenge-8-6 | LOST 3991f | **WIN 7980f (survived)** | 4380f |
+| challenge-8-7 | LOST 7373f | LOST 3089f | 10440f |
+| challenge-8-8 | LOST 2542f | LOST 1965f | 5460f |
+| challenge-8-10 | LOST 1809f | **beat human, 4292f** | 3360f |
+| challenge-8-4 | WIN 9000f (survived) | **LOST 2312f (regressed)** | 5400f |
+| challenge-8-11 | beat human, 3417f | **LOST 1316f (regressed)** | 2940f |
+
+Net: 6 losses -> 5, recovering 3 (1/6/10) at the cost of regressing 2
+(4/11) that were previously fine -- a real, measured, **partial** win,
+not a total fix. Level 10 fared better with the same 0.75 (no sweep
+re-run there, same value reused): baseline 7 losses -> 5 with the fix,
+4 files recovered (3/4/10/11) against 2 regressed (6/8) -- a cleaner net
+gain than level 8's trade.
+
+**Shipped gated to `maxHealth<=21`** (same tier as `rescueBranchCap`/
+`depth`, the only tier measured) -- `queuedRunwayWeight` defaults to 0
+(old, purely-reactive behavior) everywhere else. Timing verified safe
+throughout (max `_bestDefensiveMove` observed 79-95ms across the round's
+variants, comfortably under the ~100ms budget; proactive raising if
+anything makes decisions cheaper on average, since it keeps boards from
+reaching the dense states `_nPlyRescue` is expensive on). Verified
+against `check_preset_ordering.js`, `love_rng.test.js`, and
+`harness_fidelity.test.js` (all pass).
+
+**Still open:** 5 of the original 6 level-8 losses remain (only 3
+recovered net of the 2 regressions). challenge-8-5/7/8 never improved
+under any tested weight. The failure mode is understood and real
+(permanently dead boards from garbage fragmentation) but the fix found
+so far only partially prevents reaching it -- next steps belong in "Open
+leads" below: a genuinely richer use of `stack.incoming` (not just a
+scalar height sum, but WHERE a pending block will land and whether it
+would seal a specific row) is the more direct fix this round's
+`queuedRunwayWeight` only approximates.
+
+## Open leads, not yet tried
+
+- **A genuinely position-aware use of `stack.incoming`.** Round 9's
+  `queuedRunwayWeight` treats incoming garbage as a scalar height, fed
+  into ONE decision (raise vs. search). The actual mechanism it's
+  fighting -- a pending block landing and sealing a row -- is about
+  WHICH columns/rows it will occupy, information `stack.incoming`
+  already carries (`{width,height,isChain}`) but nothing reads yet. A
+  search that could simulate "if this specific pending block lands
+  where the engine will place it, does any real panel get sealed off
+  unmatchably" could target the exact mechanism instead of a proxy for
+  it, and might recover the remaining 3 level-8 losses (5/7/8) that
+  `queuedRunwayWeight` never touched.
 - **Wire `love_rng.js`/`legacy_panel_gen.js`/`legacy_panel_source.js`
   into `panel-engine.js`'s row-creation** (see Round 7's last paragraph)
   to actually enable exact real-match reproduction end to end --
