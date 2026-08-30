@@ -31,7 +31,7 @@
 //                  see FINDINGS.md's "misleading synthetic benchmark"
 //                  section for why the drills above don't.
 //
-// Usage: node full_report.js [difficulty|cfgJSON] [levels] [seed] [endlessMaxFrames]
+// Usage: node full_report.js [difficulty|cfgJSON] [levels] [seed] [endlessMaxFrames] [categories]
 //   levels: comma-separated stack levels, default "3,5,8,10" (the four
 //   tiers every gated fix this session was measured against). Pass a
 //   single number for just one level, e.g. "10".
@@ -43,6 +43,12 @@
 //   smaller cap (e.g. 15000, ~4 simulated minutes) for a practical
 //   interactive run; the comboStorm/factory/bigBlocks drills are
 //   unaffected (they die fast by design, see TRAINING_CEILING below).
+//   categories: comma-separated subset of comboStorm,factory,bigBlocks,
+//   endless, default all four. THIS is the guardrail: when told to
+//   focus on one level/one category, run e.g.
+//   `node full_report.js nightmare 10 1 15000 bigBlocks` -- scoped,
+//   repeatable, no ad-hoc scripts, and nothing outside the requested
+//   scope gets touched or reported.
 var path = require('path');
 var fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
@@ -57,6 +63,9 @@ var cfgArg = process.argv[2] || 'nightmare';
 var levelsArg = process.argv[3] || '3,5,8,10';
 var seed = parseInt(process.argv[4], 10) || 1;
 var LEVELS = levelsArg.split(',').map(function (s) { return parseInt(s, 10); });
+var ALL_CATEGORIES = ['comboStorm', 'factory', 'bigBlocks', 'endless'];
+var categoriesArg = process.argv[6] || ALL_CATEGORIES.join(',');
+var CATEGORIES = categoriesArg.split(',');
 
 function makeCpu(stackLevel, extraOpts) {
   var opts = cfgArg[0] === '{' ? JSON.parse(cfgArg) : { difficulty: cfgArg };
@@ -133,17 +142,20 @@ function runEndless(stackLevel) {
   return { label: 'endless (avg of ' + files.length + ' real files)', framesAlive: Math.round(totalFrames / files.length), sentRecords: allSent, fileCount: files.length };
 }
 
-// ---- Run all four, at every requested level, print one combined report ----
-console.log('Config: ' + cfgArg + '  levels=' + LEVELS.join(',') + '  seed=' + seed);
+// ---- Run only the requested categories, at every requested level ----
+console.log('Config: ' + cfgArg + '  levels=' + LEVELS.join(',') + '  seed=' + seed + '  categories=' + CATEGORIES.join(','));
 console.log('');
 
 LEVELS.forEach(function (stackLevel) {
   console.log('#################### LEVEL ' + stackLevel + ' ####################');
   ['comboStorm', 'factory', 'bigBlocks'].forEach(function (mode) {
+    if (CATEGORIES.indexOf(mode) === -1) return;
     var r = runTrainingMode(mode, stackLevel);
     report.printSummaryToStdout('L' + stackLevel + ' ' + mode + (r.died ? '' : ' (still going at ceiling)'), r.framesAlive, r.sentRecords);
   });
 
-  var endless = runEndless(stackLevel);
-  report.printSummaryToStdout('L' + stackLevel + ' ' + endless.label + ' -- avg frames across files', endless.framesAlive, endless.sentRecords);
+  if (CATEGORIES.indexOf('endless') !== -1) {
+    var endless = runEndless(stackLevel);
+    report.printSummaryToStdout('L' + stackLevel + ' ' + endless.label + ' -- avg frames across files', endless.framesAlive, endless.sentRecords);
+  }
 });

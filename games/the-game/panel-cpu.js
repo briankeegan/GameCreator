@@ -645,8 +645,15 @@
     // latched), which is what actually blocks the topped-out health
     // drain. Non-monotonic like every other lever this session (2 and 0
     // both measured worse than 1) -- not a "faster is always better"
-    // dial.
+    // dial. Regresses the real 12-file benchmark at level 8 (818->651
+    // sent, 95.6s->80.4s avg), so gated to maxHealth<=1 -- level 10
+    // ONLY (the one tier this was measured/asked for; level 8's
+    // maxHealth=21 is well outside this gate, so its behavior is
+    // unchanged).
     this.toppedOutCooldown = opts.toppedOutCooldown !== undefined ? opts.toppedOutCooldown : (preset.toppedOutCooldown !== undefined ? preset.toppedOutCooldown : 3);
+    if (opts.toppedOutCooldown === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.toppedOutCooldown = 1;
+    }
     // How much of already-in-flight garbage (this.stack.incoming, via
     // _queuedGarbageHeight) counts against runway when deciding whether
     // to raise proactively -- see _bestDefensiveMove's runwayLow. 0 is

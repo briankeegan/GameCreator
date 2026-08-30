@@ -3,6 +3,27 @@
 Working log for the "make the AI survive as long as possible" investigation.
 Read this before repeating any of the dead ends below.
 
+## Working rules (guardrails)
+
+- **Every scenario is run through `full_report.js`, never a one-off
+  script.** `node full_report.js [difficulty|cfgJSON] [levels] [seed]
+  [endlessMaxFrames] [categories]` -- `levels` and `categories` are how
+  you scope it (e.g. `10` and `bigBlocks`). A hand-rolled bash/node
+  probe is fine for DIAGNOSING why a number is what it is, but the
+  number itself -- the thing reported back -- always comes from this
+  tool, so every run is comparable to every other run.
+- **When told to focus on one level and/or one category, test ONLY
+  that level/category and report ONLY those numbers.** Do not run the
+  other three levels or the other three categories "while you're at
+  it," and do not fold in real-benchmark or other-level results
+  unprompted. Report the requested numbers, then stop -- next scope
+  change comes from the user, not from noticing something else
+  interesting.
+- A fix that helps the requested scope but changes behavior somewhere
+  OUT of scope (a different level, the real benchmark) gets gated to
+  the requested scope specifically, not shipped broadly, unless told
+  otherwise.
+
 ## The benchmark that misled the whole first pass
 
 `training_harness.js` + `TrainingMenu.lua`'s `createBasicTrainingMode`
