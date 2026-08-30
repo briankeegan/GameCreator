@@ -636,6 +636,17 @@
     // at a sustained heavy rate.
     this.criticalFactor = opts.criticalFactor !== undefined ? opts.criticalFactor : (preset.criticalFactor !== undefined ? preset.criticalFactor : 0.5);
     this.runwayThreshold = opts.runwayThreshold !== undefined ? opts.runwayThreshold : (preset.runwayThreshold !== undefined ? preset.runwayThreshold : 3);
+    // Cooldown floor once fully topped out -- see its one use site's own
+    // comment for why 3 was picked (closes a leaked idle frame vs 4).
+    // Under sweep against L10 bigBlocks (5 seeds): 1 averaged 1199 frames
+    // survived vs 3's 774 (+55%) -- re-queuing a swap attempt faster than
+    // its own animation resolves keeps riseLock recomputing true more
+    // consistently (swapQueued() is read fresh every frame, not
+    // latched), which is what actually blocks the topped-out health
+    // drain. Non-monotonic like every other lever this session (2 and 0
+    // both measured worse than 1) -- not a "faster is always better"
+    // dial.
+    this.toppedOutCooldown = opts.toppedOutCooldown !== undefined ? opts.toppedOutCooldown : (preset.toppedOutCooldown !== undefined ? preset.toppedOutCooldown : 3);
     // How much of already-in-flight garbage (this.stack.incoming, via
     // _queuedGarbageHeight) counts against runway when deciding whether
     // to raise proactively -- see _bestDefensiveMove's runwayLow. 0 is
@@ -1741,7 +1752,7 @@
     // instead. A real match's animation runs far longer than 4 frames on
     // its own, so this never makes those any faster than they already were.
     this.cooldown = board.maxHeight() >= board.height
-      ? 3
+      ? this.toppedOutCooldown
       : board.fillRatio() > this.dangerHeightFrac
         ? 6
         : Math.max(6, Math.round(this.reaction * (board.fillRatio() > this.dangerHeightFrac * 0.85 ? 0.55 : 1)));
