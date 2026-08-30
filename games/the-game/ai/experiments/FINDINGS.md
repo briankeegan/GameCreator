@@ -528,6 +528,23 @@ budget going deep on it beats spending a *thin slice* of budget on many
 branches that each individually don't reach far enough to find anything.
 Depth matters more than breadth here. Reverted; not shipped.
 
+**Tried and rejected: narrowing rescueBranchCap specifically at high
+fillRatio, to buy the eval budget more depth on the dense boards it's
+tightest on.** Sounds like the natural complement to the fair-share
+result above (if breadth doesn't help, spend less of the budget on it)
+-- measured the opposite. Swept three configs
+(threshold=0.75/cap=5, threshold=0.75/cap=3, threshold=0.6/cap=5)
+against the same 12-file L8 benchmark; every one was worse than the
+unconditional cap=10 baseline (689 sent), the worst by nearly half
+(365 sent at threshold=0.75/cap=5). Reconciles with the fair-share
+result rather than contradicting it: `legalSwaps()` is exactly LARGEST
+at high fillRatio (more occupied cells, more candidate swaps), so a
+narrower cap there discards more genuinely-good candidate first moves
+than it does anywhere else on the board -- the opposite of where a
+breadth cut is cheap. Depth-vs-breadth in this search isn't a dial to
+tune per state; the existing flat cap already sits closer to right than
+either direction tried. Reverted; not shipped.
+
 - **Wire `love_rng.js`/`legacy_panel_gen.js`/`legacy_panel_source.js`
   into `panel-engine.js`'s row-creation** (see Round 7's last paragraph)
   to actually enable exact real-match reproduction end to end --
