@@ -89,6 +89,7 @@ exposes a gap, **fix the prompt file**; that is how the next person inherits it.
 | [`walkgrid_prompt.txt`](walkgrid_prompt.txt) | A walk row, one image per direction. Keep one of its three `{VIEW}` blocks. |
 | [`attacksheet_prompt.txt`](attacksheet_prompt.txt) | An attack row — a slash across the body, not a thrust. |
 | [`walksheet_prompt.txt`](walksheet_prompt.txt) | The legacy 4x3 grid for per-file games (Newsey). |
+| [`rollsheet_prompt.txt`](rollsheet_prompt.txt) | A dodge-roll row — side view only, drawn once and reused mirrored/for every direction. See `CHARACTER_SHEETS.md`'s "Roll / dodge" section. |
 | [`portrait_prompt.txt`](portrait_prompt.txt) | A dialogue talk-box bust. Asks only for margin, never for framing — the API has no composition parameter, so the crop is done afterwards by `make_portrait.py`. |
 | [`room_prompts/1_composed_scene.txt`](room_prompts/1_composed_scene.txt) | Room pass 1 — the scene that gets measured. |
 | [`room_prompts/2_floor_plate.txt`](room_prompts/2_floor_plate.txt) | Room pass 2 — the walkable surface, and nothing else. |

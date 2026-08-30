@@ -32,14 +32,17 @@ jobs:
       # shown real timing flakiness in this environment, which would risk
       # blocking every game's deploy over one game's unrelated animation
       # timing, worse than the gap it would close.
+      #
+      # This step, and every "Verify ..."/"Run ..." step below down to
+      # "Verify character spec provenance", calls a function from
+      # .github/scripts/gates.sh — ONE shared library, so the exact same
+      # check also runs pre-flight inside the Clubhouse autopilot (BEFORE it
+      # commits anything), not just here after the fact. See that file's
+      # header for why: an autopilot run shipped a change that failed one of
+      # these gates twice in a row, blocking every game's deploy each time,
+      # because nothing ran the real check before committing.
       - name: Run headless engine tests
-        run: |
-          status=0
-          for f in games/*/engine.test.js; do
-            echo "== $f =="
-            node "$f" || status=1
-          done
-          exit $status
+        run: source .github/scripts/gates.sh && gate_engine_tests
 
       # A "hardest" AI preset silently performing NO BETTER than a weaker
       # one has shipped TWICE without anyone noticing: once because the
@@ -53,7 +56,7 @@ jobs:
       # exact knobs to check if "nightmare" ever drifts back to
       # indistinguishable from "diamond" again.
       - name: Verify nightmare AI preset is measurably harder than diamond
-        run: node games/the-game/ai/experiments/check_preset_ordering.js nightmare diamond
+        run: source .github/scripts/gates.sh && gate_ai_preset_ordering
 
       # THE DOOR GATE — docs/DOOR_STANDARD.md. A door is one half of a pair,
       # arrival is derived from the partner rather than typed, and a doorway
@@ -65,7 +68,7 @@ jobs:
       # covered as soon as it publishes its door data (§8), with no list here
       # to forget to update.
       - name: Verify room exits
-        run: node .github/scripts/check_room_exits.mjs
+        run: source .github/scripts/gates.sh && gate_room_exits
 
       # A game whose own JS calls GCControls.create()/GCSaveSlots.create()/
       # GCTitleScreen.create() but is missing the matching <script> tag or
@@ -78,7 +81,7 @@ jobs:
       # title-screen onShow check, since a text-only game legitimately has
       # nothing to draw.
       - name: Verify shared-module wiring
-        run: node .github/autopilot/sync-precache.js
+        run: source .github/scripts/gates.sh && gate_shared_module_wiring
 
       # A DOOR HAS TO BE ENTERED, NOT GRAZED — and that is a number, so it is
       # gated. The Arena's way out was armed above the walkable platform and
@@ -96,16 +99,7 @@ jobs:
       # move a trigger are advice (it cannot see prop collision) and a fuzzy
       # check must never block a deploy.
       - name: Verify doors can be entered
-        run: |
-          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
-          status=0
-          for d in games/*/story.js; do
-            g=$(dirname "$d")
-            [ -d "$g/art" ] || continue
-            echo "== $g =="
-            python3 .github/art/remap_doors.py "$g" --check || status=1
-          done
-          exit $status
+        run: source .github/scripts/gates.sh && gate_doors_enterable
 
       # Rooms built to the three-pass standard (docs/ROOM_ART_STANDARD.md):
       # the background is ONLY the walkable surface and everything else is a
@@ -118,15 +112,7 @@ jobs:
       # footprint, and dead floorPoly/obstacles contradicting the mask. Rule ->
       # tool -> gate, same as the room exits and the sprite sheets above.
       - name: Verify room props and floor plates
-        run: |
-          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
-          status=0
-          for d in games/*/; do
-            [ -f "$d/story.js" ] || continue
-            echo "== $d =="
-            python3 .github/art/room.py verify "${d%/}" || status=1
-          done
-          exit $status
+        run: source .github/scripts/gates.sh && gate_room_props_floor_plates
 
       # The art index (.github/art/README.md) is the one page that says what
       # exists and which tool to reach for. It is only useful if it is true,
@@ -136,7 +122,7 @@ jobs:
       # prevents already happened at a larger scale, when the autopilot's
       # private COPY of the art rules drifted months behind the standard.
       - name: Verify the art index
-        run: node .github/scripts/check_art_registry.mjs
+        run: source .github/scripts/gates.sh && gate_art_index
 
       # Every art id a game NAMES must have a file behind it. The game is
       # deliberately forgiving at runtime — a missing portrait draws the
@@ -144,7 +130,7 @@ jobs:
       # missing file never fails anything and ships unnoticed. That is how a
       # K ended up standing in Kyran's lab. Forgiving runtime, strict build.
       - name: Verify art references
-        run: node .github/scripts/check_art_refs.mjs
+        run: source .github/scripts/gates.sh && gate_art_refs
 
       # Shipped sprite sheets: no empty cells (the cutter silently produced
       # nothing for one), no colour outside the game's lockedPalette (art
@@ -163,13 +149,13 @@ jobs:
       # defect it exists for, the other that no check reports success it did not
       # have.
       - name: Verify the gates actually reject defects
-        run: bash .github/scripts/gates.test.sh
+        run: source .github/scripts/gates.sh && gate_gates_reject_defects
 
       - name: Verify no check reports success it did not have
-        run: node .github/scripts/check_gate_wiring.mjs
+        run: source .github/scripts/gates.sh && gate_gate_wiring
 
       - name: Verify generator rules
-        run: node .github/scripts/check_generators.mjs
+        run: source .github/scripts/gates.sh && gate_generator_rules
 
       # THE VAULT IS THE ONE TOOL WHOSE FAILURE IS INVISIBLE. vault.py never
       # fails its caller on purpose — losing the safety net must not also lose
@@ -179,7 +165,7 @@ jobs:
       # was lost, which is precisely when it is supposed to be there. So the
       # round-trip is proved on every push against a throwaway repo.
       - name: Verify the art vault round-trips
-        run: bash .github/scripts/vault.test.sh
+        run: source .github/scripts/gates.sh && gate_art_vault_roundtrip
 
       # AND THAT THE NET IS ATTACHED, not merely that it works. vault.test.sh
       # passed the entire time the vault was doing nothing inside
@@ -188,7 +174,7 @@ jobs:
       # backend stubbed out and asserts on WHETHER THE API WOULD BE CALLED,
       # which is the only question money depends on. Costs nothing, needs no key.
       - name: Verify the generation money path
-        run: python3 .github/scripts/generation.test.py
+        run: source .github/scripts/gates.sh && gate_generation_money_path
 
       # THE CUTTER, tested as code rather than through art. It decapitated a
       # character twice, the same way, from flawless generated sheets — her hair
@@ -199,9 +185,7 @@ jobs:
       # and every other art check needs real art. These build synthetic sheets in
       # memory — instant, exact, no API, no committed art.
       - name: Verify the walk-sheet cutter
-        run: |
-          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
-          python3 .github/scripts/cutter.test.py
+        run: source .github/scripts/gates.sh && gate_walk_sheet_cutter
 
       # AND THE CHECKERS THEMSELVES. A checker is the one kind of code whose
       # bugs are silent by construction: one that never fires looks exactly like
@@ -212,10 +196,10 @@ jobs:
       # proved on synthetic art: the defect it must reject, and the
       # correct-but-awkward case it must accept.
       - name: Verify the art checkers fire (and stay quiet)
-        run: python3 .github/scripts/checks.test.py
+        run: source .github/scripts/gates.sh && gate_art_checkers_fire
 
       - name: Verify character spec provenance
-        run: node .github/scripts/check_character_specs.mjs
+        run: source .github/scripts/gates.sh && gate_character_spec_provenance
 
       # CHARACTER SPECS. The checks above look at one sheet at a time, and the
       # thing that shipped next was invisible to all of them: Beverly's mohawk
