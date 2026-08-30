@@ -443,6 +443,73 @@ converted rows), timed to match the real re-seed-per-batch scheme. That
 integration work is real but now unblocked -- the hard, uncertain part
 (the RNG itself) is done and validated.
 
+## Round 8: the rescue chain was blowing its own real-time budget on real boards
+
+Round 5's `full_report.js` fix (labeling every section by level, per an
+explicit correction that an earlier report silently dropped level from
+its summary) surfaced level 8/10 numbers for the first time. Getting
+there required instrumenting `_bestDefensiveMove` directly against a
+real recorded attack file (`challenge-8-4.json`, level 10) -- and found
+calls taking up to **225ms**, more than 2x the ~100ms real-time decision
+budget this file's own comments had been asserting was safe. Traced to
+`_nPlyRescue`'s depth-2/3/4 fallback chain (`_bestDefensiveMove`'s "true
+last resort"), up to 202ms in a single call. Correlated directly with
+`board.fillRatio()` climbing toward 1.0 -- exactly the near-topped-out
+boards where a slow decision is most dangerous.
+
+**Root cause:** `rescueBranchCap` (Round-earlier, 6->10 at
+`maxHealth<=21`) bounds branching but not `legalSwaps()` itself, which
+scales with board occupancy. The "62ms worst-case, safe" claim made when
+`rescueBranchCap=10` shipped was measured against synthetic boards, not
+real ones, and simply didn't cover a board this dense.
+
+**First attempt (reverted): a `Date.now()` wall-clock deadline.** Fixed
+the timing violation (confirmed: maxBDM 225ms -> 75ms on the exact
+file/level that found the bug, 0 over-budget calls across 178 rescue
+invocations) but introduced a worse problem -- the AI's own decisions
+became dependent on host machine load, not just board state. Proof: the
+identical 12-file, seed-1, level-8 benchmark gave 741 cells sent at a
+70ms deadline and 651 at a 90ms deadline in back-to-back runs on the
+same otherwise-idle sandbox. A WIDER time budget scoring worse than a
+narrower one is not a real effect; it's measurement noise from whatever
+else the machine happened to be doing at the moment each decision ran.
+An AI whose strength varies with unrelated background load can't be
+tuned, benchmarked, or have a bug report reproduced against it -- the
+exact "invariant-shaped non-invariant" trap `docs/DOOR_STANDARD.md` §6
+warns about, in a new place.
+
+**Shipped fix: a deterministic eval-count budget instead of wall-clock
+time.** `_nPlyRescue`'s depth-2/3/4 fallback chain now shares one
+`{ used, max }` counter of board evaluations (clone+swap+resolve),
+checked on entry to each recursion node and partway through its swap
+loop. Same board, same seed -> same result, on every machine, every
+time -- while still bounding real wall time in practice, because
+per-evaluation cost is itself bounded (instrumented on the same real
+file/level: 0.0034-0.0079ms/eval depending on board fill, the same
+occupancy-scaling root cause as the timing bug). Picked
+`rescueEvalBudget=10000` by testing the actual boundary: 13000 evals hit
+100ms exactly (zero margin, rejected); 10000 gave 79ms with real headroom
+on the worst real board found so far.
+
+**Cost, measured and accepted, not hidden:** the eval cap is strictly
+tighter than the old *unsafe* unbounded search on dense boards, so it
+gives up some of the quality that unsafe search was buying. Same 12-file
+real benchmark, `maxFrames=15000`, seed 1:
+- L8: 103.7s avg / 847 sent (unbounded, unsafe) -> **96.7s / 689 sent**
+  (capped, safe) -- reproduced identically across two back-to-back runs.
+- L10: 86.7s avg / 641 sent (unbounded, unsafe) -> **73.1s / 605 sent**
+  (capped, safe).
+
+This is the deliberate trade a real-time decision budget requires: an
+AI that occasionally takes 225ms to decide is not a valid solution
+regardless of what it scores on an offline benchmark, because a real
+browser can't wait that long between frames. The numbers above are the
+honest cost of enforcing that, on the exact real files that exposed the
+violation -- not a regression to chase back down without also
+reintroducing the timing bug. Verified against
+`check_preset_ordering.js`, `love_rng.test.js`, and
+`harness_fidelity.test.js` (all still pass).
+
 ## Open leads, not yet tried
 
 - **Wire `love_rng.js`/`legacy_panel_gen.js`/`legacy_panel_source.js`
