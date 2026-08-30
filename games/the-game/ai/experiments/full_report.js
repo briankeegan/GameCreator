@@ -1,7 +1,18 @@
 // THE standard test suite: one config, every benchmark type this
-// directory has, one combined report. Built because running each
-// harness by hand, one at a time, isn't the standard the user wants --
-// this is: one command, everything.
+// directory has, every level that matters, one combined report. Built
+// because running each harness by hand, one at a time, isn't the
+// standard the user wants -- this is: one command, everything.
+//
+// LEVEL IS NOT OPTIONAL. Every fix shipped this session was gated by
+// level (dangerHeightFrac, rescueBranchCap, depth, raiseFillFrac all
+// behave differently at level 3 vs 5/8/10 -- see FINDINGS.md) precisely
+// because a number measured at one level says nothing about the others.
+// An earlier version of this report printed stackLevel once in a header
+// line and then silently dropped it from every section below, which is
+// exactly the kind of thing that gets scrolled past. Every section now
+// carries its own level in the label, and the default run covers all
+// four tiers this session's fixes were actually gated against, not just
+// one.
 //
 // Four categories, in increasing order of realism:
 //   comboStorm   - TrainingMenu.lua drill, 4x1 combo blocks, unbeatable
@@ -20,7 +31,10 @@
 //                  see FINDINGS.md's "misleading synthetic benchmark"
 //                  section for why the drills above don't.
 //
-// Usage: node full_report.js [difficulty|cfgJSON] [stackLevel] [seed]
+// Usage: node full_report.js [difficulty|cfgJSON] [levels] [seed]
+//   levels: comma-separated stack levels, default "3,5,8,10" (the four
+//   tiers every gated fix this session was measured against). Pass a
+//   single number for just one level, e.g. "10".
 var path = require('path');
 var fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
@@ -32,10 +46,11 @@ var PanelEngine = global.PanelEngine;
 var PanelCpu = global.PanelCpu;
 
 var cfgArg = process.argv[2] || 'nightmare';
-var stackLevel = parseInt(process.argv[3], 10) || 10;
+var levelsArg = process.argv[3] || '3,5,8,10';
 var seed = parseInt(process.argv[4], 10) || 1;
+var LEVELS = levelsArg.split(',').map(function (s) { return parseInt(s, 10); });
 
-function makeCpu(extraOpts) {
+function makeCpu(stackLevel, extraOpts) {
   var opts = cfgArg[0] === '{' ? JSON.parse(cfgArg) : { difficulty: cfgArg };
   Object.assign(opts, extraOpts || {});
   opts.seed = seed + 55;
@@ -54,9 +69,9 @@ var LEAD_IN = 150, BURST_LEN = 50, GAP = 900;
 var CYCLE = GAP + (LEAD_IN + BURST_LEN) - LEAD_IN;
 var TRAINING_CEILING = 60 * 60 * 5; // 5 simulated minutes is plenty -- these drills die fast
 
-function runTrainingMode(modeName) {
+function runTrainingMode(modeName, stackLevel) {
   var mode = TRAINING_MODES[modeName];
-  var made = makeCpu();
+  var made = makeCpu(stackLevel);
   var stack = made.stack, cpu = made.cpu;
   function fires(f) {
     if (f < LEAD_IN + 1) return false;
@@ -80,10 +95,10 @@ function runTrainingMode(modeName) {
 var TRAINING_DIR = '/home/user/briankeegan/panel-game/client/assets/default_data/training';
 var ENDLESS_MAX_FRAMES = 36000; // 10 simulated minutes per file
 
-function runEndlessFile(filePath) {
+function runEndlessFile(filePath, stackLevel) {
   var raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   var schedule = attackSchedule.buildEventSchedule(raw, PanelEngine.GARBAGE_FLIGHT);
-  var made = makeCpu();
+  var made = makeCpu(stackLevel);
   var stack = made.stack, cpu = made.cpu;
   var sentRecords = [], f;
   for (f = 0; f < ENDLESS_MAX_FRAMES; f++) {
@@ -99,25 +114,28 @@ function runEndlessFile(filePath) {
   return { framesAlive: f, sentRecords: sentRecords };
 }
 
-function runEndless() {
+function runEndless(stackLevel) {
   var files = fs.readdirSync(TRAINING_DIR).filter(function (f) { return /^challenge-8-\d+\.json$/.test(f); }).sort();
   var totalFrames = 0, allSent = [];
   files.forEach(function (fname) {
-    var r = runEndlessFile(path.join(TRAINING_DIR, fname));
+    var r = runEndlessFile(path.join(TRAINING_DIR, fname), stackLevel);
     totalFrames += r.framesAlive;
     allSent = allSent.concat(r.sentRecords);
   });
   return { label: 'endless (avg of ' + files.length + ' real files)', framesAlive: Math.round(totalFrames / files.length), sentRecords: allSent, fileCount: files.length };
 }
 
-// ---- Run all four, print one combined report ----
-console.log('Config: ' + cfgArg + '  stackLevel=' + stackLevel + '  seed=' + seed);
+// ---- Run all four, at every requested level, print one combined report ----
+console.log('Config: ' + cfgArg + '  levels=' + LEVELS.join(',') + '  seed=' + seed);
 console.log('');
 
-['comboStorm', 'factory', 'bigBlocks'].forEach(function (mode) {
-  var r = runTrainingMode(mode);
-  report.printSummaryToStdout(mode + (r.died ? '' : ' (still going at ceiling)'), r.framesAlive, r.sentRecords);
-});
+LEVELS.forEach(function (stackLevel) {
+  console.log('#################### LEVEL ' + stackLevel + ' ####################');
+  ['comboStorm', 'factory', 'bigBlocks'].forEach(function (mode) {
+    var r = runTrainingMode(mode, stackLevel);
+    report.printSummaryToStdout('L' + stackLevel + ' ' + mode + (r.died ? '' : ' (still going at ceiling)'), r.framesAlive, r.sentRecords);
+  });
 
-var endless = runEndless();
-report.printSummaryToStdout(endless.label + ' -- avg frames across files', endless.framesAlive, endless.sentRecords);
+  var endless = runEndless(stackLevel);
+  report.printSummaryToStdout('L' + stackLevel + ' ' + endless.label + ' -- avg frames across files', endless.framesAlive, endless.sentRecords);
+});
