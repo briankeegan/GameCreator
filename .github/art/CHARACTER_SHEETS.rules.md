@@ -23,6 +23,14 @@
 | 1 | **strike** — mid-slash, the weapon sweeping through an arc across the body as it lands |
 | 2 | recover — follow-through, weapon carried past the target and down |
 - **The columns mean the same thing in every row.** Front, side and back all use left-forward / standing / right-forward; the only thing that changes between rows is the camera angle. That is what lets one playback sequence drive every direction, and it is why a row that quietly reinterprets its columns (a "neutral" that is really a third stride, or a standing frame drawn from a different angle than its own row) breaks the cycle in that direction only — the hardest kind of bug to spot, because the other directions look fine.
+- **Roll / dodge — OPTIONAL, 3 frames, ONE ROW ONLY: `[tuck, mid-roll, recover]`**
+| col | pose |
+|-----|------|
+| 0 | tuck — crouching in, ball up, about to go over |
+| 1 | **mid-roll** — curled sideways mid-tumble, the silhouette rolled onto its side/back, legs and arms tucked in |
+| 2 | recover — popping back up out of the tuck, momentum settling |
+- **Invulnerability spans the whole roll, not one frame.** Unlike the attack sheet's single strike-frame hit, there is no one column that "lands" — the character cannot be hit for the whole duration the roll animation plays, so gate that in code off the same clock that drives which of the 3 columns is on screen, not off a specific frame index.
+- **The same character, materials and locked colours as every other sheet of that character** — a roll sheet is still checked against the spec like a walk or attack sheet; drawing it in a different pose is not licence to redraw the mohawk, the jacket or any other `appears: always` material out of frame.
 ## Directions
 - **RIGHT is never drawn.** It is the side row mirrored with `ctx.scale(-1, 1)`, for players and NPCs alike. A side row that is not a true side profile therefore breaks both horizontal directions at once — and a "neutral" frame that quietly turns to face the viewer makes the character spin to camera every other beat while walking.
 ## The recipe that works (use it; don't re-derive it)
@@ -59,6 +67,7 @@
 - **`appears` is the field that makes the check possible at all.** Beverly's mohawk disappearing from her attack sheet is a bug; her dagger blade appearing only in that same sheet is correct — she draws it to swing it. To anything counting pixels those are identical. `appears: always` is the only thing that separates them, which is why the spec is infrastructure rather than documentation.
 - **A colour shared by an always material and a conditional one cannot be required.** Beverly's jacket studs and her dagger blade are both `#dfe4ea`, so its presence proves nothing about either — the first version of the check duly failed her walk sheet for containing no blade. Shared hexes are dropped from enforcement and flagged as a spec problem to fix.
 - **Compare like with like.** A front view and a back view legitimately show different materials — Beverly's shorts are 0% from behind in every sheet because her jacket covers them. Only the *same view across different sheets* is a fair comparison.
+- **NO SPEC, NO GENERATION — the generator refuses.** A spec written *after* the art is a description of whatever came out; the point is to fix what the character is before anything draws them. `generate-walksheet.yml` looks the character up in `art-style.json` and fails with "write the character spec FIRST" if it is not there, and builds its prompt from the spec when it is. Its `description` input is now an optional extra note for one run, not the character — because a typed description is exactly what drifted: Rex came back a smooth-faced youth in a scarf against a sprite and a plot that both say a bearded man in a gold robe, and May's antlers survived three regenerations, because nothing mechanical had any idea what either of them looks like.
 - **Add to a spec the moment a detail is caught drifting.** That is the entire point of it: the mohawk note, the "ears are never brown" note and the flat-coat note are all things that shipped wrong first.
 ## Consistency is a written rule, not a re-description
 ### `lockedColours`: the EXACT HEX PER MATERIAL, in every prompt

@@ -297,6 +297,15 @@ const heroAtkUp = heroFrame(HERO_ROW.up, COL_NEUTRAL);
 const HERO_ATK = sliceSheet("hero_attack_sheet.png", 3, 3);
 const ATTACK_FRAMES = 3;
 
+// ROLL ART: a third sheet, ONE ROW ONLY (side view, never front/back — see
+// CHARACTER_SHEETS.md's "Roll / dodge" section and art-style.json's
+// `rollRule`). Its three columns are [tuck, mid-roll, recover], the same
+// "three consecutive moments of one motion" idea as HERO_ATK's swing, and
+// that single row is reused — mirrored or not — as the drawn dodge for a
+// roll in ANY of the four movement directions, not just left/right.
+const HERO_ROLL = sliceSheet("hero_roll_sheet.png", 3, 1);
+const ROLL_FRAMES = 3;
+
 // ROOM ART: one generated strip of seven 32px tiles, cut the same way as the
 // sprite sheets. Falls back to the hand-drawn tiles below if the strip fails
 // to load, so the level is never invisible.
@@ -502,6 +511,16 @@ function heroAttackSpriteFor(facing, frame) {
   const legacy = row === 2 ? heroAtkUp : row === 1 ? heroAtkSide : heroAtkDown;
   return { s: legacy, mirror };
 }
+// The roll sheet has no rows to pick between — it's ALWAYS the one side-view
+// row, regardless of `facing` — only which way it's mirrored changes (decided
+// once, when the roll starts; see p.rollMirror in update()). `frame` is the
+// roll's own 0/1/2 progress index, same idea as heroAttackSpriteFor's swing
+// frame but driven by ROLL_TIME instead of ATTACK_TIME.
+function heroRollSpriteFor(frame, mirror) {
+  const i = Math.max(0, Math.min(ROLL_FRAMES - 1, frame | 0));
+  const f = HERO_ROLL[i];
+  return { s: f, mirror };
+}
 function ratAttackSpriteFor(facing) {
   if (facing === "up") return { s: ratAtkUp, mirror: false };
   if (facing === "left") return { s: ratAtkSide, mirror: true };
@@ -605,6 +624,17 @@ const ATTACK_TIME = 270;
 // How long an enemy stays lit up after taking a hit (seconds). Doubles as
 // that enemy's brief i-frame window, so one swing can't multi-hit.
 const HIT_FLASH_TIME = 0.3;
+// DODGE ROLL. See art-style.json's `rollRule` and CHARACTER_SHEETS.md's
+// "Roll / dodge" section for the ART side of this (one side-view sheet,
+// reused for every direction) — these are the MECHANIC numbers. Beverly is
+// fully invulnerable for the whole of ROLL_TIME (every hit-check below also
+// tests `now < p.rollUntil`), travels at ROLL_SPEED in whichever direction
+// was held (or her current facing, standing still) when the roll started,
+// and cannot roll again — or attack — until ROLL_COOLDOWN past the end of
+// the last one.
+const ROLL_TIME = 320;
+const ROLL_COOLDOWN = 260;
+const ROLL_SPEED = 300;
 const heartsEl = document.getElementById("hearts");
 const enemyCountEl = document.getElementById("enemyCount");
 const hudTitleEl = document.getElementById("hudTitle");

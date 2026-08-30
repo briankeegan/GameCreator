@@ -90,6 +90,24 @@ PROFILES = {
         "steps_built_views": [],
         "mirrored_views": [],
     },
+    "roll": {
+        "model": MODEL,
+        "size": "1536x1024",
+        "quality": "medium",
+        "background": "opaque",
+        # SIDE VIEW ONLY, ever — see CHARACTER_SHEETS.md's "Roll / dodge"
+        # section. rollsheet_prompt.txt has no FRONT/BACK ROW block on
+        # purpose, so asking generate_row.py for --kind roll --view front
+        # fails loudly (fill() can't find the block) instead of quietly
+        # producing a row nothing will ever play.
+        #
+        # BLOBS, same reason as attack: a tucked, tumbling body reaches
+        # further into the gap beside it than a standing one, so a gutter
+        # count reports "found 2, expected 3" on a perfectly good roll.
+        "verify": {"frames": 3, "walk": False, "blobs": True},
+        "steps_built_views": [],
+        "mirrored_views": [],
+    },
     "room_scene": {
         "model": MODEL,
         "size": "1536x1024",
@@ -200,7 +218,7 @@ NO_FRONT_DOOR_KINDS = ("icon", "cutscene")
 # generation one directory outside `art-src/` and moves it into place itself
 # once the broker has written it, rather than asking the broker to write
 # there directly. See imagegen.py's `_via_broker` for that half of the fix.
-PIPELINE_KINDS = ("walk", "attack", "portrait", "room_scene", "room_plate", "room_props",
+PIPELINE_KINDS = ("walk", "attack", "roll", "portrait", "room_scene", "room_plate", "room_props",
                   "tileset_ground", "tileset_objects")
 FREEFORM_KINDS = NO_FRONT_DOOR_KINDS + PIPELINE_KINDS
 
