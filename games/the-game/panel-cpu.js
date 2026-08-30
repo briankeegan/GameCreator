@@ -650,18 +650,35 @@
     // frames, 4 seeds) and level 3 (28871 -> 24148) -- widening the
     // rescue search burns decision cycles chasing a bigger immediate
     // clear at levels with enough health margin that patience would have
-    // paid off better. Confirmed safe for real-time play up to 10 (62ms
-    // worst-case decision, under the ~100ms budget _bestDefensiveMove's
-    // own comment establishes); 15 is NOT safe (159ms measured) and 12
-    // is borderline (up to 105ms across seeds) -- stopped at 10. Gated
-    // the same way as dangerHeightFrac/reaction: only tightens when the
-    // caller didn't explicitly pin a value, and only at the level(s)
-    // actually measured to benefit -- narrower than dangerHeightFrac's
-    // maxHealth<=51 (level 5 measured WORSE here, unlike there), matching
-    // level 8's own maxHealth exactly as the confirmed cutoff.
+    // paid off better. The "62ms worst-case, under the ~100ms budget"
+    // claim this comment used to make was measured against synthetic
+    // boards, not real ones, and was WRONG: profiling a real recorded
+    // attack file (challenge-8-4.json, level 10) found _nPlyRescue calls
+    // up to 202ms and _bestDefensiveMove up to 225ms, correlating
+    // directly with board.fillRatio() climbing toward 1.0 -- a
+    // near-topped-out board has far more legalSwaps() candidates at
+    // every recursion node than any hand-built synthetic board tested
+    // when 10 was chosen. rescueBudgetMs (below) is the actual fix:
+    // widening the branch cap stays a measured win, and a wall-clock
+    // deadline is what makes it safe on boards worse than the ones it
+    // was validated against. Gated the same way as dangerHeightFrac/
+    // reaction: only tightens when the caller didn't explicitly pin a
+    // value, and only at the level(s) actually measured to benefit --
+    // narrower than dangerHeightFrac's maxHealth<=51 (level 5 measured
+    // WORSE here, unlike there), matching level 8's own maxHealth
+    // exactly as the confirmed cutoff.
     if (opts.rescueBranchCap === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 21) {
       this.rescueBranchCap = Math.max(this.rescueBranchCap, 10);
     }
+    // Wall-clock backstop for the _nPlyRescue fallback chain (three
+    // escalating calls, depth 2/3/4 -- see _bestDefensiveMove). Shared
+    // across all three calls in that chain, not per-call: the real
+    // failure mode found by profiling was the SUM of the chain blowing
+    // the budget, not any single call in isolation. 70ms leaves headroom
+    // under the ~100ms real-time decision budget for the rest of
+    // _bestDefensiveMove's own (much cheaper) work before this chain
+    // even starts.
+    this.rescueBudgetMs = opts.rescueBudgetMs !== undefined ? opts.rescueBudgetMs : (preset.rescueBudgetMs !== undefined ? preset.rescueBudgetMs : 70);
     this.dropAmountWeight = opts.dropAmountWeight !== undefined ? opts.dropAmountWeight : (preset.dropAmountWeight !== undefined ? preset.dropAmountWeight : 200);
     this.pressureThreshold = opts.pressureThreshold !== undefined ? opts.pressureThreshold : (preset.pressureThreshold !== undefined ? preset.pressureThreshold : 15);
     this.sentWeight = opts.sentWeight !== undefined ? opts.sentWeight : (preset.sentWeight !== undefined ? preset.sentWeight : 50);
@@ -1188,10 +1205,15 @@
 
     // True last resort: an exhaustive (not beam-pruned) search, in case
     // the beam above pruned away the only branch that ever finds
-    // anything. Rare — the beam search already covers the same depths —
-    // but it is the actual backstop behind "never dies to a search that
-    // gave up too early."
-    var rescue = this._nPlyRescue(board, 2) || this._nPlyRescue(board, 3) || this._nPlyRescue(board, 4);
+    // anything. NOT actually rare on real attack data — measured firing
+    // 140+ times in 1750 frames of one real recorded file at level 10 —
+    // so this chain runs on the exact real, dense boards where a slow
+    // decision is most costly, which is what rescueBudgetMs (see
+    // constructor) exists to bound. One deadline shared across all three
+    // escalating calls, not one per call, since the profiled failure was
+    // the chain's total time, not any single depth in isolation.
+    var rescueDeadline = Date.now() + this.rescueBudgetMs;
+    var rescue = this._nPlyRescue(board, 2, rescueDeadline) || this._nPlyRescue(board, 3, rescueDeadline) || this._nPlyRescue(board, 4, rescueDeadline);
     if (rescue) return rescue;
     if (gainMove) return gainMove;
 
@@ -1277,16 +1299,30 @@
   // and mostly finding nothing anyway. Ranking unmatched branches by
   // `potential` before capping keeps the search pointed at the same
   // promising continuations a wider, uncapped search would have found.
-  SearchCpu.prototype._nPlyRescue = function (board, depth) {
+  //
+  // The branch cap alone is NOT sufficient: legalSwaps() itself scales
+  // with board occupancy, so a near-topped-out real board (fillRatio
+  // approaching 1.0) still blows the decision budget even at
+  // rescueBranchCap=10 — measured up to 202ms on a real recorded attack
+  // file, exactly the boards where a fast decision matters most. deadline
+  // is a wall-clock Date.now() cutoff, shared by the caller across the
+  // whole depth-2/3/4 fallback chain (see _bestDefensiveMove), checked
+  // both on entry to each recursion node and partway through its swap
+  // loop so a single expensive node can't run the whole chain past
+  // budget. Returns whatever `best` it already found rather than nothing
+  // — a stale-but-real rescue move beats none.
+  SearchCpu.prototype._nPlyRescue = function (board, depth, deadline) {
     var self = this;
     var best = null, bestKey = null;
     var garbageBefore = garbageCellCount(board);
     var lowestBefore = board.lowestGarbageRow();
     var toppedOutNow = board.maxHeight() >= board.height;
     var walk = function (trial, firstMove, remaining) {
+      if (deadline !== undefined && Date.now() > deadline) return;
       var swaps = trial.legalSwaps();
       var unmatched = [];
       for (var i = 0; i < swaps.length; i++) {
+        if (deadline !== undefined && (i & 3) === 0 && Date.now() > deadline) return;
         var r = swaps[i][0], c = swaps[i][1];
         var step = trial.clone();
         step.swap(r, c);
