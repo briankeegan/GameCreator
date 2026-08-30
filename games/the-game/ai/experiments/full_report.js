@@ -31,10 +31,18 @@
 //                  see FINDINGS.md's "misleading synthetic benchmark"
 //                  section for why the drills above don't.
 //
-// Usage: node full_report.js [difficulty|cfgJSON] [levels] [seed]
+// Usage: node full_report.js [difficulty|cfgJSON] [levels] [seed] [endlessMaxFrames]
 //   levels: comma-separated stack levels, default "3,5,8,10" (the four
 //   tiers every gated fix this session was measured against). Pass a
 //   single number for just one level, e.g. "10".
+//   endlessMaxFrames: per-file cap for the "endless" real-benchmark
+//   category, default 36000 (10 simulated minutes). A full 4-level run
+//   at the default cap is impractically slow to run interactively (the
+//   AI is strong enough that most real files run to the cap rather than
+//   dying, and this is a single-process, unparallelized tool) -- pass a
+//   smaller cap (e.g. 15000, ~4 simulated minutes) for a practical
+//   interactive run; the comboStorm/factory/bigBlocks drills are
+//   unaffected (they die fast by design, see TRAINING_CEILING below).
 var path = require('path');
 var fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
@@ -93,7 +101,7 @@ function runTrainingMode(modeName, stackLevel) {
 
 // ---- Endless: the real 12-file benchmark ----
 var TRAINING_DIR = '/home/user/briankeegan/panel-game/client/assets/default_data/training';
-var ENDLESS_MAX_FRAMES = 36000; // 10 simulated minutes per file
+var ENDLESS_MAX_FRAMES = parseInt(process.argv[5], 10) || 36000; // 10 simulated minutes per file, overridable
 
 function runEndlessFile(filePath, stackLevel) {
   var raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
