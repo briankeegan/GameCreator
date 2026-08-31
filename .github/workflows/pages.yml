@@ -148,6 +148,15 @@ jobs:
       # undetectable-by-eye class decidable: one proves each checker rejects the
       # defect it exists for, the other that no check reports success it did not
       # have.
+      # A CHARACTER MUST NOT CHANGE SHAPE AS THEY WALK. spriteDrawSize() forced
+      # every frame to one width, but a frame is trimmed to its own bounding box
+      # — a mid-step frame is wider because the legs are apart — so wide poses
+      # were squeezed and narrow ones stretched. May's neutral frame was drawn
+      # +66% too wide and her step frames +44%, and she fattened and thinned on
+      # every stride. Reported by the owner playing the game.
+      - name: Verify characters keep one size while walking
+        run: node games/the-game/sprite-scale.test.mjs
+
       - name: Verify the gates actually reject defects
         run: source .github/scripts/gates.sh && gate_gates_reject_defects
 

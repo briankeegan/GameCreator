@@ -226,16 +226,35 @@
   // rendered width to a plausible human-silhouette range at a given
   // height so no single sprite reads as squished or stretched relative to
   // its neighbors, regardless of how tightly its own source was cropped.
-  function spriteDrawSize(img, targetH) {
-    var w = targetH * (img.naturalWidth / img.naturalHeight);
-    // Previous bounds (0.5–0.95 * height) were too close to the actual
-    // outlier ratios to do anything — Kat's natural width only clamped
-    // from 14px to 15px at height 30, an invisible change, and she still
-    // read as "stretched thin". Tightened to a narrower, more assertive
-    // band so an outlier ratio visibly corrects instead of barely moving.
-    var minW = targetH * 0.68, maxW = targetH * 0.85;
-    w = Math.max(minW, Math.min(maxW, w));
-    return { w: w, h: targetH };
+  // ONE SCALE PER CHARACTER, NOT ONE SIZE PER FRAME.
+  //
+  // This used to force every frame to the same on-screen height AND clamp its
+  // width into a narrow band. Both halves are wrong, and together they made
+  // characters visibly change shape as they walked — reported live as "they
+  // keep changing sizes".
+  //
+  // The reason is that each frame file is trimmed to its own bounding box, so
+  // its dimensions describe the POSE, not the character: a mid-step frame is
+  // wider because the legs are apart. Forcing every frame to one width
+  // therefore squeezes the wide poses and stretches the narrow ones. Measured
+  // on May at targetH 30, the clamp stretched her neutral frame +66% and her
+  // step frames +44%, so she fattened and thinned on every stride.
+  //
+  // The fix is the rule the sheet-based games already follow (see
+  // build_sheet.py in CLAUDE.md): scale a character by ONE factor so they
+  // cannot change size mid-animation. The factor comes from their NEUTRAL
+  // frame — the standing pose, which is what "this character is 30px tall"
+  // should mean — and every other frame is drawn at that same scale, keeping
+  // its own proportions. Legs spreading makes the frame wider on screen, which
+  // is correct; nothing is squashed to fit.
+  //
+  // `ref` is the character's neutral frame. Without one it falls back to the
+  // frame's own aspect, which is the old behaviour minus the clamp — still
+  // better, because an unclamped single sprite is at least undistorted.
+  function spriteDrawSize(img, targetH, ref) {
+    var base = (ref && ref.naturalHeight) ? ref : img;
+    var scale = targetH / base.naturalHeight;
+    return { w: img.naturalWidth * scale, h: img.naturalHeight * scale };
   }
 
   // Warm the cache for every art/bg id the game can possibly need, right at
@@ -1687,14 +1706,20 @@
     // a body standing still still looks like it's gliding across the floor
     // if the art never changes while wander moves it around.
     var walkSet = NPC_FACING_FRAMES[npc.id];
-    var walkEntry = null, walkMirror = false;
+    var walkEntry = null, walkMirror = false, walkRef = null;
     if (walkSet) {
       var w2 = npc._wander;
       var facing = (w2 && w2.facing) || "down";
       var frames = walkSet[facing] || walkSet.down;
       var frameIdx = (w2 && w2.walking) ? WALK_SEQUENCE[Math.floor(w2.walkPhase || 0) % WALK_SEQUENCE.length] : 1;
       var candidate = loadArt(frames[frameIdx]);
-      if (candidate && candidate.ok) { walkEntry = candidate; walkMirror = facing === "right"; }
+      if (candidate && candidate.ok) {
+        walkEntry = candidate; walkMirror = facing === "right";
+        // The neutral DOWN frame is this character's size reference, so every
+        // frame of theirs is drawn at one scale — see spriteDrawSize.
+        var neutral = loadArt((walkSet.down || frames)[1]);
+        walkRef = (neutral && neutral.ok) ? neutral.img : null;
+      }
     }
     var spriteEntry = npc.sprite ? loadArt(npc.sprite) : null;
     var hasSprite = !walkEntry && spriteEntry && spriteEntry.ok && spriteEntry.img.naturalHeight;
@@ -1704,7 +1729,7 @@
 
     if (walkEntry) {
       var wimg = walkEntry.img;
-      var wsize = spriteDrawSize(wimg, 30), ww = wsize.w, wh = wsize.h;
+      var wsize = spriteDrawSize(wimg, 30, walkRef), ww = wsize.w, wh = wsize.h;
       ctx.save();
       if (walkMirror) {
         ctx.translate(npc.x, 0);
@@ -1849,7 +1874,14 @@
     }
     if (entry && entry.ok) {
       var img = entry.img;
-      var size = spriteDrawSize(img, 30), w = size.w, h = size.h;
+      // Her neutral DOWN frame is the size reference for every frame of hers,
+      // so she keeps one scale whichever way she is facing or mid-stride —
+      // see spriteDrawSize. Falls back to her own frame if that is not loaded
+      // yet, which only matters for the first frame after a cold start.
+      var refSet = human ? FACING_FRAMES_HUMAN : FACING_FRAMES;
+      var refEntry = loadArt(refSet.down[1]);
+      var playerRef = (refEntry && refEntry.ok) ? refEntry.img : null;
+      var size = spriteDrawSize(img, 30, playerRef), w = size.w, h = size.h;
       var cx = player.x + player.w / 2, feetY = player.y + player.h;
       var mirror = player.facing === "right" || (player.facing === "left" && usedFallback);
       ctx.save();
