@@ -48,8 +48,16 @@ python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out g
 # --blobs because the mid-roll frame (a curled ball) reaches further into
 # its neighbours' white gutter than a standing pose does, same reason the
 # attack sheet needs it.
+# #2 anchors the row's scale to frame 2 (recover — a normal standing pose)
+# instead of build_sheet.py's default frame 0. Frame 0 here is the TUCK, a
+# deliberately crouched, shorter-than-standing pose — scaling the whole row
+# to make THAT frame 168px tall inflated every frame past her real size
+# (the recover frame shipped at 220px, 31% taller than every other sheet).
+# Frame 0 works as the default everywhere else (walk/attack) because it IS
+# close to standing height there; a dodge-roll is the one row where it
+# isn't, by design.
 echo "== the hero's roll/dodge sheet =="
-python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_roll_sheet.png --row games/dog-punk/art-src/hero_side_roll_raw.png --blobs
+python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_roll_sheet.png --row games/dog-punk/art-src/hero_side_roll_raw.png#2 --blobs
 
 echo "== the rats' sheet =="
 python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/rat_sheet.png --row games/dog-punk/art-src/rat_front_quad_raw.png@104 --row games/dog-punk/art-src/rat_sheet_raw3.png@88 --row games/dog-punk/art-src/rat_back_quad_raw.png@100 --blobs

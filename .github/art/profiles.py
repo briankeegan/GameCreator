@@ -95,11 +95,13 @@ PROFILES = {
         "size": "1536x1024",
         "quality": "medium",
         "background": "opaque",
-        # SIDE VIEW ONLY, ever — see CHARACTER_SHEETS.md's "Roll / dodge"
-        # section. rollsheet_prompt.txt has no FRONT/BACK ROW block on
-        # purpose, so asking generate_row.py for --kind roll --view front
-        # fails loudly (fill() can't find the block) instead of quietly
-        # producing a row nothing will ever play.
+        # Full front/side/back coverage, same as walk and attack — see
+        # CHARACTER_SHEETS.md's "Roll / dodge" section. Used to be side-view-
+        # only with the side row reused (mirrored, and replayed for vertical
+        # dodges) for every direction; overruled after that reuse also
+        # papered over a real scale bug (the recover frame shipped 31%
+        # taller than every other sheet). rollsheet_prompt.txt now has all
+        # three {VIEW} blocks like the other two prompts.
         #
         # BLOBS, same reason as attack: a tucked, tumbling body reaches
         # further into the gap beside it than a standing one, so a gutter

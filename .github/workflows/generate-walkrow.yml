@@ -42,12 +42,13 @@ on:
           - side
           - back
       kind:
-        description: "walk = the [step, NEUTRAL, step] walk row. attack = the [wind-up, STRIKE, recover] slash row."
+        description: "walk = the [step, NEUTRAL, step] walk row. attack = the [wind-up, STRIKE, recover] slash row. roll = the [tuck, mid-roll, recover] dodge row."
         required: false
         type: choice
         options:
           - walk
           - attack
+          - roll
         default: walk
       description:
         description: "The character, in words. Leave blank to use the game's art-style.json mainCharacter."
@@ -91,7 +92,11 @@ jobs:
           python3 -m pip install --quiet --disable-pip-version-check pillow numpy
           # Attack rows land on a different suffix (generate_row.py owns that
           # naming); mirror it here so the commit step stages the right file.
-          if [ "${{ inputs.kind }}" = "attack" ]; then sfx="_atk_raw.png"; else sfx="_raw.png"; fi
+          case "${{ inputs.kind }}" in
+            attack) sfx="_atk_raw.png" ;;
+            roll) sfx="_roll_raw.png" ;;
+            *) sfx="_raw.png" ;;
+          esac
           echo "out=games/${{ inputs.game }}/art-src/${{ inputs.character }}_${{ inputs.view }}$sfx" >> "$GITHUB_OUTPUT"
           gen() {
             python3 .github/art/generate_row.py \

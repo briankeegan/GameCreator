@@ -1,11 +1,24 @@
-CANONICAL ROLL/DODGE-ROW PROMPT — one image, landscape 1536x1024, SIDE VIEW
-ONLY. Fill {CHARACTER} from the game's art-style.json (including its
-lockedDetails). Unlike the walk and attack prompts this file has no FRONT ROW
-or BACK ROW block — a dodge-roll is drawn side-on ONLY and reused (mirrored,
-and replayed for vertical dodges too) rather than drawn three ways. See
-CHARACTER_SHEETS.md's "Roll / dodge" section for why. `generate_row.py --kind
-roll --view side` fills this in for you; asking for --view front or --view
-back fails on purpose, because there is no block for it to use.
+CANONICAL ROLL/DODGE-ROW PROMPT — one image per direction, landscape
+1536x1024. Fill {CHARACTER} from the game's art-style.json (including its
+lockedDetails), and keep exactly ONE of the three {VIEW} blocks below — same
+shape as walkgrid_prompt.txt/attacksheet_prompt.txt. `generate_row.py --kind
+roll --view front|side|back` fills this in for you.
+
+THREE FULL ROWS, NOT ONE REUSED SIDEWAYS. This used to be side-view-only,
+reused mirrored for every direction including up/down dodges — a genuine
+size bug on Beverly's roll (the "recover" frame shipped 31% taller than
+every other sheet, from build_sheet.py anchoring the row's scale to the
+tuck frame, itself a deliberately shorter pose) got found and fixed, and in
+the same conversation the owner overruled the side-only design outright:
+a game of this shape gets full front/side/back coverage for EVERY
+animation, roll included, the same as walk and attack — not a per-animation
+judgement call about whether the direction is "worth" a second and third
+drawn row. See CHARACTER_SHEETS.md's "Roll / dodge" section, updated to
+match. The side row is a LATERAL barrel-roll (tumbling along the ground,
+seen from the side) for a left/right dodge; the front and back rows are a
+FORWARD/BACKWARD tumble — a somersault toward or away from the camera — for
+a down/up dodge, the same front-row-faces-viewer / back-row-faces-away
+convention the walk and attack rows already use.
 
 ---8<--- PROMPT STARTS ---8<---
 
@@ -15,7 +28,7 @@ THE CHARACTER, drawn identically in all three frames: {CHARACTER}
 
 {VIEW}
 
-THE THREE FRAMES ARE ONE SIDEWAYS BARREL-ROLL, a silly, cartoony tumble used as a dodge move — left to right. FRAME 1 = TUCK, crouching low and curling into a ball just before going over, knees bent, arms pulled in. FRAME 2 = MID-ROLL, the biggest and silliest pose of the three: the whole body curled sideways and rolled up onto its side, tumbling through the air like a rolled-up armadillo, limbs tucked in tight, momentarily upside-down or on its back is exactly right here — this is the frame that has to read as "rolling", not just "crouching". FRAME 3 = RECOVER, popping back up out of the tuck onto both feet, momentum settling, back to a normal standing height.
+THE THREE FRAMES ARE ONE BARREL-ROLL, a silly, cartoony tumble used as a dodge move — see {VIEW} below for which way it tumbles. ALL THREE FRAMES MUST FIT WITHIN HER NORMAL STANDING HEIGHT — a curled-up ball is NEVER taller than she is standing, it is shorter and rounder, since a body folded up takes up LESS vertical space, not more. FRAME 1 = TUCK, crouching low and curling into a ball just before going over, knees bent, arms pulled in — visibly SHORTER than standing, not taller. FRAME 2 = MID-ROLL, the silliest and most exaggerated POSE of the three (not the biggest — do not draw this frame physically larger than the others): the whole body curled up and tumbling, limbs tucked in tight — this is the frame that has to read as "rolling", not just "crouching", and it should be the MOST COMPACT frame of the three, not the largest, since she is balled up tightest here. FRAME 3 = RECOVER, popping back up out of the tuck onto both feet, momentum settling, back to EXACTLY her normal standing height and scale — the same height as frame 1 of her walk row, not taller.
 
 This is a COMEDY dodge-roll, not a combat roll: exaggerate the tumble, keep it goofy rather than heroic.
 
@@ -26,4 +39,20 @@ ART STYLE: chunky flat cartoon pixel art, big simple shapes, flat solid colours,
 
 {VIEW} = SIDE ROW
 -----------------
+THIS IS A LATERAL BARREL-ROLL, tumbling sideways along the ground, left to right — for a left/right dodge.
+
 THE VIEW: all three sprites in strict SIDE PROFILE, facing RIGHT before the roll starts and after it ends (frames 1 and 3) — head in profile, nose pointing right, one shoulder to the viewer. Frame 2, the mid-roll, is the one frame allowed to depart from a clean profile — it is tumbling, so a curled, rolled silhouette read side-on is correct even where an exact profile isn't possible mid-tumble. The character's defining feature (mohawk, hat, horns) should still be readable in frame 2 if at all possible, same as it must survive an attack swing, but a roll is the one animation where it is allowed to be partly tucked away — it is upside-down for a beat, that is the joke.
+
+
+{VIEW} = FRONT ROW
+------------------
+THIS IS A FORWARD TUMBLE, a somersault rolling TOWARD the viewer — for a downward dodge (moving down the screen, toward camera).
+
+THE VIEW: frames 1 and 3 (tuck and recover) are seen from the FRONT, facing the viewer head-on, shoulders and hips SQUARE to the camera, same as the front walk row — both sides of the body visible, face toward the viewer. Frame 2 (mid-roll) is the one frame allowed to depart from a square-on pose: she is pitching forward head-over-heels toward the camera, so a curled, foreshortened, rolled-up silhouette — seen slightly from above as she tips forward into the tumble — is correct here even though it is not a clean front-on pose. THE HEAD MUST STILL READ AS A HEAD in frames 1 and 3 — a distinct rounded shape above the shoulder line with a thick black outline separating it from the shoulders, same as every other front-facing row of this character; floppy ears (if she has them) a shade darker than the head, outlined against it. THE LEGS in frames 1 and 3: both legs and feet visible below the torso, a clear gap of background between them.
+
+
+{VIEW} = BACK ROW
+-----------------
+THIS IS A BACKWARD TUMBLE, a somersault rolling AWAY from the viewer — for an upward dodge (moving up the screen, away from camera).
+
+THE VIEW: frames 1 and 3 (tuck and recover) are seen from DIRECTLY BEHIND, shoulders and hips SQUARE to the camera, same as the back walk row — the back of the head and body, both arms at the sides, NO face, NO eyes, NO snout. Frame 2 (mid-roll) is the one frame allowed to depart from a square-on pose: she is pitching forward head-over-heels away from the camera, so a curled, foreshortened, rolled-up silhouette — seen slightly from above and behind as she tumbles away — is correct here even though it is not a clean back-on pose. THE HEAD MUST STILL READ AS A HEAD in frames 1 and 3: a distinct rounded shape ABOVE the shoulder line, NARROWER than the shoulders with background visible on both sides of it, a short outlined neck between head and shoulders, floppy ears (if she has them) a shade darker than the head and outlined against it — never one continuous lump of fur-coloured pixels with a mohawk on top. THE OUTFIT IS THE SAME OUTFIT SEEN FROM BEHIND in frames 1 and 3 — whatever covers her chest in the front row covers her back here, same colours, same collar and trim. THE LEGS in frames 1 and 3: both legs and feet visible below the torso, a clear gap of background between them.
