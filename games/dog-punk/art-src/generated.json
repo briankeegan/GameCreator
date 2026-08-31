@@ -89,6 +89,12 @@
   "quality": "medium",
   "size": "1536x1024"
  },
+ "hero_back_roll_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
  "hero_front_4f_raw.png": {
   "background": "opaque",
   "model": "gpt-image-1",
@@ -103,6 +109,12 @@
   "size": "1536x1024"
  },
  "hero_front_raw.png": {
+  "background": "opaque",
+  "model": "gpt-image-2",
+  "quality": "medium",
+  "size": "1536x1024"
+ },
+ "hero_front_roll_raw.png": {
   "background": "opaque",
   "model": "gpt-image-2",
   "quality": "medium",

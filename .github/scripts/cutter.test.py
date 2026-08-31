@@ -148,6 +148,38 @@ def main():
         check('chroma green sealed inside the body is removed', worst < 0.6,
               f'{worst:.2f}% chroma green left inside a frame')
 
+    # 5. THE CUTTER MUST NOTICE WHEN IT DESTROYS SOMETHING. This is the check
+    #    that exists because the reflex, on seeing bad output, is to blame the
+    #    generator and buy another picture — three times, on art that was
+    #    perfect every time. cell_vs_frame() compares the cut against its own
+    #    input, so "was this a bad generation or did we break it?" stops being
+    #    a guess.
+    import slice_walksheet as sws
+    from PIL import Image as PImage
+    im = build_sheet(with_gridlines=True)
+    cell_h, cell_w, line = 380, 340, 3
+    y0, y1, x0, x1 = line, line + cell_h, line, line + cell_w
+
+    # A cut that kept everything: no complaint.
+    good = im.crop((x0 + 6, y0 + 6, x1 - 6, y1 - 6)).convert('RGBA')
+    a = np.array(good)
+    r_, g_, b_ = a[..., 0].astype(int), a[..., 1].astype(int), a[..., 2].astype(int)
+    a[(g_ > 110) & (g_ - r_ > 55) & (g_ - b_ > 55), 3] = 0
+    good = PImage.fromarray(a, 'RGBA')
+    check('cell/frame check stays quiet on an honest cut',
+          not sws.cell_vs_frame(im, y0, y1, x0, x1, good, 'good'))
+
+    # The same cut with the HEAD deleted — the exact damage that shipped.
+    a2 = np.array(good).copy()
+    a2[:150, :, 3] = 0
+    beheaded = PImage.fromarray(a2, 'RGBA')
+    problems = sws.cell_vs_frame(im, y0, y1, x0, x1, beheaded, 'beheaded')
+    check('cell/frame check FIRES when the cut deletes the head', bool(problems),
+          'it accepted a frame with the head cut off')
+    check('...and blames the cutter, not the generator',
+          any('cutter' in p.lower() or 'regenerat' in p.lower() for p in problems),
+          '; '.join(problems)[:160])
+
     print()
     if FAILS:
         print(f'{len(FAILS)} FAILED: ' + ', '.join(FAILS))
