@@ -243,6 +243,78 @@ def inset_to_green(im, y0, y1, x0, x1, start=4, limit=16):
     return start, False
 
 
+
+def cell_vs_frame(im, y0, y1, x0, x1, frame, label):
+    """Did the cut KEEP what was in the cell? Returns a list of complaints.
+
+    THE CUTTER IS THE ONLY PART OF THIS PIPELINE THAT CAN DESTROY GOOD ART, AND
+    IT LOOKS EXACTLY LIKE A BAD GENERATION WHEN IT DOES.
+
+    That is not a hypothetical distinction, it is the most expensive habit in
+    this repo. A character came back with no head; the response was to blame the
+    generator and buy another sheet, three times. The sheet was perfect every
+    time — twelve cells, a full head of pink hair in each — and the cutter was
+    deleting her, because her hair is the same colour as the magenta gridlines
+    it strips. Nobody looked at the raw, because the raw costs nothing to look
+    at and regenerating feels like progress.
+
+    So the cutter checks its own work against its own input, which is free and
+    needs no one to remember. The cell is the truth; the frame is what survived.
+    Two things are decidable that way:
+
+      MASS  — how much of the cell's non-background actually made it out. A
+              decapitated cut loses a large fraction and cannot hide it.
+      COLOUR — a colour family that was a real part of the cell and is gone
+              from the frame. This is the one that catches hair being keyed
+              out while the body survives, which is the failure that shipped.
+
+    Deliberately loose thresholds: trimming, de-halo and the gutter inset all
+    remove some pixels legitimately, so this is looking for destruction, not
+    for tidiness.
+    """
+    cell = np.array(im.crop((x0, y0, x1, y1)).convert("RGB")).astype(int)
+    r, g, b = cell[:, :, 0], cell[:, :, 1], cell[:, :, 2]
+    bg = ((g > 110) & (g - r > 55) & (g - b > 55)) | ((r > 120) & (b > 120) & (g < 90))
+    subject = ~bg
+    cell_n = int(subject.sum())
+    if cell_n < 500:
+        return []
+
+    out = np.array(frame.convert("RGBA")).astype(int)
+    kept = out[..., 3] > 8
+    kept_n = int(kept.sum())
+
+    problems = []
+    ratio = kept_n / cell_n
+    if ratio < 0.55:
+        problems.append(
+            f"{label}: THE CUT LOST {100 * (1 - ratio):.0f}% OF THE CELL — the cell holds "
+            f"{cell_n} drawn pixels and the frame kept {kept_n}. The generated art is "
+            f"probably fine and this cutter destroyed it; look at the sheet before "
+            f"regenerating anything.")
+
+    # Colour families, coarse enough that shading does not count as a new colour.
+    def families(px):
+        q = (px // 48).reshape(-1, 3)
+        u, c = np.unique(q, axis=0, return_counts=True)
+        return {tuple(k): v for k, v in zip(map(tuple, u), c)}
+
+    cf = families(cell[subject])
+    ff = families(out[..., :3][kept]) if kept_n else {}
+    for key, n in cf.items():
+        share = n / cell_n
+        if share < 0.06:
+            continue
+        if ff.get(key, 0) / max(kept_n, 1) < share * 0.25:
+            hexish = "#%02x%02x%02x" % tuple(min(255, v * 48 + 24) for v in key)
+            problems.append(
+                f"{label}: A COLOUR IN THE CELL IS GONE FROM THE FRAME — roughly {hexish} was "
+                f"{100 * share:.0f}% of the drawn cell and is essentially absent after cutting. "
+                f"That is the cutter removing part of the character (hair the colour of a "
+                f"gridline is the classic case), not the generator drawing it wrong.")
+    return problems
+
+
 def cut_and_trim(im, y0, y1, x0, x1, inset=4, divider_free=False):
     cell = im.crop((x0 + inset, y0 + inset, x1 - inset, y1 - inset)).convert("RGBA")
     a = np.array(cell)
@@ -467,6 +539,7 @@ def main():
     # ask — that's actually sufficient, RIGHT is mirrored from LEFT in-game.
     # Only fall back to the 4-row down/left/right/up mapping if a sheet
     # genuinely comes back with 4 rows.
+    destroyed = []
     row_names = {0: "down", 1: "left", 2: "up"} if n_rows <= 3 else {0: "down", 1: "left", 2: "right", 3: "up"}
     for r in range(min(n_rows, 4)):
         name = row_names.get(r)
@@ -489,6 +562,26 @@ def main():
             out_path = os.path.join(out_dir, f"{char_id}_{name}_{c}.png")
             frame.save(out_path)
             print("wrote", out_path, frame.size)
+            # THE CUT GRADES ITSELF AGAINST ITS OWN INPUT. Free, and it removes
+            # the guess that costs the most: "is this a bad generation, or did
+            # we break it?"
+            destroyed.extend(cell_vs_frame(im, y0, y1, x0, x1, frame,
+                                           f"{char_id}_{name}_{c}"))
+
+    if destroyed:
+        # LOUD, AND NAMING THE RIGHT CULPRIT. The frames are still written, so
+        # they can be looked at — but the message says plainly that the sheet is
+        # probably fine, because the default reaction to bad output is to buy
+        # another generation, and that is exactly the wrong move here.
+        print("\n*** THE CUTTER DAMAGED THIS CHARACTER ***", file=sys.stderr)
+        for d in destroyed:
+            print("  " + d, file=sys.stderr)
+        print("\nDO NOT REGENERATE YET. Open the sheet and look at it: if the "
+              "character is drawn correctly there, the generation was fine and "
+              "this cutter is the bug. Re-cutting after fixing it costs "
+              "nothing.", file=sys.stderr)
+        raise SystemExit(3)
+
 
 if __name__ == "__main__":
     main()
