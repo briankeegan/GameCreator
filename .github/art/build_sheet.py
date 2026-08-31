@@ -416,10 +416,11 @@ def build_steps(neutral):
     return stepped(True), Image.fromarray(a), stepped(False)
 
 
-def build(rows, out_path, pal, body_heights, cols, mirror_rows=(), step_rows=()):
+def build(rows, out_path, pal, body_heights, cols, mirror_rows=(), step_rows=(), ref_frames=()):
     sheet = Image.new('RGBA', (CELL * cols, CELL * len(rows)), (0, 0, 0, 0))
     for ri, row in enumerate(rows):
         body_h = body_heights[ri] if isinstance(body_heights, list) else body_heights
+        ref_i = ref_frames[ri] if ri < len(ref_frames) else 0
         row = [trim(strip_baseline(trim(f))) for f in row][:cols]
         if not row:
             raise SystemExit('a row came back empty — check the raw image framing')
@@ -435,9 +436,18 @@ def build(rows, out_path, pal, body_heights, cols, mirror_rows=(), step_rows=())
         if ri in mirror_rows and len(row) >= 3:
             row[2] = mirror_legs(row[0])
             print(f'  row {ri}: built the second step by mirroring the first step\'s legs')
-        # ONE scale for the row, from its idle frame: the character must not
-        # change size between idle, walking and attacking.
-        scale = body_h / row[0].size[1]
+        # ONE scale for the row, from its REFERENCE frame (frame 0 unless a
+        # row overrides it with #F — see the --row help): the character must
+        # not change size between idle, walking and attacking. Frame 0 is the
+        # right default for walk/attack, where it sits close to standing
+        # height. It is the WRONG default for a row whose frame 0 is a
+        # deliberately non-standing pose — a dodge-roll's frame 0 is a
+        # crouched tuck, shorter than her real standing height, and scaling
+        # the whole row to make THAT frame 168px tall inflates every other
+        # frame in the row past her actual size. Caught for real on Dog
+        # Punk's roll sheet: the recover frame (meant to end back at normal
+        # height) measured 220px, 31% taller than every other sheet's 168px.
+        scale = body_h / row[ref_i].size[1]
         for ci, f in enumerate(row):
             s = pixelate(f, max(PIXEL, int(round(f.size[1] * scale))))
             if pal is not None:
@@ -453,8 +463,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--style', required=True, help='games/<id>/art-style.json (supplies lockedPalette)')
     ap.add_argument('--out', required=True, help='sheet to write, e.g. games/<id>/hero_sheet.png')
-    ap.add_argument('--row', action='append', required=True, metavar='FILE[:N]',
-                    help='raw image for one output row; :N picks a row within a multi-row raw')
+    ap.add_argument('--row', action='append', required=True, metavar='FILE[:N][@H][#F]',
+                    help='raw image for one output row; :N picks a row within a multi-row raw; '
+                         '#F picks which FRAME (0-based) in the cut row is the height reference '
+                         '(default 0) — override it when frame 0 is not a standing-height pose, '
+                         'e.g. a dodge-roll row whose frame 0 is a crouched tuck: --row '
+                         'roll.png#2 anchors the scale to frame 2 (recover) instead')
     ap.add_argument('--body-height', type=int, default=168,
                     help='height of the idle frame inside its cell (default 168; use less for smaller creatures)')
     ap.add_argument('--cols', type=int, default=3, help='frames per row (default 3: idle, walk, attack)')
@@ -476,17 +490,19 @@ def main():
         print(f'note: {args.style} has no lockedPalette — shipping the generated colours as-is. '
               'Add one so this game\'s art cannot drift between sheets.', file=sys.stderr)
 
-    rows, heights = [], []
+    rows, heights, ref_frames = [], [], []
     for spec in args.row:
+        spec, _, ref = spec.partition('#')
         spec, _, h = spec.partition('@')
         path, _, idx = spec.partition(':')
         img = key_background(path, tol=args.tol)
         rows.append(frames_by_blob(img, want=args.cols) if args.blobs
                     else frames_by_gutter(img, int(idx or 0)))
         heights.append(int(h) if h else args.body_height)
+        ref_frames.append(int(ref) if ref else 0)
     mirror_rows = {int(x) for x in args.mirror_step.split(',') if x.strip()}
     step_rows = {int(x) for x in args.build_steps.split(',') if x.strip()}
-    build(rows, args.out, pal, heights, args.cols, mirror_rows, step_rows)
+    build(rows, args.out, pal, heights, args.cols, mirror_rows, step_rows, ref_frames)
 
 
 if __name__ == '__main__':
