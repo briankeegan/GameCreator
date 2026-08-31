@@ -297,13 +297,12 @@ const heroAtkUp = heroFrame(HERO_ROW.up, COL_NEUTRAL);
 const HERO_ATK = sliceSheet("hero_attack_sheet.png", 3, 3);
 const ATTACK_FRAMES = 3;
 
-// ROLL ART: a third sheet, ONE ROW ONLY (side view, never front/back — see
-// CHARACTER_SHEETS.md's "Roll / dodge" section and art-style.json's
-// `rollRule`). Its three columns are [tuck, mid-roll, recover], the same
-// "three consecutive moments of one motion" idea as HERO_ATK's swing, and
-// that single row is reused — mirrored or not — as the drawn dodge for a
-// roll in ANY of the four movement directions, not just left/right.
-const HERO_ROLL = sliceSheet("hero_roll_sheet.png", 3, 1);
+// ROLL ART: a third sheet, three full rows (down, side, up) same shape as
+// HERO/HERO_ATK — see CHARACTER_SHEETS.md's "Roll / dodge" section and
+// art-style.json's `rollRule`. Each row's three columns are [tuck, mid-roll,
+// recover], the same "three consecutive moments of one motion" idea as
+// HERO_ATK's swing.
+const HERO_ROLL = sliceSheet("hero_roll_sheet.png", 3, 3);
 const ROLL_FRAMES = 3;
 
 // ROOM ART: one generated strip of seven 32px tiles, cut the same way as the
@@ -511,14 +510,16 @@ function heroAttackSpriteFor(facing, frame) {
   const legacy = row === 2 ? heroAtkUp : row === 1 ? heroAtkSide : heroAtkDown;
   return { s: legacy, mirror };
 }
-// The roll sheet has no rows to pick between — it's ALWAYS the one side-view
-// row, regardless of `facing` — only which way it's mirrored changes (decided
-// once, when the roll starts; see p.rollMirror in update()). `frame` is the
-// roll's own 0/1/2 progress index, same idea as heroAttackSpriteFor's swing
-// frame but driven by ROLL_TIME instead of ATTACK_TIME.
-function heroRollSpriteFor(frame, mirror) {
+// Same row/mirror formula as heroAttackSpriteFor above — the roll sheet is
+// now a full three-row sheet, so which row plays is decided once, when the
+// roll starts (see p.rollFacing in update()), not every frame. `frame` is
+// the roll's own 0/1/2 progress index, same idea as heroAttackSpriteFor's
+// swing frame but driven by ROLL_TIME instead of ATTACK_TIME.
+function heroRollSpriteFor(frame, facing) {
+  const row = facing === "up" ? 2 : (facing === "left" || facing === "right") ? 1 : 0;
+  const mirror = facing === "left";
   const i = Math.max(0, Math.min(ROLL_FRAMES - 1, frame | 0));
-  const f = HERO_ROLL[i];
+  const f = HERO_ROLL[row * ROLL_FRAMES + i];
   return { s: f, mirror };
 }
 function ratAttackSpriteFor(facing) {
@@ -1026,9 +1027,10 @@ function freshState() {
       // lost); rollCooldownUntil is the separate "can't roll (or attack)
       // again yet" window that runs a bit past it. rollDx/rollDy are the
       // fixed direction the roll travels, decided once at the moment it
-      // starts; rollMirror/lastHFacing are ART only — which way the single
-      // side-view roll sheet is flipped (see heroRollSpriteFor).
-      rollUntil: 0, rollCooldownUntil: 0, rollDx: 0, rollDy: 1, rollMirror: false,
+      // starts; rollFacing/lastHFacing are ART only — which of the roll
+      // sheet's three rows plays and which way it's mirrored (see
+      // heroRollSpriteFor).
+      rollUntil: 0, rollCooldownUntil: 0, rollDx: 0, rollDy: 1, rollFacing: "down",
       lastHFacing: "right",
       kbx: 0, kby: 0,
       animPhase: 0, moving: false,
@@ -1261,12 +1263,13 @@ function update(dt, now) {
       p.rollDx = rdx; p.rollDy = rdy;
       p.rollUntil = now + ROLL_TIME;
       p.rollCooldownUntil = now + ROLL_TIME + ROLL_COOLDOWN;
-      // ART only: the roll sheet is drawn as a rightward tumble, mirrored
-      // for a leftward one exactly like the side walk row. A roll that's
-      // purely vertical (rdx === 0) has no art of its own, so it reuses
-      // that same sheet flipped by whichever way she was last facing
-      // horizontally — see rollRule.
-      p.rollMirror = rdx !== 0 ? rdx < 0 : p.lastHFacing === "left";
+      // ART only: which of the roll sheet's three rows plays, decided once
+      // at the moment the roll starts — same dx-over-dy priority as normal
+      // facing (see p.facing above), and the row/mirror formula is the
+      // exact one heroRollSpriteFor/heroAttackSpriteFor both use.
+      p.rollFacing = Math.abs(rdx) > Math.abs(rdy)
+        ? (rdx < 0 ? "left" : "right")
+        : (rdy > 0 ? "down" : "up");
     }
   }
   const rolling = now < p.rollUntil;
@@ -2290,13 +2293,14 @@ function render(now) {
 
   if (!blinking) {
     if (rolling) {
-      // one side-view sheet reused for every direction — see rollRule.
-      // heroRollSpriteFor ignores the (facing, col) args drawAnimatedSprite
-      // passes it, same as the attack sheet's swingSpriteFor below.
-      const rollSpriteFor = () => heroRollSpriteFor(rollFrame, p.rollMirror);
+      // p.rollFacing (fixed when the roll started, not p.facing which can
+      // keep changing) picks the row and mirror — same idea as the attack
+      // sheet's swingSpriteFor below, but the roll's own facing rather than
+      // the live one, since a roll's direction is locked in for its duration.
+      const rollSpriteFor = () => heroRollSpriteFor(rollFrame, p.rollFacing);
       drawAnimatedSprite(rollSpriteFor, p.facing, p.x, p.y - 10, SPRITE_CELL,
         { moving: false, phase: 0, offsetX, offsetY, scaleX, scaleY },
-        (x, y, facing, sx, sy) => drawHeroRollFallback(x, y, p.rollMirror, sx, sy, rollT));
+        (x, y, facing, sx, sy) => drawHeroRollFallback(x, y, p.rollFacing === "left", sx, sy, rollT));
     } else {
       // during the attack window, play the three drawn slash frames for
       // this facing (wind-up -> mid-slash -> follow-through) instead of
