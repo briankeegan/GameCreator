@@ -155,7 +155,7 @@ jobs:
       # +66% too wide and her step frames +44%, and she fattened and thinned on
       # every stride. Reported by the owner playing the game.
       - name: Verify characters keep one size while walking
-        run: node games/the-game/sprite-scale.test.mjs
+        run: source .github/scripts/gates.sh && gate_sprite_scale_consistency
 
       - name: Verify the gates actually reject defects
         run: source .github/scripts/gates.sh && gate_gates_reject_defects

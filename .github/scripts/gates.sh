@@ -87,6 +87,10 @@ gate_art_refs() {
   node .github/scripts/check_art_refs.mjs
 }
 
+gate_sprite_scale_consistency() {
+  node games/the-game/sprite-scale.test.mjs
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -133,6 +137,7 @@ GATES=(
   "room props and floor plates:gate_room_props_floor_plates"
   "the art index:gate_art_index"
   "art references:gate_art_refs"
+  "characters keep one size while walking:gate_sprite_scale_consistency"
   "the gates actually reject defects:gate_gates_reject_defects"
   "no check reports success it did not have:gate_gate_wiring"
   "generator rules:gate_generator_rules"
