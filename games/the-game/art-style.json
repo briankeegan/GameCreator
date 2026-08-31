@@ -215,7 +215,7 @@
           "base": "#2f4b9c",
           "shade": "#1b2c60",
           "appears": "always",
-          "note": "A royal-blue robe of ordinary CLOTH that has been RIPPED TO SHREDS: torn straight down in ragged strips, frayed and uneven at the hem, hanging off one shoulder so the black leather jacket and the white shirt underneath show. It hangs CLOSE TO HER BODY like wrecked fabric — a coat that has lost a fight. It must NOT read as feathers, plumage, fronds, fur or wings, and must not billow out wider than her shoulders.",
+          "note": "A royal-blue ROBE — still an obvious, recognisable garment — that has been torn and is now SLIPPING OFF HER SHOULDERS. It has fallen down off one shoulder and sags low on the other, hanging by the last of itself, so the black leather jacket and white shirt underneath are plainly visible. Torn along its edges and hem, missing pieces, but still a COAT hanging on her — not a mass of dangling strips, not a curtain of tatters, not a cape, and never wider than her own shoulders.",
           "source": "plot"
         },
         "jacket": {
@@ -259,9 +259,11 @@
       },
       "proportions": "An adult, about four and a half heads tall.",
       "neverDraw": [
-        "feathers, plumes, fronds or anything that reads as a bird",
+        "a curtain of long dangling strips or tatters instead of a garment",
+        "feathers, plumes or anything that reads as a bird",
         "wings, or a robe spread wider than her own shoulders",
         "a neat, whole or untorn robe",
+        "a robe sitting squarely on both shoulders — it is falling off",
         "antlers, horns, animal ears or any animal feature",
         "orange, brown or blonde hair",
         "a gold bracelet",

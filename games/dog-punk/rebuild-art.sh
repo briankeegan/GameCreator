@@ -40,6 +40,17 @@ python3 games/dog-punk/art-src/clean_raw.py games/dog-punk/art-src/hero_front_at
 echo "== the hero's attack sheet =="
 python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_attack_sheet.png --row games/dog-punk/art-src/hero_front_atk_raw_clean.png --row games/dog-punk/art-src/hero_side_atk_raw_clean.png --row games/dog-punk/art-src/hero_back_atk_raw_clean.png --blobs
 
+# 2026-08-30 (roll/dodge) — ONE ROW ONLY, side view, never front/back. See
+# the "Roll / dodge" section of .github/art/CHARACTER_SHEETS.md and this
+# game's own `rollRule` in art-style.json for why a dodge-roll doesn't get
+# the usual three rows: it's drawn as a sideways tumble and that same row is
+# reused (mirrored) for a dodge in ANY of the four movement directions.
+# --blobs because the mid-roll frame (a curled ball) reaches further into
+# its neighbours' white gutter than a standing pose does, same reason the
+# attack sheet needs it.
+echo "== the hero's roll/dodge sheet =="
+python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/hero_roll_sheet.png --row games/dog-punk/art-src/hero_side_roll_raw.png --blobs
+
 echo "== the rats' sheet =="
 python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out games/dog-punk/rat_sheet.png --row games/dog-punk/art-src/rat_front_quad_raw.png@104 --row games/dog-punk/art-src/rat_sheet_raw3.png@88 --row games/dog-punk/art-src/rat_back_quad_raw.png@100 --blobs
 
@@ -100,6 +111,7 @@ if [ "${1:-}" = "--verify" ]; then
   echo "== gates =="
   python3 .github/art/verify_sheet.py sheet games/dog-punk/hero_sheet.png --style games/dog-punk/art-style.json
   python3 .github/art/verify_sheet.py sheet games/dog-punk/hero_attack_sheet.png --style games/dog-punk/art-style.json
+  python3 .github/art/verify_sheet.py sheet games/dog-punk/hero_roll_sheet.png --style games/dog-punk/art-style.json --rows 1
   python3 .github/art/verify_sheet.py sheet games/dog-punk/rat_sheet.png --style games/dog-punk/art-style.json
   python3 .github/art/verify_sheet.py sheet games/dog-punk/drone_sheet.png --style games/dog-punk/art-style.json
   python3 .github/art/verify_sheet.py sheet games/dog-punk/brute_sheet.png --style games/dog-punk/art-style.json

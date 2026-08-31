@@ -1,0 +1,29 @@
+CANONICAL ROLL/DODGE-ROW PROMPT — one image, landscape 1536x1024, SIDE VIEW
+ONLY. Fill {CHARACTER} from the game's art-style.json (including its
+lockedDetails). Unlike the walk and attack prompts this file has no FRONT ROW
+or BACK ROW block — a dodge-roll is drawn side-on ONLY and reused (mirrored,
+and replayed for vertical dodges too) rather than drawn three ways. See
+CHARACTER_SHEETS.md's "Roll / dodge" section for why. `generate_row.py --kind
+roll --view side` fills this in for you; asking for --view front or --view
+back fails on purpose, because there is no block for it to use.
+
+---8<--- PROMPT STARTS ---8<---
+
+A 16-bit SNES-style PIXEL ART sprite row on a SOLID FLAT PURE WHITE background (#FFFFFF, completely uniform). Exactly THREE sprites side by side in the middle of the image, evenly spaced, with a wide empty white margin on all four sides and a clear white gap between them — nothing touching, overlapping, or cut off by any edge. All three are the SAME character at the SAME size and the SAME pixel scale.
+
+THE CHARACTER, drawn identically in all three frames: {CHARACTER}
+
+{VIEW}
+
+THE THREE FRAMES ARE ONE SIDEWAYS BARREL-ROLL, a silly, cartoony tumble used as a dodge move — left to right. FRAME 1 = TUCK, crouching low and curling into a ball just before going over, knees bent, arms pulled in. FRAME 2 = MID-ROLL, the biggest and silliest pose of the three: the whole body curled sideways and rolled up onto its side, tumbling through the air like a rolled-up armadillo, limbs tucked in tight, momentarily upside-down or on its back is exactly right here — this is the frame that has to read as "rolling", not just "crouching". FRAME 3 = RECOVER, popping back up out of the tuck onto both feet, momentum settling, back to a normal standing height.
+
+This is a COMEDY dodge-roll, not a combat roll: exaggerate the tumble, keep it goofy rather than heroic.
+
+ART STYLE: chunky flat cartoon pixel art, big simple shapes, flat solid colours, a thick black outline, no anti-aliasing, no gradients, no dithering, no texture inside a colour block. Draw NO GROUND — no floor line, no bar or plinth under the feet, no platform, no shadow; the character floats on empty white and the game draws its own floor. Nothing else in the image: no grid lines, no boxes, no frames, no labels, no text, no numbers. FINAL CHECK, THE BACKGROUND: every pixel that is not one of the three sprites is PURE WHITE #FFFFFF. No backdrop, no vignette, no dark or coloured surround, no gradient, no scene, no border, no panel behind the characters. This is stated twice on purpose: a row that comes back on a dark or gradient background cannot be cut out and is rejected, and it is the failure that has wasted the most generations.
+
+---8<--- PROMPT ENDS ---8<---
+
+
+{VIEW} = SIDE ROW
+-----------------
+THE VIEW: all three sprites in strict SIDE PROFILE, facing RIGHT before the roll starts and after it ends (frames 1 and 3) — head in profile, nose pointing right, one shoulder to the viewer. Frame 2, the mid-roll, is the one frame allowed to depart from a clean profile — it is tumbling, so a curled, rolled silhouette read side-on is correct even where an exact profile isn't possible mid-tumble. The character's defining feature (mohawk, hat, horns) should still be readable in frame 2 if at all possible, same as it must survive an attack swing, but a roll is the one animation where it is allowed to be partly tucked away — it is upside-down for a beat, that is the joke.

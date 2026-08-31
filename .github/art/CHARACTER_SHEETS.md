@@ -157,6 +157,43 @@ columns (a "neutral" that is really a third stride, or a standing frame drawn
 from a different angle than its own row) breaks the cycle in that direction
 only — the hardest kind of bug to spot, because the other directions look fine.
 
+**Roll / dodge — OPTIONAL, 3 frames, ONE ROW ONLY: `[tuck, mid-roll, recover]`**
+
+| col | pose |
+|-----|------|
+| 0 | tuck — crouching in, ball up, about to go over |
+| 1 | **mid-roll** — curled sideways mid-tumble, the silhouette rolled onto its side/back, legs and arms tucked in |
+| 2 | recover — popping back up out of the tuck, momentum settling |
+
+A dodge-roll is drawn **side view ONLY, never front or back**, and that is a
+rule rather than a shortcut taken under time pressure: the whole point of a
+roll as a *dodge* is that the player can trigger it while moving in any of
+the four directions (or while standing still and just picking a direction to
+bail toward), and a tumble read from the front or the back is either
+foreshortened to nothing (exactly the walk-cycle problem above, worse
+because the whole body is turning, not just a leg) or it has to be a second
+and third fully-drawn row that a generator will not keep in sync with the
+side row's silhouette. One row, mirrored for the opposite horizontal
+direction exactly like the side walk/attack rows, and REUSED as the drawn
+animation for a vertical dodge too — the character visibly does a sideways
+tumble while actually translating up or down the screen. That mismatch is
+deliberate, not a bug to fix later: a barrel-roll is already a slapstick
+beat, not a realistic evasion, and a single row is the difference between
+this being cheap enough to add to an existing cast and it needing four new
+fully-drawn rows per character.
+
+**Invulnerability spans the whole roll, not one frame.** Unlike the attack
+sheet's single strike-frame hit, there is no one column that "lands" — the
+character cannot be hit for the whole duration the roll animation plays, so
+gate that in code off the same clock that drives which of the 3 columns is
+on screen, not off a specific frame index.
+
+**The same character, materials and locked colours as every other sheet of
+that character** — a roll sheet is still checked against the spec like a
+walk or attack sheet; drawing it in a different pose is not licence to
+redraw the mohawk, the jacket or any other `appears: always` material out of
+frame.
+
 ## Directions
 
 Three rows, in order: **down, side (drawn facing RIGHT), up.**

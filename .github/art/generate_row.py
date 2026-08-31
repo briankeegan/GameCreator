@@ -47,7 +47,8 @@ import profiles                                    # noqa: E402  (per-kind setti
 
 ROOT = imagegen.ROOT
 PROMPTS = {'walk': '.github/art/walkgrid_prompt.txt',
-           'attack': '.github/art/attacksheet_prompt.txt'}
+           'attack': '.github/art/attacksheet_prompt.txt',
+           'roll': '.github/art/rollsheet_prompt.txt'}
 # Landscape, always. A 3x3 grid on a square canvas clips its bottom row and on
 # a tall canvas silently drops a column; a single row of three on 1536x1024 has
 # not failed yet. See CHARACTER_SHEETS.md.
@@ -186,7 +187,7 @@ def main():
     ap.add_argument('--game', required=True, help='game id, e.g. dog-punk')
     ap.add_argument('--character', default='hero', help='character id, used in the filename')
     ap.add_argument('--view', required=True, choices=['front', 'side', 'back'])
-    ap.add_argument('--kind', default='walk', choices=['walk', 'attack'])
+    ap.add_argument('--kind', default='walk', choices=['walk', 'attack', 'roll'])
     ap.add_argument('--description', help='override the art-style.json mainCharacter')
     ap.add_argument('--quality', default=None, choices=['low', 'medium', 'high'],
                     help='default comes from profiles.py for this kind of art; '
@@ -203,7 +204,7 @@ def main():
         print(prompt)
         return
 
-    suffix = '_raw.png' if args.kind == 'walk' else '_atk_raw.png'
+    suffix = {'walk': '_raw.png', 'attack': '_atk_raw.png', 'roll': '_roll_raw.png'}[args.kind]
     out_rel = f'games/{args.game}/art-src/{args.character}_{args.view}{suffix}'
     out_abs = ROOT / out_rel
     prof = profiles.get(args.kind)

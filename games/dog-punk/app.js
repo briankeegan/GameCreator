@@ -297,6 +297,15 @@ const heroAtkUp = heroFrame(HERO_ROW.up, COL_NEUTRAL);
 const HERO_ATK = sliceSheet("hero_attack_sheet.png", 3, 3);
 const ATTACK_FRAMES = 3;
 
+// ROLL ART: a third sheet, ONE ROW ONLY (side view, never front/back — see
+// CHARACTER_SHEETS.md's "Roll / dodge" section and art-style.json's
+// `rollRule`). Its three columns are [tuck, mid-roll, recover], the same
+// "three consecutive moments of one motion" idea as HERO_ATK's swing, and
+// that single row is reused — mirrored or not — as the drawn dodge for a
+// roll in ANY of the four movement directions, not just left/right.
+const HERO_ROLL = sliceSheet("hero_roll_sheet.png", 3, 1);
+const ROLL_FRAMES = 3;
+
 // ROOM ART: one generated strip of seven 32px tiles, cut the same way as the
 // sprite sheets. Falls back to the hand-drawn tiles below if the strip fails
 // to load, so the level is never invisible.
@@ -502,6 +511,16 @@ function heroAttackSpriteFor(facing, frame) {
   const legacy = row === 2 ? heroAtkUp : row === 1 ? heroAtkSide : heroAtkDown;
   return { s: legacy, mirror };
 }
+// The roll sheet has no rows to pick between — it's ALWAYS the one side-view
+// row, regardless of `facing` — only which way it's mirrored changes (decided
+// once, when the roll starts; see p.rollMirror in update()). `frame` is the
+// roll's own 0/1/2 progress index, same idea as heroAttackSpriteFor's swing
+// frame but driven by ROLL_TIME instead of ATTACK_TIME.
+function heroRollSpriteFor(frame, mirror) {
+  const i = Math.max(0, Math.min(ROLL_FRAMES - 1, frame | 0));
+  const f = HERO_ROLL[i];
+  return { s: f, mirror };
+}
 function ratAttackSpriteFor(facing) {
   if (facing === "up") return { s: ratAtkUp, mirror: false };
   if (facing === "left") return { s: ratAtkSide, mirror: true };
@@ -605,6 +624,17 @@ const ATTACK_TIME = 270;
 // How long an enemy stays lit up after taking a hit (seconds). Doubles as
 // that enemy's brief i-frame window, so one swing can't multi-hit.
 const HIT_FLASH_TIME = 0.3;
+// DODGE ROLL. See art-style.json's `rollRule` and CHARACTER_SHEETS.md's
+// "Roll / dodge" section for the ART side of this (one side-view sheet,
+// reused for every direction) — these are the MECHANIC numbers. Beverly is
+// fully invulnerable for the whole of ROLL_TIME (every hit-check below also
+// tests `now < p.rollUntil`), travels at ROLL_SPEED in whichever direction
+// was held (or her current facing, standing still) when the roll started,
+// and cannot roll again — or attack — until ROLL_COOLDOWN past the end of
+// the last one.
+const ROLL_TIME = 320;
+const ROLL_COOLDOWN = 260;
+const ROLL_SPEED = 300;
 const heartsEl = document.getElementById("hearts");
 const enemyCountEl = document.getElementById("enemyCount");
 const hudTitleEl = document.getElementById("hudTitle");
@@ -636,6 +666,7 @@ const settingsResetBtn = document.getElementById("settingsResetBtn");
 const settingsResumeBtn = document.getElementById("settingsResumeBtn");
 const dpad = document.getElementById("dpad");
 const attackBtn = document.getElementById("attackBtn");
+const rollBtn = document.getElementById("rollBtn");
 const gameAreaEl = document.getElementById("gameArea");
 window.GCTouchControls.lockSurface(gameAreaEl);
 const roomToastEl = document.getElementById("roomToast");
@@ -815,7 +846,7 @@ const CONTROLS = window.GCControls.create(GAME_ID, {
   actions: [
     { id: "up", label: "Up" }, { id: "down", label: "Down" },
     { id: "left", label: "Left" }, { id: "right", label: "Right" },
-    { id: "attack", label: "Attack" },
+    { id: "attack", label: "Attack" }, { id: "roll", label: "Roll" },
   ],
   // e.key values (not e.code) — shared/controls.js's own key-matching and
   // display labels (keyLabel()) assume that space, so a rebind screen shows
@@ -824,14 +855,16 @@ const CONTROLS = window.GCControls.create(GAME_ID, {
     up: ["ArrowUp", "w"], down: ["ArrowDown", "s"],
     left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"],
     attack: [" ", "z", "j"],
+    roll: ["Shift", "x", "k"],
   },
-  defaultPad: { up: [12], down: [13], left: [14], right: [15], attack: [0, 2] },
+  defaultPad: { up: [12], down: [13], left: [14], right: [15], attack: [0, 2], roll: [1] },
   grabberEl: document.getElementById("controlsKeyGrabber"),
 });
 
 const liveKeys = {};
 let touchDirs = new Set();
 let attackQueued = false;
+let rollQueued = false;
 
 window.addEventListener("keydown", (e) => {
   if (CONTROLS.isCapturing() || CONTROLS.isCapturingPad()) return; // a rebind owns this key
@@ -850,6 +883,10 @@ window.addEventListener("keydown", (e) => {
   }
   if (CONTROLS.isDown("attack", { [e.key]: true })) {
     attackQueued = true;
+    e.preventDefault();
+  }
+  if (CONTROLS.isDown("roll", { [e.key]: true })) {
+    rollQueued = true;
     e.preventDefault();
   }
 });
@@ -911,6 +948,7 @@ if (dpad) {
   });
 }
 window.GCTouchControls.bindHold(attackBtn, () => { attackQueued = true; }, () => {});
+if (rollBtn) window.GCTouchControls.bindHold(rollBtn, () => { rollQueued = true; }, () => {});
 
 // ---- game state ----
 // Everything that's PER-ROOM (the tile grid, its spawn point, its enemies,
@@ -983,6 +1021,15 @@ function freshState() {
       hp: 3, maxHp: 3,
       invulnUntil: 0,
       attackUntil: 0, attackCooldownUntil: 0, attackStartAt: 0,
+      // DODGE ROLL — see art-style.json's `rollRule`. rollUntil is the
+      // invulnerability/movement-lock window (checked everywhere hp can be
+      // lost); rollCooldownUntil is the separate "can't roll (or attack)
+      // again yet" window that runs a bit past it. rollDx/rollDy are the
+      // fixed direction the roll travels, decided once at the moment it
+      // starts; rollMirror/lastHFacing are ART only — which way the single
+      // side-view roll sheet is flipped (see heroRollSpriteFor).
+      rollUntil: 0, rollCooldownUntil: 0, rollDx: 0, rollDy: 1, rollMirror: false,
+      lastHFacing: "right",
       kbx: 0, kby: 0,
       animPhase: 0, moving: false,
       breathePhase: 0,
@@ -1030,6 +1077,7 @@ function transitionToRoom(idx, entry) {
   state.player.y = at.y;
   state.player.kbx = 0; state.player.kby = 0;
   state.player.attackUntil = 0; state.player.attackCooldownUntil = 0;
+  state.player.rollUntil = 0; state.player.rollCooldownUntil = 0;
   state.enemies = built.enemies;
   state.crates = built.crates;
   state.switchesHit = new Set();
@@ -1086,6 +1134,7 @@ function resetRoom() {
   state.player.kbx = 0; state.player.kby = 0;
   state.player.invulnUntil = 0;
   state.player.attackUntil = 0; state.player.attackCooldownUntil = 0;
+  state.player.rollUntil = 0; state.player.rollCooldownUntil = 0;
   state.enemies = built.enemies;
   state.crates = built.crates;
   state.switchesHit = new Set();
@@ -1181,16 +1230,55 @@ function update(dt, now) {
   if (CONTROLS.isDown("left", liveKeys) || touchDirs.has("left") || (pad && pad.left)) dx -= 1;
   if (CONTROLS.isDown("right", liveKeys) || touchDirs.has("right") || (pad && pad.right)) dx += 1;
   if (pad && pad.attack) attackQueued = true;
+  if (pad && pad.roll) rollQueued = true;
   if (dx !== 0 || dy !== 0) {
     const len = Math.hypot(dx, dy) || 1;
     dx = (dx / len);
     dy = (dy / len);
     if (Math.abs(dx) > Math.abs(dy)) p.facing = dx > 0 ? "right" : "left";
     else if (dy !== 0) p.facing = dy > 0 ? "down" : "up";
+    // lastHFacing tracks the last LEFT/RIGHT Beverly moved or faced,
+    // independent of p.facing (which up/down movement overwrites) — it's
+    // what decides which way an up/down dodge-roll mirrors the one drawn
+    // side-view roll sheet. See art-style.json's `rollRule`.
+    if (dx !== 0) p.lastHFacing = dx > 0 ? "right" : "left";
   }
 
-  // knockback overrides voluntary movement, decaying over time
-  if (Math.abs(p.kbx) > 1 || Math.abs(p.kby) > 1) {
+  // DODGE ROLL trigger. See art-style.json's `rollRule` for why this reuses
+  // one side-view sheet for every direction. Blocked by its own cooldown
+  // AND by being mid-attack, so a roll can never cancel a swing already in
+  // progress; the reverse (attack blocked while rolling) is enforced down
+  // where the attack itself starts, below.
+  if (rollQueued) {
+    rollQueued = false;
+    if (now >= p.rollCooldownUntil && now >= p.attackUntil) {
+      let rdx = dx, rdy = dy;
+      if (rdx === 0 && rdy === 0) {
+        // standing still: roll in whichever way she's currently facing.
+        const [fx, fy] = FACING_VEC[p.facing];
+        rdx = fx; rdy = fy;
+      }
+      p.rollDx = rdx; p.rollDy = rdy;
+      p.rollUntil = now + ROLL_TIME;
+      p.rollCooldownUntil = now + ROLL_TIME + ROLL_COOLDOWN;
+      // ART only: the roll sheet is drawn as a rightward tumble, mirrored
+      // for a leftward one exactly like the side walk row. A roll that's
+      // purely vertical (rdx === 0) has no art of its own, so it reuses
+      // that same sheet flipped by whichever way she was last facing
+      // horizontally — see rollRule.
+      p.rollMirror = rdx !== 0 ? rdx < 0 : p.lastHFacing === "left";
+    }
+  }
+  const rolling = now < p.rollUntil;
+
+  // knockback and voluntary movement both take a back seat to an in-progress
+  // roll: it travels a fixed distance at a fixed speed regardless of what's
+  // still held, which is what makes the invulnerability window predictable
+  // rather than something you can hold-cancel out of by releasing a key.
+  if (rolling) {
+    moveEntity(p, p.rollDx * ROLL_SPEED * dt, p.rollDy * ROLL_SPEED * dt, gateOpen);
+  } else if (Math.abs(p.kbx) > 1 || Math.abs(p.kby) > 1) {
+    // knockback overrides voluntary movement, decaying over time
     moveEntity(p, p.kbx * dt, p.kby * dt, gateOpen);
     p.kbx *= 0.86;
     p.kby *= 0.86;
@@ -1241,7 +1329,7 @@ function update(dt, now) {
   // the player's own steam (not knockback, not mid-attack), ease back to a
   // resting pose otherwise. Driving this off distance covered (not just
   // wall-clock time) keeps the step cadence matched to actual speed.
-  p.moving = (dx !== 0 || dy !== 0) && now >= p.attackUntil;
+  p.moving = (dx !== 0 || dy !== 0) && now >= p.attackUntil && !rolling;
   if (p.moving) p.animPhase += dt * 9;
   else p.animPhase *= 0.9;
   // idle breathing: a slow, always-running clock independent of the walk
@@ -1251,16 +1339,17 @@ function update(dt, now) {
   // motion) so it never fights the walk-bob or the attack lunge/stretch.
   p.breathePhase += dt * 2.4;
 
-  // attack
+  // attack — blocked while a roll is in progress (the dagger stays sheathed
+  // for the whole tumble; see rollRule) or still on its own cooldown.
   if (attackQueued) {
     attackQueued = false;
-    if (now >= p.attackCooldownUntil) {
+    if (now >= p.attackCooldownUntil && !rolling) {
       p.attackStartAt = now;
       p.attackUntil = now + ATTACK_TIME;
       p.attackCooldownUntil = now + ATTACK_TIME + 160;
     }
   }
-  const attacking = now < p.attackUntil;
+  const attacking = !rolling && now < p.attackUntil;
   if (attacking) {
     const reach = 20;
     let hx = p.x, hy = p.y;
@@ -1353,7 +1442,7 @@ function update(dt, now) {
       en.atkTimer -= dt;
       en.moving = true;
       moveEntity(en, en.lungeDx * en.speed * en.lungeMult * dt, en.lungeDy * en.speed * en.lungeMult * dt, gateOpen);
-      if (!en.hasHitThisLunge && now >= p.invulnUntil &&
+      if (!en.hasHitThisLunge && now >= p.invulnUntil && !rolling &&
           rectsOverlap(p.x, p.y, p.w, p.h, en.x, en.y, en.w, en.h)) {
         en.hasHitThisLunge = true;
         p.hp -= 1;
@@ -1443,7 +1532,7 @@ function update(dt, now) {
       pr.y += pr.dy * pr.speed * dt;
       pr.life -= dt;
       if (SOLID.has(tileAt(pr.x, pr.y))) { pr.life = 0; continue; }
-      if (now >= p.invulnUntil && rectsOverlap(p.x, p.y, p.w, p.h, pr.x, pr.y, pr.w, pr.h)) {
+      if (now >= p.invulnUntil && !rolling && rectsOverlap(p.x, p.y, p.w, p.h, pr.x, pr.y, pr.w, pr.h)) {
         pr.life = 0;
         p.hp -= 1;
         p.invulnUntil = now + 900;
@@ -1721,6 +1810,37 @@ function drawKeyPickup(k) {
 // Facing -> unit vector, used for lunge offsets and slash-arc placement.
 const FACING_VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const FACING_ANGLE = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
+
+// Canvas fallback for the DODGE ROLL when hero_roll_sheet.png hasn't loaded
+// — a squashed/tucked ball instead of the drawn tumble, per art-style.json's
+// `rollRule` ("missing art degrades the DRAWING, never the mechanic").
+// mirror decides left/right exactly like drawHeroFallback's own facing flip;
+// t (0..1 through the roll) tucks tightest at the midpoint and stretches
+// back out on the recover frame, same shape as the sprite-path tuck above.
+function drawHeroRollFallback(x, y, mirror, squashX, squashY, t) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale((mirror ? -1 : 1) * squashX, squashY);
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.beginPath();
+  ctx.ellipse(0, 14, 11, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  const tuck = 1 - Math.sin(Math.min(1, t) * Math.PI) * 0.4; // ball tightest mid-roll
+  ctx.save();
+  ctx.scale(1, tuck);
+  ctx.fillStyle = "#1b1b1b"; // jacket, curled around the whole tuck
+  ctx.beginPath();
+  ctx.ellipse(0, -2, 13, 13, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#c98a4b"; // fur head, tucked in front
+  ctx.beginPath();
+  ctx.ellipse(9, -4, 8, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ff3fa0"; // mohawk, still sticking out mid-tumble
+  ctx.fillRect(-4, -15, 5, 8);
+  ctx.restore();
+  ctx.restore();
+}
 
 function drawHeroFallback(x, y, facing, hurt, squashX, squashY, step, attacking, attackT) {
   ctx.save();
@@ -2097,12 +2217,25 @@ function render(now) {
 
   const p = state.player;
   const blinking = now < p.invulnUntil && Math.floor(now / 100) % 2 === 0;
-  const attacking = now < p.attackUntil;
+  // DODGE ROLL takes priority over the attack/idle poses below — she can't
+  // be mid-swing during one anyway (see update()), but this keeps render()
+  // making that same call independently rather than trusting it.
+  const rolling = now < p.rollUntil;
+  const rollT = rolling ? 1 - (p.rollUntil - now) / ROLL_TIME : 0; // 0..1 through the tumble
+  const rollFrame = Math.min(ROLL_FRAMES - 1, Math.floor(Math.max(0, rollT) * ROLL_FRAMES));
+  const attacking = !rolling && now < p.attackUntil;
   const attackT = attacking ? 1 - (p.attackUntil - now) / ATTACK_TIME : 0; // 0..1 through the swing
   // which of the three drawn slash frames that progress lands on
   const attackFrame = Math.min(ATTACK_FRAMES - 1, Math.floor(Math.max(0, attackT) * ATTACK_FRAMES));
   let offsetX = 0, offsetY = 0, scaleX = 1, scaleY = 1;
-  if (attacking) {
+  if (rolling) {
+    // a silly tuck-and-stretch through the tumble rather than a flat slide —
+    // squashed tight at the midpoint (tucked into the roll), stretched back
+    // out on the recover frame.
+    const tuck = Math.sin(Math.min(1, rollT) * Math.PI) * 0.22;
+    scaleX = 1 + tuck;
+    scaleY = 1 - tuck;
+  } else if (attacking) {
     const [fx, fy] = FACING_VEC[p.facing];
     const lunge = Math.sin(Math.min(1, attackT) * Math.PI) * 6; // out and back
     offsetX = fx * lunge;
@@ -2156,14 +2289,24 @@ function render(now) {
   }
 
   if (!blinking) {
-    // during the attack window, play the three drawn slash frames for this
-    // facing (wind-up -> mid-slash -> follow-through) instead of holding one
-    // pose while the sprite lunges — a still pose plus a stretch read as a
-    // body-check; a travelling blade reads as a swing.
-    const swingSpriteFor = (facing) => heroAttackSpriteFor(facing, attackFrame);
-    drawAnimatedSprite(attacking ? swingSpriteFor : heroSpriteFor, p.facing, p.x, p.y - 10, SPRITE_CELL,
-      { moving: p.moving, phase: p.animPhase, offsetX, offsetY, scaleX, scaleY },
-      (x, y, facing, sx, sy, step) => drawHeroFallback(x, y, facing, now < p.invulnUntil, sx, sy, step, attacking, attackT));
+    if (rolling) {
+      // one side-view sheet reused for every direction — see rollRule.
+      // heroRollSpriteFor ignores the (facing, col) args drawAnimatedSprite
+      // passes it, same as the attack sheet's swingSpriteFor below.
+      const rollSpriteFor = () => heroRollSpriteFor(rollFrame, p.rollMirror);
+      drawAnimatedSprite(rollSpriteFor, p.facing, p.x, p.y - 10, SPRITE_CELL,
+        { moving: false, phase: 0, offsetX, offsetY, scaleX, scaleY },
+        (x, y, facing, sx, sy) => drawHeroRollFallback(x, y, p.rollMirror, sx, sy, rollT));
+    } else {
+      // during the attack window, play the three drawn slash frames for
+      // this facing (wind-up -> mid-slash -> follow-through) instead of
+      // holding one pose while the sprite lunges — a still pose plus a
+      // stretch read as a body-check; a travelling blade reads as a swing.
+      const swingSpriteFor = (facing) => heroAttackSpriteFor(facing, attackFrame);
+      drawAnimatedSprite(attacking ? swingSpriteFor : heroSpriteFor, p.facing, p.x, p.y - 10, SPRITE_CELL,
+        { moving: p.moving, phase: p.animPhase, offsetX, offsetY, scaleX, scaleY },
+        (x, y, facing, sx, sy, step) => drawHeroFallback(x, y, facing, now < p.invulnUntil, sx, sy, step, attacking, attackT));
+    }
   }
 }
 

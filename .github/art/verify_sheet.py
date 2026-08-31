@@ -701,19 +701,48 @@ SWING_RATIO = 2.5
 SWING_FLOOR = 0.03
 
 
-def _view_shares(path, materials, rows=3):
-    """Share of each named material in each row of a sheet."""
+def _sheet_view_rows(path, rows_hint=3):
+    """Map THIS sheet's own physical rows to VIEW INDICES (0 down, 1 side, 2 up).
+
+    Almost every sheet is the standard 3 rows, one per view, in that order —
+    but a ROLL sheet is the one deliberate exception (see CHARACTER_SHEETS.md's
+    "Roll / dodge" section): it ships as ONE ROW, side view only, because a
+    dodge-roll is drawn as a sideways tumble reused for every movement
+    direction rather than drawn three ways. Forcing that single row through
+    the same "rows=3, slice into thirds" math a normal sheet uses does not
+    just skip the down/up comparison — it CORRUPTS the side one too: a
+    256px-tall one-row image sliced into three ~85px bands cuts across all
+    three of its own animation frames at the neck and the knees, so "row 2"
+    (read as the up view) is a band of nothing but boots and reports every
+    always-present material as vanished. A sheet's row count is inferred from
+    its own height instead of trusting the caller's default, and a lone row
+    is mapped to VIEW INDEX 1 (side) so it is compared against the side row
+    of every other sheet and nothing else.
+    """
+    img = Image.open(path)
+    actual_rows = max(1, img.height // bs.CELL)
+    if actual_rows == 1:
+        return [1]
+    return list(range(min(actual_rows, rows_hint)))
+
+
+def _view_shares(path, materials, row_views):
+    """Share of each named material in each physical row of a sheet, keyed
+    by VIEW INDEX (see _sheet_view_rows) rather than by physical row number,
+    so a sheet with fewer rows than usual lines up against the right view
+    instead of the first N."""
     img = Image.open(path).convert('RGBA')
+    rows = len(row_views)
     rh = img.height // rows
-    out = []
-    for r in range(rows):
+    out = {}
+    for r, v in enumerate(row_views):
         a = np.asarray(img.crop((0, r * rh, img.width, (r + 1) * rh)))
         px = a[..., :3][a[..., 3] > 0]
         total = max(len(px), 1)
         row = {}
         for hexc, rgb in materials.items():
             row[hexc] = float((px == np.array(rgb)).all(axis=1).sum()) / total
-        out.append(row)
+        out[v] = row
     return out
 
 
@@ -845,14 +874,21 @@ def check_character(game_dir, char_id, rows=3):
     if len(sheets) < 2:
         return [], []                      # nothing to compare against
 
-    shares = {os.path.basename(p): _view_shares(p, materials, rows) for p in sheets}
+    row_views = {p: _sheet_view_rows(p, rows) for p in sheets}
+    shares = {os.path.basename(p): _view_shares(p, materials, row_views[p]) for p in sheets}
 
     view_names = ['down', 'side', 'up'][:rows]
     hard, soft = [], list((spec or {}).get('_notes', []))
     names = list(shares)
     for v in range(rows):
         for hexc in materials:
-            vals = [(n, shares[n][v][hexc]) for n in names]
+            # Only compare sheets that actually HAVE this view — a one-row
+            # roll sheet only ever contributes to v==1 (side); see
+            # _sheet_view_rows. Fewer than two sheets means nothing to
+            # compare this view against, not a vanished material.
+            vals = [(n, shares[n][v][hexc]) for n in names if v in shares[n]]
+            if len(vals) < 2:
+                continue
             hi_n, hi = max(vals, key=lambda t: t[1])
             lo_n, lo = min(vals, key=lambda t: t[1])
             must = hexc in always
