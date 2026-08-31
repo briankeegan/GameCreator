@@ -1545,6 +1545,265 @@
   };
 
   // =========================================================================
+  // TRUE SURVIVAL SEARCH — a separate, independent decision system, gated
+  // and structured exactly like PreburstReserve below (same trigger tier,
+  // same single consult point in _choose, own priority -- checked FIRST,
+  // ahead of PreburstReserve). It exists because every other lever tried
+  // against this exact drill (L10 bigBlocks, maxHealth<=1 -- see FINDINGS.md)
+  // was a variation on "score candidates with a proxy heuristic (chain
+  // bonus, combo bonus, garbage cleared) and accept/decline against a
+  // threshold." This is not that: for every legal candidate move, it clones
+  // the REAL PanelEngine.Stack (physics, animation timers, garbage flight,
+  // health-drain-while-idle, all of it -- not the abstract LogicalBoard
+  // used everywhere else in this file for cheap planning) and actually
+  // PLAYS FORWARD a short future under a continuation policy, counting how
+  // many real frames survive. Whichever candidate's simulated future
+  // survives longest wins. No chain bonus, no combo bonus, no garbage-
+  // cleared score anywhere in the decision itself.
+  //
+  // WHY the real Stack and not LogicalBoard: LogicalBoard.resolve() is
+  // instantaneous (gravity+matches settle in one call, no timers) and has
+  // no notion of garbage flight delay, hover/chain windows, or the
+  // health-drain-while-topped-out-and-idle rule that actually kills a
+  // maxHealth<=1 match. Two different moves that look identical to
+  // LogicalBoard (same chain, same cells cleared) can have very different
+  // real survival if one leaves the board idle a frame longer while
+  // topped out. Only the real Stack can see that difference, which is the
+  // entire point of this module.
+  var TrueSurvivalSearch = {
+    // How many real frames to play forward per candidate. NOT monotonic --
+    // swept 10/15/20/25/30/45/60/90 against this module's own validation
+    // target (L10 bigBlocks, 15 seeds, ai/experiments/full_report.js) and
+    // the result is non-monotonic exactly like every other lever in this
+    // file's FINDINGS.md: 45 gave 1130 avg frames, 90 gave 1041 (WORSE,
+    // deeper is not better), 20 and 25 both gave ~1410 (best found). Root
+    // cause understood, not just measured: past the point where a rollout
+    // has already resolved (survived to the end, or died), MORE frames
+    // just adds more turns of the continuation policy's own play on top of
+    // the outcome being compared -- which increasingly compares "policy
+    // plus policy" rather than isolating the one real choice this module
+    // exists to make. 20 is deep enough to see a candidate that's fine for
+    // 10 frames but fatal by frame 15-20, shallow enough to stay far under
+    // the file's own ~100ms real-time decision budget (measured worst case
+    // 54ms across the full 15-seed sweep -- see this module's own timing
+    // note below).
+    ROLLOUT_DEPTH: 20,
+    // Legal swaps are pruned to this many before simulating, by a cheap
+    // LogicalBoard boardPotential-gain pass (the same O(swaps) proxy
+    // _raiseOrBuild already uses) -- NOT the decision itself, only move
+    // ORDERING so a dense board's legalSwaps() candidates don't each cost a
+    // real rollout. Swept 5/8/12/20/30 the same way as ROLLOUT_DEPTH: wider
+    // was monotonically better here (1277 -> 1288 -> 1343 -> 1410 -> 1410),
+    // saturating at 20 -- confirmed 30 measures bit-for-bit identical to
+    // 20, i.e. 20 already covers every legal swap this drill's boards
+    // actually produce, so it isn't really "capped" in practice here; kept
+    // as an explicit cap rather than removed so a denser board (a
+    // different drill, a wider level) can't silently blow the time budget
+    // by falling through this pruning pass uncapped. _bestImmediateMatch's
+    // own top pick is always added too (it uses a different, pricier
+    // metric that the cheap proxy can rank differently), plus "hold" and
+    // "raise" as fixed candidates.
+    ROLLOUT_SWAP_CAP: 20,
+
+    // Same trigger tier as PreburstReserve (maxHealth<=1) and the same
+    // "steps aside forever after the first top-out" shape -- tracked with
+    // its own flag rather than reusing PreburstReserve's, since the two
+    // modules are meant to be fully independent (own trigger condition per
+    // spec), even though both currently key off the identical board test.
+    active: function (cpu, board) {
+      if (cpu._noRollout) return false; // a rollout's own continuation CPU never recurses into this
+      if (!cpu.stack || !cpu.stack.levelData || cpu.stack.levelData.maxHealth > 1) return false;
+      if (cpu._survivalSearchToppedOnce) return false;
+      if (board.maxHeight() >= board.height) { cpu._survivalSearchToppedOnce = true; return false; }
+      return true;
+    },
+
+    // Returns {kind:...} to REPLACE _choose's decision this cycle, or null
+    // to decline (caller falls through to PreburstReserve, unmodified).
+    decide: function (cpu, board) {
+      if (cpu._inDanger(board)) return null; // safety-critical rescue search still owns real emergencies
+
+      var candidates = TrueSurvivalSearch._candidates(cpu, board);
+      var bestDecision = null, bestSurvived = -1, bestEndFill = Infinity;
+      // A fresh, deterministic seed per decision (not the real cpu's own
+      // rng stream -- sharing it would consume real random draws just by
+      // THINKING about a move, corrupting the actual match's future).
+      // Derived from stack.clock so it's reproducible run-to-run for the
+      // same seed/level, same as everything else this file measures.
+      var baseSeed = ((cpu.stack.clock * 2654435761) >>> 0) || 1;
+
+      for (var i = 0; i < candidates.length; i++) {
+        var result = TrueSurvivalSearch._simulate(cpu, candidates[i], baseSeed + i * 7919);
+        if (result.survived > bestSurvived ||
+          (result.survived === bestSurvived && result.endFill < bestEndFill)) {
+          bestSurvived = result.survived;
+          bestEndFill = result.endFill;
+          bestDecision = candidates[i];
+        }
+      }
+      return bestDecision; // always non-null: "hold" is always in candidates
+    },
+
+    // Builds the candidate list: hold, raise (if the board isn't already
+    // full), the cheap-proxy top ROLLOUT_SWAP_CAP swaps, and
+    // _bestImmediateMatch's pick if it isn't already among them.
+    _candidates: function (cpu, board) {
+      var out = [{ kind: "hold" }];
+      if (board.fillRatio() < 1) out.push({ kind: "raise" });
+
+      var swaps = board.legalSwaps();
+      var base = boardPotential(board);
+      var scored = [];
+      for (var i = 0; i < swaps.length; i++) {
+        var r = swaps[i][0], c = swaps[i][1];
+        var trial = board.clone();
+        trial.swap(r, c);
+        scored.push({ move: [r, c], gain: boardPotential(trial) - base });
+      }
+      scored.sort(function (a, b) { return b.gain - a.gain; });
+      var seen = {};
+      for (var k = 0; k < scored.length && k < TrueSurvivalSearch.ROLLOUT_SWAP_CAP; k++) {
+        var mv = scored[k].move;
+        seen[mv[0] + ":" + mv[1]] = true;
+        out.push({ kind: "swap", move: mv });
+      }
+      var found = cpu._bestImmediateMatch(board);
+      if (found && !seen[found.move[0] + ":" + found.move[1]]) {
+        out.push({ kind: "swap", move: found.move });
+      }
+      return out;
+    },
+
+    // Clones the real Stack, forces `decision` as the first move, then hands
+    // off to a throwaway continuation CPU (this cpu's own tuned parameters,
+    // an independent rng, _noRollout set so it can't recurse) for the rest
+    // of the rollout. Returns {survived, endFill}: frames actually played
+    // before death (capped at ROLLOUT_DEPTH), and the board's fill ratio at
+    // the end when it didn't die (Infinity when it did -- always worse than
+    // any real fill ratio, so a death never wins a comparison).
+    _simulate: function (cpu, decision, seed) {
+      var clonedStack = TrueSurvivalSearch._cloneStack(cpu.stack, seed);
+      var roll = TrueSurvivalSearch._makeRolloutCpu(cpu, clonedStack, seed + 1);
+      roll._forcedDecision = decision;
+      var survived = 0;
+      for (var f = 0; f < TrueSurvivalSearch.ROLLOUT_DEPTH; f++) {
+        roll.update();
+        clonedStack.run();
+        if (clonedStack.gameOver) return { survived: survived, endFill: Infinity };
+        survived++;
+      }
+      var endBoard = SearchCpu.prototype._snapshot.call({ stack: clonedStack });
+      return { survived: survived, endFill: endBoard.fillRatio() };
+    },
+
+    // A generic deep copy of every own-enumerable field on the Stack except
+    // `rng` (a closure -- see _cloneStack's own note) and `levelData` (a
+    // shared, effectively-immutable LEVELS[] entry -- copying the reference
+    // is correct and avoids re-copying it on every single candidate).
+    // Everything else on Stack is plain data (panels, incoming/outgoing
+    // queues, events, input state -- confirmed by inspection: the only
+    // instance-level function field anywhere on Stack is rng itself), so a
+    // structural clone is safe and doesn't need Stack's own knowledge of
+    // its fields.
+    _cloneStack: function (stack, rngSeed) {
+      var clone = Object.create(Object.getPrototypeOf(stack));
+      for (var key in stack) {
+        if (!Object.prototype.hasOwnProperty.call(stack, key)) continue;
+        if (key === "rng") continue;
+        clone[key] = key === "levelData" ? stack[key] : TrueSurvivalSearch._deepClone(stack[key]);
+      }
+      // A FRESH, independent rng -- never the real stack's own closure.
+      // Sharing it would advance the real match's actual future random
+      // draws (panel colors, garbage colors) just by simulating a
+      // hypothetical, corrupting determinism for the real game.
+      clone.rng = root.PanelEngine.makeRng(rngSeed);
+      return clone;
+    },
+
+    _deepClone: function (x) {
+      if (x === null || typeof x !== "object") return x;
+      if (Array.isArray(x)) {
+        var arr = new Array(x.length);
+        for (var i = 0; i < x.length; i++) arr[i] = TrueSurvivalSearch._deepClone(x[i]);
+        return arr;
+      }
+      var out = {};
+      for (var k in x) if (Object.prototype.hasOwnProperty.call(x, k)) out[k] = TrueSurvivalSearch._deepClone(x[k]);
+      return out;
+    },
+
+    // The continuation policy for every rollout frame after the forced
+    // first move -- deliberately CHEAP (O(legalSwaps) resolves, the same
+    // cost class _raiseOrBuild/_bestImmediateMatch already run on every
+    // real frame elsewhere in this file), not this CPU's full _choose.
+    //
+    // FIRST ATTEMPT (measured, wrong): let the rollout continuation CPU
+    // call its own normal _choose every continuation frame, same as real
+    // play. Profiled against the real L10 bigBlocks drill (this module's
+    // own validation target): decide() calls up to 4.1s, all clustered at
+    // clock~151-152 (fillRatio~0.42, right before the drill's first 6x12
+    // slab lands -- exactly PreburstReserve's own documented high-leverage
+    // window). Root cause: _choose's non-reserve path runs _computePlan
+    // (a beam search, depth 5 x beam 10 at this maxHealth tier) or
+    // _bestDefensiveMove's _nPlyRescue chain (up to rescueEvalBudget=10000
+    // evals, individually already right at this file's ~100ms budget) --
+    // each already tuned to be safe ONCE per real decision, not called
+    // ~7-8 times per candidate x up to 8 candidates inside a single outer
+    // decide(). Fixed by never letting a rollout continuation frame reach
+    // _computePlan or _bestDefensiveMove at all -- see below.
+    //
+    // Still a REASONABLE policy, not a stub: same immediate-match-or-build
+    // shape as PreburstReserve's own decide (a tuned, shipped policy for
+    // this exact difficulty tier), just handling the in-danger case too
+    // (PreburstReserve deliberately doesn't -- it defers to the expensive
+    // rescue chain, which is exactly what this continuation can't afford).
+    _continuationStep: function (cpu, board) {
+      var found = cpu._bestImmediateMatch(board);
+      if (cpu._inDanger(board)) {
+        if (found) return { kind: "swap", move: found.move };
+        return cpu._raiseOrBuild(board); // cheap hold/raise fallback -- see its own comment
+      }
+      if (found && (found.chainLength >= 2 || found.comboSize >= 4)) {
+        return { kind: "swap", move: found.move };
+      }
+      return cpu._raiseOrBuild(board);
+    },
+
+    // A throwaway SearchCpu instance for the rest of a rollout, once the
+    // FIRST move (the one actually being decided) is forced in. Reusing
+    // this CPU's own tuned parameters and normal decision-making for the
+    // continuation is the plausible-continuation policy this module needs
+    // (some policy is required, since the branching can't be simulated to
+    // infinity) -- it does NOT make the first move's choice, which is what
+    // this whole module exists to decide by real simulated outcome instead.
+    _makeRolloutCpu: function (sourceCpu, clonedStack, seed) {
+      var roll = Object.create(SearchCpu.prototype);
+      var carry = ["reaction", "mistake", "depth", "beam", "patience", "patienceFillCeiling",
+        "dangerHeightFrac", "raiseFillFrac", "chainWeight", "comboWeight", "garbageWeight",
+        "heightPenalty", "potentialWeight", "chainExtend", "criticalFactor", "runwayThreshold",
+        "toppedOutCooldown", "queuedRunwayWeight", "rescueBranchCap", "rescueEvalBudget",
+        "dropAmountWeight", "pressureThreshold", "sentWeight"];
+      for (var i = 0; i < carry.length; i++) {
+        if (sourceCpu[carry[i]] !== undefined) roll[carry[i]] = sourceCpu[carry[i]];
+      }
+      roll.stack = clonedStack;
+      roll.rng = root.PanelEngine.makeRng(seed);
+      roll.cooldown = 0;
+      roll.raiseFrames = 0;
+      roll._lastSwap = null;
+      roll._plan = [];
+      roll._planGrid = null;
+      roll._pressure = sourceCpu._pressure;
+      roll._reserveToppedOnce = !!sourceCpu._reserveToppedOnce;
+      roll._survivalSearchToppedOnce = true; // never let a rollout cpu spend budget recursing into this module
+      roll._noRollout = true; // hard recursion guard -- see _choose's _forcedDecision check and active() above
+      roll._cheapContinuation = true; // see _continuationStep's own comment for why this exists
+      roll._forcedDecision = null;
+      return roll;
+    }
+  };
+
+  // =========================================================================
   // PREBURST RESERVE — a separate, independent decision system, not a
   // tuning of the scoring inside _defensiveKey/boardPotential/etc. It has
   // its own trigger, its own priority, and its own single consult point in
@@ -1616,6 +1875,31 @@
 
   // Returns {kind:"swap", move:[row,col]}, {kind:"raise"}, or {kind:"hold"}.
   SearchCpu.prototype._choose = function (board) {
+    // Single consult point for TrueSurvivalSearch's forced first move inside
+    // a rollout clone (see below) -- a rollout CPU has _noRollout set so it
+    // can never recurse into TrueSurvivalSearch itself, and this is the only
+    // place _forcedDecision is ever read or cleared.
+    if (this._forcedDecision) {
+      var forced = this._forcedDecision;
+      this._forcedDecision = null;
+      return forced;
+    }
+    // A rollout's continuation frames (everything after the forced first
+    // move) use a CHEAP fixed policy instead of this CPU's own full _choose
+    // -- see TrueSurvivalSearch._continuationStep's own comment for why:
+    // the full _choose (in particular _computePlan's beam search and
+    // _bestDefensiveMove's _nPlyRescue chain) is tuned to be safe ONCE per
+    // real decision, not ~7-8 times per candidate x ~7 candidates inside a
+    // single outer decision, which is what a rollout needs.
+    if (this._cheapContinuation) {
+      return TrueSurvivalSearch._continuationStep(this, board);
+    }
+
+    if (TrueSurvivalSearch.active(this, board)) {
+      var simmed = TrueSurvivalSearch.decide(this, board);
+      if (simmed) return simmed;
+    }
+
     if (PreburstReserve.active(this, board)) {
       var reserved = PreburstReserve.decide(this, board);
       if (reserved) return reserved;
@@ -1840,5 +2124,5 @@
         : Math.max(6, Math.round(this.reaction * (board.fillRatio() > this.dangerHeightFrac * 0.85 ? 0.55 : 1)));
   };
 
-  root.PanelCpu = { Cpu: Cpu, SearchCpu: SearchCpu, DIFFICULTIES: DIFFICULTIES, PreburstReserve: PreburstReserve };
+  root.PanelCpu = { Cpu: Cpu, SearchCpu: SearchCpu, DIFFICULTIES: DIFFICULTIES, PreburstReserve: PreburstReserve, TrueSurvivalSearch: TrueSurvivalSearch };
 })(typeof window !== "undefined" ? window : globalThis);
