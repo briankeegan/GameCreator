@@ -49,6 +49,15 @@
 //   `node full_report.js nightmare 10 1 15000 bigBlocks` -- scoped,
 //   repeatable, no ad-hoc scripts, and nothing outside the requested
 //   scope gets touched or reported.
+//   seedCount: 7th arg, default 1 (just the single `seed` above,
+//   backward compatible). When >1, the comboStorm/factory/bigBlocks
+//   categories are run across seeds `seed`..`seed+seedCount-1` and
+//   BOTH the per-seed frame counts and the average are printed. Exists
+//   because a fix can be a real, validated win on average while being a
+//   complete no-op on any one fixed seed (a specific board's exact
+//   fatal composition can be locked in regardless of a later fix) --
+//   `endless` already averages across 12 different real files and is
+//   unaffected by this arg.
 var path = require('path');
 var fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
@@ -66,12 +75,13 @@ var LEVELS = levelsArg.split(',').map(function (s) { return parseInt(s, 10); });
 var ALL_CATEGORIES = ['comboStorm', 'factory', 'bigBlocks', 'endless'];
 var categoriesArg = process.argv[6] || ALL_CATEGORIES.join(',');
 var CATEGORIES = categoriesArg.split(',');
+var seedCount = parseInt(process.argv[7], 10) || 1;
 
-function makeCpu(stackLevel, extraOpts) {
+function makeCpu(stackLevel, useSeed, extraOpts) {
   var opts = cfgArg[0] === '{' ? JSON.parse(cfgArg) : { difficulty: cfgArg };
   Object.assign(opts, extraOpts || {});
-  opts.seed = seed + 55;
-  var stack = new PanelEngine.Stack({ level: stackLevel, seed: seed, countdown: false });
+  opts.seed = useSeed + 55;
+  var stack = new PanelEngine.Stack({ level: stackLevel, seed: useSeed, countdown: false });
   var cpu = new PanelCpu.SearchCpu(stack, opts);
   return { stack: stack, cpu: cpu };
 }
@@ -86,9 +96,9 @@ var LEAD_IN = 150, BURST_LEN = 50, GAP = 900;
 var CYCLE = GAP + (LEAD_IN + BURST_LEN) - LEAD_IN;
 var TRAINING_CEILING = 60 * 60 * 5; // 5 simulated minutes is plenty -- these drills die fast
 
-function runTrainingMode(modeName, stackLevel) {
+function runTrainingMode(modeName, stackLevel, useSeed) {
   var mode = TRAINING_MODES[modeName];
-  var made = makeCpu(stackLevel);
+  var made = makeCpu(stackLevel, useSeed);
   var stack = made.stack, cpu = made.cpu;
   function fires(f) {
     if (f < LEAD_IN + 1) return false;
@@ -115,7 +125,7 @@ var ENDLESS_MAX_FRAMES = parseInt(process.argv[5], 10) || 36000; // 10 simulated
 function runEndlessFile(filePath, stackLevel) {
   var raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   var schedule = attackSchedule.buildEventSchedule(raw, PanelEngine.GARBAGE_FLIGHT);
-  var made = makeCpu(stackLevel);
+  var made = makeCpu(stackLevel, seed);
   var stack = made.stack, cpu = made.cpu;
   var sentRecords = [], f;
   for (f = 0; f < ENDLESS_MAX_FRAMES; f++) {
@@ -143,15 +153,29 @@ function runEndless(stackLevel) {
 }
 
 // ---- Run only the requested categories, at every requested level ----
-console.log('Config: ' + cfgArg + '  levels=' + LEVELS.join(',') + '  seed=' + seed + '  categories=' + CATEGORIES.join(','));
+console.log('Config: ' + cfgArg + '  levels=' + LEVELS.join(',') + '  seed=' + seed +
+  (seedCount > 1 ? '..' + (seed + seedCount - 1) : '') + '  categories=' + CATEGORIES.join(','));
 console.log('');
 
 LEVELS.forEach(function (stackLevel) {
   console.log('#################### LEVEL ' + stackLevel + ' ####################');
   ['comboStorm', 'factory', 'bigBlocks'].forEach(function (mode) {
     if (CATEGORIES.indexOf(mode) === -1) return;
-    var r = runTrainingMode(mode, stackLevel);
-    report.printSummaryToStdout('L' + stackLevel + ' ' + mode + (r.died ? '' : ' (still going at ceiling)'), r.framesAlive, r.sentRecords);
+    if (seedCount <= 1) {
+      var r = runTrainingMode(mode, stackLevel, seed);
+      report.printSummaryToStdout('L' + stackLevel + ' ' + mode + (r.died ? '' : ' (still going at ceiling)'), r.framesAlive, r.sentRecords);
+      return;
+    }
+    var frames = [], total = 0;
+    for (var i = 0; i < seedCount; i++) {
+      var ri = runTrainingMode(mode, stackLevel, seed + i);
+      frames.push(ri.framesAlive);
+      total += ri.framesAlive;
+    }
+    console.log('=== L' + stackLevel + ' ' + mode + ' -- ' + seedCount + ' seeds (' + seed + '..' + (seed + seedCount - 1) + ') ===');
+    console.log('  per-seed frames: ' + frames.join(', '));
+    console.log('  average: ' + Math.round(total / seedCount) + ' frames');
+    console.log('');
   });
 
   if (CATEGORIES.indexOf('endless') !== -1) {

@@ -1544,8 +1544,83 @@
     return { kind: "raise" };
   };
 
+  // =========================================================================
+  // PREBURST RESERVE — a separate, independent decision system, not a
+  // tuning of the scoring inside _defensiveKey/boardPotential/etc. It has
+  // its own trigger, its own priority, and its own single consult point in
+  // _choose below; every other scenario runs through _choose completely
+  // unchanged, exactly as before this existed.
+  //
+  // WHY: instrumented directly (ai/experiments scratch probes, not
+  // conjecture) against the L10 bigBlocks drill, where maxHealth is
+  // exactly 1 — a single frame of unmitigated damage is fatal, and the
+  // first garbage block is width x board-height, i.e. it alone can occupy
+  // the ENTIRE board. Measured: the board tops out from ORDINARY passive
+  // rise well BEFORE the first burst piece physically lands (its 151-frame
+  // flight delay means it lands around frame ~300; the board was already
+  // at fillRatio 1.0 by frame ~160 in the reference run). Once topped out
+  // under a maxHealth<=1 slab that can never make room for a new row, the
+  // real panels frozen on the board at that moment are EVERY panel this
+  // match will ever get to work with — runwayHeight's own comment already
+  // says the well never refills once matched panels are gone, and here the
+  // well doesn't refill AT ALL once wedged under an unclearable slab. So
+  // whatever the CPU spends matching away during the free, ordinary early
+  // window (before that first top-out) never comes back, and the eventual
+  // "every remaining color stuck at exactly 2 copies" starvation death is
+  // downstream of exactly those early, healthy-board decisions.
+  //
+  // Confirmed this actually matters, not just plausible, with a controlled
+  // A/B: same seed/level/schedule, only the pre-first-top-out policy
+  // varied. Across a 25-seed sweep, forcing PASSIVE (no swaps at all)
+  // through that window changed final survival by 2-4x in either
+  // direction depending on seed (19/25 seeds better, one seed 5.6x worse)
+  // -- large and real, but too seed-chaotic (tiny early differences
+  // cascade unpredictably) to ship as "always stay idle". What ships here
+  // instead is the same idea bounded by the SAME "is this actually worth
+  // it" bar _computePlan already uses (chain>=2 or combo>=4), applied only
+  // until the board's OWN first top-out, which is what makes the window
+  // self-terminating rather than a magic frame count: measured safe (zero
+  // regression on 6/8 seeds tried this way, seed=1 -- the validated
+  // ai/experiments/full_report.js benchmark seed -- bit-for-bit unchanged
+  // at 2543 frames) while still recovering most of PASSIVE's upside where
+  // it existed (seed 2: 452 -> 989, seed 7: 491 -> 567).
+  var PreburstReserve = {
+    // True only while: this level is the single-hit-fatal tier (the same
+    // maxHealth<=1 gate every other tightening in this file already uses,
+    // not a new threshold), and the board has never yet topped out this
+    // match. The instant it tops out once, this permanently steps aside
+    // for the rest of the match -- there is no "reserve" left to protect
+    // once the well is already wedged shut, and normal _choose (offense/
+    // defense) is what has actually been tuned for play after that point.
+    active: function (cpu, board) {
+      if (!cpu.stack || !cpu.stack.levelData || cpu.stack.levelData.maxHealth > 1) return false;
+      if (cpu._reserveToppedOnce) return false;
+      if (board.maxHeight() >= board.height) { cpu._reserveToppedOnce = true; return false; }
+      return true;
+    },
+    // Returns {kind:...} to REPLACE _choose's decision this cycle, or null
+    // to decline (caller falls through to normal _choose unmodified).
+    decide: function (cpu, board) {
+      if (cpu._inDanger(board)) return null; // safety always wins, untouched
+      var found = cpu._bestImmediateMatch(board);
+      if (found && (found.chainLength >= 2 || found.comboSize >= 4)) {
+        return { kind: "swap", move: found.move }; // a real win is still worth taking
+      }
+      // Everything smaller: decline it. Building/raising via the existing
+      // _raiseOrBuild machinery keeps this literally reusing the tuned
+      // hold/raise thresholds already in the file, not a new opinion about
+      // when raising is safe.
+      return cpu._raiseOrBuild(board);
+    }
+  };
+
   // Returns {kind:"swap", move:[row,col]}, {kind:"raise"}, or {kind:"hold"}.
   SearchCpu.prototype._choose = function (board) {
+    if (PreburstReserve.active(this, board)) {
+      var reserved = PreburstReserve.decide(this, board);
+      if (reserved) return reserved;
+    }
+
     if (this._inDanger(board)) {
       this._plan = [];
       var defense = this._bestDefensiveMove(board);
@@ -1765,5 +1840,5 @@
         : Math.max(6, Math.round(this.reaction * (board.fillRatio() > this.dangerHeightFrac * 0.85 ? 0.55 : 1)));
   };
 
-  root.PanelCpu = { Cpu: Cpu, SearchCpu: SearchCpu, DIFFICULTIES: DIFFICULTIES };
+  root.PanelCpu = { Cpu: Cpu, SearchCpu: SearchCpu, DIFFICULTIES: DIFFICULTIES, PreburstReserve: PreburstReserve };
 })(typeof window !== "undefined" ? window : globalThis);
