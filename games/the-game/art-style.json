@@ -215,7 +215,7 @@
           "base": "#2f4b9c",
           "shade": "#1b2c60",
           "appears": "always",
-          "note": "A royal-blue ROBE — still an obvious, recognisable garment — that has been torn and is now SLIPPING OFF HER SHOULDERS. It has fallen down off one shoulder and sags low on the other, hanging by the last of itself, so the black leather jacket and white shirt underneath are plainly visible. Torn along its edges and hem, missing pieces, but still a COAT hanging on her — not a mass of dangling strips, not a curtain of tatters, not a cape, and never wider than her own shoulders.",
+          "note": "A long royal-blue robe with sleeves — an ordinary, solid, heavy garment. She is still wearing it, but it has SLID DOWN OFF BOTH SHOULDERS and is caught in the crooks of her elbows, the way a coat sits when someone has shrugged half out of it. From there it hangs straight down behind her in ONE CONTINUOUS PIECE of cloth, past her hips, with a smooth unbroken outline. Because it has slipped, her black leather jacket and white shirt are fully visible above it. It is worn and a little frayed along the bottom hem and cuffs, and that is ALL the damage that shows: no holes, no gaps, no slashes, no spikes, no separate hanging strips or ribbons, no zigzag or saw-tooth edge, and it never splits into two pieces. Draw a coat, not wreckage.",
           "source": "plot"
         },
         "jacket": {
@@ -259,11 +259,12 @@
       },
       "proportions": "An adult, about four and a half heads tall.",
       "neverDraw": [
-        "a curtain of long dangling strips or tatters instead of a garment",
-        "feathers, plumes or anything that reads as a bird",
-        "wings, or a robe spread wider than her own shoulders",
-        "a neat, whole or untorn robe",
-        "a robe sitting squarely on both shoulders — it is falling off",
+        "a robe split into separate hanging strips, ribbons or tatters",
+        "holes or gaps in the middle of the cloth",
+        "a spiky, jagged, zigzag or saw-tooth hem",
+        "anything that reads as wings, a cape, feathers or plumes",
+        "the robe sitting up on her shoulders — it has slid down to her elbows",
+        "a robe spread wider than her own shoulders",
         "antlers, horns, animal ears or any animal feature",
         "orange, brown or blonde hair",
         "a gold bracelet",
