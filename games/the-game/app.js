@@ -1808,7 +1808,7 @@
     };
   }
   var NPC_FACING_FRAMES = {};
-  ["chuck", "devil", "kat", "may", "timothy", "michael", "john",
+  ["chuck", "kat", "may", "timothy", "michael", "john",
    "rex", "kyran", "diamond", "eric", "magma"].forEach(function (id) {
     NPC_FACING_FRAMES[id] = npcDirFrames(id);
   });

@@ -68,7 +68,7 @@
           "source": "plot"
         }
       },
-      "proportions": "About four heads tall, head roughly a quarter of total height; a teenager, not a child.",
+      "proportions": "A teenager: the shared plan, a little shorter and slighter than the adults.",
       "neverDraw": [
         "a tail",
         "wings",
@@ -115,7 +115,7 @@
           "source": "design"
         }
       },
-      "proportions": "Identical build to her avatar — the same girl. About four heads tall.",
+      "proportions": "Identical build to her avatar — the same girl.",
       "neverDraw": [
         "horns",
         "a robe",
@@ -187,7 +187,7 @@
           "source": "design"
         }
       },
-      "proportions": "An adult man, about four and a half heads tall including the hat. Human proportions throughout; only the head is a cat's, and it is a normal head's size — not oversized or chibi.",
+      "proportions": "The shared plan; the top hat adds height above the head, and the head itself is a cat's but a NORMAL head's size.",
       "neverDraw": [
         "a human face",
         "a full cat body, or a cat walking on four legs",
@@ -257,7 +257,7 @@
           "source": "design"
         }
       },
-      "proportions": "An adult, about four and a half heads tall.",
+      "proportions": "The shared plan.",
       "neverDraw": [
         "a robe split into separate hanging strips, ribbons or tatters",
         "holes or gaps in the middle of the cloth",
@@ -304,7 +304,7 @@
           "source": "design"
         }
       },
-      "proportions": "An adult, about four and a half heads tall.",
+      "proportions": "The shared plan.",
       "neverDraw": [
         "dark hair",
         "a coloured gem in the bracelet",
@@ -351,7 +351,7 @@
           "source": "design"
         }
       },
-      "proportions": "An adult man, about four and a half heads tall.",
+      "proportions": "The shared plan.",
       "neverDraw": [
         "a full beard",
         "a yellow scarf",
@@ -394,7 +394,7 @@
           "source": "design"
         }
       },
-      "proportions": "An adult, about four and a half heads tall.",
+      "proportions": "The shared plan.",
       "neverDraw": [
         "plain unstreaked hair",
         "blonde hair",
@@ -427,7 +427,7 @@
           "source": "design"
         }
       },
-      "proportions": "A young adult, about four and a half heads tall, broad-shouldered.",
+      "proportions": "The shared plan, broader across the shoulders.",
       "neverDraw": [
         "dark hair",
         "a scowl",
@@ -460,7 +460,7 @@
           "source": "design"
         }
       },
-      "proportions": "Young — slighter and shorter than the adults, about four heads tall.",
+      "proportions": "A CHILD — shorter and slighter than the adults, with a slightly larger head for her height, because the plot says \"barely older than a child\". The only cast member who departs from the adult plan.",
       "neverDraw": [
         "a confident grin",
         "an adult’s height or build",
@@ -500,7 +500,7 @@
           "source": "plot"
         }
       },
-      "proportions": "A man in his late thirties, hunched — reads shorter than the others, about four heads tall. Hunched by exhaustion, not by age.",
+      "proportions": "The shared plan, hunched by exhaustion so he reads shorter — the stoop, not the skeleton, is what differs.",
       "neverDraw": [
         "the hood down",
         "a bare head",
@@ -549,7 +549,7 @@
           "source": "design"
         }
       },
-      "proportions": "An adult, about four and a half heads tall.",
+      "proportions": "The shared plan.",
       "neverDraw": [
         "a visible badge",
         "a dark robe",
@@ -608,7 +608,7 @@
           "source": "plot"
         }
       },
-      "proportions": "An adult, about four and a half heads tall.",
+      "proportions": "The shared plan.",
       "neverDraw": [
         "a fantasy robe",
         "pale skin",
@@ -660,7 +660,7 @@
           "source": "design"
         }
       },
-      "proportions": "A big man in his thirties — broader and taller than Nella, about four and a half heads tall.",
+      "proportions": "The shared plan, taller and broader than everyone else.",
       "neverDraw": [
         "a bald head",
         "a clean-shaven face",
@@ -670,49 +670,8 @@
         "a robe",
         "any bracelet"
       ]
-    },
-    "devil": {
-      "name": "The Devil",
-      "species": "the mirror-popup host of Infinity — plot: \"A smiling CARTOON devil appeared in the mirror, as if it was a screen\", and later \"the LITTLE devil\". He is not a character in the world: he is a friendly mascot drawn ON a screen, in a flatter, rounder, more cartoonish style than everyone else in the game, and he is small.",
-      "plotQuote": "A smiling cartoon devil appeared in the mirror, as if it was a screen. / The little devil pointed to the doorway and then vanished.",
-      "materials": {
-        "horns": {
-          "base": "#7d2018",
-          "shade": "#4a1010",
-          "appears": "always",
-          "note": "Two small curved horns, rounded and cartoonish.",
-          "source": "design"
-        },
-        "skin": {
-          "base": "#d4553a",
-          "shade": "#8f3323",
-          "appears": "always",
-          "note": "Red skin — he is the only red-skinned character.",
-          "source": "design"
-        },
-        "robe": {
-          "base": "#2a1a2a",
-          "shade": "#150c15",
-          "appears": "always",
-          "note": "Dark plum robe with crimson trim.",
-          "source": "design"
-        },
-        "trim": {
-          "base": "#c0392b",
-          "appears": "always",
-          "source": "design"
-        }
-      },
-      "proportions": "SMALL and cartoonish — \"the little devil\". Roughly three heads tall with an oversized head, deliberately unlike the four-and-a-half-heads adults; he is a mascot on a screen, not a person in a room.",
-      "neverDraw": [
-        "a monstrous or snarling face",
-        "wings",
-        "a pitchfork",
-        "human skin tone",
-        "realistic proportions matching the other characters",
-        "a menacing expression"
-      ]
     }
   },
-  "adaptedFrom": "The owner's original plot, posted verbatim as the FIRST comment on Clubhouse PR #30 (comment id 5344870145, branch clubhouse/the-game). `reference/the-game/PLOT.md` is a distillation of it and has lost detail that turned out to decide things — read the comment, not the distillation, before changing anything a spec sources to \"plot\"."
+  "adaptedFrom": "The owner's original plot, posted verbatim as the FIRST comment on Clubhouse PR #30 (comment id 5344870145, branch clubhouse/the-game). `reference/the-game/PLOT.md` is a distillation of it and has lost detail that turned out to decide things — read the comment, not the distillation, before changing anything a spec sources to \"plot\".",
+  "build": "THE BODY PLAN EVERY CHARACTER IN THIS GAME SHARES, and the reason it is here rather than repeated in each spec: proportions were prose retyped thirteen times, nothing compared them, and characters generated one at a time drifted apart — one ended up with a head a third of its body while the rest were four and a half heads tall. THE PLAN: an adult stands about FOUR AND A HALF HEADS TALL, head roughly 22% of total height, shoulders about one and a half head-widths across, legs a little over half the total height. Normal adult human proportions, drawn small — NOT chibi, NOT super-deformed, NOT big-headed. Every adult in the cast is within a head's height of every other, so they read as the same species standing in the same room. A character's own `proportions` field says only how they DIFFER from this (a child is shorter, a hunched man reads shorter); if it says nothing, this is what they are."
 }

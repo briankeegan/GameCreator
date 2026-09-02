@@ -42,7 +42,7 @@ function size(path) {
 }
 
 const CHARS = ['nella', 'nella_human', 'kat', 'may', 'timothy', 'rex', 'diamond',
-               'eric', 'magma', 'john', 'michael', 'kyran', 'chuck', 'devil'];
+               'eric', 'magma', 'john', 'michael', 'kyran', 'chuck'];
 const DIRS = ['down', 'left', 'up'];
 const TARGET = 30;
 const fails = [];

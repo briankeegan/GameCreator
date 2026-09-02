@@ -55,6 +55,7 @@ for (const game of readdirSync('games', { withFileTypes: true })) {
     continue;
   }
 
+  let buildMissing = false;
   const chars = style.characters;
   if (!chars || !Object.keys(chars).length) continue;
   const adapted = Boolean(style.adaptedFrom);
@@ -77,10 +78,27 @@ for (const game of readdirSync('games', { withFileTypes: true })) {
         problems.push(`${where}.materials.${mat} claims source "plot", but ${path} has no "adaptedFrom"`);
       }
     }
+    // THE SHARED BUILD MUST ACTUALLY BE SHARED. Proportions were prose retyped
+    // into thirteen specs, nothing compared them, and characters generated one
+    // at a time drifted — one ended up with a head a third of its body while
+    // everyone else was four and a half heads tall. A game with characters now
+    // declares one `build` at the top level that every prompt inherits, and a
+    // character's own `proportions` says only how they differ from it.
+    if (!String(style.build || '').trim()) {
+      buildMissing = true;
+    }
+
     const claimsPlot = Object.values(mats).some((m) => m && m.source === 'plot');
     if (claimsPlot && !String(spec.plotQuote || '').trim()) {
       problems.push(`${where} has materials sourced to the plot but no "plotQuote" to check them against`);
     }
+  }
+
+  if (buildMissing) {
+    problems.push(`${path} has characters but no top-level "build" — the body plan they all share. `
+      + 'Without it every spec restates its own proportions, nothing compares them, and independently '
+      + 'generated characters drift apart. generate_row.spec_to_prompt() puts this in front of every '
+      + 'prompt; a character\'s own `proportions` should say only how they DIFFER from it.');
   }
 }
 

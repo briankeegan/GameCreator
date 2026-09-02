@@ -277,5 +277,6 @@
         "an upright armored golem or robot walking on two legs — this is a DOG on four legs wearing scrap armor, not a suit of armor with a dog's head; the failure to watch for especially FROM BEHIND is a wide two-legged armored back that reads as a robot"
       ]
     }
-  }
+  },
+  "build": "THE BODY PLAN EVERY CHARACTER IN THIS GAME SHARES. Unlike a cast of people, these are different creatures — a dog, a rat, a drone, a brute — so what they share is SCALE and DRAWING, not anatomy: every one is drawn at the same art-pixel size, standing upright on two legs unless its own spec says otherwise, with the same bold dark outline and the same chunky limb thickness, so they read as inhabitants of one world. Relative size between them lives in --body-height at cut time (how much of its cell a character fills), never in per-character draw sizes. A character's own `proportions` field says only how it DIFFERS from this."
 }

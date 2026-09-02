@@ -82,7 +82,7 @@ def load_spec(game, character):
             'from two different descriptions, and nothing can tell they disagree.\n'
             f'Specs in this game: {known}\n'
             'See .github/art/CHARACTER_SHEETS.md and `characterSpecRule` in that file.')
-    return spec
+    return spec, style
 
 
 def main():
@@ -106,8 +106,8 @@ def main():
                     help='print the assembled prompt and stop — no generation, no cost')
     args = ap.parse_args()
 
-    spec = load_spec(args.game, args.character)
-    described = spec_to_prompt(spec)
+    spec, style = load_spec(args.game, args.character)
+    described = spec_to_prompt(spec, style)
     if args.note:
         described += ' ' + args.note.strip()
     prompt = PROMPT_FILE.read_text().strip().replace('{CHARACTER}', described)

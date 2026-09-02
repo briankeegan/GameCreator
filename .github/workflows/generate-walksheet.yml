@@ -148,7 +148,7 @@ jobs:
                   'nothing to check the result against. See '
                   '.github/art/CHARACTER_SHEETS.md.')
           extra = (os.environ.get('CHARACTER') or '').strip()
-          built = spec_to_prompt(spec)
+          built = spec_to_prompt(spec, style)
           if extra:
               built += ' ' + extra
           tpl = open('.github/art/walksheet_prompt.txt').read().strip()

@@ -96,7 +96,7 @@ def colour_anchors(style, who):
             'flat and unmodulated, the same in every frame: ' + entry + '.')
 
 
-def spec_to_prompt(spec):
+def spec_to_prompt(spec, style=None):
     """Turn a character spec into the description the generator is given.
 
     The spec is the single source of truth (see `characterSpecRule` in a game's
@@ -123,6 +123,13 @@ def spec_to_prompt(spec):
     if mats:
         parts.append('EXACT MATERIALS AND COLOURS — every frame uses these and no others: '
                      + '; '.join(mats) + '.')
+    # THE SHARED BUILD FIRST, then how this character differs from it. It lived
+    # only as prose retyped into each spec, which is why thirteen independently
+    # generated characters drifted apart — one came out with a head a third of
+    # its body. A body plan every prompt inherits is the fix; a sentence
+    # everyone is trusted to copy is not.
+    if style and style.get('build'):
+        parts.append(style['build'])
     if spec.get('proportions'):
         parts.append(spec['proportions'])
     if spec.get('neverDraw'):
@@ -141,7 +148,7 @@ def build_prompt(game, view, description=None, character='hero'):
     if description:
         char = description
     elif spec:
-        return spec_to_prompt(spec), style
+        return spec_to_prompt(spec, style), style
     else:
         char = style.get('mainCharacter')
         if not char:
