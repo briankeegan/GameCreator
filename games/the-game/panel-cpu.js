@@ -1605,23 +1605,56 @@
     // "raise" as fixed candidates.
     ROLLOUT_SWAP_CAP: 20,
 
-    // Same trigger tier as PreburstReserve (maxHealth<=1) and the same
-    // "steps aside forever after the first top-out" shape -- tracked with
-    // its own flag rather than reusing PreburstReserve's, since the two
-    // modules are meant to be fully independent (own trigger condition per
-    // spec), even though both currently key off the identical board test.
+    // Same trigger tier as PreburstReserve (maxHealth<=1) -- but NOT the
+    // same "steps aside forever after first top-out" shape. That gate was
+    // originally copy-pasted from PreburstReserve without re-deriving
+    // whether TSS's OWN rationale actually calls for it, and diagnosis
+    // found it doesn't: PreburstReserve steps aside forever because ITS
+    // specific job (protecting reserve material before the well gets
+    // wedged shut) genuinely has nothing left to do once wedged. TSS's
+    // job -- comparing candidates by REAL simulated survival -- stays
+    // exactly as meaningful after topping out as before; if anything more
+    // so, since post-topple is where the real engine's health-drain and
+    // swap-stalling mechanics (see decide()'s own comment) actually bite.
+    //
+    // Measured why this mattered: on L10 bigBlocks (this module's own
+    // validation target), ordinary passive rise tops the board around
+    // frame 160 on EVERY seed tried (before the first burst even lands --
+    // see PreburstReserve's own comment) -- so the old permanent lockout
+    // switched TSS off around frame 160 for matches that then run another
+    // 250-3900+ frames on the older LogicalBoard-based _bestDefensiveMove
+    // fallback alone, which has no model of the real engine's anti-wiggle
+    // swapStallBacklog (panel-engine.js) at all. Direct instrumentation of
+    // a fast-dying seed (seed 2, died frame 423) found its death was
+    // mechanical, not a search-quality failure: at maxHealth<=1 the real
+    // engine's SWAP_STALLING_PUNISH (4) exceeds max health (1), so once
+    // topped out and idle, EVERY (row,col) swap position can be used
+    // AT MOST ONCE ever (a repeat is refused outright); the fallback
+    // exhausted all 10 distinct positions in its 2-row runway (confirmed:
+    // stack.swapStallBacklog held all 10 keys at the death frame) and the
+    // very next decision cycle had nowhere left to swap, going genuinely
+    // idle for one frame -- instant death at maxHealth=1. No amount of
+    // LogicalBoard scoring can see that a proposed swap's KEY is a
+    // one-time-use resource; only a real Stack clone (which TSS already
+    // builds) can.
     active: function (cpu, board) {
       if (cpu._noRollout) return false; // a rollout's own continuation CPU never recurses into this
       if (!cpu.stack || !cpu.stack.levelData || cpu.stack.levelData.maxHealth > 1) return false;
-      if (cpu._survivalSearchToppedOnce) return false;
-      if (board.maxHeight() >= board.height) { cpu._survivalSearchToppedOnce = true; return false; }
       return true;
     },
 
     // Returns {kind:...} to REPLACE _choose's decision this cycle, or null
     // to decline (caller falls through to PreburstReserve, unmodified).
     decide: function (cpu, board) {
-      if (cpu._inDanger(board)) return null; // safety-critical rescue search still owns real emergencies
+      // Defer to the safety-critical rescue chain only BEFORE the board
+      // has topped out -- that's the genuinely time-sensitive "garbage
+      // about to crush me, act on the one real emergency" case _inDanger
+      // was tuned to gate. Once actually topped out at this tier,
+      // _inDanger(board) is true by construction for the rest of the
+      // match (dangerHeightFrac 0.45 <= a pinned fillRatio of 1.0) and
+      // stops being a useful signal -- deferring to it there would just
+      // reinstate the old permanent lockout above by another name.
+      if (board.maxHeight() < board.height && cpu._inDanger(board)) return null;
 
       var candidates = TrueSurvivalSearch._candidates(cpu, board);
       var bestDecision = null, bestSurvived = -1, bestEndFill = Infinity;
@@ -1632,8 +1665,38 @@
       // same seed/level, same as everything else this file measures.
       var baseSeed = ((cpu.stack.clock * 2654435761) >>> 0) || 1;
 
+      // A deterministic simulated-frame budget, not a wall-clock deadline
+      // -- Round 8 (FINDINGS.md) already found and rejected wall-clock
+      // deadlines here: they make a run's outcome depend on host machine
+      // load, which is a real bug (different results on the same seed on
+      // the same otherwise-idle sandbox, back to back), not just an
+      // implementation detail. This module's own candidate list is
+      // already ordered by the cheap boardPotential-gain proxy inside
+      // _candidates (best-looking first), so stopping early after a
+      // fixed budget of simulated frames still spends the budget on the
+      // most promising candidates first, the same shape as
+      // _nPlyRescue's own eval budget elsewhere in this file.
+      //
+      // Calibrated by measurement, not guessed: unbounded (all ~20-23
+      // candidates x up to ROLLOUT_DEPTH=20 frames each = up to ~460
+      // simulated frames/decision) measured real ~100ms-budget
+      // violations (up to 226-239ms, several per real match, on multiple
+      // seeds) once this module started running for the WHOLE match
+      // instead of just the brief pre-topout window (see active()'s own
+      // comment on why that changed -- the underlying fix is real and
+      // correct, this budget is what makes it safe to keep). 200 and 250
+      // still measured occasional violations (up to 131-161ms) on
+      // specific seeds; 150 is the first value that measured ZERO
+      // over-budget _choose calls across a full 15-seed sweep (max 49ms
+      // observed) -- verified independently, not just accepted from a
+      // single probe.
+      var SIMULATED_FRAME_BUDGET = 150;
+      var framesSimulated = 0;
+
       for (var i = 0; i < candidates.length; i++) {
+        if (framesSimulated >= SIMULATED_FRAME_BUDGET) break;
         var result = TrueSurvivalSearch._simulate(cpu, candidates[i], baseSeed + i * 7919);
+        framesSimulated += Math.min(result.survived + 1, TrueSurvivalSearch.ROLLOUT_DEPTH);
         if (result.survived > bestSurvived ||
           (result.survived === bestSurvived && result.endFill < bestEndFill)) {
           bestSurvived = result.survived;
@@ -1644,11 +1707,42 @@
       return bestDecision; // always non-null: "hold" is always in candidates
     },
 
-    // Builds the candidate list: hold, raise (if the board isn't already
-    // full), the cheap-proxy top ROLLOUT_SWAP_CAP swaps, and
-    // _bestImmediateMatch's pick if it isn't already among them.
+    // Builds the candidate list: hold (but NEVER while topped out -- see
+    // below), raise (if the board isn't already full), the cheap-proxy
+    // top ROLLOUT_SWAP_CAP swaps, _bestImmediateMatch's pick, and
+    // _bestDefensiveMove's own pick, each if not already among them.
+    //
+    // "hold" is excluded once topped out, and this isn't a minor tweak --
+    // it's this file's own "NEVER GO IDLE WHILE TOPPED OUT" rule
+    // (_bestDefensiveMove's own comment: "the single highest-leverage
+    // rule in the whole file"), which TSS was silently violating. Found
+    // by direct instrumentation of a seed that regressed hard once TSS
+    // started operating post-topple (see active()'s own comment): at a
+    // real death, EVERY candidate TSS considered -- hold AND every legal
+    // swap -- simulated to "dies in 3 frames" (the runway's swap-key
+    // budget was already exhausted, a real dead position, same mechanism
+    // as active()'s own comment). TSS correctly saw no move survives
+    // there. The actual damage happened EARLIER: on ties (very common on
+    // a topped-out board where a 20-frame window can't yet distinguish
+    // "sets up a match" from "harmless rearrangement" -- both often
+    // simulate to the same survived/endFill), "hold" always won, because
+    // it's always candidate index 0 and the comparison only replaces the
+    // incumbent on a STRICT improvement. But hold and a swap are NOT
+    // equally safe once topped out, whatever a tied rollout says: a swap
+    // re-arms riseLock via its own animation and keeps the tight
+    // toppedOutCooldown decision cadence; a hold defends nothing and
+    // commits to this.reaction frames (far longer) of doing nothing,
+    // gambling entirely on whatever residual animation state happens to
+    // still be running. Confirmed directly: a real "hold" pick died 3
+    // frames later the instant that residual state ran out. Since
+    // _bestDefensiveMove already never holds while topped out (that rule
+    // predates this module), simply not offering hold as a candidate
+    // there makes TSS inherit the same invariant instead of re-litigating
+    // it through a comparison that structurally can't always tell the
+    // two apart.
     _candidates: function (cpu, board) {
-      var out = [{ kind: "hold" }];
+      var toppedOut = board.maxHeight() >= board.height;
+      var out = toppedOut ? [] : [{ kind: "hold" }];
       if (board.fillRatio() < 1) out.push({ kind: "raise" });
 
       var swaps = board.legalSwaps();
@@ -1668,9 +1762,38 @@
         out.push({ kind: "swap", move: mv });
       }
       var found = cpu._bestImmediateMatch(board);
-      if (found && !seen[found.move[0] + ":" + found.move[1]]) {
+      if (found) {
+        seen[found.move[0] + ":" + found.move[1]] = true;
         out.push({ kind: "swap", move: found.move });
       }
+      // _bestDefensiveMove's own pick was tried here as an extra
+      // candidate (proven a bit-for-bit no-op whenever
+      // legalSwaps().length <= ROLLOUT_SWAP_CAP, since the cheap
+      // boardPotential-gain proxy above already ranks every legal swap
+      // in that regime the same way _bestDefensiveMove's own gainMove
+      // fallback would). Deliberately NOT called here, even gated to
+      // only the legalSwaps().length > ROLLOUT_SWAP_CAP regime where it
+      // could in principle add real coverage: that regime is exactly
+      // frame ~150-160, right at the board's first ordinary top-out,
+      // where legalSwaps is still large (20+) -- calling the full
+      // beam-search-plus-_nPlyRescue-chain machinery there, ON TOP OF
+      // this module's own ~20 rollout simulations for the SAME decision,
+      // measured real timing-budget violations (up to 127-129ms, several
+      // per real match) that persisted even after gating the call to
+      // only that regime. The two costs stack because they're the two
+      // most expensive things this file does, on the exact frame where
+      // demand for both is highest. Round 8's own precedent (FINDINGS.md)
+      // already settled this tradeoff once: an AI that occasionally
+      // takes >100ms to decide is not a valid solution regardless of
+      // what it scores offline, because a real browser can't wait that
+      // long between frames. Losing this one edge case's marginal extra
+      // coverage is the accepted cost of staying inside that budget.
+      // Last-resort guard: only reachable when topped out (hold excluded
+      // above) with zero legal swaps and no raise room -- an essentially
+      // unrecoverable board state, but decide() still promises a non-null
+      // {kind:...} to its caller (see its own comment), so this can't be
+      // left truly empty.
+      if (!out.length) out.push({ kind: "hold" });
       return out;
     },
 
@@ -1757,10 +1880,31 @@
     // this exact difficulty tier), just handling the in-danger case too
     // (PreburstReserve deliberately doesn't -- it defers to the expensive
     // rescue chain, which is exactly what this continuation can't afford).
+    //
+    // NEVER GO IDLE WHILE TOPPED OUT applies here too, and matters more
+    // here than anywhere else in the file: this continuation is what runs
+    // for the 19 simulated frames AFTER a candidate's forced first move,
+    // now that active()/decide() (see their own comments) let TSS operate
+    // through the whole post-topple regime, not just the brief pre-topple
+    // window. Without this, _raiseOrBuild's "hold" (board.fillRatio() is
+    // pinned at 1 >= dangerHeightFrac*raiseFillFrac once topped, so it
+    // always returns hold here) would make literally EVERY rollout die
+    // within a frame or two of its forced move whenever no match exists
+    // to take -- which is most post-topple frames by construction -- so
+    // every candidate would simulate as "instant death" and the whole
+    // comparison TSS exists to make would go uninformative right where
+    // it's needed most. cpu._anyLegalSwap (already in this file, driving
+    // _bestDefensiveMove's identical last-resort rule) is the same cheap
+    // O(legalSwaps) cost class as _raiseOrBuild, so this doesn't reopen
+    // the timing problem the comment above just fixed.
     _continuationStep: function (cpu, board) {
       var found = cpu._bestImmediateMatch(board);
       if (cpu._inDanger(board)) {
         if (found) return { kind: "swap", move: found.move };
+        if (board.maxHeight() >= board.height) {
+          var stall = cpu._anyLegalSwap(board);
+          if (stall) return { kind: "swap", move: stall };
+        }
         return cpu._raiseOrBuild(board); // cheap hold/raise fallback -- see its own comment
       }
       if (found && (found.chainLength >= 2 || found.comboSize >= 4)) {
