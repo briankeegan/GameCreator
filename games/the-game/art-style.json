@@ -126,7 +126,7 @@
     },
     "kat": {
       "name": "Kat",
-      "species": "Kat, in his Infinity AVATAR: a human man's body with a CAT'S HEAD. Everyone in the Lounge is wearing an avatar rather than their real face — Nella's own is a demon — and Kat's is a cat, which is where the name and the \"almost purring\" voice come from. Head: short-furred cat, upright triangular cat ears, a proper muzzle and nose, whiskers, slit-pupil cat eyes, a wide friendly cat grin. Body, hands and posture are an ordinary man's, dressed in the robe and hat below. Warm, theatrical, immediately disarming — a charming gentleman with a cat's head, NOT a feral or monstrous beast.",
+      "species": "Kat, in his Infinity AVATAR: a man's body with a CAT'S HEAD AND A CAT'S HANDS. Everyone in the Lounge wears an avatar rather than their real face — Nella's own is a demon — and Kat's is a cat, which is where the name and the \"almost purring\" voice come from. Head: short-furred cat, upright triangular ears, a proper muzzle and nose, whiskers, slit-pupil eyes, a wide friendly grin. Hands: furred cat PAWS with soft pads and blunt claws, still shaped enough like hands to hold a glass and shake yours. He also has a long cat's TAIL. Body, build and posture are an ordinary man's, dressed in the robe and hat below. A charming gentleman who is part cat, NOT a feral or monstrous beast.",
       "plotQuote": "a man I had never seen before who was wearing a black robe and a top hat. He had black hair, glasses, and a large smile. / said to me, almost purring. \"They call me Kat.\" / NOTE: the CAT HEAD is the owner's design decision for his avatar, not a line in the plot. The plot describes the avatar as it reads to Nella (a man, a hat, black hair, a large smile) and hints at the rest with \"almost purring\" and the name itself.",
       "materials": {
         "head": {
@@ -173,10 +173,11 @@
           "source": "plot"
         },
         "hands": {
-          "base": "#e0a06a",
-          "shade": "#a86f42",
+          "base": "#2a2229",
+          "shade": "#151016",
+          "pads": "#c98a94",
           "appears": "front and side views",
-          "note": "ORDINARY HUMAN HANDS — the avatar is a cat head on a man, so no paws and no claws.",
+          "note": "Furred cat PAWS the same dark fur as his head, with soft pink pads and short blunt claws. Held and used like hands — he is a gentleman with a cat's paws, not an animal. Never bare human skin.",
           "source": "owner"
         },
         "bracelet": {
@@ -185,17 +186,23 @@
           "appears": "front and side views",
           "note": "Gold band with emerald gems. Never diamond — diamond is the top rank and belongs to Timothy.",
           "source": "design"
+        },
+        "tail": {
+          "base": "#2a2229",
+          "shade": "#151016",
+          "appears": "always",
+          "note": "A long cat tail, the same dark fur as his head, emerging from under the back of the robe and curving up behind him. Clearly visible from every angle — it reads as part of his silhouette. Relaxed and expressive, never bristled or lashing.",
+          "source": "owner"
         }
       },
       "proportions": "The shared plan; the top hat adds height above the head, and the head itself is a cat's but a NORMAL head's size.",
       "neverDraw": [
         "a human face",
+        "bare human hands or human skin on the hands",
         "a full cat body, or a cat walking on four legs",
-        "a TAIL — the avatar is a cat head on a man, and a tail also widens the side stride frames enough to trip the cutter's CROPPED check",
-        "paws, claws or fur on the hands",
         "a bare head, or a short brimmed cap instead of a top hat",
         "ears flattened down or hidden under the hat",
-        "a snarl, fangs bared, or any predatory expression",
+        "a snarl, bared fangs, or any predatory expression",
         "blonde or ginger fur"
       ]
     },
