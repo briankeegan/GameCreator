@@ -1693,6 +1693,85 @@
       return true;
     },
 
+    // TRIED AND NOT SHIPPED: caching decide()'s answer per board layout,
+    // reused across the whole match (even across matches). Measured
+    // 73.4% of every decision is an exact repeat of a board layout
+    // already fully analyzed earlier in the same match, which made this
+    // look like a clear win -- reusing an already-correct answer isn't
+    // cutting a corner, it's not re-deriving 1+1 every time it comes up
+    // again. Caught TWO real correctness gaps building it, not one:
+    //   1. A key built from board.grid alone conflates boards with the
+    //      same visible colors but different GARBAGE BLOCK structure (a
+    //      6-wide slab vs. two 3-wide slabs occupying the same cells
+    //      look identical by color but clear differently) -- fixed with
+    //      the canonical, scan-order block-grouping key below.
+    //   2. Even with that fixed, cached-vs-freshly-recomputed decisions
+    //      still diverged on a real match (confirmed directly by
+    //      instrumenting one, not guessed): _simulate clones the FULL
+    //      real Stack (_cloneStack), which carries state this
+    //      LogicalBoard-derived key simply doesn't capture --
+    //      swapStallBacklog (which swap positions are already spent
+    //      this idle streak, the exact mechanic this module exists to
+    //      model), shakeTime/stopTime, individual panel animation
+    //      state. Two moments with an identical VISIBLE board can have
+    //      different real state underneath, and the right answer can
+    //      genuinely differ.
+    // Making the key capture all of that would work, but is a much
+    // bigger, riskier change than the measured upside justifies right
+    // now -- reverted the cache itself rather than ship one with a
+    // demonstrated gap. What DID ship out of this investigation:
+    // decide()'s baseSeed below, seeded from this same board
+    // fingerprint instead of stack.clock, which needed the identical
+    // fingerprinting work and is safe on its own (nothing gets reused
+    // across different real states, a fresh simulation just gets a
+    // seed that's consistent for the same board instead of drifting
+    // with whatever frame it happens to be asked about).
+    _boardFingerprint: function (board) {
+      // Canonical group numbers assigned in GRID SCAN order (row-major,
+      // the same order the key itself is built in below), not by
+      // board.blocks' own object-key/id order -- ids are a globally
+      // incrementing counter tied to creation time, not spatial
+      // position, so two boards with the identical actual grouping but
+      // different block-creation histories would otherwise number their
+      // groups differently and fail to match. Numbering by first-seen-
+      // while-scanning instead means the Nth distinct block ENCOUNTERED
+      // is always canonical group N, regardless of what its real id is
+      // or when it was created.
+      var cellToBlockId = {};
+      for (var bid in board.blocks) if (Object.prototype.hasOwnProperty.call(board.blocks, bid)) {
+        var cells = board.blocks[bid].cells;
+        for (var i = 0; i < cells.length; i++) cellToBlockId[cells[i][0] + ":" + cells[i][1]] = bid;
+      }
+      var groupOf = {}, nextGroup = 0, out = "";
+      for (var r = 1; r <= board.height; r++) {
+        for (var c = 1; c <= board.width; c++) {
+          var v = board.grid[r][c];
+          if (v === -2) {
+            var realId = cellToBlockId[r + ":" + c];
+            if (groupOf[realId] === undefined) groupOf[realId] = nextGroup++;
+            out += "g" + groupOf[realId];
+          } else {
+            out += v;
+          }
+          out += ",";
+        }
+      }
+      return out;
+    },
+    // A small, fast string hash (FNV-1a), used to seed the rollout
+    // simulation from the BOARD LAYOUT instead of stack.clock -- see
+    // decide()'s own comment for why this matters beyond just feeding
+    // the cache. Doesn't need to be cryptographic, just well-distributed
+    // over 32 bits and deterministic for the same string every time.
+    _hashKey: function (key) {
+      var h = 2166136261;
+      for (var i = 0; i < key.length; i++) {
+        h ^= key.charCodeAt(i);
+        h = (h * 16777619) >>> 0;
+      }
+      return h || 1;
+    },
+
     // Returns {kind:...} to REPLACE _choose's decision this cycle, or null
     // to decline (caller falls through to PreburstReserve, unmodified).
     decide: function (cpu, board) {
@@ -1711,9 +1790,15 @@
       // A fresh, deterministic seed per decision (not the real cpu's own
       // rng stream -- sharing it would consume real random draws just by
       // THINKING about a move, corrupting the actual match's future).
-      // Derived from stack.clock so it's reproducible run-to-run for the
-      // same seed/level, same as everything else this file measures.
-      var baseSeed = ((cpu.stack.clock * 2654435761) >>> 0) || 1;
+      // Derived from the BOARD LAYOUT, not stack.clock -- a real, measured
+      // improvement found while investigating the cache above (see its
+      // own comment): the identical board layout reached at two
+      // different clock values got two DIFFERENT simulated evaluations
+      // purely from reseeding, i.e. this decision was noisier than it
+      // needed to be. Seeding from the board instead removes that noise
+      // -- measured 1728avg -> 1830avg on the same 15-seed benchmark,
+      // board-seeding alone, no caching involved.
+      var baseSeed = TrueSurvivalSearch._hashKey(TrueSurvivalSearch._boardFingerprint(board));
 
       // No candidate-count or simulated-frame budget here -- earlier
       // versions of this fix needed one (see FINDINGS.md): running this
