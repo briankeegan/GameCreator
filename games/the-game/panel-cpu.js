@@ -737,6 +737,14 @@
     // observed rate, with real margin under 100ms.
     this.rescueEvalBudget = opts.rescueEvalBudget !== undefined ? opts.rescueEvalBudget : (preset.rescueEvalBudget !== undefined ? preset.rescueEvalBudget : 10000);
     this.dropAmountWeight = opts.dropAmountWeight !== undefined ? opts.dropAmountWeight : (preset.dropAmountWeight !== undefined ? preset.dropAmountWeight : 200);
+    // How many of _bestImmediateMatch's ply-1-ranked matching candidates
+    // get its expensive follow-up ply -- see that function's own comment.
+    // Infinity (exhaustive, the original behavior) everywhere except
+    // TrueSurvivalSearch's own rollout continuation CPU, which sets this
+    // much lower (see _makeRolloutCpu) purely for its own speed; a real
+    // per-frame decision anywhere else in this file still gets the full,
+    // unpruned 2-ply evaluation.
+    this.followUpRankCap = opts.followUpRankCap !== undefined ? opts.followUpRankCap : (preset.followUpRankCap !== undefined ? preset.followUpRankCap : Infinity);
     this.pressureThreshold = opts.pressureThreshold !== undefined ? opts.pressureThreshold : (preset.pressureThreshold !== undefined ? preset.pressureThreshold : 15);
     this.sentWeight = opts.sentWeight !== undefined ? opts.sentWeight : (preset.sentWeight !== undefined ? preset.sentWeight : 50);
     this.rng = root.PanelEngine.makeRng(opts.seed || 4242);
@@ -1421,8 +1429,31 @@
 
   // Best swap that matches something right now, plus how big that match
   // is — the caller decides whether it's worth holding out for bigger.
+  //
+  // Genuinely 2-ply (does this swap match, AND does the board it leaves
+  // behind have an obvious follow-up match) — that second ply is real,
+  // load-bearing lookahead, not a corner to cut. But applying it
+  // EXHAUSTIVELY (every legal swap that matches x every legal swap on
+  // the board it leaves behind) is what makes this expensive: profiled
+  // as the dominant cost inside TrueSurvivalSearch's rollout continuation
+  // (up to ~380 calls per single real decision at this difficulty tier,
+  // since a rollout re-evaluates this every simulated frame).
+  //
+  // Fix keeps the full 2 plies of DEPTH and narrows the BREADTH the
+  // expensive second ply runs on, the same shape as this file's other
+  // pruned searches (_nPlyRescue's rescueBranchCap, _computePlan's beam
+  // width): rank every immediately-matching swap by its cheap ply-1
+  // value first (already computed either way), then only spend the
+  // O(legalSwaps) follow-up pass on the top FOLLOWUP_RANK_CAP of those
+  // -- a candidate several places back on ply 1 essentially never comes
+  // back to win purely off a follow-up bonus, and every other swap
+  // still gets its true ply-1 value considered, so this can only ever
+  // pick a WORSE move than the exhaustive version in the rare case a
+  // long-shot ply-1 candidate held a huge hidden follow-up -- the same
+  // accepted tradeoff every ranked-then-capped search in this file
+  // already makes.
   SearchCpu.prototype._bestImmediateMatch = function (board) {
-    var swaps = board.legalSwaps(), best = null, bestScore = null, bestInfo = null;
+    var swaps = board.legalSwaps(), matched = [];
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
       var trial = board.clone();
@@ -1433,25 +1464,39 @@
       var chainBonus = res.chainLength >= 2 ? res.chainLength * res.chainLength : 0;
       var comboBonus = 0;
       for (var j = 0; j < res.comboSizes.length; j++) if (res.comboSizes[j] >= 4) comboBonus += res.comboSizes[j];
-      // one extra ply: does this leave an obvious follow-up match behind?
-      var followUp = 0, swaps2 = trial.legalSwaps();
-      for (var k = 0; k < swaps2.length; k++) {
-        var follow = trial.clone();
-        follow.swap(swaps2[k][0], swaps2[k][1]);
-        var fres = follow.resolve();
-        if (fres.chainLength > 0) {
-          var fSum = fres.comboSizes.reduce(function (a, b) { return a + b; }, 0);
-          followUp = Math.max(followUp, garbageCells(fres.garbage) * this.garbageWeight
-            + fres.chainLength * fres.chainLength * this.chainWeight * 0.5);
+      var ply1Ev = this._evaluate(trial, gTotal, chainBonus, comboBonus);
+      matched.push({
+        move: [r, c], board: trial, ev: ply1Ev,
+        chainLength: res.chainLength, comboSize: Math.max.apply(null, res.comboSizes.concat([0]))
+      });
+    }
+    if (!matched.length) return null;
+    matched.sort(function (a, b) { return b.ev - a.ev; });
+
+    var best = null, bestScore = null, bestInfo = null;
+    for (var m = 0; m < matched.length; m++) {
+      var cand = matched[m];
+      var ev = cand.ev;
+      // one extra ply, only for the top-ranked candidates: does this
+      // leave an obvious follow-up match behind?
+      if (m < this.followUpRankCap) {
+        var followUp = 0, swaps2 = cand.board.legalSwaps();
+        for (var k = 0; k < swaps2.length; k++) {
+          var follow = cand.board.clone();
+          follow.swap(swaps2[k][0], swaps2[k][1]);
+          var fres = follow.resolve();
+          if (fres.chainLength > 0) {
+            followUp = Math.max(followUp, garbageCells(fres.garbage) * this.garbageWeight
+              + fres.chainLength * fres.chainLength * this.chainWeight * 0.5);
+          }
         }
+        ev += followUp;
       }
-      var ev = this._evaluate(trial, gTotal, chainBonus, comboBonus) + followUp;
       if (bestScore === null || ev > bestScore) {
-        bestScore = ev; best = [r, c];
-        bestInfo = { chainLength: res.chainLength, comboSize: Math.max.apply(null, res.comboSizes.concat([0])) };
+        bestScore = ev; best = cand.move;
+        bestInfo = { chainLength: cand.chainLength, comboSize: cand.comboSize };
       }
     }
-    if (!best) return null;
     return { move: best, chainLength: bestInfo.chainLength, comboSize: bestInfo.comboSize };
   };
 
@@ -1588,6 +1633,11 @@
     // 54ms across the full 15-seed sweep -- see this module's own timing
     // note below).
     ROLLOUT_DEPTH: 20,
+    // How many ply-1-ranked candidates the rollout continuation's
+    // _bestImmediateMatch call spends its expensive follow-up ply on --
+    // see _bestImmediateMatch's and _makeRolloutCpu's own comments.
+    // Calibrated alongside SIMULATED_FRAME_BUDGET below.
+    ROLLOUT_FOLLOWUP_RANK_CAP: 3,
     // Legal swaps are pruned to this many before simulating, by a cheap
     // LogicalBoard boardPotential-gain pass (the same O(swaps) proxy
     // _raiseOrBuild already uses) -- NOT the decision itself, only move
@@ -1665,38 +1715,23 @@
       // same seed/level, same as everything else this file measures.
       var baseSeed = ((cpu.stack.clock * 2654435761) >>> 0) || 1;
 
-      // A deterministic simulated-frame budget, not a wall-clock deadline
-      // -- Round 8 (FINDINGS.md) already found and rejected wall-clock
-      // deadlines here: they make a run's outcome depend on host machine
-      // load, which is a real bug (different results on the same seed on
-      // the same otherwise-idle sandbox, back to back), not just an
-      // implementation detail. This module's own candidate list is
-      // already ordered by the cheap boardPotential-gain proxy inside
-      // _candidates (best-looking first), so stopping early after a
-      // fixed budget of simulated frames still spends the budget on the
-      // most promising candidates first, the same shape as
-      // _nPlyRescue's own eval budget elsewhere in this file.
-      //
-      // Calibrated by measurement, not guessed: unbounded (all ~20-23
-      // candidates x up to ROLLOUT_DEPTH=20 frames each = up to ~460
-      // simulated frames/decision) measured real ~100ms-budget
-      // violations (up to 226-239ms, several per real match, on multiple
-      // seeds) once this module started running for the WHOLE match
-      // instead of just the brief pre-topout window (see active()'s own
-      // comment on why that changed -- the underlying fix is real and
-      // correct, this budget is what makes it safe to keep). 200 and 250
-      // still measured occasional violations (up to 131-161ms) on
-      // specific seeds; 150 is the first value that measured ZERO
-      // over-budget _choose calls across a full 15-seed sweep (max 49ms
-      // observed) -- verified independently, not just accepted from a
-      // single probe.
-      var SIMULATED_FRAME_BUDGET = 150;
-      var framesSimulated = 0;
-
+      // No candidate-count or simulated-frame budget here -- earlier
+      // versions of this fix needed one (see FINDINGS.md): running this
+      // module for the WHOLE match instead of just the brief pre-topout
+      // window (see active()'s own comment on why that changed) made
+      // the OLD, unpruned _bestImmediateMatch expensive enough, called
+      // up to ~380 times per real decision inside the rollout
+      // continuation, to blow the ~100ms real-time budget (up to
+      // 226-239ms measured). A budget that cut candidates short papered
+      // over that without fixing it, and cost real quality doing it
+      // (1728avg unbounded-but-unsafe -> 1416avg budgeted-but-safe).
+      // The actual fix was making _bestImmediateMatch itself cheap
+      // enough that the full, unbounded candidate set fits the budget
+      // on its own (see its own comment) -- verified: worst case
+      // measured 45-67ms across a full 15-seed sweep with EVERY
+      // candidate simulated, no cap, no early exit.
       for (var i = 0; i < candidates.length; i++) {
-        if (framesSimulated >= SIMULATED_FRAME_BUDGET) break;
         var result = TrueSurvivalSearch._simulate(cpu, candidates[i], baseSeed + i * 7919);
-        framesSimulated += Math.min(result.survived + 1, TrueSurvivalSearch.ROLLOUT_DEPTH);
         if (result.survived > bestSurvived ||
           (result.survived === bestSurvived && result.endFill < bestEndFill)) {
           bestSurvived = result.survived;
@@ -1943,6 +1978,13 @@
       roll._noRollout = true; // hard recursion guard -- see _choose's _forcedDecision check and active() above
       roll._cheapContinuation = true; // see _continuationStep's own comment for why this exists
       roll._forcedDecision = null;
+      // NOT carried from sourceCpu (which keeps the real, uncapped
+      // Infinity for actual decisions) -- explicitly narrowed here, see
+      // _bestImmediateMatch's own comment for why: this rollout calls it
+      // up to ~380 times for a single real decision, so its own cost
+      // multiplies by that factor. Calibrated by measurement alongside
+      // the other timing work in this module.
+      roll.followUpRankCap = TrueSurvivalSearch.ROLLOUT_FOLLOWUP_RANK_CAP;
       return roll;
     }
   };
