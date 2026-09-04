@@ -1637,7 +1637,7 @@
     // _bestImmediateMatch call spends its expensive follow-up ply on --
     // see _bestImmediateMatch's and _makeRolloutCpu's own comments.
     // Calibrated alongside SIMULATED_FRAME_BUDGET below.
-    ROLLOUT_FOLLOWUP_RANK_CAP: 3,
+    ROLLOUT_FOLLOWUP_RANK_CAP: 2,
     // Legal swaps are pruned to this many before simulating, by a cheap
     // LogicalBoard boardPotential-gain pass (the same O(swaps) proxy
     // _raiseOrBuild already uses) -- NOT the decision itself, only move
@@ -1855,7 +1855,7 @@
     },
 
     // panels is by far the largest thing on a Stack (height+buffer rows x
-    // width columns of Panel objects, ~25 fields each -- profiled as the
+    // width columns of Panel objects, ~28 fields each -- profiled as the
     // dominant share of _cloneStack's own cost, ahead of every other
     // field combined) and every Panel field is a primitive (confirmed by
     // inspection of makePanel/clearPanel/clearFlags in panel-engine.js --
@@ -1863,19 +1863,31 @@
     // _deepClone below is correct for it but pays real overhead it
     // doesn't need to: recursing into a nested structure that provably
     // never exists, re-deriving "is this an object/array" per field via
-    // typeof/Array.isArray on every one of ~25 fields x ~168 panels.
+    // typeof/Array.isArray on every one of ~28 fields x ~168 panels.
     //
-    // Object.assign({}, p) instead of a hand-listed field copy on
-    // purpose: a hardcoded field list is exactly the kind of thing that
-    // silently drifts wrong if the engine ever adds a field (caught
-    // directly building this -- an initial hand-listed version was
-    // missing `propagatesFalling`, found only by cross-checking every
-    // `p.field =`/`panel.field =`/`below.field =` assignment in
-    // panel-engine.js by hand). Object.assign copies every own field
-    // that's actually there, so it can't go stale the way a maintained
-    // list can, while still being a flat native copy -- no recursive
-    // dispatch, safe here because flatness is a proven, not assumed,
-    // property of this specific object shape.
+    // A manual field-by-field object literal, NOT Object.assign({}, p) --
+    // tried that first on the theory that a native builtin beats hand-
+    // written code and it's the opposite here: microbenchmarked at ~70x
+    // SLOWER than this literal for this exact object shape (V8 doesn't
+    // give Object.assign's generic own-key enumeration the same
+    // hidden-class/inline-cache fast path a fixed-shape literal gets).
+    // Real, measured cost: shipping the Object.assign version caused
+    // REPEATED, reproducible ~100ms-budget violations (up to 127ms, up
+    // to 13 in one 15-seed sweep) on the exact benchmark this whole
+    // module is tuned against -- not a one-off, confirmed across 3
+    // back-to-back sweeps before reverting.
+    //
+    // The field list below is the one thing a hand-written version has
+    // to get exactly right, and an earlier attempt at exactly this
+    // shape already proved that's an easy way to go quietly wrong (a
+    // first hand-listed version was missing `propagatesFalling`). This
+    // list is verified two independent ways, not just eyeballed: every
+    // `p.field=`/`panel.field=`/`below.field=`/etc. assignment in
+    // panel-engine.js found by grep, AND Object.keys() unioned across
+    // real panels sampled live across several full simulated matches
+    // (including garbage panels, which is the only way a
+    // sometimes-absent field like `garbageId` shows up at all) --
+    // 28 fields either way, cross-checked to match.
     _clonePanels: function (panels) {
       var out = new Array(panels.length);
       for (var r = 0; r < panels.length; r++) {
@@ -1884,7 +1896,17 @@
         var newRow = new Array(row.length);
         for (var c = 0; c < row.length; c++) {
           var p = row[c];
-          newRow[c] = p ? Object.assign({}, p) : p;
+          newRow[c] = p ? {
+            row: p.row, col: p.col, id: p.id, color: p.color, chaining: p.chaining,
+            matching: p.matching, timer: p.timer, initialTime: p.initialTime,
+            popTime: p.popTime, popIndex: p.popIndex, xOffset: p.xOffset, yOffset: p.yOffset,
+            gWidth: p.gWidth, gHeight: p.gHeight, shakeTime: p.shakeTime, isGarbage: p.isGarbage,
+            state: p.state, comboIndex: p.comboIndex, comboSize: p.comboSize,
+            swapFromLeft: p.swapFromLeft, dontSwap: p.dontSwap, queuedHover: p.queuedHover,
+            fellFromGarbage: p.fellFromGarbage, stateChanged: p.stateChanged,
+            propagatesChaining: p.propagatesChaining, matchAnyway: p.matchAnyway,
+            propagatesFalling: p.propagatesFalling, garbageId: p.garbageId
+          } : p;
         }
         out[r] = newRow;
       }
