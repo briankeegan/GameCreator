@@ -226,6 +226,27 @@
   // rendered width to a plausible human-silhouette range at a given
   // height so no single sprite reads as squished or stretched relative to
   // its neighbors, regardless of how tightly its own source was cropped.
+  // HOW TALL EACH CHARACTER STANDS ON SCREEN.
+  //
+  // Everyone was drawn at one height, so a child and a grown man came out the
+  // same size — Magma is "a short and very young woman... barely older than a
+  // child" in the plot, and her art is drawn with a child's proportions, but at
+  // 30px she read as an adult with an oversized head rather than as a kid.
+  //
+  // This is the ONE place relative size between characters lives, for the same
+  // reason the sheet-based games keep it in --body-height rather than in each
+  // draw call: scattered per-character sizes drift, and the question "is this
+  // person shorter than that one?" should have one answer you can read.
+  // Height only — the art's own proportions are never touched, so nobody gets
+  // squashed (see spriteDrawSize).
+  var ADULT_H = 30;
+  var DRAW_HEIGHT = {
+    magma: 25   // a child; about five sixths of an adult's height
+  };
+  function drawHeightFor(id) {
+    return DRAW_HEIGHT[id] || ADULT_H;
+  }
+
   // ONE SCALE PER CHARACTER, NOT ONE SIZE PER FRAME.
   //
   // This used to force every frame to the same on-screen height AND clamp its
@@ -1729,7 +1750,7 @@
 
     if (walkEntry) {
       var wimg = walkEntry.img;
-      var wsize = spriteDrawSize(wimg, 30, walkRef), ww = wsize.w, wh = wsize.h;
+      var wsize = spriteDrawSize(wimg, drawHeightFor(npc.id), walkRef), ww = wsize.w, wh = wsize.h;
       ctx.save();
       if (walkMirror) {
         ctx.translate(npc.x, 0);
@@ -1741,7 +1762,7 @@
       ctx.restore();
     } else if (hasSprite) {
       var img = spriteEntry.img;
-      var size = spriteDrawSize(img, 30), w = size.w, h = size.h;
+      var size = spriteDrawSize(img, drawHeightFor(npc.id)), w = size.w, h = size.h;
       ctx.drawImage(img, npc.x - w / 2, npc.y - h, w, h);
     } else {
       var entry = loadArt(npc.art);
@@ -1881,7 +1902,7 @@
       var refSet = human ? FACING_FRAMES_HUMAN : FACING_FRAMES;
       var refEntry = loadArt(refSet.down[1]);
       var playerRef = (refEntry && refEntry.ok) ? refEntry.img : null;
-      var size = spriteDrawSize(img, 30, playerRef), w = size.w, h = size.h;
+      var size = spriteDrawSize(img, drawHeightFor(human ? 'nella_human' : 'nella'), playerRef), w = size.w, h = size.h;
       var cx = player.x + player.w / 2, feetY = player.y + player.h;
       var mirror = player.facing === "right" || (player.facing === "left" && usedFallback);
       ctx.save();
