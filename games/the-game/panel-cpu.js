@@ -1854,21 +1854,61 @@
       return { survived: survived, endFill: endBoard.fillRatio() };
     },
 
+    // panels is by far the largest thing on a Stack (height+buffer rows x
+    // width columns of Panel objects, ~25 fields each -- profiled as the
+    // dominant share of _cloneStack's own cost, ahead of every other
+    // field combined) and every Panel field is a primitive (confirmed by
+    // inspection of makePanel/clearPanel/clearFlags in panel-engine.js --
+    // no nested objects or arrays anywhere inside one). The generic
+    // _deepClone below is correct for it but pays real overhead it
+    // doesn't need to: recursing into a nested structure that provably
+    // never exists, re-deriving "is this an object/array" per field via
+    // typeof/Array.isArray on every one of ~25 fields x ~168 panels.
+    //
+    // Object.assign({}, p) instead of a hand-listed field copy on
+    // purpose: a hardcoded field list is exactly the kind of thing that
+    // silently drifts wrong if the engine ever adds a field (caught
+    // directly building this -- an initial hand-listed version was
+    // missing `propagatesFalling`, found only by cross-checking every
+    // `p.field =`/`panel.field =`/`below.field =` assignment in
+    // panel-engine.js by hand). Object.assign copies every own field
+    // that's actually there, so it can't go stale the way a maintained
+    // list can, while still being a flat native copy -- no recursive
+    // dispatch, safe here because flatness is a proven, not assumed,
+    // property of this specific object shape.
+    _clonePanels: function (panels) {
+      var out = new Array(panels.length);
+      for (var r = 0; r < panels.length; r++) {
+        var row = panels[r];
+        if (!row) { out[r] = row; continue; }
+        var newRow = new Array(row.length);
+        for (var c = 0; c < row.length; c++) {
+          var p = row[c];
+          newRow[c] = p ? Object.assign({}, p) : p;
+        }
+        out[r] = newRow;
+      }
+      return out;
+    },
+
     // A generic deep copy of every own-enumerable field on the Stack except
-    // `rng` (a closure -- see _cloneStack's own note) and `levelData` (a
+    // `rng` (a closure -- see _cloneStack's own note), `levelData` (a
     // shared, effectively-immutable LEVELS[] entry -- copying the reference
-    // is correct and avoids re-copying it on every single candidate).
-    // Everything else on Stack is plain data (panels, incoming/outgoing
-    // queues, events, input state -- confirmed by inspection: the only
-    // instance-level function field anywhere on Stack is rng itself), so a
-    // structural clone is safe and doesn't need Stack's own knowledge of
-    // its fields.
+    // is correct and avoids re-copying it on every single candidate), and
+    // `panels` (see _clonePanels' own comment for why that gets its own
+    // fast path). Everything else on Stack is plain data (incoming/
+    // outgoing queues, events, input state -- confirmed by inspection: the
+    // only instance-level function field anywhere on Stack is rng itself),
+    // so a structural clone is safe and doesn't need Stack's own knowledge
+    // of its fields.
     _cloneStack: function (stack, rngSeed) {
       var clone = Object.create(Object.getPrototypeOf(stack));
       for (var key in stack) {
         if (!Object.prototype.hasOwnProperty.call(stack, key)) continue;
         if (key === "rng") continue;
-        clone[key] = key === "levelData" ? stack[key] : TrueSurvivalSearch._deepClone(stack[key]);
+        clone[key] = key === "levelData" ? stack[key]
+          : key === "panels" ? TrueSurvivalSearch._clonePanels(stack[key])
+            : TrueSurvivalSearch._deepClone(stack[key]);
       }
       // A FRESH, independent rng -- never the real stack's own closure.
       // Sharing it would advance the real match's actual future random
