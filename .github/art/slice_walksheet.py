@@ -244,7 +244,7 @@ def inset_to_green(im, y0, y1, x0, x1, start=4, limit=16):
 
 
 
-def cell_vs_frame(im, y0, y1, x0, x1, frame, label):
+def cell_vs_frame(im, y0, y1, x0, x1, frame, label, inset=0):
     """Did the cut KEEP what was in the cell? Returns a list of complaints.
 
     THE CUTTER IS THE ONLY PART OF THIS PIPELINE THAT CAN DESTROY GOOD ART, AND
@@ -285,6 +285,7 @@ def cell_vs_frame(im, y0, y1, x0, x1, frame, label):
     kept_n = int(kept.sum())
 
     problems = []
+
     ratio = kept_n / cell_n
     if ratio < 0.55:
         problems.append(
@@ -566,7 +567,7 @@ def main():
             # the guess that costs the most: "is this a bad generation, or did
             # we break it?"
             destroyed.extend(cell_vs_frame(im, y0, y1, x0, x1, frame,
-                                           f"{char_id}_{name}_{c}"))
+                                           f"{char_id}_{name}_{c}", inset=inset))
 
     if destroyed:
         # LOUD, AND NAMING THE RIGHT CULPRIT. The frames are still written, so
