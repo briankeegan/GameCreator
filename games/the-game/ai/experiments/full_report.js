@@ -77,8 +77,29 @@ var categoriesArg = process.argv[6] || ALL_CATEGORIES.join(',');
 var CATEGORIES = categoriesArg.split(',');
 var seedCount = parseInt(process.argv[7], 10) || 1;
 
+// A JSON cfgArg may carry a reserved "_tss" object to override
+// TrueSurvivalSearch's own module-level constants (ROLLOUT_DEPTH,
+// ROLLOUT_SWAP_CAP, ROLLOUT_FOLLOWUP_RANK_CAP) -- these govern the
+// search's foresight/breadth and aren't per-CPU opts, so they can't be
+// set any other way through this tool. Added for train_ga.js's GA
+// results, which search these jointly with the regular weights (see
+// ga_core.js) -- without this, a genome that tunes rolloutDepth/
+// rolloutSwapCap could never be validated through the standard tool.
+// Applied once, globally, for the whole run (not per-CPU, since these
+// aren't per-CPU state) -- fine for this tool's purpose of validating
+// one candidate config at a time.
+if (cfgArg[0] === '{') {
+  var parsedForTss = JSON.parse(cfgArg);
+  if (parsedForTss._tss) {
+    Object.keys(parsedForTss._tss).forEach(function (k) {
+      PanelCpu.TrueSurvivalSearch[k] = parsedForTss._tss[k];
+    });
+  }
+}
+
 function makeCpu(stackLevel, useSeed, extraOpts) {
   var opts = cfgArg[0] === '{' ? JSON.parse(cfgArg) : { difficulty: cfgArg };
+  delete opts._tss;
   Object.assign(opts, extraOpts || {});
   opts.seed = useSeed + 55;
   var stack = new PanelEngine.Stack({ level: stackLevel, seed: useSeed, countdown: false });

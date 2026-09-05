@@ -168,8 +168,13 @@ async function main() {
   console.log('');
   console.log('=== BEST GENOME (avg frames=' + allTimeBest.fitness.toFixed(0) + ', maxTiming=' + allTimeBest.maxTiming + 'ms) ===');
   console.log(JSON.stringify(allTimeBest.genome, null, 2));
+  var validateOpts = gaCore.genomeToOpts(allTimeBest.genome);
+  validateOpts._tss = {};
+  gaCore.STRUCTURAL_KEYS.forEach(function (k) {
+    validateOpts._tss[gaCore.STRUCTURAL_TO_MODULE_FIELD[k]] = allTimeBest.genome[k];
+  });
   console.log('');
-  console.log('Validate with: node full_report.js \'' + JSON.stringify(gaCore.genomeToOpts(allTimeBest.genome)) + '\' 10 1 15000 bigBlocks 15');
+  console.log('Validate with: node full_report.js \'' + JSON.stringify(validateOpts) + '\' 10 1 15000 bigBlocks 15');
 
   workers.forEach(function (wk) { wk.kill(); });
   process.exit(0);
