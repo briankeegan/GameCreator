@@ -529,6 +529,13 @@
           "note": "Brown, neat.",
           "source": "plot"
         },
+        "beard": {
+          "base": "#5a3a22",
+          "shade": "#33200f",
+          "appears": "always",
+          "note": "A FULL, neatly trimmed brown beard and moustache, same brown as his hair. He is bearded in every frame and every view — the plot does not mention it either way, so the owner decided it, and it is written here so it cannot drift out again the way it already did (portrait bearded, all nine walk frames clean-shaven).",
+          "source": "owner"
+        },
         "robe": {
           "base": "#6f9fc4",
           "shade": "#3f6a8c",
@@ -560,7 +567,8 @@
       "neverDraw": [
         "a visible badge",
         "a dark robe",
-        "a top hat"
+        "a top hat",
+        "a clean-shaven face"
       ]
     },
     "kyran": {
