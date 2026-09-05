@@ -59,20 +59,61 @@ var WEIGHT_SPEC = {
   pressureThreshold:   [1, 40, false, 15],
   sentWeight:          [0, 10000, false, 5000]
 };
-exports.WEIGHT_SPEC = WEIGHT_SPEC;
-exports.KEYS = Object.keys(WEIGHT_SPEC);
+// TrueSurvivalSearch's own structural knobs -- how far ahead each
+// candidate is simulated, how many candidates are considered, and how
+// many of them get the expensive follow-up ply. These govern the actual
+// foresight of the search; the WEIGHT_SPEC fields above only govern how
+// the plausible-continuation policy plays WITHIN that foresight window.
+// Round 1 of this GA (searching WEIGHT_SPEC alone, module defaults
+// ROLLOUT_DEPTH=20/ROLLOUT_SWAP_CAP=20/ROLLOUT_FOLLOWUP_RANK_CAP=2 held
+// fixed) plateaued at 1806avg -- BELOW the already-shipped 1830avg -- by
+// generation 2 of 15 and never moved again. That's a strong signal the
+// continuation-policy weights aren't the bottleneck at a fixed 20-frame
+// horizon; these structural knobs are module-level constants on
+// PanelCpu.TrueSurvivalSearch, not per-cpu opts, so they're applied by
+// temporarily overwriting them for the duration of one seed's run and
+// restoring them in a finally block.
+var STRUCTURAL_SPEC = {
+  rolloutDepth:          [8, 40, true, 20],
+  rolloutSwapCap:        [5, 30, true, 20],
+  rolloutFollowUpRankCap:[1, 6, true, 2]
+};
+var STRUCTURAL_TO_MODULE_FIELD = {
+  rolloutDepth: 'ROLLOUT_DEPTH',
+  rolloutSwapCap: 'ROLLOUT_SWAP_CAP',
+  rolloutFollowUpRankCap: 'ROLLOUT_FOLLOWUP_RANK_CAP'
+};
+exports.STRUCTURAL_KEYS = Object.keys(STRUCTURAL_SPEC);
+
+var FULL_SPEC = Object.assign({}, WEIGHT_SPEC, STRUCTURAL_SPEC);
+exports.WEIGHT_SPEC = FULL_SPEC;
+exports.KEYS = Object.keys(FULL_SPEC);
 
 exports.defaultGenome = function () {
   var g = {};
-  exports.KEYS.forEach(function (k) { g[k] = WEIGHT_SPEC[k][3]; });
+  exports.KEYS.forEach(function (k) { g[k] = FULL_SPEC[k][3]; });
   return g;
 };
 
 exports.genomeToOpts = function (g) {
   var opts = { difficulty: 'nightmare', mistake: 0, chainExtend: true };
-  exports.KEYS.forEach(function (k) { opts[k] = g[k]; });
+  Object.keys(WEIGHT_SPEC).forEach(function (k) { opts[k] = g[k]; });
   return opts;
 };
+
+function applyStructural(genome) {
+  var saved = {};
+  exports.STRUCTURAL_KEYS.forEach(function (k) {
+    var field = STRUCTURAL_TO_MODULE_FIELD[k];
+    saved[field] = PanelCpu.TrueSurvivalSearch[field];
+    PanelCpu.TrueSurvivalSearch[field] = genome[k];
+  });
+  return function restore() {
+    Object.keys(saved).forEach(function (field) {
+      PanelCpu.TrueSurvivalSearch[field] = saved[field];
+    });
+  };
+}
 
 function runOneSeed(genome, seed) {
   var opts = exports.genomeToOpts(genome);
@@ -88,6 +129,7 @@ function runOneSeed(genome, seed) {
     if (dt > localMax) localMax = dt;
     return r;
   };
+  var restoreStructural = applyStructural(genome);
   var f;
   try {
     for (f = 0; f < TRAINING_CEILING; f++) {
@@ -101,6 +143,7 @@ function runOneSeed(genome, seed) {
     }
   } finally {
     PanelCpu.SearchCpu.prototype._choose = origChoose;
+    restoreStructural();
   }
   return { frames: f, localMax: localMax, unsafe: localMax > TIMING_MARGIN_MS };
 }
