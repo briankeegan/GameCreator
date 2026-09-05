@@ -540,7 +540,7 @@
           "base": "#6f9fc4",
           "shade": "#3f6a8c",
           "appears": "always",
-          "note": "LIGHT-BLUE robe — his most identifying colour.",
+          "note": "A LIGHT-BLUE ROBE — a long, open, ankle-length robe or duster worn OVER his clothes, hanging past his knees, with the front open so the brown vest and white shirt show. It is his most identifying feature in the plot and the first thing Nella describes. It is a ROBE, not a knitted cardigan, jumper, sweater or short jacket — a regeneration that used his portrait as a likeness reference came back with a waist-length blue cardigan in all nine frames, which is the wrong garment even though the colour checked out.",
           "source": "plot"
         },
         "vest": {
@@ -568,7 +568,9 @@
         "a visible badge",
         "a dark robe",
         "a top hat",
-        "a clean-shaven face"
+        "a clean-shaven face",
+        "a knitted cardigan, jumper or sweater in place of the robe",
+        "a robe that stops above the knee"
       ]
     },
     "kyran": {
