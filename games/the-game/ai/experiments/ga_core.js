@@ -51,7 +51,13 @@ var WEIGHT_SPEC = {
   beam:                [2, 16, true, 10],
   patience:            [0, 1, false, 0.85],
   patienceFillCeiling: [0.1, 1, false, 0.5],
-  dangerHeightFrac:    [0.2, 0.9, false, 0.45],
+  // Upper bound widened 0.9 -> 0.98 after round 3's winner (shipped
+  // candidate: 2391avg) landed exactly on the old 0.9 ceiling -- a
+  // search bound a genome pins against is a bound that's actively
+  // costing quality, not a safe default. 1.0 itself is avoided since
+  // dangerHeightFrac gates board.fillRatio() comparisons that are
+  // meant to distinguish "dangerous" from "totally full."
+  dangerHeightFrac:    [0.2, 0.98, false, 0.45],
   raiseFillFrac:       [0.3, 1.0, false, 0.75],
   chainWeight:         [50, 800, false, 380],
   comboWeight:         [10, 200, false, 70],
@@ -62,7 +68,9 @@ var WEIGHT_SPEC = {
   runwayThreshold:     [1, 8, true, 3],
   toppedOutCooldown:   [1, 8, true, 1],
   queuedRunwayWeight:  [0, 1, false, 0.75],
-  rescueBranchCap:     [2, 20, true, 10],
+  // Upper bound widened 20 -> 32 after round 3's winner pinned exactly
+  // at 20 -- same reasoning as dangerHeightFrac above.
+  rescueBranchCap:     [2, 32, true, 10],
   dropAmountWeight:    [0, 1000, false, 200],
   pressureThreshold:   [1, 40, false, 15],
   sentWeight:          [0, 10000, false, 5000]
@@ -84,7 +92,14 @@ var WEIGHT_SPEC = {
 var STRUCTURAL_SPEC = {
   rolloutDepth:          [8, 40, true, 20],
   rolloutSwapCap:        [5, 30, true, 20],
-  rolloutFollowUpRankCap:[1, 6, true, 2]
+  // Upper bound widened 6 -> 10 after round 3's winner found 5 --
+  // getting close enough to the old ceiling to widen it preemptively
+  // (same reasoning as dangerHeightFrac/rescueBranchCap above). The
+  // per-genome timing-safety check already rejects any config that
+  // can't afford the extra cost, so widening this can't ship anything
+  // unsafe -- it can only let the search find MORE cost if the budget
+  // allows it.
+  rolloutFollowUpRankCap:[1, 10, true, 2]
 };
 var STRUCTURAL_TO_MODULE_FIELD = {
   rolloutDepth: 'ROLLOUT_DEPTH',
