@@ -17,12 +17,20 @@ var TIMING_MARGIN_MS = 85;
 
 var LEAD_IN = 150, BURST_LEN = 50, GAP = 900;
 var CYCLE = GAP + BURST_LEN;
-// See train_ga.js's header: capped well below full_report.js's 18000f
-// training-drill ceiling purely so a genome that never dies doesn't burn
-// unbounded search time. Every genome that matters (dies before this)
-// scores identically either way; the eventual winner is re-validated
-// through full_report.js at its real ceiling before anything ships.
-var TRAINING_CEILING = 6000;
+// NOT a quality cap -- explicitly rejected as one. An earlier version of
+// this capped fitness evaluation at 6000, then 9000 frames "for search
+// speed," on the theory that every genome that matters dies well before
+// that. That reasoning breaks the moment training actually works: a
+// genome that survives long enough to brush the cap gets its fitness
+// silently truncated and under-ranked against a genome that's actually
+// worse but happens to die first, exactly backwards from what a fitness
+// function is for. A genome is scored by when it actually dies, full
+// stop. This is a hang-guard only, sized to never matter in practice --
+// 120000 frames is 33 simulated minutes, ~30x the longest survival seen
+// so far (~4000f) -- there purely so a genuinely unkillable genome (a
+// real engine bug, not "good AI") can't hang a background training run
+// forever.
+var TRAINING_CEILING = 120000;
 function fires(f) {
   if (f < LEAD_IN + 1) return false;
   var posInCycle = (f - LEAD_IN - 1) % CYCLE;

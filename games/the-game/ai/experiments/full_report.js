@@ -115,7 +115,14 @@ var TRAINING_MODES = {
 };
 var LEAD_IN = 150, BURST_LEN = 50, GAP = 900;
 var CYCLE = GAP + (LEAD_IN + BURST_LEN) - LEAD_IN;
-var TRAINING_CEILING = 60 * 60 * 5; // 5 simulated minutes is plenty -- these drills die fast
+// NOT a quality cap -- a hang-guard only. 33 simulated minutes, ~30x the
+// longest real survival seen so far on any drill (~4000f) -- there so a
+// genuinely unkillable config (an engine bug, not "good AI") can't hang
+// this tool forever, not to truncate a real result. This IS the standard
+// validation tool (see this file's own guardrail comment above), so its
+// number is never allowed to be an artifact of a cap a genome brushed up
+// against -- a genome/config is scored by when it actually dies.
+var TRAINING_CEILING = 120000;
 
 function runTrainingMode(modeName, stackLevel, useSeed) {
   var mode = TRAINING_MODES[modeName];

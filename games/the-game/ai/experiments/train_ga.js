@@ -35,9 +35,17 @@
 // so the population is evaluated in parallel across one forked worker per
 // core (see ga_worker.js) instead of sequentially in-process.
 //
-// Usage: node train_ga.js [populationSize] [generations] [seed] [workers]
+// Usage: node train_ga.js [populationSize] [generations] [seed] [workers] [seedGenomeFile]
+//   seedGenomeFile: path to a JSON genome (e.g. a prior run's printed
+//   "BEST GENOME") to seed the initial population from instead of
+//   starting purely random. The seed genome itself plus mutated variants
+//   at a few different mutation strengths fill most of the population
+//   (for refining an already-good result instead of re-discovering it),
+//   with a handful of fully random genomes kept for diversity so the
+//   search doesn't get stuck unable to leave the seed's basin.
 var os = require('os');
 var path = require('path');
+var fs = require('fs');
 var cp = require('child_process');
 var gaCore = require('./ga_core.js');
 
@@ -45,6 +53,8 @@ var POP = parseInt(process.argv[2], 10) || 24;
 var GENERATIONS = parseInt(process.argv[3], 10) || 30;
 var RNG_SEED = parseInt(process.argv[4], 10) || 1;
 var NUM_WORKERS = parseInt(process.argv[5], 10) || Math.max(1, os.cpus().length - 1);
+var seedGenomeFile = process.argv[6];
+var seedGenome = seedGenomeFile ? JSON.parse(fs.readFileSync(seedGenomeFile, 'utf8')) : null;
 
 var KEYS = gaCore.KEYS;
 var WEIGHT_SPEC = gaCore.WEIGHT_SPEC;
@@ -134,8 +144,26 @@ async function main() {
   console.log('Params evolved (' + KEYS.length + '): ' + KEYS.join(', '));
   console.log('');
 
-  var population = [gaCore.defaultGenome()];
-  while (population.length < POP) population.push(randomGenome());
+  var population;
+  if (seedGenome) {
+    console.log('Seeding initial population from ' + seedGenomeFile);
+    population = [seedGenome, gaCore.defaultGenome()];
+    // Most of the population: mutated variants of the seed at a spread of
+    // mutation strengths, so the search refines around a known-good
+    // result instead of re-discovering it from scratch. Roughly the last
+    // fifth of the population stays fully random for diversity, so a
+    // better basin elsewhere isn't permanently unreachable.
+    var mutationStrengths = [0.08, 0.15, 0.25, 0.4];
+    var msi = 0;
+    while (population.length < POP * 0.8) {
+      population.push(mutate(seedGenome, mutationStrengths[msi % mutationStrengths.length]));
+      msi++;
+    }
+    while (population.length < POP) population.push(randomGenome());
+  } else {
+    population = [gaCore.defaultGenome()];
+    while (population.length < POP) population.push(randomGenome());
+  }
 
   var allTimeBest = null;
   var startTime = Date.now();
