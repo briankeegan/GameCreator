@@ -37,6 +37,18 @@
     { key: 'latentChain',      group: 'board',  sign: +1, fn: null,
       what: 'Will this landing continue the chain: does a cell carrying the chain flag settle into a match. Forward-looking half of chainLength.' },
 
+    { key: 'links',            group: 'board',  sign: +1, fn: null,
+      what: 'Same-coloured panels orthogonally adjacent. meatfighter\'s single biggest term (25%) — the density that makes chains happen without any chain logic.' },
+
+    { key: 'consecutiveColours', group: 'board', sign: +1, fn: null,
+      what: 'Runs of one colour scanned along every row and column, below match length. With links this is 41% of the score in the Puyo bot that works.' },
+
+    { key: 'colourVariance',   group: 'board',  sign: -1, fn: null,
+      what: 'Per colour, the mean position of its panels and the deviation from it. Low variance means that colour is gathered rather than scattered.' },
+
+    { key: 'edgePenalty',      group: 'board',  sign: -1, fn: null,
+      what: 'Panels in the side columns, which have three orthogonal neighbours instead of four and so link less.' },
+
     { key: 'garbageOnBoard',   group: 'board',  sign: -1, fn: null,
       what: 'Garbage cells present, on-screen weighted above off-screen.' },
 

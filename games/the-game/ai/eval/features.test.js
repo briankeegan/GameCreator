@@ -138,8 +138,118 @@ test('weights.ZERO covers every declared feature', function () {
 });
 
 // --------------------------------------------------------------- features
-// One block per feature, added with the feature. Nothing here yet — see
-// registry.js for the thirteen declared and the order they get built in.
+// One block per feature, added with the feature.
+
+// ---- matchPotential ----
+// Counts legal swaps that would produce a match worth making: combo size
+// 4+, or any size that touches garbage. A plain 3 is not a near-miss of a
+// good move, it IS the bad move — comboGarbage() sends nothing below 4 —
+// so it must score zero. That ACCEPT case is the important half of these
+// tests: a version of this feature that counts every 3 would still pass
+// every "does it fire?" test and would be measuring the wrong thing.
+var F = require('./features.js');
+
+function potential(rows, extra) {
+    return F.matchPotential(inputMod.normalize(Object.assign({ board: board(rows) }, extra || {})));
+}
+
+test('matchPotential: fires on a swap that completes a merged 5', function () {
+    // Swapping the 2 and the 1 in the bottom row puts a 1 at column 3,
+    // making BOTH a row of three (cols 1-3) and a column of three
+    // (rows 1-3) that share that cell — the engine unions them into one
+    // 5-combo, which is exactly why an L is worth more than two 3s.
+    var n = potential([
+        '..1...',
+        '..1...',
+        '1121..'
+    ]);
+    assert.strictEqual(n, 1, 'expected exactly the one qualifying swap');
+});
+
+test('matchPotential: STAYS QUIET on a swap that only makes a plain 3', function () {
+    // Same shape with the column removed: the only swap available now
+    // completes three in a row and nothing else. Sends no garbage, spends
+    // three panels. Must not count.
+    assert.strictEqual(potential(['1121..']), 0);
+});
+
+test('matchPotential: a plain 3 DOES count when it touches garbage', function () {
+    // Identical swap to the test above. The only difference is the garbage
+    // sitting on top of it — and touching garbage is the only way garbage
+    // ever clears, so the same move that was worthless is now the point.
+    assert.strictEqual(potential([
+        '##....',
+        '1121..'
+    ]), 1);
+});
+
+test('matchPotential: the near-miss inside the same board is rejected', function () {
+    // The 5-combo board above also contains a swap that completes only a
+    // vertical 3 (swapping the 1 and 2 the other way). If this feature
+    // counted plain 3s the first test would read 2, not 1 — so that test
+    // and this one together pin the rule from both sides.
+    var rows = ['..1...', '..1...', '1121..'];
+    assert.strictEqual(potential(rows), 1);
+    // and prove that near-miss really is there to be miscounted:
+    var b = board(rows);
+    b.grid[1][2] = 2; b.grid[1][3] = 1;          // apply that other swap by hand
+    var m = F._matchedCells(b);
+    assert.strictEqual(Object.keys(m).length, 3, 'the near-miss should be a real 3-match');
+});
+
+test('matchPotential: an empty board scores zero', function () {
+    assert.strictEqual(potential(['......', '......']), 0);
+});
+
+test('matchPotential: a board with no useful swap scores zero', function () {
+    assert.strictEqual(potential([
+        '123123',
+        '231231'
+    ]), 0);
+});
+
+test('matchPotential: garbage and busy cells are never swapped', function () {
+    // -2 and -1 are not panels. A version that treated them as swappable
+    // would invent matches out of the wall.
+    assert.strictEqual(potential(['#1#1##']), 0);
+    assert.strictEqual(potential(['x1x1xx']), 0);
+});
+
+test('matchPotential: swapping two of the same colour is not a move', function () {
+    assert.strictEqual(potential(['111...']), 0, 'a settled board has no standing match to find');
+});
+
+test('matchPotential: LIMIT — swaps into an empty cell are not counted', function () {
+    // Documented blind spot, asserted so it stays visible. Sliding the 1
+    // at column 4 left into the gap would line up three, but the board
+    // then falls, and gravity is not a pure function of this snapshot.
+    // Guessing at it would be an invisible wrong answer; leaving it is a
+    // known one.
+    assert.strictEqual(potential(['11.1..']), 0);
+});
+
+test('matchPotential: LIMIT — it does not look past one swap', function () {
+    // Two swaps from a match is setup, and real, and not measured here.
+    assert.strictEqual(potential(['1212..']), 0);
+});
+
+test('matchPotential: the input is not mutated by scoring it', function () {
+    // It swaps cells in place to test them and swaps them back. If it ever
+    // failed to restore one, every later evaluation in the search would be
+    // scoring a board that never existed.
+    var b = board(['..1...', '..1...', '1121..']);
+    var before = JSON.stringify(b.grid);
+    F.matchPotential(inputMod.normalize({ board: b }));
+    assert.strictEqual(JSON.stringify(b.grid), before, 'matchPotential left the board altered');
+});
+
+test('matchPotential: weighting it now works end to end through the evaluator', function () {
+    var r = evaluator.evaluate({ board: board(['..1...', '..1...', '1121..']) },
+                               { matchPotential: 10 });
+    assert.strictEqual(r.features.matchPotential, 1);
+    assert.strictEqual(r.terms.matchPotential, 10, 'sign is +1, so the term is +10');
+    assert.strictEqual(r.score, 10);
+});
 
 // ------------------------------------------------------------------ runner
 tests.forEach(function (t) {

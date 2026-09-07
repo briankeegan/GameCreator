@@ -75,12 +75,24 @@ finished step 4, so we always know which change caused which result.
    `registry.js`.
 2. **Implement** — the function in `features.js`, `fn` pointed at it.
    Weight stays 0.
-3. **Prove it computes that** — a case in `features.test.js` on a
-   hand-built board whose answer is known by eye, asserting BOTH
-   directions: it **fires** on the thing it exists for, and it **stays
-   quiet** on the near-miss. Only the first is how a feature that fires on
-   everything ships; only the second is how a feature that fires on nothing
-   ships. This repo has shipped both.
+3. **Prove it computes that**, three ways:
+   - a case in `features.test.js` on a hand-built board whose answer is
+     known by eye, asserting BOTH directions — it **fires** on the thing it
+     exists for and **stays quiet** on the near-miss. Only the first is how
+     a feature that fires on everything ships; only the second is how a
+     feature that fires on nothing ships. This repo has shipped both.
+   - a cross-check in `input.fidelity.test.js` against the REAL engine,
+     swept over seeds and colour counts, where the expected answer is
+     computed independently — not with the feature's own helpers, since a
+     shared helper with a bug agrees with itself perfectly. The sweep
+     asserts its own coverage: too sparse, too dense, or never producing
+     the case being checked all fail.
+   - **mutation-check it by hand**: break the feature on purpose and
+     confirm the suites go red. `matchPotential` was checked four ways —
+     counting plain 3s, dropping the garbage clause, altering the match
+     rule, and failing to restore the board it swaps in place. All four
+     were caught, and one of them (the match rule) was caught ONLY by the
+     fidelity suite, which is the case for having both.
 4. **Measure** — turn the weight on and compare. Board and earned features
    go on `tournament.py`. **`framesToDeath` cannot** — that harness drops
    frame timing on purpose ("none of that changes WHICH SWAP is good",
@@ -88,15 +100,24 @@ finished step 4, so we always know which change caused which result.
    clock feature is measured on `experiments/stress_harness.js` /
    `training_harness.js`, which run the real engine.
 
-## The thirteen
+## The seventeen
 
-Grouped by what they measure, not by importance.
+Grouped by what they measure, not by importance. The four density features
+come from `../PUYO_REFERENCE.md`: in the Puyo bot that works, `links` and
+`consecutiveColours` together are 41% of the score and there is **no chain
+logic at all** — chains emerge because near-complete groups end up packed
+against each other. That is the cheapest known route to a chain-building
+bot, so those four are declared here rather than left as an idea.
 
 **Board** — what the position looks like once the move settles
 
 | Feature | Sign | Notes |
 |---|---|---|
-| `matchPotential` | + | Merged combos of **4+**. A plain 3 scores 0 — `comboGarbage()` sends nothing below 4 — but a 3 that extends a chain or touches garbage still counts |
+| `matchPotential` | + | **BUILT.** Legal swaps that would produce a match of combo size 4+, or any size touching garbage. A plain 3 scores 0 — `comboGarbage()` sends nothing below 4 |
+| `links` | + | Same-coloured panels orthogonally adjacent. 25% of meatfighter's score |
+| `consecutiveColours` | + | Runs of one colour along rows and columns, below match length. With `links`, 41% of the bot that works |
+| `colourVariance` | − | Per colour, deviation from its own mean position. Low = gathered |
+| `edgePenalty` | − | Side columns have three neighbours, not four |
 | `latentChain` | + | Does a chain-flagged cell settle into a match. The forward-looking half of `chainLength` |
 | `garbageOnBoard` | − | On-screen weighted above off-screen |
 | `incomingGarbage` | − | Committed height the grid cannot show yet |

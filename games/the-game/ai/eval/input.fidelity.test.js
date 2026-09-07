@@ -150,6 +150,173 @@ test('fromStack survives a null stack (recorded position, no engine in process)'
     assert.strictEqual(got.board.width, 6);
 });
 
+
+// ---- the match rule itself, checked against getMatchingPanels ----
+//
+// features.js re-implements the engine's matching rule (runs of 3+ along
+// both axes, unioned board-wide) because a feature must be a pure function
+// of a snapshot and cannot call into a live Stack. A re-implementation is
+// exactly the drift this directory exists to prevent, so it is checked
+// against the real thing on random boards rather than trusted.
+//
+// This is the check that would have caught the subtle one: the engine's
+// comboSize is `matching.length` across the WHOLE BOARD, every colour, not
+// per connected group — which is why an L pays as a 5. A reasonable reading
+// of "combo" as "one connected group" passes every hand-written test and
+// disagrees with the engine here.
+//
+// SWEPT ACROSS SEEDS AND COLOUR COUNTS, and the sweep REPORTS ITS OWN
+// COVERAGE. A randomised test on one seed is a hand-written test wearing a
+// disguise — it exercises one arbitrary set of boards forever. And a sweep
+// that happens to generate nothing interesting passes just as green as one
+// that finds the bug, so the coverage assertions below fail if the boards
+// were too sparse, too dense, or never contained the case being checked.
+var features = require('./features.js');
+
+var SEEDS = [1, 7, 42, 99, 1234, 31337, 20260907];
+var COLOUR_COUNTS = [2, 3, 4, 5, 6, 8];   // 2 makes matches unavoidable, 8 makes them rare — both ends are the point
+
+// A random board written straight onto a real Stack's panels, so the engine
+// and the feature are looking at the same thing by construction. `garbage`
+// sprinkles real garbage panels in, since garbage never matches but does
+// decide whether a 3 is worth making.
+function randomBoard(rng, colours, garbageChance) {
+    var stack = newStack();
+    var grid = [], blocks = {}, r, c;
+    for (r = 0; r <= stack.height; r++) grid[r] = [];
+    for (r = 1; r <= stack.height; r++) {
+        for (c = 1; c <= PanelEngine.WIDTH; c++) {
+            var p = stack.panelAt(r, c);
+            var roll = rng();
+            var v;
+            if (garbageChance && roll < garbageChance) {
+                v = -2;
+                p.isGarbage = true; p.color = 9; p.state = 'normal';
+                var id = 'g' + r + '_' + c;
+                blocks[id] = { cells: [[r, c]] };
+            } else {
+                v = Math.floor(rng() * (colours + 1));   // 0 = empty
+                p.isGarbage = false; p.color = v; p.state = 'normal';
+            }
+            grid[r][c] = v;
+        }
+    }
+    return {
+        stack: stack,
+        board: { width: PanelEngine.WIDTH, height: stack.height, grid: grid, blocks: blocks }
+    };
+}
+
+// getMatchingPanels marks the panels it returns, and mark() skips
+// already-marked ones — so a second call on the same stack silently
+// returns less. Every call here is followed by this.
+function engineMatches(stack) {
+    var found = stack.getMatchingPanels();
+    var keys = found.map(function (p) { return p.row + ':' + p.col; }).sort();
+    found.forEach(function (p) { p.matching = false; });
+    return keys;
+}
+
+test('the feature match rule agrees with the engine across seeds and colour counts', function () {
+    var boards = 0, withMatches = 0, empty = 0, big = 0;
+    SEEDS.forEach(function (seed) {
+        COLOUR_COUNTS.forEach(function (colours) {
+            var rng = PanelEngine.makeRng(seed);
+            for (var i = 0; i < 60; i++) {
+                var rb = randomBoard(rng, colours, i % 3 === 0 ? 0.12 : 0);
+                var mine = Object.keys(features._matchedCells(rb.board)).sort();
+                assert.deepStrictEqual(mine, engineMatches(rb.stack),
+                    'seed ' + seed + ', ' + colours + ' colours, board ' + i +
+                    ': feature match set disagrees with getMatchingPanels');
+                boards++;
+                if (mine.length) { withMatches++; if (mine.length >= 5) big++; } else { empty++; }
+            }
+        });
+    });
+    // Coverage — a sweep that never generated the interesting case is not
+    // evidence of anything.
+    assert.ok(boards >= 2000, 'swept only ' + boards + ' boards');
+    assert.ok(withMatches > boards * 0.2, 'only ' + withMatches + '/' + boards +
+        ' boards had any match — the sweep is too sparse to be testing the rule');
+    assert.ok(empty > boards * 0.08, 'only ' + empty + '/' + boards +
+        ' boards had NO match — the sweep is too dense to be testing the rule');
+    assert.ok(big > 20, 'only ' + big + ' boards produced a 5+ union — the ' +
+        'board-wide-union case, the one a connected-group reading gets wrong, ' +
+        'is barely exercised');
+});
+
+// ---- matchPotential itself, cross-checked against the engine ----
+//
+// The hand-built cases in features.test.js pin the RULE. This pins the
+// IMPLEMENTATION against the engine on boards nobody chose: for every legal
+// colour-to-colour swap, apply it to the real Stack, ask getMatchingPanels
+// what happened, and decide independently whether it qualifies. The counts
+// must agree exactly.
+//
+// Independent is the operative word — this deliberately does not reuse
+// features.js's own helpers, since a shared helper with a bug agrees with
+// itself perfectly.
+test('matchPotential agrees with an engine-driven count across seeds', function () {
+    var boards = 0, nonZero = 0, garbageQualified = 0, totalCounted = 0;
+    SEEDS.forEach(function (seed) {
+        COLOUR_COUNTS.forEach(function (colours) {
+            var rng = PanelEngine.makeRng(seed + 5000);
+            for (var i = 0; i < 25; i++) {
+                var withGarbage = i % 2 === 0;
+                var rb = randomBoard(rng, colours, withGarbage ? 0.12 : 0);
+                var stack = rb.stack, grid = rb.board.grid;
+                var W = PanelEngine.WIDTH, H = stack.height;
+                var expected = 0;
+
+                for (var r = 1; r <= H; r++) {
+                    for (var c = 1; c < W; c++) {
+                        var a = grid[r][c], b = grid[r][c + 1];
+                        if (a <= 0 || b <= 0 || a === b) continue;
+                        var pa = stack.panelAt(r, c), pb = stack.panelAt(r, c + 1);
+                        pa.color = b; pb.color = a;
+                        grid[r][c] = b; grid[r][c + 1] = a;
+
+                        var keys = engineMatches(stack);
+                        var caused = keys.indexOf(r + ':' + c) >= 0 ||
+                                     keys.indexOf(r + ':' + (c + 1)) >= 0;
+                        var garbage = false;
+                        for (var k = 0; k < keys.length && !garbage; k++) {
+                            var parts = keys[k].split(':');
+                            var mr = Number(parts[0]), mc = Number(parts[1]);
+                            var n = [[mr + 1, mc], [mr - 1, mc], [mr, mc + 1], [mr, mc - 1]];
+                            for (var j = 0; j < n.length; j++) {
+                                var np = (n[j][0] >= 1 && n[j][0] <= H && n[j][1] >= 1 && n[j][1] <= W)
+                                    ? stack.panelAt(n[j][0], n[j][1]) : null;
+                                if (np && np.isGarbage) { garbage = true; break; }
+                            }
+                        }
+                        if (caused && (keys.length >= 4 || garbage)) {
+                            expected++;
+                            if (keys.length < 4 && garbage) garbageQualified++;
+                        }
+
+                        pa.color = a; pb.color = b;
+                        grid[r][c] = a; grid[r][c + 1] = b;
+                    }
+                }
+
+                var got = features.matchPotential(inputMod.normalize({ board: rb.board }));
+                assert.strictEqual(got, expected,
+                    'seed ' + seed + ', ' + colours + ' colours, board ' + i +
+                    ': matchPotential said ' + got + ', engine-driven count said ' + expected);
+                boards++;
+                totalCounted += expected;
+                if (expected > 0) nonZero++;
+            }
+        });
+    });
+    assert.ok(nonZero > boards * 0.2, 'only ' + nonZero + '/' + boards +
+        ' boards had any qualifying swap — this is not exercising the feature');
+    assert.ok(totalCounted > 100, 'only ' + totalCounted + ' qualifying swaps in total');
+    assert.ok(garbageQualified > 5, 'only ' + garbageQualified + ' swaps qualified via the ' +
+        'garbage clause — the plain-3-that-touches-garbage rule is barely covered');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); process.stdout.write('  ok   ' + t.name + '\n'); }
     catch (e) { failures.push(t.name + '\n       ' + e.message); process.stdout.write('  FAIL ' + t.name + '\n'); }
