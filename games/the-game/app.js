@@ -1717,12 +1717,14 @@
   // live as "you do not see a reflection of yourself." Clips the player's
   // own live sprite (same walk frame she's actually standing in) into the
   // measured glass region, mirrored like a real reflection.
+  var MIRROR_RANGE = 90;
   function drawMirrorReflection(prop, x0, y0, dw, dh) {
     var ddx = player.x + player.w / 2 - prop.x, ddy = player.y + player.h - prop.y;
+    var dist = Math.sqrt(ddx * ddx + ddy * ddy);
     // Out of the glass's reach — a reflection pinned to the frame from clear
     // across the room would look like a ghost stuck in the mirror, not a
     // mirror that's simply not facing her right now.
-    if (Math.sqrt(ddx * ddx + ddy * ddy) > 90) return;
+    if (dist > MIRROR_RANGE) return;
     var human = currentRoom && currentRoom.playerForm === "human";
     var frames = (human ? FACING_FRAMES_HUMAN : FACING_FRAMES).down;
     var frameIdx = isWalking ? WALK_SEQUENCE[Math.floor(walkPhase) % WALK_SEQUENCE.length] : 1;
@@ -1731,7 +1733,17 @@
     var img = entry.img;
     var gx0 = x0 + dw * MIRROR_GLASS.x0, gx1 = x0 + dw * MIRROR_GLASS.x1;
     var gy0 = y0 + dh * MIRROR_GLASS.y0, gy1 = y0 + dh * MIRROR_GLASS.y1;
-    var size = spriteDrawSize(img, (gy1 - gy0) * 0.6);
+    // A real mirror's reflection isn't a fixed size: it sits as far behind
+    // the glass as you stand in front of it, so closing that distance closes
+    // BOTH legs of the trip at once and your image grows faster than you'd
+    // expect from simply walking closer. Feet stay pinned to the glass's own
+    // floor line — the near edge doesn't move — and only the height grows,
+    // so she visibly rises taller in the frame the closer she gets, cropped
+    // by the glass itself if she comes right up to it, the way leaning into
+    // a real mirror crops your own reflection's head.
+    var near = Math.max(0, Math.min(1, 1 - dist / MIRROR_RANGE));
+    var targetH = (gy1 - gy0) * (0.34 + near * near * 0.5);
+    var size = spriteDrawSize(img, targetH);
     var w = size.w, h = size.h;
     // Tracks a little as she steps side to side in front of it, clamped to a
     // window centred on the mirror rather than the whole room, so the
