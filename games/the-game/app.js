@@ -1100,8 +1100,8 @@
   }
   // Walking into someone and holding it blocks forever otherwise — a real
   // wall is fine to just stop at, a person shouldn't be. After ~2s of
-  // sustained shove they step out of the way (away from the player, along
-  // the current floor), then resume their normal wander from there.
+  // sustained shove they step out of the way, then resume their normal
+  // wander from there.
   var PUSH_THRESHOLD = 2, PUSH_STEP = 22;
   var pushedNpc = null, pushTimer = 0;
   // An NPC walking in through a door (see thenTalk/entryFrom above) whose
@@ -1113,17 +1113,45 @@
     pushTimer += dt;
     if (pushTimer < PUSH_THRESHOLD) return;
     var w = ensureWanderState(npc);
+    // (npc - player), the direction the shove is travelling IN. Reported
+    // live as "they move the same direction [I'm walking]": the old step
+    // used this vector as-is, which puts the step-aside spot further along
+    // the SAME line the player is walking — not out of the way at all, just
+    // relocated a few px down the same corridor, blocking again a moment
+    // later. A real sidestep is PERPENDICULAR to the push, so rotate it
+    // 90° instead and try both sides (order randomised so a shove doesn't
+    // always dodge the same way).
     var dx = npc.x - (player.x + player.w / 2), dy = npc.y - (player.y + player.h);
     var d = Math.hypot(dx, dy) || 1;
-    // Step aside away from the player, but only as far as there is still
-    // floor: back off toward where they stand until the spot is legal, so a
-    // shove against a wall can't push someone out into the black — and never
-    // into a doorway.
-    var tx = npc.x, ty = npc.y;
-    for (var step = PUSH_STEP; step >= 4; step -= 4) {
-      var cx = npc.x + (dx / d) * step, cy = npc.y + (dy / d) * step;
-      if (isFloor(room, cx, cy) && !inDoorway(room, cx, cy)) { tx = cx; ty = cy; break; }
+    var ux = dx / d, uy = dy / d;
+    var sides = [{ x: -uy, y: ux }, { x: uy, y: -ux }];
+    if (Math.random() < 0.5) sides.reverse();
+    // Only as far as there is still floor and clear of any prop: walk the
+    // step in from PUSH_STEP until the spot is legal, so a shove near a
+    // wall or a table can't push someone into it, or out into the black,
+    // or into a doorway.
+    var tx = npc.x, ty = npc.y, found = false;
+    for (var s = 0; s < sides.length && !found; s++) {
+      for (var step = PUSH_STEP; step >= 4; step -= 4) {
+        var cx = npc.x + sides[s].x * step, cy = npc.y + sides[s].y * step;
+        if (isFloor(room, cx, cy) && !inDoorway(room, cx, cy) && !blockedByProp(room, cx, cy)) {
+          tx = cx; ty = cy; found = true; break;
+        }
+      }
     }
+    // Neither side had room (a narrow corridor) — fall back to the old
+    // straight-back step rather than not moving at all, same legality
+    // checks as the sidestep so this can't land in a prop either.
+    if (!found) {
+      for (var step2 = PUSH_STEP; step2 >= 4; step2 -= 4) {
+        var cx2 = npc.x + ux * step2, cy2 = npc.y + uy * step2;
+        if (isFloor(room, cx2, cy2) && !inDoorway(room, cx2, cy2) && !blockedByProp(room, cx2, cy2)) {
+          tx = cx2; ty = cy2; break;
+        }
+      }
+    }
+    // If NOTHING is legal (boxed in on every side), tx/ty stay at npc.x/y —
+    // a no-op is a wall or a prop, never assigned as a target.
     w.tx = tx; w.ty = ty;
     w.homeX = w.tx; w.homeY = w.ty; // step-aside becomes their new "home" — they don't snap back into the player
     w.pause = 0;
