@@ -184,8 +184,69 @@
     return count;
   }
 
+  // ------------------------------------------------------ colourVariance
+  //
+  // PER COLOUR: ITS MEAN POSITION, THEN THE MEAN DISTANCE OF ITS PANELS
+  // FROM THAT MEAN. SUMMED OVER COLOURS.
+  //
+  // Returns SCATTER — how far from gathered each colour is. The registry
+  // signs it negative, so gathered scores better; the function itself never
+  // decides whether more is good (see the header rules).
+  //
+  // Two things it must not become, both of which pass a careless test:
+  //
+  // 1. DISTANCE FROM THE BOARD CENTRE. Subtracting each colour's OWN mean
+  //    is what makes it position-invariant: the same clump in the corner
+  //    and in the middle must score identically, because what is being
+  //    measured is tightness, not location. Height and edge position are
+  //    other features' jobs, and a variance that quietly also measured them
+  //    would triple-count.
+  //
+  // 2. ONE MEAN FOR ALL COLOURS. Two colours in two tight clumps at
+  //    opposite ends of the board is TIDY — that is exactly the structure
+  //    that makes chains — and pooling them into a single mean would report
+  //    it as the most scattered board possible.
+  //
+  // Mean absolute distance rather than squared: squaring makes one far-flung
+  // panel dominate the term for its whole colour, and a stray panel is a
+  // normal, recoverable state, not a catastrophe. If it turns out the
+  // outlier SHOULD dominate, that is a measurable change, not a rewrite.
+  //
+  // A colour with one panel has no scatter, and a colour with none
+  // contributes nothing — both are 0 rather than a division by zero.
+  function colourVariance(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var byColour = {}, r, c, v;
+
+    for (r = 1; r <= H; r++) {
+      for (c = 1; c <= W; c++) {
+        v = grid[r][c];
+        if (v <= 0) continue;              // garbage, busy and empty are not colours
+        if (!byColour[v]) byColour[v] = [];
+        byColour[v].push([r, c]);
+      }
+    }
+
+    var total = 0;
+    for (var colour in byColour) {
+      if (!byColour.hasOwnProperty(colour)) continue;
+      var cells = byColour[colour], n = cells.length, i;
+      if (n < 2) continue;                 // one panel cannot be scattered
+      var mr = 0, mc = 0;
+      for (i = 0; i < n; i++) { mr += cells[i][0]; mc += cells[i][1]; }
+      mr /= n; mc /= n;
+      var spread = 0;
+      for (i = 0; i < n; i++) {
+        spread += Math.abs(cells[i][0] - mr) + Math.abs(cells[i][1] - mc);
+      }
+      total += spread / n;
+    }
+    return total;
+  }
+
   return {
     matchPotential: matchPotential,
+    colourVariance: colourVariance,
     links: links,
     // exported for tests only — not features
     _matchedCells: matchedCells

@@ -149,6 +149,10 @@ test('weights.ZERO covers every declared feature', function () {
 // every "does it fire?" test and would be measuring the wrong thing.
 var F = require('./features.js');
 
+function variance(rows) {
+    return F.colourVariance(inputMod.normalize({ board: board(rows) }));
+}
+
 function links(rows) {
     return F.links(inputMod.normalize({ board: board(rows) }));
 }
@@ -321,6 +325,105 @@ test('links: weighting it works end to end through the evaluator', function () {
     assert.strictEqual(r.terms.links, 6, 'sign is +1');
 });
 
+
+
+// ---- colourVariance ----
+// Per colour, the mean position of its panels, then the mean distance of
+// those panels from it, summed over colours. Low = each colour is gathered
+// somewhere rather than sprinkled everywhere. Sign is negative, so the
+// feature returns SCATTER and the evaluator subtracts it.
+//
+// The trap this must avoid: a measure dominated by where the clump sits
+// rather than how tight it is. Same shape in the corner and in the middle
+// must score the same, or the feature is really "distance from the board
+// centre" wearing a disguise.
+
+test('colourVariance: a tight clump is the LOWEST-scoring arrangement of its panels', function () {
+    // Not zero — a 2x2 block genuinely has mean deviation, since every
+    // cell sits half a square from the centre. Zero is only true of a
+    // single panel. What matters is that no other arrangement of four
+    // panels beats the block, so this asserts the ordering rather than a
+    // number the formula happens to produce.
+    var block = variance(['11....', '11....']);
+    assert.ok(block > 0, 'a 2x2 block has real deviation: ' + block);
+    [['1.1...', '1.1...'],
+     ['11..11'],
+     ['1....1', '1....1'],
+     ['1.....', '.1....', '..1...', '...1..']].forEach(function (rows) {
+        assert.ok(variance(rows) > block,
+            JSON.stringify(rows) + ' scored ' + variance(rows) + ', not worse than the block ' + block);
+    });
+});
+
+test('colourVariance: the same panels spread out score more than gathered', function () {
+    var gathered = variance(['11....', '11....', '......']);
+    var spread   = variance(['1....1', '......', '1....1']);
+    assert.ok(spread > gathered, 'spread ' + spread + ' should exceed gathered ' + gathered);
+});
+
+test('colourVariance: POSITION-INVARIANT — the same clump anywhere scores the same', function () {
+    // The near-miss. A version that measured distance from the board
+    // centre, or forgot to subtract the mean, would fail this and pass
+    // every other test in this block.
+    assert.strictEqual(variance(['11....', '11....', '......']),
+                       variance(['......', '....11', '....11']));
+});
+
+test('colourVariance: a single panel of a colour has no scatter', function () {
+    assert.strictEqual(variance(['1.....']), 0);
+});
+
+test('colourVariance: a colour absent from the board contributes nothing', function () {
+    // Adding a colour that is not on the board must change nothing, and
+    // must not divide by zero. Asserted as an equality between two boards
+    // rather than against a constant.
+    var one = variance(['11....']);
+    assert.ok(isFinite(one) && one > 0, 'got ' + one);
+    assert.strictEqual(variance(['11....', '......']), one,
+        'an empty row introduced no colour and must not change the score');
+});
+
+test('colourVariance: an empty board is zero, not NaN', function () {
+    var v = variance(['......', '......']);
+    assert.strictEqual(v, 0);
+});
+
+test('colourVariance: colours are measured separately, then summed', function () {
+    // Two colours each in their own tight clump at opposite ends is TIDY —
+    // it is the structure that makes chains — so it must score exactly
+    // twice one clump, not as one enormous scattered blob. A version that
+    // pooled every colour into a single mean fails this badly, and passes
+    // every other test in this block.
+    var one = variance(['11....', '11....']);
+    var two = variance(['11..22', '11..22']);
+    assert.strictEqual(two, one * 2);
+    var pooled = variance(['11..11', '11..11']);   // same shape, ONE colour
+    assert.ok(pooled > two, 'one colour split across the board (' + pooled +
+        ') must score worse than two colours each gathered (' + two + ')');
+});
+
+test('colourVariance: garbage and busy cells are not a colour', function () {
+    assert.strictEqual(variance(['#....#', '#....#']), 0);
+    assert.strictEqual(variance(['x....x']), 0);
+});
+
+test('colourVariance: measures SCATTER, not how much of a colour there is', function () {
+    // Found by mutation: dropping the per-colour division by n makes the
+    // term grow with panel COUNT, so a large tidy block outscores two
+    // panels flung to opposite corners — exactly backwards. Eight panels
+    // in a 2x4 block are gathered; two panels at opposite corners are not.
+    var bigTidy   = variance(['1111..', '1111..', '......', '......']);
+    var tinyScattered = variance(['1.....', '......', '......', '.....1']);
+    assert.ok(tinyScattered > bigTidy,
+        'two scattered panels (' + tinyScattered + ') must score worse than ' +
+        'eight gathered ones (' + bigTidy + ')');
+});
+
+test('colourVariance: weighting it works end to end through the evaluator', function () {
+    var r = evaluator.evaluate({ board: board(['1....1']) }, { colourVariance: 2 });
+    assert.ok(r.features.colourVariance > 0);
+    assert.ok(r.terms.colourVariance < 0, 'sign is -1, so scatter must subtract');
+});
 
 // ------------------------------------------------------------------ runner
 tests.forEach(function (t) {

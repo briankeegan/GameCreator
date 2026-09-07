@@ -115,7 +115,7 @@ bot, so those four are declared here rather than left as an idea.
 |---|---|---|
 | `matchPotential` | + | **BUILT.** Legal swaps that would produce a match of combo size 4+, or any size touching garbage. A plain 3 scores 0 — `comboGarbage()` sends nothing below 4 |
 | `links` | + | **BUILT.** Same-coloured panels orthogonally adjacent, counted as pairs. 25% of meatfighter's score |
-| `colourVariance` | − | Per colour, deviation from its own mean position. Low = gathered |
+| `colourVariance` | − | **BUILT.** Per colour, mean distance of its panels from that colour's OWN mean. Position-invariant, per-colour, and per-panel averaged — each of those three is a mutation that survived a careless test |
 | `edgePenalty` | − | Side columns have three neighbours, not four |
 | `latentChain` | + | Does a chain-flagged cell settle into a match. The forward-looking half of `chainLength` |
 | `garbageOnBoard` | − | On-screen weighted above off-screen |
