@@ -1099,10 +1099,10 @@
     w.walkPhase = (w.walkPhase || 0) + dt * 9;
   }
   // Walking into someone and holding it blocks forever otherwise — a real
-  // wall is fine to just stop at, a person shouldn't be. After ~2s of
+  // wall is fine to just stop at, a person shouldn't be. After ~1s of
   // sustained shove they step out of the way, then resume their normal
   // wander from there.
-  var PUSH_THRESHOLD = 2, PUSH_STEP = 22;
+  var PUSH_THRESHOLD = 1, PUSH_STEP = 22;
   var pushedNpc = null, pushTimer = 0;
   // An NPC walking in through a door (see thenTalk/entryFrom above) whose
   // dialogue is held until they've actually arrived — checked each frame in
