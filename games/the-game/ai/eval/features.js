@@ -522,8 +522,63 @@
            (clock.shakeTime || 0) + (clock.health || 0);
   }
 
+  // ---------------------------------------------------------- latentChain
+  //
+  // WILL THIS LANDING CONTINUE THE CHAIN.
+  //
+  // Counts cells that carry the chain flag AND sit inside a match on the
+  // settled board. The forward-looking half of chainLength: that one says
+  // what a chain ended up worth, this one says whether the next link is
+  // already on its way.
+  //
+  // The flags are what make it decidable. A panel gets `chaining` by
+  // falling because of an earlier clear (enterHoverFromNormal), and a
+  // hovering panel can never START a chain (Panel.matchAnyway). So a match
+  // built only of freshly-fallen but unflagged panels is a NEW COMBO, not a
+  // link — and nothing counting cells or colours can tell those two apart.
+  // Without the flags this feature would inflate every ordinary match into
+  // a chain, which is the most expensive way to be wrong here: chains are
+  // where all the garbage comes from, so overstating them mis-prices every
+  // move on the board.
+  //
+  // chainMarks null means NOT MID-CASCADE and returns 0, which is a
+  // different fact from {} — mid-cascade with nothing landing chaining —
+  // even though both score zero. input.js keeps them distinct on purpose;
+  // collapsing them is how a feature starts reporting on boards it knows
+  // nothing about.
+  //
+  // Cells rather than a boolean: two flagged cells landing in the same
+  // match is a more certain link than one, and a weight can decide what
+  // that is worth.
+  function latentChain(input) {
+    var marks = input.chainMarks;
+    if (!marks) return 0;
+    var matched = matchedCells(input.board);
+    var n = 0;
+    for (var key in marks) {
+      if (marks.hasOwnProperty(key) && marks[key] && matched[key]) n++;
+    }
+    return n;
+  }
+
+  // ------------------------------------------------------- garbageCleared
+  //
+  // GARBAGE CELLS THIS MOVE CONVERTED, PROPAGATION INCLUDED.
+  //
+  // Comes from the resolved candidate rather than being recomputed here:
+  // one match clears every connected garbage block it touches AND every
+  // block those touch in turn (getConnectedGarbagePanels), so the number
+  // depends on the resolve, not on the settled grid this feature can see.
+  // Recomputing it from the board would be a second, worse implementation
+  // of a rule the engine already applied.
+  function garbageCleared(input) {
+    return input.earned.garbageCleared || 0;
+  }
+
   return {
     matchPotential: matchPotential,
+    latentChain: latentChain,
+    garbageCleared: garbageCleared,
     framesToDeath: framesToDeath,
     garbageSent: garbageSent,
     chainLength: chainLength,

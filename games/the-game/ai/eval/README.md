@@ -43,6 +43,7 @@ Two problems in the existing code, both found by reading it:
 | `attach.js` | Patches `SearchCpu.prototype._evaluate` at runtime; returns a `detach()` |
 | `features.test.js` | Does each feature compute what the registry says? |
 | `input.fidelity.test.js` | Does the input agree with the REAL engine? |
+| `seam.test.js` | Does the adapter actually FEED every feature, through the real SearchCpu? |
 
 ## Two test files, because there are two ways to be wrong
 
@@ -59,11 +60,19 @@ nonsense. `ai/experiments/harness_fidelity.test.js` exists because that
 happened twice, silently, and invalidated every benchmark in that
 directory.
 
-Run both:
+And a third way, which the other two are both blind to: the adapter could
+pass nothing at all and they would stay green, because one builds inputs by
+hand and the other checks `fromStack` against a Stack. Neither touches
+`attach.js` — so `seam.test.js` weights each feature ALONE, on a board built
+to make it fire, through the real `SearchCpu._evaluate`, and fails on any
+that scores zero. A single shared board does not do this: most features are
+legitimately zero on most boards, so a one-board sweep reports "not fed" for
+features that are fine and proves nothing about the ones that are not.
 
 ```
 node features.test.js
 node input.fidelity.test.js
+node seam.test.js
 ```
 
 ## Adding a feature — four steps, in order
@@ -117,7 +126,7 @@ bot, so those four are declared here rather than left as an idea.
 | `links` | + | **BUILT.** Same-coloured panels orthogonally adjacent, counted as pairs. 25% of meatfighter's score |
 | `colourVariance` | − | **BUILT.** Per colour, mean distance of its panels from that colour's OWN mean. Position-invariant, per-colour, and per-panel averaged — each of those three is a mutation that survived a careless test |
 | `edgePenalty` | − | **BUILT.** Count of panels in the side columns — three neighbours instead of four |
-| `latentChain` | + | Does a chain-flagged cell settle into a match. The forward-looking half of `chainLength` |
+| `latentChain` | + | **BUILT.** Chain-flagged cells that settle inside a match. Distinguishes the next link from a new combo — nothing counting cells can |
 | `garbageOnBoard` | − | **BUILT.** Garbage CELLS, not blocks — a 6x2 slab is twelve cells of wall |
 | `incomingGarbage` | − | **BUILT.** Queued but not landed, in cells. The grid cannot show these, which is the mechanism behind panel-cpu.js's worst deaths |
 | `maxHeight` | − | **BUILT.** Tallest column plus displacement/16 — a board one pixel from a new row is not the same board |
@@ -132,7 +141,7 @@ bot, so those four are declared here rather than left as an idea.
 |---|---|---|
 | `garbageSent` | + | **BUILT.** In cells. Combo → widths, chain → one full-width block growing a row per link. Checked against pushGarbage, not against retyped table values |
 | `chainLength` | + | **BUILT.** Passed through. The first link is x2, never x1 — there is no chain of one |
-| `garbageCleared` | + | Including propagation into touching blocks |
+| `garbageCleared` | + | **BUILT.** Cells converted, propagation included. Derived at the seam by differencing live board against candidate |
 
 **Clock** — one composite, not three
 

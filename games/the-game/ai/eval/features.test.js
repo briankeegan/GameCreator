@@ -149,6 +149,11 @@ test('weights.ZERO covers every declared feature', function () {
 // every "does it fire?" test and would be measuring the wrong thing.
 var F = require('./features.js');
 
+function latent(rows, marks) {
+    return F.latentChain(inputMod.normalize({ board: board(rows), chainMarks: marks }));
+}
+function cleared(n) { return F.garbageCleared(inputMod.normalize({ earned: { garbageCleared: n } })); }
+
 function death(clock) { return F.framesToDeath(inputMod.normalize({ clock: clock })); }
 
 function sent(earned) { return F.garbageSent(inputMod.normalize({ earned: earned })); }
@@ -806,6 +811,69 @@ test('framesToDeath: riseLock alone makes it unkillable, even topped out at 1 he
 
 test('framesToDeath: topped out with nothing left is zero, not Infinity', function () {
     assert.strictEqual(death({ toppedOut: true, health: 0 }), 0);
+});
+
+
+// ---- latentChain ----
+// WILL THIS LANDING CONTINUE THE CHAIN. Counts cells that carry the chain
+// flag AND sit inside a match on the settled board. The forward-looking
+// half of chainLength.
+//
+// The distinction that makes it possible at all: a panel gets `chaining`
+// by falling because of an earlier clear. A match made of freshly-fallen
+// but NOT chain-flagged panels is a new combo, not a link — and a hovering
+// panel can never START a chain (Panel.matchAnyway). Nothing counting
+// cells can tell those apart without the flags.
+
+test('latentChain: not mid-cascade at all is zero', function () {
+    // chainMarks null means "no cascade in flight", which is different
+    // from {} — see input.js. Both are zero here, but for different
+    // reasons, and conflating them is how the feature would start
+    // reporting on boards it knows nothing about.
+    assert.strictEqual(latent(['111...'], null), 0);
+});
+
+test('latentChain: mid-cascade with nothing landing chaining is zero', function () {
+    assert.strictEqual(latent(['111...'], {}), 0);
+});
+
+test('latentChain: a chain-flagged cell inside a match fires', function () {
+    // Row 1 is a match of three; the middle cell is flagged as having
+    // fallen from an earlier clear, so this match IS the next link.
+    assert.strictEqual(latent(['111...'], { '1:2': true }), 1);
+});
+
+test('latentChain: STAYS QUIET when the flagged cell is not in a match', function () {
+    // The near-miss, and the one that matters. A panel falling from an
+    // earlier clear is only a chain link if it lands INTO a match; landing
+    // beside one it does not complete is nothing.
+    assert.strictEqual(latent(['112...'], { '1:1': true }), 0);
+});
+
+test('latentChain: a match with no flagged cell is a new combo, not a link', function () {
+    // Freshly fallen but not chaining. This is exactly the case a cell
+    // count cannot distinguish, and getting it wrong inflates every
+    // ordinary match into a chain.
+    assert.strictEqual(latent(['111...'], { '3:6': true }), 0);
+});
+
+test('latentChain: counts the flagged cells in the match, not the match size', function () {
+    assert.strictEqual(latent(['111...'], { '1:1': true, '1:3': true }), 2);
+});
+
+test('latentChain: garbage carries no chain flag of its own', function () {
+    assert.strictEqual(latent(['#11...'], { '1:1': true }), 0);
+});
+
+// ---- garbageCleared ----
+// Garbage cells this move converted, propagation included.
+
+test('garbageCleared: clearing nothing is zero', function () {
+    assert.strictEqual(cleared(0), 0);
+});
+
+test('garbageCleared: it is cells, so a whole slab outweighs one cell', function () {
+    assert.ok(cleared(12) > cleared(1));
 });
 
 // ------------------------------------------------------------------ runner

@@ -17,15 +17,32 @@
 // into a benchmark run, or — worse, if the guard were softer — score
 // nothing and report a clean null result.
 //
-// WHAT THIS CANNOT DO YET, stated plainly rather than discovered later:
-// _evaluate's signature is (board, cumGarbage, cumChain, cumCombo), which
-// carries no cascade prediction and no per-candidate garbageCleared. Those
-// two inputs need a richer call site, so the features that depend on them
-// (latentChain, garbageCleared) will read as absent under this adapter
-// until that call site exists. attach() therefore REFUSES a non-zero
-// weight on a feature it cannot feed, for the same reason evaluator.js
-// refuses one on a feature nobody has written: a silently-zero term is
-// worse than a failed run.
+// FEEDING THE TWO THAT _evaluate's SIGNATURE CANNOT REACH.
+//
+// _evaluate(board, cumGarbage, cumChain, cumCombo) carries no cascade
+// prediction and no per-candidate cleared count, so latentChain and
+// garbageCleared had nothing to read and attach() refused a weight on
+// them rather than let them contribute a silent zero.
+//
+// Both are recoverable from `this` at call time without touching
+// panel-cpu.js, which is the point of doing it here:
+//
+//   - the cascade prediction is a method on the SearchCpu itself
+//     (_cascadePrediction), computing exactly the chain marks the feature
+//     wants and then discarding them. It is called once per evaluation and
+//     memoised per frame, because the prediction depends on the live
+//     Stack's in-flight panels, not on the candidate board — recomputing it
+//     for every candidate would be the same answer at a few hundred times
+//     the cost.
+//   - garbage cleared is the difference between the garbage on the live
+//     board and the garbage on the candidate: the candidate has already
+//     been resolved, so anything missing from it was cleared by the move.
+//     Counting it here rather than plumbing a new argument through the
+//     search keeps the shipped file untouched.
+//
+// The refusal list is therefore empty. It stays in the code because the
+// NEXT feature that outruns this signature should be refused the same way
+// — loudly, at attach time — rather than quietly reading zero.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
     module.exports = factory(require('./evaluator.js'), require('./input.js'));
@@ -39,10 +56,15 @@
   // Features this adapter's call site physically cannot supply. Keep this
   // list honest — shrinking it is a real change to the seam, not a config
   // tweak.
-  var UNFED_BY_THIS_SEAM = {
-    latentChain: '_evaluate receives no cascade prediction, so chainMarks is always null here',
-    garbageCleared: '_evaluate receives no per-candidate cleared count'
-  };
+  var UNFED_BY_THIS_SEAM = {};
+
+  function garbageCells(grid, W, H) {
+    var n = 0;
+    for (var r = 1; r <= H; r++) {
+      for (var c = 1; c <= W; c++) if (grid[r] && grid[r][c] === -2) n++;
+    }
+    return n;
+  }
 
   function attach(SearchCpu, weights) {
     weights = weights || {};
@@ -57,11 +79,42 @@
 
     var original = SearchCpu.prototype._evaluate;
     SearchCpu.prototype._evaluate = function (board, cumGarbage, cumChain, cumCombo) {
+      // The cascade prediction is a property of the LIVE stack this frame,
+      // not of the candidate being scored, so it is computed once and
+      // reused. Keyed on the stack's own clock: a new frame invalidates it,
+      // and nothing else can.
+      var cascade = null;
+      if (typeof this._cascadePrediction === 'function') {
+        var clock = this.stack ? this.stack.clock : 0;
+        if (this.__panelEvalCascadeAt !== clock) {
+          this.__panelEvalCascadeAt = clock;
+          try { this.__panelEvalCascade = this._cascadePrediction(); }
+          catch (e) { this.__panelEvalCascade = null; }
+        }
+        cascade = this.__panelEvalCascade;
+      }
+
+      // Cleared = what the live board holds minus what the candidate does.
+      // The candidate has already been resolved, so garbage missing from
+      // it was cleared by this move. Never negative: garbage ARRIVING is
+      // incomingGarbage's business, not this feature's.
+      var clearedCount = 0;
+      if (this.stack && board && board.grid) {
+        var W = board.width, H = board.height, live = 0, r, c, p;
+        for (r = 1; r <= H; r++) {
+          for (c = 1; c <= W; c++) {
+            p = this.stack.panelAt(r, c);
+            if (p && p.isGarbage) live++;
+          }
+        }
+        clearedCount = Math.max(0, live - garbageCells(board.grid, W, H));
+      }
+
       var input = inputMod.fromStack(this.stack, board, {
         chainLength: cumChain,
         comboSizes: cumCombo ? [cumCombo] : [],
         garbage: cumGarbage ? [[cumGarbage, 1]] : []
-      }, null, 0);
+      }, cascade, clearedCount);
       return evaluator.evaluate(input, weights).score;
     };
     SearchCpu.prototype._evaluate.__panelEvalAttached = true;
