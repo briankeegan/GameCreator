@@ -59,8 +59,12 @@
   // 'P' player spawn (walkable), 'X' a PUSHABLE crate's starting tile (turned
   // into a dynamic object at room load, see buildRoomState — the '.' under it
   // is what the tile grid actually holds once the room is running), 'S' a
-  // puzzle switch/pressure plate (walkable floor, drawn with a marker on top;
-  // see drawSwitchPlate).
+  // "push" puzzle's target plate (walkable floor, drawn with a marker on top;
+  // see drawSwitchPlate — lit only while a crate rests on it), 'K' a "vault"
+  // puzzle's key start point (walkable floor; turned into state.keyPickup at
+  // room load exactly like a "guard" room's enemy-dropped key, see
+  // buildRoomState and update()'s pickup check — collect it, then reach the
+  // gate, same as guard).
   //
   // INTERIOR OBSTACLES ARE NOT THE BOUNDARY WALL. They used to be: blocks of
   // '2' sat in the middle of the yard, so the corrugated-fence TEXTURE was
@@ -190,17 +194,22 @@
     "2......P.......2",
     "2222222HH2222222",
   ];
+  // 2026-09-07 (puzzle overhaul) — was "switches" (find 3 loose plates, any
+  // order); now "push", Back Gate's own vertical pair rather than a copy of
+  // Bridge/Foundry's: one crate straight north 2 tiles, the other straight
+  // south 3 — opposite directions on the SAME axis, so the room still reads
+  // differently from Bridge (north+west) and Foundry (L-push+west).
   const GATEROOM_MAP = [
     "2222222GG2222222",
     "222....B.....222",
-    "22.S........S.22",
+    "22.3........4.22",
     "2..............2",
-    "2......4.......2",
+    "2....S.........2",
     "2.............PH",
-    "2...3......3...H",
+    "2....X.....X...H",
     "2..............2",
-    "2.......S......2",
     "2..............2",
+    "2..........S...2",
     "2..............2",
     "2222222222222222",
   ];
@@ -249,8 +258,8 @@
     "2222222222222222",
   ];
   // Rail Switchyard: a "guard" room (see the puzzle-variety note above the
-  // ROOMS list) between the Overpass push puzzle and the Drone Nest's
-  // sequence puzzle — one drone here carries the key, not a plate anywhere.
+  // ROOMS list) between the Overpass push puzzle and the Drone Nest's own
+  // push puzzle — one drone here carries the key, not a plate anywhere.
   const SWITCHYARD_MAP = [
     "2222222222222222",
     "222....22....222",
@@ -265,18 +274,29 @@
     "2......P.......2",
     "2222222HH2222222",
   ];
+  // 2026-09-07 (puzzle overhaul) — was "sequence" (3 numbered plates, hit in
+  // order); now "push", but its own pair forces a real order through
+  // GEOMETRY instead of a painted number: a solid wall runs down column 8
+  // with exactly one gap (row 6), and crate A starts sitting IN that gap —
+  // a real, verified fact about the room, not a suggestion (flood-filled
+  // from the spawn with both crates treated as fixed obstacles: the whole
+  // left half, crate B included, comes back UNREACHABLE until crate A is
+  // pushed clear). Push crate A west through the gap onto its plate first,
+  // which incidentally opens the only way into the left half, THEN cross
+  // over and push crate B south onto its own. "Do this before that" as
+  // level geometry, not a UI telling you the order.
   const DRONE_NEST_MAP = [
     "2222222GG2222222",
-    "2......B......22",
-    "22S............2",
-    "2..............2",
-    "2....33....44..2",
-    "2.............PH",
-    "2..............H",
-    "2....44....33..2",
-    "2..............2",
-    "2..........S...2",
-    "2..S...........2",
+    "2......B2.....22",
+    "22......2......2",
+    "2..X....2......2",
+    "2.......2..33..2",
+    "2.......2.....PH",
+    "2...S...X......H",
+    "2.......2..44..2",
+    "2..S....2......2",
+    "2.......2......2",
+    "2.......2......2",
     "2222222222222222",
   ];
   // ---- Rust Quarter zone (rooms 11-15): introduces the Junk Brute. ----
@@ -330,33 +350,46 @@
     "22.............2",
     "2222222222222222",
   ];
-  // Smelter: a sequence puzzle (see ROOMS comment) with its own switch
-  // layout and order, not a repeat of Drone Nest's.
+  // 2026-09-07 (puzzle overhaul) — was "sequence" (3 numbered plates);
+  // now "vault" (NEW mechanic, see the ROOMS comment): a key sits at the
+  // dead end of a short 1-wide alcove (cols 10-12, row 4, walled top and
+  // bottom, closed at col 13) reachable only through its col-9 mouth. The
+  // crate barricading that mouth sits in the OPEN room, not the alcove, so
+  // it can be shoved clear north, south or west — the puzzle is "get the
+  // obstacle out of your path", not "put it on a target", the opposite
+  // verb from every "push" room despite using the same crate object.
   const SMELTER_MAP = [
     "2222222222222222",
     "2.............22",
-    "2....4....4...22",
-    "2S.............2",
-    "2..............2",
-    "GB.............2",
+    "2...4....4....22",
+    "2.........222..2",
+    "2........X..K2.2",
+    "GB........222..2",
     "G........4.....2",
     "2..............2",
-    "2.............S2",
-    "2......S......22",
-    "2......P......22",
+    "23.............2",
+    "2..............2",
+    "2......P.......2",
     "2222222HH2222222",
   ];
+  // 2026-09-07 (puzzle overhaul) — was "switches" (find 3 loose plates);
+  // now "vault" (see the ROOMS comment), same idea as Smelter's but built
+  // VERTICAL where Smelter's was horizontal so the chapter's two vault
+  // rooms don't share a silhouette any more than Bridge and Foundry's two
+  // push rooms do: a 3-tall dead-end shaft (col 9, rows 5-7, walled either
+  // side) with the key at its top, mouth at the bottom guarded by a crate
+  // sitting in the open floor below rather than in the shaft itself.
   const TOWN_GATE_MAP = [
     "2222222GG2222222",
     "2......B.......2",
-    "2.S..3....3..S.2",
+    "2...3......3...2",
     "222..........222",
-    "22............22",
-    "2......44.....PH",
-    "2..............H",
-    "2..............2",
-    "2.3..........3.2",
-    "222.....S....222",
+    "2........2.....2",
+    "2.......2K2...PH",
+    "2.......2.2....H",
+    "2.......2.2....2",
+    "2.3......X..3..2",
+    "222..........222",
     "22............22",
     "2222222222222222",
   ];
@@ -403,6 +436,52 @@
   //                key-drop section in app.js). No plate anywhere in it.
   //   - "clear"    the other 7 rooms — straight fights, still the default
   //                so a puzzle is a change of pace, not wall-to-wall.
+  //
+  // 2026-09-07 (puzzle overhaul — feedback: "all of the puzzles are pretty
+  // much just dumb... but I don't mind the one where you move a block...
+  // the one where you count 1-2-3 is just dumb") — "switches" and
+  // "sequence" are DELETED, not retextured a third time: stripped of the
+  // floor-pattern dressing, both were always "walk onto N marked tiles" —
+  // find-any-order or memorise-a-number is a difference of degree, not of
+  // kind, so no amount of reskinning was ever going to stop the numbered
+  // one reading as "counting to three". Per the request, went and looked at
+  // how top-down action-adventures actually build puzzle rooms: it's
+  // almost always Sokoban-style block-pushing (this is what ALTTP's own
+  // puzzle rooms are) — which happens to be the one mechanic already here
+  // that WASN'T the complaint. So rather than invent a sixth step-on-a-tile
+  // variant, every room that lost "switches"/"sequence" became one of:
+  //   - "push"  Bridge, Foundry (unchanged) PLUS Back Gate and Drone Nest
+  //             (converted): two crates, two different push directions,
+  //             same rule as before (isGateOpen's `every`, both crates on
+  //             both plates at once). Drone Nest's pair goes further — its
+  //             two crate/switch pairs sit on OPPOSITE sides of a wall with
+  //             exactly one gap, and the FIRST crate starts sitting IN that
+  //             gap, physically blocking the second crate's half of the
+  //             room until it's pushed clear (verified with a standalone
+  //             flood-fill: the second crate's side is provably
+  //             UNREACHABLE before the first crate moves — see this file's
+  //             own dev notes). That's the "do this before that" beat the
+  //             numbered plates were reaching for, done as a real spatial
+  //             fact about the room instead of a number painted on the
+  //             floor.
+  //   - "vault" Smelter, Town Gate (NEW, replacing "switches"): a key sits
+  //             ('K' tile) at the dead end of a short walled-in alcove; a
+  //             crate barricades the only mouth into it, sitting in the
+  //             OPEN room rather than the alcove itself so it can be shoved
+  //             clear in any of several directions, not placed on a target
+  //             — the opposite verb from "push" (get an obstacle OUT of
+  //             your way, instead of ONTO a spot) despite reusing the same
+  //             crate object and the same "guard" key-pickup plumbing
+  //             (isGateOpen/update() treat "guard" and "vault" identically
+  //             once a key exists — they only differ in how the key gets
+  //             there). Town Gate's is the vertical version of Smelter's
+  //             horizontal one, so the chapter's two vault rooms don't
+  //             share a silhouette any more than its two push rooms do.
+  //   - "guard"/"clear" unchanged.
+  // Five mechanics is now four ("switches"/"sequence" collapsed to nothing,
+  // "vault" added), still across 8 of 15 rooms, still no two adjacent
+  // puzzle rooms sharing one: push (Bridge, Foundry, Back Gate, Drone
+  // Nest), vault (Smelter, Town Gate), guard (Catwalk, Switchyard).
   const ROOMS = [
     {
       id: "alley",
@@ -457,7 +536,10 @@
       name: "Back Gate",
       blurb: "The back gate hums with a rail line somewhere beyond it.",
       map: GATEROOM_MAP,
-      type: "switches", // gate opens once every switch tile has been stepped on AND enemies are cleared
+      // Was "switches" (find 3 loose plates); now its own "push" pair —
+      // one crate straight north 2 tiles, the other straight south 3 —
+      // see the 2026-09-07 comment above GATEROOM_MAP.
+      type: "push", // gate opens once every switch tile has its own crate on it AND enemies are cleared
       enemySpawns: [{ c: 7, r: 2, type: "rat" }, { c: 3, r: 6, type: "rat" }, { c: 12, r: 6, type: "rat" }],
     },
     {
@@ -514,11 +596,12 @@
       name: "Drone Nest",
       blurb: "Wires nest here — whatever built this is still listening.",
       map: DRONE_NEST_MAP,
-      // Sequence, not find-any-order: the three plates must be hit in the
-      // order they're numbered (see drawSwitchPlate/isGateOpen and the
-      // ROOMS comment above) — a real puzzle instead of "walk over 3 things
-      // in whatever order", and not a repeat of Back Gate's mechanic.
-      type: "sequence",
+      // Was "sequence" (3 numbered plates); now "push", but with a real
+      // forced order — one crate starts wedged in the room's only wall
+      // gap and has to be cleared before the other half (and its own
+      // crate) is even reachable. See the 2026-09-07 comment above
+      // DRONE_NEST_MAP for how that's verified, not just asserted.
+      type: "push",
       tint: TINT_RAIL,
       enemySpawns: [{ c: 5, r: 3, type: "drone" }, { c: 10, r: 3, type: "drone" }, { c: 7, r: 6, type: "drone" }],
     },
@@ -554,9 +637,9 @@
       name: "Smelter",
       blurb: "The smelter's shell still ticks as it cools.",
       map: SMELTER_MAP,
-      // Sequence, same as Drone Nest, but its own switch layout/order — the
-      // Rust Quarter's version of the ordered puzzle, not a repeat of it.
-      type: "sequence",
+      // Was "sequence"; now "vault" (NEW mechanic, see the ROOMS comment) —
+      // a key behind a crate barricade instead of a third numbered plate.
+      type: "vault",
       tint: TINT_RUST,
       enemySpawns: [{ c: 7, r: 6, type: "brute" }, { c: 3, r: 4, type: "drone" }, { c: 12, r: 4, type: "drone" }],
     },
@@ -565,7 +648,11 @@
       name: "Town Gate",
       blurb: "Past the gate, streetlights — Town, finally, in view.",
       map: TOWN_GATE_MAP,
-      type: "switches",
+      // Was "switches"; now "vault", the chapter's other one (Smelter's is
+      // horizontal, this one's vertical — see the 2026-09-07 comment above
+      // TOWN_GATE_MAP) — the finale gate's puzzle is a crate-clearing job
+      // fought over with the room's four enemies, not a plate hunt.
+      type: "vault",
       tint: TINT_RUST,
       enemySpawns: [
         { c: 7, r: 4, type: "brute" },

@@ -149,6 +149,27 @@
 //      "sequence" / plain fights) instead of 6 of the 9 being the same
 //      find-3-plates room with a different floor pattern. See the comment
 //      above the ROOMS list.
+// 2026-09-07 (puzzle overhaul — feedback: "all the puzzles are pretty much
+// dumb... the one where you count 1-2-3 is just dumb", but "I don't mind
+// the one where you move a block") — "switches" and "sequence" are GONE,
+// not rebalanced again: both were "walk onto N marked floor tiles" under a
+// different word (find them in any order, or memorise a number painted on
+// them), and no amount of retinting that verb was ever going to stop
+// reading as the game asking you to count to three. The genre's own answer
+// to "how are top-down puzzles usually done" is Sokoban-style block-pushing
+// (ALTTP's own puzzle rooms are built the same way) — the ONE mechanic here
+// that was never the complaint — so instead of inventing a fifth
+// step-on-a-tile variant, every removed room became either a genuine
+// "push" (two of Back Gate/Drone Nest's crates now force a real spatial
+// order — one physically walls off the other's half of the room until it's
+// pushed out of a chokepoint, see DRONE_NEST_MAP — instead of a number
+// telling you the order) or a new "vault": a crate barricades a dead-end
+// alcove hiding a key, and solving it means shoving the crate OUT of your
+// path rather than ONTO a target, a different feel from "push" despite
+// reusing the same crate object (see the ROOMS comment for the full split
+// and rooms.js's file header for the map-level detail). See isGateOpen,
+// buildRoomState's new 'K' tile, and drawSwitchPlate (now push-only, no
+// more order numbers) for the code side.
 const GAME_ID = "dog-punk";
 
 // ---- checkpoint save (resume where you left off) ----
@@ -977,7 +998,12 @@ if (rollBtn) window.GCTouchControls.bindHold(rollBtn, () => { rollQueued = true;
 // result into whichever fields they own.
 function buildRoomState(idx) {
   const room = ROOMS[idx];
-  MAP = room.map.map((row) => row.replace(/X/g, "."));
+  // 'K' ("vault" rooms only, see the ROOMS comment) is a static key start
+  // point, not a real tile any more than 'X' is — stripped the same way, so
+  // it draws as plain floor once the key itself is a live object
+  // (keyStart, picked up via the exact same overlap check "guard" rooms use
+  // for their dropped key — see update()).
+  MAP = room.map.map((row) => row.replace(/X|K/g, "."));
   let spawn = { x: 7 * TILE + TILE / 2, y: 10 * TILE + TILE / 2 };
   // 'B' is the BACK-gate arrival point — where you land after retreating in
   // through this room's 'H' tile from the room after it — set just under
@@ -985,6 +1011,7 @@ function buildRoomState(idx) {
   // use it. Falls back to `spawn` so a room without a 'B' marker can't hand
   // back an undefined coordinate.
   let backSpawn = null;
+  let keyStart = null;
   const crates = [];
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
@@ -992,6 +1019,7 @@ function buildRoomState(idx) {
       if (ch === "P") spawn = { x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 };
       if (ch === "B") backSpawn = { x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 };
       if (ch === "X") crates.push({ x: c * TILE + TILE / 2, y: r * TILE + TILE / 2, w: 26, h: 26, isCrate: true });
+      if (ch === "K") keyStart = { x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 };
     }
   }
   if (!backSpawn) backSpawn = spawn;
@@ -1026,7 +1054,7 @@ function buildRoomState(idx) {
       attackCooldownUntil: 0, lungeDx: 0, lungeDy: 0, hasHitThisLunge: false,
     };
   });
-  return { spawn, backSpawn, crates, enemies };
+  return { spawn, backSpawn, crates, enemies, keyStart };
 }
 
 function freshState() {
@@ -1055,15 +1083,15 @@ function freshState() {
     },
     enemies: built.enemies,
     crates: built.crates,
-    // Back Gate puzzle: which switch tiles (encoded as row*COLS+col) have
-    // been stepped on this room. Reset every room load — see isGateOpen.
-    switchesHit: new Set(),
-    // "guard" rooms (see ROOMS comment, puzzle pass): the key dropped by
-    // the marked enemy, and whether it's been picked up yet — see the
-    // key-drop/pickup code in update() and isGateOpen. Reset every room
-    // load same as switchesHit; a key from a room you left has no business
-    // surviving into the next one.
-    keyPickup: null,
+    // "guard"/"vault" rooms (see the puzzle-overhaul comment above the
+    // ROOMS list): the key to collect, and whether it's been picked up yet
+    // — see the key-drop/pickup code in update() and isGateOpen. "vault"
+    // rooms start this already set from the room's own 'K' tile
+    // (buildRoomState's keyStart); "guard" rooms start it null and it's
+    // only set once the marked enemy dies. Reset every room load either
+    // way — a key from a room you left has no business surviving into the
+    // next one.
+    keyPickup: built.keyStart || null,
     keyCollected: false,
     startTime: performance.now(),
     elapsed: 0,
@@ -1099,8 +1127,7 @@ function transitionToRoom(idx, entry) {
   state.player.rollUntil = 0; state.player.rollCooldownUntil = 0;
   state.enemies = built.enemies;
   state.crates = built.crates;
-  state.switchesHit = new Set();
-  state.keyPickup = null;
+  state.keyPickup = built.keyStart || null;
   state.keyCollected = false;
   state.deathFx = [];
   state.projectiles = [];
@@ -1133,8 +1160,7 @@ function resumeFromCheckpoint(save) {
   state.player.maxHp = save.maxHp;
   state.enemies = built.enemies;
   state.crates = built.crates;
-  state.switchesHit = new Set();
-  state.keyPickup = null;
+  state.keyPickup = built.keyStart || null;
   state.keyCollected = false;
   state.deathFx = [];
   state.projectiles = [];
@@ -1156,8 +1182,7 @@ function resetRoom() {
   state.player.rollUntil = 0; state.player.rollCooldownUntil = 0;
   state.enemies = built.enemies;
   state.crates = built.crates;
-  state.switchesHit = new Set();
-  state.keyPickup = null;
+  state.keyPickup = built.keyStart || null;
   state.keyCollected = false;
   state.deathFx = [];
   state.projectiles = [];
@@ -1308,37 +1333,12 @@ function update(dt, now) {
     moveEntity(p, dx * p.speed * dt, dy * p.speed * dt, gateOpen, true);
   }
 
-  // Switch puzzle: stepping onto a switch tile activates it permanently for
-  // the rest of the room (a memory/exploration puzzle — find them all —
-  // rather than a timing one). Harmless to check in every room; only
-  // "switches"/"sequence" rooms ever have an 'S' tile to find.
-  //
-  // "sequence" rooms (Drone Nest, Smelter) additionally enforce ORDER: a
-  // plate only activates if it's the next one in `room.switchTiles` (the
-  // order they're numbered in, drawn by drawSwitchPlate) — stepping on plate
-  // 3 before plate 2 does nothing yet, rather than counting it early or
-  // punishing the wrong guess by resetting progress. `state.switchesHit`
-  // doubles as the "how many done" count for both room types precisely
-  // because entries are only ever added in valid order for "sequence" too.
-  {
-    const pc = Math.floor(p.x / TILE), pr = Math.floor(p.y / TILE);
-    if (MAP[pr] && MAP[pr][pc] === "S") {
-      const room = ROOMS[state.roomIndex];
-      const key = pr * COLS + pc;
-      if (room.type === "sequence") {
-        const next = room.switchTiles[state.switchesHit.size];
-        if (next && next.r === pr && next.c === pc) state.switchesHit.add(key);
-      } else {
-        state.switchesHit.add(key);
-      }
-    }
-  }
-
-  // "guard" rooms' key pickup: a real object at a real position (see the
-  // carriesKey death hook above), collected on overlap like anything else
-  // in this game rather than by proximity or a keypress — walking over it
-  // is the whole interaction. Harmless to check every room; only "guard"
-  // rooms ever set state.keyPickup.
+  // "guard"/"vault" key pickup: a real object at a real position (a marked
+  // enemy's death for "guard", the room's own 'K' tile from room-load for
+  // "vault" — see buildRoomState and the ROOMS comment), collected on
+  // overlap like anything else in this game rather than by proximity or a
+  // keypress — walking over it is the whole interaction. Harmless to check
+  // every room; only "guard"/"vault" rooms ever set state.keyPickup.
   if (state.keyPickup && rectsOverlap(p.x, p.y, p.w, p.h, state.keyPickup.x, state.keyPickup.y, 18, 18)) {
     state.keyCollected = true;
     state.keyPickup = null;
@@ -1625,16 +1625,16 @@ function isGateOpen() {
     return room.switchTiles.every((s) => state.crates.some((cr) =>
       Math.floor(cr.x / TILE) === s.c && Math.floor(cr.y / TILE) === s.r));
   }
-  if (room.type === "switches" || room.type === "sequence") {
-    // Same completion test for both — "sequence" only differs in HOW a
-    // plate is allowed to join switchesHit (see the switch-detection code
-    // in update()), not in what "done" means.
-    return room.switchTiles.length > 0 && state.switchesHit.size >= room.switchTiles.length;
-  }
-  // "guard" (see ROOMS comment, puzzle pass): the marked enemy's key has to
-  // actually be picked up, not just have the enemy dead — see the key-drop/
-  // pickup code in update() for where state.keyCollected gets set.
-  if (room.type === "guard") return !!state.keyCollected;
+  // "guard" and "vault" share one completion test — a key has to actually
+  // be picked up, not just made reachable — they only differ in HOW the key
+  // gets there: "guard" drops it off a marked enemy's death (see the
+  // key-drop code in update()'s attack-hit block), "vault" starts it
+  // sitting on the room's 'K' tile from the moment the room loads (see
+  // buildRoomState) behind a crate barricade instead of behind a fight.
+  // See the 2026-09-07 puzzle-overhaul comment above the ROOMS list for why
+  // "switches"/"sequence" (walk onto N marked floor tiles, in any order or
+  // a memorised one) are gone rather than fixed again.
+  if (room.type === "guard" || room.type === "vault") return !!state.keyCollected;
   return true;
 }
 
@@ -1757,31 +1757,18 @@ function drawTile(c, r, ch, gateOpen) {
 // scenery, so it doesn't belong in tiles.png or its `environmentPalette`
 // generation pass — but it's still built FROM that palette so it reads as
 // part of the same junkyard rather than a UI element floating over it.
-// `label` (a 1-based order number) and `isNext` are only ever passed for
-// "sequence" rooms (see the render() call site) — a "switches" room's
-// plates stay unlabelled since any order is fine. `isNext` gets a warm
-// pulse so the room is always telling you which plate to find next instead
-// of leaving order-enforcement as an invisible rule you find by trial and
-// error, which is exactly the kind of thing that reads as "annoying".
-function drawSwitchPlate(c, r, active, label, isNext) {
+// Only ever a "push" target now (see the 2026-09-07 puzzle-overhaul comment
+// above the ROOMS list) — it used to also take a 1-based order number and a
+// pulse for "sequence" rooms, gone along with that mechanic.
+function drawSwitchPlate(c, r, active) {
   const x = c * TILE, y = r * TILE;
-  const pulse = isNext ? 0.65 + Math.sin(performance.now() / 220) * 0.2 : 1;
-  ctx.fillStyle = active ? "#5c7238" : isNext ? "#8a6a2e" : "#5a5d66";
-  ctx.globalAlpha = pulse;
+  ctx.fillStyle = active ? "#5c7238" : "#5a5d66";
   ctx.fillRect(x + 6, y + 6, TILE - 12, TILE - 12);
-  ctx.globalAlpha = 1;
-  ctx.strokeStyle = active ? "#3a4a2a" : isNext ? "#e8b03a" : "#2f3038";
+  ctx.strokeStyle = active ? "#3a4a2a" : "#2f3038";
   ctx.lineWidth = 2;
   ctx.strokeRect(x + 6, y + 6, TILE - 12, TILE - 12);
   ctx.fillStyle = active ? "#c3c6c2" : "#7b8184";
   ctx.fillRect(x + 11, y + 11, TILE - 22, TILE - 22);
-  if (label) {
-    ctx.fillStyle = "#14121a";
-    ctx.font = "bold 14px monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(String(label), x + TILE / 2, y + TILE / 2 + 1);
-  }
 }
 
 // The Junk Bridge puzzle's pushable crate: same silhouette as the static
@@ -2109,21 +2096,14 @@ function render(now) {
   }
 
   // Puzzle markers, drawn on top of the floor and under everything that
-  // stands on it (crates, characters) — see drawSwitchPlate. Each switch
-  // lights up independently once stepped on ("switches"/"sequence" rooms);
-  // the Junk Bridge room has exactly one, lit while a crate currently rests
-  // on it (not permanently, so pushing the crate back off it re-locks the
-  // gate). "sequence" rooms additionally get a 1-based number per plate and
-  // a pulse on whichever one is next, off `room.switchTiles`' own order —
-  // the same order update()'s switch-detection code enforces, so the plate
-  // that glows is always the one that's actually next, never out of sync.
+  // stands on it (crates, characters) — see drawSwitchPlate. Every switch
+  // left in the game is a "push" target now (see the puzzle-overhaul
+  // comment above the ROOMS list): lit while a crate currently rests on it,
+  // not permanently, so pushing the crate back off re-locks the gate.
   const room = ROOMS[state.roomIndex];
-  const isSequence = room.type === "sequence";
-  room.switchTiles.forEach((s, i) => {
-    const active = room.type === "push"
-      ? state.crates.some((cr) => Math.floor(cr.x / TILE) === s.c && Math.floor(cr.y / TILE) === s.r)
-      : state.switchesHit.has(s.r * COLS + s.c);
-    drawSwitchPlate(s.c, s.r, active, isSequence ? i + 1 : null, isSequence && !active && i === state.switchesHit.size);
+  room.switchTiles.forEach((s) => {
+    const active = state.crates.some((cr) => Math.floor(cr.x / TILE) === s.c && Math.floor(cr.y / TILE) === s.r);
+    drawSwitchPlate(s.c, s.r, active);
   });
   for (const cr of state.crates) drawCrate(cr);
   if (state.keyPickup) drawKeyPickup(state.keyPickup);
@@ -2365,9 +2345,8 @@ function puzzleStatus() {
       Math.floor(cr.x / TILE) === s.c && Math.floor(cr.y / TILE) === s.r)).length;
     return `Crates ${done}/${room.switchTiles.length}`;
   }
-  if (room.type === "switches") return `Switches ${state.switchesHit.size}/${room.switchTiles.length}`;
-  if (room.type === "sequence") return `Hit switch ${Math.min(state.switchesHit.size + 1, room.switchTiles.length)} of ${room.switchTiles.length}`;
   if (room.type === "guard") return state.keyCollected ? "Gate open!" : (state.keyPickup ? "Get the key!" : "Find the key-carrier");
+  if (room.type === "vault") return state.keyCollected ? "Gate open!" : "Find the hidden key";
   return "Gate open!";
 }
 
