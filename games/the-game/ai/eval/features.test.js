@@ -149,6 +149,10 @@ test('weights.ZERO covers every declared feature', function () {
 // every "does it fire?" test and would be measuring the wrong thing.
 var F = require('./features.js');
 
+function consec(rows) {
+    return F.consecutiveColours(inputMod.normalize({ board: board(rows) }));
+}
+
 function links(rows) {
     return F.links(inputMod.normalize({ board: board(rows) }));
 }
@@ -319,6 +323,60 @@ test('links: weighting it works end to end through the evaluator', function () {
     var r = evaluator.evaluate({ board: board(['111...']) }, { links: 3 });
     assert.strictEqual(r.features.links, 2);
     assert.strictEqual(r.terms.links, 6, 'sign is +1');
+});
+
+
+// ---- consecutiveColours ----
+// Maximal runs of one colour along a row or column, length 2 or more,
+// counted once per run. In Puyo this is a separate signal from links
+// because groups pop at FOUR, so runs of three sit around being counted.
+// Panel Attack pops at THREE — which means a settled board can never hold
+// a run longer than two, and every maximal run is a single pair. The last
+// test in this block is the one that matters: it asks whether this feature
+// is anything other than links on the boards we will actually score.
+
+test('consecutiveColours: a pair is one run', function () {
+    assert.strictEqual(consec(['11....']), 1);
+});
+
+test('consecutiveColours: a run of three is ONE run, where links counts two', function () {
+    // The only shape where the two features differ at all.
+    assert.strictEqual(consec(['111...']), 1);
+    assert.strictEqual(links(['111...']), 2);
+});
+
+test('consecutiveColours: vertical runs count too', function () {
+    assert.strictEqual(consec(['1.....', '1.....']), 1);
+});
+
+test('consecutiveColours: a single panel is not a run', function () {
+    assert.strictEqual(consec(['1.....']), 0);
+});
+
+test('consecutiveColours: a different colour breaks the run', function () {
+    assert.strictEqual(consec(['121...']), 0);
+});
+
+test('consecutiveColours: garbage breaks the run and is never part of one', function () {
+    assert.strictEqual(consec(['1#1...']), 0);
+    assert.strictEqual(consec(['##....']), 0);
+});
+
+test('consecutiveColours: a busy cell breaks the run', function () {
+    assert.strictEqual(consec(['1x1...']), 0);
+});
+
+test('consecutiveColours: a 2x2 block is four runs, two across and two down', function () {
+    assert.strictEqual(consec(['11....', '11....']), 4);
+});
+
+test('consecutiveColours: REDUNDANCY CHECK — it must differ from links somewhere', function () {
+    // A feature that is arithmetically identical to another one on every
+    // board we score is not a feature, it is a second weight on the first.
+    // This asserts the two are distinguishable at all; the fidelity sweep
+    // asks the sharper question — whether they ever differ on a SETTLED
+    // board, which is the only kind the evaluator sees.
+    assert.notStrictEqual(consec(['111...']), links(['111...']));
 });
 
 // ------------------------------------------------------------------ runner

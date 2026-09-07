@@ -184,8 +184,55 @@
     return count;
   }
 
+  // ------------------------------------------------- consecutiveColours
+  //
+  // MAXIMAL RUNS OF ONE COLOUR, LENGTH 2 OR MORE, COUNTED ONCE PER RUN.
+  //
+  // The other half of the Puyo bot's 41% (../PUYO_REFERENCE.md). In Puyo it
+  // is genuinely distinct from links because groups pop at FOUR, so runs of
+  // three sit on the board being counted; links counts the adjacent pairs
+  // inside them, this counts the runs themselves, and the two disagree.
+  //
+  // READ THIS BEFORE WEIGHTING IT. Panel Attack pops at THREE. A settled
+  // board therefore cannot hold a run longer than two — anything longer
+  // would already have matched — so every maximal run is exactly one pair,
+  // and on every board this evaluator actually scores, this returns the
+  // same number as links. The redundancy is checked rather than assumed:
+  // input.fidelity.test.js sweeps random settled boards and asserts they
+  // agree, which is the evidence for cutting one of them rather than
+  // paying twice for the same signal. Kept implemented so the claim is
+  // testable, and so the decision is made on a measurement instead of on
+  // this comment.
+  //
+  // Same exclusions as links: garbage is not a colour, a busy cell's colour
+  // is unknown to the snapshot, and empty is nothing. Each of the three
+  // breaks a run rather than continuing it.
+  function consecutiveColours(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var runs = 0, r, c, len, colour, v;
+
+    for (r = 1; r <= H; r++) {
+      len = 0; colour = 0;
+      for (c = 1; c <= W + 1; c++) {
+        v = c <= W ? grid[r][c] : 0;
+        if (v > 0 && v === colour) len++;
+        else { if (len >= 2) runs++; len = v > 0 ? 1 : 0; colour = v > 0 ? v : 0; }
+      }
+    }
+    for (c = 1; c <= W; c++) {
+      len = 0; colour = 0;
+      for (r = 1; r <= H + 1; r++) {
+        v = r <= H ? grid[r][c] : 0;
+        if (v > 0 && v === colour) len++;
+        else { if (len >= 2) runs++; len = v > 0 ? 1 : 0; colour = v > 0 ? v : 0; }
+      }
+    }
+    return runs;
+  }
+
   return {
     matchPotential: matchPotential,
+    consecutiveColours: consecutiveColours,
     links: links,
     // exported for tests only — not features
     _matchedCells: matchedCells
