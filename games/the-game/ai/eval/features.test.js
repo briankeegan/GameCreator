@@ -370,6 +370,20 @@ test('consecutiveColours: a 2x2 block is four runs, two across and two down', fu
     assert.strictEqual(consec(['11....', '11....']), 4);
 });
 
+test('consecutiveColours: empty cells are never a run', function () {
+    // Found by mutation: relaxing the colour test to `v >= 0` lets empty
+    // cells extend a run. Every existing case still passed, and so did the
+    // first two boards written for this one — the run of empties is only
+    // COUNTED when something non-empty closes it, and the trailing
+    // sentinel is itself empty, so a trailing gap is swallowed. It takes
+    // THREE empties enclosed by panels to reach length 2 and be flushed.
+    // Written down because the near-miss board looks like it should work
+    // and does not.
+    assert.strictEqual(consec(['1...1.']), 0, 'three enclosed empties must not be a run');
+    assert.strictEqual(consec(['1.....', '......', '......', '1.....']), 0, 'nor vertically');
+    assert.strictEqual(consec(['......']), 0);
+});
+
 test('consecutiveColours: REDUNDANCY CHECK — it must differ from links somewhere', function () {
     // A feature that is arithmetically identical to another one on every
     // board we score is not a feature, it is a second weight on the first.
