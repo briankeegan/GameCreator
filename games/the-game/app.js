@@ -1726,7 +1726,19 @@
     // mirror that's simply not facing her right now.
     if (dist > MIRROR_RANGE) return;
     var human = currentRoom && currentRoom.playerForm === "human";
-    var frames = (human ? FACING_FRAMES_HUMAN : FACING_FRAMES).down;
+    // A mirror reverses depth, not left/right as such — face it (walk "up",
+    // into the wall) and it shows your FRONT; turn your back on it ("down")
+    // and it shows your BACK, not another front view. Facing left or right
+    // is the lateral case: her reflection faces the OPPOSITE way she does,
+    // the same "mirror flips left/right" a real one does to you. "left" and
+    // "right" both draw off the same left-facing art (drawPlayer's own
+    // convention) with a mirror flag deciding which way it actually faces —
+    // this reuses that: facing right draws the LEFT art unflipped (so it
+    // reads as facing left in the glass), everything else flips.
+    var REFLECT_DIR = { up: "down", down: "up", left: "left", right: "right" };
+    var dirKey = REFLECT_DIR[player.facing] || "down";
+    var flip = player.facing !== "right";
+    var frames = (human ? FACING_FRAMES_HUMAN : FACING_FRAMES)[dirKey];
     var frameIdx = isWalking ? WALK_SEQUENCE[Math.floor(walkPhase) % WALK_SEQUENCE.length] : 1;
     var entry = loadArt(frames[frameIdx]);
     if (!entry || !entry.ok) return;
@@ -1762,11 +1774,13 @@
     ctx.beginPath();
     ctx.rect(gx0, gy0, gx1 - gx0, gy1 - gy0);
     ctx.clip();
-    // A real mirror flips left-right, same as the "right" facing reuses
-    // "left" mirrored elsewhere in this file.
-    ctx.translate(cx, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(img, -w / 2, topY, w, h);
+    if (flip) {
+      ctx.translate(cx, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, -w / 2, topY, w, h);
+    } else {
+      ctx.drawImage(img, cx - w / 2, topY, w, h);
+    }
     ctx.restore();
   }
 
