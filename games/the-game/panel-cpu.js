@@ -545,7 +545,7 @@
     // narrower on purpose. Only when the caller didn't explicitly pin a
     // value, same as dangerHeightFrac below.
     //
-    // The value itself (29 -- SLOWER than the raw nightmare preset's 12,
+    // The value itself (28 -- SLOWER than the raw nightmare preset's 12,
     // not faster) came from a genetic algorithm
     // (games/the-game/ai/experiments/train_ga.js), not hand-tuning: it
     // searches this and every other field below jointly, plus
@@ -554,24 +554,30 @@
     // session assumed "react faster" was the lever at maxHealth<=1
     // (reaction 12 -> 8 measured as a win in isolation) -- the GA found
     // that once TrueSurvivalSearch is doing the actual defensive
-    // thinking every decision, reacting SLOWER and spending the freed-up
-    // time on deeper/wider simulation (rolloutDepth 20 -> 33) wins
-    // bigger. All 20 GA-tuned fields in this constructor were searched
-    // together, not one at a time, which is what let interactions like
-    // this show up instead of getting missed by isolated sweeps.
+    // thinking every decision, reacting SLOWER wins bigger. All 20
+    // GA-tuned fields in this constructor were searched together, not
+    // one at a time, which is what let interactions like this show up
+    // instead of getting missed by isolated sweeps.
     //
-    // This is round 3 of ongoing GA training: round 1 (1830avg baseline,
+    // This is round 5 of ongoing GA training: round 1 (1830avg baseline,
     // hand-tuned) -> round 2 (2176avg, first GA pass) -> round 3 (2391avg,
-    // 39.9s at 60fps -- uncapped fitness evaluation, letting each genome
-    // play to actual death instead of a search-speed frame cap, seeded
-    // from round 2's result). round 3's genome also pinned exactly at
-    // dangerHeightFrac's and rescueBranchCap's old search-range ceilings
-    // (since widened for round 4, already training). Measured on the
-    // standard 15-seed L10 bigBlocks benchmark (full_report.js).
-    // Timing-verified: 4 repeated 15-seed sweeps, max 63ms, 0 calls over
-    // the ~100ms budget.
+    // uncapped fitness evaluation -- each genome plays to actual death
+    // instead of a search-speed frame cap) -> round 4 (2391avg, no
+    // improvement even after widening the search bounds round 3 had
+    // pinned against -- refining around round 3's basin had plateaued)
+    // -> round 5 (2400avg, 40.0s at 60fps -- a FRESH random population,
+    // not seeded from round 3/4's basin at all, which found a
+    // structurally different one: a much SHALLOWER TrueSurvivalSearch
+    // rollout (rolloutDepth 33 -> 17) paired with a much wider follow-up
+    // ply budget (rolloutFollowUpRankCap 5 -> 8) and this constructor's
+    // own multi-ply planning restored to depth 5 (round 3/4 had it at
+    // 1). Real, if modest (+0.4%), evidence that a plateaued refinement
+    // search benefits from a diversified restart rather than more
+    // rounds refining the same basin. Measured on the standard 15-seed
+    // L10 bigBlocks benchmark (full_report.js). Timing-verified: 4
+    // repeated 15-seed sweeps, max 58ms, 0 calls over the ~100ms budget.
     if (opts.reaction === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.reaction = 29;
+      this.reaction = 28;
     }
     // BUG (fixed): both branches read preset.X, so a caller's opts.mistake
     // / opts.patience were silently discarded and the preset value used
@@ -599,29 +605,30 @@
       this.depth = Math.max(this.depth, 5);
     }
     // GA-trained override for maxHealth<=1 specifically (narrower than
-    // the <=21 band above, applied after it so it wins for level 10):
-    // depth 1, much SHALLOWER than the widened 5 above. Same story as
-    // reaction above -- with TrueSurvivalSearch doing the real defensive
-    // simulation every decision, this constructor's own multi-ply
-    // planning (used by the rollout's continuation policy) pays off more
-    // by being cheap and frequent than deep. See reaction's override
-    // above for the GA process/validation numbers (shared across all 20
-    // fields it tuned).
+    // the <=21 band above, applied after it so it wins for level 10).
+    // Earlier GA rounds (3/4) found 1, much SHALLOWER than the widened 5
+    // above -- round 5's fresh-basin search landed back on 5, the same
+    // value the <=21 tightening already produces. Kept as an explicit
+    // override anyway (rather than removed as a no-op) since it's a real
+    // GA-confirmed result, not an accident of falling through to the
+    // <=21 default -- and it stays correct even if that default ever
+    // changes. See reaction's override above for the GA process/
+    // validation numbers (shared across all 20 fields it tuned).
     if (opts.depth === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.depth = 1;
+      this.depth = 5;
     }
     this.beam = opts.beam || preset.beam;
     // GA-trained, maxHealth<=1 only -- see reaction's override comment.
     if (opts.beam === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.beam = 7;
+      this.beam = 5;
     }
     this.patience = opts.patience === undefined ? preset.patience : opts.patience;
     if (opts.patience === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.patience = 0.4771646855631843;
+      this.patience = 0.6231788222212344;
     }
     this.patienceFillCeiling = opts.patienceFillCeiling || preset.patienceFillCeiling;
     if (opts.patienceFillCeiling === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.patienceFillCeiling = 0.1776934342412278;
+      this.patienceFillCeiling = 0.1766234811162576;
     }
     this.dangerHeightFrac = opts.dangerHeightFrac || preset.dangerHeightFrac;
     // A level with little health buffer (LEVELS' maxHealth crashes from 121
@@ -643,24 +650,23 @@
       this.dangerHeightFrac = Math.min(this.dangerHeightFrac, 0.45);
     }
     // GA-trained override for maxHealth<=1 (applied after the <=51 band
-    // above so it wins for level 10): 0.9, much HIGHER than the 0.45
-    // tightening above -- i.e. tolerating a much TALLER stack before
-    // treating the board as dangerous. Counter-intuitive against the
-    // hand-tuned assumption that panicking earlier is always safer at
-    // the least forgiving level, but consistent with reaction/depth's
-    // overrides above: once TrueSurvivalSearch is doing the real
-    // per-decision defensive simulation, this field mostly gates the
-    // rollout's own continuation policy and the pre-TSS emergency-rescue
-    // check, and a more patient threshold there leaves more of the
-    // board's material available to build the matches that actually
-    // clear it. This round's search landed exactly on 0.9 -- the GA's
-    // OWN search-range ceiling at the time (games/the-game/ai/experiments/
-    // ga_core.js), since widened to 0.98 for the next round, since a
-    // genome pinned against its own search bound is a bound that's
-    // costing quality, not a safe limit. See reaction's override comment
+    // above so it wins for level 10): 0.66, much HIGHER than the 0.45
+    // tightening above -- i.e. tolerating a taller stack before treating
+    // the board as dangerous. Counter-intuitive against the hand-tuned
+    // assumption that panicking earlier is always safer at the least
+    // forgiving level, but consistent with reaction's override above:
+    // once TrueSurvivalSearch is doing the real per-decision defensive
+    // simulation, this field mostly gates the rollout's own continuation
+    // policy and the pre-TSS emergency-rescue check, and a more patient
+    // threshold there leaves more of the board's material available to
+    // build the matches that actually clear it. Earlier GA rounds (3/4,
+    // a different/since-plateaued basin) pinned this at 0.9, their own
+    // search-range ceiling at the time; round 5's fresh-basin search
+    // landed comfortably inside the range instead, at 0.66 -- not every
+    // basin needs the same threshold. See reaction's override comment
     // for the fuller GA process/validation numbers.
     if (opts.dangerHeightFrac === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.dangerHeightFrac = 0.9;
+      this.dangerHeightFrac = 0.661888653356582;
     }
     // How much of dangerHeightFrac's own headroom calm-mode is allowed to
     // spend proactively raising for material before it stops and holds
@@ -687,12 +693,12 @@
     // comment above for the search process and validation numbers (all
     // of these were tuned jointly with it, not in isolation).
     if (stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      if (opts.raiseFillFrac === undefined) this.raiseFillFrac = 0.7095219561015256;
-      if (opts.chainWeight === undefined) this.chainWeight = 452.6620744727552;
-      if (opts.comboWeight === undefined) this.comboWeight = 134.14126673410647;
-      if (opts.garbageWeight === undefined) this.garbageWeight = 256.5266137220897;
-      if (opts.heightPenalty === undefined) this.heightPenalty = 162.33490647771396;
-      if (opts.potentialWeight === undefined) this.potentialWeight = 26.060131324920803;
+      if (opts.raiseFillFrac === undefined) this.raiseFillFrac = 0.8040715719806031;
+      if (opts.chainWeight === undefined) this.chainWeight = 393.5781594016589;
+      if (opts.comboWeight === undefined) this.comboWeight = 182.06808504182845;
+      if (opts.garbageWeight === undefined) this.garbageWeight = 53.97359960153699;
+      if (opts.heightPenalty === undefined) this.heightPenalty = 157.07336579915136;
+      if (opts.potentialWeight === undefined) this.potentialWeight = 37.03064062865451;
     }
     this.chainExtend = opts.chainExtend !== undefined ? !!opts.chainExtend : preset.chainExtend !== false;
     // The knobs that actually govern behavior once _inDanger() is true —
@@ -706,11 +712,11 @@
     // at a sustained heavy rate.
     this.criticalFactor = opts.criticalFactor !== undefined ? opts.criticalFactor : (preset.criticalFactor !== undefined ? preset.criticalFactor : 0.5);
     if (opts.criticalFactor === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.criticalFactor = 0.6285718969767914; // GA-trained, see reaction's override comment
+      this.criticalFactor = 0.7821508796419948; // GA-trained, see reaction's override comment
     }
     this.runwayThreshold = opts.runwayThreshold !== undefined ? opts.runwayThreshold : (preset.runwayThreshold !== undefined ? preset.runwayThreshold : 3);
     if (opts.runwayThreshold === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.runwayThreshold = 4; // GA-trained, see reaction's override comment
+      this.runwayThreshold = 1; // GA-trained, see reaction's override comment -- pinned at its old lower bound (1), since widened to 0 for the next round
     }
     // Cooldown floor once fully topped out -- see its one use site's own
     // comment for why 3 was picked (closes a leaked idle frame vs 4).
@@ -764,7 +770,7 @@
     // band above so it wins for level 10) -- see reaction's override
     // comment.
     if (opts.queuedRunwayWeight === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.queuedRunwayWeight = 0.009410519246011967;
+      this.queuedRunwayWeight = 0.30045507149770856;
     }
     this.rescueBranchCap = opts.rescueBranchCap !== undefined ? opts.rescueBranchCap : (preset.rescueBranchCap !== undefined ? preset.rescueBranchCap : 6);
     // _nPlyRescue is the deep "is there ANY sequence that saves this"
@@ -802,11 +808,12 @@
     }
     // GA-trained override, maxHealth<=1 only (applied after the <=21
     // band above so it wins for level 10) -- see reaction's override
-    // comment. This round's search landed exactly on 20 -- the GA's own
-    // search-range ceiling at the time, since widened to 32 for the next
-    // round (same reasoning as dangerHeightFrac's override above).
+    // comment. Earlier GA rounds (3/4) landed exactly on 20, their own
+    // search-range ceiling at the time (widened to 32 for round 5);
+    // round 5's fresh-basin search pushed further into that widened
+    // range, to 29.
     if (opts.rescueBranchCap === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.rescueBranchCap = 20;
+      this.rescueBranchCap = 29;
     }
     // Backstop for the _nPlyRescue fallback chain (three escalating
     // calls, depth 2/3/4 -- see _bestDefensiveMove), shared across all
@@ -836,7 +843,7 @@
     this.rescueEvalBudget = opts.rescueEvalBudget !== undefined ? opts.rescueEvalBudget : (preset.rescueEvalBudget !== undefined ? preset.rescueEvalBudget : 10000);
     this.dropAmountWeight = opts.dropAmountWeight !== undefined ? opts.dropAmountWeight : (preset.dropAmountWeight !== undefined ? preset.dropAmountWeight : 200);
     if (opts.dropAmountWeight === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.dropAmountWeight = 627.8604093706235; // GA-trained, see reaction's override comment
+      this.dropAmountWeight = 144.6719783358276; // GA-trained, see reaction's override comment
     }
     // How many of _bestImmediateMatch's ply-1-ranked matching candidates
     // get its expensive follow-up ply -- see that function's own comment.
@@ -848,11 +855,11 @@
     this.followUpRankCap = opts.followUpRankCap !== undefined ? opts.followUpRankCap : (preset.followUpRankCap !== undefined ? preset.followUpRankCap : Infinity);
     this.pressureThreshold = opts.pressureThreshold !== undefined ? opts.pressureThreshold : (preset.pressureThreshold !== undefined ? preset.pressureThreshold : 15);
     if (opts.pressureThreshold === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.pressureThreshold = 14.600801114481873; // GA-trained, see reaction's override comment
+      this.pressureThreshold = 31.048411475215108; // GA-trained, see reaction's override comment
     }
     this.sentWeight = opts.sentWeight !== undefined ? opts.sentWeight : (preset.sentWeight !== undefined ? preset.sentWeight : 50);
     if (opts.sentWeight === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.sentWeight = 4307.67927900888; // GA-trained, see reaction's override comment
+      this.sentWeight = 8119.343556696549; // GA-trained, see reaction's override comment
     }
     this.rng = root.PanelEngine.makeRng(opts.seed || 4242);
     this.cooldown = Math.floor(this.reaction / 2);
@@ -1745,50 +1752,49 @@
     // (games/the-game/ai/experiments/train_ga.js) was run against, jointly
     // searching these three module constants alongside the 20 SearchCpu
     // weight fields tuned at maxHealth<=1 (see SearchCpu's constructor,
-    // reaction's override comment). It found DEEPER rollouts (more real
-    // frames simulated per candidate) paired with NARROWER candidate
-    // breadth (fewer swaps considered per decision) -- a trade-off
-    // hand-tuning never found because sweeping ROLLOUT_DEPTH and
-    // ROLLOUT_SWAP_CAP one at a time (as the now-stale numbers above
-    // describe) can't discover that going deeper on fewer candidates beats
-    // going wide on a fixed depth. These aren't gated further by
+    // reaction's override comment). These aren't gated further by
     // maxHealth<=1 the way the SearchCpu opts above are, because
     // TrueSurvivalSearch.active() (below) already only ever activates at
     // maxHealth<=1 -- changing these constants can't affect any other
     // level's behavior since no other level's CPU ever calls into this
     // module.
     //
-    // Round 3 of ongoing GA training: round 1 (1830avg, hand-tuned) ->
-    // round 2 (2176avg, ROLLOUT_DEPTH/SWAP_CAP 27/12) -> round 3 (2391avg,
-    // 39.9s at 60fps, ROLLOUT_DEPTH/SWAP_CAP/FOLLOWUP_RANK_CAP 33/13/5 --
-    // uncapped fitness evaluation this round, letting each genome play to
-    // actual death instead of a search-speed frame cap). Measured on the
-    // standard 15-seed L10 bigBlocks benchmark (full_report.js), together
-    // with the SearchCpu-side changes -- not isolated on its own. Timing-
-    // verified: 4 repeated 15-seed sweeps, max 63ms, 0 calls over the
-    // ~100ms budget.
-    ROLLOUT_DEPTH: 33,
+    // Ongoing GA training: round 1 (1830avg, hand-tuned) -> round 2
+    // (2176avg, ROLLOUT_DEPTH/SWAP_CAP 27/12) -> round 3 (2391avg,
+    // ROLLOUT_DEPTH/SWAP_CAP/FOLLOWUP_RANK_CAP 33/13/5 -- uncapped fitness
+    // evaluation this round, letting each genome play to actual death
+    // instead of a search-speed frame cap) -> round 4 (2391avg, no
+    // improvement even after widening the bounds round 3 pinned against --
+    // this basin had plateaued) -> round 5 (2400avg, 40.0s at 60fps,
+    // ROLLOUT_DEPTH/SWAP_CAP/FOLLOWUP_RANK_CAP 17/7/8 -- a FRESH random
+    // population, not refined from round 3/4's basin, found a
+    // structurally different one: MUCH SHALLOWER rollouts with a WIDER
+    // follow-up budget, the opposite trade-off from round 3's "go deeper
+    // on fewer candidates." Neither direction is universally right --
+    // what matters is that a plateaued refinement search benefited from a
+    // diversified restart rather than more rounds narrowing the same
+    // basin. Measured on the standard 15-seed L10 bigBlocks benchmark
+    // (full_report.js), together with the SearchCpu-side changes -- not
+    // isolated on its own. Timing-verified: 4 repeated 15-seed sweeps,
+    // max 58ms, 0 calls over the ~100ms budget.
+    ROLLOUT_DEPTH: 17,
     // How many ply-1-ranked candidates the rollout continuation's
     // _bestImmediateMatch call spends its expensive follow-up ply on --
     // see _bestImmediateMatch's and _makeRolloutCpu's own comments.
-    // Calibrated alongside SIMULATED_FRAME_BUDGET below. Round 2's GA
-    // search found 2 (unchanged from the hand-tuned figure); round 3
-    // found 5 wins instead, close enough to its own search-range ceiling
-    // (6 at the time) that the range was widened to 10 for the next
-    // round -- see ROLLOUT_DEPTH's own comment for the fuller story.
-    ROLLOUT_FOLLOWUP_RANK_CAP: 5,
+    // Calibrated alongside SIMULATED_FRAME_BUDGET below. See
+    // ROLLOUT_DEPTH's own comment for how this evolved across GA rounds.
+    ROLLOUT_FOLLOWUP_RANK_CAP: 8,
     // Legal swaps are pruned to this many before simulating, by a cheap
     // LogicalBoard boardPotential-gain pass (the same O(swaps) proxy
     // _raiseOrBuild already uses) -- NOT the decision itself, only move
     // ORDERING so a dense board's legalSwaps() candidates don't each cost a
     // real rollout. The 20 this was hand-swept to (see ROLLOUT_DEPTH's own
-    // comment for the fuller story) is superseded: the GA found fewer
-    // candidates, each looked at further ahead, wins over more candidates
-    // looked at the same fixed distance. _bestImmediateMatch's own top
+    // comment for the fuller story) is superseded by the GA's search --
+    // see that comment for how this evolved across rounds. _bestImmediateMatch's own top
     // pick is always added too (it uses a different, pricier metric that
     // the cheap proxy can rank differently), plus "hold" and "raise" as
     // fixed candidates.
-    ROLLOUT_SWAP_CAP: 13,
+    ROLLOUT_SWAP_CAP: 7,
 
     // Same trigger tier as PreburstReserve (maxHealth<=1) -- but NOT the
     // same "steps aside forever after first top-out" shape. That gate was
