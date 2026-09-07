@@ -1738,18 +1738,20 @@
     var glassHalfW = (gx1 - gx0) / 2;
     if (Math.abs(lateralOffset) > glassHalfW) return;
     var human = currentRoom && currentRoom.playerForm === "human";
-    // A mirror reverses depth, not left/right as such — face it (walk "up",
-    // into the wall) and it shows your FRONT; turn your back on it ("down")
-    // and it shows your BACK, not another front view. Facing left or right
-    // is the lateral case: her reflection faces the OPPOSITE way she does,
-    // the same "mirror flips left/right" a real one does to you. "left" and
-    // "right" both draw off the same left-facing art (drawPlayer's own
-    // convention) with a mirror flag deciding which way it actually faces —
-    // this reuses that: facing right draws the LEFT art unflipped (so it
-    // reads as facing left in the glass), everything else flips.
+    // A mirror only reverses the axis PERPENDICULAR to its own surface
+    // (depth) — face it (walk "up", into the wall) and it shows your FRONT;
+    // turn your back on it ("down") and it shows your BACK, not another
+    // front view. A direction PARALLEL to the mirror (facing left or right)
+    // is NOT flipped by it — walk in profile and your reflection walks the
+    // same way you do, the same as your own reflection's shoulder doesn't
+    // switch sides when you turn to face across a mirror rather than into
+    // it. So this draws left/right exactly the way drawPlayer draws them
+    // normally: "left" is the true left-facing art, unflipped; "right"
+    // reuses that same art flipped, same as it does everywhere else in
+    // this file. Only up/down get the extra flip, for the front/back case.
     var REFLECT_DIR = { up: "down", down: "up", left: "left", right: "right" };
     var dirKey = REFLECT_DIR[player.facing] || "down";
-    var flip = player.facing !== "right";
+    var flip = player.facing !== "left";
     var frames = (human ? FACING_FRAMES_HUMAN : FACING_FRAMES)[dirKey];
     var frameIdx = isWalking ? WALK_SEQUENCE[Math.floor(walkPhase) % WALK_SEQUENCE.length] : 1;
     var entry = loadArt(frames[frameIdx]);
