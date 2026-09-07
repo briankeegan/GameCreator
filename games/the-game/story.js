@@ -587,7 +587,16 @@ window.NEWSEY_STORY = (function () {
           ]
         },
         {
-          id: "magma", x: 196, y: 186, art: "magma", sprite: "magma_top",
+          // x196,y186 (the old spot) sits just past the floor mask's edge at
+          // that x — walk-lounge.png is floor up to y182 there, not 186 — so
+          // she spawned standing a few px off the walkable plate. Every
+          // wander candidate near her got rejected by the same isFloor check
+          // that keeps everyone on the floor, and since her OWN spot was
+          // never valid, none of them ever succeeded: she never took a
+          // single step. Reported as "the child is stuck in the wall".
+          // y180 matches Diamond's row two spots over (also x224,y180, which
+          // wanders fine), so this keeps her in the same front-row cluster.
+          id: "magma", x: 196, y: 180, art: "magma", sprite: "magma_top",
           lines: [
             "…I'm Magma.",
             // The plot's actual beat: it happens DURING the handshake, before
