@@ -214,3 +214,52 @@ from a pair, which the other cannot.
 
 Recorded here rather than left in the code, so the next person reading
 PUYO_REFERENCE.md's "41% of the score" does not add it back.
+
+## STOP — measured before training: this seam decides ~5% of moves
+
+Before spending a GA on the sixteen weights, the wiring was proved on
+`bench.js`. Determinism, detach-restores and attach-is-live all pass. The
+fourth check did not, and it is the one that matters.
+
+**Weighting a feature alone, at 100, on three seeds:**
+
+| moves play | does nothing |
+|---|---|
+| `colourVariance`, `maxHeight`, `fillRatio`, `garbageSent`, `chainLength` | `matchPotential`, `links`, `latentChain`, `edgePenalty`, `garbageOnBoard`, `incomingGarbage`, `roughness`, `garbageAdjacency`, `colourScarcity`, `garbageCleared`, `framesToDeath` |
+
+Eleven of sixteen are inert. And it is not because they cannot see
+anything — instrumented across real decisions, `links` differs between
+candidates in **100%** of them (mean spread 4.58), `edgePenalty` 100%,
+`roughness` 65%. They vary, and changing them changes nothing: `links` at
+weight 100 altered **0 of 143 chosen moves**, while `maxHeight` altered 62.
+
+The reason, counted over 900 frames and 147 decisions:
+
+```
+_bestImmediateMatch consulted  28x, returned null 21x  ->  7 usable
+_computePlan        consulted  26x, returned null 21x  ->  5 usable
+decisions made                                            147
+```
+
+`_evaluate` is called **15,595 times** across those frames, and its ranking
+decides at most about **seven of a hundred and forty-seven moves**. The
+other ~95% are made by paths that never consult it: the defensive tiers,
+the chain-extend move, the patience hold, cursor travel.
+
+So `_evaluate` is not "the scoring function" of this AI. It is a
+tie-breaker inside two functions that mostly decline to answer. Training
+sixteen weights against a 5% influence would produce numbers that look
+learned, move the benchmark by luck, and mean nothing — the same shape as
+the L10 result above, one level up.
+
+**What would have to change first.** The Puyo approach in
+`../PUYO_REFERENCE.md` assumes the scorer ranks EVERY candidate placement,
+including the ones that build without matching — that is where "reward
+density and get chains for free" lives. Here, `_bestImmediateMatch` skips
+non-matching swaps outright (`if (res.chainLength === 0) continue`), and
+`_computePlan` only commits to a node that matched. A scorer that never
+sees a building move cannot reward building.
+
+That is a change to the SEARCH, not to this directory, and it is the real
+next task. The evaluator, its tests and its seam are finished and correct;
+what they plug into is not yet asking them the question they answer.
