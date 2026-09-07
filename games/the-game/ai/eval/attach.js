@@ -190,7 +190,24 @@
         comboSizes: cumCombo ? [cumCombo] : [],
         garbage: cumGarbage ? [[cumGarbage, 1]] : []
       }, cascade, clearedCount);
-      return evaluator.evaluate(input, weights).score;
+      // ADDED TO THE SHIPPED SCORE, not substituted for it — so that ONE
+      // law holds across all three seams: at zero weights the attached
+      // evaluator is EXACTLY the shipped AI, frame for frame.
+      //
+      // This seam used to return the evaluator's score alone. Defensible in
+      // the abstract, since _evaluate is meant to BE the scoring function —
+      // but it made zero weights a constant-0 scorer, which is not neutral,
+      // it is a handicap: the search lost its ranking before a single
+      // weight had been trained. Measured, inert survival was
+      // [1362, 2502, 790] against shipped's [2546, 2502, 1551], so every
+      // future A/B would have compared shipped against something already
+      // broken and credited the difference to the features.
+      //
+      // Additive also makes each weight's meaning honest: it is how much
+      // this feature MOVES the shipped ranking, which is a quantity a GA
+      // can search and a person can read.
+      return original.call(this, board, cumGarbage, cumChain, cumCombo) +
+             evaluator.evaluate(input, weights).score;
     };
     SearchCpu.prototype._evaluate.__panelEvalAttached = true;
 

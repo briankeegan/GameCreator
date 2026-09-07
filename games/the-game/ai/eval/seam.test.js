@@ -41,11 +41,31 @@ test('attaching replaces _evaluate and detaching restores the shipped one', func
         'the new evaluator against itself');
 });
 
-test('with all weights zero the attached evaluator scores every board 0', function () {
+test('THE LAW: at zero weights every seam is EXACTLY the shipped AI', function () {
+    // One law, three seams. _evaluate, _raiseOrBuild and _defensiveKey all
+    // ADD the evaluator's score to the shipped answer rather than replacing
+    // it, so an untrained evaluator is neutral rather than a handicap.
+    //
+    // _evaluate used to return the evaluator's score ALONE, which made zero
+    // weights a constant-0 scorer: the search lost its ranking before a
+    // single weight existed. Measured, inert survival was [1362,2502,790]
+    // against shipped's [2546,2502,1551] — so an A/B would have compared
+    // shipped against something already broken and credited the gap to the
+    // features.
     var cpu = liveCpu();
+    var board = cpu._snapshot();
+    var shippedEval = cpu._evaluate(board, 4, 2, 5);
+    var shippedBuild = JSON.stringify(cpu._raiseOrBuild(board));
+    var res = { chainLength: 3, comboSizes: [5], garbage: [] };
+    var shippedDef = cpu._defensiveKey(res, 4, 1, false);
+
     var detach = attach(SearchCpu, {});
     try {
-        assert.strictEqual(cpu._evaluate(cpu._snapshot(), 0, 0, 0), 0);
+        assert.strictEqual(cpu._evaluate(board, 4, 2, 5), shippedEval, '_evaluate is not neutral');
+        assert.strictEqual(JSON.stringify(cpu._raiseOrBuild(board)), shippedBuild,
+            '_raiseOrBuild is not neutral');
+        assert.strictEqual(cpu._defensiveKey(res, 4, 1, false), shippedDef,
+            '_defensiveKey is not neutral');
     } finally { detach(); }
 });
 
@@ -146,9 +166,10 @@ test('EVERY feature is reachable through the seam, each on a board that makes it
         var cpu = liveCpu();
         var board = setup(cpu);
         var w = {}; w[key] = 1;
+        var base = cpu._evaluate(board, 4, 2, 5);   // shipped, seam detached
         var detach = attach(SearchCpu, w);
         var score;
-        try { score = cpu._evaluate(board, 4, 2, 5); }
+        try { score = cpu._evaluate(board, 4, 2, 5) - base; }
         finally { detach(); }
         if (score === 0) dead.push(key);
     });
@@ -181,11 +202,14 @@ test('garbageCleared is fed: a candidate with the garbage gone scores above one 
         for (c = 1; c <= cleared.width; c++) if (cleared.grid[r][c] === -2) cleared.grid[r][c] = 0;
     }
 
+    // Measured as a DELTA from the shipped score, since the seam adds to it.
+    var baseWith = cpu._evaluate(withGarbage, 0, 0, 0);
+    var baseCleared = cpu._evaluate(cleared, 0, 0, 0);
     var detach = attach(SearchCpu, { garbageCleared: 10 });
     try {
-        var a = cpu._evaluate(withGarbage, 0, 0, 0);
-        var b = cpu._evaluate(cleared, 0, 0, 0);
-        assert.strictEqual(a, 0, 'clearing nothing should score nothing');
+        var a = cpu._evaluate(withGarbage, 0, 0, 0) - baseWith;
+        var b = cpu._evaluate(cleared, 0, 0, 0) - baseCleared;
+        assert.strictEqual(a, 0, 'clearing nothing should contribute nothing');
         assert.strictEqual(b, live * 10,
             'expected ' + live + ' cleared cells at weight 10, got ' + b);
     } finally { detach(); }
@@ -198,8 +222,9 @@ test('garbageCleared never goes negative when garbage ARRIVES', function () {
     var cpu = liveCpu();
     var board = cpu._snapshot();
     for (var c = 1; c <= board.width; c++) board.grid[1][c] = -2;
+    var base = cpu._evaluate(board, 0, 0, 0);
     var detach = attach(SearchCpu, { garbageCleared: 10 });
-    try { assert.strictEqual(cpu._evaluate(board, 0, 0, 0), 0); }
+    try { assert.strictEqual(cpu._evaluate(board, 0, 0, 0) - base, 0); }
     finally { detach(); }
 });
 
