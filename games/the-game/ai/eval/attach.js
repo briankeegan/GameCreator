@@ -45,12 +45,12 @@
 // — loudly, at attach time — rather than quietly reading zero.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./evaluator.js'), require('./input.js'));
+    module.exports = factory(require('./evaluator.js'), require('./input.js'), require('./registry.js'));
   } else {
     root.PanelEval = root.PanelEval || {};
-    root.PanelEval.attach = factory(root.PanelEval.evaluator, root.PanelEval.input).attach;
+    root.PanelEval.attach = factory(root.PanelEval.evaluator, root.PanelEval.input, root.PanelEval.registry).attach;
   }
-}(this, function (evaluator, inputMod) {
+}(this, function (evaluator, inputMod, registry) {
   'use strict';
 
   // Features this adapter's call site physically cannot supply. Keep this
@@ -196,9 +196,65 @@
     };
     SearchCpu.prototype._raiseOrBuild.__panelEvalAttached = true;
 
+    // ---- THE DEFENSIVE DECISION, 83% OF MOVES ----
+    //
+    // _bestDefensiveMove takes 373 of 448 decisions on bench.js and never
+    // consulted the evaluator. Inside it, every candidate that MATCHES is
+    // ranked by _defensiveKey — a prototype method, so a real seam.
+    //
+    // ADDED TO, NOT REPLACED. The shipped key is a lexicographic ordering
+    // wearing arithmetic: garbageCleared carries a multiplier of 1,000,000
+    // precisely so that clearing more of the wall beats everything else,
+    // and a chain while topped out is worth 5000x its length squared. That
+    // ordering is what keeps the cpu alive, it was tuned against real
+    // benchmarks, and replacing it with sixteen untrained weights would be
+    // throwing away the one part of this AI that is known to work in order
+    // to test the part that is not.
+    //
+    // So the evaluator's score is ADDED to the shipped key. Untrained (all
+    // weights 0) that is exactly the shipped behaviour, asserted in the
+    // tests. Trained, it can reorder candidates the shipped key ties or
+    // nearly ties — which is where a defensive ranking has room to improve
+    // — without ever outranking the garbage-clearing term that dominates
+    // by six orders of magnitude.
+    //
+    // WHAT CANNOT REACH IT: _defensiveKey(res, garbageCleared, dropAmount,
+    // toppedOutNow) is not given the candidate board. The EARNED and CLOCK
+    // features act here; the BOARD features cannot, and the tests assert
+    // they are a no-op rather than a small wrong number. Feeding them means
+    // changing that signature in panel-cpu.js — a separate, larger change,
+    // recorded rather than smuggled in.
+    // BOARD FEATURES ARE EXCLUDED HERE, not merely unfed — and the
+    // difference is the whole point. Handing them a null board does not
+    // silence them: normalize() fills in an empty board, and maxHeight then
+    // reads the LIVE stack's displacement, so it returns a real number
+    // about a board that is not the candidate. Caught by the limit test,
+    // which is why that test asserts a no-op rather than trusting one.
+    //
+    // A feature reporting on the wrong board is worse than a feature that
+    // is absent: it moves the ranking and looks like it is working.
+    var offBoardWeights = {};
+    Object.keys(weights).forEach(function (k) {
+      var f = registry.byKey[k];
+      if (f && (f.group === 'earned' || f.group === 'clock')) offBoardWeights[k] = weights[k];
+    });
+
+    var originalDefensiveKey = SearchCpu.prototype._defensiveKey;
+    SearchCpu.prototype._defensiveKey = function (res, garbageCleared, dropAmount, toppedOutNow) {
+      var shipped = originalDefensiveKey.call(this, res, garbageCleared, dropAmount, toppedOutNow);
+      var input = inputMod.fromStack(this.stack, null, {
+        chainLength: res.chainLength || 0,
+        comboSizes: res.comboSizes || [],
+        garbage: res.garbage || []
+      }, null, garbageCleared || 0);
+      return shipped + evaluator.evaluate(input, offBoardWeights).score;
+    };
+    SearchCpu.prototype._defensiveKey.__panelEvalAttached = true;
+
     return function detach() {
       SearchCpu.prototype._evaluate = original;
       SearchCpu.prototype._raiseOrBuild = originalRaiseOrBuild;
+      SearchCpu.prototype._defensiveKey = originalDefensiveKey;
     };
   }
 

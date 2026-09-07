@@ -303,12 +303,161 @@ test('_raiseOrBuild: the raise/hold decision is NOT taken over', function () {
     } finally { detach(); }
 });
 
+test('_raiseOrBuild: a raise/hold verdict survives even when swaps ARE available', function () {
+    // Found by mutation. The earlier raise/hold test used an EMPTY board,
+    // where there are no legal swaps at all — so dropping the `kind !==
+    // "swap"` guard changed nothing and the test stayed green while the
+    // seam happily overrode a hold. This board has 37 legal swaps and the
+    // shipped heuristic still declines to use any of them; found by
+    // searching random boards for exactly that combination rather than by
+    // hoping one turned up.
+    var cpu = liveCpu();
+    var rows = ['.1...3', '4....3', '....1.', '32.2.2', '....34', '......',
+                '13..2.', '....13', '3.2.2.', '1..3.1', '.4.2.4', '.3...3'];
+    var b = cpu._snapshot();
+    for (var r = 1; r <= b.height; r++) {
+        for (var c = 1; c <= b.width; c++) {
+            var ch = rows[b.height - r][c - 1];
+            b.grid[r][c] = ch === '.' ? 0 : ch === 'x' ? -1 : ch === '#' ? -2 : Number(ch);
+        }
+    }
+    b.blocks = {};
+    assert.ok(b.legalSwaps().length > 10, 'setup: this board must offer real swaps');
+    var shipped = cpu._raiseOrBuild(b);
+    assert.notStrictEqual(shipped.kind, 'swap', 'setup: shipped must be declining to swap here');
+    var detach = attach(SearchCpu, { links: 500, matchPotential: 500, maxHeight: 500 });
+    try {
+        assert.deepStrictEqual(cpu._raiseOrBuild(b), shipped,
+            'the seam overrode a raise/hold verdict on a board full of legal swaps');
+    } finally { detach(); }
+});
+
+test('_raiseOrBuild: candidates are scored AFTER the cascade resolves', function () {
+    // Found by mutation, and the FIRST version of this test was too weak to
+    // catch it: it asserted that resolve() changes a board, which is a fact
+    // about resolve() and not about the seam, so the mutant sailed through.
+    //
+    // Skipping trial.resolve() scores the board an instant after the swap,
+    // crediting a move with panels that are about to vanish. This board was
+    // found by searching for the case that actually distinguishes them —
+    // with fillRatio weighted, the resolved ranking picks [5,5] and the
+    // unresolved ranking picks [1,2].
+    var cpu = liveCpu();
+    var rows = ['..1..1', '.223..', '..33.2', '...3.3', '..32..', '.3....',
+                '2.....', '.22..2', '.2.3.1', '....31', '..33.2', '33..32'];
+    var b = cpu._snapshot();
+    for (var r = 1; r <= b.height; r++) {
+        for (var c = 1; c <= b.width; c++) {
+            var ch = rows[b.height - r][c - 1];
+            b.grid[r][c] = ch === '.' ? 0 : Number(ch);
+        }
+    }
+    b.blocks = {};
+    assert.strictEqual(cpu._raiseOrBuild(b).kind, 'swap',
+        'setup: the shipped heuristic must be choosing a swap here');
+    var detach = attach(SearchCpu, { fillRatio: 1000 });
+    try {
+        assert.deepStrictEqual(cpu._raiseOrBuild(b).move, [5, 5],
+            'the seam picked the swap that only looks good BEFORE the cascade resolves');
+    } finally { detach(); }
+});
+
 test('_raiseOrBuild: detaching restores the shipped function itself', function () {
     var original = SearchCpu.prototype._raiseOrBuild;
     var detach = attach(SearchCpu, { links: 1 });
     assert.notStrictEqual(SearchCpu.prototype._raiseOrBuild, original);
     detach();
     assert.strictEqual(SearchCpu.prototype._raiseOrBuild, original);
+});
+
+
+// ---- _defensiveKey: THE 83% PATH ----
+//
+// _bestDefensiveMove takes 373 of 448 decisions on bench.js and never
+// consulted the evaluator. Inside it, every candidate that MATCHES is
+// ranked by this.\_defensiveKey — a prototype method, and therefore a real
+// seam — while non-matching candidates are ordered by the module-local
+// boardPotential.
+//
+// WHAT CAN AND CANNOT REACH IT, stated up front because the limit is
+// structural rather than an oversight:
+//
+//   _defensiveKey(res, garbageCleared, dropAmount, toppedOutNow)
+//
+// It is not given the candidate board. So the EARNED and CLOCK features —
+// garbageSent, chainLength, garbageCleared, framesToDeath, incomingGarbage
+// — can act here, and the BOARD features cannot. Feeding them would mean
+// changing that signature in panel-cpu.js, which is a separate, larger
+// change and is recorded as such rather than smuggled in.
+//
+// The tests below assert BOTH halves: the earned features move the
+// defensive ranking, and the board features are honestly reported as
+// unable to.
+
+test('_defensiveKey: zero weights leave the shipped ranking exactly as it was', function () {
+    var cpu = liveCpu();
+    var res = { chainLength: 3, comboSizes: [5], garbage: [] };
+    var before = cpu._defensiveKey(res, 6, 2, false);
+    var detach = attach(SearchCpu, {});
+    try {
+        assert.strictEqual(cpu._defensiveKey(res, 6, 2, false), before,
+            'an inert evaluator must not move the defensive ranking');
+    } finally { detach(); }
+});
+
+test('_defensiveKey: clearing MORE garbage must still rank higher', function () {
+    // The invariant the defensive path exists for. Whatever the evaluator
+    // adds, a move that removes more of the wall cannot come out behind one
+    // that removes less — that ordering is the thing keeping the cpu alive.
+    var cpu = liveCpu();
+    var detach = attach(SearchCpu, { garbageCleared: 40, chainLength: 10 });
+    try {
+        var few = cpu._defensiveKey({ chainLength: 2, comboSizes: [4], garbage: [] }, 1, 0, false);
+        var many = cpu._defensiveKey({ chainLength: 2, comboSizes: [4], garbage: [] }, 12, 0, false);
+        assert.ok(many > few, 'clearing 12 cells ranked ' + many +
+            ', clearing 1 ranked ' + few);
+    } finally { detach(); }
+});
+
+test('_defensiveKey: a weighted earned feature changes the defensive ranking', function () {
+    var cpu = liveCpu();
+    var res = { chainLength: 3, comboSizes: [5], garbage: [] };
+    var shipped = cpu._defensiveKey(res, 4, 1, false);
+    var moved = false;
+    ['chainLength', 'garbageCleared', 'framesToDeath'].forEach(function (key) {
+        var w = {}; w[key] = 250;
+        var detach = attach(SearchCpu, w);
+        try { if (cpu._defensiveKey(res, 4, 1, false) !== shipped) moved = true; }
+        finally { detach(); }
+    });
+    assert.ok(moved, 'no earned or clock feature could move the defensive ranking');
+});
+
+test('_defensiveKey: LIMIT — board features cannot reach it, and that is asserted', function () {
+    // Not a bug to be silently tolerated: a board feature weighted here
+    // must be a NO-OP rather than a small wrong number, because
+    // _defensiveKey has no board to measure. Asserting it keeps the limit
+    // visible until the signature changes.
+    var cpu = liveCpu();
+    var res = { chainLength: 2, comboSizes: [4], garbage: [] };
+    var base = cpu._defensiveKey(res, 3, 0, false);
+    ['links', 'roughness', 'maxHeight', 'colourVariance'].forEach(function (key) {
+        var w = {}; w[key] = 500;
+        var detach = attach(SearchCpu, w);
+        try {
+            assert.strictEqual(cpu._defensiveKey(res, 3, 0, false), base,
+                key + ' appeared to affect the defensive key, which has no board — ' +
+                'it must be reading something it should not');
+        } finally { detach(); }
+    });
+});
+
+test('_defensiveKey: detaching restores the shipped function itself', function () {
+    var original = SearchCpu.prototype._defensiveKey;
+    var detach = attach(SearchCpu, { chainLength: 1 });
+    assert.notStrictEqual(SearchCpu.prototype._defensiveKey, original);
+    detach();
+    assert.strictEqual(SearchCpu.prototype._defensiveKey, original);
 });
 
 tests.forEach(function (t) {
