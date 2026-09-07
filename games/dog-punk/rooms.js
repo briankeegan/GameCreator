@@ -27,9 +27,11 @@
 // middle — a chamfered corner, a bitten-off bay, a pinched waist — so the
 // FOOTPRINT differs room to room, not just what's standing on it. Each
 // shape is still deliberately its own: no two rooms share the same
-// carve (Bridge and Foundry, the zone's two push rooms, are even mirrored
-// diagonals of each other on purpose, so the one pair that had to stay
-// mechanically conservative still doesn't read as identical). Verified with
+// carve (Bridge and Foundry were mirrored diagonals of each other, back
+// when both were "push" rooms that had to stay mechanically conservative —
+// Foundry's since reverted to a straight fight, see the dated note above
+// `const ROOMS`, but its footprint is untouched, so the two rooms still
+// don't read as identical). Verified with
 // a BFS over each room's own grid (SOLID cells blocking, everything else
 // open) confirming spawn/back-spawn can still reach every gate, switch,
 // crate and enemy spawn the room has — a carved corner that quietly walls
@@ -155,14 +157,22 @@
     "2......P.......2",
     "2222222HH2222222",
   ];
-  // 2026-08-22 (puzzle pass) — Bridge USED TO be one crate, two rows below
-  // its one switch: push up twice and done, no thought required, which is
-  // why solving it read as "the same trivial nudge" rather than a puzzle at
-  // all. Now TWO crates must BOTH be resting on TWO switches at once (see
-  // isGateOpen's `every`, not `some`) and they don't take the same push:
-  // the row-6 crate still goes north onto its switch like before, but the
-  // row-8 crate must be pushed WEST three tiles onto its own switch — two
-  // genuinely different pushes in the same room, not one puzzle doubled.
+  // 2026-08-22 (puzzle pass) — Bridge used to be one crate, two rows below
+  // its one switch: push up twice and done, no thought required. Made it
+  // TWO crates on TWO switches simultaneously to fix that — but two crates
+  // was its own, different complaint ("especially don't have to move two
+  // boxes, jesus"): the fix for "too trivial" doesn't have to be "twice the
+  // chores", and per feedback this crate-on-switch idea was the one puzzle
+  // that was actually liked, singular — it just can't be the ONLY thing
+  // every puzzle room does (see the 2026-09-07 pass below, which pulls the
+  // mechanic out of Back Gate/Drone Nest/Foundry so it isn't). Bridge is
+  // now back to ONE crate on ONE switch — Chapter 1's only "push" room —
+  // but not the pure straight-line nudge it used to be either: the crate
+  // starts west of the switch's column, not directly below it, so clearing
+  // it takes an L (push it east twice onto the switch's column, then north
+  // twice onto the switch itself) rather than one line of nudges. Same
+  // shape of "just enough thought" as Foundry's original pair used to be,
+  // now carried by a single crate instead of two.
   const BRIDGE_MAP = [
     "2222222GG2222222",
     "222....B.......2",
@@ -170,9 +180,9 @@
     "2..............2",
     "2......S.......2",
     "HP.............2",
-    "H......X...3...2",
+    "H....X.....3...2",
     "2..............2",
-    "2..3..S..X.....2",
+    "2..3...........2",
     "2............222",
     "2.............22",
     "2222222222222222",
@@ -199,17 +209,28 @@
   // Bridge/Foundry's: one crate straight north 2 tiles, the other straight
   // south 3 — opposite directions on the SAME axis, so the room still reads
   // differently from Bridge (north+west) and Foundry (L-push+west).
+  // 2026-09-07 (puzzle overhaul, second pass — feedback: "the crate-on-
+  // switch one was the only decent one, doesn't mean that's the only
+  // puzzle... don't have to move two boxes") — this was briefly a "push"
+  // pair (one crate north, one south) so Bridge and Foundry weren't the
+  // only rooms using the mechanic. That's exactly the repeat the feedback
+  // is about: three "push" rooms in one chapter reads as one puzzle copy-
+  // pasted three times, not three puzzles. Back Gate is a straight fight
+  // again — Bridge alone carries "push" now — with one extra rat over the
+  // original three so losing the crates doesn't leave the room feeling
+  // thin (same move Courtyard/Rail Overpass made when their own switch
+  // puzzles were cut).
   const GATEROOM_MAP = [
     "2222222GG2222222",
     "222....B.....222",
     "22.3........4.22",
     "2..............2",
-    "2....S.........2",
+    "2..............2",
     "2.............PH",
-    "2....X.....X...H",
+    "2..............H",
     "2..............2",
     "2..............2",
-    "2..........S...2",
+    "2..............2",
     "2..............2",
     "2222222222222222",
   ];
@@ -285,16 +306,25 @@
   // which incidentally opens the only way into the left half, THEN cross
   // over and push crate B south onto its own. "Do this before that" as
   // level geometry, not a UI telling you the order.
+  // 2026-09-07 (puzzle overhaul, second pass) — this used to be a second
+  // "push" room (a crate wedged in the dividing wall's only gap, forcing
+  // it to be cleared before the far half was reachable) — see the note
+  // above GATEROOM_MAP for why the chapter is down to one "push" room now
+  // (Bridge). The dividing wall and its single gap stay — it's a genuine
+  // interior obstacle that makes this room's shape distinct in a fight,
+  // not just puzzle furniture — but nothing blocks the gap any more, so
+  // it's a straight fight through a room with real cover instead of a
+  // second crate chore.
   const DRONE_NEST_MAP = [
     "2222222GG2222222",
     "2......B2.....22",
     "22......2......2",
-    "2..X....2......2",
+    "2.......2......2",
     "2.......2..33..2",
     "2.......2.....PH",
-    "2...S...X......H",
+    "2..............H",
     "2.......2..44..2",
-    "2..S....2......2",
+    "2.......2......2",
     "2.......2......2",
     "2.......2......2",
     "2222222222222222",
@@ -314,8 +344,8 @@
     "22.....P......22",
     "2222222HH2222222",
   ];
-  // Slag Pit: a second clear room, first place the Brute shares a room with
-  // the Foundry's push puzzle instead of standing alone in an open yard.
+  // Slag Pit: a second clear room, first place the Brute shares a room
+  // instead of standing alone in an open yard.
   const SLAG_PIT_MAP = [
     "2222222222222222",
     "22.............2",
@@ -330,23 +360,23 @@
     "22.....P.......2",
     "2222222HH2222222",
   ];
-  // Foundry's original crate/switch pair (row7 col5 -> row4 col7) was
-  // already an L-shaped push (right, then up) rather than a straight line,
-  // so it stays as-is; a second, independent crate/switch pair is added on
-  // row9 needing a straight push WEST instead, so Foundry asks for an
-  // L-push AND a straight push in the same room rather than repeating
-  // Bridge's own pair of pushes.
+  // 2026-09-07 (puzzle overhaul, second pass) — this used to carry TWO
+  // independent crate/switch pairs (an L-push plus a straight push); see
+  // the note above GATEROOM_MAP for why the chapter now leans on Bridge as
+  // its one "push" room instead of repeating the mechanic here too. Straight
+  // fight now, one extra rat over the original two so it doesn't feel
+  // thin with the crates gone.
   const FOUNDRY_MAP = [
     "2222222GG2222222",
     "2......B.....222",
     "2..4........4.22",
     "2..............2",
-    "2......S.......2",
+    "2..............2",
     "HP.............2",
     "H..3........3..2",
-    "2.....X........2",
     "2..............2",
-    "22.4.S..X...4..2",
+    "2..............2",
+    "22.4........4..2",
     "22.............2",
     "2222222222222222",
   ];
@@ -482,6 +512,45 @@
   // "vault" added), still across 8 of 15 rooms, still no two adjacent
   // puzzle rooms sharing one: push (Bridge, Foundry, Back Gate, Drone
   // Nest), vault (Smelter, Town Gate), guard (Catwalk, Switchyard).
+  //
+  // 2026-09-07 (door-feedback pass) — "guard"/"vault" no longer require
+  // every enemy dead on top of the key (see isGateOpen in app.js): item
+  // pickup was never actually gated on enemies — the key itself could
+  // always be grabbed the moment it existed — but the gate not opening
+  // until the last enemy fell made grabbing it look like it did nothing,
+  // which read as "can't pick it up". And the gate used to swing open the
+  // instant the key was collected, wherever in the room that happened,
+  // which read as "the door just opens when you grab it" instead of a real
+  // locked door. Both rooms are now a plain key-door: hold the key, walk up
+  // to the gate, it opens THEN (see nearForwardGate/state.doorUnlocked).
+  //
+  // 2026-09-07 (puzzle overhaul, third pass — feedback: "I liked the crate-
+  // on-switch one, doesn't mean that's the only puzzle... now you just
+  // have them on repeat... especially don't have to move two boxes") —
+  // the previous pass's fix for "push was trivial" was TWO crates on TWO
+  // switches at once, and rolled that same "harder push" out to FOUR of
+  // the 15 rooms (Bridge, Foundry, Back Gate, Drone Nest). That's the
+  // opposite of what was asked for twice now: it's not that "push" needed
+  // to be harder, it's that it can't be the room's whole personality
+  // repeated four times over one chapter, and doubling the crate count
+  // made the one mechanic that WAS liked into the most-repeated chore in
+  // the level. Fixed by going narrow, not by inventing a sixth mechanic:
+  //   - "push" is down to ONE room — Bridge, and it's back to a single
+  //     crate on a single switch (see the note above BRIDGE_MAP for how
+  //     it avoids being pure "push up twice" without a second crate: an
+  //     L-shaped path instead of a straight one).
+  //   - Back Gate, Drone Nest and Foundry are straight "clear" fights
+  //     again (see the notes above their maps) — Drone Nest keeps its
+  //     dividing wall as a real interior obstacle, it just doesn't have a
+  //     crate wedged in the gap any more.
+  // Net puzzle mix across the 15 rooms is now: push (Bridge, 1 room),
+  // vault (Smelter, Town Gate, 2 rooms — unchanged, "shove the obstacle
+  // OUT of your way" already reads differently from "push it ONTO a
+  // target"), guard (Catwalk, Switchyard, 2 rooms — unchanged, no crate
+  // involved at all), clear (the other 10). Fewer puzzle rooms than the
+  // last two passes shipped, on purpose — the ask both times was for
+  // BETTER puzzles, not more of them, and the two mechanics that were
+  // never the complaint (vault, guard) are untouched here.
   const ROOMS = [
     {
       id: "alley",
@@ -496,10 +565,14 @@
       name: "Scrap Catwalk",
       blurb: "A sagging plank walkway, the only dry path through the scrap.",
       map: CATWALK_MAP,
-      // "guard" (NEW, see the puzzle-variety note above the ROOMS list):
-      // one marked rat (a pulsing gold ring, see render()) carries the key
-      // — kill it, walk over the key it drops, gate opens once you're
-      // holding it AND every rat is down. Not a plate to find, a specific
+      // "guard" (see the puzzle-variety note above the ROOMS list): one
+      // marked rat (a pulsing gold ring, see render()) carries the key —
+      // kill it, walk over the key it drops (pickup never depends on the
+      // other rats — you can grab it whenever it's on the ground), then
+      // walk up to the gate to open it (see isGateOpen/nearForwardGate in
+      // app.js — 2026-09-07 door-feedback pass: it no longer also requires
+      // every rat down, and it doesn't swing open the instant you grab the
+      // key from across the room either). Not a plate to find, a specific
       // target to pick out of a fight.
       type: "guard",
       enemySpawns: [
@@ -514,7 +587,8 @@
       name: "Junk Bridge",
       blurb: "Runoff drips through the grating underfoot.",
       map: BRIDGE_MAP,
-      type: "push", // gate opens once BOTH crates rest on their own switch AND enemies are cleared
+      // Chapter 1's only "push" room now — see the note above BRIDGE_MAP.
+      type: "push", // gate opens once the crate rests on its switch AND enemies are cleared
       enemySpawns: [{ c: 3, r: 2, type: "rat" }, { c: 12, r: 8, type: "rat" }],
     },
     {
@@ -536,11 +610,14 @@
       name: "Back Gate",
       blurb: "The back gate hums with a rail line somewhere beyond it.",
       map: GATEROOM_MAP,
-      // Was "switches" (find 3 loose plates); now its own "push" pair —
-      // one crate straight north 2 tiles, the other straight south 3 —
-      // see the 2026-09-07 comment above GATEROOM_MAP.
-      type: "push", // gate opens once every switch tile has its own crate on it AND enemies are cleared
-      enemySpawns: [{ c: 7, r: 2, type: "rat" }, { c: 3, r: 6, type: "rat" }, { c: 12, r: 6, type: "rat" }],
+      // Was briefly a second "push" room; see the 2026-09-07 comment above
+      // GATEROOM_MAP for why that got reverted to a straight fight — Bridge
+      // is Chapter 1's only crate puzzle now.
+      type: "clear",
+      enemySpawns: [
+        { c: 7, r: 2, type: "rat" }, { c: 3, r: 6, type: "rat" },
+        { c: 12, r: 6, type: "rat" }, { c: 9, r: 8, type: "rat" },
+      ],
     },
     {
       id: "railEntrance",
@@ -565,10 +642,10 @@
       name: "Rail Overpass",
       blurb: "Track ties stacked like teeth along the overpass.",
       map: RAIL_OVERPASS_MAP,
-      // Was a second push room; Bridge already teaches the push mechanic and
-      // Foundry repeats it later in the Rust Quarter, so this is a straight
-      // fight instead — one more drone than before to keep it from feeling
-      // thin now that the crate/switch is gone.
+      // Was a second push room; Bridge is Chapter 1's only "push" room now
+      // (see the note above BRIDGE_MAP), so this is a straight fight
+      // instead — one more drone than before to keep it from feeling thin
+      // now that the crate/switch is gone.
       type: "clear",
       tint: TINT_RAIL,
       enemySpawns: [
@@ -596,12 +673,10 @@
       name: "Drone Nest",
       blurb: "Wires nest here — whatever built this is still listening.",
       map: DRONE_NEST_MAP,
-      // Was "sequence" (3 numbered plates); now "push", but with a real
-      // forced order — one crate starts wedged in the room's only wall
-      // gap and has to be cleared before the other half (and its own
-      // crate) is even reachable. See the 2026-09-07 comment above
-      // DRONE_NEST_MAP for how that's verified, not just asserted.
-      type: "push",
+      // Was briefly a second "push" room; see the 2026-09-07 comment above
+      // DRONE_NEST_MAP for why the crate's gone and this is a straight
+      // fight through the same dividing-wall layout instead.
+      type: "clear",
       tint: TINT_RAIL,
       enemySpawns: [{ c: 5, r: 3, type: "drone" }, { c: 10, r: 3, type: "drone" }, { c: 7, r: 6, type: "drone" }],
     },
@@ -628,9 +703,13 @@
       name: "Scrap Foundry",
       blurb: "Cold furnaces now, but the smell of ash still lingers.",
       map: FOUNDRY_MAP,
-      type: "push",
+      // Was "push" (two crate/switch pairs); see the 2026-09-07 comment
+      // above FOUNDRY_MAP — Bridge is the chapter's only "push" room now.
+      type: "clear",
       tint: TINT_RUST,
-      enemySpawns: [{ c: 7, r: 5, type: "brute" }, { c: 3, r: 8, type: "rat" }],
+      enemySpawns: [
+        { c: 7, r: 5, type: "brute" }, { c: 3, r: 8, type: "rat" }, { c: 12, r: 8, type: "rat" },
+      ],
     },
     {
       id: "smelter",

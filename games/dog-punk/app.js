@@ -170,6 +170,13 @@
 // and rooms.js's file header for the map-level detail). See isGateOpen,
 // buildRoomState's new 'K' tile, and drawSwitchPlate (now push-only, no
 // more order numbers) for the code side.
+// 2026-09-07 (puzzle overhaul, third pass) — that "push" rollout above is
+// itself now reverted down to ONE room (Bridge); rolling the mechanic out
+// to four rooms made the one puzzle type that was actually liked into the
+// most-repeated chore in the chapter, on top of doubling to two crates per
+// room being its own separate complaint. See the dated note directly above
+// `const ROOMS` in rooms.js for the current mechanic mix — this comment is
+// left as history, not a description of what ships today.
 const GAME_ID = "dog-punk";
 
 // ---- checkpoint save (resume where you left off) ----
@@ -1093,6 +1100,10 @@ function freshState() {
     // next one.
     keyPickup: built.keyStart || null,
     keyCollected: false,
+    // Set once, in update(), the first time the player is holding the key
+    // AND within reach of the room's forward gate — see isGateOpen and
+    // nearForwardGate. Reset every room load exactly like keyCollected.
+    doorUnlocked: false,
     startTime: performance.now(),
     elapsed: 0,
     won: false,
@@ -1129,6 +1140,7 @@ function transitionToRoom(idx, entry) {
   state.crates = built.crates;
   state.keyPickup = built.keyStart || null;
   state.keyCollected = false;
+  state.doorUnlocked = false;
   state.deathFx = [];
   state.projectiles = [];
   showRoomToast(ROOMS[idx].name, ROOMS[idx].blurb);
@@ -1162,6 +1174,7 @@ function resumeFromCheckpoint(save) {
   state.crates = built.crates;
   state.keyPickup = built.keyStart || null;
   state.keyCollected = false;
+  state.doorUnlocked = false;
   state.deathFx = [];
   state.projectiles = [];
   state.startTime = performance.now() - save.elapsedBefore * 1000;
@@ -1184,6 +1197,7 @@ function resetRoom() {
   state.crates = built.crates;
   state.keyPickup = built.keyStart || null;
   state.keyCollected = false;
+  state.doorUnlocked = false;
   state.deathFx = [];
   state.projectiles = [];
   state.lost = false;
@@ -1343,6 +1357,19 @@ function update(dt, now) {
     state.keyCollected = true;
     state.keyPickup = null;
     state.deathFx.push({ x: p.x, y: p.y, t: 0, dur: 0.3, spark: true });
+  }
+
+  // "guard"/"vault" DOOR UNLOCK: the gate itself only opens once you've
+  // walked up to it holding the key — not the instant the key is grabbed,
+  // wherever in the room that happens to be (see isGateOpen's comment for
+  // why that used to feel like the door "just opened when you grabbed it").
+  // Fires once and latches — a door that already swung open doesn't swing
+  // shut again if you step back from it.
+  if (!state.doorUnlocked && state.keyCollected) {
+    const room = ROOMS[state.roomIndex];
+    if ((room.type === "guard" || room.type === "vault") && nearForwardGate(p)) {
+      state.doorUnlocked = true;
+    }
   }
 
   // walk-cycle animation: advance a phase clock while actually moving under
@@ -1606,36 +1633,56 @@ function update(dt, now) {
   }
 }
 
-// Whether the CURRENT room's gate should be open: every room needs its
-// enemies cleared, and the puzzle rooms need their extra condition on top —
-// see the ROOMS comment for what each room `type` means. Centralised here
-// (update() and render() both used to recompute the plain "enemies cleared"
-// version separately, which is exactly the kind of duplicated rule that
-// drifts the moment only one copy gets the puzzle condition added) so both
-// callers always agree.
+// Whether the CURRENT room's gate should be open: "clear"/"push" rooms need
+// their enemies down (plus, for "push", the crate condition on top);
+// "guard"/"vault" rooms are a KEY-DOOR instead — see the ROOMS comment for
+// what each room `type` means. Centralised here (update() and render() both
+// used to recompute the plain "enemies cleared" version separately, which is
+// exactly the kind of duplicated rule that drifts the moment only one copy
+// gets the puzzle condition added) so both callers always agree.
+//
+// 2026-09-07 (door-feedback pass) — "guard"/"vault" used to ALSO require
+// every enemy in the room dead, on top of holding the key, which is why
+// picking the key up visibly did nothing until the last enemy fell: it read
+// as "you can't pick up the key until everyone's dead" even though the
+// pickup itself never checked enemies at all. Item pickup should never be
+// gated behind combat, so that requirement is gone for these two types —
+// holding the key is the only precondition now. And a door should open
+// because you WALKED UP TO IT, not the instant you grab a key from across
+// the room: see state.doorUnlocked (set in update(), only once, the first
+// time you're near the gate while holding the key) — isGateOpen just reads
+// that flag rather than re-deriving "open" from keyCollected directly.
 function isGateOpen() {
-  if (!state.enemies.every((e) => !e.alive)) return false;
   const room = ROOMS[state.roomIndex];
+  if (room.type === "guard" || room.type === "vault") return !!state.doorUnlocked;
+  if (!state.enemies.every((e) => !e.alive)) return false;
   if (room.type === "push") {
-    // EVERY switch needs its OWN crate on it at once, not just "a crate is
-    // on A switch somewhere" — that `.some` used to let Bridge/Foundry's
-    // second crate/switch pair sit unsolved forever and the gate would
-    // still open off the first one alone. See the ROOMS comment (puzzle
-    // pass) for why there are two pairs now instead of one.
+    // EVERY switch needs its OWN crate on it, not just "a crate is on A
+    // switch somewhere" — Bridge is down to one crate/one switch now (see
+    // the dated note above `const ROOMS` in rooms.js), but `.every` is left
+    // as-is rather than narrowed to `.some`: a room with more than one
+    // switch tile should still need all of them covered if that ever comes
+    // back, not silently accept the first one solved.
     return room.switchTiles.every((s) => state.crates.some((cr) =>
       Math.floor(cr.x / TILE) === s.c && Math.floor(cr.y / TILE) === s.r));
   }
-  // "guard" and "vault" share one completion test — a key has to actually
-  // be picked up, not just made reachable — they only differ in HOW the key
-  // gets there: "guard" drops it off a marked enemy's death (see the
-  // key-drop code in update()'s attack-hit block), "vault" starts it
-  // sitting on the room's 'K' tile from the moment the room loads (see
-  // buildRoomState) behind a crate barricade instead of behind a fight.
-  // See the 2026-09-07 puzzle-overhaul comment above the ROOMS list for why
-  // "switches"/"sequence" (walk onto N marked floor tiles, in any order or
-  // a memorised one) are gone rather than fixed again.
-  if (room.type === "guard" || room.type === "vault") return !!state.keyCollected;
   return true;
+}
+
+// Is the player standing close enough to this room's forward gate ('G')
+// to count as "walked up to it"? Used only to flip state.doorUnlocked once
+// — see the comment on isGateOpen above. Loose enough to trigger a step or
+// two before actually touching the (still-solid-until-unlocked) gate tile,
+// tight enough that it can't fire from across the room.
+function nearForwardGate(p) {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (MAP[r][c] !== "G") continue;
+      const gx = c * TILE + TILE / 2, gy = r * TILE + TILE / 2;
+      if (Math.hypot(p.x - gx, p.y - gy) < TILE * 1.5) return true;
+    }
+  }
+  return false;
 }
 
 // ---- drawing ----
@@ -2329,7 +2376,11 @@ function renderHud() {
   }
   lastHudHp = p.hp;
   const left = state.enemies.filter((e) => e.alive).length;
-  enemyCountEl.textContent = left > 0 ? `${left} left` : (isGateOpen() ? "Gate open!" : puzzleStatus());
+  // Gate state is checked FIRST, not after "enemies left": "guard"/"vault"
+  // rooms can now open their door with enemies still alive (see
+  // isGateOpen's comment — the door only ever cared about the key), so
+  // "${left} left" would otherwise mask an already-open gate.
+  enemyCountEl.textContent = isGateOpen() ? "Gate open!" : (left > 0 ? `${left} left` : puzzleStatus());
   const room = ROOMS[state.roomIndex];
   hudTitleEl.textContent = `Chapter 1 · ${room.name} (${state.roomIndex + 1}/${ROOMS.length})`;
 }
@@ -2345,8 +2396,17 @@ function puzzleStatus() {
       Math.floor(cr.x / TILE) === s.c && Math.floor(cr.y / TILE) === s.r)).length;
     return `Crates ${done}/${room.switchTiles.length}`;
   }
-  if (room.type === "guard") return state.keyCollected ? "Gate open!" : (state.keyPickup ? "Get the key!" : "Find the key-carrier");
-  if (room.type === "vault") return state.keyCollected ? "Gate open!" : "Find the hidden key";
+  // Note: isGateOpen() is checked before this runs (see renderHud), so
+  // reaching here always means state.doorUnlocked is still false — i.e.
+  // either the key isn't collected yet, or it is but the gate hasn't been
+  // walked up to.
+  if (room.type === "guard") {
+    if (state.keyCollected) return "Got the key — take it to the gate!";
+    return state.keyPickup ? "Get the key!" : "Find the key-carrier";
+  }
+  if (room.type === "vault") {
+    return state.keyCollected ? "Got the key — take it to the gate!" : "Find the hidden key";
+  }
   return "Gate open!";
 }
 
