@@ -125,6 +125,16 @@ test('displacement is carried — a board one pixel from a new row is not the sa
     assert.strictEqual(inputMod.fromStack(s, {}, {}, null, 0).displacement, s.displacement);
 });
 
+test('the level colour count is carried, and is a real number', function () {
+    // Carried but unread today. A field nobody reads is exactly the field
+    // that rots into a silent 0, so it is checked against the engine now
+    // rather than when a feature first depends on it.
+    var s = run(newStack({ level: 3 }), 5);
+    var got = inputMod.fromStack(s, {}, {}, null, 0);
+    assert.strictEqual(got.colours, s.colors);
+    assert.ok(got.colours >= 3, 'a level with fewer than 3 colours could not match at all');
+});
+
 test('earned comes from the resolved candidate, not from the stack', function () {
     // The move being scored has not happened on the real stack — it is a
     // hypothetical the search resolved on a LogicalBoard. Reading these off
@@ -317,6 +327,138 @@ test('matchPotential agrees with an engine-driven count across seeds', function 
         'garbage clause — the plain-3-that-touches-garbage rule is barely covered');
 });
 
+
+
+// ---- garbageSent, against pushGarbage and the engine's own table ----
+//
+// The sizes a combo sends are a TABLE in panel-engine.js (COMBO_GARBAGE,
+// ported from checkMatches.lua). Retyping any of its numbers into a test
+// would mean the test agrees with my memory of the table rather than with
+// the table, which is the whole class of bug this file exists for. So the
+// expected values come from driving pushGarbage on a real Stack.
+test('garbageSent matches what the engine actually queues, for combos', function () {
+    var sizes = [3, 4, 5, 6, 7, 8, 11, 20], sawEmpty = false, sawReal = false;
+    sizes.forEach(function (size) {
+        var s = run(newStack(), 5);
+        s.outgoing.length = 0;
+        s.currentChain = null;
+        s.pushGarbage({ row: 1, col: 1 }, false, size);
+        var expected = 0;
+        s.outgoing.forEach(function (g) { expected += g.width * g.height; });
+        var got = features.garbageSent(inputMod.normalize({
+            earned: { garbageSent: s.outgoing.map(function (g) { return [g.width, g.height]; }) }
+        }));
+        assert.strictEqual(got, expected, 'combo of ' + size);
+        if (expected === 0) sawEmpty = true; else sawReal = true;
+    });
+    assert.ok(sawEmpty, 'no combo size sent nothing — comboGarbage returns [] below 4, ' +
+        'so a 3 must be in this sweep or the zero case is untested');
+    assert.ok(sawReal, 'no combo sent anything at all');
+});
+
+test('a 3-combo sends NOTHING, and the engine says so, not this test', function () {
+    var s = run(newStack(), 5);
+    s.outgoing.length = 0; s.currentChain = null;
+    s.pushGarbage({ row: 1, col: 1 }, false, 3);
+    assert.deepStrictEqual(s.outgoing, [], 'engine queued something for a 3-combo');
+    assert.strictEqual(features.garbageSent(inputMod.normalize({ earned: { garbageSent: [] } })), 0);
+});
+
+test('garbageSent grows a full-width row per chain link, per the engine', function () {
+    var s = run(newStack(), 5);
+    s.outgoing.length = 0; s.currentChain = null;
+    var seen = [];
+    for (var link = 0; link < 4; link++) {
+        s.pushGarbage({ row: 1, col: 1 }, true, 0);
+        var cells = 0;
+        s.outgoing.forEach(function (g) { cells += g.width * g.height; });
+        seen.push(features.garbageSent(inputMod.normalize({
+            earned: { garbageSent: s.outgoing.map(function (g) { return [g.width, g.height]; }) }
+        })));
+        assert.strictEqual(seen[link], cells);
+    }
+    for (var i = 1; i < seen.length; i++) {
+        assert.strictEqual(seen[i] - seen[i - 1], PanelEngine.WIDTH,
+            'each extra link must add exactly one full-width row');
+    }
+});
+
+
+// ---- framesToDeath, against an actual death ----
+//
+// This is the assertion the whole feature rests on. Everything else about
+// it is arithmetic on four fields, and arithmetic that agrees with itself
+// proves nothing — the question is whether the number counts down to a
+// real death at the real rate. So: top a Stack out, read the feature, then
+// run the engine until it actually dies, and compare.
+function toppedOutStack(level) {
+    var s = new PanelEngine.Stack({ level: level || 3, seed: 3 });
+    // PAST THE COUNTDOWN FIRST. Stack.run() only calls runPhysics once
+    // stopWatchIsRunning, so a board built during the countdown never
+    // latches wasToppedOut and the whole test silently measures a stack
+    // that is not running yet. Cost an hour the first time.
+    var guard = 0;
+    while (!s.stopWatchIsRunning && guard++ < 1000) s.run();
+    assert.ok(s.stopWatchIsRunning, 'countdown never finished');
+    // Fill every column to the ceiling with a pattern that cannot match,
+    // so nothing pops and the board stays topped out.
+    for (var r = 1; r <= s.height; r++) {
+        for (var c = 1; c <= PanelEngine.WIDTH; c++) {
+            var p = s.panelAt(r, c);
+            p.isGarbage = false;
+            p.state = 'normal';
+            p.color = ((r + 2 * c) % 3) + 1;   // no run of three anywhere
+        }
+    }
+    s.run();
+    return s;
+}
+
+test('framesToDeath counts down to a real death at the real rate', function () {
+    var s = toppedOutStack();
+    assert.ok(s.wasToppedOut, 'setup failed: the stack is not topped out');
+    var predicted = features.framesToDeath(inputMod.fromStack(s, {}, {}, null, 0));
+    assert.ok(isFinite(predicted) && predicted > 0,
+        'a topped-out board with health should predict a finite countdown, got ' + predicted);
+
+    var frames = 0;
+    while (!s.gameOver && frames < predicted * 4 + 600) { s.run(); frames++; }
+    assert.ok(s.gameOver, 'the stack never died in ' + frames + ' frames — the prediction ' +
+        'of ' + predicted + ' cannot be checked against anything');
+    // Exactness is not the claim: the engine also re-latches wasToppedOut,
+    // and a swap or a landing can pause the drain. The claim is that the
+    // feature is measuring THIS, not something with the same units.
+    assert.ok(Math.abs(frames - predicted) <= predicted * 0.5 + 10,
+        'predicted ' + predicted + ' frames, actually survived ' + frames);
+});
+
+test('framesToDeath is Infinity for a board that is not topped out, and that board does not die', function () {
+    var s = run(newStack(), 60);
+    assert.strictEqual(features.framesToDeath(inputMod.fromStack(s, {}, {}, null, 0)), Infinity);
+    for (var i = 0; i < 600; i++) s.run();
+    assert.ok(!s.gameOver, 'a board predicted unkillable died within 600 frames');
+});
+
+test('stop time does NOT bank — the engine takes a max, so the feature must not sum', function () {
+    // The single most important assertion about this feature. awardStopTime
+    // ends `if (stopTime > this.stopTime) this.stopTime = stopTime`, so a
+    // chain awarded while more stop time is already on the clock earns
+    // nothing at all. Scored as "banked + earned" the search would learn
+    // the opposite of the truth.
+    var s = toppedOutStack();
+    s.stopTime = 0;
+    s.awardStopTime(true, 4);
+    var big = s.stopTime;
+    assert.ok(big > 0, 'setup failed: no stop time awarded');
+    var before = features.framesToDeath(inputMod.fromStack(s, {}, {}, null, 0));
+
+    s.awardStopTime(false, 4);      // a smaller award, on a clock already full
+    assert.strictEqual(s.stopTime, big, 'the engine itself did not apply the max');
+    var after = features.framesToDeath(inputMod.fromStack(s, {}, {}, null, 0));
+    assert.strictEqual(after, before,
+        'the feature grew by the second award (' + before + ' -> ' + after + '), so it is ' +
+        'summing where the engine takes a max');
+});
 
 tests.forEach(function (t) {
     try { t.fn(); process.stdout.write('  ok   ' + t.name + '\n'); }

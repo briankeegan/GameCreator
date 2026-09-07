@@ -244,8 +244,297 @@
     return total;
   }
 
+  // --------------------------------------------------------- edgePenalty
+  //
+  // PANELS IN THE SIDE COLUMNS.
+  //
+  // A panel against a wall has three orthogonal neighbours instead of four,
+  // so it can link less and is worth less as chain material
+  // (../PUYO_REFERENCE.md, 8% of meatfighter's score). A plain count, which
+  // is what the reference measures; if it turns out the penalty should
+  // scale with how built-up the board is, that is a measurable change.
+  //
+  // Only real panels. Garbage on an edge is not material we are trying to
+  // link, and a busy cell's colour is unknown to the snapshot.
+  function edgePenalty(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var n = 0;
+    for (var r = 1; r <= H; r++) {
+      if (grid[r][1] > 0) n++;
+      if (W > 1 && grid[r][W] > 0) n++;
+    }
+    return n;
+  }
+
+  // ----------------------------------------------------------- maxHeight
+  //
+  // THE TALLEST COLUMN, PLUS THE RISE ALREADY UNDER IT.
+  //
+  // Occupancy, not colour: garbage is in the way exactly as much as a
+  // panel, and a busy cell is a panel mid-animation. A buried gap does not
+  // reduce it — what matters is how close the top of the stack is to the
+  // ceiling, which is what tops a board out.
+  //
+  // Displacement is the part that gets left off. It is 0..15 sub-row pixels
+  // of rise, so a board one pixel from gaining a row is genuinely taller
+  // than one that just gained one; adding displacement/16 keeps the
+  // ordering right without ever double-counting the row it is about to
+  // become.
+  function maxHeight(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var top = 0;
+    for (var c = 1; c <= W; c++) {
+      for (var r = H; r >= 1; r--) {
+        if (grid[r][c] !== 0) { if (r > top) top = r; break; }
+      }
+    }
+    return top + (input.displacement || 0) / 16;
+  }
+
+  // ----------------------------------------------------------- fillRatio
+  //
+  // OCCUPIED CELLS OVER TOTAL CELLS.
+  //
+  // NOT LogicalBoard.fillRatio, which returns maxHeight/height and is
+  // therefore a second copy of maxHeight under a misleading name. This one
+  // is about DENSITY: how much of the board is spent, regardless of shape.
+  // The two are kept apart on purpose and the tests assert the separation —
+  // a tall thin column and a flat wide layer of the same panel count score
+  // the same here and differently on maxHeight. If they ever stop
+  // disagreeing, one of them should be cut rather than tuned.
+  function fillRatio(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    if (!W || !H) return 0;
+    var used = 0;
+    for (var r = 1; r <= H; r++) {
+      for (var c = 1; c <= W; c++) if (grid[r][c] !== 0) used++;
+    }
+    return used / (W * H);
+  }
+
+  // ----------------------------------------------------------- roughness
+  //
+  // THE SUM OF ABSOLUTE HEIGHT DIFFERENCES BETWEEN ADJACENT COLUMNS.
+  //
+  // A jagged surface is hard to build matches on and hard to land garbage
+  // flat against. It is NOT height: a uniformly tall board is perfectly
+  // smooth and scores zero here, which is what keeps this from being a
+  // third copy of maxHeight.
+  //
+  // Column height is the topmost occupied row, so a BURIED hole does not
+  // register. Buried holes are a real problem and deliberately not this
+  // feature's — noted here rather than half-solved, since a roughness that
+  // sometimes counted holes would be neither measure.
+  function roughness(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var heights = [], c, r;
+    for (c = 1; c <= W; c++) {
+      heights[c] = 0;
+      for (r = H; r >= 1; r--) if (grid[r][c] !== 0) { heights[c] = r; break; }
+    }
+    var sum = 0;
+    for (c = 1; c < W; c++) sum += Math.abs(heights[c] - heights[c + 1]);
+    return sum;
+  }
+
+  // ------------------------------------------------------ garbageOnBoard
+  //
+  // GARBAGE CELLS PRESENT. Cells, not blocks: a 6x2 slab is twelve cells of
+  // wall, and counting it as one would make a full-board block look like a
+  // pebble beside a single dropped row.
+  function garbageOnBoard(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var n = 0;
+    for (var r = 1; r <= H; r++) {
+      for (var c = 1; c <= W; c++) if (grid[r][c] === -2) n++;
+    }
+    return n;
+  }
+
+  // ----------------------------------------------------- incomingGarbage
+  //
+  // ATTACKS QUEUED BUT NOT LANDED, IN CELLS.
+  //
+  // The grid cannot show these, and that is the point. panel-cpu.js records
+  // this as the mechanism behind its worst deaths: a burst arrives back to
+  // back, danger only trips once each piece has physically landed, and by
+  // then there was never a calm moment to react in — the danger was real
+  // the instant the queue filled and invisible until each piece arrived.
+  //
+  // Cells rather than rows (_queuedGarbageHeight divides by width) because
+  // a 3-wide piece and a 6-wide piece are not the same threat, and dividing
+  // throws that away before the weight ever sees it.
+  function incomingGarbage(input) {
+    var q = input.incoming, cells = 0;
+    for (var i = 0; i < q.length; i++) cells += (q[i].width || 0) * (q[i].height || 0);
+    return cells;
+  }
+
+  // ---------------------------------------------------- garbageAdjacency
+  //
+  // MATCHABLE PANELS ORTHOGONALLY TOUCHING GARBAGE.
+  //
+  // Garbage has no colour and can never be matched, so touching it with a
+  // match is the only way it ever clears. This counts PANELS, not contacts:
+  // a panel wedged in a garbage pocket is one opportunity, not three, since
+  // one match through it clears everything it touches (and the clear then
+  // propagates block to block anyway).
+  //
+  // Deliberately not a second count of garbage — the tests pin that by
+  // scoring the same garbage buried among panels and alone on the board.
+  function garbageAdjacency(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var n = 0;
+    for (var r = 1; r <= H; r++) {
+      for (var c = 1; c <= W; c++) {
+        if (grid[r][c] <= 0) continue;          // only a matchable panel can do this
+        if ((r < H && grid[r + 1][c] === -2) ||
+            (r > 1 && grid[r - 1][c] === -2) ||
+            (c < W && grid[r][c + 1] === -2) ||
+            (c > 1 && grid[r][c - 1] === -2)) n++;
+      }
+    }
+    return n;
+  }
+
+  // ------------------------------------------------------ colourScarcity
+  //
+  // COLOURS DOWN TO FEWER THAN THREE MATCHABLE PANELS.
+  //
+  // Three is the match length, so a colour below it cannot form a match at
+  // all — the panels are dead weight until more of that colour rises. This
+  // is the "stuck" death panel-cpu.js describes: once no legal swap can
+  // match anything, the real AI wiggles in place until the anti-stall
+  // punishment kills it.
+  //
+  // A colour with ZERO panels is NOT scarce, and that is the whole trap.
+  // You cannot be stuck for want of a colour you are not holding, and
+  // counting absent colours would make an empty board — the safest board
+  // there is — score as the most desperate.
+  //
+  // Which is why this reads only the board and NOT input.colours, despite
+  // the level's colour count being available. Iterating the colours in
+  // play would have to decide what a count of zero means, and every answer
+  // is wrong: zero is not scarcity, so it would be skipped, which is
+  // exactly what counting only the colours present already does — with one
+  // fewer input to get out of step with the board.
+  //
+  // Garbage and busy cells are not supply: a wall of garbage does not help
+  // you match, and a panel mid-animation has no colour this snapshot knows.
+  function colourScarcity(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var counts = {}, r, c, v;
+    for (r = 1; r <= H; r++) {
+      for (c = 1; c <= W; c++) {
+        v = grid[r][c];
+        if (v > 0) counts[v] = (counts[v] || 0) + 1;
+      }
+    }
+    var scarce = 0;
+    for (var colour in counts) {
+      if (counts.hasOwnProperty(colour) && counts[colour] > 0 && counts[colour] < 3) scarce++;
+    }
+    return scarce;
+  }
+
+  // ---------------------------------------------------------- garbageSent
+  //
+  // THE ATTACK THIS MOVE LAUNCHED, IN CELLS.
+  //
+  // Cells rather than pieces, because the two ways of attacking are shaped
+  // differently and pieces would flatten them. pushGarbage sends a COMBO as
+  // a set of 1-high blocks whose widths come from COMBO_GARBAGE, and a
+  // CHAIN as ONE full-width block that grows a row per link. So a 4-combo
+  // is a handful of cells in one row; a 4-chain is three full rows. Cells
+  // is the common currency between them.
+  //
+  // Note what is NOT here: any judgement about a combo being worth more or
+  // less than a chain of the same cell count. If that turns out to matter
+  // it is a second feature with its own weight, measured on its own —
+  // not a fudge factor hidden inside this one.
+  function garbageSent(input) {
+    var pieces = input.earned.garbageSent, cells = 0;
+    for (var i = 0; i < pieces.length; i++) {
+      cells += (pieces[i][0] || 0) * (pieces[i][1] || 0);
+    }
+    return cells;
+  }
+
+  // ---------------------------------------------------------- chainLength
+  //
+  // THE CHAIN COUNTER AFTER THE MOVE.
+  //
+  // Backward-looking: what the chain ended up worth. latentChain is the
+  // forward-looking half — whether a landing will CONTINUE one.
+  //
+  // The off-by-one is the whole feature. The match that STARTS a chain is
+  // not a link; the first link makes it x2 (incrementChainCounter, which
+  // sets the counter to 2 rather than incrementing from 1). So the counter
+  // is 0 or 2 or more, and there is no such thing as a chain of one. A
+  // feature that normalised it to "links + 1" would be wrong by one for
+  // every chain in the game.
+  //
+  // Passed straight through rather than transformed, because the engine's
+  // number IS the quantity awardStopTime and pushGarbage both pay on.
+  function chainLength(input) {
+    return input.earned.chainLength || 0;
+  }
+
+  // -------------------------------------------------------- framesToDeath
+  //
+  // HOW MANY FRAMES THIS BOARD HAS LEFT.
+  //
+  // ONE feature, where the obvious design is three. Stop time, health and
+  // shake do not sit beside each other as resources to bank — they PAUSE
+  // each other, and the engine says so in three places:
+  //
+  //   - advancePassiveRaise decrements health only inside
+  //     (!riseLock && stopTime === 0), so stop time and riseLock both
+  //     freeze the clock rather than adding to a separate pool.
+  //   - checkGameOver needs health <= 0 AND shakeTime <= 0, so shake is
+  //     death protection: more frames, not a different currency.
+  //   - decrementTimers drains preStopTime first and only then stopTime,
+  //     so the real stop clock is their sum.
+  //
+  // As three additive features the search would double-count every one of
+  // those interactions. As one, "how long have I got" is a single number
+  // the weight can be honest about.
+  //
+  // AND STOP TIME DOES NOT BANK. awardStopTime ends
+  // `if (stopTime > this.stopTime) this.stopTime = stopTime` — a MAX, not
+  // a +=. A 4-chain paying 90 frames while 120 are still on the clock earns
+  // NOTHING. That is why "stop time earned" is not a feature here: scored
+  // separately from "stop time banked", the two would sum, and the search
+  // would learn that chaining during stop pays when it is exactly the
+  // moment it does not. This feature reads the resulting clock, so the max
+  // is already applied by the engine and cannot be double-counted.
+  //
+  // Infinity, not a large number, when the board cannot die. A sentinel
+  // like 99999 is a number the weight multiplies, so a safe board would
+  // dominate the whole score and every other feature would be noise.
+  // Infinity times a positive weight is Infinity, which is the honest
+  // answer to "how long until this kills me": it does not.
+  function framesToDeath(input) {
+    var clock = input.clock;
+    if (!clock.toppedOut) return Infinity;
+    if (clock.riseLock) return Infinity;
+    return (clock.preStopTime || 0) + (clock.stopTime || 0) +
+           (clock.shakeTime || 0) + (clock.health || 0);
+  }
+
   return {
     matchPotential: matchPotential,
+    framesToDeath: framesToDeath,
+    garbageSent: garbageSent,
+    chainLength: chainLength,
+    garbageOnBoard: garbageOnBoard,
+    incomingGarbage: incomingGarbage,
+    garbageAdjacency: garbageAdjacency,
+    colourScarcity: colourScarcity,
+    edgePenalty: edgePenalty,
+    maxHeight: maxHeight,
+    fillRatio: fillRatio,
+    roughness: roughness,
     colourVariance: colourVariance,
     links: links,
     // exported for tests only — not features

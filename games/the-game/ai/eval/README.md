@@ -116,29 +116,29 @@ bot, so those four are declared here rather than left as an idea.
 | `matchPotential` | + | **BUILT.** Legal swaps that would produce a match of combo size 4+, or any size touching garbage. A plain 3 scores 0 — `comboGarbage()` sends nothing below 4 |
 | `links` | + | **BUILT.** Same-coloured panels orthogonally adjacent, counted as pairs. 25% of meatfighter's score |
 | `colourVariance` | − | **BUILT.** Per colour, mean distance of its panels from that colour's OWN mean. Position-invariant, per-colour, and per-panel averaged — each of those three is a mutation that survived a careless test |
-| `edgePenalty` | − | Side columns have three neighbours, not four |
+| `edgePenalty` | − | **BUILT.** Count of panels in the side columns — three neighbours instead of four |
 | `latentChain` | + | Does a chain-flagged cell settle into a match. The forward-looking half of `chainLength` |
-| `garbageOnBoard` | − | On-screen weighted above off-screen |
-| `incomingGarbage` | − | Committed height the grid cannot show yet |
-| `maxHeight` | − | Plus displacement |
-| `fillRatio` | − | Overlaps `maxHeight`; first candidate to cut |
-| `roughness` | − | Σ \|height[c] − height[c+1]\| |
-| `garbageAdjacency` | + | Garbage has no colour, so touching it is the only way it clears |
-| `colourScarcity` | − | A colour with fewer than 3 matchable panels can no longer match |
+| `garbageOnBoard` | − | **BUILT.** Garbage CELLS, not blocks — a 6x2 slab is twelve cells of wall |
+| `incomingGarbage` | − | **BUILT.** Queued but not landed, in cells. The grid cannot show these, which is the mechanism behind panel-cpu.js's worst deaths |
+| `maxHeight` | − | **BUILT.** Tallest column plus displacement/16 — a board one pixel from a new row is not the same board |
+| `fillRatio` | − | **BUILT.** Occupied over total. NOT `LogicalBoard.fillRatio`, which is maxHeight/height under a misleading name. Tests pin that it ignores shape where maxHeight does not |
+| `roughness` | − | **BUILT.** Σ |height[c] − height[c+1]|, including the drop to empty ground. Not height: a flat tall board is 0 |height[c] − height[c+1]\| |
+| `garbageAdjacency` | + | **BUILT.** Panels touching garbage, counted per PANEL not per contact. The only way garbage ever clears |
+| `colourScarcity` | − | **BUILT.** Colours down to fewer than 3 panels. A colour with ZERO is NOT scarce — that inversion makes an empty board look desperate |
 
 **Earned** — what this move just paid out
 
 | Feature | Sign | Notes |
 |---|---|---|
-| `garbageSent` | + | Combo → 1-high blocks of varying width; chain → one full-width block growing a row per link |
-| `chainLength` | + | Backward-looking |
+| `garbageSent` | + | **BUILT.** In cells. Combo → widths, chain → one full-width block growing a row per link. Checked against pushGarbage, not against retyped table values |
+| `chainLength` | + | **BUILT.** Passed through. The first link is x2, never x1 — there is no chain of one |
 | `garbageCleared` | + | Including propagation into touching blocks |
 
 **Clock** — one composite, not three
 
 | Feature | Sign | Notes |
 |---|---|---|
-| `framesToDeath` | + | `toppedOut ? preStop + stop + shake + health : ∞`, and ∞ while `riseLock` holds |
+| `framesToDeath` | + | **BUILT.** `toppedOut ? preStop + stop + shake + health : Infinity`, Infinity while riseLock holds. Checked by killing a real Stack and comparing |
 
 ### Why the clock is one feature
 

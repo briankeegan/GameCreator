@@ -25,6 +25,14 @@
 //              blocks { id: { cells: [[row,col],...] } } — garbage blocks,
 //              needed because clearing propagates block to block, so a
 //              cell's block membership decides how much one match removes.
+//   colours  how many colours are in play at this level. Carried but not
+//              currently read by any feature: colourScarcity was expected
+//              to need it and does not, because a colour with no panels is
+//              not scarce, so iterating the colours in play adds an input
+//              to get out of step with the board and changes no answer.
+//              Kept because it is free and a later feature may want it —
+//              and because the fidelity suite checks it is really wired,
+//              so it cannot rot into a field that silently reads 0.
 //   displacement  0..15, the sub-row pixel offset of the rise. Real height
 //              is maxHeight + displacement/16; a board one pixel from a new
 //              row is not the same board as one that just gained a row.
@@ -75,6 +83,7 @@
         grid: board.grid || [],
         blocks: board.blocks || {}
       },
+      colours: raw.colours || 0,
       displacement: raw.displacement || 0,
       chainMarks: raw.chainMarks === undefined ? null : raw.chainMarks,
       earned: {
@@ -115,6 +124,7 @@
     }
     return normalize({
       board: board,
+      colours: stack ? stack.colors : 0,
       displacement: stack ? stack.displacement : 0,
       chainMarks: cascade ? cascade.chainMarks : null,
       earned: {
