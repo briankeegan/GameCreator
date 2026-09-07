@@ -388,7 +388,15 @@ window.NEWSEY_STORY = (function () {
         // on each to keep its top where it was, w recomputed to match
         // (mirror keeps its locked 1:2 ratio off the new h; the nightstand
         // has none declared, so it still follows the art's own aspect).
-        { art: "prop_bed_mirror", x: 53,  y: 109, h: 99, w: 50, base: { w: 40, h: 8 } },
+        // reflect: true — the plot's own words: "It was still myself, but a
+        // pair of bright red horns were poking through my black hair." A
+        // player who walks up and sees nothing looking back doesn't read
+        // this as the mirror the plot describes at all. drawProp (app.js)
+        // clips the player's own sprite into the glass — measured, not
+        // guessed, off this exact PNG (see the fractions beside
+        // MIRROR_GLASS in app.js) — so a re-cut of this art needs that
+        // measurement redone.
+        { art: "prop_bed_mirror", x: 53,  y: 109, h: 99, w: 50, base: { w: 40, h: 8 }, reflect: true },
         { art: "prop_bed_nightstand", x: 96, y: 109, h: 61, base: { w: 20, h: 8 } },
         // prop_bed_bed's own art ends at the mattress/quilt edge — no
         // footboard drawn, confirmed by opening the file: flat transparent

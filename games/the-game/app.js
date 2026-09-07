@@ -1660,6 +1660,55 @@
     ctx.fill();
     ctx.restore();
     ctx.drawImage(img, prop.x - w / 2, prop.y - h, w, h);
+    if (prop.reflect) drawMirrorReflection(prop, prop.x - w / 2, prop.y - h, w, h);
+  }
+
+  // The purple glass inside prop_bed_mirror.png, as a fraction of the FULL
+  // image (282x611) — measured off the art itself (threshold on blue-
+  // dominant pixels, bounding box of the connected mass, then inset a few px
+  // clear of the gold frame's edge), not eyeballed. Only a prop with
+  // reflect:true uses this, so a plain reused mirror asset elsewhere
+  // wouldn't need it — re-measure if this specific PNG is ever re-cut.
+  var MIRROR_GLASS = { x0: 0.1844, y0: 0.1604, x1: 0.8085, y1: 0.9051 };
+
+  // The plot's own words: "It was still myself, but a pair of bright red
+  // horns were poking through my black hair." Without this, walking up to
+  // the mirror showed the swirling glass art and nothing else — reported
+  // live as "you do not see a reflection of yourself." Clips the player's
+  // own live sprite (same walk frame she's actually standing in) into the
+  // measured glass region, mirrored like a real reflection.
+  function drawMirrorReflection(prop, x0, y0, dw, dh) {
+    var ddx = player.x + player.w / 2 - prop.x, ddy = player.y + player.h - prop.y;
+    // Out of the glass's reach — a reflection pinned to the frame from clear
+    // across the room would look like a ghost stuck in the mirror, not a
+    // mirror that's simply not facing her right now.
+    if (Math.sqrt(ddx * ddx + ddy * ddy) > 90) return;
+    var human = currentRoom && currentRoom.playerForm === "human";
+    var frames = (human ? FACING_FRAMES_HUMAN : FACING_FRAMES).down;
+    var frameIdx = isWalking ? WALK_SEQUENCE[Math.floor(walkPhase) % WALK_SEQUENCE.length] : 1;
+    var entry = loadArt(frames[frameIdx]);
+    if (!entry || !entry.ok) return;
+    var img = entry.img;
+    var gx0 = x0 + dw * MIRROR_GLASS.x0, gx1 = x0 + dw * MIRROR_GLASS.x1;
+    var gy0 = y0 + dh * MIRROR_GLASS.y0, gy1 = y0 + dh * MIRROR_GLASS.y1;
+    var size = spriteDrawSize(img, (gy1 - gy0) * 0.6);
+    var w = size.w, h = size.h;
+    // Tracks a little as she steps side to side in front of it, clamped to a
+    // window centred on the mirror rather than the whole room, so the
+    // reflection stays inside the glass instead of jumping to its edge.
+    var t = Math.max(0, Math.min(1, (player.x + player.w / 2 - (prop.x - 60)) / 120));
+    var cx = gx0 + w / 2 + t * (gx1 - gx0 - w);
+    var feetY = gy1 - 4;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(gx0, gy0, gx1 - gx0, gy1 - gy0);
+    ctx.clip();
+    // A real mirror flips left-right, same as the "right" facing reuses
+    // "left" mirrored elsewhere in this file.
+    ctx.translate(cx, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(img, -w / 2, feetY - h, w, h);
+    ctx.restore();
   }
 
   function drawNpc(npc) {
