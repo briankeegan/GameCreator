@@ -420,6 +420,8 @@ test('framesToDeath counts down to a real death at the real rate', function () {
     var predicted = features.framesToDeath(inputMod.fromStack(s, {}, {}, null, 0));
     assert.ok(isFinite(predicted) && predicted > 0,
         'a topped-out board with health should predict a finite countdown, got ' + predicted);
+    assert.ok(predicted < features.SAFE_FRAMES,
+        'a board that is actually dying must not read as saturated-safe');
 
     var frames = 0;
     while (!s.gameOver && frames < predicted * 4 + 600) { s.run(); frames++; }
@@ -432,9 +434,10 @@ test('framesToDeath counts down to a real death at the real rate', function () {
         'predicted ' + predicted + ' frames, actually survived ' + frames);
 });
 
-test('framesToDeath is Infinity for a board that is not topped out, and that board does not die', function () {
+test('framesToDeath saturates for a board that is not topped out, and that board does not die', function () {
     var s = run(newStack(), 60);
-    assert.strictEqual(features.framesToDeath(inputMod.fromStack(s, {}, {}, null, 0)), Infinity);
+    assert.strictEqual(features.framesToDeath(inputMod.fromStack(s, {}, {}, null, 0)),
+                       features.SAFE_FRAMES);
     for (var i = 0; i < 600; i++) s.run();
     assert.ok(!s.gameOver, 'a board predicted unkillable died within 600 frames');
 });

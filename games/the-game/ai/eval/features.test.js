@@ -782,8 +782,33 @@ test('chainLength: longer chains score higher', function () {
 //   - game over needs health <= 0 AND shakeTime <= 0
 //   - preStopTime drains before stopTime does
 
-test('framesToDeath: a board that is not topped out cannot die', function () {
-    assert.strictEqual(death({ toppedOut: false, health: 1 }), Infinity);
+test('framesToDeath: a board that is not topped out is SAFE, and safe is a NUMBER', function () {
+    // Infinity was the first answer and it is wrong at the seam. A weighted
+    // sum containing Infinity is Infinity, so EVERY candidate ties and every
+    // other feature is annihilated — measured: a nearly-empty board and a
+    // completely full board both scored Infinity with framesToDeath weighted
+    // at 1 and maxHeight at 50. The feature has to saturate, not diverge.
+    assert.strictEqual(death({ toppedOut: false, health: 1 }), F.SAFE_FRAMES);
+    assert.ok(isFinite(F.SAFE_FRAMES) && F.SAFE_FRAMES > 0);
+});
+
+test('framesToDeath: a safe board and a doomed board do not tie once weighted', function () {
+    var w = { framesToDeath: 1, maxHeight: 50 };
+    var short = evaluator.evaluate({ board: board(['......', '......', '1.....']),
+                                     clock: { toppedOut: false } }, w);
+    var tall  = evaluator.evaluate({ board: board(['111111', '111111', '111111']),
+                                     clock: { toppedOut: false } }, w);
+    assert.ok(isFinite(short.score) && isFinite(tall.score), 'scores must be finite');
+    assert.notStrictEqual(short.score, tall.score,
+        'the clock term swallowed the board term — this is the Infinity bug');
+    assert.ok(short.score > tall.score, 'the shorter board must still win');
+});
+
+test('framesToDeath: it saturates rather than growing without bound', function () {
+    // Two comfortable boards are both simply "fine". Letting the number run
+    // away means a board with a huge stop-time cushion outweighs everything
+    // else on the board, which is the same failure as Infinity, slower.
+    assert.strictEqual(death({ toppedOut: true, health: 40, stopTime: 100000 }), F.SAFE_FRAMES);
 });
 
 test('framesToDeath: topped out with health is that many frames', function () {
@@ -802,11 +827,11 @@ test('framesToDeath: shake is added — you cannot die at 0 health while shaking
     assert.strictEqual(death({ toppedOut: true, health: 0, shakeTime: 18 }), 18);
 });
 
-test('framesToDeath: riseLock alone makes it unkillable, even topped out at 1 health', function () {
+test('framesToDeath: riseLock alone makes it safe, even topped out at 1 health', function () {
     // A swap always in flight holds riseLock, so health never decrements —
     // panel-cpu.js records exactly this, and a version without it would
     // panic at a board in no danger at all.
-    assert.strictEqual(death({ toppedOut: true, health: 1, riseLock: true }), Infinity);
+    assert.strictEqual(death({ toppedOut: true, health: 1, riseLock: true }), F.SAFE_FRAMES);
 });
 
 test('framesToDeath: topped out with nothing left is zero, not Infinity', function () {

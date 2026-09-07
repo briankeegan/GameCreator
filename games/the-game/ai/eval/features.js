@@ -509,17 +509,37 @@
   // moment it does not. This feature reads the resulting clock, so the max
   // is already applied by the engine and cannot be double-counted.
   //
-  // Infinity, not a large number, when the board cannot die. A sentinel
-  // like 99999 is a number the weight multiplies, so a safe board would
-  // dominate the whole score and every other feature would be noise.
-  // Infinity times a positive weight is Infinity, which is the honest
-  // answer to "how long until this kills me": it does not.
+  // IT SATURATES. IT DOES NOT RETURN INFINITY.
+  //
+  // Infinity was the first answer, and the reasoning was that a sentinel is
+  // a number the weight multiplies while Infinity is the honest answer to
+  // "how long until this kills me" on a board that cannot die. The honesty
+  // is real and the consequence is fatal: a weighted SUM containing
+  // Infinity is Infinity, so every candidate scores Infinity, every
+  // candidate TIES, and every other feature on the board is annihilated the
+  // moment this one carries any weight at all.
+  //
+  // Measured, not reasoned: with framesToDeath at 1 and maxHeight at 50, a
+  // board holding one panel and a board filled to the ceiling both scored
+  // Infinity. The search was choosing between candidates it could not tell
+  // apart. That is worse than the feature not existing.
+  //
+  // So a safe board returns SAFE_FRAMES — a cap, not a sentinel. The cap is
+  // the point: past about ten seconds of cushion, more cushion is not
+  // better in any way the search should trade board quality for. A board
+  // with an enormous stop-time bank and a board that is simply fine are
+  // both, correctly, "fine". Anything genuinely dying scores below it and
+  // the ordering near death — the only place this feature has to be right —
+  // is untouched.
+  var SAFE_FRAMES = 600;   // 10s at 60fps
+
   function framesToDeath(input) {
     var clock = input.clock;
-    if (!clock.toppedOut) return Infinity;
-    if (clock.riseLock) return Infinity;
-    return (clock.preStopTime || 0) + (clock.stopTime || 0) +
-           (clock.shakeTime || 0) + (clock.health || 0);
+    if (!clock.toppedOut) return SAFE_FRAMES;
+    if (clock.riseLock) return SAFE_FRAMES;
+    var left = (clock.preStopTime || 0) + (clock.stopTime || 0) +
+               (clock.shakeTime || 0) + (clock.health || 0);
+    return Math.min(left, SAFE_FRAMES);
   }
 
   // ---------------------------------------------------------- latentChain
@@ -576,6 +596,7 @@
   }
 
   return {
+    SAFE_FRAMES: SAFE_FRAMES,
     matchPotential: matchPotential,
     latentChain: latentChain,
     garbageCleared: garbageCleared,
