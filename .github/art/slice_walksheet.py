@@ -207,6 +207,115 @@ def largest_component_only(alpha):
     out[~keep] = 0
     return out
 
+
+def inset_to_green(im, y0, y1, x0, x1, start=4, limit=16):
+    """Grow the crop inset until its border ring is chroma green, and say so.
+
+    THE DIVIDER IS ONLY DANGEROUS IF IT IS INSIDE THE CROP. The colour test in
+    cut_and_trim() cannot separate a magenta gridline from magenta HAIR — May's
+    is (236,62,91) and satisfies every clause of it — so the only safe answer is
+    geometry: cut where no divider pixel can be.
+
+    That was already the reasoning behind the green-gutter path, and it worked;
+    what was missed is that the gutter path is the FALLBACK. A sheet with
+    readable gridlines takes the gridline path, which cut at the line centres
+    with a fixed 4px inset and then ran the colour test anyway — so a healthy
+    sheet was the dangerous one. May was decapitated in six of nine frames and
+    cropped in the other three, from a generation that was flawless.
+
+    So the inset is measured rather than assumed: widen it until the ring of
+    pixels around the crop is essentially all background green, which means the
+    divider and its blend are outside. Then no colour test is needed at all.
+    Returns (inset, clean) — clean=False if even `limit` did not get there, in
+    which case the caller keeps the colour test as a last resort.
+    """
+    a = np.array(im.convert("RGB"))
+    for inset in range(start, limit + 1):
+        yy0, yy1, xx0, xx1 = y0 + inset, y1 - inset, x0 + inset, x1 - inset
+        if yy1 - yy0 < 40 or xx1 - xx0 < 20:
+            break
+        cell = a[yy0:yy1, xx0:xx1]
+        ring = np.concatenate([cell[0, :], cell[-1, :], cell[:, 0], cell[:, -1]])
+        r, g, b = ring[:, 0].astype(int), ring[:, 1].astype(int), ring[:, 2].astype(int)
+        green = (g > 110) & (g - r > 55) & (g - b > 55)
+        if green.mean() >= 0.95:
+            return inset, True
+    return start, False
+
+
+
+def cell_vs_frame(im, y0, y1, x0, x1, frame, label, inset=0):
+    """Did the cut KEEP what was in the cell? Returns a list of complaints.
+
+    THE CUTTER IS THE ONLY PART OF THIS PIPELINE THAT CAN DESTROY GOOD ART, AND
+    IT LOOKS EXACTLY LIKE A BAD GENERATION WHEN IT DOES.
+
+    That is not a hypothetical distinction, it is the most expensive habit in
+    this repo. A character came back with no head; the response was to blame the
+    generator and buy another sheet, three times. The sheet was perfect every
+    time — twelve cells, a full head of pink hair in each — and the cutter was
+    deleting her, because her hair is the same colour as the magenta gridlines
+    it strips. Nobody looked at the raw, because the raw costs nothing to look
+    at and regenerating feels like progress.
+
+    So the cutter checks its own work against its own input, which is free and
+    needs no one to remember. The cell is the truth; the frame is what survived.
+    Two things are decidable that way:
+
+      MASS  — how much of the cell's non-background actually made it out. A
+              decapitated cut loses a large fraction and cannot hide it.
+      COLOUR — a colour family that was a real part of the cell and is gone
+              from the frame. This is the one that catches hair being keyed
+              out while the body survives, which is the failure that shipped.
+
+    Deliberately loose thresholds: trimming, de-halo and the gutter inset all
+    remove some pixels legitimately, so this is looking for destruction, not
+    for tidiness.
+    """
+    cell = np.array(im.crop((x0, y0, x1, y1)).convert("RGB")).astype(int)
+    r, g, b = cell[:, :, 0], cell[:, :, 1], cell[:, :, 2]
+    bg = ((g > 110) & (g - r > 55) & (g - b > 55)) | ((r > 120) & (b > 120) & (g < 90))
+    subject = ~bg
+    cell_n = int(subject.sum())
+    if cell_n < 500:
+        return []
+
+    out = np.array(frame.convert("RGBA")).astype(int)
+    kept = out[..., 3] > 8
+    kept_n = int(kept.sum())
+
+    problems = []
+
+    ratio = kept_n / cell_n
+    if ratio < 0.55:
+        problems.append(
+            f"{label}: THE CUT LOST {100 * (1 - ratio):.0f}% OF THE CELL — the cell holds "
+            f"{cell_n} drawn pixels and the frame kept {kept_n}. The generated art is "
+            f"probably fine and this cutter destroyed it; look at the sheet before "
+            f"regenerating anything.")
+
+    # Colour families, coarse enough that shading does not count as a new colour.
+    def families(px):
+        q = (px // 48).reshape(-1, 3)
+        u, c = np.unique(q, axis=0, return_counts=True)
+        return {tuple(k): v for k, v in zip(map(tuple, u), c)}
+
+    cf = families(cell[subject])
+    ff = families(out[..., :3][kept]) if kept_n else {}
+    for key, n in cf.items():
+        share = n / cell_n
+        if share < 0.06:
+            continue
+        if ff.get(key, 0) / max(kept_n, 1) < share * 0.25:
+            hexish = "#%02x%02x%02x" % tuple(min(255, v * 48 + 24) for v in key)
+            problems.append(
+                f"{label}: A COLOUR IN THE CELL IS GONE FROM THE FRAME — roughly {hexish} was "
+                f"{100 * share:.0f}% of the drawn cell and is essentially absent after cutting. "
+                f"That is the cutter removing part of the character (hair the colour of a "
+                f"gridline is the classic case), not the generator drawing it wrong.")
+    return problems
+
+
 def cut_and_trim(im, y0, y1, x0, x1, inset=4, divider_free=False):
     cell = im.crop((x0 + inset, y0 + inset, x1 - inset, y1 - inset)).convert("RGBA")
     a = np.array(cell)
@@ -216,6 +325,27 @@ def cut_and_trim(im, y0, y1, x0, x1, inset=4, divider_free=False):
     border[0, :] = border[-1, :] = border[:, 0] = border[:, -1] = True
     bg = flood_fill_background(a[:, :, :3], border)
     a[bg, 3] = 0
+
+    # AND THE GREEN THE FLOOD FILL CANNOT REACH. A fill that starts at the
+    # border only removes background CONNECTED to the border, so chroma green
+    # sealed inside the silhouette survives it completely — the gap between an
+    # arm and the body, the hole under a bent elbow, the space through hair.
+    # That is where the shipped green flecks actually were: measured at up to
+    # 1.74% of a frame's lit pixels, in pockets whose bounding box does not
+    # touch any edge, at colours like (41,211,31) and (31,222,12) — the
+    # background itself, not a blend.
+    #
+    # An absolute colour test is safe for the CORE of those pockets precisely
+    # because #00FF00 is a colour no character may use (that is the entire
+    # point of picking it as the key, see games/the-game/WALK_SHEETS.md). The
+    # discriminator is BLUE: chroma green and its blends sit at b<60, while the
+    # greens that legitimately appear in this game's art are much bluer —
+    # Diamond's green hair streak is #3ad17a (b=122) and Kyran's teal shirt is
+    # #1f8a8a (b=138). Both are left untouched; verified by counting their
+    # pixels before and after.
+    rr0, gg0, bb0 = a[:, :, 0].astype(int), a[:, :, 1].astype(int), a[:, :, 2].astype(int)
+    chroma = (gg0 > 120) & (rr0 < 90) & (bb0 < 60)
+    a[chroma, 3] = 0
     # kill any stray magenta fringe from the divider line too, dilated a
     # couple px since a soft divider leaves a faint halo of its own. Where
     # the divider blends into a DARK character pixel (e.g. dark-red hair
@@ -269,6 +399,35 @@ def cut_and_trim(im, y0, y1, x0, x1, inset=4, divider_free=False):
             dil |= np.roll(np.roll(mag, dy, axis=0), dx, axis=1)
     a[dil, 3] = 0
     a[:, :, 3] = largest_component_only(a[:, :, 3])
+
+    # DESPILL THE KEYED EDGE. Flood-filling the chroma-key green removes the
+    # background but not the ANTI-ALIASED RING where the sprite blends into it:
+    # those pixels are part green, opaque, and inside the silhouette, so the
+    # fill stops at them. They shipped, and they are visible — a rind of bright
+    # green flecks along hair and shoulders, worst on the back rows, measured
+    # at up to 1.74% of a frame's lit pixels across twelve of fourteen
+    # characters.
+    #
+    # This is the standard compositing fix, not a bespoke one: in the thin band
+    # next to what was just keyed out, clamp G down to max(R, B). A spill pixel
+    # is green only because it was mixed with the background, so pulling green
+    # back to the level of the channels that ARE the character restores what
+    # was underneath.
+    #
+    # Restricted to the edge band on purpose, because green is a legitimate
+    # character colour: Kyran's teal shirt and Diamond's green hair streak both
+    # sit in the interior, where nothing touches them. At the very outline the
+    # art style puts a dark outline anyway, so a bright saturated green there
+    # is spill by construction.
+    keyed = a[:, :, 3] == 0
+    near_keyed = np.zeros_like(keyed)
+    for dy in (-2, -1, 0, 1, 2):
+        for dx in (-2, -1, 0, 1, 2):
+            near_keyed |= np.roll(np.roll(keyed, dy, axis=0), dx, axis=1)
+    rr, gg, bb = a[:, :, 0].astype(int), a[:, :, 1].astype(int), a[:, :, 2].astype(int)
+    spill = near_keyed & (a[:, :, 3] > 0) & (gg > rr + 25) & (gg > bb + 25)
+    a[spill, 1] = np.maximum(rr[spill], bb[spill])
+
     out = Image.fromarray(a, "RGBA")
     alpha = np.array(out.split()[-1])
     mask = alpha > 10
@@ -381,6 +540,7 @@ def main():
     # ask — that's actually sufficient, RIGHT is mirrored from LEFT in-game.
     # Only fall back to the 4-row down/left/right/up mapping if a sheet
     # genuinely comes back with 4 rows.
+    destroyed = []
     row_names = {0: "down", 1: "left", 2: "up"} if n_rows <= 3 else {0: "down", 1: "left", 2: "right", 3: "up"}
     for r in range(min(n_rows, 4)):
         name = row_names.get(r)
@@ -389,14 +549,40 @@ def main():
         for c in range(min(n_cols, 3)):
             if green_cut:
                 (y0, y1), (x0, x1) = cell_rows[r], cell_cols[c]
+                inset, divider_free = 0, True
             else:
                 y0, y1 = row_bounds[r], row_bounds[r + 1]
                 x0, x1 = col_bounds[c], col_bounds[c + 1]
-            frame = cut_and_trim(im, y0, y1, x0, x1, inset=0 if green_cut else 4,
-                                 divider_free=green_cut)
+                # MEASURE the inset that clears the divider instead of assuming
+                # 4px does. When it does clear, the colour test — the one that
+                # cannot tell a magenta gridline from magenta hair — is skipped,
+                # exactly as on the gutter path.
+                inset, divider_free = inset_to_green(im, y0, y1, x0, x1)
+            frame = cut_and_trim(im, y0, y1, x0, x1, inset=inset,
+                                 divider_free=divider_free)
             out_path = os.path.join(out_dir, f"{char_id}_{name}_{c}.png")
             frame.save(out_path)
             print("wrote", out_path, frame.size)
+            # THE CUT GRADES ITSELF AGAINST ITS OWN INPUT. Free, and it removes
+            # the guess that costs the most: "is this a bad generation, or did
+            # we break it?"
+            destroyed.extend(cell_vs_frame(im, y0, y1, x0, x1, frame,
+                                           f"{char_id}_{name}_{c}", inset=inset))
+
+    if destroyed:
+        # LOUD, AND NAMING THE RIGHT CULPRIT. The frames are still written, so
+        # they can be looked at — but the message says plainly that the sheet is
+        # probably fine, because the default reaction to bad output is to buy
+        # another generation, and that is exactly the wrong move here.
+        print("\n*** THE CUTTER DAMAGED THIS CHARACTER ***", file=sys.stderr)
+        for d in destroyed:
+            print("  " + d, file=sys.stderr)
+        print("\nDO NOT REGENERATE YET. Open the sheet and look at it: if the "
+              "character is drawn correctly there, the generation was fine and "
+              "this cutter is the bug. Re-cutting after fixing it costs "
+              "nothing.", file=sys.stderr)
+        raise SystemExit(3)
+
 
 if __name__ == "__main__":
     main()

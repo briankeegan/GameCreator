@@ -540,21 +540,44 @@
     // Faster reaction is a much sharper lever than dangerHeightFrac below,
     // and a much less forgiving one: swept it the same way (stress_harness.js,
     // 8 seeds/config) and it only pays off at the single most punishing
-    // level. At level 10 (maxHealth === 1) reaction 12 -> 8 is a clear,
-    // repeatable win (93269 -> 119315 total frames alive, 4/8 -> 6/8
-    // survived, 1276 -> 1597 garbage sent, 8 seeds). But it's NOT a smooth
-    // "faster is always better": the exact same change measurably HURTS at
-    // level 8 (maxHealth 21) even with more seeds to rule out noise
-    // (136734 -> 128004 frames, 2182 -> 1860 sent, 8 seeds) and badly hurts
-    // level 3 like dangerHeightFrac did (28871 -> 15849 frames, 4 seeds) --
-    // reacting faster everywhere burns the patience that builds real
-    // offense at levels with any margin at all. So this only tightens at
-    // the exact level that has none left (maxHealth <= 1, not the wider
-    // <= 51 band dangerHeightFrac uses) -- narrower on purpose, because the
-    // data doesn't support anything broader yet. Only when the caller
-    // didn't explicitly pin a value, same as dangerHeightFrac below.
+    // level. So this only tightens at the exact level that has none left
+    // (maxHealth <= 1, not the wider <= 51 band dangerHeightFrac uses) --
+    // narrower on purpose. Only when the caller didn't explicitly pin a
+    // value, same as dangerHeightFrac below.
+    //
+    // The value itself (28 -- SLOWER than the raw nightmare preset's 12,
+    // not faster) came from a genetic algorithm
+    // (games/the-game/ai/experiments/train_ga.js), not hand-tuning: it
+    // searches this and every other field below jointly, plus
+    // TrueSurvivalSearch's own foresight knobs (see their definitions),
+    // against the real L10 bigBlocks drill. Every hand-tuned round this
+    // session assumed "react faster" was the lever at maxHealth<=1
+    // (reaction 12 -> 8 measured as a win in isolation) -- the GA found
+    // that once TrueSurvivalSearch is doing the actual defensive
+    // thinking every decision, reacting SLOWER wins bigger. All 20
+    // GA-tuned fields in this constructor were searched together, not
+    // one at a time, which is what let interactions like this show up
+    // instead of getting missed by isolated sweeps.
+    //
+    // This is round 5 of ongoing GA training: round 1 (1830avg baseline,
+    // hand-tuned) -> round 2 (2176avg, first GA pass) -> round 3 (2391avg,
+    // uncapped fitness evaluation -- each genome plays to actual death
+    // instead of a search-speed frame cap) -> round 4 (2391avg, no
+    // improvement even after widening the search bounds round 3 had
+    // pinned against -- refining around round 3's basin had plateaued)
+    // -> round 5 (2400avg, 40.0s at 60fps -- a FRESH random population,
+    // not seeded from round 3/4's basin at all, which found a
+    // structurally different one: a much SHALLOWER TrueSurvivalSearch
+    // rollout (rolloutDepth 33 -> 17) paired with a much wider follow-up
+    // ply budget (rolloutFollowUpRankCap 5 -> 8) and this constructor's
+    // own multi-ply planning restored to depth 5 (round 3/4 had it at
+    // 1). Real, if modest (+0.4%), evidence that a plateaued refinement
+    // search benefits from a diversified restart rather than more
+    // rounds refining the same basin. Measured on the standard 15-seed
+    // L10 bigBlocks benchmark (full_report.js). Timing-verified: 4
+    // repeated 15-seed sweeps, max 58ms, 0 calls over the ~100ms budget.
     if (opts.reaction === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
-      this.reaction = Math.min(this.reaction, 8);
+      this.reaction = 28;
     }
     // BUG (fixed): both branches read preset.X, so a caller's opts.mistake
     // / opts.patience were silently discarded and the preset value used
@@ -563,9 +586,50 @@
     // pattern; SearchCpu didn't match it.
     this.mistake = opts.mistake === undefined ? preset.mistake : opts.mistake;
     this.depth = opts.depth || preset.depth;
+    // agents.py's SearchAgent.DEFAULT_WEIGHTS -- the actual
+    // tournament-proven config this whole brain was validated against in
+    // Python before a line of it was ported here (see this file's own
+    // top-of-file comment) -- uses depth 5. nightmare shipped at 4
+    // instead; depth 5 was never actually ported. Measured
+    // (ai/experiments/attack_file_harness.js, real recorded human attack
+    // data, level 10): 95.9s/1575 sent -> 109.8s/2095 sent, on TOP of the
+    // rescueBranchCap improvement above (+14%/+33%). Same shape of
+    // trade-off as rescueBranchCap and gated identically: measurably
+    // HURTS level 3 (28871 -> 24187 frames) and mildly hurts level 5
+    // (34876 -> 32930), no effect at level 8 (still 4/4 full survival on
+    // the steady-pressure test) -- so tighten only at the same confirmed
+    // maxHealth <= 21 cutoff, and only when the caller didn't pin depth
+    // explicitly. Worst-case decision time measured at 50.7ms, safely
+    // under the ~100ms budget.
+    if (opts.depth === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 21) {
+      this.depth = Math.max(this.depth, 5);
+    }
+    // GA-trained override for maxHealth<=1 specifically (narrower than
+    // the <=21 band above, applied after it so it wins for level 10).
+    // Earlier GA rounds (3/4) found 1, much SHALLOWER than the widened 5
+    // above -- round 5's fresh-basin search landed back on 5, the same
+    // value the <=21 tightening already produces. Kept as an explicit
+    // override anyway (rather than removed as a no-op) since it's a real
+    // GA-confirmed result, not an accident of falling through to the
+    // <=21 default -- and it stays correct even if that default ever
+    // changes. See reaction's override above for the GA process/
+    // validation numbers (shared across all 20 fields it tuned).
+    if (opts.depth === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.depth = 5;
+    }
     this.beam = opts.beam || preset.beam;
+    // GA-trained, maxHealth<=1 only -- see reaction's override comment.
+    if (opts.beam === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.beam = 5;
+    }
     this.patience = opts.patience === undefined ? preset.patience : opts.patience;
+    if (opts.patience === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.patience = 0.6231788222212344;
+    }
     this.patienceFillCeiling = opts.patienceFillCeiling || preset.patienceFillCeiling;
+    if (opts.patienceFillCeiling === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.patienceFillCeiling = 0.1766234811162576;
+    }
     this.dangerHeightFrac = opts.dangerHeightFrac || preset.dangerHeightFrac;
     // A level with little health buffer (LEVELS' maxHealth crashes from 121
     // at level 1 to 1 at level 10 -- panel-engine.js) leaves almost no room
@@ -585,11 +649,57 @@
     if (opts.dangerHeightFrac === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 51) {
       this.dangerHeightFrac = Math.min(this.dangerHeightFrac, 0.45);
     }
+    // GA-trained override for maxHealth<=1 (applied after the <=51 band
+    // above so it wins for level 10): 0.66, much HIGHER than the 0.45
+    // tightening above -- i.e. tolerating a taller stack before treating
+    // the board as dangerous. Counter-intuitive against the hand-tuned
+    // assumption that panicking earlier is always safer at the least
+    // forgiving level, but consistent with reaction's override above:
+    // once TrueSurvivalSearch is doing the real per-decision defensive
+    // simulation, this field mostly gates the rollout's own continuation
+    // policy and the pre-TSS emergency-rescue check, and a more patient
+    // threshold there leaves more of the board's material available to
+    // build the matches that actually clear it. Earlier GA rounds (3/4,
+    // a different/since-plateaued basin) pinned this at 0.9, their own
+    // search-range ceiling at the time; round 5's fresh-basin search
+    // landed comfortably inside the range instead, at 0.66 -- not every
+    // basin needs the same threshold. See reaction's override comment
+    // for the fuller GA process/validation numbers.
+    if (opts.dangerHeightFrac === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.dangerHeightFrac = 0.661888653356582;
+    }
+    // How much of dangerHeightFrac's own headroom calm-mode is allowed to
+    // spend proactively raising for material before it stops and holds
+    // instead (see _raiseOrBuild's comment). Measured (real 12-file
+    // benchmark, level 10): +31% survival / +17% sent (66.1s/1141 ->
+    // 86.5s/1333). Tried ungated first and it followed the SAME pattern
+    // every other knob in this file needed gating for: level 3's steady-
+    // pressure sum dropped 39060 -> 20639 (-47%, one seed falling from a
+    // full 15000-frame survival to 1117) -- at level 3, dangerHeightFrac
+    // is still the lenient 0.72 default, and 0.75 of that (0.54) cuts off
+    // proactive raising well before the AI is anywhere near real danger,
+    // costing tempo/material it didn't need to give up. Same maxHealth<=51
+    // gate as dangerHeightFrac's own tightening above: 1.0 leaves the
+    // hold-cap unreachable from calm mode (fillRatio can't reach
+    // dangerHeightFrac*1.0 while still below dangerHeightFrac) at lenient
+    // levels, 0.75 applies only where dangerHeightFrac is already tight.
+    this.raiseFillFrac = opts.raiseFillFrac !== undefined ? opts.raiseFillFrac : (preset.raiseFillFrac !== undefined ? preset.raiseFillFrac : (stack && stack.levelData && stack.levelData.maxHealth <= 51 ? 0.75 : 1.0));
     this.chainWeight = opts.chainWeight || preset.chainWeight;
     this.comboWeight = opts.comboWeight || preset.comboWeight;
     this.garbageWeight = opts.garbageWeight || preset.garbageWeight;
     this.heightPenalty = opts.heightPenalty || preset.heightPenalty;
     this.potentialWeight = opts.potentialWeight || preset.potentialWeight;
+    // GA-trained overrides, maxHealth<=1 only -- see reaction's override
+    // comment above for the search process and validation numbers (all
+    // of these were tuned jointly with it, not in isolation).
+    if (stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      if (opts.raiseFillFrac === undefined) this.raiseFillFrac = 0.8040715719806031;
+      if (opts.chainWeight === undefined) this.chainWeight = 393.5781594016589;
+      if (opts.comboWeight === undefined) this.comboWeight = 182.06808504182845;
+      if (opts.garbageWeight === undefined) this.garbageWeight = 53.97359960153699;
+      if (opts.heightPenalty === undefined) this.heightPenalty = 157.07336579915136;
+      if (opts.potentialWeight === undefined) this.potentialWeight = 37.03064062865451;
+    }
     this.chainExtend = opts.chainExtend !== undefined ? !!opts.chainExtend : preset.chainExtend !== false;
     // The knobs that actually govern behavior once _inDanger() is true —
     // which, at any genuinely heavy sustained rate, is nearly the whole
@@ -601,11 +711,156 @@
     // search, identical values below) measured no better than diamond
     // at a sustained heavy rate.
     this.criticalFactor = opts.criticalFactor !== undefined ? opts.criticalFactor : (preset.criticalFactor !== undefined ? preset.criticalFactor : 0.5);
+    if (opts.criticalFactor === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.criticalFactor = 0.7821508796419948; // GA-trained, see reaction's override comment
+    }
     this.runwayThreshold = opts.runwayThreshold !== undefined ? opts.runwayThreshold : (preset.runwayThreshold !== undefined ? preset.runwayThreshold : 3);
+    if (opts.runwayThreshold === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.runwayThreshold = 1; // GA-trained, see reaction's override comment -- pinned at its old lower bound (1), since widened to 0 for the next round
+    }
+    // Cooldown floor once fully topped out -- see its one use site's own
+    // comment for why 3 was picked (closes a leaked idle frame vs 4).
+    // Under sweep against L10 bigBlocks (5 seeds): 1 averaged 1199 frames
+    // survived vs 3's 774 (+55%) -- re-queuing a swap attempt faster than
+    // its own animation resolves keeps riseLock recomputing true more
+    // consistently (swapQueued() is read fresh every frame, not
+    // latched), which is what actually blocks the topped-out health
+    // drain. Non-monotonic like every other lever this session (2 and 0
+    // both measured worse than 1) -- not a "faster is always better"
+    // dial. Regresses the real 12-file benchmark at level 8 (818->651
+    // sent, 95.6s->80.4s avg), so gated to maxHealth<=1 -- level 10
+    // ONLY (the one tier this was measured/asked for; level 8's
+    // maxHealth=21 is well outside this gate, so its behavior is
+    // unchanged).
+    this.toppedOutCooldown = opts.toppedOutCooldown !== undefined ? opts.toppedOutCooldown : (preset.toppedOutCooldown !== undefined ? preset.toppedOutCooldown : 3);
+    // Was hand-tuned to 1 here (see FINDINGS.md: measured 1199 vs 774
+    // frames for 1 vs 3, in isolation). The GA below found 4 wins once
+    // it's searched jointly with the other 19 fields it tunes at this
+    // tier instead of alone -- see reaction's override comment for the
+    // process and the validation numbers this whole block is measured
+    // against (1830avg -> 2176avg on the standard benchmark, which
+    // already reflects toppedOutCooldown=4 together with every other
+    // change here, not this field in isolation).
+    if (opts.toppedOutCooldown === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.toppedOutCooldown = 4;
+    }
+    // How much of already-in-flight garbage (this.stack.incoming, via
+    // _queuedGarbageHeight) counts against runway when deciding whether
+    // to raise proactively -- see _bestDefensiveMove's runwayLow. 0 is
+    // the old purely-reactive behavior, blind to anything not already
+    // landed. Fixes the specific, confirmed death this session found:
+    // a board can go PERMANENTLY dead (exhaustive uncapped search
+    // finding nothing at depth 6, FINDINGS.md Round 9) once the real
+    // panels left standing get too thin/fragmented, and by the time
+    // that's visible on the CURRENT board it's already too late --
+    // acting on garbage already known to be inbound, before it lands,
+    // is what actually prevents reaching that state, not any amount of
+    // smarter choosing once there. Swept 0/0.25/0.5/0.6/0.75/0.85/1/1.5/2/4
+    // against the real 12-file benchmark's 6 known-losing files at level
+    // 8 (FINDINGS.md Round 9) -- highly non-monotonic (small changes
+    // cascade into very different move sequences), 0.75 measured best
+    // (6 losses -> 5, at the cost of 2 previously-fine files regressing
+    // -- a real, partial, honestly-not-total win). Gated the same way as
+    // rescueBranchCap/depth (maxHealth<=21, the only tier measured).
+    this.queuedRunwayWeight = opts.queuedRunwayWeight !== undefined ? opts.queuedRunwayWeight : (preset.queuedRunwayWeight !== undefined ? preset.queuedRunwayWeight : 0);
+    if (opts.queuedRunwayWeight === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 21) {
+      this.queuedRunwayWeight = 0.75;
+    }
+    // GA-trained override, maxHealth<=1 only (applied after the <=21
+    // band above so it wins for level 10) -- see reaction's override
+    // comment.
+    if (opts.queuedRunwayWeight === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.queuedRunwayWeight = 0.30045507149770856;
+    }
     this.rescueBranchCap = opts.rescueBranchCap !== undefined ? opts.rescueBranchCap : (preset.rescueBranchCap !== undefined ? preset.rescueBranchCap : 6);
+    // _nPlyRescue is the deep "is there ANY sequence that saves this"
+    // search -- the exact lever for "think ahead about what different
+    // sequences of breaks would produce" rather than only reacting to
+    // what's in front of it right now. Widening it (6 -> 10) is a real,
+    // measured win against REAL recorded human attack data
+    // (ai/experiments/attack_file_harness.js + FINDINGS.md): +38% on
+    // BOTH survival and garbage sent at level 10, and 3/4 -> 4/4 full
+    // survival at level 8 on the steady-pressure test
+    // (ai/experiments/stress_harness.js). But it is not free everywhere:
+    // the SAME widening measurably HURTS level 5 (34876 -> 28593 total
+    // frames, 4 seeds) and level 3 (28871 -> 24148) -- widening the
+    // rescue search burns decision cycles chasing a bigger immediate
+    // clear at levels with enough health margin that patience would have
+    // paid off better. The "62ms worst-case, under the ~100ms budget"
+    // claim this comment used to make was measured against synthetic
+    // boards, not real ones, and was WRONG: profiling a real recorded
+    // attack file (challenge-8-4.json, level 10) found _nPlyRescue calls
+    // up to 202ms and _bestDefensiveMove up to 225ms, correlating
+    // directly with board.fillRatio() climbing toward 1.0 -- a
+    // near-topped-out board has far more legalSwaps() candidates at
+    // every recursion node than any hand-built synthetic board tested
+    // when 10 was chosen. rescueBudgetMs (below) is the actual fix:
+    // widening the branch cap stays a measured win, and a wall-clock
+    // deadline is what makes it safe on boards worse than the ones it
+    // was validated against. Gated the same way as dangerHeightFrac/
+    // reaction: only tightens when the caller didn't explicitly pin a
+    // value, and only at the level(s) actually measured to benefit --
+    // narrower than dangerHeightFrac's maxHealth<=51 (level 5 measured
+    // WORSE here, unlike there), matching level 8's own maxHealth
+    // exactly as the confirmed cutoff.
+    if (opts.rescueBranchCap === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 21) {
+      this.rescueBranchCap = Math.max(this.rescueBranchCap, 10);
+    }
+    // GA-trained override, maxHealth<=1 only (applied after the <=21
+    // band above so it wins for level 10) -- see reaction's override
+    // comment. Earlier GA rounds (3/4) landed exactly on 20, their own
+    // search-range ceiling at the time (widened to 32 for round 5);
+    // round 5's fresh-basin search pushed further into that widened
+    // range, to 29.
+    if (opts.rescueBranchCap === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.rescueBranchCap = 29;
+    }
+    // Backstop for the _nPlyRescue fallback chain (three escalating
+    // calls, depth 2/3/4 -- see _bestDefensiveMove), shared across all
+    // three calls: the real failure mode found by profiling was the SUM
+    // of the chain blowing the ~100ms real-time decision budget, not any
+    // single call in isolation.
+    //
+    // This is a COUNT of board evaluations (clone+swap+resolve), not a
+    // wall-clock timer -- tried a Date.now() deadline first and reverted
+    // it: it made the AI's own decisions depend on host machine load, not
+    // just board state. Measured directly: the identical 12-file, seed-1
+    // benchmark at level 8 gave 741 cells sent at a 70ms deadline and 651
+    // at a 90ms deadline in back-to-back runs on the same otherwise-idle
+    // sandbox -- a WIDER time budget scoring WORSE than a narrower one is
+    // not a real effect, it is measurement noise from whatever else the
+    // machine was doing at the moment each decision ran. A game AI whose
+    // strength varies with unrelated background load is not something
+    // you can tune, test, or reproduce a bug report against. An eval
+    // count is deterministic given the same board -- same seed, same
+    // result, every time, on every machine -- but still bounds wall time
+    // in practice: instrumented ms/eval on the exact real board/level
+    // that found this bug (challenge-8-4.json, level 10) ranged
+    // 0.0034-0.0079ms depending on board fill (cost per evaluation rises
+    // with occupancy, same root cause as the timing bug itself), so
+    // 10000 evals stays under budget (~35-80ms) even at the worst
+    // observed rate, with real margin under 100ms.
+    this.rescueEvalBudget = opts.rescueEvalBudget !== undefined ? opts.rescueEvalBudget : (preset.rescueEvalBudget !== undefined ? preset.rescueEvalBudget : 10000);
     this.dropAmountWeight = opts.dropAmountWeight !== undefined ? opts.dropAmountWeight : (preset.dropAmountWeight !== undefined ? preset.dropAmountWeight : 200);
+    if (opts.dropAmountWeight === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.dropAmountWeight = 144.6719783358276; // GA-trained, see reaction's override comment
+    }
+    // How many of _bestImmediateMatch's ply-1-ranked matching candidates
+    // get its expensive follow-up ply -- see that function's own comment.
+    // Infinity (exhaustive, the original behavior) everywhere except
+    // TrueSurvivalSearch's own rollout continuation CPU, which sets this
+    // much lower (see _makeRolloutCpu) purely for its own speed; a real
+    // per-frame decision anywhere else in this file still gets the full,
+    // unpruned 2-ply evaluation.
+    this.followUpRankCap = opts.followUpRankCap !== undefined ? opts.followUpRankCap : (preset.followUpRankCap !== undefined ? preset.followUpRankCap : Infinity);
     this.pressureThreshold = opts.pressureThreshold !== undefined ? opts.pressureThreshold : (preset.pressureThreshold !== undefined ? preset.pressureThreshold : 15);
+    if (opts.pressureThreshold === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.pressureThreshold = 31.048411475215108; // GA-trained, see reaction's override comment
+    }
     this.sentWeight = opts.sentWeight !== undefined ? opts.sentWeight : (preset.sentWeight !== undefined ? preset.sentWeight : 50);
+    if (opts.sentWeight === undefined && stack && stack.levelData && stack.levelData.maxHealth <= 1) {
+      this.sentWeight = 8119.343556696549; // GA-trained, see reaction's override comment
+    }
     this.rng = root.PanelEngine.makeRng(opts.seed || 4242);
     this.cooldown = Math.floor(this.reaction / 2);
     this.raiseFrames = 0;
@@ -851,8 +1106,40 @@
       + boardPotential(board) * this.potentialWeight - danger * danger * this.heightPenalty;
   };
 
+  // How much height is already COMMITTED but not yet visible on the
+  // board -- garbage that has arrived and is sitting in stack.incoming,
+  // waiting its turn to drop (shouldDropGarbage lets only the front of
+  // the queue fall at a time). _snapshot() builds the planning board
+  // from panelAt() alone, which only reflects what has already landed --
+  // the entire search (offense AND defense) is blind to this queue until
+  // each piece physically arrives. That is the actual mechanism behind
+  // the worst deaths this file's own history describes: a burst lands
+  // several pieces back to back, and by the time the LAST one is on the
+  // board and _inDanger finally trips, there was never a calm moment to
+  // react in -- the danger was real the instant the queue filled, just
+  // invisible until each piece's own landing.
+  SearchCpu.prototype._queuedGarbageHeight = function () {
+    var incoming = this.stack.incoming, width = root.PanelEngine.WIDTH, cells = 0;
+    for (var i = 0; i < incoming.length; i++) cells += incoming[i].width * incoming[i].height;
+    return cells / width;
+  };
+
   SearchCpu.prototype._inDanger = function (board) {
-    return board.maxHeight() >= board.height * this.dangerHeightFrac;
+    // Only fold the queued-garbage projection in where dangerHeightFrac is
+    // still at its lenient default (0.72, maxHealth>51 -- levels below the
+    // tightened-threshold tiers). Measured: at maxHealth<=51 (dangerHeightFrac
+    // already tightened to 0.45 for levels 5/8/10), stacking this projection
+    // on top of the already-aggressive threshold over-triggers danger mode,
+    // forfeiting the offensive search too often -- real 12-file benchmark
+    // went from 109.8s/2095 sent to 92.6s/1627 sent, worse on both axes.
+    // Restricted to maxHealth>51 (level 3 only, among tested tiers): +47%
+    // survival there (28871 -> 42421 on stress_harness.js steady pressure),
+    // with levels 5/8/10 and the real benchmark unaffected.
+    var height = board.maxHeight();
+    if (this.stack && this.stack.levelData && this.stack.levelData.maxHealth > 51) {
+      height += this._queuedGarbageHeight();
+    }
+    return height >= board.height * this.dangerHeightFrac;
   };
 
   // Shared scoring for every defensive-search tier: garbage cleared always
@@ -1077,7 +1364,18 @@
     // maxHeight 11 of 12 (a board that looked perfectly safe), and died
     // two frames later once that raise's own row delivery pushed it over.
     var SAFE_RAISE_MARGIN = 1;
-    var runwayLow = board.runwayHeight() < this.runwayThreshold && board.maxHeight() < board.height - SAFE_RAISE_MARGIN;
+    // Runway is purely reactive to the CURRENT board -- it has no idea a
+    // big block is already in flight (this.stack.incoming, ~151 frames
+    // out per GARBAGE_FLIGHT) and about to eat into it. Projecting that
+    // known-future cost in is what separates "raise now, while there's
+    // still material and room" from "wait until the runway is already
+    // gone" -- by the time it's gone the board can be topped out with
+    // zero legal matches ANYWHERE, permanently (confirmed via exhaustive
+    // uncapped search finding nothing at depth 6 on a real recorded
+    // attack file, FINDINGS.md). this.queuedRunwayWeight scales how much
+    // of the incoming height counts against runway -- under sweep.
+    var projectedRunway = board.runwayHeight() - this._queuedGarbageHeight() * this.queuedRunwayWeight;
+    var runwayLow = projectedRunway < this.runwayThreshold && board.maxHeight() < board.height - SAFE_RAISE_MARGIN;
     if (best) {
       if (!bestClearsGarbage && runwayLow) return null;
       return best;
@@ -1097,10 +1395,15 @@
 
     // True last resort: an exhaustive (not beam-pruned) search, in case
     // the beam above pruned away the only branch that ever finds
-    // anything. Rare — the beam search already covers the same depths —
-    // but it is the actual backstop behind "never dies to a search that
-    // gave up too early."
-    var rescue = this._nPlyRescue(board, 2) || this._nPlyRescue(board, 3) || this._nPlyRescue(board, 4);
+    // anything. NOT actually rare on real attack data — measured firing
+    // 140+ times in 1750 frames of one real recorded file at level 10 —
+    // so this chain runs on the exact real, dense boards where a slow
+    // decision is most costly, which is what rescueEvalBudget (see
+    // constructor) exists to bound. One counter shared across all three
+    // escalating calls, not one per call, since the profiled failure was
+    // the chain's total work, not any single depth in isolation.
+    var rescueBudget = { used: 0, max: this.rescueEvalBudget };
+    var rescue = this._nPlyRescue(board, 2, rescueBudget) || this._nPlyRescue(board, 3, rescueBudget) || this._nPlyRescue(board, 4, rescueBudget);
     if (rescue) return rescue;
     if (gainMove) return gainMove;
 
@@ -1186,19 +1489,37 @@
   // and mostly finding nothing anyway. Ranking unmatched branches by
   // `potential` before capping keeps the search pointed at the same
   // promising continuations a wider, uncapped search would have found.
-  SearchCpu.prototype._nPlyRescue = function (board, depth) {
+  //
+  // The branch cap alone is NOT sufficient: legalSwaps() itself scales
+  // with board occupancy, so a near-topped-out real board (fillRatio
+  // approaching 1.0) still blows the decision budget even at
+  // rescueBranchCap=10 — measured up to 202ms on a real recorded attack
+  // file, exactly the boards where a fast decision matters most. `budget`
+  // is a shared { used, max } counter of board evaluations
+  // (clone+swap+resolve), passed by the caller across the whole
+  // depth-2/3/4 fallback chain (see _bestDefensiveMove and
+  // this.rescueEvalBudget's own comment for why this counts evaluations
+  // instead of wall-clock time). Checked both on entry to each recursion
+  // node and partway through its swap loop so a single expensive node
+  // can't run the whole chain past budget. Returns whatever `best` it
+  // already found rather than nothing — a stale-but-real rescue move
+  // beats none.
+  SearchCpu.prototype._nPlyRescue = function (board, depth, budget) {
     var self = this;
     var best = null, bestKey = null;
     var garbageBefore = garbageCellCount(board);
     var lowestBefore = board.lowestGarbageRow();
     var toppedOutNow = board.maxHeight() >= board.height;
     var walk = function (trial, firstMove, remaining) {
+      if (budget && budget.used >= budget.max) return;
       var swaps = trial.legalSwaps();
       var unmatched = [];
       for (var i = 0; i < swaps.length; i++) {
+        if (budget && budget.used >= budget.max) return;
         var r = swaps[i][0], c = swaps[i][1];
         var step = trial.clone();
         step.swap(r, c);
+        if (budget) budget.used++;
         var move = firstMove || [r, c];
         var res = step.resolve();
         if (res.chainLength > 0) {
@@ -1222,8 +1543,31 @@
 
   // Best swap that matches something right now, plus how big that match
   // is — the caller decides whether it's worth holding out for bigger.
+  //
+  // Genuinely 2-ply (does this swap match, AND does the board it leaves
+  // behind have an obvious follow-up match) — that second ply is real,
+  // load-bearing lookahead, not a corner to cut. But applying it
+  // EXHAUSTIVELY (every legal swap that matches x every legal swap on
+  // the board it leaves behind) is what makes this expensive: profiled
+  // as the dominant cost inside TrueSurvivalSearch's rollout continuation
+  // (up to ~380 calls per single real decision at this difficulty tier,
+  // since a rollout re-evaluates this every simulated frame).
+  //
+  // Fix keeps the full 2 plies of DEPTH and narrows the BREADTH the
+  // expensive second ply runs on, the same shape as this file's other
+  // pruned searches (_nPlyRescue's rescueBranchCap, _computePlan's beam
+  // width): rank every immediately-matching swap by its cheap ply-1
+  // value first (already computed either way), then only spend the
+  // O(legalSwaps) follow-up pass on the top FOLLOWUP_RANK_CAP of those
+  // -- a candidate several places back on ply 1 essentially never comes
+  // back to win purely off a follow-up bonus, and every other swap
+  // still gets its true ply-1 value considered, so this can only ever
+  // pick a WORSE move than the exhaustive version in the rare case a
+  // long-shot ply-1 candidate held a huge hidden follow-up -- the same
+  // accepted tradeoff every ranked-then-capped search in this file
+  // already makes.
   SearchCpu.prototype._bestImmediateMatch = function (board) {
-    var swaps = board.legalSwaps(), best = null, bestScore = null, bestInfo = null;
+    var swaps = board.legalSwaps(), matched = [];
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
       var trial = board.clone();
@@ -1234,25 +1578,39 @@
       var chainBonus = res.chainLength >= 2 ? res.chainLength * res.chainLength : 0;
       var comboBonus = 0;
       for (var j = 0; j < res.comboSizes.length; j++) if (res.comboSizes[j] >= 4) comboBonus += res.comboSizes[j];
-      // one extra ply: does this leave an obvious follow-up match behind?
-      var followUp = 0, swaps2 = trial.legalSwaps();
-      for (var k = 0; k < swaps2.length; k++) {
-        var follow = trial.clone();
-        follow.swap(swaps2[k][0], swaps2[k][1]);
-        var fres = follow.resolve();
-        if (fres.chainLength > 0) {
-          var fSum = fres.comboSizes.reduce(function (a, b) { return a + b; }, 0);
-          followUp = Math.max(followUp, garbageCells(fres.garbage) * this.garbageWeight
-            + fres.chainLength * fres.chainLength * this.chainWeight * 0.5);
+      var ply1Ev = this._evaluate(trial, gTotal, chainBonus, comboBonus);
+      matched.push({
+        move: [r, c], board: trial, ev: ply1Ev,
+        chainLength: res.chainLength, comboSize: Math.max.apply(null, res.comboSizes.concat([0]))
+      });
+    }
+    if (!matched.length) return null;
+    matched.sort(function (a, b) { return b.ev - a.ev; });
+
+    var best = null, bestScore = null, bestInfo = null;
+    for (var m = 0; m < matched.length; m++) {
+      var cand = matched[m];
+      var ev = cand.ev;
+      // one extra ply, only for the top-ranked candidates: does this
+      // leave an obvious follow-up match behind?
+      if (m < this.followUpRankCap) {
+        var followUp = 0, swaps2 = cand.board.legalSwaps();
+        for (var k = 0; k < swaps2.length; k++) {
+          var follow = cand.board.clone();
+          follow.swap(swaps2[k][0], swaps2[k][1]);
+          var fres = follow.resolve();
+          if (fres.chainLength > 0) {
+            followUp = Math.max(followUp, garbageCells(fres.garbage) * this.garbageWeight
+              + fres.chainLength * fres.chainLength * this.chainWeight * 0.5);
+          }
         }
+        ev += followUp;
       }
-      var ev = this._evaluate(trial, gTotal, chainBonus, comboBonus) + followUp;
       if (bestScore === null || ev > bestScore) {
-        bestScore = ev; best = [r, c];
-        bestInfo = { chainLength: res.chainLength, comboSize: Math.max.apply(null, res.comboSizes.concat([0])) };
+        bestScore = ev; best = cand.move;
+        bestInfo = { chainLength: cand.chainLength, comboSize: cand.comboSize };
       }
     }
-    if (!best) return null;
     return { move: best, chainLength: bestInfo.chainLength, comboSize: bestInfo.comboSize };
   };
 
@@ -1316,11 +1674,711 @@
       if (bestGain === null || gain > bestGain) { bestGain = gain; best = [r, c]; }
     }
     if (best && bestGain > 0) return { kind: "swap", move: best };
+    // Round 4 finding (FINDINGS.md): this used to raise unconditionally
+    // whenever nothing improved potential, with no notion of how tall the
+    // board already is. During a long calm stretch that's a repeated
+    // decision, not a one-off -- every idle cycle with no improving swap
+    // defaulted to raising for fresh material, so the LONGER the calm
+    // period, the higher the board climbed purely from its own offense-
+    // seeking, before _inDanger's reactive threshold ever had a reason to
+    // fire. Fixing the real-attack-file benchmark's flight-delay bug (a
+    // measurement fix, not a behavior change) exposed this: correcting
+    // the timing gave the AI MORE calm runway per attack, and survival
+    // dropped (109.8s->66.1s on the real 12-file benchmark), because more
+    // calm time meant more unbounded raising before pressure resumed.
+    //
+    // FIRST ATTEMPT (measured, wrong): gated on
+    // `board.fillRatio() >= this.patienceFillCeiling` (0.5 default).
+    // Instrumented and confirmed dead code -- for every level whose
+    // dangerHeightFrac has been tightened below 0.5 (5/8/10, all at 0.45),
+    // _choose() routes to _inDanger's defensive path before fillRatio can
+    // ever reach 0.5, since _raiseOrBuild is only ever reached from calm
+    // mode (fillRatio < dangerHeightFrac). The hold branch fired 0 times
+    // in a 12000-frame instrumented trace; the real-benchmark numbers
+    // came back bit-for-bit identical to no fix at all (66.096s/1141).
+    // Fixed by gating relative to dangerHeightFrac itself (always reachable
+    // from calm mode) rather than the unrelated, independently-set
+    // patienceFillCeiling.
+    if (board.fillRatio() >= this.dangerHeightFrac * this.raiseFillFrac) return { kind: "hold" };
     return { kind: "raise" };
   };
 
-  // Returns {kind:"swap", move:[row,col]} or {kind:"raise"}.
+  // =========================================================================
+  // TRUE SURVIVAL SEARCH — a separate, independent decision system, gated
+  // and structured exactly like PreburstReserve below (same trigger tier,
+  // same single consult point in _choose, own priority -- checked FIRST,
+  // ahead of PreburstReserve). It exists because every other lever tried
+  // against this exact drill (L10 bigBlocks, maxHealth<=1 -- see FINDINGS.md)
+  // was a variation on "score candidates with a proxy heuristic (chain
+  // bonus, combo bonus, garbage cleared) and accept/decline against a
+  // threshold." This is not that: for every legal candidate move, it clones
+  // the REAL PanelEngine.Stack (physics, animation timers, garbage flight,
+  // health-drain-while-idle, all of it -- not the abstract LogicalBoard
+  // used everywhere else in this file for cheap planning) and actually
+  // PLAYS FORWARD a short future under a continuation policy, counting how
+  // many real frames survive. Whichever candidate's simulated future
+  // survives longest wins. No chain bonus, no combo bonus, no garbage-
+  // cleared score anywhere in the decision itself.
+  //
+  // WHY the real Stack and not LogicalBoard: LogicalBoard.resolve() is
+  // instantaneous (gravity+matches settle in one call, no timers) and has
+  // no notion of garbage flight delay, hover/chain windows, or the
+  // health-drain-while-topped-out-and-idle rule that actually kills a
+  // maxHealth<=1 match. Two different moves that look identical to
+  // LogicalBoard (same chain, same cells cleared) can have very different
+  // real survival if one leaves the board idle a frame longer while
+  // topped out. Only the real Stack can see that difference, which is the
+  // entire point of this module.
+  var TrueSurvivalSearch = {
+    // How many real frames to play forward per candidate. NOT monotonic --
+    // swept 10/15/20/25/30/45/60/90 against this module's own validation
+    // target (L10 bigBlocks, 15 seeds, ai/experiments/full_report.js) and
+    // the result is non-monotonic exactly like every other lever in this
+    // file's FINDINGS.md: 45 gave 1130 avg frames, 90 gave 1041 (WORSE,
+    // deeper is not better), 20 and 25 both gave ~1410 (best found). Root
+    // cause understood, not just measured: past the point where a rollout
+    // has already resolved (survived to the end, or died), MORE frames
+    // just adds more turns of the continuation policy's own play on top of
+    // the outcome being compared -- which increasingly compares "policy
+    // plus policy" rather than isolating the one real choice this module
+    // exists to make. 20 is deep enough to see a candidate that's fine for
+    // 10 frames but fatal by frame 15-20, shallow enough to stay far under
+    // the file's own ~100ms real-time decision budget (measured worst case
+    // 54ms across the full 15-seed sweep -- see this module's own timing
+    // note below).
+    //
+    // SUPERSEDED: the 20/20/2 values described above (and swept by hand,
+    // one at a time) were the baseline a genetic algorithm
+    // (games/the-game/ai/experiments/train_ga.js) was run against, jointly
+    // searching these three module constants alongside the 20 SearchCpu
+    // weight fields tuned at maxHealth<=1 (see SearchCpu's constructor,
+    // reaction's override comment). These aren't gated further by
+    // maxHealth<=1 the way the SearchCpu opts above are, because
+    // TrueSurvivalSearch.active() (below) already only ever activates at
+    // maxHealth<=1 -- changing these constants can't affect any other
+    // level's behavior since no other level's CPU ever calls into this
+    // module.
+    //
+    // Ongoing GA training: round 1 (1830avg, hand-tuned) -> round 2
+    // (2176avg, ROLLOUT_DEPTH/SWAP_CAP 27/12) -> round 3 (2391avg,
+    // ROLLOUT_DEPTH/SWAP_CAP/FOLLOWUP_RANK_CAP 33/13/5 -- uncapped fitness
+    // evaluation this round, letting each genome play to actual death
+    // instead of a search-speed frame cap) -> round 4 (2391avg, no
+    // improvement even after widening the bounds round 3 pinned against --
+    // this basin had plateaued) -> round 5 (2400avg, 40.0s at 60fps,
+    // ROLLOUT_DEPTH/SWAP_CAP/FOLLOWUP_RANK_CAP 17/7/8 -- a FRESH random
+    // population, not refined from round 3/4's basin, found a
+    // structurally different one: MUCH SHALLOWER rollouts with a WIDER
+    // follow-up budget, the opposite trade-off from round 3's "go deeper
+    // on fewer candidates." Neither direction is universally right --
+    // what matters is that a plateaued refinement search benefited from a
+    // diversified restart rather than more rounds narrowing the same
+    // basin. Measured on the standard 15-seed L10 bigBlocks benchmark
+    // (full_report.js), together with the SearchCpu-side changes -- not
+    // isolated on its own. Timing-verified: 4 repeated 15-seed sweeps,
+    // max 58ms, 0 calls over the ~100ms budget.
+    ROLLOUT_DEPTH: 17,
+    // How many ply-1-ranked candidates the rollout continuation's
+    // _bestImmediateMatch call spends its expensive follow-up ply on --
+    // see _bestImmediateMatch's and _makeRolloutCpu's own comments.
+    // Calibrated alongside SIMULATED_FRAME_BUDGET below. See
+    // ROLLOUT_DEPTH's own comment for how this evolved across GA rounds.
+    ROLLOUT_FOLLOWUP_RANK_CAP: 8,
+    // Legal swaps are pruned to this many before simulating, by a cheap
+    // LogicalBoard boardPotential-gain pass (the same O(swaps) proxy
+    // _raiseOrBuild already uses) -- NOT the decision itself, only move
+    // ORDERING so a dense board's legalSwaps() candidates don't each cost a
+    // real rollout. The 20 this was hand-swept to (see ROLLOUT_DEPTH's own
+    // comment for the fuller story) is superseded by the GA's search --
+    // see that comment for how this evolved across rounds. _bestImmediateMatch's own top
+    // pick is always added too (it uses a different, pricier metric that
+    // the cheap proxy can rank differently), plus "hold" and "raise" as
+    // fixed candidates.
+    ROLLOUT_SWAP_CAP: 7,
+
+    // Same trigger tier as PreburstReserve (maxHealth<=1) -- but NOT the
+    // same "steps aside forever after first top-out" shape. That gate was
+    // originally copy-pasted from PreburstReserve without re-deriving
+    // whether TSS's OWN rationale actually calls for it, and diagnosis
+    // found it doesn't: PreburstReserve steps aside forever because ITS
+    // specific job (protecting reserve material before the well gets
+    // wedged shut) genuinely has nothing left to do once wedged. TSS's
+    // job -- comparing candidates by REAL simulated survival -- stays
+    // exactly as meaningful after topping out as before; if anything more
+    // so, since post-topple is where the real engine's health-drain and
+    // swap-stalling mechanics (see decide()'s own comment) actually bite.
+    //
+    // Measured why this mattered: on L10 bigBlocks (this module's own
+    // validation target), ordinary passive rise tops the board around
+    // frame 160 on EVERY seed tried (before the first burst even lands --
+    // see PreburstReserve's own comment) -- so the old permanent lockout
+    // switched TSS off around frame 160 for matches that then run another
+    // 250-3900+ frames on the older LogicalBoard-based _bestDefensiveMove
+    // fallback alone, which has no model of the real engine's anti-wiggle
+    // swapStallBacklog (panel-engine.js) at all. Direct instrumentation of
+    // a fast-dying seed (seed 2, died frame 423) found its death was
+    // mechanical, not a search-quality failure: at maxHealth<=1 the real
+    // engine's SWAP_STALLING_PUNISH (4) exceeds max health (1), so once
+    // topped out and idle, EVERY (row,col) swap position can be used
+    // AT MOST ONCE ever (a repeat is refused outright); the fallback
+    // exhausted all 10 distinct positions in its 2-row runway (confirmed:
+    // stack.swapStallBacklog held all 10 keys at the death frame) and the
+    // very next decision cycle had nowhere left to swap, going genuinely
+    // idle for one frame -- instant death at maxHealth=1. No amount of
+    // LogicalBoard scoring can see that a proposed swap's KEY is a
+    // one-time-use resource; only a real Stack clone (which TSS already
+    // builds) can.
+    active: function (cpu, board) {
+      if (cpu._noRollout) return false; // a rollout's own continuation CPU never recurses into this
+      if (!cpu.stack || !cpu.stack.levelData || cpu.stack.levelData.maxHealth > 1) return false;
+      return true;
+    },
+
+    // TRIED AND NOT SHIPPED: caching decide()'s answer per board layout,
+    // reused across the whole match (even across matches). Measured
+    // 73.4% of every decision is an exact repeat of a board layout
+    // already fully analyzed earlier in the same match, which made this
+    // look like a clear win -- reusing an already-correct answer isn't
+    // cutting a corner, it's not re-deriving 1+1 every time it comes up
+    // again. Caught TWO real correctness gaps building it, not one:
+    //   1. A key built from board.grid alone conflates boards with the
+    //      same visible colors but different GARBAGE BLOCK structure (a
+    //      6-wide slab vs. two 3-wide slabs occupying the same cells
+    //      look identical by color but clear differently) -- fixed with
+    //      the canonical, scan-order block-grouping key below.
+    //   2. Even with that fixed, cached-vs-freshly-recomputed decisions
+    //      still diverged on a real match (confirmed directly by
+    //      instrumenting one, not guessed): _simulate clones the FULL
+    //      real Stack (_cloneStack), which carries state this
+    //      LogicalBoard-derived key simply doesn't capture --
+    //      swapStallBacklog (which swap positions are already spent
+    //      this idle streak, the exact mechanic this module exists to
+    //      model), shakeTime/stopTime, individual panel animation
+    //      state. Two moments with an identical VISIBLE board can have
+    //      different real state underneath, and the right answer can
+    //      genuinely differ.
+    // Making the key capture all of that would work, but is a much
+    // bigger, riskier change than the measured upside justifies right
+    // now -- reverted the cache itself rather than ship one with a
+    // demonstrated gap. What DID ship out of this investigation:
+    // decide()'s baseSeed below, seeded from this same board
+    // fingerprint instead of stack.clock, which needed the identical
+    // fingerprinting work and is safe on its own (nothing gets reused
+    // across different real states, a fresh simulation just gets a
+    // seed that's consistent for the same board instead of drifting
+    // with whatever frame it happens to be asked about).
+    _boardFingerprint: function (board) {
+      // Canonical group numbers assigned in GRID SCAN order (row-major,
+      // the same order the key itself is built in below), not by
+      // board.blocks' own object-key/id order -- ids are a globally
+      // incrementing counter tied to creation time, not spatial
+      // position, so two boards with the identical actual grouping but
+      // different block-creation histories would otherwise number their
+      // groups differently and fail to match. Numbering by first-seen-
+      // while-scanning instead means the Nth distinct block ENCOUNTERED
+      // is always canonical group N, regardless of what its real id is
+      // or when it was created.
+      var cellToBlockId = {};
+      for (var bid in board.blocks) if (Object.prototype.hasOwnProperty.call(board.blocks, bid)) {
+        var cells = board.blocks[bid].cells;
+        for (var i = 0; i < cells.length; i++) cellToBlockId[cells[i][0] + ":" + cells[i][1]] = bid;
+      }
+      var groupOf = {}, nextGroup = 0, out = "";
+      for (var r = 1; r <= board.height; r++) {
+        for (var c = 1; c <= board.width; c++) {
+          var v = board.grid[r][c];
+          if (v === -2) {
+            var realId = cellToBlockId[r + ":" + c];
+            if (groupOf[realId] === undefined) groupOf[realId] = nextGroup++;
+            out += "g" + groupOf[realId];
+          } else {
+            out += v;
+          }
+          out += ",";
+        }
+      }
+      return out;
+    },
+    // A small, fast string hash (FNV-1a), used to seed the rollout
+    // simulation from the BOARD LAYOUT instead of stack.clock -- see
+    // decide()'s own comment for why this matters beyond just feeding
+    // the cache. Doesn't need to be cryptographic, just well-distributed
+    // over 32 bits and deterministic for the same string every time.
+    _hashKey: function (key) {
+      var h = 2166136261;
+      for (var i = 0; i < key.length; i++) {
+        h ^= key.charCodeAt(i);
+        h = (h * 16777619) >>> 0;
+      }
+      return h || 1;
+    },
+
+    // Returns {kind:...} to REPLACE _choose's decision this cycle, or null
+    // to decline (caller falls through to PreburstReserve, unmodified).
+    decide: function (cpu, board) {
+      // Defer to the safety-critical rescue chain only BEFORE the board
+      // has topped out -- that's the genuinely time-sensitive "garbage
+      // about to crush me, act on the one real emergency" case _inDanger
+      // was tuned to gate. Once actually topped out at this tier,
+      // _inDanger(board) is true by construction for the rest of the
+      // match (dangerHeightFrac 0.45 <= a pinned fillRatio of 1.0) and
+      // stops being a useful signal -- deferring to it there would just
+      // reinstate the old permanent lockout above by another name.
+      if (board.maxHeight() < board.height && cpu._inDanger(board)) return null;
+
+      var candidates = TrueSurvivalSearch._candidates(cpu, board);
+      var bestDecision = null, bestSurvived = -1, bestEndFill = Infinity;
+      // A fresh, deterministic seed per decision (not the real cpu's own
+      // rng stream -- sharing it would consume real random draws just by
+      // THINKING about a move, corrupting the actual match's future).
+      // Derived from the BOARD LAYOUT, not stack.clock -- a real, measured
+      // improvement found while investigating the cache above (see its
+      // own comment): the identical board layout reached at two
+      // different clock values got two DIFFERENT simulated evaluations
+      // purely from reseeding, i.e. this decision was noisier than it
+      // needed to be. Seeding from the board instead removes that noise
+      // -- measured 1728avg -> 1830avg on the same 15-seed benchmark,
+      // board-seeding alone, no caching involved.
+      var baseSeed = TrueSurvivalSearch._hashKey(TrueSurvivalSearch._boardFingerprint(board));
+
+      // No candidate-count or simulated-frame budget here -- earlier
+      // versions of this fix needed one (see FINDINGS.md): running this
+      // module for the WHOLE match instead of just the brief pre-topout
+      // window (see active()'s own comment on why that changed) made
+      // the OLD, unpruned _bestImmediateMatch expensive enough, called
+      // up to ~380 times per real decision inside the rollout
+      // continuation, to blow the ~100ms real-time budget (up to
+      // 226-239ms measured). A budget that cut candidates short papered
+      // over that without fixing it, and cost real quality doing it
+      // (1728avg unbounded-but-unsafe -> 1416avg budgeted-but-safe).
+      // The actual fix was making _bestImmediateMatch itself cheap
+      // enough that the full, unbounded candidate set fits the budget
+      // on its own (see its own comment) -- verified: worst case
+      // measured 45-67ms across a full 15-seed sweep with EVERY
+      // candidate simulated, no cap, no early exit.
+      for (var i = 0; i < candidates.length; i++) {
+        var result = TrueSurvivalSearch._simulate(cpu, candidates[i], baseSeed + i * 7919);
+        if (result.survived > bestSurvived ||
+          (result.survived === bestSurvived && result.endFill < bestEndFill)) {
+          bestSurvived = result.survived;
+          bestEndFill = result.endFill;
+          bestDecision = candidates[i];
+        }
+      }
+      return bestDecision; // always non-null: "hold" is always in candidates
+    },
+
+    // Builds the candidate list: hold (but NEVER while topped out -- see
+    // below), raise (if the board isn't already full), the cheap-proxy
+    // top ROLLOUT_SWAP_CAP swaps, _bestImmediateMatch's pick, and
+    // _bestDefensiveMove's own pick, each if not already among them.
+    //
+    // "hold" is excluded once topped out, and this isn't a minor tweak --
+    // it's this file's own "NEVER GO IDLE WHILE TOPPED OUT" rule
+    // (_bestDefensiveMove's own comment: "the single highest-leverage
+    // rule in the whole file"), which TSS was silently violating. Found
+    // by direct instrumentation of a seed that regressed hard once TSS
+    // started operating post-topple (see active()'s own comment): at a
+    // real death, EVERY candidate TSS considered -- hold AND every legal
+    // swap -- simulated to "dies in 3 frames" (the runway's swap-key
+    // budget was already exhausted, a real dead position, same mechanism
+    // as active()'s own comment). TSS correctly saw no move survives
+    // there. The actual damage happened EARLIER: on ties (very common on
+    // a topped-out board where a 20-frame window can't yet distinguish
+    // "sets up a match" from "harmless rearrangement" -- both often
+    // simulate to the same survived/endFill), "hold" always won, because
+    // it's always candidate index 0 and the comparison only replaces the
+    // incumbent on a STRICT improvement. But hold and a swap are NOT
+    // equally safe once topped out, whatever a tied rollout says: a swap
+    // re-arms riseLock via its own animation and keeps the tight
+    // toppedOutCooldown decision cadence; a hold defends nothing and
+    // commits to this.reaction frames (far longer) of doing nothing,
+    // gambling entirely on whatever residual animation state happens to
+    // still be running. Confirmed directly: a real "hold" pick died 3
+    // frames later the instant that residual state ran out. Since
+    // _bestDefensiveMove already never holds while topped out (that rule
+    // predates this module), simply not offering hold as a candidate
+    // there makes TSS inherit the same invariant instead of re-litigating
+    // it through a comparison that structurally can't always tell the
+    // two apart.
+    _candidates: function (cpu, board) {
+      var toppedOut = board.maxHeight() >= board.height;
+      var out = toppedOut ? [] : [{ kind: "hold" }];
+      if (board.fillRatio() < 1) out.push({ kind: "raise" });
+
+      var swaps = board.legalSwaps();
+      var base = boardPotential(board);
+      var scored = [];
+      for (var i = 0; i < swaps.length; i++) {
+        var r = swaps[i][0], c = swaps[i][1];
+        var trial = board.clone();
+        trial.swap(r, c);
+        scored.push({ move: [r, c], gain: boardPotential(trial) - base });
+      }
+      scored.sort(function (a, b) { return b.gain - a.gain; });
+      var seen = {};
+      for (var k = 0; k < scored.length && k < TrueSurvivalSearch.ROLLOUT_SWAP_CAP; k++) {
+        var mv = scored[k].move;
+        seen[mv[0] + ":" + mv[1]] = true;
+        out.push({ kind: "swap", move: mv });
+      }
+      var found = cpu._bestImmediateMatch(board);
+      if (found) {
+        seen[found.move[0] + ":" + found.move[1]] = true;
+        out.push({ kind: "swap", move: found.move });
+      }
+      // _bestDefensiveMove's own pick was tried here as an extra
+      // candidate (proven a bit-for-bit no-op whenever
+      // legalSwaps().length <= ROLLOUT_SWAP_CAP, since the cheap
+      // boardPotential-gain proxy above already ranks every legal swap
+      // in that regime the same way _bestDefensiveMove's own gainMove
+      // fallback would). Deliberately NOT called here, even gated to
+      // only the legalSwaps().length > ROLLOUT_SWAP_CAP regime where it
+      // could in principle add real coverage: that regime is exactly
+      // frame ~150-160, right at the board's first ordinary top-out,
+      // where legalSwaps is still large (20+) -- calling the full
+      // beam-search-plus-_nPlyRescue-chain machinery there, ON TOP OF
+      // this module's own ~20 rollout simulations for the SAME decision,
+      // measured real timing-budget violations (up to 127-129ms, several
+      // per real match) that persisted even after gating the call to
+      // only that regime. The two costs stack because they're the two
+      // most expensive things this file does, on the exact frame where
+      // demand for both is highest. Round 8's own precedent (FINDINGS.md)
+      // already settled this tradeoff once: an AI that occasionally
+      // takes >100ms to decide is not a valid solution regardless of
+      // what it scores offline, because a real browser can't wait that
+      // long between frames. Losing this one edge case's marginal extra
+      // coverage is the accepted cost of staying inside that budget.
+      // Last-resort guard: only reachable when topped out (hold excluded
+      // above) with zero legal swaps and no raise room -- an essentially
+      // unrecoverable board state, but decide() still promises a non-null
+      // {kind:...} to its caller (see its own comment), so this can't be
+      // left truly empty.
+      if (!out.length) out.push({ kind: "hold" });
+      return out;
+    },
+
+    // Clones the real Stack, forces `decision` as the first move, then hands
+    // off to a throwaway continuation CPU (this cpu's own tuned parameters,
+    // an independent rng, _noRollout set so it can't recurse) for the rest
+    // of the rollout. Returns {survived, endFill}: frames actually played
+    // before death (capped at ROLLOUT_DEPTH), and the board's fill ratio at
+    // the end when it didn't die (Infinity when it did -- always worse than
+    // any real fill ratio, so a death never wins a comparison).
+    _simulate: function (cpu, decision, seed) {
+      var clonedStack = TrueSurvivalSearch._cloneStack(cpu.stack, seed);
+      var roll = TrueSurvivalSearch._makeRolloutCpu(cpu, clonedStack, seed + 1);
+      roll._forcedDecision = decision;
+      var survived = 0;
+      for (var f = 0; f < TrueSurvivalSearch.ROLLOUT_DEPTH; f++) {
+        roll.update();
+        clonedStack.run();
+        if (clonedStack.gameOver) return { survived: survived, endFill: Infinity };
+        survived++;
+      }
+      var endBoard = SearchCpu.prototype._snapshot.call({ stack: clonedStack });
+      return { survived: survived, endFill: endBoard.fillRatio() };
+    },
+
+    // panels is by far the largest thing on a Stack (height+buffer rows x
+    // width columns of Panel objects, ~28 fields each -- profiled as the
+    // dominant share of _cloneStack's own cost, ahead of every other
+    // field combined) and every Panel field is a primitive (confirmed by
+    // inspection of makePanel/clearPanel/clearFlags in panel-engine.js --
+    // no nested objects or arrays anywhere inside one). The generic
+    // _deepClone below is correct for it but pays real overhead it
+    // doesn't need to: recursing into a nested structure that provably
+    // never exists, re-deriving "is this an object/array" per field via
+    // typeof/Array.isArray on every one of ~28 fields x ~168 panels.
+    //
+    // A manual field-by-field object literal, NOT Object.assign({}, p) --
+    // tried that first on the theory that a native builtin beats hand-
+    // written code and it's the opposite here: microbenchmarked at ~70x
+    // SLOWER than this literal for this exact object shape (V8 doesn't
+    // give Object.assign's generic own-key enumeration the same
+    // hidden-class/inline-cache fast path a fixed-shape literal gets).
+    // Real, measured cost: shipping the Object.assign version caused
+    // REPEATED, reproducible ~100ms-budget violations (up to 127ms, up
+    // to 13 in one 15-seed sweep) on the exact benchmark this whole
+    // module is tuned against -- not a one-off, confirmed across 3
+    // back-to-back sweeps before reverting.
+    //
+    // The field list below is the one thing a hand-written version has
+    // to get exactly right, and an earlier attempt at exactly this
+    // shape already proved that's an easy way to go quietly wrong (a
+    // first hand-listed version was missing `propagatesFalling`). This
+    // list is verified two independent ways, not just eyeballed: every
+    // `p.field=`/`panel.field=`/`below.field=`/etc. assignment in
+    // panel-engine.js found by grep, AND Object.keys() unioned across
+    // real panels sampled live across several full simulated matches
+    // (including garbage panels, which is the only way a
+    // sometimes-absent field like `garbageId` shows up at all) --
+    // 28 fields either way, cross-checked to match.
+    _clonePanels: function (panels) {
+      var out = new Array(panels.length);
+      for (var r = 0; r < panels.length; r++) {
+        var row = panels[r];
+        if (!row) { out[r] = row; continue; }
+        var newRow = new Array(row.length);
+        for (var c = 0; c < row.length; c++) {
+          var p = row[c];
+          newRow[c] = p ? {
+            row: p.row, col: p.col, id: p.id, color: p.color, chaining: p.chaining,
+            matching: p.matching, timer: p.timer, initialTime: p.initialTime,
+            popTime: p.popTime, popIndex: p.popIndex, xOffset: p.xOffset, yOffset: p.yOffset,
+            gWidth: p.gWidth, gHeight: p.gHeight, shakeTime: p.shakeTime, isGarbage: p.isGarbage,
+            state: p.state, comboIndex: p.comboIndex, comboSize: p.comboSize,
+            swapFromLeft: p.swapFromLeft, dontSwap: p.dontSwap, queuedHover: p.queuedHover,
+            fellFromGarbage: p.fellFromGarbage, stateChanged: p.stateChanged,
+            propagatesChaining: p.propagatesChaining, matchAnyway: p.matchAnyway,
+            propagatesFalling: p.propagatesFalling, garbageId: p.garbageId
+          } : p;
+        }
+        out[r] = newRow;
+      }
+      return out;
+    },
+
+    // A generic deep copy of every own-enumerable field on the Stack except
+    // `rng` (a closure -- see _cloneStack's own note), `levelData` (a
+    // shared, effectively-immutable LEVELS[] entry -- copying the reference
+    // is correct and avoids re-copying it on every single candidate), and
+    // `panels` (see _clonePanels' own comment for why that gets its own
+    // fast path). Everything else on Stack is plain data (incoming/
+    // outgoing queues, events, input state -- confirmed by inspection: the
+    // only instance-level function field anywhere on Stack is rng itself),
+    // so a structural clone is safe and doesn't need Stack's own knowledge
+    // of its fields.
+    _cloneStack: function (stack, rngSeed) {
+      var clone = Object.create(Object.getPrototypeOf(stack));
+      for (var key in stack) {
+        if (!Object.prototype.hasOwnProperty.call(stack, key)) continue;
+        if (key === "rng") continue;
+        clone[key] = key === "levelData" ? stack[key]
+          : key === "panels" ? TrueSurvivalSearch._clonePanels(stack[key])
+            : TrueSurvivalSearch._deepClone(stack[key]);
+      }
+      // A FRESH, independent rng -- never the real stack's own closure.
+      // Sharing it would advance the real match's actual future random
+      // draws (panel colors, garbage colors) just by simulating a
+      // hypothetical, corrupting determinism for the real game.
+      clone.rng = root.PanelEngine.makeRng(rngSeed);
+      return clone;
+    },
+
+    _deepClone: function (x) {
+      if (x === null || typeof x !== "object") return x;
+      if (Array.isArray(x)) {
+        var arr = new Array(x.length);
+        for (var i = 0; i < x.length; i++) arr[i] = TrueSurvivalSearch._deepClone(x[i]);
+        return arr;
+      }
+      var out = {};
+      for (var k in x) if (Object.prototype.hasOwnProperty.call(x, k)) out[k] = TrueSurvivalSearch._deepClone(x[k]);
+      return out;
+    },
+
+    // The continuation policy for every rollout frame after the forced
+    // first move -- deliberately CHEAP (O(legalSwaps) resolves, the same
+    // cost class _raiseOrBuild/_bestImmediateMatch already run on every
+    // real frame elsewhere in this file), not this CPU's full _choose.
+    //
+    // FIRST ATTEMPT (measured, wrong): let the rollout continuation CPU
+    // call its own normal _choose every continuation frame, same as real
+    // play. Profiled against the real L10 bigBlocks drill (this module's
+    // own validation target): decide() calls up to 4.1s, all clustered at
+    // clock~151-152 (fillRatio~0.42, right before the drill's first 6x12
+    // slab lands -- exactly PreburstReserve's own documented high-leverage
+    // window). Root cause: _choose's non-reserve path runs _computePlan
+    // (a beam search, depth 5 x beam 10 at this maxHealth tier) or
+    // _bestDefensiveMove's _nPlyRescue chain (up to rescueEvalBudget=10000
+    // evals, individually already right at this file's ~100ms budget) --
+    // each already tuned to be safe ONCE per real decision, not called
+    // ~7-8 times per candidate x up to 8 candidates inside a single outer
+    // decide(). Fixed by never letting a rollout continuation frame reach
+    // _computePlan or _bestDefensiveMove at all -- see below.
+    //
+    // Still a REASONABLE policy, not a stub: same immediate-match-or-build
+    // shape as PreburstReserve's own decide (a tuned, shipped policy for
+    // this exact difficulty tier), just handling the in-danger case too
+    // (PreburstReserve deliberately doesn't -- it defers to the expensive
+    // rescue chain, which is exactly what this continuation can't afford).
+    //
+    // NEVER GO IDLE WHILE TOPPED OUT applies here too, and matters more
+    // here than anywhere else in the file: this continuation is what runs
+    // for the 19 simulated frames AFTER a candidate's forced first move,
+    // now that active()/decide() (see their own comments) let TSS operate
+    // through the whole post-topple regime, not just the brief pre-topple
+    // window. Without this, _raiseOrBuild's "hold" (board.fillRatio() is
+    // pinned at 1 >= dangerHeightFrac*raiseFillFrac once topped, so it
+    // always returns hold here) would make literally EVERY rollout die
+    // within a frame or two of its forced move whenever no match exists
+    // to take -- which is most post-topple frames by construction -- so
+    // every candidate would simulate as "instant death" and the whole
+    // comparison TSS exists to make would go uninformative right where
+    // it's needed most. cpu._anyLegalSwap (already in this file, driving
+    // _bestDefensiveMove's identical last-resort rule) is the same cheap
+    // O(legalSwaps) cost class as _raiseOrBuild, so this doesn't reopen
+    // the timing problem the comment above just fixed.
+    _continuationStep: function (cpu, board) {
+      var found = cpu._bestImmediateMatch(board);
+      if (cpu._inDanger(board)) {
+        if (found) return { kind: "swap", move: found.move };
+        if (board.maxHeight() >= board.height) {
+          var stall = cpu._anyLegalSwap(board);
+          if (stall) return { kind: "swap", move: stall };
+        }
+        return cpu._raiseOrBuild(board); // cheap hold/raise fallback -- see its own comment
+      }
+      if (found && (found.chainLength >= 2 || found.comboSize >= 4)) {
+        return { kind: "swap", move: found.move };
+      }
+      return cpu._raiseOrBuild(board);
+    },
+
+    // A throwaway SearchCpu instance for the rest of a rollout, once the
+    // FIRST move (the one actually being decided) is forced in. Reusing
+    // this CPU's own tuned parameters and normal decision-making for the
+    // continuation is the plausible-continuation policy this module needs
+    // (some policy is required, since the branching can't be simulated to
+    // infinity) -- it does NOT make the first move's choice, which is what
+    // this whole module exists to decide by real simulated outcome instead.
+    _makeRolloutCpu: function (sourceCpu, clonedStack, seed) {
+      var roll = Object.create(SearchCpu.prototype);
+      var carry = ["reaction", "mistake", "depth", "beam", "patience", "patienceFillCeiling",
+        "dangerHeightFrac", "raiseFillFrac", "chainWeight", "comboWeight", "garbageWeight",
+        "heightPenalty", "potentialWeight", "chainExtend", "criticalFactor", "runwayThreshold",
+        "toppedOutCooldown", "queuedRunwayWeight", "rescueBranchCap", "rescueEvalBudget",
+        "dropAmountWeight", "pressureThreshold", "sentWeight"];
+      for (var i = 0; i < carry.length; i++) {
+        if (sourceCpu[carry[i]] !== undefined) roll[carry[i]] = sourceCpu[carry[i]];
+      }
+      roll.stack = clonedStack;
+      roll.rng = root.PanelEngine.makeRng(seed);
+      roll.cooldown = 0;
+      roll.raiseFrames = 0;
+      roll._lastSwap = null;
+      roll._plan = [];
+      roll._planGrid = null;
+      roll._pressure = sourceCpu._pressure;
+      roll._reserveToppedOnce = !!sourceCpu._reserveToppedOnce;
+      roll._survivalSearchToppedOnce = true; // never let a rollout cpu spend budget recursing into this module
+      roll._noRollout = true; // hard recursion guard -- see _choose's _forcedDecision check and active() above
+      roll._cheapContinuation = true; // see _continuationStep's own comment for why this exists
+      roll._forcedDecision = null;
+      // NOT carried from sourceCpu (which keeps the real, uncapped
+      // Infinity for actual decisions) -- explicitly narrowed here, see
+      // _bestImmediateMatch's own comment for why: this rollout calls it
+      // up to ~380 times for a single real decision, so its own cost
+      // multiplies by that factor. Calibrated by measurement alongside
+      // the other timing work in this module.
+      roll.followUpRankCap = TrueSurvivalSearch.ROLLOUT_FOLLOWUP_RANK_CAP;
+      return roll;
+    }
+  };
+
+  // =========================================================================
+  // PREBURST RESERVE — a separate, independent decision system, not a
+  // tuning of the scoring inside _defensiveKey/boardPotential/etc. It has
+  // its own trigger, its own priority, and its own single consult point in
+  // _choose below; every other scenario runs through _choose completely
+  // unchanged, exactly as before this existed.
+  //
+  // WHY: instrumented directly (ai/experiments scratch probes, not
+  // conjecture) against the L10 bigBlocks drill, where maxHealth is
+  // exactly 1 — a single frame of unmitigated damage is fatal, and the
+  // first garbage block is width x board-height, i.e. it alone can occupy
+  // the ENTIRE board. Measured: the board tops out from ORDINARY passive
+  // rise well BEFORE the first burst piece physically lands (its 151-frame
+  // flight delay means it lands around frame ~300; the board was already
+  // at fillRatio 1.0 by frame ~160 in the reference run). Once topped out
+  // under a maxHealth<=1 slab that can never make room for a new row, the
+  // real panels frozen on the board at that moment are EVERY panel this
+  // match will ever get to work with — runwayHeight's own comment already
+  // says the well never refills once matched panels are gone, and here the
+  // well doesn't refill AT ALL once wedged under an unclearable slab. So
+  // whatever the CPU spends matching away during the free, ordinary early
+  // window (before that first top-out) never comes back, and the eventual
+  // "every remaining color stuck at exactly 2 copies" starvation death is
+  // downstream of exactly those early, healthy-board decisions.
+  //
+  // Confirmed this actually matters, not just plausible, with a controlled
+  // A/B: same seed/level/schedule, only the pre-first-top-out policy
+  // varied. Across a 25-seed sweep, forcing PASSIVE (no swaps at all)
+  // through that window changed final survival by 2-4x in either
+  // direction depending on seed (19/25 seeds better, one seed 5.6x worse)
+  // -- large and real, but too seed-chaotic (tiny early differences
+  // cascade unpredictably) to ship as "always stay idle". What ships here
+  // instead is the same idea bounded by the SAME "is this actually worth
+  // it" bar _computePlan already uses (chain>=2 or combo>=4), applied only
+  // until the board's OWN first top-out, which is what makes the window
+  // self-terminating rather than a magic frame count: measured safe (zero
+  // regression on 6/8 seeds tried this way, seed=1 -- the validated
+  // ai/experiments/full_report.js benchmark seed -- bit-for-bit unchanged
+  // at 2543 frames) while still recovering most of PASSIVE's upside where
+  // it existed (seed 2: 452 -> 989, seed 7: 491 -> 567).
+  var PreburstReserve = {
+    // True only while: this level is the single-hit-fatal tier (the same
+    // maxHealth<=1 gate every other tightening in this file already uses,
+    // not a new threshold), and the board has never yet topped out this
+    // match. The instant it tops out once, this permanently steps aside
+    // for the rest of the match -- there is no "reserve" left to protect
+    // once the well is already wedged shut, and normal _choose (offense/
+    // defense) is what has actually been tuned for play after that point.
+    active: function (cpu, board) {
+      if (!cpu.stack || !cpu.stack.levelData || cpu.stack.levelData.maxHealth > 1) return false;
+      if (cpu._reserveToppedOnce) return false;
+      if (board.maxHeight() >= board.height) { cpu._reserveToppedOnce = true; return false; }
+      return true;
+    },
+    // Returns {kind:...} to REPLACE _choose's decision this cycle, or null
+    // to decline (caller falls through to normal _choose unmodified).
+    decide: function (cpu, board) {
+      if (cpu._inDanger(board)) return null; // safety always wins, untouched
+      var found = cpu._bestImmediateMatch(board);
+      if (found && (found.chainLength >= 2 || found.comboSize >= 4)) {
+        return { kind: "swap", move: found.move }; // a real win is still worth taking
+      }
+      // Everything smaller: decline it. Building/raising via the existing
+      // _raiseOrBuild machinery keeps this literally reusing the tuned
+      // hold/raise thresholds already in the file, not a new opinion about
+      // when raising is safe.
+      return cpu._raiseOrBuild(board);
+    }
+  };
+
+  // Returns {kind:"swap", move:[row,col]}, {kind:"raise"}, or {kind:"hold"}.
   SearchCpu.prototype._choose = function (board) {
+    // Single consult point for TrueSurvivalSearch's forced first move inside
+    // a rollout clone (see below) -- a rollout CPU has _noRollout set so it
+    // can never recurse into TrueSurvivalSearch itself, and this is the only
+    // place _forcedDecision is ever read or cleared.
+    if (this._forcedDecision) {
+      var forced = this._forcedDecision;
+      this._forcedDecision = null;
+      return forced;
+    }
+    // A rollout's continuation frames (everything after the forced first
+    // move) use a CHEAP fixed policy instead of this CPU's own full _choose
+    // -- see TrueSurvivalSearch._continuationStep's own comment for why:
+    // the full _choose (in particular _computePlan's beam search and
+    // _bestDefensiveMove's _nPlyRescue chain) is tuned to be safe ONCE per
+    // real decision, not ~7-8 times per candidate x ~7 candidates inside a
+    // single outer decision, which is what a rollout needs.
+    if (this._cheapContinuation) {
+      return TrueSurvivalSearch._continuationStep(this, board);
+    }
+
+    if (TrueSurvivalSearch.active(this, board)) {
+      var simmed = TrueSurvivalSearch.decide(this, board);
+      if (simmed) return simmed;
+    }
+
+    if (PreburstReserve.active(this, board)) {
+      var reserved = PreburstReserve.decide(this, board);
+      if (reserved) return reserved;
+    }
+
     if (this._inDanger(board)) {
       this._plan = [];
       var defense = this._bestDefensiveMove(board);
@@ -1452,6 +2510,14 @@
       return;
     }
 
+    if (decision.kind === "hold") {
+      // Genuinely do nothing this cycle -- see _raiseOrBuild's comment.
+      // stack.setInput({}) already ran above; just wait out a reaction
+      // before re-checking rather than spinning a swap or raise loop.
+      this.cooldown = this.reaction;
+      return;
+    }
+
     var row = decision.move[0], col = decision.move[1];
     if (this._lastSwap && this._lastSwap[0] === row && this._lastSwap[1] === col) {
       // Exact undo of last turn's swap on an unchanged board -- pick a
@@ -1526,11 +2592,11 @@
     // instead. A real match's animation runs far longer than 4 frames on
     // its own, so this never makes those any faster than they already were.
     this.cooldown = board.maxHeight() >= board.height
-      ? 3
+      ? this.toppedOutCooldown
       : board.fillRatio() > this.dangerHeightFrac
         ? 6
         : Math.max(6, Math.round(this.reaction * (board.fillRatio() > this.dangerHeightFrac * 0.85 ? 0.55 : 1)));
   };
 
-  root.PanelCpu = { Cpu: Cpu, SearchCpu: SearchCpu, DIFFICULTIES: DIFFICULTIES };
+  root.PanelCpu = { Cpu: Cpu, SearchCpu: SearchCpu, DIFFICULTIES: DIFFICULTIES, PreburstReserve: PreburstReserve, TrueSurvivalSearch: TrueSurvivalSearch };
 })(typeof window !== "undefined" ? window : globalThis);

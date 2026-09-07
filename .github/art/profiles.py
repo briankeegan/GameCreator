@@ -90,6 +90,26 @@ PROFILES = {
         "steps_built_views": [],
         "mirrored_views": [],
     },
+    "roll": {
+        "model": MODEL,
+        "size": "1536x1024",
+        "quality": "medium",
+        "background": "opaque",
+        # Full front/side/back coverage, same as walk and attack — see
+        # CHARACTER_SHEETS.md's "Roll / dodge" section. Used to be side-view-
+        # only with the side row reused (mirrored, and replayed for vertical
+        # dodges) for every direction; overruled after that reuse also
+        # papered over a real scale bug (the recover frame shipped 31%
+        # taller than every other sheet). rollsheet_prompt.txt now has all
+        # three {VIEW} blocks like the other two prompts.
+        #
+        # BLOBS, same reason as attack: a tucked, tumbling body reaches
+        # further into the gap beside it than a standing one, so a gutter
+        # count reports "found 2, expected 3" on a perfectly good roll.
+        "verify": {"frames": 3, "walk": False, "blobs": True},
+        "steps_built_views": [],
+        "mirrored_views": [],
+    },
     "room_scene": {
         "model": MODEL,
         "size": "1536x1024",
@@ -156,6 +176,24 @@ PROFILES = {
                 "splash screen, a story illustration. Opaque on purpose: this "
                 "is the one kind where the background IS the picture.",
     },
+    "portrait": {
+        "model": MODEL, "size": "1024x1024", "quality": "medium",
+        "background": "opaque",
+        "verify": None,
+        # A portrait is a CHARACTER, and until it had a kind of its own it was
+        # the only kind of character art generated with no spec behind it: walk
+        # sheets were built from `characters.<id>` in art-style.json while the
+        # portrait beside them came from whatever prose someone typed into the
+        # freeform "Generate image" form that day. That is the whole reason
+        # portraits stopped matching their sprites — different hair, different
+        # robe, in one case a different person. generate_portrait.py is the
+        # front door; make_portrait.py does the cropping, which is why this is
+        # square and opaque: it is generated as a bust on FLAT WHITE with
+        # margin to spare, and cropped afterwards, never framed by the prompt.
+        "note": "A dialogue talk-box portrait: head-and-shoulders bust of a "
+                "character who has a spec, on flat white, cropped by "
+                "make_portrait.py. Generate it with generate_portrait.py.",
+    },
 }
 
 # Which kinds a human or model may ask for with NO dedicated front door — a
@@ -182,7 +220,7 @@ NO_FRONT_DOOR_KINDS = ("icon", "cutscene")
 # generation one directory outside `art-src/` and moves it into place itself
 # once the broker has written it, rather than asking the broker to write
 # there directly. See imagegen.py's `_via_broker` for that half of the fix.
-PIPELINE_KINDS = ("walk", "attack", "room_scene", "room_plate", "room_props",
+PIPELINE_KINDS = ("walk", "attack", "roll", "portrait", "room_scene", "room_plate", "room_props",
                   "tileset_ground", "tileset_objects")
 FREEFORM_KINDS = NO_FRONT_DOOR_KINDS + PIPELINE_KINDS
 

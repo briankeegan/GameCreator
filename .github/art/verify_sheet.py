@@ -398,6 +398,12 @@ def check_sheet(path, style, rows, cols):
     return problems, soft
 
 
+# Chroma green left inside a sprite, as a % of its lit pixels. After the cutter
+# learned to remove enclosed pockets, 13 of 14 Newsey characters measure <=0.04%
+# and Diamond — whose hair really is partly green — 0.41%. Before the fix the
+# worst was 1.74%. 0.6 sits clear of both.
+CHROMA_RESIDUE_MAX = 0.6
+
 # See the CROPPED / OVERSIZED check in check_frames for how these were
 # calibrated, and for why the old width:height version had to go.
 FRAME_HEIGHT_MIN = 0.80
@@ -615,6 +621,47 @@ def check_frames(art_dir, char_id, dirs):
                     'frame far taller than its siblings was combined in from a separate '
                     'generation without being scaled to the row, so the character changes '
                     'size the instant this frame is shown.')
+
+    # CHROMA RESIDUE. These sheets are drawn on chroma-key green (#00FF00) and
+    # the cutter keys it out — but a flood fill starting at the border can only
+    # reach background CONNECTED to the border. Green sealed inside the
+    # silhouette (the gap between an arm and the body, the hole under a bent
+    # elbow, the space through hair) survives it completely, and shipped: a
+    # rind of bright green flecks measured at up to 1.74% of a frame's lit
+    # pixels across twelve of fourteen characters, found by looking at a
+    # contact sheet, not by any check.
+    #
+    # BLUE is the discriminator, not green. #00FF00 and its blends sit at
+    # b<60, while every green that legitimately appears in this art is far
+    # bluer — Diamond's green hair streak is #3ad17a (b=122) and Kyran's teal
+    # shirt #1f8a8a (b=138). Both survive; verified by counting their pixels
+    # before and after the cutter fix.
+    #
+    # THRESHOLD, calibrated on the real art: after the fix, thirteen of
+    # fourteen characters measure at or under 0.04% and Diamond — the one with
+    # actual green in her hair, some of which grazes the test — at 0.41%. A
+    # frame at 0.6% or more has residue, not art. This FAILS rather than
+    # warning: chroma green inside a sprite is a fact, not a judgment call.
+    for d in dirs:
+        for n in (0, 1, 2):
+            p = os.path.join(art_dir, f'{char_id}_{d}_{n}.png')
+            if not os.path.exists(p):
+                continue
+            arr = np.array(Image.open(p).convert('RGBA')).astype(int)
+            lit = arr[..., 3] > 8
+            if not lit.any():
+                continue
+            r_, g_, b_ = arr[..., 0], arr[..., 1], arr[..., 2]
+            residue = lit & (g_ > 110) & (g_ - r_ > 55) & (g_ - b_ > 55) & (b_ < 60)
+            pct = 100.0 * int(residue.sum()) / int(lit.sum())
+            if pct >= CHROMA_RESIDUE_MAX:
+                problems.append(
+                    f'{char_id}: CHROMA RESIDUE — {char_id}_{d}_{n}.png is {pct:.2f}% '
+                    f'un-keyed chroma green (limit {CHROMA_RESIDUE_MAX}%). Green sealed '
+                    'inside the silhouette is not reachable by a flood fill from the '
+                    'border; re-cut the sheet with the current slice_walksheet.py, which '
+                    'also removes it by colour. It costs nothing — the sheet is already '
+                    'in the repo.')
     return problems, soft
 
 
@@ -654,19 +701,48 @@ SWING_RATIO = 2.5
 SWING_FLOOR = 0.03
 
 
-def _view_shares(path, materials, rows=3):
-    """Share of each named material in each row of a sheet."""
+def _sheet_view_rows(path, rows_hint=3):
+    """Map THIS sheet's own physical rows to VIEW INDICES (0 down, 1 side, 2 up).
+
+    Almost every sheet is the standard 3 rows, one per view, in that order —
+    but a ROLL sheet is the one deliberate exception (see CHARACTER_SHEETS.md's
+    "Roll / dodge" section): it ships as ONE ROW, side view only, because a
+    dodge-roll is drawn as a sideways tumble reused for every movement
+    direction rather than drawn three ways. Forcing that single row through
+    the same "rows=3, slice into thirds" math a normal sheet uses does not
+    just skip the down/up comparison — it CORRUPTS the side one too: a
+    256px-tall one-row image sliced into three ~85px bands cuts across all
+    three of its own animation frames at the neck and the knees, so "row 2"
+    (read as the up view) is a band of nothing but boots and reports every
+    always-present material as vanished. A sheet's row count is inferred from
+    its own height instead of trusting the caller's default, and a lone row
+    is mapped to VIEW INDEX 1 (side) so it is compared against the side row
+    of every other sheet and nothing else.
+    """
+    img = Image.open(path)
+    actual_rows = max(1, img.height // bs.CELL)
+    if actual_rows == 1:
+        return [1]
+    return list(range(min(actual_rows, rows_hint)))
+
+
+def _view_shares(path, materials, row_views):
+    """Share of each named material in each physical row of a sheet, keyed
+    by VIEW INDEX (see _sheet_view_rows) rather than by physical row number,
+    so a sheet with fewer rows than usual lines up against the right view
+    instead of the first N."""
     img = Image.open(path).convert('RGBA')
+    rows = len(row_views)
     rh = img.height // rows
-    out = []
-    for r in range(rows):
+    out = {}
+    for r, v in enumerate(row_views):
         a = np.asarray(img.crop((0, r * rh, img.width, (r + 1) * rh)))
         px = a[..., :3][a[..., 3] > 0]
         total = max(len(px), 1)
         row = {}
         for hexc, rgb in materials.items():
             row[hexc] = float((px == np.array(rgb)).all(axis=1).sum()) / total
-        out.append(row)
+        out[v] = row
     return out
 
 
@@ -798,14 +874,21 @@ def check_character(game_dir, char_id, rows=3):
     if len(sheets) < 2:
         return [], []                      # nothing to compare against
 
-    shares = {os.path.basename(p): _view_shares(p, materials, rows) for p in sheets}
+    row_views = {p: _sheet_view_rows(p, rows) for p in sheets}
+    shares = {os.path.basename(p): _view_shares(p, materials, row_views[p]) for p in sheets}
 
     view_names = ['down', 'side', 'up'][:rows]
     hard, soft = [], list((spec or {}).get('_notes', []))
     names = list(shares)
     for v in range(rows):
         for hexc in materials:
-            vals = [(n, shares[n][v][hexc]) for n in names]
+            # Only compare sheets that actually HAVE this view — a one-row
+            # roll sheet only ever contributes to v==1 (side); see
+            # _sheet_view_rows. Fewer than two sheets means nothing to
+            # compare this view against, not a vanished material.
+            vals = [(n, shares[n][v][hexc]) for n in names if v in shares[n]]
+            if len(vals) < 2:
+                continue
             hi_n, hi = max(vals, key=lambda t: t[1])
             lo_n, lo = min(vals, key=lambda t: t[1])
             must = hexc in always
@@ -828,6 +911,111 @@ def check_character(game_dir, char_id, rows=3):
                     'Same character, same camera: if this is a base tone and its highlight '
                     'trading places, the garment reads as changing colour between animations.')
     return hard, soft
+
+
+
+# PORTRAIT vs SPRITE — the check the whole session started from.
+#
+# "Some characters don't match their portraits" was the original complaint, and
+# the root cause was that portraits had no front door: they were prompted by
+# hand while sprites were built from the spec. That is fixed —
+# generate_portrait.py and the walk-sheet Action now call the same
+# spec_to_prompt() on the same spec — but PROMPTING them the same is not the
+# same as CHECKING they came out the same, and nothing did.
+#
+# It went wrong immediately. May's regenerated walk sheet lost her pink hair
+# entirely: 0.9-2.9% pink across her nine frames against 28% in her portrait,
+# less pink than Diamond, who has BLACK hair. Her single most identifying
+# feature, and the plot's own description of her ("a pink-haired gamer girl"),
+# and every existing check passed it — they all look at one artefact at a time.
+#
+# WHAT IT DECIDES: a colour that is a major part of one picture of a character
+# must not be absent from the other. Run per spec'd material so the message can
+# name what went missing, and only for materials that `appears` "always" — a
+# bracelet is on a wrist and legitimately out of frame in a bust, which is
+# exactly the kind of false alarm that gets a checker ignored.
+#
+# THRESHOLDS, calibrated on the shipped cast: a material occupying >= 6% of one
+# picture's lit pixels and < 1.5% of the other is missing, not merely smaller.
+# Measured across the thirteen correct characters, no material trips it; May's
+# hair is 28% vs 2.6%.
+PORTRAIT_MAJOR = 6.0     # % of lit pixels that counts as "a major part of this picture"
+PORTRAIT_ABSENT = 1.5    # % below which the same material is effectively gone
+
+
+def _colour_share(path, hexes, tol=52):
+    """What fraction of a picture's lit pixels are near any of these colours."""
+    if not os.path.exists(path):
+        return None
+    a = np.array(Image.open(path).convert('RGBA')).astype(int)
+    lit = a[..., 3] > 8
+    n = int(lit.sum())
+    if not n:
+        return None
+    hit = np.zeros(a.shape[:2], dtype=bool)
+    for hx in hexes:
+        c = [int(hx[i:i + 2], 16) for i in (1, 3, 5)]
+        d = np.abs(a[..., 0] - c[0]) + np.abs(a[..., 1] - c[1]) + np.abs(a[..., 2] - c[2])
+        hit |= d < tol
+    return 100.0 * int((hit & lit).sum()) / n
+
+
+def check_portrait_matches_sprite(game_dir, char_id):
+    """Does the portrait show the same character as the walk frames?"""
+    style_path = os.path.join(game_dir, 'art-style.json')
+    if not os.path.isfile(style_path):
+        return [], []
+    spec = (json.load(open(style_path)).get('characters') or {}).get(char_id)
+    if not spec:
+        return [], []
+    art = os.path.join(game_dir, 'art')
+    portrait = os.path.join(art, f'{char_id}.png')
+    # EVERY FRONT AND SIDE FRAME, not just the neutral one. Checking down_1
+    # alone would have missed the defect this check was written for: May's
+    # decapitation was total in the left and up rows and only a crop in the
+    # down row. A material that appears "always" appears in all of them.
+    #
+    # The BACK row is deliberately excluded. A back view legitimately hides
+    # anything front-facing — running it in flagged `skin` on six correct
+    # characters, since from behind you see hands and no face. That is the same
+    # distinction the spec's own `appears` field draws, applied to rows.
+    frames = [os.path.join(art, f'{char_id}_{d}_{n}.png')
+              for d in ('down', 'left') for n in (0, 1, 2)]
+    frames = [f for f in frames if os.path.exists(f)]
+    if not (os.path.exists(portrait) and frames):
+        return [], []
+
+    problems = []
+    for mat, info in (spec.get('materials') or {}).items():
+        if not isinstance(info, dict):
+            continue
+        if str(info.get('appears', 'always')).lower() != 'always':
+            continue
+        hexes = [v for v in info.values() if isinstance(v, str) and v.startswith('#')]
+        if not hexes:
+            continue
+        p = _colour_share(portrait, hexes)
+        shares = [(_colour_share(f, hexes), f) for f in frames]
+        shares = [(v, f) for v, f in shares if v is not None]
+        if p is None or not shares:
+            continue
+        s, worst_frame = min(shares)
+        # ONE DIRECTION ONLY, and the asymmetry is real rather than a
+        # convenience: a head-and-shoulders bust cannot show trousers, boots or
+        # a wrist, but a full-body sprite CAN show everything a bust shows. So
+        # "major in the portrait, gone from the sprite" is always a defect,
+        # while the reverse is usually just a bust being a bust — checking it
+        # flagged Kyran's trousers (26.7% of his sprite, 1.1% of his face) on
+        # the very first run, and a checker that cries wolf gets ignored, which
+        # costs more than the case it would have caught.
+        if p >= PORTRAIT_MAJOR and s < PORTRAIT_ABSENT:
+            problems.append(
+                f'{char_id}: PORTRAIT/SPRITE MISMATCH — "{mat}" is {p:.1f}% of the portrait and '
+                f'only {s:.1f}% of {os.path.basename(worst_frame)}. They are two pictures of one person built '
+                f'from one spec; a colour that fills the portrait and is gone from the sprite means '
+                f'the generator drew someone else. A bust cannot show legs, so this is only checked '
+                f'in the direction where absence is always wrong. Regenerate whichever is off.')
+    return problems, []
 
 
 def main():
@@ -859,6 +1047,10 @@ def main():
     c.add_argument('char_id')
     c.add_argument('--rows', type=int, default=3)
 
+    pv = sub.add_parser('portrait', help="does a character's portrait match their sprite?")
+    pv.add_argument('game_dir')
+    pv.add_argument('char_id')
+
     f = sub.add_parser('frames', help='check a set of individual <id>_<dir>_<n>.png frames')
     f.add_argument('art_dir')
     f.add_argument('char_id')
@@ -874,6 +1066,8 @@ def main():
         problems, soft = check_character(args.game_dir, args.char_id, args.rows)
         for w in soft:
             print(f'WARNING {w}', file=sys.stderr)
+    elif args.mode == 'portrait':
+        problems, soft = check_portrait_matches_sprite(args.game_dir, args.char_id)
     elif args.mode == 'frames':
         problems, soft = check_frames(args.art_dir, args.char_id, args.dirs.split(','))
         for w in soft:

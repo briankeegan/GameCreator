@@ -1,0 +1,182 @@
+name: Generate character portrait
+
+# ONE DISPATCH PER PORTRAIT, BUILT FROM THE CHARACTER'S SPEC.
+#
+# Portraits were the last kind of character art with no front door. Walk sheets
+# have been generated from `characters.<id>` in art-style.json for a while —
+# but the portrait beside them went through the freeform "Generate image"
+# Action, prompted with whatever prose somebody typed that day. So the two
+# pictures of the same person were drawn from two different descriptions, and
+# nothing mechanical could notice when they disagreed.
+#
+# They did disagree. The owner's report was "some characters don't match their
+# portraits". Rex's portrait was a different man from his sprite; Chuck's
+# invented a teal hoodie and a walrus moustache that appear nowhere in the plot
+# — and those inventions were then copied INTO the specs as though they were
+# facts, which is how a portrait becomes canon by accident.
+#
+# This runs .github/art/generate_portrait.py, which refuses a character with no
+# spec, builds the prompt with the same spec_to_prompt() the walk sheets use,
+# generates a loose bust on flat white, and crops it with make_portrait.py.
+# Framing is never asked for beyond "leave margin" — the API has no composition
+# parameter, so a portrait framed by the generator is framed differently every
+# time. Cropping it mechanically is what keeps four portraits at one zoom level.
+on:
+  workflow_dispatch:
+    inputs:
+      game:
+        description: "Game id, e.g. the-game"
+        required: true
+        type: string
+      character_id:
+        description: "Character id — must have a spec in that game's art-style.json"
+        required: true
+        type: string
+      output_path:
+        description: "OPTIONAL override, for an expression variant (e.g. games/the-game/art/nella_scream.png). Default is games/<game>/art/<id>.png"
+        required: false
+        type: string
+      note:
+        description: "OPTIONAL moment/expression for this run only (e.g. 'mid-scream', 'age nine'). WHO they are always comes from the spec — do not describe them here."
+        required: false
+        type: string
+      quality:
+        description: "Render quality — cost rises steeply: low < medium < high"
+        required: false
+        type: choice
+        options:
+          - "low"
+          - "medium"
+          - "high"
+        default: "medium"
+      force:
+        description: "Regenerate even if the raw already exists (a re-crop is free and happens either way)"
+        required: false
+        type: boolean
+        default: false
+      branch:
+        description: "Branch to check out and commit to. Defaults to main; point it at a review branch to LOOK at a portrait before it ships."
+        required: false
+        type: string
+        default: "main"
+
+permissions:
+  contents: write
+
+jobs:
+  portrait:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Art cannot be reviewed from a diff — a portrait has to be looked at,
+      # and by the time it is on main it has shipped. Same reasoning as the
+      # walk-sheet Action's branch input.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: ./.github/actions/validate-game-input
+        with:
+          game: ${{ inputs.game }}
+
+      # generate_portrait.py restores from the vault before spending and saves
+      # to it the instant a picture exists, so a re-run of a job that failed
+      # anywhere downstream re-crops the art it already has. It needs push
+      # rights on the art-vault branch, which the job's own token already has.
+      - name: Generate and crop
+        id: gen
+        timeout-minutes: 12
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          args=(--game "${{ inputs.game }}" --character "${{ inputs.character_id }}")
+          [ -n "${{ inputs.output_path }}" ] && args+=(--output "${{ inputs.output_path }}")
+          [ -n "${{ inputs.note }}" ] && args+=(--note "${{ inputs.note }}")
+          args+=(--quality "${{ inputs.quality }}")
+          [ "${{ inputs.force }}" = "true" ] && args+=(--force)
+          python3 .github/art/generate_portrait.py "${args[@]}"
+
+      # DID THE SAFETY NET ACTUALLY ENGAGE? vault.py never fails its caller by
+      # design, and it duly broke inside CI while passing every local test and
+      # its own round-trip gate — so every run reported success and stored
+      # nothing, and the first anyone would have known is the next time a
+      # picture was lost. The unit test proves the net works; this proves it is
+      # ATTACHED, on the real path, in the real environment. By now the art is
+      # committed either way, so failing here loses nothing and makes a silent
+      # vault impossible to keep not noticing.
+      - name: Confirm the generation reached the vault
+        if: steps.gen.outputs.raw != ''
+        run: python3 .github/art/vault.py holds "${{ steps.gen.outputs.raw }}"
+
+      # KEEP THE ART EVEN WHEN THE RUN FAILS — the image is billed the moment
+      # it is drawn, and a portrait that dies with the runner costs a whole
+      # regeneration to look at, which draws a DIFFERENT picture. Same lesson as
+      # the walk-sheet Action.
+      - name: Upload for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portrait-${{ inputs.game }}-${{ inputs.character_id }}
+          path: |
+            games/${{ inputs.game }}/art-src/*_portrait_raw.png
+            games/${{ inputs.game }}/art/${{ inputs.character_id }}.png
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Commit the portrait
+        if: always()
+        env:
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # COMMIT WHAT THIS RUN MADE, AND NOTHING ELSE. This used to `git add`
+          # the game's whole art/ and art-src/ directories. That is harmless for
+          # one run and fatal for thirteen at once: a full batch of portraits
+          # ran alongside a full batch of walk sheets, and every portrait job
+          # swept up the frames its NEIGHBOURS were writing in the same minute.
+          # Each push then raced on files it had never touched, the rebase hit
+          # binary conflicts it could not resolve, and twelve of thirteen
+          # portraits failed to land — art that had already been generated and
+          # paid for. The script names the two files it wrote; only those are
+          # staged.
+          shipped='${{ steps.gen.outputs.shipped }}'
+          raw='${{ steps.gen.outputs.raw }}'
+          if [ -z "$shipped" ]; then
+            echo "::warning::the generator named no output file — nothing to commit."
+            exit 0
+          fi
+          manifest='${{ steps.gen.outputs.manifest }}'
+          git add -- "$shipped" ${raw:+"$raw"} ${manifest:+"$manifest"}
+          if git diff --cached --quiet; then echo "Nothing changed."; exit 0; fi
+          git commit -m "Portrait for ${{ inputs.character_id }} (${{ inputs.game }}), built from its spec"
+
+          # NOTHING LEFT IN THE TREE MAY BLOCK THE PUSH. `git pull --rebase`
+          # refuses to run while anything is unstaged, and a job that has
+          # already committed what it came to keep has no use for the rest — so
+          # anything still here is discarded rather than allowed to strand a
+          # picture that has been paid for. Reported first, because a stray
+          # write is a bug in whatever wrote it and should not go unnoticed
+          # just because it can no longer do damage.
+          leftover=$(git status --porcelain)
+          if [ -n "$leftover" ]; then
+            echo "::warning::discarding files this job wrote but did not commit:"
+            echo "$leftover"
+            git checkout -- . || true
+            git clean -fdq || true
+          fi
+          # ABORT A FAILED REBASE BEFORE RETRYING. Without this the loop retried
+          # `git pull --rebase` while the tree was still mid-conflict, so every
+          # attempt died with "Pulling is not possible because you have unmerged
+          # files" — five identical failures that say nothing about the race
+          # that caused the first one.
+          for i in 1 2 3 4 5; do
+            if git pull --rebase origin "$BRANCH" && git push origin "HEAD:$BRANCH"; then exit 0; fi
+            git rebase --abort 2>/dev/null || true
+            echo "push race, retrying ($i)…"; sleep $((RANDOM % 8 + 2))
+          done
+          echo "::error::could not push after retries"; exit 1

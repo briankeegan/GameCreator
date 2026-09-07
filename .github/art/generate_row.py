@@ -47,7 +47,8 @@ import profiles                                    # noqa: E402  (per-kind setti
 
 ROOT = imagegen.ROOT
 PROMPTS = {'walk': '.github/art/walkgrid_prompt.txt',
-           'attack': '.github/art/attacksheet_prompt.txt'}
+           'attack': '.github/art/attacksheet_prompt.txt',
+           'roll': '.github/art/rollsheet_prompt.txt'}
 # Landscape, always. A 3x3 grid on a square canvas clips its bottom row and on
 # a tall canvas silently drops a column; a single row of three on 1536x1024 has
 # not failed yet. See CHARACTER_SHEETS.md.
@@ -95,7 +96,7 @@ def colour_anchors(style, who):
             'flat and unmodulated, the same in every frame: ' + entry + '.')
 
 
-def spec_to_prompt(spec):
+def spec_to_prompt(spec, style=None):
     """Turn a character spec into the description the generator is given.
 
     The spec is the single source of truth (see `characterSpecRule` in a game's
@@ -122,6 +123,13 @@ def spec_to_prompt(spec):
     if mats:
         parts.append('EXACT MATERIALS AND COLOURS — every frame uses these and no others: '
                      + '; '.join(mats) + '.')
+    # THE SHARED BUILD FIRST, then how this character differs from it. It lived
+    # only as prose retyped into each spec, which is why thirteen independently
+    # generated characters drifted apart — one came out with a head a third of
+    # its body. A body plan every prompt inherits is the fix; a sentence
+    # everyone is trusted to copy is not.
+    if style and style.get('build'):
+        parts.append(style['build'])
     if spec.get('proportions'):
         parts.append(spec['proportions'])
     if spec.get('neverDraw'):
@@ -140,7 +148,7 @@ def build_prompt(game, view, description=None, character='hero'):
     if description:
         char = description
     elif spec:
-        return spec_to_prompt(spec), style
+        return spec_to_prompt(spec, style), style
     else:
         char = style.get('mainCharacter')
         if not char:
@@ -186,7 +194,7 @@ def main():
     ap.add_argument('--game', required=True, help='game id, e.g. dog-punk')
     ap.add_argument('--character', default='hero', help='character id, used in the filename')
     ap.add_argument('--view', required=True, choices=['front', 'side', 'back'])
-    ap.add_argument('--kind', default='walk', choices=['walk', 'attack'])
+    ap.add_argument('--kind', default='walk', choices=['walk', 'attack', 'roll'])
     ap.add_argument('--description', help='override the art-style.json mainCharacter')
     ap.add_argument('--quality', default=None, choices=['low', 'medium', 'high'],
                     help='default comes from profiles.py for this kind of art; '
@@ -203,7 +211,7 @@ def main():
         print(prompt)
         return
 
-    suffix = '_raw.png' if args.kind == 'walk' else '_atk_raw.png'
+    suffix = {'walk': '_raw.png', 'attack': '_atk_raw.png', 'roll': '_roll_raw.png'}[args.kind]
     out_rel = f'games/{args.game}/art-src/{args.character}_{args.view}{suffix}'
     out_abs = ROOT / out_rel
     prof = profiles.get(args.kind)

@@ -157,6 +157,59 @@ columns (a "neutral" that is really a third stride, or a standing frame drawn
 from a different angle than its own row) breaks the cycle in that direction
 only — the hardest kind of bug to spot, because the other directions look fine.
 
+**Roll / dodge — OPTIONAL, 3 frames per direction: `[tuck, mid-roll, recover]`**
+
+| col | pose |
+|-----|------|
+| 0 | tuck — crouching in, ball up, about to go over |
+| 1 | **mid-roll** — curled up mid-tumble, silhouette rolled up, legs and arms tucked in |
+| 2 | recover — popping back up out of the tuck, momentum settling |
+
+**Three full rows, down/side/up, same as walk and attack — not one row
+reused.** This used to be side-view-only: one row, mirrored for the
+opposite horizontal direction, REUSED as the drawn animation for a vertical
+dodge too (she visibly tumbles sideways while actually translating up or
+down the screen). That was a deliberate design call, reasoned through and
+documented right here — and it was overruled after two things happened in
+the same sitting: the reuse hid a genuine scale bug (see "A row's scale
+comes from ONE frame" below — the side row's recover frame shipped 31%
+taller than every other sheet, because nothing was checking the reused
+row against her real size), and the owner decided a game of this shape
+gets full directional coverage for every animation as standard, not a
+per-animation judgement call about whether the extra rows are "worth it."
+The side row is a LATERAL barrel-roll (tumbling along the ground, seen
+from the side) for a left/right dodge; the front and back rows are a
+FORWARD/BACKWARD tumble — a somersault toward or away from the camera —
+for a down/up dodge, matching the front-faces-viewer / back-faces-away
+convention every other row here already uses. `rollsheet_prompt.txt`
+carries all three `{VIEW}` blocks, same shape as the walk and attack
+prompts.
+
+**A row's scale comes from ONE frame — pick a frame that is actually
+standing height.** `build_sheet.py` scales every frame in a row by one
+factor taken from frame 0 by default, so the character can't change size
+mid-animation. That default is right for walk and attack, where frame 0
+sits close to standing height — it is WRONG for roll, where frame 0 (tuck)
+is a deliberately crouched, shorter pose: scaling the whole row to make
+THAT frame 168px tall inflates the other two frames past her real size,
+which is exactly how Beverly's roll shipped visibly bigger than the rest
+of her. Anchor a roll row to its RECOVER frame instead: `--row
+raw.png#2` (see build_sheet.py's `--row FILE[:N][@H][#F]` help) — `#2`
+picks frame index 2, the one pose in the row that is actually meant to
+match her standing height.
+
+**Invulnerability spans the whole roll, not one frame.** Unlike the attack
+sheet's single strike-frame hit, there is no one column that "lands" — the
+character cannot be hit for the whole duration the roll animation plays, so
+gate that in code off the same clock that drives which of the 3 columns is
+on screen, not off a specific frame index.
+
+**The same character, materials and locked colours as every other sheet of
+that character** — a roll sheet is still checked against the spec like a
+walk or attack sheet; drawing it in a different pose is not licence to
+redraw the mohawk, the jacket or any other `appears: always` material out of
+frame.
+
 ## Directions
 
 Three rows, in order: **down, side (drawn facing RIGHT), up.**

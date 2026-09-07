@@ -1,0 +1,165 @@
+name: Art checks
+
+# THE ART CHECKS LIVE HERE BECAUSE IN pages.yml THEY COULD NOT FAIL.
+#
+# Every one of these ran on every push already — and every one ended with
+# `exit 0`, appending a line to a file that a later step turned into a
+# `::warning::` and a step-summary bullet. The run stayed GREEN. So a green
+# Pages run said nothing whatever about the art while looking exactly like it
+# did, which is worse than having no check at all: it is the "screenshot that
+# fails silently" problem (see CLAUDE.md) wearing a checkmark.
+#
+# That is not hypothetical. A character shipped headless in six of nine frames
+# past a full set of green art checks, and was found by the owner looking at
+# the screen.
+#
+# The reason they were declawed is real and still holds: pages.yml builds ONE
+# artifact for every game, so one character's frames failing took the WHOLE
+# SITE down — it happened, five deploys in a row, while another game's thread
+# said its change was live. The answer is not to make the check toothless; it
+# is to separate the two questions. THE SITE ALWAYS SHIPS (pages.yml, which no
+# longer contains these). THE ART IS STILL WRONG, LOUDLY (here, red on the
+# commit, blocking nothing).
+#
+# Exactly the split .github/workflows/browser-checks.yml already uses, and for
+# the same reason.
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  art:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify shipped sprite sheets
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          status=0
+          for sheet in games/*/*_sheet.png; do
+            [ -e "$sheet" ] || continue
+            game=$(dirname "$sheet")
+            style="$game/art-style.json"
+            echo "== $sheet =="
+            if [ -f "$style" ]; then
+              python3 .github/art/verify_sheet.py sheet "$sheet" --style "$style" || status=1
+            else
+              python3 .github/art/verify_sheet.py sheet "$sheet" || status=1
+            fi
+          done
+          [ "$status" = 0 ] || exit 1
+
+      # The short rules cards a Clubhouse run reads are EXTRACTED from the
+      # standards, never written alongside them — two copies of one truth is
+      # this repo's signature failure. This fails the build if a card no longer
+      # matches its standard, because a run obeying rules nobody agreed to any
+      # more is worse than a run reading the long version.
+      - name: Verify rules cards match their standards
+        run: |
+          status=0
+          for std in .github/art/CHARACTER_SHEETS.md docs/ROOM_ART_STANDARD.md docs/TILED_LEVEL_STANDARD.md docs/DOOR_STANDARD.md; do
+            python3 .github/art/rules_card.py --check "$std" || status=1
+          done
+          # ART DOES NOT BLOCK THE SITE — this is a stale-DOCUMENTATION check,
+          # not broken game art, and it just proved the point live: another
+          # session's edit to ROOM_ART_STANDARD.md left its card stale, and
+          # this step would have blocked Dog Punk's completely unrelated
+          # deploy over a markdown-derived cache file nobody looks at while
+          # playing. Same bucket as the other art checks below.
+          [ "$status" = 0 ] || exit 1
+
+      # SPEC PROVENANCE. Newsey is an adaptation, and its art is generated FROM
+      # these specs — so a detail invented in a spec becomes canon the next time
+      # anything is regenerated, indistinguishable from one the owner wrote. An
+      # audit of the fourteen specs found five that had: Eric's robe drifted
+      # grey-green against a plot that says "gray" twice, May's shredded robe
+      # drawn neat, Rex wearing Chuck's beard, John aged out of his late
+      # thirties, and the Devil missing the only two words describing him
+      # ("cartoon", "little"). Every note read plausibly; none recorded whether
+      # it was quoting or inventing. This is a fact about JSON, so it FAILS
+      # rather than warning.
+      # THE BASE RULES EVERY GENERATOR OBEYS — .github/art/GENERATOR_RULES.md.
+      # Each was learned by losing something, and each was previously enforced
+      # by whoever remembered it, which is how the portrait generator ended up
+      # the only kind of character art with no front door and no spec behind it.
+      - name: Verify portraits match their sprites
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          status=0
+          for style in games/*/art-style.json; do
+            [ -e "$style" ] || continue
+            game=$(dirname "$style")
+            chars=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(' '.join((d.get('characters') or {}).keys()))" "$style")
+            for char in $chars; do
+              python3 .github/art/verify_sheet.py portrait "$game" "$char" || status=1
+            done
+          done
+          [ "$status" = 0 ] || exit 1
+
+      - name: Verify character consistency across sheets
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          status=0
+          for style in games/*/art-style.json; do
+            [ -e "$style" ] || continue
+            game=$(dirname "$style")
+            chars=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(' '.join((d.get('characters') or {}).keys()))" "$style")
+            for char in $chars; do
+              echo "== $char ($game) =="
+              python3 .github/art/verify_sheet.py character "$game" "$char" || status=1
+            done
+          done
+          [ "$status" = 0 ] || exit 1
+
+      # Tiled levels: the third shape of art, and the one that had a pipeline
+      # and no checker until four separate defects shipped to a player in a
+      # single pass. Detected, not configured: a game with a tiles.png has a
+      # tile strip. Rule in docs/TILED_LEVEL_STANDARD.md, decided by
+      # verify_tiles.py, tripped here.
+      - name: Verify tile strips
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          status=0
+          for strip in games/*/tiles.png; do
+            [ -e "$strip" ] || continue
+            game=$(dirname "$strip")
+            echo "== $strip =="
+            python3 .github/art/tileset.py verify "$game" || status=1
+          done
+          [ "$status" = 0 ] || exit 1
+
+      # The same walk-cycle rules for games that ship INDIVIDUAL frame files
+      # instead of sheets (Newsey). Which checks apply depends on how a game
+      # ships its art, so the shape is detected rather than configured: any
+      # <id>_down_1.png in a game's art/ directory is a character with a frame
+      # set. Missing/duplicate frames fail; "no neutral" warns, because that
+      # one is a fuzzy metric and a borderline-but-correct set must not block
+      # a deploy.
+      - name: Verify character frame sets
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pillow numpy
+          status=0
+          broken=""
+          for f in games/*/art/*_down_1.png; do
+            [ -e "$f" ] || continue
+            dir=$(dirname "$f")
+            char=$(basename "$f" _down_1.png)
+            echo "== $char ($dir) =="
+            if ! python3 .github/art/verify_sheet.py frames "$dir" "$char"; then
+              status=1
+              broken="$broken $(printf '%s' "$dir" | cut -d/ -f2)/$char"
+            fi
+          done
+          # NAME THE CULPRIT. This build is one artifact for every game, so a
+          # single character's frames failing blocks the whole site — which is
+          # correct (half a site cannot be deployed) but was invisible: one
+          # game's art failed five deploys in a row while a DIFFERENT game's
+          # thread said its change was live. Whoever reads this needs to know
+          # in one line whose art is holding the site, not have to scroll a log.
+          [ -z "$broken" ] || { echo "::error::incomplete frame sets:$broken"; exit 1; }

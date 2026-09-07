@@ -30,6 +30,9 @@ import urllib.error
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import vault                                        # noqa: E402  (never-lose-paid-art)
 BROKER = os.environ.get('GC_IMAGE_BROKER', 'http://127.0.0.1:8791')
 
 
@@ -223,6 +226,27 @@ def generate(prompt, out_rel, size='1536x1024', quality='medium', force=False,
               'Nothing was billed.')
         return False
     out_abs.parent.mkdir(parents=True, exist_ok=True)
+
+    # NEVER PAY FOR THE SAME PICTURE TWICE — and it lives HERE, in the one
+    # transport, rather than in each front door.
+    #
+    # It started as two hand-wired calls in the portrait generator, which is the
+    # same mistake as the portrait having no front door in the first place:
+    # a rule that has to be remembered separately by generate_row.py, room.py,
+    # tileset.py and whatever is written next is a rule that will be missing
+    # from one of them. Every one of those calls generate(), so every one of
+    # them gets this, including the icon/cutscene CLI at the bottom of this
+    # file. See .github/art/GENERATOR_RULES.md.
+    #
+    # An image is billed the instant the API returns it and everything after is
+    # free — cutting, cropping, verifying, committing. So a failure ANYWHERE
+    # downstream used to cost a whole new picture, and a new one is never the
+    # same picture. `force` deliberately skips the restore: that is precisely
+    # what asking for a new one means.
+    if not force and vault.restore(out_rel):
+        print(f'{out_rel} came back from the vault — nothing was billed.')
+        return True
+
     if broker_health():
         _via_broker(prompt, out_rel, cfg, kind)
     elif os.environ.get('OPENAI_API_KEY'):
@@ -233,6 +257,11 @@ def generate(prompt, out_rel, size='1536x1024', quality='medium', force=False,
                  'A model is never given the key directly.')
     if not out_abs.exists() or not out_abs.stat().st_size:
         sys.exit(f'the backend reported success but wrote nothing to {out_rel}')
+
+    # SAVE IT NOW, before the provenance manifest, before returning, before any
+    # caller gets a chance to cut, verify or commit it — all of which can fail,
+    # and none of which can be redone for free once the picture is gone.
+    vault.save(out_rel)
 
     # RECORD WHAT DREW IT. Two sheets of one character generated on different
     # models are visibly two different styles standing next to each other —

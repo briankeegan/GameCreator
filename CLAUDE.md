@@ -267,6 +267,60 @@ design discussion. `shared/` holds the components every game reuses
   next to them: `verify_sheet.py`'s first threshold passed every bad row, its
   second failed a correct one, and the comment above `NEUTRAL_RATIO` lists
   both so the next person doesn't re-derive it.
+- **A GATE THAT CANNOT FAIL IS WORSE THAN NO GATE.** Every art check in this
+  repo ran on every push and NONE of them could fail: each ended `exit 0` after
+  appending its verdict to a file a later step printed as a `::warning::`. The
+  run went green, so a green Pages run said nothing whatever about the art while
+  looking exactly like it did — the screenshot-that-fails-silently problem
+  wearing a checkmark. A character shipped headless in six of nine frames past a
+  full set of them, and was found by the owner looking at the screen. The
+  reason they were declawed was real (pages.yml builds ONE artifact for every
+  game, so one character's frames took the whole site down, five deploys
+  running) and the answer is to SPLIT THE QUESTIONS, not soften the check: the
+  site always ships (`pages.yml`), the art is still wrong loudly
+  (`.github/workflows/art-checks.yml`, red on the commit, blocking nothing) —
+  the same split `browser-checks.yml` already uses. Two checks keep it honest,
+  because neither half is visible by eye: `gates.test.sh` breaks the repo eight
+  ways and fails if any checker passes the damage, and
+  `check_gate_wiring.mjs` fails any VERIFICATION step that records a failure and
+  then reports success.
+- **A PICTURE IS BILLED ONCE. The base rules every generator obeys are
+  `.github/art/GENERATOR_RULES.md`, and they are checked
+  (`check_generators.mjs`).** The expensive step is the API call; cutting,
+  cropping, verifying and committing are all free — so any failure downstream
+  used to cost a whole new picture, and a new one is never the same picture.
+  `.github/art/vault.py` saves every raw to an orphan `art-vault` branch the
+  instant it exists and restores it before spending, and it lives inside
+  `imagegen.py` — the one transport — rather than in each front door, so every
+  generator inherits it. `force` still skips the restore, because that is what
+  asking for new art means. Twelve portraits were lost in one night before this
+  existed; the first time it worked it saved a sheet a failing checker would
+  otherwise have thrown away.
+- **A CHECKER'S BUGS ARE SILENT BY CONSTRUCTION, SO TEST BOTH DIRECTIONS.** One
+  that never fires looks exactly like art that is fine; one that fires on
+  everything gets switched off in a week. Both shipped here. Every check now has
+  a test that it REJECTS the defect it exists for and ACCEPTS the
+  correct-but-awkward case (`.github/scripts/checks.test.py`), and the same goes
+  for anything built never to fail its caller — the vault reported success while
+  doing nothing at all for hours, which is why `vault.test.sh` exists and why it
+  reproduces a runner (shallow clone, restricted refspec, no git identity)
+  rather than a developer machine.
+- **BEWARE THE CHECK THAT COMPARES SIBLINGS.** `verify_sheet.py`'s CROPPED test
+  measures each frame against the median of its set, so it finds ONE bad frame
+  and is structurally blind to all nine being wrong the same way — which is how
+  a headless character shipped past every gate. That is the
+  invariant-shaped non-invariant from `docs/DOOR_STANDARD.md` §6 in a second
+  place. The portrait/sprite check (`verify_sheet.py portrait`) is the antidote
+  for characters: the portrait is an INDEPENDENT picture of the same person, so
+  a colour filling one and missing from the other is decidable.
+- **THE CUTTER HAS A TEST NOW (`.github/scripts/cutter.test.py`), because it
+  destroyed the same character twice from flawless generations.** May's hair is
+  the same colour as the magenta gridlines `slice_walksheet.py` strips, so it
+  deleted her head. The first fix — cut between the green gutters, where no
+  divider is inside the crop — was right and covered the FALLBACK path only, so
+  a healthy sheet was the dangerous one. The inset is measured now
+  (`inset_to_green`). Every art check needed real art, so the tool that MAKES
+  the art was the one thing nothing exercised; the test builds sheets in memory.
 - **THE ART INDEX IS `.github/art/README.md`. Start there, every time.** One
   page listing every standard, prompt, generator, cutter and check, with a
   "I want to… / read this / run this" table at the top, so nobody has to
@@ -494,6 +548,13 @@ design discussion. `shared/` holds the components every game reuses
   otherwise. That call has been made once already: the duel portal could not
   move to the bedroom mirror, because the plot reserves that mirror as the
   menu/screen.
+- Character specs carry PROVENANCE, and `source` has three values, not two:
+  `plot` (the verbatim comment says it), `owner` (the owner decided it in
+  conversation — Kat's avatar has a cat's head, which the plot only hints at
+  with "almost purring" and the name), and `design` (ours, revisable). Only
+  `design` may be changed without asking. An audit against the verbatim plot
+  found five details that had quietly become canon, which is what the field is
+  for.
 - `games/the-game/TODO.md` carries the running list, including the design
   for the duel-as-arena staging and John's mirror scene. Update it when the
   owner adds to the list; don't keep the plan only in chat.

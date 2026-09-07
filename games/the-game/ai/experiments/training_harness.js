@@ -28,6 +28,7 @@
 var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
+var report = require('./report.js');
 
 var PanelEngine = global.PanelEngine;
 var PanelCpu = global.PanelCpu;
@@ -68,7 +69,7 @@ function fires(f) {
 }
 
 var cellsCleared = 0, garbageCellsCleared = 0, matchEvents = 0, biggestChainSeen = 0;
-var garbageCellsSent = 0, attacksFired = 0;
+var sentRecords = [], attacksFired = 0;
 var f;
 for (f = 0; f < ceilingFrames; f++) {
   if (fires(f)) {
@@ -78,7 +79,7 @@ for (f = 0; f < ceilingFrames; f++) {
   cpu.update();
   stack.run();
   var sent = stack.takeDeliverableGarbage();
-  for (var s = 0; s < sent.length; s++) garbageCellsSent += sent[s].width * sent[s].height;
+  for (var s = 0; s < sent.length; s++) sentRecords.push({ width: sent[s].width, height: sent[s].height, isChain: sent[s].isChain });
   var evs = stack.drainEvents();
   for (var i = 0; i < evs.length; i++) {
     if (evs[i].type === 'match') {
@@ -92,13 +93,15 @@ for (f = 0; f < ceilingFrames; f++) {
 }
 
 var died = stack.gameOver;
-console.log(JSON.stringify({
+report.printSummary(modeName + ' seed=' + seed, f, sentRecords);
+
+console.log(JSON.stringify(Object.assign({
   mode: modeName, seed: seed, stackLevel: stackLevel,
   attackWidth: mode.width, attackHeight: mode.height,
   died: died, stillGoing: !died,
   framesAlive: f, secondsAlive: +(f / 60).toFixed(2),
+  survivedMMSS: report.mmss(f),
   attacksFired: attacksFired,
   cellsCleared: cellsCleared, garbageCellsCleared: garbageCellsCleared,
-  matchEvents: matchEvents, biggestChainSeen: biggestChainSeen,
-  garbageCellsSent: garbageCellsSent
-}));
+  matchEvents: matchEvents, biggestChainSeen: biggestChainSeen
+}, report.summaryFields(sentRecords))));

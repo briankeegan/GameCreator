@@ -783,6 +783,42 @@ jobs:
           npx playwright install --with-deps chromium >/dev/null
           node .github/autopilot/smoke-test.js $targets
 
+      # PRE-FLIGHT: run the EXACT SAME checks pages.yml runs after landing —
+      # same library, .github/scripts/gates.sh, see its header — but here
+      # BEFORE anything is committed. Fixes a real incident: an autopilot run
+      # committed and pushed a Dog Punk change that failed pages.yml's
+      # "Verify the art index" gate (a new prompt file with no README row),
+      # not once but twice in a row, discovering it only from a FAILED PAGES
+      # DEPLOY after the commit had already landed — which blocks every
+      # game's deploy, not just the one that broke it, and left the model's
+      # own reply confidently describing work that was not actually live.
+      # Running the real gates here means a change that would fail CI never
+      # reaches main at all; it falls through to the existing retry path
+      # instead, with the ACTUAL reason (not a guess) in .autopilot/failure.md.
+      - name: Verify the change would pass CI before shipping it
+        if: success() && steps.ctx.outputs.enabled == 'true'
+        timeout-minutes: 10
+        run: |
+          set -uo pipefail
+          changed=$(git status --porcelain)
+          if [ -z "$changed" ]; then echo "No changes — nothing to gate."; exit 0; fi
+          source .github/scripts/gates.sh
+          if gate_all; then
+            echo "All gates pass — safe to ship."
+            exit 0
+          fi
+          echo "::error::one or more CI gates would reject this change — not shipping it."
+          {
+            echo "I made the change, but it **failed a pre-ship check** so I did **not** deploy it — nothing broken went live."
+            echo
+            echo "What broke:"
+            echo
+            printf '%s\n' "$GATE_FAILURES" | sed '/^$/d; s/^/- /'
+            echo
+            echo "Send me another message and I'll take a fresh pass at fixing it."
+          } > .autopilot/failure.md
+          exit 1
+
       # Deterministic: land the model's edits on main via a fresh auto-merged
       # PR, then deploy. Only the content paths are staged, so .autopilot/ and
       # any stray files never get committed.
@@ -1210,8 +1246,17 @@ jobs:
               -f message="(automatic retry — address all outstanding requests in this thread)" \
               -f attempt="$NEXT" \
               || echo "::warning::could not schedule retry"
+            # If a step already knows exactly what broke (e.g. the pre-ship
+            # gate check), say so NOW rather than only on the final exhausted
+            # attempt — a specific reason in the thread on attempt 1 is what
+            # lets the retry's own model see and fix the real problem instead
+            # of repeating it. This is what closed the gap where two Dog Punk
+            # autopilot runs in a row shipped a change failing the same "art
+            # index" CI gate, because neither ever saw why the first one did.
+            extra=""
+            [ -s ".autopilot/failure.md" ] && extra=$(printf '\n\n%s' "$(cat .autopilot/failure.md)")
             gh pr comment "$PR" --repo "$REPO" \
-              --body "$(printf '**Claude says:**\n\nThat run hit a snag — retrying automatically (attempt %s of %s). Give it about 10 minutes.' "$NEXT" "$MAX")" \
+              --body "$(printf '**Claude says:**\n\nThat run hit a snag — retrying automatically (attempt %s of %s). Give it about 10 minutes.%s' "$NEXT" "$MAX" "$extra")" \
               || echo "::error::could not post the retry-scheduled reply — the thread's last comment is still the working-status marker; the sweeper will pick this up in the next 15-min cycle."
           else
             # Out of retries — surface the specific diagnostic if a step wrote
