@@ -1718,13 +1718,19 @@
   // own live sprite (same walk frame she's actually standing in) into the
   // measured glass region, mirrored like a real reflection.
   var MIRROR_RANGE = 90;
+  // How far sideways she has to walk (world px) to slide the reflection all
+  // the way across the glass. Deliberately NOT the glass's own width — the
+  // reflected space is wider than the glass shows, same as the room itself
+  // is wider than any one screen's worth of it; the glass is a window onto
+  // it, not a container it resizes to fit.
+  var MIRROR_LATERAL_SPAN = 130;
   function drawMirrorReflection(prop, x0, y0, dw, dh) {
-    var ddx = player.x + player.w / 2 - prop.x, ddy = player.y + player.h - prop.y;
-    var dist = Math.sqrt(ddx * ddx + ddy * ddy);
-    // Out of the glass's reach — a reflection pinned to the frame from clear
-    // across the room would look like a ghost stuck in the mirror, not a
-    // mirror that's simply not facing her right now.
-    if (dist > MIRROR_RANGE) return;
+    // Depth only (how close to the WALL, not sideways) — that's the axis a
+    // real mirror's magnification actually depends on. Lateral position is
+    // handled entirely by where the reflection lands relative to the glass's
+    // own edges below, not by cutting the whole reflection off out here.
+    var ddy = player.y + player.h - prop.y;
+    if (ddy < -20 || ddy > MIRROR_RANGE) return;
     var human = currentRoom && currentRoom.playerForm === "human";
     // A mirror reverses depth, not left/right as such — face it (walk "up",
     // into the wall) and it shows your FRONT; turn your back on it ("down")
@@ -1759,15 +1765,18 @@
     // feet included, and as she approaches and it grows, her feet are the
     // first thing to run past the glass's own bottom edge and disappear,
     // while her head simply rises higher into a frame that's filling up.
-    var near = Math.max(0, Math.min(1, 1 - dist / MIRROR_RANGE));
+    var near = Math.max(0, Math.min(1, 1 - ddy / MIRROR_RANGE));
     var targetH = (gy1 - gy0) * (0.28 + near * near * 1.02);
     var size = spriteDrawSize(img, targetH);
     var w = size.w, h = size.h;
-    // Tracks a little as she steps side to side in front of it, clamped to a
-    // window centred on the mirror rather than the whole room, so the
-    // reflection stays inside the glass instead of jumping to its edge.
-    var t = Math.max(0, Math.min(1, (player.x + player.w / 2 - (prop.x - 60)) / 120));
-    var cx = gx0 + w / 2 + t * (gx1 - gx0 - w);
+    // Positioned by her REAL sideways offset from the mirror's own centre,
+    // not remapped into a 0-1 window clamped to the glass — that clamping is
+    // what caused a sudden pop to the edge the moment she came into range
+    // from off to one side, instead of sliding continuously into view. This
+    // can and does draw partly or wholly outside [gx0,gx1]; the glass clip
+    // below is what actually cuts it off, the same way a real mirror only
+    // shows the slice of a wider reflected space its own frame overlaps.
+    var cx = (gx0 + gx1) / 2 + (player.x + player.w / 2 - prop.x) / MIRROR_LATERAL_SPAN * (gx1 - gx0);
     var centerY = gy0 + (gy1 - gy0) * 0.62;
     var topY = centerY - h / 2;
     ctx.save();
