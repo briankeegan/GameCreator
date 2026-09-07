@@ -1294,23 +1294,31 @@
       player.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
       // Try each axis independently so she can slide along a wall instead of
       // stopping dead the moment either axis meets one.
+      var movedX = false, movedY = false;
       var tryX = player.x + dx * player.speed * dt;
       var okX = canStand(currentRoom, tryX, player.y);
       var blockerX = okX ? npcAt(currentRoom, tryX, player.y) : null;
       if (blockerX) registerPush(currentRoom, blockerX, dt);
-      else if (okX) player.x = tryX;
+      else if (okX) { player.x = tryX; if (dx) movedX = true; } // dx === 0: tryX === player.x, not an actual step
       var tryY = player.y + dy * player.speed * dt;
       var okY = canStand(currentRoom, player.x, tryY);
       var blockerY = okY ? npcAt(currentRoom, player.x, tryY) : null;
       if (blockerY) registerPush(currentRoom, blockerY, dt);
-      else if (okY) player.y = tryY;
-      isWalking = true;
-      walkPhase += dt * 9; // frame-cycle speed (~3 pose changes/sec); unrelated to player.speed so it stays readable
+      else if (okY) { player.y = tryY; if (dy) movedY = true; } // dy === 0: tryY === player.y, not an actual step
+      var leaningOnBed = pushingIntoBed(currentRoom, dx, dy);
+      // A wall or a prop gets nothing more than stopping dead at it — a
+      // stride that goes nowhere reported as "walking into the wall". A
+      // pushed NPC and leaning on the bed are the two DELIBERATE holds
+      // (registerPush's own comment: "a real wall is fine to just stop at,
+      // a person shouldn't be"), so those keep the animation going; a plain
+      // geometry block does not.
+      isWalking = movedX || movedY || !!blockerX || !!blockerY || leaningOnBed;
+      if (isWalking) walkPhase += dt * 9; // frame-cycle speed (~3 pose changes/sec); unrelated to player.speed so it stays readable
       // Walking into the bed and staying there puts her back in it. No prompt
       // and no marker over the bed: leaning on it is the gesture, the same way
       // the first press out of it is "get up". The hold is what keeps it from
       // firing on every accidental brush past the footboard.
-      if (pushingIntoBed(currentRoom, dx, dy)) {
+      if (leaningOnBed) {
         bedPush += dt;
         if (bedPush >= BED_PUSH_TIME) { startBedSlide(true); return; }
       } else bedPush = 0;
