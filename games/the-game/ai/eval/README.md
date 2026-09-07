@@ -100,11 +100,11 @@ finished step 4, so we always know which change caused which result.
    clock feature is measured on `experiments/stress_harness.js` /
    `training_harness.js`, which run the real engine.
 
-## The seventeen
+## The sixteen
 
 Grouped by what they measure, not by importance. The four density features
 come from `../PUYO_REFERENCE.md`: in the Puyo bot that works, `links` and
-`consecutiveColours` together are 41% of the score and there is **no chain
+consecutive colours together are 41% of the score and there is **no chain
 logic at all** — chains emerge because near-complete groups end up packed
 against each other. That is the cheapest known route to a chain-building
 bot, so those four are declared here rather than left as an idea.
@@ -115,7 +115,6 @@ bot, so those four are declared here rather than left as an idea.
 |---|---|---|
 | `matchPotential` | + | **BUILT.** Legal swaps that would produce a match of combo size 4+, or any size touching garbage. A plain 3 scores 0 — `comboGarbage()` sends nothing below 4 |
 | `links` | + | **BUILT.** Same-coloured panels orthogonally adjacent, counted as pairs. 25% of meatfighter's score |
-| `consecutiveColours` | + | **BUILT, and measured REDUNDANT.** Identical to `links` on all 1050 engine-settled boards: Puyo pops at 4 so runs of 3 sit around and the two disagree; Panel Attack pops at 3, so every maximal run is one pair. Cut one before weighting either |
 | `colourVariance` | − | Per colour, deviation from its own mean position. Low = gathered |
 | `edgePenalty` | − | Side columns have three neighbours, not four |
 | `latentChain` | + | Does a chain-flagged cell settle into a match. The forward-looking half of `chainLength` |
@@ -185,3 +184,24 @@ on it:
 - A match is a **chain link** if any matched panel carries `chaining` —
   set by falling from an earlier clear. A hovering panel can never *start*
   a chain.
+
+## Cut: `consecutiveColours`
+
+Built, measured, removed. It counts maximal runs of one colour where `links`
+counts the adjacent pairs inside them, and in Puyo those disagree — groups
+pop at **four**, so runs of three sit on the board being counted twice by
+one feature and once by the other.
+
+Panel Attack pops at **three**. A settled board cannot hold a run longer
+than two, so every maximal run is exactly one pair and the two features
+return the same number. Swept to be sure rather than argued: 1050 boards
+resolved to settlement across 7 seeds and 6 colour counts, agreeing on
+every one.
+
+Two weights on one signal is worse than one — it splits the credit and
+doubles the search for the right value. `links` survives because it is the
+term the reference measures at 25%, and because it can tell a three-run
+from a pair, which the other cannot.
+
+Recorded here rather than left in the code, so the next person reading
+PUYO_REFERENCE.md's "41% of the score" does not add it back.

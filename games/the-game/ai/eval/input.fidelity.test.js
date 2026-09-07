@@ -318,59 +318,6 @@ test('matchPotential agrees with an engine-driven count across seeds', function 
 });
 
 
-// ---- is consecutiveColours anything other than links? ----
-//
-// Puyo pops at four, so runs of three sit on the board and the two features
-// disagree. Panel Attack pops at THREE, so a settled board cannot hold a
-// run longer than two and every maximal run is one pair — which would make
-// these the same number, and a second weight on one signal is worse than
-// useless: it splits the credit and doubles the search for the right value.
-//
-// This does not argue that from the rules, it MEASURES it, on boards
-// resolved by the real engine rather than written by hand. The sweep counts
-// how often they differ. If the answer is never, one of them gets cut —
-// that is the decision this test exists to make, so it reports the number
-// rather than only asserting.
-test('consecutiveColours vs links on engine-settled boards', function () {
-    var boards = 0, differed = 0, checked = 0;
-    SEEDS.forEach(function (seed) {
-        COLOUR_COUNTS.forEach(function (colours) {
-            var rng = PanelEngine.makeRng(seed + 900);
-            for (var i = 0; i < 25; i++) {
-                var rb = randomBoard(rng, colours, 0);
-                // Settle it the way the engine would: strip every standing
-                // match until none remain. A raw random board is NOT what
-                // the evaluator sees — it sees positions after a resolve.
-                for (var guard = 0; guard < 40; guard++) {
-                    var m = features._matchedCells(rb.board);
-                    var keys = Object.keys(m);
-                    if (!keys.length) break;
-                    keys.forEach(function (k) {
-                        rb.board.grid[m[k][0]][m[k][1]] = 0;
-                    });
-                }
-                assert.deepStrictEqual(Object.keys(features._matchedCells(rb.board)), [],
-                    'board did not settle — the comparison below would be meaningless');
-                var input = inputMod.normalize({ board: rb.board });
-                var l = features.links(input), cc = features.consecutiveColours(input);
-                if (l !== cc) differed++;
-                boards++;
-                checked++;
-            }
-        });
-    });
-    assert.ok(checked > 500, 'swept too few boards to conclude anything');
-    // Not an assertion that they are equal — a REPORT. If a later change
-    // makes them differ, this number moves and the cut can be revisited.
-    if (differed === 0) {
-        process.stdout.write('       [note] links and consecutiveColours agreed on all ' +
-            boards + ' settled boards — consecutiveColours is redundant here\n');
-    }
-    assert.strictEqual(differed, 0,
-        'they differed on ' + differed + '/' + boards + ' settled boards — the ' +
-        'redundancy claim in features.js is wrong and must be corrected there');
-});
-
 tests.forEach(function (t) {
     try { t.fn(); process.stdout.write('  ok   ' + t.name + '\n'); }
     catch (e) { failures.push(t.name + '\n       ' + e.message); process.stdout.write('  FAIL ' + t.name + '\n'); }
