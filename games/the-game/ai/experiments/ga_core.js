@@ -65,7 +65,13 @@ var WEIGHT_SPEC = {
   heightPenalty:       [5, 200, false, 60],
   potentialWeight:     [0, 50, false, 5],
   criticalFactor:      [0, 1, false, 0.5],
-  runwayThreshold:     [1, 8, true, 3],
+  // Lower bound widened 1 -> 0 after round 5's winner (a different basin
+  // from round 3/4's refinement, found from a fresh random population --
+  // 2400avg vs 2391avg) pinned at 1. 0 is a meaningful value here (see
+  // its one use site, runwayLow in panel-cpu.js: projectedRunway < 0 is
+  // never true, so 0 fully disables that defensive check) rather than a
+  // degenerate one, unlike e.g. dangerHeightFrac's upper bound.
+  runwayThreshold:     [0, 8, true, 3],
   toppedOutCooldown:   [1, 8, true, 1],
   queuedRunwayWeight:  [0, 1, false, 0.75],
   // Upper bound widened 20 -> 32 after round 3's winner pinned exactly
