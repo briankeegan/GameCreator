@@ -170,6 +170,13 @@
 // and rooms.js's file header for the map-level detail). See isGateOpen,
 // buildRoomState's new 'K' tile, and drawSwitchPlate (now push-only, no
 // more order numbers) for the code side.
+// 2026-09-07 (puzzle overhaul, third pass) — that "push" rollout above is
+// itself now reverted down to ONE room (Bridge); rolling the mechanic out
+// to four rooms made the one puzzle type that was actually liked into the
+// most-repeated chore in the chapter, on top of doubling to two crates per
+// room being its own separate complaint. See the dated note directly above
+// `const ROOMS` in rooms.js for the current mechanic mix — this comment is
+// left as history, not a description of what ships today.
 const GAME_ID = "dog-punk";
 
 // ---- checkpoint save (resume where you left off) ----
@@ -1650,11 +1657,12 @@ function isGateOpen() {
   if (room.type === "guard" || room.type === "vault") return !!state.doorUnlocked;
   if (!state.enemies.every((e) => !e.alive)) return false;
   if (room.type === "push") {
-    // EVERY switch needs its OWN crate on it at once, not just "a crate is
-    // on A switch somewhere" — that `.some` used to let Bridge/Foundry's
-    // second crate/switch pair sit unsolved forever and the gate would
-    // still open off the first one alone. See the ROOMS comment (puzzle
-    // pass) for why there are two pairs now instead of one.
+    // EVERY switch needs its OWN crate on it, not just "a crate is on A
+    // switch somewhere" — Bridge is down to one crate/one switch now (see
+    // the dated note above `const ROOMS` in rooms.js), but `.every` is left
+    // as-is rather than narrowed to `.some`: a room with more than one
+    // switch tile should still need all of them covered if that ever comes
+    // back, not silently accept the first one solved.
     return room.switchTiles.every((s) => state.crates.some((cr) =>
       Math.floor(cr.x / TILE) === s.c && Math.floor(cr.y / TILE) === s.r));
   }
