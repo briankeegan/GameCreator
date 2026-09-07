@@ -58,12 +58,40 @@
   // tweak.
   var UNFED_BY_THIS_SEAM = {};
 
+  var cascadeFor = null, clearedBetween = null;
+
   function garbageCells(grid, W, H) {
     var n = 0;
     for (var r = 1; r <= H; r++) {
       for (var c = 1; c <= W; c++) if (grid[r] && grid[r][c] === -2) n++;
     }
     return n;
+  }
+
+  // Ranks every legal swap by the evaluator and returns the best move, or
+  // null when there is nothing to rank. Shared by the building and
+  // defensive seams so there is ONE definition of "score a candidate swap".
+  function bestSwapBy(cpu, board, weights) {
+    var swaps = board.legalSwaps ? board.legalSwaps() : [];
+    var best = null, bestScore = null;
+    for (var i = 0; i < swaps.length; i++) {
+      var r = swaps[i][0], c = swaps[i][1];
+      var trial = board.clone();
+      trial.swap(r, c);
+      // Resolve before scoring, exactly as the shipped search does: a
+      // feature must see the board the move LEAVES, cascade included, not
+      // the instant after the swap. Scoring the unresolved board would
+      // credit a move with panels that are about to vanish.
+      var res = trial.resolve ? trial.resolve() : {};
+      var input = inputMod.fromStack(cpu.stack, trial, {
+        chainLength: res.chainLength || 0,
+        comboSizes: res.comboSizes || [],
+        garbage: res.garbage || []
+      }, cascadeFor(cpu), clearedBetween(cpu, trial));
+      var score = evaluator.evaluate(input, weights).score;
+      if (bestScore === null || score > bestScore) { bestScore = score; best = [r, c]; }
+    }
+    return best;
   }
 
   function attach(SearchCpu, weights) {
@@ -76,6 +104,30 @@
                         'silent zero.');
       }
     }
+
+    // Hoisted out of _evaluate so the building and defensive seams can use
+    // the same two derivations, rather than each growing its own copy.
+    cascadeFor = function (cpu) {
+      if (typeof cpu._cascadePrediction !== 'function') return null;
+      var clock = cpu.stack ? cpu.stack.clock : 0;
+      if (cpu.__panelEvalCascadeAt !== clock) {
+        cpu.__panelEvalCascadeAt = clock;
+        try { cpu.__panelEvalCascade = cpu._cascadePrediction(); }
+        catch (e) { cpu.__panelEvalCascade = null; }
+      }
+      return cpu.__panelEvalCascade;
+    };
+    clearedBetween = function (cpu, board) {
+      if (!cpu.stack || !board || !board.grid) return 0;
+      var W = board.width, H = board.height, live = 0, r, c, p;
+      for (r = 1; r <= H; r++) {
+        for (c = 1; c <= W; c++) {
+          p = cpu.stack.panelAt(r, c);
+          if (p && p.isGarbage) live++;
+        }
+      }
+      return Math.max(0, live - garbageCells(board.grid, W, H));
+    };
 
     var original = SearchCpu.prototype._evaluate;
     SearchCpu.prototype._evaluate = function (board, cumGarbage, cumChain, cumCombo) {
@@ -119,7 +171,35 @@
     };
     SearchCpu.prototype._evaluate.__panelEvalAttached = true;
 
-    return function detach() { SearchCpu.prototype._evaluate = original; };
+    // ---- THE BUILDING DECISION ----
+    //
+    // _raiseOrBuild is 13% of decisions and, before this, ranked every
+    // legal swap by one hand-written `boardPotential(trial) - base` while
+    // never calling _evaluate. It is the move made when nothing is urgent —
+    // the BUILDING move — and therefore the only place the density
+    // features (links, roughness, edgePenalty, matchPotential,
+    // colourScarcity, colourVariance) can possibly act. With the evaluator
+    // absent from it, weighting any of them changed zero moves out of 143.
+    //
+    // Only the CHOICE OF SWAP is re-ranked. The shipped function still
+    // decides WHETHER a swap is worth making at all, and whether to raise
+    // or hold when it is not — so its verdict is asked for first and
+    // returned untouched unless it was a swap. Taking that decision too
+    // would mean a second copy of a live rule sitting in a file that
+    // cannot see it change.
+    var originalRaiseOrBuild = SearchCpu.prototype._raiseOrBuild;
+    SearchCpu.prototype._raiseOrBuild = function (board) {
+      var shipped = originalRaiseOrBuild.call(this, board);
+      if (!shipped || shipped.kind !== 'swap') return shipped;
+      var best = bestSwapBy(this, board, weights);
+      return best ? { kind: 'swap', move: best } : shipped;
+    };
+    SearchCpu.prototype._raiseOrBuild.__panelEvalAttached = true;
+
+    return function detach() {
+      SearchCpu.prototype._evaluate = original;
+      SearchCpu.prototype._raiseOrBuild = originalRaiseOrBuild;
+    };
   }
 
   return { attach: attach, UNFED_BY_THIS_SEAM: UNFED_BY_THIS_SEAM };

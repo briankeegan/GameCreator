@@ -234,6 +234,83 @@ test('a throwing cascade prediction does not take the evaluation down with it', 
     } finally { detach(); cpu._cascadePrediction = real; }
 });
 
+
+// ---- _raiseOrBuild: THE BUILDING DECISION ----
+//
+// Measured over 448 decisions on bench.js: _bestDefensiveMove takes 83%,
+// _raiseOrBuild 13%, and the two functions the evaluator was originally
+// attached to about 5%. _raiseOrBuild is the one that decides which swap to
+// make when nothing is urgent — the BUILDING move — and it ranked every
+// legal swap by a single hand-written `boardPotential(trial) - base`,
+// never consulting _evaluate at all.
+//
+// That is exactly the decision the density features exist for. With the
+// evaluator absent from it, links, roughness, edgePenalty, matchPotential,
+// colourScarcity and colourVariance had nowhere to act, which is why
+// weighting them changed literally zero moves.
+//
+// What the seam changes and what it deliberately does NOT: the RAISE/HOLD
+// decision stays in panel-cpu.js untouched. Only the CHOICE OF SWAP is
+// re-ranked. Duplicating the raise gate here would put a second copy of a
+// live rule in a file that cannot see it change.
+
+test('_raiseOrBuild: zero weights leave the shipped choice exactly as it was', function () {
+    var cpu = liveCpu();
+    var board = cpu._snapshot();
+    var before = JSON.stringify(cpu._raiseOrBuild(board));
+    var detach = attach(SearchCpu, {});
+    try {
+        assert.strictEqual(JSON.stringify(cpu._raiseOrBuild(board)), before,
+            'an inert evaluator must not move the building decision');
+    } finally { detach(); }
+});
+
+test('_raiseOrBuild: a weighted evaluator changes WHICH swap is built', function () {
+    // The whole point. If this cannot be made to differ, the density
+    // features have no way to act on the game.
+    var cpu = liveCpu();
+    var board = cpu._snapshot();
+    var shipped = JSON.stringify(cpu._raiseOrBuild(board));
+
+    var moved = false;
+    ['links', 'roughness', 'edgePenalty', 'matchPotential', 'colourVariance'].forEach(function (key) {
+        var w = {}; w[key] = 500;
+        var detach = attach(SearchCpu, w);
+        try {
+            if (JSON.stringify(cpu._raiseOrBuild(board)) !== shipped) moved = true;
+        } finally { detach(); }
+    });
+    assert.ok(moved, 'no density feature could change the building decision — the ' +
+        'evaluator is still not reaching _raiseOrBuild');
+});
+
+test('_raiseOrBuild: the raise/hold decision is NOT taken over', function () {
+    // When the shipped heuristic decides no swap is worth making, that
+    // verdict — and whether it raises or holds — stays panel-cpu.js's.
+    // Re-ranking a swap is a smaller claim than deciding when to swap at
+    // all, and only the smaller one is being made here.
+    var cpu = liveCpu();
+    var board = cpu._snapshot();
+    for (var r = 1; r <= board.height; r++) {
+        for (var c = 1; c <= board.width; c++) board.grid[r][c] = 0;   // nothing to build with
+    }
+    var shipped = cpu._raiseOrBuild(board);
+    assert.ok(shipped.kind === 'raise' || shipped.kind === 'hold', 'setup: expected raise/hold');
+    var detach = attach(SearchCpu, { links: 500, maxHeight: 500 });
+    try {
+        assert.deepStrictEqual(cpu._raiseOrBuild(board), shipped,
+            'the evaluator overrode a raise/hold verdict it was not given');
+    } finally { detach(); }
+});
+
+test('_raiseOrBuild: detaching restores the shipped function itself', function () {
+    var original = SearchCpu.prototype._raiseOrBuild;
+    var detach = attach(SearchCpu, { links: 1 });
+    assert.notStrictEqual(SearchCpu.prototype._raiseOrBuild, original);
+    detach();
+    assert.strictEqual(SearchCpu.prototype._raiseOrBuild, original);
+});
+
 tests.forEach(function (t) {
     try { t.fn(); process.stdout.write('  ok   ' + t.name + '\n'); }
     catch (e) { failures.push(t.name + '\n       ' + e.message); process.stdout.write('  FAIL ' + t.name + '\n'); }
