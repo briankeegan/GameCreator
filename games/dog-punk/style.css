@@ -356,18 +356,23 @@ body {
   top: 10px;
   left: 50%;
   transform: translateX(-50%);
+  max-width: 88%;
   background: rgba(12, 12, 16, 0.86);
   color: #fff;
-  font-weight: 700;
-  font-size: 0.85rem;
+  text-align: center;
   padding: 6px 16px;
   border-radius: 8px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease;
-  white-space: nowrap;
 }
 .room-toast.show { opacity: 1; }
+.room-toast-title { font-weight: 700; font-size: 0.85rem; white-space: nowrap; }
+/* The environmental one-liner (see rooms.js's `blurb` field) — a plain
+   sentence, not shouting the way the room name does, and free to wrap: it's
+   prose, and "Chain-link rattles behind you — the yard opens up ahead."
+   forced onto one nowrap line either overflows the toast or gets clipped. */
+.room-toast-blurb { font-weight: 400; font-size: 0.72rem; color: #d6d6da; margin-top: 2px; }
 
 /* Intro cutscene portrait: Beverly's own idle sheet frame, blown up with the
    same crisp pixel scaling as the board so it doesn't look like a different

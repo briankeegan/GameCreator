@@ -831,12 +831,29 @@ const TITLE = window.GCTitleScreen.create(GAME_ID, {
 });
 TITLE.show();
 
-function showRoomToast(text) {
+// `blurb` is optional (older callers/tests may only pass a name) — one line
+// of environmental narration under the room's name, e.g. "Gravel crunches
+// underfoot — the rail yard swallows the scrapyard's noise." (see the
+// room-shape/story comment at the top of rooms.js for why this exists: the
+// chapter needed to say something about where you are and where you're
+// headed, not just retint the floor). Shown longer than the name-only toast
+// used to be (2600ms vs 1600ms) since there's an extra line to actually read.
+function showRoomToast(text, blurb) {
   if (!roomToastEl) return;
-  roomToastEl.textContent = text;
+  roomToastEl.textContent = "";
+  const title = document.createElement("div");
+  title.className = "room-toast-title";
+  title.textContent = text;
+  roomToastEl.appendChild(title);
+  if (blurb) {
+    const sub = document.createElement("div");
+    sub.className = "room-toast-blurb";
+    sub.textContent = blurb;
+    roomToastEl.appendChild(sub);
+  }
   roomToastEl.classList.add("show");
   clearTimeout(showRoomToast._t);
-  showRoomToast._t = setTimeout(() => roomToastEl.classList.remove("show"), 1600);
+  showRoomToast._t = setTimeout(() => roomToastEl.classList.remove("show"), blurb ? 2600 : 1600);
 }
 
 // ---- input ----
@@ -1087,7 +1104,7 @@ function transitionToRoom(idx, entry) {
   state.keyCollected = false;
   state.deathFx = [];
   state.projectiles = [];
-  showRoomToast(ROOMS[idx].name);
+  showRoomToast(ROOMS[idx].name, ROOMS[idx].blurb);
   saveCheckpoint();
 }
 
@@ -1122,7 +1139,7 @@ function resumeFromCheckpoint(save) {
   state.deathFx = [];
   state.projectiles = [];
   state.startTime = performance.now() - save.elapsedBefore * 1000;
-  showRoomToast(ROOMS[save.roomIndex].name);
+  showRoomToast(ROOMS[save.roomIndex].name, ROOMS[save.roomIndex].blurb);
 }
 
 // Called on death: respawns in the CURRENT room with full hp, rather than

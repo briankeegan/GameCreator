@@ -12,6 +12,41 @@
 // tags sharing one global scope, so a top-level `const ROOMS` here collides
 // with app.js's and the page dies on "Identifier 'ROOMS' has already been
 // declared". Nothing escapes except window.DOGPUNK_ROOMS.
+//
+// 2026-09-07 (room-shape pass) — every one of the 15 maps below used to be
+// the exact same COLSxROWS RECTANGLE, boundary '2' running an unbroken line
+// round all four edges, with only the INTERIOR obstacles rearranged from
+// room to room. That's what "the rooms all look the same" was actually
+// about: an obstacle course redecorated inside an identical box reads as
+// one room, however the tyre piles are arranged inside it, because the box
+// itself never changes — and a real building doesn't hand you fifteen
+// identically-proportioned rectangular boxes in a row; corners get bitten
+// off by other structures, hallways narrow into chokepoints, yards get an
+// L cut out of them by whatever's next door. Every map now has extra '2'
+// cells carved OUT of a corner or a wall as well as the ones piled INTO the
+// middle — a chamfered corner, a bitten-off bay, a pinched waist — so the
+// FOOTPRINT differs room to room, not just what's standing on it. Each
+// shape is still deliberately its own: no two rooms share the same
+// carve (Bridge and Foundry, the zone's two push rooms, are even mirrored
+// diagonals of each other on purpose, so the one pair that had to stay
+// mechanically conservative still doesn't read as identical). Verified with
+// a BFS over each room's own grid (SOLID cells blocking, everything else
+// open) confirming spawn/back-spawn can still reach every gate, switch,
+// crate and enemy spawn the room has — a carved corner that quietly walls
+// off a switch would be a worse bug than the sameness this fixes — and
+// `check_room_exits.mjs` (the same gate that runs in CI) still passes.
+//
+// Each room also carries a `blurb`: one line of environmental narration
+// shown under its name in the room-toast on entry (see showRoomToast in
+// app.js). This is the "sense of a story as you go" half of the same
+// complaint — the chapter already renames itself zone to zone (Scrapyard ->
+// Rail Yard -> Rust Quarter -> Town) but never SAID anything about where
+// you were or where you were headed, so three zone tints in a row still
+// read as unexplained lighting changes. The blurbs are short, ordered, and
+// aimed at Town the whole way: a padlocked yard, a service line, a signal
+// tower with a dead light, a cooling smelter, streetlights at the last
+// gate — read start to finish they're a one-sentence-per-room walk out of
+// the junkyard, not fifteen unrelated captions.
 (function () {
   "use strict";
 
@@ -66,16 +101,16 @@
     // solid (undefined isn't in SOLID), so you could stand inside the fence, and
     // drawn as floor, which is the pale square in that corner of the old level.
     "2222222GG2222222",
-    "2..............2",
-    "2..34.......43.2",
+    "222..........222",
+    "22.34.......4322",
     "2..............2",
     "2....43....34..2",
     "2..............2",
     "2..4......3....2",
     "2..............2",
     "2....3443......2",
-    "2..............2",
-    "2......P.......2",
+    "222..........222",
+    "22.....P......22",
     "2222222222222222",
   ];
   // Scrap Catwalk: a second "clear the yard" room between the Alley and the
@@ -104,12 +139,12 @@
   // see the check script referenced in this pass's chat reply.
   const CATWALK_MAP = [
     "2222222222222222",
-    "2..............2",
-    "2.4..4....4..4.2",
+    "222..........222",
+    "224..4....4..422",
     "2..............2",
     "2....3....3....2",
-    "2.............BG",
-    "2....3....3....G",
+    "2222..........BG",
+    "2222.3....3....G",
     "2..............2",
     "2.4..4....4..4.2",
     "2..............2",
@@ -126,16 +161,16 @@
   // genuinely different pushes in the same room, not one puzzle doubled.
   const BRIDGE_MAP = [
     "2222222GG2222222",
-    "2......B.......2",
-    "2...4......4...2",
+    "222....B.......2",
+    "22..4......4...2",
     "2..............2",
     "2......S.......2",
     "HP.............2",
     "H......X...3...2",
     "2..............2",
     "2..3..S..X.....2",
-    "2..............2",
-    "2..............2",
+    "2............222",
+    "2.............22",
     "2222222222222222",
   ];
   // Junk Courtyard: a straight fight (no switch hunt — see the ROOMS comment
@@ -143,22 +178,22 @@
   // switch hunt, so those two puzzle rooms aren't back to back.
   const COURTYARD_MAP = [
     "2222222222222222",
-    "2..............2",
-    "2....3....3....2",
-    "2..............2",
+    "2............222",
+    "2....3....3..222",
+    "2.............22",
     "2.4............2",
     "GB.............2",
     "G..............2",
-    "2..............2",
-    "2....3....3....2",
-    "2..............2",
+    "222............2",
+    "222..3....3....2",
+    "22.............2",
     "2......P.......2",
     "2222222HH2222222",
   ];
   const GATEROOM_MAP = [
     "2222222GG2222222",
-    "2......B.......2",
-    "2..S........S..2",
+    "222....B.....222",
+    "22.S........S.22",
     "2..............2",
     "2......4.......2",
     "2.............PH",
@@ -172,45 +207,45 @@
   // ---- Rail Yard zone (rooms 6-10): introduces the Scrap Drone. ----
   const RAIL_ENTRANCE_MAP = [
     "2222222GG2222222",
-    "2......B.......2",
-    "2..3........3..2",
+    "2......B.....222",
+    "2..3........3.22",
     "2..............2",
     "2....4....4....2",
     "2..............2",
     "2.3..........3.2",
     "2..............2",
     "2....4....4....2",
-    "2..............2",
-    "2......P.......2",
+    "222............2",
+    "22.....P.......2",
     "2222222HH2222222",
   ];
   // Signal Tower: a second clear room in the Rail Yard, mixed drone/rat.
   const SIGNAL_TOWER_MAP = [
     "2222222222222222",
-    "2..............2",
-    "2..3........3..2",
-    "2..............2",
-    "2.......4......2",
-    "2.............BG",
-    "2..3........3..G",
+    "222............2",
+    "22.3........3..2",
     "2..............2",
     "2.......4......2",
+    "2...........22BG",
+    "2..3........32.G",
     "2..............2",
-    "2......P.......2",
+    "2.......4......2",
+    "222............2",
+    "22.....P.......2",
     "2222222HH2222222",
   ];
   const RAIL_OVERPASS_MAP = [
     "2222222GG2222222",
-    "2......B.......2",
-    "2.4............2",
+    "2......B.....222",
+    "2.4...........22",
     "2..............2",
     "2..3........3..2",
     "HP.............2",
     "H..............2",
     "2....4.........2",
-    "2..............2",
-    "2............4.2",
-    "2..............2",
+    "2............222",
+    "2............422",
+    "2.............22",
     "2222222222222222",
   ];
   // Rail Switchyard: a "guard" room (see the puzzle-variety note above the
@@ -218,8 +253,8 @@
   // sequence puzzle — one drone here carries the key, not a plate anywhere.
   const SWITCHYARD_MAP = [
     "2222222222222222",
-    "2..............2",
-    "2..............2",
+    "222....22....222",
+    "22............22",
     "2..............2",
     "2....44....44..2",
     "GB.............2",
@@ -232,8 +267,8 @@
   ];
   const DRONE_NEST_MAP = [
     "2222222GG2222222",
-    "2......B.......2",
-    "2.S............2",
+    "2......B......22",
+    "22S............2",
     "2..............2",
     "2....33....44..2",
     "2.............PH",
@@ -247,32 +282,32 @@
   // ---- Rust Quarter zone (rooms 11-15): introduces the Junk Brute. ----
   const RUST_GATE_MAP = [
     "2222222GG2222222",
-    "2......B.......2",
-    "2..............2",
+    "222....B.....222",
+    "22............22",
     "2...44....44...2",
     "2..............2",
-    "2..............2",
-    "2..............2",
+    "22.............2",
+    "22.............2",
     "2...44....44...2",
     "2..............2",
-    "2..............2",
-    "2......P.......2",
+    "222..........222",
+    "22.....P......22",
     "2222222HH2222222",
   ];
   // Slag Pit: a second clear room, first place the Brute shares a room with
   // the Foundry's push puzzle instead of standing alone in an open yard.
   const SLAG_PIT_MAP = [
     "2222222222222222",
-    "2..............2",
-    "2..............2",
-    "2..44....44....2",
+    "22.............2",
+    "22.............2",
+    "2..44....44..222",
     "2..............2",
     "2......33.....BG",
     "2..............G",
     "2..44....44....2",
-    "2..............2",
-    "2..............2",
-    "2......P.......2",
+    "2............222",
+    "22.............2",
+    "22.....P.......2",
     "2222222HH2222222",
   ];
   // Foundry's original crate/switch pair (row7 col5 -> row4 col7) was
@@ -283,46 +318,46 @@
   // Bridge's own pair of pushes.
   const FOUNDRY_MAP = [
     "2222222GG2222222",
-    "2......B.......2",
-    "2..4........4..2",
+    "2......B.....222",
+    "2..4........4.22",
     "2..............2",
     "2......S.......2",
     "HP.............2",
     "H..3........3..2",
     "2.....X........2",
     "2..............2",
-    "2..4.S..X...4..2",
-    "2..............2",
+    "22.4.S..X...4..2",
+    "22.............2",
     "2222222222222222",
   ];
   // Smelter: a sequence puzzle (see ROOMS comment) with its own switch
   // layout and order, not a repeat of Drone Nest's.
   const SMELTER_MAP = [
     "2222222222222222",
-    "2..............2",
-    "2....4....4....2",
+    "2.............22",
+    "2....4....4...22",
     "2S.............2",
     "2..............2",
     "GB.............2",
     "G........4.....2",
     "2..............2",
     "2.............S2",
-    "2......S.......2",
-    "2......P.......2",
+    "2......S......22",
+    "2......P......22",
     "2222222HH2222222",
   ];
   const TOWN_GATE_MAP = [
     "2222222GG2222222",
     "2......B.......2",
     "2.S..3....3..S.2",
-    "2..............2",
-    "2..............2",
+    "222..........222",
+    "22............22",
     "2......44.....PH",
     "2..............H",
     "2..............2",
     "2.3..........3.2",
-    "2.......S......2",
-    "2..............2",
+    "222.....S....222",
+    "22............22",
     "2222222222222222",
   ];
 
@@ -372,6 +407,7 @@
     {
       id: "alley",
       name: "Scrapyard Alley",
+      blurb: "Chain-link rattles behind you — the yard opens up ahead.",
       map: ALLEY_MAP,
       type: "clear",
       enemySpawns: [{ c: 4, r: 1, type: "rat" }, { c: 12, r: 3, type: "rat" }, { c: 10, r: 8, type: "rat" }],
@@ -379,6 +415,7 @@
     {
       id: "catwalk",
       name: "Scrap Catwalk",
+      blurb: "A sagging plank walkway, the only dry path through the scrap.",
       map: CATWALK_MAP,
       // "guard" (NEW, see the puzzle-variety note above the ROOMS list):
       // one marked rat (a pulsing gold ring, see render()) carries the key
@@ -396,6 +433,7 @@
     {
       id: "bridge",
       name: "Junk Bridge",
+      blurb: "Runoff drips through the grating underfoot.",
       map: BRIDGE_MAP,
       type: "push", // gate opens once BOTH crates rest on their own switch AND enemies are cleared
       enemySpawns: [{ c: 3, r: 2, type: "rat" }, { c: 12, r: 8, type: "rat" }],
@@ -403,6 +441,7 @@
     {
       id: "courtyard",
       name: "Junk Courtyard",
+      blurb: "Stacked axles and oil drums — someone used to work here.",
       map: COURTYARD_MAP,
       // A straight fight, not a fourth switch hunt — see the puzzle-variety
       // note above the ROOMS list. Four rats (one more than Alley/Catwalk)
@@ -416,6 +455,7 @@
     {
       id: "gate",
       name: "Back Gate",
+      blurb: "The back gate hums with a rail line somewhere beyond it.",
       map: GATEROOM_MAP,
       type: "switches", // gate opens once every switch tile has been stepped on AND enemies are cleared
       enemySpawns: [{ c: 7, r: 2, type: "rat" }, { c: 3, r: 6, type: "rat" }, { c: 12, r: 6, type: "rat" }],
@@ -423,6 +463,7 @@
     {
       id: "railEntrance",
       name: "Rail Yard Entrance",
+      blurb: "Gravel crunches underfoot — the rail yard swallows the scrapyard's noise.",
       map: RAIL_ENTRANCE_MAP,
       type: "clear",
       tint: TINT_RAIL,
@@ -431,6 +472,7 @@
     {
       id: "signalTower",
       name: "Signal Tower",
+      blurb: "A dead signal light creaks on its post overhead.",
       map: SIGNAL_TOWER_MAP,
       type: "clear",
       tint: TINT_RAIL,
@@ -439,6 +481,7 @@
     {
       id: "railOverpass",
       name: "Rail Overpass",
+      blurb: "Track ties stacked like teeth along the overpass.",
       map: RAIL_OVERPASS_MAP,
       // Was a second push room; Bridge already teaches the push mechanic and
       // Foundry repeats it later in the Rust Quarter, so this is a straight
@@ -453,6 +496,7 @@
     {
       id: "switchyard",
       name: "Rail Switchyard",
+      blurb: "Rust-frozen switches point nowhere in particular anymore.",
       map: SWITCHYARD_MAP,
       // "guard" again (see Catwalk), Rail Yard's own copy of the mechanic —
       // a controller drone is the one holding the key this time, not a rat,
@@ -468,6 +512,7 @@
     {
       id: "droneNest",
       name: "Drone Nest",
+      blurb: "Wires nest here — whatever built this is still listening.",
       map: DRONE_NEST_MAP,
       // Sequence, not find-any-order: the three plates must be hit in the
       // order they're numbered (see drawSwitchPlate/isGateOpen and the
@@ -480,6 +525,7 @@
     {
       id: "rustGate",
       name: "Rust Quarter Gate",
+      blurb: "The air turns hot and orange past this gate.",
       map: RUST_GATE_MAP,
       type: "clear",
       tint: TINT_RUST,
@@ -488,6 +534,7 @@
     {
       id: "slagPit",
       name: "Slag Pit",
+      blurb: "Slag glass crunches underfoot like frost that never melted.",
       map: SLAG_PIT_MAP,
       type: "clear",
       tint: TINT_RUST,
@@ -496,6 +543,7 @@
     {
       id: "foundry",
       name: "Scrap Foundry",
+      blurb: "Cold furnaces now, but the smell of ash still lingers.",
       map: FOUNDRY_MAP,
       type: "push",
       tint: TINT_RUST,
@@ -504,6 +552,7 @@
     {
       id: "smelter",
       name: "Smelter",
+      blurb: "The smelter's shell still ticks as it cools.",
       map: SMELTER_MAP,
       // Sequence, same as Drone Nest, but its own switch layout/order — the
       // Rust Quarter's version of the ordered puzzle, not a repeat of it.
@@ -514,6 +563,7 @@
     {
       id: "townGate",
       name: "Town Gate",
+      blurb: "Past the gate, streetlights — Town, finally, in view.",
       map: TOWN_GATE_MAP,
       type: "switches",
       tint: TINT_RUST,
