@@ -1465,12 +1465,39 @@
   };
 
   // Touch/pointer input: put the cursor on a pair and swap it in one go.
+  // This models a real touchscreen tap -- pressing directly on the pair you
+  // want, no cursor to drag first -- which is a genuine human input mode,
+  // not a shortcut. It is NOT a stand-in for "act anywhere instantly" and
+  // must never be used to move a CPU's cursor from wherever it actually is
+  // to an arbitrary target in one frame -- see stepCursorToward below,
+  // which is what any CPU driving a keyboard/gamepad-style cursor has to
+  // use instead.
   Stack.prototype.touchSwap = function (row, col) {
     if (!this.tryQueueSwap(row, col)) return false;
     this.curRow = row;
     this.curCol = col;
     this.clampCursor();
     return true;
+  };
+
+  // Moves the cursor at most ONE cell per call, toward (row, col) -- never
+  // teleports. This is the fastest rate a real keyboard/gamepad player can
+  // actually achieve: applyInput's own DAS_DELAY logic only throttles a
+  // HELD direction: a player tapping (press, release, press...) gets an
+  // instant single-cell move on every fresh press, since `dir !==
+  // this.cursorDirection` fires on every tap regardless of which direction
+  // was last held. So 1 cell/frame, freely changing direction between
+  // frames, is achievable by any human without ever waiting out the DAS
+  // hold-delay -- this function gives a CPU exactly that rate, no more.
+  // Returns true once the cursor is AT (row, col) (the caller can act this
+  // frame); false if it just moved one step closer and needs another
+  // frame before it can.
+  Stack.prototype.stepCursorToward = function (row, col) {
+    if (this.curRow === row && this.curCol === col) return true;
+    if (this.curRow !== row) this.curRow += (row > this.curRow ? 1 : -1);
+    else this.curCol += (col > this.curCol ? 1 : -1);
+    this.clampCursor();
+    return this.curRow === row && this.curCol === col;
   };
 
   // ---------------- the frame ----------------
