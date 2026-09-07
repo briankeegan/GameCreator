@@ -1291,9 +1291,17 @@ window.NewseyDuel = (function () {
     // a number can't be looked up at.
 
     drawEffects(isPlayer, x, y, cell, bottom, rise);
-    if (isPlayer && !stack.gameOver) {
-      if (state.selection) drawSelection(state.selection, x, cell, bottom, rise);
-      drawCursor(stack, x, y, cell, bottom, rise);
+    // BOTH cursors are drawn. A duel is two people playing, and with only the
+    // player's box on screen the other board just changed by itself — you
+    // could not see her line one up, or that she was nowhere near the mess
+    // about to bury her. Hers is pink (her name plate's colour), yours white.
+    if (!stack.gameOver) {
+      if (isPlayer) {
+        if (state.selection) drawSelection(state.selection, x, cell, bottom, rise);
+        drawCursor(stack, x, cell, bottom, rise, stack.curRow, stack.curCol, "#ffffff");
+      } else {
+        drawCursor(stack, x, cell, bottom, rise, stack.curRow, stack.curCol, "#ff9ecb");
+      }
     }
   }
 
@@ -1428,16 +1436,18 @@ window.NewseyDuel = (function () {
     return "rgb(" + r + "," + g + "," + b + ")";
   }
 
-  function drawCursor(stack, x, y, cell, bottom, rise) {
+  // row/col are passed in rather than read off the stack so a caller can draw
+  // a cursor somewhere other than where the engine currently holds it.
+  function drawCursor(stack, x, cell, bottom, rise, row, col, color) {
     var ctx = els.ctx;
-    var cx = x + (stack.curCol - 1) * cell;
-    var cy = bottom - stack.curRow * cell - rise;
+    var cx = x + (col - 1) * cell;
+    var cy = bottom - row * cell - rise;
     var pulse = 1 + Math.sin(stack.clock * 0.15) * 0.04;
     var w = cell * 2 * pulse, h = cell * pulse;
     ctx.save();
-    ctx.strokeStyle = "#ffffff";
+    ctx.strokeStyle = color;
     ctx.lineWidth = Math.max(2, cell * 0.09);
-    ctx.shadowColor = "rgba(255,255,255,0.6)";
+    ctx.shadowColor = color === "#ffffff" ? "rgba(255,255,255,0.6)" : "rgba(255,158,203,0.6)";
     ctx.shadowBlur = 6;
     roundRect(ctx, cx - (w - cell * 2) / 2, cy - (h - cell) / 2, w, h, cell * 0.2);
     ctx.stroke();
@@ -1617,6 +1627,7 @@ window.NewseyDuel = (function () {
         foeScore: state.foe.score,
         playerSwaps: state.swapCount,
         cursor: state.player.curRow + "," + state.player.curCol,
+        foeCursor: state.foe.curRow + "," + state.foe.curCol,
         selection: state.selection && (state.selection.row + "," + state.selection.col),
         pointer: state.pointer && (state.pointer.row + "," + state.pointer.col + (state.pointer.dragged ? ",dragged" : "")),
         displacement: state.player.displacement,
