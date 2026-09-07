@@ -147,8 +147,46 @@
     return count;
   }
 
+  // ------------------------------------------------------------------ links
+  //
+  // SAME-COLOURED PANELS ORTHOGONALLY ADJACENT, COUNTED AS PAIRS.
+  //
+  // The biggest single term in the Puyo bot that works (25%, see
+  // ../PUYO_REFERENCE.md) — and that bot contains no chain logic at all.
+  // Rewarding adjacency fills the board with groups of three, one short of
+  // popping, and because the reward applies everywhere those groups end up
+  // packed against each other; when one finally pops, what falls lands on
+  // another near-complete group. A chain is what happens when stored
+  // potential is dense enough to touch.
+  //
+  // Pairs, not cells: a run of three is TWO links. Counting cells would
+  // make this a duplicate of "how many panels are on the board", which is
+  // its own feature and points the other way.
+  //
+  // Only real panels link. Garbage (-2) is not a colour — if it counted,
+  // taking damage would read as good clustering. Busy (-1) is a panel
+  // mid-animation whose colour the snapshot does not know, so pairing it
+  // would be inventing one. Empty (0) is nothing.
+  //
+  // Diagonals never link, matching the match rule they exist to set up.
+  // Only right and up are checked, which visits each pair exactly once.
+  function links(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var count = 0;
+    for (var r = 1; r <= H; r++) {
+      for (var c = 1; c <= W; c++) {
+        var v = grid[r][c];
+        if (v <= 0) continue;
+        if (c < W && grid[r][c + 1] === v) count++;
+        if (r < H && grid[r + 1][c] === v) count++;
+      }
+    }
+    return count;
+  }
+
   return {
     matchPotential: matchPotential,
+    links: links,
     // exported for tests only — not features
     _matchedCells: matchedCells
   };

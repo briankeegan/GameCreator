@@ -114,7 +114,7 @@ bot, so those four are declared here rather than left as an idea.
 | Feature | Sign | Notes |
 |---|---|---|
 | `matchPotential` | + | **BUILT.** Legal swaps that would produce a match of combo size 4+, or any size touching garbage. A plain 3 scores 0 — `comboGarbage()` sends nothing below 4 |
-| `links` | + | Same-coloured panels orthogonally adjacent. 25% of meatfighter's score |
+| `links` | + | **BUILT.** Same-coloured panels orthogonally adjacent, counted as pairs. 25% of meatfighter's score |
 | `consecutiveColours` | + | Runs of one colour along rows and columns, below match length. With `links`, 41% of the bot that works |
 | `colourVariance` | − | Per colour, deviation from its own mean position. Low = gathered |
 | `edgePenalty` | − | Side columns have three neighbours, not four |

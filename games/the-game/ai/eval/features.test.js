@@ -149,6 +149,10 @@ test('weights.ZERO covers every declared feature', function () {
 // every "does it fire?" test and would be measuring the wrong thing.
 var F = require('./features.js');
 
+function links(rows) {
+    return F.links(inputMod.normalize({ board: board(rows) }));
+}
+
 function potential(rows, extra) {
     return F.matchPotential(inputMod.normalize(Object.assign({ board: board(rows) }, extra || {})));
 }
@@ -249,6 +253,72 @@ test('matchPotential: weighting it now works end to end through the evaluator', 
     assert.strictEqual(r.features.matchPotential, 1);
     assert.strictEqual(r.terms.matchPotential, 10, 'sign is +1, so the term is +10');
     assert.strictEqual(r.score, 10);
+});
+
+
+// ---- links ----
+// Same-coloured panels orthogonally adjacent, counted as PAIRS. 25% of
+// meatfighter's score and the biggest single term in a bot that has no
+// chain logic at all: reward clustering and the board fills with groups of
+// three, which is stored chain potential.
+//
+// Written before the function exists. The near-misses that matter here are
+// diagonals (which never link) and everything that is not a panel —
+// garbage, busy cells and empty space — since a version that counted those
+// would report a wall of garbage as beautifully clustered.
+
+test('links: two panels of one colour side by side is one link', function () {
+    assert.strictEqual(links(['11....']), 1);
+});
+
+test('links: vertical counts the same as horizontal', function () {
+    assert.strictEqual(links(['1.....', '1.....']), 1);
+});
+
+test('links: a run of three is two links, not three', function () {
+    assert.strictEqual(links(['111...']), 2);
+});
+
+test('links: a 2x2 block of one colour is four links, not six', function () {
+    // Four orthogonal pairs; the two diagonals must NOT count.
+    assert.strictEqual(links(['11....', '11....']), 4);
+});
+
+test('links: STAYS QUIET on diagonals', function () {
+    assert.strictEqual(links(['1.....', '.1....']), 0);
+});
+
+test('links: different colours touching are not links', function () {
+    assert.strictEqual(links(['12....', '21....']), 0);
+});
+
+test('links: empty space never links to itself', function () {
+    assert.strictEqual(links(['......', '......']), 0);
+});
+
+test('links: garbage never links, to itself or to a panel', function () {
+    // A wall of garbage is the opposite of good clustering. If it counted,
+    // taking damage would look like progress.
+    assert.strictEqual(links(['##....', '##....']), 0);
+    assert.strictEqual(links(['#1....']), 0);
+    assert.strictEqual(links(['#.....', '1.....']), 0);
+});
+
+test('links: busy cells never link', function () {
+    // -1 is a panel mid-animation. Its colour is not knowable from the
+    // snapshot, so pairing it with anything would be inventing one.
+    assert.strictEqual(links(['x1....']), 0);
+    assert.strictEqual(links(['xx....']), 0);
+});
+
+test('links: counts every colour on the board, not just the biggest group', function () {
+    assert.strictEqual(links(['11.22.']), 2);
+});
+
+test('links: weighting it works end to end through the evaluator', function () {
+    var r = evaluator.evaluate({ board: board(['111...']) }, { links: 3 });
+    assert.strictEqual(r.features.links, 2);
+    assert.strictEqual(r.terms.links, 6, 'sign is +1');
 });
 
 // ------------------------------------------------------------------ runner
