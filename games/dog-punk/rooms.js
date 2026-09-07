@@ -482,6 +482,17 @@
   // "vault" added), still across 8 of 15 rooms, still no two adjacent
   // puzzle rooms sharing one: push (Bridge, Foundry, Back Gate, Drone
   // Nest), vault (Smelter, Town Gate), guard (Catwalk, Switchyard).
+  //
+  // 2026-09-07 (door-feedback pass) — "guard"/"vault" no longer require
+  // every enemy dead on top of the key (see isGateOpen in app.js): item
+  // pickup was never actually gated on enemies — the key itself could
+  // always be grabbed the moment it existed — but the gate not opening
+  // until the last enemy fell made grabbing it look like it did nothing,
+  // which read as "can't pick it up". And the gate used to swing open the
+  // instant the key was collected, wherever in the room that happened,
+  // which read as "the door just opens when you grab it" instead of a real
+  // locked door. Both rooms are now a plain key-door: hold the key, walk up
+  // to the gate, it opens THEN (see nearForwardGate/state.doorUnlocked).
   const ROOMS = [
     {
       id: "alley",
@@ -496,10 +507,14 @@
       name: "Scrap Catwalk",
       blurb: "A sagging plank walkway, the only dry path through the scrap.",
       map: CATWALK_MAP,
-      // "guard" (NEW, see the puzzle-variety note above the ROOMS list):
-      // one marked rat (a pulsing gold ring, see render()) carries the key
-      // — kill it, walk over the key it drops, gate opens once you're
-      // holding it AND every rat is down. Not a plate to find, a specific
+      // "guard" (see the puzzle-variety note above the ROOMS list): one
+      // marked rat (a pulsing gold ring, see render()) carries the key —
+      // kill it, walk over the key it drops (pickup never depends on the
+      // other rats — you can grab it whenever it's on the ground), then
+      // walk up to the gate to open it (see isGateOpen/nearForwardGate in
+      // app.js — 2026-09-07 door-feedback pass: it no longer also requires
+      // every rat down, and it doesn't swing open the instant you grab the
+      // key from across the room either). Not a plate to find, a specific
       // target to pick out of a fight.
       type: "guard",
       enemySpawns: [
