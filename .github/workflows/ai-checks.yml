@@ -1,0 +1,81 @@
+name: AI checks
+
+# THE GATE FOR games/the-game/ai/. Everything in there was previously run
+# by hand and only when somebody remembered, which this repo has already
+# established is not a gate at all (CLAUDE.md: "A GATE THAT ONLY RUNS WHEN
+# SOMEBODY REMEMBERS IS NOT A GATE" — every door defect that session was
+# found by the owner playing the game, while the checks that would have
+# caught them sat in the repo unrun).
+#
+# ai/experiments/harness_fidelity.test.js says so in its own header: it is
+# the gate for two engine behaviours a harness got wrong twice, silently,
+# invalidating every benchmark beside it — and it asks to be wired into CI
+# "if/when this directory's tooling gets one". This is that.
+#
+# SEPARATE FROM pages.yml ON PURPOSE, the same split browser-checks.yml and
+# art-checks.yml already use: pages.yml builds ONE artifact for every game,
+# so a failure here would take the whole site down over one game's AI. The
+# site always ships; this goes red on its own commit instead.
+#
+# But it MUST be able to go red. Every step below is a plain `node x.test.js`
+# whose exit code is the verdict — no `|| true`, no appending a verdict to a
+# file some later step prints as a warning. That pattern is what made every
+# art check in this repo unable to fail while looking exactly like it could.
+on:
+  push:
+    paths:
+      - 'games/the-game/ai/**'
+      - 'games/the-game/panel-engine.js'
+      - 'games/the-game/panel-cpu.js'
+      - '.github/workflows/ai-checks.yml'
+  pull_request:
+    paths:
+      - 'games/the-game/ai/**'
+      - 'games/the-game/panel-engine.js'
+      - 'games/the-game/panel-cpu.js'
+  workflow_dispatch:
+
+jobs:
+  evaluator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Does each feature compute what registry.js says it measures? Hand-built
+      # boards, answers known by eye, asserting BOTH that a feature fires on
+      # the thing it exists for and stays quiet on the near-miss.
+      - name: Feature unit tests
+        run: node games/the-game/ai/eval/features.test.js
+
+      # Does the input agree with the REAL engine? A feature reading a field
+      # that is always 0 produces perfectly plausible numbers and tunes into
+      # nonsense, so fromStack is compared field by field against a live
+      # Stack, the match rule is swept against getMatchingPanels over 7 seeds
+      # and 6 colour counts, and framesToDeath is checked by actually killing
+      # a board and timing it.
+      - name: Evaluator/engine fidelity
+        run: node games/the-game/ai/eval/input.fidelity.test.js
+
+      # Does the adapter actually FEED every feature? The two suites above
+      # are structurally blind to this — one builds inputs by hand, the other
+      # checks fromStack — so a seam passing nothing would leave both green
+      # while every weighted feature read zero in the only place that ships.
+      - name: Seam reaches every feature
+        run: node games/the-game/ai/eval/seam.test.js
+
+      # The experiments harness's own gate, which has been asking for a CI
+      # home in its header comment since it was written.
+      - name: Experiment harness fidelity
+        run: node games/the-game/ai/experiments/harness_fidelity.test.js
+
+      - name: Love RNG parity
+        run: node games/the-game/ai/experiments/love_rng.test.js
+
+      # Not AI, but the same shape of check with no home: it pins the ONE
+      # SCALE PER CHARACTER rule that stopped sprites changing size mid-walk.
+      - name: Sprite draw scale
+        run: node games/the-game/sprite-scale.test.mjs
