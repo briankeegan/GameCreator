@@ -239,9 +239,18 @@
   // person shorter than that one?" should have one answer you can read.
   // Height only — the art's own proportions are never touched, so nobody gets
   // squashed (see spriteDrawSize).
-  var ADULT_H = 30;
+  //
+  // Bumped from 30 to 45 (+50%) — reported as "characters are a little
+  // fucked up" against the rooms and props, e.g. reading as children at the
+  // Lounge's bar counter. Checked with a screenshot probe (library archway,
+  // the bar, beside the bedroom trunk) before changing this for real: still
+  // clears the archway with room to spare, and now reaches up near the
+  // counter/shelf line at the bar instead of looking chest-high on a child.
+  // Player movement/collision (player.w/h below) is a separate box from
+  // this and is untouched, so nothing about doors or reachability changes.
+  var ADULT_H = 45;
   var DRAW_HEIGHT = {
-    magma: 25   // a child; about five sixths of an adult's height
+    magma: 38   // a child; about five sixths of an adult's height
   };
   function drawHeightFor(id) {
     return DRAW_HEIGHT[id] || ADULT_H;
