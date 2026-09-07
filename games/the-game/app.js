@@ -1733,30 +1733,34 @@
     var img = entry.img;
     var gx0 = x0 + dw * MIRROR_GLASS.x0, gx1 = x0 + dw * MIRROR_GLASS.x1;
     var gy0 = y0 + dh * MIRROR_GLASS.y0, gy1 = y0 + dh * MIRROR_GLASS.y1;
-    // Walking up to a mirror, your HEAD is what comes into view first — it's
-    // the tallest, nearest-to-the-glass part of you at any distance — and the
-    // rest of you (down to your feet) only reveals as you keep closing the
-    // distance. Feet are the lowest and so the LAST part of her to enter
-    // frame, not the first: from across the room you'd see her head and
-    // shoulders in the glass and nothing below, and only once she's right up
-    // against it does the reflection uncover the whole way down to her feet.
-    // Her actual size stays close to natural (drawn near this room's normal
-    // sprite scale) — it's the REVEAL that grows, not a zoom.
+    // A real mirror's reflection isn't a fixed size: it sits as far behind
+    // the glass as you stand in front of it, so closing that distance closes
+    // BOTH legs of the trip at once and your image grows faster than you'd
+    // expect from simply walking closer — and the mirror's own frame is a
+    // FIXED size, so a big enough reflection runs past its edges. The actual
+    // optics (see "what portion of a mirror is required to view an image" —
+    // a plane mirror shows a fixed WINDOW onto you regardless of distance):
+    // stepping closer to a mirror shows you LESS of yourself, the visible
+    // cutoff rising up past your knees toward your waist, not more. So the
+    // anchor here is a fixed point roughly at chest height, not her feet —
+    // from across the room the small reflection fits inside the glass whole,
+    // feet included, and as she approaches and it grows, her feet are the
+    // first thing to run past the glass's own bottom edge and disappear,
+    // while her head simply rises higher into a frame that's filling up.
     var near = Math.max(0, Math.min(1, 1 - dist / MIRROR_RANGE));
-    var size = spriteDrawSize(img, (gy1 - gy0) * 0.85);
+    var targetH = (gy1 - gy0) * (0.28 + near * near * 1.02);
+    var size = spriteDrawSize(img, targetH);
     var w = size.w, h = size.h;
     // Tracks a little as she steps side to side in front of it, clamped to a
     // window centred on the mirror rather than the whole room, so the
     // reflection stays inside the glass instead of jumping to its edge.
     var t = Math.max(0, Math.min(1, (player.x + player.w / 2 - (prop.x - 60)) / 120));
     var cx = gx0 + w / 2 + t * (gx1 - gx0 - w);
-    var topY = gy0 + (gy1 - gy0) * 0.06;
-    // Uncovers top-down: a third of her (head/shoulders) at the edge of
-    // range, all the way to her feet once she's touching the glass.
-    var revealFrac = 0.32 + near * 0.68;
+    var centerY = gy0 + (gy1 - gy0) * 0.62;
+    var topY = centerY - h / 2;
     ctx.save();
     ctx.beginPath();
-    ctx.rect(gx0, topY, gx1 - gx0, Math.min(h, gy1 - topY) * revealFrac);
+    ctx.rect(gx0, gy0, gx1 - gx0, gy1 - gy0);
     ctx.clip();
     // A real mirror flips left-right, same as the "right" facing reuses
     // "left" mirrored elsewhere in this file.
