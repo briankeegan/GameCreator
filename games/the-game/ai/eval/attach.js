@@ -71,9 +71,31 @@
   // Ranks every legal swap by the evaluator and returns the best move, or
   // null when there is nothing to rank. Shared by the building and
   // defensive seams so there is ONE definition of "score a candidate swap".
-  function bestSwapBy(cpu, board, weights) {
+  //
+  // `incumbent` is the move the shipped heuristic already chose. It starts
+  // as the best-so-far, so a candidate has to BEAT it — strictly — to take
+  // its place. That is what makes an untrained evaluator inert instead of
+  // destructive: with every weight at zero all candidates score 0, nothing
+  // beats the incumbent, and the shipped choice survives untouched.
+  //
+  // Without it, a tie was resolved by whichever swap came first in
+  // legalSwaps() order, and the shipped heuristic's answer was discarded on
+  // every board. Measured before the fix: inert survival fell from 2546
+  // frames to 810. A single-board test passed the whole time, because on
+  // that board the first swap happened to be the shipped choice.
+  function bestSwapBy(cpu, board, weights, incumbent) {
     var swaps = board.legalSwaps ? board.legalSwaps() : [];
-    var best = null, bestScore = null;
+    var best = incumbent || null, bestScore = null;
+    if (incumbent) {
+      var inc = board.clone();
+      inc.swap(incumbent[0], incumbent[1]);
+      var incRes = inc.resolve ? inc.resolve() : {};
+      bestScore = evaluator.evaluate(inputMod.fromStack(cpu.stack, inc, {
+        chainLength: incRes.chainLength || 0,
+        comboSizes: incRes.comboSizes || [],
+        garbage: incRes.garbage || []
+      }, cascadeFor(cpu), clearedBetween(cpu, inc)), weights).score;
+    }
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
       var trial = board.clone();
@@ -89,6 +111,7 @@
         garbage: res.garbage || []
       }, cascadeFor(cpu), clearedBetween(cpu, trial));
       var score = evaluator.evaluate(input, weights).score;
+      // STRICTLY greater: a tie keeps the incumbent.
       if (bestScore === null || score > bestScore) { bestScore = score; best = [r, c]; }
     }
     return best;
@@ -191,7 +214,7 @@
     SearchCpu.prototype._raiseOrBuild = function (board) {
       var shipped = originalRaiseOrBuild.call(this, board);
       if (!shipped || shipped.kind !== 'swap') return shipped;
-      var best = bestSwapBy(this, board, weights);
+      var best = bestSwapBy(this, board, weights, shipped.move);
       return best ? { kind: 'swap', move: best } : shipped;
     };
     SearchCpu.prototype._raiseOrBuild.__panelEvalAttached = true;

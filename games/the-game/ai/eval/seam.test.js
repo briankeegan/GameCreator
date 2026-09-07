@@ -254,15 +254,40 @@ test('a throwing cascade prediction does not take the evaluation down with it', 
 // re-ranked. Duplicating the raise gate here would put a second copy of a
 // live rule in a file that cannot see it change.
 
-test('_raiseOrBuild: zero weights leave the shipped choice exactly as it was', function () {
+test('_raiseOrBuild: zero weights leave the shipped choice exactly as it was, on MANY boards', function () {
+    // ONE BOARD WAS NOT ENOUGH, and that is how this seam shipped a real
+    // defect past a green test. With every weight at zero every candidate
+    // scores 0, so "the best" was simply the FIRST swap and the shipped
+    // heuristic's choice was thrown away. On the single board this test
+    // used, the first swap happened to BE the shipped choice, so it
+    // passed — while the full benchmark showed inert survival collapsing
+    // from 2546 frames to 810.
+    //
+    // A tie must leave the shipped move alone. Asserted across random
+    // boards so one lucky coincidence cannot hide it again.
     var cpu = liveCpu();
-    var board = cpu._snapshot();
-    var before = JSON.stringify(cpu._raiseOrBuild(board));
-    var detach = attach(SearchCpu, {});
-    try {
-        assert.strictEqual(JSON.stringify(cpu._raiseOrBuild(board)), before,
-            'an inert evaluator must not move the building decision');
-    } finally { detach(); }
+    var rng = PanelEngine.makeRng(4242);
+    var checked = 0, swapBoards = 0;
+    for (var t = 0; t < 60; t++) {
+        var b = cpu._snapshot();
+        for (var r = 1; r <= b.height; r++) {
+            for (var c = 1; c <= b.width; c++) {
+                b.grid[r][c] = rng() < 0.4 ? (1 + Math.floor(rng() * 4)) : 0;
+            }
+        }
+        b.blocks = {};
+        var before = JSON.stringify(cpu._raiseOrBuild(b));
+        if (JSON.parse(before).kind === 'swap') swapBoards++;
+        var detach = attach(SearchCpu, {});
+        try {
+            assert.strictEqual(JSON.stringify(cpu._raiseOrBuild(b)), before,
+                'board ' + t + ': an inert evaluator moved the building decision');
+        } finally { detach(); }
+        checked++;
+    }
+    assert.strictEqual(checked, 60);
+    assert.ok(swapBoards > 20, 'only ' + swapBoards + '/60 boards produced a swap decision — ' +
+        'this sweep is not exercising the path it is meant to guard');
 });
 
 test('_raiseOrBuild: a weighted evaluator changes WHICH swap is built', function () {
