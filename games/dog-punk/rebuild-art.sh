@@ -102,17 +102,32 @@ fi
 
 echo "== regenerate the Rail Yard ground/object tile sheets (BILLABLE — only with --regen) =="
 if [ "${1:-}" = "--regen" ]; then
-  python3 .github/art/tileset.py generate games/dog-punk ground --n 4 --force --items "1) dark grey rail ballast: a charcoal-grey base with small angular pale-grey and dark-grey stone-chip flecks scattered evenly, each chip a good eighth of the tile wide with hard edges, a couple of thin dark cracks — three separate flat greys, all dark, no warm colour, nothing alive growing anywhere; 2) the same charcoal ballast with a few scattered rust-orange bolt flecks and one short brown rail-tie sliver, still mostly grey and completely dead ground; 3) worn concrete platform slab: a cool light grey, one step lighter than the ballast, same flat mottled treatment; 4) A WALL SEEN FACE-ON, not from above: a tall steel chain-link fence panel — a regular diamond-mesh grid of thin dark-grey wire over a flat mid-grey backdrop, with a horizontal dark-grey pipe rail along the top and bottom — woven wire mesh, NEVER corrugated sheet metal, NEVER wooden planks"
+  # 2026-09-08, third pass same day — the second pass above pushed real
+  # colour into Scrapyard only ("Scrapyard only" was said explicitly in that
+  # pass's own note) and left Rail Yard/Rust Quarter on the FIRST 2026-09-08
+  # wording, which is still three shades of one grey/rust with a single
+  # accent tile — i.e. most of the chapter (these two zones are 12 of the
+  # 15 rooms) still reads as the flat-noise floor the complaint was about.
+  # Same fix as Scrapyard: push real colour into the everyday materials
+  # instead of confining it to one tile, WITHOUT giving up the zone's own
+  # identity — Rail Yard stays the dead, nothing-grows-here middle of the
+  # chapter (see the zone-arc note further down), it just gets its colour
+  # from hazard-yellow paint and rust instead of from being all grey.
+  python3 .github/art/tileset.py generate games/dog-punk ground --n 4 --force --items "1) dark grey rail ballast with real colour in it, not three shades of one grey: a charcoal-grey base with small angular pale-grey and dark-grey stone-chip flecks scattered evenly, each chip a good eighth of the tile wide with hard edges, a scattering of rust-orange bolt and washer flecks, and one faded safety-yellow paint-stripe fragment for warning-marking colour, plus a couple of thin dark cracks — still a dead grey ballast bed at a glance, but with real rust-orange and safety-yellow in it; 2) the same ballast with MORE rust and grime than tile 1: several scattered rust-orange bolt and chain flecks, one short dark-brown rail-tie sliver, and a dull black oil-stain patch — visibly dirtier and rustier, still completely dead ground, nothing green anywhere; 3) worn concrete platform slab: a cool light grey, one step lighter than the ballast, with a faded safety-yellow edge-warning stripe running along one side and a hairline crack; 4) A WALL SEEN FACE-ON, not from above: a tall steel chain-link fence panel — a regular diamond-mesh grid of thin dark-grey wire over a flat mid-grey backdrop, with a horizontal dark-grey pipe rail along the top and bottom, and one small faded yellow-and-black hazard-stripe warning sign wired to the mesh for a colour accent — woven wire mesh, NEVER corrugated sheet metal, NEVER wooden planks"
   mv games/dog-punk/art-src/tiles_ground_raw.png games/dog-punk/art-src/tiles_ground_rail_raw.png
-  python3 .github/art/tileset.py generate games/dog-punk objects --n 2 --force --items "1) a stack of two weathered dark-brown wooden rail-ties with a coil of rusted dark cable resting on top; 2) a battered grey steel signal control box standing upright with hazard stripes and a small dull rust-orange indicator lens on the front"
+  python3 .github/art/tileset.py generate games/dog-punk objects --n 2 --force --items "1) a stack of two weathered dark-brown wooden rail-ties with a coil of rusted dark cable resting on top, the cable wrapped partway in a strip of faded safety-orange reflective tape; 2) a battered grey steel signal control box standing upright with bold yellow-and-black hazard stripes across the top and a small glowing red-orange indicator lens on the front"
   mv games/dog-punk/art-src/tiles_objects_raw.png games/dog-punk/art-src/tiles_objects_rail_raw.png
 fi
 
 echo "== regenerate the Rust Quarter ground/object tile sheets (BILLABLE — only with --regen) =="
 if [ "${1:-}" = "--regen" ]; then
-  python3 .github/art/tileset.py generate games/dog-punk ground --n 4 --force --items "1) scorched rust-red slag ground: a dark rust-brown base with small patches of a lighter burnt-orange and a near-black ash fleck scattered evenly, each patch a good eighth of the tile wide with hard edges, a couple of short cracks, and one or two tiny dull glowing-ember orange flecks — three flat warm dark tones plus a hint of ember glow, no grey, nothing alive; 2) the same scorched slag with a few scattered dull grey clinker-chunk flecks, still mostly rust-brown and lifeless; 3) cracked rust-stained concrete: a warm mid grey base with a few small rust-orange streak flecks, one step lighter than the slag, same flat mottled treatment; 4) A WALL SEEN FACE-ON, not from above: a rough-hewn quarry retaining wall of stacked grey-brown boulders with hard dark shadow lines between the stones — stacked rock blocks, NEVER wooden planks, NEVER corrugated sheet metal, NEVER a wire mesh"
+  # 2026-09-08, third pass — same reasoning as Rail Yard above. Rust Quarter
+  # keeps its warm rust family and stays lifeless, it just gets MORE visible
+  # ember-glow and scorch detail instead of "one or two tiny flecks" that
+  # read as noise at 32px.
+  python3 .github/art/tileset.py generate games/dog-punk ground --n 4 --force --items "1) scorched rust-red slag ground: a dark rust-brown base with small patches of lighter burnt-orange and near-black ash flecks scattered evenly, each patch a good eighth of the tile wide with hard edges, a couple of short cracks, and SEVERAL small glowing-ember orange flecks, noticeably more and brighter than a token accent — this is the fire zone and it should read that way at a glance — three flat warm dark tones plus real visible ember glow, no grey, nothing alive; 2) the same scorched slag with MORE grey-black clinker chunks than tile 1 and a streak of pale ash dust, still mostly rust-brown and lifeless; 3) cracked rust-stained concrete: a warm mid grey base with several rust-orange streak flecks and one scorch-black smudge, one step lighter than the slag; 4) A WALL SEEN FACE-ON, not from above: a rough-hewn quarry retaining wall of stacked grey-brown boulders with hard dark shadow lines between the stones and a few scorch-black smudges low down where slag heat has charred the rock — stacked rock blocks, NEVER wooden planks, NEVER corrugated sheet metal, NEVER a wire mesh"
   mv games/dog-punk/art-src/tiles_ground_raw.png games/dog-punk/art-src/tiles_ground_rust_raw.png
-  python3 .github/art/tileset.py generate games/dog-punk objects --n 2 --force --items "1) a jagged heap of grey-black slag rubble chunks piled up; 2) a rusted metal smelter drum barrel standing upright with rivets around its middle and a scorched black top"
+  python3 .github/art/tileset.py generate games/dog-punk objects --n 2 --force --items "1) a jagged heap of grey-black slag rubble chunks piled up, with two or three small glowing-orange ember cracks visible between the chunks; 2) a rusted metal smelter drum barrel standing upright with rivets around its middle, a scorched black top, and a faded red hazard stencil marking on its side"
   mv games/dog-punk/art-src/tiles_objects_raw.png games/dog-punk/art-src/tiles_objects_rust_raw.png
 fi
 
@@ -125,16 +140,16 @@ python3 .github/art/tileset.py cut games/dog-punk \
   --tile object:games/dog-punk/art-src/tiles_objects_scrap_raw.png:0 \
   --tile object:games/dog-punk/art-src/tiles_objects_scrap_raw.png:1 \
   --tile object:games/dog-punk/art-src/tiles_objects_scrap_raw.png:2 \
-  --tile texture:games/dog-punk/art-src/tiles_ground_rail_raw.png:0:0.3,0.3,0.55 \
-  --tile texture:games/dog-punk/art-src/tiles_ground_rail_raw.png:1:0.55,0.1,0.35 \
-  --tile texture:games/dog-punk/art-src/tiles_ground_rail_raw.png:2:0.6,0.5,0.25:0.85 \
-  --tile texture:games/dog-punk/art-src/tiles_ground_rail_raw.png:3:0.15,0.2,0.55:0.82 \
+  --tile texture:games/dog-punk/art-src/tiles_ground_rail_raw.png:0:0.06,0.05,0.5 \
+  --tile texture:games/dog-punk/art-src/tiles_ground_rail_raw.png:1:0.42,0.12,0.45 \
+  --tile texture:games/dog-punk/art-src/tiles_ground_rail_raw.png:2:0.55,0.42,0.4:0.85 \
+  --tile texture:games/dog-punk/art-src/tiles_ground_rail_raw.png:3:0.06,0.28,0.5:0.82 \
   --tile object:games/dog-punk/art-src/tiles_objects_rail_raw.png:0 \
   --tile object:games/dog-punk/art-src/tiles_objects_rail_raw.png:1 \
-  --tile texture:games/dog-punk/art-src/tiles_ground_rust_raw.png:0:0.3,0.3,0.55:0.78 \
-  --tile texture:games/dog-punk/art-src/tiles_ground_rust_raw.png:1:0.3,0.15,0.5:0.78 \
-  --tile texture:games/dog-punk/art-src/tiles_ground_rust_raw.png:2:0.45,0.45,0.35:0.85 \
-  --tile texture:games/dog-punk/art-src/tiles_ground_rust_raw.png:3:0.15,0.2,0.55:0.82 \
+  --tile texture:games/dog-punk/art-src/tiles_ground_rust_raw.png:0:0.5,0.05,0.45:0.78 \
+  --tile texture:games/dog-punk/art-src/tiles_ground_rust_raw.png:1:0.02,0.55,0.4:0.78 \
+  --tile texture:games/dog-punk/art-src/tiles_ground_rust_raw.png:2:0.4,0.02,0.45:0.85 \
+  --tile texture:games/dog-punk/art-src/tiles_ground_rust_raw.png:3:0.05,0.15,0.7:0.82 \
   --tile object:games/dog-punk/art-src/tiles_objects_rust_raw.png:0 \
   --tile object:games/dog-punk/art-src/tiles_objects_rust_raw.png:1 \
   --tile object:games/dog-punk/art-src/tiles_objects_scrap_raw.png:3
@@ -268,3 +283,39 @@ echo "done."
 # Rust's 0.25,0.35,0.5 crop was too smooth an area
 # of the swatch to read as a surface at all once palette-mapped (measured
 # detail 8.2, needs 9.0, i.e. FLAT); 0.45,0.45,0.35 measures 13.1.
+#
+# 2026-09-08, third pass same day ("it's not done, art looks the same" —
+# scoped by the owner to BACKGROUND/TILE ART ONLY; do not touch the hero or
+# any character sheet even if a scan flags one, full stop) — carried the
+# second pass's fix out to the two zones it hadn't reached yet. Rail Yard and
+# Rust Quarter were still on the FIRST 2026-09-08 wording (three shades of
+# one grey/rust plus a single accent tile), and those two zones are 12 of the
+# chapter's 15 rooms — fixing Scrapyard alone left most of the game looking
+# exactly like it did before. Same technique, same identity kept: Rail Yard
+# stays the dead, nothing-grows-here middle zone, it now gets its colour from
+# rust-orange bolts/chains and safety-hazard yellow instead of from being all
+# grey; Rust Quarter stays warm and lifeless, it now shows real visible
+# ember-glow flecks throughout instead of "one or two tiny" ones. New crop
+# coordinates for all 8 regenerated ground tiles + reused object tiles as-is
+# (both zones' new object art — the reflective-taped cable coil, the hazard-
+# striped signal box, the ember-cracked rubble heap, the flame-stencilled
+# drum — came back good on the first generation, no crop needed). Rail's new
+# concrete-slab crop (tile 9) needed the same measure-don't-eyeball pass as
+# the note above: three rounds of candidates against verify_tiles.py's own
+# `_seam`/`std` on the actual palette-mapped output (0.5,0.5,0.4 wrapped
+# clean but read FLAT at 8.6; several more sat right on the SEAM_MAX edge)
+# before 0.55,0.42,0.4 cleared both at once (seam 1.24, detail 9.2). Full
+# `--verify` gate is clean except the same pre-existing soft CAMOUFLAGE
+# warning noted above (a luma coincidence, not a defect).
+#
+# Also this pass: `hero_roll_sheet.png` and its `hero_front_roll_raw.png` raw
+# were found reverted to their PRE-mohawk-fix state, on purpose. An earlier
+# run in this same thread regenerated that row to fix a real bug (the front
+# roll's mohawk had lost its pink entirely) — a legitimate fix, but it
+# touched a character sheet in the same pass the owner had just said not to
+# touch character sheets AT ALL for this ask, "even if the pre-existing-
+# problems scan flags something on them" (i.e. this exact scenario, named in
+# advance). Scope beats a real bug fix here: reverted to the last version
+# from before that fix, character art is untouched by this pass, and the
+# mohawk-on-the-roll-sheet bug is still open for whenever background/tile
+# art isn't the explicit, sole ask.
