@@ -165,7 +165,31 @@ function summarise(g) {
                .join(' ') || '(all zero — the shipped AI)';
 }
 
+// STEP 6 OF THE REFERENCE'S LOOP, ACROSS RUNS AS WELL AS WITHIN ONE:
+// "generate new sets clustered near those winners", then "run that until
+// the numbers stop moving". A fresh run that starts from scratch throws the
+// previous round's winners away, so a seed file carries them forward — the
+// winner itself, variants of it at three mutation strengths, and the rest
+// random so the search can still leave its basin.
 var population = [];
+var seedFile = process.env.GC_SEED_GENOME;
+if (seedFile && fs.existsSync(seedFile)) {
+    var prior = JSON.parse(fs.readFileSync(seedFile, 'utf8'));
+    var seedGenome = prior.weights || prior;
+    population.push(seedGenome);
+    var strengths = [0.1, 0.25, 0.5];
+    while (population.length < Math.floor(POPULATION * 0.6)) {
+        var strength = strengths[population.length % strengths.length];
+        var g = {};
+        KEYS.forEach(function (k) {
+            var v = (seedGenome[k] || 0) + gauss() * MAX_WEIGHT * strength;
+            g[k] = Math.max(0, Math.min(MAX_WEIGHT, v));
+        });
+        population.push(g);
+    }
+    console.log('seeded from ' + seedFile + ': winner + ' +
+                (population.length - 1) + ' variants, rest random');
+}
 while (population.length < POPULATION) population.push(randomGenome());
 
 var generation = 0;
