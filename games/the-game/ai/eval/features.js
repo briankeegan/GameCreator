@@ -182,6 +182,67 @@
     return count;
   }
 
+  // -------------------------------------------------------- chainPotential
+  //
+  // THE BIGGEST CHAIN THIS BOARD COULD FIRE, WITHOUT FIRING IT.
+  //
+  // PUYO_REFERENCE.md names greedy-fires-too-early as the real cap on this
+  // whole approach, and gives the fix in two halves: a patience term, and
+  // "an evaluation that scores the biggest chain I COULD fire rather than
+  // the biggest chain available now". This is the second half, and nothing
+  // here measured it.
+  //
+  // Every other feature reads the board as it stands or a cascade already
+  // running — chainLength scores a chain being fired, latentChain one in
+  // flight. STORED potential had no representation at all, so "I am sitting
+  // on a loaded 5-chain and choosing not to trigger it" was not a state the
+  // evaluator could describe. The consequence was measured before this
+  // existed: a trained set whose LARGEST weight was chainLength=278
+  // produced 0% medium chains on three of four drills. The search could not
+  // find the behaviour because no weight could express it.
+  //
+  // Note what this does NOT score: the swap being considered. It scores the
+  // board that swap LEAVES — its readiness to chain — which is exactly what
+  // a patient player is building and an impatient one is spending. A move
+  // that fires a 2-chain now and leaves a board with nothing loaded will
+  // rank below one that fires nothing and leaves a 4 waiting, if the weight
+  // says so. Whether it should is the search's business, not this
+  // function's.
+  //
+  // COST. This clones and fully resolves the board once per legal swap
+  // (~16-17 on a real board), so it is far and away the most expensive
+  // feature here — everything else reads the grid. Profiled and recorded in
+  // FINDINGS.md rather than assumed; if it has to come down, the lever is
+  // scoring only swaps that matchPotential already flagged.
+  function chainPotential(input) {
+    var board = input.board;
+    // Needs the real LogicalBoard's clone/swap/resolve. A hand-built plain
+    // object (some tests, some call sites) has none of them, and the honest
+    // answer there is 0 rather than a number derived from a second, private
+    // implementation of gravity and matching.
+    if (!board || typeof board.legalSwaps !== 'function' ||
+        typeof board.clone !== 'function' || typeof board.resolve !== 'function') return 0;
+    var swaps = board.legalSwaps(), best = 0;
+    for (var i = 0; i < swaps.length; i++) {
+      var trial = board.clone();
+      trial.swap(swaps[i][0], swaps[i][1]);
+      var r = trial.resolve();
+      if (r.chainLength > best) best = r.chainLength;
+    }
+    return best;
+  }
+
+  // A CHEAP FILTER WAS TRIED HERE AND IS WRONG. The idea: a swap that
+  // matches nothing on the spot cannot start a cascade, so skip the
+  // clone+resolve for those. It passes the 120-board random test in
+  // chainpotential.test.js and it is still wrong — resolve() applies
+  // GRAVITY first, so a swap that drops a panel over a hole can match after
+  // falling, and the filter never sees it. Measured against the full
+  // version on 3,000 boards captured from real play: 10 disagreements, all
+  // that shape, for a 27% saving (66 -> 48 us). Not worth it, and recorded
+  // here so the same shortcut is not re-derived and shipped on the strength
+  // of the random-board test alone.
+
   // ------------------------------------------------------------------ links
   //
   // SAME-COLOURED PANELS ORTHOGONALLY ADJACENT, COUNTED AS PAIRS.
@@ -657,6 +718,7 @@
   return {
     SAFE_FRAMES: SAFE_FRAMES,
     matchPotential: matchPotential,
+    chainPotential: chainPotential,
     travelCost: travelCost,
     _matchedCellsNear: matchedCellsNear,
     latentChain: latentChain,

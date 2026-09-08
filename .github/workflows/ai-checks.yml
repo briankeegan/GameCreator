@@ -67,6 +67,13 @@ jobs:
       - name: Seam reaches every feature
         run: node games/the-game/ai/eval/seam.test.js
 
+      # Does the chain-potential feature agree with actually playing every
+      # swap? It is checked against a brute-force implementation rather than
+      # against its own logic, because a feature that only agrees with
+      # itself is checked against nothing.
+      - name: Chain potential
+        run: node games/the-game/ai/eval/chainpotential.test.js
+
       # IS THE TRAINER PLAYING THE GAME THE BENCHMARK REPORTS? The GA's
       # drills must be full_report.js's drills frame for frame, because a
       # fitness that has drifted from the benchmark is a different question

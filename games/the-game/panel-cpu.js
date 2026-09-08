@@ -2778,5 +2778,10 @@
     stack.setInput(input);
   };
 
-  root.PanelCpu = { Cpu: Cpu, SearchCpu: SearchCpu, DIFFICULTIES: DIFFICULTIES, PreburstReserve: PreburstReserve, TrueSurvivalSearch: TrueSurvivalSearch };
+  // LogicalBoard is exported for TESTS, which need to build a board by hand
+  // and then ask it what a swap would actually do (clone/swap/resolve). The
+  // alternative was a second implementation of gravity and matching living
+  // in the test file, which is how a test ends up agreeing with itself
+  // instead of with the game.
+  root.PanelCpu = { Cpu: Cpu, SearchCpu: SearchCpu, DIFFICULTIES: DIFFICULTIES, PreburstReserve: PreburstReserve, TrueSurvivalSearch: TrueSurvivalSearch, LogicalBoard: LogicalBoard };
 })(typeof window !== "undefined" ? window : globalThis);
