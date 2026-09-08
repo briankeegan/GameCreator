@@ -67,6 +67,16 @@ jobs:
       - name: Seam reaches every feature
         run: node games/the-game/ai/eval/seam.test.js
 
+      # DOES THE TRAINING HARNESS DO WHAT IT CLAIMS? The game code here was
+      # built test-first and had no bugs; the harness around it was
+      # hand-written with none, and every defect an audit found was in the
+      # harness — five of them, all "a number measured one way compared
+      # against a number measured another way", and every one made the
+      # search look like it was failing. One test per bug, on 2-generation
+      # runs so this costs seconds.
+      - name: Training harness
+        run: node games/the-game/ai/eval/training.test.js
+
       # DID THE GAME CHANGE? An optimisation may make things faster; it may
       # not make them different. This hashes the whole board, cursor, score
       # and health on EVERY frame of eight games across both brains, and
