@@ -1,8 +1,8 @@
 {
   "mode": "add",
   "generations": 1,
-  "population": 3,
-  "trainSeeds": [
+  "population": 4,
+  "seedPool": [
     1,
     2,
     3,
@@ -10,50 +10,102 @@
     5,
     6,
     7,
-    8
-  ],
-  "holdoutSeeds": [
+    8,
     9,
     10,
     11,
     12,
     13,
-    14
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40
   ],
-  "trainFitness": 1888.125,
+  "seedsPerGeneration": 12,
+  "holdoutSeeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112
+  ],
+  "trainFitness": 1661.8333333333333,
   "holdout": {
     "learned": {
-      "fitness": 1670.8333333333333,
-      "avgFrames": 1665.5,
-      "avgSent": 10.666666666666666
+      "fitness": 1132.5416666666667,
+      "avgFrames": 1128.6666666666667,
+      "avgSent": 7.75
     },
     "shipped": {
-      "fitness": 1670.8333333333333,
-      "avgFrames": 1665.5,
-      "avgSent": 10.666666666666666
+      "fitness": 1173.25,
+      "avgFrames": 1170.4166666666667,
+      "avgSent": 5.666666666666667
     }
   },
-  "improvementPct": 0,
+  "improvementPct": -3.469706655302217,
   "weights": {
     "matchPotential": 0,
-    "latentChain": 0,
+    "latentChain": 32.66430796713769,
     "links": 0,
     "colourVariance": 0,
     "edgePenalty": 0,
     "garbageOnBoard": 0,
     "incomingGarbage": 0,
     "maxHeight": 0,
-    "fillRatio": 0,
-    "roughness": 0,
+    "fillRatio": 284.8648311034147,
+    "roughness": 284.4946236743101,
     "garbageAdjacency": 0,
     "colourScarcity": 0,
     "garbageSent": 0,
     "chainLength": 0,
-    "garbageCleared": 0,
-    "framesToDeath": 0
+    "garbageCleared": 239.1810984533192,
+    "framesToDeath": 271.5792865825721
+  },
+  "siege": {
+    "learned": {
+      "fitness": 958.0833333333333,
+      "avgFrames": 953.4166666666666,
+      "avgSent": 9.333333333333334
+    },
+    "shipped": {
+      "fitness": 908.5833333333334,
+      "avgFrames": 903.75,
+      "avgSent": 9.666666666666666
+    },
+    "improvementPct": 5.448041823351359
   },
   "timing": {
-    "worstMs": 72,
+    "worstMs": 52,
     "unsafeSeeds": 0
   }
 }

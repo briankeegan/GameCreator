@@ -36,8 +36,28 @@ var POPULATION = Number(process.argv[3] || 20);
 var MODE = process.argv[4] || 'add';
 var WORKERS = Number(process.argv[5] || 4);
 
-var TRAIN_SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
-var HOLDOUT_SEEDS = [9, 10, 11, 12, 13, 14];
+// SEEDS ROTATE EVERY GENERATION, AND THE POOL IS LARGE.
+//
+// The first run of this trainer scored +56% on eight fixed training seeds
+// and -22% on held-out ones. It had not learned to play, it had learned
+// those eight boards — and with the shipped AI itself scoring 1888 on one
+// set and 1671 on the other, eight samples of a quantity that varies that
+// much is simply not a measurement.
+//
+// Two changes, both aimed at the same thing. The pool is 40 seeds instead
+// of 8, and each generation draws a fresh subset of 12 from it, so no fixed
+// set exists to memorise: a genome that wins by suiting one batch is
+// re-tested on a different batch next generation and does not survive.
+// Elites are re-evaluated every generation for the same reason — carrying a
+// stale high score forward is how a lucky batch becomes a permanent king.
+//
+// Costs 50% more per generation (12 seeds rather than 8) and is worth it:
+// the previous run spent an hour producing a number that was worse than
+// doing nothing.
+var SEED_POOL = [];
+for (var sp = 1; sp <= 40; sp++) SEED_POOL.push(sp);
+var SEEDS_PER_GENERATION = 12;
+var HOLDOUT_SEEDS = [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112];
 var KEYS = registry.keys;
 var MAX_WEIGHT = 300;
 
@@ -124,13 +144,30 @@ var generation = 0;
 var best = null, bestFit = -Infinity;
 var t0 = Date.now();
 
+function seedsForGeneration() {
+    // A deterministic shuffle of the pool, different every generation, so a
+    // run is reproducible but no genome ever sees the same batch twice.
+    var pool = SEED_POOL.slice();
+    for (var i = pool.length - 1; i > 0; i--) {
+        var j = Math.floor(rng() * (i + 1));
+        var t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+    }
+    return pool.slice(0, SEEDS_PER_GENERATION);
+}
+
 function step() {
-    evaluateAll(population, TRAIN_SEEDS, function (results) {
+    var genSeeds = seedsForGeneration();
+    evaluateAll(population, genSeeds, function (results) {
         var scored = population.map(function (g, i) {
             return { genome: g, fit: (results[i] && results[i].fitness) || 0, detail: results[i] };
         });
         scored.sort(function (a, b) { return b.fit - a.fit; });
-        if (scored[0].fit > bestFit) { bestFit = scored[0].fit; best = scored[0].genome; }
+        // Best-of-generation, NOT best-ever: fitnesses from different
+        // generations are measured on different seed batches and are not
+        // comparable. Keeping a best-ever across batches would just keep
+        // whichever genome drew the easiest twelve.
+        bestFit = scored[0].fit;
+        best = scored[0].genome;
 
         var zeroFit = scored.find(function (s) { return KEYS.every(function (k) { return s.genome[k] === 0; }); });
         console.log('gen ' + String(generation + 1).padStart(2) + '/' + GENERATIONS +
@@ -197,7 +234,8 @@ function finish() {
             mode: MODE,
             generations: GENERATIONS,
             population: POPULATION,
-            trainSeeds: TRAIN_SEEDS,
+            seedPool: SEED_POOL,
+            seedsPerGeneration: SEEDS_PER_GENERATION,
             holdoutSeeds: HOLDOUT_SEEDS,
             trainFitness: bestFit,
             holdout: { learned: learned, shipped: shipped },
