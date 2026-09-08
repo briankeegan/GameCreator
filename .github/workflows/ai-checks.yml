@@ -67,6 +67,14 @@ jobs:
       - name: Seam reaches every feature
         run: node games/the-game/ai/eval/seam.test.js
 
+      # Are the numbers right FOR THE BOARD BEING RANKED? Every other suite
+      # either builds the board by hand or checks a single call, so a stale
+      # board or a wrong candidate passes all of them. This intercepts real
+      # evaluations mid-game and recomputes each feature with a second,
+      # deliberately naive implementation.
+      - name: Live-value oracle
+        run: node games/the-game/ai/eval/oracle.test.js
+
       # THE ONE THAT PLAYS THE GAME. The three suites above can all be green
       # while the evaluator does nothing: one scores hand-built inputs, one
       # compares fromStack to a Stack, one checks single calls to patched
