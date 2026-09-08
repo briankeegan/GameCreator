@@ -67,12 +67,16 @@ if [ -n "$champion" ]; then
   # a champion crowned on one game. Each looked like the search failing.
   # A number is only comparable to another number measured the same way, so
   # this checks rather than trusts.
-  champScore=$(node -e "
-    var d=require('$champion');
+  # The path goes through the ENVIRONMENT, not string-interpolated into the
+  # JavaScript. Interpolated, a path parses as a bare identifier and the
+  # guard dies with a ReferenceError instead of doing its job — which is
+  # exactly how it failed the first time it ever ran.
+  champScore=$(GC_CHAMP_FILE="$champion" node -e "
+    var d=require(process.env.GC_CHAMP_FILE);
     var want=require('./seeds.js').FINALS;
     var got=(d.finalsSeeds||[]).join(',');
     if (got !== want.join(',')) {
-      console.error('CHAMPION SEEDS MISMATCH: ' + ($champion ? '$champion' : '?'));
+      console.error('CHAMPION SEEDS MISMATCH: ' + process.env.GC_CHAMP_FILE);
       console.error('  measured on: ' + (got || '(none recorded — a result from before finals selection)'));
       console.error('  this run uses: ' + want.join(','));
       console.error('  Re-measure its weights on the current finals seeds before using it as a bar.');
