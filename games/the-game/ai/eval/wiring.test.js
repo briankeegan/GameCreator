@@ -27,7 +27,23 @@ var SEEDS = [1, 2, 3];
 var tests = [], failures = [];
 function test(name, fn) { tests.push({ name: name, fn: fn }); }
 function zeros() { var z = {}; registry.keys.forEach(function (k) { z[k] = 0; }); return z; }
-function frames(w, opts) { return SEEDS.map(function (s) { return bench.run(w, s, opts).frames; }); }
+// THE TIMING GUARD MUST BE OFF HERE, and leaving it on cost four laws.
+//
+// bench.run BREAKS OUT of the game loop when a decision exceeds the wall
+// clock margin. Wall clock is not deterministic: under load the same weights
+// on the same seed stop at different frames, so "at zero weights the game
+// plays exactly as shipped" and "the benchmark is deterministic" both fail
+// for a reason that has nothing to do with either. Measured: the shipped arm
+// read 560 frames on one run and 2546 on the next.
+//
+// It was latent while the evaluator was cheap and bit as soon as travel cost
+// and a seventeenth feature made it slower. These laws are about BEHAVIOUR;
+// speed is verify.js's separate pass, where it is measured single-threaded
+// and means something.
+function frames(w, opts) {
+    var o = Object.assign({ checkTiming: false }, opts || {});
+    return SEEDS.map(function (s) { return bench.run(w, s, o).frames; });
+}
 
 // LAW 1. An untrained evaluator is neutral, not a handicap.
 test('LAW: at zero weights the game plays EXACTLY as shipped', function () {
@@ -84,6 +100,18 @@ test('LAW: weighting features changes play at all', function () {
 // What is left is genuinely not exercised BY THIS BENCHMARK — which is a
 // statement about bench.js, not about the features, and each one names the
 // specific condition that would have to change.
+// AND THE LIST SURVIVED THE CURSOR CHANGE, WHICH IS WORTH RECORDING.
+// Making the cpu walk to its swaps looked like it should revive all five
+// — once travel breaks ties, a feature that only nudges a ranking should
+// start deciding moves — and for one run it appeared to, with this law
+// failing the other way round to say they DO change play now. That
+// reading was false. It came from running the benchmark with its timing
+// guard on, under parallel load, where a slow decision cuts a game short:
+// the shipped arm alone scored 560 frames on one run and 2546 on the
+// next, so every comparison in this file was measuring the machine.
+// Deterministic, all five are still dead, for the same reasons they
+// always were. A law that reports the opposite of the truth is worse than
+// one that reports nothing, and the cause was in the harness both times.
 var UNREACHABLE = {
     latentChain: 'needs a live cascade mid-flight; every position bench.js scores has already settled, so chainMarks is null. A benchmark that evaluated DURING a pop would reach it',
     garbageOnBoard: 'varies between candidates only when a match clears garbage, which garbageCleared already measures more directly',
