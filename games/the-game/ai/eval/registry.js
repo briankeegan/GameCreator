@@ -38,8 +38,30 @@
     { key: 'chainPotential',   group: 'board',  sign: +1, fn: null,
       what: 'The deepest cascade any single legal swap could set off from this settled board. The board it LEAVES, not the move being made — stored potential, which nothing else here could see. PUYO_REFERENCE.md names its absence as the real cap: a scorer that values the board now fires the moment a chain exists, so potential never accumulates. Costs ~66us (a clone+resolve per legal swap), by far the most expensive feature here.' },
 
-    { key: 'latentChain',      group: 'board',  sign: +1, fn: null,
-      what: 'Will this landing continue the chain: does a cell carrying the chain flag settle into a match. Forward-looking half of chainLength.' },
+    // latentChain WAS HERE AND HAS BEEN REMOVED. It scored whether a cell
+    // already carrying the chain flag settles into a match — the
+    // forward-looking half of chainLength, meant to spot a move that
+    // EXTENDS a cascade already in flight.
+    //
+    // It never fired. Not in one brain, in either of them, ever. It sat on
+    // wiring.test.js's UNREACHABLE list for the search brain the whole time
+    // it existed, and under the Puyo brain it measured a spread of 0.00
+    // across the candidates of every decision in three full games — while
+    // the GA, unable to tell that a dimension does nothing, assigned it 267
+    // out of 300. One of eighteen search dimensions was a knob attached to
+    // nothing, being tuned every round.
+    //
+    // The reason is structural, not a wiring fault: it needs a decision
+    // made MID-CASCADE, and _cascadePrediction returns null unless panels
+    // are in flight. Both brains decide on cooldown boundaries, when the
+    // board has settled — 0 of 33 calls returned anything in a full game.
+    //
+    // Making it fire would mean a bot that re-decides during a cascade,
+    // which is chain-extension logic — a mechanism the Puyo design
+    // deliberately does not have, and which SearchCpu already implements
+    // (_chainExtendMove). Adding it here would be rebuilding that bot. If a
+    // brain ever does decide mid-cascade, the feature is in git history and
+    // its implementation is intact in features.js.
 
     { key: 'links',            group: 'board',  sign: +1, fn: null,
       what: 'Same-coloured panels orthogonally adjacent. meatfighter\'s single biggest term (25%) — the density that makes chains happen without any chain logic.' },
@@ -53,8 +75,26 @@
     { key: 'garbageOnBoard',   group: 'board',  sign: -1, fn: null,
       what: 'Garbage cells present, on-screen weighted above off-screen.' },
 
-    { key: 'incomingGarbage',  group: 'board',  sign: -1, fn: null,
-      what: 'Attacks queued but not yet landed, by panel count. Committed height the board cannot see yet.' },
+    // incomingGarbage WAS HERE AND HAS BEEN REMOVED. It measured the garbage
+    // queued against this board — which matters enormously to how the game
+    // should be played, and which this scoring scheme cannot act on.
+    //
+    // It is a property of the QUEUE, not of the move. Every candidate in a
+    // decision faces the same incoming garbage, so it contributes the
+    // identical number to all of them and cancels out of the ranking.
+    // Measured: varied in 0 of 179 decisions across five real games. Not
+    // rarely — never, and by construction.
+    //
+    // Using it would need an INTERACTION — "when garbage is coming, care
+    // more about height" — and a weighted sum cannot express one. That is a
+    // limit of the method rather than of the wiring, and it is why all seven
+    // of meatfighter's features describe the board a move LEAVES instead of
+    // any global state.
+    //
+    // The information is not lost: garbageCleared (does this move clear a
+    // slab), garbageAdjacency (does it set one up) and garbageOnBoard (what
+    // is left afterwards) all vary between candidates and are alive.
+
 
     { key: 'maxHeight',        group: 'board',  sign: -1, fn: null,
       what: 'Highest occupied row, plus displacement.' },
@@ -83,8 +123,20 @@
     { key: 'travelCost',       group: 'move',   sign: -1, fn: null,
       what: 'Frames to bring the cursor from where it is to this candidate swap, per travel.js — real frames, since the cpu walks there (panel-cpu.js beginWalk) rather than teleporting with stack.touchSwap as it used to. One step is 1 frame, four is 13. Set by whichever seam knows the move; 0 when the move is unknown.' },
 
-    { key: 'framesToDeath',    group: 'clock',  sign: +1, fn: null,
-      what: 'toppedOut ? preStop + stop + shake + health : Infinity — and Infinity while riseLock holds, since health only drains inside (!riseLock && stopTime === 0). Replaces stop/health/shake as separate features: they do not sit beside each other, they PAUSE each other.' }
+    // framesToDeath WAS HERE AND HAS BEEN REMOVED. It counted the frames
+    // before this board kills you, saturating at SAFE_FRAMES for anything
+    // not actively topping out.
+    //
+    // At level 10 it is saturated on every candidate of every decision:
+    // varied in 0 of 179 decisions across five real games, biggest spread 0.
+    // maxHealth is 1 there, so the window it would discriminate in — topped
+    // out but not yet dead — does not exist. It added a large constant to
+    // every score and never broke a tie, while being by far the biggest
+    // number in the evaluator (mean 586 against everything else under 22)
+    // and therefore the most dangerous thing in it if that ever changed.
+    //
+    // maxHeight and fillRatio carry the "how close to death is this board"
+    // signal, vary between candidates, and are counts like everything else.
   ];
 
   var byKey = {};

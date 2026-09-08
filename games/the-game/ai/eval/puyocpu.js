@@ -65,11 +65,6 @@
     this._driveWalk = PanelCpu.SearchCpu.prototype._driveWalk;
     this._nearestSwappable = PanelCpu.SearchCpu.prototype._nearestSwappable;
     this._snapshot = PanelCpu.SearchCpu.prototype._snapshot;
-    // Borrowed so latentChain has something to read: it scores whether a
-    // cell already carrying the chain flag settles into a match, which is a
-    // property of the LIVE stack mid-cascade and cannot be derived from a
-    // candidate board.
-    this._cascadePrediction = PanelCpu.SearchCpu.prototype._cascadePrediction;
     this.cursorMoveFrames = opts.cursorMoveFrames || 4;
     // Same as SearchCpu's nightmare preset, so a comparison between the
     // two is about the SCORING and not about which one acts more often.
@@ -132,23 +127,15 @@
     var frames = 0;
     if (move) frames = travel.cost(stack.curRow, stack.curCol, move[0], move[1]);
 
-    var input = inputMod.fromStack(stack, board, resolved, this._cascade(), cleared);
+    // No cascade prediction: latentChain was the only feature that read
+    // chainMarks and it has been removed, so computing one every candidate
+    // would be work nothing consumes.
+    var input = inputMod.fromStack(stack, board, resolved, null, cleared);
     input.travelFrames = frames;
     return evaluator.evaluate(input, this.weights).score;
   };
 
-  // The cascade in flight is a property of this FRAME, not of the candidate
-  // being scored, so it is computed once and reused across every candidate
-  // of a decision — the same rule attach.js follows for the other brain.
-  PuyoCpu.prototype._cascade = function () {
-    var clock = this.stack ? this.stack.clock : 0;
-    if (this.__cascadeAt !== clock) {
-      this.__cascadeAt = clock;
-      try { this.__cascade = this._cascadePrediction(); }
-      catch (e) { this.__cascade = null; }
-    }
-    return this.__cascade;
-  };
+
 
   PuyoCpu.prototype._decide = function () {
     var board = this._snapshot();

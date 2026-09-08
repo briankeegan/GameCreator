@@ -796,16 +796,41 @@ test('framesToDeath: a board that is not topped out is SAFE, and safe is a NUMBE
     assert.ok(isFinite(F.SAFE_FRAMES) && F.SAFE_FRAMES > 0);
 });
 
-test('framesToDeath: a safe board and a doomed board do not tie once weighted', function () {
-    var w = { framesToDeath: 1, maxHeight: 50 };
-    var short = evaluator.evaluate({ board: board(['......', '......', '1.....']),
-                                     clock: { toppedOut: false } }, w);
-    var tall  = evaluator.evaluate({ board: board(['111111', '111111', '111111']),
-                                     clock: { toppedOut: false } }, w);
-    assert.ok(isFinite(short.score) && isFinite(tall.score), 'scores must be finite');
-    assert.notStrictEqual(short.score, tall.score,
-        'the clock term swallowed the board term — this is the Infinity bug');
-    assert.ok(short.score > tall.score, 'the shorter board must still win');
+// The framesToDeath weighting test that lived here is gone with the
+// feature. What it guarded — one term swallowing all the others — is now
+// guarded generally rather than for one feature: puyocpu.test.js's "no
+// feature is silently dead" measures every feature's spread within a
+// decision, which catches both a term that dominates and a term that never
+// varies. framesToDeath failed the second of those: 0 of 179 decisions.
+test('no single feature can swamp the rest at equal weight', function () {
+    // The general form of the Infinity bug. Every feature at weight 1, on
+    // two boards that differ in every way; no single term may account for
+    // more than most of the gap, or that term IS the evaluator.
+    var w = {};
+    registry.keys.forEach(function (k) { w[k] = 1; });
+    var a = evaluator.evaluate({ board: board(['......', '......', '1.....']),
+                                 clock: { toppedOut: false } }, w);
+    var b = evaluator.evaluate({ board: board(['111111', '111111', '111111']),
+                                 clock: { toppedOut: false } }, w);
+    assert.ok(isFinite(a.score) && isFinite(b.score), 'scores must be finite');
+    // Against the TOTAL absolute movement, not the net gap. Terms have
+    // opposite signs and cancel, so a single term's change can legitimately
+    // exceed the net difference — measured at 143% for links, which is why
+    // the first version of this test was wrong rather than the code.
+    assert.notStrictEqual(a.score, b.score, 'two very different boards scored identically');
+    var moves = registry.keys.map(function (k) {
+        return { key: k, d: Math.abs((a.terms[k] || 0) - (b.terms[k] || 0)) };
+    });
+    var total = moves.reduce(function (s, m) { return s + m.d; }, 0);
+    assert.ok(total > 0, 'no term moved at all between two different boards');
+    moves.forEach(function (m) {
+        assert.ok(m.d <= total * 0.75,
+            m.key + ' is ' + (100 * m.d / total).toFixed(0) + '% of all the movement ' +
+            'between two boards at equal weight. A feature that large is not ' +
+            'contributing to the score, it is the score — which is what framesToDeath ' +
+            '(mean 586 against everything else under 22) and travelCost in frames ' +
+            '(spread 21 against a next-biggest of 2.8) both were.');
+    });
 });
 
 test('framesToDeath: it saturates rather than growing without bound', function () {
@@ -917,8 +942,24 @@ test('garbageCleared: it is cells, so a whole slab outweighs one cell', function
 // the move passes nothing, and this reads 0 — no cost invented where none
 // is known.
 
-test('travelCost: reports the frames the seam measured', function () {
-    assert.strictEqual(F.travelCost(inputMod.normalize({ travelFrames: 21 })), 21);
+test('travelCost: converts the seam\'s frames into STEPS', function () {
+    // The seam measures FRAMES, because that is what a walk costs. The
+    // feature reports STEPS, because that is the scale every other feature
+    // lives on — each of the others is a count of something on the board and
+    // spreads under about 3 across the candidates of a decision, while this
+    // one spread 21.12 in frames, seven times the next biggest. At any
+    // weight that mattered it stopped contributing to a decision and became
+    // it: the GA pinned it at exactly 0, and a champion trained while the
+    // feature was accidentally dead collapsed from 1123 frames to 429 the
+    // moment it went live at weight 173.
+    //
+    // travel.js prices a walk at MOVE_FRAMES * (steps - 1) + 1, so at
+    // cadence 4, 21 frames is 6 steps. Nothing is lost — the cost is
+    // monotonic in steps — and the cadence stays in the simulation that
+    // charges for it instead of being counted twice.
+    assert.strictEqual(F.travelCost(inputMod.normalize({ travelFrames: 21 })), 6);
+    assert.strictEqual(F.travelCost(inputMod.normalize({ travelFrames: 1 })), 1);
+    assert.strictEqual(F.travelCost(inputMod.normalize({ travelFrames: 13 })), 4);
 });
 
 test('travelCost: an unknown move costs nothing, rather than something invented', function () {
@@ -936,8 +977,8 @@ test('travelCost: it is a MAGNITUDE — the registry carries the sign', function
 
 test('travelCost: weighting it subtracts through the evaluator', function () {
     var r = evaluator.evaluate({ travelFrames: 21 }, { travelCost: 2 });
-    assert.strictEqual(r.features.travelCost, 21);
-    assert.strictEqual(r.terms.travelCost, -42);
+    assert.strictEqual(r.features.travelCost, 6, '21 frames at cadence 4 is 6 steps');
+    assert.strictEqual(r.terms.travelCost, -12, 'sign -1 times weight 2 times 6 steps');
 });
 
 // ------------------------------------------------------------------ runner

@@ -1,44 +1,58 @@
 {
-  "puyo/champion/s101": {
-    "frames": 429,
-    "score": 0,
-    "sent": 0,
-    "hash": 2105907279
-  },
-  "puyo/champion/s102": {
-    "frames": 323,
-    "score": 0,
-    "sent": 0,
-    "hash": 444262628
-  },
-  "puyo/champion/s103": {
-    "frames": 429,
-    "score": 0,
-    "sent": 0,
-    "hash": 2175816708
-  },
   "puyo/handpicked/s101": {
     "frames": 457,
     "score": 60,
     "sent": 0,
-    "hash": 309898363
+    "hash": 309898363,
+    "swaps": 20
+  },
+  "puyo/handpicked/s102": {
+    "frames": 504,
+    "score": 30,
+    "sent": 0,
+    "hash": 2226049019,
+    "swaps": 22
+  },
+  "puyo/aggressive/s101": {
+    "frames": 549,
+    "score": 250,
+    "sent": 14,
+    "hash": 881051528,
+    "swaps": 6
+  },
+  "puyo/aggressive/s102": {
+    "frames": 430,
+    "score": 140,
+    "sent": 3,
+    "hash": 1611254103,
+    "swaps": 7
+  },
+  "puyo/tidy/s102": {
+    "frames": 431,
+    "score": 120,
+    "sent": 0,
+    "hash": 3489256661,
+    "swaps": 9
   },
   "puyo/zero/s101": {
     "frames": 429,
     "score": 0,
     "sent": 0,
-    "hash": 2105907279
+    "hash": 2105907279,
+    "swaps": 0
   },
   "search/shipped/s101": {
     "frames": 546,
     "score": 200,
     "sent": 5,
-    "hash": 3030838118
+    "hash": 3030838118,
+    "swaps": 19
   },
-  "search/champion/s102": {
-    "frames": 664,
-    "score": 290,
+  "search/aggressive/s102": {
+    "frames": 542,
+    "score": 200,
     "sent": 6,
-    "hash": 1053236815
+    "hash": 2410198944,
+    "swaps": 24
   }
 }

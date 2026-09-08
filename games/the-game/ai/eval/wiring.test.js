@@ -113,11 +113,8 @@ test('LAW: weighting features changes play at all', function () {
 // always were. A law that reports the opposite of the truth is worse than
 // one that reports nothing, and the cause was in the harness both times.
 var UNREACHABLE = {
-    latentChain: 'needs a live cascade mid-flight; every position bench.js scores has already settled, so chainMarks is null. A benchmark that evaluated DURING a pop would reach it',
     garbageOnBoard: 'varies between candidates only when a match clears garbage, which garbageCleared already measures more directly',
-    incomingGarbage: 'a property of the queue, not of the move, so it is identical across every candidate of a decision and can never break a tie',
     colourScarcity: 'level 3 plays 5 colours and the drill never starves one; a higher level or a longer run would',
-    framesToDeath: 'saturates at SAFE_FRAMES on every candidate until the board is genuinely topping out, which this pressure level rarely reaches'
 };
 
 test('LAW: every feature is reachable, or listed as unreachable on purpose', function () {

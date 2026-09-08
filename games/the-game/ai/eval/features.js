@@ -17,6 +17,9 @@
 // Features are added ONE AT A TIME, each with the test that proves it
 // measures what registry.js says it measures — in BOTH directions. See
 // README.md for the four steps.
+// panel-cpu.js's CURSOR_MOVE_FRAMES — the tap cadence travel.js prices with.
+var MOVE_FRAMES = 4;
+
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.PanelEval = root.PanelEval || {}, root.PanelEval.features = factory();
@@ -599,8 +602,38 @@
   // candidate. A seam that cannot see the move passes nothing and this
   // reads 0 — better than inventing a cost, which would price every
   // candidate identically and quietly re-introduce teleporting.
+  // MEASURED IN CURSOR STEPS, NOT FRAMES, AND THAT IS THE WHOLE POINT.
+  //
+  // Every other feature here is a COUNT of something — panels, links, rows,
+  // colours — and lands between 0 and about 3 across the candidates of a
+  // decision. This one returned FRAMES. Measured spread within a decision:
+  //
+  //     travelCost   21.12        links             2.82
+  //     roughness     2.21        colourVariance    1.68
+  //     everything else below 1.1
+  //
+  // Seven times the next-biggest, so at any weight that matters it does not
+  // contribute to a decision, it IS the decision. Both consequences were
+  // visible: the GA settled it at exactly 0, the only value that does not
+  // wreck the bot, and a champion trained while this feature was
+  // accidentally dead collapsed from 1123 frames to 429 the instant it went
+  // live at weight 173 — it had decided moving was never worth it.
+  //
+  // Neither of those means travel does not matter. It matters a great deal:
+  // this bot walks its cursor and pays real frames for distance. They mean
+  // a unit mismatch left the search no way to say "care a little".
+  //
+  // Steps put it in the same range as everything else — a 4-step move reads
+  // 4, not 13 — so a weight of 50 here means what a weight of 50 means
+  // anywhere else. No information is lost: travel.js's frame cost is
+  // monotonic in steps, and the CADENCE belongs in the simulation that
+  // charges for it, not counted twice in the feature and again in the
+  // weight.
   function travelCost(input) {
-    return input.travelFrames || 0;
+    var frames = input.travelFrames || 0;
+    if (frames <= 0) return 0;
+    // Inverse of travel.js's g * (steps - 1) + 1.
+    return 1 + (frames - 1) / MOVE_FRAMES;
   }
 
   // -------------------------------------------------------- framesToDeath

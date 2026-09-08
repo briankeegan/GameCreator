@@ -146,13 +146,13 @@ var REACHABLE = [
     ['colourScarcity', function (cpu) {
         var b = blank(cpu); b.grid[1][1] = 4; b.grid[1][2] = 4; return b;   // two of a colour
     }],
-    ['incomingGarbage', function (cpu) {
-        // queued and NOT landed — the grid cannot show it, which is the
-        // entire point of the feature, so nothing is run afterwards.
-        cpu.stack.receiveGarbage([{ width: 6, height: 2, isChain: false }]);
-        return blank(cpu);
-    }],
-    ['framesToDeath', function (cpu) { return blank(cpu); }],   // Infinity on a safe board
+    // incomingGarbage and framesToDeath had rows here and the features are
+    // gone: both were provably unable to change a decision. incomingGarbage
+    // is a property of the QUEUE, identical across every candidate of a
+    // decision, so it cancels out of the ranking — varied in 0 of 179
+    // decisions, by construction. framesToDeath sat pinned at its ceiling on
+    // every candidate at level 10 — also 0 of 179. Reachability through the
+    // seam was never the problem; both were reachable and inert.
     ['garbageSent', function (cpu) { return blank(cpu); }],     // fed by cumGarbage
     ['chainLength', function (cpu) { return blank(cpu); }],     // fed by cumChain
     ['garbageCleared', function (cpu) {
@@ -204,17 +204,14 @@ var REACHABLE = [
         }
         return b;
     }],
-    ['latentChain', function (cpu) {
-        // Mid-cascade is a live-stack condition the adapter reads through
-        // _cascadePrediction, so this stubs that method and asserts the
-        // SEAM carries its chainMarks into the input — which is the only
-        // thing this file is testing. Whether the prediction itself is
-        // right is panel-cpu.js's business.
-        var b = blank(cpu);
-        b.grid[1][1] = 1; b.grid[1][2] = 1; b.grid[1][3] = 1;
-        cpu._cascadePrediction = function () { return { chainMarks: { '1:2': true } }; };
-        return b;
-    }]
+    // latentChain had a row here and the feature is gone. It needed a
+    // decision made MID-CASCADE — _cascadePrediction returns null unless
+    // panels are in flight — and both brains decide on cooldown boundaries,
+    // when the board has settled. It never fired once, in either brain, in
+    // any game, while the GA assigned it up to 282 of 300. The row above
+    // only ever passed because it STUBBED _cascadePrediction, which is worth
+    // noting: a reachability test that installs the condition it is testing
+    // for proves the seam carries a value, not that the value ever occurs.
 ];
 
 test('EVERY feature is reachable through the seam, each on a board that makes it fire', function () {
@@ -304,7 +301,11 @@ test('the cascade prediction is computed once per frame, not once per candidate'
     var real = cpu._cascadePrediction;
     cpu._cascadePrediction = function () { calls++; return real.apply(this, arguments); };
 
-    var detach = attach(SearchCpu, { latentChain: 1 });
+    // Any weight will do: attach.js computes the prediction once per frame
+    // regardless of which features are weighted, which is the behaviour
+    // under test. It used to be latentChain here, for the feature that read
+    // chainMarks; that feature is gone and the caching still matters.
+    var detach = attach(SearchCpu, { maxHeight: 1 });
     try {
         var board = cpu._snapshot();
         for (var i = 0; i < 50; i++) cpu._evaluate(board, 0, 0, 0);
@@ -319,7 +320,7 @@ test('a throwing cascade prediction does not take the evaluation down with it', 
     var cpu = liveCpu();
     var real = cpu._cascadePrediction;
     cpu._cascadePrediction = function () { throw new Error('boom'); };
-    var detach = attach(SearchCpu, { latentChain: 1, maxHeight: 1 });
+    var detach = attach(SearchCpu, { maxHeight: 1 });
     try {
         var score = cpu._evaluate(cpu._snapshot(), 0, 0, 0);
         assert.ok(isFinite(score), 'evaluation died with the prediction');
@@ -562,7 +563,7 @@ test('an unknown mode is refused rather than silently treated as add', function 
 //   _defensiveKey(res, garbageCleared, dropAmount, toppedOutNow)
 //
 // It is not given the candidate board. So the EARNED and CLOCK features —
-// garbageSent, chainLength, garbageCleared, framesToDeath, incomingGarbage
+// garbageSent, chainLength, garbageCleared
 // — can act here, and the BOARD features cannot. Feeding them would mean
 // changing that signature in panel-cpu.js, which is a separate, larger
 // change and is recorded as such rather than smuggled in.
@@ -601,7 +602,7 @@ test('_defensiveKey: a weighted earned feature changes the defensive ranking', f
     var res = { chainLength: 3, comboSizes: [5], garbage: [] };
     var shipped = cpu._defensiveKey(res, 4, 1, false);
     var moved = false;
-    ['chainLength', 'garbageCleared', 'framesToDeath'].forEach(function (key) {
+    ['chainLength', 'garbageCleared', 'garbageSent'].forEach(function (key) {
         var w = {}; w[key] = 250;
         var detach = attach(SearchCpu, w);
         try { if (cpu._defensiveKey(res, 4, 1, false) !== shipped) moved = true; }

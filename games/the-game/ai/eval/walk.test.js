@@ -49,6 +49,15 @@ function watch(seed) {
         difficulty: 'nightmare', seed: seed + 55, mistake: 0, chainExtend: true
     });
 
+    // WRAPPING A STACK METHOD IS SAFE ONLY BECAUSE OF THE GUARD BELOW.
+    // Assigning here puts an OWN field on the instance, shadowing the
+    // prototype. TrueSurvivalSearch._cloneStack copies own fields into
+    // every simulated future, and a copied closure is still bound to the
+    // ORIGINAL stack — so without the guard, each rollout's hypothetical
+    // swaps would land on the live match. It went unnoticed for a while:
+    // this file's laws hold on a corrupted game just as well as a real one,
+    // and the corruption only surfaced as a 546-frame game becoming a
+    // 681-frame one in identity.test.js. See the last test in this file.
     var offCursorSwaps = [];
     var origQueue = stack.tryQueueSwap;
     stack.tryQueueSwap = function (row, col) {
@@ -128,6 +137,50 @@ test('every queued swap happens at the cursor', function () {
         'swaps were queued away from the cursor:\n  ' + bad.join('\n  ') +
         '\nThat is touchSwap: it queues at (row,col) and moves the cursor there ' +
         'afterwards, which is the teleport this whole file exists to forbid.');
+});
+
+test('instrumenting the real stack cannot leak into a simulated future', function () {
+    // THE GUARD THIS FILE DEPENDS ON, checked in both directions.
+    //
+    // The rule: a rollout is a HYPOTHETICAL. Nothing it does may touch the
+    // real match. _cloneStack copies every own-enumerable field of the
+    // Stack, and its own comment justified that with "the only
+    // instance-level function field anywhere on Stack is rng" — true of the
+    // shipped code and false the moment any test wraps a method to watch
+    // it, which both this file and identity.test.js do. A function survives
+    // _deepClone by reference, so the clone called a closure bound to the
+    // real stack.
+    //
+    // Direction 1: the clone must NOT carry an own method planted on the
+    // original — it must fall through to the prototype.
+    var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
+    var calls = [];
+    var real = stack.tryQueueSwap;
+    stack.tryQueueSwap = function (r, c) { calls.push([r, c]); return real.call(this, r, c); };
+
+    var clone = PanelCpu.TrueSurvivalSearch._cloneStack(stack, 12345);
+    assert.ok(!Object.prototype.hasOwnProperty.call(clone, 'tryQueueSwap'),
+        'the clone carries the wrapper as an own field, so a simulated swap runs the ' +
+        'observer that is closed over the REAL stack');
+    assert.strictEqual(clone.tryQueueSwap, Object.getPrototypeOf(stack).tryQueueSwap,
+        'the clone is not using the prototype method, so it is not behaving like an ' +
+        'uninstrumented stack');
+
+    // Direction 2: it must still copy ordinary DATA fields, or the guard
+    // has been written so broadly that a clone starts a different game.
+    stack.gcMarker = { deep: [1, 2, 3] };
+    var clone2 = PanelCpu.TrueSurvivalSearch._cloneStack(stack, 12345);
+    assert.deepStrictEqual(clone2.gcMarker, { deep: [1, 2, 3] },
+        'plain data stopped being cloned — the function guard is too broad');
+    assert.notStrictEqual(clone2.gcMarker, stack.gcMarker,
+        'the clone shares a data object with the original rather than copying it');
+
+    // And the observable end of it: a swap on the clone must not call the
+    // observer that was attached to the original.
+    calls.length = 0;
+    clone.tryQueueSwap(1, 1);
+    assert.deepStrictEqual(calls, [],
+        'a swap inside a clone ran the real stack\'s observer — the leak is back');
 });
 
 tests.forEach(function (t) {

@@ -2375,6 +2375,19 @@
       for (var key in stack) {
         if (!Object.prototype.hasOwnProperty.call(stack, key)) continue;
         if (key === "rng") continue;
+        // AN INSTANCE-LEVEL METHOD IS NEVER COPIED, and this is not
+        // hypothetical tidiness. The comment above says the only function
+        // field on a Stack is rng; a test broke that assumption by wrapping
+        // stack.tryQueueSwap to count swaps, which shadowed the prototype
+        // with an own field. _deepClone returns a function unchanged, so
+        // the clone inherited a wrapper CLOSED OVER THE REAL STACK -- every
+        // swap inside a simulated future executed on the live match. The
+        // game went from 546 frames to 681 and looked perfectly plausible.
+        // Skipping the field leaves the prototype's real method in place,
+        // so a clone behaves exactly as if nothing were instrumenting the
+        // original -- which is the only thing an observer can be allowed to
+        // do to a simulation.
+        if (typeof stack[key] === "function") continue;
         clone[key] = key === "levelData" ? stack[key]
           : key === "panels" ? TrueSurvivalSearch._clonePanels(stack[key])
             : TrueSurvivalSearch._deepClone(stack[key]);
