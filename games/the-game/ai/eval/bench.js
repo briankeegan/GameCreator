@@ -190,36 +190,62 @@ exports.run = function (weights, seed, opts) {
         PanelCpu.SearchCpu.prototype._choose = origChoose;
         if (detach) detach();
     }
-    return { frames: f, sent: sent, localMax: localMax,
+    return { frames: f, sent: sent, score: stack.score || 0, localMax: localMax,
              unsafe: checkTiming && localMax > TIMING_MARGIN_MS };
 };
 
-// FITNESS IS FRAMES SURVIVED, WITH GARBAGE SENT AS A TIE-BREAK ONLY.
+// TWO OBJECTIVES, AND CHOOSING BETWEEN THEM IS THE REAL DECISION.
 //
-// Survival is the thing the benchmark applies pressure to, and it is what
-// the shipped scoring is already good at, so it is the honest comparison.
-// Sent is folded in at a deliberately small factor: two genomes that
-// survive equally are not equally good, and without a tie-break the GA has
-// no gradient at all between them — but weight it heavily and it learns to
-// attack while drowning, which is the failure the survival benchmark exists
-// to avoid.
+// PUYO_REFERENCE.md calls this one of only two things that are ours to
+// decide, and the one that "silently defines everything the bot becomes":
 //
-// An unsafe genome scores 0 outright. A config that cannot decide inside a
-// frame is not a faster player, it is a broken one.
+//   "train against survival time and you get a bot that clears constantly
+//    and never builds; train against damage dealt and you get one that
+//    hoards. Same features, same search, completely different opponent."
+//
+// meatfighter trained against FINAL SCORE, and this engine has one —
+// panel-engine.js ports Panel Attack's real Tsu-Attack tables, where a
+// 5-chain pays 300 and a 10-chain pays 1100 while a 4-combo pays 20. That
+// is a number that rewards BUILDING, because the only way to reach it is to
+// let potential accumulate rather than clearing every three that appears.
+//
+//   'survival' — frames survived, garbage sent as a small tie-break. What
+//               the first run used, and it produced a genome weighted
+//               almost entirely on tidiness with chainLength=3: the bot
+//               that reference paragraph describes.
+//   'score'    — the engine's own score. What the reference used.
+//
+// Score does not need survival bolted onto it: the game ends when the board
+// tops out, so a genome that dies early cannot accumulate one. That is the
+// property that makes it a better single objective than a hand-mixed sum,
+// where the mixing ratio is one more number nobody measured.
+//
+// An unsafe genome scores 0 under either. A config that cannot decide
+// inside a frame is not a faster player, it is a broken one.
 exports.fitness = function (weights, seeds, opts) {
     seeds = seeds || exports.SEEDS;
     opts = opts || {};
-    var frames = 0, sent = 0, i, r;
+    var objective = opts.objective || 'survival';
+    var frames = 0, sent = 0, score = 0, i, r;
     for (i = 0; i < seeds.length; i++) {
         r = exports.run(weights, seeds[i], opts);
         if (r.error) return { fitness: 0, error: r.error };
         if (r.unsafe) return { fitness: 0, unsafe: true };
         frames += r.frames;
         sent += r.sent;
+        score += r.score;
     }
+    var n = seeds.length;
+    var fitness = objective === 'score' ? score / n
+                                        : frames / n + (sent / n) * 0.5;
+    // Every number is reported whichever one is being optimised, so a run
+    // can always be read for the failure the objective invites: survival
+    // rising while sent falls, or score rising while frames collapse.
     return {
-        fitness: frames / seeds.length + (sent / seeds.length) * 0.5,
-        avgFrames: frames / seeds.length,
-        avgSent: sent / seeds.length
+        fitness: fitness,
+        objective: objective,
+        avgFrames: frames / n,
+        avgSent: sent / n,
+        avgScore: score / n
     };
 };
