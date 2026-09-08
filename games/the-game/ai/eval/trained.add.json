@@ -1,0 +1,59 @@
+{
+  "mode": "add",
+  "generations": 1,
+  "population": 3,
+  "trainSeeds": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
+  "holdoutSeeds": [
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "trainFitness": 1888.125,
+  "holdout": {
+    "learned": {
+      "fitness": 1670.8333333333333,
+      "avgFrames": 1665.5,
+      "avgSent": 10.666666666666666
+    },
+    "shipped": {
+      "fitness": 1670.8333333333333,
+      "avgFrames": 1665.5,
+      "avgSent": 10.666666666666666
+    }
+  },
+  "improvementPct": 0,
+  "weights": {
+    "matchPotential": 0,
+    "latentChain": 0,
+    "links": 0,
+    "colourVariance": 0,
+    "edgePenalty": 0,
+    "garbageOnBoard": 0,
+    "incomingGarbage": 0,
+    "maxHeight": 0,
+    "fillRatio": 0,
+    "roughness": 0,
+    "garbageAdjacency": 0,
+    "colourScarcity": 0,
+    "garbageSent": 0,
+    "chainLength": 0,
+    "garbageCleared": 0,
+    "framesToDeath": 0
+  },
+  "timing": {
+    "worstMs": 72,
+    "unsafeSeeds": 0
+  }
+}

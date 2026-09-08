@@ -86,7 +86,22 @@ exports.CEILING = CEILING;
 // One run. `weights` null means the SHIPPED scoring, untouched — that is
 // the control arm, and it must go through this identical code path or the
 // comparison is between two different benchmarks.
+// THE TIMING GUARD IS NOT VALID UNDER PARALLEL LOAD.
+//
+// It measures wall-clock inside _choose, which is the right question when
+// one process has a core to itself and a meaningless one when four workers
+// share four cores with everything else on the machine. Left on during
+// training it rejected the SHIPPED baseline as unsafe — fitness 0 for a
+// genome that scores 1671 when run alone — so the search was being told
+// the thing it must beat is worthless.
+//
+// So training passes checkTiming:false and the winner is re-checked
+// single-threaded afterwards, where the number means something. Turning the
+// guard off for a measurement it cannot make is honest; leaving it on and
+// believing the result is not.
 exports.run = function (weights, seed, opts) {
+    opts = opts || {};
+    var checkTiming = opts.checkTiming !== false;
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: seed, countdown: false });
     var cpu = new PanelCpu.SearchCpu(stack, {
         difficulty: 'nightmare', seed: seed + 55, mistake: 0, chainExtend: true
@@ -122,13 +137,14 @@ exports.run = function (weights, seed, opts) {
             }
             stack.drainEvents();
             if (stack.gameOver) break;
-            if (localMax > TIMING_MARGIN_MS) break;
+            if (checkTiming && localMax > TIMING_MARGIN_MS) break;
         }
     } finally {
         PanelCpu.SearchCpu.prototype._choose = origChoose;
         if (detach) detach();
     }
-    return { frames: f, sent: sent, localMax: localMax, unsafe: localMax > TIMING_MARGIN_MS };
+    return { frames: f, sent: sent, localMax: localMax,
+             unsafe: checkTiming && localMax > TIMING_MARGIN_MS };
 };
 
 // FITNESS IS FRAMES SURVIVED, WITH GARBAGE SENT AS A TIE-BREAK ONLY.
@@ -145,6 +161,7 @@ exports.run = function (weights, seed, opts) {
 // frame is not a faster player, it is a broken one.
 exports.fitness = function (weights, seeds, opts) {
     seeds = seeds || exports.SEEDS;
+    opts = opts || {};
     var frames = 0, sent = 0, i, r;
     for (i = 0; i < seeds.length; i++) {
         r = exports.run(weights, seeds[i], opts);
