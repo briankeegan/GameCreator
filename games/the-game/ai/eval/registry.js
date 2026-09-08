@@ -78,7 +78,7 @@
       what: 'Garbage cells converted this move, including propagation into touching blocks.' },
 
     { key: 'travelCost',       group: 'move',   sign: -1, fn: null,
-      what: 'Frames to bring the cursor from where it is to this candidate swap, per travel.js. The bot could always teleport (stack.touchSwap) so it never paid for distance; a person holds a direction and waits, and the second step costs 21 frames. Set by whichever seam knows the move; 0 when the move is unknown.' },
+      what: 'Frames to bring the cursor from where it is to this candidate swap, per travel.js — real frames, since the cpu walks there (panel-cpu.js beginWalk) rather than teleporting with stack.touchSwap as it used to. One step is 1 frame, four is 13. Set by whichever seam knows the move; 0 when the move is unknown.' },
 
     { key: 'framesToDeath',    group: 'clock',  sign: +1, fn: null,
       what: 'toppedOut ? preStop + stop + shake + health : Infinity — and Infinity while riseLock holds, since health only drains inside (!riseLock && stopTime === 0). Replaces stop/health/shake as separate features: they do not sit beside each other, they PAUSE each other.' }

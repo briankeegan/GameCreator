@@ -520,15 +520,16 @@
   // WHAT THIS CANDIDATE COSTS TO REACH, IN FRAMES.
   //
   // The only feature that measures the MOVE rather than the board it
-  // leaves, and it exists because the bot has never had to pay for
-  // distance. stack.touchSwap teleports the cursor to any cell and swaps in
-  // the same frame; a person holds a direction and waits. Measured against
-  // the engine (travel.js): one step is 1 frame, two is 21, and an L with
-  // two long legs is 42 where the straight line is 23.
+  // leaves. It was added while the bot could still teleport — stack.touchSwap
+  // queues a swap anywhere and moves the cursor there in the same frame —
+  // which made it a price on a cost the simulation never charged. The cpu
+  // walks now (panel-cpu.js, beginWalk), so the frames this counts are
+  // frames the game actually takes: at the cadence the cpu plays, one step
+  // is 1 frame and four is 13.
   //
   // A swap worth slightly less but one cell away can therefore be worth far
   // more than the better one across the board, and no version of this bot
-  // has ever been able to express that.
+  // could express that before.
   //
   // The number is supplied by whichever seam knows which move produced the
   // candidate. A seam that cannot see the move passes nothing and this
