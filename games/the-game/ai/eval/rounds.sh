@@ -99,14 +99,29 @@ for (( r=1; r<=MAX_ROUNDS; r++ )); do
   result="trained.${MODE}.${TAG}.${RUN_ID}.r${r}.json"
   cp "trained.${MODE}.json" "$result"
 
-  # The held-out TOTAL: the sum of the four final scores on twelve seeds
-  # never trained on. Read from the JSON rather than scraped from the log,
-  # so a change to the log format cannot silently break the comparison.
+  # ROUNDS ARE COMPARED ON THE FINALS SEEDS, NOT THE HELD-OUT ONES.
+  #
+  # This read holdout.learned.fitness, which made the held-out seeds the
+  # thing champions were SELECTED on — so over many rounds the champion
+  # becomes whoever drew best on seeds 101-112, and the number then reported
+  # for it is inflated by exactly that selection. It is the same
+  # winner's-curse mistake that train.js had one level down, where a round's
+  # winner was crowned on one lucky game.
+  #
+  # trainFitness is the winner's score on FINALS_SEEDS (201-208), which
+  # train.js already plays every finalist on. Selecting on those and
+  # reporting on 101-112 keeps the reported number honest: the held-out set
+  # is now used for exactly one thing, saying how good the champion is, and
+  # never for deciding which champion to keep.
   score=$(node -e "
+    var d=require('./$result');
+    process.stdout.write(String(d.trainFitness || 0));
+  ")
+  holdout=$(node -e "
     var d=require('./$result');
     process.stdout.write(String((d.holdout && d.holdout.learned && d.holdout.learned.fitness) || 0));
   ")
-  echo "round $r held-out total: $score   -> $result"
+  echo "round $r finals score: $score   (held-out: $holdout)   -> $result"
   grep -A 6 'HELD-OUT SEEDS' "$log" | sed 's/^/    /'
 
   if [ -z "$champScore" ] || (( $(echo "$score > $champScore" | bc -l) )); then
