@@ -138,9 +138,9 @@ var SCENARIOS = {
     // benchmark without anyone noticing. Pinned by bench.fidelity.test.js,
     // which runs full_report's own runner beside these and fails on any
     // difference at all.
-    comboStorm: { level: 3, burst: true, garbageWidth: 4, garbageHeight: 1 },
-    factory:    { level: 3, burst: true, garbageWidth: 6, garbageHeight: 2 },
-    bigBlocks:  { level: 3, burst: true, garbageWidth: 6, garbageHeight: 12 },
+    comboStorm: { level: 3, burst: true, garbageWidth: 4, garbageHeight: 1, ceiling: 120000 },
+    factory:    { level: 3, burst: true, garbageWidth: 6, garbageHeight: 2, ceiling: 120000 },
+    bigBlocks:  { level: 3, burst: true, garbageWidth: 6, garbageHeight: 12, ceiling: 120000 },
 
     // THE ONE THAT IS NOT A DRILL AT ALL.
     //
@@ -164,7 +164,8 @@ var SCENARIOS = {
     // re-tested against a different one next generation.
     endless: {
         level: 3,
-        file: true
+        file: true,
+        ceiling: 36000
     },
     siege: {
         // Level 5 tightens maxHealth from 81 to 51 and dangerHeightFrac
@@ -299,6 +300,21 @@ exports.run = function (weights, seed, opts) {
             stack.drainEvents();
             if (stack.gameOver) break;
             if (checkTiming && localMax > TIMING_MARGIN_MS) break;
+            // THE BENCHMARK'S OWN CEILINGS, and only the benchmark's.
+            //
+            // This is not the 4,000-frame ceiling that used to be here and
+            // was rightly removed: that one censored the objective, cutting
+            // off genomes that were still alive and still scoring, so
+            // selection between "would have reached 5,000" and "would have
+            // reached 50,000" was luck. These are full_report.js's numbers
+            // — 36,000 for endless (its ENDLESS_MAX_FRAMES, 10 simulated
+            // minutes per file) and 120,000 for the burst drills (its
+            // TRAINING_CEILING, ~30x the longest survival ever seen on one).
+            // Matching them is the POINT of this file: a game that ends
+            // differently here than in the report is a game the report does
+            // not describe. They also stop an unkillable genome hanging a
+            // run forever, which no-cap could and did threaten.
+            if (sc.ceiling && f >= sc.ceiling - 1) { f++; break; }
         }
     } finally {
         PanelCpu.SearchCpu.prototype._choose = origChoose;
@@ -354,10 +370,76 @@ exports.run = function (weights, seed, opts) {
 //
 // An unsafe genome scores 0 under either. A config that cannot decide
 // inside a frame is not a faster player, it is a broken one.
+// THE FOUR CATEGORIES full_report.js REPORTS, which is what a run is
+// judged on, so it is what a run should be trained on.
+exports.ARENA = ['comboStorm', 'factory', 'bigBlocks', 'endless'];
+
+// PER-CATEGORY NORMALISERS, so the four count equally.
+//
+// Their raw scores are not on the same scale — measured over the whole
+// 40-seed pool with the SHIPPED scoring, mean final score per game:
+//
+//     comboStorm 1229.8   factory 654.5   bigBlocks 366.3   endless 1415.3
+//
+// Summed raw, endless and comboStorm carry three quarters of the fitness
+// and bigBlocks is worth a rounding error, so a genome could throw
+// bigBlocks away for free. Divided through, a category is worth the same
+// wherever it sits on the scale, and fitness reads directly as "multiples
+// of shipped, averaged over the four".
+//
+// THIS IS NOT A BASELINE IN THE LOOP. The reference's rule — and round
+// one's design — is that the population is ranked against ITSELF and never
+// against a previous bot, and it still is: these are four fixed constants
+// measured once, a unit conversion rather than a per-generation
+// comparison. The measurement is written above so the next person can see
+// what they are and re-measure if the game changes underneath them.
+var NORMALISERS = {
+    comboStorm: 1229.8,
+    factory: 654.5,
+    bigBlocks: 366.3,
+    endless: 1415.3,
+    build: 428,      // the retired synthetic drills, kept so an old command
+    siege: 284       // line still runs rather than dividing by undefined
+};
+exports.NORMALISERS = NORMALISERS;
+
 exports.fitness = function (weights, seeds, opts) {
     seeds = seeds || exports.SEEDS;
     opts = opts || {};
     var objective = opts.objective || 'survival';
+
+    // MULTI-CATEGORY. Every seed is played on every category in the arena
+    // and the categories are averaged after normalising — one game per
+    // (weight set, category). Still Puyo's one-full-game-per-set: once per
+    // problem the bot has to be good at, rather than a smoothed average
+    // over seeds within a single problem.
+    if (opts.arena) {
+        var cats = Array.isArray(opts.arena) ? opts.arena : exports.ARENA;
+        var per = {}, total = 0, allFrames = 0, allSent = 0, allDeaths = 0, games = 0;
+        for (var c = 0; c < cats.length; c++) {
+            var sub = Object.assign({}, opts, { arena: null, scenario: cats[c] });
+            var r = exports.fitness(weights, seeds, sub);
+            if (r.error) return { fitness: 0, error: r.error };
+            if (r.unsafe) return { fitness: 0, unsafe: true };
+            var norm = NORMALISERS[cats[c]] || 1;
+            per[cats[c]] = { raw: r.fitness, ratio: r.fitness / norm,
+                             avgFrames: r.avgFrames, avgSent: r.avgSent,
+                             deathRate: r.deathRate };
+            total += r.fitness / norm;
+            allFrames += r.avgFrames; allSent += r.avgSent; allDeaths += r.deathRate;
+            games++;
+        }
+        return {
+            fitness: total / games,      // 1.0 means "shipped, averaged over the four"
+            objective: objective,
+            arena: cats,
+            perCategory: per,
+            avgFrames: allFrames / games,
+            avgSent: allSent / games,
+            deathRate: allDeaths / games
+        };
+    }
+
     var frames = 0, sent = 0, score = 0, deaths = 0, i, r;
     for (i = 0; i < seeds.length; i++) {
         r = exports.run(weights, seeds[i], opts);

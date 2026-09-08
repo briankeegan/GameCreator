@@ -36,6 +36,7 @@ var fork = require('child_process').fork;
 var path = require('path');
 var fs = require('fs');
 var registry = require('./registry.js');
+var bench = require('./bench.js');
 
 var GENERATIONS = Number(process.argv[2] || 12);
 var POPULATION = Number(process.argv[3] || 20);
@@ -47,6 +48,23 @@ var WORKERS = Number(process.argv[5] || 4);
 // here used survival and produced exactly the bot that choice predicts —
 // weighted almost entirely on tidiness, chainLength=3, barely attacking.
 var OBJECTIVE = process.argv[6] || 'score';
+
+// TRAIN ON THE FOUR CATEGORIES THE BENCHMARK REPORTS, not on a stand-in.
+//
+// The synthetic `build` drill this trainer used ranked two real candidates
+// in the OPPOSITE order to full_report.js's endless — round 1 beat round 2
+// on build's held-out seeds and lost to it on endless by 54% of sent
+// garbage. That is not an imperfect proxy, it is the wrong question, and
+// forty generations of answering it well bought nothing. bench.js's four
+// scenarios are now full_report's four, frame for frame and gated
+// (bench.fidelity.test.js), so a genome is scored on the same games it
+// will be reported on.
+//
+// GC_ARENA=build (or any single scenario name) falls back to the old
+// single-drill behaviour for a quick smoke run.
+var ARENA = process.env.GC_ARENA
+    ? (process.env.GC_ARENA === 'all' ? true : process.env.GC_ARENA.split(','))
+    : true;
 
 // SEEDS ROTATE EVERY GENERATION, AND THE POOL IS LARGE.
 //
@@ -84,6 +102,13 @@ for (var sp = 1; sp <= 40; sp++) SEED_POOL.push(sp);
 // Elites are re-evaluated every generation, or a genome that drew one easy
 // seed becomes a permanent king.
 var SEEDS_PER_GENERATION = Number(process.env.GC_SEEDS_PER_GEN || 1);
+// TWELVE, AND NOT BY COINCIDENCE ANY MORE. endless picks its attack file
+// from the seed, and 101-112 map to file indices 4,5,6,7,8,9,10,11,0,1,2,3
+// — all twelve, exactly once each. So the held-out endless number is the
+// SAME average full_report.js prints for its headline, rather than a
+// sample of it, and the two can be compared directly. Changing the count
+// breaks that; changing it to a non-multiple of twelve silently weights
+// some attack files double.
 var HOLDOUT_SEEDS = [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112];
 var KEYS = registry.keys;
 var MAX_WEIGHT = 300;
@@ -160,7 +185,8 @@ function pump() {
         job.sent = true;
         pool[i].busy = true;
         pool[i].child.send({ id: job.id, weights: job.weights, seeds: job.seeds,
-                             mode: MODE, checkTiming: false, scenario: job.scenario || 'build',
+                             mode: MODE, checkTiming: false,
+                             scenario: job.scenario, arena: job.arena,
                              objective: OBJECTIVE });
     }
     if (!busyCount() && queue.every(function (j) { return j.sent; }) && onDone) {
@@ -168,10 +194,11 @@ function pump() {
     }
 }
 var nextId = 1;
-function evaluateAll(genomes, seeds, cb, scenario) {
+function evaluateAll(genomes, seeds, cb, scenario, arena) {
     var results = new Array(genomes.length);
     queue = genomes.map(function (g, i) {
-        return { id: nextId++, weights: g, seeds: seeds, sent: false, scenario: scenario,
+        return { id: nextId++, weights: g, seeds: seeds, sent: false,
+                 scenario: scenario, arena: arena === undefined ? ARENA : arena,
                  done: function (r) { results[i] = r; } };
     });
     onDone = function () { cb(results); };
@@ -248,6 +275,12 @@ function step() {
             ' sent ' + (scored[0].detail && scored[0].detail.avgSent || 0).toFixed(1) +
             ' died ' + ((scored[0].detail && scored[0].detail.deathRate || 0) * 100).toFixed(0) + '%]' +
             '  [' + ((Date.now() - t0) / 60000).toFixed(1) + 'm]');
+        var pc = scored[0].detail && scored[0].detail.perCategory;
+        if (pc) {
+            console.log('       ' + Object.keys(pc).map(function (k) {
+                return k + ' ' + pc[k].ratio.toFixed(2) + 'x';
+            }).join('  '));
+        }
         console.log('       ' + summarise(scored[0].genome));
 
         generation++;
@@ -276,10 +309,9 @@ function pick(scored) {
 // player, it is a broken one — the guard is not dropped, it is moved to the
 // only place it can be measured honestly.
 function checkWinnerTiming(genome, cb) {
-    var bench = require('./bench.js');
     var worst = 0, unsafe = 0;
     HOLDOUT_SEEDS.forEach(function (seed) {
-        var r = bench.run(genome, seed, { mode: MODE });
+        var r = bench.run(genome, seed, { mode: MODE, scenario: 'endless' });
         if (r.localMax > worst) worst = r.localMax;
         if (r.unsafe) unsafe++;
     });
@@ -287,21 +319,27 @@ function checkWinnerTiming(genome, cb) {
 }
 
 function finish() {
-    // BOTH SCENARIOS, held-out seeds, never trained on, with the shipped
-    // baseline measured on the same seeds in the same process.
+    // HELD-OUT SEEDS, ALL FOUR CATEGORIES, BROKEN OUT.
     //
-    // Reporting one number would hide the failure this is most likely to
-    // produce: a weight set that wins the drill it was trained on by
-    // playing recklessly, and falls apart under pressure it never saw.
-    // That is specialisation, not improvement, and a single mean cannot
-    // tell the two apart. Training still uses `build` alone — siege is not
-    // calibrated yet (task 26) — so its numbers here are a REPORT, not a
-    // verdict, and are labelled that way.
+    // A single mean cannot tell improvement from specialisation, and this
+    // trainer has already produced the latter twice: a set that wins the
+    // drill it was trained on by playing recklessly and falls apart on
+    // pressure it never saw. Now that the arena IS the benchmark's four
+    // categories there is no "trained on / transfer" split to make — every
+    // category is trained on and every one is reported, so a genome that
+    // bought endless by abandoning bigBlocks is visible in the row rather
+    // than hidden in the average.
+    //
+    // The shipped scoring is measured on the same seeds in the same
+    // process. That is a REPORT, not a step of the search: the loop never
+    // saw it, and whether to replace the current AI is a question answered
+    // once, here, at the end.
     evaluateAll([best, zeroGenome()], HOLDOUT_SEEDS, function (res) {
         var learned = res[0], shipped = res[1];
         var out = {
             mode: MODE,
             objective: OBJECTIVE,
+            arena: ARENA === true ? bench.ARENA : ARENA,
             generations: GENERATIONS,
             population: POPULATION,
             seedPool: SEED_POOL,
@@ -313,24 +351,27 @@ function finish() {
             weights: best
         };
         console.log('\n=== HELD-OUT SEEDS (never trained on) ===');
-        console.log('build (trained on this drill)');
-        console.log('  shipped ' + (shipped.fitness || 0).toFixed(0) +
-                    '   learned ' + (learned.fitness || 0).toFixed(0) +
+        var lp = learned.perCategory || {}, sp = shipped.perCategory || {};
+        var lost = [];
+        Object.keys(lp).forEach(function (k) {
+            var l = lp[k].raw, sh = sp[k] ? sp[k].raw : 0;
+            var pct = sh ? ((l - sh) / sh) * 100 : 0;
+            if (pct < -3) lost.push(k);
+            console.log('  ' + k.padEnd(11) +
+                        ' shipped ' + sh.toFixed(0).padStart(6) +
+                        '   learned ' + l.toFixed(0).padStart(6) +
+                        '   ' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%');
+        });
+        console.log('  ' + 'OVERALL'.padEnd(11) +
+                    ' shipped ' + (shipped.fitness || 0).toFixed(2).padStart(6) +
+                    '   learned ' + (learned.fitness || 0).toFixed(2).padStart(6) +
                     '   ' + (out.improvementPct >= 0 ? '+' : '') + out.improvementPct.toFixed(1) + '%');
-        console.log('\nweights: ' + summarise(best));
-        // The second drill: NOT trained on, so this is the transfer test.
-        evaluateAll([best, zeroGenome()], HOLDOUT_SEEDS, function (siegeRes) {
-        var siegeLearned = siegeRes[0], siegeShipped = siegeRes[1];
-        var siegePct = siegeShipped.fitness
-            ? ((siegeLearned.fitness - siegeShipped.fitness) / siegeShipped.fitness) * 100 : 0;
-        out.siege = { learned: siegeLearned, shipped: siegeShipped, improvementPct: siegePct };
-        console.log('siege (NOT trained on — transfer)');
-        console.log('  shipped ' + (siegeShipped.fitness || 0).toFixed(0) +
-                    '   learned ' + (siegeLearned.fitness || 0).toFixed(0) +
-                    '   ' + (siegePct >= 0 ? '+' : '') + siegePct.toFixed(1) + '%');
-        if (out.improvementPct > 3 && siegePct < -3) {
-            console.log('  ^ WINS ITS OWN DRILL AND LOSES THE OTHER: specialised, not better.');
+        out.lostCategories = lost;
+        if (lost.length) {
+            console.log('  ^ LOSES TO SHIPPED ON: ' + lost.join(', ') +
+                        '. A gain bought by giving a category away is specialisation.');
         }
+        console.log('\nweights: ' + summarise(best));
         checkWinnerTiming(best, function (timing) {
             out.timing = timing;
             console.log('timing (single-threaded): worst decision ' + timing.worstMs +
@@ -339,7 +380,6 @@ function finish() {
             console.log('written to trained.' + MODE + '.json');
             pool.forEach(function (s) { s.child.kill(); });
         });
-        }, 'siege');
     });
 }
 

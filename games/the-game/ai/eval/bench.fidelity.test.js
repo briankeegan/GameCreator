@@ -146,6 +146,23 @@ test('endless replays the real attack files exactly', function () {
         'endless in the trainer is not the endless in the report:\n  ' + wrong.join('\n  '));
 });
 
+test('the held-out seeds cover every attack file exactly once', function () {
+    // train.js's HOLDOUT_SEEDS are 101-112 and endless picks its file from
+    // the seed, so those twelve cover all twelve files once each — which is
+    // what makes the held-out endless number directly comparable to
+    // full_report.js's headline average rather than a sample of it. A
+    // holdout that is not a multiple of the file count silently weights
+    // some attack files double, and nothing else would notice.
+    var n = bench.endlessFileCount();
+    var holdout = [];
+    for (var s = 101; s <= 112; s++) holdout.push((s - 1 + n * 100) % n);
+    var distinct = holdout.filter(function (v, i, a) { return a.indexOf(v) === i; });
+    assert.strictEqual(distinct.length, n,
+        'held-out seeds 101-112 hit ' + distinct.length + ' of ' + n + ' attack files (' +
+        holdout.join(',') + '). Either the holdout or the file count changed, and the ' +
+        'held-out endless number is no longer the benchmark\'s average.');
+});
+
 test('the drills are not all the same game (coverage)', function () {
     // Four scenarios that happened to agree would pass everything above
     // while telling the GA nothing. They have to actually differ.
