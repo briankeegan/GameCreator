@@ -215,9 +215,12 @@
   // FINDINGS.md rather than assumed; if it has to come down, the lever is
   // scoring only swaps that matchPotential already flagged.
   function chainPotential(input) {
-    var board = input.board;
-    // Needs the real LogicalBoard's clone/swap/resolve. A hand-built plain
-    // object (some tests, some call sites) has none of them, and the honest
+    // liveBoard, not board: input.js flattens `board` to a plain shape on
+    // purpose, which strips the clone/swap/resolve this needs. See the
+    // comment on liveBoard there. Falls back to `board` for direct callers
+    // (the tests) that hand over a real LogicalBoard themselves.
+    var board = input.liveBoard || input.board;
+    // A hand-built plain object has none of those methods, and the honest
     // answer there is 0 rather than a number derived from a second, private
     // implementation of gravity and matching.
     if (!board || typeof board.legalSwaps !== 'function' ||

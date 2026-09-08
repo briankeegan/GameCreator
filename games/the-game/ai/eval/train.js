@@ -278,7 +278,7 @@ function step() {
         var pc = scored[0].detail && scored[0].detail.perCategory;
         if (pc) {
             console.log('       ' + Object.keys(pc).map(function (k) {
-                return k + ' ' + pc[k].ratio.toFixed(2) + 'x';
+                return k + ' ' + pc[k].raw.toFixed(0);
             }).join('  '));
         }
         console.log('       ' + summarise(scored[0].genome));
@@ -362,9 +362,9 @@ function finish() {
                         '   learned ' + l.toFixed(0).padStart(6) +
                         '   ' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%');
         });
-        console.log('  ' + 'OVERALL'.padEnd(11) +
-                    ' shipped ' + (shipped.fitness || 0).toFixed(2).padStart(6) +
-                    '   learned ' + (learned.fitness || 0).toFixed(2).padStart(6) +
+        console.log('  ' + 'TOTAL'.padEnd(11) +
+                    ' shipped ' + (shipped.fitness || 0).toFixed(0).padStart(6) +
+                    '   learned ' + (learned.fitness || 0).toFixed(0).padStart(6) +
                     '   ' + (out.improvementPct >= 0 ? '+' : '') + out.improvementPct.toFixed(1) + '%');
         out.lostCategories = lost;
         if (lost.length) {

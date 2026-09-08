@@ -188,6 +188,22 @@ var REACHABLE = [
         if (plain === null || weighted === null) return 0;
         return plain === weighted ? 0 : 1;
     }],
+    ['chainPotential', function (cpu) {
+        // A board that has fired NOTHING and still has a cascade waiting in
+        // it — the state this feature exists to see and the only one that
+        // makes it non-zero. Fixture found by search rather than drawn: the
+        // hand-drawn attempts at "a loaded chain" all held a 1-chain, which
+        // would pass a feature that returned a constant.
+        var b = blank(cpu);
+        var rows = ['2233.3', '2121.3', '1.1..2', '.....1'];  // bottom row first
+        for (var r = 0; r < rows.length; r++) {
+            for (var c = 1; c <= 6; c++) {
+                var ch = rows[r][c - 1];
+                b.grid[r + 1][c] = ch === '.' ? 0 : Number(ch);
+            }
+        }
+        return b;
+    }],
     ['latentChain', function (cpu) {
         // Mid-cascade is a live-stack condition the adapter reads through
         // _cascadePrediction, so this stubs that method and asserts the

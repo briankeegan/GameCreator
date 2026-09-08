@@ -374,34 +374,26 @@ exports.run = function (weights, seed, opts) {
 // judged on, so it is what a run should be trained on.
 exports.ARENA = ['comboStorm', 'factory', 'bigBlocks', 'endless'];
 
-// PER-CATEGORY NORMALISERS, so the four count equally.
+// NO NORMALISERS, NO BASELINE, NOTHING BUT THE SCORE.
 //
-// Their raw scores are not on the same scale — measured over the whole
-// 40-seed pool with the SHIPPED scoring, mean final score per game:
+// There were per-category normalisers here — the SHIPPED bot's mean score
+// on each drill — so that the four counted equally and fitness read as
+// "multiples of shipped". That is a baseline in the loop wearing a unit
+// conversion's clothes, and PUYO_REFERENCE.md's loop has no baseline in it
+// at all: the population is ranked against ITSELF on absolute score,
+// because there is no previous bot to rank against. Dividing by shipped
+// makes every fitness a statement about shipped.
 //
-//     comboStorm 1229.8   factory 654.5   bigBlocks 366.3   endless 1415.3
+// It also stopped the thing being recorded from being a SCORE. Step 3 of
+// the reference is "record the final score", and a geometric mean of four
+// ratios is not the final score of anything. What a bot playing four games
+// scores is the four scores added up, so that is what this is.
 //
-// Summed raw, endless and comboStorm carry three quarters of the fitness
-// and bigBlocks is worth a rounding error, so a genome could throw
-// bigBlocks away for free. Divided through, a category is worth the same
-// wherever it sits on the scale, and fitness reads directly as "multiples
-// of shipped, averaged over the four".
-//
-// THIS IS NOT A BASELINE IN THE LOOP. The reference's rule — and round
-// one's design — is that the population is ranked against ITSELF and never
-// against a previous bot, and it still is: these are four fixed constants
-// measured once, a unit conversion rather than a per-generation
-// comparison. The measurement is written above so the next person can see
-// what they are and re-measure if the game changes underneath them.
-var NORMALISERS = {
-    comboStorm: 1229.8,
-    factory: 654.5,
-    bigBlocks: 366.3,
-    endless: 1415.3,
-    build: 428,      // the retired synthetic drills, kept so an old command
-    siege: 284       // line still runs rather than dividing by undefined
-};
-exports.NORMALISERS = NORMALISERS;
+// The objection normalising answered was real — comboStorm and endless are
+// worth ~1200-1400 a game and bigBlocks ~370, so the small drill moves the
+// sum least. That is not a distortion to correct, it is what those games
+// are worth. Puyo does not reweight its own scoring to make each board
+// count equally either.
 
 exports.fitness = function (weights, seeds, opts) {
     seeds = seeds || exports.SEEDS;
@@ -415,46 +407,25 @@ exports.fitness = function (weights, seeds, opts) {
     // over seeds within a single problem.
     if (opts.arena) {
         var cats = Array.isArray(opts.arena) ? opts.arena : exports.ARENA;
-        var per = {}, total = 0, product = 1, allFrames = 0, allSent = 0, allDeaths = 0, games = 0;
+        var per = {}, total = 0, allFrames = 0, allSent = 0, allDeaths = 0, games = 0;
         for (var c = 0; c < cats.length; c++) {
             var sub = Object.assign({}, opts, { arena: null, scenario: cats[c] });
             var r = exports.fitness(weights, seeds, sub);
             if (r.error) return { fitness: 0, error: r.error };
             if (r.unsafe) return { fitness: 0, unsafe: true };
-            var norm = NORMALISERS[cats[c]] || 1;
-            per[cats[c]] = { raw: r.fitness, ratio: r.fitness / norm,
-                             avgFrames: r.avgFrames, avgSent: r.avgSent,
-                             deathRate: r.deathRate };
-            total += r.fitness / norm;
-            product *= (r.fitness / norm);
+            per[cats[c]] = { raw: r.fitness, avgFrames: r.avgFrames,
+                             avgSent: r.avgSent, deathRate: r.deathRate };
+            total += r.fitness;
             allFrames += r.avgFrames; allSent += r.avgSent; allDeaths += r.deathRate;
             games++;
         }
-        // GEOMETRIC MEAN, NOT ARITHMETIC, AND THIS IS THE WHOLE POINT OF
-        // TRAINING ON FOUR THINGS.
-        //
-        // Averaging the ratios lets one outlier buy the other three. Seen
-        // on generation 3 of the first arena run, leading the population:
-        //
-        //     comboStorm 0.94x  factory 8.71x  bigBlocks 0.90x  endless 0.72x
-        //
-        // Below shipped on THREE of four categories and ranked first,
-        // because the arithmetic mean of those is 2.82 — beating a genome
-        // that is a solid 2.0x on all four. That is the exact
-        // specialisation the normalisers were added to prevent, arriving
-        // through the aggregation instead of through the scale.
-        //
-        // The geometric mean is the standard way to combine ratios and has
-        // the property this needs: it is dragged down by the WEAKEST
-        // category rather than lifted by the strongest. The set above
-        // scores 1.52, the balanced one still 2.00, and the balanced one
-        // wins. A genome scoring zero on any category scores zero overall,
-        // which is correct — it cannot play the game.
+        // THE FOUR FINAL SCORES, ADDED UP. Step 3 of the reference is
+        // "record the final score"; a bot that plays four games scores the
+        // sum of them. No baseline, no reweighting, no ratio.
         return {
-            fitness: Math.pow(product, 1 / games),   // 1.0 means "shipped, on every category"
+            fitness: total,                  // the four final scores, summed
             objective: objective,
             arena: cats,
-            arithmeticMean: total / games,   // reported, never optimised — see above
             perCategory: per,
             avgFrames: allFrames / games,
             avgSent: allSent / games,

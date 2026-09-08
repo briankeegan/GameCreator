@@ -35,6 +35,9 @@
     { key: 'matchPotential',   group: 'board',  sign: +1, fn: null,
       what: 'Merged combos of 4+ reachable next move. A PLAIN 3 scores 0 — comboGarbage() sends nothing below 4 — but a 3 that extends a chain or touches garbage still counts.' },
 
+    { key: 'chainPotential',   group: 'board',  sign: +1, fn: null,
+      what: 'The deepest cascade any single legal swap could set off from this settled board. The board it LEAVES, not the move being made — stored potential, which nothing else here could see. PUYO_REFERENCE.md names its absence as the real cap: a scorer that values the board now fires the moment a chain exists, so potential never accumulates. Costs ~66us (a clone+resolve per legal swap), by far the most expensive feature here.' },
+
     { key: 'latentChain',      group: 'board',  sign: +1, fn: null,
       what: 'Will this landing continue the chain: does a cell carrying the chain flag settle into a match. Forward-looking half of chainLength.' },
 

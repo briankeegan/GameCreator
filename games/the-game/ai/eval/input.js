@@ -91,6 +91,35 @@
         grid: board.grid || [],
         blocks: board.blocks || {}
       },
+      // THE REAL BOARD, ALONGSIDE THE FLAT ONE, AND ONLY FOR FEATURES THAT
+      // MUST ASK THE ENGINE A QUESTION.
+      //
+      // `board` above is deliberately flattened to a plain shape — width,
+      // height, grid, blocks — so a feature cannot depend on whatever
+      // methods happened to be on whatever object the seam passed. That is
+      // right for everything that READS the board, which is almost
+      // everything here.
+      //
+      // chainPotential does not read the board, it asks what a swap would
+      // DO to it, and the only honest answer comes from the class the game
+      // plans with (clone/swap/resolve). Flattening stripped those, so the
+      // feature scored 0 through the seam on a board where it is 3 — caught
+      // by seam.test.js, which exists for exactly this. The alternative was
+      // a second implementation of gravity and matching inside features.js,
+      // which is how two copies of the rules drift apart.
+      //
+      // Null whenever the caller had no real board (hand-built test inputs,
+      // some call sites), and any feature using it must handle that.
+      // Carried through a SECOND normalize, not re-derived from `board`.
+      // evaluate() normalizes input that fromStack already normalized, and
+      // by then `board` is the flattened shape with no resolve on it — so
+      // deriving liveBoard here dropped it on the second pass and
+      // chainPotential read 0 through the real evaluator while reading 3
+      // through the input built one call earlier. That is the shape of bug
+      // this whole directory keeps producing: a value that is present,
+      // correct, and quietly discarded one layer down.
+      liveBoard: raw.liveBoard ||
+                 ((board && typeof board.resolve === 'function') ? board : null),
       cursor: raw.cursor || null,
       travelFrames: raw.travelFrames || 0,
       colours: raw.colours || 0,
