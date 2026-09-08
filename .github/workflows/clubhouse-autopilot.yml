@@ -96,12 +96,20 @@ jobs:
     # behind it). The model step has its own tighter timeout below.
     #
     # Sized for the WORST case, not the typical one: the model step now
-    # continues past its own 30-min timeout (continue-on-error, see that
+    # continues past its own 60-min timeout (continue-on-error, see that
     # step) so a slow run's real progress can still be smoke-tested and
     # landed instead of discarded — so this cap has to fit setup (~15) + the
-    # 30-min model cap + smoke-test (15) + land (10) + reply/retry overhead,
+    # 60-min model cap + smoke-test (15) + land (10) + reply/retry overhead,
     # not just the model cap plus a little slack like before.
-    timeout-minutes: 80
+    #
+    # Raised from 30 to 60 (2026-09-08): a full three-zone background-art
+    # redo hit the old 30-min model cap at 29m28s with real, verified work
+    # still unshipped, and had to finish over a second auto-continuation
+    # pass — a whole extra thread-history resend and re-verification just to
+    # land what one longer pass would have finished outright. The
+    # auto-continue path (below) stays as the backstop for the genuinely
+    # too-big request, not the normal way a big-but-doable one gets done.
+    timeout-minutes: 130
     permissions:
       contents: write        # push the change branch
       pull-requests: write   # open + merge the change PR, post the reply comment
@@ -623,17 +631,17 @@ jobs:
           # success on a partial job instead.
           MAX_GENERATIONS: '12'
           # DETERMINISTIC STOP, NOT A PROMPT ASKING NICELY. The model step
-          # below is killed at 30 min regardless of how much real progress it
+          # below is killed at 60 min regardless of how much real progress it
           # made — MAX_GENERATIONS alone doesn't prevent that (a run can stay
           # well under 12 generations and still get killed by the clock;
           # verification, re-generation on a failed check, and git work all
           # cost time without touching that counter). So the broker also
           # refuses /generate once GEN_TIME_BUDGET_MIN has elapsed since IT
           # started (a few seconds before the model step below), leaving the
-          # remaining ~10 of the 30 minutes for verify/commit/reply instead of
+          # remaining ~20 of the 60 minutes for verify/commit/reply instead of
           # a mid-write SIGKILL. See image-broker.js's header for the full
           # reasoning.
-          GEN_TIME_BUDGET_MIN: '20'
+          GEN_TIME_BUDGET_MIN: '40'
         run: |
           set -euo pipefail
           # ImageMagick may already be on the runner image; only install if it
@@ -691,8 +699,16 @@ jobs:
         # instead of discarding it. steps.model.outcome (not .conclusion,
         # which this rewrites to 'success') is checked below to tell a
         # timeout-with-real-progress apart from a timeout-with-nothing.
+        #
+        # Raised 30 -> 60 (2026-09-08): a genuine multi-zone art redo was
+        # cut off at 29m28s with real, already-shipped work still to finish,
+        # forcing a second full pass (whole thread history resent again) to
+        # close out a request one longer run would have finished in one go.
+        # The cap still exists — a stuck/looping run must not hold the
+        # thread hostage for hours — it's just sized for "a big real task",
+        # not "a small one padded with margin".
         continue-on-error: true
-        timeout-minutes: 30
+        timeout-minutes: 60
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # WHICH MODEL A RUN USES, AND WHY THE DEFAULT IS SONNET.
@@ -730,7 +746,7 @@ jobs:
           claude --bare -p "$(cat .autopilot/prompt.txt)" \
             --permission-mode bypassPermissions \
             --model "${AUTOPILOT_MODEL:-claude-sonnet-5}" \
-            --max-turns 120 \
+            --max-turns 250 \
             --allowedTools "Read,Edit,MultiEdit,Write,Glob,Grep,Bash" \
             --output-format json > .autopilot/result.json 2> .autopilot/claude.err
           rc=$?
@@ -1104,7 +1120,8 @@ jobs:
       # character roster) doesn't sit there needing a human to notice the
       # reply said "ask again" and actually ask again. The condition here is
       # the same deterministic signal the reply step above already uses —
-      # steps.model.outcome == 'failure' (the 30-min kill fired) alongside
+      # steps.model.outcome == 'failure' (the 60-min kill, or --max-turns,
+      # fired) alongside
       # steps.land.outputs.deployed == '1' (there was real, smoke-tested
       # progress, not nothing) — so this only fires for the exact case the
       # timeout-doesn't-discard-progress fix was built for, never for a run

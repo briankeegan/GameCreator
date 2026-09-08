@@ -74,8 +74,21 @@ design discussion. `shared/` holds the components every game reuses
   tooling so the model would not have to supply it. Override per run with the
   `model` dispatch input when something genuinely needs it. Cost multipliers to
   keep in mind before raising anything: every run sends the whole thread
-  history, `--max-turns 120`, `MAX_GENERATIONS: 12` images, and up to 3 retries
+  history, `--max-turns 250`, `MAX_GENERATIONS: 12` images, and up to 3 retries
   — so one message can be three full runs.
+  - **The per-run wall-clock/turn caps are sized for the task, not padded
+    for margin — raised 2026-09-08.** The model step's timeout went 30 -> 60
+    minutes (`GEN_TIME_BUDGET_MIN` 20 -> 40, job `timeout-minutes` 80 -> 130
+    to match) and `--max-turns` went 120 -> 250, because a genuine three-zone
+    background-art redo hit the old 30-min cap at 29m28s with real work still
+    unshipped and needed a second full auto-continuation pass — a whole extra
+    thread-history resend and re-verification pass — just to finish what one
+    longer run would have closed in one shot. That's a real cost too, not
+    just a UX annoyance: the continuation path exists as the backstop for a
+    request that's genuinely too big for one pass, not as the normal way a
+    big-but-doable one gets done. The caps still exist (a stuck/looping run
+    must not hold a thread hostage indefinitely); they're just no longer
+    tuned to the smallest number that technically worked.
 - **A run's context is built to a plan, not just handed the thread:
   `docs/AUTOPILOT_CONTEXT.md`.** Measured on a 60-comment thread, Claude's own
   replies are 76% of the bytes, live-progress panels 19%, retry/failure notices
