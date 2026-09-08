@@ -45,12 +45,13 @@
 // — loudly, at attach time — rather than quietly reading zero.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./evaluator.js'), require('./input.js'), require('./registry.js'));
+    module.exports = factory(require('./evaluator.js'), require('./input.js'), require('./registry.js'), require('./travel.js'));
   } else {
     root.PanelEval = root.PanelEval || {};
-    root.PanelEval.attach = factory(root.PanelEval.evaluator, root.PanelEval.input, root.PanelEval.registry).attach;
+    root.PanelEval.attach = factory(root.PanelEval.evaluator, root.PanelEval.input,
+                                    root.PanelEval.registry, root.PanelEval.travel).attach;
   }
-}(this, function (evaluator, inputMod, registry) {
+}(this, function (evaluator, inputMod, registry, travel) {
   'use strict';
 
   // Features this adapter's call site physically cannot supply. Keep this
@@ -83,6 +84,20 @@
   // every board. Measured before the fix: inert survival fell from 2546
   // frames to 810. A single-board test passed the whole time, because on
   // that board the first swap happened to be the shipped choice.
+  // Frames to bring the cursor from where it is to a candidate swap, and
+  // whether it can get there at all. The board carries the cursor because
+  // _snapshot puts it there; a board without one (a hand-built test case,
+  // say) prices everything at 0, which is the same "no cost invented where
+  // none is known" rule the feature follows.
+  function travelFor(board, r, c) {
+    var cur = board && board.cursor;
+    if (!cur) return { frames: 0, reachable: true };
+    return {
+      frames: travel.cost(cur.row, cur.col, r, c),
+      reachable: travel.reachable(r, c, cur.topRow, board.width)
+    };
+  }
+
   function bestSwapBy(cpu, board, weights, incumbent) {
     var swaps = board.legalSwaps ? board.legalSwaps() : [];
     var best = incumbent || null, bestScore = null;
@@ -90,14 +105,22 @@
       var inc = board.clone();
       inc.swap(incumbent[0], incumbent[1]);
       var incRes = inc.resolve ? inc.resolve() : {};
-      bestScore = evaluator.evaluate(inputMod.fromStack(cpu.stack, inc, {
+      var incTravel = travelFor(board, incumbent[0], incumbent[1]);
+      var incInput = inputMod.fromStack(cpu.stack, inc, {
         chainLength: incRes.chainLength || 0,
         comboSizes: incRes.comboSizes || [],
         garbage: incRes.garbage || []
-      }, cascadeFor(cpu), clearedBetween(cpu, inc)), weights).score;
+      }, cascadeFor(cpu), clearedBetween(cpu, inc));
+      incInput.travelFrames = incTravel.frames;
+      bestScore = evaluator.evaluate(incInput, weights).score;
     }
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
+      // Unreachable is not expensive, it is impossible: clampCursor caps
+      // the cursor at the stack top, so a swap above it can never be made.
+      // Offering it at a high price would still let a big enough score win.
+      var tr = travelFor(board, r, c);
+      if (!tr.reachable) continue;
       var trial = board.clone();
       trial.swap(r, c);
       // Resolve before scoring, exactly as the shipped search does: a
@@ -110,6 +133,7 @@
         comboSizes: res.comboSizes || [],
         garbage: res.garbage || []
       }, cascadeFor(cpu), clearedBetween(cpu, trial));
+      input.travelFrames = tr.frames;
       var score = evaluator.evaluate(input, weights).score;
       // STRICTLY greater: a tie keeps the incumbent.
       if (bestScore === null || score > bestScore) { bestScore = score; best = [r, c]; }

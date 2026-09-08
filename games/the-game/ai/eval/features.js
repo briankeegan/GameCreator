@@ -515,6 +515,29 @@
     return input.earned.chainLength || 0;
   }
 
+  // ----------------------------------------------------------- travelCost
+  //
+  // WHAT THIS CANDIDATE COSTS TO REACH, IN FRAMES.
+  //
+  // The only feature that measures the MOVE rather than the board it
+  // leaves, and it exists because the bot has never had to pay for
+  // distance. stack.touchSwap teleports the cursor to any cell and swaps in
+  // the same frame; a person holds a direction and waits. Measured against
+  // the engine (travel.js): one step is 1 frame, two is 21, and an L with
+  // two long legs is 42 where the straight line is 23.
+  //
+  // A swap worth slightly less but one cell away can therefore be worth far
+  // more than the better one across the board, and no version of this bot
+  // has ever been able to express that.
+  //
+  // The number is supplied by whichever seam knows which move produced the
+  // candidate. A seam that cannot see the move passes nothing and this
+  // reads 0 — better than inventing a cost, which would price every
+  // candidate identically and quietly re-introduce teleporting.
+  function travelCost(input) {
+    return input.travelFrames || 0;
+  }
+
   // -------------------------------------------------------- framesToDeath
   //
   // HOW MANY FRAMES THIS BOARD HAS LEFT.
@@ -633,6 +656,7 @@
   return {
     SAFE_FRAMES: SAFE_FRAMES,
     matchPotential: matchPotential,
+    travelCost: travelCost,
     _matchedCellsNear: matchedCellsNear,
     latentChain: latentChain,
     garbageCleared: garbageCleared,

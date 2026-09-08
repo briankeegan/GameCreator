@@ -25,6 +25,14 @@
 //              blocks { id: { cells: [[row,col],...] } } — garbage blocks,
 //              needed because clearing propagates block to block, so a
 //              cell's block membership decides how much one match removes.
+//   cursor   { row, col, topRow } — where the cursor IS. Part of the
+//              position, not decoration: a swap one cell away is nearly
+//              free and one two cells away costs 21 frames.
+//   travelFrames  what THIS candidate costs to reach from the cursor, in
+//              frames, per ai/eval/travel.js. Set by whichever seam knows
+//              the move; 0 where the move is unknown, which is honest
+//              rather than a guess — a seam that cannot see the move must
+//              not invent a cost for it.
 //   colours  how many colours are in play at this level. Carried but not
 //              currently read by any feature: colourScarcity was expected
 //              to need it and does not, because a colour with no panels is
@@ -83,6 +91,8 @@
         grid: board.grid || [],
         blocks: board.blocks || {}
       },
+      cursor: raw.cursor || null,
+      travelFrames: raw.travelFrames || 0,
       colours: raw.colours || 0,
       displacement: raw.displacement || 0,
       chainMarks: raw.chainMarks === undefined ? null : raw.chainMarks,
@@ -124,6 +134,8 @@
     }
     return normalize({
       board: board,
+      cursor: board && board.cursor ? board.cursor : null,
+      travelFrames: 0,
       colours: stack ? stack.colors : 0,
       displacement: stack ? stack.displacement : 0,
       chainMarks: cascade ? cascade.chainMarks : null,

@@ -274,6 +274,28 @@ test('matchPotential agrees with an engine-driven count across seeds', function 
             for (var i = 0; i < 25; i++) {
                 var withGarbage = i % 2 === 0;
                 var rb = randomBoard(rng, colours, withGarbage ? 0.12 : 0);
+                // SETTLE IT FIRST. matchPotential scans only the swapped row
+                // and its two columns, which is exact on a settled board —
+                // the only kind the search ever scores, since candidates come
+                // out of resolve(). A raw random board can hold standing
+                // matches elsewhere, and the full-board reference counts
+                // those into the combo size while the optimised scan
+                // correctly ignores them. Comparing on an unsettled board
+                // measures a precondition violation, not a defect.
+                for (var guard = 0; guard < 40; guard++) {
+                    var standing = features._matchedCells(rb.board);
+                    var skeys = Object.keys(standing);
+                    if (!skeys.length) break;
+                    skeys.forEach(function (k) {
+                        var cell = standing[k];
+                        rb.board.grid[cell[0]][cell[1]] = 0;
+                        var p = rb.stack.panelAt(cell[0], cell[1]);
+                        if (p) { p.color = 0; p.isGarbage = false; }
+                    });
+                }
+                assert.deepStrictEqual(Object.keys(features._matchedCells(rb.board)), [],
+                    'board did not settle — the comparison below would be testing a ' +
+                    'precondition violation rather than the feature');
                 var stack = rb.stack, grid = rb.board.grid;
                 var W = PanelEngine.WIDTH, H = stack.height;
                 var expected = 0;

@@ -30,6 +30,7 @@
   // group: 'board'  — what the position looks like once the move settles
   //        'earned' — what this move just paid out
   //        'clock'  — how long until death
+  //        'move'   — what this candidate costs to PLAY, not what it leaves
   var FEATURES = [
     { key: 'matchPotential',   group: 'board',  sign: +1, fn: null,
       what: 'Merged combos of 4+ reachable next move. A PLAIN 3 scores 0 — comboGarbage() sends nothing below 4 — but a 3 that extends a chain or touches garbage still counts.' },
@@ -75,6 +76,9 @@
 
     { key: 'garbageCleared',   group: 'earned', sign: +1, fn: null,
       what: 'Garbage cells converted this move, including propagation into touching blocks.' },
+
+    { key: 'travelCost',       group: 'move',   sign: -1, fn: null,
+      what: 'Frames to bring the cursor from where it is to this candidate swap, per travel.js. The bot could always teleport (stack.touchSwap) so it never paid for distance; a person holds a direction and waits, and the second step costs 21 frames. Set by whichever seam knows the move; 0 when the move is unknown.' },
 
     { key: 'framesToDeath',    group: 'clock',  sign: +1, fn: null,
       what: 'toppedOut ? preStop + stop + shake + health : Infinity — and Infinity while riseLock holds, since health only drains inside (!riseLock && stopTime === 0). Replaces stop/health/shake as separate features: they do not sit beside each other, they PAUSE each other.' }

@@ -88,6 +88,28 @@ function blank(cpu) {
     return b;
 }
 
+// A board from REAL play on which the shipped heuristic actually chooses to
+// build. Synthetic boards mostly do not: _raiseOrBuild only returns a swap
+// when boardPotential improves, so a random grid usually yields raise/hold
+// and any test built on one measures nothing. Two tests were written
+// against synthetic boards first and both found a build decision on fewer
+// than three boards in three hundred.
+function buildDecisionBoards(cpu, want) {
+    var stack = cpu.stack, found = [];
+    for (var f = 0; f < 2000 && found.length < want; f++) {
+        if (f > 120 && f % 120 === 0) {
+            stack.receiveGarbage([{ width: 6, height: 3, isChain: false }]);
+        }
+        cpu.update(); stack.run(); stack.takeDeliverableGarbage(); stack.drainEvents();
+        if (stack.gameOver) break;
+        if (f % 7) continue;
+        var b = cpu._snapshot();
+        var d = cpu._raiseOrBuild(b);
+        if (d && d.kind === 'swap') found.push(b);
+    }
+    return found;
+}
+
 var REACHABLE = [
     // key, setup(cpu) -> board, and anything the stack needs doing to it
     ['matchPotential', function (cpu) {
@@ -141,6 +163,31 @@ var REACHABLE = [
         }
         return blank(cpu);
     }],
+    // travelCost is a property of the MOVE, and _evaluate is handed a board
+    // with no move attached — so it is unreachable through that call site by
+    // construction, exactly as the feature's own comment says. It is fed by
+    // _raiseOrBuild, which enumerates the swaps and therefore knows the
+    // distance, so this row brings its own probe rather than being excused.
+    ['travelCost', function (cpu) {
+        var boards = buildDecisionBoards(cpu, 1);
+        return boards[0] || blank(cpu);
+    }, function (cpu, board, weights) {
+        // Reached by scoring the same board with travel weighted and not,
+        // through the seam that knows the move.
+        var travel = require('./travel.js');
+        function pick(w) {
+            var detach = attach(SearchCpu, w);
+            try {
+                var d = cpu._raiseOrBuild(board);
+                return d && d.kind === 'swap'
+                    ? travel.cost(board.cursor.row, board.cursor.col, d.move[0], d.move[1]) : null;
+            } finally { detach(); }
+        }
+        var plain = pick({});
+        var weighted = pick(weights.travelCost ? { travelCost: 300 } : {});
+        if (plain === null || weighted === null) return 0;
+        return plain === weighted ? 0 : 1;
+    }],
     ['latentChain', function (cpu) {
         // Mid-cascade is a live-stack condition the adapter reads through
         // _cascadePrediction, so this stubs that method and asserts the
@@ -161,16 +208,20 @@ test('EVERY feature is reachable through the seam, each on a board that makes it
 
     var dead = [];
     REACHABLE.forEach(function (row) {
-        var key = row[0], setup = row[1];
+        var key = row[0], setup = row[1], probe = row[2];
         assert.ok(registry.byKey[key], 'unknown feature in this table: ' + key);
         var cpu = liveCpu();
         var board = setup(cpu);
         var w = {}; w[key] = 1;
-        var base = cpu._evaluate(board, 4, 2, 5);   // shipped, seam detached
-        var detach = attach(SearchCpu, w);
         var score;
-        try { score = cpu._evaluate(board, 4, 2, 5) - base; }
-        finally { detach(); }
+        if (probe) {
+            score = probe(cpu, board, w);
+        } else {
+            var base = cpu._evaluate(board, 4, 2, 5);   // shipped, seam detached
+            var detach = attach(SearchCpu, w);
+            try { score = cpu._evaluate(board, 4, 2, 5) - base; }
+            finally { detach(); }
+        }
         if (score === 0) dead.push(key);
     });
 
@@ -568,6 +619,73 @@ test('_defensiveKey: detaching restores the shipped function itself', function (
     assert.notStrictEqual(SearchCpu.prototype._defensiveKey, original);
     detach();
     assert.strictEqual(SearchCpu.prototype._defensiveKey, original);
+});
+
+
+// ---- travel cost reaches the search ----
+//
+// The point of the whole exercise: a swap one cell from the cursor is
+// nearly free (1 frame) and one two cells away costs 21. If weighting
+// travelCost cannot pull the chosen move toward the cursor, the bot is
+// still teleporting and every trained weight is answering the wrong
+// question.
+
+test('travelCost: weighting it pulls the building move toward the cursor', function () {
+    // A TIE IS A FAILURE HERE. The first version asserted near <= far, which
+    // passes trivially when travel does nothing at all — and it did pass,
+    // before the seam computed any travel cost.
+    var travel = require('./travel.js');
+    var cpu = liveCpu();
+    var boards = buildDecisionBoards(cpu, 40);
+    assert.ok(boards.length > 10, 'only found ' + boards.length + ' build decisions to test on');
+
+    function chosenDistance(b, weights) {
+        var detach = attach(SearchCpu, weights);
+        try {
+            var d = cpu._raiseOrBuild(b);
+            if (!d || d.kind !== 'swap') return null;
+            return travel.cost(b.cursor.row, b.cursor.col, d.move[0], d.move[1]);
+        } finally { detach(); }
+    }
+
+    var moved = 0, checked = 0, worse = [], example = null;
+    boards.forEach(function (b) {
+        var far = chosenDistance(b, {});
+        var near = chosenDistance(b, { travelCost: 300 });
+        if (far === null || near === null) return;
+        checked++;
+        if (near > far) worse.push(far + ' -> ' + near);
+        if (near !== far) { moved++; if (!example) example = far + ' -> ' + near + ' frames'; }
+    });
+
+    assert.ok(checked > 10, 'only ' + checked + ' boards produced a swap decision');
+    assert.deepStrictEqual(worse.slice(0, 3), [],
+        'weighting travel chose a FURTHER move on ' + worse.length + ' boards: ' + worse.slice(0, 3));
+    assert.ok(moved > 0,
+        'weighting travelCost at 300 changed the chosen move on none of ' + checked +
+        ' boards — travel is not reaching the search at all');
+    process.stdout.write('       [travel] moved the choice on ' + moved + '/' + checked +
+        ' real boards (' + example + ')\n');
+});
+
+test('travelCost: a swap the cursor cannot reach is never offered', function () {
+    // clampCursor caps curRow at topCurRow, so cells above the stack top
+    // are unreachable rather than expensive — the distinction meatfighter's
+    // BFS makes, and one a cost alone cannot express.
+    var travel = require('./travel.js');
+    var cpu = liveCpu();
+    var board = cpu._snapshot();
+    var top = board.cursor.topRow;
+    var detach = attach(SearchCpu, { travelCost: 1 });
+    try {
+        for (var i = 0; i < 12; i++) {
+            var d = cpu._raiseOrBuild(board);
+            if (d && d.kind === 'swap') {
+                assert.ok(travel.reachable(d.move[0], d.move[1], top, board.width),
+                    'offered a swap at row ' + d.move[0] + ' with the stack top at ' + top);
+            }
+        }
+    } finally { detach(); }
 });
 
 tests.forEach(function (t) {

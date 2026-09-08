@@ -68,7 +68,11 @@ test('every declared feature has a key, a sign and a description', function () {
     registry.all.forEach(function (f) {
         assert.ok(f.key, 'feature missing key');
         assert.ok(f.sign === 1 || f.sign === -1, f.key + ': sign must be +1 or -1');
-        assert.ok(['board', 'earned', 'clock'].indexOf(f.group) >= 0, f.key + ': bad group');
+        // 'move' joined board/earned/clock when travelCost arrived: it
+        // measures what a candidate costs to PLAY rather than what it
+        // leaves behind, which is a fourth kind of thing.
+        assert.ok(['board', 'earned', 'clock', 'move'].indexOf(f.group) >= 0,
+                  f.key + ': bad group "' + f.group + '"');
         assert.ok(f.what && f.what.length > 20, f.key + ': needs a real description');
     });
 });
@@ -899,6 +903,41 @@ test('garbageCleared: clearing nothing is zero', function () {
 
 test('garbageCleared: it is cells, so a whole slab outweighs one cell', function () {
     assert.ok(cleared(12) > cleared(1));
+});
+
+
+// ---- travelCost ----
+// What THIS candidate costs to reach from where the cursor is, in frames.
+// The bot has always been able to teleport (stack.touchSwap), so it has
+// never paid for distance; a person holds a direction and waits, and the
+// second step in a direction costs 21 frames. Measured in travel.js and
+// pinned to the engine in travel.test.js.
+//
+// The value is set by whichever seam knows the move. A seam that cannot see
+// the move passes nothing, and this reads 0 — no cost invented where none
+// is known.
+
+test('travelCost: reports the frames the seam measured', function () {
+    assert.strictEqual(F.travelCost(inputMod.normalize({ travelFrames: 21 })), 21);
+});
+
+test('travelCost: an unknown move costs nothing, rather than something invented', function () {
+    assert.strictEqual(F.travelCost(inputMod.normalize({})), 0);
+});
+
+test('travelCost: it is a MAGNITUDE — the registry carries the sign', function () {
+    // Every feature here returns "how much of this thing is there", never
+    // "how good is this", so a bigger number means further away and the
+    // registry's -1 makes that worse.
+    assert.ok(F.travelCost(inputMod.normalize({ travelFrames: 42 })) >
+              F.travelCost(inputMod.normalize({ travelFrames: 1 })));
+    assert.strictEqual(registry.byKey.travelCost.sign, -1);
+});
+
+test('travelCost: weighting it subtracts through the evaluator', function () {
+    var r = evaluator.evaluate({ travelFrames: 21 }, { travelCost: 2 });
+    assert.strictEqual(r.features.travelCost, 21);
+    assert.strictEqual(r.terms.travelCost, -42);
 });
 
 // ------------------------------------------------------------------ runner

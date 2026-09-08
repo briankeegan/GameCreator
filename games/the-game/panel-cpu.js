@@ -891,7 +891,15 @@
         grid[r][c] = v;
       }
     }
-    return new LogicalBoard(width, stack.height, this.stack.colors, grid, blocks);
+    var board = new LogicalBoard(width, stack.height, this.stack.colors, grid, blocks);
+    // THE CURSOR IS PART OF THE POSITION. Without it the search cannot know
+    // what any candidate COSTS: stack.touchSwap teleports, but a person
+    // holds a direction and waits, and the second step in a direction is 21
+    // frames (see ai/eval/travel.js, measured). topCurRow rides along
+    // because clampCursor caps the cursor there — cells above the stack top
+    // are unreachable rather than expensive.
+    board.cursor = { row: stack.curRow, col: stack.curCol, topRow: stack.topCurRow };
+    return board;
   };
 
   // ---- manual chain extension ----
