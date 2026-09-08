@@ -86,8 +86,7 @@ var SCENARIOS = {
         garbageEvery: 120,
         garbageWidth: 6,
         garbageHeight: 3,
-        leadIn: 120,
-        ceiling: 4000
+        leadIn: 120
     },
     siege: {
         // Level 5 tightens maxHealth from 81 to 51 and dangerHeightFrac
@@ -99,8 +98,7 @@ var SCENARIOS = {
         garbageEvery: 60,
         garbageWidth: 6,
         garbageHeight: 6,
-        leadIn: 120,
-        ceiling: 4000
+        leadIn: 120
     }
 };
 
@@ -108,7 +106,7 @@ var LEVEL = SCENARIOS.build.level;
 var GARBAGE_EVERY = SCENARIOS.build.garbageEvery;
 var GARBAGE_HEIGHT = SCENARIOS.build.garbageHeight;
 var LEAD_IN = SCENARIOS.build.leadIn;
-var CEILING = SCENARIOS.build.ceiling;
+
 
 // A genome that makes any single decision take longer than this is not a
 // real result — the game gives the cpu one frame. Same guard, and the same
@@ -123,7 +121,7 @@ var TIMING_MARGIN_MS = 85;
 
 exports.SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
 exports.LEVEL = LEVEL;
-exports.CEILING = CEILING;
+
 exports.SCENARIOS = SCENARIOS;
 
 // One run. `weights` null means the SHIPPED scoring, untouched — that is
@@ -171,7 +169,22 @@ exports.run = function (weights, seed, opts) {
 
     var f, sent = 0;
     try {
-        for (f = 0; f < sc.ceiling; f++) {
+        // NO FRAME CAP. The reference plays a FULL game — step 2 is "play a
+        // full game with them" — and it ends when the board tops out.
+        //
+        // There was a 4,000-frame ceiling here as a termination safety net,
+        // and it was censoring the objective on exactly the candidates that
+        // matter: four of the first ten rounds of the faithful run ended
+        // with died:0%, meaning those genomes were still alive and still
+        // scoring when they were cut off. A genome that would have reached
+        // 5,000 and one that would have reached 50,000 both reported
+        // whatever they had banked at the cut-off, and selection between
+        // them was luck.
+        //
+        // The run now ends when the game ends: gameOver, or the timing
+        // guard. A genome this drill cannot kill will run until it is
+        // killed, which is the honest consequence of measuring a full game.
+        for (f = 0; ; f++) {
             if (f > sc.leadIn && f % sc.garbageEvery === 0) {
                 stack.receiveGarbage([{ width: sc.garbageWidth, height: sc.garbageHeight,
                                         isChain: false }]);
