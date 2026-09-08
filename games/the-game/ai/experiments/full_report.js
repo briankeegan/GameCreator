@@ -68,6 +68,34 @@ var attackSchedule = require('./attack_schedule.js');
 var PanelEngine = global.PanelEngine;
 var PanelCpu = global.PanelCpu;
 
+// THE TRAINED EVALUATOR, MEASURED ON THE STANDARD TOOL.
+//
+// ai/eval/ trains weights against its own drill (bench.js), which exists
+// because this file's drills cannot reach the offensive search at the
+// tightened levels. That is a fine place to TRAIN and a terrible place to
+// declare a winner: the only benchmark anyone here reads is this one, in
+// minutes-and-seconds and cells sent, and a weight set that never appears
+// in it has not been measured, it has been described.
+//
+// GC_EVAL_WEIGHTS=<path to a trained JSON> attaches the evaluator for the
+// whole run; GC_EVAL_MODE picks 'replace' (the features ARE the scoring,
+// which is what PUYO_REFERENCE.md describes) or 'add' (a delta on the
+// shipped heuristic). Absent, nothing is loaded and nothing is patched, so
+// the default behaviour of this tool is byte-identical to before — it is
+// the standard validation tool and a flag it does not need must not be
+// able to change its answer.
+var evalWeightsPath = process.env.GC_EVAL_WEIGHTS;
+if (evalWeightsPath) {
+  var evalAttach = require(path.join(__dirname, '..', 'eval', 'attach.js')).attach;
+  var evalFile = JSON.parse(fs.readFileSync(evalWeightsPath, 'utf8'));
+  var evalWeights = evalFile.weights || evalFile;
+  var evalMode = process.env.GC_EVAL_MODE || evalFile.mode || 'replace';
+  evalAttach(PanelCpu.SearchCpu, evalWeights, { mode: evalMode });
+  console.log('Evaluator: ' + evalWeightsPath + '  mode=' + evalMode + '  ' +
+    Object.keys(evalWeights).filter(function (k) { return evalWeights[k] > 0.5; })
+      .map(function (k) { return k + '=' + evalWeights[k].toFixed(0); }).join(' '));
+}
+
 var cfgArg = process.argv[2] || 'nightmare';
 var levelsArg = process.argv[3] || '3,5,8,10';
 var seed = parseInt(process.argv[4], 10) || 1;
