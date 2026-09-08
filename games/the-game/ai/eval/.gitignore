@@ -1,0 +1,9 @@
+# Trained weight files are written by every run INCLUDING smoke tests, so
+# they are not tracked by default — an 8-genome, 1-generation smoke result
+# sitting in the repo looks exactly like a real one, and the whole point of
+# weights.js refusing an uncommented non-zero is that a number has to carry
+# the run that earned it.
+#
+# A result worth keeping gets committed deliberately, with its provenance
+# in the commit message: git add -f trained.<mode>.json
+trained.*.json
