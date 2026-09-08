@@ -15,11 +15,17 @@
 // height is bad — that halves the space and makes a sign-flipped fluke that
 // happens to fit eight seeds impossible.
 //
-// THE ZERO GENOME IS ALWAYS IN THE POPULATION. At zero weights the attached
-// evaluator is exactly the shipped AI (wiring.test.js law 1), so the
-// shipped behaviour is a candidate in every generation and the best genome
-// can never be worse than shipping nothing. That is not a safety net for
-// the search, it is the definition of an honest baseline.
+// NO BASELINE IN THE LOOP. The reference's population is random and then
+// evolved sets, ranked against each other on absolute score. Nothing is
+// ever compared to a previous bot, because there isn't one.
+//
+// The zero genome used to sit in every generation so the winner "could
+// never be worse than shipping nothing". That is a DEPLOYMENT safeguard
+// wearing a training costume, and it anchors the search around the shipped
+// heuristic — the population spends its selection pressure staying near a
+// point the method never asked it to respect. Whether to replace the
+// current AI is a real question and it is answered ONCE, at the end, by
+// verify.js. It is not the loop's business.
 //
 // HELD-OUT SEEDS. Training uses seeds 1-8; 9-14 are never seen until the
 // final report. A weight set that only wins on the seeds it was fitted to
@@ -159,7 +165,7 @@ function summarise(g) {
                .join(' ') || '(all zero — the shipped AI)';
 }
 
-var population = [zeroGenome()];
+var population = [];
 while (population.length < POPULATION) population.push(randomGenome());
 
 var generation = 0;
@@ -191,14 +197,13 @@ function step() {
         bestFit = scored[0].fit;
         best = scored[0].genome;
 
-        var zeroFit = scored.find(function (s) { return KEYS.every(function (k) { return s.genome[k] === 0; }); });
+
         console.log('gen ' + String(generation + 1).padStart(2) + '/' + GENERATIONS +
             '  best ' + scored[0].fit.toFixed(0) +
             '  median ' + scored[Math.floor(scored.length / 2)].fit.toFixed(0) +
             '  [frames ' + (scored[0].detail && scored[0].detail.avgFrames || 0).toFixed(0) +
             ' sent ' + (scored[0].detail && scored[0].detail.avgSent || 0).toFixed(1) +
             ' died ' + ((scored[0].detail && scored[0].detail.deathRate || 0) * 100).toFixed(0) + '%]' +
-            (zeroFit ? '  shipped-baseline ' + zeroFit.fit.toFixed(0) : '') +
             '  [' + ((Date.now() - t0) / 60000).toFixed(1) + 'm]');
         console.log('       ' + summarise(scored[0].genome));
 
@@ -206,10 +211,6 @@ function step() {
         if (generation >= GENERATIONS) return finish();
 
         var next = scored.slice(0, ELITES).map(function (s) { return s.genome; });
-        // the shipped baseline never leaves the population
-        if (!next.some(function (g) { return KEYS.every(function (k) { return g[k] === 0; }); })) {
-            next.push(zeroGenome());
-        }
         while (next.length < POPULATION) {
             var a = pick(scored), b = pick(scored);
             next.push(mutate(crossover(a, b)));
