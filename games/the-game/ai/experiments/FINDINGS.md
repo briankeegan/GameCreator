@@ -825,3 +825,45 @@ would seal a specific row) is the more direct fix this round's
   Both weight sets are committed — `trained.replace.json` (round 1) and
   `trained.replace.round2.json` — with their benchmark logs beside them,
   because the choice between them is not one the eval drill can make.
+
+- **CORRECTION, AND THE MISTAKE IS WORTH MORE THAN THE RESULT:
+  `full_report.js`'s `endless` IS TWELVE ATTACK FILES ON ONE BOARD SEED,
+  NOT TWELVE INDEPENDENT GAMES.** `runEndlessFile` is called with the same
+  `seed` for every file, so the panel RNG — which decides the entire
+  starting board and every row that rises — is identical across all twelve.
+  It averages away *attack pattern* variance and none of the board
+  variance, and board variance is the larger of the two by a distance.
+  Measured on `endless`, average frames survived per game:
+
+        board seed 1 (full_report)     shipped 2582   arena 4995
+        board seeds 101-112 (12 of)    shipped 3518   arena 2999
+
+  The same two configs, opposite verdicts. One of those numbers is a
+  measurement and the other is a coin.
+
+  THE FINDING ABOVE IT IS THEREFORE WRONG and is left in place rather than
+  edited, because the failure is more instructive than a clean file. It
+  claimed the eval drill "ranked two real candidates in the OPPOSITE order"
+  to endless — round 1 beating round 2 on held-out seeds while losing to it
+  on endless by 54% of sent garbage. That 54% was one board seed. On twelve:
+
+        endless, seeds 101-112     frames    sent    score
+        round 1                      4714    58.9     2827
+        round 2                      3740    46.6     1862
+        shipped                      3518    41.8     1808
+        arena (four-category)        2999    29.1     1296
+
+  Round 1 wins on endless too. The eval drill and endless AGREED all along;
+  the disagreement was an artifact of reading a single-seed number as if it
+  were an average, and several hours of work were spent on the strength of
+  it. The four-category trainer that came out of it is still the right
+  thing — a fitness should play the games it is judged on, and
+  bench.fidelity.test.js is worth having — but it was built for a reason
+  that was not real, and it produced the WORST endless bot of the four by
+  weighting comboStorm (+191.7%) equally with the drill that matters.
+
+  THE LESSON IS NOT "use more seeds", it is that this repo has now been
+  fooled the same way three times: a benchmark whose name promises an
+  average that it does not compute (here), a gate that could not fail
+  (art-checks), and a screenshot that survived its own failure (shoot.js).
+  Before trusting a number, read what the code behind it actually varies.
