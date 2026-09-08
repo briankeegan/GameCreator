@@ -119,6 +119,11 @@ function burstFires(f) {
     return ((f - BURST_LEAD_IN - 1) % BURST_CYCLE) < BURST_LEN;
 }
 
+// The tier every scenario runs at. GC_LEVEL picks it; 3 is what the first
+// rounds trained on and remains the default so an old command line means
+// what it meant.
+var LEVEL = Number(process.env.GC_LEVEL || 3);
+
 var SCENARIOS = {
     build: {
         level: 3,
@@ -138,9 +143,23 @@ var SCENARIOS = {
     // benchmark without anyone noticing. Pinned by bench.fidelity.test.js,
     // which runs full_report's own runner beside these and fails on any
     // difference at all.
-    comboStorm: { level: 3, burst: true, garbageWidth: 4, garbageHeight: 1, ceiling: 120000 },
-    factory:    { level: 3, burst: true, garbageWidth: 6, garbageHeight: 2, ceiling: 120000 },
-    bigBlocks:  { level: 3, burst: true, garbageWidth: 6, garbageHeight: 12, ceiling: 120000 },
+    // LEVEL IS A PARAMETER, NOT A PROPERTY OF THE DRILL. full_report.js
+    // runs every category at every level it is asked for (default
+    // 3,5,8,10), so a scenario carries a default and GC_LEVEL overrides it
+    // — otherwise training is pinned to one tier while the benchmark
+    // reports four, which is the same stand-in problem as training on a
+    // synthetic drill.
+    //
+    // The tiers are the SAME GAME with different constants, not different
+    // games: same board, same matching, same swaps, same garbage. What
+    // changes is maxHealth 81 -> 1, colours 5 -> 6, startingSpeed 9 -> 32,
+    // GARBAGE_HOVER 31 -> 4, adjacentDenial 0.29 -> 1.0, and the stop-time
+    // economics (comboConstant -12 -> +22, so combos go from penalised to
+    // rewarded). A weight set learned on one tier has learned those
+    // constants along with the game.
+    comboStorm: { level: LEVEL, burst: true, garbageWidth: 4, garbageHeight: 1, ceiling: 120000 },
+    factory:    { level: LEVEL, burst: true, garbageWidth: 6, garbageHeight: 2, ceiling: 120000 },
+    bigBlocks:  { level: LEVEL, burst: true, garbageWidth: 6, garbageHeight: 12, ceiling: 120000 },
 
     // THE ONE THAT IS NOT A DRILL AT ALL.
     //
@@ -163,7 +182,7 @@ var SCENARIOS = {
     // The seed pool rotates, so a genome that suits one attack file is
     // re-tested against a different one next generation.
     endless: {
-        level: 3,
+        level: LEVEL,
         file: true,
         ceiling: 36000
     },
@@ -181,7 +200,6 @@ var SCENARIOS = {
     }
 };
 
-var LEVEL = SCENARIOS.build.level;
 var GARBAGE_EVERY = SCENARIOS.build.garbageEvery;
 var GARBAGE_HEIGHT = SCENARIOS.build.garbageHeight;
 var LEAD_IN = SCENARIOS.build.leadIn;
