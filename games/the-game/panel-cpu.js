@@ -444,28 +444,57 @@
     }
   };
 
+  // HOT: called ~9,400 times per level-10 game, inside resolve()'s loop,
+  // which is itself called once per candidate move and again for every
+  // legal swap inside chainPotential. Profiled at 38% of a game's runtime.
+  //
+  // Rewritten to allocate nothing per cell. The previous version built a
+  // `run` ARRAY per run and pushed a column index into it for every panel,
+  // then walked it again to emit matches. A run is fully described by where
+  // it started and how long it is, so this tracks two integers instead.
+  //
+  // WHAT IS DELIBERATELY UNCHANGED: the returned shape ("r:c" -> [r, c]),
+  // the scan order (rows top-down then columns left-right), and therefore
+  // the INSERTION ORDER of the keys. Callers iterate this with `for..in`
+  // and _connectedGarbage's flood fill starts from it, so a different order
+  // is a different game even when the same cells match. identity.test.js
+  // hashes every frame of eight games precisely so that claim is checked
+  // rather than asserted.
   LogicalBoard.prototype._findMatches = function () {
     var matched = {}; // "r:c" -> [r, c]
-    var r, c, run, i, color;
-    for (r = 1; r <= this.height; r++) {
-      run = [];
-      for (c = 1; c <= this.width + 1; c++) {
-        color = c <= this.width ? this.grid[r][c] : 0;
-        if (color > 0 && (run.length === 0 || this.grid[r][run[run.length - 1]] === color)) run.push(c);
-        else {
-          if (run.length >= 3) for (i = 0; i < run.length; i++) matched[r + ":" + run[i]] = [r, run[i]];
-          run = color > 0 ? [c] : [];
+    var H = this.height, W = this.width, grid = this.grid;
+    var r, c, i, color, runStart, runLen, runColor, row;
+
+    for (r = 1; r <= H; r++) {
+      row = grid[r];
+      runStart = 0; runLen = 0; runColor = 0;
+      for (c = 1; c <= W + 1; c++) {
+        color = c <= W ? row[c] : 0;
+        if (color > 0 && (runLen === 0 || runColor === color)) {
+          if (runLen === 0) { runStart = c; runColor = color; }
+          runLen++;
+        } else {
+          if (runLen >= 3) {
+            for (i = 0; i < runLen; i++) matched[r + ":" + (runStart + i)] = [r, runStart + i];
+          }
+          if (color > 0) { runStart = c; runLen = 1; runColor = color; }
+          else { runLen = 0; runColor = 0; }
         }
       }
     }
-    for (c = 1; c <= this.width; c++) {
-      run = [];
-      for (r = 1; r <= this.height + 1; r++) {
-        color = r <= this.height ? this.grid[r][c] : 0;
-        if (color > 0 && (run.length === 0 || this.grid[run[run.length - 1]][c] === color)) run.push(r);
-        else {
-          if (run.length >= 3) for (i = 0; i < run.length; i++) matched[run[i] + ":" + c] = [run[i], c];
-          run = color > 0 ? [r] : [];
+    for (c = 1; c <= W; c++) {
+      runStart = 0; runLen = 0; runColor = 0;
+      for (r = 1; r <= H + 1; r++) {
+        color = r <= H ? grid[r][c] : 0;
+        if (color > 0 && (runLen === 0 || runColor === color)) {
+          if (runLen === 0) { runStart = r; runColor = color; }
+          runLen++;
+        } else {
+          if (runLen >= 3) {
+            for (i = 0; i < runLen; i++) matched[(runStart + i) + ":" + c] = [runStart + i, c];
+          }
+          if (color > 0) { runStart = r; runLen = 1; runColor = color; }
+          else { runLen = 0; runColor = 0; }
         }
       }
     }
@@ -482,24 +511,39 @@
   LogicalBoard.prototype._connectedGarbage = function (matched) {
     var self = this;
     var within = function (r, c) { return r >= 1 && r <= self.height && c >= 1 && c <= self.width; };
+    // HOT, for the same reason as _findMatches: once per resolve() pass.
+    // The previous version allocated a four-element array of two-element
+    // arrays AND a closure for every matched cell and every popped cell,
+    // just to test four neighbours. Same four tests, written out.
+    //
+    // THE PUSH ORDER IS PART OF THE BEHAVIOUR and is preserved exactly:
+    // down, up, right, left, into a LIFO stack, so the pop order and hence
+    // `seen`'s insertion order are unchanged. Reordering these four lines
+    // would floods-fill the same cells in a different order — invisible in
+    // most results and not in all of them.
     var seen = {};
     var stack = [];
-    var k;
+    var k, rc, n, nr, nc, nk;
+    function pushIfGarbage(r, c) {
+      if (within(r, c) && self.grid[r][c] === -2) stack.push([r, c]);
+    }
     for (k in matched) {
-      var rc = matched[k];
-      [[rc[0] + 1, rc[1]], [rc[0] - 1, rc[1]], [rc[0], rc[1] + 1], [rc[0], rc[1] - 1]].forEach(function (n) {
-        if (within(n[0], n[1]) && self.grid[n[0]][n[1]] === -2) stack.push(n);
-      });
+      rc = matched[k];
+      pushIfGarbage(rc[0] + 1, rc[1]);
+      pushIfGarbage(rc[0] - 1, rc[1]);
+      pushIfGarbage(rc[0], rc[1] + 1);
+      pushIfGarbage(rc[0], rc[1] - 1);
     }
     while (stack.length) {
-      var n = stack.pop();
-      var nk = n[0] + ":" + n[1];
+      n = stack.pop();
+      nr = n[0]; nc = n[1];
+      nk = nr + ":" + nc;
       if (seen[nk]) continue;
       seen[nk] = n;
-      [[n[0] + 1, n[1]], [n[0] - 1, n[1]], [n[0], n[1] + 1], [n[0], n[1] - 1]].forEach(function (nn) {
-        var nnk = nn[0] + ":" + nn[1];
-        if (within(nn[0], nn[1]) && self.grid[nn[0]][nn[1]] === -2 && !seen[nnk]) stack.push(nn);
-      });
+      if (within(nr + 1, nc) && self.grid[nr + 1][nc] === -2 && !seen[(nr + 1) + ":" + nc]) stack.push([nr + 1, nc]);
+      if (within(nr - 1, nc) && self.grid[nr - 1][nc] === -2 && !seen[(nr - 1) + ":" + nc]) stack.push([nr - 1, nc]);
+      if (within(nr, nc + 1) && self.grid[nr][nc + 1] === -2 && !seen[nr + ":" + (nc + 1)]) stack.push([nr, nc + 1]);
+      if (within(nr, nc - 1) && self.grid[nr][nc - 1] === -2 && !seen[nr + ":" + (nc - 1)]) stack.push([nr, nc - 1]);
     }
     return seen;
   };

@@ -885,7 +885,7 @@ would seal a specific row) is the more direct fix this round's
   identity.test.js confirmed the games were bit-for-bit unchanged across
   both brains and eight games.
 
-  Measured speedup: NONE.
+  Measured speedup: NONE THAT CLEARS THE NOISE (kept anyway — see below).
 
         optimised  647ms
         original   659ms
@@ -894,9 +894,14 @@ would seal a specific row) is the more direct fix this round's
   Two runs of the same code differ by more than optimised differs from
   original. V8 allocates short-lived objects in a nursery very cheaply, so
   the string keys and per-cell arrays cost far less than they look like
-  they should. Reverted: provably harmless is not the same as worth having,
-  and unjustified churn in core game logic is how the next person's bug
-  hunt gets harder.
+  they should.
+
+  KEPT, on the owner's call, and the reasoning is sound: the version is
+  PROVEN to play the identical game and does strictly less work, so the
+  slower one has nothing to recommend it. What must not happen is the claim
+  drifting from "no measurable difference under load" to "we optimised
+  this" — the honest status is that it allocates less and has never been
+  shown to be faster.
 
   THE MISREADING IS THE LESSON. A profile that says a FUNCTION is 38% does
   not say which line inside it is expensive, and the two are easy to
