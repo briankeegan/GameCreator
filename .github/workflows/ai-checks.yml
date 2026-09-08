@@ -67,6 +67,12 @@ jobs:
       - name: Seam reaches every feature
         run: node games/the-game/ai/eval/seam.test.js
 
+      # Does the cursor-travel cost match the engine? Every number in
+      # travel.js came from driving a real Stack, and the first version of
+      # its formula was off by one while looking perfectly reasonable.
+      - name: Cursor travel cost
+        run: node games/the-game/ai/eval/travel.test.js
+
       # Are the numbers right FOR THE BOARD BEING RANKED? Every other suite
       # either builds the board by hand or checks a single call, so a stale
       # board or a wrong candidate passes all of them. This intercepts real
