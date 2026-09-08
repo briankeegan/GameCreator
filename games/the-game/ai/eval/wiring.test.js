@@ -27,7 +27,7 @@ var SEEDS = [1, 2, 3];
 var tests = [], failures = [];
 function test(name, fn) { tests.push({ name: name, fn: fn }); }
 function zeros() { var z = {}; registry.keys.forEach(function (k) { z[k] = 0; }); return z; }
-function frames(w) { return SEEDS.map(function (s) { return bench.run(w, s).frames; }); }
+function frames(w, opts) { return SEEDS.map(function (s) { return bench.run(w, s, opts).frames; }); }
 
 // LAW 1. An untrained evaluator is neutral, not a handicap.
 test('LAW: at zero weights the game plays EXACTLY as shipped', function () {
@@ -84,12 +84,21 @@ var UNREACHABLE = {
 };
 
 test('LAW: every feature is reachable, or listed as unreachable on purpose', function () {
+    // CHECKED IN BOTH MODES; reachable in EITHER is enough. 'add' is
+    // anchored to a heuristic that multiplies cleared garbage by
+    // 1,000,000, so an earned feature cannot move that ranking however
+    // correct it is — judging reachability only there condemns features
+    // for the anchor's size rather than their own uselessness. 'replace'
+    // is the mode PUYO_REFERENCE.md describes, where the features ARE the
+    // scoring, and is the fair test of whether one can steer the game.
     var base = JSON.stringify(frames(zeros()));
+    var baseReplace = JSON.stringify(frames(zeros(), { mode: 'replace' }));
     var wronglyDead = [], wronglyListed = [];
     registry.keys.forEach(function (k) {
         var w = zeros();
         w[k] = 100;
-        var moved = JSON.stringify(frames(w)) !== base;
+        var moved = JSON.stringify(frames(w)) !== base ||
+                    JSON.stringify(frames(w, { mode: 'replace' })) !== baseReplace;
         if (!moved && !UNREACHABLE[k]) wronglyDead.push(k);
         if (moved && UNREACHABLE[k]) wronglyListed.push(k);
     });
@@ -115,12 +124,19 @@ test('LAW: a real share of decisions consults the evaluator', function () {
     var PanelEngine = globalThis.PanelEngine, PanelCpu = globalThis.PanelCpu;
     var P = PanelCpu.SearchCpu.prototype;
     var seen = { decisions: 0, consulted: 0 };
-    var oc = P._choose, orb = P._raiseOrBuild, odk = P._defensiveKey, oev = P._evaluate;
+    // EVERY seam, INCLUDING _buildScore. Leaving it out is how this law
+    // reported an unchanged 28% immediately after the hook that exists to
+    // raise that number — the law was watching the old seams only, and a
+    // full 50-game run was spent discovering a gap in the counter rather
+    // than in the code.
+    var oc = P._choose, orb = P._raiseOrBuild, odk = P._defensiveKey,
+        oev = P._evaluate, obs = P._buildScore;
     var touched = false;
     P._choose = function (b) { seen.decisions++; touched = false; var r = oc.call(this, b); if (touched) seen.consulted++; return r; };
     P._raiseOrBuild = function (b) { touched = true; return orb.call(this, b); };
     P._defensiveKey = function (a, b, c, d) { touched = true; return odk.call(this, a, b, c, d); };
     P._evaluate = function (a, b, c, d) { touched = true; return oev.call(this, a, b, c, d); };
+    P._buildScore = function (b) { touched = true; return obs.call(this, b); };
     try {
         SEEDS.forEach(function (seed) {
             var stack = new PanelEngine.Stack({ level: bench.LEVEL, seed: seed, countdown: false });
@@ -131,7 +147,7 @@ test('LAW: a real share of decisions consults the evaluator', function () {
                 if (stack.gameOver) break;
             }
         });
-    } finally { P._choose = oc; P._raiseOrBuild = orb; P._defensiveKey = odk; P._evaluate = oev; }
+    } finally { P._choose = oc; P._raiseOrBuild = orb; P._defensiveKey = odk; P._evaluate = oev; P._buildScore = obs; }
     var share = seen.consulted / seen.decisions;
     process.stdout.write('       [share] ' + seen.consulted + '/' + seen.decisions +
         ' decisions consult a seam (' + (share * 100).toFixed(0) + '%)\n');
@@ -139,6 +155,12 @@ test('LAW: a real share of decisions consults the evaluator', function () {
         'evaluator. Training weights against that is fitting noise — this was 5% before the ' +
         'seam fixes and is the reason they exist.');
 });
+
+// RUN ONE LAW: node wiring.test.js <substring>. These laws play real games
+// and the whole file is minutes; checking a single one should not cost
+// fifty of them, which is exactly what it cost once.
+var only = process.argv[2];
+if (only) tests = tests.filter(function (t) { return t.name.indexOf(only) >= 0; });
 
 tests.forEach(function (t) {
     try { t.fn(); process.stdout.write('  ok   ' + t.name + '\n'); }

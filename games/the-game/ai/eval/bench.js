@@ -86,7 +86,7 @@ exports.CEILING = CEILING;
 // One run. `weights` null means the SHIPPED scoring, untouched — that is
 // the control arm, and it must go through this identical code path or the
 // comparison is between two different benchmarks.
-exports.run = function (weights, seed) {
+exports.run = function (weights, seed, opts) {
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: seed, countdown: false });
     var cpu = new PanelCpu.SearchCpu(stack, {
         difficulty: 'nightmare', seed: seed + 55, mistake: 0, chainExtend: true
@@ -94,7 +94,7 @@ exports.run = function (weights, seed) {
 
     var detach = null;
     if (weights) {
-        try { detach = attach(PanelCpu.SearchCpu, weights); }
+        try { detach = attach(PanelCpu.SearchCpu, weights, opts); }
         catch (e) { return { frames: 0, sent: 0, unsafe: false, error: e.message }; }
     }
 
@@ -143,11 +143,11 @@ exports.run = function (weights, seed) {
 //
 // An unsafe genome scores 0 outright. A config that cannot decide inside a
 // frame is not a faster player, it is a broken one.
-exports.fitness = function (weights, seeds) {
+exports.fitness = function (weights, seeds, opts) {
     seeds = seeds || exports.SEEDS;
     var frames = 0, sent = 0, i, r;
     for (i = 0; i < seeds.length; i++) {
-        r = exports.run(weights, seeds[i]);
+        r = exports.run(weights, seeds[i], opts);
         if (r.error) return { fitness: 0, error: r.error };
         if (r.unsafe) return { fitness: 0, unsafe: true };
         frames += r.frames;
