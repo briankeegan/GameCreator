@@ -53,11 +53,34 @@ champion="${GC_CHAMPION:-}"
 champScore=""
 stale=0
 if [ -n "$champion" ]; then
+  # trainFitness, NOT the held-out score: rounds are compared on the finals
+  # seeds, so the starting champion's bar has to be on that scale too. This
+  # read the held-out number while every round after it reported a finals
+  # number — the same units mismatch, in the sibling branch, live for one
+  # restart before it was caught. A result from before the finalist change
+  # carries a single-seed best-of-generation trainFitness and must be
+  # re-measured on the finals seeds before it can be used here.
+  # AND REFUSE A CHAMPION MEASURED ON DIFFERENT SEEDS. Units have bitten
+  # three times in this file's short life: a champion scored on the held-out
+  # set compared against rounds scored on the finals set, a champion scored
+  # on 8 finals seeds compared against rounds scored on 12, and before that
+  # a champion crowned on one game. Each looked like the search failing.
+  # A number is only comparable to another number measured the same way, so
+  # this checks rather than trusts.
   champScore=$(node -e "
     var d=require('$champion');
-    process.stdout.write(String((d.holdout && d.holdout.learned && d.holdout.learned.fitness) || 0));
-  ")
-  echo "starting from champion $champion (held-out total $champScore)"
+    var want=require('./seeds.js').FINALS;
+    var got=(d.finalsSeeds||[]).join(',');
+    if (got !== want.join(',')) {
+      console.error('CHAMPION SEEDS MISMATCH: ' + ($champion ? '$champion' : '?'));
+      console.error('  measured on: ' + (got || '(none recorded — a result from before finals selection)'));
+      console.error('  this run uses: ' + want.join(','));
+      console.error('  Re-measure its weights on the current finals seeds before using it as a bar.');
+      process.exit(3);
+    }
+    process.stdout.write(String(d.trainFitness || 0));
+  ") || exit 3
+  echo "starting from champion $champion (finals score $champScore)"
 fi
 
 echo "=== rounds: level $LEVEL, brain $BRAIN, up to $MAX_ROUNDS rounds of ${POP}x${GENS} ==="

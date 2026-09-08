@@ -37,6 +37,7 @@ var path = require('path');
 var fs = require('fs');
 var registry = require('./registry.js');
 var bench = require('./bench.js');
+var SEEDS = require('./seeds.js');
 
 var GENERATIONS = Number(process.argv[2] || 12);
 var POPULATION = Number(process.argv[3] || 20);
@@ -75,6 +76,11 @@ var OBJECTIVE = process.argv[6] || 'score';
 // there is no beam search and no engine rollout behind it. That is what
 // makes "hundreds of weight sets" affordable rather than aspirational.
 var BRAIN = process.env.GC_BRAIN || 'search';
+// The brain being TRAINED, captured once. BRAIN itself is swapped
+// temporarily while the baseline row runs a different brain, and reading it
+// across that async boundary is how a result file comes to be labelled with
+// the baseline's brain instead of its own.
+var TRAINED_BRAIN = BRAIN;
 
 var ARENA = process.env.GC_ARENA
     ? (process.env.GC_ARENA === 'all' ? true : process.env.GC_ARENA.split(','))
@@ -98,8 +104,7 @@ var ARENA = process.env.GC_ARENA
 // Costs 50% more per generation (12 seeds rather than 8) and is worth it:
 // the previous run spent an hour producing a number that was worse than
 // doing nothing.
-var SEED_POOL = [];
-for (var sp = 1; sp <= 40; sp++) SEED_POOL.push(sp);
+var SEED_POOL = SEEDS.TRAIN;
 // ONE GAME PER WEIGHT SET, WHICH IS WHAT THE REFERENCE ACTUALLY DOES.
 //
 // PUYO_REFERENCE.md's loop is "play a full game with them, record the final
@@ -130,10 +135,15 @@ var SEEDS_PER_GENERATION = Number(process.env.GC_SEEDS_PER_GEN || 1);
 // same number would be picking the luckiest of eight and calling it a
 // measurement. Three sets keeps each one honest: 1-40 to train, 201-208 to
 // choose the winner, 101-112 to report it.
-var FINALS_SEEDS = [201, 202, 203, 204, 205, 206, 207, 208];
+// TWELVE, for the same reason HOLDOUT_SEEDS is twelve: endless picks its
+// attack file from the seed, so twelve consecutive seeds cover all twelve
+// files exactly once. Eight covered only two thirds of them, which meant
+// champions were being chosen against a subset of the real opponents and
+// could quietly suit those eight.
+var FINALS_SEEDS = SEEDS.FINALS;
 // How many of the final generation get that treatment.
 var FINALISTS = 8;
-var HOLDOUT_SEEDS = [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112];
+var HOLDOUT_SEEDS = SEEDS.HOLDOUT;
 var KEYS = registry.keys;
 var MAX_WEIGHT = 300;
 
@@ -364,7 +374,7 @@ function pick(scored) {
 function checkWinnerTiming(genome, cb) {
     var worst = 0, unsafe = 0;
     HOLDOUT_SEEDS.forEach(function (seed) {
-        var r = bench.run(genome, seed, { mode: MODE, scenario: 'endless', brain: BRAIN });
+        var r = bench.run(genome, seed, { mode: MODE, scenario: 'endless', brain: TRAINED_BRAIN });
         if (r.localMax > worst) worst = r.localMax;
         if (r.unsafe) unsafe++;
     });
@@ -432,8 +442,15 @@ function report() {
         var out = {
             mode: MODE,
             objective: OBJECTIVE,
-            brain: BRAIN,
+            brain: TRAINED_BRAIN,
             level: bench.LEVEL,
+            // WHAT trainFitness MEANS, recorded with it. It is the winner's
+            // score on these seeds, and rounds.sh compares champions on it.
+            // A result from before finalist selection carries a
+            // single-seed best-of-generation number under the same key and
+            // is NOT comparable — this field is how you tell.
+            finalsSeeds: FINALS_SEEDS,
+            finalists: FINALISTS,
             arena: ARENA === true ? bench.ARENA : ARENA,
             generations: GENERATIONS,
             population: POPULATION,

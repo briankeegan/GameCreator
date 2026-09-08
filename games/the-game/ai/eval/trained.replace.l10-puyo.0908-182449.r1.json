@@ -68,7 +68,7 @@
     111,
     112
   ],
-  "trainFitness": 14290,
+  "trainFitness": 2843.75,
   "holdout": {
     "learned": {
       "fitness": 3657.5,
@@ -174,5 +174,6 @@
   "timing": {
     "worstMs": 23,
     "unsafeSeeds": 0
-  }
+  },
+  "note": "trainFitness re-measured on FINALS_SEEDS 201-208 after rounds.sh switched to selecting on those rather than on the held-out seeds. The original value was a single-seed best-of-generation number and is not comparable."
 }
