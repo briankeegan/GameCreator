@@ -67,6 +67,14 @@ jobs:
       - name: Seam reaches every feature
         run: node games/the-game/ai/eval/seam.test.js
 
+      # DID THE GAME CHANGE? An optimisation may make things faster; it may
+      # not make them different. This hashes the whole board, cursor, score
+      # and health on EVERY frame of eight games across both brains, and
+      # compares to a committed golden file. Same outcome down a different
+      # game still fails, which a check on final score alone would pass.
+      - name: The game is bit-for-bit unchanged
+        run: node games/the-game/ai/eval/identity.test.js
+
       # Is the Puyo brain actually the Puyo brain? It claims every decision
       # goes through the evaluator and every legal move gets scored — the
       # two things that make weights trained against it mean anything, and
