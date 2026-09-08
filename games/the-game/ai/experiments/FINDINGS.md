@@ -794,3 +794,34 @@ would seal a specific row) is the more direct fix this round's
   Recorded here rather than left as a caveat in a commit message, because
   the headline number (+71.6%) is true and reads as unqualified progress,
   and the next person to see it should know what kind of player it bought.
+
+- **THE EVAL DRILL'S FITNESS DISAGREES WITH `endless`, AND `endless` IS THE
+  ONE TO BELIEVE.** Two training rounds on the walking cursor, round 2
+  seeded from round 1's winner. On the same twelve held-out seeds of the
+  eval drill, round 1 wins (734 vs 681). On `full_report.js` they invert:
+
+        L3          teleport      walking      round 1      round 2
+        factory     0:32 /  36    0:22 /  12   1:01 /  44   0:25 /   6
+        bigBlocks   0:45 /   6    0:42 /  18   0:44 /   6   0:54 /   6
+        endless     1:06 / 539    0:43 / 261   1:00 / 276   1:02 / 424
+
+  endless is the measurement to trust and the two others are not close to
+  it in weight: endless averages twelve real attack files, while factory
+  and bigBlocks are ONE game each on ONE seed — a 1:01-vs-0:25 gap there
+  is a single board, not a result. On endless round 2 sends 54% more than
+  round 1 (424 vs 276), gets closest of anything to the teleporting bot's
+  539, and is the only trained set that builds medium chains at all (6%
+  vs round 1's 0%).
+
+  So `bench.js`'s build drill — what the GA actually optimises — is not
+  merely an imperfect proxy for endless, it ranked two candidates in the
+  opposite order. Chasing more generations against it buys a better score
+  on a target nobody reads. The drill exists for a real reason (endless
+  cannot be driven from ga_core.js, and full_report's drills do not reach
+  the offensive search at the tightened levels), so the answer is to make
+  the trainer's fitness BE endless rather than to keep tuning against a
+  stand-in for it.
+
+  Both weight sets are committed — `trained.replace.json` (round 1) and
+  `trained.replace.round2.json` — with their benchmark logs beside them,
+  because the choice between them is not one the eval drill can make.
