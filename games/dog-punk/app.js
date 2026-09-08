@@ -363,8 +363,24 @@ const ROLL_FRAMES = 3;
 // affordance the player has to recognise on sight as "the exit", so it stays
 // visually consistent rather than getting reskinned per zone. See ZONE_TILES
 // and currentTileSet() for how a room picks its bank.
-const TILE_COUNT = 19;
+//
+// 2026-09-08 ("background art is bad, make it cohesive like Zelda") — the
+// actual defect this pass found was PALETTE, not shape: all 19 tiles across
+// all three zones were some mix of grey, brown and rust with not one green
+// pixel anywhere, so the whole chapter read as one location no matter which
+// zone you were in. Zelda tells zones apart with CONTRAST (a green village
+// against a red-black mountain), not extra detail, so the fix is a real
+// palette ARC across the chapter rather than a fourth grey: Scrapyard (life
+// persisting in the junk) now has a weeds-and-dead-grass groundAlt plus a
+// brand new 20th tile, TILE_WEEDS below, scattered as ground clutter (see
+// drawWeeds()); Rail Yard's ground prompt explicitly asks for nothing alive
+// (the dead industrial middle of the chapter); Rust Quarter keeps its warm
+// rust family but its base tile now carries a couple of tiny glowing-ember
+// flecks, the same "danger zone glows" cue as Death Mountain's lava. Town,
+// unchanged here, is already the warm payoff at the far end of that arc.
+const TILE_COUNT = 20;
 const TILES = sliceSheet("tiles.png", TILE_COUNT, 1);
+const TILE_WEEDS = 19; // Scrapyard-only decorative ground clutter, see drawWeeds()
 const TILE_GROUND = 0, TILE_GROUND_ALT = 1, TILE_CONCRETE = 2, TILE_WALL = 3,
       TILE_JUNK = 4, TILE_CRATE = 5, TILE_GATE = 6;
 // Rail Yard (rail ballast gravel, chain-link fence, a rail-tie/cable stack
@@ -373,7 +389,10 @@ const TILE_GROUND = 0, TILE_GROUND_ALT = 1, TILE_CONCRETE = 2, TILE_WALL = 3,
 // each its own 4 ground + 2 object tiles, cut from their own generations
 // (see rebuild-art.sh) directly after the original 7 in the same strip.
 const ZONE_TILES = {
-  scrapyard: { ground: TILE_GROUND, groundAlt: TILE_GROUND_ALT, concrete: TILE_CONCRETE, wall: TILE_WALL, junk: TILE_JUNK, crate: TILE_CRATE },
+  // `weeds` only exists here — Rail Yard and Rust Quarter are deliberately
+  // dead ground (see the 2026-09-08 note above), so their entries have no
+  // `weeds` field and drawWeeds() below skips them (`ts.weeds &&` guard).
+  scrapyard: { ground: TILE_GROUND, groundAlt: TILE_GROUND_ALT, concrete: TILE_CONCRETE, wall: TILE_WALL, junk: TILE_JUNK, crate: TILE_CRATE, weeds: TILE_WEEDS },
   rail:      { ground: 7, groundAlt: 8, concrete: 9, wall: 10, junk: 11, crate: 12 },
   rust:      { ground: 13, groundAlt: 14, concrete: 15, wall: 16, junk: 17, crate: 18 },
 };
@@ -414,6 +433,16 @@ function floorTileFor(c, r) {
   const ts = currentTileSet();
   if (cellHash(c >> 1, r >> 1) > 0.86 || cellHash(c, r) > 0.97) return ts.concrete;
   return cellHash(c * 5 + 3, r * 9 + 1) > 0.86 ? ts.groundAlt : ts.ground;
+}
+// Decorative, walkable, non-solid ground clutter — the one bit of green in
+// the whole chapter (see the 2026-09-08 note by ZONE_TILES). Only Scrapyard's
+// zone bank has a `weeds` entry; Rail Yard and Rust Quarter are dead ground
+// on purpose, so this is a no-op there. Sparse (rarer than the concrete/
+// groundAlt floor variants) and keyed off its own hash offset so it doesn't
+// always land on the same cells as groundAlt's scrap flecks.
+function drawWeeds(ts, c, r, flipX) {
+  if (!ts.weeds) return;
+  if (cellHash(c * 11 + 7, r * 13 + 5) > 0.9) blitTile(ts.weeds, c, r, flipX, false);
 }
 // Draw a tile into cell (c,r), optionally mirrored, optionally squeezed toward
 // one side of the cell (which is how the gate swings open).
@@ -1736,6 +1765,8 @@ function drawTile(c, r, ch, gateOpen) {
       const { axis, side } = gateOrientation(c, r);
       const flip = side === "right" || side === "bottom";
       blitTile(TILE_GATE, c, r, axis === "x" && flip, axis === "y" && flip, open ? 0.22 : 1, side, axis);
+    } else {
+      drawWeeds(ts, c, r, flipX);
     }
     return;
   }
