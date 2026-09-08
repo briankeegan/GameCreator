@@ -1,0 +1,23 @@
+Evaluator: /home/user/GameCreator/games/the-game/ai/eval/trained.replace.json  mode=replace  matchPotential=132 latentChain=25 links=2 colourVariance=68 edgePenalty=264 incomingGarbage=127 maxHeight=52 roughness=138 garbageAdjacency=53 colourScarcity=159 chainLength=72 garbageCleared=137
+Config: nightmare  levels=3  seed=1  categories=factory,bigBlocks,endless
+
+#################### LEVEL 3 ####################
+=== L3 factory ===
+Survived: 1:01 (3706 frames)
+Sent: 44 cells in 7 pieces
+  small combo (3-4 wide): 3 cells (1 pieces, 7%)
+  big combo (5-6 wide): 5 cells (1 pieces, 11%)
+  short chain (2-3 links): 36 cells (5 pieces, 82%)
+
+=== L3 bigBlocks ===
+Survived: 0:44 (2679 frames)
+Sent: 6 cells in 1 pieces
+  short chain (2-3 links): 6 cells (1 pieces, 100%)
+
+=== L3 endless (avg of 12 real files) -- avg frames across files ===
+Survived: 1:00 (3607 frames)
+Sent: 276 cells in 49 pieces
+  small combo (3-4 wide): 48 cells (16 pieces, 17%)
+  big combo (5-6 wide): 30 cells (6 pieces, 11%)
+  short chain (2-3 links): 198 cells (27 pieces, 72%)
+
