@@ -867,3 +867,46 @@ would seal a specific row) is the more direct fix this round's
   average that it does not compute (here), a gate that could not fail
   (art-checks), and a screenshot that survived its own failure (shoot.js).
   Before trusting a number, read what the code behind it actually varies.
+
+- **THE HOT FUNCTION WAS NOT WHERE THE TIME WENT, AND "38% OF RUNTIME" DID
+  NOT MEAN WHAT I READ IT TO MEAN.** Profiling a level-10 game with the
+  Puyo brain gave:
+
+        evaluate   235ms  60.7%    631 calls   (372us each)
+        resolve    148ms  38.4%   9423 calls   (15.7us each)
+        clone       36ms   9.2%   9423 calls   (3.8us each)
+
+  `resolve` at 38% looks like the thing to optimise, and inside it
+  `_findMatches` builds a `run` array per run and a `"r:c"` string key plus
+  a two-element array per matched cell, ~9,400 times a game;
+  `_connectedGarbage` allocates a four-element array of two-element arrays
+  AND a closure per matched cell just to test four neighbours. Both were
+  rewritten to do the identical work with no per-cell allocation, and
+  identity.test.js confirmed the games were bit-for-bit unchanged across
+  both brains and eight games.
+
+  Measured speedup: NONE.
+
+        optimised  647ms
+        original   659ms
+        optimised  562ms     <- the same code as the first line
+
+  Two runs of the same code differ by more than optimised differs from
+  original. V8 allocates short-lived objects in a nursery very cheaply, so
+  the string keys and per-cell arrays cost far less than they look like
+  they should. Reverted: provably harmless is not the same as worth having,
+  and unjustified churn in core game logic is how the next person's bug
+  hunt gets harder.
+
+  THE MISREADING IS THE LESSON. A profile that says a FUNCTION is 38% does
+  not say which line inside it is expensive, and the two are easy to
+  conflate when one of them has obviously ugly code in it. The ugly code
+  was not the cost. Next time: profile the LINE, or bisect by deleting work
+  and re-measuring, before rewriting anything.
+
+  Also worth recording: a clean measurement was not available. Four
+  training workers were saturating all four cores throughout, which is
+  exactly the condition that makes wall-clock timing meaningless — the same
+  reason the AI's own search budget is counted in board evaluations rather
+  than milliseconds (see panel-cpu.js's note on the Date.now() deadline
+  that made play depend on machine load).
