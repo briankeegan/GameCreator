@@ -12,10 +12,20 @@
 # handling). Then the held-out TOTAL decides whether it actually improved,
 # on twelve seeds the search never saw.
 #
-# STOPPING. Two consecutive rounds that fail to beat the champion. Not one:
-# a round is a sample, each genome plays one game per drill, and a single
-# flat round is as likely to be noise as a plateau. Two in a row is the
-# cheapest thing that is not a coin flip.
+# STOPPING. Three consecutive rounds that fail to beat the champion.
+#
+# Not one: a round is a sample. Each genome plays one game per drill, the
+# held-out total is twelve seeds, and a single flat round is as likely to
+# be noise as a plateau. Started at two and raised to three because the
+# cost of a false stop is losing the run, while the cost of a false
+# continue is five minutes — the asymmetry is not close.
+#
+# THE ROUND CAP IS A BACKSTOP, NOT THE STOPPING RULE. If a run ends by
+# hitting the cap, it ended for a reason that has nothing to do with the
+# numbers, and whatever it reports is "we got bored", not a plateau. A
+# round is ~5 minutes (200x60 = 12,000 weight sets), so set the cap high
+# enough that the rule is what fires: 60 rounds is 720,000 sets in about
+# five hours.
 #
 # Every round's result is kept under its own name (trained.<mode>.r<N>.json)
 # because train.js overwrites the generic file on every run — a champion
@@ -25,7 +35,7 @@
 set -u
 cd "$(dirname "$0")"
 
-MAX_ROUNDS=${1:-10}
+MAX_ROUNDS=${1:-60}
 GENS=${2:-60}
 POP=${3:-200}
 WORKERS=${4:-4}
@@ -91,8 +101,8 @@ for (( r=1; r<=MAX_ROUNDS; r++ )); do
     stale=0
   else
     stale=$((stale + 1))
-    echo "round $r does not beat champion $champScore (stale $stale/2)"
-    if [ $stale -ge 2 ]; then
+    echo "round $r does not beat champion $champScore (stale $stale/3)"
+    if [ $stale -ge 3 ]; then
       echo ""
       echo "=== THE NUMBERS HAVE STOPPED MOVING ==="
       echo "champion: $champion  (held-out total $champScore)"
@@ -102,5 +112,7 @@ for (( r=1; r<=MAX_ROUNDS; r++ )); do
 done
 
 echo ""
-echo "=== ran out of rounds ($MAX_ROUNDS) — the numbers were still moving ==="
+echo "=== HIT THE ROUND CAP ($MAX_ROUNDS) — THE NUMBERS WERE STILL MOVING ==="
+echo "This did NOT stop because it converged. Raise the cap and continue"
+echo "from the champion: GC_CHAMPION=<file> ./rounds.sh"
 echo "champion: $champion  (held-out total $champScore)"
