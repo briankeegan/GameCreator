@@ -62,11 +62,53 @@ var PanelEngine = globalThis.PanelEngine;
 var PanelCpu = globalThis.PanelCpu;
 var attach = require('./attach.js').attach;
 
-var LEVEL = 3;
-var GARBAGE_EVERY = 120;
-var GARBAGE_HEIGHT = 3;
-var LEAD_IN = 120;
-var CEILING = 4000;
+// TWO SCENARIOS, BECAUSE ONE CANNOT MEASURE EVERYTHING.
+//
+// `build` is the original: level 3, moderate pressure, the offensive search
+// running most of the time. It is where the density features live and it is
+// calibrated so the shipped cpu dies well before the ceiling.
+//
+// It also cannot exercise five features, and wiring.test.js says so by
+// name: framesToDeath saturates because the board rarely tops out,
+// colourScarcity because level 3 never starves a colour, garbageOnBoard and
+// incomingGarbage because the queue is never deep, latentChain because
+// every scored position has settled. Those are statements about THIS
+// SCENARIO, not about the features — so `siege` exists to make four of the
+// five vary: heavier, faster garbage at a tighter level, where the board is
+// genuinely topping out and the clock is the thing that decides.
+//
+// Trained weights should be reported on BOTH. A weight set that wins the
+// build drill by playing recklessly under pressure is not better, it is
+// specialised, and one number cannot tell those apart.
+var SCENARIOS = {
+    build: {
+        level: 3,
+        garbageEvery: 120,
+        garbageWidth: 6,
+        garbageHeight: 3,
+        leadIn: 120,
+        ceiling: 4000
+    },
+    siege: {
+        // Level 5 tightens maxHealth from 81 to 51 and dangerHeightFrac
+        // with it, and the garbage arrives twice as often and twice as
+        // tall. The point is a board that spends real time topped out,
+        // where framesToDeath is not a constant and the garbage features
+        // vary between candidates.
+        level: 5,
+        garbageEvery: 60,
+        garbageWidth: 6,
+        garbageHeight: 6,
+        leadIn: 120,
+        ceiling: 4000
+    }
+};
+
+var LEVEL = SCENARIOS.build.level;
+var GARBAGE_EVERY = SCENARIOS.build.garbageEvery;
+var GARBAGE_HEIGHT = SCENARIOS.build.garbageHeight;
+var LEAD_IN = SCENARIOS.build.leadIn;
+var CEILING = SCENARIOS.build.ceiling;
 
 // A genome that makes any single decision take longer than this is not a
 // real result — the game gives the cpu one frame. Same guard, and the same
@@ -82,6 +124,7 @@ var TIMING_MARGIN_MS = 85;
 exports.SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
 exports.LEVEL = LEVEL;
 exports.CEILING = CEILING;
+exports.SCENARIOS = SCENARIOS;
 
 // One run. `weights` null means the SHIPPED scoring, untouched — that is
 // the control arm, and it must go through this identical code path or the
@@ -102,7 +145,10 @@ exports.CEILING = CEILING;
 exports.run = function (weights, seed, opts) {
     opts = opts || {};
     var checkTiming = opts.checkTiming !== false;
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: seed, countdown: false });
+    var sc = SCENARIOS[opts.scenario || 'build'];
+    if (!sc) throw new Error('unknown scenario "' + opts.scenario + '" — expected ' +
+                             Object.keys(SCENARIOS).join(' or '));
+    var stack = new PanelEngine.Stack({ level: sc.level, seed: seed, countdown: false });
     var cpu = new PanelCpu.SearchCpu(stack, {
         difficulty: 'nightmare', seed: seed + 55, mistake: 0, chainExtend: true
     });
@@ -125,9 +171,10 @@ exports.run = function (weights, seed, opts) {
 
     var f, sent = 0;
     try {
-        for (f = 0; f < CEILING; f++) {
-            if (f > LEAD_IN && f % GARBAGE_EVERY === 0) {
-                stack.receiveGarbage([{ width: 6, height: GARBAGE_HEIGHT, isChain: false }]);
+        for (f = 0; f < sc.ceiling; f++) {
+            if (f > sc.leadIn && f % sc.garbageEvery === 0) {
+                stack.receiveGarbage([{ width: sc.garbageWidth, height: sc.garbageHeight,
+                                        isChain: false }]);
             }
             cpu.update();
             stack.run();
