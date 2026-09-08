@@ -508,13 +508,32 @@ window.NEWSEY_STORY = (function () {
         // edge and its footprint sits on the door, which is a door you can
         // see and never reach.
         { art: "prop_bar",     x: 236, y: 88, h: 32, w: 92, base: { w: 92, h: 12 } },
+        // Four stools along the counter's front edge — lounge_scene.png has a
+        // full row of them and the room shipped with none, which is a large
+        // part of why the assembled room reads so much emptier than the
+        // reference than any other room in the game (room.py check side-by-
+        // side, filed from the owner's "I hate your art" pass). Spaced across
+        // the counter's own span (x 190-282) and clear of both side doors.
+        { art: "prop_stool", x: 204, y: 104, h: 18, base: { rx: 6, ry: 3 } },
+        { art: "prop_stool", x: 228, y: 104, h: 18, base: { rx: 6, ry: 3 } },
+        { art: "prop_stool", x: 252, y: 104, h: 18, base: { rx: 6, ry: 3 } },
+        { art: "prop_stool", x: 276, y: 104, h: 18, base: { rx: 6, ry: 3 } },
         // The scene has these tables hard against the left wall. They are
         // nudged right because there they fenced off the WEST DOORWAY — the
         // walk test could reach x 31 and no further.
         { art: "prop_table", x: 74, y: 106, h: 30, base: { rx: 12, ry: 5 } },
+        // Each table gets its full ring of four stools, same reason as the
+        // bar above — the scene draws four per table and only the east one
+        // ever shipped.
         { art: "prop_stool", x: 96, y: 110, h: 20, base: { rx: 6,  ry: 3 } },
+        { art: "prop_stool", x: 52, y: 110, h: 20, base: { rx: 6,  ry: 3 } },
+        { art: "prop_stool", x: 74, y: 92,  h: 20, base: { rx: 6,  ry: 3 } },
+        { art: "prop_stool", x: 74, y: 124, h: 20, base: { rx: 6,  ry: 3 } },
         { art: "prop_table", x: 70, y: 160, h: 30, base: { rx: 12, ry: 5 } },
-        { art: "prop_stool", x: 92, y: 164, h: 20, base: { rx: 6,  ry: 3 } }
+        { art: "prop_stool", x: 92, y: 164, h: 20, base: { rx: 6,  ry: 3 } },
+        { art: "prop_stool", x: 48, y: 164, h: 20, base: { rx: 6,  ry: 3 } },
+        { art: "prop_stool", x: 70, y: 146, h: 20, base: { rx: 6,  ry: 3 } },
+        { art: "prop_stool", x: 70, y: 178, h: 20, base: { rx: 6,  ry: 3 } }
       ],
       // Each trigger sits ON its own drawn doorway and is as tall as the
       // player, so crossing means standing in the opening rather than on a
