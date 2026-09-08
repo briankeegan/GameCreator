@@ -126,27 +126,46 @@ function mutate(g) {
     return out;
 }
 
-var pool = [], queue = [], pending = 0, onDone = null;
-for (var w = 0; w < WORKERS; w++) pool.push(fork(path.join(__dirname, 'train_worker.js')));
-pool.forEach(function (child) {
-    child.on('message', function (msg) {
+// A JOB GOES TO A WORKER THAT IS FREE, NOT TO THE NEXT NUMBER.
+//
+// This used to pick the child as pool[pending % pool.length] — a counter,
+// not an answer to "who is idle". A worker's messages queue up inside it,
+// so nothing failed and nothing looked wrong: jobs just piled onto
+// whichever child the counter kept landing on while the rest sat still.
+// Caught by `ps`, not by the trainer — one worker at 104% CPU with 57
+// seconds of it banked, the other three on one second each, and
+// generation 1 of a 40-generation run had not finished. A four-worker run
+// was running one worker deep, so every wall-clock estimate made from it
+// was out by four.
+var pool = [], queue = [], onDone = null;
+for (var w = 0; w < WORKERS; w++) {
+    pool.push({ child: fork(path.join(__dirname, 'train_worker.js')), busy: false });
+}
+pool.forEach(function (slot) {
+    slot.child.on('message', function (msg) {
         var job = queue.find(function (j) { return j.id === msg.id; });
         if (job) job.done(msg.result);
-        pending--;
+        slot.busy = false;
         pump();
     });
 });
+function busyCount() {
+    return pool.filter(function (s) { return s.busy; }).length;
+}
 function pump() {
-    while (pending < pool.length) {
+    for (var i = 0; i < pool.length; i++) {
+        if (pool[i].busy) continue;
         var job = queue.find(function (j) { return !j.sent; });
         if (!job) break;
         job.sent = true;
-        pending++;
-        pool[pending % pool.length].send({ id: job.id, weights: job.weights, seeds: job.seeds,
-                                          mode: MODE, checkTiming: false, scenario: job.scenario || 'build',
-                                          objective: OBJECTIVE });
+        pool[i].busy = true;
+        pool[i].child.send({ id: job.id, weights: job.weights, seeds: job.seeds,
+                             mode: MODE, checkTiming: false, scenario: job.scenario || 'build',
+                             objective: OBJECTIVE });
     }
-    if (!pending && queue.every(function (j) { return j.sent; }) && onDone) { var f = onDone; onDone = null; f(); }
+    if (!busyCount() && queue.every(function (j) { return j.sent; }) && onDone) {
+        var f = onDone; onDone = null; f();
+    }
 }
 var nextId = 1;
 function evaluateAll(genomes, seeds, cb, scenario) {
@@ -318,7 +337,7 @@ function finish() {
                         'ms, unsafe seeds ' + timing.unsafeSeeds + '/' + HOLDOUT_SEEDS.length);
             fs.writeFileSync(path.join(__dirname, 'trained.' + MODE + '.json'), JSON.stringify(out, null, 2));
             console.log('written to trained.' + MODE + '.json');
-            pool.forEach(function (c) { c.kill(); });
+            pool.forEach(function (s) { s.child.kill(); });
         });
         }, 'siege');
     });
