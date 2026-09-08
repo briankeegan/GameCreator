@@ -38,7 +38,7 @@ on:
 jobs:
   evaluator:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -66,6 +66,19 @@ jobs:
       # while every weighted feature read zero in the only place that ships.
       - name: Seam reaches every feature
         run: node games/the-game/ai/eval/seam.test.js
+
+      # THE ONE THAT PLAYS THE GAME. The three suites above can all be green
+      # while the evaluator does nothing: one scores hand-built inputs, one
+      # compares fromStack to a Stack, one checks single calls to patched
+      # methods. None of them plays a frame, and every wiring defect this
+      # directory has had was invisible until something played 900 —
+      # scoring attached to a benchmark that never called it, inverted
+      # scoring producing byte-identical play, Infinity making every
+      # candidate tie, and a seam that at zero weights threw the shipped
+      # choice away. Slow (a few minutes, dozens of real games) and worth
+      # every second of it.
+      - name: Wiring laws (plays the real game)
+        run: node games/the-game/ai/eval/wiring.test.js
 
       # The experiments harness's own gate, which has been asking for a CI
       # home in its header comment since it was written.

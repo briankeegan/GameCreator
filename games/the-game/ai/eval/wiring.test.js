@@ -72,15 +72,24 @@ test('LAW: weighting features changes play at all', function () {
 // with the reason written down; removing something from it happens when a
 // seam grows to feed it. A feature that becomes reachable while still
 // listed here also FAILS, so the list cannot rot into a permanent excuse.
+// THIS LIST HAS ALREADY SHRUNK ONCE, WHICH IS THE POINT.
+//
+// matchPotential, garbageAdjacency and garbageCleared were all listed here
+// with confident-sounding reasons, and the _buildScore hook made all three
+// steer the game. The law caught it: a feature listed as unreachable that
+// DOES change play fails just as loudly as one that is silently dead, so
+// the list cannot rot into a permanent excuse for a seam nobody fixed.
+// garbageSent and chainLength came back the same way, via replace mode.
+//
+// What is left is genuinely not exercised BY THIS BENCHMARK — which is a
+// statement about bench.js, not about the features, and each one names the
+// specific condition that would have to change.
 var UNREACHABLE = {
-    matchPotential: 'candidates are already-resolved boards, so the swaps this counts are one move further ahead than anything the search ranks',
-    latentChain: 'needs a live cascade; bench.js positions are settled, so chainMarks is null',
-    garbageOnBoard: 'the defensive seam has no board, and the building seam only runs when garbage is not the problem',
-    incomingGarbage: 'constant across the candidates of any one decision — it is a property of the queue, not of the move',
-    garbageAdjacency: 'same as garbageOnBoard: the paths that see garbage are not the paths that get a board',
-    colourScarcity: 'rarely non-zero at level 3 with 5 colours in play',
-    garbageCleared: 'constant across candidates on a board with no garbage down',
-    framesToDeath: 'saturates at SAFE_FRAMES on every candidate until the board is actually topping out'
+    latentChain: 'needs a live cascade mid-flight; every position bench.js scores has already settled, so chainMarks is null. A benchmark that evaluated DURING a pop would reach it',
+    garbageOnBoard: 'varies between candidates only when a match clears garbage, which garbageCleared already measures more directly',
+    incomingGarbage: 'a property of the queue, not of the move, so it is identical across every candidate of a decision and can never break a tie',
+    colourScarcity: 'level 3 plays 5 colours and the drill never starves one; a higher level or a longer run would',
+    framesToDeath: 'saturates at SAFE_FRAMES on every candidate until the board is genuinely topping out, which this pressure level rarely reaches'
 };
 
 test('LAW: every feature is reachable, or listed as unreachable on purpose', function () {
