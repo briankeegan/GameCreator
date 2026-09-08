@@ -67,6 +67,15 @@ jobs:
       - name: Seam reaches every feature
         run: node games/the-game/ai/eval/seam.test.js
 
+      # IS THE TRAINER PLAYING THE GAME THE BENCHMARK REPORTS? The GA's
+      # drills must be full_report.js's drills frame for frame, because a
+      # fitness that has drifted from the benchmark is a different question
+      # answered confidently. Two rounds already ranked in opposite orders
+      # on bench's invented drill and on endless. Exact equality, since the
+      # last divergence was 12 frames out of 1329 from a shadowed constant.
+      - name: Trainer drills match the benchmark
+        run: node games/the-game/ai/eval/bench.fidelity.test.js
+
       # DOES THE CURSOR STILL WALK? stack.touchSwap queues a swap anywhere
       # on the board and teleports the cursor there in one frame, and the
       # cpu used to call it for every decision — so distance cost nothing,

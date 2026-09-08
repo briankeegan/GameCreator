@@ -61,6 +61,27 @@ require(path.join(GAME, 'panel-cpu.js'));
 var PanelEngine = globalThis.PanelEngine;
 var PanelCpu = globalThis.PanelCpu;
 var attach = require('./attach.js').attach;
+var fs = require('fs');
+var attackSchedule = require(path.join(__dirname, '..', 'experiments', 'attack_schedule.js'));
+
+// THE REAL ATTACK FILES — the ones full_report.js's `endless` category
+// plays, which is the benchmark anyone here actually reads. Resolved the
+// same way full_report.js resolves them; if the panel-game checkout is not
+// beside this one the endless scenario is simply unavailable and says so,
+// rather than silently falling back to a synthetic drill and reporting a
+// number that means something else.
+var TRAINING_DIR = '/home/user/briankeegan/panel-game/client/assets/default_data/training';
+var ENDLESS_FILES = null;
+function endlessFiles() {
+    if (ENDLESS_FILES) return ENDLESS_FILES;
+    ENDLESS_FILES = fs.readdirSync(TRAINING_DIR)
+        .filter(function (f) { return /^challenge-8-\d+\.json$/.test(f); })
+        .sort()
+        .map(function (f) { return path.join(TRAINING_DIR, f); });
+    if (!ENDLESS_FILES.length) throw new Error('no challenge-8-*.json in ' + TRAINING_DIR);
+    return ENDLESS_FILES;
+}
+exports.endlessFileCount = function () { return endlessFiles().length; };
 
 // TWO SCENARIOS, BECAUSE ONE CANNOT MEASURE EVERYTHING.
 //
@@ -80,6 +101,24 @@ var attach = require('./attach.js').attach;
 // Trained weights should be reported on BOTH. A weight set that wins the
 // build drill by playing recklessly under pressure is not better, it is
 // specialised, and one number cannot tell those apart.
+// full_report.js's LEAD_IN / BURST_LEN / GAP, and its CYCLE derived the
+// same way. Copied rather than imported because that file is a CLI that
+// runs a whole report on require; the fidelity test is what stops the copy
+// drifting, which is the only reason a copy is acceptable here at all.
+// Prefixed BURST_ because this file already had a `LEAD_IN` further down
+// (build's own 120-frame one) and a bare second `var LEAD_IN = 150` here
+// shared its binding — the later assignment won at load, so the burst
+// drills silently ran on a 120-frame lead-in and factory came out 1317
+// frames against full_report's 1329. Twelve frames, no error, and the only
+// reason it was caught is that the fidelity check demands EXACT equality
+// rather than "close enough".
+var BURST_LEAD_IN = 150, BURST_LEN = 50, BURST_GAP = 900;
+var BURST_CYCLE = BURST_GAP + (BURST_LEAD_IN + BURST_LEN) - BURST_LEAD_IN;
+function burstFires(f) {
+    if (f < BURST_LEAD_IN + 1) return false;
+    return ((f - BURST_LEAD_IN - 1) % BURST_CYCLE) < BURST_LEN;
+}
+
 var SCENARIOS = {
     build: {
         level: 3,
@@ -87,6 +126,45 @@ var SCENARIOS = {
         garbageWidth: 6,
         garbageHeight: 3,
         leadIn: 120
+    },
+    // THE THREE BURST DRILLS full_report.js CALLS ITS TRAINING MODES,
+    // reproduced here so training and reporting are the SAME GAME.
+    //
+    // Same shape as that file's runTrainingMode, and deliberately not
+    // "something similar": a 50-frame burst every 950, after a 150-frame
+    // lead-in, differing only in the slab it throws. bench.js's original
+    // `build`/`siege` were invented drills that resembled these, and the
+    // resemblance is exactly what let a fitness drift away from the
+    // benchmark without anyone noticing. Pinned by bench.fidelity.test.js,
+    // which runs full_report's own runner beside these and fails on any
+    // difference at all.
+    comboStorm: { level: 3, burst: true, garbageWidth: 4, garbageHeight: 1 },
+    factory:    { level: 3, burst: true, garbageWidth: 6, garbageHeight: 2 },
+    bigBlocks:  { level: 3, burst: true, garbageWidth: 6, garbageHeight: 12 },
+
+    // THE ONE THAT IS NOT A DRILL AT ALL.
+    //
+    // `build` and `siege` are synthetic: a fixed slab on a fixed period.
+    // `endless` replays a REAL attack file — the twelve challenge-8-*.json
+    // the source game ships, the same twelve full_report.js averages for
+    // its headline number — so a game here is a game of the thing being
+    // measured rather than a stand-in for it.
+    //
+    // WHY THIS EXISTS. Two training rounds ranked in the OPPOSITE order on
+    // the build drill and on endless: round 1 beat round 2 on build's
+    // held-out seeds (734 vs 681) and lost to it on endless by 54% of sent
+    // garbage (276 vs 424). A fitness that inverts the benchmark is not an
+    // imperfect proxy, it is the wrong target, and every extra generation
+    // spent on it improves a number nobody looks at. See FINDINGS.md.
+    //
+    // ONE FILE PER GAME, picked by the seed. That is Puyo's shape and not a
+    // shortcut: the reference plays ONE full game per weight set and gets
+    // its diversity from the NUMBER of sets, not from averaging within one.
+    // The seed pool rotates, so a genome that suits one attack file is
+    // re-tested against a different one next generation.
+    endless: {
+        level: 3,
+        file: true
     },
     siege: {
         // Level 5 tightens maxHealth from 81 to 51 and dangerHeightFrac
@@ -146,6 +224,16 @@ exports.run = function (weights, seed, opts) {
     var sc = SCENARIOS[opts.scenario || 'build'];
     if (!sc) throw new Error('unknown scenario "' + opts.scenario + '" — expected ' +
                              Object.keys(SCENARIOS).join(' or '));
+    // A file scenario picks its attack file from the seed, so the seed
+    // selects BOTH the board and the opponent — two genomes on the same
+    // seed always face the same game, and the rotating pool means no genome
+    // can win by suiting one file.
+    var schedule = null;
+    if (sc.file) {
+        var files = endlessFiles();
+        var raw = JSON.parse(fs.readFileSync(files[(seed - 1 + files.length * 100) % files.length], 'utf8'));
+        schedule = attackSchedule.buildEventSchedule(raw, PanelEngine.GARBAGE_FLIGHT);
+    }
     var stack = new PanelEngine.Stack({ level: sc.level, seed: seed, countdown: false });
     var cpu = new PanelCpu.SearchCpu(stack, {
         difficulty: 'nightmare', seed: seed + 55, mistake: 0, chainExtend: true
@@ -185,7 +273,20 @@ exports.run = function (weights, seed, opts) {
         // guard. A genome this drill cannot kill will run until it is
         // killed, which is the honest consequence of measuring a full game.
         for (f = 0; ; f++) {
-            if (f > sc.leadIn && f % sc.garbageEvery === 0) {
+            if (schedule) {
+                // A real file's deliveries, at their real frames, already
+                // offset by GARBAGE_FLIGHT the way the engine delivers them.
+                var fired = attackSchedule.eventsAt(schedule, f);
+                for (var q = 0; q < fired.length; q++) {
+                    stack.receiveGarbage([{ width: fired[q].width, height: fired[q].height,
+                                            isChain: fired[q].isChain }]);
+                }
+            } else if (sc.burst) {
+                if (burstFires(f)) {
+                    stack.receiveGarbage([{ width: sc.garbageWidth, height: sc.garbageHeight,
+                                            isChain: false }]);
+                }
+            } else if (f > sc.leadIn && f % sc.garbageEvery === 0) {
                 stack.receiveGarbage([{ width: sc.garbageWidth, height: sc.garbageHeight,
                                         isChain: false }]);
             }
