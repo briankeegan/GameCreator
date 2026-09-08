@@ -34,9 +34,19 @@ LEVEL=${GC_LEVEL:-3}
 BRAIN=${GC_BRAIN:-search}
 TAG="l${LEVEL}-${BRAIN}"
 
-champion=""
+# GC_CHAMPION seeds the crank from a run that already happened, so a round
+# done by hand is round 1 rather than something thrown away. Its held-out
+# total becomes the bar the next round has to beat.
+champion="${GC_CHAMPION:-}"
 champScore=""
 stale=0
+if [ -n "$champion" ]; then
+  champScore=$(node -e "
+    var d=require('$champion');
+    process.stdout.write(String((d.holdout && d.holdout.learned && d.holdout.learned.fitness) || 0));
+  ")
+  echo "starting from champion $champion (held-out total $champScore)"
+fi
 
 echo "=== rounds: level $LEVEL, brain $BRAIN, up to $MAX_ROUNDS rounds of ${POP}x${GENS} ==="
 
