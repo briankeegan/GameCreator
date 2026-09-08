@@ -6,7 +6,8 @@ var bench = require('./bench.js');
 process.on('message', function (job) {
     var r;
     try {
-        r = bench.fitness(job.weights, job.seeds, { mode: job.mode, checkTiming: job.checkTiming });
+        r = bench.fitness(job.weights, job.seeds,
+                          { mode: job.mode, checkTiming: job.checkTiming, scenario: job.scenario });
     } catch (e) {
         r = { fitness: 0, error: e.message };
     }

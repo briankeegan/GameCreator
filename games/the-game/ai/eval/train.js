@@ -95,15 +95,16 @@ function pump() {
         if (!job) break;
         job.sent = true;
         pending++;
-        pool[pending % pool.length].send({ id: job.id, weights: job.weights, seeds: job.seeds, mode: MODE, checkTiming: false });
+        pool[pending % pool.length].send({ id: job.id, weights: job.weights, seeds: job.seeds,
+                                          mode: MODE, checkTiming: false, scenario: job.scenario || 'build' });
     }
     if (!pending && queue.every(function (j) { return j.sent; }) && onDone) { var f = onDone; onDone = null; f(); }
 }
 var nextId = 1;
-function evaluateAll(genomes, seeds, cb) {
+function evaluateAll(genomes, seeds, cb, scenario) {
     var results = new Array(genomes.length);
     queue = genomes.map(function (g, i) {
-        return { id: nextId++, weights: g, seeds: seeds, sent: false,
+        return { id: nextId++, weights: g, seeds: seeds, sent: false, scenario: scenario,
                  done: function (r) { results[i] = r; } };
     });
     onDone = function () { cb(results); };
@@ -180,8 +181,16 @@ function checkWinnerTiming(genome, cb) {
 }
 
 function finish() {
-    // THE ONLY NUMBER THAT MATTERS: held-out seeds, never trained on, with
-    // the shipped baseline measured on the same seeds in the same process.
+    // BOTH SCENARIOS, held-out seeds, never trained on, with the shipped
+    // baseline measured on the same seeds in the same process.
+    //
+    // Reporting one number would hide the failure this is most likely to
+    // produce: a weight set that wins the drill it was trained on by
+    // playing recklessly, and falls apart under pressure it never saw.
+    // That is specialisation, not improvement, and a single mean cannot
+    // tell the two apart. Training still uses `build` alone — siege is not
+    // calibrated yet (task 26) — so its numbers here are a REPORT, not a
+    // verdict, and are labelled that way.
     evaluateAll([best, zeroGenome()], HOLDOUT_SEEDS, function (res) {
         var learned = res[0], shipped = res[1];
         var out = {
@@ -196,10 +205,24 @@ function finish() {
             weights: best
         };
         console.log('\n=== HELD-OUT SEEDS (never trained on) ===');
-        console.log('shipped  ' + (shipped.fitness || 0).toFixed(0) +
+        console.log('build (trained on this drill)');
+        console.log('  shipped ' + (shipped.fitness || 0).toFixed(0) +
                     '   learned ' + (learned.fitness || 0).toFixed(0) +
                     '   ' + (out.improvementPct >= 0 ? '+' : '') + out.improvementPct.toFixed(1) + '%');
         console.log('\nweights: ' + summarise(best));
+        // The second drill: NOT trained on, so this is the transfer test.
+        evaluateAll([best, zeroGenome()], HOLDOUT_SEEDS, function (siegeRes) {
+        var siegeLearned = siegeRes[0], siegeShipped = siegeRes[1];
+        var siegePct = siegeShipped.fitness
+            ? ((siegeLearned.fitness - siegeShipped.fitness) / siegeShipped.fitness) * 100 : 0;
+        out.siege = { learned: siegeLearned, shipped: siegeShipped, improvementPct: siegePct };
+        console.log('siege (NOT trained on — transfer)');
+        console.log('  shipped ' + (siegeShipped.fitness || 0).toFixed(0) +
+                    '   learned ' + (siegeLearned.fitness || 0).toFixed(0) +
+                    '   ' + (siegePct >= 0 ? '+' : '') + siegePct.toFixed(1) + '%');
+        if (out.improvementPct > 3 && siegePct < -3) {
+            console.log('  ^ WINS ITS OWN DRILL AND LOSES THE OTHER: specialised, not better.');
+        }
         checkWinnerTiming(best, function (timing) {
             out.timing = timing;
             console.log('timing (single-threaded): worst decision ' + timing.worstMs +
@@ -208,6 +231,7 @@ function finish() {
             console.log('written to trained.' + MODE + '.json');
             pool.forEach(function (c) { c.kill(); });
         });
+        }, 'siege');
     });
 }
 
