@@ -76,15 +76,27 @@ python3 .github/art/build_sheet.py --style games/dog-punk/art-style.json --out g
 
 echo "== regenerate the Scrapyard ground/object tile sheets (BILLABLE — only with --regen) =="
 if [ "${1:-}" = "--regen" ]; then
-  python3 .github/art/tileset.py generate games/dog-punk ground --n 4 --force --items "1) dark asphalt: a charcoal base with irregular patches of a clearly lighter grey and a clearly darker grey scattered evenly over it, each patch a good eighth of the tile wide with hard edges, plus two or three short cracks and one small worn patch of faded yellow line-paint peeking through — three flat greys plus one small muted warm accent, still dark and quiet overall; 2) the same charcoal asphalt but reclaimed by life: a few small tufts of flat green weeds and dead brown grass poking up through the cracks, plus a couple of dull grey metal chips and bolts — mostly grey with small, clearly-green accents, nothing bright or white; 3) worn concrete: the same treatment one step lighter, plain, no weeds; 4) A WALL SEEN FACE-ON, not from above: a rusted corrugated steel fence panel, evenly spaced vertical ribs of grey galvanised sheet metal with hard-edged patches of orange rust — sheet metal, never wooden planks"
+  # 2026-09-08, second pass same day ("it's not done, art looks the same" —
+  # the first 2026-09-08 pass below added a weeds tile and a palette arc
+  # between zones, which was real but too SUBTLE to read as different when
+  # actually playing: three zones that only vary "which grey/brown" still
+  # reads as one place. This pass pushes actual colour INTO Scrapyard's
+  # everyday materials instead of confining colour to a single accent tile:
+  # yellow line-paint fragments and a rust bolt in the asphalt, a denser
+  # green-with-dandelions weed bed, a spray-paint fragment on the concrete,
+  # and one small hand-painted graffiti tag each on the fence and the gate —
+  # plus a torn flyer on the crate and a tarp scrap on the junk pile. Small,
+  # tile-scale, still obeys the "quiet floor" contrast cap, but Scrapyard now
+  # reads as a place someone lives in rather than a texture with a filter on it.
+  python3 .github/art/tileset.py generate games/dog-punk ground --n 4 --force --items "1) dark worn asphalt with a warm cast: a charcoal-brown base with irregular patches of lighter warm grey and darker charcoal scattered evenly, each patch a good eighth of the tile wide with hard edges, two or three faded yellow line-paint fragments, and a couple of small bright rust-orange bolt flecks for warmth — still dark and quiet overall but with genuine warm colour, not just grey; 2) the same asphalt thoroughly reclaimed by plant life: noticeably MORE green than a single tuft — several small flat clumps of bright green weeds and a couple of tiny yellow dandelion-flower flecks poking up through wide cracks, plus a few dull grey metal chips — still grounded and dark but unmistakably green and alive, not just an accent; 3) worn concrete: a cool light grey slab, one step lighter than the asphalt, with a couple of hairline cracks and one small painted red spray-paint fragment (a corner of a stencilled shape, not readable text) peeking across an edge; 4) A WALL SEEN FACE-ON, not from above: a rusted corrugated steel fence panel, evenly spaced vertical ribs of grey galvanised sheet metal with hard-edged patches of orange rust AND one small hand-painted patch of faded punk-rock graffiti (a jagged pink star or lightning bolt, flat colour, no text) — sheet metal, never wooden planks"
   mv games/dog-punk/art-src/tiles_ground_raw.png games/dog-punk/art-src/tiles_ground_scrap_raw.png
-  python3 .github/art/tileset.py generate games/dog-punk objects --n 4 --force --items "1) a junk pile: two stacked bald car tyres with a dented rusty oil drum leaning against them; 2) a battered steel crate with a crumpled sheet-metal panel and a bent pipe on top; 3) a chained shut gate: two narrow rusted steel gate leaves held by a heavy chain and padlock, seen face-on; 4) a small clump of tall wild green weeds and dead brown grass growing up out of a crack in the ground, seen from the same top-down angle, with a little bare dirt showing at its base where it meets the floor"
+  python3 .github/art/tileset.py generate games/dog-punk objects --n 4 --force --items "1) a junk pile: two stacked bald car tyres with a dented rusty oil drum leaning against them, one tyre wrapped with a scrap of faded blue tarp for a colour accent; 2) a battered steel crate with a crumpled sheet-metal panel and a bent pipe on top, with a torn punk-rock flyer (a small white paper rectangle with a bold red star, no readable text) taped to its front face; 3) a chained shut gate: two narrow rusted steel gate leaves held by a heavy chain and padlock, seen face-on, with a small hand-painted pink lightning-bolt tag on one leaf; 4) a small clump of tall wild green weeds with a couple of tiny yellow dandelion flowers, and dead brown grass growing up out of a crack in the ground, seen from the same top-down angle, with a little bare dirt showing at its base where it meets the floor"
   # item 4 used to be an oil puddle, deliberately never cut (a dark slick read
-  # as a hole in the floor). 2026-09-08: replaced with a weeds clump instead
-  # of just dropping it — Scrapyard is the one zone in the chapter with any
-  # green in it at all (see the narrative-arc note near ZONE_TILES in app.js),
-  # and this item is now cut as tile 19 (TILE_WEEDS), scattered as a
-  # decorative, walkable, non-solid overlay — see drawWeeds() in app.js.
+  # as a hole in the floor); since the first 2026-09-08 pass it's a weeds
+  # clump instead — Scrapyard is the one zone in the chapter with any green
+  # in it at all (see the narrative-arc note near ZONE_TILES in app.js), and
+  # this item is cut as tile 19 (TILE_WEEDS), scattered as a decorative,
+  # walkable, non-solid overlay — see drawWeeds() in app.js.
   mv games/dog-punk/art-src/tiles_objects_raw.png games/dog-punk/art-src/tiles_objects_scrap_raw.png
 fi
 
@@ -106,10 +118,10 @@ fi
 
 echo "== cut the tile strip (20 tiles: Scrapyard's original 7 plus a weeds accent, then Rail Yard's 6, then Rust Quarter's 6 — see ZONE_TILES in app.js) =="
 python3 .github/art/tileset.py cut games/dog-punk \
-  --tile texture:games/dog-punk/art-src/tiles_ground_scrap_raw.png:0:0.43,0.43,0.6 \
-  --tile texture:games/dog-punk/art-src/tiles_ground_scrap_raw.png:1:0.43,0.23,0.45 \
-  --tile texture:games/dog-punk/art-src/tiles_ground_scrap_raw.png:2:0.23,0.43,0.45:0.66 \
-  --tile texture:games/dog-punk/art-src/tiles_ground_scrap_raw.png:3:0.15,0.2,0.5:0.82 \
+  --tile texture:games/dog-punk/art-src/tiles_ground_scrap_raw.png:0:0.15,0.35,0.55 \
+  --tile texture:games/dog-punk/art-src/tiles_ground_scrap_raw.png:1:0.12,0.22,0.55 \
+  --tile texture:games/dog-punk/art-src/tiles_ground_scrap_raw.png:2:0.35,0.3,0.6:0.7 \
+  --tile texture:games/dog-punk/art-src/tiles_ground_scrap_raw.png:3:0.05,0.30,0.45:0.82 \
   --tile object:games/dog-punk/art-src/tiles_objects_scrap_raw.png:0 \
   --tile object:games/dog-punk/art-src/tiles_objects_scrap_raw.png:1 \
   --tile object:games/dog-punk/art-src/tiles_objects_scrap_raw.png:2 \
