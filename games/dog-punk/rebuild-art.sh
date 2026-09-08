@@ -308,14 +308,17 @@ echo "done."
 # `--verify` gate is clean except the same pre-existing soft CAMOUFLAGE
 # warning noted above (a luma coincidence, not a defect).
 #
-# Also this pass: `hero_roll_sheet.png` and its `hero_front_roll_raw.png` raw
-# were found reverted to their PRE-mohawk-fix state, on purpose. An earlier
-# run in this same thread regenerated that row to fix a real bug (the front
-# roll's mohawk had lost its pink entirely) — a legitimate fix, but it
-# touched a character sheet in the same pass the owner had just said not to
-# touch character sheets AT ALL for this ask, "even if the pre-existing-
-# problems scan flags something on them" (i.e. this exact scenario, named in
-# advance). Scope beats a real bug fix here: reverted to the last version
-# from before that fix, character art is untouched by this pass, and the
-# mohawk-on-the-roll-sheet bug is still open for whenever background/tile
-# art isn't the explicit, sole ask.
+# 2026-09-08, mohawk-on-the-roll-sheet fix REAPPLIED: `hero_roll_sheet.png`
+# and its `hero_front_roll_raw.png` raw had regenerated a front roll row
+# where the mohawk had lost its pink entirely (0% of the locked #ff5c9a in
+# every frame). That got fixed once, then reverted a pass later purely on
+# scope grounds — the owner had said not to touch character sheets at all
+# for a background-art-only ask, and the fix landed in that same pass. The
+# owner then explicitly asked for the fix to be reapplied, so this pass
+# restores the exact bytes from the fixed commit (not a fresh regeneration —
+# the fix was already correct and already passed the character gate, so
+# there's no reason to re-roll it and risk a different drift). `hero
+# _roll_sheet.png` now has the full bright #ff5c9a mohawk in all 9 frames
+# (front/side/back x tuck/mid-roll/recover); `verify_sheet.py character
+# hero` passes clean (only the pre-existing soft MATERIAL SWING warnings on
+# shorts/jacket-highlight ratios between sheets, unrelated to this fix).
