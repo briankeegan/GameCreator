@@ -62,7 +62,22 @@ var OBJECTIVE = process.argv[6] || 'score';
 // doing nothing.
 var SEED_POOL = [];
 for (var sp = 1; sp <= 40; sp++) SEED_POOL.push(sp);
-var SEEDS_PER_GENERATION = 12;
+// ONE GAME PER WEIGHT SET, WHICH IS WHAT THE REFERENCE ACTUALLY DOES.
+//
+// PUYO_REFERENCE.md's loop is "play a full game with them, record the final
+// score, repeat for HUNDREDS of random weight sets". The diversity comes
+// from the number of SETS, not from averaging seeds within a set. Running
+// twelve seeds per genome spends twelve times the compute per candidate to
+// get a smoother number, and then explores sixteen candidates where they
+// explore hundreds — backwards for a search.
+//
+// The noise this leaves per candidate is real and is handled the way it is
+// there: by volume. Selection pressure across hundreds of genomes finds the
+// signal; the WINNER is then re-evaluated on the full pool and on held-out
+// seeds before any claim is made, so nothing is ever reported off one game.
+// Elites are re-evaluated every generation, or a genome that drew one easy
+// seed becomes a permanent king.
+var SEEDS_PER_GENERATION = Number(process.env.GC_SEEDS_PER_GEN || 1);
 var HOLDOUT_SEEDS = [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112];
 var KEYS = registry.keys;
 var MAX_WEIGHT = 300;
