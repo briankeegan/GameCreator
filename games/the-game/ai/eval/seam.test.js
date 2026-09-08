@@ -353,14 +353,21 @@ test('_raiseOrBuild: the raise/hold decision is NOT taken over', function () {
     } finally { detach(); }
 });
 
-test('_raiseOrBuild: a raise/hold verdict survives even when swaps ARE available', function () {
-    // Found by mutation. The earlier raise/hold test used an EMPTY board,
-    // where there are no legal swaps at all — so dropping the `kind !==
-    // "swap"` guard changed nothing and the test stayed green while the
-    // seam happily overrode a hold. This board has 37 legal swaps and the
-    // shipped heuristic still declines to use any of them; found by
-    // searching random boards for exactly that combination rather than by
-    // hoping one turned up.
+test('_raiseOrBuild: the seam never converts a raise/hold verdict into a swap', function () {
+    // The guard being protected: the override asks the shipped function
+    // first and returns its answer untouched unless it was a swap.
+    //
+    // This test used to pin that by finding a board where the shipped
+    // heuristic declines despite having 37 legal swaps. That board no
+    // longer works, and the reason is a real change rather than a broken
+    // test: _buildScore is now routed through the evaluator, so the
+    // evaluator legitimately participates in WHETHER a build is worth
+    // making. It is no longer true that the verdict is untouched, and it
+    // should not be.
+    //
+    // What must still hold is narrower: the OVERRIDE itself does not
+    // manufacture a swap out of a decline. So _buildScore is restored to
+    // the shipped one for the duration, isolating the guard from the hook.
     var cpu = liveCpu();
     var rows = ['.1...3', '4....3', '....1.', '32.2.2', '....34', '......',
                 '13..2.', '....13', '3.2.2.', '1..3.1', '.4.2.4', '.3...3'];
@@ -368,17 +375,47 @@ test('_raiseOrBuild: a raise/hold verdict survives even when swaps ARE available
     for (var r = 1; r <= b.height; r++) {
         for (var c = 1; c <= b.width; c++) {
             var ch = rows[b.height - r][c - 1];
-            b.grid[r][c] = ch === '.' ? 0 : ch === 'x' ? -1 : ch === '#' ? -2 : Number(ch);
+            b.grid[r][c] = ch === '.' ? 0 : Number(ch);
         }
     }
     b.blocks = {};
     assert.ok(b.legalSwaps().length > 10, 'setup: this board must offer real swaps');
     var shipped = cpu._raiseOrBuild(b);
     assert.notStrictEqual(shipped.kind, 'swap', 'setup: shipped must be declining to swap here');
+
+    var shippedBuildScore = SearchCpu.prototype._buildScore;
     var detach = attach(SearchCpu, { links: 500, matchPotential: 500, maxHeight: 500 });
+    var patchedBuildScore = SearchCpu.prototype._buildScore;
+    SearchCpu.prototype._buildScore = shippedBuildScore;   // isolate the guard
     try {
         assert.deepStrictEqual(cpu._raiseOrBuild(b), shipped,
-            'the seam overrode a raise/hold verdict on a board full of legal swaps');
+            'the override turned a decline into a swap');
+    } finally {
+        SearchCpu.prototype._buildScore = patchedBuildScore;
+        detach();
+    }
+});
+
+test('_buildScore: routing it through the evaluator CAN change a raise/hold verdict', function () {
+    // The other side of the same coin, asserted so the change above is a
+    // stated property rather than an accident nobody noticed. Judging a
+    // building move is exactly what the hook exists to influence.
+    var cpu = liveCpu();
+    var rows = ['.1...3', '4....3', '....1.', '32.2.2', '....34', '......',
+                '13..2.', '....13', '3.2.2.', '1..3.1', '.4.2.4', '.3...3'];
+    var b = cpu._snapshot();
+    for (var r = 1; r <= b.height; r++) {
+        for (var c = 1; c <= b.width; c++) {
+            var ch = rows[b.height - r][c - 1];
+            b.grid[r][c] = ch === '.' ? 0 : Number(ch);
+        }
+    }
+    b.blocks = {};
+    var shipped = cpu._raiseOrBuild(b);
+    var detach = attach(SearchCpu, { links: 500, matchPotential: 500, maxHeight: 500 });
+    try {
+        assert.notDeepStrictEqual(cpu._raiseOrBuild(b), shipped,
+            'the hook is not reaching the build/decline verdict at all');
     } finally { detach(); }
 });
 
@@ -412,12 +449,35 @@ test('_raiseOrBuild: candidates are scored AFTER the cascade resolves', function
     } finally { detach(); }
 });
 
-test('_raiseOrBuild: detaching restores the shipped function itself', function () {
-    var original = SearchCpu.prototype._raiseOrBuild;
+test('_buildScore: detaching restores the shipped hook itself', function () {
+    var original = SearchCpu.prototype._buildScore;
     var detach = attach(SearchCpu, { links: 1 });
-    assert.notStrictEqual(SearchCpu.prototype._raiseOrBuild, original);
+    assert.notStrictEqual(SearchCpu.prototype._buildScore, original);
     detach();
-    assert.strictEqual(SearchCpu.prototype._raiseOrBuild, original);
+    assert.strictEqual(SearchCpu.prototype._buildScore, original);
+});
+
+test('replace mode drops the shipped scoring entirely', function () {
+    // PUYO_REFERENCE.md's bot has no other scorer — its features ARE the
+    // evaluation. 'add' cannot express that: it is anchored to the shipped
+    // heuristic, and the anchor is not gentle (_defensiveKey multiplies
+    // cleared garbage by 1,000,000). Both modes exist because each is wrong
+    // for the other's question.
+    var cpu = liveCpu();
+    var board = cpu._snapshot();
+    var shipped = cpu._evaluate(board, 4, 2, 5);
+    assert.notStrictEqual(shipped, 0, 'setup: shipped scoring returned 0');
+    var detach = attach(SearchCpu, {}, { mode: 'replace' });
+    try {
+        assert.strictEqual(cpu._evaluate(board, 4, 2, 5), 0,
+            'replace mode still carried the shipped score');
+        assert.strictEqual(cpu._buildScore(board), 0);
+    } finally { detach(); }
+    assert.strictEqual(cpu._evaluate(board, 4, 2, 5), shipped, 'detach did not restore');
+});
+
+test('an unknown mode is refused rather than silently treated as add', function () {
+    assert.throws(function () { attach(SearchCpu, {}, { mode: 'replce' }); }, /unknown mode/);
 });
 
 

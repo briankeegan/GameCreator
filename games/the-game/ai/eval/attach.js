@@ -117,8 +117,29 @@
     return best;
   }
 
-  function attach(SearchCpu, weights) {
+  // MODE. 'add' (default) makes the evaluator a DELTA on the shipped
+  // scoring, so an untrained evaluator is exactly the shipped AI and any
+  // difference in a measurement is attributable to weights. 'replace' makes
+  // it the whole scoring function, which is what PUYO_REFERENCE.md actually
+  // describes — meatfighter's bot has no other scorer, its seven features
+  // ARE the evaluation.
+  //
+  // Both exist because they answer different questions and each is wrong
+  // for the other's. 'add' cannot discover a scorer that does not look like
+  // the shipped heuristic — it is anchored, and the anchor is not gentle:
+  // _defensiveKey multiplies cleared garbage by 1,000,000, so a feature
+  // worth 100 x 3 cannot move that ranking at all. Measured, three features
+  // that changed play under the old seam went inert under 'add'. But
+  // 'replace' at zero weights is not neutral, it is a constant scorer, so
+  // it cannot serve as an A/B baseline.
+  function attach(SearchCpu, weights, opts) {
     weights = weights || {};
+    opts = opts || {};
+    var mode = opts.mode || 'add';
+    if (mode !== 'add' && mode !== 'replace') {
+      throw new Error('unknown mode "' + mode + '" — expected "add" or "replace"');
+    }
+    var keepShipped = mode === 'add';
     evaluator.validate(weights);
     for (var key in UNFED_BY_THIS_SEAM) {
       if (weights[key]) {
@@ -206,8 +227,9 @@
       // Additive also makes each weight's meaning honest: it is how much
       // this feature MOVES the shipped ranking, which is a quantity a GA
       // can search and a person can read.
-      return original.call(this, board, cumGarbage, cumChain, cumCombo) +
-             evaluator.evaluate(input, weights).score;
+      var shippedScore = keepShipped
+        ? original.call(this, board, cumGarbage, cumChain, cumCombo) : 0;
+      return shippedScore + evaluator.evaluate(input, weights).score;
     };
     SearchCpu.prototype._evaluate.__panelEvalAttached = true;
 
@@ -281,7 +303,8 @@
 
     var originalDefensiveKey = SearchCpu.prototype._defensiveKey;
     SearchCpu.prototype._defensiveKey = function (res, garbageCleared, dropAmount, toppedOutNow) {
-      var shipped = originalDefensiveKey.call(this, res, garbageCleared, dropAmount, toppedOutNow);
+      var shipped = keepShipped
+        ? originalDefensiveKey.call(this, res, garbageCleared, dropAmount, toppedOutNow) : 0;
       var input = inputMod.fromStack(this.stack, null, {
         chainLength: res.chainLength || 0,
         comboSizes: res.comboSizes || [],
@@ -291,10 +314,33 @@
     };
     SearchCpu.prototype._defensiveKey.__panelEvalAttached = true;
 
+    // ---- EVERY BUILDING DECISION, VIA panel-cpu.js's ONE HOOK ----
+    //
+    // _buildScore is how that file judges a candidate swap that matched
+    // NOTHING — the building move. It is used by _raiseOrBuild, by
+    // _bestDefensiveMove's unmatched branch and by _nPlyRescue, and before
+    // the hook existed each of those called a module-local boardPotential
+    // that nothing outside could reach. That is why the evaluator only
+    // touched 28% of decisions, and why the density features — the entire
+    // Puyo thesis — had almost nowhere to act.
+    //
+    // Patching the hook rather than each caller means one definition, and
+    // it means the raise/hold decision, the defensive branch order and
+    // every other rule in those functions stay exactly where they are.
+    var originalBuildScore = SearchCpu.prototype._buildScore;
+    SearchCpu.prototype._buildScore = function (board) {
+      var base = keepShipped ? originalBuildScore.call(this, board) : 0;
+      var input = inputMod.fromStack(this.stack, board, {},
+                                     cascadeFor(this), clearedBetween(this, board));
+      return base + evaluator.evaluate(input, weights).score;
+    };
+    SearchCpu.prototype._buildScore.__panelEvalAttached = true;
+
     return function detach() {
       SearchCpu.prototype._evaluate = original;
       SearchCpu.prototype._raiseOrBuild = originalRaiseOrBuild;
       SearchCpu.prototype._defensiveKey = originalDefensiveKey;
+      SearchCpu.prototype._buildScore = originalBuildScore;
     };
   }
 

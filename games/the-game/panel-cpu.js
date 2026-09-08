@@ -1294,7 +1294,7 @@
           var move = node.move || [r, c];
           var matched = res.chainLength > 0;
           var garbageCleared = matched ? garbageBefore - garbageCellCount(trial) : 0;
-          var ev = matched ? keyFor(trial, res) : boardPotential(trial);
+          var ev = matched ? keyFor(trial, res) : this._buildScore(trial);
           if (matched && (bestKey === null || ev > bestKey)) {
             bestKey = ev; best = move; bestClearsGarbage = garbageCleared > 0;
           }
@@ -1383,12 +1383,12 @@
     if (runwayLow) return null;
 
     var swaps0 = board.legalSwaps();
-    var base = boardPotential(board), bestGain = null, gainMove = null;
+    var base = this._buildScore(board), bestGain = null, gainMove = null;
     for (var j = 0; j < swaps0.length; j++) {
       var r2 = swaps0[j][0], c2 = swaps0[j][1];
       var trial2 = board.clone();
       trial2.swap(r2, c2);
-      var gain = boardPotential(trial2) - base;
+      var gain = this._buildScore(trial2) - base;
       if (bestGain === null || gain > bestGain) { bestGain = gain; gainMove = [r2, c2]; }
     }
     if (gainMove && bestGain > 0) return gainMove;
@@ -1529,7 +1529,7 @@
           if (bestKey === null || key > bestKey) { bestKey = key; best = move; }
           continue;
         }
-        if (remaining > 1) unmatched.push({ step: step, move: move, pot: boardPotential(step) });
+        if (remaining > 1) unmatched.push({ step: step, move: move, pot: self._buildScore(step) });
       }
       if (remaining > 1 && unmatched.length) {
         unmatched.sort(function (a, b) { return b.pot - a.pot; });
@@ -1664,13 +1664,35 @@
     return { moves: bestPlan.moves, chainBonus: bestPlan.chain, comboBonus: bestPlan.combo, gridAfterFirst: gridAfterFirst };
   };
 
+  // THE ONE OVERRIDABLE SCORING HOOK.
+  //
+  // Every place this file ranks candidate swaps that did NOT match anything
+  // used `boardPotential(trial)` directly — a module-local function, so
+  // nothing outside could see or change how a BUILDING move is judged.
+  // Measured on a level-3 pressure benchmark, that covered the large
+  // majority of decisions: the evaluator in games/the-game/ai/eval could
+  // only reach 28% of them, and training weights against a minority of the
+  // game's decisions is fitting noise.
+  //
+  // This changes no behaviour by itself — it returns exactly what the call
+  // sites computed before, and the default is boardPotential. It exists so
+  // an experiment can REPLACE the judgement of a building move without
+  // forking this file, and so there is ONE place that judgement lives
+  // rather than four copies of the same expression.
+  //
+  // Anything overriding it must stay cheap: it is called once per candidate
+  // swap, inside the per-frame budget the cpu is held to.
+  SearchCpu.prototype._buildScore = function (board) {
+    return boardPotential(board);
+  };
+
   SearchCpu.prototype._raiseOrBuild = function (board) {
-    var swaps = board.legalSwaps(), base = boardPotential(board), bestGain = null, best = null;
+    var swaps = board.legalSwaps(), base = this._buildScore(board), bestGain = null, best = null;
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
       var trial = board.clone();
       trial.swap(r, c);
-      var gain = boardPotential(trial) - base;
+      var gain = this._buildScore(trial) - base;
       if (bestGain === null || gain > bestGain) { bestGain = gain; best = [r, c]; }
     }
     if (best && bestGain > 0) return { kind: "swap", move: best };
