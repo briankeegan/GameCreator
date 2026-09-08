@@ -67,6 +67,14 @@ jobs:
       - name: Seam reaches every feature
         run: node games/the-game/ai/eval/seam.test.js
 
+      # Is the Puyo brain actually the Puyo brain? It claims every decision
+      # goes through the evaluator and every legal move gets scored — the
+      # two things that make weights trained against it mean anything, and
+      # both are invisible when broken. Checked at level 10, the level it
+      # exists for.
+      - name: Puyo brain
+        run: node games/the-game/ai/eval/puyocpu.test.js
+
       # Does the chain-potential feature agree with actually playing every
       # swap? It is checked against a brute-force implementation rather than
       # against its own logic, because a feature that only agrees with

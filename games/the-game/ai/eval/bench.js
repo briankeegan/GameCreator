@@ -61,6 +61,7 @@ require(path.join(GAME, 'panel-cpu.js'));
 var PanelEngine = globalThis.PanelEngine;
 var PanelCpu = globalThis.PanelCpu;
 var attach = require('./attach.js').attach;
+var PuyoCpu = require('./puyocpu.js');
 var fs = require('fs');
 var attackSchedule = require(path.join(__dirname, '..', 'experiments', 'attack_schedule.js'));
 
@@ -254,25 +255,56 @@ exports.run = function (weights, seed, opts) {
         schedule = attackSchedule.buildEventSchedule(raw, PanelEngine.GARBAGE_FLIGHT);
     }
     var stack = new PanelEngine.Stack({ level: sc.level, seed: seed, countdown: false });
-    var cpu = new PanelCpu.SearchCpu(stack, {
-        difficulty: 'nightmare', seed: seed + 55, mistake: 0, chainExtend: true
-    });
 
-    var detach = null;
-    if (weights) {
-        try { detach = attach(PanelCpu.SearchCpu, weights, opts); }
-        catch (e) { return { frames: 0, sent: 0, unsafe: false, error: e.message }; }
+    // TWO BRAINS, AND AT LEVEL 10 ONLY ONE OF THEM CAN BE TRAINED.
+    //
+    // 'search' is SearchCpu with the evaluator attached through seams. It
+    // is the shipped bot and it reaches 100% of decisions at levels 3, 5
+    // and 8 — and 4% at level 10, where TrueSurvivalSearch decides
+    // instead. Weights trained against it there would be weights for 4%
+    // of the game.
+    //
+    // 'puyo' is puyocpu.js: score every legal move's resulting board with
+    // the weighted sum, play the best, and nothing else. That is the
+    // reference's bot, it reaches 100% of decisions by construction at
+    // every level, and it is ~6x cheaper per game because there is no beam
+    // search and no rollout behind it.
+    var brain = opts.brain || 'search';
+    var cpu, detach = null;
+    if (brain === 'puyo') {
+        cpu = new PuyoCpu(stack, {
+            weights: weights || {},
+            // Matched to SearchCpu's nightmare preset so a comparison
+            // between the brains is about the scoring, not the cadence.
+            reaction: 12
+        });
+    } else {
+        cpu = new PanelCpu.SearchCpu(stack, {
+            difficulty: 'nightmare', seed: seed + 55, mistake: 0, chainExtend: true
+        });
+        if (weights) {
+            try { detach = attach(PanelCpu.SearchCpu, weights, opts); }
+            catch (e) { return { frames: 0, sent: 0, unsafe: false, error: e.message }; }
+        }
     }
 
-    var origChoose = PanelCpu.SearchCpu.prototype._choose;
+    // Time whichever brain is actually deciding. SearchCpu decides in
+    // _choose; PuyoCpu decides in _decide. Timing the wrong one reports a
+    // reassuring 0ms for a bot that might be far too slow.
     var localMax = 0;
-    PanelCpu.SearchCpu.prototype._choose = function (board) {
-        var t0 = Date.now();
-        var r = origChoose.call(this, board);
-        var dt = Date.now() - t0;
-        if (dt > localMax) localMax = dt;
-        return r;
-    };
+    var origChoose = PanelCpu.SearchCpu.prototype._choose;
+    var origDecide = PuyoCpu.prototype._decide;
+    function timed(orig) {
+        return function () {
+            var t0 = Date.now();
+            var r = orig.apply(this, arguments);
+            var dt = Date.now() - t0;
+            if (dt > localMax) localMax = dt;
+            return r;
+        };
+    }
+    if (brain === 'puyo') PuyoCpu.prototype._decide = timed(origDecide);
+    else PanelCpu.SearchCpu.prototype._choose = timed(origChoose);
 
     var f, sent = 0;
     try {
@@ -336,6 +368,7 @@ exports.run = function (weights, seed, opts) {
         }
     } finally {
         PanelCpu.SearchCpu.prototype._choose = origChoose;
+        PuyoCpu.prototype._decide = origDecide;
         if (detach) detach();
     }
     return { frames: f, sent: sent, score: stack.score || 0, died: !!stack.gameOver,

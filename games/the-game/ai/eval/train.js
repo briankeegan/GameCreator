@@ -62,6 +62,20 @@ var OBJECTIVE = process.argv[6] || 'score';
 //
 // GC_ARENA=build (or any single scenario name) falls back to the old
 // single-drill behaviour for a quick smoke run.
+// WHICH BRAIN THE WEIGHTS DRIVE.
+//
+// 'puyo' (puyocpu.js) is the reference's bot: score every legal move's
+// resulting board with the weighted sum, play the best, nothing else. It
+// reaches 100% of decisions at every level by construction, and it is the
+// only option that means anything at LEVEL 10 — SearchCpu consults the
+// evaluator on 4% of decisions there, so weights trained against it would
+// be weights for 4% of the game.
+//
+// It is also ~40x cheaper per game (14-39ms against 550-2650ms), because
+// there is no beam search and no engine rollout behind it. That is what
+// makes "hundreds of weight sets" affordable rather than aspirational.
+var BRAIN = process.env.GC_BRAIN || 'search';
+
 var ARENA = process.env.GC_ARENA
     ? (process.env.GC_ARENA === 'all' ? true : process.env.GC_ARENA.split(','))
     : true;
@@ -187,7 +201,7 @@ function pump() {
         pool[i].child.send({ id: job.id, weights: job.weights, seeds: job.seeds,
                              mode: MODE, checkTiming: false,
                              scenario: job.scenario, arena: job.arena,
-                             objective: OBJECTIVE });
+                             objective: OBJECTIVE, brain: BRAIN });
     }
     if (!busyCount() && queue.every(function (j) { return j.sent; }) && onDone) {
         var f = onDone; onDone = null; f();
@@ -311,7 +325,7 @@ function pick(scored) {
 function checkWinnerTiming(genome, cb) {
     var worst = 0, unsafe = 0;
     HOLDOUT_SEEDS.forEach(function (seed) {
-        var r = bench.run(genome, seed, { mode: MODE, scenario: 'endless' });
+        var r = bench.run(genome, seed, { mode: MODE, scenario: 'endless', brain: BRAIN });
         if (r.localMax > worst) worst = r.localMax;
         if (r.unsafe) unsafe++;
     });
@@ -334,11 +348,33 @@ function finish() {
     // process. That is a REPORT, not a step of the search: the loop never
     // saw it, and whether to replace the current AI is a question answered
     // once, here, at the end.
-    evaluateAll([best, zeroGenome()], HOLDOUT_SEEDS, function (res) {
+    // THE BASELINE ROW IS THE REAL GAME AI, NOT THE ZERO GENOME.
+    //
+    // Under the search brain, zero weights ARE the shipped bot — that is
+    // the whole point of additive mode, and the wiring law that says so.
+    // Under the PUYO brain they are nothing of the kind: with no
+    // preferences every candidate ties, it holds forever and scores 0, so
+    // the report printed "shipped 0 ... +0.0%" on every row. A baseline
+    // that is always zero is not a baseline, it is a broken column that
+    // makes any result look infinite.
+    //
+    // So the comparison for the puyo brain is SearchCpu with no evaluator
+    // attached — the AI the game actually ships at this level. It is run
+    // here, once, as a REPORT: the loop never saw it, and the reference's
+    // rule is about the search, not about whether a result may be compared
+    // to anything at the end.
+    var baselineJob = BRAIN === 'puyo'
+        ? { genome: null, label: 'game AI (SearchCpu)', brain: 'search' }
+        : { genome: zeroGenome(), label: 'shipped', brain: BRAIN };
+    evaluateAll([best], HOLDOUT_SEEDS, function (learnedRes) {
+      evaluateBaseline(baselineJob, HOLDOUT_SEEDS, function (baseRes) {
+        var res = [learnedRes[0], baseRes];
         var learned = res[0], shipped = res[1];
         var out = {
             mode: MODE,
             objective: OBJECTIVE,
+            brain: BRAIN,
+            level: bench.LEVEL,
             arena: ARENA === true ? bench.ARENA : ARENA,
             generations: GENERATIONS,
             population: POPULATION,
@@ -350,7 +386,7 @@ function finish() {
             improvementPct: shipped.fitness ? ((learned.fitness - shipped.fitness) / shipped.fitness) * 100 : 0,
             weights: best
         };
-        console.log('\n=== HELD-OUT SEEDS (never trained on) ===');
+        console.log('\n=== HELD-OUT SEEDS (never trained on), baseline = ' + baselineJob.label + ' ===');
         var lp = learned.perCategory || {}, sp = shipped.perCategory || {};
         var lost = [];
         Object.keys(lp).forEach(function (k) {
@@ -380,9 +416,23 @@ function finish() {
             console.log('written to trained.' + MODE + '.json');
             pool.forEach(function (s) { s.child.kill(); });
         });
+      });
     });
 }
 
-console.log('training ' + KEYS.length + ' weights, objective=' + OBJECTIVE + ', mode=' + MODE +
+// One genome, one brain, straight through the workers. Separate from
+// evaluateAll because the baseline may run a DIFFERENT brain than the one
+// being trained, which the shared queue has no way to express.
+function evaluateBaseline(job, seeds, cb) {
+    var saved = BRAIN;
+    BRAIN = job.brain;
+    evaluateAll([job.genome], seeds, function (r) {
+        BRAIN = saved;
+        cb(r[0]);
+    });
+}
+
+console.log('training ' + KEYS.length + ' weights, brain=' + BRAIN + ', level=' + bench.LEVEL +
+            ', objective=' + OBJECTIVE + ', mode=' + MODE +
             ', pop=' + POPULATION + ', gens=' + GENERATIONS + ', ' + WORKERS + ' workers');
 step();
