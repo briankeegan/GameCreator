@@ -7,3 +7,14 @@
 # A result worth keeping gets committed deliberately, with its provenance
 # in the commit message: git add -f trained.<mode>.json
 trained.*.json
+
+# The generic name is SCRATCH. Every run overwrites trained.<mode>.json,
+# including the run you started five minutes ago, so a result kept under
+# that name is a result waiting to be silently replaced — and it showed up
+# as a phantom "uncommitted change" every time a new run finished, which is
+# noise that trains you to ignore the warning.
+#
+# A result worth keeping is renamed: trained.<mode>.<round>.json, committed
+# with -f and with its provenance in the commit message. Those are tracked
+# and never overwritten by a run.
+!trained.*.round*.json
