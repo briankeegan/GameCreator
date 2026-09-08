@@ -190,8 +190,8 @@ exports.run = function (weights, seed, opts) {
         PanelCpu.SearchCpu.prototype._choose = origChoose;
         if (detach) detach();
     }
-    return { frames: f, sent: sent, score: stack.score || 0, localMax: localMax,
-             unsafe: checkTiming && localMax > TIMING_MARGIN_MS };
+    return { frames: f, sent: sent, score: stack.score || 0, died: !!stack.gameOver,
+             localMax: localMax, unsafe: checkTiming && localMax > TIMING_MARGIN_MS };
 };
 
 // TWO OBJECTIVES, AND CHOOSING BETWEEN THEM IS THE REAL DECISION.
@@ -215,6 +215,24 @@ exports.run = function (weights, seed, opts) {
 //               that reference paragraph describes.
 //   'score'    — the engine's own score. What the reference used.
 //
+// NO DEATH PENALTY, and that is a considered choice rather than an
+// omission. Score already prices dying, because it is a LIFETIME total:
+// the game ends when the board tops out, so a genome that kills itself
+// early simply stops earning. Survival is the duration over which points
+// accrue, not a second term to be weighted against them — which is what
+// makes score and aggression trade off automatically. Clear every three
+// that appears and you live long earning 20 a time; hoard for a 10-chain
+// and you risk topping out for 1100. Both are denominated in the same
+// currency, so the search finds its own balance.
+//
+// In Puyo the don't-die instinct lives in the FEATURES instead: a spawn
+// distance penalty at 8% of the score, which keeps the stack low. That is
+// the slot maxHeight occupies here, with a weight the search picks. Nobody
+// tells the bot that dying is bad; it works out how much height costs.
+//
+// deathRate is still REPORTED, because it is how a suicide-chainer would
+// be spotted — score climbing while the board tops out on every seed.
+//
 // Score does not need survival bolted onto it: the game ends when the board
 // tops out, so a genome that dies early cannot accumulate one. That is the
 // property that makes it a better single objective than a hand-mixed sum,
@@ -226,7 +244,7 @@ exports.fitness = function (weights, seeds, opts) {
     seeds = seeds || exports.SEEDS;
     opts = opts || {};
     var objective = opts.objective || 'survival';
-    var frames = 0, sent = 0, score = 0, i, r;
+    var frames = 0, sent = 0, score = 0, deaths = 0, i, r;
     for (i = 0; i < seeds.length; i++) {
         r = exports.run(weights, seeds[i], opts);
         if (r.error) return { fitness: 0, error: r.error };
@@ -234,10 +252,19 @@ exports.fitness = function (weights, seeds, opts) {
         frames += r.frames;
         sent += r.sent;
         score += r.score;
+        if (r.died) deaths++;
     }
     var n = seeds.length;
-    var fitness = objective === 'score' ? score / n
-                                        : frames / n + (sent / n) * 0.5;
+    var fitness;
+    var fitnessByObjective = {
+        score: score / n,
+        survival: frames / n + (sent / n) * 0.5
+    };
+    if (!(objective in fitnessByObjective)) {
+        throw new Error('unknown objective "' + objective + '" — expected ' +
+                        Object.keys(fitnessByObjective).join(' or '));
+    }
+    fitness = fitnessByObjective[objective];
     // Every number is reported whichever one is being optimised, so a run
     // can always be read for the failure the objective invites: survival
     // rising while sent falls, or score rising while frames collapse.
@@ -246,6 +273,7 @@ exports.fitness = function (weights, seeds, opts) {
         objective: objective,
         avgFrames: frames / n,
         avgSent: sent / n,
-        avgScore: score / n
+        avgScore: score / n,
+        deathRate: deaths / n
     };
 };

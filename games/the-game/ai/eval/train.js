@@ -35,6 +35,12 @@ var GENERATIONS = Number(process.argv[2] || 12);
 var POPULATION = Number(process.argv[3] || 20);
 var MODE = process.argv[4] || 'add';
 var WORKERS = Number(process.argv[5] || 4);
+// WHAT A GOOD GAME MEANS. PUYO_REFERENCE.md calls this one of only two
+// things that are ours to decide, and the one that "silently defines
+// everything the bot becomes". meatfighter used final score; the first run
+// here used survival and produced exactly the bot that choice predicts —
+// weighted almost entirely on tidiness, chainLength=3, barely attacking.
+var OBJECTIVE = process.argv[6] || 'score';
 
 // SEEDS ROTATE EVERY GENERATION, AND THE POOL IS LARGE.
 //
@@ -116,7 +122,8 @@ function pump() {
         job.sent = true;
         pending++;
         pool[pending % pool.length].send({ id: job.id, weights: job.weights, seeds: job.seeds,
-                                          mode: MODE, checkTiming: false, scenario: job.scenario || 'build' });
+                                          mode: MODE, checkTiming: false, scenario: job.scenario || 'build',
+                                          objective: OBJECTIVE });
     }
     if (!pending && queue.every(function (j) { return j.sent; }) && onDone) { var f = onDone; onDone = null; f(); }
 }
@@ -173,6 +180,9 @@ function step() {
         console.log('gen ' + String(generation + 1).padStart(2) + '/' + GENERATIONS +
             '  best ' + scored[0].fit.toFixed(0) +
             '  median ' + scored[Math.floor(scored.length / 2)].fit.toFixed(0) +
+            '  [frames ' + (scored[0].detail && scored[0].detail.avgFrames || 0).toFixed(0) +
+            ' sent ' + (scored[0].detail && scored[0].detail.avgSent || 0).toFixed(1) +
+            ' died ' + ((scored[0].detail && scored[0].detail.deathRate || 0) * 100).toFixed(0) + '%]' +
             (zeroFit ? '  shipped-baseline ' + zeroFit.fit.toFixed(0) : '') +
             '  [' + ((Date.now() - t0) / 60000).toFixed(1) + 'm]');
         console.log('       ' + summarise(scored[0].genome));
@@ -232,6 +242,7 @@ function finish() {
         var learned = res[0], shipped = res[1];
         var out = {
             mode: MODE,
+            objective: OBJECTIVE,
             generations: GENERATIONS,
             population: POPULATION,
             seedPool: SEED_POOL,
@@ -273,6 +284,6 @@ function finish() {
     });
 }
 
-console.log('training ' + KEYS.length + ' weights, mode=' + MODE + ', pop=' + POPULATION +
-            ', gens=' + GENERATIONS + ', ' + WORKERS + ' workers');
+console.log('training ' + KEYS.length + ' weights, objective=' + OBJECTIVE + ', mode=' + MODE +
+            ', pop=' + POPULATION + ', gens=' + GENERATIONS + ', ' + WORKERS + ' workers');
 step();

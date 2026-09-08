@@ -7,7 +7,8 @@ process.on('message', function (job) {
     var r;
     try {
         r = bench.fitness(job.weights, job.seeds,
-                          { mode: job.mode, checkTiming: job.checkTiming, scenario: job.scenario });
+                          { mode: job.mode, checkTiming: job.checkTiming, scenario: job.scenario,
+                            objective: job.objective });
     } catch (e) {
         r = { fitness: 0, error: e.message };
     }

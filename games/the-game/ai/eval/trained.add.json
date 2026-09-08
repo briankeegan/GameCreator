@@ -1,5 +1,6 @@
 {
   "mode": "add",
+  "objective": "score",
   "generations": 1,
   "population": 4,
   "seedPool": [
@@ -59,20 +60,26 @@
     111,
     112
   ],
-  "trainFitness": 1661.8333333333333,
+  "trainFitness": 1119.9166666666667,
   "holdout": {
     "learned": {
-      "fitness": 1132.5416666666667,
+      "fitness": 429.5,
+      "objective": "score",
       "avgFrames": 1128.6666666666667,
-      "avgSent": 7.75
+      "avgSent": 7.75,
+      "avgScore": 429.5,
+      "deathRate": 1
     },
     "shipped": {
-      "fitness": 1173.25,
+      "fitness": 422.5833333333333,
+      "objective": "score",
       "avgFrames": 1170.4166666666667,
-      "avgSent": 5.666666666666667
+      "avgSent": 5.666666666666667,
+      "avgScore": 422.5833333333333,
+      "deathRate": 1
     }
   },
-  "improvementPct": -3.469706655302217,
+  "improvementPct": 1.6367580358903615,
   "weights": {
     "matchPotential": 0,
     "latentChain": 32.66430796713769,
@@ -93,19 +100,25 @@
   },
   "siege": {
     "learned": {
-      "fitness": 958.0833333333333,
+      "fitness": 420,
+      "objective": "score",
       "avgFrames": 953.4166666666666,
-      "avgSent": 9.333333333333334
+      "avgSent": 9.333333333333334,
+      "avgScore": 420,
+      "deathRate": 1
     },
     "shipped": {
-      "fitness": 908.5833333333334,
+      "fitness": 412.5833333333333,
+      "objective": "score",
       "avgFrames": 903.75,
-      "avgSent": 9.666666666666666
+      "avgSent": 9.666666666666666,
+      "avgScore": 412.5833333333333,
+      "deathRate": 1
     },
-    "improvementPct": 5.448041823351359
+    "improvementPct": 1.7976166431024083
   },
   "timing": {
-    "worstMs": 52,
+    "worstMs": 64,
     "unsafeSeeds": 0
   }
 }
