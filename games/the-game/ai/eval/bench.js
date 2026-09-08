@@ -415,7 +415,7 @@ exports.fitness = function (weights, seeds, opts) {
     // over seeds within a single problem.
     if (opts.arena) {
         var cats = Array.isArray(opts.arena) ? opts.arena : exports.ARENA;
-        var per = {}, total = 0, allFrames = 0, allSent = 0, allDeaths = 0, games = 0;
+        var per = {}, total = 0, product = 1, allFrames = 0, allSent = 0, allDeaths = 0, games = 0;
         for (var c = 0; c < cats.length; c++) {
             var sub = Object.assign({}, opts, { arena: null, scenario: cats[c] });
             var r = exports.fitness(weights, seeds, sub);
@@ -426,13 +426,35 @@ exports.fitness = function (weights, seeds, opts) {
                              avgFrames: r.avgFrames, avgSent: r.avgSent,
                              deathRate: r.deathRate };
             total += r.fitness / norm;
+            product *= (r.fitness / norm);
             allFrames += r.avgFrames; allSent += r.avgSent; allDeaths += r.deathRate;
             games++;
         }
+        // GEOMETRIC MEAN, NOT ARITHMETIC, AND THIS IS THE WHOLE POINT OF
+        // TRAINING ON FOUR THINGS.
+        //
+        // Averaging the ratios lets one outlier buy the other three. Seen
+        // on generation 3 of the first arena run, leading the population:
+        //
+        //     comboStorm 0.94x  factory 8.71x  bigBlocks 0.90x  endless 0.72x
+        //
+        // Below shipped on THREE of four categories and ranked first,
+        // because the arithmetic mean of those is 2.82 — beating a genome
+        // that is a solid 2.0x on all four. That is the exact
+        // specialisation the normalisers were added to prevent, arriving
+        // through the aggregation instead of through the scale.
+        //
+        // The geometric mean is the standard way to combine ratios and has
+        // the property this needs: it is dragged down by the WEAKEST
+        // category rather than lifted by the strongest. The set above
+        // scores 1.52, the balanced one still 2.00, and the balanced one
+        // wins. A genome scoring zero on any category scores zero overall,
+        // which is correct — it cannot play the game.
         return {
-            fitness: total / games,      // 1.0 means "shipped, averaged over the four"
+            fitness: Math.pow(product, 1 / games),   // 1.0 means "shipped, on every category"
             objective: objective,
             arena: cats,
+            arithmeticMean: total / games,   // reported, never optimised — see above
             perCategory: per,
             avgFrames: allFrames / games,
             avgSent: allSent / games,
