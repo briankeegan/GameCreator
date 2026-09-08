@@ -45,12 +45,12 @@
 //   - legality decided by the real Stack, never by the plan.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./evaluator.js'), require('./input.js'));
+    module.exports = factory(require('./evaluator.js'), require('./input.js'), require('./travel.js'));
   } else {
     root.PanelEval = root.PanelEval || {};
-    root.PanelEval.PuyoCpu = factory(root.PanelEval.evaluator, root.PanelEval.input);
+    root.PanelEval.PuyoCpu = factory(root.PanelEval.evaluator, root.PanelEval.input, root.PanelEval.travel);
   }
-}(this, function (evaluator, inputMod) {
+}(this, function (evaluator, inputMod, travel) {
   'use strict';
 
   function PuyoCpu(stack, opts) {
@@ -65,6 +65,11 @@
     this._driveWalk = PanelCpu.SearchCpu.prototype._driveWalk;
     this._nearestSwappable = PanelCpu.SearchCpu.prototype._nearestSwappable;
     this._snapshot = PanelCpu.SearchCpu.prototype._snapshot;
+    // Borrowed so latentChain has something to read: it scores whether a
+    // cell already carrying the chain flag settles into a match, which is a
+    // property of the LIVE stack mid-cascade and cannot be derived from a
+    // candidate board.
+    this._cascadePrediction = PanelCpu.SearchCpu.prototype._cascadePrediction;
     this.cursorMoveFrames = opts.cursorMoveFrames || 4;
     // Same as SearchCpu's nightmare preset, so a comparison between the
     // two is about the SCORING and not about which one acts more often.
@@ -85,10 +90,64 @@
   // distinction is the whole reference: "it never scores a move, it scores
   // the board the move results in", which is why a chain needs no special
   // case here. The chain has already happened in the board being looked at.
-  PuyoCpu.prototype._score = function (board, resolved) {
+  // THREE FEATURES WERE DEAD HERE AND NOTHING SAID SO.
+  //
+  // An audit weighted all 18 features and counted how often each was
+  // non-zero over 2,185 evaluations of real level-10 games:
+  //
+  //     latentChain      0.0%     garbageCleared   0.0%
+  //     travelCost       0.0%
+  //
+  // Not because the features are wrong — because this function fed them
+  // nothing. It passed cascade=null, clearedCount=0, and never set
+  // travelFrames at all. The GA had been assigning them real weight
+  // (latentChain 282, travelCost 173, garbageCleared 107 in one champion),
+  // so three of eighteen search dimensions were knobs attached to nothing.
+  //
+  // travelCost being dead was the worst of them: this bot WALKS its cursor,
+  // so distance is a real cost in frames that it was blind to.
+  PuyoCpu.prototype._score = function (board, resolved, move) {
     this.evaluations++;
-    var input = inputMod.fromStack(this.stack, board, resolved, null, 0);
+
+    // What this move CLEARS: garbage on the live board minus garbage left
+    // on the candidate. Never negative — garbage arriving is
+    // incomingGarbage's business.
+    var stack = this.stack, W = stack.constructor.WIDTH ||
+        (typeof window !== 'undefined' ? window : globalThis).PanelEngine.WIDTH;
+    var live = 0, r, c, p;
+    for (r = 1; r <= board.height; r++) {
+      for (c = 1; c <= board.width; c++) {
+        p = stack.panelAt(r, c);
+        if (p && p.isGarbage) live++;
+      }
+    }
+    var left = 0;
+    for (r = 1; r <= board.height; r++) {
+      for (c = 1; c <= board.width; c++) if (board.grid[r][c] === -2) left++;
+    }
+    var cleared = Math.max(0, live - left);
+
+    // What it costs to REACH, in frames, from wherever the cursor is now.
+    // A hold moves nothing, so it costs nothing.
+    var frames = 0;
+    if (move) frames = travel.cost(stack.curRow, stack.curCol, move[0], move[1]);
+
+    var input = inputMod.fromStack(stack, board, resolved, this._cascade(), cleared);
+    input.travelFrames = frames;
     return evaluator.evaluate(input, this.weights).score;
+  };
+
+  // The cascade in flight is a property of this FRAME, not of the candidate
+  // being scored, so it is computed once and reused across every candidate
+  // of a decision — the same rule attach.js follows for the other brain.
+  PuyoCpu.prototype._cascade = function () {
+    var clock = this.stack ? this.stack.clock : 0;
+    if (this.__cascadeAt !== clock) {
+      this.__cascadeAt = clock;
+      try { this.__cascade = this._cascadePrediction(); }
+      catch (e) { this.__cascade = null; }
+    }
+    return this.__cascade;
   };
 
   PuyoCpu.prototype._decide = function () {
@@ -103,14 +162,14 @@
     var holdBoard = board.clone();
     var holdResolved = holdBoard.resolve();
     var best = { kind: 'hold' };
-    var bestScore = this._score(holdBoard, holdResolved);
+    var bestScore = this._score(holdBoard, holdResolved, null);
 
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
       var trial = board.clone();
       trial.swap(r, c);
       var resolved = trial.resolve();
-      var s = this._score(trial, resolved);
+      var s = this._score(trial, resolved, [r, c]);
       // Strictly greater, so a tie leaves the incumbent standing rather
       // than handing the decision to whichever swap legalSwaps() happened
       // to list first — list order is not a preference.

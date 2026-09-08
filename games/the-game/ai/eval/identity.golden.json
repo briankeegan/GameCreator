@@ -1,21 +1,21 @@
 {
   "puyo/champion/s101": {
-    "frames": 1123,
-    "score": 510,
-    "sent": 11,
-    "hash": 3492169834
+    "frames": 429,
+    "score": 0,
+    "sent": 0,
+    "hash": 2105907279
   },
   "puyo/champion/s102": {
-    "frames": 1410,
-    "score": 1190,
-    "sent": 37,
-    "hash": 53717967
+    "frames": 323,
+    "score": 0,
+    "sent": 0,
+    "hash": 444262628
   },
   "puyo/champion/s103": {
-    "frames": 817,
-    "score": 400,
+    "frames": 429,
+    "score": 0,
     "sent": 0,
-    "hash": 1861476852
+    "hash": 2175816708
   },
   "puyo/handpicked/s101": {
     "frames": 457,

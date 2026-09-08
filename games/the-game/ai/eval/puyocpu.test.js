@@ -174,6 +174,64 @@ test('it plays level 10 at all, and faster than the search bot', function () {
         'run is minutes rather than hours');
 });
 
+// NO FEATURE IS SILENTLY DEAD UNDER THIS BRAIN.
+//
+// The gate that would have saved an evening. An audit of the trained
+// champion found THREE features reading exactly zero on every one of 2,185
+// evaluations — latentChain, garbageCleared and travelCost — while the GA
+// was assigning them real weight (282, 107 and 173). Three of eighteen
+// search dimensions were knobs attached to nothing, and nothing said so.
+// travelCost was the worst: this bot walks its cursor, so it was blind to
+// the one cost it always pays.
+//
+// None of them were the features' fault. _score fed them nothing: cascade
+// null, clearedCount zero, travelFrames never set.
+//
+// UNREACHABLE is an explicit list with a reason, not a tolerance — the same
+// shape wiring.test.js uses for the other brain. A feature that becomes
+// reachable while still listed here ALSO fails, so the list cannot rot into
+// an excuse.
+var UNREACHABLE = {
+    latentChain: 'scores whether a cell already carrying the chain flag settles into a match, which requires deciding MID-CASCADE. _cascadePrediction returns null unless panels are in flight, and this brain decides on cooldown boundaries when the board has settled: 0 of 33 calls returned anything in a full game. Reachable only by a brain that re-decides during a cascade.'
+};
+
+test('no feature is silently dead under this brain', function () {
+    var evaluator = require('./evaluator.js');
+    var registry = require('./registry.js');
+    var all = {};
+    registry.keys.forEach(function (k) { all[k] = 1; });
+    var seen = {}, total = 0;
+    registry.keys.forEach(function (k) { seen[k] = 0; });
+
+    var orig = evaluator.evaluate;
+    evaluator.evaluate = function (input, w) {
+        // Score with EVERY feature weighted, to see what each reads, then
+        // return the real score so play is unaffected.
+        var probe = orig.call(this, input, all);
+        total++;
+        registry.keys.forEach(function (k) { if (probe.features[k]) seen[k]++; });
+        return orig.call(this, input, w);
+    };
+    try {
+        [101, 102, 103, 104].forEach(function (seed) { play(sample(), seed, 3000); });
+    } finally { evaluator.evaluate = orig; }
+
+    assert.ok(total > 1000, 'only ' + total + ' evaluations sampled — too few to call anything dead');
+    var dead = [], wronglyListed = [];
+    registry.keys.forEach(function (k) {
+        if (seen[k] === 0 && !UNREACHABLE[k]) dead.push(k);
+        if (seen[k] > 0 && UNREACHABLE[k]) wronglyListed.push(k);
+    });
+    assert.deepStrictEqual(dead, [],
+        'these features read zero on all ' + total + ' evaluations: ' + dead.join(', ') +
+        '. The GA will still assign them weight, so each one is a search dimension ' +
+        'attached to nothing. Feed them in _score, or list them in UNREACHABLE with ' +
+        'the reason.');
+    assert.deepStrictEqual(wronglyListed, [],
+        'listed as unreachable but they DO fire now: ' + wronglyListed.join(', ') +
+        '. Remove them — the list is a statement about this brain, not a permanent excuse.');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
