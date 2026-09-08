@@ -67,9 +67,20 @@ jobs:
       - name: Seam reaches every feature
         run: node games/the-game/ai/eval/seam.test.js
 
-      # Does the cursor-travel cost match the engine? Every number in
-      # travel.js came from driving a real Stack, and the first version of
-      # its formula was off by one while looking perfectly reasonable.
+      # DOES THE CURSOR STILL WALK? stack.touchSwap queues a swap anywhere
+      # on the board and teleports the cursor there in one frame, and the
+      # cpu used to call it for every decision — so distance cost nothing,
+      # a travel feature was trained against a cost the game never charged,
+      # and none of it was visible in play or in the benchmark. One call to
+      # touchSwap anywhere in panel-cpu.js brings that straight back, which
+      # is why this runs on every push rather than when someone remembers.
+      - name: The cursor never teleports
+        run: node games/the-game/ai/eval/walk.test.js
+
+      # Does the cursor-travel cost match the engine? travel.js prices what
+      # the cpu pays, and this pins the formula to the cpu's OWN walks
+      # rather than to a re-implementation of them — the first version of
+      # the formula was off by one while looking perfectly reasonable.
       - name: Cursor travel cost
         run: node games/the-game/ai/eval/travel.test.js
 

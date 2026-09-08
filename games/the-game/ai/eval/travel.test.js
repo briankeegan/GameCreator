@@ -1,124 +1,135 @@
-// DOES THE COST FUNCTION MATCH THE ENGINE? Run: node travel.test.js
+// DOES THE COST MODEL MATCH WHAT THE CPU ACTUALLY PAYS? Run: node travel.test.js
 //
-// travel.js prices cursor movement in frames, and every number in it came
-// from driving a real Stack rather than from reading applyInput. This keeps
-// it that way: the formula is compared against the engine over every
-// start/target pair on the board, and a mismatch fails.
+// travel.js prices cursor movement in frames and the evaluator weights a
+// feature on it. If that price is wrong, the search is trading against a
+// cost the game never charges — which is exactly what happened before
+// panel-cpu.js walked at all, when travel was priced and never billed.
 //
-// The first version of axisCost was off by one (20 + steps instead of
-// 19 + steps) and looked perfectly reasonable. Nothing but the engine was
-// ever going to catch that.
+// So this does NOT re-implement the walk and compare two of my own
+// functions, which would agree with itself no matter how wrong it was. It
+// runs the REAL cpu on a REAL stack and times its REAL walks: where the
+// cursor was when a move was committed, where it went, and how many frames
+// passed before the swap was queued. The formula has to match that.
 var assert = require('assert');
 var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
+require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var PanelEngine = globalThis.PanelEngine;
+var PanelCpu = globalThis.PanelCpu;
 var travel = require('./travel.js');
 
 var tests = [], failures = [];
 function test(name, fn) { tests.push({ name: name, fn: fn }); }
 
-function freshStack() {
-    var s = new PanelEngine.Stack({ level: 3, seed: 5, countdown: false });
-    var guard = 0;
-    while (!s.stopWatchIsRunning && guard++ < 1000) s.run();
-    for (var i = 0; i < 60; i++) s.run();
-    return s;
-}
+// Every walk the cpu makes over a real game: the distance it covered and
+// the frames it took from committing to the move to queueing the swap.
+function observeWalks(seed, frames) {
+    var stack = new PanelEngine.Stack({ level: 3, seed: seed, countdown: false });
+    var cpu = new PanelCpu.SearchCpu(stack, {
+        difficulty: 'nightmare', seed: seed + 55, mistake: 0, chainExtend: true
+    });
+    var walks = [], open = null, f = 0;
 
-// Frames the ENGINE takes to walk the cursor there, holding directions the
-// way a player does. null if it never arrives.
-function engineCost(r0, c0, r1, c1, cap) {
-    var s = freshStack();
-    s.curRow = r0; s.curCol = c0;
-    for (var f = 0; f < (cap || 300); f++) {
-        if (s.curRow === r1 && s.curCol === c1) return f;
-        var input = {};
-        if (s.curCol < c1) input.right = true;
-        else if (s.curCol > c1) input.left = true;
-        else if (s.curRow < r1) input.up = true;
-        else if (s.curRow > r1) input.down = true;
-        s.setInput(input);
-        s.run();
-    }
-    return null;
-}
-
-test('the cost function matches the engine on every reachable pair', function () {
-    var probe = freshStack();
-    var top = probe.topCurRow, W = PanelEngine.WIDTH;
-    assert.ok(top >= 2, 'setup: stack top is ' + top);
-
-    var checked = 0, mismatches = [], distances = {};
-    // sample rather than sweep: each pair costs a fresh stack and up to 300
-    // frames, and the space is (top x W)^2
-    for (var r0 = 1; r0 <= top; r0 += 2) {
-        for (var c0 = 1; c0 < W; c0 += 2) {
-            for (var r1 = 1; r1 <= top; r1 += 3) {
-                for (var c1 = 1; c1 < W; c1 += 2) {
-                    var want = engineCost(r0, c0, r1, c1);
-                    if (want === null) continue;
-                    var got = travel.cost(r0, c0, r1, c1);
-                    if (got !== want) {
-                        mismatches.push('(' + r0 + ',' + c0 + ')->(' + r1 + ',' + c1 + '): ' +
-                                        'formula ' + got + ', engine ' + want);
-                    }
-                    var d = Math.abs(r1 - r0) + Math.abs(c1 - c0);
-                    distances[d] = (distances[d] || 0) + 1;
-                    checked++;
-                }
-            }
+    var origBegin = cpu._beginWalk;
+    cpu._beginWalk = function (row, col, cooldown) {
+        // Committed here, at this cursor, on this frame.
+        // `open` still set means the previous commit never reached a
+        // successful swap — this is _driveWalk's re-aim after a refusal,
+        // and its clock starts partway through a journey.
+        open = { from: [stack.curRow, stack.curCol], to: [row, col], start: f,
+                 retry: open !== null, rises: 0 };
+        return origBegin.call(this, row, col, cooldown);
+    };
+    var origQueue = stack.tryQueueSwap;
+    stack.tryQueueSwap = function (row, col) {
+        var ok = origQueue.call(this, row, col);
+        if (ok && open) {
+            open.frames = f - open.start;
+            open.arrivedAt = [row, col];
+            walks.push(open);
+            open = null;
         }
+        return ok;
+    };
+
+    for (; f < frames; f++) {
+        if (f > 120 && f % 120 === 0) stack.receiveGarbage([{ width: 6, height: 3, isChain: false }]);
+        cpu.update();
+        stack.run();
+        // A rising stack carries the cursor up with it for free
+        // (Stack.newRow: curRow++), so a walk that spans one covers a
+        // distance it never paid for. Counted, and those walks are left
+        // out of the comparison rather than fudging the formula.
+        for (var e = 0; e < stack.events.length; e++) {
+            if (stack.events[e].type === 'newRow' && open) open.rises++;
+        }
+        stack.drainEvents();
+        if (stack.gameOver) break;
     }
-    assert.ok(checked > 100, 'only checked ' + checked + ' pairs');
-    // a sweep that only ever tested distance 0 and 1 would prove nothing
-    assert.ok(Object.keys(distances).length > 4,
-        'only ' + Object.keys(distances).length + ' distinct distances covered');
-    assert.deepStrictEqual(mismatches.slice(0, 5), [],
-        mismatches.length + ' of ' + checked + ' pairs disagree with the engine. ' +
-        'First few: ' + mismatches.slice(0, 5).join(' | '));
-    process.stdout.write('       [travel] ' + checked + ' pairs, ' +
-        Object.keys(distances).length + ' distinct distances, all match\n');
+    return walks;
+}
+
+var WALKS = null;
+function walks() {
+    if (!WALKS) {
+        WALKS = [];
+        [1, 2, 3, 4].forEach(function (s) {
+            observeWalks(s, 1500).forEach(function (w) { WALKS.push(w); });
+        });
+    }
+    return WALKS;
+}
+
+test('the model prices the walks the cpu actually makes', function () {
+    // A walk whose target is clamped mid-flight (the stack rises, so
+    // topCurRow drops under the target row) arrives somewhere other than
+    // where it aimed, and the distance it covered is the one to where it
+    // ARRIVED. Price that, not the intent.
+    var wrong = [], counted = 0, skipped = 0, distances = {};
+    walks().forEach(function (w) {
+        if (w.retry || w.rises) { skipped++; return; }
+        var steps = Math.abs(w.arrivedAt[0] - w.from[0]) + Math.abs(w.arrivedAt[1] - w.from[1]);
+        // The observed span is commit-frame to swap-frame. The last press
+        // lands the cursor during that frame's stack.run() and the swap
+        // goes in on the next update, which is why walkCost's "+1" is the
+        // swap press rather than an extra step: 4 steps at cadence 4 is
+        // 3 gaps of 4 plus the press = 13, and 13 is what the engine takes.
+        var expect = travel.cost(w.from[0], w.from[1], w.arrivedAt[0], w.arrivedAt[1]);
+        counted++;
+        distances[steps] = (distances[steps] || 0) + 1;
+        if (w.frames !== expect) {
+            wrong.push('from ' + JSON.stringify(w.from) + ' to ' + JSON.stringify(w.arrivedAt) +
+                       ' (' + steps + ' steps): engine took ' + w.frames + ', model says ' + expect);
+        }
+    });
+    assert.ok(counted >= 100, 'only ' + counted + ' walks observed — not enough to mean anything');
+    assert.ok(skipped < counted,
+        skipped + ' walks were excluded against ' + counted + ' compared. Exclusions are ' +
+        'for the two cases the model deliberately does not cover (a free ride on a rising ' +
+        'stack, a re-aim after a refused swap); if they outnumber the rest, they are hiding ' +
+        'the answer rather than sharpening it.');
+    assert.ok(Object.keys(distances).length >= 5,
+        'only ' + Object.keys(distances).length + ' distinct distances seen (' +
+        JSON.stringify(distances) + '); a model can be wrong about the far half of the board ' +
+        'and still pass a test that only ever walks one cell.');
+    assert.deepStrictEqual(wrong.slice(0, 8), [],
+        wrong.length + ' of ' + counted + ' walks were mispriced:\n  ' + wrong.slice(0, 8).join('\n  '));
 });
 
-test('the second step in a direction is the expensive one', function () {
-    // The shape that matters for the search: one step is nearly free, two
-    // is 21 frames. A bot that does not know this will happily pay 21
-    // frames for a swap worth less than the row it lost.
-    assert.strictEqual(travel.axisCost(1), 1);
-    assert.strictEqual(travel.axisCost(2), 21);
-    assert.strictEqual(travel.axisCost(3), 22);
-    assert.strictEqual(engineCost(6, 1, 6, 2), 1);
-    assert.strictEqual(engineCost(6, 1, 6, 3), 21);
-});
-
-test('two long legs cost double — an L is not a shortcut', function () {
-    // Each axis pays its own DAS. Same Manhattan distance, twice the price.
-    assert.strictEqual(travel.cost(6, 1, 6, 5), 23);   // 4 across
-    assert.strictEqual(travel.cost(6, 1, 9, 2), 23);   // 1 across + 3 up
-    assert.strictEqual(travel.cost(6, 1, 8, 3), 42);   // 2 across + 2 up
-    assert.strictEqual(engineCost(6, 1, 8, 3), 42, 'the engine disagrees about the L');
-});
-
-test('above the stack top is UNREACHABLE, not expensive', function () {
-    // clampCursor caps curRow at topCurRow, so the cursor never arrives.
-    // The search must not offer those cells at all — the same distinction
-    // meatfighter's BFS makes between a placement that is far and one that
-    // cannot be reached.
-    var s = freshStack();
-    var top = s.topCurRow, W = PanelEngine.WIDTH;
-    assert.strictEqual(travel.reachable(top, 1, top, W), true);
-    assert.strictEqual(travel.reachable(top + 1, 1, top, W), false);
-    assert.strictEqual(travel.reachable(1, W, top, W), false, 'a swap needs a right neighbour');
-    assert.strictEqual(engineCost(1, 1, top + 1, 1, 120), null,
-        'the engine reached a cell above the stack top');
+test('cells above the stack top are unreachable, not expensive', function () {
+    var stack = new PanelEngine.Stack({ level: 3, seed: 5, countdown: false });
+    for (var i = 0; i < 200; i++) stack.run();
+    var top = stack.topCurRow, W = PanelEngine.WIDTH;
+    assert.strictEqual(travel.reachable(top + 1, 2, top, W), false, 'above the top must be unreachable');
+    assert.strictEqual(travel.reachable(top, 2, top, W), true, 'the top row itself is reachable');
+    assert.strictEqual(travel.reachable(2, W, top, W), false,
+        'the rightmost column has no right-hand neighbour to swap with');
+    assert.strictEqual(travel.reachable(0, 2, top, W), false, 'row 0 is below the playfield');
 });
 
 tests.forEach(function (t) {
-    try { t.fn(); process.stdout.write('  ok   ' + t.name + '\n'); }
-    catch (e) { failures.push(t.name + '\n       ' + e.message); process.stdout.write('  FAIL ' + t.name + '\n'); }
+    try { t.fn(); console.log('ok   ' + t.name); }
+    catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
 });
-if (failures.length) {
-    process.stdout.write('\n' + failures.length + ' failed:\n\n' + failures.join('\n\n') + '\n');
-    process.exit(1);
-}
-process.stdout.write('\n' + tests.length + ' passed — travel cost matches the engine.\n');
+console.log('\n' + (tests.length - failures.length) + '/' + tests.length + ' passed');
+process.exit(failures.length ? 1 : 0);
