@@ -123,6 +123,16 @@ var SEEDS_PER_GENERATION = Number(process.env.GC_SEEDS_PER_GEN || 1);
 // sample of it, and the two can be compared directly. Changing the count
 // breaks that; changing it to a non-multiple of twelve silently weights
 // some attack files double.
+// FINALS SEEDS — a third set, used ONLY to choose between the finalists at
+// the end of a round, and never trained on or reported.
+//
+// Selecting among candidates on the HELD-OUT seeds and then reporting that
+// same number would be picking the luckiest of eight and calling it a
+// measurement. Three sets keeps each one honest: 1-40 to train, 201-208 to
+// choose the winner, 101-112 to report it.
+var FINALS_SEEDS = [201, 202, 203, 204, 205, 206, 207, 208];
+// How many of the final generation get that treatment.
+var FINALISTS = 8;
 var HOLDOUT_SEEDS = [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112];
 var KEYS = registry.keys;
 var MAX_WEIGHT = 300;
@@ -268,7 +278,7 @@ if (seedFile && fs.existsSync(seedFile)) {
 while (population.length < POPULATION) population.push(randomGenome());
 
 var generation = 0;
-var best = null, bestFit = -Infinity;
+var best = null, bestFit = -Infinity, finalists = [];
 var t0 = Date.now();
 
 function seedsForGeneration() {
@@ -295,6 +305,20 @@ function step() {
         // whichever genome drew the easiest twelve.
         bestFit = scored[0].fit;
         best = scored[0].genome;
+        // THE TOP SETS, PLURAL. The reference's step 5 is "keep the highest
+        // scoring SETS" and step 6 clusters near "those WINNERS" — plural
+        // both times. Crowning scored[0] treats one generation's single
+        // seed as the answer, and a single game cannot tell two good weight
+        // sets apart: measured, the SAME weights score 1380 to 6070 across
+        // seeds, a 4.4x swing, while two genuinely different sets differ in
+        // the mean by 17%. So the last generation's ranking is a fair
+        // comparison on one board and a coin flip as a verdict.
+        //
+        // These are carried to finish(), which plays them all on the finals
+        // seeds and crowns the best. Selection within a generation is
+        // unchanged: every genome in a generation plays the identical seed
+        // and always did.
+        finalists = scored.slice(0, FINALISTS).map(function (x) { return x.genome; });
 
 
         console.log('gen ' + String(generation + 1).padStart(2) + '/' + GENERATIONS +
@@ -348,6 +372,26 @@ function checkWinnerTiming(genome, cb) {
 }
 
 function finish() {
+    // Play the finalists on seeds none of them trained on, and crown the
+    // best of them — then report THAT on the held-out seeds. Without this
+    // step a round's answer is whichever genome drew the kindest board in
+    // the last generation.
+    console.log('\nchoosing between ' + finalists.length + ' finalists on seeds ' +
+                FINALS_SEEDS[0] + '-' + FINALS_SEEDS[FINALS_SEEDS.length - 1] + '...');
+    evaluateAll(finalists, FINALS_SEEDS, function (res) {
+        var ranked = finalists.map(function (g, i) {
+            return { genome: g, fit: (res[i] && res[i].fitness) || 0 };
+        }).sort(function (a, b) { return b.fit - a.fit; });
+        ranked.forEach(function (x, i) {
+            console.log('  finalist ' + (i + 1) + ': ' + x.fit.toFixed(0));
+        });
+        best = ranked[0].genome;
+        bestFit = ranked[0].fit;
+        report();
+    });
+}
+
+function report() {
     // HELD-OUT SEEDS, ALL FOUR CATEGORIES, BROKEN OUT.
     //
     // A single mean cannot tell improvement from specialisation, and this
