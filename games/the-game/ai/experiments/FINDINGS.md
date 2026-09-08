@@ -756,3 +756,41 @@ would seal a specific row) is the more direct fix this round's
 - User has "hundreds" of additional saved sequences beyond what's in this
   checkout — location not yet shared/available in this sandbox; fold them
   in once available.
+
+- **THE TRAINED EVALUATOR IS THE GREEDY FIRER `PUYO_REFERENCE.md` WARNS
+  ABOUT, AND THE ATTACK BREAKDOWN SAYS SO OUT LOUD.** The reference's §
+  "Greedy fires too early, and this is the real cap": a scorer that values
+  the board *now* takes a chain the moment one exists, so potential never
+  accumulates and long chains never happen. The first weight set trained
+  on the walking cursor (+71.6% held-out, see `eval/trained.replace.json`)
+  does exactly that, and it is VISIBLE in `full_report.js`'s own
+  by-type breakdown rather than being a suspicion:
+
+        L3 endless      short chain (2-3)   medium chain (4-6)
+        shipped                       62%                  11%
+        trained                       72%                   0%
+
+        L3 factory      short chain (2-3)   medium chain (4-6)
+        shipped                       33%                  67%
+        trained                       82%                   0%
+
+  So the learned bot survives longer and sends a comparable volume while
+  making SHALLOWER attacks than the heuristic it beat — on factory the
+  shipped bot's sent garbage was two thirds medium chains and the trained
+  one's is none. Against a person that is the part that matters: a stream
+  of 2-links is far easier to answer than one 5-link.
+
+  This is not a training failure and re-running it will not fix it. It is
+  what the objective asks for. Fitness is the final score of one game, the
+  score comes from garbage sent, and firing early sends garbage sooner —
+  nothing in the loop can prefer a chain that has not been built yet. The
+  reference names the fix and it is a change to the EVALUATION, not to the
+  search or the weights: a patience/hold term, and scoring "the biggest
+  chain I *could* fire" instead of "the biggest chain available now".
+  `latentChain` is the feature that would carry it and it is currently
+  unreachable by this benchmark (see wiring.test.js's UNREACHABLE) — every
+  position bench.js scores has already settled.
+
+  Recorded here rather than left as a caveat in a commit message, because
+  the headline number (+71.6%) is true and reads as unqualified progress,
+  and the next person to see it should know what kind of player it bought.
