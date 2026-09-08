@@ -43,6 +43,8 @@ MODE=replace
 LEVEL=${GC_LEVEL:-3}
 BRAIN=${GC_BRAIN:-search}
 TAG="l${LEVEL}-${BRAIN}"
+# Distinguishes one invocation of this script from the next.
+RUN_ID=$(date -u +%m%d-%H%M%S)
 
 # GC_CHAMPION seeds the crank from a run that already happened, so a round
 # done by hand is round 1 rather than something thrown away. Its held-out
@@ -65,14 +67,21 @@ for (( r=1; r<=MAX_ROUNDS; r++ )); do
   echo ""
   echo "--- round $r/$MAX_ROUNDS  ($(date -u +%H:%M:%S)) ---"
 
+  # EVERY ROUND GETS ITS OWN GA SEED. train.js's rng is a fixed constant by
+  # default, so without this each round seeded from the same champion is a
+  # bit-identical replay of the last one — observed directly: two rounds
+  # returned 2195.8333333333335, to the last digit. The crank would then
+  # stop after three identical rounds having searched nothing.
+  gaSeed=$(( 20260907 + r * 7919 ))
+
   # The seed genome is the CHAMPION, not the previous round's winner. A
   # round that came back worse should not become the point the next round
   # clusters around, or a single bad round walks the search away from the
   # best thing found so far.
   if [ -n "$champion" ]; then
-    GC_SEED_GENOME="$champion" node train.js "$GENS" "$POP" "$MODE" "$WORKERS" score > "$log" 2>&1
+    GC_GA_SEED=$gaSeed GC_SEED_GENOME="$champion" node train.js "$GENS" "$POP" "$MODE" "$WORKERS" score > "$log" 2>&1
   else
-    node train.js "$GENS" "$POP" "$MODE" "$WORKERS" score > "$log" 2>&1
+    GC_GA_SEED=$gaSeed node train.js "$GENS" "$POP" "$MODE" "$WORKERS" score > "$log" 2>&1
   fi
   status=$?
   if [ $status -ne 0 ]; then
@@ -81,7 +90,13 @@ for (( r=1; r<=MAX_ROUNDS; r++ )); do
     exit $status
   fi
 
-  result="trained.${MODE}.${TAG}.r${r}.json"
+  # NAMED BY RUN, NOT JUST BY ROUND NUMBER. The counter restarts at 1 every
+  # invocation, so a second crank wrote trained.replace.l10-puyo.r1.json —
+  # the name the first crank's CHAMPION already had — and clobbered it. The
+  # champion variable then pointed at the worse genome while the bar it had
+  # to beat still read the better one's score. Recovered from git; made
+  # impossible here.
+  result="trained.${MODE}.${TAG}.${RUN_ID}.r${r}.json"
   cp "trained.${MODE}.json" "$result"
 
   # The held-out TOTAL: the sum of the four final scores on twelve seeds

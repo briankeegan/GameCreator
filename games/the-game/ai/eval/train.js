@@ -132,7 +132,22 @@ var TOURNAMENT = 3;
 var MUTATION_RATE = 0.25;
 var MUTATION_SIGMA = MAX_WEIGHT * 0.15;
 
-var rngState = 20260907;
+// THE GA'S OWN RANDOMNESS, AND WHY IT MUST BE SETTABLE.
+//
+// This was a fixed constant, which made a run reproducible — a good
+// property, and the reason the default is still that constant. It also
+// made every run with the same arguments a bit-identical REPLAY, which is
+// fatal to the thing rounds.sh exists to do: seed round N+1 from the
+// champion and search near it. Seeded from the same champion with the same
+// population and generations, every round returned the identical held-out
+// total, to fifteen decimal places. "Run until the numbers stop moving"
+// cannot mean anything when each turn of the crank is the same turn.
+//
+// Caught because two consecutive rounds reported 2195.8333333333335. Noise
+// does not repeat to the last digit; that is the shape of a replay, and it
+// would otherwise have stopped the crank after three identical rounds
+// having explored nothing.
+var rngState = Number(process.env.GC_GA_SEED || 20260907);
 function rng() {           // deterministic, so a run can be repeated exactly
     rngState = (rngState * 1103515245 + 12345) & 0x7fffffff;
     return rngState / 0x7fffffff;
