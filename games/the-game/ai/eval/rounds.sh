@@ -116,7 +116,47 @@ fi
 
 echo "=== rounds: level $LEVEL, brain $BRAIN, up to $MAX_ROUNDS rounds of ${POP}x${GENS} ==="
 
+# A WALL-CLOCK BUDGET, so the crank can live somewhere with a job timeout.
+#
+# This sandbox's container is reclaimed between turns and takes every process
+# with it, which cost three runs in one night — a round takes ~15 minutes and
+# the box rarely survives that unattended. The answer is to run the crank on
+# a GitHub runner instead, and a runner has a hard 6-hour cap that kills the
+# job mid-round with no chance to finish, commit or clear the marker.
+#
+# So the crank stops ITSELF with time to spare. It checks before starting a
+# round whether there is room for another one — measured from how long rounds
+# have actually been taking, not guessed — and exits cleanly if not, having
+# committed everything it earned. The next scheduled run picks up from the
+# last committed champion, which is the same resume path the container
+# restarts already exercise.
+#
+# GC_DEADLINE is a unix timestamp. Unset means no budget: run until the round
+# cap or until the numbers stop moving, which is what a person at a terminal
+# wants.
+DEADLINE="${GC_DEADLINE:-}"
+started=$(date +%s)
+roundSecs=0
+
 for (( r=1; r<=MAX_ROUNDS; r++ )); do
+  if [ -n "$DEADLINE" ]; then
+    now=$(date +%s)
+    left=$(( DEADLINE - now ))
+    # Before the first round has been timed there is nothing to extrapolate
+    # from, so a generous 40 minutes stands in — long enough that a slow
+    # first round is not cut off, short enough to refuse to start one with
+    # ten minutes left.
+    need=${roundSecs:-0}
+    [ "$need" -lt 60 ] && need=2400
+    if [ "$left" -lt "$need" ]; then
+      echo ""
+      echo "=== OUT OF TIME (${left}s left, a round takes ~${need}s) ==="
+      echo "Stopping before a round that would be killed half-finished."
+      echo "champion: $champion  (finals $champScore)"
+      exit 0
+    fi
+  fi
+  roundStart=$(date +%s)
   log="/tmp/rounds-${TAG}-r${r}.log"
   echo ""
   echo "--- round $r/$MAX_ROUNDS  ($(date -u +%H:%M:%S)) ---"
@@ -235,6 +275,9 @@ for (( r=1; r<=MAX_ROUNDS; r++ )); do
       exit 0
     fi
   fi
+  # Measured, not assumed: rounds get slower as genomes survive longer, so a
+  # budget built on a constant would start a round it cannot finish.
+  roundSecs=$(( $(date +%s) - roundStart ))
 done
 
 echo ""

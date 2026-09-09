@@ -280,6 +280,46 @@ test('a smoke-sized run is never committed as a champion', function () {
         'run looks like a bug rather than the rule working');
 });
 
+test('the crank stops itself before a job timeout can kill it mid-round', function () {
+    // The crank now lives on a GitHub runner, because this sandbox's microVM
+    // is reclaimed between turns and took three runs with it in one night. A
+    // runner has a hard 6-hour cap that kills a job outright — no chance to
+    // finish a round, commit it, or clear the marker — so the crank has to
+    // stop itself first.
+    var src = fs.readFileSync(path.join(__dirname, 'rounds.sh'), 'utf8');
+    assert.ok(/GC_DEADLINE/.test(src),
+        'rounds.sh has no time budget, so a runner will kill it holding a ' +
+        'half-finished round');
+    assert.ok(/roundSecs=\$\(\( \$\(date \+%s\) - roundStart \)\)/.test(src),
+        'the budget is not measuring how long rounds actually take. Rounds get ' +
+        'slower as genomes survive longer, so a budget built on a constant will ' +
+        'start a round it cannot finish.');
+    // No budget must mean no behaviour change: a person at a terminal wants it
+    // to run until the cap or until the numbers stop moving.
+    assert.ok(/DEADLINE="\$\{GC_DEADLINE:-\}"/.test(src) && /if \[ -n "\$DEADLINE" \]/.test(src),
+        'the time budget is not optional, so running this by hand would now stop ' +
+        'for a reason that only exists on a runner');
+});
+
+test('the training workflow exists and cannot run two cranks at once', function () {
+    var wf = path.join(__dirname, '..', '..', '..', '..', '.github', 'workflows', 'ai-train.yml');
+    assert.ok(fs.existsSync(wf), 'no ai-train.yml — the crank has nowhere to live but a ' +
+        'sandbox that gets reclaimed');
+    var y = fs.readFileSync(wf, 'utf8');
+    assert.ok(/concurrency:/.test(y) && /group: ai-train/.test(y),
+        'no concurrency group: two cranks would fight over the cores AND over the ' +
+        'same trained.<mode>.json scratch file, and both results would be junk');
+    assert.ok(/cancel-in-progress: false/.test(y),
+        'cancel-in-progress must be false — a run halfway through a round has earned ' +
+        'that round, and killing it for a fresher one throws the work away');
+    assert.ok(/timeout-minutes: 350/.test(y) && /340 \* 60/.test(y),
+        'the job timeout and the crank deadline must leave the crank room to stop ' +
+        'itself first, or the runner kills it mid-round');
+    assert.ok(/contents: write/.test(y),
+        'without write permission the crank cannot commit the champions it earns, ' +
+        'which is the entire point of running it somewhere durable');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
