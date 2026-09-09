@@ -349,11 +349,23 @@ test('a killed run does not lose its generations', function () {
         'the checkpoint is not checked against the config that made it');
 
     // CLEARED ON A REAL FINISH, or every later run resumes a search that
-    // already ended, at its last generation, forever.
+    // already ended, at its last generation, forever — but ONLY AFTER THE
+    // RESULT IS WRITTEN. Deleting it at the top of finish() reopened the
+    // exact hole the checkpoint closes: finish() replays every finalist on
+    // the finals seeds first, the slowest part of a round, and a kill in that
+    // window left no checkpoint AND no result. Observed live, once.
     var fin = src.slice(src.indexOf('function finish()'));
-    assert.ok(/unlinkSync\(CHECKPOINT\)/.test(fin.slice(0, 600)),
-        'finish() leaves the checkpoint behind, so the next run resumes a search ' +
-        'that already completed');
+    var unlinkAt = fin.indexOf('unlinkSync(CHECKPOINT)');
+    var writeAt = fin.indexOf("writeFileSync(path.join(__dirname, 'trained.'");
+    assert.ok(unlinkAt !== -1, 'finish() never clears the checkpoint, so the next run ' +
+        'resumes a search that already completed');
+    assert.ok(writeAt !== -1, 'this test cannot find where the result is written, so it ' +
+        'cannot check the ordering it exists to check');
+    assert.ok(unlinkAt > writeAt,
+        'finish() deletes the checkpoint BEFORE writing the result. A kill between the ' +
+        'two — during the finalist replay, which is the slowest part of a round — loses ' +
+        'the checkpoint and the result together, which is the whole failure the ' +
+        'checkpoint exists to prevent.');
 
     // And it must never be able to kill the run it is protecting.
     var save = src.slice(src.indexOf('function saveCheckpoint'));

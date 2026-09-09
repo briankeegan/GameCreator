@@ -464,11 +464,16 @@ function checkWinnerTiming(genome, cb) {
 }
 
 function finish() {
-    // THE CHECKPOINT GOES AS SOON AS THE GENERATIONS ARE DONE. Its only
-    // meaning is "this run was killed part-way"; leaving it behind after a
-    // real finish would make the next run resume a search that already
-    // finished, at its last generation, forever.
-    try { fs.unlinkSync(CHECKPOINT); } catch (e) { /* never existed, fine */ }
+    // THE CHECKPOINT IS NOT DELETED HERE. It used to be, and that reopened
+    // the exact hole the checkpoint exists to close, in a smaller place:
+    // finish() replays every finalist on the finals seeds — the slowest part
+    // of a round — and only then writes the result. A kill anywhere in that
+    // window found the checkpoint already gone AND no result written, so the
+    // whole round was lost again. Observed live, once.
+    //
+    // It is removed after the result is safely on disk instead. Until then
+    // "this run was killed part-way" is still true, and resuming from the
+    // last generation to redo the finalist replay is exactly right.
 
     // Play the finalists on seeds none of them trained on, and crown the
     // best of them — then report THAT on the held-out seeds. Without this
@@ -577,6 +582,10 @@ function report() {
             console.log('timing (single-threaded): worst decision ' + timing.worstMs +
                         'ms, unsafe seeds ' + timing.unsafeSeeds + '/' + HOLDOUT_SEEDS.length);
             fs.writeFileSync(path.join(__dirname, 'trained.' + MODE + '.json'), JSON.stringify(out, null, 2));
+            // NOW the checkpoint can go: the result it was protecting exists.
+            // Leaving it would make the next run resume a search that already
+            // finished, at its last generation, forever.
+            try { fs.unlinkSync(CHECKPOINT); } catch (e) { /* never existed */ }
             console.log('written to trained.' + MODE + '.json');
             pool.forEach(function (s) { s.child.kill(); });
         });
