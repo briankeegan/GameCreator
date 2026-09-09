@@ -14,7 +14,23 @@ trained.*.json
 # as a phantom "uncommitted change" every time a new run finished, which is
 # noise that trains you to ignore the warning.
 #
-# A result worth keeping is renamed: trained.<mode>.<round>.json, committed
-# with -f and with its provenance in the commit message. Those are tracked
-# and never overwritten by a run.
+# A result worth keeping is renamed by rounds.sh to
+# trained.<mode>.<tag>.<runid>.r<N>.json and is tracked, because it is the
+# only copy of an hour of compute and nothing else can reproduce it.
+#
+# THIS PATTERN MUST MATCH WHAT rounds.sh ACTUALLY WRITES. It read
+# `!trained.*.round*.json` for a long time while rounds.sh named its output
+# `...r1.json` — `r1` is not `round1`, so the exception never fired once and
+# every real champion was silently ignored. A container restart then killed
+# a crank mid-round and the surviving champion turned out to be untracked:
+# an hour of compute was one restart from being unrecoverable, and nothing
+# had said so, because a file that is ignored looks exactly like a file that
+# is committed in `git status`.
+#
+# training.test.js asserts a name rounds.sh really produces is not ignored,
+# so this pattern cannot drift away from the filenames again.
+!trained.*.r[0-9]*.json
 !trained.*.round*.json
+
+# Void results from before the 15-feature registry — see its README.
+void-pre-15-feature/

@@ -46,6 +46,32 @@ TAG="l${LEVEL}-${BRAIN}"
 # Distinguishes one invocation of this script from the next.
 RUN_ID=$(date -u +%m%d-%H%M%S)
 
+# THE MARKER: "a crank is running and did not choose to stop."
+#
+# A crank runs for hours and the container it runs in gets reclaimed without
+# warning. Twice in one session; the second killed round 2 thirty-eight
+# minutes in and it produced nothing. Restarting was left to whoever noticed
+# — which is not a mechanism, it is a hope, and it is the same mistake as
+# leaving a champion to be committed by hand.
+#
+# So this file says the crank is alive, and .claude/hooks/
+# session-start-resume-training.sh puts the crank back if it finds the
+# marker with no crank behind it. The trap DELETES it on every deliberate
+# exit — finished, stalled out, or interrupted — so the marker existing can
+# only ever mean the process was killed. Nothing else needs to be true for
+# the resume to be correct.
+MARKER="$(cd "$(dirname "$0")" && pwd)/.crank-running"
+cat > "$MARKER" <<MARKEREOF
+# Written by rounds.sh $RUN_ID at $(date -u '+%Y-%m-%d %H:%M:%S'). Deleted on
+# any deliberate exit. If you are reading this and no rounds.sh is running,
+# the container died mid-round.
+CRANK_ARGS="$MAX_ROUNDS $GENS $POP $WORKERS"
+CRANK_ENV="GC_LEVEL=$LEVEL GC_BRAIN=$BRAIN"
+CRANK_LOG="$(cd "$(dirname "$0")" && pwd)/crank.log"
+CRANK_CHAMPION="${GC_CHAMPION:-}"
+MARKEREOF
+trap 'rm -f "$MARKER"' EXIT INT TERM
+
 # GC_CHAMPION seeds the crank from a run that already happened, so a round
 # done by hand is round 1 rather than something thrown away. Its held-out
 # total becomes the bar the next round has to beat.
@@ -125,6 +151,36 @@ for (( r=1; r<=MAX_ROUNDS; r++ )); do
   # impossible here.
   result="trained.${MODE}.${TAG}.${RUN_ID}.r${r}.json"
   cp "trained.${MODE}.json" "$result"
+
+  # COMMITTED THE MOMENT IT EXISTS, because the alternative is that it does
+  # not exist. A container restart killed this crank mid-round-2 and the
+  # round-1 champion survived only because somebody happened to look: it was
+  # gitignored, so an hour of compute was one restart away from gone, and
+  # `git status` showed nothing wrong the whole time.
+  #
+  # A crank runs unattended for hours. Anything that depends on a person
+  # remembering to `git add -f` at the end is a plan that loses every result
+  # the machine dies in the middle of, which — measured — is a real fraction
+  # of them. So the save is part of the round, not part of the write-up.
+  #
+  # IT MUST NEVER KILL THE RUN. A failed commit or a failed push costs this
+  # round's safety net; aborting training over it would cost every round
+  # still to come. So every git call is guarded and every failure prints a
+  # loud line and carries on — the run is worth more than the bookkeeping.
+  # `|| true` on the push in particular: the sandbox loses the network far
+  # more often than it loses the disk.
+  if git rev-parse --git-dir >/dev/null 2>&1; then
+    if git add -f "$result" 2>/dev/null && \
+       git commit -q -m "$(printf 'Champion: round %s of %s (%s)\n\nWritten by rounds.sh and committed on the spot, so a restart cannot\ntake it. Scores and provenance are in the file itself.\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>' \
+                          "$r" "$TAG" "$RUN_ID")" 2>/dev/null; then
+      git push -q origin HEAD 2>/dev/null || \
+        echo "    (champion committed but NOT pushed — it survives a restart, not a lost container)"
+    else
+      echo "    !! COULD NOT COMMIT $result — this round exists only on disk"
+    fi
+  else
+    echo "    !! not a git repo — $result exists only on disk"
+  fi
 
   # ROUNDS ARE COMPARED ON THE FINALS SEEDS, NOT THE HELD-OUT ONES.
   #

@@ -205,6 +205,63 @@ test('rounds.sh seeds each round from the CHAMPION and varies the GA seed', func
     assert.ok(/GC_GA_SEED=\$gaSeed/.test(src), 'the varying seed is computed but not passed');
 });
 
+test('a champion rounds.sh actually writes is not gitignored', function () {
+    // THE FAILURE THIS EXISTS FOR, exactly as it happened. .gitignore
+    // ignored trained.*.json with an exception for `trained.*.round*.json`,
+    // and rounds.sh named its output `...r1.json`. `r1` is not `round1`, so
+    // the exception never fired once: every champion the crank has ever
+    // produced was silently ignored. A container restart killed a crank
+    // mid-round and the surviving champion was untracked — an hour of
+    // compute one restart from unrecoverable, with `git status` clean the
+    // whole time, because an ignored file looks exactly like a saved one.
+    //
+    // So the name here is not typed by hand: it is BUILT from rounds.sh's
+    // own template, which means renaming the output without updating the
+    // pattern fails this test instead of quietly un-tracking every result.
+    var src = fs.readFileSync(path.join(__dirname, 'rounds.sh'), 'utf8');
+    var m = /result="([^"]+)"/.exec(src);
+    assert.ok(m, 'rounds.sh no longer assigns result="..." — this test cannot ' +
+                 'find the name it is supposed to check');
+    var name = m[1]
+        .replace('${MODE}', 'replace').replace('${TAG}', 'l10-puyo')
+        .replace('${RUN_ID}', '0908-234107').replace('${r}', '7');
+    assert.ok(!/\$\{/.test(name),
+        'the champion name still has an unresolved variable in it (' + name +
+        '), so this test would be checking a filename that never exists');
+
+    var res = cp.spawnSync('git', ['check-ignore', '-q', name], { cwd: __dirname });
+    // git check-ignore: 0 = ignored, 1 = not ignored, >1 = error.
+    assert.notStrictEqual(res.status, 0,
+        'rounds.sh writes ' + name + ' and .gitignore IGNORES it. Every round of ' +
+        'every crank would exist only on disk, and a restart would take it. Fix the ' +
+        'pattern in .gitignore to match the name rounds.sh builds — do not fix this ' +
+        'test.');
+    assert.ok(res.status === 1,
+        'git check-ignore failed to run (status ' + res.status + '), so this gate ' +
+        'is not actually checking anything');
+});
+
+test('rounds.sh saves each champion itself, and cannot die trying', function () {
+    // A crank runs unattended for hours, so "commit it afterwards" loses
+    // every result the machine dies in the middle of. The save has to be
+    // part of the round.
+    var src = fs.readFileSync(path.join(__dirname, 'rounds.sh'), 'utf8');
+    var save = src.slice(src.indexOf('result="'));
+    assert.ok(/git add -f "\$result"/.test(save),
+        'rounds.sh does not commit the champion it just wrote, so the only copy is ' +
+        'on a disk that goes away');
+    assert.ok(/git commit/.test(save) && /git push/.test(save),
+        'the champion is staged but never committed and pushed');
+    // And the other direction: bookkeeping must never cost the run. Every
+    // git call is guarded, so a missing identity or a lost network prints a
+    // line instead of killing hours of training.
+    assert.ok(/git push[^\n]*\|\|/.test(save),
+        'the push is unguarded — a lost network would abort the whole crank');
+    assert.ok(/COULD NOT COMMIT/.test(save),
+        'a failed commit passes silently, which is the same as not knowing the ' +
+        'result is unsaved');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
