@@ -65,6 +65,7 @@ cat > "$MARKER" <<MARKEREOF
 # Written by rounds.sh $RUN_ID at $(date -u '+%Y-%m-%d %H:%M:%S'). Deleted on
 # any deliberate exit. If you are reading this and no rounds.sh is running,
 # the container died mid-round.
+CRANK_PID=$$
 CRANK_ARGS="$MAX_ROUNDS $GENS $POP $WORKERS"
 CRANK_ENV="GC_LEVEL=$LEVEL GC_BRAIN=$BRAIN"
 CRANK_LOG="$(cd "$(dirname "$0")" && pwd)/crank.log"
