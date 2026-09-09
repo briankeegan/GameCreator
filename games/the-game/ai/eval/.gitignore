@@ -34,3 +34,16 @@ trained.*.json
 
 # Void results from before the 15-feature registry — see its README.
 void-pre-15-feature/
+
+# THE CRANK'S RUNTIME STATE. Neither of these is ever committed.
+#
+# .crank-running means "a crank is alive IN THIS CONTAINER and did not choose
+# to stop" — it is liveness, not configuration. Committing it would be worse
+# than untidy: a fresh container cloning the repo would find a marker with no
+# crank behind it, and session-start-resume-training.sh would faithfully start
+# hours of training nobody asked for.
+#
+# crank.log is append-only for the life of a run and says nothing a champion
+# file does not already carry.
+.crank-running
+crank.log
