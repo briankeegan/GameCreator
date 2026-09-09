@@ -175,10 +175,47 @@ var HOLDOUT_SEEDS = SEEDS.HOLDOUT;
 var KEYS = registry.keys;
 var MAX_WEIGHT = 300;
 
-var ELITES = 2;
-var TOURNAMENT = 3;
-var MUTATION_RATE = 0.25;
-var MUTATION_SIGMA = MAX_WEIGHT * 0.15;
+// THE SEARCH IS CROSS-ENTROPY METHOD, because that is what the reference
+// runs. ../PUYO_REFERENCE.md steps 5 and 6: "keep the highest-scoring SETS,
+// generate new sets CLUSTERED NEAR THOSE WINNERS", and it names the method
+// outright — "same loop as Tetris's cross-entropy method".
+//
+// WHAT WAS HERE BEFORE, and why it was wrong rather than merely different.
+// A genetic algorithm: tournament-of-3 selection, uniform crossover, and a
+// gaussian mutation at a FIXED sigma of 15% of the weight range. Three
+// mismatches, in order of how much they cost:
+//
+//   1. The mutation never annealed. Every generation kicked the weights by
+//      the same amount forever, so they could not settle — measured on a
+//      40-genome run, the elite moved 23.6% then 24.1% of the range between
+//      snapshots, flat, no downward trend. The stop rule added with the
+//      continuous search waits for movement under 2%, so it could NEVER
+//      HAVE FIRED. The crank would have run to its generation cap and
+//      reported "we got bored" as if it were a plateau.
+//   2. Uniform crossover takes each weight from one parent or the other, so
+//      a child can land far from BOTH. That is not "clustered near those
+//      winners"; it is a jump to a corner of the box between them.
+//   3. Tournament-of-3 out of 200 barely selects — a below-median genome is
+//      a likely parent. CEM keeps only the top slice.
+//
+// CEM instead: score everyone, keep the top ELITE_FRACTION, fit a mean and
+// a spread to those elites per weight, and draw the next generation from
+// that distribution. The spread narrows on its own as the elites agree,
+// which is exactly what "run until the numbers stop moving" describes — the
+// stopping rule and the search are the same mechanism seen from two sides.
+var ELITE_FRACTION = Number(process.env.GC_ELITE_FRACTION || 0.15);
+
+// A NOISE FLOOR THAT DECAYS, which is part of the method rather than a knob
+// bolted on. CEM's known failure is premature collapse: one lucky
+// generation agrees, the spread goes to nearly zero, and the search stops
+// exploring while it is still wrong. Szita and Lorincz's Tetris work — the
+// one the reference cites for 660,000 -> 35,000,000 lines — adds a decaying
+// term to the variance for exactly this reason.
+//
+// It decays to zero, so it cannot prevent convergence; it only stops the
+// distribution collapsing before the search has looked around.
+var NOISE_FLOOR = MAX_WEIGHT * 0.04;
+var NOISE_ZERO_AT = Number(process.env.GC_NOISE_ZERO_AT || 300);
 
 // THE GA'S OWN RANDOMNESS, AND WHY IT MUST BE SETTABLE.
 //
@@ -215,20 +252,6 @@ function randomGenome() {
     // bot carries most of its score in two features.
     KEYS.forEach(function (k) { g[k] = rng() < 0.4 ? rng() * MAX_WEIGHT : 0; });
     return g;
-}
-function crossover(a, b) {
-    var g = {};
-    KEYS.forEach(function (k) { g[k] = rng() < 0.5 ? a[k] : b[k]; });
-    return g;
-}
-function mutate(g) {
-    var out = {};
-    KEYS.forEach(function (k) {
-        var v = g[k];
-        if (rng() < MUTATION_RATE) v += gauss() * MUTATION_SIGMA;
-        out[k] = Math.max(0, Math.min(MAX_WEIGHT, v));
-    });
-    return out;
 }
 
 // A JOB GOES TO A WORKER THAT IS FREE, NOT TO THE NEXT NUMBER.
@@ -345,7 +368,10 @@ var t0 = Date.now();
 // is IGNORED, loudly, when anything that shapes the search differs.
 var CHECKPOINT = path.join(__dirname, '.train-checkpoint.' + MODE + '.json');
 function fingerprint() {
-    return [GENERATIONS, POPULATION, MODE, BRAIN, TRAINED_BRAIN,
+    // 'cem' is in here because a checkpoint written by the old genetic
+    // algorithm holds a population bred a different way. Resuming one into
+    // this search would be continuing somebody else's run.
+    return ['cem', ELITE_FRACTION, GENERATIONS, POPULATION, MODE, BRAIN, TRAINED_BRAIN,
             process.env.GC_LEVEL || '', process.env.GC_GA_SEED || '',
             SEEDS_PER_GENERATION, KEYS.join(',')].join('|');
 }
@@ -500,24 +526,46 @@ function step() {
 // Breed the next generation. Pulled out of the loop so a snapshot can hand
 // control back to exactly the same place a normal generation does.
 function advance(scored) {
-        var next = scored.slice(0, ELITES).map(function (s) { return s.genome; });
+        // STEP 5: keep the highest-scoring sets. They stay in the population
+        // — "keep" is the reference's own word — so the best genome found can
+        // never be lost to an unlucky draw.
+        var eliteCount = Math.max(2, Math.round(POPULATION * ELITE_FRACTION));
+        var elites = scored.slice(0, eliteCount).map(function (s) { return s.genome; });
+
+        // STEP 6: generate new sets clustered near those winners. The cluster
+        // is a gaussian per weight, centred on the elites' mean and as wide
+        // as the elites disagree. When they agree the spread is small and the
+        // next generation lands close in; when they disagree it stays wide
+        // and the search keeps looking.
+        var mean = {}, spread = {};
+        KEYS.forEach(function (k) {
+            var sum = 0, i;
+            for (i = 0; i < elites.length; i++) sum += elites[i][k] || 0;
+            var m = sum / elites.length, v = 0;
+            for (i = 0; i < elites.length; i++) {
+                var d = (elites[i][k] || 0) - m;
+                v += d * d;
+            }
+            mean[k] = m;
+            spread[k] = Math.sqrt(v / elites.length);
+        });
+
+        var floor = Math.max(0, NOISE_FLOOR * (1 - generation / NOISE_ZERO_AT));
+        var next = elites.slice();
         while (next.length < POPULATION) {
-            var a = pick(scored), b = pick(scored);
-            next.push(mutate(crossover(a, b)));
+            var g = {};
+            KEYS.forEach(function (k) {
+                var s = Math.max(spread[k], floor);
+                g[k] = Math.max(0, Math.min(MAX_WEIGHT, mean[k] + gauss() * s));
+            });
+            next.push(g);
         }
+
         population = next;
         saveCheckpoint();
         step();
 }
 
-function pick(scored) {
-    var best = null;
-    for (var i = 0; i < TOURNAMENT; i++) {
-        var c = scored[Math.floor(rng() * scored.length)];
-        if (!best || c.fit > best.fit) best = c;
-    }
-    return best.genome;
-}
 
 // The winner's timing IS checked, single-threaded, where wall-clock means
 // something. A config that cannot decide inside a frame is not a faster

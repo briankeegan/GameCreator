@@ -370,6 +370,48 @@ test('a killed run does not lose its generations', function () {
         'to resume is bad, killing hours of training over it is worse');
 });
 
+test('the search is cross-entropy method, the way the reference runs it', function () {
+    // ../PUYO_REFERENCE.md steps 5 and 6: "keep the highest-scoring SETS,
+    // generate new sets CLUSTERED NEAR THOSE WINNERS" — and it names the
+    // method: "same loop as Tetris's cross-entropy method".
+    //
+    // What was here was a genetic algorithm, and it was wrong rather than
+    // merely different. Its mutation never annealed, so the elite's weights
+    // kept moving by a fifth of the range forever — measured over five
+    // snapshots of a 40-genome run: 23.6%, 24.1%, 15.5%, 21.2%, 12.5%,
+    // against a stop rule that waits for under 2%. The rule could never have
+    // fired and the crank would have run to its cap reporting "we got bored"
+    // as a plateau. Under CEM the spread narrows as the elites agree, so the
+    // search and the stopping rule are the same mechanism.
+    var src = fs.readFileSync(path.join(__dirname, 'train.js'), 'utf8');
+    var code = src.split('\n').filter(function (l) { return !/^\s*(\/\/|\*)/.test(l); }).join('\n');
+
+    assert.ok(!/crossover\s*\(/.test(code),
+        'crossover is back. A child takes each weight from one parent or the other, so ' +
+        'it can land far from BOTH — that is not "clustered near those winners".');
+    assert.ok(!/MUTATION_SIGMA/.test(code),
+        'a fixed mutation sigma is back. It never anneals, so the weights cannot settle ' +
+        'and the convergence rule can never fire.');
+    assert.ok(!/TOURNAMENT/.test(code),
+        'tournament selection is back. CEM keeps the top slice; a tournament lets a ' +
+        'below-median genome parent the next generation.');
+
+    assert.ok(/ELITE_FRACTION/.test(code) && /scored\.slice\(0, eliteCount\)/.test(code),
+        'the next generation is not built from the top slice of scorers');
+    assert.ok(/mean\[k\] \+ gauss\(\) \* s/.test(code),
+        'the next generation is not SAMPLED from the elites\' mean and spread, which is ' +
+        'the whole of step 6');
+    assert.ok(/spread\[k\] = Math\.sqrt/.test(code),
+        'the spread is not measured from how much the elites disagree, so it cannot ' +
+        'narrow as they converge');
+
+    // The noise floor must DECAY to zero, or it becomes the fixed mutation
+    // sigma wearing a different name and convergence is impossible again.
+    assert.ok(/NOISE_FLOOR \* \(1 - generation \/ NOISE_ZERO_AT\)/.test(code),
+        'the noise floor does not decay with the generation number, so it is a constant ' +
+        'kick under another name and the weights can never settle');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
