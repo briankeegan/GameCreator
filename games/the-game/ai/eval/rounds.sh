@@ -240,6 +240,24 @@ for (( r=START_ROUND; r<=MAX_ROUNDS; r++ )); do
     if git add -f "$result" 2>/dev/null && \
        git commit -q -m "$(printf 'Champion: round %s of %s (%s)\n\nWritten by rounds.sh and committed on the spot, so a restart cannot\ntake it. Scores and provenance are in the file itself.\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>' \
                           "$r" "$TAG" "$RUN_ID")" 2>/dev/null; then
+      # REBASE BEFORE PUSHING, or a long run's champions never leave the
+      # machine. A crank runs for hours; anything pushed to the branch in
+      # the meantime — by a person, or by the next scheduled run — leaves
+      # this checkout behind, and `git push` then fails as a non-fast-forward.
+      # Guarded as it was, that failure printed one line and carried on, so a
+      # five-hour run would have committed twenty champions locally and lost
+      # every one of them when the runner was recycled. Caught by reading the
+      # timestamps — checkout at 14:16:46, an unrelated push at 14:21:57 —
+      # before it had cost anything.
+      #
+      # A rebase is right rather than a merge: champion commits are
+      # independent files, they never conflict with anything, and replaying
+      # them on top keeps the branch linear.
+      branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+      if [ -n "$branch" ] && [ "$branch" != "HEAD" ]; then
+        git fetch -q origin "$branch" 2>/dev/null && \
+          git rebase -q "origin/$branch" 2>/dev/null || git rebase --abort 2>/dev/null
+      fi
       git push -q origin HEAD 2>/dev/null || \
         echo "    (champion committed but NOT pushed — it survives a restart, not a lost container)"
     else

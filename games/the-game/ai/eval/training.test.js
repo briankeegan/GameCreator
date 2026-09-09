@@ -257,6 +257,24 @@ test('rounds.sh saves each champion itself, and cannot die trying', function () 
     // line instead of killing hours of training.
     assert.ok(/git push[^\n]*\|\|/.test(save),
         'the push is unguarded — a lost network would abort the whole crank');
+
+    // AND IT REBASES FIRST. A crank runs for hours; anything pushed to the
+    // branch meanwhile leaves its checkout behind and the push is rejected
+    // as a non-fast-forward. Guarded, that prints one line and carries on —
+    // so a five-hour run would commit twenty champions locally and lose
+    // every one when the runner is recycled. Caught from timestamps
+    // (checkout 14:16:46, an unrelated push at 14:21:57) before it cost a
+    // run, which is the only reason this is a test and not a post-mortem.
+    // Matched on the real COMMANDS, not the words: the comment above the
+    // rebase mentions `git push` while explaining why it exists, and an
+    // indexOf on the bare word found that instead — the test failed against
+    // correct code, which is the fastest way to get a check deleted.
+    var pushAt = save.indexOf('git push -q origin HEAD');
+    var rebaseAt = save.indexOf('git rebase -q');
+    assert.ok(rebaseAt !== -1 && rebaseAt < pushAt,
+        'rounds.sh pushes without first rebasing onto the remote branch, so any ' +
+        'commit that lands during a long run makes every later champion unpushable ' +
+        '— silently, because the push failure is deliberately non-fatal');
     assert.ok(/COULD NOT COMMIT/.test(save),
         'a failed commit passes silently, which is the same as not knowing the ' +
         'result is unsaved');
