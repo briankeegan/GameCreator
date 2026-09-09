@@ -71,10 +71,46 @@ var attackSchedule = require(path.join(__dirname, '..', 'experiments', 'attack_s
 // beside this one the endless scenario is simply unavailable and says so,
 // rather than silently falling back to a synthetic drill and reporting a
 // number that means something else.
-var TRAINING_DIR = '/home/user/briankeegan/panel-game/client/assets/default_data/training';
+// SEARCHED, NOT HARD-CODED. This was one absolute path into a sibling
+// checkout — /home/user/briankeegan/panel-game/... — which exists only in
+// the sandbox it was written in. The comment above claimed the scenario
+// would be "simply unavailable and say so" if that checkout were missing;
+// it did not. readdirSync threw ENOENT and killed the process, which is how
+// the first GitHub Actions run of the trainer died: eight tests failed with
+// a stack trace naming a directory that could never exist on a runner, and
+// nothing in the message said "check out panel-game".
+//
+// Order matters: an explicit GC_TRAINING_DIR wins, then a checkout beside
+// this repo, then a checkout INSIDE it (which is what CI does, since
+// actions/checkout cannot write above the workspace), then the original
+// absolute path so existing sandboxes keep working.
+var REPO = path.join(__dirname, '..', '..', '..', '..');
+var TRAINING_SUFFIX = path.join('client', 'assets', 'default_data', 'training');
+var TRAINING_CANDIDATES = [
+    process.env.GC_TRAINING_DIR,
+    path.join(REPO, '..', 'panel-game', TRAINING_SUFFIX),
+    path.join(REPO, 'panel-game', TRAINING_SUFFIX),
+    '/home/user/briankeegan/panel-game/' + TRAINING_SUFFIX.split(path.sep).join('/')
+].filter(Boolean);
+
+var TRAINING_DIR = null;
 var ENDLESS_FILES = null;
 function endlessFiles() {
     if (ENDLESS_FILES) return ENDLESS_FILES;
+    for (var i = 0; i < TRAINING_CANDIDATES.length && !TRAINING_DIR; i++) {
+        try {
+            if (fs.statSync(TRAINING_CANDIDATES[i]).isDirectory()) TRAINING_DIR = TRAINING_CANDIDATES[i];
+        } catch (e) { /* next candidate */ }
+    }
+    if (!TRAINING_DIR) {
+        // Name every place looked and what to do, because the failure this
+        // replaces was a bare ENOENT on one path in a stack trace.
+        throw new Error('the endless scenario needs the real attack files from the ' +
+            'panel-game repo, and none of these exist:\n  ' +
+            TRAINING_CANDIDATES.join('\n  ') +
+            '\nClone briankeegan/panel-game beside this repo, or set GC_TRAINING_DIR ' +
+            'to its client/assets/default_data/training directory.');
+    }
     ENDLESS_FILES = fs.readdirSync(TRAINING_DIR)
         .filter(function (f) { return /^challenge-8-\d+\.json$/.test(f); })
         .sort()
