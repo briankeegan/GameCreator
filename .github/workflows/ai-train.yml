@@ -72,6 +72,18 @@ jobs:
           # needs real credentials and full history, not a shallow clone.
           fetch-depth: 0
 
+      # THE ENDLESS DRILL NEEDS A SECOND REPOSITORY. Its opponents are the
+      # real attack files from panel-game — the same ones full_report.js
+      # plays — and endless is the largest single term in the fitness. The
+      # first run of this workflow died on exactly this: bench.js had one
+      # absolute path into a sandbox checkout, so eight tests failed with an
+      # ENOENT naming a directory no runner could ever have.
+      - uses: actions/checkout@v4
+        with:
+          repository: briankeegan/panel-game
+          path: panel-game
+          fetch-depth: 1
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -83,6 +95,8 @@ jobs:
 
       - name: Check the harness before spending five hours on it
         working-directory: games/the-game/ai/eval
+        env:
+          GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
         run: |
           # A broken evaluator would train happily and produce a champion for
           # a game nobody is playing. These are seconds against a 5-hour run.
@@ -123,6 +137,7 @@ jobs:
       - name: Crank
         working-directory: games/the-game/ai/eval
         env:
+          GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
           GC_LEVEL: ${{ github.event.inputs.level || '10' }}
           GC_BRAIN: puyo
           GC_CHAMPION: ${{ steps.champ.outputs.champion }}
