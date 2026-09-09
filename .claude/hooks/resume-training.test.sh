@@ -72,9 +72,9 @@ export CLAUDE_PROJECT_DIR="$SANDBOX"
 
 # A stand-in crank: writes its marker exactly as the real one does, clears it
 # on any deliberate exit, and otherwise just sits there. Testing against the
-# real rounds.sh would mean waiting half an hour per case and burning four
+# real crank.sh would mean waiting half an hour per case and burning four
 # cores to learn nothing about the hook.
-cat > "$EVAL/rounds.sh" <<'STUB'
+cat > "$EVAL/crank.sh" <<'STUB'
 #!/bin/bash
 cd "$(dirname "$0")"
 MARKER="$PWD/.crank-running"
@@ -103,7 +103,7 @@ echo "stub crank running: $*"
 # hook being broken.
 sleep 300 & napper=$!; wait $napper
 STUB
-chmod +x "$EVAL/rounds.sh"
+chmod +x "$EVAL/crank.sh"
 
 cat > "$EVAL/seeds.js" <<'SEEDS'
 module.exports = { FINALS: [201,202,203,204,205,206,207,208,209,210,211,212] };
@@ -121,7 +121,7 @@ out=$(run_hook); check "no marker: silent, starts nothing" "${out:-<empty>}" "<e
 
 # 2. A LIVE CRANK IS LEFT ALONE. Two would fight over the cores and over the
 #    same trained.<mode>.json scratch file, and both results would be junk.
-"$EVAL/rounds.sh" 1 1 8 1 >/dev/null 2>&1 & live=$!; PIDS="$PIDS $live"
+"$EVAL/crank.sh" 1 1 8 1 >/dev/null 2>&1 & live=$!; PIDS="$PIDS $live"
 sleep 0.5
 out=$(run_hook)
 case "$out" in *"already running"*) r=yes;; *) r="no: $out";; esac
@@ -159,17 +159,19 @@ check "the restarted crank is REALLY running" "$r" "yes"
 case "$(cat "$EVAL/crank.log" 2>/dev/null)" in *RESUMED*) r=yes;; *) r=no;; esac
 check "the log says it was resumed, not started clean" "$r" "yes"
 
-# 5. IT SEEDS FROM THE BEST VALID CHAMPION — highest trainFitness among those
-#    measured on the finals seeds we now select on. Never the highest score
-#    outright (r2 scores 900 on other seeds), never the alphabetically last.
-case "$out" in *".r3.json"*) r=r3;; *) r="wrong: $out";; esac
-check "seeds from the best champion measured on the CURRENT finals seeds" "$r" "r3"
+# 5. THERE IS NOTHING TO SEED FROM, and that is the point. This used to
+#    check that the hook picked the best committed champion to start a fresh
+#    search from — the round boundary's job. The search is continuous now and
+#    train.js's checkpoint carries the whole population, so a resume runs the
+#    same command and picks up at the generation it died on.
+case "$out" in *"champion"*) r="still picking a champion";; *) r=ok;; esac
+check "resumes without choosing a champion" "$r" "ok"
 
 kill -TERM $restarted 2>/dev/null; sleep 0.5
 
 # 6. A DELIBERATE EXIT CLEARS THE MARKER, or the hook would resurrect a
 #    finished crank forever.
-"$EVAL/rounds.sh" 1 1 8 1 >/dev/null 2>&1 & live=$!; PIDS="$PIDS $live"
+"$EVAL/crank.sh" 1 1 8 1 >/dev/null 2>&1 & live=$!; PIDS="$PIDS $live"
 sleep 0.5
 [ -f "$MARKER" ] && r=yes || r=no
 check "a running crank writes the marker" "$r" "yes"

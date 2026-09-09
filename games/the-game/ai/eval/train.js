@@ -128,21 +128,49 @@ var SEEDS_PER_GENERATION = Number(process.env.GC_SEEDS_PER_GEN || 1);
 // sample of it, and the two can be compared directly. Changing the count
 // breaks that; changing it to a non-multiple of twelve silently weights
 // some attack files double.
-// FINALS SEEDS — a third set, used ONLY to choose between the finalists at
-// the end of a round, and never trained on or reported.
+// THE FINALS SET IS GONE, and seeds.js still defines it only so an old
+// result file can be read back.
 //
-// Selecting among candidates on the HELD-OUT seeds and then reporting that
-// same number would be picking the luckiest of eight and calling it a
-// measurement. Three sets keeps each one honest: 1-40 to train, 201-208 to
-// choose the winner, 101-112 to report it.
-// TWELVE, for the same reason HOLDOUT_SEEDS is twelve: endless picks its
-// attack file from the seed, so twelve consecutive seeds cover all twelve
-// files exactly once. Eight covered only two thirds of them, which meant
-// champions were being chosen against a subset of the real opponents and
-// could quietly suit those eight.
-var FINALS_SEEDS = SEEDS.FINALS;
+// It existed to choose between finalists at the end of a round. Rounds are
+// gone, so there is nothing to choose between — and a fixed set that
+// SELECTS is a fixed set to overfit, which is what it started doing:
+// measured +19% on the seeds that chose a champion and -13% on seeds it had
+// never seen. Two sets remain and each has exactly one job: 1-40 to train,
+// 101-112 to report. Nothing selects on anything fixed.
+// CONTINUOUS SEARCH KNOBS.
+//
+// SNAPSHOT_EVERY — how often the search stops to report. It does not
+// interrupt the search: the population carries straight on afterwards. It
+// exists so a run that goes for hours still produces a champion anyone can
+// look at, and so the crank has something to commit.
+var SNAPSHOT_EVERY = Number(process.env.GC_SNAPSHOT_EVERY || 30);
+var SNAPSHOT_HOOK = process.env.GC_SNAPSHOT_HOOK || null;
+
+// A wall-clock budget, so this can live on a runner with a job timeout.
+// Unset means run to the generation cap or to convergence.
+var DEADLINE = process.env.GC_DEADLINE ? Number(process.env.GC_DEADLINE) : null;
+
+// "RUN THAT UNTIL THE NUMBERS STOP MOVING" — the reference's own stopping
+// rule, taken literally. It does not say "until the score stops improving";
+// it says the WEIGHTS settle ("links settles at 0.25, variance at 0.02").
+//
+// That distinction matters here. Any rule based on a score has to pick a
+// seed set to measure the score on, and a fixed set that decides when to
+// stop is a fixed set being selected against — the exact mistake that made
+// this rewrite necessary. Weight movement needs no seeds at all.
+//
+// Converged when the elite's weights move less than STILL_ENOUGH of the
+// weight range per snapshot, three snapshots running. Three rather than one
+// for the same reason the old rule used three rounds: a single still
+// snapshot is as likely to be noise as a plateau, and the cost of a false
+// stop (losing the run) is far worse than a false continue (30 more
+// generations).
+var STILL_ENOUGH = Number(process.env.GC_STILL_ENOUGH || 0.02);
+var STILL_SNAPSHOTS = 3;
+var lastSnapshotWeights = null;
+var stillCount = 0;
+
 // How many of the final generation get that treatment.
-var FINALISTS = 8;
 var HOLDOUT_SEEDS = SEEDS.HOLDOUT;
 var KEYS = registry.keys;
 var MAX_WEIGHT = 300;
@@ -156,12 +184,15 @@ var MUTATION_SIGMA = MAX_WEIGHT * 0.15;
 //
 // This was a fixed constant, which made a run reproducible — a good
 // property, and the reason the default is still that constant. It also
-// made every run with the same arguments a bit-identical REPLAY, which is
-// fatal to the thing rounds.sh exists to do: seed round N+1 from the
-// champion and search near it. Seeded from the same champion with the same
-// population and generations, every round returned the identical held-out
-// total, to fifteen decimal places. "Run until the numbers stop moving"
-// cannot mean anything when each turn of the crank is the same turn.
+// made every run with the same arguments a bit-identical REPLAY. That was
+// fatal when the search was chopped into rounds — each round restarted from
+// the champion and returned the identical held-out total, to fifteen decimal
+// places, so "run until the numbers stop moving" could not mean anything.
+//
+// Rounds are gone and the search no longer restarts, so a replay is much
+// harder to cause. It stays settable anyway: two runs from the same
+// checkpoint should be able to explore differently, and a fixed constant
+// would mean a resumed search always redoes the same generations.
 //
 // Caught because two consecutive rounds reported 2195.8333333333335. Noise
 // does not repeat to the last digit; that is the shape of a replay, and it
@@ -409,7 +440,6 @@ function step() {
         // seeds and crowns the best. Selection within a generation is
         // unchanged: every genome in a generation plays the identical seed
         // and always did.
-        finalists = scored.slice(0, FINALISTS).map(function (x) { return x.genome; });
 
 
         console.log('gen ' + String(generation + 1).padStart(2) + '/' + GENERATIONS +
@@ -430,6 +460,46 @@ function step() {
         generation++;
         if (generation >= GENERATIONS) return finish();
 
+        // OUT OF TIME. Stop cleanly with a real result rather than being
+        // killed mid-generation by a job timeout.
+        if (DEADLINE && Date.now() / 1000 > DEADLINE) {
+            console.log('\n=== OUT OF TIME at generation ' + generation + ' ===');
+            return finish();
+        }
+
+        // HAVE THE NUMBERS STOPPED MOVING?
+        if (generation % SNAPSHOT_EVERY === 0) {
+            var elite = scored[0].genome;
+            if (lastSnapshotWeights) {
+                var moved = 0;
+                KEYS.forEach(function (k) {
+                    moved += Math.abs((elite[k] || 0) - (lastSnapshotWeights[k] || 0));
+                });
+                moved = moved / KEYS.length / MAX_WEIGHT;
+                stillCount = moved < STILL_ENOUGH ? stillCount + 1 : 0;
+                console.log('\nweights moved ' + (moved * 100).toFixed(2) + '% of range since the ' +
+                            'last snapshot (still ' + stillCount + '/' + STILL_SNAPSHOTS + ')');
+            }
+            lastSnapshotWeights = {};
+            KEYS.forEach(function (k) { lastSnapshotWeights[k] = elite[k] || 0; });
+
+            best = elite;
+            bestFit = scored[0].fit;
+            if (stillCount >= STILL_SNAPSHOTS) {
+                console.log('=== THE NUMBERS HAVE STOPPED MOVING ===');
+                return finish();
+            }
+            // A snapshot, then straight on — the population is untouched.
+            return report(false, function () { advance(scored); });
+        }
+
+        advance(scored);
+    });
+}
+
+// Breed the next generation. Pulled out of the loop so a snapshot can hand
+// control back to exactly the same place a normal generation does.
+function advance(scored) {
         var next = scored.slice(0, ELITES).map(function (s) { return s.genome; });
         while (next.length < POPULATION) {
             var a = pick(scored), b = pick(scored);
@@ -438,8 +508,8 @@ function step() {
         population = next;
         saveCheckpoint();
         step();
-    });
 }
+
 function pick(scored) {
     var best = null;
     for (var i = 0; i < TOURNAMENT; i++) {
@@ -464,37 +534,36 @@ function checkWinnerTiming(genome, cb) {
 }
 
 function finish() {
-    // THE CHECKPOINT IS NOT DELETED HERE. It used to be, and that reopened
-    // the exact hole the checkpoint exists to close, in a smaller place:
-    // finish() replays every finalist on the finals seeds — the slowest part
-    // of a round — and only then writes the result. A kill anywhere in that
-    // window found the checkpoint already gone AND no result written, so the
-    // whole round was lost again. Observed live, once.
+    // NO FINALIST SELECTION, AND NO ROUND BOUNDARY FOR IT TO SERVE.
     //
-    // It is removed after the result is safely on disk instead. Until then
-    // "this run was killed part-way" is still true, and resuming from the
-    // last generation to redo the finalist replay is exactly right.
-
-    // Play the finalists on seeds none of them trained on, and crown the
-    // best of them — then report THAT on the held-out seeds. Without this
-    // step a round's answer is whichever genome drew the kindest board in
-    // the last generation.
-    console.log('\nchoosing between ' + finalists.length + ' finalists on seeds ' +
-                FINALS_SEEDS[0] + '-' + FINALS_SEEDS[FINALS_SEEDS.length - 1] + '...');
-    evaluateAll(finalists, FINALS_SEEDS, function (res) {
-        var ranked = finalists.map(function (g, i) {
-            return { genome: g, fit: (res[i] && res[i].fitness) || 0 };
-        }).sort(function (a, b) { return b.fit - a.fit; });
-        ranked.forEach(function (x, i) {
-            console.log('  finalist ' + (i + 1) + ': ' + x.fit.toFixed(0));
-        });
-        best = ranked[0].genome;
-        bestFit = ranked[0].fit;
-        report();
-    });
+    // THE CHAIN, because it is worth not repeating. The search used to be
+    // chopped into ROUNDS. A round could carry only ONE genome across its
+    // boundary — the winner, plus mutations of it — so 199 of 200 genomes
+    // were discarded every 60 generations. If you bet the next 60
+    // generations on one genome you had better be sure it is not a fluke,
+    // and it was: the same weights score 1380 to 6070 across seeds, a 4.4x
+    // swing, while genuinely different sets differ by 17%. So finalist
+    // selection was added. To keep rounds comparable its seeds were FIXED.
+    // A fixed set, selected against round after round, is a target to
+    // overfit — and the numbers began to show exactly that: a champion +19%
+    // on the seeds that chose it and -13% on seeds it had never seen.
+    //
+    // Every step patched the step before, and the first step was rounds.
+    // ../PUYO_REFERENCE.md has none: "keep the highest-scoring SETS,
+    // generate new sets clustered near those winners, go back to step 2 …
+    // run that until the numbers stop moving". One loop, plural winners, no
+    // boundary — so nothing to pick at and nothing to overfit.
+    //
+    // rounds.sh read "go back to step 2" as "start a new search from the
+    // winner". It means "keep this one going". That single misreading is
+    // where all of the above came from.
+    //
+    // The answer is now the elite of the last generation, best by its own
+    // training fitness. The held-out set is a REPORT and never a selector.
+    report(true);
 }
 
-function report() {
+function report(isFinal, cb) {
     // HELD-OUT SEEDS, ALL FOUR CATEGORIES, BROKEN OUT.
     //
     // A single mean cannot tell improvement from specialisation, and this
@@ -537,13 +606,15 @@ function report() {
             objective: OBJECTIVE,
             brain: TRAINED_BRAIN,
             level: bench.LEVEL,
-            // WHAT trainFitness MEANS, recorded with it. It is the winner's
-            // score on these seeds, and rounds.sh compares champions on it.
-            // A result from before finalist selection carries a
-            // single-seed best-of-generation number under the same key and
-            // is NOT comparable — this field is how you tell.
-            finalsSeeds: FINALS_SEEDS,
-            finalists: FINALISTS,
+            // WHAT trainFitness MEANS, recorded with it: the elite's score
+            // on the training seeds of the generation this snapshot was
+            // taken at. Nothing compares snapshots on it — there is no
+            // champion contest any more — so it is a progress reading, not
+            // a verdict. The verdict is the held-out report below.
+            // No finalsSeeds, no finalists: nothing selects on a fixed set
+            // any more. Kept as an explicit false so an old consumer that
+            // reads finalsSeeds gets undefined rather than a stale answer.
+            selection: 'elite of generation ' + generation + ', by training fitness',
             arena: ARENA === true ? bench.ARENA : ARENA,
             generations: GENERATIONS,
             population: POPULATION,
@@ -587,7 +658,23 @@ function report() {
             // finished, at its last generation, forever.
             try { fs.unlinkSync(CHECKPOINT); } catch (e) { /* never existed */ }
             console.log('written to trained.' + MODE + '.json');
-            pool.forEach(function (s) { s.child.kill(); });
+            if (SNAPSHOT_HOOK) {
+                // Whoever is running this decides what a snapshot is FOR —
+                // committing it, pushing it, printing it. train.js does not
+                // know about git and should not learn.
+                try {
+                    require('child_process').spawnSync(SNAPSHOT_HOOK,
+                        [path.join(__dirname, 'trained.' + MODE + '.json'), String(generation)],
+                        { stdio: 'inherit' });
+                } catch (e) { console.log('  (snapshot hook failed: ' + e.message + ')'); }
+            }
+            if (isFinal) {
+                // Only a real finish clears the checkpoint. A snapshot is a
+                // progress report from a search that is still running, so
+                // "this run was killed part-way" is still true afterwards.
+                try { fs.unlinkSync(CHECKPOINT); } catch (e) { /* never existed */ }
+                pool.forEach(function (s) { s.child.kill(); });
+            } else if (cb) { cb(); }
         });
       });
     });

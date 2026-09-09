@@ -27,8 +27,9 @@ trained.*.json
 # had said so, because a file that is ignored looks exactly like a file that
 # is committed in `git status`.
 #
-# training.test.js asserts a name rounds.sh really produces is not ignored,
-# so this pattern cannot drift away from the filenames again.
+# training.test.js asserts a name commit_snapshot.sh really produces is not
+# ignored, so this pattern cannot drift away from the filenames again.
+!trained.*.g[0-9]*.json
 !trained.*.r[0-9]*.json
 !trained.*.round*.json
 

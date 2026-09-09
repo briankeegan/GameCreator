@@ -2,7 +2,7 @@
 # Restart a training crank the container killed. Registered on SessionStart,
 # UserPromptSubmit AND PreToolUse — see WHICH EVENT, below.
 #
-# WHY THIS EXISTS. games/the-game/ai/eval/rounds.sh runs for HOURS —
+# WHY THIS EXISTS. games/the-game/ai/eval/crank.sh runs for HOURS —
 # 200 genomes x 60 generations per round, up to 60 rounds, four workers
 # pinned. The containers these sessions run in get reclaimed and replaced
 # without warning, and when that happens every process in them dies. It has
@@ -31,7 +31,7 @@
 # and a pgrep only if the marker exists — and it prints nothing at all in
 # that case, so putting it on a per-tool-call event costs nothing visible.
 #
-# THE MARKER IS THE WHOLE DESIGN. rounds.sh writes .crank-running when it
+# THE MARKER IS THE WHOLE DESIGN. crank.sh writes .crank-running when it
 # starts (its arguments, its environment, the champion it was told to seed
 # from) and DELETES it when it finishes on purpose — a clean finish, a
 # stall-out, or a Ctrl-C. So the marker existing means exactly one thing:
@@ -40,7 +40,7 @@
 #
 # WHAT IT WILL NOT DO:
 #   - start a crank nobody asked for. No marker, no action.
-#   - start a second one. If rounds.sh is already running, it leaves it be —
+#   - start a second one. If crank.sh is already running, it leaves it be —
 #     two cranks would fight over four cores and over the same scratch file
 #     trained.<mode>.json, and the results of both would be garbage.
 #   - resume from where the round died. A half-finished round has no result;
@@ -55,7 +55,7 @@ MARKER="$EVAL_DIR/.crank-running"
 [ -f "$MARKER" ] || exit 0
 
 # IS THIS CRANK ALIVE? Asked by PID, from the marker, not by grepping the
-# process table for "rounds.sh".
+# process table for "crank.sh".
 #
 # A pattern match answers a different question — "is ANY crank running
 # anywhere" — and that is wrong in both directions. It would refuse to
@@ -72,10 +72,10 @@ crank_alive() {
   local pid="${1:-}"
   [ -n "$pid" ] || return 1
   kill -0 "$pid" 2>/dev/null || return 1
-  tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q "rounds.sh"
+  tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q "crank.sh"
 }
 
-# The marker is a shell fragment written by rounds.sh: CRANK_ARGS,
+# The marker is a shell fragment written by crank.sh: CRANK_ARGS,
 # CRANK_ENV, CRANK_LOG, CRANK_CHAMPION.
 # shellcheck disable=SC1090
 . "$MARKER" 2>/dev/null || { echo "[resume-training] unreadable marker; not resuming"; exit 0; }
@@ -86,43 +86,12 @@ if crank_alive "${CRANK_PID:-}"; then
   exit 0
 fi
 
-# SEED FROM THE BEST COMMITTED CHAMPION THAT IS STILL VALID, so the resume
-# continues from where the crank got to rather than starting over.
-#
-# NOT "the newest file". That was the first version and it was wrong twice
-# over: `git ls-files | sort | tail -1` is ALPHABETICAL, so it picked
-# trained.replace.l10-puyo.r1.json over the far better
-# trained.replace.l10-puyo.0908-234107.r1.json ('r' sorts after '0'), and it
-# happened to pick a champion from before finalist selection existed —
-# which rounds.sh's own seed guard then refused, killing the resume. The
-# guard was right and the picker was wrong.
-#
-# So: read every committed champion, drop any whose finalsSeeds are not the
-# ones this repo now selects on (a bar measured on other seeds is not a bar,
-# which is exactly what that guard exists to say), and take the highest
-# trainFitness of what is left. Nothing, and it starts fresh, which is worse
-# but never dishonest.
-champ=$(cd "$EVAL_DIR" && node -e '
-  var fs = require("fs"), seeds;
-  try { seeds = require("./seeds.js").FINALS.join(","); } catch (e) { process.exit(0); }
-  var best = null, bestScore = -Infinity;
-  fs.readdirSync(".").filter(function (f) {
-    return /^trained\..*\.r[0-9]+\.json$/.test(f);
-  }).forEach(function (f) {
-    try {
-      var d = JSON.parse(fs.readFileSync(f, "utf8"));
-      if (!d.finalsSeeds || d.finalsSeeds.join(",") !== seeds) return;
-      if (typeof d.trainFitness !== "number") return;
-      if (d.trainFitness > bestScore) { bestScore = d.trainFitness; best = f; }
-    } catch (e) { /* an unreadable result is not a bar */ }
-  });
-  if (best) process.stdout.write(best);
-' 2>/dev/null)
-[ -n "$champ" ] && champ="$EVAL_DIR/$champ" || champ=""
-
+# NOTHING TO CHOOSE. This used to hunt for the best committed champion to
+# seed a fresh search from — the round boundary's job. The search is
+# continuous now and its checkpoint carries the population, so a resume has
+# no decision to make.
 echo "[resume-training] the crank died with its marker still in place — restarting it"
 echo "[resume-training]   args:     $CRANK_ARGS"
-echo "[resume-training]   champion: ${champ:-none (starting fresh)}"
 
 log="${CRANK_LOG:-$EVAL_DIR/crank.log}"
 {
@@ -135,13 +104,11 @@ log="${CRANK_LOG:-$EVAL_DIR/crank.log}"
 
 cd "$EVAL_DIR" || exit 0
 # shellcheck disable=SC2086
-# GC_START_ROUND resumes the ROUND NUMBER too, not just the champion. The
-# GA seed is derived from it, so coming back as round 1 after dying in round
-# 2 is a different search — and train.js's per-generation checkpoint then
-# correctly refuses to load, throwing away everything the killed round had
-# banked. Observed exactly once before this line existed.
-nohup env ${CRANK_ENV:-} ${champ:+GC_CHAMPION="$champ"} \
-  ${CRANK_ROUND:+GC_START_ROUND="$CRANK_ROUND"} \
-  ./rounds.sh $CRANK_ARGS >> "$log" 2>&1 &
+# NO CHAMPION AND NO ROUND NUMBER TO PASS BACK. Both were needed when a
+# restart began a NEW search that had to be told where to start from. There
+# is one continuous search now, and train.js's checkpoint holds the whole
+# population, so resuming is simply running the same command again — it
+# picks up at the generation it died on, with every genome intact.
+nohup env ${CRANK_ENV:-} ./crank.sh $CRANK_ARGS >> "$log" 2>&1 &
 echo "[resume-training] restarted; appending to $log"
 exit 0

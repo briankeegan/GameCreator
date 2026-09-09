@@ -2,7 +2,7 @@
 //
 // WHY THIS EXISTS, stated plainly because it is the lesson of the session
 // that produced it: the GAME code here was built test-first and had no
-// bugs. The harness around it — train.js, rounds.sh, the seed sets — was
+// bugs. The harness around it — train.js, crank.sh, the seed sets — was
 // hand-written with no tests, and every defect found in an audit was in
 // that harness. Five of them, all the same shape: a number measured one
 // way compared against a number measured another way.
@@ -74,13 +74,20 @@ function tinyRun(env) {
 var RUN = null;
 function run() { if (!RUN) RUN = tinyRun({ GC_GA_SEED: '4242' }); return RUN; }
 
-test('a result records the seeds its score was measured on', function () {
-    // The field whose absence made every units bug invisible. Without it,
-    // two numbers from different seed sets look identical on the page.
+test('a result records how its genome was chosen', function () {
+    // The field whose absence made every units bug invisible: two numbers
+    // measured different ways look identical on the page.
+    //
+    // It used to record finalsSeeds — the fixed set the finalist stage
+    // selected on. There is no such stage and no such set now, so the
+    // result records the thing that IS true: the genome is the elite of a
+    // generation, by its own training fitness.
     var d = run().result;
-    assert.ok(Array.isArray(d.finalsSeeds), 'no finalsSeeds recorded');
-    assert.deepStrictEqual(d.finalsSeeds, seeds.FINALS,
-        'the result claims different finals seeds than the run used');
+    assert.ok(typeof d.selection === 'string' && /elite of generation \d+/.test(d.selection),
+        'a result no longer says how its genome was chosen (selection=' + d.selection + ')');
+    assert.strictEqual(d.finalsSeeds, undefined,
+        'finalsSeeds is back. A fixed set that selects is a fixed set to overfit — it ' +
+        'is what this rewrite deleted.');
     assert.deepStrictEqual(d.holdoutSeeds, seeds.HOLDOUT);
 });
 
@@ -94,31 +101,57 @@ test('a result is labelled with the brain it TRAINED, not the baseline brain', f
     assert.strictEqual(d.level, 10);
 });
 
-test('the winner is crowned from several finalists, not one game', function () {
-    // The whole point of the finals stage: a single game cannot tell two
-    // good weight sets apart (the same weights measured 1380-6070 across
-    // seeds), so crowning the best of one generation's single seed is a
-    // coin flip.
+test('NOTHING selects on a fixed seed set', function () {
+    // THE LAW THIS REWRITE EXISTS FOR, and the one that would have caught
+    // the original mistake three patches earlier.
+    //
+    // ../PUYO_REFERENCE.md runs one continuous loop and never picks a
+    // winner, because there is no boundary to pick one at. We chopped the
+    // search into rounds, which forced a pick, which needed a trustworthy
+    // score, which needed fixed seeds — and a fixed set selected against
+    // round after round is a target to overfit. Measured before it was
+    // removed: +19% on the seeds that chose the champion, -13% on seeds it
+    // had never seen.
+    //
+    // So: no finalist stage, and the held-out set is a report and never a
+    // selector.
     var out = run().stdout;
-    assert.ok(/choosing between \d+ finalists/.test(out),
-        'no finalist selection happened at all');
-    var listed = (out.match(/finalist \d+: /g) || []).length;
-    assert.ok(listed >= 2,
-        'only ' + listed + ' finalist scored — crowning is back to a single candidate');
-    var d = run().result;
-    assert.ok(d.finalists >= 2, 'result records finalists=' + d.finalists);
+    assert.ok(!/choosing between \d+ finalists/.test(out),
+        'finalist selection is back — that is the round boundary returning');
+    var src = fs.readFileSync(path.join(__dirname, 'train.js'), 'utf8');
+    var chooses = src.split('\n').filter(function (l) {
+        return /FINALS_SEEDS/.test(l) && !/^\s*(\/\/|\*)/.test(l);
+    });
+    assert.deepStrictEqual(chooses, [],
+        'train.js still uses FINALS_SEEDS in code:\n  ' + chooses.join('\n  ') +
+        '\nNothing may select on a fixed set.');
 });
 
-test('trainFitness is the FINALS score, which is what rounds are compared on', function () {
-    // rounds.sh reads trainFitness. If it ever became the training-seed or
-    // held-out number again, champions would be selected on the wrong
-    // thing and nothing would say so.
+test('the search is CONTINUOUS: the population is never rebuilt from one genome', function () {
+    // The round boundary discarded 199 of 200 genomes every 60 generations
+    // and rebuilt the population from the winner plus mutations of it. That
+    // is what forced everything above. crank.sh must never reintroduce it.
+    var crank = fs.readFileSync(path.join(__dirname, 'crank.sh'), 'utf8');
+    var seeding = crank.split('\n').filter(function (l) {
+        return /GC_SEED_GENOME/.test(l) && !/^\s*#/.test(l);
+    });
+    assert.deepStrictEqual(seeding, [],
+        'crank.sh seeds a search from a single genome:\n  ' + seeding.join('\n  ') +
+        '\nThat is the round boundary. The population carries itself in the checkpoint.');
+    assert.ok(!/for \(\( *r=/.test(crank) && !/round/i.test(crank.replace(/^#.*$/gm, '')),
+        'crank.sh has a round loop again');
+});
+
+test('trainFitness is a training score, never the held-out one', function () {
+    // If these were ever the same number, the search would be reporting on
+    // the seeds it selected with — the 22% inflation this repo already
+    // measured once.
     var d = run().result;
     var holdout = d.holdout && d.holdout.learned && d.holdout.learned.fitness;
     assert.ok(typeof d.trainFitness === 'number' && d.trainFitness > 0, 'no trainFitness');
     assert.notStrictEqual(d.trainFitness, holdout,
-        'trainFitness equals the held-out score exactly, which means rounds are being ' +
-        'compared on the seeds used to report them — the 22% inflation bug');
+        'trainFitness equals the held-out score exactly, which means the answer is being ' +
+        'chosen on the seeds used to report it');
 });
 
 test('the baseline row is a real opponent, not a bot with no opinions', function () {
@@ -143,180 +176,125 @@ test('two GA seeds give two different runs (rounds are not replays)', function (
         'and every round is a replay of the last');
 });
 
-// ------------------------------------------------------------ rounds.sh
+// ------------------------------------------------------------ crank.sh
 
-test('the champion guard rejects a result measured on different seeds', function () {
-    // And it must ACCEPT a good one: this guard failed the first time it
-    // ever ran, on its own quoting bug, exiting 3 on a perfectly valid
-    // champion. A checker only ever seen to fail is not known to work.
-    var good = path.join(DIR, 'trained.replace.json');
-    var stale = path.join(require('os').tmpdir(), 'training-test-stale.json');
-    var d = JSON.parse(fs.readFileSync(good, 'utf8'));
-    var s = JSON.parse(JSON.stringify(d));
-    s.finalsSeeds = seeds.FINALS.slice(0, seeds.FINALS.length - 2);
-    fs.writeFileSync(stale, JSON.stringify(s));
-
-    function guard(file) {
-        try {
-            cp.execSync('node -e "' +
-                'var d=require(process.env.GC_CHAMP_FILE);' +
-                'var want=require(\'./seeds.js\').FINALS;' +
-                'if((d.finalsSeeds||[]).join(\',\')!==want.join(\',\')) process.exit(3);' +
-                'process.stdout.write(String(d.trainFitness||0));"',
-                { cwd: DIR, env: Object.assign({}, process.env, { GC_CHAMP_FILE: file }), encoding: 'utf8' });
-            return 'accepted';
-        } catch (e) { return 'rejected(' + e.status + ')'; }
-    }
-    assert.strictEqual(guard(good), 'accepted', 'the guard rejected a VALID champion');
-    assert.strictEqual(guard(stale), 'rejected(3)', 'the guard accepted a champion measured on the wrong seeds');
+test('every snapshot gets a name no other run can claim', function () {
+    // train.js overwrites trained.<mode>.json on every snapshot, so a
+    // snapshot kept under that name is one waiting to be silently replaced
+    // thirty generations later.
+    var src = fs.readFileSync(path.join(__dirname, 'commit_snapshot.sh'), 'utf8');
+    assert.ok(/GC_RUN_ID/.test(src) && /\$\{GC_TAG\}/.test(src) && /printf '%05d'/.test(src),
+        'snapshot names do not carry run id, tag and generation, so two runs can collide');
 });
 
-test('rounds.sh compares champions on finals, never on the reporting seeds', function () {
-    // Read the script rather than run it: a round is half an hour. The
-    // thing being asserted is which FIELD the comparison reads, and that
-    // is visible in the source.
-    var src = fs.readFileSync(path.join(DIR, 'rounds.sh'), 'utf8');
-    var compareBlock = src.slice(src.indexOf('score=$('), src.indexOf('holdout=$('));
-    assert.ok(/trainFitness/.test(compareBlock),
-        'the round comparison does not read trainFitness');
-    assert.ok(!/holdout/.test(compareBlock),
-        'the round comparison reads the held-out score — champions are being selected ' +
-        'on the seeds used to report them');
-});
-
-test('rounds.sh gives every round a name no other run can claim', function () {
-    // The second crank wrote r1.json — the name the first crank's champion
-    // already had — and clobbered it, leaving the champion pointer aimed at
-    // a worse genome while the bar still read the better one's score.
-    var src = fs.readFileSync(path.join(DIR, 'rounds.sh'), 'utf8');
-    assert.ok(/RUN_ID=/.test(src), 'no per-invocation run id');
-    assert.ok(/result="trained\.\$\{MODE\}\.\$\{TAG\}\.\$\{RUN_ID\}\.r\$\{r\}\.json"/.test(src),
-        'round result files are not namespaced by run id, so a second crank overwrites ' +
-        'the first crank\'s champion');
-});
-
-test('rounds.sh seeds each round from the CHAMPION and varies the GA seed', function () {
-    var src = fs.readFileSync(path.join(DIR, 'rounds.sh'), 'utf8');
-    assert.ok(/GC_SEED_GENOME="\$champion"/.test(src),
-        'rounds do not seed from the champion — a bad round would become the point the ' +
-        'next round clusters around');
-    assert.ok(/gaSeed=\$\(\( *20260907 *\+ *r *\* *7919 *\)\)/.test(src),
-        'the GA seed does not vary per round, so every round is a replay');
-    assert.ok(/GC_GA_SEED=\$gaSeed/.test(src), 'the varying seed is computed but not passed');
-});
-
-test('a champion rounds.sh actually writes is not gitignored', function () {
-    // THE FAILURE THIS EXISTS FOR, exactly as it happened. .gitignore
-    // ignored trained.*.json with an exception for `trained.*.round*.json`,
-    // and rounds.sh named its output `...r1.json`. `r1` is not `round1`, so
-    // the exception never fired once: every champion the crank has ever
-    // produced was silently ignored. A container restart killed a crank
-    // mid-round and the surviving champion was untracked — an hour of
-    // compute one restart from unrecoverable, with `git status` clean the
-    // whole time, because an ignored file looks exactly like a saved one.
-    //
-    // So the name here is not typed by hand: it is BUILT from rounds.sh's
-    // own template, which means renaming the output without updating the
-    // pattern fails this test instead of quietly un-tracking every result.
-    var src = fs.readFileSync(path.join(__dirname, 'rounds.sh'), 'utf8');
-    var m = /result="([^"]+)"/.exec(src);
-    assert.ok(m, 'rounds.sh no longer assigns result="..." — this test cannot ' +
-                 'find the name it is supposed to check');
+test('a snapshot commit_snapshot.sh actually writes is not gitignored', function () {
+    // .gitignore ignores trained.*.json — right, since every smoke test
+    // writes one — with an exception for real results. That exception said
+    // `round*` while the files were named `r1`, so it never fired ONCE and
+    // every champion was silently ignored, with `git status` clean the whole
+    // time. The name here is BUILT from commit_snapshot.sh's own template,
+    // so renaming the output without fixing the pattern fails this test
+    // instead of quietly un-tracking every result.
+    var src = fs.readFileSync(path.join(__dirname, 'commit_snapshot.sh'), 'utf8');
+    // Greedy to the LAST quote on the line: the template contains "$gen",
+    // so a non-greedy [^"]+ captured a truncated name and this test failed
+    // against a correct script.
+    var m = /^out="(.+)"$/m.exec(src);
+    assert.ok(m, 'commit_snapshot.sh no longer assigns out="..." — this test cannot find ' +
+                 'the name it is supposed to check');
     var name = m[1]
-        .replace('${MODE}', 'replace').replace('${TAG}', 'l10-puyo')
-        .replace('${RUN_ID}', '0908-234107').replace('${r}', '7');
-    assert.ok(!/\$\{/.test(name),
-        'the champion name still has an unresolved variable in it (' + name +
-        '), so this test would be checking a filename that never exists');
-
+        .replace('${GC_MODE:-replace}', 'replace').replace('${GC_TAG}', 'l10-puyo')
+        .replace('${GC_RUN_ID}', '0909-160000')
+        .replace(/\$\(printf[^)]*\)/, '00030');
+    assert.ok(!/\$[({]/.test(name),
+        'the snapshot name still has an unresolved variable in it (' + name + ')');
     var res = cp.spawnSync('git', ['check-ignore', '-q', name], { cwd: __dirname });
-    // git check-ignore: 0 = ignored, 1 = not ignored, >1 = error.
     assert.notStrictEqual(res.status, 0,
-        'rounds.sh writes ' + name + ' and .gitignore IGNORES it. Every round of ' +
-        'every crank would exist only on disk, and a restart would take it. Fix the ' +
-        'pattern in .gitignore to match the name rounds.sh builds — do not fix this ' +
-        'test.');
-    assert.ok(res.status === 1,
-        'git check-ignore failed to run (status ' + res.status + '), so this gate ' +
-        'is not actually checking anything');
+        'commit_snapshot.sh writes ' + name + ' and .gitignore IGNORES it. Every snapshot ' +
+        'would exist only on disk. Fix the pattern in .gitignore — not this test.');
+    assert.strictEqual(res.status, 1,
+        'git check-ignore failed to run (status ' + res.status + '), so this gate checks nothing');
 });
 
-test('rounds.sh saves each champion itself, and cannot die trying', function () {
-    // A crank runs unattended for hours, so "commit it afterwards" loses
-    // every result the machine dies in the middle of. The save has to be
-    // part of the round.
-    var src = fs.readFileSync(path.join(__dirname, 'rounds.sh'), 'utf8');
-    var save = src.slice(src.indexOf('result="'));
-    assert.ok(/git add -f "\$result"/.test(save),
-        'rounds.sh does not commit the champion it just wrote, so the only copy is ' +
-        'on a disk that goes away');
-    assert.ok(/git commit/.test(save) && /git push/.test(save),
-        'the champion is staged but never committed and pushed');
-    // And the other direction: bookkeeping must never cost the run. Every
-    // git call is guarded, so a missing identity or a lost network prints a
-    // line instead of killing hours of training.
-    assert.ok(/git push[^\n]*\|\|/.test(save),
-        'the push is unguarded — a lost network would abort the whole crank');
+test('snapshots save themselves, and cannot die trying', function () {
+    // A search runs unattended for hours, so "commit it afterwards" loses
+    // everything the machine dies in the middle of. The save is part of the
+    // search: train.js calls GC_SNAPSHOT_HOOK, commit_snapshot.sh commits.
+    var src = fs.readFileSync(path.join(__dirname, 'commit_snapshot.sh'), 'utf8');
+    assert.ok(/git add -f "\$out"/.test(src) && /git commit/.test(src) && /git push/.test(src),
+        'commit_snapshot.sh does not commit and push the snapshot it was handed');
 
-    // AND IT REBASES FIRST. A crank runs for hours; anything pushed to the
-    // branch meanwhile leaves its checkout behind and the push is rejected
-    // as a non-fast-forward. Guarded, that prints one line and carries on —
-    // so a five-hour run would commit twenty champions locally and lose
-    // every one when the runner is recycled. Caught from timestamps
-    // (checkout 14:16:46, an unrelated push at 14:21:57) before it cost a
-    // run, which is the only reason this is a test and not a post-mortem.
-    // Matched on the real COMMANDS, not the words: the comment above the
-    // rebase mentions `git push` while explaining why it exists, and an
-    // indexOf on the bare word found that instead — the test failed against
-    // correct code, which is the fastest way to get a check deleted.
-    var pushAt = save.indexOf('git push -q origin HEAD');
-    var rebaseAt = save.indexOf('git rebase -q');
+    // AND IT REBASES FIRST. Anything landing on the branch during a long run
+    // leaves this checkout behind and the push is rejected as a
+    // non-fast-forward. The push is deliberately non-fatal, so that would
+    // print one line and carry on — hours of snapshots committed locally and
+    // lost when the machine is recycled.
+    var pushAt = src.indexOf('git push -q origin HEAD');
+    var rebaseAt = src.indexOf('git rebase -q');
     assert.ok(rebaseAt !== -1 && rebaseAt < pushAt,
-        'rounds.sh pushes without first rebasing onto the remote branch, so any ' +
-        'commit that lands during a long run makes every later champion unpushable ' +
-        '— silently, because the push failure is deliberately non-fatal');
-    assert.ok(/COULD NOT COMMIT/.test(save),
-        'a failed commit passes silently, which is the same as not knowing the ' +
-        'result is unsaved');
+        'commit_snapshot.sh pushes without rebasing first');
+
+    // Bookkeeping must never cost the run.
+    assert.ok(/git push[^\n]*\|\|/.test(src), 'the push is unguarded');
+    assert.ok(/COULD NOT COMMIT/.test(src),
+        'a failed commit passes silently, which is the same as not knowing');
+
+    // And train.js must actually call it.
+    var tj = fs.readFileSync(path.join(__dirname, 'train.js'), 'utf8');
+    assert.ok(/GC_SNAPSHOT_HOOK/.test(tj) && /spawnSync\(SNAPSHOT_HOOK/.test(tj),
+        'train.js never calls the snapshot hook, so nothing is ever committed');
 });
 
-test('a smoke-sized run is never committed as a champion', function () {
-    // Six 8-genome, 1-generation results reached the repo in one night, all
-    // scoring 1842.5, sitting in `git log` looking exactly like real rounds
-    // and eligible to be picked as a seed by the resume hook. `rounds.sh 1 1
-    // 8 1` is how this script gets exercised, so it will keep producing them.
-    var src = fs.readFileSync(path.join(__dirname, 'rounds.sh'), 'utf8');
-    var save = src.slice(src.indexOf('result="'));
-    assert.ok(/\$POP" -lt 50 \]\s*\|\|\s*\[ "\$GENS" -lt 10/.test(save),
-        'rounds.sh commits a champion without checking the run was big enough to ' +
-        'mean anything, so every smoke test leaves a fake result in the repo');
-    // The file is still WRITTEN — a smoke run that produced nothing at all
-    // would be much harder to debug than one that leaves its output on disk.
-    var guard = save.slice(save.indexOf('-lt 50'));
+test('a smoke-sized run is never committed', function () {
+    // Six 8-genome results reached the repo in one night, all scoring the
+    // same, indistinguishable in `git log` from real ones and eligible to be
+    // read back as if they meant something. `./crank.sh 8 1` is how this
+    // gets exercised, so it will keep producing them.
+    var src = fs.readFileSync(path.join(__dirname, 'commit_snapshot.sh'), 'utf8');
+    assert.ok(/GC_MIN_POP/.test(src) && /-lt "\$GC_MIN_POP"/.test(src),
+        'commit_snapshot.sh commits without checking the run was big enough to mean ' +
+        'anything, so every smoke test leaves a fake result in the repo');
+    // The file is still WRITTEN — a smoke run that produced nothing at all is
+    // harder to debug than one that leaves its output on disk.
+    var guard = src.slice(src.indexOf('GC_MIN_POP"'));
     assert.ok(/NOT committed/.test(guard.slice(0, 400)),
-        'the guard does not say what it did, so a missing champion after a small ' +
-        'run looks like a bug rather than the rule working');
+        'the guard does not say what it did, so a missing snapshot after a small run ' +
+        'looks like a bug rather than the rule working');
 });
 
-test('the crank stops itself before a job timeout can kill it mid-round', function () {
-    // The crank now lives on a GitHub runner, because this sandbox's microVM
-    // is reclaimed between turns and took three runs with it in one night. A
-    // runner has a hard 6-hour cap that kills a job outright — no chance to
-    // finish a round, commit it, or clear the marker — so the crank has to
-    // stop itself first.
-    var src = fs.readFileSync(path.join(__dirname, 'rounds.sh'), 'utf8');
+test('the search stops itself before a job timeout can kill it', function () {
+    // It lives on a GitHub runner now, because this sandbox\'s microVM is
+    // reclaimed between turns and took three runs with it in one night. A
+    // runner has a hard 6-hour cap that kills a job outright, so the search
+    // has to stop first — at a generation boundary, with a snapshot written.
+    var src = fs.readFileSync(path.join(__dirname, 'train.js'), 'utf8');
     assert.ok(/GC_DEADLINE/.test(src),
-        'rounds.sh has no time budget, so a runner will kill it holding a ' +
-        'half-finished round');
-    assert.ok(/roundSecs=\$\(\( \$\(date \+%s\) - roundStart \)\)/.test(src),
-        'the budget is not measuring how long rounds actually take. Rounds get ' +
-        'slower as genomes survive longer, so a budget built on a constant will ' +
-        'start a round it cannot finish.');
-    // No budget must mean no behaviour change: a person at a terminal wants it
-    // to run until the cap or until the numbers stop moving.
-    assert.ok(/DEADLINE="\$\{GC_DEADLINE:-\}"/.test(src) && /if \[ -n "\$DEADLINE" \]/.test(src),
-        'the time budget is not optional, so running this by hand would now stop ' +
-        'for a reason that only exists on a runner');
+        'train.js has no time budget, so a runner will kill it mid-generation');
+    assert.ok(/DEADLINE && Date\.now\(\) \/ 1000 > DEADLINE/.test(src),
+        'the deadline is read but never checked in the generation loop');
+    // Optional: running by hand must be unaffected.
+    assert.ok(/process\.env\.GC_DEADLINE \? Number\(process\.env\.GC_DEADLINE\) : null/.test(src),
+        'the budget is not optional, so running this by hand would stop for a reason ' +
+        'that only exists on a runner');
+
+    // AND IT STOPS WHEN THE NUMBERS STOP MOVING — the reference\'s own rule,
+    // read literally: the WEIGHTS settle ("links settles at 0.25"). A rule
+    // based on a score would need a fixed seed set to measure it on, which is
+    // the mistake this rewrite deleted.
+    assert.ok(/STILL_ENOUGH/.test(src) && /stillCount >= STILL_SNAPSHOTS/.test(src),
+        'no convergence rule: the search would run to the generation cap and report ' +
+        '"we got bored" as if it were a plateau');
+    // Scoped to the convergence block itself. A crude window either side
+    // caught report()'s legitimate use of the held-out seeds and failed
+    // against correct code — the fastest way to get a check deleted.
+    var blockStart = src.indexOf('HAVE THE NUMBERS STOPPED MOVING?');
+    var block = src.slice(blockStart, src.indexOf('advance(scored);', blockStart));
+    assert.ok(blockStart !== -1 && block.length > 100,
+        'this test cannot find the convergence block it is meant to check');
+    assert.ok(!/SEEDS|fitness|holdout/i.test(block),
+        'the stop rule reads a score or a seed set. It must read only the weights — ' +
+        'anything else needs seeds to measure on, and a fixed set that decides when to ' +
+        'stop is a fixed set being selected against.');
 });
 
 test('the training workflow exists and cannot run two cranks at once', function () {
@@ -390,30 +368,6 @@ test('a killed run does not lose its generations', function () {
     assert.ok(/catch \(e\)/.test(save.slice(0, 900)),
         'a failed checkpoint write would take down a running GA — losing the ability ' +
         'to resume is bad, killing hours of training over it is worse');
-});
-
-test('a resumed crank comes back as the round it died in', function () {
-    // TWO CORRECT FEATURES THAT BROKE EACH OTHER. The GA seed is derived
-    // from the round number, so a resume that restarts the counter at 1
-    // after dying in round 2 is genuinely running a different search — and
-    // train.js's per-generation checkpoint, correctly, refuses to load into
-    // it. Observed live: the crank died mid-round-2, came back as round 1,
-    // and printed "ignoring a checkpoint from a different search" while
-    // discarding real banked generations. Neither half was wrong on its own.
-    var src = fs.readFileSync(path.join(__dirname, 'rounds.sh'), 'utf8');
-    assert.ok(/START_ROUND=\$\{GC_START_ROUND:-1\}/.test(src) &&
-              /for \(\( r=START_ROUND;/.test(src),
-        'rounds.sh always starts at round 1, so every resume changes the GA seed and ' +
-        'throws away the checkpoint of the round it is resuming');
-    assert.ok(/CRANK_ROUND=\$r/.test(src),
-        'the round in flight is never written to the marker, so a resume has no way ' +
-        'to know which round to come back as');
-
-    var hook = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..',
-                                         '.claude', 'hooks', 'resume-training.sh'), 'utf8');
-    assert.ok(/GC_START_ROUND="\$CRANK_ROUND"/.test(hook),
-        'the hook restarts the crank without passing the round back, so rounds.sh ' +
-        'cannot honour it');
 });
 
 tests.forEach(function (t) {
