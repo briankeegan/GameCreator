@@ -25,6 +25,16 @@
 # EVERYTHING BELOW THEREFORE RUNS IN A THROWAWAY PROJECT. A test that can
 # damage the thing it is testing is not a safety net, and this one is meant
 # to be runnable at any time, including while a crank is training.
+# ONE MORE TRAP, LEARNED THE EXPENSIVE WAY: `pkill -f` / `pgrep -f` match
+# against the FULL COMMAND LINE of every process, INCLUDING THE SHELL RUNNING
+# YOU. Three times in one session a kill-by-pattern typed into a command whose
+# own text contained that pattern killed the calling shell. It exits 144 with
+# no output, which looks exactly like the thing under test crashing, and sends
+# you debugging the wrong program. Two rules:
+#   - kill by PID, recorded when you started the process (see PIDS below);
+#   - if a pattern is unavoidable, put it in a script FILE and invoke that file
+#     on a line with nothing else on it, so the pattern is never in the
+#     caller's command line.
 set -u
 HOOK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/resume-training.sh"
 SETTINGS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/settings.json"
