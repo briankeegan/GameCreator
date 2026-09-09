@@ -342,8 +342,20 @@ if (fs.existsSync(CHECKPOINT)) {
     try {
         var ck = JSON.parse(fs.readFileSync(CHECKPOINT, 'utf8'));
         if (ck.fingerprint !== fingerprint()) {
-            console.log('ignoring a checkpoint from a different search ' +
-                        '(config changed since it was written)');
+            // SAY WHICH FIELD DIFFERS. "config changed" sent me hunting
+            // through nine possibilities by hand the first time this fired,
+            // for what turns out to be one string comparison the code
+            // already has both sides of.
+            var names = ['generations', 'population', 'mode', 'brain', 'trainedBrain',
+                         'level', 'gaSeed', 'seedsPerGen', 'features'];
+            var was = String(ck.fingerprint).split('|'), now = fingerprint().split('|');
+            var diff = names.filter(function (n, i) { return was[i] !== now[i]; })
+                            .map(function (n, k) {
+                                var i = names.indexOf(n);
+                                return n + ' ' + was[i] + ' -> ' + now[i];
+                            });
+            console.log('ignoring a checkpoint from a different search: ' +
+                        (diff.length ? diff.join(', ') : 'fingerprint shape changed'));
         } else if (ck.generation >= GENERATIONS) {
             console.log('ignoring a finished checkpoint');
         } else {

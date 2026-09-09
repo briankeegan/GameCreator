@@ -135,7 +135,13 @@ log="${CRANK_LOG:-$EVAL_DIR/crank.log}"
 
 cd "$EVAL_DIR" || exit 0
 # shellcheck disable=SC2086
+# GC_START_ROUND resumes the ROUND NUMBER too, not just the champion. The
+# GA seed is derived from it, so coming back as round 1 after dying in round
+# 2 is a different search — and train.js's per-generation checkpoint then
+# correctly refuses to load, throwing away everything the killed round had
+# banked. Observed exactly once before this line existed.
 nohup env ${CRANK_ENV:-} ${champ:+GC_CHAMPION="$champ"} \
+  ${CRANK_ROUND:+GC_START_ROUND="$CRANK_ROUND"} \
   ./rounds.sh $CRANK_ARGS >> "$log" 2>&1 &
 echo "[resume-training] restarted; appending to $log"
 exit 0

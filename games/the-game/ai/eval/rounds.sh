@@ -66,6 +66,7 @@ cat > "$MARKER" <<MARKEREOF
 # any deliberate exit. If you are reading this and no rounds.sh is running,
 # the container died mid-round.
 CRANK_PID=$$
+CRANK_ROUND=${GC_START_ROUND:-1}
 CRANK_ARGS="$MAX_ROUNDS $GENS $POP $WORKERS"
 CRANK_ENV="GC_LEVEL=$LEVEL GC_BRAIN=$BRAIN"
 CRANK_LOG="$(cd "$(dirname "$0")" && pwd)/crank.log"
@@ -138,7 +139,20 @@ DEADLINE="${GC_DEADLINE:-}"
 started=$(date +%s)
 roundSecs=0
 
-for (( r=1; r<=MAX_ROUNDS; r++ )); do
+# START WHERE THE LAST CRANK WAS KILLED, not at 1.
+#
+# The GA seed is derived from the round number (20260907 + r*7919), so a
+# resume that restarts the counter at 1 is running a DIFFERENT search from
+# the round that was killed — and train.js's checkpoint, correctly, refuses
+# to load into it. That threw away a real mid-round checkpoint the first
+# time the two features met: the crank died in round 2, came back as round
+# 1, and the generations it had banked were discarded as belonging to
+# another search. They did. The fix is to come back as round 2.
+START_ROUND=${GC_START_ROUND:-1}
+for (( r=START_ROUND; r<=MAX_ROUNDS; r++ )); do
+  # Recorded before the round runs, so a kill at any point inside it leaves
+  # the marker naming the round that was in flight.
+  [ -n "${MARKER:-}" ] && sed -i "s/^CRANK_ROUND=.*/CRANK_ROUND=$r/" "$MARKER" 2>/dev/null
   if [ -n "$DEADLINE" ]; then
     now=$(date +%s)
     left=$(( DEADLINE - now ))

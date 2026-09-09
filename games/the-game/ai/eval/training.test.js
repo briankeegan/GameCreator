@@ -362,6 +362,30 @@ test('a killed run does not lose its generations', function () {
         'to resume is bad, killing hours of training over it is worse');
 });
 
+test('a resumed crank comes back as the round it died in', function () {
+    // TWO CORRECT FEATURES THAT BROKE EACH OTHER. The GA seed is derived
+    // from the round number, so a resume that restarts the counter at 1
+    // after dying in round 2 is genuinely running a different search — and
+    // train.js's per-generation checkpoint, correctly, refuses to load into
+    // it. Observed live: the crank died mid-round-2, came back as round 1,
+    // and printed "ignoring a checkpoint from a different search" while
+    // discarding real banked generations. Neither half was wrong on its own.
+    var src = fs.readFileSync(path.join(__dirname, 'rounds.sh'), 'utf8');
+    assert.ok(/START_ROUND=\$\{GC_START_ROUND:-1\}/.test(src) &&
+              /for \(\( r=START_ROUND;/.test(src),
+        'rounds.sh always starts at round 1, so every resume changes the GA seed and ' +
+        'throws away the checkpoint of the round it is resuming');
+    assert.ok(/CRANK_ROUND=\$r/.test(src),
+        'the round in flight is never written to the marker, so a resume has no way ' +
+        'to know which round to come back as');
+
+    var hook = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..',
+                                         '.claude', 'hooks', 'resume-training.sh'), 'utf8');
+    assert.ok(/GC_START_ROUND="\$CRANK_ROUND"/.test(hook),
+        'the hook restarts the crank without passing the round back, so rounds.sh ' +
+        'cannot honour it');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
