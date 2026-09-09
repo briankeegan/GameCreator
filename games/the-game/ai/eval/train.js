@@ -291,6 +291,75 @@ var generation = 0;
 var best = null, bestFit = -Infinity, finalists = [];
 var t0 = Date.now();
 
+// A CHECKPOINT AFTER EVERY GENERATION, because until now a run that was
+// killed wrote NOTHING.
+//
+// This only ever saved at finish(), after all GENERATIONS. A round killed at
+// generation 45 of 60 therefore threw away 45 generations of real work — the
+// population was sitting in memory the whole time, fully evaluated, and
+// nobody had written it down. That is what made the Claude Code sandbox
+// unusable for training: its microVM is reclaimed between turns and a round
+// takes ~15 minutes, so round after round died at some generation and
+// produced no champion at all. Nothing could be fed forward because nothing
+// was ever saved.
+//
+// The state a generation needs is small: the population, which generation it
+// is, the GA's rng cursor, and the finalists collected so far. Written after
+// each one, a kill costs at most a single generation instead of a whole
+// round.
+//
+// WHY A FINGERPRINT. A checkpoint from a 60-generation run resumed into an
+// 8-genome smoke test would be silently wrong — a different search, wearing
+// the same filename. So the checkpoint records the config that made it and
+// is IGNORED, loudly, when anything that shapes the search differs.
+var CHECKPOINT = path.join(__dirname, '.train-checkpoint.' + MODE + '.json');
+function fingerprint() {
+    return [GENERATIONS, POPULATION, MODE, BRAIN, TRAINED_BRAIN,
+            process.env.GC_LEVEL || '', process.env.GC_GA_SEED || '',
+            SEEDS_PER_GENERATION, KEYS.join(',')].join('|');
+}
+function saveCheckpoint() {
+    // Written to a temp file and RENAMED. A kill lands somewhere, and a kill
+    // halfway through writing this file would leave truncated JSON that the
+    // next run cannot parse — turning a crash-safety feature into the thing
+    // that loses the run. rename() is atomic, so the checkpoint on disk is
+    // always a whole one.
+    try {
+        var tmp = CHECKPOINT + '.tmp';
+        fs.writeFileSync(tmp, JSON.stringify({
+            fingerprint: fingerprint(), generation: generation, rngState: rngState,
+            population: population, finalists: finalists,
+            best: best, bestFit: bestFit === -Infinity ? null : bestFit
+        }));
+        fs.renameSync(tmp, CHECKPOINT);
+    } catch (e) {
+        // Never fatal. Losing the ability to resume is bad; killing a running
+        // GA over it is worse.
+        console.log('  (could not write checkpoint: ' + e.message + ')');
+    }
+}
+if (fs.existsSync(CHECKPOINT)) {
+    try {
+        var ck = JSON.parse(fs.readFileSync(CHECKPOINT, 'utf8'));
+        if (ck.fingerprint !== fingerprint()) {
+            console.log('ignoring a checkpoint from a different search ' +
+                        '(config changed since it was written)');
+        } else if (ck.generation >= GENERATIONS) {
+            console.log('ignoring a finished checkpoint');
+        } else {
+            population = ck.population;
+            generation = ck.generation;
+            rngState = ck.rngState;
+            finalists = ck.finalists || [];
+            best = ck.best; bestFit = ck.bestFit === null ? -Infinity : ck.bestFit;
+            console.log('RESUMED from checkpoint at generation ' + generation +
+                        '/' + GENERATIONS + ' — the previous run was killed, not restarted');
+        }
+    } catch (e) {
+        console.log('unreadable checkpoint, starting fresh: ' + e.message);
+    }
+}
+
 function seedsForGeneration() {
     // A deterministic shuffle of the pool, different every generation, so a
     // run is reproducible but no genome ever sees the same batch twice.
@@ -355,6 +424,7 @@ function step() {
             next.push(mutate(crossover(a, b)));
         }
         population = next;
+        saveCheckpoint();
         step();
     });
 }
@@ -382,6 +452,12 @@ function checkWinnerTiming(genome, cb) {
 }
 
 function finish() {
+    // THE CHECKPOINT GOES AS SOON AS THE GENERATIONS ARE DONE. Its only
+    // meaning is "this run was killed part-way"; leaving it behind after a
+    // real finish would make the next run resume a search that already
+    // finished, at its last generation, forever.
+    try { fs.unlinkSync(CHECKPOINT); } catch (e) { /* never existed, fine */ }
+
     // Play the finalists on seeds none of them trained on, and crown the
     // best of them — then report THAT on the held-out seeds. Without this
     // step a round's answer is whichever genome drew the kindest board in

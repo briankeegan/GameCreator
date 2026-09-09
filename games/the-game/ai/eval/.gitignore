@@ -47,3 +47,6 @@ void-pre-15-feature/
 # file does not already carry.
 .crank-running
 crank.log
+
+# The GA's crash-safety state: per-container, meaningless anywhere else.
+.train-checkpoint.*.json

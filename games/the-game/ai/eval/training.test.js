@@ -320,6 +320,48 @@ test('the training workflow exists and cannot run two cranks at once', function 
         'which is the entire point of running it somewhere durable');
 });
 
+test('a killed run does not lose its generations', function () {
+    // THE BUG THIS EXISTS FOR, and it is the one that mattered most.
+    // train.js wrote its result only in finish(), after ALL generations. A
+    // round killed at generation 45 of 60 wrote NOTHING: the population was
+    // in memory, fully evaluated, and never written down. That is why round
+    // 3 was started and killed three times in one night without ever
+    // producing a champion — there was no last champion to feed forward,
+    // because the round never finished one. Proved by killing a real run at
+    // generation 3: no result file, and a checkpoint holding all 30 genomes.
+    var src = fs.readFileSync(path.join(__dirname, 'train.js'), 'utf8');
+    assert.ok(/function saveCheckpoint\(\)/.test(src),
+        'train.js has no checkpoint, so a killed run loses every generation it ran');
+    var loop = src.slice(src.indexOf('population = next;'));
+    assert.ok(/^population = next;\s*\n\s*saveCheckpoint\(\);/m.test(loop),
+        'the checkpoint is not written as each generation completes, so a kill ' +
+        'still costs more than one generation');
+
+    // ATOMIC, or the safety feature becomes the thing that loses the run: a
+    // kill landing mid-write leaves truncated JSON the next run cannot parse.
+    assert.ok(/renameSync/.test(src),
+        'the checkpoint is written in place rather than renamed into place, so a ' +
+        'kill during the write leaves a corrupt file');
+
+    // FINGERPRINTED, or a 60-generation checkpoint silently resumes into an
+    // 8-genome smoke run — a different search wearing the same filename.
+    assert.ok(/fingerprint\(\)/.test(src) && /ck\.fingerprint !== fingerprint\(\)/.test(src),
+        'the checkpoint is not checked against the config that made it');
+
+    // CLEARED ON A REAL FINISH, or every later run resumes a search that
+    // already ended, at its last generation, forever.
+    var fin = src.slice(src.indexOf('function finish()'));
+    assert.ok(/unlinkSync\(CHECKPOINT\)/.test(fin.slice(0, 600)),
+        'finish() leaves the checkpoint behind, so the next run resumes a search ' +
+        'that already completed');
+
+    // And it must never be able to kill the run it is protecting.
+    var save = src.slice(src.indexOf('function saveCheckpoint'));
+    assert.ok(/catch \(e\)/.test(save.slice(0, 900)),
+        'a failed checkpoint write would take down a running GA — losing the ability ' +
+        'to resume is bad, killing hours of training over it is worse');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
