@@ -10,6 +10,12 @@
 # NAMED, BECAUSE THE SCRATCH FILE IS OVERWRITTEN. Every snapshot writes
 # trained.<mode>.json, so a snapshot kept under that name is a snapshot
 # waiting to be silently replaced by the next one thirty generations later.
+# TESTING THIS? SET THE IDENTITY IN THE ENVIRONMENT, NEVER WITH `git config`.
+# A git worktree SHARES the repository's config file, so a test that ran
+# `git config user.email t@t` inside a throwaway worktree rewrote the REAL
+# repo's identity, and the next real commit went out authored as "t@t" —
+# which GitHub shows as Unverified. Use GIT_AUTHOR_EMAIL / GIT_COMMITTER_EMAIL
+# instead: they are per-process and cannot leak into the checkout.
 set -u
 cd "$(dirname "$0")" || exit 0
 src="${1:-}"; gen="${2:-0}"
