@@ -170,7 +170,19 @@ for (( r=1; r<=MAX_ROUNDS; r++ )); do
   # loud line and carries on — the run is worth more than the bookkeeping.
   # `|| true` on the push in particular: the sandbox loses the network far
   # more often than it loses the disk.
-  if git rev-parse --git-dir >/dev/null 2>&1; then
+  # A SMOKE RUN IS NOT A RESULT. `./rounds.sh 1 1 8 1` — eight genomes, one
+  # generation — is how this script gets exercised, and it writes a champion
+  # file exactly like a real round does. Six of them reached the repo in one
+  # night, all scoring 1842.5, indistinguishable in `git log` from the real
+  # thing and eligible to be picked as a seed by the resume hook.
+  #
+  # That is the same failure .gitignore's header warns about for
+  # trained.<mode>.json, one level up: a result has to carry the run that
+  # earned it. So the size of the run decides, and a run too small to mean
+  # anything says so in the log rather than committing quietly.
+  if [ "$POP" -lt 50 ] || [ "$GENS" -lt 10 ]; then
+    echo "    (smoke-sized run: ${POP}x${GENS} — $result written but NOT committed)"
+  elif git rev-parse --git-dir >/dev/null 2>&1; then
     if git add -f "$result" 2>/dev/null && \
        git commit -q -m "$(printf 'Champion: round %s of %s (%s)\n\nWritten by rounds.sh and committed on the spot, so a restart cannot\ntake it. Scores and provenance are in the file itself.\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>' \
                           "$r" "$TAG" "$RUN_ID")" 2>/dev/null; then

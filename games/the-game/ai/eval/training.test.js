@@ -262,6 +262,24 @@ test('rounds.sh saves each champion itself, and cannot die trying', function () 
         'result is unsaved');
 });
 
+test('a smoke-sized run is never committed as a champion', function () {
+    // Six 8-genome, 1-generation results reached the repo in one night, all
+    // scoring 1842.5, sitting in `git log` looking exactly like real rounds
+    // and eligible to be picked as a seed by the resume hook. `rounds.sh 1 1
+    // 8 1` is how this script gets exercised, so it will keep producing them.
+    var src = fs.readFileSync(path.join(__dirname, 'rounds.sh'), 'utf8');
+    var save = src.slice(src.indexOf('result="'));
+    assert.ok(/\$POP" -lt 50 \]\s*\|\|\s*\[ "\$GENS" -lt 10/.test(save),
+        'rounds.sh commits a champion without checking the run was big enough to ' +
+        'mean anything, so every smoke test leaves a fake result in the repo');
+    // The file is still WRITTEN — a smoke run that produced nothing at all
+    // would be much harder to debug than one that leaves its output on disk.
+    var guard = save.slice(save.indexOf('-lt 50'));
+    assert.ok(/NOT committed/.test(guard.slice(0, 400)),
+        'the guard does not say what it did, so a missing champion after a small ' +
+        'run looks like a bug rather than the rule working');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
