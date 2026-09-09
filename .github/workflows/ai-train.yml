@@ -1,40 +1,38 @@
 # TRAIN THE PANEL-ATTACK EVALUATOR ON A RUNNER, NOT IN A SANDBOX.
 #
-# WHY THIS EXISTS. The crank (games/the-game/ai/eval/rounds.sh) runs for
-# hours: 200 genomes x 60 generations per round, ~15 minutes a round, four
-# workers pinned. It was being run inside the Claude Code sandbox, whose
+# WHY THIS EXISTS. The crank (games/the-game/ai/eval/crank.sh) runs ONE
+# continuous search for hours: 200 genomes bred generation after generation,
+# four workers pinned, snapshotting every 30 generations, stopping when the
+# weights settle. It was being run inside the Claude Code sandbox, whose
 # microVM is reclaimed between turns and takes every process with it — the
 # filesystem survives, no process does. Measured on one night: four
-# reclamations in ninety minutes, three runs killed mid-round, each losing
-# everything that round had done. Training only ever progressed while
-# somebody was actively typing.
+# reclamations in ninety minutes, three runs killed mid-search, each losing
+# everything it had done. Training only ever progressed while somebody was
+# actively typing.
 #
 # A GitHub runner is not reclaimed. ubuntu-latest is 4 vCPU and 16 GB, the
 # same shape as the sandbox, and Actions minutes are FREE on a public repo,
 # which this is — so this costs nothing to run, unlike anything that bills
-# per token. The one constraint is a hard 6-hour job cap, which rounds.sh
-# now handles itself via GC_DEADLINE: it refuses to START a round it cannot
-# finish, using how long rounds have actually been taking, and exits having
-# committed everything it earned.
+# per token. The one constraint is a hard 6-hour job cap, which train.js
+# handles itself via GC_DEADLINE: it stops cleanly at a generation boundary
+# with a snapshot written, rather than being killed mid-generation.
 #
 # HOW IT CONTINUES. On a schedule, not by re-dispatching itself: a workflow
 # dispatched with GITHUB_TOKEN does not trigger a new run (GitHub blocks that
 # to stop runaway loops), so a self-chaining version would need a PAT and
-# would fail silently without one. Every 6 hours it starts again and seeds
-# from the best committed champion, which is the same resume the sandbox
-# restarts already exercise — the champion files ARE the state, and they are
-# committed the moment they exist.
+# would fail silently without one.
+#
+# THERE IS NOTHING TO SEED FROM, and that is the point. This used to hunt for
+# the best committed champion and start a fresh search from it — the round
+# boundary that cost three layers of patches (see crank.sh). The search is
+# continuous now and train.js's checkpoint carries the whole population, so a
+# new run resumes at the generation the last one stopped on with every genome
+# intact, rather than restarting from a single winner.
 name: Train the AI evaluator
 
 on:
   workflow_dispatch:
     inputs:
-      rounds:
-        description: 'Max rounds this run (it will stop early on the time budget)'
-        default: '60'
-      generations:
-        description: 'Generations per round'
-        default: '60'
       population:
         description: 'Genomes per generation'
         default: '200'
@@ -62,7 +60,7 @@ jobs:
   train:
     runs-on: ubuntu-latest
     # Under the 6-hour hard cap, so the job's own timeout is never what stops
-    # it — rounds.sh stops first, cleanly, with everything committed.
+    # it — train.js stops first, at a generation boundary, snapshot written.
     timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
@@ -104,53 +102,18 @@ jobs:
           node puyocpu.test.js
           node training.test.js
 
-      - name: Pick up from the best committed champion
-        id: champ
-        working-directory: games/the-game/ai/eval
-        run: |
-          # Same rule as the resume hook: highest trainFitness among results
-          # measured on the finals seeds we currently select on. A bar
-          # measured on other seeds is not a bar.
-          champ=$(node -e '
-            var fs = require("fs"), seeds = require("./seeds.js").FINALS.join(",");
-            var best = null, bestScore = -Infinity;
-            fs.readdirSync(".").filter(function (f) {
-              return /^trained\..*\.r[0-9]+\.json$/.test(f);
-            }).forEach(function (f) {
-              try {
-                var d = JSON.parse(fs.readFileSync(f, "utf8"));
-                if (!d.finalsSeeds || d.finalsSeeds.join(",") !== seeds) return;
-                if (typeof d.trainFitness !== "number") return;
-                if (d.trainFitness > bestScore) { bestScore = d.trainFitness; best = f; }
-              } catch (e) {}
-            });
-            if (best) process.stdout.write(best);
-          ')
-          if [ -n "$champ" ]; then
-            echo "champion=$PWD/$champ" >> "$GITHUB_OUTPUT"
-            echo "Continuing from $champ"
-          else
-            echo "champion=" >> "$GITHUB_OUTPUT"
-            echo "No valid champion committed — starting from random weights"
-          fi
-
       - name: Crank
         working-directory: games/the-game/ai/eval
         env:
           GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
           GC_LEVEL: ${{ github.event.inputs.level || '10' }}
           GC_BRAIN: puyo
-          GC_CHAMPION: ${{ steps.champ.outputs.champion }}
         run: |
-          # 340 minutes from now, ten under the job timeout: rounds.sh stops
+          # 340 minutes from now, ten under the job timeout: train.js stops
           # itself with room to commit, so the runner never kills it holding
           # a half-finished round.
           export GC_DEADLINE=$(( $(date +%s) + 340 * 60 ))
-          ./rounds.sh \
-            "${{ github.event.inputs.rounds || 60 }}" \
-            "${{ github.event.inputs.generations || 60 }}" \
-            "${{ github.event.inputs.population || 200 }}" \
-            "$(nproc)"
+          ./crank.sh "${{ github.event.inputs.population || 200 }}" "$(nproc)"
 
       - name: What this run achieved
         if: always()
@@ -162,7 +125,7 @@ jobs:
             node -e '
               var fs = require("fs"), seeds = require("./seeds.js").FINALS.join(",");
               fs.readdirSync(".").filter(function (f) {
-                return /^trained\..*\.r[0-9]+\.json$/.test(f);
+                return /^trained\..*\.g[0-9]+\.json$/.test(f);
               }).sort().forEach(function (f) {
                 var d = JSON.parse(fs.readFileSync(f, "utf8"));
                 if (!d.finalsSeeds || d.finalsSeeds.join(",") !== seeds) return;
