@@ -207,6 +207,108 @@ test('it agrees with brute force on many random boards', function () {
         wrong.length + ' boards disagreed with brute force:\n  ' + wrong.slice(0, 10).join('\n  '));
 });
 
+// ---------------------------------------------------- comboPotential
+//
+// THE OTHER HALF OF STORED POTENTIAL, tested here rather than in
+// features.test.js because — like chainPotential — it has to be asked of a
+// REAL LogicalBoard: it clones, swaps and resolves, and a hand-built plain
+// object has none of those.
+//
+// chainPotential measures how DEEP a cascade could go. matchPotential counts
+// HOW MANY swaps pay out and says in its own comment that size belongs in
+// its own feature. This measures how BIG the biggest single clear could be.
+function comboPotential(b) { return features.comboPotential({ board: b }); }
+
+// Independent answer, written from the definition rather than from the
+// implementation: every legal swap, resolved by the engine, biggest combo
+// size reported. Deliberately not shared with the feature's code.
+function bruteCombo(b) {
+    var swaps = b.legalSwaps(), best = 0, i, j;
+    for (i = 0; i < swaps.length; i++) {
+        var t = b.clone();
+        t.swap(swaps[i][0], swaps[i][1]);
+        var sizes = t.resolve().comboSizes || [];
+        for (j = 0; j < sizes.length; j++) if (sizes[j] > best) best = sizes[j];
+    }
+    return best;
+}
+
+// A settled random board, built the same way the chainPotential random test
+// builds one — resolve first, because both features are defined only on a
+// board with nothing in flight.
+function randomSettled(seed) {
+    var rngState = seed;
+    function rng() { rngState = (rngState * 1103515245 + 12345) & 0x7fffffff; return rngState / 0x7fffffff; }
+    var rows = [], H = 6, W = 6, r, c;
+    for (r = 0; r < H; r++) {
+        var line = '';
+        for (c = 0; c < W; c++) {
+            var fill = (r + 1) / (H + 1);
+            line += rng() < fill ? String(1 + Math.floor(rng() * 4)) : '.';
+        }
+        rows.push(line);
+    }
+    var settled = board(rows).clone();
+    settled.resolve();
+    var grid = settled.grid;
+    return board(grid.slice(1).map(function (row) {
+        return row.slice(1).map(function (v) {
+            return v === 0 ? '.' : v === -1 ? 'x' : v === -2 ? '#' : String(v);
+        }).join('');
+    }).reverse());
+}
+
+test('comboPotential: an empty board offers no clear at all', function () {
+    assert.strictEqual(comboPotential(board(DEPTH_0)), 0);
+});
+
+test('comboPotential: FIRES on a reachable clear and reports its SIZE, not a count', function () {
+    // 1,1,.,1 across the floor: one swap brings the fourth 1 in and the
+    // engine clears four. A feature that counted paying swaps rather than
+    // measuring size cannot tell this from a bare three.
+    var four = board(['......', '......', '......', '......', '11.1..']);
+    var three = board(['......', '......', '......', '......', '1.1...']);
+    assert.strictEqual(comboPotential(four), bruteCombo(four), 'must agree with brute force');
+    assert.ok(comboPotential(four) > comboPotential(three),
+        'the four-panel clear must outscore the three (' + comboPotential(four) + ' vs ' +
+        comboPotential(three) + ')');
+});
+
+test('comboPotential: SIZE is what separates it from matchPotential', function () {
+    // matchPotential counts swaps that pay out; if this scored these two the
+    // same it would be a duplicate of a feature that already exists.
+    var small = board(['......', '......', '......', '......', '11.1..']);
+    var big = board(['......', '......', '......', '......', '111.11']);
+    assert.ok(comboPotential(big) > comboPotential(small),
+        'the wider clear must score higher (' + comboPotential(big) + ' vs ' +
+        comboPotential(small) + ')');
+});
+
+test('comboPotential: it is the MAX, not the sum over swaps', function () {
+    // Payout is per-clear, so one clear of six beats two of three, and a sum
+    // over every legal swap would be far larger than any single clear.
+    var b = board(['......', '......', '......', '......', '111.11']);
+    assert.strictEqual(comboPotential(b), bruteCombo(b));
+    assert.ok(comboPotential(b) <= 6 * 6, 'cannot exceed the board width times its height');
+    assert.ok(comboPotential(b) < 12, 'a sum over swaps would be far larger than any one clear');
+});
+
+test('comboPotential: agrees with brute force over random settled boards', function () {
+    // The same cross-check chainPotential gets, and for the same reason: a
+    // feature checked only against its own logic is checked against nothing.
+    var wrong = [], seen = {}, i;
+    for (i = 0; i < 120; i++) {
+        var b = randomSettled(20260908 + i);
+        var got = comboPotential(b), want = bruteCombo(b);
+        seen[want] = (seen[want] || 0) + 1;
+        if (got !== want) wrong.push('seed ' + i + ': got ' + got + ' want ' + want);
+    }
+    assert.ok(Object.keys(seen).length >= 2,
+        'only one distinct size seen (' + JSON.stringify(seen) + '), so this proves nothing');
+    assert.deepStrictEqual(wrong.slice(0, 10), [], wrong.length + ' boards disagreed:\n  ' +
+        wrong.slice(0, 10).join('\n  '));
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }

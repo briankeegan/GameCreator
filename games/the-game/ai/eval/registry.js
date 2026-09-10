@@ -63,6 +63,9 @@
     // brain ever does decide mid-cascade, the feature is in git history and
     // its implementation is intact in features.js.
 
+    { key: 'comboPotential',   group: 'board',  sign: +1, fn: null,
+      what: 'The biggest single clear any legal swap could make from this settled board. The other half of stored potential: chainPotential measures how DEEP a cascade could go, matchPotential counts HOW MANY swaps pay out, and neither measures how BIG one clear is — matchPotential\'s own comment reserves size for its own feature rather than smuggling it in. A chain and a combo are different attacks with different payout tables. Asked of the engine (clone, swap, resolve) like chainPotential, and the MAX rather than the sum, because payout is per-clear.' },
+
     { key: 'staircase',        group: 'board',  sign: +1, fn: null,
       what: 'Loaded steps: panels that would complete a horizontal three if the cell under them cleared and they fell one row. THE shape Panel de Pon players build on purpose, taken from the game\'s own documented library rather than reasoned out here (paneponattack.com, "How to Set Up a Staircase") — PUYO_REFERENCE.md\'s Tier 2 is explicit that the bot is TOLD chain shapes rather than discovering them. Not chainPotential: that needs a trigger swap to exist right now, this measures whether the board is BUILT.' },
 

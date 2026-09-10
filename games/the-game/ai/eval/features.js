@@ -752,6 +752,56 @@ var MOVE_FRAMES = 4;
   }
 
 
+  // ------------------------------------------------------- comboPotential
+  //
+  // THE BIGGEST SINGLE CLEAR ANY LEGAL SWAP COULD MAKE FROM THIS BOARD.
+  //
+  // The other half of stored potential. A board pays out two different ways
+  // and they are separate attacks: a CHAIN is links deep and sends one
+  // full-width block that grows a row per link; a COMBO is one clear wide
+  // and sends a set of 1-high blocks. chainPotential measures the first —
+  // the deepest cascade a swap could set off. Nothing measured the second,
+  // and matchPotential says why in its own comment: it counts HOW MANY
+  // swaps pay out, deliberately not how big, and records that if size
+  // matters it belongs in its own feature "measured on its own, not
+  // smuggled in here". This is that feature.
+  //
+  // So a board one swap from a five-panel clear and a board one swap from a
+  // bare three both score 1 on matchPotential and 0 on chainPotential, and
+  // are worth very different amounts: the engine ports Panel Attack's real
+  // Tsu-Attack tables, where combo payout climbs with size and a plain 3
+  // sends nothing at all.
+  //
+  // ASKED OF THE ENGINE, NOT RECOMPUTED. Same shape as chainPotential:
+  // clone, swap, let the engine resolve, read the combo sizes it reports.
+  // The alternative is a second implementation of gravity and matching
+  // inside features.js, which is how two copies of the rules drift apart —
+  // and the engine's counter is the one the game actually scores with.
+  //
+  // The MAX, not the sum. The payout table is per-clear, so one clear of
+  // seven is worth more than two of three, and summing would rank a board
+  // full of small clears above the one big one that actually pays.
+  //
+  // Cost: a clone+resolve per legal swap, the same loop chainPotential
+  // runs, so having both roughly doubles the most expensive feature here
+  // (~66us). Measured worst decision was 8ms against an 85ms guard before
+  // this, so there is room; if that stops being true the fix is to resolve
+  // each candidate ONCE and let both features read the result, not to make
+  // either of them guess more cheaply.
+  function comboPotential(input) {
+    var board = input.liveBoard || input.board;
+    if (!board || typeof board.legalSwaps !== 'function' ||
+        typeof board.clone !== 'function' || typeof board.resolve !== 'function') return 0;
+    var swaps = board.legalSwaps(), best = 0;
+    for (var i = 0; i < swaps.length; i++) {
+      var trial = board.clone();
+      trial.swap(swaps[i][0], swaps[i][1]);
+      var sizes = trial.resolve().comboSizes || [];
+      for (var j = 0; j < sizes.length; j++) if (sizes[j] > best) best = sizes[j];
+    }
+    return best;
+  }
+
   // -------------------------------------------------------------- staircase
   //
   // THE LONGEST DIAGONAL RUN OF LOADED STEPS — the depth of the deepest
@@ -905,6 +955,7 @@ var MOVE_FRAMES = 4;
     SAFE_FRAMES: SAFE_FRAMES,
     matchPotential: matchPotential,
     chainPotential: chainPotential,
+    comboPotential: comboPotential,
     staircase: staircase,
     flatTop: flatTop,
     travelCost: travelCost,

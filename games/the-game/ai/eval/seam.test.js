@@ -188,6 +188,14 @@ var REACHABLE = [
         if (plain === null || weighted === null) return 0;
         return plain === weighted ? 0 : 1;
     }],
+    ['comboPotential', function (cpu) {
+        // A board one swap from a four-panel clear: 1,1,.,1 along the floor,
+        // so the size is 4 rather than the 3 that is nearly always available.
+        var b = blank(cpu);
+        for (var c = 1; c <= 6; c++) b.grid[1][c] = 0;
+        b.grid[1][1] = 1; b.grid[1][2] = 1; b.grid[1][4] = 1;
+        return b;
+    }],
     ['staircase', function (cpu) {
         // One loaded step, through the real seam: clearing whatever sits
         // under the 2 drops it into row 1 beside the 2,2 pair. Same shape
