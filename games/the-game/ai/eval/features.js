@@ -754,7 +754,8 @@ var MOVE_FRAMES = 4;
 
   // -------------------------------------------------------------- staircase
   //
-  // LOADED STEPS: PANELS THAT COMPLETE A MATCH IF THEY FALL ONE ROW.
+  // THE LONGEST DIAGONAL RUN OF LOADED STEPS — the depth of the deepest
+  // staircase built on this board.
   //
   // THE SHAPE IS DOCUMENTED, NOT INVENTED, and that is the whole point of
   // it. PUYO_REFERENCE.md's Tier 2 section says the competitive Puyo bot
@@ -767,18 +768,36 @@ var MOVE_FRAMES = 4;
   //    falling panels to complete the next match, which in turn feeds the
   //    one above it"  — paneponattack.com, "How to Set Up a Staircase"
   //
-  // An earlier draft of this feature was going to be a staircase chosen by
-  // reasoning about which shape survives garbage rain. That is exactly the
-  // rediscovery the reference says not to pay for, and it would have been
-  // MY domain knowledge rather than the game's.
+  // THE FIRST VERSION COUNTED LOOSE STEPS AND THE SEARCH REJECTED IT: it
+  // settled at 13 out of 300, the treatment reserved here for a feature that
+  // does nothing. It was not mis-wired — a board carrying steps held a
+  // firable chain 40.4% of the time against 6.6% for a board with none, a
+  // sixfold lift over 1,246 real level-10 boards. It was measuring the wrong
+  // thing in two ways, both of which that same measurement shows:
   //
-  // WHY IT IS NOT chainPotential. chainPotential asks what the best legal
-  // SWAP cascades to, so it needs the trigger to exist right now. This asks
-  // whether the board is BUILT, trigger or no trigger. Measured over 12 real
-  // level-10 games, the trained bot's mean best-available chainPotential was
-  // 1.009 — and chainLength 1 is a plain match — so on a typical board no
-  // swap anywhere produced a cascade at all. A perfectly built staircase
-  // scores 0 on chainPotential until its trigger row happens to be swappable.
+  //   1. It was a WORSE COPY OF chainPotential. Loose loaded steps predict
+  //      "there is a chain here", and chainPotential answers that question
+  //      exactly rather than by proxy — which is why it carries 185 and this
+  //      carried 13. A feature earns its dimension by seeing something no
+  //      other feature can.
+  //   2. It counted steps that had nothing to do with each other. Three
+  //      loaded panels in three unrelated corners scored 3, the same as
+  //      three that feed each other. The by-step-count numbers say so
+  //      outright and are not monotonic anywhere: 1 step 46.8%, 2 steps
+  //      11.1%, 3 steps 0.0%, 4 steps 72.7%. A staircase is not a quantity
+  //      of steps, it is steps ARRANGED — "offset by one column and one row
+  //      at each step" is the whole definition and the first version did not
+  //      implement it.
+  //
+  // So this measures the diagonal run: how many loaded steps chain into each
+  // other, one column across and one row up, which is how deep the cascade
+  // goes when the bottom one is triggered. That is a number chainPotential
+  // cannot produce — chainPotential needs a trigger swap to exist RIGHT NOW,
+  // and a half-built staircase with no trigger yet reads 0 there while
+  // reading its true depth here. Depth rather than count, because the score
+  // table is what makes building worth anything: a 4-combo pays 20 and a
+  // 5-chain pays 300, so two shallow staircases are worth a fraction of one
+  // deep one and must not score the same.
   //
   // WHAT COUNTS AS A STEP. A settled board has no floating panels, so the
   // gap the guide describes ("a pair of colour B with a gap directly beneath
@@ -792,9 +811,9 @@ var MOVE_FRAMES = 4;
   // whole column drops together and keeps its spacing — the panels that
   // would have to close up never move relative to each other.
   //
-  // Steps, not cells, and the cell below must be occupied by a DIFFERENT
-  // colour: if it already matched, the board would have resolved it, and a
-  // shape that is already a match is not stored potential.
+  // The cell below a step must be occupied by a DIFFERENT colour: if it
+  // already matched, the board would have resolved it, and a shape that has
+  // already fired is not stored potential.
   function staircase(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
 
@@ -802,9 +821,9 @@ var MOVE_FRAMES = 4;
       return a >= 1 && b >= 1 && a <= W && b <= W && grid[row][a] === v && grid[row][b] === v;
     }
 
-    var steps = 0;
-    for (var r = 2; r <= H; r++) {
-      for (var c = 1; c <= W; c++) {
+    var step = {}, any = false, r, c;
+    for (r = 2; r <= H; r++) {
+      for (c = 1; c <= W; c++) {
         var v = grid[r][c];
         if (v <= 0) continue;                 // empty, busy (-1) and garbage (-2) are not colours
         var under = grid[r - 1][c];
@@ -813,10 +832,29 @@ var MOVE_FRAMES = 4;
         // lands to the right of a pair, between two, or to the left of a pair.
         if (pair(r - 1, c - 2, c - 1, v) ||
             pair(r - 1, c - 1, c + 1, v) ||
-            pair(r - 1, c + 1, c + 2, v)) steps++;
+            pair(r - 1, c + 1, c + 2, v)) { step[r + ':' + c] = true; any = true; }
       }
     }
-    return steps;
+    if (!any) return 0;
+
+    // The longest run of steps each offset one column and one row from the
+    // last. A run keeps its direction: a staircase climbs one way, and a
+    // shape that zigzags is two staircases meeting, not one deeper one.
+    var best = 0;
+    for (r = 2; r <= H; r++) {
+      for (c = 1; c <= W; c++) {
+        if (!step[r + ':' + c]) continue;
+        for (var d = -1; d <= 1; d += 2) {
+          // Only start a run where one cannot already be running, or the
+          // same staircase is measured once per step it contains.
+          if (step[(r - 1) + ':' + (c - d)]) continue;
+          var len = 1, rr = r, cc = c;
+          while (step[(rr + 1) + ':' + (cc + d)]) { len++; rr++; cc += d; }
+          if (len > best) best = len;
+        }
+      }
+    }
+    return best;
   }
 
   // --------------------------------------------------------------- flatTop

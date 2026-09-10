@@ -983,15 +983,16 @@ test('travelCost: weighting it subtracts through the evaluator', function () {
 
 
 // ---- staircase ----
-// A panel that would complete a horizontal three if the cell under it
-// cleared and it fell one row. The shape Panel de Pon players build on
-// purpose; see the comment in features.js for where it comes from and why
-// it is not chainPotential.
+// The longest DIAGONAL RUN of loaded steps — how deep the staircase built on
+// this board goes. A loaded step is a panel that would complete a horizontal
+// three if the cell under it cleared and it fell one row. See features.js for
+// where the shape comes from, why depth rather than count, and why the first
+// version of this feature was rejected by the search at 13/300.
 function stair(rows) { return F.staircase(inputMod.normalize({ board: board(rows) })); }
 
 test('staircase: FIRES on a loaded step — clear the 1s and the 2 lands on a pair', function () {
     // Row 1 is 1,1,1,2,2. Clearing the three 1s drops the 2 above column 3
-    // into row 1, making 2,2,2. That is one link of a chain, built.
+    // into row 1, making 2,2,2. One step, so a run of one.
     assert.strictEqual(stair(['..2...',
                               '11122.']), 1);
 });
@@ -1033,22 +1034,38 @@ test('staircase: a vertical pair below cannot be completed by a fall', function 
                               '2.....']), 0);
 });
 
-test('staircase: counts every step, so a more built board scores more', function () {
-    var one = stair(['..2...',
-                     '11122.']);
-    // A settled board — every occupied cell has one under it, and there is
-    // no accidental triple anywhere — carrying three separate loaded steps:
-    // the 2 at the top lands right of the 2,2 pair; the 1 in row 3 col 3
-    // lands between the 1s in row 2; the 4 in row 2 col 1 lands left of the
-    // 4,4 pair in row 1. Pinned at 3 rather than asserted as "more" so a
-    // change in what counts as a step shows up here as a number.
-    var built = stair(['..2...',
+test('staircase: STEPS THAT DO NOT FEED EACH OTHER ARE NOT A STAIRCASE', function () {
+    // THE DEFECT THE FIRST VERSION SHIPPED. This board holds three separate
+    // loaded steps that have nothing to do with each other, and the first
+    // version scored it 3 — the same as a genuine three-step staircase. The
+    // shape is "offset by one column and one row at each step"; loose steps
+    // in three corners are three 2-chains, not a 4-chain, and the scoring
+    // table pays 20 for the former and 300 for the latter.
+    var loose = stair(['..2...',
                        '311225',
                        '414161',
                        '344565']);
-    assert.strictEqual(one, 1);
-    assert.strictEqual(built, 3);
-    assert.ok(built > one);
+    assert.strictEqual(loose, 1, 'three unrelated steps are a run of one, not three');
+});
+
+test('staircase: a CHAINED diagonal run scores its depth', function () {
+    // Two steps offset one column and one row from each other, so firing the
+    // lower one feeds the upper. Found by searching random settled boards
+    // rather than drawn by hand — three hand-drawn attempts at "a chained
+    // pair" all turned out to hold one step and a coincidence, which is the
+    // same way chainPotential's fixture had to be found.
+    var chained = ['...2..',
+                   '...1..',
+                   '..121.',
+                   '312133'];
+    var loose = ['..2...',
+                 '311225',
+                 '414161',
+                 '344565'];
+    assert.strictEqual(stair(chained), 2, 'a two-step staircase reads its depth');
+    assert.strictEqual(stair(loose), 1, 'three unrelated steps stay a run of one');
+    assert.ok(stair(chained) > stair(loose),
+        'depth must beat quantity, or the feature is back to counting loose steps');
 });
 
 // ---- flatTop ----
