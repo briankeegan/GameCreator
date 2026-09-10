@@ -66,8 +66,26 @@ on:
 # would be junk. cancel-in-progress is deliberately FALSE: a run that is
 # halfway through a round has earned that round, and killing it to start a
 # fresher one throws the work away for nothing.
+# ONE PER EXPERIMENT, NOT ONE IN TOTAL.
+#
+# The group used to be a bare "ai-train" and the reason given was that two
+# cranks would fight over the runner's cores and over the same
+# trained.<mode>.json scratch file. The first half was never true — every run
+# gets its OWN runner, so there are no cores to share — and the second half is
+# only true of two runs on one machine, which this has never been.
+#
+# It also does not do what it looks like it does when more than one run is
+# waiting: GitHub keeps a single pending run per group, so dispatching the
+# staircase and flatTop variants back to back would have CANCELLED the first
+# of them, silently, and left one experiment looking like two.
+#
+# Keyed by variant, the two variant runs go in parallel and finish in the time
+# one of them takes. What still must not double up is two runs of the SAME
+# experiment, which is what the key preserves. They race only on the push of a
+# snapshot, and commit_snapshot.sh already rebases before pushing for exactly
+# that reason.
 concurrency:
-  group: ai-train
+  group: ai-train-${{ github.event.inputs.variant || 'default' }}
   cancel-in-progress: false
 
 permissions:
