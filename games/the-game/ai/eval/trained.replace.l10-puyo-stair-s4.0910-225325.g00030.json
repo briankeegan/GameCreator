@@ -1,0 +1,199 @@
+{
+  "mode": "replace",
+  "objective": "score",
+  "brain": "puyo",
+  "level": 10,
+  "selection": "elite of generation 30, by training fitness",
+  "arena": [
+    "comboStorm",
+    "factory",
+    "bigBlocks",
+    "endless"
+  ],
+  "features": [
+    "matchPotential",
+    "chainPotential",
+    "staircase",
+    "links",
+    "colourVariance",
+    "edgePenalty",
+    "garbageOnBoard",
+    "maxHeight",
+    "fillRatio",
+    "roughness",
+    "garbageAdjacency",
+    "colourScarcity",
+    "garbageSent",
+    "chainLength",
+    "garbageCleared",
+    "travelCost"
+  ],
+  "excluded": [
+    "flatTop",
+    "comboPotential"
+  ],
+  "generations": 100000,
+  "population": 200,
+  "seedPool": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40
+  ],
+  "seedsPerGeneration": 1,
+  "holdoutSeeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112
+  ],
+  "trainFitness": 8010,
+  "holdout": {
+    "learned": {
+      "fitness": 2142.5,
+      "objective": "score",
+      "arena": [
+        "comboStorm",
+        "factory",
+        "bigBlocks",
+        "endless"
+      ],
+      "perCategory": {
+        "comboStorm": {
+          "raw": 580.8333333333334,
+          "avgFrames": 892.1666666666666,
+          "avgSent": 14.333333333333334,
+          "deathRate": 1
+        },
+        "factory": {
+          "raw": 250.83333333333334,
+          "avgFrames": 616,
+          "avgSent": 5.166666666666667,
+          "deathRate": 1
+        },
+        "bigBlocks": {
+          "raw": 222.5,
+          "avgFrames": 640.9166666666666,
+          "avgSent": 4.666666666666667,
+          "deathRate": 1
+        },
+        "endless": {
+          "raw": 1088.3333333333333,
+          "avgFrames": 2206.0833333333335,
+          "avgSent": 31,
+          "deathRate": 1
+        }
+      },
+      "avgFrames": 1088.7916666666665,
+      "avgSent": 13.791666666666668,
+      "deathRate": 1
+    },
+    "shipped": {
+      "fitness": 679.1666666666666,
+      "objective": "score",
+      "arena": [
+        "comboStorm",
+        "factory",
+        "bigBlocks",
+        "endless"
+      ],
+      "perCategory": {
+        "comboStorm": {
+          "raw": 49.166666666666664,
+          "avgFrames": 284.5,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "factory": {
+          "raw": 27.5,
+          "avgFrames": 265.25,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "bigBlocks": {
+          "raw": 40,
+          "avgFrames": 289.75,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "endless": {
+          "raw": 562.5,
+          "avgFrames": 1509.75,
+          "avgSent": 12.5,
+          "deathRate": 1
+        }
+      },
+      "avgFrames": 587.3125,
+      "avgSent": 3.125,
+      "deathRate": 1
+    }
+  },
+  "improvementPct": 215.46012269938655,
+  "weights": {
+    "matchPotential": 247.75301171417442,
+    "chainPotential": 81.46063095384035,
+    "staircase": 31.95698441117351,
+    "links": 27.27595323164009,
+    "colourVariance": 229.71242262680943,
+    "edgePenalty": 108.2529338748476,
+    "garbageOnBoard": 67.60535368983437,
+    "maxHeight": 93.19854245705552,
+    "fillRatio": 88.51256972644109,
+    "roughness": 160.9720191670442,
+    "garbageAdjacency": 44.2032211447496,
+    "colourScarcity": 53.63710003968721,
+    "garbageSent": 166.03587874360616,
+    "chainLength": 84.61643864768129,
+    "garbageCleared": 177.56894835893425,
+    "travelCost": 0
+  },
+  "lostCategories": [],
+  "timing": {
+    "worstMs": 14,
+    "unsafeSeeds": 0
+  }
+}
