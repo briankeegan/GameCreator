@@ -52,7 +52,21 @@
       chainExtend: true, sentWeight: 5000
     },
     nightmare: {
-      brain: "search", reaction: 12, mistake: 0,
+      // ONE CELL PER FRAME. cursorMoveFrames became a real preset knob when
+      // the cursor started walking, and every preset was left on the default
+      // 4 — which broke the hardest tier specifically. Nightmare is hard
+      // because it acts OFTEN (reaction 12 against diamond's 30, depth 4,
+      // beam 10); at four frames a cell, travel eats the frames that
+      // advantage is made of. check_preset_ordering.js measured it:
+      // nightmare 21401 frames alive and 269 sent against diamond's 26340
+      // and 338 — the hardest opponent was the weaker one.
+      //
+      // Slowing DIAMOND instead was tried and does not work: at 8 frames a
+      // cell diamond got BETTER (33504), because fewer, longer-considered
+      // trips beat more short ones for a bot with a slow reaction anyway.
+      // The knob is not monotonic, so the fix has to be on the tier that
+      // actually regressed.
+      brain: "search", reaction: 12, mistake: 0, cursorMoveFrames: 1,
       depth: 4, beam: 10, patience: 0.85, patienceFillCeiling: 0.5,
       dangerHeightFrac: 0.72, chainWeight: 380, comboWeight: 70,
       garbageWeight: 90, heightPenalty: 60, potentialWeight: 5,

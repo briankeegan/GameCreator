@@ -42,17 +42,17 @@
     "swaps": 0
   },
   "search/shipped/s101": {
-    "frames": 546,
-    "score": 200,
-    "sent": 5,
-    "hash": 3030838118,
-    "swaps": 19
+    "frames": 429,
+    "score": 140,
+    "sent": 0,
+    "hash": 4191146321,
+    "swaps": 7
   },
   "search/aggressive/s102": {
-    "frames": 542,
-    "score": 200,
+    "frames": 602,
+    "score": 230,
     "sent": 6,
-    "hash": 2410198944,
-    "swaps": 24
+    "hash": 3343007287,
+    "swaps": 15
   }
 }
