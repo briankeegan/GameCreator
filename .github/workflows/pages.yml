@@ -70,6 +70,19 @@ jobs:
       - name: Verify room exits
         run: source .github/scripts/gates.sh && gate_room_exits
 
+      # THE SHIPPED BOT. games/the-game/ai/trained-weights.js is generated
+      # from a training snapshot, never hand-edited: it is eighteen numbers
+      # and a wrong one is invisible, because the bot still plays and nothing
+      # can tell a mistyped 294 from a trained 249. The checker regenerates
+      # from the snapshot the file itself names and compares byte for byte,
+      # then checks the wiring around it — index.html loads all six scripts
+      # in dependency order, sw.js caches every one (cache five of six and
+      # the PWA installs fine and throws only on the nightmare tier, offline),
+      # and duel.js actually constructs the bot. All four failures are
+      # reproduced on purpose by .github/scripts/shipped_weights.test.sh.
+      - name: Verify the shipped AI weights
+        run: node .github/scripts/check_shipped_weights.mjs .
+
       # A game whose own JS calls GCControls.create()/GCSaveSlots.create()/
       # GCTitleScreen.create() but is missing the matching <script> tag or
       # precache entry ships a ReferenceError or goes stale offline — see
