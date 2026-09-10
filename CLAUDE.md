@@ -16,6 +16,18 @@ installable as a PWA, and has its own private "Clubhouse" chat thread for
 design discussion. `shared/` holds the components every game reuses
 (Clubhouse UI, storage, nav, PWA plumbing) — don't fork it per-game.
 
+## Shipping
+
+- **ALWAYS MERGE TO `main`. Do not ask.** The owner has said so explicitly:
+  work finished on a session branch is not finished, because Pages deploys
+  only from `main` (`pages.yml`), so anything sitting on a branch is
+  invisible to the person who asked for it. Merge, don't wait to be told.
+  A merge conflict is not a reason to stop and ask either — resolve it and
+  say in the commit message which side won and why. The one case worth
+  raising first is two sides having genuinely changed the same behaviour in
+  incompatible ways, and even then: propose a resolution rather than a
+  question.
+
 ## The Clubhouse (design-request pipeline)
 
 - Each game's chat thread is a **permanently-open draft PR**, never a
