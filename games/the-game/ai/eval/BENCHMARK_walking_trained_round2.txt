@@ -1,0 +1,22 @@
+Evaluator: /tmp/round2.json  mode=replace  matchPotential=169 latentChain=127 colourVariance=168 edgePenalty=210 garbageOnBoard=199 incomingGarbage=59 maxHeight=177 fillRatio=181 roughness=80 garbageAdjacency=21 colourScarcity=130 garbageSent=20 chainLength=278 garbageCleared=130 framesToDeath=286
+Config: nightmare  levels=3  seed=1  categories=factory,bigBlocks,endless
+
+#################### LEVEL 3 ####################
+=== L3 factory ===
+Survived: 0:25 (1555 frames)
+Sent: 6 cells in 1 pieces
+  short chain (2-3 links): 6 cells (1 pieces, 100%)
+
+=== L3 bigBlocks ===
+Survived: 0:54 (3241 frames)
+Sent: 6 cells in 1 pieces
+  short chain (2-3 links): 6 cells (1 pieces, 100%)
+
+=== L3 endless (avg of 12 real files) -- avg frames across files ===
+Survived: 1:02 (3764 frames)
+Sent: 424 cells in 67 pieces
+  small combo (3-4 wide): 52 cells (16 pieces, 12%)
+  big combo (5-6 wide): 84 cells (16 pieces, 20%)
+  short chain (2-3 links): 264 cells (34 pieces, 62%)
+  medium chain (4-6 links): 24 cells (1 pieces, 6%)
+
