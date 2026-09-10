@@ -756,3 +756,162 @@ would seal a specific row) is the more direct fix this round's
 - User has "hundreds" of additional saved sequences beyond what's in this
   checkout — location not yet shared/available in this sandbox; fold them
   in once available.
+
+- **THE TRAINED EVALUATOR IS THE GREEDY FIRER `PUYO_REFERENCE.md` WARNS
+  ABOUT, AND THE ATTACK BREAKDOWN SAYS SO OUT LOUD.** The reference's §
+  "Greedy fires too early, and this is the real cap": a scorer that values
+  the board *now* takes a chain the moment one exists, so potential never
+  accumulates and long chains never happen. The first weight set trained
+  on the walking cursor (+71.6% held-out, see `eval/trained.replace.json`)
+  does exactly that, and it is VISIBLE in `full_report.js`'s own
+  by-type breakdown rather than being a suspicion:
+
+        L3 endless      short chain (2-3)   medium chain (4-6)
+        shipped                       62%                  11%
+        trained                       72%                   0%
+
+        L3 factory      short chain (2-3)   medium chain (4-6)
+        shipped                       33%                  67%
+        trained                       82%                   0%
+
+  So the learned bot survives longer and sends a comparable volume while
+  making SHALLOWER attacks than the heuristic it beat — on factory the
+  shipped bot's sent garbage was two thirds medium chains and the trained
+  one's is none. Against a person that is the part that matters: a stream
+  of 2-links is far easier to answer than one 5-link.
+
+  This is not a training failure and re-running it will not fix it. It is
+  what the objective asks for. Fitness is the final score of one game, the
+  score comes from garbage sent, and firing early sends garbage sooner —
+  nothing in the loop can prefer a chain that has not been built yet. The
+  reference names the fix and it is a change to the EVALUATION, not to the
+  search or the weights: a patience/hold term, and scoring "the biggest
+  chain I *could* fire" instead of "the biggest chain available now".
+  `latentChain` is the feature that would carry it and it is currently
+  unreachable by this benchmark (see wiring.test.js's UNREACHABLE) — every
+  position bench.js scores has already settled.
+
+  Recorded here rather than left as a caveat in a commit message, because
+  the headline number (+71.6%) is true and reads as unqualified progress,
+  and the next person to see it should know what kind of player it bought.
+
+- **THE EVAL DRILL'S FITNESS DISAGREES WITH `endless`, AND `endless` IS THE
+  ONE TO BELIEVE.** Two training rounds on the walking cursor, round 2
+  seeded from round 1's winner. On the same twelve held-out seeds of the
+  eval drill, round 1 wins (734 vs 681). On `full_report.js` they invert:
+
+        L3          teleport      walking      round 1      round 2
+        factory     0:32 /  36    0:22 /  12   1:01 /  44   0:25 /   6
+        bigBlocks   0:45 /   6    0:42 /  18   0:44 /   6   0:54 /   6
+        endless     1:06 / 539    0:43 / 261   1:00 / 276   1:02 / 424
+
+  endless is the measurement to trust and the two others are not close to
+  it in weight: endless averages twelve real attack files, while factory
+  and bigBlocks are ONE game each on ONE seed — a 1:01-vs-0:25 gap there
+  is a single board, not a result. On endless round 2 sends 54% more than
+  round 1 (424 vs 276), gets closest of anything to the teleporting bot's
+  539, and is the only trained set that builds medium chains at all (6%
+  vs round 1's 0%).
+
+  So `bench.js`'s build drill — what the GA actually optimises — is not
+  merely an imperfect proxy for endless, it ranked two candidates in the
+  opposite order. Chasing more generations against it buys a better score
+  on a target nobody reads. The drill exists for a real reason (endless
+  cannot be driven from ga_core.js, and full_report's drills do not reach
+  the offensive search at the tightened levels), so the answer is to make
+  the trainer's fitness BE endless rather than to keep tuning against a
+  stand-in for it.
+
+  Both weight sets are committed — `trained.replace.json` (round 1) and
+  `trained.replace.round2.json` — with their benchmark logs beside them,
+  because the choice between them is not one the eval drill can make.
+
+- **CORRECTION, AND THE MISTAKE IS WORTH MORE THAN THE RESULT:
+  `full_report.js`'s `endless` IS TWELVE ATTACK FILES ON ONE BOARD SEED,
+  NOT TWELVE INDEPENDENT GAMES.** `runEndlessFile` is called with the same
+  `seed` for every file, so the panel RNG — which decides the entire
+  starting board and every row that rises — is identical across all twelve.
+  It averages away *attack pattern* variance and none of the board
+  variance, and board variance is the larger of the two by a distance.
+  Measured on `endless`, average frames survived per game:
+
+        board seed 1 (full_report)     shipped 2582   arena 4995
+        board seeds 101-112 (12 of)    shipped 3518   arena 2999
+
+  The same two configs, opposite verdicts. One of those numbers is a
+  measurement and the other is a coin.
+
+  THE FINDING ABOVE IT IS THEREFORE WRONG and is left in place rather than
+  edited, because the failure is more instructive than a clean file. It
+  claimed the eval drill "ranked two real candidates in the OPPOSITE order"
+  to endless — round 1 beating round 2 on held-out seeds while losing to it
+  on endless by 54% of sent garbage. That 54% was one board seed. On twelve:
+
+        endless, seeds 101-112     frames    sent    score
+        round 1                      4714    58.9     2827
+        round 2                      3740    46.6     1862
+        shipped                      3518    41.8     1808
+        arena (four-category)        2999    29.1     1296
+
+  Round 1 wins on endless too. The eval drill and endless AGREED all along;
+  the disagreement was an artifact of reading a single-seed number as if it
+  were an average, and several hours of work were spent on the strength of
+  it. The four-category trainer that came out of it is still the right
+  thing — a fitness should play the games it is judged on, and
+  bench.fidelity.test.js is worth having — but it was built for a reason
+  that was not real, and it produced the WORST endless bot of the four by
+  weighting comboStorm (+191.7%) equally with the drill that matters.
+
+  THE LESSON IS NOT "use more seeds", it is that this repo has now been
+  fooled the same way three times: a benchmark whose name promises an
+  average that it does not compute (here), a gate that could not fail
+  (art-checks), and a screenshot that survived its own failure (shoot.js).
+  Before trusting a number, read what the code behind it actually varies.
+
+- **THE HOT FUNCTION WAS NOT WHERE THE TIME WENT, AND "38% OF RUNTIME" DID
+  NOT MEAN WHAT I READ IT TO MEAN.** Profiling a level-10 game with the
+  Puyo brain gave:
+
+        evaluate   235ms  60.7%    631 calls   (372us each)
+        resolve    148ms  38.4%   9423 calls   (15.7us each)
+        clone       36ms   9.2%   9423 calls   (3.8us each)
+
+  `resolve` at 38% looks like the thing to optimise, and inside it
+  `_findMatches` builds a `run` array per run and a `"r:c"` string key plus
+  a two-element array per matched cell, ~9,400 times a game;
+  `_connectedGarbage` allocates a four-element array of two-element arrays
+  AND a closure per matched cell just to test four neighbours. Both were
+  rewritten to do the identical work with no per-cell allocation, and
+  identity.test.js confirmed the games were bit-for-bit unchanged across
+  both brains and eight games.
+
+  Measured speedup: NONE THAT CLEARS THE NOISE (kept anyway — see below).
+
+        optimised  647ms
+        original   659ms
+        optimised  562ms     <- the same code as the first line
+
+  Two runs of the same code differ by more than optimised differs from
+  original. V8 allocates short-lived objects in a nursery very cheaply, so
+  the string keys and per-cell arrays cost far less than they look like
+  they should.
+
+  KEPT, on the owner's call, and the reasoning is sound: the version is
+  PROVEN to play the identical game and does strictly less work, so the
+  slower one has nothing to recommend it. What must not happen is the claim
+  drifting from "no measurable difference under load" to "we optimised
+  this" — the honest status is that it allocates less and has never been
+  shown to be faster.
+
+  THE MISREADING IS THE LESSON. A profile that says a FUNCTION is 38% does
+  not say which line inside it is expensive, and the two are easy to
+  conflate when one of them has obviously ugly code in it. The ugly code
+  was not the cost. Next time: profile the LINE, or bisect by deleting work
+  and re-measuring, before rewriting anything.
+
+  Also worth recording: a clean measurement was not available. Four
+  training workers were saturating all four cores throughout, which is
+  exactly the condition that makes wall-clock timing meaningless — the same
+  reason the AI's own search budget is counted in board evaluations rather
+  than milliseconds (see panel-cpu.js's note on the Date.now() deadline
+  that made play depend on machine load).

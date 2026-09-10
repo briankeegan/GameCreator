@@ -1,0 +1,53 @@
+# Trained weight files are written by every run INCLUDING smoke tests, so
+# they are not tracked by default — an 8-genome, 1-generation smoke result
+# sitting in the repo looks exactly like a real one, and the whole point of
+# weights.js refusing an uncommented non-zero is that a number has to carry
+# the run that earned it.
+#
+# A result worth keeping gets committed deliberately, with its provenance
+# in the commit message: git add -f trained.<mode>.json
+trained.*.json
+
+# The generic name is SCRATCH. Every run overwrites trained.<mode>.json,
+# including the run you started five minutes ago, so a result kept under
+# that name is a result waiting to be silently replaced — and it showed up
+# as a phantom "uncommitted change" every time a new run finished, which is
+# noise that trains you to ignore the warning.
+#
+# A result worth keeping is renamed by rounds.sh to
+# trained.<mode>.<tag>.<runid>.r<N>.json and is tracked, because it is the
+# only copy of an hour of compute and nothing else can reproduce it.
+#
+# THIS PATTERN MUST MATCH WHAT rounds.sh ACTUALLY WRITES. It read
+# `!trained.*.round*.json` for a long time while rounds.sh named its output
+# `...r1.json` — `r1` is not `round1`, so the exception never fired once and
+# every real champion was silently ignored. A container restart then killed
+# a crank mid-round and the surviving champion turned out to be untracked:
+# an hour of compute was one restart from being unrecoverable, and nothing
+# had said so, because a file that is ignored looks exactly like a file that
+# is committed in `git status`.
+#
+# training.test.js asserts a name commit_snapshot.sh really produces is not
+# ignored, so this pattern cannot drift away from the filenames again.
+!trained.*.g[0-9]*.json
+!trained.*.r[0-9]*.json
+!trained.*.round*.json
+
+# Void results from before the 15-feature registry — see its README.
+void-pre-15-feature/
+
+# THE CRANK'S RUNTIME STATE. Neither of these is ever committed.
+#
+# .crank-running means "a crank is alive IN THIS CONTAINER and did not choose
+# to stop" — it is liveness, not configuration. Committing it would be worse
+# than untidy: a fresh container cloning the repo would find a marker with no
+# crank behind it, and session-start-resume-training.sh would faithfully start
+# hours of training nobody asked for.
+#
+# crank.log is append-only for the life of a run and says nothing a champion
+# file does not already carry.
+.crank-running
+crank.log
+
+# The GA's crash-safety state: per-container, meaningless anywhere else.
+.train-checkpoint.*.json

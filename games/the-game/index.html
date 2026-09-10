@@ -266,6 +266,20 @@
   <script src="story.js"></script>
   <script src="panel-engine.js"></script>
   <script src="panel-cpu.js"></script>
+  <!-- THE TRAINED BOT, for the nightmare tier only (see duel.js makeCpu).
+       Load order matters and there is no bundler: each of these defines part
+       of window.PanelEval and reads the ones above it. registry needs
+       features; evaluator needs registry and input; puyocpu needs evaluator,
+       input and travel; trained-weights needs nothing but must precede
+       duel.js. sw.js caches all seven — a PWA that ships six of them has an
+       opponent that throws on the nightmare tier and nowhere else. -->
+  <script src="ai/eval/features.js"></script>
+  <script src="ai/eval/registry.js"></script>
+  <script src="ai/eval/input.js"></script>
+  <script src="ai/eval/travel.js"></script>
+  <script src="ai/eval/evaluator.js"></script>
+  <script src="ai/eval/puyocpu.js"></script>
+  <script src="ai/trained-weights.js"></script>
   <script src="duel.js"></script>
   <script src="difficulty.js"></script>
   <script src="saves.js"></script>

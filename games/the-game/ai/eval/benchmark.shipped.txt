@@ -1,0 +1,21 @@
+Config: nightmare  levels=3  seed=1  categories=factory,bigBlocks,endless
+
+#################### LEVEL 3 ####################
+=== L3 factory ===
+Survived: 0:36 (2198 frames)
+Sent: 11 cells in 2 pieces
+  big combo (5-6 wide): 5 cells (1 pieces, 45%)
+  short chain (2-3 links): 6 cells (1 pieces, 55%)
+
+=== L3 bigBlocks ===
+Survived: 0:26 (1587 frames)
+Sent: 3 cells in 1 pieces
+  small combo (3-4 wide): 3 cells (1 pieces, 100%)
+
+=== L3 endless (avg of 12 real files) -- avg frames across files ===
+Survived: 0:52 (3144 frames)
+Sent: 320 cells in 53 pieces
+  small combo (3-4 wide): 58 cells (18 pieces, 18%)
+  big combo (5-6 wide): 40 cells (8 pieces, 13%)
+  short chain (2-3 links): 222 cells (27 pieces, 69%)
+

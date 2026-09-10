@@ -17,3 +17,7 @@ __pycache__/
 # them would let someone sign off a room on another machine without ever
 # rendering it, which is the whole thing that check is there to stop.
 games/*/art-src/*_rendered.txt
+
+# CI checks panel-game out here (actions/checkout cannot write above the
+# workspace). Never part of this repo.
+/panel-game/

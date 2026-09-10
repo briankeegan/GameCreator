@@ -1,17 +1,9 @@
 // Puzzle Attack — the duel opponents' brain.
 //
-// Two strategies live here, and neither can do something a real player
-// could not: nothing here sees a color the player couldn't also see on
-// screen, and nothing here acts anywhere on the board for free. A swap
-// target is reached by moving the cursor at most one cell per frame
-// (Stack.prototype.stepCursorToward, panel-engine.js) -- the fastest rate
-// a real keyboard/gamepad player can achieve -- then queued through
-// tryQueueSwap, exactly like a real move; raise still uses the same
-// held-input path a player would (setInput({raise:true})). Stack.touchSwap
-// (an instant "tap directly on this pair" primitive, the real input mode
-// for touchscreen play) is intentionally never called from here anymore --
-// see advanceSwapExecution's own comment for why a CPU using it would be
-// teleporting, not playing.
+// Two strategies live here, both playing through the same public entry
+// points a human uses (touchSwap / raise) — nothing here can do something
+// the player could not, and nothing here sees a color the player couldn't
+// also see on screen.
 //
 //   1. THE HEURISTIC BOT (Cpu, unchanged from before) — one ply, score
 //      every legal swap, take the best. Fast, simple, the baseline every
@@ -80,26 +72,8 @@
     this.rng = root.PanelEngine.makeRng(opts.seed || 4242);
     this.cooldown = Math.floor(this.reaction / 2);
     this.raiseFrames = 0;
-    this._pendingSwap = null; // [row, col] being walked toward -- see advanceSwapExecution
-  }
-
-  // Shared by Cpu and SearchCpu: neither is allowed to teleport its cursor
-  // onto a target and swap in the same frame -- that was Stack.touchSwap
-  // being (mis)used as an instant "act anywhere" primitive, which nothing
-  // that only has keyboard/gamepad-equivalent input actually has (see
-  // Stack.prototype.stepCursorToward's own comment in panel-engine.js for
-  // the real per-frame rate this now enforces: 1 cell/frame, matching a
-  // human's fastest achievable tap-tap-tap rate, never faster). Every
-  // swap a CPU makes now costs real travel frames proportional to how far
-  // its cursor has to move, exactly like every other player.
-  //
-  // Returns "walking" (still en route, nothing else to do this frame),
-  // "done" (arrived and the swap queued successfully), or "failed"
-  // (arrived but the swap was illegal by the time it got there -- the
-  // board changed under it; the caller needs to pick a new target).
-  function advanceSwapExecution(stack, target) {
-    if (!stack.stepCursorToward(target[0], target[1])) return "walking";
-    return stack.tryQueueSwap(target[0], target[1]) ? "done" : "failed";
+    this.cursorMoveFrames = opts.cursorMoveFrames || preset.cursorMoveFrames || CURSOR_MOVE_FRAMES;
+    this._walk = null;
   }
 
   // A stable panel is one that could actually take part in a match right now.
@@ -238,31 +212,19 @@
 
     // Keep the stack moving when it is nearly empty, so the CPU doesn't just
     // sit there while the player is buried.
+    var input = {};
     if (this.raiseFrames > 0) {
       this.raiseFrames--;
-      stack.setInput({ raise: true });
-    } else {
-      stack.setInput({});
+      input.raise = true;
     }
 
-    // Mid-walk toward a swap already decided on -- see advanceSwapExecution's
-    // own comment. This bypasses the cooldown gate below on purpose: the
-    // reaction/decision cost was already paid before the walk started: this
-    // is purely the cursor-travel cost of carrying it out.
-    if (this._pendingSwap) {
-      var result = advanceSwapExecution(stack, this._pendingSwap);
-      if (result === "walking") return;
-      this._pendingSwap = null;
-      if (result === "done") {
-        var fillAtArrival = stack.fillRatio();
-        this.cooldown = Math.max(6, Math.round(this.reaction * (fillAtArrival > this.panicAt ? 0.55 : 1)));
-      }
-      // "failed" (the board changed under a slow walk and this move is no
-      // longer legal) leaves cooldown at 0 so the normal gate below picks
-      // a fresh move THIS frame, off a current board read, rather than
-      // waiting out a full reaction with nothing queued.
+    // A committed move owns the frame — see driveWalk.
+    if (this._walk) {
+      this._driveWalk(input);
+      stack.setInput(input);
       return;
     }
+    stack.setInput(input);
 
     if (this.cooldown > 0) { this.cooldown--; return; }
 
@@ -276,7 +238,13 @@
     if (!move.match && this.rng() > this.tidy) { this.cooldown = this.reaction; return; }
     if (this.rng() < this.mistake && fill < this.panicAt) { this.cooldown = this.reaction; return; }
 
-    this._pendingSwap = [move.row, move.col];
+    // It plays faster when it is in trouble, the way a person would. The
+    // cooldown is charged when the swap lands, not now: the walk to it is
+    // the move, not thinking time.
+    this._beginWalk(move.row, move.col,
+      Math.max(6, Math.round(this.reaction * (fill > this.panicAt ? 0.55 : 1))));
+    this._driveWalk(input);
+    stack.setInput(input);
   };
 
   // =========================================================================
@@ -285,9 +253,8 @@
   // LogicalBoard is a timer-free model of the board (colors + gravity +
   // matching + garbage-clears-on-touch), the JS twin of
   // games/the-game/ai/simulate.py's Board. It's what the search plans
-  // against; the real Stack is only ever touched by walking the cursor to
-  // whatever move the plan settles on and queuing it, or raising, one at a
-  // time (see this file's own top-of-file comment). Rows/cols stay
+  // against; the real Stack is only ever touched through touchSwap/raise
+  // with whatever move the plan settles on, one at a time. Rows/cols stay
   // 1-indexed throughout, same as panel-engine.js's own panels[row][col],
   // so nothing here needs to convert between two conventions.
   // =========================================================================
@@ -477,28 +444,57 @@
     }
   };
 
+  // HOT: called ~9,400 times per level-10 game, inside resolve()'s loop,
+  // which is itself called once per candidate move and again for every
+  // legal swap inside chainPotential. Profiled at 38% of a game's runtime.
+  //
+  // Rewritten to allocate nothing per cell. The previous version built a
+  // `run` ARRAY per run and pushed a column index into it for every panel,
+  // then walked it again to emit matches. A run is fully described by where
+  // it started and how long it is, so this tracks two integers instead.
+  //
+  // WHAT IS DELIBERATELY UNCHANGED: the returned shape ("r:c" -> [r, c]),
+  // the scan order (rows top-down then columns left-right), and therefore
+  // the INSERTION ORDER of the keys. Callers iterate this with `for..in`
+  // and _connectedGarbage's flood fill starts from it, so a different order
+  // is a different game even when the same cells match. identity.test.js
+  // hashes every frame of eight games precisely so that claim is checked
+  // rather than asserted.
   LogicalBoard.prototype._findMatches = function () {
     var matched = {}; // "r:c" -> [r, c]
-    var r, c, run, i, color;
-    for (r = 1; r <= this.height; r++) {
-      run = [];
-      for (c = 1; c <= this.width + 1; c++) {
-        color = c <= this.width ? this.grid[r][c] : 0;
-        if (color > 0 && (run.length === 0 || this.grid[r][run[run.length - 1]] === color)) run.push(c);
-        else {
-          if (run.length >= 3) for (i = 0; i < run.length; i++) matched[r + ":" + run[i]] = [r, run[i]];
-          run = color > 0 ? [c] : [];
+    var H = this.height, W = this.width, grid = this.grid;
+    var r, c, i, color, runStart, runLen, runColor, row;
+
+    for (r = 1; r <= H; r++) {
+      row = grid[r];
+      runStart = 0; runLen = 0; runColor = 0;
+      for (c = 1; c <= W + 1; c++) {
+        color = c <= W ? row[c] : 0;
+        if (color > 0 && (runLen === 0 || runColor === color)) {
+          if (runLen === 0) { runStart = c; runColor = color; }
+          runLen++;
+        } else {
+          if (runLen >= 3) {
+            for (i = 0; i < runLen; i++) matched[r + ":" + (runStart + i)] = [r, runStart + i];
+          }
+          if (color > 0) { runStart = c; runLen = 1; runColor = color; }
+          else { runLen = 0; runColor = 0; }
         }
       }
     }
-    for (c = 1; c <= this.width; c++) {
-      run = [];
-      for (r = 1; r <= this.height + 1; r++) {
-        color = r <= this.height ? this.grid[r][c] : 0;
-        if (color > 0 && (run.length === 0 || this.grid[run[run.length - 1]][c] === color)) run.push(r);
-        else {
-          if (run.length >= 3) for (i = 0; i < run.length; i++) matched[run[i] + ":" + c] = [run[i], c];
-          run = color > 0 ? [r] : [];
+    for (c = 1; c <= W; c++) {
+      runStart = 0; runLen = 0; runColor = 0;
+      for (r = 1; r <= H + 1; r++) {
+        color = r <= H ? grid[r][c] : 0;
+        if (color > 0 && (runLen === 0 || runColor === color)) {
+          if (runLen === 0) { runStart = r; runColor = color; }
+          runLen++;
+        } else {
+          if (runLen >= 3) {
+            for (i = 0; i < runLen; i++) matched[(runStart + i) + ":" + c] = [runStart + i, c];
+          }
+          if (color > 0) { runStart = r; runLen = 1; runColor = color; }
+          else { runLen = 0; runColor = 0; }
         }
       }
     }
@@ -515,24 +511,39 @@
   LogicalBoard.prototype._connectedGarbage = function (matched) {
     var self = this;
     var within = function (r, c) { return r >= 1 && r <= self.height && c >= 1 && c <= self.width; };
+    // HOT, for the same reason as _findMatches: once per resolve() pass.
+    // The previous version allocated a four-element array of two-element
+    // arrays AND a closure for every matched cell and every popped cell,
+    // just to test four neighbours. Same four tests, written out.
+    //
+    // THE PUSH ORDER IS PART OF THE BEHAVIOUR and is preserved exactly:
+    // down, up, right, left, into a LIFO stack, so the pop order and hence
+    // `seen`'s insertion order are unchanged. Reordering these four lines
+    // would floods-fill the same cells in a different order — invisible in
+    // most results and not in all of them.
     var seen = {};
     var stack = [];
-    var k;
+    var k, rc, n, nr, nc, nk;
+    function pushIfGarbage(r, c) {
+      if (within(r, c) && self.grid[r][c] === -2) stack.push([r, c]);
+    }
     for (k in matched) {
-      var rc = matched[k];
-      [[rc[0] + 1, rc[1]], [rc[0] - 1, rc[1]], [rc[0], rc[1] + 1], [rc[0], rc[1] - 1]].forEach(function (n) {
-        if (within(n[0], n[1]) && self.grid[n[0]][n[1]] === -2) stack.push(n);
-      });
+      rc = matched[k];
+      pushIfGarbage(rc[0] + 1, rc[1]);
+      pushIfGarbage(rc[0] - 1, rc[1]);
+      pushIfGarbage(rc[0], rc[1] + 1);
+      pushIfGarbage(rc[0], rc[1] - 1);
     }
     while (stack.length) {
-      var n = stack.pop();
-      var nk = n[0] + ":" + n[1];
+      n = stack.pop();
+      nr = n[0]; nc = n[1];
+      nk = nr + ":" + nc;
       if (seen[nk]) continue;
       seen[nk] = n;
-      [[n[0] + 1, n[1]], [n[0] - 1, n[1]], [n[0], n[1] + 1], [n[0], n[1] - 1]].forEach(function (nn) {
-        var nnk = nn[0] + ":" + nn[1];
-        if (within(nn[0], nn[1]) && self.grid[nn[0]][nn[1]] === -2 && !seen[nnk]) stack.push(nn);
-      });
+      if (within(nr + 1, nc) && self.grid[nr + 1][nc] === -2 && !seen[(nr + 1) + ":" + nc]) stack.push([nr + 1, nc]);
+      if (within(nr - 1, nc) && self.grid[nr - 1][nc] === -2 && !seen[(nr - 1) + ":" + nc]) stack.push([nr - 1, nc]);
+      if (within(nr, nc + 1) && self.grid[nr][nc + 1] === -2 && !seen[nr + ":" + (nc + 1)]) stack.push([nr, nc + 1]);
+      if (within(nr, nc - 1) && self.grid[nr][nc - 1] === -2 && !seen[nr + ":" + (nc - 1)]) stack.push([nr, nc - 1]);
     }
     return seen;
   };
@@ -913,9 +924,141 @@
     this._lastSwap = null;
     this._plan = [];       // queued [row, col] swaps
     this._planGrid = null; // expected grid once the queued moves are consumed up to here
-    this._pendingSwap = null; // [row, col] being walked toward -- see advanceSwapExecution
-    this._pendingSwapCooldownOverride = null; // non-null only for a chain-extend-originated walk (see update())
+    // THE CURSOR WALKS. See the block comment above _beginWalk.
+    this.cursorMoveFrames = opts.cursorMoveFrames || preset.cursorMoveFrames || CURSOR_MOVE_FRAMES;
+    this._walk = null;
   }
+
+  // ---- moving the cursor ----
+  //
+  // A PERSON HAS FOUR DIRECTION KEYS, AND SO DOES THIS BOT NOW.
+  //
+  // Stack.touchSwap is the TOUCH input path: it queues a swap at (row, col)
+  // and assigns curRow/curCol to that cell, in one frame, from anywhere on
+  // the board. Every decision this cpu made went through it, so the cursor
+  // teleported all game and distance cost nothing. That is not a cosmetic
+  // difference — it is the whole shape of the game. Panel Attack has no
+  // turns: the stack rises continuously, so frames spent travelling are
+  // frames not spent swapping, and "which swap is best" cannot be answered
+  // without knowing what each one costs to reach. A travel-cost feature was
+  // added to the evaluator and trained against a simulation that never
+  // charged it.
+  //
+  // HOW FAST. The engine gives two ways to move and they are wildly
+  // different (measured against a real Stack, ai/eval/travel.js):
+  //
+  //   holding a direction   1 step = 1 frame, then DAS_DELAY = 20 more
+  //                         for the second: 4 steps = 23 frames
+  //   tapping it            one move per press, so a press every G frames
+  //                         costs G * steps - (G - 1)
+  //
+  // Holding is what a beginner does and is punishing for anything past one
+  // cell; tapping every other frame is 30 inputs a second, which no person
+  // does. CURSOR_MOVE_FRAMES is the tap cadence, in frames between presses,
+  // and it is a difficulty knob like `reaction` rather than a constant of
+  // the game: 4 frames is 15 moves a second, brisk-but-human, and it makes
+  // the widest move on the board (4 cells) cost 13 frames — comparable to
+  // nightmare's own 12-frame reaction, so travel is a real term in the
+  // decision without dominating it.
+  //
+  // Two frames is the floor and the engine sets it: pressing the same
+  // direction on consecutive frames is a HOLD, not two taps, so a cadence
+  // of 1 silently becomes DAS and gets slower rather than faster.
+  //
+  // CALIBRATED, not picked. ai/experiments/full_report.js, nightmare,
+  // level 3, endless (the average of its twelve real attack files):
+  //
+  //     cadence 2 (30/s)   survived 0:45   sent 206 cells
+  //     cadence 4 (15/s)   survived 0:43   sent 261 cells   <- this
+  //     cadence 6 (10/s)   survived 0:34   sent 218 cells
+  //
+  // Not a cliff between 2 and 4, which is the point: the human-plausible
+  // cadence is not costing the bot anything a superhuman one would buy,
+  // so there is no reason to play at 30 inputs a second. 6 is where it
+  // starts to hurt.
+  //
+  // FOR SCALE, the same benchmark with the teleporting cursor survived
+  // 1:06 and sent 539. Half the throughput of this bot was never a
+  // decision it made — it was distance nobody was charged for.
+  var CURSOR_MOVE_FRAMES = 4;
+
+  // Commit to a swap at (row, col): walk there, then press swap. cooldown
+  // is what to charge AFTER the swap lands, not now — the travel frames
+  // are already being spent, and charging both would double-bill.
+  function beginWalk(row, col, cooldown) {
+    this._walk = { row: row, col: col, timer: 0, cooldown: cooldown, retries: 0 };
+  }
+
+  // One frame of a committed move. Fills `input` with the direction to
+  // press, or performs the swap once the cursor has arrived.
+  function driveWalk(input) {
+    var stack = this.stack, w = this._walk, width = root.PanelEngine.WIDTH;
+    // The target can drift out of reach mid-walk: the stack rises, so
+    // topCurRow moves under us. Clamp rather than abandon — the same clamp
+    // clampCursor would apply on arrival.
+    var row = Math.max(1, Math.min(w.row, stack.topCurRow));
+    var col = Math.max(1, Math.min(w.col, width - 1));
+
+    if (stack.curRow !== row || stack.curCol !== col) {
+      if (w.timer > 0) { w.timer--; return; }
+      // One axis at a time, which is all applyInput reads anyway (it takes
+      // the first of up/down/left/right and ignores the rest).
+      if (stack.curCol < col) input.right = true;
+      else if (stack.curCol > col) input.left = true;
+      else if (stack.curRow < row) input.up = true;
+      else input.down = true;
+      w.timer = this.cursorMoveFrames - 1;
+      return;
+    }
+
+    // ARRIVED. tryQueueSwap is called directly rather than through
+    // input.swap for one reason: it returns whether the swap actually
+    // happened, and the caller needs that. It is the same function
+    // applyInput calls, at the cursor's own cell, so nothing is being
+    // reached that a key press could not reach.
+    var ok = stack.tryQueueSwap(stack.curRow, stack.curCol);
+    this._walk = null;
+    if (ok) { this._lastSwap = [stack.curRow, stack.curCol]; this.cooldown = w.cooldown; return; }
+
+    // IT FAILED WHERE WE STOOD. Stack.canSwap refuses a pull out from
+    // under a hovering panel, and applySwapStalling refuses a repeat of
+    // the same cell while topped out — both silently. The old code
+    // answered this by scanning the whole board with touchSwap until one
+    // stuck, which is a teleport hunt. Walk to the nearest cell that can
+    // take a swap instead: closest first, because while topped out the
+    // thing being defended is idle frames, and the nearest legal cell is
+    // the one that ends them soonest.
+    var alt = w.retries < 2 ? this._nearestSwappable(stack.curRow, stack.curCol) : null;
+    if (alt) {
+      this._beginWalk(alt[0], alt[1], w.cooldown);
+      this._walk.retries = w.retries + 1;
+      return;
+    }
+    this.cooldown = w.cooldown;
+  }
+
+  // Nearest cell (by cursor steps, which is what travel costs) that the
+  // real Stack says can be swapped right now, excluding where we are.
+  function nearestSwappable(fromRow, fromCol) {
+    var stack = this.stack, width = root.PanelEngine.WIDTH;
+    var best = null, bestD = Infinity;
+    for (var r = 1; r <= stack.topCurRow; r++) {
+      for (var c = 1; c < width; c++) {
+        if (r === fromRow && c === fromCol) continue;
+        var d = Math.abs(r - fromRow) + Math.abs(c - fromCol);
+        if (d >= bestD) continue;
+        if (!stack.canSwap(r, c)) continue;   // canSwap already covers the pair (c and c+1)
+        best = [r, c]; bestD = d;
+      }
+    }
+    return best;
+  }
+
+  // Both brains walk. The simple Cpu is what the lower difficulties play,
+  // and a teleporting cursor is no more honest there than it is here.
+  Cpu.prototype._beginWalk = SearchCpu.prototype._beginWalk = beginWalk;
+  Cpu.prototype._driveWalk = SearchCpu.prototype._driveWalk = driveWalk;
+  Cpu.prototype._nearestSwappable = SearchCpu.prototype._nearestSwappable = nearestSwappable;
 
   SearchCpu.prototype._snapshot = function () {
     var stack = this.stack, width = root.PanelEngine.WIDTH;
@@ -939,7 +1082,15 @@
         grid[r][c] = v;
       }
     }
-    return new LogicalBoard(width, stack.height, this.stack.colors, grid, blocks);
+    var board = new LogicalBoard(width, stack.height, this.stack.colors, grid, blocks);
+    // THE CURSOR IS PART OF THE POSITION. Without it the search cannot know
+    // what any candidate COSTS: stack.touchSwap teleports, but a person
+    // holds a direction and waits, and the second step in a direction is 21
+    // frames (see ai/eval/travel.js, measured). topCurRow rides along
+    // because clampCursor caps the cursor there — cells above the stack top
+    // are unreachable rather than expensive.
+    board.cursor = { row: stack.curRow, col: stack.curCol, topRow: stack.topCurRow };
+    return board;
   };
 
   // ---- manual chain extension ----
@@ -1342,7 +1493,7 @@
           var move = node.move || [r, c];
           var matched = res.chainLength > 0;
           var garbageCleared = matched ? garbageBefore - garbageCellCount(trial) : 0;
-          var ev = matched ? keyFor(trial, res) : boardPotential(trial);
+          var ev = matched ? keyFor(trial, res) : this._buildScore(trial);
           if (matched && (bestKey === null || ev > bestKey)) {
             bestKey = ev; best = move; bestClearsGarbage = garbageCleared > 0;
           }
@@ -1431,12 +1582,12 @@
     if (runwayLow) return null;
 
     var swaps0 = board.legalSwaps();
-    var base = boardPotential(board), bestGain = null, gainMove = null;
+    var base = this._buildScore(board), bestGain = null, gainMove = null;
     for (var j = 0; j < swaps0.length; j++) {
       var r2 = swaps0[j][0], c2 = swaps0[j][1];
       var trial2 = board.clone();
       trial2.swap(r2, c2);
-      var gain = boardPotential(trial2) - base;
+      var gain = this._buildScore(trial2) - base;
       if (bestGain === null || gain > bestGain) { bestGain = gain; gainMove = [r2, c2]; }
     }
     if (gainMove && bestGain > 0) return gainMove;
@@ -1577,7 +1728,7 @@
           if (bestKey === null || key > bestKey) { bestKey = key; best = move; }
           continue;
         }
-        if (remaining > 1) unmatched.push({ step: step, move: move, pot: boardPotential(step) });
+        if (remaining > 1) unmatched.push({ step: step, move: move, pot: self._buildScore(step) });
       }
       if (remaining > 1 && unmatched.length) {
         unmatched.sort(function (a, b) { return b.pot - a.pot; });
@@ -1712,13 +1863,35 @@
     return { moves: bestPlan.moves, chainBonus: bestPlan.chain, comboBonus: bestPlan.combo, gridAfterFirst: gridAfterFirst };
   };
 
+  // THE ONE OVERRIDABLE SCORING HOOK.
+  //
+  // Every place this file ranks candidate swaps that did NOT match anything
+  // used `boardPotential(trial)` directly — a module-local function, so
+  // nothing outside could see or change how a BUILDING move is judged.
+  // Measured on a level-3 pressure benchmark, that covered the large
+  // majority of decisions: the evaluator in games/the-game/ai/eval could
+  // only reach 28% of them, and training weights against a minority of the
+  // game's decisions is fitting noise.
+  //
+  // This changes no behaviour by itself — it returns exactly what the call
+  // sites computed before, and the default is boardPotential. It exists so
+  // an experiment can REPLACE the judgement of a building move without
+  // forking this file, and so there is ONE place that judgement lives
+  // rather than four copies of the same expression.
+  //
+  // Anything overriding it must stay cheap: it is called once per candidate
+  // swap, inside the per-frame budget the cpu is held to.
+  SearchCpu.prototype._buildScore = function (board) {
+    return boardPotential(board);
+  };
+
   SearchCpu.prototype._raiseOrBuild = function (board) {
-    var swaps = board.legalSwaps(), base = boardPotential(board), bestGain = null, best = null;
+    var swaps = board.legalSwaps(), base = this._buildScore(board), bestGain = null, best = null;
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
       var trial = board.clone();
       trial.swap(r, c);
-      var gain = boardPotential(trial) - base;
+      var gain = this._buildScore(trial) - base;
       if (bestGain === null || gain > bestGain) { bestGain = gain; best = [r, c]; }
     }
     if (best && bestGain > 0) return { kind: "swap", move: best };
@@ -2202,6 +2375,19 @@
       for (var key in stack) {
         if (!Object.prototype.hasOwnProperty.call(stack, key)) continue;
         if (key === "rng") continue;
+        // AN INSTANCE-LEVEL METHOD IS NEVER COPIED, and this is not
+        // hypothetical tidiness. The comment above says the only function
+        // field on a Stack is rng; a test broke that assumption by wrapping
+        // stack.tryQueueSwap to count swaps, which shadowed the prototype
+        // with an own field. _deepClone returns a function unchanged, so
+        // the clone inherited a wrapper CLOSED OVER THE REAL STACK -- every
+        // swap inside a simulated future executed on the live match. The
+        // game went from 546 frames to 681 and looked perfectly plausible.
+        // Skipping the field leaves the prototype's real method in place,
+        // so a clone behaves exactly as if nothing were instrumenting the
+        // original -- which is the only thing an observer can be allowed to
+        // do to a simulation.
+        if (typeof stack[key] === "function") continue;
         clone[key] = key === "levelData" ? stack[key]
           : key === "panels" ? TrueSurvivalSearch._clonePanels(stack[key])
             : TrueSurvivalSearch._deepClone(stack[key]);
@@ -2308,8 +2494,11 @@
       roll._lastSwap = null;
       roll._plan = [];
       roll._planGrid = null;
-      roll._pendingSwap = null; // fresh -- the cloned stack's curRow/curCol (already copied by _cloneStack) is what matters, not any walk-in-progress on the real cpu
-      roll._pendingSwapCooldownOverride = null;
+      // A rollout starts with the REAL cursor (cloned with the stack) but
+      // never with a half-finished walk: the move being rolled out has not
+      // been committed to yet.
+      roll._walk = null;
+      roll.cursorMoveFrames = sourceCpu.cursorMoveFrames;
       roll._pressure = sourceCpu._pressure;
       roll._reserveToppedOnce = !!sourceCpu._reserveToppedOnce;
       roll._survivalSearchToppedOnce = true; // never let a rollout cpu spend budget recursing into this module
@@ -2481,61 +2670,25 @@
 
     var pressure = this._samplePressure(); // every frame, so the decay is honest
 
+    // One input object for the whole frame, because the cursor now shares
+    // it with the raise key: a player holding raise can still be walking.
+    var input = {};
     if (this.raiseFrames > 0) {
       this.raiseFrames--;
-      stack.setInput({ raise: true });
-    } else {
-      stack.setInput({});
+      input.raise = true;
     }
 
-    // Mid-walk toward a swap already decided on -- see advanceSwapExecution's
-    // own comment (panel-cpu.js top) and Stack.prototype.stepCursorToward
-    // (panel-engine.js) for why this can no longer resolve in the same
-    // frame it was decided. Bypasses the cooldown gate below on purpose:
-    // the reaction/decision cost was already paid before the walk started,
-    // this is purely the cursor-travel cost of carrying it out. Chain
-    // extension (below) does NOT preempt an in-progress walk -- finishing
-    // the current move first is simpler and safer than trying to redirect
-    // mid-flight, at the cost of occasionally missing a chain-extend window
-    // while already walking toward something else, which is an honest,
-    // realistic limitation now that acting anywhere isn't free.
-    if (this._pendingSwap) {
-      var walkResult = advanceSwapExecution(stack, this._pendingSwap);
-      if (walkResult === "walking") return;
-      var target = this._pendingSwap;
-      this._pendingSwap = null;
-      if (walkResult === "done") {
-        this._lastSwap = target;
-        var arrivalBoard = this._snapshot();
-        this.cooldown = this._pendingSwapCooldownOverride !== null
-          ? this._pendingSwapCooldownOverride
-          : (arrivalBoard.maxHeight() >= arrivalBoard.height
-            ? this.toppedOutCooldown
-            : arrivalBoard.fillRatio() > this.dangerHeightFrac
-              ? 6
-              : Math.max(6, Math.round(this.reaction * (arrivalBoard.fillRatio() > this.dangerHeightFrac * 0.85 ? 0.55 : 1))));
-        return;
-      }
-      // "failed" -- the board changed under a slow walk and this exact
-      // move is no longer legal (see the long-standing comment further
-      // down on the two real ways that happens: a hover-panel pull-out,
-      // or swap-stalling refusing a repeat position). Pick a fresh target
-      // off a CURRENT board read rather than retrying a dead one, and
-      // start walking toward it next frame -- cooldown is already 0 here
-      // (we only ever reach a pending walk once it was), so that happens
-      // immediately rather than after a full reaction.
-      var freshBoard = this._snapshot();
-      var freshSwaps = freshBoard.legalSwaps().filter(function (s) { return s[0] !== target[0] || s[1] !== target[1]; });
-      if (freshSwaps.length) {
-        this._pendingSwap = freshSwaps[0];
-        this._pendingSwapCooldownOverride = null;
-      }
-      // If nothing else is legal either, fall through: no swap this frame,
-      // but input/raise state above already ran, and the normal cooldown
-      // gate/decision path picks back up on a later frame once cooldown
-      // allows -- never a silent do-nothing branch.
+    // A COMMITTED MOVE OWNS THE FRAME. Once a swap is chosen the cursor has
+    // to get there, and re-deciding every frame while travelling would mean
+    // never arriving — the bot would dither on the spot forever. _driveWalk
+    // sets the cooldown itself when the swap lands.
+    if (this._walk) {
+      this._driveWalk(input);
+      stack.setInput(input);
       return;
     }
+
+    stack.setInput(input);
 
     if (this.cooldown > 0) { this.cooldown--; return; }
 
@@ -2571,8 +2724,13 @@
       stack.clock > 600;
     var ext = extSafe ? this._chainExtendMove(false) : null;
     if (ext) {
-      this._pendingSwap = ext.slice();
-      this._pendingSwapCooldownOverride = 6; // catch the NEXT link's window too, not a full reaction
+      // The extension window is short and the cursor may be across the
+      // board from it. Committing to the walk is the honest outcome: it
+      // either gets there in time or the cascade lands first, which is
+      // exactly the trade a person makes.
+      this._beginWalk(ext[0], ext[1], 6);
+      this._driveWalk(input);
+      stack.setInput(input);
       return;
     }
 
@@ -2623,23 +2781,64 @@
       var alt = board.legalSwaps().filter(function (s) { return s[0] !== row || s[1] !== col; });
       if (alt.length) { var pick = alt[Math.floor(this.rng() * alt.length)]; row = pick[0]; col = pick[1]; }
     }
-    // Commit to walking toward this move (see the pending-walk handler at
-    // the top of this function -- it's what actually calls tryQueueSwap,
-    // sets _lastSwap, and computes the post-arrival cooldown off a FRESH
-    // board read, using the same maxHeight/fillRatio-based formula that
-    // used to live here). Not executed inline anymore: a move built from
-    // LogicalBoard CAN be illegal on the real stack (Stack.canSwap refuses
-    // a pull out from under a hovering panel above; tryQueueSwap's
-    // applySwapStalling can refuse a repeated position while topped out
-    // and otherwise idle) -- that failure is now handled once, generically,
-    // by the pending-walk handler's "failed" branch, which already covers
-    // every call site that used to need its own retry logic (this one,
-    // and the chain-extend one above), rather than each duplicating an
-    // exhaustive same-frame board scan that a multi-frame walk can no
-    // longer afford anyway.
-    this._pendingSwap = [row, col];
-    this._pendingSwapCooldownOverride = null;
+    // _lastSwap is set by _driveWalk when the swap actually lands, not
+    // here: the old code set it on intent and the walk can be several
+    // frames long, so recording it now would mark a move that never
+    // happened.
+    //
+    // THE COOLDOWN IS COMPUTED NOW AND PAID LATER. It is a reaction time —
+    // how long before this cpu thinks again — and the frames spent walking
+    // are not thinking time, they are the move itself. Charging both would
+    // bill the same move twice.
+    //
+    // Under real pressure, speed IS the defense: every extra frame of
+    // cooldown is a frame garbage keeps stacking uncontested. Confirmed
+    // by stress-testing survival against a sustained garbage stream
+    // (games/the-game/ai/ only models a symmetric duel, not this — a
+    // one-sided firehose test caught what that missed): at the old 0.55x
+    // reaction, clear throughput fell behind incoming faster than any
+    // amount of smarter move-picking could make up. Near the 6-frame
+    // floor while in real danger closes that gap.
+    //
+    // While topped out specifically, the floor drops further, to 3 —
+    // one below a swap's own animation length (Panel.lua-equivalent
+    // startSwap sets timer=4). This is not about reacting faster, it's
+    // about never dying: Stack.checkGameOver's health-drain condition
+    // only fires when the board is COMPLETELY idle while topped out
+    // (advancePassiveRaise, gated on !riseLock && stopTime===0, and
+    // riseLock covers exactly the frames a swap/match is active).
+    // Tried 4 first (matching the animation length exactly) and it still
+    // leaked one idle frame per cycle — cooldown counts down to 0 across
+    // `cooldown` FOLLOWING frames before the action fires again, so a
+    // cooldown of N produces an N+1 frame gap between actions, not N;
+    // confirmed by instrumenting a real death (seed 4, heavy rate) with
+    // cooldown=4: health still drained 39->37->35->...->0 one frame at
+    // a time despite _bestDefensiveMove finding a real move on literally
+    // every single decision. 3 closes that last frame; the same probe
+    // with cooldown=3 held health at its topped-out ceiling indefinitely
+    // instead. A real match's animation runs far longer than 4 frames on
+    // its own, so this never makes those any faster than they already were.
+    var after = board.maxHeight() >= board.height
+      ? this.toppedOutCooldown
+      : board.fillRatio() > this.dangerHeightFrac
+        ? 6
+        : Math.max(6, Math.round(this.reaction * (board.fillRatio() > this.dangerHeightFrac * 0.85 ? 0.55 : 1)));
+
+    // WALK, DON'T TELEPORT. The whole-board touchSwap retry scan that used
+    // to live here — try every cell until one sticks — was only possible
+    // because touchSwap could reach any cell for nothing. Its job (never
+    // spend a topped-out cycle idle after a silently-refused swap) is done
+    // by _driveWalk's _nearestSwappable fallback instead, which pays for
+    // where it goes.
+    this._beginWalk(row, col, after);
+    this._driveWalk(input);
+    stack.setInput(input);
   };
 
-  root.PanelCpu = { Cpu: Cpu, SearchCpu: SearchCpu, DIFFICULTIES: DIFFICULTIES, PreburstReserve: PreburstReserve, TrueSurvivalSearch: TrueSurvivalSearch };
+  // LogicalBoard is exported for TESTS, which need to build a board by hand
+  // and then ask it what a swap would actually do (clone/swap/resolve). The
+  // alternative was a second implementation of gravity and matching living
+  // in the test file, which is how a test ends up agreeing with itself
+  // instead of with the game.
+  root.PanelCpu = { Cpu: Cpu, SearchCpu: SearchCpu, DIFFICULTIES: DIFFICULTIES, PreburstReserve: PreburstReserve, TrueSurvivalSearch: TrueSurvivalSearch, LogicalBoard: LogicalBoard };
 })(typeof window !== "undefined" ? window : globalThis);
