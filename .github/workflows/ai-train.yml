@@ -45,6 +45,9 @@ on:
       variant:
         description: 'Label for this experiment, used in the snapshot filenames'
         default: ''
+      ga_seed:
+        description: 'Search RNG seed. CHANGE IT to get an independent run of the same config'
+        default: ''
 
 # THE SCHEDULE IS OFF WHILE FEATURES ARE BEING MEASURED ONE AT A TIME.
 #
@@ -152,6 +155,22 @@ jobs:
           # differ only by their feature set do not write indistinguishable
           # snapshot filenames.
           GC_VARIANT: ${{ github.event.inputs.variant || '' }}
+          # THE SEED WAS THE REASON TWO RUNS AGREED TO THE LAST DIGIT.
+          #
+          # train.js defaults GC_GA_SEED to a fixed constant and nothing ever
+          # set it, so run 5 and run 6 were not a result and its
+          # reproduction — they were the same search walked twice, finishing
+          # at 3397 at generation 360 both times. train.js's own comment
+          # warns about exactly this ("noise does not repeat to the last
+          # digit") and the variable was left unreachable from here.
+          #
+          # It matters beyond tidiness: with no way to change the seed there
+          # is no way to measure the search's own spread, and without that
+          # number a variant scoring 2883 against a baseline's 3397 cannot be
+          # told apart from the baseline's own 3784 -> 3146 -> 3397 wobble.
+          # Blank keeps the historical default, so every earlier run stays
+          # comparable.
+          GC_GA_SEED: ${{ github.event.inputs.ga_seed || '' }}
         run: |
           # 340 minutes from now, ten under the job timeout: train.js stops
           # itself with room to commit, so the runner never kills it holding
