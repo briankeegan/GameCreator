@@ -39,18 +39,56 @@ on:
       level:
         description: 'Game level to train at'
         default: '10'
-  schedule:
-    # Every 6 hours. A run takes up to ~5h20m of its own accord, so this is
-    # near-continuous without ever overlapping itself.
-    - cron: '17 */6 * * *'
+      exclude:
+        description: 'Features to leave OUT of the genome (comma list, blank = all)'
+        default: ''
+      variant:
+        description: 'Label for this experiment, used in the snapshot filenames'
+        default: ''
+      ga_seed:
+        description: 'Search RNG seed. CHANGE IT to get an independent run of the same config'
+        default: ''
+
+# THE SCHEDULE IS OFF WHILE FEATURES ARE BEING MEASURED ONE AT A TIME.
+#
+# It was every 6 hours, which is near-continuous for a ~5h20m run and was
+# right while there was one experiment. It is wrong now: the concurrency
+# group below serialises everything, cancel-in-progress is false, and a
+# scheduled full-registry run queued between two variant runs would push each
+# one hours later while answering a question nobody asked yet. staircase and
+# flatTop have to be measured SEPARATELY before they are combined, and the
+# combined run is the third dispatch, not a side effect of the clock.
+#
+# Put it back when the variants are done — that is when a standing run is
+# useful again, and it is one uncommented line:
+#   schedule:
+#     - cron: '17 */6 * * *'
 
 # NEVER TWO AT ONCE. Two cranks would fight over the runner's cores and,
 # worse, over the same trained.<mode>.json scratch file, and both results
 # would be junk. cancel-in-progress is deliberately FALSE: a run that is
 # halfway through a round has earned that round, and killing it to start a
 # fresher one throws the work away for nothing.
+# ONE PER EXPERIMENT, NOT ONE IN TOTAL.
+#
+# The group used to be a bare "ai-train" and the reason given was that two
+# cranks would fight over the runner's cores and over the same
+# trained.<mode>.json scratch file. The first half was never true — every run
+# gets its OWN runner, so there are no cores to share — and the second half is
+# only true of two runs on one machine, which this has never been.
+#
+# It also does not do what it looks like it does when more than one run is
+# waiting: GitHub keeps a single pending run per group, so dispatching the
+# staircase and flatTop variants back to back would have CANCELLED the first
+# of them, silently, and left one experiment looking like two.
+#
+# Keyed by variant, the two variant runs go in parallel and finish in the time
+# one of them takes. What still must not double up is two runs of the SAME
+# experiment, which is what the key preserves. They race only on the push of a
+# snapshot, and commit_snapshot.sh already rebases before pushing for exactly
+# that reason.
 concurrency:
-  group: ai-train
+  group: ai-train-${{ github.event.inputs.variant || 'default' }}
   cancel-in-progress: false
 
 permissions:
@@ -108,6 +146,31 @@ jobs:
           GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
           GC_LEVEL: ${{ github.event.inputs.level || '10' }}
           GC_BRAIN: puyo
+          # Read by train.js, which drops these keys from the genome rather
+          # than pinning them at zero, and refuses a name that is not a
+          # feature. Blank means the full registry, which is what every run
+          # before this one did.
+          GC_EXCLUDE: ${{ github.event.inputs.exclude || '' }}
+          # Read by crank.sh, which puts it in the tag so two runs that
+          # differ only by their feature set do not write indistinguishable
+          # snapshot filenames.
+          GC_VARIANT: ${{ github.event.inputs.variant || '' }}
+          # THE SEED WAS THE REASON TWO RUNS AGREED TO THE LAST DIGIT.
+          #
+          # train.js defaults GC_GA_SEED to a fixed constant and nothing ever
+          # set it, so run 5 and run 6 were not a result and its
+          # reproduction — they were the same search walked twice, finishing
+          # at 3397 at generation 360 both times. train.js's own comment
+          # warns about exactly this ("noise does not repeat to the last
+          # digit") and the variable was left unreachable from here.
+          #
+          # It matters beyond tidiness: with no way to change the seed there
+          # is no way to measure the search's own spread, and without that
+          # number a variant scoring 2883 against a baseline's 3397 cannot be
+          # told apart from the baseline's own 3784 -> 3146 -> 3397 wobble.
+          # Blank keeps the historical default, so every earlier run stays
+          # comparable.
+          GC_GA_SEED: ${{ github.event.inputs.ga_seed || '' }}
         run: |
           # 340 minutes from now, ten under the job timeout: train.js stops
           # itself with room to commit, so the runner never kills it holding

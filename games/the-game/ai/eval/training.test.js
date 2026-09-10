@@ -467,6 +467,66 @@ test('a snapshot records which features its run searched', function () {
         'and what was deliberately left out');
 });
 
+test('GC_GA_SEED reaches the search, and a different seed walks a different one', function () {
+    // WHY THIS EXISTS: runs 5 and 6 finished at 3397 at generation 360 BOTH
+    // TIMES and were read as a result and its reproduction. They were one
+    // search walked twice — GC_GA_SEED defaults to a constant and no caller
+    // set it. Without a varying seed the search's own spread cannot be
+    // measured, and without that number a variant at 2883 against a baseline
+    // at 3397 cannot be told from the baseline's own 3784 -> 3146 -> 3397
+    // wobble. Verified by running the search rather than by reading the
+    // source, because the source has been right and the wiring wrong before.
+    var code = fs.readFileSync(path.join(DIR, 'train.js'), 'utf8');
+    assert.ok(/rngState = Number\(process\.env\.GC_GA_SEED \|\| \d+\)/.test(code),
+        'the search RNG must seed from GC_GA_SEED with a default, or runs cannot be varied');
+
+    function run(seed) {
+        return cp.execSync('GC_LEVEL=10 GC_BRAIN=puyo GC_ARENA=comboStorm GC_GA_SEED=' + seed +
+            ' node train.js 1 2 replace 2 score 2>&1 | grep -E "^gen |weights:" | head -2',
+            { cwd: DIR, shell: '/bin/bash', timeout: 600000 }).toString();
+    }
+    var a = run(31415926), b = run(27182818);
+    assert.ok(a.length && b.length, 'a one-generation run must report something');
+    assert.notStrictEqual(a, b,
+        'two seeds produced an IDENTICAL first generation, so the seed is not reaching the ' +
+        'search and every "independent" run is a replay:\n' + a + '\n' + b);
+});
+
+test('the training workflow exposes exclude, variant and ga_seed, and wires each to its env', function () {
+    // A dispatch input that is declared but never passed to the step reads
+    // as a working knob and does nothing — which is what GC_GA_SEED was
+    // before it was an input at all. Both halves are checked.
+    var wf = fs.readFileSync(path.join(DIR, '..', '..', '..', '..',
+                                       '.github', 'workflows', 'ai-train.yml'), 'utf8');
+    [['exclude', 'GC_EXCLUDE'], ['variant', 'GC_VARIANT'], ['ga_seed', 'GC_GA_SEED']]
+        .forEach(function (pair) {
+            var input = pair[0], env = pair[1];
+            assert.ok(new RegExp('^\\s+' + input + ':', 'm').test(wf),
+                'the workflow does not offer a "' + input + '" input');
+            assert.ok(new RegExp(env + ':\\s*\\$\\{\\{ github\\.event\\.inputs\\.' + input).test(wf),
+                env + ' is not wired to the ' + input + ' input, so the knob does nothing');
+        });
+    // Blank must mean "as before": every consumer treats the empty string as
+    // absent, so a run that sets nothing behaves exactly like every run
+    // dispatched before these inputs existed.
+    var train = fs.readFileSync(path.join(DIR, 'train.js'), 'utf8');
+    assert.ok(/process\.env\.GC_EXCLUDE \|\| ''/.test(train));
+    assert.ok(/process\.env\.GC_GA_SEED \|\| \d+/.test(train));
+    var crank = fs.readFileSync(path.join(DIR, 'crank.sh'), 'utf8');
+    assert.ok(/VARIANT=\$\{GC_VARIANT:-\}/.test(crank));
+});
+
+test('the workflow runs one experiment per concurrency group, not one in total', function () {
+    // GitHub keeps a single PENDING run per group. Under one shared group,
+    // dispatching two variants back to back cancels the first silently and
+    // leaves two experiments looking like one.
+    var wf = fs.readFileSync(path.join(DIR, '..', '..', '..', '..',
+                                       '.github', 'workflows', 'ai-train.yml'), 'utf8');
+    assert.ok(/group: ai-train-\$\{\{ github\.event\.inputs\.variant/.test(wf),
+        'the concurrency group must be keyed by variant or parallel experiments cancel ' +
+        'each other');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
