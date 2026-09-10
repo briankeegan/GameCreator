@@ -39,10 +39,27 @@ on:
       level:
         description: 'Game level to train at'
         default: '10'
-  schedule:
-    # Every 6 hours. A run takes up to ~5h20m of its own accord, so this is
-    # near-continuous without ever overlapping itself.
-    - cron: '17 */6 * * *'
+      exclude:
+        description: 'Features to leave OUT of the genome (comma list, blank = all)'
+        default: ''
+      variant:
+        description: 'Label for this experiment, used in the snapshot filenames'
+        default: ''
+
+# THE SCHEDULE IS OFF WHILE FEATURES ARE BEING MEASURED ONE AT A TIME.
+#
+# It was every 6 hours, which is near-continuous for a ~5h20m run and was
+# right while there was one experiment. It is wrong now: the concurrency
+# group below serialises everything, cancel-in-progress is false, and a
+# scheduled full-registry run queued between two variant runs would push each
+# one hours later while answering a question nobody asked yet. staircase and
+# flatTop have to be measured SEPARATELY before they are combined, and the
+# combined run is the third dispatch, not a side effect of the clock.
+#
+# Put it back when the variants are done — that is when a standing run is
+# useful again, and it is one uncommented line:
+#   schedule:
+#     - cron: '17 */6 * * *'
 
 # NEVER TWO AT ONCE. Two cranks would fight over the runner's cores and,
 # worse, over the same trained.<mode>.json scratch file, and both results
@@ -108,6 +125,15 @@ jobs:
           GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
           GC_LEVEL: ${{ github.event.inputs.level || '10' }}
           GC_BRAIN: puyo
+          # Read by train.js, which drops these keys from the genome rather
+          # than pinning them at zero, and refuses a name that is not a
+          # feature. Blank means the full registry, which is what every run
+          # before this one did.
+          GC_EXCLUDE: ${{ github.event.inputs.exclude || '' }}
+          # Read by crank.sh, which puts it in the tag so two runs that
+          # differ only by their feature set do not write indistinguishable
+          # snapshot filenames.
+          GC_VARIANT: ${{ github.event.inputs.variant || '' }}
         run: |
           # 340 minutes from now, ten under the job timeout: train.js stops
           # itself with room to commit, so the runner never kills it holding
