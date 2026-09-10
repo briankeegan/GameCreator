@@ -534,6 +534,58 @@ design discussion. `shared/` holds the components every game reuses
     Collision data has to be authored against the art afterwards — which
     is what `.github/art/build_walkmask.py` does.
 
+## Shipping, and what has to pass first
+
+- **ALWAYS MERGE TO `main`. Do not ask.** Work finished on a session branch
+  is not finished, because Pages deploys only from `main` — anything sitting
+  on a branch is invisible to the person who asked for it. A merge conflict
+  is not a reason to stop and ask either: resolve it and say in the commit
+  message which side won and why.
+- **RUN `gate_all` BEFORE PUSHING TO `main`, NOT AFTER.** One line —
+  `source .github/scripts/gates.sh && gate_all` — and it is the same
+  function `pages.yml` runs step by step and the autopilot runs pre-flight.
+  A merge reached `main` having passed TEN suites out of
+  `games/the-game/ai/eval/` and broke the build: the gate that caught it
+  lives in `ai/experiments/` and only ran in CI, after the push, by which
+  point the site had stopped deploying entirely. Running "the tests I have
+  been working in" is not running the tests. There is one list, `GATES` in
+  `gates.sh`.
+- **REVERTING A MERGE POISONS THE NEXT MERGE, SILENTLY AND WITH NO
+  CONFLICT.** After `git revert -m 1 <merge>`, git treats that branch as
+  already merged and deliberately undone, so re-merging brings back almost
+  nothing. Doing it produced a `panel-cpu.js` carrying 25 references to
+  main's cursor implementation and 2 to the branch's — a file that would
+  have shipped a bot calling a function that no longer existed — and git
+  printed `Auto-merging`, no conflict, nothing for a person to catch.
+  `git revert` the revert FIRST, then merge. After any conflicted merge,
+  `grep -c` for the symbols each side owned rather than trusting the
+  absence of conflict markers.
+
+## Measuring a change to the AI
+
+- **ONE RUN PER CONDITION MEASURES NOTHING, and it still hands you a number
+  that looks like a result.** Five training runs finished — a baseline and
+  three single-feature variants — and read one at a time they said
+  staircase up, flatTop down, comboPotential promising. All three readings
+  were wrong. The proof is the SECOND baseline, identical to the first
+  except its RNG seed: the two baselines span 911 points on a ~3000 score,
+  and every variant gap was smaller than that.
+  - `games/the-game/ai/eval/compare_runs.js` is the tool. It groups runs by
+    which features they actually SEARCHED (not by the tag someone typed),
+    keeps each run's converged snapshot, computes the noise floor from the
+    baseline repeats, and REFUSES to compare anything while the baseline has
+    been run once. A condition with fewer runs than the baseline reports
+    NOT MEASURED rather than being quietly compared against a mean.
+  - `ai/PUYO_REFERENCE.md` does not cover this, and that is not a flaw in
+    it: "run it until the numbers stop moving" says when ONE search is
+    finished, not whether two finished searches differ. meatfighter was
+    tuning a single bot, not running an experiment.
+  - `GC_GA_SEED` is what makes repeats possible, and it went unexposed long
+    enough for two "independent" runs to finish at 3397 at generation 360
+    BOTH TIMES and be read as a reproduction. They were one search walked
+    twice. Noise does not repeat to the last digit.
+
+
 ## Newsey ("the-game") — the plot is the spec
 
 - The game is an adaptation of a plot the owner wrote. `reference/the-game/
