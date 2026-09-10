@@ -17,46 +17,12 @@ window.NewseyDuel = (function () {
   // derived readout for the overlay/input gating, never its own clock.
   var COUNTDOWN_FRAMES = E.COUNTDOWN_TOTAL;
 
-  // THREE BOTS, AND THE TIER PICKS ONE. One call site so nothing forgets
-  // which class a difficulty needs.
-  //
-  //   nightmare  PuyoCpu with trained weights — see below
-  //   diamond    SearchCpu, the hand-written beam-search bot
-  //   the rest   Cpu, the older single-ply heuristic
-  //
-  // NIGHTMARE IS THE TRAINED BOT, and only nightmare. It scores every legal
-  // swap's resulting board with a weighted sum and plays the best — the
-  // whole bot, no chain logic, no danger mode (ai/PUYO_REFERENCE.md). The
-  // weights were not written by anyone: ai/eval/train.js searched them and
-  // stopped when they stopped moving. On seeds it never trained on it scores
-  // 3397 against the previous bot's 854, and survives 3.5x as long.
-  //
-  // WHY NOT EVERY TIER. The weights were trained at level 10, which is what
-  // difficulty.js gives nightmare and nothing else. A weight set is a
-  // description of one game's shape — how fast the stack rises, how much
-  // garbage lands — and using level 10's numbers at level 3 is an untested
-  // claim that those shapes are the same. The lower tiers keep the bots they
-  // have until somebody trains for them.
-  //
-  // The evaluator loads as plain scripts in index.html (no bundler here), so
-  // a missing file would mean a broken opponent rather than a broken page —
-  // hence the explicit check, which fails loudly at construction instead of
-  // silently handing back a bot that scores every board zero.
+  // "diamond" and "nightmare" are the SearchCpu presets (see panel-cpu.js);
+  // every other named difficulty is the older single-ply heuristic bot.
+  // One call site so nothing forgets which class a difficulty needs.
   function makeCpu(stack, difficulty, seed) {
-    if (difficulty === "nightmare") {
-      var ev = window.PanelEval;
-      if (!ev || !ev.PuyoCpu || !ev.trained) {
-        throw new Error("the trained bot is missing (window.PanelEval.PuyoCpu/.trained) — " +
-                        "check the ai/eval script tags in index.html");
-      }
-      return new ev.PuyoCpu(stack, {
-        weights: ev.trained.weights,
-        // Matched to the cadence the weights were trained against; changing
-        // it changes the bot the weights describe.
-        reaction: 12
-      });
-    }
-    var Ctor = difficulty === "diamond" ? window.PanelCpu.SearchCpu : window.PanelCpu.Cpu;
+    var Ctor = (difficulty === "diamond" || difficulty === "nightmare")
+      ? window.PanelCpu.SearchCpu : window.PanelCpu.Cpu;
     return new Ctor(stack, { difficulty: difficulty || "steady", seed: seed });
   }
 
@@ -1325,17 +1291,9 @@ window.NewseyDuel = (function () {
     // a number can't be looked up at.
 
     drawEffects(isPlayer, x, y, cell, bottom, rise);
-    // BOTH cursors are drawn. A duel is two people playing, and with only the
-    // player's box on screen the other board just changed by itself — you
-    // could not see her line one up, or that she was nowhere near the mess
-    // about to bury her. Hers is pink (her name plate's colour), yours white.
-    if (!stack.gameOver) {
-      if (isPlayer) {
-        if (state.selection) drawSelection(state.selection, x, cell, bottom, rise);
-        drawCursor(stack, x, cell, bottom, rise, stack.curRow, stack.curCol, "#ffffff");
-      } else {
-        drawCursor(stack, x, cell, bottom, rise, stack.curRow, stack.curCol, "#ff9ecb");
-      }
+    if (isPlayer && !stack.gameOver) {
+      if (state.selection) drawSelection(state.selection, x, cell, bottom, rise);
+      drawCursor(stack, x, y, cell, bottom, rise);
     }
   }
 
@@ -1470,18 +1428,16 @@ window.NewseyDuel = (function () {
     return "rgb(" + r + "," + g + "," + b + ")";
   }
 
-  // row/col are passed in rather than read off the stack so a caller can draw
-  // a cursor somewhere other than where the engine currently holds it.
-  function drawCursor(stack, x, cell, bottom, rise, row, col, color) {
+  function drawCursor(stack, x, y, cell, bottom, rise) {
     var ctx = els.ctx;
-    var cx = x + (col - 1) * cell;
-    var cy = bottom - row * cell - rise;
+    var cx = x + (stack.curCol - 1) * cell;
+    var cy = bottom - stack.curRow * cell - rise;
     var pulse = 1 + Math.sin(stack.clock * 0.15) * 0.04;
     var w = cell * 2 * pulse, h = cell * pulse;
     ctx.save();
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = Math.max(2, cell * 0.09);
-    ctx.shadowColor = color === "#ffffff" ? "rgba(255,255,255,0.6)" : "rgba(255,158,203,0.6)";
+    ctx.shadowColor = "rgba(255,255,255,0.6)";
     ctx.shadowBlur = 6;
     roundRect(ctx, cx - (w - cell * 2) / 2, cy - (h - cell) / 2, w, h, cell * 0.2);
     ctx.stroke();
@@ -1661,7 +1617,6 @@ window.NewseyDuel = (function () {
         foeScore: state.foe.score,
         playerSwaps: state.swapCount,
         cursor: state.player.curRow + "," + state.player.curCol,
-        foeCursor: state.foe.curRow + "," + state.foe.curCol,
         selection: state.selection && (state.selection.row + "," + state.selection.col),
         pointer: state.pointer && (state.pointer.row + "," + state.pointer.col + (state.pointer.dragged ? ",dragged" : "")),
         displacement: state.player.displacement,

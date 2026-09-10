@@ -12,23 +12,7 @@ var PanelEngine = global.PanelEngine;
 var PanelCpu = global.PanelCpu;
 
 exports.SEEDS = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-// THE LEVEL IS NOW OVERRIDABLE, AND THE DEFAULT IS UNCHANGED.
-//
-// L10 is the drill every existing round was trained against and must stay
-// the default. But it is the WRONG benchmark for ../eval: at maxHealth<=21
-// the cpu routes through TrueSurvivalSearch and the defensive tiers, and
-// SearchCpu._evaluate — the seam ../eval replaces — is never called. Counted
-// directly over 1500 frames of steady pressure: level 3 makes 7519 calls to
-// it, levels 5 and 8 make ZERO, and level 10 makes 15. An evaluator trained
-// on L10 would be scored on a benchmark that does not run it, and every
-// weight would be noise fitted to fifteen seeds.
-//
-// So GC_EVAL_LEVEL exists, and the A/B and eval-weight training use level 3.
-// This is a real limit on what ../eval currently governs, not a benchmark
-// convenience: it is the OFFENSIVE search's scoring function. Survival at
-// the tightened levels is TrueSurvivalSearch's own, separate scoring, and
-// nothing here touches it.
-exports.STACK_LEVEL = Number(process.env.GC_EVAL_LEVEL || 10);
+exports.STACK_LEVEL = 10;
 var TIMING_MARGIN_MS = 85;
 
 var LEAD_IN = 150, BURST_LEN = 50, GAP = 900;
@@ -131,50 +115,7 @@ var STRUCTURAL_TO_MODULE_FIELD = {
 exports.STRUCTURAL_KEYS = Object.keys(STRUCTURAL_SPEC);
 exports.STRUCTURAL_TO_MODULE_FIELD = STRUCTURAL_TO_MODULE_FIELD;
 
-// ---- the from-scratch evaluator's weights, OPT-IN ----
-//
-// ../eval/ is a separate scoring function that replaces SearchCpu._evaluate
-// at runtime (see its README). Its sixteen weights all default to 0, which
-// is a deliberate refusal to type them: PUYO_REFERENCE.md's third stolen
-// idea is that LEARNED weights beat hand-set ones by orders of magnitude on
-// the same features — meatfighter's seven were trained, and Tetris's best
-// controller went from 660k to 35M lines on identical features once
-// cross-entropy method set the dials instead of a person.
-//
-// So they are searched here, by the GA that already searches everything
-// else, against the same real engine and the same fitness. Opt-in via
-// GC_EVAL_WEIGHTS=1 so every existing round keeps running exactly as it
-// did — a training run whose meaning silently changed is worse than one
-// that never happened.
-//
-// Bounds: all positive, and generous. The registry carries each feature's
-// SIGN, so the GA never has to discover that height is bad — it searches
-// magnitude only, which is a far smaller space and cannot land on a
-// sign-flipped board feature that happens to fit fifteen seeds.
-var EVAL_ENABLED = process.env.GC_EVAL_WEIGHTS === '1';
-var evalRegistry = null, evalAttach = null;
-if (EVAL_ENABLED) {
-  evalRegistry = require('../eval/registry.js');
-  evalAttach = require('../eval/attach.js').attach;
-}
-var EVAL_SPEC = {};
-if (EVAL_ENABLED) {
-  evalRegistry.keys.forEach(function (k) {
-    // [min, max, isInt, default] — default 0 so the seeded genome is the
-    // inert evaluator, and generation 1 has to EARN every weight it keeps.
-    EVAL_SPEC['eval_' + k] = [0, 300, false, 0];
-  });
-}
-exports.EVAL_ENABLED = EVAL_ENABLED;
-exports.EVAL_KEYS = Object.keys(EVAL_SPEC);
-
-exports.genomeToEvalWeights = function (g) {
-  var w = {};
-  exports.EVAL_KEYS.forEach(function (k) { w[k.slice(5)] = g[k]; });
-  return w;
-};
-
-var FULL_SPEC = Object.assign({}, WEIGHT_SPEC, STRUCTURAL_SPEC, EVAL_SPEC);
+var FULL_SPEC = Object.assign({}, WEIGHT_SPEC, STRUCTURAL_SPEC);
 exports.WEIGHT_SPEC = FULL_SPEC;
 exports.KEYS = Object.keys(FULL_SPEC);
 
@@ -204,8 +145,6 @@ function applyStructural(genome) {
   };
 }
 
-exports.runOneSeed = function (genome, seed) { return runOneSeed(genome, seed); };
-
 function runOneSeed(genome, seed) {
   var opts = exports.genomeToOpts(genome);
   opts.seed = seed + 55;
@@ -221,15 +160,6 @@ function runOneSeed(genome, seed) {
     return r;
   };
   var restoreStructural = applyStructural(genome);
-  // Attach the from-scratch evaluator for the duration of this seed only,
-  // and restore the shipped scoring in the finally below — so a run with
-  // GC_EVAL_WEIGHTS unset is byte-for-byte the old behaviour, and an A/B
-  // can put both in one process without either contaminating the other.
-  var detachEval = null;
-  if (EVAL_ENABLED) {
-    try { detachEval = evalAttach(PanelCpu.SearchCpu, exports.genomeToEvalWeights(genome)); }
-    catch (e) { return { frames: 0, localMax: 0, unsafe: false, evalError: e.message }; }
-  }
   var f;
   try {
     for (f = 0; f < TRAINING_CEILING; f++) {
@@ -244,7 +174,6 @@ function runOneSeed(genome, seed) {
   } finally {
     PanelCpu.SearchCpu.prototype._choose = origChoose;
     restoreStructural();
-    if (detachEval) detachEval();
   }
   return { frames: f, localMax: localMax, unsafe: localMax > TIMING_MARGIN_MS };
 }

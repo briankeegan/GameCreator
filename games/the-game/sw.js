@@ -8,16 +8,6 @@ GCRegisterServiceWorker("the-game-v108", [
   "./story.js",
   "./panel-engine.js",
   "./panel-cpu.js",
-  // The trained bot, loaded by index.html for the nightmare tier. Every one
-  // of these has to be here: cache six of seven and the app installs, runs,
-  // and throws only when somebody picks nightmare offline.
-  "./ai/eval/features.js",
-  "./ai/eval/registry.js",
-  "./ai/eval/input.js",
-  "./ai/eval/travel.js",
-  "./ai/eval/evaluator.js",
-  "./ai/eval/puyocpu.js",
-  "./ai/trained-weights.js",
   "./duel.js",
   "./difficulty.js",
   "./saves.js",
