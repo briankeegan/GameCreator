@@ -47,7 +47,14 @@ GENS=${GC_GENERATIONS:-100000}      # a backstop, not the stopping rule
 MODE=replace
 LEVEL=${GC_LEVEL:-3}
 BRAIN=${GC_BRAIN:-search}
-TAG="l${LEVEL}-${BRAIN}"
+# THE TAG NAMES THE EXPERIMENT, because two runs that differ by their
+# feature set produce snapshots that are otherwise indistinguishable — same
+# level, same brain, same filename shape, different question. GC_VARIANT is
+# what a caller running one feature at a time passes (see GC_EXCLUDE in
+# train.js); empty for a plain full-registry run, which keeps every existing
+# snapshot name exactly as it was.
+VARIANT=${GC_VARIANT:-}
+TAG="l${LEVEL}-${BRAIN}${VARIANT:+-$VARIANT}"
 RUN_ID=$(date -u +%m%d-%H%M%S)
 
 # THE MARKER: "a search is running and did not choose to stop."

@@ -412,6 +412,61 @@ test('the search is cross-entropy method, the way the reference runs it', functi
         'kick under another name and the weights can never settle');
 });
 
+
+// ------------------------------------------------- one feature at a time
+
+test('GC_EXCLUDE drops a feature from the genome instead of pinning it at zero', function () {
+    // Two features that arrive together cannot be measured together: the
+    // search trades them off from generation 1, so neither weight answers
+    // "what is this one worth". GC_EXCLUDE is how each gets its own run.
+    // Pinning at zero would leave a dead dimension in the search space and
+    // in every reported weight set; dropping it means the run is honestly
+    // smaller.
+    //
+    // Checked against the SOURCE, the way the cross-entropy laws below are,
+    // because the only other way to see KEYS is to start a real run — and
+    // the first draft of this test did exactly that, launched a full
+    // training run inside the test suite, and had to be killed.
+    var code = fs.readFileSync(path.join(DIR, 'train.js'), 'utf8');
+    assert.ok(/KEYS = registry\.keys\.filter\(function \(k\) \{ return EXCLUDE\.indexOf\(k\) < 0; \}\)/.test(code),
+        'KEYS must be registry.keys minus EXCLUDE — a genome dimension that is merely ' +
+        'zeroed is still searched and still reported');
+    assert.ok(/if \(!KEYS\.length\) throw/.test(code),
+        'excluding everything must fail rather than search an empty genome');
+    assert.ok(/EXCLUDE\.length\) console\.log\('excluding '/.test(code),
+        'the run must say out loud which features it left out');
+
+    // And the registry itself must be untouched: GC_EXCLUDE is the
+    // trainer's filter, not a global that would also change the evaluator.
+    var registry = require('./registry.js');
+    process.env.GC_EXCLUDE = 'staircase,flatTop';
+    delete require.cache[require.resolve('./registry.js')];
+    assert.strictEqual(require('./registry.js').keys.length, registry.keys.length);
+    delete process.env.GC_EXCLUDE;
+});
+
+test('GC_EXCLUDE refuses a name that is not a feature', function () {
+    // A typo'd exclusion that is ignored trains the FULL set and reports it
+    // as the reduced one — the same shape of lie as a gate that cannot fail.
+    var threw = false, msg = '';
+    try {
+        cp.execSync('GC_EXCLUDE=stairkase node train.js 1 4 replace 1 score 2>&1',
+            { cwd: DIR, shell: '/bin/bash', stdio: 'pipe' });
+    } catch (e) { threw = true; msg = String(e.stdout || '') + String(e.stderr || ''); }
+    assert.ok(threw, 'a misspelled feature name must stop the run, not be ignored');
+    assert.ok(/is not a feature/.test(msg), 'and must say so: ' + msg.slice(0, 200));
+});
+
+test('a snapshot records which features its run searched', function () {
+    // Two runs that differ only by their feature set produce weight sets
+    // that cannot be told apart from the numbers alone.
+    var code = fs.readFileSync(path.join(DIR, 'train.js'), 'utf8');
+    assert.ok(/features: KEYS\.slice\(\)/.test(code),
+        'the result must carry the feature list it was trained on');
+    assert.ok(/excluded: EXCLUDE\.slice\(\)/.test(code),
+        'and what was deliberately left out');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }

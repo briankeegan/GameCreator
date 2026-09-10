@@ -172,7 +172,33 @@ var stillCount = 0;
 
 // How many of the final generation get that treatment.
 var HOLDOUT_SEEDS = SEEDS.HOLDOUT;
-var KEYS = registry.keys;
+// WHICH FEATURES THIS RUN SEARCHES. Everything in the registry, unless
+// GC_EXCLUDE names some to leave out — a comma list of keys, which are
+// dropped from the genome entirely rather than pinned at zero, so the run
+// searches a smaller space instead of carrying dead dimensions.
+//
+// This exists so two features can be measured SEPARATELY before they are
+// combined. staircase and flatTop arrived together; run them in the same
+// search and neither one's weight answers "what is this worth", because the
+// search can trade them off against each other from the first generation.
+// Two runs, one feature each, then a third with both, is three answers
+// instead of one — and the third is only worth running if either of the
+// first two moved.
+//
+// An unknown key is fatal: a typo'd exclusion would silently train the full
+// set and be reported as the reduced one, which is the same shape of lie as
+// a gate that cannot fail.
+var EXCLUDE = (process.env.GC_EXCLUDE || '').split(',')
+    .map(function (k) { return k.trim(); })
+    .filter(function (k) { return k.length; });
+EXCLUDE.forEach(function (k) {
+    if (!registry.byKey[k]) {
+        throw new Error('GC_EXCLUDE names "' + k + '", which is not a feature — known: ' +
+                        registry.keys.join(', '));
+    }
+});
+var KEYS = registry.keys.filter(function (k) { return EXCLUDE.indexOf(k) < 0; });
+if (!KEYS.length) throw new Error('GC_EXCLUDE excluded every feature; there is nothing to search');
 var MAX_WEIGHT = 300;
 
 // THE SEARCH IS CROSS-ENTROPY METHOD, because that is what the reference
@@ -664,6 +690,11 @@ function report(isFinal, cb) {
             // reads finalsSeeds gets undefined rather than a stale answer.
             selection: 'elite of generation ' + generation + ', by training fitness',
             arena: ARENA === true ? bench.ARENA : ARENA,
+            // WHICH FEATURES THIS RUN SEARCHED. A snapshot that does not
+            // say so is unreadable the moment two runs differ by their
+            // feature set, which is exactly what GC_EXCLUDE is for.
+            features: KEYS.slice(),
+            excluded: EXCLUDE.slice(),
             generations: GENERATIONS,
             population: POPULATION,
             seedPool: SEED_POOL,
@@ -740,6 +771,7 @@ function evaluateBaseline(job, seeds, cb) {
     });
 }
 
+if (EXCLUDE.length) console.log('excluding ' + EXCLUDE.join(', ') + ' from the genome');
 console.log('training ' + KEYS.length + ' weights, brain=' + BRAIN + ', level=' + bench.LEVEL +
             ', objective=' + OBJECTIVE + ', mode=' + MODE +
             ', pop=' + POPULATION + ', gens=' + GENERATIONS + ', ' + WORKERS + ' workers');

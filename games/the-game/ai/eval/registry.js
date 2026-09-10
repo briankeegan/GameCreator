@@ -63,6 +63,12 @@
     // brain ever does decide mid-cascade, the feature is in git history and
     // its implementation is intact in features.js.
 
+    { key: 'staircase',        group: 'board',  sign: +1, fn: null,
+      what: 'Loaded steps: panels that would complete a horizontal three if the cell under them cleared and they fell one row. THE shape Panel de Pon players build on purpose, taken from the game\'s own documented library rather than reasoned out here (paneponattack.com, "How to Set Up a Staircase") — PUYO_REFERENCE.md\'s Tier 2 is explicit that the bot is TOLD chain shapes rather than discovering them. Not chainPotential: that needs a trigger swap to exist right now, this measures whether the board is BUILT.' },
+
+    { key: 'flatTop',          group: 'board',  sign: -1, fn: null,
+      what: 'Columns level with the tallest, scaled by how high the tallest is. The documented way to die — "the overloaded flat-top is the shape that gets intermediate players killed" — and an INTERACTION, which is why it cannot be left to roughness plus maxHeight: a weighted sum adds them, it cannot multiply them. Flat on the floor costs nothing; flat at the ceiling is the death shape.' },
+
     { key: 'links',            group: 'board',  sign: +1, fn: null,
       what: 'Same-coloured panels orthogonally adjacent. meatfighter\'s single biggest term (25%) — the density that makes chains happen without any chain logic.' },
 

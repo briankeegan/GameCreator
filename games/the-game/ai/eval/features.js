@@ -751,10 +751,124 @@ var MOVE_FRAMES = 4;
     return input.earned.garbageCleared || 0;
   }
 
+
+  // -------------------------------------------------------------- staircase
+  //
+  // LOADED STEPS: PANELS THAT COMPLETE A MATCH IF THEY FALL ONE ROW.
+  //
+  // THE SHAPE IS DOCUMENTED, NOT INVENTED, and that is the whole point of
+  // it. PUYO_REFERENCE.md's Tier 2 section says the competitive Puyo bot
+  // "does not discover chain shapes, it is told them" — humans worked the
+  // shapes out over decades and the bot matches against that library. Panel
+  // de Pon has its own, and this is the one every guide teaches:
+  //
+  //   "a diagonal arrangement of matching panels, offset by one column and
+  //    one row at each step, so that clearing the lowest match causes
+  //    falling panels to complete the next match, which in turn feeds the
+  //    one above it"  — paneponattack.com, "How to Set Up a Staircase"
+  //
+  // An earlier draft of this feature was going to be a staircase chosen by
+  // reasoning about which shape survives garbage rain. That is exactly the
+  // rediscovery the reference says not to pay for, and it would have been
+  // MY domain knowledge rather than the game's.
+  //
+  // WHY IT IS NOT chainPotential. chainPotential asks what the best legal
+  // SWAP cascades to, so it needs the trigger to exist right now. This asks
+  // whether the board is BUILT, trigger or no trigger. Measured over 12 real
+  // level-10 games, the trained bot's mean best-available chainPotential was
+  // 1.009 — and chainLength 1 is a plain match — so on a typical board no
+  // swap anywhere produced a cascade at all. A perfectly built staircase
+  // scores 0 on chainPotential until its trigger row happens to be swappable.
+  //
+  // WHAT COUNTS AS A STEP. A settled board has no floating panels, so the
+  // gap the guide describes ("a pair of colour B with a gap directly beneath
+  // it") exists only after the trigger clears. The invariant that survives
+  // on a settled board is that same shape read one row down: a panel that
+  // WOULD complete a horizontal three in the row beneath it if the cell
+  // under it cleared and it fell. Clear underneath, it drops, the match
+  // completes, the chain takes its next link.
+  //
+  // Horizontal only. A fall cannot complete a VERTICAL three, because the
+  // whole column drops together and keeps its spacing — the panels that
+  // would have to close up never move relative to each other.
+  //
+  // Steps, not cells, and the cell below must be occupied by a DIFFERENT
+  // colour: if it already matched, the board would have resolved it, and a
+  // shape that is already a match is not stored potential.
+  function staircase(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+
+    function pair(row, a, b, v) {
+      return a >= 1 && b >= 1 && a <= W && b <= W && grid[row][a] === v && grid[row][b] === v;
+    }
+
+    var steps = 0;
+    for (var r = 2; r <= H; r++) {
+      for (var c = 1; c <= W; c++) {
+        var v = grid[r][c];
+        if (v <= 0) continue;                 // empty, busy (-1) and garbage (-2) are not colours
+        var under = grid[r - 1][c];
+        if (under === 0 || under === v) continue;  // nothing to clear, or already a match
+        // The three ways the falling panel becomes the third of a row: it
+        // lands to the right of a pair, between two, or to the left of a pair.
+        if (pair(r - 1, c - 2, c - 1, v) ||
+            pair(r - 1, c - 1, c + 1, v) ||
+            pair(r - 1, c + 1, c + 2, v)) steps++;
+      }
+    }
+    return steps;
+  }
+
+  // --------------------------------------------------------------- flatTop
+  //
+  // THE DOCUMENTED WAY TO DIE: FLAT, AND HIGH UP.
+  //
+  // The same library names this one as a mistake rather than a shape to
+  // build: "the overloaded flat-top is the shape that gets intermediate
+  // players killed — it looks productive and quietly walks you into the top
+  // line", against which "the flat board is where you live between setups,
+  // not a chaining plan" (paneponattack.com). Flat near the floor is normal;
+  // flat near the ceiling is the death shape.
+  //
+  // WHY IT HAS TO BE ITS OWN FEATURE. Flat is good and low is good, and this
+  // evaluator already pays for both separately — roughness for flat,
+  // maxHeight and fillRatio for low. What kills you is the CONJUNCTION, and
+  // a weighted sum cannot express one: it can add "how flat" to "how high",
+  // never multiply them. That is the limit that removed incomingGarbage (see
+  // registry.js), met from the other side — there the interaction could not
+  // be expressed, so the feature went; here the interaction is put INSIDE
+  // the feature, which is the only place a linear scorer can hold one.
+  //
+  // AND IT IS THE SHAPE OUR OWN BOT BUILDS. Its swaps optimise roughness,
+  // colour clustering and stack height, which is a description of the
+  // overloaded flat-top. Measured over 12 level-10 games: the chain
+  // structure sitting in the random opening board (mean best chain 2.34,
+  // a real chain available in 61% of decisions) was gone by the first third
+  // of the game (0.68, 12%) and never came back. The bot is not failing to
+  // build — it is flattening away structure it starts with.
+  function flatTop(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var heights = [], c, r, tallest = 0;
+    for (c = 1; c <= W; c++) {
+      heights[c] = 0;
+      for (r = H; r >= 1; r--) if (grid[r][c] !== 0) { heights[c] = r; break; }
+      if (heights[c] > tallest) tallest = heights[c];
+    }
+    if (!tallest) return 0;
+    // Within one row counts as level: a single-panel step is the texture of
+    // ordinary play, not a flat top, and demanding exact equality would make
+    // the feature fire almost nowhere.
+    var level = 0;
+    for (c = 1; c <= W; c++) if (tallest - heights[c] <= 1) level++;
+    return level * (tallest / H);
+  }
+
   return {
     SAFE_FRAMES: SAFE_FRAMES,
     matchPotential: matchPotential,
     chainPotential: chainPotential,
+    staircase: staircase,
+    flatTop: flatTop,
     travelCost: travelCost,
     _matchedCellsNear: matchedCellsNear,
     latentChain: latentChain,

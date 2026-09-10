@@ -188,6 +188,30 @@ var REACHABLE = [
         if (plain === null || weighted === null) return 0;
         return plain === weighted ? 0 : 1;
     }],
+    ['staircase', function (cpu) {
+        // One loaded step, through the real seam: clearing whatever sits
+        // under the 2 drops it into row 1 beside the 2,2 pair. Same shape
+        // as the fixture in features.test.js, drawn bottom row first.
+        var b = blank(cpu);
+        var rows = ['11122.', '..2...'];               // bottom row first
+        for (var r = 0; r < rows.length; r++) {
+            for (var c = 1; c <= 6; c++) {
+                var ch = rows[r][c - 1];
+                b.grid[r + 1][c] = ch === '.' ? 0 : Number(ch);
+            }
+        }
+        return b;
+    }],
+    ['flatTop', function (cpu) {
+        // Every column level, high up: the documented death shape. A board
+        // flat on the FLOOR would also be flat and must not be what proves
+        // this reachable, so the fixture is deliberately tall.
+        var b = blank(cpu);
+        for (var r = 1; r <= 6; r++) {
+            for (var c = 1; c <= 6; c++) b.grid[r][c] = ((r + c) % 2) + 1;
+        }
+        return b;
+    }],
     ['chainPotential', function (cpu) {
         // A board that has fired NOTHING and still has a cascade waiting in
         // it — the state this feature exists to see and the only one that

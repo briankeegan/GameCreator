@@ -981,6 +981,116 @@ test('travelCost: weighting it subtracts through the evaluator', function () {
     assert.strictEqual(r.terms.travelCost, -12, 'sign -1 times weight 2 times 6 steps');
 });
 
+
+// ---- staircase ----
+// A panel that would complete a horizontal three if the cell under it
+// cleared and it fell one row. The shape Panel de Pon players build on
+// purpose; see the comment in features.js for where it comes from and why
+// it is not chainPotential.
+function stair(rows) { return F.staircase(inputMod.normalize({ board: board(rows) })); }
+
+test('staircase: FIRES on a loaded step — clear the 1s and the 2 lands on a pair', function () {
+    // Row 1 is 1,1,1,2,2. Clearing the three 1s drops the 2 above column 3
+    // into row 1, making 2,2,2. That is one link of a chain, built.
+    assert.strictEqual(stair(['..2...',
+                              '11122.']), 1);
+});
+
+test('staircase: FIRES landing between a split pair, and to the right of one', function () {
+    assert.strictEqual(stair(['..2...',
+                              '.212..']), 1, 'lands between the two 2s');
+    assert.strictEqual(stair(['...2..',
+                              '.221..']), 1, 'lands to the right of the pair');
+});
+
+test('staircase: STAYS QUIET when the pair below is not adjacent to where it lands', function () {
+    // Same panel, same colours, one column moved — the fall completes
+    // nothing. A feature that counted "a 2 above some 2s" would fire here.
+    assert.strictEqual(stair(['..2...',
+                              '1112.2']), 0);
+});
+
+test('staircase: STAYS QUIET when the panel under it is its own colour', function () {
+    // That is already a match, so the board would have resolved it. A shape
+    // that has already fired is not stored potential.
+    assert.strictEqual(stair(['..2...',
+                              '..222.']), 0);
+});
+
+test('staircase: garbage and busy panels are not colours and never step', function () {
+    assert.strictEqual(stair(['..#...',
+                              '11122.']), 0, 'garbage does not complete a colour match');
+    assert.strictEqual(stair(['..x...',
+                              '11122.']), 0, 'a busy panel has no colour to match with');
+});
+
+test('staircase: a vertical pair below cannot be completed by a fall', function () {
+    // The whole column drops together and keeps its spacing, so nothing
+    // closes up. Only horizontal completions count.
+    assert.strictEqual(stair(['2.....',
+                              '1.....',
+                              '2.....',
+                              '2.....']), 0);
+});
+
+test('staircase: counts every step, so a more built board scores more', function () {
+    var one = stair(['..2...',
+                     '11122.']);
+    // A settled board — every occupied cell has one under it, and there is
+    // no accidental triple anywhere — carrying three separate loaded steps:
+    // the 2 at the top lands right of the 2,2 pair; the 1 in row 3 col 3
+    // lands between the 1s in row 2; the 4 in row 2 col 1 lands left of the
+    // 4,4 pair in row 1. Pinned at 3 rather than asserted as "more" so a
+    // change in what counts as a step shows up here as a number.
+    var built = stair(['..2...',
+                       '311225',
+                       '414161',
+                       '344565']);
+    assert.strictEqual(one, 1);
+    assert.strictEqual(built, 3);
+    assert.ok(built > one);
+});
+
+// ---- flatTop ----
+// Columns level with the tallest, scaled by how high the tallest is. The
+// documented way to die, and an interaction a weighted sum cannot express
+// out of roughness and maxHeight separately.
+function flat(rows) { return F.flatTop(inputMod.normalize({ board: board(rows) })); }
+
+test('flatTop: FIRES on a flat board at the ceiling, quiet on the same board on the floor', function () {
+    var high = flat(['111111',
+                     '111111',
+                     '111111']);
+    var low = flat(['......',
+                    '......',
+                    '111111']);
+    assert.ok(high > low, 'flat at the top must cost more than flat on the floor (' + high + ' vs ' + low + ')');
+});
+
+test('flatTop: STAYS QUIET on a tall board that is NOT flat', function () {
+    // One tower is high and is not a flat top. maxHeight is the feature
+    // that should see this, and roughness the one that sees the shape.
+    var spike = flat(['1.....',
+                      '1.....',
+                      '111111']);
+    var level = flat(['......',
+                      '......',
+                      '111111']);
+    assert.ok(spike < level, 'a spike must not read as a flat top (' + spike + ' vs ' + level + ')');
+});
+
+test('flatTop: an empty board is zero', function () {
+    assert.strictEqual(flat(['......', '......']), 0);
+});
+
+test('flatTop: it is the CONJUNCTION — neither roughness nor maxHeight sees it alone', function () {
+    var high = ['111111', '111111', '111111'];
+    var low = ['......', '......', '111111'];
+    assert.strictEqual(rough(high), rough(low), 'roughness cannot tell these apart');
+    assert.ok(maxH(high) > maxH(low), 'maxHeight sees the height but not the flatness');
+    assert.ok(flat(high) > flat(low), 'flatTop sees both, which is why it exists');
+});
+
 // ------------------------------------------------------------------ runner
 tests.forEach(function (t) {
     try { t.fn(); process.stdout.write('  ok   ' + t.name + '\n'); }
