@@ -527,6 +527,54 @@ test('the workflow runs one experiment per concurrency group, not one in total',
         'each other');
 });
 
+test('the worker forwards EVERY option train.js sends, not a hand-written list', function () {
+    // THE BUG THIS EXISTS FOR. train_worker.js rebuilt the options object
+    // field by field, so every option added to train.js after that line was
+    // written stopped dead there. depth and beam were added for the
+    // lookahead experiment, recorded faithfully in every snapshot, and never
+    // reached the bot: three "depth 2" runs were greedy runs wearing a
+    // depth-2 label. They were caught only because they matched their
+    // depth-1 controls to the digit — noise does not repeat to the last
+    // digit — and not by anything that was watching.
+    var code = fs.readFileSync(path.join(DIR, 'train_worker.js'), 'utf8');
+    assert.ok(/Object\.keys\(job\)\.forEach/.test(code),
+        'the worker is rebuilding its options object by hand again, so every option ' +
+        'added to train.js after that line will silently stop there');
+    assert.ok(!/mode: job\.mode, checkTiming: job\.checkTiming/.test(code),
+        'the hand-written key list is back');
+    // And the list train.js SENDS must be the list it means to send — if a
+    // new option is added to the search and not to the job, the forward
+    // above cannot save it.
+    var train = fs.readFileSync(path.join(DIR, 'train.js'), 'utf8');
+    assert.ok(/depth: DEPTH, beam: BEAM/.test(train),
+        'train.js no longer sends depth/beam with the job');
+});
+
+test('depth REACHES THE BOT, end to end through bench', function () {
+    // The source check above covers train.js -> worker. This covers
+    // worker -> bench -> PuyoCpu, which is the half that was broken, and it
+    // does it by playing: the same weights and the same seed at depth 1 and
+    // depth 2 must produce DIFFERENT games. If they match, the option is
+    // being dropped somewhere in that chain and every lookahead result is a
+    // greedy result wearing a label.
+    //
+    // Deliberately not a source check. The defect was invisible in the
+    // source too — a list of six plausible fields looks exactly like a
+    // complete one.
+    process.env.GC_LEVEL = '10';
+    var bench = require('./bench.js');
+    var W = { matchPotential: 229, chainPotential: 258, colourVariance: 168,
+              maxHeight: 136, roughness: 294, garbageSent: 107, travelCost: 10 };
+    var one = bench.run(W, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
+                                checkTiming: false, depth: 1 });
+    var two = bench.run(W, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
+                                checkTiming: false, depth: 2, beam: 3 });
+    assert.notStrictEqual(one.frames + ':' + one.score, two.frames + ':' + two.score,
+        'depth 1 and depth 2 played an IDENTICAL game (' + one.frames + ' frames, ' +
+        one.score + ' points) on the same seed and weights — the depth option is not ' +
+        'reaching the bot, so every lookahead run is a greedy run with a label on it');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
