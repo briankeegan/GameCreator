@@ -44,12 +44,47 @@ var evaluator = require('./evaluator.js');
 require(path.join(__dirname, '..', 'trained-weights.js'));
 
 var root = typeof window !== 'undefined' ? window : globalThis;
-var weights = root.PanelEval.trained.weights;
+// WHICH WEIGHTS. Shipped by default; GC_WEIGHTS=<snapshot.json> points it at
+// a run's output, which is the whole reason this is a tool and not a probe:
+// "did that search produce a bot that actually plays?" is one command.
+var weights = root.PanelEval.trained.weights, source = 'shipped';
+if (process.env.GC_WEIGHTS) {
+    var snap = JSON.parse(require('fs').readFileSync(process.env.GC_WEIGHTS, 'utf8'));
+    weights = snap.weights || (snap.elite && snap.elite.weights);
+    if (!weights) throw new Error(process.env.GC_WEIGHTS + ' has no weights in it');
+    source = process.env.GC_WEIGHTS + (snap.rise ? '  [rise ON]' : '  [rise off]') +
+             (snap.depth > 1 ? '  [depth ' + snap.depth + ']' : '');
+}
+var RISE = process.env.GC_RISE === '1' || process.env.GC_RISE === 'true';
 var argv = process.argv.slice(2);
 var scenario = argv[0] || 'endless';
 var seeds = argv.length > 1 ? argv.slice(1).map(Number) : [1, 2, 3];
 
 var forced = 0, chosen = 0, swapped = 0, gapSum = 0, contrib = {};
+
+// DID IT BREAK ANYTHING? Holds say what it refused to do; this says what it
+// actually did. The engine pays for a combo of 4+ (20 points) and for chain
+// links (50 at x2, 300 at x5, 1100 at x10) and pays NOTHING AT ALL for a
+// bare 3 — which is 54 of the shipped bot's 67 matches. So a bot can look
+// busy, clear panels all game, and earn nothing: flattening with extra
+// steps. These four lines are the difference between a bot that tidies and
+// a bot that plays.
+var matches = 0, sending = 0, chainLinks = 0, bySize = {}, deepest = 0;
+var PanelEngine = root.PanelEngine;
+var origDrain = PanelEngine.Stack.prototype.drainEvents;
+PanelEngine.Stack.prototype.drainEvents = function () {
+    var evs = origDrain.call(this);
+    for (var i = 0; i < evs.length; i++) {
+        var e = evs[i];
+        if (e.type !== 'match') continue;
+        matches++;
+        bySize[e.size] = (bySize[e.size] || 0) + 1;
+        if (e.chain) chainLinks++;
+        if (e.chainCounter > deepest) deepest = e.chainCounter;
+        if (e.chain || e.size > 3) sending++;
+    }
+    return evs;
+};
 
 // evaluate() is the only place the per-feature terms exist, so borrow them
 // on the way past rather than recomputing a second, drifting copy.
@@ -88,10 +123,25 @@ PuyoCpu.prototype._decide = function () {
     return d;
 };
 
+console.log('weights:', source, '| rise', RISE ? 'ON' : 'off', '\n');
+var totalFrames = 0;
 seeds.forEach(function (seed) {
-    var r = bench.run(weights, seed, { brain: 'puyo', scenario: scenario, checkTiming: false });
-    console.log(scenario, 'seed', seed, '| frames', r.frames, 'sent', r.sent);
+    var r = bench.run(weights, seed, { brain: 'puyo', scenario: scenario,
+                                       checkTiming: false, rise: RISE });
+    totalFrames += r.frames;
+    console.log(scenario, 'seed', seed, '| frames', r.frames, 'sent', r.sent,
+                'score', r.score);
 });
+
+console.log('\nWHAT IT BROKE');
+console.log('  matches', matches,
+            '| ones that SEND or SCORE anything:', sending,
+            matches ? '(' + (sending / matches * 100).toFixed(1) + '%)' : '',
+            '| chain links', chainLinks, '| deepest chain', deepest);
+console.log('  by combo size:', JSON.stringify(bySize));
+var minutes = totalFrames / 60 / 60;
+console.log('  per minute of play:', (matches / minutes).toFixed(1), 'matches,',
+            (sending / minutes).toFixed(1), 'that pay');
 
 var total = forced + chosen + swapped;
 console.log('\ndecisions', total, '| swap', swapped,
