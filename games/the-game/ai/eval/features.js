@@ -539,6 +539,28 @@ var MOVE_FRAMES = 4;
     return scarce;
   }
 
+  // --------------------------------------------------------- scoreEarned
+  //
+  // WHAT THIS MOVE EARNED, IN THE POINTS THE SEARCH IS JUDGED ON.
+  //
+  // Every other earned feature measures a proxy. garbageSent counts cells,
+  // chainLength counts links, and the run's fitness is `score` — so the bot
+  // was being graded in a currency it could not see. The proxies do not
+  // even rank the same way: against a 4-combo, a 5-chain is 8x in garbage
+  // cells and 15x in points.
+  //
+  // The tables are NOT restated here. PanelEngine.moveScore owns them, and
+  // owns the chain-counter quirk that makes the first link of a cascade
+  // earn only its combo bonus (Stack:incrementChainCounter goes 0 -> 2,
+  // never 1). A bare 3 is worth 0, which is the fact this feature exists to
+  // put in front of the search: 54 of the shipped bot's 67 matches across
+  // three games earned nothing at all.
+  function scoreEarned(input) {
+    var engine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
+    if (!engine || !engine.moveScore) return 0;
+    return engine.moveScore(input.earned.comboSizes);
+  }
+
   // ---------------------------------------------------------- garbageSent
   //
   // THE ATTACK THIS MOVE LAUNCHED, IN CELLS.
@@ -963,6 +985,7 @@ var MOVE_FRAMES = 4;
     latentChain: latentChain,
     garbageCleared: garbageCleared,
     framesToDeath: framesToDeath,
+    scoreEarned: scoreEarned,
     garbageSent: garbageSent,
     chainLength: chainLength,
     garbageOnBoard: garbageOnBoard,

@@ -65,16 +65,56 @@
   // change any existing result until somebody deliberately weights it, so
   // "this commit provably changes nothing" is checkable rather than
   // asserted.
-  function evaluate(raw, weights) {
+  // DENSITY MODE: A COUNT THAT SHRINKS BECAUSE THE BOARD DID IS NOT A
+  // JUDGEMENT ABOUT THE BOARD.
+  //
+  // Some features COUNT things that are made of panels — adjacent same-
+  // colour pairs, panels against a side wall. Clearing removes panels, so
+  // those counts fall whatever shape the board is left in, and the fall is
+  // charged against the move as if the board had got worse. Measured over
+  // three real level-10 games, on a swap clearing 7+ panels:
+  //
+  //     links          -4.66   (-0.639 per panel removed)
+  //     garbageSent    +7.31   (+1.004 per panel removed)
+  //
+  // Near-identical per-panel slopes in opposite directions, so roughly a
+  // third of the reward for a big clear was cancelled by arithmetic before
+  // anything about the resulting board was weighed. roughness was NOT part
+  // of this — it punishes small clears and is exactly 0.00 on large ones,
+  // which is why it is left alone: it is measuring real shape.
+  //
+  // Dividing those counts by the panels they are counted over makes them
+  // densities, so a board half the size can be exactly as tidy. Which
+  // features are counts is declared in the registry (`perPanel`), not
+  // decided here.
+  //
+  // OFF BY DEFAULT, like rise and depth: it rescales every affected
+  // feature, so weights found without it stop meaning the same thing.
+  function panelCount(input) {
+    var board = input.board, n = 0, r, c;
+    if (!board || !board.grid) return 0;
+    for (r = 1; r <= board.height; r++) {
+      for (c = 1; c <= board.width; c++) if (board.grid[r][c] > 0) n++;
+    }
+    return n;
+  }
+
+  function evaluate(raw, weights, opts) {
     weights = weights || {};
     validate(weights);
     var input = inputMod.normalize(raw);
+    var density = !!(opts && opts.density);
+    var panels = density ? panelCount(input) : 0;
     var features = {}, terms = {}, score = 0;
     for (var i = 0; i < registry.all.length; i++) {
       var f = registry.all[i];
       var w = weights[f.key];
       if (!w) continue;
       var v = f.fn(input);
+      // An empty board has nothing to be a density OF; leave the raw count
+      // (which is 0 for every perPanel feature anyway) rather than dividing
+      // by zero and handing the search a NaN it would silently propagate.
+      if (density && f.perPanel && panels > 0) v = v / panels;
       features[f.key] = v;
       var term = f.sign * w * v;
       terms[f.key] = term;

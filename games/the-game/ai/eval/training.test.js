@@ -503,7 +503,8 @@ test('the training workflow exposes exclude, variant and ga_seed, and wires each
     // recorded it on every snapshot, while the workflow offered no way to
     // set it. A knob is not wired until it is wired end to end.
     [['exclude', 'GC_EXCLUDE'], ['variant', 'GC_VARIANT'], ['ga_seed', 'GC_GA_SEED'],
-     ['depth', 'GC_DEPTH'], ['beam', 'GC_BEAM'], ['rise', 'GC_RISE']]
+     ['depth', 'GC_DEPTH'], ['beam', 'GC_BEAM'], ['rise', 'GC_RISE'],
+     ['density', 'GC_DENSITY']]
         .forEach(function (pair) {
             var input = pair[0], env = pair[1];
             assert.ok(new RegExp('^\\s+' + input + ':', 'm').test(wf),
@@ -520,6 +521,7 @@ test('the training workflow exposes exclude, variant and ga_seed, and wires each
     assert.ok(/Number\(process\.env\.GC_DEPTH \|\| 1\)/.test(train));
     assert.ok(/Number\(process\.env\.GC_BEAM \|\| \d+\)/.test(train));
     assert.ok(/process\.env\.GC_RISE === '1'/.test(train));
+    assert.ok(/process\.env\.GC_DENSITY === '1'/.test(train));
     var crank = fs.readFileSync(path.join(DIR, 'crank.sh'), 'utf8');
     assert.ok(/VARIANT=\$\{GC_VARIANT:-\}/.test(crank));
 });

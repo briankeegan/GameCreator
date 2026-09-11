@@ -90,8 +90,12 @@ PanelEngine.Stack.prototype.drainEvents = function () {
 // on the way past rather than recomputing a second, drifting copy.
 var lastParts = null;
 var origEval = evaluator.evaluate;
-evaluator.evaluate = function (input, w) {
-    var r = origEval.call(this, input, w);
+evaluator.evaluate = function (input, w, opts) {
+    // FORWARD EVERY ARGUMENT. Dropping the third one here made a density
+    // sweep report identical numbers with the option on and off — the same
+    // hand-written-argument-list bug as bench.js's dropped depth and rise,
+    // this time inside the instrument measuring it.
+    var r = origEval.call(this, input, w, opts);
     lastParts = r.parts || r.terms || null;
     return r;
 };

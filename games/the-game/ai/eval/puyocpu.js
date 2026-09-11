@@ -77,6 +77,10 @@
     // off keeps identity.golden.json and the shipped Nightmare bot exactly
     // as they are until weights trained WITH it exist to replace them.
     this.rise = opts.rise === true;
+    // DENSITY SCORING, also off by default — see evaluator.js. Counts that
+    // are made of panels (links, edgePenalty) become densities, so clearing
+    // stops subtracting tidiness it never actually lost.
+    this.density = opts.density === true;
     // Same as SearchCpu's nightmare preset, so a comparison between the
     // two is about the SCORING and not about which one acts more often.
     // Every frame of it is real: the bot does nothing while it counts down.
@@ -185,7 +189,7 @@
     }
     var input = inputMod.fromStack(stack, board, resolved, null, cleared);
     input.travelFrames = frames;
-    return evaluator.evaluate(input, this.weights).score;
+    return evaluator.evaluate(input, this.weights, { density: this.density }).score;
   };
 
 
