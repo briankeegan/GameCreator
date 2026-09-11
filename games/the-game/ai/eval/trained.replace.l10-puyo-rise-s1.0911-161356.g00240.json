@@ -1,0 +1,203 @@
+{
+  "mode": "replace",
+  "objective": "score",
+  "brain": "puyo",
+  "level": 10,
+  "selection": "elite of generation 240, by training fitness",
+  "arena": [
+    "comboStorm",
+    "factory",
+    "bigBlocks",
+    "endless"
+  ],
+  "depth": 1,
+  "beam": 6,
+  "rise": true,
+  "features": [
+    "matchPotential",
+    "chainPotential",
+    "comboPotential",
+    "staircase",
+    "flatTop",
+    "links",
+    "colourVariance",
+    "edgePenalty",
+    "garbageOnBoard",
+    "maxHeight",
+    "fillRatio",
+    "roughness",
+    "garbageAdjacency",
+    "colourScarcity",
+    "garbageSent",
+    "chainLength",
+    "garbageCleared",
+    "travelCost"
+  ],
+  "excluded": [],
+  "generations": 100000,
+  "population": 100,
+  "seedPool": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40
+  ],
+  "seedsPerGeneration": 1,
+  "holdoutSeeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112
+  ],
+  "trainFitness": 6790,
+  "holdout": {
+    "learned": {
+      "fitness": 2027.5,
+      "objective": "score",
+      "arena": [
+        "comboStorm",
+        "factory",
+        "bigBlocks",
+        "endless"
+      ],
+      "perCategory": {
+        "comboStorm": {
+          "raw": 417.5,
+          "avgFrames": 694.1666666666666,
+          "avgSent": 10.916666666666666,
+          "deathRate": 1
+        },
+        "factory": {
+          "raw": 153.33333333333334,
+          "avgFrames": 416.5833333333333,
+          "avgSent": 3.75,
+          "deathRate": 1
+        },
+        "bigBlocks": {
+          "raw": 137.5,
+          "avgFrames": 404.0833333333333,
+          "avgSent": 3.75,
+          "deathRate": 1
+        },
+        "endless": {
+          "raw": 1319.1666666666667,
+          "avgFrames": 2517.8333333333335,
+          "avgSent": 41.5,
+          "deathRate": 1
+        }
+      },
+      "avgFrames": 1008.1666666666667,
+      "avgSent": 14.979166666666666,
+      "deathRate": 1
+    },
+    "shipped": {
+      "fitness": 679.1666666666666,
+      "objective": "score",
+      "arena": [
+        "comboStorm",
+        "factory",
+        "bigBlocks",
+        "endless"
+      ],
+      "perCategory": {
+        "comboStorm": {
+          "raw": 49.166666666666664,
+          "avgFrames": 284.5,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "factory": {
+          "raw": 27.5,
+          "avgFrames": 265.25,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "bigBlocks": {
+          "raw": 40,
+          "avgFrames": 289.75,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "endless": {
+          "raw": 562.5,
+          "avgFrames": 1509.75,
+          "avgSent": 12.5,
+          "deathRate": 1
+        }
+      },
+      "avgFrames": 587.3125,
+      "avgSent": 3.125,
+      "deathRate": 1
+    }
+  },
+  "improvementPct": 198.52760736196322,
+  "weights": {
+    "matchPotential": 200.86595929141367,
+    "chainPotential": 232.93548966316152,
+    "comboPotential": 55.40804236061766,
+    "staircase": 54.663501288361395,
+    "flatTop": 52.36480774832957,
+    "links": 30.056434879525185,
+    "colourVariance": 227.42948169953425,
+    "edgePenalty": 112.99127762137054,
+    "garbageOnBoard": 50.46342913843556,
+    "maxHeight": 129.91846620195452,
+    "fillRatio": 97.50053331396055,
+    "roughness": 24.070594780921816,
+    "garbageAdjacency": 47.688224633381765,
+    "colourScarcity": 88.11613976575734,
+    "garbageSent": 144.0273949958048,
+    "chainLength": 44.22136983991609,
+    "garbageCleared": 87.55368945220147,
+    "travelCost": 5.11641869839216
+  },
+  "lostCategories": [],
+  "timing": {
+    "worstMs": 10,
+    "unsafeSeeds": 0
+  }
+}
