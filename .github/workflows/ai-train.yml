@@ -48,6 +48,19 @@ on:
       ga_seed:
         description: 'Search RNG seed. CHANGE IT to get an independent run of the same config'
         default: ''
+      # LOOKAHEAD WAS DISPATCHABLE IN train.js AND NOWHERE ELSE.
+      # GC_DEPTH/GC_BEAM existed, were fingerprinted into the checkpoint and
+      # recorded on every snapshot — and the workflow offered no way to set
+      # them, so every run dispatched as "depth 2" ran greedy. That was the
+      # second half of the same bug as the worker's dropped options: a knob
+      # is not wired until it is wired END TO END, from the button a person
+      # presses to the bot that plays the move.
+      depth:
+        description: 'Lookahead plies. 1 = greedy (every run before this one)'
+        default: ''
+      beam:
+        description: 'Candidates expanded per ply when depth > 1'
+        default: ''
 
 # THE SCHEDULE IS OFF WHILE FEATURES ARE BEING MEASURED ONE AT A TIME.
 #
@@ -171,6 +184,11 @@ jobs:
           # Blank keeps the historical default, so every earlier run stays
           # comparable.
           GC_GA_SEED: ${{ github.event.inputs.ga_seed || '' }}
+          # Read by train.js. Blank means depth 1 / the default beam, so a run
+          # that sets nothing behaves exactly like every run before these
+          # inputs existed.
+          GC_DEPTH: ${{ github.event.inputs.depth || '' }}
+          GC_BEAM: ${{ github.event.inputs.beam || '' }}
         run: |
           # 340 minutes from now, ten under the job timeout: train.js stops
           # itself with room to commit, so the runner never kills it holding

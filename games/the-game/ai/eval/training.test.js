@@ -498,7 +498,12 @@ test('the training workflow exposes exclude, variant and ga_seed, and wires each
     // before it was an input at all. Both halves are checked.
     var wf = fs.readFileSync(path.join(DIR, '..', '..', '..', '..',
                                        '.github', 'workflows', 'ai-train.yml'), 'utf8');
-    [['exclude', 'GC_EXCLUDE'], ['variant', 'GC_VARIANT'], ['ga_seed', 'GC_GA_SEED']]
+    // depth/beam are here because they were the half of the lookahead bug
+    // nobody looked for: train.js read GC_DEPTH, fingerprinted it, and
+    // recorded it on every snapshot, while the workflow offered no way to
+    // set it. A knob is not wired until it is wired end to end.
+    [['exclude', 'GC_EXCLUDE'], ['variant', 'GC_VARIANT'], ['ga_seed', 'GC_GA_SEED'],
+     ['depth', 'GC_DEPTH'], ['beam', 'GC_BEAM']]
         .forEach(function (pair) {
             var input = pair[0], env = pair[1];
             assert.ok(new RegExp('^\\s+' + input + ':', 'm').test(wf),
@@ -512,6 +517,8 @@ test('the training workflow exposes exclude, variant and ga_seed, and wires each
     var train = fs.readFileSync(path.join(DIR, 'train.js'), 'utf8');
     assert.ok(/process\.env\.GC_EXCLUDE \|\| ''/.test(train));
     assert.ok(/process\.env\.GC_GA_SEED \|\| \d+/.test(train));
+    assert.ok(/Number\(process\.env\.GC_DEPTH \|\| 1\)/.test(train));
+    assert.ok(/Number\(process\.env\.GC_BEAM \|\| \d+\)/.test(train));
     var crank = fs.readFileSync(path.join(DIR, 'crank.sh'), 'utf8');
     assert.ok(/VARIANT=\$\{GC_VARIANT:-\}/.test(crank));
 });
