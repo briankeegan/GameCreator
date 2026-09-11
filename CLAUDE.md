@@ -541,6 +541,17 @@ design discussion. `shared/` holds the components every game reuses
   on a branch is invisible to the person who asked for it. A merge conflict
   is not a reason to stop and ask either: resolve it and say in the commit
   message which side won and why.
+- **THE PUSH TO `main` NOW REFUSES ITSELF IF `gate_all` FAILS.**
+  `.claude/hooks/guard-main-push.sh`, registered as a PreToolUse hook, runs
+  the gates on any `git push` naming `main` and blocks on a non-zero exit.
+  Branch pushes are untouched, since that is where the iterating happens and
+  gating them would make the hook something to disable. `GC_SKIP_GATES=1`
+  is the way out — it prints a loud line naming what was skipped, so it
+  cannot pass for a clean push. Both directions are tested
+  (`guard-main-push.test.sh`, 8 checks against a stub `gate_all`): a hook
+  that never blocks reads exactly like a repo that is always green.
+  It exists because the rule below was already written down, was known, and
+  was followed wrongly anyway.
 - **RUN `gate_all` BEFORE PUSHING TO `main`, NOT AFTER.** One line —
   `source .github/scripts/gates.sh && gate_all` — and it is the same
   function `pages.yml` runs step by step and the autopilot runs pre-flight.
