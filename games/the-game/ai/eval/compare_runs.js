@@ -103,34 +103,78 @@ Object.keys(byCond).sort().forEach(function (c) {
 // at a different depth or population needs its OWN matched baseline before
 // it can be judged, which is why those carry a distinct condition name and
 // will report NOT MEASURED until one exists.
-var base = byCond.baseline || [];
-console.log('');
-if (base.length < 2) {
-    console.log('NO VERDICT. The baseline has been run ' + base.length + ' time' +
-        (base.length === 1 ? '' : 's') + ', so the search\'s own spread is unmeasured and');
-    console.log('no gap between conditions can be told from luck. Run the baseline at');
-    console.log('two or more GC_GA_SEED values before comparing anything.');
-    process.exit(0);
+// EVERY CONDITION IS JUDGED AGAINST A CONTROL THAT DIFFERS IN EXACTLY ONE
+// THING, and which thing depends on what is being tested.
+//
+// Two earlier versions of this got it wrong in opposite directions. The
+// first compared everything to the plain depth-1 population-200 baseline,
+// so a depth-2 run at population 100 was measured against a greedy run at
+// population 200 and the verdict mixed three differences into one number.
+// The second defined a control as "same features, same population, depth 1"
+// for everything, which is right for a depth test and makes a FEATURE test
+// its own control — so the feature conditions silently stopped being judged
+// at all, which looks identical to having no opinion about them.
+//
+// So: what is being tested decides the control.
+//   depth > 1        -> the same features and population at DEPTH 1
+//   extra features   -> the same depth and population with NO shape features
+//   neither          -> it is a control; nothing to say about it
+//
+// Population defaults to 200 and depth to 1 for snapshots written before
+// those fields existed, which is what those runs were.
+function shapeKey(r) { return SHAPES.filter(function (k) { return r.features.indexOf(k) >= 0; }).sort().join(','); }
+function popOf(r) { return r.population || 200; }
+function depthOf(r) { return r.depth || 1; }
+
+function controlFor(runs) {
+    var probe = runs[0], want, testing;
+    if (depthOf(probe) > 1) {
+        testing = 'lookahead';
+        want = function (r) {
+            return depthOf(r) === 1 && popOf(r) === popOf(probe) && shapeKey(r) === shapeKey(probe);
+        };
+    } else if (shapeKey(probe)) {
+        testing = 'features';
+        want = function (r) {
+            return depthOf(r) === 1 && popOf(r) === popOf(probe) && shapeKey(r) === '';
+        };
+    } else {
+        return null;                       // this IS a control
+    }
+    var out = [];
+    Object.keys(byCond).forEach(function (other) {
+        byCond[other].forEach(function (r) { if (want(r)) out.push(r); });
+    });
+    return { runs: out, testing: testing };
 }
 
-var bs = stats(base.map(function (r) { return r.held; }));
-var floor = bs.spread;
-console.log('NOISE FLOOR: ' + base.length + ' baseline runs differing only by seed span ' +
-    Math.round(floor) + ' points (' + Math.round(bs.lo) + '-' + Math.round(bs.hi) + ').');
-console.log('A condition counts as different only if its whole range clears that.\n');
+function stat(runs) { return stats(runs.map(function (r) { return r.held; })); }
 
+console.log('');
+var judged = 0;
 Object.keys(byCond).sort().forEach(function (c) {
-    if (c === 'baseline') return;
-    var s = stats(byCond[c].map(function (r) { return r.held; }));
-    var verdict;
-    if (s.n < 2) {
-        verdict = 'NOT MEASURED — one run only, needs ' + base.length + ' like the baseline';
-    } else if (s.lo > bs.hi) {
-        verdict = 'BETTER — its worst run beats the baseline\'s best';
-    } else if (s.hi < bs.lo) {
-        verdict = 'WORSE — its best run loses to the baseline\'s worst';
-    } else {
-        verdict = 'NO EFFECT — overlaps the baseline\'s own spread';
+    var runs = byCond[c];
+    var control = controlFor(runs);
+    if (!control) return;
+    judged++;
+    var label = (c.length > 44 ? c.slice(0, 41) + '...' : c);
+    if (control.runs.length < 2) {
+        console.log('  ' + label.padEnd(46) + 'NOT MEASURED — its ' + control.testing +
+            ' control has ' + control.runs.length + ' run' +
+            (control.runs.length === 1 ? '' : 's') + ', needs 2+ for a floor');
+        return;
     }
-    console.log('  ' + c.padEnd(18) + verdict);
+    if (runs.length < 2) {
+        console.log('  ' + label.padEnd(46) + 'NOT MEASURED — ' + runs.length + ' run only');
+        return;
+    }
+    var a = stat(runs), b = stat(control.runs);
+    var span = '(control ' + Math.round(b.lo) + '-' + Math.round(b.hi) +
+               ', ' + control.runs.length + ' runs)';
+    var verdict;
+    if (a.lo > b.hi) verdict = 'BETTER — its worst run beats the control\'s best ' + span;
+    else if (a.hi < b.lo) verdict = 'WORSE — its best run loses to the control\'s worst ' + span;
+    else verdict = 'NO EFFECT — overlaps the control ' + span;
+    console.log('  ' + label.padEnd(46) + verdict);
 });
+if (!judged) console.log('  nothing to judge yet — every condition is a control');
