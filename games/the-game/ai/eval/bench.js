@@ -320,7 +320,10 @@ exports.run = function (weights, seed, opts) {
             beam: opts.beam || 6,
             // Rise-adjusted scoring. Absent means off, which is the bot
             // every existing result describes.
-            rise: opts.rise === true
+            rise: opts.rise === true,
+            // Density scoring. Absent means raw counts, the bot every
+            // existing result describes.
+            density: opts.density === true
         });
     } else {
         cpu = new PanelCpu.SearchCpu(stack, {

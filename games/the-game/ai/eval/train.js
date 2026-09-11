@@ -199,6 +199,7 @@ var HOLDOUT_SEEDS = SEEDS.HOLDOUT;
 var DEPTH = Number(process.env.GC_DEPTH || 1);
 var BEAM = Number(process.env.GC_BEAM || 6);
 var RISE = process.env.GC_RISE === '1' || process.env.GC_RISE === 'true';
+var DENSITY = process.env.GC_DENSITY === '1' || process.env.GC_DENSITY === 'true';
 
 // RISE-ADJUSTED SCORING, the other thing that makes these weights describe
 // a different bot. Off, a candidate is judged at the instant its match
@@ -338,7 +339,7 @@ function pump() {
         pool[i].busy = true;
         pool[i].child.send({ id: job.id, weights: job.weights, seeds: job.seeds,
                              mode: MODE, checkTiming: false,
-                             depth: DEPTH, beam: BEAM, rise: RISE,
+                             depth: DEPTH, beam: BEAM, rise: RISE, density: DENSITY,
                              scenario: job.scenario, arena: job.arena,
                              objective: OBJECTIVE, brain: BRAIN });
     }
@@ -423,7 +424,7 @@ function fingerprint() {
     // this search would be continuing somebody else's run.
     return ['cem', ELITE_FRACTION, GENERATIONS, POPULATION, MODE, BRAIN, TRAINED_BRAIN,
             process.env.GC_LEVEL || '', process.env.GC_GA_SEED || '',
-            String(DEPTH), String(BEAM), RISE ? 'rise' : '',
+            String(DEPTH), String(BEAM), RISE ? 'rise' : '', DENSITY ? 'density' : '',
             SEEDS_PER_GENERATION, KEYS.join(',')].join('|');
 }
 function saveCheckpoint() {
@@ -725,6 +726,7 @@ function report(isFinal, cb) {
             depth: DEPTH,
             beam: BEAM,
             rise: RISE,
+            density: DENSITY,
             features: KEYS.slice(),
             excluded: EXCLUDE.slice(),
             generations: GENERATIONS,
@@ -806,6 +808,7 @@ function evaluateBaseline(job, seeds, cb) {
 if (EXCLUDE.length) console.log('excluding ' + EXCLUDE.join(', ') + ' from the genome');
 if (DEPTH > 1) console.log('lookahead: depth ' + DEPTH + ', beam ' + BEAM);
 if (RISE) console.log('rise-adjusted scoring: ON');
+if (DENSITY) console.log('density scoring: ON (counts made of panels become densities)');
 console.log('training ' + KEYS.length + ' weights, brain=' + BRAIN + ', level=' + bench.LEVEL +
             ', objective=' + OBJECTIVE + ', mode=' + MODE +
             ', pop=' + POPULATION + ', gens=' + GENERATIONS + ', ' + WORKERS + ' workers');

@@ -94,6 +94,35 @@
   var COMBO_GARBAGE = { 4: [3], 5: [4], 6: [5], 7: [6], 8: [3, 4], 9: [4, 4],
     10: [5, 5], 11: [5, 6], 12: [6, 6], 13: [6, 6, 6], 14: [6, 6, 6, 6],
     20: [6, 6, 6, 6, 6, 6], 27: [6, 6, 6, 6, 6, 6, 6, 6] };
+  // WHAT A RESOLVED CASCADE IS WORTH IN THE GAME'S OWN POINTS.
+  //
+  // The evaluator needs this and must not restate the tables: the search is
+  // trained against `objective: score`, so a feature that prices a move in
+  // anything BUT these numbers is measuring a different currency from the
+  // one it is being judged in. garbage cells were that other currency — they
+  // rank a 5-chain at 8x a 4-combo where the score says 15x.
+  //
+  // comboSizes is LogicalBoard.resolve()'s output: one entry per link, the
+  // cells cleared in that link. The chain counter follows the engine's own
+  // rule (Stack:incrementChainCounter) — it is 0 for the match that STARTS
+  // a cascade and jumps to 2 for the first link, never 1 — so the first
+  // entry earns only its combo bonus and every later one also earns a chain
+  // bonus. A bare 3 earns nothing at all under either table, which is the
+  // single most important thing this function says out loud.
+  function moveScore(comboSizes) {
+    if (!comboSizes || !comboSizes.length) return 0;
+    var total = 0;
+    for (var i = 0; i < comboSizes.length; i++) {
+      var size = comboSizes[i];
+      if (size > 3) total += SCORE_COMBO_TA[Math.min(30, size)];
+      if (i > 0) {
+        var counter = i + 1;               // link 1 -> x2, link 2 -> x3, ...
+        total += (counter > 13) ? 0 : SCORE_CHAIN_TA[counter];
+      }
+    }
+    return total;
+  }
+
   function comboGarbage(size) {
     for (var i = Math.min(size, 27); i >= 4; i--) {
       if (COMBO_GARBAGE[i]) return COMBO_GARBAGE[i];
@@ -1645,6 +1674,7 @@
     GARBAGE_FLIGHT: GARBAGE_FLIGHT,
     COUNTDOWN_TOTAL: COUNTDOWN_TOTAL,
     comboGarbage: comboGarbage,
+    moveScore: moveScore,
     riseTime: riseTime,
     makeRng: makeRng
   };

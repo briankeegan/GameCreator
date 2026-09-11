@@ -72,13 +72,13 @@
     { key: 'flatTop',          group: 'board',  sign: -1, fn: null,
       what: 'Columns level with the tallest, scaled by how high the tallest is. The documented way to die — "the overloaded flat-top is the shape that gets intermediate players killed" — and an INTERACTION, which is why it cannot be left to roughness plus maxHeight: a weighted sum adds them, it cannot multiply them. Flat on the floor costs nothing; flat at the ceiling is the death shape.' },
 
-    { key: 'links',            group: 'board',  sign: +1, fn: null,
-      what: 'Same-coloured panels orthogonally adjacent. meatfighter\'s single biggest term (25%) — the density that makes chains happen without any chain logic.' },
+    { key: 'links',            group: 'board',  sign: +1, fn: null, perPanel: true,
+      what: 'Same-coloured panels orthogonally adjacent. meatfighter\'s single biggest term (25%) — the density that makes chains happen without any chain logic. perPanel: it is a COUNT OF PANELS, so it falls whenever a move clears, whatever shape the board is left in — measured at -0.639 per panel removed against garbageSent\'s +1.004, which cancelled a third of the reward for a big clear by arithmetic. In density mode it is divided by the panels it counts over, so half a board can be exactly as tidy.' },
 
     { key: 'colourVariance',   group: 'board',  sign: -1, fn: null,
       what: 'Per colour, the mean position of its panels and the deviation from it. Low variance means that colour is gathered rather than scattered.' },
 
-    { key: 'edgePenalty',      group: 'board',  sign: -1, fn: null,
+    { key: 'edgePenalty',      group: 'board',  sign: -1, fn: null, perPanel: true,
       what: 'Panels in the side columns, which have three orthogonal neighbours instead of four and so link less.' },
 
     { key: 'garbageOnBoard',   group: 'board',  sign: -1, fn: null,
@@ -125,6 +125,9 @@
 
     { key: 'chainLength',      group: 'earned', sign: +1, fn: null,
       what: 'Chain counter after the move. Backward-looking: what the chain ended up worth.' },
+
+    { key: 'scoreEarned',      group: 'earned', sign: +1, fn: null,
+      what: 'THE GAME\'S OWN POINTS for the cascade this move resolved, via PanelEngine.moveScore — the real Tsu-Attack tables, not a restatement of them. It exists because the search is judged on `objective: score` and nothing it could see was denominated in that currency: garbage cells rank a 5-chain at 8x a 4-combo where the score says 15x, and a bare 3 — 54 of the shipped bot\'s 67 matches — is worth exactly 0 under the score and was worth something under every other earned feature. Overlaps garbageSent and chainLength on purpose; the search decides which currency it wants.' },
 
     { key: 'garbageCleared',   group: 'earned', sign: +1, fn: null,
       what: 'Garbage cells converted this move, including propagation into touching blocks.' },

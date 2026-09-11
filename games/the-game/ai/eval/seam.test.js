@@ -155,6 +155,9 @@ var REACHABLE = [
     // seam was never the problem; both were reachable and inert.
     ['garbageSent', function (cpu) { return blank(cpu); }],     // fed by cumGarbage
     ['chainLength', function (cpu) { return blank(cpu); }],     // fed by cumChain
+    // scoreEarned reads the same earned block chainLength does — the
+    // cascade's combo sizes — so it is reachable wherever chainLength is.
+    ['scoreEarned', function (cpu) { return blank(cpu); }],      // fed by cumCombo
     ['garbageCleared', function (cpu) {
         // live board holds garbage, candidate does not: the seam differences them
         for (var c = 1; c <= 6; c++) {
