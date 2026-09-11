@@ -57,6 +57,9 @@ on:
       rise:
         description: 'Rise-adjusted scoring: score every candidate one row later (1 = on)'
         default: ''
+      density:
+        description: 'Density scoring: counts made of panels become per-panel (1 = on)'
+        default: ''
 
 # THE SCHEDULE IS OFF WHILE FEATURES ARE BEING MEASURED ONE AT A TIME.
 #
@@ -158,6 +161,7 @@ jobs:
           # run on a garbage-free board, where the effect it measures reads
           # as a fifth of its real size.
           node rise.test.js
+          node density.test.js
 
       - name: Crank
         working-directory: games/the-game/ai/eval
@@ -202,6 +206,7 @@ jobs:
           # different bot again, so its weights are only comparable against
           # a baseline that also has it. Blank is off — every run so far.
           GC_RISE: ${{ github.event.inputs.rise || '' }}
+          GC_DENSITY: ${{ github.event.inputs.density || '' }}
         run: |
           # 340 minutes from now, ten under the job timeout: train.js stops
           # itself with room to commit, so the runner never kills it holding
