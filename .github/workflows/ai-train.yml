@@ -48,6 +48,12 @@ on:
       ga_seed:
         description: 'Search RNG seed. CHANGE IT to get an independent run of the same config'
         default: ''
+      depth:
+        description: 'Lookahead depth. 1 = greedy (every run before this). 2 = beam search'
+        default: '1'
+      beam:
+        description: 'Candidates expanded at depth > 1. Ignored at depth 1'
+        default: '6'
 
 # THE SCHEDULE IS OFF WHILE FEATURES ARE BEING MEASURED ONE AT A TIME.
 #
@@ -171,6 +177,14 @@ jobs:
           # Blank keeps the historical default, so every earlier run stays
           # comparable.
           GC_GA_SEED: ${{ github.event.inputs.ga_seed || '' }}
+          # WEIGHTS DESCRIBE A BOT, NOT A BOARD. The shipped set scores
+          # 14780 points under depth 1 and 2550 under depth 2 — a third,
+          # from changing nothing but how the move is chosen. A lookahead
+          # bot cannot borrow greedy weights; it needs its own search, and
+          # its result is only comparable against a baseline at the same
+          # depth. Blank is depth 1, which is every run before this one.
+          GC_DEPTH: ${{ github.event.inputs.depth || '1' }}
+          GC_BEAM: ${{ github.event.inputs.beam || '6' }}
         run: |
           # 340 minutes from now, ten under the job timeout: train.js stops
           # itself with room to commit, so the runner never kills it holding
