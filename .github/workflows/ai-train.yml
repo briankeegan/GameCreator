@@ -112,7 +112,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: claude/newsey-game-ask-qa8u5e
+          # MAIN, NOT A SESSION BRANCH. This was pinned to a working branch,
+          # which meant a run took its code AND wrote its snapshots there —
+          # so the workflow on main and the workflow being run could drift
+          # apart, and they did: main gained the depth/beam inputs while the
+          # branch copy went without them for long enough to dispatch six
+          # runs that measured nothing. Everything lives on main.
+          ref: main
           # The crank commits and pushes each champion as it earns it, so it
           # needs real credentials and full history, not a shallow clone.
           fetch-depth: 0
