@@ -1,0 +1,202 @@
+{
+  "mode": "replace",
+  "objective": "score",
+  "brain": "puyo",
+  "level": 10,
+  "selection": "elite of generation 219, by training fitness",
+  "arena": [
+    "comboStorm",
+    "factory",
+    "bigBlocks",
+    "endless"
+  ],
+  "depth": 2,
+  "beam": 2,
+  "features": [
+    "matchPotential",
+    "chainPotential",
+    "comboPotential",
+    "staircase",
+    "flatTop",
+    "links",
+    "colourVariance",
+    "edgePenalty",
+    "garbageOnBoard",
+    "maxHeight",
+    "fillRatio",
+    "roughness",
+    "garbageAdjacency",
+    "colourScarcity",
+    "garbageSent",
+    "chainLength",
+    "garbageCleared",
+    "travelCost"
+  ],
+  "excluded": [],
+  "generations": 100000,
+  "population": 100,
+  "seedPool": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40
+  ],
+  "seedsPerGeneration": 1,
+  "holdoutSeeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112
+  ],
+  "trainFitness": 6450,
+  "holdout": {
+    "learned": {
+      "fitness": 3598.333333333333,
+      "objective": "score",
+      "arena": [
+        "comboStorm",
+        "factory",
+        "bigBlocks",
+        "endless"
+      ],
+      "perCategory": {
+        "comboStorm": {
+          "raw": 567.5,
+          "avgFrames": 939.75,
+          "avgSent": 15.833333333333334,
+          "deathRate": 1
+        },
+        "factory": {
+          "raw": 542.5,
+          "avgFrames": 934.0833333333334,
+          "avgSent": 13.583333333333334,
+          "deathRate": 1
+        },
+        "bigBlocks": {
+          "raw": 390.8333333333333,
+          "avgFrames": 1282,
+          "avgSent": 7.083333333333333,
+          "deathRate": 1
+        },
+        "endless": {
+          "raw": 2097.5,
+          "avgFrames": 3899.3333333333335,
+          "avgSent": 56.333333333333336,
+          "deathRate": 1
+        }
+      },
+      "avgFrames": 1763.7916666666667,
+      "avgSent": 23.208333333333336,
+      "deathRate": 1
+    },
+    "shipped": {
+      "fitness": 679.1666666666666,
+      "objective": "score",
+      "arena": [
+        "comboStorm",
+        "factory",
+        "bigBlocks",
+        "endless"
+      ],
+      "perCategory": {
+        "comboStorm": {
+          "raw": 49.166666666666664,
+          "avgFrames": 284.5,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "factory": {
+          "raw": 27.5,
+          "avgFrames": 265.25,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "bigBlocks": {
+          "raw": 40,
+          "avgFrames": 289.75,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "endless": {
+          "raw": 562.5,
+          "avgFrames": 1509.75,
+          "avgSent": 12.5,
+          "deathRate": 1
+        }
+      },
+      "avgFrames": 587.3125,
+      "avgSent": 3.125,
+      "deathRate": 1
+    }
+  },
+  "improvementPct": 429.81595092024537,
+  "weights": {
+    "matchPotential": 238.31078632860954,
+    "chainPotential": 67.97571127732775,
+    "comboPotential": 43.68241127259005,
+    "staircase": 74.35486167933317,
+    "flatTop": 69.49664241122235,
+    "links": 32.026142707931385,
+    "colourVariance": 252.90822253085233,
+    "edgePenalty": 163.24441754538805,
+    "garbageOnBoard": 45.039723408157286,
+    "maxHeight": 103.41869133388505,
+    "fillRatio": 53.97622175303447,
+    "roughness": 83.96024004700747,
+    "garbageAdjacency": 58.6801371133307,
+    "colourScarcity": 55.09522881310866,
+    "garbageSent": 4.608387786168685,
+    "chainLength": 25.846545278229282,
+    "garbageCleared": 187.2867512309145,
+    "travelCost": 12.729603298929765
+  },
+  "lostCategories": [],
+  "timing": {
+    "worstMs": 19,
+    "unsafeSeeds": 0
+  }
+}
