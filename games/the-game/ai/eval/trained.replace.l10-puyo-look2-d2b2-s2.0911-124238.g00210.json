@@ -1,0 +1,202 @@
+{
+  "mode": "replace",
+  "objective": "score",
+  "brain": "puyo",
+  "level": 10,
+  "selection": "elite of generation 210, by training fitness",
+  "arena": [
+    "comboStorm",
+    "factory",
+    "bigBlocks",
+    "endless"
+  ],
+  "depth": 2,
+  "beam": 2,
+  "features": [
+    "matchPotential",
+    "chainPotential",
+    "comboPotential",
+    "staircase",
+    "flatTop",
+    "links",
+    "colourVariance",
+    "edgePenalty",
+    "garbageOnBoard",
+    "maxHeight",
+    "fillRatio",
+    "roughness",
+    "garbageAdjacency",
+    "colourScarcity",
+    "garbageSent",
+    "chainLength",
+    "garbageCleared",
+    "travelCost"
+  ],
+  "excluded": [],
+  "generations": 100000,
+  "population": 100,
+  "seedPool": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40
+  ],
+  "seedsPerGeneration": 1,
+  "holdoutSeeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112
+  ],
+  "trainFitness": 9790,
+  "holdout": {
+    "learned": {
+      "fitness": 2943.333333333333,
+      "objective": "score",
+      "arena": [
+        "comboStorm",
+        "factory",
+        "bigBlocks",
+        "endless"
+      ],
+      "perCategory": {
+        "comboStorm": {
+          "raw": 577.5,
+          "avgFrames": 823.75,
+          "avgSent": 19.166666666666668,
+          "deathRate": 1
+        },
+        "factory": {
+          "raw": 227.5,
+          "avgFrames": 601.75,
+          "avgSent": 4.083333333333333,
+          "deathRate": 1
+        },
+        "bigBlocks": {
+          "raw": 333.3333333333333,
+          "avgFrames": 868.9166666666666,
+          "avgSent": 6.833333333333333,
+          "deathRate": 1
+        },
+        "endless": {
+          "raw": 1805,
+          "avgFrames": 3130.3333333333335,
+          "avgSent": 54.833333333333336,
+          "deathRate": 1
+        }
+      },
+      "avgFrames": 1356.1875,
+      "avgSent": 21.229166666666668,
+      "deathRate": 1
+    },
+    "shipped": {
+      "fitness": 679.1666666666666,
+      "objective": "score",
+      "arena": [
+        "comboStorm",
+        "factory",
+        "bigBlocks",
+        "endless"
+      ],
+      "perCategory": {
+        "comboStorm": {
+          "raw": 49.166666666666664,
+          "avgFrames": 284.5,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "factory": {
+          "raw": 27.5,
+          "avgFrames": 265.25,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "bigBlocks": {
+          "raw": 40,
+          "avgFrames": 289.75,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "endless": {
+          "raw": 562.5,
+          "avgFrames": 1509.75,
+          "avgSent": 12.5,
+          "deathRate": 1
+        }
+      },
+      "avgFrames": 587.3125,
+      "avgSent": 3.125,
+      "deathRate": 1
+    }
+  },
+  "improvementPct": 333.37423312883436,
+  "weights": {
+    "matchPotential": 226.39999243400663,
+    "chainPotential": 82.86668047227639,
+    "comboPotential": 96.0838563796756,
+    "staircase": 68.03364097164412,
+    "flatTop": 52.98768363705745,
+    "links": 75.67329595657321,
+    "colourVariance": 242.0690305482432,
+    "edgePenalty": 94.7352890603957,
+    "garbageOnBoard": 137.40306201338544,
+    "maxHeight": 211.72701075745434,
+    "fillRatio": 24.15199663811932,
+    "roughness": 67.79613884984707,
+    "garbageAdjacency": 74.76528475237275,
+    "colourScarcity": 134.34342330934993,
+    "garbageSent": 129.30316929551762,
+    "chainLength": 181.5507476812089,
+    "garbageCleared": 146.06698357513469,
+    "travelCost": 32.676464948668865
+  },
+  "lostCategories": [],
+  "timing": {
+    "worstMs": 11,
+    "unsafeSeeds": 0
+  }
+}
