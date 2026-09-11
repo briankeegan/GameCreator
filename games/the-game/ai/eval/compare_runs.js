@@ -46,6 +46,7 @@ function load() {
             runs[key] = { tag: tag, runId: runId, gen: gen, held: held,
                           features: d.features || [], excluded: d.excluded || [],
                           depth: d.depth || 1, beam: d.beam || null,
+                          rise: !!d.rise, density: !!d.density,
                           population: d.population || null,
                           weights: d.weights || {} };
         }
@@ -71,6 +72,16 @@ function conditionOf(run) {
     var base = have.length ? have.join('+') : 'baseline';
     var depth = run.depth || 1;
     if (depth > 1) base += ' d' + depth + 'b' + (run.beam || '?');
+    // EVERY SCORING SWITCH BELONGS IN THE KEY. rise and density each change
+    // what a board is worth, so a run with one of them on is a different bot
+    // from one without — exactly as much as a depth change is. Left out, its
+    // runs pool with the very control they are supposed to be measured
+    // against, and the pooled mean hides the effect in both directions. This
+    // was live: three rise runs scoring 1216/1492/1743 sat in the same
+    // bucket as their 2553/2935/2589 control and the tool reported the group
+    // as a single condition.
+    if (run.rise) base += ' rise';
+    if (run.density) base += ' density';
     if (run.population && run.population !== 200) base += ' pop' + run.population;
     return base;
 }
@@ -126,18 +137,41 @@ function shapeKey(r) { return SHAPES.filter(function (k) { return r.features.ind
 function popOf(r) { return r.population || 200; }
 function depthOf(r) { return r.depth || 1; }
 
+function riseOf(r) { return !!r.rise; }
+function densityOf(r) { return !!r.density; }
+
+// A SCORING SWITCH IS A DIMENSION, and the control must differ in exactly
+// one of them. When rise arrived, it was absent from BOTH the condition key
+// and from here, so its three runs (1216/1492/1743) landed in the same
+// bucket as their control (2553/2935/2589) — and then, once the key was
+// fixed but this was not, they were still counted INSIDE the control for
+// the depth test, widening that control's range from 2553-2935 to
+// 1216-2935 and turning a 762-point gap into "no effect". One omission,
+// two wrong answers in opposite directions.
+//
+// So the test is whichever switch is on, and every OTHER dimension must
+// match the probe exactly.
 function controlFor(runs) {
     var probe = runs[0], want, testing;
-    if (depthOf(probe) > 1) {
+    var sameRest = function (r, ignore) {
+        return popOf(r) === popOf(probe) &&
+               (ignore === 'shape'   || shapeKey(r) === shapeKey(probe)) &&
+               (ignore === 'depth'   || depthOf(r) === depthOf(probe)) &&
+               (ignore === 'rise'    || riseOf(r) === riseOf(probe)) &&
+               (ignore === 'density' || densityOf(r) === densityOf(probe));
+    };
+    if (riseOf(probe)) {
+        testing = 'rise-adjusted scoring';
+        want = function (r) { return !riseOf(r) && sameRest(r, 'rise'); };
+    } else if (densityOf(probe)) {
+        testing = 'density scoring';
+        want = function (r) { return !densityOf(r) && sameRest(r, 'density'); };
+    } else if (depthOf(probe) > 1) {
         testing = 'lookahead';
-        want = function (r) {
-            return depthOf(r) === 1 && popOf(r) === popOf(probe) && shapeKey(r) === shapeKey(probe);
-        };
+        want = function (r) { return depthOf(r) === 1 && sameRest(r, 'depth'); };
     } else if (shapeKey(probe)) {
         testing = 'features';
-        want = function (r) {
-            return depthOf(r) === 1 && popOf(r) === popOf(probe) && shapeKey(r) === '';
-        };
+        want = function (r) { return shapeKey(r) === '' && sameRest(r, 'shape'); };
     } else {
         return null;                       // this IS a control
     }
