@@ -45,17 +45,34 @@ function load() {
         if (!runs[key] || gen > runs[key].gen) {
             runs[key] = { tag: tag, runId: runId, gen: gen, held: held,
                           features: d.features || [], excluded: d.excluded || [],
+                          depth: d.depth || 1, beam: d.beam || null,
+                          population: d.population || null,
                           weights: d.weights || {} };
         }
     });
     return Object.keys(runs).map(function (k) { return runs[k]; });
 }
 
-// A condition is WHICH OF THE SHAPE FEATURES THIS RUN SEARCHED — not the
-// tag, which is a label somebody typed and can be wrong.
+// A CONDITION IS EVERYTHING THAT CHANGES WHAT IS BEING MEASURED — not just
+// the features. The first version grouped on features alone, which was fine
+// while every run was depth 1 at population 200 and silently wrong the
+// moment it was not: a lookahead run and a greedy run would have been
+// averaged together as "baseline" and the comparison would have reported a
+// difference that was really two different bots in one bucket.
+//
+// Depth is the sharpest of these. The SAME weights score 14780 points under
+// depth 1 and 2550 under depth 2 — weights describe a bot, not a board.
+// Population changes how well the search converges, so it belongs here too.
+//
+// Snapshots written before depth was recorded have no `depth` field; they
+// were all depth 1, which is what the default reads.
 function conditionOf(run) {
     var have = SHAPES.filter(function (s) { return run.features.indexOf(s) >= 0; });
-    return have.length ? have.join('+') : 'baseline';
+    var base = have.length ? have.join('+') : 'baseline';
+    var depth = run.depth || 1;
+    if (depth > 1) base += ' d' + depth + 'b' + (run.beam || '?');
+    if (run.population && run.population !== 200) base += ' pop' + run.population;
+    return base;
 }
 
 function stats(xs) {
@@ -82,6 +99,10 @@ Object.keys(byCond).sort().forEach(function (c) {
         Math.round(s.lo) + '-' + Math.round(s.hi));
 });
 
+// The floor is the plain depth-1 population-200 baseline. A condition run
+// at a different depth or population needs its OWN matched baseline before
+// it can be judged, which is why those carry a distinct condition name and
+// will report NOT MEASURED until one exists.
 var base = byCond.baseline || [];
 console.log('');
 if (base.length < 2) {

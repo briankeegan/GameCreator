@@ -706,6 +706,12 @@ function report(isFinal, cb) {
             // WHICH FEATURES THIS RUN SEARCHED. A snapshot that does not
             // say so is unreadable the moment two runs differ by their
             // feature set, which is exactly what GC_EXCLUDE is for.
+            // The DECISION PROCEDURE these weights were found for. Weights
+            // describe a bot, not a board: the same set is worth 14780
+            // points under depth 1 and 2550 under depth 2. A snapshot that
+            // does not say which is unreadable the moment both exist.
+            depth: DEPTH,
+            beam: BEAM,
             features: KEYS.slice(),
             excluded: EXCLUDE.slice(),
             generations: GENERATIONS,
