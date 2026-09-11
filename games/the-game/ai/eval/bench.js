@@ -317,7 +317,10 @@ exports.run = function (weights, seed, opts) {
             // which is the bot every existing result describes — so a run
             // that does not pass these is byte-for-byte the old experiment.
             depth: opts.depth || 1,
-            beam: opts.beam || 6
+            beam: opts.beam || 6,
+            // Rise-adjusted scoring. Absent means off, which is the bot
+            // every existing result describes.
+            rise: opts.rise === true
         });
     } else {
         cpu = new PanelCpu.SearchCpu(stack, {

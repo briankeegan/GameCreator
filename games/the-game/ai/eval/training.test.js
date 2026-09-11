@@ -503,7 +503,7 @@ test('the training workflow exposes exclude, variant and ga_seed, and wires each
     // recorded it on every snapshot, while the workflow offered no way to
     // set it. A knob is not wired until it is wired end to end.
     [['exclude', 'GC_EXCLUDE'], ['variant', 'GC_VARIANT'], ['ga_seed', 'GC_GA_SEED'],
-     ['depth', 'GC_DEPTH'], ['beam', 'GC_BEAM']]
+     ['depth', 'GC_DEPTH'], ['beam', 'GC_BEAM'], ['rise', 'GC_RISE']]
         .forEach(function (pair) {
             var input = pair[0], env = pair[1];
             assert.ok(new RegExp('^\\s+' + input + ':', 'm').test(wf),
@@ -519,6 +519,7 @@ test('the training workflow exposes exclude, variant and ga_seed, and wires each
     assert.ok(/process\.env\.GC_GA_SEED \|\| \d+/.test(train));
     assert.ok(/Number\(process\.env\.GC_DEPTH \|\| 1\)/.test(train));
     assert.ok(/Number\(process\.env\.GC_BEAM \|\| \d+\)/.test(train));
+    assert.ok(/process\.env\.GC_RISE === '1'/.test(train));
     var crank = fs.readFileSync(path.join(DIR, 'crank.sh'), 'utf8');
     assert.ok(/VARIANT=\$\{GC_VARIANT:-\}/.test(crank));
 });
@@ -580,6 +581,27 @@ test('depth REACHES THE BOT, end to end through bench', function () {
         'depth 1 and depth 2 played an IDENTICAL game (' + one.frames + ' frames, ' +
         one.score + ' points) on the same seed and weights — the depth option is not ' +
         'reaching the bot, so every lookahead run is a greedy run with a label on it');
+});
+
+test('rise REACHES THE BOT, end to end through bench', function () {
+    // WRITTEN BECAUSE IT WAS ALREADY BROKEN ONCE, the same day, in the same
+    // place: bench.js builds PuyoCpu's options by hand, so a new option is
+    // dropped there by default and every run "with" it is a run without it.
+    // depth was the first. rise was the second, and it was caught only
+    // because the on and off sweeps came back equal to the last digit —
+    // noise does not repeat to the last digit.
+    process.env.GC_LEVEL = '10';
+    var bench = require('./bench.js');
+    var W = { matchPotential: 229, chainPotential: 258, colourVariance: 168,
+              maxHeight: 136, roughness: 294, garbageSent: 107, travelCost: 10 };
+    var off = bench.run(W, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
+                                checkTiming: false });
+    var on = bench.run(W, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
+                               checkTiming: false, rise: true });
+    assert.notStrictEqual(off.frames + ':' + off.score, on.frames + ':' + on.score,
+        'rise on and rise off played an IDENTICAL game (' + off.frames + ' frames, ' +
+        off.score + ' points) on the same seed and weights — the rise option is not ' +
+        'reaching the bot, so every run measuring it would measure nothing');
 });
 
 tests.forEach(function (t) {

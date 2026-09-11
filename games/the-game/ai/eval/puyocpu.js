@@ -71,6 +71,12 @@
     // higher is opt-in per instance. beam bounds the cost — see _lookahead.
     this.depth = opts.depth || 1;
     this.beam = opts.beam || 6;
+    // RISE-ADJUSTED SCORING, OFF BY DEFAULT — see _score. Opt-in for the
+    // same reason lookahead is: turning it on produces a different bot, so
+    // the weights trained without it stop describing what plays. Default
+    // off keeps identity.golden.json and the shipped Nightmare bot exactly
+    // as they are until weights trained WITH it exist to replace them.
+    this.rise = opts.rise === true;
     // Same as SearchCpu's nightmare preset, so a comparison between the
     // two is about the SCORING and not about which one acts more often.
     // Every frame of it is real: the bot does nothing while it counts down.
@@ -135,6 +141,48 @@
     // No cascade prediction: latentChain was the only feature that read
     // chainMarks and it has been removed, so computing one every candidate
     // would be work nothing consumes.
+    // SCORE THE BOARD A MOMENT LATER, NOT AT ITS UGLIEST INSTANT.
+    //
+    // Without this, a candidate is scored the frame its match finishes
+    // popping: the hole is open, the cluster is spent, the colour is
+    // scarce, and the panels that fill it back in never arrive because the
+    // simulation stops there. Holding is scored on a board that never
+    // moved. Measured over 570 real level-10 decisions with the shipped
+    // weights, that asymmetry is worth:
+    //
+    //     panels cleared   mean score vs DOING NOTHING on the same board
+    //          0                     -134
+    //          3                     -181
+    //        4-6                    -1133
+    //         7+                    -1537
+    //
+    // Monotonic: the more it cleared, the worse it scored. The bot held
+    // 52% of its decisions — 0 of them forced — including one where a
+    // whole 3-chain was on the table and roughness alone out-voted the
+    // 1819 points of garbage it would have sent.
+    //
+    // The stack rises whatever the bot does, so charging only the swap for
+    // the gap it leaves is an artefact of where the simulation stops. Rise
+    // every candidate by the same row and resolve again, and the cascade
+    // that rise sets off is counted too — a clear that breaks, and breaks
+    // again, is worth what it actually does.
+    if (this.rise) {
+      var after = board.clone().rise(this._incoming);
+      var second = after.resolve();
+      board = after;
+      left = 0;
+      for (r = 1; r <= board.height; r++) {
+        for (c = 1; c <= board.width; c++) if (board.grid[r][c] === -2) left++;
+      }
+      cleared = Math.max(0, live - left);
+      if (second.chainLength || second.garbage.length) {
+        resolved = {
+          chainLength: Math.max(resolved.chainLength, second.chainLength),
+          comboSizes: resolved.comboSizes.concat(second.comboSizes),
+          garbage: resolved.garbage.concat(second.garbage)
+        };
+      }
+    }
     var input = inputMod.fromStack(stack, board, resolved, null, cleared);
     input.travelFrames = frames;
     return evaluator.evaluate(input, this.weights).score;
@@ -184,6 +232,9 @@
   PuyoCpu.prototype._decide = function () {
     var board = this._snapshot();
     var swaps = board.legalSwaps();
+    // ONE incoming row for the whole decision. Every candidate is risen by
+    // the SAME row or the comparison is back to being unfair in a new way.
+    this._incoming = board.incoming || null;
 
     // HOLD is a candidate like any other, scored the same way. SearchCpu
     // decides between holding, raising and swapping with its own rules;

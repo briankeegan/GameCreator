@@ -198,6 +198,18 @@ var HOLDOUT_SEEDS = SEEDS.HOLDOUT;
 // chosen. A lookahead bot needs its own run; it cannot borrow.
 var DEPTH = Number(process.env.GC_DEPTH || 1);
 var BEAM = Number(process.env.GC_BEAM || 6);
+var RISE = process.env.GC_RISE === '1' || process.env.GC_RISE === 'true';
+
+// RISE-ADJUSTED SCORING, the other thing that makes these weights describe
+// a different bot. Off, a candidate is judged at the instant its match
+// finishes popping — hole open, cluster spent — while holding is judged on
+// a board that never moved, and over 570 real level-10 decisions that was
+// worth: clear nothing -134, clear 3 -181, clear 4-6 -1133, clear 7+ -1537,
+// all measured against simply doing nothing on the same board. The bot held
+// 52% of its decisions, none of them forced. On, every candidate is
+// advanced by the same incoming row first, and the cascade that row sets
+// off counts. Blank means off, so every run before this one stays
+// comparable. See puyocpu.js _score and rise.test.js.
 
 var EXCLUDE = (process.env.GC_EXCLUDE || '').split(',')
     .map(function (k) { return k.trim(); })
@@ -326,7 +338,7 @@ function pump() {
         pool[i].busy = true;
         pool[i].child.send({ id: job.id, weights: job.weights, seeds: job.seeds,
                              mode: MODE, checkTiming: false,
-                             depth: DEPTH, beam: BEAM,
+                             depth: DEPTH, beam: BEAM, rise: RISE,
                              scenario: job.scenario, arena: job.arena,
                              objective: OBJECTIVE, brain: BRAIN });
     }
@@ -411,7 +423,7 @@ function fingerprint() {
     // this search would be continuing somebody else's run.
     return ['cem', ELITE_FRACTION, GENERATIONS, POPULATION, MODE, BRAIN, TRAINED_BRAIN,
             process.env.GC_LEVEL || '', process.env.GC_GA_SEED || '',
-            String(DEPTH), String(BEAM),
+            String(DEPTH), String(BEAM), RISE ? 'rise' : '',
             SEEDS_PER_GENERATION, KEYS.join(',')].join('|');
 }
 function saveCheckpoint() {
@@ -712,6 +724,7 @@ function report(isFinal, cb) {
             // does not say which is unreadable the moment both exist.
             depth: DEPTH,
             beam: BEAM,
+            rise: RISE,
             features: KEYS.slice(),
             excluded: EXCLUDE.slice(),
             generations: GENERATIONS,
@@ -792,6 +805,7 @@ function evaluateBaseline(job, seeds, cb) {
 
 if (EXCLUDE.length) console.log('excluding ' + EXCLUDE.join(', ') + ' from the genome');
 if (DEPTH > 1) console.log('lookahead: depth ' + DEPTH + ', beam ' + BEAM);
+if (RISE) console.log('rise-adjusted scoring: ON');
 console.log('training ' + KEYS.length + ' weights, brain=' + BRAIN + ', level=' + bench.LEVEL +
             ', objective=' + OBJECTIVE + ', mode=' + MODE +
             ', pop=' + POPULATION + ', gens=' + GENERATIONS + ', ' + WORKERS + ' workers');
