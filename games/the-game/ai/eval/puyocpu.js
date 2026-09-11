@@ -66,6 +66,17 @@
     this._nearestSwappable = PanelCpu.SearchCpu.prototype._nearestSwappable;
     this._snapshot = PanelCpu.SearchCpu.prototype._snapshot;
     this.cursorMoveFrames = opts.cursorMoveFrames || 4;
+    // LOOKAHEAD, OFF BY DEFAULT. depth 1 is the Tier 1 bot the shipped
+    // weights were trained as and identity.golden.json records; anything
+    // higher is opt-in per instance. beam bounds the cost — see _lookahead.
+    this.depth = opts.depth || 1;
+    this.beam = opts.beam || 6;
+    // RISE-ADJUSTED SCORING, OFF BY DEFAULT — see _score. Opt-in for the
+    // same reason lookahead is: turning it on produces a different bot, so
+    // the weights trained without it stop describing what plays. Default
+    // off keeps identity.golden.json and the shipped Nightmare bot exactly
+    // as they are until weights trained WITH it exist to replace them.
+    this.rise = opts.rise === true;
     // Same as SearchCpu's nightmare preset, so a comparison between the
     // two is about the SCORING and not about which one acts more often.
     // Every frame of it is real: the bot does nothing while it counts down.
@@ -130,6 +141,48 @@
     // No cascade prediction: latentChain was the only feature that read
     // chainMarks and it has been removed, so computing one every candidate
     // would be work nothing consumes.
+    // SCORE THE BOARD A MOMENT LATER, NOT AT ITS UGLIEST INSTANT.
+    //
+    // Without this, a candidate is scored the frame its match finishes
+    // popping: the hole is open, the cluster is spent, the colour is
+    // scarce, and the panels that fill it back in never arrive because the
+    // simulation stops there. Holding is scored on a board that never
+    // moved. Measured over 570 real level-10 decisions with the shipped
+    // weights, that asymmetry is worth:
+    //
+    //     panels cleared   mean score vs DOING NOTHING on the same board
+    //          0                     -134
+    //          3                     -181
+    //        4-6                    -1133
+    //         7+                    -1537
+    //
+    // Monotonic: the more it cleared, the worse it scored. The bot held
+    // 52% of its decisions — 0 of them forced — including one where a
+    // whole 3-chain was on the table and roughness alone out-voted the
+    // 1819 points of garbage it would have sent.
+    //
+    // The stack rises whatever the bot does, so charging only the swap for
+    // the gap it leaves is an artefact of where the simulation stops. Rise
+    // every candidate by the same row and resolve again, and the cascade
+    // that rise sets off is counted too — a clear that breaks, and breaks
+    // again, is worth what it actually does.
+    if (this.rise) {
+      var after = board.clone().rise(this._incoming);
+      var second = after.resolve();
+      board = after;
+      left = 0;
+      for (r = 1; r <= board.height; r++) {
+        for (c = 1; c <= board.width; c++) if (board.grid[r][c] === -2) left++;
+      }
+      cleared = Math.max(0, live - left);
+      if (second.chainLength || second.garbage.length) {
+        resolved = {
+          chainLength: Math.max(resolved.chainLength, second.chainLength),
+          comboSizes: resolved.comboSizes.concat(second.comboSizes),
+          garbage: resolved.garbage.concat(second.garbage)
+        };
+      }
+    }
     var input = inputMod.fromStack(stack, board, resolved, null, cleared);
     input.travelFrames = frames;
     return evaluator.evaluate(input, this.weights).score;
@@ -137,9 +190,51 @@
 
 
 
+  // LOOKAHEAD, WHICH IS THE ACTUAL TIER 2 MOVE.
+  //
+  // ../PUYO_REFERENCE.md's Tier 1 bot — score every move's resulting board,
+  // play the best — is what this file was, and the reference is explicit
+  // about where it stops: "greedy fires too early, and this is the real
+  // cap". A scorer that values the board NOW takes a chain the moment one
+  // exists, so potential never accumulates.
+  //
+  // WHAT WAS TRIED FIRST AND DID NOT WORK, because it is the reason this
+  // exists rather than another feature: three features were added to the
+  // weighted sum to try to buy this — staircase (the shape Panel de Pon
+  // players build), flatTop (the shape that kills them), comboPotential
+  // (how big a clear is available). Four training runs each, against a
+  // baseline whose own spread was measured at 928 points. All three came
+  // back NO EFFECT (compare_runs.js). That is the reference's other
+  // prediction landing: "density is not order… random density cannot
+  // produce it any more than shaking a box of dominoes stands them in a
+  // line." A linear sum over board features cannot express a plan, and
+  // adding terms to it does not change that.
+  //
+  // Tier 2's answer is not a longer feature list, it is a different
+  // SELECTION POLICY: citrus610's bot is best-first plus beam search with
+  // "highest expected chain score, not highest score now", looking 3 moves
+  // ahead attacking and 2 defending. This is that, at the smallest honest
+  // size: expand the most promising candidates one move further and choose
+  // on the best board reachable in TWO moves rather than in one.
+  //
+  // WHY A BEAM AND NOT EVERY BRANCH. ~35 legal swaps means ~1,200 full
+  // clone+resolve pairs at depth 2, and the worst decision already costs
+  // 8ms of an 85ms budget. The beam keeps the top BEAM candidates by
+  // immediate score and expands only those, which is exactly what beam
+  // search is for — and it is measured rather than assumed, in
+  // lookahead.test.js.
+  //
+  // DEPTH 1 IS THE OLD BOT, EXACTLY. Not approximately: the depth-1 path
+  // is the original loop untouched, so every existing result, the shipped
+  // weights and identity.golden.json all still describe it. Lookahead is
+  // opt-in per instance, so turning it on is a decision somebody makes
+  // rather than a thing that happens.
   PuyoCpu.prototype._decide = function () {
     var board = this._snapshot();
     var swaps = board.legalSwaps();
+    // ONE incoming row for the whole decision. Every candidate is risen by
+    // the SAME row or the comparison is back to being unfair in a new way.
+    this._incoming = board.incoming || null;
 
     // HOLD is a candidate like any other, scored the same way. SearchCpu
     // decides between holding, raising and swapping with its own rules;
@@ -151,18 +246,66 @@
     var best = { kind: 'hold' };
     var bestScore = this._score(holdBoard, holdResolved, null);
 
+    var deeper = this.depth > 1 ? [] : null;
+
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
       var trial = board.clone();
       trial.swap(r, c);
       var resolved = trial.resolve();
       var s = this._score(trial, resolved, [r, c]);
+      if (deeper) deeper.push({ score: s, move: [r, c], board: trial });
       // Strictly greater, so a tie leaves the incumbent standing rather
       // than handing the decision to whichever swap legalSwaps() happened
       // to list first — list order is not a preference.
       if (s > bestScore) { bestScore = s; best = { kind: 'swap', move: [r, c] }; }
     }
-    return best;
+
+    if (!deeper || !deeper.length) return best;
+    return this._lookahead(deeper, best, bestScore);
+  };
+
+  // Expand the beam one move further and re-choose on what is REACHABLE.
+  //
+  // A candidate's value becomes the best board it can lead to next move,
+  // not the board it leaves. That is the whole difference between "take
+  // the chain that exists" and "keep the position that pays" — a move
+  // which scores modestly now but opens a big clear beats one that banks
+  // a small clear and leaves nothing.
+  //
+  // HOLD is left out of the expansion on purpose: it is already scored at
+  // depth 1, and the board it leaves is the board we are standing on, so
+  // expanding it would re-derive this same decision one ply down.
+  PuyoCpu.prototype._lookahead = function (cands, best, bestScore) {
+    cands.sort(function (a, b) { return b.score - a.score; });
+    var beam = Math.min(this.beam, cands.length);
+    var bestFuture = bestScore, chosen = best;
+
+    for (var i = 0; i < beam; i++) {
+      var cand = cands[i];
+      var next = cand.board.legalSwaps();
+      // A dead end is worth what it is, not nothing: a candidate with no
+      // legal follow-up keeps its own score rather than being discarded,
+      // or the search would refuse positions it has no reason to refuse.
+      var futureBest = cand.score;
+      for (var j = 0; j < next.length; j++) {
+        var child = cand.board.clone();
+        child.swap(next[j][0], next[j][1]);
+        var childResolved = child.resolve();
+        // The follow-up's travel is not priced. The cursor's position
+        // after the first move is not known here — it depends on where
+        // the walk actually ends — and inventing one would put a made-up
+        // number into the comparison. The FIRST move still pays its real
+        // travel cost at depth 1, which is the move actually being made.
+        var f = this._score(child, childResolved, null);
+        if (f > futureBest) futureBest = f;
+      }
+      if (futureBest > bestFuture) {
+        bestFuture = futureBest;
+        chosen = { kind: 'swap', move: cand.move };
+      }
+    }
+    return chosen;
   };
 
   PuyoCpu.prototype.update = function () {

@@ -302,6 +302,61 @@
   // cells directly, but lets the whole slab settle downward on the next
   // gravity pass — this is what lets that "collapse the pillar" move score
   // as progress at all.
+  // RISE THE BOARD ONE ROW, the way Stack.newRow does.
+  //
+  // WHY A SEARCH NEEDS THIS AT ALL. Every candidate move used to be scored
+  // on the board the instant its match finished popping — the ugliest
+  // moment it will ever have. The hole is dug, the cluster is spent, and
+  // the panels that come back to fill it never arrive, because the
+  // simulation stops there. Holding, meanwhile, was scored on a board that
+  // never moved. So the two were compared at different points in time, and
+  // the one that had not paid for anything won: measured over 570 real
+  // level-10 decisions, a swap clearing 7+ panels scored 1537 points WORSE
+  // than doing nothing on the same board, and the bot held 52% of its
+  // decisions with clears — including whole 3-chains — on the table.
+  //
+  // Rising every candidate by the same row fixes the comparison rather
+  // than the weights: the stack was going to rise whatever the bot did.
+  //
+  // `colors[col]` is the incoming dimmed row, which the player can see and
+  // so can the search (Stack row 0, already filled by fillNewRow). Pass
+  // nothing and the row arrives as unknown (-1) — honest for a board whose
+  // next row genuinely is not decided yet.
+  //
+  // OVERFLOW IS DROPPED. A panel shifted above `height` is gone from the
+  // model. That only happens on a board already touching the ceiling, where
+  // the real engine has stopped rising anyway (riseLock/stopTime, and
+  // isToppedOut costs health instead) — so it is a state the search reaches
+  // only when the game is already being lost, and maxHeight has said so
+  // several rows earlier.
+  LogicalBoard.prototype.rise = function (colors) {
+    var r, c, cells;
+    for (r = this.height; r >= 2; r--) {
+      this.grid[r] = this.grid[r - 1] ? this.grid[r - 1].slice() : [];
+    }
+    this.grid[1] = [];
+    for (c = 1; c <= this.width; c++) {
+      this.grid[1][c] = (colors && colors[c] !== undefined) ? colors[c] : -1;
+    }
+    // Row 0 is the NEXT incoming row, which nothing can know yet.
+    this.grid[0] = [];
+    for (c = 1; c <= this.width; c++) this.grid[0][c] = -1;
+
+    // Garbage blocks carry their own cell lists, and a block that drifts
+    // out of step with the grid is the one way this model can go quietly
+    // wrong — _pruneClearedBlocks only removes cells, it cannot repair a
+    // row index. Cells pushed past the ceiling leave with their panels.
+    for (var id in this.blocks) if (this.blocks.hasOwnProperty(id)) {
+      cells = [];
+      for (var i = 0; i < this.blocks[id].cells.length; i++) {
+        var rc = this.blocks[id].cells[i];
+        if (rc[0] + 1 <= this.height) cells.push([rc[0] + 1, rc[1]]);
+      }
+      if (cells.length) this.blocks[id].cells = cells; else delete this.blocks[id];
+    }
+    return this;
+  };
+
   LogicalBoard.prototype.lowestGarbageRow = function () {
     var lowest = null;
     for (var id in this.blocks) if (this.blocks.hasOwnProperty(id)) {
@@ -1104,6 +1159,17 @@
     // because clampCursor caps the cursor there — cells above the stack top
     // are unreachable rather than expensive.
     board.cursor = { row: stack.curRow, col: stack.curCol, topRow: stack.topCurRow };
+    // THE INCOMING ROW IS VISIBLE INFORMATION, and the grid above threw it
+    // away: row 0's panels are state "dimmed", which the loop maps to -1
+    // (busy/unknown) along with everything else mid-animation. But a dimmed
+    // row is not busy — it is drawn on screen under the stack, a person
+    // plans around it, and rise() needs its colours to say what the board
+    // will look like a moment from now.
+    board.incoming = [];
+    for (var ic = 1; ic <= width; ic++) {
+      var ip = stack.panelAt(0, ic);
+      board.incoming[ic] = (ip && !ip.isGarbage && ip.color) ? ip.color : -1;
+    }
     return board;
   };
 

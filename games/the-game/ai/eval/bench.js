@@ -312,7 +312,15 @@ exports.run = function (weights, seed, opts) {
             weights: weights || {},
             // Matched to SearchCpu's nightmare preset so a comparison
             // between the brains is about the scoring, not the cadence.
-            reaction: 12
+            reaction: 12,
+            // Lookahead, when the caller asks for it. Absent means depth 1,
+            // which is the bot every existing result describes — so a run
+            // that does not pass these is byte-for-byte the old experiment.
+            depth: opts.depth || 1,
+            beam: opts.beam || 6,
+            // Rise-adjusted scoring. Absent means off, which is the bot
+            // every existing result describes.
+            rise: opts.rise === true
         });
     } else {
         cpu = new PanelCpu.SearchCpu(stack, {

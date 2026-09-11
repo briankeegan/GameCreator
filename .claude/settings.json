@@ -32,6 +32,15 @@
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/resume-training.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-main-push.sh"
+          }
+        ]
       }
     ]
   }

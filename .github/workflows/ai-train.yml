@@ -54,6 +54,9 @@ on:
       beam:
         description: 'Candidates expanded at depth > 1. Ignored at depth 1'
         default: '6'
+      rise:
+        description: 'Rise-adjusted scoring: score every candidate one row later (1 = on)'
+        default: ''
 
 # THE SCHEDULE IS OFF WHILE FEATURES ARE BEING MEASURED ONE AT A TIME.
 #
@@ -145,6 +148,10 @@ jobs:
           node features.test.js
           node puyocpu.test.js
           node training.test.js
+          # rise.test.js needs GC_TRAINING_DIR (set above) — it refuses to
+          # run on a garbage-free board, where the effect it measures reads
+          # as a fifth of its real size.
+          node rise.test.js
 
       - name: Crank
         working-directory: games/the-game/ai/eval
@@ -185,6 +192,10 @@ jobs:
           # depth. Blank is depth 1, which is every run before this one.
           GC_DEPTH: ${{ github.event.inputs.depth || '1' }}
           GC_BEAM: ${{ github.event.inputs.beam || '6' }}
+          # Same rule, second axis: rise-adjusted scoring produces a
+          # different bot again, so its weights are only comparable against
+          # a baseline that also has it. Blank is off — every run so far.
+          GC_RISE: ${{ github.event.inputs.rise || '' }}
         run: |
           # 340 minutes from now, ten under the job timeout: train.js stops
           # itself with room to commit, so the runner never kills it holding

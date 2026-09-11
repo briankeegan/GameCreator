@@ -498,7 +498,12 @@ test('the training workflow exposes exclude, variant and ga_seed, and wires each
     // before it was an input at all. Both halves are checked.
     var wf = fs.readFileSync(path.join(DIR, '..', '..', '..', '..',
                                        '.github', 'workflows', 'ai-train.yml'), 'utf8');
-    [['exclude', 'GC_EXCLUDE'], ['variant', 'GC_VARIANT'], ['ga_seed', 'GC_GA_SEED']]
+    // depth/beam are here because they were the half of the lookahead bug
+    // nobody looked for: train.js read GC_DEPTH, fingerprinted it, and
+    // recorded it on every snapshot, while the workflow offered no way to
+    // set it. A knob is not wired until it is wired end to end.
+    [['exclude', 'GC_EXCLUDE'], ['variant', 'GC_VARIANT'], ['ga_seed', 'GC_GA_SEED'],
+     ['depth', 'GC_DEPTH'], ['beam', 'GC_BEAM'], ['rise', 'GC_RISE']]
         .forEach(function (pair) {
             var input = pair[0], env = pair[1];
             assert.ok(new RegExp('^\\s+' + input + ':', 'm').test(wf),
@@ -512,6 +517,9 @@ test('the training workflow exposes exclude, variant and ga_seed, and wires each
     var train = fs.readFileSync(path.join(DIR, 'train.js'), 'utf8');
     assert.ok(/process\.env\.GC_EXCLUDE \|\| ''/.test(train));
     assert.ok(/process\.env\.GC_GA_SEED \|\| \d+/.test(train));
+    assert.ok(/Number\(process\.env\.GC_DEPTH \|\| 1\)/.test(train));
+    assert.ok(/Number\(process\.env\.GC_BEAM \|\| \d+\)/.test(train));
+    assert.ok(/process\.env\.GC_RISE === '1'/.test(train));
     var crank = fs.readFileSync(path.join(DIR, 'crank.sh'), 'utf8');
     assert.ok(/VARIANT=\$\{GC_VARIANT:-\}/.test(crank));
 });
@@ -525,6 +533,75 @@ test('the workflow runs one experiment per concurrency group, not one in total',
     assert.ok(/group: ai-train-\$\{\{ github\.event\.inputs\.variant/.test(wf),
         'the concurrency group must be keyed by variant or parallel experiments cancel ' +
         'each other');
+});
+
+test('the worker forwards EVERY option train.js sends, not a hand-written list', function () {
+    // THE BUG THIS EXISTS FOR. train_worker.js rebuilt the options object
+    // field by field, so every option added to train.js after that line was
+    // written stopped dead there. depth and beam were added for the
+    // lookahead experiment, recorded faithfully in every snapshot, and never
+    // reached the bot: three "depth 2" runs were greedy runs wearing a
+    // depth-2 label. They were caught only because they matched their
+    // depth-1 controls to the digit — noise does not repeat to the last
+    // digit — and not by anything that was watching.
+    var code = fs.readFileSync(path.join(DIR, 'train_worker.js'), 'utf8');
+    assert.ok(/Object\.keys\(job\)\.forEach/.test(code),
+        'the worker is rebuilding its options object by hand again, so every option ' +
+        'added to train.js after that line will silently stop there');
+    assert.ok(!/mode: job\.mode, checkTiming: job\.checkTiming/.test(code),
+        'the hand-written key list is back');
+    // And the list train.js SENDS must be the list it means to send — if a
+    // new option is added to the search and not to the job, the forward
+    // above cannot save it.
+    var train = fs.readFileSync(path.join(DIR, 'train.js'), 'utf8');
+    assert.ok(/depth: DEPTH, beam: BEAM/.test(train),
+        'train.js no longer sends depth/beam with the job');
+});
+
+test('depth REACHES THE BOT, end to end through bench', function () {
+    // The source check above covers train.js -> worker. This covers
+    // worker -> bench -> PuyoCpu, which is the half that was broken, and it
+    // does it by playing: the same weights and the same seed at depth 1 and
+    // depth 2 must produce DIFFERENT games. If they match, the option is
+    // being dropped somewhere in that chain and every lookahead result is a
+    // greedy result wearing a label.
+    //
+    // Deliberately not a source check. The defect was invisible in the
+    // source too — a list of six plausible fields looks exactly like a
+    // complete one.
+    process.env.GC_LEVEL = '10';
+    var bench = require('./bench.js');
+    var W = { matchPotential: 229, chainPotential: 258, colourVariance: 168,
+              maxHeight: 136, roughness: 294, garbageSent: 107, travelCost: 10 };
+    var one = bench.run(W, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
+                                checkTiming: false, depth: 1 });
+    var two = bench.run(W, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
+                                checkTiming: false, depth: 2, beam: 3 });
+    assert.notStrictEqual(one.frames + ':' + one.score, two.frames + ':' + two.score,
+        'depth 1 and depth 2 played an IDENTICAL game (' + one.frames + ' frames, ' +
+        one.score + ' points) on the same seed and weights — the depth option is not ' +
+        'reaching the bot, so every lookahead run is a greedy run with a label on it');
+});
+
+test('rise REACHES THE BOT, end to end through bench', function () {
+    // WRITTEN BECAUSE IT WAS ALREADY BROKEN ONCE, the same day, in the same
+    // place: bench.js builds PuyoCpu's options by hand, so a new option is
+    // dropped there by default and every run "with" it is a run without it.
+    // depth was the first. rise was the second, and it was caught only
+    // because the on and off sweeps came back equal to the last digit —
+    // noise does not repeat to the last digit.
+    process.env.GC_LEVEL = '10';
+    var bench = require('./bench.js');
+    var W = { matchPotential: 229, chainPotential: 258, colourVariance: 168,
+              maxHeight: 136, roughness: 294, garbageSent: 107, travelCost: 10 };
+    var off = bench.run(W, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
+                                checkTiming: false });
+    var on = bench.run(W, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
+                               checkTiming: false, rise: true });
+    assert.notStrictEqual(off.frames + ':' + off.score, on.frames + ':' + on.score,
+        'rise on and rise off played an IDENTICAL game (' + off.frames + ' frames, ' +
+        off.score + ' points) on the same seed and weights — the rise option is not ' +
+        'reaching the bot, so every run measuring it would measure nothing');
 });
 
 tests.forEach(function (t) {
