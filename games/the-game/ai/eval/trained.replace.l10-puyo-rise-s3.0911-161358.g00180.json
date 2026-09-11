@@ -1,0 +1,203 @@
+{
+  "mode": "replace",
+  "objective": "score",
+  "brain": "puyo",
+  "level": 10,
+  "selection": "elite of generation 180, by training fitness",
+  "arena": [
+    "comboStorm",
+    "factory",
+    "bigBlocks",
+    "endless"
+  ],
+  "depth": 1,
+  "beam": 6,
+  "rise": true,
+  "features": [
+    "matchPotential",
+    "chainPotential",
+    "comboPotential",
+    "staircase",
+    "flatTop",
+    "links",
+    "colourVariance",
+    "edgePenalty",
+    "garbageOnBoard",
+    "maxHeight",
+    "fillRatio",
+    "roughness",
+    "garbageAdjacency",
+    "colourScarcity",
+    "garbageSent",
+    "chainLength",
+    "garbageCleared",
+    "travelCost"
+  ],
+  "excluded": [],
+  "generations": 100000,
+  "population": 100,
+  "seedPool": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40
+  ],
+  "seedsPerGeneration": 1,
+  "holdoutSeeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112
+  ],
+  "trainFitness": 4420,
+  "holdout": {
+    "learned": {
+      "fitness": 1254.1666666666667,
+      "objective": "score",
+      "arena": [
+        "comboStorm",
+        "factory",
+        "bigBlocks",
+        "endless"
+      ],
+      "perCategory": {
+        "comboStorm": {
+          "raw": 240.83333333333334,
+          "avgFrames": 471.25,
+          "avgSent": 6,
+          "deathRate": 1
+        },
+        "factory": {
+          "raw": 185,
+          "avgFrames": 458.75,
+          "avgSent": 4.083333333333333,
+          "deathRate": 1
+        },
+        "bigBlocks": {
+          "raw": 155.83333333333334,
+          "avgFrames": 482.8333333333333,
+          "avgSent": 4.083333333333333,
+          "deathRate": 1
+        },
+        "endless": {
+          "raw": 672.5,
+          "avgFrames": 1508.3333333333333,
+          "avgSent": 24.833333333333332,
+          "deathRate": 1
+        }
+      },
+      "avgFrames": 730.2916666666666,
+      "avgSent": 9.75,
+      "deathRate": 1
+    },
+    "shipped": {
+      "fitness": 679.1666666666666,
+      "objective": "score",
+      "arena": [
+        "comboStorm",
+        "factory",
+        "bigBlocks",
+        "endless"
+      ],
+      "perCategory": {
+        "comboStorm": {
+          "raw": 49.166666666666664,
+          "avgFrames": 284.5,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "factory": {
+          "raw": 27.5,
+          "avgFrames": 265.25,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "bigBlocks": {
+          "raw": 40,
+          "avgFrames": 289.75,
+          "avgSent": 0,
+          "deathRate": 1
+        },
+        "endless": {
+          "raw": 562.5,
+          "avgFrames": 1509.75,
+          "avgSent": 12.5,
+          "deathRate": 1
+        }
+      },
+      "avgFrames": 587.3125,
+      "avgSent": 3.125,
+      "deathRate": 1
+    }
+  },
+  "improvementPct": 84.66257668711658,
+  "weights": {
+    "matchPotential": 89.94168867566991,
+    "chainPotential": 183.5104476153483,
+    "comboPotential": 160.1799016921664,
+    "staircase": 78.27911986653345,
+    "flatTop": 40.220960708910525,
+    "links": 40.04008733259378,
+    "colourVariance": 233.13897064868044,
+    "edgePenalty": 17.703427905941552,
+    "garbageOnBoard": 24.372979534966845,
+    "maxHeight": 168.83911749001183,
+    "fillRatio": 81.40274972993808,
+    "roughness": 151.8044368437694,
+    "garbageAdjacency": 27.82109899886581,
+    "colourScarcity": 97.42492573293815,
+    "garbageSent": 173.2139679117988,
+    "chainLength": 42.82952862736112,
+    "garbageCleared": 41.86324769825614,
+    "travelCost": 11.684649268651963
+  },
+  "lostCategories": [],
+  "timing": {
+    "worstMs": 10,
+    "unsafeSeeds": 0
+  }
+}
