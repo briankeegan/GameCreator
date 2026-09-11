@@ -188,6 +188,17 @@ var HOLDOUT_SEEDS = SEEDS.HOLDOUT;
 // An unknown key is fatal: a typo'd exclusion would silently train the full
 // set and be reported as the reduced one, which is the same shape of lie as
 // a gate that cannot fail.
+// THE SEARCH DEPTH THE WEIGHTS ARE BEING FOUND FOR.
+//
+// The weights describe a BOT, not a board, so they are only valid for the
+// decision procedure that was running while they were searched. Measured,
+// on the shipped depth-1 weights over eight level-10 games: depth 1 reaches
+// 22378 frames and 14780 points, the same weights under depth 2 reach 7496
+// and 2550. Roughly a third, from changing nothing but how the move is
+// chosen. A lookahead bot needs its own run; it cannot borrow.
+var DEPTH = Number(process.env.GC_DEPTH || 1);
+var BEAM = Number(process.env.GC_BEAM || 6);
+
 var EXCLUDE = (process.env.GC_EXCLUDE || '').split(',')
     .map(function (k) { return k.trim(); })
     .filter(function (k) { return k.length; });
@@ -315,6 +326,7 @@ function pump() {
         pool[i].busy = true;
         pool[i].child.send({ id: job.id, weights: job.weights, seeds: job.seeds,
                              mode: MODE, checkTiming: false,
+                             depth: DEPTH, beam: BEAM,
                              scenario: job.scenario, arena: job.arena,
                              objective: OBJECTIVE, brain: BRAIN });
     }
@@ -399,6 +411,7 @@ function fingerprint() {
     // this search would be continuing somebody else's run.
     return ['cem', ELITE_FRACTION, GENERATIONS, POPULATION, MODE, BRAIN, TRAINED_BRAIN,
             process.env.GC_LEVEL || '', process.env.GC_GA_SEED || '',
+            String(DEPTH), String(BEAM),
             SEEDS_PER_GENERATION, KEYS.join(',')].join('|');
 }
 function saveCheckpoint() {
@@ -772,6 +785,7 @@ function evaluateBaseline(job, seeds, cb) {
 }
 
 if (EXCLUDE.length) console.log('excluding ' + EXCLUDE.join(', ') + ' from the genome');
+if (DEPTH > 1) console.log('lookahead: depth ' + DEPTH + ', beam ' + BEAM);
 console.log('training ' + KEYS.length + ' weights, brain=' + BRAIN + ', level=' + bench.LEVEL +
             ', objective=' + OBJECTIVE + ', mode=' + MODE +
             ', pop=' + POPULATION + ', gens=' + GENERATIONS + ', ' + WORKERS + ' workers');
