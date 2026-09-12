@@ -75,15 +75,9 @@ function layout(chip, fillerOffset) {
         grid[rr][cc] = (k === '@') ? spare[3] : k;
     }
     var swapRow = chip.swaps[0][0] + rowOff, swapCol = chip.swaps[0][1] + colOff;
-    if (swapRow > 1 && swapCol >= 1 && swapCol < W) {
-        var a = grid[swapRow][swapCol], b = grid[swapRow][swapCol + 1];
-        [[swapCol, b], [swapCol + 1, a]].forEach(function (p) {
-            if (!p[1]) return;
-            if (grid[swapRow - 1][p[0]] !== 0) return;
-            if (mustEmpty[(swapRow - 1) + ',' + p[0]]) return;
-            grid[swapRow - 1][p[0]] = spare[(swapRow - 1 + 2 * p[0] + (fillerOffset || 0)) % 3];
-        });
-    }
+    // The swap's landing cell used to be propped up here as a special case;
+    // the support rule below reaches the swap row in every column the swap
+    // touches, so it is redundant. See verify_chips.js for the full note.
     // FILLER COLOURS ARE DISTINCT WITHIN A COLUMN, and that is the whole
     // trick. A pattern keyed on (row, col) has no line of three while the
     // board is still — but a cascade COMPACTS columns, and any three fillers
@@ -97,13 +91,53 @@ function layout(chip, fillerOffset) {
     // column a different colour makes a vertical filler match impossible
     // however far things drop. The per-column start is staggered so three
     // columns cannot line up horizontally either.
+    // WHAT THE TEMPLATE DOES NOT MENTION IS GROUND, NOT AIR.
+    //
+    // The shipped chips are GENERALIZED: the generator verified each one on a
+    // full board and then dropped every cell the shape did not depend on. A
+    // dropped cell was a panel of some irrelevant colour — it is NOT empty.
+    // Empty is spelled out, as "." or "e".
+    //
+    // Filling only the gaps below a column's topmost PANEL therefore leaves a
+    // column whose sole template cell is a required-empty, or the cell the
+    // swap lands in, with no floor under it at all. The swapped panel then
+    // free-falls past the one-row gap the chip is built around and lands on
+    // the bottom row, so the cascade it exists to start never happens and the
+    // chip reads as firing nothing. That was 672 chips — every one of them a
+    // CASCADE, which is the whole point of the library.
+    //
+    // So a column's support runs up to the highest row the template says
+    // ANYTHING about in that column: a panel, a required-empty, or a swap
+    // cell (either half of the pair — the swap moves a panel between them).
+    var reach = {};
+    function touch(r, c) { if (c >= 1 && c <= W && !(reach[c] > r)) reach[c] = r; }
+    for (var ti = 0; ti < cells.length; ti++) touch(cells[ti][0] + rowOff, cells[ti][1] + colOff);
+    for (var si2 = 0; si2 < chip.swaps.length; si2++) {
+        touch(chip.swaps[si2][0] + rowOff, chip.swaps[si2][1] + colOff);
+        touch(chip.swaps[si2][0] + rowOff, chip.swaps[si2][1] + colOff + 1);
+    }
+    // The LOWEST required-empty cell in a column is the ceiling of its
+    // support: below it the column is solid ground; at and above it the
+    // template is describing the hole the chip falls into. A template PANEL
+    // above that hole would be floating, which no settled board can hold —
+    // that is the one genuinely unstageable shape, and it is skipped.
+    var holeAt = {};
+    for (var mk in mustEmpty) {
+        var mr = +mk.split(',')[0], mc = +mk.split(',')[1];
+        if (!(holeAt[mc] <= mr)) holeAt[mc] = mr;
+    }
+    for (var hc = 1; hc <= W; hc++) {
+        if (holeAt[hc] === undefined) continue;
+        for (var hr = holeAt[hc] + 1; hr <= H; hr++) {
+            if (grid[hr][hc] !== 0) return { skip: 'needs support where the template demands empty' };
+        }
+    }
     for (var c2 = 1; c2 <= W; c2++) {
-        var top = 0;
-        for (var r2 = H; r2 >= 1; r2--) if (grid[r2][c2] !== 0) { top = r2; break; }
+        var top = Math.min(reach[c2] === undefined ? 0 : reach[c2],
+                           holeAt[c2] === undefined ? 1e9 : holeAt[c2]);
         var nth = 0;
         for (var r3 = 1; r3 < top; r3++) {
             if (grid[r3][c2] !== 0) continue;
-            if (mustEmpty[r3 + ',' + c2]) return { skip: 'needs support where the template demands empty' };
             // The retry varies the column STAGGER, not just an additive
             // offset: adding a constant permutes the colours and preserves
             // every collision, which is why rotating the offset alone

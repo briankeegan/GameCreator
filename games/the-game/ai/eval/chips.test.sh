@@ -149,18 +149,28 @@ else
   pass=$((pass+1))
 fi
 
-# BUG 4 — no ground under the cell the swap lands in. The panel falls out of
-# the row before matching runs, so the swap really did line three up and the
-# chip reads as firing nothing.
+# BUG 4 — a column's support stops at its topmost PANEL instead of at the
+# topmost thing the template mentions. That is the old rule, and it is the
+# most expensive staging bug this harness has had: a column whose only
+# template cell is a required-empty or the swap's landing cell then has no
+# floor at all, the swapped panel free-falls to the bottom row instead of
+# dropping the one row the chip is built around, and the cascade never starts.
+# 672 chips — every one of them a CASCADE — read as firing nothing, which
+# looks exactly like 672 bad chips.
 #
-# THIS CASE COULD NOT BE WRITTEN UNTIL BATCH 6. Batches 1-3 never need the
-# prop (their swaps all have ground already) and neither do the CASCADE_4 or
-# CASCADE_5 batches — remove it and all 284 still passed. It first bites in
-# batch6-cascade3-double, where 3 chips depend on it. Held back rather than
-# written early, because a case that passes whether or not the bug is present
-# is decoration, and this file exists to not have any of those.
-$BREAK "g[swapRow - 1][col] = spare[(swapRow - 1 + 2 * col) % 3];" "g[swapRow - 1][col] = 0;" || exit 2
-vtry "the prop under the swap's landing cell removed" 
+# It replaces an earlier case (propping up the swap's landing cell as a
+# special case), which this rule subsumes: with the rule in place that prop
+# changed no verdict on 5,039 chips, so its break test had stopped being able
+# to fail and the prop itself was deleted.
+$BREAK "    var reach = {};
+    function touch(r, c) { if (c >= 1 && c <= W && !(reach[c] > r)) reach[c] = r; }
+    for (var ti = 0; ti < cells.length; ti++) touch(cells[ti][0] + rowOff, cells[ti][1] + colOff);
+    for (var si2 = 0; si2 < chip.swaps.length; si2++) {
+        touch(chip.swaps[si2][0] + rowOff, chip.swaps[si2][1] + colOff);
+        touch(chip.swaps[si2][0] + rowOff, chip.swaps[si2][1] + colOff + 1);
+    }" "    var reach = {};
+    for (var bc = 1; bc <= W; bc++) for (var br = H; br >= 1; br--) if (g[br][bc] !== 0) { reach[bc] = br; break; }" || exit 2
+vtry "a column's support stopping at its topmost panel, not at the template's reach" 
 
 # ---- AND THE SAME CHIPS AGAINST THE REAL ENGINE ----
 #
@@ -190,7 +200,8 @@ echo "  accepts:    every ported chip in the real engine too"
 # genuinely illegal: paint both halves of the pair the same colour, which the
 # engine refuses ("a switch is not a swap"). Without canSwap, doSwap applies
 # it anyway and the chip is blamed for the result.
-$EBREAK "var a = grid[swapRow][swapCol], b = grid[swapRow][swapCol + 1];" "var a = grid[swapRow][swapCol], b = grid[swapRow][swapCol + 1]; grid[swapRow][swapCol + 1] = grid[swapRow][swapCol];" || exit 2
+$EBREAK "    var fillerColours = {}, fillerBefore = 0;" "    grid[swapRow][swapCol + 1] = grid[swapRow][swapCol];
+    var fillerColours = {}, fillerBefore = 0;" || exit 2
 etry "a swap the engine itself refuses"
 
 # Running no frames: nothing settles, no match events, every chip reads as

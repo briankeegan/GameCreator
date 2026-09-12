@@ -98,30 +98,49 @@ function stage(chip, colorMap) {
     // half is usually the gap the panel came out of, and the cascade wants
     // that gap open.
     var swapRow = chip.swaps[0][0] + rowOff, swapCol = chip.swaps[0][1] + colOff;
-    var bedCells = [];
-    if (swapRow > 1 && swapCol >= 1 && swapCol < W) {
-        var a = g[swapRow][swapCol], b = g[swapRow][swapCol + 1];
-        var post = [[swapCol, b], [swapCol + 1, a]];   // what each column holds after the swap
-        for (var pi = 0; pi < 2; pi++) {
-            var col = post[pi][0], val = post[pi][1];
-            if (!val) continue;                                   // lands empty: nothing to hold up
-            if (g[swapRow - 1][col] !== 0) continue;              // already supported
-            if (mustEmpty[(swapRow - 1) + ',' + col]) continue;   // the template wants that gap
-            g[swapRow - 1][col] = spare[(swapRow - 1 + 2 * col) % 3];
-            bedCells.push([swapRow - 1, col]);
-        }
-    }
+    // The cell the swap lands in used to be propped up here, as a special
+    // case. It is not any more: the support rule below reaches the swap row in
+    // every column the swap touches, so this did nothing that rule does not
+    // already do — removing it changed no verdict on 5,039 chips. A special
+    // case nothing can break is worse than none, because its break test
+    // passes whether the code is there or not.
 
     // A panel with nothing under it falls, and a chip describes a SETTLED
     // board, so anything hanging gets propped with garbage — never over a
     // cell the template says must be empty. A chip that needs a prop there
     // is one this harness cannot stage, which is reported, not guessed at.
+    // WHAT THE TEMPLATE DOES NOT MENTION IS GROUND, NOT AIR. The chips are
+    // GENERALIZED — the generator verified each on a full board and dropped
+    // every cell the shape did not depend on, and a dropped cell was a PANEL
+    // of an irrelevant colour. Empty is spelled out, as "." or "e". Filling
+    // only below a column's topmost panel leaves a column whose sole template
+    // cell is a required-empty or the swap's landing cell with no floor at
+    // all, so the swapped panel free-falls past the gap the chip is built
+    // around and the cascade never happens. See verify_chips_engine.js for
+    // the full account; this is the same rule, on the same staging.
+    var reach = {};
+    function touch(r, c) { if (c >= 1 && c <= W && !(reach[c] > r)) reach[c] = r; }
+    for (var ti = 0; ti < cells.length; ti++) touch(cells[ti][0] + rowOff, cells[ti][1] + colOff);
+    for (var si2 = 0; si2 < chip.swaps.length; si2++) {
+        touch(chip.swaps[si2][0] + rowOff, chip.swaps[si2][1] + colOff);
+        touch(chip.swaps[si2][0] + rowOff, chip.swaps[si2][1] + colOff + 1);
+    }
+    var holeAt = {};
+    for (var mk in mustEmpty) {
+        var mr = +mk.split(',')[0], mc = +mk.split(',')[1];
+        if (!(holeAt[mc] <= mr)) holeAt[mc] = mr;
+    }
+    for (var hc = 1; hc <= W; hc++) {
+        if (holeAt[hc] === undefined) continue;
+        for (var hr = holeAt[hc] + 1; hr <= H; hr++) {
+            if (g[hr][hc] !== 0) return { skip: 'needs support where the template demands empty' };
+        }
+    }
     for (var c2 = 1; c2 <= W; c2++) {
-        var top = 0;
-        for (var r2 = H; r2 >= 1; r2--) if (g[r2][c2] !== 0) { top = r2; break; }
+        var top = Math.min(reach[c2] === undefined ? 0 : reach[c2],
+                           holeAt[c2] === undefined ? 1e9 : holeAt[c2]);
         for (var r3 = top - 1; r3 >= 1; r3--) {
             if (g[r3][c2] !== 0) continue;
-            if (mustEmpty[r3 + ',' + c2]) return { skip: 'needs support where the template demands empty' };
             // PROPS ARE PANELS, NOT GARBAGE. Garbage is wrong twice over: the
             // real game cannot swap it (legalSwaps rejects any pair touching
             // a negative cell), and our engine pops garbage that a match
@@ -145,7 +164,7 @@ function stage(chip, colorMap) {
         if (fillerColours[g[qr][qc]]) fillerBefore++;
     }
     return { board: new LogicalBoard(W, H, 6, g, {}), rowOff: rowOff, colOff: colOff,
-             bedCells: bedCells, fillerColours: fillerColours, fillerBefore: fillerBefore };
+             fillerColours: fillerColours, fillerBefore: fillerBefore };
 }
 
 var MAP = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7 };
