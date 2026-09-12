@@ -226,17 +226,23 @@ etry "the swap never given frames to resolve"
 $EBREAK "grid[r3][c2] = spare[(nth + stagger * c2 + (fillerOffset || 0)) % spare.length];" "grid[r3][c2] = spare[(r3 + 2 * c2) % 3];" || exit 2
 etry "a filler pattern that can match itself once the cascade compacts a column"
 
-# THE RISE. riseLock and speed = 0 do NOT hold the stack still: the engine
-# re-decides riseLock every frame, so a settle that runs a fixed number of
-# frames lets the board climb a row between a two-swap chip's two swaps. The
-# second swap then addresses the cells the first swap's panels used to be in,
-# and thirteen good chips read as clearing nothing. Only batch 7 (two-swap)
-# can catch this — every single-swap chip is finished before the rise matters,
-# which is why it went unnoticed through six batches.
-cp "$EBSAVE" "$EB"
-cp "$HERE/verify_chips_engine.js" "$VE"
-$MODBREAK "if (f >= 3 && !stack.hasActivePanels() && !stack.hasChainingPanels()) break;" "if (false) break;" || exit 2
-etry "settling for a fixed frame count, letting the stack rise between swaps"
+# THE RISE LIVES IN A DIFFERENT GATE NOW, and the reason is the whole lesson.
+#
+# riseLock and speed = 0 do not hold the stack still — the engine re-decides
+# riseLock every frame — so the board climbs a row while a chip resolves.
+# Between a two-swap chip's two swaps that made thirteen good chips read as
+# clearing nothing, and a break test lived here for it.
+#
+# It cannot live here any more, because THIS FILE CHECKS COUNTS and a rise
+# preserves counts: the same panels clear, and only the final GRID moves.
+# That is exactly how the rise went on hiding after the two-swap case was
+# fixed, and it was eventually found by comparing BOARDS rather than scores
+# (resolve_fidelity.js — 195 of 213 apparent LogicalBoard "bugs" were this
+# harness rising). A break test that can no longer fail is worse than none,
+# so it moved to the gate that can see it: gate_resolve_fidelity_fires.
+#
+# engineboard.js now parks riseTimer, which stops the rise even on a
+# fixed-frame settle; settling to stillness remains the first line.
 
 cp "$EBSAVE" "$EB"
 

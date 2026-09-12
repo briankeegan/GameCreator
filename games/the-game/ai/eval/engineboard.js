@@ -61,6 +61,23 @@
             }
         }
         stack.riseLock = true;
+        // AND STOP THE FLOOR MOVING. riseLock alone does not: the engine
+        // re-decides it every frame (updateRiseLock), so a settle long enough
+        // to run a cascade — 70 to 90 frames — is long enough for the stack to
+        // climb a row, shift every panel up, and feed a fresh row in at the
+        // bottom. The totals survive that (the same panels cleared), which is
+        // why the chip gates never saw it; the BOARD does not, and a board
+        // read after an uninvited rise shows floating panels over a gap, which
+        // no settled position can hold.
+        //
+        // riseTimer is the honest lever. The rise only fires when the timer
+        // reaches zero (`if (!this.riseLock && this.stopTime === 0)` ->
+        // `this.riseTimer--`), so parking it far away stops the row arriving
+        // without touching riseLock's meaning or the timing of anything else.
+        // Found by comparing final GRIDS rather than final scores: 195 of 213
+        // disagreements between this and LogicalBoard were this harness
+        // rising, and would have been "fixed" in LogicalBoard.
+        stack.riseTimer = 1e9;
     }
 
     // Run until the board is STILL, collecting what the engine says happened.

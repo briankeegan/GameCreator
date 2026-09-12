@@ -164,6 +164,38 @@ gate_chip_matcher_constraints() {
   node games/the-game/ai/eval/chipmatch.test.js
 }
 
+# THE BOT PLANS WITH LogicalBoard AND THE GAME RUNS panel-engine.js. Nothing
+# compared them head-on until this: one real board, one legal swap, both
+# engines, and the FINAL GRID compared cell by cell rather than only the
+# totals. Two engines can agree on chain depth and panels cleared and still
+# leave the board in different states, and the next decision is made on the
+# board.
+gate_resolve_fidelity() {
+  GC_FIDELITY_FLOOR=0.999 node games/the-game/ai/eval/resolve_fidelity.js boards 300
+}
+
+# ...AND THAT IT CAN FAIL. This check's whole value is catching the case where
+# the two engines are compared through a harness that is itself moving the
+# board. It used to have a break test in chips.test.sh, which stopped being
+# able to fail once the chip gates only compared counts — a rise preserves
+# counts. Broken here instead: let the stack rise while a candidate resolves,
+# and the fidelity floor must reject it.
+gate_resolve_fidelity_fires() {
+  local work
+  work="$(mktemp -d)"
+  trap 'rm -rf "$work"' RETURN
+  mkdir -p "$work/games/the-game/ai/eval"
+  cp games/the-game/panel-engine.js games/the-game/panel-cpu.js "$work/games/the-game/" || return 1
+  cp games/the-game/ai/eval/*.js games/the-game/ai/eval/realboards.json "$work/games/the-game/ai/eval/" || return 1
+  sed -i 's/stack.riseTimer = 1e9;//' "$work/games/the-game/ai/eval/engineboard.js" || return 1
+  if ( cd "$work/games/the-game/ai/eval" && GC_FIDELITY_FLOOR=0.999 node resolve_fidelity.js boards 300 ) >/dev/null 2>&1; then
+    echo "  NOT CAUGHT: the fidelity check passed a harness that lets the stack rise"
+    return 1
+  fi
+  echo "  caught:     a harness that lets the stack rise while a candidate resolves"
+  return 0
+}
+
 # Four features share one clone-swap-resolve pass instead of running it four
 # times, which is what makes a gravity-correct matchPotential affordable
 # (+2.8% per candidate instead of +102%). The saving is only honest if the
@@ -236,6 +268,8 @@ GATES=(
   "the chip library can actually be used:gate_chips_hookup"
   "chips hold up on boards nobody built for them:gate_chips_real_boards"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints"
+  "the simulation resolves like the game:gate_resolve_fidelity"
+  "that fidelity check fires:gate_resolve_fidelity_fires"
   "every feature measures what its name says:gate_features"
   "the shared resolve pass is the same answer:gate_features_shared_pass"
   "that chip check fires:gate_chip_verifier_fires"
