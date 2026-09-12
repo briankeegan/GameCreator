@@ -255,11 +255,18 @@ test('a smoke-sized run is never committed', function () {
         'commit_snapshot.sh commits without checking the run was big enough to mean ' +
         'anything, so every smoke test leaves a fake result in the repo');
     // The file is still WRITTEN — a smoke run that produced nothing at all is
-    // harder to debug than one that leaves its output on disk.
+    // harder to debug than one that leaves its output on disk — but under a
+    // .smoke.json name, which is gitignored. Leaving it under the real
+    // snapshot name was the wrong half-measure: compare_runs.js reads
+    // snapshots by filename and would fold a population-32 run into the same
+    // group as real searches, and the repo sat dirty after every smoke run.
     var guard = src.slice(src.indexOf('GC_MIN_POP"'));
-    assert.ok(/NOT committed/.test(guard.slice(0, 400)),
+    assert.ok(/NOT committed/.test(guard.slice(0, 900)),
         'the guard does not say what it did, so a missing snapshot after a small run ' +
         'looks like a bug rather than the rule working');
+    assert.ok(/\.smoke\.json/.test(guard.slice(0, 900)),
+        'a smoke snapshot keeps the real snapshot name, so compare_runs.js can read it ' +
+        'as a result and the repo stays dirty after every smoke run');
 });
 
 test('the search stops itself before a job timeout can kill it', function () {

@@ -21,3 +21,6 @@ games/*/art-src/*_rendered.txt
 # CI checks panel-game out here (actions/checkout cannot write above the
 # workspace). Never part of this repo.
 /panel-game/
+
+# Smoke-sized training runs are not results — see commit_snapshot.sh
+games/the-game/ai/eval/*.smoke.json
