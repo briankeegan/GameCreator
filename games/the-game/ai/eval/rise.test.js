@@ -383,8 +383,22 @@ test('THE REGRESSION THIS EXISTS FOR: a big clear stops being the worst move on 
         'this sweep would silently measure a garbage-free board — which reports a ' +
         'fifth of the real effect. Set it to panel-game/client/assets/default_data/training');
     var bench = require('./bench.js');
-    require(path.join(__dirname, '..', 'trained-weights.js'));
-    var shipped = globalThis.PanelEval.trained.weights;
+    // PINNED, NOT "WHATEVER IS SHIPPED". This measures a property of the
+    // SCORING — that a clear is charged for a hole the panels have not come
+    // back to fill yet — and the numbers in the comment above were taken
+    // with one specific weight set. Reading `trained-weights.js` instead
+    // tied the test to whichever champion was current, and the moment a new
+    // one shipped the sweep stopped producing big clears at all ("too few
+    // big clears sampled (2 / 0)") and failed every training run's
+    // pre-flight. A test must not depend on a value the project derives
+    // somewhere else and changes.
+    var CALIBRATED = 'trained.replace.l10-puyo.0909-190108.g00360.json';
+    var snapPath = path.join(__dirname, CALIBRATED);
+    assert.ok(require('fs').existsSync(snapPath),
+        'the snapshot this case was calibrated against is gone (' + CALIBRATED + '), so ' +
+        'its numbers describe nothing — recalibrate against a set that exists and record ' +
+        'the new figures in the comment above');
+    var shipped = JSON.parse(require('fs').readFileSync(snapPath, 'utf8')).weights;
 
     function panels(b) {
         var n = 0;
