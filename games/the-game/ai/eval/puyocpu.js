@@ -194,6 +194,32 @@
 
 
 
+  // MEASURED, 2026-09-12: THE CEILING ON THIS IS 8 BOARDS OUT OF 84.
+  //
+  // Scoring a candidate on its FULLY RESOLVED board already puts any
+  // cascade that fires NOW into the number — ai/eval/chain_reach.js shows
+  // a swap setting off a 3-link chain reporting chainLength 3 and combos
+  // 3+3+3 from one resolve() at depth 1. So lookahead can only ever add
+  // chains that do not exist yet, and on the game's own 84 chain puzzles
+  // those are mostly far away:
+  //
+  //     fewest swaps before a 2+ link chain exists
+  //       1 swap    18 puzzles   depth 1 already takes all 18
+  //       2 swaps    8 puzzles   everything depth 2 could possibly add
+  //       3 swaps    4 puzzles
+  //       4+/never  54 puzzles
+  //
+  // Six trained runs bear that out: depth 2 fires 19-22 chains of 84 and
+  // depth 1 fires 21-22, with the seed spread swallowing the difference.
+  // Depth 2 is not broken; there is almost nothing within its reach.
+  //
+  // Going deeper is closed by arithmetic rather than tuning: ~30 legal
+  // swaps a ply is ~810,000 boards per decision at depth 4, against an
+  // 85ms budget. Reaching the other 54 means being TOLD the shape and
+  // pricing how close the board is to it — ../PUYO_REFERENCE.md's Tier 2,
+  // "it does not discover chain shapes, it is told them", and
+  // docs/CHAIN_SHAPES.md for the one shape Panel de Pon documents.
+  //
   // LOOKAHEAD, WHICH IS THE ACTUAL TIER 2 MOVE.
   //
   // ../PUYO_REFERENCE.md's Tier 1 bot — score every move's resulting board,

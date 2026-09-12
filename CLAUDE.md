@@ -599,6 +599,25 @@ design discussion. `shared/` holds the components every game reuses
 
 ## Measuring a change to the AI
 
+- **NEVER HAND-BUILD A BOARD TO TEST THE BOT ON. Use the real ones.** Panel
+  Attack ships 235 authored puzzles (`client/assets/default_data/puzzles/
+  Puzzles.json`, 84 typed `chain`), and they are ground truth: real shapes,
+  real colours, authored by people who know the game. A board typed out by
+  hand to demonstrate something demonstrates whatever the typist believed —
+  the first attempt at showing that `resolve()` cascades produced a board
+  with no cascade on it at all, which proved nothing in either direction and
+  would have read as a finding. The tools that read the real set are
+  `ai/eval/puzzles.bench.js` (one-swap), `ai/eval/puzzles.play.js`
+  (multi-swap, drives the real `PuyoCpu._decide`) and `ai/eval/chain_reach.js`
+  (how far away the next chain is). Reach for those.
+  - Corollary, learned the expensive way: reading that set correctly is its
+    own job. `8` is SHOCK and `9` is COLORLESS — garbage, not colours
+    (`Panel.lua`'s colour arrays; `checkMatches.lua`'s `canMatch` returns
+    false for 9 outright). Treating them as colours turned most boards into
+    one huge matchable blob, offered the bot 29-panel clears that cannot
+    exist, and made every number off that bench fiction for a day.
+
+
 - **ONE RUN PER CONDITION MEASURES NOTHING, and it still hands you a number
   that looks like a result.** Five training runs finished — a baseline and
   three single-feature variants — and read one at a time they said
