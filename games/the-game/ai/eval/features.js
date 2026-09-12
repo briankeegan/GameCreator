@@ -886,7 +886,63 @@ var MOVE_FRAMES = 4;
   // The cell below a step must be occupied by a DIFFERENT colour: if it
   // already matched, the board would have resolved it, and a shape that has
   // already fired is not stored potential.
+  // CAN ONE SWAP CLEAR THIS EXACT CELL?
+  //
+  // The staircase's base, in other words. Tries every legal horizontal swap
+  // and asks whether the match it causes CONTAINS the target — not whether a
+  // match happens somewhere, which is what matchPotential answers and is a
+  // different question: a 4-combo across the board does nothing for a
+  // staircase whose base is still sitting there.
+  //
+  // Restores the grid it borrows. A swap left in place would corrupt every
+  // feature computed after this one, silently, on the same input object.
+  function clearableByOneSwap(board, row, col) {
+    var grid = board.grid, W = board.width, H = board.height;
+    if (row < 1 || row > H || grid[row][col] <= 0) return false;
+    for (var r = 1; r <= H; r++) {
+      for (var c = 1; c < W; c++) {
+        var a = grid[r][c], b = grid[r][c + 1];
+        if (a <= 0 || b <= 0 || a === b) continue;
+        grid[r][c] = b; grid[r][c + 1] = a;
+        var matched = matchedCellsNear(board, r, c, c + 1);
+        var hit = !!matched[row + ':' + col];
+        grid[r][c] = a; grid[r][c + 1] = b;
+        if (hit) return true;
+      }
+    }
+    return false;
+  }
+
+  // ----------------------------------------------------- staircaseReady
+  //
+  // A STAIRCASE YOU CAN FIRE, WHICH IS NOT THE SAME THING AS A STAIRCASE.
+  //
+  // docs/CHAIN_SHAPES.md, from the game's own documented library: the shape
+  // is a diagonal of B-pairs each with a gap beneath, and it goes off when
+  // an A MATCH AT THE BASE clears and lets the lowest B fall. Without that
+  // trigger the diagonal is a stack of loaded pairs with no way to set them
+  // off — worth nothing until one appears.
+  //
+  // `staircase` counts the diagonal and never looks for the trigger, so a
+  // shape that fires and a shape that cannot score identically. That is a
+  // candidate explanation for it measuring NO EFFECT over four runs: half of
+  // what it was rewarding was inert.
+  //
+  // This counts the longest run whose base can be cleared BY ONE SWAP, which
+  // is the definition of ready. Returns the run length, so a 3-step ready
+  // staircase reads 3 and an unfireable 5-step one reads 0.
+  function staircaseReady(input) {
+    return staircaseRuns(input, true);
+  }
+
   function staircase(input) {
+    return staircaseRuns(input, false);
+  }
+
+  // The shared walk. `requireTrigger` is the only difference between the two
+  // features above, and it is deliberately ONE function so they can never
+  // drift into measuring different diagonals.
+  function staircaseRuns(input, requireTrigger) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
 
     function pair(row, a, b, v) {
@@ -922,6 +978,12 @@ var MOVE_FRAMES = 4;
           if (step[(r - 1) + ':' + (c - d)]) continue;
           var len = 1, rr = r, cc = c;
           while (step[(rr + 1) + ':' + (cc + d)]) { len++; rr++; cc += d; }
+          // THE BASE IS WHAT MAKES IT A CHAIN. The lowest step fires when
+          // the cell UNDER it clears, so a run is ready only if some legal
+          // swap produces a match containing that cell. Checked once per
+          // maximal run, not once per step, because the scan above already
+          // refuses to start a run inside another one.
+          if (requireTrigger && !clearableByOneSwap(board, r - 1, c)) continue;
           if (len > best) best = len;
         }
       }
@@ -979,6 +1041,7 @@ var MOVE_FRAMES = 4;
     chainPotential: chainPotential,
     comboPotential: comboPotential,
     staircase: staircase,
+    staircaseReady: staircaseReady,
     flatTop: flatTop,
     travelCost: travelCost,
     _matchedCellsNear: matchedCellsNear,
