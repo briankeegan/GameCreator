@@ -58,5 +58,77 @@ json.dump(d, io.open(sys.argv[2],'w',encoding='utf-8'))
 PY
 try "the swap moved off the shape"
 
+# ---- THE STAGING BUGS, EACH AS ITS BROKEN AND ITS WORKING VERSION ----
+#
+# Everything above is about a chip LYING. These are about the harness staging
+# one WRONGLY, which is the failure that actually happened: each of these
+# shipped, passed, and was found only by tracing a chip by hand. So each one
+# breaks verify_chips.js back to how it was written and fails if the damage
+# gets through.
+cp "$BATCH" "$WORK/b.json"
+# The verifier resolves panel-engine.js from its own __dirname, so a copy has
+# to live beside the original rather than in the temp dir.
+VC="$HERE/.verify_chips.under-test.js"
+trap 'rm -rf "$WORK"; rm -f "$VC"' EXIT
+# EVERY ported batch, not batch 1. Batch 1's six CHAIN chips are
+# self-supporting and contain no blockers, so they exercise none of the
+# staging below — run the staging breaks against them and all four sail
+# through. That is the same trap as the chain-counter bug: a batch that
+# happens to avoid a code path is not evidence the path works.
+vcheck() { ( cd "$HERE" && node "$VC" ) >/dev/null 2>&1; }
+vtry() {
+  if vcheck; then echo "  NOT CAUGHT: $1"; missed=$((missed+1));
+  else echo "  caught:     $1"; pass=$((pass+1)); fi
+}
+
+cp "$HERE/verify_chips.js" "$VC"
+if ! vcheck; then
+  echo "  the verifier rejects batch 1 when run from a copy; nothing below means anything"
+  ( cd "$HERE" && node "$VC" "$WORK/b.json" )
+  exit 1
+fi
+echo "  accepts:    the staging as written"
+
+BREAK="python3 $HERE/.chipbreak.py $HERE/verify_chips.js $VC"
+
+# BUG 1 — "@" is documented as blocker(solid,not-a-solving-color): a PANEL.
+# Staged as garbage it made 16 chips' own swaps illegal, since legalSwaps
+# refuses any pair touching a negative cell while swap() applies it anyway.
+$BREAK "(k === '@') ? '@' :" "(k === '@') ? -2 :" || exit 2
+vtry "a blocker staged as garbage instead of a panel"
+
+# BUG 2 — support props staged as garbage. Our engine pops garbage that a
+# match touches, so a prop beside a clear vanishes and the stack above drops.
+$BREAK "g[r3][c2] = spare[(r3 + c2) % 2];" "g[r3][c2] = -2;" || exit 2
+vtry "support props staged as garbage instead of panels"
+
+# BUG 3 — the legality guard. Removing it alone changes NOTHING, and that is
+# not a hole in the test: with the staging correct every chip's swap is legal,
+# so the guard has no independent effect to observe. What it does is name the
+# real cause when the staging IS wrong. Without it, bug 1 above reported
+# "claims chain 2, ours gives 3" — a chip looking wrong — instead of "the
+# staging makes this chip's own swap illegal". That misdirection is what cost
+# three batches. So: break the staging, and require the guard to say so.
+$BREAK "(k === '@') ? '@' :" "(k === '@') ? -2 :" || exit 2
+# The property is not which guard fires — the no-garbage invariant gets there
+# first with an even plainer message — but that NO staging bug is ever
+# reported as a bad chip. "claims chain N ... ours gives M" is the
+# blame-the-chip line, and it must not appear.
+if ( cd "$HERE" && node "$VC" 2>&1 ) | grep -q "claims chain"; then
+  echo "  NOT CAUGHT: broken staging reported as a bad chip instead of bad staging"
+  missed=$((missed+1))
+else
+  echo "  caught:     ...and blames the staging, never the chip"
+  pass=$((pass+1))
+fi
+
+# BUG 4 (the prop under the swap's landing cell) IS NOT TESTED HERE YET, on
+# purpose. Batches 1-3 never need it — every one of their swaps already has
+# ground under it, which is why removing the prop leaves all 161 passing. It
+# is exercised only by the COMBO_*_CASCADE_* group, so its test belongs with
+# that batch rather than as a case that silently proves nothing now. Writing
+# it today would be a test that passes because it never runs.
+
 echo "$pass caught, $missed missed"
+
 [ "$missed" -eq 0 ]

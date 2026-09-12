@@ -48,6 +48,13 @@ function stage(chip, colorMap) {
     var minC = Math.min.apply(null, dcs), maxC = Math.max.apply(null, dcs);
     if (maxC - minC + 1 > W) return { skip: 'wider than the board' };
     var rowOff = 1 - minR, colOff = 1 - minC;
+    var used = {};
+    for (var u0 = 0; u0 < cells.length; u0++) {
+        if (typeof cells[u0][2] === 'number') used[cells[u0][2]] = 1;
+    }
+    var spare = [];
+    for (var sc0 = 1; sc0 <= 12 && spare.length < 3; sc0++) if (!used[sc0]) spare.push(sc0);
+    if (spare.length < 3) return { skip: 'no spare colours for blockers and props' };
     var g = [];
     for (var r = 0; r <= H; r++) { g[r] = []; for (var c = 1; c <= W; c++) g[r][c] = 0; }
     var mustEmpty = {};
@@ -55,8 +62,20 @@ function stage(chip, colorMap) {
         var rr = cells[i][0] + rowOff, cc = cells[i][1] + colOff, k = cells[i][2];
         if (rr < 1 || rr > H || cc < 1 || cc > W) return { skip: 'does not fit' };
         if (k === '.' || k === 'e') { mustEmpty[rr + ',' + cc] = 1; continue; }
-        g[rr][cc] = (k === '@') ? -2 : (colorMap[k] || k);
+        // "@" IS A PANEL, NOT GARBAGE. chipCache's own header calls it
+        // "blocker(solid,not-a-solving-color)" — an ordinary panel in a
+        // colour that takes no part in the chip. Staging it as garbage made
+        // the chip's OWN swap illegal wherever the swap lands on one (16 of
+        // the chips already ported turned out to be swapping a garbage block
+        // with a panel, a move no player can make, and passing anyway).
+        // Staged as a spare colour it blocks, falls and swaps like the real
+        // thing and still cannot join a match.
+        g[rr][cc] = (k === '@') ? '@' : (colorMap[k] || k);
     }
+    for (var ar = 1; ar <= H; ar++) for (var ac = 1; ac <= W; ac++) {
+        if (g[ar][ac] === '@') g[ar][ac] = spare[2];
+    }
+
     // GROUND UNDER THE SWAP'S OWN PAIR, AND NOWHERE ELSE.
     //
     // A template describes a local pattern on a board that is packed
@@ -74,17 +93,13 @@ function stage(chip, colorMap) {
     // template says must be empty. Garbage will not do: our engine pops
     // garbage that a match touches, and a garbage bed failed all 161 chips
     // that were already verified.
-    var used = {};
-    for (var u = 0; u < cells.length; u++) if (typeof cells[u][2] === 'number') used[cells[u][2]] = 1;
-    var spare = 0;
-    for (var sc = 1; sc <= 9 && !spare; sc++) if (!used[sc]) spare = sc;
     // Narrower still: only the cell that RECEIVES a panel and has nothing
     // under it. Propping both halves of the pair was net worse — the other
     // half is usually the gap the panel came out of, and the cascade wants
     // that gap open.
     var swapRow = chip.swaps[0][0] + rowOff, swapCol = chip.swaps[0][1] + colOff;
     var bedCells = [];
-    if (spare && swapRow > 1 && swapCol >= 1 && swapCol < W) {
+    if (swapRow > 1 && swapCol >= 1 && swapCol < W) {
         var a = g[swapRow][swapCol], b = g[swapRow][swapCol + 1];
         var post = [[swapCol, b], [swapCol + 1, a]];   // what each column holds after the swap
         for (var pi = 0; pi < 2; pi++) {
@@ -92,7 +107,7 @@ function stage(chip, colorMap) {
             if (!val) continue;                                   // lands empty: nothing to hold up
             if (g[swapRow - 1][col] !== 0) continue;              // already supported
             if (mustEmpty[(swapRow - 1) + ',' + col]) continue;   // the template wants that gap
-            g[swapRow - 1][col] = spare;
+            g[swapRow - 1][col] = spare[(swapRow - 1 + col) % 2];
             bedCells.push([swapRow - 1, col]);
         }
     }
@@ -107,7 +122,18 @@ function stage(chip, colorMap) {
         for (var r3 = top - 1; r3 >= 1; r3--) {
             if (g[r3][c2] !== 0) continue;
             if (mustEmpty[r3 + ',' + c2]) return { skip: 'needs support where the template demands empty' };
-            g[r3][c2] = -2;
+            // PROPS ARE PANELS, NOT GARBAGE. Garbage is wrong twice over: the
+            // real game cannot swap it (legalSwaps rejects any pair touching
+            // a negative cell), and our engine pops garbage that a match
+            // touches, so a prop beside a clear vanishes and everything above
+            // it drops. Tracing one failure found the harness swapping a
+            // garbage prop with a panel — a move no player could make —
+            // because swap() applies whatever it is told.
+            //
+            // Checkerboarded across two colours the chip does not use, so the
+            // props can never line up three of a kind with each other or join
+            // a match with the template.
+            g[r3][c2] = spare[(r3 + c2) % 2];
         }
     }
     return { board: new LogicalBoard(W, H, 6, g, {}), rowOff: rowOff, colOff: colOff,
@@ -135,6 +161,29 @@ chips.forEach(function (chip) {
     var r = sw[0] + st.rowOff, c = sw[1] + st.colOff;
     if (r < 1 || r > H || c < 1 || c >= W) { console.log(label + 'SKIP  swap falls off the board'); skipped++; return; }
 
+    // THE SWAP MUST BE ONE THE GAME WOULD ALLOW. swap() applies whatever it
+    // is handed; legalSwaps() is what knows the rules (nothing touching
+    // garbage, not two of the same, not two empties). Skipping this check is
+    // how the harness came to swap a garbage prop with a panel and then
+    // report the chip as firing the wrong thing.
+    // NOTHING THIS HARNESS ADDS MAY BE GARBAGE. Both staging bugs found so
+    // far were garbage: "@" blockers staged as garbage made 16 chips' own
+    // swaps illegal, and garbage props pop when a match touches them, which
+    // silently drops everything above. A staged board is all panels now, so
+    // any garbage left in one means that rule has been broken again.
+    for (var gr = 1; gr <= H; gr++) for (var gc = 1; gc <= W; gc++) {
+        if (st.board.grid[gr][gc] === -2) {
+            console.log(label + 'FAIL  staged board contains garbage at (' + gr + ',' + gc +
+                        ') — the harness must stage blockers and props as panels');
+            fail++; return;
+        }
+    }
+    var legal = st.board.legalSwaps().some(function (m) { return m[0] === r && m[1] === c; });
+    if (!legal) {
+        console.log(label + 'FAIL  staged board makes this chip\'s own swap illegal ' +
+                    '(' + r + ',' + c + ') — the staging is wrong, not the chip');
+        fail++; return;
+    }
     var t = st.board.clone();
     t.swap(r, c);
     var out = t.resolve();
