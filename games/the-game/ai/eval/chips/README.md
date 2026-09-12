@@ -59,6 +59,16 @@ widen a filename.
 | 5 | `batch5-cascade5.json` | 88 | a combo feeding a 5-deep cascade |
 | 6 | `batch6-cascade3-double.json` | 38 | two clears at once feeding a 3-cascade, minus the two biggest families |
 | 7 | `batch7-twoswap-combo3.json` | 13 | the first TWO-SWAP chips: `COMBO_3_SWAP_2_MOVE_1` |
+| 8 | `batch8-twoswap-move5.json` | 261 | two-swap, cursor 5 cells apart |
+| 9 | `batch9-twoswap-move4.json` | 625 | two-swap, 4 apart |
+| 10 | `batch10-twoswap-move1.json` | 924 | two-swap, 1 apart |
+| 11 | `batch11-twoswap-move2.json` | 995 | two-swap, 2 apart |
+| 12 | `batch12-twoswap-move3.json` | 1025 | two-swap, 3 apart |
+
+**4,165 ported.** Batches 8-12 split the two-swap chips by MOVE DISTANCE
+rather than by shape family, because that is the axis the planner pays for:
+each batch is one price band, so a chip's cost and its batch are the same
+fact.
 
 ## Two-swap chips, and what the move count is for
 

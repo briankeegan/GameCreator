@@ -136,8 +136,16 @@ function stage(chip, colorMap) {
             g[r3][c2] = spare[(r3 + 2 * c2) % 3];
         }
     }
+    // Which colours this harness invented, and how many of them there are.
+    // Counted by COLOUR rather than by cell: a cascade drops everything above
+    // it, so filler moves rather than disappearing.
+    var fillerColours = {}, fillerBefore = 0;
+    fillerColours[spare[0]] = 1; fillerColours[spare[1]] = 1; fillerColours[spare[2]] = 1;
+    for (var qr = 1; qr <= H; qr++) for (var qc = 1; qc <= W; qc++) {
+        if (fillerColours[g[qr][qc]]) fillerBefore++;
+    }
     return { board: new LogicalBoard(W, H, 6, g, {}), rowOff: rowOff, colOff: colOff,
-             bedCells: bedCells };
+             bedCells: bedCells, fillerColours: fillerColours, fillerBefore: fillerBefore };
 }
 
 var MAP = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7 };
@@ -205,6 +213,21 @@ chips.forEach(function (chip) {
         if (step.chainLength > out.chainLength) out.chainLength = step.chainLength;
         out.comboSizes = out.comboSizes.concat(step.comboSizes);
     }
+    // NO FILLER MAY EVER MATCH — the generator's own rule, and until now only
+    // the ENGINE verifier enforced it. That gap is exactly how two chips came
+    // to pass the simulation and fail the game, which is the one direction
+    // that could ship a bad chip: the simulation was not asking the question.
+    // Both verifiers ask it now.
+    var fillerAfter = 0;
+    for (var vr = 1; vr <= H; vr++) for (var vc = 1; vc <= W; vc++) {
+        if (st.fillerColours[t.grid[vr][vc]]) fillerAfter++;
+    }
+    if (fillerAfter < st.fillerBefore) {
+        console.log(label + 'FAIL  ' + (st.fillerBefore - fillerAfter) + ' filler panels cleared — ' +
+                    'this harness\'s support is taking part in the chip, so the numbers are the staging');
+        fail++; return;
+    }
+
     // TWO DIFFERENT THINGS ARE BOTH CALLED "chain", and conflating them
     // failed 60 of 60 plain COMBO chips while the clear counts matched
     // exactly — which is the shape of a harness bug, not a library one.
