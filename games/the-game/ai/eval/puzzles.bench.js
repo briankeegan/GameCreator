@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // CAN THE BOT SOLVE THE GAME'S OWN CHAIN PUZZLES?
 //
-//   node puzzles.bench.js [GC_WEIGHTS=snap.json] [GC_DENSITY=1]
+//   node puzzles.bench.js [GC_WEIGHTS=snap.json]   (GC_DENSITY overrides)
 //
 // WHY THIS EXISTS. Every verdict so far has cost five hours and three seeds
 // and still landed inside a 382-point noise floor. Panel Attack ships 235
@@ -28,15 +28,16 @@ var PANEL_GAME = process.env.GC_PANEL_GAME || '/home/user/panel-game';
 var FILE = path.join(PANEL_GAME, 'client/assets/default_data/puzzles/Puzzles.json');
 var W = 6, H = 12;
 
-var weights;
-if (process.env.GC_WEIGHTS) {
-    var snap = JSON.parse(fs.readFileSync(process.env.GC_WEIGHTS, 'utf8'));
-    weights = snap.weights;
-} else {
-    require(path.join(__dirname, '..', 'trained-weights.js'));
-    weights = globalThis.PanelEval.trained.weights;
-}
-var DENSITY = process.env.GC_DENSITY === '1' || process.env.GC_DENSITY === 'true';
+// A WEIGHT SET IS ONLY A BOT WHEN PAIRED WITH THE SWITCHES IT WAS FOUND
+// UNDER, so the density flag comes from wherever the weights came from
+// rather than from a flag somebody has to remember to type alongside
+// GC_WEIGHTS. See switches.js for the four separate times that went wrong.
+// This bench asks a one-move question, so depth and beam do not apply here.
+var switches = require('./switches.js');
+var loaded = switches.load();
+var weights = loaded.weights;
+var DENSITY = loaded.switches.density;
+console.log(switches.describe(loaded));
 
 function puzzles() {
     var j = JSON.parse(fs.readFileSync(FILE, 'utf8')), out = [];

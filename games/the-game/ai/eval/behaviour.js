@@ -44,23 +44,17 @@ var evaluator = require('./evaluator.js');
 require(path.join(__dirname, '..', 'trained-weights.js'));
 
 var root = typeof window !== 'undefined' ? window : globalThis;
-// WHICH WEIGHTS. Shipped by default; GC_WEIGHTS=<snapshot.json> points it at
-// a run's output, which is the whole reason this is a tool and not a probe:
-// "did that search produce a bot that actually plays?" is one command.
-var weights = root.PanelEval.trained.weights, source = 'shipped';
-if (process.env.GC_WEIGHTS) {
-    var snap = JSON.parse(require('fs').readFileSync(process.env.GC_WEIGHTS, 'utf8'));
-    weights = snap.weights || (snap.elite && snap.elite.weights);
-    if (!weights) throw new Error(process.env.GC_WEIGHTS + ' has no weights in it');
-    source = process.env.GC_WEIGHTS + (snap.rise ? '  [rise ON]' : '  [rise off]') +
-             (snap.depth > 1 ? '  [depth ' + snap.depth + ']' : '');
-}
-var RISE = process.env.GC_RISE === '1' || process.env.GC_RISE === 'true';
-// A BOT IS ITS WEIGHTS AND ITS SWITCHES. Measuring a density-trained set
-// with density off is measuring a bot that never existed — the first run
-// of this did exactly that and printed a header saying "rise off" while
-// saying nothing about density at all.
-var DENSITY = process.env.GC_DENSITY === '1' || process.env.GC_DENSITY === 'true';
+// WHICH WEIGHTS, AND WHICH SWITCHES. Shipped by default; GC_WEIGHTS=<snap>
+// points it at a run's output, which is the whole reason this is a tool and
+// not a probe: "did that search produce a bot that actually plays?" is one
+// command. switches.js supplies both halves — this file used to read
+// GC_DENSITY and nothing else, so a depth-2 snapshot was measured playing
+// greedy while the header said nothing about it.
+var switches = require('./switches.js');
+var loaded = switches.load();
+var weights = loaded.weights;
+var RISE = loaded.switches.rise, DENSITY = loaded.switches.density;
+var DEPTH = loaded.switches.depth, BEAM = loaded.switches.beam;
 var argv = process.argv.slice(2);
 var scenario = argv[0] || 'endless';
 var seeds = argv.length > 1 ? argv.slice(1).map(Number) : [1, 2, 3];
@@ -132,13 +126,13 @@ PuyoCpu.prototype._decide = function () {
     return d;
 };
 
-console.log('weights:', source, '| rise', RISE ? 'ON' : 'off',
-            '| density', DENSITY ? 'ON' : 'off', '\n');
+console.log(switches.describe(loaded) + '\n');
 var totalFrames = 0;
 seeds.forEach(function (seed) {
     var r = bench.run(weights, seed, { brain: 'puyo', scenario: scenario,
                                        checkTiming: false, rise: RISE,
-                                       density: DENSITY });
+                                       density: DENSITY,
+                                       depth: DEPTH, beam: BEAM });
     totalFrames += r.frames;
     console.log(scenario, 'seed', seed, '| frames', r.frames, 'sent', r.sent,
                 'score', r.score);
