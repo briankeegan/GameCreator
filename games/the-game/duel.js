@@ -49,12 +49,19 @@ window.NewseyDuel = (function () {
         throw new Error("the trained bot is missing (window.PanelEval.PuyoCpu/.trained) — " +
                         "check the ai/eval script tags in index.html");
       }
-      return new ev.PuyoCpu(stack, {
-        weights: ev.trained.weights,
-        // Matched to the cadence the weights were trained against; changing
-        // it changes the bot the weights describe.
-        reaction: 12
-      });
+      // THE SWITCHES COME FROM THE WEIGHTS FILE, NOT FROM HERE. A weight
+      // set is only a bot when paired with the scoring it was trained
+      // under — the same numbers with density on and off are two different
+      // players, and one of them was never measured. export_weights.js
+      // records what the run used and this spreads it straight through, so
+      // shipping a new set can never silently leave a switch behind.
+      var opts = { weights: ev.trained.weights,
+                   // Matched to the cadence the weights were trained
+                   // against; changing it changes the bot they describe.
+                   reaction: 12 };
+      var sw = ev.trained.switches || {};
+      Object.keys(sw).forEach(function (k) { opts[k] = sw[k]; });
+      return new ev.PuyoCpu(stack, opts);
     }
     var Ctor = difficulty === "diamond" ? window.PanelCpu.SearchCpu : window.PanelCpu.Cpu;
     return new Ctor(stack, { difficulty: difficulty || "steady", seed: seed });

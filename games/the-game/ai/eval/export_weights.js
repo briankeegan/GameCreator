@@ -62,6 +62,18 @@ var out = [
     '  root.PanelEval.trained = {',
     '    source: ' + JSON.stringify(path.basename(src)) + ',',
     '    heldOut: ' + Math.round(held || 0) + ',',
+    // THE SWITCHES SHIP WITH THE WEIGHTS. A weight set is only a bot when
+    // paired with the scoring it was found under: the same numbers under
+    // density on and density off are two different players, and the file
+    // used to say nothing at all about which one it meant. duel.js reads
+    // this object and hands it straight to PuyoCpu, so the game cannot
+    // quietly run trained weights against scoring they never saw.
+    '    switches: ' + JSON.stringify({
+        density: !!snap.density,
+        rise: !!snap.rise,
+        depth: snap.depth || 1,
+        beam: snap.beam || 6
+    }) + ',',
     '    weights: {',
     body.split('\n').map(function (l) { return '  ' + l; }).join(',\n').replace(/,,/g, ','),
     '    }',
