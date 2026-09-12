@@ -57,6 +57,46 @@ function stage(chip, colorMap) {
         if (k === '.' || k === 'e') { mustEmpty[rr + ',' + cc] = 1; continue; }
         g[rr][cc] = (k === '@') ? -2 : (colorMap[k] || k);
     }
+    // GROUND UNDER THE SWAP'S OWN PAIR, AND NOWHERE ELSE.
+    //
+    // A template describes a local pattern on a board that is packed
+    // underneath, and says nothing about columns it does not touch. Stage it
+    // on an empty field and the swap can push a panel sideways into a column
+    // with no ground: gravity takes it away before _findMatches runs, so the
+    // swap really did line three up and the chip reads as firing nothing.
+    //
+    // Exactly two cells, because wider is wrong. Bedding the whole swap row
+    // instead broke 54 chips that already verified — a don't-care gap below
+    // the pattern is often the very hole the cascade falls into, and a
+    // harness must not fill holes the chip is using.
+    //
+    // Panels in a colour the chip does not use, never over a cell the
+    // template says must be empty. Garbage will not do: our engine pops
+    // garbage that a match touches, and a garbage bed failed all 161 chips
+    // that were already verified.
+    var used = {};
+    for (var u = 0; u < cells.length; u++) if (typeof cells[u][2] === 'number') used[cells[u][2]] = 1;
+    var spare = 0;
+    for (var sc = 1; sc <= 9 && !spare; sc++) if (!used[sc]) spare = sc;
+    // Narrower still: only the cell that RECEIVES a panel and has nothing
+    // under it. Propping both halves of the pair was net worse — the other
+    // half is usually the gap the panel came out of, and the cascade wants
+    // that gap open.
+    var swapRow = chip.swaps[0][0] + rowOff, swapCol = chip.swaps[0][1] + colOff;
+    var bedCells = [];
+    if (spare && swapRow > 1 && swapCol >= 1 && swapCol < W) {
+        var a = g[swapRow][swapCol], b = g[swapRow][swapCol + 1];
+        var post = [[swapCol, b], [swapCol + 1, a]];   // what each column holds after the swap
+        for (var pi = 0; pi < 2; pi++) {
+            var col = post[pi][0], val = post[pi][1];
+            if (!val) continue;                                   // lands empty: nothing to hold up
+            if (g[swapRow - 1][col] !== 0) continue;              // already supported
+            if (mustEmpty[(swapRow - 1) + ',' + col]) continue;   // the template wants that gap
+            g[swapRow - 1][col] = spare;
+            bedCells.push([swapRow - 1, col]);
+        }
+    }
+
     // A panel with nothing under it falls, and a chip describes a SETTLED
     // board, so anything hanging gets propped with garbage — never over a
     // cell the template says must be empty. A chip that needs a prop there
@@ -70,7 +110,8 @@ function stage(chip, colorMap) {
             g[r3][c2] = -2;
         }
     }
-    return { board: new LogicalBoard(W, H, 6, g, {}), rowOff: rowOff, colOff: colOff };
+    return { board: new LogicalBoard(W, H, 6, g, {}), rowOff: rowOff, colOff: colOff,
+             bedCells: bedCells };
 }
 
 var MAP = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7 };
