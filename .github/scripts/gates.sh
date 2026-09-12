@@ -141,6 +141,13 @@ gate_chips_decidable() {
   node games/the-game/ai/eval/chips.decidable.test.js
 }
 
+# A library nothing can read is worth the same as a library that is wrong,
+# and it looks considerably healthier. Two gates ask whether a chip is TRUE;
+# this one asks whether a consumer can find the shape and act on it.
+gate_chips_hookup() {
+  node games/the-game/ai/eval/chips.hookup.test.js
+}
+
 # Four features share one clone-swap-resolve pass instead of running it four
 # times, which is what makes a gravity-correct matchPotential affordable
 # (+2.8% per candidate instead of +102%). The saving is only honest if the
@@ -210,6 +217,7 @@ GATES=(
   "engine-only chips earn that label:gate_engine_only_membership"
   "the engine brain is wired, not inert:gate_engine_brain"
   "every ported chip is individually decidable:gate_chips_decidable"
+  "the chip library can actually be used:gate_chips_hookup"
   "every feature measures what its name says:gate_features"
   "the shared resolve pass is the same answer:gate_features_shared_pass"
   "that chip check fires:gate_chip_verifier_fires"
