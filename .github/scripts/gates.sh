@@ -129,10 +129,6 @@ gate_chips_verify_engine() {
 # chips-engine-only/ must earn its name in BOTH directions: every chip there
 # fires on the real engine AND fails the simulation. Otherwise it is one
 # loosened rule away from being where a chip goes to dodge a gate.
-gate_engine_only_membership() {
-  node games/the-game/ai/eval/chips.engineonly.test.js
-}
-
 gate_engine_brain() {
   node games/the-game/ai/eval/enginebrain.test.js
 }
@@ -155,6 +151,20 @@ gate_chips_hookup() {
 # match. This fires chips found on boards the bot actually played.
 gate_chips_real_boards() {
   node games/the-game/ai/eval/chips.realboard.test.js
+}
+
+# THE SAME BOARD, BOTH ENGINES, ON EVERY CHIP. resolve_fidelity.js compares
+# them on real in-play positions, and real play does not throw up the deep
+# cascade shapes the library is made of — one of the four faults in resolve was
+# invisible across 50,797 real cases and showed on 28 chip templates. Chain
+# depth, panels cleared, and the final BOARD cell by cell.
+gate_chips_both_boards_agree() {
+  GC_COMPARE_SIM=1 node games/the-game/ai/eval/verify_chips_engine.js
+}
+
+# ...and that any of it can fail: four breaks, one per fault the simulation had.
+gate_resolve_breaks() {
+  bash games/the-game/ai/eval/resolve.breaks.test.sh
 }
 
 # The four constraints a template carries, pinned directly. Two of them were
@@ -262,11 +272,12 @@ GATES=(
   "characters keep one size while walking:gate_sprite_scale_consistency"
   "chain chips fire in our engine:gate_chips_verify"
   "chain chips fire in the real engine:gate_chips_verify_engine"
-  "engine-only chips earn that label:gate_engine_only_membership"
   "the engine brain is wired, not inert:gate_engine_brain"
   "every ported chip is individually decidable:gate_chips_decidable"
   "the chip library can actually be used:gate_chips_hookup"
   "chips hold up on boards nobody built for them:gate_chips_real_boards"
+  "both boards agree on every chip:gate_chips_both_boards_agree"
+  "a broken resolve is rejected:gate_resolve_breaks"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints"
   "the simulation resolves like the game:gate_resolve_fidelity"
   "that fidelity check fires:gate_resolve_fidelity_fires"

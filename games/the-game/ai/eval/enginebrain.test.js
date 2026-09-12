@@ -82,7 +82,6 @@ var chips = JSON.parse(fs.readFileSync(path.join(__dirname, 'chips', 'batch1-cha
 // comes out one round short on LogicalBoard. Batch 1 cannot be the fixture
 // for that: those chips are ported precisely BECAUSE both boards agree on
 // them, so asserting a difference there fails honestly and says nothing.
-var disagree = JSON.parse(fs.readFileSync(path.join(__dirname, 'disagree.fixture.json'), 'utf8'));
 
 check('the engine path resolves a CHAIN_5 at its real depth', function () {
     var chip = chips.filter(function (c) { return c.kind === 'CHAIN_5'; })[0];
@@ -104,26 +103,38 @@ check('both paths agree where the two boards agree', function () {
     assert.strictEqual(sim.chainLength, eng.chainLength, 'round counts differ on a chip both agree on');
 });
 
-check('the engine sees links the simulation merges', function () {
-    // At least one fixture chip must resolve differently, and the engine must
-    // never see FEWER rounds than the simulation — that is the direction the
-    // 372 all point in, so a difference the other way would mean something
-    // else is wrong rather than this being fixed.
-    var differed = 0;
-    disagree.forEach(function (chip) {
-        var st = stage(chip);
-        if (!st) return;
-        var sim = resolveWith(false, st), eng = resolveWith(true, st);
-        var ss = JSON.stringify([sim.chainLength, sim.comboSizes]);
-        var es = JSON.stringify([eng.chainLength, eng.comboSizes]);
-        if (ss !== es) differed++;
-        assert.ok(eng.chainLength >= sim.chainLength,
-            chip.kind + ': the engine gave FEWER rounds (' + eng.chainLength +
-            ') than the simulation (' + sim.chainLength + ')');
-    });
-    assert.ok(differed > 0,
-        'no chip in disagree.fixture.json resolved differently on the two ' +
-        'boards — the engine path is inert, or quietly falling back to LogicalBoard');
+// THE ANSWER NO LONGER DISTINGUISHES THEM, WHICH IS THE POINT.
+//
+// This used to assert that at least one fixture chip resolved DIFFERENTLY on
+// the two boards — the only way, then, to prove the engine path was not
+// quietly falling back to LogicalBoard. LogicalBoard now resolves identically
+// to the engine on every case anyone has been able to construct: 50,797 real
+// board/swap pairs and all 6,228 chip templates. So a difference in the
+// answer is no longer available as evidence, and demanding one would fail for
+// the best possible reason.
+//
+// The question is still worth asking, so it is asked directly: is the engine
+// actually RUN when the switch is on? Spied at the seam rather than inferred
+// from the result.
+check('the engine path really runs the engine, and the plain path does not', function () {
+    var engineBoard = require('./engineboard.js');
+    var realSettle = engineBoard.settle, calls = 0;
+    engineBoard.settle = function () { calls++; return realSettle.apply(this, arguments); };
+    try {
+        var st = stage(chips.filter(function (c) { return c.kind === 'CHAIN_5'; })[0]);
+        assert.ok(st, 'CHAIN_5 did not stage');
+
+        calls = 0;
+        resolveWith(false, st);
+        assert.strictEqual(calls, 0, 'the plain path called the engine ' + calls + ' times');
+
+        calls = 0;
+        var eng = resolveWith(true, st);
+        assert.ok(calls > 0, 'engine: true ran no engine settle at all — the switch is inert');
+        assert.ok(eng.chainLength >= 1, 'the engine path resolved nothing');
+    } finally {
+        engineBoard.settle = realSettle;
+    }
 });
 
 check('the engine path leaves the candidate board SETTLED', function () {

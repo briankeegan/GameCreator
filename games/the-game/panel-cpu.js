@@ -633,9 +633,14 @@
         }
       }
     }
+    // popping: cells that have already matched and are mid-pop. They still
+    // hold panels up — a popping panel is solid for ~80 frames — but they can
+    // no longer take part in a match.
+    var popping = this._popping;
     function at(rr, cc) {
       var v = grid[rr][cc];
       if (!restingOnly || v <= 0) return v;
+      if (popping && popping[rr + ':' + cc]) return 0;
       return rr < airline[cc] ? v : 0;
     }
 
@@ -743,6 +748,7 @@
       for (var cc2 = 1; cc2 <= this.width; cc2++) chaining[cr][cc2] = false;
     }
     var counter = 0;
+    this._popping = {};
     // NO SETTLE BEFORE THE FIRST LOOK EITHER, and this was the last case.
     // A swap is not a settled position: moving a panel sideways out of a
     // column opens a hole under the panels above it, and those are in the air
@@ -764,9 +770,38 @@
         // row and look again; when nothing can move either, it is over.
         var movedPanels = this._dropRealPanelsOneRow(chaining);
         var movedGarbage = this._dropGarbageBlocks();
-        if (!movedPanels && !movedGarbage) break;
+        if (movedPanels || movedGarbage) continue;
+        // Still, and nothing new matched: now the popped panels actually
+        // leave, and everything standing above one of them is falling
+        // BECAUSE of that — the engine's chaining flag.
+        var pk, any = false, lowest = {};
+        for (pk in this._popping) {
+          var pc = this._popping[pk];
+          this.grid[pc[0]][pc[1]] = 0;
+          if (lowest[pc[1]] === undefined || pc[0] < lowest[pc[1]]) lowest[pc[1]] = pc[0];
+          any = true;
+        }
+        this._popping = {};
+        if (!any) break;
+        this._pruneClearedBlocks();
+        for (var lc in lowest) {
+          var lcol = Number(lc);
+          for (var lr = lowest[lc] + 1; lr <= this.height; lr++) {
+            if (this.grid[lr][lcol] > 0) chaining[lr][lcol] = true;
+          }
+        }
         continue;
       }
+      // A MATCH DOES NOT EMPTY ITS CELLS YET. In the engine a matched panel
+      // flashes and pops over dozens of frames, and it keeps holding up
+      // whatever sits on it the whole time. Deleting it on the spot drops
+      // those panels early, so a group that was about to complete its own
+      // match lands somewhere else and the match never happens: the engine
+      // fires 5, then 3 at frame 85, then 4 at frame 87 — three links, twelve
+      // panels — while this board cleared 5 then 3 and stopped at eight.
+      //
+      // Two frames apart, and both fire long before either pops. So matches
+      // are MARKED here and swept once the board has come to rest.
       var isChainLink = false;
       for (var ck = 0; ck < keys.length; ck++) {
         var cell = matched[keys[ck]];
@@ -778,25 +813,8 @@
       comboSizes.push(keys.length);
       var cleared = this._connectedGarbage(matched);
       var k;
-      for (k in matched) this.grid[matched[k][0]][matched[k][1]] = 0;
-      for (k in cleared) this.grid[cleared[k][0]][cleared[k][1]] = 0;
-      this._pruneClearedBlocks();
-      // Everything still standing above a cleared cell is about to fall
-      // BECAUSE of this clear, which is exactly what the engine's chaining
-      // flag means.
-      var lowestCleared = {};
-      function markColumn(rc) {
-        var rr = rc[0], cc3 = rc[1];
-        if (lowestCleared[cc3] === undefined || rr < lowestCleared[cc3]) lowestCleared[cc3] = rr;
-      }
-      for (k in matched) markColumn(matched[k]);
-      for (k in cleared) markColumn(cleared[k]);
-      for (var mc in lowestCleared) {
-        var col = Number(mc);
-        for (var mr = lowestCleared[mc] + 1; mr <= this.height; mr++) {
-          if (this.grid[mr][col] > 0) chaining[mr][col] = true;
-        }
-      }
+      for (k in matched) this._popping[matched[k][0] + ':' + matched[k][1]] = matched[k];
+      for (k in cleared) this._popping[cleared[k][0] + ':' + cleared[k][1]] = cleared[k];
       var pieces = root.PanelEngine.comboGarbage(keys.length);
       for (var i = 0; i < pieces.length; i++) garbage.push([pieces[i], 1]);
       // NO full settle here. The loop falls a row per pass, so a group with

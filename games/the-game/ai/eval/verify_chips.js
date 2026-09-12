@@ -40,7 +40,9 @@ files.forEach(function (f) {
 // tmpl is [dr, dc, class] relative to the swap; dr + 1 is one row UP.
 // class: integer = colour slot, "." / "e" = must be empty, "@" = a solid that
 // is not one of the solving colours (staged as garbage, which never matches).
-function stage(chip, colorMap) {
+function stage(chip, colorMap, fillerOffset) {
+    fillerOffset = fillerOffset || 0;
+    var stagger = [2, 3, 5][fillerOffset % 3];
     var cells = chip.tmpl;
     var drs = cells.map(function (c) { return c[0]; });
     var dcs = cells.map(function (c) { return c[1]; });
@@ -139,7 +141,8 @@ function stage(chip, colorMap) {
     for (var c2 = 1; c2 <= W; c2++) {
         var top = Math.min(reach[c2] === undefined ? 0 : reach[c2],
                            holeAt[c2] === undefined ? 1e9 : holeAt[c2]);
-        for (var r3 = top - 1; r3 >= 1; r3--) {
+        var nth = 0;
+        for (var r3 = 1; r3 < top; r3++) {
             if (g[r3][c2] !== 0) continue;
             // PROPS ARE PANELS, NOT GARBAGE. Garbage is wrong twice over: the
             // real game cannot swap it (legalSwaps rejects any pair touching
@@ -152,7 +155,18 @@ function stage(chip, colorMap) {
             // Checkerboarded across two colours the chip does not use, so the
             // props can never line up three of a kind with each other or join
             // a match with the template.
-            g[r3][c2] = spare[(r3 + 2 * c2) % 3];
+            // THE SAME FILLER SCHEME THE ENGINE VERIFIER USES, and for the
+            // same reason. Keyed on (row, col) with three colours, rows 1, 4
+            // and 7 of a column all take the same one — and a cascade
+            // COMPACTS columns, so three of them stack into a match the chip
+            // never asked for. That is a staging failure wearing a chip's
+            // name, and it was the last thing separating this gate from the
+            // engine gate: with resolve() now identical to the engine, 262
+            // chips still "failed" here purely because this file staged them
+            // differently. Distinct colour per filler within a column, and a
+            // per-column stagger so three columns cannot line up either.
+            g[r3][c2] = spare[(nth + stagger * c2 + fillerOffset) % spare.length];
+            nth++;
         }
     }
     // Which colours this harness invented, and how many of them there are.

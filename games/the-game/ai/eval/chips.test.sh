@@ -31,7 +31,6 @@ mkdir -p "$WORK/games/the-game/ai"
 cp "$HERE/../trained-weights.js" "$WORK/games/the-game/ai/" 2>/dev/null
 cp "$HERE"/*.js "$HERE"/.chipbreak.py "$SANDBOX/" 2>/dev/null
 cp -r "$HERE/chips" "$SANDBOX/" 2>/dev/null
-cp -r "$HERE/chips-engine-only" "$SANDBOX/" 2>/dev/null
 EB="$SANDBOX/engineboard.js"
 EBSAVE="$WORK/engineboard.save.js"
 cp "$EB" "$EBSAVE"
@@ -126,7 +125,7 @@ vtry "a blocker staged as garbage instead of a panel"
 
 # BUG 2 — support props staged as garbage. Our engine pops garbage that a
 # match touches, so a prop beside a clear vanishes and the stack above drops.
-$BREAK "g[r3][c2] = spare[(r3 + 2 * c2) % 3];" "g[r3][c2] = -2;" || exit 2
+$BREAK "g[r3][c2] = spare[(nth + stagger * c2 + fillerOffset) % spare.length];" "g[r3][c2] = -2;" || exit 2
 vtry "support props staged as garbage instead of panels"
 
 # BUG 3 — the legality guard. Removing it alone changes NOTHING, and that is
@@ -225,6 +224,13 @@ etry "the swap never given frames to resolve"
 # "filler cleared" bucket that way before the per-column scheme replaced it.
 $EBREAK "grid[r3][c2] = spare[(nth + stagger * c2 + (fillerOffset || 0)) % spare.length];" "grid[r3][c2] = spare[(r3 + 2 * c2) % 3];" || exit 2
 etry "a filler pattern that can match itself once the cascade compacts a column"
+
+# THE SAME BREAK ON THE SIMULATION SIDE. verify_chips.js used to stage with the
+# (row, col) pattern for real — which is why 262 chips "failed" this gate while
+# passing the engine one, long after resolve() itself had been made identical.
+# The two verifiers now stage the same way, so both get the same break.
+$BREAK "g[r3][c2] = spare[(nth + stagger * c2 + fillerOffset) % spare.length];" "g[r3][c2] = spare[(r3 + 2 * c2) % 3];" || exit 2
+vtry "a filler pattern on the SIMULATION side that can match itself"
 
 # THE RISE LIVES IN A DIFFERENT GATE NOW, and the reason is the whole lesson.
 #

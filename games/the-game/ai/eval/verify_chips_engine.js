@@ -27,6 +27,54 @@ var W = PanelEngine.WIDTH;
 // is how LogicalBoard drifted from the engine in the first place, and it would
 // quietly make "verified against the engine" stop meaning what it says.
 var engineBoard = require('./engineboard.js');
+// SAME BOARD, BOTH ENGINES. GC_COMPARE_SIM=1 also runs LogicalBoard on the
+// exact staged grid this file builds, and requires the two to agree.
+//
+// Why here rather than in resolve_fidelity.js: that tool compares on real
+// in-play boards, and real play does not throw up the deep cascade shapes the
+// library is made of. One of the four faults in LogicalBoard's resolve —
+// matched panels vanishing instantly instead of holding their neighbours up
+// for the dozens of frames a pop really takes — was invisible on 50,797 real
+// cases and showed on 28 chip shapes. A gate that cannot see a fault it was
+// built for is not a gate, so the chips get the same treatment.
+var COMPARE_SIM = process.env.GC_COMPARE_SIM === '1';
+var LogicalBoard = globalThis.PanelCpu && globalThis.PanelCpu.LogicalBoard;
+if (COMPARE_SIM && !LogicalBoard) { require(path.join(__dirname, '..', '..', 'panel-cpu.js')); LogicalBoard = globalThis.PanelCpu.LogicalBoard; }
+var simDiffer = 0, simSame = 0;
+function compareSim(chip, lay, engChain, engCleared, stack) {
+    var g = [];
+    for (var r = 0; r <= lay.H; r++) { g[r] = []; for (var c = 1; c <= W; c++) g[r][c] = lay.grid[r][c]; }
+    var lb = new LogicalBoard(W, lay.H, 9, g, {});
+    var sChain = 0, sCleared = 0;
+    for (var i = 0; i < chip.swaps.length; i++) {
+        lb.swap(chip.swaps[i][0] + lay.rowOff, chip.swaps[i][1] + lay.colOff);
+        var res = lb.resolve();
+        sCleared += (res.comboSizes || []).reduce(function (a, b) { return a + b; }, 0);
+        var cc = res.chainLength >= 2 ? res.chainLength : 0;
+        if (cc > sChain) sChain = cc;
+    }
+    // AND THE BOARD ITSELF, not just the totals. Two engines can agree on
+    // chain depth and panels cleared and still leave the panels in different
+    // columns — and the next decision is made on the board, not on the score.
+    // That comparison is what exposed the rising-harness bug; totals alone
+    // were blind to it.
+    var gridSame = true, why = '';
+    for (var gr = 1; gr <= lay.H && gridSame; gr++) {
+        for (var gc = 1; gc <= W; gc++) {
+            var ep = stack.panels[gr] && stack.panels[gr][gc];
+            var ev = !ep ? 0 : (ep.isGarbage ? -2 : (ep.color || 0));
+            var sv = lb.grid[gr][gc] || 0;
+            if (ev !== sv) { gridSame = false; why = 'r' + gr + 'c' + gc + ': engine ' + ev + ', simulation ' + sv; break; }
+        }
+    }
+    if (sChain === engChain && sCleared === engCleared && gridSame) { simSame++; return; }
+    simDiffer++;
+    if (simDiffer <= 5) {
+        console.log('  SIM DIFFERS  ' + chip.kind + '  engine ' + engChain + '/' + engCleared +
+                    '  simulation ' + sChain + '/' + sCleared +
+                    (gridSame ? '' : '  BOARD ' + why));
+    }
+}
 
 // BOTH chip directories. chips/ holds what clears both boards; the engine is
 // the only gate chips-engine-only/ can clear, and it must still clear it.
@@ -339,6 +387,7 @@ chips.forEach(function (chip) {
         record(chip, 'fail');
         fail++; return;
     }
+    if (COMPARE_SIM) compareSim(chip, lay, got.chain, got.cleared, stack);
     var okChain = got.chain === chip.chain;
     var okTotal = got.cleared === chip.total;
     if (okChain && okTotal) {
@@ -364,5 +413,9 @@ if (process.env.GC_CHIP_JSON) {
         JSON.stringify({ chips: chips.length, results: results }));
 }
 console.log('\n' + pass + ' verified, ' + fail + ' failed, ' + skipped + ' skipped');
+if (COMPARE_SIM) {
+    console.log(simSame + ' chips resolve IDENTICALLY on both boards, ' + simDiffer + ' differ');
+    if (simDiffer) process.exit(1);
+}
 if (skipped) console.log('  a skipped chip is not a verified chip');
 process.exit((fail || skipped) ? 1 : 0);
