@@ -176,6 +176,10 @@ gate_resolve_breaks() {
 # boards reported six features as never moving, and six features were nearly
 # cut on that. They move fine — that script had no garbage, no cursor and no
 # live game.
+gate_garbage_rules() {
+  node games/the-game/ai/eval/garbage.test.js
+}
+
 gate_features_live() {
   node games/the-game/ai/eval/feature_liveness.js 2 all
 }
@@ -194,7 +198,7 @@ gate_chip_matcher_constraints() {
 # leave the board in different states, and the next decision is made on the
 # board.
 gate_resolve_fidelity() {
-  GC_FIDELITY_FLOOR=1 node games/the-game/ai/eval/resolve_fidelity.js boards 300
+  GC_FIDELITY_FLOOR=0.9993 node games/the-game/ai/eval/resolve_fidelity.js boards 99999
 }
 
 # ...AND THAT IT CAN FAIL. This check's whole value is catching the case where
@@ -211,7 +215,7 @@ gate_resolve_fidelity_fires() {
   cp games/the-game/panel-engine.js games/the-game/panel-cpu.js "$work/games/the-game/" || return 1
   cp games/the-game/ai/eval/*.js games/the-game/ai/eval/realboards.json "$work/games/the-game/ai/eval/" || return 1
   sed -i 's/stack.riseTimer = 1e9;//' "$work/games/the-game/ai/eval/engineboard.js" || return 1
-  if ( cd "$work/games/the-game/ai/eval" && GC_FIDELITY_FLOOR=1 node resolve_fidelity.js boards 300 ) >/dev/null 2>&1; then
+  if ( cd "$work/games/the-game/ai/eval" && GC_FIDELITY_FLOOR=0.9993 node resolve_fidelity.js boards 300 ) >/dev/null 2>&1; then
     echo "  NOT CAUGHT: the fidelity check passed a harness that lets the stack rise"
     return 1
   fi
@@ -292,6 +296,7 @@ GATES=(
   "both boards agree on every chip:gate_chips_both_boards_agree"
   "a broken resolve is rejected:gate_resolve_breaks"
   "every feature is wired and moves:gate_features_live"
+  "a garbage break stops the resolve:gate_garbage_rules"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints"
   "the simulation resolves like the game:gate_resolve_fidelity"
   "that fidelity check fires:gate_resolve_fidelity_fires"

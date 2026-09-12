@@ -687,6 +687,84 @@
   // planning. Without this, incoming garbage is a permanent wall in this
   // model — confirmed the hard way in the Python prototype: it boxed the
   // search agent into unrecoverable, un-clearable positions.
+  // The BOTTOM ROW of every garbage block a match touched — what the engine
+  // actually pops. Marked so the sweep knows these cells become panels of an
+  // unknown colour rather than empty space.
+  // Everything marked as popping actually leaves now, and whatever stood above
+  // it is flagged chaining — it is falling BECAUSE of this pop.
+  LogicalBoard.prototype._sweepPopped = function (chaining) {
+    var pk, any = false, lowest = {};
+    for (pk in this._popping) {
+      var pc = this._popping[pk];
+      // A POPPED GARBAGE CELL DOES NOT BECOME EMPTY — it becomes a panel whose
+      // colour we are not allowed to know. -1 is exactly that on this board:
+      // present, occupying space, colour unknown. Emptying it is what made the
+      // stack read shorter than the engine has it.
+      this.grid[pc[0]][pc[1]] = (pc[2] === 'garbage') ? -1 : 0;
+      if (lowest[pc[1]] === undefined || pc[0] < lowest[pc[1]]) lowest[pc[1]] = pc[0];
+      any = true;
+    }
+    this._popping = {};
+    if (!any) return false;
+    this._pruneClearedBlocks();
+    for (var lc in lowest) {
+      var lcol = Number(lc);
+      for (var lr = lowest[lc] + 1; lr <= this.height; lr++) {
+        if (this.grid[lr][lcol] > 0) chaining[lr][lcol] = true;
+      }
+    }
+    return true;
+  };
+
+  LogicalBoard.prototype._bottomRowOfTouchedGarbage = function (matched) {
+    var touched = this._connectedGarbage(matched);
+    // Group the touched cells by the block they belong to, then keep each
+    // block's lowest row. Blocks are rectangles, so that row is what pops.
+    var byBlock = {}, k, rc, id;
+    for (k in touched) {
+      rc = touched[k];
+      id = this._blockAt(rc[0], rc[1]);
+      if (id === null) continue;
+      if (!byBlock[id] || rc[0] < byBlock[id]) byBlock[id] = rc[0];
+    }
+    var out = {};
+    for (id in byBlock) {
+      var cells = this.blocks[id] ? this.blocks[id].cells : [];
+      for (var i = 0; i < cells.length; i++) {
+        if (cells[i][0] !== byBlock[id]) continue;
+        out[cells[i][0] + ':' + cells[i][1]] = [cells[i][0], cells[i][1], 'garbage'];
+      }
+    }
+    return out;
+  };
+
+  LogicalBoard.prototype._blockAt = function (r, c) {
+    for (var id in this.blocks) {
+      var cells = this.blocks[id].cells;
+      for (var i = 0; i < cells.length; i++) if (cells[i][0] === r && cells[i][1] === c) return id;
+    }
+    return null;
+  };
+
+  // Stack.awardStopTime, the modern formula, for the case a planner can see:
+  // not topped out. Breaking garbage buys frames, and frames are survival —
+  // the real payoff for doing it, and invisible to the evaluator until now.
+  LogicalBoard.prototype._stopTimeFor = function (isChain, comboSize, chainCounter) {
+    // LEVELS is private to panel-engine.js, so the constants are read off a
+    // Stack — the same object the engine reads them from — and cached, because
+    // building one is expensive and this runs per candidate.
+    if (!LogicalBoard._stopTable) {
+      try {
+        LogicalBoard._stopTable = new root.PanelEngine.Stack({ level: 10, seed: 1 }).levelData.stop;
+      } catch (e) { LogicalBoard._stopTable = null; }
+    }
+    var stop = LogicalBoard._stopTable;
+    if (!stop) return 0;
+    if (!(comboSize > 3 || isChain)) return 0;
+    if (isChain) return stop.coefficient * Math.min(chainCounter || 2, 13) + stop.chainConstant;
+    return stop.coefficient * comboSize + stop.comboConstant;
+  };
+
   LogicalBoard.prototype._connectedGarbage = function (matched) {
     var self = this;
     var within = function (r, c) { return r >= 1 && r <= self.height && c >= 1 && c <= self.width; };
@@ -742,6 +820,18 @@
     //
     // So the flag is modelled here, panel by panel: set on everything above a
     // cleared cell, carried as that panel falls, and read when it matches.
+    // THE BOT MAY ONLY KNOW WHAT THE ENGINE HAS SHOWN IT.
+    //
+    // A match touching a garbage slab pops ONE ROW of it, and the engine turns
+    // that row into coloured panels — colours from this.rng()
+    // (Stack.garbageRowColors). A planner that predicted them would be reading
+    // dice it is not allowed to see, and any chain it found past that point is
+    // a chain it cannot actually play.
+    //
+    // So the cascade STOPS at the first garbage break. What is knowable up to
+    // then is reported exactly: which slab broke, how much of it, and the stop
+    // time it bought. See ../GARBAGE_PLAN.md.
+    var brokeGarbage = 0, truncated = false, stopTimeEarned = 0;
     var chaining = [];
     for (var cr = 0; cr <= this.height; cr++) {
       chaining[cr] = [];
@@ -774,22 +864,7 @@
         // Still, and nothing new matched: now the popped panels actually
         // leave, and everything standing above one of them is falling
         // BECAUSE of that — the engine's chaining flag.
-        var pk, any = false, lowest = {};
-        for (pk in this._popping) {
-          var pc = this._popping[pk];
-          this.grid[pc[0]][pc[1]] = 0;
-          if (lowest[pc[1]] === undefined || pc[0] < lowest[pc[1]]) lowest[pc[1]] = pc[0];
-          any = true;
-        }
-        this._popping = {};
-        if (!any) break;
-        this._pruneClearedBlocks();
-        for (var lc in lowest) {
-          var lcol = Number(lc);
-          for (var lr = lowest[lc] + 1; lr <= this.height; lr++) {
-            if (this.grid[lr][lcol] > 0) chaining[lr][lcol] = true;
-          }
-        }
+        if (!this._sweepPopped(chaining)) break;
         continue;
       }
       // A MATCH DOES NOT EMPTY ITS CELLS YET. In the engine a matched panel
@@ -811,12 +886,29 @@
       if (isChainLink) counter = counter === 0 ? 2 : counter + 1;
       chainLength++;
       comboSizes.push(keys.length);
-      var cleared = this._connectedGarbage(matched);
+      // ONE ROW OF A SLAB, NOT THE WHOLE SLAB. _connectedGarbage flood-fills
+      // every touching garbage cell; the engine pops the bottom row of each
+      // block it touched and leaves the rest standing. Deleting the lot left
+      // the board far emptier than it will be, so every height-based feature
+      // read a position that was never going to exist.
+      var cleared = this._bottomRowOfTouchedGarbage(matched);
       var k;
       for (k in matched) this._popping[matched[k][0] + ':' + matched[k][1]] = matched[k];
-      for (k in cleared) this._popping[cleared[k][0] + ':' + cleared[k][1]] = cleared[k];
+      var poppedGarbage = 0;
+      for (k in cleared) { this._popping[cleared[k][0] + ':' + cleared[k][1]] = cleared[k]; poppedGarbage++; }
+      if (poppedGarbage) {
+        brokeGarbage += poppedGarbage;
+        truncated = true;
+        var st = this._stopTimeFor(isChainLink, keys.length, counter);
+        if (st > stopTimeEarned) stopTimeEarned = st;
+      }
       var pieces = root.PanelEngine.comboGarbage(keys.length);
       for (var i = 0; i < pieces.length; i++) garbage.push([pieces[i], 1]);
+      // GARBAGE BROKE: apply this pop and stop. The pop still has to HAPPEN —
+      // stopping before the sweep leaves the slab untouched and reports a
+      // break that never landed — but nothing past it is knowable, because the
+      // cells it just made are panels of a colour drawn from the engine's RNG.
+      if (truncated) { this._sweepPopped(chaining); break; }
       // NO full settle here. The loop falls a row per pass, so a group with
       // less distance to travel lands, matches and scores its own link before
       // a group still on its way down arrives.
@@ -826,7 +918,12 @@
     // plain combo (or several separate ones) is 1, a real 2-chain is 2.
     var depth = comboSizes.length ? Math.max(counter, 1) : 0;
     if (depth >= 2) garbage.push([this.width, Math.max(0, depth - 1)]);
-    return { chainLength: depth, comboSizes: comboSizes, garbage: garbage };
+    // `truncated` is a field rather than a silence: a caller that treats a
+    // stopped resolve as a finished one is making the same mistake one layer
+    // up, and nothing in the result would otherwise say which it got.
+    return { chainLength: depth, comboSizes: comboSizes, garbage: garbage,
+             brokeGarbage: brokeGarbage, stopTimeEarned: stopTimeEarned,
+             truncated: truncated };
   };
 
   function garbageCells(garbage) {
