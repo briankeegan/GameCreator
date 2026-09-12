@@ -148,6 +148,14 @@ etry() {
   else echo "  caught:     $1"; pass=$((pass+1)); fi
 }
 EBREAK="python3 $HERE/.chipbreak.py $HERE/verify_chips_engine.js $VE"
+# paint and settle moved into engineboard.js, which the bot and the verifier
+# now share. Breaking the SHARED module is the more honest test: a copy in the
+# verifier could pass while the bot's copy was wrong, which is the whole
+# reason there is only one.
+EB="$HERE/engineboard.js"
+EBSAVE="$WORK/engineboard.save.js"
+cp "$EB" "$EBSAVE"
+MODBREAK="python3 $HERE/.chipbreak.py $EBSAVE $EB"
 
 cp "$HERE/verify_chips_engine.js" "$VE"
 if ! echeck; then
@@ -168,7 +176,8 @@ etry "a swap the engine itself refuses"
 # Running no frames: nothing settles, no match events, every chip reads as
 # clearing nothing. This is the case that would catch the whole harness
 # silently measuring a board that never moved.
-$EBREAK "var step = settle(stack, 900);" "var step = settle(stack, 0);" || exit 2
+cp "$HERE/verify_chips_engine.js" "$VE"
+$MODBREAK "var cap = budget || 900;" "var cap = 0;" || exit 2
 etry "the swap never given frames to resolve"
 
 # NOT TESTED, deliberately: stale chaining flags on the painted panels. Set
@@ -189,9 +198,12 @@ etry "a filler pattern that can match itself once the cascade drops it"
 # and thirteen good chips read as clearing nothing. Only batch 7 (two-swap)
 # can catch this — every single-swap chip is finished before the rise matters,
 # which is why it went unnoticed through six batches.
-$EBREAK "if (f >= 3 && !stack.hasActivePanels() && !stack.hasChainingPanels()) break;" "if (false) break;" || exit 2
+cp "$EBSAVE" "$EB"
+cp "$HERE/verify_chips_engine.js" "$VE"
+$MODBREAK "if (f >= 3 && !stack.hasActivePanels() && !stack.hasChainingPanels()) break;" "if (false) break;" || exit 2
 etry "settling for a fixed frame count, letting the stack rise between swaps"
 
+cp "$EBSAVE" "$EB"
 rm -f "$VE"
 
 echo "$pass caught, $missed missed"

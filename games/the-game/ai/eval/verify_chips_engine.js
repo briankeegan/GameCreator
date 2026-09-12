@@ -22,6 +22,11 @@ var fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 var PanelEngine = globalThis.PanelEngine;
 var W = PanelEngine.WIDTH;
+// ONE implementation of paint-and-settle, shared with the bot. This file used
+// to carry its own copy; a second copy of the thing that talks to the engine
+// is how LogicalBoard drifted from the engine in the first place, and it would
+// quietly make "verified against the engine" stop meaning what it says.
+var engineBoard = require('./engineboard.js');
 
 var dir = path.join(__dirname, 'chips');
 var files = process.argv[2] ? [process.argv[2]]
@@ -87,62 +92,6 @@ function layout(chip) {
              fillerColours: fillerColours, fillerBefore: fillerBefore };
 }
 
-// Write a grid onto a live Stack. The engine keeps Panel objects in place and
-// mutates them, so the panels are reset rather than replaced — anything left
-// over (a timer, a chaining flag, a garbage size) would run on after the swap
-// and be read as part of the chip.
-function paint(stack, grid, H) {
-    for (var r = 0; r < stack.panels.length; r++) {
-        for (var c = 1; c <= W; c++) {
-            var p = stack.panels[r][c];
-            if (!p) continue;
-            p.color = (r >= 1 && r <= H) ? (grid[r][c] || 0) : 0;
-            p.state = 'normal';
-            p.timer = 0; p.initialTime = 0; p.popTime = 0; p.popIndex = 0;
-            p.chaining = false; p.matching = false; p.isGarbage = false;
-            p.fellFromGarbage = 0; p.stateChanged = false;
-            p.propagatesChaining = false; p.matchAnyway = false;
-            p.xOffset = null; p.yOffset = null;
-            p.gWidth = 0; p.gHeight = 0; p.shakeTime = 0;
-        }
-    }
-}
-
-// RUN UNTIL THE BOARD IS STILL, THEN STOP — NOT FOR A FIXED NUMBER OF FRAMES.
-//
-// riseLock and speed = 0 do not hold the stack still forever: the engine
-// re-decides riseLock every frame (it is set when something is active, not
-// kept by us), so a fixed 900-frame settle let the board RISE A ROW between
-// the two swaps of a two-swap chip. The second swap then addressed the cells
-// the first swap's panels used to be in, and thirteen perfectly good chips
-// read as clearing nothing. A probe of the same chip, running 400 frames,
-// cleared 3 — the two disagreed because of idle frames, not the chip.
-//
-// So the budget is only a backstop against a board that never settles, and
-// the real exit is stillness: no active panels, no chaining panels. That is
-// exactly the condition the fork's own generators wait on
-// (getComboSetups.lua: "if j >= 3 and not st:hasActivePanels() and not
-// st:hasChainingPanels() then break").
-function settle(stack, budget) {
-    var got = { chain: 0, cleared: 0, matches: 0 };
-    for (var f = 0; f < budget; f++) {
-        stack.events.length = 0;
-        stack.run();
-        for (var i = 0; i < stack.events.length; i++) {
-            var e = stack.events[i];
-            if (e.type === 'match') {
-                got.matches++;
-                got.cleared += e.size;
-                if (e.chainCounter > got.chain) got.chain = e.chainCounter;
-            }
-        }
-        // Give it a few frames first: a swap takes some to even become
-        // active, and exiting on frame 1 would call every chip inert.
-        if (f >= 3 && !stack.hasActivePanels() && !stack.hasChainingPanels()) break;
-    }
-    return got;
-}
-
 var pass = 0, fail = 0, skipped = 0;
 console.log('verifying ' + chips.length + ' chips against the REAL engine, from ' +
     files.map(function (f) { return path.basename(f); }).join(', ') + '\n');
@@ -155,18 +104,15 @@ chips.forEach(function (chip) {
 
     // A stack with the rise stopped, so nothing arrives mid-chip and changes
     // the answer. Level 10 is what the bot plays.
-    var stack = new PanelEngine.Stack({ level: 10, seed: 7 });
-    var guard = 0;
-    while (!stack.stopWatchIsRunning && guard++ < 1000) stack.run();
-    stack.riseLock = true;
+    var stack = engineBoard.scratch(10);
     stack.speed = 0;
-    paint(stack, lay.grid, lay.H);
+    engineBoard.paint(stack, lay.grid, lay.H, W);
     stack.curRow = lay.swapRow; stack.curCol = lay.swapCol;
 
     // Let it sit: the board must be STILL before the swap, or whatever follows
     // is the staging settling rather than the chip firing.
-    var pre = settle(stack, 30);
-    if (pre.matches) {
+    var pre = engineBoard.settle(stack, 30);
+    if (pre.comboSizes.length) {
         console.log(label + 'FAIL  the staged board resolves on its own before the swap');
         fail++; return;
     }
@@ -192,17 +138,21 @@ chips.forEach(function (chip) {
         }
         stack.curRow = sr; stack.curCol = sc;
         stack.doSwap(sr, sc);
-        var step = settle(stack, 900);
+        var step = engineBoard.settle(stack, 900);
         // The setup swap must set up, not score. The generator keeps a chip
         // only if the first swap clears nothing.
-        if (si === 0 && chip.swaps.length === 2 && step.matches) {
-            console.log(label + 'FAIL  the setup swap clears ' + step.cleared +
+        if (si === 0 && chip.swaps.length === 2 && step.comboSizes.length) {
+            console.log(label + 'FAIL  the setup swap clears ' + step.clearedPanels +
                         ' panels on its own — it is supposed to only set up');
             fail++; return;
         }
-        got.cleared += step.cleared;
-        got.matches += step.matches;
-        if (step.chain > got.chain) got.chain = step.chain;
+        got.cleared += step.clearedPanels;
+        got.matches += step.comboSizes.length;
+        // settle() reports in resolve()'s units — a plain combo is 1 ROUND.
+        // The chips record the engine's chain COUNTER, where that same combo
+        // is 0. One place converts between them, and it is here.
+        var counter = step.chainLength >= 2 ? step.chainLength : 0;
+        if (counter > got.chain) got.chain = counter;
     }
 
     // THE MOVE COUNT MUST BE THE ONE THE PLANNER WILL PAY. cursorMoves is
