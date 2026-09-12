@@ -79,5 +79,22 @@ PY
 try "load order reversed (puyocpu before features)"
 restore
 
+# The measuring tools, which are as load-bearing as the game: every number
+# in this project's arguments comes out of one of them, and a tool that
+# resolves switches for itself prints a confident score for a bot that does
+# not exist.
+rm -f "$G/ai/eval/switches.js"
+try "ai/eval/switches.js deleted"
+cp "$SRC/games/the-game/ai/eval/switches.js" "$G/ai/eval/"
+
+sed -i "s|require('./switches.js')|require('./registry.js')|" "$G/ai/eval/behaviour.js"
+try "behaviour.js stops loading switches.js"
+cp "$SRC/games/the-game/ai/eval/behaviour.js" "$G/ai/eval/"
+
+sed -i "s|var DENSITY = loaded.switches.density;|var DENSITY = process.env.GC_DENSITY === '1';|" \
+    "$G/ai/eval/puzzles.bench.js"
+try "puzzles.bench.js goes back to reading GC_DENSITY itself"
+cp "$SRC/games/the-game/ai/eval/puzzles.bench.js" "$G/ai/eval/"
+
 echo "$pass caught, $missed missed"
 [ "$missed" -eq 0 ]

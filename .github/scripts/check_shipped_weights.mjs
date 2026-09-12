@@ -112,6 +112,45 @@ if (!/trained\.switches/.test(duel)) {
               'scoring they were never trained on and nothing would say so');
 }
 
+// AND THE MEASURING TOOLS MUST READ THEM TOO.
+//
+// duel.js spreading trained.switches only fixes the GAME. Every number in
+// this project's arguments comes out of a measuring tool, and each of those
+// grew its own hand-written switch list: behaviour.js read GC_DENSITY and
+// never depth or beam, so a depth-2 snapshot was measured playing greedy;
+// puzzles.bench.js took density only from GC_DENSITY, so benchmarking a
+// snapshot meant remembering to type the flag that matched it. Neither
+// misreports anything visible — they print a confident number for a bot
+// that does not exist, which is the screenshot-that-fails-silently shape.
+//
+// So there is ONE loader, ai/eval/switches.js, and the tools must go
+// through it. Reaching straight for process.env.GC_DENSITY (or GC_RISE,
+// GC_DEPTH, GC_BEAM) is how each copy drifted, so that is what fails here.
+const loader = path.join(game, 'ai/eval/switches.js');
+if (!existsSync(loader)) {
+    fail.push('ai/eval/switches.js is missing — it is the one place that pairs a weight ' +
+              'set with the switches it was found under');
+} else {
+    for (const tool of ['behaviour.js', 'puzzles.bench.js']) {
+        const f = path.join(game, 'ai/eval', tool);
+        if (!existsSync(f)) { fail.push(`ai/eval/${tool} is missing`); continue; }
+        const src = readFileSync(f, 'utf8');
+        if (!/require\(['"]\.\/switches\.js['"]\)/.test(src)) {
+            fail.push(`${tool} does not load switches.js, so it decides for itself which ` +
+                      'scoring a weight set was found under — that is how depth, rise and ' +
+                      'density each got dropped between the trainer and a measurement');
+        }
+        // The loader owns the env overrides; a tool reading them directly is
+        // the hand-written list growing back.
+        const direct = src.replace(/require\(['"]\.\/switches\.js['"]\)/g, '')
+                          .match(/process\.env\.GC_(DENSITY|RISE|DEPTH|BEAM)/g);
+        if (direct) {
+            fail.push(`${tool} reads ${[...new Set(direct)].join(', ')} directly instead of ` +
+                      'letting switches.js resolve it — the override belongs in one place');
+        }
+    }
+}
+
 if (fail.length) {
     console.error('Shipped weights check FAILED:\n  - ' + fail.join('\n  - '));
     process.exit(1);

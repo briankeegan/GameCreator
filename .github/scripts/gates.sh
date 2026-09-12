@@ -91,6 +91,18 @@ gate_sprite_scale_consistency() {
   node games/the-game/sprite-scale.test.mjs
 }
 
+# THE SHIPPED BOT, AND THE TOOLS THAT MEASURE IT. This ran only in
+# pages.yml until now — i.e. after the push, which is the exact shape of
+# miss this file's header is about: the gate that would have caught it
+# lived somewhere gate_all did not look.
+gate_shipped_weights() {
+  node .github/scripts/check_shipped_weights.mjs .
+}
+
+gate_shipped_weights_check_fires() {
+  bash .github/scripts/shipped_weights.test.sh
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -138,6 +150,8 @@ GATES=(
   "the art index:gate_art_index"
   "art references:gate_art_refs"
   "characters keep one size while walking:gate_sprite_scale_consistency"
+  "the shipped weights and the tools that measure them:gate_shipped_weights"
+  "that check fires:gate_shipped_weights_check_fires"
   "the gates actually reject defects:gate_gates_reject_defects"
   "no check reports success it did not have:gate_gate_wiring"
   "generator rules:gate_generator_rules"
