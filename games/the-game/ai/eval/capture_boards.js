@@ -14,6 +14,27 @@
 //
 // Deterministic: fixed seeds, fixed frame budget, so regenerating gives the
 // same fixture and a failure reproduces by rerunning.
+//
+// THE COMMITTED FIXTURE IS STILL THE GARBAGE-FREE ONE, DELIBERATELY, AND THAT
+// IS AN OPEN GAP RATHER THAN A CHOICE I LIKE. Capturing with garbage works —
+// 4,898 boards, 30% carrying it — and running resolve_fidelity.js over that
+// set reports 310 disagreements in 52,130 cases, 248 of them the final board
+// alone. But those numbers cannot be believed yet, because BOTH SIDES of that
+// comparison mishandle garbage identity:
+//
+//   - this fixture stores one character per cell, so "G" loses WHICH BLOCK a
+//     garbage cell belongs to. LogicalBoard moves garbage by block
+//     (_dropGarbageBlocks reads this.blocks), so a board rebuilt from the
+//     fixture has garbage cells it can never move. The bot never sees that:
+//     SearchCpu._snapshot builds blocks from each panel's garbageId.
+//   - engineboard.paint() sets isGarbage but zeroes gWidth/gHeight and never
+//     restores garbageId, so the Stack's garbage is malformed too.
+//
+// Swapping the fixture in before fixing both would hand the gate a pile of
+// failures that are the harness's, and the first 300 boards being garbage-free
+// means the gate would go on passing while the fixture contained them. Same
+// shape as the rising-stack bug, and the same rule applies: fix the
+// measurement before believing what it says about the code.
 var path = require('path'), fs = require('fs');
 var GAME = path.join(__dirname, '..', '..');
 require(path.join(GAME, 'panel-engine.js'));
@@ -29,11 +50,27 @@ var OUT = process.argv[2] || path.join(__dirname, 'realboards.json');
 
 var weights = switches.load().weights || {};
 var out = [], seen = {};
+// GARBAGE MUST BE IN HERE OR THE FIXTURE LIES BY OMISSION. The first version
+// played a bare Stack with no attacks, and 0 of its 3,320 boards carried a
+// single garbage cell — so resolve()'s garbage handling (_connectedGarbage,
+// _dropGarbageBlocks, conversion back into panels) was compared against the
+// engine exactly never, while the fixture read as complete coverage.
+// Attacks land on a schedule here, the shapes bench.js's comboStorm, factory
+// and bigBlocks scenarios use.
+var GARBAGE_EVERY = Number(process.env.GC_CAPTURE_GARBAGE_EVERY || 240);
+var SHAPES = [{ width: 4, height: 1 }, { width: 6, height: 1 },
+              { width: 6, height: 2 }, { width: 3, height: 1 }];
 for (var s = 1; s <= SEEDS; s++) {
     var stack = new PanelEngine.Stack({ level: 10, seed: s * 7919, countdown: false });
     var cpu = new PuyoCpu(stack, { weights: weights, reaction: 12, depth: 1, beam: 6 });
+    var nextGarbage = GARBAGE_EVERY, shapeIdx = s;
     for (var f = 0; f < FRAMES; f++) {
         if (stack.gameOver) break;
+        if (f >= nextGarbage) {
+            var shape = SHAPES[(shapeIdx++) % SHAPES.length];
+            stack.receiveGarbage([{ width: shape.width, height: shape.height, isChain: false }]);
+            nextGarbage = f + GARBAGE_EVERY;
+        }
         cpu.update();
         stack.run();
         if (f % 7) continue;
