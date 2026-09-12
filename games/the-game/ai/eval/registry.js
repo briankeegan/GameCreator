@@ -69,6 +69,9 @@
     { key: 'staircase',        group: 'board',  sign: +1, fn: null,
       what: 'Loaded steps: panels that would complete a horizontal three if the cell under them cleared and they fell one row. THE shape Panel de Pon players build on purpose, taken from the game\'s own documented library rather than reasoned out here (paneponattack.com, "How to Set Up a Staircase") — PUYO_REFERENCE.md\'s Tier 2 is explicit that the bot is TOLD chain shapes rather than discovering them. Not chainPotential: that needs a trigger swap to exist right now, this measures whether the board is BUILT.' },
 
+    { key: 'staircaseReady',  group: 'board',  sign: +1, fn: null,
+      what: 'The longest staircase whose BASE can be cleared by one swap — the shape from docs/CHAIN_SHAPES.md, which fires only when a trigger match at the bottom goes off and lets the lowest step fall. staircase counts the diagonal and never looks for that trigger, so an unfireable stack of loaded pairs scores the same as a loaded gun with a finger on it; this is the half that can actually go off. Same walk as staircase, one flag apart, so the two can never drift into measuring different diagonals.' },
+
     { key: 'flatTop',          group: 'board',  sign: -1, fn: null,
       what: 'Columns level with the tallest, scaled by how high the tallest is. The documented way to die — "the overloaded flat-top is the shape that gets intermediate players killed" — and an INTERACTION, which is why it cannot be left to roughness plus maxHeight: a weighted sum adds them, it cannot multiply them. Flat on the floor costs nothing; flat at the ceiling is the death shape.' },
 

@@ -158,6 +158,23 @@ var REACHABLE = [
     // scoreEarned reads the same earned block chainLength does — the
     // cascade's combo sizes — so it is reachable wherever chainLength is.
     ['scoreEarned', function (cpu) { return blank(cpu); }],      // fed by cumCombo
+    ['staircaseReady', function (cpu) {
+        // The same step as staircase above, on a base that can ACTUALLY be
+        // set off: the 2s at columns 3 and 4 plus the one at column 6 make
+        // 2-2-2 across 3-5 after one swap, which clears the cell under the
+        // step. staircase's own fixture has its trigger already standing on
+        // the board rather than one swap away, so it fires staircase and not
+        // this — which is the distinction the feature exists for.
+        var b = blank(cpu);
+        var rows = ['112232', '..1...'];               // bottom row first
+        for (var r = 0; r < rows.length; r++) {
+            for (var c = 1; c <= 6; c++) {
+                var ch = rows[r][c - 1];
+                b.grid[r + 1][c] = ch === '.' ? 0 : Number(ch);
+            }
+        }
+        return b;
+    }],
     ['garbageCleared', function (cpu) {
         // live board holds garbage, candidate does not: the seam differences them
         for (var c = 1; c <= 6; c++) {
