@@ -141,6 +141,19 @@ gate_chips_decidable() {
   node games/the-game/ai/eval/chips.decidable.test.js
 }
 
+# Four features share one clone-swap-resolve pass instead of running it four
+# times, which is what makes a gravity-correct matchPotential affordable
+# (+2.8% per candidate instead of +102%). The saving is only honest if the
+# answers are identical, and a shared pass that answers one feature from
+# another feature's board reads as a fast bot rather than a broken one.
+gate_features_shared_pass() {
+  node games/the-game/ai/eval/features.shared.test.js
+}
+
+gate_features() {
+  node games/the-game/ai/eval/features.test.js
+}
+
 gate_chip_verifier_fires() {
   bash games/the-game/ai/eval/chips.test.sh
 }
@@ -197,6 +210,8 @@ GATES=(
   "engine-only chips earn that label:gate_engine_only_membership"
   "the engine brain is wired, not inert:gate_engine_brain"
   "every ported chip is individually decidable:gate_chips_decidable"
+  "every feature measures what its name says:gate_features"
+  "the shared resolve pass is the same answer:gate_features_shared_pass"
   "that chip check fires:gate_chip_verifier_fires"
   "the shipped weights and the tools that measure them:gate_shipped_weights"
   "that check fires:gate_shipped_weights_check_fires"

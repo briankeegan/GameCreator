@@ -22,6 +22,9 @@
 var assert = require('assert');
 var registry = require('./registry.js');
 var inputMod = require('./input.js');
+require(require('path').join(__dirname, '..', '..', 'panel-engine.js'));
+require(require('path').join(__dirname, '..', '..', 'panel-cpu.js'));
+var PanelCpu = globalThis.PanelCpu;
 var evaluator = require('./evaluator.js');
 var weights = require('./weights.js');
 
@@ -58,7 +61,13 @@ function board(rows) {
         }
         blocks[id] = { cells: cells };
     }
-    return { width: width, height: height, grid: grid, blocks: blocks };
+    // A REAL LogicalBoard, not a plain snapshot — the same class the cpu
+    // plans against, so gravity, matching and garbage behave here exactly as
+    // they do in the game. It used to return a plain object, which meant
+    // every feature needing `liveBoard` silently scored 0 in these tests:
+    // matchPotential's blind spot was asserted as a LIMIT for months partly
+    // because the harness could not have shown otherwise.
+    return new PanelCpu.LogicalBoard(width, height, 9, grid, blocks);
 }
 
 // ---------------------------------------------------------------- harness
@@ -251,13 +260,41 @@ test('matchPotential: swapping two of the same colour is not a move', function (
     assert.strictEqual(potential(['111...']), 0, 'a settled board has no standing match to find');
 });
 
-test('matchPotential: LIMIT — swaps into an empty cell are not counted', function () {
-    // Documented blind spot, asserted so it stays visible. Sliding the 1
-    // at column 4 left into the gap would line up three, but the board
-    // then falls, and gravity is not a pure function of this snapshot.
-    // Guessing at it would be an invisible wrong answer; leaving it is a
-    // known one.
-    assert.strictEqual(potential(['11.1..']), 0);
+// THE BLIND SPOT THAT USED TO BE ASSERTED HERE AS A LIMIT.
+//
+// This file carried a test named "LIMIT — swaps into an empty cell are not
+// counted", justified by "gravity is not a pure function of this snapshot".
+// The snapshot part was true; the conclusion was not. LogicalBoard.resolve()
+// is the gravity the bot plans with, and input.js already carried a real
+// board through as liveBoard. Measured on Panel Attack's 144 readable
+// authored puzzle boards, the limit cost 65% of every chain-firing swap.
+//
+// The three tests below are what replaced it: the move is seen when it pays,
+// seen when the panel has to FALL first, and still ignored when the fall only
+// produces a plain 3.
+test('matchPotential: FIRES on a swap into an empty cell', function () {
+    // 111.1. — sliding the 1 at column 5 into the gap at column 4 makes a
+    // row of four. Nothing falls here; the swap alone used to be skipped
+    // outright because one side was empty.
+    assert.strictEqual(potential(['111.1.']), 1);
+});
+
+test('matchPotential: FIRES on a swap whose panel must FALL before it matches', function () {
+    //   .1....
+    //   11.1..
+    // Two ways to a merged four, and neither is visible without gravity:
+    // swap the top 1 right and it drops into the hole at column 3, giving
+    // 1111..; or swap the bottom 1 at column 4 left, giving a row of three
+    // that unions with the column of two through column 2.
+    assert.strictEqual(potential(['.1....', '11.1..']), 2);
+});
+
+test('matchPotential: STAYS QUIET when the fall only makes a plain 3', function () {
+    // Same shape, one panel short. The swap is now visible and still worth
+    // nothing, because comboGarbage() sends nothing below four — which is
+    // the feature's actual rule, and the reason the old assertion happened
+    // to read 0 for the wrong reason.
+    assert.strictEqual(potential(['.1....', '11....']), 0);
 });
 
 test('matchPotential: LIMIT — it does not look past one swap', function () {

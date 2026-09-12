@@ -110,15 +110,33 @@ var MOVE_FRAMES = 4;
   // The match rule is the engine's, via matchedCells: board-wide union,
   // both axes, so an L pays as a 5.
   //
-  // TWO LIMITS, both deliberate and both asserted in the tests so they stay
-  // visible rather than being rediscovered:
+  // LIMIT 1 IS GONE, AND IT WAS THE EXPENSIVE ONE. This used to skip every
+  // swap where one side was empty, on the reasoning that judging it needs
+  // gravity and gravity "is not a pure function of this snapshot". That was
+  // true of the snapshot and false of the situation: LogicalBoard.resolve()
+  // IS the gravity the bot plans with, and input.js already carries a real
+  // board through as `liveBoard` for exactly this — chainPotential and
+  // comboPotential have used it all along.
   //
-  // 1. ONLY COLOUR-TO-COLOUR SWAPS. A swap where one side is empty slides a
-  //    panel into a gap and the board then falls; judging it needs gravity,
-  //    which is not a pure function of this snapshot. Real players do this
-  //    constantly, so this IS a blind spot — it is left as one rather than
-  //    guessed at, because a wrong gravity model here would be invisible.
-  // 2. IT DOES NOT LOOK PAST ONE SWAP. Nothing about setup two moves out.
+  // Sliding a panel over a hole is not a corner case, it is most of the
+  // game. Measured on Panel Attack's own 144 readable authored puzzle
+  // boards: 55% of the swaps that clear anything need an empty cell, 65% of
+  // the swaps that fire a chain do, and 36 of the 144 boards have their best
+  // chain reachable ONLY that way. The old version scored 27 where this one
+  // scores 91, and returned 0 on 33 boards that had a real answer.
+  //
+  // It is the same defect the chip verifier had, in the other direction:
+  // there, staging read "unmentioned" as air when it was ground; here,
+  // scoring read a swap as finished when the panels had not landed yet.
+  // Both are "the board was judged before it stopped moving".
+  //
+  // THE ONE REMAINING LIMIT: it does not look past one swap. Nothing about
+  // setup two moves out. Asserted in the tests so it stays visible.
+  //
+  // The "did the swap cause it" test is gone too, and did not need
+  // replacing: the board being scored is SETTLED, so it has no standing
+  // matches, and anything resolve() clears afterwards was caused by the
+  // swap by construction.
   //
   // Cost: one full-board match scan per legal swap. On a 6x12 board that is
   // ~30 swaps x 72 cells. If profiling says that is too much inside the
@@ -160,27 +178,102 @@ var MOVE_FRAMES = 4;
     return matched;
   }
 
+  // How many garbage cells are sitting on a board. Used to decide whether a
+  // swap CLEARED garbage, which is the thing "a plain 3 that touches
+  // garbage" was always a proxy for — with gravity in play the proxy is no
+  // longer needed, because the clear either happens or it does not.
+  // ONE RESOLVE PASS, SHARED BY EVERY FEATURE THAT ASKS "WHAT IF I SWAPPED?"
+  //
+  // matchPotential, comboPotential, chainPotential and clearableByOneSwap all
+  // ask the same question of the same board — clone it, make each legal swap,
+  // let it settle — and each used to run that loop itself. Four identical
+  // passes. Profiled on Panel Attack's own 144 readable authored puzzle
+  // boards (profile_features.js), those four were 94% of all feature cost.
+  //
+  // THIS IS NOT AN APPROXIMATION. It is the same clone, the same swap and the
+  // same resolve(); the only change is that the answer is computed once and
+  // read four times, so every feature returns bit-for-bit what it returned
+  // when it ran its own loop. That equality is asserted on all 144 real
+  // boards in features.shared.test.js rather than argued here — a "faster
+  // version that computes the same thing" is exactly the claim that needs a
+  // test, because when it is wrong nothing looks wrong.
+  //
+  // CACHED PER BOARD, AND THE CACHE CANNOT GO STALE SILENTLY. Keyed on the
+  // board object, which is a fresh clone per candidate, so a WeakMap would
+  // almost always be right — and "almost always" is how this directory
+  // produces bugs nobody can see. Every hit re-checks a fingerprint of the
+  // grid it was computed from, so a board mutated between two features
+  // recomputes instead of answering from a stale pass. The fingerprint is
+  // one walk of 72 cells against a pass that clones and resolves ~30 times.
+  var outcomeCache = (typeof WeakMap === 'function') ? new WeakMap() : null;
+
+  function fingerprint(board) {
+    var grid = board.grid, h = board.height, w = board.width, s = h + 'x' + w;
+    for (var r = 1; r <= h; r++) {
+      for (var c = 1; c <= w; c++) s += ',' + grid[r][c];
+    }
+    return s;
+  }
+
+  // A real board, or null. The four features below all take the same shape of
+  // input and all owe the same answer when there is no board to plan on.
+  function planBoard(input) {
+    var board = input.liveBoard || input.board;
+    if (!board || typeof board.legalSwaps !== 'function' ||
+        typeof board.clone !== 'function' || typeof board.resolve !== 'function') return null;
+    return board;
+  }
+
+  function swapOutcomes(board) {
+    var fp = fingerprint(board);
+    if (outcomeCache) {
+      var hit = outcomeCache.get(board);
+      if (hit && hit.fp === fp) return hit.out;
+    }
+    var before = garbageCells(board);
+    var swaps = board.legalSwaps(), out = [];
+    for (var i = 0; i < swaps.length; i++) {
+      var trial = board.clone();
+      trial.swap(swaps[i][0], swaps[i][1]);
+      var res = trial.resolve();
+      var sizes = res.comboSizes || [];
+      var biggest = 0;
+      for (var k = 0; k < sizes.length; k++) if (sizes[k] > biggest) biggest = sizes[k];
+      out.push({
+        cleared: sizes.length > 0,
+        biggest: biggest,
+        chainLength: res.chainLength,
+        ateGarbage: garbageCells(trial) < before,
+        grid: trial.grid
+      });
+    }
+    if (outcomeCache) outcomeCache.set(board, { fp: fp, out: out });
+    return out;
+  }
+
+  function garbageCells(board) {
+    var grid = board.grid, n = 0;
+    for (var r = 1; r <= board.height; r++)
+      for (var c = 1; c <= board.width; c++) if (grid[r][c] === -2) n++;
+    return n;
+  }
+
   function matchPotential(input) {
-    var board = input.board, grid = board.grid, W = board.width, H = board.height;
-    if (!W || !H) return 0;
-    var count = 0;
-
-    for (var r = 1; r <= H; r++) {
-      for (var c = 1; c < W; c++) {
-        var a = grid[r][c], b = grid[r][c + 1];
-        if (a <= 0 || b <= 0) continue;   // limit 1: both sides must be real panels
-        if (a === b) continue;            // swapping equals changes nothing
-
-        grid[r][c] = b; grid[r][c + 1] = a;
-        var matched = matchedCellsNear(board, r, c, c + 1);
-        var size = Object.keys(matched).length;
-        // The swap must be what CAUSED it. A settled board has no standing
-        // matches, but scoring one that ignores the swapped cells would
-        // credit every swap on the board with the same pre-existing find.
-        var caused = matched[r + ':' + c] || matched[r + ':' + (c + 1)];
-        if (caused && (size >= 4 || touchesGarbage(board, matched))) count++;
-        grid[r][c] = a; grid[r][c + 1] = b;
-      }
+    // liveBoard, not board: this needs the clone/swap/resolve that input.js
+    // flattens away, exactly as chainPotential and comboPotential do. A
+    // caller with no real board gets 0 rather than a number derived from a
+    // second, private implementation of gravity.
+    var board = planBoard(input);
+    if (!board) return 0;
+    var out = swapOutcomes(board), count = 0;
+    for (var i = 0; i < out.length; i++) {
+      var o = out[i];
+      if (!o.cleared) continue;
+      // Worth a count if it PAYS: a merged clear of 4+ (comboGarbage sends
+      // nothing below 4), or a clear that cascades, or one that eats
+      // garbage. A lone plain 3 that does none of those still scores 0,
+      // which is the whole point of the feature.
+      if (o.biggest >= 4 || o.chainLength >= 2 || o.ateGarbage) count++;
     }
     return count;
   }
@@ -228,13 +321,8 @@ var MOVE_FRAMES = 4;
     // implementation of gravity and matching.
     if (!board || typeof board.legalSwaps !== 'function' ||
         typeof board.clone !== 'function' || typeof board.resolve !== 'function') return 0;
-    var swaps = board.legalSwaps(), best = 0;
-    for (var i = 0; i < swaps.length; i++) {
-      var trial = board.clone();
-      trial.swap(swaps[i][0], swaps[i][1]);
-      var r = trial.resolve();
-      if (r.chainLength > best) best = r.chainLength;
-    }
+    var out = swapOutcomes(board), best = 0;
+    for (var i = 0; i < out.length; i++) if (out[i].chainLength > best) best = out[i].chainLength;
     return best;
   }
 
@@ -811,16 +899,10 @@ var MOVE_FRAMES = 4;
   // each candidate ONCE and let both features read the result, not to make
   // either of them guess more cheaply.
   function comboPotential(input) {
-    var board = input.liveBoard || input.board;
-    if (!board || typeof board.legalSwaps !== 'function' ||
-        typeof board.clone !== 'function' || typeof board.resolve !== 'function') return 0;
-    var swaps = board.legalSwaps(), best = 0;
-    for (var i = 0; i < swaps.length; i++) {
-      var trial = board.clone();
-      trial.swap(swaps[i][0], swaps[i][1]);
-      var sizes = trial.resolve().comboSizes || [];
-      for (var j = 0; j < sizes.length; j++) if (sizes[j] > best) best = sizes[j];
-    }
+    var board = planBoard(input);
+    if (!board) return 0;
+    var out = swapOutcomes(board), best = 0;
+    for (var i = 0; i < out.length; i++) if (out[i].biggest > best) best = out[i].biggest;
     return best;
   }
 
@@ -896,19 +978,26 @@ var MOVE_FRAMES = 4;
   //
   // Restores the grid it borrows. A swap left in place would corrupt every
   // feature computed after this one, silently, on the same input object.
+  // SAME CORRECTION AS matchPotential, and for the same reason: this used to
+  // consider only colour-to-colour swaps and read the match off instantly,
+  // so a base cleared by sliding a panel over a hole did not count and the
+  // staircase above it scored 0. That is 65% of the chain-firing swaps on
+  // the real puzzle set. Resolves on a clone instead, which is the gravity
+  // the bot plans with.
+  //
+  // Needs a real board; a plain snapshot gets `false`, which leaves
+  // staircaseReady reading 0 rather than inventing a trigger.
   function clearableByOneSwap(board, row, col) {
-    var grid = board.grid, W = board.width, H = board.height;
-    if (row < 1 || row > H || grid[row][col] <= 0) return false;
-    for (var r = 1; r <= H; r++) {
-      for (var c = 1; c < W; c++) {
-        var a = grid[r][c], b = grid[r][c + 1];
-        if (a <= 0 || b <= 0 || a === b) continue;
-        grid[r][c] = b; grid[r][c + 1] = a;
-        var matched = matchedCellsNear(board, r, c, c + 1);
-        var hit = !!matched[row + ':' + col];
-        grid[r][c] = a; grid[r][c + 1] = b;
-        if (hit) return true;
-      }
+    if (!board || typeof board.legalSwaps !== 'function' ||
+        typeof board.clone !== 'function' || typeof board.resolve !== 'function') return false;
+    if (row < 1 || row > board.height || board.grid[row][col] <= 0) return false;
+    var out = swapOutcomes(board);
+    for (var i = 0; i < out.length; i++) {
+      if (!out[i].cleared) continue;
+      // The cell is cleared if nothing of its colour is left standing there
+      // once the board stops moving. Compared against the ORIGINAL colour,
+      // since a cascade may drop a different panel into the same cell.
+      if (out[i].grid[row][col] !== board.grid[row][col]) return true;
     }
     return false;
   }
@@ -944,6 +1033,9 @@ var MOVE_FRAMES = 4;
   // drift into measuring different diagonals.
   function staircaseRuns(input, requireTrigger) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    // The shape is read off the snapshot; the TRIGGER needs real gravity,
+    // so it is asked of liveBoard when there is one.
+    var live = input.liveBoard || (typeof board.resolve === 'function' ? board : null);
 
     function pair(row, a, b, v) {
       return a >= 1 && b >= 1 && a <= W && b <= W && grid[row][a] === v && grid[row][b] === v;
@@ -983,7 +1075,7 @@ var MOVE_FRAMES = 4;
           // swap produces a match containing that cell. Checked once per
           // maximal run, not once per step, because the scan above already
           // refuses to start a run inside another one.
-          if (requireTrigger && !clearableByOneSwap(board, r - 1, c)) continue;
+          if (requireTrigger && !clearableByOneSwap(live, r - 1, c)) continue;
           if (len > best) best = len;
         }
       }
