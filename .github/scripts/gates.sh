@@ -177,7 +177,7 @@ gate_resolve_breaks() {
 # cut on that. They move fine — that script had no garbage, no cursor and no
 # live game.
 gate_features_live() {
-  node games/the-game/ai/eval/feature_liveness.js 1 comboStorm
+  node games/the-game/ai/eval/feature_liveness.js 2 all
 }
 
 # The four constraints a template carries, pinned directly. Two of them were
