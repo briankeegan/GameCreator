@@ -53,8 +53,8 @@ function stage(chip, colorMap) {
         if (typeof cells[u0][2] === 'number') used[cells[u0][2]] = 1;
     }
     var spare = [];
-    for (var sc0 = 1; sc0 <= 12 && spare.length < 3; sc0++) if (!used[sc0]) spare.push(sc0);
-    if (spare.length < 3) return { skip: 'no spare colours for blockers and props' };
+    for (var sc0 = 1; sc0 <= 12 && spare.length < 4; sc0++) if (!used[sc0]) spare.push(sc0);
+    if (spare.length < 4) return { skip: 'no spare colours for blockers and props' };
     var g = [];
     for (var r = 0; r <= H; r++) { g[r] = []; for (var c = 1; c <= W; c++) g[r][c] = 0; }
     var mustEmpty = {};
@@ -73,7 +73,7 @@ function stage(chip, colorMap) {
         g[rr][cc] = (k === '@') ? '@' : (colorMap[k] || k);
     }
     for (var ar = 1; ar <= H; ar++) for (var ac = 1; ac <= W; ac++) {
-        if (g[ar][ac] === '@') g[ar][ac] = spare[2];
+        if (g[ar][ac] === '@') g[ar][ac] = spare[3];
     }
 
     // GROUND UNDER THE SWAP'S OWN PAIR, AND NOWHERE ELSE.
@@ -107,7 +107,7 @@ function stage(chip, colorMap) {
             if (!val) continue;                                   // lands empty: nothing to hold up
             if (g[swapRow - 1][col] !== 0) continue;              // already supported
             if (mustEmpty[(swapRow - 1) + ',' + col]) continue;   // the template wants that gap
-            g[swapRow - 1][col] = spare[(swapRow - 1 + col) % 2];
+            g[swapRow - 1][col] = spare[(swapRow - 1 + 2 * col) % 3];
             bedCells.push([swapRow - 1, col]);
         }
     }
@@ -133,7 +133,7 @@ function stage(chip, colorMap) {
             // Checkerboarded across two colours the chip does not use, so the
             // props can never line up three of a kind with each other or join
             // a match with the template.
-            g[r3][c2] = spare[(r3 + c2) % 2];
+            g[r3][c2] = spare[(r3 + 2 * c2) % 3];
         }
     }
     return { board: new LogicalBoard(W, H, 6, g, {}), rowOff: rowOff, colOff: colOff,

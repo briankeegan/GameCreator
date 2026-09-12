@@ -99,7 +99,7 @@ vtry "a blocker staged as garbage instead of a panel"
 
 # BUG 2 — support props staged as garbage. Our engine pops garbage that a
 # match touches, so a prop beside a clear vanishes and the stack above drops.
-$BREAK "g[r3][c2] = spare[(r3 + c2) % 2];" "g[r3][c2] = -2;" || exit 2
+$BREAK "g[r3][c2] = spare[(r3 + 2 * c2) % 3];" "g[r3][c2] = -2;" || exit 2
 vtry "support props staged as garbage instead of panels"
 
 # BUG 3 — the legality guard. Removing it alone changes NOTHING, and that is
@@ -132,7 +132,7 @@ fi
 # batch6-cascade3-double, where 3 chips depend on it. Held back rather than
 # written early, because a case that passes whether or not the bug is present
 # is decoration, and this file exists to not have any of those.
-$BREAK "g[swapRow - 1][col] = spare[(swapRow - 1 + col) % 2];" "g[swapRow - 1][col] = 0;" || exit 2
+$BREAK "g[swapRow - 1][col] = spare[(swapRow - 1 + 2 * col) % 3];" "g[swapRow - 1][col] = 0;" || exit 2
 vtry "the prop under the swap's landing cell removed" 
 
 # ---- AND THE SAME CHIPS AGAINST THE REAL ENGINE ----
@@ -175,6 +175,12 @@ etry "the swap never given frames to resolve"
 # one and nothing changes, because the 30 pre-swap frames that check the
 # board is still also clear it — the guard is real but already covered, and a
 # case that passes either way is decoration. Noted rather than written.
+
+# The generator's own rule: no filler may ever match. Break the filler back to
+# a two-colour checkerboard and it does — it clears alongside the chip and 37
+# chips read as clearing three more panels than they claim.
+$EBREAK "grid[r3][c2] = spare[(r3 + 2 * c2) % 3];" "grid[r3][c2] = spare[(r3 + c2) % 2];" || exit 2
+etry "a filler pattern that can match itself once the cascade drops it"
 
 rm -f "$VE"
 

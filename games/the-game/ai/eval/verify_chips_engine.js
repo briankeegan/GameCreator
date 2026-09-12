@@ -46,8 +46,8 @@ function layout(chip) {
     var used = {};
     cells.forEach(function (c) { if (typeof c[2] === 'number') used[c[2]] = 1; });
     var spare = [];
-    for (var s = 1; s <= 12 && spare.length < 3; s++) if (!used[s]) spare.push(s);
-    if (spare.length < 3) return { skip: 'no spare colours' };
+    for (var s = 1; s <= 12 && spare.length < 4; s++) if (!used[s]) spare.push(s);
+    if (spare.length < 4) return { skip: 'no spare colours' };
 
     var H = 12;
     var grid = [];
@@ -57,7 +57,7 @@ function layout(chip) {
         var rr = cells[i][0] + rowOff, cc = cells[i][1] + colOff, k = cells[i][2];
         if (rr < 1 || rr > H || cc < 1 || cc > W) return { skip: 'does not fit' };
         if (k === '.' || k === 'e') { mustEmpty[rr + ',' + cc] = 1; continue; }
-        grid[rr][cc] = (k === '@') ? spare[2] : k;
+        grid[rr][cc] = (k === '@') ? spare[3] : k;
     }
     var swapRow = chip.swaps[0][0] + rowOff, swapCol = chip.swaps[0][1] + colOff;
     if (swapRow > 1 && swapCol >= 1 && swapCol < W) {
@@ -66,7 +66,7 @@ function layout(chip) {
             if (!p[1]) return;
             if (grid[swapRow - 1][p[0]] !== 0) return;
             if (mustEmpty[(swapRow - 1) + ',' + p[0]]) return;
-            grid[swapRow - 1][p[0]] = spare[(swapRow - 1 + p[0]) % 2];
+            grid[swapRow - 1][p[0]] = spare[(swapRow - 1 + 2 * p[0]) % 3];
         });
     }
     for (var c2 = 1; c2 <= W; c2++) {
@@ -75,10 +75,16 @@ function layout(chip) {
         for (var r3 = top - 1; r3 >= 1; r3--) {
             if (grid[r3][c2] !== 0) continue;
             if (mustEmpty[r3 + ',' + c2]) return { skip: 'needs support where the template demands empty' };
-            grid[r3][c2] = spare[(r3 + c2) % 2];
+            grid[r3][c2] = spare[(r3 + 2 * c2) % 3];
         }
     }
-    return { grid: grid, swapRow: swapRow, swapCol: swapCol, H: H };
+    var fillerColours = {}, fillerBefore = 0;
+    fillerColours[spare[0]] = 1; fillerColours[spare[1]] = 1; fillerColours[spare[2]] = 1;
+    for (var fr = 1; fr <= H; fr++) for (var fc = 1; fc <= W; fc++) {
+        if (fillerColours[grid[fr][fc]]) fillerBefore++;
+    }
+    return { grid: grid, swapRow: swapRow, swapCol: swapCol, H: H,
+             fillerColours: fillerColours, fillerBefore: fillerBefore };
 }
 
 // Write a grid onto a live Stack. The engine keeps Panel objects in place and
@@ -157,6 +163,31 @@ chips.forEach(function (chip) {
     // The engine's chain counter is 0 for a combo that does not cascade and 2
     // for a 2-chain, exactly like the chips' own meta — no translation here,
     // unlike LogicalBoard's round count.
+    // THE GENERATOR'S OWN RULE, MADE INTO A CHECK. getCascadeShapes.lua keeps a
+    // chip only if "ZERO support cleared (no wildcard/filler may ever match)".
+    // It could enforce that because it verified on the FULL board it built;
+    // what ships is the GENERALIZED template, with the don't-care cells
+    // dropped, so the filler here is this harness's invention and can match
+    // where theirs did not. Left unchecked that shows up as a chip quietly
+    // clearing three more panels than it claims — which is exactly what it
+    // did, 37 times, until a three-colour filler replaced the checkerboard.
+    // Asserted rather than hoped for, because the next filler scheme will
+    // have its own blind spot.
+    // COUNTED BY COLOUR, NOT BY COORDINATE. The first version of this check
+    // asked whether each filler CELL still held a panel, and failed 152
+    // chips that were perfectly fine: a cascade drops everything above it, so
+    // a filler panel moves rather than disappears. The generator counts the
+    // same way (cntFill sums colours >= 5 across the whole board).
+    var fillerAfter = 0;
+    for (var vr = 1; vr <= lay.H; vr++) for (var vc = 1; vc <= W; vc++) {
+        var vp = stack.panels[vr][vc];
+        if (vp && lay.fillerColours[vp.color]) fillerAfter++;
+    }
+    if (fillerAfter < lay.fillerBefore) {
+        console.log(label + 'FAIL  ' + (lay.fillerBefore - fillerAfter) + ' filler panels cleared — ' +
+                    'this harness\'s support is taking part in the chip, so the numbers are the staging');
+        fail++; return;
+    }
     var okChain = got.chain === chip.chain;
     var okTotal = got.cleared === chip.total;
     if (okChain && okTotal) {
