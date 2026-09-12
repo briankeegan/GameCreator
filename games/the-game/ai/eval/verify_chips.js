@@ -147,7 +147,7 @@ console.log('verifying ' + chips.length + ' chips from ' +
 
 chips.forEach(function (chip) {
     var label = '  ' + chip.kind.padEnd(30);
-    if (chip.swaps.length !== 1) { console.log(label + 'SKIP  multi-swap, needs the swap-settle-swap harness'); skipped++; return; }
+    if (chip.swaps.length > 2) { console.log(label + 'SKIP  more than two swaps'); skipped++; return; }
     var st = stage(chip, MAP);
     if (st.skip) { console.log(label + 'SKIP  ' + st.skip); skipped++; return; }
 
@@ -178,16 +178,33 @@ chips.forEach(function (chip) {
             fail++; return;
         }
     }
-    var legal = st.board.legalSwaps().some(function (m) { return m[0] === r && m[1] === c; });
-    if (!legal) {
-        console.log(label + 'FAIL  staged board makes this chip\'s own swap illegal ' +
-                    '(' + r + ',' + c + ') — the staging is wrong, not the chip');
-        fail++; return;
-    }
+    // TWO SWAPS, RESOLVED BETWEEN THEM. LogicalBoard has no clock and no
+    // rise, so "settle" here is just resolve() — which is the one place this
+    // simulation is EASIER to be right about than the engine, where a fixed
+    // frame budget let the stack rise a row between the two swaps.
     var t = st.board.clone();
-    t.swap(r, c);
-    var out = t.resolve();
-    var total = out.comboSizes.reduce(function (a, b) { return a + b; }, 0);
+    var out = { chainLength: 0, comboSizes: [] }, total = 0;
+    for (var si = 0; si < chip.swaps.length; si++) {
+        var sr = chip.swaps[si][0] + st.rowOff, sc = chip.swaps[si][1] + st.colOff;
+        if (sr < 1 || sr > H || sc < 1 || sc >= W) { console.log(label + 'SKIP  swap falls off the board'); skipped++; return; }
+        var legal = t.legalSwaps().some(function (m) { return m[0] === sr && m[1] === sc; });
+        if (!legal) {
+            console.log(label + 'FAIL  staged board makes swap ' + (si + 1) + ' of this chip illegal ' +
+                        '(' + sr + ',' + sc + ') — the staging is wrong, not the chip');
+            fail++; return;
+        }
+        t.swap(sr, sc);
+        var step = t.resolve();
+        var stepTotal = step.comboSizes.reduce(function (a, b) { return a + b; }, 0);
+        if (si === 0 && chip.swaps.length === 2 && stepTotal) {
+            console.log(label + 'FAIL  the setup swap clears ' + stepTotal +
+                        ' panels on its own — it is supposed to only set up');
+            fail++; return;
+        }
+        total += stepTotal;
+        if (step.chainLength > out.chainLength) out.chainLength = step.chainLength;
+        out.comboSizes = out.comboSizes.concat(step.comboSizes);
+    }
     // TWO DIFFERENT THINGS ARE BOTH CALLED "chain", and conflating them
     // failed 60 of 60 plain COMBO chips while the clear counts matched
     // exactly — which is the shape of a harness bug, not a library one.

@@ -168,7 +168,7 @@ etry "a swap the engine itself refuses"
 # Running no frames: nothing settles, no match events, every chip reads as
 # clearing nothing. This is the case that would catch the whole harness
 # silently measuring a board that never moved.
-$EBREAK "var got = settle(stack, 900);" "var got = settle(stack, 0);" || exit 2
+$EBREAK "var step = settle(stack, 900);" "var step = settle(stack, 0);" || exit 2
 etry "the swap never given frames to resolve"
 
 # NOT TESTED, deliberately: stale chaining flags on the painted panels. Set
@@ -181,6 +181,16 @@ etry "the swap never given frames to resolve"
 # chips read as clearing three more panels than they claim.
 $EBREAK "grid[r3][c2] = spare[(r3 + 2 * c2) % 3];" "grid[r3][c2] = spare[(r3 + c2) % 2];" || exit 2
 etry "a filler pattern that can match itself once the cascade drops it"
+
+# THE RISE. riseLock and speed = 0 do NOT hold the stack still: the engine
+# re-decides riseLock every frame, so a settle that runs a fixed number of
+# frames lets the board climb a row between a two-swap chip's two swaps. The
+# second swap then addresses the cells the first swap's panels used to be in,
+# and thirteen good chips read as clearing nothing. Only batch 7 (two-swap)
+# can catch this — every single-swap chip is finished before the rise matters,
+# which is why it went unnoticed through six batches.
+$EBREAK "if (f >= 3 && !stack.hasActivePanels() && !stack.hasChainingPanels()) break;" "if (false) break;" || exit 2
+etry "settling for a fixed frame count, letting the stack rise between swaps"
 
 rm -f "$VE"
 

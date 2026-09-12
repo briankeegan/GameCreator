@@ -83,7 +83,7 @@ function layout(chip) {
     for (var fr = 1; fr <= H; fr++) for (var fc = 1; fc <= W; fc++) {
         if (fillerColours[grid[fr][fc]]) fillerBefore++;
     }
-    return { grid: grid, swapRow: swapRow, swapCol: swapCol, H: H,
+    return { grid: grid, swapRow: swapRow, swapCol: swapCol, H: H, rowOff: rowOff, colOff: colOff,
              fillerColours: fillerColours, fillerBefore: fillerBefore };
 }
 
@@ -108,6 +108,21 @@ function paint(stack, grid, H) {
     }
 }
 
+// RUN UNTIL THE BOARD IS STILL, THEN STOP — NOT FOR A FIXED NUMBER OF FRAMES.
+//
+// riseLock and speed = 0 do not hold the stack still forever: the engine
+// re-decides riseLock every frame (it is set when something is active, not
+// kept by us), so a fixed 900-frame settle let the board RISE A ROW between
+// the two swaps of a two-swap chip. The second swap then addressed the cells
+// the first swap's panels used to be in, and thirteen perfectly good chips
+// read as clearing nothing. A probe of the same chip, running 400 frames,
+// cleared 3 — the two disagreed because of idle frames, not the chip.
+//
+// So the budget is only a backstop against a board that never settles, and
+// the real exit is stillness: no active panels, no chaining panels. That is
+// exactly the condition the fork's own generators wait on
+// (getComboSetups.lua: "if j >= 3 and not st:hasActivePanels() and not
+// st:hasChainingPanels() then break").
 function settle(stack, budget) {
     var got = { chain: 0, cleared: 0, matches: 0 };
     for (var f = 0; f < budget; f++) {
@@ -121,6 +136,9 @@ function settle(stack, budget) {
                 if (e.chainCounter > got.chain) got.chain = e.chainCounter;
             }
         }
+        // Give it a few frames first: a swap takes some to even become
+        // active, and exiting on frame 1 would call every chip inert.
+        if (f >= 3 && !stack.hasActivePanels() && !stack.hasChainingPanels()) break;
     }
     return got;
 }
@@ -131,7 +149,7 @@ console.log('verifying ' + chips.length + ' chips against the REAL engine, from 
 
 chips.forEach(function (chip) {
     var label = '  ' + chip.kind.padEnd(30);
-    if (chip.swaps.length !== 1) { console.log(label + 'SKIP  multi-swap'); skipped++; return; }
+    if (chip.swaps.length > 2) { console.log(label + 'SKIP  more than two swaps'); skipped++; return; }
     var lay = layout(chip);
     if (lay.skip) { console.log(label + 'SKIP  ' + lay.skip); skipped++; return; }
 
@@ -152,13 +170,55 @@ chips.forEach(function (chip) {
         console.log(label + 'FAIL  the staged board resolves on its own before the swap');
         fail++; return;
     }
-    if (!stack.canSwap(lay.swapRow, lay.swapCol)) {
-        console.log(label + 'FAIL  the engine refuses this chip\'s own swap at (' +
-                    lay.swapRow + ',' + lay.swapCol + ')');
-        fail++; return;
+    // TWO SWAPS, SETTLED BETWEEN THEM, CURSOR TELEPORTED — which is exactly
+    // how the fork's getComboSetups.lua verifies them: for each swap in
+    // order it assigns cur_row/cur_col outright and then runs frames until
+    // hasActivePanels and hasChainingPanels are both false.
+    //
+    // So the walk between the two swaps is NOT part of the chip's
+    // definition. cursorMoves (and the MOVE_n in the kind, which always
+    // agrees with it — checked below) is what the chip COSTS to play, in
+    // cursor steps, and travel.js is what turns that into frames for the
+    // planner. Verification asks whether the shape works; the move count
+    // prices it afterwards. Conflating the two would make a chip's validity
+    // depend on how fast the cursor happens to be.
+    var got = { chain: 0, cleared: 0, matches: 0 };
+    for (var si = 0; si < chip.swaps.length; si++) {
+        var sr = chip.swaps[si][0] + lay.rowOff, sc = chip.swaps[si][1] + lay.colOff;
+        if (!stack.canSwap(sr, sc)) {
+            console.log(label + 'FAIL  the engine refuses swap ' + (si + 1) +
+                        ' of this chip at (' + sr + ',' + sc + ')');
+            fail++; return;
+        }
+        stack.curRow = sr; stack.curCol = sc;
+        stack.doSwap(sr, sc);
+        var step = settle(stack, 900);
+        // The setup swap must set up, not score. The generator keeps a chip
+        // only if the first swap clears nothing.
+        if (si === 0 && chip.swaps.length === 2 && step.matches) {
+            console.log(label + 'FAIL  the setup swap clears ' + step.cleared +
+                        ' panels on its own — it is supposed to only set up');
+            fail++; return;
+        }
+        got.cleared += step.cleared;
+        got.matches += step.matches;
+        if (step.chain > got.chain) got.chain = step.chain;
     }
-    stack.doSwap(lay.swapRow, lay.swapCol);
-    var got = settle(stack, 900);
+
+    // THE MOVE COUNT MUST BE THE ONE THE PLANNER WILL PAY. cursorMoves is
+    // the Manhattan distance between the two swap cells, and travel.js
+    // charges the cursor for exactly that walk. A chip whose recorded cost
+    // disagrees with its own geometry would be priced wrong every time it
+    // was considered, and nothing downstream would notice.
+    if (chip.swaps.length === 2) {
+        var walk = Math.abs(chip.swaps[1][0] - chip.swaps[0][0]) +
+                   Math.abs(chip.swaps[1][1] - chip.swaps[0][1]);
+        if (walk !== chip.nMoves) {
+            console.log(label + 'FAIL  records ' + chip.nMoves + ' cursor moves but its two ' +
+                        'swaps are ' + walk + ' apart — the planner would price it wrong');
+            fail++; return;
+        }
+    }
 
     // The engine's chain counter is 0 for a combo that does not cascade and 2
     // for a 2-chain, exactly like the chips' own meta — no translation here,

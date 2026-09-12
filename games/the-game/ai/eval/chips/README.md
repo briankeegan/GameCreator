@@ -58,6 +58,33 @@ widen a filename.
 | 4 | `batch4-cascade4.json` | 35 | a combo feeding a 4-deep cascade |
 | 5 | `batch5-cascade5.json` | 88 | a combo feeding a 5-deep cascade |
 | 6 | `batch6-cascade3-double.json` | 38 | two clears at once feeding a 3-cascade, minus the two biggest families |
+| 7 | `batch7-twoswap-combo3.json` | 13 | the first TWO-SWAP chips: `COMBO_3_SWAP_2_MOVE_1` |
+
+## Two-swap chips, and what the move count is for
+
+5,588 of the 6,270 take two swaps: a setup that clears nothing, then a fire.
+Batch 7 is the first of them.
+
+They are verified the way the fork's own `getComboSetups.lua` verifies them —
+swap, settle, swap, settle, cursor teleported — so **the walk between the two
+swaps is not part of the chip's definition**. `cursorMoves` (and the `MOVE_n`
+in the kind, which agrees with it on all 5,588 — checked) is the Manhattan
+distance between the two swap cells, and it is what the chip COSTS to play.
+`travel.js` is what turns that into frames for the planner. `verify_chips_engine.js`
+fails any chip whose recorded move count disagrees with its own geometry,
+because such a chip would be priced wrong every time it was considered.
+
+### The rise, which is why two-swap chips needed a harness change
+
+`riseLock = true` and `speed = 0` do NOT hold the stack still. The engine
+re-decides `riseLock` every frame, so a settle running a fixed 900 frames let
+the board CLIMB A ROW between the two swaps: the second swap addressed the
+cells the first swap's panels used to be in, and thirteen good chips read as
+clearing nothing. The fix is to stop when the board is still — no active
+panels, no chaining panels — which is also exactly what the fork waits on.
+
+Single-swap chips finish before any of that matters, which is why six batches
+went by without noticing.
 
 Batches 4-6 are the `COMBO_*_CASCADE_*` group, taken by cascade depth and
 then by family rather than in one lump of 376 — small enough that when
