@@ -277,6 +277,46 @@
   // appear in `blocks`, and every cell in a block must read -2 in `grid`.
   // A cell of "loose" garbage (no real id, e.g. from comboGarbage before
   // an id was ever assigned) gets its own single-cell block.
+  // WHY THERE IS A SECOND BOARD AT ALL, AND WHAT IT COSTS TO BE WRONG.
+  //
+  // panel-engine.js runs the game. This is a separate, fast re-implementation
+  // of the same rules that the search clones a few hundred times per decision.
+  // Two implementations of one ruleset, so the only question that matters is
+  // where they disagree — and they do, measurably:
+  //
+  //   372 of the fork's chip templates fire correctly on a live Stack and
+  //   come out wrong here. Every single one by the same amount: the right
+  //   panels clear, in ONE ROUND FEWER.
+  //
+  // The mechanism, traced on a COMBO_6_CASCADE_5 chip: the engine clears 5,
+  // then 3 at frame 85, then 3 more at frame 87 — two chain links two frames
+  // apart, because the two groups fall different distances and hover before
+  // landing. _applyGravity settles the whole board before looking for matches,
+  // so both land together and it reads as one round of 6. Chain 2 where the
+  // game pays chain 3.
+  //
+  // So the bot UNDERCOUNTS CHAIN DEPTH, on exactly the deep-chain shapes it is
+  // supposed to be learning to build.
+  //
+  // TRIED AND FAILED: matching between fall steps instead of after them, so
+  // groups that fall different distances become separate links. It fixed 0 of
+  // the 372 and broke 32 chips that were passing. Reverted. Recorded so the
+  // obvious fix is not re-attempted blind.
+  //
+  // THE OTHER OPTION IS TO STOP HAVING A SECOND BOARD. Measured, same machine,
+  // same position, per candidate move:
+  //
+  //     LogicalBoard clone+swap+resolve      0.017 ms
+  //     real Stack, reused, paint+swap+run   1.270 ms      77x
+  //
+  //     30 candidates at depth 1             38 ms   of an 85ms budget
+  //     180 candidates at depth 2           229 ms   does not fit
+  //
+  // Depth 1 on the real engine FITS, with roughly half the budget left. That
+  // is a real option rather than an obviously impossible one, and it would
+  // delete this whole class of disagreement instead of chasing it. It is also
+  // a change to how every decision is made and would invalidate every trained
+  // weight set, so it is the owner's call, not a tidy-up.
   function LogicalBoard(width, height, colors, grid, blocks, nextBlockId) {
     this.width = width;
     this.height = height;
