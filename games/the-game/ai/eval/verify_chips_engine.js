@@ -28,10 +28,20 @@ var W = PanelEngine.WIDTH;
 // quietly make "verified against the engine" stop meaning what it says.
 var engineBoard = require('./engineboard.js');
 
-var dir = path.join(__dirname, 'chips');
-var files = process.argv[2] ? [process.argv[2]]
-    : fs.readdirSync(dir).filter(function (f) { return /\.json$/.test(f); })
-        .sort().map(function (f) { return path.join(dir, f); });
+// BOTH chip directories. chips/ holds what clears both boards; the engine is
+// the only gate chips-engine-only/ can clear, and it must still clear it.
+var files;
+if (process.argv[2]) {
+    files = [process.argv[2]];
+} else {
+    files = [];
+    ['chips', 'chips-engine-only'].forEach(function (d) {
+        var dir = path.join(__dirname, d);
+        if (!fs.existsSync(dir)) return;
+        fs.readdirSync(dir).filter(function (f) { return /\.json$/.test(f); })
+            .sort().forEach(function (f) { files.push(path.join(dir, f)); });
+    });
+}
 var chips = [];
 files.forEach(function (f) {
     JSON.parse(fs.readFileSync(f, 'utf8')).forEach(function (c) { chips.push(c); });
@@ -102,8 +112,22 @@ var pass = 0, fail = 0, skipped = 0;
 // exactly like 1,200 chips failing. Prose is for people. GC_CHIP_JSON=<path>
 // writes one entry per chip, and a caller that finds fewer entries than
 // chips knows it rather than guessing.
+// EXACTLY ONE VERDICT PER CHIP, BY CONSTRUCTION.
+//
+// The call sites are scattered across a dozen early returns, and getting the
+// count right by placing them carefully failed twice in opposite directions:
+// first six chips recorded nothing (an un-instrumented skip path), so a
+// caller's index alignment silently slipped and five good chips read as
+// failing; then a pass that added the missing calls produced THREE entries
+// for some chips. Both are the same bug — the count depending on where the
+// calls happen to sit. So the first record for a chip wins and the rest are
+// ignored, and a chip that somehow records nothing is caught by the
+// end-of-run check rather than shipping a short list.
 var results = [];
+var recordedFor = null;
 function record(chip, verdict, why) {
+    if (recordedFor === chip) return;
+    recordedFor = chip;
     results.push({ kind: chip.kind, file: chip._file || null, verdict: verdict, why: why || '' });
 }
 console.log('verifying ' + chips.length + ' chips against the REAL engine, from ' +
@@ -111,9 +135,9 @@ console.log('verifying ' + chips.length + ' chips against the REAL engine, from 
 
 chips.forEach(function (chip) {
     var label = '  ' + chip.kind.padEnd(38);
-    if (chip.swaps.length > 2) { console.log(label + 'SKIP  more than two swaps'); skipped++; return; }
+    if (chip.swaps.length > 2) { console.log(label + 'SKIP  more than two swaps'); record(chip, 'skip'); skipped++; return; }
     var lay = layout(chip);
-    if (lay.skip) { console.log(label + 'SKIP  ' + lay.skip); skipped++; return; }
+    if (lay.skip) { console.log(label + 'SKIP  ' + lay.skip); record(chip, 'skip'); skipped++; return; }
 
     // A stack with the rise stopped, so nothing arrives mid-chip and changes
     // the answer. Level 10 is what the bot plays.
@@ -230,6 +254,12 @@ chips.forEach(function (chip) {
     }
 });
 
+if (results.length !== chips.length) {
+    console.error('INTERNAL: ' + results.length + ' verdicts for ' + chips.length +
+                  ' chips — an exit path records nothing, so any caller lining ' +
+                  'these up against its own list is reading the wrong chip');
+    process.exit(2);
+}
 if (process.env.GC_CHIP_JSON) {
     fs.writeFileSync(process.env.GC_CHIP_JSON,
         JSON.stringify({ chips: chips.length, results: results }));

@@ -126,6 +126,13 @@ gate_chips_verify_engine() {
 # THE ENGINE BRAIN IS WIRED AND NOT INERT. A switch that is plumbed but never
 # taken looks exactly like one that works: the bot keeps playing, every other
 # test stays green, and the 372 chips it exists for stay mispriced.
+# chips-engine-only/ must earn its name in BOTH directions: every chip there
+# fires on the real engine AND fails the simulation. Otherwise it is one
+# loosened rule away from being where a chip goes to dodge a gate.
+gate_engine_only_membership() {
+  node games/the-game/ai/eval/chips.engineonly.test.js
+}
+
 gate_engine_brain() {
   node games/the-game/ai/eval/enginebrain.test.js
 }
@@ -187,6 +194,7 @@ GATES=(
   "characters keep one size while walking:gate_sprite_scale_consistency"
   "chain chips fire in our engine:gate_chips_verify"
   "chain chips fire in the real engine:gate_chips_verify_engine"
+  "engine-only chips earn that label:gate_engine_only_membership"
   "the engine brain is wired, not inert:gate_engine_brain"
   "every ported chip is individually decidable:gate_chips_decidable"
   "that chip check fires:gate_chip_verifier_fires"

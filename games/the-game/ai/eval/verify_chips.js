@@ -159,8 +159,22 @@ var pass = 0, fail = 0, skipped = 0;
 // exactly like 1,200 chips failing. Prose is for people. GC_CHIP_JSON=<path>
 // writes one entry per chip, and a caller that finds fewer entries than
 // chips knows it rather than guessing.
+// EXACTLY ONE VERDICT PER CHIP, BY CONSTRUCTION.
+//
+// The call sites are scattered across a dozen early returns, and getting the
+// count right by placing them carefully failed twice in opposite directions:
+// first six chips recorded nothing (an un-instrumented skip path), so a
+// caller's index alignment silently slipped and five good chips read as
+// failing; then a pass that added the missing calls produced THREE entries
+// for some chips. Both are the same bug — the count depending on where the
+// calls happen to sit. So the first record for a chip wins and the rest are
+// ignored, and a chip that somehow records nothing is caught by the
+// end-of-run check rather than shipping a short list.
 var results = [];
+var recordedFor = null;
 function record(chip, verdict, why) {
+    if (recordedFor === chip) return;
+    recordedFor = chip;
     results.push({ kind: chip.kind, file: chip._file || null, verdict: verdict, why: why || '' });
 }
 console.log('verifying ' + chips.length + ' chips from ' +
@@ -168,9 +182,9 @@ console.log('verifying ' + chips.length + ' chips from ' +
 
 chips.forEach(function (chip) {
     var label = '  ' + chip.kind.padEnd(38);
-    if (chip.swaps.length > 2) { console.log(label + 'SKIP  more than two swaps'); skipped++; return; }
+    if (chip.swaps.length > 2) { console.log(label + 'SKIP  more than two swaps'); record(chip, 'skip'); skipped++; return; }
     var st = stage(chip, MAP);
-    if (st.skip) { console.log(label + 'SKIP  ' + st.skip); skipped++; return; }
+    if (st.skip) { console.log(label + 'SKIP  ' + st.skip); record(chip, 'skip'); skipped++; return; }
 
     // The board must be STILL before the swap, or whatever happens next is
     // the staging resolving itself rather than the chip firing.
@@ -181,7 +195,7 @@ chips.forEach(function (chip) {
     }
     var sw = chip.swaps[0];
     var r = sw[0] + st.rowOff, c = sw[1] + st.colOff;
-    if (r < 1 || r > H || c < 1 || c >= W) { console.log(label + 'SKIP  swap falls off the board'); skipped++; return; }
+    if (r < 1 || r > H || c < 1 || c >= W) { console.log(label + 'SKIP  swap falls off the board'); record(chip, 'skip'); skipped++; return; }
 
     // THE SWAP MUST BE ONE THE GAME WOULD ALLOW. swap() applies whatever it
     // is handed; legalSwaps() is what knows the rules (nothing touching
@@ -209,7 +223,7 @@ chips.forEach(function (chip) {
     var out = { chainLength: 0, comboSizes: [] }, total = 0;
     for (var si = 0; si < chip.swaps.length; si++) {
         var sr = chip.swaps[si][0] + st.rowOff, sc = chip.swaps[si][1] + st.colOff;
-        if (sr < 1 || sr > H || sc < 1 || sc >= W) { console.log(label + 'SKIP  swap falls off the board'); skipped++; return; }
+        if (sr < 1 || sr > H || sc < 1 || sc >= W) { console.log(label + 'SKIP  swap falls off the board'); record(chip, 'skip'); skipped++; return; }
         var legal = t.legalSwaps().some(function (m) { return m[0] === sr && m[1] === sc; });
         if (!legal) {
             console.log(label + 'FAIL  staged board makes swap ' + (si + 1) + ' of this chip illegal ' +
@@ -269,6 +283,12 @@ chips.forEach(function (chip) {
     }
 });
 
+if (results.length !== chips.length) {
+    console.error('INTERNAL: ' + results.length + ' verdicts for ' + chips.length +
+                  ' chips — an exit path records nothing, so any caller lining ' +
+                  'these up against its own list is reading the wrong chip');
+    process.exit(2);
+}
 if (process.env.GC_CHIP_JSON) {
     fs.writeFileSync(process.env.GC_CHIP_JSON,
         JSON.stringify({ chips: chips.length, results: results }));
