@@ -118,6 +118,15 @@ gate_chips_verify_engine() {
   node games/the-game/ai/eval/verify_chips_engine.js
 }
 
+# AND EVERY PORTED CHIP MUST BE INDIVIDUALLY DECIDABLE. The two gates above
+# prove the verifiers reject damage SOMEWHERE in a 4,380-chip batch; this one
+# corrupts every chip's own claim in turn and requires that chip to be
+# rejected. A chip that passes while claiming something untrue is carried by
+# the other 4,379 and checked by nothing.
+gate_chips_decidable() {
+  node games/the-game/ai/eval/chips.decidable.test.js
+}
+
 gate_chip_verifier_fires() {
   bash games/the-game/ai/eval/chips.test.sh
 }
@@ -171,6 +180,7 @@ GATES=(
   "characters keep one size while walking:gate_sprite_scale_consistency"
   "chain chips fire in our engine:gate_chips_verify"
   "chain chips fire in the real engine:gate_chips_verify_engine"
+  "every ported chip is individually decidable:gate_chips_decidable"
   "that chip check fires:gate_chip_verifier_fires"
   "the shipped weights and the tools that measure them:gate_shipped_weights"
   "that check fires:gate_shipped_weights_check_fires"

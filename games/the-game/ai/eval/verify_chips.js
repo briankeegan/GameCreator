@@ -150,11 +150,24 @@ function stage(chip, colorMap) {
 
 var MAP = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7 };
 var pass = 0, fail = 0, skipped = 0;
+// A MACHINE-READABLE VERDICT, so no caller has to read the prose.
+//
+// Three separate bugs in this session came from parsing this file's own
+// output: a kind longer than the padding ran into the word "ok" and the chip
+// read as failing, twice; and a caller reading 4,380 verdict lines back
+// through a pipe got a SHORT READ that varied run to run, which looks
+// exactly like 1,200 chips failing. Prose is for people. GC_CHIP_JSON=<path>
+// writes one entry per chip, and a caller that finds fewer entries than
+// chips knows it rather than guessing.
+var results = [];
+function record(chip, verdict, why) {
+    results.push({ kind: chip.kind, file: chip._file || null, verdict: verdict, why: why || '' });
+}
 console.log('verifying ' + chips.length + ' chips from ' +
     files.map(function (f) { return path.basename(f); }).join(', ') + '\n');
 
 chips.forEach(function (chip) {
-    var label = '  ' + chip.kind.padEnd(30);
+    var label = '  ' + chip.kind.padEnd(38);
     if (chip.swaps.length > 2) { console.log(label + 'SKIP  more than two swaps'); skipped++; return; }
     var st = stage(chip, MAP);
     if (st.skip) { console.log(label + 'SKIP  ' + st.skip); skipped++; return; }
@@ -163,6 +176,7 @@ chips.forEach(function (chip) {
     // the staging resolving itself rather than the chip firing.
     if (st.board.clone().resolve().chainLength !== 0) {
         console.log(label + 'FAIL  the staged board is not settled — it resolves before the swap');
+        record(chip, 'fail');
         fail++; return;
     }
     var sw = chip.swaps[0];
@@ -183,6 +197,7 @@ chips.forEach(function (chip) {
         if (st.board.grid[gr][gc] === -2) {
             console.log(label + 'FAIL  staged board contains garbage at (' + gr + ',' + gc +
                         ') — the harness must stage blockers and props as panels');
+            record(chip, 'fail');
             fail++; return;
         }
     }
@@ -199,6 +214,7 @@ chips.forEach(function (chip) {
         if (!legal) {
             console.log(label + 'FAIL  staged board makes swap ' + (si + 1) + ' of this chip illegal ' +
                         '(' + sr + ',' + sc + ') — the staging is wrong, not the chip');
+            record(chip, 'fail');
             fail++; return;
         }
         t.swap(sr, sc);
@@ -207,6 +223,7 @@ chips.forEach(function (chip) {
         if (si === 0 && chip.swaps.length === 2 && stepTotal) {
             console.log(label + 'FAIL  the setup swap clears ' + stepTotal +
                         ' panels on its own — it is supposed to only set up');
+            record(chip, 'fail');
             fail++; return;
         }
         total += stepTotal;
@@ -225,6 +242,7 @@ chips.forEach(function (chip) {
     if (fillerAfter < st.fillerBefore) {
         console.log(label + 'FAIL  ' + (st.fillerBefore - fillerAfter) + ' filler panels cleared — ' +
                     'this harness\'s support is taking part in the chip, so the numbers are the staging');
+        record(chip, 'fail');
         fail++; return;
     }
 
@@ -240,15 +258,21 @@ chips.forEach(function (chip) {
     var okTotal = total === chip.total;
     if (okChain && okTotal) {
         console.log(label + 'ok    chain ' + out.chainLength + ', ' + total + ' cleared');
+        record(chip, 'ok');
         pass++;
     } else {
         console.log(label + 'FAIL  claims chain ' + chip.chain + ' (= ' + wantChain +
                     ' rounds) / ' + chip.total + ' cleared, ours gives ' +
                     out.chainLength + ' rounds / ' + total);
+        record(chip, 'fail');
         fail++;
     }
 });
 
+if (process.env.GC_CHIP_JSON) {
+    fs.writeFileSync(process.env.GC_CHIP_JSON,
+        JSON.stringify({ chips: chips.length, results: results }));
+}
 console.log('\n' + pass + ' verified, ' + fail + ' failed, ' + skipped + ' skipped');
 
 // A SKIPPED CHIP IS NOT A VERIFIED CHIP, so a skip fails the batch too.

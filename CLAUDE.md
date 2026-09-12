@@ -618,6 +618,27 @@ design discussion. `shared/` holds the components every game reuses
     exist, and made every number off that bench fiction for a day.
 
 
+- **NEVER PARSE A TOOL'S PROSE. MAKE IT EMIT DATA.** Three separate wrong
+  answers in one session came from reading a checker's printed lines:
+  1. a chip kind longer than the column padding ran into the word `ok`, so
+     the verdict line failed the regex and every long-named chip read as
+     failing — twice, in two different scripts;
+  2. reading 4,380 verdict lines back through a pipe produced a SHORT READ
+     that varied between runs — 1,200 "rejected" chips one run, 1,201 the
+     next. A number that moves when nothing moved is the tell, and without
+     it that pile of failures looked exactly like a broken library.
+  The fix is not a better regex. A tool that something else consumes emits a
+  machine-readable result (`GC_CHIP_JSON=<path>` on `verify_chips.js` /
+  `verify_chips_engine.js` writes one entry per chip), and the consumer
+  ASSERTS THE COUNT it got back matches the count it sent. Printed output is
+  for people. Corollary learned the same day: instrument every exit path, not
+  the happy one — the first version recorded only passes, so a run where
+  everything failed reported zero results and read as the tool collapsing.
+- **A TEST'S SCRATCH FILES GO BESIDE THE TEST, NOT IN `os.tmpdir()`.** A
+  parent wrote the chip list to the system temp dir and the child process
+  read an EMPTY file from it. That surfaced as "0 verdicts for 4380 chips",
+  which reads like the verifier collapsing rather than like a path problem.
+  `fs.mkdtempSync` next to the test, removed on exit.
 - **ONE RUN PER CONDITION MEASURES NOTHING, and it still hands you a number
   that looks like a result.** Five training runs finished — a baseline and
   three single-feature variants — and read one at a time they said
