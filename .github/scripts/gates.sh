@@ -167,6 +167,19 @@ gate_resolve_breaks() {
   bash games/the-game/ai/eval/resolve.breaks.test.sh
 }
 
+# EVERY FEATURE IS SCORED, AND EVERY FEATURE MOVES — in a real game, not in a
+# script. A feature that is never scored is unwired; one that is scored but
+# never varies cannot be learned, because every genome sees the same value and
+# its weight drifts free. Both look like "fine" from anywhere else.
+#
+# It plays the real scenarios because the cheap version lied: scoring static
+# boards reported six features as never moving, and six features were nearly
+# cut on that. They move fine — that script had no garbage, no cursor and no
+# live game.
+gate_features_live() {
+  node games/the-game/ai/eval/feature_liveness.js 1 comboStorm
+}
+
 # The four constraints a template carries, pinned directly. Two of them were
 # silently unenforced for the matcher's whole first life (Int8Array stamp
 # truncation) and the test nearest the defect could not see it.
@@ -278,6 +291,7 @@ GATES=(
   "chips hold up on boards nobody built for them:gate_chips_real_boards"
   "both boards agree on every chip:gate_chips_both_boards_agree"
   "a broken resolve is rejected:gate_resolve_breaks"
+  "every feature is wired and moves:gate_features_live"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints"
   "the simulation resolves like the game:gate_resolve_fidelity"
   "that fidelity check fires:gate_resolve_fidelity_fires"
