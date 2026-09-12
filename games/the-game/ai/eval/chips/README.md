@@ -65,7 +65,11 @@ widen a filename.
 | 11 | `batch11-twoswap-move2.json` | 995 | two-swap, 2 apart |
 | 12 | `batch12-twoswap-move3.json` | 1025 | two-swap, 3 apart |
 
-**4,165 ported.** Batches 8-12 split the two-swap chips by MOVE DISTANCE
+| 13 | `batch13-cascade3-33.json` | 82 | `COMBO_3_3_CASCADE_3` |
+| 14 | `batch14-cascade3-34.json` | 60 | `COMBO_3_4_CASCADE_3` |
+| 15 | `batch15-cascade3-rest.json` | 73 | the last verified `COMBO_n_CASCADE_3` |
+
+**4,380 ported.** Batches 8-12 split the two-swap chips by MOVE DISTANCE
 rather than by shape family, because that is the axis the planner pays for:
 each batch is one price band, so a chip's cost and its batch are the same
 fact.
@@ -144,3 +148,52 @@ the hard one: 255 verify and 262 do not, in two distinct shapes.
 
 After that, the 5,588 two-swap chips, which need a swap-settle-swap harness.
 One group at a time, and only what verifies gets ported.
+
+
+## What is still out, and whose problem each part is
+
+Of the 6,270 chips in the cache, 4,380 are in. The remaining 1,890 break down
+like this — measured, not guessed.
+
+### 338 + 34: the bot's own board is wrong
+
+They pass on a live `PanelEngine.Stack` and fail against `LogicalBoard`. Real
+in the game, wrong in the board the bot plans with, so this is a defect that
+touches every decision it makes and not just these chips. Across single-swap
+chips it was 34; two-swap chips give 338 more of the same, which makes it a
+much stronger signal than the original handful.
+
+### 551: right panels, chain exactly one short
+
+514 two-swap plus 37 single-swap, all with the identical fingerprint — the
+chip clears EXACTLY the panels it claims, and the chain counter comes out one
+lower. A shape that right with a count that wrong is one rule, not 551
+accidents.
+
+Two hypotheses tested and both FALSIFIED, recorded so they are not retried:
+
+- *They are cascade continuations.* Flagging every panel `chaining` before the
+  swap fixes all of them — and breaks every chip that currently passes, so the
+  two sets are mutually exclusive. But the kinds overlap both lists
+  (`COMBO_6_CASCADE_4` appears in each), so there is no discriminator in the
+  chip data and selecting them this way is fitting the staging to the answer.
+- *The second swap lands mid-cascade, before the chaining flags clear.* A real
+  player swaps again while panels are still falling, and settling fully
+  between swaps would lose the link. So: swap 2 after exactly
+  `travel.cost(swap1 → swap2)` frames instead of after a full settle. **26 of
+  1,390.** The walk timing is not it.
+
+### 602: fire nothing at all in the engine
+
+Unexplained.
+
+### 232: this harness, not the library
+
+123 where the filler takes part in the chip, 88 where the setup swap clears on
+its own, 11 whose staged board resolves before the swap, 10 where the engine
+refuses one of the swaps. All staging, all reported as such rather than
+counted against the chips.
+
+### 21 that cannot be read
+
+17 that cannot be staged at all, and 4 whose Lua the converter could not parse.
