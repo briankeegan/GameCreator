@@ -55,6 +55,14 @@ widen a filename.
 | 1 | `batch1-chain.json` | 6 | the pure cascades — all reproduce exactly |
 | 2 | `batch2-combo-single.json` | 60 | one simultaneous clear of 3-7 — all reproduce exactly |
 | 3 | `batch3-combo-double.json` | 95 | two clears at once (3_3 … 7_7) — all reproduce exactly |
+| 4 | `batch4-cascade4.json` | 35 | a combo feeding a 4-deep cascade |
+| 5 | `batch5-cascade5.json` | 88 | a combo feeding a 5-deep cascade |
+| 6 | `batch6-cascade3-double.json` | 38 | two clears at once feeding a 3-cascade, minus the two biggest families |
+
+Batches 4-6 are the `COMBO_*_CASCADE_*` group, taken by cascade depth and
+then by family rather than in one lump of 376 — small enough that when
+something breaks, the break has one explanation. Only chips clearing BOTH
+verifiers are in them: 376 of the group's 517 do, and the rest stay out.
 
 ## The two "chain" counts, which are not the same number
 

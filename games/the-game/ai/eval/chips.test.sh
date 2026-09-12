@@ -122,12 +122,18 @@ else
   pass=$((pass+1))
 fi
 
-# BUG 4 (the prop under the swap's landing cell) IS NOT TESTED HERE YET, on
-# purpose. Batches 1-3 never need it — every one of their swaps already has
-# ground under it, which is why removing the prop leaves all 161 passing. It
-# is exercised only by the COMBO_*_CASCADE_* group, so its test belongs with
-# that batch rather than as a case that silently proves nothing now. Writing
-# it today would be a test that passes because it never runs.
+# BUG 4 — no ground under the cell the swap lands in. The panel falls out of
+# the row before matching runs, so the swap really did line three up and the
+# chip reads as firing nothing.
+#
+# THIS CASE COULD NOT BE WRITTEN UNTIL BATCH 6. Batches 1-3 never need the
+# prop (their swaps all have ground already) and neither do the CASCADE_4 or
+# CASCADE_5 batches — remove it and all 284 still passed. It first bites in
+# batch6-cascade3-double, where 3 chips depend on it. Held back rather than
+# written early, because a case that passes whether or not the bug is present
+# is decoration, and this file exists to not have any of those.
+$BREAK "g[swapRow - 1][col] = spare[(swapRow - 1 + col) % 2];" "g[swapRow - 1][col] = 0;" || exit 2
+vtry "the prop under the swap's landing cell removed" 
 
 # ---- AND THE SAME CHIPS AGAINST THE REAL ENGINE ----
 #
