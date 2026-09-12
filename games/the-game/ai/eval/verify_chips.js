@@ -23,8 +23,19 @@ require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
 var W = 6, H = 12;
 
-var file = process.argv[2] || path.join(__dirname, 'chips', 'batch1-chain.json');
-var chips = JSON.parse(fs.readFileSync(file, 'utf8'));
+// WITH NO ARGUMENT, EVERY BATCH. A gate pinned to one filename stops
+// covering the library the moment a second batch lands, and nothing says so.
+var dir = path.join(__dirname, 'chips');
+var files = process.argv[2] ? [process.argv[2]]
+    : fs.readdirSync(dir).filter(function (f) { return /\.json$/.test(f); })
+        .sort().map(function (f) { return path.join(dir, f); });
+var chips = [];
+files.forEach(function (f) {
+    JSON.parse(fs.readFileSync(f, 'utf8')).forEach(function (c) {
+        c._file = path.basename(f);
+        chips.push(c);
+    });
+});
 
 // tmpl is [dr, dc, class] relative to the swap; dr + 1 is one row UP.
 // class: integer = colour slot, "." / "e" = must be empty, "@" = a solid that
@@ -64,7 +75,8 @@ function stage(chip, colorMap) {
 
 var MAP = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7 };
 var pass = 0, fail = 0, skipped = 0;
-console.log('verifying ' + chips.length + ' chips from ' + path.basename(file) + '\n');
+console.log('verifying ' + chips.length + ' chips from ' +
+    files.map(function (f) { return path.basename(f); }).join(', ') + '\n');
 
 chips.forEach(function (chip) {
     var label = '  ' + chip.kind.padEnd(13);
@@ -86,14 +98,23 @@ chips.forEach(function (chip) {
     t.swap(r, c);
     var out = t.resolve();
     var total = out.comboSizes.reduce(function (a, b) { return a + b; }, 0);
-    var okChain = out.chainLength === chip.chain;
+    // TWO DIFFERENT THINGS ARE BOTH CALLED "chain", and conflating them
+    // failed 60 of 60 plain COMBO chips while the clear counts matched
+    // exactly — which is the shape of a harness bug, not a library one.
+    // Panel Attack's meta.chain is the CHAIN COUNTER: 0 means "clears, but
+    // nothing cascades", 2 means a 2-chain. LogicalBoard.resolve() reports
+    // the number of match-and-settle ROUNDS, so the same plain combo is 1.
+    // They agree from 2 upward and differ only at the bottom.
+    var wantChain = Math.max(1, chip.chain);
+    var okChain = out.chainLength === wantChain;
     var okTotal = total === chip.total;
     if (okChain && okTotal) {
         console.log(label + 'ok    chain ' + out.chainLength + ', ' + total + ' cleared');
         pass++;
     } else {
-        console.log(label + 'FAIL  claims chain ' + chip.chain + ' / ' + chip.total +
-                    ' cleared, ours gives chain ' + out.chainLength + ' / ' + total);
+        console.log(label + 'FAIL  claims chain ' + chip.chain + ' (= ' + wantChain +
+                    ' rounds) / ' + chip.total + ' cleared, ours gives ' +
+                    out.chainLength + ' rounds / ' + total);
         fail++;
     }
 });
