@@ -8,16 +8,38 @@ matching as the philosophically important half of a deliberate bot:
 > structures over decades of competitive play, and the bot matches against
 > that library.
 
-Puyo's library is rich — GTR, Sullen GTR, Fron. **Panel de Pon's is not.**
-Its documented competitive library is one shape and its mirror:
+> **CORRECTION, 2026-09-12 — the claim below was wrong, and it was the
+> owner who caught it.** This file used to say there was no library to port.
+> There is, and it is the owner's own: `bot/chipCache.lua` on
+> `briankeegan/panel-game@claude/bot-verification-handoff-w7b53s` holds
+> **6,270 baked templates**, with the grammar that generates them written up
+> beside it in `bot/CHAIN_GRAMMAR.md` — the FEED atom, the two-colour
+> alternation rule, the row/tower connection table, and the staircase's fold
+> back up-left once the rightward walk hits column 6. Its sibling branch
+> `claude/bot-building-hpom4o` carries the live solver.
+>
+> The lesson is not about chains. Two Claude branches sat in a fork that was
+> already checked out in this sandbox, and the conclusion "there is nothing
+> to port" was reached without opening them. LOOK IN THE FORK FIRST.
+>
+> Chips are brought across in BATCHES, smallest first, and re-verified
+> against `LogicalBoard` before any of them is allowed to steer the bot —
+> see `games/the-game/ai/eval/chips/README.md`. The public web writeup below
+> is kept because it is still true about what is PUBLISHED; it was only ever
+> wrong about what exists.
+
+Puyo's published library is rich — GTR, Sullen GTR, Fron. **Panel de Pon's
+public one is not.** Its documented competitive library is one shape and its
+mirror:
 
 > "the staircase and its mirror are noted as the only two worth practising
 > deliberately. The flat board is where you live between setups, not a
 > chaining plan."
 > — paneponattack.com
 
-That is a finding, not a shortcut. Anyone arriving here expecting to port a
-template library should know there is no library to port; there is one
+That is a finding about the PUBLISHED record, not about what is reachable.
+Anyone arriving here expecting to port a template library should start with
+the fork above, which has one. The published record has one
 shape, and the work is in measuring it properly rather than in collecting
 more of them.
 

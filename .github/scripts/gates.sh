@@ -103,6 +103,17 @@ gate_shipped_weights_check_fires() {
   bash .github/scripts/shipped_weights.test.sh
 }
 
+# THE CHAIN SHAPES, AND THE CHECK THAT THEY FIRE HERE. The chips come from
+# another engine's verification; this re-earns it against LogicalBoard, so a
+# chip that pays nothing here can never steer the bot.
+gate_chips_verify() {
+  node games/the-game/ai/eval/verify_chips.js
+}
+
+gate_chip_verifier_fires() {
+  bash games/the-game/ai/eval/chips.test.sh
+}
+
 gate_gates_reject_defects() {
   bash .github/scripts/gates.test.sh
 }
@@ -150,6 +161,8 @@ GATES=(
   "the art index:gate_art_index"
   "art references:gate_art_refs"
   "characters keep one size while walking:gate_sprite_scale_consistency"
+  "chain chips fire in our engine:gate_chips_verify"
+  "that chip check fires:gate_chip_verifier_fires"
   "the shipped weights and the tools that measure them:gate_shipped_weights"
   "that check fires:gate_shipped_weights_check_fires"
   "the gates actually reject defects:gate_gates_reject_defects"
