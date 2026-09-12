@@ -90,6 +90,28 @@ if (!/PanelEval[\s\S]{0,400}PuyoCpu/.test(duel)) {
     fail.push('duel.js never constructs the trained bot, so nothing the player can pick uses it');
 }
 
+// THE SWITCHES MUST TRAVEL WITH THE WEIGHTS.
+//
+// A weight set is only a bot when paired with the scoring it was found
+// under. The set shipped here was trained with density scoring ON, and the
+// same nineteen numbers with density OFF are a different, never-measured
+// player — which is exactly the mismatch that made a rise-trained set read
+// as "holds 71%" the first time it was measured, because the measuring tool
+// had the switch off.
+//
+// So the file records what its run used, and duel.js must spread that
+// object into the bot rather than hand-writing options. A hand-written list
+// is how depth, then rise, then density each got dropped somewhere between
+// the trainer and the game.
+if (!/switches:\s*\{/.test(readFileSync(shipped, 'utf8'))) {
+    fail.push('trained-weights.js records no `switches`, so nothing says which scoring ' +
+              'these weights were found under — regenerate it with export_weights.js');
+}
+if (!/trained\.switches/.test(duel)) {
+    fail.push('duel.js ignores trained.switches, so the shipped weights can run against ' +
+              'scoring they were never trained on and nothing would say so');
+}
+
 if (fail.length) {
     console.error('Shipped weights check FAILED:\n  - ' + fail.join('\n  - '));
     process.exit(1);
