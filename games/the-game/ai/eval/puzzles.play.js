@@ -108,7 +108,11 @@ function play(board) {
         depth: loaded.switches.depth,
         beam: loaded.switches.beam,
         rise: loaded.switches.rise,
-        density: loaded.switches.density
+        density: loaded.switches.density,
+        // GC_ENGINE=1 makes the bot think with panel-engine.js instead of
+        // LogicalBoard. A switch rather than a swap, because it is a
+        // different bot and every trained weight set describes the other one.
+        engine: process.env.GC_ENGINE === '1' || process.env.GC_ENGINE === 'true'
     });
     cpu._snapshot = function () { return cur.clone(); };
 

@@ -45,12 +45,12 @@
 //   - legality decided by the real Stack, never by the plan.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./evaluator.js'), require('./input.js'), require('./travel.js'));
+    module.exports = factory(require('./evaluator.js'), require('./input.js'), require('./travel.js'), require('./engineboard.js'));
   } else {
     root.PanelEval = root.PanelEval || {};
-    root.PanelEval.PuyoCpu = factory(root.PanelEval.evaluator, root.PanelEval.input, root.PanelEval.travel);
+    root.PanelEval.PuyoCpu = factory(root.PanelEval.evaluator, root.PanelEval.input, root.PanelEval.travel, root.PanelEval.engineBoard);
   }
-}(this, function (evaluator, inputMod, travel) {
+}(this, function (evaluator, inputMod, travel, engineBoard) {
   'use strict';
 
   function PuyoCpu(stack, opts) {
@@ -76,6 +76,24 @@
     // the weights trained without it stop describing what plays. Default
     // off keeps identity.golden.json and the shipped Nightmare bot exactly
     // as they are until weights trained WITH it exist to replace them.
+    // THINK WITH THE ENGINE. Off by default because it is a different bot:
+    // every trained weight set describes play under LogicalBoard, and this
+    // changes what a candidate is worth.
+    //
+    // Why it exists: LogicalBoard and panel-engine.js disagree, measurably.
+    // 372 of the fork's chip templates fire correctly on a live Stack and
+    // come out wrong in LogicalBoard, every one of them the same way — the
+    // right panels clear, in ONE ROUND FEWER, because the engine lands groups
+    // that fell different distances a couple of frames apart and counts two
+    // chain links where LogicalBoard merges them into one. So the bot prices
+    // a real 3-chain as a 2-chain, on exactly the deep-chain shapes it is
+    // supposed to be learning to build.
+    //
+    // Cost, measured: 1.27ms a candidate against LogicalBoard's 0.017ms. 30
+    // candidates at depth 1 is 38ms of an 85ms budget, so depth 1 fits and
+    // depth 2 (229ms) does not.
+    this.engine = opts.engine === true;
+    this._scratch = null;
     this.rise = opts.rise === true;
     // DENSITY SCORING, also off by default — see evaluator.js. Counts that
     // are made of panels (links, edgePenalty) become densities, so clearing
@@ -116,6 +134,25 @@
   //
   // travelCost being dead was the worst of them: this bot WALKS its cursor,
   // so distance is a real cost in frames that it was blind to.
+  // EVERY CANDIDATE RESOLVES THROUGH HERE, so there is one place the choice
+  // of board is made. Three call sites used to resolve() directly — hold,
+  // swap, and the lookahead child — and a switch that reached two of three
+  // would be the same silent-drift bug this whole seam exists to close.
+  //
+  // The engine path MUTATES the candidate board to the settled state, because
+  // every feature reads board.grid afterwards.
+  PuyoCpu.prototype._resolveCandidate = function (board) {
+    if (!this.engine) return board.resolve();
+    if (!this._scratch) this._scratch = engineBoard.scratch(10);
+    engineBoard.paint(this._scratch, board.grid, board.height, board.width);
+    var out = engineBoard.settle(this._scratch, 900);
+    var settled = engineBoard.readGrid(this._scratch, board.height, board.width);
+    for (var r = 0; r <= board.height; r++) {
+      for (var c = 1; c <= board.width; c++) board.grid[r][c] = settled[r][c];
+    }
+    return out;
+  };
+
   PuyoCpu.prototype._score = function (board, resolved, move) {
     this.evaluations++;
 
@@ -272,7 +309,7 @@
     // judgement to live — and putting a rule in would be putting back the
     // thing this brain exists to do without.
     var holdBoard = board.clone();
-    var holdResolved = holdBoard.resolve();
+    var holdResolved = this._resolveCandidate(holdBoard);
     var best = { kind: 'hold' };
     var bestScore = this._score(holdBoard, holdResolved, null);
 
@@ -282,7 +319,7 @@
       var r = swaps[i][0], c = swaps[i][1];
       var trial = board.clone();
       trial.swap(r, c);
-      var resolved = trial.resolve();
+      var resolved = this._resolveCandidate(trial);
       var s = this._score(trial, resolved, [r, c]);
       if (deeper) deeper.push({ score: s, move: [r, c], board: trial });
       // Strictly greater, so a tie leaves the incumbent standing rather
@@ -321,7 +358,7 @@
       for (var j = 0; j < next.length; j++) {
         var child = cand.board.clone();
         child.swap(next[j][0], next[j][1]);
-        var childResolved = child.resolve();
+        var childResolved = this._resolveCandidate(child);
         // The follow-up's travel is not priced. The cursor's position
         // after the first move is not known here — it depends on where
         // the walk actually ends — and inventing one would put a made-up

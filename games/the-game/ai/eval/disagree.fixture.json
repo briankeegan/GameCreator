@@ -1,0 +1,440 @@
+[
+ {
+  "kind": "COMBO_6_CASCADE_5",
+  "swaps": [
+   [
+    0,
+    0
+   ]
+  ],
+  "tmpl": [
+   [
+    -1,
+    -1,
+    1
+   ],
+   [
+    -1,
+    0,
+    1
+   ],
+   [
+    -1,
+    1,
+    2
+   ],
+   [
+    -1,
+    2,
+    1
+   ],
+   [
+    0,
+    0,
+    2
+   ],
+   [
+    0,
+    2,
+    2
+   ],
+   [
+    0,
+    3,
+    2
+   ],
+   [
+    1,
+    1,
+    2
+   ],
+   [
+    1,
+    2,
+    1
+   ],
+   [
+    2,
+    1,
+    1
+   ],
+   [
+    2,
+    2,
+    1
+   ]
+  ],
+  "chain": 3,
+  "total": 11,
+  "nSwaps": 1,
+  "nMoves": 0,
+  "garbage": 3,
+  "source": "panel-game bot/chipCache.lua @ claude/bot-verification-handoff-w7b53s",
+  "note": "NOT PORTED: fires on the real engine, comes out one round short on LogicalBoard"
+ },
+ {
+  "kind": "COMBO_6_CASCADE_5",
+  "swaps": [
+   [
+    0,
+    0
+   ]
+  ],
+  "tmpl": [
+   [
+    -1,
+    -1,
+    1
+   ],
+   [
+    -1,
+    0,
+    1
+   ],
+   [
+    0,
+    -2,
+    2
+   ],
+   [
+    0,
+    -1,
+    2
+   ],
+   [
+    0,
+    1,
+    2
+   ],
+   [
+    1,
+    -1,
+    1
+   ],
+   [
+    1,
+    0,
+    2
+   ],
+   [
+    2,
+    -1,
+    1
+   ],
+   [
+    2,
+    0,
+    2
+   ],
+   [
+    3,
+    0,
+    1
+   ],
+   [
+    4,
+    0,
+    1
+   ]
+  ],
+  "chain": 3,
+  "total": 11,
+  "nSwaps": 1,
+  "nMoves": 0,
+  "garbage": 3,
+  "source": "panel-game bot/chipCache.lua @ claude/bot-verification-handoff-w7b53s",
+  "note": "NOT PORTED: fires on the real engine, comes out one round short on LogicalBoard"
+ },
+ {
+  "kind": "COMBO_6_CASCADE_5",
+  "swaps": [
+   [
+    0,
+    0
+   ]
+  ],
+  "tmpl": [
+   [
+    -1,
+    -1,
+    1
+   ],
+   [
+    0,
+    -2,
+    2
+   ],
+   [
+    0,
+    -1,
+    2
+   ],
+   [
+    0,
+    1,
+    2
+   ],
+   [
+    1,
+    -1,
+    1
+   ],
+   [
+    1,
+    0,
+    2
+   ],
+   [
+    1,
+    1,
+    1
+   ],
+   [
+    1,
+    2,
+    1
+   ],
+   [
+    2,
+    -1,
+    1
+   ],
+   [
+    2,
+    0,
+    2
+   ],
+   [
+    4,
+    0,
+    1
+   ]
+  ],
+  "chain": 3,
+  "total": 11,
+  "nSwaps": 1,
+  "nMoves": 0,
+  "garbage": 3,
+  "source": "panel-game bot/chipCache.lua @ claude/bot-verification-handoff-w7b53s",
+  "note": "NOT PORTED: fires on the real engine, comes out one round short on LogicalBoard"
+ },
+ {
+  "kind": "COMBO_6_CASCADE_5",
+  "swaps": [
+   [
+    0,
+    0
+   ]
+  ],
+  "tmpl": [
+   [
+    -1,
+    -2,
+    1
+   ],
+   [
+    0,
+    -2,
+    2
+   ],
+   [
+    0,
+    -1,
+    2
+   ],
+   [
+    0,
+    1,
+    2
+   ],
+   [
+    1,
+    -2,
+    1
+   ],
+   [
+    1,
+    0,
+    2
+   ],
+   [
+    1,
+    1,
+    1
+   ],
+   [
+    2,
+    -2,
+    1
+   ],
+   [
+    2,
+    -1,
+    1
+   ],
+   [
+    2,
+    0,
+    2
+   ],
+   [
+    4,
+    0,
+    1
+   ]
+  ],
+  "chain": 3,
+  "total": 11,
+  "nSwaps": 1,
+  "nMoves": 0,
+  "garbage": 3,
+  "source": "panel-game bot/chipCache.lua @ claude/bot-verification-handoff-w7b53s",
+  "note": "NOT PORTED: fires on the real engine, comes out one round short on LogicalBoard"
+ },
+ {
+  "kind": "COMBO_6_CASCADE_5",
+  "swaps": [
+   [
+    0,
+    0
+   ]
+  ],
+  "tmpl": [
+   [
+    -1,
+    0,
+    1
+   ],
+   [
+    -1,
+    1,
+    2
+   ],
+   [
+    -1,
+    2,
+    1
+   ],
+   [
+    -1,
+    3,
+    1
+   ],
+   [
+    0,
+    0,
+    2
+   ],
+   [
+    0,
+    2,
+    2
+   ],
+   [
+    0,
+    3,
+    2
+   ],
+   [
+    1,
+    1,
+    2
+   ],
+   [
+    1,
+    3,
+    1
+   ],
+   [
+    2,
+    1,
+    1
+   ],
+   [
+    2,
+    3,
+    1
+   ]
+  ],
+  "chain": 3,
+  "total": 11,
+  "nSwaps": 1,
+  "nMoves": 0,
+  "garbage": 3,
+  "source": "panel-game bot/chipCache.lua @ claude/bot-verification-handoff-w7b53s",
+  "note": "NOT PORTED: fires on the real engine, comes out one round short on LogicalBoard"
+ },
+ {
+  "kind": "COMBO_6_CASCADE_5",
+  "swaps": [
+   [
+    0,
+    0
+   ]
+  ],
+  "tmpl": [
+   [
+    -1,
+    0,
+    1
+   ],
+   [
+    -1,
+    1,
+    2
+   ],
+   [
+    -1,
+    2,
+    1
+   ],
+   [
+    0,
+    0,
+    2
+   ],
+   [
+    0,
+    2,
+    2
+   ],
+   [
+    0,
+    3,
+    2
+   ],
+   [
+    0,
+    4,
+    1
+   ],
+   [
+    1,
+    1,
+    2
+   ],
+   [
+    1,
+    2,
+    1
+   ],
+   [
+    1,
+    3,
+    1
+   ],
+   [
+    2,
+    1,
+    1
+   ]
+  ],
+  "chain": 3,
+  "total": 11,
+  "nSwaps": 1,
+  "nMoves": 0,
+  "garbage": 3,
+  "source": "panel-game bot/chipCache.lua @ claude/bot-verification-handoff-w7b53s",
+  "note": "NOT PORTED: fires on the real engine, comes out one round short on LogicalBoard"
+ }
+]
