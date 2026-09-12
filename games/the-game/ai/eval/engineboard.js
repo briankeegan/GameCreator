@@ -43,7 +43,15 @@
     // mutates Panel objects in place, so they are RESET rather than replaced:
     // a timer, a chaining flag or a garbage size left over from the previous
     // candidate would run on into this one and be read as part of it.
-    function paint(stack, grid, height, width) {
+    // blocks: { id: [[row,col], ...] } — which cells form each garbage SLAB.
+    // Optional, and its absence is why the garbage half of this was unverified
+    // for so long: a garbage panel is not just "isGarbage". The engine reads
+    // gWidth, gHeight and the per-cell x/y offsets to decide whether a slab is
+    // supported (supportedFromBelow walks the whole width of the block) and to
+    // pop it as a unit. Painting isGarbage alone and zeroing the rest leaves a
+    // slab the engine cannot reason about, so every garbage comparison was
+    // measuring the harness.
+    function paint(stack, grid, height, width, blocks) {
         for (var r = 0; r < stack.panels.length; r++) {
             for (var c = 1; c <= width; c++) {
                 var p = stack.panels[r][c];
@@ -59,6 +67,37 @@
                 p.xOffset = null; p.yOffset = null;
                 p.gWidth = 0; p.gHeight = 0; p.shakeTime = 0;
             }
+        }
+        // REBUILD THE SLABS. A garbage block in this game is always a
+        // rectangle, so its bounding box is its shape, and each cell's offset
+        // from the block's origin is what the engine walks.
+        if (blocks) {
+            var gid = 1;
+            for (var id in blocks) {
+                var cells = blocks[id];
+                if (!cells || !cells.length) continue;
+                var minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+                for (var i = 0; i < cells.length; i++) {
+                    if (cells[i][0] < minR) minR = cells[i][0];
+                    if (cells[i][0] > maxR) maxR = cells[i][0];
+                    if (cells[i][1] < minC) minC = cells[i][1];
+                    if (cells[i][1] > maxC) maxC = cells[i][1];
+                }
+                var gw = maxC - minC + 1, gh = maxR - minR + 1;
+                for (i = 0; i < cells.length; i++) {
+                    var gp = stack.panels[cells[i][0]][cells[i][1]];
+                    if (!gp) continue;
+                    gp.isGarbage = true;
+                    gp.color = 9;                       // COLORLESS, as the engine writes it
+                    gp.garbageId = gid;
+                    gp.gWidth = gw; gp.gHeight = gh;
+                    gp.yOffset = cells[i][0] - minR;
+                    gp.xOffset = cells[i][1] - minC;
+                    gp.state = 'normal';
+                }
+                gid++;
+            }
+            stack.garbageIdCounter = Math.max(stack.garbageIdCounter || 0, gid);
         }
         stack.riseLock = true;
         // AND STOP THE FLOOR MOVING. riseLock alone does not: the engine
@@ -125,5 +164,23 @@
         return grid;
     }
 
-    return { scratch: scratch, paint: paint, settle: settle, readGrid: readGrid };
+    // The garbage SLABS as they now stand: { id: [[row,col], ...] }. Comparing
+    // grids alone cannot see a difference here — every garbage cell reads -2
+    // either way — so two boards can agree cell for cell while one has a
+    // 6x2 slab and the other two 6x1s, which fall and pop differently on the
+    // very next move.
+    function readBlocks(stack, height, width) {
+        var out = {};
+        for (var r = 1; r <= height; r++) {
+            for (var c = 1; c <= width; c++) {
+                var p = stack.panels[r] && stack.panels[r][c];
+                if (!p || !p.isGarbage || p.color === 0) continue;
+                var k = 'g' + p.garbageId;
+                (out[k] = out[k] || []).push([r, c]);
+            }
+        }
+        return out;
+    }
+
+    return { scratch: scratch, paint: paint, settle: settle, readGrid: readGrid, readBlocks: readBlocks };
 }));

@@ -64,15 +64,47 @@ var W = globalThis.PanelEngine.WIDTH, H = 12;
 var MODE = process.argv[2] || 'boards';
 var LIMIT = Number(process.argv[3] || 400);
 
-function gridOf(str) {
-    var g = [];
+// A fixture row is one char per cell: a digit for a colour, 0 for empty, and
+// a LETTER for garbage naming which SLAB the cell belongs to. 'G' is the old
+// format, which forgot the slab — accepted so an old fixture still loads, but
+// it lands every garbage cell in one block, which is exactly the thing that
+// made the garbage comparison meaningless.
+function readBoard(str) {
+    var g = [], blocks = {};
     for (var r = 0; r <= H; r++) { g[r] = []; for (var c = 1; c <= W; c++) g[r][c] = 0; }
     var i = 0;
     for (r = 1; r <= H; r++) for (var c2 = 1; c2 <= W; c2++) {
         var ch = str[i++];
-        g[r][c2] = ch === 'G' ? -2 : Number(ch);
+        if (ch >= 'a' && ch <= 'z') {
+            g[r][c2] = -2;
+            (blocks['g' + ch] = blocks['g' + ch] || []).push([r, c2]);
+        } else if (ch === 'G') {
+            g[r][c2] = -2;
+            (blocks.gG = blocks.gG || []).push([r, c2]);
+        } else {
+            g[r][c2] = Number(ch);
+        }
     }
-    return g;
+    return { grid: g, blocks: blocks };
+}
+// Same shape LogicalBoard wants: { id: { cells: [...] } }.
+function lbBlocks(blocks) {
+    var out = {};
+    for (var id in blocks) out[id] = { cells: blocks[id].map(function (rc) { return [rc[0], rc[1]]; }) };
+    return out;
+}
+// Two block maps are the same layout if the same cells are grouped the same
+// way. Ids are arbitrary on both sides, so compare the SHAPES, sorted.
+function sameBlocks(a, b) {
+    function norm(m) {
+        var ks = [];
+        for (var id in m) {
+            var cells = (m[id].cells || m[id]).map(function (rc) { return rc[0] + ':' + rc[1]; }).sort();
+            if (cells.length) ks.push(cells.join(','));
+        }
+        return ks.sort().join('|');
+    }
+    return norm(a) === norm(b);
 }
 function cloneGrid(g) {
     var out = [];
@@ -86,8 +118,8 @@ stack.speed = 0;
 // One case: a board and a swap. Returns null when the case is not decidable
 // (the board is not settled on the engine, or the swap is illegal there) —
 // an undecidable case is not a disagreement and must not be counted as one.
-function compare(grid, r, c) {
-    eb.paint(stack, grid, H, W);
+function compare(grid, r, c, blocks) {
+    eb.paint(stack, grid, H, W, blocks);
     if (eb.settle(stack, 60).comboSizes.length) return null;      // not settled: not a fair case
     if (!stack.canSwap(r, c)) return null;
     stack.curRow = r; stack.curCol = c;
@@ -95,7 +127,7 @@ function compare(grid, r, c) {
     var eng = eb.settle(stack, 900);
     var engGrid = eb.readGrid(stack, H, W);
 
-    var lb = new LogicalBoard(W, H, 9, cloneGrid(grid), {});
+    var lb = new LogicalBoard(W, H, 9, cloneGrid(grid), lbBlocks(blocks || {}));
     lb.swap(r, c);
     var sim = lb.resolve();
     var simCleared = (sim.comboSizes || []).reduce(function (a, b) { return a + b; }, 0);
@@ -105,19 +137,25 @@ function compare(grid, r, c) {
         for (var cc = 1; cc <= W; cc++)
             if ((engGrid[rr][cc] || 0) !== (lb.grid[rr][cc] || 0)) { gridSame = false; break; }
 
+    // AND THE SLAB LAYOUT. Every garbage cell reads -2, so a grid comparison
+    // cannot tell a 6x2 slab from two 6x1s — and those fall and pop
+    // differently on the very next move.
+    var blocksSame = sameBlocks(eb.readBlocks(stack, H, W), lb.blocks || {});
+
     return {
         engChain: eng.chainLength, simChain: sim.chainLength,
         engCleared: eng.clearedPanels, simCleared: simCleared,
-        gridSame: gridSame
+        gridSame: gridSame, blocksSame: blocksSame
     };
 }
 
-var cases = 0, agree = 0, chainDiff = {}, clearedDiff = {}, gridOnly = 0, anyDiff = 0;
+var cases = 0, agree = 0, chainDiff = {}, clearedDiff = {}, gridOnly = 0, blockOnly = 0, anyDiff = 0;
 function note(res) {
     cases++;
     var dc = res.simChain - res.engChain, dp = res.simCleared - res.engCleared;
-    if (dc === 0 && dp === 0 && res.gridSame) { agree++; return; }
+    if (dc === 0 && dp === 0 && res.gridSame && res.blocksSame) { agree++; return; }
     anyDiff++;
+    if (dc === 0 && dp === 0 && res.gridSame && !res.blocksSame) blockOnly++;
     if (dc !== 0) chainDiff[dc] = (chainDiff[dc] || 0) + 1;
     if (dp !== 0) clearedDiff[dp] = (clearedDiff[dp] || 0) + 1;
     if (dc === 0 && dp === 0 && !res.gridSame) gridOnly++;
@@ -127,10 +165,11 @@ if (MODE === 'boards' || MODE === 'both') {
     var fx = JSON.parse(fs.readFileSync(path.join(__dirname, 'realboards.json'), 'utf8'));
     var n = Math.min(LIMIT, fx.boards.length);
     for (var b = 0; b < n; b++) {
-        var grid = gridOf(fx.boards[b]);
-        var lb0 = new LogicalBoard(W, H, 9, cloneGrid(grid), {});
+        var parsed = readBoard(fx.boards[b]);
+        var grid = parsed.grid;
+        var lb0 = new LogicalBoard(W, H, 9, cloneGrid(grid), lbBlocks(parsed.blocks));
         lb0.legalSwaps().forEach(function (sw) {
-            var res = compare(grid, sw[0], sw[1]);
+            var res = compare(grid, sw[0], sw[1], parsed.blocks);
             if (res) note(res);
         });
     }
@@ -149,6 +188,7 @@ console.log('cases compared      : ' + cases);
 console.log('identical           : ' + agree + '  (' + (100 * agree / cases).toFixed(2) + '%)');
 console.log('differ in any way   : ' + anyDiff + '  (' + (100 * anyDiff / cases).toFixed(2) + '%)');
 console.log('  grid only         : ' + gridOnly);
+console.log('  garbage slabs only: ' + blockOnly);
 function show(label, m) {
     var keys = Object.keys(m).sort(function (a, b) { return m[b] - m[a]; });
     if (!keys.length) { console.log('  ' + label + ': none'); return; }

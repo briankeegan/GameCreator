@@ -75,14 +75,34 @@ for (var s = 1; s <= SEEDS; s++) {
         stack.run();
         if (f % 7) continue;
         if (stack.hasActivePanels() || stack.hasChainingPanels()) continue;
-        // One char per cell, bottom row first: 0 empty, G garbage, else the
-        // colour. Compact enough to commit; 800KB of JSON arrays was not.
-        var key = '';
+        // One char per cell, bottom row first: 0 empty, a colour digit, or a
+        // LETTER for garbage. The letter is the block: a, b, c... per distinct
+        // garbageId on this board.
+        //
+        // A single 'G' was not enough and the difference is not cosmetic.
+        // Garbage falls as a SLAB, and LogicalBoard moves it by block
+        // (_dropGarbageBlocks reads this.blocks), so a board rebuilt from a
+        // fixture that forgot which cells belong together has garbage it can
+        // never move — while the real bot never hits that, because
+        // SearchCpu._snapshot builds blocks from each panel's garbageId. That
+        // alone produced 310 "disagreements" that were the fixture's, not the
+        // simulation's.
+        var key = '', ids = {}, nextId = 0;
         for (var r = 1; r <= H; r++) {
             for (var c = 1; c <= W; c++) {
                 var p = stack.panels[r] && stack.panels[r][c];
-                var v = !p ? 0 : (p.isGarbage ? -2 : (p.color || 0));
-                key += (v === -2) ? 'G' : String(v);
+                if (!p) { key += '0'; continue; }
+                if (p.isGarbage) {
+                    var gid = 'g' + p.garbageId;
+                    if (ids[gid] === undefined) ids[gid] = nextId++;
+                    // 26 distinct blocks on one board is far beyond anything
+                    // the game produces; if it ever happened the fixture would
+                    // silently merge two, so it refuses instead.
+                    if (ids[gid] > 25) throw new Error('more than 26 garbage blocks on one board');
+                    key += String.fromCharCode(97 + ids[gid]);
+                    continue;
+                }
+                key += String(p.color || 0);
             }
         }
         if (seen[key]) continue;
