@@ -13,8 +13,20 @@
 // FORMAT, from common/engine/Puzzle.lua: the stack is a digit string, row
 // major, and "the last character is the bottom right panel" — so the string
 // is TOP ROW FIRST and our grid, which is bottom-row-first, reads it
-// backwards. 0 is empty, 1-9 are colours, [====] blocks are garbage and
-// those puzzles are skipped rather than half-understood.
+// backwards. [====] blocks are garbage and those puzzles are skipped rather
+// than half-understood.
+//
+// NOT EVERY DIGIT IS A COLOUR, and reading them as one made this whole
+// benchmark measure a game that cannot be played. Panel.lua:
+// regularColorsArray is 1-5, extendedRegularColorsArray adds 7, and
+// allPossibleColorsArray then adds 8 (SHOCK) and 9 (COLORLESS). Those last
+// two are garbage, not colours — checkMatches.lua's canMatch returns false
+// outright for colour 9. The puzzle files are full of 9s, so treating it as
+// an ordinary colour turned most boards into one enormous matchable blob:
+// the bot was offered 29-panel single clears worth more than any chain,
+// correctly took them, and was scored as having declined a chain. Both
+// halves of that were fiction. 8 and 9 map to -2, the grid's garbage value,
+// which blocks and falls but cannot match.
 var path = require('path');
 var fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
@@ -65,7 +77,10 @@ function boardFrom(stack) {
     for (var k = 0; k < rows.length; k++) {
         var row = H === 0 ? 0 : rows.length - k;      // bottom row -> 1
         if (row > H) continue;
-        for (var c2 = 1; c2 <= W; c2++) grid[row][c2] = Number(rows[k][c2 - 1]);
+        for (var c2 = 1; c2 <= W; c2++) {
+            var d = Number(rows[k][c2 - 1]);
+            grid[row][c2] = (d === 8 || d === 9) ? -2 : d;
+        }
     }
     return new LogicalBoard(W, H, 9, grid, {});
 }
