@@ -284,24 +284,38 @@
   // Two implementations of one ruleset, so the only question that matters is
   // where they disagree — and they do, measurably:
   //
-  //   372 of the fork's chip templates fire correctly on a live Stack and
-  //   come out wrong here. Every single one by the same amount: the right
-  //   panels clear, in ONE ROUND FEWER.
+  //   FIXED, AND MEASURED: 50,797 cases — all 3,320 real in-play boards times
+  //   every legal swap on each — and this board is now IDENTICAL to the
+  //   engine on every one. Chain depth, panels cleared, and the final grid
+  //   cell by cell (resolve_fidelity.js, gated at 100%).
   //
-  // The mechanism, traced on a COMBO_6_CASCADE_5 chip: the engine clears 5,
-  // then 3 at frame 85, then 3 more at frame 87 — two chain links two frames
-  // apart, because the two groups fall different distances and hover before
-  // landing. _applyGravity settles the whole board before looking for matches,
-  // so both land together and it reads as one round of 6. Chain 2 where the
-  // game pays chain 3.
+  // It was not, and the bug mattered most where the bot needed it most: the
+  // right panels cleared, in ONE ROUND FEWER, on exactly the deep-chain
+  // shapes it is supposed to be learning to build. Three faults, each hiding
+  // the next, and the first "fix" made the numbers worse before better:
   //
-  // So the bot UNDERCOUNTS CHAIN DEPTH, on exactly the deep-chain shapes it is
-  // supposed to be learning to build.
+  //   1. THE MEASUREMENT ITSELF MOVED. riseLock is re-decided every frame, so
+  //      a settle long enough to run a cascade let the reference stack climb
+  //      a row. 195 of the first 213 disagreements were that — they would
+  //      have been "fixed" in here, against a board that was sliding.
+  //   2. THIS BOARD TELEPORTED PANELS. _applyGravity settled everything before
+  //      matching, so every panel landed at the same instant. The engine makes
+  //      a panel falling three rows land two frames after one falling a single
+  //      row, and two groups landing frames apart are two chain links. resolve
+  //      now falls ONE ROW PER TICK and matches only what has landed.
+  //   3. TWO COMBOS ARE NOT A TWO-CHAIN. With the timing right, separate
+  //      groups popping frames apart became separate ROUNDS — and counting
+  //      rounds calls that a chain. The engine increments only when a matched
+  //      panel is already flagged `chaining`, so that flag is modelled here
+  //      panel by panel and travels with the panel as it falls.
   //
-  // TRIED AND FAILED: matching between fall steps instead of after them, so
-  // groups that fall different distances become separate links. It fixed 0 of
-  // the 372 and broke 32 chips that were passing. Reverted. Recorded so the
-  // obvious fix is not re-attempted blind.
+  // The earlier attempt recorded here as "fixed 0 of 372 and broke 32" failed
+  // because it had only (2). On its own (2) is not enough and makes things
+  // worse: it turns an undercount into an overcount. All three are needed.
+  //
+  // 349 of the 639 chip templates that fired on the engine and failed here now
+  // pass both. The 290 that remain are staged shapes, not positions from play;
+  // every position from play agrees.
   //
   // THE OTHER OPTION IS TO STOP HAVING A SECOND BOARD. Measured, same machine,
   // same position, per candidate move:
@@ -463,6 +477,30 @@
   // Real panels (>0) fall independently, per column, same as always —
   // garbage (-2) and busy (-1) cells are fixed obstacles during this pass,
   // never moved by it.
+  // ONE ROW, ONCE — the tick resolve() falls by. _dropRealPanels compacts a
+  // column completely, which is the same as saying every panel lands at the
+  // same instant. The engine does not: a panel falling three rows lands two
+  // frames after one falling a single row, and two groups landing frames
+  // apart are two chain links rather than one merged combo.
+  LogicalBoard.prototype._dropRealPanelsOneRow = function (carry) {
+    var moved = false;
+    for (var c = 1; c <= this.width; c++) {
+      for (var r = 1; r < this.height; r++) {
+        if (this.grid[r][c] === 0 && this.grid[r + 1][c] > 0) {
+          this.grid[r][c] = this.grid[r + 1][c];
+          this.grid[r + 1][c] = 0;
+          // The chaining flag belongs to the PANEL, not the cell, so it
+          // travels with it. Without this a falling panel loses the mark that
+          // says "I am here because something cleared under me", which is the
+          // one fact that separates a chain link from a second combo.
+          if (carry) { carry[r][c] = carry[r + 1][c]; carry[r + 1][c] = false; }
+          moved = true;
+        }
+      }
+    }
+    return moved;
+  };
+
   LogicalBoard.prototype._dropRealPanels = function () {
     var changedAny = false, changed = true;
     while (changed) {
@@ -569,16 +607,43 @@
   // is a different game even when the same cells match. identity.test.js
   // hashes every frame of eight games precisely so that claim is checked
   // rather than asserted.
-  LogicalBoard.prototype._findMatches = function () {
+  // restingOnly: a panel still in the air cannot match. The engine will not
+  // match a falling panel, and resolve() used to have no way to express that
+  // because it moved every panel to its resting place before looking.
+  LogicalBoard.prototype._findMatches = function (restingOnly) {
     var matched = {}; // "r:c" -> [r, c]
     var H = this.height, W = this.width, grid = this.grid;
     var r, c, i, color, runStart, runLen, runColor, row;
+    // WHAT COUNTS AS LANDED. "The cell below is occupied" is NOT enough: a
+    // panel resting on a panel that is itself falling is falling too, and
+    // treating it as landed fires a match a tick early — a whole combo the
+    // engine never makes. Six real boards read as sim 2/6 against engine 1/3
+    // that way, the simulation inventing a second clear.
+    //
+    // With gravity ticking one row at a time the rule is exact: in a column,
+    // everything ABOVE the lowest empty cell is in the air. Computed once per
+    // call rather than per cell.
+    var airline = null;
+    if (restingOnly) {
+      airline = [];
+      for (var ac = 1; ac <= W; ac++) {
+        airline[ac] = H + 1;                       // nothing in the air
+        for (var ar = 1; ar <= H; ar++) {
+          if (grid[ar][ac] === 0) { airline[ac] = ar; break; }
+        }
+      }
+    }
+    function at(rr, cc) {
+      var v = grid[rr][cc];
+      if (!restingOnly || v <= 0) return v;
+      return rr < airline[cc] ? v : 0;
+    }
 
     for (r = 1; r <= H; r++) {
       row = grid[r];
       runStart = 0; runLen = 0; runColor = 0;
       for (c = 1; c <= W + 1; c++) {
-        color = c <= W ? row[c] : 0;
+        color = c <= W ? at(r, c) : 0;
         if (color > 0 && (runLen === 0 || runColor === color)) {
           if (runLen === 0) { runStart = c; runColor = color; }
           runLen++;
@@ -594,7 +659,7 @@
     for (c = 1; c <= W; c++) {
       runStart = 0; runLen = 0; runColor = 0;
       for (r = 1; r <= H + 1; r++) {
-        color = r <= H ? grid[r][c] : 0;
+        color = r <= H ? at(r, c) : 0;
         if (color > 0 && (runLen === 0 || runColor === color)) {
           if (runLen === 0) { runStart = r; runColor = color; }
           runLen++;
@@ -662,11 +727,53 @@
   // triggering swap matched nothing.
   LogicalBoard.prototype.resolve = function () {
     var chainLength = 0, comboSizes = [], garbage = [];
-    this._applyGravity();
-    while (true) {
-      var matched = this._findMatches();
+    // TWO COMBOS ARE NOT A TWO-CHAIN, and counting rounds cannot tell them
+    // apart. The engine increments its chain counter only when a matched
+    // panel is already flagged `chaining` — meaning it fell because something
+    // below it cleared (Stack:incrementChainCounter, via isNewChainLink).
+    // Two independent groups that happen to pop seven frames apart both carry
+    // chainCounter 0 and the whole thing is ONE combo; resolve() counted two
+    // rounds and called it a chain.
+    //
+    // So the flag is modelled here, panel by panel: set on everything above a
+    // cleared cell, carried as that panel falls, and read when it matches.
+    var chaining = [];
+    for (var cr = 0; cr <= this.height; cr++) {
+      chaining[cr] = [];
+      for (var cc2 = 1; cc2 <= this.width; cc2++) chaining[cr][cc2] = false;
+    }
+    var counter = 0;
+    // NO SETTLE BEFORE THE FIRST LOOK EITHER, and this was the last case.
+    // A swap is not a settled position: moving a panel sideways out of a
+    // column opens a hole under the panels above it, and those are in the air
+    // while a match elsewhere on the board is already firing. Compacting
+    // first dropped them into a row they had not reached yet and invented a
+    // horizontal three — board 611 read as 5 panels cleared where the engine
+    // clears 3, before a single tick had passed.
+    //
+    // The tick loop below falls a row at a time and only matches what has
+    // landed, which is the same rule the rest of the cascade already obeys.
+    // On a board that IS settled this costs one extra pass and changes
+    // nothing.
+    var guard = 0;
+    while (guard++ < this.height * 4 + 64) {
+      var matched = this._findMatches(true);
       var keys = Object.keys(matched);
-      if (!keys.length) break;
+      if (!keys.length) {
+        // Nothing has landed into a match yet. Let the board fall one more
+        // row and look again; when nothing can move either, it is over.
+        var movedPanels = this._dropRealPanelsOneRow(chaining);
+        var movedGarbage = this._dropGarbageBlocks();
+        if (!movedPanels && !movedGarbage) break;
+        continue;
+      }
+      var isChainLink = false;
+      for (var ck = 0; ck < keys.length; ck++) {
+        var cell = matched[keys[ck]];
+        if (chaining[cell[0]][cell[1]]) { isChainLink = true; break; }
+      }
+      // Stack:incrementChainCounter — the first link of a chain is an x2.
+      if (isChainLink) counter = counter === 0 ? 2 : counter + 1;
       chainLength++;
       comboSizes.push(keys.length);
       var cleared = this._connectedGarbage(matched);
@@ -674,12 +781,34 @@
       for (k in matched) this.grid[matched[k][0]][matched[k][1]] = 0;
       for (k in cleared) this.grid[cleared[k][0]][cleared[k][1]] = 0;
       this._pruneClearedBlocks();
+      // Everything still standing above a cleared cell is about to fall
+      // BECAUSE of this clear, which is exactly what the engine's chaining
+      // flag means.
+      var lowestCleared = {};
+      function markColumn(rc) {
+        var rr = rc[0], cc3 = rc[1];
+        if (lowestCleared[cc3] === undefined || rr < lowestCleared[cc3]) lowestCleared[cc3] = rr;
+      }
+      for (k in matched) markColumn(matched[k]);
+      for (k in cleared) markColumn(cleared[k]);
+      for (var mc in lowestCleared) {
+        var col = Number(mc);
+        for (var mr = lowestCleared[mc] + 1; mr <= this.height; mr++) {
+          if (this.grid[mr][col] > 0) chaining[mr][col] = true;
+        }
+      }
       var pieces = root.PanelEngine.comboGarbage(keys.length);
       for (var i = 0; i < pieces.length; i++) garbage.push([pieces[i], 1]);
-      this._applyGravity();
+      // NO full settle here. The loop falls a row per pass, so a group with
+      // less distance to travel lands, matches and scores its own link before
+      // a group still on its way down arrives.
     }
-    if (chainLength >= 2) garbage.push([this.width, Math.max(0, chainLength - 1)]);
-    return { chainLength: chainLength, comboSizes: comboSizes, garbage: garbage };
+    // REPORTED IN THE SAME UNITS engineboard.settle() uses, so the two are
+    // comparable without either caller knowing which board it came from: a
+    // plain combo (or several separate ones) is 1, a real 2-chain is 2.
+    var depth = comboSizes.length ? Math.max(counter, 1) : 0;
+    if (depth >= 2) garbage.push([this.width, Math.max(0, depth - 1)]);
+    return { chainLength: depth, comboSizes: comboSizes, garbage: garbage };
   };
 
   function garbageCells(garbage) {

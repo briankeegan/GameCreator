@@ -171,7 +171,7 @@ gate_chip_matcher_constraints() {
 # leave the board in different states, and the next decision is made on the
 # board.
 gate_resolve_fidelity() {
-  GC_FIDELITY_FLOOR=0.999 node games/the-game/ai/eval/resolve_fidelity.js boards 300
+  GC_FIDELITY_FLOOR=1 node games/the-game/ai/eval/resolve_fidelity.js boards 300
 }
 
 # ...AND THAT IT CAN FAIL. This check's whole value is catching the case where
@@ -188,7 +188,7 @@ gate_resolve_fidelity_fires() {
   cp games/the-game/panel-engine.js games/the-game/panel-cpu.js "$work/games/the-game/" || return 1
   cp games/the-game/ai/eval/*.js games/the-game/ai/eval/realboards.json "$work/games/the-game/ai/eval/" || return 1
   sed -i 's/stack.riseTimer = 1e9;//' "$work/games/the-game/ai/eval/engineboard.js" || return 1
-  if ( cd "$work/games/the-game/ai/eval" && GC_FIDELITY_FLOOR=0.999 node resolve_fidelity.js boards 300 ) >/dev/null 2>&1; then
+  if ( cd "$work/games/the-game/ai/eval" && GC_FIDELITY_FLOOR=1 node resolve_fidelity.js boards 300 ) >/dev/null 2>&1; then
     echo "  NOT CAUGHT: the fidelity check passed a harness that lets the stack rise"
     return 1
   fi

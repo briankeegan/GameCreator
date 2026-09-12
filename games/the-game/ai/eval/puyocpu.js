@@ -80,14 +80,24 @@
     // every trained weight set describes play under LogicalBoard, and this
     // changes what a candidate is worth.
     //
-    // Why it exists: LogicalBoard and panel-engine.js disagree, measurably.
-    // 372 of the fork's chip templates fire correctly on a live Stack and
-    // come out wrong in LogicalBoard, every one of them the same way — the
-    // right panels clear, in ONE ROUND FEWER, because the engine lands groups
-    // that fell different distances a couple of frames apart and counts two
-    // chain links where LogicalBoard merges them into one. So the bot prices
-    // a real 3-chain as a 2-chain, on exactly the deep-chain shapes it is
-    // supposed to be learning to build.
+    // Why it existed: LogicalBoard and panel-engine.js disagreed, measurably —
+    // the right panels clearing in ONE ROUND FEWER, so the bot priced a real
+    // 3-chain as a 2-chain on exactly the deep-chain shapes it is supposed to
+    // be learning to build.
+    //
+    // THAT IS FIXED. LogicalBoard now falls a row per tick, matches only what
+    // has landed, and models the engine's chaining flag; measured identical to
+    // the engine on 50,797 cases — every real in-play board times every legal
+    // swap — in chain depth, panels cleared and final grid
+    // (ai/eval/resolve_fidelity.js, gated at 100%). See the note above
+    // LogicalBoard in panel-cpu.js for the three faults and why fixing only
+    // the timing made it worse.
+    //
+    // This switch stays, for two reasons. 290 staged chip shapes still resolve
+    // differently (positions play does not produce, but shapes the library
+    // contains), and a seam that can run a candidate on the real Stack is how
+    // the next divergence gets found instead of assumed. It is off by default
+    // and costs 1.27ms against LogicalBoard's 0.017ms.
     //
     // Cost, measured: 1.27ms a candidate against LogicalBoard's 0.017ms. 30
     // candidates at depth 1 is 38ms of an 85ms budget, so depth 1 fits and

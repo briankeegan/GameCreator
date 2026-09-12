@@ -28,31 +28,32 @@
 // cell. The grid is the strongest of the three — two engines can agree on
 // the totals and still leave the panels in different columns, and the next
 // decision is made on the grid, not on the totals.
-// WHERE IT STANDS, measured on 1,200 real boards x every legal swap =
-// 18,077 cases: 18,074 identical, THREE genuinely different. The standard is
-// 100% and these three are the gap, recorded here so they are a target rather
-// than a rounding error:
+// WHERE IT STANDS: 50,797 cases — every one of the 3,320 real boards times
+// every legal swap on it — and the simulation is IDENTICAL to the engine on
+// all of them. Chain depth, panels cleared, and the final grid cell by cell.
 //
-//   board  611  swap r3 c5   sim chain 2 / 8 cleared   engine chain 1 / 3
-//   board  854  swap r2 c3   sim chain 3 / 15          engine chain 4 / 15
-//   board 1190  swap r3 c2   sim chain 1 / 5           engine chain 1 / 3
+// It was not. Three things were wrong and each hid the next:
 //
-// Board 854 is the important one: same panels, same final grid, chain depth
-// one SHORT — the same divergence as the 639 chips that fire on the engine and
-// fail the simulation, reproduced on a board the bot actually played. It is
-// not an artefact of chip staging, and "deep cascades are rare in play" is
-// circular: they are rare because the bot cannot build them, and building them
-// is the point.
+//   1. THE HARNESS WAS MOVING. riseLock is re-decided every frame, so a settle
+//      long enough to run a cascade let the stack climb a row. 195 of the
+//      first 213 "disagreements" were that, and would have been "fixed" in
+//      LogicalBoard. engineboard.paint() parks riseTimer now.
+//   2. RESOLVE TELEPORTED PANELS. It ran gravity to completion, then matched —
+//      so every panel landed at the same instant. The engine makes a panel
+//      falling three rows land two frames after one falling a single row, and
+//      two groups landing frames apart are two chain links. It now falls a
+//      row per tick and matches only what has landed.
+//   3. TWO COMBOS ARE NOT A TWO-CHAIN. With the timing fixed, separate groups
+//      popping frames apart became separate ROUNDS, and counting rounds calls
+//      that a chain. The engine increments only when a matched panel is
+//      already flagged chaining, so that flag is modelled panel by panel.
 //
-// The cause is in resolve()'s shape. It runs gravity to completion, then
-// matches, then repeats — so every panel lands at the same instant. The engine
-// makes a panel that falls three rows take longer than one that falls one row,
-// so two groups land frames apart and count as two chain links where resolve()
-// merges them into one. Fixing it means gravity ordered by LANDING TIME, not a
-// full settle between rounds. One attempt at that failed before (fixed 0 of
-// 372, broke 32) and is recorded above LogicalBoard in panel-cpu.js; the
-// difference now is that these three cases are exact, reproducible, and on
-// real boards.
+// Each fix exposed the one under it, and the first fix made the numbers WORSE
+// before better (3 differences became 8) — which is why the measurement had to
+// come first and be believed over the expectation.
+//
+// Effect on the chip library: 349 of the 639 templates that fired on the real
+// engine and failed the simulation now pass both.
 var path = require('path'), fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
