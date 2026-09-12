@@ -132,9 +132,26 @@
     // Slot -> colour for one placement. Reused across placements rather than
     // reallocated: this runs a few million times a second and a fresh object
     // per placement was most of the cost.
-    var slotOf = new Int8Array(16);
-    var slotSeen = new Int8Array(16);
-    var colourTaken = new Int8Array(16);
+    // INT32, NOT INT8, AND THIS WAS A REAL BUG. `stamp` is an ever-rising
+    // generation counter and these arrays hold the stamp a slot was last
+    // written at. In an Int8Array the stored value truncates at 127, so from
+    // the 128th call onward `slotSeen[s] === stamp` was comparing a truncated
+    // byte against a full number and was essentially never true — which meant
+    // the two constraints that give a template its teeth stopped being
+    // enforced at all: cells sharing a colour slot no longer had to be the
+    // same colour, and two different slots no longer had to be different
+    // colours. The matcher degenerated into "are these cells non-empty".
+    //
+    // It matched 3,538 chips on a single real board and 92% of them cleared
+    // NOTHING when fired. The tell was the number, not the code: a library
+    // where nearly every shape is present on every board is not a library.
+    // chipmatch.test.js pins the two constraints directly, and the real-board
+    // measurement is what surfaced it — matching a chip against a board built
+    // from that same chip passes either way, because there is only one
+    // placement and one colour per slot to get wrong.
+    var slotOf = new Int32Array(16);
+    var slotSeen = new Int32Array(16);
+    var colourTaken = new Int32Array(16);
     var stamp = 0;
 
     function matchAt(grid, tmpl, R, C) {

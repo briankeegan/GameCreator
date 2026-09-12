@@ -148,6 +148,22 @@ gate_chips_hookup() {
   node games/the-game/ai/eval/chips.hookup.test.js
 }
 
+# Both verifiers stage a chip onto a board this repo BUILDS, choosing filler
+# that provably cannot take part. That staging is the right way to ask
+# whether a chip is true, and it is also the whole of the doubt — a live
+# board's don't-care cells hold real colours, and real colours can join a
+# match. This fires chips found on boards the bot actually played.
+gate_chips_real_boards() {
+  node games/the-game/ai/eval/chips.realboard.test.js
+}
+
+# The four constraints a template carries, pinned directly. Two of them were
+# silently unenforced for the matcher's whole first life (Int8Array stamp
+# truncation) and the test nearest the defect could not see it.
+gate_chip_matcher_constraints() {
+  node games/the-game/ai/eval/chipmatch.test.js
+}
+
 # Four features share one clone-swap-resolve pass instead of running it four
 # times, which is what makes a gravity-correct matchPotential affordable
 # (+2.8% per candidate instead of +102%). The saving is only honest if the
@@ -218,6 +234,8 @@ GATES=(
   "the engine brain is wired, not inert:gate_engine_brain"
   "every ported chip is individually decidable:gate_chips_decidable"
   "the chip library can actually be used:gate_chips_hookup"
+  "chips hold up on boards nobody built for them:gate_chips_real_boards"
+  "the chip matcher enforces every constraint:gate_chip_matcher_constraints"
   "every feature measures what its name says:gate_features"
   "the shared resolve pass is the same answer:gate_features_shared_pass"
   "that chip check fires:gate_chip_verifier_fires"
