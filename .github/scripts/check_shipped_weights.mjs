@@ -131,7 +131,7 @@ if (!existsSync(loader)) {
     fail.push('ai/eval/switches.js is missing — it is the one place that pairs a weight ' +
               'set with the switches it was found under');
 } else {
-    for (const tool of ['behaviour.js', 'puzzles.bench.js']) {
+    for (const tool of ['behaviour.js', 'puzzles.bench.js', 'puzzles.play.js']) {
         const f = path.join(game, 'ai/eval', tool);
         if (!existsSync(f)) { fail.push(`ai/eval/${tool} is missing`); continue; }
         const src = readFileSync(f, 'utf8');
