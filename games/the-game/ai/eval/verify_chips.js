@@ -53,7 +53,7 @@ function stage(chip, colorMap) {
         if (typeof cells[u0][2] === 'number') used[cells[u0][2]] = 1;
     }
     var spare = [];
-    for (var sc0 = 1; sc0 <= 12 && spare.length < 4; sc0++) if (!used[sc0]) spare.push(sc0);
+    for (var sc0 = 1; sc0 <= 12; sc0++) if (!used[sc0]) spare.push(sc0);
     if (spare.length < 4) return { skip: 'no spare colours for blockers and props' };
     var g = [];
     for (var r = 0; r <= H; r++) { g[r] = []; for (var c = 1; c <= W; c++) g[r][c] = 0; }

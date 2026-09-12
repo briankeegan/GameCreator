@@ -1,0 +1,136 @@
+[
+ {
+  "kind": "COMBO_5_CASCADE_4_SWAP_2_MOVE_4",
+  "swaps": [
+   [
+    4,
+    0
+   ],
+   [
+    0,
+    0
+   ]
+  ],
+  "tmpl": [
+   [
+    -2,
+    0,
+    1
+   ],
+   [
+    -1,
+    -1,
+    1
+   ],
+   [
+    -1,
+    0,
+    2
+   ],
+   [
+    -1,
+    1,
+    1
+   ],
+   [
+    0,
+    1,
+    2
+   ],
+   [
+    1,
+    0,
+    2
+   ],
+   [
+    2,
+    0,
+    2
+   ],
+   [
+    3,
+    0,
+    1
+   ],
+   [
+    4,
+    1,
+    1
+   ]
+  ],
+  "chain": 2,
+  "total": 9,
+  "nSwaps": 2,
+  "nMoves": 4,
+  "garbage": 3,
+  "source": "panel-game bot/chipCache.lua @ claude/bot-verification-handoff-w7b53s",
+  "engineOnly": "fires on a live PanelEngine.Stack; LogicalBoard merges one cascade link and reports one round fewer"
+ },
+ {
+  "kind": "COMBO_5_CASCADE_4_SWAP_2_MOVE_4",
+  "swaps": [
+   [
+    4,
+    0
+   ],
+   [
+    0,
+    0
+   ]
+  ],
+  "tmpl": [
+   [
+    -2,
+    0,
+    1
+   ],
+   [
+    -1,
+    0,
+    2
+   ],
+   [
+    -1,
+    1,
+    1
+   ],
+   [
+    -1,
+    2,
+    1
+   ],
+   [
+    0,
+    1,
+    2
+   ],
+   [
+    1,
+    0,
+    2
+   ],
+   [
+    2,
+    0,
+    2
+   ],
+   [
+    3,
+    0,
+    1
+   ],
+   [
+    4,
+    1,
+    1
+   ]
+  ],
+  "chain": 2,
+  "total": 9,
+  "nSwaps": 2,
+  "nMoves": 4,
+  "garbage": 3,
+  "source": "panel-game bot/chipCache.lua @ claude/bot-verification-handoff-w7b53s",
+  "engineOnly": "fires on a live PanelEngine.Stack; LogicalBoard merges one cascade link and reports one round fewer"
+ }
+]

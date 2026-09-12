@@ -50,7 +50,7 @@ files.forEach(function (f) {
 // The same staging rules verify_chips.js uses, and for the same reasons:
 // "@" is a panel in a colour the chip does not use, props are panels rather
 // than garbage, and the cell the swap lands in gets ground under it.
-function layout(chip) {
+function layout(chip, fillerOffset) {
     var cells = chip.tmpl;
     var drs = cells.map(function (c) { return c[0]; });
     var dcs = cells.map(function (c) { return c[1]; });
@@ -61,7 +61,7 @@ function layout(chip) {
     var used = {};
     cells.forEach(function (c) { if (typeof c[2] === 'number') used[c[2]] = 1; });
     var spare = [];
-    for (var s = 1; s <= 12 && spare.length < 4; s++) if (!used[s]) spare.push(s);
+    for (var s = 1; s <= 12; s++) if (!used[s]) spare.push(s);
     if (spare.length < 4) return { skip: 'no spare colours' };
 
     var H = 12;
@@ -81,16 +81,38 @@ function layout(chip) {
             if (!p[1]) return;
             if (grid[swapRow - 1][p[0]] !== 0) return;
             if (mustEmpty[(swapRow - 1) + ',' + p[0]]) return;
-            grid[swapRow - 1][p[0]] = spare[(swapRow - 1 + 2 * p[0]) % 3];
+            grid[swapRow - 1][p[0]] = spare[(swapRow - 1 + 2 * p[0] + (fillerOffset || 0)) % 3];
         });
     }
+    // FILLER COLOURS ARE DISTINCT WITHIN A COLUMN, and that is the whole
+    // trick. A pattern keyed on (row, col) has no line of three while the
+    // board is still — but a cascade COMPACTS columns, and any three fillers
+    // in one column can end up adjacent afterwards. Keyed on (row, col) with
+    // three colours, rows 1, 4 and 7 all take the same one, so they stack
+    // into a match: 123 chips landed in the "filler cleared" bucket, which is
+    // a staging failure wearing a chip's name. Rotating the pattern does not
+    // help — an offset permutes the colours and keeps the collision.
+    //
+    // Compaction preserves ORDER within a column, so giving each filler in a
+    // column a different colour makes a vertical filler match impossible
+    // however far things drop. The per-column start is staggered so three
+    // columns cannot line up horizontally either.
     for (var c2 = 1; c2 <= W; c2++) {
         var top = 0;
         for (var r2 = H; r2 >= 1; r2--) if (grid[r2][c2] !== 0) { top = r2; break; }
-        for (var r3 = top - 1; r3 >= 1; r3--) {
+        var nth = 0;
+        for (var r3 = 1; r3 < top; r3++) {
             if (grid[r3][c2] !== 0) continue;
             if (mustEmpty[r3 + ',' + c2]) return { skip: 'needs support where the template demands empty' };
-            grid[r3][c2] = spare[(r3 + 2 * c2) % 3];
+            // The retry varies the column STAGGER, not just an additive
+            // offset: adding a constant permutes the colours and preserves
+            // every collision, which is why rotating the offset alone
+            // recovered exactly zero chips. Different staggers space the
+            // columns differently, so a horizontal run of three fillers that
+            // survives compaction under one does not under another.
+            var stagger = [2, 3, 5][(fillerOffset || 0) % 3];
+            grid[r3][c2] = spare[(nth + stagger * c2 + (fillerOffset || 0)) % spare.length];
+            nth++;
         }
     }
     var fillerColours = {}, fillerBefore = 0;
@@ -100,6 +122,29 @@ function layout(chip) {
     }
     return { grid: grid, swapRow: swapRow, swapCol: swapCol, H: H, rowOff: rowOff, colOff: colOff,
              fillerColours: fillerColours, fillerBefore: fillerBefore };
+}
+
+// Does the support take part, on this staging? Runs the chip on its own
+// scratch Stack so the answer costs nothing but time and cannot disturb the
+// real attempt.
+function fillerTakesPart(chip, lay) {
+    var st = engineBoard.scratch(10);
+    st.speed = 0;
+    engineBoard.paint(st, lay.grid, lay.H, W);
+    engineBoard.settle(st, 30);
+    for (var si = 0; si < chip.swaps.length; si++) {
+        var sr = chip.swaps[si][0] + lay.rowOff, sc = chip.swaps[si][1] + lay.colOff;
+        if (!st.canSwap(sr, sc)) return false;
+        st.curRow = sr; st.curCol = sc;
+        st.doSwap(sr, sc);
+        engineBoard.settle(st, 900);
+    }
+    var after = 0;
+    for (var r = 1; r <= lay.H; r++) for (var c = 1; c <= W; c++) {
+        var p = st.panels[r][c];
+        if (p && lay.fillerColours[p.color]) after++;
+    }
+    return after < lay.fillerBefore;
 }
 
 var pass = 0, fail = 0, skipped = 0;
@@ -136,7 +181,27 @@ console.log('verifying ' + chips.length + ' chips against the REAL engine, from 
 chips.forEach(function (chip) {
     var label = '  ' + chip.kind.padEnd(38);
     if (chip.swaps.length > 2) { console.log(label + 'SKIP  more than two swaps'); record(chip, 'skip'); skipped++; return; }
-    var lay = layout(chip);
+    // TRY A FEW FILLER PATTERNS BEFORE BLAMING THE CHIP.
+    //
+    // The support is this harness's invention, and the generator's own rule is
+    // that support must never match. A three-colour pattern keyed on (row,
+    // col) has no line of three while the board is still — but a cascade
+    // COMPACTS columns, and rows 1, 4 and 7 all take the same colour, so three
+    // fillers can end up stacked after the drop. That put 123 chips in the
+    // "filler cleared" bucket, which is a staging failure wearing a chip's
+    // name.
+    //
+    // So the offset is rotated and the chip re-staged until the support keeps
+    // out of it. If no offset works the chip is reported as before — but it is
+    // then a fact about the chip rather than about which colours I happened to
+    // pick.
+    var lay = null, attempt;
+    for (attempt = 0; attempt < 3; attempt++) {
+        var tryLay = layout(chip, attempt);
+        if (tryLay.skip) { lay = tryLay; break; }
+        if (!fillerTakesPart(chip, tryLay)) { lay = tryLay; break; }
+        lay = tryLay;
+    }
     if (lay.skip) { console.log(label + 'SKIP  ' + lay.skip); record(chip, 'skip'); skipped++; return; }
 
     // A stack with the rise stopped, so nothing arrives mid-chip and changes

@@ -9,6 +9,33 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
+
+# paint and settle moved into engineboard.js, which the bot and the verifier
+# now share. Breaking the SHARED module is the more honest test — but NOT IN
+# PLACE. The first version damaged the real file and restored it at the end,
+# and when a run aborted partway it left engineboard.js on disk with its frame
+# budget set to zero. Everything downstream then reported that every chip
+# fires nothing, which reads like the library collapsing rather than like a
+# test that did not clean up. Same lesson as shipped_weights.test.sh: run on a
+# COPY.
+#
+# So the whole eval directory is copied once, and every break happens in there.
+# The sandbox keeps the SAME relative layout, because the verifiers reach up
+# two directories for panel-engine.js and panel-cpu.js. A flat copy makes them
+# look for /tmp/panel-engine.js and die with a module-not-found that says
+# nothing about chips.
+SANDBOX="$WORK/games/the-game/ai/eval"
+mkdir -p "$SANDBOX"
+cp "$HERE/../../panel-engine.js" "$HERE/../../panel-cpu.js" "$WORK/games/the-game/"
+mkdir -p "$WORK/games/the-game/ai"
+cp "$HERE/../trained-weights.js" "$WORK/games/the-game/ai/" 2>/dev/null
+cp "$HERE"/*.js "$HERE"/.chipbreak.py "$SANDBOX/" 2>/dev/null
+cp -r "$HERE/chips" "$SANDBOX/" 2>/dev/null
+cp -r "$HERE/chips-engine-only" "$SANDBOX/" 2>/dev/null
+EB="$SANDBOX/engineboard.js"
+EBSAVE="$WORK/engineboard.save.js"
+cp "$EB" "$EBSAVE"
+MODBREAK="python3 $HERE/.chipbreak.py $EBSAVE $EB"
 BATCH="$HERE/chips/batch1-chain.json"
 pass=0; missed=0
 
@@ -68,14 +95,14 @@ try "the swap moved off the shape"
 cp "$BATCH" "$WORK/b.json"
 # The verifier resolves panel-engine.js from its own __dirname, so a copy has
 # to live beside the original rather than in the temp dir.
-VC="$HERE/.verify_chips.under-test.js"
-trap 'rm -rf "$WORK"; rm -f "$VC"' EXIT
+VC="$SANDBOX/.verify_chips.under-test.js"
+trap 'rm -rf "$WORK"' EXIT
 # EVERY ported batch, not batch 1. Batch 1's six CHAIN chips are
 # self-supporting and contain no blockers, so they exercise none of the
 # staging below — run the staging breaks against them and all four sail
 # through. That is the same trap as the chain-counter bug: a batch that
 # happens to avoid a code path is not evidence the path works.
-vcheck() { ( cd "$HERE" && node "$VC" ) >/dev/null 2>&1; }
+vcheck() { ( cd "$SANDBOX" && node "$VC" ) >/dev/null 2>&1; }
 vtry() {
   if vcheck; then echo "  NOT CAUGHT: $1"; missed=$((missed+1));
   else echo "  caught:     $1"; pass=$((pass+1)); fi
@@ -114,7 +141,7 @@ $BREAK "(k === '@') ? '@' :" "(k === '@') ? -2 :" || exit 2
 # first with an even plainer message — but that NO staging bug is ever
 # reported as a bad chip. "claims chain N ... ours gives M" is the
 # blame-the-chip line, and it must not appear.
-if ( cd "$HERE" && node "$VC" 2>&1 ) | grep -q "claims chain"; then
+if ( cd "$SANDBOX" && node "$VC" 2>&1 ) | grep -q "claims chain"; then
   echo "  NOT CAUGHT: broken staging reported as a bad chip instead of bad staging"
   missed=$((missed+1))
 else
@@ -141,26 +168,19 @@ vtry "the prop under the swap's landing cell removed"
 # verify_chips_engine.js checks panel-engine.js, the game. A chip can be true
 # of one and false of the other, and measured on the cascade group they
 # disagree on 34 of 517 — so both gates exist and both get broken here.
-VE="$HERE/.verify_engine.under-test.js"
-echeck() { ( cd "$HERE" && node "$VE" ) >/dev/null 2>&1; }
+VE="$SANDBOX/.verify_engine.under-test.js"
+echeck() { ( cd "$SANDBOX" && node "$VE" ) >/dev/null 2>&1; }
 etry() {
   if echeck; then echo "  NOT CAUGHT: $1"; missed=$((missed+1));
   else echo "  caught:     $1"; pass=$((pass+1)); fi
 }
 EBREAK="python3 $HERE/.chipbreak.py $HERE/verify_chips_engine.js $VE"
-# paint and settle moved into engineboard.js, which the bot and the verifier
-# now share. Breaking the SHARED module is the more honest test: a copy in the
-# verifier could pass while the bot's copy was wrong, which is the whole
-# reason there is only one.
-EB="$HERE/engineboard.js"
-EBSAVE="$WORK/engineboard.save.js"
-cp "$EB" "$EBSAVE"
-MODBREAK="python3 $HERE/.chipbreak.py $EBSAVE $EB"
+
 
 cp "$HERE/verify_chips_engine.js" "$VE"
 if ! echeck; then
   echo "  the engine verifier rejects the ported chips; nothing below means anything"
-  ( cd "$HERE" && node "$VE" ) | tail -5
+  ( cd "$SANDBOX" && node "$VE" ) | tail -5
   rm -f "$VE"; exit 1
 fi
 echo "  accepts:    every ported chip in the real engine too"
@@ -188,8 +208,12 @@ etry "the swap never given frames to resolve"
 # The generator's own rule: no filler may ever match. Break the filler back to
 # a two-colour checkerboard and it does — it clears alongside the chip and 37
 # chips read as clearing three more panels than they claim.
-$EBREAK "grid[r3][c2] = spare[(r3 + 2 * c2) % 3];" "grid[r3][c2] = spare[(r3 + c2) % 2];" || exit 2
-etry "a filler pattern that can match itself once the cascade drops it"
+# The filler must not be able to match itself. Break it back to a pattern
+# keyed on (row, col): every third row in a column takes the same colour, and
+# a cascade compacts columns, so three of them stack. 123 chips landed in the
+# "filler cleared" bucket that way before the per-column scheme replaced it.
+$EBREAK "grid[r3][c2] = spare[(nth + stagger * c2 + (fillerOffset || 0)) % spare.length];" "grid[r3][c2] = spare[(r3 + 2 * c2) % 3];" || exit 2
+etry "a filler pattern that can match itself once the cascade compacts a column"
 
 # THE RISE. riseLock and speed = 0 do NOT hold the stack still: the engine
 # re-decides riseLock every frame, so a settle that runs a fixed number of
@@ -204,7 +228,6 @@ $MODBREAK "if (f >= 3 && !stack.hasActivePanels() && !stack.hasChainingPanels())
 etry "settling for a fixed frame count, letting the stack rise between swaps"
 
 cp "$EBSAVE" "$EB"
-rm -f "$VE"
 
 echo "$pass caught, $missed missed"
 
