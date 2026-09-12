@@ -110,6 +110,14 @@ gate_chips_verify() {
   node games/the-game/ai/eval/verify_chips.js
 }
 
+# AND THE SAME CHIPS AGAINST THE GAME. LogicalBoard is the bot's simulation
+# of the board; panel-engine.js is the game. Measured on the cascade group
+# they disagree on 34 of 517 chips, so passing one is not passing the other
+# and a chip has to clear both before it can steer anything.
+gate_chips_verify_engine() {
+  node games/the-game/ai/eval/verify_chips_engine.js
+}
+
 gate_chip_verifier_fires() {
   bash games/the-game/ai/eval/chips.test.sh
 }
@@ -162,6 +170,7 @@ GATES=(
   "art references:gate_art_refs"
   "characters keep one size while walking:gate_sprite_scale_consistency"
   "chain chips fire in our engine:gate_chips_verify"
+  "chain chips fire in the real engine:gate_chips_verify_engine"
   "that chip check fires:gate_chip_verifier_fires"
   "the shipped weights and the tools that measure them:gate_shipped_weights"
   "that check fires:gate_shipped_weights_check_fires"

@@ -146,7 +146,7 @@ console.log('verifying ' + chips.length + ' chips from ' +
     files.map(function (f) { return path.basename(f); }).join(', ') + '\n');
 
 chips.forEach(function (chip) {
-    var label = '  ' + chip.kind.padEnd(13);
+    var label = '  ' + chip.kind.padEnd(30);
     if (chip.swaps.length !== 1) { console.log(label + 'SKIP  multi-swap, needs the swap-settle-swap harness'); skipped++; return; }
     var st = stage(chip, MAP);
     if (st.skip) { console.log(label + 'SKIP  ' + st.skip); skipped++; return; }

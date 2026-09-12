@@ -129,6 +129,49 @@ fi
 # that batch rather than as a case that silently proves nothing now. Writing
 # it today would be a test that passes because it never runs.
 
+# ---- AND THE SAME CHIPS AGAINST THE REAL ENGINE ----
+#
+# verify_chips.js checks LogicalBoard, the bot's SIMULATION of the board.
+# verify_chips_engine.js checks panel-engine.js, the game. A chip can be true
+# of one and false of the other, and measured on the cascade group they
+# disagree on 34 of 517 — so both gates exist and both get broken here.
+VE="$HERE/.verify_engine.under-test.js"
+echeck() { ( cd "$HERE" && node "$VE" ) >/dev/null 2>&1; }
+etry() {
+  if echeck; then echo "  NOT CAUGHT: $1"; missed=$((missed+1));
+  else echo "  caught:     $1"; pass=$((pass+1)); fi
+}
+EBREAK="python3 $HERE/.chipbreak.py $HERE/verify_chips_engine.js $VE"
+
+cp "$HERE/verify_chips_engine.js" "$VE"
+if ! echeck; then
+  echo "  the engine verifier rejects the ported chips; nothing below means anything"
+  ( cd "$HERE" && node "$VE" ) | tail -5
+  rm -f "$VE"; exit 1
+fi
+echo "  accepts:    every ported chip in the real engine too"
+
+# The engine's own legality check. Removing it alone proves nothing — with
+# the staging correct every swap is legal — so the break makes the swap
+# genuinely illegal: paint both halves of the pair the same colour, which the
+# engine refuses ("a switch is not a swap"). Without canSwap, doSwap applies
+# it anyway and the chip is blamed for the result.
+$EBREAK "var a = grid[swapRow][swapCol], b = grid[swapRow][swapCol + 1];" "var a = grid[swapRow][swapCol], b = grid[swapRow][swapCol + 1]; grid[swapRow][swapCol + 1] = grid[swapRow][swapCol];" || exit 2
+etry "a swap the engine itself refuses"
+
+# Running no frames: nothing settles, no match events, every chip reads as
+# clearing nothing. This is the case that would catch the whole harness
+# silently measuring a board that never moved.
+$EBREAK "var got = settle(stack, 900);" "var got = settle(stack, 0);" || exit 2
+etry "the swap never given frames to resolve"
+
+# NOT TESTED, deliberately: stale chaining flags on the painted panels. Set
+# one and nothing changes, because the 30 pre-swap frames that check the
+# board is still also clear it — the guard is real but already covered, and a
+# case that passes either way is decoration. Noted rather than written.
+
+rm -f "$VE"
+
 echo "$pass caught, $missed missed"
 
 [ "$missed" -eq 0 ]

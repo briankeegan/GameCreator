@@ -19,9 +19,36 @@ separate implementation, so the claim is re-earned against `LogicalBoard`
 before a chip is allowed in, by `verify_chips.js`. Nothing goes in this
 directory until that passes on it.
 
-`verify_chips.js` with no argument verifies EVERY file in this directory, so
-a new batch is covered the moment it lands rather than when someone remembers
-to widen a filename in the gate.
+## Every chip clears TWO gates, and the second one is the game
+
+`verify_chips.js` checks a chip against `LogicalBoard` — the bot's SIMULATION
+of the board, the thing it clones a few hundred times per decision. That is
+the right first gate, because it is what the search actually reasons with.
+
+It is not the game. `verify_chips_engine.js` stages the same chip onto a live
+`PanelEngine.Stack`, asks the engine's own `canSwap`, performs it with the
+engine's own `doSwap`, runs frames until the board is still, and reads the
+chain depth and clear count off the match events the engine emits for itself
+— hover frames, pop timers and all.
+
+**They do not agree.** Measured on the 517 single-swap cascade chips:
+
+| | |
+|---|---|
+| pass simulation AND engine | 376 |
+| fail both | 107 |
+| **pass the ENGINE, fail the simulation** | **34** |
+| pass the simulation, fail the engine | 0 |
+
+Nothing passes the simulation and fails the game, which is the reassuring
+direction. But 34 shapes are real in the game and wrong in the board the bot
+plans with — a defect in `LogicalBoard`, not in the chips, and one that
+touches every decision the bot makes rather than just these. Chased
+separately; recorded here because it was found here.
+
+Either verifier with no argument covers EVERY file in this directory, so a
+new batch is gated the moment it lands rather than when someone remembers to
+widen a filename.
 
 | batch | file | chips | status |
 |---|---|---|---|
