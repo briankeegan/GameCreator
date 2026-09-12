@@ -56,6 +56,11 @@ if (process.env.GC_WEIGHTS) {
              (snap.depth > 1 ? '  [depth ' + snap.depth + ']' : '');
 }
 var RISE = process.env.GC_RISE === '1' || process.env.GC_RISE === 'true';
+// A BOT IS ITS WEIGHTS AND ITS SWITCHES. Measuring a density-trained set
+// with density off is measuring a bot that never existed — the first run
+// of this did exactly that and printed a header saying "rise off" while
+// saying nothing about density at all.
+var DENSITY = process.env.GC_DENSITY === '1' || process.env.GC_DENSITY === 'true';
 var argv = process.argv.slice(2);
 var scenario = argv[0] || 'endless';
 var seeds = argv.length > 1 ? argv.slice(1).map(Number) : [1, 2, 3];
@@ -127,11 +132,13 @@ PuyoCpu.prototype._decide = function () {
     return d;
 };
 
-console.log('weights:', source, '| rise', RISE ? 'ON' : 'off', '\n');
+console.log('weights:', source, '| rise', RISE ? 'ON' : 'off',
+            '| density', DENSITY ? 'ON' : 'off', '\n');
 var totalFrames = 0;
 seeds.forEach(function (seed) {
     var r = bench.run(weights, seed, { brain: 'puyo', scenario: scenario,
-                                       checkTiming: false, rise: RISE });
+                                       checkTiming: false, rise: RISE,
+                                       density: DENSITY });
     totalFrames += r.frames;
     console.log(scenario, 'seed', seed, '| frames', r.frames, 'sent', r.sent,
                 'score', r.score);
