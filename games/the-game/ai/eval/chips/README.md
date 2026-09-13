@@ -1,5 +1,30 @@
 # Chip batches — chain shapes the bot can be TOLD
 
+## DECIDED: THE CHIPS ARE NOT WIRED INTO THE BOT, AND THAT IS DELIBERATE
+
+Nothing in the live decision path imports `chipmatch.js` — only tests do. That
+is the owner's call, not an oversight, and it has now been re-proposed twice by
+sessions that grepped for the usage, found none, and reported it as a gap.
+
+The reason is the approach itself. Puyo Puyo's strong bots do not carry a
+library of named shapes and match against it; chains FALL OUT of density —
+`links`, `colourVariance`, `edgePenalty`, keeping the stack low — and the
+evaluator is scored on the board it leaves, not on shapes it recognises.
+Bolting a template matcher onto the front is a different bot, and it is the one
+this project decided against.
+
+So what are 6,228 verified chips FOR? GROUND TRUTH. They are the only large
+body of positions where the right answer is known independently of our code,
+which is what made them able to prove `resolve()` identical to the engine
+(74,821 cases, 100.00%) — the single most valuable thing produced here. A chip
+that fires in the game and not in `LogicalBoard` is a defect in the board the
+bot plans with, affecting every decision it ever makes. That is the job.
+
+The rest of this file explains how they are ported and verified. Read the
+paragraph below as history — it is why they were FETCHED, not a plan to
+connect them.
+
+
 `PUYO_REFERENCE.md`'s Tier 2 is search **and** named chain templates: "it does
 not discover chain shapes, it is told them". `chain_reach.js` measured why
 search alone cannot close the gap — 54 of the game's 84 chain puzzles need
