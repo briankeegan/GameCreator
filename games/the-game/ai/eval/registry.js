@@ -132,6 +132,12 @@
     { key: 'scoreEarned',      group: 'earned', sign: +1, fn: null,
       what: 'THE GAME\'S OWN POINTS for the cascade this move resolved, via PanelEngine.moveScore — the real Tsu-Attack tables, not a restatement of them. It exists because the search is judged on `objective: score` and nothing it could see was denominated in that currency: garbage cells rank a 5-chain at 8x a 4-combo where the score says 15x, and a bare 3 — 54 of the shipped bot\'s 67 matches — is worth exactly 0 under the score and was worth something under every other earned feature. Overlaps garbageSent and chainLength on purpose; the search decides which currency it wants.' },
 
+    { key: 'stopTimeEarned',   group: 'earned', sign: +1, fn: null,
+      what: 'Frames of stop time this move bought — the stack stops rising for that long. The real payoff for breaking garbage, and invisible to the evaluator until resolve() started reporting it.' },
+
+    { key: 'brokeGarbage',     group: 'earned', sign: +1, fn: null,
+      what: 'Garbage cells this move popped — one row of a slab per match, which is what the engine does rather than the whole slab.' },
+
     { key: 'garbageCleared',   group: 'earned', sign: +1, fn: null,
       what: 'Garbage cells converted this move, including propagation into touching blocks.' },
 

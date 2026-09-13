@@ -857,6 +857,32 @@ var MOVE_FRAMES = 4;
   // depends on the resolve, not on the settled grid this feature can see.
   // Recomputing it from the board would be a second, worse implementation
   // of a rule the engine already applied.
+  // ---------------------------------------------------------- stopTimeEarned
+  //
+  // FRAMES ARE SURVIVAL, AND BREAKING GARBAGE BUYS THEM.
+  //
+  // The engine awards stop time for a clear (Stack.awardStopTime): the stack
+  // stops rising for that many frames. It is the real payoff for breaking
+  // garbage — you do it to buy room, not for the points — and nothing in the
+  // evaluator could see it. resolve() computes it and reports it now, so this
+  // reads it rather than inventing a proxy.
+  //
+  // Distinct from scoreEarned, which is points, and from garbageCleared,
+  // which is cells: a wide clear low down and a deep chain can pay the same
+  // points while buying very different amounts of time.
+  function stopTimeEarned(input) {
+    return input.earned.stopTimeEarned || 0;
+  }
+
+  // ------------------------------------------------------------ brokeGarbage
+  //
+  // HOW MANY GARBAGE CELLS THIS MOVE ACTUALLY POPPED — one row of a slab per
+  // match, which is what the engine does. garbageCleared counted whole
+  // connected slabs until resolve() was fixed; this counts what breaks.
+  function brokeGarbage(input) {
+    return input.earned.brokeGarbage || 0;
+  }
+
   function garbageCleared(input) {
     return input.earned.garbageCleared || 0;
   }
@@ -1139,6 +1165,8 @@ var MOVE_FRAMES = 4;
     _matchedCellsNear: matchedCellsNear,
     latentChain: latentChain,
     garbageCleared: garbageCleared,
+    stopTimeEarned: stopTimeEarned,
+    brokeGarbage: brokeGarbage,
     framesToDeath: framesToDeath,
     scoreEarned: scoreEarned,
     garbageSent: garbageSent,

@@ -73,7 +73,8 @@
     health: 0, maxHealth: 0
   };
 
-  var EMPTY_EARNED = { chainLength: 0, comboSizes: [], garbageSent: [], garbageCleared: 0 };
+  var EMPTY_EARNED = { chainLength: 0, comboSizes: [], garbageSent: [], garbageCleared: 0,
+                       stopTimeEarned: 0, brokeGarbage: 0 };
 
   // Fills in every field a feature may read. Deliberately shallow-copies
   // rather than mutating the caller's object: the search evaluates
@@ -129,7 +130,13 @@
         chainLength: earned.chainLength || 0,
         comboSizes: earned.comboSizes || EMPTY_EARNED.comboSizes,
         garbageSent: earned.garbageSent || EMPTY_EARNED.garbageSent,
-        garbageCleared: earned.garbageCleared || 0
+        garbageCleared: earned.garbageCleared || 0,
+        // What breaking garbage actually bought. resolve() reports both now:
+        // the cells that popped, and the frames of stop time the engine
+        // awards for it. Carried here because a feature cannot read what the
+        // input does not hold, and these were computed and then dropped.
+        stopTimeEarned: earned.stopTimeEarned || 0,
+        brokeGarbage: earned.brokeGarbage || 0
       },
       incoming: raw.incoming || [],
       clock: {
@@ -172,7 +179,9 @@
         chainLength: resolved.chainLength || 0,
         comboSizes: resolved.comboSizes || [],
         garbageSent: resolved.garbage || [],
-        garbageCleared: garbageCleared || 0
+        garbageCleared: garbageCleared || 0,
+        stopTimeEarned: resolved.stopTimeEarned || 0,
+        brokeGarbage: resolved.brokeGarbage || 0
       },
       incoming: incoming,
       clock: stack ? {
