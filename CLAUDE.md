@@ -618,6 +618,33 @@ design discussion. `shared/` holds the components every game reuses
     exist, and made every number off that bench fiction for a day.
 
 
+- **AN EXPLICIT INSTRUCTION BEATS A MEASUREMENT. Say the number once, then do
+  what was asked.** `comboPotential` was cut from the genome on a 0.887
+  correlation with `chainPotential`, after the owner had asked for BOTH in
+  those words three separate times — and once they objected, the cut was
+  argued for four more replies and went into a three-seed training run anyway.
+  It was killed at generation 14 to put the feature back. The correlation was
+  never the point: 0.887 is high and it is not 1.0, combo measures WIDTH and
+  chain measures DEPTH, and "collinear, so drop one" is a modelling
+  convenience rather than a finding about the game. A measured overlap is
+  evidence, and evidence loses to an instruction. Two tells that this is
+  happening: the same argument being restated in successive replies, and an
+  answer like "Go" or "make sure it's hooked up" being read as agreement to
+  something that was already refused. Neither is consent.
+- **READ STATE, NEVER RECALL IT — `games/the-game/ai/eval/status.sh`.** In one
+  session the question "is comboPotential in the run?" got two opposite
+  answers an hour apart, both confident, both from memory; a stale `train.js`
+  from a previous run stayed alive and split four cores with the real one for
+  52 minutes; and three numbers were quoted after the code that produced them
+  had been fixed (10/84 when it was 9, "19-22 chains fired" from a `resolve()`
+  that counted rounds as chain links). One failure, three shapes: state was
+  ASSERTED instead of READ. `status.sh` prints what is training, the genome
+  from the run's OWN log, the last snapshot's score AND chains fired, the chip
+  count, and the git/origin gap — all read from the machine. Run it before
+  answering any question about what is going on, especially when you already
+  think you know. It starts nothing and writes nothing, so it is always safe.
+  Its duplicate-run warning is gated (`status.test.sh`), because the first
+  version of that warning could not fire at all.
 - **NEVER PARSE A TOOL'S PROSE. MAKE IT EMIT DATA.** Three separate wrong
   answers in one session came from reading a checker's printed lines:
   1. a chip kind longer than the column padding ran into the word `ok`, so

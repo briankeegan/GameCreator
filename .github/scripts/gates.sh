@@ -193,6 +193,14 @@ gate_chain_measure() {
   node games/the-game/ai/eval/chainmeasure.test.js
 }
 
+# The status tool's duplicate-run warning. It fires about once a year, which
+# is exactly the kind of check that turns out never to have worked — and it
+# did not: the first version could not fire at all, and this test is what
+# found that.
+gate_status_tool() {
+  games/the-game/ai/eval/status.test.sh
+}
+
 # The four constraints a template carries, pinned directly. Two of them were
 # silently unenforced for the matcher's whole first life (Int8Array stamp
 # truncation) and the test nearest the defect could not see it.
@@ -306,6 +314,7 @@ GATES=(
   "a broken resolve is rejected:gate_resolve_breaks"
   "every feature is wired and moves:gate_features_live"
   "the chains-fired measure accepts and rejects:gate_chain_measure"
+  "the status tool sees a duplicate run:gate_status_tool"
   "a garbage break stops the resolve:gate_garbage_rules"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints"
   "the simulation resolves like the game:gate_resolve_fidelity"
