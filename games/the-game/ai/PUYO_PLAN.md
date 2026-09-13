@@ -20,6 +20,39 @@ positions x every legal swap, resolved — what the search actually scores).
 | `roughness`, `flatTop`, `colourScarcity`, `staircase`, `staircaseReady` | Small weights, and each overlaps the height/shape group. Candidates to re-add in step 5, not to start with. |
 | `garbageAdjacency`, `travelCost` | Never move on any measured board. Confirm in step 0 before cutting. |
 
+## Where the running experiment sits against the reference
+
+`PUYO_REFERENCE.md`'s Tier 1 is seven features. The 3-seed run launched
+2026-09-13 searches FIVE of them, and the two that are missing are 32% of the
+reference's own weighting:
+
+| reference | weight | here |
+|---|---|---|
+| Nuisance puyo count | 25% | `garbageOnBoard` |
+| Puyo links | 25% | `links` |
+| Coloured puyo count | 16% | `fillRatio` — **CUT** |
+| Consecutive colours | 16% | **does not exist** — ruled out by the owner |
+| Edge penalty | 8% | `edgePenalty` |
+| Spawn distance penalty | 8% | `maxHeight` |
+| Colour variance | 2% | `colourVariance` |
+
+`consecutiveColours` is a decision, not a gap — the owner ruled it out.
+
+`fillRatio` is the one to revisit. It was cut on a 0.903 correlation with
+colourVariance, which is the same move that was wrong for `comboPotential`
+above, and its own note in `registry.js` says "first candidate to cut if it
+earns nothing" — while nothing ever measured whether it earns anything,
+because it was cut before any run could tell. Restarting at generation 30 to
+add it was offered and declined; the run continues without it. Add it back as
+a single-feature variant against the noise floor this run produces, per step 4
+below, rather than arguing the correlation again.
+
+FIRST SNAPSHOT, seed 11, generation 30, for the record: held-out total 612 ->
+2451 (+301%), chains fired 10/84 against the shipped set's 9/84. Score
+quadrupled; chaining moved by one puzzle. `comboPotential` came out at 112 and
+`chainPotential` at 95, so the feature that was nearly cut is carrying real
+weight — more than the chain term it was said to duplicate.
+
 ## comboPotential stays. Read this before cutting it again.
 
 It was cut here on a 0.887 correlation with `chainPotential` and it should not
