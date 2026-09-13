@@ -673,21 +673,31 @@ design discussion. `shared/` holds the components every game reuses
   were wrong. The proof is the SECOND baseline, identical to the first
   except its RNG seed: the two baselines span 911 points on a ~3000 score,
   and every variant gap was smaller than that.
-  - `games/the-game/ai/eval/compare_runs.js` is the tool. It groups runs by
-    which features they actually SEARCHED (not by the tag someone typed),
-    keeps each run's converged snapshot, computes the noise floor from the
-    baseline repeats, and REFUSES to compare anything while the baseline has
-    been run once. A condition with fewer runs than the baseline reports
-    NOT MEASURED rather than being quietly compared against a mean.
-  - `ai/PUYO_REFERENCE.md` does not cover this, and that is not a flaw in
-    it: "run it until the numbers stop moving" says when ONE search is
-    finished, not whether two finished searches differ. meatfighter was
-    tuning a single bot, not running an experiment.
   - `GC_GA_SEED` is what makes repeats possible, and it went unexposed long
     enough for two "independent" runs to finish at 3397 at generation 360
     BOTH TIMES and be read as a reproduction. They were one search walked
     twice. Noise does not repeat to the last digit.
+  - This applies to COMPARING VARIANTS. It is not the question "is the
+    trained bot better than the one the game ships", which the trainer
+    answers directly at every snapshot — learned against shipped, on seeds
+    it never trained on. There was a `compare_runs.js` that grouped runs by
+    feature set and computed a noise floor; it was deleted 2026-09-13, unused
+    and unasked for, after being dragged into a plain is-it-working question
+    where it added a noise floor from unrelated old experiments and made the
+    answer sound worse than it was. If variants are ever compared again,
+    write the comparison then, against what is actually being compared.
 
+- **SHIPPING A TRAINED BOT IS ONE COMMAND:
+  `games/the-game/ai/eval/ship.sh`.** It picks the newest real snapshot
+  (never a `.smoke.json`), prints what that snapshot scored BEFORE it becomes
+  the shipped bot, generates `ai/trained-weights.js` via `export_weights.js`,
+  and runs `gate_all` — which includes `check_shipped_weights.mjs`, the check
+  that re-does the export and fails if what is committed differs. It does not
+  commit; look at the diff first.
+  - The second step is the one that gets skipped, which is why this is a
+    script and not two commands. Weights describe a bot AND the switches it
+    was found under: the shipped set scores 14780 under depth 1 and 2550
+    under depth 2, so shipping is never "copy the numbers across".
 
 ## Newsey ("the-game") — the plot is the spec
 

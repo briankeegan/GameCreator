@@ -35,10 +35,9 @@ cp "$src" "$out"
 if [ "${pop:-0}" -lt "$GC_MIN_POP" ]; then
   # ...AND IT DOES NOT GET TO LOOK LIKE ONE ON DISK EITHER. Leaving the file
   # there was the wrong half-measure: it is named exactly like a real snapshot,
-  # so compare_runs.js would read a population-32 smoke run into the same
-  # group as real searches and compute a noise floor from it. It also leaves
-  # the repo dirty after every smoke run, which trains whoever is watching to
-  # ignore that warning.
+  # so anything reading snapshots by filename would fold a population-32 smoke
+  # run in among the real searches. It also leaves the repo dirty after every
+  # smoke run, which trains whoever is watching to ignore that warning.
   #
   # Renamed rather than deleted — a smoke run is still worth reading right
   # after it finishes — and .smoke.json is gitignored, so it cannot be

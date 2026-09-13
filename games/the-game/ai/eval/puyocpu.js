@@ -295,7 +295,8 @@
   // players build), flatTop (the shape that kills them), comboPotential
   // (how big a clear is available). Four training runs each, against a
   // baseline whose own spread was measured at 928 points. All three came
-  // back NO EFFECT (compare_runs.js). That is the reference's other
+  // back NO EFFECT against the search's own seed-to-seed spread. That is
+  // the reference's other
   // prediction landing: "density is not order… random density cannot
   // produce it any more than shaking a box of dominoes stands them in a
   // line." A linear sum over board features cannot express a plan, and
