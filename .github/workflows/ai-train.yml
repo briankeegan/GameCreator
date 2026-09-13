@@ -107,7 +107,78 @@ permissions:
   contents: write
 
 jobs:
+  # A SMALL RUN FIRST, ALWAYS, AND IT HAS TO BE ABLE TO FAIL.
+  #
+  # Asked for after a day where the long run was started three times on a
+  # harness that was wrong in a way no unit test was watching for. The
+  # pre-flight below catches what it has tests for; this catches the rest, by
+  # doing the actual thing in miniature and then CHECKING THE RESULT.
+  #
+  # The obvious version of this — run two generations, look at the exit code —
+  # would have passed every disaster this project has had. A feature wired to
+  # nothing, a genome one key short because GC_EXCLUDE had a typo, a fitness
+  # of zero because a scenario could not load, a held-out report that never
+  # ran: all of them exit 0. So check_smoke_run.js reads the snapshot and
+  # asserts the things that are only true if training really happened, and
+  # check_smoke_run.test.js proves it rejects each of those defects.
+  #
+  # Twelve genomes, two generations: about four minutes against a run of five
+  # and a half hours. It commits nothing — GC_SNAPSHOT_HOOK is empty, and
+  # commit_snapshot.sh renames a run this small to .smoke.json anyway, which
+  # is gitignored, so a smoke result can never be mistaken for a champion.
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, fetch-depth: 1 }
+      - uses: actions/checkout@v4
+        with:
+          repository: briankeegan/panel-game
+          path: panel-game
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Train twelve genomes for two generations
+        working-directory: games/the-game/ai/eval
+        env:
+          GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
+          GC_LEVEL: ${{ github.event.inputs.level || '10' }}
+          GC_BRAIN: puyo
+          GC_EXCLUDE: ${{ github.event.inputs.exclude || '' }}
+          GC_VARIANT: smoke
+          GC_GA_SEED: ${{ github.event.inputs.ga_seed || '' }}
+          GC_DEPTH: ${{ github.event.inputs.depth || '1' }}
+          GC_BEAM: ${{ github.event.inputs.beam || '6' }}
+          GC_RISE: ${{ github.event.inputs.rise || '' }}
+          GC_DENSITY: ${{ github.event.inputs.density || '' }}
+          GC_GENERATIONS: '2'
+          GC_SNAPSHOT_EVERY: '2'
+          GC_SNAPSHOT_HOOK: ''
+        run: ./crank.sh 12 "$(nproc)"
+      - name: Did it actually train, or did it just execute?
+        working-directory: games/the-game/ai/eval
+        run: |
+          # The genome size is DERIVED from the same exclude list the run was
+          # given, not typed in — a number typed here would be one more thing
+          # to get out of step with the inputs.
+          expected=$(node -e '
+            var r = require("./registry.js");
+            var cut = (process.env.GC_EXCLUDE || "").split(",")
+                        .map(function (s) { return s.trim(); }).filter(Boolean);
+            console.log(Object.keys(r.byKey).filter(function (k) {
+              return cut.indexOf(k) < 0;
+            }).length);
+          ')
+          snap=$(ls -t trained.*smoke*.json 2>/dev/null | head -1)
+          node check_smoke_run.js "$snap" "$expected"
+        env:
+          GC_EXCLUDE: ${{ github.event.inputs.exclude || '' }}
+
   train:
+    # THE LONG RUN DOES NOT START UNTIL THE SHORT ONE PASSES.
+    needs: smoke
     runs-on: ubuntu-latest
     # Under the 6-hour hard cap, so the job's own timeout is never what stops
     # it — train.js stops first, at a generation boundary, snapshot written.

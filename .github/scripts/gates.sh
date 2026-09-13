@@ -201,6 +201,14 @@ gate_status_tool() {
   games/the-game/ai/eval/status.test.sh
 }
 
+# The short run that guards the long one. It only earns its four minutes if it
+# can fail, and its first version failed a HEALTHY run (it demanded every
+# weight be non-zero after two generations) — which is the other way a checker
+# dies, by being switched off.
+gate_smoke_checker() {
+  node games/the-game/ai/eval/check_smoke_run.test.js
+}
+
 # The four constraints a template carries, pinned directly. Two of them were
 # silently unenforced for the matcher's whole first life (Int8Array stamp
 # truncation) and the test nearest the defect could not see it.
@@ -315,6 +323,7 @@ GATES=(
   "every feature is wired and moves:gate_features_live"
   "the chains-fired measure accepts and rejects:gate_chain_measure"
   "the status tool sees a duplicate run:gate_status_tool"
+  "the training smoke check accepts and rejects:gate_smoke_checker"
   "a garbage break stops the resolve:gate_garbage_rules"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints"
   "the simulation resolves like the game:gate_resolve_fidelity"
