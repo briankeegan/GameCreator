@@ -617,19 +617,75 @@
     // WHAT COUNTS AS LANDED. "The cell below is occupied" is NOT enough: a
     // panel resting on a panel that is itself falling is falling too, and
     // treating it as landed fires a match a tick early — a whole combo the
-    // engine never makes. Six real boards read as sim 2/6 against engine 1/3
-    // that way, the simulation inventing a second clear.
+    // engine never makes.
     //
-    // With gravity ticking one row at a time the rule is exact: in a column,
-    // everything ABOVE the lowest empty cell is in the air. Computed once per
-    // call rather than per cell.
-    var airline = null;
+    // AND A GARBAGE SLAB IS A FLOOR. The first version of this walked each
+    // column and called everything above its lowest empty cell airborne,
+    // which is right until garbage exists: a slab rests if ANY column under
+    // it is blocked (supportedFromBelow), so it BRIDGES the gaps in the
+    // columns it spans, and everything standing on it is resting. Treating
+    // those as airborne made the simulation refuse matches that were sitting
+    // on solid ground — three 4s in a row on top of a slab, scored as 0
+    // against the engine's 2-chain.
+    //
+    // So support is computed properly, bottom up: a cell rests if it is
+    // garbage whose block cannot fall, or if the cell beneath it rests.
+    var resting = null;
     if (restingOnly) {
-      airline = [];
-      for (var ac = 1; ac <= W; ac++) {
-        airline[ac] = H + 1;                       // nothing in the air
-        for (var ar = 1; ar <= H; ar++) {
-          if (grid[ar][ac] === 0) { airline[ac] = ar; break; }
+      var blockOf = {}, canFall = {};
+      for (var bid in this.blocks) {
+        canFall[bid] = this._blockCanFall(this.blocks[bid]);
+        var bcells = this.blocks[bid].cells;
+        for (var bi = 0; bi < bcells.length; bi++) blockOf[bcells[bi][0] + ':' + bcells[bi][1]] = bid;
+      }
+      // SUPPORT IS TRANSITIVE THROUGH SLABS. A slab resting on another slab is
+      // only resting if that one is, and _blockCanFall answers for one block
+      // against the grid as it stands — so a stack of two slabs over a hole
+      // read as "the upper one is held up by the lower one", while the lower
+      // one was on its way down and the engine took both. Everything standing
+      // on the upper slab then matched a tick early: the simulation cleared
+      // three panels on boards where the engine clears nothing.
+      //
+      // Run to a fixed point: a block falls if every column beneath it is
+      // empty or belongs to a block already known to be falling. Bounded by
+      // the number of blocks, since each pass can only ever mark more.
+      var moved = true, guardPasses = 0;
+      while (moved && guardPasses++ <= Object.keys(this.blocks).length + 1) {
+        moved = false;
+        for (var fid in this.blocks) {
+          if (canFall[fid]) continue;
+          var fcells = this.blocks[fid].cells, lowByCol = {};
+          for (var fi = 0; fi < fcells.length; fi++) {
+            var fr = fcells[fi][0], fc = fcells[fi][1];
+            if (lowByCol[fc] === undefined || fr < lowByCol[fc]) lowByCol[fc] = fr;
+          }
+          var held = false;
+          for (var lc2 in lowByCol) {
+            var br = lowByCol[lc2] - 1;
+            if (br < 1) { held = true; break; }                 // the floor
+            var bv = grid[br][lc2];
+            if (bv === 0) continue;                             // nothing there
+            if (bv === -2) {
+              var under = blockOf[br + ':' + lc2];
+              if (under !== undefined && canFall[under]) continue;  // it is falling too
+            }
+            held = true; break;
+          }
+          if (!held) { canFall[fid] = true; moved = true; }
+        }
+      }
+      resting = [];
+      for (var rr0 = 0; rr0 <= H; rr0++) resting[rr0] = [];
+      for (var rc = 1; rc <= W; rc++) {
+        for (var rr = 1; rr <= H; rr++) {
+          var rv = grid[rr][rc];
+          if (rv === 0) { resting[rr][rc] = false; continue; }
+          if (rv === -2) {
+            var bidHere = blockOf[rr + ':' + rc];
+            resting[rr][rc] = bidHere === undefined ? true : !canFall[bidHere];
+            continue;
+          }
+          resting[rr][rc] = (rr === 1) ? true : !!resting[rr - 1][rc];
         }
       }
     }
@@ -641,7 +697,7 @@
       var v = grid[rr][cc];
       if (!restingOnly || v <= 0) return v;
       if (popping && popping[rr + ':' + cc]) return 0;
-      return rr < airline[cc] ? v : 0;
+      return resting[rr][cc] ? v : 0;
     }
 
     for (r = 1; r <= H; r++) {

@@ -100,6 +100,36 @@
             stack.garbageIdCounter = Math.max(stack.garbageIdCounter || 0, gid);
         }
         stack.riseLock = true;
+        // AND RESET THE STACK ITSELF, not just its panels. This module exists
+        // so ONE Stack can be repainted per candidate instead of built each
+        // time — and every piece of stack-level state left behind is a way for
+        // the last candidate to change this one's answer.
+        //
+        // highestGarbageIdMatched is the worst of them: the engine gates which
+        // garbage is eligible to be matched on it, so a slab from a previous
+        // board could make this board's garbage behave differently. Caught by
+        // running the same comparison with a fresh Stack per case and getting
+        // a different answer — 19 "unexplained" disagreements that were the
+        // harness all along, and the bot's own engine path (puyocpu's
+        // _resolveCandidate) reuses this scratch Stack the same way.
+        // AND THE RNG POSITION. It is deterministic from a seed, but a reused
+        // Stack has advanced it and a fresh one has not — so the same board
+        // painted onto each can resolve differently the moment anything draws
+        // from it. Reseeded per paint, which makes a repainted Stack
+        // indistinguishable from a new one.
+        if (PanelEngine.makeRng) stack.rng = PanelEngine.makeRng(7);
+        stack.stopTime = 0;
+        stack.chainCounter = 0;
+        stack.shakeTime = 0;
+        stack.highestGarbageIdMatched = 0;
+        stack.nActive = 0; stack.nPrevActive = 0; stack.swappingCount = 0;
+        stack.queuedSwapRow = 0; stack.queuedSwapCol = 0;
+        stack.manualRaise = false; stack.preventManualRaise = false;
+        stack.wasToppedOut = false; stack.gameOver = false;
+        if (stack.incoming) stack.incoming.length = 0;
+        if (stack.garbageLandedThisFrame) stack.garbageLandedThisFrame.length = 0;
+        if (stack.swapStallBacklog) stack.swapStallBacklog.length = 0;
+        if (stack.events) stack.events.length = 0;
         // AND STOP THE FLOOR MOVING. riseLock alone does not: the engine
         // re-decides it every frame (updateRiseLock), so a settle long enough
         // to run a cascade — 70 to 90 frames — is long enough for the stack to

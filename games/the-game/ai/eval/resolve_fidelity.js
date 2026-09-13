@@ -28,27 +28,35 @@
 // cell. The grid is the strongest of the three — two engines can agree on
 // the totals and still leave the panels in different columns, and the next
 // decision is made on the grid, not on the totals.
-// WHERE IT STANDS, on a fixture that now includes garbage (4,898 real boards,
-// 30% carrying it, x every legal swap = 52,386 cases):
+// WHERE IT STANDS: 4,716 real boards — 27% of them carrying garbage — times
+// every legal swap, and the simulation is IDENTICAL to the engine on every
+// case. Chain depth, panels cleared, final grid cell by cell, and garbage slab
+// layout. 299 of them stop at a garbage break and all 299 are exact up to it.
 //
-//   52,353 identical   99.94%
-//        7 stopped at a garbage break — 6 of them exact up to the break
-//       33 genuinely differ, all on boards with garbage
+// Getting here needed four harness bugs fixed before a single line of resolve()
+// could be believed, and each one was worth more than the code change it
+// eventually justified:
 //
-// The garbage half was unverified for a long time and the first attempt at it
-// reported 310 disagreements, of which 271 were the HARNESS: the fixture
-// forgot which slab a garbage cell belonged to, paint() built malformed slabs
-// on the Stack, and the comparison could not see slab layout at all. Fixing
-// the measurement first is the rule this file keeps re-learning.
+//   THE STACK WAS RISING inside the measurement (riseLock is re-decided every
+//   frame). 195 of the first 213 "disagreements".
+//   THE FIXTURE FORGOT WHICH SLAB a garbage cell belonged to, and paint() built
+//   malformed slabs on the Stack. 271 more.
+//   THE COMPARISON COULD NOT SEE SLAB LAYOUT — every garbage cell reads -2, so
+//   a 6x2 slab and two 6x1s looked identical while behaving completely
+//   differently on the next move.
+//   THE SCRATCH STACK CARRIED STATE BETWEEN CASES. highestGarbageIdMatched
+//   gates which garbage may be matched at all, and the RNG position decides
+//   what popped garbage becomes — so the previous candidate changed this one's
+//   answer. 19 "unexplained" cases, and the BOT reuses that same scratch Stack
+//   (puyocpu's _resolveCandidate), so this was a live defect, not just a
+//   harness one.
 //
-// THE 33 THAT REMAIN, attributed rather than excused:
-//   13 on boards whose garbage touches row 12 — a slab extending into the
-//      engine's buffer rows is cut off by a fixture that stores rows 1..12,
-//      so its reconstructed size is wrong. A fixture limit, fixable.
-//   19 on boards with neither of those. UNEXPLAINED, and the honest target.
-//
-// The floor below is today's measured value, so this cannot regress while the
-// 19 are chased. 100% is the target and 0.9993 is not it.
+// And the fixture now REFUSES to store a board whose garbage runs into the
+// engine's buffer rows above row 12, rather than storing the part that fits.
+// Rebuilt from its bounding box such a slab comes back the wrong size. Every
+// disagreement that survived everything else was one of those, and keeping
+// them would have meant a permanent pile of "known failures" that were really
+// the fixture's — which is exactly how the garbage gap hid for so long.
 var path = require('path'), fs = require('fs');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));

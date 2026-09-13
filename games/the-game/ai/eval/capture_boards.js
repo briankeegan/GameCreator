@@ -106,6 +106,23 @@ for (var s = 1; s <= SEEDS; s++) {
             }
         }
         if (seen[key]) continue;
+        // A SLAB RUNNING INTO THE BUFFER ROWS CANNOT BE STORED HONESTLY. The
+        // engine keeps panels above row 12; this fixture stores rows 1..12, so
+        // a garbage block that extends past the top is written as the part
+        // that fits — and rebuilt from its bounding box it comes back the
+        // wrong SIZE, which changes whether it is supported and how it pops.
+        // Every disagreement left in resolve_fidelity.js was one of these.
+        //
+        // Dropped rather than stored wrong. A fixture that cannot represent a
+        // position should not claim to: the alternative is a permanent pile of
+        // "known failures" that are really the fixture's, which is how the
+        // garbage gap hid in the first place.
+        var touchesTop = false;
+        for (var tc = 1; tc <= W; tc++) {
+            var tp = stack.panels[H] && stack.panels[H][tc];
+            if (tp && tp.isGarbage && tp.color !== 0) { touchesTop = true; break; }
+        }
+        if (touchesTop) continue;
         seen[key] = 1;
         out.push(key);
     }

@@ -198,7 +198,7 @@ gate_chip_matcher_constraints() {
 # leave the board in different states, and the next decision is made on the
 # board.
 gate_resolve_fidelity() {
-  GC_FIDELITY_FLOOR=0.9993 node games/the-game/ai/eval/resolve_fidelity.js boards 99999
+  GC_FIDELITY_FLOOR=1 node games/the-game/ai/eval/resolve_fidelity.js boards 99999
 }
 
 # ...AND THAT IT CAN FAIL. This check's whole value is catching the case where
