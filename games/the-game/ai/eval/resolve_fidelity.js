@@ -127,8 +127,32 @@ function compare(grid, r, c, blocks) {
     if (!stack.canSwap(r, c)) return null;
     stack.curRow = r; stack.curCol = c;
     stack.doSwap(r, c);
-    var eng = eb.settle(stack, 900);
-    var engGrid = eb.readGrid(stack, H, W);
+    // WHAT THE ENGINE ACTUALLY PAYS IN STOP TIME, taken from the engine's own
+    // awardStopTime rather than recomputed here — a second implementation of
+    // the rule would agree with our copy of the rule and prove nothing.
+    //
+    // This comparison did not exist, and that is how a dead feature shipped:
+    // resolve() only awarded stop time when a garbage slab popped, while the
+    // engine pays for ANY combo wider than 3 or any chain link. Every board
+    // here agreed on chain depth, panels cleared and the final grid, so the
+    // harness reported 0 disagreements while the two disagreed about this on
+    // most boards that clear anything. A check only covers what it compares.
+    var engStop = 0;
+    var awardOrig = stack.awardStopTime;
+    // The PEAK, not the delta. awardStopTime ends with
+    // `if (stopTime > this.stopTime) this.stopTime = stopTime`, so it only
+    // ever raises; a second, smaller award adds nothing and a delta reads it
+    // as zero. The peak is what the engine actually granted.
+    stack.awardStopTime = function (isChain, comboSize) {
+        var out = awardOrig.call(this, isChain, comboSize);
+        if (this.stopTime > engStop) engStop = this.stopTime;
+        return out;
+    };
+    var eng, engGrid;
+    try {
+        eng = eb.settle(stack, 900);
+        engGrid = eb.readGrid(stack, H, W);
+    } finally { stack.awardStopTime = awardOrig; }
 
     var lb = new LogicalBoard(W, H, 9, cloneGrid(grid), lbBlocks(blocks || {}));
     lb.swap(r, c);
@@ -167,11 +191,13 @@ function compare(grid, r, c, blocks) {
     return {
         engChain: eng.chainLength, simChain: sim.chainLength,
         engCleared: eng.clearedPanels, simCleared: simCleared,
-        gridSame: gridSame, blocksSame: blocksSame
+        gridSame: gridSame, blocksSame: blocksSame,
+        engStop: engStop, simStop: sim.stopTimeEarned || 0
     };
 }
 
 var cases = 0, agree = 0, chainDiff = {}, clearedDiff = {}, gridOnly = 0, blockOnly = 0, anyDiff = 0;
+var stopOnly = 0, stopExamples = [];
 var truncatedCases = 0, badPrefix = 0;
 function note(res) {
     cases++;
@@ -186,7 +212,18 @@ function note(res) {
         return;
     }
     var dc = res.simChain - res.engChain, dp = res.simCleared - res.engCleared;
-    if (dc === 0 && dp === 0 && res.gridSame && res.blocksSame) { agree++; return; }
+    // STOP TIME COUNTS AS A DISAGREEMENT. It is not cosmetic: a feature reads
+    // it, so a board where the two differ is a board the bot is scored on
+    // wrongly, even when every panel lands in the right place.
+    var ds = res.simStop !== res.engStop;
+    if (dc === 0 && dp === 0 && res.gridSame && res.blocksSame && !ds) { agree++; return; }
+    if (ds) {
+        stopOnly++;
+        if (stopExamples.length < 3) {
+            stopExamples.push('sim ' + res.simStop + ' vs engine ' + res.engStop +
+                              ' (chain ' + res.engChain + ', cleared ' + res.engCleared + ')');
+        }
+    }
     anyDiff++;
     if (dc === 0 && dp === 0 && res.gridSame && !res.blocksSame) blockOnly++;
     if (dc !== 0) chainDiff[dc] = (chainDiff[dc] || 0) + 1;
@@ -207,6 +244,8 @@ if (MODE === 'boards' || MODE === 'both') {
         });
     }
     console.log('real boards scanned : ' + n);
+    console.log('stop-time disagreements: ' + stopOnly);
+    stopExamples.forEach(function (e) { console.log('   ' + e); });
 }
 
 if (MODE === 'chips' || MODE === 'both') {

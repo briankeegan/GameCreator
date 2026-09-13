@@ -227,10 +227,24 @@
       }
       cleared = Math.max(0, live - left);
       if (second.chainLength || second.garbage.length) {
+        // EVERY KEY resolve() REPORTS, not the three this used to name.
+        // Rebuilding the object by hand silently dropped stopTimeEarned and
+        // brokeGarbage whenever rise merged a second resolve — the same
+        // "present, correct, quietly discarded one layer down" shape that
+        // input.js's liveBoard comment was written about. Merged explicitly
+        // so a new key cannot go missing here without someone deciding how
+        // it merges.
         resolved = {
           chainLength: Math.max(resolved.chainLength, second.chainLength),
           comboSizes: resolved.comboSizes.concat(second.comboSizes),
-          garbage: resolved.garbage.concat(second.garbage)
+          garbage: resolved.garbage.concat(second.garbage),
+          // Stop time does not add up: the engine awards the LARGER, it does
+          // not bank both.
+          stopTimeEarned: Math.max(resolved.stopTimeEarned || 0,
+                                   second.stopTimeEarned || 0),
+          // Cells broken DO add up — two clears break two lots of garbage.
+          brokeGarbage: (resolved.brokeGarbage || 0) + (second.brokeGarbage || 0),
+          truncated: !!(resolved.truncated || second.truncated)
         };
       }
     }

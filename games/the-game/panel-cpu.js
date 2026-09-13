@@ -805,20 +805,35 @@
   // Stack.awardStopTime, the modern formula, for the case a planner can see:
   // not topped out. Breaking garbage buys frames, and frames are survival —
   // the real payoff for doing it, and invisible to the evaluator until now.
-  LogicalBoard.prototype._stopTimeFor = function (isChain, comboSize, chainCounter) {
-    // LEVELS is private to panel-engine.js, so the constants are read off a
-    // Stack — the same object the engine reads them from — and cached, because
-    // building one is expensive and this runs per candidate.
-    if (!LogicalBoard._stopTable) {
+  // ASK THE ENGINE WHAT IT PAYS. Do not re-derive it.
+  //
+  // This was a hand-copy of Stack.awardStopTime's arithmetic, and a copy of a
+  // rule drifts from the rule: it carried only the two ordinary branches and
+  // silently dropped BOTH topped-out cases, which pay by a different formula
+  // (dangerConstant/dangerCoefficient for a chain, a flat 2-or-3 coefficient
+  // for a combo). Nothing caught it, because the fidelity harness never tops
+  // a board out — the one situation where stop time matters most is the one
+  // no check could see.
+  //
+  // So the engine's own function decides, on a Stack kept for the purpose.
+  // The Stack is built once (construction runs a thousand frames of countdown)
+  // and only three fields are set per call, so this stays cheap enough for the
+  // per-candidate path. stopTime is zeroed first because awardStopTime only
+  // ever RAISES it — leaving a previous candidate's award in place would make
+  // every later one read at least as large.
+  LogicalBoard.prototype._stopTimeFor = function (isChain, comboSize, chainCounter, toppedOut) {
+    if (!LogicalBoard._stopStack) {
       try {
-        LogicalBoard._stopTable = new root.PanelEngine.Stack({ level: 10, seed: 1 }).levelData.stop;
-      } catch (e) { LogicalBoard._stopTable = null; }
+        LogicalBoard._stopStack = new root.PanelEngine.Stack({ level: 10, seed: 1 });
+      } catch (e) { LogicalBoard._stopStack = null; }
     }
-    var stop = LogicalBoard._stopTable;
-    if (!stop) return 0;
-    if (!(comboSize > 3 || isChain)) return 0;
-    if (isChain) return stop.coefficient * Math.min(chainCounter || 2, 13) + stop.chainConstant;
-    return stop.coefficient * comboSize + stop.comboConstant;
+    var s = LogicalBoard._stopStack;
+    if (!s) return 0;
+    s.stopTime = 0;
+    s.wasToppedOut = !!toppedOut;
+    s.chainCounter = chainCounter || 0;
+    s.awardStopTime(!!isChain, comboSize);
+    return s.stopTime;
   };
 
   LogicalBoard.prototype._connectedGarbage = function (matched) {
@@ -952,11 +967,24 @@
       for (k in matched) this._popping[matched[k][0] + ':' + matched[k][1]] = matched[k];
       var poppedGarbage = 0;
       for (k in cleared) { this._popping[cleared[k][0] + ':' + cleared[k][1]] = cleared[k]; poppedGarbage++; }
+      // STOP TIME IS EARNED BY THE MATCH, NOT BY THE GARBAGE.
+      //
+      // This used to sit inside the `if (poppedGarbage)` below, so a clear
+      // only reported stop time when it happened to break a slab. The engine
+      // pays for any combo wider than 3 and for any chain link, garbage or
+      // not — _stopTimeFor says exactly that in its own first line — so the
+      // common case paid nothing here.
+      //
+      // The cost was a DEAD FEATURE: stopTimeEarned read zero on all 2,450
+      // evaluations of puyocpu.test.js's sweep, because training boards
+      // rarely break garbage. A search dimension attached to nothing, which
+      // the GA still assigns weight to. Caught by the pre-flight gate before
+      // it could waste a five-hour run, which is what that gate is for.
+      var st = this._stopTimeFor(isChainLink, keys.length, counter);
+      if (st > stopTimeEarned) stopTimeEarned = st;
       if (poppedGarbage) {
         brokeGarbage += poppedGarbage;
         truncated = true;
-        var st = this._stopTimeFor(isChainLink, keys.length, counter);
-        if (st > stopTimeEarned) stopTimeEarned = st;
       }
       var pieces = root.PanelEngine.comboGarbage(keys.length);
       for (var i = 0; i < pieces.length; i++) garbage.push([pieces[i], 1]);
