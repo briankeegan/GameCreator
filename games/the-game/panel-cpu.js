@@ -611,6 +611,7 @@
   // match a falling panel, and resolve() used to have no way to express that
   // because it moved every panel to its resting place before looking.
   var RESTING_SCRATCH = null;
+  var EFF_SCRATCH = null;
 
   LogicalBoard.prototype._findMatches = function (restingOnly) {
     var matched = {}; // "r:c" -> [r, c]
@@ -724,18 +725,40 @@
     // resolve_fidelity.js re-runs all 74,821 cases against the engine.
     var hasPopping = false;
     for (var pKey in popping) { hasPopping = true; break; }
-    function at(rr, cc) {
-      var v = grid[rr][cc];
-      if (!restingOnly || v <= 0) return v;
-      if (hasPopping && popping[rr + ':' + cc]) return 0;
-      return resting[rr][cc] ? v : 0;
+
+    // EVERY CELL'S EFFECTIVE COLOUR, COMPUTED ONCE, INTO A FLAT ARRAY.
+    //
+    // This was a closure, at(), and the scans below called it TWICE for every
+    // cell — once walking rows, once walking columns — so the resting lookup,
+    // the popping test and the string key were all done twice over for the
+    // same answer. A closure also cannot be inlined, and reading resting[r][c]
+    // is two dereferences through an array of arrays.
+    //
+    // One pass fills a flat Int8Array instead, and both scans then read a
+    // typed array by integer index: no call, no second computation, no string.
+    // Colours are small integers and the sentinels are 0, -1 and -2, so Int8
+    // holds every value the grid can carry.
+    var STRIDE = W + 2;
+    if (!EFF_SCRATCH || EFF_SCRATCH.length < (H + 2) * STRIDE) {
+      EFF_SCRATCH = new Int8Array((H + 2) * STRIDE);
+    }
+    var eff = EFF_SCRATCH;
+    for (r = 1; r <= H; r++) {
+      row = grid[r];
+      var base = r * STRIDE;
+      for (c = 1; c <= W; c++) {
+        var v = row[c];
+        if (!restingOnly || v <= 0) { eff[base + c] = v; continue; }
+        if (hasPopping && popping[r + ':' + c]) { eff[base + c] = 0; continue; }
+        eff[base + c] = resting[r][c] ? v : 0;
+      }
     }
 
     for (r = 1; r <= H; r++) {
-      row = grid[r];
+      var rbase = r * STRIDE;
       runStart = 0; runLen = 0; runColor = 0;
       for (c = 1; c <= W + 1; c++) {
-        color = c <= W ? at(r, c) : 0;
+        color = c <= W ? eff[rbase + c] : 0;
         if (color > 0 && (runLen === 0 || runColor === color)) {
           if (runLen === 0) { runStart = c; runColor = color; }
           runLen++;
@@ -751,7 +774,7 @@
     for (c = 1; c <= W; c++) {
       runStart = 0; runLen = 0; runColor = 0;
       for (r = 1; r <= H + 1; r++) {
-        color = r <= H ? at(r, c) : 0;
+        color = r <= H ? eff[r * STRIDE + c] : 0;
         if (color > 0 && (runLen === 0 || runColor === color)) {
           if (runLen === 0) { runStart = r; runColor = color; }
           runLen++;
