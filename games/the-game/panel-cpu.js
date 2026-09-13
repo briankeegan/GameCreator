@@ -610,6 +610,8 @@
   // restingOnly: a panel still in the air cannot match. The engine will not
   // match a falling panel, and resolve() used to have no way to express that
   // because it moved every panel to its resting place before looking.
+  var RESTING_SCRATCH = null;
+
   LogicalBoard.prototype._findMatches = function (restingOnly) {
     var matched = {}; // "r:c" -> [r, c]
     var H = this.height, W = this.width, grid = this.grid;
@@ -674,8 +676,21 @@
           if (!held) { canFall[fid] = true; moved = true; }
         }
       }
-      resting = [];
-      for (var rr0 = 0; rr0 <= H; rr0++) resting[rr0] = [];
+      // ONE SCRATCH GRID, REUSED. This used to allocate a fresh array of
+      // arrays on every call: 13 allocations a time, and _findMatches runs
+      // ~25,000 times in a single training game, so ~350,000 throwaway arrays
+      // per game. Garbage collection was 13% of the profile.
+      //
+      // Safe to share because every cell of 1..H x 1..W is WRITTEN below
+      // before anything reads it, and nothing re-enters: the only two callers
+      // are resolve() and the one-swap scan, neither nested, and
+      // _blockCanFall does not call back in. A board smaller than the scratch
+      // leaves stale cells outside its own range, which at() never looks at.
+      if (!RESTING_SCRATCH || RESTING_SCRATCH.length <= H) {
+        RESTING_SCRATCH = [];
+        for (var rr0 = 0; rr0 <= H; rr0++) RESTING_SCRATCH[rr0] = [];
+      }
+      resting = RESTING_SCRATCH;
       for (var rc = 1; rc <= W; rc++) {
         for (var rr = 1; rr <= H; rr++) {
           var rv = grid[rr][rc];
@@ -693,10 +708,26 @@
     // hold panels up — a popping panel is solid for ~80 frames — but they can
     // no longer take part in a match.
     var popping = this._popping;
+    // IS THERE ANYTHING POPPING AT ALL? Asked ONCE, not per cell.
+    //
+    // at() runs for every occupied cell of both the row scan and the column
+    // scan, and it was building a "r:c" string on each one purely to index an
+    // object that is almost always EMPTY — _popping is reset to {} at the top
+    // of every resolve() and only filled once a match has fired. Profiled on a
+    // real training game, this closure was 11.5% of the whole game and a large
+    // share of the 10.5% spent in garbage collection, all of it allocating
+    // keys to look up nothing.
+    //
+    // Hoisting the emptiness test is exactly equivalent: with no popping
+    // cells, popping[k] is undefined for every k, so skipping the lookup
+    // cannot change an answer. Fidelity is the proof, not the argument —
+    // resolve_fidelity.js re-runs all 74,821 cases against the engine.
+    var hasPopping = false;
+    for (var pKey in popping) { hasPopping = true; break; }
     function at(rr, cc) {
       var v = grid[rr][cc];
       if (!restingOnly || v <= 0) return v;
-      if (popping && popping[rr + ':' + cc]) return 0;
+      if (hasPopping && popping[rr + ':' + cc]) return 0;
       return resting[rr][cc] ? v : 0;
     }
 
