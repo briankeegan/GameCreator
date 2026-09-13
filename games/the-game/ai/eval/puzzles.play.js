@@ -30,6 +30,8 @@ var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
 var PuyoCpu = require('./puyocpu.js');
 var switches = require('./switches.js');
 
+var engineBoard = require('./engineboard.js');
+var SCRATCH = null;
 var loaded = switches.load();
 console.log(switches.describe(loaded));
 
@@ -123,11 +125,34 @@ function play(board) {
         var next = cur.clone();
         next.swap(d.move[0], d.move[1]);
         var res = next.resolve();
+        // THE CHAIN IS COUNTED BY THE ENGINE, NOT BY THE BOARD THE BOT PLANS
+        // WITH. This measure used to read chainLength off that same resolve()
+        // — judging the bot with the code under test, which is circular, and
+        // it lied by exactly the amount resolve() was wrong by.
+        //
+        // While resolve() counted ROUNDS, two independent combos landing one
+        // after another registered as "chain 2" and were counted as a fired
+        // chain. On this puzzle set that inflated the score from 12 to 23 of
+        // 84 — nearly double, all of it combos being called chains. The number
+        // only moved because the bug was fixed, which is the worst way for a
+        // measurement to move.
+        //
+        // Counted on a live Stack now, so this says what the GAME saw.
+        var before = cur;
+        if (!SCRATCH) { SCRATCH = engineBoard.scratch(10); SCRATCH.speed = 0; }
+        engineBoard.paint(SCRATCH, before.grid, before.height, before.width);
+        var engDepth = 0;
+        if (engineBoard.settle(SCRATCH, 60).comboSizes.length === 0 &&
+            SCRATCH.canSwap(d.move[0], d.move[1])) {
+            SCRATCH.curRow = d.move[0]; SCRATCH.curCol = d.move[1];
+            SCRATCH.doSwap(d.move[0], d.move[1]);
+            engDepth = engineBoard.settle(SCRATCH, 900).chainLength;
+        }
         cur = next;
         swaps++;
         cpu.stack.curRow = d.move[0];
         cpu.stack.curCol = d.move[1];
-        if (res.chainLength > deepest) deepest = res.chainLength;
+        if (engDepth > deepest) deepest = engDepth;
         if (!cur.legalSwaps().length) { why = 'no legal swap'; break; }
     }
     return { deepest: deepest, swaps: swaps, why: why };
