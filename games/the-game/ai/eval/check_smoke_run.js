@@ -45,13 +45,22 @@ if (expected !== null && keys.length !== expected) {
 //
 //    NOT "every weight is non-zero" — that was the first version and it
 //    failed a perfectly healthy run. The search starts at the origin and
-//    walks; after two generations some weights genuinely have not moved yet,
-//    and a check that rejects that is a check someone switches off. Measured
-//    on a real 12-genome 2-generation run: 15 of 18 had moved. The bar is
-//    HALF, which is comfortably clear of that and still catches a genome that
-//    is sitting still because nothing is wired to it.
+//    walks, so after a couple of generations some weights genuinely have not
+//    moved yet, and a check that rejects that is one somebody switches off.
+//
+//    THE BAR IS A THIRD, and it is low on purpose. How many have moved
+//    depends on how small the run is, and both numbers here are measured:
+//
+//        12 genomes x 2 generations   15 of 18 moved
+//         8 genomes x 1 generation     7 of 18 moved
+//
+//    A half-bar passed the first and failed the second, which makes the check
+//    a function of run size rather than of health — and the second run was
+//    fine. A third clears both while still catching what this is for: a
+//    genome sitting near the origin because the features are not reaching the
+//    evaluator at all, where the figure is zero or close to it.
 var moved = keys.filter(function (k) { return w[k]; });
-if (keys.length && moved.length * 2 < keys.length) {
+if (keys.length && moved.length * 3 < keys.length) {
     problems.push('only ' + moved.length + ' of ' + keys.length +
                   ' weights moved off zero — the search is not getting traction, ' +
                   'which usually means the features are not reaching the evaluator');

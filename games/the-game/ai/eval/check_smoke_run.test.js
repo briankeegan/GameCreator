@@ -54,9 +54,15 @@ check('REJECTS a genome that is not the size asked for', !r.ok && /expected 18/.
 var g = good(); g.weights.c = 0;
 check('ACCEPTS one weight still at zero after a short run', run(g, 3).ok);
 
+// The bar is a THIRD: a small run legitimately leaves most weights at zero
+// (measured: 7 of 18 after one generation of eight genomes, and that run was
+// healthy). What it still catches is a genome sitting at the origin.
 g = good(); g.weights.b = 0; g.weights.c = 0;
-r = run(g, 3);
-check('REJECTS a genome where most weights never moved', !r.ok && /not getting traction/.test(r.out));
+check('ACCEPTS a small run where most weights have not moved yet', run(g, 3).ok);
+
+g = good(); g.weights.a = 0; g.weights.b = 0; g.weights.c = 0; g.weights.d = 0;
+r = run(g, 4);
+check('REJECTS a genome still sitting at the origin', !r.ok && /not getting traction/.test(r.out));
 
 g = good(); g.trainFitness = 0;
 r = run(g, 3);

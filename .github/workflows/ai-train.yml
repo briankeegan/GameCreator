@@ -174,8 +174,14 @@ jobs:
               return cut.indexOf(k) < 0;
             }).length);
           ')
-          snap=$(ls -t trained.*smoke*.json 2>/dev/null | head -1)
-          node check_smoke_run.js "$snap" "$expected"
+          # trained.<mode>.json, NOT a named snapshot. The named files are
+          # written by commit_snapshot.sh — the HOOK — and this job runs with
+          # the hook off so it commits nothing. So there is no named snapshot
+          # to find, and the first version of this looked for one, found an
+          # empty string, and failed with "no smoke snapshot at ". train.js's
+          # own scratch file carries the same report: weights, trainFitness
+          # and the held-out comparison.
+          node check_smoke_run.js trained.replace.json "$expected"
         env:
           GC_EXCLUDE: ${{ github.event.inputs.exclude || '' }}
 
