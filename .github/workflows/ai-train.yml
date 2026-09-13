@@ -60,6 +60,9 @@ on:
       density:
         description: 'Density scoring: counts made of panels become per-panel (1 = on)'
         default: ''
+      smoke_only:
+        description: 'Run ONLY the small sample and stop (1 = yes). Commits nothing.'
+        default: ''
 
 # THE SCHEDULE IS OFF WHILE FEATURES ARE BEING MEASURED ONE AT A TIME.
 #
@@ -179,6 +182,12 @@ jobs:
   train:
     # THE LONG RUN DOES NOT START UNTIL THE SHORT ONE PASSES.
     needs: smoke
+    # smoke_only dispatches the sample BY ITSELF — four minutes on a real
+    # runner, committing nothing — so the pipeline can be checked without
+    # starting, or disturbing, a five-hour search. Give it its own variant so
+    # the concurrency group differs and it neither queues behind nor cancels a
+    # run already going.
+    if: ${{ github.event.inputs.smoke_only != '1' && github.event.inputs.smoke_only != 'true' }}
     runs-on: ubuntu-latest
     # Under the 6-hour hard cap, so the job's own timeout is never what stops
     # it — train.js stops first, at a generation boundary, snapshot written.

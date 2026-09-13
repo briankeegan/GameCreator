@@ -86,7 +86,20 @@ echo ""
 # holds the whole population, so a killed run continues rather than restarting
 # from its best genome.
 export GC_RUN_ID="$RUN_ID" GC_TAG="$TAG" GC_MODE="$MODE"
-export GC_SNAPSHOT_HOOK="$PWD/commit_snapshot.sh"
+# A SAMPLE RUN MUST BE ABLE TO COMMIT NOTHING, and until now it could not:
+# this line was unconditional, so `GC_SNAPSHOT_HOOK= ./crank.sh` — the obvious
+# way to ask for a throwaway run — was overwritten one line before train.js
+# read it. A four-minute diagnostic duly committed and PUSHED a snapshot to
+# main, which is precisely what running a sample is supposed to avoid.
+#
+# Set GC_SNAPSHOT_HOOK to empty and it stays empty. Unset (the normal case)
+# still gets the committing hook, so every real run behaves as before.
+if [ -z "${GC_SNAPSHOT_HOOK+set}" ]; then
+  export GC_SNAPSHOT_HOOK="$PWD/commit_snapshot.sh"
+else
+  export GC_SNAPSHOT_HOOK
+  [ -z "$GC_SNAPSHOT_HOOK" ] && echo "=== snapshots will NOT be committed (hook disabled) ==="
+fi
 
 node train.js "$GENS" "$POP" "$MODE" "$WORKERS" score
 status=$?
