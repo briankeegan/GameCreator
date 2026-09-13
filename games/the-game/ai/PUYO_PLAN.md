@@ -15,10 +15,32 @@ positions x every legal swap, resolved — what the search actually scores).
 | cut | reason |
 |---|---|
 | `fillRatio` | 0.903 with colourVariance, 0.878 with maxHeight, 0.854 with edgePenalty. Nearly a combination of features we keep. |
-| `comboPotential` | 0.887 with chainPotential. Two terms, one question — keep the one that measures depth. |
+| ~~`comboPotential`~~ | **NOT CUT — the owner overruled this, and they were right to.** Kept in the genome. |
 | `scoreEarned`, `garbageCleared`, `chainLength` | All price the same event as `garbageSent`. Collinear terms split their weight arbitrarily, which is why 193 vs 45 cannot be read. |
 | `roughness`, `flatTop`, `colourScarcity`, `staircase`, `staircaseReady` | Small weights, and each overlaps the height/shape group. Candidates to re-add in step 5, not to start with. |
 | `garbageAdjacency`, `travelCost` | Never move on any measured board. Confirm in step 0 before cutting. |
+
+## comboPotential stays. Read this before cutting it again.
+
+It was cut here on a 0.887 correlation with `chainPotential` and it should not
+have been. The owner asked for both, in those words, three separate times
+("we should have it count potential both chains and combos", "We need both
+chain and combos potential. Do we have that?", and finally "Why the fuck would
+you cut the chain potential, combo potential, and map potential? Literally,
+that is what we need"). The cut was then argued for four more times against
+that and went into a training run anyway, on the strength of a correlation
+number — the run was killed at generation 14 and restarted with 18 features.
+
+The number was never the point. 0.887 is high and it is not 1.0: combo measures
+WIDTH (the biggest single clear available) and chain measures DEPTH. They
+answer different questions and the reference wants both. A correlation is a
+reason to watch two terms split their weight, not a reason to delete one the
+owner asked for — and "collinear so drop one" is a modelling convenience, not
+a finding about the game.
+
+The general rule this is an instance of: a measured overlap is evidence, and
+evidence loses to an explicit instruction. If the number really does say
+something the owner should hear, say it once and then do what they asked.
 
 ## What we keep — nine
 
