@@ -103,8 +103,32 @@ function stubStack(getBoard) {
     return s;
 }
 
-function play(board) {
-    var cur = board;
+// THE ENGINE IS THE BOARD. The bot only ever reads it.
+//
+// This used to keep a LogicalBoard alongside the engine — the bot planned and
+// moved on the simulation, and each turn the simulation's grid was PAINTED
+// onto a scratch Stack to ask the engine how deep the chain was. The two drift
+// the moment they are separate things, and they did: a probe over all 84
+// puzzles found the engine mid-`falling`/`landing` on 89 of 168 swaps, so
+// `canSwap` refused 39 of them and every one was recorded as "no chain" —
+// a third of the bot's moves scored blind, always in the direction of a
+// lower number.
+//
+// Repainting per move cannot be made safe, because paint writes a settled
+// grid onto a Stack that is still running its own physics. So there is one
+// board now and it is the engine's. Each turn:
+//   read the engine -> hand the bot that board -> apply the swap TO THE ENGINE
+//   -> let the engine settle -> take the chain depth FROM THE ENGINE.
+// Nothing is simulated twice, so nothing can disagree.
+function play(stack) {
+    // What the bot thinks with, rebuilt from the engine every turn. It is a
+    // VIEW of the real board, never a second copy that plays on alone.
+    function view() {
+        return new LogicalBoard(W, H, 9,
+                                engineBoard.readGrid(stack, H, W),
+                                engineBoard.readBlocks(stack, H, W));
+    }
+    var cur = view();
     var cpu = new PuyoCpu(stubStack(function () { return cur; }), {
         weights: loaded.weights,
         depth: loaded.switches.depth,
@@ -118,55 +142,44 @@ function play(board) {
     });
     cpu._snapshot = function () { return cur.clone(); };
 
-    var deepest = 0, swaps = 0, why = 'budget';
+    var deepest = 0, swaps = 0, why = 'budget', refused = 0;
     for (var i = 0; i < BUDGET; i++) {
         var d = cpu._decide();
         if (!d || d.kind !== 'swap') { why = 'held'; break; }
-        var next = cur.clone();
-        next.swap(d.move[0], d.move[1]);
-        var res = next.resolve();
-        // THE CHAIN IS COUNTED BY THE ENGINE, NOT BY THE BOARD THE BOT PLANS
-        // WITH. This measure used to read chainLength off that same resolve()
-        // — judging the bot with the code under test, which is circular, and
-        // it lied by exactly the amount resolve() was wrong by.
-        //
-        // While resolve() counted ROUNDS, two independent combos landing one
-        // after another registered as "chain 2" and were counted as a fired
-        // chain. On this puzzle set that inflated the score from 12 to 23 of
-        // 84 — nearly double, all of it combos being called chains. The number
-        // only moved because the bug was fixed, which is the worst way for a
-        // measurement to move.
-        //
-        // Counted on a live Stack now, so this says what the GAME saw.
-        var before = cur;
-        if (!SCRATCH) { SCRATCH = engineBoard.scratch(10); SCRATCH.speed = 0; }
-        engineBoard.paint(SCRATCH, before.grid, before.height, before.width);
-        var engDepth = 0;
-        if (engineBoard.settle(SCRATCH, 60).comboSizes.length === 0 &&
-            SCRATCH.canSwap(d.move[0], d.move[1])) {
-            SCRATCH.curRow = d.move[0]; SCRATCH.curCol = d.move[1];
-            SCRATCH.doSwap(d.move[0], d.move[1]);
-            engDepth = engineBoard.settle(SCRATCH, 900).chainLength;
-        }
-        cur = next;
+        // The engine decides what is legal, here as everywhere else. A refusal
+        // is now a real disagreement worth counting rather than a silent zero,
+        // because the board the bot read came from this same Stack one line
+        // ago — there is no repaint in between to explain it away.
+        if (!stack.canSwap(d.move[0], d.move[1])) { refused++; why = 'engine refused the swap'; break; }
+        stack.curRow = d.move[0];
+        stack.curCol = d.move[1];
+        stack.doSwap(d.move[0], d.move[1]);
+        var res = engineBoard.settle(stack, 900);
         swaps++;
         cpu.stack.curRow = d.move[0];
         cpu.stack.curCol = d.move[1];
-        if (engDepth > deepest) deepest = engDepth;
+        if (res.chainLength > deepest) deepest = res.chainLength;
+        cur = view();
         if (!cur.legalSwaps().length) { why = 'no legal swap'; break; }
     }
-    return { deepest: deepest, swaps: swaps, why: why };
+    return { deepest: deepest, swaps: swaps, why: why, refused: refused };
 }
 
 var chains = puzzles().filter(function (x) { return x.p['Puzzle Type'] === 'chain'; });
-var n = 0, fired = 0, byDepth = {}, stuck = 0, t0 = Date.now(), rows = [];
+var n = 0, fired = 0, byDepth = {}, stuck = 0, refused = 0, t0 = Date.now(), rows = [];
 chains.forEach(function (x) {
     var board = boardFrom(x.p.Stack);
     if (!board) return;
     n++;
-    var r = play(board);
+    // One scratch Stack, repainted ONCE per puzzle to set the position up, and
+    // then left alone to be the game for the rest of that puzzle.
+    if (!SCRATCH) { SCRATCH = engineBoard.scratch(10); SCRATCH.speed = 0; }
+    engineBoard.paint(SCRATCH, board.grid, board.height, board.width);
+    engineBoard.settle(SCRATCH, 900);
+    var r = play(SCRATCH);
     if (r.deepest >= 2) { fired++; byDepth[r.deepest] = (byDepth[r.deepest] || 0) + 1; }
     if (r.why === 'held') stuck++;
+    refused += r.refused;
     rows.push({ set: x.set, deepest: r.deepest, swaps: r.swaps, why: r.why });
 });
 
@@ -175,6 +188,10 @@ console.log('  chain puzzles played           : ' + n);
 console.log('  FIRED A CHAIN (2+ links)       : ' + fired + ' / ' + n +
             ' (' + (n ? (fired / n * 100).toFixed(0) : 0) + '%)');
 console.log('  stopped early by CHOOSING HOLD : ' + stuck);
+// Was 39 of 168 swaps while the measure kept its own board and repainted it.
+// With the engine holding the game there is nothing to drift, so anything
+// here is a real legality disagreement and worth chasing, not noise.
+console.log('  swaps the ENGINE REFUSED         : ' + refused);
 console.log('\n  deepest chain reached, by count:');
 Object.keys(byDepth).sort(function (a, b) { return a - b; }).forEach(function (k) {
     console.log('    ' + k + ' links   ' + byDepth[k]);
@@ -199,6 +216,7 @@ if (process.env.GC_PLAY_JSON) {
         played: n,
         fired: fired,
         stuckHolding: stuck,
+        engineRefused: refused,
         byDepth: byDepth,
         budget: BUDGET,
         weights: loaded.source,
