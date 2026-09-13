@@ -159,7 +159,7 @@ function play(board) {
 }
 
 var chains = puzzles().filter(function (x) { return x.p['Puzzle Type'] === 'chain'; });
-var n = 0, fired = 0, byDepth = {}, stuck = 0, t0 = Date.now();
+var n = 0, fired = 0, byDepth = {}, stuck = 0, t0 = Date.now(), rows = [];
 chains.forEach(function (x) {
     var board = boardFrom(x.p.Stack);
     if (!board) return;
@@ -167,6 +167,7 @@ chains.forEach(function (x) {
     var r = play(board);
     if (r.deepest >= 2) { fired++; byDepth[r.deepest] = (byDepth[r.deepest] || 0) + 1; }
     if (r.why === 'held') stuck++;
+    rows.push({ set: x.set, deepest: r.deepest, swaps: r.swaps, why: r.why });
 });
 
 console.log('\nPANEL ATTACK CHAIN PUZZLES, PLAYED OUT (budget ' + BUDGET + ' swaps)\n');
@@ -179,3 +180,30 @@ Object.keys(byDepth).sort(function (a, b) { return a - b; }).forEach(function (k
     console.log('    ' + k + ' links   ' + byDepth[k]);
 });
 console.log('\n  ' + ((Date.now() - t0) / 1000).toFixed(1) + 's');
+
+// A MACHINE-READABLE RESULT, BECAUSE SOMETHING ELSE CONSUMES THIS.
+//
+// train.js reports chains fired beside score at the end of a run, and the
+// first version of that got the number by regexing the "FIRED A CHAIN" line
+// off this script's stdout. That is the failure this repo has already paid
+// for twice (CLAUDE.md, "NEVER PARSE A TOOL'S PROSE"): a padding change or a
+// short read through a pipe turns into a wrong number that looks like a
+// result. Printed output is for people.
+//
+// `attempted` is here so the consumer can ASSERT it got a full run rather
+// than a truncated one: 84 chain puzzles ship, and a file reporting fewer
+// played than were found is a failure, not a lower score.
+if (process.env.GC_PLAY_JSON) {
+    fs.writeFileSync(process.env.GC_PLAY_JSON, JSON.stringify({
+        attempted: chains.length,
+        played: n,
+        fired: fired,
+        stuckHolding: stuck,
+        byDepth: byDepth,
+        budget: BUDGET,
+        weights: loaded.source,
+        switches: loaded.switches,
+        seconds: Number(((Date.now() - t0) / 1000).toFixed(1)),
+        puzzles: rows
+    }, null, 2) + '\n');
+}

@@ -46,8 +46,21 @@ answer.
    controls: 3023 / 2703 / 2707. The spread between those three IS the noise
    floor; a change must beat it to mean anything.
 2. **Chains actually fired** — `puzzles.play.js`, 84 real authored chain
-   puzzles. The bot sits at 19-22 and that barely moved across depth 1, depth
-   2 and the engine brain.
+   puzzles, COUNTED ON A LIVE STACK. The shipped weights fire **9 / 84**, and
+   the trainer now reports this beside score every run (`chainmeasure.js`,
+   gated by `chainmeasure.test.js`), measuring the shipped set the same way
+   rather than quoting a figure.
+   - The "19-22" this document used to give was measured through
+     `resolve()` while `resolve()` counted match-and-settle ROUNDS, so two
+     independent combos landing one after another registered as a chain. That
+     is judging the bot with the code under test: fixing `resolve()` moved the
+     number from 23 to 12 without the bot changing at all. Do not quote either
+     figure again.
+   - Worth knowing before reading a delta: the shipped bot makes **zero swaps
+     on 34 of the 84** and holds within one swap on 50. On a puzzle board
+     nothing rises, so holding is free and every swap costs travel — so a
+     large part of this measure is currently one hold decision, not chain
+     building.
 
 Score alone cannot tell you whether the bot learned to CHAIN: a bot that
 survives and makes small clears scores respectably and never fires a 4-chain.

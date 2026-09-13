@@ -184,6 +184,15 @@ gate_features_live() {
   node games/the-game/ai/eval/feature_liveness.js 2 all
 }
 
+# THE CHAINS-FIRED MEASURE, BOTH DIRECTIONS. Score cannot tell you whether a
+# bot learned to chain, so the trainer reports this beside it — and a run that
+# comes back SHORT reports a smaller number that reads exactly like a bot that
+# chains less. This proves the assertion catching that actually fires, and
+# that puzzles.play.js still emits the data it reads.
+gate_chain_measure() {
+  node games/the-game/ai/eval/chainmeasure.test.js
+}
+
 # The four constraints a template carries, pinned directly. Two of them were
 # silently unenforced for the matcher's whole first life (Int8Array stamp
 # truncation) and the test nearest the defect could not see it.
@@ -296,6 +305,7 @@ GATES=(
   "both boards agree on every chip:gate_chips_both_boards_agree"
   "a broken resolve is rejected:gate_resolve_breaks"
   "every feature is wired and moves:gate_features_live"
+  "the chains-fired measure accepts and rejects:gate_chain_measure"
   "a garbage break stops the resolve:gate_garbage_rules"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints"
   "the simulation resolves like the game:gate_resolve_fidelity"

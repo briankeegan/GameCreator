@@ -755,6 +755,31 @@ function report(isFinal, cb) {
                     ' shipped ' + (shipped.fitness || 0).toFixed(0).padStart(6) +
                     '   learned ' + (learned.fitness || 0).toFixed(0).padStart(6) +
                     '   ' + (out.improvementPct >= 0 ? '+' : '') + out.improvementPct.toFixed(1) + '%');
+        // AND CHAINS FIRED, BECAUSE SCORE CANNOT TELL YOU WHETHER IT
+        // LEARNED TO CHAIN — see chainmeasure.js for why that is its own
+        // module, why it reads data instead of stdout, and why the shipped
+        // comparison is measured rather than quoted.
+        //
+        // Never allowed to take the run down with it: a training run that
+        // finished is worth reporting even if this extra number cannot be
+        // produced.
+        try {
+            var chainmeasure = require('./chainmeasure.js');
+            var sw = { depth: DEPTH, beam: BEAM, rise: RISE, density: DENSITY };
+            var pj = chainmeasure.measure({ weights: best.weights || best, switches: sw });
+            var sj = chainmeasure.measure(null);
+            out.chainsFired = pj.fired;
+            out.chainPuzzles = pj.played;
+            out.chainsFiredShipped = sj.fired;
+            console.log('  CHAINS FIRED (engine-counted): learned ' +
+                        pj.fired + ' / ' + pj.played +
+                        '   shipped ' + sj.fired + ' / ' + sj.played);
+            if (pj.fired <= sj.fired) {
+                console.log('  ^ NO BETTER AT CHAINING THAN THE SHIPPED SET.');
+            }
+        } catch (e) {
+            console.log('  (chains-fired measure did not run: ' + e.message.split('\n')[0] + ')');
+        }
         out.lostCategories = lost;
         if (lost.length) {
             console.log('  ^ LOSES TO SHIPPED ON: ' + lost.join(', ') +

@@ -24,3 +24,10 @@ games/*/art-src/*_rendered.txt
 
 # Smoke-sized training runs are not results — see commit_snapshot.sh
 games/the-game/ai/eval/*.smoke.json
+
+# The chains-fired measure's scratch: weights in, result JSON out, both
+# removed in a finally block. Ignored so a run killed mid-measure cannot
+# leave one to be committed. Its test's temp dir is ignored for the same
+# reason.
+games/the-game/ai/eval/.chainmeasure.*
+games/the-game/ai/eval/.chainmeasure-test-*/
