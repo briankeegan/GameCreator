@@ -28,6 +28,16 @@
 # continuous now and train.js's checkpoint carries the whole population, so a
 # new run resumes at the generation the last one stopped on with every genome
 # intact, rather than restarting from a single winner.
+#
+# THAT ONLY BECAME TRUE ON A RUNNER ON 2026-09-13, and the sentence above was
+# a lie until it did. The checkpoint is written beside train.js and was
+# gitignored — correct on a machine that keeps its disk, useless here, where
+# every job checks out fresh. So each five-and-a-half-hour run began at
+# generation 1: run #64 reached generation 129, and the run dispatched after
+# it opened a brand new search at generation 30, while this comment promised
+# otherwise. commit_snapshot.sh force-adds the checkpoint alongside every
+# snapshot now, so the next job finds it in the checkout. If a run ever opens
+# at a low generation again, that is the thing to check first.
 name: Train the AI evaluator
 
 on:

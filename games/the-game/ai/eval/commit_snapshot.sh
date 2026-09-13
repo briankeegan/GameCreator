@@ -51,6 +51,26 @@ fi
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
   echo "    !! not a git repo — $out exists only on disk"; exit 0
 fi
+# THE CHECKPOINT RIDES ALONG, OR THE RUN CANNOT CONTINUE.
+#
+# A snapshot is the champion; the CHECKPOINT is the whole population, and it
+# is what lets the next job carry on instead of starting over. It was
+# gitignored, which is right for a machine with a persistent disk and wrong
+# for a GitHub runner: every job checks out fresh, finds no checkpoint, and
+# begins at generation 1. Run #64 reached generation 129 in five and a half
+# hours; the run after it opened at generation 30 of a brand new search, and
+# the workflow header meanwhile promised it "resumes at the generation the
+# last one stopped on". At that rate convergence near generation 330 is never
+# reached, however many hours are spent.
+#
+# So it is force-added past the ignore rule, alongside the snapshot, in the
+# same commit and the same push. It is one file that is overwritten rather
+# than accumulated, and train.js already refuses a checkpoint whose config
+# fingerprint does not match — so a stale or foreign one is ignored, not
+# resumed into.
+ckpt=".train-checkpoint.${GC_MODE:-replace}.json"
+[ -f "$ckpt" ] && git add -f "$ckpt" 2>/dev/null
+
 if ! git add -f "$out" 2>/dev/null || \
    ! git commit -q -m "$(printf 'Snapshot: generation %s of %s (%s)\n\nWritten by train.js and committed on the spot, so a restart cannot take\nit. Scores and provenance are in the file itself.\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>' \
                         "$gen" "$GC_TAG" "$GC_RUN_ID")" 2>/dev/null; then
