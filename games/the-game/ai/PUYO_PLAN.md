@@ -100,26 +100,105 @@ answer.
 1. **Score on held-out seeds** — games never trained on. Existing depth-1
    controls: 3023 / 2703 / 2707. The spread between those three IS the noise
    floor; a change must beat it to mean anything.
-2. **Chains actually fired** — `puzzles.play.js`, 84 real authored chain
-   puzzles, COUNTED ON A LIVE STACK. The shipped weights fire **9 / 84**, and
-   the trainer now reports this beside score every run (`chainmeasure.js`,
-   gated by `chainmeasure.test.js`), measuring the shipped set the same way
-   rather than quoting a figure.
-   - The "19-22" this document used to give was measured through
+2. **How DEEP the chains are — and this is currently MISSING.** Score alone
+   cannot tell you whether the bot learned to chain: a bot that survives and
+   makes small clears scores respectably and never fires a 4-chain. Measured
+   on the real endless benchmark, every chain this bot fires is 2-3 links and
+   the 4-6 and 7+ buckets are EMPTY. That, not the score, is the owner's bar.
+   - The old measure — chains fired over 84 authored puzzles
+     (`puzzles.play.js`) — was REMOVED 2026-09-13. It read a static puzzle
+     set the bot has no reason to act in: nothing rises on a puzzle board, so
+     holding is free and every swap costs travel, and the shipped bot made
+     zero swaps on 34 of the 84. A large part of it was one hold decision
+     rather than chain building. Do not put it back.
+   - Numbers that came out of it are wrong and must never be quoted again:
+     "19-22 chains fired", "23/84", "9/84". The 19-22 was measured through
      `resolve()` while `resolve()` counted match-and-settle ROUNDS, so two
-     independent combos landing one after another registered as a chain. That
-     is judging the bot with the code under test: fixing `resolve()` moved the
-     number from 23 to 12 without the bot changing at all. Do not quote either
-     figure again.
-   - Worth knowing before reading a delta: the shipped bot makes **zero swaps
-     on 34 of the 84** and holds within one swap on 50. On a puzzle board
-     nothing rises, so holding is free and every swap costs travel — so a
-     large part of this measure is currently one hold decision, not chain
-     building.
+     independent combos landing in sequence registered as a chain — judging
+     the bot with the code under test.
+   - What replaces it: the chain-length distribution off `ai/experiments/
+     report.js`, recorded IN THE SNAPSHOT beside the score. Until that lands,
+     every run is judged on a number that can climb the whole way while the
+     thing we care about does not move. **This blocks the experiment batch
+     below.**
 
 Score alone cannot tell you whether the bot learned to CHAIN: a bot that
 survives and makes small clears scores respectably and never fires a 4-chain.
 Report both or the experiment answers the wrong question.
+
+## Where depth-1 training actually got to, 2026-09-14
+
+Seed 11, held-out score at every snapshot, against the shipped bot's 612:
+
+```
+gen   30    60    90   120   150   180   210   240   270   274   300   330   360   390
+    2657  3032  2665  3710  2289  3465  2458  2529  2867  3495  3291  3058  3012  3058
+```
+
+Read it as: **the bot is 4-6x the shipped one, and it stopped improving
+around generation 60.** The highest number in the run is at generation 120.
+The whole spread is 1421 points, and the measured noise floor between two
+baselines differing ONLY in RNG seed is 911. So nearly all the movement is
+noise. Hours 1-2 bought everything; hours 3-13 bought nothing measurable.
+
+That flatness is the Tier 1 ceiling the reference predicts, arriving on
+schedule. More generations cannot fix it. Two things can: a different
+SELECTION POLICY (lookahead), or a different FEATURE SET (Puyo's, which we
+have never actually run).
+
+Also worth knowing: the search's own stopping rule watches WEIGHT MOVEMENT,
+not score. The weights wander on a flat plateau indefinitely, so it will
+never declare itself done — which is how 390 generations happened with
+nothing to show. It should stop when the held-out score stops improving.
+
+## The experiment batch
+
+Five variants, none of which need new code — they are dispatch inputs on
+`ai-train.yml`. The concurrency group is keyed by variant, so they run side
+by side rather than queueing.
+
+| variant | change | why |
+|---|---|---|
+| `base` | depth 1, the current 18 | the comparator. Without it nothing else is readable |
+| `d2` | depth 2, the current 18 | the lookahead. Attacks "greedy fires too early", which the reference names as the real cap |
+| `noearn` | drop scoreEarned, stopTimeEarned, brokeGarbage | no reference bot in either game feeds "what did this move pay" into the evaluation. It is the one place we have diverged, and it diverges toward the named failure |
+| `fill` | put `fillRatio` back | Puyo's #3 at 16%, cut here on an overlap with maxHeight |
+| `dens` | density on | makes `links` a ratio rather than a count, so clearing stops subtracting tidiness it never lost. `links` is Puyo's biggest at 25% and ours has been driven to 0.5% |
+
+**TWO RULES FOR THE BATCH, both learned the expensive way:**
+
+1. **Every variant runs the SAME seed set, and at least two seeds.** One run
+   per condition measures nothing and still hands you a number that looks
+   like a result — five runs were once read as "staircase up, flatTop down,
+   comboPotential promising" and all three readings were wrong. The proof was
+   a second baseline identical but for its seed, 911 points away. Compare
+   pairwise, seed against seed.
+2. **Nothing launches until chain depth is in the snapshot** (see "How
+   success is measured" above). Ten runs judged on score alone produce ten
+   numbers that can all rise while every chain stays 2-3 links.
+
+### Results — fill in as they land
+
+| variant | seed | gen | held-out | 2-3 links | 4-6 | 7+ |
+|---|---|---|---|---|---|---|
+| base | | | | | | |
+| d2 | | | | | | |
+| noearn | | | | | | |
+| fill | | | | | | |
+| dens | | | | | | |
+
+## Still owed
+
+- **`consecutiveColours`** — scan every row and column, measure runs of one
+  colour. 16% of meatfighter's bot, one of its two setup features, and we
+  have never had it. `colourVariance` is NOT the same thing: it asks whether
+  a colour is gathered anywhere on the board, not whether it is in a LINE.
+  Needs the feature, a test, and a registry entry before it can be a variant.
+- **The stopping rule**, per above: score, not weight movement.
+- Of Puyo's top four — links 25%, consecutive colours 16%, coloured count
+  16%, nuisance 25% — we currently run one at full strength, one at 0.5%,
+  one cut, and one missing entirely. That is the gap this batch exists to
+  close.
 
 ## Order
 
@@ -129,10 +208,7 @@ Report both or the experiment answers the wrong question.
 - **Step 1 — close the garbage fidelity gap.** `resolve()` matches the engine
   on 50,797 cases, NONE of which had garbage on the board. Eight features read
   `resolve()`. Do this before trusting any run.
-- **Step 2 — write `consecutiveColours`**, with a test, and register it.
-- **Step 3 — train the nine. Three seeds.** Baseline, and its spread is the
-  noise floor. Report score AND chains fired.
-- **Step 4 — add back one cut feature at a time**, each measured against that
-  noise floor on both numbers. Anything that does not clear it stays out.
-
-Steps 0, 1 and 2 are hours, not days. Step 3 is the long one.
+- **Step 2 — chain depth into the snapshot.** Blocks the batch.
+- **Step 3 — run the batch**, same seeds, two each.
+- **Step 4 — write `consecutiveColours`**, with a test, and register it. Then
+  it gets a variant of its own against the same baseline.
