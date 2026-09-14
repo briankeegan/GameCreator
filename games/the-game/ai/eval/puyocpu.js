@@ -175,6 +175,9 @@
   // a move being imagined one ply later — see _value.
   PuyoCpu.prototype._score = function (board, resolved, move, from) {
     this.evaluations++;
+    // The board this call scored. Same object unless rise replaces it — see
+    // the rise branch below. Read by _decide, never by anything else.
+    this._scoredBoard = board;
 
     // What this move CLEARS: garbage on the live board minus garbage left
     // on the candidate. Never negative — garbage arriving is
@@ -231,18 +234,24 @@
     // that rise sets off is counted too — a clear that breaks, and breaks
     // again, is worth what it actually does.
     if (this.rise) {
-      // RISEN IN PLACE, NOT ON A THROWAWAY CLONE. The board this leaves is
-      // the board the game is really in, so it has to be the board the
-      // next ply branches from — scoring a candidate on its risen state
-      // and then searching its UN-risen state would be two different
-      // positions wearing one number, and the second ply would be planning
-      // on a board that no longer exists.
+      var after = board.clone().rise(this._incoming);
+      var second = after.resolve();
+      board = after;
+      // THE BOARD THIS ACTUALLY SCORED, handed to the search rather than
+      // written back over the caller's.
       //
-      // Nothing downstream of a depth-1 decision reads the candidate board,
-      // so this changes only what depth 2 searches — and it changes it from
-      // wrong to right.
-      board.rise(this._incoming);
-      var second = board.resolve();
+      // The rise must reach the second ply: scoring a candidate on its
+      // risen state and then searching its UN-risen state is two different
+      // positions wearing one number. The obvious way to do that — rise the
+      // caller's board in place — is WRONG, and rise.test.js says so. Its
+      // sweep scores a candidate and THEN counts the panels on it to see
+      // how much the move cleared; a _score that adds a row on the way
+      // through makes every one of those counts wrong, and the bucket a
+      // candidate lands in is decided by that count.
+      //
+      // So _score never touches what it was given. It publishes what it
+      // scored, and _decide attaches that to the candidate.
+      this._scoredBoard = board;
       left = 0;
       for (r = 1; r <= board.height; r++) {
         for (c = 1; c <= board.width; c++) if (board.grid[r][c] === -2) left++;
@@ -372,7 +381,7 @@
     // others. It was the separate case, and that is how it ended up judged
     // one move deep while every swap was judged two — waiting always
     // looked worse than acting, and waiting is how a chain gets built.
-    var cands = [{ kind: 'hold', score: bestScore, board: holdBoard }];
+    var cands = [{ kind: 'hold', score: bestScore, board: this._scoredBoard }];
 
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
@@ -380,7 +389,7 @@
       trial.swap(r, c);
       var resolved = this._resolveCandidate(trial);
       var s = this._score(trial, resolved, [r, c]);
-      cands.push({ kind: 'swap', score: s, move: [r, c], board: trial });
+      cands.push({ kind: 'swap', score: s, move: [r, c], board: this._scoredBoard });
       // Strictly greater, so a tie leaves the incumbent standing rather
       // than handing the decision to whichever swap legalSwaps() happened
       // to list first — list order is not a preference.

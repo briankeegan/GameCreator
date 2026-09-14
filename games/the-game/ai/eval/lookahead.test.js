@@ -235,17 +235,18 @@ test('the second ply branches from the board the first ply was SCORED on', funct
     // different games, and nothing in the output would look wrong.
     //
     // Run with rise ON, because that is the switch that separates them:
-    // rise advances the candidate a whole incoming row. Applied to a
-    // throwaway clone, the score sees the risen board and the search sees
-    // the un-risen one.
+    // rise advances the candidate a whole incoming row, and it does so on a
+    // COPY — _score must never touch the board it was handed (rise.test.js's
+    // sweep scores a candidate and then counts its panels to see what the
+    // move cleared, so a _score that adds a row on the way through makes
+    // every one of those counts wrong). So the risen board is published as
+    // _scoredBoard and _decide attaches it to the candidate. This checks it
+    // arrives.
     //
-    // THE FIRST VERSION OF THIS TEST COULD NOT FIRE, which is why it says
-    // this. It compared the board object handed to _score against the board
-    // _value branched from — and under the bug those are the SAME un-risen
-    // object, because the rise went to a copy _score kept to itself. It
-    // passed with the defect restored. So it asks two things now: that
-    // _score ADVANCED the candidate at all, and that the second ply
-    // branches from what it advanced to.
+    // TWO ASSERTIONS, because either alone can pass while the rise is lost:
+    // that the board scored is genuinely NOT the one passed in (the rise
+    // happened at all), and that the candidate the search expands is the
+    // scored one.
     var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
     var cpu = new PuyoCpu(stack, { weights: W, reaction: 12, depth: 2, rise: true });
     for (var f = 0; f < 300; f++) { cpu.update(); stack.run(); stack.drainEvents(); }
@@ -253,16 +254,21 @@ test('the second ply branches from the board the first ply was SCORED on', funct
 
     var n = cpu._snapshot().legalSwaps().length + 1;
     var print = function (b) { return JSON.stringify(b.grid); };
-    var before = [], after = [], k = 0, stale = [];
+    var handedIn = [], scored = [], k = 0, stale = [];
     var origScore = cpu._score, origValue = cpu._value;
     cpu._score = function (b) {
         var pre = print(b);
         var out = origScore.apply(this, arguments);
-        if (before.length < n) { before.push(pre); after.push(print(b)); }
+        if (handedIn.length < n) {
+            handedIn.push(pre);
+            scored.push(print(this._scoredBoard));
+            // _score must not have written on the caller's board.
+            if (print(b) !== pre) stale.push('candidate ' + handedIn.length + ': _score MUTATED the board it was given');
+        }
         return out;
     };
     cpu._value = function (cand) {
-        if (print(cand.board) !== after[k]) {
+        if (print(cand.board) !== scored[k]) {
             stale.push('candidate ' + k + ' was scored on one board and searched from another');
         }
         k++;
@@ -273,13 +279,12 @@ test('the second ply branches from the board the first ply was SCORED on', funct
 
     assert.strictEqual(k, n, 'expanded ' + k + ' of ' + n + ' candidates');
     var unmoved = 0;
-    for (var i = 0; i < n; i++) if (before[i] === after[i]) unmoved++;
+    for (var i = 0; i < n; i++) if (handedIn[i] === scored[i]) unmoved++;
     assert.strictEqual(unmoved, 0,
-        unmoved + ' of ' + n + ' candidates came out of _score on the board they went in on, ' +
-        'with rise ON — the rise went somewhere the search cannot see');
+        unmoved + ' of ' + n + ' candidates were scored on the board they went in on, with ' +
+        'rise ON — the rise went somewhere the search cannot see');
     assert.deepStrictEqual(stale.slice(0, 5), [],
-        stale.length + ' of ' + n + ' candidates search a position they were not scored on:\n  ' +
-        stale.slice(0, 5).join('\n  '));
+        stale.length + ' of ' + n + ' candidates:\n  ' + stale.slice(0, 5).join('\n  '));
 });
 
 test('the second move pays travel from where the first move leaves the cursor', function () {
