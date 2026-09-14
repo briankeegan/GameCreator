@@ -34,6 +34,7 @@
 // (FINDINGS.md's misleading synthetic benchmark).
 var fork = require('child_process').fork;
 var path = require('path');
+var crypto = require('crypto');
 var fs = require('fs');
 var registry = require('./registry.js');
 var bench = require('./bench.js');
@@ -433,7 +434,6 @@ var t0 = Date.now();
 // 8-genome smoke test would be silently wrong — a different search, wearing
 // the same filename. So the checkpoint records the config that made it and
 // is IGNORED, loudly, when anything that shapes the search differs.
-var CHECKPOINT = path.join(__dirname, '.train-checkpoint.' + MODE + '.json');
 function fingerprint() {
     // 'cem' is in here because a checkpoint written by the old genetic
     // algorithm holds a population bred a different way. Resuming one into
@@ -443,6 +443,33 @@ function fingerprint() {
             String(DEPTH), String(BEAM), RISE ? 'rise' : '', DENSITY ? 'density' : '',
             SEEDS_PER_GENERATION, KEYS.join(',')].join('|');
 }
+
+// AND WHY THE FINGERPRINT IS IN THE FILENAME, NOT ONLY INSIDE THE FILE.
+//
+// Refusing to RESUME a foreign checkpoint was never enough, because a run
+// that refuses one still OVERWRITES it a generation later and DELETES it on
+// the way out. One filename for every configuration means any small run in
+// this directory destroys the long one's resume point, and the long one has
+// no way to notice.
+//
+// That is not hypothetical. training.test.js — which the training workflow
+// runs as a PRE-FLIGHT, immediately before the five-hour crank — executes
+// `node train.js 2 8 replace 4 score`: a real two-generation search, same
+// directory, same mode, therefore the same checkpoint file. It clobbered the
+// production checkpoint and then, finishing cleanly, deleted it. So run #71
+// checked out a valid generation-273 checkpoint, had it destroyed by its own
+// harness check, found nothing, and restarted from generation 1 — while every
+// piece of the resume machinery was working exactly as designed.
+//
+// Hashing the fingerprint into the name makes the collision impossible rather
+// than merely detected: a population-8 test run and a population-200 search
+// cannot address the same file. The fingerprint stays INSIDE the file too —
+// a hash can collide, and the contents are the authority.
+function checkpointPath() {
+    var tag = crypto.createHash('sha1').update(fingerprint()).digest('hex').slice(0, 10);
+    return path.join(__dirname, '.train-checkpoint.' + MODE + '.' + tag + '.json');
+}
+var CHECKPOINT = checkpointPath();
 function saveCheckpoint() {
     // Written to a temp file and RENAMED. A kill lands somewhere, and a kill
     // halfway through writing this file would leave truncated JSON that the

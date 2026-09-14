@@ -45,17 +45,23 @@ fails=0
 note() { echo "  FAIL: $*"; fails=$((fails + 1)); }
 
 MODE=replace
-CKPT=".train-checkpoint.${MODE}.json"
+# THE NAME CARRIES A HASH OF THE SEARCH'S FINGERPRINT (train.js
+# checkpointPath), so there is no single filename to watch — glob instead.
+# A run's checkpoint is the only one matching its own config, and a finished
+# search removes its own.
+ckptPath() { ls .train-checkpoint.${MODE}.*.json 2>/dev/null | head -1; }
+ckptCount() { ls .train-checkpoint.${MODE}.*.json 2>/dev/null | wc -l; }
 
 # A scratch directory is not possible here — train.js writes beside itself — so
 # save and restore anything already on disk. Someone running this mid-search
 # must not lose their checkpoint to a test.
-SAVED=""
-if [ -f "$CKPT" ]; then SAVED="$(mktemp)"; cp "$CKPT" "$SAVED"; fi
+SAVEDIR="$(mktemp -d)"
+cp .train-checkpoint.${MODE}.*.json "$SAVEDIR"/ 2>/dev/null || true
 restore() {
-  rm -f "$CKPT"
-  [ -n "$SAVED" ] && mv "$SAVED" "$CKPT"
-  rm -f trained.${MODE}.checkpoint-test.*.smoke.json
+  rm -f .train-checkpoint.${MODE}.*.json
+  cp "$SAVEDIR"/*.json . 2>/dev/null || true
+  rm -rf "$SAVEDIR"
+  rm -f trained.${MODE}.checkpoint-test.*.smoke.json trained.${MODE}.roundtrip.*.smoke.json
 }
 trap restore EXIT
 
@@ -80,7 +86,7 @@ LASTLOG=""
 outOfTimeRun() {  # outOfTimeRun [extra env assignments...]
   local secs
   for secs in 15 45 120; do
-    rm -f "$CKPT"
+    rm -f .train-checkpoint.${MODE}.*.json
     LASTLOG="$(mktemp)"
     train 1000 "$LASTLOG" GC_DEADLINE=$(( $(date +%s) + secs )) "$@"
     local gen
@@ -94,8 +100,8 @@ outOfTimeRun() {  # outOfTimeRun [extra env assignments...]
 # ---------------------------------------------------------------- out of time
 echo "1) a run that ran OUT OF TIME keeps its checkpoint"
 if outOfTimeRun; then
-  if [ -f "$CKPT" ]; then
-    echo "     ok: $CKPT is on disk"
+  if [ "$(ckptCount)" -ge 1 ]; then
+    echo "     ok: $(ckptPath) is on disk"
   else
     note "no checkpoint after an out-of-time stop — the next run starts over"
   fi
@@ -107,14 +113,14 @@ fi
 # Generations exhausted is a real completion. Keeping the checkpoint here would
 # make every later run resume a search that already answered.
 echo "2) a run whose SEARCH FINISHED clears its checkpoint"
-rm -f "$CKPT"
+rm -f .train-checkpoint.${MODE}.*.json
 log2="$(mktemp)"
 train 1 "$log2"
 if grep -q "written to trained" "$log2"; then
-  if [ -f "$CKPT" ]; then
+  if [ "$(ckptCount)" -ge 1 ]; then
     note "checkpoint left behind by a finished search — every later run resumes a finished search forever"
   else
-    echo "     ok: $CKPT is gone"
+    echo "     ok: it is gone"
   fi
 else
   note "SETUP: the run did not finish; see $log2. Not a verdict on the checkpoint."
@@ -132,7 +138,7 @@ probe="$probedir/hook.sh"
 cat > "$probe" <<'HOOK'
 #!/usr/bin/env bash
 cd "$(dirname "$1")" || exit 0
-if [ -f ".train-checkpoint.replace.json" ]; then echo "CHECKPOINT-PRESENT" >> "$GC_PROBE_OUT"
+if ls .train-checkpoint.replace.*.json >/dev/null 2>&1; then echo "CHECKPOINT-PRESENT" >> "$GC_PROBE_OUT"
 else echo "CHECKPOINT-MISSING" >> "$GC_PROBE_OUT"; fi
 exit 0
 HOOK
@@ -151,9 +157,46 @@ else
 fi
 rm -rf "$probedir"; rm -f "$probeout"
 
+# --------------------------------------- a small run must not destroy a big one
+# THE ONE THAT ACTUALLY HAPPENED, AND THAT NOTHING HERE COVERED.
+#
+# training.test.js runs `node train.js 2 8 replace 4 score` — a real
+# two-generation search — and the training workflow runs it as a PRE-FLIGHT
+# immediately before the five-hour crank, in this very directory. While every
+# configuration shared one checkpoint filename, that tiny run overwrote the
+# production checkpoint and then, finishing cleanly, deleted it. Run #71
+# checked out a valid generation-273 checkpoint, had it destroyed by its own
+# harness check, and restarted from generation 1 — with every part of the
+# resume machinery working exactly as designed.
+#
+# The fingerprint is in the FILENAME now, so the two cannot address the same
+# file. This asserts that directly: park a long run's checkpoint, run the
+# small one to completion on top of it, and require the long one to survive.
+echo "5) a DIFFERENT search running here does not destroy this one's checkpoint"
+if outOfTimeRun; then
+  keep="$(ckptPath)"
+  before="$(mktemp)"; cp "$keep" "$before"
+  small="$(mktemp)"
+  # Exactly what the pre-flight does: two generations of eight, same mode,
+  # same directory, run to a clean finish.
+  env GC_SEEDS_PER_GEN=1 GC_LEVEL=10 GC_BRAIN=puyo GC_GA_SEED=4242 \
+      GC_TAG=checkpoint-test GC_SNAPSHOT_HOOK= \
+      node train.js 2 8 "$MODE" 4 score > "$small" 2>&1
+  if [ ! -f "$keep" ]; then
+    note "a two-generation run DELETED the long run's checkpoint — a five-hour search restarts from generation 1"
+  elif ! cmp -s "$keep" "$before"; then
+    note "a two-generation run OVERWROTE the long run's checkpoint — it will be rejected on fingerprint and the search restarts"
+  else
+    echo "     ok: the long run's checkpoint is untouched"
+  fi
+  rm -f "$before" "$small"
+else
+  note "SETUP: could not get two generations in before the deadline. Not a verdict on the collision."
+fi
+
 echo ""
 if [ "$fails" -eq 0 ]; then
-  echo "CHECKPOINT TEST OK: out of time keeps it, finishing clears it, the hook can see it."
+  echo "CHECKPOINT TEST OK: out of time keeps it, finishing clears it, the hook can see it, a foreign run cannot destroy it."
   exit 0
 fi
 echo "CHECKPOINT TEST FAILED: $fails"

@@ -68,8 +68,14 @@ fi
 # than accumulated, and train.js already refuses a checkpoint whose config
 # fingerprint does not match — so a stale or foreign one is ignored, not
 # resumed into.
-ckpt=".train-checkpoint.${GC_MODE:-replace}.json"
-[ -f "$ckpt" ] && git add -f "$ckpt" 2>/dev/null
+# The name now carries a hash of the search's fingerprint (train.js
+# checkpointPath), so a small run in this directory cannot address — and
+# therefore cannot clobber or delete — a long run's resume point. That means
+# globbing rather than naming one file. Any checkpoint present belongs to a
+# search that is still going; a finished one deletes its own.
+for ckpt in .train-checkpoint.${GC_MODE:-replace}.*.json; do
+  [ -f "$ckpt" ] && git add -f "$ckpt" 2>/dev/null
+done
 
 if ! git add -f "$out" 2>/dev/null || \
    ! git commit -q -m "$(printf 'Snapshot: generation %s of %s (%s)\n\nWritten by train.js and committed on the spot, so a restart cannot take\nit. Scores and provenance are in the file itself.\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>' \
