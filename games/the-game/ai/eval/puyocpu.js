@@ -170,7 +170,10 @@
     return out;
   };
 
-  PuyoCpu.prototype._score = function (board, resolved, move) {
+  // `from` is where the cursor STARTS for this candidate's move. It is the
+  // live cursor for a move being made now, and the previous move's cell for
+  // a move being imagined one ply later — see _value.
+  PuyoCpu.prototype._score = function (board, resolved, move, from) {
     this.evaluations++;
 
     // What this move CLEARS: garbage on the live board minus garbage left
@@ -194,7 +197,10 @@
     // What it costs to REACH, in frames, from wherever the cursor is now.
     // A hold moves nothing, so it costs nothing.
     var frames = 0;
-    if (move) frames = travel.cost(stack.curRow, stack.curCol, move[0], move[1]);
+    if (move) {
+      var fr = from ? from[0] : stack.curRow, fc = from ? from[1] : stack.curCol;
+      frames = travel.cost(fr, fc, move[0], move[1]);
+    }
 
     // No cascade prediction: latentChain was the only feature that read
     // chainMarks and it has been removed, so computing one every candidate
@@ -225,9 +231,18 @@
     // that rise sets off is counted too — a clear that breaks, and breaks
     // again, is worth what it actually does.
     if (this.rise) {
-      var after = board.clone().rise(this._incoming);
-      var second = after.resolve();
-      board = after;
+      // RISEN IN PLACE, NOT ON A THROWAWAY CLONE. The board this leaves is
+      // the board the game is really in, so it has to be the board the
+      // next ply branches from — scoring a candidate on its risen state
+      // and then searching its UN-risen state would be two different
+      // positions wearing one number, and the second ply would be planning
+      // on a board that no longer exists.
+      //
+      // Nothing downstream of a depth-1 decision reads the candidate board,
+      // so this changes only what depth 2 searches — and it changes it from
+      // wrong to right.
+      board.rise(this._incoming);
+      var second = board.resolve();
       left = 0;
       for (r = 1; r <= board.height; r++) {
         for (c = 1; c <= board.width; c++) if (board.grid[r][c] === -2) left++;
@@ -382,18 +397,29 @@
   // nothing is reachable — a dead end is worth what it is, not nothing, or
   // the search refuses positions for a reason it does not have.
   //
-  // The follow-up's travel is not priced. The cursor's position after the
-  // first move is not known here — it depends on where the walk actually
-  // ends — and inventing one would put a made-up number into the
-  // comparison. The FIRST move still pays its real travel cost, which is
-  // the move actually being made.
+  // THE SECOND MOVE PAYS ITS TRAVEL TOO, from where the first move leaves
+  // the cursor. driveWalk walks to the swap's own cell and swaps there, so
+  // after playing (r,c) the cursor IS at (r,c); a hold moves nothing, so it
+  // starts from wherever the cursor already is. Both are facts about this
+  // bot, not estimates.
+  //
+  // It is not a detail. Travel is the only cost this game charges for
+  // choosing a move, and a second ply that treats it as free values a great
+  // follow-up on the far side of the board exactly like one under the
+  // cursor — so the search would favour first moves whose payoff it could
+  // never actually reach in time. Puyo has no equivalent problem and
+  // therefore no answer to copy: there a move is dropping a piece, one
+  // placement per piece, and every placement lands on the same turn
+  // boundary whatever column it goes to (PUYO_REFERENCE.md, "Move budget").
+  // Here a swap can be anywhere and the stack rises while the cursor walks.
   PuyoCpu.prototype._value = function (cand) {
     var next = cand.board.legalSwaps();
+    var from = cand.kind === 'hold' ? null : cand.move;
     var v = cand.score;
     for (var j = 0; j < next.length; j++) {
       var child = cand.board.clone();
       child.swap(next[j][0], next[j][1]);
-      var f = this._score(child, this._resolveCandidate(child), null);
+      var f = this._score(child, this._resolveCandidate(child), next[j], from);
       if (f > v) v = f;
     }
     return v;

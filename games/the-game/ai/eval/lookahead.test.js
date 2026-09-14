@@ -62,10 +62,13 @@ function valuations(cpu) {
 
     cands.forEach(function (cand) {
         var v = cand.score;
+        // The second move starts where the first one left the cursor — at
+        // the swap's own cell, or unmoved after a hold.
+        var from = cand.kind === 'hold' ? null : cand.move;
         cand.board.legalSwaps().forEach(function (s) {
             var child = cand.board.clone();
             child.swap(s[0], s[1]);
-            var f = cpu._score(child, cpu._resolveCandidate(child), null);
+            var f = cpu._score(child, cpu._resolveCandidate(child), s, from);
             if (f > v) v = f;
         });
         cand.value = v;
@@ -184,6 +187,140 @@ test('holding is judged at the same depth as swapping', function () {
         'a depth-2 decision over ' + cands.length + ' candidates scored ' + spent +
         ' boards where a full expansion is ' + expected + '. Hold alone accounts for ' +
         holdFollowUps + ' of them.');
+});
+
+test('every hypothetical board is scored RESOLVED, at both plies', function () {
+    // The scores only mean anything if each candidate board is the board
+    // the game would actually be left with — cascade fired, panels fallen,
+    // chain counted. A board scored mid-cascade makes a chain invisible,
+    // and it makes it invisible SILENTLY: the number still looks like a
+    // number.
+    //
+    // Two facts, both counted from inside: every scored board went through
+    // _resolveCandidate, and every _score call was handed that resolve's
+    // result. The second ply is checked the same way as the first, through
+    // the same function, so the two plies cannot drift apart.
+    var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: W, reaction: 12, depth: 2 });
+    for (var f = 0; f < 300; f++) { cpu.update(); stack.run(); stack.drainEvents(); }
+    while (cpu._walk || cpu.cooldown > 0) { cpu.update(); stack.run(); stack.drainEvents(); }
+
+    var resolves = 0, scored = 0, unresolved = [];
+    var origResolve = cpu._resolveCandidate, origScore = cpu._score;
+    var lastOut = null;
+    cpu._resolveCandidate = function (b) { resolves++; lastOut = origResolve.call(this, b); return lastOut; };
+    cpu._score = function (b, resolved, move) {
+        scored++;
+        if (!resolved || typeof resolved.chainLength !== 'number') {
+            unresolved.push('candidate ' + scored + ' scored with no resolve result');
+        } else if (resolved !== lastOut) {
+            unresolved.push('candidate ' + scored + ' scored against a DIFFERENT board\'s resolve');
+        }
+        return origScore.apply(this, arguments);
+    };
+    cpu._decide();
+    cpu._resolveCandidate = origResolve; cpu._score = origScore;
+
+    assert.ok(scored > 100, 'only ' + scored + ' boards scored — this is not a depth-2 decision');
+    assert.strictEqual(resolves, scored,
+        scored + ' boards were scored but only ' + resolves + ' were resolved — ' +
+        (scored - resolves) + ' were scored in whatever state the swap left them');
+    assert.deepStrictEqual(unresolved.slice(0, 5), [],
+        unresolved.length + ' boards scored against the wrong settle:\n  ' + unresolved.slice(0, 5).join('\n  '));
+});
+
+test('the second ply branches from the board the first ply was SCORED on', function () {
+    // The two must be the same position. If a candidate is scored on one
+    // board and searched from another, its number and its future describe
+    // different games — and nothing about the output would look wrong.
+    //
+    // Run with rise ON, because that is the switch that can separate them:
+    // rise changes the board a candidate leaves, so if it is applied to a
+    // throwaway copy the score sees a risen board and the search sees the
+    // un-risen one, a whole incoming row apart.
+    //
+    // Checked by fingerprint, not by reading the code: _decide scores the
+    // candidates in order before any expansion, so the first N boards
+    // _score sees are the candidates, and _value visits them in the same
+    // order.
+    var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: W, reaction: 12, depth: 2, rise: true });
+    for (var f = 0; f < 300; f++) { cpu.update(); stack.run(); stack.drainEvents(); }
+    while (cpu._walk || cpu.cooldown > 0) { cpu.update(); stack.run(); stack.drainEvents(); }
+
+    var n = cpu._snapshot().legalSwaps().length + 1;
+    var print = function (b) { return JSON.stringify(b.grid); };
+    var asScored = [], k = 0, mismatched = [];
+    var origScore = cpu._score, origValue = cpu._value;
+    cpu._score = function (b, resolved, move) {
+        var out = origScore.call(this, b, resolved, move);
+        if (asScored.length < n) asScored.push(print(b));
+        return out;
+    };
+    cpu._value = function (cand) {
+        if (print(cand.board) !== asScored[k]) {
+            mismatched.push('candidate ' + k + ' was scored on one board and searched from another');
+        }
+        k++;
+        return origValue.call(this, cand);
+    };
+    cpu._decide();
+    cpu._score = origScore; cpu._value = origValue;
+
+    assert.strictEqual(k, n, 'expanded ' + k + ' of ' + n + ' candidates');
+    assert.deepStrictEqual(mismatched.slice(0, 5), [],
+        mismatched.length + ' of ' + n + ' candidates search a position they were not scored on:\n  ' +
+        mismatched.slice(0, 5).join('\n  '));
+});
+
+test('the second move pays travel from where the first move leaves the cursor', function () {
+    // Travel is the only cost this game charges for CHOOSING a move, and a
+    // second ply that treats it as free values a follow-up on the far side
+    // of the board like one under the cursor — so the search would prefer
+    // first moves whose payoff it could never reach in time.
+    //
+    // driveWalk walks to the swap's own cell and swaps there, so after
+    // playing (r,c) the cursor is at (r,c). A hold moves nothing. Both
+    // directions are asserted by watching what travel.cost is actually
+    // asked, which a plausible-looking number cannot satisfy.
+    var travel = require('./travel.js');
+    var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: W, reaction: 12, depth: 2 });
+    for (var f = 0; f < 300; f++) { cpu.update(); stack.run(); stack.drainEvents(); }
+    while (cpu._walk || cpu.cooldown > 0) { cpu.update(); stack.run(); stack.drainEvents(); }
+
+    var board = cpu._snapshot();
+    cpu._incoming = board.incoming || null;
+    var sw = board.legalSwaps()[0];
+    var trial = board.clone();
+    trial.swap(sw[0], sw[1]);
+    var swapCand = { kind: 'swap', move: sw, board: trial,
+                     score: cpu._score(trial, cpu._resolveCandidate(trial), sw) };
+    var held = board.clone();
+    var holdCand = { kind: 'hold', board: held,
+                     score: cpu._score(held, cpu._resolveCandidate(held), null) };
+
+    function originsOf(cand) {
+        var seen = [], orig = travel.cost;
+        travel.cost = function (r0, c0) { seen.push(r0 + ',' + c0); return orig.apply(this, arguments); };
+        try { cpu._value(cand); } finally { travel.cost = orig; }
+        return seen;
+    }
+
+    var afterSwap = originsOf(swapCand);
+    assert.ok(afterSwap.length >= 10,
+        'only ' + afterSwap.length + ' follow-ups were priced — nothing was expanded');
+    var wrong = afterSwap.filter(function (o) { return o !== sw[0] + ',' + sw[1]; });
+    assert.strictEqual(wrong.length, 0,
+        wrong.length + ' of ' + afterSwap.length + ' follow-ups were priced from ' +
+        (wrong[0] || '') + ' instead of ' + sw[0] + ',' + sw[1] + ', the cell the first move ends on');
+
+    var afterHold = originsOf(holdCand);
+    var cursor = stack.curRow + ',' + stack.curCol;
+    var wrongHold = afterHold.filter(function (o) { return o !== cursor; });
+    assert.strictEqual(wrongHold.length, 0,
+        'after a hold the cursor has not moved, but ' + wrongHold.length + ' follow-ups were priced from ' +
+        (wrongHold[0] || '') + ' instead of ' + cursor);
 });
 
 test('depth 1 is the old bot, move for move', function () {
