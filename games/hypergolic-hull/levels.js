@@ -54,16 +54,19 @@
     // from further away than you can hurt it, and it arrives at sector
     // TWO on purpose: the shallow end used to be one Interceptor asked
     // four different ways, so nothing new happened until the crawl. What
-    // makes it fair this early is that it CANNOT move and cannot fire
-    // inside two hexes — the Autocannon you start with is a complete
-    // answer to it, provided you work out that stepping off its axis or
-    // closing on it are the same solution. Plus the first Outpost:
+    // makes it fair this early is that it cannot fire inside two hexes and
+    // only fires every OTHER round — the Autocannon you start with is a
+    // complete answer to it, provided you work out that stepping off its
+    // axis or closing on it are the same solution. Plus the first Outpost:
     // learning that a dock is where capability comes from.
+    //
+    // (It used to say "it CANNOT move". It has carried a sublightDrive
+    // since the Scout was folded into it — see ENEMY_TYPES.picket.)
     {
       id: 2,
       name: "Picket Line",
       // Small, because the lesson is the LINE and nothing else. The archer
-      // reaches five hexes and fires every round it has one, so on a big
+      // reaches five hexes and fires every other round, so on a big
       // board with something else pinning you it simply shoots you to
       // death while you walk — measured, a pilot that didn't know to break
       // the lane never reached the dock. One contact, short distances, and

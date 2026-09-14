@@ -1,10 +1,3 @@
-          // One reactor, so the Lance fires every other round — and the
-          // round in between is spent MOVING, not standing still, which is
-          // the difference the AI makes rather than the hold. It ran on
-          // two for a while, purely so a bearing Scout could always afford
-          // its shot and could never fire-then-give-ground; decideIntent
-          // forbids that directly now (a gun that bears may only close),
-          // so the second generator was buying nothing but damage.
 // engine.js — deterministic hex-tactics engine for Hypergolic Hull.
 //
 // Pure game logic, no DOM/canvas. Runs identically in the browser (attached
@@ -942,13 +935,21 @@
     // reads as broken however correct it is ("the picket just straight up
     // doesn't move"), and reading right beats measuring right.
     //
-    // So it has an engine, and it pays for the engine in TIME. It carries
-    // the Siege Lance, not the Beam Lance: same three hexes down an axis,
-    // same nothing at contact, but three charge instead of two, so on one
-    // generator it fires one round in three and spends the other two
-    // moving. That is exactly "shoot if you're in range, otherwise move"
-    // from the outside, and it is Hoplite's Demolitionist cadence — the
-    // reach is real, and you get two free rounds to do something about it.
+    // So it has an engine, and it pays for the engine in TIME.
+    //
+    // MEASURED CADENCE: fires every OTHER round (2 to 5 down any axis,
+    // nothing at contact), and spends the round in between HOLDING to
+    // charge, not moving — capacity 3 against a Beam Lance costing 3, and
+    // since v0.720 a reactor only ticks on a round its ship held fire.
+    // You get one free round, not two.
+    //
+    // This paragraph used to describe a Siege Lance on one generator
+    // firing one-in-three and moving the other two. None of that was true
+    // of the code below it: there is no siegeLance in WEAPONS, the hold
+    // carries a beamLance and three reactors, and the "spends the other
+    // rounds moving" half predates the hold-to-charge rule entirely. The
+    // numbers above are READ, not remembered: `node cadence.js` prints
+    // every class's real firing rhythm. Re-run it before editing them.
     picket: {
       hull: 1, salvage: 3,
       hold: {
@@ -1186,9 +1187,33 @@
       },
     },
     // Fires ASTERN, which makes it the only class in the game that wants
-    // its back to you. The AI needs no special case for that: decideIntent
-    // already picks a hex the weapon bears from (firingPositions), and for
-    // this hull those hexes are the ones it reaches by withdrawing.
+    // its back to you.
+    //
+    // *** BROKEN: THIS CLASS CANNOT FIRE, ON ANY BOARD, EVER. ***
+    // Measured: 0 damage in 966 rounds across 40 boards against a moving
+    // flagship (`node cadence.js` shows it with an empty rhythm).
+    //
+    // The cause is structural, not tuning, and it is SHARED WITH THE
+    // SAPPER — enemyWeaponsBearing asks "is the flagship standing inside
+    // this weapon's footprint?", which is the wrong question for a gun
+    // that does not point at a ship. Here: enemyFacing() DERIVES a
+    // hostile's heading as "point the nose at the flagship" every time —
+    // enemies have no stored facing — so the flagship is by construction
+    // never behind one, and a REAR_ARC_PATTERN weapon can never bear.
+    // (The sapper's Scuttling Charge is range 0, so its footprint is its
+    // own hex, which the flagship equally can never stand on.)
+    // enemyWeaponsBearing returns empty forever, firingPositions is empty
+    // forever, and this hull falls through to the chase below and closes
+    // on you with its gun pointed the wrong way, for the whole sector.
+    // Verified adjacent at full energy: bearing = [].
+    //
+    // The comment here used to claim "the AI needs no special case for
+    // that: decideIntent already picks a hex the weapon bears from
+    // (firingPositions), and for this hull those hexes are the ones it
+    // reaches by withdrawing." There are no such hexes. Fixing it means
+    // giving enemies a real stored heading, which changes every arc
+    // weapon, the threat overlay and the balance numbers — deliberately
+    // NOT done as a drive-by. Until then this is a 3-salvage pinata.
     outrider: {
       hull: 1, salvage: 3,
       hold: {
@@ -1205,6 +1230,17 @@
     // the Demolitionist throws, this leaves. Same blastSafe inhibition,
     // which matters more here: a charge dropped underfoot catches the
     // dropper unless it checks first.
+    //
+    // *** BROKEN: IT NEVER DROPS ONE. *** Verified standing adjacent to
+    // the flagship at full energy (3/3): enemyWeaponsBearing returns [],
+    // and across 10 rounds `state.charges` stays empty while it shuffles
+    // between two hexes. Same root cause as ENEMY_TYPES.outrider, which
+    // carries the full write-up: the bearing test asks whether the
+    // flagship is inside the weapon's footprint, and a range-0 charge's
+    // footprint is the sapper's OWN hex — somewhere the flagship can
+    // never stand. So it never fires, never holds to charge, and falls
+    // through to the chase forever. Targeting GROUND needs its own
+    // question; it is not a tuning value. (`node cadence.js`.)
     sapper: {
       hull: 1, salvage: 3, inhibition: "blastSafe",
       hold: {
@@ -1230,10 +1266,11 @@
           { id: "sublightDrive", x: 0, y: 1 },
           { id: "microReactor", x: 2, y: 1 },
           { id: "chargeBank", x: 2, y: 2 },
-          // Four to fire the lance, so four on the bus and one a round to
-          // fill it: it shoots every fourth round, and those three rounds
-          // are the whole counterplay — you can see it coming and you have
-          // time to stop being on that axis.
+          // Four to fire the lance, so four on the bus — but TWO reactors,
+          // not one, so the bus fills at 2 a round and it shoots every
+          // THIRD round, not every fourth. Two rounds of counterplay, and
+          // they are the whole counterplay: you can see it coming and you
+          // have time to stop being on that axis. (`node cadence.js`.)
           { id: "microReactor", x: 1, y: 3 },
         ],
       },
@@ -3676,9 +3713,12 @@
     }
     state.turnCount += 1; // a ROUND has passed
     // Enemy reactors tick by exactly the rate their own generators produce
-    // — a Railgun's single Micro Reactor against a 4-energy slug IS the
-    // four-round telegraph; nothing scripts it — but ONLY for whoever
-    // spent this round's one action waiting (see waitedThisPhase above).
+    // — a Railgun's single Micro Reactor against a 5-energy slug IS the
+    // five-round telegraph (so it fires one round in six); nothing scripts
+    // it — but ONLY for whoever spent this round's one action waiting (see
+    // waitedThisPhase above). Run `node cadence.js` in this game's folder
+    // to print what every class's rhythm actually comes out as; the
+    // numbers in these comments have drifted from the crates before.
     // Same rule the flagship plays by: recharging costs the turn you'd
     // otherwise have spent moving or firing, for both sides now, not just
     // one of them.

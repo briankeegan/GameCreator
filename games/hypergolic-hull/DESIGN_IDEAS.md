@@ -6,6 +6,43 @@ Internal working doc. Not user-facing. Reflects the codebase as of this session:
 `generateLevel(depth)` procedural crawl), `app.js` (canvas renderer, threat
 overlay, mode-based targeting for Tractor/Fighter).
 
+> **STATUS, 2026-09-14 — READ THIS BEFORE BELIEVING ANYTHING BELOW.**
+> Most of this document was written against a much earlier build and calls
+> shipped features "unbuilt". Audited against the code; where the two
+> disagree, THE CODE IS RIGHT. Corrected inline below, and in summary:
+>
+> | this doc says | actually |
+> |---|---|
+> | Energy "doesn't exist anywhere yet" | core resource — gauge, per-shot cost, both sides of the board |
+> | 3 Outpost offers | 24 |
+> | "the existing three enemies" | 17 classes |
+> | hazards "never used by any level" | asteroid fields on procedural boards (`hazardDelta`) |
+> | 2 branch variants | 4 (`only`, `quiet`, `drift`, `aggressive`) |
+> | Lance Cannon unbuilt (priority #2) | shipped as Prow Cannon |
+>
+> **Known live defects** (measured, not inferred — `node cadence.js`):
+> two of the 17 classes cannot fire at all, ever. The **Outrider**'s rear
+> arc can never bear because `enemyFacing()` always points a hostile's nose
+> at the flagship, and the **Sapper**'s range-0 charge can never bear
+> because its footprint is its own hex. One shared cause:
+> `enemyWeaponsBearing` assumes every weapon targets the flagship's hex.
+>
+> **Owed from v0.720**, still outstanding: that change made enemy reactors
+> recharge only on a round the ship held fire, and closed with "some classes
+> may need a bigger battery to stay a threat — that's a tuning pass, not
+> blocking this." The tuning pass was never done. Every firing-rhythm number
+> written in prose predates it, which is why the Picket, Impaler and Railgun
+> comments were all wrong until this audit corrected them.
+>
+> ### Cadence is DERIVED, so never type it from memory
+> A class's firing rhythm falls out of its hold — weapon `energyCost`
+> against reactor capacity and recharge, plus the hold-to-charge rule. It is
+> written down nowhere. `node cadence.js` prints the real thing for every
+> class in two seconds; run it before quoting a number. That probe is a
+> reporter, not a gate: declaring an expected rhythm per class and failing
+> the build when the crates stop producing it is the missing third piece
+> (RULE → TOOL → GATE), and is not built.
+
 ## What the research says, and how it maps onto what already exists
 
 - **Into the Breach** is the closest sibling and validates two pillars this
@@ -70,12 +107,14 @@ overlay, mode-based targeting for Tractor/Fighter).
   with existing enemies (an EMP'd Sentry becomes safely walkable for one
   turn) rather than replacing them, in the RoR2 stacking sense above.
 
-## Loadout economy: slots + Energy (Clubhouse brainstorm, unbuilt)
+## Loadout economy: slots + Energy (Clubhouse brainstorm) — BUILT
 
-This is a bigger system than the items below — worth designing properly
-before building, not a quick add. Two currency-like resources, both already
-half-modeled in the data (`WEAPONS[x].slots` and `.energyCost` have existed
-on every weapon entry since the first version, never enforced):
+**Both resources shipped.** Slots became the Hold: a shaped-tile grid where
+a piece of equipment's FOOTPRINT is its cost, not an abstract number.
+Energy became a real bus — a gauge, a per-shot cost, and a Reactor Core you
+spend a whole turn cycling — and it governs BOTH sides of the board, so an
+enemy's firing rhythm is its reactor against its gun (see `cadence.js`).
+Kept below for the reasoning; read it as history, not as a plan.
 
 - **Slots**: every equipped system (weapon, Shield, Jump, whatever) costs
   slots to carry. Total slot capacity starts small and is raised by
@@ -85,10 +124,11 @@ on every weapon entry since the first version, never enforced):
   `slots` field that's been sitting inert in `WEAPONS` since the start.
 - **Energy**: a per-turn(?) resource that active abilities (Shield, Jump)
   spend to trigger, distinct from Hull and separate from salvage (a
-  currency vs. a resource that regenerates). Needs its own design pass —
-  regen rate, cap, whether it's per-turn or per-sector — this doesn't
-  exist anywhere yet (the original design doc explicitly scoped
-  "Hyperjump energy economy" out of MVP and it was never revisited).
+  currency vs. a resource that regenerates). ~~This doesn't exist anywhere
+  yet.~~ BUILT, and the answers to the open questions are: refills to full
+  at every warp jump, never trickles, and comes back mid-sector ONLY by
+  spending a turn on the Reactor Core (+1). Since v0.720 enemies play by
+  the same rule, which is what gives each class its telegraph.
 
 New item ideas that spend these resources:
 
@@ -171,10 +211,13 @@ roster brainstorm also logged: Torpedo Rack (hex-aimed, ammo), Rail Lance
   cheap 1-hp drone every N turns on a deterministic schedule — creates
   escalating pressure and an explicit "kill the source" incentive without
   adding randomness to spawn *timing*.
-- **A second faction, framed narratively** (see below): the existing three
-  enemies (Interceptor, Cruiser, Sentry) already read as one cold,
+- **A second faction, framed narratively** (see below): the existing
+  enemies — ~~three (Interceptor, Cruiser, Sentry)~~ **seventeen** now,
+  each with its own sprite — already read as one cold,
   mechanical faction via their shared color/silhouette language in
-  `app.js` (`drawEnemyFighter`/`drawCruiser`/`drawSentry`). A second
+  `app.js` (`ENEMY_SPRITES`, with the procedural shapes as fallback). The
+  Salvager is the closest thing to the counterpoint this bullet wants and
+  is already unarmed on purpose. A second
   faction — say, salvager-pirates who *want* the wreck salvage you're
   collecting — reframes "kill for salvage" as **contested** salvage rather
   than free loot, and gives Outposts/events a "good guys" counterpart to
@@ -189,32 +232,33 @@ roster brainstorm also logged: Torpedo Rack (hex-aimed, ammo), Rail Lance
   the visible-text-tags version originally sketched here: Clubhouse
   feedback asked for "color coordinated, but maybe not tell people," so
   the difference is real but never labeled in the legend or anywhere else
-  in the UI — discovered by flying them, not read off a tooltip. Still
-  open: only 2 variants exist (aggressive/quiet); a 3rd (e.g. an FTL-style
-  no-combat event node) is a natural next extension of the same
+  in the UI — discovered by flying them, not read off a tooltip. ~~Still
+  open: only 2 variants exist (aggressive/quiet)~~ — FOUR now (`only`,
+  `quiet`, `drift`, `aggressive`); an FTL-style no-combat event node is
+  still the natural next entry in the same
   `BRANCH_VARIANTS` array. Branching is scoped to procedural depth only —
   the hand-authored campaign stays linear on purpose (see below).
 - **Event nodes**: FTL-style non-combat encounters with 2-4 known,
   deterministic outcomes (no hidden dice — pick a branch, get its stated
   result), e.g. "A derelict escort offers to merge crews: +1 Max Hull, but
   Shockwave is offline for this sector." Costs no turns, like the Outpost.
-- **Expand `OUTPOST_OFFER_POOL`**: currently 3 offers (repair/reinforce/
-  shield), already seeded per-level — the cheapest possible extension.
-  Add a weapon-upgrade offer (choose one of two permanent weapon buffs,
-  StS-card-style) and a push/pull trade-off offer (e.g. "+1 Max Hull, but
-  -1 salvage per future kill this run") to make Outpost visits a real
-  build decision, not just a top-up.
-- **Hazard terrain (lava-style blocked tiles)**: the design doc's original
-  `hazards` concept (instant destruction on entry, `hazardAt`/`checkPlayerHazard`
-  already implemented in `engine.js`) has never actually been used by any
-  level — every board today is open floor. This is a real, already-built
-  system sitting unused. Adding hazard tiles to generated/hand-authored
-  levels (visually distinct — the Hoplite reference screenshots used lava)
-  gives boards actual terrain variety and forces real routing decisions
-  (the Tractor Beam pushing an enemy into one becomes a genuine tactic, not
-  just theoretical). Low risk: no engine changes, only level data +
-  rendering a hazard tile distinctly (reuse the outpost/gate custom-art
-  treatment, not an emoji).
+- ~~**Expand `OUTPOST_OFFER_POOL`**: currently 3 offers (repair/reinforce/
+  shield)~~ — LARGELY BUILT: **24** offers now, seeded per-level and
+  staggered by sector. What is still missing from this idea is the
+  *shape* the rest of the bullet describes: every offer is a straight
+  buy, so there is still no push/pull trade-off offer (e.g. "+1 Max Hull,
+  but -1 salvage per future kill this run") and no pick-one-of-two
+  weapon-upgrade offer. That, not the count, is what would make a dock a
+  build decision rather than a top-up.
+- ~~**Hazard terrain (lava-style blocked tiles)**: ... has never actually
+  been used by any level — every board today is open floor.~~ — BUILT for
+  procedural boards: asteroid fields are placed via `hazardDelta` on each
+  `BRANCH_VARIANTS` entry, `drift` sectors run hazard-heavy on purpose, and
+  `isBlockingHazard` gives them two flavours (an asteroid blocks shots and
+  movement; a black hole kills on entry). Still true and still worth doing:
+  the five HAND-AUTHORED sectors are all `hazards: []`, so the tutorial
+  never teaches terrain at all — a player meets their first asteroid in the
+  procedural crawl with nothing having introduced it.
 - **Hyperjump**: in the *original* design doc as a stubbed, disabled action
   ("leap over multiple hexes in a straight line, spending warp energy"),
   deferred for MVP and never revisited. A real "jump a blocked lane"
@@ -264,12 +308,19 @@ hostiles, and gives Outpost/event flavor text somewhere to point.
 
 ## Prioritization: highest impact, least implementation risk
 
-1. **Expand Outpost offers** (weapon-upgrade choice + a trade-off offer) —
-   trivially low risk, the extension point already exists
-   (`OUTPOST_OFFER_POOL` + one `switch` arm in `applyOutpostPurchase`).
-2. **Lance Cannon** (forward-only weapon) — low risk, pure data addition
-   using the existing `WEAPONS`/`pattern`/`facing` system; reuses
-   `setFacing` already built for exactly this purpose.
+This list is STALE — its top two items shipped. Left in place because the
+reasoning is still useful, struck through so nobody works them again.
+
+0. **Fix the two classes that cannot fire** (Outrider, Sapper) — not on
+   the original list because it was written before either existed. It
+   outranks everything below it: two of seventeen hostiles are currently
+   free salvage. See the STATUS block at the top for the shared cause.
+1. ~~**Expand Outpost offers**~~ — the POOL shipped (24 offers); the
+   trade-off and pick-one-of-two *shapes* it describes did not, and those
+   were the actual point. Re-scoped above.
+2. ~~**Lance Cannon** (forward-only weapon)~~ — SHIPPED as the **Prow
+   Cannon** (6 salvage, 1⚡, `FORWARD_ARC_PATTERN`), the cheapest gun in
+   the game and the only one where facing matters.
 3. ~~**Branching sector map**~~ — BUILT (see above).
 4. **Narrative naming pass** (name the existing enemy faction, add a
    couple of intro/flavor lines) — near-zero risk, pure text/data, and
