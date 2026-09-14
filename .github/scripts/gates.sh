@@ -218,6 +218,19 @@ gate_checkpoint_resume() {
   bash games/the-game/ai/eval/checkpoint.test.sh
 }
 
+# THE DEPTH-2 SEARCH ACTUALLY SEARCHES.
+#
+# Its first version had three defects at once — it expanded only the top
+# candidates by IMMEDIATE score, never expanded hold, and compared a
+# depth-1 incumbent against depth-2 challengers — and the test file beside
+# it passed 4/4, because every assertion asked whether lookahead was WIRED
+# and none asked whether it was RIGHT. Wired and correct look identical
+# from outside. This asserts the choice: on real level-10 decisions, no
+# candidate may have a better two-move future than the one it played.
+gate_lookahead() {
+  node games/the-game/ai/eval/lookahead.test.js
+}
+
 # The four constraints a template carries, pinned directly. Two of them were
 # silently unenforced for the matcher's whole first life (Int8Array stamp
 # truncation) and the test nearest the defect could not see it.
@@ -334,6 +347,7 @@ GATES=(
   "the status tool sees a duplicate run:gate_status_tool"
   "the training smoke check accepts and rejects:gate_smoke_checker"
   "a training run that ran out of time can resume:gate_checkpoint_resume"
+  "the depth-2 search picks the best two-move future:gate_lookahead"
   "a garbage break stops the resolve:gate_garbage_rules"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints"
   "the simulation resolves like the game:gate_resolve_fidelity"

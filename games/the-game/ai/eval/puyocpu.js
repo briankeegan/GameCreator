@@ -70,7 +70,14 @@
     // weights were trained as and identity.golden.json records; anything
     // higher is opt-in per instance. beam bounds the cost — see _lookahead.
     this.depth = opts.depth || 1;
-    this.beam = opts.beam || 6;
+    // NO BEAM BY DEFAULT. A beam over the IMMEDIATE ranking is exactly the
+    // wrong filter for a search whose entire purpose is finding the move
+    // that looks poor now and pays next move — measured on real level-10
+    // play, the best two-move future ranked as low as #27 of 29 by
+    // immediate score. Full expansion is ~900 clone+resolve pairs a
+    // decision, which LogicalBoard does in ~15ms; a cap is opt-in for the
+    // engine path, where a candidate costs 1.27ms instead of 0.017ms.
+    this.beam = opts.beam || 0;
     // RISE-ADJUSTED SCORING, OFF BY DEFAULT — see _score. Opt-in for the
     // same reason lookahead is: turning it on produces a different bot, so
     // the weights trained without it stop describing what plays. Default
@@ -270,9 +277,13 @@
   //       3 swaps    4 puzzles
   //       4+/never  54 puzzles
   //
-  // Six trained runs bear that out: depth 2 fires 19-22 chains of 84 and
-  // depth 1 fires 21-22, with the seed spread swallowing the difference.
-  // Depth 2 is not broken; there is almost nothing within its reach.
+  // WHAT THE SIX TRAINED DEPTH-2 RUNS MEASURED, AND WHY IT IS VOID. They
+  // found depth 2 no better than depth 1 and that was read as "there is
+  // almost nothing within its reach". Every one of them ran against a
+  // _lookahead with three defects (see below), the worst of which expanded
+  // only the candidates that already looked best — a filter against the
+  // exact move a search exists to find. They measured a broken search, so
+  // they say nothing about depth. Depth 2 has to be trained again.
   //
   // Going deeper is closed by arithmetic rather than tuning: ~30 legal
   // swaps a ply is ~810,000 boards per decision at depth 4, against an
@@ -309,12 +320,16 @@
   // size: expand the most promising candidates one move further and choose
   // on the best board reachable in TWO moves rather than in one.
   //
-  // WHY A BEAM AND NOT EVERY BRANCH. ~35 legal swaps means ~1,200 full
-  // clone+resolve pairs at depth 2, and the worst decision already costs
-  // 8ms of an 85ms budget. The beam keeps the top BEAM candidates by
-  // immediate score and expands only those, which is exactly what beam
-  // search is for — and it is measured rather than assumed, in
-  // lookahead.test.js.
+  // AND NO BEAM, which is where the first version went wrong. ~30 legal
+  // swaps means ~900 clone+resolve pairs at depth 2 — 15ms under
+  // LogicalBoard, which is affordable — so every candidate is expanded and
+  // every candidate is valued the same way. A beam over the IMMEDIATE
+  // ranking is the one filter a search like this must not have: the move
+  // worth finding is the one that scores modestly now and pays next move,
+  // and it ranked as low as #27 of 29 on real level-10 boards. A beam
+  // stays available for the engine path (1.27ms a candidate), never drops
+  // hold, and is asserted in lookahead.test.js to still choose the best
+  // future among what it kept.
   //
   // DEPTH 1 IS THE OLD BOT, EXACTLY. Not approximately: the depth-1 path
   // is the original loop untouched, so every existing result, the shipped
@@ -338,7 +353,11 @@
     var best = { kind: 'hold' };
     var bestScore = this._score(holdBoard, holdResolved, null);
 
-    var deeper = this.depth > 1 ? [] : null;
+    // HOLD IS CANDIDATE ZERO, not a separate case carried alongside the
+    // others. It was the separate case, and that is how it ended up judged
+    // one move deep while every swap was judged two — waiting always
+    // looked worse than acting, and waiting is how a chain gets built.
+    var cands = [{ kind: 'hold', score: bestScore, board: holdBoard }];
 
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
@@ -346,58 +365,80 @@
       trial.swap(r, c);
       var resolved = this._resolveCandidate(trial);
       var s = this._score(trial, resolved, [r, c]);
-      if (deeper) deeper.push({ score: s, move: [r, c], board: trial });
+      cands.push({ kind: 'swap', score: s, move: [r, c], board: trial });
       // Strictly greater, so a tie leaves the incumbent standing rather
       // than handing the decision to whichever swap legalSwaps() happened
       // to list first — list order is not a preference.
       if (s > bestScore) { bestScore = s; best = { kind: 'swap', move: [r, c] }; }
     }
 
-    if (!deeper || !deeper.length) return best;
-    return this._lookahead(deeper, best, bestScore);
+    if (this.depth <= 1) return best;
+    return this._lookahead(cands);
   };
 
-  // Expand the beam one move further and re-choose on what is REACHABLE.
+  // WHAT A CANDIDATE IS WORTH WHEN YOU LOOK ONE MOVE FURTHER.
   //
-  // A candidate's value becomes the best board it can lead to next move,
-  // not the board it leaves. That is the whole difference between "take
-  // the chain that exists" and "keep the position that pays" — a move
-  // which scores modestly now but opens a big clear beats one that banks
-  // a small clear and leaves nothing.
+  // The best board reachable from it next move, or its own score when
+  // nothing is reachable — a dead end is worth what it is, not nothing, or
+  // the search refuses positions for a reason it does not have.
   //
-  // HOLD is left out of the expansion on purpose: it is already scored at
-  // depth 1, and the board it leaves is the board we are standing on, so
-  // expanding it would re-derive this same decision one ply down.
-  PuyoCpu.prototype._lookahead = function (cands, best, bestScore) {
-    cands.sort(function (a, b) { return b.score - a.score; });
-    var beam = Math.min(this.beam, cands.length);
-    var bestFuture = bestScore, chosen = best;
-
-    for (var i = 0; i < beam; i++) {
-      var cand = cands[i];
-      var next = cand.board.legalSwaps();
-      // A dead end is worth what it is, not nothing: a candidate with no
-      // legal follow-up keeps its own score rather than being discarded,
-      // or the search would refuse positions it has no reason to refuse.
-      var futureBest = cand.score;
-      for (var j = 0; j < next.length; j++) {
-        var child = cand.board.clone();
-        child.swap(next[j][0], next[j][1]);
-        var childResolved = this._resolveCandidate(child);
-        // The follow-up's travel is not priced. The cursor's position
-        // after the first move is not known here — it depends on where
-        // the walk actually ends — and inventing one would put a made-up
-        // number into the comparison. The FIRST move still pays its real
-        // travel cost at depth 1, which is the move actually being made.
-        var f = this._score(child, childResolved, null);
-        if (f > futureBest) futureBest = f;
-      }
-      if (futureBest > bestFuture) {
-        bestFuture = futureBest;
-        chosen = { kind: 'swap', move: cand.move };
-      }
+  // The follow-up's travel is not priced. The cursor's position after the
+  // first move is not known here — it depends on where the walk actually
+  // ends — and inventing one would put a made-up number into the
+  // comparison. The FIRST move still pays its real travel cost, which is
+  // the move actually being made.
+  PuyoCpu.prototype._value = function (cand) {
+    var next = cand.board.legalSwaps();
+    var v = cand.score;
+    for (var j = 0; j < next.length; j++) {
+      var child = cand.board.clone();
+      child.swap(next[j][0], next[j][1]);
+      var f = this._score(child, this._resolveCandidate(child), null);
+      if (f > v) v = f;
     }
-    return chosen;
+    return v;
+  };
+
+  // CHOOSE ON THE BEST TWO-MOVE FUTURE — and value EVERY candidate that
+  // way, or the comparison is between two different quantities.
+  //
+  // The previous version got all three of those wrong at once, and passed
+  // a test file that only ever asked whether it was wired:
+  //
+  //   1. it expanded the top BEAM candidates BY IMMEDIATE SCORE. The move
+  //      worth searching for is the one that scores modestly now and opens
+  //      a big clear next — on real level-10 play the best two-move future
+  //      ranked as low as #27 of 29 by immediate score, so the beam was a
+  //      filter against the only thing the search exists to find;
+  //   2. hold was never expanded, so waiting was priced one move deep
+  //      against swaps priced two;
+  //   3. the incumbent was carried as a depth-1 number and challengers
+  //      compared as depth-2 numbers.
+  //
+  // Ties keep the earlier candidate, and candidate order is hold first
+  // then legalSwaps() order — the same rule depth 1 uses, so the two
+  // depths break ties the same way.
+  PuyoCpu.prototype._lookahead = function (cands) {
+    var expand = cands, i;
+    // An explicit beam bounds the cost for the engine path. It never drops
+    // hold: leaving the do-nothing move out of the pool is defect 2 in a
+    // cheaper disguise.
+    if (this.beam && this.beam < cands.length) {
+      var ranked = cands.slice().sort(function (a, b) { return b.score - a.score; });
+      for (i = 0; i < cands.length; i++) cands[i]._keep = false;
+      for (i = 0; i < this.beam; i++) ranked[i]._keep = true;
+      cands[0]._keep = true;
+      // Filtered rather than taken from the ranking, so the pool stays in
+      // candidate order and ties break as they do at depth 1.
+      expand = cands.filter(function (c) { return c._keep; });
+    }
+
+    var chosen = expand[0], bestValue = this._value(expand[0]);
+    for (i = 1; i < expand.length; i++) {
+      var v = this._value(expand[i]);
+      if (v > bestValue) { bestValue = v; chosen = expand[i]; }
+    }
+    return chosen.kind === 'hold' ? { kind: 'hold' } : { kind: 'swap', move: chosen.move };
   };
 
   PuyoCpu.prototype.update = function () {
