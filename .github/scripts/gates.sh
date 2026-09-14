@@ -231,6 +231,20 @@ gate_lookahead() {
   node games/the-game/ai/eval/lookahead.test.js
 }
 
+# THE RUN RECORDS WHAT KIND OF GARBAGE IT SENT, NOT JUST HOW MUCH.
+#
+# Score cannot say whether the bot learned to CHAIN: one that survives on
+# small clears scores respectably and never fires a four-chain. Every chain
+# the current bot fires is 2-3 links and the 4-6 and 7+ buckets are empty, so
+# a batch of runs judged on score alone produces numbers that all rise while
+# that does not move. The breakdown must be the garbage the Stack actually
+# delivered — an object of zeroes satisfies "it exists" — and it must survive
+# the fork to train_worker.js, which is where depth and beam were silently
+# eaten before.
+gate_chain_depth() {
+  node games/the-game/ai/eval/chaindepth.test.js
+}
+
 # The four constraints a template carries, pinned directly. Two of them were
 # silently unenforced for the matcher's whole first life (Int8Array stamp
 # truncation) and the test nearest the defect could not see it.
@@ -348,6 +362,7 @@ GATES=(
   "the training smoke check accepts and rejects:gate_smoke_checker"
   "a training run that ran out of time can resume:gate_checkpoint_resume"
   "the depth-2 search picks the best two-move future:gate_lookahead"
+  "a run records what kind of garbage it sent:gate_chain_depth"
   "a garbage break stops the resolve:gate_garbage_rules"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints"
   "the simulation resolves like the game:gate_resolve_fidelity"

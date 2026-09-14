@@ -825,6 +825,28 @@ function report(isFinal, cb) {
         // that is what belongs here. puzzles.play.js stays as a standalone tool
         // for the question it genuinely answers — can the bot take a chain that
         // is already on the board — just not as a training-run headline.
+        //
+        // THAT IS NOW WIRED. bench.js classifies every piece of garbage the
+        // Stack actually delivers, across the same held-out games this report
+        // is built from, and the counts arrive on the fitness result. Nothing
+        // extra is played for it: the records were already being produced and
+        // reduced to a cell count on the next line.
+        //
+        // It is a READING, not a verdict — the same standing as trainFitness.
+        // Nothing selects on it. What it answers is the question score cannot:
+        // as of the depth-1 run, every chain is 2-3 links and the 4-6 and 7+
+        // buckets are empty, and a score that doubles without those moving is
+        // not the progress that was asked for.
+        var cd = learned.chainDepth, scd = shipped.chainDepth;
+        if (cd) {
+            var reportMod = require('../experiments/report.js');
+            console.log('\n=== WHAT IT SENT, by kind (held-out games) ===');
+            reportMod.CATEGORY_ORDER.forEach(function (c) {
+                console.log('  ' + reportMod.CATEGORY_LABEL[c].padEnd(22) +
+                            ' shipped ' + String((scd && scd[c]) || 0).padStart(5) +
+                            '   learned ' + String(cd[c] || 0).padStart(5));
+            });
+        }
         out.lostCategories = lost;
         if (lost.length) {
             console.log('  ^ LOSES TO SHIPPED ON: ' + lost.join(', ') +

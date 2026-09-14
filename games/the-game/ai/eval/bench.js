@@ -55,6 +55,7 @@
 // and this benchmark does not exercise. Weights learned here govern the
 // offensive search and nothing else.
 var path = require('path');
+var report = require('../experiments/report.js');
 var GAME = path.join(__dirname, '..', '..');
 require(path.join(GAME, 'panel-engine.js'));
 require(path.join(GAME, 'panel-cpu.js'));
@@ -362,6 +363,19 @@ exports.run = function (weights, seed, opts) {
     else PanelCpu.SearchCpu.prototype._choose = timed(origChoose);
 
     var f, sent = 0;
+    // WHAT KIND OF GARBAGE, not just how much. The records are right here
+    // and were being reduced to a cell count on the next line — the same
+    // "present, correct, quietly discarded one layer down" shape that lost
+    // stopTimeEarned and brokeGarbage. Score cannot tell you whether the bot
+    // learned to CHAIN: one that survives and makes small clears scores
+    // respectably and never fires a 4-chain, so a run judged on score alone
+    // reports progress that is not the progress asked for.
+    //
+    // Classified by report.js's own classify(), never a second copy of the
+    // rule — combo garbage is 1-row slabs 3-6 wide, chain garbage is 6 wide
+    // and one row per link, and those break points are the engine's.
+    var chainDepth = {};
+    report.CATEGORY_ORDER.forEach(function (c) { chainDepth[c] = 0; });
     try {
         // NO FRAME CAP. The reference plays a FULL game — step 2 is "play a
         // full game with them" — and it ends when the board tops out.
@@ -400,7 +414,10 @@ exports.run = function (weights, seed, opts) {
             stack.run();
             var out = stack.takeDeliverableGarbage();
             if (out && out.length) {
-                for (var i = 0; i < out.length; i++) sent += out[i].width * out[i].height;
+                for (var i = 0; i < out.length; i++) {
+                    sent += out[i].width * out[i].height;
+                    chainDepth[report.classify(out[i])]++;
+                }
             }
             stack.drainEvents();
             if (stack.gameOver) break;
@@ -427,6 +444,7 @@ exports.run = function (weights, seed, opts) {
         if (detach) detach();
     }
     return { frames: f, sent: sent, score: stack.score || 0, died: !!stack.gameOver,
+             chainDepth: chainDepth,
              localMax: localMax, unsafe: checkTiming && localMax > TIMING_MARGIN_MS };
 };
 
@@ -501,6 +519,20 @@ exports.ARENA = ['comboStorm', 'factory', 'bigBlocks', 'endless'];
 // are worth. Puyo does not reweight its own scoring to make each board
 // count equally either.
 
+// Chain-depth buckets add rather than average: they are COUNTS of pieces
+// sent, so the honest aggregate across seeds or categories is the total,
+// not a mean of totals.
+function addChainDepth(into, from) {
+    if (!from) return into;
+    report.CATEGORY_ORDER.forEach(function (c) { into[c] = (into[c] || 0) + (from[c] || 0); });
+    return into;
+}
+function zeroChainDepth() {
+    var z = {};
+    report.CATEGORY_ORDER.forEach(function (c) { z[c] = 0; });
+    return z;
+}
+
 exports.fitness = function (weights, seeds, opts) {
     seeds = seeds || exports.SEEDS;
     opts = opts || {};
@@ -514,13 +546,16 @@ exports.fitness = function (weights, seeds, opts) {
     if (opts.arena) {
         var cats = Array.isArray(opts.arena) ? opts.arena : exports.ARENA;
         var per = {}, total = 0, allFrames = 0, allSent = 0, allDeaths = 0, games = 0;
+        var allChainDepth = zeroChainDepth();
         for (var c = 0; c < cats.length; c++) {
             var sub = Object.assign({}, opts, { arena: null, scenario: cats[c] });
             var r = exports.fitness(weights, seeds, sub);
             if (r.error) return { fitness: 0, error: r.error };
             if (r.unsafe) return { fitness: 0, unsafe: true };
             per[cats[c]] = { raw: r.fitness, avgFrames: r.avgFrames,
-                             avgSent: r.avgSent, deathRate: r.deathRate };
+                             avgSent: r.avgSent, deathRate: r.deathRate,
+                             chainDepth: r.chainDepth };
+            addChainDepth(allChainDepth, r.chainDepth);
             total += r.fitness;
             allFrames += r.avgFrames; allSent += r.avgSent; allDeaths += r.deathRate;
             games++;
@@ -535,11 +570,13 @@ exports.fitness = function (weights, seeds, opts) {
             perCategory: per,
             avgFrames: allFrames / games,
             avgSent: allSent / games,
+            chainDepth: allChainDepth,
             deathRate: allDeaths / games
         };
     }
 
     var frames = 0, sent = 0, score = 0, deaths = 0, i, r;
+    var chainDepth = zeroChainDepth();
     for (i = 0; i < seeds.length; i++) {
         r = exports.run(weights, seeds[i], opts);
         if (r.error) return { fitness: 0, error: r.error };
@@ -547,6 +584,7 @@ exports.fitness = function (weights, seeds, opts) {
         frames += r.frames;
         sent += r.sent;
         score += r.score;
+        addChainDepth(chainDepth, r.chainDepth);
         if (r.died) deaths++;
     }
     var n = seeds.length;
@@ -569,6 +607,10 @@ exports.fitness = function (weights, seeds, opts) {
         avgFrames: frames / n,
         avgSent: sent / n,
         avgScore: score / n,
+        // WHAT KIND of garbage it sent, not just how much — see the block
+        // above the collection in run(). Score alone cannot say whether the
+        // bot learned to chain.
+        chainDepth: chainDepth,
         deathRate: deaths / n
     };
 };
