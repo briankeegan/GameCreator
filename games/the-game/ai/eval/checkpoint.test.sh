@@ -46,24 +46,41 @@ note() { echo "  FAIL: $*"; fails=$((fails + 1)); }
 
 MODE=replace
 # THE NAME CARRIES A HASH OF THE SEARCH'S FINGERPRINT (train.js
-# checkpointPath), so there is no single filename to watch — glob instead.
-# A run's checkpoint is the only one matching its own config, and a finished
-# search removes its own.
-ckptPath() { ls .train-checkpoint.${MODE}.*.json 2>/dev/null | head -1; }
-ckptCount() { ls .train-checkpoint.${MODE}.*.json 2>/dev/null | wc -l; }
+# checkpointPath), so there is no single filename to watch. What there IS, is
+# a clean line between the checkpoints this test creates and any that were
+# already here.
+#
+# THIS TEST MUST NEVER DELETE A CHECKPOINT IT DID NOT CREATE, and the first
+# version did. It globbed `rm -f .train-checkpoint.${MODE}.*.json` at four
+# points and leaned on a copy in `mktemp -d` to put back whatever it
+# destroyed. That is the repo's own os.tmpdir rule being broken in a shell
+# script: the copy lives outside the tree, and if it is gone when the trap
+# fires — a cleaned temp dir, a killed run, a job cancellation — the restore
+# silently restores nothing and the checkpoint is simply lost. Worse, it
+# cascades: once the file is missing at the next run's start, there is
+# nothing to save, so every later run also "restores" nothing. A live
+# training checkpoint was deleted this way, by the very test whose subject
+# is checkpoints not being deleted.
+#
+# So: anything on disk when this starts is FOREIGN and untouchable, and the
+# test only ever looks at, and only ever removes, what appeared after. There
+# is nothing to save and therefore nothing to fail to restore.
+FOREIGN=" $(ls .train-checkpoint.${MODE}.*.json 2>/dev/null | tr '\n' ' ')"
+ours() {
+  local f
+  for f in $(ls .train-checkpoint.${MODE}.*.json 2>/dev/null); do
+    case "$FOREIGN" in *" $f "*) ;; *) echo "$f" ;; esac
+  done
+}
+ckptPath()  { ours | head -1; }
+ckptCount() { ours | wc -l; }
+clearOurs() { local f; for f in $(ours); do rm -f "$f"; done; }
 
-# A scratch directory is not possible here — train.js writes beside itself — so
-# save and restore anything already on disk. Someone running this mid-search
-# must not lose their checkpoint to a test.
-SAVEDIR="$(mktemp -d)"
-cp .train-checkpoint.${MODE}.*.json "$SAVEDIR"/ 2>/dev/null || true
-restore() {
-  rm -f .train-checkpoint.${MODE}.*.json
-  cp "$SAVEDIR"/*.json . 2>/dev/null || true
-  rm -rf "$SAVEDIR"
+cleanup() {
+  clearOurs
   rm -f trained.${MODE}.checkpoint-test.*.smoke.json trained.${MODE}.roundtrip.*.smoke.json
 }
-trap restore EXIT
+trap cleanup EXIT
 
 # GENERATIONS, POPULATION, MODE AND WORKERS ARE POSITIONAL ARGUMENTS, not
 # environment variables: `node train.js [generations] [population] [mode]
@@ -86,7 +103,7 @@ LASTLOG=""
 outOfTimeRun() {  # outOfTimeRun [extra env assignments...]
   local secs
   for secs in 15 45 120; do
-    rm -f .train-checkpoint.${MODE}.*.json
+    clearOurs
     LASTLOG="$(mktemp)"
     train 1000 "$LASTLOG" GC_DEADLINE=$(( $(date +%s) + secs )) "$@"
     local gen
@@ -113,7 +130,7 @@ fi
 # Generations exhausted is a real completion. Keeping the checkpoint here would
 # make every later run resume a search that already answered.
 echo "2) a run whose SEARCH FINISHED clears its checkpoint"
-rm -f .train-checkpoint.${MODE}.*.json
+clearOurs
 log2="$(mktemp)"
 train 1 "$log2"
 if grep -q "written to trained" "$log2"; then
@@ -137,14 +154,21 @@ probedir="$(mktemp -d)"
 probe="$probedir/hook.sh"
 cat > "$probe" <<'HOOK'
 #!/usr/bin/env bash
+# Only a checkpoint THIS TEST created counts. GC_FOREIGN lists the ones that
+# were already here, so a bystander file cannot make this report PRESENT
+# while the run's own checkpoint is missing.
 cd "$(dirname "$1")" || exit 0
-if ls .train-checkpoint.replace.*.json >/dev/null 2>&1; then echo "CHECKPOINT-PRESENT" >> "$GC_PROBE_OUT"
+found=""
+for f in $(ls .train-checkpoint.replace.*.json 2>/dev/null); do
+  case " $GC_FOREIGN " in *" $f "*) ;; *) found="$f" ;; esac
+done
+if [ -n "$found" ]; then echo "CHECKPOINT-PRESENT" >> "$GC_PROBE_OUT"
 else echo "CHECKPOINT-MISSING" >> "$GC_PROBE_OUT"; fi
 exit 0
 HOOK
 chmod +x "$probe"
 probeout="$(mktemp)"
-if outOfTimeRun GC_SNAPSHOT_HOOK="$probe" GC_PROBE_OUT="$probeout" GC_SNAPSHOT_EVERY=1; then
+if outOfTimeRun GC_SNAPSHOT_HOOK="$probe" GC_PROBE_OUT="$probeout" GC_FOREIGN="$FOREIGN" GC_SNAPSHOT_EVERY=1; then
   if grep -q CHECKPOINT-PRESENT "$probeout" 2>/dev/null; then
     echo "     ok: the hook found it"
   elif grep -q CHECKPOINT-MISSING "$probeout" 2>/dev/null; then
