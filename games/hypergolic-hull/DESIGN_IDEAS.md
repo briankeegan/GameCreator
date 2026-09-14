@@ -20,12 +20,16 @@ overlay, mode-based targeting for Tractor/Fighter).
 > | 2 branch variants | 4 (`only`, `quiet`, `drift`, `aggressive`) |
 > | Lance Cannon unbuilt (priority #2) | shipped as Prow Cannon |
 >
-> **Known live defects** (measured, not inferred — `node cadence.js`):
-> two of the 17 classes cannot fire at all, ever. The **Outrider**'s rear
-> arc can never bear because `enemyFacing()` always points a hostile's nose
-> at the flagship, and the **Sapper**'s range-0 charge can never bear
-> because its footprint is its own hex. One shared cause:
-> `enemyWeaponsBearing` assumes every weapon targets the flagship's hex.
+> **Fixed 2026-09-14** (measured — `node cadence.js`): two of the 17 classes
+> could not fire at all, ever. The **Outrider**'s rear arc could never bear
+> because `enemyFacing()` derived every heading as "nose at the flagship";
+> `facingFrom` now lets a hull fly the heading that brings its armament to
+> bear, choosing between nose-on and reversed only, so arcs keep their blind
+> sides. The **Sapper** needed four fixes, because `placesSelf` had been
+> built for the player and never for the enemy side — the bearing test, the
+> phase's re-check before executing, `blastSafe`'s centre, and the drop
+> itself. Every armed class lands shots now; win rate moved 26→27 of 60,
+> i.e. not at all.
 >
 > **Owed from v0.720**, still outstanding: that change made enemy reactors
 > recharge only on a round the ship held fire, and closed with "some classes
@@ -311,7 +315,7 @@ hostiles, and gives Outpost/event flavor text somewhere to point.
 This list is STALE — its top two items shipped. Left in place because the
 reasoning is still useful, struck through so nobody works them again.
 
-0. **Fix the two classes that cannot fire** (Outrider, Sapper) — not on
+0. ~~**Fix the two classes that cannot fire** (Outrider, Sapper)~~ — DONE, see the STATUS block. Was not on
    the original list because it was written before either existed. It
    outranks everything below it: two of seventeen hostiles are currently
    free salvage. See the STATUS block at the top for the shared cause.

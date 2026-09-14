@@ -36,18 +36,11 @@
 //            purpose, so "landed nothing" is the correct answer for it.
 // So: unarmed hulls are classified from their hold and never counted as
 // silent, and every armed one is tried BOTH standing off and walking in.
-// A class is only reported silent if it has a damaging weapon and lands
-// nothing in either rig — which leaves TWO, outrider and sapper, and they
-// are broken for one shared reason: enemyWeaponsBearing asks "is the
-// flagship standing inside this weapon's footprint?", which is the wrong
-// question for a gun that does not point at a ship.
-//   outrider — rear arc, and enemyFacing() always points the nose at the
-//              flagship, so the flagship is never behind it;
-//   sapper   — scuttlingCharge is range 0 (it mines the hex it stands on),
-//              and the flagship can never stand on an enemy's hex.
-// Both come out with an empty `bearing` list on every board, forever, and
-// fall through to chasing you with a gun they will never fire. Verified
-// adjacent at full energy: bearing = []. See ENEMY_TYPES.outrider.
+// That distinction is what let this probe find the two classes that could
+// not fire AT ALL — the outrider (rear arc, and facing was derived as
+// "nose at the flagship", so it could never bear) and the sapper (a
+// range-0 charge whose footprint is its own hex). Both are fixed; every
+// armed class lands shots now, and this is what proves it stays that way.
 //
 // It is a PROBE, not a gate: it reports, it asserts nothing. Declaring an
 // expected rhythm per class and failing the build when the crates stop

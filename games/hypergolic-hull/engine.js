@@ -1189,31 +1189,22 @@
     // Fires ASTERN, which makes it the only class in the game that wants
     // its back to you.
     //
-    // *** BROKEN: THIS CLASS CANNOT FIRE, ON ANY BOARD, EVER. ***
-    // Measured: 0 damage in 966 rounds across 40 boards against a moving
-    // flagship (`node cadence.js` shows it with an empty rhythm).
-    //
-    // The cause is structural, not tuning, and it is SHARED WITH THE
-    // SAPPER — enemyWeaponsBearing asks "is the flagship standing inside
-    // this weapon's footprint?", which is the wrong question for a gun
-    // that does not point at a ship. Here: enemyFacing() DERIVES a
-    // hostile's heading as "point the nose at the flagship" every time —
-    // enemies have no stored facing — so the flagship is by construction
-    // never behind one, and a REAR_ARC_PATTERN weapon can never bear.
-    // (The sapper's Scuttling Charge is range 0, so its footprint is its
-    // own hex, which the flagship equally can never stand on.)
-    // enemyWeaponsBearing returns empty forever, firingPositions is empty
-    // forever, and this hull falls through to the chase below and closes
-    // on you with its gun pointed the wrong way, for the whole sector.
-    // Verified adjacent at full energy: bearing = [].
-    //
-    // The comment here used to claim "the AI needs no special case for
-    // that: decideIntent already picks a hex the weapon bears from
+    // It could not fire, on any board, ever — 0 damage in 966 rounds
+    // across 40 boards — because enemyFacing() DERIVED every hostile's
+    // heading as "nose at the flagship", so the flagship was by
+    // construction never behind one and a REAR_ARC_PATTERN weapon could
+    // never bear. It closed on you for whole sectors with its gun pointed
+    // permanently the wrong way, and the comment here cheerfully claimed
+    // "decideIntent already picks a hex the weapon bears from
     // (firingPositions), and for this hull those hexes are the ones it
-    // reaches by withdrawing." There are no such hexes. Fixing it means
-    // giving enemies a real stored heading, which changes every arc
-    // weapon, the threat overlay and the balance numbers — deliberately
-    // NOT done as a drive-by. Until then this is a 3-salvage pinata.
+    // reaches by withdrawing." There were no such hexes.
+    //
+    // Fixed in facingFrom: a hull now flies the heading that brings its
+    // armament to bear, chosen between exactly two options — nose-on or
+    // reversed — so a stern gun turns its back to you and every arc in
+    // the game keeps its blind side. Nose-on wins ties, so no other class
+    // changed heading. It fires every other round now, and the threat
+    // overlay marks it (verified: 5 hits, 0 unwarned).
     outrider: {
       hull: 1, salvage: 3,
       hold: {
@@ -1231,16 +1222,21 @@
     // which matters more here: a charge dropped underfoot catches the
     // dropper unless it checks first.
     //
-    // *** BROKEN: IT NEVER DROPS ONE. *** Verified standing adjacent to
-    // the flagship at full energy (3/3): enemyWeaponsBearing returns [],
-    // and across 10 rounds `state.charges` stays empty while it shuffles
-    // between two hexes. Same root cause as ENEMY_TYPES.outrider, which
-    // carries the full write-up: the bearing test asks whether the
-    // flagship is inside the weapon's footprint, and a range-0 charge's
-    // footprint is the sapper's OWN hex — somewhere the flagship can
-    // never stand. So it never fires, never holds to charge, and falls
-    // through to the chase forever. Targeting GROUND needs its own
-    // question; it is not a tuning value. (`node cadence.js`.)
+    // It never dropped one, for the whole of its existence, and it took
+    // FOUR fixes because `placesSelf` had been built for the player and
+    // never once for the enemy side. Each of the four independently
+    // guaranteed silence, so fixing any three changed nothing:
+    //   1. the bearing test asked whether the flagship stood inside the
+    //      weapon's footprint — a range-0 charge's footprint is the
+    //      sapper's OWN hex, somewhere the flagship can never be;
+    //   2. the PHASE re-asked the same wrong question before executing an
+    //      attack already chosen, and silently dropped it (both callers
+    //      share `weaponBearsOn` now, which is why that can't recur);
+    //   3. `blastSafe` measured the blast around the FLAGSHIP, because
+    //      the Demolitionist throws — this one leaves one underfoot;
+    //   4. the drop itself placed the charge on the flagship's hex, so had
+    //      it ever fired it would have thrown like a Demolitionist.
+    // It now starts salting the ground at two hexes out. (`node cadence.js`)
     sapper: {
       hull: 1, salvage: 3, inhibition: "blastSafe",
       hold: {
@@ -1406,8 +1402,22 @@
     // will happily stand inside its own blast.
     blastSafe: (state, enemy, weapon) => {
       if (!weapon.places) return false;
-      const blast = chargeBlastHexes(state, { q: state.playerPos.q, r: state.playerPos.r, blast: weapon.blast || 1 });
-      return livingEnemies(state).some((other) => blast.some((h) => posEq(h, other)));
+      // WHERE the charge lands decides whose blast this is. The
+      // Demolitionist THROWS, so it is centred on the flagship; the Sapper
+      // LEAVES one underfoot, so it is centred on the Sapper. Centring
+      // both on the flagship — which is what this did — asked the Sapper
+      // whether a bomb it is not dropping there would catch a friend.
+      const centre = weapon.placesSelf ? enemy : state.playerPos;
+      const blast = chargeBlastHexes(state, { q: centre.q, r: centre.r, blast: weapon.blast || 1 });
+      // The dropper is standing ON a charge it leaves behind, and the fuse
+      // is two rounds precisely so it can walk off it. Counting itself
+      // would inhibit the Sapper on every hex in the game — it is always
+      // at the centre of its own blast — which is the same "never fires"
+      // bug wearing a different hat. Its WINGMEN still stop it.
+      const ownBlast = Boolean(weapon.placesSelf);
+      return livingEnemies(state).some(
+        (other) => !(ownBlast && other === enemy) && blast.some((h) => posEq(h, other))
+      );
     },
     // The Cutter's: it will not fire while any hostile is standing anywhere
     // in the beam it is about to fire. Not a proximity rule — a POSITION
@@ -1432,44 +1442,90 @@
     return livingEnemies(state).some((other) => other !== enemy && covered.some((h) => posEq(h, other)));
   }
 
+  // DOES THIS GUN BEAR ON THAT HEX? Asked in two places — when a hostile
+  // DECIDES to shoot (enemyWeaponsBearing) and again when the phase
+  // EXECUTES the shot — and the two used to carry their own copy of the
+  // test. That is exactly how the Sapper ended up choosing an attack every
+  // round and having it silently dropped on the way out: the decision had
+  // been taught about placesSelf and the execution had not. One predicate,
+  // both callers, so they cannot drift apart again.
+  function weaponBearsOn(state, enemy, weapon, facing, at) {
+    // A charge dropped on the dropper's OWN hex has nothing to aim at, so
+    // "is the flagship inside this weapon's footprint" is the wrong
+    // question — a range-0 footprint is its own hex, somewhere the
+    // flagship can never stand, which is why the Sapper never fired once.
+    // The player's side already knew this (weaponsWithTargets:
+    // `if (weapon.placesSelf) return true`); the enemy's side never did.
+    //
+    // It bears when the ground it is standing on is ground you are about
+    // to cross — within one hex of the blast it would leave. Not "always",
+    // which would have it salting empty space at 2 energy a go halfway
+    // across the board; this is the class that mines the ground it stands
+    // on, so the mine has to be somewhere you are going. blast 1 means it
+    // starts laying them at two hexes out.
+    if (weapon.placesSelf) return hexDistance(enemy, at) <= (weapon.blast || 1) + 1;
+    return weaponHexes(enemy, facing, weapon, state).some((h) => posEq(h, at));
+  }
+
   function enemyWeaponsBearing(state, enemy, target) {
     const ship = enemyShip(enemy);
     if (!ship) return [];
     const facing = enemyFacing(state, enemy);
     const at = target || state.playerPos;
     return ship.weapons.filter(
-      (w) => weaponHexes(enemy, facing, w, state).some((h) => posEq(h, at)) && !wouldCatchAlly(state, enemy, w, facing)
+      (w) => weaponBearsOn(state, enemy, w, facing, at) && !wouldCatchAlly(state, enemy, w, facing)
     );
   }
 
-  // Every hex a weapon's pattern actually reaches, fired from `pos` facing
-  // hex-direction `facing` (0-5) — each pattern offset traces a straight
-  // line out to `range` hexes in that (facing + offset) direction. `facing`
-  // is irrelevant for an omnidirectional pattern (it already covers every
-  // direction regardless of which one is "ahead"), so callers that don't
-  // track a facing (enemies, today) can pass anything, e.g. 0.
-  // Which way a hostile ship is pointing. The chasers turn to face the
-  // flagship (the board draws them doing exactly that); the fixed
-  // emplacements never pivot, and their hardware is omnidirectional
-  // anyway, so their facing is immaterial.
-  // Which way a hostile's nose points FROM a given hex — the same "toward
-  // the flagship" rule the board draws, but askable about a hex it is only
-  // considering moving to. Needed because a weapon's footprint is relative
-  // to facing, so "would my gun bear if I stood there" cannot be answered
-  // without it.
-  function facingFrom(state, from) {
-    const dir = directionIndex(from, state.playerPos);
+  // Which way a hostile's nose points FROM a given hex — "toward the
+  // flagship", the heading the board draws. Askable about a hex it is only
+  // considering moving to, because a weapon's footprint is relative to
+  // facing and "would my gun bear if I stood there" needs an answer.
+  function noseFrom(from, target) {
+    const dir = directionIndex(from, target);
     if (dir >= 0) return dir;
     let best = 0;
     let bestDist = Infinity;
     for (let d = 0; d < 6; d++) {
-      const dist = hexDistance(neighbor(from, d), state.playerPos);
+      const dist = hexDistance(neighbor(from, d), target);
       if (dist < bestDist) {
         bestDist = dist;
         best = d;
       }
     }
     return best;
+  }
+
+  // ...but the NOSE is not always where the guns are. A hull whose battery
+  // fires ASTERN flies with its stern toward you, and deriving its heading
+  // as "nose at the flagship" made a REAR_ARC_PATTERN weapon incapable of
+  // bearing on ANY board — the Outrider landed 0 damage in 966 rounds
+  // across 40 boards, closing on the flagship for whole sectors with a gun
+  // pointed permanently the wrong way.
+  //
+  // So a hostile flies the heading that brings its armament to bear, and
+  // the choice is deliberately between exactly TWO options — nose-on, or
+  // reversed. Not "whichever of the six directions makes a gun bear":
+  // free pivoting would delete the blind side of every forward-arc weapon
+  // in the game, and an arc that cannot be flanked is not an arc.
+  // Nose-on wins ties, so nothing that already bore changes heading, and
+  // every class except the Outrider comes out of here exactly as before.
+  //
+  // (Pre-existing and NOT addressed here: because facing is derived toward
+  // the flagship rather than stored, a forward-arc hull re-points every
+  // round, so the Escort's "or go round the back" blind side is notional —
+  // you cannot actually flank anything. That is a design question about
+  // stored headings, not this bug.)
+  function facingFrom(state, from, enemy) {
+    const nose = noseFrom(from, state.playerPos);
+    if (!enemy) return nose;
+    const ship = enemyShip(enemy);
+    if (!ship || !ship.weapons.length) return nose;
+    const bearingCount = (facing) =>
+      ship.weapons.filter((w) =>
+        weaponHexes(from, facing, w, state).some((h) => posEq(h, state.playerPos))
+      ).length;
+    return bearingCount((nose + 3) % 6) > bearingCount(nose) ? (nose + 3) % 6 : nose;
   }
 
   // Every hex this hostile could stand on and actually hit you from. This
@@ -1490,7 +1546,7 @@
     for (const hex of state.boardHexes) {
       if (!canFlyInto(state, hex, enemy)) continue;
       if (hazardAt(state, hex)) continue;
-      const facing = facingFrom(state, hex);
+      const facing = facingFrom(state, hex, enemy);
       const bears = ship.weapons.some(
         (w) =>
           weaponHexes(hex, facing, w, state).some((h) => posEq(h, state.playerPos)) &&
@@ -1501,22 +1557,13 @@
     return spots;
   }
 
+  // Which way this hostile is pointing, right where it stands. One line,
+  // because facingFrom already carries the rule — and it MUST stay one
+  // line: computeThreatHexes, decideIntent and the shot itself all read
+  // this, so the overlay can only stay honest (pillar #3) while they all
+  // get the same answer from the same place.
   function enemyFacing(state, enemy) {
-    const dir = directionIndex(enemy, state.playerPos);
-    if (dir >= 0) return dir;
-    // Not adjacent: point at whichever of the six directions closes the
-    // gap most — the same "nose toward the flagship" the board draws.
-    let best = 0;
-    let bestDist = Infinity;
-    for (let d = 0; d < 6; d++) {
-      const step = neighbor(enemy, d);
-      const dist = hexDistance(step, state.playerPos);
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = d;
-      }
-    }
-    return best;
+    return facingFrom(state, enemy, enemy);
   }
 
   function weaponHexes(pos, facing, weapon, state, opts) {
@@ -3592,7 +3639,7 @@
         if (!enemy.alive) continue;
         const weapon = WEAPONS[intent.weaponKey];
         if (!weapon) continue;
-        if (!weaponHexes(enemy, enemyFacing(state, enemy), weapon, state).some((h) => posEq(h, state.playerPos))) continue;
+        if (!weaponBearsOn(state, enemy, weapon, enemyFacing(state, enemy), state.playerPos)) continue;
         if (enemy.energy < weapon.energyCost) continue;
         enemy.energy -= weapon.energyCost; // same rule as the flagship: every shot is paid for
         // A launcher doesn't hurt anyone this round — it puts something on
@@ -3604,8 +3651,20 @@
           continue;
         }
         if (weapon.places) {
-          placeCharge(state, state.playerPos, weapon, enemy.id);
-          pushLog(state, `${enemy.type.toUpperCase()} dropped a charge — two rounds, seven hexes.`);
+          // WHERE it lands is the difference between the two charge
+          // classes, and this ignored it: everything was dropped on the
+          // flagship's hex, so a Sapper — whose whole description is
+          // "mines the ground it stands on rather than the ground you
+          // stand on" — would have thrown like a Demolitionist if it had
+          // ever managed to fire at all. The player's side already read
+          // placesSelf correctly (see applyFire); this is the same line.
+          placeCharge(state, weapon.placesSelf ? { q: enemy.q, r: enemy.r } : state.playerPos, weapon, enemy.id);
+          pushLog(
+            state,
+            weapon.placesSelf
+              ? `${enemy.type.toUpperCase()} scuttled its ground — two rounds, seven hexes.`
+              : `${enemy.type.toUpperCase()} dropped a charge — two rounds, seven hexes.`
+          );
           continue;
         }
         // The flagship gets shoved too. A push weapon that only ever
