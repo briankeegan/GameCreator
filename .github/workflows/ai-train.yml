@@ -62,8 +62,8 @@ on:
         description: 'Lookahead depth. 1 = greedy (every run before this). 2 = beam search'
         default: '1'
       beam:
-        description: 'Candidates expanded at depth > 1. Ignored at depth 1'
-        default: '6'
+        description: 'Candidates expanded at depth > 1. 0 = ALL of them (default). A cap picks by immediate score, which hides the move worth searching for'
+        default: '0'
       rise:
         description: 'Rise-adjusted scoring: score every candidate one row later (1 = on)'
         default: ''
@@ -163,7 +163,7 @@ jobs:
           GC_VARIANT: smoke
           GC_GA_SEED: ${{ github.event.inputs.ga_seed || '' }}
           GC_DEPTH: ${{ github.event.inputs.depth || '1' }}
-          GC_BEAM: ${{ github.event.inputs.beam || '6' }}
+          GC_BEAM: ${{ github.event.inputs.beam || '0' }}
           GC_RISE: ${{ github.event.inputs.rise || '' }}
           GC_DENSITY: ${{ github.event.inputs.density || '' }}
           GC_GENERATIONS: '2'
@@ -297,7 +297,7 @@ jobs:
           # its result is only comparable against a baseline at the same
           # depth. Blank is depth 1, which is every run before this one.
           GC_DEPTH: ${{ github.event.inputs.depth || '1' }}
-          GC_BEAM: ${{ github.event.inputs.beam || '6' }}
+          GC_BEAM: ${{ github.event.inputs.beam || '0' }}
           # Same rule, second axis: rise-adjusted scoring produces a
           # different bot again, so its weights are only comparable against
           # a baseline that also has it. Blank is off — every run so far.

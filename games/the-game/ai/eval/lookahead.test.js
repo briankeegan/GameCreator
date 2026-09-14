@@ -449,6 +449,58 @@ test('an explicit beam still obeys the invariant on what it kept', function () {
 // GC_ONLY=<substring> runs one test, so a single question costs seconds
 // rather than the whole suite. Used to prove a check fires both ways.
 if (process.env.GC_ONLY) tests = tests.filter(function (t) { return t.name.indexOf(process.env.GC_ONLY) >= 0; });
+// THE DEFAULT THAT WOULD HAVE TRAINED THE DEFECT BACK IN.
+//
+// A beam CAPS how many candidates get expanded, and picks them by IMMEDIATE
+// score — the one filter a lookahead must not have, since the move worth
+// searching for is the move that looks poor now. Three separate places
+// defaulted it to 6: ai-train.yml's input, train.js's GC_BEAM, and bench.js's
+// opts.beam. Every one of them was written when a beam was mandatory, and
+// every one of them survived the fix. Dispatching a depth-2 run the day after
+// fixing _lookahead would have trained against a beam of 6 — the defect,
+// restored by a default nobody would have looked at.
+//
+// So the default is asserted, in the file the trainer actually reads and in
+// the two that hand it the number.
+test('the training pipeline does not cap the search by default', function () {
+    var fs = require('fs'), pathMod = require('path');
+
+    // bench.js is what the trainer builds the bot with. Checked by running
+    // it, not by reading it: the prototype is shared, so a hook on _decide
+    // sees whatever bench actually constructed.
+    var bench = require('./bench.js');
+    var seen = null;
+    var origDecide = PuyoCpu.prototype._decide;
+    PuyoCpu.prototype._decide = function () { if (seen === null) seen = this.beam; return origDecide.apply(this, arguments); };
+    try { bench.fitness({ maxHeight: 1 }, [7], { depth: 2, level: 10, brain: 'puyo', frames: 200 }); }
+    finally { PuyoCpu.prototype._decide = origDecide; }
+    assert.strictEqual(seen, 0,
+        'bench.js built a depth-2 bot with beam ' + seen + '. A beam expands only the ' +
+        'candidates that already look best, which is the defect _lookahead was fixed to remove.');
+
+    // train.js cannot be required — requiring it STARTS A TRAINING RUN — and
+    // a workflow is YAML. Both are read as text, which is the only way to ask
+    // them anything.
+    var bad = [];
+    var trainSrc = fs.readFileSync(pathMod.join(__dirname, 'train.js'), 'utf8');
+    var m = trainSrc.match(/GC_BEAM\s*\|\|\s*(\d+)/);
+    if (!m) bad.push('train.js: no GC_BEAM default found at all');
+    else if (m[1] !== '0') bad.push('train.js defaults GC_BEAM to ' + m[1]);
+
+    var wf = pathMod.join(__dirname, '..', '..', '..', '..', '.github', 'workflows', 'ai-train.yml');
+    if (fs.existsSync(wf)) {
+        var y = fs.readFileSync(wf, 'utf8');
+        var caps = y.match(/inputs\.beam\s*\|\|\s*'(\d+)'/g) || [];
+        if (!caps.length) bad.push('ai-train.yml: no beam default found at all');
+        caps.forEach(function (c) {
+            if (!/'0'/.test(c)) bad.push('ai-train.yml has ' + c);
+        });
+    } else { bad.push('ai-train.yml not found at ' + wf); }
+
+    assert.deepStrictEqual(bad, [],
+        'a dispatched run would cap the search:\n  ' + bad.join('\n  '));
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }

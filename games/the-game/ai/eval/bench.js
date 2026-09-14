@@ -317,7 +317,15 @@ exports.run = function (weights, seed, opts) {
             // which is the bot every existing result describes — so a run
             // that does not pass these is byte-for-byte the old experiment.
             depth: opts.depth || 1,
-            beam: opts.beam || 6,
+            // NO BEAM BY DEFAULT, and the 6 that used to be here was not a
+            // harmless number. Since puyocpu.js's _lookahead was fixed, a
+            // beam CAPS how many candidates are expanded — and it picks them
+            // by IMMEDIATE score, which is precisely the filter that hides
+            // the move worth searching for. Defaulting to 6 here would have
+            // trained every depth-2 run against the defect that was just
+            // removed. 0 means expand everything; a cap stays available for
+            // the engine path, where a candidate costs 1.27ms not 0.017ms.
+            beam: opts.beam || 0,
             // Rise-adjusted scoring. Absent means off, which is the bot
             // every existing result describes.
             rise: opts.rise === true,

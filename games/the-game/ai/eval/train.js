@@ -214,7 +214,10 @@ var HOLDOUT_SEEDS = SEEDS.HOLDOUT;
 // and 2550. Roughly a third, from changing nothing but how the move is
 // chosen. A lookahead bot needs its own run; it cannot borrow.
 var DEPTH = Number(process.env.GC_DEPTH || 1);
-var BEAM = Number(process.env.GC_BEAM || 6);
+// 0 = expand every candidate, which is the default now. A beam caps the
+// search by IMMEDIATE score and that is the one filter a lookahead must not
+// have — see bench.js and puyocpu.js _lookahead.
+var BEAM = Number(process.env.GC_BEAM || 0);
 var RISE = process.env.GC_RISE === '1' || process.env.GC_RISE === 'true';
 var DENSITY = process.env.GC_DENSITY === '1' || process.env.GC_DENSITY === 'true';
 
