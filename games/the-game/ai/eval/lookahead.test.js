@@ -332,6 +332,76 @@ test('the second move pays travel from where the first move leaves the cursor', 
         (wrongHold[0] || '') + ' instead of ' + cursor);
 });
 
+test('and that travel is IN the value, at the right size', function () {
+    // Checking WHICH CELL travel.cost was asked about proves the input is
+    // right and nothing more — it would pass if the answer were discarded.
+    // Checking _score in isolation proves _score can price an origin, but
+    // not that the search hands it one. Neither is the claim. The claim is
+    // that a candidate's VALUE is lower when its best follow-up is further
+    // away, so this goes through _value, the function the search actually
+    // calls, and requires the number to the digit.
+    //
+    // travelCost is one unit per cell walked (features.js inverts
+    // travel.js's frame formula) and its sign is -1, so the arithmetic is
+    // exact: every extra cell is exactly weights.travelCost off the score.
+    // "It goes down" would pass for a cost applied at the wrong scale, and
+    // a cost at the wrong scale loses to roughness when it should win.
+    var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: W, reaction: 12, depth: 2 });
+    for (var f = 0; f < 300; f++) { cpu.update(); stack.run(); stack.drainEvents(); }
+    while (cpu._walk || cpu.cooldown > 0) { cpu.update(); stack.run(); stack.drainEvents(); }
+
+    var board = cpu._snapshot();
+    cpu._incoming = board.incoming || null;
+    var sw = board.legalSwaps()[0];
+    var trial = board.clone();
+    trial.swap(sw[0], sw[1]);
+    var cand = { kind: 'swap', move: sw, board: trial,
+                 score: cpu._score(trial, cpu._resolveCandidate(trial), sw) };
+
+    // The same expansion done here, twice: once charging the walk from the
+    // cell the first move ends on, once not charging it at all.
+    function expand(from) {
+        var best = cand.score;
+        trial.legalSwaps().forEach(function (mv) {
+            var child = trial.clone();
+            child.swap(mv[0], mv[1]);
+            var f = cpu._score(child, cpu._resolveCandidate(child), from ? mv : null, from);
+            if (f > best) best = f;
+        });
+        return best;
+    }
+    var charged = expand(sw), free = expand(null);
+
+    assert.ok(free > charged,
+        'charging the walk changed nothing (' + free.toFixed(4) + ' either way) — the board ' +
+        'has no follow-up far enough from ' + sw.join(',') + ' for this to be testing anything');
+    assert.strictEqual(cpu._value(cand), charged,
+        '_value returned ' + cpu._value(cand).toFixed(4) + '; charging the second move its real ' +
+        'walk from ' + sw.join(',') + ' gives ' + charged.toFixed(4) + ', and moving for free gives ' +
+        free.toFixed(4) + '. It is valuing a follow-up it could not reach in time.');
+
+    // AND THE SIZE, not just the direction: one cell of walking is exactly
+    // one travelCost off, so a cost applied at the wrong scale fails here
+    // even though it would pass the comparison above.
+    var mv = trial.legalSwaps()[0];
+    function scoreFrom(from) {
+        var child = trial.clone();
+        child.swap(mv[0], mv[1]);
+        return cpu._score(child, cpu._resolveCandidate(child), mv, from);
+    }
+    var base = scoreFrom([mv[0], mv[1]]), wrong = [];
+    [[mv[0], mv[1] + 1], [mv[0] + 2, mv[1] + 3], [1, 1]].forEach(function (from) {
+        var steps = Math.abs(mv[0] - from[0]) + Math.abs(mv[1] - from[1]);
+        var got = scoreFrom(from), want = base - W.travelCost * steps;
+        if (Math.abs(got - want) > 1e-6) {
+            wrong.push(steps + ' cells away scored ' + got.toFixed(4) + ', and ' + steps +
+                       ' cells at ' + W.travelCost + ' a cell is ' + want.toFixed(4));
+        }
+    });
+    assert.deepStrictEqual(wrong, [], 'travel is priced at the wrong scale:\n  ' + wrong.join('\n  '));
+});
+
 test('depth 1 is the old bot, move for move', function () {
     // Everything already measured — the shipped weights, the held-out
     // numbers, identity.golden.json — describes a bot with no lookahead.
