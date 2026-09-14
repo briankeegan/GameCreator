@@ -232,17 +232,20 @@ test('every hypothetical board is scored RESOLVED, at both plies', function () {
 test('the second ply branches from the board the first ply was SCORED on', function () {
     // The two must be the same position. If a candidate is scored on one
     // board and searched from another, its number and its future describe
-    // different games — and nothing about the output would look wrong.
+    // different games, and nothing in the output would look wrong.
     //
-    // Run with rise ON, because that is the switch that can separate them:
-    // rise changes the board a candidate leaves, so if it is applied to a
-    // throwaway copy the score sees a risen board and the search sees the
-    // un-risen one, a whole incoming row apart.
+    // Run with rise ON, because that is the switch that separates them:
+    // rise advances the candidate a whole incoming row. Applied to a
+    // throwaway clone, the score sees the risen board and the search sees
+    // the un-risen one.
     //
-    // Checked by fingerprint, not by reading the code: _decide scores the
-    // candidates in order before any expansion, so the first N boards
-    // _score sees are the candidates, and _value visits them in the same
-    // order.
+    // THE FIRST VERSION OF THIS TEST COULD NOT FIRE, which is why it says
+    // this. It compared the board object handed to _score against the board
+    // _value branched from — and under the bug those are the SAME un-risen
+    // object, because the rise went to a copy _score kept to itself. It
+    // passed with the defect restored. So it asks two things now: that
+    // _score ADVANCED the candidate at all, and that the second ply
+    // branches from what it advanced to.
     var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
     var cpu = new PuyoCpu(stack, { weights: W, reaction: 12, depth: 2, rise: true });
     for (var f = 0; f < 300; f++) { cpu.update(); stack.run(); stack.drainEvents(); }
@@ -250,16 +253,17 @@ test('the second ply branches from the board the first ply was SCORED on', funct
 
     var n = cpu._snapshot().legalSwaps().length + 1;
     var print = function (b) { return JSON.stringify(b.grid); };
-    var asScored = [], k = 0, mismatched = [];
+    var before = [], after = [], k = 0, stale = [];
     var origScore = cpu._score, origValue = cpu._value;
-    cpu._score = function (b, resolved, move) {
-        var out = origScore.call(this, b, resolved, move);
-        if (asScored.length < n) asScored.push(print(b));
+    cpu._score = function (b) {
+        var pre = print(b);
+        var out = origScore.apply(this, arguments);
+        if (before.length < n) { before.push(pre); after.push(print(b)); }
         return out;
     };
     cpu._value = function (cand) {
-        if (print(cand.board) !== asScored[k]) {
-            mismatched.push('candidate ' + k + ' was scored on one board and searched from another');
+        if (print(cand.board) !== after[k]) {
+            stale.push('candidate ' + k + ' was scored on one board and searched from another');
         }
         k++;
         return origValue.call(this, cand);
@@ -268,9 +272,14 @@ test('the second ply branches from the board the first ply was SCORED on', funct
     cpu._score = origScore; cpu._value = origValue;
 
     assert.strictEqual(k, n, 'expanded ' + k + ' of ' + n + ' candidates');
-    assert.deepStrictEqual(mismatched.slice(0, 5), [],
-        mismatched.length + ' of ' + n + ' candidates search a position they were not scored on:\n  ' +
-        mismatched.slice(0, 5).join('\n  '));
+    var unmoved = 0;
+    for (var i = 0; i < n; i++) if (before[i] === after[i]) unmoved++;
+    assert.strictEqual(unmoved, 0,
+        unmoved + ' of ' + n + ' candidates came out of _score on the board they went in on, ' +
+        'with rise ON — the rise went somewhere the search cannot see');
+    assert.deepStrictEqual(stale.slice(0, 5), [],
+        stale.length + ' of ' + n + ' candidates search a position they were not scored on:\n  ' +
+        stale.slice(0, 5).join('\n  '));
 });
 
 test('the second move pays travel from where the first move leaves the cursor', function () {
@@ -367,6 +376,9 @@ test('an explicit beam still obeys the invariant on what it kept', function () {
         bad.length + ' beamed decisions chose worse than what the beam held:\n  ' + bad.slice(0, 6).join('\n  '));
 });
 
+// GC_ONLY=<substring> runs one test, so a single question costs seconds
+// rather than the whole suite. Used to prove a check fires both ways.
+if (process.env.GC_ONLY) tests = tests.filter(function (t) { return t.name.indexOf(process.env.GC_ONLY) >= 0; });
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
