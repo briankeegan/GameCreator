@@ -150,6 +150,22 @@ var SNAPSHOT_HOOK = process.env.GC_SNAPSHOT_HOOK || null;
 // Unset means run to the generation cap or to convergence.
 var DEADLINE = process.env.GC_DEADLINE ? Number(process.env.GC_DEADLINE) : null;
 
+// DID THE SEARCH FINISH, OR DID THIS PROCESS RUN OUT OF TIME? They are not the
+// same event and only one of them may clear the checkpoint. A search that
+// exhausted its generations or whose numbers stopped moving is DONE — resuming
+// it would mean re-reporting the same answer forever. A search stopped by the
+// job deadline is still running; the checkpoint is the only thing that lets the
+// next job carry on from where it stopped.
+//
+// Conflating them is how five and a half hours of search were thrown away
+// twice. finish() is called from all three places, report(true) clears the
+// checkpoint, and the GitHub job always ends on the deadline — so every run
+// deleted its own resume point on the way out and the next one opened at
+// generation 1. The workflow header promised the opposite in writing the whole
+// time, and the numbers looked plausible because a fresh search at generation
+// 30 scores like a continued one at generation 120.
+var searchComplete = true;
+
 // "RUN THAT UNTIL THE NUMBERS STOP MOVING" — the reference's own stopping
 // rule, taken literally. It does not say "until the score stops improving";
 // it says the WEIGHTS settle ("links settles at 0.25, variance at 0.02").
@@ -541,7 +557,9 @@ function step() {
         // OUT OF TIME. Stop cleanly with a real result rather than being
         // killed mid-generation by a job timeout.
         if (DEADLINE && Date.now() / 1000 > DEADLINE) {
-            console.log('\n=== OUT OF TIME at generation ' + generation + ' ===');
+            console.log('\n=== OUT OF TIME at generation ' + generation +
+                        ' -- keeping the checkpoint so the next run resumes here ===');
+            searchComplete = false;
             return finish();
         }
 
@@ -788,10 +806,18 @@ function report(isFinal, cb) {
             console.log('timing (single-threaded): worst decision ' + timing.worstMs +
                         'ms, unsafe seeds ' + timing.unsafeSeeds + '/' + HOLDOUT_SEEDS.length);
             fs.writeFileSync(path.join(__dirname, 'trained.' + MODE + '.json'), JSON.stringify(out, null, 2));
-            // NOW the checkpoint can go: the result it was protecting exists.
-            // Leaving it would make the next run resume a search that already
-            // finished, at its last generation, forever.
-            try { fs.unlinkSync(CHECKPOINT); } catch (e) { /* never existed */ }
+            // THE CHECKPOINT IS NOT DELETED HERE, AND USED TO BE.
+            //
+            // This runs on EVERY snapshot, thirty generations apart, and it ran
+            // immediately before the snapshot hook — whose whole job is to
+            // commit the checkpoint alongside the snapshot so the next job can
+            // resume. So the hook's `[ -f "$ckpt" ]` was false every single
+            // time, and the fix that force-added it past .gitignore could never
+            // once have fired. A snapshot is a progress report from a search
+            // that is STILL RUNNING; there is nothing to clean up.
+            //
+            // Clearing it when the search is genuinely finished is right, and
+            // that is done below, where isFinal is known.
             console.log('written to trained.' + MODE + '.json');
             if (SNAPSHOT_HOOK) {
                 // Whoever is running this decides what a snapshot is FOR —
@@ -804,10 +830,17 @@ function report(isFinal, cb) {
                 } catch (e) { console.log('  (snapshot hook failed: ' + e.message + ')'); }
             }
             if (isFinal) {
-                // Only a real finish clears the checkpoint. A snapshot is a
-                // progress report from a search that is still running, so
-                // "this run was killed part-way" is still true afterwards.
-                try { fs.unlinkSync(CHECKPOINT); } catch (e) { /* never existed */ }
+                // Only a COMPLETED SEARCH clears the checkpoint — generations
+                // exhausted, or the numbers stopped moving. Running out of time
+                // is not finishing: the search is mid-flight and the checkpoint
+                // is the only way the next job continues it instead of starting
+                // a brand new one. See searchComplete's comment.
+                if (searchComplete) {
+                    try { fs.unlinkSync(CHECKPOINT); } catch (e) { /* never existed */ }
+                } else {
+                    console.log('checkpoint kept at generation ' + generation +
+                                ' -- the next run resumes from it');
+                }
                 pool.forEach(function (s) { s.child.kill(); });
             } else if (cb) { cb(); }
         });

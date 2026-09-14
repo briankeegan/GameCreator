@@ -209,6 +209,15 @@ gate_smoke_checker() {
   node games/the-game/ai/eval/check_smoke_run.test.js
 }
 
+# A TRAINING JOB THAT CANNOT RESUME THROWS AWAY EVERY HOUR IT RAN. Every
+# GitHub run ends on its deadline, and every one of them used to delete its own
+# checkpoint on the way out, so the next one opened at generation 1. Five and a
+# half hours, twice, with nothing about it looking wrong. Runs three real
+# tiny searches, so it costs about a minute.
+gate_checkpoint_resume() {
+  bash games/the-game/ai/eval/checkpoint.test.sh
+}
+
 # The four constraints a template carries, pinned directly. Two of them were
 # silently unenforced for the matcher's whole first life (Int8Array stamp
 # truncation) and the test nearest the defect could not see it.
@@ -324,6 +333,7 @@ GATES=(
   "the chains-fired measure accepts and rejects:gate_chain_measure"
   "the status tool sees a duplicate run:gate_status_tool"
   "the training smoke check accepts and rejects:gate_smoke_checker"
+  "a training run that ran out of time can resume:gate_checkpoint_resume"
   "a garbage break stops the resolve:gate_garbage_rules"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints"
   "the simulation resolves like the game:gate_resolve_fidelity"
