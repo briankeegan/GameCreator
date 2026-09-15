@@ -101,7 +101,7 @@ else
   [ -z "$GC_SNAPSHOT_HOOK" ] && echo "=== snapshots will NOT be committed (hook disabled) ==="
 fi
 
-node train.js "$GENS" "$POP" "$MODE" "$WORKERS" score
+node train.js "$GENS" "$POP" "$MODE" "$WORKERS" "${GC_OBJECTIVE:-score}"
 status=$?
 
 echo ""

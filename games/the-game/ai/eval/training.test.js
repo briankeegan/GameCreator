@@ -70,9 +70,9 @@ test('choosing and reporting sets each cover every attack file exactly once', fu
 // ------------------------------------------------------------- train.js
 
 // A real run, kept tiny: 2 generations of 8. Seconds, not half an hour.
-function tinyRun(env) {
+function tinyRun(env, objective) {
     var e = Object.assign({}, process.env, { GC_LEVEL: '10', GC_BRAIN: 'puyo' }, env || {});
-    var out = cp.execSync('node train.js 2 8 replace 4 score', {
+    var out = cp.execSync('node train.js 2 8 replace 4 ' + (objective || 'score'), {
         cwd: DIR, env: e, encoding: 'utf8', timeout: 900000
     });
     return { stdout: out, result: JSON.parse(fs.readFileSync(path.join(DIR, 'trained.replace.json'), 'utf8')) };
@@ -597,6 +597,47 @@ test('depth REACHES THE BOT, end to end through bench', function () {
         'depth 1 and depth 2 played an IDENTICAL game (' + one.frames + ' frames, ' +
         one.score + ' points) on the same seed and weights — the depth option is not ' +
         'reaching the bot, so every lookahead run is a greedy run with a label on it');
+});
+
+test('the objective reaches train.js, and survival is not score', function () {
+    // WRITTEN BECAUSE crank.sh HARDCODED `score` AND NOTHING COULD REACH IT.
+    // The workflow had inputs for depth, beam, rise, density and the feature
+    // set, and no way at all to say what the search was FOR -- so every run
+    // ever made optimised the engine's points, where a bare 3 scores zero
+    // and surviving earns nothing by itself.
+    var out = tinyRun({ GC_GA_SEED: '99' }, 'survival');
+    assert.strictEqual(out.result.objective, 'survival',
+        'a survival run is recorded as "' + out.result.objective + '"');
+    assert.ok(/objective=survival/.test(out.stdout),
+        'the run never announced the objective it was given');
+    assert.notStrictEqual(Math.round(out.result.trainFitness),
+        Math.round(run().result.trainFitness),
+        'survival and score produced the SAME fitness, so the objective is being ignored');
+});
+
+test('crank.sh passes the objective through instead of hardcoding score', function () {
+    // The other half of the path, asserted at the source the way this file
+    // already asserts crank.sh's round loop and seed genome: the workflow
+    // sets GC_OBJECTIVE, crank.sh is what turns it into train.js's argv.
+    var crank = fs.readFileSync(path.join(__dirname, 'crank.sh'), 'utf8');
+    var call = crank.split('\n').filter(function (l) {
+        return /node train\.js/.test(l) && !/^\s*#/.test(l);
+    });
+    assert.strictEqual(call.length, 1, 'expected one train.js call in crank.sh, got ' + call.length);
+    assert.ok(/GC_OBJECTIVE/.test(call[0]),
+        'crank.sh still hardcodes the objective:\n  ' + call[0]);
+});
+
+test('the checkpoint fingerprint separates survival from score', function () {
+    // A population bred to survive is not a population bred to score, and
+    // the fingerprint is hashed into the checkpoint FILENAME -- so without
+    // this the two runs share a resume point and clobber each other, which
+    // is the exact failure the filename hash was added to prevent.
+    var src = fs.readFileSync(path.join(__dirname, 'train.js'), 'utf8');
+    var fp = src.slice(src.indexOf('function fingerprint()'));
+    fp = fp.slice(0, fp.indexOf('}'));
+    assert.ok(/\bOBJECTIVE\b/.test(fp),
+        'fingerprint() does not include OBJECTIVE:\n' + fp);
 });
 
 test('rise REACHES THE BOT, end to end through bench', function () {

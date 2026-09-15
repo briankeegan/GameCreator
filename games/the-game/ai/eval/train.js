@@ -49,7 +49,16 @@ var WORKERS = Number(process.argv[5] || 4);
 // everything the bot becomes". meatfighter used final score; the first run
 // here used survival and produced exactly the bot that choice predicts —
 // weighted almost entirely on tidiness, chainLength=3, barely attacking.
-var OBJECTIVE = process.argv[6] || 'score';
+// WHAT THE SEARCH IS OPTIMISING. 'score' is the engine's own points, which
+// is what the reference used and what every run before 2026-09-15 used.
+// 'survival' is frames/n + (sent/n)*0.5 -- frames dominate, so it values not
+// dying above everything else.
+//
+// Read from the environment as well as argv because crank.sh is the only
+// caller that passes it positionally and the workflow has no way to reach
+// argv. argv still wins, so `node train.js 2 8 replace 4 score` in a test
+// means score whatever the environment says.
+var OBJECTIVE = process.argv[6] || process.env.GC_OBJECTIVE || 'score';
 
 // TRAIN ON THE FOUR CATEGORIES THE BENCHMARK REPORTS, not on a stand-in.
 //
@@ -441,7 +450,13 @@ function fingerprint() {
     // 'cem' is in here because a checkpoint written by the old genetic
     // algorithm holds a population bred a different way. Resuming one into
     // this search would be continuing somebody else's run.
+    // OBJECTIVE is in here because a population bred to survive is not a
+    // population bred to score, and resuming one into the other is
+    // continuing somebody else's run -- the same argument as 'cem'. Without
+    // it a survival run and a score run identical in every other switch
+    // would share a checkpoint file and silently clobber each other.
     return ['cem', ELITE_FRACTION, GENERATIONS, POPULATION, MODE, BRAIN, TRAINED_BRAIN,
+            OBJECTIVE,
             process.env.GC_LEVEL || '', process.env.GC_GA_SEED || '',
             String(DEPTH), String(BEAM), RISE ? 'rise' : '', DENSITY ? 'density' : '',
             SEEDS_PER_GENERATION, KEYS.join(',')].join('|');
