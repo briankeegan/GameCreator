@@ -231,6 +231,49 @@ gate_lookahead() {
   node games/the-game/ai/eval/lookahead.test.js
 }
 
+# A PLY THAT DOES NOT ADVANCE THE CLOCK CANNOT VALUE TIMING.
+#
+# Every clock field reaches a feature off the LIVE stack (input.js's
+# fromStack), read before any swap happens. At depth 1 that is right -- the
+# move is being made now. At depth 2 it was a lie: the second ply is a move
+# made AFTER the first, and it was scored against the clock as it stood
+# BEFORE the first. So "fire the chain now" and "hold, then fire it" scored
+# identically on stop time, and they are not the same move -- awardStopTime
+# takes a MAX, so firing under a full clock buys nothing and firing under an
+# empty one buys everything.
+#
+# Same argument _lookahead already makes about travel: a second ply that
+# treats it as free values a follow-up on the far side of the board exactly
+# like one under the cursor. Time was the other thing it treated as free.
+#
+# Both directions, because a clock advanced for EVERY child regardless of
+# which candidate it descends from would pass a wiring test and be wrong in
+# the more damaging direction -- it tells the search that waiting is
+# pointless because the clock is full either way.
+gate_ply_clock() {
+  node games/the-game/ai/eval/plyclock.test.js
+}
+
+# THE SEARCH JUDGES THE BOARD THE MOVE WILL LAND ON, NOT THE ONE IT STARTED
+# FROM. If a row arrives while the bot walks to a swap, the row is there when
+# the swap happens; if none arrives, it is not.
+#
+# Before this, `rise: true` added exactly one row to EVERY candidate however
+# long it took to reach and `rise: false` added none to any of them -- so a
+# far swap and a near swap were judged on the same board, which is the whole
+# difference between a move made too soon and the same move made in time.
+#
+# Nothing in it is estimated: travel.cost plus the bot's own reaction for the
+# frames, PanelEngine.riseTime(speed) from the live riseTimer and
+# displacement for the rate, and advancePassiveRaise's own
+# (!riseLock && stopTime === 0) for the pause -- which is why banked stop
+# time keeps the board still. The cascade's duration is not needed at all:
+# updateRiseLock holds riseLock while panels are active, so the stack does
+# not rise during a cascade.
+gate_elapsed_rise() {
+  node games/the-game/ai/eval/elapsed.test.js
+}
+
 # THE RUN RECORDS WHAT KIND OF GARBAGE IT SENT, NOT JUST HOW MUCH.
 #
 # Score cannot say whether the bot learned to CHAIN: one that survives on
@@ -362,6 +405,8 @@ GATES=(
   "the training smoke check accepts and rejects:gate_smoke_checker"
   "a training run that ran out of time can resume:gate_checkpoint_resume"
   "the depth-2 search picks the best two-move future:gate_lookahead"
+  "the second ply knows what time it is:gate_ply_clock"
+  "the board moves on while the bot walks:gate_elapsed_rise"
   "a run records what kind of garbage it sent:gate_chain_depth"
   "a garbage break stops the resolve:gate_garbage_rules"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints"

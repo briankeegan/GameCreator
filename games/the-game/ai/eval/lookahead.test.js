@@ -244,13 +244,26 @@ test('the second ply branches from the board the first ply was SCORED on', funct
     // arrives.
     //
     // TWO ASSERTIONS, because either alone can pass while the rise is lost:
-    // that the board scored is genuinely NOT the one passed in (the rise
+    // that SOME board scored is genuinely not the one passed in (the rise
     // happened at all), and that the candidate the search expands is the
     // scored one.
+    //
+    // "SOME", not "every", since _rowsArriving: a candidate is risen only if
+    // a row actually lands while the bot walks to it, so most candidates of
+    // most decisions are correctly scored on the board they went in on. The
+    // stack is parked one pixel from a new row below so that at least one
+    // does rise -- otherwise this proves nothing, which is the failure mode
+    // the count guards against.
     var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
     var cpu = new PuyoCpu(stack, { weights: W, reaction: 12, depth: 2, rise: true });
     for (var f = 0; f < 300; f++) { cpu.update(); stack.run(); stack.drainEvents(); }
     while (cpu._walk || cpu.cooldown > 0) { cpu.update(); stack.run(); stack.drainEvents(); }
+
+    // One pixel from a new row, with no stop time to postpone it, so the
+    // walk to at least one candidate brings the row in.
+    stack.displacement = 1;
+    stack.riseTimer = 1;
+    stack.stopTime = 0;
 
     var n = cpu._snapshot().legalSwaps().length + 1;
     var print = function (b) { return JSON.stringify(b.grid); };
@@ -280,9 +293,9 @@ test('the second ply branches from the board the first ply was SCORED on', funct
     assert.strictEqual(k, n, 'expanded ' + k + ' of ' + n + ' candidates');
     var unmoved = 0;
     for (var i = 0; i < n; i++) if (handedIn[i] === scored[i]) unmoved++;
-    assert.strictEqual(unmoved, 0,
-        unmoved + ' of ' + n + ' candidates were scored on the board they went in on, with ' +
-        'rise ON — the rise went somewhere the search cannot see');
+    assert.ok(unmoved < n,
+        'all ' + n + ' candidates were scored on the board they went in on, with rise ON ' +
+        'and the stack one pixel from a new row — the rise went somewhere the search cannot see');
     assert.deepStrictEqual(stale.slice(0, 5), [],
         stale.length + ' of ' + n + ' candidates:\n  ' + stale.slice(0, 5).join('\n  '));
 });

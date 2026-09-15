@@ -808,6 +808,83 @@ var MOVE_FRAMES = 4;
     return Math.min(left, SAFE_FRAMES);
   }
 
+
+  // --------------------------------------------------------- stopTimeGain
+  //
+  // WHAT THIS MOVE'S STOP TIME IS ACTUALLY WORTH — which is nothing at all
+  // unless the board can kill you, and nothing again if the clock it would
+  // set is already running.
+  //
+  // STOP TIME IS THE RESERVE, NOT HEALTH. advancePassiveRaise decrements
+  // health only inside (!riseLock && stopTime === 0), so stop time does not
+  // sit beside health as a second pool — it FREEZES the health drain. At
+  // level 10, where every one of these runs trains, LevelPresets sets
+  // maxHealth to 1: health is one frame and it resets to 1 the moment you
+  // are not topped out, so there is no health to keep up. The clock you keep
+  // up is this one. The engine says so itself in awardStopTime, which pays
+  // dangerConstant/dangerCoefficient — strictly more — when wasToppedOut.
+  //
+  // WHY stopTimeEarned IS NOT ENOUGH, measured at level 10 over 4 scenarios
+  // x 2 seeds, 415 decisions / 7,766 candidates:
+  //
+  //   - It is FLAT. It pays the same 60 frames on a board at row 3 as on one
+  //     topped out. 31.9% of candidates are scored while topped out and
+  //     68.1% are not, so the search averages a term that matters over a
+  //     term that does not and lands on nothing: the two converged runs put
+  //     it at 1.8 and 0.8 out of ~300. That is the correct average and the
+  //     wrong policy. A weighted sum cannot multiply "how much stop time" by
+  //     "how close to death", so the conjunction goes INSIDE the feature —
+  //     the same move flatTop makes for flat-AND-high, and the only place a
+  //     linear scorer can hold one.
+  //
+  //   - It IGNORES THE CLOCK ALREADY RUNNING. awardStopTime ends
+  //     `if (stopTime > this.stopTime) this.stopTime = stopTime` — a MAX,
+  //     not a +=. Earning 90 frames while 120 are on the clock buys zero
+  //     frames, and stopTimeEarned reports 90. 74.1% of candidates are
+  //     scored while stop time is already running, so this is the common
+  //     case rather than the corner.
+  //
+  // AND IT VARIES BETWEEN CANDIDATES, WHICH IS WHAT framesToDeath COULD NOT.
+  // Every clock field reaches a feature off the LIVE stack (input.js
+  // fromStack), read before the swap, so it is identical for every candidate
+  // of a decision — measured, the clock varied in 0 of 415 decisions. A
+  // per-decision constant cannot break a tie no matter what its weight is,
+  // which is the real reason that feature did nothing; maxHealth was a
+  // symptom. Here the banked half is per-decision and the EARNED half is
+  // per-candidate, so the difference between two moves is a real difference.
+  //
+  // preStopTime is deliberately not part of the max. decrementTimers drains
+  // preStopTime first and only then stopTime, so preStop extends the total
+  // clock — but awardStopTime's comparison is against this.stopTime alone,
+  // so a large preStop does not stop an award landing.
+  //
+  // DANGER_ROWS reaches one row BEFORE the ceiling. isToppedOut is "anything
+  // in the top row", and a feature that waits for it can only ever reward
+  // the move that saves you on the frame you would have died; one passive
+  // rise away is where the decision is actually made. Widening it further
+  // would re-flatten the feature, which is the thing being fixed.
+  var DANGER_ROWS = 1;
+
+  function couldDie(input) {
+    // The flag the engine itself acts on wins outright: a candidate board
+    // that settles lower is still a board whose stack is topped out now.
+    if (input.clock.toppedOut) return true;
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    for (var r = H; r >= H - DANGER_ROWS && r >= 1; r--) {
+      if (!grid[r]) continue;
+      for (var c = 1; c <= W; c++) if (grid[r][c] !== 0) return true;
+    }
+    return false;
+  }
+
+  function stopTimeGain(input) {
+    var earned = input.earned.stopTimeEarned || 0;
+    if (earned <= 0) return 0;
+    var gain = earned - (input.clock.stopTime || 0);
+    if (gain <= 0) return 0;          // the engine's max, not a sum
+    return couldDie(input) ? gain : 0;
+  }
+
   // ---------------------------------------------------------- latentChain
   //
   // WILL THIS LANDING CONTINUE THE CHAIN.
@@ -1166,6 +1243,7 @@ var MOVE_FRAMES = 4;
     latentChain: latentChain,
     garbageCleared: garbageCleared,
     stopTimeEarned: stopTimeEarned,
+    stopTimeGain: stopTimeGain,
     brokeGarbage: brokeGarbage,
     framesToDeath: framesToDeath,
     scoreEarned: scoreEarned,

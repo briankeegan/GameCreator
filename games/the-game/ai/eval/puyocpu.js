@@ -173,7 +173,7 @@
   // `from` is where the cursor STARTS for this candidate's move. It is the
   // live cursor for a move being made now, and the previous move's cell for
   // a move being imagined one ply later — see _value.
-  PuyoCpu.prototype._score = function (board, resolved, move, from) {
+  PuyoCpu.prototype._score = function (board, resolved, move, from, plyClock) {
     this.evaluations++;
     // The board this call scored. Same object unless rise replaces it — see
     // the rise branch below. Read by _decide, never by anything else.
@@ -233,7 +233,12 @@
     // every candidate by the same row and resolve again, and the cascade
     // that rise sets off is counted too — a clear that breaks, and breaks
     // again, is worth what it actually does.
-    if (this.rise) {
+    // PLUS THE BOT'S OWN CADENCE. A hold is not free in time: the bot waits
+    // `reaction` frames before deciding again, and the stack rises for all
+    // of them. Charging only travel would rise every swap and never a hold,
+    // which favours waiting for a reason that is an artefact of the model.
+    var rowsArriving = this._rowsArriving(frames + this.reaction, plyClock);
+    for (var n = 0; n < rowsArriving; n++) {
       var after = board.clone().rise(this._incoming);
       var second = after.resolve();
       board = after;
@@ -281,6 +286,22 @@
     }
     var input = inputMod.fromStack(stack, board, resolved, null, cleared);
     input.travelFrames = frames;
+    // WHAT TIME IT IS FOR THIS PLY.
+    //
+    // fromStack reads the clock off the LIVE stack, which is right for a
+    // move being made now and wrong for one imagined a move later: the
+    // second ply was being scored against the clock as it stood BEFORE the
+    // first ply happened. So "fire the chain now" and "hold, then fire it"
+    // scored identically on stop time, and they are not the same move --
+    // awardStopTime takes a MAX, so firing under a full clock buys nothing
+    // and firing under an empty one buys everything.
+    //
+    // Only what _plyClock can state exactly is overridden; see its comment.
+    // Everything else about the clock stays as the live stack reports it.
+    if (plyClock) {
+      input.clock.stopTime = plyClock.stopTime;
+      input.clock.toppedOut = plyClock.toppedOut;
+    }
     return evaluator.evaluate(input, this.weights, { density: this.density }).score;
   };
 
@@ -381,7 +402,8 @@
     // others. It was the separate case, and that is how it ended up judged
     // one move deep while every swap was judged two — waiting always
     // looked worse than acting, and waiting is how a chain gets built.
-    var cands = [{ kind: 'hold', score: bestScore, board: this._scoredBoard }];
+    var cands = [{ kind: 'hold', score: bestScore, board: this._scoredBoard,
+                   earnedStop: holdResolved.stopTimeEarned || 0 }];
 
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
@@ -389,7 +411,8 @@
       trial.swap(r, c);
       var resolved = this._resolveCandidate(trial);
       var s = this._score(trial, resolved, [r, c]);
-      cands.push({ kind: 'swap', score: s, move: [r, c], board: this._scoredBoard });
+      cands.push({ kind: 'swap', score: s, move: [r, c], board: this._scoredBoard,
+                   earnedStop: resolved.stopTimeEarned || 0 });
       // Strictly greater, so a tie leaves the incumbent standing rather
       // than handing the decision to whichever swap legalSwaps() happened
       // to list first — list order is not a preference.
@@ -421,14 +444,111 @@
   // placement per piece, and every placement lands on the same turn
   // boundary whatever column it goes to (PUYO_REFERENCE.md, "Move budget").
   // Here a swap can be anywhere and the stack rises while the cursor walks.
+  // HOW MANY ROWS ARRIVE WHILE THIS MOVE IS BEING MADE.
+  //
+  // The board the search judges is the board as it will be when the move
+  // LANDS, not as it is when the move is chosen. If a row arrives in
+  // between, show the row; if none arrives, do not.
+  //
+  // Before this, `rise: true` added exactly one row to EVERY candidate
+  // however long it took to reach, and `rise: false` added none to any of
+  // them -- so a far swap and a near swap were judged on the same board,
+  // which is the whole difference between a move made too soon and the same
+  // move made in time.
+  //
+  // Nothing here is estimated. `frames` is travel.cost plus this bot's own
+  // reaction, both exact; the rate is PanelEngine.riseTime(speed), the
+  // engine's own table, frames per pixel, counted from the live riseTimer
+  // and displacement with 16 pixels to a row; and the pause is
+  // advancePassiveRaise's own condition -- it rises only inside
+  // (!riseLock && stopTime === 0), so banked stop time postpones the row
+  // frame for frame. That last line is why holding stop time keeps the
+  // board still, and it is the engine's, not ours.
+  //
+  // THE CASCADE'S DURATION IS NOT NEEDED. updateRiseLock sets riseLock
+  // whenever hasActivePanels(), and a cascade IS active panels, so the
+  // stack does not rise during one at all. Only the walk moves the board.
+  // That is what makes this exact rather than a second copy of the engine's
+  // flash/pop timing living in the search.
+  //
+  // riseLock as it stands at the moment of the decision is deliberately not
+  // consulted: it lasts only while panels are active, and by the time the
+  // walk ends the board is settled by construction. Reading a flag that is
+  // false for almost every frame being counted would understate the rise,
+  // which is the direction that hides the problem.
+  PuyoCpu.prototype._rowsArriving = function (frames, plyClock) {
+    if (!this.rise) return 0;
+    var stack = this.stack;
+    var paused = plyClock ? plyClock.stopTime : (stack.stopTime || 0);
+    var moving = frames - paused;
+    if (moving <= 0) return 0;
+    var engine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
+    var first = stack.riseTimer;
+    if (moving < first) return 0;
+    var pixels = 1 + Math.floor((moving - first) / engine.riseTime(stack.speed));
+    // No `pixels < displacement` guard: the floor below already returns 0
+    // for every pixel count short of the next row, and a branch no test can
+    // reach is a branch nobody can be wrong about. Proved by mutation --
+    // removing that guard changed no answer and failed no test, which is
+    // what an unreachable line looks like.
+    return 1 + Math.floor((pixels - stack.displacement) / 16);
+  };
+
+  // THE CLOCK AS PLY 1 LEAVES IT, for scoring ply 2 against.
+  //
+  // Two fields, both restating an engine line rather than approximating it:
+  //
+  //   stopTime  awardStopTime ends `if (stopTime > this.stopTime)
+  //             this.stopTime = stopTime` -- a MAX, not a +=. So the clock
+  //             after ply 1 is the larger of what was banked and what ply 1
+  //             earned. Summing them would tell the search that firing a
+  //             chain under a full clock adds frames, which is the exact
+  //             belief that makes it fire early and die.
+  //
+  //   toppedOut isToppedOut is "anything in the top row", so it is asked of
+  //             PLY 1'S SETTLED BOARD -- the board the search already holds.
+  //             This is the half that lets a line say "safe now, in danger
+  //             by then". The live stack's wasToppedOut still wins outright
+  //             when set: it is the flag the engine itself acts on, and a
+  //             candidate that settles lower does not un-top the stack the
+  //             move is being made from.
+  //
+  // NOT DRAINED BY ELAPSED FRAMES, deliberately. Travel is exact and the
+  // cascade's duration is not: the board the training path resolves with
+  // (panel-cpu.js's LogicalBoard) counts row drops, not frames, so a drain
+  // would need a second copy of the engine's flash/pop timing living here.
+  // Draining only by travel would be worse than not draining -- it would
+  // look exact while systematically undercounting, which biases the search
+  // back toward firing early, the thing this exists to stop.
+  PuyoCpu.prototype._plyClock = function (cand) {
+    var stack = this.stack;
+    return {
+      stopTime: Math.max(stack.stopTime || 0, cand.earnedStop || 0),
+      toppedOut: !!stack.wasToppedOut || this._boardToppedOut(cand.board)
+    };
+  };
+
+  // isToppedOut's rule, asked of a search board rather than a live Stack:
+  // anything in the top row at all.
+  PuyoCpu.prototype._boardToppedOut = function (board) {
+    if (!board || !board.grid) return false;
+    var row = board.grid[board.height];
+    if (!row) return false;
+    for (var c = 1; c <= board.width; c++) if (row[c] !== 0) return true;
+    return false;
+  };
+
   PuyoCpu.prototype._value = function (cand) {
     var next = cand.board.legalSwaps();
     var from = cand.kind === 'hold' ? null : cand.move;
     var v = cand.score;
+    // Computed ONCE per candidate: every child of this candidate follows the
+    // same first move, so they all inherit the same clock.
+    var clock = this._plyClock(cand);
     for (var j = 0; j < next.length; j++) {
       var child = cand.board.clone();
       child.swap(next[j][0], next[j][1]);
-      var f = this._score(child, this._resolveCandidate(child), next[j], from);
+      var f = this._score(child, this._resolveCandidate(child), next[j], from, clock);
       if (f > v) v = f;
     }
     return v;

@@ -485,6 +485,116 @@ test('stop time does NOT bank — the engine takes a max, so the feature must no
         'summing where the engine takes a max');
 });
 
+// ---- stopTimeGain, against what the ENGINE actually adds to the clock ----
+//
+// The feature restates one engine rule — awardStopTime's
+// `if (stopTime > this.stopTime) this.stopTime = stopTime` — and a
+// restatement that agrees with itself proves nothing. So the expected
+// answer is computed from the ENGINE, twice over and never with
+// features.js's arithmetic: what the award is worth on an empty clock
+// (a second Stack, driven the same way) and what it actually adds to a
+// clock already running (before/after on the real one).
+//
+// Swept over seeds, colour counts and levels because the award VALUE
+// depends on all three through levelData.stop, and a sweep that only ever
+// produces one award size cannot tell a max from a sum.
+test('stopTimeGain sweep: it equals the frames the engine really adds', function () {
+    var SEEDS = [3, 7, 11, 19];
+    var COLOURS = [5, 6];
+    var LEVELS = [3, 10];
+    var AWARDS = [[true, 4], [true, 6], [false, 4], [false, 9]];   // chain / combo
+    var cases = 0, sawGain = 0, sawBlocked = 0, sawPartial = 0;
+
+    SEEDS.forEach(function (seed) {
+      COLOURS.forEach(function (colours) {
+        LEVELS.forEach(function (level) {
+          AWARDS.forEach(function (aw) {
+            // What this award is worth with nothing on the clock. The
+            // ENGINE decides it; this file never computes a stop value.
+            var probe = new PanelEngine.Stack({ level: level, seed: seed, colors: colours });
+            var guard = 0;
+            while (!probe.stopWatchIsRunning && guard++ < 1000) probe.run();
+            probe.wasToppedOut = true;
+            probe.chainCounter = aw[1];
+            probe.stopTime = 0;
+            probe.awardStopTime(aw[0], aw[1]);
+            var earned = probe.stopTime;
+            if (earned <= 0) return;           // this combination pays nothing
+
+            // Now the same award onto clocks already running, including one
+            // above it and one below it, so the max is exercised both ways.
+            [0, Math.floor(earned / 2), earned, earned + 30].forEach(function (banked) {
+                var s = toppedOutStack(level);
+                s.wasToppedOut = true;
+                s.chainCounter = aw[1];
+                s.stopTime = banked;
+                var before = s.stopTime;
+                s.awardStopTime(aw[0], aw[1]);
+                var engineGain = s.stopTime - before;      // the engine's own answer
+
+                var got = features.stopTimeGain(inputMod.normalize({
+                    board: { width: PanelEngine.WIDTH, height: s.height,
+                             grid: gridOf(s), blocks: {} },
+                    clock: { toppedOut: true, stopTime: banked },
+                    earned: { stopTimeEarned: earned }
+                }));
+                assert.strictEqual(got, engineGain,
+                    'level ' + level + ' seed ' + seed + ' colours ' + colours +
+                    ' award ' + JSON.stringify(aw) + ' banked ' + banked +
+                    ': feature says ' + got + ', the engine added ' + engineGain);
+                cases++;
+                if (engineGain === earned && banked === 0) sawGain++;
+                else if (engineGain === 0) sawBlocked++;
+                else if (engineGain > 0) sawPartial++;
+            });
+          });
+        });
+      });
+    });
+
+    // THE SWEEP ASSERTS ITS OWN COVERAGE. A sweep that never produced a
+    // blocked award would pass with the max implemented as a sum, and a
+    // sweep that never produced a partial one would pass with it
+    // implemented as an all-or-nothing gate.
+    assert.ok(cases >= 40, 'sweep too sparse: only ' + cases + ' cases');
+    assert.ok(sawGain > 0, 'sweep never awarded onto an empty clock');
+    assert.ok(sawBlocked > 0, 'sweep never blocked an award with a fuller clock — ' +
+                              'it cannot tell a max from a sum');
+    assert.ok(sawPartial > 0, 'sweep never produced a PARTIAL gain — ' +
+                              'it cannot tell a max from an all-or-nothing gate');
+});
+
+// The candidate board as a plain grid, in the encoding input.js expects:
+// 0 empty, and anything non-zero occupied. Written here rather than reused
+// from features.js so a bug in that encoding cannot agree with itself.
+function gridOf(stack) {
+    var grid = [];
+    for (var r = 0; r <= stack.height; r++) {
+        grid[r] = [];
+        for (var c = 1; c <= PanelEngine.WIDTH; c++) {
+            if (r === 0) { grid[r][c] = 0; continue; }
+            var p = stack.panelAt(r, c);
+            grid[r][c] = p.isGarbage ? -2 : (p.color || 0);
+        }
+    }
+    return grid;
+}
+
+test('stopTimeGain is silent on a safe board no matter how big the award', function () {
+    // The ACCEPT half, through the real engine rather than a hand-built
+    // input: a stack that is genuinely NOT topped out, with a real award.
+    var s = new PanelEngine.Stack({ level: 10, seed: 7 });
+    var guard = 0;
+    while (!s.stopWatchIsRunning && guard++ < 1000) s.run();
+    assert.ok(!s.wasToppedOut, 'setup failed: a fresh stack should not be topped out');
+    var got = features.stopTimeGain(inputMod.fromStack(
+        s, { width: PanelEngine.WIDTH, height: s.height, grid: gridOf(s), blocks: {} },
+        { stopTimeEarned: 600 }, null, 0));
+    assert.strictEqual(got, 0,
+        'a board that cannot die paid ' + got + ' for stop time it does not need');
+});
+
+
 tests.forEach(function (t) {
     try { t.fn(); process.stdout.write('  ok   ' + t.name + '\n'); }
     catch (e) { failures.push(t.name + '\n       ' + e.message); process.stdout.write('  FAIL ' + t.name + '\n'); }

@@ -169,6 +169,15 @@ function cleared(n) { return F.garbageCleared(inputMod.normalize({ earned: { gar
 
 function death(clock) { return F.framesToDeath(inputMod.normalize({ clock: clock })); }
 
+// stopTimeGain: what this candidate's stop time is WORTH, which is the extra
+// frames it buys over the clock already running, and only where dying is
+// possible. Three inputs: the candidate board (danger), the live clock
+// (banked), the candidate's own resolve (earned).
+function stGain(rows, clock, earned) {
+    return F.stopTimeGain(inputMod.normalize({
+        board: board(rows), clock: clock || {}, earned: earned || {} }));
+}
+
 function sent(earned) { return F.garbageSent(inputMod.normalize({ earned: earned })); }
 function chain(earned) { return F.chainLength(inputMod.normalize({ earned: earned })); }
 
@@ -904,6 +913,102 @@ test('framesToDeath: topped out with nothing left is zero, not Infinity', functi
     assert.strictEqual(death({ toppedOut: true, health: 0 }), 0);
 });
 
+
+
+// ---- stopTimeGain ----
+// STOP TIME IS THE ONLY CLOCK THAT KEEPS YOU ALIVE AT LEVEL 10, AND IT IS
+// WORTH NOTHING WHEN YOU CANNOT DIE.
+//
+// advancePassiveRaise drains health only inside (!riseLock && stopTime === 0),
+// so stop time does not sit beside health as a second reserve — it FREEZES
+// the health drain. At level 10 maxHealth is 1, so there is no health to
+// keep up; the reserve IS stop time.
+//
+// Two things the existing stopTimeEarned cannot say, and both of them decide
+// whether a move is worth making:
+//   - awardStopTime ends `if (stopTime > this.stopTime) this.stopTime = stopTime`
+//     — a MAX against stopTime, not a +=. Earning 90 frames while 120 are on
+//     the clock buys NOTHING, and stopTimeEarned reports 90.
+//   - a weighted sum cannot multiply "how much stop time" by "how close to
+//     death", so the conjunction goes INSIDE the feature, the way flatTop
+//     holds flat-AND-high. Flat, stopTimeEarned pays the same on a board at
+//     row 3 as on one topped out, and the search correctly averages that to
+//     nothing.
+
+var SAFE_ROWS = ['......', '......', '......', '......', '1.....'];
+var TOPPED    = ['1.....', '111111', '111111', '111111', '111111'];
+var ONE_BELOW = ['......', '111111', '111111', '111111', '111111'];
+
+test('stopTimeGain: REJECT — topped out, stop time earned, nothing banked', function () {
+    assert.strictEqual(stGain(TOPPED, { toppedOut: true }, { stopTimeEarned: 60 }), 60);
+});
+
+test('stopTimeGain: ACCEPT — the same 60 frames on a board that cannot die is worth 0', function () {
+    // The near-miss that looks identical to stopTimeEarned. This is the whole
+    // reason the feature exists: 99.6% of candidates are this one.
+    assert.strictEqual(stGain(SAFE_ROWS, { toppedOut: false }, { stopTimeEarned: 60 }), 0);
+});
+
+test('stopTimeGain: the engine takes a MAX, so earning under the clock buys nothing', function () {
+    assert.strictEqual(stGain(TOPPED, { toppedOut: true, stopTime: 120 }, { stopTimeEarned: 60 }), 0);
+});
+
+test('stopTimeGain: over the clock, it is worth only the DIFFERENCE', function () {
+    assert.strictEqual(stGain(TOPPED, { toppedOut: true, stopTime: 60 }, { stopTimeEarned: 90 }), 30);
+});
+
+test('stopTimeGain: preStopTime is NOT part of the max — awardStopTime compares stopTime alone', function () {
+    // decrementTimers drains preStopTime first and only then stopTime, so
+    // preStop extends the total clock; but awardStopTime's comparison is
+    // against this.stopTime, so a big preStop does not stop an award landing.
+    assert.strictEqual(stGain(TOPPED, { toppedOut: true, stopTime: 0, preStopTime: 200 },
+                              { stopTimeEarned: 60 }), 60);
+});
+
+test('stopTimeGain: earning nothing is worth nothing, in danger or out of it', function () {
+    assert.strictEqual(stGain(TOPPED, { toppedOut: true }, { stopTimeEarned: 0 }), 0);
+    assert.strictEqual(stGain(SAFE_ROWS, { toppedOut: false }, { stopTimeEarned: 0 }), 0);
+});
+
+test('stopTimeGain: danger reaches one row BEFORE the ceiling, not one frame after', function () {
+    // isToppedOut is "anything in the top row". A feature that waits for it
+    // can only ever reward the move that saves you on the frame you die;
+    // one rise away is where the decision actually gets made.
+    assert.strictEqual(stGain(ONE_BELOW, { toppedOut: false }, { stopTimeEarned: 60 }), 60);
+});
+
+test('stopTimeGain: ACCEPT — two rows short of the ceiling is not danger', function () {
+    assert.strictEqual(stGain(['......', '......', '111111', '111111', '111111'],
+                              { toppedOut: false }, { stopTimeEarned: 60 }), 0);
+});
+
+test("stopTimeGain: the engine's own toppedOut flag counts, even on a low candidate board", function () {
+    // wasToppedOut is what the engine acts on, and it is latched at the top
+    // of the frame. A candidate board that settles lower is still a board
+    // whose stack is topped out right now.
+    assert.strictEqual(stGain(SAFE_ROWS, { toppedOut: true }, { stopTimeEarned: 60 }), 60);
+});
+
+test('stopTimeGain: IT VARIES BETWEEN CANDIDATES OF ONE DECISION', function () {
+    // The defect this replaces: every clock field is read off the LIVE stack
+    // before the swap, so framesToDeath was identical for every candidate of
+    // a decision -- measured, 0 of 415 decisions at level 10 -- and a
+    // constant cannot break a tie. earned is per-candidate, so this does.
+    var clock = { toppedOut: true, stopTime: 30 };
+    var a = stGain(TOPPED, clock, { stopTimeEarned: 90 });
+    var b = stGain(TOPPED, clock, { stopTimeEarned: 45 });
+    var c = stGain(TOPPED, clock, { stopTimeEarned: 0 });
+    assert.strictEqual(a, 60);
+    assert.strictEqual(b, 15);
+    assert.strictEqual(c, 0);
+    assert.ok(a !== b && b !== c, 'same clock, same board, different moves must differ');
+});
+
+test('stopTimeGain: it never goes negative', function () {
+    // A negative would pay the bot to avoid clearing while stop time runs,
+    // which is the opposite of the rule. max(0, ...) not (earned - banked).
+    assert.ok(stGain(TOPPED, { toppedOut: true, stopTime: 300 }, { stopTimeEarned: 1 }) >= 0);
+});
 
 // ---- latentChain ----
 // WILL THIS LANDING CONTINUE THE CHAIN. Counts cells that carry the chain

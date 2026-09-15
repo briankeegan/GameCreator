@@ -135,6 +135,9 @@
     { key: 'stopTimeEarned',   group: 'earned', sign: +1, fn: null,
       what: 'Frames of stop time this move bought — the stack stops rising for that long. The real payoff for breaking garbage, and invisible to the evaluator until resolve() started reporting it.' },
 
+    { key: 'stopTimeGain',     group: 'earned', sign: +1, fn: null,
+      what: 'The stop-time frames this move actually BUYS: max(0, earned - the stop clock already running), and 0 unless the board could die (topped out, or within DANGER_ROWS of the ceiling). stopTimeEarned is flat and ignores the clock -- awardStopTime takes a MAX, so earning 90 under a 120 clock buys nothing, and 60 frames on a safe board buy nothing that matters. A weighted sum cannot multiply stop time by danger, so the conjunction lives inside the feature, as it does in flatTop. Unlike the removed framesToDeath, it VARIES BETWEEN CANDIDATES: the banked half is per-decision, the earned half is per-candidate.' },
+
     { key: 'brokeGarbage',     group: 'earned', sign: +1, fn: null,
       what: 'Garbage cells this move popped — one row of a slab per match, which is what the engine does rather than the whole slab.' },
 
