@@ -254,6 +254,26 @@ gate_ply_clock() {
   node games/the-game/ai/eval/plyclock.test.js
 }
 
+# THE SEARCH JUDGES THE BOARD THE MOVE WILL LAND ON, NOT THE ONE IT STARTED
+# FROM. If a row arrives while the bot walks to a swap, the row is there when
+# the swap happens; if none arrives, it is not.
+#
+# Before this, `rise: true` added exactly one row to EVERY candidate however
+# long it took to reach and `rise: false` added none to any of them -- so a
+# far swap and a near swap were judged on the same board, which is the whole
+# difference between a move made too soon and the same move made in time.
+#
+# Nothing in it is estimated: travel.cost plus the bot's own reaction for the
+# frames, PanelEngine.riseTime(speed) from the live riseTimer and
+# displacement for the rate, and advancePassiveRaise's own
+# (!riseLock && stopTime === 0) for the pause -- which is why banked stop
+# time keeps the board still. The cascade's duration is not needed at all:
+# updateRiseLock holds riseLock while panels are active, so the stack does
+# not rise during a cascade.
+gate_elapsed_rise() {
+  node games/the-game/ai/eval/elapsed.test.js
+}
+
 # THE RUN RECORDS WHAT KIND OF GARBAGE IT SENT, NOT JUST HOW MUCH.
 #
 # Score cannot say whether the bot learned to CHAIN: one that survives on
@@ -386,6 +406,7 @@ GATES=(
   "a training run that ran out of time can resume:gate_checkpoint_resume"
   "the depth-2 search picks the best two-move future:gate_lookahead"
   "the second ply knows what time it is:gate_ply_clock"
+  "the board moves on while the bot walks:gate_elapsed_rise"
   "a run records what kind of garbage it sent:gate_chain_depth"
   "a garbage break stops the resolve:gate_garbage_rules"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints"

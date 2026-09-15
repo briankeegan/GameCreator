@@ -233,7 +233,12 @@
     // every candidate by the same row and resolve again, and the cascade
     // that rise sets off is counted too — a clear that breaks, and breaks
     // again, is worth what it actually does.
-    if (this.rise) {
+    // PLUS THE BOT'S OWN CADENCE. A hold is not free in time: the bot waits
+    // `reaction` frames before deciding again, and the stack rises for all
+    // of them. Charging only travel would rise every swap and never a hold,
+    // which favours waiting for a reason that is an artefact of the model.
+    var rowsArriving = this._rowsArriving(frames + this.reaction, plyClock);
+    for (var n = 0; n < rowsArriving; n++) {
       var after = board.clone().rise(this._incoming);
       var second = after.resolve();
       board = after;
@@ -439,6 +444,56 @@
   // placement per piece, and every placement lands on the same turn
   // boundary whatever column it goes to (PUYO_REFERENCE.md, "Move budget").
   // Here a swap can be anywhere and the stack rises while the cursor walks.
+  // HOW MANY ROWS ARRIVE WHILE THIS MOVE IS BEING MADE.
+  //
+  // The board the search judges is the board as it will be when the move
+  // LANDS, not as it is when the move is chosen. If a row arrives in
+  // between, show the row; if none arrives, do not.
+  //
+  // Before this, `rise: true` added exactly one row to EVERY candidate
+  // however long it took to reach, and `rise: false` added none to any of
+  // them -- so a far swap and a near swap were judged on the same board,
+  // which is the whole difference between a move made too soon and the same
+  // move made in time.
+  //
+  // Nothing here is estimated. `frames` is travel.cost plus this bot's own
+  // reaction, both exact; the rate is PanelEngine.riseTime(speed), the
+  // engine's own table, frames per pixel, counted from the live riseTimer
+  // and displacement with 16 pixels to a row; and the pause is
+  // advancePassiveRaise's own condition -- it rises only inside
+  // (!riseLock && stopTime === 0), so banked stop time postpones the row
+  // frame for frame. That last line is why holding stop time keeps the
+  // board still, and it is the engine's, not ours.
+  //
+  // THE CASCADE'S DURATION IS NOT NEEDED. updateRiseLock sets riseLock
+  // whenever hasActivePanels(), and a cascade IS active panels, so the
+  // stack does not rise during one at all. Only the walk moves the board.
+  // That is what makes this exact rather than a second copy of the engine's
+  // flash/pop timing living in the search.
+  //
+  // riseLock as it stands at the moment of the decision is deliberately not
+  // consulted: it lasts only while panels are active, and by the time the
+  // walk ends the board is settled by construction. Reading a flag that is
+  // false for almost every frame being counted would understate the rise,
+  // which is the direction that hides the problem.
+  PuyoCpu.prototype._rowsArriving = function (frames, plyClock) {
+    if (!this.rise) return 0;
+    var stack = this.stack;
+    var paused = plyClock ? plyClock.stopTime : (stack.stopTime || 0);
+    var moving = frames - paused;
+    if (moving <= 0) return 0;
+    var engine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
+    var first = stack.riseTimer;
+    if (moving < first) return 0;
+    var pixels = 1 + Math.floor((moving - first) / engine.riseTime(stack.speed));
+    // No `pixels < displacement` guard: the floor below already returns 0
+    // for every pixel count short of the next row, and a branch no test can
+    // reach is a branch nobody can be wrong about. Proved by mutation --
+    // removing that guard changed no answer and failed no test, which is
+    // what an unreachable line looks like.
+    return 1 + Math.floor((pixels - stack.displacement) / 16);
+  };
+
   // THE CLOCK AS PLY 1 LEAVES IT, for scoring ply 2 against.
   //
   // Two fields, both restating an engine line rather than approximating it:
