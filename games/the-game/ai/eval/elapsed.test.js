@@ -161,13 +161,13 @@ test('one pixel is not one row: sixteen of them are', function () {
         'two pixels of rise produced a whole row');
 });
 
-test('WIRING: over a real game the row sometimes arrives and sometimes does not', function () {
-    // At level 10 a row takes about 47 frames (riseTime 47/16 per pixel, 16
-    // pixels) and a decision spans reaction + travel, roughly 12 to 25 -- so
-    // most decisions bring no row and some do, depending where the live
-    // displacement has got to. Both must happen, or the rule is not being
-    // applied: all-zero is the old `rise: false`, all-one is the old
-    // `rise: true`.
+test('WIRING: over a real game the walk sometimes costs an EXTRA row', function () {
+    // With rise on, every candidate is risen at least once -- that row is the
+    // settle, not the clock, and rise.test.js owns why it is unconditional.
+    // What _rowsArriving adds on top is the row that genuinely lands during
+    // the walk, so the count per candidate must be sometimes 1 and sometimes
+    // 2. All ones is the old rise with no clock in it; anything else means
+    // the settle row went missing.
     var cpu = cpuAt();
     var stack = cpu.stack;
     var perScore = [], count = 0, decisions = 0;
@@ -191,9 +191,11 @@ test('WIRING: over a real game the row sometimes arrives and sometimes does not'
     }
     assert.ok(decisions > 20, 'only ' + decisions + ' decisions — too few to prove anything');
     var none = perScore.filter(function (n) { return n === 0; }).length;
-    var some = perScore.filter(function (n) { return n > 0; }).length;
-    assert.ok(none > 0, 'every candidate in the whole game was risen — that is the old rise:true');
-    assert.ok(some > 0, 'no candidate in the whole game was ever risen — that is the old rise:false');
+    var one = perScore.filter(function (n) { return n === 1; }).length;
+    var more = perScore.filter(function (n) { return n > 1; }).length;
+    assert.strictEqual(none, 0, none + ' candidates were scored on a board that never settled');
+    assert.ok(one > 0, 'every candidate got an extra row — the walk is not being counted');
+    assert.ok(more > 0, 'no candidate ever got the row that lands during the walk');
 });
 
 test('rise stays OFF by default, so the shipped bot is untouched', function () {

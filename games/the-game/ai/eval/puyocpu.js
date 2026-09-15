@@ -233,11 +233,33 @@
     // every candidate by the same row and resolve again, and the cascade
     // that rise sets off is counted too — a clear that breaks, and breaks
     // again, is worth what it actually does.
+    // ONE ROW TO SETTLE, PLUS THE ROWS THAT ACTUALLY ARRIVE.
+    //
+    // TWO DIFFERENT JOBS, and conflating them cost a whole round of dead
+    // training runs. The first row is not about time passing at all -- it is
+    // about WHEN a candidate is measured. Without it a candidate is scored
+    // the frame its match finishes popping: the hole is open, the cluster is
+    // spent, the colour is scarce, and the panels that fill it back in never
+    // arrive because the simulation stops there. Measured over 570 real
+    // level-10 decisions, that asymmetry is worth -134 for a 0-panel move,
+    // -424 for a 3, -652 for a 4-6 and -988 for a 7+ -- monotonic, so the
+    // more a move cleared the worse it scored, and the bot held 52% of its
+    // decisions rather than cash in. rise.test.js's last test is that
+    // measurement, and making the row conditional brought every one of those
+    // numbers straight back.
+    //
+    // So the settle row is unconditional whenever rise is on, and
+    // _rowsArriving adds the rows that genuinely land during the walk on top
+    // of it. A slow move is judged two rows later than a fast one, which is
+    // the timing difference; both are judged on a board that has refilled,
+    // which is the measurement fix. Neither job can be done by the other.
+    //
     // PLUS THE BOT'S OWN CADENCE. A hold is not free in time: the bot waits
     // `reaction` frames before deciding again, and the stack rises for all
     // of them. Charging only travel would rise every swap and never a hold,
     // which favours waiting for a reason that is an artefact of the model.
-    var rowsArriving = this._rowsArriving(frames + this.reaction, plyClock);
+    var rowsArriving = this.rise
+        ? 1 + this._rowsArriving(frames + this.reaction, plyClock) : 0;
     for (var n = 0; n < rowsArriving; n++) {
       var after = board.clone().rise(this._incoming);
       var second = after.resolve();
