@@ -1,0 +1,279 @@
+{
+  "mode": "replace",
+  "objective": "score",
+  "brain": "puyo",
+  "level": 10,
+  "selection": "elite of generation 390, by training fitness",
+  "arena": [
+    "comboStorm",
+    "factory",
+    "bigBlocks",
+    "endless"
+  ],
+  "depth": 1,
+  "beam": 0,
+  "rise": false,
+  "density": true,
+  "features": [
+    "matchPotential",
+    "chainPotential",
+    "comboPotential",
+    "staircase",
+    "staircaseReady",
+    "flatTop",
+    "links",
+    "colourVariance",
+    "edgePenalty",
+    "garbageOnBoard",
+    "maxHeight",
+    "roughness",
+    "garbageAdjacency",
+    "colourScarcity",
+    "scoreEarned",
+    "stopTimeEarned",
+    "brokeGarbage",
+    "travelCost"
+  ],
+  "excluded": [
+    "fillRatio",
+    "garbageSent",
+    "garbageCleared",
+    "chainLength"
+  ],
+  "generations": 100000,
+  "population": 200,
+  "seedPool": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40
+  ],
+  "seedsPerGeneration": 1,
+  "holdoutSeeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112
+  ],
+  "trainFitness": 3050,
+  "holdout": {
+    "learned": {
+      "fitness": 3273.333333333333,
+      "objective": "score",
+      "arena": [
+        "comboStorm",
+        "factory",
+        "bigBlocks",
+        "endless"
+      ],
+      "perCategory": {
+        "comboStorm": {
+          "raw": 721.6666666666666,
+          "avgFrames": 1010.5833333333334,
+          "avgSent": 21.583333333333332,
+          "deathRate": 1,
+          "chainDepth": {
+            "combo-small": 12,
+            "combo-big": 19,
+            "chain-short": 13,
+            "chain-medium": 1,
+            "chain-long": 0
+          }
+        },
+        "factory": {
+          "raw": 350,
+          "avgFrames": 606.5,
+          "avgSent": 10.916666666666666,
+          "deathRate": 1,
+          "chainDepth": {
+            "combo-small": 10,
+            "combo-big": 8,
+            "chain-short": 5,
+            "chain-medium": 1,
+            "chain-long": 0
+          }
+        },
+        "bigBlocks": {
+          "raw": 366.6666666666667,
+          "avgFrames": 874.4166666666666,
+          "avgSent": 11.416666666666666,
+          "deathRate": 1,
+          "chainDepth": {
+            "combo-small": 8,
+            "combo-big": 14,
+            "chain-short": 5,
+            "chain-medium": 0,
+            "chain-long": 0
+          }
+        },
+        "endless": {
+          "raw": 1835,
+          "avgFrames": 3240.5833333333335,
+          "avgSent": 61.166666666666664,
+          "deathRate": 1,
+          "chainDepth": {
+            "combo-small": 40,
+            "combo-big": 36,
+            "chain-short": 51,
+            "chain-medium": 1,
+            "chain-long": 0
+          }
+        }
+      },
+      "avgFrames": 1433.0208333333335,
+      "avgSent": 26.270833333333332,
+      "chainDepth": {
+        "combo-small": 70,
+        "combo-big": 77,
+        "chain-short": 74,
+        "chain-medium": 3,
+        "chain-long": 0
+      },
+      "deathRate": 1
+    },
+    "shipped": {
+      "fitness": 611.6666666666666,
+      "objective": "score",
+      "arena": [
+        "comboStorm",
+        "factory",
+        "bigBlocks",
+        "endless"
+      ],
+      "perCategory": {
+        "comboStorm": {
+          "raw": 49.166666666666664,
+          "avgFrames": 284.5,
+          "avgSent": 0,
+          "deathRate": 1,
+          "chainDepth": {
+            "combo-small": 0,
+            "combo-big": 0,
+            "chain-short": 0,
+            "chain-medium": 0,
+            "chain-long": 0
+          }
+        },
+        "factory": {
+          "raw": 27.5,
+          "avgFrames": 265.25,
+          "avgSent": 0,
+          "deathRate": 1,
+          "chainDepth": {
+            "combo-small": 0,
+            "combo-big": 0,
+            "chain-short": 0,
+            "chain-medium": 0,
+            "chain-long": 0
+          }
+        },
+        "bigBlocks": {
+          "raw": 40,
+          "avgFrames": 289.75,
+          "avgSent": 0,
+          "deathRate": 1,
+          "chainDepth": {
+            "combo-small": 0,
+            "combo-big": 0,
+            "chain-short": 0,
+            "chain-medium": 0,
+            "chain-long": 0
+          }
+        },
+        "endless": {
+          "raw": 495,
+          "avgFrames": 1385.4166666666667,
+          "avgSent": 10,
+          "deathRate": 1,
+          "chainDepth": {
+            "combo-small": 9,
+            "combo-big": 6,
+            "chain-short": 7,
+            "chain-medium": 0,
+            "chain-long": 0
+          }
+        }
+      },
+      "avgFrames": 556.2291666666667,
+      "avgSent": 2.5,
+      "chainDepth": {
+        "combo-small": 9,
+        "combo-big": 6,
+        "chain-short": 7,
+        "chain-medium": 0,
+        "chain-long": 0
+      },
+      "deathRate": 1
+    }
+  },
+  "improvementPct": 435.149863760218,
+  "weights": {
+    "matchPotential": 154.2800446703592,
+    "chainPotential": 124.44681383115423,
+    "comboPotential": 208.35166817564237,
+    "staircase": 33.08311576965824,
+    "staircaseReady": 20.637379702668778,
+    "flatTop": 80.19701201239397,
+    "links": 160.40154473220804,
+    "colourVariance": 281.1437057427961,
+    "edgePenalty": 57.33033154081236,
+    "garbageOnBoard": 125.34597732081399,
+    "maxHeight": 9.244836269590982,
+    "roughness": 57.10154065791173,
+    "garbageAdjacency": 15.93885305333021,
+    "colourScarcity": 33.08492604417985,
+    "scoreEarned": 63.251626649781265,
+    "stopTimeEarned": 1.7188095671556822,
+    "brokeGarbage": 205.3120995278356,
+    "travelCost": 1.8803909673559027
+  },
+  "lostCategories": [],
+  "timing": {
+    "worstMs": 27,
+    "unsafeSeeds": 0
+  }
+}
