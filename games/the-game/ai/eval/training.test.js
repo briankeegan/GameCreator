@@ -20,6 +20,13 @@
 // would have survived a test. So these are the claims the harness makes,
 // checked — cheaply, on tiny runs, so this file costs seconds rather than
 // the half hour a real round takes.
+// LEVEL 10 BEFORE ANYTHING LOADS bench.js, which reads GC_LEVEL ONCE at
+// require time (`var LEVEL = Number(process.env.GC_LEVEL || 3)`). Setting it
+// inside a test is too late: the module is already loaded at level 3 and the
+// test silently measures a different game from the one it names. The rise
+// test below did exactly that, and its own assertion could not see it.
+process.env.GC_LEVEL = process.env.GC_LEVEL || '10';
+
 var assert = require('assert');
 var path = require('path');
 var fs = require('fs');
@@ -599,18 +606,45 @@ test('rise REACHES THE BOT, end to end through bench', function () {
     // depth was the first. rise was the second, and it was caught only
     // because the on and off sweeps came back equal to the last digit —
     // noise does not repeat to the last digit.
-    process.env.GC_LEVEL = '10';
+    //
+    // ACROSS SEEDS, NOT ON ONE, since _rowsArriving. rise used to add a row
+    // to EVERY candidate of every decision, so one seed could not fail to
+    // show it. Now a candidate rises only if a row actually lands while the
+    // bot walks to it -- measured over a real level-10 game, 18 of 58
+    // decisions and 908 of 4,170 candidate scores -- so a single seed can
+    // legitimately play the same game either way, and did.
+    //
+    // The gate is unharmed: an option that is not plumbed through differs on
+    // NO seed, which is what this asserts. Only the claim "it must differ on
+    // THIS seed" is gone, and that claim was about the old behaviour rather
+    // than about the wiring.
     var bench = require('./bench.js');
+    // THE LEVEL IS ASSERTED, NOT ASSUMED. This test set GC_LEVEL inside
+    // itself and bench.js had already been required by an earlier test, so
+    // it ran at level 3 -- where the stack rises so slowly that NO decision
+    // ever spans a row boundary and rise is correctly a no-op. Measured: 0
+    // rows arriving in a whole level-3 game, 131 in a level-10 one. The
+    // assertion passed for years because rise used to add a row
+    // unconditionally; the moment it became conditional, the wrong level
+    // turned into a failure that looked like broken wiring.
+    assert.strictEqual(bench.LEVEL, 10,
+        'this test needs level 10 and bench.js loaded at level ' + bench.LEVEL +
+        ' -- GC_LEVEL must be set before bench.js is first required');
     var W = { matchPotential: 229, chainPotential: 258, colourVariance: 168,
               maxHeight: 136, roughness: 294, garbageSent: 107, travelCost: 10 };
-    var off = bench.run(W, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
-                                checkTiming: false });
-    var on = bench.run(W, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
-                               checkTiming: false, rise: true });
-    assert.notStrictEqual(off.frames + ':' + off.score, on.frames + ':' + on.score,
-        'rise on and rise off played an IDENTICAL game (' + off.frames + ' frames, ' +
-        off.score + ' points) on the same seed and weights — the rise option is not ' +
-        'reaching the bot, so every run measuring it would measure nothing');
+    var seeds = [1, 3, 7, 11, 19], differed = [], same = 0;
+    seeds.forEach(function (seed) {
+        var off = bench.run(W, seed, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
+                                       checkTiming: false });
+        var on = bench.run(W, seed, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
+                                      checkTiming: false, rise: true });
+        if (off.frames + ':' + off.score === on.frames + ':' + on.score) same++;
+        else differed.push(seed);
+    });
+    assert.ok(differed.length > 0,
+        'rise on and rise off played an IDENTICAL game on all ' + seeds.length +
+        ' seeds — the rise option is not reaching the bot, so every run measuring ' +
+        'it would measure nothing');
 });
 
 tests.forEach(function (t) {
