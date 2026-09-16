@@ -231,6 +231,24 @@ gate_lookahead() {
   node games/the-game/ai/eval/lookahead.test.js
 }
 
+# NO POPULATION IS STRANDED AT A NAME NOTHING WILL OPEN.
+#
+# The checkpoint filename is a hash of the run's fingerprint, so changing
+# how that fingerprint is SPELLED renames every existing checkpoint out of
+# existence. The files stay committed; the runs stop finding them, open a
+# fresh search at generation 0, and report nothing wrong — which is how five
+# runs' populations (60, 27, 22, 3 and 2 generations) ended up unreachable
+# on 2026-09-16 with a green build the whole time.
+#
+# --check fails the push that does it, and --apply carries the populations
+# across. The test proves both directions: that it recovers the stranded
+# file, and that it refuses one that would overwrite a live run with an
+# older copy.
+gate_checkpoint_names() {
+  node games/the-game/ai/eval/migrate.test.js &&
+  node games/the-game/ai/eval/migrate_checkpoints.js --check
+}
+
 # A PLY THAT DOES NOT ADVANCE THE CLOCK CANNOT VALUE TIMING.
 #
 # Every clock field reaches a feature off the LIVE stack (input.js's
@@ -420,6 +438,7 @@ GATES=(
   "the status tool sees a duplicate run:gate_status_tool"
   "the training smoke check accepts and rejects:gate_smoke_checker"
   "a training run that ran out of time can resume:gate_checkpoint_resume"
+  "no checkpoint is stranded by a rename:gate_checkpoint_names"
   "the depth-2 search picks the best two-move future:gate_lookahead"
   "the second ply knows what time it is:gate_ply_clock"
   "the board moves on while the bot walks:gate_elapsed_rise"

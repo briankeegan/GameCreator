@@ -511,6 +511,17 @@ function checkpointPath() {
     return path.join(__dirname, '.train-checkpoint.' + MODE + '.' + tag + '.json');
 }
 var CHECKPOINT = checkpointPath();
+
+// ASK THIS FILE WHAT IT WOULD HASH TO, rather than keeping a second copy of
+// the spelling somewhere and hoping the two stay equal. migrate_checkpoints
+// has to compute the same name to recover a stranded population, and a copy
+// that drifts is exactly the failure it exists to undo. Exits before the
+// search starts, so it is safe to call from a test.
+if (process.env.GC_PRINT_FINGERPRINT === '1') {
+    console.log(fingerprint());
+    console.log(path.basename(CHECKPOINT));
+    process.exit(0);
+}
 function saveCheckpoint() {
     // Written to a temp file and RENAMED. A kill lands somewhere, and a kill
     // halfway through writing this file would leave truncated JSON that the
