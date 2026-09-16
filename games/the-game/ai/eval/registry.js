@@ -85,7 +85,7 @@
       what: 'Panels in the side columns, which have three orthogonal neighbours instead of four and so link less.' },
 
     { key: 'garbageOnBoard',   group: 'board',  sign: -1, fn: null,
-      what: 'Garbage cells present, on-screen weighted above off-screen.' },
+      what: 'Garbage cells on the board, counted FLAT — every cell is worth 1 wherever it sits. It said "on-screen weighted above off-screen" for a long time and never did that, and it cannot: the engine allocates 24 rows and lands garbage above the visible board (panel-engine.js MAX_ROWS), but the LogicalBoard the evaluator reads is built with stack.height = 12, so off-screen garbage is not in this number and never reaches any feature. If the bot should fear garbage stacked above the ceiling, the board handed to it has to carry those rows first.' },
 
     // incomingGarbage WAS HERE AND HAS BEEN REMOVED. It measured the garbage
     // queued against this board — which matters enormously to how the game
@@ -118,7 +118,7 @@
       what: 'Sum of absolute height differences between adjacent columns.' },
 
     { key: 'garbageAdjacency', group: 'board',  sign: +1, fn: null,
-      what: 'Matchable panels 4-way adjacent to eligible garbage. Garbage has no colour, so touching it is the ONLY way it ever clears.' },
+      what: 'Matchable panels 4-way adjacent to a garbage cell. Garbage has no colour, so touching it is the ONLY way it ever clears. NO ELIGIBILITY TEST, despite what this said before: the grid marks every isGarbage panel -2 whatever its state (panel-cpu.js), so a slab mid-pop counts exactly like a settled one.' },
 
     { key: 'colourScarcity',   group: 'board',  sign: -1, fn: null,
       what: 'Colours with fewer than 3 matchable panels left — a colour that can no longer form a match.' },

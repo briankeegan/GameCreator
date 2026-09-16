@@ -669,6 +669,32 @@ test('garbageOnBoard: real panels and busy cells are not garbage', function () {
     assert.strictEqual(gOnBoard(['111111', 'xxxxxx']), 0);
 });
 
+// THE DESCRIPTION SAID "on-screen weighted above off-screen" FOR A LONG TIME
+// AND THE CODE NEVER DID THAT. Pinned here so the claim cannot come back
+// without a test failing: a cell at the ceiling is worth exactly what a cell
+// on the floor is worth. If a row weighting is ever genuinely wanted, this is
+// the test that has to change first, deliberately.
+test('garbageOnBoard: a cell high up counts the SAME as a cell on the floor', function () {
+    assert.strictEqual(gOnBoard(['#.....', '......', '......']),
+                       gOnBoard(['......', '......', '#.....']),
+                       'garbage is weighted by row somewhere — the flat count is no longer flat');
+});
+
+// And the reason the old claim was not merely unimplemented but
+// UNIMPLEMENTABLE here: the board this feature reads is the visible one.
+// panel-engine.js allocates MAX_ROWS = 24 and lands garbage above the visible
+// board, but panel-cpu.js builds the LogicalBoard with stack.height = 12, so
+// off-screen garbage never reaches any feature at all.
+test('garbageOnBoard: the board it reads is the VISIBLE board, 12 rows', function () {
+    var PanelEngine = globalThis.PanelEngine;
+    assert.ok(PanelEngine, 'this test needs the engine loaded');
+    assert.strictEqual(PanelEngine.HEIGHT, 12,
+        'the visible height changed; the note on garbageOnBoard needs rechecking');
+    // MAX_ROWS (24) is module-internal and deliberately not asserted here —
+    // a test cannot read it, and asserting on a number it cannot see would be
+    // a test of this file's memory rather than of the engine.
+});
+
 // ---- incomingGarbage ----
 // Attacks that have arrived and are queued but have NOT landed. The grid
 // cannot show these, which is the whole point: panel-cpu.js records that a
@@ -697,6 +723,19 @@ test('incomingGarbage: it is cells, so a tall block outweighs a wide one', funct
 
 test('garbageAdjacency: a panel beside garbage counts', function () {
     assert.strictEqual(gAdj(['#1....']), 1);
+});
+
+// NO ELIGIBILITY TEST, despite what the description used to claim. The grid
+// marks every isGarbage panel -2 whatever its state, so this counts a
+// neighbour of any garbage cell. Pinned because "eligible" is exactly the
+// kind of word that reads as though a check exists.
+test('garbageAdjacency: counts a neighbour of ANY garbage cell, eligible or not', function () {
+    // The feature only ever sees -2. There is no state to be ineligible in,
+    // which is precisely why the word was misleading.
+    assert.strictEqual(gAdj(['1#....']), 1);
+    assert.strictEqual(gAdj(['1#1...']), 2,
+        'both panels touching the same garbage cell must count');
+    assert.strictEqual(gAdj(['1....1']), 0, 'no garbage, nothing to touch');
 });
 
 test('garbageAdjacency: STAYS QUIET on a diagonal', function () {
