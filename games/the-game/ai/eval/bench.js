@@ -498,14 +498,13 @@ exports.ARENA = ['comboStorm', 'factory', 'bigBlocks', 'endless'];
 // on each drill — so that the four counted equally and fitness read as
 // "multiples of shipped". That is a baseline in the loop wearing a unit
 // conversion's clothes, and PUYO_REFERENCE.md's loop has no baseline in it
-// at all: the population is ranked against ITSELF on absolute score,
-// because there is no previous bot to rank against. Dividing by shipped
-// makes every fitness a statement about shipped.
+// at all: the population is ranked against ITSELF, because there is no
+// previous bot to rank against. Dividing by shipped makes every fitness a
+// statement about shipped.
 //
-// It also stopped the thing being recorded from being a SCORE. Step 3 of
-// the reference is "record the final score", and a geometric mean of four
-// ratios is not the final score of anything. What a bot playing four games
-// scores is the four scores added up, so that is what this is.
+// It also stopped the thing being recorded from being a SCORE. A geometric
+// mean of four ratios is not the final score of anything. What a bot playing
+// four games scores is the four scores added up, so that is what this is.
 //
 // The objection normalising answered was real — comboStorm and endless are
 // worth ~1200-1400 a game and bigBlocks ~370, so the small drill moves the
@@ -554,9 +553,8 @@ exports.fitness = function (weights, seeds, opts) {
             allFrames += r.avgFrames; allSent += r.avgSent; allDeaths += r.deathRate;
             games++;
         }
-        // THE FOUR FINAL SCORES, ADDED UP. Step 3 of the reference is
-        // "record the final score"; a bot that plays four games scores the
-        // sum of them. No baseline, no reweighting, no ratio.
+        // THE FOUR FINAL SCORES, ADDED UP. A bot that plays four games
+        // scores the sum of them. No baseline, no reweighting, no ratio.
         return {
             fitness: total,                  // the four final scores, summed
             objective: objective,

@@ -45,8 +45,8 @@ var out = [
     '//   node ai/eval/export_weights.js ai/eval/' + path.basename(src),
     '//',
     '// Found by the cross-entropy search in ai/eval/train.js, which stopped',
-    '// itself when the numbers stopped moving — ../ai/PUYO_REFERENCE.md\'s own',
-    '// rule, not a generation budget. ' + snap.selection + '.',
+    '// itself when the numbers stopped moving, not on a generation budget.',
+    '// ' + snap.selection + '.',
     '//',
     '// Held out (seeds never trained on), against the game\'s previous AI:',
     '//   learned ' + Math.round(held || 0) + '   previous ' + Math.round(shipped || 0) +

@@ -216,7 +216,8 @@ BOARD          .  R  .  .  .  .
                drop in column 5
 
 
-   WHAT'S GOOD   final score at game over = 4,200
+   WHAT'S GOOD   this weight set played a rival weight set and the
+                 rival topped out first
                   │
                   └──────► decides which WEIGHTS get kept for next time
 ```
@@ -226,7 +227,7 @@ BOARD          .  R  .  .  .  .
 | **Feature** | one board | 7 numbers | ~22× per piece |
 | **Weight** | 7 numbers | 1 number | ~22× per piece |
 | **Move choice** | 22 numbers | a move | once per piece |
-| **What's good** | a finished game | a score | once per game — **training only** |
+| **What's good** | a finished duel | a winner | once per duel — **training only** |
 
 The only place an *opinion* enters is the weights. Features just count. Move
 choice just compares. And the weights were not chosen by anyone — they are
@@ -312,22 +313,42 @@ memory of this turn, no plan carried forward. The bot is only ever answering
 Not from a person. Nobody worked out that clustering matters more than colour
 spread.
 
+**There is no score in the training loop.** This is `Trainer.java` in
+meatfighter's own source, not a paraphrase of it:
+
 ```
-1. Pick 7 random numbers as the weights.
-2. Play a full game with them.
-3. Record the final score.
-4. Repeat for hundreds of random weight sets.
-5. Keep the highest-scoring sets.
-6. Generate new sets clustered near those winners.
-7. Go back to step 2.
+1. Keep 16 weight vectors, each 7 random numbers normalised to sum to 1.
+2. Pick two of them at random and play them against each other.
+3. The one that tops out first LOSES. That is the entire fitness function.
+4. Drag the loser most of the way towards the winner:
+       loser[i] = 0.2 * loser[i] + 0.8 * winner[i]
+5. Mutate the loser by up to ±5% per weight, and re-normalise to sum to 1.
+6. Go back to step 2, forever — the loop has no termination condition.
 ```
 
-Run that until the numbers stop moving. Links settles at 0.25, variance at
-0.02 — not because clustering was judged good, but because **the bots that
-happened to value clustering scored higher, and their weights got copied.**
+Three things follow from that, and each of them is a decision we have to make
+separately rather than inherit:
 
-Same loop as Tetris's cross-entropy method, which took the same feature set
-from 660,000 lines (hand-tuned by a human) to 35,000,000 (tuned by search).
+- **Fitness is one bit.** Not points, not chain length, not survival frames —
+  who died first. Everything the bot becomes comes from that bit.
+- **The population never resets.** There are no generations, no elite set, no
+  best-ever snapshot. A vector that loses is edited in place towards the
+  vector that beat it, so the whole population walks together.
+- **Weights sum to 1 and every feature is normalised 0–1**, so a weight IS
+  the share of influence that feature has. Links settles at 0.25 because
+  a quarter of the decision is links. Ours are raw magnitudes on wildly
+  different scales, so our numbers are not comparable to theirs and a big
+  weight here does not mean a big influence.
+
+Links settles at 0.25, variance at 0.02 — not because clustering was judged
+good, but because **the bots that happened to value clustering won their
+duels, and the losers were dragged towards them.**
+
+Tetris's cross-entropy method is a different loop — it does score a finished
+game — and it took the same feature set from 660,000 lines (hand-tuned by a
+human) to 35,000,000 (tuned by search). Worth keeping the two apart: the
+lesson they share is "learn the weights"; only one of them tells you what to
+learn them against.
 
 ## The division of labour
 
@@ -335,8 +356,9 @@ Two things are ours to decide, and only two:
 
 1. **What to measure** — the seven features. This is where domain knowledge
    goes, and it is the real work.
-2. **What a good game means** — final score, survival time, matches won.
+2. **What a good game means** — who won the duel, final score, survival time.
    This is step 3 above, and it silently defines everything the bot becomes.
+   Puyo picks the first of those; we have run all three.
 
 Everything in between — every notion of which board beats which — is
 discovered by playing.

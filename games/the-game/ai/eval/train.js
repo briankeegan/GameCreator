@@ -46,9 +46,10 @@ var MODE = process.argv[4] || 'add';
 var WORKERS = Number(process.argv[5] || 4);
 // WHAT A GOOD GAME MEANS. PUYO_REFERENCE.md calls this one of only two
 // things that are ours to decide, and the one that "silently defines
-// everything the bot becomes". meatfighter used final score; the first run
-// here used survival and produced exactly the bot that choice predicts —
-// weighted almost entirely on tidiness, chainLength=3, barely attacking.
+// everything the bot becomes". meatfighter used one bit — who topped out
+// first in a duel — and no score at all; the first run here used survival
+// and produced exactly the bot that choice predicts — weighted almost
+// entirely on tidiness, chainLength=3, barely attacking.
 // WHAT THE SEARCH IS OPTIMISING. 'score' is the engine's own points, which
 // is what the reference used and what every run before 2026-09-15 used.
 // 'survival' is frames/n + (sent/n)*0.5 -- frames dominate, so it values not
@@ -111,11 +112,11 @@ var ARENA = process.env.GC_ARENA
 // the previous run spent an hour producing a number that was worse than
 // doing nothing.
 var SEED_POOL = SEEDS.TRAIN;
-// ONE GAME PER WEIGHT SET, WHICH IS WHAT THE REFERENCE ACTUALLY DOES.
+// ONE GAME PER WEIGHT SET.
 //
-// PUYO_REFERENCE.md's loop is "play a full game with them, record the final
-// score, repeat for HUNDREDS of random weight sets". The diversity comes
-// from the number of SETS, not from averaging seeds within a set. Running
+// The diversity comes from the number of SETS, not from averaging seeds
+// within a set — one game each across hundreds of sets, not twelve games
+// each across sixteen. Running
 // twelve seeds per genome spends twelve times the compute per candidate to
 // get a smoother number, and then explores sixteen candidates where they
 // explore hundreds — backwards for a search.
@@ -265,10 +266,10 @@ var KEYS = registry.keys.filter(function (k) { return EXCLUDE.indexOf(k) < 0; })
 if (!KEYS.length) throw new Error('GC_EXCLUDE excluded every feature; there is nothing to search');
 var MAX_WEIGHT = 300;
 
-// THE SEARCH IS CROSS-ENTROPY METHOD, because that is what the reference
-// runs. ../PUYO_REFERENCE.md steps 5 and 6: "keep the highest-scoring SETS,
-// generate new sets CLUSTERED NEAR THOSE WINNERS", and it names the method
-// outright — "same loop as Tetris's cross-entropy method".
+// THE SEARCH IS CROSS-ENTROPY METHOD: keep the best SETS, generate new sets
+// clustered near those winners, repeat. (This is Tetris's method, not Puyo's
+// — meatfighter's trainer drags a losing vector 80% of the way towards the
+// one that beat it and never resets. See ../PUYO_REFERENCE.md for that loop.)
 //
 // WHAT WAS HERE BEFORE, and why it was wrong rather than merely different.
 // A genetic algorithm: tournament-of-3 selection, uniform crossover, and a
@@ -829,14 +830,11 @@ function finish() {
     // on the seeds that chose it and -13% on seeds it had never seen.
     //
     // Every step patched the step before, and the first step was rounds.
-    // ../PUYO_REFERENCE.md has none: "keep the highest-scoring SETS,
-    // generate new sets clustered near those winners, go back to step 2 …
-    // run that until the numbers stop moving". One loop, plural winners, no
-    // boundary — so nothing to pick at and nothing to overfit.
-    //
-    // rounds.sh read "go back to step 2" as "start a new search from the
-    // winner". It means "keep this one going". That single misreading is
-    // where all of the above came from.
+    // There should not be any: one loop, plural winners, no boundary — so
+    // nothing to pick at and nothing to overfit. rounds.sh read "go again"
+    // as "start a new search from the winner"; it means "keep this one
+    // going", and that single misreading is where all of the above came
+    // from.
     //
     // The answer is now the elite of the last generation, best by its own
     // training fitness. The held-out set is a REPORT and never a selector.

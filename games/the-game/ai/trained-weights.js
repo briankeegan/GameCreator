@@ -3,8 +3,8 @@
 //   node ai/eval/export_weights.js ai/eval/trained.replace.l10-puyo-puyo18-s11.0914-020835.g00274.json
 //
 // Found by the cross-entropy search in ai/eval/train.js, which stopped
-// itself when the numbers stopped moving — ../ai/PUYO_REFERENCE.md's own
-// rule, not a generation budget. elite of generation 274, by training fitness.
+// itself when the numbers stopped moving, not on a generation budget.
+// elite of generation 274, by training fitness.
 //
 // Held out (seeds never trained on), against the game's previous AI:
 //   learned 3495   previous 612   +471%
