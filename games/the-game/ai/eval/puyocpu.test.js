@@ -2,15 +2,11 @@
 //
 // puyocpu.js makes four claims, and a bot is exactly the kind of thing
 // that can look like it is doing all four while doing none of them. This
-// checks each against real games at LEVEL 10, which is the level that
-// matters and the level SearchCpu's evaluator seams do not reach.
+// checks each against real games at LEVEL 10.
 //
-//   1. EVERY decision goes through the evaluator. The whole reason this
-//      brain exists: at level 10, SearchCpu consults the evaluator on 4%
-//      of decisions because TrueSurvivalSearch decides the rest, so
-//      weights trained against it there would be weights for 4% of the
-//      game. If this one has any path that decides without scoring, it has
-//      the same disease and none of the numbers mean anything.
+//   1. EVERY decision goes through the evaluator. If any path decides
+//      without scoring, the weights govern less than the whole game and
+//      none of the numbers mean anything.
 //   2. It scores EVERY legal move, not a shortlist. meatfighter's bot
 //      enumerates all 22 placements; a bot that quietly considers the
 //      first few is a different, worse bot that would still train.

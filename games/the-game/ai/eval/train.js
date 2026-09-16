@@ -78,10 +78,6 @@ var OBJECTIVE = process.argv[6] || process.env.GC_OBJECTIVE || 'score';
 // 'puyo' (puyocpu.js) is the reference's bot: score every legal move's
 // resulting board with the weighted sum, play the best, nothing else. It
 // reaches 100% of decisions at every level by construction, and it is the
-// only option that means anything at LEVEL 10 — SearchCpu consults the
-// evaluator on 4% of decisions there, so weights trained against it would
-// be weights for 4% of the game.
-//
 // It is also ~40x cheaper per game (14-39ms against 550-2650ms), because
 // there is no beam search and no engine rollout behind it. That is what
 // makes "hundreds of weight sets" affordable rather than aspirational.
@@ -806,11 +802,7 @@ function report(isFinal, cb) {
     // that is always zero is not a baseline, it is a broken column that
     // makes any result look infinite.
     //
-    // So the comparison for the puyo brain is SearchCpu with no evaluator
-    // attached — the AI the game actually ships at this level. It is run
-    // here, once, as a REPORT: the loop never saw it, and the reference's
-    // rule is about the search, not about whether a result may be compared
-    // to anything at the end.
+    // The comparison is run here once, as a REPORT: the loop never saw it.
     // The control is the weights the game currently ships, run on the same
     // held-out seeds. If the shipped file cannot be read, fall back to a zero
     // genome rather than skipping the comparison silently.

@@ -53,7 +53,7 @@ function watch(seed) {
 
     // WRAPPING A STACK METHOD IS SAFE ONLY BECAUSE OF THE GUARD BELOW.
     // Assigning here puts an OWN field on the instance, shadowing the
-    // prototype. TrueSurvivalSearch._cloneStack copies own fields into
+    // prototype.
     // every simulated future, and a copied closure is still bound to the
     // ORIGINAL stack — so without the guard, each rollout's hypothetical
     // swaps would land on the live match. It went unnoticed for a while:

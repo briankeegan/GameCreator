@@ -6,9 +6,6 @@
 //
 // ../experiments/ga_core.js drives the real engine against the L10
 // bigBlocks drill and is what every existing GA round trained against. It
-// cannot measure this evaluator at all. SearchCpu._evaluate — the seam
-// attach.js replaces — is only reached on the OFFENSIVE search path; at
-// maxHealth <= 21 the cpu routes through TrueSurvivalSearch and the
 // defensive tiers instead. Counted directly over 1500 frames of steady
 // pressure:
 //
@@ -50,10 +47,6 @@
 //     every 120 h4  [ 748,1931,1850,836,847,1808]
 //     every  90 h4  [1896, 687,2583,1040,723,1506]
 //
-// WHAT THIS DOES NOT COVER, said plainly: survival at the tightened levels
-// is TrueSurvivalSearch's own scoring, which this evaluator does not touch
-// and this benchmark does not exercise. Weights learned here govern the
-// offensive search and nothing else.
 var path = require('path');
 var report = require('../experiments/report.js');
 var GAME = path.join(__dirname, '..', '..');

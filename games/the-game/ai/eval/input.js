@@ -5,8 +5,7 @@
 // cumCombo) sees a settled grid and three running totals; half the features
 // in registry.js are not reachable from that. Queued attacks live on
 // stack.incoming, the death clock lives on stack.stopTime/health/shakeTime,
-// and "will this landing continue the chain" needs the chain flags that
-// SearchCpu._cascadePrediction already computes and then throws away.
+// and "will this landing continue the chain" needs the chain flags.
 //
 // So the input is defined FIRST, as a plain object with no engine types in
 // it, and the features are written against that. Two consequences worth
@@ -104,10 +103,8 @@
       // chainPotential does not read the board, it asks what a swap would
       // DO to it, and the only honest answer comes from the class the game
       // plans with (clone/swap/resolve). Flattening stripped those, so the
-      // feature scored 0 through the seam on a board where it is 3 — caught
-      // by seam.test.js, which exists for exactly this. The alternative was
-      // a second implementation of gravity and matching inside features.js,
-      // which is how two copies of the rules drift apart.
+      // The alternative was a second implementation of gravity and matching
+      // inside features.js, which is how two copies of the rules drift apart.
       //
       // Null whenever the caller had no real board (hand-built test inputs,
       // some call sites), and any feature using it must handle that.
@@ -155,11 +152,11 @@
   // search has already resolved for the candidate move. Kept here rather
   // than in panel-cpu.js so there is ONE definition of how engine state
   // maps into a feature input, and the shipped file needs no edit to use
-  // it (see attach.js).
+  // it.
   //
   // `resolved` is what LogicalBoard.resolve() returned for this candidate:
   // { chainLength, comboSizes, garbage }. `cascade` is
-  // SearchCpu._cascadePrediction()'s result, or null when not mid-cascade.
+  // The cascade prediction, or null when not mid-cascade.
   function fromStack(stack, board, resolved, cascade, garbageCleared) {
     resolved = resolved || {};
     var incoming = [];

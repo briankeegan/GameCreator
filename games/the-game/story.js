@@ -725,7 +725,7 @@ window.NEWSEY_STORY = (function () {
             "No cushion, no favors. Play like you mean it."
           ],
           // The rank's namesake, and the toughest opponent in the arena —
-          // difficulty "nightmare" is the SearchCpu (games/the-game/panel-cpu.js)
+          // difficulty "nightmare" is level 10 (games/the-game/difficulty.js)
           // at its full tournament-validated strength (games/the-game/ai/),
           // not the "diamond" preset scaled back from it. This was
           // deliberately weakened here at one point ("so a determined

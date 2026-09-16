@@ -58,10 +58,8 @@
     //
     // Making it fire would mean a bot that re-decides during a cascade,
     // which is chain-extension logic — a mechanism the Puyo design
-    // deliberately does not have, and which SearchCpu already implements
-    // (_chainExtendMove). Adding it here would be rebuilding that bot. If a
-    // brain ever does decide mid-cascade, the feature is in git history and
-    // its implementation is intact in features.js.
+    // deliberately does not have. If a brain ever does decide mid-cascade,
+    // the implementation is intact in features.js.
 
     { key: 'comboPotential',   group: 'board',  sign: +1, fn: null,
       what: 'The biggest single clear any legal swap could make from this settled board. The other half of stored potential: chainPotential measures how DEEP a cascade could go, matchPotential counts HOW MANY swaps pay out, and neither measures how BIG one clear is — matchPotential\'s own comment reserves size for its own feature rather than smuggling it in. A chain and a combo are different attacks with different payout tables. Asked of the engine (clone, swap, resolve) like chainPotential, and the MAX rather than the sum, because payout is per-clear.' },

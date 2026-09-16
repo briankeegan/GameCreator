@@ -6,9 +6,7 @@
 // constructor and decremented in update(), and NOTHING EVER SET IT -- dead
 // wiring that reads exactly like a working feature. _decide returned `hold`
 // or `swap` and nothing else, so raise was not in the choice set and no
-// weight could ever select it. The shipped SearchCpu has it
-// (_raiseOrBuild, {kind:"raise"} among its candidates, a tuned
-// raiseFillFrac of 0.80); the rewrite dropped it.
+// weight could ever select it.
 //
 // WHY IT MATTERS, and it is the same shape as the garbage finding: on a low
 // board with nothing worth swapping, the bot's only options were to wait for
@@ -16,8 +14,7 @@
 // not want. Raising is what ends the dead time and brings new panels up to
 // work with, and it was the one action unavailable.
 //
-// NO RULE DECIDES WHEN. SearchCpu raises on `fillRatio < 0.4`, a hand-set
-// threshold. Here the raise candidate is SCORED like the others, on the
+// NO RULE DECIDES WHEN. The raise candidate is SCORED like the others, on the
 // board as it will be once the row has landed and resolved, so maxHeight,
 // fillRatio and garbageOnBoard already say "not when you are near the
 // ceiling" and "not while garbage is on the board" in the weights' own
@@ -85,7 +82,7 @@ test('RAISE IS A CANDIDATE: _decide returns one when it scores best', function (
 test('the weights can also refuse it: a raise that scores worst is not played', function () {
     // The ACCEPT half. A raise wired in as a rule rather than a candidate
     // would be played whatever the board said, which is what the
-    // fillRatio < 0.4 threshold in SearchCpu does.
+    // a hand-set threshold would.
     var cpu = lowBoard(started(), 2);
     var real = cpu._score;
     var calls = 0;

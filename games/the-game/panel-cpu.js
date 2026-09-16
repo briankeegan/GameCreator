@@ -1,78 +1,13 @@
-// Puzzle Attack — the duel opponents' brain.
+// Puzzle Attack — the board model the bot plans with.
 //
-// Two strategies live here, both playing through the same public entry
-// points a human uses (touchSwap / raise) — nothing here can do something
-// the player could not, and nothing here sees a color the player couldn't
-// also see on screen.
+// LogicalBoard is a timer-free copy of the engine's rules: clone a position,
+// try a swap, resolve gravity and matches and cascades, and read what it
+// paid. The bot (ai/eval/puyocpu.js) is built on it.
 //
-//   1. THE HEURISTIC BOT (Cpu, unchanged from before) — one ply, score
-//      every legal swap, take the best. Fast, simple, the baseline every
-//      duel opponent used to be built from.
-//
-//   2. THE SEARCH BOT (SearchCpu) — genuinely plans: it holds a plain
-//      3-match to keep building when the board has room, commits to a
-//      multi-swap SEQUENCE toward the biggest cascade it can find rather
-//      than re-deciding from scratch every frame, and refuses to ever
-//      make a move that could be avoided while the board is dangerously
-//      tall. Designed and proven offline in games/the-game/ai/ (Python —
-//      a logical, timer-free model of the same match/chain/garbage rules,
-//      tournament-tested against the heuristic bot until it won
-//      consistently and without exception) before a line of it was
-//      written here; see games/the-game/ai/agents.py for the full
-//      reasoning behind each piece. difficulty presets exist to turn this
-//      DOWN from the tournament-proven config — see DIFFICULTIES.diamond.
+// Also here: the cursor walk and the stack -> LogicalBoard snapshot. The bot
+// walks to a swap rather than teleporting, which is what travelCost prices.
 (function (root) {
   "use strict";
-
-  var DIFFICULTIES = {
-    // reaction: frames between moves. mistake: chance to throw a move away.
-    // tidy: chance to spend a move flattening the stack when nothing matches.
-    // patience: how often it passes on a plain 3-match while its board is low,
-    // to keep building toward a combo worth sending. It is the difference
-    // between an opponent who clears panels and one who attacks you.
-    gentle: { reaction: 70, mistake: 0.45, tidy: 0.3, panicAt: 0.75, patience: 0 },
-    steady: { reaction: 45, mistake: 0.25, tidy: 0.6, panicAt: 0.7, patience: 0.35 },
-    sharp: { reaction: 26, mistake: 0.1, tidy: 0.8, panicAt: 0.65, patience: 0.6 },
-    brutal: { reaction: 14, mistake: 0.02, tidy: 0.9, panicAt: 0.6, patience: 0.8 },
-    // The SearchCpu presets. "diamond" is the shipped, scaled-back one —
-    // real lookahead, but slower to react and occasionally misses on
-    // purpose, so it is beatable. "nightmare" is the tournament-proven
-    // config from games/the-game/ai/agents.py's SearchAgent.DEFAULT_WEIGHTS,
-    // kept here for whenever a genuinely relentless opponent is wanted.
-    // chainExtend: mid-cascade chain continuation (the "massive garbage"
-    // knob — see _chainExtendMove). ON for both search presets; turn it
-    // OFF (chainExtend: false) when scaling a weaker character back from
-    // this brain, before touching anything else — it is the single
-    // biggest offense lever.
-    diamond: {
-      brain: "search", reaction: 30, mistake: 0.08,
-      depth: 2, beam: 5, patience: 0.6, patienceFillCeiling: 0.5,
-      dangerHeightFrac: 0.72, chainWeight: 380, comboWeight: 70,
-      garbageWeight: 90, heightPenalty: 60, potentialWeight: 5,
-      chainExtend: true, sentWeight: 5000
-    },
-    nightmare: {
-      // ONE CELL PER FRAME. cursorMoveFrames became a real preset knob when
-      // the cursor started walking, and every preset was left on the default
-      // 4 — which broke the hardest tier specifically. Nightmare is hard
-      // because it acts OFTEN (reaction 12 against diamond's 30, depth 4,
-      // beam 10); at four frames a cell, travel eats the frames that
-      // advantage is made of. check_preset_ordering.js measured it:
-      // nightmare 21401 frames alive and 269 sent against diamond's 26340
-      // and 338 — the hardest opponent was the weaker one.
-      //
-      // Slowing DIAMOND instead was tried and does not work: at 8 frames a
-      // cell diamond got BETTER (33504), because fewer, longer-considered
-      // trips beat more short ones for a bot with a slow reaction anyway.
-      // The knob is not monotonic, so the fix has to be on the tier that
-      // actually regressed.
-      brain: "search", reaction: 12, mistake: 0, cursorMoveFrames: 1,
-      depth: 4, beam: 10, patience: 0.85, patienceFillCeiling: 0.5,
-      dangerHeightFrac: 0.72, chainWeight: 380, comboWeight: 70,
-      garbageWeight: 90, heightPenalty: 60, potentialWeight: 5,
-      chainExtend: true, sentWeight: 5000
-    }
-  };
 
   // blocks: {id: {cells: [[r,c],...]}} — every garbage cell's id must also
   // appear in `blocks`, and every cell in a block must read -2 in `grid`.

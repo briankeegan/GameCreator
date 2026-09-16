@@ -14,11 +14,8 @@ var TIERS = [
   { id: "easy", label: "Easy", level: 3 },
   { id: "medium", label: "Medium", level: 5 },
   { id: "hard", label: "Hard", level: 8 },
-  // "Nightmare" rather than "Extra Hard" because it already names the
-  // toughest thing in this file's neighbor, panel-cpu.js's DIFFICULTIES —
-  // the fully unscaled, tournament-proven SearchCpu preset. Diamond's duel
-  // already runs on it (story.js). Naming this tier the same word ties the
-  // two together instead of inventing a second name for the same idea.
+  // The tier sets the LEVEL only. duel.js turns it into a reaction delay
+  // for the one bot.
   { id: "nightmare", label: "Nightmare", level: 10 }
 ];
 var DEFAULT_ID = "medium";

@@ -4,11 +4,6 @@
 // with the weighted feature sum, play the highest. No tiers, no special
 // cases — so the weights decide 100% of moves.
 //
-// SearchCpu, the bot the game ships, is a different design: a beam search,
-// a defensive tier, a pre-burst reserve and TrueSurvivalSearch, each with
-// its own idea of a good move. At level 10 it consulted the evaluator on 34
-// of 234 decisions, so weights trained against it would be weights for 4%
-// of the game. This brain exists so that number is 100%.
 
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
@@ -85,7 +80,7 @@
     // are made of panels (links, edgePenalty) become densities, so clearing
     // stops subtracting tidiness it never actually lost.
     this.density = opts.density === true;
-    // Same as SearchCpu's nightmare preset, so a comparison between the
+    // Frames between decisions. The weights were trained at 12; changing
     // two is about the SCORING and not about which one acts more often.
     // Every frame of it is real: the bot does nothing while it counts down.
     this.reaction = opts.reaction === undefined ? 12 : opts.reaction;
@@ -495,7 +490,7 @@
     if (decision.kind === 'raise') {
       // HOLD THE INPUT LONG ENOUGH FOR THE ENGINE TO SERVE IT. setInput
       // latches manualRaise on a rising edge and the row takes frames to
-      // arrive; 20 is what SearchCpu has always used for the same job.
+      // arrive.
       this.raiseFrames = 20;
       this.cooldown = this.reaction;
       return;

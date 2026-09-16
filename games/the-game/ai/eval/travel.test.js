@@ -25,11 +25,10 @@ function test(name, fn) { tests.push({ name: name, fn: fn }); }
 // Every walk the cpu makes over a real game: the distance it covered and
 // the frames it took from committing to the move to queueing the swap.
 // THE REFERENCE BOT IS PuyoCpu, because it is the one that PAYS this cost.
-// travelCost is a feature of the Puyo evaluator and nothing else reads it;
-// SearchCpu never consults travel.js at all. This used to observe SearchCpu
-// at difficulty 'nightmare', which worked only while both bots happened to
-// walk at the same cadence — and the moment nightmare's cursorMoveFrames
-// changed (it had to: at 4 frames a cell the hardest tier was weaker than
+// travelCost is a feature of the Puyo evaluator and nothing else reads it.
+// This used to observe a different bot, which worked only while both walked
+// at the same cadence — and the moment that cadence changed (it had to: at 4
+// frames a cell the hardest tier was weaker than
 // diamond, see panel-cpu.js), this test failed for a bot whose walks the
 // model was never meant to price. A model should be pinned to its consumer.
 var PROBE_WEIGHTS = { matchPotential: 229, chainPotential: 258, colourVariance: 168,
@@ -82,7 +81,7 @@ var WALKS = null;
 function walks() {
     if (!WALKS) {
         WALKS = [];
-        [1, 2, 3, 4].forEach(function (s) {
+        [1, 2, 3, 4, 5, 6, 7, 8].forEach(function (s) {
             observeWalks(s, 1500).forEach(function (w) { WALKS.push(w); });
         });
     }

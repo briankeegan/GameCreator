@@ -397,8 +397,8 @@ gate_elapsed_rise() {
 # passive rise (120 frames a row at level 10) or play a swap it did not want.
 #
 # It is a CANDIDATE, not a rule: scored on the board as it will be once the
-# row has landed and resolved, so the weights decide. SearchCpu's
-# `fillRatio < 0.4` threshold is what this deliberately does not do.
+# row has landed and resolved, so the weights decide rather than a
+# hand-set threshold.
 gate_raise() {
   node games/the-game/ai/eval/raise.test.js
 }

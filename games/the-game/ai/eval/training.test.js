@@ -99,8 +99,7 @@ test('a result records how its genome was chosen', function () {
 });
 
 test('a result is labelled with the brain it TRAINED, not the baseline brain', function () {
-    // The baseline row runs SearchCpu while the trained brain is puyo, by
-    // swapping a global across an async call. This was correct by luck.
+    // The baseline row swaps a global across an async call.
     var d = run().result;
     assert.strictEqual(d.brain, 'puyo',
         'trained the puyo brain and the result says "' + d.brain + '" — the baseline\'s ' +

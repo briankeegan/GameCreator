@@ -29,12 +29,8 @@
     module.exports = factory(require('./registry.js'), require('./input.js'));
   } else {
     root.PanelEval = root.PanelEval || {};
-    // The whole module is published, not just evaluate(): attach.js asks for
-    // PanelEval.evaluator and calls validate() on it. Exporting only the one
-    // function left the browser path broken — every module here had only ever
-    // been loaded through CommonJS, and the game is a no-bundler static site
-    // that loads plain <script> tags, so the path that matters was the one
-    // nothing exercised. Found by running the real game in a real browser.
+    // The whole module is published, not just evaluate(): callers ask for
+    // PanelEval.evaluator and call validate() on it.
     var mod = factory(root.PanelEval.registry, root.PanelEval.input);
     root.PanelEval.evaluator = mod;
     root.PanelEval.evaluate = mod.evaluate;

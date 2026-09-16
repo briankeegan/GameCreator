@@ -26,7 +26,7 @@
 //     garbage cell belongs to. LogicalBoard moves garbage by block
 //     (_dropGarbageBlocks reads this.blocks), so a board rebuilt from the
 //     fixture has garbage cells it can never move. The bot never sees that:
-//     SearchCpu._snapshot builds blocks from each panel's garbageId.
+//     the snapshot builds blocks from each panel's garbageId.
 //   - engineboard.paint() sets isGarbage but zeroes gWidth/gHeight and never
 //     restores garbageId, so the Stack's garbage is malformed too.
 //
@@ -84,7 +84,7 @@ for (var s = 1; s <= SEEDS; s++) {
         // (_dropGarbageBlocks reads this.blocks), so a board rebuilt from a
         // fixture that forgot which cells belong together has garbage it can
         // never move — while the real bot never hits that, because
-        // SearchCpu._snapshot builds blocks from each panel's garbageId. That
+        // the snapshot builds blocks from each panel's garbageId. That
         // alone produced 310 "disagreements" that were the fixture's, not the
         // simulation's.
         var key = '', ids = {}, nextId = 0;
