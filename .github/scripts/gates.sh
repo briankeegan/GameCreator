@@ -264,6 +264,62 @@ gate_deadline_stop() {
   node games/the-game/ai/eval/deadline.test.js
 }
 
+# THE TRAINING PRE-FLIGHT SUITES, WHICH gate_all DID NOT RUN.
+#
+# ai-train.yml runs five suites before it spends five hours -- features,
+# puyocpu, training, rise, density -- and gate_all ran ONE of them. So a
+# change could pass gate_all locally, be pushed to main, and be rejected by
+# the pre-flight of every training run afterwards. That happened: the
+# predictive deadline stop replaced the comparison training.test.js was
+# grepping for, gate_all went green on 46 gates, and the next two dispatches
+# died on the pre-flight in six minutes.
+#
+# This repo has the rule already -- "RUN gate_all BEFORE PUSHING TO main" --
+# and it is worth nothing while gate_all is a SUBSET of what CI runs.
+# check_preflight_gated.mjs keeps the two lists equal from now on.
+#
+# rise.test.js needs the real attack files: it refuses to run on a
+# garbage-free board, where the effect it measures reads as a fifth of its
+# real size. panel-game sits inside the workspace on a runner and beside the
+# repo in a sandbox, so look in both -- and FAIL if it is nowhere, rather
+# than skipping, which would be a gate that cannot fail.
+_gc_training_dir() {
+  if [ -n "${GC_TRAINING_DIR:-}" ] && [ -d "$GC_TRAINING_DIR" ]; then
+    echo "$GC_TRAINING_DIR"; return 0
+  fi
+  local root; root="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+  local c
+  for c in "$root/panel-game" "$root/../panel-game"; do
+    if [ -d "$c/client/assets/default_data/training" ]; then
+      echo "$c/client/assets/default_data/training"; return 0
+    fi
+  done
+  echo "panel-game checkout not found — set GC_TRAINING_DIR" >&2
+  return 1
+}
+
+gate_puyo_cpu() {
+  node games/the-game/ai/eval/puyocpu.test.js
+}
+
+gate_training_harness() {
+  node games/the-game/ai/eval/training.test.js
+}
+
+gate_rise_scoring() {
+  local d; d="$(_gc_training_dir)" || return 1
+  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/rise.test.js
+}
+
+gate_density_scoring() {
+  node games/the-game/ai/eval/density.test.js
+}
+
+# EVERY SUITE THE TRAINING PRE-FLIGHT RUNS IS ALSO A GATE.
+gate_preflight_gated() {
+  node .github/scripts/check_preflight_gated.mjs
+}
+
 # A PLY THAT DOES NOT ADVANCE THE CLOCK CANNOT VALUE TIMING.
 #
 # Every clock field reaches a feature off the LIVE stack (input.js's
@@ -455,6 +511,11 @@ GATES=(
   "a training run that ran out of time can resume:gate_checkpoint_resume"
   "no checkpoint is stranded by a rename:gate_checkpoint_names"
   "a slow run stops before the job kills it:gate_deadline_stop"
+  "the puyo brain:gate_puyo_cpu"
+  "the training harness:gate_training_harness"
+  "rise-adjusted scoring:gate_rise_scoring"
+  "density scoring:gate_density_scoring"
+  "every training pre-flight suite is gated:gate_preflight_gated"
   "the depth-2 search picks the best two-move future:gate_lookahead"
   "the second ply knows what time it is:gate_ply_clock"
   "the board moves on while the bot walks:gate_elapsed_rise"

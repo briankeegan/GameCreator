@@ -284,8 +284,24 @@ test('the search stops itself before a job timeout can kill it', function () {
     var src = fs.readFileSync(path.join(__dirname, 'train.js'), 'utf8');
     assert.ok(/GC_DEADLINE/.test(src),
         'train.js has no time budget, so a runner will kill it mid-generation');
-    assert.ok(/DEADLINE && Date\.now\(\) \/ 1000 > DEADLINE/.test(src),
-        'the deadline is read but never checked in the generation loop');
+
+    // BEHAVIOUR, NOT SPELLING. This used to assert the SOURCE contained
+    // `DEADLINE && Date.now() / 1000 > DEADLINE`, which is a string in
+    // train.js and not the property anybody wants. It then failed the day
+    // that comparison was replaced by a BETTER one -- deadline.outOfTime,
+    // which stops before a generation that would not fit rather than after
+    // one that already overran -- and it failed on the runner, after the
+    // push, having passed gate_all locally, because gate_all did not run
+    // this suite at all. Two bugs, one line. So: run it, with a deadline
+    // already gone, and require that it stops for that reason and says so.
+    var out = cp.execSync('GC_LEVEL=10 GC_BRAIN=puyo GC_DEADLINE=' +
+        Math.floor(Date.now() / 1000 - 60) + ' node train.js 200 4 replace 2 score 2>&1',
+        { cwd: __dirname, shell: '/bin/bash', timeout: 600000 }).toString();
+    assert.ok(/OUT OF TIME at generation/.test(out),
+        'a run whose deadline has already passed did not stop for it, so a runner will ' +
+        'kill it mid-generation and the whole run is lost:\n' + out.slice(-800));
+    assert.ok(!/gen\s+200\/200/.test(out),
+        'it ran to the generation cap despite being out of time');
     // Optional: running by hand must be unaffected.
     assert.ok(/process\.env\.GC_DEADLINE \? Number\(process\.env\.GC_DEADLINE\) : null/.test(src),
         'the budget is not optional, so running this by hand would stop for a reason ' +
