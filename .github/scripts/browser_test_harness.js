@@ -33,7 +33,7 @@
 //      assert.deepStrictEqual(errors, [], "no page or console errors during the playthrough");
 // 6. Run it: `NODE_PATH="$(npm root -g)" node games/<id>/browser.test.js`
 //    (needs Playwright + a Chromium binary — set CHROMIUM_PATH if it's
-//    not at the default /opt/pw-browsers/chromium).
+//    not where Playwright or the sandbox put it).
 // 7. This is deliberately NOT part of the pages.yml pre-deploy gate —
 //    Playwright/Chromium browser tests have shown real timing flakiness
 //    in that environment, which would risk blocking every game's deploy
@@ -58,7 +58,16 @@ const path = require("path");
 const { chromium } = require("playwright");
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
-const CHROMIUM = process.env.CHROMIUM_PATH || "/opt/pw-browsers/chromium";
+// WHERE CHROMIUM IS. /opt/pw-browsers/chromium is where the dev sandbox keeps
+// it; a GitHub runner that ran `npx playwright install` keeps it somewhere
+// else entirely. Hardcoding the first as a DEFAULT made every browser check
+// fail on the runner with "executable doesn't exist" — a red workflow that
+// says nothing about the game. So: CHROMIUM_PATH wins, then the sandbox path
+// IF IT IS THERE, and otherwise Playwright is left to find its own.
+const SANDBOX_CHROMIUM = "/opt/pw-browsers/chromium";
+const CHROMIUM = process.env.CHROMIUM_PATH ||
+  (require("fs").existsSync(SANDBOX_CHROMIUM) ? SANDBOX_CHROMIUM : null);
+const LAUNCH = CHROMIUM ? { executablePath: CHROMIUM } : {};
 const MIME = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -94,7 +103,7 @@ function serveRepo() {
 }
 
 function launchBrowser() {
-  return chromium.launch({ executablePath: CHROMIUM });
+  return chromium.launch(LAUNCH);
 }
 
 // One fresh page: error collection wired up, a clean localStorage (so one

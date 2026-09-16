@@ -94,6 +94,22 @@ open(p,'w').write(s)
 PY" \
     "node .github/scripts/check_room_exits.mjs"
 
+# A gate name left in a workflow after the function is deleted exits 127 and
+# fails the run for a reason that is not about the repo. It happened: the AI
+# preset-ordering gate was removed from gates.sh, its pages.yml step stayed,
+# and the site stopped deploying. The mutation touches .github rather than
+# games/, so it is undone explicitly — run() only restores games/.
+cp .github/workflows/pages.yml "$work/pages.yml.orig"
+run "gate wiring: a workflow calls a gate gates.sh does not define" \
+    "printf '      - name: Verify nothing\n        run: source .github/scripts/gates.sh && gate_deleted_last_week\n' >> .github/workflows/pages.yml" \
+    "node .github/scripts/check_gate_wiring.mjs"
+cp "$work/pages.yml.orig" .github/workflows/pages.yml
+
+run "gate wiring: a workflow runs a file that was deleted" \
+    "printf '      - name: Verify nothing\n        run: node games/the-game/ai/eval/deleted_in_a_cull.test.js\n' >> .github/workflows/pages.yml" \
+    "node .github/scripts/check_gate_wiring.mjs"
+cp "$work/pages.yml.orig" .github/workflows/pages.yml
+
 echo
 echo "== and the checks must STAY QUIET on the untouched repo =="
 rm -rf games; cp -r "$OLDPWD_SAVE/games" .
@@ -101,7 +117,8 @@ for g in "python3 .github/art/verify_sheet.py frames games/the-game/art kat" \
          "python3 .github/art/verify_sheet.py portrait games/the-game may" \
          "node .github/scripts/check_art_refs.mjs" \
          "node .github/scripts/check_character_specs.mjs" \
-         "node .github/scripts/check_room_exits.mjs"; do
+         "node .github/scripts/check_room_exits.mjs" \
+         "node .github/scripts/check_gate_wiring.mjs"; do
   if eval "$g" >/dev/null 2>&1; then echo "  quiet: ${g:0:60}"; else echo "  FALSE ALARM: ${g:0:60}"; fail=$((fail+1)); fi
 done
 echo

@@ -22,8 +22,25 @@
 var assert = require('assert');
 var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
+require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var PanelEngine = globalThis.PanelEngine;
+var LogicalBoard = globalThis.PanelCpu.LogicalBoard;
+var engineBoard = require('./engineboard.js');
 var inputMod = require('./input.js');
+
+// engineBoard.paint wants { id: [[row,col], ...] }; a LogicalBoard carries
+// { id: { cells: [...] } }. One line, named, so the two shapes are not
+// quietly assumed to be the same thing at three call sites.
+function blockCells(blocks) {
+    var out = {};
+    for (var id in blocks) if (blocks.hasOwnProperty(id)) out[id] = blocks[id].cells;
+    return out;
+}
+function lbBlocks(blocks) {
+    var out = {};
+    for (var id in blocks) if (blocks.hasOwnProperty(id)) out[id] = { cells: blocks[id] };
+    return out;
+}
 
 var tests = [], failures = [];
 function test(name, fn) { tests.push({ name: name, fn: fn }); }
@@ -211,10 +228,64 @@ function randomBoard(rng, colours, garbageChance) {
             grid[r][c] = v;
         }
     }
+    // A REAL LogicalBoard, not a look-alike: the features that plan — and
+    // matchPotential is one — need legalSwaps/clone/resolve, and silently
+    // measure nothing on an object that only has the fields.
     return {
         stack: stack,
-        board: { width: PanelEngine.WIDTH, height: stack.height, grid: grid, blocks: blocks }
+        board: new LogicalBoard(PanelEngine.WIDTH, stack.height, colours, grid, blocks)
     };
+}
+
+// A SETTLED board: gravity-packed and match-free, which is the only kind the
+// search ever scores.
+//
+// randomBoard scatters colours over the whole grid, which leaves panels
+// floating over holes and standing matches everywhere — and the engine will
+// not spontaneously clear a standing match, it only checks after something
+// moves. So a "settle it by running frames" loop returns a board that still
+// has matches standing in it, and every comparison downstream is then about
+// an impossible position. Packing each column from the floor up removes the
+// floating half; recolouring the cells of any standing match (rather than
+// deleting them, which would punch the holes back in) removes the other.
+function packedBoard(rng, colours, garbageChance) {
+    var stack = newStack();
+    var H = stack.height, W = PanelEngine.WIDTH;
+    var grid = [], blocks = {}, r, c;
+    for (r = 0; r <= H; r++) { grid[r] = []; for (c = 1; c <= W; c++) grid[r][c] = 0; }
+    for (c = 1; c <= W; c++) {
+        var h = 1 + Math.floor(rng() * (H - 3));
+        for (r = 1; r <= h; r++) {
+            if (garbageChance && r > 1 && rng() < garbageChance) {
+                grid[r][c] = -2;
+                blocks['g' + r + '_' + c] = { cells: [[r, c]] };
+            } else {
+                grid[r][c] = 1 + Math.floor(rng() * colours);
+            }
+        }
+    }
+    for (var attempt = 0; attempt < 200; attempt++) {
+        var standing = features._matchedCells({ width: W, height: H, grid: grid, blocks: blocks });
+        var keys = Object.keys(standing);
+        if (!keys.length) break;
+        keys.forEach(function (k) {
+            var cell = standing[k];
+            grid[cell[0]][cell[1]] = 1 + Math.floor(rng() * colours);
+        });
+    }
+    // Paint it onto the stack too, so panelAt() agrees with the grid for any
+    // caller that reads both.
+    for (r = 1; r <= H; r++) {
+        for (c = 1; c <= W; c++) {
+            var p = stack.panelAt(r, c);
+            if (!p) continue;
+            var v = grid[r][c];
+            p.isGarbage = v === -2;
+            p.color = v === -2 ? 9 : (v > 0 ? v : 0);
+            p.state = 'normal';
+        }
+    }
+    return { stack: stack, grid: grid, blocks: blocks, height: H, width: W };
 }
 
 // getMatchingPanels marks the panels it returns, and mark() skips
@@ -267,86 +338,87 @@ test('the feature match rule agrees with the engine across seeds and colour coun
 // features.js's own helpers, since a shared helper with a bug agrees with
 // itself perfectly.
 test('matchPotential agrees with an engine-driven count across seeds', function () {
-    var boards = 0, nonZero = 0, garbageQualified = 0, totalCounted = 0;
+    // WHAT matchPotential MEANS: the number of legal swaps whose clear is 4+
+    // wide, cascades (2+ links), or eats garbage. A plain 3 counts nothing,
+    // because a plain 3 pays exactly 0 engine points and sends no garbage.
+    //
+    // THE ORACLE IS A REAL STACK, not a second reading of the same grid. For
+    // every swap the board offers, the swapped grid is painted onto a live
+    // PanelEngine.Stack and run until it settles, and the rule above is
+    // applied to what the ENGINE reported clearing. So this compares the
+    // feature against the game rather than against a rule retyped here.
+    //
+    // THE BOARD HAS TO BE ONE THE FEATURE CAN READ. It used to be handed a
+    // plain {grid, blocks} object, which has no legalSwaps/clone/resolve, so
+    // planBoard() rejected it and matchPotential returned 0 for every board
+    // in the sweep — the assertion was comparing zero against a count, and
+    // could only ever have passed while the feature was a grid scan. It is a
+    // LogicalBoard now, the same shape the search actually scores.
+    var boards = 0, nonZero = 0, garbageQualified = 0, totalCounted = 0, skipped = 0;
+    var scratch = engineBoard.scratch(10);
+    scratch.speed = 0;            // a board that rises mid-settle is a different board
     SEEDS.forEach(function (seed) {
         COLOUR_COUNTS.forEach(function (colours) {
             var rng = PanelEngine.makeRng(seed + 5000);
-            for (var i = 0; i < 25; i++) {
+            for (var i = 0; i < 4; i++) {
                 var withGarbage = i % 2 === 0;
-                var rb = randomBoard(rng, colours, withGarbage ? 0.12 : 0);
-                // SETTLE IT FIRST. matchPotential scans only the swapped row
-                // and its two columns, which is exact on a settled board —
-                // the only kind the search ever scores, since candidates come
-                // out of resolve(). A raw random board can hold standing
-                // matches elsewhere, and the full-board reference counts
-                // those into the combo size while the optimised scan
-                // correctly ignores them. Comparing on an unsettled board
-                // measures a precondition violation, not a defect.
-                for (var guard = 0; guard < 40; guard++) {
-                    var standing = features._matchedCells(rb.board);
-                    var skeys = Object.keys(standing);
-                    if (!skeys.length) break;
-                    skeys.forEach(function (k) {
-                        var cell = standing[k];
-                        rb.board.grid[cell[0]][cell[1]] = 0;
-                        var p = rb.stack.panelAt(cell[0], cell[1]);
-                        if (p) { p.color = 0; p.isGarbage = false; }
-                    });
-                }
-                assert.deepStrictEqual(Object.keys(features._matchedCells(rb.board)), [],
-                    'board did not settle — the comparison below would be testing a ' +
-                    'precondition violation rather than the feature');
-                var stack = rb.stack, grid = rb.board.grid;
-                var W = PanelEngine.WIDTH, H = stack.height;
-                var expected = 0;
+                var pb = packedBoard(rng, colours, withGarbage ? 0.12 : 0);
+                var H = pb.height, W = pb.width, grid = pb.grid;
+                var blocks = blockCells(pb.blocks);
 
-                for (var r = 1; r <= H; r++) {
-                    for (var c = 1; c < W; c++) {
-                        var a = grid[r][c], b = grid[r][c + 1];
-                        if (a <= 0 || b <= 0 || a === b) continue;
-                        var pa = stack.panelAt(r, c), pb = stack.panelAt(r, c + 1);
-                        pa.color = b; pb.color = a;
-                        grid[r][c] = b; grid[r][c + 1] = a;
+                // THE ENGINE HAS TO AGREE IT IS SETTLED. If it clears anything
+                // on an untouched board, or moves a panel, the position is not
+                // one the search could ever be scoring and comparing on it
+                // would be inventing a verdict.
+                engineBoard.paint(scratch, grid, H, W, blocks);
+                if (engineBoard.settle(scratch, 60).comboSizes.length) { skipped++; continue; }
 
-                        var keys = engineMatches(stack);
-                        var caused = keys.indexOf(r + ':' + c) >= 0 ||
-                                     keys.indexOf(r + ':' + (c + 1)) >= 0;
-                        var garbage = false;
-                        for (var k = 0; k < keys.length && !garbage; k++) {
-                            var parts = keys[k].split(':');
-                            var mr = Number(parts[0]), mc = Number(parts[1]);
-                            var n = [[mr + 1, mc], [mr - 1, mc], [mr, mc + 1], [mr, mc - 1]];
-                            for (var j = 0; j < n.length; j++) {
-                                var np = (n[j][0] >= 1 && n[j][0] <= H && n[j][1] >= 1 && n[j][1] <= W)
-                                    ? stack.panelAt(n[j][0], n[j][1]) : null;
-                                if (np && np.isGarbage) { garbage = true; break; }
-                            }
-                        }
-                        if (caused && (keys.length >= 4 || garbage)) {
-                            expected++;
-                            if (keys.length < 4 && garbage) garbageQualified++;
-                        }
-
-                        pa.color = a; pb.color = b;
-                        grid[r][c] = a; grid[r][c + 1] = b;
+                var board = new LogicalBoard(W, H, colours, grid, pb.blocks);
+                // legalSwaps returns [row, col] — the LEFT cell of the pair,
+                // since a swap is always with the cell to its right.
+                var swaps = board.legalSwaps(), expected = 0, undecidable = false;
+                for (var si = 0; si < swaps.length && !undecidable; si++) {
+                    var sr = swaps[si][0], sc = swaps[si][1];
+                    engineBoard.paint(scratch, board.grid, H, W, blocks);
+                    // THE ENGINE HAS TO AGREE THE BOARD IS SETTLED AND THE
+                    // SWAP IS LEGAL, or the case is not decidable and counting
+                    // it either way would be inventing a verdict. A board with
+                    // any such swap is dropped whole, so the comparison below
+                    // stays an exact equality rather than a near-miss.
+                    if (engineBoard.settle(scratch, 60).comboSizes.length ||
+                        !scratch.canSwap(sr, sc)) { undecidable = true; break; }
+                    scratch.curRow = sr; scratch.curCol = sc;
+                    scratch.doSwap(sr, sc);
+                    var res = engineBoard.settle(scratch, 900);
+                    var biggest = 0;
+                    for (var k = 0; k < res.comboSizes.length; k++) {
+                        if (res.comboSizes[k] > biggest) biggest = res.comboSizes[k];
+                    }
+                    var ateGarbage = res.garbage.length > 0;
+                    if (biggest >= 4 || res.chainLength >= 2 || ateGarbage) {
+                        expected++;
+                        if (biggest < 4 && res.chainLength < 2 && ateGarbage) garbageQualified++;
                     }
                 }
+                if (undecidable) { skipped++; continue; }
 
-                var got = features.matchPotential(inputMod.normalize({ board: rb.board }));
+                var got = features.matchPotential(inputMod.normalize({ board: board }));
                 assert.strictEqual(got, expected,
                     'seed ' + seed + ', ' + colours + ' colours, board ' + i +
-                    ': matchPotential said ' + got + ', engine-driven count said ' + expected);
+                    ': matchPotential said ' + got + ', the engine-driven count said ' + expected);
                 boards++;
                 totalCounted += expected;
                 if (expected > 0) nonZero++;
             }
         });
     });
+    assert.ok(boards > skipped, 'more boards were dropped as undecidable (' + skipped +
+        ') than were compared (' + boards + ') — the sweep is measuring the harness');
     assert.ok(nonZero > boards * 0.2, 'only ' + nonZero + '/' + boards +
         ' boards had any qualifying swap — this is not exercising the feature');
-    assert.ok(totalCounted > 100, 'only ' + totalCounted + ' qualifying swaps in total');
+    assert.ok(totalCounted > 40, 'only ' + totalCounted + ' qualifying swaps in total');
     assert.ok(garbageQualified > 5, 'only ' + garbageQualified + ' swaps qualified via the ' +
-        'garbage clause — the plain-3-that-touches-garbage rule is barely covered');
+        'garbage clause alone — the eats-garbage half of the rule is barely covered');
 });
 
 

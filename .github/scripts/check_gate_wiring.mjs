@@ -28,7 +28,7 @@
  *
  * Run by hand:  node .github/scripts/check_gate_wiring.mjs
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 
 const problems = [];
 
@@ -68,6 +68,57 @@ for (const name of readdirSync('.github/workflows')) {
         + 'If this check must not block, move it to a workflow that is allowed to fail '
         + '(see .github/workflows/art-checks.yml) rather than making the step report '
         + 'success it did not have.');
+    }
+  }
+}
+
+// A GATE THAT DOES NOT EXIST IS THE SAME FAILURE, LOUDER.
+//
+// `source gates.sh && gate_foo` where gates.sh has no gate_foo exits 127 with
+// "command not found". That is a red run — but it is red for a reason that has
+// nothing to do with the repo's state, and it takes the whole deploy with it,
+// so the site stops shipping until somebody reads a log. A gate deleted from
+// gates.sh and left behind in a workflow is the way that happens, and it is
+// decidable from the text: collect the names the workflows call and the names
+// gates.sh defines, and require the first set to be inside the second.
+const gatesSh = readFileSync('.github/scripts/gates.sh', 'utf8');
+const defined = new Set(
+  [...gatesSh.matchAll(/^\s*(?:function\s+)?(gate_[a-z0-9_]+)\s*\(\)/gm)].map((m) => m[1]));
+
+for (const name of readdirSync('.github/workflows')) {
+  if (!name.endsWith('.yml')) continue;
+  const path = `.github/workflows/${name}`;
+  for (const m of readFileSync(path, 'utf8').matchAll(/\bgate_[a-z0-9_]+\b/g)) {
+    if (!defined.has(m[0])) {
+      problems.push(`${path} calls ${m[0]}, which .github/scripts/gates.sh does not define. `
+        + 'The step will exit 127 ("command not found") and fail the run for a reason that '
+        + 'is not about the repo. Either restore the function or remove the step. '
+        + `Defined: ${[...defined].sort().join(', ')}`);
+    }
+  }
+}
+
+// A STEP POINTING AT A FILE THAT IS NOT THERE IS THE SAME FAILURE AGAIN.
+// `node games/x/deleted.test.js` exits 1 with "Cannot find module", which
+// reads as the suite failing rather than as the suite being gone. Four steps
+// in ai-checks.yml ran deleted files at once after a cull.
+//
+// REPO-ROOTED PATHS ONLY. A bare name is resolved against whatever directory
+// the step is standing in (a `cd`, a `working-directory:`), which is not
+// decidable from the text — and a name inside a comment is not a command at
+// all. A path starting at a top-level directory of this repo is both.
+const ROOTED = /^(games|\.github|docs|shared|worker|reference)\//;
+for (const name of readdirSync('.github/workflows')) {
+  if (!name.endsWith('.yml')) continue;
+  const path = `.github/workflows/${name}`;
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    if (/^\s*#/.test(line)) continue;
+    for (const m of line.matchAll(/\b(?:node|python3?|bash|sh)\s+([\w./-]+\.(?:m?js|cjs|py|sh))\b/g)) {
+    const file = m[1];
+    if (!ROOTED.test(file) || existsSync(file)) continue;
+    problems.push(`${path} runs ${file}, which does not exist. The step will fail with `
+      + '"Cannot find module" (or "No such file"), which reads like the suite failing '
+      + 'rather than like the suite having been deleted. Remove the step or restore the file.');
     }
   }
 }

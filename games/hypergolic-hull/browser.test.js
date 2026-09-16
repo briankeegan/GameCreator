@@ -6,7 +6,7 @@
 //
 // Needs Playwright + a Chromium binary:
 //   NODE_PATH="$(npm root -g)" node games/hypergolic-hull/browser.test.js
-// Set CHROMIUM_PATH if Chromium isn't at the default /opt/pw-browsers/chromium.
+// Set CHROMIUM_PATH to point at a Chromium binary explicitly.
 "use strict";
 
 const assert = require("assert");
@@ -16,7 +16,16 @@ const path = require("path");
 const { chromium } = require("playwright");
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
-const CHROMIUM = process.env.CHROMIUM_PATH || "/opt/pw-browsers/chromium";
+// WHERE CHROMIUM IS. /opt/pw-browsers/chromium is where the dev sandbox keeps
+// it; a GitHub runner that ran `npx playwright install` keeps it somewhere
+// else entirely. Hardcoding the first as a DEFAULT made every browser check
+// fail on the runner with "executable doesn't exist" — a red workflow that
+// says nothing about the game. So: CHROMIUM_PATH wins, then the sandbox path
+// IF IT IS THERE, and otherwise Playwright is left to find its own.
+const SANDBOX_CHROMIUM = "/opt/pw-browsers/chromium";
+const CHROMIUM = process.env.CHROMIUM_PATH ||
+  (require("fs").existsSync(SANDBOX_CHROMIUM) ? SANDBOX_CHROMIUM : null);
+const LAUNCH = CHROMIUM ? { executablePath: CHROMIUM } : {};
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json" };
 
 function serveRepo() {
@@ -272,7 +281,7 @@ async function freshPage(browser, url, errors) {
 (async () => {
   const server = await serveRepo();
   const url = `http://127.0.0.1:${server.address().port}/games/hypergolic-hull/index.html`;
-  const browser = await chromium.launch({ executablePath: CHROMIUM });
+  const browser = await chromium.launch(LAUNCH);
   const errors = [];
 
   // ---- Sector 1: the Autocannon lesson (the old no-op move-only Sector 1 -
