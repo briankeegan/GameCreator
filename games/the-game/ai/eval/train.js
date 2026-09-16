@@ -685,9 +685,14 @@ function step() {
         console.log('gen ' + String(generation + 1).padStart(2) + '/' + GENERATIONS +
             '  best ' + scored[0].fit.toFixed(0) +
             '  median ' + scored[Math.floor(scored.length / 2)].fit.toFixed(0) +
-            '  [frames ' + (scored[0].detail && scored[0].detail.avgFrames || 0).toFixed(0) +
-            ' sent ' + (scored[0].detail && scored[0].detail.avgSent || 0).toFixed(1) +
-            ' died ' + ((scored[0].detail && scored[0].detail.deathRate || 0) * 100).toFixed(0) + '%]' +
+            // A versus result has no frames/sent/deathRate of its own — it is
+            // a duel record — and printing those fields anyway shows three
+            // zeros that read as measurements.
+            (OBJECTIVE === 'versus'
+                ? '  [duels ' + (scored[0].detail && scored[0].detail.duels || 0) + ']'
+                : '  [frames ' + (scored[0].detail && scored[0].detail.avgFrames || 0).toFixed(0) +
+                  ' sent ' + (scored[0].detail && scored[0].detail.avgSent || 0).toFixed(1) +
+                  ' died ' + ((scored[0].detail && scored[0].detail.deathRate || 0) * 100).toFixed(0) + '%]') +
             '  [' + ((Date.now() - t0) / 60000).toFixed(1) + 'm]');
         var pc = scored[0].detail && scored[0].detail.perCategory;
         if (pc) {
@@ -908,7 +913,7 @@ function report(isFinal, cb) {
               avgSent: sentThem / n, versus: true });
     }
     heldOut(function (learnedRes, baseRes) {
-      (function () {
+      {
         var res = [learnedRes, baseRes];
         var learned = res[0], shipped = res[1];
         var out = {
@@ -1059,7 +1064,7 @@ function report(isFinal, cb) {
                 pool.forEach(function (s) { s.child.kill(); });
             } else if (cb) { cb(); }
         });
-      });
+      }
     });
 }
 
