@@ -32,7 +32,8 @@ function test(name, fn) { tests.push({ name: name, fn: fn }); }
 // A weight set that actually plays — the shipped trained one, so the run
 // produces real garbage rather than a bot that dies in thirty frames.
 var W = require('./trained.replace.l10-puyo-puyo18-s11.0914-020835.g00274.json').weights;
-var OPTS = { level: 10, brain: 'puyo', objective: 'score' };
+// The level comes from GC_LEVEL; bench.run does not read a 'level' option.
+var OPTS = { brain: 'puyo', objective: 'score' };
 
 test('a game result carries the chain-depth breakdown', function () {
     var r = bench.fitness(W, [7], OPTS);
@@ -137,7 +138,7 @@ test('it survives the worker, which is where options have died before', function
             'what a dropped field looks like one layer up');
         done();
     });
-    w.send({ id: 1, weights: W, seeds: [7], level: 10, brain: 'puyo', objective: 'score' });
+    w.send({ id: 1, weights: W, seeds: [7], brain: 'puyo', objective: 'score' });
 });
 
 // One test forks a process, so the runner waits for a `done` rather than
