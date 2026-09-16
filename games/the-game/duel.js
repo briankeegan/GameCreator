@@ -17,16 +17,9 @@ window.NewseyDuel = (function () {
   // derived readout for the overlay/input gating, never its own clock.
   var COUNTDOWN_FRAMES = E.COUNTDOWN_TOTAL;
 
-  // ONE BOT. Every tier is PuyoCpu with the trained weights; the tier sets
-  // the LEVEL (difficulty.js: easy 3, medium 5, hard 8, nightmare 10) and a
-  // reaction delay, which is how an easier opponent is made — the same
-  // player, thinking slower, on a board that rises slower.
-  //
-  // The reaction ramp below is not measured. It is a starting point that
-  // needs a play-test; the weights themselves were trained at level 10 with
-  // reaction 12, which is what nightmare gets.
-  var REACTION = { easy: 30, medium: 22, hard: 16, nightmare: 12 };
-
+  // ONE BOT, one cadence. Every tier is PuyoCpu with the trained weights at
+  // reaction 12, which is what they were trained at. The tier sets the LEVEL
+  // and nothing else (difficulty.js: easy 3, medium 5, hard 8, nightmare 10).
   function makeCpu(stack, difficulty, seed) {
     var ev = window.PanelEval;
     if (!ev || !ev.PuyoCpu || !ev.trained) {
@@ -35,9 +28,7 @@ window.NewseyDuel = (function () {
     }
     // The switches come from the weights file, not from here: a weight set is
     // only a bot when paired with the scoring it was trained under.
-    var opts = { weights: ev.trained.weights,
-                 reaction: REACTION[difficulty] || REACTION.medium,
-                 seed: seed };
+    var opts = { weights: ev.trained.weights, reaction: 12, seed: seed };
     var sw = ev.trained.switches || {};
     Object.keys(sw).forEach(function (k) { opts[k] = sw[k]; });
     return new ev.PuyoCpu(stack, opts);
