@@ -62,7 +62,7 @@ for (var s = 1; s <= SEEDS; s++) seeds.push(s);
 console.log('playing ' + seeds.length + ' seeds x ' + arena.length + ' scenario(s): ' + arena.join(', '));
 arena.forEach(function (sc) {
     seeds.forEach(function (seed) {
-        bench.run(weights, seed, { brain: 'puyo', scenario: sc, noTimingGuard: true });
+        bench.run(weights, seed, { brain: "puyo", scenario: sc, checkTiming: false });
     });
 });
 

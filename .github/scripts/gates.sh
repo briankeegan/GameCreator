@@ -324,6 +324,25 @@ gate_density_scoring() {
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/density.test.js
 }
 
+# THE "EARNED" FEATURES ARRIVE, rather than merely computing correctly.
+#
+# features.test.js proves the four earned features are right by HANDING them
+# an input -- stGain(TOPPED, {toppedOut:true}, {stopTimeEarned:60}) === 60 --
+# which says nothing about whether anything ever puts a 60 in there.
+# stopTimeEarned once read zero on all 2,450 candidates of a run because
+# resolve() did not report it: the feature was perfect, the plumbing was
+# missing, and every unit test passed throughout.
+#
+# So this plays real games in the scenarios that actually contain garbage and
+# asserts each of the four ARRIVES at the evaluator. Liveness, not a rate --
+# the real rates are 0.02% to 0.37%, and a threshold on those would be a
+# threshold on the bot's taste in moves, which fails on a correct tree every
+# time the weights change.
+gate_earned_features_arrive() {
+  local d; d="$(_gc_training_dir)" || return 1
+  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/earned.test.js
+}
+
 # EVERY SUITE THE TRAINING PRE-FLIGHT RUNS IS ALSO A GATE.
 gate_preflight_gated() {
   node .github/scripts/check_preflight_gated.mjs
@@ -525,6 +544,7 @@ GATES=(
   "the training harness:gate_training_harness"
   "rise-adjusted scoring:gate_rise_scoring"
   "density scoring:gate_density_scoring"
+  "the earned features arrive in a real game:gate_earned_features_arrive"
   "every training pre-flight suite is gated:gate_preflight_gated"
   "the depth-2 search picks the best two-move future:gate_lookahead"
   "the second ply knows what time it is:gate_ply_clock"

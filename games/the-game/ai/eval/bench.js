@@ -277,6 +277,34 @@ exports.SCENARIOS = SCENARIOS;
 // believing the result is not.
 exports.run = function (weights, seed, opts) {
     opts = opts || {};
+    // AN OPTION NOBODY READS MUST NOT LOOK LIKE AN OPTION THAT WORKED.
+    //
+    // feature_liveness.js asked for `noTimingGuard: true` for months. Nothing
+    // in this file has ever read that name -- the switch is `checkTiming` --
+    // so every liveness game ran WITH the guard, was truncated the first time
+    // a decision crossed 85ms under parallel load, and the percentages were
+    // computed over the stump. It reported garbageCleared as non-zero on 0%
+    // of candidates when the bot's own input carries it on 8.7% of endless
+    // candidates and 33% on bigBlocks, and it reported that under the banner
+    // "Every feature is scored and varies -- all of them are wired."
+    //
+    // A silently-ignored option is indistinguishable from an honoured one,
+    // which is the whole failure. So an unknown key is an error, named.
+    // 'mode' is TOLERATED, not read: train.js, verify.js and three suites
+    // pass it and nothing in this file consumes it. It is listed so the
+    // check stays about typos rather than becoming a refactor, and listed
+    // WITH this sentence so the next person does not think it does
+    // something.
+    var KNOWN_OPTS = ['allowRaise', 'arena', 'beam', 'brain', 'checkTiming',
+                      'density', 'depth', 'objective', 'rise', 'scenario',
+                      'mode'];
+    for (var opt in opts) {
+        if (opts.hasOwnProperty(opt) && KNOWN_OPTS.indexOf(opt) === -1) {
+            throw new Error('bench.run: unknown option "' + opt + '". Known options are ' +
+                            KNOWN_OPTS.join(', ') + '. An option this file does not read ' +
+                            'changes nothing and looks exactly like one that worked.');
+        }
+    }
     var checkTiming = opts.checkTiming !== false;
     var sc = SCENARIOS[opts.scenario || 'build'];
     if (!sc) throw new Error('unknown scenario "' + opts.scenario + '" — expected ' +
