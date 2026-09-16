@@ -458,12 +458,31 @@ function fingerprint() {
     // continuing somebody else's run -- the same argument as 'cem'. Without
     // it a survival run and a score run identical in every other switch
     // would share a checkpoint file and silently clobber each other.
-    return ['cem', ELITE_FRACTION, GENERATIONS, POPULATION, MODE, BRAIN, TRAINED_BRAIN,
-            OBJECTIVE,
-            process.env.GC_LEVEL || '', process.env.GC_GA_SEED || '',
-            String(DEPTH), String(BEAM), RISE ? 'rise' : '', DENSITY ? 'density' : '',
-            ALLOW_RAISE ? 'allowRaise' : '',
-            SEEDS_PER_GENERATION, KEYS.join(',')].join('|');
+    // A NEW FIELD IS APPENDED, NEVER INSERTED, AND ONLY WHEN IT IS ON.
+    //
+    // This cost six runs their progress on 2026-09-16. OBJECTIVE and
+    // ALLOW_RAISE were added INTO the middle of the list, and although both
+    // were empty for a default run, an empty element still contributes its
+    // separator -- so 'a|b' became 'a||b', every existing checkpoint hashed
+    // to a different filename, and stgrise, stgonly and densall silently
+    // restarted from generation 0 having reached 118, 145 and 167. Nothing
+    // failed; they just began again, which is the worst way for this to go
+    // wrong because it looks like a run that is merely early.
+    //
+    // So the base list is FROZEN in the order it had, and anything new goes
+    // on the end only when it is not the default. A run with neither option
+    // therefore hashes exactly as it did before either existed, which is
+    // what lets an old checkpoint still be found. The invariant is not "the
+    // fingerprint names every switch" -- it is "two runs that would search
+    // differently hash differently", and a switch at its default searches
+    // the same way it always did.
+    var fp = ['cem', ELITE_FRACTION, GENERATIONS, POPULATION, MODE, BRAIN, TRAINED_BRAIN,
+              process.env.GC_LEVEL || '', process.env.GC_GA_SEED || '',
+              String(DEPTH), String(BEAM), RISE ? 'rise' : '', DENSITY ? 'density' : '',
+              SEEDS_PER_GENERATION, KEYS.join(',')];
+    if (OBJECTIVE !== 'score') fp.push('objective=' + OBJECTIVE);
+    if (ALLOW_RAISE) fp.push('allowRaise');
+    return fp.join('|');
 }
 
 // AND WHY THE FINGERPRINT IS IN THE FILENAME, NOT ONLY INSIDE THE FILE.

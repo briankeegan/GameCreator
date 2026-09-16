@@ -646,8 +646,11 @@ test('GC_RAISE reaches the bot, and the fingerprint separates it', function () {
 
     var src = fs.readFileSync(path.join(__dirname, 'train.js'), 'utf8');
     var fp = src.slice(src.indexOf('function fingerprint()'));
-    fp = fp.slice(0, fp.indexOf('}'));
+    fp = fp.slice(0, fp.indexOf('\n}'));
     assert.ok(/ALLOW_RAISE/.test(fp), 'fingerprint() does not include ALLOW_RAISE:\n' + fp);
+    assert.ok(/if \(ALLOW_RAISE\) fp\.push/.test(fp),
+        'ALLOW_RAISE is in the base fingerprint list rather than appended when on, which ' +
+        'changes the hash for every run that does not use it:\n' + fp);
 });
 
 test('crank.sh passes the objective through instead of hardcoding score', function () {
@@ -670,9 +673,15 @@ test('the checkpoint fingerprint separates survival from score', function () {
     // is the exact failure the filename hash was added to prevent.
     var src = fs.readFileSync(path.join(__dirname, 'train.js'), 'utf8');
     var fp = src.slice(src.indexOf('function fingerprint()'));
-    fp = fp.slice(0, fp.indexOf('}'));
+    fp = fp.slice(0, fp.indexOf('\n}'));
     assert.ok(/\bOBJECTIVE\b/.test(fp),
         'fingerprint() does not include OBJECTIVE:\n' + fp);
+    // AND IT IS APPENDED ONLY WHEN SET. Putting it in the base list gives an
+    // empty element its own separator, which changes the hash for every
+    // DEFAULT run and silently restarts them from generation 0 -- three runs
+    // lost 118, 145 and 167 generations that way on 2026-09-16.
+    assert.ok(/if \(OBJECTIVE !== 'score'\) fp\.push/.test(fp),
+        'OBJECTIVE is in the base fingerprint list rather than appended when set:\n' + fp);
 });
 
 test('rise REACHES THE BOT, end to end through bench', function () {
