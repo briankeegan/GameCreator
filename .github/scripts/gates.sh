@@ -249,6 +249,21 @@ gate_checkpoint_names() {
   node games/the-game/ai/eval/migrate_checkpoints.js --check
 }
 
+# A RUN STOPS CLEANLY EVEN WHEN ONE GENERATION IS LONGER THAN THE MARGIN.
+#
+# The deadline is checked BETWEEN generations, because a generation cannot
+# be interrupted halfway. Asking "am I past the deadline" starts a
+# generation that cannot finish, the runner cancels the job mid-generation,
+# finish() never runs, the snapshot hook never fires and the checkpoint is
+# never committed -- so the whole run is lost and the next one starts at
+# generation 0 and does the same. survdens2 did that twice for twelve hours
+# of runner time and zero generations kept. Both directions: the slow
+# variant must stop, and a healthy five-hour run of short generations must
+# be untouched.
+gate_deadline_stop() {
+  node games/the-game/ai/eval/deadline.test.js
+}
+
 # A PLY THAT DOES NOT ADVANCE THE CLOCK CANNOT VALUE TIMING.
 #
 # Every clock field reaches a feature off the LIVE stack (input.js's
@@ -439,6 +454,7 @@ GATES=(
   "the training smoke check accepts and rejects:gate_smoke_checker"
   "a training run that ran out of time can resume:gate_checkpoint_resume"
   "no checkpoint is stranded by a rename:gate_checkpoint_names"
+  "a slow run stops before the job kills it:gate_deadline_stop"
   "the depth-2 search picks the best two-move future:gate_lookahead"
   "the second ply knows what time it is:gate_ply_clock"
   "the board moves on while the bot walks:gate_elapsed_rise"

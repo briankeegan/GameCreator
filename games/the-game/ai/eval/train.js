@@ -159,6 +159,7 @@ var SNAPSHOT_HOOK = process.env.GC_SNAPSHOT_HOOK || null;
 // A wall-clock budget, so this can live on a runner with a job timeout.
 // Unset means run to the generation cap or to convergence.
 var DEADLINE = process.env.GC_DEADLINE ? Number(process.env.GC_DEADLINE) : null;
+var deadline = require('./deadline.js');
 
 // DID THE SEARCH FINISH, OR DID THIS PROCESS RUN OUT OF TIME? They are not the
 // same event and only one of them may clear the checkpoint. A search that
@@ -587,7 +588,9 @@ function seedsForGeneration() {
     return pool.slice(0, SEEDS_PER_GENERATION);
 }
 
+var slowestGeneration = 0;   // seconds; see deadline.js
 function step() {
+    var genStart = Date.now();
     var genSeeds = seedsForGeneration();
     evaluateAll(population, genSeeds, function (results) {
         var scored = population.map(function (g, i) {
@@ -634,10 +637,15 @@ function step() {
         if (generation >= GENERATIONS) return finish();
 
         // OUT OF TIME. Stop cleanly with a real result rather than being
-        // killed mid-generation by a job timeout.
-        if (DEADLINE && Date.now() / 1000 > DEADLINE) {
+        // killed mid-generation by a job timeout. The question is whether
+        // ANOTHER generation fits, not whether this one finished in time --
+        // see deadline.js for the run that learned the difference.
+        slowestGeneration = Math.max(slowestGeneration, (Date.now() - genStart) / 1000);
+        if (deadline.outOfTime(Date.now() / 1000, DEADLINE, slowestGeneration)) {
             console.log('\n=== OUT OF TIME at generation ' + generation +
-                        ' -- keeping the checkpoint so the next run resumes here ===');
+                        ' (a generation takes up to ' + slowestGeneration.toFixed(0) +
+                        's and ' + Math.max(0, DEADLINE - Date.now() / 1000).toFixed(0) +
+                        's remain) -- keeping the checkpoint so the next run resumes here ===');
             searchComplete = false;
             return finish();
         }
