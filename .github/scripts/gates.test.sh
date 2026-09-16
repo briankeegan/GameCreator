@@ -110,6 +110,12 @@ run "gate wiring: a workflow runs a file that was deleted" \
     "node .github/scripts/check_gate_wiring.mjs"
 cp "$work/pages.yml.orig" .github/workflows/pages.yml
 
+cp .github/scripts/check_room_exits.mjs "$work/cre.orig"
+run "gate wiring: a script hardcodes the path of the machine it was written on" \
+    "printf 'const p = \"/home/user/GameCreator/node_modules/playwright\";\n' >> .github/scripts/check_room_exits.mjs" \
+    "node .github/scripts/check_gate_wiring.mjs"
+cp "$work/cre.orig" .github/scripts/check_room_exits.mjs
+
 echo
 echo "== and the checks must STAY QUIET on the untouched repo =="
 rm -rf games; cp -r "$OLDPWD_SAVE/games" .

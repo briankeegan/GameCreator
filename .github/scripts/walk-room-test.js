@@ -1,7 +1,7 @@
-const { chromium } = require('/home/user/GameCreator/node_modules/playwright');
+const { chromium } = require('playwright');
 const { shoot } = require(require('path').join(__dirname, 'shoot.js'));
 const http = require('http'), fs = require('fs'), path = require('path');
-const ROOT='/home/user/GameCreator', PORT=8461, OUT='/tmp/claude-0/-home-user/e80c57f7-74a5-5949-a097-2632c64d4b5a/scratchpad';
+const ROOT = require('path').join(__dirname, '..', '..'), PORT=8461, OUT='/tmp/claude-0/-home-user/e80c57f7-74a5-5949-a097-2632c64d4b5a/scratchpad';
 const MIME={'.html':'text/html','.js':'text/javascript','.json':'application/json','.css':'text/css','.png':'image/png','.svg':'image/svg+xml','.webmanifest':'application/manifest+json'};
 const server=http.createServer((req,res)=>{const abs=path.join(ROOT,decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/,''));
   fs.readFile(abs,(e,b)=>{if(e){res.writeHead(404);return res.end('nf');}res.writeHead(200,{'Content-Type':MIME[path.extname(abs).toLowerCase()]||'application/octet-stream'});res.end(b);});});

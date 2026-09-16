@@ -123,6 +123,28 @@ for (const name of readdirSync('.github/workflows')) {
   }
 }
 
+// A SCRIPT THAT ONLY WORKS ON ONE MACHINE IS NOT A CHECK EITHER.
+//
+// Five scripts under .github/scripts/ began `require('/home/user/GameCreator/
+// node_modules/playwright')` and set ROOT to that same absolute path. They ran
+// perfectly in the sandbox they were written in and could never run anywhere
+// else, so browser-checks.yml reported "Cannot find module" as though the door
+// tests had failed. Resolve from __dirname, or from node_modules by name.
+for (const name of readdirSync('.github/scripts')) {
+  if (!/\.(m?js|cjs)$/.test(name)) continue;
+  const path = `.github/scripts/${name}`;
+  const body = readFileSync(path, 'utf8');
+  for (const line of body.split('\n')) {
+    if (/^\s*(\/\/|\*|\/\*)/.test(line)) continue;        // a comment may name a path
+    const m = line.match(/['"`](\/(?:home|Users)\/[^'"`]*)['"`]/);
+    if (!m) continue;
+    problems.push(`${path} hardcodes the absolute path ${m[1]}. It works only on the `
+      + 'machine it was written on, and on a runner it fails as "Cannot find module" or '
+      + '"no such file" — which reads as the check failing rather than as the path being '
+      + 'wrong. Resolve from __dirname, or require the package by name.');
+  }
+}
+
 if (problems.length) {
   console.error('Gates that cannot fail:');
   for (const p of problems) console.error(`  - ${p}\n`);

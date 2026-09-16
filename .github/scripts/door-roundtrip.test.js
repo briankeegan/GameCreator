@@ -1,6 +1,6 @@
-const { chromium } = require('/home/user/GameCreator/node_modules/playwright');
+const { chromium } = require('playwright');
 const http=require('http'),fs=require('fs'),path=require('path');
-const ROOT='/home/user/GameCreator',PORT=8517;
+const ROOT = require('path').join(__dirname, '..', '..'),PORT=8517;
 const MIME={'.html':'text/html','.js':'text/javascript','.json':'application/json','.css':'text/css','.png':'image/png','.svg':'image/svg+xml','.webmanifest':'application/manifest+json'};
 const server=http.createServer((q,r)=>{const a=path.join(ROOT,decodeURIComponent(q.url.split('?')[0]).replace(/^\/+/,''));
  fs.readFile(a,(e,b)=>{if(e){r.writeHead(404);return r.end('nf');}r.writeHead(200,{'Content-Type':MIME[path.extname(a).toLowerCase()]||'application/octet-stream'});r.end(b);});});
