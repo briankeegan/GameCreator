@@ -85,71 +85,7 @@ var MOVE_FRAMES = 4;
     return false;
   }
 
-  // -------------------------------------------------------- matchPotential
-  //
-  // HOW MANY SWAPS FROM HERE WOULD PRODUCE A MATCH WORTH MAKING.
-  //
-  // Counts distinct legal swaps whose resulting board contains a match that
-  // includes one of the two swapped cells and either
-  //   - has a combo size of 4 or more, or
-  //   - touches garbage.
-  // A PLAIN 3 — no garbage, size 3 — scores ZERO, deliberately. It is not a
-  // near-miss of a good move, it IS the bad move: comboGarbage() returns []
-  // below 4, so a plain 3 sends the opponent literally nothing, and it
-  // spends three panels of the material a chain would have been built from.
-  // The existing agent already half-knows this (`patience: 0.85` is the
-  // chance it holds a plain 3 and keeps building); this states it outright.
-  //
-  // A count of SWAPS, not a sum of combo sizes. Two swaps that complete the
-  // same group would double-count a sum, and "how many ways can this board
-  // pay out right now" is the density signal the Puyo reference argues
-  // carries a bot (PUYO_REFERENCE.md: links and consecutive colours are 41%
-  // of meatfighter's score). If size turns out to matter it belongs in its
-  // own feature, measured on its own, not smuggled in here.
-  //
-  // The match rule is the engine's, via matchedCells: board-wide union,
-  // both axes, so an L pays as a 5.
-  //
-  // LIMIT 1 IS GONE, AND IT WAS THE EXPENSIVE ONE. This used to skip every
-  // swap where one side was empty, on the reasoning that judging it needs
-  // gravity and gravity "is not a pure function of this snapshot". That was
-  // true of the snapshot and false of the situation: LogicalBoard.resolve()
-  // IS the gravity the bot plans with, and input.js already carries a real
-  // board through as `liveBoard` for exactly this — chainPotential and
-  // comboPotential have used it all along.
-  //
-  // Sliding a panel over a hole is not a corner case, it is most of the
-  // game. Measured on Panel Attack's own 144 readable authored puzzle
-  // boards: 55% of the swaps that clear anything need an empty cell, 65% of
-  // the swaps that fire a chain do, and 36 of the 144 boards have their best
-  // chain reachable ONLY that way. The old version scored 27 where this one
-  // scores 91, and returned 0 on 33 boards that had a real answer.
-  //
-  // It is the same defect the chip verifier had, in the other direction:
-  // there, staging read "unmentioned" as air when it was ground; here,
-  // scoring read a swap as finished when the panels had not landed yet.
-  // Both are "the board was judged before it stopped moving".
-  //
-  // THE ONE REMAINING LIMIT: it does not look past one swap. Nothing about
-  // setup two moves out. Asserted in the tests so it stays visible.
-  //
-  // The "did the swap cause it" test is gone too, and did not need
-  // replacing: the board being scored is SETTLED, so it has no standing
-  // matches, and anything resolve() clears afterwards was caused by the
-  // swap by construction.
-  //
-  // Cost: one full-board match scan per legal swap. On a 6x12 board that is
-  // ~30 swaps x 72 cells. If profiling says that is too much inside the
-  // search, the fix is an incremental scan of the affected lines — NOT a
-  // cheaper approximation of the rule, which is how a feature stops
-  // measuring what its name says.
-  // Only the swapped ROW and the two swapped COLUMNS can gain a run, so
-  // only those three lines are scanned rather than the whole board. On a
-  // settled position — which is what the search scores — there are no
-  // standing matches anywhere else to miss, so this returns exactly what a
-  // full scan returns. Measured at 69.3% of all feature cost before this,
-  // 25x the next most expensive feature; the equality with the full scan is
-  // asserted in features.test.js rather than argued here.
+  // Legal swaps whose clear is 4+ wide, cascades (2+ links), or eats garbage. A plain 3 that does none of those counts 0.
   function matchedCellsNear(board, row, colA, colB) {
     var grid = board.grid, W = board.width, H = board.height;
     var matched = {};
@@ -258,6 +194,8 @@ var MOVE_FRAMES = 4;
     return n;
   }
 
+  // Legal swaps whose clear is 4+ wide, cascades (2+ links), or eats garbage.
+  // A plain 3 that does none of those counts 0.
   function matchPotential(input) {
     // liveBoard, not board: this needs the clone/swap/resolve that input.js
     // flattens away, exactly as chainPotential and comboPotential do. A
@@ -278,38 +216,7 @@ var MOVE_FRAMES = 4;
     return count;
   }
 
-  // -------------------------------------------------------- chainPotential
-  //
-  // THE BIGGEST CHAIN THIS BOARD COULD FIRE, WITHOUT FIRING IT.
-  //
-  // PUYO_REFERENCE.md names greedy-fires-too-early as the real cap on this
-  // whole approach, and gives the fix in two halves: a patience term, and
-  // "an evaluation that scores the biggest chain I COULD fire rather than
-  // the biggest chain available now". This is the second half, and nothing
-  // here measured it.
-  //
-  // Every other feature reads the board as it stands or a cascade already
-  // running — chainLength scores a chain being fired, latentChain one in
-  // flight. STORED potential had no representation at all, so "I am sitting
-  // on a loaded 5-chain and choosing not to trigger it" was not a state the
-  // evaluator could describe. The consequence was measured before this
-  // existed: a trained set whose LARGEST weight was chainLength=278
-  // produced 0% medium chains on three of four drills. The search could not
-  // find the behaviour because no weight could express it.
-  //
-  // Note what this does NOT score: the swap being considered. It scores the
-  // board that swap LEAVES — its readiness to chain — which is exactly what
-  // a patient player is building and an impatient one is spending. A move
-  // that fires a 2-chain now and leaves a board with nothing loaded will
-  // rank below one that fires nothing and leaves a 4 waiting, if the weight
-  // says so. Whether it should is the search's business, not this
-  // function's.
-  //
-  // COST. This clones and fully resolves the board once per legal swap
-  // (~16-17 on a real board), so it is far and away the most expensive
-  // feature here — everything else reads the grid. Profiled and recorded in
-  // FINDINGS.md rather than assumed; if it has to come down, the lever is
-  // scoring only swaps that matchPotential already flagged.
+  // Deepest cascade any single legal swap could set off from this board.
   function chainPotential(input) {
     // liveBoard, not board: input.js flattens `board` to a plain shape on
     // purpose, which strips the clone/swap/resolve this needs. See the
@@ -337,29 +244,7 @@ var MOVE_FRAMES = 4;
   // here so the same shortcut is not re-derived and shipped on the strength
   // of the random-board test alone.
 
-  // ------------------------------------------------------------------ links
-  //
-  // SAME-COLOURED PANELS ORTHOGONALLY ADJACENT, COUNTED AS PAIRS.
-  //
-  // The biggest single term in the Puyo bot that works (25%, see
-  // ../PUYO_REFERENCE.md) — and that bot contains no chain logic at all.
-  // Rewarding adjacency fills the board with groups of three, one short of
-  // popping, and because the reward applies everywhere those groups end up
-  // packed against each other; when one finally pops, what falls lands on
-  // another near-complete group. A chain is what happens when stored
-  // potential is dense enough to touch.
-  //
-  // Pairs, not cells: a run of three is TWO links. Counting cells would
-  // make this a duplicate of "how many panels are on the board", which is
-  // its own feature and points the other way.
-  //
-  // Only real panels link. Garbage (-2) is not a colour — if it counted,
-  // taking damage would read as good clustering. Busy (-1) is a panel
-  // mid-animation whose colour the snapshot does not know, so pairing it
-  // would be inventing one. Empty (0) is nothing.
-  //
-  // Diagonals never link, matching the match rule they exist to set up.
-  // Only right and up are checked, which visits each pair exactly once.
+  // Same-colour orthogonal adjacencies. Counted right and up only, so each pair counts once.
   function links(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
     var count = 0;
@@ -374,36 +259,7 @@ var MOVE_FRAMES = 4;
     return count;
   }
 
-  // ------------------------------------------------------ colourVariance
-  //
-  // PER COLOUR: ITS MEAN POSITION, THEN THE MEAN DISTANCE OF ITS PANELS
-  // FROM THAT MEAN. SUMMED OVER COLOURS.
-  //
-  // Returns SCATTER — how far from gathered each colour is. The registry
-  // signs it negative, so gathered scores better; the function itself never
-  // decides whether more is good (see the header rules).
-  //
-  // Two things it must not become, both of which pass a careless test:
-  //
-  // 1. DISTANCE FROM THE BOARD CENTRE. Subtracting each colour's OWN mean
-  //    is what makes it position-invariant: the same clump in the corner
-  //    and in the middle must score identically, because what is being
-  //    measured is tightness, not location. Height and edge position are
-  //    other features' jobs, and a variance that quietly also measured them
-  //    would triple-count.
-  //
-  // 2. ONE MEAN FOR ALL COLOURS. Two colours in two tight clumps at
-  //    opposite ends of the board is TIDY — that is exactly the structure
-  //    that makes chains — and pooling them into a single mean would report
-  //    it as the most scattered board possible.
-  //
-  // Mean absolute distance rather than squared: squaring makes one far-flung
-  // panel dominate the term for its whole colour, and a stray panel is a
-  // normal, recoverable state, not a catastrophe. If it turns out the
-  // outlier SHOULD dominate, that is a measurable change, not a rewrite.
-  //
-  // A colour with one panel has no scatter, and a colour with none
-  // contributes nothing — both are 0 rather than a division by zero.
+  // Per colour: the mean Manhattan distance of its panels from their centroid, summed over colours. Colours with one panel are skipped.
   function colourVariance(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
     var byColour = {}, r, c, v;
@@ -434,18 +290,7 @@ var MOVE_FRAMES = 4;
     return total;
   }
 
-  // --------------------------------------------------------- edgePenalty
-  //
-  // PANELS IN THE SIDE COLUMNS.
-  //
-  // A panel against a wall has three orthogonal neighbours instead of four,
-  // so it can link less and is worth less as chain material
-  // (../PUYO_REFERENCE.md, 8% of meatfighter's score). A plain count, which
-  // is what the reference measures; if it turns out the penalty should
-  // scale with how built-up the board is, that is a measurable change.
-  //
-  // Only real panels. Garbage on an edge is not material we are trying to
-  // link, and a busy cell's colour is unknown to the snapshot.
+  // Panels in column 1 and column W. Side columns have three orthogonal neighbours instead of four.
   function edgePenalty(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
     var n = 0;
@@ -456,20 +301,7 @@ var MOVE_FRAMES = 4;
     return n;
   }
 
-  // ----------------------------------------------------------- maxHeight
-  //
-  // THE TALLEST COLUMN, PLUS THE RISE ALREADY UNDER IT.
-  //
-  // Occupancy, not colour: garbage is in the way exactly as much as a
-  // panel, and a busy cell is a panel mid-animation. A buried gap does not
-  // reduce it — what matters is how close the top of the stack is to the
-  // ceiling, which is what tops a board out.
-  //
-  // Displacement is the part that gets left off. It is 0..15 sub-row pixels
-  // of rise, so a board one pixel from gaining a row is genuinely taller
-  // than one that just gained one; adding displacement/16 keeps the
-  // ordering right without ever double-counting the row it is about to
-  // become.
+  // Topmost occupied row, plus displacement/16 for the sub-row rise offset.
   function maxHeight(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
     var top = 0;
@@ -481,17 +313,7 @@ var MOVE_FRAMES = 4;
     return top + (input.displacement || 0) / 16;
   }
 
-  // ----------------------------------------------------------- fillRatio
-  //
-  // OCCUPIED CELLS OVER TOTAL CELLS.
-  //
-  // NOT LogicalBoard.fillRatio, which returns maxHeight/height and is
-  // therefore a second copy of maxHeight under a misleading name. This one
-  // is about DENSITY: how much of the board is spent, regardless of shape.
-  // The two are kept apart on purpose and the tests assert the separation —
-  // a tall thin column and a flat wide layer of the same panel count score
-  // the same here and differently on maxHeight. If they ever stop
-  // disagreeing, one of them should be cut rather than tuned.
+  // Occupied cells over total. Counts garbage as occupied.
   function fillRatio(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
     if (!W || !H) return 0;
@@ -502,19 +324,7 @@ var MOVE_FRAMES = 4;
     return used / (W * H);
   }
 
-  // ----------------------------------------------------------- roughness
-  //
-  // THE SUM OF ABSOLUTE HEIGHT DIFFERENCES BETWEEN ADJACENT COLUMNS.
-  //
-  // A jagged surface is hard to build matches on and hard to land garbage
-  // flat against. It is NOT height: a uniformly tall board is perfectly
-  // smooth and scores zero here, which is what keeps this from being a
-  // third copy of maxHeight.
-  //
-  // Column height is the topmost occupied row, so a BURIED hole does not
-  // register. Buried holes are a real problem and deliberately not this
-  // feature's — noted here rather than half-solved, since a roughness that
-  // sometimes counted holes would be neither measure.
+  // Sum of absolute height differences between adjacent columns.
   function roughness(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
     var heights = [], c, r;
@@ -527,11 +337,7 @@ var MOVE_FRAMES = 4;
     return sum;
   }
 
-  // ------------------------------------------------------ garbageOnBoard
-  //
-  // GARBAGE CELLS PRESENT. Cells, not blocks: a 6x2 slab is twelve cells of
-  // wall, and counting it as one would make a full-board block look like a
-  // pebble beside a single dropped row.
+  // Garbage cells, counted flat — every cell is worth 1 wherever it sits. The board here is the VISIBLE 12 rows, so garbage above the ceiling is not in this number and cannot be.
   function garbageOnBoard(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
     var n = 0;
@@ -560,18 +366,7 @@ var MOVE_FRAMES = 4;
     return cells;
   }
 
-  // ---------------------------------------------------- garbageAdjacency
-  //
-  // MATCHABLE PANELS ORTHOGONALLY TOUCHING GARBAGE.
-  //
-  // Garbage has no colour and can never be matched, so touching it with a
-  // match is the only way it ever clears. This counts PANELS, not contacts:
-  // a panel wedged in a garbage pocket is one opportunity, not three, since
-  // one match through it clears everything it touches (and the clear then
-  // propagates block to block anyway).
-  //
-  // Deliberately not a second count of garbage — the tests pin that by
-  // scoring the same garbage buried among panels and alone on the board.
+  // Matchable panels 4-way adjacent to a garbage cell. No eligibility test: every garbage panel reads -2 whatever its state.
   function garbageAdjacency(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
     var n = 0;
@@ -587,30 +382,7 @@ var MOVE_FRAMES = 4;
     return n;
   }
 
-  // ------------------------------------------------------ colourScarcity
-  //
-  // COLOURS DOWN TO FEWER THAN THREE MATCHABLE PANELS.
-  //
-  // Three is the match length, so a colour below it cannot form a match at
-  // all — the panels are dead weight until more of that colour rises. This
-  // is the "stuck" death panel-cpu.js describes: once no legal swap can
-  // match anything, the real AI wiggles in place until the anti-stall
-  // punishment kills it.
-  //
-  // A colour with ZERO panels is NOT scarce, and that is the whole trap.
-  // You cannot be stuck for want of a colour you are not holding, and
-  // counting absent colours would make an empty board — the safest board
-  // there is — score as the most desperate.
-  //
-  // Which is why this reads only the board and NOT input.colours, despite
-  // the level's colour count being available. Iterating the colours in
-  // play would have to decide what a count of zero means, and every answer
-  // is wrong: zero is not scarcity, so it would be skipped, which is
-  // exactly what counting only the colours present already does — with one
-  // fewer input to get out of step with the board.
-  //
-  // Garbage and busy cells are not supply: a wall of garbage does not help
-  // you match, and a panel mid-animation has no colour this snapshot knows.
+  // Colours with one or two panels left — a colour that can no longer form a match.
   function colourScarcity(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
     var counts = {}, r, c, v;
@@ -627,43 +399,14 @@ var MOVE_FRAMES = 4;
     return scarce;
   }
 
-  // --------------------------------------------------------- scoreEarned
-  //
-  // WHAT THIS MOVE EARNED, IN THE POINTS THE SEARCH IS JUDGED ON.
-  //
-  // Every other earned feature measures a proxy. garbageSent counts cells,
-  // chainLength counts links, and the run's fitness is `score` — so the bot
-  // was being graded in a currency it could not see. The proxies do not
-  // even rank the same way: against a 4-combo, a 5-chain is 8x in garbage
-  // cells and 15x in points.
-  //
-  // The tables are NOT restated here. PanelEngine.moveScore owns them, and
-  // owns the chain-counter quirk that makes the first link of a cascade
-  // earn only its combo bonus (Stack:incrementChainCounter goes 0 -> 2,
-  // never 1). A bare 3 is worth 0, which is the fact this feature exists to
-  // put in front of the search: 54 of the shipped bot's 67 matches across
-  // three games earned nothing at all.
+  // The game's own points for this cascade, via PanelEngine.moveScore. Returns 0 if the engine is not loaded.
   function scoreEarned(input) {
     var engine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
     if (!engine || !engine.moveScore) return 0;
     return engine.moveScore(input.earned.comboSizes);
   }
 
-  // ---------------------------------------------------------- garbageSent
-  //
-  // THE ATTACK THIS MOVE LAUNCHED, IN CELLS.
-  //
-  // Cells rather than pieces, because the two ways of attacking are shaped
-  // differently and pieces would flatten them. pushGarbage sends a COMBO as
-  // a set of 1-high blocks whose widths come from COMBO_GARBAGE, and a
-  // CHAIN as ONE full-width block that grows a row per link. So a 4-combo
-  // is a handful of cells in one row; a 4-chain is three full rows. Cells
-  // is the common currency between them.
-  //
-  // Note what is NOT here: any judgement about a combo being worth more or
-  // less than a chain of the same cell count. If that turns out to matter
-  // it is a second feature with its own weight, measured on its own —
-  // not a fudge factor hidden inside this one.
+  // Total cells sent: width x height summed over the pieces this move sent.
   function garbageSent(input) {
     var pieces = input.earned.garbageSent, cells = 0;
     for (var i = 0; i < pieces.length; i++) {
@@ -672,73 +415,12 @@ var MOVE_FRAMES = 4;
     return cells;
   }
 
-  // ---------------------------------------------------------- chainLength
-  //
-  // THE CHAIN COUNTER AFTER THE MOVE.
-  //
-  // Backward-looking: what the chain ended up worth. latentChain is the
-  // forward-looking half — whether a landing will CONTINUE one.
-  //
-  // The off-by-one is the whole feature. The match that STARTS a chain is
-  // not a link; the first link makes it x2 (incrementChainCounter, which
-  // sets the counter to 2 rather than incrementing from 1). So the counter
-  // is 0 or 2 or more, and there is no such thing as a chain of one. A
-  // feature that normalised it to "links + 1" would be wrong by one for
-  // every chain in the game.
-  //
-  // Passed straight through rather than transformed, because the engine's
-  // number IS the quantity awardStopTime and pushGarbage both pay on.
+  // Chain counter after the move.
   function chainLength(input) {
     return input.earned.chainLength || 0;
   }
 
-  // ----------------------------------------------------------- travelCost
-  //
-  // WHAT THIS CANDIDATE COSTS TO REACH, IN FRAMES.
-  //
-  // The only feature that measures the MOVE rather than the board it
-  // leaves. It was added while the bot could still teleport — stack.touchSwap
-  // queues a swap anywhere and moves the cursor there in the same frame —
-  // which made it a price on a cost the simulation never charged. The cpu
-  // walks now (panel-cpu.js, beginWalk), so the frames this counts are
-  // frames the game actually takes: at the cadence the cpu plays, one step
-  // is 1 frame and four is 13.
-  //
-  // A swap worth slightly less but one cell away can therefore be worth far
-  // more than the better one across the board, and no version of this bot
-  // could express that before.
-  //
-  // The number is supplied by whichever seam knows which move produced the
-  // candidate. A seam that cannot see the move passes nothing and this
-  // reads 0 — better than inventing a cost, which would price every
-  // candidate identically and quietly re-introduce teleporting.
-  // MEASURED IN CURSOR STEPS, NOT FRAMES, AND THAT IS THE WHOLE POINT.
-  //
-  // Every other feature here is a COUNT of something — panels, links, rows,
-  // colours — and lands between 0 and about 3 across the candidates of a
-  // decision. This one returned FRAMES. Measured spread within a decision:
-  //
-  //     travelCost   21.12        links             2.82
-  //     roughness     2.21        colourVariance    1.68
-  //     everything else below 1.1
-  //
-  // Seven times the next-biggest, so at any weight that matters it does not
-  // contribute to a decision, it IS the decision. Both consequences were
-  // visible: the GA settled it at exactly 0, the only value that does not
-  // wreck the bot, and a champion trained while this feature was
-  // accidentally dead collapsed from 1123 frames to 429 the instant it went
-  // live at weight 173 — it had decided moving was never worth it.
-  //
-  // Neither of those means travel does not matter. It matters a great deal:
-  // this bot walks its cursor and pays real frames for distance. They mean
-  // a unit mismatch left the search no way to say "care a little".
-  //
-  // Steps put it in the same range as everything else — a 4-step move reads
-  // 4, not 13 — so a weight of 50 here means what a weight of 50 means
-  // anywhere else. No information is lost: travel.js's frame cost is
-  // monotonic in steps, and the CADENCE belongs in the simulation that
-  // charges for it, not counted twice in the feature and again in the
-  // weight.
+  // Frames to walk the cursor there, converted to steps: 1 + (frames - 1) / 4.
   function travelCost(input) {
     var frames = input.travelFrames || 0;
     if (frames <= 0) return 0;
@@ -809,60 +491,7 @@ var MOVE_FRAMES = 4;
   }
 
 
-  // --------------------------------------------------------- stopTimeGain
-  //
-  // WHAT THIS MOVE'S STOP TIME IS ACTUALLY WORTH — which is nothing at all
-  // unless the board can kill you, and nothing again if the clock it would
-  // set is already running.
-  //
-  // STOP TIME IS THE RESERVE, NOT HEALTH. advancePassiveRaise decrements
-  // health only inside (!riseLock && stopTime === 0), so stop time does not
-  // sit beside health as a second pool — it FREEZES the health drain. At
-  // level 10, where every one of these runs trains, LevelPresets sets
-  // maxHealth to 1: health is one frame and it resets to 1 the moment you
-  // are not topped out, so there is no health to keep up. The clock you keep
-  // up is this one. The engine says so itself in awardStopTime, which pays
-  // dangerConstant/dangerCoefficient — strictly more — when wasToppedOut.
-  //
-  // WHY stopTimeEarned IS NOT ENOUGH, measured at level 10 over 4 scenarios
-  // x 2 seeds, 415 decisions / 7,766 candidates:
-  //
-  //   - It is FLAT. It pays the same 60 frames on a board at row 3 as on one
-  //     topped out. 31.9% of candidates are scored while topped out and
-  //     68.1% are not, so the search averages a term that matters over a
-  //     term that does not and lands on nothing: the two converged runs put
-  //     it at 1.8 and 0.8 out of ~300. That is the correct average and the
-  //     wrong policy. A weighted sum cannot multiply "how much stop time" by
-  //     "how close to death", so the conjunction goes INSIDE the feature —
-  //     the same move flatTop makes for flat-AND-high, and the only place a
-  //     linear scorer can hold one.
-  //
-  //   - It IGNORES THE CLOCK ALREADY RUNNING. awardStopTime ends
-  //     `if (stopTime > this.stopTime) this.stopTime = stopTime` — a MAX,
-  //     not a +=. Earning 90 frames while 120 are on the clock buys zero
-  //     frames, and stopTimeEarned reports 90. 74.1% of candidates are
-  //     scored while stop time is already running, so this is the common
-  //     case rather than the corner.
-  //
-  // AND IT VARIES BETWEEN CANDIDATES, WHICH IS WHAT framesToDeath COULD NOT.
-  // Every clock field reaches a feature off the LIVE stack (input.js
-  // fromStack), read before the swap, so it is identical for every candidate
-  // of a decision — measured, the clock varied in 0 of 415 decisions. A
-  // per-decision constant cannot break a tie no matter what its weight is,
-  // which is the real reason that feature did nothing; maxHealth was a
-  // symptom. Here the banked half is per-decision and the EARNED half is
-  // per-candidate, so the difference between two moves is a real difference.
-  //
-  // preStopTime is deliberately not part of the max. decrementTimers drains
-  // preStopTime first and only then stopTime, so preStop extends the total
-  // clock — but awardStopTime's comparison is against this.stopTime alone,
-  // so a large preStop does not stop an award landing.
-  //
-  // DANGER_ROWS reaches one row BEFORE the ceiling. isToppedOut is "anything
-  // in the top row", and a feature that waits for it can only ever reward
-  // the move that saves you on the frame you would have died; one passive
-  // rise away is where the decision is actually made. Widening it further
-  // would re-flatten the feature, which is the thing being fixed.
+  // Stop time this move actually buys: earned minus the clock already running, floored at 0, and 0 unless the board could die. awardStopTime takes a MAX, not a sum.
   var DANGER_ROWS = 1;
 
   function couldDie(input) {
@@ -877,6 +506,8 @@ var MOVE_FRAMES = 4;
     return false;
   }
 
+  // Stop time this move actually buys: earned minus the clock already running,
+  // floored at 0, and 0 unless the board could die. awardStopTime takes a MAX.
   function stopTimeGain(input) {
     var earned = input.earned.stopTimeEarned || 0;
     if (earned <= 0) return 0;
@@ -924,83 +555,24 @@ var MOVE_FRAMES = 4;
     return n;
   }
 
-  // ------------------------------------------------------- garbageCleared
-  //
-  // GARBAGE CELLS THIS MOVE CONVERTED, PROPAGATION INCLUDED.
-  //
-  // Comes from the resolved candidate rather than being recomputed here:
-  // one match clears every connected garbage block it touches AND every
-  // block those touch in turn (getConnectedGarbagePanels), so the number
-  // depends on the resolve, not on the settled grid this feature can see.
-  // Recomputing it from the board would be a second, worse implementation
-  // of a rule the engine already applied.
-  // ---------------------------------------------------------- stopTimeEarned
-  //
-  // FRAMES ARE SURVIVAL, AND BREAKING GARBAGE BUYS THEM.
-  //
-  // The engine awards stop time for a clear (Stack.awardStopTime): the stack
-  // stops rising for that many frames. It is the real payoff for breaking
-  // garbage — you do it to buy room, not for the points — and nothing in the
-  // evaluator could see it. resolve() computes it and reports it now, so this
-  // reads it rather than inventing a proxy.
-  //
-  // Distinct from scoreEarned, which is points, and from garbageCleared,
-  // which is cells: a wide clear low down and a deep chain can pay the same
-  // points while buying very different amounts of time.
+  // Garbage cells gone between the board this move was made from and the board it left.
   function stopTimeEarned(input) {
     return input.earned.stopTimeEarned || 0;
   }
 
-  // ------------------------------------------------------------ brokeGarbage
-  //
-  // HOW MANY GARBAGE CELLS THIS MOVE ACTUALLY POPPED — one row of a slab per
-  // match, which is what the engine does. garbageCleared counted whole
-  // connected slabs until resolve() was fixed; this counts what breaks.
+  // Garbage cells this move popped, as reported by resolve().
   function brokeGarbage(input) {
     return input.earned.brokeGarbage || 0;
   }
 
+  // Garbage cells gone between the board this move was made from and the board
+  // it left. At depth 2 the baseline is the parent candidate, not the live stack.
   function garbageCleared(input) {
     return input.earned.garbageCleared || 0;
   }
 
 
-  // ------------------------------------------------------- comboPotential
-  //
-  // THE BIGGEST SINGLE CLEAR ANY LEGAL SWAP COULD MAKE FROM THIS BOARD.
-  //
-  // The other half of stored potential. A board pays out two different ways
-  // and they are separate attacks: a CHAIN is links deep and sends one
-  // full-width block that grows a row per link; a COMBO is one clear wide
-  // and sends a set of 1-high blocks. chainPotential measures the first —
-  // the deepest cascade a swap could set off. Nothing measured the second,
-  // and matchPotential says why in its own comment: it counts HOW MANY
-  // swaps pay out, deliberately not how big, and records that if size
-  // matters it belongs in its own feature "measured on its own, not
-  // smuggled in here". This is that feature.
-  //
-  // So a board one swap from a five-panel clear and a board one swap from a
-  // bare three both score 1 on matchPotential and 0 on chainPotential, and
-  // are worth very different amounts: the engine ports Panel Attack's real
-  // Tsu-Attack tables, where combo payout climbs with size and a plain 3
-  // sends nothing at all.
-  //
-  // ASKED OF THE ENGINE, NOT RECOMPUTED. Same shape as chainPotential:
-  // clone, swap, let the engine resolve, read the combo sizes it reports.
-  // The alternative is a second implementation of gravity and matching
-  // inside features.js, which is how two copies of the rules drift apart —
-  // and the engine's counter is the one the game actually scores with.
-  //
-  // The MAX, not the sum. The payout table is per-clear, so one clear of
-  // seven is worth more than two of three, and summing would rank a board
-  // full of small clears above the one big one that actually pays.
-  //
-  // Cost: a clone+resolve per legal swap, the same loop chainPotential
-  // runs, so having both roughly doubles the most expensive feature here
-  // (~66us). Measured worst decision was 8ms against an 85ms guard before
-  // this, so there is room; if that stops being true the fix is to resolve
-  // each candidate ONCE and let both features read the result, not to make
-  // either of them guess more cheaply.
+  // Widest single clear any legal swap could make. MAX, not sum — payout is per clear.
   function comboPotential(input) {
     var board = planBoard(input);
     if (!board) return 0;
@@ -1009,87 +581,7 @@ var MOVE_FRAMES = 4;
     return best;
   }
 
-  // -------------------------------------------------------------- staircase
-  //
-  // THE LONGEST DIAGONAL RUN OF LOADED STEPS — the depth of the deepest
-  // staircase built on this board.
-  //
-  // THE SHAPE IS DOCUMENTED, NOT INVENTED, and that is the whole point of
-  // it. PUYO_REFERENCE.md's Tier 2 section says the competitive Puyo bot
-  // "does not discover chain shapes, it is told them" — humans worked the
-  // shapes out over decades and the bot matches against that library. Panel
-  // de Pon has its own, and this is the one every guide teaches:
-  //
-  //   "a diagonal arrangement of matching panels, offset by one column and
-  //    one row at each step, so that clearing the lowest match causes
-  //    falling panels to complete the next match, which in turn feeds the
-  //    one above it"  — paneponattack.com, "How to Set Up a Staircase"
-  //
-  // THE FIRST VERSION COUNTED LOOSE STEPS AND THE SEARCH REJECTED IT: it
-  // settled at 13 out of 300, the treatment reserved here for a feature that
-  // does nothing. It was not mis-wired — a board carrying steps held a
-  // firable chain 40.4% of the time against 6.6% for a board with none, a
-  // sixfold lift over 1,246 real level-10 boards. It was measuring the wrong
-  // thing in two ways, both of which that same measurement shows:
-  //
-  //   1. It was a WORSE COPY OF chainPotential. Loose loaded steps predict
-  //      "there is a chain here", and chainPotential answers that question
-  //      exactly rather than by proxy — which is why it carries 185 and this
-  //      carried 13. A feature earns its dimension by seeing something no
-  //      other feature can.
-  //   2. It counted steps that had nothing to do with each other. Three
-  //      loaded panels in three unrelated corners scored 3, the same as
-  //      three that feed each other. The by-step-count numbers say so
-  //      outright and are not monotonic anywhere: 1 step 46.8%, 2 steps
-  //      11.1%, 3 steps 0.0%, 4 steps 72.7%. A staircase is not a quantity
-  //      of steps, it is steps ARRANGED — "offset by one column and one row
-  //      at each step" is the whole definition and the first version did not
-  //      implement it.
-  //
-  // So this measures the diagonal run: how many loaded steps chain into each
-  // other, one column across and one row up, which is how deep the cascade
-  // goes when the bottom one is triggered. That is a number chainPotential
-  // cannot produce — chainPotential needs a trigger swap to exist RIGHT NOW,
-  // and a half-built staircase with no trigger yet reads 0 there while
-  // reading its true depth here. Depth rather than count, because the score
-  // table is what makes building worth anything: a 4-combo pays 20 and a
-  // 5-chain pays 300, so two shallow staircases are worth a fraction of one
-  // deep one and must not score the same.
-  //
-  // WHAT COUNTS AS A STEP. A settled board has no floating panels, so the
-  // gap the guide describes ("a pair of colour B with a gap directly beneath
-  // it") exists only after the trigger clears. The invariant that survives
-  // on a settled board is that same shape read one row down: a panel that
-  // WOULD complete a horizontal three in the row beneath it if the cell
-  // under it cleared and it fell. Clear underneath, it drops, the match
-  // completes, the chain takes its next link.
-  //
-  // Horizontal only. A fall cannot complete a VERTICAL three, because the
-  // whole column drops together and keeps its spacing — the panels that
-  // would have to close up never move relative to each other.
-  //
-  // The cell below a step must be occupied by a DIFFERENT colour: if it
-  // already matched, the board would have resolved it, and a shape that has
-  // already fired is not stored potential.
-  // CAN ONE SWAP CLEAR THIS EXACT CELL?
-  //
-  // The staircase's base, in other words. Tries every legal horizontal swap
-  // and asks whether the match it causes CONTAINS the target — not whether a
-  // match happens somewhere, which is what matchPotential answers and is a
-  // different question: a 4-combo across the board does nothing for a
-  // staircase whose base is still sitting there.
-  //
-  // Restores the grid it borrows. A swap left in place would corrupt every
-  // feature computed after this one, silently, on the same input object.
-  // SAME CORRECTION AS matchPotential, and for the same reason: this used to
-  // consider only colour-to-colour swaps and read the match off instantly,
-  // so a base cleared by sliding a panel over a hole did not count and the
-  // staircase above it scored 0. That is 65% of the chain-firing swaps on
-  // the real puzzle set. Resolves on a clone instead, which is the gravity
-  // the bot plans with.
-  //
-  // Needs a real board; a plain snapshot gets `false`, which leaves
-  // staircaseReady reading 0 rather than inventing a trigger.
+  // Loaded steps: panels that would complete a horizontal three if the cell under them cleared and they fell one row.
   function clearableByOneSwap(board, row, col) {
     if (!board || typeof board.legalSwaps !== 'function' ||
         typeof board.clone !== 'function' || typeof board.resolve !== 'function') return false;
@@ -1105,28 +597,13 @@ var MOVE_FRAMES = 4;
     return false;
   }
 
-  // ----------------------------------------------------- staircaseReady
-  //
-  // A STAIRCASE YOU CAN FIRE, WHICH IS NOT THE SAME THING AS A STAIRCASE.
-  //
-  // docs/CHAIN_SHAPES.md, from the game's own documented library: the shape
-  // is a diagonal of B-pairs each with a gap beneath, and it goes off when
-  // an A MATCH AT THE BASE clears and lets the lowest B fall. Without that
-  // trigger the diagonal is a stack of loaded pairs with no way to set them
-  // off — worth nothing until one appears.
-  //
-  // `staircase` counts the diagonal and never looks for the trigger, so a
-  // shape that fires and a shape that cannot score identically. That is a
-  // candidate explanation for it measuring NO EFFECT over four runs: half of
-  // what it was rewarding was inert.
-  //
-  // This counts the longest run whose base can be cleared BY ONE SWAP, which
-  // is the definition of ready. Returns the run length, so a 3-step ready
-  // staircase reads 3 and an unfireable 5-step one reads 0.
+  // Same walk as staircase, but only steps whose base can be cleared by one swap.
   function staircaseReady(input) {
     return staircaseRuns(input, true);
   }
 
+  // Loaded steps: panels that would complete a horizontal three if the cell
+  // under them cleared and they fell one row.
   function staircase(input) {
     return staircaseRuns(input, false);
   }
@@ -1186,33 +663,7 @@ var MOVE_FRAMES = 4;
     return best;
   }
 
-  // --------------------------------------------------------------- flatTop
-  //
-  // THE DOCUMENTED WAY TO DIE: FLAT, AND HIGH UP.
-  //
-  // The same library names this one as a mistake rather than a shape to
-  // build: "the overloaded flat-top is the shape that gets intermediate
-  // players killed — it looks productive and quietly walks you into the top
-  // line", against which "the flat board is where you live between setups,
-  // not a chaining plan" (paneponattack.com). Flat near the floor is normal;
-  // flat near the ceiling is the death shape.
-  //
-  // WHY IT HAS TO BE ITS OWN FEATURE. Flat is good and low is good, and this
-  // evaluator already pays for both separately — roughness for flat,
-  // maxHeight and fillRatio for low. What kills you is the CONJUNCTION, and
-  // a weighted sum cannot express one: it can add "how flat" to "how high",
-  // never multiply them. That is the limit that removed incomingGarbage (see
-  // registry.js), met from the other side — there the interaction could not
-  // be expressed, so the feature went; here the interaction is put INSIDE
-  // the feature, which is the only place a linear scorer can hold one.
-  //
-  // AND IT IS THE SHAPE OUR OWN BOT BUILDS. Its swaps optimise roughness,
-  // colour clustering and stack height, which is a description of the
-  // overloaded flat-top. Measured over 12 level-10 games: the chain
-  // structure sitting in the random opening board (mean best chain 2.34,
-  // a real chain available in 61% of decisions) was gone by the first third
-  // of the game (0.68, 12%) and never came back. The bot is not failing to
-  // build — it is flattening away structure it starts with.
+  // Columns within one row of the tallest, scaled by tallest/height. A product, so it sees flat-AND-high, which a weighted sum of roughness and maxHeight cannot.
   function flatTop(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
     var heights = [], c, r, tallest = 0;

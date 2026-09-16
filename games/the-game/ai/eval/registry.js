@@ -85,7 +85,7 @@
       what: 'Panels in the side columns, which have three orthogonal neighbours instead of four and so link less.' },
 
     { key: 'garbageOnBoard',   group: 'board',  sign: -1, fn: null,
-      what: 'Garbage cells on the board, counted FLAT — every cell is worth 1 wherever it sits. It said "on-screen weighted above off-screen" for a long time and never did that, and it cannot: the engine allocates 24 rows and lands garbage above the visible board (panel-engine.js MAX_ROWS), but the LogicalBoard the evaluator reads is built with stack.height = 12, so off-screen garbage is not in this number and never reaches any feature. If the bot should fear garbage stacked above the ceiling, the board handed to it has to carry those rows first.' },
+      what: 'Garbage cells, counted flat — every cell is worth 1 wherever it sits. The board here is the VISIBLE 12 rows, so garbage above the ceiling is not in this number and cannot be.' },
 
     // incomingGarbage WAS HERE AND HAS BEEN REMOVED. It measured the garbage
     // queued against this board — which matters enormously to how the game
@@ -118,7 +118,7 @@
       what: 'Sum of absolute height differences between adjacent columns.' },
 
     { key: 'garbageAdjacency', group: 'board',  sign: +1, fn: null,
-      what: 'Matchable panels 4-way adjacent to a garbage cell. Garbage has no colour, so touching it is the ONLY way it ever clears. NO ELIGIBILITY TEST, despite what this said before: the grid marks every isGarbage panel -2 whatever its state (panel-cpu.js), so a slab mid-pop counts exactly like a settled one.' },
+      what: 'Matchable panels 4-way adjacent to a garbage cell. Garbage has no colour, so touching it is the only way it clears. No eligibility test: every garbage panel reads -2 whatever its state.' },
 
     { key: 'colourScarcity',   group: 'board',  sign: -1, fn: null,
       what: 'Colours with fewer than 3 matchable panels left — a colour that can no longer form a match.' },
@@ -147,20 +147,6 @@
     { key: 'travelCost',       group: 'move',   sign: -1, fn: null,
       what: 'Frames to bring the cursor from where it is to this candidate swap, per travel.js — real frames, since the cpu walks there (panel-cpu.js beginWalk) rather than teleporting with stack.touchSwap as it used to. One step is 1 frame, four is 13. Set by whichever seam knows the move; 0 when the move is unknown.' },
 
-    // framesToDeath WAS HERE AND HAS BEEN REMOVED. It counted the frames
-    // before this board kills you, saturating at SAFE_FRAMES for anything
-    // not actively topping out.
-    //
-    // At level 10 it is saturated on every candidate of every decision:
-    // varied in 0 of 179 decisions across five real games, biggest spread 0.
-    // maxHealth is 1 there, so the window it would discriminate in — topped
-    // out but not yet dead — does not exist. It added a large constant to
-    // every score and never broke a tie, while being by far the biggest
-    // number in the evaluator (mean 586 against everything else under 22)
-    // and therefore the most dangerous thing in it if that ever changed.
-    //
-    // maxHeight and fillRatio carry the "how close to death is this board"
-    // signal, vary between candidates, and are counts like everything else.
   ];
 
   var byKey = {};
