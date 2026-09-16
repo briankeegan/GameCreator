@@ -227,6 +227,8 @@ var DEPTH = Number(process.env.GC_DEPTH || 1);
 // search by IMMEDIATE score and that is the one filter a lookahead must not
 // have — see bench.js and puyocpu.js _lookahead.
 var BEAM = Number(process.env.GC_BEAM || 0);
+// Raising as a candidate. See PuyoCpu._canRaise: an action, so opt-in.
+var ALLOW_RAISE = process.env.GC_RAISE === '1';
 var RISE = process.env.GC_RISE === '1' || process.env.GC_RISE === 'true';
 var DENSITY = process.env.GC_DENSITY === '1' || process.env.GC_DENSITY === 'true';
 
@@ -369,6 +371,7 @@ function pump() {
         pool[i].child.send({ id: job.id, weights: job.weights, seeds: job.seeds,
                              mode: MODE, checkTiming: false,
                              depth: DEPTH, beam: BEAM, rise: RISE, density: DENSITY,
+                             allowRaise: ALLOW_RAISE,
                              scenario: job.scenario, arena: job.arena,
                              objective: OBJECTIVE, brain: BRAIN });
     }
@@ -459,6 +462,7 @@ function fingerprint() {
             OBJECTIVE,
             process.env.GC_LEVEL || '', process.env.GC_GA_SEED || '',
             String(DEPTH), String(BEAM), RISE ? 'rise' : '', DENSITY ? 'density' : '',
+            ALLOW_RAISE ? 'allowRaise' : '',
             SEEDS_PER_GENERATION, KEYS.join(',')].join('|');
 }
 
@@ -789,6 +793,7 @@ function report(isFinal, cb) {
             depth: DEPTH,
             beam: BEAM,
             rise: RISE,
+            allowRaise: ALLOW_RAISE,
             density: DENSITY,
             features: KEYS.slice(),
             excluded: EXCLUDE.slice(),

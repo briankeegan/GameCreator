@@ -615,6 +615,41 @@ test('the objective reaches train.js, and survival is not score', function () {
         'survival and score produced the SAME fitness, so the objective is being ignored');
 });
 
+test('GC_RAISE reaches the bot, and the fingerprint separates it', function () {
+    // Same law as depth and rise, and the reason both have a test here:
+    // bench.js builds PuyoCpu's options BY HAND, so a new option is dropped
+    // there by default and every run "with" it is a run without it. depth
+    // was the first, rise the second. This is the third, and it is an
+    // ACTION rather than a preference -- a bot that can raise searches a
+    // different choice set, so its checkpoint must never be resumed into a
+    // run that cannot.
+    process.env.GC_LEVEL = '10';
+    var bench = require('./bench.js');
+    var PuyoCpu = require('./puyocpu.js');
+    var offered = { off: 0, on: 0 };
+    var real = PuyoCpu.prototype._candidates;
+    PuyoCpu.prototype._candidates = function () {
+        var out = real.call(this);
+        var key = this.allowRaise ? 'on' : 'off';
+        out.forEach(function (c) { if (c.kind === 'raise') offered[key]++; });
+        return out;
+    };
+    var W = { colourVariance: 168, maxHeight: 136, roughness: 294, travelCost: 10 };
+    try {
+        bench.run(W, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace', checkTiming: false });
+        bench.run(W, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace', checkTiming: false,
+                          allowRaise: true });
+    } finally { PuyoCpu.prototype._candidates = real; }
+    assert.strictEqual(offered.off, 0, 'a raise was offered through bench with the option off');
+    assert.ok(offered.on > 0, 'no raise was ever offered through bench with the option ON — ' +
+        'bench.js is dropping allowRaise the way it once dropped depth and rise');
+
+    var src = fs.readFileSync(path.join(__dirname, 'train.js'), 'utf8');
+    var fp = src.slice(src.indexOf('function fingerprint()'));
+    fp = fp.slice(0, fp.indexOf('}'));
+    assert.ok(/ALLOW_RAISE/.test(fp), 'fingerprint() does not include ALLOW_RAISE:\n' + fp);
+});
+
 test('crank.sh passes the objective through instead of hardcoding score', function () {
     // The other half of the path, asserted at the source the way this file
     // already asserts crank.sh's round loop and seed genome: the workflow

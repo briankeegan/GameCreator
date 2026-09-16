@@ -71,6 +71,10 @@ on:
         description: 'What the search optimises: score (the engine points, every run before 2026-09-15) or survival (frames + sent/2, which values not dying above everything else)'
         required: false
         default: ''
+      raise_move:
+        description: 'Let the bot RAISE as a scored move (1 = on). A new action, not a preference -- with it the choice set has a third kind in it, so results are not comparable with runs without it.'
+        required: false
+        default: ''
       density:
         description: 'Density scoring: counts made of panels become per-panel (1 = on)'
         default: ''
@@ -171,6 +175,7 @@ jobs:
           # bred to score, so the two must never share a resume point.
           # Blank is 'score', which every run before 2026-09-15 used.
           GC_OBJECTIVE: ${{ github.event.inputs.objective || '' }}
+          GC_RAISE: ${{ github.event.inputs.raise_move || '' }}
           GC_DEPTH: ${{ github.event.inputs.depth || '1' }}
           GC_BEAM: ${{ github.event.inputs.beam || '0' }}
           GC_RISE: ${{ github.event.inputs.rise || '' }}
@@ -310,6 +315,7 @@ jobs:
           # bred to score, so the two must never share a resume point.
           # Blank is 'score', which every run before 2026-09-15 used.
           GC_OBJECTIVE: ${{ github.event.inputs.objective || '' }}
+          GC_RAISE: ${{ github.event.inputs.raise_move || '' }}
           GC_DEPTH: ${{ github.event.inputs.depth || '1' }}
           GC_BEAM: ${{ github.event.inputs.beam || '0' }}
           # Same rule, second axis: rise-adjusted scoring produces a

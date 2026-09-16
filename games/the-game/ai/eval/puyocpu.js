@@ -122,6 +122,8 @@
     this.reaction = opts.reaction === undefined ? 12 : opts.reaction;
     this.cooldown = Math.floor(this.reaction / 2);
     this.raiseFrames = 0;
+    // See _canRaise: raising is an action, so it is opt-in per instance.
+    this.allowRaise = opts.allowRaise === true;
     this._walk = null;
     this._lastSwap = null;
     // Instrumentation, not decoration: the claim this brain exists to make
@@ -403,47 +405,102 @@
   // weights and identity.golden.json all still describe it. Lookahead is
   // opt-in per instance, so turning it on is a decision somebody makes
   // rather than a thing that happens.
-  PuyoCpu.prototype._decide = function () {
+  // CAN THE ENGINE ACTUALLY RAISE RIGHT NOW.
+  //
+  // The engine's own conditions, not a policy: a topped-out stack has no
+  // room (isToppedOut), garbage in the air lands first
+  // (hasFallingGarbage), and preventManualRaise is set while a raise is
+  // already being served. Offering a move that cannot be played would put
+  // it in the choice set for the weights to pick and then stand still.
+  PuyoCpu.prototype._canRaise = function () {
+    // OPT-IN, like depth, beam, rise and density before it. Raising is a
+    // new ACTION, not a new preference: it changes the choice set, so every
+    // result taken without it describes a different bot and every run in
+    // flight would change meaning mid-search. Off is the bot every existing
+    // number describes.
+    if (!this.allowRaise) return false;
+    var stack = this.stack;
+    if (stack.preventManualRaise) return false;
+    if (stack.manualRaise) return false;
+    if (typeof stack.isToppedOut === 'function' && stack.isToppedOut()) return false;
+    if (typeof stack.hasFallingGarbage === 'function' && stack.hasFallingGarbage()) return false;
+    return true;
+  };
+
+  // EVERY MOVE THE BOT COULD MAKE, SCORED. Hold, RAISE, and every legal
+  // swap, each carrying the board it was scored on so the second ply
+  // branches from the same position the number describes.
+  //
+  // RAISING WAS NOT IN HERE AND COULD NOT BE CHOSEN. `raiseFrames` was
+  // declared in the constructor and decremented by update(), and nothing
+  // ever set it -- dead wiring that reads exactly like a working feature.
+  // On a low board with nothing worth swapping the bot's only options were
+  // to wait out the passive rise (120 frames a row at level 10) or play a
+  // swap it did not want. Raising is what ends the dead time and brings up
+  // panels to work with, and the shipped SearchCpu has had it all along.
+  //
+  // NO THRESHOLD DECIDES WHEN. SearchCpu raises on `fillRatio < 0.4`, a
+  // hand-set number. Here the raise is SCORED, on the board as it will be
+  // once the row has landed and resolved, so maxHeight, fillRatio and
+  // garbageOnBoard already say "not near the ceiling" and "not with
+  // garbage on the board" in the weights' own terms -- and the weights can
+  // decide it is wrong, which a rule could never allow.
+  PuyoCpu.prototype._candidates = function () {
     var board = this._snapshot();
-    var swaps = board.legalSwaps();
     // ONE incoming row for the whole decision. Every candidate is risen by
     // the SAME row or the comparison is back to being unfair in a new way.
     this._incoming = board.incoming || null;
 
-    // HOLD is a candidate like any other, scored the same way. SearchCpu
-    // decides between holding, raising and swapping with its own rules;
-    // here the weights decide, because there is nowhere else for that
-    // judgement to live — and putting a rule in would be putting back the
-    // thing this brain exists to do without.
     var holdBoard = board.clone();
     var holdResolved = this._resolveCandidate(holdBoard);
-    var best = { kind: 'hold' };
-    var bestScore = this._score(holdBoard, holdResolved, null);
-
-    // HOLD IS CANDIDATE ZERO, not a separate case carried alongside the
-    // others. It was the separate case, and that is how it ended up judged
-    // one move deep while every swap was judged two — waiting always
-    // looked worse than acting, and waiting is how a chain gets built.
-    var cands = [{ kind: 'hold', score: bestScore, board: this._scoredBoard,
+    var cands = [{ kind: 'hold',
+                   score: this._score(holdBoard, holdResolved, null),
+                   board: this._scoredBoard,
                    earnedStop: holdResolved.stopTimeEarned || 0 }];
 
+    if (this._canRaise()) {
+      // The row the engine will actually deal, resolved, because a raise
+      // can complete a match and that match is the reason to make it.
+      var raiseBoard = board.clone().rise(this._incoming);
+      var raiseResolved = this._resolveCandidate(raiseBoard);
+      cands.push({ kind: 'raise',
+                   score: this._score(raiseBoard, raiseResolved, null),
+                   board: this._scoredBoard,
+                   earnedStop: raiseResolved.stopTimeEarned || 0 });
+    }
+
+    var swaps = board.legalSwaps();
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
       var trial = board.clone();
       trial.swap(r, c);
       var resolved = this._resolveCandidate(trial);
-      var s = this._score(trial, resolved, [r, c]);
-      cands.push({ kind: 'swap', score: s, move: [r, c], board: this._scoredBoard,
+      cands.push({ kind: 'swap',
+                   score: this._score(trial, resolved, [r, c]),
+                   move: [r, c],
+                   board: this._scoredBoard,
                    earnedStop: resolved.stopTimeEarned || 0 });
-      // Strictly greater, so a tie leaves the incumbent standing rather
-      // than handing the decision to whichever swap legalSwaps() happened
-      // to list first — list order is not a preference.
-      if (s > bestScore) { bestScore = s; best = { kind: 'swap', move: [r, c] }; }
     }
-
-    if (this.depth <= 1) return best;
-    return this._lookahead(cands);
+    return cands;
   };
+
+  PuyoCpu.prototype._decide = function () {
+    var cands = this._candidates();
+
+    // HOLD IS CANDIDATE ZERO, not a separate case carried alongside the
+    // others. It was the separate case, and that is how it ended up judged
+    // one move deep while every swap was judged two -- waiting always
+    // looked worse than acting, and waiting is how a chain gets built.
+    if (this.depth > 1) return this._lookahead(cands);
+
+    // Strictly greater, so a tie leaves the incumbent standing rather than
+    // handing the decision to whichever candidate happened to be built
+    // first -- list order is not a preference.
+    var best = cands[0];
+    for (var i = 1; i < cands.length; i++) if (cands[i].score > best.score) best = cands[i];
+    return best.kind === 'swap' ? { kind: 'swap', move: best.move } : { kind: best.kind };
+  };
+
 
   // WHAT A CANDIDATE IS WORTH WHEN YOU LOOK ONE MOVE FURTHER.
   //
@@ -562,7 +619,7 @@
 
   PuyoCpu.prototype._value = function (cand) {
     var next = cand.board.legalSwaps();
-    var from = cand.kind === 'hold' ? null : cand.move;
+    var from = cand.kind === 'swap' ? cand.move : null;   // hold and raise move nothing
     var v = cand.score;
     // Computed ONCE per candidate: every child of this candidate follows the
     // same first move, so they all inherit the same clock.
@@ -615,7 +672,7 @@
       var v = this._value(expand[i]);
       if (v > bestValue) { bestValue = v; chosen = expand[i]; }
     }
-    return chosen.kind === 'hold' ? { kind: 'hold' } : { kind: 'swap', move: chosen.move };
+    return chosen.kind === 'swap' ? { kind: 'swap', move: chosen.move } : { kind: chosen.kind };
   };
 
   PuyoCpu.prototype.update = function () {
@@ -636,6 +693,14 @@
 
     this.decisions++;
     var decision = this._decide();
+    if (decision.kind === 'raise') {
+      // HOLD THE INPUT LONG ENOUGH FOR THE ENGINE TO SERVE IT. setInput
+      // latches manualRaise on a rising edge and the row takes frames to
+      // arrive; 20 is what SearchCpu has always used for the same job.
+      this.raiseFrames = 20;
+      this.cooldown = this.reaction;
+      return;
+    }
     if (decision.kind === 'hold') {
       this.cooldown = this.reaction;
       return;

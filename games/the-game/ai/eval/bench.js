@@ -330,6 +330,10 @@ exports.run = function (weights, seed, opts) {
             // Rise-adjusted scoring. Absent means off, which is the bot
             // every existing result describes.
             rise: opts.rise === true,
+            // Raising is an ACTION, not a preference: with it on the choice
+            // set has a third kind in it, so a run with it describes a
+            // different bot from every run before. Off is the historical one.
+            allowRaise: opts.allowRaise === true,
             // Density scoring. Absent means raw counts, the bot every
             // existing result describes.
             density: opts.density === true

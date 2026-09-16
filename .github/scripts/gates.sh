@@ -274,6 +274,22 @@ gate_elapsed_rise() {
   node games/the-game/ai/eval/elapsed.test.js
 }
 
+# RAISING IS A MOVE, AND THE BOT COULD NOT MAKE IT.
+#
+# `raiseFrames` was declared in PuyoCpu's constructor and decremented in
+# update(), and NOTHING EVER SET IT -- dead wiring that reads exactly like a
+# working feature. _decide returned 'hold' or 'swap' and nothing else, so
+# raise was never in the choice set and no weight could select it. On a low
+# board with nothing worth swapping the only options were to wait out the
+# passive rise (120 frames a row at level 10) or play a swap it did not want.
+#
+# It is a CANDIDATE, not a rule: scored on the board as it will be once the
+# row has landed and resolved, so the weights decide. SearchCpu's
+# `fillRatio < 0.4` threshold is what this deliberately does not do.
+gate_raise() {
+  node games/the-game/ai/eval/raise.test.js
+}
+
 # THE RUN RECORDS WHAT KIND OF GARBAGE IT SENT, NOT JUST HOW MUCH.
 #
 # Score cannot say whether the bot learned to CHAIN: one that survives on
@@ -407,6 +423,7 @@ GATES=(
   "the depth-2 search picks the best two-move future:gate_lookahead"
   "the second ply knows what time it is:gate_ply_clock"
   "the board moves on while the bot walks:gate_elapsed_rise"
+  "raising is a move the weights can choose:gate_raise"
   "a run records what kind of garbage it sent:gate_chain_depth"
   "a garbage break stops the resolve:gate_garbage_rules"
   "the chip matcher enforces every constraint:gate_chip_matcher_constraints"
