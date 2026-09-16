@@ -1,48 +1,15 @@
-// A PUYO BOT, BUILT THE WAY THE PUYO BOT IS BUILT.
+// PuyoCpu — the bot the weights drive.
 //
-// ../PUYO_REFERENCE.md, "how it plays": enumerate every legal move, score
-// the BOARD each one leaves with a weighted sum of features, play the
-// highest. That is the whole bot. meatfighter's has seven features, no
-// chain logic, no danger mode, no lookahead past the pieces it can see —
-// and it reaches score levels nothing hand-written did.
+// Every decision: list every legal move, score the board each one leaves
+// with the weighted feature sum, play the highest. No tiers, no special
+// cases — so the weights decide 100% of moves.
 //
-// WHY A NEW BRAIN INSTEAD OF MORE SEAMS IN SearchCpu.
-//
-// SearchCpu is a good bot and it is not this bot. It is a stack of
-// independent decision systems — a beam search, a defensive tier, a
-// pre-burst reserve, and TrueSurvivalSearch, which clones the real engine
-// and plays futures forward — each gated on its own conditions, each with
-// its own idea of what a good move is. The evaluator was attached to it
-// through seams, and at level 3 that works: 100% of decisions consult it.
-// At level 10 it does not. Measured over one game, 234 decisions:
-//
-//     _evaluate called 34 times          — 4% of decisions
-//     TrueSurvivalSearch decided the rest
-//
-// Weights trained at level 10 against SearchCpu would therefore be weights
-// for 4% of the game, and this repo's own wiring law — more than half of
-// decisions must consult the evaluator, or the GA is fitting noise — would
-// correctly reject them. The answer is not another seam into a system that
-// already decides for itself. It is a bot whose ONLY decision procedure is
-// the weighted sum, which is what the reference describes and what the
-// weights are for.
-//
-// WHAT THIS DELIBERATELY DOES NOT HAVE, all of which SearchCpu does:
-//   - a danger mode, or any branch on how full the board is;
-//   - rollouts, or any simulation of the real engine;
-//   - chain extension, garbage-clearing bonuses, stop-time reasoning;
-//   - depth. It scores the board ONE move ahead and nothing further.
-// Every one of those exists in SearchCpu because it was measured to help
-// there. Adding them back one at a time would end at SearchCpu again and
-// would never answer the question this exists to ask: how far does a
-// learned static evaluation get on its own, at the level that matters?
-//
-// WHAT IT KEEPS, because these are the game rather than the strategy:
-//   - the cursor walks (panel-cpu.js beginWalk/driveWalk), so a move on
-//     the far side of the board costs real frames to reach;
-//   - a reaction cooldown between decisions, so it plays at a human
-//     cadence instead of re-deciding every frame;
-//   - legality decided by the real Stack, never by the plan.
+// SearchCpu, the bot the game ships, is a different design: a beam search,
+// a defensive tier, a pre-burst reserve and TrueSurvivalSearch, each with
+// its own idea of a good move. At level 10 it consulted the evaluator on 34
+// of 234 decisions, so weights trained against it would be weights for 4%
+// of the game. This brain exists so that number is 100%.
+
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
     module.exports = factory(require('./evaluator.js'), require('./input.js'), require('./travel.js'), require('./engineboard.js'));
@@ -53,6 +20,8 @@
 }(this, function (evaluator, inputMod, travel, engineBoard) {
   'use strict';
 
+  // Options: weights, depth (1 = greedy, 2 = one move of lookahead), beam
+  // (0 = expand every candidate), rise, density, allowRaise, reaction.
   function PuyoCpu(stack, opts) {
     opts = opts || {};
     var PanelCpu = (typeof window !== 'undefined' ? window : globalThis).PanelCpu;
@@ -133,33 +102,8 @@
     this.evaluations = 0;
   }
 
-  // Score the board a candidate LEAVES. Not the move — the board. That
-  // distinction is the whole reference: "it never scores a move, it scores
-  // the board the move results in", which is why a chain needs no special
-  // case here. The chain has already happened in the board being looked at.
-  // THREE FEATURES WERE DEAD HERE AND NOTHING SAID SO.
-  //
-  // An audit weighted all 18 features and counted how often each was
-  // non-zero over 2,185 evaluations of real level-10 games:
-  //
-  //     latentChain      0.0%     garbageCleared   0.0%
-  //     travelCost       0.0%
-  //
-  // Not because the features are wrong — because this function fed them
-  // nothing. It passed cascade=null, clearedCount=0, and never set
-  // travelFrames at all. The GA had been assigning them real weight
-  // (latentChain 282, travelCost 173, garbageCleared 107 in one champion),
-  // so three of eighteen search dimensions were knobs attached to nothing.
-  //
-  // travelCost being dead was the worst of them: this bot WALKS its cursor,
-  // so distance is a real cost in frames that it was blind to.
-  // EVERY CANDIDATE RESOLVES THROUGH HERE, so there is one place the choice
-  // of board is made. Three call sites used to resolve() directly — hold,
-  // swap, and the lookahead child — and a switch that reached two of three
-  // would be the same silent-drift bug this whole seam exists to close.
-  //
-  // The engine path MUTATES the candidate board to the settled state, because
-  // every feature reads board.grid afterwards.
+  // Settle a candidate board: gravity, matches, cascades. Returns what the
+  // move earned — chain length, combo sizes, garbage sent, stop time.
   PuyoCpu.prototype._resolveCandidate = function (board) {
     if (!this.engine) return board.resolve();
     if (!this._scratch) this._scratch = engineBoard.scratch(10);
@@ -172,9 +116,16 @@
     return out;
   };
 
-  // `from` is where the cursor STARTS for this candidate's move. It is the
-  // live cursor for a move being made now, and the previous move's cell for
-  // a move being imagined one ply later — see _value.
+  // Score one candidate: build the feature input for the board this move
+  // leaves, then run the weighted sum.
+  //
+  // baseline is the board the move was made FROM — the live stack at ply 1,
+  // the parent candidate at ply 2 — so garbage cleared is this move's only.
+  //
+  // With rise on, the board is advanced before scoring: one settle row so a
+  // candidate is judged after the panels fall back in rather than at the
+  // instant its match pops, plus any rows that genuinely land while the bot
+  // walks (_rowsArriving).
   PuyoCpu.prototype._score = function (board, resolved, move, from, plyClock, baseline) {
     this.evaluations++;
     // The board this call scored. Same object unless rise replaces it — see
@@ -344,89 +295,7 @@
     return evaluator.evaluate(input, this.weights, { density: this.density }).score;
   };
 
-
-
-  // MEASURED, 2026-09-12: THE CEILING ON THIS IS 8 BOARDS OUT OF 84.
-  //
-  // Scoring a candidate on its FULLY RESOLVED board already puts any
-  // cascade that fires NOW into the number — ai/eval/chain_reach.js shows
-  // a swap setting off a 3-link chain reporting chainLength 3 and combos
-  // 3+3+3 from one resolve() at depth 1. So lookahead can only ever add
-  // chains that do not exist yet, and on the game's own 84 chain puzzles
-  // those are mostly far away:
-  //
-  //     fewest swaps before a 2+ link chain exists
-  //       1 swap    18 puzzles   depth 1 already takes all 18
-  //       2 swaps    8 puzzles   everything depth 2 could possibly add
-  //       3 swaps    4 puzzles
-  //       4+/never  54 puzzles
-  //
-  // WHAT THE SIX TRAINED DEPTH-2 RUNS MEASURED, AND WHY IT IS VOID. They
-  // found depth 2 no better than depth 1 and that was read as "there is
-  // almost nothing within its reach". Every one of them ran against a
-  // _lookahead with three defects (see below), the worst of which expanded
-  // only the candidates that already looked best — a filter against the
-  // exact move a search exists to find. They measured a broken search, so
-  // they say nothing about depth. Depth 2 has to be trained again.
-  //
-  // Going deeper is closed by arithmetic rather than tuning: ~30 legal
-  // swaps a ply is ~810,000 boards per decision at depth 4, against an
-  // 85ms budget. Reaching the other 54 means being TOLD the shape and
-  // pricing how close the board is to it — ../PUYO_REFERENCE.md's Tier 2,
-  // "it does not discover chain shapes, it is told them", and
-  // docs/CHAIN_SHAPES.md for the one shape Panel de Pon documents.
-  //
-  // LOOKAHEAD, WHICH IS THE ACTUAL TIER 2 MOVE.
-  //
-  // ../PUYO_REFERENCE.md's Tier 1 bot — score every move's resulting board,
-  // play the best — is what this file was, and the reference is explicit
-  // about where it stops: "greedy fires too early, and this is the real
-  // cap". A scorer that values the board NOW takes a chain the moment one
-  // exists, so potential never accumulates.
-  //
-  // WHAT WAS TRIED FIRST AND DID NOT WORK, because it is the reason this
-  // exists rather than another feature: three features were added to the
-  // weighted sum to try to buy this — staircase (the shape Panel de Pon
-  // players build), flatTop (the shape that kills them), comboPotential
-  // (how big a clear is available). Four training runs each, against a
-  // baseline whose own spread was measured at 928 points. All three came
-  // back NO EFFECT against the search's own seed-to-seed spread. That is
-  // the reference's other
-  // prediction landing: "density is not order… random density cannot
-  // produce it any more than shaking a box of dominoes stands them in a
-  // line." A linear sum over board features cannot express a plan, and
-  // adding terms to it does not change that.
-  //
-  // Tier 2's answer is not a longer feature list, it is a different
-  // SELECTION POLICY: citrus610's bot is best-first plus beam search with
-  // "highest expected chain score, not highest score now", looking 3 moves
-  // ahead attacking and 2 defending. This is that, at the smallest honest
-  // size: expand the most promising candidates one move further and choose
-  // on the best board reachable in TWO moves rather than in one.
-  //
-  // AND NO BEAM, which is where the first version went wrong. ~30 legal
-  // swaps means ~900 clone+resolve pairs at depth 2 — 15ms under
-  // LogicalBoard, which is affordable — so every candidate is expanded and
-  // every candidate is valued the same way. A beam over the IMMEDIATE
-  // ranking is the one filter a search like this must not have: the move
-  // worth finding is the one that scores modestly now and pays next move,
-  // and it ranked as low as #27 of 29 on real level-10 boards. A beam
-  // stays available for the engine path (1.27ms a candidate), never drops
-  // hold, and is asserted in lookahead.test.js to still choose the best
-  // future among what it kept.
-  //
-  // DEPTH 1 IS THE OLD BOT, EXACTLY. Not approximately: the depth-1 path
-  // is the original loop untouched, so every existing result, the shipped
-  // weights and identity.golden.json all still describe it. Lookahead is
-  // opt-in per instance, so turning it on is a decision somebody makes
-  // rather than a thing that happens.
-  // CAN THE ENGINE ACTUALLY RAISE RIGHT NOW.
-  //
-  // The engine's own conditions, not a policy: a topped-out stack has no
-  // room (isToppedOut), garbage in the air lands first
-  // (hasFallingGarbage), and preventManualRaise is set while a raise is
-  // already being served. Offering a move that cannot be played would put
-  // it in the choice set for the weights to pick and then stand still.
+  // Whether the engine will serve a manual raise this frame.
   PuyoCpu.prototype._canRaise = function () {
     // OPT-IN, like depth, beam, rise and density before it. Raising is a
     // new ACTION, not a new preference: it changes the choice set, so every
@@ -442,24 +311,9 @@
     return true;
   };
 
-  // EVERY MOVE THE BOT COULD MAKE, SCORED. Hold, RAISE, and every legal
-  // swap, each carrying the board it was scored on so the second ply
-  // branches from the same position the number describes.
-  //
-  // RAISING WAS NOT IN HERE AND COULD NOT BE CHOSEN. `raiseFrames` was
-  // declared in the constructor and decremented by update(), and nothing
-  // ever set it -- dead wiring that reads exactly like a working feature.
-  // On a low board with nothing worth swapping the bot's only options were
-  // to wait out the passive rise (120 frames a row at level 10) or play a
-  // swap it did not want. Raising is what ends the dead time and brings up
-  // panels to work with, and the shipped SearchCpu has had it all along.
-  //
-  // NO THRESHOLD DECIDES WHEN. SearchCpu raises on `fillRatio < 0.4`, a
-  // hand-set number. Here the raise is SCORED, on the board as it will be
-  // once the row has landed and resolved, so maxHeight, fillRatio and
-  // garbageOnBoard already say "not near the ceiling" and "not with
-  // garbage on the board" in the weights' own terms -- and the weights can
-  // decide it is wrong, which a rule could never allow.
+  // Every move available: hold, raise, and every legal swap. Each carries
+  // the board it was scored on, so the second ply branches from the same
+  // position the number describes.
   PuyoCpu.prototype._candidates = function () {
     var board = this._snapshot();
     // ONE incoming row for the whole decision. Every candidate is risen by
@@ -499,6 +353,7 @@
     return cands;
   };
 
+  // Pick a move. Greedy at depth 1; at depth 2 hand off to _lookahead.
   PuyoCpu.prototype._decide = function () {
     var cands = this._candidates();
 
@@ -516,60 +371,8 @@
     return best.kind === 'swap' ? { kind: 'swap', move: best.move } : { kind: best.kind };
   };
 
-
-  // WHAT A CANDIDATE IS WORTH WHEN YOU LOOK ONE MOVE FURTHER.
-  //
-  // The best board reachable from it next move, or its own score when
-  // nothing is reachable — a dead end is worth what it is, not nothing, or
-  // the search refuses positions for a reason it does not have.
-  //
-  // THE SECOND MOVE PAYS ITS TRAVEL TOO, from where the first move leaves
-  // the cursor. driveWalk walks to the swap's own cell and swaps there, so
-  // after playing (r,c) the cursor IS at (r,c); a hold moves nothing, so it
-  // starts from wherever the cursor already is. Both are facts about this
-  // bot, not estimates.
-  //
-  // It is not a detail. Travel is the only cost this game charges for
-  // choosing a move, and a second ply that treats it as free values a great
-  // follow-up on the far side of the board exactly like one under the
-  // cursor — so the search would favour first moves whose payoff it could
-  // never actually reach in time. Puyo has no equivalent problem and
-  // therefore no answer to copy: there a move is dropping a piece, one
-  // placement per piece, and every placement lands on the same turn
-  // boundary whatever column it goes to (PUYO_REFERENCE.md, "Move budget").
-  // Here a swap can be anywhere and the stack rises while the cursor walks.
-  // HOW MANY ROWS ARRIVE WHILE THIS MOVE IS BEING MADE.
-  //
-  // The board the search judges is the board as it will be when the move
-  // LANDS, not as it is when the move is chosen. If a row arrives in
-  // between, show the row; if none arrives, do not.
-  //
-  // Before this, `rise: true` added exactly one row to EVERY candidate
-  // however long it took to reach, and `rise: false` added none to any of
-  // them -- so a far swap and a near swap were judged on the same board,
-  // which is the whole difference between a move made too soon and the same
-  // move made in time.
-  //
-  // Nothing here is estimated. `frames` is travel.cost plus this bot's own
-  // reaction, both exact; the rate is PanelEngine.riseTime(speed), the
-  // engine's own table, frames per pixel, counted from the live riseTimer
-  // and displacement with 16 pixels to a row; and the pause is
-  // advancePassiveRaise's own condition -- it rises only inside
-  // (!riseLock && stopTime === 0), so banked stop time postpones the row
-  // frame for frame. That last line is why holding stop time keeps the
-  // board still, and it is the engine's, not ours.
-  //
-  // THE CASCADE'S DURATION IS NOT NEEDED. updateRiseLock sets riseLock
-  // whenever hasActivePanels(), and a cascade IS active panels, so the
-  // stack does not rise during one at all. Only the walk moves the board.
-  // That is what makes this exact rather than a second copy of the engine's
-  // flash/pop timing living in the search.
-  //
-  // riseLock as it stands at the moment of the decision is deliberately not
-  // consulted: it lasts only while panels are active, and by the time the
-  // walk ends the board is settled by construction. Reading a flag that is
-  // false for almost every frame being counted would understate the rise,
-  // which is the direction that hides the problem.
+  // How many rows land during `frames`, given the stop clock. Rows do not
+  // move while stop time is running.
   PuyoCpu.prototype._rowsArriving = function (frames, plyClock) {
     if (!this.rise) return 0;
     var stack = this.stack;
@@ -588,32 +391,8 @@
     return 1 + Math.floor((pixels - stack.displacement) / 16);
   };
 
-  // THE CLOCK AS PLY 1 LEAVES IT, for scoring ply 2 against.
-  //
-  // Two fields, both restating an engine line rather than approximating it:
-  //
-  //   stopTime  awardStopTime ends `if (stopTime > this.stopTime)
-  //             this.stopTime = stopTime` -- a MAX, not a +=. So the clock
-  //             after ply 1 is the larger of what was banked and what ply 1
-  //             earned. Summing them would tell the search that firing a
-  //             chain under a full clock adds frames, which is the exact
-  //             belief that makes it fire early and die.
-  //
-  //   toppedOut isToppedOut is "anything in the top row", so it is asked of
-  //             PLY 1'S SETTLED BOARD -- the board the search already holds.
-  //             This is the half that lets a line say "safe now, in danger
-  //             by then". The live stack's wasToppedOut still wins outright
-  //             when set: it is the flag the engine itself acts on, and a
-  //             candidate that settles lower does not un-top the stack the
-  //             move is being made from.
-  //
-  // NOT DRAINED BY ELAPSED FRAMES, deliberately. Travel is exact and the
-  // cascade's duration is not: the board the training path resolves with
-  // (panel-cpu.js's LogicalBoard) counts row drops, not frames, so a drain
-  // would need a second copy of the engine's flash/pop timing living here.
-  // Draining only by travel would be worse than not draining -- it would
-  // look exact while systematically undercounting, which biases the search
-  // back toward firing early, the thing this exists to stop.
+  // The clock as it stands after ply 1: stop time is the engine's MAX of
+  // what was banked and what this candidate earned, not their sum.
   PuyoCpu.prototype._plyClock = function (cand) {
     var stack = this.stack;
     return {
@@ -622,8 +401,7 @@
     };
   };
 
-  // isToppedOut's rule, asked of a search board rather than a live Stack:
-  // anything in the top row at all.
+  // Is this board topped out.
   PuyoCpu.prototype._boardToppedOut = function (board) {
     if (!board || !board.grid) return false;
     var row = board.grid[board.height];
@@ -632,6 +410,10 @@
     return false;
   };
 
+  // The best two-move future reachable from a candidate. Ply 2 gets the same
+  // choice set as ply 1: every legal swap, standing pat (v starts at the
+  // candidate's own score), and a raise — except after a raise, which the
+  // engine will not serve twice in a row.
   PuyoCpu.prototype._value = function (cand) {
     var next = cand.board.legalSwaps();
     var from = cand.kind === 'swap' ? cand.move : null;   // hold and raise move nothing
@@ -665,25 +447,9 @@
     return v;
   };
 
-  // CHOOSE ON THE BEST TWO-MOVE FUTURE — and value EVERY candidate that
-  // way, or the comparison is between two different quantities.
-  //
-  // The previous version got all three of those wrong at once, and passed
-  // a test file that only ever asked whether it was wired:
-  //
-  //   1. it expanded the top BEAM candidates BY IMMEDIATE SCORE. The move
-  //      worth searching for is the one that scores modestly now and opens
-  //      a big clear next — on real level-10 play the best two-move future
-  //      ranked as low as #27 of 29 by immediate score, so the beam was a
-  //      filter against the only thing the search exists to find;
-  //   2. hold was never expanded, so waiting was priced one move deep
-  //      against swaps priced two;
-  //   3. the incumbent was carried as a depth-1 number and challengers
-  //      compared as depth-2 numbers.
-  //
-  // Ties keep the earlier candidate, and candidate order is hold first
-  // then legalSwaps() order — the same rule depth 1 uses, so the two
-  // depths break ties the same way.
+  // Play the candidate with the best two-move future. A beam expands only
+  // the top candidates by immediate score, which hides the move worth
+  // searching for; beam 0 expands all of them.
   PuyoCpu.prototype._lookahead = function (cands) {
     var expand = cands, i;
     // An explicit beam bounds the cost for the engine path. It never drops
@@ -707,6 +473,7 @@
     return chosen.kind === 'swap' ? { kind: 'swap', move: chosen.move } : { kind: chosen.kind };
   };
 
+  // One frame. A committed walk owns the frame until the cursor arrives.
   PuyoCpu.prototype.update = function () {
     var stack = this.stack;
     if (stack.gameOver) return;
