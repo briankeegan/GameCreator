@@ -655,7 +655,13 @@ function step() {
                         's and ' + Math.max(0, DEADLINE - Date.now() / 1000).toFixed(0) +
                         's remain) -- keeping the checkpoint so the next run resumes here ===');
             searchComplete = false;
-            return finish();
+            // BREED AND CHECKPOINT BEFORE STOPPING. saveCheckpoint() lives at
+            // the end of advance(), so returning straight to finish() here
+            // leaves the run with whatever checkpoint the PREVIOUS generation
+            // wrote — and none at all if this was the first. Going through
+            // advance() means an out-of-time stop saves at exactly the same
+            // point in the cycle as every other generation.
+            return advance(scored, finish);
         }
 
         // HAVE THE NUMBERS STOPPED MOVING?
@@ -690,7 +696,7 @@ function step() {
 
 // Breed the next generation. Pulled out of the loop so a snapshot can hand
 // control back to exactly the same place a normal generation does.
-function advance(scored) {
+function advance(scored, andThen) {
         // STEP 5: keep the highest-scoring sets. They stay in the population
         // — "keep" is the reference's own word — so the best genome found can
         // never be lost to an unlucky draw.
@@ -728,7 +734,7 @@ function advance(scored) {
 
         population = next;
         saveCheckpoint();
-        step();
+        (andThen || step)();
 }
 
 
