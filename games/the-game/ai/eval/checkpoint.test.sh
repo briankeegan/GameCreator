@@ -108,7 +108,10 @@ outOfTimeRun() {  # outOfTimeRun [extra env assignments...]
     train 1000 "$LASTLOG" GC_DEADLINE=$(( $(date +%s) + secs )) "$@"
     local gen
     gen=$(sed -n 's/.*OUT OF TIME at generation \([0-9]*\).*/\1/p' "$LASTLOG" | tail -1)
-    if [ -n "$gen" ] && [ "$gen" -ge 2 ]; then return 0; fi
+    # 1, not 2: the deadline rule stops before a generation that would not
+    # FIT, so a short deadline legitimately stops after the first one. A
+    # generation-1 stop still writes the checkpoint these cases are about.
+    if [ -n "$gen" ] && [ "$gen" -ge 1 ]; then return 0; fi
     echo "     (deadline of ${secs}s only reached generation ${gen:-0}; retrying longer)"
   done
   return 1
