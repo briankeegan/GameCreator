@@ -175,7 +175,7 @@
   // `from` is where the cursor STARTS for this candidate's move. It is the
   // live cursor for a move being made now, and the previous move's cell for
   // a move being imagined one ply later — see _value.
-  PuyoCpu.prototype._score = function (board, resolved, move, from, plyClock) {
+  PuyoCpu.prototype._score = function (board, resolved, move, from, plyClock, baseline) {
     this.evaluations++;
     // The board this call scored. Same object unless rise replaces it — see
     // the rise branch below. Read by _decide, never by anything else.
@@ -186,11 +186,26 @@
     // incomingGarbage's business.
     var stack = this.stack, W = stack.constructor.WIDTH ||
         (typeof window !== 'undefined' ? window : globalThis).PanelEngine.WIDTH;
+    // THE BASELINE IS THE BOARD THIS MOVE WAS MADE FROM, not always the live
+    // stack. At ply 1 they are the same thing; at ply 2 they are not, because
+    // the candidate is two moves ahead — so diffing it against the LIVE stack
+    // counted the FIRST move's garbage too and handed the whole total to the
+    // second move.
+    //
+    // Measured at depth 2 over three bigBlocks games before this fix:
+    // garbageCleared and brokeGarbage are identical on all 812 ply-1
+    // candidates and differ on 112 of 21,597 ply-2 candidates, by up to 6
+    // cells. _value takes max(stand-pat, best reply), so that put a
+    // systematically larger number on every second move.
     var live = 0, r, c, p;
     for (r = 1; r <= board.height; r++) {
       for (c = 1; c <= board.width; c++) {
-        p = stack.panelAt(r, c);
-        if (p && p.isGarbage) live++;
+        if (baseline) {
+          if (baseline.grid[r] && baseline.grid[r][c] === -2) live++;
+        } else {
+          p = stack.panelAt(r, c);
+          if (p && p.isGarbage) live++;
+        }
       }
     }
     var left = 0;
@@ -624,10 +639,27 @@
     // Computed ONCE per candidate: every child of this candidate follows the
     // same first move, so they all inherit the same clock.
     var clock = this._plyClock(cand);
-    for (var j = 0; j < next.length; j++) {
+    // baseline = cand.board, so garbage cleared is the SECOND move's only.
+    var j, f;
+    for (j = 0; j < next.length; j++) {
       var child = cand.board.clone();
       child.swap(next[j][0], next[j][1]);
-      var f = this._score(child, this._resolveCandidate(child), next[j], from, clock);
+      f = this._score(child, this._resolveCandidate(child), next[j], from, clock, cand.board);
+      if (f > v) v = f;
+    }
+
+    // THE SECOND PLY GETS THE SAME CHOICE SET AS THE FIRST. A move the bot
+    // can make at ply 1 and cannot make at ply 2 is one it can never PLAN,
+    // only stumble into — the imagined future is then a different game from
+    // the real one, and every number the search reports is about that other
+    // game. Raising was missing: ply 2 enumerated legalSwaps() and nothing
+    // else, so "swap, then raise" was unthinkable. Holding was always here —
+    // v starts at cand.score, which IS the value of stopping after one move.
+    //
+    // Not after a raise: the engine will not serve two in a row.
+    if (cand.kind !== 'raise' && this._canRaise()) {
+      var risen = cand.board.clone().rise(this._incoming);
+      f = this._score(risen, this._resolveCandidate(risen), null, from, clock, cand.board);
       if (f > v) v = f;
     }
     return v;

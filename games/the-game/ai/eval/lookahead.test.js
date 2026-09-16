@@ -107,6 +107,52 @@ function decisions(opts, limit) {
     return { list: out };
 }
 
+// PLY 2 MUST SEE EXACTLY WHAT PLY 1 SEES.
+//
+// A move the bot can make at ply 1 and cannot make at ply 2 is a move it can
+// never PLAN, only stumble into, and the imagined future is then a different
+// game from the real one. Two things were different and both are pinned here.
+test('ply 2 offers RAISE, the same as ply 1', function () {
+    var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: W, reaction: 12, depth: 2, allowRaise: true });
+    for (var f = 0; f < 40; f++) { cpu.update(); stack.run(); stack.drainEvents(); }
+
+    var seen = [];
+    var realScore = cpu._score;
+    cpu._score = function (board, resolved, move, from, plyClock, baseline) {
+        // A ply-2 call carries a baseline; a raise carries no move.
+        if (baseline && move === null) seen.push('raise');
+        return realScore.apply(this, arguments);
+    };
+    var cands = cpu._candidates();
+    cpu._value(cands[cands.length - 1]);
+    cpu._score = realScore;
+
+    assert.ok(seen.length > 0,
+        'ply 2 scored no raise at all — it is enumerating swaps only, so the bot ' +
+        'can never plan "swap, then raise"');
+});
+
+test('ply 2 does NOT offer a raise after a raise', function () {
+    var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: W, reaction: 12, depth: 2, allowRaise: true });
+    for (var f = 0; f < 40; f++) { cpu.update(); stack.run(); stack.drainEvents(); }
+    var cands = cpu._candidates();
+    var raiseCand = cands.filter(function (c) { return c.kind === 'raise'; })[0];
+    if (!raiseCand) return;                 // nothing to check on this board
+
+    var raises = 0;
+    var realScore = cpu._score;
+    cpu._score = function (board, resolved, move, from, plyClock, baseline) {
+        if (baseline && move === null) raises++;
+        return realScore.apply(this, arguments);
+    };
+    cpu._value(raiseCand);
+    cpu._score = realScore;
+    assert.strictEqual(raises, 0,
+        'ply 2 offered a raise after a ply-1 raise — the engine will not serve two in a row');
+});
+
 test('setup: real decisions, with something to choose between', function () {
     var d = decisions({ depth: 2 }, 40);
     assert.ok(d.list.length >= 30, 'only ' + d.list.length + ' decisions observed');
@@ -490,7 +536,11 @@ test('the training pipeline does not cap the search by default', function () {
     var seen = null;
     var origDecide = PuyoCpu.prototype._decide;
     PuyoCpu.prototype._decide = function () { if (seen === null) seen = this.beam; return origDecide.apply(this, arguments); };
-    try { bench.fitness({ maxHeight: 1 }, [7], { depth: 2, level: 10, brain: 'puyo', frames: 200 }); }
+    // `level` and `frames` used to be passed here and bench.run reads neither —
+    // the level comes from GC_LEVEL, and nothing caps the frame count. They were
+    // silently ignored, which is why bench.run now rejects an unknown option
+    // rather than accepting anything and changing nothing.
+    try { bench.fitness({ maxHeight: 1 }, [7], { depth: 2, brain: 'puyo' }); }
     finally { PuyoCpu.prototype._decide = origDecide; }
     assert.strictEqual(seen, 0,
         'bench.js built a depth-2 bot with beam ' + seen + '. A beam expands only the ' +
