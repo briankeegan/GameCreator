@@ -248,6 +248,18 @@ var EXCLUDE = (process.env.GC_EXCLUDE || '').split(',')
     .map(function (k) { return k.trim(); })
     .filter(function (k) { return k.length; });
 EXCLUDE.forEach(function (k) {
+    // A RETIRED NAME IS A NO-OP, NOT AN ERROR. Every dispatch carries its
+    // GC_EXCLUDE string verbatim between legs so the run resumes its own
+    // checkpoint, and those strings outlive the features they name. Rejecting
+    // one would take down every continuation; editing the strings instead
+    // would change KEYS, change the fingerprint, and strand the population --
+    // the failure that cost five runs their progress on 2026-09-16.
+    // Excluding something already absent from the genome asks for nothing.
+    if (registry.retired && registry.retired.indexOf(k) !== -1) {
+        console.log('GC_EXCLUDE names "' + k + '", a retired feature — ignoring ' +
+                    '(it is already not in the genome).');
+        return;
+    }
     if (!registry.byKey[k]) {
         throw new Error('GC_EXCLUDE names "' + k + '", which is not a feature — known: ' +
                         registry.keys.join(', '));

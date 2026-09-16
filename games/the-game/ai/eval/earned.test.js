@@ -44,7 +44,7 @@ require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var evaluator = require('./evaluator.js');
 var registry = require('./registry.js');
 
-var EARNED = ['stopTimeEarned', 'stopTimeGain', 'brokeGarbage', 'garbageCleared'];
+var EARNED = ['stopTimeEarned', 'stopTimeGain', 'brokeGarbage'];
 var SCENARIOS = ['bigBlocks', 'factory', 'comboStorm', 'endless'];
 var SEEDS = [1, 2, 3];
 

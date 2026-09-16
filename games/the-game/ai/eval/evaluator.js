@@ -49,6 +49,20 @@
       if (!w) continue;                       // zero/absent weight: nothing to check
       var f = registry.byKey[key];
       if (!f) {
+        // A RETIRED FEATURE'S WEIGHT IS IGNORED, NOT AN ERROR.
+        //
+        // Every snapshot ever written carries a weight for every feature that
+        // existed when it was written, and those files are the archive: the
+        // trainer resumes from them, ship.sh exports from them, rise.test.js
+        // reads real trained weights out of one rather than inventing a set.
+        // Throwing on a name that used to be real would mean deleting a
+        // feature invalidates every snapshot in the repo at once -- so the
+        // archive would quietly become unreadable, which is a far worse
+        // outcome than a weight that does nothing.
+        //
+        // The typo check is unaffected: a name that was never a feature still
+        // throws, and says what the known ones are.
+        if (registry.retired && registry.retired.indexOf(key) !== -1) continue;
         throw new Error('unknown feature "' + key + '" in weights — known: ' +
                         registry.keys.join(', '));
       }

@@ -111,9 +111,6 @@
     { key: 'maxHeight',        group: 'board',  sign: -1, fn: null,
       what: 'Highest occupied row, plus displacement.' },
 
-    { key: 'fillRatio',        group: 'board',  sign: -1, fn: null,
-      what: 'Occupied over total. Overlaps maxHeight — first candidate to cut if it earns nothing.' },
-
     { key: 'roughness',        group: 'board',  sign: -1, fn: null,
       what: 'Sum of absolute height differences between adjacent columns.' },
 
@@ -141,9 +138,6 @@
     { key: 'brokeGarbage',     group: 'earned', sign: +1, fn: null,
       what: 'Garbage cells this move popped — one row of a slab per match, which is what the engine does rather than the whole slab.' },
 
-    { key: 'garbageCleared',   group: 'earned', sign: +1, fn: null,
-      what: 'Garbage cells converted this move, including propagation into touching blocks.' },
-
     { key: 'travelCost',       group: 'move',   sign: -1, fn: null,
       what: 'Frames to bring the cursor from where it is to this candidate swap, per travel.js — real frames, since the cpu walks there (panel-cpu.js beginWalk) rather than teleporting with stack.touchSwap as it used to. One step is 1 frame, four is 13. Set by whichever seam knows the move; 0 when the move is unknown.' },
 
@@ -159,9 +153,48 @@
     // number in the evaluator (mean 586 against everything else under 22)
     // and therefore the most dangerous thing in it if that ever changed.
     //
-    // maxHeight and fillRatio carry the "how close to death is this board"
-    // signal, vary between candidates, and are counts like everything else.
+    // maxHeight carries the "how close to death is this board" signal,
+    // varies between candidates, and is a count like everything else.
+
+    // garbageCleared WAS HERE AND HAS BEEN REMOVED. It counted garbage cells
+    // converted by this move, including propagation into touching blocks;
+    // brokeGarbage counts the cells the engine popped.
+    //
+    // They are the same number. Not similar, not correlated — IDENTICAL on
+    // 11,004 of 11,004 candidates across bigBlocks, factory, comboStorm and
+    // endless, three seeds each, r = 1.000. The "propagation into touching
+    // blocks" the description promised does not happen in a way that
+    // separates them, so the genome carried two knobs attached to one thing
+    // and the search spent its budget splitting a weight in half.
+    //
+    // brokeGarbage is the one kept because it is the cheaper AND the more
+    // direct of the two: it comes straight off the engine's own resolve(),
+    // while garbageCleared made _score scan the whole board twice per
+    // candidate to diff live garbage against candidate garbage.
+
+    // fillRatio WAS HERE AND HAS BEEN REMOVED. Occupied over total.
+    //
+    // Not a duplicate — it is a genuinely different number — but it is a
+    // worse-measured version of a signal already present: r = 0.951 with
+    // maxHeight and 0.963 with flatTop over the same 11,004 candidates, and
+    // its own entry has said "overlaps maxHeight — first candidate to cut if
+    // it earns nothing" since it was written. Every variant run in flight
+    // already named it in GC_EXCLUDE, so nothing has trained with it for a
+    // long time and removing it changes no run's KEYS.
   ];
+
+  // FEATURES THAT ONCE EXISTED, so a name that used to be real is not
+  // mistaken for a typo. Every training dispatch carries a GC_EXCLUDE string
+  // naming the features that run leaves out, and those strings are copied
+  // verbatim between legs so the run resumes its own checkpoint. Removing a
+  // feature that the strings name would make train.js reject every one of
+  // them -- and a "fix" that edits the strings changes KEYS, which changes
+  // the fingerprint, which strands the population. That cost five runs their
+  // progress on 2026-09-16 and is not being paid twice.
+  //
+  // Excluding a retired name is a NO-OP: it is already not in the genome.
+  var RETIRED = ['framesToDeath', 'latentChain', 'incomingGarbage',
+                 'garbageCleared', 'fillRatio'];
 
   var byKey = {};
   for (var i = 0; i < FEATURES.length; i++) {
@@ -172,6 +205,7 @@
   }
 
   return {
+    retired: RETIRED,
     all: FEATURES,
     byKey: byKey,
     keys: FEATURES.map(function (f) { return f.key; }),
