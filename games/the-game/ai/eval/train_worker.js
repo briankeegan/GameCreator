@@ -22,12 +22,28 @@ var bench = require('./bench.js');
 // fitness and `id` is the reply tag, so those three are removed and
 // everything else goes through untouched. Adding an option to train.js now
 // requires nothing here, which is the point.
+// A DUEL JOB carries a second weight set. There is no solo game to run: the
+// two bots play each other, garbage crosses, and the result is who died.
+var versus = require('./versus.js');
+
 process.on('message', function (job) {
     var r;
     var opts = {};
     Object.keys(job).forEach(function (k) {
-        if (k !== 'weights' && k !== 'seeds' && k !== 'id') opts[k] = job[k];
+        if (k !== 'weights' && k !== 'seeds' && k !== 'id' &&
+            k !== 'opponent' && k !== 'seed') opts[k] = job[k];
     });
+    if (job.opponent) {
+        try {
+            var d = versus.duel(job.weights, job.opponent, job.seed, opts);
+            r = { winner: d.winner, frames: d.frames, sent: d.sent, draw: d.draw,
+                  reason: d.reason };
+        } catch (e) {
+            r = { winner: null, draw: true, error: e.message };
+        }
+        process.send({ id: job.id, result: r });
+        return;
+    }
     try {
         r = bench.fitness(job.weights, job.seeds, opts);
     } catch (e) {

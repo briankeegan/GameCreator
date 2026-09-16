@@ -400,6 +400,59 @@ function evaluateAll(genomes, seeds, cb, scenario, arena) {
     pump();
 }
 
+// HEAD-TO-HEAD FITNESS. Each genome plays DUELS_PER_GENOME duels against
+// other members of the population, and its fitness is wins + half a draw.
+//
+// The opponent pool is the population itself, so the bar rises as the
+// population improves — nobody has to supply a benchmark, and a genome that
+// only beats a weak field stops scoring once the field is not weak. That is
+// the co-evolution meatfighter's trainer gets from pairing two random
+// members and replacing the loser.
+//
+// COST. A duel runs two bots, so one duel is two solo games. At
+// DUELS_PER_GENOME = 3 a generation costs 6x what a solo generation costs.
+// Lower it for a cheaper, coarser signal: at 1 the fitness only has three
+// values (win, draw, loss) and the top 15% cannot be picked out of them.
+var DUELS_PER_GENOME = Number(process.env.GC_DUELS || 3);
+
+function evaluateVersus(genomes, seedPool, cb) {
+    var wins = new Array(genomes.length);
+    for (var w = 0; w < wins.length; w++) wins[w] = 0;
+
+    var jobs = [];
+    for (var i = 0; i < genomes.length; i++) {
+        for (var d = 0; d < DUELS_PER_GENOME; d++) {
+            // A genome never duels itself: a mirror match is always a draw
+            // and would hand every genome the same half point.
+            var j = i;
+            while (j === i) j = Math.floor(rng() * genomes.length);
+            var seed = seedPool[Math.floor(rng() * seedPool.length)];
+            jobs.push({ a: i, b: j, seed: seed });
+        }
+    }
+
+    var done = 0;
+    queue = jobs.map(function (job) {
+        return { id: nextId++, weights: genomes[job.a], opponent: genomes[job.b],
+                 seed: job.seed, sent: false,
+                 done: function (r) {
+                     done++;
+                     // Both sides of a duel learn from it: the opponent was a
+                     // real game for them too, and throwing that away would
+                     // double the cost for half the information.
+                     if (r.winner === 0) wins[job.a] += 1;
+                     else if (r.winner === 1) wins[job.b] += 1;
+                     else { wins[job.a] += 0.5; wins[job.b] += 0.5; }
+                 } };
+    });
+    onDone = function () {
+        cb(genomes.map(function (g, i) {
+            return { fitness: wins[i], duels: DUELS_PER_GENOME, versus: true };
+        }));
+    };
+    pump();
+}
+
 function summarise(g) {
     return KEYS.filter(function (k) { return g[k] > 0.5; })
                .map(function (k) { return k + '=' + g[k].toFixed(0); })
@@ -600,7 +653,10 @@ var slowestGeneration = 0;   // seconds; see deadline.js
 function step() {
     var genStart = Date.now();
     var genSeeds = seedsForGeneration();
-    evaluateAll(population, genSeeds, function (results) {
+    // 'versus' does not evaluate a genome on its own — its fitness only
+    // exists relative to the rest of the population.
+    var evaluate = OBJECTIVE === 'versus' ? evaluateVersus : evaluateAll;
+    evaluate(population, genSeeds, function (results) {
         var scored = population.map(function (g, i) {
             return { genome: g, fit: (results[i] && results[i].fitness) || 0, detail: results[i] };
         });
@@ -821,9 +877,39 @@ function report(isFinal, cb) {
     var baselineJob = shippedWeights
         ? { genome: shippedWeights, label: 'shipped weights', brain: BRAIN }
         : { genome: zeroGenome(), label: 'zero weights', brain: BRAIN };
-    evaluateAll([best], HOLDOUT_SEEDS, function (learnedRes) {
-      evaluateBaseline(baselineJob, HOLDOUT_SEEDS, function (baseRes) {
-        var res = [learnedRes[0], baseRes];
+    // UNDER 'versus' A GENOME HAS NO SCORE OF ITS OWN, so the held-out
+    // number is the only one that can be comparable across snapshots: duel
+    // the elite against the weights the game currently ships, on seeds it
+    // never trained on, and report the win rate. Run here rather than in a
+    // worker — it is a handful of duels once every 30 generations.
+    function heldOut(cb2) {
+        if (OBJECTIVE !== 'versus') {
+            return evaluateAll([best], HOLDOUT_SEEDS, function (learnedRes) {
+                evaluateBaseline(baselineJob, HOLDOUT_SEEDS, function (baseRes) {
+                    cb2(learnedRes[0], baseRes);
+                });
+            });
+        }
+        var versus = require('./versus.js');
+        var wins = 0, draws = 0, sentUs = 0, sentThem = 0;
+        var opp = baselineJob.genome || {};
+        HOLDOUT_SEEDS.forEach(function (sd) {
+            var d = versus.duel(best, opp, sd,
+                { depth: DEPTH, beam: BEAM, rise: RISE, density: DENSITY,
+                  allowRaise: ALLOW_RAISE });
+            if (d.winner === 0) wins++;
+            else if (d.winner === null) draws++;
+            sentUs += d.sent[0]; sentThem += d.sent[1];
+        });
+        var n = HOLDOUT_SEEDS.length;
+        cb2({ fitness: (wins + 0.5 * draws) / n, winRate: wins / n, draws: draws,
+              avgSent: sentUs / n, duels: n, versus: true },
+            { fitness: (n - wins - draws + 0.5 * draws) / n, label: baselineJob.label,
+              avgSent: sentThem / n, versus: true });
+    }
+    heldOut(function (learnedRes, baseRes) {
+      (function () {
+        var res = [learnedRes, baseRes];
         var learned = res[0], shipped = res[1];
         var out = {
             mode: MODE,
