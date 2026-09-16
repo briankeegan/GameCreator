@@ -30,10 +30,10 @@
     // Borrowed rather than reimplemented: the cursor walk and the board
     // snapshot are how the game works, not part of what is being tested,
     // and a second copy of either would drift from the first.
-    this._beginWalk = PanelCpu.SearchCpu.prototype._beginWalk;
-    this._driveWalk = PanelCpu.SearchCpu.prototype._driveWalk;
-    this._nearestSwappable = PanelCpu.SearchCpu.prototype._nearestSwappable;
-    this._snapshot = PanelCpu.SearchCpu.prototype._snapshot;
+    this._beginWalk = PanelCpu.beginWalk;
+    this._driveWalk = PanelCpu.driveWalk;
+    this._nearestSwappable = PanelCpu.nearestSwappable;
+    this._snapshot = PanelCpu.snapshot;
     this.cursorMoveFrames = opts.cursorMoveFrames || 4;
     // LOOKAHEAD, OFF BY DEFAULT. depth 1 is the Tier 1 bot the shipped
     // weights were trained as and identity.golden.json records; anything

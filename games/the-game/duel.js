@@ -17,54 +17,30 @@ window.NewseyDuel = (function () {
   // derived readout for the overlay/input gating, never its own clock.
   var COUNTDOWN_FRAMES = E.COUNTDOWN_TOTAL;
 
-  // THREE BOTS, AND THE TIER PICKS ONE. One call site so nothing forgets
-  // which class a difficulty needs.
+  // ONE BOT. Every tier is PuyoCpu with the trained weights; the tier sets
+  // the LEVEL (difficulty.js: easy 3, medium 5, hard 8, nightmare 10) and a
+  // reaction delay, which is how an easier opponent is made — the same
+  // player, thinking slower, on a board that rises slower.
   //
-  //   nightmare  PuyoCpu with trained weights — see below
-  //   diamond    SearchCpu, the hand-written beam-search bot
-  //   the rest   Cpu, the older single-ply heuristic
-  //
-  // NIGHTMARE IS THE TRAINED BOT, and only nightmare. It scores every legal
-  // swap's resulting board with a weighted sum and plays the best — the
-  // whole bot, no chain logic, no danger mode (ai/PUYO_REFERENCE.md). The
-  // weights were not written by anyone: ai/eval/train.js searched them and
-  // stopped when they stopped moving. On seeds it never trained on it scores
-  // 3397 against the previous bot's 854, and survives 3.5x as long.
-  //
-  // WHY NOT EVERY TIER. The weights were trained at level 10, which is what
-  // difficulty.js gives nightmare and nothing else. A weight set is a
-  // description of one game's shape — how fast the stack rises, how much
-  // garbage lands — and using level 10's numbers at level 3 is an untested
-  // claim that those shapes are the same. The lower tiers keep the bots they
-  // have until somebody trains for them.
-  //
-  // The evaluator loads as plain scripts in index.html (no bundler here), so
-  // a missing file would mean a broken opponent rather than a broken page —
-  // hence the explicit check, which fails loudly at construction instead of
-  // silently handing back a bot that scores every board zero.
+  // The reaction ramp below is not measured. It is a starting point that
+  // needs a play-test; the weights themselves were trained at level 10 with
+  // reaction 12, which is what nightmare gets.
+  var REACTION = { easy: 30, medium: 22, hard: 16, nightmare: 12 };
+
   function makeCpu(stack, difficulty, seed) {
-    if (difficulty === "nightmare") {
-      var ev = window.PanelEval;
-      if (!ev || !ev.PuyoCpu || !ev.trained) {
-        throw new Error("the trained bot is missing (window.PanelEval.PuyoCpu/.trained) — " +
-                        "check the ai/eval script tags in index.html");
-      }
-      // THE SWITCHES COME FROM THE WEIGHTS FILE, NOT FROM HERE. A weight
-      // set is only a bot when paired with the scoring it was trained
-      // under — the same numbers with density on and off are two different
-      // players, and one of them was never measured. export_weights.js
-      // records what the run used and this spreads it straight through, so
-      // shipping a new set can never silently leave a switch behind.
-      var opts = { weights: ev.trained.weights,
-                   // Matched to the cadence the weights were trained
-                   // against; changing it changes the bot they describe.
-                   reaction: 12 };
-      var sw = ev.trained.switches || {};
-      Object.keys(sw).forEach(function (k) { opts[k] = sw[k]; });
-      return new ev.PuyoCpu(stack, opts);
+    var ev = window.PanelEval;
+    if (!ev || !ev.PuyoCpu || !ev.trained) {
+      throw new Error("the trained bot is missing (window.PanelEval.PuyoCpu/.trained) — " +
+                      "check the ai/eval script tags in index.html");
     }
-    var Ctor = difficulty === "diamond" ? window.PanelCpu.SearchCpu : window.PanelCpu.Cpu;
-    return new Ctor(stack, { difficulty: difficulty || "steady", seed: seed });
+    // The switches come from the weights file, not from here: a weight set is
+    // only a bot when paired with the scoring it was trained under.
+    var opts = { weights: ev.trained.weights,
+                 reaction: REACTION[difficulty] || REACTION.medium,
+                 seed: seed };
+    var sw = ev.trained.switches || {};
+    Object.keys(sw).forEach(function (k) { opts[k] = sw[k]; });
+    return new ev.PuyoCpu(stack, opts);
   }
 
   // Panel colors. Each one also carries a shape, so panels stay tellable apart

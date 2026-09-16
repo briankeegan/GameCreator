@@ -44,10 +44,6 @@ gate_engine_tests() {
   return $status
 }
 
-gate_ai_preset_ordering() {
-  node games/the-game/ai/experiments/check_preset_ordering.js nightmare diamond
-}
-
 gate_room_exits() {
   node .github/scripts/check_room_exits.mjs
 }
@@ -517,7 +513,6 @@ gate_character_spec_provenance() {
 # gate added to only one caller only protects that caller.
 GATES=(
   "engine tests:gate_engine_tests"
-  "nightmare AI preset harder than diamond:gate_ai_preset_ordering"
   "room exits:gate_room_exits"
   "shared-module wiring:gate_shared_module_wiring"
   "doors can be entered:gate_doors_enterable"

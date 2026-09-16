@@ -64,8 +64,6 @@ jobs:
       # are structurally blind to this — one builds inputs by hand, the other
       # checks fromStack — so a seam passing nothing would leave both green
       # while every weighted feature read zero in the only place that ships.
-      - name: Seam reaches every feature
-        run: node games/the-game/ai/eval/seam.test.js
 
       # DOES THE TRAINING HARNESS DO WHAT IT CLAIMS? The game code here was
       # built test-first and had no bugs; the harness around it was

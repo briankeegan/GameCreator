@@ -811,9 +811,18 @@ function report(isFinal, cb) {
     // here, once, as a REPORT: the loop never saw it, and the reference's
     // rule is about the search, not about whether a result may be compared
     // to anything at the end.
-    var baselineJob = BRAIN === 'puyo'
-        ? { genome: null, label: 'game AI (SearchCpu)', brain: 'search' }
-        : { genome: zeroGenome(), label: 'shipped', brain: BRAIN };
+    // The control is the weights the game currently ships, run on the same
+    // held-out seeds. If the shipped file cannot be read, fall back to a zero
+    // genome rather than skipping the comparison silently.
+    var shippedWeights = null;
+    try {
+        var g = (typeof globalThis !== 'undefined' ? globalThis : global);
+        require('../trained-weights.js');
+        shippedWeights = g.PanelEval && g.PanelEval.trained && g.PanelEval.trained.weights;
+    } catch (e) { shippedWeights = null; }
+    var baselineJob = shippedWeights
+        ? { genome: shippedWeights, label: 'shipped weights', brain: BRAIN }
+        : { genome: zeroGenome(), label: 'zero weights', brain: BRAIN };
     evaluateAll([best], HOLDOUT_SEEDS, function (learnedRes) {
       evaluateBaseline(baselineJob, HOLDOUT_SEEDS, function (baseRes) {
         var res = [learnedRes[0], baseRes];
