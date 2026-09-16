@@ -41,6 +41,15 @@ check "a push to main is ALLOWED when gate_all passes" "$(run 'git push origin m
 rm -rf "$WORK"
 
 setup 1
+# A REFSPEC IS A PUSH TO main TOO. This is how main gets pushed when it is
+# checked out in another worktree and cannot be checked out here -- the
+# guard has to know that spelling or it silently switches itself off for it.
+check "a refspec push to main is BLOCKED" "$(run 'git push origin deadline-predict:main')" 2
+check "  and gate_all was actually run for it" "$([ -s "$WORK/ran.log" ] && echo yes || echo no)" yes
+: > "$WORK/ran.log"
+check "a fully-qualified refspec push to main is BLOCKED" "$(run 'git push origin HEAD:refs/heads/main')" 2
+: > "$WORK/ran.log"
+
 check "a push to a SESSION BRANCH is never blocked" "$(run 'git push -u origin claude/newsey-game-ask-qa8u5e')" 0
 check "  and gate_all was not run for it" "$([ -s "$WORK/ran.log" ] && echo yes || echo no)" no
 rm -rf "$WORK"
@@ -53,6 +62,12 @@ check "  and says so loudly" "$(printf '%s' "$got" | grep -c 'WITHOUT running ga
 rm -rf "$WORK"
 
 setup 1
+check "a branch push whose target is not main is free" "$(run 'git push origin fix:fix-main-docs')" 0
+check "  and gate_all was not run for it" "$([ -s "$WORK/ran.log" ] && echo yes || echo no)" no
+check "a branch merely STARTING with main is free" "$(run 'git push origin maintenance')" 0
+check "  and gate_all was not run for it" "$([ -s "$WORK/ran.log" ] && echo yes || echo no)" no
+check "a refspec merely starting with main is free" "$(run 'git push origin fix:maintenance')" 0
+check "  and gate_all was not run for it" "$([ -s "$WORK/ran.log" ] && echo yes || echo no)" no
 check "a non-push git command is ignored" "$(run 'git status')" 0
 rm -rf "$WORK"
 

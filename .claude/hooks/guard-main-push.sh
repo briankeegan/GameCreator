@@ -34,12 +34,22 @@ except Exception: print("")' 2>/dev/null)
 
 # Not a push to main? Nothing to do. Matching is deliberately broad: any
 # git push naming main, in any argument order.
+#
+# ANY REFSPEC ENDING IN main COUNTS, not just the three spellings first
+# listed here. `git push origin some-branch:main` is a push to main by every
+# measure that matters and the original patterns did not match it -- which
+# came up for real the moment `main` was checked out in another worktree and
+# could not be checked out here to push from. A guard with a spelling it
+# does not know about is a guard that is off.
 case "$CMD" in
   *"git push"*) ;;
   *) exit 0 ;;
 esac
-case "$CMD" in
-  *" main"*|*"main:main"*|*"HEAD:main"*|*"origin main"*) ;;
+# main must be the WHOLE ref, not a prefix of one: `git push origin
+# maintenance` contains " main" and is not a push to main. So every pattern
+# ends the word -- at the end of the command, or at the next space.
+case "$CMD " in
+  *" main "*|*":main "*|*":refs/heads/main "*) ;;
   *) exit 0 ;;
 esac
 
