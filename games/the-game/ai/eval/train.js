@@ -956,6 +956,17 @@ function report(isFinal, cb) {
             weights: best
         };
         console.log('\n=== HELD-OUT SEEDS (never trained on), baseline = ' + baselineJob.label + ' ===');
+        // UNDER versus, PRINT THE RECORD, not a rounded fitness. A win rate
+        // of 0.5 and twelve drawn duels round to the same integer as a clean
+        // sweep, and "1 vs 1, +0.0%" says nothing about which happened.
+        if (learned.versus) {
+            var _n = learned.duels || 0, _w = Math.round((learned.winRate || 0) * _n);
+            var _d = learned.draws || 0;
+            console.log('  record      ' + _w + 'W ' + (_n - _w - _d) + 'L ' + _d + 'D' +
+                        ' of ' + _n + '   win rate ' + ((learned.winRate || 0) * 100).toFixed(0) + '%' +
+                        '   garbage sent ' + (learned.avgSent || 0).toFixed(0) +
+                        ' vs ' + (shipped.avgSent || 0).toFixed(0));
+        }
         var lp = learned.perCategory || {}, sp = shipped.perCategory || {};
         var lost = [];
         Object.keys(lp).forEach(function (k) {
