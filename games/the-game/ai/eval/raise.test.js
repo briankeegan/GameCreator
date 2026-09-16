@@ -140,6 +140,55 @@ test('ACCEPT: no raise candidate when the stack is topped out', function () {
     assert.deepStrictEqual(raise, [], 'a raise was offered on a topped-out board');
 });
 
+// THE OWNER'S RULE, and it is a gate on the ACTION rather than a weight:
+// "Manual raise is a good choice only when you don't have any garbage and
+// you can do so safely without dying." A weighted sum cannot express that
+// conjunction -- it has to average the safe world and the fatal one and
+// gets both wrong -- which is the same argument that put couldDie inside
+// stopTimeGain. Both directions, because a gate that never fires reads
+// exactly like a bot that never had the problem, and one that fires on
+// everything removes the action entirely.
+test('REJECT: no raise while there is garbage ON the board', function () {
+    var cpu = started();
+    var s = cpu.stack;
+    // One garbage panel, resting, nowhere near the top.
+    var p = s.panelAt(2, 3);
+    p.isGarbage = true; p.state = 'normal'; p.color = 0;
+    var raise = cpu._candidates().filter(function (c) { return c.kind === 'raise'; });
+    assert.deepStrictEqual(raise, [],
+        'a raise was offered with garbage on the board — a raise pushes garbage up ' +
+        'too, and garbage needs room to break');
+});
+
+test('ACCEPT: a raise IS offered on the same board once the garbage is gone', function () {
+    // The correct-but-awkward case. Without this the test above passes just
+    // as well against a gate that refuses every raise forever.
+    var cpu = started();
+    var raise = cpu._candidates().filter(function (c) { return c.kind === 'raise'; });
+    assert.strictEqual(raise.length, 1,
+        'no raise on a clean, low board — the gate is refusing everything');
+});
+
+test('REJECT: no raise when the row that lands would top the stack out', function () {
+    // Not "is the board legal now" but "is it legal AFTER the row lands".
+    // The board below is legal, and raising it is the move that kills you.
+    var cpu = started();
+    var s = cpu.stack;
+    for (var r = 1; r <= s.height - 1; r++) {
+        for (var c = 1; c <= PanelEngine.WIDTH; c++) {
+            var p = s.panelAt(r, c);
+            p.isGarbage = false; p.state = 'normal';
+            p.color = ((r + 2 * c) % 3) + 1;
+        }
+    }
+    s.run();
+    assert.ok(!s.wasToppedOut,
+        'setup failed: this board must be LEGAL, or the topped-out check covers it');
+    var raise = cpu._candidates().filter(function (c) { return c.kind === 'raise'; });
+    assert.deepStrictEqual(raise, [],
+        'a raise was offered one row below the ceiling — it is the move that tops out');
+});
+
 test('ACCEPT: no raise candidate while garbage is falling', function () {
     // hasFallingGarbage is the engine's own "not now" for the same reason.
     var cpu = lowBoard(started(), 2);

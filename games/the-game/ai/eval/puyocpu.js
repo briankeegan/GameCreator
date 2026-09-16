@@ -412,7 +412,7 @@
   // (hasFallingGarbage), and preventManualRaise is set while a raise is
   // already being served. Offering a move that cannot be played would put
   // it in the choice set for the weights to pick and then stand still.
-  PuyoCpu.prototype._canRaise = function () {
+  PuyoCpu.prototype._canRaise = function (board) {
     // OPT-IN, like depth, beam, rise and density before it. Raising is a
     // new ACTION, not a new preference: it changes the choice set, so every
     // result taken without it describes a different bot and every run in
@@ -424,6 +424,56 @@
     if (stack.manualRaise) return false;
     if (typeof stack.isToppedOut === 'function' && stack.isToppedOut()) return false;
     if (typeof stack.hasFallingGarbage === 'function' && stack.hasFallingGarbage()) return false;
+    return this._raiseIsSafe(board);
+  };
+
+  // AND THE POLICY, WHICH IS NOT THE ENGINE'S AND NOT THE WEIGHTS' EITHER.
+  //
+  // The owner's rule, 2026-09-16: "Manual raise is a good choice only when
+  // you don't have any garbage and you can do so safely without dying. It's
+  // almost always, not always, but often the best choice."
+  //
+  // That is a CONJUNCTION, and a weighted sum cannot express one -- the same
+  // argument that put couldDie inside stopTimeGain rather than beside it. A
+  // weight can say "raising is worth 120"; it cannot say "raising is worth
+  // 120 WHEN the board is clean and low, and fatal otherwise", so a single
+  // weight has to average those two worlds and gets both wrong.
+  //
+  // Measured on the generation-82 survraise weights, which is what the rule
+  // was written after seeing. On the OPENING board every candidate scores
+  // negative and raise is the least-negative, so it wins:
+  //
+  //   seed 7 decision 0:  raise -1183   best swap -2001   hold -2511
+  //   seed 3 decision 0:  raise  -747   best swap -1333   hold -2062
+  //
+  // It wins because a new row manufactures links (weight 254) while nothing
+  // punishes the height yet -- and then the game ends early: 355/185/62
+  // frames with the action on against 468/590/441 with it off, worse on
+  // every seed. Eighty-two generations had not taught it otherwise, and it
+  // never would have, because the move IS locally the best one under any
+  // weights that value panels at all. The cost is two hundred frames later.
+  //
+  // So the gate is on the ACTION. Two conditions, both the owner's:
+  PuyoCpu.prototype._raiseIsSafe = function (board) {
+    if (!board) return false;
+    // NO GARBAGE. A raise pushes garbage up with everything else, and
+    // garbage is the thing you cannot clear by tidying -- you need a break,
+    // and a break needs room.
+    for (var id in board.blocks) {
+      if (board.blocks.hasOwnProperty(id) && board.blocks[id].cells &&
+          board.blocks[id].cells.length) return false;
+    }
+    // AND IT MUST NOT KILL YOU. Not "is the board legal now" -- is it legal
+    // AFTER the row lands. Ask the board that question rather than guessing
+    // a height: the risen board is the one the raise produces, and if its
+    // top row is occupied the raise is the move that tops you out.
+    var risen = board.clone().rise(this._incoming);
+    var top = risen.grid[risen.height];
+    if (!top) return true;
+    for (var c = 1; c <= risen.width; c++) {
+      var v = top[c];
+      if (v !== 0 && v !== -1 && v !== undefined) return false;
+    }
     return true;
   };
 
@@ -458,7 +508,7 @@
                    board: this._scoredBoard,
                    earnedStop: holdResolved.stopTimeEarned || 0 }];
 
-    if (this._canRaise()) {
+    if (this._canRaise(board)) {
       // The row the engine will actually deal, resolved, because a raise
       // can complete a match and that match is the reason to make it.
       var raiseBoard = board.clone().rise(this._incoming);
