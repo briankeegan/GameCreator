@@ -19,6 +19,20 @@
 // clears (+1.36 at three panels) and is exactly 0.00 on big ones, so it is
 // reading real shape and is left alone.
 var assert = require('assert');
+
+// SAY SO WHEN THE ATTACK FILES ARE MISSING, rather than scoring 7/8 and
+// blaming the bot. Without GC_TRAINING_DIR bench.js cannot load the real
+// attack files, the end-to-end test plays a garbage-free board, and the
+// effect it measures is not there -- so the suite reports "density REACHES
+// THE BOT" failing, which is a true sentence about a board nobody meant to
+// test. rise.test.js has asserted this for the same reason; density needs
+// it too, and found out by failing a gate on a correct tree.
+if (!process.env.GC_TRAINING_DIR) {
+    console.error('GC_TRAINING_DIR is unset, so bench.js cannot load the real attack ' +
+                  'files and this suite would measure a garbage-free board. Point it at ' +
+                  'panel-game/client/assets/default_data/training.');
+    process.exit(1);
+}
 var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));

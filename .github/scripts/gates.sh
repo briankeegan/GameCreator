@@ -298,12 +298,20 @@ _gc_training_dir() {
   return 1
 }
 
+# ai-train.yml sets GC_TRAINING_DIR on the STEP, so all five suites get it.
+# These gates do the same, one helper each, rather than guessing which of
+# them needs it -- density.test.js scored 7/8 without it and 8/8 with, and
+# reported the difference as "density REACHES THE BOT" failing rather than
+# as a missing environment variable. A suite whose VERDICT depends on an
+# unset variable, silently, is the whole problem this file exists for.
 gate_puyo_cpu() {
-  node games/the-game/ai/eval/puyocpu.test.js
+  local d; d="$(_gc_training_dir)" || return 1
+  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/puyocpu.test.js
 }
 
 gate_training_harness() {
-  node games/the-game/ai/eval/training.test.js
+  local d; d="$(_gc_training_dir)" || return 1
+  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/training.test.js
 }
 
 gate_rise_scoring() {
@@ -312,7 +320,8 @@ gate_rise_scoring() {
 }
 
 gate_density_scoring() {
-  node games/the-game/ai/eval/density.test.js
+  local d; d="$(_gc_training_dir)" || return 1
+  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/density.test.js
 }
 
 # EVERY SUITE THE TRAINING PRE-FLIGHT RUNS IS ALSO A GATE.
@@ -442,7 +451,8 @@ gate_features_shared_pass() {
 }
 
 gate_features() {
-  node games/the-game/ai/eval/features.test.js
+  local d; d="$(_gc_training_dir)" || return 1
+  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/features.test.js
 }
 
 gate_chip_verifier_fires() {
