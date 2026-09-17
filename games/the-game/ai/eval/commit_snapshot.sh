@@ -73,7 +73,10 @@ fi
 # therefore cannot clobber or delete — a long run's resume point. That means
 # globbing rather than naming one file. Any checkpoint present belongs to a
 # search that is still going; a finished one deletes its own.
-for ckpt in .train-checkpoint.${GC_MODE:-replace}.*.json; do
+# The Puyo loop names its resume point .versus-checkpoint.<hash>.json rather
+# than .train-checkpoint.<mode>.<hash>.json, so it needs its own glob or the
+# loop's population never leaves the runner.
+for ckpt in .train-checkpoint.${GC_MODE:-replace}.*.json .versus-checkpoint.*.json; do
   [ -f "$ckpt" ] && git add -f "$ckpt" 2>/dev/null
 done
 

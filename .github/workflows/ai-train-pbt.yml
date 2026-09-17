@@ -1,22 +1,21 @@
-# THE PUYO LOOP, ON A RUNNER.
+# THE PUYO LOOP ON EVERY CORE.
 #
-# train.js is cross-entropy method: score every genome, rank, refit, resample.
-# It needs a SCALAR to rank by. A duel yields one BIT, so under `versus` it
-# manufactures a scalar from three duels and pays 150 duels for a single
-# update.
+# ai-train-versus.yml runs train_versus.js: one duel at a time, so one of the
+# runner's four cores works and three idle. train_pbt.js forks one ISLAND per
+# core — separate populations running the same loop, each with its own RNG
+# seed — and between legs the islands' champions duel each other directly. An
+# island whose champion loses replaces its worst vector with the winner's
+# weights, jogged.
 #
-# games/the-game/ai/eval/train_versus.js is meatfighter's Trainer.java
-# instead — pick two vectors, play ONE duel, drag the loser 80% toward the
-# winner, jog it, repeat. One duel per update. Measured on the same hardware,
-# a CEM generation at population 50 is about three minutes and one update
-# here is about five seconds.
+# SEPARATE WORKFLOW, NOT AN INPUT ON ai-train-versus.yml, for the same reason
+# that one is separate from ai-train.yml: different state on disk, different
+# snapshot names, and the two have to be able to run at once — a single-island
+# loop is the only baseline an island run can be read against.
 #
-# SEPARATE WORKFLOW, NOT AN INPUT ON ai-train.yml. Two different search
-# algorithms sharing one dispatch would share its smoke job, its checkpoint
-# names and its concurrency group, and none of those mean the same thing for
-# both. They also have to be able to run at the same time: the CEM legs are
-# the only baseline a loop run can be read against.
-name: Train the AI head-to-head (Puyo loop)
+# IT DOES NOT RESUME. Island state lives in .pbt-<seed>/, which is gitignored
+# and dies with the container. A run is one search from random weights; it
+# does not continue the last one.
+name: Train the AI head-to-head (islands)
 
 on:
   workflow_dispatch:
@@ -30,9 +29,18 @@ on:
       exclude:
         description: 'Features to leave OUT of the genome (comma list, blank = all)'
         default: ''
+      islands:
+        description: 'Islands, one per core. The runner has 4'
+        default: '4'
       population:
-        description: 'Weight vectors held. Puyo uses 16 — it is a pool to merge within, not a generation to rank'
+        description: 'Weight vectors held PER ISLAND. Puyo uses 16'
         default: '16'
+      leg:
+        description: 'Updates each island runs before the champions face off'
+        default: '250'
+      faceoff:
+        description: 'Seeds per champion pairing in the face-off'
+        default: '3'
       ga_seed:
         description: 'RNG seed. CHANGE IT for an independent run of the same config'
         default: '11'
@@ -48,25 +56,22 @@ on:
       density:
         description: 'Density scoring: counts made of panels become per-panel (1 = on)'
         default: ''
-      check_every:
-        description: 'Updates between held-out checks. Each check duels EVERY vector against the shipped bot, so it is the expensive part'
-        default: '200'
 
-# One run per experiment, and never two of the same: two runs of one variant
-# would fight over the same checkpoint. cancel-in-progress stays FALSE — a
-# run that has done four hours of updates has earned them.
+# One run per experiment, and never two of the same. cancel-in-progress stays
+# FALSE — a run that has done four hours of updates has earned them.
 concurrency:
-  group: ai-train-versus-${{ github.event.inputs.variant || 'default' }}
+  group: ai-train-pbt-${{ github.event.inputs.variant || 'default' }}
   cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  loop:
+  islands:
     runs-on: ubuntu-latest
     # Under the 6-hour hard cap, so the job's own timeout never stops it —
-    # train_versus.js stops first, on GC_DEADLINE, with a snapshot written.
+    # train_pbt.js stops first, on GC_DEADLINE, between legs, with the leg's
+    # snapshot already written and pushed.
     timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
@@ -91,9 +96,9 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      # The same bargain as ai-train.yml's pre-flight: seconds against hours.
-      # versus_loop.test.js is the one that matters here — it is the update
-      # rule, which is the whole algorithm.
+      # Seconds against hours. versus_loop.test.js is the one that matters —
+      # it checks the update rule in BOTH train_versus.js and pbt_worker.js,
+      # which is the whole algorithm.
       - name: Check the harness before spending five hours on it
         working-directory: games/the-game/ai/eval
         timeout-minutes: 30
@@ -105,7 +110,7 @@ jobs:
           node features.test.js
           node puyocpu.test.js
 
-      - name: Loop
+      - name: Islands
         working-directory: games/the-game/ai/eval
         env:
           GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
@@ -117,19 +122,20 @@ jobs:
           GC_BEAM: ${{ github.event.inputs.beam || '0' }}
           GC_RISE: ${{ github.event.inputs.rise || '1' }}
           GC_DENSITY: ${{ github.event.inputs.density || '' }}
+          GC_PBT_ISLANDS: ${{ github.event.inputs.islands || '4' }}
+          GC_PBT_LEG: ${{ github.event.inputs.leg || '250' }}
+          GC_PBT_FACEOFF: ${{ github.event.inputs.faceoff || '3' }}
           GC_VS_POPULATION: ${{ github.event.inputs.population || '16' }}
-          GC_VS_CHECK_EVERY: ${{ github.event.inputs.check_every || '200' }}
-          GC_MODE: versus
-          GC_TAG: versus-${{ github.event.inputs.variant || 'default' }}-s${{ github.event.inputs.ga_seed || '11' }}
-          # commit_snapshot.sh calls any run holding fewer vectors than this a
-          # smoke run and refuses to commit it. Its default is 50, which is a
-          # CEM population — the loop holds 16, so without this EVERY snapshot
-          # a five-hour run earns is thrown away as smoke.
+          GC_MODE: pbt
+          GC_TAG: pbt-${{ github.event.inputs.variant || 'default' }}-s${{ github.event.inputs.ga_seed || '11' }}
+          # commit_snapshot.sh calls anything under this a smoke run and
+          # refuses to commit it. A real island holds 16 vectors; a smoke run
+          # holds fewer, and is still rejected.
           GC_MIN_POP: '16'
           GC_SNAPSHOT_HOOK: ${{ github.workspace }}/games/the-game/ai/eval/commit_snapshot.sh
         run: |
-          # 340 minutes, under the job's 350 and the platform's 360, so the
-          # loop stops itself with a snapshot written rather than being killed
-          # mid-duel.
-          export GC_DEADLINE=$(( $(date +%s) + 340 * 60 ))
-          node train_versus.js
+          # 315 minutes, not 340. The deadline is only read BETWEEN legs, and
+          # a leg is about 20 minutes, so the margin has to be a whole leg or
+          # the last one starts too late and the job's 350 kills it mid-duel.
+          export GC_DEADLINE=$(( $(date +%s) + 315 * 60 ))
+          node train_pbt.js

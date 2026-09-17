@@ -36,3 +36,7 @@ games/the-game/ai/eval/.chainmeasure-test-*/
 # resume point, committed deliberately by commit_snapshot.sh, never swept in.
 .versus-checkpoint.*.json
 .pbt-*/
+
+# training.test.js points train.js's checkpoint here with GC_CHECKPOINT_DIR,
+# so a gate run cannot rewrite the tracked checkpoint beside train.js.
+games/the-game/ai/eval/.training-test-scratch/

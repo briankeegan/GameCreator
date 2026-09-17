@@ -584,9 +584,17 @@ function fingerprint() {
 // than merely detected: a population-8 test run and a population-200 search
 // cannot address the same file. The fingerprint stays INSIDE the file too —
 // a hash can collide, and the contents are the authority.
+//
+// GC_CHECKPOINT_DIR moves the file somewhere else entirely. A real run leaves
+// it here, where commit_snapshot.sh force-adds it so the next job can resume;
+// that makes it a TRACKED file, and a test run in this directory rewrites it
+// and dirties the checkout every time the gates run. A test sets this to a
+// scratch dir of its own instead.
 function checkpointPath() {
     var tag = crypto.createHash('sha1').update(fingerprint()).digest('hex').slice(0, 10);
-    return path.join(__dirname, '.train-checkpoint.' + MODE + '.' + tag + '.json');
+    var dir = process.env.GC_CHECKPOINT_DIR || __dirname;
+    if (dir !== __dirname && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return path.join(dir, '.train-checkpoint.' + MODE + '.' + tag + '.json');
 }
 var CHECKPOINT = checkpointPath();
 

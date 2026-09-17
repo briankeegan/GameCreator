@@ -69,9 +69,17 @@ test('choosing and reporting sets each cover every attack file exactly once', fu
 
 // ------------------------------------------------------------- train.js
 
+// EVERY RUN THIS FILE STARTS WRITES ITS CHECKPOINT IN HERE, not beside
+// train.js. A real run's checkpoint is force-added by commit_snapshot.sh so
+// the next job can resume, which makes it a TRACKED file; a test run in that
+// directory rewrites it, dirties the checkout on every gate_all, and can
+// overwrite a live run's resume point. GC_CHECKPOINT_DIR moves it.
+var SCRATCH = path.join(__dirname, '.training-test-scratch');
+
 // A real run, kept tiny: 2 generations of 8. Seconds, not half an hour.
 function tinyRun(env, objective) {
-    var e = Object.assign({}, process.env, { GC_LEVEL: '10', GC_BRAIN: 'puyo' }, env || {});
+    var e = Object.assign({}, process.env,
+        { GC_LEVEL: '10', GC_BRAIN: 'puyo', GC_CHECKPOINT_DIR: SCRATCH }, env || {});
     var out = cp.execSync('node train.js 2 8 replace 4 ' + (objective || 'score'), {
         cwd: DIR, env: e, encoding: 'utf8', timeout: 900000
     });
@@ -80,6 +88,26 @@ function tinyRun(env, objective) {
 
 var RUN = null;
 function run() { if (!RUN) RUN = tinyRun({ GC_GA_SEED: '4242' }); return RUN; }
+
+test('a test run does not touch the tracked checkpoint', function () {
+    // The defect this exists for: gate_all rewrote
+    // .train-checkpoint.replace.<hash>.json — a TRACKED file, committed by
+    // commit_snapshot.sh so a runner can resume — on every single run. The
+    // checkout came back dirty every time, and a run resuming from that file
+    // would have resumed into a two-generation test population.
+    run();
+    var written = fs.existsSync(SCRATCH) ? fs.readdirSync(SCRATCH)
+        .filter(function (f) { return /^\.train-checkpoint\./.test(f); }) : [];
+    assert.ok(written.length > 0,
+        'GC_CHECKPOINT_DIR did not move the checkpoint — nothing landed in ' +
+        path.basename(SCRATCH) + ', so the run wrote it beside train.js instead');
+
+    var st = cp.spawnSync('git', ['status', '--porcelain', '--', '.train-checkpoint.*'],
+        { cwd: __dirname, encoding: 'utf8' });
+    assert.strictEqual((st.stdout || '').trim(), '',
+        'a tiny test run left a checkpoint beside train.js modified or untracked:\n' +
+        st.stdout);
+});
 
 test('a result records how its genome was chosen', function () {
     // The field whose absence made every units bug invisible: two numbers
@@ -293,7 +321,8 @@ test('the search stops itself before a job timeout can kill it', function () {
     // push, having passed gate_all locally, because gate_all did not run
     // this suite at all. Two bugs, one line. So: run it, with a deadline
     // already gone, and require that it stops for that reason and says so.
-    var out = cp.execSync('GC_LEVEL=10 GC_BRAIN=puyo GC_DEADLINE=' +
+    var out = cp.execSync('GC_LEVEL=10 GC_BRAIN=puyo GC_CHECKPOINT_DIR=' + SCRATCH +
+        ' GC_DEADLINE=' +
         Math.floor(Date.now() / 1000 - 60) + ' node train.js 200 4 replace 2 score 2>&1',
         { cwd: __dirname, shell: '/bin/bash', timeout: 600000 }).toString();
     assert.ok(/OUT OF TIME at generation/.test(out),
@@ -779,6 +808,62 @@ test('a run really does move a weight below zero', function () {
         ' features. Either the clamp is back, or the initial population and the ' +
         'mutation together cannot reach below zero — in which case sign is still ' +
         'a verdict however the clamp is written.');
+});
+
+// EVERY TRAINER'S SNAPSHOTS ARE ACTUALLY COMMITTABLE.
+//
+// The defect: commit_snapshot.sh refuses any snapshot whose run held fewer
+// than GC_MIN_POP vectors, and its default is 50 — a CEM population. The Puyo
+// loop holds 16. ai-train-versus.yml set the hook and not the floor, so two
+// five-hour runs were dispatched whose EVERY snapshot would be renamed
+// .smoke.json and dropped. Nothing failed; nothing was produced either.
+//
+// GC_MODE and GC_TAG are the same shape of hole: unset, the snapshot is named
+// trained.replace.untagged.* and is indistinguishable in git log from a CEM
+// run. crank.sh exports all three itself, so a workflow that goes through it
+// is exempt; a workflow that calls a trainer directly has to say them.
+test('every training workflow can actually commit what it earns', function () {
+    var wdir = path.join(__dirname, '..', '..', '..', '..', '.github', 'workflows');
+    var files = fs.readdirSync(wdir).filter(function (f) { return /^ai-train.*\.yml$/.test(f); });
+    assert.ok(files.length >= 2, 'found ' + files.length + ' ai-train workflows — expected the ' +
+        'CEM crank and at least one head-to-head trainer');
+
+    files.forEach(function (f) {
+        var src = fs.readFileSync(path.join(wdir, f), 'utf8');
+        // A hook set to the empty string is the smoke job deliberately
+        // committing nothing.
+        if (!/GC_SNAPSHOT_HOOK:\s*\S/.test(src)) return;
+        if (/crank\.sh/.test(src)) return;   // crank.sh exports mode, tag and run id
+
+        ['GC_MODE', 'GC_TAG'].forEach(function (k) {
+            assert.ok(new RegExp(k + ':\\s*\\S').test(src),
+                f + ' sets GC_SNAPSHOT_HOOK but not ' + k + ', so its snapshots are named ' +
+                'trained.replace.untagged.* and cannot be told apart from a CEM run');
+        });
+
+        var pop = /GC_VS_POPULATION:[^\n]*\|\|\s*'(\d+)'/.exec(src);
+        if (!pop) return;
+        var floor = /GC_MIN_POP:\s*'?(\d+)'?/.exec(src);
+        assert.ok(floor, f + ' runs a population of ' + pop[1] + ' and does not set GC_MIN_POP. ' +
+            'commit_snapshot.sh defaults it to 50, so every snapshot the run earns is ' +
+            'discarded as a smoke run and the whole job produces nothing');
+        assert.ok(Number(floor[1]) <= Number(pop[1]),
+            f + ' sets GC_MIN_POP=' + floor[1] + ' but runs a population of ' + pop[1] +
+            ' — commit_snapshot.sh will call every snapshot a smoke run and commit none of them');
+    });
+});
+
+// And the floor is read the way this test assumes it is.
+test('commit_snapshot.sh honours GC_MIN_POP and commits the loop checkpoint', function () {
+    var src = fs.readFileSync(path.join(__dirname, 'commit_snapshot.sh'), 'utf8');
+    assert.ok(/GC_MIN_POP:=50/.test(src),
+        'commit_snapshot.sh no longer defaults GC_MIN_POP to 50 — the workflow test above ' +
+        'names 50 as the trap it exists for, so the two have drifted');
+    assert.ok(/\$\{pop:-0\}"?\s+-lt\s+"?\$GC_MIN_POP/.test(src),
+        'commit_snapshot.sh no longer compares the run population against GC_MIN_POP');
+    assert.ok(/\.versus-checkpoint\.\*\.json/.test(src),
+        "commit_snapshot.sh does not force-add the Puyo loop's checkpoint " +
+        '(.versus-checkpoint.*.json), so the loop cannot resume in a later job');
 });
 
 tests.forEach(function (t) {
