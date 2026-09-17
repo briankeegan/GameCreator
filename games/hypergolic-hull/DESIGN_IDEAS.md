@@ -47,6 +47,137 @@ overlay, mode-based targeting for Tractor/Fighter).
 > the build when the crates stop producing it is the missing third piece
 > (RULE → TOOL → GATE), and is not built.
 
+## VARIETY PLAN — enemies and weapons (2026-09-17). NOTHING HERE IS BUILT.
+
+A menu to choose from, not a queue to work through. Unlock mechanics are
+deliberately left to a second pass; this pass only decides WHAT should exist
+and, more importantly, what shape the content has to have for unlocking it
+to be a good thing rather than a bad one.
+
+### The reference is Into the Breach and Monster Train, NOT Slay the Spire
+
+Slay the Spire is the obvious model and it is the wrong one, because its
+unlock system is the part of it players complain about. Unlocks there drop
+new cards into the draft pool, so every unlock makes the pool wider and the
+deck you actually want less likely to assemble: "instead of it being a
+reward it ends up just being a crutch that lowers odds and cripples
+strategies", and speedrunners deliberately keep their accounts under-unlocked
+because a smaller pool is a better pool. Rewarding a player with a worse
+draw is a trap worth naming before writing a single new weapon.
+
+Two games solve it structurally rather than living with it:
+
+- **Into the Breach** — you unlock SQUADS: fixed, hand-designed sets of three
+  mechs. A squad is a whole coherent way to play, you take exactly one per
+  run, and unlocking the tenth squad does not make the first one draw worse.
+  Pool width per run is constant no matter how much you own.
+- **Monster Train** — you pick a primary and an allied clan, and draft from
+  those two pools only. Unlocks add cards to a specific clan's pool, so the
+  content grows while the width of any single run stays put.
+
+Both replace "one big pool that grows" with "commit to a subset, draft
+inside it". That is the rule this plan is built on.
+
+**It matters here specifically, because the shelf is already a weighted draw
+from an eligible pool** (`pickOutpostOfferIds`: rarity weights, level gating,
+no-repeat-from-last-shelf, carried-item filtering). It is a good system and
+it is exactly the system StS's unlocks ruin. Adding fifteen weapons to
+`OUTPOST_OFFER_POOL` would make every individual shelf worse while the
+changelog said "more variety".
+
+**And the embryo of the ITB answer is already here.** `STARTING_LOADOUTS` —
+three kits bought with Requisition, each a different shape of the same
+budget rather than a power bump — is a squad system with three squads in it.
+Grow that, rather than widening the shelf.
+
+### THE BIGGEST FINDING: the Hold's geometry is inert
+
+`deriveShip` reads a hold by SUMMING fields and CHECKING PRESENCE. Every
+item's `x, y` is used for one thing only — does it fit — and for nothing
+else. The game renders a ship silhouette, has the player drag shaped tiles
+into it, and then throws the arrangement away.
+
+That is the cheapest large source of variety available, because it
+multiplies the items already shipped instead of adding to them:
+
+- **Adjacency rules.** A Capacitor Bank that gives `+1` normally and `+2`
+  when bolted to a reactor. A weapon that costs one less energy when its
+  tile touches a Charge Bank. Ablative Plating that only protects items it
+  is adjacent to, so WHERE the armour sits decides what a hit takes out.
+- **Regions of the hull.** The silhouette already has a nose, shoulders, a
+  midsection and an engine deck (`HOLD_BLOCKED`). A Prow Cannon fitted in
+  the nose could reach one hex further; an engine in the stern could give a
+  longer move than the same engine amidships.
+- **Damage that lands somewhere.** Hull loss currently decrements a number.
+  If a hit knocked out the item in a specific cell, the Hold becomes the
+  health bar, and the arrangement becomes a real defensive decision.
+
+Any one of these creates combinations across the whole existing roster. They
+also make the Hold screen — which is the game's best-looking, most
+distinctive feature — actually load-bearing.
+
+### Weapons: the axes that are unused
+
+The stat block already supports `shape`, `pattern`, `range`, `minRange`,
+`damage`, `targets`, `energyCost`, `speed`, `slots`, `pierces`, `places`,
+`placesSelf`, `launches`, `pushes`, `pulls`, `ignoresCover`, `blast`. The 18
+shipped weapons leave whole axes empty:
+
+- **Footprint is nearly unused as a decision.** Every item is a rectangle
+  from a set of six (1x1 up to 2x2). An L-shaped or T-shaped item would
+  make the packing puzzle real, and costs one change to `holdCanPlace`.
+- **`speed` decides resolution order and nothing is built on it.** A weapon
+  that is deliberately SLOW (fires after every enemy acts) in exchange for
+  damage is a genuine trade nothing currently offers.
+- **Cadence as the differentiator, not damage.** Energy cost against reactor
+  capacity is what makes each enemy class feel different (`cadence.js`).
+  Player weapons barely use it — a gun that fires twice a round for a huge
+  cost, or one that cannot fire two rounds running, are both unexplored.
+- **Nothing rewards standing still, and nothing rewards moving.** A weapon
+  that gets stronger the round after you did not move, or one that only
+  fires on the move, would make position a resource rather than a location.
+- **Nothing interacts with the asteroid fields** that procedural boards are
+  full of. A gun that shatters cover, or one that ricochets off it, turns
+  existing terrain into a system.
+
+### Enemies: shapes, not stat blocks
+
+The ladder (`typePoolFor`) is already organised the right way — around the
+QUESTION a class asks about where you may stand, introduced after the answer
+reaches a shelf, with caps on emplacements, long guns, heavies and statics.
+New enemies should extend that list of questions:
+
+- **The telegraphed hit** (the ITB signature this game still lacks): marks a
+  hex on its turn, hits it at the start of the next enemy phase whatever is
+  standing there. Needs a next-turn overlay distinct from
+  `computeThreatHexes`.
+- **Something that reacts to your Hold.** The enemy roster is built from the
+  same crates the player uses, so a hostile that targets a specific fitted
+  item — disabling a weapon, draining a bank — is free to express and is a
+  new axis entirely.
+- **Something that contests salvage** rather than your hull: eats wrecks
+  before you reach them, so the cost of ignoring it is economic.
+- **A second faction, drawn as a SET.** This is the Monster Train move
+  applied to the other side of the board: a sector rolls Wardens or
+  pirates, and the two factions have different shapes, not different
+  numbers. Run-to-run variety without every board becoming soup, and it
+  gives the narrative axis the doc already wants somewhere to live.
+
+### Then, separately: how any of it unlocks
+
+Not designed here. Three hooks worth arguing about first, including the
+owner's own:
+
+- **Unspent salvage as a trigger.** Carrying money makes you a target —
+  pirates appear, or appear in greater numbers, when you bank rather than
+  spend. Turns hoarding into a real decision instead of a dominant one, and
+  it is the rare unlock trigger that is diegetic.
+- **Squads over shelf items.** Per the ITB argument above: prefer unlocks
+  that add a whole coherent STARTING SET to choose between, over unlocks
+  that add one more item to the in-run draw.
+- **Per-faction or per-archetype pools**, so what grows is the number of
+  coherent sets a run can commit to, never the width of a single shelf.
+
 ## What the research says, and how it maps onto what already exists
 
 - **Into the Breach** is the closest sibling and validates two pillars this
