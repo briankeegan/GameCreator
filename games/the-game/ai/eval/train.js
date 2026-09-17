@@ -895,6 +895,11 @@ function report(isFinal, cb) {
         }
         var versus = require('./versus.js');
         var wins = 0, draws = 0, sentUs = 0, sentThem = 0;
+        // The garbage each side sent, split by combo width and chain length.
+        // Every other objective reports this and it is the breakdown the
+        // question "is it building chains or just clearing" is read off, so
+        // versus carries it too rather than being the one that cannot answer.
+        var depthUs = versus.zeroDepth(), depthThem = versus.zeroDepth();
         var opp = baselineJob.genome || {};
         HOLDOUT_SEEDS.forEach(function (sd) {
             var d = versus.duel(best, opp, sd,
@@ -903,12 +908,14 @@ function report(isFinal, cb) {
             if (d.winner === 0) wins++;
             else if (d.winner === null) draws++;
             sentUs += d.sent[0]; sentThem += d.sent[1];
+            versus.addDepth(depthUs, d.chainDepth[0]);
+            versus.addDepth(depthThem, d.chainDepth[1]);
         });
         var n = HOLDOUT_SEEDS.length;
         cb2({ fitness: (wins + 0.5 * draws) / n, winRate: wins / n, draws: draws,
-              avgSent: sentUs / n, duels: n, versus: true },
+              avgSent: sentUs / n, duels: n, chainDepth: depthUs, versus: true },
             { fitness: (n - wins - draws + 0.5 * draws) / n, label: baselineJob.label,
-              avgSent: sentThem / n, versus: true });
+              avgSent: sentThem / n, chainDepth: depthThem, versus: true });
     }
     heldOut(function (learnedRes, baseRes) {
       {

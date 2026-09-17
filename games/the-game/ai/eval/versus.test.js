@@ -22,6 +22,7 @@ if (!process.env.GC_TRAINING_DIR) {
 process.env.GC_LEVEL = process.env.GC_LEVEL || '10';
 
 var versus = require('./versus.js');
+var PanelEngine = globalThis.PanelEngine;   // versus.js loads the engine
 var registry = require('./registry.js');
 
 var pass = 0, fail = 0;
@@ -79,6 +80,53 @@ check('the outcome depends on the seed, not just the weights', function () {
     });
     assert.ok(Object.keys(seen).length > 1,
         'five seeds produced one identical outcome — the duel is not reading the seed');
+});
+
+// THE BREAKDOWN IS THE GARBAGE THAT ACTUALLY CROSSED, not a plausible object
+// of zeroes. Every piece the duel hands over is classified here too, by the
+// same rule, and the two tallies must agree exactly — which an empty
+// breakdown, or one built from anything else, cannot do.
+check('chainDepth is the garbage the duel really sent, per side', function () {
+    var report = require(path.join(__dirname, '..', 'experiments', 'report.js'));
+    var mine = [ {}, {} ];
+    report.CATEGORY_ORDER.forEach(function (c) { mine[0][c] = 0; mine[1][c] = 0; });
+
+    var proto = PanelEngine.Stack.prototype;
+    var orig = proto.takeDeliverableGarbage;
+    var order = [];
+    proto.takeDeliverableGarbage = function () {
+        var out = orig.apply(this, arguments);
+        if (out && out.length) {
+            var side = order.indexOf(this);
+            if (side < 0) { order.push(this); side = order.length - 1; }
+            for (var i = 0; i < out.length; i++) mine[side][report.classify(out[i])]++;
+        }
+        return out;
+    };
+    var r;
+    try { r = versus.duel(TRAINED, FLAT, 7, {}); }
+    finally { proto.takeDeliverableGarbage = orig; }
+
+    assert.ok(r.chainDepth, 'the duel reported no chainDepth at all');
+    var total = 0;
+    report.CATEGORY_ORDER.forEach(function (c) {
+        total += r.chainDepth[0][c] + r.chainDepth[1][c];
+    });
+    assert.ok(total > 0,
+        'neither side sent any garbage in this duel — nothing to compare, so this ' +
+        'test would pass for a breakdown that is always empty. SETUP failure.');
+
+    // The interceptor numbers the boards by which delivered first, which is
+    // not necessarily A then B, so compare the PAIR as a set of two tallies.
+    var got = [r.chainDepth[0], r.chainDepth[1]].map(function (d) {
+        return report.CATEGORY_ORDER.map(function (c) { return d[c]; }).join(',');
+    }).sort();
+    var want = mine.map(function (d) {
+        return report.CATEGORY_ORDER.map(function (c) { return d[c]; }).join(',');
+    }).sort();
+    assert.deepStrictEqual(got, want,
+        'the reported breakdown is not the garbage that crossed:\n  reported ' +
+        JSON.stringify(got) + '\n  actual   ' + JSON.stringify(want));
 });
 
 console.log('');

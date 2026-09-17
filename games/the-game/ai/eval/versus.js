@@ -25,6 +25,7 @@ var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
 var PuyoCpu = require('./puyocpu.js');
+var report = require(path.join(__dirname, '..', 'experiments', 'report.js'));
 var PanelEngine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
 
 var LEVEL = Number(process.env.GC_LEVEL || 10);
@@ -58,6 +59,12 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
     ];
     var cpus = [ makeCpu(stacks[0], weightsA, opts), makeCpu(stacks[1], weightsB, opts) ];
     var sent = [0, 0];
+    // WHAT KIND OF GARBAGE, not just how much. A bot that sends 20 cells in
+    // 3-wide combos and one that sends 20 cells in a 5-chain are the same
+    // number here and completely different players, so every piece is
+    // classified by the same rule report.js uses everywhere else, as it
+    // crosses. Counted per SENDER: chainDepth[0] is what side A sent.
+    var chainDepth = [zeroDepth(), zeroDepth()];
 
     var f = 0;
     for (; f < CEILING; f++) {
@@ -72,6 +79,7 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
             if (out && out.length) {
                 for (var k = 0; k < out.length; k++) {
                     sent[i] += (out[k].width || 0) * (out[k].height || 0);
+                    chainDepth[i][report.classify(out[k])]++;
                 }
                 stacks[i ^ 1].receiveGarbage(out);
             }
@@ -91,7 +99,20 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
     if (aDead && !bDead) winner = 1;
     else if (bDead && !aDead) winner = 0;
 
-    return { winner: winner, frames: f, sent: sent,
+    return { winner: winner, frames: f, sent: sent, chainDepth: chainDepth,
              draw: winner === null,
              reason: (!aDead && !bDead) ? 'ceiling' : (aDead && bDead ? 'both' : 'death') };
 };
+
+function zeroDepth() {
+    var z = {};
+    report.CATEGORY_ORDER.forEach(function (c) { z[c] = 0; });
+    return z;
+}
+
+// Sum one side's breakdown across several duels.
+exports.addDepth = function (into, from) {
+    report.CATEGORY_ORDER.forEach(function (c) { into[c] = (into[c] || 0) + (from[c] || 0); });
+    return into;
+};
+exports.zeroDepth = zeroDepth;
