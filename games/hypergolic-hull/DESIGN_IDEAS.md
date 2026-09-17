@@ -49,10 +49,10 @@ overlay, mode-based targeting for Tractor/Fighter).
 
 ## VARIETY PLAN — enemies and weapons (2026-09-17). NOTHING HERE IS BUILT.
 
-A menu to choose from, not a queue to work through. Unlock mechanics are
-deliberately left to a second pass; this pass only decides WHAT should exist
-and, more importantly, what shape the content has to have for unlocking it
-to be a good thing rather than a bad one.
+A menu to choose from, not a queue to work through. It covers what should
+exist, how a player gets it, and — the part that decides whether any of it
+is an improvement — what shape the content has to have for unlocking it to
+be a reward rather than a dilution.
 
 ### The reference is Into the Breach and Monster Train, NOT Slay the Spire
 
@@ -90,93 +90,98 @@ three kits bought with Requisition, each a different shape of the same
 budget rather than a power bump — is a squad system with three squads in it.
 Grow that, rather than widening the shelf.
 
-### THE BIGGEST FINDING: the Hold's geometry is inert
+### The unlock model: YOU pick, and the pool never gets wider
 
-`deriveShip` reads a hold by SUMMING fields and CHECKING PRESENCE. Every
-item's `x, y` is used for one thing only — does it fit — and for nothing
-else. The game renders a ship silhouette, has the player drag shaped tiles
-into it, and then throws the arrangement away.
+The owner's call, and it is also the fix for the Slay the Spire problem
+above: **unlocking is curation, not accumulation.**
 
-That is the cheapest large source of variety available, because it
-multiplies the items already shipped instead of adding to them:
+- **Requisition buys weapons into your ARMOURY** — the permanent list of
+  everything you own. Earned as now: depth reached, plus a boss clear.
+- **Before a run you fit a MANIFEST: a fixed number of weapon slots (start
+  with 6) drawn from the armoury.** The Outpost shelf then only ever offers
+  what is on your manifest, plus the always-available basics.
+- So the armoury grows forever and **the shelf stays exactly as narrow as it
+  is today**. Unlocking your twentieth weapon cannot make the Beam Lance
+  harder to find, because you decided whether the Beam Lance was in this
+  run at all. This is Monster Train's two-clan draft with the player holding
+  the pen, and it turns "what did I unlock" into "what am I building".
+- It also makes a bad weapon interesting rather than pollution: you took it
+  on purpose, so the run is about making it work.
+- Manifest slots themselves are the other thing Requisition can buy — going
+  from 6 to 7 is a real, expensive choice about breadth versus focus.
 
-- **Adjacency rules.** A Capacitor Bank that gives `+1` normally and `+2`
-  when bolted to a reactor. A weapon that costs one less energy when its
-  tile touches a Charge Bank. Ablative Plating that only protects items it
-  is adjacent to, so WHERE the armour sits decides what a hit takes out.
-- **Regions of the hull.** The silhouette already has a nose, shoulders, a
-  midsection and an engine deck (`HOLD_BLOCKED`). A Prow Cannon fitted in
-  the nose could reach one hex further; an engine in the stern could give a
-  longer move than the same engine amidships.
-- **Damage that lands somewhere.** Hull loss currently decrements a number.
-  If a hit knocked out the item in a specific cell, the Hold becomes the
-  health bar, and the arrangement becomes a real defensive decision.
+### The other trigger: unspent salvage brings company
 
-Any one of these creates combinations across the whole existing roster. They
-also make the Hold screen — which is the game's best-looking, most
-distinctive feature — actually load-bearing.
+The owner's idea, and the rare unlock trigger that is diegetic rather than
+bolted on. **Salvage you are CARRYING is notoriety.** Cross a threshold and
+pirate-faction hostiles begin appearing in generated sectors; spend at a
+dock and it drops.
 
-### Weapons: the axes that are unused
+Hoarding for the expensive gun is currently free — you either can afford
+something or you cannot, and waiting costs nothing. This makes waiting cost
+something specific, and makes an Outpost a place you go to get SAFER as well
+as stronger. It is also the cleanest possible answer to "how do new enemies
+start appearing": they appear because of something the player did, visibly,
+and can undo.
 
-The stat block already supports `shape`, `pattern`, `range`, `minRange`,
-`damage`, `targets`, `energyCost`, `speed`, `slots`, `pierces`, `places`,
-`placesSelf`, `launches`, `pushes`, `pulls`, `ignoresCover`, `blast`. The 18
-shipped weapons leave whole axes empty:
+### New weapons — eight gaps, each a shape nothing covers
 
-- **Footprint is nearly unused as a decision.** Every item is a rectangle
-  from a set of six (1x1 up to 2x2). An L-shaped or T-shaped item would
-  make the packing puzzle real, and costs one change to `holdCanPlace`.
-- **`speed` decides resolution order and nothing is built on it.** A weapon
-  that is deliberately SLOW (fires after every enemy acts) in exchange for
-  damage is a genuine trade nothing currently offers.
-- **Cadence as the differentiator, not damage.** Energy cost against reactor
-  capacity is what makes each enemy class feel different (`cadence.js`).
-  Player weapons barely use it — a gun that fires twice a round for a huge
-  cost, or one that cannot fire two rounds running, are both unexplored.
-- **Nothing rewards standing still, and nothing rewards moving.** A weapon
-  that gets stronger the round after you did not move, or one that only
-  fires on the move, would make position a resource rather than a location.
-- **Nothing interacts with the asteroid fields** that procedural boards are
-  full of. A gun that shatters cover, or one that ricochets off it, turns
-  existing terrain into a system.
+Every shipped weapon resolves instantly for a flat price. These do not:
 
-### Enemies: shapes, not stat blocks
+1. **Spinal Driver** — lane 2-5. Free to hold; each round you do not fire it
+   gains +1 damage, to 3. The player's version of the telegraph the Railgun
+   Destroyer already uses against you.
+2. **Chain Battery** — contact, 1 energy, fires TWICE in a round at two
+   different targets. Nothing currently fires more than once.
+3. **Wake Mines** — leaves a charge on the hex you just left, every time you
+   move. The first weapon tied to movement rather than to aiming.
+4. **Ion Lance** — lane 2-4, no damage: the target's weapon is offline next
+   round. Enemies are built from the same crates you are, so attacking the
+   GEAR is free to express and is a whole new axis. The answer to a Railgun
+   you can see charging.
+5. **Shard Cannon** — ring 2-3, and it shatters an asteroid it hits. Every
+   procedural board is full of cover and no weapon interacts with it.
+6. **Marker Beam** — any range, no damage: everything that hits the marked
+   contact this round does +1. Makes carrying several guns a combination
+   rather than a list.
+7. **Breaching Charge** — contact, +2 against anything carrying a screen or
+   plating. Nothing is specifically anti-heavy.
+8. **Grapnel** — pulls YOU two or three hexes. The Tractor Beam moves them;
+   nothing moves you.
 
-The ladder (`typePoolFor`) is already organised the right way — around the
-QUESTION a class asks about where you may stand, introduced after the answer
-reaches a shelf, with caps on emplacements, long guns, heavies and statics.
-New enemies should extend that list of questions:
+### New enemies — six questions nothing asks
 
-- **The telegraphed hit** (the ITB signature this game still lacks): marks a
-  hex on its turn, hits it at the start of the next enemy phase whatever is
-  standing there. Needs a next-turn overlay distinct from
-  `computeThreatHexes`.
-- **Something that reacts to your Hold.** The enemy roster is built from the
-  same crates the player uses, so a hostile that targets a specific fitted
-  item — disabling a weapon, draining a bank — is free to express and is a
-  new axis entirely.
-- **Something that contests salvage** rather than your hull: eats wrecks
-  before you reach them, so the cost of ignoring it is economic.
-- **A second faction, drawn as a SET.** This is the Monster Train move
-  applied to the other side of the board: a sector rolls Wardens or
-  pirates, and the two factions have different shapes, not different
-  numbers. Run-to-run variety without every board becoming soup, and it
-  gives the narrative axis the doc already wants somewhere to live.
+1. **Siege Cruiser** — marks a hex on its turn, hits it at the start of the
+   next enemy phase, whatever is standing there. The Into the Breach
+   signature this game still lacks. Needs a next-turn overlay distinct from
+   `computeThreatHexes`.
+2. **Tender** — repairs or re-screens an adjacent hostile each round. The
+   first board where kill ORDER matters.
+3. **Scavenger** — flies to wrecks and eats the salvage before you reach it.
+   Costs you money rather than hull, and is the natural face of the pirate
+   faction the notoriety rule summons.
+4. **Harrier** — only acts on rounds you moved. Punishes running and rewards
+   standing to fight, which is the exact inverse of everything else.
+5. **Splitter** — dies into two smaller hulls. Makes "should I kill this at
+   all" a real question, which the always-open Warp Gate already supports.
+6. **A second faction anchor** — the pirates want the wrecks, so their
+   presence turns salvage from free loot into contested loot.
 
-### Then, separately: how any of it unlocks
+### Open questions, before any of this gets built
 
-Not designed here. Three hooks worth arguing about first, including the
-owner's own:
-
-- **Unspent salvage as a trigger.** Carrying money makes you a target —
-  pirates appear, or appear in greater numbers, when you bank rather than
-  spend. Turns hoarding into a real decision instead of a dominant one, and
-  it is the rare unlock trigger that is diegetic.
-- **Squads over shelf items.** Per the ITB argument above: prefer unlocks
-  that add a whole coherent STARTING SET to choose between, over unlocks
-  that add one more item to the in-run draw.
-- **Per-faction or per-archetype pools**, so what grows is the number of
-  coherent sets a run can commit to, never the width of a single shelf.
+- How many manifest slots is right to start at? 6 is a guess. Too few and
+  a run is one idea; too many and the manifest stops being a decision.
+- Does the armoury start empty, or does everything currently on the shelf
+  start unlocked so nobody loses access to a gun they already have? (It
+  should be the latter — a feature that takes weapons AWAY on the day it
+  ships is not a reward.)
+- What is the notoriety threshold, and does it scale with depth? A flat
+  number means the rule stops mattering once income grows.
+- Do enemies draw from the manifest too? They are built from the same
+  crates, so "the pirates are carrying the guns you chose" is available and
+  might be either brilliant or miserable.
+- Are the eight weapons above the right eight? They were chosen to fill
+  gaps in the existing shape table, not because a player asked for them.
 
 ## What the research says, and how it maps onto what already exists
 
