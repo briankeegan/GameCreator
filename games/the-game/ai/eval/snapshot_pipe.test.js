@@ -121,6 +121,65 @@ test("the loop's checkpoint is committed alongside the snapshot", function () {
         'cannot resume the population:\n' + tracked);
 });
 
+// The islands keep one file per island; all of them together are the resume
+// point, so all of them have to ride along with the champion.
+test("the islands' state is committed alongside the snapshot", function () {
+    var src = stage({ mode: 'pbt', population: 16, updates: 250, weights: { maxHeight: 1 } });
+    fs.mkdirSync(path.join(SCRATCH, '.pbt-11'));
+    ['island0.json', 'island1.json'].forEach(function (f) {
+        fs.writeFileSync(path.join(SCRATCH, '.pbt-11', f),
+            JSON.stringify({ fingerprint: 'x', population: [], updates: 250 }));
+    });
+    var r = runHook(src, 250, { GC_MODE: 'pbt', GC_TAG: 'islands-test',
+                                GC_MIN_POP: '16', GC_RUN_ID: 'testrun' });
+    var tracked = cp.execSync('git show --name-only --format= HEAD',
+        { cwd: SCRATCH, encoding: 'utf8' });
+    ['island0.json', 'island1.json'].forEach(function (f) {
+        assert.ok(tracked.indexOf('.pbt-11/' + f) >= 0,
+            '.pbt-11/' + f + ' was not committed, so a later job restarts the search ' +
+            'from random weights:\n' + tracked);
+    });
+});
+
+// AND THE RESUME ITSELF. Committing the files is half of it; the other half is
+// train_pbt.js opening them rather than starting over, and refusing one that
+// belongs to a different search.
+test('train_pbt resumes its islands, and refuses a foreign one', function () {
+    var dir = path.join(__dirname, '.pbt-424242');
+    var env = Object.assign({}, process.env, {
+        GC_PBT_INIT_ONLY: '1', GC_GA_SEED: '424242', GC_PBT_ISLANDS: '2',
+        GC_VS_POPULATION: '4', GC_LEVEL: '10', GC_DEPTH: '1'
+    });
+    function init() {
+        return cp.execSync('node train_pbt.js', { cwd: __dirname, env: env, encoding: 'utf8' });
+    }
+    try {
+        if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+        var first = init();
+        assert.ok(/resumed 0/.test(first), 'a fresh run claimed to resume:\n' + first);
+        var before = fs.readFileSync(path.join(dir, 'island0.json'), 'utf8');
+
+        var second = init();
+        assert.ok(/resumed 2/.test(second),
+            'train_pbt did not resume islands that were right there on disk, so a ' +
+            'redispatched run starts a brand new search:\n' + second);
+        assert.strictEqual(fs.readFileSync(path.join(dir, 'island0.json'), 'utf8'), before,
+            'the resume rewrote the island it claimed to resume');
+
+        // A file from a search with different weights in it must NOT be adopted.
+        var foreign = JSON.parse(before);
+        foreign.fingerprint = 'something else entirely';
+        fs.writeFileSync(path.join(dir, 'island0.json'), JSON.stringify(foreign));
+        var third = init();
+        assert.ok(/resumed 1/.test(third),
+            'train_pbt adopted an island belonging to a different configuration:\n' + third);
+        assert.notStrictEqual(fs.readFileSync(path.join(dir, 'island0.json'), 'utf8'),
+            JSON.stringify(foreign), 'the foreign island was left in place');
+    } finally {
+        if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }

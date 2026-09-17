@@ -67,17 +67,47 @@ function randomGenome() {
     return g;
 }
 
+// AN ISLAND FILE IS A RESUME POINT, and it carries a hash of the configuration
+// so two runs that would search differently can never open each other's
+// population. Same rule as train.js and train_versus.js; here the files are
+// committed by commit_snapshot.sh, so a foreign one can actually turn up in a
+// fresh checkout.
+function fingerprint() {
+    return ['pbt', ISLANDS, POP, MUTATE, OPTS.level, baseSeed,
+            String(OPTS.depth), String(OPTS.beam), OPTS.rise ? 'rise' : '',
+            OPTS.density ? 'density' : '', OPTS.allowRaise ? 'allowRaise' : '',
+            KEYS.join(',')].join('|');
+}
+var FP = fingerprint();
+
 // EACH ISLAND GETS ITS OWN SEED, or they are one search run four times. This
 // repo has already read two identical runs as a reproduction — they finished
 // at the same score on the same generation because they were the same search.
+var resumed = 0;
 for (var i = 0; i < ISLANDS; i++) {
-    if (fs.existsSync(islandFile(i))) continue;
+    if (fs.existsSync(islandFile(i))) {
+        try {
+            var old = JSON.parse(fs.readFileSync(islandFile(i), 'utf8'));
+            if (old.fingerprint === FP && Array.isArray(old.population) &&
+                old.population.length === POP) { resumed++; continue; }
+            console.log('island ' + i + ' was searching something else — starting it fresh');
+        } catch (e) { console.log('island ' + i + ' unreadable, starting fresh: ' + e.message); }
+    }
     var pop = [];
     for (var p = 0; p < POP; p++) pop.push(randomGenome());
     fs.writeFileSync(islandFile(i), JSON.stringify({
-        population: pop, updates: 0, seed: (baseSeed + i * 7919) >>> 0,
+        fingerprint: FP, population: pop, updates: 0, seed: (baseSeed + i * 7919) >>> 0,
         wins: pop.map(function () { return 0; }), played: pop.map(function () { return 0; })
     }));
+}
+if (resumed) console.log('resumed ' + resumed + ' of ' + ISLANDS + ' islands');
+
+// Decide the islands and stop, without duelling. The resume decision above is
+// the difference between continuing a five-hour search and silently restarting
+// it, and it is the one part of this file that can be checked in milliseconds.
+if (process.env.GC_PBT_INIT_ONLY === '1') {
+    console.log('islands ready: ' + ISLANDS + ', resumed ' + resumed);
+    process.exit(0);
 }
 
 function readIsland(i) { return JSON.parse(fs.readFileSync(islandFile(i), 'utf8')); }
