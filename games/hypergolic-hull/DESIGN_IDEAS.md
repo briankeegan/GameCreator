@@ -124,30 +124,68 @@ as stronger. It is also the cleanest possible answer to "how do new enemies
 start appearing": they appear because of something the player did, visibly,
 and can undo.
 
-### New weapons — eight gaps, each a shape nothing covers
+### New weapons — one idea, not eight gadgets
 
-Every shipped weapon resolves instantly for a flat price. These do not:
+All eighteen shipped weapons do the same thing: remove hull from a ship at
+some geometry. Even the two that deal no damage only shove. So the first
+draft of this section was eight unrelated gadgets, and it read like it.
 
-1. **Spinal Driver** — lane 2-5. Free to hold; each round you do not fire it
-   gains +1 damage, to 3. The player's version of the telegraph the Railgun
-   Destroyer already uses against you.
-2. **Chain Battery** — contact, 1 energy, fires TWICE in a round at two
-   different targets. Nothing currently fires more than once.
-3. **Wake Mines** — leaves a charge on the hex you just left, every time you
-   move. The first weapon tied to movement rather than to aiming.
-4. **Ion Lance** — lane 2-4, no damage: the target's weapon is offline next
-   round. Enemies are built from the same crates you are, so attacking the
-   GEAR is free to express and is a whole new axis. The answer to a Railgun
-   you can see charging.
-5. **Shard Cannon** — ring 2-3, and it shatters an asteroid it hits. Every
-   procedural board is full of cover and no weapon interacts with it.
-6. **Marker Beam** — any range, no damage: everything that hits the marked
-   contact this round does +1. Makes carrying several guns a combination
-   rather than a list.
-7. **Breaching Charge** — contact, +2 against anything carrying a screen or
-   plating. Nothing is specifically anti-heavy.
-8. **Grapnel** — pulls YOU two or three hexes. The Tractor Beam moves them;
-   nothing moves you.
+**The thesis: a hostile is a MACHINE WITH PARTS, and you can act on the
+parts.** This is not a bolt-on — it is the game's own architecture. Every
+enemy carries a real hold of real crates (`ENEMY_TYPES[x].hold`), read by
+the same `deriveShip` the flagship uses. Their guns, reactors, drives and
+plating are objects already. Nothing has ever been able to touch one.
+
+**A. The hold is a target**
+
+1. **Spike** — hack an adjacent hostile and fire ITS gun, this round, at a
+   target you choose. Spends ITS energy, not yours. A Railgun Destroyer
+   that has spent five rounds filling its bus is the best weapon on the
+   board, and for one round it is yours.
+2. **Grapple & Strip** — tear one crate out of its hold into your cargo.
+   The hull keeps flying with a hole in it — a Picket with its reactor
+   gone never fires again — and you keep the item. This is also the
+   diegetic answer to "how do I get weapons": you take them off the
+   people who were using them.
+3. **Drive Cutter** — kills the engine. The chaser becomes scenery. It
+   removes a threat without removing a ship, which is the same move the
+   always-open Warp Gate already rewards.
+4. **Bus Overload** — dumps the reactor rather than disabling one gun, so
+   a Carrier's whole armament goes quiet at once and a one-gun hull
+   barely notices. The counter scales with how dangerous the target is.
+5. **Siphon** — drains their charge into your reactor. The economy
+   weapon: makes closing with something worth doing, and makes an
+   expensive gun affordable mid-fight rather than only at a dock.
+
+**B. The two from the first draft that earned their place**
+
+6. **Spinal Driver** — free to hold, gains damage every round you do not
+   fire it. You become the thing that telegraphs, and hostiles route
+   around you the way you route around a charging Railgun.
+7. **Wake Mines** — armed charges left on the hex you just vacated. The
+   only weapon aimed by walking, so a retreat becomes a threat.
+
+**C. Marks: the same gun at a different price (owner's idea)**
+
+The cheapest content in the game and the thing that makes a manifest slot
+a real budget decision. Same shape, same rules, no new art — only the
+trade moves:
+
+| Variant | Same as | The trade |
+|---|---|---|
+| Autocannon Mk II | contact ring | 2 damage for 3 energy and a 2×2 footprint |
+| Beam Lance (Short) | lane | reach cut to 2–3, cost cut to 1 |
+| Railgun (Light) | lane, board-spanning | 1 damage instead of 2, fires twice as often |
+| Flak Burst (Heavy) | contact ring, all targets | 2 damage to everything touching, 5 energy |
+
+A shelf can then offer the gun you already own at a different price, which
+is a genuine decision rather than a duplicate.
+
+**Cut from the first draft**, recorded so they are not re-proposed: Chain
+Battery and Breaching Charge (both plain damage wearing a hat), Marker
+Beam (dry), Grapnel (Grapple & Strip does it and more), Ion Lance
+(absorbed into Drive Cutter and Bus Overload), Shard Cannon (fine, but
+outside the thesis).
 
 ### New enemies — six questions nothing asks
 
