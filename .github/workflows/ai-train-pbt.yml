@@ -57,6 +57,9 @@ on:
       density:
         description: 'Density scoring: counts made of panels become per-panel (1 = on)'
         default: ''
+      migrate:
+        description: '0 = four INDEPENDENT loops, no weights carried between islands. The control'
+        default: '1'
       minutes:
         description: 'Minutes to train before stopping with a snapshot written. Under the job timeout'
         default: '315'
@@ -137,6 +140,7 @@ jobs:
           GC_PBT_ISLANDS: ${{ github.event.inputs.islands || '4' }}
           GC_PBT_LEG: ${{ github.event.inputs.leg || '250' }}
           GC_PBT_FACEOFF: ${{ github.event.inputs.faceoff || '3' }}
+          GC_PBT_MIGRATE: ${{ github.event.inputs.migrate || '1' }}
           GC_VS_POPULATION: ${{ github.event.inputs.population || '16' }}
           GC_MODE: pbt
           GC_TAG: pbt-${{ github.event.inputs.variant || 'default' }}-s${{ github.event.inputs.ga_seed || '11' }}
@@ -182,7 +186,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/ai-train-pbt.yml/dispatches" \
-            -d '{"ref":"main","inputs":{"variant":"${{ github.event.inputs.variant }}","level":"${{ github.event.inputs.level }}","exclude":"${{ github.event.inputs.exclude }}","islands":"${{ github.event.inputs.islands }}","population":"${{ github.event.inputs.population }}","leg":"${{ github.event.inputs.leg }}","faceoff":"${{ github.event.inputs.faceoff }}","ga_seed":"${{ github.event.inputs.ga_seed }}","depth":"${{ github.event.inputs.depth }}","beam":"${{ github.event.inputs.beam }}","rise":"${{ github.event.inputs.rise }}","density":"${{ github.event.inputs.density }}","minutes":"${{ github.event.inputs.minutes }}","chain":"true"}}')
+            -d '{"ref":"main","inputs":{"variant":"${{ github.event.inputs.variant }}","level":"${{ github.event.inputs.level }}","exclude":"${{ github.event.inputs.exclude }}","islands":"${{ github.event.inputs.islands }}","population":"${{ github.event.inputs.population }}","leg":"${{ github.event.inputs.leg }}","faceoff":"${{ github.event.inputs.faceoff }}","migrate":"${{ github.event.inputs.migrate }}","ga_seed":"${{ github.event.inputs.ga_seed }}","depth":"${{ github.event.inputs.depth }}","beam":"${{ github.event.inputs.beam }}","rise":"${{ github.event.inputs.rise }}","density":"${{ github.event.inputs.density }}","minutes":"${{ github.event.inputs.minutes }}","chain":"true"}}')
           if [ "$code" != "204" ]; then
             echo "the continuation was REFUSED (HTTP $code) — this chain ends here:"
             cat /tmp/dispatch.out

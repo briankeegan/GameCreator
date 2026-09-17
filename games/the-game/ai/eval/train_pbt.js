@@ -39,6 +39,10 @@ var LEG          = Number(process.env.GC_PBT_LEG || 250);      // updates per is
 var FACEOFF      = Number(process.env.GC_PBT_FACEOFF || 3);    // seeds per champion pairing
 var MAX_WEIGHT   = 300, MIN_WEIGHT = -MAX_WEIGHT;
 var MUTATE       = Number(process.env.GC_VS_MUTATE || 0.05);
+// MIGRATION OFF makes this four INDEPENDENT loops sharing a runner — the
+// control for "does carrying a discovery between islands help", and a way to
+// use all four cores for a baseline instead of one.
+var MIGRATE      = process.env.GC_PBT_MIGRATE !== '0';
 var DEADLINE     = Number(process.env.GC_DEADLINE || 0);
 var SNAPSHOT_HOOK = process.env.GC_SNAPSHOT_HOOK || null;
 
@@ -73,7 +77,7 @@ function randomGenome() {
 // committed by commit_snapshot.sh, so a foreign one can actually turn up in a
 // fresh checkout.
 function fingerprint() {
-    return ['pbt', ISLANDS, POP, MUTATE, OPTS.level, baseSeed,
+    return ['pbt', MIGRATE ? 'migrate' : 'nomigrate', ISLANDS, POP, MUTATE, OPTS.level, baseSeed,
             String(OPTS.depth), String(OPTS.beam), OPTS.rise ? 'rise' : '',
             OPTS.density ? 'density' : '', OPTS.allowRaise ? 'allowRaise' : '',
             KEYS.join(',')].join('|');
@@ -106,7 +110,8 @@ if (resumed) console.log('resumed ' + resumed + ' of ' + ISLANDS + ' islands');
 // the difference between continuing a five-hour search and silently restarting
 // it, and it is the one part of this file that can be checked in milliseconds.
 if (process.env.GC_PBT_INIT_ONLY === '1') {
-    console.log('islands ready: ' + ISLANDS + ', resumed ' + resumed);
+    console.log('islands ready: ' + ISLANDS + ', resumed ' + resumed +
+                (MIGRATE ? '' : ', MIGRATION OFF'));
     process.exit(0);
 }
 
@@ -225,7 +230,8 @@ function writeSnapshot(best, report, totalUpdates, diversity) {
 }
 
 console.log('PBT: ' + ISLANDS + ' islands x ' + POP + ' vectors, ' + LEG +
-            ' updates a leg, ' + KEYS.length + ' features, depth ' + OPTS.depth);
+            ' updates a leg, ' + KEYS.length + ' features, depth ' + OPTS.depth +
+            (MIGRATE ? '' : ', MIGRATION OFF'));
 console.log('state in ' + path.basename(DIR));
 
 var started = Date.now();
@@ -249,7 +255,9 @@ var started = Date.now();
         // the winner's weights, jogged — so a discovery escapes the island that
         // made it. It replaces that island's WORST vector, not its whole pool:
         // wiping the pool would throw away the diversity islands exist for.
-        for (var i2 = 0; i2 < ISLANDS; i2++) {
+        // The face-off still runs with migration off: it is what picks which
+        // island's champion gets snapshotted, and it moves no weights.
+        for (var i2 = 0; MIGRATE && i2 < ISLANDS; i2++) {
             if (i2 === bestI) continue;
             var st2 = states[i2];
             var worst = 0, worstRate = Infinity;

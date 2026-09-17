@@ -180,6 +180,36 @@ test('train_pbt resumes its islands, and refuses a foreign one', function () {
     }
 });
 
+// MIGRATION OFF IS A DIFFERENT SEARCH, so it must not open the populations of
+// a migrating run — four independent loops resuming into pools that have been
+// sharing weights is not the control it claims to be.
+test('migration off gets its own populations', function () {
+    var dir = path.join(__dirname, '.pbt-515151');
+    function init(migrate) {
+        var env = Object.assign({}, process.env, {
+            GC_PBT_INIT_ONLY: '1', GC_GA_SEED: '515151', GC_PBT_ISLANDS: '2',
+            GC_VS_POPULATION: '4', GC_LEVEL: '10', GC_DEPTH: '1',
+            GC_PBT_MIGRATE: migrate
+        });
+        return cp.execSync('node train_pbt.js', { cwd: __dirname, env: env, encoding: 'utf8' });
+    }
+    try {
+        if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+        init('1');
+        var migrating = JSON.parse(fs.readFileSync(path.join(dir, 'island0.json'), 'utf8'));
+        var off = init('0');
+        assert.ok(/MIGRATION OFF/.test(off), 'GC_PBT_MIGRATE=0 did not reach the trainer:\n' + off);
+        assert.ok(/resumed 0/.test(off),
+            'a no-migration run adopted the populations of a MIGRATING run — they have been ' +
+            'sharing weights, so it is not an independent baseline:\n' + off);
+        var independent = JSON.parse(fs.readFileSync(path.join(dir, 'island0.json'), 'utf8'));
+        assert.notStrictEqual(independent.fingerprint, migrating.fingerprint,
+            'both spellings hash the same, so either can open the other\'s populations');
+    } finally {
+        if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
