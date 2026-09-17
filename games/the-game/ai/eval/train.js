@@ -265,6 +265,19 @@ EXCLUDE.forEach(function (k) {
 var KEYS = registry.keys.filter(function (k) { return EXCLUDE.indexOf(k) < 0; });
 if (!KEYS.length) throw new Error('GC_EXCLUDE excluded every feature; there is nothing to search');
 var MAX_WEIGHT = 300;
+// A WEIGHT MAY BE NEGATIVE, SO THE SEARCH OWNS EACH FEATURE'S DIRECTION.
+//
+// Weights used to be clamped to [0, MAX_WEIGHT], which made registry.js's
+// `sign` a hand-typed verdict the search could not argue with: the only
+// thing it could say about a feature whose direction was wrong was ZERO —
+// mute it, never flip it. flatTop is the case that showed it. It penalises
+// a level board scaled by height, while roughness penalises the opposite
+// shape and maxHeight penalises the peak that flatness minimises; at most
+// one of those three can be right, and nothing in the run could decide
+// which. `sign` is now the STARTING GUESS — the initial population is drawn
+// non-negative, so a run begins where it always did — and the search is
+// free to walk a weight through zero and out the other side.
+var MIN_WEIGHT = -MAX_WEIGHT;
 
 // THE SEARCH IS CROSS-ENTROPY METHOD: keep the best SETS, generate new sets
 // clustered near those winners, repeat. (This is Tetris's method, not Puyo's
@@ -455,7 +468,9 @@ function evaluateVersus(genomes, seedPool, cb) {
 }
 
 function summarise(g) {
-    return KEYS.filter(function (k) { return g[k] > 0.5; })
+    // Math.abs: a weight of -180 is the loudest thing in the genome, and
+    // a `> 0.5` filter printed it as absent.
+    return KEYS.filter(function (k) { return Math.abs(g[k]) > 0.5; })
                .map(function (k) { return k + '=' + g[k].toFixed(0); })
                .join(' ') || '(all zero — the shipped AI)';
 }
@@ -478,7 +493,7 @@ if (seedFile && fs.existsSync(seedFile)) {
         var g = {};
         KEYS.forEach(function (k) {
             var v = (seedGenome[k] || 0) + gauss() * MAX_WEIGHT * strength;
-            g[k] = Math.max(0, Math.min(MAX_WEIGHT, v));
+            g[k] = Math.max(MIN_WEIGHT, Math.min(MAX_WEIGHT, v));
         });
         population.push(g);
     }
@@ -789,7 +804,7 @@ function advance(scored, andThen) {
             var g = {};
             KEYS.forEach(function (k) {
                 var s = Math.max(spread[k], floor);
-                g[k] = Math.max(0, Math.min(MAX_WEIGHT, mean[k] + gauss() * s));
+                g[k] = Math.max(MIN_WEIGHT, Math.min(MAX_WEIGHT, mean[k] + gauss() * s));
             });
             next.push(g);
         }

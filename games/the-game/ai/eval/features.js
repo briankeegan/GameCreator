@@ -11,13 +11,17 @@
 //   - PURE. Same input, same number, no reading the live Stack, no caching.
 //   - Reads only `input`. Reaching for the engine is how the two
 //     implementations in this repo drifted apart in the first place.
-//   - Returns a finite number, or Infinity where that is the honest answer
-//     (framesToDeath on a board that cannot die yet).
+//   - Returns a finite number.
 //
 // Features are added ONE AT A TIME, each with the test that proves it
 // measures what registry.js says it measures — in BOTH directions. See
 // README.md for the four steps.
-// panel-cpu.js's CURSOR_MOVE_FRAMES — the tap cadence travel.js prices with.
+// The cursor tap cadence travel.js prices with, in frames per step. It used
+// to cite panel-cpu.js's CURSOR_MOVE_FRAMES as its source; that constant no
+// longer exists, so the citation was pointing at nothing. Kept at 4 because
+// travel.js's own measurements are calibrated to it (2 steps = 21 frames,
+// 4 = 23) — and it is a hand-set number with no engine fact behind it any
+// more, which is why it is said here rather than implied.
 var MOVE_FRAMES = 4;
 
 (function (root, factory) {
@@ -428,69 +432,6 @@ var MOVE_FRAMES = 4;
     return 1 + (frames - 1) / MOVE_FRAMES;
   }
 
-  // -------------------------------------------------------- framesToDeath
-  //
-  // HOW MANY FRAMES THIS BOARD HAS LEFT.
-  //
-  // ONE feature, where the obvious design is three. Stop time, health and
-  // shake do not sit beside each other as resources to bank — they PAUSE
-  // each other, and the engine says so in three places:
-  //
-  //   - advancePassiveRaise decrements health only inside
-  //     (!riseLock && stopTime === 0), so stop time and riseLock both
-  //     freeze the clock rather than adding to a separate pool.
-  //   - checkGameOver needs health <= 0 AND shakeTime <= 0, so shake is
-  //     death protection: more frames, not a different currency.
-  //   - decrementTimers drains preStopTime first and only then stopTime,
-  //     so the real stop clock is their sum.
-  //
-  // As three additive features the search would double-count every one of
-  // those interactions. As one, "how long have I got" is a single number
-  // the weight can be honest about.
-  //
-  // AND STOP TIME DOES NOT BANK. awardStopTime ends
-  // `if (stopTime > this.stopTime) this.stopTime = stopTime` — a MAX, not
-  // a +=. A 4-chain paying 90 frames while 120 are still on the clock earns
-  // NOTHING. That is why "stop time earned" is not a feature here: scored
-  // separately from "stop time banked", the two would sum, and the search
-  // would learn that chaining during stop pays when it is exactly the
-  // moment it does not. This feature reads the resulting clock, so the max
-  // is already applied by the engine and cannot be double-counted.
-  //
-  // IT SATURATES. IT DOES NOT RETURN INFINITY.
-  //
-  // Infinity was the first answer, and the reasoning was that a sentinel is
-  // a number the weight multiplies while Infinity is the honest answer to
-  // "how long until this kills me" on a board that cannot die. The honesty
-  // is real and the consequence is fatal: a weighted SUM containing
-  // Infinity is Infinity, so every candidate scores Infinity, every
-  // candidate TIES, and every other feature on the board is annihilated the
-  // moment this one carries any weight at all.
-  //
-  // Measured, not reasoned: with framesToDeath at 1 and maxHeight at 50, a
-  // board holding one panel and a board filled to the ceiling both scored
-  // Infinity. The search was choosing between candidates it could not tell
-  // apart. That is worse than the feature not existing.
-  //
-  // So a safe board returns SAFE_FRAMES — a cap, not a sentinel. The cap is
-  // the point: past about ten seconds of cushion, more cushion is not
-  // better in any way the search should trade board quality for. A board
-  // with an enormous stop-time bank and a board that is simply fine are
-  // both, correctly, "fine". Anything genuinely dying scores below it and
-  // the ordering near death — the only place this feature has to be right —
-  // is untouched.
-  var SAFE_FRAMES = 600;   // 10s at 60fps
-
-  function framesToDeath(input) {
-    var clock = input.clock;
-    if (!clock.toppedOut) return SAFE_FRAMES;
-    if (clock.riseLock) return SAFE_FRAMES;
-    var left = (clock.preStopTime || 0) + (clock.stopTime || 0) +
-               (clock.shakeTime || 0) + (clock.health || 0);
-    return Math.min(left, SAFE_FRAMES);
-  }
-
-
   // Stop time this move actually buys: earned minus the clock already running, floored at 0, and 0 unless the board could die. awardStopTime takes a MAX, not a sum.
   var DANGER_ROWS = 1;
 
@@ -682,7 +623,6 @@ var MOVE_FRAMES = 4;
   }
 
   return {
-    SAFE_FRAMES: SAFE_FRAMES,
     matchPotential: matchPotential,
     chainPotential: chainPotential,
     comboPotential: comboPotential,
@@ -696,7 +636,6 @@ var MOVE_FRAMES = 4;
     stopTimeEarned: stopTimeEarned,
     stopTimeGain: stopTimeGain,
     brokeGarbage: brokeGarbage,
-    framesToDeath: framesToDeath,
     scoreEarned: scoreEarned,
     garbageSent: garbageSent,
     chainLength: chainLength,

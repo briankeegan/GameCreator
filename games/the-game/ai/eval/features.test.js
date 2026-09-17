@@ -167,7 +167,6 @@ function latent(rows, marks) {
 }
 function cleared(n) { return F.garbageCleared(inputMod.normalize({ earned: { garbageCleared: n } })); }
 
-function death(clock) { return F.framesToDeath(inputMod.normalize({ clock: clock })); }
 
 // stopTimeGain: what this candidate's stop time is WORTH, which is the extra
 // frames it buys over the clock already running, and only where dying is
@@ -863,24 +862,6 @@ test('chainLength: longer chains score higher', function () {
 });
 
 
-// ---- framesToDeath ----
-// toppedOut ? preStop + stop + shake + health : Infinity, and Infinity
-// while riseLock holds. ONE feature, not three, because stop time, health
-// and shake do not sit beside each other — they pause each other:
-//   - health only decrements inside (!riseLock && stopTime === 0)
-//   - game over needs health <= 0 AND shakeTime <= 0
-//   - preStopTime drains before stopTime does
-
-test('framesToDeath: a board that is not topped out is SAFE, and safe is a NUMBER', function () {
-    // Infinity was the first answer and it is wrong at the seam. A weighted
-    // sum containing Infinity is Infinity, so EVERY candidate ties and every
-    // other feature is annihilated — measured: a nearly-empty board and a
-    // completely full board both scored Infinity with framesToDeath weighted
-    // at 1 and maxHeight at 50. The feature has to saturate, not diverge.
-    assert.strictEqual(death({ toppedOut: false, health: 1 }), F.SAFE_FRAMES);
-    assert.ok(isFinite(F.SAFE_FRAMES) && F.SAFE_FRAMES > 0);
-});
-
 // The framesToDeath weighting test that lived here is gone with the
 // feature. What it guarded — one term swallowing all the others — is now
 // guarded generally rather than for one feature: puyocpu.test.js's "no
@@ -916,40 +897,6 @@ test('no single feature can swamp the rest at equal weight', function () {
             '(mean 586 against everything else under 22) and travelCost in frames ' +
             '(spread 21 against a next-biggest of 2.8) both were.');
     });
-});
-
-test('framesToDeath: it saturates rather than growing without bound', function () {
-    // Two comfortable boards are both simply "fine". Letting the number run
-    // away means a board with a huge stop-time cushion outweighs everything
-    // else on the board, which is the same failure as Infinity, slower.
-    assert.strictEqual(death({ toppedOut: true, health: 40, stopTime: 100000 }), F.SAFE_FRAMES);
-});
-
-test('framesToDeath: topped out with health is that many frames', function () {
-    assert.strictEqual(death({ toppedOut: true, health: 40 }), 40);
-});
-
-test('framesToDeath: stop time is added, because it pauses the drain', function () {
-    assert.strictEqual(death({ toppedOut: true, health: 40, stopTime: 60 }), 100);
-});
-
-test('framesToDeath: preStop is added too — it drains BEFORE stop', function () {
-    assert.strictEqual(death({ toppedOut: true, health: 40, stopTime: 60, preStopTime: 12 }), 112);
-});
-
-test('framesToDeath: shake is added — you cannot die at 0 health while shaking', function () {
-    assert.strictEqual(death({ toppedOut: true, health: 0, shakeTime: 18 }), 18);
-});
-
-test('framesToDeath: riseLock alone makes it safe, even topped out at 1 health', function () {
-    // A swap always in flight holds riseLock, so health never decrements —
-    // panel-cpu.js records exactly this, and a version without it would
-    // panic at a board in no danger at all.
-    assert.strictEqual(death({ toppedOut: true, health: 1, riseLock: true }), F.SAFE_FRAMES);
-});
-
-test('framesToDeath: topped out with nothing left is zero, not Infinity', function () {
-    assert.strictEqual(death({ toppedOut: true, health: 0 }), 0);
 });
 
 

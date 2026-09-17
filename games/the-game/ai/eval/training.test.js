@@ -747,6 +747,40 @@ test('rise REACHES THE BOT, end to end through bench', function () {
         'it would measure nothing');
 });
 
+// ------------------------------------------- the search owns each direction
+//
+// registry.js's `sign` is a STARTING GUESS, not a verdict. While weights were
+// clamped to [0, MAX_WEIGHT] it was a verdict: the only thing a run could say
+// about a feature whose direction was wrong was zero — mute it, never flip
+// it. Two things have to hold for that to be fixed, and a run that reports
+// plausible weights satisfies neither on its own.
+test('a weight can be NEGATIVE — the clamp does not stop at zero', function () {
+    var src = fs.readFileSync(path.join(__dirname, 'train.js'), 'utf8');
+    assert.ok(/MIN_WEIGHT\s*=\s*-MAX_WEIGHT/.test(src),
+        'train.js does not define MIN_WEIGHT as -MAX_WEIGHT');
+    var clamps = src.match(/Math\.max\(\s*(MIN_WEIGHT|0)\s*,\s*Math\.min\(MAX_WEIGHT/g) || [];
+    assert.ok(clamps.length >= 2,
+        'expected both weight clamps to be found, saw ' + clamps.length);
+    clamps.forEach(function (c) {
+        assert.ok(/Math\.max\(\s*MIN_WEIGHT/.test(c),
+            'a weight is still clamped at 0: ' + c + ' — sign is a verdict again, ' +
+            'and a feature pointing the wrong way can only be muted, not flipped');
+    });
+});
+
+test('a run really does move a weight below zero', function () {
+    // The two checks above read the source; this one reads a RUN. A negative
+    // weight has to be reachable in practice, not just permitted in text.
+    var r = tinyRun({ GC_GA_SEED: '90210' });
+    var w = r.result.weights || {};
+    var negative = Object.keys(w).filter(function (k) { return w[k] < 0; });
+    assert.ok(negative.length > 0,
+        'no weight went negative in a real run over ' + Object.keys(w).length +
+        ' features. Either the clamp is back, or the initial population and the ' +
+        'mutation together cannot reach below zero — in which case sign is still ' +
+        'a verdict however the clamp is written.');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
