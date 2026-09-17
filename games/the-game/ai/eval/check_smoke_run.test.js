@@ -85,6 +85,38 @@ check('REJECTS a report missing a scenario', !r.ok && /only 3 scenarios/.test(r.
 g = good(); g.weights.a = -500;
 check('ACCEPTS negative weights, which are legitimate', run(g, 3).ok);
 
+// ---- versus, where a zero is a result rather than an absence ----
+//
+// The score-shaped rule "both sides must be above zero" refused to start
+// three healthy versus runs: a two-generation bot lost all twelve held-out
+// duels to the shipped one, which is what a two-generation bot should do.
+// Under versus the two win rates sum to 1 by construction, so what actually
+// signals a broken report is no duels, or a pair that does not add up.
+function versusSnap() {
+    return {
+        trainFitness: 0.75,
+        weights: { a: 10, b: -20, c: 30 },
+        objective: 'versus',
+        holdout: {
+            learned: { fitness: 0, winRate: 0, draws: 0, duels: 12, versus: true },
+            shipped: { fitness: 1, versus: true }
+        }
+    };
+}
+check('ACCEPTS a versus run that lost every held-out duel', run(versusSnap(), 3).ok);
+
+g = versusSnap();
+g.holdout.learned.fitness = 0.5; g.holdout.shipped.fitness = 0.5;
+check('ACCEPTS a versus run that split its held-out duels', run(g, 3).ok);
+
+g = versusSnap(); g.holdout.learned.duels = 0;
+r = run(g, 3);
+check('REJECTS a versus report that played no duels', !r.ok && /no duels means no verdict/.test(r.out));
+
+g = versusSnap(); g.holdout.shipped.fitness = 0.25;
+r = run(g, 3);
+check('REJECTS versus win rates that do not sum to 1', !r.ok && /do not sum to 1/.test(r.out));
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('');
 if (fails) { console.log('  ' + fails + ' FAILED\n'); process.exit(1); }

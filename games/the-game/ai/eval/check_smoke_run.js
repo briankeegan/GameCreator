@@ -78,10 +78,30 @@ if (!(snap.trainFitness > 0)) {
 // 4. THE HELD-OUT REPORT RAN, and produced both sides. This is the number
 //    every decision gets made on. It has silently not run before, and a
 //    missing number reads like a modest result rather than like an absence.
+//
+//    UNDER 'versus' A ZERO IS A RESULT, NOT AN ABSENCE. The held-out figure
+//    there is a win rate out of a fixed number of duels, and the two sides
+//    sum to 1 by construction — so a smoke-trained bot losing every duel to
+//    the shipped one reports learned 0, shipped 1, which is exactly what a
+//    two-generation bot should do. Reading that as "the comparison is not
+//    measuring anything" refused to start three healthy versus runs. What is
+//    genuinely broken under versus is no duels played, or a record that does
+//    not account for every duel, so that is what is asked instead.
 var h = snap.holdout;
 if (!h || !h.learned || !h.shipped) {
     problems.push('no held-out report in the snapshot — the number every ' +
                   'verdict is read off did not get produced');
+} else if (h.learned.versus) {
+    var duels = h.learned.duels;
+    if (!(duels > 0)) {
+        problems.push('the held-out report played ' + duels + ' duels — under versus ' +
+                      'the record IS the result, so no duels means no verdict');
+    } else if (Math.abs((h.learned.fitness + h.shipped.fitness) - 1) > 1e-6) {
+        problems.push('held-out win rates are ' + h.learned.fitness + ' and ' +
+                      h.shipped.fitness + ', which do not sum to 1 — every duel has a ' +
+                      'winner or is a draw, so a pair that does not add up means duels ' +
+                      'went unrecorded');
+    }
 } else if (!(h.learned.fitness > 0) || !(h.shipped.fitness > 0)) {
     problems.push('held-out fitness is zero on one side (learned ' +
                   (h.learned.fitness) + ', shipped ' + (h.shipped.fitness) +
@@ -108,7 +128,12 @@ if (problems.length) {
 // Reports what was actually checked. The first version said "all non-zero"
 // while the check is "at least half moved" — a success line claiming more
 // than it verified is the same lie as a gate that cannot fail, just quieter.
+// Under versus a rounded fitness is unreadable — 0.5 and a clean sweep round
+// to the same integer — so the record is printed instead.
 console.log('smoke run OK: ' + moved.length + ' of ' + keys.length +
             ' weights moved, trainFitness ' + Math.round(snap.trainFitness) +
-            ', held-out learned ' + Math.round(h.learned.fitness) +
-            ' vs shipped ' + Math.round(h.shipped.fitness));
+            (h.learned.versus
+                ? ', held-out win rate ' + Math.round(h.learned.winRate * 100) + '% of ' +
+                  h.learned.duels + ' duels'
+                : ', held-out learned ' + Math.round(h.learned.fitness) +
+                  ' vs shipped ' + Math.round(h.shipped.fitness)));
