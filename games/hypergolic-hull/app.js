@@ -819,6 +819,12 @@ for (const [type, file] of Object.entries({
   outrider: "icons/enemy-outrider.png",
   sapper: "icons/enemy-sapper.png",
   impaler: "icons/enemy-impaler.png",
+  // The pirates. Warm rust and brass against the Wardens' cold slate, so
+  // which faction a contact belongs to reads before its name does.
+  corsairLead: "icons/enemy-corsair-lead.png",
+  splitter: "icons/enemy-splitter.png",
+  harrier: "icons/enemy-harrier.png",
+  outrunner: "icons/enemy-scavenger.png",
 })) {
   const img = new Image();
   img.src = file;

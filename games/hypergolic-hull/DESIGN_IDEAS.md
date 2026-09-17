@@ -47,7 +47,24 @@ overlay, mode-based targeting for Tractor/Fighter).
 > the build when the crates stop producing it is the missing third piece
 > (RULE → TOOL → GATE), and is not built.
 
-## VARIETY PLAN — enemies and weapons (2026-09-17). NOTHING HERE IS BUILT.
+> **BUILT 2026-09-17 — first slice.** Four Marks, four pirate hulls, and the
+> two rules they needed. Measured with `playtest.js 60`:
+>
+> - Marks, new weapons, the spawn refactor and the split rule, with the new
+>   hulls held OUT of the generator: **26 wins in 60** against a 27 baseline.
+>   The infrastructure costs nothing.
+> - The four hulls across the middle tiers: **11 in 60.** Removing any ONE
+>   of them recovered almost nothing (9–15), so no single class was at
+>   fault — four new threats at once is simply a large step.
+> - The same four confined to the deepest tier: **22 in 60.** Taken. A whole
+>   faction at the deep end costing five points is a price, not a defect.
+>
+> Not yet built: the armoury/manifest, notoriety, and the five hack weapons.
+> Until the manifest exists the shelf is still one growing pool, which is
+> the trap this plan opens by naming — so no further weapons should reach
+> `OUTPOST_OFFER_POOL` before it does.
+
+## VARIETY PLAN — enemies and weapons (2026-09-17)
 
 A menu to choose from, not a queue to work through. It covers what should
 exist, how a player gets it, and — the part that decides whether any of it

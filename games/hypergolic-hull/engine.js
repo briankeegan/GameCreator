@@ -99,7 +99,7 @@
   // mechanic and Fighter Squadron was a free instant-kill living outside
   // the weapon/energy model. Everything left runs on the same
   // stats + energy + slots chassis.
-  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge", "prowCannon", "siegeMaul"];
+  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge", "prowCannon", "siegeMaul", "autocannonMk2", "beamLanceShort", "railgunLight", "flakBurstHeavy"];
   // Purchase-only actions (see OUTPOST_OFFER_POOL/applyOutpostPurchase) —
   // never part of any level's own baked-in `actions` list, and excluded
   // from the default fallback below so they don't show up for free the
@@ -107,7 +107,7 @@
   // guaranteed claimable (free) at Sector 2's Outpost specifically (see
   // pickOutpostOfferIds), just no longer handed out automatically for
   // reaching the sector.
-  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge", "prowCannon", "siegeMaul"];
+  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge", "prowCannon", "siegeMaul", "autocannonMk2", "beamLanceShort", "railgunLight", "flakBurstHeavy"];
   // Sectors that don't specify `actions` explicitly (Sector 4 "Full Fleet"
   // and every procedurally-generated sector) default to every action that
   // unlocks just by playing.
@@ -636,6 +636,19 @@
     // the thing you are trying to get away from.
     scuttlingCharge: { id: "scuttlingCharge", label: "Scuttling Charge", shape: "ring", range: 0, minRange: 0, damage: 1, targets: "one", energyCost: 2, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, places: true, placesSelf: true, blast: 1 },
     demolitionCharge: { id: "demolitionCharge", label: "Demolition Charge", shape: "ring", range: 3, minRange: 2, damage: 1, targets: "one", energyCost: 3, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, places: true, blast: 1 },
+
+    // MARKS. The same gun at a different price: identical shape, identical
+    // rules, only the trade moves. No new code path — but they DO get their
+    // own icon, because every weapon does (browser.test.js checks it), and
+    // a Mark you cannot tell apart on the Hold grid is a trap rather than a
+    // decision.
+    //
+    // Each one is a straight trade, never a strict upgrade: more damage is
+    // paid for in energy and hold space, cheaper is paid for in reach.
+    autocannonMk2: { id: "autocannonMk2", label: "Autocannon Mk II", shape: "ring", range: 2, minRange: 1, damage: 1, targets: "one", energyCost: 3, speed: 3, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    beamLanceShort: { id: "beamLanceShort", label: "Beam Lance (Short)", shape: "lane", range: 3, minRange: 2, damage: 1, targets: "one", energyCost: 1, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    railgunLight: { id: "railgunLight", label: "Railgun (Light)", shape: "lane", range: 20, minRange: 2, damage: 1, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
+    flakBurstHeavy: { id: "flakBurstHeavy", label: "Flak Burst (Heavy)", shape: "ring", range: 1, minRange: 1, damage: 2, targets: "all", energyCost: 5, speed: 2, pattern: ALL_DIRECTIONS_PATTERN, slots: 1 },
   };
   // Static data, read everywhere, written nowhere — frozen so an
   // accidental mutation (a helper that "just tweaks" a weapon object for
@@ -697,6 +710,13 @@
     repulsorField: { id: "repulsorField", label: "Repulsor Field", kind: "weapon", weaponKey: "repulsorField", w: 1, h: 2 },
     tractorBeam: { id: "tractorBeam", label: "Tractor Beam", kind: "weapon", weaponKey: "tractorBeam", w: 1, h: 2 },
     scuttlingCharge: { id: "scuttlingCharge", label: "Scuttling Charge", kind: "weapon", weaponKey: "scuttlingCharge", w: 1, h: 2 },
+    // The Marks' crates. Footprint is part of each trade: the Mk II buys
+    // its second point of damage with a cell of hold, the Short lance
+    // gives back a cell for losing two hexes of reach.
+    autocannonMk2: { id: "autocannonMk2", label: "Autocannon Mk II", kind: "weapon", weaponKey: "autocannonMk2", w: 2, h: 2 },
+    beamLanceShort: { id: "beamLanceShort", label: "Beam Lance (Short)", kind: "weapon", weaponKey: "beamLanceShort", w: 1, h: 2 },
+    railgunLight: { id: "railgunLight", label: "Railgun (Light)", kind: "weapon", weaponKey: "railgunLight", w: 1, h: 3 },
+    flakBurstHeavy: { id: "flakBurstHeavy", label: "Flak Burst (Heavy)", kind: "weapon", weaponKey: "flakBurstHeavy", w: 2, h: 2 },
     reactorCore: { id: "reactorCore", label: "Reactor Core", kind: "reactor", rechargeGain: 1, energyCapacity: 6, w: 2, h: 2 },
     sublightDrive: { id: "sublightDrive", label: "Sublight Drive", kind: "engine", moveRange: 1, w: 1, h: 3 },
     shieldGenerator: { id: "shieldGenerator", label: "Shield Generator", kind: "shield", capacity: 1, w: 2, h: 2 },
@@ -1271,6 +1291,80 @@
         ],
       },
     },
+    // ---- the pirates -----------------------------------------------------
+    //
+    // A second faction, and the difference is in SHAPE rather than in
+    // numbers. They want the wrecks you want, so a board with them on it
+    // turns salvage from free loot into contested loot.
+
+    // The Corsair Lead. The only hostile carrying a Flak Burst heavy enough
+    // to hit everything in contact for two — backing off one hex is the
+    // whole answer, and its screen means you cannot simply out-trade it.
+    corsairLead: {
+      hull: 1, salvage: 6,
+      hold: {
+        cols: 5, rows: 6, blocked: ["0,0", "4,0", "0,5", "4,5"],
+        items: [
+          { id: "flakBurstHeavy", x: 1, y: 0 },
+          { id: "shieldGenerator", x: 1, y: 2 },
+          { id: "sublightDrive", x: 0, y: 1 },
+          { id: "reactorCore", x: 3, y: 1 },
+        ],
+      },
+    },
+    // Two half-hulls clamped together, and killing it is only the first
+    // half of the job: it dies into a pair of Interceptors. The question is
+    // whether to spend the rounds at all, which the always-open gate has
+    // always permitted and nothing has ever made tempting.
+    splitter: {
+      hull: 1, salvage: 4,
+      split: { into: "interceptor", count: 2 },
+      hold: {
+        cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
+        items: [
+          { id: "beamLanceShort", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 1 },
+          { id: "microReactor", x: 3, y: 1 },
+        ],
+      },
+    },
+    // Acts only on a round the flagship MOVED. Standing still turns it off
+    // completely, which inverts every other instinct this game teaches —
+    // and it carries reach, so standing still is not free either.
+    harrier: {
+      hull: 1, salvage: 3, inhibition: "onlyWhenChased",
+      hold: {
+        cols: 4, rows: 5, blocked: ["0,0", "3,0", "0,4", "3,4"],
+        items: [
+          { id: "autocannonMk2", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 1 },
+          // Three on the bus against a gun costing three: it answers one
+          // round in three that you move, not every one of them.
+          { id: "microReactor", x: 3, y: 1 },
+          { id: "chargeBank", x: 3, y: 2 },
+        ],
+      },
+    },
+    // The long gun of the pirate line: the whole axis, but for one point.
+    // It fires twice as often as a Railgun Destroyer and hurts half as
+    // much, so the counter is the same and the arithmetic is not.
+    outrunner: {
+      hull: 1, salvage: 4,
+      hold: {
+        cols: 4, rows: 6, blocked: ["0,0", "3,0", "0,5", "3,5"],
+        items: [
+          { id: "railgunLight", x: 1, y: 0 },
+          { id: "sublightDrive", x: 2, y: 1 },
+          // Two generators and a bank: capacity four against a slug that
+          // costs four, refilling two a round. It fires one round in three
+          // where the Railgun Destroyer fires one in six — the counter is
+          // the same lane, the arithmetic is not.
+          { id: "microReactor", x: 0, y: 1 },
+          { id: "microReactor", x: 3, y: 1 },
+          { id: "chargeBank", x: 0, y: 3 },
+        ],
+      },
+    },
     // The Bulwark: a fortress, not a ship. Two crates of plating on a
     // two-Hull frame, no drive at all, and BOTH ends of the roster's
     // range bolted to it — a Railgun down every axis for 2, and a Flak
@@ -1419,6 +1513,11 @@
         (other) => !(ownBlast && other === enemy) && blast.some((h) => posEq(h, other))
       );
     },
+    // The Harrier's. It answers movement and nothing else: hold position and
+    // it never fires, run and it is the fastest thing on the board. Reads
+    // state.playerMovedThisRound, which applySublight sets and the round
+    // clears after the enemies have answered.
+    onlyWhenChased: (state) => !state.playerMovedThisRound,
     // The Cutter's: it will not fire while any hostile is standing anywhere
     // in the beam it is about to fire. Not a proximity rule — a POSITION
     // rule. You do not out-range it or get under it; you put its own side
@@ -1710,6 +1809,12 @@
     // afford outright, and the only gun that asks which way you're facing.
     { id: "prowCannon", label: "Prow Cannon (1x2 — a wedge two deep off the nose)", cost: 6, rarity: "common" },
     { id: "siegeMaul", label: "Siege Maul (2x2 — contact only, 2 dmg — it goes through screens)", cost: 12, rarity: "uncommon" },
+    // Marks: the same gun, priced differently. Shown with what moved, so a
+    // shelf offering one you already carry still reads as a decision.
+    { id: "beamLanceShort", label: "Beam Lance, Short (1x2 — two to THREE down any axis, 1 energy)", cost: 8, rarity: "common" },
+    { id: "autocannonMk2", label: "Autocannon Mk II (2x2 — the same gun, reaching TWO)", cost: 13, rarity: "uncommon" },
+    { id: "railgunLight", label: "Railgun, Light (1x3 — the whole axis for 1 dmg, a charge cheaper)", cost: 15, rarity: "uncommon" },
+    { id: "flakBurstHeavy", label: "Flak Burst, Heavy (2x2 — 2 dmg to EVERYTHING touching, 5 energy)", cost: 18, rarity: "rare" },
     { id: "flakBurst", label: "Flak Burst (2x2 — everything touching us, at once)", cost: 10, rarity: "uncommon" },
     { id: "arcBeam", label: "Arc Beam (2x2 — the ring at two. Nothing closer.)", cost: 9, rarity: "uncommon" },
     { id: "beamLance", label: "Beam Lance (1x3 — two to five down any axis, nothing adjacent)", cost: 14, rarity: "rare" },
@@ -1906,6 +2011,12 @@
       if (o.id === "repulsorField") return levelId >= 5;
       if (o.id === "tractorBeam") return levelId >= 6;
       if (o.id === "piercingLance") return levelId >= 8;
+      // A Mark arrives alongside the shape it re-prices, so it reads as an
+      // alternative rather than as an unrelated gun that happens to rhyme.
+      if (o.id === "beamLanceShort") return levelId >= 4;   // with the Beam Lance
+      if (o.id === "autocannonMk2") return levelId >= 5;    // once one gun is no longer enough
+      if (o.id === "railgunLight") return levelId >= 8;     // with the Railgun's own tier
+      if (o.id === "flakBurstHeavy") return levelId >= 7;   // once crowds are the problem
       // Only ever the SECOND screen, and only out where the boards are big
       // enough to need it — see the pool entry.
       if (o.id === "screenArray") return levelId >= 6 && carried.has("shieldGenerator");
@@ -2238,6 +2349,32 @@
     return zone;
   }
 
+  // ONE place a hostile is built, so a ship spawned mid-sector (a Splitter's
+  // halves) is identical in every field to one the level dealt. Every stat
+  // here is DERIVED from the class's hold — hull from its plating, bus from
+  // its reactors, screens from its generators — exactly as the flagship's
+  // are; there is no second set of rules for enemies.
+  let _spawnSeq = 0;
+  function spawnEnemy(type, q, r, id) {
+    const def = ENEMY_TYPES[type];
+    if (!def) throw new Error(`Unknown enemy type: ${type}`);
+    return {
+      id: id || `s${_spawnSeq++}`,
+      type,
+      q,
+      r,
+      alive: true,
+      hp: def.maxHull,
+      maxHp: def.maxHull,
+      // A Railgun spawns EMPTY and visibly charges toward its first shot;
+      // a cost-1 chaser spawns full and fires every turn.
+      energy: def.startsEmpty ? 0 : def.ship.maxEnergy,
+      maxEnergy: def.ship.maxEnergy,
+      shieldCharges: def.ship.maxShields,
+      maxShields: def.ship.maxShields,
+    };
+  }
+
   function createGameState(level, carryOver) {
     validateLevel(level);
     // Built before the state literal so the Outpost's shelf can be stocked
@@ -2373,32 +2510,7 @@
       exitRule: level.exitRule,
       exitUnlocked: false,
       hazards: (level.hazards || []).map((h) => ({ type: h.type, q: h.q, r: h.r })),
-      enemies: level.enemies.map((e, i) => {
-        const def = ENEMY_TYPES[e.type];
-        if (!def) throw new Error(`Unknown enemy type: ${e.type}`);
-        return {
-          id: `e${i}`,
-          type: e.type,
-          q: e.q,
-          r: e.r,
-          alive: true,
-          // Airframe plus whatever plating is bolted to it — derived, not
-          // declared, exactly like the flagship's maxHull.
-          hp: def.maxHull,
-          maxHp: def.maxHull,
-          // Its reactor is the reactors in its hold. A Railgun spawns
-          // EMPTY and visibly charges toward its first shot (the
-          // telegraph); a cost-1 chaser spawns full and fires every turn.
-          energy: def.startsEmpty ? 0 : def.ship.maxEnergy,
-          maxEnergy: def.ship.maxEnergy,
-          // A Shield Generator in a hostile hold does what one in yours
-          // does: absorbs a hit, then it's spent. Same item, same rule,
-          // same both ways round — an Escort is simply the first class
-          // that bothered to bolt one on.
-          shieldCharges: def.ship.maxShields,
-          maxShields: def.ship.maxShields,
-        };
-      }),
+      enemies: level.enemies.map((e, i) => spawnEnemy(e.type, e.q, e.r, `e${i}`)),
       // The Hold: the ship's equipment grid — either carried whole from
       // the previous sector (a run's ship IS its hold) or built fresh
       // from the level's starting kit. `systems` is derived from it.
@@ -3802,6 +3914,37 @@
   // AP is spent the enemy phase runs and the budget refills. Flying onto
   // the Warp Gate wins mid-round — you're through the gate before anyone
   // gets to answer.
+  // A hull that dies into two smaller ones. Resolved as ONE sweep after the
+  // round rather than at each kill site: there are seven places a hostile
+  // can die (shot, rammed, pushed off the edge, pushed into another hull,
+  // pushed into rock, caught by a charge, caught by a blast) and a rule
+  // wired into some of them is a rule that works some of the time.
+  //
+  // `split` on the class names what it becomes and how many. The halves
+  // arrive on free neighbouring hexes; any that cannot be placed simply do
+  // not arrive, so a kill in a corner is worth making.
+  function resolveSplits(state) {
+    for (const enemy of state.enemies) {
+      if (enemy.alive || enemy.splitResolved) continue;
+      enemy.splitResolved = true;
+      const def = ENEMY_TYPES[enemy.type];
+      if (!def || !def.split) continue;
+      let placed = 0;
+      for (let d = 0; d < 6 && placed < def.split.count; d++) {
+        const to = neighbor(enemy, d);
+        if (!onBoard(state, to)) continue;
+        if (enemyAt(state, to) || hazardAt(state, to) || posEq(to, state.playerPos)) continue;
+        if (state.exits.some((e) => posEq(e, to))) continue;
+        state.enemies.push(spawnEnemy(def.split.into, to.q, to.r));
+        placed += 1;
+      }
+      if (placed) {
+        pushLog(state, `${enemy.type.toUpperCase()} broke apart — ${placed} still flying.`);
+        state.events.push({ type: "split", q: enemy.q, r: enemy.r, victim: enemy.type });
+      }
+    }
+  }
+
   function spendAp(state) {
     checkExitUnlock(state);
     if (state.status !== "playing") return;
@@ -3819,8 +3962,14 @@
       }
       return;
     }
+    resolveSplits(state);
     if (state.ap <= 0) {
       enemyPhase(state);
+      resolveSplits(state);
+      // The Harrier reads this: it acts only on a round the flagship moved.
+      // Cleared once the enemies have answered, so the flag always describes
+      // the round they are answering rather than the one before it.
+      state.playerMovedThisRound = false;
       if (state.status !== "playing") return;
       state.ap = state.maxAp;
     }
@@ -3910,6 +4059,9 @@
     const dir = directionIndex(from, to);
     if (dir >= 0) state.facing = dir;
     state.playerPos = { q: to.q, r: to.r }; // copy: never alias a board hex or an exit into live state
+    // Set BEFORE spendAp, because spendAp runs the enemy phase — the
+    // Harrier has to be able to see that this round was a round you moved.
+    state.playerMovedThisRound = true;
     checkPlayerHazard(state);
     if (state.status !== "playing") return;
     checkDiscovery(state);

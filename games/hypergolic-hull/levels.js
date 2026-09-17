@@ -590,7 +590,13 @@
               // that goes THROUGH a hull. Deep boards are where hostiles
               // stack up in lines and where hiding behind one of them was
               // the free answer to the other two.
-              ["interceptor", "cruiser", "corsair", "picket", "cutter", "escort", "carrier", "demolitionist", "outrider", "sapper", "impaler", "sentry", "bombard", "lancer", "railgun", "salvager"];
+              ["interceptor", "cruiser", "corsair", "picket", "cutter", "escort", "carrier", "demolitionist", "outrider", "sapper", "impaler", "sentry", "bombard", "lancer", "railgun", "salvager",
+                // The pirates. A whole faction is a large step, so it lands
+                // where a ship has a developed hold to answer it with — and
+                // measured, four new classes spread across the middle tiers
+                // cost 15 points of win rate between them, none of them
+                // individually.
+                "splitter", "harrier", "outrunner", "corsairLead"];
   }
 
   function generateLevel(depth, variantId) {
@@ -853,7 +859,7 @@
     // walking, and no amount of good play answers that with three hull.
     // Hoplite deals its ranged demons the same way — sparingly, and never
     // as the bulk of a floor.
-    const LONG_GUNS = new Set(["picket", "cutter", "railgun"]);
+    const LONG_GUNS = new Set(["picket", "cutter", "railgun", "outrunner"]);
     // ...but never MOST of the board. Two was a flat cap regardless of how
     // many hostiles the sector deals, so a two- or three-strong roster
     // could come out half or two thirds bolted to the deck — and a board
@@ -871,13 +877,15 @@
     // harder, it's just longer, and at one gun fired per round "longer"
     // means every chaser on the map gets extra free turns while you grind.
     // Two per board keeps them a complication rather than the whole sum.
-    const HEAVIES = new Set(["escort", "carrier"]);
+    const HEAVIES = new Set(["escort", "carrier", "corsairLead"]);
     const MOBILE = ["interceptor", "cruiser", "escort", "lancer", "demolitionist"];
     const enemies = [];
     const LIGHT = ["interceptor", "cruiser"];
+    const SPLITS = new Set(["splitter"]);
     let emplaced = 0;
     let heavies = 0;
     let longGuns = 0;
+    let splitters = 0;
     for (const hex of candidates) {
       if (enemies.length >= enemyCount) break;
       if (hazardKeys.has(`${hex.q},${hex.r}`)) continue;
@@ -895,9 +903,18 @@
         if (heavies >= 2) type = LIGHT[Math.floor(rng() * LIGHT.length)];
         else heavies++;
       }
+      // ONE hull that dies into others, at most. The board is sized to its
+      // roster, so a class that leaves two chasers behind is spending
+      // density the board was never measured for — two of them turns a
+      // sized board into an unsized one after the fact.
+      if (SPLITS.has(type)) {
+        if (splitters >= 1) type = LIGHT[Math.floor(rng() * LIGHT.length)];
+        else splitters++;
+      }
       enemies.push({ type, q: hex.q, r: hex.r });
     }
 
+    // The nulls above were budget placeholders for what a Splitter becomes.
     // Rare discovery candidates — see engine.js's pickDiscovery. This file
     // only lists WHERE one COULD go; whether one actually appears, and
     // which spot wins, is rolled per RUN in engine.js, deliberately not
