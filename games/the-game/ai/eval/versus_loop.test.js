@@ -80,6 +80,27 @@ check('a real run moves the population and keeps a resumable checkpoint', functi
         'the checkpoint carries no configuration fingerprint, so any run would open it');
 });
 
+// THE RULE NOW EXISTS TWICE, so the two copies are compared rather than
+// trusted. train_versus.js runs the loop single-threaded; pbt_worker.js runs
+// it as one island of train_pbt.js. Two implementations of one rule is how
+// LogicalBoard and panel-engine drifted apart, and that drift was invisible
+// until somebody compared them on 3,320 boards.
+check('the island worker merges by the SAME rule as the single-threaded loop', function () {
+    var w = fs.readFileSync(path.join(DIR, 'pbt_worker.js'), 'utf8');
+    var line = /\(1 - MERGE\) \* \(loser\[k\] \|\| 0\) \+ MERGE \* \(winner\[k\] \|\| 0\)/;
+    assert.ok(line.test(w), 'pbt_worker.js does not carry the same merge line');
+    assert.ok(/MUTATE \* MAX_WEIGHT/.test(w),
+        'pbt_worker.js does not scale mutation by the range');
+    assert.ok(/if \(d\.winner !== null\)/.test(w),
+        'pbt_worker.js merges on a draw');
+    assert.ok(/while \(b === a\)/.test(w), 'pbt_worker.js lets a vector duel itself');
+    // The defaults have to agree too: an island searching at a different merge
+    // rate from the loop it is meant to BE is a different experiment wearing
+    // the same name.
+    assert.ok(/GC_VS_MERGE \|\| 0\.8/.test(w) && /GC_VS_MUTATE \|\| 0\.05/.test(w),
+        'pbt_worker.js has different merge/mutate defaults from train_versus.js');
+});
+
 console.log('');
 if (fails) { console.log('  ' + fails + ' FAILED\n'); process.exit(1); }
 console.log('  all good\n');

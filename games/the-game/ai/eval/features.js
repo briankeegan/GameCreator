@@ -147,6 +147,7 @@ var MOVE_FRAMES = 4;
   // one walk of 72 cells against a pass that clones and resolves ~30 times.
   var outcomeCache = (typeof WeakMap === 'function') ? new WeakMap() : null;
 
+
   function fingerprint(board) {
     var grid = board.grid, h = board.height, w = board.width, s = h + 'x' + w;
     for (var r = 1; r <= h; r++) {
@@ -562,19 +563,39 @@ var MOVE_FRAMES = 4;
       return a >= 1 && b >= 1 && a <= W && b <= W && grid[row][a] === v && grid[row][b] === v;
     }
 
-    var step = {}, any = false, r, c;
-    for (r = 2; r <= H; r++) {
-      for (c = 1; c <= W; c++) {
-        var v = grid[r][c];
-        if (v <= 0) continue;                 // empty, busy (-1) and garbage (-2) are not colours
-        var under = grid[r - 1][c];
-        if (under === 0 || under === v) continue;  // nothing to clear, or already a match
-        // The three ways the falling panel becomes the third of a row: it
-        // lands to the right of a pair, between two, or to the left of a pair.
-        if (pair(r - 1, c - 2, c - 1, v) ||
-            pair(r - 1, c - 1, c + 1, v) ||
-            pair(r - 1, c + 1, c + 2, v)) { step[r + ':' + c] = true; any = true; }
+    // THE WALK IS SHARED, AND IT LIVES ON THE INPUT.
+    // staircase and staircaseReady are the same scan one flag apart — the flag
+    // only decides whether a run's base has to be firable. Measured at 21.0
+    // and 18.1 us against 105 us for all 23 features, so doing it twice was
+    // ~17% of every candidate.
+    //
+    // NOT a WeakMap keyed on the board with a fingerprint, which is how
+    // swapOutcomes does it: that costs a 72-cell walk and a string build to
+    // validate, and measured 94% SLOWER than simply scanning twice. The
+    // fingerprint earns its keep against a pass that clones and resolves
+    // thirty times; it cannot against a grid walk.
+    //
+    // evaluate() hands the SAME input object to every feature and builds a
+    // fresh one per candidate, so the input is the natural place for it and
+    // needs no validation — a new candidate is a new object.
+    var step = null, any = false, r, c;
+    if (input._stairSteps) { step = input._stairSteps.step; any = input._stairSteps.any; }
+    if (step === null) {
+      step = {};
+      for (r = 2; r <= H; r++) {
+        for (c = 1; c <= W; c++) {
+          var v = grid[r][c];
+          if (v <= 0) continue;               // empty, busy (-1) and garbage (-2) are not colours
+          var under = grid[r - 1][c];
+          if (under === 0 || under === v) continue;  // nothing to clear, or already a match
+          // The three ways the falling panel becomes the third of a row: it
+          // lands to the right of a pair, between two, or to the left of a pair.
+          if (pair(r - 1, c - 2, c - 1, v) ||
+              pair(r - 1, c - 1, c + 1, v) ||
+              pair(r - 1, c + 1, c + 2, v)) { step[r + ':' + c] = true; any = true; }
+        }
       }
+      try { input._stairSteps = { step: step, any: any }; } catch (e) { /* frozen input */ }
     }
     if (!any) return 0;
 
