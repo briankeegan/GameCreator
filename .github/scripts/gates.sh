@@ -521,69 +521,185 @@ gate_character_spec_provenance() {
 # gate_* function above, one entry below) and both callers pick it up: a
 # gate added to only one caller only protects that caller.
 GATES=(
-  "engine tests:gate_engine_tests"
-  "room exits:gate_room_exits"
-  "shared-module wiring:gate_shared_module_wiring"
-  "doors can be entered:gate_doors_enterable"
-  "room props and floor plates:gate_room_props_floor_plates"
-  "the art index:gate_art_index"
-  "art references:gate_art_refs"
-  "characters keep one size while walking:gate_sprite_scale_consistency"
-  "chain chips fire in our engine:gate_chips_verify"
-  "chain chips fire in the real engine:gate_chips_verify_engine"
-  "the engine brain is wired, not inert:gate_engine_brain"
-  "every ported chip is individually decidable:gate_chips_decidable"
-  "the chip library can actually be used:gate_chips_hookup"
-  "chips hold up on boards nobody built for them:gate_chips_real_boards"
-  "both boards agree on every chip:gate_chips_both_boards_agree"
-  "a broken resolve is rejected:gate_resolve_breaks"
-  "every feature is wired and moves:gate_features_live"
-  "the chains-fired measure accepts and rejects:gate_chain_measure"
-  "the status tool sees a duplicate run:gate_status_tool"
-  "the training smoke check accepts and rejects:gate_smoke_checker"
-  "a training run that ran out of time can resume:gate_checkpoint_resume"
-  "no checkpoint is stranded by a rename:gate_checkpoint_names"
-  "the puyo loop update rule:gate_versus_loop"
-  "a slow run stops before the job kills it:gate_deadline_stop"
-  "the puyo brain:gate_puyo_cpu"
-  "the training harness:gate_training_harness"
-  "rise-adjusted scoring:gate_rise_scoring"
-  "density scoring:gate_density_scoring"
-  "the earned features arrive in a real game:gate_earned_features_arrive"
-  "every training pre-flight suite is gated:gate_preflight_gated"
-  "the depth-2 search picks the best two-move future:gate_lookahead"
-  "the second ply knows what time it is:gate_ply_clock"
-  "the board moves on while the bot walks:gate_elapsed_rise"
-  "raising is a move the weights can choose:gate_raise"
-  "a run records what kind of garbage it sent:gate_chain_depth"
-  "a garbage break stops the resolve:gate_garbage_rules"
-  "the chip matcher enforces every constraint:gate_chip_matcher_constraints"
-  "the simulation resolves like the game:gate_resolve_fidelity"
-  "that fidelity check fires:gate_resolve_fidelity_fires"
-  "every feature measures what its name says:gate_features"
-  "the shared resolve pass is the same answer:gate_features_shared_pass"
-  "that chip check fires:gate_chip_verifier_fires"
-  "the shipped weights and the tools that measure them:gate_shipped_weights"
-  "that check fires:gate_shipped_weights_check_fires"
-  "the gates actually reject defects:gate_gates_reject_defects"
-  "no check reports success it did not have:gate_gate_wiring"
-  "generator rules:gate_generator_rules"
-  "the art vault round-trips:gate_art_vault_roundtrip"
-  "the generation money path:gate_generation_money_path"
-  "the walk-sheet cutter:gate_walk_sheet_cutter"
-  "the art checkers fire (and stay quiet):gate_art_checkers_fire"
-  "character spec provenance:gate_character_spec_provenance"
+  "engine tests:gate_engine_tests:games/"
+  "room exits:gate_room_exits:games/"
+  "shared-module wiring:gate_shared_module_wiring:games/"
+  "doors can be entered:gate_doors_enterable:games/"
+  "room props and floor plates:gate_room_props_floor_plates:games/"
+  "the art index:gate_art_index:art"
+  "art references:gate_art_refs:art"
+  "characters keep one size while walking:gate_sprite_scale_consistency:art"
+  "chain chips fire in our engine:gate_chips_verify:games/the-game/ai/"
+  "chain chips fire in the real engine:gate_chips_verify_engine:games/the-game/ai/"
+  "the engine brain is wired, not inert:gate_engine_brain:games/the-game/ai/"
+  "every ported chip is individually decidable:gate_chips_decidable:games/the-game/ai/"
+  "the chip library can actually be used:gate_chips_hookup:games/the-game/ai/"
+  "chips hold up on boards nobody built for them:gate_chips_real_boards:games/the-game/ai/"
+  "both boards agree on every chip:gate_chips_both_boards_agree:games/the-game/ai/"
+  "a broken resolve is rejected:gate_resolve_breaks:games/the-game/ai/"
+  "every feature is wired and moves:gate_features_live:games/the-game/ai/"
+  "the chains-fired measure accepts and rejects:gate_chain_measure:games/the-game/ai/"
+  "the status tool sees a duplicate run:gate_status_tool:games/the-game/ai/"
+  "the training smoke check accepts and rejects:gate_smoke_checker:games/the-game/ai/"
+  "a training run that ran out of time can resume:gate_checkpoint_resume:games/the-game/ai/"
+  "no checkpoint is stranded by a rename:gate_checkpoint_names:games/the-game/ai/"
+  "the puyo loop update rule:gate_versus_loop:games/the-game/ai/"
+  "a slow run stops before the job kills it:gate_deadline_stop:games/the-game/ai/"
+  "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
+  "the training harness:gate_training_harness:games/the-game/ai/"
+  "rise-adjusted scoring:gate_rise_scoring:games/the-game/ai/"
+  "density scoring:gate_density_scoring:games/the-game/ai/"
+  "the earned features arrive in a real game:gate_earned_features_arrive:games/the-game/ai/"
+  "every training pre-flight suite is gated:gate_preflight_gated:games/the-game/ai/"
+  "the depth-2 search picks the best two-move future:gate_lookahead:games/the-game/ai/"
+  "the second ply knows what time it is:gate_ply_clock:games/the-game/ai/"
+  "the board moves on while the bot walks:gate_elapsed_rise:games/the-game/ai/"
+  "raising is a move the weights can choose:gate_raise:games/the-game/ai/"
+  "a run records what kind of garbage it sent:gate_chain_depth:games/the-game/ai/"
+  "a garbage break stops the resolve:gate_garbage_rules:games/the-game/ai/"
+  "the chip matcher enforces every constraint:gate_chip_matcher_constraints:games/the-game/ai/"
+  "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
+  "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
+  "every feature measures what its name says:gate_features:games/the-game/ai/"
+  "the shared resolve pass is the same answer:gate_features_shared_pass:games/the-game/ai/"
+  "that chip check fires:gate_chip_verifier_fires:games/the-game/ai/"
+  "the shipped weights and the tools that measure them:gate_shipped_weights:games/the-game/ai/"
+  "that check fires:gate_shipped_weights_check_fires:games/the-game/ai/"
+  "the gates actually reject defects:gate_gates_reject_defects:"
+  "no check reports success it did not have:gate_gate_wiring:"
+  "generator rules:gate_generator_rules:art"
+  "the art vault round-trips:gate_art_vault_roundtrip:art"
+  "the generation money path:gate_generation_money_path:art"
+  "the walk-sheet cutter:gate_walk_sheet_cutter:art"
+  "the art checkers fire (and stay quiet):gate_art_checkers_fire:art"
+  "character spec provenance:gate_character_spec_provenance:art"
 )
+
+# WHICH GATES DOES THIS CHANGE ACTUALLY NEED?
+#
+# Every gate entry carries a third field: the path prefix it covers. An
+# empty scope means the gate always runs.
+#
+#   games/              the shipped games and their engines
+#   games/the-game/ai/  the Puyo trainer (35 of the 51 gates)
+#   art                 .github/art/, and any game's art, icons or rooms
+#
+# Scoping is OPT-IN: it happens only when GC_CHANGED_PATHS holds the
+# newline-separated paths a change touches. pages.yml sets nothing and so
+# keeps running the complete list — it is the backstop and stays
+# exhaustive. guard-main-push.sh sets it from the commits actually being
+# pushed, so a change to one game does not have to satisfy another game's
+# trainer to reach main.
+#
+# Two properties keep this from being a hole. A change touching ANYTHING
+# outside games/ and .github/art/ — gate scripts, workflows, hooks,
+# shared/ — runs every gate, since those can break anything. And a skipped
+# gate is printed as skipped and listed in the summary: a skip that read
+# like a pass would be worse than having no gate.
+_gate_scope_matches() {
+  local scope="$1" path="$2"
+  [ -z "$scope" ] && return 0
+  case "$scope" in
+    art)
+      case "$path" in
+        .github/art/*) return 0 ;;
+        games/*/art*|games/*/icons/*|games/*/rooms/*) return 0 ;;
+      esac
+      return 1 ;;
+    *) case "$path" in "$scope"*) return 0 ;; esac; return 1 ;;
+  esac
+}
+
+# Anything outside the areas a scope can describe means "run everything" —
+# gate scripts, workflows, hooks and shared/ can break anything, so a change
+# touching them does not get to pick which gates apply to it.
+_gate_change_is_cross_cutting() {
+  local path
+  while IFS= read -r path; do
+    [ -z "$path" ] && continue
+    case "$path" in
+      games/*|.github/art/*) ;;
+      *) return 0 ;;
+    esac
+  done <<< "$1"
+  return 1
+}
+
+# ...with one exception, and it is about an EXTERNAL DEPENDENCY rather than
+# about risk. The Puyo trainer's gates need a checkout of briankeegan/
+# panel-game beside the repo for the real attack and puzzle files, and
+# _gc_training_dir deliberately FAILS rather than skips when it is absent
+# (a gate that cannot fail is worse than no gate). The consequence is that
+# on any machine without that checkout, gate_all can never pass — so the
+# push guard blocks every push to main, whatever the change was, including
+# ones that cannot touch the trainer.
+#
+# pages.yml is the tiebreak: it runs 16 named gates and NONE of the
+# trainer's, so a trainer gate has never gated a deploy. Holding a change to
+# a different game to a bar the build itself does not apply is the wrong
+# bar. So this scope is honoured even for a cross-cutting change: touch
+# games/the-game/, and every trainer gate runs; do not, and they are skipped
+# by name in the summary.
+_GATE_HARD_SCOPES="games/the-game/ai/"
+
+_gate_scope_is_hard() {
+  local s
+  for s in $_GATE_HARD_SCOPES; do [ "$1" = "$s" ] && return 0; done
+  return 1
+}
 
 # Runs every gate and prints a summary. Sets $GATE_FAILURES (newline-
 # separated "name: <first output line>") so a caller can report specifics
 # without re-running anything or re-parsing logs.
 gate_all() {
   local overall=0
+  local skipped=""
   GATE_FAILURES=""
+
+  local changed="${GC_CHANGED_PATHS:-}"
+  local scoping=0      # 1 = honour every scope
+  local hard_only=0    # 1 = honour only the hard scopes (see above)
+  if [ -n "$changed" ]; then
+    if _gate_change_is_cross_cutting "$changed"; then
+      hard_only=1
+      echo "gate scope: change reaches outside games/ and .github/art/ — running every gate"
+      echo "            except hard-scoped ones whose area is untouched ($_GATE_HARD_SCOPES)."
+    else
+      scoping=1
+      echo "gate scope: limited to the areas these paths touch —"
+      printf '  %s\n' $changed
+    fi
+  fi
+
   for entry in "${GATES[@]}"; do
     local name="${entry%%:*}"
-    local fn="${entry#*:}"
+    local rest="${entry#*:}"
+    local fn="${rest%%:*}"
+    local scope="${rest#*:}"
+
+    local consider=0
+    if [ -n "$scope" ]; then
+      if [ "$scoping" = 1 ]; then
+        consider=1
+      elif [ "$hard_only" = 1 ] && _gate_scope_is_hard "$scope"; then
+        consider=1
+      fi
+    fi
+
+    if [ "$consider" = 1 ]; then
+      local needed=1
+      local path
+      while IFS= read -r path; do
+        [ -z "$path" ] && continue
+        if _gate_scope_matches "$scope" "$path"; then needed=0; break; fi
+      done <<< "$changed"
+      if [ "$needed" -ne 0 ]; then
+        echo "=== GATE: $name === SKIPPED (nothing under '$scope' changed)"
+        skipped="${skipped}  ${name} (${scope})"$'\n'
+        continue
+      fi
+    fi
+
     echo "=== GATE: $name ==="
     local out
     out=$("$fn" 2>&1)
@@ -596,6 +712,12 @@ gate_all() {
       GATE_FAILURES="${GATE_FAILURES}${name}: ${firstline}"$'\n'
     fi
   done
+
+  if [ -n "$skipped" ]; then
+    echo
+    echo "SKIPPED GATES (not run — nothing in their area changed):"
+    printf '%s' "$skipped"
+  fi
   if [ "$overall" -ne 0 ]; then
     echo
     echo "FAILED GATES:"

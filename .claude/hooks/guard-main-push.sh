@@ -63,7 +63,17 @@ if [ "${GC_SKIP_GATES:-}" = "1" ]; then
 fi
 
 echo "guard-main-push: running gate_all before this push to main (minutes, not seconds)" >&2
-out=$( cd "$REPO" && source .github/scripts/gates.sh && gate_all 2>&1 )
+
+# Tell gate_all which paths this push changes, so it can skip the gates
+# whose area is untouched (see the scope comment in gates.sh). A change
+# confined to one game no longer has to satisfy another game's trainer.
+#
+# The decision stays gate_all's, not this hook's: a change reaching outside
+# games/ and .github/art/ still runs every gate, and a skipped gate prints
+# as skipped rather than passing quietly. If the range cannot be worked out
+# the variable is empty and the full list runs, which is the safe direction.
+CHANGED=$( cd "$REPO" && git diff --name-only origin/main...HEAD 2>/dev/null )
+out=$( cd "$REPO" && export GC_CHANGED_PATHS="$CHANGED" && source .github/scripts/gates.sh && gate_all 2>&1 )
 rc=$?
 if [ "$rc" -ne 0 ]; then
   {

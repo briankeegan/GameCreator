@@ -128,6 +128,52 @@ for g in "python3 .github/art/verify_sheet.py frames games/the-game/art kat" \
   if eval "$g" >/dev/null 2>&1; then echo "  quiet: ${g:0:60}"; else echo "  FALSE ALARM: ${g:0:60}"; fail=$((fail+1)); fi
 done
 echo
+echo "== gate scoping: a skip must never be able to read as a pass =="
+# gate_all skips gates whose area a change does not touch. That is only safe
+# while all four of these hold, so each is checked rather than assumed.
+scope_out=$(cd "$OLDPWD_SAVE" && GC_CHANGED_PATHS="games/hypergolic-hull/engine.js" bash -c \
+  'source .github/scripts/gates.sh; GATES=("ai one:gate_scope_probe_ok:games/the-game/ai/" "games one:gate_scope_probe_bad:games/" "always:gate_scope_probe_bad:")
+   gate_scope_probe_ok() { return 0; }
+   gate_scope_probe_bad() { echo "probe ran"; return 1; }
+   gate_all' 2>&1)
+scope_rc=$?
+
+check() { # name, condition
+  if eval "$2"; then echo "  ok   $1"; pass=$((pass+1)); else echo "  BS   $1"; fail=$((fail+1)); fi
+}
+# 1. a gate whose area is untouched does not run...
+check "an untouched area's gate is skipped" \
+      '! grep -q "ai one ===$" <<< "$scope_out"'
+# 2. ...and says so where a reader will see it, by name.
+check "the skip is announced, not silent" \
+      'grep -q "SKIPPED GATES" <<< "$scope_out" && grep -q "ai one" <<< "$scope_out"'
+# 3. a gate whose area IS touched still runs, and can still fail the whole
+#    thing. This is the half that makes scoping different from deletion.
+check "a touched area's gate still runs and still fails" \
+      '[ "$scope_rc" -ne 0 ] && grep -q "probe ran" <<< "$scope_out"'
+# 4. a cross-cutting change runs everything EXCEPT hard-scoped gates whose
+#    area it does not touch — the trainer's gates need a panel-game checkout
+#    that a deploy never required, so they must not block an unrelated push.
+cross=$(cd "$OLDPWD_SAVE" && GC_CHANGED_PATHS=$'games/hypergolic-hull/engine.js\n.github/scripts/gates.sh' bash -c \
+  'source .github/scripts/gates.sh; GATES=("ai one:gate_scope_probe_bad:games/the-game/ai/" "art one:gate_scope_probe_ok:art")
+   gate_scope_probe_ok() { return 0; }
+   gate_scope_probe_bad() { echo "trainer ran"; return 1; }
+   gate_all' 2>&1)
+cross_rc=$?
+check "a cross-cutting change still skips the untouched trainer" \
+      '[ "$cross_rc" -eq 0 ] && ! grep -q "trainer ran" <<< "$cross"'
+check "and runs the non-hard gates it did not scope out" \
+      'grep -q "art one ===$" <<< "$cross"'
+# 5. ...but touching the trainer brings its gates straight back.
+touched=$(cd "$OLDPWD_SAVE" && GC_CHANGED_PATHS=$'games/the-game/ai/eval/train.js\n.github/scripts/gates.sh' bash -c \
+  'source .github/scripts/gates.sh; GATES=("ai one:gate_scope_probe_bad:games/the-game/ai/")
+   gate_scope_probe_bad() { echo "trainer ran"; return 1; }
+   gate_all' 2>&1)
+touched_rc=$?
+check "touching the trainer runs its gates and can fail" \
+      '[ "$touched_rc" -ne 0 ] && grep -q "trainer ran" <<< "$touched"'
+
+echo
 echo "real: $pass   BS/false-alarm: $fail"
 [ "$fail" = 0 ] || { echo "GATES ARE NOT VALID — see above"; exit 1; }
 echo "every gate rejects its defect and passes clean art."
