@@ -104,6 +104,7 @@ jobs:
           node versus_loop.test.js
           node features.test.js
           node puyocpu.test.js
+          node snapshot_pipe.test.js
 
       - name: Loop
         working-directory: games/the-game/ai/eval

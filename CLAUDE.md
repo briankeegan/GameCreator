@@ -188,6 +188,13 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **Shipping a trained bot is one command: `ship.sh`.** It picks the newest
   real snapshot, prints what it scored, exports `ai/trained-weights.js`, and
   runs `gate_all`. It does not commit — look at the diff.
+- **A snapshot is delivered, not written.** The trainer writes
+  `trained.<mode>.json`; `commit_snapshot.sh` then reads its `population`,
+  refuses anything under `GC_MIN_POP` (default 50), names it, commits it and
+  pushes. A workflow that calls a trainer directly must set `GC_MODE`,
+  `GC_TAG` and a `GC_MIN_POP` its own population clears — the head-to-head
+  trainers hold 16. `snapshot_pipe.test.js` runs the whole hook against a
+  throwaway repo in about a second; run it before spending hours.
 - A test's scratch files go beside the test, never `os.tmpdir()`.
 
 ## Infrastructure

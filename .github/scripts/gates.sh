@@ -249,6 +249,16 @@ gate_versus_loop() {
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/versus_loop.test.js
 }
 
+# A SNAPSHOT IS NOT WRITTEN, IT IS DELIVERED.
+# The trainer writing trained.<mode>.json is step one of five; the other four
+# are commit_snapshot.sh reading the population, comparing it against
+# GC_MIN_POP, naming, committing and pushing. Step two silently ate every
+# snapshot of two five-hour legs. This runs the hook against a throwaway repo
+# in about a second.
+gate_snapshot_pipe() {
+  node games/the-game/ai/eval/snapshot_pipe.test.js
+}
+
 gate_checkpoint_names() {
   node games/the-game/ai/eval/migrate.test.js &&
   node games/the-game/ai/eval/migrate_checkpoints.js --check
@@ -544,6 +554,7 @@ GATES=(
   "a training run that ran out of time can resume:gate_checkpoint_resume:games/the-game/ai/"
   "no checkpoint is stranded by a rename:gate_checkpoint_names:games/the-game/ai/"
   "the puyo loop update rule:gate_versus_loop:games/the-game/ai/"
+  "a snapshot survives the trip to main:gate_snapshot_pipe:games/the-game/ai/"
   "a slow run stops before the job kills it:gate_deadline_stop:games/the-game/ai/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"

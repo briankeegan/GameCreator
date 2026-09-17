@@ -40,3 +40,7 @@ games/the-game/ai/eval/.chainmeasure-test-*/
 # training.test.js points train.js's checkpoint here with GC_CHECKPOINT_DIR,
 # so a gate run cannot rewrite the tracked checkpoint beside train.js.
 games/the-game/ai/eval/.training-test-scratch/
+
+# snapshot_pipe.test.js builds a throwaway git repo here and removes it;
+# this covers a crash that leaves one behind.
+games/the-game/ai/eval/.snapshot-pipe-scratch/
