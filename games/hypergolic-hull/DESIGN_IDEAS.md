@@ -142,11 +142,25 @@ plating are objects already. Nothing has ever been able to touch one.
    target you choose. Spends ITS energy, not yours. A Railgun Destroyer
    that has spent five rounds filling its bus is the best weapon on the
    board, and for one round it is yours.
-2. **Grapple & Strip** — tear one crate out of its hold into your cargo.
-   The hull keeps flying with a hole in it — a Picket with its reactor
-   gone never fires again — and you keep the item. This is also the
-   diegetic answer to "how do I get weapons": you take them off the
-   people who were using them.
+2. **Boarding Grapple** — takes one crate out of its hold and into your
+   CARGO. Three constraints, all of them added because the first draft was
+   plainly overpowered:
+   - **Contact only**, not range two. You have to be next to the thing.
+   - **Its bus must be EMPTY.** You cannot board a healthy ship — you drain
+     it first, which is what Siphon and Bus Overload are for. That turns the
+     rest of this family into its SETUP instead of making them redundant,
+     which is what the first version did: stripping a reactor did Bus
+     Overload's job, permanently, and paid you for it.
+   - **Cargo, not the hold.** The crate is inert until you dock, so there is
+     no mid-fight power spike — the payoff lands after the sector, next to
+     every other refit decision.
+
+   And the hostile **survives**. It keeps flying and keeps whatever else it
+   has, so boarding is not a better way of killing something; it is a
+   different thing to want, which is what the always-open Warp Gate has
+   always been asking for. It is also the diegetic answer to where weapons
+   come from: you take them off the people who were using them.
+
 3. **Drive Cutter** — kills the engine. The chaser becomes scenery. It
    removes a threat without removing a ship, which is the same move the
    always-open Warp Gate already rewards.
