@@ -147,9 +147,18 @@ jobs:
   # and a half hours. It commits nothing — GC_SNAPSHOT_HOOK is empty, and
   # commit_snapshot.sh renames a run this small to .smoke.json anyway, which
   # is gitignored, so a smoke result can never be mistaken for a champion.
+  #
+  # FOUR MINUTES IS A SCORE-OBJECTIVE FIGURE. Under `versus` a genome does not
+  # play a game, it plays DUELS of two full boards, so the same twelve genomes
+  # cost several times as much — and at depth 2 the smoke step ran past the
+  # old 25-minute cap and was CANCELLED, twice, which reads as a lost runner
+  # rather than as a budget. Two changes keep it honest: the smoke step duels
+  # ONCE per genome instead of three times (it is proving the harness runs, not
+  # ranking anything), and the cap has the headroom to say so if that is still
+  # not enough. The real run keeps GC_DUELS at its default.
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
         with: { ref: main, fetch-depth: 1 }
@@ -183,6 +192,11 @@ jobs:
           GC_GENERATIONS: '2'
           GC_SNAPSHOT_EVERY: '2'
           GC_SNAPSHOT_HOOK: ''
+          # Read only under `versus`, where it is the number of duels each
+          # genome plays per generation. One is enough to prove the duel
+          # harness runs; three is for ranking a real population, and at
+          # depth 2 it is what put this step past its cap.
+          GC_DUELS: '1'
         run: ./crank.sh 12 "$(nproc)"
       - name: Did it actually train, or did it just execute?
         working-directory: games/the-game/ai/eval
