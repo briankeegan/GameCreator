@@ -12,9 +12,10 @@
 # snapshot names, and the two have to be able to run at once — a single-island
 # loop is the only baseline an island run can be read against.
 #
-# IT DOES NOT RESUME. Island state lives in .pbt-<seed>/, which is gitignored
-# and dies with the container. A run is one search from random weights; it
-# does not continue the last one.
+# IT RESUMES. Island state lives in .pbt-<seed>/, gitignored but force-added by
+# commit_snapshot.sh alongside each champion, and each file carries a hash of
+# the configuration — so a continuation opens the same populations and a run
+# with different inputs starts its own.
 name: Train the AI head-to-head (islands)
 
 on:
@@ -56,6 +57,13 @@ on:
       density:
         description: 'Density scoring: counts made of panels become per-panel (1 = on)'
         default: ''
+      minutes:
+        description: 'Minutes to train before stopping with a snapshot written. Under the job timeout'
+        default: '315'
+      chain:
+        description: 'false = run one leg and stop. Otherwise the leg dispatches its own continuation'
+        default: 'true'
+
 
 # One run per experiment, and never two of the same. cancel-in-progress stays
 # FALSE — a run that has done four hours of updates has earned them.
@@ -65,6 +73,8 @@ concurrency:
 
 permissions:
   contents: write
+  # ...and to dispatch its own continuation.
+  actions: write
 
 jobs:
   islands:
@@ -112,6 +122,7 @@ jobs:
           node snapshot_pipe.test.js
 
       - name: Islands
+        id: train
         working-directory: games/the-game/ai/eval
         env:
           GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
@@ -135,8 +146,46 @@ jobs:
           GC_MIN_POP: '16'
           GC_SNAPSHOT_HOOK: ${{ github.workspace }}/games/the-game/ai/eval/commit_snapshot.sh
         run: |
-          # 315 minutes, not 340. The deadline is only read BETWEEN legs, and
-          # a leg is about 20 minutes, so the margin has to be a whole leg or
-          # the last one starts too late and the job's 350 kills it mid-duel.
-          export GC_DEADLINE=$(( $(date +%s) + 315 * 60 ))
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+          # Under the job's timeout, and under the platform's 360, so the run
+          # stops itself with a snapshot written rather than being killed
+          # mid-duel. The islands only read the deadline BETWEEN legs, so the
+          # margin has to be a whole leg wide.
+          export GC_DEADLINE=$(( $(date +%s) + ${{ github.event.inputs.minutes || '315' }} * 60 ))
           node train_pbt.js
+
+      # See the header. A clean deadline stop, and nothing asking it to halt.
+      - name: Dispatch the next leg
+        if: github.event.inputs.chain != 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINUTES: ${{ github.event.inputs.minutes || '315' }}
+          STARTED: ${{ steps.train.outputs.started }}
+        run: |
+          set -eu
+          elapsed=$(( $(date +%s) - STARTED ))
+          floor=$(( MINUTES * 30 ))
+          if [ "$elapsed" -lt "$floor" ]; then
+            echo "trained for ${elapsed}s of a ${MINUTES}-minute leg — stopping rather than"
+            echo "restarting something that is exiting early."
+            exit 0
+          fi
+          git fetch -q origin main
+          if git cat-file -e origin/main:games/the-game/ai/eval/STOP_TRAINING 2>/dev/null; then
+            echo "STOP_TRAINING is on main — not continuing."
+            exit 0
+          fi
+          # The continuation carries THIS run's inputs, so the chain cannot
+          # drift into a different search: the population's fingerprint would
+          # not match and it would silently start over.
+          code=$(curl -sS -o /tmp/dispatch.out -w '%{http_code}' -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/ai-train-pbt.yml/dispatches" \
+            -d '{"ref":"main","inputs":{"variant":"${{ github.event.inputs.variant }}","level":"${{ github.event.inputs.level }}","exclude":"${{ github.event.inputs.exclude }}","islands":"${{ github.event.inputs.islands }}","population":"${{ github.event.inputs.population }}","leg":"${{ github.event.inputs.leg }}","faceoff":"${{ github.event.inputs.faceoff }}","ga_seed":"${{ github.event.inputs.ga_seed }}","depth":"${{ github.event.inputs.depth }}","beam":"${{ github.event.inputs.beam }}","rise":"${{ github.event.inputs.rise }}","density":"${{ github.event.inputs.density }}","minutes":"${{ github.event.inputs.minutes }}","chain":"true"}}')
+          if [ "$code" != "204" ]; then
+            echo "the continuation was REFUSED (HTTP $code) — this chain ends here:"
+            cat /tmp/dispatch.out
+            exit 1
+          fi
+          echo "next leg dispatched"

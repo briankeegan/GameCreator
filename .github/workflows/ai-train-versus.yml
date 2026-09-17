@@ -51,6 +51,13 @@ on:
       check_every:
         description: 'Updates between held-out checks. Each check duels EVERY vector against the shipped bot, so it is the expensive part'
         default: '200'
+      minutes:
+        description: 'Minutes to train before stopping with a snapshot written. Under the job timeout'
+        default: '340'
+      chain:
+        description: 'false = run one leg and stop. Otherwise the leg dispatches its own continuation'
+        default: 'true'
+
 
 # One run per experiment, and never two of the same: two runs of one variant
 # would fight over the same checkpoint. cancel-in-progress stays FALSE — a
@@ -61,6 +68,8 @@ concurrency:
 
 permissions:
   contents: write
+  # ...and to dispatch its own continuation.
+  actions: write
 
 jobs:
   loop:
@@ -107,6 +116,7 @@ jobs:
           node snapshot_pipe.test.js
 
       - name: Loop
+        id: train
         working-directory: games/the-game/ai/eval
         env:
           GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
@@ -129,8 +139,46 @@ jobs:
           GC_MIN_POP: '16'
           GC_SNAPSHOT_HOOK: ${{ github.workspace }}/games/the-game/ai/eval/commit_snapshot.sh
         run: |
-          # 340 minutes, under the job's 350 and the platform's 360, so the
-          # loop stops itself with a snapshot written rather than being killed
-          # mid-duel.
-          export GC_DEADLINE=$(( $(date +%s) + 340 * 60 ))
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+          # Under the job's timeout, and under the platform's 360, so the run
+          # stops itself with a snapshot written rather than being killed
+          # mid-duel. The islands only read the deadline BETWEEN legs, so the
+          # margin has to be a whole leg wide.
+          export GC_DEADLINE=$(( $(date +%s) + ${{ github.event.inputs.minutes || '340' }} * 60 ))
           node train_versus.js
+
+      # See the header. A clean deadline stop, and nothing asking it to halt.
+      - name: Dispatch the next leg
+        if: github.event.inputs.chain != 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINUTES: ${{ github.event.inputs.minutes || '340' }}
+          STARTED: ${{ steps.train.outputs.started }}
+        run: |
+          set -eu
+          elapsed=$(( $(date +%s) - STARTED ))
+          floor=$(( MINUTES * 30 ))
+          if [ "$elapsed" -lt "$floor" ]; then
+            echo "trained for ${elapsed}s of a ${MINUTES}-minute leg — stopping rather than"
+            echo "restarting something that is exiting early."
+            exit 0
+          fi
+          git fetch -q origin main
+          if git cat-file -e origin/main:games/the-game/ai/eval/STOP_TRAINING 2>/dev/null; then
+            echo "STOP_TRAINING is on main — not continuing."
+            exit 0
+          fi
+          # The continuation carries THIS run's inputs, so the chain cannot
+          # drift into a different search: the population's fingerprint would
+          # not match and it would silently start over.
+          code=$(curl -sS -o /tmp/dispatch.out -w '%{http_code}' -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/ai-train-versus.yml/dispatches" \
+            -d '{"ref":"main","inputs":{"variant":"${{ github.event.inputs.variant }}","level":"${{ github.event.inputs.level }}","exclude":"${{ github.event.inputs.exclude }}","population":"${{ github.event.inputs.population }}","ga_seed":"${{ github.event.inputs.ga_seed }}","depth":"${{ github.event.inputs.depth }}","beam":"${{ github.event.inputs.beam }}","rise":"${{ github.event.inputs.rise }}","density":"${{ github.event.inputs.density }}","check_every":"${{ github.event.inputs.check_every }}","minutes":"${{ github.event.inputs.minutes }}","chain":"true"}}')
+          if [ "$code" != "204" ]; then
+            echo "the continuation was REFUSED (HTTP $code) — this chain ends here:"
+            cat /tmp/dispatch.out
+            exit 1
+          fi
+          echo "next leg dispatched"
