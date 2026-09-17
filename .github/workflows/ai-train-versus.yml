@@ -1,0 +1,128 @@
+# THE PUYO LOOP, ON A RUNNER.
+#
+# train.js is cross-entropy method: score every genome, rank, refit, resample.
+# It needs a SCALAR to rank by. A duel yields one BIT, so under `versus` it
+# manufactures a scalar from three duels and pays 150 duels for a single
+# update.
+#
+# games/the-game/ai/eval/train_versus.js is meatfighter's Trainer.java
+# instead — pick two vectors, play ONE duel, drag the loser 80% toward the
+# winner, jog it, repeat. One duel per update. Measured on the same hardware,
+# a CEM generation at population 50 is about three minutes and one update
+# here is about five seconds.
+#
+# SEPARATE WORKFLOW, NOT AN INPUT ON ai-train.yml. Two different search
+# algorithms sharing one dispatch would share its smoke job, its checkpoint
+# names and its concurrency group, and none of those mean the same thing for
+# both. They also have to be able to run at the same time: the CEM legs are
+# the only baseline a loop run can be read against.
+name: Train the AI head-to-head (Puyo loop)
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'Label for this experiment, used in the snapshot filenames'
+        default: ''
+      level:
+        description: 'Game level to train at'
+        default: '10'
+      exclude:
+        description: 'Features to leave OUT of the genome (comma list, blank = all)'
+        default: ''
+      population:
+        description: 'Weight vectors held. Puyo uses 16 — it is a pool to merge within, not a generation to rank'
+        default: '16'
+      ga_seed:
+        description: 'RNG seed. CHANGE IT for an independent run of the same config'
+        default: '11'
+      depth:
+        description: 'Lookahead depth. 1 = greedy, 2 = beam search'
+        default: '1'
+      beam:
+        description: 'Candidates expanded at depth > 1. 0 = all of them'
+        default: '0'
+      rise:
+        description: 'Rise-adjusted scoring (1 = on)'
+        default: '1'
+      density:
+        description: 'Density scoring: counts made of panels become per-panel (1 = on)'
+        default: ''
+      check_every:
+        description: 'Updates between held-out checks. Each check duels EVERY vector against the shipped bot, so it is the expensive part'
+        default: '200'
+
+# One run per experiment, and never two of the same: two runs of one variant
+# would fight over the same checkpoint. cancel-in-progress stays FALSE — a
+# run that has done four hours of updates has earned them.
+concurrency:
+  group: ai-train-versus-${{ github.event.inputs.variant || 'default' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  loop:
+    runs-on: ubuntu-latest
+    # Under the 6-hour hard cap, so the job's own timeout never stops it —
+    # train_versus.js stops first, on GC_DEADLINE, with a snapshot written.
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          # It commits a snapshot as it earns one, so real credentials and
+          # full history, not a shallow clone.
+          fetch-depth: 0
+
+      - uses: actions/checkout@v4
+        with:
+          repository: briankeegan/panel-game
+          path: panel-game
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Who is committing
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # The same bargain as ai-train.yml's pre-flight: seconds against hours.
+      # versus_loop.test.js is the one that matters here — it is the update
+      # rule, which is the whole algorithm.
+      - name: Check the harness before spending five hours on it
+        working-directory: games/the-game/ai/eval
+        timeout-minutes: 30
+        env:
+          GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
+        run: |
+          node versus.test.js
+          node versus_loop.test.js
+          node features.test.js
+          node puyocpu.test.js
+
+      - name: Loop
+        working-directory: games/the-game/ai/eval
+        env:
+          GC_TRAINING_DIR: ${{ github.workspace }}/panel-game/client/assets/default_data/training
+          GC_LEVEL: ${{ github.event.inputs.level || '10' }}
+          GC_EXCLUDE: ${{ github.event.inputs.exclude || '' }}
+          GC_VARIANT: ${{ github.event.inputs.variant || '' }}
+          GC_GA_SEED: ${{ github.event.inputs.ga_seed || '11' }}
+          GC_DEPTH: ${{ github.event.inputs.depth || '1' }}
+          GC_BEAM: ${{ github.event.inputs.beam || '0' }}
+          GC_RISE: ${{ github.event.inputs.rise || '1' }}
+          GC_DENSITY: ${{ github.event.inputs.density || '' }}
+          GC_VS_POPULATION: ${{ github.event.inputs.population || '16' }}
+          GC_VS_CHECK_EVERY: ${{ github.event.inputs.check_every || '200' }}
+          GC_SNAPSHOT_HOOK: ${{ github.workspace }}/games/the-game/ai/eval/commit_snapshot.sh
+        run: |
+          # 340 minutes, under the job's 350 and the platform's 360, so the
+          # loop stops itself with a snapshot written rather than being killed
+          # mid-duel.
+          export GC_DEADLINE=$(( $(date +%s) + 340 * 60 ))
+          node train_versus.js

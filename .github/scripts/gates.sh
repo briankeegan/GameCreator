@@ -240,6 +240,15 @@ gate_lookahead() {
 # across. The test proves both directions: that it recovers the stranded
 # file, and that it refuses one that would overwrite a live run with an
 # older copy.
+# THE PUYO LOOP'S UPDATE RULE IS THE WHOLE ALGORITHM.
+# train_versus.js is twenty lines of loop around one line of arithmetic. A
+# wrong rule still produces plausible weights for hours, so the rule is
+# asserted directly — in the source AND by running it.
+gate_versus_loop() {
+  local d; d="$(_gc_training_dir)" || return 1
+  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/versus_loop.test.js
+}
+
 gate_checkpoint_names() {
   node games/the-game/ai/eval/migrate.test.js &&
   node games/the-game/ai/eval/migrate_checkpoints.js --check
@@ -534,6 +543,7 @@ GATES=(
   "the training smoke check accepts and rejects:gate_smoke_checker"
   "a training run that ran out of time can resume:gate_checkpoint_resume"
   "no checkpoint is stranded by a rename:gate_checkpoint_names"
+  "the puyo loop update rule:gate_versus_loop"
   "a slow run stops before the job kills it:gate_deadline_stop"
   "the puyo brain:gate_puyo_cpu"
   "the training harness:gate_training_harness"
