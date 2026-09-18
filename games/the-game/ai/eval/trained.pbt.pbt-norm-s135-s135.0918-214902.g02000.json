@@ -1,0 +1,143 @@
+{
+  "mode": "pbt",
+  "objective": "versus",
+  "brain": "puyo",
+  "level": 10,
+  "selection": "champion of 4 islands after 2000 updates",
+  "updates": 2000,
+  "islands": 4,
+  "population": 16,
+  "leg": 250,
+  "depth": 2,
+  "beam": 0,
+  "rise": true,
+  "density": false,
+  "allowRaise": false,
+  "diversity": [
+    14.1,
+    14.3,
+    14.8,
+    13.9
+  ],
+  "features": [
+    "linksH",
+    "linksV",
+    "colourVariance",
+    "edgePenalty",
+    "garbageOnBoard",
+    "maxHeight",
+    "fillRatio",
+    "garbageAdjacency",
+    "garbageSent",
+    "stopTimeEarned"
+  ],
+  "excluded": [
+    "matchPotential",
+    "chainPotential",
+    "comboPotential",
+    "staircase",
+    "staircaseReady",
+    "flatTop",
+    "popSize",
+    "links",
+    "roughness",
+    "colourScarcity",
+    "chainLength",
+    "scoreEarned",
+    "stopTimeGain",
+    "brokeGarbage",
+    "garbageCleared",
+    "travelCost"
+  ],
+  "holdoutSeeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112
+  ],
+  "holdout": {
+    "avgFrames": 1254.5833333333333,
+    "longestFrames": 2082,
+    "learned": {
+      "fitness": 1,
+      "winRate": 1,
+      "draws": 0,
+      "avgSent": 9.333333333333334,
+      "duels": 12,
+      "chainDepth": {
+        "combo-small": 4,
+        "combo-big": 2,
+        "chain-short": 13,
+        "chain-medium": 0,
+        "chain-long": 0
+      },
+      "comboByWidth": {
+        "3": 116,
+        "4": 5,
+        "6": 2
+      },
+      "chainByLinks": {
+        "2": 12,
+        "3": 2
+      },
+      "versus": true
+    },
+    "shipped": {
+      "fitness": 0,
+      "label": "shipped weights",
+      "avgSent": 3.4166666666666665,
+      "chainDepth": {
+        "combo-small": 4,
+        "combo-big": 1,
+        "chain-short": 4,
+        "chain-medium": 0,
+        "chain-long": 0
+      },
+      "versus": true
+    },
+    "peer": {
+      "opponent": "trained.pbt.pbt-norm-s106-s106.0918-202607.g01000.json",
+      "fitness": 0.25,
+      "winRate": 0.25,
+      "draws": 0,
+      "duels": 12,
+      "avgSent": 127,
+      "opponentAvgSent": 106.08333333333333,
+      "avgFrames": 13480.916666666666,
+      "longestFrames": 21206,
+      "comboByWidth": {
+        "3": 1147,
+        "4": 51,
+        "5": 6,
+        "6": 49,
+        "7": 2,
+        "9": 2
+      },
+      "chainByLinks": {
+        "2": 140,
+        "3": 13,
+        "4": 2
+      }
+    }
+  },
+  "weights": {
+    "linksH": 9.966268427305073,
+    "linksV": 21.61044675059748,
+    "colourVariance": 41.89068865143386,
+    "edgePenalty": 127.70082162182925,
+    "garbageOnBoard": 102.54489948135677,
+    "maxHeight": -6.146590910265674,
+    "fillRatio": 97.73047152043256,
+    "garbageAdjacency": 28.870379987684437,
+    "garbageSent": -39.932266958723126,
+    "stopTimeEarned": 40.554693214406015
+  }
+}
