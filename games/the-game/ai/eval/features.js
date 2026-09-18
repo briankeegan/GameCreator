@@ -428,18 +428,6 @@ var MOVE_FRAMES = 4;
     return top + (input.displacement || 0) / 16;
   }
 
-  // Height squared, so a weighted sum can have a PEAK.
-  //
-  // maxHeight is linear: whatever weight it earns, its contribution keeps
-  // going the same way forever, so the search can learn "taller is better" or
-  // "taller is worse" and nothing in between. A straight line has no interior
-  // maximum; h and h-squared together do, since w1*h + w2*h^2 with w2
-  // negative peaks at h = -w1/(2*w2). The search picks where the peak sits.
-  function maxHeightSq(input) {
-    var h = maxHeight(input);
-    return h * h;
-  }
-
   // Occupied cells over total. Counts garbage as occupied.
   function fillRatio(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
@@ -578,22 +566,6 @@ var MOVE_FRAMES = 4;
     var gain = earned - (input.clock.stopTime || 0);
     if (gain <= 0) return 0;          // the engine's max, not a sum
     return couldDie(input) ? gain : 0;
-  }
-
-  // The frames this move ADDS to the invincibility meter. awardStopTime ends
-  // in a MAX, not a +=, so a refresh only helps by what it exceeds: earning
-  // 60 under a 120 clock buys nothing.
-  //
-  // Same question as stopTimeGain without the danger condition. That one is
-  // the conjunction of earning, exceeding and being able to die, and it is so
-  // narrow it returned 0 on every candidate measured across two real
-  // scenarios. Both are registered; which one is worth anything is a
-  // measurement, not an argument.
-  function stopTimeRefresh(input) {
-    var earned = input.earned.stopTimeEarned || 0;
-    if (earned <= 0) return 0;
-    var gain = earned - (input.clock.stopTime || 0);
-    return gain > 0 ? gain : 0;
   }
 
   // ---------------------------------------------------------- latentChain
@@ -794,7 +766,6 @@ var MOVE_FRAMES = 4;
     garbageCleared: garbageCleared,
     stopTimeEarned: stopTimeEarned,
     stopTimeGain: stopTimeGain,
-    stopTimeRefresh: stopTimeRefresh,
     brokeGarbage: brokeGarbage,
     scoreEarned: scoreEarned,
     garbageSent: garbageSent,
@@ -805,7 +776,6 @@ var MOVE_FRAMES = 4;
     colourScarcity: colourScarcity,
     edgePenalty: edgePenalty,
     maxHeight: maxHeight,
-    maxHeightSq: maxHeightSq,
     fillRatio: fillRatio,
     roughness: roughness,
     colourVariance: colourVariance,
