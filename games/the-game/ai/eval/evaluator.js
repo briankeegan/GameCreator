@@ -111,6 +111,15 @@
       // (which is 0 for every perPanel feature anyway) rather than dividing
       // by zero and handing the search a NaN it would silently propagate.
       if (density && f.perPanel && panels > 0) v = v / panels;
+      // EVERY FEATURE IS A SHARE, NOT A COUNT. Raw counts sit on wildly
+      // different scales, so a weighted sum over them is badly conditioned:
+      // the search has to find each feature's magnitude as well as its
+      // direction, and the loop's +-5% jog moves a small-range feature far
+      // more coarsely than a large-range one. Dividing by the feature's own
+      // bound makes a weight mean the same thing everywhere, which is what
+      // lets the reference read links off as "a quarter of the decision".
+      // Divisors and where each comes from are in registry.js.
+      else if (f.norm) v = v / f.norm;
       features[f.key] = v;
       var term = f.sign * w * v;
       terms[f.key] = term;

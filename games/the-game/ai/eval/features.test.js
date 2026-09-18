@@ -333,11 +333,15 @@ test('matchPotential: the input is not mutated by scoring it', function () {
 });
 
 test('matchPotential: weighting it now works end to end through the evaluator', function () {
+    // The evaluator reports a SHARE, not a count: the raw 1 comes back divided
+    // by this feature's bound, so a weight means the same thing here as it
+    // does for a feature that counts to 70.
+    var norm = registry.byKey.matchPotential.norm;
     var r = evaluator.evaluate({ board: board(['..1...', '..1...', '1121..']) },
                                { matchPotential: 10 });
-    assert.strictEqual(r.features.matchPotential, 1);
-    assert.strictEqual(r.terms.matchPotential, 10, 'sign is +1, so the term is +10');
-    assert.strictEqual(r.score, 10);
+    assert.strictEqual(r.features.matchPotential, 1 / norm);
+    assert.strictEqual(r.terms.matchPotential, 10 / norm, 'sign is +1');
+    assert.strictEqual(r.score, 10 / norm);
 });
 
 
@@ -499,9 +503,10 @@ test('links: counts every colour on the board, not just the biggest group', func
 });
 
 test('links: weighting it works end to end through the evaluator', function () {
+    var norm = registry.byKey.links.norm;
     var r = evaluator.evaluate({ board: board(['111...']) }, { links: 3 });
-    assert.strictEqual(r.features.links, 2);
-    assert.strictEqual(r.terms.links, 6, 'sign is +1');
+    assert.strictEqual(r.features.links, 2 / norm, 'two links, reported as a share');
+    assert.strictEqual(r.terms.links, 6 / norm, 'sign is +1');
 });
 
 
@@ -1310,9 +1315,10 @@ test('travelCost: it is a MAGNITUDE — the registry carries the sign', function
 });
 
 test('travelCost: weighting it subtracts through the evaluator', function () {
+    var norm = registry.byKey.travelCost.norm;
     var r = evaluator.evaluate({ travelFrames: 21 }, { travelCost: 2 });
-    assert.strictEqual(r.features.travelCost, 6, '21 frames at cadence 4 is 6 steps');
-    assert.strictEqual(r.terms.travelCost, -12, 'sign -1 times weight 2 times 6 steps');
+    assert.strictEqual(r.features.travelCost, 6 / norm, '21 frames at cadence 4 is 6 steps, as a share');
+    assert.strictEqual(r.terms.travelCost, -12 / norm, 'sign -1 times weight 2 times the share');
 });
 
 

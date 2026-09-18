@@ -176,6 +176,20 @@ gate_garbage_rules() {
   node games/the-game/ai/eval/garbage.test.js
 }
 
+# EVERY FEATURE IS A SHARE, NOT A COUNT.
+#
+# The reference normalises each metric to 0..1 so a weight is that feature's
+# share of the decision. Raw counts on different scales leave the search
+# hunting each feature's magnitude as well as its direction, and the loop's
+# +-5% jog then moves a small-range feature far more coarsely than a
+# large-range one. This checks every feature carries a divisor, that the
+# evaluator applies it, and that the divisor is neither too small (the
+# feature clamps and loses its top end) nor so large the feature is squashed
+# into a sliver it cannot steer from.
+gate_normalise() {
+  node games/the-game/ai/eval/normalise.test.js
+}
+
 gate_features_live() {
   node games/the-game/ai/eval/feature_liveness.js 2 all
 }
@@ -585,6 +599,7 @@ GATES=(
   "the simulation resolves like the game:gate_resolve_fidelity:games/the-game/ai/"
   "that fidelity check fires:gate_resolve_fidelity_fires:games/the-game/ai/"
   "every feature measures what its name says:gate_features:games/the-game/ai/"
+  "every feature is a share, not a count:gate_normalise:games/the-game/ai/"
   "the shared resolve pass is the same answer:gate_features_shared_pass:games/the-game/ai/"
   "that chip check fires:gate_chip_verifier_fires:games/the-game/ai/"
   "the shipped weights and the tools that measure them:gate_shipped_weights:games/the-game/ai/"

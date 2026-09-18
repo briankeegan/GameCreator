@@ -183,6 +183,17 @@ ways: a tool not listed, or a path listed that doesn't exist.
   `Puzzles.json`, 84 typed `chain`. Tools: `puzzles.bench.js` (one-swap),
   `puzzles.play.js` (multi-swap), `chain_reach.js`. In that data `8` is
   SHOCK and `9` is COLORLESS — garbage, not colours.
+- **Every feature is a SHARE, not a count.** Each registry entry carries a
+  `norm` and the evaluator divides by it, so a weight means the same thing
+  for every feature. Divisors are analytic where the board gives one and
+  calibrated against live play otherwise, with the observed maximum recorded
+  beside the number. `normalise.test.js` rejects a missing divisor, one so
+  small the feature clamps, and one so large it is squashed.
+- **A feature that never varies cannot be learned.** Run
+  `feature_liveness.js` over a real game before putting a feature in a run —
+  it taps the evaluator on every candidate the bot scores. `stopTimeGain`
+  looked right and was constant 0 across 4,381 candidates because it needs
+  three rare things at once.
 - **An explicit instruction beats a measurement.** Say the number once, then
   do what was asked.
 - **Never parse a tool's prose — make it emit data**, and have the consumer
