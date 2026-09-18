@@ -545,9 +545,20 @@ function playSector(state, report) {
     // Shields back up on any quiet round — waiting until something is
     // already lined up on you means the generator absorbs exactly one hit
     // per run and then rides along as dead weight. (Raising costs a turn
-    // and 2 Energy, so it wants a round where nothing is shootable.)
-    const canAffordRaise = state.energy >= 2 + Math.min(...armedWeapons(state).map((w) => w.energyCost));
-    if (state.maxShields > 0 && state.shieldCharges < state.maxShields && (canAffordRaise || threatened) && state.energy >= 2) {
+    // and its energy, so it wants a round where nothing is shootable.)
+    //
+    // The PRICE COMES FROM THE ENGINE. It was written out as a literal 2
+    // here, and the moment the engine's own figure moved the pilot began
+    // raising shields it could not pay for: applyRaiseShields threw, and
+    // 32 runs out of 60 ended as errors rather than as a measurement.
+    const raiseCost = Engine.SHIELD_RAISE_COST;
+    const canAffordRaise = state.energy >= raiseCost + Math.min(...armedWeapons(state).map((w) => w.energyCost));
+    if (
+      state.maxShields > 0 &&
+      state.shieldCharges < state.maxShields &&
+      (canAffordRaise || threatened) &&
+      state.energy >= raiseCost
+    ) {
       Engine.applyRaiseShields(state);
       report.shieldsRaised++;
       continue;

@@ -1023,17 +1023,100 @@ assert.strictEqual(clampedState.shieldCharges, 1, "carried charges clamp to inst
     JSON.stringify(Engine.createGameState(LEVELS[0], { startingLoadout: "standard" }).hold.items),
     "omitting startingLoadout is identical to explicitly picking Standard — unlocking nothing changes nothing"
   );
-  // Escort Start's whole point is a shield ready on turn one, not a Hold
+  // THE FLOOR. A cap below the median gun's cost does not make a hull
+  // weaker, it switches the game off: it cannot fire most of the arsenal,
+  // cannot raise a screen, and cannot earn its way out of either. Two
+  // hulls shipped that way and won 1 and 3 runs out of 60 against
+  // Standard's 22. So this is asserted against EVERY entry, including
+  // whatever gets added next.
+  const MEDIAN_GUN_COST = 3;
+  // What the baseline hull can still take once it is actually flying —
+  // computed once, and every other hull is held to it.
+  const baselineFits = new Set();
+  {
+    const base = Engine.createGameState(LEVELS[0], { startingLoadout: "standard" });
+    for (const key of Engine.PURCHASABLE_ACTIONS) {
+      if (!Engine.EQUIPMENT[key]) continue;
+      for (let y = 0; y < base.hold.rows && !baselineFits.has(key); y++)
+        for (let x = 0; x < base.hold.cols && !baselineFits.has(key); x++)
+          if (Engine.holdCanPlace(base.hold, key, x, y)) baselineFits.add(key);
+    }
+  }
+  for (const id of ids) {
+    const p = Engine.previewLoadout(id);
+    assert.ok(
+      p.maxEnergy >= MEDIAN_GUN_COST,
+      `${id}: max Energy ${p.maxEnergy} is under the median gun's cost (${MEDIAN_GUN_COST}) — most of the arsenal is unusable`
+    );
+    if (p.maxShields > 0) {
+      // Raising has to be POSSIBLE, not comfortable. A bus that exactly
+      // covers the price means raising costs you the whole cycle's charge
+      // — which is the trade the Screen Ship is built on, not a defect.
+      // The defect this catches is the original one: a bus of 1 against a
+      // price of 2, where the generator absorbs one volley per run and
+      // then rides along as dead weight.
+      assert.ok(
+        p.maxEnergy >= Engine.SHIELD_RAISE_COST,
+        `${id}: carries a screen it can never re-raise (raising costs ${Engine.SHIELD_RAISE_COST}, bus holds ${p.maxEnergy})`
+      );
+    }
+    // ROOM TO BUILD IN, AND IT IS SHAPE, NOT AREA. The Hold is a narrow
+    // silhouette — five wide with the nose blocked out — so a square crate
+    // wedged into it leaves offcuts no gun fits in. Counting free cells
+    // said the Skirmisher had room for two big guns while it could not
+    // actually place ONE 2x2 weapon; it won 3 runs of 60. So the check is
+    // the real question: with the kit AND the sector's own starting gun
+    // aboard, can this hull still take one of each footprint the arsenal
+    // comes in?
+    const launched = Engine.createGameState(LEVELS[0], { startingLoadout: id });
+    const canFit = (itemId) => {
+      for (let y = 0; y < launched.hold.rows; y++)
+        for (let x = 0; x < launched.hold.cols; x++)
+          if (Engine.holdCanPlace(launched.hold, itemId, x, y)) return true;
+      return false;
+    };
+    // The Line Ship is the yardstick here as everywhere else in this
+    // balance: whatever IT can still take after launch, every other hull
+    // has to be able to take too. Not "every footprint in the game" — a
+    // 1x4 Railgun does not fit the baseline hull at launch either, and a
+    // floor the shipping default fails is a floor written wrong.
+    const shapes = new Map(); // "WxH" -> an example gun of that footprint
+    for (const key of Engine.PURCHASABLE_ACTIONS) {
+      const e = Engine.EQUIPMENT[key];
+      if (e) shapes.set(`${e.w}x${e.h}`, key);
+    }
+    const missing = [...shapes]
+      .filter(([, key]) => baselineFits.has(key) && !canFit(key))
+      .map(([shape]) => shape);
+    assert.ok(
+      missing.length === 0,
+      `${id}: launched, it cannot fit a ${missing.join(" or a ")} crate the Line Ship can — that is a shelf it cannot shop from`
+    );
+    assert.strictEqual(p.hold.cargo.length, 0, `${id}: its own kit does not fit in its own Hold`);
+  }
+  // The Screen Ship's whole point is a shield ready on turn one, not a Hold
   // slot you have to spend a turn charging before it does anything.
   const escort = Engine.createGameState(LEVELS[0], { startingLoadout: "escort" });
-  assert.ok(escort.maxShields > 0, "Escort Start actually carries a Shield Generator");
+  assert.ok(escort.maxShields > 0, "the Screen Ship actually carries a Shield Generator");
   assert.strictEqual(escort.shieldCharges, escort.maxShields, "...and it arrives already raised");
-  // Salvager Start trades the exact same thing Escort does (reactor
-  // capacity) for a different benefit (+1 max Hull instead of a shield).
+  // The Hauler's whole identity is income: cutting gear that pays on every
+  // wreck, bought with a smaller bus and less room to build in. It carried
+  // a point of armour on top of that and won 39 runs of 60 against the
+  // Line Ship's 23.
   const salvager = Engine.createGameState(LEVELS[0], { startingLoadout: "salvager" });
   const standard = Engine.createGameState(LEVELS[0], { startingLoadout: "standard" });
-  assert.ok(salvager.maxHull > standard.maxHull, "Salvager Start has more max Hull than Standard");
-  assert.ok(salvager.maxEnergy < standard.maxEnergy, "...paid for with less max Energy, same as Escort Start");
+  assert.ok(salvager.salvageBonus > 0, "the Hauler carries cutting gear that pays per wreck");
+  assert.ok(standard.salvageBonus === 0, "...and it is the only hull that does");
+  assert.ok(salvager.maxEnergy < standard.maxEnergy, "...paid for with a smaller bus");
+  const freeCells = (st) =>
+    st.hold.cols * st.hold.rows -
+    st.hold.blocked.length -
+    st.hold.items.reduce((n, it) => n + Engine.EQUIPMENT[it.id].w * Engine.EQUIPMENT[it.id].h, 0);
+  assert.ok(freeCells(salvager) < freeCells(standard), "...and less room to build in");
+  // The Skirmisher is the only thing in the sky that moves two hexes.
+  const skirmisher = Engine.createGameState(LEVELS[0], { startingLoadout: "skirmisher" });
+  assert.strictEqual(skirmisher.moveRange, 2, "the Skirmisher's Ion Drive actually reaches two hexes");
+  assert.strictEqual(standard.moveRange, 1, "...and nothing else does");
   // No loadout may be a STRICT upgrade over another (equal-or-better on
   // every stat, worse on none) — a first pass at this shipped with
   // Salvager strictly better than Standard for zero cost, which made
@@ -1043,8 +1126,13 @@ assert.strictEqual(clampedState.shieldCharges, 1, "carried charges clamp to inst
   for (const a of previews) {
     for (const b of previews) {
       if (a.id === b.id) continue;
-      const stats = ["maxHull", "maxEnergy", "maxShields"];
-      const aStrictlyBetter = stats.every((k) => a[k] >= b[k]) && stats.some((k) => a[k] > b[k]);
+      // EVERY axis a hull can differ on, not just the three it used to
+      // have. Hold room, reach and salvage rate are what the newer hulls
+      // actually pay and charge in; leaving them out of this check let a
+      // hull that was better on hull AND energy pass because it was
+      // "paying" in something the check could not see.
+      const axes = ["maxHull", "maxEnergy", "maxShields", "freeCells", "moveRange", "salvageBonus"];
+      const aStrictlyBetter = axes.every((k) => a[k] >= b[k]) && axes.some((k) => a[k] > b[k]);
       assert.ok(!aStrictlyBetter, `${a.id} must not be a strict upgrade over ${b.id} on every stat`);
     }
   }

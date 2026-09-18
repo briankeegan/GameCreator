@@ -862,14 +862,14 @@ async function freshPage(browser, url, errors) {
   // The hangar: ONE hull at a time, arrows to flip. At depth 1 only
   // Standard is flyable; the other two are still shown, greyed, carrying
   // the depth that opens them.
-  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Standard", "the hangar opens on the hull that would launch");
-  assert.strictEqual(await page.locator(".hangar-count").textContent(), "1 / 3", "and says where it sits in a shelf of three");
+  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Line Ship", "the hangar opens on the hull that would launch");
+  assert.strictEqual(await page.locator(".hangar-count").textContent(), "1 / 4", "and says where it sits in a shelf of four");
   assert.strictEqual(await page.locator("#restartBtn").textContent(), "Launch");
   assert.strictEqual(await page.locator("#restartBtn").isDisabled(), false);
   assert.strictEqual(
     await page.locator("#loadoutDetail .loadout-hold .hold-tile").count(),
     3,
-    "Standard's whole Hold is drawn — drive, reactor, scanner"
+    "the Line Ship's whole Hold is drawn — drive, reactor, scanner"
   );
   assert.strictEqual(
     await page.locator("#loadoutDetail .ship-stat-row").count(),
@@ -878,8 +878,8 @@ async function freshPage(browser, url, errors) {
   );
   await page.click(".hangar-arrow >> nth=1");
   await page.waitForTimeout(80);
-  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Escort Start", "the arrow flips to the next hull");
-  assert.strictEqual(await page.locator(".hangar-count").textContent(), "2 / 3");
+  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Screen Ship", "the arrow flips to the next hull");
+  assert.strictEqual(await page.locator(".hangar-count").textContent(), "2 / 4");
   assert.strictEqual(
     await page.locator("#loadoutDetail").evaluate((el) => el.classList.contains("locked")),
     true,
@@ -893,7 +893,7 @@ async function freshPage(browser, url, errors) {
   );
   await page.click(".hangar-arrow >> nth=0");
   await page.waitForTimeout(80);
-  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Standard", "and back again");
+  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Line Ship", "and back again");
   assert.strictEqual(await page.locator("#restartBtn").isDisabled(), false);
 
   await page.click("#restartBtn");
@@ -923,7 +923,7 @@ async function freshPage(browser, url, errors) {
   await waitForOverlay(page);
   await page.click(".hangar-arrow >> nth=1");
   await page.waitForTimeout(80);
-  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Escort Start");
+  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Screen Ship");
   assert.strictEqual(
     await page.locator("#loadoutDetail").evaluate((el) => el.classList.contains("locked")),
     false,
@@ -960,7 +960,7 @@ async function freshPage(browser, url, errors) {
   await waitForOverlay(page);
   assert.strictEqual(
     await page.locator(".loadout-detail-name").textContent(),
-    "Escort Start",
+    "Screen Ship",
     "the hangar itself reopens on it across the reload too, not just the in-flight run"
   );
   await page.click("#restartBtn");
