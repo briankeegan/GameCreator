@@ -30,7 +30,6 @@
         <div class="run-overlay" id="runOverlay" hidden>
           <h2 id="runOverlayTitle"></h2>
           <p id="runOverlayBody"></p>
-          <p id="runOverlayRequisition"></p>
           <!-- Tapping a chip INSPECTS it — what it gives you, what it costs
                to fit. A separate button below commits to it, same pattern
                as the Outpost shelf: tap to read, a distinct action to buy. -->
@@ -38,11 +37,9 @@
           <div class="loadout-detail" id="loadoutDetail" hidden></div>
           <!-- The Manifest: which guns this run's Outpost shelves are
                allowed to offer. Fitted here, before launch, and fixed for
-               the whole run — so the shelf never gets wider than you chose,
-               however much the armoury grows. -->
+               the whole run. -->
           <p class="manifest-title" id="manifestTitle"></p>
           <div class="loadout-picker manifest-picker" id="manifestPicker"></div>
-          <button id="manifestSlotBtn" hidden></button>
           <button id="continueBtn" hidden>Keep Flying</button>
           <button id="restartBtn">New Ship</button>
         </div>

@@ -35,11 +35,9 @@ const logEl = document.getElementById("log");
 const overlayEl = document.getElementById("runOverlay");
 const overlayTitleEl = document.getElementById("runOverlayTitle");
 const overlayBodyEl = document.getElementById("runOverlayBody");
-const overlayRequisitionEl = document.getElementById("runOverlayRequisition");
 const loadoutPickerEl = document.getElementById("loadoutPicker");
 const manifestTitleEl = document.getElementById("manifestTitle");
 const manifestPickerEl = document.getElementById("manifestPicker");
-const manifestSlotBtnEl = document.getElementById("manifestSlotBtn");
 const loadoutDetailEl = document.getElementById("loadoutDetail");
 const restartBtn = document.getElementById("restartBtn");
 const continueBtnEl = document.getElementById("continueBtn");
@@ -119,48 +117,24 @@ const BRANCH_TINTS = {
 function freshRunSeed() {
   return Math.floor(Math.random() * 0xffffffff) >>> 0;
 }
-// Requisition: a SECOND currency, wholly separate from in-run salvage
-// (never spendable mid-run, so the tuned "save up for weapons" economy
-// stays untouched) — earned once per run, when the run actually ends, and
-// spent between runs unlocking alternate starting loadouts (see
-// Engine.STARTING_LOADOUTS). The point: even a loss banks something, and
-// that something is a real choice next time, not just a bigger number —
-// mirrors games/trebor's existing achievement→unlock pattern, the only
-// precedent for cross-run progression in this repo.
-let requisition = GCStorage.get(GAME_ID, "requisition", 0);
-// THE ARMOURY and THE MANIFEST. The armoury is everything you own and it
-// only grows; the manifest is the handful you fit before launching, and the
-// Outpost shelf offers nothing else. That is what stops "more weapons" from
-// meaning "the gun you want is rarer" — owning a twentieth gun cannot
-// crowd out the Beam Lance, because you decided whether the Beam Lance was
-// in this run at all.
-//
-// The armoury starts FULL. A feature whose first act is to take weapons
-// away from someone who already had them is not a reward.
+// Every canned ship is available from the start. There is no second
+// currency and nothing to unlock: you pick a hull, you fly it. Adding more
+// hulls is a data change, and gating some of them can come back later
+// without any of this machinery returning.
+let selectedLoadout = GCStorage.get(GAME_ID, "selectedLoadout", "standard");
+// THE ARMOURY and THE MANIFEST. The armoury is everything you own; the
+// manifest is the handful fitted before launch, and the Outpost shelf
+// offers nothing else — so owning more guns never makes the one you want
+// rarer. The armoury starts full.
 const ARMOURY_DEFAULT = Engine.PURCHASABLE_ACTIONS.slice();
 let armoury = new Set(GCStorage.get(GAME_ID, "armoury", ARMOURY_DEFAULT));
-let manifestSlots = GCStorage.get(GAME_ID, "manifestSlots", 6);
-let manifest = GCStorage.get(GAME_ID, "manifest", ARMOURY_DEFAULT.slice(0, manifestSlots));
-// What another slot costs, climbing: breadth is meant to be a real
-// sacrifice against everything else Requisition buys.
-function nextSlotCost() {
-  return 20 + (manifestSlots - 6) * 15;
-}
-let unlockedLoadouts = new Set(GCStorage.get(GAME_ID, "unlockedLoadouts", ["standard"]));
-let selectedLoadout = GCStorage.get(GAME_ID, "selectedLoadout", "standard");
-// Guards the award below against firing again on every repeated render of
-// the same death/victory frame — reset in loadSector, same lifecycle as
-// outpostDismissed/shipAngle just below it.
-let requisitionAwardedThisEnding = false;
-let requisitionEarnedThisEnding = 0;
+const MANIFEST_SLOTS = 6;
+let manifest = GCStorage.get(GAME_ID, "manifest", ARMOURY_DEFAULT.slice(0, MANIFEST_SLOTS));
 
 function persistUnlocks() {
-  GCStorage.set(GAME_ID, "requisition", requisition);
-  GCStorage.set(GAME_ID, "unlockedLoadouts", Array.from(unlockedLoadouts));
   GCStorage.set(GAME_ID, "selectedLoadout", selectedLoadout);
   GCStorage.set(GAME_ID, "armoury", Array.from(armoury));
   GCStorage.set(GAME_ID, "manifest", manifest.slice());
-  GCStorage.set(GAME_ID, "manifestSlots", manifestSlots);
 }
 
 // How much a run banks, once — legible on the overlay ("you got to depth
@@ -168,9 +142,6 @@ function persistUnlocks() {
 // same thing bestDepth already tracks, just turned into something spendable
 // instead of only a number on a screen. A boss clear is a real milestone
 // on top of that, same as isVictory gets its own distinct overlay.
-function requisitionEarnedFor(finishedState) {
-  return Math.max(0, finishedState.levelId - 4) + (finishedState.isVictory ? 15 : 0);
-}
 
 let state = Engine.createGameState(levelForIndex(levelIndex), {
   runSeed: freshRunSeed(),
@@ -3249,9 +3220,6 @@ function persist() {
   // Written every render, same as "run" itself — otherwise a page reload
   // while sitting on the death/victory overlay (state.status still "lost"
   // in the restored save) would find the in-memory guard reset to false
-  // and bank Requisition for the same ending a second time.
-  GCStorage.set(GAME_ID, "requisitionAwardedThisEnding", requisitionAwardedThisEnding);
-  GCStorage.set(GAME_ID, "requisitionEarnedThisEnding", requisitionEarnedThisEnding);
 }
 
 function animsRunning() {
@@ -3342,16 +3310,6 @@ function updateHud() {
   // routine clear. A BOSS win (isVictory) is the one exception — see
   // handleAction, which deliberately skips the auto-continue for it — so
   // this overlay is how "Run Complete" actually gets shown to the player.
-  if ((state.status === "lost" || state.isVictory) && !animsRunning() && !requisitionAwardedThisEnding) {
-    // Banked once, the moment the run actually ends (loss, or a boss
-    // clear) — never on "Keep Flying" past the Bulwark, since that isn't
-    // the run ending. Depth past the campaign is the same number
-    // bestDepth already tracks, just turned into something spendable.
-    requisitionEarnedThisEnding = requisitionEarnedFor(state);
-    requisition += requisitionEarnedThisEnding;
-    requisitionAwardedThisEnding = true;
-    persistUnlocks();
-  }
   if (state.status === "lost" && !animsRunning()) {
     if (voluntaryScuttle) {
       overlayTitleEl.textContent = "Charges Blown";
@@ -3360,14 +3318,12 @@ function updateHud() {
       overlayTitleEl.textContent = "Flagship Destroyed";
       overlayBodyEl.textContent = `Lost with all hands at depth ${state.levelId}. Deepest run so far: ${bestDepth}.`;
     }
-    overlayRequisitionEl.textContent = `+${requisitionEarnedThisEnding} Requisition — ${requisition} banked.`;
     updateLoadoutPicker();
     continueBtnEl.hidden = true;
     overlayEl.hidden = false;
   } else if (state.isVictory && !animsRunning()) {
     overlayTitleEl.textContent = "The Bulwark Is Scrap";
     overlayBodyEl.textContent = `The Bulwark is dead in the water at depth ${state.levelId}. Press on, or take the ship home.`;
-    overlayRequisitionEl.textContent = `+${requisitionEarnedThisEnding} Requisition — ${requisition} banked.`;
     updateLoadoutPicker();
     continueBtnEl.hidden = false;
     overlayEl.hidden = false;
@@ -3702,7 +3658,6 @@ function updateLoadoutPicker() {
   for (const id of ids) {
     const loadout = Engine.STARTING_LOADOUTS[id];
     const btn = document.createElement("button");
-    const owned = unlockedLoadouts.has(id);
     const active = selectedLoadout === id;
     btn.textContent = active ? `${loadout.label} ✓` : loadout.label;
     btn.classList.toggle("selected", previewedLoadout === id);
@@ -3726,14 +3681,14 @@ function updateManifestPicker() {
   // removed between versions), which would silently narrow a shelf toward
   // nothing. Drop those rather than carrying them.
   const owned = Engine.PURCHASABLE_ACTIONS.filter((id) => armoury.has(id));
-  const cleaned = manifest.filter((id) => armoury.has(id)).slice(0, manifestSlots);
+  const cleaned = manifest.filter((id) => armoury.has(id)).slice(0, MANIFEST_SLOTS);
   if (cleaned.length !== manifest.length) {
     manifest = cleaned;
     persistUnlocks();
   }
-  manifestTitleEl.textContent = `Manifest — ${manifest.length} of ${manifestSlots} slots fitted`;
+  manifestTitleEl.textContent = `Manifest — ${manifest.length} of ${MANIFEST_SLOTS} slots fitted`;
   manifestPickerEl.innerHTML = "";
-  const full = manifest.length >= manifestSlots;
+  const full = manifest.length >= MANIFEST_SLOTS;
   for (const id of owned) {
     const fitted = manifest.includes(id);
     const btn = document.createElement("button");
@@ -3742,39 +3697,17 @@ function updateManifestPicker() {
     btn.classList.toggle("full", !fitted && full);
     btn.addEventListener("click", () => {
       if (fitted) manifest = manifest.filter((x) => x !== id);
-      else if (manifest.length < manifestSlots) manifest = manifest.concat(id);
+      else if (manifest.length < MANIFEST_SLOTS) manifest = manifest.concat(id);
       else return; // no room, and the chip already reads as unavailable
       persistUnlocks();
       updateManifestPicker();
     });
     manifestPickerEl.appendChild(btn);
   }
-  const cost = nextSlotCost();
-  manifestSlotBtnEl.hidden = false;
-  manifestSlotBtnEl.disabled = requisition < cost;
-  manifestSlotBtnEl.textContent = `Fit another hardpoint — ${cost} Requisition`;
-  manifestSlotBtnEl.onclick = () => {
-    if (requisition < nextSlotCost()) return;
-    requisition -= nextSlotCost();
-    manifestSlots += 1;
-    persistUnlocks();
-    updateRequisitionLine();
-    updateManifestPicker();
-  };
 }
 
-// The banked-Requisition line, so buying a slot updates it without waiting
-// for the next render of the whole overlay.
-function updateRequisitionLine() {
-  if (overlayRequisitionEl) {
-    overlayRequisitionEl.textContent = `+${requisitionEarnedThisEnding} Requisition — ${requisition} banked.`;
-  }
-}
-
-// The readout for whichever chip is currently previewed — what it gives
-// you, what it costs to fit, and a single button that actually commits
-// (unlock-and-select if locked, select if already owned, or just "this is
-// what's flying next" if it's already the active pick).
+// The readout for whichever chip is currently previewed — what the hull
+// gives you, and a single button that arms it for the next run.
 function updateLoadoutDetail() {
   loadoutDetailEl.hidden = false;
   loadoutDetailEl.innerHTML = "";
@@ -3787,7 +3720,6 @@ function updateLoadoutDetail() {
   }
 
   const preview = Engine.previewLoadout(previewedLoadout);
-  const owned = unlockedLoadouts.has(previewedLoadout);
   const active = selectedLoadout === previewedLoadout;
 
   // The hull itself first — same lookup flagshipSprite() uses, just keyed
@@ -3818,27 +3750,13 @@ function updateLoadoutDetail() {
   if (active) {
     confirm.textContent = "This is flying next";
     confirm.disabled = true;
-  } else if (owned) {
-    confirm.textContent = "Select for next run";
-    confirm.disabled = false;
   } else {
-    const short = Math.max(0, preview.cost - requisition);
-    confirm.textContent = short > 0 ? `Unlock — ${preview.cost} req. (${short} short)` : `Unlock — ${preview.cost} req.`;
-    confirm.disabled = short > 0;
+    confirm.textContent = "Fly this one";
+    confirm.disabled = false;
   }
   confirm.addEventListener("click", () => {
-    if (!owned) {
-      requisition -= preview.cost;
-      unlockedLoadouts.add(previewedLoadout);
-    }
     selectedLoadout = previewedLoadout;
     persistUnlocks();
-    // A full render, not just updateLoadoutPicker() — unlocking spends
-    // Requisition, and the "X banked" line just above the picker only
-    // gets touched by updateHud(). Calling the narrower refresh left that
-    // number stale (still the pre-spend total) until whatever redrew the
-    // overlay next, same pattern every other state-changing click in this
-    // file already follows (see the Outpost's buy button via handleAction).
     render();
   });
   loadoutDetailEl.appendChild(confirm);
@@ -4210,7 +4128,7 @@ function updateShipOverlay() {
       if (selfDestructArmed) {
         // Watch her go first. The screen stays put through the blast, then
         // the death overlay comes up same as any other run ending — same
-        // Requisition payout, same loadout picker to arm the next hull —
+        // Same loadout picker to arm the next hull —
         // "New Ship" there is what actually starts the fresh run.
         scuttling = true;
         scuttle.disabled = true;
@@ -4866,8 +4784,6 @@ function loadSector(index, carryOver, opts) {
   cancelRoute();
   outpostDismissed = false;
   shipAngle = -90;
-  requisitionAwardedThisEnding = false;
-  requisitionEarnedThisEnding = 0;
   voluntaryScuttle = false;
   updateGeometry();
   render();
@@ -4923,11 +4839,9 @@ function restoreRun() {
   levelIndex = savedIndex;
   state = savedState;
   // Restored in lockstep with "run" (see persist()) — otherwise reloading
-  // while sitting on the death/victory overlay would re-bank Requisition
+  // while sitting on the death/victory overlay would otherwise re-fire
   // for the same ending, since the in-memory guard defaults to false on
   // every fresh page load.
-  requisitionAwardedThisEnding = GCStorage.get(GAME_ID, "requisitionAwardedThisEnding", false);
-  requisitionEarnedThisEnding = GCStorage.get(GAME_ID, "requisitionEarnedThisEnding", 0);
   // A save from the 2-AP era carries maxAp: 2 inside it and would keep
   // playing (and showing) two actions a round forever — clamp restored
   // saves down to the shipped budget. (No AP upgrades exist to preserve

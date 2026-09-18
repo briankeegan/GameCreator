@@ -112,8 +112,11 @@ Grow that, rather than widening the shelf.
 The owner's call, and it is also the fix for the Slay the Spire problem
 above: **unlocking is curation, not accumulation.**
 
-- **Requisition buys weapons into your ARMOURY** — the permanent list of
-  everything you own. Earned as now: depth reached, plus a boss clear.
+- **There is no second currency and nothing is locked.** Requisition and the
+  unlock gate are gone — the owner's call, and the right one: the manifest
+  already IS the between-runs choice, so a purchase screen on top of it was
+  a second system asking the same question worse. Every canned ship is
+  available; the armoury holds every gun.
 - **Before a run you fit a MANIFEST: a fixed number of weapon slots (start
   with 6) drawn from the armoury.** The Outpost shelf then only ever offers
   what is on your manifest, plus the always-available basics.
@@ -124,8 +127,8 @@ above: **unlocking is curation, not accumulation.**
   the pen, and it turns "what did I unlock" into "what am I building".
 - It also makes a bad weapon interesting rather than pollution: you took it
   on purpose, so the run is about making it work.
-- Manifest slots themselves are the other thing Requisition can buy — going
-  from 6 to 7 is a real, expensive choice about breadth versus focus.
+- Slots are fixed at six for now. If breadth should ever be earned, that is
+  a number to move, not a currency to reintroduce.
 
 ### The other trigger: unspent salvage brings company
 

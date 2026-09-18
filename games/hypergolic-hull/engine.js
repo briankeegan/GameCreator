@@ -2595,23 +2595,29 @@
   // pointless to ever pick again. Both alternatives now pay the same price
   // (a Micro Reactor instead of a full Reactor Core — less energy bank
   // until a real one's bought) for two different things, so there's a
-  // real question to answer, not a race to whichever unlocks first.
+  // THE CANNED SHIPS. Three hulls, all available, pick one and fly it —
+  // there is nothing to unlock and no second currency. Each is a different
+  // SHAPE of the same starting budget rather than a power bump: the two
+  // alternatives both pay the same price (a Micro Reactor instead of a full
+  // Reactor Core) for two different things, so choosing is a question with
+  // no right answer rather than a race to the best one.
+  //
+  // Adding a fourth is a data change. Gating some of them behind something
+  // earned can come back later without any of that machinery living here
+  // in the meantime.
   const STARTING_LOADOUTS = {
     standard: {
       label: "Standard",
-      cost: 0,
       blurb: "The baseline. Full reactor, no shield.",
       kit: ["sublightDrive", "reactorCore", "scanner"],
     },
     escort: {
       label: "Escort Start",
-      cost: 10,
       blurb: "Shield raised from turn one — one hit absorbed free. Costs reactor capacity to fit it.",
       kit: ["sublightDrive", "microReactor", "scanner", "shieldGenerator"],
     },
     salvager: {
       label: "Salvager Start",
-      cost: 20,
       blurb: "An extra plate of armor. Same reactor cost as Escort Start.",
       kit: ["sublightDrive", "microReactor", "scanner", "ablativePlating"],
     },

@@ -859,12 +859,7 @@ async function freshPage(browser, url, errors) {
   await waitForOverlay(page);
   assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Flagship Destroyed");
 
-  assert.strictEqual(
-    await page.locator("#runOverlayRequisition").textContent(),
-    "+0 Requisition — 0 banked.",
-    "a Sector 1 loss earns nothing — Requisition only starts accruing past the campaign"
-  );
-  assert.strictEqual(await page.locator("#loadoutPicker button").count(), 3, "Standard plus the two unlockable loadouts");
+  assert.strictEqual(await page.locator("#loadoutPicker button").count(), 3, "three canned ships, all available from the start");
   assert.strictEqual(
     await page.locator("#loadoutPicker button", { hasText: "Standard ✓" }).count(),
     1,
@@ -884,16 +879,16 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#runOverlay").isVisible(), false);
   await page.close();
 
-  // ---- Requisition: earn it, unlock a loadout, fly the next run with it --
+  // ---- Pick a canned ship and fly the next run in it ---------------------
   // Tapping a chip only PREVIEWS it — a separate confirm button in the
-  // detail box actually unlocks/selects. (Clubhouse: a single tap that
-  // both bought and armed a loadout at once read as unclear — "you select
-  // the next one, it shows what's available, then you confirm.")
+  // detail box actually selects. Nothing is bought and nothing is locked:
+  // all three hulls are available, and the question is which shape of the
+  // same budget you want.
   page = await freshPage(browser, url, errors);
-  // A deep loss, forced directly rather than played out — engine.test.js
-  // already covers the reward math and the Hold contents of each loadout
-  // headlessly; this is here to prove the real DOM wiring (the overlay's
-  // picker, the two-step confirm flow, New Ship actually reading the pick).
+  // A loss, forced directly rather than played out — engine.test.js already
+  // covers the Hold contents of each hull headlessly; this is here to prove
+  // the real DOM wiring (the overlay's picker, the two-step confirm flow,
+  // New Ship actually reading the pick).
   await page.evaluate(() => {
     window.__hhState.levelId = 34;
     window.__hhState.hull = 0;
@@ -901,16 +896,11 @@ async function freshPage(browser, url, errors) {
     window.render();
   });
   await waitForOverlay(page);
-  assert.strictEqual(
-    await page.locator("#runOverlayRequisition").textContent(),
-    "+30 Requisition — 30 banked.",
-    "depth 34 - 4 = 30, exactly the legible formula on the overlay"
-  );
   const escortChip = page.locator("#loadoutPicker button", { hasText: "Escort" });
   await escortChip.click();
   assert.strictEqual(await escortChip.evaluate((el) => el.classList.contains("selected")), true, "tapping the chip previews it");
   const confirmBtn = page.locator("#loadoutDetail .loadout-confirm");
-  assert.strictEqual(await confirmBtn.textContent(), "Unlock — 10 req.", "30 banked covers the 10 cost, so it's enabled, not short");
+  assert.strictEqual(await confirmBtn.textContent(), "Fly this one", "nothing to buy — the button just arms it");
   assert.strictEqual(await confirmBtn.isDisabled(), false);
   await confirmBtn.click();
   assert.strictEqual(await confirmBtn.textContent(), "This is flying next", "confirming re-renders the same box, now showing it's armed");
