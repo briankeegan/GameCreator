@@ -3725,14 +3725,27 @@ function updateLoadoutDetail() {
   // The hull itself first — same lookup flagshipSprite() uses, just keyed
   // on the loadout being previewed instead of the run actually in flight.
   const body = document.createElement("div");
-  const figure = document.createElement("img");
-  figure.className = "loadout-ship-figure";
-  figure.src = spriteForLoadout(previewedLoadout).src;
-  figure.alt = preview.label;
-  body.appendChild(figure);
-  // Stats first, always visible even if the blurb wraps long enough to
-  // need the box's scroll — the numbers are what actually distinguishes
-  // one loadout from another; the blurb is the why.
+  // No ship portrait here any more: the hull IS its hold, and the picture
+  // was squeezing the one thing worth looking at into a corner.
+  // The real Hold, drawn with the same builder the Systems screen uses —
+  // the crates, their shapes and where they sit, which is what a hull
+  // actually IS. A stats line alone says what it adds up to.
+  const holdVm = {
+    cols: preview.hold.cols,
+    rows: preview.hold.rows,
+    blocked: preview.hold.blocked,
+    interactive: false,
+    gridId: "loadoutHoldGrid",
+    tiles: preview.hold.items.map((it, i) => {
+      const eq = Engine.EQUIPMENT[it.id];
+      return { itemId: it.id, holdIndex: i, x: it.x, y: it.y, w: eq.w, h: eq.h, kind: eq.kind, label: eq.label };
+    }),
+  };
+  const holdWrap = document.createElement("div");
+  holdWrap.className = "loadout-hold";
+  holdWrap.appendChild(buildHoldGrid(holdVm, 44));
+  body.appendChild(holdWrap);
+
   const stats = document.createElement("div");
   stats.className = "loadout-stats";
   stats.textContent =
@@ -3968,6 +3981,63 @@ function renderPortrait(enemy) {
 // scanned contact — only the view-model changes, plus the drag wiring,
 // which a contact's hold obviously never gets (it's a scanner
 // reconstruction, not a deck you can walk).
+// THE HOLD GRID, built once and drawn wherever a ship needs showing: the
+// Systems screen, a scanned contact, and the pre-launch picker. A hull is
+// its hold — a summary line of Hull/Energy/Shields says what a ship adds up
+// to and not what is actually bolted into it, which is the thing you are
+// choosing between.
+function buildHoldGrid(vm, cell) {
+    const CELL = cell;
+    // Drag-and-drop is only ever live on your OWN hold while berthed. A
+    // scanned contact and the pre-launch picker are both read-only
+    // schematics, so this is derived here rather than closed over.
+    const docked = Boolean(vm.interactive) && state && Engine.outpostAvailable(state);
+    const gridEl = document.createElement("div");
+    gridEl.className = "hold-grid" + (docked ? " docked" : "") + (vm.interactive ? "" : " enemy-hold");
+    gridEl.id = vm.gridId;
+    gridEl.style.width = `${vm.cols * CELL}px`;
+    gridEl.style.height = `${vm.rows * CELL}px`;
+    gridEl.style.backgroundSize = `${CELL}px ${CELL}px`;
+    // Void cells outside the hull — the grid IS the ship's silhouette.
+    for (const key of vm.blocked) {
+      const [bx, by] = key.split(",").map(Number);
+      const cell = document.createElement("div");
+      cell.className = "hold-cell-void";
+      cell.style.left = `${bx * CELL}px`;
+      cell.style.top = `${by * CELL}px`;
+      cell.style.width = `${CELL}px`;
+      cell.style.height = `${CELL}px`;
+      gridEl.appendChild(cell);
+    }
+    for (const t of vm.tiles) {
+      const tile = document.createElement("div");
+      tile.className = `hold-tile hold-kind-${t.kind}`;
+      if (t.itemId) {
+        tile.dataset.holdIndex = String(t.holdIndex);
+        tile.dataset.itemId = t.itemId;
+      }
+      tile.style.left = `${t.x * CELL}px`;
+      tile.style.top = `${t.y * CELL}px`;
+      tile.style.width = `${t.w * CELL - 4}px`;
+      tile.style.height = `${t.h * CELL - 4}px`;
+      if (t.w === 1) tile.style.fontSize = "0.48rem"; // narrow tiles wrap their label instead of clipping it
+      tile.textContent = t.label;
+      // A gun gets its own picture on the tile. The Hold is the one screen
+      // where hardware IS the content, and every tile in it was a coloured
+      // rectangle with a word in it — the icons say something the word
+      // can't: the Flank Tubes visibly point outward, the Railgun is a
+      // spine, the Mortar is a fat throat. Label stays, because at this
+      // size the picture alone isn't enough to pick a gun by.
+      const eq = t.itemId && Engine.EQUIPMENT[t.itemId];
+      if (eq && eq.kind === "weapon") {
+        tile.classList.add("has-icon");
+        tile.style.backgroundImage = `url("icons/weapon-${eq.weaponKey}.png")`;
+      }
+      gridEl.appendChild(tile);
+    }
+    return gridEl;
+}
+
 function updateShipOverlay() {
   shipOverlayEl.hidden = !shipVisible;
   shipBtn.classList.toggle("active", shipVisible);
@@ -4031,50 +4101,9 @@ function updateShipOverlay() {
   holdTitle.textContent = vm.holdTitle;
   shipHardpointsEl.appendChild(holdTitle);
 
-  const CELL = 44;
-  const gridEl = document.createElement("div");
-  gridEl.className = "hold-grid" + (docked ? " docked" : "") + (vm.interactive ? "" : " enemy-hold");
-  gridEl.id = vm.gridId;
-  gridEl.style.width = `${vm.cols * CELL}px`;
-  gridEl.style.height = `${vm.rows * CELL}px`;
-  gridEl.style.backgroundSize = `${CELL}px ${CELL}px`;
-  // Void cells outside the hull — the grid IS the ship's silhouette.
-  for (const key of vm.blocked) {
-    const [bx, by] = key.split(",").map(Number);
-    const cell = document.createElement("div");
-    cell.className = "hold-cell-void";
-    cell.style.left = `${bx * CELL}px`;
-    cell.style.top = `${by * CELL}px`;
-    cell.style.width = `${CELL}px`;
-    cell.style.height = `${CELL}px`;
-    gridEl.appendChild(cell);
-  }
-  for (const t of vm.tiles) {
-    const tile = document.createElement("div");
-    tile.className = `hold-tile hold-kind-${t.kind}`;
-    if (t.itemId) {
-      tile.dataset.holdIndex = String(t.holdIndex);
-      tile.dataset.itemId = t.itemId;
-    }
-    tile.style.left = `${t.x * CELL}px`;
-    tile.style.top = `${t.y * CELL}px`;
-    tile.style.width = `${t.w * CELL - 4}px`;
-    tile.style.height = `${t.h * CELL - 4}px`;
-    if (t.w === 1) tile.style.fontSize = "0.48rem"; // narrow tiles wrap their label instead of clipping it
-    tile.textContent = t.label;
-    // A gun gets its own picture on the tile. The Hold is the one screen
-    // where hardware IS the content, and every tile in it was a coloured
-    // rectangle with a word in it — the icons say something the word
-    // can't: the Flank Tubes visibly point outward, the Railgun is a
-    // spine, the Mortar is a fat throat. Label stays, because at this
-    // size the picture alone isn't enough to pick a gun by.
-    const eq = t.itemId && Engine.EQUIPMENT[t.itemId];
-    if (eq && eq.kind === "weapon") {
-      tile.classList.add("has-icon");
-      tile.style.backgroundImage = `url("icons/weapon-${eq.weaponKey}.png")`;
-    }
-    gridEl.appendChild(tile);
-  }
+  // 44px is the Systems screen's cell, and the tile labels are tuned to it.
+  const HOLD_CELL = 44;
+  const gridEl = buildHoldGrid(vm, HOLD_CELL);
   shipHardpointsEl.appendChild(gridEl);
 
   const holdInfo = document.createElement("p");
@@ -4104,7 +4133,7 @@ function updateShipOverlay() {
       cargoEl.appendChild(chip);
     });
     shipHardpointsEl.appendChild(cargoEl);
-    wireHoldDrag(gridEl, cargoEl, CELL, docked);
+    wireHoldDrag(gridEl, cargoEl, HOLD_CELL, docked);
   }
 
   if (docked) {

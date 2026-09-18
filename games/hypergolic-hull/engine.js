@@ -2636,9 +2636,11 @@
     return {
       id: loadoutId,
       label: loadout.label,
-      cost: loadout.cost,
       blurb: loadout.blurb,
       kit: loadout.kit.slice(),
+      // The hold itself, not just what it adds up to. Picking a hull is
+      // picking what is bolted into it, so the picker draws the real grid.
+      hold,
       maxHull: START_HULL + ship.hullBonus,
       maxEnergy: ship.maxEnergy,
       maxShields: ship.maxShields,

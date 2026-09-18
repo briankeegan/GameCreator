@@ -253,7 +253,10 @@ body {
    stat line, never a footprint diagram, so it doesn't need the room a
    Mortar's does. */
 .loadout-detail {
-  height: 10rem;
+  /* Taller than the Outpost's box it shares styling with: this one carries
+     the hull's whole Hold at full size, which is the thing being chosen.
+     The overlay itself scrolls, so height here is not a hard ceiling. */
+  height: 19rem;
 }
 
 /* The readout takes whatever room it needs; the button stays pinned to the
@@ -1139,3 +1142,18 @@ body {
   margin-top: 0.5rem;
   font-size: 0.8rem;
 }
+
+/* The hull's Hold, drawn inside the pre-launch picker. Same grid the
+   Systems screen shows, at a smaller cell — a ship is what is bolted into
+   it, so this is the part of the box worth the most room. */
+.loadout-hold {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  clear: both;
+  margin: 4px 0 6px;
+}
+.loadout-hold .hold-grid { margin: 0; }
+/* No size override: the picker draws the hold at the SAME 44px cell the
+   Systems screen uses, because the tile labels are tuned to that cell and
+   anything smaller clips them mid-word. The box grows instead. */
