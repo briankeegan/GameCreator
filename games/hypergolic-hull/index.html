@@ -36,6 +36,11 @@
                them. FTL's ship-select screen. There is no confirm step
                because there is nothing to confirm: the hull on screen IS
                the one that launches. -->
+          <!-- The moment of earning. A run that crosses an unlock depth
+               says so HERE, before the hangar and before anything else on
+               the screen — an unlock you find later in a menu is not a
+               reward, it is paperwork. -->
+          <div class="unlock-card" id="unlockCard" hidden></div>
           <div class="loadout-detail" id="loadoutDetail" hidden></div>
           <button id="continueBtn" hidden>Keep Flying</button>
           <button id="restartBtn">Launch</button>
@@ -44,6 +49,8 @@
                here. It swaps places with the hangar rather than sitting
                under it — the overlay never scrolls, so it holds one or the
                other, never both. -->
+          <!-- The carrot: a lock is only a goal if you can see it coming. -->
+          <p class="next-unlock" id="nextUnlock" hidden></p>
           <button id="manifestToggle" class="manifest-toggle"></button>
           <div class="loadout-picker manifest-picker" id="manifestPicker" hidden></div>
         </div>

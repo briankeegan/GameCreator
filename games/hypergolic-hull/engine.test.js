@@ -1148,6 +1148,48 @@ assert.strictEqual(clampedState.shieldCharges, 1, "carried charges clamp to inst
   );
 }
 
+// ---- the unlock schedule ------------------------------------------------
+// One signal opens everything: the deepest run so far. No currency, and
+// nothing is announced twice — the UI diffs unlockedAt() against what it
+// has shown.
+{
+  const unlisted = Engine.PURCHASABLE_ACTIONS.filter((id) => !(id in Engine.WEAPON_UNLOCK_DEPTH));
+  assert.deepStrictEqual(unlisted, [], "every buyable gun says which depth opens it");
+  const MANIFEST_SLOTS = 6; // app.js's rack; asserted here because the schedule has to beat it
+  assert.ok(
+    Engine.unlockedWeapons(1).length > MANIFEST_SLOTS,
+    "a first run owns more guns than the Manifest has slots, so fitting it is a choice and not a formality"
+  );
+  const finalDepth = Math.max(
+    ...Object.values(Engine.WEAPON_UNLOCK_DEPTH),
+    ...Object.keys(Engine.STARTING_LOADOUTS).map((id) => Engine.STARTING_LOADOUTS[id].unlockDepth || 1)
+  );
+  assert.ok(finalDepth <= HypergolicLevels.BOSS_DEPTH, "nothing is locked behind a depth the campaign never reaches");
+  assert.strictEqual(
+    Engine.unlockedWeapons(finalDepth).length,
+    Engine.PURCHASABLE_ACTIONS.length,
+    "and everything is open by then"
+  );
+  // Monotonic: going deeper never takes something away.
+  for (let d = 1; d < finalDepth; d++) {
+    const before = new Set(Engine.unlockedAt(d).map((t) => t.id));
+    for (const id of before) {
+      assert.ok(
+        Engine.unlockedAt(d + 1).some((t) => t.id === id),
+        `${id} was owned at depth ${d} and is missing at ${d + 1} — an unlock is never taken back`
+      );
+    }
+  }
+  // Every threshold is a real milestone: it grants something, and it says
+  // so before you get there.
+  for (let d = 1; d < finalDepth; d++) {
+    const next = Engine.nextUnlock(d);
+    assert.ok(next && next.things.length > 0, `depth ${d} can still see something to reach for`);
+    assert.ok(next.depth > d, "...and it is ahead, not behind");
+  }
+  assert.strictEqual(Engine.nextUnlock(finalDepth), null, "past the last one there is nothing left to promise");
+}
+
 // ---- outpost offer variety: not the same fixed shop every visit ---------
 // Repair is always offered (the reliable baseline); how many EXTRA offers
 // sit alongside it varies (0-2), picked deterministically per level id, so

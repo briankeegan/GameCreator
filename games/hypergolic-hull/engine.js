@@ -2627,6 +2627,85 @@
   // Adding a fourth is a data change. Gating some of them behind something
   // earned can come back later without any of that machinery living here
   // in the meantime.
+  // WHICH GUNS THE ARMOURY HOLDS, by the deepest run so far — the same
+  // signal the hulls unlock on, so both tracks move together. There is no
+  // currency: you do not buy the right to own a gun, you reach a depth and
+  // it is there. Owning one does not put it in a run either; the Manifest
+  // picks which of them the Outpost may shelve.
+  //
+  // Seven at depth 1, against six Manifest slots, so the Manifest is a
+  // choice from the first run rather than a list of everything you have.
+  const WEAPON_UNLOCK_DEPTH = {
+    prowCannon: 1,
+    beamLanceShort: 1,
+    arcBeam: 1,
+    flakBurst: 1,
+    siegeMaul: 1,
+    beamLance: 1,
+    autocannonMk2: 1,
+    mortar: 3,
+    flankTubes: 3,
+    railgunLight: 3,
+    missilePod: 5,
+    demolitionCharge: 5,
+    arcProjector: 5,
+    railgun: 7,
+    flakBurstHeavy: 7,
+  };
+
+  function weaponUnlockDepth(weaponId) {
+    return WEAPON_UNLOCK_DEPTH[weaponId] || 1;
+  }
+
+  function weaponUnlocked(weaponId, bestDepth) {
+    return weaponUnlockDepth(weaponId) <= bestDepth;
+  }
+
+  // The armoury, DERIVED rather than stored. A saved set goes stale the
+  // moment a gun is renamed or the schedule moves, and then a player owns
+  // something that no longer exists or is missing something they earned.
+  function unlockedWeapons(bestDepth) {
+    return PURCHASABLE_ACTIONS.filter((id) => weaponUnlocked(id, bestDepth));
+  }
+
+  // Everything this depth has earned, hulls and guns together, in one list.
+  // The UI announces what is new by diffing this against what it has
+  // already shown, so a thing is announced once and only once.
+  function unlockedAt(bestDepth) {
+    const hulls = Object.keys(STARTING_LOADOUTS)
+      .filter((id) => loadoutUnlocked(id, bestDepth))
+      .map((id) => ({ kind: "hull", id, label: STARTING_LOADOUTS[id].label, blurb: STARTING_LOADOUTS[id].blurb }));
+    const guns = unlockedWeapons(bestDepth).map((id) => ({
+      kind: "weapon",
+      id,
+      label: WEAPONS[id].label,
+      blurb: describeWeaponShort(WEAPONS[id]),
+    }));
+    return [...hulls, ...guns];
+  }
+
+  // A locked thing is only a goal if you can see it coming. Returns the
+  // next depth that grants anything, and what it grants — null once
+  // everything is open.
+  function nextUnlock(bestDepth) {
+    const depths = new Set([
+      ...Object.keys(STARTING_LOADOUTS).map((id) => STARTING_LOADOUTS[id].unlockDepth || 1),
+      ...Object.values(WEAPON_UNLOCK_DEPTH),
+    ]);
+    const next = [...depths].filter((d) => d > bestDepth).sort((a, b) => a - b)[0];
+    if (next === undefined) return null;
+    const have = new Set(unlockedAt(bestDepth).map((t) => t.id));
+    return { depth: next, things: unlockedAt(next).filter((t) => !have.has(t.id)) };
+  }
+
+  // One line, for an announcement card — not the full footprint readout the
+  // Hold gives, which needs a diagram.
+  function describeWeaponShort(w) {
+    const reach = w.minRange && w.minRange > 1 ? `reach ${w.minRange}-${w.range}` : `reach ${w.range}`;
+    const hits = w.targets === "all" ? "everything in reach" : "one target";
+    return `${w.damage} damage to ${hits}, ${reach}, ${w.energyCost} energy`;
+  }
+
   // FOUR HULLS, ONE BUDGET. Every entry here is a starting KIT and
   // nothing else — no hull is welded together, every crate below can be
   // pulled at an Outpost and every one of them is on the shelf. The hull
@@ -4556,6 +4635,12 @@
     STARTING_LOADOUTS,
     previewLoadout,
     loadoutUnlocked,
+    WEAPON_UNLOCK_DEPTH,
+    weaponUnlockDepth,
+    weaponUnlocked,
+    unlockedWeapons,
+    unlockedAt,
+    nextUnlock,
     weaponHexes,
     deriveShip,
     enemyShip,
