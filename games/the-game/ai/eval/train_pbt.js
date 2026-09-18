@@ -192,6 +192,7 @@ try {
 function heldOut(genome) {
     var wins = 0, draws = 0, sentUs = 0, sentThem = 0, frames = 0, longest = 0;
     var depthUs = versus.zeroDepth(), depthThem = versus.zeroDepth();
+    var exactUs = versus.zeroExact();
     SEEDS.HOLDOUT.forEach(function (sd) {
         var d = versus.duel(genome, shipped || {}, sd, OPTS);
         if (d.winner === 0) wins++; else if (d.winner === null) draws++;
@@ -203,12 +204,14 @@ function heldOut(genome) {
         if ((d.frames || 0) > longest) longest = d.frames;
         versus.addDepth(depthUs, d.chainDepth[0]);
         versus.addDepth(depthThem, d.chainDepth[1]);
+        versus.addExact(exactUs, d.exact[0]);
     });
     var n = SEEDS.HOLDOUT.length;
     return {
         avgFrames: frames / n, longestFrames: longest,
         learned: { fitness: (wins + 0.5 * draws) / n, winRate: wins / n, draws: draws,
-                   avgSent: sentUs / n, duels: n, chainDepth: depthUs, versus: true },
+                   avgSent: sentUs / n, duels: n, chainDepth: depthUs,
+                   comboByWidth: exactUs.combo, chainByLinks: exactUs.chain, versus: true },
         shipped: { fitness: (n - wins - draws + 0.5 * draws) / n,
                    label: shipped ? 'shipped weights' : 'zero weights',
                    avgSent: sentThem / n, chainDepth: depthThem, versus: true }

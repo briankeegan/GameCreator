@@ -129,6 +129,39 @@ check('chainDepth is the garbage the duel really sent, per side', function () {
         JSON.stringify(got) + '\n  actual   ' + JSON.stringify(want));
 });
 
+// THE EXACT HISTOGRAM AND THE BUCKETS MUST AGREE, or one of them is lying and
+// the report gives no way to tell which. comboByWidth counts a combo under its
+// WIDTH and chainByLinks counts a chain under its LINKS, so summing each has to
+// land back on the categories report.classify put them in.
+check('the exact combo/chain histogram totals match the buckets', function () {
+    var r = versus.duel(TRAINED, FLAT, 7, {});
+    assert.ok(r.exact, 'the duel reported no exact histogram at all');
+
+    var any = 0;
+    [0, 1].forEach(function (side) {
+        var combos = 0, chains = 0;
+        Object.keys(r.exact[side].combo).forEach(function (w) {
+            combos += r.exact[side].combo[w];
+            assert.ok(Number(w) > 0, 'a combo was counted under width ' + w);
+        });
+        Object.keys(r.exact[side].chain).forEach(function (l) {
+            chains += r.exact[side].chain[l];
+            assert.ok(Number(l) > 0, 'a chain was counted under ' + l + ' links');
+        });
+        any += combos + chains;
+        var d = r.chainDepth[side];
+        assert.strictEqual(combos, d['combo-small'] + d['combo-big'],
+            'side ' + side + ': comboByWidth totals ' + combos + ' but the buckets say ' +
+            (d['combo-small'] + d['combo-big']));
+        assert.strictEqual(chains, d['chain-short'] + d['chain-medium'] + d['chain-long'],
+            'side ' + side + ': chainByLinks totals ' + chains + ' but the buckets say ' +
+            (d['chain-short'] + d['chain-medium'] + d['chain-long']));
+    });
+    assert.ok(any > 0,
+        'neither side sent anything, so this test would pass for a histogram that is ' +
+        'always empty. SETUP failure.');
+});
+
 console.log('');
 console.log(pass + '/' + (pass + fail) + ' passed');
 process.exit(fail ? 1 : 0);

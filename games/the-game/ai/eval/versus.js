@@ -65,6 +65,11 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
     // classified by the same rule report.js uses everywhere else, as it
     // crosses. Counted per SENDER: chainDepth[0] is what side A sent.
     var chainDepth = [zeroDepth(), zeroDepth()];
+    // AND THE EXACT SIZE, not only the bucket it falls in. The five
+    // categories answer "roughly what kind"; these answer "how wide was the
+    // combo" and "how many links was the chain", which is the question when
+    // the whole point is whether the bot ever builds a long one.
+    var exact = [zeroExact(), zeroExact()];
 
     var f = 0;
     for (; f < CEILING; f++) {
@@ -80,6 +85,13 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
                 for (var k = 0; k < out.length; k++) {
                     sent[i] += (out[k].width || 0) * (out[k].height || 0);
                     chainDepth[i][report.classify(out[k])]++;
+                    if (out[k].isChain) {
+                        var links = out[k].height || 0;
+                        exact[i].chain[links] = (exact[i].chain[links] || 0) + 1;
+                    } else {
+                        var wide = out[k].width || 0;
+                        exact[i].combo[wide] = (exact[i].combo[wide] || 0) + 1;
+                    }
                 }
                 stacks[i ^ 1].receiveGarbage(out);
             }
@@ -99,7 +111,7 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
     if (aDead && !bDead) winner = 1;
     else if (bDead && !aDead) winner = 0;
 
-    return { winner: winner, frames: f, sent: sent, chainDepth: chainDepth,
+    return { winner: winner, frames: f, sent: sent, chainDepth: chainDepth, exact: exact,
              draw: winner === null,
              reason: (!aDead && !bDead) ? 'ceiling' : (aDead && bDead ? 'both' : 'death') };
 };
@@ -116,3 +128,16 @@ exports.addDepth = function (into, from) {
     return into;
 };
 exports.zeroDepth = zeroDepth;
+
+function zeroExact() { return { combo: {}, chain: {} }; }
+
+// Sum one side's exact histogram across several duels.
+exports.addExact = function (into, from) {
+    ['combo', 'chain'].forEach(function (kind) {
+        Object.keys(from[kind] || {}).forEach(function (size) {
+            into[kind][size] = (into[kind][size] || 0) + from[kind][size];
+        });
+    });
+    return into;
+};
+exports.zeroExact = zeroExact;
