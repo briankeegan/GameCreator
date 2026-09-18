@@ -32,6 +32,7 @@ var os = require('os');
 var registry = require('./registry.js');
 var SEEDS = require('./seeds.js');
 var versus = require('./versus.js');
+var duels = require('./duels.js');
 
 var ISLANDS      = Number(process.env.GC_PBT_ISLANDS || Math.max(2, Math.min(4, os.cpus().length)));
 var POP          = Number(process.env.GC_VS_POPULATION || 16);
@@ -171,20 +172,31 @@ function runLeg(cb) {
 
 // CHAMPIONS MEET ON THE SAME BOARDS. Every pairing plays the same FACEOFF
 // seeds, so a champion cannot win by having drawn friendlier panels.
-function faceOff(champs) {
+function faceOff(champs, cb) {
     var score = champs.map(function () { return 0; });
     var seeds = SEEDS.TRAIN.slice(0, FACEOFF);
+    var jobs = [], who = [];
     for (var a = 0; a < champs.length; a++) {
         for (var b = a + 1; b < champs.length; b++) {
-            seeds.forEach(function (sd) {
-                var d = versus.duel(champs[a].weights, champs[b].weights, sd, OPTS);
-                if (d.winner === 0) score[a]++;
-                else if (d.winner === 1) score[b]++;
-                else { score[a] += 0.5; score[b] += 0.5; }
-            });
+            for (var q = 0; q < seeds.length; q++) {
+                jobs.push({ a: champs[a].weights, b: champs[b].weights, seed: seeds[q] });
+                who.push([a, b]);
+            }
         }
     }
-    return score;
+    // Results come back at their own index, so who[i] is the pairing that
+    // played jobs[i]. A short or reordered result set is an error, not a
+    // tally — this is what decides which island is snapshotted.
+    duels.runDuels(jobs, OPTS, ISLANDS, function (err, out) {
+        if (err) return cb(err);
+        for (var i = 0; i < out.length; i++) {
+            var d = out[i], pa = who[i][0], pb = who[i][1];
+            if (d.winner === 0) score[pa]++;
+            else if (d.winner === 1) score[pb]++;
+            else { score[pa] += 0.5; score[pb] += 0.5; }
+        }
+        cb(null, score);
+    });
 }
 
 // ------------------------------------------------------------- held out
@@ -226,12 +238,19 @@ function bestCommittedChampion() {
     return best;
 }
 
-function duelSet(genome, opponent) {
+// The duels of one held-out set, as jobs. Kept separate from the tally so
+// every set in a leg can go out in ONE fan-out rather than one per opponent.
+function duelJobs(genome, opponent) {
+    return SEEDS.HOLDOUT.map(function (sd) {
+        return { a: genome, b: opponent || {}, seed: sd };
+    });
+}
+
+function tally(out) {
     var wins = 0, draws = 0, sentUs = 0, sentThem = 0, frames = 0, longest = 0;
     var depthUs = versus.zeroDepth(), depthThem = versus.zeroDepth();
     var exactUs = versus.zeroExact();
-    SEEDS.HOLDOUT.forEach(function (sd) {
-        var d = versus.duel(genome, opponent || {}, sd, OPTS);
+    out.forEach(function (d) {
         if (d.winner === 0) wins++; else if (d.winner === null) draws++;
         sentUs += d.sent[0]; sentThem += d.sent[1];
         // HOW LONG THE GAMES ACTUALLY RAN. A record read without it cannot
@@ -243,14 +262,26 @@ function duelSet(genome, opponent) {
         versus.addDepth(depthThem, d.chainDepth[1]);
         versus.addExact(exactUs, d.exact[0]);
     });
-    var n = SEEDS.HOLDOUT.length;
-    return { wins: wins, draws: draws, n: n, frames: frames, longest: longest,
+    return { wins: wins, draws: draws, n: out.length, frames: frames, longest: longest,
              sentUs: sentUs, sentThem: sentThem,
              depthUs: depthUs, depthThem: depthThem, exactUs: exactUs };
 }
 
-function heldOut(genome) {
-    var r = duelSet(genome, shipped);
+// BOTH OPPONENTS IN ONE FAN-OUT. The shipped-bot set and the peer set are
+// independent duels known up front, so they go out together — 24 duels over
+// the cores instead of 12 then 12 on one.
+function heldOut(genome, cb) {
+    var peer = bestCommittedChampion();
+    var shippedJobs = duelJobs(genome, shipped);
+    var peerJobs = peer ? duelJobs(genome, peer.weights) : [];
+    duels.runDuels(shippedJobs.concat(peerJobs), OPTS, ISLANDS, function (err, res) {
+        if (err) return cb(err);
+        cb(null, buildReport(genome, tally(res.slice(0, shippedJobs.length)),
+                             peer, peerJobs.length ? tally(res.slice(shippedJobs.length)) : null));
+    });
+}
+
+function buildReport(genome, r, peer, p) {
     var n = r.n;
     var out = {
         avgFrames: r.frames / n, longestFrames: r.longest,
@@ -262,9 +293,7 @@ function heldOut(genome) {
                    avgSent: r.sentThem / n, chainDepth: r.depthThem, versus: true }
     };
 
-    var peer = bestCommittedChampion();
-    if (peer) {
-        var p = duelSet(genome, peer.weights);
+    if (peer && p) {
         out.peer = {
             opponent: peer.from,
             fitness: (p.wins + 0.5 * p.draws) / p.n,
@@ -346,7 +375,8 @@ function timeForAnotherLeg() {
             total += st.updates; div.push(Number(spread(st.population).toFixed(1)));
         }
 
-        var score = faceOff(champs);
+        faceOff(champs, function (foErr, score) {
+        if (foErr) { console.error(foErr); process.exit(1); }
         var bestI = 0;
         for (var j = 1; j < score.length; j++) if (score[j] > score[bestI]) bestI = j;
 
@@ -375,7 +405,8 @@ function timeForAnotherLeg() {
             fs.writeFileSync(islandFile(i2), JSON.stringify(st2));
         }
 
-        var rec = heldOut(champs[bestI].weights);
+        heldOut(champs[bestI].weights, function (hoErr, rec) {
+        if (hoErr) { console.error(hoErr); process.exit(1); }
         var n2 = rec.learned.duels, w2 = Math.round(rec.learned.winRate * n2), dr = rec.learned.draws;
         var peerLine = '';
         if (rec.peer) {
@@ -390,5 +421,7 @@ function timeForAnotherLeg() {
         writeSnapshot(champs[bestI].weights, rec, total, div);
         lastLeg = (Date.now() - legStarted) / 1000;
         leg();
+        });
+        });
     });
 })();

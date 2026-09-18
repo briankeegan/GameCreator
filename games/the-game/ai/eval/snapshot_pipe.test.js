@@ -289,14 +289,25 @@ test('the peer opponent is the best matching champion, and a foreign one is igno
     assert.ok(/fitness[\s\S]{0,120}updates/.test(body),
         'it no longer ranks by the record earned and then by updates');
 
-    // The report carries BOTH, and the shipped half never goes away.
-    var ho = /function heldOut\(genome\)[\s\S]*?\n}/.exec(src);
-    assert.ok(ho, 'heldOut is gone');
+    // The report carries BOTH, and the shipped half never goes away. It is
+    // assembled by buildReport, which heldOut calls once its duels are back.
+    var ho = /function buildReport\([\s\S]*?\n}/.exec(src);
+    assert.ok(ho, 'buildReport is gone, so nothing assembles the held-out report');
     assert.ok(/out\.peer = \{/.test(ho[0]),
-        'heldOut no longer reports a peer record');
+        'the report no longer carries a peer record');
     assert.ok(/shipped: \{/.test(ho[0]),
-        'heldOut dropped the shipped record, which is the only figure comparable across ' +
+        'the report dropped the shipped record, which is the only figure comparable across ' +
         'the whole run');
+
+    // BOTH OPPONENTS GO OUT IN ONE FAN-OUT, and a failed shard must stop the
+    // leg rather than let a short result set be tallied as a record.
+    var hof = /function heldOut\([\s\S]*?\n}/.exec(src);
+    assert.ok(hof, 'heldOut is gone');
+    assert.ok(/runDuels\(/.test(hof[0]),
+        'heldOut runs its duels inline again — that is half a leg on one core');
+    assert.ok(/if \(err\) return cb\(err\)/.test(hof[0]),
+        'heldOut no longer surfaces a failed duel shard, so a short result set ' +
+        'would be reported as a record');
 });
 
 tests.forEach(function (t) {

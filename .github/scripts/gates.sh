@@ -210,6 +210,18 @@ gate_smoke_checker() {
 # checkpoint on the way out, so the next one opened at generation 1. Five and a
 # half hours, twice, with nothing about it looking wrong. Runs three real
 # tiny searches, so it costs about a minute.
+# A WHOLE LEG FINISHES, NOT JUST THE PARTS.
+#
+# Everything else that runs train_pbt.js passes GC_PBT_INIT_ONLY, which
+# returns before a leg happens — so the loop that runs the islands, faces the
+# champions off, migrates, plays the held-out duels and writes the snapshot
+# had no coverage at all. The failure it exists for is a callback that never
+# fires: the leg stops, the job sits until its timeout, and from outside a
+# broken leg and a slow one look identical.
+gate_pbt_leg() {
+  node games/the-game/ai/eval/pbt_leg.test.js
+}
+
 gate_checkpoint_resume() {
   bash games/the-game/ai/eval/checkpoint.test.sh
 }
@@ -555,6 +567,7 @@ GATES=(
   "no checkpoint is stranded by a rename:gate_checkpoint_names:games/the-game/ai/"
   "the puyo loop update rule:gate_versus_loop:games/the-game/ai/"
   "a snapshot survives the trip to main:gate_snapshot_pipe:games/the-game/ai/"
+  "a whole training leg finishes:gate_pbt_leg:games/the-game/ai/"
   "a slow run stops before the job kills it:gate_deadline_stop:games/the-game/ai/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"
