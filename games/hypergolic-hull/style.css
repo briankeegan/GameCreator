@@ -144,7 +144,14 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* SAFE centring plus a scroll. The overlay grew a Manifest picker and
+     overflowed its frame, and a plain centred flex column overflows in BOTH
+     directions — the top of the panel goes past the edge where nothing can
+     scroll to it, so the buttons up there stop being clickable rather than
+     merely looking cramped. `safe center` falls back to flex-start once the
+     content is taller than the box. */
+  justify-content: safe center;
+  overflow-y: auto;
   gap: 8px;
   background: rgba(8, 11, 18, 0.88);
   border-radius: 12px;
@@ -1087,4 +1094,48 @@ body {
 .weapon-btn.active {
   border-color: #7fe3a8;
   color: #7fe3a8;
+}
+
+
+/* ---- the Manifest picker ------------------------------------------------
+   Same chip language as the starting-loadout picker directly above it, with
+   one difference that carries the whole idea: a fitted chip is filled, an
+   owned-but-unfitted one is outlined. The slot count is the constraint, so
+   it is stated in the heading rather than discovered by being refused. */
+.manifest-title {
+  margin: 0.9rem 0 0.35rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+/* Fifteen full-width chips in a column is taller than the frame. The
+   manifest is a rack of small tags, not a list of choices to read in
+   order, so it wraps. */
+.manifest-picker {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  max-width: 300px;
+}
+.manifest-picker button {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  font-size: 0.68rem;
+  margin-top: 0;
+  border-radius: 5px;
+}
+.manifest-picker button.fitted {
+  background: #cfe3ff;
+  color: #10203a;
+  border-color: #cfe3ff;
+}
+.manifest-picker button.full {
+  opacity: 0.4;
+}
+#manifestSlotBtn {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
 }

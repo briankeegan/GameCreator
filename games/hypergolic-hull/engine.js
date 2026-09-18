@@ -1948,10 +1948,21 @@
   // A station won't try to sell you a second Flak Burst while the first
   // is still bolted in — stocking something you already fly is the same
   // as stocking nothing.
-  function eligibleOfferStock(levelId, aboard) {
+  // THE MANIFEST is what keeps the shelf from getting wider as the armoury
+  // grows. A run fits a fixed number of weapon slots before it launches, and
+  // the shelf offers ONLY those — so owning a twentieth gun cannot make the
+  // Beam Lance rarer, because you already decided whether the Beam Lance was
+  // in this run. Everything that is not a weapon (repairs, hull, a screen,
+  // a hardpoint) ignores the manifest entirely and is always on the shelf.
+  //
+  // A null/empty manifest means "no manifest" and every weapon is eligible,
+  // which is what a saved run from before this existed carries.
+  function eligibleOfferStock(levelId, aboard, manifest) {
     const carried = new Set(aboard || []);
+    const fitted = manifest && manifest.length ? new Set(manifest) : null;
     return OUTPOST_OFFER_POOL.filter((o) => {
       if (o.id === "repair") return false; // always on the shelf, added by the caller
+      if (fitted && WEAPON_SYSTEM_KEYS.includes(o.id) && !fitted.has(o.id)) return false;
       if (WEAPON_SYSTEM_KEYS.includes(o.id) && carried.has(o.id)) return false;
       if (o.id === "shield" && carried.has("shieldGenerator")) return false;
       // Shapes arrive one at a time so each one gets to be a lesson: the
@@ -2025,13 +2036,13 @@
     });
   }
 
-  function pickOutpostOfferIds(levelId, aboard, runSeed, raresSkipped, lastOfferIds) {
+  function pickOutpostOfferIds(levelId, aboard, runSeed, raresSkipped, lastOfferIds, manifest) {
     // Nine offers in one list read as a catalogue, and with early-run
     // salvage most of it was greyed out anyway: a wall of things you can't
     // have instead of a decision. Repair plus THREE things is the whole
     // shelf — see eligibleOfferStock above for what can even be on it.
     const carried = new Set(aboard || []);
-    const allStock = eligibleOfferStock(levelId, aboard);
+    const allStock = eligibleOfferStock(levelId, aboard, manifest);
     const rng = runSeeded(runSeed, levelId * 7919 + 13);
     // ---- A DOCK DOES NOT RESTOCK WHAT THE LAST DOCK HAD --------------------
     //
@@ -2404,6 +2415,9 @@
     // pickOutpostOfferIds. Carried exactly like raresSkipped, and empty on
     // the first sector of a run, which is correct: there is no last shelf.
     const priorOfferIds = (carryOver && Array.isArray(carryOver.outpostStockIds)) ? carryOver.outpostStockIds : [];
+    // Fitted before launch and carried for the whole run — a sector cannot
+    // change it, which is the point: the shelf's width is decided once.
+    const manifest = (carryOver && Array.isArray(carryOver.manifest)) ? carryOver.manifest.slice() : null;
     let outpostOfferIds = [];
     let outpostOfferPrices = {};
     let raresSkipped = priorRaresSkipped;
@@ -2416,7 +2430,8 @@
           [...hold.items.map((it) => it.id), ...hold.cargo],
           runSeed,
           priorRaresSkipped,
-          priorOfferIds
+          priorOfferIds,
+          manifest
         );
         outpostOfferIds = rolled.ids;
         outpostOfferPrices = rolled.prices;
@@ -2442,6 +2457,7 @@
       // ship LOOK like Escort Start. What you picked at the outset is what
       // you fly, cosmetically, for the whole run.
       startingLoadout: (carryOver && carryOver.startingLoadout) || "standard",
+      manifest,
       // Hull damage is PERMANENT across jumps — warping doesn't patch a
       // breached deck ("why is hull repaired between every jump? doesn't
       // make any sense"). Only an Outpost repair puts pips back. A fresh
@@ -3043,7 +3059,7 @@
   function resolveDiscoveryReward(state) {
     const aboard = [...state.hold.items.map((it) => it.id), ...state.hold.cargo];
     const rng = runSeeded(state.runSeed, state.levelId * 200003 + 137);
-    const commonOrUncommon = eligibleOfferStock(state.levelId, aboard).filter(
+    const commonOrUncommon = eligibleOfferStock(state.levelId, aboard, state.manifest).filter(
       (o) => o.rarity === "common" || o.rarity === "uncommon"
     );
     if (rng() < DISCOVERY_SALVAGE_CHANCE || !commonOrUncommon.length) {

@@ -37,6 +37,9 @@ const overlayTitleEl = document.getElementById("runOverlayTitle");
 const overlayBodyEl = document.getElementById("runOverlayBody");
 const overlayRequisitionEl = document.getElementById("runOverlayRequisition");
 const loadoutPickerEl = document.getElementById("loadoutPicker");
+const manifestTitleEl = document.getElementById("manifestTitle");
+const manifestPickerEl = document.getElementById("manifestPicker");
+const manifestSlotBtnEl = document.getElementById("manifestSlotBtn");
 const loadoutDetailEl = document.getElementById("loadoutDetail");
 const restartBtn = document.getElementById("restartBtn");
 const continueBtnEl = document.getElementById("continueBtn");
@@ -125,6 +128,24 @@ function freshRunSeed() {
 // mirrors games/trebor's existing achievement→unlock pattern, the only
 // precedent for cross-run progression in this repo.
 let requisition = GCStorage.get(GAME_ID, "requisition", 0);
+// THE ARMOURY and THE MANIFEST. The armoury is everything you own and it
+// only grows; the manifest is the handful you fit before launching, and the
+// Outpost shelf offers nothing else. That is what stops "more weapons" from
+// meaning "the gun you want is rarer" — owning a twentieth gun cannot
+// crowd out the Beam Lance, because you decided whether the Beam Lance was
+// in this run at all.
+//
+// The armoury starts FULL. A feature whose first act is to take weapons
+// away from someone who already had them is not a reward.
+const ARMOURY_DEFAULT = Engine.PURCHASABLE_ACTIONS.slice();
+let armoury = new Set(GCStorage.get(GAME_ID, "armoury", ARMOURY_DEFAULT));
+let manifestSlots = GCStorage.get(GAME_ID, "manifestSlots", 6);
+let manifest = GCStorage.get(GAME_ID, "manifest", ARMOURY_DEFAULT.slice(0, manifestSlots));
+// What another slot costs, climbing: breadth is meant to be a real
+// sacrifice against everything else Requisition buys.
+function nextSlotCost() {
+  return 20 + (manifestSlots - 6) * 15;
+}
 let unlockedLoadouts = new Set(GCStorage.get(GAME_ID, "unlockedLoadouts", ["standard"]));
 let selectedLoadout = GCStorage.get(GAME_ID, "selectedLoadout", "standard");
 // Guards the award below against firing again on every repeated render of
@@ -137,6 +158,9 @@ function persistUnlocks() {
   GCStorage.set(GAME_ID, "requisition", requisition);
   GCStorage.set(GAME_ID, "unlockedLoadouts", Array.from(unlockedLoadouts));
   GCStorage.set(GAME_ID, "selectedLoadout", selectedLoadout);
+  GCStorage.set(GAME_ID, "armoury", Array.from(armoury));
+  GCStorage.set(GAME_ID, "manifest", manifest.slice());
+  GCStorage.set(GAME_ID, "manifestSlots", manifestSlots);
 }
 
 // How much a run banks, once — legible on the overlay ("you got to depth
@@ -151,6 +175,7 @@ function requisitionEarnedFor(finishedState) {
 let state = Engine.createGameState(levelForIndex(levelIndex), {
   runSeed: freshRunSeed(),
   startingLoadout: selectedLoadout,
+  manifest: manifest.slice(),
 });
 // null means no mode armed — plain moves/route-preview work regardless.
 let mode = null;
@@ -375,6 +400,7 @@ function advanceSector() {
       // runSeed/raresSkipped above (see the field's own comment in
       // engine.js's createGameState).
       startingLoadout: state.startingLoadout,
+      manifest: state.manifest,
     },
     { keepWarpAnim: true, variantId: state.usedExitVariant }
   );
@@ -3688,6 +3714,61 @@ function updateLoadoutPicker() {
     loadoutPickerEl.appendChild(btn);
   }
   updateLoadoutDetail();
+  updateManifestPicker();
+}
+
+// The Manifest picker. Every gun in the armoury gets a chip; tapping one
+// fits or unfits it, up to the slot count. Unlike the loadout picker this is
+// a direct toggle rather than preview-then-confirm — nothing is spent, and
+// the cost of a wrong pick is one tap to undo.
+function updateManifestPicker() {
+  // A manifest can hold an id the armoury no longer has (a gun renamed or
+  // removed between versions), which would silently narrow a shelf toward
+  // nothing. Drop those rather than carrying them.
+  const owned = Engine.PURCHASABLE_ACTIONS.filter((id) => armoury.has(id));
+  const cleaned = manifest.filter((id) => armoury.has(id)).slice(0, manifestSlots);
+  if (cleaned.length !== manifest.length) {
+    manifest = cleaned;
+    persistUnlocks();
+  }
+  manifestTitleEl.textContent = `Manifest — ${manifest.length} of ${manifestSlots} slots fitted`;
+  manifestPickerEl.innerHTML = "";
+  const full = manifest.length >= manifestSlots;
+  for (const id of owned) {
+    const fitted = manifest.includes(id);
+    const btn = document.createElement("button");
+    btn.textContent = Engine.WEAPONS[id] ? Engine.WEAPONS[id].label : id;
+    btn.classList.toggle("fitted", fitted);
+    btn.classList.toggle("full", !fitted && full);
+    btn.addEventListener("click", () => {
+      if (fitted) manifest = manifest.filter((x) => x !== id);
+      else if (manifest.length < manifestSlots) manifest = manifest.concat(id);
+      else return; // no room, and the chip already reads as unavailable
+      persistUnlocks();
+      updateManifestPicker();
+    });
+    manifestPickerEl.appendChild(btn);
+  }
+  const cost = nextSlotCost();
+  manifestSlotBtnEl.hidden = false;
+  manifestSlotBtnEl.disabled = requisition < cost;
+  manifestSlotBtnEl.textContent = `Fit another hardpoint — ${cost} Requisition`;
+  manifestSlotBtnEl.onclick = () => {
+    if (requisition < nextSlotCost()) return;
+    requisition -= nextSlotCost();
+    manifestSlots += 1;
+    persistUnlocks();
+    updateRequisitionLine();
+    updateManifestPicker();
+  };
+}
+
+// The banked-Requisition line, so buying a slot updates it without waiting
+// for the next render of the whole overlay.
+function updateRequisitionLine() {
+  if (overlayRequisitionEl) {
+    overlayRequisitionEl.textContent = `+${requisitionEarnedThisEnding} Requisition — ${requisition} banked.`;
+  }
 }
 
 // The readout for whichever chip is currently previewed — what it gives
@@ -4836,7 +4917,7 @@ function restoreRun() {
   const savedState = GCStorage.get(GAME_ID, "run", null);
   const savedIndex = GCStorage.get(GAME_ID, "levelIndex", null);
   if (!isValidSave(savedState) || savedIndex === null) {
-    loadSector(0, { runSeed: freshRunSeed(), startingLoadout: selectedLoadout });
+    loadSector(0, { runSeed: freshRunSeed(), startingLoadout: selectedLoadout, manifest: manifest.slice() });
     return;
   }
   levelIndex = savedIndex;
@@ -5278,7 +5359,7 @@ function scuttleShip() {
   // from the last time you flew Sector 2. It also starts with whatever
   // loadout is currently selected (see the death-overlay picker) —
   // Standard unless something else has been unlocked and chosen.
-  loadSector(0, { runSeed: freshRunSeed(), startingLoadout: selectedLoadout });
+  loadSector(0, { runSeed: freshRunSeed(), startingLoadout: selectedLoadout, manifest: manifest.slice() });
   // Arrive like you arrived anywhere else — the flash, then the sector.
   // Cutting straight to a fresh board read like the page had reloaded
   // rather than like a new hull warping in.
