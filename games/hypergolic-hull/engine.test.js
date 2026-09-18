@@ -1049,8 +1049,14 @@ assert.strictEqual(clampedState.shieldCharges, 1, "carried charges clamp to inst
       `${id}: max Energy ${p.maxEnergy} is under the median gun's cost (${MEDIAN_GUN_COST}) — most of the arsenal is unusable`
     );
     if (p.maxShields > 0) {
+      // Raising has to be POSSIBLE, not comfortable. A bus that exactly
+      // covers the price means raising costs you the whole cycle's charge
+      // — which is the trade the Screen Ship is built on, not a defect.
+      // The defect this catches is the original one: a bus of 1 against a
+      // price of 2, where the generator absorbs one volley per run and
+      // then rides along as dead weight.
       assert.ok(
-        p.maxEnergy > Engine.SHIELD_RAISE_COST,
+        p.maxEnergy >= Engine.SHIELD_RAISE_COST,
         `${id}: carries a screen it can never re-raise (raising costs ${Engine.SHIELD_RAISE_COST}, bus holds ${p.maxEnergy})`
       );
     }

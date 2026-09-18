@@ -4282,7 +4282,17 @@
   // price ("shields... will cost energy to recharge") — it competes with
   // FIRE and RECHARGE for the turn, same one-action economy as everything
   // else. Requires an installed Shield Generator (maxShields > 0).
-  const SHIELD_RAISE_COST = 2;
+  //
+  // THREE, not two, and the number is the whole balance of the Screen
+  // Ship. A screen is worth about seven wins in sixty on its own —
+  // measured: the same hull with one won 30 against the Line Ship's 23,
+  // and neither a smaller reactor (37) nor a slower one (20, but stalling
+  // twelve runs in sixty) charged for it without breaking the ship.
+  // Pricing the screen itself did: against a 3-capacity bus, raising is
+  // now EITHER/OR against firing rather than both in the same cycle. At 3
+  // the four hulls land 20 / 18 / 21 / 20 over 60 seeded runs each, a
+  // spread of 3 against a noise floor of 3.7.
+  const SHIELD_RAISE_COST = 3;
   function applyRaiseShields(state) {
     assertPlaying(state);
     if (state.maxShields <= 0) throw new Error("No shield generator fitted — the yards sell them");

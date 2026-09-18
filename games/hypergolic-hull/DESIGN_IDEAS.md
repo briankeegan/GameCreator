@@ -323,26 +323,46 @@ in something the check could not see.
 | Hull | Kit | Hull | Energy | Free | Plays like |
 |---|---|---|---|---|---|
 | **Line Ship** | Sublight Drive, Reactor Core, Scanner | 3 | 6 (+1) | 14 | Bank it and unload. The only hull that can fire a Railgun early. |
-| **Screen Ship** | Sublight Drive, Pulse Reactor, Shield Generator, Scanner | 3 +1 screen | 3 (+2) | 10 | Screen up AND shoot every cycle. Cheap guns forever, heavy guns never. |
-| **Hauler** | Sublight Drive, Pulse Reactor, Ablative Plating, Salvage Rig, Scanner | 4 | 3 (+2) | 8 | +1 salvage a wreck, and almost no room to put it. |
-| **Skirmisher** | Ion Drive, Pulse Reactor, Charge Bank, Ablative Plating, Scanner | 4 | 5 (+2) | 9 | Two hexes a burn. Nothing else in the sky moves like that. |
+| **Screen Ship** | Sublight Drive, Pulse Reactor, Shield Generator, Scanner | 3 +1 screen | 3 (+2) | 11 | Screen or shoot, never both in one cycle. Cheap guns forever, heavy guns never. |
+| **Hauler** | Sublight Drive, Pulse Reactor, Salvage Rig, Scanner | 3 | 3 (+2) | 12 | +1 salvage a wreck. Poorest ship at depth 1, best-equipped by depth 8. |
+| **Skirmisher** | Ion Drive, Reactor Core, Scanner | 3 | 6 (+1) | 13 | Two hexes a burn. Nothing else in the sky moves like that. |
 
 Unlocks stay sideways: Screen at depth 3, Hauler at 5, Skirmisher at 7.
 
-### What the tuning actually cost
+### Where it landed
 
-Three rounds, one dial at a time, 60 seeds a hull each time:
+60 seeded runs a hull, same pilot:
 
 | | Line | Screen | Hauler | Skirmisher |
 |---|---|---|---|---|
-| shipped | 22 | 1 | 3 | — |
-| round 1 | 23 | 32 | 43 | 12 |
-| round 2 | 23 | 27 | 36 | 17 |
+| shipped before | 22 | 1 | 3 | — |
+| **now** | **20** | **18** | **21** | **20** |
 
-Round 1 → 2: the Pulse Reactor went from 1×2 to 2×2, the Hauler lost the
-big reactor, the Skirmisher gained a Charge Bank. Round 2 → 3: the Salvage
-Rig went from 1×1 to 2×2 (it compounds — more salvage buys more gear buys
-more kills), and the Skirmisher gained a plate.
+Spread 3, against a noise floor of 3.7. Median end depth 9–10 for all four.
+
+### What the tuning cost, and what it priced
+
+Six rounds, one dial at a time. The useful output is not the kits, it is
+what each dial turned out to be worth over 60 runs:
+
+| Dial | Worth |
+|---|---|
+| +1 recharge per cycle | about +7 wins — the biggest single stat in the game |
+| a Shield Generator | about +7 wins |
+| +1 salvage per wreck | about +9 wins, because it compounds |
+| +1 move range | about −2 — i.e. nothing measurable |
+| ±3 free hold cells | inside the noise |
+
+Two of those are counter-intuitive and worth keeping written down: hold
+room is nearly free, and mobility — the axis the Ion Drive was invented to
+create — buys nothing against a pilot that already keeps its distance. The
+Skirmisher earns its place as a different thing to fly, not as a better
+one.
+
+The Screen Ship is what forced `SHIELD_RAISE_COST` from 2 to 3. A screen
+is worth about seven wins and neither a smaller reactor (37 wins) nor a
+slower one (20, but stalling 12 runs in 60) charged for it without
+breaking the ship. Pricing the screen itself did.
 
 ### Still open
 
