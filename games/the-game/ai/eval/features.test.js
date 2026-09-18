@@ -194,8 +194,8 @@ function variance(rows) {
     return F.colourVariance(inputMod.normalize({ board: board(rows) }));
 }
 
-function splitPair(rows) {
-    return F.splitPair(inputMod.normalize({ board: board(rows) }));
+function popSize(rows) {
+    return F.popSize(inputMod.normalize({ board: board(rows) }));
 }
 
 function links(rows) {
@@ -333,68 +333,101 @@ test('matchPotential: weighting it now works end to end through the evaluator', 
 });
 
 
-// ---- splitPair ----
-// Same colour either side of an EMPTY cell, along a row: `X . X`. One panel
-// short of a three, and the missing panel arrives by FALLING, which is the
-// whole chain mechanic in this game — something clears below, a panel drops
-// into the gap, the three completes, that clears, and the next one drops.
+// ---- popSize ----
+// For every horizontal swap the cursor could make, HOW MANY PANELS WOULD POP,
+// summed over the board. Three is the minimum to pop, not the prize: a match
+// is the union of every run of 3 or more through the swapped cell, across its
+// row AND its column, so an L or a T pops five at once — and comboSize is what
+// drives comboGarbage and the combo score. A feature that only asked "is there
+// a three" would price a 5 and a 3 identically.
 //
 // This is the Panel Attack half of meatfighter's "consecutive colours". His
 // game pops four touching blobs, so touching IS one-short-of-popping and his
-// links term covers it. Ours pops three in a LINE, so there are two ways to
-// be one short: adjacent (counted by `links`) and split by a gap (here).
-// Without this the split case is invisible and the bot has no reason to leave
-// a gap it can fill.
+// links term already covers it. Ours pops three in a LINE and the cursor only
+// swaps two cells sideways, so what matters is whether the third panel is one
+// move from its slot, and how much comes with it — neither of which `links`
+// can see.
 //
-// HORIZONTAL ONLY, and that is not an oversight. A vertical `X . X` cannot
-// exist on a settled board: the upper panel falls into the gap. The evaluator
-// scores settled boards, so a vertical arm would be a branch that never fires,
-// which is exactly the kind of dead measurement this directory exists to
-// avoid. Written before the function exists.
+// It is NOT matchPotential: that one clones the board and resolves the whole
+// cascade, 8.38us of a 111us budget. This is the immediate pop only — nothing
+// falls, nothing cascades, and garbage dragged in by the match is left to
+// garbageAdjacency.
+//
+// Three engine rules it has to obey, each with a test below:
+//   - garbage and mid-animation panels cannot be swapped at all (allowsSwap:
+//     !dontSwap && !isGarbage, states normal/swapping/landing/falling; the
+//     bot's snapshot marks anything busy as -1)
+//   - a panel swapped over a hole FALLS, leaving the row before it can match
+//   - a match already on the board is not potential, so runs are only counted
+//     through one of the two swapped cells
+//
+// Note for anyone extending this: a horizontal FOUR cannot be made in one
+// swap — it would need three already in a line, which would have popped. Pops
+// above 3 are vertical runs (a swap can drop a panel into a column that has
+// two below it and one above) and L/T unions of a row and a column.
+//
+// Written before the function exists.
 
-test('splitPair: same colour either side of a gap, in a row', function () {
-    assert.strictEqual(splitPair(['1.1...']), 1);
+test('popSize: a pair plus a third one swap away pops three', function () {
+    // swap cols 3,4 and the top row reads 111... . The bottom row is only
+    // there to hold the gap up, and offers nothing itself.
+    assert.strictEqual(popSize(['11.1..', '445566']), 3);
 });
 
-test('splitPair: overlapping windows each count', function () {
-    // (1,2,3) is 1.1 and (3,4,5) is 1.1 — two distinct fillable gaps.
-    assert.strictEqual(splitPair(['1.1.1.']), 2);
+test('popSize: an L pops FIVE, and that is the whole point of measuring size', function () {
+    // Same top row both times. The only difference is the column under the
+    // gap: 1s stacked beneath it, or not.
+    //   with    — swap cols 3,4 completes the row AND the column: 5 panels,
+    //             plus a second swap (cols 2,3) that completes the column
+    //             alone for 3. 8.
+    //   without — the same row swap, three panels, nothing else. 3.
+    assert.strictEqual(popSize(['11.1..', '44166.', '551234']), 8);
+    assert.strictEqual(popSize(['11.1..', '44566.', '552234']), 3);
 });
 
-test('splitPair: STAYS QUIET on an adjacent pair, which is links\' job', function () {
-    assert.strictEqual(splitPair(['11....']), 0);
+test('popSize: it works down a column as well as along a row', function () {
+    assert.strictEqual(popSize(['1.....', '1.....', '21....']), 3);
 });
 
-test('splitPair: STAYS QUIET when the gap holds a different colour', function () {
-    // Not one panel away: the 2 has to leave before anything can fill.
-    assert.strictEqual(splitPair(['121...']), 0);
+test('popSize: STAYS QUIET on a split pair — X . X cannot be finished', function () {
+    // Swapping either 1 into the gap just moves it: .11... or 11.... . And
+    // nothing can fall in, because a settled empty cell has nothing above it.
+    // This is the shape that replaced splitPair, and the reason it did: it
+    // fired 18 times over the 144 real puzzle boards and not one of those
+    // gaps had anything above it.
+    assert.strictEqual(popSize(['1.1...', '445566']), 0);
 });
 
-test('splitPair: STAYS QUIET when the outer colours differ', function () {
-    assert.strictEqual(splitPair(['1.2...']), 0);
+test('popSize: STAYS QUIET on a bare pair with no third panel in reach', function () {
+    assert.strictEqual(popSize(['11....']), 0);
 });
 
-test('splitPair: STAYS QUIET on a complete three', function () {
-    assert.strictEqual(splitPair(['111...']), 0);
+test('popSize: garbage cannot be swapped, so it is not a move', function () {
+    // Without the rule this reads as "swap cols 3,4 for 111".
+    assert.strictEqual(popSize(['11#1..']), 0);
 });
 
-test('splitPair: garbage is not a colour, on either side or in the gap', function () {
-    // A gap that garbage sits in cannot be filled by a falling panel, and a
-    // wall of garbage is not stored potential.
-    assert.strictEqual(splitPair(['#.#...']), 0);
-    assert.strictEqual(splitPair(['1#1...']), 0);
+test('popSize: a busy panel cannot be swapped either', function () {
+    assert.strictEqual(popSize(['11x1..']), 0);
 });
 
-test('splitPair: a busy cell is not an empty gap', function () {
-    assert.strictEqual(splitPair(['1x1...']), 0);
+test('popSize: a panel swapped over a hole falls, so nothing pops', function () {
+    // Every row is 11.1.. over open space in column 3. Ignoring gravity each
+    // looks one swap from 111; with gravity the panel drops out of the row.
+    assert.strictEqual(popSize(['11.1..', '11.1..', '23.4..']), 0);
 });
 
-test('splitPair: vertical gaps do not count — they cannot survive gravity', function () {
-    assert.strictEqual(splitPair(['1.....', '......', '1.....']), 0);
+test('popSize: a match already on the board is not potential', function () {
+    assert.strictEqual(popSize(['111.2.']), 0);
 });
 
-test('splitPair: counts every row, not just the first', function () {
-    assert.strictEqual(splitPair(['1.1...', '2.2...']), 2);
+test('popSize: an empty row offers nothing', function () {
+    assert.strictEqual(popSize(['......']), 0);
+});
+
+test('popSize: every distinct swap adds its own pop', function () {
+    // 11.1 on the upper row and 66.6 reaching left on the bottom row.
+    assert.strictEqual(popSize(['11.1..', '5566.6']), 6);
 });
 
 

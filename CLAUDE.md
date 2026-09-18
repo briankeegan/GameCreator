@@ -25,10 +25,12 @@ don't fork it per-game.
 - **Always merge to `main`.** Pages deploys only from `main` (`pages.yml`),
   so work on a branch is invisible. Resolve conflicts and say in the commit
   message which side won.
-- **Run `gate_all` before pushing to `main`:**
-  `source .github/scripts/gates.sh && gate_all`. It is the same list
-  `pages.yml` runs. `.claude/hooks/guard-main-push.sh` blocks a `main` push
-  that fails it; `GC_SKIP_GATES=1` overrides and says so loudly.
+- **The gates run themselves.** `.claude/hooks/guard-main-push.sh` runs them
+  on every `main` push and blocks one that fails, scoped to the paths that
+  push changes; `pages.yml` runs the full list. `GC_SKIP_GATES=1` overrides
+  and says so loudly. To check early, `source .github/scripts/gates.sh &&
+  gate_changed` is the same scoped list; bare `gate_all` is all 55 gates and
+  takes many minutes.
 - Every rule that matters needs three pieces: a plain-English rule where
   someone would be editing, a script that decides it mechanically, and a
   gate that runs the script on every push.
@@ -173,7 +175,10 @@ ways: a tool not listed, or a path listed that doesn't exist.
   fired, the chip count, and the git/origin gap. Run it before answering any
   question about what is going on.
 - **Training runs on GitHub Actions, not in this sandbox.**
-  `node -e "require('.../train.js')"` STARTS A RUN.
+  `node -e "require('.../train.js')"` STARTS A RUN. The one legitimate local
+  trainer is the fixture `checkpoint.test.sh` spawns and kills, so a
+  `train.js` process during a gate run is that gate, not training. To answer
+  "is anything training", look at Actions, not at `ps`.
 - **Use the real puzzles**, not hand-built boards: 235 authored puzzles in
   `Puzzles.json`, 84 typed `chain`. Tools: `puzzles.bench.js` (one-swap),
   `puzzles.play.js` (multi-swap), `chain_reach.js`. In that data `8` is

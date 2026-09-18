@@ -267,19 +267,60 @@ var MOVE_FRAMES = 4;
   // The gap must be EMPTY. A different colour sitting in it is not one panel
   // away (it has to leave first), and garbage or a busy cell cannot be filled
   // by something falling.
-  function splitPair(input) {
+  // For every horizontal swap the cursor could make, HOW MANY PANELS WOULD
+  // POP — summed over the board. Not "is there a three": three is the
+  // minimum, not the prize. A match is the union of every run of 3 or more
+  // through the swapped cell, across its row AND its column, so an L or a T
+  // pops five at once, and it is that count that feeds comboGarbage and the
+  // combo score. A swap worth 5 is worth more than a swap worth 3 and this
+  // says so.
+  //
+  // No clone and no resolve: a swap at (r,c) can only change row r and the
+  // two columns it touches, so walking the runs through each swapped cell
+  // answers it. The grid is swapped in place and put straight back. This is
+  // the immediate pop only — nothing falls, nothing cascades, and garbage
+  // dragged in by the match is left to garbageAdjacency.
+  //
+  // Refuses what the engine refuses: garbage and busy panels cannot be
+  // swapped, and a panel swapped over a hole falls out of the row before it
+  // can match. Runs are only counted through a swapped cell, so a match
+  // already sitting on the board is not read as potential.
+  function popThrough(grid, W, H, r, c, seen) {
+    var v = grid[r][c], n, k, lo, hi, added = 0;
+    if (v <= 0) return 0;
+    for (lo = c; lo > 1 && grid[r][lo - 1] === v; lo--) ;
+    for (hi = c; hi < W && grid[r][hi + 1] === v; hi++) ;
+    if (hi - lo + 1 >= 3) {
+      for (k = lo; k <= hi; k++) { if (!seen[r * 100 + k]) { seen[r * 100 + k] = 1; added++; } }
+    }
+    for (lo = r; lo > 1 && grid[lo - 1][c] === v; lo--) ;
+    for (hi = r; hi < H && grid[hi + 1][c] === v; hi++) ;
+    if (hi - lo + 1 >= 3) {
+      for (k = lo; k <= hi; k++) { if (!seen[k * 100 + c]) { seen[k * 100 + c] = 1; added++; } }
+    }
+    return added;
+  }
+
+  function popSize(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
-    var count = 0;
+    var total = 0;
     for (var r = 1; r <= H; r++) {
-      for (var c = 1; c + 2 <= W; c++) {
-        var v = grid[r][c];
-        if (v <= 0) continue;                 // empty, busy (-1) and garbage (-2) are not colours
-        if (grid[r][c + 1] !== 0) continue;   // the gap has to be fillable
-        if (grid[r][c + 2] !== v) continue;
-        count++;
+      for (var c = 1; c < W; c++) {
+        var a = grid[r][c], b = grid[r][c + 1];
+        if (a === b) continue;          // a no-op, and it covers empty/empty
+        if (a < 0 || b < 0) continue;   // busy (-1) and garbage (-2) cannot be swapped
+        // each panel lands in the other cell; over a hole it falls out of the row
+        var aFalls = a > 0 && r > 1 && grid[r - 1][c + 1] === 0;
+        var bFalls = b > 0 && r > 1 && grid[r - 1][c] === 0;
+        if (aFalls && bFalls) continue;
+        grid[r][c] = b; grid[r][c + 1] = a;
+        var seen = {};
+        if (!bFalls) total += popThrough(grid, W, H, r, c, seen);
+        if (!aFalls) total += popThrough(grid, W, H, r, c + 1, seen);
+        grid[r][c] = a; grid[r][c + 1] = b;
       }
     }
-    return count;
+    return total;
   }
 
   function links(input) {
@@ -701,7 +742,7 @@ var MOVE_FRAMES = 4;
     fillRatio: fillRatio,
     roughness: roughness,
     colourVariance: colourVariance,
-    splitPair: splitPair,
+    popSize: popSize,
     links: links,
     // exported for tests only — not features
     _matchedCells: matchedCells

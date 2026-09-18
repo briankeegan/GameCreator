@@ -662,9 +662,27 @@ _gate_scope_is_hard() {
 # Runs every gate and prints a summary. Sets $GATE_FAILURES (newline-
 # separated "name: <first output line>") so a caller can report specifics
 # without re-running anything or re-parsing logs.
+# What the push hook runs: gate_all scoped to the paths this working tree
+# actually changed. Plain gate_all stays unscoped on purpose — that is the
+# list pages.yml runs — so this is the one to reach for while iterating.
+gate_changed() {
+  local changed
+  changed=$( { git -C "$(git rev-parse --show-toplevel)" diff --name-only HEAD;
+               git -C "$(git rev-parse --show-toplevel)" ls-files --others --exclude-standard; } | sort -u )
+  if [ -z "$changed" ]; then
+    echo "nothing changed against HEAD — running every gate."
+    gate_all
+    return $?
+  fi
+  GC_CHANGED_PATHS="$changed" gate_all
+}
+
 gate_all() {
   local overall=0
   local skipped=""
+  local timings=""
+  local run_start
+  run_start=$(date +%s)
   GATE_FAILURES=""
 
   local changed="${GC_CHANGED_PATHS:-}"
@@ -712,10 +730,13 @@ gate_all() {
     fi
 
     echo "=== GATE: $name ==="
-    local out
+    local out t0 t1
+    t0=$(date +%s)
     out=$("$fn" 2>&1)
     local rc=$?
+    t1=$(date +%s)
     printf '%s\n' "$out"
+    timings="${timings}$(( t1 - t0 )) ${name}"$'\n'
     if [ "$rc" -ne 0 ]; then
       overall=1
       local firstline
@@ -729,6 +750,11 @@ gate_all() {
     echo "SKIPPED GATES (not run — nothing in their area changed):"
     printf '%s' "$skipped"
   fi
+  echo
+  echo "$(( $(date +%s) - run_start ))s total. Slowest gates:"
+  printf '%s' "$timings" | sort -rn | head -8 | while read -r secs gname; do
+    [ "$secs" -gt 0 ] && printf '  %4ss  %s\n' "$secs" "$gname"
+  done
   if [ "$overall" -ne 0 ]; then
     echo
     echo "FAILED GATES:"
