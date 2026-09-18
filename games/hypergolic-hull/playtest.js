@@ -670,7 +670,12 @@ function playRun(seed, report) {
   // argued about: same pilot, same seeds, one thing different. A bespoke
   // bench was tried first and got written wrong twice — this reuses the
   // pilot that already plays the actual game.
-  let carryOver = process.env.START_GUN ? { extraActions: [process.env.START_GUN] } : null;
+  // LOADOUT=<id> flies a different starting hull, same pilot and same
+  // seeds — the only way to compare two hulls without arguing about it.
+  // Only the first sector reads it; after that the hold travels.
+  let carryOver = null;
+  if (process.env.START_GUN) carryOver = { extraActions: [process.env.START_GUN] };
+  if (process.env.LOADOUT) carryOver = { ...(carryOver || {}), startingLoadout: process.env.LOADOUT };
   if (process.env.ECON) {
     if (report.econ.seenThisRun) report.econ.seenPerRun.push(report.econ.seenThisRun.size);
     report.econ.seenThisRun = null;
