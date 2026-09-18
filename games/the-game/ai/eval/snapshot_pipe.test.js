@@ -33,10 +33,25 @@ var IDENT = {
 
 // One throwaway repo per case, with its own copy of the hook: the hook cds to
 // its own directory and commits there, so the copy IS how it is aimed.
+// REMOVING A GIT REPOSITORY RACES GIT. `git commit` can start `gc --auto` in
+// the background, which writes into .git while this is deleting it, and rmSync
+// then fails with ENOTEMPTY. gc is turned off in the scratch repo below, and
+// this retries anyway — cleanup is not what the suite is checking, and it must
+// never be able to fail a five-hour run from a pre-flight step.
+function scrub(dir) {
+    for (var i = 0; i < 5; i++) {
+        try {
+            if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+            return;
+        } catch (e) { /* try again */ }
+    }
+}
+
 function stage(snapshot) {
-    if (fs.existsSync(SCRATCH)) fs.rmSync(SCRATCH, { recursive: true, force: true });
+    scrub(SCRATCH);
     fs.mkdirSync(SCRATCH, { recursive: true });
     cp.execSync('git init -q -b main', { cwd: SCRATCH });
+    cp.execSync('git config gc.auto 0 && git config gc.autoDetach false', { cwd: SCRATCH });
     fs.writeFileSync(path.join(SCRATCH, '.gitignore'), '*.smoke.json\n');
     cp.execSync('git add -A && git commit -q -m base',
         { cwd: SCRATCH, env: Object.assign({}, process.env, IDENT) });
@@ -154,7 +169,7 @@ test('train_pbt resumes its islands, and refuses a foreign one', function () {
         return cp.execSync('node train_pbt.js', { cwd: __dirname, env: env, encoding: 'utf8' });
     }
     try {
-        if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+        scrub(dir);
         var first = init();
         assert.ok(/resumed 0/.test(first), 'a fresh run claimed to resume:\n' + first);
         var before = fs.readFileSync(path.join(dir, 'island0.json'), 'utf8');
@@ -176,7 +191,7 @@ test('train_pbt resumes its islands, and refuses a foreign one', function () {
         assert.notStrictEqual(fs.readFileSync(path.join(dir, 'island0.json'), 'utf8'),
             JSON.stringify(foreign), 'the foreign island was left in place');
     } finally {
-        if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+        scrub(dir);
     }
 });
 
@@ -194,7 +209,7 @@ test('migration off gets its own populations', function () {
         return cp.execSync('node train_pbt.js', { cwd: __dirname, env: env, encoding: 'utf8' });
     }
     try {
-        if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+        scrub(dir);
         init('1');
         var migrating = JSON.parse(fs.readFileSync(path.join(dir, 'island0.json'), 'utf8'));
         var off = init('0');
@@ -206,7 +221,7 @@ test('migration off gets its own populations', function () {
         assert.notStrictEqual(independent.fingerprint, migrating.fingerprint,
             'both spellings hash the same, so either can open the other\'s populations');
     } finally {
-        if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+        scrub(dir);
     }
 });
 
@@ -214,6 +229,6 @@ tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
 });
-if (fs.existsSync(SCRATCH)) fs.rmSync(SCRATCH, { recursive: true, force: true });
+scrub(SCRATCH);
 console.log('\n' + (tests.length - failures.length) + '/' + tests.length + ' passed');
 process.exit(failures.length ? 1 : 0);
