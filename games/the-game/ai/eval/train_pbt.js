@@ -235,8 +235,31 @@ console.log('PBT: ' + ISLANDS + ' islands x ' + POP + ' vectors, ' + LEG +
 console.log('state in ' + path.basename(DIR));
 
 var started = Date.now();
+
+// A LEG IS NOT INTERRUPTIBLE, so the question is never "is there time left" but
+// "is there time for ANOTHER ONE". Stopping only once the deadline has passed
+// starts a leg that runs past the job's own timeout and is killed mid-duel,
+// losing everything since the last snapshot. Measured here: legs run 47-52
+// minutes, against the 20 the first deadline was set for.
+//
+// The first leg has nothing measured yet, so it uses a deliberately pessimistic
+// guess; after that the last leg's own duration decides, with a fifth added
+// because legs lengthen as the populations converge.
+var FIRST_LEG_GUESS = Number(process.env.GC_PBT_LEG_GUESS_MIN || 60) * 60;
+var lastLeg = null;
+function timeForAnotherLeg() {
+    if (!DEADLINE) return true;
+    var need = (lastLeg === null ? FIRST_LEG_GUESS : lastLeg * 1.2);
+    var left = DEADLINE - Date.now() / 1000;
+    if (left >= need) return true;
+    console.log('\nstopping: ' + Math.round(left / 60) + ' min left and a leg needs about ' +
+                Math.round(need / 60) + '. Starting one would be killed mid-duel.');
+    return false;
+}
+
 (function leg() {
-    if (DEADLINE && Date.now() / 1000 > DEADLINE) { console.log('\nout of time'); return; }
+    if (!timeForAnotherLeg()) return;
+    var legStarted = Date.now();
     runLeg(function (err) {
         if (err) { console.error(err); process.exit(1); }
 
@@ -283,6 +306,7 @@ var started = Date.now();
                     '   held-out ' + w2 + 'W ' + (n2 - w2 - dr) + 'L ' + dr + 'D of ' + n2 +
                     '   spread ' + div.join('/'));
         writeSnapshot(champs[bestI].weights, rec, total, div);
+        lastLeg = (Date.now() - legStarted) / 1000;
         leg();
     });
 })();

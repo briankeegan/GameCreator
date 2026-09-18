@@ -62,7 +62,7 @@ on:
         default: '1'
       minutes:
         description: 'Minutes to train before stopping with a snapshot written. Under the job timeout'
-        default: '315'
+        default: '330'
       chain:
         description: 'false = run one leg and stop. Otherwise the leg dispatches its own continuation'
         default: 'true'
@@ -151,11 +151,10 @@ jobs:
           GC_SNAPSHOT_HOOK: ${{ github.workspace }}/games/the-game/ai/eval/commit_snapshot.sh
         run: |
           echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
-          # Under the job's timeout, and under the platform's 360, so the run
-          # stops itself with a snapshot written rather than being killed
-          # mid-duel. The islands only read the deadline BETWEEN legs, so the
-          # margin has to be a whole leg wide.
-          export GC_DEADLINE=$(( $(date +%s) + ${{ github.event.inputs.minutes || '315' }} * 60 ))
+          # Under the job's timeout and the platform's 360. train_pbt.js will
+          # not START a leg that does not fit in what is left, so this is the
+          # last moment a leg may END, not a moment it may begin.
+          export GC_DEADLINE=$(( $(date +%s) + ${{ github.event.inputs.minutes || '330' }} * 60 ))
           node train_pbt.js
 
       # See the header. A clean deadline stop, and nothing asking it to halt.
@@ -163,7 +162,7 @@ jobs:
         if: github.event.inputs.chain != 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MINUTES: ${{ github.event.inputs.minutes || '315' }}
+          MINUTES: ${{ github.event.inputs.minutes || '330' }}
           STARTED: ${{ steps.train.outputs.started }}
         run: |
           set -eu
