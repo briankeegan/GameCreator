@@ -190,17 +190,23 @@ try {
 } catch (e) { /* no shipped bot: the record is against zero weights */ }
 
 function heldOut(genome) {
-    var wins = 0, draws = 0, sentUs = 0, sentThem = 0;
+    var wins = 0, draws = 0, sentUs = 0, sentThem = 0, frames = 0, longest = 0;
     var depthUs = versus.zeroDepth(), depthThem = versus.zeroDepth();
     SEEDS.HOLDOUT.forEach(function (sd) {
         var d = versus.duel(genome, shipped || {}, sd, OPTS);
         if (d.winner === 0) wins++; else if (d.winner === null) draws++;
         sentUs += d.sent[0]; sentThem += d.sent[1];
+        // HOW LONG THE GAMES ACTUALLY RAN. A record read without it cannot
+        // tell a bot that wins long games from one whose opponent topped out
+        // in the first ten seconds, and those are not the same bot.
+        frames += d.frames || 0;
+        if ((d.frames || 0) > longest) longest = d.frames;
         versus.addDepth(depthUs, d.chainDepth[0]);
         versus.addDepth(depthThem, d.chainDepth[1]);
     });
     var n = SEEDS.HOLDOUT.length;
     return {
+        avgFrames: frames / n, longestFrames: longest,
         learned: { fitness: (wins + 0.5 * draws) / n, winRate: wins / n, draws: draws,
                    avgSent: sentUs / n, duels: n, chainDepth: depthUs, versus: true },
         shipped: { fitness: (n - wins - draws + 0.5 * draws) / n,
