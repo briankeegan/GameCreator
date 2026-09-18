@@ -337,6 +337,43 @@ var MOVE_FRAMES = 4;
     return count;
   }
 
+  // links split by direction, and the two halves add up to links exactly.
+  //
+  // They are separate features because the two are not the same move here.
+  // The cursor swaps SIDEWAYS only, so a horizontal pair is finished by
+  // bringing the third panel in yourself. A vertical pair is finished by a
+  // panel FALLING in, which needs something under it to clear first — a
+  // cascade, not a decision. One is a trigger, the other is fuel.
+  //
+  // Concretely: a broken garbage row takes its colours from garbageRowColors,
+  // which refuses to repeat left to right, so a freshly converted row can
+  // never hold a horizontal pair. All of its value is vertical.
+  function linksH(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var count = 0;
+    for (var r = 1; r <= H; r++) {
+      for (var c = 1; c < W; c++) {
+        var v = grid[r][c];
+        if (v <= 0) continue;
+        if (grid[r][c + 1] === v) count++;
+      }
+    }
+    return count;
+  }
+
+  function linksV(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var count = 0;
+    for (var r = 1; r < H; r++) {
+      for (var c = 1; c <= W; c++) {
+        var v = grid[r][c];
+        if (v <= 0) continue;
+        if (grid[r + 1][c] === v) count++;
+      }
+    }
+    return count;
+  }
+
   // Per colour: the mean Manhattan distance of its panels from their centroid, summed over colours. Colours with one panel are skipped.
   function colourVariance(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
@@ -744,6 +781,8 @@ var MOVE_FRAMES = 4;
     colourVariance: colourVariance,
     popSize: popSize,
     links: links,
+    linksH: linksH,
+    linksV: linksV,
     // exported for tests only — not features
     _matchedCells: matchedCells
   };

@@ -198,6 +198,14 @@ function popSize(rows) {
     return F.popSize(inputMod.normalize({ board: board(rows) }));
 }
 
+function linksH(rows) {
+    return F.linksH(inputMod.normalize({ board: board(rows) }));
+}
+
+function linksV(rows) {
+    return F.linksV(inputMod.normalize({ board: board(rows) }));
+}
+
 function links(rows) {
     return F.links(inputMod.normalize({ board: board(rows) }));
 }
@@ -494,6 +502,102 @@ test('links: weighting it works end to end through the evaluator', function () {
     var r = evaluator.evaluate({ board: board(['111...']) }, { links: 3 });
     assert.strictEqual(r.features.links, 2);
     assert.strictEqual(r.terms.links, 6, 'sign is +1');
+});
+
+
+// ---- linksH and linksV ----
+// links, split by direction. Same single scan, two counters: linksH counts
+// same-coloured panels SIDE BY SIDE, linksV counts them STACKED.
+//
+// They are separate features because in this game the two are not the same
+// move. The cursor only swaps two cells SIDEWAYS, so a horizontal pair is
+// finished by walking over and bringing the third in yourself. A vertical
+// pair is finished by a panel FALLING into place, which means something
+// under it has to clear first — that is a cascade, not a decision. One is a
+// trigger you hold, the other is fuel. A lumped links scores them the same
+// and training cannot say it wants more of one.
+//
+// The mechanic that makes this concrete: a broken garbage row takes its
+// colours from garbageRowColors, which refuses to repeat left to right. So
+// a freshly converted row can NEVER contain a horizontal pair. Every bit of
+// its value is vertical, and lumped links cannot express that.
+//
+// The last test is the one that matters: linksH + linksV must equal links on
+// every board. A split that drops a pair or counts one twice would pass
+// every other test here.
+//
+// Written before the functions exist.
+
+test('linksH: FIRES on a pair side by side', function () {
+    assert.strictEqual(linksH(['11....']), 1);
+});
+
+test('linksH: a run of three is two overlapping pairs', function () {
+    assert.strictEqual(linksH(['111...']), 2);
+});
+
+test('linksH: STAYS QUIET on a stacked pair, which is linksV\'s job', function () {
+    assert.strictEqual(linksH(['1.....', '1.....']), 0);
+});
+
+test('linksH: STAYS QUIET on different colours touching', function () {
+    assert.strictEqual(linksH(['12....']), 0);
+});
+
+test('linksH: garbage and busy cells are not colours', function () {
+    assert.strictEqual(linksH(['##....']), 0);
+    assert.strictEqual(linksH(['xx....']), 0);
+});
+
+test('linksH: counts every row', function () {
+    assert.strictEqual(linksH(['11....', '22....']), 2);
+});
+
+test('linksV: FIRES on a stacked pair', function () {
+    assert.strictEqual(linksV(['1.....', '1.....']), 1);
+});
+
+test('linksV: a column of three is two overlapping pairs', function () {
+    assert.strictEqual(linksV(['1.....', '1.....', '1.....']), 2);
+});
+
+test('linksV: STAYS QUIET on a pair side by side, which is linksH\'s job', function () {
+    assert.strictEqual(linksV(['11....']), 0);
+});
+
+test('linksV: STAYS QUIET on diagonals', function () {
+    assert.strictEqual(linksV(['1.....', '.1....']), 0);
+});
+
+test('linksV: garbage and busy cells are not colours', function () {
+    assert.strictEqual(linksV(['#.....', '#.....']), 0);
+    assert.strictEqual(linksV(['x.....', 'x.....']), 0);
+});
+
+test('linksV: counts every column', function () {
+    assert.strictEqual(linksV(['12....', '12....']), 2);
+});
+
+test('THE SPLIT IS EXHAUSTIVE: linksH + linksV equals links on every board', function () {
+    // A split that silently dropped a pair, or counted one in both halves,
+    // would pass every test above and be wrong. These boards between them
+    // carry horizontal runs, vertical runs, an L, garbage, busy cells,
+    // diagonals and empty space.
+    var boards = [
+        ['11....'],
+        ['1.....', '1.....'],
+        ['111...', '1.....'],
+        ['12321.', '12321.', '54321.'],
+        ['##11..', 'xx11..', '111111'],
+        ['......'],
+        ['1.1.1.', '.1.1.1', '1.1.1.'],
+        ['555555', '555555', '555555']
+    ];
+    boards.forEach(function (rows) {
+        assert.strictEqual(
+            linksH(rows) + linksV(rows), links(rows),
+            'split does not add up on ' + JSON.stringify(rows));
+    });
 });
 
 

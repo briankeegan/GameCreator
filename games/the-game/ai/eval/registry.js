@@ -76,6 +76,12 @@
     { key: 'popSize',          group: 'board',  sign: +1, fn: F.popSize, perPanel: true,
       what: 'For every horizontal swap the cursor could make, how many panels would pop, summed over the board. Three is the minimum to pop, not the prize: a match is the union of every run of 3 or more through the swapped cell, row AND column, so an L or a T pops five, and comboSize is what feeds comboGarbage and the combo score. This is the Panel Attack half of meatfighter\'s consecutive colours: his game pops four touching blobs so his links term covers one-short-of-popping, ours pops three in a LINE and swaps sideways only, so what matters is whether the third panel is one move from its slot and how much comes with it. Not matchPotential: no clone and no resolve, immediate pop only, so it costs a run-length walk instead of a cascade. Obeys the engine — garbage and busy panels cannot be swapped, and a panel swapped over a hole falls out of the row first.' },
 
+    { key: 'linksH',           group: 'board',  sign: +1, fn: F.linksH, perPanel: true,
+      what: 'Same-coloured panels SIDE BY SIDE. The half of links the cursor can finish by itself: swaps are sideways, so the third panel is one walk and one swap away. A trigger you hold rather than fuel you wait on.' },
+
+    { key: 'linksV',           group: 'board',  sign: +1, fn: F.linksV, perPanel: true,
+      what: 'Same-coloured panels STACKED. The half of links that finishes by a panel FALLING into place, which needs something below to clear first — cascade fuel, not a decision. Split from linksH because a broken garbage row takes its colours from garbageRowColors, which refuses to repeat left to right, so a freshly converted row can never hold a horizontal pair and all of its value is vertical. linksH + linksV equals links on every board.' },
+
     { key: 'links',            group: 'board',  sign: +1, fn: null, perPanel: true,
       what: 'Same-coloured panels orthogonally adjacent. meatfighter\'s single biggest term (25%) — the density that makes chains happen without any chain logic. perPanel: it is a COUNT OF PANELS, so it falls whenever a move clears, whatever shape the board is left in — measured at -0.639 per panel removed against garbageSent\'s +1.004, which cancelled a third of the reward for a big clear by arithmetic. In density mode it is divided by the panels it counts over, so half a board can be exactly as tidy.' },
 
