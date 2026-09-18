@@ -166,12 +166,20 @@ jobs:
           STARTED: ${{ steps.train.outputs.started }}
         run: |
           set -eu
-          elapsed=$(( $(date +%s) - STARTED ))
-          floor=$(( MINUTES * 30 ))
-          if [ "$elapsed" -lt "$floor" ]; then
-            echo "trained for ${elapsed}s of a ${MINUTES}-minute leg — stopping rather than"
-            echo "restarting something that is exiting early."
-            exit 0
+          # train_pbt.js leaves .pbt-clean-stop when it stopped because another
+          # leg would not fit. That is a handover however early it happens — a
+          # single long leg can end a run at half its budget — so the
+          # exited-early guard below only applies when the marker is absent.
+          if [ -f games/the-game/ai/eval/.pbt-clean-stop ]; then
+            echo "clean stop: no room for another leg. Continuing."
+          else
+            elapsed=$(( $(date +%s) - STARTED ))
+            floor=$(( MINUTES * 30 ))
+            if [ "$elapsed" -lt "$floor" ]; then
+              echo "trained for ${elapsed}s of a ${MINUTES}-minute leg and did not stop"
+              echo "cleanly — not restarting something that is exiting early."
+              exit 0
+            fi
           fi
           git fetch -q origin main
           if git cat-file -e origin/main:games/the-game/ai/eval/STOP_TRAINING 2>/dev/null; then

@@ -65,6 +65,12 @@ var DIR = path.join(__dirname, '.pbt-' + baseSeed);
 if (!fs.existsSync(DIR)) fs.mkdirSync(DIR);
 function islandFile(i) { return path.join(DIR, 'island' + i + '.json'); }
 
+// A marker left by a previous run in the same checkout would make this run's
+// stop look clean whatever happened, so it is cleared before ANY path that can
+// exit — including GC_PBT_INIT_ONLY.
+var CLEAN_STOP = path.join(__dirname, '.pbt-clean-stop');
+try { fs.unlinkSync(CLEAN_STOP); } catch (e) { /* none to clear */ }
+
 function randomGenome() {
     var g = {};
     KEYS.forEach(function (k) { g[k] = rng() < 0.4 ? rng() * MAX_WEIGHT : 0; });
@@ -263,6 +269,14 @@ function timeForAnotherLeg() {
     if (left >= need) return true;
     console.log('\nstopping: ' + Math.round(left / 60) + ' min left and a leg needs about ' +
                 Math.round(need / 60) + '. Starting one would be killed mid-duel.');
+    // SAY SO WHERE THE WORKFLOW CAN SEE IT. Stopping here is a clean handover,
+    // however early in the budget it happens — one long leg can end the run at
+    // half the deadline. The chain step refuses to continue a run that exited
+    // early, because that is what a crash loop looks like, and without this it
+    // cannot tell the two apart. It killed islands-d2-c for being 7 minutes
+    // under the floor after a single 158-minute leg.
+    try { fs.writeFileSync(CLEAN_STOP, String(Date.now())); }
+    catch (e) { console.log('  (could not mark the clean stop: ' + e.message + ')'); }
     return false;
 }
 

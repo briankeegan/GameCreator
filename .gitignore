@@ -44,3 +44,7 @@ games/the-game/ai/eval/.training-test-scratch/
 # snapshot_pipe.test.js builds a throwaway git repo here and removes it;
 # this covers a crash that leaves one behind.
 games/the-game/ai/eval/.snapshot-pipe-scratch/
+
+# train_pbt.js drops this when it stops because another leg will not fit;
+# the workflow reads it to tell a clean handover from a crash loop.
+games/the-game/ai/eval/.pbt-clean-stop

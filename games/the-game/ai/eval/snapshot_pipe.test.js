@@ -225,6 +225,52 @@ test('migration off gets its own populations', function () {
     }
 });
 
+// A CLEAN STOP MUST BE DISTINGUISHABLE FROM A CRASH. train_pbt.js stops when
+// another leg will not fit, which can happen at half the budget after one long
+// leg; the workflow's exited-early guard then has to be told not to treat that
+// as a crash loop. islands-d2-c's chain died for being 7 minutes under that
+// floor after a single 158-minute leg.
+test('a stop for lack of room leaves the marker, and a normal exit does not', function () {
+    var marker = path.join(__dirname, '.pbt-clean-stop');
+    var dir = path.join(__dirname, '.pbt-606060');
+    function run(env) {
+        return cp.execSync('node train_pbt.js', {
+            cwd: __dirname, encoding: 'utf8',
+            env: Object.assign({}, process.env, {
+                GC_GA_SEED: '606060', GC_PBT_ISLANDS: '2', GC_VS_POPULATION: '4',
+                GC_LEVEL: '10', GC_DEPTH: '1'
+            }, env)
+        });
+    }
+    try {
+        scrub(dir);
+        try { fs.unlinkSync(marker); } catch (e) { /* none */ }
+
+        // Init-only: it never reaches the leg loop, so no marker.
+        run({ GC_PBT_INIT_ONLY: '1' });
+        assert.ok(!fs.existsSync(marker),
+            'a run that never started a leg left the clean-stop marker, so the workflow ' +
+            'would chain past a crash');
+
+        // A deadline already gone: the first leg cannot fit, so it stops for
+        // exactly the reason the marker exists to report.
+        var out = run({ GC_DEADLINE: String(Math.floor(Date.now() / 1000) + 5) });
+        assert.ok(/stopping: .* a leg needs about/.test(out),
+            'the run did not stop for lack of room:\n' + out);
+        assert.ok(fs.existsSync(marker),
+            'a run that stopped because no leg would fit left no marker, so the ' +
+            'workflow treats the handover as a crash and the chain dies:\n' + out);
+
+        // And a later run clears it before deciding anything.
+        run({ GC_PBT_INIT_ONLY: '1' });
+        assert.ok(!fs.existsSync(marker),
+            'the marker survived into the next run, so any later stop looks clean');
+    } finally {
+        try { fs.unlinkSync(marker); } catch (e) { /* none */ }
+        scrub(dir);
+    }
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
