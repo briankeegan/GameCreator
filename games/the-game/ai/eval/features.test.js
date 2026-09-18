@@ -194,6 +194,10 @@ function variance(rows) {
     return F.colourVariance(inputMod.normalize({ board: board(rows) }));
 }
 
+function splitPair(rows) {
+    return F.splitPair(inputMod.normalize({ board: board(rows) }));
+}
+
 function links(rows) {
     return F.links(inputMod.normalize({ board: board(rows) }));
 }
@@ -326,6 +330,71 @@ test('matchPotential: weighting it now works end to end through the evaluator', 
     assert.strictEqual(r.features.matchPotential, 1);
     assert.strictEqual(r.terms.matchPotential, 10, 'sign is +1, so the term is +10');
     assert.strictEqual(r.score, 10);
+});
+
+
+// ---- splitPair ----
+// Same colour either side of an EMPTY cell, along a row: `X . X`. One panel
+// short of a three, and the missing panel arrives by FALLING, which is the
+// whole chain mechanic in this game — something clears below, a panel drops
+// into the gap, the three completes, that clears, and the next one drops.
+//
+// This is the Panel Attack half of meatfighter's "consecutive colours". His
+// game pops four touching blobs, so touching IS one-short-of-popping and his
+// links term covers it. Ours pops three in a LINE, so there are two ways to
+// be one short: adjacent (counted by `links`) and split by a gap (here).
+// Without this the split case is invisible and the bot has no reason to leave
+// a gap it can fill.
+//
+// HORIZONTAL ONLY, and that is not an oversight. A vertical `X . X` cannot
+// exist on a settled board: the upper panel falls into the gap. The evaluator
+// scores settled boards, so a vertical arm would be a branch that never fires,
+// which is exactly the kind of dead measurement this directory exists to
+// avoid. Written before the function exists.
+
+test('splitPair: same colour either side of a gap, in a row', function () {
+    assert.strictEqual(splitPair(['1.1...']), 1);
+});
+
+test('splitPair: overlapping windows each count', function () {
+    // (1,2,3) is 1.1 and (3,4,5) is 1.1 — two distinct fillable gaps.
+    assert.strictEqual(splitPair(['1.1.1.']), 2);
+});
+
+test('splitPair: STAYS QUIET on an adjacent pair, which is links\' job', function () {
+    assert.strictEqual(splitPair(['11....']), 0);
+});
+
+test('splitPair: STAYS QUIET when the gap holds a different colour', function () {
+    // Not one panel away: the 2 has to leave before anything can fill.
+    assert.strictEqual(splitPair(['121...']), 0);
+});
+
+test('splitPair: STAYS QUIET when the outer colours differ', function () {
+    assert.strictEqual(splitPair(['1.2...']), 0);
+});
+
+test('splitPair: STAYS QUIET on a complete three', function () {
+    assert.strictEqual(splitPair(['111...']), 0);
+});
+
+test('splitPair: garbage is not a colour, on either side or in the gap', function () {
+    // A gap that garbage sits in cannot be filled by a falling panel, and a
+    // wall of garbage is not stored potential.
+    assert.strictEqual(splitPair(['#.#...']), 0);
+    assert.strictEqual(splitPair(['1#1...']), 0);
+});
+
+test('splitPair: a busy cell is not an empty gap', function () {
+    assert.strictEqual(splitPair(['1x1...']), 0);
+});
+
+test('splitPair: vertical gaps do not count — they cannot survive gravity', function () {
+    assert.strictEqual(splitPair(['1.....', '......', '1.....']), 0);
+});
+
+test('splitPair: counts every row, not just the first', function () {
+    assert.strictEqual(splitPair(['1.1...', '2.2...']), 2);
 });
 
 

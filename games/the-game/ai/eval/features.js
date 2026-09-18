@@ -250,6 +250,38 @@ var MOVE_FRAMES = 4;
   // of the random-board test alone.
 
   // Same-colour orthogonal adjacencies. Counted right and up only, so each pair counts once.
+  // Same colour either side of an EMPTY cell along a row: `X . X`. One panel
+  // short of a three, where the missing panel arrives by FALLING — which is
+  // the chain mechanic in this game. Something clears below, a panel drops
+  // into the gap, the three completes, that clears, and the next drops.
+  //
+  // The other half of "one short" is the ADJACENT pair, and `links` already
+  // counts that. Between them they cover both ways a three can be one panel
+  // away, which is what meatfighter's links + consecutive colours cover in a
+  // game that pops four touching blobs instead of three in a line.
+  //
+  // HORIZONTAL ONLY. A vertical `X . X` cannot survive gravity — the upper
+  // panel falls into the gap — and the evaluator scores settled boards, so a
+  // vertical arm would be a branch that never fires.
+  //
+  // The gap must be EMPTY. A different colour sitting in it is not one panel
+  // away (it has to leave first), and garbage or a busy cell cannot be filled
+  // by something falling.
+  function splitPair(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var count = 0;
+    for (var r = 1; r <= H; r++) {
+      for (var c = 1; c + 2 <= W; c++) {
+        var v = grid[r][c];
+        if (v <= 0) continue;                 // empty, busy (-1) and garbage (-2) are not colours
+        if (grid[r][c + 1] !== 0) continue;   // the gap has to be fillable
+        if (grid[r][c + 2] !== v) continue;
+        count++;
+      }
+    }
+    return count;
+  }
+
   function links(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
     var count = 0;
@@ -669,6 +701,7 @@ var MOVE_FRAMES = 4;
     fillRatio: fillRatio,
     roughness: roughness,
     colourVariance: colourVariance,
+    splitPair: splitPair,
     links: links,
     // exported for tests only — not features
     _matchedCells: matchedCells

@@ -56,7 +56,15 @@ var boards = [];
 puzzles().forEach(function (p) { var b = boardFrom(p.Stack); if (b) boards.push(b); });
 var inputs = boards.map(function (b) { return inputMod.normalize({ board: b, liveBoard: b }); });
 
-var live = registry.all.filter(function (f) { return typeof f.fn === 'function'; });
+// GC_EXCLUDE drops features, exactly as train.js and train_pbt.js read it, so
+// "what does the set cost without these" is asked of the same profiler rather
+// than a second copy of it.
+var SKIP = (process.env.GC_EXCLUDE || '').split(',')
+    .map(function (s) { return s.trim(); }).filter(Boolean);
+var live = registry.all.filter(function (f) {
+    return typeof f.fn === 'function' && SKIP.indexOf(f.key) < 0;
+});
+if (SKIP.length) console.log('excluding: ' + SKIP.join(', ') + '\n');
 
 // Warm up, so the first feature measured is not paying for JIT the rest skip.
 for (var w = 0; w < 3; w++) live.forEach(function (f) { inputs.forEach(function (i) { f.fn(i); }); });

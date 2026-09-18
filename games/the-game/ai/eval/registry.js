@@ -73,6 +73,9 @@
     { key: 'flatTop',          group: 'board',  sign: -1, fn: null,
       what: 'Columns level with the tallest, scaled by how high the tallest is. The documented way to die — "the overloaded flat-top is the shape that gets intermediate players killed" — and an INTERACTION, which is why it cannot be left to roughness plus maxHeight: a weighted sum adds them, it cannot multiply them. Flat on the floor costs nothing; flat at the ceiling is the death shape.' },
 
+    { key: 'splitPair',        group: 'board',  sign: +1, fn: F.splitPair, perPanel: true,
+      what: 'Same colour either side of an EMPTY cell along a row: X . X. The other way to be one panel short of a three, and the one that fills by FALLING, which is how a chain propagates here. meatfighter covers both ways with links plus consecutive colours because his game pops four touching blobs; ours pops three in a LINE, so adjacency alone misses the gapped case entirely. Horizontal only: a vertical gap cannot survive gravity on a settled board. A pure grid walk, no clone and no resolve.' },
+
     { key: 'links',            group: 'board',  sign: +1, fn: null, perPanel: true,
       what: 'Same-coloured panels orthogonally adjacent. meatfighter\'s single biggest term (25%) — the density that makes chains happen without any chain logic. perPanel: it is a COUNT OF PANELS, so it falls whenever a move clears, whatever shape the board is left in — measured at -0.639 per panel removed against garbageSent\'s +1.004, which cancelled a third of the reward for a big clear by arithmetic. In density mode it is divided by the panels it counts over, so half a board can be exactly as tidy.' },
 
