@@ -942,6 +942,7 @@ body {
 .hold-kind-armor { border-color: #9c8a6a; background: #26211a; }
 .hold-kind-utility { border-color: #8a6ecf; background: #201a33; }
 .hold-kind-sensor { border-color: #3fbf9f; background: #10261f; }
+.hold-kind-salvage { border-color: #d0a84a; background: #2a2212; }
 .hold-cell-void {
   position: absolute;
   background: #141b2b; /* matches the overlay panel — reads as "outside the hull" */

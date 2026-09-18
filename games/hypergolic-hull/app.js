@@ -772,7 +772,15 @@ flagshipEscortImg.onload = () => draw();
 const flagshipArmoredImg = new Image();
 flagshipArmoredImg.src = "icons/flagship-armored.png";
 flagshipArmoredImg.onload = () => draw();
-const LOADOUT_SPRITES = { standard: flagshipImg, escort: flagshipEscortImg, salvager: flagshipArmoredImg };
+const flagshipSkirmisherImg = new Image();
+flagshipSkirmisherImg.src = "icons/flagship-skirmisher.png";
+flagshipSkirmisherImg.onload = () => draw();
+const LOADOUT_SPRITES = {
+  standard: flagshipImg,
+  escort: flagshipEscortImg,
+  salvager: flagshipArmoredImg,
+  skirmisher: flagshipSkirmisherImg,
+};
 // Shared by the live HUD (the ship actually being flown) and the
 // death-overlay's loadout preview (a hypothetical one) — same lookup
 // either way, keyed purely on which loadout, never on current stats.
@@ -3801,6 +3809,22 @@ function updateHangarDetail() {
   statRow("Hull", preview.maxHull, preview.maxHull, "hull");
   statRow("Energy", preview.maxEnergy, preview.maxEnergy, "energy");
   if (preview.maxShields > 0) statRow("Shields", preview.maxShields, preview.maxShields, "shield");
+  // Reach and cutting gear only appear on the hulls that have them —
+  // "1 hex" on every other ship is a row that says nothing.
+  const noteRow = (label, value) => {
+    const row = document.createElement("div");
+    row.className = "ship-stat-row";
+    const name = document.createElement("span");
+    name.className = "stat-label";
+    name.textContent = label;
+    const v = document.createElement("span");
+    v.className = "stat-value";
+    v.textContent = value;
+    row.append(name, v);
+    text.appendChild(row);
+  };
+  if (preview.moveRange > 1) noteRow("Burn", `${preview.moveRange} hexes`);
+  if (preview.salvageBonus > 0) noteRow("Salvage", `+${preview.salvageBonus} per wreck`);
   const blurb = document.createElement("span");
   blurb.className = "hold-info-text";
   blurb.textContent = preview.blurb;
@@ -4303,7 +4327,9 @@ function describeItem(id) {
   if (eq.kind === "weapon") return describeWeapon(Engine.WEAPONS[eq.weaponKey]);
   if (eq.kind === "reactor") return `${eq.label} — holds ${eq.energyCapacity}, makes +${eq.rechargeGain} per cycle · ${eq.w}x${eq.h}`;
   if (eq.kind === "battery") return `${eq.label} — holds ${eq.energyCapacity}, generates nothing · ${eq.w}x${eq.h}`;
-  if (eq.kind === "engine") return `${eq.label} — ${eq.moveRange} hex per turn · ${eq.w}x${eq.h}`;
+  if (eq.kind === "engine")
+    return `${eq.label} — ${eq.moveRange} hex${eq.moveRange === 1 ? "" : "es"} per burn · ${eq.w}x${eq.h}`;
+  if (eq.kind === "salvage") return `${eq.label} — +${eq.salvageBonus} salvage from every wreck · ${eq.w}x${eq.h}`;
   if (eq.kind === "shield") return `${eq.label} — raise-able charge, absorbs a volley · ${eq.w}x${eq.h}`;
   if (eq.kind === "armor") return `${eq.label} — +${eq.hullBonus} Hull, welded on · ${eq.w}x${eq.h}`;
   if (eq.kind === "sensor") return `${eq.label} — powers Scan mode · ${eq.w}x${eq.h}`;
@@ -5249,10 +5275,24 @@ function stepRouteInner() {
   }
   autoRoute.path = path;
   const hullBefore = state.hull;
+  // As far as this ship's drive reaches in one burn, not one hex. A route
+  // flown a hex at a time by a two-hex drive is a ship paying for a drive
+  // it never uses. applySublight refuses anything the route cannot
+  // actually reach, so walking the leg back until it takes is honest
+  // rather than optimistic.
+  const reach = Math.max(1, state.moveRange || 1);
+  let leg = path[Math.min(reach, path.length - 1)];
+  const reachable = new Set(Engine.legalSublightTargets(state).map(Engine.hexKey));
+  for (let i = Math.min(reach, path.length - 1); i >= 1; i--) {
+    if (reachable.has(Engine.hexKey(path[i]))) {
+      leg = path[i];
+      break;
+    }
+  }
   // If the burn itself was refused, the route is over — retrying the same
   // blocked step on a timer forever is how a flight turns into a lockout.
-  const flew = handleAction(() => Engine.applySublight(state, path[1]), {
-    allowTransition: Engine.posEq(path[1], autoRoute.target),
+  const flew = handleAction(() => Engine.applySublight(state, leg), {
+    allowTransition: Engine.posEq(leg, autoRoute.target),
   });
   if (autoRoute && state.hull < hullBefore) autoRoute.damageTaken += hullBefore - state.hull;
   if (!flew) {

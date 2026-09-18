@@ -728,6 +728,20 @@
     // through exactly the same registry yours does, and these are what a
     // wreck would drop.
     microReactor: { id: "microReactor", label: "Micro Reactor", kind: "reactor", rechargeGain: 1, energyCapacity: 1, w: 1, h: 1 },
+    // A small bus that refills fast. The opposite trade to the Reactor
+    // Core: twice the charge back per cycle, half the ceiling. A ship
+    // built on this one always has a cheap gun ready and can never fire a
+    // Railgun (5) at all.
+    pulseReactor: { id: "pulseReactor", label: "Pulse Reactor", kind: "reactor", rechargeGain: 2, energyCapacity: 3, w: 1, h: 3 },
+    // Two hexes on one burn. Mobility was not an axis before this: every
+    // ship in the game, yours and theirs, moved exactly one hex, so the
+    // only dials a hull had were hull, energy and shields — and two of
+    // those are the same dial.
+    ionDrive: { id: "ionDrive", label: "Ion Drive", kind: "engine", moveRange: 2, w: 1, h: 4 },
+    // Cutting gear. Every wreck pays one more. Lets a hull be poor and
+    // fragile at depth 1 and the best-equipped thing on the board at
+    // depth 8 — a shape the roster had no way to express.
+    salvageRig: { id: "salvageRig", label: "Salvage Rig", kind: "salvage", salvageBonus: 1, w: 1, h: 3 },
     // A battery, not a generator: it holds charge, it doesn't make any.
     // A ship built entirely of Charge Banks has a big bus and no way to
     // refill it — which is exactly why the Railgun emplacement is slow.
@@ -815,6 +829,12 @@
       maxEnergy: sum("energyCapacity"),
       rechargeGain: sum("rechargeGain"),
       hullBonus: sum("hullBonus"),
+      // The BEST drive aboard, not the sum of them. Capacity and armour
+      // stack because two crates of each are two crates of each; two
+      // drives are not a faster drive, they are a spare. Zero with no
+      // engine fitted, which is the same thing hasDrive says.
+      moveRange: items.reduce((best, it) => Math.max(best, eq(it).kind === "engine" ? (eq(it).moveRange || 1) : 0), 0),
+      salvageBonus: sum("salvageBonus"),
     };
   }
 
@@ -837,6 +857,8 @@
     if (refit && ship.maxShields > shieldsBefore) state.shieldCharges += ship.maxShields - shieldsBefore;
     state.shieldCharges = Math.max(0, Math.min(state.shieldCharges, state.maxShields));
     state.scannerInstalled = ship.scannerInstalled;
+    state.moveRange = ship.moveRange;
+    state.salvageBonus = ship.salvageBonus;
     state.maxEnergy = ship.maxEnergy;
     state.energy = Math.min(state.energy, state.maxEnergy);
     const hullBefore = state.maxHull || START_HULL + ship.hullBonus;
@@ -2605,28 +2627,43 @@
   // Adding a fourth is a data change. Gating some of them behind something
   // earned can come back later without any of that machinery living here
   // in the meantime.
+  // FOUR HULLS, ONE BUDGET. Every entry here is a starting KIT and
+  // nothing else — no hull is welded together, every crate below can be
+  // pulled at an Outpost and every one of them is on the shelf. The hull
+  // is a head start, not a class.
+  //
+  // THE FLOOR, and why it is a floor rather than a dial. `maxEnergy` at 1
+  // does not make a ship weaker, it switches the game off: 19 of the 22
+  // guns cost more than 1, raising a screen costs 2, and a ship that
+  // cannot fire cannot earn the salvage to buy its way out. Measured, the
+  // two hulls that shipped at cap 1 won 1 and 3 runs out of 60 against
+  // Standard's 22, dying at median depth 4 against its 9. So: every hull
+  // carries at least 3 capacity (the median gun's cost), and any hull with
+  // a Shield Generator carries enough to raise it AND still shoot.
+  // engine.test.js asserts both against every entry here.
   const STARTING_LOADOUTS = {
     standard: {
-      label: "Standard",
-      blurb: "The baseline. Full reactor, no shield.",
+      label: "Line Ship",
+      blurb: "Bank it and unload. The big bus, the slow fill — the only hulls that can ever fire a Railgun.",
       kit: ["sublightDrive", "reactorCore", "scanner"],
     },
     escort: {
-      label: "Escort Start",
-      blurb: "Shield raised from turn one — one hit absorbed free. Costs reactor capacity to fit it.",
-      kit: ["sublightDrive", "microReactor", "scanner", "shieldGenerator"],
-      // How deep you have to have got for this hull to be flyable. A locked
-      // hull is still shown in the hangar, with the depth on it — a shelf
-      // you can see the end of is a reason to go back out, and one you
-      // can't is just a shorter shelf. Absent = available from the first
-      // run.
+      label: "Screen Ship",
+      blurb: "Screen up and still shoot, every cycle. Fast little reactor — cheap guns forever, heavy guns never.",
+      kit: ["sublightDrive", "pulseReactor", "shieldGenerator", "scanner"],
       unlockDepth: 3,
     },
     salvager: {
-      label: "Salvager Start",
-      blurb: "An extra plate of armor. Same reactor cost as Escort Start.",
-      kit: ["sublightDrive", "microReactor", "scanner", "ablativePlating"],
+      label: "Hauler",
+      blurb: "An extra plate and cutting gear. Poorest ship on the board at depth 1, best-equipped by depth 8.",
+      kit: ["sublightDrive", "pulseReactor", "salvageRig", "ablativePlating", "scanner"],
       unlockDepth: 5,
+    },
+    skirmisher: {
+      label: "Skirmisher",
+      blurb: "Two hexes a burn — nothing else in the sky moves like that. Stay at reach, chip, never get caught.",
+      kit: ["ionDrive", "reactorCore", "scanner"],
+      unlockDepth: 7,
     },
   };
 
@@ -2651,6 +2688,14 @@
       maxHull: START_HULL + ship.hullBonus,
       maxEnergy: ship.maxEnergy,
       maxShields: ship.maxShields,
+      // The axes a hull can differ on, all of them, so nothing comparing
+      // two hulls has to re-derive half the list and miss the rest.
+      moveRange: ship.moveRange,
+      salvageBonus: ship.salvageBonus,
+      freeCells:
+        HOLD_COLS * HOLD_ROWS -
+        HOLD_BLOCKED.length -
+        hold.items.reduce((n, it) => n + EQUIPMENT[it.id].w * EQUIPMENT[it.id].h, 0),
       unlockDepth: loadout.unlockDepth || 1,
     };
   }
@@ -3059,7 +3104,10 @@
   // the same gun is the thing this economy has twice decided not to do.
   function awardSalvage(state, enemyType) {
     const base = (ENEMY_TYPES[enemyType] || {}).salvage || 0;
-    const amount = base > 0 ? base + localeBonus(state) : 0;
+    // Cutting gear pays per WRECK, not per sector: a hull built around it
+    // gets richer the more it kills, which is what makes it a late ship.
+    const rig = (state.hold ? deriveShip(state.hold).salvageBonus : 0) || 0;
+    const amount = base > 0 ? base + localeBonus(state) + rig : 0;
     if (amount <= 0) return;
     state.salvage += amount;
     state.events.push({ type: "salvage", amount });
@@ -4090,14 +4138,20 @@
     if (!state.hold.items.some((it) => EQUIPMENT[it.id].kind === "engine")) {
       throw new Error("No drive fitted — we are not going anywhere");
     }
-    if (!isAdjacent(state.playerPos, to)) throw new Error("Too far for one burn");
     if (!onBoard(state, to)) throw new Error("That heading runs off the chart");
     if (enemyAt(state, to)) throw new Error("Something is sitting on that grid");
     if (isBlockingHazard(hazardAt(state, to))) throw new Error("Rock in the way");
+    // The route, not just the distance: a two-hex drive still has to get
+    // there past whatever is in the way.
+    const route = sublightRoutes(state).get(hexKey(to));
+    if (!route) throw new Error("Too far for one burn");
     state.events = [];
     const from = { q: state.playerPos.q, r: state.playerPos.r };
-    state.events.push({ type: "playerMove", from, to: { q: to.q, r: to.r } });
-    const dir = directionIndex(from, to);
+    state.events.push({ type: "playerMove", from, to: { q: to.q, r: to.r }, route });
+    // Facing comes off the LAST leg — where the nose ended up pointing,
+    // not where the burn started from.
+    const lastLeg = route.length > 1 ? route[route.length - 2] : from;
+    const dir = directionIndex(lastLeg, to);
     if (dir >= 0) state.facing = dir;
     state.playerPos = { q: to.q, r: to.r }; // copy: never alias a board hex or an exit into live state
     // Set BEFORE spendAp, because spendAp runs the enemy phase — the
@@ -4391,13 +4445,40 @@
 
   // ---- legal-target queries (used by the renderer to highlight hexes) -----
 
+  // Every hex a burn could END on, and the route it would take. A drive
+  // with moveRange 2 does not teleport: it walks, so it cannot cross a
+  // rock or another ship, and the hexes it passes THROUGH have to be
+  // clear. Only the destination may be a hazard — flying deliberately
+  // into a black hole stays legal, and suicidal, exactly as it was.
+  function sublightRoutes(state) {
+    if (!state.hold || !state.hold.items.some((it) => (EQUIPMENT[it.id] || {}).kind === "engine")) return new Map();
+    const range = Math.max(1, deriveShip(state.hold).moveRange || 1);
+    const clear = (to) => onBoard(state, to) && !enemyAt(state, to) && !isBlockingHazard(hazardAt(state, to));
+    const routes = new Map(); // hexKey -> the path to it, shortest first
+    let frontier = [{ pos: state.playerPos, path: [] }];
+    for (let step = 0; step < range; step++) {
+      const nextFrontier = [];
+      for (const node of frontier) {
+        for (const to of neighbors(node.pos)) {
+          const key = hexKey(to);
+          if (routes.has(key) || posEq(to, state.playerPos)) continue;
+          if (!clear(to)) continue;
+          const path = node.path.concat([{ q: to.q, r: to.r }]);
+          routes.set(key, path);
+          // A hazard is a legal place to STOP and never a place to pass
+          // through, so the search does not continue out of one.
+          if (!hazardAt(state, to)) nextFrontier.push({ pos: to, path });
+        }
+      }
+      frontier = nextFrontier;
+    }
+    return routes;
+  }
+
   function legalSublightTargets(state) {
     // Same gate applySublight enforces — otherwise the board offers moves
     // the engine will refuse.
-    if (!state.hold || !state.hold.items.some((it) => (EQUIPMENT[it.id] || {}).kind === "engine")) return [];
-    return neighbors(state.playerPos).filter(
-      (to) => onBoard(state, to) && !enemyAt(state, to) && !isBlockingHazard(hazardAt(state, to))
-    );
+    return [...sublightRoutes(state).values()].map((path) => path[path.length - 1]);
   }
 
 
@@ -4440,6 +4521,7 @@
     dominantWeapon,
     applyRecharge,
     RECHARGE_ENERGY_GAIN,
+    SHIELD_RAISE_COST,
     applyRaiseShields,
     SHIELD_RAISE_COST,
     applyEndTurn,
@@ -4455,6 +4537,7 @@
     placeArrivals,
     enemiesThatCanFollow,
     legalSublightTargets,
+    sublightRoutes,
     livingEnemies,
     enemyAt,
     hazardAt,
