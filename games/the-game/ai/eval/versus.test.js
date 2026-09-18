@@ -129,37 +129,65 @@ check('chainDepth is the garbage the duel really sent, per side', function () {
         JSON.stringify(got) + '\n  actual   ' + JSON.stringify(want));
 });
 
-// THE EXACT HISTOGRAM AND THE BUCKETS MUST AGREE, or one of them is lying and
-// the report gives no way to tell which. comboByWidth counts a combo under its
-// WIDTH and chainByLinks counts a chain under its LINKS, so summing each has to
-// land back on the categories report.classify put them in.
-check('the exact combo/chain histogram totals match the buckets', function () {
-    var r = versus.duel(TRAINED, FLAT, 7, {});
+// THE SIZES ARE THE ENGINE'S OWN NUMBERS, not something re-derived from the
+// garbage. The engine emits { type: 'match', size, chain } for every match and
+// { type: 'chainEnd', length } carrying the finished chain's true length, so
+// this intercepts drainEvents, tallies them independently, and requires the
+// duel's report to match exactly.
+//
+// The defect it exists for: the first version keyed chains on the garbage
+// HEIGHT, which is links MINUS ONE, and reported every chain a link short —
+// twelve 2-chains came out as twelve 1-chains, a thing that cannot exist.
+check('combo size and chain length come from the engine, unaltered', function () {
+    var mine = [ { combo: {}, chain: {} }, { combo: {}, chain: {} } ];
+    var proto = PanelEngine.Stack.prototype;
+    var orig = proto.drainEvents;
+    var order = [];
+    proto.drainEvents = function () {
+        var evs = orig.apply(this, arguments);
+        var side = order.indexOf(this);
+        if (side < 0) { order.push(this); side = order.length - 1; }
+        for (var i = 0; i < evs.length; i++) {
+            var ev = evs[i];
+            if (ev.type === 'chainEnd') {
+                mine[side].chain[ev.length] = (mine[side].chain[ev.length] || 0) + 1;
+            } else if (ev.type === 'match' && !ev.chain) {
+                mine[side].combo[ev.size] = (mine[side].combo[ev.size] || 0) + 1;
+            }
+        }
+        return evs;
+    };
+    var r;
+    try { r = versus.duel(TRAINED, FLAT, 7, {}); }
+    finally { proto.drainEvents = orig; }
+
     assert.ok(r.exact, 'the duel reported no exact histogram at all');
 
     var any = 0;
     [0, 1].forEach(function (side) {
-        var combos = 0, chains = 0;
-        Object.keys(r.exact[side].combo).forEach(function (w) {
-            combos += r.exact[side].combo[w];
-            assert.ok(Number(w) > 0, 'a combo was counted under width ' + w);
-        });
         Object.keys(r.exact[side].chain).forEach(function (l) {
-            chains += r.exact[side].chain[l];
-            assert.ok(Number(l) > 0, 'a chain was counted under ' + l + ' links');
+            any += r.exact[side].chain[l];
+            assert.ok(Number(l) >= 2,
+                'a chain was counted at ' + l + ' links. A chain starts at 2, so this ' +
+                'is the garbage height (links minus one) rather than the length the ' +
+                'engine reported.');
         });
-        any += combos + chains;
-        var d = r.chainDepth[side];
-        assert.strictEqual(combos, d['combo-small'] + d['combo-big'],
-            'side ' + side + ': comboByWidth totals ' + combos + ' but the buckets say ' +
-            (d['combo-small'] + d['combo-big']));
-        assert.strictEqual(chains, d['chain-short'] + d['chain-medium'] + d['chain-long'],
-            'side ' + side + ': chainByLinks totals ' + chains + ' but the buckets say ' +
-            (d['chain-short'] + d['chain-medium'] + d['chain-long']));
+        Object.keys(r.exact[side].combo).forEach(function (w) {
+            any += r.exact[side].combo[w];
+            assert.ok(Number(w) >= 3, 'a combo was counted at size ' + w + '; a match is 3+');
+        });
     });
     assert.ok(any > 0,
-        'neither side sent anything, so this test would pass for a histogram that is ' +
-        'always empty. SETUP failure.');
+        'neither side matched anything, so this test would pass for a histogram that ' +
+        'is always empty. SETUP failure.');
+
+    // The interceptor numbers the boards by which drained first, so compare the
+    // PAIR as a set rather than assuming A then B.
+    var key = function (e) { return JSON.stringify([e.combo, e.chain]); };
+    assert.deepStrictEqual([key(r.exact[0]), key(r.exact[1])].sort(),
+                           [key(mine[0]), key(mine[1])].sort(),
+        'the reported sizes are not the ones the engine emitted:\n  reported ' +
+        JSON.stringify(r.exact) + '\n  engine   ' + JSON.stringify(mine));
 });
 
 console.log('');

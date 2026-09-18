@@ -65,10 +65,14 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
     // classified by the same rule report.js uses everywhere else, as it
     // crosses. Counted per SENDER: chainDepth[0] is what side A sent.
     var chainDepth = [zeroDepth(), zeroDepth()];
-    // AND THE EXACT SIZE, not only the bucket it falls in. The five
-    // categories answer "roughly what kind"; these answer "how wide was the
-    // combo" and "how many links was the chain", which is the question when
-    // the whole point is whether the bot ever builds a long one.
+    // AND THE EXACT SIZE, FROM THE ENGINE. The five categories answer
+    // "roughly what kind"; these answer "how big was the combo" and "how long
+    // was the chain". Both numbers are the engine's own: a match event carries
+    // `size` (panels matched) and `chainCounter`, and the engine emits
+    // { type: 'chainEnd', length } with the finished chain's true length when
+    // the last chaining panel settles. Nothing here derives either of them —
+    // an earlier version read the chain length off the garbage HEIGHT, which
+    // is links minus one, and reported every chain one link short.
     var exact = [zeroExact(), zeroExact()];
 
     var f = 0;
@@ -85,19 +89,21 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
                 for (var k = 0; k < out.length; k++) {
                     sent[i] += (out[k].width || 0) * (out[k].height || 0);
                     chainDepth[i][report.classify(out[k])]++;
-                    if (out[k].isChain) {
-                        var links = out[k].height || 0;
-                        exact[i].chain[links] = (exact[i].chain[links] || 0) + 1;
-                    } else {
-                        var wide = out[k].width || 0;
-                        exact[i].combo[wide] = (exact[i].combo[wide] || 0) + 1;
-                    }
                 }
                 stacks[i ^ 1].receiveGarbage(out);
             }
         }
-        stacks[0].drainEvents();
-        stacks[1].drainEvents();
+        for (var e = 0; e < 2; e++) {
+            var evs = stacks[e].drainEvents();
+            for (var q = 0; q < evs.length; q++) {
+                var ev = evs[q];
+                if (ev.type === 'chainEnd') {
+                    exact[e].chain[ev.length] = (exact[e].chain[ev.length] || 0) + 1;
+                } else if (ev.type === 'match' && !ev.chain) {
+                    exact[e].combo[ev.size] = (exact[e].combo[ev.size] || 0) + 1;
+                }
+            }
+        }
 
         if (stacks[0].gameOver || stacks[1].gameOver) break;
     }
