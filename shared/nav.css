@@ -43,3 +43,19 @@
   font-size: 1rem;
   line-height: 1.3;
 }
+
+/* Every game includes this stylesheet, so this rule reaches every game
+   page: clicking, dragging or long-pressing anywhere never selects text
+   or opens the OS text-selection/callout menu. Text inputs opt back in. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input, textarea, select, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
