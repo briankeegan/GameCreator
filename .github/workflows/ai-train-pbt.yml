@@ -151,6 +151,11 @@ jobs:
           GC_SNAPSHOT_HOOK: ${{ github.workspace }}/games/the-game/ai/eval/commit_snapshot.sh
         run: |
           echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+          # ISLANDS SHOULD MATCH CORES. More islands than cores is the same work
+          # split thinner: each island runs slower and the legs get longer, for
+          # no extra compute. Printed so the number is read off the machine
+          # rather than assumed from the runner spec.
+          echo "runner cores: $(nproc)   islands: ${GC_PBT_ISLANDS}"
           # Under the job's timeout and the platform's 360. train_pbt.js will
           # not START a leg that does not fit in what is left, so this is the
           # last moment a leg may END, not a moment it may begin.
