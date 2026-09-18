@@ -271,6 +271,34 @@ test('a stop for lack of room leaves the marker, and a normal exit does not', fu
     }
 });
 
+// THE PEER OPPONENT IS THE BEST CHAMPION ON DISK, and it must never be a
+// champion from a different feature set — those weights would be scored on
+// features this run does not have. The shipped record is a FLOOR every chain
+// now clears 12-0, so without a moving opponent the report cannot rank two
+// champions at all.
+test('the peer opponent is the best matching champion, and a foreign one is ignored', function () {
+    var src = fs.readFileSync(path.join(__dirname, 'train_pbt.js'), 'utf8');
+    var m = /function bestCommittedChampion\(\)[\s\S]*?\n}/.exec(src);
+    assert.ok(m, 'bestCommittedChampion is gone, so the peer record cannot be built');
+    var body = m[0];
+    assert.ok(/features\.join\(','\) !== KEYS\.join\(','\)/.test(body),
+        'it no longer skips a champion whose feature set differs, so it can duel weights ' +
+        'scored on features this run does not have');
+    assert.ok(/smoke/.test(body),
+        'it no longer skips .smoke.json, so a population-4 test run can become the bar');
+    assert.ok(/fitness[\s\S]{0,120}updates/.test(body),
+        'it no longer ranks by the record earned and then by updates');
+
+    // The report carries BOTH, and the shipped half never goes away.
+    var ho = /function heldOut\(genome\)[\s\S]*?\n}/.exec(src);
+    assert.ok(ho, 'heldOut is gone');
+    assert.ok(/out\.peer = \{/.test(ho[0]),
+        'heldOut no longer reports a peer record');
+    assert.ok(/shipped: \{/.test(ho[0]),
+        'heldOut dropped the shipped record, which is the only figure comparable across ' +
+        'the whole run');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }

@@ -195,12 +195,43 @@ try {
     shipped = (t && t.weights) || null;
 } catch (e) { /* no shipped bot: the record is against zero weights */ }
 
-function heldOut(genome) {
+// THE SHIPPED BOT IS A FLOOR, NOT A RANKING. Every chain beats it 12-0 and a
+// record pinned at its ceiling cannot say which champion is stronger — 12-0
+// and 12-0 are the same number whatever the gap behind them. So each check
+// also duels the best champion any chain has committed, which moves as the
+// search improves and therefore keeps discriminating.
+//
+// BOTH, never one. The shipped record stays because it is the only figure
+// comparable across the whole run; the peer record is the one that still has
+// somewhere to go. A peer that does not exist yet (the first checks of a fresh
+// repo) simply leaves the peer half absent.
+function bestCommittedChampion() {
+    var best = null, bestAt = -1;
+    var files;
+    try { files = fs.readdirSync(__dirname); } catch (e) { return null; }
+    files.forEach(function (f) {
+        if (!/^trained\.pbt\..*\.g\d+\.json$/.test(f) || /\.smoke\.json$/.test(f)) return;
+        try {
+            var j = JSON.parse(fs.readFileSync(path.join(__dirname, f), 'utf8'));
+            // Rank by the record it earned, then by how far it got. A champion
+            // from a different feature set would be scored on weights this run
+            // does not have, so it is skipped rather than silently zero-filled.
+            if (!j.weights || !j.features) return;
+            if (j.features.join(',') !== KEYS.join(',')) return;
+            var fit = (j.holdout && j.holdout.learned && j.holdout.learned.fitness) || 0;
+            var rank = fit * 1e9 + (j.updates || 0);
+            if (rank > bestAt) { bestAt = rank; best = { weights: j.weights, from: f }; }
+        } catch (e) { /* unreadable snapshot, skip */ }
+    });
+    return best;
+}
+
+function duelSet(genome, opponent) {
     var wins = 0, draws = 0, sentUs = 0, sentThem = 0, frames = 0, longest = 0;
     var depthUs = versus.zeroDepth(), depthThem = versus.zeroDepth();
     var exactUs = versus.zeroExact();
     SEEDS.HOLDOUT.forEach(function (sd) {
-        var d = versus.duel(genome, shipped || {}, sd, OPTS);
+        var d = versus.duel(genome, opponent || {}, sd, OPTS);
         if (d.winner === 0) wins++; else if (d.winner === null) draws++;
         sentUs += d.sent[0]; sentThem += d.sent[1];
         // HOW LONG THE GAMES ACTUALLY RAN. A record read without it cannot
@@ -213,15 +244,37 @@ function heldOut(genome) {
         versus.addExact(exactUs, d.exact[0]);
     });
     var n = SEEDS.HOLDOUT.length;
-    return {
-        avgFrames: frames / n, longestFrames: longest,
-        learned: { fitness: (wins + 0.5 * draws) / n, winRate: wins / n, draws: draws,
-                   avgSent: sentUs / n, duels: n, chainDepth: depthUs,
-                   comboByWidth: exactUs.combo, chainByLinks: exactUs.chain, versus: true },
-        shipped: { fitness: (n - wins - draws + 0.5 * draws) / n,
+    return { wins: wins, draws: draws, n: n, frames: frames, longest: longest,
+             sentUs: sentUs, sentThem: sentThem,
+             depthUs: depthUs, depthThem: depthThem, exactUs: exactUs };
+}
+
+function heldOut(genome) {
+    var r = duelSet(genome, shipped);
+    var n = r.n;
+    var out = {
+        avgFrames: r.frames / n, longestFrames: r.longest,
+        learned: { fitness: (r.wins + 0.5 * r.draws) / n, winRate: r.wins / n, draws: r.draws,
+                   avgSent: r.sentUs / n, duels: n, chainDepth: r.depthUs,
+                   comboByWidth: r.exactUs.combo, chainByLinks: r.exactUs.chain, versus: true },
+        shipped: { fitness: (n - r.wins - r.draws + 0.5 * r.draws) / n,
                    label: shipped ? 'shipped weights' : 'zero weights',
-                   avgSent: sentThem / n, chainDepth: depthThem, versus: true }
+                   avgSent: r.sentThem / n, chainDepth: r.depthThem, versus: true }
     };
+
+    var peer = bestCommittedChampion();
+    if (peer) {
+        var p = duelSet(genome, peer.weights);
+        out.peer = {
+            opponent: peer.from,
+            fitness: (p.wins + 0.5 * p.draws) / p.n,
+            winRate: p.wins / p.n, draws: p.draws, duels: p.n,
+            avgSent: p.sentUs / p.n, opponentAvgSent: p.sentThem / p.n,
+            avgFrames: p.frames / p.n, longestFrames: p.longest,
+            comboByWidth: p.exactUs.combo, chainByLinks: p.exactUs.chain
+        };
+    }
+    return out;
 }
 
 function writeSnapshot(best, report, totalUpdates, diversity) {
@@ -324,10 +377,16 @@ function timeForAnotherLeg() {
 
         var rec = heldOut(champs[bestI].weights);
         var n2 = rec.learned.duels, w2 = Math.round(rec.learned.winRate * n2), dr = rec.learned.draws;
+        var peerLine = '';
+        if (rec.peer) {
+            var pw = Math.round(rec.peer.winRate * rec.peer.duels);
+            peerLine = '   vs best ' + pw + 'W ' + (rec.peer.duels - pw - rec.peer.draws) +
+                       'L ' + rec.peer.draws + 'D';
+        }
         console.log('updates ' + total + '  [' + ((Date.now() - started) / 60000).toFixed(1) + ' min]' +
                     '  island ' + bestI + ' wins the face-off (' + score.join('/') + ')' +
                     '   held-out ' + w2 + 'W ' + (n2 - w2 - dr) + 'L ' + dr + 'D of ' + n2 +
-                    '   spread ' + div.join('/'));
+                    peerLine + '   spread ' + div.join('/'));
         writeSnapshot(champs[bestI].weights, rec, total, div);
         lastLeg = (Date.now() - legStarted) / 1000;
         leg();
