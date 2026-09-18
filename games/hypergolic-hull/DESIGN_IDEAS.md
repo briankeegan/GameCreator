@@ -255,6 +255,133 @@ outside the thesis).
 - Are the eight weapons above the right eight? They were chosen to fill
   gaps in the existing shape table, not because a player asked for them.
 
+## HULL PARITY PLAN — three hulls that play differently and win equally (2026-09-18)
+
+### What is actually wrong
+
+Measured, same pilot, same 60 seeds, one thing different
+(`LOADOUT=<id> node games/hypergolic-hull/playtest.js 60`):
+
+| Hull | won / 60 | median end depth |
+|---|---|---|
+| Standard | 22 | 9 |
+| Escort Start | 1 | 4 |
+| Salvager Start | 3 | 4 |
+
+At n=60 with p≈0.37 the binomial noise floor is ±3.7 wins. A 21-win gap is
+not balance drift, it is a broken hull.
+
+Three separate faults, each fatal on its own:
+
+1. **An energy cap of 1 removes 19 of the 22 guns from the game.** Only the
+   Autocannon, Prow Cannon and Short Beam Lance cost 1; everything else
+   costs 2–5. The Escort and the Salvager cannot fire them, cannot
+   usefully buy them, and cannot bank for them — the cap IS 1, so there is
+   nothing to bank into. Half the game (fit a hold, spend salvage on it)
+   is switched off, not made harder.
+2. **The Escort can never re-raise its shield.** `SHIELD_RAISE_COST` is 2
+   and its bus holds 1. The four hold cells it pays for a Shield Generator
+   buy exactly one absorbed volley for the whole run.
+3. **Nothing pays for any of it.** Usable hold is 22 cells (5×6 less 8
+   blocked). Standard's kit takes 8, leaving 14 free. The Escort's takes
+   9 — it has FEWER cells free than Standard as well as a fifth of the
+   energy. Only the Salvager gets anything back: 15 free cells and +1 hull.
+
+So these are not three hulls. They are one hull and two versions of it with
+the reactor pulled out.
+
+### Rule 1 — floors before flavour
+
+A dial has a value below which it stops being "less of something" and
+becomes "this verb of the game is off". Energy capacity is such a dial. So:
+
+- Every hull: `maxEnergy >= 3`. Three is the median gun's cost, so every
+  hull can eventually fire most of the shelf.
+- Any hull carrying a Shield Generator: `maxEnergy >= SHIELD_RAISE_COST + 1`.
+  Raising the screen has to be a choice against firing, not an
+  impossibility.
+- Every hull: a drive, a scanner, and at least 11 free cells — half the
+  hold — so there is somewhere to put what you buy.
+
+RULE → TOOL → GATE, per the repo convention: the rule is stated here and
+beside `STARTING_LOADOUTS`; the tool is a case in `engine.test.js` that
+walks every entry in `STARTING_LOADOUTS`, runs it through `deriveShip`, and
+asserts each floor; the gate is that `engine.test.js` already runs on every
+push. A hull that cannot fire the median gun fails the build.
+
+### Rule 2 — one budget, spent differently, and the exchange rates are MEASURED
+
+"Even" cannot be asserted. Price each dial by running Standard with exactly
+one thing changed, 60 seeds, and reading the win delta:
+
+- +1 max hull
+- +1 energy capacity
+- +1 recharge per cycle
+- +1 shield charge
+- +1 move range
+- +2 free hold cells (swap a kit item for a smaller one)
+
+Anything under ±4 wins at n=60 is noise; re-run the close ones at 120
+(sd ≈ 2.6) before believing them. The output is a table — "1 recharge ≈ 2
+hull ≈ 3 cells", or whatever it turns out to be — and hulls are then built
+to equal totals from it, not from taste.
+
+### Rule 3 — the differences have to change what you DO
+
+Right now the only dials are hull, energy and shields, and two of those are
+the same dial. Three new pieces of equipment open real axes:
+
+- **Pulse Reactor** — capacity 3, +2 per cycle, 1×2. Refills fast, holds
+  little. You always have a cheap shot and never a Railgun. This is what
+  makes a screen hull work: it can afford to raise shields AND shoot.
+- **Ion Drive** — `moveRange` 2, 2×2. Mobility is currently not an axis at
+  all: every ship in the game, yours and theirs, moves one hex. A hull that
+  moves two plays the range game instead of the trade game.
+- **Salvage Rig** — +1 salvage per wreck, 1×1. A hull that is poor and
+  fragile early and the richest thing on the board by depth 8. This is a
+  new mechanic, not a re-tuning, and is the one item here worth arguing
+  about before it is built.
+
+### Rule 4 — the four hulls
+
+Same budget, four shapes. Free-cell counts are what is left of the 22.
+
+| Hull | Kit | Cells | Free | Plays like |
+|---|---|---|---|---|
+| **Line Ship** (Standard) | Sublight Drive, Reactor Core (6/+1), Scanner | 8 | 14 | Bank it and unload. The generalist, and the yardstick. |
+| **Screen Ship** (Escort) | Sublight Drive, Pulse Reactor (3/+2), Shield Generator, Scanner | 10 | 12 | Walks into range and trades. Cheap guns, screen up, never a big gun. |
+| **Hauler** (Salvager) | Sublight Drive, Reactor Core, Ablative Plating, Salvage Rig, Scanner | 11 | 11 | Weakest at depth 1, richest at depth 8. Out-buys the board. |
+| **Skirmisher** (new) | Ion Drive (move 2), Pulse Reactor, Scanner | 7 | 15 | Never gets hit. Stays at reach, fires cheap, kites what it can't kill. |
+
+### Rule 5 — unlocks go sideways, not up
+
+Once the four are even, `unlockDepth` stops meaning "here is a better ship"
+and means "here is a different one" — Into the Breach's squads, which is
+already this game's stated reference. Keep Escort at depth 3 and Salvager
+at 5; the Skirmisher at 7.
+
+### How it gets verified
+
+`playtest.js` now takes `LOADOUT=<id>`, so each hull is measurable against
+the same pilot and the same seeds. The bar: every hull within ±4 wins of
+the Line Ship at n=60, and median end depth within 1 of it. Whether that
+becomes a gate or stays a bench is a cost question — three hulls × 60 runs
+is minutes, four × 120 is not.
+
+### What this deliberately does NOT change
+
+Overall difficulty. The Line Ship's 22/60 (≈37%) is the target every other
+hull is brought UP to, not a number this plan has an opinion about.
+
+### Open questions
+
+1. Is ≈37% the intended win rate? Every number above is parity with
+   Standard; if Standard itself is wrong, the target moves.
+2. Is a salvage-rate axis (the Salvage Rig) wanted at all, or should hulls
+   stay inside hull / energy / shields / mobility?
+3. Should the Skirmisher be a fourth hull, or should the Ion Drive simply
+   replace the Salvager's identity and leave three?
+
 ## What the research says, and how it maps onto what already exists
 
 - **Into the Breach** is the closest sibling and validates two pillars this
