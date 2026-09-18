@@ -1093,17 +1093,20 @@ assert.strictEqual(clampedState.shieldCharges, 1, "carried charges clamp to inst
   const escort = Engine.createGameState(LEVELS[0], { startingLoadout: "escort" });
   assert.ok(escort.maxShields > 0, "the Screen Ship actually carries a Shield Generator");
   assert.strictEqual(escort.shieldCharges, escort.maxShields, "...and it arrives already raised");
-  // The Hauler buys its armour and its cutting gear with HOLD ROOM, which
-  // is the currency it actually spends — it keeps the big reactor.
+  // The Hauler's whole identity is income: cutting gear that pays on every
+  // wreck, bought with a smaller bus and less room to build in. It carried
+  // a point of armour on top of that and won 39 runs of 60 against the
+  // Line Ship's 23.
   const salvager = Engine.createGameState(LEVELS[0], { startingLoadout: "salvager" });
   const standard = Engine.createGameState(LEVELS[0], { startingLoadout: "standard" });
-  assert.ok(salvager.maxHull > standard.maxHull, "the Hauler has more max Hull than the Line Ship");
-  assert.ok(salvager.salvageBonus > 0, "...and cutting gear that pays per wreck");
+  assert.ok(salvager.salvageBonus > 0, "the Hauler carries cutting gear that pays per wreck");
+  assert.ok(standard.salvageBonus === 0, "...and it is the only hull that does");
+  assert.ok(salvager.maxEnergy < standard.maxEnergy, "...paid for with a smaller bus");
   const freeCells = (st) =>
     st.hold.cols * st.hold.rows -
     st.hold.blocked.length -
     st.hold.items.reduce((n, it) => n + Engine.EQUIPMENT[it.id].w * Engine.EQUIPMENT[it.id].h, 0);
-  assert.ok(freeCells(salvager) < freeCells(standard), "...paid for in the room left to build in");
+  assert.ok(freeCells(salvager) < freeCells(standard), "...and less room to build in");
   // The Skirmisher is the only thing in the sky that moves two hexes.
   const skirmisher = Engine.createGameState(LEVELS[0], { startingLoadout: "skirmisher" });
   assert.strictEqual(skirmisher.moveRange, 2, "the Skirmisher's Ion Drive actually reaches two hexes");

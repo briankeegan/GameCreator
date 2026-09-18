@@ -2656,7 +2656,7 @@
     salvager: {
       label: "Hauler",
       blurb: "An extra plate and cutting gear. Poorest ship on the board at depth 1, best-equipped by depth 8.",
-      kit: ["sublightDrive", "pulseReactor", "salvageRig", "ablativePlating", "scanner"],
+      kit: ["sublightDrive", "pulseReactor", "salvageRig", "scanner"],
       unlockDepth: 5,
     },
     skirmisher: {
