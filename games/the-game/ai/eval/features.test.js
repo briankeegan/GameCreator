@@ -168,6 +168,14 @@ function latent(rows, marks) {
 function cleared(n) { return F.garbageCleared(inputMod.normalize({ earned: { garbageCleared: n } })); }
 
 
+function maxHeightSq(rows) {
+    return F.maxHeightSq(inputMod.normalize({ board: board(rows) }));
+}
+
+function stRefresh(clock, earned) {
+    return F.stopTimeRefresh(inputMod.normalize({ clock: clock || {}, earned: earned || {} }));
+}
+
 // stopTimeGain: what this candidate's stop time is WORTH, which is the extra
 // frames it buys over the clock already running, and only where dying is
 // possible. Three inputs: the candidate board (danger), the live clock
@@ -1110,6 +1118,125 @@ test('no single feature can swamp the rest at equal weight', function () {
     });
 });
 
+
+
+// ---- maxHeightSq ----
+// HEIGHT SQUARED, so the weighted sum can have a PEAK.
+//
+// maxHeight is linear, so whatever weight it earns, its contribution keeps
+// going the same way forever: the search can learn "taller is better" or
+// "taller is worse" and nothing in between. The strongest human players do
+// neither — their fitted profiles carry a heightBand, and the best of them
+// sits at 10-12 on a 12-row board on purpose, because a tall board is combo
+// material right up until it kills you.
+//
+// A straight line has no interior maximum. h and h-squared together do:
+// w1*h + w2*h^2 with w2 negative peaks at h = -w1/(2*w2). So the pair can
+// express a band, and the SEARCH picks where the peak sits rather than
+// anyone hardcoding one from another game's fitted profile.
+//
+// Written before the function exists.
+
+test('maxHeightSq: it is the square of maxHeight', function () {
+    var rows = ['1.....', '1.....', '1.....'];
+    var h = F.maxHeight(inputMod.normalize({ board: board(rows) }));
+    assert.strictEqual(maxHeightSq(rows), h * h);
+});
+
+test('maxHeightSq: an empty board is zero', function () {
+    assert.strictEqual(maxHeightSq(['......', '......']), 0);
+});
+
+test('maxHeightSq: it GROWS FASTER than maxHeight — that is the whole point', function () {
+    var lo = ['1.....'];
+    var hi = ['1.....', '1.....', '1.....', '1.....'];
+    var hLo = F.maxHeight(inputMod.normalize({ board: board(lo) }));
+    var hHi = F.maxHeight(inputMod.normalize({ board: board(hi) }));
+    var linear = hHi / hLo;
+    var square = maxHeightSq(hi) / maxHeightSq(lo);
+    assert.ok(square > linear,
+        'the squared term must outgrow the linear one, got ' + square + ' vs ' + linear);
+});
+
+test('THE PAIR CAN EXPRESS A BAND: a peak at an interior height', function () {
+    // The reason this feature exists. With a positive weight on height and a
+    // negative one on its square, the score rises then falls — so a middling
+    // board outscores both a flat one and a topped-out one. maxHeight alone
+    // cannot do this at any weight.
+    // Both carry sign -1, so the evaluator computes -w*v. A peak needs
+    // +a*h - b*h^2, which means a NEGATIVE weight on height and a positive
+    // one on its square. Weights range -300..300, so the search can reach it.
+    var w = { maxHeight: -40, maxHeightSq: 30 };
+    function scoreAt(n) {
+        var rows = [];
+        for (var i = 0; i < n; i++) rows.push('1.....');
+        return evaluator.evaluate({ board: board(rows) }, w).score;
+    }
+    var low = scoreAt(2), mid = scoreAt(6), high = scoreAt(12);
+    assert.ok(mid > low, 'a mid board should beat a low one: ' + mid + ' vs ' + low);
+    assert.ok(mid > high, 'a mid board should beat a topped-out one: ' + mid + ' vs ' + high);
+});
+
+test('maxHeightSq: maxHeight ALONE cannot make that peak, at any weight', function () {
+    // The near-miss. If this ever passes, the new feature is not needed.
+    function scoreAt(n, w) {
+        var rows = [];
+        for (var i = 0; i < n; i++) rows.push('1.....');
+        return evaluator.evaluate({ board: board(rows) }, w).score;
+    }
+    [-100, -10, -1, 1, 10, 100].forEach(function (weight) {
+        var w = { maxHeight: weight };
+        var low = scoreAt(2, w), mid = scoreAt(6, w), high = scoreAt(12, w);
+        assert.ok(!(mid > low && mid > high),
+            'a linear term produced an interior peak at weight ' + weight + ', which is impossible');
+    });
+});
+
+
+// ---- stopTimeRefresh ----
+// THE INVINCIBILITY METER IS REFRESHED, NOT ACCUMULATED.
+//
+// awardStopTime ends with a MAX, not a +=, and the game's own timing notes
+// say the same of shake and critical stop: while any of them is above zero
+// the stack cannot rise, and a new award only helps if it EXCEEDS what is
+// left. So the skill is topping the meter up before it drains, and the value
+// of a move is the frames it adds over the clock already running.
+//
+// stopTimeGain asks the same question but only where the board could die,
+// and that conjunction is so narrow it returned 0 on all 4,381 candidates
+// measured over two real scenarios. This one drops the danger condition and
+// keeps the max: both are registered, and the search decides which earns its
+// place rather than either being argued in.
+//
+// Written before the function exists.
+
+test('stopTimeRefresh: over the clock, it is worth the DIFFERENCE', function () {
+    assert.strictEqual(stRefresh({ stopTime: 40 }, { stopTimeEarned: 60 }), 20);
+});
+
+test('stopTimeRefresh: REFRESHING UNDER THE CLOCK BUYS NOTHING', function () {
+    // The near-miss that stopTimeEarned gets wrong: it would report 60 here.
+    assert.strictEqual(stRefresh({ stopTime: 120 }, { stopTimeEarned: 60 }), 0);
+});
+
+test('stopTimeRefresh: an empty clock means the whole award counts', function () {
+    assert.strictEqual(stRefresh({ stopTime: 0 }, { stopTimeEarned: 60 }), 60);
+});
+
+test('stopTimeRefresh: earning nothing is worth nothing', function () {
+    assert.strictEqual(stRefresh({ stopTime: 40 }, { stopTimeEarned: 0 }), 0);
+});
+
+test('stopTimeRefresh: it does NOT need the board to be in danger', function () {
+    // The difference from stopTimeGain, stated as a test. A safe board that
+    // refreshes the meter still scores, which is why this one can be learned
+    // and that one could not.
+    assert.strictEqual(stRefresh({ stopTime: 0, toppedOut: false }, { stopTimeEarned: 60 }), 60);
+});
+
+test('stopTimeRefresh: it never goes negative', function () {
+    assert.ok(stRefresh({ stopTime: 500 }, { stopTimeEarned: 1 }) >= 0);
+});
 
 
 // ---- stopTimeGain ----

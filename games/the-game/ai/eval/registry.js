@@ -118,6 +118,9 @@
     { key: 'maxHeight',        group: 'board',  sign: -1, norm: 13, fn: null,
       what: 'Highest occupied row, plus displacement.' },
 
+    { key: 'maxHeightSq',      group: 'board',  sign: -1, norm: 169, fn: F.maxHeightSq,
+      what: 'maxHeight squared, so a weighted sum can have a PEAK. Linear height can only say taller-is-better or taller-is-worse; a straight line has no interior maximum. w1*h + w2*h^2 does, peaking at h = -w1/(2*w2), so the search finds its own height band instead of one being hardcoded. The strongest fitted human profiles all carry a band, and the best of them sits at 10-12 of 12 rows deliberately.' },
+
     { key: 'fillRatio',        group: 'board',  sign: -1, norm: 1, fn: null,
       what: 'Occupied over total. Overlaps maxHeight — first candidate to cut if it earns nothing.' },
 
@@ -144,6 +147,9 @@
 
     { key: 'stopTimeGain',     group: 'earned', sign: +1, norm: 100, fn: null,
       what: 'The stop-time frames this move actually BUYS: max(0, earned - the stop clock already running), and 0 unless the board could die (topped out, or within DANGER_ROWS of the ceiling). stopTimeEarned is flat and ignores the clock -- awardStopTime takes a MAX, so earning 90 under a 120 clock buys nothing, and 60 frames on a safe board buy nothing that matters. A weighted sum cannot multiply stop time by danger, so the conjunction lives inside the feature, as it does in flatTop. Unlike the removed framesToDeath, it VARIES BETWEEN CANDIDATES: the banked half is per-decision, the earned half is per-candidate.' },
+
+    { key: 'stopTimeRefresh',  group: 'earned', sign: +1, norm: 100, fn: null,
+      what: 'The frames this move ADDS to the invincibility meter: max(0, earned - the stop clock already running). awardStopTime ends in a MAX, not a +=, so a refresh is only worth what it exceeds and stopTimeEarned overstates every one of them. Same question as stopTimeGain without the danger condition -- that conjunction returned 0 on all 4,381 candidates measured over two scenarios, so it cannot be learned. Both are registered; which is worth anything is a measurement.' },
 
     { key: 'brokeGarbage',     group: 'earned', sign: +1, norm: 72, fn: null,
       what: 'Garbage cells this move popped — one row of a slab per match, which is what the engine does rather than the whole slab.' },
