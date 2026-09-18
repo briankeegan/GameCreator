@@ -352,6 +352,102 @@ body {
   color: #7e8ca6;
   cursor: not-allowed;
 }
+/* ---- the reward screen -------------------------------------------------
+   The moment a run earns something. It holds the screen on its own — no
+   hangar behind it, no Launch under it — because an unlock you have to go
+   and find in a menu is paperwork, not a reward. */
+.unlock-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 21rem;
+  padding: 0.8rem 0.8rem 0.7rem;
+  border: 1px solid #ffce8a;
+  border-radius: 10px;
+  background: #16120a;
+  text-align: left;
+}
+.unlock-card[hidden] { display: none; }
+.unlock-head {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #ffce8a;
+  text-align: center;
+}
+.unlock-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+.unlock-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.unlock-art {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  image-rendering: pixelated;
+}
+.unlock-text { flex: 1 1 auto; min-width: 0; }
+.unlock-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #ffe6b8;
+}
+.unlock-kind {
+  margin-left: 0.4rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  color: #9a8a6a;
+}
+.unlock-blurb {
+  font-size: 0.74rem;
+  line-height: 1.3;
+  color: #bfae90;
+}
+.unlock-card .unlock-ok {
+  margin: 0;
+  width: 100%;
+  background: #ffce8a;
+  color: #1b2436;
+}
+/* Still unopened. Comes off the moment the thing is actually looked at. */
+.new-flag {
+  margin-left: 0.4rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.55rem;
+  letter-spacing: 0.1em;
+  background: #ffce8a;
+  color: #1b2436;
+  vertical-align: middle;
+}
+.manifest-picker button.is-new {
+  box-shadow: 0 0 0 2px #ffce8a;
+}
+/* A gun you have not earned. Shown, not hidden — the depth on it is the
+   reason to come back. */
+.manifest-picker button.locked {
+  background: #1b2740;
+  color: #6f819c;
+  opacity: 1;
+}
+.next-unlock {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #9a8a6a;
+  text-align: center;
+}
+.next-unlock[hidden] { display: none; }
+
 /* The other pane. Reads as a way through rather than a primary action, so
    it is quieter than Launch directly above it. */
 .manifest-toggle {
@@ -360,9 +456,11 @@ body {
   font-size: 0.75rem;
   padding: 6px 12px;
 }
-/* .manifest-picker is display:flex, so the hidden attribute needs saying
-   again for the pane switch to actually hide it. */
-.loadout-picker[hidden] {
+/* These are display:flex, so the hidden attribute needs saying again — a
+   pane switch that sets `hidden` on one of them does nothing otherwise,
+   and the overlay shows two panes stacked on top of each other. */
+.loadout-picker[hidden],
+.loadout-detail[hidden] {
   display: none;
 }
 

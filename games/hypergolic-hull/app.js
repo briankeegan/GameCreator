@@ -35,6 +35,8 @@ const logEl = document.getElementById("log");
 const overlayEl = document.getElementById("runOverlay");
 const overlayTitleEl = document.getElementById("runOverlayTitle");
 const overlayBodyEl = document.getElementById("runOverlayBody");
+const unlockCardEl = document.getElementById("unlockCard");
+const nextUnlockEl = document.getElementById("nextUnlock");
 const manifestToggleEl = document.getElementById("manifestToggle");
 const manifestPickerEl = document.getElementById("manifestPicker");
 const loadoutDetailEl = document.getElementById("loadoutDetail");
@@ -121,20 +123,59 @@ function freshRunSeed() {
 // hulls is a data change, and gating some of them can come back later
 // without any of this machinery returning.
 let selectedLoadout = GCStorage.get(GAME_ID, "selectedLoadout", "standard");
-// THE ARMOURY and THE MANIFEST. The armoury is everything you own; the
-// manifest is the handful fitted before launch, and the Outpost shelf
-// offers nothing else — so owning more guns never makes the one you want
-// rarer. The armoury starts full.
-const ARMOURY_DEFAULT = Engine.PURCHASABLE_ACTIONS.slice();
-let armoury = new Set(GCStorage.get(GAME_ID, "armoury", ARMOURY_DEFAULT));
+// THE ARMOURY and THE MANIFEST. The armoury is everything you own, opened
+// up by how deep you have ever got; the manifest is the handful fitted
+// before launch, and the Outpost shelf offers nothing else — so owning
+// more guns never makes the one you want rarer.
+// How deep this save has EVER got. It is the only unlock signal in the
+// game — hulls and guns both read it — so it has to exist before anything
+// derived from it.
+let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
 const MANIFEST_SLOTS = 6;
-let manifest = GCStorage.get(GAME_ID, "manifest", ARMOURY_DEFAULT.slice(0, MANIFEST_SLOTS));
+// The armoury is DERIVED from how deep you have ever got, never stored: a
+// saved set goes stale the moment a gun is renamed or the schedule moves,
+// and then you own something that no longer exists or are missing
+// something you earned.
+function armouryNow() {
+  return Engine.unlockedWeapons(bestDepth);
+}
+let manifest = GCStorage.get(GAME_ID, "manifest", null);
+
+// WHAT HAS BEEN ANNOUNCED, and what is still wearing a NEW mark. An unlock
+// you find later in a menu is not a reward, it is paperwork — so the run
+// that earns one says so, once, before anything else on the screen, and
+// the thing keeps a dot on it until you have actually looked at it.
+let announced = new Set(GCStorage.get(GAME_ID, "announced", null) || []);
+let stillNew = new Set(GCStorage.get(GAME_ID, "stillNew", null) || []);
 
 function persistUnlocks() {
   GCStorage.set(GAME_ID, "selectedLoadout", selectedLoadout);
-  GCStorage.set(GAME_ID, "armoury", Array.from(armoury));
   GCStorage.set(GAME_ID, "manifest", manifest.slice());
+  GCStorage.set(GAME_ID, "announced", Array.from(announced));
+  GCStorage.set(GAME_ID, "stillNew", Array.from(stillNew));
 }
+
+// A fresh save fits the slots from what it owns; an older one is trimmed to
+// what it still owns. Never null — the run that starts a moment from now
+// reads it.
+manifest = (manifest || armouryNow().slice(0, MANIFEST_SLOTS)).filter((id) => armouryNow().includes(id));
+
+// A save that predates any of this, or a brand new one, has everything it
+// currently holds marked as already seen — otherwise the first run-over
+// screen is a wall of cards for things you have had all along.
+if (!GCStorage.get(GAME_ID, "announced", null)) {
+  for (const t of Engine.unlockedAt(bestDepth)) announced.add(t.id);
+}
+persistUnlocks();
+
+// Anything earned that has not been shown yet. First ever load is not a
+// reward moment — everything you start with is marked announced silently,
+// so the first run-over screen is not a wall of cards for things you have
+// had all along.
+function pendingUnlocks() {
+  return Engine.unlockedAt(bestDepth).filter((t) => !announced.has(t.id));
+}
+
 
 // How much a run banks, once — legible on the overlay ("you got to depth
 // 7, that's 3"). Depth past the campaign is the whole signal: it's the
@@ -149,7 +190,7 @@ let state = Engine.createGameState(levelForIndex(levelIndex), {
 });
 // null means no mode armed — plain moves/route-preview work regardless.
 let mode = null;
-let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
+
 
 // Tap a far-away hex once to preview the quickest route, tap it again to fly
 // it. plannedPath holds the preview; autoRoute drives the step-by-step flight
@@ -3670,6 +3711,30 @@ function updateHangar() {
     persistUnlocks();
   }
   if (!ids.includes(hangarLoadout)) hangarLoadout = selectedLoadout;
+  // THREE panes now, and the reward one wins. A run that just earned
+  // something shows that and nothing else until you acknowledge it.
+  const pending = pendingUnlocks();
+  const celebrating = pending.length > 0;
+  unlockCardEl.hidden = !celebrating;
+  nextUnlockEl.hidden = true;
+  manifestToggleEl.hidden = celebrating;
+  restartBtn.hidden = celebrating;
+  continueBtnEl.hidden = continueBtnEl.hidden || celebrating;
+  if (celebrating) {
+    loadoutDetailEl.hidden = true;
+    manifestPickerEl.hidden = true;
+    drawUnlockCard(pending);
+    return;
+  }
+  // A lock is only a goal if you can see it coming, so the next one is
+  // named on the screen you see it from — not left to be discovered by
+  // arrowing onto a greyed hull.
+  const next = Engine.nextUnlock(bestDepth);
+  nextUnlockEl.hidden = !next;
+  if (next) {
+    const names = next.things.map((t) => t.label).join(", ");
+    nextUnlockEl.textContent = `Depth ${next.depth} unlocks ${names}.`;
+  }
   manifestToggleEl.textContent = manifestOpen
     ? "\u25c0 Back to the hangar"
     : `Manifest \u2014 ${manifest.length} of ${MANIFEST_SLOTS} fitted \u25b6`;
@@ -3686,6 +3751,65 @@ function updateHangar() {
     : "Launch";
   if (manifestOpen) updateManifestPicker();
   else updateHangarDetail();
+}
+
+// The reward screen. One card per thing earned, each with the actual
+// article — a hull's own art, a gun's own icon — its name and one line of
+// what it is. Not a toast: it holds the screen until acknowledged, because
+// the point is that the run DID something.
+function drawUnlockCard(things) {
+  unlockCardEl.innerHTML = "";
+  const head = document.createElement("p");
+  head.className = "unlock-head";
+  head.textContent = things.length === 1 ? "NEW \u2014 UNLOCKED" : `${things.length} NEW \u2014 UNLOCKED`;
+  unlockCardEl.appendChild(head);
+
+  const list = document.createElement("div");
+  list.className = "unlock-list";
+  for (const thing of things) {
+    const row = document.createElement("div");
+    row.className = "unlock-row";
+    const art = document.createElement("img");
+    art.className = "unlock-art";
+    art.alt = "";
+    art.src = thing.kind === "hull" ? spriteForLoadout(thing.id).src : `icons/weapon-${thing.id}.png`;
+    // A gun with no icon of its own gets no broken frame — the name and
+    // the line carry it.
+    art.addEventListener("error", () => art.remove());
+    row.appendChild(art);
+    const text = document.createElement("div");
+    text.className = "unlock-text";
+    const name = document.createElement("div");
+    name.className = "unlock-name";
+    name.textContent = thing.label;
+    const kind = document.createElement("span");
+    kind.className = "unlock-kind";
+    kind.textContent = thing.kind === "hull" ? "HULL" : "WEAPON";
+    name.appendChild(kind);
+    const blurb = document.createElement("div");
+    blurb.className = "unlock-blurb";
+    blurb.textContent = thing.blurb;
+    text.append(name, blurb);
+    row.appendChild(text);
+    list.appendChild(row);
+  }
+  unlockCardEl.appendChild(list);
+
+  const ok = document.createElement("button");
+  ok.className = "unlock-ok";
+  ok.id = "unlockOkBtn";
+  ok.textContent = things.some((t) => t.kind === "hull") ? "To the hangar" : "Good";
+  ok.addEventListener("click", () => {
+    // Acknowledged: never announced again, but each one keeps a NEW dot in
+    // the hangar or the rack until it has actually been looked at.
+    for (const t of things) {
+      announced.add(t.id);
+      stillNew.add(t.id);
+    }
+    persistUnlocks();
+    updateHangar();
+  });
+  unlockCardEl.appendChild(ok);
 }
 
 // Step to the next or previous hull on the shelf. An unlocked one becomes
@@ -3707,27 +3831,45 @@ function flipHull(step) {
 // a direct toggle rather than preview-then-confirm — nothing is spent, and
 // the cost of a wrong pick is one tap to undo.
 function updateManifestPicker() {
-  // A manifest can hold an id the armoury no longer has (a gun renamed or
-  // removed between versions), which would silently narrow a shelf toward
-  // nothing. Drop those rather than carrying them.
-  const owned = Engine.PURCHASABLE_ACTIONS.filter((id) => armoury.has(id));
-  const cleaned = manifest.filter((id) => armoury.has(id)).slice(0, MANIFEST_SLOTS);
-  if (cleaned.length !== manifest.length) {
+  const owned = armouryNow();
+  // A manifest can hold an id the armoury does not (a gun renamed, or the
+  // save predating the unlock schedule), which would silently narrow a
+  // shelf toward nothing. Drop those rather than carrying them, and fill a
+  // fresh one up to its slots so a first run is not launched empty.
+  const cleaned = (manifest || owned.slice(0, MANIFEST_SLOTS))
+    .filter((id) => owned.includes(id))
+    .slice(0, MANIFEST_SLOTS);
+  if (!manifest || cleaned.length !== manifest.length) {
     manifest = cleaned;
     persistUnlocks();
   }
   manifestPickerEl.innerHTML = "";
   const full = manifest.length >= MANIFEST_SLOTS;
-  for (const id of owned) {
+  // EVERY gun, not just the ones you have. A rack that hides what you have
+  // not earned is a rack with no reason to come back to it, and the depth
+  // on a locked chip is the reason.
+  for (const id of Engine.PURCHASABLE_ACTIONS) {
+    const locked = !Engine.weaponUnlocked(id, bestDepth);
     const fitted = manifest.includes(id);
     const btn = document.createElement("button");
-    btn.textContent = Engine.WEAPONS[id] ? Engine.WEAPONS[id].label : id;
+    const label = Engine.WEAPONS[id] ? Engine.WEAPONS[id].label : id;
+    btn.textContent = locked ? `\ud83d\udd12 ${label} \u00b7 depth ${Engine.weaponUnlockDepth(id)}` : label;
     btn.classList.toggle("fitted", fitted);
-    btn.classList.toggle("full", !fitted && full);
+    btn.classList.toggle("full", !locked && !fitted && full);
+    btn.classList.toggle("locked", locked);
+    btn.disabled = locked;
+    if (stillNew.has(id)) btn.classList.add("is-new");
     btn.addEventListener("click", () => {
+      // Touching it is what "you have seen this" means, so the mark comes
+      // off here rather than on a timer.
+      if (stillNew.delete(id)) persistUnlocks();
       if (fitted) manifest = manifest.filter((x) => x !== id);
       else if (manifest.length < MANIFEST_SLOTS) manifest = manifest.concat(id);
-      else return; // no room, and the chip already reads as unavailable
+      else {
+        persistUnlocks();
+        updateManifestPicker();
+        return; // no room, and the chip already reads as unavailable
+      }
       persistUnlocks();
       updateManifestPicker();
     });
@@ -3756,6 +3898,16 @@ function updateHangarDetail() {
   const name = document.createElement("span");
   name.className = "loadout-detail-name";
   name.textContent = Engine.STARTING_LOADOUTS[hangarLoadout].label;
+  // Looking at it IS having seen it, so the mark comes off on the render
+  // that shows it rather than on a tap you might never make.
+  if (stillNew.has(hangarLoadout)) {
+    const dot = document.createElement("span");
+    dot.className = "new-flag";
+    dot.textContent = "NEW";
+    name.appendChild(dot);
+    stillNew.delete(hangarLoadout);
+    persistUnlocks();
+  }
   const count = document.createElement("span");
   count.className = "hangar-count";
   count.textContent = `${ids.indexOf(hangarLoadout) + 1} / ${ids.length}`;

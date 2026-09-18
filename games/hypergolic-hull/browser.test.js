@@ -862,7 +862,13 @@ async function freshPage(browser, url, errors) {
   // The hangar: ONE hull at a time, arrows to flip. At depth 1 only
   // Standard is flyable; the other two are still shown, greyed, carrying
   // the depth that opens them.
-  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Line Ship", "the hangar opens on the hull that would launch");
+  assert.strictEqual(await page.locator("#unlockCard").isVisible(), false, "a run that earned nothing does not celebrate");
+  assert.match(
+    await page.locator("#nextUnlock").textContent(),
+    /Depth 3 unlocks/,
+    "...it says what the next depth is worth instead"
+  );
+  assert.strictEqual(await page.locator(".loadout-detail-name").evaluate((el) => el.childNodes[0].textContent), "Line Ship", "the hangar opens on the hull that would launch");
   assert.strictEqual(await page.locator(".hangar-count").textContent(), "1 / 4", "and says where it sits in a shelf of four");
   assert.strictEqual(await page.locator("#restartBtn").textContent(), "Launch");
   assert.strictEqual(await page.locator("#restartBtn").isDisabled(), false);
@@ -878,7 +884,7 @@ async function freshPage(browser, url, errors) {
   );
   await page.click(".hangar-arrow >> nth=1");
   await page.waitForTimeout(80);
-  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Screen Ship", "the arrow flips to the next hull");
+  assert.strictEqual(await page.locator(".loadout-detail-name").evaluate((el) => el.childNodes[0].textContent), "Screen Ship", "the arrow flips to the next hull");
   assert.strictEqual(await page.locator(".hangar-count").textContent(), "2 / 4");
   assert.strictEqual(
     await page.locator("#loadoutDetail").evaluate((el) => el.classList.contains("locked")),
@@ -893,7 +899,7 @@ async function freshPage(browser, url, errors) {
   );
   await page.click(".hangar-arrow >> nth=0");
   await page.waitForTimeout(80);
-  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Line Ship", "and back again");
+  assert.strictEqual(await page.locator(".loadout-detail-name").evaluate((el) => el.childNodes[0].textContent), "Line Ship", "and back again");
   assert.strictEqual(await page.locator("#restartBtn").isDisabled(), false);
 
   await page.click("#restartBtn");
@@ -921,9 +927,24 @@ async function freshPage(browser, url, errors) {
     window.render();
   });
   await waitForOverlay(page);
+  // Depth 34 crosses every unlock threshold, so the run-over screen leads
+  // with the reward card rather than the hangar — that IS the feature: a
+  // run that earned something says so before anything else on the screen.
+  assert.strictEqual(await page.locator("#unlockCard").isVisible(), true, "the run that earned something announces it");
+  assert.strictEqual(await page.locator("#loadoutDetail").isVisible(), false, "...and nothing else competes with it");
+  assert.strictEqual(await page.locator("#restartBtn").isVisible(), false, "...including Launch");
+  assert.ok(
+    (await page.locator(".unlock-row").count()) >= 2,
+    "one row per thing earned — depth 34 opens hulls and guns together"
+  );
+  await page.click("#unlockOkBtn");
+  await page.waitForTimeout(80);
+  assert.strictEqual(await page.locator("#unlockCard").isVisible(), false, "acknowledging it drops you into the hangar");
+  assert.strictEqual(await page.locator("#restartBtn").isVisible(), true);
+
   await page.click(".hangar-arrow >> nth=1");
   await page.waitForTimeout(80);
-  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Screen Ship");
+  assert.strictEqual(await page.locator(".loadout-detail-name").evaluate((el) => el.childNodes[0].textContent), "Screen Ship");
   assert.strictEqual(
     await page.locator("#loadoutDetail").evaluate((el) => el.classList.contains("locked")),
     false,
@@ -958,8 +979,10 @@ async function freshPage(browser, url, errors) {
     window.render();
   });
   await waitForOverlay(page);
+  // Already acknowledged before the reload, so it does not announce twice.
+  assert.strictEqual(await page.locator("#unlockCard").isVisible(), false, "an unlock is announced once, not on every screen");
   assert.strictEqual(
-    await page.locator(".loadout-detail-name").textContent(),
+    await page.locator(".loadout-detail-name").evaluate((el) => el.childNodes[0].textContent),
     "Screen Ship",
     "the hangar itself reopens on it across the reload too, not just the in-flight run"
   );
