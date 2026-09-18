@@ -1125,11 +1125,16 @@
     }
   };
 
-  Stack.prototype.finalizeCurrentChain = function () {
+  // LENGTH IS PASSED IN, NOT READ OFF THE STACK. runPhysics clears
+  // chainCounter before it calls this -- reading this.chainCounter here
+  // reported every chain as 0 links, which is not a length a chain can have
+  // (a chain starts at 2) and which nothing noticed until a duel that
+  // actually fired one.
+  Stack.prototype.finalizeCurrentChain = function (length) {
     if (this.currentChain) {
       this.currentChain.finalized = true;
       this.currentChain.frameEarned = this.clock;
-      this.events.push({ type: "chainEnd", length: this.chainCounter });
+      this.events.push({ type: "chainEnd", length: length != null ? length : this.chainCounter });
       this.currentChain = null;
     }
   };
@@ -1591,8 +1596,9 @@
     this.countActivePanels();
 
     if (this.chainCounter !== 0 && !this.hasChainingPanels()) {
+      var finishedAt = this.chainCounter;
       this.chainCounter = 0;
-      this.finalizeCurrentChain();
+      this.finalizeCurrentChain(finishedAt);
     }
 
     if (this.checkGameOver()) this.setGameOver();

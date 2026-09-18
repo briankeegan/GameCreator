@@ -190,6 +190,40 @@ check('combo size and chain length come from the engine, unaltered', function ()
         JSON.stringify(r.exact) + '\n  engine   ' + JSON.stringify(mine));
 });
 
+
+// A CHAIN'S LENGTH COMES FROM THE CALLER, AND THE CALLER CAPTURES IT FIRST.
+//
+// runPhysics clears chainCounter and THEN finalises the chain. While
+// finalizeCurrentChain read this.chainCounter itself, every chainEnd event
+// said 0 links -- not a length a chain can have, since a chain starts at 2.
+// The duel-level check above only sees this when a duel happens to fire a
+// chain, so it passed locally and failed on the runner, taking 35 training
+// chains down with it. Neither assertion below needs a chain to fire.
+check('finalizeCurrentChain reports the length it is GIVEN, not the counter it reads', function () {
+    var stack = Object.create(PanelEngine.Stack.prototype);
+    stack.events = [];
+    stack.clock = 123;
+    stack.chainCounter = 0;                 // as runPhysics leaves it
+    stack.currentChain = { finalized: false, frameEarned: 0 };
+    stack.finalizeCurrentChain(5);
+    var ends = stack.events.filter(function (e) { return e.type === 'chainEnd'; });
+    assert.strictEqual(ends.length, 1, 'no chainEnd event was pushed');
+    assert.strictEqual(ends[0].length, 5,
+        'the length was read off the stack instead of taken from the caller');
+});
+
+check('runPhysics CAPTURES the chain length before it clears the counter', function () {
+    var fs = require('fs');
+    var src = fs.readFileSync(path.join(__dirname, '..', '..', 'panel-engine.js'), 'utf8');
+    var m = /if \(this\.chainCounter !== 0 && !this\.hasChainingPanels\(\)\)[\s\S]*?\n    }/.exec(src);
+    assert.ok(m, 'the chain-end block in runPhysics has moved or gone');
+    var body = m[0];
+    assert.ok(body.indexOf('this.chainCounter = 0') >= 0, 'the block no longer clears the counter');
+    assert.ok(/finalizeCurrentChain\(\s*[A-Za-z_$][\w$]*\s*\)/.test(body),
+        'finalizeCurrentChain is called with no length, so it falls back to a counter ' +
+        'cleared on the line above and every chain reports 0 links');
+});
+
 console.log('');
 console.log(pass + '/' + (pass + fail) + ' passed');
 process.exit(fail ? 1 : 0);
