@@ -144,20 +144,32 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* SAFE centring plus a scroll. The overlay grew a Manifest picker and
-     overflowed its frame, and a plain centred flex column overflows in BOTH
-     directions — the top of the panel goes past the edge where nothing can
-     scroll to it, so the buttons up there stop being clickable rather than
-     merely looking cramped. `safe center` falls back to flex-start once the
-     content is taller than the box. */
+  /* The overlay never scrolls — everything in it has to fit the board
+     frame, because a control that needs scrolling to reach is a control
+     that isn't there. `safe center` is the belt-and-braces half of that:
+     a plain centred flex column overflows in BOTH directions, so the top
+     of an over-tall panel goes past the edge where nothing can reach it.
+     safe centring falls back to flex-start instead. */
   justify-content: safe center;
-  overflow-y: auto;
   gap: 8px;
   background: rgba(8, 11, 18, 0.88);
   border-radius: 12px;
   padding: 16px;
 }
 .run-overlay[hidden] { display: none; }
+/* The hangar is not an annotation on the board — it replaces the screen,
+   the way a ship-select screen does in any game that has one. Sized to the
+   whole play area rather than to the canvas: on a phone the board is a
+   third of the screen, a hull's Hold does not fit in a third, and the HUD
+   it covers is meaningless between runs. */
+.hangar-overlay {
+  z-index: 6;
+  border-radius: 0;
+  /* Opaque, unlike the outpost panel it shares styling with. That one is a
+     dialog over a board you are still in; this one replaces the screen, and
+     a half-visible HUD showing through it reads as a rendering fault. */
+  background: #080b12;
+}
 .run-overlay h2 { margin: 0; font-size: 1.2rem; }
 .run-overlay p { margin: 0; color: #9fb0c9; font-size: 0.9rem; }
 .run-overlay button {
@@ -253,17 +265,21 @@ body {
    stat line, never a footprint diagram, so it doesn't need the room a
    Mortar's does. */
 .loadout-detail {
-  /* Taller than the Outpost's box it shares styling with: this one carries
-     the hull's whole Hold at full size, which is the thing being chosen.
-     The overlay itself scrolls, so height here is not a hard ceiling. */
-  height: 19rem;
+  /* Sized to what is IN it, not to the tallest thing it can hold: unlike
+     the Outpost's shelf there is nothing below it to keep still, because
+     showing this box hides the shelf and the manifest rack. It may shrink
+     below its content on a short frame — the readout inside scrolls — so
+     that the confirm button stays on screen. */
+  height: auto;
+  flex: 0 1 auto;
+  min-height: 0;
 }
 
 /* The readout takes whatever room it needs; the button stays pinned to the
    bottom of the box, so it doesn't move between a one-line offer and a
    diagram either. */
 .outpost-detail > div:first-child,
-.loadout-detail > div:first-child {
+.loadout-detail-body {
   flex: 1 1 auto;
   /* A flex item won't shrink below its content without this, which is why
      a fixed height alone still let the tallest footprint push the box —
@@ -271,6 +287,83 @@ body {
      scrolls inside it instead of moving the furniture. */
   min-height: 0;
   overflow-y: auto;
+}
+
+/* The hangar's header: an arrow either side of the hull's name, and where
+   it sits in the shelf so the count doesn't have to be discovered by
+   clicking to the end. */
+.loadout-detail-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.loadout-detail .hangar-arrow {
+  margin: 0;
+  flex: 0 0 auto;
+  padding: 2px 10px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  background: #2a3652;
+  color: #cfe2ff;
+}
+.loadout-detail-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #ffce8a;
+}
+.hangar-count {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  color: #6f819c;
+}
+/* A hull you haven't earned is still shown, greyed, with the depth that
+   opens it. Seeing the end of the shelf is a reason to go back out; a
+   shelf that hides what isn't yours yet is just a shorter shelf. */
+.loadout-detail.locked .loadout-ship-figure,
+.loadout-detail.locked .loadout-hold {
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+.loadout-detail.locked .loadout-detail-name {
+  color: #7e8ca6;
+}
+.loadout-detail.locked .loadout-locked-line {
+  color: #ffce8a;
+  font-size: 0.8rem;
+  margin-bottom: 0.25rem;
+}
+/* The gauges read the same as the HUD's, just tighter: this is a column
+   beside a portrait, not a strip across the screen. */
+.loadout-top-text .ship-stat-row {
+  margin: 0 0 2px;
+}
+.loadout-detail .hold-info {
+  margin: 0.3rem 0 0;
+  font-size: 0.72rem;
+  color: #8ea1bd;
+  text-align: center;
+}
+.run-overlay button:disabled {
+  background: #2a3652;
+  color: #7e8ca6;
+  cursor: not-allowed;
+}
+/* The other pane. Reads as a way through rather than a primary action, so
+   it is quieter than Launch directly above it. */
+.manifest-toggle {
+  background: #1b2740;
+  color: #9fb0c9;
+  font-size: 0.75rem;
+  padding: 6px 12px;
+}
+/* .manifest-picker is display:flex, so the hidden attribute needs saying
+   again for the pane switch to actually hide it. */
+.loadout-picker[hidden] {
+  display: none;
 }
 
 .outpost-detail-empty,
@@ -302,13 +395,23 @@ body {
   color: #cfe2ff;
 }
 /* The hull itself, not just its numbers — "need different looking ships
-   and previews of those ships" (Clubhouse). Floats beside the stats/blurb
-   text, same layout trick as the Outpost's weapon-footprint figure. */
+   and previews of those ships" (Clubhouse). A row, not a float: the Hold
+   grid below has to start on a clean line, and a floated figure taller
+   than the text beside it would wrap the grid around itself. */
+.loadout-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.loadout-top-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .loadout-ship-figure {
-  float: left;
+  flex: 0 0 auto;
   width: 64px;
   height: 64px;
-  margin: 0 10px 4px 0;
   display: block;
   image-rendering: pixelated;
 }
@@ -1150,10 +1253,9 @@ body {
   display: flex;
   justify-content: center;
   width: 100%;
-  clear: both;
-  margin: 4px 0 6px;
+  margin: 6px 0 2px;
 }
 .loadout-hold .hold-grid { margin: 0; }
-/* No size override: the picker draws the hold at the SAME 44px cell the
-   Systems screen uses, because the tile labels are tuned to that cell and
-   anything smaller clips them mid-word. The box grows instead. */
+/* No size override here: the cell is chosen in updateLoadoutDetail, which
+   measures the room left after the sprite, the stat line and the blurb and
+   shrinks the grid to fit rather than letting the box scroll. */

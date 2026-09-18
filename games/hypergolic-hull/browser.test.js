@@ -859,17 +859,42 @@ async function freshPage(browser, url, errors) {
   await waitForOverlay(page);
   assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Flagship Destroyed");
 
-  assert.strictEqual(await page.locator("#loadoutPicker button").count(), 3, "three canned ships, all available from the start");
+  // The hangar: ONE hull at a time, arrows to flip. At depth 1 only
+  // Standard is flyable; the other two are still shown, greyed, carrying
+  // the depth that opens them.
+  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Standard", "the hangar opens on the hull that would launch");
+  assert.strictEqual(await page.locator(".hangar-count").textContent(), "1 / 3", "and says where it sits in a shelf of three");
+  assert.strictEqual(await page.locator("#restartBtn").textContent(), "Launch");
+  assert.strictEqual(await page.locator("#restartBtn").isDisabled(), false);
   assert.strictEqual(
-    await page.locator("#loadoutPicker button", { hasText: "Standard ✓" }).count(),
-    1,
-    "Standard is armed by default, marked with a check — nothing is previewed yet, so nothing is .selected"
+    await page.locator("#loadoutDetail .loadout-hold .hold-tile").count(),
+    3,
+    "Standard's whole Hold is drawn — drive, reactor, scanner"
   );
   assert.strictEqual(
-    await page.locator("#loadoutDetail").textContent(),
-    "Tap a start to see what it gives you.",
-    "the detail box holds an empty prompt until a chip is tapped, same as the Outpost's shelf"
+    await page.locator("#loadoutDetail .ship-stat-row").count(),
+    2,
+    "and its gauges, the same bars the HUD flies with: Hull and Energy, no shield to show"
   );
+  await page.click(".hangar-arrow >> nth=1");
+  await page.waitForTimeout(80);
+  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Escort Start", "the arrow flips to the next hull");
+  assert.strictEqual(await page.locator(".hangar-count").textContent(), "2 / 3");
+  assert.strictEqual(
+    await page.locator("#loadoutDetail").evaluate((el) => el.classList.contains("locked")),
+    true,
+    "unreached at depth 1 — shown, but marked locked"
+  );
+  assert.strictEqual(await page.locator("#restartBtn").isDisabled(), true, "and Launch cannot fly it");
+  assert.match(
+    await page.locator("#restartBtn").textContent(),
+    /Locked .* depth 3/,
+    "the button says the condition rather than just going grey"
+  );
+  await page.click(".hangar-arrow >> nth=0");
+  await page.waitForTimeout(80);
+  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Standard", "and back again");
+  assert.strictEqual(await page.locator("#restartBtn").isDisabled(), false);
 
   await page.click("#restartBtn");
   await page.waitForFunction(() => window.__hhState.status === "playing");
@@ -880,36 +905,31 @@ async function freshPage(browser, url, errors) {
   await page.close();
 
   // ---- Pick a canned ship and fly the next run in it ---------------------
-  // Tapping a chip only PREVIEWS it — a separate confirm button in the
-  // detail box actually selects. Nothing is bought and nothing is locked:
-  // all three hulls are available, and the question is which shape of the
-  // same budget you want.
+  // There is no confirm step: the hull in the hangar IS the one that
+  // launches, so flipping to it and pressing Launch is the whole flow.
   page = await freshPage(browser, url, errors);
-  // A loss, forced directly rather than played out — engine.test.js already
-  // covers the Hold contents of each hull headlessly; this is here to prove
-  // the real DOM wiring (the overlay's picker, the two-step confirm flow,
-  // New Ship actually reading the pick).
+  // A deep loss, forced directly rather than played out — engine.test.js
+  // already covers the Hold contents of each hull headlessly; this is here
+  // to prove the real DOM wiring. Depth 34 also puts every hull past its
+  // unlock, which is what makes Escort Start flyable below.
   await page.evaluate(() => {
     window.__hhState.levelId = 34;
     window.__hhState.hull = 0;
+    window.__hhState.status = "won"; // banks bestDepth on persist(), the way a real run does
+    window.render();
     window.__hhState.status = "lost";
     window.render();
   });
   await waitForOverlay(page);
-  const escortChip = page.locator("#loadoutPicker button", { hasText: "Escort" });
-  await escortChip.click();
-  assert.strictEqual(await escortChip.evaluate((el) => el.classList.contains("selected")), true, "tapping the chip previews it");
-  const confirmBtn = page.locator("#loadoutDetail .loadout-confirm");
-  assert.strictEqual(await confirmBtn.textContent(), "Fly this one", "nothing to buy — the button just arms it");
-  assert.strictEqual(await confirmBtn.isDisabled(), false);
-  await confirmBtn.click();
-  assert.strictEqual(await confirmBtn.textContent(), "This is flying next", "confirming re-renders the same box, now showing it's armed");
-  assert.strictEqual(await confirmBtn.isDisabled(), true, "no reason to re-confirm what's already selected");
+  await page.click(".hangar-arrow >> nth=1");
+  await page.waitForTimeout(80);
+  assert.strictEqual(await page.locator(".loadout-detail-name").textContent(), "Escort Start");
   assert.strictEqual(
-    await page.locator("#loadoutPicker button", { hasText: "Escort Start ✓" }).count(),
-    1,
-    "the chip itself picks up the check mark once it's the active pick"
+    await page.locator("#loadoutDetail").evaluate((el) => el.classList.contains("locked")),
+    false,
+    "past depth 3, so it is no longer locked"
   );
+  assert.strictEqual(await page.locator("#restartBtn").textContent(), "Launch", "landing on an unlocked hull IS picking it");
 
   await page.click("#restartBtn");
   await page.waitForFunction(() => window.__hhState.status === "playing");
@@ -939,9 +959,9 @@ async function freshPage(browser, url, errors) {
   });
   await waitForOverlay(page);
   assert.strictEqual(
-    await page.locator("#loadoutPicker button", { hasText: "Escort Start ✓" }).count(),
-    1,
-    "the picker itself remembers it across the reload too, not just the in-flight run"
+    await page.locator(".loadout-detail-name").textContent(),
+    "Escort Start",
+    "the hangar itself reopens on it across the reload too, not just the in-flight run"
   );
   await page.click("#restartBtn");
   await page.waitForFunction(() => window.__hhState.status === "playing");
@@ -1497,9 +1517,8 @@ async function freshPage(browser, url, errors) {
 
   // Blowing the scuttling charges is something you WATCH. The ship comes
   // apart on the Systems screen you armed them from, and once the fire is
-  // out the SAME run-ending overlay any death shows comes up — Requisition
-  // payout, loadout picker to arm the next hull, and "New Ship" to actually
-  // start it. Scuttling used to skip straight to a fresh hull with no
+  // out the SAME run-ending overlay any death shows comes up — the hangar
+  // to pick the next hull, and Launch to actually start it. Scuttling used to skip straight to a fresh hull with no
   // chance to pick a loadout ("when i scuttle charges it dowst give the
   // options") — it now goes through the exact same ending flow, just
   // framed as a scuttle rather than a death.
@@ -1523,7 +1542,7 @@ async function freshPage(browser, url, errors) {
     assert.strictEqual(await page.locator("#shipOverlay").isVisible(), false, "the Systems screen clears");
     await waitForOverlay(page);
     assert.strictEqual(await page.locator("#runOverlayTitle").textContent(), "Charges Blown", "framed as a scuttle, not a death");
-    assert.strictEqual(await page.locator("#loadoutPicker button").count(), 3, "same loadout picker a death shows");
+    assert.strictEqual(await page.locator("#loadoutDetail .loadout-detail-name").count(), 1, "same hangar a death shows");
     await page.click("#restartBtn");
     await page.waitForFunction(() => window.__hhState.status === "playing");
     const after = await getState(page);

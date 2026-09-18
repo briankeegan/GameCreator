@@ -2615,11 +2615,18 @@
       label: "Escort Start",
       blurb: "Shield raised from turn one — one hit absorbed free. Costs reactor capacity to fit it.",
       kit: ["sublightDrive", "microReactor", "scanner", "shieldGenerator"],
+      // How deep you have to have got for this hull to be flyable. A locked
+      // hull is still shown in the hangar, with the depth on it — a shelf
+      // you can see the end of is a reason to go back out, and one you
+      // can't is just a shorter shelf. Absent = available from the first
+      // run.
+      unlockDepth: 3,
     },
     salvager: {
       label: "Salvager Start",
       blurb: "An extra plate of armor. Same reactor cost as Escort Start.",
       kit: ["sublightDrive", "microReactor", "scanner", "ablativePlating"],
+      unlockDepth: 5,
     },
   };
 
@@ -2644,7 +2651,17 @@
       maxHull: START_HULL + ship.hullBonus,
       maxEnergy: ship.maxEnergy,
       maxShields: ship.maxShields,
+      unlockDepth: loadout.unlockDepth || 1,
     };
+  }
+
+  // Is this hull flyable yet, given how deep the player has ever got? One
+  // place decides it, so the hangar's label and the Launch button can never
+  // disagree about whether something is locked.
+  function loadoutUnlocked(loadoutId, bestDepth) {
+    const loadout = STARTING_LOADOUTS[loadoutId];
+    if (!loadout) return false;
+    return (loadout.unlockDepth || 1) <= bestDepth;
   }
 
   // A fresh sector's hold: carried whole from the previous one (the ship
@@ -4445,6 +4462,7 @@
     ENEMY_TYPES,
     STARTING_LOADOUTS,
     previewLoadout,
+    loadoutUnlocked,
     weaponHexes,
     deriveShip,
     enemyShip,

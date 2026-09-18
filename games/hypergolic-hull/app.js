@@ -35,8 +35,7 @@ const logEl = document.getElementById("log");
 const overlayEl = document.getElementById("runOverlay");
 const overlayTitleEl = document.getElementById("runOverlayTitle");
 const overlayBodyEl = document.getElementById("runOverlayBody");
-const loadoutPickerEl = document.getElementById("loadoutPicker");
-const manifestTitleEl = document.getElementById("manifestTitle");
+const manifestToggleEl = document.getElementById("manifestToggle");
 const manifestPickerEl = document.getElementById("manifestPicker");
 const loadoutDetailEl = document.getElementById("loadoutDetail");
 const restartBtn = document.getElementById("restartBtn");
@@ -3318,18 +3317,19 @@ function updateHud() {
       overlayTitleEl.textContent = "Flagship Destroyed";
       overlayBodyEl.textContent = `Lost with all hands at depth ${state.levelId}. Deepest run so far: ${bestDepth}.`;
     }
-    updateLoadoutPicker();
+    updateHangar();
     continueBtnEl.hidden = true;
     overlayEl.hidden = false;
   } else if (state.isVictory && !animsRunning()) {
     overlayTitleEl.textContent = "The Bulwark Is Scrap";
     overlayBodyEl.textContent = `The Bulwark is dead in the water at depth ${state.levelId}. Press on, or take the ship home.`;
-    updateLoadoutPicker();
+    updateHangar();
     continueBtnEl.hidden = false;
     overlayEl.hidden = false;
   } else {
     overlayEl.hidden = true;
-    previewedLoadout = null; // re-arm for the next time this overlay shows
+    manifestOpen = false; // the overlay always reopens on the hangar,
+    hangarLoadout = null; // showing the hull that would actually launch
   }
 
   modeButtons.forEach((btn) => {
@@ -3628,48 +3628,70 @@ function updateScanInfo() {
   enemyInfoEl.appendChild(stats);
 }
 
-// Which loadout chip is currently being INSPECTED — separate from
-// selectedLoadout (which one is actually armed for the next run). Tapping
-// a chip only previews it; a distinct button in the detail box below
-// commits. Same two-step shape as the Outpost's shelf/selectedOfferId,
-// deliberately: a single tap that both bought AND armed something at once
-// read as "I don't understand what I'm choosing" (Clubhouse: "what...
-// this isn't normally how unlocks work... you select the next one, it
-// shows what's available, then you confirm").
-let previewedLoadout = null;
+// The pre-launch Hold is drawn at the Systems screen's cell where there is
+// room for it, and shrunk toward the floor where there is not. Below the
+// floor the tile labels are unreadable, so the box gives up and scrolls.
+const LOADOUT_HOLD_CELL = 44;
+const LOADOUT_HOLD_CELL_MIN = 22;
 
-// Rebuilds the death/victory overlay's starting-loadout chips from
-// Engine.STARTING_LOADOUTS every time it's shown — same "cheap enough to
-// just rebuild it" approach as updateOutpost below.
-function updateLoadoutPicker() {
-  loadoutPickerEl.innerHTML = "";
+// Which pane of the pre-launch overlay is up: the hangar, or the Manifest
+// rack. One or the other, never both — the overlay must fit the board
+// frame, because a control you have to scroll to is a control that isn't
+// there.
+let manifestOpen = false;
+
+// Which hull is ON SCREEN in the hangar. Usually the one that will launch —
+// but a locked hull can be looked at without becoming the pick, which is
+// the whole point of showing locked hulls at all.
+let hangarLoadout = null;
+
+function hullLocked(id) {
+  return !Engine.loadoutUnlocked(id, bestDepth);
+}
+
+// Rebuilds the death/victory overlay every time it's shown — same "cheap
+// enough to just rebuild it" approach as updateOutpost below.
+function updateHangar() {
   const ids = Object.keys(Engine.STARTING_LOADOUTS);
-  if (previewedLoadout && !ids.includes(previewedLoadout)) previewedLoadout = null;
   // A selection pointing at an id that no longer exists (a stale
-  // localStorage value from before a loadout was renamed/removed) must
-  // never mean "no chip checked, silently fly Standard anyway" — that's
-  // exactly the kind of desync the chosen chip needs to never suffer.
-  // Self-heal to Standard and persist the correction so it doesn't
-  // recur every render.
-  if (!ids.includes(selectedLoadout)) {
+  // localStorage value from before a loadout was renamed or removed), or at
+  // a hull that is not unlocked, must never mean "nothing chosen, silently
+  // fly Standard anyway". Self-heal and persist so it doesn't recur.
+  if (!ids.includes(selectedLoadout) || hullLocked(selectedLoadout)) {
     selectedLoadout = "standard";
     persistUnlocks();
   }
-  for (const id of ids) {
-    const loadout = Engine.STARTING_LOADOUTS[id];
-    const btn = document.createElement("button");
-    const active = selectedLoadout === id;
-    btn.textContent = active ? `${loadout.label} ✓` : loadout.label;
-    btn.classList.toggle("selected", previewedLoadout === id);
-    btn.addEventListener("click", () => {
-      previewedLoadout = previewedLoadout === id ? null : id;
-      updateLoadoutPicker();
-      updateLoadoutDetail();
-    });
-    loadoutPickerEl.appendChild(btn);
+  if (!ids.includes(hangarLoadout)) hangarLoadout = selectedLoadout;
+  manifestToggleEl.textContent = manifestOpen
+    ? "\u25c0 Back to the hangar"
+    : `Manifest \u2014 ${manifest.length} of ${MANIFEST_SLOTS} fitted \u25b6`;
+  loadoutDetailEl.hidden = manifestOpen;
+  manifestPickerEl.hidden = !manifestOpen;
+  // Launch flies what is on screen, so it cannot be pressed while that is
+  // something you haven't earned. The button says the condition rather than
+  // just going grey: a disabled control with no reason on it is a bug
+  // report waiting to happen.
+  const locked = hullLocked(hangarLoadout);
+  restartBtn.disabled = locked;
+  restartBtn.textContent = locked
+    ? `Locked \u2014 reach depth ${Engine.STARTING_LOADOUTS[hangarLoadout].unlockDepth}`
+    : "Launch";
+  if (manifestOpen) updateManifestPicker();
+  else updateHangarDetail();
+}
+
+// Step to the next or previous hull on the shelf. An unlocked one becomes
+// the pick as you land on it — there is no separate confirm, what is in the
+// hangar is what launches. A locked one is only shown.
+function flipHull(step) {
+  const ids = Object.keys(Engine.STARTING_LOADOUTS);
+  const at = ids.indexOf(hangarLoadout);
+  hangarLoadout = ids[(at + step + ids.length) % ids.length];
+  if (!hullLocked(hangarLoadout)) {
+    selectedLoadout = hangarLoadout;
+    persistUnlocks();
   }
-  updateLoadoutDetail();
-  updateManifestPicker();
+  updateHangar();
 }
 
 // The Manifest picker. Every gun in the armoury gets a chip; tapping one
@@ -3686,7 +3708,6 @@ function updateManifestPicker() {
     manifest = cleaned;
     persistUnlocks();
   }
-  manifestTitleEl.textContent = `Manifest — ${manifest.length} of ${MANIFEST_SLOTS} slots fitted`;
   manifestPickerEl.innerHTML = "";
   const full = manifest.length >= MANIFEST_SLOTS;
   for (const id of owned) {
@@ -3706,30 +3727,90 @@ function updateManifestPicker() {
   }
 }
 
-// The readout for whichever chip is currently previewed — what the hull
-// gives you, and a single button that arms it for the next run.
-function updateLoadoutDetail() {
-  loadoutDetailEl.hidden = false;
+// The hull in the hangar, drawn whole.
+function updateHangarDetail() {
   loadoutDetailEl.innerHTML = "";
-  if (!previewedLoadout) {
-    const empty = document.createElement("div");
-    empty.className = "loadout-detail-empty";
-    empty.textContent = "Tap a start to see what it gives you.";
-    loadoutDetailEl.appendChild(empty);
-    return;
-  }
 
-  const preview = Engine.previewLoadout(previewedLoadout);
-  const active = selectedLoadout === previewedLoadout;
+  const preview = Engine.previewLoadout(hangarLoadout);
+  const ids = Object.keys(Engine.STARTING_LOADOUTS);
+  const locked = hullLocked(hangarLoadout);
+  loadoutDetailEl.classList.toggle("locked", locked);
 
-  // The hull itself first — same lookup flagshipSprite() uses, just keyed
-  // on the loadout being previewed instead of the run actually in flight.
+  // Arrows either side of the hull's name, and where it sits in the shelf
+  // so you know how many there are without leaving the screen.
+  const head = document.createElement("div");
+  head.className = "loadout-detail-head";
+  const prev = document.createElement("button");
+  prev.className = "hangar-arrow";
+  prev.textContent = "\u25c0";
+  prev.setAttribute("aria-label", "Previous hull");
+  prev.addEventListener("click", () => flipHull(-1));
+  const name = document.createElement("span");
+  name.className = "loadout-detail-name";
+  name.textContent = Engine.STARTING_LOADOUTS[hangarLoadout].label;
+  const count = document.createElement("span");
+  count.className = "hangar-count";
+  count.textContent = `${ids.indexOf(hangarLoadout) + 1} / ${ids.length}`;
+  const next = document.createElement("button");
+  next.className = "hangar-arrow";
+  next.textContent = "\u25b6";
+  next.setAttribute("aria-label", "Next hull");
+  next.addEventListener("click", () => flipHull(1));
+  head.append(prev, name, count, next);
+  loadoutDetailEl.appendChild(head);
+
   const body = document.createElement("div");
-  // No ship portrait here any more: the hull IS its hold, and the picture
-  // was squeezing the one thing worth looking at into a corner.
-  // The real Hold, drawn with the same builder the Systems screen uses —
-  // the crates, their shapes and where they sit, which is what a hull
-  // actually IS. A stats line alone says what it adds up to.
+  body.className = "loadout-detail-body";
+
+  // The same readout the Systems screen gives, for a ship you have not
+  // launched yet: portrait, gauges, the Hold, and a tap on any crate for
+  // what it is. Deciding which hull to fly and looking over the one you are
+  // flying are the same question, so they are the same screen.
+  const top = document.createElement("div");
+  top.className = "loadout-top";
+  const fig = document.createElement("img");
+  fig.className = "loadout-ship-figure";
+  fig.alt = "";
+  fig.src = spriteForLoadout(hangarLoadout).src;
+  top.appendChild(fig);
+  const text = document.createElement("div");
+  text.className = "loadout-top-text";
+  if (locked) {
+    const lock = document.createElement("div");
+    lock.className = "loadout-locked-line";
+    lock.textContent = `\ud83d\udd12 Locked \u2014 reach depth ${preview.unlockDepth}`;
+    text.appendChild(lock);
+  }
+  // Gauges, not a sentence of numbers: the same bars the HUD flies with, so
+  // "Energy 1" reads as the single pip it is going to be. A hull in the
+  // hangar is whole, so filled is max.
+  const statRow = (label, filled, max, variant) => {
+    const row = document.createElement("div");
+    row.className = "ship-stat-row";
+    const name = document.createElement("span");
+    name.className = "stat-label";
+    name.textContent = label;
+    row.appendChild(name);
+    const b = document.createElement("span");
+    b.className = "stat-bar";
+    renderStatBar(b, label, filled, max, variant);
+    row.appendChild(b);
+    text.appendChild(row);
+    return row;
+  };
+  statRow("Hull", preview.maxHull, preview.maxHull, "hull");
+  statRow("Energy", preview.maxEnergy, preview.maxEnergy, "energy");
+  if (preview.maxShields > 0) statRow("Shields", preview.maxShields, preview.maxShields, "shield");
+  const blurb = document.createElement("span");
+  blurb.className = "hold-info-text";
+  blurb.textContent = preview.blurb;
+  text.appendChild(blurb);
+  top.appendChild(text);
+  body.appendChild(top);
+
+  // The real Hold below it, drawn with the same builder the Systems screen
+  // uses \u2014 the crates, their shapes and where they sit, which is what a
+  // hull actually IS. Gauges alone only say what it adds up to.
   const holdVm = {
     cols: preview.hold.cols,
     rows: preview.hold.rows,
@@ -3743,36 +3824,53 @@ function updateLoadoutDetail() {
   };
   const holdWrap = document.createElement("div");
   holdWrap.className = "loadout-hold";
-  holdWrap.appendChild(buildHoldGrid(holdVm, 44));
+  let holdCell = LOADOUT_HOLD_CELL;
+  // Tapping a crate says what it is, exactly as it does on the Systems
+  // screen \u2014 including a weapon's hex footprint, which is the whole
+  // difference between two hulls you would otherwise have to fly to tell
+  // apart. Rebuilt with the grid whenever the fit pass redraws it.
+  const holdInfo = document.createElement("p");
+  holdInfo.className = "hold-info";
+  holdInfo.id = "loadoutHoldInfo";
+  const drawHold = () => {
+    holdWrap.innerHTML = "";
+    const gridEl = buildHoldGrid(holdVm, holdCell);
+    holdWrap.appendChild(gridEl);
+    holdInfo.textContent = "Tap a system for its readout.";
+    wireHoldInspect(gridEl, holdInfo);
+  };
+  drawHold();
   body.appendChild(holdWrap);
-
-  const stats = document.createElement("div");
-  stats.className = "loadout-stats";
-  stats.textContent =
-    `Hull ${preview.maxHull} · Energy ${preview.maxEnergy}` +
-    (preview.maxShields > 0 ? ` · Shields ${preview.maxShields} (raised)` : "");
-  body.appendChild(stats);
-  const blurb = document.createElement("span");
-  blurb.className = "hold-info-text";
-  blurb.textContent = preview.blurb;
-  body.appendChild(blurb);
+  body.appendChild(holdInfo);
   loadoutDetailEl.appendChild(body);
 
-  const confirm = document.createElement("button");
-  confirm.className = "loadout-confirm";
-  if (active) {
-    confirm.textContent = "This is flying next";
-    confirm.disabled = true;
-  } else {
-    confirm.textContent = "Fly this one";
-    confirm.disabled = false;
-  }
-  confirm.addEventListener("click", () => {
-    selectedLoadout = previewedLoadout;
-    persistUnlocks();
-    render();
-  });
-  loadoutDetailEl.appendChild(confirm);
+
+
+  // The Hold gets whatever room is left, MEASURED rather than guessed: the
+  // blurb runs to a different number of lines per hull and the frame is a
+  // different height per phone, so a cell size picked in advance either
+  // clipped the stat line or wasted half the box. Draw at the Systems
+  // screen's cell, then shrink the grid \u2014 and only the grid \u2014 until the
+  // readout fits with nothing to scroll to. The floor is where the tile
+  // labels stop being legible; below that the box scrolls instead.
+  const fit = () => {
+    for (let pass = 0; pass < 3; pass++) {
+      const over = body.scrollHeight - body.clientHeight;
+      if (over <= 1) return;
+      const gridH = holdWrap.getBoundingClientRect().height;
+      if (gridH <= 0) return;
+      const shrunk = Math.floor((holdCell * (gridH - over)) / gridH);
+      if (shrunk >= holdCell) return;
+      holdCell = Math.max(LOADOUT_HOLD_CELL_MIN, shrunk);
+      drawHold();
+      if (holdCell === LOADOUT_HOLD_CELL_MIN) return;
+    }
+  };
+  fit();
+  // Again on the next frame. The first time this overlay opens, the box is
+  // being unhidden in the same tick, so the heights read back here are the
+  // ones it had while display:none \u2014 the fit lands a whole grid too big.
+  requestAnimationFrame(fit);
 }
 
 // Rebuilds the outpost shop's offer buttons from Engine.outpostOffers every
@@ -4020,7 +4118,13 @@ function buildHoldGrid(vm, cell) {
       tile.style.top = `${t.y * CELL}px`;
       tile.style.width = `${t.w * CELL - 4}px`;
       tile.style.height = `${t.h * CELL - 4}px`;
-      if (t.w === 1) tile.style.fontSize = "0.48rem"; // narrow tiles wrap their label instead of clipping it
+      // The label scales WITH the cell. At 44px (the Systems screen, and
+      // the hangar wherever there is room for it) this is exactly the
+      // 0.56rem/0.48rem the stylesheet asks for; on a short frame, where
+      // the hangar shrinks the grid to fit, it shrinks with it instead of
+      // clipping "SCANNER ARRAY" to "CANNE ARRAY".
+      const base = t.w === 1 ? 0.48 : 0.56; // narrow tiles wrap their label instead of clipping it
+      tile.style.fontSize = `${(base * CELL) / 44}rem`;
       tile.textContent = t.label;
       // A gun gets its own picture on the tile. The Hold is the one screen
       // where hardware IS the content, and every tile in it was a coloured
@@ -5364,6 +5468,11 @@ function playScuttle() {
 
 restartBtn.addEventListener("click", scuttleShip);
 
+manifestToggleEl.addEventListener("click", () => {
+  manifestOpen = !manifestOpen;
+  updateHangar();
+});
+
 continueBtnEl.addEventListener("click", () => {
   advanceSector();
 });
@@ -5377,6 +5486,26 @@ window.addEventListener("resize", () => {
   updateGeometry();
   draw();
 });
+
+// The board is fitted to the box it's in, and that box changes size after
+// first paint — the readout strip below it grows the moment it has a line
+// of text in it. A window resize listener never fires for that, so the
+// canvas kept the size it was handed before the strip existed: 80px taller
+// than the room it had, clipped equally top and bottom, and it took the
+// run overlay (absolutely positioned on the canvas) with it.
+if (typeof ResizeObserver === "function") {
+  let lastBox = "";
+  new ResizeObserver(() => {
+    // Resizing the canvas can itself retrigger the observer; only act on a
+    // box that actually changed, or this is a loop.
+    const box = `${boardWrapEl.clientWidth}x${boardWrapEl.clientHeight}`;
+    if (box === lastBox) return;
+    lastBox = box;
+    updateGeometry();
+    draw();
+    render();
+  }).observe(boardWrapEl);
+}
 
 window.__hhHexCenter = (q, r) => hexToPixel({ q, r });
 window.__hhPixelToHex = (x, y) => pixelToHex(x, y); // test hook: the tap conversion, so a round-trip can be proven

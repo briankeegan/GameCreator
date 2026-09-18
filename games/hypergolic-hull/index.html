@@ -24,25 +24,33 @@
          standing text of its own. -->
     <div class="enemy-info" id="enemyInfo" hidden></div>
 
+    <!-- The hangar / end-of-run screen. It covers the WHOLE play area, not
+         just the canvas: on a phone the board is a fraction of the screen
+         and a hull's Hold does not fit in a fraction, and the HUD it hides
+         is meaningless between runs anyway. -->
+        <div class="run-overlay hangar-overlay" id="runOverlay" hidden>
+          <h2 id="runOverlayTitle"></h2>
+          <p id="runOverlayBody"></p>
+          <!-- The hangar: one hull at a time, whole — sprite, numbers,
+               blurb and the Hold laid out — with arrows to flip between
+               them. FTL's ship-select screen. There is no confirm step
+               because there is nothing to confirm: the hull on screen IS
+               the one that launches. -->
+          <div class="loadout-detail" id="loadoutDetail" hidden></div>
+          <button id="continueBtn" hidden>Keep Flying</button>
+          <button id="restartBtn">Launch</button>
+          <!-- The Manifest: which guns this run's Outpost shelves are
+               allowed to offer. Fixed for the whole run, so it is chosen
+               here. It swaps places with the hangar rather than sitting
+               under it — the overlay never scrolls, so it holds one or the
+               other, never both. -->
+          <button id="manifestToggle" class="manifest-toggle"></button>
+          <div class="loadout-picker manifest-picker" id="manifestPicker" hidden></div>
+        </div>
+
     <div class="board-wrap" id="boardWrap">
       <div class="board-frame">
         <canvas id="board" width="320" height="320"></canvas>
-        <div class="run-overlay" id="runOverlay" hidden>
-          <h2 id="runOverlayTitle"></h2>
-          <p id="runOverlayBody"></p>
-          <!-- Tapping a chip INSPECTS it — what it gives you, what it costs
-               to fit. A separate button below commits to it, same pattern
-               as the Outpost shelf: tap to read, a distinct action to buy. -->
-          <div class="loadout-picker" id="loadoutPicker"></div>
-          <div class="loadout-detail" id="loadoutDetail" hidden></div>
-          <!-- The Manifest: which guns this run's Outpost shelves are
-               allowed to offer. Fitted here, before launch, and fixed for
-               the whole run. -->
-          <p class="manifest-title" id="manifestTitle"></p>
-          <div class="loadout-picker manifest-picker" id="manifestPicker"></div>
-          <button id="continueBtn" hidden>Keep Flying</button>
-          <button id="restartBtn">New Ship</button>
-        </div>
         <div class="run-overlay outpost-overlay" id="outpostOverlay" hidden>
           <h2><i class="swatch swatch-outpost"></i> Sector Outpost</h2>
           <p>Salvage aboard: <span id="outpostSalvage">0</span></p>
