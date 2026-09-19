@@ -69,6 +69,41 @@ check('a duel ends, and says why', function () {
     assert.ok(r.frames > 0);
 });
 
+// REACHING THE CEILING ALIVE IS NOT A SHARED RESULT. Under a half-point draw,
+// declining to attack is a winning policy: clearing opens your own board and
+// the reply lands on you, so the safest way to not lose is to not play. The
+// higher score takes the ceiling instead, and only an exact tie draws.
+check('the ceiling is decided on score, and only a tie draws', function () {
+    [
+        [true,  false, [9, 1], 1,    'one side dead must lose whatever the score says'],
+        [false, true,  [1, 9], 0,    'one side dead must lose whatever the score says'],
+        [true,  true,  [9, 1], null, 'both dead on one frame is a draw, not a score win'],
+        [false, false, [9, 1], 0,    'the higher score must take the ceiling'],
+        [false, false, [1, 9], 1,    'the higher score must take the ceiling'],
+        [false, false, [4, 4], null, 'an exact tie at the ceiling is still a draw']
+    ].forEach(function (c) {
+        assert.strictEqual(versus.decideWinner(c[0], c[1], c[2]), c[3],
+            c[4] + ' (dead ' + c[0] + '/' + c[1] + ', scores ' + JSON.stringify(c[2]) + ')');
+    });
+});
+
+check('a real duel that reaches the ceiling alive has a winner', function () {
+    var other = JSON.parse(JSON.stringify(TRAINED));
+    other.maxHeight = (other.maxHeight || 1) * 2 + 7;
+    var r = versus.duel(TRAINED, other, 1, { ceiling: 3600 });
+    assert.strictEqual(r.reason, 'ceiling', 'this duel was meant to run out the ceiling');
+    assert.notStrictEqual(r.winner, null,
+        'a ceiling duel with scores ' + JSON.stringify(r.scores) + ' was still called a draw');
+    assert.strictEqual(r.winner, r.scores[0] > r.scores[1] ? 0 : 1,
+        'the ceiling went to the lower score: ' + JSON.stringify(r.scores));
+
+    // The awkward correct case: a mirror reaches the same ceiling with the
+    // same score and must still draw.
+    var m = versus.duel(TRAINED, TRAINED, 1, { ceiling: 3600 });
+    assert.strictEqual(m.scores[0], m.scores[1], 'a mirror scored differently on each side');
+    assert.strictEqual(m.winner, null, 'a mirror match at the ceiling produced a winner');
+});
+
 // THE OTHER DIRECTION: a bit that always says the same thing is not a
 // measurement. Different seeds must be able to produce different outcomes,
 // or every genome is being ranked by one fixed board.

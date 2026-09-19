@@ -30,10 +30,28 @@ var PanelEngine = (typeof window !== 'undefined' ? window : globalThis).PanelEng
 
 var LEVEL = Number(process.env.GC_LEVEL || 10);
 
-// A duel that never ends is a duel with no signal in it. Two bots that both
-// survive indefinitely is a real outcome — a DRAW — not a reason to keep
-// playing, and it has to be bounded or one pairing can hang a whole run.
+// A duel that never ends is a duel with no signal in it, and it has to be
+// bounded or one pairing can hang a whole run. `opts.ceiling` overrides it
+// per duel; GC_VERSUS_CEILING overrides the default.
 var CEILING = Number(process.env.GC_VERSUS_CEILING || 36000);   // 10 minutes at 60fps
+
+// WHO WON. Death decides it when exactly one side died. Reaching the ceiling
+// alive is NOT a shared result: the higher SCORE takes it, so a bot that
+// survives by declining to attack does not bank half a point for it. Only an
+// exact tie — a mirror match, or two sides that died on the same frame —
+// stays a draw, because there the bit would be a coin flip and noise in the
+// training signal.
+//
+// Score is the game's own: combo and chain bonuses via Stack.addScore, capped
+// at 99999. A bare three earns nothing under that table, which is the point.
+exports.decideWinner = function (aDead, bDead, scores) {
+    if (aDead && !bDead) return 1;
+    if (bDead && !aDead) return 0;
+    if (aDead && bDead) return null;
+    if (scores[0] > scores[1]) return 0;
+    if (scores[1] > scores[0]) return 1;
+    return null;
+};
 
 function makeCpu(stack, weights, opts) {
     return new PuyoCpu(stack, {
@@ -75,8 +93,9 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
     // is links minus one, and reported every chain one link short.
     var exact = [zeroExact(), zeroExact()];
 
+    var ceiling = opts.ceiling || CEILING;
     var f = 0;
-    for (; f < CEILING; f++) {
+    for (; f < ceiling; f++) {
         cpus[0].update();
         cpus[1].update();
         stacks[0].run();
@@ -108,17 +127,14 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
         if (stacks[0].gameOver || stacks[1].gameOver) break;
     }
 
-    // BOTH DEAD ON THE SAME FRAME IS A DRAW, not a win for whichever index
-    // is checked first. duel.js gives the human the benefit of the doubt;
-    // there is no human here and a coin-flip bit would be noise in the
-    // training signal.
     var aDead = !!stacks[0].gameOver, bDead = !!stacks[1].gameOver;
-    var winner = null;
-    if (aDead && !bDead) winner = 1;
-    else if (bDead && !aDead) winner = 0;
+    var scores = [stacks[0].score, stacks[1].score];
+    var winner = exports.decideWinner(aDead, bDead, scores);
 
+    // `reason` says HOW the duel ended, not who won it: a duel that reaches
+    // the ceiling reads 'ceiling' whether or not the score decided it.
     return { winner: winner, frames: f, sent: sent, chainDepth: chainDepth, exact: exact,
-             draw: winner === null,
+             scores: scores, draw: winner === null,
              reason: (!aDead && !bDead) ? 'ceiling' : (aDead && bDead ? 'both' : 'death') };
 };
 

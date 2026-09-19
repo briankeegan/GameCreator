@@ -275,6 +275,16 @@ gate_versus_loop() {
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/versus_loop.test.js
 }
 
+# THE DUEL IS THE WHOLE FITNESS FUNCTION, and it is one bit.
+# Every way that bit can be wrong is a way the training signal is wrong in
+# silence: a favoured seat, a seed nothing reads, garbage that never crosses,
+# or a ceiling handed out as a free half-point to whichever side refused to
+# play. Asserted here rather than inferred from the weights that come out.
+gate_versus_duel() {
+  local d; d="$(_gc_training_dir)" || return 1
+  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/versus.test.js
+}
+
 # A SNAPSHOT IS NOT WRITTEN, IT IS DELIVERED.
 # The trainer writing trained.<mode>.json is step one of five; the other four
 # are commit_snapshot.sh reading the population, comparing it against
@@ -580,6 +590,7 @@ GATES=(
   "a training run that ran out of time can resume:gate_checkpoint_resume:games/the-game/ai/"
   "no checkpoint is stranded by a rename:gate_checkpoint_names:games/the-game/ai/"
   "the puyo loop update rule:gate_versus_loop:games/the-game/ai/"
+  "the duel that decides fitness:gate_versus_duel:games/the-game/ai/"
   "a snapshot survives the trip to main:gate_snapshot_pipe:games/the-game/ai/"
   "a whole training leg finishes:gate_pbt_leg:games/the-game/ai/"
   "a slow run stops before the job kills it:gate_deadline_stop:games/the-game/ai/"
