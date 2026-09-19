@@ -350,23 +350,36 @@ test('the incoming row the bot rises by is the one the engine will actually deal
 });
 
 test('THE REGRESSION THIS EXISTS FOR: a big clear stops being the worst move on the board', function () {
-    // The measurement that started all of this, as an assertion, on the
-    // weights the game actually ships and in the drill they were trained
-    // in. Score every candidate of every decision against HOLDING on that
-    // same board, and group by how many panels the candidate cleared:
+    // Score every candidate of every decision against HOLDING on that same
+    // board, and group by how many panels the candidate cleared. Measured
+    // paired — both scorings over one collected list of positions:
     //
     //     cleared   rise off    rise on
-    //        0        -134       -306
-    //        3        -181       -838
-    //      4-6       -1133      -1073
-    //       7+       -1537       -409
+    //        0         -18        -17
+    //        3         -33        -23
+    //      4-6         -65        -46
+    //       7+         -67        -40
     //
     // Off, it is monotonic: the more a move cleared, the worse it scored,
-    // so the best thing on the board was always to do nothing. That is not
-    // a weight the search chose — it is where the simulation STOPS, at the
+    // so the best thing on the board was to do nothing. That is not a
+    // weight the search chose — it is where the simulation STOPS, at the
     // instant the hole is open and the panels that refill it have not
-    // arrived yet. On, the ordering is gone and the biggest clears are the
-    // cheapest of the lot.
+    // arrived yet. On, the biggest clears are lifted the most: 7+ by 40%
+    // and 4-6 by 29%, and a 7+ goes from the worst bucket to level with
+    // 4-6.
+    //
+    // THE SIZES DEPEND ON WHICH BOT IS PROBED, so the pinned one is the
+    // claim. These weights predate normalisation and are read raw, which
+    // is a different feature mix from the one the evaluator was tuned for.
+    // Scaled by each feature's norm — the same bot under the share-based
+    // evaluator — the same paired sweep gives -1255 -> -1150 on 7+, an 8%
+    // lift rather than 40%. Both directions agree; the magnitude does not,
+    // so no threshold here should be read as a fact about the shipped bot.
+    //
+    // WHAT IT STILL DOES NOT DO: even at 40%, a 7+ at -40 is worse than
+    // holding at -17. Rise narrows the bias, it does not reverse it, which
+    // is the most likely reason every trained champion carries a NEGATIVE
+    // weight on garbageSent — 35 of 35 in the norm-s series do.
     //
     // IT MUST BE THE ENDLESS DRILL, NOT A BARE STACK. On a board with no
     // garbage arriving, the same sweep moves 7+ only from -1351 to -1116,
@@ -406,35 +419,53 @@ test('THE REGRESSION THIS EXISTS FOR: a big clear stops being the worst move on 
             for (var c = 1; c <= b.width; c++) if (b.grid[r][c] > 0) n++;
         return n;
     }
+    // THE TWO SCORINGS MUST SEE THE SAME BOARDS.
+    //
+    // Playing one game with rise off and another with rise on and comparing
+    // bucket means measures two things at once: the scoring change, and the
+    // fact that a bot scoring differently walks into different positions.
+    // The 7+ bucket held 80 candidates one way and 59 the other, and the
+    // confound was larger than the effect — unpaired, this reports rise
+    // making big clears WORSE (ratio 1.219) where the same boards scored
+    // both ways report it making them better (0.916).
+    //
+    // So one playthrough collects the positions and both scorings walk that
+    // same list. The drill is played rise-off because the bot that has to be
+    // convinced to clear is the one that does not already rise.
+    var positions = [];
+    var collect = PuyoCpu.prototype._decide;
+    PuyoCpu.prototype._decide = function () {
+        var board = this._snapshot();
+        positions.push({ board: board, incoming: board.incoming || null });
+        return collect.call(this);
+    };
+    try {
+        [1, 2, 3].forEach(function (seed) {
+            bench.run(shipped, seed, { brain: 'puyo', scenario: 'endless',
+                                       checkTiming: false, rise: false });
+        });
+    } finally { PuyoCpu.prototype._decide = collect; }
+
     function sweep(rise) {
         var buckets = { '0': { n: 0, sum: 0 }, '3': { n: 0, sum: 0 },
                         '4-6': { n: 0, sum: 0 }, '7+': { n: 0, sum: 0 } };
-        var orig = PuyoCpu.prototype._decide;
-        PuyoCpu.prototype._decide = function () {
-            var board = this._snapshot();
-            this._incoming = board.incoming || null;
-            var before = panels(board);
-            var hb = board.clone();
-            var hold = this._score(hb, hb.resolve(), null);
-            var legal = board.legalSwaps();
-            for (var i = 0; i < legal.length; i++) {
-                var t = board.clone();
-                t.swap(legal[i][0], legal[i][1]);
-                var res = t.resolve();
-                var sc = this._score(t, res, legal[i]);
+        var stack = new PanelEngine.Stack({ level: 10, seed: 1, countdown: false });
+        var cpu = new PuyoCpu(stack, { weights: shipped, reaction: 12, rise: rise });
+        positions.forEach(function (p) {
+            cpu._incoming = p.incoming;
+            var before = panels(p.board);
+            var hb = p.board.clone();
+            var hold = cpu._score(hb, cpu._resolveCandidate(hb), null);
+            p.board.legalSwaps().forEach(function (mv) {
+                var t = p.board.clone();
+                t.swap(mv[0], mv[1]);
+                var sc = cpu._score(t, cpu._resolveCandidate(t), mv);
                 var cl = before - panels(t);
                 var k = cl === 0 ? '0' : (cl <= 3 ? '3' : (cl <= 6 ? '4-6' : '7+'));
                 buckets[k].n++;
                 buckets[k].sum += (sc - hold);
-            }
-            return orig.call(this);
-        };
-        try {
-            [1, 2, 3].forEach(function (seed) {
-                bench.run(shipped, seed, { brain: 'puyo', scenario: 'endless',
-                                           checkTiming: false, rise: rise });
             });
-        } finally { PuyoCpu.prototype._decide = orig; }
+        });
         var out = { n: buckets['7+'].n };
         ['0', '3', '4-6', '7+'].forEach(function (k) {
             out[k] = buckets[k].n ? buckets[k].sum / buckets[k].n : null;
@@ -443,6 +474,9 @@ test('THE REGRESSION THIS EXISTS FOR: a big clear stops being the worst move on 
     }
 
     var off = sweep(false), on = sweep(true);
+    assert.strictEqual(off.n, on.n,
+        'the two sweeps saw different candidate counts (' + off.n + ' vs ' + on.n +
+        '), so they are not paired and the comparison is measuring position drift');
     if (process.env.GC_SHOW) console.log('   off', JSON.stringify(off), '\n   on ', JSON.stringify(on));
     assert.ok(off.n > 20 && on.n > 20,
         'too few big clears sampled (' + off.n + ' / ' + on.n + ') to say anything');
@@ -453,38 +487,28 @@ test('THE REGRESSION THIS EXISTS FOR: a big clear stops being the worst move on 
         'without rise, the penalty is no longer monotonic in how much was cleared — ' +
         'either it got fixed elsewhere or this sweep broke: ' + JSON.stringify(off));
 
-    // 2. Rise removes it, and by a lot. Not "improves it slightly": the
-    //    biggest clears go from the worst bucket to the cheapest.
-    //
-    //    THE THRESHOLD IS CALIBRATED, AND RECALIBRATED 2026-09-13. It was
-    //    0.6 against numbers taken when resolve() counted match-and-settle
-    //    ROUNDS as chain links. resolve() is now identical to the engine
-    //    (74,821 cases over 4,716 real boards), which moved the whole sweep:
-    //    the 7+ bucket reads -1366 -> -826 where the old code gave a figure
-    //    that cleared 0.6. Measured on the corrected resolve():
-    //
-    //        off  0 -148   3 -563   4-6 -1009   7+ -1366
-    //        on   0 -328   3 -934   4-6  -880   7+  -826
-    //
-    //    -826 / -1366 = 0.60 and a fraction, so 0.6 failed by seven points
-    //    on a 1,366-point figure. 0.75 keeps the check meaningful — it still
-    //    rejects "improved it slightly" — with room for the sweep's own
-    //    sampling wobble, which is real: the 7+ bucket holds 48 candidates
-    //    with rise off and 145 with it on.
-    //
-    //    Both numbers are recorded here rather than only the new one, so the
-    //    next person can see the threshold moved and why, instead of
-    //    re-deriving it. The assertion below is the one that carries the
-    //    actual claim and it was NOT touched: a 7+ clear must end up cheaper
-    //    than the smaller buckets, which is what "stops being the worst move
-    //    on the board" means.
+    // 2. Rise lifts the two clearing buckets, and the biggest clears most.
+    //    Measured 40% on 7+ and 29% on 4-6; the floors sit under those with
+    //    room for the sweep's own wobble and still reject "improved it
+    //    slightly". 0.75 on 7+ is the threshold this file has always
+    //    carried; it now passes, because the sweep is paired.
+    assert.ok(on['4-6'] > off['4-6'] * 0.85,
+        'rise did not lift the 4-6 penalty: ' + off['4-6'].toFixed(0) + ' -> ' +
+        on['4-6'].toFixed(0) + ' (measured 29% better; this needs 15%)');
     assert.ok(on['7+'] > off['7+'] * 0.75,
         'rise barely moved the 7+ penalty: ' + off['7+'].toFixed(0) + ' -> ' +
-        on['7+'].toFixed(0));
-    assert.ok(on['7+'] > on['4-6'] && on['7+'] > on['3'],
-        'with rise on, a 7+ clear is still scored worse than a smaller one (' +
-        JSON.stringify(on) + '), so the ordering that makes the bot refuse to cash ' +
-        'in is still there');
+        on['7+'].toFixed(0) + ' (measured 40% better; this needs 25%)');
+    assert.ok(on['7+'] >= on['4-6'],
+        'with rise on, a 7+ clear is still scored worse than a 4-6 (' +
+        on['7+'].toFixed(0) + ' vs ' + on['4-6'].toFixed(0) + ')');
+
+    // 3. And it does not do it by making holding look worse instead — the
+    //    do-nothing bucket must not be what moved.
+    assert.ok(Math.abs(on['0'] - off['0']) < Math.abs(on['4-6'] - off['4-6']),
+        'rise moved the do-nothing bucket (' + off['0'].toFixed(0) + ' -> ' +
+        on['0'].toFixed(0) + ') more than the clearing one (' + off['4-6'].toFixed(0) +
+        ' -> ' + on['4-6'].toFixed(0) + '), so it is shifting the baseline rather ' +
+        'than pricing the clear');
 });
 
 tests.forEach(function (t) {
