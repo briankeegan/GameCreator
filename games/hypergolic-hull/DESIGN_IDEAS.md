@@ -328,6 +328,77 @@ an asteroid belt, a nebula, a minefield left over from someone else's war.
   mine when it is worth it.
 - Each type needs its own draw. Hazards are a type switch in `app.js`.
 
+### Measured: which terrain actually helps
+
+Prototyped three types on a copy of the engine and chased one range-2
+hostile 540 times per condition, with a ship that closes and fires whenever
+a gun bears. The first metric — can you reach it — was too narrow, because
+it cannot see what the trip costs. Both are here; the second is the one
+that matters.
+
+Can you close, at 15% coverage:
+
+| terrain | caught |
+|---|---|
+| none | 180/540 |
+| rock | 211/540 |
+| cloud | 178/540 |
+| mine | 126/540 |
+| rock+cloud+mine | 179/540 |
+
+What closing costs, at 15%:
+
+| terrain | killed | hull lost per run | rounds |
+|---|---|---|---|
+| none | 120/540 | 2.22 | 9.8 |
+| rock | 137/540 | 1.79 | 8.2 |
+| cloud | 107/540 | 2.30 | 10.0 |
+| rock+cloud | 129/540 | 2.03 | 9.3 |
+
+**Rock is the only terrain that helps, on either metric. A cloud is worse
+than no terrain at all.**
+
+The reason generalises and is the most useful thing here: SYMMETRIC DENIAL
+FAVOURS WHOEVER BENEFITS FROM NOTHING HAPPENING. A cloud blocks your shots
+as well as the hostile's. A ship holding its range wants the turn to pass
+uneventfully; a ship closing needs to land a hit. Worse, "cannot get an
+angle" is the exact state that licenses a hostile to move backwards, so
+clouds manufacture the retreat they were meant to prevent. Mines fail the
+same way: shrinking the enemy's option set mostly makes it hold rather than
+close, and the player pays hull crossing them.
+
+So: build terrain for variety, for the push weapons, and to make hulls read
+differently on a board. Do not build it to fix reach, and do not build a
+cloud that blocks both ways.
+
+### Terrain that is worth STANDING in
+
+Everything above is a penalty — terrain you route around, which is an
+obstacle course rather than a decision. Advance Wars and Fire Emblem both
+pair a movement cost with a reason to be there: woods give cover and hide
+you, mountains give cover and sight. A board needs at least one hex worth
+occupying.
+
+- **Dust bank** — free to enter; anything shooting INTO it from outside
+  loses a point of damage. Somewhere to stand while closing on a long gun,
+  and asymmetric in the right direction: it rewards the side that has to
+  cross open ground.
+
+Advance Wars also charges movement PER UNIT TYPE — mountains stop cavalry
+outright. There are two drives now, Sublight at one hex and Ion at two.
+Terrain the Ion Drive crosses and the Sublight snags in makes the hull you
+picked change how a board reads, which is worth more than any single
+hazard.
+
+### A prerequisite nothing else can skip
+
+`checkPlayerHazard` destroys the ship on ANY hazard. There is exactly one
+concept in the engine today — hazard means death — and asteroids only
+escape it by being unenterable. Every survivable terrain type has to be
+taught, one at a time, before any of this works. (Found by writing a
+prototype where clouds killed the ship, and measuring how often the player
+suicided instead of what was intended.)
+
 ### What terrain will NOT fix
 
 The standoff problem it was proposed for. Measured — chase one range-2
@@ -342,9 +413,21 @@ hostile with a ship that only closes and never fires, 540 attempts:
 | 25% | 218/540 | 8.1 |
 
 Rock blocks the chaser as much as the kiter, which is why 25% is no better
-than 15%. Terrain is worth building for its own sake. The standoff fix is a
-separate one-line change to the movement rule: a hostile that cannot fire
-this turn must strictly REDUCE the distance, not merely avoid increasing it.
+than 15%. Terrain is worth building for its own sake.
+
+The fix is a rule. Two candidates:
+
+- **Must close.** A hostile that cannot fire this turn must strictly REDUCE
+  the distance, not merely avoid increasing it. This extends intent already
+  written into the movement code, which argues at length that reach keeping
+  its distance cannot be answered by a ship that walks one hex a round, and
+  then permits exactly that via sideways moves.
+- **Locking zone of control.** A ship adjacent to another may not move to a
+  hex that is not adjacent to it. The canonical wargame answer, and it makes
+  "once you catch it, it is caught" true for every class at once. Board
+  wargames grade this rigid / elastic / locking; an opportunity shot when
+  something leaves your adjacency is the softer version, and would reuse the
+  firing phase this game already has.
 
 ## HULL PARITY — BUILT (2026-09-18)
 
