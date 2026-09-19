@@ -122,6 +122,11 @@ for (i = 0; i < src.boards.length; i += STRIDE) {
         liveBoard: after,
         travelFrames: (n % 5) * 4,          // exercises travelCost over its range
         displacement: n % 16,                // exercises maxHeight's sub-row term
+        // A COLUMN THAT NEVER MOVES CANNOT DISAGREE. stopTimeGain is the
+        // difference between what a move earns and the clock already
+        // running, so a fixture that left the clock at zero would compare
+        // the two implementations only on boards where it does not matter.
+        clock: { stopTime: (n % 7) * 20, toppedOut: (n % 11) === 0 },
         earned: {
             chainLength: res.chainLength,
             comboSizes: res.comboSizes || [],
@@ -152,6 +157,7 @@ for (i = 0; i < src.boards.length; i += STRIDE) {
         blocks: Object.keys(after.blocks).length,
         travelFrames: raw.travelFrames,
         displacement: raw.displacement,
+        clock: raw.clock,
         earned: raw.earned,
         features: features
     });

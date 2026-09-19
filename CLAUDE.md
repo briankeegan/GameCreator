@@ -211,6 +211,13 @@ ways: a tool not listed, or a path listed that doesn't exist.
   `GC_TAG` and a `GC_MIN_POP` its own population clears — the head-to-head
   trainers hold 16. `snapshot_pipe.test.js` runs the whole hook against a
   throwaway repo in about a second; run it before spending hours.
+- **The Lua port is checked, not reviewed.** The same evaluator lives in the
+  `panel-game` checkout beside this one (`bot/PanelEval.lua`,
+  `bot/WeightedBrain.lua`). `export_reference.js` writes the feature fixture
+  there and `export_decisions.js` the MOVE fixture — the move the bot plays on
+  400 real boards, because agreeing on every feature is not the same as
+  playing the same game. Change a feature or the search and re-export, or the
+  two drift apart in silence.
 - A test's scratch files go beside the test, never `os.tmpdir()`.
 
 ## Infrastructure
