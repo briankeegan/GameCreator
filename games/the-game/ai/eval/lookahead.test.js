@@ -407,9 +407,13 @@ test('and that travel is IN the value, at the right size', function () {
     //
     // travelCost is one unit per cell walked (features.js inverts
     // travel.js's frame formula) and its sign is -1, so the arithmetic is
-    // exact: every extra cell is exactly weights.travelCost off the score.
-    // "It goes down" would pass for a cost applied at the wrong scale, and
-    // a cost at the wrong scale loses to roughness when it should win.
+    // exact: every extra cell is weights.travelCost DIVIDED BY THE FEATURE'S
+    // NORM off the score, because every feature is a share of its own bound
+    // rather than a raw count. The divisor is read from the registry, not
+    // written here, so changing it moves this test with it instead of
+    // stranding it. "It goes down" would pass for a cost applied at the wrong
+    // scale, and a cost at the wrong scale loses to roughness when it should
+    // win.
     var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
     var cpu = new PuyoCpu(stack, { weights: W, reaction: 12, depth: 2 });
     for (var f = 0; f < 300; f++) { cpu.update(); stack.run(); stack.drainEvents(); }
@@ -454,13 +458,14 @@ test('and that travel is IN the value, at the right size', function () {
         child.swap(mv[0], mv[1]);
         return cpu._score(child, cpu._resolveCandidate(child), mv, from);
     }
+    var perCell = W.travelCost / require('./registry.js').byKey.travelCost.norm;
     var base = scoreFrom([mv[0], mv[1]]), wrong = [];
     [[mv[0], mv[1] + 1], [mv[0] + 2, mv[1] + 3], [1, 1]].forEach(function (from) {
         var steps = Math.abs(mv[0] - from[0]) + Math.abs(mv[1] - from[1]);
-        var got = scoreFrom(from), want = base - W.travelCost * steps;
+        var got = scoreFrom(from), want = base - perCell * steps;
         if (Math.abs(got - want) > 1e-6) {
             wrong.push(steps + ' cells away scored ' + got.toFixed(4) + ', and ' + steps +
-                       ' cells at ' + W.travelCost + ' a cell is ' + want.toFixed(4));
+                       ' cells at ' + perCell + ' a cell is ' + want.toFixed(4));
         }
     });
     assert.deepStrictEqual(wrong, [], 'travel is priced at the wrong scale:\n  ' + wrong.join('\n  '));
