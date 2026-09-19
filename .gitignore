@@ -48,3 +48,7 @@ games/the-game/ai/eval/.snapshot-pipe-scratch/
 # train_pbt.js drops this when it stops because another leg will not fit;
 # the workflow reads it to tell a clean handover from a crash loop.
 games/the-game/ai/eval/.pbt-clean-stop
+
+# Scratch from the duel fan-out (duels.js). Cleaned up on exit; a killed
+# run leaks them, and a leaked one must never be committable.
+.duels.*.json
