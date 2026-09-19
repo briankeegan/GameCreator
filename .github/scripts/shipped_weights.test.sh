@@ -56,7 +56,13 @@ if ! check; then
 fi
 echo "  accepts:    the shipped bot as committed"
 
-sed -i 's/roughness: [0-9]*/roughness: 249/' "$G/ai/trained-weights.js"
+# Damage whatever weight is actually FIRST in the file. Naming one (this
+# said `roughness`) silently stops damaging anything the moment the shipped
+# bot is trained on a feature set without it, and a test that edits nothing
+# reports the checker missed a defect that was never introduced.
+_rt=$(grep -oE '^      [a-zA-Z]+: -?[0-9]+' "$G/ai/trained-weights.js" | head -1 | tr -d ' ' | cut -d: -f1)
+[ -n "$_rt" ] || { echo "  SETUP: no weights found in trained-weights.js"; exit 1; }
+sed -i "s/${_rt}: -\?[0-9]*/${_rt}: 249/" "$G/ai/trained-weights.js"
 try "a single weight retyped"
 restore
 
@@ -97,4 +103,35 @@ try "puzzles.bench.js goes back to reading GC_DENSITY itself"
 cp "$SRC/games/the-game/ai/eval/puzzles.bench.js" "$G/ai/eval/"
 
 echo "$pass caught, $missed missed"
+
+# ---------------------------------------------------------------------------
+# BEAM 0 IS A VALUE, NOT AN ABSENCE.
+#
+# beam 0 means expand every candidate. export_weights.js read it as
+# `snap.beam || 6`, so a snapshot trained on a full search shipped switches
+# saying beam 6 — the weights would run against a search they never saw,
+# which is the one thing the switches object exists to prevent. Both the
+# export and the checker use the same code, so nothing else could catch it.
+echo "== beam 0 survives the export =="
+_bw_dir=$(cd "$(dirname "$0")/../../games/the-game/ai/eval" && pwd)
+_bw_snap="$_bw_dir/.beam-zero.test.json"
+cat > "$_bw_snap" <<'JSON'
+{ "mode":"pbt","updates":1000,"depth":2,"beam":0,"rise":true,"density":false,
+  "features":["linksH"],"weights":{"linksH":5},
+  "holdout":{"learned":{"fitness":1,"winRate":1,"duels":12},"shipped":{"fitness":0}} }
+JSON
+# Exported to a scratch file, never over the bot the game loads.
+_bw_ship="$_bw_dir/.beam-zero.test.out.js"
+(cd "$_bw_dir" && node export_weights.js "$_bw_snap" "$_bw_ship" >/dev/null 2>&1) || true
+_bw_out=$(grep -o '"beam":[0-9]*' "$_bw_ship" 2>/dev/null | head -1)
+rm -f "$_bw_snap" "$_bw_ship"
+if [ "$_bw_out" = '"beam":0' ]; then
+  echo "  ok   a snapshot with beam 0 ships beam 0"
+else
+  echo "  FAIL a snapshot with beam 0 shipped $_bw_out — 0 was read as absent"
+  missed=$((missed+1))
+fi
+
+# ONE verdict, at the end. The damage count used to decide the exit status
+# here, with sections after it, so anything added below silently overwrote it.
 [ "$missed" -eq 0 ]

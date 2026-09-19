@@ -1,13 +1,13 @@
 // TRAINED WEIGHTS — GENERATED, DO NOT EDIT BY HAND.
 //
-//   node ai/eval/export_weights.js ai/eval/trained.replace.l10-puyo-puyo18-s11.0914-020835.g00274.json
+//   node ai/eval/export_weights.js ai/eval/trained.pbt.pbt-norm-s120-s120.0919-012538.g03000.json
 //
 // Found by the cross-entropy search in ai/eval/train.js, which stopped
 // itself when the numbers stopped moving, not on a generation budget.
-// elite of generation 274, by training fitness.
+// champion of 4 islands after 3000 updates.
 //
 // Held out (seeds never trained on), against the game's previous AI:
-//   learned 3495   previous 612   +471%
+//   learned 1   previous 0   +Infinity%
 //
 // Features absent from this list were searched and left at zero, or were
 // added after this snapshot; evaluate() skips a zero weight, so either way
@@ -17,27 +17,20 @@
   "use strict";
   root.PanelEval = root.PanelEval || {};
   root.PanelEval.trained = {
-    source: "trained.replace.l10-puyo-puyo18-s11.0914-020835.g00274.json",
-    heldOut: 3495,
-    switches: {"density":false,"rise":false,"depth":1,"beam":6},
+    source: "trained.pbt.pbt-norm-s120-s120.0919-012538.g03000.json",
+    heldOut: 1,
+    switches: {"density":false,"rise":true,"depth":2,"beam":0},
     weights: {
-      matchPotential: 277,
-      chainPotential: 169,
-      comboPotential: 167,
-      staircase: 60,
-      staircaseReady: 40,
-      flatTop: 35,
-      links: 11,
-      colourVariance: 289,
-      edgePenalty: 69,
-      garbageOnBoard: 240,
-      maxHeight: 97,
-      roughness: 42,
-      garbageAdjacency: 62,
-      colourScarcity: 76,
-      scoreEarned: 79,
-      stopTimeEarned: 121,
-      brokeGarbage: 192
+      linksH: -21,
+      linksV: 30,
+      colourVariance: 147,
+      edgePenalty: 75,
+      garbageOnBoard: 14,
+      maxHeight: 24,
+      fillRatio: 144,
+      garbageAdjacency: -35,
+      garbageSent: -77,
+      stopTimeEarned: 12
     }
   };
 }(typeof window !== "undefined" ? window : globalThis));

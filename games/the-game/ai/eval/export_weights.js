@@ -72,7 +72,11 @@ var out = [
         density: !!snap.density,
         rise: !!snap.rise,
         depth: snap.depth || 1,
-        beam: snap.beam || 6
+        // BEAM 0 IS A VALUE, NOT AN ABSENCE. It means expand every candidate,
+        // and `||` treated it as unset and shipped 6 instead -- so weights
+        // found by a full search would have run against a beam of 6, which
+        // is the switches mismatch this object exists to prevent.
+        beam: snap.beam == null ? 6 : snap.beam
     }) + ',',
     '    weights: {',
     body.split('\n').map(function (l) { return '  ' + l; }).join(',\n').replace(/,,/g, ','),
@@ -82,7 +86,9 @@ var out = [
     ''
 ].join('\n');
 
-var dest = path.join(__dirname, '..', 'trained-weights.js');
+// An explicit destination, so a test can exercise this without writing over
+// the bot the game actually loads. Default is the real one.
+var dest = process.argv[3] || path.join(__dirname, '..', 'trained-weights.js');
 fs.writeFileSync(dest, out);
 console.log('wrote ' + dest + ' (' + keys.length + ' non-zero weights, held-out ' +
             Math.round(held || 0) + ')');
