@@ -35,6 +35,8 @@ const logEl = document.getElementById("log");
 const overlayEl = document.getElementById("runOverlay");
 const overlayTitleEl = document.getElementById("runOverlayTitle");
 const overlayBodyEl = document.getElementById("runOverlayBody");
+const recordsToggleEl = document.getElementById("recordsToggle");
+const recordsEl = document.getElementById("records");
 const unlockCardEl = document.getElementById("unlockCard");
 const nextUnlockEl = document.getElementById("nextUnlock");
 const manifestToggleEl = document.getElementById("manifestToggle");
@@ -122,7 +124,59 @@ function freshRunSeed() {
 // currency and nothing to unlock: you pick a hull, you fly it. Adding more
 // hulls is a data change, and gating some of them can come back later
 // without any of this machinery returning.
-let selectedLoadout = GCStorage.get(GAME_ID, "selectedLoadout", "standard");
+// ---- SERVICE RECORDS -----------------------------------------------------
+// Three of them, and switching is how you start fresh — nothing is
+// destroyed to begin again, and handing someone the phone does not cost
+// you your record. Every save key below is scoped to the active one; the
+// only unscoped key in the game is which record is active.
+// The key names a save used BEFORE records existed. Only the migration
+// reads this list; SAVE_KEYS below is the live one.
+const LEGACY_KEYS = [
+  "run",
+  "levelIndex",
+  "sectorHistory",
+  "chartIndex",
+  "usedActions",
+  "bestDepth",
+  "selectedLoadout",
+  "manifest",
+  "announced",
+  "stillNew",
+];
+const SLOT_COUNT = 3;
+const SLOT_KEY = "activeRecord";
+let activeSlot = GCStorage.get(GAME_ID, SLOT_KEY, 1);
+if (!(activeSlot >= 1 && activeSlot <= SLOT_COUNT)) activeSlot = 1;
+
+function slotKey(slot, key) {
+  return `r${slot}:${key}`;
+}
+// Read/write THIS record. Everything that persists goes through these two,
+// so a key can never accidentally end up shared between records.
+function loadSave(key, fallback) {
+  return GCStorage.get(GAME_ID, slotKey(activeSlot, key), fallback);
+}
+function saveSave(key, value) {
+  GCStorage.set(GAME_ID, slotKey(activeSlot, key), value);
+}
+// Read ANOTHER record, for the summary on its chip — without switching to
+// it, which would mean a reload just to look.
+function peekSave(slot, key, fallback) {
+  return GCStorage.get(GAME_ID, slotKey(slot, key), fallback);
+}
+
+// A save written before records existed becomes record 1, once. Without
+// this an existing player opens the game to an empty hangar and their
+// history looks lost.
+if (GCStorage.get(GAME_ID, "bestDepth", null) !== null && peekSave(1, "bestDepth", null) === null) {
+  for (const key of LEGACY_KEYS) {
+    const value = GCStorage.get(GAME_ID, key, null);
+    if (value !== null) GCStorage.set(GAME_ID, slotKey(1, key), value);
+    GCStorage.remove(GAME_ID, key);
+  }
+}
+
+let selectedLoadout = loadSave("selectedLoadout", "standard");
 // THE ARMOURY and THE MANIFEST. The armoury is everything you own, opened
 // up by how deep you have ever got; the manifest is the handful fitted
 // before launch, and the Outpost shelf offers nothing else — so owning
@@ -130,7 +184,7 @@ let selectedLoadout = GCStorage.get(GAME_ID, "selectedLoadout", "standard");
 // How deep this save has EVER got. It is the only unlock signal in the
 // game — hulls and guns both read it — so it has to exist before anything
 // derived from it.
-let bestDepth = GCStorage.get(GAME_ID, "bestDepth", 1);
+let bestDepth = loadSave("bestDepth", 1);
 const MANIFEST_SLOTS = 6;
 // The armoury is DERIVED from how deep you have ever got, never stored: a
 // saved set goes stale the moment a gun is renamed or the schedule moves,
@@ -139,20 +193,38 @@ const MANIFEST_SLOTS = 6;
 function armouryNow() {
   return Engine.unlockedWeapons(bestDepth);
 }
-let manifest = GCStorage.get(GAME_ID, "manifest", null);
+let manifest = loadSave("manifest", null);
 
 // WHAT HAS BEEN ANNOUNCED, and what is still wearing a NEW mark. An unlock
 // you find later in a menu is not a reward, it is paperwork — so the run
 // that earns one says so, once, before anything else on the screen, and
 // the thing keeps a dot on it until you have actually looked at it.
-let announced = new Set(GCStorage.get(GAME_ID, "announced", null) || []);
-let stillNew = new Set(GCStorage.get(GAME_ID, "stillNew", null) || []);
+let announced = new Set(loadSave("announced", null) || []);
+let stillNew = new Set(loadSave("stillNew", null) || []);
+
+// EVERY key this game owns. A wipe that misses one leaves a save half
+// alive — a fresh record still holding the last run's hold, or a hull
+// selection pointing at something the new record has not earned. Adding a
+// key means adding it here; `saveKeys.test` in browser.test.js fails if a
+// GCStorage.set in this file names one that is not on the list.
+const SAVE_KEYS = [
+  "run",
+  "levelIndex",
+  "sectorHistory",
+  "chartIndex",
+  "usedActions",
+  "bestDepth",
+  "selectedLoadout",
+  "manifest",
+  "announced",
+  "stillNew",
+];
 
 function persistUnlocks() {
-  GCStorage.set(GAME_ID, "selectedLoadout", selectedLoadout);
-  GCStorage.set(GAME_ID, "manifest", manifest.slice());
-  GCStorage.set(GAME_ID, "announced", Array.from(announced));
-  GCStorage.set(GAME_ID, "stillNew", Array.from(stillNew));
+  saveSave("selectedLoadout", selectedLoadout);
+  saveSave("manifest", manifest.slice());
+  saveSave("announced", Array.from(announced));
+  saveSave("stillNew", Array.from(stillNew));
 }
 
 // A fresh save fits the slots from what it owns; an older one is trimmed to
@@ -163,7 +235,7 @@ manifest = (manifest || armouryNow().slice(0, MANIFEST_SLOTS)).filter((id) => ar
 // A save that predates any of this, or a brand new one, has everything it
 // currently holds marked as already seen — otherwise the first run-over
 // screen is a wall of cards for things you have had all along.
-if (!GCStorage.get(GAME_ID, "announced", null)) {
+if (!loadSave("announced", null)) {
   for (const t of Engine.unlockedAt(bestDepth)) announced.add(t.id);
 }
 persistUnlocks();
@@ -265,11 +337,11 @@ let mapVisible = false;
 // that's easy to miss in the scrolling log. Every action/ability button
 // pulses the FIRST time it's ever shown unused, across every run (tracked
 // permanently, not just this sector) — see updateHud/markActionUsed.
-let usedActions = new Set(GCStorage.get(GAME_ID, "usedActions", []));
+let usedActions = new Set(loadSave("usedActions", []));
 function markActionUsed(m) {
   if (usedActions.has(m)) return;
   usedActions.add(m);
-  GCStorage.set(GAME_ID, "usedActions", Array.from(usedActions));
+  saveSave("usedActions", Array.from(usedActions));
 }
 
 // Tapping anything on the board in Scan mode inspects it — an enemy, the
@@ -3257,13 +3329,13 @@ function setMode(next) {
 }
 
 function persist() {
-  GCStorage.set(GAME_ID, "run", state);
-  GCStorage.set(GAME_ID, "levelIndex", levelIndex);
-  GCStorage.set(GAME_ID, "sectorHistory", sectorHistory);
-  GCStorage.set(GAME_ID, "chartIndex", chartIndex);
+  saveSave("run", state);
+  saveSave("levelIndex", levelIndex);
+  saveSave("sectorHistory", sectorHistory);
+  saveSave("chartIndex", chartIndex);
   if (state.status === "won") {
     bestDepth = Math.max(bestDepth, state.levelId);
-    GCStorage.set(GAME_ID, "bestDepth", bestDepth);
+    saveSave("bestDepth", bestDepth);
   }
   // Written every render, same as "run" itself — otherwise a page reload
   // while sitting on the death/victory overlay (state.status still "lost"
@@ -3378,6 +3450,8 @@ function updateHud() {
   } else {
     overlayEl.hidden = true;
     manifestOpen = false; // the overlay always reopens on the hangar,
+    recordsOpen = false;
+    wipeArmed = false;
     hangarLoadout = null; // showing the hull that would actually launch
   }
 
@@ -3718,11 +3792,13 @@ function updateHangar() {
   unlockCardEl.hidden = !celebrating;
   nextUnlockEl.hidden = true;
   manifestToggleEl.hidden = celebrating;
+  recordsToggleEl.hidden = celebrating;
   restartBtn.hidden = celebrating;
   continueBtnEl.hidden = continueBtnEl.hidden || celebrating;
   if (celebrating) {
     loadoutDetailEl.hidden = true;
     manifestPickerEl.hidden = true;
+    recordsEl.hidden = true;
     drawUnlockCard(pending);
     return;
   }
@@ -3738,8 +3814,17 @@ function updateHangar() {
   manifestToggleEl.textContent = manifestOpen
     ? "\u25c0 Back to the hangar"
     : `Manifest \u2014 ${manifest.length} of ${MANIFEST_SLOTS} fitted \u25b6`;
-  loadoutDetailEl.hidden = manifestOpen;
+  manifestToggleEl.hidden = recordsOpen;
+  recordsToggleEl.textContent = recordsOpen
+    ? "\u25c0 Back to the hangar"
+    : `Record ${activeSlot} \u2014 deepest depth ${bestDepth} \u25b6`;
+  // The hangar and the two side panes: exactly one of the three is up, so
+  // the overlay always fits the frame without scrolling.
+  loadoutDetailEl.hidden = manifestOpen || recordsOpen;
   manifestPickerEl.hidden = !manifestOpen;
+  recordsEl.hidden = !recordsOpen;
+  nextUnlockEl.hidden = nextUnlockEl.hidden || recordsOpen;
+  restartBtn.hidden = recordsOpen;
   // Launch flies what is on screen, so it cannot be pressed while that is
   // something you haven't earned. The button says the condition rather than
   // just going grey: a disabled control with no reason on it is a bug
@@ -3749,8 +3834,74 @@ function updateHangar() {
   restartBtn.textContent = locked
     ? `Locked \u2014 reach depth ${Engine.STARTING_LOADOUTS[hangarLoadout].unlockDepth}`
     : "Launch";
-  if (manifestOpen) updateManifestPicker();
+  if (recordsOpen) updateRecords();
+  else if (manifestOpen) updateManifestPicker();
   else updateHangarDetail();
+}
+
+// THE RECORDS PANE. Three of them, each showing what it has actually done,
+// so switching is an informed choice and not a coin flip. Switching is
+// also the non-destructive way to start over — the reason a wipe barely
+// needs to exist.
+let recordsOpen = false;
+let wipeArmed = false;
+
+function recordSummary(slot) {
+  const depth = peekSave(slot, "bestDepth", null);
+  if (depth === null) return { empty: true, text: "Empty \u2014 a fresh start" };
+  const things = Engine.unlockedAt(depth).length;
+  return { empty: false, text: `Deepest depth ${depth} \u00b7 ${things} unlocked` };
+}
+
+function updateRecords() {
+  recordsEl.innerHTML = "";
+  for (let slot = 1; slot <= SLOT_COUNT; slot++) {
+    const active = slot === activeSlot;
+    const summary = recordSummary(slot);
+    const row = document.createElement("button");
+    row.className = "record-row" + (active ? " active" : "");
+    row.dataset.slot = String(slot);
+    const name = document.createElement("span");
+    name.className = "record-name";
+    name.textContent = active ? `Record ${slot} \u2713` : `Record ${slot}`;
+    const sub = document.createElement("span");
+    sub.className = "record-sub" + (summary.empty ? " empty" : "");
+    sub.textContent = summary.text;
+    row.append(name, sub);
+    row.disabled = active;
+    row.addEventListener("click", () => {
+      // A record IS the save, and every read of it happens at load. So
+      // switching is: point at the other one, then boot. No second code
+      // path that has to stay in step with the first.
+      GCStorage.set(GAME_ID, SLOT_KEY, slot);
+      window.location.reload();
+    });
+    recordsEl.appendChild(row);
+  }
+
+  // Wiping THIS record, which is safe in a way it never was on its own:
+  // the other two survive it, and starting fresh does not need it at all.
+  // Still two taps, same shape as the scuttling charges.
+  const wipe = document.createElement("button");
+  wipe.className = "wipe-record" + (wipeArmed ? " armed" : "");
+  wipe.id = "wipeRecordBtn";
+  const mine = recordSummary(activeSlot);
+  wipe.disabled = mine.empty;
+  wipe.textContent = mine.empty
+    ? `Record ${activeSlot} is already empty`
+    : wipeArmed
+      ? `Confirm \u2014 erase record ${activeSlot} (${mine.text.toLowerCase()})`
+      : `Erase record ${activeSlot}`;
+  wipe.addEventListener("click", () => {
+    if (!wipeArmed) {
+      wipeArmed = true;
+      updateRecords();
+      return;
+    }
+    for (const key of SAVE_KEYS) GCStorage.remove(GAME_ID, slotKey(activeSlot, key));
+    window.location.reload();
+  });
+  recordsEl.appendChild(wipe);
 }
 
 // The reward screen. One card per thing earned, each with the actual
@@ -5141,8 +5292,8 @@ function isValidSave(s) {
 // loadSector(0); falls back to a fresh run if there's nothing saved (or
 // nothing valid saved) yet.
 function restoreRun() {
-  const savedState = GCStorage.get(GAME_ID, "run", null);
-  const savedIndex = GCStorage.get(GAME_ID, "levelIndex", null);
+  const savedState = loadSave("run", null);
+  const savedIndex = loadSave("levelIndex", null);
   if (!isValidSave(savedState) || savedIndex === null) {
     loadSector(0, { runSeed: freshRunSeed(), startingLoadout: selectedLoadout, manifest: manifest.slice() });
     return;
@@ -5194,13 +5345,13 @@ function restoreRun() {
   ensureScanner(state);
   // Same reasoning as isValidSave above, applied per-entry — drop any
   // stale chart snapshot rather than crashing a jump later.
-  sectorHistory = GCStorage.get(GAME_ID, "sectorHistory", []).filter((entry) => entry && isValidSave(entry.state));
+  sectorHistory = loadSave("sectorHistory", []).filter((entry) => entry && isValidSave(entry.state));
   sectorHistory.forEach((entry) => {
     clampAp(entry.state);
     purgeRetiredGear(entry.state);
     ensureScanner(entry.state);
   });
-  const savedChartIndex = GCStorage.get(GAME_ID, "chartIndex", sectorHistory.length - 1);
+  const savedChartIndex = loadSave("chartIndex", sectorHistory.length - 1);
   chartIndex = Math.max(0, Math.min(savedChartIndex, sectorHistory.length - 1));
   if (!sectorHistory.length) {
     // A valid live state but no chart (older save) — seed the chart with it.
@@ -5662,6 +5813,12 @@ restartBtn.addEventListener("click", scuttleShip);
 
 manifestToggleEl.addEventListener("click", () => {
   manifestOpen = !manifestOpen;
+  updateHangar();
+});
+
+recordsToggleEl.addEventListener("click", () => {
+  recordsOpen = !recordsOpen;
+  wipeArmed = false; // armed charges do not follow you off the screen
   updateHangar();
 });
 

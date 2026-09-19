@@ -992,6 +992,95 @@ async function freshPage(browser, url, errors) {
   assert.ok(s.hold.items.map((it) => it.id).includes("shieldGenerator"), "and a genuinely new run after the reload still picks it up");
   await page.close();
 
+  // ---- Service records: three of them, and switching is the fresh start --
+  // Nothing is destroyed to begin again. The records are ISOLATED: what one
+  // earns is invisible to the others, which is the whole reason this exists
+  // rather than a wipe button.
+  page = await freshPage(browser, url, errors);
+  await page.evaluate(() => {
+    window.__hhState.levelId = 34;
+    window.__hhState.status = "won"; // banks bestDepth on record 1
+    window.render();
+    window.__hhState.hull = 0;
+    window.__hhState.status = "lost";
+    window.render();
+  });
+  await waitForOverlay(page);
+  assert.strictEqual(await page.locator("#recordsToggle").isVisible(), false, "not offered on the screen that just rewarded you");
+  await page.click("#unlockOkBtn");
+  await page.waitForTimeout(80);
+  assert.match(
+    await page.locator("#recordsToggle").textContent(),
+    /Record 1 — deepest depth 34/,
+    "the hangar says which record is flying and what it has done"
+  );
+  await page.click("#recordsToggle");
+  await page.waitForTimeout(100);
+  assert.strictEqual(await page.locator(".record-row").count(), 3, "three records");
+  assert.match(await page.locator(".record-row >> nth=0").textContent(), /Deepest depth 34/);
+  assert.match(await page.locator(".record-row >> nth=1").textContent(), /Empty/, "the others are untouched by what record 1 did");
+  assert.strictEqual(await page.locator(".record-row >> nth=0").isDisabled(), true, "the one you are on is not a button to press");
+
+  // Switching is a fresh start that costs nothing.
+  await page.click(".record-row >> nth=1");
+  await page.waitForFunction(() => window.__hhState && window.__hhState.status === "playing");
+  await page.evaluate(() => {
+    window.__hhState.hull = 0;
+    window.__hhState.status = "lost";
+    window.render();
+  });
+  await waitForOverlay(page);
+  assert.strictEqual(await page.locator("#unlockCard").isVisible(), false, "a fresh record has earned nothing, so it celebrates nothing");
+  assert.strictEqual(await page.locator(".hangar-count").textContent(), "1 / 4");
+  await page.click(".hangar-arrow >> nth=1");
+  await page.waitForTimeout(80);
+  assert.strictEqual(await page.locator("#restartBtn").isDisabled(), true, "and the hulls record 1 had earned are locked here");
+
+  // Record 1 is still exactly where it was left.
+  await page.click(".hangar-arrow >> nth=0");
+  await page.waitForTimeout(60);
+  await page.click("#recordsToggle");
+  await page.waitForTimeout(100);
+  assert.match(
+    await page.locator(".record-row >> nth=0").textContent(),
+    /Deepest depth 34/,
+    "starting over did not touch the record that was there"
+  );
+
+  // Erasing is per-record, still two taps, and names what goes. Switching
+  // BACK resumes record 1 exactly where it was left — which was on its own
+  // death screen, so there is no fresh run to wait for here.
+  await page.click(".record-row >> nth=0");
+  await waitForOverlay(page);
+  assert.strictEqual(
+    await page.evaluate(() => window.__hhState.status),
+    "lost",
+    "a record resumes where it was left, dead run and all"
+  );
+  await page.click("#recordsToggle");
+  await page.waitForTimeout(100);
+  assert.strictEqual(await page.locator("#wipeRecordBtn").textContent(), "Erase record 1");
+  await page.click("#wipeRecordBtn"); // arms
+  await page.waitForTimeout(60);
+  assert.match(
+    await page.locator("#wipeRecordBtn").textContent(),
+    /Confirm — erase record 1 \(deepest depth 34/,
+    "one tap arms it and names exactly what goes — it never just erases"
+  );
+  assert.strictEqual(
+    await page.evaluate(() => Number(localStorage.getItem("gc:hypergolic-hull:r1:bestDepth"))),
+    34,
+    "...and nothing is gone yet"
+  );
+  await page.click("#wipeRecordBtn"); // fires
+  await page.waitForFunction(() => window.__hhState && window.__hhState.status === "playing");
+  assert.strictEqual(
+    await page.evaluate(() => localStorage.getItem("gc:hypergolic-hull:r1:bestDepth")),
+    null,
+    "the second tap means it"
+  );
+  await page.close();
+
   // ---- Tap-tap movement: course in, confirm, rethink, dismiss -------------
   // "You engage move... cancel... rethink" — the first tap lays a course
   // in and moves NOTHING; tapping elsewhere dismisses it for a new one;

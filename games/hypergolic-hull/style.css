@@ -440,6 +440,59 @@ body {
   color: #6f819c;
   opacity: 1;
 }
+/* The three service records. A row per record, saying what it has
+   actually done, so switching is an informed choice and not a coin flip. */
+.records {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 21rem;
+}
+.records[hidden] { display: none; }
+.run-overlay .record-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin: 0;
+  width: 100%;
+  padding: 8px 12px;
+  background: #1b2740;
+  color: #cfe2ff;
+  text-align: left;
+}
+.run-overlay .record-row.active {
+  background: #10182a;
+  outline: 2px solid #ffd27f;
+  outline-offset: -2px;
+  cursor: default;
+}
+.run-overlay .record-row:disabled { opacity: 1; color: #cfe2ff; }
+.record-name { font-weight: 700; font-size: 0.85rem; }
+.record-sub { font-size: 0.72rem; color: #9fb0c9; font-weight: 400; }
+.record-sub.empty { color: #7fe3a8; }
+
+/* Starting over. Quiet until armed — it is the one control on this screen
+   that destroys something, and it sits below everything you would actually
+   come here to do. */
+.run-overlay .wipe-record {
+  margin-top: 0.5rem;
+  background: none;
+  color: #6f819c;
+  border: 1px solid #2a3652;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 5px 12px;
+}
+.wipe-record[hidden] { display: none; }
+.run-overlay .wipe-record:disabled { opacity: 0.45; cursor: not-allowed; background: none; color: #6f819c; }
+.run-overlay .wipe-record.armed {
+  background: #7a2318;
+  border-color: #ff5a4a;
+  color: #ffd9d3;
+}
+
 .next-unlock {
   margin: 0;
   font-size: 0.72rem;
