@@ -255,6 +255,97 @@ outside the thesis).
 - Are the eight weapons above the right eight? They were chosen to fill
   gaps in the existing shape table, not because a player asked for them.
 
+## TERRAIN — a plan, not yet built (2026-09-19)
+
+### What is there now
+
+Two kinds, and one of them is rare:
+
+| | Movement | Shots | Effect |
+|---|---|---|---|
+| Asteroid | blocked | blocked (except the Mortar, which lobs) | — |
+| Black hole | enterable | — | destroys whatever ends there |
+
+Density, measured across depths 1–12: **1.9% of hexes**. Depths 1–4 have
+none at all. The boards are open fields, so position is almost never
+constrained by anything but other ships.
+
+Cover already works properly — `blocksShot` stops lanes and shells at rock,
+and only `ignoresCover` sees through. That is the expensive half of terrain
+and it is already built.
+
+### What the genre does
+
+- **Into the Breach**: ~9 tile types, and the core loop is *pushing things
+  into* the hostile ones — water and lava kill, mountains block movement AND
+  attacks, smoke cancels a unit's attack entirely, forest catches fire, sand
+  becomes smoke. Terrain is the cheapest weapon in the game.
+- **Hoplite** (hex, and the closest relative): lava is instant death; altars
+  are impassable AND block arrows. Its archer has a 5-hex range, cannot shoot
+  adjacent, and shoots in 6 directions only — the same standoff problem this
+  game has — and the board's walls and lava are what stop it kiting forever.
+- Tabletop design writing converges on the same three: partial coverage beats
+  uniform, two or three types beat one, and a hazard should force a decision
+  rather than just deal damage.
+
+The rule underneath all of it: **terrain has to cut both ways**. This game
+already destroys a hostile pushed into a hazard, and it owns two push
+weapons (Repulsor Field, Tractor Beam) that are currently niche. Terrain
+variety is what makes them good.
+
+### Proposed types
+
+Each one is a distinct verb. Nothing here is a damage number with a new
+name.
+
+| Terrain | Movement | Shots | Effect | What it is FOR |
+|---|---|---|---|---|
+| Asteroid *(have)* | blocked | blocked | — | walls and lanes. Needs to be several times denser. |
+| Black hole *(have)* | enterable | — | destroys | push-bait |
+| **Ion cloud** | free | **blocked both ways** | — | cover you can walk through. A standoff gun inside one is blind; a ship crossing one cannot be shot. The direct counter to reach. |
+| **Mine drift** | free | — | 1 damage to anything ENDING its turn there | area denial. Punishes sliding sideways, which is what a kiter does. |
+| **Debris stream** | free | — | shoves anything ending there one hex downstream | movement nobody chose. Breaks a standoff without any AI change, and pairs with the push weapons. |
+| **Derelict** | blocked | blocked | two hits and it becomes open space | destructible cover. Lets a gun open its own lane. |
+
+Sectors already have locales with their own look, so the mix belongs there:
+an asteroid belt, a nebula, a minefield left over from someone else's war.
+
+### Phasing
+
+1. **Density and the ion cloud.** Density is a number; the cloud reuses
+   `blocksShot` and needs no new movement rule.
+2. **Mine drift**, which needs an end-of-turn hook that already exists for
+   the black hole.
+3. **Debris stream** and **derelict**, both of which are new rules.
+
+### What has to change to make any of it work
+
+- **The enemy AI refuses to enter ANY hazard** (`!hazardAt(...)`, eleven
+  call sites). That is correct for rock and a black hole and wrong for a
+  cloud, which would otherwise be a tool only the player can use — against
+  this game's own rule that hostiles run on the same mechanics. It needs a
+  three-way: never enter what kills or blocks, enter a cloud freely, enter a
+  mine when it is worth it.
+- Each type needs its own draw. Hazards are a type switch in `app.js`.
+
+### What terrain will NOT fix
+
+The standoff problem it was proposed for. Measured — chase one range-2
+hostile with a ship that only closes and never fires, 540 attempts:
+
+| rock | caught | rounds to catch |
+|---|---|---|
+| 0% | 180/540 | 13.7 |
+| 1.9% (today) | 188/540 | 12.9 |
+| 10% | 207/540 | 10.5 |
+| 15% | 231/540 | 9.5 |
+| 25% | 218/540 | 8.1 |
+
+Rock blocks the chaser as much as the kiter, which is why 25% is no better
+than 15%. Terrain is worth building for its own sake. The standoff fix is a
+separate one-line change to the movement rule: a hostile that cannot fire
+this turn must strictly REDUCE the distance, not merely avoid increasing it.
+
 ## HULL PARITY — BUILT (2026-09-18)
 
 Everything below the "### The four hulls" table is the state of the code.
