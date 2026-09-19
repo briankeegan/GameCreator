@@ -3689,6 +3689,14 @@
       // the hole even if it isn't closer — that is not kiting, it is
       // refusing to walk somewhere the gun cannot work; then, only if the
       // hole is genuinely all there is, take it.
+      // PATIENCE RUNS OUT. Past the limit a hostile stops holding out for
+      // the good angle and just closes, dead zone included. Default 99 =
+      // the behaviour before this line existed, while it is measured.
+      const OUT_OF_PATIENCE = Number(process.env.GC_PATIENCE || 99);
+      if ((enemy.idleRounds || 0) >= OUT_OF_PATIENCE && closers.length) {
+        const nearest = Math.min(...closers.map((c) => c.dist));
+        return { enemyId: enemy.id, type: "move", to: closers.find((c) => c.dist === nearest).to };
+      }
       const pool = bearsFrom(allowed).length
         ? bearsFrom(allowed)
         : outside(closers).length
