@@ -1,0 +1,126 @@
+{
+  "mode": "pbt",
+  "objective": "versus",
+  "brain": "puyo",
+  "level": 10,
+  "selection": "champion of 4 islands after 1000 updates",
+  "updates": 1000,
+  "islands": 4,
+  "population": 16,
+  "leg": 250,
+  "depth": 2,
+  "beam": 0,
+  "rise": true,
+  "density": false,
+  "allowRaise": false,
+  "diversity": [
+    12.4,
+    15,
+    13,
+    15.4
+  ],
+  "features": [
+    "linksH",
+    "linksV",
+    "colourVariance",
+    "edgePenalty",
+    "garbageOnBoard",
+    "maxHeight",
+    "fillRatio",
+    "garbageAdjacency",
+    "garbageSent",
+    "stopTimeEarned",
+    "paylessClear"
+  ],
+  "excluded": [
+    "matchPotential",
+    "chainPotential",
+    "comboPotential",
+    "staircase",
+    "staircaseReady",
+    "flatTop",
+    "popSize",
+    "links",
+    "roughness",
+    "colourScarcity",
+    "chainLength",
+    "scoreEarned",
+    "stopTimeGain",
+    "brokeGarbage",
+    "garbageCleared",
+    "travelCost"
+  ],
+  "holdoutSeeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112
+  ],
+  "holdout": {
+    "avgFrames": 32350.583333333332,
+    "longestFrames": 36000,
+    "learned": {
+      "fitness": 0.5,
+      "winRate": 0.5,
+      "draws": 0,
+      "avgSent": 240.91666666666666,
+      "duels": 12,
+      "chainDepth": {
+        "combo-small": 109,
+        "combo-big": 134,
+        "chain-short": 276,
+        "chain-medium": 0,
+        "chain-long": 0
+      },
+      "comboByWidth": {
+        "3": 3407,
+        "4": 69,
+        "5": 3,
+        "6": 111,
+        "7": 4,
+        "8": 1,
+        "9": 10
+      },
+      "chainByLinks": {
+        "2": 246,
+        "3": 26,
+        "4": 4
+      },
+      "versus": true
+    },
+    "shipped": {
+      "fitness": 0.5,
+      "label": "shipped weights",
+      "avgSent": 258.5833333333333,
+      "chainDepth": {
+        "combo-small": 135,
+        "combo-big": 153,
+        "chain-short": 283,
+        "chain-medium": 0,
+        "chain-long": 0
+      },
+      "versus": true
+    }
+  },
+  "weights": {
+    "linksH": 10.688863298445249,
+    "linksV": 7.808739398954501,
+    "colourVariance": 161.2311151516975,
+    "edgePenalty": 58.53025321826053,
+    "garbageOnBoard": 153.88768369598702,
+    "maxHeight": 15.807695882727504,
+    "fillRatio": 144.5408731132071,
+    "garbageAdjacency": 11.538261178525648,
+    "garbageSent": -120.38732249054615,
+    "stopTimeEarned": 44.96776231163372,
+    "paylessClear": -7.813403929738222
+  }
+}
