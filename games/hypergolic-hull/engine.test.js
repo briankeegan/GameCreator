@@ -1148,6 +1148,90 @@ assert.strictEqual(clampedState.shieldCharges, 1, "carried charges clamp to inst
   );
 }
 
+// ---- the Afterburner: mobility you can buy -------------------------------
+// It is a BOOSTER, not a drive: it adds a hex to whatever is already
+// fitted, so a hull with no engine still goes nowhere and the Ion Drive
+// stays worth its four cells.
+{
+  const hold = (ids) => ({
+    cols: 5, rows: 6, blocked: [],
+    items: ids.map((id, i) => ({ id, x: i, y: 0 })),
+    cargo: [],
+  });
+  assert.strictEqual(Engine.deriveShip(hold(["sublightDrive"])).moveRange, 1, "a plain drive is one hex");
+  assert.strictEqual(
+    Engine.deriveShip(hold(["sublightDrive", "afterburner"])).moveRange,
+    2,
+    "and one more with a booster bolted on — the answer to a gun that holds its range"
+  );
+  assert.strictEqual(
+    Engine.deriveShip(hold(["afterburner"])).moveRange,
+    0,
+    "a booster with nothing to boost moves nothing"
+  );
+  assert.strictEqual(
+    Engine.deriveShip(hold(["ionDrive", "afterburner"])).moveRange,
+    3,
+    "it stacks on the Ion Drive rather than replacing it"
+  );
+  // It has to be REACHABLE, or it is decoration. Offered from the depth the
+  // first thing that outranges you turns up, and in the upkeep slot rather
+  // than competing with the guns.
+  const offer = Engine.OUTPOST_OFFER_POOL.find((o) => o.id === "afterburner");
+  assert.ok(offer, "the Afterburner is on the shelf at all");
+  const reachable = [];
+  for (let depth = 3; depth <= 12; depth++) {
+    for (let seed = 1; seed <= 25; seed++) {
+      const st = Engine.createGameState(HypergolicLevels.generateLevel(depth), { runSeed: seed });
+      if (st.outpostOfferIds && st.outpostOfferIds.includes("afterburner")) reachable.push(depth);
+    }
+  }
+  assert.ok(reachable.length > 0, "and it actually reaches a shelf — it was on 5 of 400 before this was checked");
+}
+
+// ---- scrambler fields ----------------------------------------------------
+// A ship standing in one has no firing solution out of it. It blocks no
+// movement, costs no hull, and does not block anyone else's shot crossing
+// it — an earlier version blocked line of sight in both directions and
+// measured worse than open space, because denying shots both ways helps
+// whichever side is content for the turn to pass.
+{
+  const level = {
+    id: 2, radius: 3, playerStart: { q: 0, r: 0 }, exit: { q: 3, r: 0 }, outpost: null,
+    enemies: [{ type: "interceptor", q: 2, r: 0 }],
+    hazards: [],
+    exitRule: "all-enemies-dead",
+    actions: ["sublight", "autocannon"],
+  };
+  // Placed after the level is built: validateLevel refuses a hazard on the
+  // start hex, which is the right rule for the kinds that destroy a ship.
+  const st = Engine.createGameState(level);
+  st.hazards.push({ type: "scrambler", q: 0, r: 0 });
+  assert.ok(Engine.inScrambler(st, st.playerPos), "the flagship is inside the field");
+  assert.strictEqual(st.status, "playing", "which costs it no hull — this is not a hazard that kills");
+  const target = st.enemies[0];
+  assert.throws(
+    () => Engine.applyFire(st, target.id),
+    /scrambled/i,
+    "and it cannot fire out of one"
+  );
+  // Passable: stepping out is a legal move, and it survives the trip.
+  const out = Engine.legalSublightTargets(st).find((h) => !Engine.inScrambler(st, h));
+  assert.ok(out, "there is a way out of the field");
+  Engine.applySublight(st, out);
+  assert.strictEqual(st.status, "playing", "flying out of a field does not destroy the ship");
+  assert.ok(!Engine.inScrambler(st, st.playerPos), "and it is clear of it");
+
+  // The danger overlay must tell the truth about a hostile sitting in one.
+  const other = Engine.createGameState(level);
+  const enemy = other.enemies[0];
+  const before = Engine.computeThreatHexes(other).size;
+  other.hazards.push({ type: "scrambler", q: enemy.q, r: enemy.r });
+  const after = Engine.computeThreatHexes(other).size;
+  assert.ok(before > 0, "out in the open it threatens ground");
+  assert.strictEqual(after, 0, "inside a field it threatens none, so the board must not paint it red");
+}
+
 // ---- the unlock schedule ------------------------------------------------
 // One signal opens everything: the deepest run so far. No currency, and
 // nothing is announced twice — the UI diffs unlockedAt() against what it
