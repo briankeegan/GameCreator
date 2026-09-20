@@ -33,7 +33,7 @@ var LEVEL = Number(process.env.GC_LEVEL || 10);
 // A duel that never ends is a duel with no signal in it, and it has to be
 // bounded or one pairing can hang a whole run. `opts.ceiling` overrides it
 // per duel; GC_VERSUS_CEILING overrides the default.
-var CEILING = Number(process.env.GC_VERSUS_CEILING || 36000);   // 10 minutes at 60fps
+var CEILING = Number(process.env.GC_VERSUS_CEILING || 21600);   // 6 minutes at 60fps
 
 // WHO WON. Death decides it when exactly one side died. Reaching the ceiling
 // alive is NOT a shared result: the higher SCORE takes it, so a bot that

@@ -31,12 +31,23 @@
   //        'earned' — what this move just paid out
   //        'clock'  — how long until death
   //        'move'   — what this candidate costs to PLAY, not what it leaves
+  // REMOVED, and not coming back without a reason:
+  //   staircase, staircaseReady — SHAPES. This bot answers "what would this
+  //     swap DO" by resolving it, never by matching a picture of a known
+  //     pattern. The library version was ruled out deliberately.
+  //   chainPotential, comboPotential, matchPotential — superseded by the
+  //     reach* measurements, which are the same question answered size by
+  //     size, so a weight can say a 6-chain is worth more than a 3 instead
+  //     of one number conflating them.
+  //   popSize, roughness, flatTop — overlap the height and shape group, and
+  //     none survived a conversation about what the bot actually needs told.
+  //   links — linksH and linksV already carry it, split by direction.
+  //   scoreEarned — the same event as chainLength under another name.
+  //   stopTimeGain — stopTimeEarned is the measurement; the "gain" version
+  //     needs three rare things at once and read constant 0 across 4,381
+  //     candidates.
   var FEATURES = [
-    { key: 'matchPotential',   group: 'board',  sign: +1, norm: 16, fn: null,
-      what: 'Merged combos of 4+ reachable next move. A PLAIN 3 scores 0 — comboGarbage() sends nothing below 4 — but a 3 that extends a chain or touches garbage still counts.' },
 
-    { key: 'chainPotential',   group: 'board',  sign: +1, norm: 16, fn: null,
-      what: 'The deepest cascade any single legal swap could set off from this settled board. The board it LEAVES, not the move being made — stored potential, which nothing else here could see. PUYO_REFERENCE.md names its absence as the real cap: a scorer that values the board now fires the moment a chain exists, so potential never accumulates. Costs ~66us (a clone+resolve per legal swap), by far the most expensive feature here.' },
 
     // latentChain WAS HERE AND HAS BEEN REMOVED. It scored whether a cell
     // already carrying the chain flag settles into a match — the
@@ -61,20 +72,10 @@
     // deliberately does not have. If a brain ever does decide mid-cascade,
     // the implementation is intact in features.js.
 
-    { key: 'comboPotential',   group: 'board',  sign: +1, norm: 36, fn: null,
-      what: 'The biggest single clear any legal swap could make from this settled board. The other half of stored potential: chainPotential measures how DEEP a cascade could go, matchPotential counts HOW MANY swaps pay out, and neither measures how BIG one clear is — matchPotential\'s own comment reserves size for its own feature rather than smuggling it in. A chain and a combo are different attacks with different payout tables. Asked of the engine (clone, swap, resolve) like chainPotential, and the MAX rather than the sum, because payout is per-clear.' },
 
-    { key: 'staircase',        group: 'board',  sign: +1, norm: 4, fn: null,
-      what: 'Loaded steps: panels that would complete a horizontal three if the cell under them cleared and they fell one row. THE shape Panel de Pon players build on purpose, taken from the game\'s own documented library rather than reasoned out here (paneponattack.com, "How to Set Up a Staircase") — PUYO_REFERENCE.md\'s Tier 2 is explicit that the bot is TOLD chain shapes rather than discovering them. Not chainPotential: that needs a trigger swap to exist right now, this measures whether the board is BUILT.' },
 
-    { key: 'staircaseReady',  group: 'board',  sign: +1, norm: 4, fn: null,
-      what: 'The longest staircase whose BASE can be cleared by one swap — the shape from docs/CHAIN_SHAPES.md, which fires only when a trigger match at the bottom goes off and lets the lowest step fall. staircase counts the diagonal and never looks for that trigger, so an unfireable stack of loaded pairs scores the same as a loaded gun with a finger on it; this is the half that can actually go off. Same walk as staircase, one flag apart, so the two can never drift into measuring different diagonals.' },
 
-    { key: 'flatTop',          group: 'board',  sign: -1, norm: 12, fn: null,
-      what: 'Columns level with the tallest, scaled by how high the tallest is. The documented way to die — "the overloaded flat-top is the shape that gets intermediate players killed" — and an INTERACTION, which is why it cannot be left to roughness plus maxHeight: a weighted sum adds them, it cannot multiply them. Flat on the floor costs nothing; flat at the ceiling is the death shape.' },
 
-    { key: 'popSize',          group: 'board',  sign: +1, norm: 36, fn: F.popSize, perPanel: true,
-      what: 'For every horizontal swap the cursor could make, how many panels would pop, summed over the board. Three is the minimum to pop, not the prize: a match is the union of every run of 3 or more through the swapped cell, row AND column, so an L or a T pops five, and comboSize is what feeds comboGarbage and the combo score. This is the Panel Attack half of meatfighter\'s consecutive colours: his game pops four touching blobs so his links term covers one-short-of-popping, ours pops three in a LINE and swaps sideways only, so what matters is whether the third panel is one move from its slot and how much comes with it. Not matchPotential: no clone and no resolve, immediate pop only, so it costs a run-length walk instead of a cascade. Obeys the engine — garbage and busy panels cannot be swapped, and a panel swapped over a hole falls out of the row first.' },
 
     { key: 'linksH',           group: 'board',  sign: +1, norm: 24, fn: F.linksH, perPanel: true,
       what: 'Same-coloured panels SIDE BY SIDE. The half of links the cursor can finish by itself: swaps are sideways, so the third panel is one walk and one swap away. A trigger you hold rather than fuel you wait on.' },
@@ -82,8 +83,6 @@
     { key: 'linksV',           group: 'board',  sign: +1, norm: 24, fn: F.linksV, perPanel: true,
       what: 'Same-coloured panels STACKED. The half of links that finishes by a panel FALLING into place, which needs something below to clear first — cascade fuel, not a decision. Split from linksH because a broken garbage row takes its colours from garbageRowColors, which refuses to repeat left to right, so a freshly converted row can never hold a horizontal pair and all of its value is vertical. linksH + linksV equals links on every board.' },
 
-    { key: 'links',            group: 'board',  sign: +1, norm: 24, fn: null, perPanel: true,
-      what: 'Same-coloured panels orthogonally adjacent. meatfighter\'s single biggest term (25%) — the density that makes chains happen without any chain logic. perPanel: it is a COUNT OF PANELS, so it falls whenever a move clears, whatever shape the board is left in — measured at -0.639 per panel removed against garbageSent\'s +1.004, which cancelled a third of the reward for a big clear by arithmetic. In density mode it is divided by the panels it counts over, so half a board can be exactly as tidy.' },
 
     { key: 'colourVariance',   group: 'board',  sign: -1, norm: 32, fn: null,
       what: 'Per colour, the mean position of its panels and the deviation from it. Low variance means that colour is gathered rather than scattered.' },
@@ -121,30 +120,41 @@
     { key: 'fillRatio',        group: 'board',  sign: -1, norm: 1, fn: null,
       what: 'Occupied over total. Overlaps maxHeight — first candidate to cut if it earns nothing.' },
 
-    { key: 'roughness',        group: 'board',  sign: -1, norm: 36, fn: null,
-      what: 'Sum of absolute height differences between adjacent columns.' },
 
     { key: 'garbageAdjacency', group: 'board',  sign: +1, norm: 24, fn: null,
       what: 'Matchable panels 4-way adjacent to a garbage cell. Garbage has no colour, so touching it is the only way it clears. No eligibility test: every garbage panel reads -2 whatever its state.' },
 
-    { key: 'colourScarcity',   group: 'board',  sign: -1, norm: 6, fn: null,
-      what: 'Colours with fewer than 3 matchable panels left — a colour that can no longer form a match.' },
+
 
 
     { key: 'reach4combo',      group: 'board',  sign: +1, norm: 1, fn: null,
-      what: 'Can the board this move LEAVES fire a combo 4 wide next move. One of seven targets, one feature each, so which sizes are worth building toward is a WEIGHT rather than a setting picked by hand. Cumulative: a board holding a six reads on 4, 5 and 6, because being able to fire a six means being able to fire a four. Free at depth 2 — the second ply already resolves every swap from every candidate board.' },
+      what: 'Can the board this move LEAVES fire a combo 4 wide next move. One measurement per size, so WHICH sizes are worth building toward is a weight rather than a setting picked by hand. Cumulative: a board holding a 7 reads on every size up to 7. Free at depth 2, where the second ply already resolves every swap from that board. 4 is the floor because COMBO_GARBAGE sends nothing below it.' },
     { key: 'reach5combo',      group: 'board',  sign: +1, norm: 1, fn: null,
-      what: 'Can the board this move leaves fire a combo 5 wide next move. See reach4combo.' },
+      what: 'Can the board this move LEAVES fire a combo 5 wide next move. One measurement per size, so WHICH sizes are worth building toward is a weight rather than a setting picked by hand. Cumulative: a board holding a 7 reads on every size up to 7. Free at depth 2, where the second ply already resolves every swap from that board. 4 is the floor because COMBO_GARBAGE sends nothing below it.' },
     { key: 'reach6combo',      group: 'board',  sign: +1, norm: 1, fn: null,
-      what: 'Can the board this move leaves fire a combo 6 wide next move. See reach4combo.' },
+      what: 'Can the board this move LEAVES fire a combo 6 wide next move. One measurement per size, so WHICH sizes are worth building toward is a weight rather than a setting picked by hand. Cumulative: a board holding a 7 reads on every size up to 7. Free at depth 2, where the second ply already resolves every swap from that board. 4 is the floor because COMBO_GARBAGE sends nothing below it.' },
     { key: 'reach7combo',      group: 'board',  sign: +1, norm: 1, fn: null,
-      what: 'Can the board this move leaves fire a combo 7 wide next move. See reach4combo.' },
+      what: 'Can the board this move LEAVES fire a combo 7 wide next move. One measurement per size, so WHICH sizes are worth building toward is a weight rather than a setting picked by hand. Cumulative: a board holding a 7 reads on every size up to 7. Free at depth 2, where the second ply already resolves every swap from that board. 4 is the floor because COMBO_GARBAGE sends nothing below it.' },
+    { key: 'reach8combo',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move LEAVES fire a combo 8 wide next move. One measurement per size, so WHICH sizes are worth building toward is a weight rather than a setting picked by hand. Cumulative: a board holding a 7 reads on every size up to 7. Free at depth 2, where the second ply already resolves every swap from that board. 4 is the floor because COMBO_GARBAGE sends nothing below it.' },
+    { key: 'reach9combo',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move LEAVES fire a combo 9 wide next move. One measurement per size, so WHICH sizes are worth building toward is a weight rather than a setting picked by hand. Cumulative: a board holding a 7 reads on every size up to 7. Free at depth 2, where the second ply already resolves every swap from that board. 4 is the floor because COMBO_GARBAGE sends nothing below it.' },
+    { key: 'reach10combo',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move LEAVES fire a combo 10 wide next move. One measurement per size, so WHICH sizes are worth building toward is a weight rather than a setting picked by hand. Cumulative: a board holding a 7 reads on every size up to 7. Free at depth 2, where the second ply already resolves every swap from that board. 4 is the floor because COMBO_GARBAGE sends nothing below it.' },
+    { key: 'reach2chain',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move LEAVES fire a chain 2 links deep next move. Counted apart from combos because they are different weapons: pushGarbage sends a chain as one full-width slab held until the cascade ends, and a combo as separate one-row pieces that leave at once. 2 is the floor because a 2-chain already pays 50 points and sends a slab.' },
+    { key: 'reach3chain',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move LEAVES fire a chain 3 links deep next move. Counted apart from combos because they are different weapons: pushGarbage sends a chain as one full-width slab held until the cascade ends, and a combo as separate one-row pieces that leave at once. 2 is the floor because a 2-chain already pays 50 points and sends a slab.' },
     { key: 'reach4chain',      group: 'board',  sign: +1, norm: 1, fn: null,
-      what: 'Can the board this move leaves fire a chain 4 links deep next move. Chains are counted apart from combos because they are different weapons: pushGarbage sends a chain as one full-width slab held until the cascade ends, and a combo as separate one-row pieces that leave at once.' },
+      what: 'Can the board this move LEAVES fire a chain 4 links deep next move. Counted apart from combos because they are different weapons: pushGarbage sends a chain as one full-width slab held until the cascade ends, and a combo as separate one-row pieces that leave at once. 2 is the floor because a 2-chain already pays 50 points and sends a slab.' },
     { key: 'reach5chain',      group: 'board',  sign: +1, norm: 1, fn: null,
-      what: 'Can the board this move leaves fire a chain 5 links deep next move. See reach4chain.' },
+      what: 'Can the board this move LEAVES fire a chain 5 links deep next move. Counted apart from combos because they are different weapons: pushGarbage sends a chain as one full-width slab held until the cascade ends, and a combo as separate one-row pieces that leave at once. 2 is the floor because a 2-chain already pays 50 points and sends a slab.' },
     { key: 'reach6chain',      group: 'board',  sign: +1, norm: 1, fn: null,
-      what: 'Can the board this move leaves fire a chain 6 links deep next move. See reach4chain.' },
+      what: 'Can the board this move LEAVES fire a chain 6 links deep next move. Counted apart from combos because they are different weapons: pushGarbage sends a chain as one full-width slab held until the cascade ends, and a combo as separate one-row pieces that leave at once. 2 is the floor because a 2-chain already pays 50 points and sends a slab.' },
+    { key: 'reach7chain',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move LEAVES fire a chain 7 links deep next move. Counted apart from combos because they are different weapons: pushGarbage sends a chain as one full-width slab held until the cascade ends, and a combo as separate one-row pieces that leave at once. 2 is the floor because a 2-chain already pays 50 points and sends a slab.' },
+    { key: 'reach8chain',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move LEAVES fire a chain 8 links deep next move. Counted apart from combos because they are different weapons: pushGarbage sends a chain as one full-width slab held until the cascade ends, and a combo as separate one-row pieces that leave at once. 2 is the floor because a 2-chain already pays 50 points and sends a slab.' },
 
     { key: 'pressure',         group: 'earned', sign: +1, norm: 1, fn: null,
       what: 'This move\'s send measured against the room the opponent has left, counting what is already flying at them as spent. 1 means it finishes them. THE ONLY SHAPE THE OTHER BOARD CAN USEFULLY TAKE: the bot takes the highest-scoring candidate, so a number identical across every candidate cancels out of the ranking — which is why a plain "their headroom" feature does nothing and why incomingGarbage was removed after varying in 0 of 179 decisions. This varies with the send, so it varies candidate to candidate. It states no rule about what to do when they are low.' },
@@ -166,14 +176,10 @@
     { key: 'chainLength',      group: 'earned', sign: +1, norm: 13, fn: null,
       what: 'Chain counter after the move. Backward-looking: what the chain ended up worth.' },
 
-    { key: 'scoreEarned',      group: 'earned', sign: +1, norm: 1000, fn: null,
-      what: 'THE GAME\'S OWN POINTS for the cascade this move resolved, via PanelEngine.moveScore — the real Tsu-Attack tables, not a restatement of them. It exists because the search is judged on `objective: score` and nothing it could see was denominated in that currency: garbage cells rank a 5-chain at 8x a 4-combo where the score says 15x, and a bare 3 — 54 of the shipped bot\'s 67 matches — is worth exactly 0 under the score and was worth something under every other earned feature. Overlaps garbageSent and chainLength on purpose; the search decides which currency it wants.' },
 
     { key: 'stopTimeEarned',   group: 'earned', sign: +1, norm: 100, fn: null,
       what: 'Frames of stop time this move bought — the stack stops rising for that long. The real payoff for breaking garbage, and invisible to the evaluator until resolve() started reporting it.' },
 
-    { key: 'stopTimeGain',     group: 'earned', sign: +1, norm: 100, fn: null,
-      what: 'The stop-time frames this move actually BUYS: max(0, earned - the stop clock already running), and 0 unless the board could die (topped out, or within DANGER_ROWS of the ceiling). stopTimeEarned is flat and ignores the clock -- awardStopTime takes a MAX, so earning 90 under a 120 clock buys nothing, and 60 frames on a safe board buy nothing that matters. A weighted sum cannot multiply stop time by danger, so the conjunction lives inside the feature, as it does in flatTop. Unlike the removed framesToDeath, it VARIES BETWEEN CANDIDATES: the banked half is per-decision, the earned half is per-candidate.' },
 
     { key: 'brokeGarbage',     group: 'earned', sign: +1, norm: 72, fn: null,
       what: 'Garbage cells this move popped — one row of a slab per match, which is what the engine does rather than the whole slab.' },

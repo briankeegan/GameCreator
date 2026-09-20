@@ -43,9 +43,8 @@ var evaluator = require('./evaluator.js');
 var tests = [], failures = [];
 function test(name, fn) { tests.push({ name: name, fn: fn }); }
 
-var W = { matchPotential: 229, chainPotential: 258, colourVariance: 168,
-          maxHeight: 136, roughness: 294, garbageSent: 107, travelCost: 10,
-          stopTimeGain: 200 };
+var W = { colourVariance: 168,
+          maxHeight: 136, travelCost: 10 };
 
 function freshCpu(opts) {
     var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });

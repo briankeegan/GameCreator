@@ -201,42 +201,8 @@ var MOVE_FRAMES = 4;
 
   // Legal swaps whose clear is 4+ wide, cascades (2+ links), or eats garbage.
   // A plain 3 that does none of those counts 0.
-  function matchPotential(input) {
-    // liveBoard, not board: this needs the clone/swap/resolve that input.js
-    // flattens away, exactly as chainPotential and comboPotential do. A
-    // caller with no real board gets 0 rather than a number derived from a
-    // second, private implementation of gravity.
-    var board = planBoard(input);
-    if (!board) return 0;
-    var out = swapOutcomes(board), count = 0;
-    for (var i = 0; i < out.length; i++) {
-      var o = out[i];
-      if (!o.cleared) continue;
-      // Worth a count if it PAYS: a merged clear of 4+ (comboGarbage sends
-      // nothing below 4), or a clear that cascades, or one that eats
-      // garbage. A lone plain 3 that does none of those still scores 0,
-      // which is the whole point of the feature.
-      if (o.biggest >= 4 || o.chainLength >= 2 || o.ateGarbage) count++;
-    }
-    return count;
-  }
 
   // Deepest cascade any single legal swap could set off from this board.
-  function chainPotential(input) {
-    // liveBoard, not board: input.js flattens `board` to a plain shape on
-    // purpose, which strips the clone/swap/resolve this needs. See the
-    // comment on liveBoard there. Falls back to `board` for direct callers
-    // (the tests) that hand over a real LogicalBoard themselves.
-    var board = input.liveBoard || input.board;
-    // A hand-built plain object has none of those methods, and the honest
-    // answer there is 0 rather than a number derived from a second, private
-    // implementation of gravity and matching.
-    if (!board || typeof board.legalSwaps !== 'function' ||
-        typeof board.clone !== 'function' || typeof board.resolve !== 'function') return 0;
-    var out = swapOutcomes(board), best = 0;
-    for (var i = 0; i < out.length; i++) if (out[i].chainLength > best) best = out[i].chainLength;
-    return best;
-  }
 
   // A CHEAP FILTER WAS TRIED HERE AND IS WRONG. The idea: a swap that
   // matches nothing on the spot cannot start a cascade, so skip the
@@ -301,41 +267,7 @@ var MOVE_FRAMES = 4;
     return added;
   }
 
-  function popSize(input) {
-    var board = input.board, grid = board.grid, W = board.width, H = board.height;
-    var total = 0;
-    for (var r = 1; r <= H; r++) {
-      for (var c = 1; c < W; c++) {
-        var a = grid[r][c], b = grid[r][c + 1];
-        if (a === b) continue;          // a no-op, and it covers empty/empty
-        if (a < 0 || b < 0) continue;   // busy (-1) and garbage (-2) cannot be swapped
-        // each panel lands in the other cell; over a hole it falls out of the row
-        var aFalls = a > 0 && r > 1 && grid[r - 1][c + 1] === 0;
-        var bFalls = b > 0 && r > 1 && grid[r - 1][c] === 0;
-        if (aFalls && bFalls) continue;
-        grid[r][c] = b; grid[r][c + 1] = a;
-        var seen = {};
-        if (!bFalls) total += popThrough(grid, W, H, r, c, seen);
-        if (!aFalls) total += popThrough(grid, W, H, r, c + 1, seen);
-        grid[r][c] = a; grid[r][c + 1] = b;
-      }
-    }
-    return total;
-  }
 
-  function links(input) {
-    var board = input.board, grid = board.grid, W = board.width, H = board.height;
-    var count = 0;
-    for (var r = 1; r <= H; r++) {
-      for (var c = 1; c <= W; c++) {
-        var v = grid[r][c];
-        if (v <= 0) continue;
-        if (c < W && grid[r][c + 1] === v) count++;
-        if (r < H && grid[r + 1][c] === v) count++;
-      }
-    }
-    return count;
-  }
 
   // links split by direction, and the two halves add up to links exactly.
   //
@@ -440,17 +372,6 @@ var MOVE_FRAMES = 4;
   }
 
   // Sum of absolute height differences between adjacent columns.
-  function roughness(input) {
-    var board = input.board, grid = board.grid, W = board.width, H = board.height;
-    var heights = [], c, r;
-    for (c = 1; c <= W; c++) {
-      heights[c] = 0;
-      for (r = H; r >= 1; r--) if (grid[r][c] !== 0) { heights[c] = r; break; }
-    }
-    var sum = 0;
-    for (c = 1; c < W; c++) sum += Math.abs(heights[c] - heights[c + 1]);
-    return sum;
-  }
 
   // Garbage cells, counted flat — every cell is worth 1 wherever it sits. The board here is the VISIBLE 12 rows, so garbage above the ceiling is not in this number and cannot be.
   function garbageOnBoard(input) {
@@ -562,28 +483,8 @@ var MOVE_FRAMES = 4;
   }
 
   // Colours with one or two panels left — a colour that can no longer form a match.
-  function colourScarcity(input) {
-    var board = input.board, grid = board.grid, W = board.width, H = board.height;
-    var counts = {}, r, c, v;
-    for (r = 1; r <= H; r++) {
-      for (c = 1; c <= W; c++) {
-        v = grid[r][c];
-        if (v > 0) counts[v] = (counts[v] || 0) + 1;
-      }
-    }
-    var scarce = 0;
-    for (var colour in counts) {
-      if (counts.hasOwnProperty(colour) && counts[colour] > 0 && counts[colour] < 3) scarce++;
-    }
-    return scarce;
-  }
 
   // The game's own points for this cascade, via PanelEngine.moveScore. Returns 0 if the engine is not loaded.
-  function scoreEarned(input) {
-    var engine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
-    if (!engine || !engine.moveScore) return 0;
-    return engine.moveScore(input.earned.comboSizes);
-  }
 
   // Total cells sent: width x height summed over the pieces this move sent.
 
@@ -617,13 +518,6 @@ var MOVE_FRAMES = 4;
 
   // Stop time this move actually buys: earned minus the clock already running,
   // floored at 0, and 0 unless the board could die. awardStopTime takes a MAX.
-  function stopTimeGain(input) {
-    var earned = input.earned.stopTimeEarned || 0;
-    if (earned <= 0) return 0;
-    var gain = earned - (input.clock.stopTime || 0);
-    if (gain <= 0) return 0;          // the engine's max, not a sum
-    return couldDie(input) ? gain : 0;
-  }
 
   // ---------------------------------------------------------- latentChain
   //
@@ -702,13 +596,6 @@ var MOVE_FRAMES = 4;
 
 
   // Widest single clear any legal swap could make. MAX, not sum — payout is per clear.
-  function comboPotential(input) {
-    var board = planBoard(input);
-    if (!board) return 0;
-    var out = swapOutcomes(board), best = 0;
-    for (var i = 0; i < out.length; i++) if (out[i].biggest > best) best = out[i].biggest;
-    return best;
-  }
 
   // Loaded steps: panels that would complete a horizontal three if the cell under them cleared and they fell one row.
   function clearableByOneSwap(board, row, col) {
@@ -727,15 +614,9 @@ var MOVE_FRAMES = 4;
   }
 
   // Same walk as staircase, but only steps whose base can be cleared by one swap.
-  function staircaseReady(input) {
-    return staircaseRuns(input, true);
-  }
 
   // Loaded steps: panels that would complete a horizontal three if the cell
   // under them cleared and they fell one row.
-  function staircase(input) {
-    return staircaseRuns(input, false);
-  }
 
   // The shared walk. `requireTrigger` is the only difference between the two
   // features above, and it is deliberately ONE function so they can never
@@ -813,59 +694,38 @@ var MOVE_FRAMES = 4;
   }
 
   // Columns within one row of the tallest, scaled by tallest/height. A product, so it sees flat-AND-high, which a weighted sum of roughness and maxHeight cannot.
-  function flatTop(input) {
-    var board = input.board, grid = board.grid, W = board.width, H = board.height;
-    var heights = [], c, r, tallest = 0;
-    for (c = 1; c <= W; c++) {
-      heights[c] = 0;
-      for (r = H; r >= 1; r--) if (grid[r][c] !== 0) { heights[c] = r; break; }
-      if (heights[c] > tallest) tallest = heights[c];
-    }
-    if (!tallest) return 0;
-    // Within one row counts as level: a single-panel step is the texture of
-    // ordinary play, not a flat top, and demanding exact equality would make
-    // the feature fire almost nowhere.
-    var level = 0;
-    for (c = 1; c <= W; c++) if (tallest - heights[c] <= 1) level++;
-    return level * (tallest / H);
-  }
 
   return {
-    matchPotential: matchPotential,
-    chainPotential: chainPotential,
-    comboPotential: comboPotential,
-    staircase: staircase,
-    staircaseReady: staircaseReady,
-    flatTop: flatTop,
     travelCost: travelCost,
     _matchedCellsNear: matchedCellsNear,
     latentChain: latentChain,
     garbageCleared: garbageCleared,
     stopTimeEarned: stopTimeEarned,
-    stopTimeGain: stopTimeGain,
     brokeGarbage: brokeGarbage,
-    scoreEarned: scoreEarned,
     reach4combo: function (i) { return reachOf(i, 'reach4combo'); },
     reach5combo: function (i) { return reachOf(i, 'reach5combo'); },
     reach6combo: function (i) { return reachOf(i, 'reach6combo'); },
     reach7combo: function (i) { return reachOf(i, 'reach7combo'); },
+    reach8combo: function (i) { return reachOf(i, 'reach8combo'); },
+    reach9combo: function (i) { return reachOf(i, 'reach9combo'); },
+    reach10combo: function (i) { return reachOf(i, 'reach10combo'); },
+    reach2chain: function (i) { return reachOf(i, 'reach2chain'); },
+    reach3chain: function (i) { return reachOf(i, 'reach3chain'); },
     reach4chain: function (i) { return reachOf(i, 'reach4chain'); },
     reach5chain: function (i) { return reachOf(i, 'reach5chain'); },
     reach6chain: function (i) { return reachOf(i, 'reach6chain'); },
+    reach7chain: function (i) { return reachOf(i, 'reach7chain'); },
+    reach8chain: function (i) { return reachOf(i, 'reach8chain'); },
     pressure: pressure,
     overkill: overkill,
     chainLength: chainLength,
     garbageOnBoard: garbageOnBoard,
     incomingGarbage: incomingGarbage,
     garbageAdjacency: garbageAdjacency,
-    colourScarcity: colourScarcity,
     edgePenalty: edgePenalty,
     maxHeight: maxHeight,
     fillRatio: fillRatio,
-    roughness: roughness,
     colourVariance: colourVariance,
-    popSize: popSize,
-    links: links,
     linksH: linksH,
     linksV: linksV,
     // exported for tests only — not features

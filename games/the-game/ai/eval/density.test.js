@@ -64,22 +64,6 @@ function val(key, board, density) {
 
 // ---- scoreEarned ----
 
-test('scoreEarned pays what the GAME pays, and a bare three pays nothing', function () {
-    function sc(sizes) {
-        return features.scoreEarned(inputMod.normalize({ earned: { comboSizes: sizes } }));
-    }
-    // A plain 3 clears panels, keeps you alive, and earns zero — which is
-    // 54 of the shipped bot's 67 matches across three games.
-    assert.strictEqual(sc([3]), 0, 'a bare 3-match scored something; the engine pays 0 for it');
-    assert.strictEqual(sc([]), 0, 'a move that cleared nothing scored something');
-    assert.strictEqual(sc([4]), 20, 'a 4-combo is 20 points in SCORE_COMBO_TA');
-    // 3+3+3+3+3: no combo bonus at all, four chain links at 50/80/150/300.
-    assert.strictEqual(sc([3, 3, 3, 3, 3]), 580, 'a five-link chain is 580, not ' + sc([3, 3, 3, 3, 3]));
-    // And the ordering that the proxies get wrong: 15x in points where
-    // garbage cells say 8x.
-    assert.ok(sc([3, 3, 3, 3, 3]) / sc([4]) > 14,
-        'a 5-chain should be worth more than fourteen 4-combos in points');
-});
 
 test('the score tables are NOT restated in features.js', function () {
     // Point at a standard, never copy it: a second copy of the Tsu-Attack
@@ -166,11 +150,11 @@ test('a count made of panels is SIZE-INVARIANT in density mode', function () {
                        [1, 1, 0, 0, 0, 0]]);
     var two = boardOf([[1, 1, 0, 2, 2, 0],
                        [1, 1, 0, 2, 2, 0]]);
-    var rawOne = val('links', one, false), rawTwo = val('links', two, false);
+    var rawOne = val('linksH', one, false), rawTwo = val('linksH', two, false);
     assert.strictEqual(rawTwo, rawOne * 2,
         'the two-cluster board should have exactly twice the links (' + rawOne +
         ' vs ' + rawTwo + '); rewrite these boards');
-    var dOne = val('links', one, true), dTwo = val('links', two, true);
+    var dOne = val('linksH', one, true), dTwo = val('linksH', two, true);
     assert.strictEqual(dOne, dTwo,
         'density still scales with how much board there is: ' + dOne + ' vs ' + dTwo);
 });
@@ -183,8 +167,9 @@ test('density touches ONLY the features the registry marks perPanel', function (
     // count split by direction, and popSize counts the panels a clear pops.
     // edgePenalty counts panels against a wall. Anything measuring a ratio,
     // a height or a one-off event is not per-panel and must stay out.
-    assert.deepStrictEqual(marked.sort(),
-        ['edgePenalty', 'links', 'linksH', 'linksV', 'popSize'],
+    // links and popSize were removed with the rest of the shape group;
+    // linksH and linksV are the same count split by direction.
+    assert.deepStrictEqual(marked.sort(), ['edgePenalty', 'linksH', 'linksV'],
         'the perPanel set changed — if that is deliberate, update this test and say why');
     var board = boardOf([[1, 1, 2, 3, 3, 2],
                          [2, 1, 3, 1, 2, 3],
@@ -201,7 +186,7 @@ test('density touches ONLY the features the registry marks perPanel', function (
 
 test('density is OFF unless asked for', function () {
     var board = boardOf([[1, 1, 2, 2, 3, 3]]);
-    var w = { links: 1 };
+    var w = { linksH: 1, linksV: 1 };
     assert.strictEqual(evaluator.evaluate({ board: board }, w).score,
                        evaluator.evaluate({ board: board }, w, {}).score);
     assert.strictEqual(evaluator.evaluate({ board: board }, w).score,
@@ -226,8 +211,8 @@ test('density REACHES THE BOT, end to end through bench', function () {
     assert.ok(process.env.GC_TRAINING_DIR,
         'GC_TRAINING_DIR unset — bench cannot load the attack files');
     var bench = require('./bench.js');
-    var w = { matchPotential: 229, links: 43, colourVariance: 168, edgePenalty: 110,
-              maxHeight: 136, roughness: 294, chainLength: 107 };
+    var w = { linksH: 22, linksV: 21, colourVariance: 168, edgePenalty: 110,
+              maxHeight: 136, chainLength: 107 };
     var off = bench.run(w, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
                                 checkTiming: false });
     var on = bench.run(w, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',

@@ -42,7 +42,7 @@ function res(o) {
 function zeros() { var w = {}; registry.keys.forEach(function (k) { w[k] = 0; }); return w; }
 function sample() {
     var w = zeros();
-    w.links = 25; w.colourVariance = 2; w.edgePenalty = 8;
+    w.linksH = 13; w.linksV = 12; w.colourVariance = 2; w.edgePenalty = 8;
     w.maxHeight = 30; w.garbageOnBoard = 25;
     return w;
 }

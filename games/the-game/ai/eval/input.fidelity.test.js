@@ -337,89 +337,6 @@ test('the feature match rule agrees with the engine across seeds and colour coun
 // Independent is the operative word — this deliberately does not reuse
 // features.js's own helpers, since a shared helper with a bug agrees with
 // itself perfectly.
-test('matchPotential agrees with an engine-driven count across seeds', function () {
-    // WHAT matchPotential MEANS: the number of legal swaps whose clear is 4+
-    // wide, cascades (2+ links), or eats garbage. A plain 3 counts nothing,
-    // because a plain 3 pays exactly 0 engine points and sends no garbage.
-    //
-    // THE ORACLE IS A REAL STACK, not a second reading of the same grid. For
-    // every swap the board offers, the swapped grid is painted onto a live
-    // PanelEngine.Stack and run until it settles, and the rule above is
-    // applied to what the ENGINE reported clearing. So this compares the
-    // feature against the game rather than against a rule retyped here.
-    //
-    // THE BOARD HAS TO BE ONE THE FEATURE CAN READ. It used to be handed a
-    // plain {grid, blocks} object, which has no legalSwaps/clone/resolve, so
-    // planBoard() rejected it and matchPotential returned 0 for every board
-    // in the sweep — the assertion was comparing zero against a count, and
-    // could only ever have passed while the feature was a grid scan. It is a
-    // LogicalBoard now, the same shape the search actually scores.
-    var boards = 0, nonZero = 0, garbageQualified = 0, totalCounted = 0, skipped = 0;
-    var scratch = engineBoard.scratch(10);
-    scratch.speed = 0;            // a board that rises mid-settle is a different board
-    SEEDS.forEach(function (seed) {
-        COLOUR_COUNTS.forEach(function (colours) {
-            var rng = PanelEngine.makeRng(seed + 5000);
-            for (var i = 0; i < 4; i++) {
-                var withGarbage = i % 2 === 0;
-                var pb = packedBoard(rng, colours, withGarbage ? 0.12 : 0);
-                var H = pb.height, W = pb.width, grid = pb.grid;
-                var blocks = blockCells(pb.blocks);
-
-                // THE ENGINE HAS TO AGREE IT IS SETTLED. If it clears anything
-                // on an untouched board, or moves a panel, the position is not
-                // one the search could ever be scoring and comparing on it
-                // would be inventing a verdict.
-                engineBoard.paint(scratch, grid, H, W, blocks);
-                if (engineBoard.settle(scratch, 60).comboSizes.length) { skipped++; continue; }
-
-                var board = new LogicalBoard(W, H, colours, grid, pb.blocks);
-                // legalSwaps returns [row, col] — the LEFT cell of the pair,
-                // since a swap is always with the cell to its right.
-                var swaps = board.legalSwaps(), expected = 0, undecidable = false;
-                for (var si = 0; si < swaps.length && !undecidable; si++) {
-                    var sr = swaps[si][0], sc = swaps[si][1];
-                    engineBoard.paint(scratch, board.grid, H, W, blocks);
-                    // THE ENGINE HAS TO AGREE THE BOARD IS SETTLED AND THE
-                    // SWAP IS LEGAL, or the case is not decidable and counting
-                    // it either way would be inventing a verdict. A board with
-                    // any such swap is dropped whole, so the comparison below
-                    // stays an exact equality rather than a near-miss.
-                    if (engineBoard.settle(scratch, 60).comboSizes.length ||
-                        !scratch.canSwap(sr, sc)) { undecidable = true; break; }
-                    scratch.curRow = sr; scratch.curCol = sc;
-                    scratch.doSwap(sr, sc);
-                    var res = engineBoard.settle(scratch, 900);
-                    var biggest = 0;
-                    for (var k = 0; k < res.comboSizes.length; k++) {
-                        if (res.comboSizes[k] > biggest) biggest = res.comboSizes[k];
-                    }
-                    var ateGarbage = res.garbage.length > 0;
-                    if (biggest >= 4 || res.chainLength >= 2 || ateGarbage) {
-                        expected++;
-                        if (biggest < 4 && res.chainLength < 2 && ateGarbage) garbageQualified++;
-                    }
-                }
-                if (undecidable) { skipped++; continue; }
-
-                var got = features.matchPotential(inputMod.normalize({ board: board }));
-                assert.strictEqual(got, expected,
-                    'seed ' + seed + ', ' + colours + ' colours, board ' + i +
-                    ': matchPotential said ' + got + ', the engine-driven count said ' + expected);
-                boards++;
-                totalCounted += expected;
-                if (expected > 0) nonZero++;
-            }
-        });
-    });
-    assert.ok(boards > skipped, 'more boards were dropped as undecidable (' + skipped +
-        ') than were compared (' + boards + ') — the sweep is measuring the harness');
-    assert.ok(nonZero > boards * 0.2, 'only ' + nonZero + '/' + boards +
-        ' boards had any qualifying swap — this is not exercising the feature');
-    assert.ok(totalCounted > 40, 'only ' + totalCounted + ' qualifying swaps in total');
-    assert.ok(garbageQualified > 5, 'only ' + garbageQualified + ' swaps qualified via the ' +
-        'garbage clause alone — the eats-garbage half of the rule is barely covered');
-});
 
 
 
@@ -479,71 +396,6 @@ function toppedOutStack(level) {
 // Swept over seeds, colour counts and levels because the award VALUE
 // depends on all three through levelData.stop, and a sweep that only ever
 // produces one award size cannot tell a max from a sum.
-test('stopTimeGain sweep: it equals the frames the engine really adds', function () {
-    var SEEDS = [3, 7, 11, 19];
-    var COLOURS = [5, 6];
-    var LEVELS = [3, 10];
-    var AWARDS = [[true, 4], [true, 6], [false, 4], [false, 9]];   // chain / combo
-    var cases = 0, sawGain = 0, sawBlocked = 0, sawPartial = 0;
-
-    SEEDS.forEach(function (seed) {
-      COLOURS.forEach(function (colours) {
-        LEVELS.forEach(function (level) {
-          AWARDS.forEach(function (aw) {
-            // What this award is worth with nothing on the clock. The
-            // ENGINE decides it; this file never computes a stop value.
-            var probe = new PanelEngine.Stack({ level: level, seed: seed, colors: colours });
-            var guard = 0;
-            while (!probe.stopWatchIsRunning && guard++ < 1000) probe.run();
-            probe.wasToppedOut = true;
-            probe.chainCounter = aw[1];
-            probe.stopTime = 0;
-            probe.awardStopTime(aw[0], aw[1]);
-            var earned = probe.stopTime;
-            if (earned <= 0) return;           // this combination pays nothing
-
-            // Now the same award onto clocks already running, including one
-            // above it and one below it, so the max is exercised both ways.
-            [0, Math.floor(earned / 2), earned, earned + 30].forEach(function (banked) {
-                var s = toppedOutStack(level);
-                s.wasToppedOut = true;
-                s.chainCounter = aw[1];
-                s.stopTime = banked;
-                var before = s.stopTime;
-                s.awardStopTime(aw[0], aw[1]);
-                var engineGain = s.stopTime - before;      // the engine's own answer
-
-                var got = features.stopTimeGain(inputMod.normalize({
-                    board: { width: PanelEngine.WIDTH, height: s.height,
-                             grid: gridOf(s), blocks: {} },
-                    clock: { toppedOut: true, stopTime: banked },
-                    earned: { stopTimeEarned: earned }
-                }));
-                assert.strictEqual(got, engineGain,
-                    'level ' + level + ' seed ' + seed + ' colours ' + colours +
-                    ' award ' + JSON.stringify(aw) + ' banked ' + banked +
-                    ': feature says ' + got + ', the engine added ' + engineGain);
-                cases++;
-                if (engineGain === earned && banked === 0) sawGain++;
-                else if (engineGain === 0) sawBlocked++;
-                else if (engineGain > 0) sawPartial++;
-            });
-          });
-        });
-      });
-    });
-
-    // THE SWEEP ASSERTS ITS OWN COVERAGE. A sweep that never produced a
-    // blocked award would pass with the max implemented as a sum, and a
-    // sweep that never produced a partial one would pass with it
-    // implemented as an all-or-nothing gate.
-    assert.ok(cases >= 40, 'sweep too sparse: only ' + cases + ' cases');
-    assert.ok(sawGain > 0, 'sweep never awarded onto an empty clock');
-    assert.ok(sawBlocked > 0, 'sweep never blocked an award with a fuller clock — ' +
-                              'it cannot tell a max from a sum');
-    assert.ok(sawPartial > 0, 'sweep never produced a PARTIAL gain — ' +
-                              'it cannot tell a max from an all-or-nothing gate');
-});
 
 // The candidate board as a plain grid, in the encoding input.js expects:
 // 0 empty, and anything non-zero occupied. Written here rather than reused
@@ -561,19 +413,6 @@ function gridOf(stack) {
     return grid;
 }
 
-test('stopTimeGain is silent on a safe board no matter how big the award', function () {
-    // The ACCEPT half, through the real engine rather than a hand-built
-    // input: a stack that is genuinely NOT topped out, with a real award.
-    var s = new PanelEngine.Stack({ level: 10, seed: 7 });
-    var guard = 0;
-    while (!s.stopWatchIsRunning && guard++ < 1000) s.run();
-    assert.ok(!s.wasToppedOut, 'setup failed: a fresh stack should not be topped out');
-    var got = features.stopTimeGain(inputMod.fromStack(
-        s, { width: PanelEngine.WIDTH, height: s.height, grid: gridOf(s), blocks: {} },
-        { stopTimeEarned: 600 }, null, 0));
-    assert.strictEqual(got, 0,
-        'a board that cannot die paid ' + got + ' for stop time it does not need');
-});
 
 
 tests.forEach(function (t) {

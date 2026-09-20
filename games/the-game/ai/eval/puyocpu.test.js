@@ -35,7 +35,7 @@ function zeros() { var w = {}; registry.keys.forEach(function (k) { w[k] = 0; })
 // tests the MACHINE, not the numbers.
 function sample() {
     var w = zeros();
-    w.links = 25; w.colourVariance = 2; w.edgePenalty = 8;
+    w.linksH = 13; w.linksV = 12; w.colourVariance = 2; w.edgePenalty = 8;
     w.maxHeight = 30; w.garbageOnBoard = 25;
     return w;
 }
@@ -113,7 +113,7 @@ test('the weights decide: changing them changes the game', function () {
     // failure that made this repo's first evaluator worthless.
     var a = play(sample(), 3).frames;
     var flipped = zeros();
-    flipped.roughness = 40; flipped.fillRatio = 60; flipped.matchPotential = 20;
+    flipped.garbageAdjacency = 40; flipped.fillRatio = 60; flipped.chainLength = 20;
     var b = play(flipped, 3).frames;
     assert.notStrictEqual(a, b,
         'two very different weight sets played identically (' + a + ' frames each). ' +
@@ -198,13 +198,24 @@ var UNREACHABLE = {
     // a feature costs ~900 resolves a decision, 166ms against an 85ms
     // budget. They are live at depth 2; reach.test.js checks the mapping and
     // a duel probe confirms all seven vary in play.
+    reach5combo: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach7combo: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach5chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
+
     reach4combo: 'needs the second ply; these games are depth 1. See reach.test.js.',
     reach5combo: 'needs the second ply; these games are depth 1. See reach.test.js.',
     reach6combo: 'needs the second ply; these games are depth 1. See reach.test.js.',
     reach7combo: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach8combo: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach9combo: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach10combo: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach2chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach3chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
     reach4chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
     reach5chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
     reach6chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach7chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach8chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
 
     // AND THE TWO OPPONENT FEATURES NEED AN OPPONENT. These games are solo,
     // so input.opponent is null and both read 0 by definition. In a duel

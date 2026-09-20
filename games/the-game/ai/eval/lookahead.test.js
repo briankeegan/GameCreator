@@ -33,8 +33,8 @@ var PuyoCpu = require('./puyocpu.js');
 var tests = [], failures = [];
 function test(name, fn) { tests.push({ name: name, fn: fn }); }
 
-var W = { matchPotential: 229, chainPotential: 258, colourVariance: 168,
-          maxHeight: 136, roughness: 294, garbageSent: 107, travelCost: 10 };
+var W = { colourVariance: 168,
+          maxHeight: 136, travelCost: 10 };
 var EPS = 1e-9;
 
 // GROUND TRUTH, COMPUTED THE SLOW OBVIOUS WAY.

@@ -40,8 +40,8 @@ on:
         description: 'Weight vectors held PER ISLAND. Puyo uses 16'
         default: '16'
       leg:
-        description: 'Updates each island runs before the champions face off'
-        default: '250'
+        description: 'Updates each island runs before the champions face off. Shorter legs do the same total work in more chunks, and a chunk is the only moment a snapshot lands and the numbers become visible'
+        default: '50'
       faceoff:
         description: 'Seeds per champion pairing in the face-off'
         default: '3'
@@ -142,7 +142,7 @@ jobs:
           GC_RISE: ${{ github.event.inputs.rise || '1' }}
           GC_DENSITY: ${{ github.event.inputs.density || '' }}
           GC_PBT_ISLANDS: ${{ github.event.inputs.islands || '4' }}
-          GC_PBT_LEG: ${{ github.event.inputs.leg || '250' }}
+          GC_PBT_LEG: ${{ github.event.inputs.leg || '50' }}
           GC_PBT_FACEOFF: ${{ github.event.inputs.faceoff || '3' }}
           GC_PBT_MIGRATE: ${{ github.event.inputs.migrate || '1' }}
           GC_VS_POPULATION: ${{ github.event.inputs.population || '16' }}

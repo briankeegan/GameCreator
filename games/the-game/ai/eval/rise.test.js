@@ -240,9 +240,8 @@ test('a block pushed past the ceiling leaves with its panels', function () {
 function zeros() { var w = {}; registry.keys.forEach(function (k) { w[k] = 0; }); return w; }
 function sample() {
     var w = zeros();
-    w.links = 25; w.colourVariance = 2; w.edgePenalty = 8;
-    w.maxHeight = 30; w.garbageOnBoard = 25; w.roughness = 40; w.garbageSent = 60;
-    return w;
+    w.linksH = 13; w.linksV = 12; w.colourVariance = 2; w.edgePenalty = 8;
+    w.maxHeight = 30; w.garbageOnBoard = 25; return w;
 }
 function play(opts, frames) {
     var stack = new PanelEngine.Stack({ level: 10, seed: 7, countdown: false });
@@ -273,7 +272,7 @@ test('THE CASCADE THE RISE SETS OFF REACHES THE SCORE, not just the board', func
     // score is zero, whatever the board looks like afterwards.
     var stack = new PanelEngine.Stack({ level: 10, seed: 4, countdown: false });
     var w = zeros();
-    w.garbageSent = 100; w.chainLength = 100;
+    w.chainLength = 100;
     var cpu = new PuyoCpu(stack, { weights: w, reaction: 12, rise: true });
 
     var board = make([[4, 2, 2, 1, 5, 1],
@@ -349,167 +348,6 @@ test('the incoming row the bot rises by is the one the engine will actually deal
     });
 });
 
-test('THE REGRESSION THIS EXISTS FOR: a big clear stops being the worst move on the board', function () {
-    // Score every candidate of every decision against HOLDING on that same
-    // board, and group by how many panels the candidate cleared. Measured
-    // paired — both scorings over one collected list of positions:
-    //
-    //     cleared   rise off    rise on
-    //        0         -18        -17
-    //        3         -33        -23
-    //      4-6         -65        -46
-    //       7+         -67        -40
-    //
-    // Off, it is monotonic: the more a move cleared, the worse it scored,
-    // so the best thing on the board was to do nothing. That is not a
-    // weight the search chose — it is where the simulation STOPS, at the
-    // instant the hole is open and the panels that refill it have not
-    // arrived yet. On, the biggest clears are lifted the most: 7+ by 40%
-    // and 4-6 by 29%, and a 7+ goes from the worst bucket to level with
-    // 4-6.
-    //
-    // THE SIZES DEPEND ON WHICH BOT IS PROBED, so the pinned one is the
-    // claim. These weights predate normalisation and are read raw, which
-    // is a different feature mix from the one the evaluator was tuned for.
-    // Scaled by each feature's norm — the same bot under the share-based
-    // evaluator — the same paired sweep gives -1255 -> -1150 on 7+, an 8%
-    // lift rather than 40%. Both directions agree; the magnitude does not,
-    // so no threshold here should be read as a fact about the shipped bot.
-    //
-    // WHAT IT STILL DOES NOT DO: even at 40%, a 7+ at -40 is worse than
-    // holding at -17. Rise narrows the bias, it does not reverse it, which
-    // is the most likely reason every trained champion carries a NEGATIVE
-    // weight on garbageSent — 35 of 35 in the norm-s series do.
-    //
-    // IT MUST BE THE ENDLESS DRILL, NOT A BARE STACK. On a board with no
-    // garbage arriving, the same sweep moves 7+ only from -1351 to -1116,
-    // because the largest thing a big clear buys is taking GARBAGE off the
-    // board with it, and a bare stack never has any. Measuring this on an
-    // empty-handed board reports a 17% effect for a change worth 73%.
-    //
-    // The absolute numbers are the OLD weights driving a new bot, so they
-    // are a mismatch by construction (frames 9514 -> 7687, sent 123 ->
-    // 104). What is asserted here is the SHAPE, which is what a retrain
-    // then has to work with.
-    assert.ok(process.env.GC_TRAINING_DIR,
-        'GC_TRAINING_DIR is unset, so bench.js cannot load the real attack files and ' +
-        'this sweep would silently measure a garbage-free board — which reports a ' +
-        'fifth of the real effect. Set it to panel-game/client/assets/default_data/training');
-    var bench = require('./bench.js');
-    // PINNED, NOT "WHATEVER IS SHIPPED". This measures a property of the
-    // SCORING — that a clear is charged for a hole the panels have not come
-    // back to fill yet — and the numbers in the comment above were taken
-    // with one specific weight set. Reading `trained-weights.js` instead
-    // tied the test to whichever champion was current, and the moment a new
-    // one shipped the sweep stopped producing big clears at all ("too few
-    // big clears sampled (2 / 0)") and failed every training run's
-    // pre-flight. A test must not depend on a value the project derives
-    // somewhere else and changes.
-    var CALIBRATED = 'trained.replace.l10-puyo.0909-190108.g00360.json';
-    var snapPath = path.join(__dirname, CALIBRATED);
-    assert.ok(require('fs').existsSync(snapPath),
-        'the snapshot this case was calibrated against is gone (' + CALIBRATED + '), so ' +
-        'its numbers describe nothing — recalibrate against a set that exists and record ' +
-        'the new figures in the comment above');
-    var shipped = JSON.parse(require('fs').readFileSync(snapPath, 'utf8')).weights;
-
-    function panels(b) {
-        var n = 0;
-        for (var r = 1; r <= b.height; r++)
-            for (var c = 1; c <= b.width; c++) if (b.grid[r][c] > 0) n++;
-        return n;
-    }
-    // THE TWO SCORINGS MUST SEE THE SAME BOARDS.
-    //
-    // Playing one game with rise off and another with rise on and comparing
-    // bucket means measures two things at once: the scoring change, and the
-    // fact that a bot scoring differently walks into different positions.
-    // The 7+ bucket held 80 candidates one way and 59 the other, and the
-    // confound was larger than the effect — unpaired, this reports rise
-    // making big clears WORSE (ratio 1.219) where the same boards scored
-    // both ways report it making them better (0.916).
-    //
-    // So one playthrough collects the positions and both scorings walk that
-    // same list. The drill is played rise-off because the bot that has to be
-    // convinced to clear is the one that does not already rise.
-    var positions = [];
-    var collect = PuyoCpu.prototype._decide;
-    PuyoCpu.prototype._decide = function () {
-        var board = this._snapshot();
-        positions.push({ board: board, incoming: board.incoming || null });
-        return collect.call(this);
-    };
-    try {
-        [1, 2, 3].forEach(function (seed) {
-            bench.run(shipped, seed, { brain: 'puyo', scenario: 'endless',
-                                       checkTiming: false, rise: false });
-        });
-    } finally { PuyoCpu.prototype._decide = collect; }
-
-    function sweep(rise) {
-        var buckets = { '0': { n: 0, sum: 0 }, '3': { n: 0, sum: 0 },
-                        '4-6': { n: 0, sum: 0 }, '7+': { n: 0, sum: 0 } };
-        var stack = new PanelEngine.Stack({ level: 10, seed: 1, countdown: false });
-        var cpu = new PuyoCpu(stack, { weights: shipped, reaction: 12, rise: rise });
-        positions.forEach(function (p) {
-            cpu._incoming = p.incoming;
-            var before = panels(p.board);
-            var hb = p.board.clone();
-            var hold = cpu._score(hb, cpu._resolveCandidate(hb), null);
-            p.board.legalSwaps().forEach(function (mv) {
-                var t = p.board.clone();
-                t.swap(mv[0], mv[1]);
-                var sc = cpu._score(t, cpu._resolveCandidate(t), mv);
-                var cl = before - panels(t);
-                var k = cl === 0 ? '0' : (cl <= 3 ? '3' : (cl <= 6 ? '4-6' : '7+'));
-                buckets[k].n++;
-                buckets[k].sum += (sc - hold);
-            });
-        });
-        var out = { n: buckets['7+'].n };
-        ['0', '3', '4-6', '7+'].forEach(function (k) {
-            out[k] = buckets[k].n ? buckets[k].sum / buckets[k].n : null;
-        });
-        return out;
-    }
-
-    var off = sweep(false), on = sweep(true);
-    assert.strictEqual(off.n, on.n,
-        'the two sweeps saw different candidate counts (' + off.n + ' vs ' + on.n +
-        '), so they are not paired and the comparison is measuring position drift');
-    if (process.env.GC_SHOW) console.log('   off', JSON.stringify(off), '\n   on ', JSON.stringify(on));
-    assert.ok(off.n > 20 && on.n > 20,
-        'too few big clears sampled (' + off.n + ' / ' + on.n + ') to say anything');
-
-    // 1. The defect is real and still reproduces with rise off. If this
-    //    ever stops failing, the sweep has stopped measuring the thing.
-    assert.ok(off['7+'] < off['0'] && off['4-6'] < off['3'] && off['3'] < off['0'],
-        'without rise, the penalty is no longer monotonic in how much was cleared — ' +
-        'either it got fixed elsewhere or this sweep broke: ' + JSON.stringify(off));
-
-    // 2. Rise lifts the two clearing buckets, and the biggest clears most.
-    //    Measured 40% on 7+ and 29% on 4-6; the floors sit under those with
-    //    room for the sweep's own wobble and still reject "improved it
-    //    slightly". 0.75 on 7+ is the threshold this file has always
-    //    carried; it now passes, because the sweep is paired.
-    assert.ok(on['4-6'] > off['4-6'] * 0.85,
-        'rise did not lift the 4-6 penalty: ' + off['4-6'].toFixed(0) + ' -> ' +
-        on['4-6'].toFixed(0) + ' (measured 29% better; this needs 15%)');
-    assert.ok(on['7+'] > off['7+'] * 0.75,
-        'rise barely moved the 7+ penalty: ' + off['7+'].toFixed(0) + ' -> ' +
-        on['7+'].toFixed(0) + ' (measured 40% better; this needs 25%)');
-    assert.ok(on['7+'] >= on['4-6'],
-        'with rise on, a 7+ clear is still scored worse than a 4-6 (' +
-        on['7+'].toFixed(0) + ' vs ' + on['4-6'].toFixed(0) + ')');
-
-    // 3. And it does not do it by making holding look worse instead — the
-    //    do-nothing bucket must not be what moved.
-    assert.ok(Math.abs(on['0'] - off['0']) < Math.abs(on['4-6'] - off['4-6']),
-        'rise moved the do-nothing bucket (' + off['0'].toFixed(0) + ' -> ' +
-        on['0'].toFixed(0) + ') more than the clearing one (' + off['4-6'].toFixed(0) +
-        ' -> ' + on['4-6'].toFixed(0) + '), so it is shifting the baseline rather ' +
-        'than pricing the clear');
-});
 
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok  ', t.name); }

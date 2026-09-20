@@ -20,17 +20,17 @@ var tests = [], failures = [];
 function test(name, fn) { tests.push({ name: name, fn: fn }); }
 
 test('the targets are the ones a player would name', function () {
-    assert.deepStrictEqual(modes.REACH, [
-        'reach4combo', 'reach5combo', 'reach6combo', 'reach7combo',
-        'reach4chain', 'reach5chain', 'reach6chain'
-    ]);
+    assert.deepStrictEqual(modes.COMBO_SIZES, [4, 5, 6, 7, 8, 9, 10]);
+    assert.deepStrictEqual(modes.CHAIN_SIZES, [2, 3, 4, 5, 6, 7, 8]);
+    assert.strictEqual(modes.REACH.length, 14);
 });
 
-test('nothing below four is a target, because nothing below four pays', function () {
-    // COMBO_GARBAGE sends nothing under 4 and a bare three scores 0.
-    modes.REACH.forEach(function (k) {
-        assert.ok(Number(k.replace(/\D/g, '')) >= 4, k + ' targets something the engine does not pay for');
-    });
+test('the floors come from the engine, and they are not the same floor', function () {
+    // COMBO_GARBAGE sends nothing for a 3, so 4 is the floor for combos. A
+    // CHAIN of 2 already pays 50 points and sends a full-width slab, so 2 is
+    // the floor for chains — treating 4 as the floor for both was wrong.
+    assert.strictEqual(Math.min.apply(null, modes.COMBO_SIZES), 4);
+    assert.strictEqual(Math.min.apply(null, modes.CHAIN_SIZES), 2);
 });
 
 test('a board that can fire a 6-wide reads on 6 and on everything below it', function () {

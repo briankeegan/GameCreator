@@ -61,6 +61,27 @@ function load(file) {
         source = 'shipped (trained-weights.js)';
     }
 
+    // A SNAPSHOT OLDER THAN THE FEATURE SET IS STILL A BOT. Weights are
+    // machine-written and every one of them names a feature that existed
+    // when the run happened; removing a feature must not make every archived
+    // champion unloadable, because comparing against them is how a change is
+    // judged. Unknown keys are dropped here, and named, so a stale snapshot
+    // loads as the bot it can still be rather than throwing.
+    //
+    // evaluate() stays STRICT: a hand-written weight set with a typo in it
+    // must still fail loudly, and that is the path a typo travels.
+    var known = require('./registry.js').keys, kept = {}, unknown = [];
+    Object.keys(weights || {}).forEach(function (k) {
+        if (known.indexOf(k) >= 0) kept[k] = weights[k];
+        else if (weights[k]) unknown.push(k);
+    });
+    if (unknown.length) {
+        console.error('note: ' + (file || 'this weight set') + ' carries ' +
+            unknown.length + ' weight(s) for features that no longer exist (' +
+            unknown.join(', ') + '); dropped.');
+    }
+    weights = kept;
+
     var out = {
         depth: sw.depth === undefined ? 1 : Number(sw.depth),
         beam: sw.beam === undefined ? 6 : Number(sw.beam),

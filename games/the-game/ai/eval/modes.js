@@ -84,22 +84,33 @@
   // candidate board, so this reads work already done. Asking the same
   // question as a separate sweep costs ~900 resolves a decision: 166ms
   // against an 85ms budget, measured.
-  var REACH = ['reach4combo', 'reach5combo', 'reach6combo', 'reach7combo',
-               'reach4chain', 'reach5chain', 'reach6chain'];
+  // THE SIZES, FROM THE ENGINE'S OWN TABLES. A combo of 3 sends nothing —
+  // COMBO_GARBAGE starts at 4 — so 4 is the floor there. A CHAIN of 2 pays
+  // 50 points and sends a full-width slab, so 2 is the floor for chains;
+  // treating 4 as the floor for both was wrong.
+  //
+  // One measurement per size, never a lumped tail bin: a bin covering "7 or
+  // more" throws away the difference between a 7-chain and a 13-chain, which
+  // is the information this exists to hand over. The ceilings stop where the
+  // game currently reaches, and widen when it starts hitting them.
+  var COMBO_SIZES = [4, 5, 6, 7, 8, 9, 10];
+  var CHAIN_SIZES = [2, 3, 4, 5, 6, 7, 8];
+  var REACH = ['reach4combo', 'reach5combo', 'reach6combo', 'reach7combo', 'reach8combo', 'reach9combo', 'reach10combo',
+               'reach2chain', 'reach3chain', 'reach4chain', 'reach5chain', 'reach6chain', 'reach7chain', 'reach8chain'];
 
   function reach(r) {
     var links = (r && r.links) || 0, wide = (r && r.wide) || 0;
-    // Every key, always. A missing key reads as undefined in the evaluator
-    // and scores nothing, which is a dead feature wearing a live one's name.
-    return {
-      reach4combo: wide >= 4 ? 1 : 0,
-      reach5combo: wide >= 5 ? 1 : 0,
-      reach6combo: wide >= 6 ? 1 : 0,
-      reach7combo: wide >= 7 ? 1 : 0,
-      reach4chain: links >= 4 ? 1 : 0,
-      reach5chain: links >= 5 ? 1 : 0,
-      reach6chain: links >= 6 ? 1 : 0
-    };
+    // EVERY KEY, ALWAYS. A missing key reads as undefined in the evaluator
+    // and scores nothing, which is a dead measurement wearing a live one's
+    // name. Built rather than typed, so a size cannot be skipped.
+    var out = {};
+    for (var i = 0; i < COMBO_SIZES.length; i++) {
+      out['reach' + COMBO_SIZES[i] + 'combo'] = wide >= COMBO_SIZES[i] ? 1 : 0;
+    }
+    for (var j = 0; j < CHAIN_SIZES.length; j++) {
+      out['reach' + CHAIN_SIZES[j] + 'chain'] = links >= CHAIN_SIZES[j] ? 1 : 0;
+    }
+    return out;
   }
 
   // THE GOALS A PLAYER WOULD NAME. Not a range and not a continuous knob:
@@ -278,6 +289,7 @@
 
   return { payout: payout, fires: fires, pays: pays,
            REACH: REACH, reach: reach,
+           COMBO_SIZES: COMBO_SIZES, CHAIN_SIZES: CHAIN_SIZES,
            GOALS: GOALS, goal: goal, climbTo: climbTo, survivable: survivable,
            clock: clock, escapeFrames: escapeFrames, banksTime: banksTime,
            risesIntoPayless: risesIntoPayless,

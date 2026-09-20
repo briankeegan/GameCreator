@@ -168,26 +168,15 @@ function latent(rows, marks) {
 function cleared(n) { return F.garbageCleared(inputMod.normalize({ earned: { garbageCleared: n } })); }
 
 
-// stopTimeGain: what this candidate's stop time is WORTH, which is the extra
-// frames it buys over the clock already running, and only where dying is
-// possible. Three inputs: the candidate board (danger), the live clock
-// (banked), the candidate's own resolve (earned).
-function stGain(rows, clock, earned) {
-    return F.stopTimeGain(inputMod.normalize({
-        board: board(rows), clock: clock || {}, earned: earned || {} }));
-}
-
 function chain(earned) { return F.chainLength(inputMod.normalize({ earned: earned })); }
 
 function gOnBoard(rows) { return F.garbageOnBoard(inputMod.normalize({ board: board(rows) })); }
 function gIncoming(list) { return F.incomingGarbage(inputMod.normalize({ incoming: list })); }
 function gAdj(rows) { return F.garbageAdjacency(inputMod.normalize({ board: board(rows) })); }
-function scarce(rows, colours) { return F.colourScarcity(inputMod.normalize({ board: board(rows), colours: colours })); }
 
 function edge(rows) { return F.edgePenalty(inputMod.normalize({ board: board(rows) })); }
 function maxH(rows, disp) { return F.maxHeight(inputMod.normalize({ board: board(rows), displacement: disp || 0 })); }
 function fill(rows) { return F.fillRatio(inputMod.normalize({ board: board(rows) })); }
-function rough(rows) { return F.roughness(inputMod.normalize({ board: board(rows) })); }
 
 function variance(rows) {
     return F.colourVariance(inputMod.normalize({ board: board(rows) }));
@@ -205,79 +194,14 @@ function linksV(rows) {
     return F.linksV(inputMod.normalize({ board: board(rows) }));
 }
 
-function links(rows) {
-    return F.links(inputMod.normalize({ board: board(rows) }));
-}
 
-function potential(rows, extra) {
-    return F.matchPotential(inputMod.normalize(Object.assign({ board: board(rows) }, extra || {})));
-}
 
-test('matchPotential: fires on a swap that completes a merged 5', function () {
-    // Swapping the 2 and the 1 in the bottom row puts a 1 at column 3,
-    // making BOTH a row of three (cols 1-3) and a column of three
-    // (rows 1-3) that share that cell — the engine unions them into one
-    // 5-combo, which is exactly why an L is worth more than two 3s.
-    var n = potential([
-        '..1...',
-        '..1...',
-        '1121..'
-    ]);
-    assert.strictEqual(n, 1, 'expected exactly the one qualifying swap');
-});
 
-test('matchPotential: STAYS QUIET on a swap that only makes a plain 3', function () {
-    // Same shape with the column removed: the only swap available now
-    // completes three in a row and nothing else. Sends no garbage, spends
-    // three panels. Must not count.
-    assert.strictEqual(potential(['1121..']), 0);
-});
 
-test('matchPotential: a plain 3 DOES count when it touches garbage', function () {
-    // Identical swap to the test above. The only difference is the garbage
-    // sitting on top of it — and touching garbage is the only way garbage
-    // ever clears, so the same move that was worthless is now the point.
-    assert.strictEqual(potential([
-        '##....',
-        '1121..'
-    ]), 1);
-});
 
-test('matchPotential: the near-miss inside the same board is rejected', function () {
-    // The 5-combo board above also contains a swap that completes only a
-    // vertical 3 (swapping the 1 and 2 the other way). If this feature
-    // counted plain 3s the first test would read 2, not 1 — so that test
-    // and this one together pin the rule from both sides.
-    var rows = ['..1...', '..1...', '1121..'];
-    assert.strictEqual(potential(rows), 1);
-    // and prove that near-miss really is there to be miscounted:
-    var b = board(rows);
-    b.grid[1][2] = 2; b.grid[1][3] = 1;          // apply that other swap by hand
-    var m = F._matchedCells(b);
-    assert.strictEqual(Object.keys(m).length, 3, 'the near-miss should be a real 3-match');
-});
 
-test('matchPotential: an empty board scores zero', function () {
-    assert.strictEqual(potential(['......', '......']), 0);
-});
 
-test('matchPotential: a board with no useful swap scores zero', function () {
-    assert.strictEqual(potential([
-        '123123',
-        '231231'
-    ]), 0);
-});
 
-test('matchPotential: garbage and busy cells are never swapped', function () {
-    // -2 and -1 are not panels. A version that treated them as swappable
-    // would invent matches out of the wall.
-    assert.strictEqual(potential(['#1#1##']), 0);
-    assert.strictEqual(potential(['x1x1xx']), 0);
-});
-
-test('matchPotential: swapping two of the same colour is not a move', function () {
-    assert.strictEqual(potential(['111...']), 0, 'a settled board has no standing match to find');
-});
 
 // THE BLIND SPOT THAT USED TO BE ASSERTED HERE AS A LIMIT.
 //
@@ -291,57 +215,11 @@ test('matchPotential: swapping two of the same colour is not a move', function (
 // The three tests below are what replaced it: the move is seen when it pays,
 // seen when the panel has to FALL first, and still ignored when the fall only
 // produces a plain 3.
-test('matchPotential: FIRES on a swap into an empty cell', function () {
-    // 111.1. — sliding the 1 at column 5 into the gap at column 4 makes a
-    // row of four. Nothing falls here; the swap alone used to be skipped
-    // outright because one side was empty.
-    assert.strictEqual(potential(['111.1.']), 1);
-});
 
-test('matchPotential: FIRES on a swap whose panel must FALL before it matches', function () {
-    //   .1....
-    //   11.1..
-    // Two ways to a merged four, and neither is visible without gravity:
-    // swap the top 1 right and it drops into the hole at column 3, giving
-    // 1111..; or swap the bottom 1 at column 4 left, giving a row of three
-    // that unions with the column of two through column 2.
-    assert.strictEqual(potential(['.1....', '11.1..']), 2);
-});
 
-test('matchPotential: STAYS QUIET when the fall only makes a plain 3', function () {
-    // Same shape, one panel short. The swap is now visible and still worth
-    // nothing, because comboGarbage() sends nothing below four — which is
-    // the feature's actual rule, and the reason the old assertion happened
-    // to read 0 for the wrong reason.
-    assert.strictEqual(potential(['.1....', '11....']), 0);
-});
 
-test('matchPotential: LIMIT — it does not look past one swap', function () {
-    // Two swaps from a match is setup, and real, and not measured here.
-    assert.strictEqual(potential(['1212..']), 0);
-});
 
-test('matchPotential: the input is not mutated by scoring it', function () {
-    // It swaps cells in place to test them and swaps them back. If it ever
-    // failed to restore one, every later evaluation in the search would be
-    // scoring a board that never existed.
-    var b = board(['..1...', '..1...', '1121..']);
-    var before = JSON.stringify(b.grid);
-    F.matchPotential(inputMod.normalize({ board: b }));
-    assert.strictEqual(JSON.stringify(b.grid), before, 'matchPotential left the board altered');
-});
 
-test('matchPotential: weighting it now works end to end through the evaluator', function () {
-    // The evaluator reports a SHARE, not a count: the raw 1 comes back divided
-    // by this feature's bound, so a weight means the same thing here as it
-    // does for a feature that counts to 70.
-    var norm = registry.byKey.matchPotential.norm;
-    var r = evaluator.evaluate({ board: board(['..1...', '..1...', '1121..']) },
-                               { matchPotential: 10 });
-    assert.strictEqual(r.features.matchPotential, 1 / norm);
-    assert.strictEqual(r.terms.matchPotential, 10 / norm, 'sign is +1');
-    assert.strictEqual(r.score, 10 / norm);
-});
 
 
 // ---- popSize ----
@@ -379,67 +257,16 @@ test('matchPotential: weighting it now works end to end through the evaluator', 
 //
 // Written before the function exists.
 
-test('popSize: a pair plus a third one swap away pops three', function () {
-    // swap cols 3,4 and the top row reads 111... . The bottom row is only
-    // there to hold the gap up, and offers nothing itself.
-    assert.strictEqual(popSize(['11.1..', '445566']), 3);
-});
 
-test('popSize: an L pops FIVE, and that is the whole point of measuring size', function () {
-    // Same top row both times. The only difference is the column under the
-    // gap: 1s stacked beneath it, or not.
-    //   with    — swap cols 3,4 completes the row AND the column: 5 panels,
-    //             plus a second swap (cols 2,3) that completes the column
-    //             alone for 3. 8.
-    //   without — the same row swap, three panels, nothing else. 3.
-    assert.strictEqual(popSize(['11.1..', '44166.', '551234']), 8);
-    assert.strictEqual(popSize(['11.1..', '44566.', '552234']), 3);
-});
 
-test('popSize: it works down a column as well as along a row', function () {
-    assert.strictEqual(popSize(['1.....', '1.....', '21....']), 3);
-});
 
-test('popSize: STAYS QUIET on a split pair — X . X cannot be finished', function () {
-    // Swapping either 1 into the gap just moves it: .11... or 11.... . And
-    // nothing can fall in, because a settled empty cell has nothing above it.
-    // This is the shape that replaced splitPair, and the reason it did: it
-    // fired 18 times over the 144 real puzzle boards and not one of those
-    // gaps had anything above it.
-    assert.strictEqual(popSize(['1.1...', '445566']), 0);
-});
 
-test('popSize: STAYS QUIET on a bare pair with no third panel in reach', function () {
-    assert.strictEqual(popSize(['11....']), 0);
-});
 
-test('popSize: garbage cannot be swapped, so it is not a move', function () {
-    // Without the rule this reads as "swap cols 3,4 for 111".
-    assert.strictEqual(popSize(['11#1..']), 0);
-});
 
-test('popSize: a busy panel cannot be swapped either', function () {
-    assert.strictEqual(popSize(['11x1..']), 0);
-});
 
-test('popSize: a panel swapped over a hole falls, so nothing pops', function () {
-    // Every row is 11.1.. over open space in column 3. Ignoring gravity each
-    // looks one swap from 111; with gravity the panel drops out of the row.
-    assert.strictEqual(popSize(['11.1..', '11.1..', '23.4..']), 0);
-});
 
-test('popSize: a match already on the board is not potential', function () {
-    assert.strictEqual(popSize(['111.2.']), 0);
-});
 
-test('popSize: an empty row offers nothing', function () {
-    assert.strictEqual(popSize(['......']), 0);
-});
 
-test('popSize: every distinct swap adds its own pop', function () {
-    // 11.1 on the upper row and 66.6 reaching left on the bottom row.
-    assert.strictEqual(popSize(['11.1..', '5566.6']), 6);
-});
 
 
 // ---- links ----
@@ -453,60 +280,16 @@ test('popSize: every distinct swap adds its own pop', function () {
 // garbage, busy cells and empty space — since a version that counted those
 // would report a wall of garbage as beautifully clustered.
 
-test('links: two panels of one colour side by side is one link', function () {
-    assert.strictEqual(links(['11....']), 1);
-});
 
-test('links: vertical counts the same as horizontal', function () {
-    assert.strictEqual(links(['1.....', '1.....']), 1);
-});
 
-test('links: a run of three is two links, not three', function () {
-    assert.strictEqual(links(['111...']), 2);
-});
 
-test('links: a 2x2 block of one colour is four links, not six', function () {
-    // Four orthogonal pairs; the two diagonals must NOT count.
-    assert.strictEqual(links(['11....', '11....']), 4);
-});
 
-test('links: STAYS QUIET on diagonals', function () {
-    assert.strictEqual(links(['1.....', '.1....']), 0);
-});
 
-test('links: different colours touching are not links', function () {
-    assert.strictEqual(links(['12....', '21....']), 0);
-});
 
-test('links: empty space never links to itself', function () {
-    assert.strictEqual(links(['......', '......']), 0);
-});
 
-test('links: garbage never links, to itself or to a panel', function () {
-    // A wall of garbage is the opposite of good clustering. If it counted,
-    // taking damage would look like progress.
-    assert.strictEqual(links(['##....', '##....']), 0);
-    assert.strictEqual(links(['#1....']), 0);
-    assert.strictEqual(links(['#.....', '1.....']), 0);
-});
 
-test('links: busy cells never link', function () {
-    // -1 is a panel mid-animation. Its colour is not knowable from the
-    // snapshot, so pairing it with anything would be inventing one.
-    assert.strictEqual(links(['x1....']), 0);
-    assert.strictEqual(links(['xx....']), 0);
-});
 
-test('links: counts every colour on the board, not just the biggest group', function () {
-    assert.strictEqual(links(['11.22.']), 2);
-});
 
-test('links: weighting it works end to end through the evaluator', function () {
-    var norm = registry.byKey.links.norm;
-    var r = evaluator.evaluate({ board: board(['111...']) }, { links: 3 });
-    assert.strictEqual(r.features.links, 2 / norm, 'two links, reported as a share');
-    assert.strictEqual(r.terms.links, 6 / norm, 'sign is +1');
-});
 
 
 // ---- linksH and linksV ----
@@ -582,27 +365,6 @@ test('linksV: counts every column', function () {
     assert.strictEqual(linksV(['12....', '12....']), 2);
 });
 
-test('THE SPLIT IS EXHAUSTIVE: linksH + linksV equals links on every board', function () {
-    // A split that silently dropped a pair, or counted one in both halves,
-    // would pass every test above and be wrong. These boards between them
-    // carry horizontal runs, vertical runs, an L, garbage, busy cells,
-    // diagonals and empty space.
-    var boards = [
-        ['11....'],
-        ['1.....', '1.....'],
-        ['111...', '1.....'],
-        ['12321.', '12321.', '54321.'],
-        ['##11..', 'xx11..', '111111'],
-        ['......'],
-        ['1.1.1.', '.1.1.1', '1.1.1.'],
-        ['555555', '555555', '555555']
-    ];
-    boards.forEach(function (rows) {
-        assert.strictEqual(
-            linksH(rows) + linksV(rows), links(rows),
-            'split does not add up on ' + JSON.stringify(rows));
-    });
-});
 
 
 
@@ -809,53 +571,13 @@ test('fillRatio: a busy cell is occupied — a panel mid-animation is still ther
 // Sum of absolute height differences between adjacent columns. Not height:
 // a uniformly tall board is perfectly smooth.
 
-test('roughness: a flat board is zero at any height', function () {
-    assert.strictEqual(rough(['111111']), 0);
-    assert.strictEqual(rough(['111111', '111111', '111111']), 0);
-});
 
-test('roughness: STAYS QUIET on a tall flat board — it is not measuring height', function () {
-    assert.strictEqual(rough(['111111', '111111']), 0);
-    assert.ok(maxH(['111111', '111111']) > 0, 'and maxHeight is the one that sees it');
-});
 
-test('roughness: a single step is the size of that step', function () {
-    assert.strictEqual(rough(['111...', '111111']), 1);
-});
 
-test('roughness: a staircase is the sum of its steps, INCLUDING the drop to the floor', function () {
-    // Heights 3,2,1,0,0,0 — the steps are 1+1+1, not 1+1. The fall from
-    // the last built column to empty ground is a step like any other, and
-    // forgetting it is the easy mistake (I made it writing this test).
-    assert.strictEqual(rough(['1.....', '11....', '111...']), 3);
-    // and the same staircase with the empties filled to height 1 loses
-    // exactly that last step:
-    assert.strictEqual(rough(['1.....', '11....', '111111']), 2);
-});
 
-test('roughness: one deep well costs both its walls', function () {
-    assert.strictEqual(rough(['11.111', '11.111']), 4);
-});
 
-test('roughness: the step at the RIGHT-HAND edge is counted', function () {
-    // Found by mutation: a loop bound of `c < W - 1` skips the last pair
-    // of columns, and every other case here happens to have two flat empty
-    // columns on the right, so nothing caught it. A lone panel in the last
-    // column is the shape that does.
-    assert.strictEqual(rough(['.....1']), 1);
-    assert.strictEqual(rough(['.....1', '.....1']), 2);
-});
 
-test('roughness: an empty board is zero', function () {
-    assert.strictEqual(rough(['......']), 0);
-});
 
-test('roughness: a buried hole does not change column height', function () {
-    // Column height is the topmost occupied row. A hole underneath is a
-    // real problem and is NOT this feature's problem — written down so
-    // nobody half-implements it here.
-    assert.strictEqual(rough(['111111', '1.1111', '111111']), 0);
-});
 
 
 // ---- garbageOnBoard ----
@@ -995,38 +717,10 @@ test('garbageAdjacency: NOT A DUPLICATE OF garbageOnBoard', function () {
 // describes: once no legal swap can match anything, the AI wiggles until
 // the anti-stall punishment kills it.
 
-test('colourScarcity: two panels of a colour is scarce, three is not', function () {
-    assert.strictEqual(scarce(['11....'], 1), 1);
-    assert.strictEqual(scarce(['111...'], 1), 0);
-});
 
-test('colourScarcity: a colour with NO panels is not scarce', function () {
-    // The near-miss, and getting it backwards makes an empty board look
-    // desperate when it is simply empty. You cannot be stuck for want of a
-    // colour you are not holding.
-    assert.strictEqual(scarce(['......'], 5), 0);
-});
 
-test('colourScarcity: each scarce colour counts', function () {
-    assert.strictEqual(scarce(['1122..'], 2), 2);
-});
 
-test('colourScarcity: a healthy board scores zero', function () {
-    assert.strictEqual(scarce(['111222', '111222'], 2), 0);
-});
 
-test('colourScarcity: garbage and busy cells are not a colour supply', function () {
-    // A board with two 1s and a wall of garbage is still short of 1s.
-    assert.strictEqual(scarce(['11####'], 1), 1);
-    assert.strictEqual(scarce(['11xxxx'], 1), 1);
-    // Found by mutation: treating any non-empty cell as a colour also
-    // passed both boards above, because four garbage cells is not itself
-    // "scarce". A board with a healthy colour and ONE garbage cell is what
-    // exposes it — the garbage registers as a colour down to its last
-    // panel, and the board reads as in trouble when it is fine.
-    assert.strictEqual(scarce(['111#..'], 1), 0, 'one garbage cell is not a scarce colour');
-    assert.strictEqual(scarce(['111x..'], 1), 0, 'nor is one busy cell');
-});
 
 
 // ---- garbageSent ----
@@ -1120,76 +814,16 @@ var SAFE_ROWS = ['......', '......', '......', '......', '1.....'];
 var TOPPED    = ['1.....', '111111', '111111', '111111', '111111'];
 var ONE_BELOW = ['......', '111111', '111111', '111111', '111111'];
 
-test('stopTimeGain: REJECT — topped out, stop time earned, nothing banked', function () {
-    assert.strictEqual(stGain(TOPPED, { toppedOut: true }, { stopTimeEarned: 60 }), 60);
-});
 
-test('stopTimeGain: ACCEPT — the same 60 frames on a board that cannot die is worth 0', function () {
-    // The near-miss that looks identical to stopTimeEarned. This is the whole
-    // reason the feature exists: 99.6% of candidates are this one.
-    assert.strictEqual(stGain(SAFE_ROWS, { toppedOut: false }, { stopTimeEarned: 60 }), 0);
-});
 
-test('stopTimeGain: the engine takes a MAX, so earning under the clock buys nothing', function () {
-    assert.strictEqual(stGain(TOPPED, { toppedOut: true, stopTime: 120 }, { stopTimeEarned: 60 }), 0);
-});
 
-test('stopTimeGain: over the clock, it is worth only the DIFFERENCE', function () {
-    assert.strictEqual(stGain(TOPPED, { toppedOut: true, stopTime: 60 }, { stopTimeEarned: 90 }), 30);
-});
 
-test('stopTimeGain: preStopTime is NOT part of the max — awardStopTime compares stopTime alone', function () {
-    // decrementTimers drains preStopTime first and only then stopTime, so
-    // preStop extends the total clock; but awardStopTime's comparison is
-    // against this.stopTime, so a big preStop does not stop an award landing.
-    assert.strictEqual(stGain(TOPPED, { toppedOut: true, stopTime: 0, preStopTime: 200 },
-                              { stopTimeEarned: 60 }), 60);
-});
 
-test('stopTimeGain: earning nothing is worth nothing, in danger or out of it', function () {
-    assert.strictEqual(stGain(TOPPED, { toppedOut: true }, { stopTimeEarned: 0 }), 0);
-    assert.strictEqual(stGain(SAFE_ROWS, { toppedOut: false }, { stopTimeEarned: 0 }), 0);
-});
 
-test('stopTimeGain: danger reaches one row BEFORE the ceiling, not one frame after', function () {
-    // isToppedOut is "anything in the top row". A feature that waits for it
-    // can only ever reward the move that saves you on the frame you die;
-    // one rise away is where the decision actually gets made.
-    assert.strictEqual(stGain(ONE_BELOW, { toppedOut: false }, { stopTimeEarned: 60 }), 60);
-});
 
-test('stopTimeGain: ACCEPT — two rows short of the ceiling is not danger', function () {
-    assert.strictEqual(stGain(['......', '......', '111111', '111111', '111111'],
-                              { toppedOut: false }, { stopTimeEarned: 60 }), 0);
-});
 
-test("stopTimeGain: the engine's own toppedOut flag counts, even on a low candidate board", function () {
-    // wasToppedOut is what the engine acts on, and it is latched at the top
-    // of the frame. A candidate board that settles lower is still a board
-    // whose stack is topped out right now.
-    assert.strictEqual(stGain(SAFE_ROWS, { toppedOut: true }, { stopTimeEarned: 60 }), 60);
-});
 
-test('stopTimeGain: IT VARIES BETWEEN CANDIDATES OF ONE DECISION', function () {
-    // The defect this replaces: every clock field is read off the LIVE stack
-    // before the swap, so framesToDeath was identical for every candidate of
-    // a decision -- measured, 0 of 415 decisions at level 10 -- and a
-    // constant cannot break a tie. earned is per-candidate, so this does.
-    var clock = { toppedOut: true, stopTime: 30 };
-    var a = stGain(TOPPED, clock, { stopTimeEarned: 90 });
-    var b = stGain(TOPPED, clock, { stopTimeEarned: 45 });
-    var c = stGain(TOPPED, clock, { stopTimeEarned: 0 });
-    assert.strictEqual(a, 60);
-    assert.strictEqual(b, 15);
-    assert.strictEqual(c, 0);
-    assert.ok(a !== b && b !== c, 'same clock, same board, different moves must differ');
-});
 
-test('stopTimeGain: it never goes negative', function () {
-    // A negative would pay the bot to avoid clearing while stop time runs,
-    // which is the opposite of the rule. max(0, ...) not (earned - banked).
-    assert.ok(stGain(TOPPED, { toppedOut: true, stopTime: 300 }, { stopTimeEarned: 1 }) >= 0);
-});
 
 // ---- latentChain ----
 // WILL THIS LANDING CONTINUE THE CHAIN. Counts cells that carry the chain
@@ -1312,125 +946,23 @@ test('travelCost: weighting it subtracts through the evaluator', function () {
 // three if the cell under it cleared and it fell one row. See features.js for
 // where the shape comes from, why depth rather than count, and why the first
 // version of this feature was rejected by the search at 13/300.
-function stair(rows) { return F.staircase(inputMod.normalize({ board: board(rows) })); }
 
-test('staircase: FIRES on a loaded step — clear the 1s and the 2 lands on a pair', function () {
-    // Row 1 is 1,1,1,2,2. Clearing the three 1s drops the 2 above column 3
-    // into row 1, making 2,2,2. One step, so a run of one.
-    assert.strictEqual(stair(['..2...',
-                              '11122.']), 1);
-});
 
-test('staircase: FIRES landing between a split pair, and to the right of one', function () {
-    assert.strictEqual(stair(['..2...',
-                              '.212..']), 1, 'lands between the two 2s');
-    assert.strictEqual(stair(['...2..',
-                              '.221..']), 1, 'lands to the right of the pair');
-});
 
-test('staircase: STAYS QUIET when the pair below is not adjacent to where it lands', function () {
-    // Same panel, same colours, one column moved — the fall completes
-    // nothing. A feature that counted "a 2 above some 2s" would fire here.
-    assert.strictEqual(stair(['..2...',
-                              '1112.2']), 0);
-});
 
-test('staircase: STAYS QUIET when the panel under it is its own colour', function () {
-    // That is already a match, so the board would have resolved it. A shape
-    // that has already fired is not stored potential.
-    assert.strictEqual(stair(['..2...',
-                              '..222.']), 0);
-});
 
-test('staircase: garbage and busy panels are not colours and never step', function () {
-    assert.strictEqual(stair(['..#...',
-                              '11122.']), 0, 'garbage does not complete a colour match');
-    assert.strictEqual(stair(['..x...',
-                              '11122.']), 0, 'a busy panel has no colour to match with');
-});
 
-test('staircase: a vertical pair below cannot be completed by a fall', function () {
-    // The whole column drops together and keeps its spacing, so nothing
-    // closes up. Only horizontal completions count.
-    assert.strictEqual(stair(['2.....',
-                              '1.....',
-                              '2.....',
-                              '2.....']), 0);
-});
 
-test('staircase: STEPS THAT DO NOT FEED EACH OTHER ARE NOT A STAIRCASE', function () {
-    // THE DEFECT THE FIRST VERSION SHIPPED. This board holds three separate
-    // loaded steps that have nothing to do with each other, and the first
-    // version scored it 3 — the same as a genuine three-step staircase. The
-    // shape is "offset by one column and one row at each step"; loose steps
-    // in three corners are three 2-chains, not a 4-chain, and the scoring
-    // table pays 20 for the former and 300 for the latter.
-    var loose = stair(['..2...',
-                       '311225',
-                       '414161',
-                       '344565']);
-    assert.strictEqual(loose, 1, 'three unrelated steps are a run of one, not three');
-});
 
-test('staircase: a CHAINED diagonal run scores its depth', function () {
-    // Two steps offset one column and one row from each other, so firing the
-    // lower one feeds the upper. Found by searching random settled boards
-    // rather than drawn by hand — three hand-drawn attempts at "a chained
-    // pair" all turned out to hold one step and a coincidence, which is the
-    // same way chainPotential's fixture had to be found.
-    var chained = ['...2..',
-                   '...1..',
-                   '..121.',
-                   '312133'];
-    var loose = ['..2...',
-                 '311225',
-                 '414161',
-                 '344565'];
-    assert.strictEqual(stair(chained), 2, 'a two-step staircase reads its depth');
-    assert.strictEqual(stair(loose), 1, 'three unrelated steps stay a run of one');
-    assert.ok(stair(chained) > stair(loose),
-        'depth must beat quantity, or the feature is back to counting loose steps');
-});
 
 // ---- flatTop ----
 // Columns level with the tallest, scaled by how high the tallest is. The
 // documented way to die, and an interaction a weighted sum cannot express
 // out of roughness and maxHeight separately.
-function flat(rows) { return F.flatTop(inputMod.normalize({ board: board(rows) })); }
 
-test('flatTop: FIRES on a flat board at the ceiling, quiet on the same board on the floor', function () {
-    var high = flat(['111111',
-                     '111111',
-                     '111111']);
-    var low = flat(['......',
-                    '......',
-                    '111111']);
-    assert.ok(high > low, 'flat at the top must cost more than flat on the floor (' + high + ' vs ' + low + ')');
-});
 
-test('flatTop: STAYS QUIET on a tall board that is NOT flat', function () {
-    // One tower is high and is not a flat top. maxHeight is the feature
-    // that should see this, and roughness the one that sees the shape.
-    var spike = flat(['1.....',
-                      '1.....',
-                      '111111']);
-    var level = flat(['......',
-                      '......',
-                      '111111']);
-    assert.ok(spike < level, 'a spike must not read as a flat top (' + spike + ' vs ' + level + ')');
-});
 
-test('flatTop: an empty board is zero', function () {
-    assert.strictEqual(flat(['......', '......']), 0);
-});
 
-test('flatTop: it is the CONJUNCTION — neither roughness nor maxHeight sees it alone', function () {
-    var high = ['111111', '111111', '111111'];
-    var low = ['......', '......', '111111'];
-    assert.strictEqual(rough(high), rough(low), 'roughness cannot tell these apart');
-    assert.ok(maxH(high) > maxH(low), 'maxHeight sees the height but not the flatness');
-    assert.ok(flat(high) > flat(low), 'flatTop sees both, which is why it exists');
-});
 
 // ------------------------------------------------------------------ runner
 tests.forEach(function (t) {
