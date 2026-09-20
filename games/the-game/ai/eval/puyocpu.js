@@ -578,22 +578,20 @@
       // does, and then the ordinary ranking stands, because no move here
       // saves it anyway.
       pool = modes.survivable(cands);
-    } else if (avail.links >= T || avail.wide >= S) {
-      // A RELATIVE BAR WAS TRIED HERE — "never sell a 4-wide while a 6-wide
-      // is on the table" — and it is dead in both branches. In BUILD it is
-      // dead by construction: FIRE is tested first, so inside BUILD nothing
-      // has reached the bar. Here it is dead by measurement: FIRE opens 15
-      // times in a whole game and keeps ONE candidate each time, so there is
-      // never a 4 and a 6 to choose between.
-      //
-      // The setting that actually raises what the bot builds toward is
-      // fireWide. At T=4, S=6 fires 0.7 deep chains a minute against S=4's
-      // 0.4. Recorded so the relative version is not re-derived.
-      pool = cands.filter(function (c) { return modes.fires(c.resolved, T, S); });
-      mode = 'FIRE';
     } else {
+      // THE CASH-IN IS OFFERED, NEVER IMPOSED. One pool whether or not
+      // something has reached the bar: every move that pays, and HOLD, which
+      // pays by clearing nothing. Narrowing to the moves that fire takes hold
+      // off the list, and a bot that may not wait cannot grow a two-chain
+      // into a five — it sells the smallest chain that exists, every time one
+      // exists. The weights already carry which payout is worth waiting for,
+      // one weight per size; the mode's job is to refuse the worthless clear,
+      // not to pick the moment.
+      //
+      // The mode is still recorded, because what was on offer at each
+      // decision is worth counting even when it does not change the pool.
       pool = cands.filter(function (c) { return modes.pays(c.resolved, T, S); });
-      mode = 'BUILD';
+      mode = (avail.links >= T || avail.wide >= S) ? 'FIRE' : 'BUILD';
       // SECOND STAGE, AND IT YIELDS. Among the moves that are not a cheap
       // cash-in, prefer the ones the RISING ROW does not turn into one. When
       // every one of them rises into something, the preference is dropped

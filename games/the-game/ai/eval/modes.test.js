@@ -481,6 +481,44 @@ test('the climb changes play at depth 2, where it is free', function () {
     assert.notDeepStrictEqual(on.moves, off.moves, 'the free climb changed nothing');
 });
 
+test('HOLD SURVIVES FIRE: a cash-in on offer does not take waiting off the list', function () {
+    // The rule this exists for: when something reached the bar, the pool was
+    // narrowed to the moves that fire. Hold clears nothing, so hold was
+    // removed and the bot could not decline the sale — it took the smallest
+    // chain on the board every time one existed.
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false });
+    var cpu = new PuyoCpu(stack, shipped({ depth: 1, modes: true }));
+
+    function cand(kind, resolved) {
+        return { kind: kind, score: 0, travel: 0, resolved: resolved, risen: null };
+    }
+    var hold = cand('hold', res({}));
+    var twoChain = cand('swap', res({ chainLength: 2, comboSizes: [3] }));
+    var bareThree = cand('swap', res({ chainLength: 1, comboSizes: [3] }));
+
+    var pool = cpu._applyModes([hold, twoChain, bareThree]);
+
+    assert.strictEqual(cpu._mode, 'FIRE', 'a 2-chain on offer is what FIRE means');
+    assert.ok(pool.indexOf(hold) >= 0, 'HOLD was taken off the list');
+    assert.ok(pool.indexOf(twoChain) >= 0, 'the cash-in must still be offered');
+    assert.strictEqual(pool.indexOf(bareThree), -1, 'the worthless clear is still refused');
+});
+
+test('and the worthless clear is refused whether or not anything is on offer', function () {
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false });
+    var cpu = new PuyoCpu(stack, shipped({ depth: 1, modes: true }));
+    function cand(kind, resolved) {
+        return { kind: kind, score: 0, travel: 0, resolved: resolved, risen: null };
+    }
+    var hold = cand('hold', res({}));
+    var bareThree = cand('swap', res({ chainLength: 1, comboSizes: [3] }));
+
+    var pool = cpu._applyModes([hold, bareThree]);
+    assert.strictEqual(cpu._mode, 'BUILD', 'nothing reached the bar');
+    assert.ok(pool.indexOf(hold) >= 0);
+    assert.strictEqual(pool.indexOf(bareThree), -1);
+});
+
 test('FORCED lifts the filter at both plies and the climb with it', function () {
     // The invariant, asserted directly rather than through a game: FORCED
     // means play like the bot with no modes at all. It was not true twice —
