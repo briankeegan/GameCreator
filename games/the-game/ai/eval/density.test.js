@@ -227,7 +227,7 @@ test('density REACHES THE BOT, end to end through bench', function () {
         'GC_TRAINING_DIR unset — bench cannot load the attack files');
     var bench = require('./bench.js');
     var w = { matchPotential: 229, links: 43, colourVariance: 168, edgePenalty: 110,
-              maxHeight: 136, roughness: 294, garbageSent: 107 };
+              maxHeight: 136, roughness: 294, chainLength: 107 };
     var off = bench.run(w, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',
                                 checkTiming: false });
     var on = bench.run(w, 1, { scenario: 'comboStorm', brain: 'puyo', mode: 'replace',

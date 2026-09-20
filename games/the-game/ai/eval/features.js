@@ -462,6 +462,18 @@ var MOVE_FRAMES = 4;
     return n;
   }
 
+  // ------------------------------------------------------------- reach*
+  //
+  // What the board a move LEAVES could fire next move, one feature per size.
+  // The number is put on the input by the search, which has already resolved
+  // every swap from that board to find its best follow-up — see PuyoCpu's
+  // _value. A caller that has not done that (a hand-built test input) gets 0,
+  // which is the honest answer rather than a second, private implementation
+  // of gravity and matching.
+  function reachOf(input, key) {
+    return (input.reach && input.reach[key]) ? 1 : 0;
+  }
+
   // ------------------------------------------------ pressure / overkill
   //
   // THE OTHER BOARD, IN THE ONLY FORM THAT CAN CHANGE A DECISION.
@@ -574,13 +586,6 @@ var MOVE_FRAMES = 4;
   }
 
   // Total cells sent: width x height summed over the pieces this move sent.
-  function garbageSent(input) {
-    var pieces = input.earned.garbageSent, cells = 0;
-    for (var i = 0; i < pieces.length; i++) {
-      cells += (pieces[i][0] || 0) * (pieces[i][1] || 0);
-    }
-    return cells;
-  }
 
   // Chain counter after the move.
   function chainLength(input) {
@@ -840,7 +845,13 @@ var MOVE_FRAMES = 4;
     stopTimeGain: stopTimeGain,
     brokeGarbage: brokeGarbage,
     scoreEarned: scoreEarned,
-    garbageSent: garbageSent,
+    reach4combo: function (i) { return reachOf(i, 'reach4combo'); },
+    reach5combo: function (i) { return reachOf(i, 'reach5combo'); },
+    reach6combo: function (i) { return reachOf(i, 'reach6combo'); },
+    reach7combo: function (i) { return reachOf(i, 'reach7combo'); },
+    reach4chain: function (i) { return reachOf(i, 'reach4chain'); },
+    reach5chain: function (i) { return reachOf(i, 'reach5chain'); },
+    reach6chain: function (i) { return reachOf(i, 'reach6chain'); },
     pressure: pressure,
     overkill: overkill,
     chainLength: chainLength,

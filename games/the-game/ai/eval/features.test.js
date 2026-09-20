@@ -177,7 +177,6 @@ function stGain(rows, clock, earned) {
         board: board(rows), clock: clock || {}, earned: earned || {} }));
 }
 
-function sent(earned) { return F.garbageSent(inputMod.normalize({ earned: earned })); }
 function chain(earned) { return F.chainLength(inputMod.normalize({ earned: earned })); }
 
 function gOnBoard(rows) { return F.garbageOnBoard(inputMod.normalize({ board: board(rows) })); }
@@ -1035,24 +1034,9 @@ test('colourScarcity: garbage and busy cells are not a colour supply', function 
 // two DIFFERENT attacks: a combo sends a set of 1-high blocks of varying
 // width, a chain sends one full-width block that grows a row per link.
 
-test('garbageSent: nothing sent is zero', function () {
-    assert.strictEqual(sent({ garbageSent: [] }), 0);
-});
 
-test('garbageSent: a piece is counted in cells', function () {
-    assert.strictEqual(sent({ garbageSent: [[3, 1]] }), 3);
-    assert.strictEqual(sent({ garbageSent: [[6, 4]] }), 24);
-});
 
-test('garbageSent: several pieces sum', function () {
-    assert.strictEqual(sent({ garbageSent: [[3, 1], [4, 1]] }), 7);
-});
 
-test('garbageSent: a chain block outweighs a combo block of the same width', function () {
-    // Combo -> width, chain -> height. A 4-link chain is four full-width
-    // rows; the biggest combo is one row of at most width 6.
-    assert.ok(sent({ garbageSent: [[6, 3]] }) > sent({ garbageSent: [[6, 1]] }));
-});
 
 // ---- chainLength ----
 // The chain counter after the move. The off-by-one is the whole feature:

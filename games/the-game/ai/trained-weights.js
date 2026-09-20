@@ -48,7 +48,6 @@
       maxHeight: 39,
       fillRatio: 179,
       garbageAdjacency: 5,
-      garbageSent: -124,
       stopTimeEarned: 60
     }
   };

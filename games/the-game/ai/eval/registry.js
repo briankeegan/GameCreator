@@ -131,14 +131,37 @@
       what: 'Colours with fewer than 3 matchable panels left — a colour that can no longer form a match.' },
 
 
+    { key: 'reach4combo',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move LEAVES fire a combo 4 wide next move. One of seven targets, one feature each, so which sizes are worth building toward is a WEIGHT rather than a setting picked by hand. Cumulative: a board holding a six reads on 4, 5 and 6, because being able to fire a six means being able to fire a four. Free at depth 2 — the second ply already resolves every swap from every candidate board.' },
+    { key: 'reach5combo',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move leaves fire a combo 5 wide next move. See reach4combo.' },
+    { key: 'reach6combo',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move leaves fire a combo 6 wide next move. See reach4combo.' },
+    { key: 'reach7combo',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move leaves fire a combo 7 wide next move. See reach4combo.' },
+    { key: 'reach4chain',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move leaves fire a chain 4 links deep next move. Chains are counted apart from combos because they are different weapons: pushGarbage sends a chain as one full-width slab held until the cascade ends, and a combo as separate one-row pieces that leave at once.' },
+    { key: 'reach5chain',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move leaves fire a chain 5 links deep next move. See reach4chain.' },
+    { key: 'reach6chain',      group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Can the board this move leaves fire a chain 6 links deep next move. See reach4chain.' },
+
     { key: 'pressure',         group: 'earned', sign: +1, norm: 1, fn: null,
       what: 'This move\'s send measured against the room the opponent has left, counting what is already flying at them as spent. 1 means it finishes them. THE ONLY SHAPE THE OTHER BOARD CAN USEFULLY TAKE: the bot takes the highest-scoring candidate, so a number identical across every candidate cancels out of the ranking — which is why a plain "their headroom" feature does nothing and why incomingGarbage was removed after varying in 0 of 179 decisions. This varies with the send, so it varies candidate to candidate. It states no rule about what to do when they are low.' },
 
     { key: 'overkill',         group: 'earned', sign: -1, norm: 24, fn: null,
       what: 'Cells sent past what would finish the opponent. Not merely wasted: garbage sitting on a board is MATERIAL, and a clear beside it turns it into panels that can cascade, so over-sending hands them a counter-chain. Signed negative, but the weight decides how much that matters.' },
 
-    { key: 'garbageSent',      group: 'earned', sign: +1, norm: 24, fn: null,
-      what: 'Combo sends a set of 1-high blocks of varying width; a chain sends ONE full-width block that grows a row per link. Two different attacks.' },
+    // garbageSent WAS HERE AND HAS BEEN REMOVED. It counted the cells this
+    // move sends, blind to who they were going to. `pressure` is the same
+    // count divided by the room the opponent has left — and that room is
+    // identical for every candidate in a decision, so within any one
+    // decision the two are exactly proportional. Collinear terms split their
+    // weight arbitrarily, which is why 193 against 45 cannot be read.
+    //
+    // pressure is the one that survives: it says what a send is WORTH
+    // against the board it is going to, and the training runs are
+    // head-to-head, so there is always a board to measure against.
 
     { key: 'chainLength',      group: 'earned', sign: +1, norm: 13, fn: null,
       what: 'Chain counter after the move. Backward-looking: what the chain ended up worth.' },

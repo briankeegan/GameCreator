@@ -104,6 +104,16 @@
     // THE OTHER BOARD, when there is one. Optional: solo play has none, and
     // every number this repo has was taken without one.
     this.opponent = opts.opponent || null;
+    // Does this weight set actually want the seven targets. If not, the
+    // second ply does not rescore for them and the bot is byte-for-byte the
+    // one that existed before they were added.
+    this._usesReach = false;
+    for (var rk = 0; rk < modes.REACH.length; rk++) {
+      if (this.weights[modes.REACH[rk]] ||
+          (this.dangerWeights && this.dangerWeights[modes.REACH[rk]])) {
+        this._usesReach = true; break;
+      }
+    }
     this._walk = null;
     this._lastSwap = null;
     // Instrumentation, not decoration: the claim this brain exists to make
@@ -410,6 +420,12 @@
       }
     }
     var input = inputMod.fromStack(stack, board, resolved, null, cleared, this.opponent);
+    // WHAT THIS BOARD COULD FIRE NEXT MOVE, when the search has worked it
+    // out. _value resolves every swap from a candidate's board to find its
+    // best follow-up and records the best payout it saw; that IS this
+    // board's reach, and it is set on the candidate before the rescore.
+    // Null at ply 1 of a depth-1 bot, which has no second ply to ask.
+    input.reach = this._reachNow || null;
     input.travelFrames = frames;
     // WHAT TIME IT IS FOR THIS PLY.
     //
@@ -717,6 +733,15 @@
   PuyoCpu.prototype._value = function (cand) {
     var next = cand.board.legalSwaps();
     var from = cand.kind === 'swap' ? cand.move : null;   // hold and raise move nothing
+    // THE CANDIDATE'S OWN VALUE, and it is where reach belongs: reach* says
+    // what the board this move LEAVES could fire next move, which is a
+    // property of this candidate rather than of any child. It is scored here
+    // because only the loop below knows it — the second ply resolves every
+    // swap from that board anyway, so the number is free.
+    //
+    // ONLY WHEN THE WEIGHTS ASK. A set with no reach weight gets the score
+    // it already had, so a bot that does not use these features plays
+    // exactly the game it always played and pays nothing for them.
     var v = cand.score;
     // Computed ONCE per candidate: every child of this candidate follows the
     // same first move, so they all inherit the same clock.
@@ -774,6 +799,14 @@
     // It also keeps the guarantee the filter already has: FORCED every
     // decision is exactly the unfiltered bot, at both plies and now in the
     // scoring too.
+    if (this._usesReach) {
+      this._reachNow = modes.reach(reach);
+      cand.reach = this._reachNow;
+      var withReach = this._score(cand.board, cand.resolved,
+                                  cand.kind === 'swap' ? cand.move : null);
+      this._reachNow = null;
+      if (withReach > v) v = withReach;
+    }
     if (this._filtering() && this.buildToward && this.goal) {
       v += modes.climbTo(this.goal, this.buildToward, reach);
     }

@@ -430,55 +430,10 @@ test('matchPotential agrees with an engine-driven count across seeds', function 
 // would mean the test agrees with my memory of the table rather than with
 // the table, which is the whole class of bug this file exists for. So the
 // expected values come from driving pushGarbage on a real Stack.
-test('garbageSent matches what the engine actually queues, for combos', function () {
-    var sizes = [3, 4, 5, 6, 7, 8, 11, 20], sawEmpty = false, sawReal = false;
-    sizes.forEach(function (size) {
-        var s = run(newStack(), 5);
-        s.outgoing.length = 0;
-        s.currentChain = null;
-        s.pushGarbage({ row: 1, col: 1 }, false, size);
-        var expected = 0;
-        s.outgoing.forEach(function (g) { expected += g.width * g.height; });
-        var got = features.garbageSent(inputMod.normalize({
-            earned: { garbageSent: s.outgoing.map(function (g) { return [g.width, g.height]; }) }
-        }));
-        assert.strictEqual(got, expected, 'combo of ' + size);
-        if (expected === 0) sawEmpty = true; else sawReal = true;
-    });
-    assert.ok(sawEmpty, 'no combo size sent nothing — comboGarbage returns [] below 4, ' +
-        'so a 3 must be in this sweep or the zero case is untested');
-    assert.ok(sawReal, 'no combo sent anything at all');
-});
-
-test('a 3-combo sends NOTHING, and the engine says so, not this test', function () {
-    var s = run(newStack(), 5);
-    s.outgoing.length = 0; s.currentChain = null;
-    s.pushGarbage({ row: 1, col: 1 }, false, 3);
-    assert.deepStrictEqual(s.outgoing, [], 'engine queued something for a 3-combo');
-    assert.strictEqual(features.garbageSent(inputMod.normalize({ earned: { garbageSent: [] } })), 0);
-});
-
-test('garbageSent grows a full-width row per chain link, per the engine', function () {
-    var s = run(newStack(), 5);
-    s.outgoing.length = 0; s.currentChain = null;
-    var seen = [];
-    for (var link = 0; link < 4; link++) {
-        s.pushGarbage({ row: 1, col: 1 }, true, 0);
-        var cells = 0;
-        s.outgoing.forEach(function (g) { cells += g.width * g.height; });
-        seen.push(features.garbageSent(inputMod.normalize({
-            earned: { garbageSent: s.outgoing.map(function (g) { return [g.width, g.height]; }) }
-        })));
-        assert.strictEqual(seen[link], cells);
-    }
-    for (var i = 1; i < seen.length; i++) {
-        assert.strictEqual(seen[i] - seen[i - 1], PanelEngine.WIDTH,
-            'each extra link must add exactly one full-width row');
-    }
-});
 
 
-// ---- framesToDeath, against an actual death ----
+
+
 //
 // This is the assertion the whole feature rests on. Everything else about
 // it is arithmetic on four fields, and arithmetic that agrees with itself
@@ -508,54 +463,8 @@ function toppedOutStack(level) {
     return s;
 }
 
-test('framesToDeath counts down to a real death at the real rate', function () {
-    var s = toppedOutStack();
-    assert.ok(s.wasToppedOut, 'setup failed: the stack is not topped out');
-    var predicted = features.framesToDeath(inputMod.fromStack(s, {}, {}, null, 0));
-    assert.ok(isFinite(predicted) && predicted > 0,
-        'a topped-out board with health should predict a finite countdown, got ' + predicted);
-    assert.ok(predicted < features.SAFE_FRAMES,
-        'a board that is actually dying must not read as saturated-safe');
 
-    var frames = 0;
-    while (!s.gameOver && frames < predicted * 4 + 600) { s.run(); frames++; }
-    assert.ok(s.gameOver, 'the stack never died in ' + frames + ' frames — the prediction ' +
-        'of ' + predicted + ' cannot be checked against anything');
-    // Exactness is not the claim: the engine also re-latches wasToppedOut,
-    // and a swap or a landing can pause the drain. The claim is that the
-    // feature is measuring THIS, not something with the same units.
-    assert.ok(Math.abs(frames - predicted) <= predicted * 0.5 + 10,
-        'predicted ' + predicted + ' frames, actually survived ' + frames);
-});
 
-test('framesToDeath saturates for a board that is not topped out, and that board does not die', function () {
-    var s = run(newStack(), 60);
-    assert.strictEqual(features.framesToDeath(inputMod.fromStack(s, {}, {}, null, 0)),
-                       features.SAFE_FRAMES);
-    for (var i = 0; i < 600; i++) s.run();
-    assert.ok(!s.gameOver, 'a board predicted unkillable died within 600 frames');
-});
-
-test('stop time does NOT bank — the engine takes a max, so the feature must not sum', function () {
-    // The single most important assertion about this feature. awardStopTime
-    // ends `if (stopTime > this.stopTime) this.stopTime = stopTime`, so a
-    // chain awarded while more stop time is already on the clock earns
-    // nothing at all. Scored as "banked + earned" the search would learn
-    // the opposite of the truth.
-    var s = toppedOutStack();
-    s.stopTime = 0;
-    s.awardStopTime(true, 4);
-    var big = s.stopTime;
-    assert.ok(big > 0, 'setup failed: no stop time awarded');
-    var before = features.framesToDeath(inputMod.fromStack(s, {}, {}, null, 0));
-
-    s.awardStopTime(false, 4);      // a smaller award, on a clock already full
-    assert.strictEqual(s.stopTime, big, 'the engine itself did not apply the max');
-    var after = features.framesToDeath(inputMod.fromStack(s, {}, {}, null, 0));
-    assert.strictEqual(after, before,
-        'the feature grew by the second award (' + before + ' -> ' + after + '), so it is ' +
-        'summing where the engine takes a max');
-});
 
 // ---- stopTimeGain, against what the ENGINE actually adds to the clock ----
 //

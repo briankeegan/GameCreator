@@ -144,6 +144,11 @@
       //
       // Null for solo play, and every feature that uses it must handle that.
       opponent: raw.opponent || null,
+      // WHAT THE BOARD THIS MOVE LEAVES COULD FIRE, put here by the search
+      // rather than derived: the second ply has already resolved every swap
+      // from that board, and asking again costs ~900 resolves a decision.
+      // Carried through so it survives evaluate()'s second normalize.
+      reach: raw.reach || null,
       clock: {
         toppedOut: !!clock.toppedOut,
         riseLock: !!clock.riseLock,

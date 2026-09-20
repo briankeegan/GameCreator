@@ -188,7 +188,30 @@ test('it plays level 10 at all, and faster than the search bot', function () {
 // reachable while still listed here ALSO fails, so the list cannot rot into
 // an excuse.
 var UNREACHABLE = {
-    latentChain: 'scores whether a cell already carrying the chain flag settles into a match, which requires deciding MID-CASCADE. _cascadePrediction returns null unless panels are in flight, and this brain decides on cooldown boundaries when the board has settled: 0 of 33 calls returned anything in a full game. Reachable only by a brain that re-decides during a cascade.'
+    latentChain: 'scores whether a cell already carrying the chain flag settles into a match, which requires deciding MID-CASCADE. _cascadePrediction returns null unless panels are in flight, and this brain decides on cooldown boundaries when the board has settled: 0 of 33 calls returned anything in a full game. Reachable only by a brain that re-decides during a cascade.',
+
+    // THE SEVEN TARGETS NEED A SECOND PLY. reach* is what the board a move
+    // LEAVES could fire next move, and the only honest source is the search
+    // itself: at depth 2 _value already resolves every swap from that board,
+    // so the number is read off work already done. The games in this file
+    // are DEPTH 1, which has no second ply to read — and synthesising one as
+    // a feature costs ~900 resolves a decision, 166ms against an 85ms
+    // budget. They are live at depth 2; reach.test.js checks the mapping and
+    // a duel probe confirms all seven vary in play.
+    reach4combo: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach5combo: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach6combo: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach7combo: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach4chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach5chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reach6chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
+
+    // AND THE TWO OPPONENT FEATURES NEED AN OPPONENT. These games are solo,
+    // so input.opponent is null and both read 0 by definition. In a duel
+    // they vary and are non-zero on 9% of evaluations. opponent.test.js
+    // covers the computation; versus.duel wires each side to the other.
+    pressure: 'needs an opponent; these games are solo. Live in a duel — see opponent.test.js.',
+    overkill: 'needs an opponent; these games are solo. Live in a duel — see opponent.test.js.'
 };
 
 test('no feature is silently dead under this brain', function () {

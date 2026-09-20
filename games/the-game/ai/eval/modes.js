@@ -63,6 +63,45 @@
     return fires(resolved, T, S);
   }
 
+  // WHAT THIS BOARD CAN FIRE NEXT MOVE, SIZE BY SIZE.
+  //
+  // One feature per target a player would name. They replace a SETTING: what
+  // to build toward used to be a knob picked by hand, which made every
+  // choice a guess to be swept. As features the weights decide — a bot can
+  // learn that a 5-chain is worth a lot and a 4-combo a little, and that it
+  // wants both.
+  //
+  // CUMULATIVE ON PURPOSE. Being able to fire a six means being able to fire
+  // a four, so a board holding a six reads on 4, 5 and 6. A weight set that
+  // values only sixes still sees them; one that values fours is not blind to
+  // a board holding something better.
+  //
+  // Chains and combos stay separate, because they are different weapons:
+  // pushGarbage sends a chain as one full-width slab held until the cascade
+  // ends, and a combo as separate one-row pieces that leave at once.
+  //
+  // FREE at depth 2 — the search already resolves every swap from every
+  // candidate board, so this reads work already done. Asking the same
+  // question as a separate sweep costs ~900 resolves a decision: 166ms
+  // against an 85ms budget, measured.
+  var REACH = ['reach4combo', 'reach5combo', 'reach6combo', 'reach7combo',
+               'reach4chain', 'reach5chain', 'reach6chain'];
+
+  function reach(r) {
+    var links = (r && r.links) || 0, wide = (r && r.wide) || 0;
+    // Every key, always. A missing key reads as undefined in the evaluator
+    // and scores nothing, which is a dead feature wearing a live one's name.
+    return {
+      reach4combo: wide >= 4 ? 1 : 0,
+      reach5combo: wide >= 5 ? 1 : 0,
+      reach6combo: wide >= 6 ? 1 : 0,
+      reach7combo: wide >= 7 ? 1 : 0,
+      reach4chain: links >= 4 ? 1 : 0,
+      reach5chain: links >= 5 ? 1 : 0,
+      reach6chain: links >= 6 ? 1 : 0
+    };
+  }
+
   // THE GOALS A PLAYER WOULD NAME. Not a range and not a continuous knob:
   // an explicit menu, so a setting is readable in a log and a sweep is a
   // short list. Nothing below 4 is on it because the engine pays nothing
@@ -238,6 +277,7 @@
   }
 
   return { payout: payout, fires: fires, pays: pays,
+           REACH: REACH, reach: reach,
            GOALS: GOALS, goal: goal, climbTo: climbTo, survivable: survivable,
            clock: clock, escapeFrames: escapeFrames, banksTime: banksTime,
            risesIntoPayless: risesIntoPayless,
