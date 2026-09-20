@@ -25,6 +25,16 @@
     // trainer scoring many genomes from one object would otherwise
     // accumulate that term every time it built a bot.
     this.weights = Object.assign({}, opts.weights || {});
+    // A SECOND WEIGHT SET FOR THE DANGER ZONE. The same features, different
+    // numbers: what makes a good board to build on and what keeps you alive
+    // one frame from the ceiling are not the same question, and one set of
+    // weights cannot answer both. Which matters when is then something the
+    // trainer fits rather than something asserted here.
+    //
+    // Absent means the ordinary weights, so a bot without one is exactly the
+    // bot that has always existed.
+    this.dangerWeights = opts.dangerWeights
+        ? Object.assign({}, opts.dangerWeights) : null;
     // Borrowed rather than reimplemented: the cursor walk and the board
     // snapshot are how the game works, not part of what is being tested,
     // and a second copy of either would drift from the first.
@@ -107,21 +117,20 @@
     // are: it is a different bot, so weights trained without it describe
     // something else.
     this.modes = opts.modes === true;
-    // The two arms of "worth cashing in", in the resolve's own units: a
-    // cascade this many links deep, or a single clear this many panels wide.
-    // 4 and 4 because the engine's own tables pay nothing below either —
-    // COMBO_GARBAGE starts at 4 and a bare 3 scores 0.
+    // WHAT THIS BOT IS BUILDING, as one setting a player would recognise:
+    // "5-chain", "6-combo", or null for no target at all. It says the whole
+    // plan — climb toward it, refuse to sell below it, fire when it exists —
+    // because those are one decision, not three. modes.GOALS is the menu.
     //
-    // These are OPTIONS, not constants, so that they can become genome
-    // entries alongside the weights once the modes are known to fire.
-    this.fireLinks = opts.fireLinks === undefined ? 4 : opts.fireLinks;
-    this.fireWide = opts.fireWide === undefined ? 4 : opts.fireWide;
-    // WHICH WEAPON THIS BOT IS GOING FOR — 'either', 'chain' or 'combo'.
-    // The target raises the OTHER arm's bar to fireWideOff / fireLinksOff;
-    // it never closes it. modes.bars says why, with the numbers.
-    this.fireTarget = opts.fireTarget === undefined ? 'either' : opts.fireTarget;
-    this.fireWideOff = opts.fireWideOff === undefined ? 6 : opts.fireWideOff;
-    this.fireLinksOff = opts.fireLinksOff === undefined ? 5 : opts.fireLinksOff;
+    // It replaced fireLinks, fireWide, fireTarget and buildToward's target
+    // half: four abstract numbers for one idea, none of which said the thing
+    // a player would say.
+    this.goal = modes.goal(opts.goal === undefined ? null : opts.goal, opts.alsoTake);
+    // What to still cash if the OTHER weapon turns up this big. Not optional:
+    // a bot that refuses the other weapon entirely starves — measured, a
+    // combo bar of 8 or 99 gave zero deep chains and a 30% shorter game.
+    this.alsoTake = opts.alsoTake;
+
     // HOW HARD IT WALKS TOWARD THE TARGET. The bars say what not to sell;
     // this says what to move toward, by giving the target's potential
     // the search's own second ply already resolved. See modes.climb.
@@ -426,7 +435,7 @@
     // walk the scorer already priced would be a second answer to one
     // question.
     this._scoredTravel = frames;
-    return evaluator.evaluate(input, this.weights, { density: this.density }).score;
+    return evaluator.evaluate(input, this._weightsNow(), { density: this.density }).score;
   };
 
   // Whether the engine will serve a manual raise this frame.
@@ -508,8 +517,7 @@
   // of thing — a predicate on the resolve the candidate already carries.
   PuyoCpu.prototype._applyModes = function (cands) {
     if (!this.modes) return cands;
-    var bar = modes.bars(this.fireTarget, this.fireLinks, this.fireWide,
-                         this.fireWideOff, this.fireLinksOff);
+    var bar = this._bar();
     var T = bar.links, S = bar.wide, i;
 
     var resolveds = new Array(cands.length);
@@ -545,6 +553,12 @@
                        stopFloor: floor, broke: broke })) {
       pool = cands;
       mode = 'FORCED';
+      // THE BEST WAY OUT, NOT THE TIDIEST BOARD. The weights score board
+      // quality, which is not what matters one frame from death — the clock
+      // is. Among moves that bank time, the most time wins. Null when none
+      // does, and then the ordinary ranking stands, because no move here
+      // saves it anyway.
+      pool = modes.survivable(cands);
     } else if (avail.links >= T || avail.wide >= S) {
       // A RELATIVE BAR WAS TRIED HERE — "never sell a 4-wide while a 6-wide
       // is on the table" — and it is dead in both branches. In BUILD it is
@@ -587,6 +601,19 @@
 
     this.modeCounts[mode]++;
     this._mode = mode;
+    // RE-SCORED UNDER THE DANGER WEIGHTS. _candidates scored everything with
+    // the building set before the mode was known — it cannot know sooner,
+    // because a broken plan is only visible once every candidate is
+    // resolved. Rescoring is confined to the survivors of a mode that is
+    // meant to be rare, so it costs a handful of evaluations when it costs
+    // anything at all.
+    if (mode === 'FORCED' && this.dangerWeights) {
+      for (i = 0; i < pool.length; i++) {
+        var c = pool[i];
+        pool[i].score = this._score(c.board, c.resolved,
+                                    c.kind === 'swap' ? c.move : null);
+      }
+    }
     this._plan = avail;
     this._firedLast = (mode === 'FIRE');
     return pool;
@@ -658,9 +685,10 @@
   // best on offer there is a different board's, and pricing an imagined
   // move against this board's table is the mismatch _value's own comment
   // was written about.
+  // The two bars this bot plays to. With a goal they ARE the goal; without
+  // one they are the engine's own floor, which is the plain filter.
   PuyoCpu.prototype._bar = function () {
-    return modes.bars(this.fireTarget, this.fireLinks, this.fireWide,
-                      this.fireWideOff, this.fireLinksOff);
+    return this.goal ? this.goal : { links: 2, wide: 4 };
   };
 
   // The engine's own HOVER for this level: the frames a panel spends falling
@@ -668,6 +696,11 @@
   PuyoCpu.prototype._hoverFrames = function () {
     var lvl = this.stack && this.stack.levelData;
     return (lvl && lvl.frames && lvl.frames.HOVER) || 0;
+  };
+
+  // The weight set this decision is scoring with.
+  PuyoCpu.prototype._weightsNow = function () {
+    return (this._mode === 'FORCED' && this.dangerWeights) ? this.dangerWeights : this.weights;
   };
 
   PuyoCpu.prototype._filtering = function () {
@@ -738,8 +771,8 @@
     // It also keeps the guarantee the filter already has: FORCED every
     // decision is exactly the unfiltered bot, at both plies and now in the
     // scoring too.
-    if (this._filtering() && this.buildToward) {
-      v += modes.climb(this.fireTarget, this.buildToward, reach);
+    if (this._filtering() && this.buildToward && this.goal) {
+      v += modes.climbTo(this.goal, this.buildToward, reach);
     }
     return v;
   };

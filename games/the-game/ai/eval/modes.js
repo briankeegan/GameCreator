@@ -37,68 +37,6 @@
              breaks: resolved.brokeGarbage || 0 };
   }
 
-  // WHICH WEAPON THIS BOT IS GOING FOR, as a pair of bars.
-  //
-  // A TARGET RAISES THE OTHER ARM'S BAR AND NEVER CLOSES IT. Measured over
-  // 24 games apiece at T=4: a combo bar of 6 gives 0.7 deep chains a minute
-  // and 728 game points a minute, while bars of 8 and 99 give ZERO deep
-  // chains, a third of the garbage and a game 30% shorter. A bot that will
-  // not cash a combo at all starves itself of the pressure and the stop
-  // time it needs to build anything, so "chains only" is not a stronger
-  // version of "prefer chains", it is a worse bot.
-  //
-  // The off-target bar also cannot UNDERCUT the base bar: a target must
-  // never make the bot sell cheaper than `either` would.
-  function bars(target, fireLinks, fireWide, offWide, offLinks) {
-    if (target === 'either' || target === undefined) {
-      return { links: fireLinks, wide: fireWide };
-    }
-    if (target === 'chain') {
-      return { links: fireLinks, wide: Math.max(fireWide, offWide) };
-    }
-    if (target === 'combo') {
-      return { links: Math.max(fireLinks, offLinks), wide: fireWide };
-    }
-    // Not a silent fallback to `either`: a typo in a switch would then read
-    // as a deliberate setting and quietly measure the wrong bot.
-    throw new Error('unknown fire target "' + target + '" — either, chain or combo');
-  }
-
-  // Divisors from the registry, so a weight means the same thing here as it
-  // does when the same idea is asked as a feature. Copied deliberately
-  // rather than imported: registry.js requires features.js, features.js is
-  // what this file exists to stay out of, and a cycle to fetch two integers
-  // is a worse dependency than two integers. climb.test asserts they match.
-  var CHAIN_NORM = 16, COMBO_NORM = 36;
-
-  // HOW MUCH BETTER A BOARD IS FOR BEING CLOSER TO THE TARGET.
-  //
-  // `reach` is the best payout any single swap could fire from the board a
-  // move LEAVES — chain depth and combo width. At depth 2 the search has
-  // already resolved every one of those swaps to find its best follow-up,
-  // so this number is free: measured over 2,151 candidate boards, the
-  // deepest chain among the search's own children equalled the
-  // chainPotential feature's answer 2,151 times out of 2,151.
-  //
-  // WHY IT IS NOT JUST THE FEATURE. Asking it as a feature re-runs those
-  // ~900 resolves a second time. Measured at depth 2 beam 0: 32ms a decision
-  // without it, 166ms with it and 344ms targeting chains, against an 85ms
-  // budget. Correct answer, unusable bot.
-  //
-  // `either` takes the BETTER of the two, never the sum: one good chain and
-  // one good combo on the same board is not twice as good a board, and
-  // adding them would make `either` pull twice as hard as a target for no
-  // stated reason.
-  function climb(target, strength, reach) {
-    if (!strength || !reach) return 0;
-    var chain = (reach.links || 0) / CHAIN_NORM * strength;
-    var combo = (reach.wide || 0) / COMBO_NORM * strength;
-    if (target === 'chain') return chain;
-    if (target === 'combo') return combo;
-    if (target === 'either' || target === undefined) return Math.max(chain, combo);
-    throw new Error('unknown fire target "' + target + '" — either, chain or combo');
-  }
-
   // Is this move worth stopping to cash in. Two arms, both from the resolve:
   // a cascade `T` links deep, or a single clear `S` wide. They are different
   // weapons — pushGarbage sends a chain as one full-width slab held until the
@@ -116,9 +54,8 @@
   // a filter that wanted a clear every move would be the opposite bot. Hold
   // clears nothing, so hold survives, so the pool can always wait.
   //
-  // Otherwise a clear has to pay: fire at threshold, or break garbage.
-  // Breaking garbage pays because digging is progress even when the clear
-  // itself scores nothing.
+  // Otherwise a clear has to pay: meet the bar, or break garbage. Digging is
+  // progress even when the clear itself scores nothing.
   function pays(resolved, T, S) {
     var p = payout(resolved);
     if (!p.links && !p.wide) return true;
@@ -126,53 +63,75 @@
     return fires(resolved, T, S);
   }
 
-  // DID THE RISING ROW MAKE A CLEAR THAT PAID NOTHING.
+  // THE GOALS A PLAYER WOULD NAME. Not a range and not a continuous knob:
+  // an explicit menu, so a setting is readable in a log and a sweep is a
+  // short list. Nothing below 4 is on it because the engine pays nothing
+  // below 4 — COMBO_GARBAGE sends nothing and a bare three scores zero.
+  var GOALS = ['4-chain', '5-chain', '6-chain',
+               '4-combo', '5-combo', '6-combo', '7-combo'];
+
+  // ONE SETTING THAT SAYS THE WHOLE PLAN.
   //
-  // The stack comes up whether or not the bot acts, and the row that is
-  // coming is known before the move is chosen — so a three the board makes
-  // by itself is a move the bot should have declined, not something
-  // unavoidable. `risen` is the resolve of the board after the rows that
-  // land during this move actually land; `own` is what the move itself
-  // fires. A rise that only extends what the move already paid for is not a
-  // payless rise.
+  // "5-chain" means all three of: climb toward a board that can fire a
+  // 5-chain, refuse to sell anything smaller, and fire the moment one
+  // exists. They are one decision, and they were four separate numbers
+  // (fireLinks, fireWide, fireTarget, buildToward) none of which said the
+  // thing a player would say.
   //
-  // THIS IS A PREFERENCE, NOT A VETO, and its caller must treat it as one.
-  // Applied as a hard filter it empties the pool — every candidate rises
-  // into something once enough rows land — and an empty pool falls through
-  // to the unfiltered bot, which fires MORE bare threes than no filter at
-  // all. Measured: 239 against 205 over ten games.
-  function risesIntoPayless(risen, own, T, S) {
-    if (!risen) return false;
-    if (pays(risen, T, S)) return false;
-    // The move already paid; the rise riding along on top of it is not a
-    // reason to decline a move that was worth making.
-    return pays(own, T, S);
+  // ALSO-TAKE IS NOT OPTIONAL. A bot that will not cash the other weapon at
+  // all starves itself: measured over 24 games apiece, a combo bar of 8 or
+  // 99 gave ZERO deep chains, a third of the garbage and a 30% shorter game
+  // than a bar of 6. So a goal names what it is BUILDING and still takes the
+  // other weapon when it turns up big enough. It can never undercut what the
+  // engine pays for.
+  function goal(spec, alsoTake) {
+    if (spec === null || spec === undefined) return null;
+    if (GOALS.indexOf(spec) === -1) {
+      throw new Error('unknown goal "' + spec + '" — one of ' + GOALS.join(', '));
+    }
+    var parts = spec.split('-'), size = Number(parts[0]), kind = parts[1];
+    var other = alsoTake === undefined ? (kind === 'chain' ? 6 : 5) : Number(alsoTake);
+    return {
+      spec: spec, kind: kind, size: size,
+      links: kind === 'chain' ? size : Math.max(2, other),
+      wide: kind === 'combo' ? size : Math.max(4, other)
+    };
   }
 
-  // ABOUT TO DIE, AS THE ENGINE DEFINES IT.
+  // HOW FAR ALONG THE GOAL THIS BOARD IS, and it SATURATES.
   //
-  // advancePassiveRaise is the whole rule:
+  // Full credit at the goal and nothing beyond it: past five links you are
+  // meant to FIRE, not keep stacking. The old climb was linear and
+  // unbounded, so more potential was always better forever — and cranking it
+  // built a tall loaded board that died, survival falling from 10.1 minutes
+  // to 7.7 as strength rose.
   //
-  //   if (!riseLock && stopTime === 0) {
-  //     if (isToppedOut()) health--;   else { riseTimer--; ... }
-  //   }
+  // Only the goal's own kind counts. Otherwise "I am building a five-chain"
+  // gets pulled off course by every wide combo the board happens to offer.
+  function climbTo(g, strength, reach) {
+    if (!g || !strength || !reach) return 0;
+    var have = g.kind === 'chain' ? (reach.links || 0) : (reach.wide || 0);
+    if (have <= 0) return 0;
+    return strength * Math.min(have, g.size) / g.size;
+  }
+
+  // WHAT SURVIVES, in the danger zone.
   //
-  // Stop time freezes everything — the stack does not rise and health does
-  // not drain while it runs. So danger is those two conditions together and
-  // nothing else: at the ceiling AND out of clock. At level 10 maxHealth is
-  // 1, so one frame of that is death; there is no grace period to leave
-  // margin for.
+  // FORCED narrows to the moves that buy time and hands the rest to the
+  // evaluator. It does NOT pick one: modes filter the pool and the weights
+  // choose from it, and how much the clock is worth against everything else
+  // belongs in a weight set the trainer can fit, not in a rule here.
   //
-  // ROWS TO THE CEILING WAS THE WRONG MEASURE and is gone. It treated a
-  // deep stack as danger when a deep stack with stop time banked is safe and
-  // is where chains get built — firing FORCED on 47% of decisions while
-  // buying no extra survival at all.
+  // Nothing survives means NO FILTER rather than no move: the bot still has
+  // to play something, and nothing here saves it anyway.
   //
-  // PRE-STOP COUNTS. decrementTimers drains preStopTime first and only then
-  // stopTime, while the rise gate reads stopTime alone. Pre-stop does not
-  // protect by itself; it postpones the drain. Frames of safety are the sum.
-  function clock(o) {
-    return (o.stopTime || 0) + (o.preStopTime || 0);
+  // Candidate order is preserved so ties break exactly as they do elsewhere.
+  function survivable(cands) {
+    var out = [];
+    for (var i = 0; i < cands.length; i++) {
+      if (banksTime(cands[i].resolved)) out.push(cands[i]);
+    }
+    return out.length ? out : cands;
   }
 
   // DOES THIS MOVE BANK TIME — the only kind of move that is a way out.
@@ -188,6 +147,34 @@
   function banksTime(resolved) {
     var p = payout(resolved);
     return p.links >= 2 || p.wide > 3 || p.breaks > 0;
+  }
+
+  // DID THE RISING ROW MAKE A CLEAR THAT PAID NOTHING.
+  //
+  // The stack comes up whether or not the bot acts, and the row that is
+  // coming is known before the move is chosen — so a three the board makes
+  // by itself is a move the bot should have declined. `risen` is the resolve
+  // after the rows that land during this move land; `own` is what the move
+  // itself fires. A rise that only extends what the move already paid for is
+  // not a payless rise.
+  //
+  // A PREFERENCE, NOT A VETO, and its caller must treat it as one. Applied
+  // as a hard filter it empties the pool — every candidate rises into
+  // something once enough rows land — and an empty pool falls through to the
+  // unfiltered bot, which fires MORE bare threes than no filter at all:
+  // measured, 239 against 205 over ten games.
+  function risesIntoPayless(risen, own, T, S) {
+    if (!risen) return false;
+    if (pays(risen, T, S)) return false;
+    return pays(own, T, S);
+  }
+
+  // Frames of safety on the clock. decrementTimers drains preStopTime first
+  // and only then stopTime, while the rise gate reads stopTime alone — so
+  // pre-stop does not protect by itself, it postpones the drain. The sum is
+  // how long the stack stays frozen.
+  function clock(o) {
+    return (o.stopTime || 0) + (o.preStopTime || 0);
   }
 
   // FRAMES TO REACH AN ESCAPE, exactly, rather than a round number.
@@ -250,8 +237,8 @@
     return best;
   }
 
-  return { payout: payout, fires: fires, pays: pays, bars: bars,
-           climb: climb, CHAIN_NORM: CHAIN_NORM, COMBO_NORM: COMBO_NORM,
+  return { payout: payout, fires: fires, pays: pays,
+           GOALS: GOALS, goal: goal, climbTo: climbTo, survivable: survivable,
            clock: clock, escapeFrames: escapeFrames, banksTime: banksTime,
            risesIntoPayless: risesIntoPayless,
            forced: forced, planBroke: planBroke, bestPayout: bestPayout };

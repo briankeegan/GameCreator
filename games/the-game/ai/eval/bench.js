@@ -295,7 +295,7 @@ exports.run = function (weights, seed, opts) {
                       'density', 'depth', 'objective', 'rise', 'scenario',
                       'mode',
                       'modes', 'fireLinks', 'fireWide', 'stopFloor', 'riseAware',
-                      'fireTarget', 'fireWideOff', 'fireLinksOff', 'buildToward'];
+                      'goal', 'alsoTake', 'buildToward', 'dangerWeights'];
     for (var opt in opts) {
         if (opts.hasOwnProperty(opt) && KNOWN_OPTS.indexOf(opt) === -1) {
             throw new Error('bench.run: unknown option "' + opt + '". Known options are ' +
@@ -357,8 +357,8 @@ exports.run = function (weights, seed, opts) {
             fireWide: opts.fireWide,
             stopFloor: opts.stopFloor,
             riseAware: opts.riseAware,
-            fireTarget: opts.fireTarget, fireWideOff: opts.fireWideOff,
-            fireLinksOff: opts.fireLinksOff, buildToward: opts.buildToward
+            goal: opts.goal, alsoTake: opts.alsoTake,
+            buildToward: opts.buildToward, dangerWeights: opts.dangerWeights
         });
     }
 

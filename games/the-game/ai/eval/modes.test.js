@@ -112,68 +112,6 @@ test('fires is the payout arms only — breaking garbage is not firing', functio
 
 // --------------------------------------------- 3b. target, and the bar it sets
 
-test('either: both arms at their base bars', function () {
-    var bars = modes.bars('either', 4, 4, 6, 5);
-    assert.deepStrictEqual(bars, { links: 4, wide: 4 });
-});
-
-test('chain: the combo bar rises, it does NOT switch off', function () {
-    // MEASURED, 24 games each, T=4: S=6 gives 0.7 deep chains a minute and
-    // 728 points a minute; S=8 and S=99 give ZERO deep chains, a third of
-    // the garbage and a 30% shorter game. Refusing to cash a combo at all
-    // starves the bot of the pressure and the stop time it needs to build
-    // anything. So a target raises the other weapon's bar and never closes
-    // it, and a bar of Infinity is not reachable through this function.
-    var bars = modes.bars('chain', 4, 4, 6, 5);
-    assert.strictEqual(bars.links, 4, 'the target arm keeps its own bar');
-    assert.strictEqual(bars.wide, 6, 'the off-target arm is raised to the off-target bar');
-});
-
-test('combo: the mirror image', function () {
-    var bars = modes.bars('combo', 4, 4, 6, 5);
-    assert.strictEqual(bars.wide, 4);
-    assert.strictEqual(bars.links, 5);
-});
-
-test('an off-target bar below the base bar cannot LOWER it', function () {
-    // A target must never make the bot sell cheaper than `either` would.
-    var bars = modes.bars('chain', 4, 4, 2, 5);
-    assert.strictEqual(bars.wide, 4, 'off-target 2 must not undercut the base bar of 4');
-});
-
-test('an unknown target is refused rather than silently meaning either', function () {
-    assert.throws(function () { modes.bars('chian', 4, 4, 6, 5); }, /chian/);
-});
-
-// ------------------------------------------- 3d. building TOWARD the target
-
-test('the climb is priced exactly as the feature prices it', function () {
-    // Same weight, same number. The registry divides by a norm so a weight
-    // means the same thing for every feature — chainPotential 16,
-    // comboPotential 36 — and the reused-from-the-search version has to use
-    // those same divisors or `buildToward: 120` means two different
-    // strengths at two different depths.
-    assert.strictEqual(modes.climb('chain', 120, { links: 8, wide: 0 }), 120 * 8 / 16);
-    assert.strictEqual(modes.climb('combo', 120, { links: 0, wide: 9 }), 120 * 9 / 36);
-});
-
-test('either climbs whichever is further along', function () {
-    // Not the sum: one good chain and one good combo on the same board is
-    // not twice as good a board, and adding them would make `either` pull
-    // twice as hard as a target for no stated reason.
-    assert.strictEqual(modes.climb('either', 120, { links: 8, wide: 0 }), 120 * 8 / 16);
-    assert.strictEqual(modes.climb('either', 120, { links: 0, wide: 9 }), 120 * 9 / 36);
-    assert.strictEqual(modes.climb('either', 120, { links: 8, wide: 9 }),
-        Math.max(120 * 8 / 16, 120 * 9 / 36));
-});
-
-test('no strength, no climb, and nothing to climb is no climb', function () {
-    assert.strictEqual(modes.climb('chain', 0, { links: 8, wide: 0 }), 0);
-    assert.strictEqual(modes.climb('chain', 120, { links: 0, wide: 0 }), 0);
-});
-
-// ----------------------------------------------------------------- 4. FORCED
-
 test('about to die is TOPPED OUT with the clock running out', function () {
     // THE ENGINE'S OWN CONDITION, not a proxy for it. advancePassiveRaise:
     //
@@ -439,15 +377,26 @@ test('modes OFF counts nothing, so the instrumentation cannot cost anything', fu
     assert.strictEqual(g.cpu.brokenPlans, 0);
 });
 
-test('the fire thresholds reach the filter', function () {
-    // 99 links and 99 wide can never be met, so FIRE never opens and BUILD
-    // keeps only non-clearing moves and garbage breaks. Playing the same game
-    // as 4 and 4 would mean the options stop somewhere short of modes.js.
-    var low = playGame(shipped({ modes: true, fireLinks: 4, fireWide: 4 }), 101, 4000);
-    var high = playGame(shipped({ modes: true, fireLinks: 99, fireWide: 99 }), 101, 4000);
-    assert.notDeepStrictEqual(low.moves, high.moves, 'the fire thresholds are not reaching the filter');
+test('the goal reaches the filter', function () {
+    // A goal says what to refuse as well as what to build, so two different
+    // goals must play two different games. If they do not, the setting is
+    // stopping somewhere short of modes.js.
+    var small = playGame(shipped({ modes: true, stopFloor: 0, goal: '4-combo' }), 101, 4000);
+    var big   = playGame(shipped({ modes: true, stopFloor: 0, goal: '7-combo' }), 101, 4000);
+    assert.notDeepStrictEqual(small.moves, big.moves, 'the goal is not reaching the filter');
 });
 
+test('a chain goal and a combo goal are different bots', function () {
+    // At depth 2 with a climb, where the difference actually lives: a chain
+    // goal walks toward cascade depth and a combo goal toward clear width,
+    // and they are different boards. At depth 1 with no climb the two differ
+    // only by the also-take bar, which is too little to prove anything.
+    var d2 = { depth: 2, beam: 6, modes: true, stopFloor: 0, buildToward: 20 };
+    var chain = playGame(shipped(Object.assign({ goal: '5-chain' }, d2)), 101, 2500);
+    var combo = playGame(shipped(Object.assign({ goal: '5-combo' }, d2)), 101, 2500);
+    assert.notDeepStrictEqual(chain.moves, combo.moves,
+        'both goals climbed the same thing');
+});
 test('a candidate is judged on what the RISE leaves, not on the instant it popped', function () {
     // THE BUG THIS EXISTS FOR. _score already rises every candidate and
     // merges the second resolve, and then returned only a number — so the
@@ -462,72 +411,13 @@ test('a candidate is judged on what the RISE leaves, not on the instant it poppe
         'bare 3s ' + after + ' rise-aware vs ' + before + ' blind — the filter still cannot see the rise');
 });
 
-test('every fire knob reaches the filter', function () {
-    // An option the filter never reads changes nothing and looks exactly
-    // like one that worked. But asking whether it changed the MOVES cannot
-    // tell a dead wire from a knob that is correctly inert on one seed: a
-    // 4+ link chain is rarely on offer, so a higher links bar often binds on
-    // nothing, and the weights may already prefer the biggest clear, so the
-    // relative bar can remove only moves that would have lost anyway.
-    //
-    // So this counts what the filter REMOVED. That is the knob's own claim,
-    // and it is true or false regardless of what the weights then do.
-    function removed(opts) {
-        var stack = new PanelEngine.Stack({ level: LEVEL, seed: 101, countdown: false });
-        var o = shipped(opts), cpu = new PuyoCpu(stack, o), cut = 0, seen = 0;
-        var orig = cpu._applyModes.bind(cpu);
-        cpu._applyModes = function (c) {
-            var pool = orig(c);
-            seen += c.length; cut += c.length - pool.length;
-            return pool;
-        };
-        for (var f = 0; f < 4000; f++) {
-            cpu.update(); stack.run(); stack.drainEvents();
-            if (stack.gameOver) break;
-        }
-        return { cut: cut, seen: seen };
-    }
-    var base = removed({ modes: true, stopFloor: 0 });
-    assert.ok(base.seen > 500, 'only ' + base.seen + ' candidates seen — too few to call anything dead');
-
-    var knobs = {
-        fireLinks:   { fireLinks: 99 },
-        fireWide:    { fireWide: 8 },
-        fireTarget:  { fireTarget: 'chain' },
-        fireWideOff: { fireTarget: 'chain', fireWideOff: 8 },
-    };
-    var dead = [];
-    Object.keys(knobs).forEach(function (k) {
-        var o = { modes: true, stopFloor: 0 };
-        for (var kk in knobs[k]) o[kk] = knobs[k][kk];
-        // fireWideOff is measured against the target it modifies, not
-        // against `either`, where it is correctly inert.
-        var ref = (k === 'fireWideOff') ? removed({ modes: true, stopFloor: 0, fireTarget: 'chain' }) : base;
-        if (removed(o).cut === ref.cut) dead.push(k);
-    });
-    assert.deepStrictEqual(dead, [], 'these knobs removed exactly as many candidates as the baseline: ' +
-        dead.join(', '));
-});
-
-test('target combo is not target chain', function () {
-    var chain = playGame(shipped({ modes: true, stopFloor: 0, fireTarget: 'chain' }), 101, 4000);
-    var combo = playGame(shipped({ modes: true, stopFloor: 0, fireTarget: 'combo' }), 101, 4000);
-    assert.notDeepStrictEqual(chain.moves, combo.moves, 'both targets play the same game');
-});
-
-test('a bad target name stops the run rather than quietly meaning either', function () {
-    assert.throws(function () {
-        playGame(shipped({ modes: true, fireTarget: 'chains' }), 101, 500);
-    }, /chains/);
-});
-
 test('buildToward reaches the evaluator and changes how it plays', function () {
     // The claim is that the bot WALKS TOWARD the target rather than waiting
     // for it, so the test is that its play changes.
     var d2 = { depth: 2, beam: 6 };
-    var off = playGame(shipped(Object.assign({ modes: true, stopFloor: 0, fireWide: 6,
+    var off = playGame(shipped(Object.assign({ modes: true, stopFloor: 0, goal: '5-chain',
                                                buildToward: 0 }, d2)), 101, 2500);
-    var on  = playGame(shipped(Object.assign({ modes: true, stopFloor: 0, fireWide: 6,
+    var on  = playGame(shipped(Object.assign({ modes: true, stopFloor: 0, goal: '5-chain',
                                                buildToward: 20 }, d2)), 101, 2500);
     assert.notDeepStrictEqual(on.moves, off.moves, 'buildToward changed nothing');
 });
@@ -535,21 +425,11 @@ test('buildToward reaches the evaluator and changes how it plays', function () {
 test('buildToward 0 turns the climb off completely', function () {
     // The default is 20, from measurement — see PuyoCpu's constructor.
     var d2 = { depth: 2, beam: 6 };
-    var on   = playGame(shipped(Object.assign({ modes: true, stopFloor: 0, fireWide: 6 }, d2)), 101, 2500);
-    var zero = playGame(shipped(Object.assign({ modes: true, stopFloor: 0, fireWide: 6,
+    var on   = playGame(shipped(Object.assign({ modes: true, stopFloor: 0, goal: '5-chain' }, d2)), 101, 2500);
+    var zero = playGame(shipped(Object.assign({ modes: true, stopFloor: 0, goal: '5-chain',
                                                 buildToward: 0 }, d2)), 101, 2500);
     assert.notDeepStrictEqual(zero.moves, on.moves, '0 played the same game as the default 20');
 });
-test('the target decides WHICH potential is climbed', function () {
-    var d2 = { depth: 2, beam: 6 };
-    var chain = playGame(shipped(Object.assign({ modes: true, stopFloor: 0,
-                                    fireTarget: 'chain', buildToward: 20 }, d2)), 101, 2500);
-    var combo = playGame(shipped(Object.assign({ modes: true, stopFloor: 0,
-                                    fireTarget: 'combo', buildToward: 20 }, d2)), 101, 2500);
-    assert.notDeepStrictEqual(chain.moves, combo.moves,
-        'both targets climb the same thing');
-});
-
 test('buildToward does nothing to a bot with modes off', function () {
     // No modes means no target, so there is nothing to build toward, and
     // every number this repo already has must be untouched.
@@ -565,7 +445,7 @@ test('the bot does not mutate the weight set it was handed', function () {
     var w = { links: 25, maxHeight: 30 };
     var before = JSON.stringify(w);
     new PuyoCpu(new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false }),
-                { weights: w, modes: true, depth: 2, buildToward: 20 });
+                { weights: w, modes: true, depth: 2, goal: '5-chain', buildToward: 20 });
     assert.strictEqual(JSON.stringify(w), before, 'the caller\'s weights were modified');
 });
 
@@ -580,23 +460,24 @@ test('the climb needs a lookahead, and says so rather than doing nothing', funct
     // nothing is worse than one that refuses.
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false });
     assert.throws(function () {
-        new PuyoCpu(stack, shipped({ depth: 1, modes: true, buildToward: 20 }));
+        new PuyoCpu(stack, shipped({ depth: 1, modes: true, goal: '5-chain', buildToward: 20 }));
     }, /lookahead/);
 
     // Depth 2 builds fine, and the climb is nowhere near the weights.
-    var deep = new PuyoCpu(stack, shipped({ depth: 2, modes: true, buildToward: 20 }));
+    var deep = new PuyoCpu(stack, shipped({ depth: 2, modes: true, goal: '5-chain', buildToward: 20 }));
     assert.ok(!deep.weights.chainPotential, 'depth 2 weighted chainPotential — paying twice');
     assert.ok(!deep.weights.comboPotential, 'depth 2 weighted comboPotential');
 
     // Depth 1 with no climb is fine: that is the bot every old number describes.
     assert.doesNotThrow(function () {
-        new PuyoCpu(stack, shipped({ depth: 1, modes: true, buildToward: 0 }));
+        new PuyoCpu(stack, shipped({ depth: 1, modes: true, goal: '5-chain', buildToward: 0 }));
     });
 });
 test('the climb changes play at depth 2, where it is free', function () {
-    var off = playGame(shipped({ depth: 2, beam: 6, modes: true, stopFloor: 0, fireWide: 6 }), 101, 2500);
-    var on  = playGame(shipped({ depth: 2, beam: 6, modes: true, stopFloor: 0, fireWide: 6,
-                                  buildToward: 120 }), 101, 2500);
+    var off = playGame(shipped({ depth: 2, beam: 6, modes: true, stopFloor: 0, goal: '5-chain',
+                                  buildToward: 0 }), 101, 2500);
+    var on  = playGame(shipped({ depth: 2, beam: 6, modes: true, stopFloor: 0, goal: '5-chain',
+                                  buildToward: 20 }), 101, 2500);
     assert.notDeepStrictEqual(on.moves, off.moves, 'the free climb changed nothing');
 });
 
@@ -606,7 +487,7 @@ test('FORCED lifts the filter at both plies and the climb with it', function () 
     // ply 1 took every move while ply 2 still valued them through the
     // filter, and later the climb kept pulling while FORCED was open.
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false });
-    var cpu = new PuyoCpu(stack, shipped({ depth: 2, modes: true, buildToward: 20 }));
+    var cpu = new PuyoCpu(stack, shipped({ depth: 2, modes: true, goal: '5-chain', buildToward: 20 }));
 
     cpu._mode = 'BUILD';
     assert.strictEqual(cpu._filtering(), true, 'BUILD must filter');
@@ -622,6 +503,57 @@ test('modes off is still swap-for-swap the old bot', function () {
         var b = playGame(shipped({ modes: false }), seed, 3000);
         assert.deepStrictEqual(b.moves, a.moves, 'seed ' + seed);
     });
+});
+
+test('the danger zone narrows to what survives — it does not pick for you', function () {
+    // FORCED must not lock the bot into one move. It removes everything that
+    // buys no time and hands the rest to the evaluator: the same contract
+    // every other mode has. How much the clock is worth against everything
+    // else is then LEARNED, through stopTimeEarned and the danger weight
+    // set, rather than being a rule written here.
+    var cands = [
+        { kind: 'swap', score: 900, resolved: { chainLength: 0, comboSizes: [], stopTimeEarned: 0 } },
+        { kind: 'swap', score: 100, resolved: { chainLength: 2, comboSizes: [3, 3], stopTimeEarned: 64 } },
+        { kind: 'swap', score: 500, resolved: { chainLength: 1, comboSizes: [5], stopTimeEarned: 32 } }
+    ];
+    var pool = modes.survivable(cands);
+    assert.strictEqual(pool.length, 2, 'the move that buys no time is still on the table');
+    assert.strictEqual(pool.indexOf(cands[0]), -1);
+});
+
+test('the survivors keep candidate order, so ties break as they always do', function () {
+    var cands = [
+        { kind: 'swap', score: 100, resolved: { comboSizes: [4], stopTimeEarned: 32 } },
+        { kind: 'swap', score: 800, resolved: { comboSizes: [6], stopTimeEarned: 34 } }
+    ];
+    assert.deepStrictEqual(modes.survivable(cands), cands);
+});
+
+test('nothing survives means no filter, not no move', function () {
+    // The bot still has to play something, and nothing here saves it anyway.
+    var cands = [
+        { kind: 'hold', score: 900, resolved: { comboSizes: [], stopTimeEarned: 0 } },
+        { kind: 'swap', score: 100, resolved: { comboSizes: [3], stopTimeEarned: 0 } }
+    ];
+    assert.deepStrictEqual(modes.survivable(cands), cands);
+});
+
+test('the danger weight set is used only in danger', function () {
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false });
+    var build = { links: 10 }, danger = { stopTimeEarned: 99 };
+    var cpu = new PuyoCpu(stack, shipped({ depth: 2, modes: true,
+                                            weights: build, dangerWeights: danger }));
+    cpu._mode = 'BUILD';
+    assert.deepStrictEqual(cpu._weightsNow(), cpu.weights);
+    cpu._mode = 'FORCED';
+    assert.deepStrictEqual(cpu._weightsNow(), cpu.dangerWeights);
+});
+
+test('no danger set means the ordinary weights, so off is free', function () {
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false });
+    var cpu = new PuyoCpu(stack, shipped({ depth: 2, modes: true }));
+    cpu._mode = 'FORCED';
+    assert.deepStrictEqual(cpu._weightsNow(), cpu.weights);
 });
 
 tests.forEach(function (t) {

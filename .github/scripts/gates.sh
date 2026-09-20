@@ -398,7 +398,8 @@ gate_chaining() {
 
 gate_modes() {
   local d; d="$(_gc_training_dir)" || return 1
-  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/modes.test.js
+  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/modes.test.js || return 1
+  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/goal.test.js
 }
 
 gate_rise_scoring() {
