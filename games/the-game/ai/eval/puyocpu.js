@@ -531,9 +531,10 @@
   // and record which mode did it. The evaluator still picks from what is
   // left — see the header of modes.js for why that is the whole design.
   //
-  // FIRE is a strict subset of BUILD: everything that fires also pays. So
-  // the order is FORCED, then FIRE, then BUILD, and each is the same shape
-  // of thing — a predicate on the resolve the candidate already carries.
+  // FORCED is the only mode that changes the pool. BUILD and FIRE take the
+  // same one and differ only in what they record: whether anything on the
+  // board had reached the bar. When to cash in is a weights question, so no
+  // mode answers it.
   PuyoCpu.prototype._applyModes = function (cands) {
     if (!this.modes) return cands;
     var bar = this._bar();
@@ -761,8 +762,7 @@
       // PLY 2 OBEYS THE SAME FILTER AS PLY 1, for the reason spelled out
       // below: a move the bot cannot make at ply 1 must not be what ply 2
       // values a candidate for, or the imagined future is a different game
-      // from the real one. BUILD's predicate, not FIRE's — having fired, the
-      // next move is building again.
+      // from the real one.
       if (this._filtering() && !modes.pays(childResolved, this._bar().links, this._bar().wide)) continue;
       f = this._score(child, childResolved, next[j], from, clock, cand.board);
       if (f > v) v = f;

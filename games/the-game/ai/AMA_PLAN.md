@@ -19,36 +19,42 @@ legal swap, score the board each one leaves, play the highest, keep
 nothing. It is a memoryless argmax on board tidiness.
 
 A plan cannot be stored in a coefficient. That is why every weight that was
-supposed to buy aggression bought a shorter game instead, and why
-`paylessClear` changed nothing.
+supposed to buy aggression bought a shorter game instead.
 
 ## Resolves, not shapes
 
 Every "what would this build toward" question here is asked of the engine —
-clone the board, swap, `resolve()`, read what came out. `chainPotential`
-(`eval/features.js:225`, via `swapOutcomes`) already does exactly that: the
-deepest cascade any one legal swap could set off from the board a move
-leaves.
+clone the board, swap, `resolve()`, read what came out. The `reach` family
+is exactly that, size by size: can the board this move LEAVES fire a
+4-combo, a 5-combo, ... a 2-chain, ... an 8-chain. At depth 2 the search has
+already resolved those boards, so the answers are read off its own children
+rather than swept a second time.
 
 The shape features stay cut. We never tell the bot what a chain looks like;
 we ask the engine what a swap would do.
 
-## Step 1 — two modes and a fire threshold
+## Step 1 — the pool refuses the worthless clear
 
-No new features, no training, a number the same day.
+`PuyoCpu` carries one field that survives a decision, `mode`. It is a
+filter on the candidate pool, and the evaluator always picks from what is
+left.
 
-ama builds below its trigger and fires above it. `PuyoCpu` gains one field
-that survives a decision, `mode`:
+- **BUILD** — a candidate is dropped before scoring unless its resolve does
+  one of three things: clears nothing, breaks garbage, or meets the bar
+  (`T` links or `S` wide). Hold clears nothing, so hold always survives.
+- **FIRE** — the same pool. It records that something reached the bar; it
+  does not change which moves are on the list. Narrowing to the moves that
+  fire took hold off the list, so a bot with a two-chain available could not
+  decline it and grow the material — it sold the smallest chain that
+  existed, every time one existed.
+- **FORCED** — overrides both. Two triggers and only two: the bot is about
+  to die, or the plan broke. Narrows to the moves that survive and lets the
+  weights pick among them; with no survivor the unfiltered pool stands.
 
-- **BUILD** — a candidate is dropped from the pool before scoring unless
-  its resolve does one of three things: fires a chain of `T` links, makes a
-  combo `S` wide, or breaks garbage. Everything left is scored as now.
-- **FIRE** — play the swap with the biggest resolve. Entered when the board
-  reaches `T` on `chainPotential` or `S` on `comboPotential`, left when the
-  cascade is spent.
-- **FORCED** — overrides BUILD. Two triggers, and only two: the bot is
-  about to die, or the plan broke. Scores the unfiltered pool, which is
-  today's bot.
+WHEN TO FIRE IS NOT IN HERE. It is carried by the weights, one per payout
+size — `reach4combo`..`reach10combo` and `reach2chain`..`reach8chain`. A bot
+that has learned a 5-chain is worth waiting for declines the 2-chain by
+scoring the hold higher.
 
 ### What FORCED is, and what it is not
 
@@ -66,7 +72,7 @@ Execution is how long the payoff being saved takes to cash in: the walk
 drops below execution. Out of time, not high.
 
 **The plan broke** means what BUILD was saving for is gone — garbage landed
-on it, a rise buried it, `chainPotential` collapsed. It is a real state and
+on it, a rise buried it, what the board could reach collapsed. It is a real state and
 it has to be handled, but it is a DEFECT, not a branch: a broken plan is
 work already spent that paid nothing. Count it per game and drive it down.
 A build that keeps breaking is a build that was never safe to start.
@@ -91,40 +97,34 @@ being built), and in how they are dug out (one object versus several that
 break independently).
 
 Which one to fire depends on the opponent: a slab against a healthy board,
-a fast combo against one that is nearly out of room. That is opponent-state
-crossed with attack-type — an interaction, so it belongs in the mode
-selector and not in a weight, and it is NOT written here as a rule.
+a fast combo against one that is nearly out of room. It is NOT written here
+as a rule.
 
-What the bot needs is to see it. FIRE already has both arms; step 2 adds
-the opponent's HEADROOM — rows to their ceiling, plus what is already in
-the air at them — as an input to which arm FIRE picks. Training finds the
-crossover. It cannot today because the bot sees nothing about the other
-board.
+What the bot needs is to see it, and it does: one weight per payout size for
+what this move leaves reachable, and `pressure` and `overkill` for what the
+send is worth against the board it is aimed at. Training finds the
+crossover.
 
-### The thresholds end up weighted, not fixed
+### Which weapon, and when, are weights
 
-`fireLinks` and `fireWide` are a FLOOR today: never cash in below four
-links or four wide. A floor cannot say "against this opponent, right now, a
-fast six-wide beats a five-chain", and in a fight that is the decision that
-matters.
+`T` and `S` are a floor on what counts as paying — never a bar on which
+payout to take, and never a trigger that makes the bot act. A floor cannot
+say "against this opponent, right now, a fast six-wide beats a five-chain",
+so nothing asks it to.
 
-The seam for it is the one design choice in step 1: a mode narrows the pool
-and the EVALUATOR still picks. So "which weapon" is a weights question, and
-three additive changes get there.
+That question is answered by three things, all of them in the genome:
 
-1. `fireLinks` and `fireWide` become genome entries rather than constants.
-   They are already options carried in `switches.js` beside the weights so
-   that this costs nothing when it happens.
-2. Features that describe the CHOICE. The bot cannot weigh chain against
-   combo because nothing tells it which is on offer; the resolve reports
-   depth and width separately and neither is fed in.
-3. The opponent's headroom, so the choice has something to be conditional
-   on. That is step 2.
+1. One weight per payout size for what this move LEAVES reachable —
+   `reach4combo`..`reach10combo`, `reach2chain`..`reach8chain`. Chain
+   against combo, size by size, never bucketed.
+2. `pressure` and `overkill`: this move's send over the opponent's
+   remaining room, and the send past what finishes them.
+3. Hold is always a candidate, so declining is a move the weights can
+   choose and not a state the filter has to enter.
 
-WHAT CANNOT BECOME A WEIGHT is the mode itself. "Build now, fire later" is a
-statement about time, and a weighted sum prices only the move in front of
-it — which is why step 1 is a filter. Everything INSIDE a mode can be
-weighted, and that is where the fight lives.
+Making `T` and `S` themselves genome entries was in this plan and is
+dropped: the reach weights already carry what it was for, and a threshold
+that also gates the pool is a second place for the same decision to live.
 
 ### Not yet: the ceiling on a useful attack
 
@@ -138,8 +138,10 @@ machinery. Deliberately deferred; noted here so it is not re-derived.
 
 ### Thresholds
 
-`T` starts at 4 links, `S` at 4 wide — `comboGarbage()` sends nothing below
-4, so a 3 is the thing BUILD is there to refuse. Both arms read the same
+`T` is 2 links, `S` 4 wide. `comboGarbage()` sends nothing below 4 and
+`SCORE_CHAIN_TA` pays a 2-chain 50 while sending a full-width slab, so the
+bar is the floor of what pays anything and a 3 is the thing BUILD is there
+to refuse. Both arms read the same
 resolve: `chainLength` and `comboSizes` come back from the same call.
 Nothing is hard-coded about what the board looks like.
 
@@ -149,9 +151,10 @@ combos a minute of which only 1.5 are 4-wide or better. Nineteen in twenty
 send nothing. Filtering for chains alone would leave that untouched.
 
 `switches.js` carries `T` and the mode toggle, so a run is reproducible and
-a bench can turn it off. `chainPotential` costs 14.9 ms per decision
-against an 85 ms budget (measured); the filter wants the same resolves the
-scorer runs, so resolve once per candidate and cache, never twice.
+a bench can turn it off. The filter wants the same resolves the scorer
+runs, so resolve once per candidate and cache, never twice: read off the
+search it costs 16.2 ms a decision against an 85 ms budget, swept
+separately 166 ms.
 
 **Gate:** `4+ links/min` above 0.0 with the shipped weights unchanged, and
 `4+ wide/min` above 1.5. If both sit still the modes never fired and
@@ -233,8 +236,8 @@ Depth 2 is what caps chain building; ama runs beam 250 at depth 16.
 We do not need 16. In Panel Attack the board is already on screen — there
 is no piece queue to plan against — so the depth we need is in the BUILD
 direction only: expand only the candidates BUILD kept, rank the beam by
-`chainPotential` and `comboPotential` rather than by score, and measure
-them at the leaf. A beam over a filtered pool is affordable where a beam over the whole
+what they leave reachable rather than by score, and measure them at the
+leaf. A beam over a filtered pool is affordable where a beam over the whole
 pool is not.
 
 Not started until steps 1 and 2 have moved `4+ links/min`. A deeper search
@@ -246,15 +249,20 @@ ama carries four (build, fast, all-clear, freestyle). Ours would be BUILD,
 FIRE, FORCED. Each is its own genome and the islands train them together,
 which multiplies the genome and the fingerprint.
 
+NOT RUNNING. `PuyoCpu` takes `dangerWeights` and `_weightsNow()` will use it
+in FORCED, but no trainer supplies one, so every run scores with a single
+set and the field is inert. The genome is 29 weights, not 58.
+
 Last. Per-mode weights on modes that do not fire is three ways to be wrong
-instead of one.
+instead of one, and FORCED is 13 decisions in 480.
 
 ## What this drops
 
 Every remaining attempt to make one weighted sum hold a plan. The
-`pc-s2xx` island chains are stopped. `paylessClear` stays in the registry
-as opt-in and off: it is out of `registry.keys`, so it is out of the island
-fingerprint and costs nothing sitting there.
+`pc-s2xx` island chains are stopped; their snapshots carry 11 features and
+are the control. `paylessClear` is out of the registry — the pool refuses
+the payless clear outright, so a weight for it has nothing to price. The
+count still reaches the report, taken from the engine's own match events.
 
 Modes change behaviour without changing `KEYS`, so the fingerprint will not
 notice. Relaunch islands fresh rather than resuming across the change.

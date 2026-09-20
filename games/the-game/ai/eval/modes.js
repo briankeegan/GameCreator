@@ -37,17 +37,19 @@
              breaks: resolved.brokeGarbage || 0 };
   }
 
-  // Is this move worth stopping to cash in. Two arms, both from the resolve:
+  // Does this move meet the bar. Two arms, both from the resolve:
   // a cascade `T` links deep, or a single clear `S` wide. They are different
   // weapons — pushGarbage sends a chain as one full-width slab held until the
   // cascade ends, and a combo as separate one-row pieces that leave at once —
-  // so neither subsumes the other and both are here.
+  // so neither subsumes the other and both are here. It says what a move
+  // pays, never that the bot should take it — hold is always on the list
+  // beside it and the weights choose.
   function fires(resolved, T, S) {
     var p = payout(resolved);
     return p.links >= T || p.wide >= S;
   }
 
-  // May this move stay in BUILD's pool.
+  // May this move stay in the pool.
   //
   // A MOVE THAT CLEARS NOTHING ALWAYS MAY. That is what building IS, and it
   // is why this is a filter on cashing in rather than a demand for a payout:

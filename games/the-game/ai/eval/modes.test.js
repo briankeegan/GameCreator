@@ -104,8 +104,8 @@ test('a move that clears nothing has no payout and does not count as firing', fu
 });
 
 test('fires is the payout arms only — breaking garbage is not firing', function () {
-    // Breaking garbage keeps a move in BUILD's pool. It is not a reason to
-    // stop building and cash in, which is what FIRE means.
+    // Breaking garbage keeps a move in the pool. It is not a payout, so it
+    // is not what records the decision as FIRE.
     assert.strictEqual(modes.fires(res({ chainLength: 1, comboSizes: [3], brokeGarbage: 4 }), T, S), false);
     assert.strictEqual(modes.pays(res({ chainLength: 1, comboSizes: [3], brokeGarbage: 4 }), T, S), true);
 });
