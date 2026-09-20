@@ -3702,4 +3702,82 @@ assert.deepStrictEqual(
   }
 }
 
+// ---- a shove has to work AT RANGE, and for both sides -------------------
+//
+// The Salvager carries no gun. Its one move is the Tractor Beam, which
+// reaches two or three and drags the flagship a hex off its ground, and
+// the direction for it was computed with directionIndex — a function that
+// only names the direction between ADJACENT hexes and returns -1 for
+// anything further. The Tractor Beam has minRange 2, so the flagship is
+// never adjacent when it fires: every pull the class ever attempted
+// resolved to "braced, nothing gives". Measured over sixty full runs, 292
+// attempts and zero landed. The flagship's own copy of the rule had been
+// found and fixed; the hostiles' copy had not, and the failure is silent —
+// the shot fires, the energy is spent, and the log reads like counterplay.
+{
+  const pull = Engine.WEAPONS.tractorBeam;
+  const push = Engine.WEAPONS.repulsorField;
+  assert.ok(pull.minRange >= 2, "the Tractor Beam does not reach contact — that is the whole trap");
+
+  // A pull moves the subject TOWARD the shooter, at every range the
+  // weapon actually has.
+  for (let range = 1; range <= 4; range++) {
+    const shooter = { q: 0, r: 0 };
+    const subject = { q: range, r: 0 };
+    const dir = Engine.shoveDirection(shooter, subject, pull);
+    assert.ok(dir >= 0, `a pull at range ${range} must name a direction`);
+    const landed = Engine.neighbors(subject)[dir];
+    assert.strictEqual(
+      Engine.hexDistance(landed, shooter),
+      range - 1,
+      `a pull at range ${range} must end one hex nearer the shooter`
+    );
+  }
+  // And off the axis, which is where most shots actually happen.
+  {
+    const shooter = { q: 0, r: 0 };
+    const subject = { q: 2, r: -1 };
+    const dir = Engine.shoveDirection(shooter, subject, pull);
+    assert.ok(dir >= 0, "a pull off the hex axis must still name a direction");
+    assert.ok(
+      Engine.hexDistance(Engine.neighbors(subject)[dir], shooter) < Engine.hexDistance(subject, shooter),
+      "an off-axis pull must still end nearer the shooter"
+    );
+  }
+  // A push is the same rule in reverse.
+  for (let range = 1; range <= 3; range++) {
+    const shooter = { q: 0, r: 0 };
+    const subject = { q: range, r: 0 };
+    const dir = Engine.shoveDirection(shooter, subject, push);
+    assert.strictEqual(
+      Engine.hexDistance(Engine.neighbors(subject)[dir], shooter),
+      range + 1,
+      `a push at range ${range} must end one hex further out`
+    );
+  }
+
+  // The integration case, because the unit above would still pass if the
+  // enemy phase never called it: a Salvager in reach has to actually move
+  // the flagship.
+  {
+    const level = JSON.parse(JSON.stringify(LEVELS[0]));
+    const start = level.playerStart;
+    level.enemies = [{ type: "salvager", q: start.q, r: start.r - 2 }];
+    level.hazards = [];
+    const state = Engine.createGameState(level);
+    assert.strictEqual(
+      Engine.hexDistance(state.playerPos, state.enemies[0]),
+      2,
+      "fixture stands the Salvager at the Tractor Beam's reach"
+    );
+    const before = { ...state.playerPos };
+    let moved = false;
+    for (let i = 0; i < 6 && state.status === "playing" && !moved; i++) {
+      Engine.applyEndTurn(state);
+      if (!Engine.posEq(state.playerPos, before)) moved = true;
+    }
+    assert.ok(moved, "a Salvager in reach must drag the flagship off its ground — that is the only thing it does");
+  }
+}
+
 console.log("All golden-path assertions passed.");

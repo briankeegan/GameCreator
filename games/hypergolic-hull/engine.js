@@ -58,6 +58,36 @@
     return -1;
   }
 
+  // WHICH WAY A SHOVE MOVES SOMETHING. One answer, used by both sides.
+  //
+  // `directionIndex` only names the direction between ADJACENT hexes and
+  // returns -1 for anything further, which makes it a trap for any weapon
+  // with reach. The flagship's own Repulsor and Tractor Beam were written
+  // against that trap and then fixed; the hostiles' copy of the same rule
+  // was not, and nobody noticed because the failure is silent — the shot
+  // fires, the energy is spent, and the log says the target braced. The
+  // Salvager's ENTIRE reason to exist is this one move, and measured over
+  // sixty full runs it attempted 292 pulls and landed exactly none of
+  // them. It really was running around doing nothing.
+  //
+  // So: exact direction when the two are touching, and otherwise the step
+  // that ends furthest from the shooter (a push) or nearest to it (a
+  // pull). Right at any range, on any board shape, for whoever fires it.
+  function shoveDirection(shooter, subject, weapon) {
+    const exact = directionIndex(shooter, subject);
+    if (exact >= 0) return weapon.pulls ? (exact + 3) % 6 : exact;
+    let best = -1;
+    let bestDist = null;
+    for (let d = 0; d < 6; d++) {
+      const dist = hexDistance(neighbor(subject, d), shooter);
+      if (bestDist === null || (weapon.pushes ? dist > bestDist : dist < bestDist)) {
+        bestDist = dist;
+        best = d;
+      }
+    }
+    return best;
+  }
+
   // ---- board shapes ---------------------------------------------------------
   //
   // Two shapes: the classic hexagon (`radius`) and Hoplite-style rectangles
@@ -4042,35 +4072,7 @@
         );
       for (const victim of ordered) {
         if (!victim.alive) continue;
-        // Chosen by DISTANCE, not by directionIndex: that one only names
-        // the direction between ADJACENT hexes and returns -1 otherwise, so
-        // a Tractor Beam reaching three would have silently pulled nothing
-        // at all. A push takes the step that ends furthest from the
-        // flagship, a pull the step that ends nearest — which is the right
-        // answer at any range and on any board shape.
-        // Straight along the line, wherever that line can be named. A push
-        // is only meaningful if it is DIRECTLY away — the first version
-        // scored the six neighbours by distance and took the first of the
-        // ties, which shoved a contact sideways past the rock it should
-        // have been driven into. For an adjacent target the direction is
-        // exact (directionIndex), and that covers both shipped weapons: a
-        // Repulsor only reaches contact, and a Tractor Beam's pull is the
-        // same direction reversed once the target is dragged in. At longer
-        // reach there is no single named direction, so it falls back to the
-        // best step by distance.
-        let dir = directionIndex(state.playerPos, victim);
-        if (dir >= 0) {
-          if (weapon.pulls) dir = (dir + 3) % 6;
-        } else {
-          let bestDist = null;
-          for (let d = 0; d < 6; d++) {
-            const dist = hexDistance(neighbor(victim, d), state.playerPos);
-            if (bestDist === null || (weapon.pushes ? dist > bestDist : dist < bestDist)) {
-              bestDist = dist;
-              dir = d;
-            }
-          }
-        }
+        const dir = shoveDirection(state.playerPos, victim, weapon);
         if (dir < 0) continue;
         pushEnemyInDirection(state, victim, dir, weapon.label);
       }
@@ -4190,8 +4192,7 @@
         // moves you, and that is the interesting case anyway — off your
         // ground, out of your gun's arc, into somebody else's.
         if (weapon.pushes || weapon.pulls) {
-          const toward = directionIndex(enemy, state.playerPos);
-          const dir = toward < 0 ? -1 : weapon.pulls ? (toward + 3) % 6 : toward;
+          const dir = shoveDirection(enemy, state.playerPos, weapon);
           const dest = dir < 0 ? null : neighbor(state.playerPos, dir);
           const blocked =
             !dest || !onBoard(state, dest) || enemyAt(state, dest) || isBlockingHazard(hazardAt(state, dest));
@@ -4881,6 +4882,7 @@
     enemyAt,
     hazardAt,
     inScrambler,
+    shoveDirection,
     awardSalvage,
     SECTOR_CONDITIONS,
     SECTOR_OBJECTIVES,

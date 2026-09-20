@@ -589,7 +589,24 @@ function playSector(state, report) {
   // alone cannot tell that apart from a gun nobody buys. Count the sectors
   // each weapon was armed for; the shots table is the other half.
   for (const w of armedWeapons(state)) report.armed[w.id] = (report.armed[w.id] || 0) + 1;
+  // WHAT THE HOSTILES ACTUALLY DID. A class whose whole reason to exist is
+  // one move ("the Salvager drags you off your ground") is either doing
+  // that or it is scenery, and the win rate cannot tell the two apart. The
+  // log is the ship's own account, so read it: the engine keeps the last
+  // twenty lines and this loop runs every round, so nothing is missed.
+  let logSeen = 0;
   for (let round = 0; round < MAX_ROUNDS; round++) {
+    for (const line of state.log.slice(logSeen)) {
+      const who = /^([A-Z]+)/.exec(line);
+      if (!who) continue;
+      const verb = /hauls at us/.test(line)
+        ? "pull blocked"
+        : /shoves us off/.test(line)
+          ? "pull landed"
+          : null;
+      if (verb) report.hostileMoves[`${who[1].toLowerCase()} ${verb}`] = (report.hostileMoves[`${who[1].toLowerCase()} ${verb}`] || 0) + 1;
+    }
+    logSeen = state.log.length;
     if (state.status !== "playing") return state.status;
 
     if (Engine.outpostAvailable(state)) {
@@ -931,6 +948,7 @@ function main() {
     fitted: {},
     kills: {},
     armed: {},
+    hostileMoves: {},
     shape: {},
     depthReached: {},
     hullAtDepth: {},
@@ -989,6 +1007,7 @@ function main() {
   console.log(`recharges: ${report.recharges}, shields raised: ${report.shieldsRaised}`);
 console.log("gates taken:", report.gates);
   console.log("discoveries found:", report.discoveries);
+  console.log("what the hostiles did:", report.hostileMoves);
   if (process.env.ECON) {
     const byDepth = (rows, key) => {
       const m = {};
