@@ -371,6 +371,7 @@ exports.run = function (weights, seed, opts) {
     // and one row per link, and those break points are the engine's.
     var chainDepth = {};
     report.CATEGORY_ORDER.forEach(function (c) { chainDepth[c] = 0; });
+    var chain = {}, combo = {};
     try {
         // NO FRAME CAP. The reference plays a FULL game — step 2 is "play a
         // full game with them" — and it ends when the board tops out.
@@ -414,7 +415,28 @@ exports.run = function (weights, seed, opts) {
                     chainDepth[report.classify(out[i])]++;
                 }
             }
-            stack.drainEvents();
+            // THE ENGINE'S OWN ACCOUNT OF WHAT FIRED, not our resolve's.
+            //
+            // These were drained and thrown away. `chainDepth` above
+            // classifies the GARBAGE that crossed, which is a different
+            // question: a chain that sends nothing is invisible in it, and a
+            // 3-wide that sends nothing is invisible too, so nothing here
+            // could say how DEEP the cascades went or how BIG the clears
+            // were. The engine emits both for itself -- `chainEnd` carries
+            // the finished chain's true length when the last chaining panel
+            // settles, and a `match` without a chain flag carries the size
+            // of a one-off clear.
+            //
+            // Read from the engine rather than from BoardSim deliberately:
+            // ours settles the whole board before matching, so it merges
+            // clears the engine fires frames apart. For measuring what a bot
+            // ACTUALLY DID, the engine is the only account that counts.
+            var evs = stack.drainEvents();
+            for (var e = 0; e < evs.length; e++) {
+                var ev = evs[e];
+                if (ev.type === 'chainEnd') chain[ev.length] = (chain[ev.length] || 0) + 1;
+                else if (ev.type === 'match' && !ev.chain) combo[ev.size] = (combo[ev.size] || 0) + 1;
+            }
             if (stack.gameOver) break;
             if (checkTiming && localMax > TIMING_MARGIN_MS) break;
             // THE BENCHMARK'S OWN CEILINGS, and only the benchmark's.
@@ -438,7 +460,7 @@ exports.run = function (weights, seed, opts) {
         if (detach) detach();
     }
     return { frames: f, sent: sent, score: stack.score || 0, died: !!stack.gameOver,
-             chainDepth: chainDepth,
+             chainDepth: chainDepth, chain: chain, combo: combo,
              localMax: localMax, unsafe: checkTiming && localMax > TIMING_MARGIN_MS };
 };
 
