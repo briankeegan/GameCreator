@@ -130,13 +130,26 @@ const PILOT = process.env.PILOT || "careful";
 const CARE = { careful: 6, greedy: 4, reckless: 0 }[PILOT]; // detours cost rounds, and rounds let chasers close — caution has a price too
 const THREAT_COST = CARE; // a detour beats a hit — hull is the scarcest thing in the game
 
+// Crossing a scrambler field is a real option; sitting in one is not.
+// High enough to route around a field when there is any way round, low
+// enough to cut through one rather than walk the long way home.
+const SCRAMBLER_COST = 4;
+
 function routeStep(state, goal) {
   const startKey = Engine.hexKey(state.playerPos);
   const goalKey = Engine.hexKey(goal);
   const threats = Engine.computeThreatHexes(state);
   const blocked = new Set();
   for (const e of Engine.livingEnemies(state)) blocked.add(Engine.hexKey(e));
-  for (const h of state.hazards || []) blocked.add(Engine.hexKey(h)); // asteroid fields are impassable
+  // ONLY what is actually impassable. A scrambler field is flown through —
+  // it costs your guns while you are inside it, not your hull — and
+  // blocking it here made a tenth of the board unwalkable to this pilot
+  // and to nobody else, which stalled a third of runs and read as the
+  // terrain being broken rather than the pilot being wrong about it.
+  for (const h of state.hazards || []) {
+    if (Engine.inScrambler(state, h)) continue;
+    blocked.add(Engine.hexKey(h));
+  }
   // A fixed gun's zone is only dangerous while the gun is CHARGED, and
   // every emplacement in the game costs more to fire than it makes in a
   // round — so each zone blinks, and staticKillZones only reports the
@@ -160,7 +173,12 @@ function routeStep(state, goal) {
     for (const nb of Engine.neighbors(cur)) {
       const key = Engine.hexKey(nb);
       if (!Engine.onBoard(state, nb) || blocked.has(key)) continue;
-      const step = 1 + (threats.has(key) ? THREAT_COST : 0) + (emplaced.has(key) ? 60 : 0);
+      // A scrambler field is passable and it is not free: ending a round in
+      // one means taking whatever comes without being able to answer it.
+      // Worth crossing to get somewhere, never worth loitering in, which is
+      // exactly what a cost rather than a wall expresses.
+      const scrambled = Engine.inScrambler(state, nb) ? SCRAMBLER_COST : 0;
+      const step = 1 + (threats.has(key) ? THREAT_COST : 0) + (emplaced.has(key) ? 60 : 0) + scrambled;
       const next = dist.get(curKey) + step;
       if (dist.has(key) && dist.get(key) <= next) continue;
       dist.set(key, next);
