@@ -4677,6 +4677,8 @@ function describeItem(id) {
   if (eq.kind === "engine")
     return `${eq.label} — ${eq.moveRange} hex${eq.moveRange === 1 ? "" : "es"} per burn · ${eq.w}x${eq.h}`;
   if (eq.kind === "salvage") return `${eq.label} — +${eq.salvageBonus} salvage from every wreck · ${eq.w}x${eq.h}`;
+  if (eq.kind === "booster")
+    return `${eq.label} — +${eq.moveBonus} hex on every burn, needs a drive · ${eq.w}x${eq.h}`;
   if (eq.kind === "shield") return `${eq.label} — raise-able charge, absorbs a volley · ${eq.w}x${eq.h}`;
   if (eq.kind === "armor") return `${eq.label} — +${eq.hullBonus} Hull, welded on · ${eq.w}x${eq.h}`;
   if (eq.kind === "sensor") return `${eq.label} — powers Scan mode · ${eq.w}x${eq.h}`;

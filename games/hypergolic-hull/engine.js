@@ -1844,6 +1844,7 @@
     // floor, spending ZERO, in every configuration ever tried. That
     // unspendable money is exactly what makes Sector 3 easy.
     { id: "chargeBank", label: "Charge Bank (1x2 — +2 Max Energy, holds it, makes none)", cost: 4, rarity: "common" },
+    { id: "afterburner", label: "Afterburner (1x2 — two hexes on one burn)", cost: 11, rarity: "uncommon" },
     { id: "hardpoint", label: "Hold Expansion (+1 row of internal space)", cost: 12, rarity: "uncommon" },
     // The three weapons beyond your starting Autocannon, priced on a real
     // curve — each one answers a situation the others can't, and each is
@@ -2047,6 +2048,10 @@
       if (o.id === "beamLance") return levelId >= 4;   // the Picket's own gun, met in Sector 2
       if (o.id === "siegeMaul") return levelId >= 4;   // the Escort's screen, met in Sector 4
       if (o.id === "arcBeam" || o.id === "hardpoint") return levelId >= 3;
+      // Same rule as the guns, applied to mobility: the Sentry Line at 3 is
+      // the first thing that outranges you and will not come to you, and
+      // moving two hexes is the other honest answer to reach.
+      if (o.id === "afterburner") return levelId >= 3;
       if (o.id === "flakBurst") return levelId >= 2;
       if (o.id === "prowCannon") return true;          // the cheap one, available from the off
       // Same rule as the rest of the list: a gun reaches a shelf a sector
@@ -2182,7 +2187,12 @@
     //
     // With it: 83/150 at today's catalogue, and 67/150 at twenty-three
     // items — which is what makes the arsenal able to grow at all.
-    const UPKEEP_IDS = ["reinforce", "hardpoint", "reactor", "shield", "screenArray"];
+    // Mobility is upkeep, not armament: it is bought to stay alive and to
+    // reach a fight, and it belongs in the protected slot for the same
+    // reason hull and reactor do. It is also the only place a non-weapon
+    // can go without thinning the rarity-rolled slots, which is what keeps
+    // commons common.
+    const UPKEEP_IDS = ["reinforce", "hardpoint", "reactor", "shield", "screenArray", "afterburner"];
     const upkeep = stock.filter((o) => UPKEEP_IDS.includes(o.id));
     const kept = upkeep.length ? drawFrom(upkeep, 1) : [];
     const rolled = [...kept, ...drawFrom(stock.filter((o) => !kept.includes(o)), 2 - kept.length)];
