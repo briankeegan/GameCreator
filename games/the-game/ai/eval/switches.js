@@ -65,7 +65,19 @@ function load(file) {
         depth: sw.depth === undefined ? 1 : Number(sw.depth),
         beam: sw.beam === undefined ? 6 : Number(sw.beam),
         rise: sw.rise === true,
-        density: sw.density === true
+        density: sw.density === true,
+        // MODES AND THEIR THREE NUMBERS TRAVEL WITH THE WEIGHTS, for the
+        // reason at the top of this file: a weight set is only a bot when
+        // paired with the switches it was found under, and a bot that builds
+        // is a different bot from one that does not.
+        //
+        // The thresholds are here rather than baked into modes.js so that
+        // they can become genome entries later without a second place to
+        // change. Defaults match PuyoCpu's own.
+        modes: sw.modes === true,
+        fireLinks: sw.fireLinks === undefined ? 4 : Number(sw.fireLinks),
+        fireWide: sw.fireWide === undefined ? 4 : Number(sw.fireWide),
+        forcedMargin: sw.forcedMargin === undefined ? 2 : Number(sw.forcedMargin)
     };
 
     var forced = [];
@@ -74,6 +86,10 @@ function load(file) {
     if ((e = envNum('GC_BEAM')) !== undefined) { out.beam = e; forced.push('beam'); }
     if ((e = envFlag('GC_RISE')) !== undefined) { out.rise = e; forced.push('rise'); }
     if ((e = envFlag('GC_DENSITY')) !== undefined) { out.density = e; forced.push('density'); }
+    if ((e = envFlag('GC_MODES')) !== undefined) { out.modes = e; forced.push('modes'); }
+    if ((e = envNum('GC_FIRE_LINKS')) !== undefined) { out.fireLinks = e; forced.push('fireLinks'); }
+    if ((e = envNum('GC_FIRE_WIDE')) !== undefined) { out.fireWide = e; forced.push('fireWide'); }
+    if ((e = envNum('GC_FORCED_MARGIN')) !== undefined) { out.forcedMargin = e; forced.push('forcedMargin'); }
 
     return { weights: weights, switches: out, source: source, forced: forced };
 }
@@ -85,7 +101,12 @@ function describe(loaded) {
     return 'weights ' + loaded.source +
         '  [depth ' + s.depth + ' beam ' + s.beam +
         ' rise ' + (s.rise ? 'ON' : 'off') +
-        ' density ' + (s.density ? 'ON' : 'off') + ']' +
+        ' density ' + (s.density ? 'ON' : 'off') +
+        // Printed only when on, and then with its numbers: a mode line that
+        // said "modes off" on every one of this repo's existing outputs would
+        // be noise, and one that said "modes ON" without the thresholds would
+        // not identify the bot.
+        (s.modes ? ' modes ON(' + s.fireLinks + 'L/' + s.fireWide + 'W/m' + s.forcedMargin + ')' : '') + ']' +
         (loaded.forced.length ? '  (forced by env: ' + loaded.forced.join(', ') + ')' : '');
 }
 

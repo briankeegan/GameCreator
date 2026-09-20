@@ -53,19 +53,31 @@ var chain = {}, combo = {}, minutes = 0, sent = 0, deaths = 0, games = 0;
 console.log('weights: ' + loaded.source + (loaded.forced ? ' (switches forced)' : ''));
 console.log('switches: depth ' + loaded.switches.depth + '  beam ' + loaded.switches.beam +
             '  rise ' + (loaded.switches.rise ? 'on' : 'off') +
-            '  density ' + (loaded.switches.density ? 'on' : 'off'));
+            '  density ' + (loaded.switches.density ? 'on' : 'off') +
+            '  modes ' + (loaded.switches.modes
+                ? 'ON (' + loaded.switches.fireLinks + ' links / ' + loaded.switches.fireWide +
+                  ' wide / margin ' + loaded.switches.forcedMargin + ')'
+                : 'off'));
 console.log('playing ' + GAMES + ' games x ' + SCENARIOS.length + ' scenario(s): ' + SCENARIOS.join(', '));
 
+var modeTotals = { BUILD: 0, FIRE: 0, FORCED: 0 }, broken = 0, payless = 0;
 SCENARIOS.forEach(function (sc) {
     for (var seed = 1; seed <= GAMES; seed++) {
         var r = bench.run(loaded.weights, seed, {
             brain: 'puyo', scenario: sc, checkTiming: false,
             depth: loaded.switches.depth, beam: loaded.switches.beam,
-            rise: loaded.switches.rise, density: loaded.switches.density
+            rise: loaded.switches.rise, density: loaded.switches.density,
+            modes: loaded.switches.modes, fireLinks: loaded.switches.fireLinks,
+            fireWide: loaded.switches.fireWide, forcedMargin: loaded.switches.forcedMargin
         });
         add(chain, r.chain); add(combo, r.combo);
         minutes += r.frames / 60 / 60;
         sent += r.sent;
+        modeTotals.BUILD += r.modeCounts.BUILD;
+        modeTotals.FIRE += r.modeCounts.FIRE;
+        modeTotals.FORCED += r.modeCounts.FORCED;
+        broken += r.brokenPlans;
+        payless += r.payless;
         if (r.died) deaths++;
         games++;
     }
@@ -99,6 +111,25 @@ console.log('minutes played : ' + minutes.toFixed(1) + '   games ' + games + '  
 console.log('chains   /min  : ' + per(chainFired) + '      4+ links /min : ' + per(deepFired));
 console.log('combos   /min  : ' + per(comboFired) + '      4+ wide  /min : ' + per(bigFired));
 console.log('garbage  /min  : ' + per(sent));
+// THE THREES THAT BOUGHT NOTHING. A 3 that ate garbage is progress and sits
+// in the same histogram bucket as one that did not, so the bucket alone
+// cannot say whether the bot is still grinding. This can.
+console.log('payless  /min  : ' + per(payless) + '   (' + payless + ' bare 3s of ' +
+            (combo[3] || 0) + ' threes)');
+// THE DIAGNOSTIC THAT SAYS WHY, printed beside the numbers it explains. A
+// flat bench with FORCED on most decisions and a flat bench with FORCED on
+// almost none are opposite bugs, and nothing above separates them. Broken
+// plans are work already spent that paid nothing — the number step 2 exists
+// to drive down.
+var modeSum = modeTotals.BUILD + modeTotals.FIRE + modeTotals.FORCED;
+if (modeSum) {
+    var share = function (n) { return (100 * n / modeSum).toFixed(0) + '%'; };
+    console.log('modes          : build ' + share(modeTotals.BUILD) +
+                '   fire ' + share(modeTotals.FIRE) +
+                '   forced ' + share(modeTotals.FORCED) +
+                '   (' + modeSum + ' decisions)');
+    console.log('broken plans   : ' + broken + '   ' + (broken / Math.max(1, games)).toFixed(1) + ' per game');
+}
 var pts = pointsFor(chain, combo);
 console.log('game points/min: ' + (pts === null ? '(engine not loaded)' : per(pts)) +
             '   <- the number to move');

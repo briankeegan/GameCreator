@@ -1,0 +1,342 @@
+// DO THE MODES DO WHAT THEY CLAIM? Run: node modes.test.js
+//
+// modes.js is a pool filter and nothing else: it decides which candidates a
+// decision is allowed to choose between, and the evaluator still picks. Each
+// claim below is one that can hold in prose while failing in play.
+//
+//   1. BUILD keeps a move that clears NOTHING. That is what building is. A
+//      filter that demanded a payout every move would be the opposite bot.
+//   2. BUILD drops a clear that paid nothing, and keeps one that paid — by
+//      links, by width, or by breaking garbage. Three arms, each tested
+//      alone, because two working arms hide a dead third.
+//   3. The thresholds are read. A test that only ever passes T=4 cannot
+//      tell a threshold from a constant.
+//   4. FORCED opens on exactly two things. Not on a deep stack, not on an
+//      empty pool for its own sake.
+//   5. A broken plan is COUNTED. It is the defect this design is judged on,
+//      and an uncounted defect is one nobody can drive down.
+//   6. Modes off is today's bot, decision for decision. Off has to be free.
+var assert = require('assert');
+var path = require('path');
+require(path.join(__dirname, '..', '..', 'panel-engine.js'));
+require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
+var PanelEngine = globalThis.PanelEngine;
+var PuyoCpu = require('./puyocpu.js');
+var registry = require('./registry.js');
+var modes = require('./modes.js');
+
+var tests = [], failures = [];
+function test(name, fn) { tests.push({ name: name, fn: fn }); }
+
+var LEVEL = 10;
+var T = 4, S = 4;
+
+// A resolve() result, in the shape panel-cpu.js actually returns.
+function res(o) {
+    return { chainLength: o.chainLength || 0,
+             comboSizes: o.comboSizes || [],
+             brokeGarbage: o.brokeGarbage || 0,
+             stopTimeEarned: 0, garbage: [], truncated: false };
+}
+
+function zeros() { var w = {}; registry.keys.forEach(function (k) { w[k] = 0; }); return w; }
+function sample() {
+    var w = zeros();
+    w.links = 25; w.colourVariance = 2; w.edgePenalty = 8;
+    w.maxHeight = 30; w.garbageOnBoard = 25;
+    return w;
+}
+
+// ---------------------------------------------------------------- 1. building
+
+test('BUILD keeps a move that clears nothing — that IS the build move', function () {
+    assert.strictEqual(modes.pays(res({}), T, S), true);
+});
+
+test('hold, which clears nothing, is never filtered out of BUILD', function () {
+    // Stated separately from the case above because it is the one candidate
+    // that must ALWAYS survive: a pool without hold cannot wait, and waiting
+    // is how a chain gets built.
+    assert.strictEqual(modes.pays(res({}), T, S), true);
+});
+
+// ------------------------------------------------------------ 2. the three arms
+
+test('BUILD drops a bare 3 — it scores nothing and sends nothing', function () {
+    assert.strictEqual(modes.pays(res({ chainLength: 1, comboSizes: [3] }), T, S), false);
+});
+
+test('BUILD keeps a 4-wide combo (the width arm, alone)', function () {
+    assert.strictEqual(modes.pays(res({ chainLength: 1, comboSizes: [4] }), T, S), true);
+});
+
+test('BUILD keeps a 4-link chain (the links arm, alone)', function () {
+    // Every link a bare 3, so the width arm cannot be what passed it.
+    assert.strictEqual(modes.pays(res({ chainLength: 4, comboSizes: [3, 3, 3, 3] }), T, S), true);
+});
+
+test('BUILD keeps a bare 3 that breaks garbage (the garbage arm, alone)', function () {
+    assert.strictEqual(modes.pays(res({ chainLength: 1, comboSizes: [3], brokeGarbage: 2 }), T, S), true);
+});
+
+// ------------------------------------------------------------- 3. thresholds
+
+test('the link threshold is read, not assumed', function () {
+    var three = res({ chainLength: 3, comboSizes: [3, 3, 3] });
+    assert.strictEqual(modes.pays(three, 4, S), false, 'T=4 must reject a 3-link chain');
+    assert.strictEqual(modes.pays(three, 3, S), true,  'T=3 must accept the same chain');
+});
+
+test('the width threshold is read, not assumed', function () {
+    var five = res({ chainLength: 1, comboSizes: [5] });
+    assert.strictEqual(modes.pays(five, T, 6), false, 'S=6 must reject a 5-wide combo');
+    assert.strictEqual(modes.pays(five, T, 5), true,  'S=5 must accept the same combo');
+});
+
+test('payout reports links and width separately', function () {
+    var p = modes.payout(res({ chainLength: 2, comboSizes: [3, 6] }));
+    assert.strictEqual(p.links, 2);
+    assert.strictEqual(p.wide, 6, 'width is the BIGGEST link, not the last or the sum');
+});
+
+test('a move that clears nothing has no payout and does not count as firing', function () {
+    assert.strictEqual(modes.fires(res({}), T, S), false);
+});
+
+test('fires is the payout arms only — breaking garbage is not firing', function () {
+    // Breaking garbage keeps a move in BUILD's pool. It is not a reason to
+    // stop building and cash in, which is what FIRE means.
+    assert.strictEqual(modes.fires(res({ chainLength: 1, comboSizes: [3], brokeGarbage: 4 }), T, S), false);
+    assert.strictEqual(modes.pays(res({ chainLength: 1, comboSizes: [3], brokeGarbage: 4 }), T, S), true);
+});
+
+// ----------------------------------------------------------------- 4. FORCED
+
+test('FORCED opens when the runway is gone', function () {
+    assert.strictEqual(modes.forced({ runway: 1, margin: 2, broke: false }), true);
+});
+
+test('FORCED opens when the plan broke', function () {
+    assert.strictEqual(modes.forced({ runway: 99, margin: 2, broke: true }), true);
+});
+
+test('a deep stack alone does NOT open FORCED', function () {
+    // The whole point: room left is room left. Height is not the trigger.
+    assert.strictEqual(modes.forced({ runway: 3, margin: 2, broke: false }), false);
+});
+
+test('the margin is read, not assumed', function () {
+    assert.strictEqual(modes.forced({ runway: 3, margin: 2, broke: false }), false);
+    assert.strictEqual(modes.forced({ runway: 3, margin: 4, broke: false }), true);
+});
+
+test('runway is rows to the ceiling MINUS the garbage already in the air', function () {
+    var open = modes.runway({ height: 12, top: 4 }, 0);
+    var underAttack = modes.runway({ height: 12, top: 4 }, 3);
+    assert.strictEqual(open, 8);
+    assert.strictEqual(underAttack, 5,
+        'three rows queued against this board have already spent three rows of runway');
+});
+
+test('runway never goes below zero', function () {
+    assert.strictEqual(modes.runway({ height: 12, top: 11 }, 9), 0);
+});
+
+// ------------------------------------------------------------- 5. broken plans
+
+test('a plan breaks when what it was saving for is gone', function () {
+    assert.strictEqual(modes.planBroke({ links: 4, wide: 3 }, { links: 1, wide: 3 }, false, T, S), true);
+});
+
+test('a plan does not break when we spent it on purpose', function () {
+    assert.strictEqual(modes.planBroke({ links: 4, wide: 3 }, { links: 1, wide: 3 }, true, T, S), false,
+        'firing the chain is why it is gone — that is success, not a defect');
+});
+
+test('a plan not yet worth saving cannot break', function () {
+    assert.strictEqual(modes.planBroke({ links: 2, wide: 3 }, { links: 0, wide: 0 }, false, T, S), false,
+        'nothing above the threshold was ever being held');
+});
+
+test('a plan holds when the potential is unchanged', function () {
+    assert.strictEqual(modes.planBroke({ links: 4, wide: 3 }, { links: 4, wide: 3 }, false, T, S), false);
+});
+
+test('a widening plan is not a broken one', function () {
+    assert.strictEqual(modes.planBroke({ links: 4, wide: 3 }, { links: 6, wide: 3 }, false, T, S), false);
+});
+
+// ------------------------------------------------- 6. wired into the bot
+
+// THESE USE THE SHIPPED WEIGHTS, and the unit tests above do not.
+//
+// sample() exists to test the MACHINE — it is a plausible-shaped set that
+// was never trained, and at level 10 it tops out in ten to twenty seconds.
+// A bot that dies that fast never gets a board worth building on, so BUILD
+// has nothing to filter and the mode shares say nothing. Measured: 20 to 60
+// swaps a game and one or two clears total.
+//
+// The claims below are about PLAY, so they need a bot that survives. They
+// assert a DIRECTION and never a magnitude, so re-shipping a different set
+// moves the numbers without breaking the test.
+// AT DEPTH 1, and deliberately. The filter sits in _decide ahead of the
+// depth branch, so it is the same filter either way, and depth 2 beam 0
+// costs 13x the wall clock for the same answer — measured on seed 101 at
+// 6000 frames: payless 44 -> 16 at depth 1, 44 -> 19 at depth 2 beam 0,
+// 43 -> 14 at depth 2 beam 6, 0.25s a game against 3.3s. A gate nobody will
+// wait for is a gate that gets skipped. The ply-2 filter has its own test
+// below, at depth 2, because that is the only claim depth 1 cannot make.
+var switches = require('./switches.js');
+var SHIPPED = switches.load();
+function shipped(extra) {
+    var o = { weights: SHIPPED.weights, depth: 1, beam: 0, rise: true, density: false };
+    for (var k in extra) o[k] = extra[k];
+    return o;
+}
+
+// Returns what the ENGINE saw, not what the bot believed: a payless clear is
+// a match of exactly 3 that is not a chain link and broke no garbage. The
+// engine's own tables score it 0 and send nothing, so it is the thing BUILD
+// exists to refuse.
+function playGame(opts, seed, frames, garbageEvery) {
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: seed, countdown: false });
+    var cpu = new PuyoCpu(stack, opts);
+    var payless = 0, paying = 0, moves = [];
+    for (var f = 0; f < (frames || 4000); f++) {
+        if (garbageEvery && f > 120 && f % garbageEvery === 0) {
+            stack.receiveGarbage([{ width: 6, height: 2, isChain: false }]);
+        }
+        cpu.update();
+        stack.run();
+        var evs = stack.drainEvents();
+        for (var e = 0; e < evs.length; e++) {
+            var ev = evs[e];
+            if (ev.type === 'swap') moves.push(f + ':' + ev.row + ',' + ev.col);
+            if (ev.type !== 'match') continue;
+            if (!ev.chain && ev.size === 3 && !ev.garbage) payless++; else paying++;
+        }
+        if (stack.gameOver) break;
+    }
+    return { cpu: cpu, stack: stack, payless: payless, paying: paying, moves: moves, frames: f };
+}
+
+test('modes OFF is today\'s bot, swap for swap', function () {
+    // Off has to be free. Every number this repo has was taken without modes,
+    // and a default that quietly changes play invalidates all of them. Run on
+    // sample() as well as shipped: this claim is about the machine.
+    [101, 102, 103].forEach(function (seed) {
+        var a = playGame({ weights: sample() }, seed, 2500);
+        var b = playGame({ weights: sample(), modes: false }, seed, 2500);
+        assert.deepStrictEqual(b.moves, a.moves, 'seed ' + seed + ': sample weights diverged');
+        var c = playGame(shipped({}), seed, 3000);
+        var d = playGame(shipped({ modes: false }), seed, 3000);
+        assert.deepStrictEqual(d.moves, c.moves, 'seed ' + seed + ': shipped weights diverged');
+    });
+});
+
+test('modes ON changes how it plays', function () {
+    // Not a formality: a filter wired to a field the candidates do not carry
+    // filters nothing and passes every unit test in this file.
+    [101, 102, 103].forEach(function (seed) {
+        var off = playGame(shipped({}), seed, 4000);
+        var on = playGame(shipped({ modes: true }), seed, 4000);
+        assert.notDeepStrictEqual(on.moves, off.moves, 'seed ' + seed + ': modes changed nothing');
+    });
+});
+
+test('modes ON makes fewer payless clears, and more paying ones', function () {
+    // THE POINT OF STEP 1. Both halves matter: a bot that simply clears less
+    // would pass the first and fail the second, and it would be a worse bot.
+    var seeds = [101, 102, 103, 104, 105];
+    var onPayless = 0, offPayless = 0, onPaying = 0, offPaying = 0;
+    seeds.forEach(function (seed) {
+        var off = playGame(shipped({}), seed, 6000);
+        var on = playGame(shipped({ modes: true }), seed, 6000);
+        offPayless += off.payless; offPaying += off.paying;
+        onPayless += on.payless;  onPaying += on.paying;
+    });
+    assert.ok(onPayless < offPayless,
+        'payless clears ' + onPayless + ' on vs ' + offPayless + ' off — the filter is not filtering');
+    assert.ok(onPaying > offPaying,
+        'paying clears ' + onPaying + ' on vs ' + offPaying + ' off — it stopped clearing rather than started paying');
+});
+
+test('the bot reports its mode shares, and they account for every decision', function () {
+    var g = playGame(shipped({ modes: true }), 101, 6000);
+    var m = g.cpu.modeCounts;
+    assert.ok(m, 'no modeCounts on the bot at all');
+    assert.strictEqual(m.BUILD + m.FIRE + m.FORCED, g.cpu.decisions,
+        'modes account for ' + (m.BUILD + m.FIRE + m.FORCED) + ' of ' + g.cpu.decisions + ' decisions');
+    assert.ok(m.BUILD > 0, 'never once in BUILD — the mode does not engage');
+});
+
+test('FORCED is the exception, not the bot', function () {
+    // The diagnostic that separates "the filter is wrong" from "the escape
+    // hatch is too wide". A bot that is FORCED most of the time is today's
+    // bot with machinery around it, and would score exactly like it.
+    var worst = 0;
+    [101, 102, 103].forEach(function (seed) {
+        var g = playGame(shipped({ modes: true }), seed, 6000);
+        var m = g.cpu.modeCounts, t = m.BUILD + m.FIRE + m.FORCED;
+        worst = Math.max(worst, m.FORCED / t);
+    });
+    assert.ok(worst < 0.5, 'FORCED on ' + (100 * worst).toFixed(0) + '% of decisions at worst');
+});
+
+test('broken plans are counted', function () {
+    var g = playGame(shipped({ modes: true }), 101, 6000);
+    assert.strictEqual(typeof g.cpu.brokenPlans, 'number',
+        'the defect this design is judged on is not being counted');
+});
+
+test('modes OFF counts nothing, so the instrumentation cannot cost anything', function () {
+    var g = playGame(shipped({ modes: false }), 101, 3000);
+    assert.strictEqual(g.cpu.modeCounts.BUILD + g.cpu.modeCounts.FIRE + g.cpu.modeCounts.FORCED, 0);
+    assert.strictEqual(g.cpu.brokenPlans, 0);
+});
+
+test('the fire thresholds reach the filter', function () {
+    // 99 links and 99 wide can never be met, so FIRE never opens and BUILD
+    // keeps only non-clearing moves and garbage breaks. Playing the same game
+    // as 4 and 4 would mean the options stop somewhere short of modes.js.
+    var low = playGame(shipped({ modes: true, fireLinks: 4, fireWide: 4 }), 101, 4000);
+    var high = playGame(shipped({ modes: true, fireLinks: 99, fireWide: 99 }), 101, 4000);
+    assert.notDeepStrictEqual(low.moves, high.moves, 'the fire thresholds are not reaching the filter');
+});
+
+test('the forced margin reaches the filter', function () {
+    // A margin as tall as the board makes every decision about-to-die, which
+    // is today's bot. If that plays the same game as margin 2, the option is
+    // not arriving.
+    var tight = playGame(shipped({ modes: true, forcedMargin: 2 }), 101, 4000);
+    var always = playGame(shipped({ modes: true, forcedMargin: 99 }), 101, 4000);
+    var off = playGame(shipped({}), 101, 4000);
+    assert.notDeepStrictEqual(always.moves, tight.moves, 'the forced margin is not reaching the filter');
+    assert.deepStrictEqual(always.moves, off.moves,
+        'margin 99 means FORCED every decision, which must be exactly the unfiltered bot');
+});
+
+test('the ply-2 filter bites, and FORCED lifts it at both plies', function () {
+    // _value's own invariant: a move the bot cannot make at ply 1 must not be
+    // what ply 2 values a candidate for, or the imagined future is a different
+    // game from the real one. Only depth 2 can make this claim, so it is the
+    // one test here that pays for depth 2.
+    var d2 = { depth: 2, beam: 6 };
+    var off = playGame(shipped(d2), 101, 2500);
+    var on = playGame(shipped(Object.assign({ modes: true }, d2)), 101, 2500);
+    assert.notDeepStrictEqual(on.moves, off.moves, 'modes changed nothing at depth 2');
+
+    // FORCED every decision must be EXACTLY the unfiltered bot. It was not:
+    // ply 1 took every move and ply 2 still valued them through the filter,
+    // which is neither bot.
+    var always = playGame(shipped(Object.assign({ modes: true, forcedMargin: 99 }, d2)), 101, 2500);
+    assert.deepStrictEqual(always.moves, off.moves,
+        'FORCED is not lifting the filter at ply 2');
+});
+
+tests.forEach(function (t) {
+    try { t.fn(); console.log('ok   ' + t.name); }
+    catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
+});
+console.log('\n' + (tests.length - failures.length) + '/' + tests.length + ' passed');
+process.exit(failures.length ? 1 : 0);

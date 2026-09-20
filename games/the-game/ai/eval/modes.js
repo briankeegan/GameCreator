@@ -1,0 +1,125 @@
+// WHICH MOVES A DECISION IS ALLOWED TO CHOOSE BETWEEN.
+//
+// The bot re-derives the world every decision and keeps nothing, so it can
+// never be in the middle of building something: it takes the 3-match that is
+// always there and always slightly tidies the board. No weight fixes that,
+// because a weight applies to every move equally and none of them can mean
+// "later".
+//
+// A MODE IS A FILTER ON THE POOL, NOT A SECOND WAY TO DECIDE. The evaluator
+// still picks, from every candidate the mode allows. That is deliberate:
+//   - puyocpu.test.js's first claim is that EVERY decision goes through the
+//     evaluator, and a mode that played a move directly would end that.
+//   - a weight set per mode is then a change to the weights and not to this
+//     file. The seam is already where it needs to be.
+//
+// EVERY ANSWER HERE COMES OUT OF THE RESOLVE. resolve() already reports
+// chainLength, comboSizes and brokeGarbage for every candidate, and the
+// search already resolves every candidate, so the filter is free — it reads
+// numbers the decision had computed anyway. No shape library, and nothing
+// here knows what a chain looks like.
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else { root.PanelEval = root.PanelEval || {}; root.PanelEval.modes = factory(); }
+}(this, function () {
+  'use strict';
+
+  // What a move actually fires. links is the cascade depth in the engine's
+  // own units (1 is a plain combo, 2 the first real chain); wide is the
+  // BIGGEST single link, because payout is per-clear and a 6 merged into one
+  // link is a different attack from six 1s.
+  function payout(resolved) {
+    if (!resolved) return { links: 0, wide: 0, breaks: 0 };
+    var sizes = resolved.comboSizes || [], wide = 0;
+    for (var i = 0; i < sizes.length; i++) if (sizes[i] > wide) wide = sizes[i];
+    return { links: sizes.length ? (resolved.chainLength || 0) : 0,
+             wide: wide,
+             breaks: resolved.brokeGarbage || 0 };
+  }
+
+  // Is this move worth stopping to cash in. Two arms, both from the resolve:
+  // a cascade `T` links deep, or a single clear `S` wide. They are different
+  // weapons — pushGarbage sends a chain as one full-width slab held until the
+  // cascade ends, and a combo as separate one-row pieces that leave at once —
+  // so neither subsumes the other and both are here.
+  function fires(resolved, T, S) {
+    var p = payout(resolved);
+    return p.links >= T || p.wide >= S;
+  }
+
+  // May this move stay in BUILD's pool.
+  //
+  // A MOVE THAT CLEARS NOTHING ALWAYS MAY. That is what building IS, and it
+  // is why this is a filter on cashing in rather than a demand for a payout:
+  // a filter that wanted a clear every move would be the opposite bot. Hold
+  // clears nothing, so hold survives, so the pool can always wait.
+  //
+  // Otherwise a clear has to pay: fire at threshold, or break garbage.
+  // Breaking garbage pays because digging is progress even when the clear
+  // itself scores nothing.
+  function pays(resolved, T, S) {
+    var p = payout(resolved);
+    if (!p.links && !p.wide) return true;
+    if (p.breaks > 0) return true;
+    return fires(resolved, T, S);
+  }
+
+  // Rows before this board tops out. Garbage already queued has spent its
+  // rows the moment it is sent, not when it lands — a board with four rows
+  // in the air is four rows nearer the ceiling than it looks, and that is
+  // the case a height check misses.
+  function runway(board, incomingRows) {
+    var left = (board.height || 0) - (board.top || 0) - (incomingRows || 0);
+    return left > 0 ? left : 0;
+  }
+
+  // TWO TRIGGERS, AND ONLY TWO.
+  //
+  // Not a deep stack: room left is room left. Not an empty pool for its own
+  // sake — that is a broken plan, and it is counted as one.
+  //
+  // `runway` here is rows rather than frames against the time the held
+  // payoff takes to cash in. Frame costs are not in the resolve, so rows is
+  // what can be measured honestly today and `margin` is the tunable. The
+  // frame version belongs with the opponent model, which needs a clock
+  // anyway.
+  function forced(o) {
+    if (o.broke) return true;
+    return o.runway <= o.margin;
+  }
+
+  // Did what BUILD was saving for disappear without being spent.
+  //
+  // A BROKEN PLAN IS A DEFECT, NOT A BRANCH. It is work already done that
+  // paid nothing, and the whole point of showing the bot the opponent's
+  // board (step 2) is to drive this number down by building plans the
+  // incoming garbage will not bury. So it is counted, per game, and reported
+  // beside the bench numbers.
+  //
+  // Spending it is not breaking it: a plan that is gone because the chain
+  // fired is the plan working.
+  function planBroke(before, after, didFire, T, S) {
+    if (didFire) return false;
+    if (!before) return false;
+    var held = before.links >= T || before.wide >= S;
+    if (!held) return false;
+    return after.links < before.links || after.wide < before.wide;
+  }
+
+  // The best payout any candidate in this pool would fire. This IS the
+  // board's chain potential, taken from resolves the decision already ran
+  // rather than from a second sweep — chainPotential's own 14.9ms is the
+  // cost of asking the question twice, and nothing here asks it twice.
+  function bestPayout(resolveds) {
+    var best = { links: 0, wide: 0, breaks: 0 };
+    for (var i = 0; i < resolveds.length; i++) {
+      var p = payout(resolveds[i]);
+      if (p.links > best.links) best.links = p.links;
+      if (p.wide > best.wide) best.wide = p.wide;
+    }
+    return best;
+  }
+
+  return { payout: payout, fires: fires, pays: pays, runway: runway,
+           forced: forced, planBroke: planBroke, bestPayout: bestPayout };
+}));

@@ -365,6 +365,18 @@ gate_training_harness() {
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/training.test.js
 }
 
+# THE MODES NARROW THE POOL AND THE EVALUATOR STILL PICKS.
+#
+# modes.js is the only state the bot carries between decisions, so it is the
+# only place a plan can live. Two ways it can be wrong while every unit test
+# passes: wired to a field the candidates do not carry, so it filters nothing;
+# or FORCED open on most decisions, which is the unfiltered bot wearing
+# machinery. modes.test.js measures both against real play.
+gate_modes() {
+  local d; d="$(_gc_training_dir)" || return 1
+  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/modes.test.js
+}
+
 gate_rise_scoring() {
   local d; d="$(_gc_training_dir)" || return 1
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/rise.test.js
@@ -598,6 +610,7 @@ GATES=(
   "the training harness:gate_training_harness:games/the-game/ai/"
   "rise-adjusted scoring:gate_rise_scoring:games/the-game/ai/"
   "density scoring:gate_density_scoring:games/the-game/ai/"
+  "the modes filter the pool and the evaluator still picks:gate_modes:games/the-game/ai/"
   "the earned features arrive in a real game:gate_earned_features_arrive:games/the-game/ai/"
   "every training pre-flight suite is gated:gate_preflight_gated:games/the-game/ai/"
   "the depth-2 search picks the best two-move future:gate_lookahead:games/the-game/ai/"

@@ -287,9 +287,14 @@ exports.run = function (weights, seed, opts) {
     // check stays about typos rather than becoming a refactor, and listed
     // WITH this sentence so the next person does not think it does
     // something.
+    // 'modes' (plural) IS read, and is not the 'mode' above. One narrows the
+    // candidate pool; the other is tolerated dead weight. They sit one letter
+    // apart in the same list, so: modes/fireLinks/fireWide/forcedMargin go to
+    // PuyoCpu, 'mode' goes nowhere.
     var KNOWN_OPTS = ['allowRaise', 'arena', 'beam', 'brain', 'checkTiming',
                       'density', 'depth', 'objective', 'rise', 'scenario',
-                      'mode'];
+                      'mode',
+                      'modes', 'fireLinks', 'fireWide', 'forcedMargin'];
     for (var opt in opts) {
         if (opts.hasOwnProperty(opt) && KNOWN_OPTS.indexOf(opt) === -1) {
             throw new Error('bench.run: unknown option "' + opt + '". Known options are ' +
@@ -340,7 +345,16 @@ exports.run = function (weights, seed, opts) {
             allowRaise: opts.allowRaise === true,
             // Density scoring. Absent means raw counts, the bot every
             // existing result describes.
-            density: opts.density === true
+            density: opts.density === true,
+            // Modes. Absent means the unfiltered pool, the bot every existing
+            // result describes. The three numbers only mean anything with
+            // modes on, and PuyoCpu supplies its own defaults for them, so
+            // undefined is passed straight through rather than defaulted
+            // twice in two files.
+            modes: opts.modes === true,
+            fireLinks: opts.fireLinks,
+            fireWide: opts.fireWide,
+            forcedMargin: opts.forcedMargin
         });
     }
 
@@ -372,6 +386,7 @@ exports.run = function (weights, seed, opts) {
     var chainDepth = {};
     report.CATEGORY_ORDER.forEach(function (c) { chainDepth[c] = 0; });
     var chain = {}, combo = {};
+    var payless = 0;
     try {
         // NO FRAME CAP. The reference plays a FULL game — step 2 is "play a
         // full game with them" — and it ends when the board tops out.
@@ -435,7 +450,18 @@ exports.run = function (weights, seed, opts) {
             for (var e = 0; e < evs.length; e++) {
                 var ev = evs[e];
                 if (ev.type === 'chainEnd') chain[ev.length] = (chain[ev.length] || 0) + 1;
-                else if (ev.type === 'match' && !ev.chain) combo[ev.size] = (combo[ev.size] || 0) + 1;
+                else if (ev.type === 'match' && !ev.chain) {
+                    combo[ev.size] = (combo[ev.size] || 0) + 1;
+                    // A CLEAR THAT PAID NOTHING: three wide, not a chain link,
+                    // and it broke no garbage. The engine's own tables score it
+                    // 0 and COMBO_GARBAGE sends nothing below four, so it moved
+                    // panels and bought the game nothing.
+                    //
+                    // Split out because the combo histogram cannot answer "is
+                    // it still grinding threes": a 3 that ate garbage sits in
+                    // the same bucket as one that did nothing at all.
+                    if (ev.size === 3 && !ev.garbage) payless++;
+                }
             }
             if (stack.gameOver) break;
             if (checkTiming && localMax > TIMING_MARGIN_MS) break;
@@ -461,6 +487,10 @@ exports.run = function (weights, seed, opts) {
     }
     return { frames: f, sent: sent, score: stack.score || 0, died: !!stack.gameOver,
              chainDepth: chainDepth, chain: chain, combo: combo,
+             // What the modes did, straight off the bot. Zeroes with modes
+             // off, which is what "no mode ever ran" should look like.
+             modeCounts: cpu.modeCounts || { BUILD: 0, FIRE: 0, FORCED: 0 },
+             brokenPlans: cpu.brokenPlans || 0, payless: payless,
              localMax: localMax, unsafe: checkTiming && localMax > TIMING_MARGIN_MS };
 };
 

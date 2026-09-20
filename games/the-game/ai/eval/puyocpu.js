@@ -7,12 +7,12 @@
 
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./evaluator.js'), require('./input.js'), require('./travel.js'), require('./engineboard.js'));
+    module.exports = factory(require('./evaluator.js'), require('./input.js'), require('./travel.js'), require('./engineboard.js'), require('./modes.js'));
   } else {
     root.PanelEval = root.PanelEval || {};
-    root.PanelEval.PuyoCpu = factory(root.PanelEval.evaluator, root.PanelEval.input, root.PanelEval.travel, root.PanelEval.engineBoard);
+    root.PanelEval.PuyoCpu = factory(root.PanelEval.evaluator, root.PanelEval.input, root.PanelEval.travel, root.PanelEval.engineBoard, root.PanelEval.modes);
   }
-}(this, function (evaluator, inputMod, travel, engineBoard) {
+}(this, function (evaluator, inputMod, travel, engineBoard, modes) {
   'use strict';
 
   // Options: weights, depth (1 = greedy, 2 = one move of lookahead), beam
@@ -95,6 +95,35 @@
     // how that stops being a claim.
     this.decisions = 0;
     this.evaluations = 0;
+
+    // MODES, OFF BY DEFAULT — see modes.js. On, a mode narrows the pool of
+    // candidates and the evaluator still picks from what is left; off, the
+    // pool is every candidate, which is every number this repo already has.
+    //
+    // Opt-in for the same reason depth, beam, rise, density and allowRaise
+    // are: it is a different bot, so weights trained without it describe
+    // something else.
+    this.modes = opts.modes === true;
+    // The two arms of "worth cashing in", in the resolve's own units: a
+    // cascade this many links deep, or a single clear this many panels wide.
+    // 4 and 4 because the engine's own tables pay nothing below either —
+    // COMBO_GARBAGE starts at 4 and a bare 3 scores 0.
+    //
+    // These are OPTIONS, not constants, so that they can become genome
+    // entries alongside the weights once the modes are known to fire.
+    this.fireLinks = opts.fireLinks === undefined ? 4 : opts.fireLinks;
+    this.fireWide = opts.fireWide === undefined ? 4 : opts.fireWide;
+    // Rows of runway at which about-to-die opens. See modes.forced.
+    this.forcedMargin = opts.forcedMargin === undefined ? 2 : opts.forcedMargin;
+    // Instrumentation, and load-bearing: a flat bench with FORCED at 85% of
+    // decisions and a flat bench with FORCED at 5% are opposite bugs, and
+    // nothing else in the output tells them apart.
+    this.modeCounts = { BUILD: 0, FIRE: 0, FORCED: 0 };
+    this.brokenPlans = 0;
+    // The best payout the board offered last decision, and whether we spent
+    // it. Together they are the only state that survives a decision.
+    this._plan = null;
+    this._firedLast = false;
   }
 
   // Settle a candidate board: gravity, matches, cascades. Returns what the
@@ -311,6 +340,9 @@
   // position the number describes.
   PuyoCpu.prototype._candidates = function () {
     var board = this._snapshot();
+    // Kept for the mode filter's runway, which needs the live board's height
+    // and must not pay for a second snapshot to get it.
+    this._board = board;
     // ONE incoming row for the whole decision. Every candidate is risen by
     // the SAME row or the comparison is back to being unfair in a new way.
     this._incoming = board.incoming || null;
@@ -320,6 +352,7 @@
     var cands = [{ kind: 'hold',
                    score: this._score(holdBoard, holdResolved, null),
                    board: this._scoredBoard,
+                   resolved: holdResolved,
                    earnedStop: holdResolved.stopTimeEarned || 0 }];
 
     if (this._canRaise()) {
@@ -330,6 +363,7 @@
       cands.push({ kind: 'raise',
                    score: this._score(raiseBoard, raiseResolved, null),
                    board: this._scoredBoard,
+                   resolved: raiseResolved,
                    earnedStop: raiseResolved.stopTimeEarned || 0 });
     }
 
@@ -343,14 +377,82 @@
                    score: this._score(trial, resolved, [r, c]),
                    move: [r, c],
                    board: this._scoredBoard,
+                   resolved: resolved,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
     return cands;
   };
 
+  // Rows this board has left before it tops out, counting garbage already
+  // queued against it as rows already spent. Garbage in the air has taken
+  // that room whether or not it has landed, which is the case a height
+  // threshold misses and the one that kills this bot.
+  PuyoCpu.prototype._runway = function () {
+    var board = this._board, grid = board.grid, top = 0, r, c;
+    for (c = 1; c <= board.width; c++) {
+      for (r = board.height; r >= 1; r--) {
+        if (grid[r][c] !== 0) { if (r > top) top = r; break; }
+      }
+    }
+    var queued = 0, q = this.stack.incoming || [];
+    for (var i = 0; i < q.length; i++) queued += q[i].height || 0;
+    return modes.runway({ height: board.height, top: top }, queued);
+  };
+
+  // Narrow the pool to the moves this decision is allowed to choose between,
+  // and record which mode did it. The evaluator still picks from what is
+  // left — see the header of modes.js for why that is the whole design.
+  //
+  // FIRE is a strict subset of BUILD: everything that fires also pays. So
+  // the order is FORCED, then FIRE, then BUILD, and each is the same shape
+  // of thing — a predicate on the resolve the candidate already carries.
+  PuyoCpu.prototype._applyModes = function (cands) {
+    if (!this.modes) return cands;
+    var T = this.fireLinks, S = this.fireWide, i;
+
+    var resolveds = new Array(cands.length);
+    for (i = 0; i < cands.length; i++) resolveds[i] = cands[i].resolved;
+    // The best payout on offer right now. This IS the board's chain
+    // potential, read off resolves the decision already ran rather than from
+    // a second sweep of clone+swap+resolve.
+    var avail = modes.bestPayout(resolveds);
+
+    var broke = modes.planBroke(this._plan, avail, this._firedLast, T, S);
+    if (broke) this.brokenPlans++;
+
+    var pool, mode;
+    if (modes.forced({ runway: this._runway(), margin: this.forcedMargin, broke: broke })) {
+      pool = cands;
+      mode = 'FORCED';
+    } else if (avail.links >= T || avail.wide >= S) {
+      pool = cands.filter(function (c) { return modes.fires(c.resolved, T, S); });
+      mode = 'FIRE';
+    } else {
+      pool = cands.filter(function (c) { return modes.pays(c.resolved, T, S); });
+      mode = 'BUILD';
+    }
+
+    // AN EMPTY POOL IS A BROKEN PLAN, NOT A THIRD TRIGGER. It means every
+    // move on the board cashes in cheaply, which is the board forcing a hand
+    // that had something to protect. Counted as the defect it is rather than
+    // quietly widened, because "the filter emptied" and "the filter is
+    // wrong" look identical from outside if nobody counts it.
+    if (!pool.length) {
+      this.brokenPlans++;
+      pool = cands;
+      mode = 'FORCED';
+    }
+
+    this.modeCounts[mode]++;
+    this._mode = mode;
+    this._plan = avail;
+    this._firedLast = (mode === 'FIRE');
+    return pool;
+  };
+
   // Pick a move. Greedy at depth 1; at depth 2 hand off to _lookahead.
   PuyoCpu.prototype._decide = function () {
-    var cands = this._candidates();
+    var cands = this._applyModes(this._candidates());
 
     // HOLD IS CANDIDATE ZERO, not a separate case carried alongside the
     // others. It was the separate case, and that is how it ended up judged
@@ -405,6 +507,15 @@
     return false;
   };
 
+  // Is ply 2 filtered this decision. FORCED means play like the bot with no
+  // modes at all, and that has to hold at BOTH plies: a decision that takes
+  // every move at ply 1 and then values them by a filtered future is neither
+  // bot. Everywhere else ply 2 uses BUILD's predicate — having fired, the
+  // next move is building again.
+  PuyoCpu.prototype._filtering = function () {
+    return this.modes && this._mode !== 'FORCED';
+  };
+
   // The best two-move future reachable from a candidate. Ply 2 gets the same
   // choice set as ply 1: every legal swap, standing pat (v starts at the
   // candidate's own score), and a raise — except after a raise, which the
@@ -421,7 +532,14 @@
     for (j = 0; j < next.length; j++) {
       var child = cand.board.clone();
       child.swap(next[j][0], next[j][1]);
-      f = this._score(child, this._resolveCandidate(child), next[j], from, clock, cand.board);
+      var childResolved = this._resolveCandidate(child);
+      // PLY 2 OBEYS THE SAME FILTER AS PLY 1, for the reason spelled out
+      // below: a move the bot cannot make at ply 1 must not be what ply 2
+      // values a candidate for, or the imagined future is a different game
+      // from the real one. BUILD's predicate, not FIRE's — having fired, the
+      // next move is building again.
+      if (this._filtering() && !modes.pays(childResolved, this.fireLinks, this.fireWide)) continue;
+      f = this._score(child, childResolved, next[j], from, clock, cand.board);
       if (f > v) v = f;
     }
 
@@ -436,8 +554,11 @@
     // Not after a raise: the engine will not serve two in a row.
     if (cand.kind !== 'raise' && this._canRaise()) {
       var risen = cand.board.clone().rise(this._incoming);
-      f = this._score(risen, this._resolveCandidate(risen), null, from, clock, cand.board);
-      if (f > v) v = f;
+      var risenResolved = this._resolveCandidate(risen);
+      if (!this._filtering() || modes.pays(risenResolved, this.fireLinks, this.fireWide)) {
+        f = this._score(risen, risenResolved, null, from, clock, cand.board);
+        if (f > v) v = f;
+      }
     }
     return v;
   };
