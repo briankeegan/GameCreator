@@ -1616,6 +1616,21 @@ function drawCharge(charge, now) {
   ctx.restore();
 }
 
+// TWO KINDS OF ROUND, and which one is coming is the decision. A Missile
+// Pod's round dies against the first boulder, so cover is the answer to
+// it; a Seeker's routes around the boulder, so the answer is a gun. A
+// player who cannot tell them apart in the air cannot make that call, and
+// both used to draw as the same white dart.
+const ORDNANCE_SPRITES = {};
+for (const [kind, file] of Object.entries({
+  missile: "icons/ordnance-missile.png",
+  seeker: "icons/ordnance-seeker.png",
+})) {
+  const img = new Image();
+  img.src = file;
+  ORDNANCE_SPRITES[kind] = img;
+}
+
 function drawMissile(center, missile, now) {
   const s = geom.sx * 0.3;
   const target = missile.ownerId ? state.playerPos : nearestLivingEnemy(missile);
@@ -1632,6 +1647,19 @@ function drawMissile(center, missile, now) {
   ctx.arc(0, 0, s * 2.1, 0, Math.PI * 2);
   ctx.fill();
   ctx.rotate(ang);
+  // Its own sprite where there is one — the sprite is drawn nose-up and
+  // the board's zero heading is east, same 90 degrees drawShipImage
+  // reconciles for every hull. Falls through to the drawn dart below
+  // while the image is still loading, so a round is never invisible.
+  const art = ORDNANCE_SPRITES[missile.seeks ? "seeker" : "missile"];
+  if (art && art.complete && art.naturalWidth) {
+    ctx.save();
+    ctx.rotate(Math.PI / 2);
+    ctx.drawImage(art, -s * 1.5, -s * 1.5, s * 3, s * 3);
+    ctx.restore();
+    ctx.restore();
+    return;
+  }
   // Exhaust, then the body: a stubby dart, unmistakably not a ship.
   ctx.fillStyle = `rgba(255,196,90,${0.5 + 0.4 * pulse})`;
   ctx.beginPath();
