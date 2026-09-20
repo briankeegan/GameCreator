@@ -559,15 +559,32 @@
     // never the range that did that, it was the range plus a drive.
     // So the Picket carries the long gun early, and the Scout — the same
     // gun that can also reposition — still waits for the shelf.
-    return depth < 3
-      ? // THE SHALLOW END, and it is real now — every sector is generated,
-        // including the first, so this pool is what a new player meets
-        // rather than dead code kept in step with a hand-authored ladder.
-        // Chasers only. A Picket here is a two-hex gun against a ship
-        // carrying nothing but a contact-range Autocannon, which is not a
-        // puzzle at depth 1, it is a stalemate you cannot answer.
-        ["interceptor", "interceptor", "interceptor", "cruiser"]
-      : depth < 5
+    // SECTOR ONE AND SECTOR TWO ARE NOT THE SAME SECTOR. They dealt from
+    // one pool that was three-quarters Interceptor, so the opening of
+    // every run was the same fight twice and the first genuinely new thing
+    // a player saw was at depth 3.
+    //
+    // Nothing here can punish reach, because the ship is carrying a
+    // contact-range Autocannon and nothing else: a two-hex gun at depth 1
+    // is not a puzzle, it is a stalemate. But "no reach" does not have to
+    // mean "another chaser" — the shallow end can still ask different
+    // questions, as long as the answer is something a contact gun can give.
+    if (depth < 2) {
+      // The Salvager cannot hurt you at all: no gun, one hull, and worth
+      // more than anything else on the board. Meeting one in the first
+      // sector is where "not every contact is a fight you have to take"
+      // gets taught, and it is safe to teach it with, because the worst it
+      // can do is drag you a hex.
+      return ["interceptor", "interceptor", "cruiser", "salvager"];
+    }
+    if (depth < 3) {
+      // And the second sector is about GROUND rather than about ships. A
+      // Sapper mines the hex it stands on — contact range, no reach to
+      // answer, and a fuse you can simply walk out of. It is the first
+      // time the board itself is the threat.
+      return ["interceptor", "cruiser", "cruiser", "salvager", "sapper"];
+    }
+    return depth < 5
         ? // The cruiser's weight comes up, and the first anchored long gun
           // arrives — by now a shelf has had two chances to sell reach or
           // an Afterburner to close with.
