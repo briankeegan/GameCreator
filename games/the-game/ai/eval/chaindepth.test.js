@@ -19,6 +19,7 @@
 // satisfy that. That it is the SAME garbage the Stack actually delivered,
 // checked by intercepting the delivery and classifying it independently.
 var assert = require('assert');
+var registry = require('./registry.js');
 var path = require('path');
 require(path.join(__dirname, '..', '..', 'panel-engine.js'));
 require(path.join(__dirname, '..', '..', 'panel-cpu.js'));
@@ -31,7 +32,17 @@ function test(name, fn) { tests.push({ name: name, fn: fn }); }
 
 // A weight set that actually plays — the shipped trained one, so the run
 // produces real garbage rather than a bot that dies in thirty frames.
-var W = require('./trained.replace.l10-puyo-puyo18-s11.0914-020835.g00274.json').weights;
+
+// AN ARCHIVED SNAPSHOT IS STILL A BOT, minus the weights for measurements
+// that no longer exist. evaluate() refuses an unknown feature — rightly, it
+// is how a typo is caught — so a fixture pinned to an old champion has to
+// drop what the registry no longer carries.
+function liveWeights(w) {
+    var out = {};
+    registry.keys.forEach(function (k) { if (w[k]) out[k] = w[k]; });
+    return out;
+}
+var W = liveWeights( require('./trained.replace.l10-puyo-puyo18-s11.0914-020835.g00274.json').weights);
 // The level comes from GC_LEVEL; bench.run does not read a 'level' option.
 var OPTS = { brain: 'puyo', objective: 'score' };
 

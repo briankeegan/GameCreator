@@ -31,7 +31,17 @@ function check(name, fn) {
     catch (e) { console.log('  FAIL ' + name + '\n       ' + e.message); fail++; }
 }
 
-var TRAINED = require('./trained.replace.l10-puyo-puyo18-s11.0914-020835.g00274.json').weights;
+
+// AN ARCHIVED SNAPSHOT IS STILL A BOT, minus the weights for measurements
+// that no longer exist. evaluate() refuses an unknown feature — rightly, it
+// is how a typo is caught — so a fixture pinned to an old champion has to
+// drop what the registry no longer carries.
+function liveWeights(w) {
+    var out = {};
+    registry.keys.forEach(function (k) { if (w[k]) out[k] = w[k]; });
+    return out;
+}
+var TRAINED = liveWeights( require('./trained.replace.l10-puyo-puyo18-s11.0914-020835.g00274.json').weights);
 var FLAT = {};
 registry.keys.forEach(function (k) { FLAT[k] = 1; });
 
@@ -88,8 +98,12 @@ check('the ceiling is decided on score, and only a tie draws', function () {
 });
 
 check('a real duel that reaches the ceiling alive has a winner', function () {
+    // FLIPPED, NOT SCALED. Doubling maxHeight leaves two bots that still
+    // rank candidates the same way and tie at the ceiling — measured,
+    // 1460 each. Reversing the sign makes them genuinely different players:
+    // 1330 against 1180, and both sides send.
     var other = JSON.parse(JSON.stringify(TRAINED));
-    other.maxHeight = (other.maxHeight || 1) * 2 + 7;
+    other.maxHeight = -(other.maxHeight || 50);
     var r = versus.duel(TRAINED, other, 1, { ceiling: 3600 });
     assert.strictEqual(r.reason, 'ceiling', 'this duel was meant to run out the ceiling');
     assert.notStrictEqual(r.winner, null,
@@ -139,7 +153,11 @@ check('chainDepth is the garbage the duel really sent, per side', function () {
         return out;
     };
     var r;
-    try { r = versus.duel(TRAINED, FLAT, 7, {}); }
+    // SEED 1, MEASURED. Seed 7 is now a duel where neither side sends
+    // anything (0/0 over 600 frames), which fails this test's own setup
+    // guard — the guard is the point, since an empty breakdown would
+    // otherwise pass. Seed 1 crosses garbage both ways, 15 and 3.
+    try { r = versus.duel(TRAINED, FLAT, 1, {}); }
     finally { proto.takeDeliverableGarbage = orig; }
 
     assert.ok(r.chainDepth, 'the duel reported no chainDepth at all');
