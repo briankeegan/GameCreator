@@ -10,6 +10,7 @@
 // different configuration from its siblings.
 var fs = require('fs');
 var path = require('path');
+var switches = require('./switches.js');
 var versus = require('./versus.js');
 var registry = require('./registry.js');
 
@@ -24,14 +25,19 @@ var EXCLUDE = (process.env.GC_EXCLUDE || '').split(',')
     .map(function (s) { return s.trim(); }).filter(Boolean);
 var KEYS = registry.genomeKeys(process.env.GC_EXCLUDE, process.env.GC_INCLUDE);
 var SEEDS = require('./seeds.js');
+// ONE SPELLING OF A FLAG, EVERYWHERE. The workflow passes its own inputs
+// through, so GC_RISE arrives as 'true', and a hand-rolled === '1' reads that
+// as OFF while the dispatch, the log and the snapshot all say rise is on.
+function flag(name) { return switches.envFlag(name) === true; }
+
 var OPTS = {
     depth: Number(process.env.GC_DEPTH || 1), beam: Number(process.env.GC_BEAM || 0),
-    rise: process.env.GC_RISE === '1', density: process.env.GC_DENSITY === '1',
-    allowRaise: process.env.GC_RAISE === '1', level: Number(process.env.GC_LEVEL || 10),
+    rise: flag('GC_RISE'), density: flag('GC_DENSITY'),
+    allowRaise: flag('GC_RAISE'), level: Number(process.env.GC_LEVEL || 10),
     // THE MODES ARE PART OF THE BOT BEING TRAINED. Without this the islands
     // fit weights for a bot with the filter off, and the champion then plays
     // a different game from the one it was scored on.
-    modes: process.env.GC_MODES === '1',
+    modes: flag('GC_MODES'),
     goal: process.env.GC_GOAL || undefined,
     alsoTake: process.env.GC_ALSO_TAKE ? Number(process.env.GC_ALSO_TAKE) : undefined,
     buildToward: process.env.GC_BUILD_TOWARD ? Number(process.env.GC_BUILD_TOWARD) : undefined,

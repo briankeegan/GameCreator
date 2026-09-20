@@ -139,4 +139,4 @@ function describe(loaded) {
         (loaded.forced.length ? '  (forced by env: ' + loaded.forced.join(', ') + ')' : '');
 }
 
-module.exports = { load: load, describe: describe };
+module.exports = { load: load, describe: describe, envFlag: envFlag };

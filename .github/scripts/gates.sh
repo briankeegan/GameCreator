@@ -329,6 +329,10 @@ gate_pbt_stop() {
   node games/the-game/ai/eval/pbt_stop.test.js
 }
 
+gate_flags() {
+  node games/the-game/ai/eval/flags.test.js
+}
+
 # THE TRAINING PRE-FLIGHT SUITES, WHICH gate_all DID NOT RUN.
 #
 # ai-train.yml runs five suites before it spends five hours -- features,
@@ -648,6 +652,7 @@ GATES=(
   "a whole training leg finishes:gate_pbt_leg:games/the-game/ai/"
   "a slow run stops before the job kills it:gate_deadline_stop:games/the-game/ai/"
   "a run that trained nothing does not chain:gate_pbt_stop:games/the-game/ai/"
+  "a switch means the same thing everywhere:gate_flags:games/the-game/ai/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"
   "rise-adjusted scoring:gate_rise_scoring:games/the-game/ai/"

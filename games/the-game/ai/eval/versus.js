@@ -130,8 +130,15 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
                 var ev = evs[q];
                 if (ev.type === 'chainEnd') {
                     exact[e].chain[ev.length] = (exact[e].chain[ev.length] || 0) + 1;
-                } else if (ev.type === 'match' && !ev.chain) {
-                    exact[e].combo[ev.size] = (exact[e].combo[ev.size] || 0) + 1;
+                } else if (ev.type === 'match') {
+                    if (!ev.chain) exact[e].combo[ev.size] = (exact[e].combo[ev.size] || 0) + 1;
+                    // DID IT PAY. The engine's own rule, not a second copy of
+                    // it: pushGarbage fires iff isChainLink || size > 3, and
+                    // the event carries both, plus how many garbage panels
+                    // the clear broke. A clear that satisfies neither sent
+                    // nothing and scored nothing, whatever it later becomes.
+                    if (!ev.chain && ev.size <= 3 && !ev.garbage) exact[e].payless++;
+                    if (ev.garbage) exact[e].broke++;
                 }
             }
         }
@@ -163,7 +170,7 @@ exports.addDepth = function (into, from) {
 };
 exports.zeroDepth = zeroDepth;
 
-function zeroExact() { return { combo: {}, chain: {} }; }
+function zeroExact() { return { combo: {}, chain: {}, payless: 0, broke: 0 }; }
 
 // Sum one side's exact histogram across several duels.
 exports.addExact = function (into, from) {
@@ -172,6 +179,8 @@ exports.addExact = function (into, from) {
             into[kind][size] = (into[kind][size] || 0) + from[kind][size];
         });
     });
+    into.payless = (into.payless || 0) + (from.payless || 0);
+    into.broke = (into.broke || 0) + (from.broke || 0);
     return into;
 };
 exports.zeroExact = zeroExact;

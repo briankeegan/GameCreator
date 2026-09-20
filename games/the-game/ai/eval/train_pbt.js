@@ -32,6 +32,7 @@ var crypto = require('crypto');
 
 var registry = require('./registry.js');
 var SEEDS = require('./seeds.js');
+var switches = require('./switches.js');
 var versus = require('./versus.js');
 var duels = require('./duels.js');
 
@@ -53,14 +54,19 @@ var EXCLUDE = (process.env.GC_EXCLUDE || '').split(',')
 var KEYS = registry.genomeKeys(process.env.GC_EXCLUDE, process.env.GC_INCLUDE);
 if (!KEYS.length) throw new Error('GC_EXCLUDE excluded every feature');
 
+// ONE SPELLING OF A FLAG, EVERYWHERE. The workflow passes its own inputs
+// through, so GC_RISE arrives as 'true', and a hand-rolled === '1' reads that
+// as OFF while the dispatch, the log and the snapshot all say rise is on.
+function flag(name) { return switches.envFlag(name) === true; }
+
 var OPTS = {
     depth: Number(process.env.GC_DEPTH || 1), beam: Number(process.env.GC_BEAM || 0),
-    rise: process.env.GC_RISE === '1', density: process.env.GC_DENSITY === '1',
-    allowRaise: process.env.GC_RAISE === '1', level: Number(process.env.GC_LEVEL || 10),
+    rise: flag('GC_RISE'), density: flag('GC_DENSITY'),
+    allowRaise: flag('GC_RAISE'), level: Number(process.env.GC_LEVEL || 10),
     // THE MODES ARE PART OF THE BOT BEING TRAINED. Without this the islands
     // fit weights for a bot with the filter off, and the champion then plays
     // a different game from the one it was scored on.
-    modes: process.env.GC_MODES === '1',
+    modes: flag('GC_MODES'),
     goal: process.env.GC_GOAL || undefined,
     alsoTake: process.env.GC_ALSO_TAKE ? Number(process.env.GC_ALSO_TAKE) : undefined,
     buildToward: process.env.GC_BUILD_TOWARD ? Number(process.env.GC_BUILD_TOWARD) : undefined,
@@ -207,7 +213,7 @@ if (fs.existsSync(INJECT)) {
 // Decide the islands and stop, without duelling. The resume decision above is
 // the difference between continuing a five-hour search and silently restarting
 // it, and it is the one part of this file that can be checked in milliseconds.
-if (process.env.GC_PBT_INIT_ONLY === '1') {
+if (flag('GC_PBT_INIT_ONLY')) {
     console.log('islands ready: ' + ISLANDS + ', resumed ' + resumed +
                 (MIGRATE ? '' : ', MIGRATION OFF'));
     process.exit(0);
@@ -378,7 +384,9 @@ function buildReport(genome, r, peer, p) {
         avgFrames: r.frames / n, longestFrames: r.longest,
         learned: { fitness: (r.wins + 0.5 * r.draws) / n, winRate: r.wins / n, draws: r.draws,
                    avgSent: r.sentUs / n, duels: n, chainDepth: r.depthUs,
-                   comboByWidth: r.exactUs.combo, chainByLinks: r.exactUs.chain, versus: true },
+                   comboBySize: r.exactUs.combo, chainByLinks: r.exactUs.chain,
+                   paylessClears: r.exactUs.payless, brokeGarbage: r.exactUs.broke,
+                   versus: true },
         shipped: { fitness: (n - r.wins - r.draws + 0.5 * r.draws) / n,
                    label: shipped ? 'shipped weights' : 'zero weights',
                    avgSent: r.sentThem / n, chainDepth: r.depthThem, versus: true }
@@ -391,7 +399,8 @@ function buildReport(genome, r, peer, p) {
             winRate: p.wins / p.n, draws: p.draws, duels: p.n,
             avgSent: p.sentUs / p.n, opponentAvgSent: p.sentThem / p.n,
             avgFrames: p.frames / p.n, longestFrames: p.longest,
-            comboByWidth: p.exactUs.combo, chainByLinks: p.exactUs.chain
+            comboBySize: p.exactUs.combo, chainByLinks: p.exactUs.chain,
+            paylessClears: p.exactUs.payless, brokeGarbage: p.exactUs.broke
         };
     }
     return out;
@@ -473,6 +482,8 @@ if (process.env.GC_PBT_PLAN_ONLY) {
     console.log('leg estimate: ' + Math.round(FIRST_LEG_GUESS) + 's for ' + LEG +
                 ' updates; budget leaves ' + planLeft + 's; fits: ' +
                 (planLeft >= FIRST_LEG_GUESS));
+    console.log('switches: rise=' + OPTS.rise + ' modes=' + OPTS.modes +
+                ' density=' + OPTS.density + ' depth=' + OPTS.depth);
     process.exit(0);
 }
 
