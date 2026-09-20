@@ -157,6 +157,37 @@ scorer runs, so resolve once per candidate and cache, never twice.
 `4+ wide/min` above 1.5. If both sit still the modes never fired and
 nothing below is worth building.
 
+**RESULT.** Shipped weights unchanged, depth 2 beam 0 rise on, 72 games
+across endless/comboStorm/factory, FORCED closed:
+
+                    modes off   rise-blind   rise-aware
+  payless    /min      18.0         4.4          4.2
+  4+ wide    /min       2.2         7.1          7.7
+  garbage    /min      36.2        60.3         63.8
+  points     /min     328.3       523.9        575.1
+  minutes survived     29.3        29.0         32.7
+  4+ links   /min       0.1         0.2          0.3
+  chains at 4 / 5      2 / 2       6 / 1        7 / 3
+
+The combo arm clears: payless clears down 77%, wide combos 3.5x, garbage
+sent up 76%. Separately measured, the bot chose ZERO bare threes on purpose
+in 4,316 decisions against 455 with modes off — every three left is one the
+board made.
+
+THE CHAIN ARM DID NOT. 0.1 to 0.3 is four deep chains becoming ten over 72
+games, which is not a count to defend. The reason is structural and is step
+3: a 4-link chain was available to fire ONCE in 4,316 decisions, so the bot
+was never declining to fire one. BUILD accumulates the material — 2-link
+opportunities up 10x, 3-link up 22x — and then stalls, because the filter is
+purely negative and nothing ranks the survivors by how much closer they get
+to a chain.
+
+The rise-aware arm is a small increment on top, better on all seven measures
+and worse on none, and it does NOT do the job it was built for: the choice
+is available on 42% of decisions and unavoidable on 0%, yet the threes
+arrive anyway. It DEFERS the pattern rather than dismantling it. Dismantling
+is a positive goal, so it hits the same wall as chain building.
+
 **The diagnostic that says why.** The bot reports the share of decisions
 spent in each mode and the count of broken plans per game. Those are what
 separate "the filter is wrong" from "the escape hatch is too wide", which
