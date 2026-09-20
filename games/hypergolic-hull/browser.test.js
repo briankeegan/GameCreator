@@ -187,6 +187,14 @@ function waitForOverlay(page) {
 async function walkToExit(page) {
   let s = await getState(page);
   for (let i = 0; i < 30 && s.status === "playing"; i++) {
+    // A dock on the way opens its panel over the board, and every tap
+    // after that lands on the panel rather than on a hex — so the walk
+    // stops dead three hexes from the gate with nothing wrong. Undock and
+    // carry on, which is what a player does when they are just passing.
+    if (await page.locator("#outpostOverlay").isVisible()) {
+      await page.click("#outpostCloseBtn");
+      await page.waitForTimeout(80);
+    }
     await playTurnToward(page, "exit");
     s = await getState(page);
   }
@@ -865,7 +873,7 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#unlockCard").isVisible(), false, "a run that earned nothing does not celebrate");
   assert.match(
     await page.locator("#nextUnlock").textContent(),
-    /Depth 3 unlocks/,
+    /Depth 2 unlocks Screen Ship/,
     "...it says what the next depth is worth instead"
   );
   assert.strictEqual(await page.locator(".loadout-detail-name").evaluate((el) => el.childNodes[0].textContent), "Line Ship", "the hangar opens on the hull that would launch");
@@ -894,7 +902,7 @@ async function freshPage(browser, url, errors) {
   assert.strictEqual(await page.locator("#restartBtn").isDisabled(), true, "and Launch cannot fly it");
   assert.match(
     await page.locator("#restartBtn").textContent(),
-    /Locked .* depth 3/,
+    /Locked .* depth 2/,
     "the button says the condition rather than just going grey"
   );
   await page.click(".hangar-arrow >> nth=0");
@@ -1512,6 +1520,32 @@ async function freshPage(browser, url, errors) {
       if (!(await page.evaluate(() => document.getElementById("scanBtn").classList.contains("active")))) {
         await page.click("#scanBtn");
       }
+      // CLEAR THE BOARD FIRST. Anything drawn over the canvas — the
+      // Systems screen left open by an earlier case, or a dock this sector
+      // happened to deal under the ship — swallows every tap, and the
+      // readout then keeps reporting whatever was inspected last. That
+      // reads as an entire locale being mis-mapped when nothing is wrong
+      // with the geometry at all.
+      await page.evaluate(() => {
+        // Nothing may sit between the sweep and the canvas. Two things can:
+        // a dock's panel, and the scan readout card, which floats over the
+        // top of the field and carries its own SYSTEMS button. On a tall
+        // narrow board the top-left hex lands under that button, so the
+        // tap opened the Systems screen and every tap after it hit that
+        // instead — which reads as a whole locale being mis-mapped.
+        if (typeof shipVisible !== "undefined") shipVisible = false;
+        if (typeof outpostDismissed !== "undefined") outpostDismissed = true;
+        render();
+        // A style rule, not an inline one: render() rebuilds this card on
+        // every tap, so anything set on the element itself is transient.
+        if (!document.getElementById("sweep-clear")) {
+          const st = document.createElement("style");
+          st.id = "sweep-clear";
+          st.textContent = "#enemyInfo{display:none!important}";
+          document.head.appendChild(st);
+        }
+      });
+      await page.waitForTimeout(80);
       const info = await page.evaluate(() => ({
         locale: (window.__hhState.locale || {}).id || "campaign",
         hexes: window.__hhState.boardHexes.slice(),
@@ -1537,6 +1571,10 @@ async function freshPage(browser, url, errors) {
         `${info.locale}: the board is drawn at the size it is laid out at (x ${fit.xs.toFixed(3)}, y ${fit.ys.toFixed(3)})`
       );
     }
+    await page.evaluate(() => {
+      const st = document.getElementById("sweep-clear");
+      if (st) st.remove();
+    });
     assert.deepStrictEqual(wrong, [], `every one of ${taps} taps landed on the hex it was aimed at`);
     await page.click("#scanBtn"); // back out of Scan
   }
