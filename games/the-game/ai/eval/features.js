@@ -612,6 +612,34 @@ var MOVE_FRAMES = 4;
     return input.earned.stopTimeEarned || 0;
   }
 
+  // A CLEAR THAT PAID NOTHING. 1 when this move cleared panels and earned
+  // neither points nor a broken garbage cell; 0 when it cleared nothing, and
+  // 0 when it paid.
+  //
+  // The bare three is the whole case. The engine pays nothing for one --
+  // no points, no garbage, no stop time, and the tables that say so live in
+  // the engine, not here -- but it still tidies the board, and tidiness is
+  // most of the decision, so the bot fires thousands a game.
+  //
+  // WHY THE TEST IS PAYMENT AND NOT SIZE. "Penalise threes" needs a list of
+  // exceptions beside it: not when it chains, not when it breaks garbage.
+  // Asking whether the move was PAID collapses that list into the condition
+  // -- a chaining three takes the chain bonus, so scoreEarned is non-zero
+  // and it is not payless; a three that pops garbage answers the second
+  // half. Nothing has to be enumerated, so nothing can be forgotten.
+  //
+  // It reads scoreEarned rather than restating the score tables, for the
+  // same reason scoreEarned itself asks the engine: a second copy of those
+  // numbers is a second copy to drift.
+  function paylessClear(input) {
+    var e = input.earned, cleared = 0;
+    for (var i = 0; i < e.comboSizes.length; i++) cleared += e.comboSizes[i] || 0;
+    if (!cleared) return 0;
+    if (scoreEarned(input) > 0) return 0;
+    if ((e.brokeGarbage || 0) > 0) return 0;
+    return 1;
+  }
+
   // Garbage cells this move popped, as reported by resolve().
   function brokeGarbage(input) {
     return input.earned.brokeGarbage || 0;
@@ -767,6 +795,7 @@ var MOVE_FRAMES = 4;
     stopTimeEarned: stopTimeEarned,
     stopTimeGain: stopTimeGain,
     brokeGarbage: brokeGarbage,
+    paylessClear: paylessClear,
     scoreEarned: scoreEarned,
     garbageSent: garbageSent,
     chainLength: chainLength,

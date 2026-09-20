@@ -69,7 +69,7 @@ var LEVEL   = Number(process.env.GC_LEVEL || 10);
 var VARIANT = process.env.GC_VARIANT || '';
 var EXCLUDE = (process.env.GC_EXCLUDE || '').split(',')
     .map(function (s) { return s.trim(); }).filter(Boolean);
-var KEYS = registry.keys.filter(function (k) { return EXCLUDE.indexOf(k) < 0; });
+var KEYS = registry.genomeKeys(process.env.GC_EXCLUDE, process.env.GC_INCLUDE);
 if (!KEYS.length) throw new Error('GC_EXCLUDE excluded every feature');
 
 var DEADLINE = Number(process.env.GC_DEADLINE || 0);   // unix seconds, 0 = none

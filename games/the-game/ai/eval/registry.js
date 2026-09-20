@@ -130,6 +130,9 @@
     { key: 'colourScarcity',   group: 'board',  sign: -1, norm: 6, fn: null,
       what: 'Colours with fewer than 3 matchable panels left — a colour that can no longer form a match.' },
 
+    { key: 'paylessClear',     group: 'earned', sign: -1, norm: 1, fn: null, optIn: true,
+      what: '1 when this move cleared panels and the clear paid NOTHING: no points from the engine\'s own tables, and no garbage broken. The bare three is the case - COMBO_GARBAGE is empty below 4 and SCORE_COMBO_TA[3] is 0, so it sends nothing, scores nothing and earns no stop time, yet it still tidies the board (fewer panels, shorter stack) and tidiness is most of the decision, so the bot fires thousands a game. Nothing else here can say that a clear was worthless: every neighbouring feature REWARDS a payout and none punishes its absence, and a weighted sum cannot turn a missing reward into a cost. ONE CONDITION, NO EXEMPTION LIST: a three that is a link in a cascade takes the chain bonus and is not payless, a three that pops garbage is not payless, so the cases worth keeping fall out of the test instead of being listed beside it. OPT-IN, and that is load-bearing: optIn features are absent from registry.keys, so a run that does not name it searches exactly the keys it searched before - and KEYS is in the island fingerprint, so a key list that moves makes every chain in flight read its own population as foreign and restart from random vectors.' },
+
     { key: 'garbageSent',      group: 'earned', sign: +1, norm: 24, fn: null,
       what: 'Combo sends a set of 1-high blocks of varying width; a chain sends ONE full-width block that grows a row per link. Two different attacks.' },
 
@@ -167,7 +170,49 @@
   return {
     all: FEATURES,
     byKey: byKey,
-    keys: FEATURES.map(function (f) { return f.key; }),
+    // THE DEFAULT GENOME. optIn features are NOT in here. A feature added to
+    // this list joins every run's KEYS the moment it exists, and KEYS is in
+    // the island fingerprint -- so adding one would make every chain in
+    // flight read its saved population as foreign and start again from
+    // random vectors. A run that wants one names it.
+    keys: FEATURES.filter(function (f) { return !f.optIn; })
+                  .map(function (f) { return f.key; }),
+    optIn: FEATURES.filter(function (f) { return f.optIn; })
+                   .map(function (f) { return f.key; }),
+
+    // THE GENOME A RUN ACTUALLY SEARCHES, worked out in ONE place.
+    //
+    // Four files built this list by hand -- train.js, train_pbt.js,
+    // train_versus.js and pbt_worker.js -- and pbt_worker has to agree with
+    // train_pbt exactly or the workers score a different genome than the
+    // parent thinks it dealt them. Four copies of a filter is four chances
+    // to disagree, and the disagreement would be silent.
+    //
+    // exclude drops a default key. include adds an optIn one, and refuses a
+    // name that is not opt-in: a typo that quietly searched nothing new
+    // would look exactly like a feature that did not help.
+    genomeKeys: function (excludeStr, includeStr) {
+      var out = [], i;
+      var ex = String(excludeStr || '').split(',').map(function (x) { return x.trim(); })
+                                       .filter(Boolean);
+      var inc = String(includeStr || '').split(',').map(function (x) { return x.trim(); })
+                                        .filter(Boolean);
+      for (i = 0; i < FEATURES.length; i++) {
+        var f = FEATURES[i];
+        if (f.optIn) continue;
+        if (ex.indexOf(f.key) < 0) out.push(f.key);
+      }
+      for (i = 0; i < inc.length; i++) {
+        var f2 = byKey[inc[i]];
+        if (!f2) throw new Error('GC_INCLUDE names "' + inc[i] + '", which is not a feature');
+        if (!f2.optIn) {
+          throw new Error('GC_INCLUDE names "' + inc[i] + '", which is not opt-in — it is ' +
+                          'already in the genome unless GC_EXCLUDE drops it');
+        }
+        if (out.indexOf(f2.key) < 0) out.push(f2.key);
+      }
+      return out;
+    },
     implemented: function () {
       return FEATURES.filter(function (f) { return typeof f.fn === 'function'; })
                      .map(function (f) { return f.key; });

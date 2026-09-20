@@ -262,7 +262,7 @@ EXCLUDE.forEach(function (k) {
                         registry.keys.join(', '));
     }
 });
-var KEYS = registry.keys.filter(function (k) { return EXCLUDE.indexOf(k) < 0; });
+var KEYS = registry.genomeKeys(process.env.GC_EXCLUDE, process.env.GC_INCLUDE);
 if (!KEYS.length) throw new Error('GC_EXCLUDE excluded every feature; there is nothing to search');
 var MAX_WEIGHT = 300;
 // A WEIGHT MAY BE NEGATIVE, SO THE SEARCH OWNS EACH FEATURE'S DIRECTION.

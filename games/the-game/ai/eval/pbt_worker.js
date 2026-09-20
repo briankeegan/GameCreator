@@ -21,7 +21,7 @@ var MUTATE = Number(process.env.GC_VS_MUTATE || 0.05);
 var MAX_WEIGHT = 300, MIN_WEIGHT = -MAX_WEIGHT;
 var EXCLUDE = (process.env.GC_EXCLUDE || '').split(',')
     .map(function (s) { return s.trim(); }).filter(Boolean);
-var KEYS = registry.keys.filter(function (k) { return EXCLUDE.indexOf(k) < 0; });
+var KEYS = registry.genomeKeys(process.env.GC_EXCLUDE, process.env.GC_INCLUDE);
 var SEEDS = require('./seeds.js');
 var OPTS = {
     depth: Number(process.env.GC_DEPTH || 1), beam: Number(process.env.GC_BEAM || 0),
