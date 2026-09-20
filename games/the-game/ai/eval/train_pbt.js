@@ -56,7 +56,15 @@ if (!KEYS.length) throw new Error('GC_EXCLUDE excluded every feature');
 var OPTS = {
     depth: Number(process.env.GC_DEPTH || 1), beam: Number(process.env.GC_BEAM || 0),
     rise: process.env.GC_RISE === '1', density: process.env.GC_DENSITY === '1',
-    allowRaise: process.env.GC_RAISE === '1', level: Number(process.env.GC_LEVEL || 10)
+    allowRaise: process.env.GC_RAISE === '1', level: Number(process.env.GC_LEVEL || 10),
+    // THE MODES ARE PART OF THE BOT BEING TRAINED. Without this the islands
+    // fit weights for a bot with the filter off, and the champion then plays
+    // a different game from the one it was scored on.
+    modes: process.env.GC_MODES === '1',
+    goal: process.env.GC_GOAL || undefined,
+    alsoTake: process.env.GC_ALSO_TAKE ? Number(process.env.GC_ALSO_TAKE) : undefined,
+    buildToward: process.env.GC_BUILD_TOWARD ? Number(process.env.GC_BUILD_TOWARD) : undefined,
+    stopFloor: process.env.GC_STOP_FLOOR ? Number(process.env.GC_STOP_FLOOR) : undefined
 };
 
 var baseSeed = Number(process.env.GC_GA_SEED || 11) >>> 0;

@@ -42,6 +42,9 @@ on:
       leg:
         description: 'Updates each island runs before the champions face off. Shorter legs do the same total work in more chunks, and a chunk is the only moment a snapshot lands and the numbers become visible'
         default: '50'
+      modes:
+        description: 'true = the bot carries BUILD/FIRE/FORCED and the reach measurements it needs. The champion must play the same bot it was scored on'
+        default: 'true'
       faceoff:
         description: 'Seeds per champion pairing in the face-off'
         default: '3'
@@ -143,6 +146,7 @@ jobs:
           GC_DENSITY: ${{ github.event.inputs.density || '' }}
           GC_PBT_ISLANDS: ${{ github.event.inputs.islands || '4' }}
           GC_PBT_LEG: ${{ github.event.inputs.leg || '50' }}
+          GC_MODES: ${{ (github.event.inputs.modes == 'false' && '0') || '1' }}
           GC_PBT_FACEOFF: ${{ github.event.inputs.faceoff || '3' }}
           GC_PBT_MIGRATE: ${{ github.event.inputs.migrate || '1' }}
           GC_VS_POPULATION: ${{ github.event.inputs.population || '16' }}
@@ -202,7 +206,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/ai-train-pbt.yml/dispatches" \
-            -d '{"ref":"main","inputs":{"variant":"${{ github.event.inputs.variant }}","level":"${{ github.event.inputs.level }}","exclude":"${{ github.event.inputs.exclude }}","include":"${{ github.event.inputs.include }}","islands":"${{ github.event.inputs.islands }}","population":"${{ github.event.inputs.population }}","leg":"${{ github.event.inputs.leg }}","faceoff":"${{ github.event.inputs.faceoff }}","migrate":"${{ github.event.inputs.migrate }}","ga_seed":"${{ github.event.inputs.ga_seed }}","depth":"${{ github.event.inputs.depth }}","beam":"${{ github.event.inputs.beam }}","rise":"${{ github.event.inputs.rise }}","density":"${{ github.event.inputs.density }}","minutes":"${{ github.event.inputs.minutes }}","chain":"true"}}')
+            -d '{"ref":"main","inputs":{"variant":"${{ github.event.inputs.variant }}","level":"${{ github.event.inputs.level }}","exclude":"${{ github.event.inputs.exclude }}","include":"${{ github.event.inputs.include }}","islands":"${{ github.event.inputs.islands }}","population":"${{ github.event.inputs.population }}","leg":"${{ github.event.inputs.leg }}","modes":"${{ github.event.inputs.modes }}","faceoff":"${{ github.event.inputs.faceoff }}","migrate":"${{ github.event.inputs.migrate }}","ga_seed":"${{ github.event.inputs.ga_seed }}","depth":"${{ github.event.inputs.depth }}","beam":"${{ github.event.inputs.beam }}","rise":"${{ github.event.inputs.rise }}","density":"${{ github.event.inputs.density }}","minutes":"${{ github.event.inputs.minutes }}","chain":"true"}}')
           if [ "$code" != "204" ]; then
             echo "the continuation was REFUSED (HTTP $code) — this chain ends here:"
             cat /tmp/dispatch.out
