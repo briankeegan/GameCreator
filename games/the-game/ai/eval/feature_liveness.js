@@ -55,7 +55,7 @@ evaluator.evaluate = function (input, weights, opts) {
 
 // Every feature weighted, so nothing is skipped for being worth zero.
 var weights = {};
-registry.keys.forEach(function (k) { weights[k] = 1; });
+registry.genomeKeys('', process.env.GC_INCLUDE).forEach(function (k) { weights[k] = 1; });
 
 var seeds = [];
 for (var s = 1; s <= SEEDS; s++) seeds.push(s);
