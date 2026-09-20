@@ -650,6 +650,41 @@ async function freshPage(browser, url, errors) {
     if (parked.playerPos.q !== s.wormholePos.q || parked.playerPos.r !== s.wormholePos.r) break;
   }
   s = await getState(page);
+
+  // ---- DEAD STAYS DEAD, AND LIVE STAYS LIVE ----------------------------
+  // A sector you go back to is the sector you left: anything you killed is
+  // still wreckage and anything you did not is still flying. Reported from
+  // play as ships reappearing on a return trip, which is the single worst
+  // thing a chart can get wrong — it makes every fight you took optional
+  // and every wormhole a reset button.
+  {
+    const chart = await page.evaluate(() => window.__hhChart());
+    const back = chart.chartIndex - 1;
+    assert.ok(back >= 0, "there is a charted sector behind this one");
+    const charted = await page.evaluate((i) => JSON.parse(JSON.stringify(window.__hhSectorAt(i))), back);
+    const chartedDead = charted.enemies.filter((e) => !e.alive).map((e) => e.id);
+    const chartedLive = charted.enemies.filter((e) => e.alive).map((e) => e.id);
+    assert.ok(chartedDead.length > 0, "the previous sector is charted with at least one kill in it");
+
+    await page.evaluate((i) => window.__hhJumpToChart(i), back);
+    await page.waitForTimeout(700);
+    const home = await getState(page);
+    assert.strictEqual(home.levelId, charted.levelId, "the wormhole goes back to that sector");
+    for (const id of chartedDead) {
+      const found = home.enemies.find((e) => e.id === id);
+      assert.ok(found && !found.alive, `${id} was killed before leaving and must still be wreckage`);
+    }
+    for (const id of chartedLive) {
+      const found = home.enemies.find((e) => e.id === id);
+      assert.ok(found && found.alive, `${id} was never killed and must still be flying`);
+    }
+    // And forward again, so the rest of this playthrough carries on from
+    // where it was rather than from two sectors back.
+    await page.evaluate((i) => window.__hhJumpToChart(i), chart.chartIndex);
+    await page.waitForTimeout(700);
+    s = await getState(page);
+  }
+
   // Scuttling charges: the run's own off switch, two taps deep so a stray
   // thumb can never end a run.
   await page.click("#shipBtn");

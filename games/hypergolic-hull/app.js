@@ -5462,7 +5462,18 @@ function restoreRun() {
   ensureScanner(state);
   // Same reasoning as isValidSave above, applied per-entry — drop any
   // stale chart snapshot rather than crashing a jump later.
-  sectorHistory = loadSave("sectorHistory", []).filter((entry) => entry && isValidSave(entry.state));
+  // THE CHART IS AN INDEXED LIST, so it cannot be filtered. chartIndex is
+  // saved as its own number, and this used to drop unreadable entries and
+  // reindex around them — which silently slides every sector after the gap
+  // down one. The wormhole back then restores a DIFFERENT sector than the
+  // one you left, with its own contacts on it, all of them alive. That
+  // reads exactly like the enemies you killed coming back.
+  //
+  // A chart with a hole in it is not repairable: any index into it is a
+  // guess. So it is used whole or not at all — and "not at all" is already
+  // handled below, by seeding a fresh chart from the live sector.
+  const chartedRaw = loadSave("sectorHistory", []);
+  sectorHistory = chartedRaw.every((entry) => entry && isValidSave(entry.state)) ? chartedRaw : [];
   sectorHistory.forEach((entry) => {
     clampAp(entry.state);
     purgeRetiredGear(entry.state);
@@ -5981,6 +5992,9 @@ window.__hhChart = () => ({ chartIndex, length: sectorHistory.length, arrivedOn,
 // test hook: drive a chart jump the way tapping a star on the Map does,
 // so the leave-and-return rules can be exercised end to end
 window.__hhJumpToChart = (i) => jumpToChart(i);
+// A charted sector as the chart holds it, so a test can compare what was
+// stored against what a return trip actually restores.
+window.__hhSectorAt = (i) => (sectorHistory[i] ? sectorHistory[i].state : null);
 window.__hhLooks = { SKIES, GRID_LOOKS }; // test hook: every place has its own sky and its own lattice
 // debug/test hook: sync the internal levelIndex counter after directly
 // mutating window.__hhState (see browser.test.js's boss-milestone test) —
