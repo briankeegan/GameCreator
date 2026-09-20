@@ -81,57 +81,6 @@ test('scoreEarned pays what the GAME pays, and a bare three pays nothing', funct
         'a 5-chain should be worth more than fourteen 4-combos in points');
 });
 
-// ---- paylessClear ----
-
-test('paylessClear fires on the bare three and on nothing else', function () {
-    function pc(earned) {
-        return features.paylessClear(inputMod.normalize({ earned: earned }));
-    }
-    // THE DEFECT IT EXISTS FOR. A bare three sends nothing, scores nothing
-    // and earns no stop time, and the bot fires thousands a game because it
-    // tidies the board.
-    assert.strictEqual(pc({ comboSizes: [3] }), 1, 'a bare three is not being called payless');
-
-    // AND THE CORRECT-BUT-AWKWARD CASES, which is why the test is payment
-    // and not size. Each of these is a three, and each one pays.
-    assert.strictEqual(pc({ comboSizes: [3, 3] }), 0,
-        'a three that is a link in a cascade takes the chain bonus, so it is paid');
-    assert.strictEqual(pc({ comboSizes: [3], brokeGarbage: 6 }), 0,
-        'a three that popped garbage got garbage off the board, so it is paid');
-
-    // Bigger clears pay through the combo table.
-    assert.strictEqual(pc({ comboSizes: [4] }), 0, 'a 4-combo pays 20 and is not payless');
-    assert.strictEqual(pc({ comboSizes: [6] }), 0, 'a 6-combo pays and is not payless');
-
-    // A move that cleared nothing is not a payless CLEAR -- it is a hold,
-    // and charging it would make holding cost the same as wasting a match.
-    assert.strictEqual(pc({ comboSizes: [] }), 0, 'a move that cleared nothing was charged');
-});
-
-test('paylessClear is OPT-IN, so the genome a run searches does not move', function () {
-    // THE HAZARD: KEYS is in the island fingerprint. A feature that joins
-    // the default list makes every chain in flight read its own saved
-    // population as foreign and restart from random vectors.
-    assert.ok(registry.byKey.paylessClear, 'paylessClear is not in the registry');
-    assert.strictEqual(registry.keys.indexOf('paylessClear'), -1,
-        'paylessClear is in registry.keys, so it would join every run in flight');
-    assert.ok(registry.optIn.indexOf('paylessClear') >= 0, 'paylessClear is not listed as opt-in');
-
-    var live = 'matchPotential,chainPotential,comboPotential,staircase,staircaseReady,flatTop,' +
-               'popSize,links,roughness,colourScarcity,chainLength,scoreEarned,stopTimeGain,' +
-               'brokeGarbage,garbageCleared,travelCost';
-    assert.deepStrictEqual(registry.genomeKeys(live, ''),
-        ['linksH', 'linksV', 'colourVariance', 'edgePenalty', 'garbageOnBoard', 'maxHeight',
-         'fillRatio', 'garbageAdjacency', 'garbageSent', 'stopTimeEarned'],
-        'the running experiment\'s ten-feature genome changed');
-    assert.deepStrictEqual(registry.genomeKeys(live, 'paylessClear').slice(-1), ['paylessClear'],
-        'naming it does not add it');
-    assert.throws(function () { registry.genomeKeys('', 'linksH'); }, /not opt-in/,
-        'GC_INCLUDE accepted a feature that is already in the genome');
-    assert.throws(function () { registry.genomeKeys('', 'nope'); }, /not a feature/,
-        'GC_INCLUDE accepted a name that is not a feature');
-});
-
 test('the score tables are NOT restated in features.js', function () {
     // Point at a standard, never copy it: a second copy of the Tsu-Attack
     // tables would drift from the engine that is actually keeping score.

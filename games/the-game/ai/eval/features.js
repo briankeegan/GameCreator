@@ -683,14 +683,6 @@ var MOVE_FRAMES = 4;
   // It reads scoreEarned rather than restating the score tables, for the
   // same reason scoreEarned itself asks the engine: a second copy of those
   // numbers is a second copy to drift.
-  function paylessClear(input) {
-    var e = input.earned, cleared = 0;
-    for (var i = 0; i < e.comboSizes.length; i++) cleared += e.comboSizes[i] || 0;
-    if (!cleared) return 0;
-    if (scoreEarned(input) > 0) return 0;
-    if ((e.brokeGarbage || 0) > 0) return 0;
-    return 1;
-  }
 
   // Garbage cells this move popped, as reported by resolve().
   function brokeGarbage(input) {
@@ -847,7 +839,6 @@ var MOVE_FRAMES = 4;
     stopTimeEarned: stopTimeEarned,
     stopTimeGain: stopTimeGain,
     brokeGarbage: brokeGarbage,
-    paylessClear: paylessClear,
     scoreEarned: scoreEarned,
     garbageSent: garbageSent,
     pressure: pressure,

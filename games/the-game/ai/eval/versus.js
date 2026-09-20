@@ -61,7 +61,13 @@ function makeCpu(stack, weights, opts) {
         beam: opts.beam || 0,
         rise: opts.rise === true,
         allowRaise: opts.allowRaise === true,
-        density: opts.density === true
+        density: opts.density === true,
+        modes: opts.modes === true,
+        goal: opts.goal,
+        alsoTake: opts.alsoTake,
+        buildToward: opts.buildToward,
+        stopFloor: opts.stopFloor,
+        dangerWeights: opts.dangerWeights
     });
 }
 
@@ -76,6 +82,12 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
         new PanelEngine.Stack({ level: level, seed: seed, countdown: false })
     ];
     var cpus = [ makeCpu(stacks[0], weightsA, opts), makeCpu(stacks[1], weightsB, opts) ];
+    // EACH SIDE CAN SEE THE OTHER. Without this the opponent features are
+    // wired all the way to the evaluator and then handed null, which reads as
+    // a feature that is correct, registered and constant — the shape of dead
+    // feature this repo has produced more than once.
+    cpus[0].opponent = stacks[1];
+    cpus[1].opponent = stacks[0];
     var sent = [0, 0];
     // WHAT KIND OF GARBAGE, not just how much. A bot that sends 20 cells in
     // 3-wide combos and one that sends 20 cells in a 5-chain are the same
