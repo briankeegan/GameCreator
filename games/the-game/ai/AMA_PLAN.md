@@ -5,9 +5,11 @@ than for a solitaire score, and it is the one that works. What it has that
 this bot does not, in the order it costs us, each translated to Panel
 Attack.
 
-Every step is measured by `4+ links/min` from `chaincombo.bench.js`. That
-number is **0.0** for every bot we have — shipped, score-trained and
-island-trained alike.
+Every step is measured by `chaincombo.bench.js`, on the two numbers that
+only move when an attack pays: `4+ links/min`, which is **0.0** for every
+bot we have — shipped, score-trained and island-trained alike — and
+`4+ wide/min`, which is **1.5** for the shipped bot against 20.6 combos a
+minute total.
 
 ## The one difference underneath all four
 
@@ -38,25 +40,34 @@ No new features, no training, a number the same day.
 ama builds below its trigger and fires above it. `PuyoCpu` gains one field
 that survives a decision, `mode`:
 
-- **BUILD** — a candidate whose resolve fires a chain shorter than `T`
-  links and breaks no garbage is dropped from the pool before scoring.
-  Everything left is scored exactly as now.
-- **FIRE** — play the swap with the deepest resolve. Entered when the
-  board's `chainPotential` reaches `T`, left when the cascade is spent.
+- **BUILD** — a candidate is dropped from the pool before scoring unless
+  its resolve does one of three things: fires a chain of `T` links, makes a
+  combo `S` wide, or breaks garbage. Everything left is scored as now.
+- **FIRE** — play the swap with the biggest resolve. Entered when the board
+  reaches `T` on `chainPotential` or `S` on `comboPotential`, left when the
+  cascade is spent.
 - **FORCED** — overrides BUILD: no build candidate survives the filter,
   `maxHeight` past a line, or garbage about to land. Scores the unfiltered
   pool, which is today's bot.
 
-`T` starts at 4. Nothing is hard-coded about what the board looks like —
-the resolve decides.
+`T` starts at 4 links, `S` at 4 wide — `comboGarbage()` sends nothing below
+4, so a 3 is the thing BUILD is there to refuse. Both arms read the same
+resolve: `chainLength` and `comboSizes` come back from the same call.
+Nothing is hard-coded about what the board looks like.
+
+The combo arm is not an afterthought. A wide combo is an attack that lands
+NOW where a chain has to be built first, and the shipped bot makes 20.6
+combos a minute of which only 1.5 are 4-wide or better. Nineteen in twenty
+send nothing. Filtering for chains alone would leave that untouched.
 
 `switches.js` carries `T` and the mode toggle, so a run is reproducible and
 a bench can turn it off. `chainPotential` costs 14.9 ms per decision
 against an 85 ms budget (measured); the filter wants the same resolves the
 scorer runs, so resolve once per candidate and cache, never twice.
 
-**Gate:** `4+ links/min` above 0.0 with the shipped weights unchanged. If
-it is still 0.0 the modes never fired and nothing below is worth building.
+**Gate:** `4+ links/min` above 0.0 with the shipped weights unchanged, and
+`4+ wide/min` above 1.5. If both sit still the modes never fired and
+nothing below is worth building.
 
 ## Step 2 — the opponent
 
@@ -91,8 +102,8 @@ Depth 2 is what caps chain building; ama runs beam 250 at depth 16.
 We do not need 16. In Panel Attack the board is already on screen — there
 is no piece queue to plan against — so the depth we need is in the BUILD
 direction only: expand only the candidates BUILD kept, rank the beam by
-`chainPotential` rather than by score, and measure `chainPotential` at the
-leaf. A beam over a filtered pool is affordable where a beam over the whole
+`chainPotential` and `comboPotential` rather than by score, and measure
+them at the leaf. A beam over a filtered pool is affordable where a beam over the whole
 pool is not.
 
 Not started until steps 1 and 2 have moved `4+ links/min`. A deeper search
