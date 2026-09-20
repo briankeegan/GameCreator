@@ -27,6 +27,18 @@
 //     plot never mentions; every level here runs with shockCap 0.
 //   * rollback/netplay, replays, puzzles, score modes — single-machine game.
 (function (root) {
+  // THE SHARED RULES. Resolved on first use, so load order does not matter.
+  var RULES = null;
+  function rules() {
+    if (!RULES) {
+      RULES = (typeof module === 'object' && module.exports)
+        ? require('./panel-rules.js')
+        : root.PanelRules;
+      if (!RULES) throw new Error('panel-rules.js is not loaded');
+    }
+    return RULES;
+  }
+
   "use strict";
 
   var W = 6;          // board width in columns
@@ -834,36 +846,33 @@
   // ---------------- matches ----------------
   // Every matchable panel is scanned each frame (72 cells — the original's
   // stateChanged culling is a speed optimisation we don't need here).
+  // ONE SCRATCH, REUSED. checkMatches runs every frame of every stack.
+  var MATCH_EFF = null;
+
   Stack.prototype.getMatchingPanels = function () {
     var matching = [];
-    var row, col, run, i, p;
-    function mark(panel) {
-      if (!panel.matching) { panel.matching = true; matching.push(panel); }
-    }
-    for (row = 1; row <= this.height; row++) {
-      run = [];
-      for (col = 1; col <= W + 1; col++) {
-        p = col <= W ? this.panels[row][col] : null;
-        if (p && canMatch(p) && (run.length === 0 || run[0].color === p.color)) {
-          run.push(p);
-        } else {
-          if (run.length >= 3) for (i = 0; i < run.length; i++) mark(run[i]);
-          run = (p && canMatch(p)) ? [p] : [];
-        }
+    var row, col, p;
+    // WHICH CELLS CAN TAKE PART is this board's own rule — canMatch knows
+    // about panel states and matchAnyway, which the simulation's view of the
+    // same board expresses completely differently. THE RUN RULE is not: three
+    // or more of a colour in a line is one rule, and it lives in
+    // panel-rules.js so the bot's board and this one cannot drift apart on
+    // it. Effective colour 0 means "cannot match", whatever the reason.
+    var H = this.height, stride = W + 2, need = (H + 2) * stride;
+    if (!MATCH_EFF || MATCH_EFF.length < need) MATCH_EFF = new Int8Array(need);
+    var eff = MATCH_EFF;
+    for (row = 1; row <= H; row++) {
+      var base = row * stride;
+      for (col = 1; col <= W; col++) {
+        p = this.panels[row][col];
+        eff[base + col] = (p && canMatch(p)) ? p.color : 0;
       }
     }
-    for (col = 1; col <= W; col++) {
-      run = [];
-      for (row = 1; row <= this.height + 1; row++) {
-        p = row <= this.height ? this.panels[row][col] : null;
-        if (p && canMatch(p) && (run.length === 0 || run[0].color === p.color)) {
-          run.push(p);
-        } else {
-          if (run.length >= 3) for (i = 0; i < run.length; i++) mark(run[i]);
-          run = (p && canMatch(p)) ? [p] : [];
-        }
-      }
-    }
+    var panels = this.panels;
+    rules().scanRuns(eff, W, H, stride, function (mr, mc) {
+      var panel = panels[mr][mc];
+      if (panel && !panel.matching) { panel.matching = true; matching.push(panel); }
+    });
     // Hovering panels that match can never START a chain (Panel.matchAnyway).
     for (i = 0; i < matching.length; i++) {
       if (matching[i].state === "hovering") matching[i].chaining = false;

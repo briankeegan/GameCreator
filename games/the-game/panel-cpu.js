@@ -7,6 +7,19 @@
 // Also here: the cursor walk and the stack -> LogicalBoard snapshot. The bot
 // walks to a swap rather than teleporting, which is what travelCost prices.
 (function (root) {
+  // THE SHARED RULES. Resolved on first use rather than at load, so this file
+  // does not care whether panel-rules.js was loaded before it.
+  var RULES = null;
+  function rules() {
+    if (!RULES) {
+      RULES = (typeof module === 'object' && module.exports)
+        ? require('./panel-rules.js')
+        : root.PanelRules;
+      if (!RULES) throw new Error('panel-rules.js is not loaded');
+    }
+    return RULES;
+  }
+
   "use strict";
 
   // blocks: {id: {cells: [[r,c],...]}} — every garbage cell's id must also
@@ -520,39 +533,13 @@
       }
     }
 
-    for (r = 1; r <= H; r++) {
-      var rbase = r * STRIDE;
-      runStart = 0; runLen = 0; runColor = 0;
-      for (c = 1; c <= W + 1; c++) {
-        color = c <= W ? eff[rbase + c] : 0;
-        if (color > 0 && (runLen === 0 || runColor === color)) {
-          if (runLen === 0) { runStart = c; runColor = color; }
-          runLen++;
-        } else {
-          if (runLen >= 3) {
-            for (i = 0; i < runLen; i++) matched[r + ":" + (runStart + i)] = [r, runStart + i];
-          }
-          if (color > 0) { runStart = c; runLen = 1; runColor = color; }
-          else { runLen = 0; runColor = 0; }
-        }
-      }
-    }
-    for (c = 1; c <= W; c++) {
-      runStart = 0; runLen = 0; runColor = 0;
-      for (r = 1; r <= H + 1; r++) {
-        color = r <= H ? eff[r * STRIDE + c] : 0;
-        if (color > 0 && (runLen === 0 || runColor === color)) {
-          if (runLen === 0) { runStart = r; runColor = color; }
-          runLen++;
-        } else {
-          if (runLen >= 3) {
-            for (i = 0; i < runLen; i++) matched[(runStart + i) + ":" + c] = [runStart + i, c];
-          }
-          if (color > 0) { runStart = r; runLen = 1; runColor = color; }
-          else { runLen = 0; runColor = 0; }
-        }
-      }
-    }
+    // THE RUN RULE IS panel-rules.js, not a copy of it. What stays here is
+    // deciding which cells can take part — resting, popping, garbage — which
+    // is genuinely this board's own view. The scan itself is one rule and the
+    // engine calls the same one.
+    rules().scanRuns(eff, W, H, STRIDE, function (mr, mc) {
+      matched[mr + ":" + mc] = [mr, mc];
+    });
     return matched;
   };
 

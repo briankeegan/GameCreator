@@ -264,6 +264,10 @@
   <script src="../../shared/save-slots.js"></script>
   <script src="settings.js"></script>
   <script src="story.js"></script>
+  <!-- The match rule, shared by the engine and the bot's board. Both resolve
+       it on first use, so it only has to be on the page before either runs —
+       but it must BE on the page, or the first cascade throws. -->
+  <script src="panel-rules.js"></script>
   <script src="panel-engine.js"></script>
   <script src="panel-cpu.js"></script>
   <!-- THE TRAINED BOT, for the nightmare tier only (see duel.js makeCpu).
