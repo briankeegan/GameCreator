@@ -800,10 +800,26 @@
     // WORSE than scattering it, because what pins a sidestepping ship is
     // how many of its own six neighbours are blocked, and a wall blocks a
     // line while leaving the rest of the board open.
-    const ROCK_SHARE = envNumber("GC_ROCK", 0.08);
-    const CLOUD_SHARE = envNumber("GC_CLOUD", 0.1);
-    const bump = 1 + Math.floor(depth / 4) + (variant ? variant.hazardDelta : 0) + locale.hazardDelta;
-    const rockCount = Math.max(0, Math.min(Math.round(area * ROCK_SHARE) + Math.max(0, bump - 1), 14));
+    // BOTH DIALS ARE OFF BY DEFAULT, and the numbers are why. Measured over
+    // 60 seeded runs a setting: bare boards win 18, rock at 9% wins 12, and
+    // scrambler fields at 9% win 8 with a THIRD of runs stalling outright.
+    // A chase harness said the opposite — a hostile that cannot shoot from
+    // inside a cloud is easier to close on — which measured one narrow
+    // thing and missed that the ground costs the flagship more than it
+    // costs the hostile over a whole crawl.
+    //
+    // The mechanics stay: a scrambler field works, and the shares are
+    // reachable through GC_ROCK / GC_CLOUD, so tuning them is a
+    // measurement rather than a rewrite. Rock is back on its original
+    // count until that tuning is done.
+    const ROCK_SHARE = envNumber("GC_ROCK", 0);
+    const CLOUD_SHARE = envNumber("GC_CLOUD", 0);
+    const rockCount = ROCK_SHARE > 0
+      ? Math.max(0, Math.min(Math.round(area * ROCK_SHARE), 14))
+      : Math.max(
+          0,
+          Math.min(scale(1 + Math.floor(depth / 4) + (variant ? variant.hazardDelta : 0) + locale.hazardDelta), 6)
+        );
     const cloudCount = Math.max(0, Math.round(area * CLOUD_SHARE));
     const hazards = [];
     for (const hex of candidates) {
