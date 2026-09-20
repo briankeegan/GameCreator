@@ -147,38 +147,6 @@ test('an unknown target is refused rather than silently meaning either', functio
 
 // ------------------------------------------- 3d. building TOWARD the target
 
-test('the target picks which potential the bot climbs', function () {
-    // The floor says what not to sell. This says what to walk toward.
-    // chainPotential and comboPotential are the resolve asked one move
-    // further out — the deepest cascade, and the biggest single clear, any
-    // one swap could make from the board a move LEAVES. Without one of them
-    // weighted, the bot scores tidiness and a six-wide only ever turns up by
-    // accident; the filter can refuse a cheap sale but cannot aim.
-    assert.deepStrictEqual(modes.toward('chain', 120), { chainPotential: 120 });
-    assert.deepStrictEqual(modes.toward('combo', 120), { comboPotential: 120 });
-});
-
-test('either climbs both, so no target is not no ambition', function () {
-    assert.deepStrictEqual(modes.toward('either', 120),
-        { chainPotential: 120, comboPotential: 120 });
-});
-
-test('strength 0 adds nothing at all', function () {
-    // Load-bearing: evaluate() skips a feature whose weight is 0, and
-    // chainPotential costs 14.9ms of an 85ms budget. Off has to be free,
-    // not merely neutral.
-    assert.deepStrictEqual(modes.toward('chain', 0), {});
-    assert.deepStrictEqual(modes.toward('either', 0), {});
-});
-
-test('a negative strength is refused', function () {
-    assert.throws(function () { modes.toward('chain', -50); }, /negative/);
-});
-
-test('an unknown target is refused here too', function () {
-    assert.throws(function () { modes.toward('combos', 120); }, /combos/);
-});
-
 test('the climb is priced exactly as the feature prices it', function () {
     // Same weight, same number. The registry divides by a norm so a weight
     // means the same thing for every feature — chainPotential 16,
@@ -526,26 +494,28 @@ test('a bad target name stops the run rather than quietly meaning either', funct
 test('buildToward reaches the evaluator and changes how it plays', function () {
     // The claim is that the bot WALKS TOWARD the target rather than waiting
     // for it, so the test is that its play changes.
-    var off = playGame(shipped({ modes: true, forcedMargin: -1, fireWide: 6 }), 101, 4000);
-    var on  = playGame(shipped({ modes: true, forcedMargin: -1, fireWide: 6,
-                                 buildToward: 120 }), 101, 4000);
+    var d2 = { depth: 2, beam: 6 };
+    var off = playGame(shipped(Object.assign({ modes: true, forcedMargin: -1, fireWide: 6,
+                                               buildToward: 0 }, d2)), 101, 2500);
+    var on  = playGame(shipped(Object.assign({ modes: true, forcedMargin: -1, fireWide: 6,
+                                               buildToward: 20 }, d2)), 101, 2500);
     assert.notDeepStrictEqual(on.moves, off.moves, 'buildToward changed nothing');
 });
 
-test('buildToward 0 is exactly the bot without it', function () {
-    // Off has to be free: evaluate() skips a zero-weight feature, and
-    // chainPotential is the most expensive one there is.
-    var off  = playGame(shipped({ modes: true, forcedMargin: -1, fireWide: 6 }), 101, 4000);
-    var zero = playGame(shipped({ modes: true, forcedMargin: -1, fireWide: 6,
-                                   buildToward: 0 }), 101, 4000);
-    assert.deepStrictEqual(zero.moves, off.moves);
+test('buildToward 0 turns the climb off completely', function () {
+    // The default is 20, from measurement — see PuyoCpu's constructor.
+    var d2 = { depth: 2, beam: 6 };
+    var on   = playGame(shipped(Object.assign({ modes: true, forcedMargin: -1, fireWide: 6 }, d2)), 101, 2500);
+    var zero = playGame(shipped(Object.assign({ modes: true, forcedMargin: -1, fireWide: 6,
+                                                buildToward: 0 }, d2)), 101, 2500);
+    assert.notDeepStrictEqual(zero.moves, on.moves, '0 played the same game as the default 20');
 });
-
 test('the target decides WHICH potential is climbed', function () {
-    var chain = playGame(shipped({ modes: true, forcedMargin: -1,
-                                    fireTarget: 'chain', buildToward: 120 }), 101, 4000);
-    var combo = playGame(shipped({ modes: true, forcedMargin: -1,
-                                    fireTarget: 'combo', buildToward: 120 }), 101, 4000);
+    var d2 = { depth: 2, beam: 6 };
+    var chain = playGame(shipped(Object.assign({ modes: true, forcedMargin: -1,
+                                    fireTarget: 'chain', buildToward: 20 }, d2)), 101, 2500);
+    var combo = playGame(shipped(Object.assign({ modes: true, forcedMargin: -1,
+                                    fireTarget: 'combo', buildToward: 20 }, d2)), 101, 2500);
     assert.notDeepStrictEqual(chain.moves, combo.moves,
         'both targets climb the same thing');
 });
@@ -554,7 +524,7 @@ test('buildToward does nothing to a bot with modes off', function () {
     // No modes means no target, so there is nothing to build toward, and
     // every number this repo already has must be untouched.
     var a = playGame(shipped({}), 101, 3000);
-    var b = playGame(shipped({ buildToward: 200 }), 101, 3000);
+    var b = playGame(shipped({ buildToward: 20 }), 101, 3000);
     assert.deepStrictEqual(b.moves, a.moves);
 });
 
@@ -565,32 +535,34 @@ test('the bot does not mutate the weight set it was handed', function () {
     var w = { links: 25, maxHeight: 30 };
     var before = JSON.stringify(w);
     new PuyoCpu(new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false }),
-                { weights: w, modes: true, buildToward: 120 });
+                { weights: w, modes: true, depth: 2, buildToward: 20 });
     assert.strictEqual(JSON.stringify(w), before, 'the caller\'s weights were modified');
 });
 
-test('at depth 2 the climb is free — the search already resolved it', function () {
+test('the climb needs a lookahead, and says so rather than doing nothing', function () {
     // PROVED SEPARATELY: over 2,151 candidate boards, the deepest chain among
-    // _value's own children equalled chainPotential's answer for that board
-    // 2,151 times out of 2,151. So at depth 2 the feature re-runs ~900
-    // resolves a decision to reach a number the search is already holding.
+    // _value's own children equalled chainPotential's answer 2,151 times out
+    // of 2,151. So at depth 2 the climb is free.
     //
-    // This is the claim that it stopped doing that: with a lookahead, the
-    // climb must not put chainPotential into the weights at all.
+    // At depth 1 there is no second ply to read. Synthesising one as a
+    // feature measured 166ms a decision against an 85ms budget, and could
+    // not be switched off for FORCED. A knob that is set and quietly does
+    // nothing is worse than one that refuses.
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false });
-    var deep = new PuyoCpu(stack, shipped({ depth: 2, modes: true, buildToward: 120 }));
-    assert.ok(!deep.weights.chainPotential,
-        'depth 2 still weighted chainPotential — it is paying twice for one number');
-    assert.ok(!deep.weights.comboPotential,
-        'depth 2 still weighted comboPotential');
+    assert.throws(function () {
+        new PuyoCpu(stack, shipped({ depth: 1, modes: true, buildToward: 20 }));
+    }, /lookahead/);
 
-    // At depth 1 there is no second ply, so there is nothing to reuse and
-    // the feature is the only way to ask. That cost is real and expected.
-    var flat = new PuyoCpu(stack, shipped({ depth: 1, modes: true, buildToward: 120 }));
-    assert.ok(flat.weights.chainPotential > 0,
-        'depth 1 has no lookahead to reuse, so it must pay for the feature');
+    // Depth 2 builds fine, and the climb is nowhere near the weights.
+    var deep = new PuyoCpu(stack, shipped({ depth: 2, modes: true, buildToward: 20 }));
+    assert.ok(!deep.weights.chainPotential, 'depth 2 weighted chainPotential — paying twice');
+    assert.ok(!deep.weights.comboPotential, 'depth 2 weighted comboPotential');
+
+    // Depth 1 with no climb is fine: that is the bot every old number describes.
+    assert.doesNotThrow(function () {
+        new PuyoCpu(stack, shipped({ depth: 1, modes: true, buildToward: 0 }));
+    });
 });
-
 test('the climb changes play at depth 2, where it is free', function () {
     var off = playGame(shipped({ depth: 2, beam: 6, modes: true, forcedMargin: -1, fireWide: 6 }), 101, 2500);
     var on  = playGame(shipped({ depth: 2, beam: 6, modes: true, forcedMargin: -1, fireWide: 6,

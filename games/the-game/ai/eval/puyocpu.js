@@ -124,12 +124,31 @@
     this.fireLinksOff = opts.fireLinksOff === undefined ? 5 : opts.fireLinksOff;
     // HOW HARD IT WALKS TOWARD THE TARGET. The bars say what not to sell;
     // this says what to move toward, by giving the target's potential
-    // feature a weight the bot does not otherwise have. See modes.toward.
+    // the search's own second ply already resolved. See modes.climb.
     //
-    // 0 by default, and that costs nothing rather than merely meaning
-    // nothing: evaluate() skips a zero-weight feature, and chainPotential is
-    // the most expensive one in the registry.
-    this.buildToward = opts.buildToward === undefined ? 0 : opts.buildToward;
+    // 20 by default, from measurement rather than taste. 120 games a
+    // condition, shipped weights, depth 2 beam 0 rise on, FORCED closed,
+    // fireWide 6, against a noise floor of 78 points a minute (2 sem):
+    //
+    //            points/min   4+ link chains   minutes survived
+    //   toward 0     584          18 (0.39/m)        46.4
+    //   toward 8     655          28 (0.50/m)        55.9
+    //   toward 20    700          28 (0.55/m)        51.0
+    //
+    // 0 -> 20 is +116/min and clears the floor; 0 -> 8 is +71 and does not;
+    // 8 and 20 cannot be told apart by this many games. 20 is chosen for
+    // having the larger gap from zero, not for beating 8.
+    //
+    // SCALE IT AGAINST THE SPREAD, not against the weights. The values a
+    // decision is choosing between differ by a median of 7 points, so a
+    // strength of 120 is not a nudge — it is several times the whole spread,
+    // and the bot stops weighing anything else. Measured harmful there.
+    //
+    // 0 costs nothing rather than merely meaning nothing: evaluate() skips a
+    // zero-weight feature, and chainPotential is the most expensive one in
+    // the registry.
+    var towardGiven = opts.buildToward !== undefined;
+    this.buildToward = towardGiven ? opts.buildToward : 20;
     // Rows of runway at which about-to-die opens. See modes.forced.
     this.forcedMargin = opts.forcedMargin === undefined ? 2 : opts.forcedMargin;
     // JUDGE A CANDIDATE ON WHAT THE RISE LEAVES. The stack comes up whether
@@ -159,33 +178,36 @@
     this._plan = null;
     this._firedLast = false;
 
-    // ONE KNOB, TWO COSTS, AND THE CHEAP PATH IS TAKEN WHEN IT EXISTS.
+    // THE CLIMB IS THE LOOKAHEAD, so it needs one.
     //
-    // At depth 2 the search already resolves every swap from every candidate
-    // board to find its best follow-up, and the deepest chain among those
-    // children IS that board's chain potential — 2,151 agreements out of
-    // 2,151 over real play. So the climb reads it off the search in _value
-    // and costs nothing.
+    // At depth 2 the second ply already resolves every swap from every
+    // candidate board to find its best follow-up, and the deepest cascade
+    // among those children IS that board's chain potential — 2,151
+    // agreements out of 2,151 over real play. _value reads it off the
+    // search and it costs nothing.
     //
-    // Asking it as a FEATURE instead re-runs those ~900 resolves a second
-    // time. Measured at depth 2 beam 0 over three games: 32ms a decision
-    // without it, 166ms with it, 344ms targeting chains, against an 85ms
-    // budget. That is the correct answer and an unusable bot.
+    // At depth 1 there is no second ply. Asking the same question as a
+    // FEATURE synthesises one, at ~900 extra resolves a decision: measured
+    // at 166ms a decision, 344ms targeting chains, against an 85ms budget.
+    // That path also cannot be switched off for FORCED, because the weights
+    // are fixed at construction and the mode is not known until after
+    // scoring — so FORCED would stop being the unfiltered bot.
     //
-    // At depth 1 there is no second ply, so there is nothing to reuse —
-    // "what would the next move bring" is exactly what depth 1 does not
-    // know — and the feature is the only way to ask. That cost is real and
-    // is the price of climbing without a lookahead.
-    //
-    // No modes means no target, so nothing is added either way and every
-    // number taken without modes is untouched.
-    if (this.modes && this.depth < 2) {
-      var climbWeights = modes.toward(this.fireTarget, this.buildToward);
-      for (var k in climbWeights) {
-        if (climbWeights.hasOwnProperty(k)) {
-          this.weights[k] = (this.weights[k] || 0) + climbWeights[k];
-        }
+    // Unusable, unmeasured and semantically inconsistent. Refused, rather
+    // than silently ignored: a knob that is set and does nothing is the
+    // failure this repo has paid for more than once.
+    // ASKED FOR IT AND IT CANNOT BE DONE: say so. Got it from the default
+    // and it cannot be done: drop it. A default must not demand a depth the
+    // caller never asked for — depth 1 is a real bot here — but a knob
+    // somebody SET and that quietly does nothing is the failure this repo
+    // has paid for more than once.
+    if (this.modes && this.buildToward && this.depth < 2) {
+      if (towardGiven) {
+        throw new Error('buildToward needs a lookahead: it reads what the second ply ' +
+                        'already resolved, and depth ' + this.depth + ' has no second ply. ' +
+                        'Use depth 2, or set buildToward to 0.');
       }
+      this.buildToward = 0;
     }
   }
 
@@ -677,7 +699,14 @@
     }
     // Added to the CANDIDATE's value, not to any one child's: how close the
     // board it leaves is to the target is a property of this move.
-    if (this.modes && this.buildToward) {
+    //
+    // NOT WHILE FORCED. FORCED means play like the bot with no modes at all
+    // — it is entered because the runway is gone or the plan broke, and
+    // climbing toward a five-chain is the opposite of what either calls for.
+    // It also keeps the guarantee the filter already has: FORCED every
+    // decision is exactly the unfiltered bot, at both plies and now in the
+    // scoring too.
+    if (this._filtering() && this.buildToward) {
       v += modes.climb(this.fireTarget, this.buildToward, reach);
     }
     return v;

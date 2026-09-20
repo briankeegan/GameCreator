@@ -64,37 +64,6 @@
     throw new Error('unknown fire target "' + target + '" — either, chain or combo');
   }
 
-  // WHAT THE BOT WALKS TOWARD, as weights to add to its own.
-  //
-  // THE FLOOR AND THE CLIMB ARE THE SAME IDEA FROM TWO DIRECTIONS, and a
-  // mode with only the floor is half a mode. `pays` says what not to sell;
-  // this says what to move toward. Without it the bot scores TIDINESS —
-  // clustering, height, edges, garbage — so a six-wide only ever turns up by
-  // accident and the bot waits for one instead of arranging it.
-  //
-  // Both are the resolve asked one move further out than `pays` asks it:
-  // chainPotential is the deepest cascade, and comboPotential the biggest
-  // single clear, that any one swap could make from the board a move LEAVES.
-  // Still no shape library, still nothing here knowing what a chain looks
-  // like.
-  //
-  // STRENGTH 0 RETURNS NOTHING, and that is load-bearing rather than tidy:
-  // evaluate() skips a feature whose weight is 0, and chainPotential is the
-  // most expensive feature in the registry at 14.9ms of an 85ms budget. Off
-  // has to cost nothing, not merely mean nothing.
-  function toward(target, strength) {
-    if (strength < 0) throw new Error('buildToward cannot be negative — ' +
-        'climbing away from the target is not a setting');
-    if (target !== 'either' && target !== 'chain' && target !== 'combo' &&
-        target !== undefined) {
-      throw new Error('unknown fire target "' + target + '" — either, chain or combo');
-    }
-    if (!strength) return {};
-    if (target === 'chain') return { chainPotential: strength };
-    if (target === 'combo') return { comboPotential: strength };
-    return { chainPotential: strength, comboPotential: strength };
-  }
-
   // Divisors from the registry, so a weight means the same thing here as it
   // does when the same idea is asked as a feature. Copied deliberately
   // rather than imported: registry.js requires features.js, features.js is
@@ -236,7 +205,7 @@
     return best;
   }
 
-  return { payout: payout, fires: fires, pays: pays, bars: bars, toward: toward,
+  return { payout: payout, fires: fires, pays: pays, bars: bars,
            climb: climb, CHAIN_NORM: CHAIN_NORM, COMBO_NORM: COMBO_NORM,
            runway: runway,
            risesIntoPayless: risesIntoPayless,

@@ -82,7 +82,7 @@ function load(file) {
         fireTarget: sw.fireTarget === undefined ? 'either' : String(sw.fireTarget),
         fireWideOff: sw.fireWideOff === undefined ? 6 : Number(sw.fireWideOff),
         fireLinksOff: sw.fireLinksOff === undefined ? 5 : Number(sw.fireLinksOff),
-        buildToward: sw.buildToward === undefined ? 0 : Number(sw.buildToward)
+        buildToward: sw.buildToward === undefined ? 20 : Number(sw.buildToward)
     };
 
     var forced = [];
