@@ -973,6 +973,9 @@ for (const [type, file] of Object.entries({
   splitter: "icons/enemy-splitter.png",
   harrier: "icons/enemy-harrier.png",
   outrunner: "icons/enemy-scavenger.png",
+  // The launcher hull. No gun barrels on it anywhere — what it carries is
+  // one cell with a round in it, and the round is the threat.
+  hound: "icons/enemy-hound.png",
 })) {
   const img = new Image();
   img.src = file;

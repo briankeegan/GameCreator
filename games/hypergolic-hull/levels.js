@@ -657,7 +657,11 @@
                 // measured, four new classes spread across the middle tiers
                 // cost 15 points of win rate between them, none of them
                 // individually.
-                "splitter", "harrier", "outrunner", "corsairLead"];
+                "splitter", "harrier", "outrunner", "corsairLead",
+                // And the Hound, which arrives in the same tier its own
+                // weapon reaches the shelf — you meet the thing and the
+                // answer to the thing within a sector or two of each other.
+                "hound"];
   }
 
   // Tunables read from the environment when there IS one. `process` does

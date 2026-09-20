@@ -129,7 +129,7 @@
   // mechanic and Fighter Squadron was a free instant-kill living outside
   // the weapon/energy model. Everything left runs on the same
   // stats + energy + slots chassis.
-  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge", "prowCannon", "siegeMaul", "autocannonMk2", "beamLanceShort", "railgunLight", "flakBurstHeavy"];
+  const ALL_ACTIONS = ["sublight", "autocannon", "flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge", "prowCannon", "siegeMaul", "autocannonMk2", "beamLanceShort", "railgunLight", "flakBurstHeavy", "seeker"];
   // Purchase-only actions (see OUTPOST_OFFER_POOL/applyOutpostPurchase) —
   // never part of any level's own baked-in `actions` list, and excluded
   // from the default fallback below so they don't show up for free the
@@ -137,7 +137,7 @@
   // guaranteed claimable (free) at Sector 2's Outpost specifically (see
   // pickOutpostOfferIds), just no longer handed out automatically for
   // reaching the sector.
-  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge", "prowCannon", "siegeMaul", "autocannonMk2", "beamLanceShort", "railgunLight", "flakBurstHeavy"];
+  const PURCHASABLE_ACTIONS = ["flakBurst", "arcBeam", "mortar", "flankTubes", "railgun", "missilePod", "beamLance", "arcProjector", "demolitionCharge", "prowCannon", "siegeMaul", "autocannonMk2", "beamLanceShort", "railgunLight", "flakBurstHeavy", "seeker"];
   // Sectors that don't specify `actions` explicitly (Sector 4 "Full Fleet"
   // and every procedurally-generated sector) default to every action that
   // unlocks just by playing.
@@ -731,6 +731,18 @@
     // it gives you. (Hoplite's bomber is the ancestor — telegraphed area
     // denial that kills its own.)
     missilePod: { id: "missilePod", label: "Missile Pod", shape: "ring", range: 4, minRange: 2, damage: 1, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, launches: true },
+    // THE ONE THAT GOES AROUND THINGS. Every other gun in the game is a
+    // shape drawn from where you stand — a ring, an arc, a lane — so rock
+    // and wingmen are the answer to all of them, and cover is the answer
+    // to the whole shelf. A Seeker's round does not travel in a shape at
+    // all: it routes, one hex a round, around whatever is in the way.
+    // What it costs is that it ARRIVES LATE, on a board that has moved,
+    // and that anything with a gun can shoot it out of the sky.
+    // Shorter-ranged than the dumb Pod it sits next to, and that is the
+    // trade: a guided round is the heavy one, so it does not go as far. The
+    // Pod reaches four and dies against the first boulder; the Seeker
+    // reaches three and goes around it.
+    seeker: { id: "seeker", label: "Seeker", shape: "ring", range: 3, minRange: 2, damage: 1, targets: "one", energyCost: 4, speed: 1, pattern: ALL_DIRECTIONS_PATTERN, slots: 1, launches: true, seeks: true },
     // The sniper: down any of the six axes, the length of the board, two
     // damage. Stopped by the first rock or hull in the lane, which is
     // both its weakness and how you survive one.
@@ -860,6 +872,7 @@
     mortar: { id: "mortar", label: "Mortar", kind: "weapon", weaponKey: "mortar", w: 2, h: 2 },
     flankTubes: { id: "flankTubes", label: "Flank Tubes", kind: "weapon", weaponKey: "flankTubes", w: 1, h: 3 },
     missilePod: { id: "missilePod", label: "Missile Pod", kind: "weapon", weaponKey: "missilePod", w: 2, h: 2 },
+    seeker: { id: "seeker", label: "Seeker", kind: "weapon", weaponKey: "seeker", w: 2, h: 2 },
     arcProjector: { id: "arcProjector", label: "Arc Projector", kind: "weapon", weaponKey: "arcProjector", w: 1, h: 3 },
     prowCannon: { id: "prowCannon", label: "Prow Cannon", kind: "weapon", weaponKey: "prowCannon", w: 1, h: 2 },
     siegeMaul: { id: "siegeMaul", label: "Siege Maul", kind: "weapon", weaponKey: "siegeMaul", w: 2, h: 2 },
@@ -1328,6 +1341,7 @@
           { id: "microReactor", x: 3, y: 0 },
           { id: "chargeBank", x: 1, y: 2 },
           { id: "chargeBank", x: 2, y: 2 },
+
         ],
       },
     },
@@ -1548,6 +1562,29 @@
     // The long gun of the pirate line: the whole axis, but for one point.
     // It fires twice as often as a Railgun Destroyer and hurts half as
     // much, so the counter is the same and the arithmetic is not.
+    // THE CLASS THAT MAKES COVER STOP WORKING. Everything else out here is
+    // answered by geometry: stand off an axis, put a boulder between you,
+    // break the arc. A Hound's round routes around all of it, one hex a
+    // round, and the only thing that stops it is a gun pointed at the
+    // round itself — which costs you the turn you wanted to spend on the
+    // Hound. It carries nothing else, so it is exactly one question.
+    hound: {
+      hull: 1, salvage: 4,
+      hold: {
+        cols: 4, rows: 6, blocked: ["0,0", "3,0", "0,5", "3,5"],
+        items: [
+          { id: "seeker", x: 1, y: 0 },
+          { id: "sublightDrive", x: 0, y: 2 },
+          // Capacity three against a round that costs three, refilling one
+          // a round: it launches one in three, and the two rounds between
+          // are on its charge counter for you to read. A Hound that could
+          // launch every round would not be a puzzle, it would be weather.
+          { id: "microReactor", x: 3, y: 1 },
+          { id: "chargeBank", x: 1, y: 2 },
+          { id: "chargeBank", x: 3, y: 3 },
+        ],
+      },
+    },
     outrunner: {
       hull: 1, salvage: 4,
       hold: {
@@ -1947,6 +1984,7 @@
     flankTubes: "flankTubes",
     railgun: "railgun",
     missilePod: "missilePod",
+    seeker: "seeker",
     beamLance: "beamLance",
     arcProjector: "arcProjector",
     prowCannon: "prowCannon",
@@ -2047,6 +2085,7 @@
     { id: "tractorBeam", label: "Tractor Beam (1x2 — drags one contact a hex closer, from two or three)", cost: 11, rarity: "uncommon" },
     { id: "piercingLance", label: "Piercing Lance (1x3 — three down every axis, THROUGH hulls)", cost: 17, rarity: "rare" },
     { id: "missilePod", label: "Missile Pod (2x2 — it flies itself, 2 dmg)", cost: 16, rarity: "rare" },
+    { id: "seeker", label: "Seeker (2x2 — reaches three, but goes AROUND cover; shootable in flight)", cost: 17, rarity: "rare" },
     // Cheap because it's slow: same reach as the Beam Lance, one round in
     // three. The gun you buy when what you need is to out-range something,
     // not to out-shoot it.
@@ -2211,6 +2250,12 @@
       // up). The Railgun stays at 8 as the top of the weapon range.
       if (o.id === "railgun") return levelId >= 8;
       if (o.id === "flankTubes") return levelId >= 6;   // the Lancer's
+      // One sector after the Missile Pod, so dumb ordnance is met first and
+      // the thing a Seeker does differently has something to be different
+      // FROM. Both arrive well after rock does, which is the whole point:
+      // a gun that ignores cover is only interesting on a board that has
+      // some.
+      if (o.id === "seeker") return levelId >= 8;
       if (o.id === "missilePod") return levelId >= 7;   // the Carrier's
       if (o.id === "arcProjector" || o.id === "demolitionCharge") return levelId >= 8;
       if (o.id === "mortar") return levelId >= 6;
@@ -2868,6 +2913,7 @@
     flankTubes: 6,
     demolitionCharge: 7,
     missilePod: 9,
+    seeker: 8,
     arcProjector: 10,
     flakBurstHeavy: 11,
     railgun: 12,
@@ -3618,6 +3664,67 @@
     return state.missiles || (state.missiles = []);
   }
 
+  // The first hex of the shortest walk to `goal` that goes around rock,
+  // rather than the neighbour that merely looks closest. Breadth-first
+  // from the goal outward, so the answer is a real route or there is no
+  // route at all — no wandering, no oscillation, no creeping into a
+  // dead end and sitting there.
+  function seekStep(state, from, goal) {
+    const goalKey = hexKey(goal);
+    const seen = new Map([[goalKey, 0]]);
+    let frontier = [{ q: goal.q, r: goal.r }];
+    for (let ring = 0; ring < 64 && frontier.length; ring++) {
+      const next = [];
+      for (const at of frontier) {
+        for (let d = 0; d < 6; d++) {
+          const to = neighbor(at, d);
+          const key = hexKey(to);
+          if (seen.has(key) || !onBoard(state, to)) continue;
+          if (isBlockingHazard(hazardAt(state, to))) continue;
+          seen.set(key, seen.get(hexKey(at)) + 1);
+          next.push(to);
+        }
+      }
+      frontier = next;
+    }
+    let best = null;
+    for (let d = 0; d < 6; d++) {
+      const to = neighbor(from, d);
+      const key = hexKey(to);
+      if (!onBoard(state, to) || isBlockingHazard(hazardAt(state, to))) continue;
+      if (!seen.has(key)) continue;
+      const cost = seen.get(key);
+      if (!best || cost < best.cost) best = { to, cost };
+    }
+    return best ? best.to : null;
+  }
+
+  // ORDNANCE IN FLIGHT IS A THING YOU CAN SHOOT. A missile stands on a
+  // real hex, so anything whose fire covers that hex takes it out of the
+  // sky — the flagship's guns and a hostile's alike, and its own side's
+  // rounds too, since a shot does not ask whose missile it is passing
+  // through. This is the answer to a Seeker: it goes around cover, so
+  // cover cannot be the answer, and "shoot it down" has to be.
+  //
+  // It is free, in that it costs no extra energy: you fire at what you
+  // were going to fire at and anything in the footprint dies with it.
+  // What it costs is the shot — the round you wanted to spend on the ship
+  // that launched the thing.
+  function shootDownMissiles(state, hexKeys, label) {
+    let downed = 0;
+    for (const missile of liveMissiles(state)) {
+      if (missile.spent || !hexKeys.has(hexKey(missile))) continue;
+      missile.spent = true;
+      downed += 1;
+      state.events.push({ type: "missileDowned", q: missile.q, r: missile.r, id: missile.id });
+    }
+    if (downed) {
+      state.missiles = liveMissiles(state).filter((m) => !m.spent);
+      pushLog(state, `${label}: ordnance destroyed in flight${downed > 1 ? ` — ${downed} of them` : ""}.`);
+    }
+    return downed;
+  }
+
   function launchMissile(state, from, weapon, ownerId) {
     const list = liveMissiles(state);
     const missile = {
@@ -3626,6 +3733,7 @@
       r: from.r,
       damage: weapon.damage,
       fuse: MISSILE_FUSE,
+      seeks: Boolean(weapon.seeks),
       ownerId: ownerId || null,
     };
     list.push(missile);
@@ -3821,13 +3929,25 @@
         missile.spent = true;
         continue;
       }
+      // A PLAIN ROUND CREEPS; A SEEKER ROUTES. Picking the neighbour
+      // nearest the target is greedy, and greedy is exactly what cover
+      // beats: a boulder between the two puts every closer hex behind it,
+      // so the round sits against the rock until its fuse runs out. That
+      // is correct for a Missile Pod — dumb ordnance, break line and it
+      // dies — and it is the whole point of a Seeker not to be.
       let best = null;
-      for (let d = 0; d < 6; d++) {
-        const to = neighbor(missile, d);
-        if (!onBoard(state, to)) continue;
-        if (isBlockingHazard(hazardAt(state, to))) continue; // rock stops it dead
-        const dist = hexDistance(to, chasing);
-        if (!best || dist < best.dist) best = { to, dist };
+      if (missile.seeks) {
+        const step = seekStep(state, missile, chasing);
+        if (step) best = { to: step };
+      }
+      if (!best) {
+        for (let d = 0; d < 6; d++) {
+          const to = neighbor(missile, d);
+          if (!onBoard(state, to)) continue;
+          if (isBlockingHazard(hazardAt(state, to))) continue; // rock stops it dead
+          const dist = hexDistance(to, chasing);
+          if (!best || dist < best.dist) best = { to, dist };
+        }
       }
       if (!best) {
         state.events.push({ type: "missileFizzle", q: missile.q, r: missile.r, id: missile.id });
@@ -4088,11 +4208,23 @@
   function firePlayerWeapon(state, weapon, onHit, preferredTargetId) {
     const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon, state).map(hexKey));
     let targets = livingEnemies(state).filter((e) => hexKeys.has(hexKey(e)));
+    // SWATTING ORDNANCE COSTS THE SHOT, and only counts when the ordnance
+    // IS the shot. Clearing it incidentally — hitting the ship you were
+    // aiming at and taking the missile with it — was worth four wins in
+    // sixty across every hull, because it is a free defence that applies
+    // on every round you were going to fire anyway. A round spent on the
+    // thing in the air is a round not spent on the thing that launched
+    // it, and that trade is the whole point of ordnance being a real
+    // object on a real hex.
+    const swatted = targets.length ? 0 : shootDownMissiles(state, hexKeys, weapon.label);
     // A charge dropped on your OWN hex has no target by definition, so the
     // usual "nothing in range, no shot" bail would mean it could never
     // fire at all. It is the one weapon here whose whole point is the
     // ground you are leaving rather than anything you can see.
-    if (targets.length === 0 && !weapon.placesSelf) return; // no shot, no energy spent
+    if (targets.length === 0 && !weapon.placesSelf) {
+      if (swatted) state.energy = Math.max(0, state.energy - weapon.energyCost); // it fired, and it hit something
+      return;
+    }
     // A single-target weapon (targets: "one") puts its whole shot into ONE
     // contact: the target-locked one if it's in this weapon's reach,
     // otherwise the first thing it can hit. Multi-hit weapons strike
@@ -4277,6 +4409,11 @@
         // the board edge: you brace against it. Only the free hex actually
         // moves you, and that is the interesting case anyway — off your
         // ground, out of your gun's arc, into somebody else's.
+        // Whatever a hostile just fired into, it clears ordnance out of
+        // too. Same rule as the flagship's guns: a shot does not ask whose
+        // missile it is passing through, and a Seeker the player launches
+        // has to be answerable the same way theirs is.
+        shootDownMissiles(state, new Set(weaponHexes(enemy, enemyFacing(state, enemy), weapon, state).map(hexKey)), enemy.type.toUpperCase());
         if (weapon.pushes || weapon.pulls) {
           const dir = shoveDirection(enemy, state.playerPos, weapon);
           const dest = dir < 0 ? null : neighbor(state.playerPos, dir);
@@ -4623,6 +4760,11 @@
       // something was already in reach of the guns.
       if (weapon.placesSelf) return true;
       const hexKeys = new Set(weaponHexes(state.playerPos, state.facing, weapon, state).map(hexKey));
+      // Ordnance in flight counts as something to shoot at. Without this a
+      // gun with a Seeker and nothing else in its footprint reads as
+      // "nothing in arc" and cannot be fired at all — which would leave
+      // the one answer to a Seeker unavailable exactly when it is needed.
+      if (liveMissiles(state).some((m) => !m.spent && hexKeys.has(hexKey(m)))) return true;
       return livingEnemies(state).some((e) => hexKeys.has(hexKey(e)));
     });
   }
@@ -4989,6 +5131,8 @@
     enemyAt,
     hazardAt,
     inScrambler,
+    launchMissile,
+    liveMissiles,
     shoveDirection,
     awardSalvage,
     SECTOR_CONDITIONS,

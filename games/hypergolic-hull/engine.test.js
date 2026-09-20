@@ -1943,6 +1943,15 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
       // it trades is the kill for the position, and a footprint comparison
       // has nothing to say about that.
       if (wa.pushes || wa.pulls || wb.pushes || wb.pulls) continue;
+      // Nor does a footprint say anything about how the round GETS there.
+      // A Seeker's routes around rock and hulls; a Missile Pod's dies
+      // against the first boulder between it and the target. On an empty
+      // field they are the same weapon and this comparison is right about
+      // them; on any board with something on it they cover completely
+      // different ground, and the reach each gives up for the other is
+      // exactly the trade. Narrow on purpose: it only excuses a seeking
+      // weapon against a dumb one, never two of a kind.
+      if (Boolean(wa.seeks) !== Boolean(wb.seeks)) continue;
       assert.ok(
         wb.energyCost > wa.energyCost || wb.damage < wa.damage,
         `${b} covers everything ${a} does, so it has to give something up — charge or stopping power`
@@ -3858,6 +3867,76 @@ assert.deepStrictEqual(
       promised.id,
       arrived.locale.id,
       "a gate must promise the locale this run's next sector actually is"
+    );
+  }
+}
+
+// ---- the Seeker goes around things, and can be shot out of the sky ------
+//
+// Every other gun is a shape drawn from where you stand, so rock answers
+// all of them and cover answers the whole shelf. A Seeker's round does not
+// travel in a shape: it routes. What it gives up is reach (three, against
+// the dumb Pod's four) and the fact that anything whose fire covers its
+// hex takes it out of the air.
+{
+  const wall = () => {
+    const level = JSON.parse(JSON.stringify(generateLevel(6, "quiet", 11)));
+    level.enemies = [{ type: "sentry", q: 2, r: 0 }]; // no drive: it stays put to be shot at
+    level.hazards = [
+      { type: "asteroid", q: 2, r: 1 },
+      { type: "asteroid", q: 1, r: 1 },
+      { type: "asteroid", q: 3, r: 1 },
+    ];
+    level.playerStart = { q: 2, r: 3 };
+    const state = Engine.createGameState(level, { runSeed: 1 });
+    state.playerPos = { q: 2, r: 3 };
+    return state;
+  };
+  const flyAt = (weaponId) => {
+    const state = wall();
+    Engine.launchMissile(state, state.playerPos, Engine.WEAPONS[weaponId], null);
+    for (let round = 1; round <= 12; round++) {
+      Engine.applyEndTurn(state);
+      if (!state.enemies[0].alive) return { hit: true, round };
+      if (!Engine.liveMissiles(state).length) return { hit: false, round };
+    }
+    return { hit: false, round: 12 };
+  };
+
+  // The dumb round is beaten by the wall — that is what makes it the dumb
+  // round, and if this ever starts hitting, the Seeker has stopped being
+  // different from it.
+  assert.strictEqual(flyAt("missilePod").hit, false, "a Missile Pod's round must die against cover — that is its whole downside");
+  const seeking = flyAt("seeker");
+  assert.strictEqual(seeking.hit, true, "a Seeker's round must route AROUND cover — that is the only reason it exists");
+  assert.ok(seeking.round <= 8, `and arrive while the board still resembles the one you fired at (took ${seeking.round})`);
+
+  // Reach is what it pays. Shorter than the Pod it sits beside on the
+  // shelf, or there would be no reason ever to buy the Pod.
+  assert.ok(
+    Engine.WEAPONS.seeker.range < Engine.WEAPONS.missilePod.range,
+    "a guided round is the heavy one — it must not out-reach the dumb one as well"
+  );
+
+  // AND IT CAN BE SHOT DOWN. This is the answer to a weapon that ignores
+  // cover: cover cannot be the answer, so a gun pointed at the round has
+  // to be. Costs the shot, not extra charge.
+  {
+    const state = wall();
+    Engine.launchMissile(state, state.playerPos, Engine.WEAPONS.seeker, null);
+    Engine.applyEndTurn(state);
+    const inFlight = Engine.liveMissiles(state)[0];
+    assert.ok(inFlight, "there is a round in the air to shoot at");
+    // Stand the flagship next to it and fire whatever bears.
+    state.playerPos = { q: inFlight.q, r: inFlight.r - 1 };
+    state.energy = state.maxEnergy;
+    const bearing = Engine.weaponsWithTargets(state);
+    assert.ok(bearing.length, "a gun bears on ordnance in flight — otherwise it could never be fired at one");
+    Engine.applyFire(state, null, bearing[0].systemKey);
+    assert.strictEqual(
+      Engine.liveMissiles(state).filter((m) => !m.spent).length,
+      0,
+      "a shot covering a round's hex takes it out of the sky"
     );
   }
 }
