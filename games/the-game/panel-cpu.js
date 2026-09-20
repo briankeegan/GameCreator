@@ -67,14 +67,40 @@
   // delete this whole class of disagreement instead of chasing it. It is also
   // a change to how every decision is made and would invalidate every trained
   // weight set, so it is the owner's call, not a tidy-up.
-  function LogicalBoard(width, height, colors, grid, blocks, nextBlockId) {
+  function LogicalBoard(width, height, colors, grid, blocks, nextBlockId, chaining) {
     this.width = width;
     this.height = height;
     this.colors = colors;
     this.grid = grid; // grid[row][col], 1..height / 1..width; 0 empty, -1 busy, -2 garbage, >0 color
     this.blocks = blocks || {};
     this._nextBlockId = nextBlockId || 1;
+    // WHICH PANELS ARE ALREADY FALLING BECAUSE SOMETHING UNDER THEM CLEARED.
+    //
+    // The engine's `chaining` flag, carried in from the live stack. resolve()
+    // models the flag within its own cascade and used to start it all-false,
+    // so a swap into a cascade that was ALREADY RUNNING read as a plain
+    // combo — when the engine scores a match on a flagged panel as a chain
+    // link, paying the chain stop-time formula and sending a full-width slab.
+    // Measured: the bot decides while panels are chaining on 11.2% of its
+    // decisions, and BUILD was discarding those continuations as worthless
+    // threes.
+    //
+    // Absent means all-false, which is every caller that builds a board by
+    // hand and is the old behaviour exactly.
+    this.chaining = chaining || null;
   }
+
+  // A fresh all-false flag grid, or a copy of one.
+  LogicalBoard.prototype._chainingGrid = function (from) {
+    var g = [];
+    for (var r = 0; r <= this.height; r++) {
+      g[r] = [];
+      for (var c = 1; c <= this.width; c++) {
+        g[r][c] = from ? !!(from[r] && from[r][c]) : false;
+      }
+    }
+    return g;
+  };
 
   LogicalBoard.prototype.clone = function () {
     var g = [];
@@ -83,7 +109,11 @@
     for (var id in this.blocks) if (this.blocks.hasOwnProperty(id)) {
       blocks[id] = { cells: this.blocks[id].cells.map(function (rc) { return [rc[0], rc[1]]; }) };
     }
-    return new LogicalBoard(this.width, this.height, this.colors, g, blocks, this._nextBlockId);
+    // The flags are COPIED, not shared: every candidate resolves its own
+    // cascade and would otherwise write its chaining into its siblings.
+    return new LogicalBoard(this.width, this.height, this.colors, g, blocks,
+                            this._nextBlockId,
+                            this.chaining ? this._chainingGrid(this.chaining) : null);
   };
 
   // Lowest row (0 = bottom-most playable row) any garbage cell occupies, or
@@ -693,11 +723,11 @@
     // then is reported exactly: which slab broke, how much of it, and the stop
     // time it bought. See ../GARBAGE_PLAN.md.
     var brokeGarbage = 0, truncated = false, stopTimeEarned = 0;
-    var chaining = [];
-    for (var cr = 0; cr <= this.height; cr++) {
-      chaining[cr] = [];
-      for (var cc2 = 1; cc2 <= this.width; cc2++) chaining[cr][cc2] = false;
-    }
+    // SEEDED FROM THE LIVE STACK when the snapshot carried flags, so a swap
+    // into a cascade already in flight is scored as the chain link the
+    // engine will score it as. All-false when it did not, which is every
+    // hand-built board and the old behaviour.
+    var chaining = this._chainingGrid(this.chaining);
     var counter = 0;
     this._popping = {};
     // NO SETTLE BEFORE THE FIRST LOOK EITHER, and this was the last case.
@@ -890,10 +920,15 @@
     var stack = this.stack, width = root.PanelEngine.WIDTH;
     var grid = [];
     var blocks = {};
+    // The engine's chaining flag, panel by panel. It belongs to the PANEL,
+    // not the cell, so it is read off the same object the colour comes from.
+    var chaining = [];
     for (var r = 0; r <= stack.height; r++) {
       grid[r] = [];
+      chaining[r] = [];
       for (var c = 1; c <= width; c++) {
         var p = stack.panelAt(r, c);
+        chaining[r][c] = !!(p && p.chaining);
         var v;
         if (!p) v = -1;
         else if (p.isGarbage) {
@@ -908,7 +943,8 @@
         grid[r][c] = v;
       }
     }
-    var board = new LogicalBoard(width, stack.height, this.stack.colors, grid, blocks);
+    var board = new LogicalBoard(width, stack.height, this.stack.colors, grid, blocks,
+                                 1, chaining);
     // THE CURSOR IS PART OF THE POSITION. Without it the search cannot know
     // what any candidate COSTS: stack.touchSwap teleports, but a person
     // holds a direction and waits, and the second step in a direction is 21

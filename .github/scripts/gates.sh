@@ -372,6 +372,20 @@ gate_training_harness() {
 # passes: wired to a field the candidates do not carry, so it filters nothing;
 # or FORCED open on most decisions, which is the unfiltered bot wearing
 # machinery. modes.test.js measures both against real play.
+# CAN THE BOT SEE A CHAIN CONTINUATION.
+#
+# The engine scores a match on an already-`chaining` panel as a chain link,
+# paying the chain stop-time formula and sending a full-width slab. resolve()
+# models that flag within its own cascade and started it all-false, so a swap
+# into a cascade ALREADY RUNNING read as a plain three. The bot decides while
+# panels are chaining on 11.2% of its decisions, and BUILD dropped those
+# moves as worthless. Asserted against the engine, on boards reached in real
+# play rather than built by hand.
+gate_chaining() {
+  local d; d="$(_gc_training_dir)" || return 1
+  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/chaining.test.js
+}
+
 gate_modes() {
   local d; d="$(_gc_training_dir)" || return 1
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/modes.test.js
@@ -611,6 +625,7 @@ GATES=(
   "rise-adjusted scoring:gate_rise_scoring:games/the-game/ai/"
   "density scoring:gate_density_scoring:games/the-game/ai/"
   "the modes filter the pool and the evaluator still picks:gate_modes:games/the-game/ai/"
+  "the bot can see a chain continuation:gate_chaining:games/the-game/"
   "the earned features arrive in a real game:gate_earned_features_arrive:games/the-game/ai/"
   "every training pre-flight suite is gated:gate_preflight_gated:games/the-game/ai/"
   "the depth-2 search picks the best two-move future:gate_lookahead:games/the-game/ai/"
