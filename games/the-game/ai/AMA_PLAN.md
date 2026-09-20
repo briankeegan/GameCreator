@@ -101,6 +101,31 @@ the air at them — as an input to which arm FIRE picks. Training finds the
 crossover. It cannot today because the bot sees nothing about the other
 board.
 
+### The thresholds end up weighted, not fixed
+
+`fireLinks` and `fireWide` are a FLOOR today: never cash in below four
+links or four wide. A floor cannot say "against this opponent, right now, a
+fast six-wide beats a five-chain", and in a fight that is the decision that
+matters.
+
+The seam for it is the one design choice in step 1: a mode narrows the pool
+and the EVALUATOR still picks. So "which weapon" is a weights question, and
+three additive changes get there.
+
+1. `fireLinks` and `fireWide` become genome entries rather than constants.
+   They are already options carried in `switches.js` beside the weights so
+   that this costs nothing when it happens.
+2. Features that describe the CHOICE. The bot cannot weigh chain against
+   combo because nothing tells it which is on offer; the resolve reports
+   depth and width separately and neither is fed in.
+3. The opponent's headroom, so the choice has something to be conditional
+   on. That is step 2.
+
+WHAT CANNOT BECOME A WEIGHT is the mode itself. "Build now, fire later" is a
+statement about time, and a weighted sum prices only the move in front of
+it — which is why step 1 is a filter. Everything INSIDE a mode can be
+weighted, and that is where the fight lives.
+
 ### Not yet: the ceiling on a useful attack
 
 Past the garbage it takes to finish them, a bigger attack is worse than
