@@ -101,6 +101,9 @@
     this.raiseFrames = 0;
     // See _canRaise: raising is an action, so it is opt-in per instance.
     this.allowRaise = opts.allowRaise === true;
+    // THE OTHER BOARD, when there is one. Optional: solo play has none, and
+    // every number this repo has was taken without one.
+    this.opponent = opts.opponent || null;
     this._walk = null;
     this._lastSwap = null;
     // Instrumentation, not decoration: the claim this brain exists to make
@@ -406,7 +409,7 @@
         };
       }
     }
-    var input = inputMod.fromStack(stack, board, resolved, null, cleared);
+    var input = inputMod.fromStack(stack, board, resolved, null, cleared, this.opponent);
     input.travelFrames = frames;
     // WHAT TIME IT IS FOR THIS PLY.
     //

@@ -396,6 +396,18 @@ gate_chaining() {
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/chaining.test.js
 }
 
+# THE OTHER BOARD REACHES THE BOT, AND IN A SHAPE THAT CAN CHANGE A DECISION.
+#
+# A number identical across every candidate shifts all the scores equally and
+# cancels out of the ranking, so a plain "their headroom" feature does nothing
+# whatever its weight — incomingGarbage was written that way and varied in 0
+# of 179 decisions. pressure and overkill scale THIS MOVE'S send by their
+# room, so they vary with the send. They state no rule about what to do.
+gate_opponent() {
+  local d; d="$(_gc_training_dir)" || return 1
+  GC_TRAINING_DIR="$d" node games/the-game/ai/eval/opponent.test.js
+}
+
 gate_modes() {
   local d; d="$(_gc_training_dir)" || return 1
   GC_TRAINING_DIR="$d" node games/the-game/ai/eval/modes.test.js || return 1
@@ -637,6 +649,7 @@ GATES=(
   "density scoring:gate_density_scoring:games/the-game/ai/"
   "the modes filter the pool and the evaluator still picks:gate_modes:games/the-game/ai/"
   "the bot can see a chain continuation:gate_chaining:games/the-game/"
+  "the other board reaches the bot in a usable shape:gate_opponent:games/the-game/"
   "the earned features arrive in a real game:gate_earned_features_arrive:games/the-game/ai/"
   "every training pre-flight suite is gated:gate_preflight_gated:games/the-game/ai/"
   "the depth-2 search picks the best two-move future:gate_lookahead:games/the-game/ai/"

@@ -133,6 +133,12 @@
     { key: 'paylessClear',     group: 'earned', sign: -1, norm: 1, fn: null, optIn: true,
       what: '1 when this move cleared panels and the clear paid NOTHING: no points from the engine\'s own tables, and no garbage broken. The bare three is the case - COMBO_GARBAGE is empty below 4 and SCORE_COMBO_TA[3] is 0, so it sends nothing, scores nothing and earns no stop time, yet it still tidies the board (fewer panels, shorter stack) and tidiness is most of the decision, so the bot fires thousands a game. Nothing else here can say that a clear was worthless: every neighbouring feature REWARDS a payout and none punishes its absence, and a weighted sum cannot turn a missing reward into a cost. ONE CONDITION, NO EXEMPTION LIST: a three that is a link in a cascade takes the chain bonus and is not payless, a three that pops garbage is not payless, so the cases worth keeping fall out of the test instead of being listed beside it. OPT-IN, and that is load-bearing: optIn features are absent from registry.keys, so a run that does not name it searches exactly the keys it searched before - and KEYS is in the island fingerprint, so a key list that moves makes every chain in flight read its own population as foreign and restart from random vectors.' },
 
+    { key: 'pressure',         group: 'earned', sign: +1, norm: 1, fn: null,
+      what: 'This move\'s send measured against the room the opponent has left, counting what is already flying at them as spent. 1 means it finishes them. THE ONLY SHAPE THE OTHER BOARD CAN USEFULLY TAKE: the bot takes the highest-scoring candidate, so a number identical across every candidate cancels out of the ranking — which is why a plain "their headroom" feature does nothing and why incomingGarbage was removed after varying in 0 of 179 decisions. This varies with the send, so it varies candidate to candidate. It states no rule about what to do when they are low.' },
+
+    { key: 'overkill',         group: 'earned', sign: -1, norm: 24, fn: null,
+      what: 'Cells sent past what would finish the opponent. Not merely wasted: garbage sitting on a board is MATERIAL, and a clear beside it turns it into panels that can cascade, so over-sending hands them a counter-chain. Signed negative, but the weight decides how much that matters.' },
+
     { key: 'garbageSent',      group: 'earned', sign: +1, norm: 24, fn: null,
       what: 'Combo sends a set of 1-high blocks of varying width; a chain sends ONE full-width block that grows a row per link. Two different attacks.' },
 

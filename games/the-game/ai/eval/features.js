@@ -462,6 +462,58 @@ var MOVE_FRAMES = 4;
     return n;
   }
 
+  // ------------------------------------------------ pressure / overkill
+  //
+  // THE OTHER BOARD, IN THE ONLY FORM THAT CAN CHANGE A DECISION.
+  //
+  // The bot scores every legal move and takes the highest, so a number
+  // identical across every candidate shifts all the scores equally and
+  // cancels out of the ranking. "Their headroom is four rows" is exactly
+  // that shape, and a feature of that shape does nothing whatever its
+  // weight — incomingGarbage was written that way, varied in 0 of 179
+  // decisions, and was removed for it.
+  //
+  // So the opponent arrives as something the MOVE interacts with. These two
+  // are ratios of this move's send against their room, and they vary
+  // candidate to candidate because the send does.
+  //
+  // NEITHER IS A RULE. Nothing here says what to do when they are low. The
+  // information is handed over and the weights decide, the same way they do
+  // with the board.
+
+  function sentCells(input) {
+    var pieces = (input.earned && input.earned.garbageSent) || [], cells = 0;
+    for (var i = 0; i < pieces.length; i++) {
+      cells += (pieces[i][0] || 0) * (pieces[i][1] || 0);
+    }
+    return cells;
+  }
+
+  // Room they have left, counting what is already flying at them as spent.
+  function roomLeft(input) {
+    var o = input.opponent;
+    if (!o) return 0;
+    var room = (o.headroomCells || 0) - (o.incomingCells || 0);
+    return room > 0 ? room : 0;
+  }
+
+  // How much of the way to finishing them this move goes. 1 is a kill.
+  function pressure(input) {
+    var room = roomLeft(input);
+    if (!room) return input.opponent ? 1 : 0;
+    return sentCells(input) / room;
+  }
+
+  // The part of the send past what would finish them. Not merely wasted:
+  // garbage on a board is MATERIAL, and a clear beside it turns it into
+  // panels that can cascade, so over-sending hands them a counter-chain.
+  // Whether that is worth minding is for the weight to decide.
+  function overkill(input) {
+    if (!input.opponent) return 0;
+    var over = sentCells(input) - roomLeft(input);
+    return over > 0 ? over : 0;
+  }
+
   // ----------------------------------------------------- incomingGarbage
   //
   // ATTACKS QUEUED BUT NOT LANDED, IN CELLS.
@@ -798,6 +850,8 @@ var MOVE_FRAMES = 4;
     paylessClear: paylessClear,
     scoreEarned: scoreEarned,
     garbageSent: garbageSent,
+    pressure: pressure,
+    overkill: overkill,
     chainLength: chainLength,
     garbageOnBoard: garbageOnBoard,
     incomingGarbage: incomingGarbage,

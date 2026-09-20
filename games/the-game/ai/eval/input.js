@@ -136,6 +136,14 @@
         brokeGarbage: earned.brokeGarbage || 0
       },
       incoming: raw.incoming || [],
+      // THE OTHER BOARD, carried through rather than rebuilt. evaluate()
+      // normalizes input that fromStack already normalized, so anything not
+      // named here is dropped on the second pass — the same way liveBoard
+      // was, and the same way chainPotential then read 0 through the real
+      // evaluator while reading 3 one call earlier.
+      //
+      // Null for solo play, and every feature that uses it must handle that.
+      opponent: raw.opponent || null,
       clock: {
         toppedOut: !!clock.toppedOut,
         riseLock: !!clock.riseLock,
@@ -157,7 +165,37 @@
   // `resolved` is what LogicalBoard.resolve() returned for this candidate:
   // { chainLength, comboSizes, garbage }. `cascade` is
   // The cascade prediction, or null when not mid-cascade.
-  function fromStack(stack, board, resolved, cascade, garbageCleared) {
+  // THE OPPONENT'S BOARD, reduced to what a move can be measured against.
+  // Cells rather than rows, because a send is counted in cells.
+  function opponentView(opp) {
+    if (!opp) return null;
+    var W = 6, top = 0, garbage = 0, r, c;
+    for (c = 1; c <= W; c++) {
+      for (r = opp.height; r >= 1; r--) {
+        var p = opp.panelAt(r, c);
+        if (p && (p.isGarbage || p.color !== 0)) { if (r > top) top = r; break; }
+      }
+    }
+    for (r = 1; r <= opp.height; r++) {
+      for (c = 1; c <= W; c++) {
+        var q = opp.panelAt(r, c);
+        if (q && q.isGarbage) garbage++;
+      }
+    }
+    var inAir = 0, queue = opp.incoming || [];
+    for (var i = 0; i < queue.length; i++) {
+      inAir += (queue[i].width || 0) * (queue[i].height || 0);
+    }
+    return {
+      headroomCells: Math.max(0, opp.height - top) * W,
+      toppedOut: typeof opp.isToppedOut === 'function' ? opp.isToppedOut() : false,
+      clock: (opp.stopTime || 0) + (opp.preStopTime || 0),
+      garbageCells: garbage,
+      incomingCells: inAir
+    };
+  }
+
+  function fromStack(stack, board, resolved, cascade, garbageCleared, opponent) {
     resolved = resolved || {};
     var incoming = [];
     if (stack && stack.incoming) {
@@ -181,6 +219,7 @@
         brokeGarbage: resolved.brokeGarbage || 0
       },
       incoming: incoming,
+      opponent: opponentView(opponent),
       clock: stack ? {
         // wasToppedOut, not isToppedOut(): the engine's own health drain and
         // stop-time award both read the flag latched at the top of the
