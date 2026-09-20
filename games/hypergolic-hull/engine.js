@@ -1344,8 +1344,12 @@
         cols: 3, rows: 6, blocked: ["0,0", "2,0", "0,5", "2,5"],
         items: [
           { id: "sublightDrive", x: 1, y: 0 },
-          { id: "ablativePlating", x: 0, y: 1 },
-          { id: "ablativePlating", x: 2, y: 1 },
+          // NO PLATING. It carried two crates of it, which is +2 hull on
+          // top of its own 1 — so the richest thing on the board, which
+          // cannot shoot you and exists to be grabbed, took THREE hits to
+          // open. A ship with no gun that soaks a third of a sector's
+          // shooting is not a decision about time, it is a chore. One
+          // hull: you reach it, you open it, you move on.
           { id: "microReactor", x: 0, y: 3 },
           // One generator and a bank: capacity three against a lens that
           // costs two, so it grabs every OTHER round and the gap is on the
