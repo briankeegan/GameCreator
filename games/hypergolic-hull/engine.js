@@ -912,7 +912,7 @@
     // Cutting gear. Every wreck pays one more. Lets a hull be poor and
     // fragile at depth 1 and the best-equipped thing on the board at
     // depth 8 — a shape the roster had no way to express.
-    salvageRig: { id: "salvageRig", label: "Salvage Rig", kind: "salvage", salvageBonus: 1, w: 1, h: 3 },
+    salvageRig: { id: "salvageRig", label: "Salvage Rig", kind: "salvage", salvageBonus: 2, w: 1, h: 3 },
     // A battery, not a generator: it holds charge, it doesn't make any.
     // A ship built entirely of Charge Banks has a big bus and no way to
     // refill it — which is exactly why the Railgun emplacement is slow.
@@ -2950,7 +2950,27 @@
     },
     salvager: {
       label: "Hauler",
-      blurb: "An extra plate and cutting gear. Poorest ship on the board at depth 1, best-equipped by depth 8.",
+      blurb: "Heavy cutting gear — every wreck pays double. Poorest ship on the board at depth 1, best-equipped by depth 8.",
+      // THE PLATE THE BLURB ALWAYS PROMISED. This kit had cutting gear and
+      // no plating in it, which left the Hauler the only hull in the game
+      // with both a small bus and no defensive crate at all — and it has
+      // been the weak one every time the four have been measured. Working
+      // Salvagers made that worse rather than causing it: the drag costs
+      // it the firing position its income depends on, and a three-charge
+      // bus cannot reposition and shoot in the same breath. 7 wins in 60
+      // against 14, 15 and 15.
+      // THE RIG CARRIES THIS HULL, not armour. The Hauler has been the weak
+      // one every time the four have been measured, and working Salvagers
+      // made it worse rather than causing it: the drag costs it the firing
+      // position its income depends on, and a three-charge bus cannot
+      // reposition and shoot in the same breath. 7 wins in 60 against 14,
+      // 15 and 15.
+      //
+      // A plate was the obvious answer and the wrong one — +1 hull took it
+      // to 22 and made it a tank that happens to salvage, which is a
+      // different ship. Doubling what the rig pays instead puts it at 15,
+      // level with all three, and the thing it is good at is the thing
+      // that makes it good.
       kit: ["sublightDrive", "pulseReactor", "salvageRig", "scanner"],
       unlockDepth: 5,
     },
