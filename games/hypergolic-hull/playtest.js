@@ -240,7 +240,10 @@ function wantList(state) {
   // it, take a turn, and fire it again.
   const dearestShot = Math.max(1, ...armedWeapons(state).map((w) => w.energyCost || 1));
   const energyShort = (state.maxEnergy || 0) < dearestShot * 2;
-  const power = energyShort ? ["reactor", "chargeBank"] : [];
+  // GC_BUY_POWER=1 buys capacity whenever it is affordable, ignoring the
+  // short test. Measurement only — it is how "could you just buy more
+  // energy?" gets an answer instead of an argument.
+  const power = energyShort || process.env.GC_BUY_POWER ? ["reactor", "chargeBank"] : [];
   // Mobility sits with the other upkeep, not with the guns: it is bought to
   // reach a fight and to leave one, which is the same reason a hull point
   // is. Leaving it off the list entirely meant the pilot never once bought
