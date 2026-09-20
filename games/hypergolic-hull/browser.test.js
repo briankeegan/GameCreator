@@ -209,6 +209,17 @@ async function walkToOutpost(page) {
   // Sector 2's Picket is anchored across the middle of the board, so the
   // berth on the far side is now a genuinely long walk around it and a
   // tighter budget ran out one hex short of the dock.
+  // A SECTOR MIGHT NOT HAVE A DOCK. Whether one is out here is a roll, and
+  // that roll varies per run now, so a test that assumes this sector has
+  // a berth fails on the runs where it does not. Fly on until one does.
+  for (let hop = 0; hop < 6 && s.status === "playing" && !s.outpostPos; hop++) {
+    s = await walkToExit(page);
+    if (s.status !== "won") break;
+    await page.click("#nextSectorBtn");
+    await page.waitForTimeout(400);
+    s = await getState(page);
+  }
+  assert.ok(s.outpostPos, "no sector within six hops had a berth on it");
   for (let i = 0; i < 60 && s.status === "playing" && !(s.playerPos.q === s.outpostPos.q && s.playerPos.r === s.outpostPos.r); i++) {
     await playTurnToward(page, "outpost");
     s = await getState(page);
@@ -298,7 +309,19 @@ async function freshPage(browser, url, errors) {
   let page = await freshPage(browser, url, errors);
   let s = await getState(page);
   assert.strictEqual(s.levelId, 1);
-  assert.strictEqual(s.enemies.length, 1, "Sector 1 has one Interceptor to learn the Autocannon on");
+  // Sector 1 is THIS RUN's sector 1, not a fixed board — the generator
+  // takes the run seed now, so two runs do not open identically. What has
+  // to hold is the lesson, not the roster: something to learn the
+  // Autocannon on, and nothing down here that can punish reach the
+  // starting kit has no answer to.
+  assert.ok(s.enemies.length >= 1 && s.enemies.length <= 2, `Sector 1 deals a contact or two, got ${s.enemies.length}`);
+  const SHALLOW_OK = ["interceptor", "cruiser", "salvager"];
+  for (const e of s.enemies) {
+    assert.ok(
+      SHALLOW_OK.includes(e.type),
+      `Sector 1 dealt a ${e.type} — the ship is carrying a contact-range Autocannon and nothing else`
+    );
+  }
   assert.strictEqual(s.exitUnlocked, true, "the Warp Gate is always online");
   assert.deepStrictEqual(s.actions, ["sublight", "autocannon"], "Sector 1 unlocks Sublight + the Autocannon together");
   // Locked actions are hidden entirely now — no padlocked ghost buttons.

@@ -101,8 +101,14 @@ const LEVELS = HypergolicLevels.LEVELS;
 // open fields. The generator deals the same action set at those depths and
 // brings cover with it, so the ladder survives and the boards stop being
 // empty.
-function levelForIndex(index, variantId) {
-  return HypergolicLevels.generateLevel(index + 1, variantId);
+// EVERY sector is this run's sector. The generator was seeded on depth and
+// gate alone, which made a sector fixed for all time — and since sector 1
+// has no gate to vary it, every run opened on the identical board with the
+// identical contact on it. The run seed goes in too, so two runs that take
+// the same gates are still two different runs. It stays deterministic
+// INSIDE a run, which is what a chart and a wormhole back need.
+function levelForIndex(index, variantId, runSeed) {
+  return HypergolicLevels.generateLevel(index + 1, variantId, runSeed);
 }
 let levelIndex = 0;
 
@@ -266,8 +272,10 @@ function pendingUnlocks() {
 // instead of only a number on a screen. A boss clear is a real milestone
 // on top of that, same as isVictory gets its own distinct overlay.
 
-let state = Engine.createGameState(levelForIndex(levelIndex), {
-  runSeed: freshRunSeed(),
+// Rolled BEFORE the board is built, because the board is built from it.
+const openingRunSeed = freshRunSeed();
+let state = Engine.createGameState(levelForIndex(levelIndex, null, openingRunSeed), {
+  runSeed: openingRunSeed,
   startingLoadout: selectedLoadout,
   manifest: manifest.slice(),
 });
@@ -1774,7 +1782,7 @@ function makeExplosionParticles(count) {
 // about what a colour meant. They don't now.)
 function localeRgbAhead(levelId, variantId) {
   const ahead = levelId && window.HypergolicLevels && window.HypergolicLevels.localeAhead
-    ? window.HypergolicLevels.localeAhead(levelId, variantId)
+    ? window.HypergolicLevels.localeAhead(levelId, variantId, state && state.runSeed)
     : null;
   if (!ahead || !ahead.hue) return null;
   return { id: ahead.id, rgb: hslToRgb(ahead.hue, Math.min(85, ahead.sat + 30), 62) };
@@ -1782,7 +1790,7 @@ function localeRgbAhead(levelId, variantId) {
 
 function gateLook(variantId) {
   const ahead = state.levelId && window.HypergolicLevels && window.HypergolicLevels.localeAhead
-    ? window.HypergolicLevels.localeAhead(state.levelId, variantId)
+    ? window.HypergolicLevels.localeAhead(state.levelId, variantId, state.runSeed)
     : null;
   if (!ahead || !ahead.hue) return { rgb: BRANCH_TINTS[variantId] || [120, 255, 210], arcs: 3, dash: false };
   const rgb = hslToRgb(ahead.hue, Math.min(85, ahead.sat + 30), 62);
@@ -5308,7 +5316,12 @@ function loadSector(index, carryOver, opts) {
   // opts.variantId (which of a branching sector's Warp Gates was used —
   // see advanceSector) picks which content generateLevel deals for this
   // depth; omitted for the campaign and for a fresh "New Run".
-  state = Engine.createGameState(levelForIndex(levelIndex, opts && opts.variantId), {
+  // The run's seed comes from carryOver on any sector after the first, and
+  // from opts on a fresh run — same value either way, and the board has to
+  // be built from it, so it is read before createGameState rather than
+  // handed over inside it.
+  const sectorRunSeed = carryOver && typeof carryOver.runSeed === "number" ? carryOver.runSeed : undefined;
+  state = Engine.createGameState(levelForIndex(levelIndex, opts && opts.variantId, sectorRunSeed), {
     ...carryOver,
     hasPrevious: sectorHistory.length > 0,
   });

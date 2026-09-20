@@ -3542,9 +3542,27 @@ assert.deepStrictEqual(
   // it appeared in none of the game's ~20 weathered sectors. Nobody could
   // ever have met it.
   {
+    // ACROSS RUN SEEDS, not within one. A sector's weather varies per run
+    // now, so "does this condition ever appear" is a question about the
+    // whole space of runs — asking it of a single layout only reports
+    // which conditions that one run happened to roll.
     const seen = new Set();
+    const RUNS = [0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144];
     for (let depth = 1; depth < BOSS_DEPTH; depth++) {
       for (const variant of [null, "aggressive", "quiet", "drift"]) {
+        for (const runSeed of RUNS) {
+          const lv = generateLevel(depth, variant, runSeed);
+          if (lv.condition) seen.add(lv.condition);
+          if (lv.objective) seen.add(lv.objective);
+          assert.ok(
+            !(lv.condition && lv.objective),
+            `sector ${depth}/${variant}/${runSeed} carries a condition AND an objective — one at a time, or it reads as noise`
+          );
+          assert.ok(
+            depth >= 3 || (!lv.condition && !lv.objective),
+            `sector ${depth} must be an ordinary sector — the base game is learned before anything is taken away`
+          );
+        }
         const lv = generateLevel(depth, variant);
         if (lv.condition) seen.add(lv.condition);
         if (lv.objective) seen.add(lv.objective);
@@ -3568,17 +3586,24 @@ assert.deepStrictEqual(
     }
     // And an ordinary sector has to stay the common case, or the special
     // ones stop registering as special.
+    // And the RATE, measured over the same space. It read under 0.5 while
+    // actually weathering 55% of every sector from depth 3, because
+    // depths 1 and 2 are always plain and diluted the count. Ask about the
+    // sectors that can actually carry weather.
     let weathered = 0;
     let total = 0;
-    for (let depth = 1; depth < BOSS_DEPTH; depth++) {
+    for (let depth = 3; depth < BOSS_DEPTH; depth++) {
       for (const variant of [null, "aggressive", "quiet", "drift"]) {
-        const lv = generateLevel(depth, variant);
-        total += 1;
-        if (lv.condition || lv.objective) weathered += 1;
+        for (const runSeed of RUNS) {
+          total += 1;
+          const lv = generateLevel(depth, variant, runSeed);
+          if (lv.condition || lv.objective) weathered += 1;
+        }
       }
     }
-    assert.ok(weathered / total < 0.5, `${weathered} of ${total} sectors carry weather — plain sectors must stay the majority`);
-    assert.ok(weathered / total > 0.15, `only ${weathered} of ${total} sectors carry weather — too rare to change a run`);
+    const rate = weathered / total;
+    assert.ok(rate < 0.4, `${(rate * 100).toFixed(0)}% of eligible sectors carry weather — plain sectors must stay the clear majority`);
+    assert.ok(rate > 0.15, `only ${(rate * 100).toFixed(0)}% of eligible sectors carry weather — too rare to change a run`);
   }
 
   // ION STORM — the screen will not hold. The button is one the player can
@@ -3777,6 +3802,63 @@ assert.deepStrictEqual(
       if (!Engine.posEq(state.playerPos, before)) moved = true;
     }
     assert.ok(moved, "a Salvager in reach must drag the flagship off its ground — that is the only thing it does");
+  }
+}
+
+// ---- two runs are two runs ----------------------------------------------
+//
+// The generator was seeded on depth and gate alone, so a sector was fixed
+// for all time — and sector 1 has no gate to vary it, which meant every
+// run ever played opened on the identical board with the identical
+// contact standing on it. Determinism INSIDE a run is load-bearing (the
+// chart, and flying back through a wormhole, both need a sector to stay
+// the sector it was); determinism ACROSS runs is just the same game twice.
+{
+  const shapeOf = (level) =>
+    JSON.stringify({
+      name: level.name,
+      board: level.board,
+      enemies: (level.enemies || []).map((e) => `${e.type}@${e.q},${e.r}`),
+      hazards: (level.hazards || []).map((h) => `${h.type}@${h.q},${h.r}`),
+      condition: level.condition || null,
+      objective: level.objective || null,
+    });
+
+  // Stable for one seed — this is what the chart and the wormhole rely on.
+  assert.strictEqual(
+    shapeOf(generateLevel(1, null, 12345)),
+    shapeOf(generateLevel(1, null, 12345)),
+    "the same run seed must deal the same sector every time it is asked"
+  );
+  assert.strictEqual(
+    shapeOf(generateLevel(7, "quiet", 999)),
+    shapeOf(generateLevel(7, "quiet", 999)),
+    "and at depth, through a gate"
+  );
+
+  // Different across runs, at EVERY depth — including the first, which is
+  // the one that had no gate to vary it.
+  for (const depth of [1, 2, 5, 9, 11]) {
+    const variant = depth === 1 ? null : "quiet";
+    const shapes = new Set();
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) shapes.add(shapeOf(generateLevel(depth, variant, seed)));
+    assert.ok(
+      shapes.size > 1,
+      `sector ${depth} deals the same board for every run seed — a run has to differ from the last one`
+    );
+  }
+
+  // A gate advertises where it goes, so the preview has to read the same
+  // seed the sector will be built with, or it is advertising somewhere
+  // else's sector.
+  for (const seed of [4, 77, 2024]) {
+    const promised = HypergolicLevels.localeAhead(6, "quiet", seed);
+    const arrived = generateLevel(7, "quiet", seed);
+    assert.strictEqual(
+      promised.id,
+      arrived.locale.id,
+      "a gate must promise the locale this run's next sector actually is"
+    );
   }
 }
 

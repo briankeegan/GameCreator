@@ -458,10 +458,26 @@
     },
   };
 
-  function sectorName(locale, depth, variantId) {
+  // THE RUN'S OWN SEED, folded into every stream in this file.
+  //
+  // A sector used to be fixed for a given depth and gate, for all time:
+  // board, rock, roster, weather, name. Sector 1 has no gate to vary it,
+  // so EVERY run opened on the identical board with the identical contact
+  // on it, and two runs that took the same gates were the same twelve
+  // sectors. Determinism inside a run is what makes a sector stable when
+  // you chart it or fly back through a wormhole; determinism ACROSS runs
+  // is just the same game twice.
+  //
+  // Defaults to 0 so a caller that does not care (the tests, a preview)
+  // still gets a stable board.
+  function runMix(runSeed) {
+    return ((runSeed || 0) >>> 0) * 2246822519;
+  }
+
+  function sectorName(locale, depth, variantId, runSeed) {
     const parts = NAME_PARTS[locale.id];
     if (!parts) return locale.name;
-    const rng = seededRandom(depth * 7919 + (variantId || "x").charCodeAt(0) * 613 + locale.id.length * 97);
+    const rng = seededRandom(depth * 7919 + (variantId || "x").charCodeAt(0) * 613 + locale.id.length * 97 + runMix(runSeed));
     const first = parts.first[Math.floor(rng() * parts.first.length)];
     const last = parts.last[Math.floor(rng() * parts.last.length)];
     return `${first} ${last}`;
@@ -470,16 +486,20 @@
   // Which locale a sector is depends on the depth AND the gate you came
   // through, so the same depth reached two ways is two different places —
   // and so a gate can honestly advertise where it goes (see localeAhead).
-  function localeFor(depth, variantId) {
-    const rng = seededRandom(depth * 6151 + (variantId ? variantId.length * 977 : 0) + (variantId || "x").charCodeAt(0) * 31);
+  function localeFor(depth, variantId, runSeed) {
+    const rng = seededRandom(depth * 6151 + (variantId ? variantId.length * 977 : 0) + (variantId || "x").charCodeAt(0) * 31 + runMix(runSeed));
     return LOCALES[Math.floor(rng() * LOCALES.length)];
   }
 
   // What lies through a given gate of a given sector — the Map and the
   // gate itself read this, so "why would I go left" has an answer before
   // you commit to it.
-  function localeAhead(depth, variantId) {
-    return depth + 1 === BOSS_DEPTH ? { id: "bulwark", name: "The Bulwark", blurb: "It's waiting." } : localeFor(depth + 1, variantId);
+  // The run seed has to reach this too, or a gate advertises a destination
+  // the next sector will not be.
+  function localeAhead(depth, variantId, runSeed) {
+    return depth + 1 === BOSS_DEPTH
+      ? { id: "bulwark", name: "The Bulwark", blurb: "It's waiting." }
+      : localeFor(depth + 1, variantId, runSeed);
   }
 
   const BOSS_DEPTH = 12;
@@ -654,7 +674,7 @@
     }
   }
 
-  function generateLevel(depth, variantId) {
+  function generateLevel(depth, variantId, runSeed) {
     if (depth === BOSS_DEPTH) return bossLevel(depth);
     // Fixed at the exact same size as every hand-authored sector — 9×11,
     // confirmed directly by the Clubhouse as the right size ("the first
@@ -670,9 +690,9 @@
     const variant = BRANCH_VARIANTS.find((v) => v.id === variantId) || null;
     // WHERE this sector is — drives its look, its furniture, and how much
     // of everything it has (see LOCALES).
-    const locale = localeFor(depth, variantId);
+    const locale = localeFor(depth, variantId, runSeed);
     const variantSeedOffset = variant ? (BRANCH_VARIANTS.indexOf(variant) + 1) * 104729 : 0;
-    const rng = seededRandom(depth * 2654435761 + variantSeedOffset);
+    const rng = seededRandom(depth * 2654435761 + variantSeedOffset + runMix(runSeed));
 
     // ---- how big is this sector? -------------------------------------
     //
@@ -893,7 +913,7 @@
     const CONDITION_DEPTH = { pickedClean: 3, nebula: 5, ionStorm: 5, debrisField: 6 };
     const OBJECTIVE_DEPTH = { holdFast: 4, collapse: 6 };
     const SECTOR_OBJECTIVE_IDS = OBJECTIVE_DEPTH;
-    const weatherRng = seededRandom(depth * 2749 + variantSeedOffset + 17);
+    const weatherRng = seededRandom(depth * 2749 + variantSeedOffset + 17 + runMix(runSeed));
     let condition = null;
     let objective = null;
     // MEASUREMENT HOOKS, default off. GC_WEATHER=<id> puts the same
@@ -931,11 +951,16 @@
           .sort();
         return open.length ? open[slot % open.length] : null;
       };
-      // 33% a condition, 22% an objective, 45% an ordinary sector. An
-      // ordinary sector has to stay the common case or the special ones
-      // stop being special.
-      if (roll < 0.33) condition = pick(CONDITION_DEPTH);
-      else if (roll < 0.55) objective = pick(OBJECTIVE_DEPTH);
+      // 18% a condition, 12% an objective, 70% an ordinary sector.
+      //
+      // This was 33/22, which is 55% of every sector from depth 3 — more
+      // than half, not the minority the comment claimed, and it only
+      // looked reasonable because depths 1 and 2 are always plain and
+      // diluted the count. It mattered much more once boards started
+      // varying per run: measured over sixty runs on per-run boards, no
+      // weather at all wins 11 and weather at 55% wins 4.
+      if (roll < 0.18) condition = pick(CONDITION_DEPTH);
+      else if (roll < 0.3) objective = pick(OBJECTIVE_DEPTH);
     }
 
     // Two of the conditions are nothing but the generator's own terrain
@@ -1255,7 +1280,7 @@
 
     return {
       id: depth,
-      name: sectorName(locale, depth, variantId),
+      name: sectorName(locale, depth, variantId, runSeed),
       board: { type: "rect", cols, rows },
       playerStart,
       exit,
@@ -1289,7 +1314,7 @@
       // place.
       condition,
       objective,
-      intro: `${sectorName(locale, depth, variantId)} — ${locale.name.toLowerCase()}. ${locale.blurb}`,
+      intro: `${sectorName(locale, depth, variantId, runSeed)} — ${locale.name.toLowerCase()}. ${locale.blurb}`,
     };
   }
 

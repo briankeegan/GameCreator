@@ -145,7 +145,7 @@ const SCRAMBLER_COST = 4;
 // way on a dense board, the ship sitting at full hull for 220 rounds.
 // A player in that spot takes the hit and flies, so past the stuck
 // threshold this one does too.
-function routeStep(state, goal, desperate) {
+function routeStep(state, goal, desperate, cameFrom) {
   const startKey = Engine.hexKey(state.playerPos);
   const goalKey = Engine.hexKey(goal);
   const threats = Engine.computeThreatHexes(state);
@@ -165,6 +165,14 @@ function routeStep(state, goal, desperate) {
     blocked.add(Engine.hexKey(e));
   }
   const ENEMY_COST = 30;
+  // THE HEX WE JUST LEFT COSTS A LITTLE MORE. Two routes to the gate can
+  // tie, and the tie-break flips as a contact shifts a hex — so the ship
+  // steps back onto the hex it just came from, and back again, until the
+  // round limit. A Salvager keeping station at two produced exactly that
+  // at full hull and full charge. Small enough to decide ties and nothing
+  // else: a genuinely better route through that hex still wins.
+  const BACKTRACK_COST = 3;
+  const cameFromKey = cameFrom ? Engine.hexKey(cameFrom) : null;
   // ONLY what is actually impassable. A scrambler field is flown through —
   // it costs your guns while you are inside it, not your hull — and
   // blocking it here made a tenth of the board unwalkable to this pilot
@@ -205,7 +213,12 @@ function routeStep(state, goal, desperate) {
       const scrambled = Engine.inScrambler(state, nb) ? SCRAMBLER_COST : 0;
       const occupied = desperate && Engine.livingEnemies(state).some((e) => Engine.hexKey(e) === key);
       const step =
-        1 + (threats.has(key) ? threatCost : 0) + (emplaced.has(key) ? 60 : 0) + scrambled + (occupied ? ENEMY_COST : 0);
+        1 +
+        (threats.has(key) ? threatCost : 0) +
+        (emplaced.has(key) ? 60 : 0) +
+        scrambled +
+        (occupied ? ENEMY_COST : 0) +
+        (key === cameFromKey ? BACKTRACK_COST : 0);
       const next = dist.get(curKey) + step;
       if (dist.has(key) && dist.get(key) <= next) continue;
       dist.set(key, next);
@@ -220,7 +233,9 @@ function routeStep(state, goal, desperate) {
   // fall back to the best legal neighbour.
   const legal = Engine.legalSublightTargets(state);
   if (!legal.length) return null;
-  return legal.reduce((best, cand) =>
+  const notBack = legal.filter((h) => Engine.hexKey(h) !== cameFromKey);
+  const pool = notBack.length ? notBack : legal;
+  return pool.reduce((best, cand) =>
     !best || Engine.hexDistance(cand, goal) < Engine.hexDistance(best, goal) ? cand : best
   , null);
 }
@@ -584,6 +599,7 @@ function playSector(state, report) {
   // somewhere twice is ordinary; standing somewhere six times means the
   // route is a loop, and the pilot stops being careful about it.
   const standCount = new Map();
+  let lastHex = null;
   // WHAT THE SHIP CARRIED VERSUS WHAT IT USED. A gun bought fourteen times
   // and fired zero is dead weight on the shelf, and the purchase count
   // alone cannot tell that apart from a gun nobody buys. Count the sectors
@@ -815,7 +831,8 @@ function playSector(state, report) {
     if (!wantsShop && Engine.posEq(state.playerPos, state.exitPos) && state.exitUnlocked) return "cleared";
     const here = Engine.hexKey(state.playerPos);
     standCount.set(here, (standCount.get(here) || 0) + 1);
-    const step = routeStep(state, goal, standCount.get(here) > 5);
+    const step = routeStep(state, goal, standCount.get(here) > 5, lastHex);
+    lastHex = { ...state.playerPos };
     if (!step) {
       Engine.applyEndTurn(state);
       continue;
@@ -850,7 +867,11 @@ function playRun(seed, report) {
   let depth = 1;
   let variantId = null;
   for (; depth <= BOSS_DEPTH; depth++) {
-    const level = Levels.generateLevel(depth, variantId); // every sector is generated now
+    // The run's seed shapes the BOARD as well as the shop now, so two
+    // simulated runs differ the way two real ones do. Without it every
+    // seed here played the identical twelve sectors and the only thing
+    // varying was which gate got picked.
+    const level = Levels.generateLevel(depth, variantId, seed);
     let state;
     try {
       // Feeds the playtest's own per-run seed through as the ship's luck

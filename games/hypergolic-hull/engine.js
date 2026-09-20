@@ -3541,7 +3541,17 @@
           // A charge does no damage the round it's thrown; where it LANDS
           // isn't dangerous, what it becomes is. Live charges are added
           // below, off the board rather than off the thrower.
-          !w.places
+          !w.places &&
+          // THE DANGER OVERLAY IS ABOUT DAMAGE. A Salvager's lens takes no
+          // hull — it moves you — and painting its reach the same red as a
+          // gun tells the player a lie about what standing there costs.
+          // It also produced sectors that could not end: the auto-router
+          // and the pilots read this map, so both spent every round
+          // stepping out of a ring that follows them and cannot hurt them,
+          // one hex back and forth until the round limit. A shove is a
+          // real cost and it belongs on the board some other way; it is
+          // not a place you can be shot.
+          w.damage > 0
       );
       if (!live.length) continue;
       const covered = new Set();
@@ -4216,6 +4226,26 @@
           const dest = dir < 0 ? null : neighbor(state.playerPos, dir);
           const blocked =
             !dest || !onBoard(state, dest) || enemyAt(state, dest) || isBlockingHazard(hazardAt(state, dest));
+          // YOU CANNOT BE DRAGGED TWO ROUNDS RUNNING.
+          //
+          // Without this the Salvager can hold the flagship in place for
+          // ever: it keeps station at exactly two hexes, which is its
+          // lens's minimum reach and one hex further than a starting
+          // Autocannon can answer, and every step away is undone by the
+          // next pull. Measured the round the pull started working, that
+          // produced sectors that were neither winnable nor losable — the
+          // ship at full hull, 220 rounds, moving one hex back and forth.
+          // A drag you cannot break is not a tactic, it is a soft lock.
+          //
+          // Braced for a round means a step away always nets a hex, so
+          // leaving is always available, and the lens still costs you the
+          // ground you picked whenever you are not already being hauled.
+          const braced = state.draggedOnRound === state.round;
+          if (braced) {
+            pushLog(state, `${enemy.type.toUpperCase()} hauls again — we are braced against the lens.`);
+            hitters.push({ type: enemy.type, energy: enemy.energy, maxEnergy: enemy.maxEnergy });
+            continue;
+          }
           if (blocked) {
             // Nothing. A first pass had a blocked shove deal a point for
             // slamming you into whatever stopped you, and it quietly made a
@@ -4228,6 +4258,7 @@
           } else {
             state.events.push({ type: "playerMove", from: { ...state.playerPos }, to: dest });
             state.playerPos = { q: dest.q, r: dest.r };
+            state.draggedOnRound = (state.round || 0) + 1; // this drag blocks the next round's
             pushLog(state, `${enemy.type.toUpperCase()} shoves us off our ground.`);
             checkPlayerHazard(state);
             if (state.status !== "playing") return;
