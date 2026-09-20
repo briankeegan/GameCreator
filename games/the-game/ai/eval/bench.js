@@ -493,7 +493,7 @@ exports.run = function (weights, seed, opts) {
              chainDepth: chainDepth, chain: chain, combo: combo,
              // What the modes did, straight off the bot. Zeroes with modes
              // off, which is what "no mode ever ran" should look like.
-             modeCounts: cpu.modeCounts || { BUILD: 0, FIRE: 0, FORCED: 0 },
+             modeCounts: cpu.modeCounts || { BUILD: 0, OFFERED: 0, FORCED: 0 },
              brokenPlans: cpu.brokenPlans || 0, payless: payless,
              riseUnavoidable: cpu.riseUnavoidable || 0,
              localMax: localMax, unsafe: checkTiming && localMax > TIMING_MARGIN_MS };

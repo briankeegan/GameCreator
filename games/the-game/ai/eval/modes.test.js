@@ -105,7 +105,7 @@ test('a move that clears nothing has no payout and does not count as firing', fu
 
 test('fires is the payout arms only — breaking garbage is not firing', function () {
     // Breaking garbage keeps a move in the pool. It is not a payout, so it
-    // is not what records the decision as FIRE.
+    // is not what records the decision as OFFERED.
     assert.strictEqual(modes.fires(res({ chainLength: 1, comboSizes: [3], brokeGarbage: 4 }), T, S), false);
     assert.strictEqual(modes.pays(res({ chainLength: 1, comboSizes: [3], brokeGarbage: 4 }), T, S), true);
 });
@@ -347,8 +347,8 @@ test('the bot reports its mode shares, and they account for every decision', fun
     var g = playGame(shipped({ modes: true }), 101, 6000);
     var m = g.cpu.modeCounts;
     assert.ok(m, 'no modeCounts on the bot at all');
-    assert.strictEqual(m.BUILD + m.FIRE + m.FORCED, g.cpu.decisions,
-        'modes account for ' + (m.BUILD + m.FIRE + m.FORCED) + ' of ' + g.cpu.decisions + ' decisions');
+    assert.strictEqual(m.BUILD + m.OFFERED + m.FORCED, g.cpu.decisions,
+        'modes account for ' + (m.BUILD + m.OFFERED + m.FORCED) + ' of ' + g.cpu.decisions + ' decisions');
     assert.ok(m.BUILD > 0, 'never once in BUILD — the mode does not engage');
 });
 
@@ -359,7 +359,7 @@ test('FORCED is the exception, not the bot', function () {
     var worst = 0;
     [101, 102, 103].forEach(function (seed) {
         var g = playGame(shipped({ modes: true }), seed, 6000);
-        var m = g.cpu.modeCounts, t = m.BUILD + m.FIRE + m.FORCED;
+        var m = g.cpu.modeCounts, t = m.BUILD + m.OFFERED + m.FORCED;
         worst = Math.max(worst, m.FORCED / t);
     });
     assert.ok(worst < 0.5, 'FORCED on ' + (100 * worst).toFixed(0) + '% of decisions at worst');
@@ -373,7 +373,7 @@ test('broken plans are counted', function () {
 
 test('modes OFF counts nothing, so the instrumentation cannot cost anything', function () {
     var g = playGame(shipped({ modes: false }), 101, 3000);
-    assert.strictEqual(g.cpu.modeCounts.BUILD + g.cpu.modeCounts.FIRE + g.cpu.modeCounts.FORCED, 0);
+    assert.strictEqual(g.cpu.modeCounts.BUILD + g.cpu.modeCounts.OFFERED + g.cpu.modeCounts.FORCED, 0);
     assert.strictEqual(g.cpu.brokenPlans, 0);
 });
 
@@ -481,7 +481,7 @@ test('the climb changes play at depth 2, where it is free', function () {
     assert.notDeepStrictEqual(on.moves, off.moves, 'the free climb changed nothing');
 });
 
-test('HOLD SURVIVES FIRE: a cash-in on offer does not take waiting off the list', function () {
+test('HOLD SURVIVES A CASH-IN ON OFFER: it does not take waiting off the list', function () {
     // The rule this exists for: when something reached the bar, the pool was
     // narrowed to the moves that fire. Hold clears nothing, so hold was
     // removed and the bot could not decline the sale — it took the smallest
@@ -498,7 +498,7 @@ test('HOLD SURVIVES FIRE: a cash-in on offer does not take waiting off the list'
 
     var pool = cpu._applyModes([hold, twoChain, bareThree]);
 
-    assert.strictEqual(cpu._mode, 'FIRE', 'a 2-chain on offer is what FIRE means');
+    assert.strictEqual(cpu._mode, 'OFFERED', 'a 2-chain available is what OFFERED records');
     assert.ok(pool.indexOf(hold) >= 0, 'HOLD was taken off the list');
     assert.ok(pool.indexOf(twoChain) >= 0, 'the cash-in must still be offered');
     assert.strictEqual(pool.indexOf(bareThree), -1, 'the worthless clear is still refused');
@@ -529,8 +529,8 @@ test('FORCED lifts the filter at both plies and the climb with it', function () 
 
     cpu._mode = 'BUILD';
     assert.strictEqual(cpu._filtering(), true, 'BUILD must filter');
-    cpu._mode = 'FIRE';
-    assert.strictEqual(cpu._filtering(), true, 'FIRE must filter');
+    cpu._mode = 'OFFERED';
+    assert.strictEqual(cpu._filtering(), true, 'OFFERED must filter');
     cpu._mode = 'FORCED';
     assert.strictEqual(cpu._filtering(), false, 'FORCED must not filter, at either ply');
 });

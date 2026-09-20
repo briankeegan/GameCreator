@@ -73,7 +73,7 @@ function pointsFor(chainHist, comboHist) {
     return total;
 }
 
-var modeTotals = { BUILD: 0, FIRE: 0, FORCED: 0 }, broken = 0, payless = 0, riseUn = 0;
+var modeTotals = { BUILD: 0, OFFERED: 0, FORCED: 0 }, broken = 0, payless = 0, riseUn = 0;
 var perGame = [];
 SCENARIOS.forEach(function (sc) {
     for (var seed = 1; seed <= GAMES; seed++) {
@@ -99,7 +99,7 @@ SCENARIOS.forEach(function (sc) {
                        points: pointsFor(r.chain, r.combo) });
         sent += r.sent;
         modeTotals.BUILD += r.modeCounts.BUILD;
-        modeTotals.FIRE += r.modeCounts.FIRE;
+        modeTotals.OFFERED += r.modeCounts.OFFERED;
         modeTotals.FORCED += r.modeCounts.FORCED;
         broken += r.brokenPlans;
         payless += r.payless;
@@ -136,11 +136,11 @@ console.log('payless  /min  : ' + per(payless) + '   (' + payless + ' bare 3s of
 // almost none are opposite bugs, and nothing above separates them. Broken
 // plans are work already spent that paid nothing — the number step 2 exists
 // to drive down.
-var modeSum = modeTotals.BUILD + modeTotals.FIRE + modeTotals.FORCED;
+var modeSum = modeTotals.BUILD + modeTotals.OFFERED + modeTotals.FORCED;
 if (modeSum) {
     var share = function (n) { return (100 * n / modeSum).toFixed(0) + '%'; };
     console.log('modes          : build ' + share(modeTotals.BUILD) +
-                '   fire ' + share(modeTotals.FIRE) +
+                '   offered ' + share(modeTotals.OFFERED) +
                 '   forced ' + share(modeTotals.FORCED) +
                 '   (' + modeSum + ' decisions)');
     console.log('rise forced    : ' + riseUn + ' decisions where every build move rose into a bare 3');

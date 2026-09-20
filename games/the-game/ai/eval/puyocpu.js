@@ -202,7 +202,7 @@
     // Instrumentation, and load-bearing: a flat bench with FORCED at 85% of
     // decisions and a flat bench with FORCED at 5% are opposite bugs, and
     // nothing else in the output tells them apart.
-    this.modeCounts = { BUILD: 0, FIRE: 0, FORCED: 0 };
+    this.modeCounts = { BUILD: 0, OFFERED: 0, FORCED: 0 };
     this.brokenPlans = 0;
     // Decisions where every build move rose into a clear that paid nothing.
     // Not a defect of the filter — the board genuinely offered no clean
@@ -531,9 +531,9 @@
   // and record which mode did it. The evaluator still picks from what is
   // left — see the header of modes.js for why that is the whole design.
   //
-  // FORCED is the only mode that changes the pool. BUILD and FIRE take the
-  // same one and differ only in what they record: whether anything on the
-  // board had reached the bar. When to cash in is a weights question, so no
+  // FORCED is the only mode that changes the pool. BUILD and OFFERED take
+  // the same one and differ only in what they record: whether anything on
+  // the board had reached the bar. When to cash in is a weights question, so no
   // mode answers it.
   PuyoCpu.prototype._applyModes = function (cands) {
     if (!this.modes) return cands;
@@ -592,7 +592,7 @@
       // The mode is still recorded, because what was on offer at each
       // decision is worth counting even when it does not change the pool.
       pool = cands.filter(function (c) { return modes.pays(c.resolved, T, S); });
-      mode = (avail.links >= T || avail.wide >= S) ? 'FIRE' : 'BUILD';
+      mode = (avail.links >= T || avail.wide >= S) ? 'OFFERED' : 'BUILD';
       // SECOND STAGE, AND IT YIELDS. Among the moves that are not a cheap
       // cash-in, prefer the ones the RISING ROW does not turn into one. When
       // every one of them rises into something, the preference is dropped
@@ -633,7 +633,6 @@
       }
     }
     this._plan = avail;
-    this._firedLast = (mode === 'FIRE');
     return pool;
   };
 
@@ -652,6 +651,7 @@
     // first -- list order is not a preference.
     var best = cands[0];
     for (var i = 1; i < cands.length; i++) if (cands[i].score > best.score) best = cands[i];
+    this._took(best);
     return best.kind === 'swap' ? { kind: 'swap', move: best.move } : { kind: best.kind };
   };
 
@@ -705,6 +705,16 @@
   // was written about.
   // The two bars this bot plays to. With a goal they ARE the goal; without
   // one they are the engine's own floor, which is the plain filter.
+  // THE MOVE ACTUALLY TAKEN, not the one that was available. planBroke asks
+  // whether what the bot was saving for vanished without being spent, and a
+  // decision where a payout was on offer and the bot held is exactly the case
+  // it has to be able to see. Reading it off the mode would answer "something
+  // was offered", which is a different question and hides the break.
+  PuyoCpu.prototype._took = function (cand) {
+    var bar = this._bar();
+    this._firedLast = !!cand && modes.fires(cand.resolved, bar.links, bar.wide);
+  };
+
   PuyoCpu.prototype._bar = function () {
     return this.goal ? this.goal : { links: 2, wide: 4 };
   };
@@ -834,6 +844,7 @@
       var v = this._value(expand[i]);
       if (v > bestValue) { bestValue = v; chosen = expand[i]; }
     }
+    this._took(chosen);
     return chosen.kind === 'swap' ? { kind: 'swap', move: chosen.move } : { kind: chosen.kind };
   };
 
