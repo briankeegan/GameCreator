@@ -209,17 +209,10 @@ async function walkToOutpost(page) {
   // Sector 2's Picket is anchored across the middle of the board, so the
   // berth on the far side is now a genuinely long walk around it and a
   // tighter budget ran out one hex short of the dock.
-  // A SECTOR MIGHT NOT HAVE A DOCK. Whether one is out here is a roll, and
-  // that roll varies per run now, so a test that assumes this sector has
-  // a berth fails on the runs where it does not. Fly on until one does.
-  for (let hop = 0; hop < 6 && s.status === "playing" && !s.outpostPos; hop++) {
-    s = await walkToExit(page);
-    if (s.status !== "won") break;
-    await page.click("#nextSectorBtn");
-    await page.waitForTimeout(400);
-    s = await getState(page);
-  }
-  assert.ok(s.outpostPos, "no sector within six hops had a berth on it");
+  // Whether a berth is out here at all is a roll, and it varies per run —
+  // so this is a property of BROWSER_TEST_SEED, not something the walk can
+  // arrange. If this ever fires, pick a seed whose sector has a dock.
+  assert.ok(s.outpostPos, `no berth in this sector — pick a different BROWSER_TEST_SEED (${BROWSER_TEST_SEED})`);
   for (let i = 0; i < 60 && s.status === "playing" && !(s.playerPos.q === s.outpostPos.q && s.playerPos.r === s.outpostPos.r); i++) {
     await playTurnToward(page, "outpost");
     s = await getState(page);
@@ -284,15 +277,26 @@ async function walkToWormhole(page) {
   return getState(page);
 }
 
+// The one seed this whole playthrough is measured on. Not any value: this
+// walkthrough is the Autocannon lesson, so it needs a sector 1 that deals
+// exactly one Interceptor and a run with a berth to dock at. A failure
+// here is reproducible by hand — load the game at ?seed=4 and play it.
+const BROWSER_TEST_SEED = 26;
+
 async function freshPage(browser, url, errors) {
   const page = await browser.newPage({ viewport: { width: 420, height: 900 } });
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
   page.on("console", (msg) => {
     if (msg.type() === "error") errors.push("console: " + msg.text());
   });
-  await page.goto(url);
+  // PINNED, so this plays the same twelve sectors on every run. Without it
+  // each page load rolls its own seed and the test is a different game
+  // every time — assertions about what sector 1 deals, or whether a berth
+  // is out here at all, then pass or fail at random.
+  const pinned = url + (url.includes("?") ? "&" : "?") + "seed=" + BROWSER_TEST_SEED;
+  await page.goto(pinned);
   await page.evaluate(() => localStorage.clear());
-  await page.reload();
+  await page.goto(pinned);
   await page.waitForFunction(() => window.__hhState && window.__hhState.status === "playing");
   return page;
 }

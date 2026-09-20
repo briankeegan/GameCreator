@@ -135,6 +135,18 @@ const BRANCH_TINTS = {
 // touch Math.random() at all, and it does so once per run, not per turn,
 // keeping every combat rule exactly as deterministic as it always was.
 function freshRunSeed() {
+  // ?seed=<n> PINS THE RUN. Every sector is built from this number now, so
+  // a page load deals a different twelve sectors every time — which is the
+  // point for a player and makes an automated playthrough a different game
+  // on every execution. A test that plays a random game is a test that
+  // fails at random. Reading it here keeps the seam in one place, and a
+  // real visit has no query string and still gets a real roll.
+  try {
+    const pinned = new URLSearchParams(location.search).get("seed");
+    if (pinned !== null && pinned !== "" && Number.isFinite(Number(pinned))) return Number(pinned) >>> 0;
+  } catch (err) {
+    /* no location, or a hostile one — fall through to a real roll */
+  }
   return Math.floor(Math.random() * 0xffffffff) >>> 0;
 }
 // Every canned ship is available from the start. There is no second
