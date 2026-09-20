@@ -177,7 +177,14 @@ test('a count made of panels is SIZE-INVARIANT in density mode', function () {
 
 test('density touches ONLY the features the registry marks perPanel', function () {
     var marked = registry.all.filter(function (f) { return f.perPanel; }).map(function (f) { return f.key; });
-    assert.deepStrictEqual(marked.sort(), ['edgePenalty', 'links'],
+    // WHAT BELONGS HERE: a feature whose raw value is a COUNT OF PANELS, so
+    // that the same shape on a fuller board scores higher for being on a
+    // fuller board. links was the first; linksH and linksV are the same
+    // count split by direction, and popSize counts the panels a clear pops.
+    // edgePenalty counts panels against a wall. Anything measuring a ratio,
+    // a height or a one-off event is not per-panel and must stay out.
+    assert.deepStrictEqual(marked.sort(),
+        ['edgePenalty', 'links', 'linksH', 'linksV', 'popSize'],
         'the perPanel set changed — if that is deliberate, update this test and say why');
     var board = boardOf([[1, 1, 2, 3, 3, 2],
                          [2, 1, 3, 1, 2, 3],

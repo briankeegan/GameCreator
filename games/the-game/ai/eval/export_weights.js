@@ -39,14 +39,24 @@ var body = keys.map(function (k) {
     return '    ' + k + ': ' + Math.round(w[k]);
 }).join(',\n');
 
+// WHERE THE NUMBERS CAME FROM, SAID BY THE FILE THAT CARRIES THEM. A
+// snapshot the trainer wrote was found by the search; one assembled any
+// other way was not, and a header claiming a run that never happened is the
+// same failure as a mistyped weight — it does not look wrong, it looks like
+// evidence. A snapshot carrying `provenance` states its own origin and that
+// is used verbatim; anything without one is a training snapshot.
+var origin = snap.provenance
+    ? String(snap.provenance).split('\n')
+    : ['Found by the cross-entropy search in ai/eval/train.js, which stopped',
+       'itself when the numbers stopped moving, not on a generation budget.',
+       snap.selection + '.'];
+
 var out = [
     '// TRAINED WEIGHTS — GENERATED, DO NOT EDIT BY HAND.',
     '//',
     '//   node ai/eval/export_weights.js ai/eval/' + path.basename(src),
-    '//',
-    '// Found by the cross-entropy search in ai/eval/train.js, which stopped',
-    '// itself when the numbers stopped moving, not on a generation budget.',
-    '// ' + snap.selection + '.',
+    '//'
+].concat(origin.map(function (l) { return ('// ' + l).replace(/\s+$/, ''); })).concat([
     '//',
     '// Held out (seeds never trained on), against the game\'s previous AI:',
     '//   learned ' + Math.round(held || 0) + '   previous ' + Math.round(shipped || 0) +
@@ -84,7 +94,7 @@ var out = [
     '  };',
     '}(typeof window !== "undefined" ? window : globalThis));',
     ''
-].join('\n');
+]).join('\n');
 
 // An explicit destination, so a test can exercise this without writing over
 // the bot the game actually loads. Default is the real one.

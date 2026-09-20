@@ -1,0 +1,149 @@
+{
+  "mode": "pbt",
+  "objective": "versus",
+  "brain": "puyo",
+  "level": 10,
+  "selection": "hand-derived; not the champion of any generation",
+  "provenance": "NOT FOUND BY A SEARCH. Assembled by hand from\ntrained.pbt.pbt-norm-s125-s125.0919-222912.g11000.json by setting\nstopTimeEarned from -45.64 to +60 and changing nothing else. That\nsnapshot IS a trainer champion; this file is one number away from it.\n\nWHY THE NUMBER MOVED. Every champion the normalised run has produced\nscores stopTimeEarned negative: it avoids the freeze a clear earns it.\nPositive, it takes the freeze and uses it to set up the next clear, and\nsends more garbage over a longer game. A garbageSent sweep does not do\nthis — raising it monotonically shortens the game and lowers total\ngarbage, because it prices the clear being made, not the shape that\nmakes the next one possible.\n\nMEASURED, 24 seeds (holdout 101-112 and finals 201-212), depth 2 beam 0\nrise on density off level 10:\n  vs the previously shipped bot (s120 g3000)  17W-7L    sent 197.2 / 165.8\n  vs s125 g11000 (the set it came from)       16W-7L-1D sent 201.5 / 163.7\n  vs s131 g06000 (the run benchmark)          17W-7L    sent 149.5 / 162.6\n\nThe peak is narrow: +46 loses to the shipped bot 10W-14L and +75 loses\nto s125 11W-13L, both over the same 24 seeds. Re-measure before moving\nthis number.",
+  "updates": 11000,
+  "islands": 4,
+  "population": 16,
+  "leg": 250,
+  "depth": 2,
+  "beam": 0,
+  "rise": true,
+  "density": false,
+  "allowRaise": false,
+  "diversity": [
+    15.6,
+    14.7,
+    14.5,
+    13.9
+  ],
+  "features": [
+    "linksH",
+    "linksV",
+    "colourVariance",
+    "edgePenalty",
+    "garbageOnBoard",
+    "maxHeight",
+    "fillRatio",
+    "garbageAdjacency",
+    "garbageSent",
+    "stopTimeEarned"
+  ],
+  "excluded": [
+    "matchPotential",
+    "chainPotential",
+    "comboPotential",
+    "staircase",
+    "staircaseReady",
+    "flatTop",
+    "popSize",
+    "links",
+    "roughness",
+    "colourScarcity",
+    "chainLength",
+    "scoreEarned",
+    "stopTimeGain",
+    "brokeGarbage",
+    "garbageCleared",
+    "travelCost"
+  ],
+  "holdoutSeeds": [
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112,
+    201,
+    202,
+    203,
+    204,
+    205,
+    206,
+    207,
+    208,
+    209,
+    210,
+    211,
+    212
+  ],
+  "holdout": {
+    "avgFrames": 25680,
+    "longestFrames": 36000,
+    "learned": {
+      "fitness": 0.7083333333333334,
+      "winRate": 0.7083333333333334,
+      "draws": 0,
+      "duels": 24,
+      "avgSent": 197.2,
+      "chainByLinks": {
+        "2": 375,
+        "3": 49,
+        "4": 5,
+        "5": 1
+      },
+      "comboByWidth": {
+        "3": 5157,
+        "4": 129,
+        "5": 12,
+        "6": 218,
+        "7": 2,
+        "9": 14,
+        "12": 1
+      },
+      "versus": true
+    },
+    "shipped": {
+      "fitness": 0.2916666666666667,
+      "label": "shipped weights (s120 g3000)",
+      "avgSent": 165.8,
+      "versus": true
+    },
+    "peer": {
+      "opponent": "trained.pbt.pbt-norm-s125-s125.0919-222912.g11000.json",
+      "fitness": 0.6875,
+      "winRate": 0.6666666666666666,
+      "draws": 1,
+      "duels": 24,
+      "avgSent": 201.5,
+      "opponentAvgSent": 163.7,
+      "avgFrames": 28080,
+      "longestFrames": 36000,
+      "chainByLinks": {
+        "2": 395,
+        "3": 26,
+        "4": 6
+      },
+      "comboByWidth": {
+        "3": 5684,
+        "4": 157,
+        "5": 5,
+        "6": 242,
+        "7": 7,
+        "9": 17,
+        "12": 2
+      }
+    }
+  },
+  "weights": {
+    "linksH": 4.871065131068514,
+    "linksV": 15.534743713460024,
+    "colourVariance": 122.25043816198563,
+    "edgePenalty": 52.63498465708528,
+    "garbageOnBoard": 149.78067055700285,
+    "maxHeight": 38.76799369168758,
+    "fillRatio": 179.2485910230923,
+    "garbageAdjacency": 4.6480627641703895,
+    "garbageSent": -124.39439741889319,
+    "stopTimeEarned": 60
+  }
+}
