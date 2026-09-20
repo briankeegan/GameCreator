@@ -294,7 +294,8 @@ exports.run = function (weights, seed, opts) {
     var KNOWN_OPTS = ['allowRaise', 'arena', 'beam', 'brain', 'checkTiming',
                       'density', 'depth', 'objective', 'rise', 'scenario',
                       'mode',
-                      'modes', 'fireLinks', 'fireWide', 'forcedMargin', 'riseAware'];
+                      'modes', 'fireLinks', 'fireWide', 'forcedMargin', 'riseAware',
+                      'fireTarget', 'fireWideOff', 'fireLinksOff'];
     for (var opt in opts) {
         if (opts.hasOwnProperty(opt) && KNOWN_OPTS.indexOf(opt) === -1) {
             throw new Error('bench.run: unknown option "' + opt + '". Known options are ' +
@@ -355,7 +356,9 @@ exports.run = function (weights, seed, opts) {
             fireLinks: opts.fireLinks,
             fireWide: opts.fireWide,
             forcedMargin: opts.forcedMargin,
-            riseAware: opts.riseAware
+            riseAware: opts.riseAware,
+            fireTarget: opts.fireTarget, fireWideOff: opts.fireWideOff,
+            fireLinksOff: opts.fireLinksOff
         });
     }
 

@@ -113,6 +113,12 @@
     // entries alongside the weights once the modes are known to fire.
     this.fireLinks = opts.fireLinks === undefined ? 4 : opts.fireLinks;
     this.fireWide = opts.fireWide === undefined ? 4 : opts.fireWide;
+    // WHICH WEAPON THIS BOT IS GOING FOR — 'either', 'chain' or 'combo'.
+    // The target raises the OTHER arm's bar to fireWideOff / fireLinksOff;
+    // it never closes it. modes.bars says why, with the numbers.
+    this.fireTarget = opts.fireTarget === undefined ? 'either' : opts.fireTarget;
+    this.fireWideOff = opts.fireWideOff === undefined ? 6 : opts.fireWideOff;
+    this.fireLinksOff = opts.fireLinksOff === undefined ? 5 : opts.fireLinksOff;
     // Rows of runway at which about-to-die opens. See modes.forced.
     this.forcedMargin = opts.forcedMargin === undefined ? 2 : opts.forcedMargin;
     // JUDGE A CANDIDATE ON WHAT THE RISE LEAVES. The stack comes up whether
@@ -434,7 +440,9 @@
   // of thing — a predicate on the resolve the candidate already carries.
   PuyoCpu.prototype._applyModes = function (cands) {
     if (!this.modes) return cands;
-    var T = this.fireLinks, S = this.fireWide, i;
+    var bar = modes.bars(this.fireTarget, this.fireLinks, this.fireWide,
+                         this.fireWideOff, this.fireLinksOff);
+    var T = bar.links, S = bar.wide, i;
 
     var resolveds = new Array(cands.length);
     for (i = 0; i < cands.length; i++) resolveds[i] = cands[i].resolved;
@@ -451,6 +459,16 @@
       pool = cands;
       mode = 'FORCED';
     } else if (avail.links >= T || avail.wide >= S) {
+      // A RELATIVE BAR WAS TRIED HERE — "never sell a 4-wide while a 6-wide
+      // is on the table" — and it is dead in both branches. In BUILD it is
+      // dead by construction: FIRE is tested first, so inside BUILD nothing
+      // has reached the bar. Here it is dead by measurement: FIRE opens 15
+      // times in a whole game and keeps ONE candidate each time, so there is
+      // never a 4 and a 6 to choose between.
+      //
+      // The setting that actually raises what the bot builds toward is
+      // fireWide. At T=4, S=6 fires 0.7 deep chains a minute against S=4's
+      // 0.4. Recorded so the relative version is not re-derived.
       pool = cands.filter(function (c) { return modes.fires(c.resolved, T, S); });
       mode = 'FIRE';
     } else {
@@ -549,6 +567,15 @@
   // every move at ply 1 and then values them by a filtered future is neither
   // bot. Everywhere else ply 2 uses BUILD's predicate — having fired, the
   // next move is building again.
+  // The two bars this bot is playing to. No relative floor at ply 2: the
+  // best on offer there is a different board's, and pricing an imagined
+  // move against this board's table is the mismatch _value's own comment
+  // was written about.
+  PuyoCpu.prototype._bar = function () {
+    return modes.bars(this.fireTarget, this.fireLinks, this.fireWide,
+                      this.fireWideOff, this.fireLinksOff);
+  };
+
   PuyoCpu.prototype._filtering = function () {
     return this.modes && this._mode !== 'FORCED';
   };
@@ -575,7 +602,7 @@
       // values a candidate for, or the imagined future is a different game
       // from the real one. BUILD's predicate, not FIRE's — having fired, the
       // next move is building again.
-      if (this._filtering() && !modes.pays(childResolved, this.fireLinks, this.fireWide)) continue;
+      if (this._filtering() && !modes.pays(childResolved, this._bar().links, this._bar().wide)) continue;
       f = this._score(child, childResolved, next[j], from, clock, cand.board);
       if (f > v) v = f;
     }
@@ -592,7 +619,7 @@
     if (cand.kind !== 'raise' && this._canRaise()) {
       var risen = cand.board.clone().rise(this._incoming);
       var risenResolved = this._resolveCandidate(risen);
-      if (!this._filtering() || modes.pays(risenResolved, this.fireLinks, this.fireWide)) {
+      if (!this._filtering() || modes.pays(risenResolved, this._bar().links, this._bar().wide)) {
         f = this._score(risen, risenResolved, null, from, clock, cand.board);
         if (f > v) v = f;
       }

@@ -110,7 +110,40 @@ test('fires is the payout arms only — breaking garbage is not firing', functio
     assert.strictEqual(modes.pays(res({ chainLength: 1, comboSizes: [3], brokeGarbage: 4 }), T, S), true);
 });
 
-// ----------------------------------------------------------------- 4. FORCED
+// --------------------------------------------- 3b. target, and the bar it sets
+
+test('either: both arms at their base bars', function () {
+    var bars = modes.bars('either', 4, 4, 6, 5);
+    assert.deepStrictEqual(bars, { links: 4, wide: 4 });
+});
+
+test('chain: the combo bar rises, it does NOT switch off', function () {
+    // MEASURED, 24 games each, T=4: S=6 gives 0.7 deep chains a minute and
+    // 728 points a minute; S=8 and S=99 give ZERO deep chains, a third of
+    // the garbage and a 30% shorter game. Refusing to cash a combo at all
+    // starves the bot of the pressure and the stop time it needs to build
+    // anything. So a target raises the other weapon's bar and never closes
+    // it, and a bar of Infinity is not reachable through this function.
+    var bars = modes.bars('chain', 4, 4, 6, 5);
+    assert.strictEqual(bars.links, 4, 'the target arm keeps its own bar');
+    assert.strictEqual(bars.wide, 6, 'the off-target arm is raised to the off-target bar');
+});
+
+test('combo: the mirror image', function () {
+    var bars = modes.bars('combo', 4, 4, 6, 5);
+    assert.strictEqual(bars.wide, 4);
+    assert.strictEqual(bars.links, 5);
+});
+
+test('an off-target bar below the base bar cannot LOWER it', function () {
+    // A target must never make the bot sell cheaper than `either` would.
+    var bars = modes.bars('chain', 4, 4, 2, 5);
+    assert.strictEqual(bars.wide, 4, 'off-target 2 must not undercut the base bar of 4');
+});
+
+test('an unknown target is refused rather than silently meaning either', function () {
+    assert.throws(function () { modes.bars('chian', 4, 4, 6, 5); }, /chian/);
+});
 
 test('FORCED opens when the runway is gone', function () {
     assert.strictEqual(modes.forced({ runway: 1, margin: 2, broke: false }), true);
@@ -368,6 +401,65 @@ test('a candidate is judged on what the RISE leaves, not on the instant it poppe
     });
     assert.ok(after < before,
         'bare 3s ' + after + ' rise-aware vs ' + before + ' blind — the filter still cannot see the rise');
+});
+
+test('every fire knob reaches the filter', function () {
+    // An option the filter never reads changes nothing and looks exactly
+    // like one that worked. But asking whether it changed the MOVES cannot
+    // tell a dead wire from a knob that is correctly inert on one seed: a
+    // 4+ link chain is rarely on offer, so a higher links bar often binds on
+    // nothing, and the weights may already prefer the biggest clear, so the
+    // relative bar can remove only moves that would have lost anyway.
+    //
+    // So this counts what the filter REMOVED. That is the knob's own claim,
+    // and it is true or false regardless of what the weights then do.
+    function removed(opts) {
+        var stack = new PanelEngine.Stack({ level: LEVEL, seed: 101, countdown: false });
+        var o = shipped(opts), cpu = new PuyoCpu(stack, o), cut = 0, seen = 0;
+        var orig = cpu._applyModes.bind(cpu);
+        cpu._applyModes = function (c) {
+            var pool = orig(c);
+            seen += c.length; cut += c.length - pool.length;
+            return pool;
+        };
+        for (var f = 0; f < 4000; f++) {
+            cpu.update(); stack.run(); stack.drainEvents();
+            if (stack.gameOver) break;
+        }
+        return { cut: cut, seen: seen };
+    }
+    var base = removed({ modes: true, forcedMargin: -1 });
+    assert.ok(base.seen > 500, 'only ' + base.seen + ' candidates seen — too few to call anything dead');
+
+    var knobs = {
+        fireLinks:   { fireLinks: 99 },
+        fireWide:    { fireWide: 8 },
+        fireTarget:  { fireTarget: 'chain' },
+        fireWideOff: { fireTarget: 'chain', fireWideOff: 8 },
+    };
+    var dead = [];
+    Object.keys(knobs).forEach(function (k) {
+        var o = { modes: true, forcedMargin: -1 };
+        for (var kk in knobs[k]) o[kk] = knobs[k][kk];
+        // fireWideOff is measured against the target it modifies, not
+        // against `either`, where it is correctly inert.
+        var ref = (k === 'fireWideOff') ? removed({ modes: true, forcedMargin: -1, fireTarget: 'chain' }) : base;
+        if (removed(o).cut === ref.cut) dead.push(k);
+    });
+    assert.deepStrictEqual(dead, [], 'these knobs removed exactly as many candidates as the baseline: ' +
+        dead.join(', '));
+});
+
+test('target combo is not target chain', function () {
+    var chain = playGame(shipped({ modes: true, forcedMargin: -1, fireTarget: 'chain' }), 101, 4000);
+    var combo = playGame(shipped({ modes: true, forcedMargin: -1, fireTarget: 'combo' }), 101, 4000);
+    assert.notDeepStrictEqual(chain.moves, combo.moves, 'both targets play the same game');
+});
+
+test('a bad target name stops the run rather than quietly meaning either', function () {
+    assert.throws(function () {
+        playGame(shipped({ modes: true, fireTarget: 'chains' }), 101, 500);
+    }, /chains/);
 });
 
 tests.forEach(function (t) {

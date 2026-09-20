@@ -37,6 +37,33 @@
              breaks: resolved.brokeGarbage || 0 };
   }
 
+  // WHICH WEAPON THIS BOT IS GOING FOR, as a pair of bars.
+  //
+  // A TARGET RAISES THE OTHER ARM'S BAR AND NEVER CLOSES IT. Measured over
+  // 24 games apiece at T=4: a combo bar of 6 gives 0.7 deep chains a minute
+  // and 728 game points a minute, while bars of 8 and 99 give ZERO deep
+  // chains, a third of the garbage and a game 30% shorter. A bot that will
+  // not cash a combo at all starves itself of the pressure and the stop
+  // time it needs to build anything, so "chains only" is not a stronger
+  // version of "prefer chains", it is a worse bot.
+  //
+  // The off-target bar also cannot UNDERCUT the base bar: a target must
+  // never make the bot sell cheaper than `either` would.
+  function bars(target, fireLinks, fireWide, offWide, offLinks) {
+    if (target === 'either' || target === undefined) {
+      return { links: fireLinks, wide: fireWide };
+    }
+    if (target === 'chain') {
+      return { links: fireLinks, wide: Math.max(fireWide, offWide) };
+    }
+    if (target === 'combo') {
+      return { links: Math.max(fireLinks, offLinks), wide: fireWide };
+    }
+    // Not a silent fallback to `either`: a typo in a switch would then read
+    // as a deliberate setting and quietly measure the wrong bot.
+    throw new Error('unknown fire target "' + target + '" — either, chain or combo');
+  }
+
   // Is this move worth stopping to cash in. Two arms, both from the resolve:
   // a cascade `T` links deep, or a single clear `S` wide. They are different
   // weapons — pushGarbage sends a chain as one full-width slab held until the
@@ -143,7 +170,7 @@
     return best;
   }
 
-  return { payout: payout, fires: fires, pays: pays, runway: runway,
+  return { payout: payout, fires: fires, pays: pays, bars: bars, runway: runway,
            risesIntoPayless: risesIntoPayless,
            forced: forced, planBroke: planBroke, bestPayout: bestPayout };
 }));

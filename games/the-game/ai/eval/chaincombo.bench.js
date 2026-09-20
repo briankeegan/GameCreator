@@ -57,7 +57,8 @@ console.log('switches: depth ' + loaded.switches.depth + '  beam ' + loaded.swit
             '  modes ' + (loaded.switches.modes
                 ? 'ON (' + loaded.switches.fireLinks + ' links / ' + loaded.switches.fireWide +
                   ' wide / margin ' + loaded.switches.forcedMargin +
-                  (loaded.switches.riseAware ? ' / rise-aware' : ' / rise-BLIND') + ')'
+                  (loaded.switches.riseAware ? ' / rise-aware' : ' / rise-BLIND') +
+                  ' / target ' + loaded.switches.fireTarget + ')'
                 : 'off'));
 console.log('playing ' + GAMES + ' games x ' + SCENARIOS.length + ' scenario(s): ' + SCENARIOS.join(', '));
 
@@ -70,7 +71,9 @@ SCENARIOS.forEach(function (sc) {
             rise: loaded.switches.rise, density: loaded.switches.density,
             modes: loaded.switches.modes, fireLinks: loaded.switches.fireLinks,
             fireWide: loaded.switches.fireWide, forcedMargin: loaded.switches.forcedMargin,
-            riseAware: loaded.switches.riseAware
+            riseAware: loaded.switches.riseAware,
+            fireTarget: loaded.switches.fireTarget, fireWideOff: loaded.switches.fireWideOff,
+            fireLinksOff: loaded.switches.fireLinksOff
         });
         add(chain, r.chain); add(combo, r.combo);
         minutes += r.frames / 60 / 60;
