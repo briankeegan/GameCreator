@@ -260,6 +260,14 @@ body {
 }
 .outpost-detail {
   height: 15rem; /* fixed, not min-height: min- still grows for a tall diagram */
+  /* ...but it may SHRINK when the screen cannot hold it. The fixed height
+     is there so the shelf and the Undock button do not jump as you tap
+     between offers, which it still does at any normal size; on a short
+     phone the alternative is Undock being drawn off the bottom of the
+     panel, which is worse than a box that is one offer shorter. The
+     readout inside scrolls. */
+  flex: 0 1 auto;
+  min-height: 0;
 }
 /* Shorter than the Outpost's box — a loadout's readout is a blurb and a
    stat line, never a footprint diagram, so it doesn't need the room a

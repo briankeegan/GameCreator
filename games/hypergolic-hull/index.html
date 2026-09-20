@@ -60,26 +60,27 @@
           <div class="records" id="records" hidden></div>
         </div>
 
+      <div class="run-overlay hangar-overlay outpost-overlay" id="outpostOverlay" hidden>
+        <h2><i class="swatch swatch-outpost"></i> Sector Outpost</h2>
+        <p>Salvage aboard: <span id="outpostSalvage">0</span></p>
+        <!-- Buying is only half of what a dock is for — the Hold can only
+             be rearranged while berthed. That used to go unsaid, so the
+             refit half of the game hid behind a screen you had to already
+             know about. The button IS the explanation; it sits above the
+             shelf so it can't be missed, and needs no paragraph. -->
+        <button id="outpostRefitBtn">Open the Hold</button>
+        <div class="outpost-offers" id="outpostOffers"></div>
+        <!-- Tapping the shelf INSPECTS. What it is, what shape it
+             covers, what it costs — then a separate button spends the
+             salvage. -->
+        <div class="outpost-detail" id="outpostDetail" hidden></div>
+        <button id="outpostCloseBtn">Undock</button>
+        <p class="outpost-note">Tap the dock to come back.</p>
+      </div>
+
     <div class="board-wrap" id="boardWrap">
       <div class="board-frame">
         <canvas id="board" width="320" height="320"></canvas>
-        <div class="run-overlay outpost-overlay" id="outpostOverlay" hidden>
-          <h2><i class="swatch swatch-outpost"></i> Sector Outpost</h2>
-          <p>Salvage aboard: <span id="outpostSalvage">0</span></p>
-          <!-- Buying is only half of what a dock is for — the Hold can only
-               be rearranged while berthed. That used to go unsaid, so the
-               refit half of the game hid behind a screen you had to already
-               know about. The button IS the explanation; it sits above the
-               shelf so it can't be missed, and needs no paragraph. -->
-          <button id="outpostRefitBtn">Open the Hold</button>
-          <div class="outpost-offers" id="outpostOffers"></div>
-          <!-- Tapping the shelf INSPECTS. What it is, what shape it
-               covers, what it costs — then a separate button spends the
-               salvage. -->
-          <div class="outpost-detail" id="outpostDetail" hidden></div>
-          <button id="outpostCloseBtn">Undock</button>
-          <p class="outpost-note">Tap the dock to come back.</p>
-        </div>
       </div>
     </div>
 
