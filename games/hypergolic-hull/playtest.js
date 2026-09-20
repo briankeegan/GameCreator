@@ -135,12 +135,36 @@ const THREAT_COST = CARE; // a detour beats a hit — hull is the scarcest thing
 // enough to cut through one rather than walk the long way home.
 const SCRAMBLER_COST = 4;
 
-function routeStep(state, goal) {
+// `desperate` drops the caution from the search: no threat cost, no
+// emplacement cost, just the shortest legal walk. A careful pilot should
+// route around a charged gun, but "route around" has to terminate. A
+// Sentry's ring priced at 60 a hex can make the only corridor to the gate
+// cost more than the search will spend looking, so no route comes back at
+// all and the fallback — nearest legal neighbour to the goal — bounces
+// between the same two hexes forever. Twenty runs in sixty stalled that
+// way on a dense board, the ship sitting at full hull for 220 rounds.
+// A player in that spot takes the hit and flies, so past the stuck
+// threshold this one does too.
+function routeStep(state, goal, desperate) {
   const startKey = Engine.hexKey(state.playerPos);
   const goalKey = Engine.hexKey(goal);
   const threats = Engine.computeThreatHexes(state);
   const blocked = new Set();
-  for (const e of Engine.livingEnemies(state)) blocked.add(Engine.hexKey(e));
+  // A HOSTILE IS NOT A WALL. Treating one as impassable is right almost
+  // always — you route around it — but it is wrong in the one case that
+  // deadlocks: when the only corridor to the gate has a ship standing in
+  // it. Then no route comes back at all, the fallback picks whichever
+  // neighbour is nearest the goal, and that alternates between the same
+  // two hexes until the round limit. Twenty runs in sixty stalled exactly
+  // that way on a dense board, at full hull, with a Sentry corking the
+  // one gap. A player in that spot shoots the cork or rams it, so once
+  // the pilot is visibly stuck the search prices hostiles instead of
+  // walling them off, walks up to the plug, and deals with it.
+  for (const e of Engine.livingEnemies(state)) {
+    if (desperate) continue;
+    blocked.add(Engine.hexKey(e));
+  }
+  const ENEMY_COST = 30;
   // ONLY what is actually impassable. A scrambler field is flown through —
   // it costs your guns while you are inside it, not your hull — and
   // blocking it here made a tenth of the board unwalkable to this pilot
@@ -156,7 +180,8 @@ function routeStep(state, goal) {
   // ones that are live right now. A pilot who reads the charge counters
   // routes around what's hot and walks through what's spent; one who
   // doesn't pays a hull for the shortcut. That timing is the puzzle.
-  const emplaced = PILOT === "careful" ? Engine.staticKillZones(state) : new Set();
+  const emplaced = PILOT === "careful" && !desperate ? Engine.staticKillZones(state) : new Set();
+  const threatCost = desperate ? 0 : THREAT_COST;
 
   const dist = new Map([[startKey, 0]]);
   const firstStep = new Map();
@@ -178,7 +203,9 @@ function routeStep(state, goal) {
       // Worth crossing to get somewhere, never worth loitering in, which is
       // exactly what a cost rather than a wall expresses.
       const scrambled = Engine.inScrambler(state, nb) ? SCRAMBLER_COST : 0;
-      const step = 1 + (threats.has(key) ? THREAT_COST : 0) + (emplaced.has(key) ? 60 : 0) + scrambled;
+      const occupied = desperate && Engine.livingEnemies(state).some((e) => Engine.hexKey(e) === key);
+      const step =
+        1 + (threats.has(key) ? threatCost : 0) + (emplaced.has(key) ? 60 : 0) + scrambled + (occupied ? ENEMY_COST : 0);
       const next = dist.get(curKey) + step;
       if (dist.has(key) && dist.get(key) <= next) continue;
       dist.set(key, next);
@@ -537,6 +564,26 @@ function playSector(state, report) {
   const MAX_ROUNDS = 220;
   let visitedOutpost = false;
   let repositions = 0;
+  // HOW LONG THE PILOT WILL STAND THERE. Letting them come to you is the
+  // right move against something that is actually coming; against a
+  // Salvager, which wants wrecks and not you, it is a deadlock. Capping
+  // the bus for a Dead Zone made that visible — the ship sat on one hex at
+  // full charge for 220 rounds with a Salvager three hexes away, and sixty
+  // runs out of sixty stalled. The wait is bounded now, so a contact that
+  // will not close eventually gets left behind instead.
+  let waited = 0;
+  // And how many times it will step out of a kill zone. Picking the ground
+  // is right; doing it forever is not. A Sentry's ring can cover every hex
+  // this one touches, so "step somewhere clear" walks back into cover next
+  // round and out again the round after — an unbounded two-cycle. Dense
+  // rock made it common enough to see: a forced Debris Field stalled 20
+  // runs in 60 with the ship bouncing between two hexes for 220 rounds.
+  // Past the cap it takes the risk and flies, which is what a player does.
+  let dodged = 0;
+  // How often the ship has stood on each hex this sector. Standing
+  // somewhere twice is ordinary; standing somewhere six times means the
+  // route is a loop, and the pilot stops being careful about it.
+  const standCount = new Map();
   // WHAT THE SHIP CARRIED VERSUS WHAT IT USED. A gun bought fourteen times
   // and fired zero is dead weight on the shelf, and the purchase count
   // alone cannot tell that apart from a gun nobody buys. Count the sectors
@@ -606,6 +653,11 @@ function playSector(state, report) {
     const canAffordRaise = state.energy >= raiseCost + Math.min(...armedWeapons(state).map((w) => w.energyCost));
     if (
       state.maxShields > 0 &&
+      // An ion storm takes the screen away for the sector, and asking for
+      // it anyway throws — which would end the run as an error rather than
+      // as a measurement. Same reason the shield price is read from the
+      // engine rather than written out here.
+      !Engine.conditionIs(state, "ionStorm") &&
       state.shieldCharges < state.maxShields &&
       (canAffordRaise || threatened) &&
       state.energy >= raiseCost
@@ -658,9 +710,10 @@ function playSector(state, report) {
     // set already knows that, since it lists the hexes a gun really
     // covers rather than everything within its range.
     const zones = Engine.staticKillZones(state);
-    if (PILOT === "careful" && zones.has(Engine.hexKey(state.playerPos))) {
+    if (PILOT === "careful" && dodged < 10 && zones.has(Engine.hexKey(state.playerPos))) {
       const clear = Engine.legalSublightTargets(state).filter((h) => !zones.has(Engine.hexKey(h)));
       if (clear.length) {
+        dodged++;
         Engine.applySublight(
           state,
           clear.reduce((best, cand) =>
@@ -703,7 +756,8 @@ function playSector(state, report) {
         continue;
       }
     }
-    if (PILOT !== "reckless" && nearestChaser && !threatened && healthy && Engine.hexDistance(state.playerPos, nearestChaser) <= 3) {
+    if (PILOT !== "reckless" && nearestChaser && !threatened && healthy && waited < 8 && Engine.hexDistance(state.playerPos, nearestChaser) <= 3) {
+      waited++;
       if (state.energy < state.maxEnergy) {
         Engine.applyRecharge(state);
         report.recharges++;
@@ -724,10 +778,27 @@ function playSector(state, report) {
     // Where to go. Dock if there's anything worth buying and we haven't;
     // otherwise the gate. Nothing here is worth grinding for — the gate is
     // always open and hull damage is permanent.
-    const wantsShop = state.outpostPos && !visitedOutpost && (state.salvage >= 3 || state.hull < state.maxHull);
+    // WHAT THIS SECTOR IS ASKING FOR. A gate on a clock is the one thing
+    // that makes browsing a shop the wrong move, and a gate that is cold
+    // is the one thing that makes standing still the right one.
+    const brief = Engine.sectorBriefing(state);
+    const racing = brief.objective && brief.objective.id === "collapse" && brief.objective.roundsLeft <= 6;
+    // Picked Clean pays nothing for a wreck, so there is nothing to shop
+    // FOR that this sector is going to fund — patch up and go.
+    const wantsShop =
+      state.outpostPos &&
+      !visitedOutpost &&
+      !racing &&
+      (state.salvage >= 3 || state.hull < state.maxHull);
     const goal = wantsShop ? state.outpostPos : state.exitPos;
-    if (!wantsShop && Engine.posEq(state.playerPos, state.exitPos)) return "cleared";
-    const step = routeStep(state, goal);
+    // The gate only counts when it is open. Under Gate Cold the flagship
+    // can sit on it for rounds before it will take a ship, and a pilot
+    // that treats arriving as clearing would report a sector it never
+    // actually left.
+    if (!wantsShop && Engine.posEq(state.playerPos, state.exitPos) && state.exitUnlocked) return "cleared";
+    const here = Engine.hexKey(state.playerPos);
+    standCount.set(here, (standCount.get(here) || 0) + 1);
+    const step = routeStep(state, goal, standCount.get(here) > 5);
     if (!step) {
       Engine.applyEndTurn(state);
       continue;
@@ -796,6 +867,7 @@ function playRun(seed, report) {
       maxHull: state.maxHull,
       maxEnergy: state.maxEnergy,
       guns: armedWeapons(state).length,
+      rounds: state.round || 0,
       dearest: armedWeapons(state).reduce((m, w) => Math.max(m, w.energyCost), 0),
     });
     if (process.env.ECON) report.econ.arrive.push({ depth, bank: salvageIn, out: state.salvage });
@@ -899,6 +971,7 @@ function main() {
       `  ${String(d).padStart(2)}  maxHull ${avg(rows.map((r) => r.maxHull))}` +
         `  maxEnergy ${avg(rows.map((r) => r.maxEnergy))}` +
         `  guns ${avg(rows.map((r) => r.guns))}` +
+        `  rounds ${avg(rows.map((r) => r.rounds))} (p90 ${rows.map((r) => r.rounds).sort((a, b) => a - b)[Math.floor(rows.length * 0.9)]})` +
         `  dearest gun ${avg(rows.map((r) => r.dearest))} energy`
     );
   }

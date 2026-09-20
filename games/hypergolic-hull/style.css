@@ -1420,3 +1420,44 @@ body {
 /* No size override here: the cell is chosen in updateLoadoutDetail, which
    measures the room left after the sprite, the stat line and the blurb and
    shrinks the grid to fit rather than letting the box scroll. */
+
+/* THE SECTOR'S WEATHER. A condition takes a system away for one sector and
+   an objective changes what leaving means, so both have to be legible
+   without opening a panel — this sits directly above the gauges, where the
+   eye already goes. Hidden entirely on an ordinary sector: a banner that is
+   always on screen is a banner nobody reads. */
+.briefing {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.45rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #5b4a2a;
+  border-left: 3px solid #e0a63c;
+  border-radius: 4px;
+  background: rgba(224, 166, 60, 0.09);
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+.briefing[hidden] { display: none; }
+.briefing-tag {
+  color: #f0c46a;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.briefing-text { color: #cbbfa6; flex: 1 1 10rem; min-width: 0; }
+/* The clock is the one part that changes every round, so it gets its own
+   weight and goes red as it runs out (see updateBriefing). */
+.briefing-clock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: #f0c46a;
+  white-space: nowrap;
+}
+.briefing-clock[hidden] { display: none; }
+.briefing.is-urgent { border-left-color: #e2584a; background: rgba(226, 88, 74, 0.12); }
+.briefing.is-urgent .briefing-tag,
+.briefing.is-urgent .briefing-clock { color: #ff8d7f; }

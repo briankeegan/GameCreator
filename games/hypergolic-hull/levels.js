@@ -156,6 +156,21 @@
     return (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
   }
 
+  // The six hexes touching this one. Same axial directions engine.js uses;
+  // kept here so the generator can answer "can you actually walk there"
+  // without loading the engine.
+  const HEX_DIRS = [
+    { q: 1, r: 0 },
+    { q: 1, r: -1 },
+    { q: 0, r: -1 },
+    { q: -1, r: 0 },
+    { q: -1, r: 1 },
+    { q: 0, r: 1 },
+  ];
+  function ringOf(hex) {
+    return HEX_DIRS.map((d) => ({ q: hex.q + d.q, r: hex.r + d.r }));
+  }
+
   // Hand-authored campaign sectors (2-4) declare `outpost: true` instead of
   // one fixed hex, plus this candidate pool — which berth a given run
   // actually gets is rolled per run in engine.js's pickOutpostPos, not
@@ -842,15 +857,95 @@
     // whichever side has to shoot to finish, and that is the flagship.
     // The rule stays in the engine; the dial is here when it is worth
     // revisiting as rare, placed ground rather than scatter.
-    const ROCK_SHARE = envNumber("GC_ROCK", 0.09);
-    const CLOUD_SHARE = envNumber("GC_CLOUD", 0);
-    const rockCount = Math.max(0, Math.min(Math.round(area * ROCK_SHARE), 14));
+    // ---- the sector's weather ------------------------------------------
+    //
+    // At most ONE of a condition or an objective, because two at once
+    // stops reading as "this place is different" and starts reading as
+    // noise. Both arrive on a drip rather than all at depth 3: the same
+    // reasoning as the weapon unlocks, which hand out one thing a sector
+    // so that each one gets noticed.
+    //
+    // Nothing lands before depth 3. The opening sectors are where the base
+    // game is learned, and a rule that takes a system away is only
+    // interesting once you know what the system does.
+    // Debris Field waits for a board big enough to hold one. Every gate on a
+    // Debris Field gets a two-hex lane cleared to it (see the terrain pass
+    // below), and on a five-by-seven board with three gates and a berth
+    // that lane IS the board — the "field" came out with exactly as much
+    // rock on it as a plain sector.
+    const CONDITION_DEPTH = { pickedClean: 3, nebula: 5, ionStorm: 5, debrisField: 6 };
+    const OBJECTIVE_DEPTH = { holdFast: 4, collapse: 6 };
+    const SECTOR_OBJECTIVE_IDS = OBJECTIVE_DEPTH;
+    const weatherRng = seededRandom(depth * 2749 + variantSeedOffset + 17);
+    let condition = null;
+    let objective = null;
+    // MEASUREMENT HOOKS, default off. GC_WEATHER=<id> puts the same
+    // condition or objective on every sector from depth 3 and GC_WEATHER=
+    // none clears them all, which is the only way to price one of these
+    // on its own — the natural spread puts about seven weathered sectors
+    // in a run and a whole-run win rate cannot tell which one cost what.
+    const forced = typeof process !== "undefined" && process.env ? process.env.GC_WEATHER : "";
+    if (forced === "none") {
+      // nothing this sector, whatever the roll would have said
+    } else if (forced && depth >= 3) {
+      if (Object.prototype.hasOwnProperty.call(SECTOR_OBJECTIVE_IDS, forced)) objective = forced;
+      else condition = forced;
+    } else if (depth >= 3) {
+      const roll = weatherRng();
+      // WHICH one is a rotation, not a second coin flip. A sector's weather
+      // is fixed for a given depth and gate (so is its board), which means
+      // the whole game holds about twenty weathered sectors — and an
+      // independent roll over five conditions left Dead Zone appearing in
+      // exactly none of them. Nobody could ever meet it. Rotating through
+      // the open list by the sector's own slot guarantees every entry is
+      // reachable as soon as enough sectors are weathered, while WHETHER a
+      // sector is weathered stays a roll.
+      // The mix has to be COPRIME with the pool size or the rotation is not
+      // one. Multiplying the depth by the number of gates meant depth
+      // contributed exactly nothing once four conditions were open
+      // (depth * 4 % 4 is 0), so which condition a sector carried was
+      // decided purely by which gate you came through — Picked Clean
+      // appeared eight times across the game and Debris Field none.
+      const SLOTS = ["", "aggressive", "quiet", "drift"];
+      const slot = depth * 7 + Math.max(0, SLOTS.indexOf(variantId || "")) * 3;
+      const pick = (table) => {
+        const open = Object.keys(table)
+          .filter((id) => depth >= table[id])
+          .sort();
+        return open.length ? open[slot % open.length] : null;
+      };
+      // 33% a condition, 22% an objective, 45% an ordinary sector. An
+      // ordinary sector has to stay the common case or the special ones
+      // stop being special.
+      if (roll < 0.33) condition = pick(CONDITION_DEPTH);
+      else if (roll < 0.55) objective = pick(OBJECTIVE_DEPTH);
+    }
+
+    // Two of the conditions are nothing but the generator's own terrain
+    // knobs turned up. That is deliberate: terrain applies to both sides
+    // without anybody writing a rule for it, so a Debris Field cannot
+    // become the game quietly cheating the way a combat modifier can.
+    const ROCK_SHARE = envNumber("GC_ROCK", condition === "debrisField" ? 0.2 : 0.09);
+    const CLOUD_SHARE = envNumber("GC_CLOUD", condition === "nebula" ? 0.09 : 0);
+    // The cap exists so an ordinary sector never turns into a maze; a
+    // Debris Field is allowed to be one.
+    const rockCap = condition === "debrisField" ? 26 : 14;
+    const rockSpacing = condition === "debrisField" ? 1 : 2;
+    const rockCount = Math.max(0, Math.min(Math.round(area * ROCK_SHARE), rockCap));
     const cloudCount = Math.max(0, Math.round(area * CLOUD_SHARE));
     const hazards = [];
     for (const hex of candidates) {
       if (hazards.length >= rockCount) break;
       if (exits.some((ex) => hexDist(hex, ex) < 2) || (outpost && hexDist(hex, outpost) < 2)) continue;
-      if (hazards.some((h) => hexDist(h, hex) < 2)) continue;
+      // ROCK IS NORMALLY SPACED OUT, and a Debris Field is normally what
+      // happens when it isn't. The spacing rule keeps an ordinary sector
+      // from turning into a maze, but it also meant raising the density
+      // for a Debris Field placed no extra rock at all — the board simply
+      // ran out of hexes two apart from each other, and a "field" came out
+      // with FEWER boulders on it than a plain sector. Letting them touch
+      // is the whole point: touching rock is cover and a chokepoint, which
+      // is what makes something that holds you at range two catchable.
+      if (hazards.some((h) => hexDist(h, hex) < rockSpacing)) continue;
       hazards.push({ type: "asteroid", q: hex.q, r: hex.r });
     }
     // Cloud goes down after the rock and may sit beside itself — a field of
@@ -884,6 +979,116 @@
         if (clouds % PATCH === 0) break;
       }
     }
+    // ---- THE GATE HAS TO BE REACHABLE ----------------------------------
+    //
+    // Nothing checked this until a Debris Field was built. At the old
+    // density, with rock forbidden from sitting next to rock, a wall could
+    // not form and the question never came up; let the boulders touch and
+    // twenty-six runs in sixty stalled outright on a sector whose gate was
+    // simply behind a wall. The player's version of that is a board they
+    // cannot finish, so this is a guarantee and not a tuning knob.
+    //
+    // Carve rather than re-roll: take the straight path the board would
+    // have if there were no rock at all, and clear whatever rock is
+    // standing on it. One pass per thing that has to be reachable, and it
+    // always terminates.
+    {
+      const key = (h) => `${h.q},${h.r}`;
+      const onBoard = new Set(hexes.map(key));
+      const blocked = () => new Set(hazards.filter((h) => h.type === "asteroid").map(key));
+      // Every hex the flagship can get to, walking around rock.
+      const reachable = (from) => {
+        const walls = blocked();
+        const seen = new Set([key(from)]);
+        const queue = [from];
+        while (queue.length) {
+          const at = queue.shift();
+          for (const to of ringOf(at)) {
+            const k = key(to);
+            if (seen.has(k) || !onBoard.has(k) || walls.has(k)) continue;
+            seen.add(k);
+            queue.push(to);
+          }
+        }
+        return seen;
+      };
+      // The shortest route ignoring rock entirely — what we are willing to
+      // dig out to reach `goal`.
+      const straightPath = (from, goal) => {
+        const seen = new Map([[key(from), null]]);
+        const queue = [from];
+        while (queue.length) {
+          const at = queue.shift();
+          if (at.q === goal.q && at.r === goal.r) break;
+          for (const to of ringOf(at)) {
+            const k = key(to);
+            if (seen.has(k) || !onBoard.has(k)) continue;
+            seen.set(k, at);
+            queue.push(to);
+          }
+        }
+        const path = [];
+        let at = goal;
+        while (at && seen.has(key(at))) {
+          path.push(at);
+          at = seen.get(key(at));
+        }
+        return path;
+      };
+      // TWO HEXES WIDE, not one. A single-file corridor is connected and
+      // still unplayable: one hostile standing in it seals the board, and
+      // the ship bounces off the plug until the round limit. Measured, a
+      // forced Debris Field stalled 20 runs in 60 that way even with
+      // connectivity guaranteed. Clearing the lane's neighbours as well
+      // means rock can be cover without ever being a cork.
+      const dropRockAt = (k) => {
+        for (let i = hazards.length - 1; i >= 0; i--) {
+          if (hazards[i].type === "asteroid" && key(hazards[i]) === k) hazards.splice(i, 1);
+        }
+      };
+      const clearLane = (goal) => {
+        for (const hex of straightPath(playerStart, goal)) dropRockAt(key(hex));
+      };
+      // UNCORK, rather than widen. Clearing a two-hex lane to every gate
+      // was the first attempt and it removed the field: with three gates
+      // and a berth to reach, the lanes ARE the board, and a Debris Field
+      // came out holding less rock than a plain sector. What actually
+      // causes the deadlock is a lane hex with only one way out of it, so
+      // that is the only thing fixed — every hex on the route keeps at
+      // least two free neighbours, and the rest of the rock stays where it
+      // fell.
+      const uncorkLane = (goal) => {
+        for (const hex of straightPath(playerStart, goal)) {
+          const walls = blocked();
+          const sides = ringOf(hex).filter((h) => onBoard.has(key(h)));
+          let free = sides.filter((h) => !walls.has(key(h)));
+          for (const side of sides) {
+            if (free.length >= 2) break;
+            if (!walls.has(key(side))) continue;
+            dropRockAt(key(side));
+            free = free.concat([side]);
+          }
+        }
+      };
+      const mustReach = [...exits, ...(outpost ? [outpost] : [])];
+      // PASS ONE, every board: nothing may be walled off. Narrow, because
+      // digging a wide lane on every board unconditionally is not a free
+      // safety net — it strips an ordinary sector of nearly all its rock,
+      // and that rock is cover the player was using. Measured: sixty runs
+      // went from 23 wins to 9.
+      for (const goal of mustReach) {
+        if (reachable(playerStart).has(key(goal))) continue;
+        clearLane(goal);
+      }
+      // PASS TWO, a Debris Field only. This is the condition that lets rock
+      // sit next to rock, and single-file is where that bites: a corridor
+      // one hex wide is CONNECTED and still unplayable, because one
+      // hostile standing in it corks the board. Measured at 20 stalls in
+      // 60 with connectivity already guaranteed. Rock can be cover; it
+      // must never be a cork.
+      if (condition === "debrisField") for (const goal of mustReach) uncorkLane(goal);
+    }
+
     const hazardKeys = new Set(hazards.map((h) => `${h.q},${h.r}`));
 
     // The hand-authored campaign runs 1, 2, then 3 hostiles; the crawl has
@@ -1061,6 +1266,12 @@
       },
       salvageBonus: locale.salvageDelta,
       theme: { variant: variant ? variant.id : "neutral", band: Math.floor(depth / 5), locale: locale.id },
+      // The sector's own weather. The engine reads these by id off its own
+      // registry (SECTOR_CONDITIONS / SECTOR_OBJECTIVES) — this file names
+      // one and never says what it does, so the rule lives in exactly one
+      // place.
+      condition,
+      objective,
       intro: `${sectorName(locale, depth, variantId)} — ${locale.name.toLowerCase()}. ${locale.blurb}`,
     };
   }

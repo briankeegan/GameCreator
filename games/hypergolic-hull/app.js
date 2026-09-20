@@ -73,6 +73,10 @@ const mapChartEl = document.getElementById("mapChart");
 const mapCloseBtn = document.getElementById("mapCloseBtn");
 const weaponBtnsEl = document.getElementById("weaponBtns");
 const rechargeBtn = document.getElementById("rechargeBtn");
+const briefingEl = document.getElementById("briefing");
+const briefingTagEl = document.getElementById("briefingTag");
+const briefingTextEl = document.getElementById("briefingText");
+const briefingClockEl = document.getElementById("briefingClock");
 const shieldsBtn = document.getElementById("shieldsBtn");
 const enginesBtn = document.getElementById("enginesBtn");
 const apBarEl = document.getElementById("apBar");
@@ -3606,8 +3610,15 @@ function updateSystems() {
   rechargeBtn.textContent = "Reactor Core";
   enginesBtn.disabled = busy;
   shieldsBtn.hidden = state.maxShields <= 0;
-  shieldsBtn.disabled = busy;
-  shieldsBtn.textContent = "Shield Generator";
+  // An ion storm takes the screen away for the sector. The button stays
+  // VISIBLE and goes dead, with the reason on it — hiding it would read as
+  // the generator having fallen off the ship.
+  const stormed = Engine.conditionIs(state, "ionStorm");
+  shieldsBtn.disabled = busy || stormed;
+  shieldsBtn.textContent = stormed ? "Shields — ion storm" : "Shield Generator";
+  shieldsBtn.title = stormed
+    ? "Ion storm — the screen will not hold in this sector"
+    : "Shield generator — burn charge to raise a screen; it eats one volley";
 }
 
 // Does this weapon's reach actually cover that contact, at any facing the
@@ -5042,8 +5053,36 @@ function updateMapOverlay() {
   mapChartEl.innerHTML = svg.join("");
 }
 
+// THE SECTOR'S WEATHER, above the gauges. A condition takes a system away
+// and an objective changes what leaving means; neither is discoverable by
+// looking at the board, so both are stated in words. The engine owns what
+// they say (Engine.sectorBriefing) — this only decides where it goes.
+function updateBriefing() {
+  const brief = Engine.sectorBriefing(state);
+  const what = brief.condition || brief.objective;
+  briefingEl.hidden = !what;
+  if (!what) return;
+  briefingTagEl.textContent = what.label;
+  briefingTextEl.textContent = what.blurb;
+  const clock = brief.objective;
+  briefingClockEl.hidden = !clock;
+  let urgent = false;
+  if (clock) {
+    const left = clock.roundsLeft;
+    if (clock.id === "collapse") {
+      briefingClockEl.textContent = `${left} round${left === 1 ? "" : "s"} left`;
+      urgent = left <= 4;
+    } else {
+      briefingClockEl.textContent = left > 0 ? `opens in ${left}` : "gate open";
+      urgent = false;
+    }
+  }
+  briefingEl.classList.toggle("is-urgent", urgent);
+}
+
 function render() {
   updateHud();
+  updateBriefing();
   updateLegend();
   updateSystems();
   updateScanInfo();

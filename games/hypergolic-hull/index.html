@@ -90,6 +90,14 @@
          modes, and the readout strip. Every gauge/button is dynamic:
          gauges flash on change, actions appear the moment they unlock. -->
     <div class="console control-panel">
+      <!-- The sector's own weather. Hidden on an ordinary sector, which is
+           most of them — a banner that is always there stops being read.
+           Filled by updateBriefing(); the clock line ticks every round. -->
+      <div id="briefing" class="briefing" hidden>
+        <span id="briefingTag" class="briefing-tag"></span>
+        <span id="briefingText" class="briefing-text"></span>
+        <span id="briefingClock" class="briefing-clock" hidden></span>
+      </div>
       <div class="panel-gauges">
         <span class="stat-wrap" id="apWrap">
           <span class="stat-label">Actions</span>

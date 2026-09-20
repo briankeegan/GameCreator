@@ -113,6 +113,141 @@
   // unlocks just by playing.
   const DEFAULT_ACTIONS = ALL_ACTIONS.filter((a) => !PURCHASABLE_ACTIONS.includes(a));
 
+  // ---- sector conditions and objectives -----------------------------------
+  //
+  // WHAT MAKES SECTOR NINE DIFFERENT FROM SECTOR THREE. Measured, it used
+  // to be nothing: across sixty runs the ship's max energy never moved off
+  // six, its hull went 3.0 to 3.6, and every gun it actually fired cost one
+  // or two. More guns was the only thing that ever changed, so "harder"
+  // could only ever mean "more of them". That is a shopping list, not a
+  // campaign.
+  //
+  // So a sector can carry a CONDITION and an OBJECTIVE, and both work by
+  // subtraction rather than by handing anybody a bigger number:
+  //
+  //   a condition takes a system away for one sector,
+  //   an objective changes what winning the sector means.
+  //
+  // SYMMETRY IS THE RULE. A condition that only inconveniences the
+  // flagship is the game cheating, and it reads as cheating the first time
+  // a player notices. Every condition here either applies to both sides at
+  // the same seam (Dead Zone, below, is one line in the flagship's
+  // recharge and one in the enemy phase's) or is terrain that both sides
+  // are already standing in (Debris Field, Nebula — these turn up the
+  // generator's own knobs and touch no combat rule at all). The two that
+  // are one-sided are one-sided because the system is: nothing out here
+  // raises a screen but you, and nothing out here banks salvage but you.
+  //
+  // Adding one means: an entry here, the rule enforced at ONE named seam,
+  // a line in app.js's sector card, and a test in engine.test.js that the
+  // condition actually bites. Nothing reads these by string anywhere else.
+  //
+  // WHAT IS NOT HERE, and why. A Dead Zone that halved every bus on the
+  // board was built, measured and cut: it scored 41 wins against a 23
+  // baseline, because the flagship spends one or two charge a shot and the
+  // hostiles cannot afford to fire at all on half a bus. A symmetric
+  // energy condition is a gift to whoever is the more efficient side, and
+  // that is always the player. Energy is the wrong axis for one of these.
+  const SECTOR_CONDITIONS = {
+    ionStorm: {
+      id: "ionStorm",
+      label: "Ion Storm",
+      blurb: "The screen will not hold out here. Shields cannot be raised.",
+      // Enforced in applyRaiseShields.
+    },
+    debrisField: {
+      id: "debrisField",
+      label: "Debris Field",
+      blurb: "Wreckage everywhere. Cover, and nowhere much to run.",
+      // Pure terrain — see levels.js. No combat rule knows about this one.
+    },
+    nebula: {
+      id: "nebula",
+      label: "Ion Nebula",
+      blurb: "Scrambler fog in banks. Nothing fires from inside one — you or them.",
+      // Pure terrain, and inScrambler already cuts both sides' guns.
+      // The share lives in levels.js. At 0.16 of the board this was the
+      // second-hardest thing in the game (11 wins from 21) and stalled
+      // eight runs in sixty outright, because a board that is a sixth fog
+      // has no firing positions left in it.
+    },
+    pickedClean: {
+      id: "pickedClean",
+      label: "Picked Clean",
+      blurb: "Someone stripped this system already. Wrecks pay half.",
+      // Enforced in awardSalvage.
+      //
+      // HALF, not nothing. At nothing it was the hardest thing in the game
+      // by a distance — forced onto every sector it took sixty runs from
+      // 21 wins to 5, because a run that cannot buy anything cannot answer
+      // what it meets four sectors later. Half still asks "is this fight
+      // worth having" without ending the run four sectors after it.
+      salvageFactor: 0.5,
+    },
+  };
+
+  // An objective changes the win condition, never the combat rules. Both
+  // of these run off state.round, and they are deliberate opposites: one
+  // says stop grinding and go, the other says you do not get to leave yet.
+  const SECTOR_OBJECTIVES = {
+    // BOTH CLOCKS COME FROM A MEASUREMENT. A sector takes 8 to 20 rounds
+    // to play normally (p90 as high as 32 deep in a run) — the first
+    // attempt put the collapse clock at 14, which is under the AVERAGE for
+    // half the game, and killed 60 runs out of 60. A clock has to be
+    // reachable by a ship that gives up on the fights and flies, and
+    // unreachable by one that wants the salvage too.
+    collapse: {
+      id: "collapse",
+      label: "Gate Collapsing",
+      rounds: 26,
+      blurb: "The gate is failing. Be through it within {N} rounds.",
+    },
+    // And the cold gate has to outlast a ship that simply beelines, or it
+    // denies nothing: at 6 rounds it was inert, because almost no sector
+    // is crossed that fast anyway.
+    holdFast: {
+      id: "holdFast",
+      label: "Gate Cold",
+      rounds: 11,
+      blurb: "The gate will not take a ship for {N} rounds. Stay alive.",
+    },
+  };
+
+  function sectorCondition(state) {
+    return (state && SECTOR_CONDITIONS[state.condition]) || null;
+  }
+
+  function sectorObjective(state) {
+    return (state && SECTOR_OBJECTIVES[state.objective]) || null;
+  }
+
+  function conditionIs(state, id) {
+    return Boolean(state) && state.condition === id;
+  }
+
+  // What the sector card prints and what the pilot in playtest.js reads.
+  // Rounds remaining is a number or null; a null means this objective has
+  // no clock, not that the clock ran out.
+  function sectorBriefing(state) {
+    const cond = sectorCondition(state);
+    const obj = sectorObjective(state);
+    const round = state.round || 0;
+    let roundsLeft = null;
+    if (obj) roundsLeft = Math.max(0, obj.rounds - round);
+    return {
+      condition: cond ? { id: cond.id, label: cond.label, blurb: cond.blurb } : null,
+      objective: obj
+        ? {
+            id: obj.id,
+            label: obj.label,
+            blurb: obj.blurb.replace("{N}", String(obj.rounds)),
+            rounds: obj.rounds,
+            roundsLeft,
+          }
+        : null,
+    };
+  }
+
   // ---- level validation ---------------------------------------------------
 
   // A level normally has one Warp Gate (`exit`); a branching sector (see
@@ -2579,7 +2714,20 @@
       discoveryLabel: discovery ? discovery.label : null,
       exitRule: level.exitRule,
       exitUnlocked: false,
+      // The sector's own weather and its own win condition, both optional
+      // and both declared by the LevelDef (see levels.js). Unknown ids are
+      // simply inert rather than an error: a save from before a condition
+      // existed still loads, and a typo costs a sector's flavour rather
+      // than the run.
+      condition: level.condition || null,
+      objective: level.objective || null,
+      // Rounds ELAPSED, counted at the close of the enemy phase. Both
+      // objectives read it; nothing else does.
+      round: 0,
       hazards: (level.hazards || []).map((h) => ({ type: h.type, q: h.q, r: h.r })),
+      // spawnEnemy is handed a type and a hex and has no state to read, so
+      // a sector condition that touches hostiles is applied here, in one
+      // pass, rather than threaded through the spawner.
       enemies: level.enemies.map((e, i) => spawnEnemy(e.type, e.q, e.r, `e${i}`)),
       // The Hold: the ship's equipment grid — either carried whole from
       // the previous sector (a run's ship IS its hold) or built fresh
@@ -3238,7 +3386,14 @@
     // Cutting gear pays per WRECK, not per sector: a hull built around it
     // gets richer the more it kills, which is what makes it a late ship.
     const rig = (state.hold ? deriveShip(state.hold).salvageBonus : 0) || 0;
-    const amount = base > 0 ? base + localeBonus(state) + rig : 0;
+    let amount = base > 0 ? base + localeBonus(state) + rig : 0;
+    // PICKED CLEAN. Somebody stripped this system before you got here, so
+    // a wreck pays a fraction. One-sided the way the economy is — nothing
+    // out here banks salvage but you — and it turns "is this fight worth
+    // having" back into a question for a sector. Floored at 1 rather than
+    // rounded to 0, so a kill is still worth something.
+    const lean = sectorCondition(state);
+    if (lean && lean.salvageFactor) amount = Math.max(1, Math.floor(amount * lean.salvageFactor));
     if (amount <= 0) return;
     state.salvage += amount;
     state.events.push({ type: "salvage", amount });
@@ -3786,6 +3941,15 @@
   // for now in case a future level wants a different unlock condition, but
   // nothing currently reads it to gate anything.)
   function checkExitUnlock(state) {
+    // GATE COLD. The gate is the one thing in the game that is always
+    // open, which is what lets a sector be skipped entirely. An objective
+    // that shuts it for a few rounds is the only way to ask "can you
+    // survive here" rather than "can you cross this".
+    const clock = sectorObjective(state);
+    if (clock && clock.id === "holdFast" && (state.round || 0) < clock.rounds) {
+      if (state.exitUnlocked) state.exitUnlocked = false;
+      return;
+    }
     if (!state.exitUnlocked) {
       state.exitUnlocked = true;
       pushLog(state, "Gate reads online.");
@@ -4137,6 +4301,22 @@
       state.events.push({ type: "playerDeath", q: state.playerPos.q, r: state.playerPos.r });
       pushLog(state, "Hull breached. All hands.");
     }
+    // A ROUND IS OVER when the enemy phase closes, and this is the only
+    // place that says so. Both objectives read this counter; nothing else
+    // does. Counted even on the round the flagship dies, so a post-mortem
+    // reads the right number.
+    state.round = (state.round || 0) + 1;
+    const clock = sectorObjective(state);
+    if (clock && clock.id === "collapse" && state.status === "playing" && state.round >= clock.rounds) {
+      state.status = "lost";
+      state.events.push({ type: "playerDeath", q: state.playerPos.q, r: state.playerPos.r });
+      pushLog(state, "The gate folds in on itself. Nothing gets out of here.");
+    } else if (clock && clock.id === "collapse" && state.status === "playing") {
+      const left = clock.rounds - state.round;
+      if (left <= 3) pushLog(state, `The gate is going — ${left} round${left === 1 ? "" : "s"}.`);
+    } else if (clock && clock.id === "holdFast" && state.status === "playing" && state.round === clock.rounds) {
+      pushLog(state, "The gate warms. You can leave.");
+    }
   }
 
   // ---- round resolution --------------------------------------------------
@@ -4441,6 +4621,10 @@
   function applyRaiseShields(state) {
     assertPlaying(state);
     if (state.maxShields <= 0) throw new Error("No shield generator fitted — the yards sell them");
+    // ION STORM. One-sided because the SYSTEM is one-sided: nothing out
+    // here raises a screen but you. A hostile that spawns with a charge
+    // keeps it either way.
+    if (conditionIs(state, "ionStorm")) throw new Error("Ion storm — the screen will not hold out here");
     if (state.shieldCharges >= state.maxShields) throw new Error("Shields are already up");
     if (state.energy < SHIELD_RAISE_COST)
       throw new Error(`Not enough charge to raise shields — needs ${SHIELD_RAISE_COST}`);
@@ -4697,6 +4881,13 @@
     enemyAt,
     hazardAt,
     inScrambler,
+    awardSalvage,
+    SECTOR_CONDITIONS,
+    SECTOR_OBJECTIVES,
+    sectorCondition,
+    sectorObjective,
+    sectorBriefing,
+    conditionIs,
     WEAPONS,
     ENEMY_TYPES,
     STARTING_LOADOUTS,

@@ -3520,4 +3520,186 @@ assert.deepStrictEqual(
   }
 }
 
+// ---- sector conditions and objectives -----------------------------------
+//
+// Every one of these tests that the rule BITES, because five of the seven
+// first drafts did not. Measured on sixty full runs each, forced onto
+// every sector: a Dead Zone that capped the recharge rate scored exactly
+// the baseline (the standard reactor already cycles 1, so the cap capped
+// nothing), a Gate Cold of six rounds scored exactly the baseline (almost
+// no sector is crossed that fast anyway), and a Gate Collapsing of
+// fourteen rounds killed sixty runs out of sixty (the average sector takes
+// longer than that to play). A condition nobody can feel and a condition
+// nobody can survive are the same bug, so each one here is asserted
+// against the thing it is supposed to change.
+{
+  const weatherLevel = (extra) =>
+    Object.assign(JSON.parse(JSON.stringify(LEVELS[0])), extra);
+
+  // EVERY entry in both registries has to be reachable in an actual game.
+  // Dead Zone was not: with the id picked by an independent roll over five
+  // conditions, and a sector's weather fixed for a given depth and gate,
+  // it appeared in none of the game's ~20 weathered sectors. Nobody could
+  // ever have met it.
+  {
+    const seen = new Set();
+    for (let depth = 1; depth < BOSS_DEPTH; depth++) {
+      for (const variant of [null, "aggressive", "quiet", "drift"]) {
+        const lv = generateLevel(depth, variant);
+        if (lv.condition) seen.add(lv.condition);
+        if (lv.objective) seen.add(lv.objective);
+        assert.ok(
+          !(lv.condition && lv.objective),
+          `sector ${depth}/${variant} carries a condition AND an objective — one at a time, or it reads as noise`
+        );
+        if (depth < 3) {
+          assert.ok(
+            !lv.condition && !lv.objective,
+            `sector ${depth} must be an ordinary sector — the base game is learned before anything is taken away`
+          );
+        }
+      }
+    }
+    for (const id of Object.keys(Engine.SECTOR_CONDITIONS)) {
+      assert.ok(seen.has(id), `condition "${id}" never appears in any reachable sector`);
+    }
+    for (const id of Object.keys(Engine.SECTOR_OBJECTIVES)) {
+      assert.ok(seen.has(id), `objective "${id}" never appears in any reachable sector`);
+    }
+    // And an ordinary sector has to stay the common case, or the special
+    // ones stop registering as special.
+    let weathered = 0;
+    let total = 0;
+    for (let depth = 1; depth < BOSS_DEPTH; depth++) {
+      for (const variant of [null, "aggressive", "quiet", "drift"]) {
+        const lv = generateLevel(depth, variant);
+        total += 1;
+        if (lv.condition || lv.objective) weathered += 1;
+      }
+    }
+    assert.ok(weathered / total < 0.5, `${weathered} of ${total} sectors carry weather — plain sectors must stay the majority`);
+    assert.ok(weathered / total > 0.15, `only ${weathered} of ${total} sectors carry weather — too rare to change a run`);
+  }
+
+  // ION STORM — the screen will not hold. The button is one the player can
+  // still see, so the engine has to be the thing that refuses.
+  {
+    const calm = Engine.createGameState(weatherLevel({}), { hold: { cols: 5, rows: 6, blocked: [], items: [
+      { id: "reactorCore", x: 0, y: 0 }, { id: "autocannon", x: 2, y: 0 }, { id: "shieldGenerator", x: 0, y: 2 },
+    ] } });
+    assert.ok(calm.maxShields > 0, "fixture carries a shield generator");
+    calm.shieldCharges = 0;
+    calm.energy = calm.maxEnergy;
+    assert.doesNotThrow(() => Engine.applyRaiseShields(calm), "an ordinary sector raises a screen normally");
+
+    const stormed = Engine.createGameState(weatherLevel({ condition: "ionStorm" }), { hold: { cols: 5, rows: 6, blocked: [], items: [
+      { id: "reactorCore", x: 0, y: 0 }, { id: "autocannon", x: 2, y: 0 }, { id: "shieldGenerator", x: 0, y: 2 },
+    ] } });
+    stormed.shieldCharges = 0;
+    stormed.energy = stormed.maxEnergy;
+    assert.throws(() => Engine.applyRaiseShields(stormed), /ion storm/i, "an ion storm refuses the screen");
+    // And it takes nothing else away: the guns still fire.
+    assert.ok(stormed.maxEnergy === calm.maxEnergy, "an ion storm is about the screen, not the bus");
+  }
+
+  // PICKED CLEAN — a wreck pays a fraction, never nothing. At nothing it
+  // was the hardest thing in the game by a distance (5 wins in 60 against
+  // a baseline of 23), because a run that cannot buy cannot answer what it
+  // meets four sectors later.
+  {
+    const rich = Engine.createGameState(weatherLevel({}));
+    const lean = Engine.createGameState(weatherLevel({ condition: "pickedClean" }));
+    const type = LEVELS[0].enemies[0].type;
+    const before = { rich: rich.salvage, lean: lean.salvage };
+    rich.events = [];
+    lean.events = [];
+    Engine.awardSalvage(rich, type);
+    Engine.awardSalvage(lean, type);
+    const paidRich = rich.salvage - before.rich;
+    const paidLean = lean.salvage - before.lean;
+    assert.ok(paidRich > 0, "an ordinary wreck pays something");
+    assert.ok(paidLean < paidRich, "Picked Clean has to actually cost salvage or it is not a condition");
+    assert.ok(paidLean >= 1, "a kill is still worth making — floored at 1, never zero");
+  }
+
+  // GATE COLLAPSING — the clock has to be survivable. Fourteen rounds
+  // killed every run; a sector takes 8 to 20 rounds to play.
+  {
+    const clock = Engine.SECTOR_OBJECTIVES.collapse;
+    assert.ok(clock.rounds >= 20, `a ${clock.rounds}-round gate clock is under the length of an average sector`);
+    // An EMPTY board, so the only thing that can end this sector is the
+    // clock. With the fixture's Interceptor still on it the ship dies to
+    // the hostile first and the test measures nothing.
+    const racing = Engine.createGameState(weatherLevel({ objective: "collapse", enemies: [] }));
+    assert.strictEqual(racing.status, "playing", "the clock does not start expired");
+    assert.strictEqual(Engine.sectorBriefing(racing).objective.roundsLeft, clock.rounds, "a fresh sector has the whole clock");
+    for (let i = 0; i < clock.rounds && racing.status === "playing"; i++) Engine.applyEndTurn(racing);
+    assert.strictEqual(racing.status, "lost", "a gate left to collapse ends the run");
+  }
+
+  // GATE COLD — the gate is the one thing in this game that is always
+  // open, and an objective that shuts it is the only way to ask whether
+  // you can survive somewhere rather than cross it.
+  {
+    const hold = Engine.SECTOR_OBJECTIVES.holdFast;
+    const cold = Engine.createGameState(weatherLevel({ objective: "holdFast", enemies: [] }));
+    Engine.applyEndTurn(cold);
+    assert.strictEqual(cold.exitUnlocked, false, "a cold gate stays shut while its clock runs");
+    let guard = 0;
+    while (cold.round < hold.rounds && cold.status === "playing" && guard++ < 60) Engine.applyEndTurn(cold);
+    Engine.applyEndTurn(cold);
+    assert.strictEqual(cold.exitUnlocked, true, "a cold gate opens when its clock is up");
+    // It has to outlast a ship that simply beelines, or it denies nothing.
+    assert.ok(hold.rounds >= 8, `a ${hold.rounds}-round hold is shorter than crossing an ordinary sector takes`);
+  }
+
+  // The two terrain conditions carry no combat rule at all — that is the
+  // point of them, and it is what makes them symmetric for free. If one
+  // ever grows one, this is where it gets noticed.
+  for (const id of ["debrisField", "nebula"]) {
+    const cond = Engine.SECTOR_CONDITIONS[id];
+    assert.ok(cond, `${id} is a real condition`);
+    assert.ok(
+      !cond.salvageFactor && !cond.busFactor && !cond.rechargeCap,
+      `${id} is terrain — it must not carry a combat modifier`
+    );
+  }
+  // A Debris Field has to actually be one, and a Nebula actually foggy.
+  // Compared on THE SAME BOARD, via the generator's own forcing hook — a
+  // first version compared the rockiest debris field anywhere against the
+  // rockiest plain sector anywhere, which is really a comparison of board
+  // sizes at different depths, and it reported a "field" with fewer
+  // boulders on it than a plain sector while the bug was real but
+  // different: rock could never be placed adjacent to rock, so raising the
+  // density for a field placed nothing extra at all.
+  {
+    const terrainAt = (weather, type) => {
+      const before = process.env.GC_WEATHER;
+      process.env.GC_WEATHER = weather;
+      delete require.cache[require.resolve("./levels.js")];
+      const fresh = require("./levels.js");
+      const counts = [7, 9, 11].map(
+        (depth) => (fresh.generateLevel(depth, "quiet").hazards || []).filter((h) => h.type === type).length
+      );
+      if (before === undefined) delete process.env.GC_WEATHER;
+      else process.env.GC_WEATHER = before;
+      delete require.cache[require.resolve("./levels.js")];
+      require("./levels.js");
+      return counts;
+    };
+    const plainRock = terrainAt("none", "asteroid");
+    const fieldRock = terrainAt("debrisField", "asteroid");
+    for (let i = 0; i < plainRock.length; i++) {
+      assert.ok(
+        fieldRock[i] > plainRock[i],
+        `a Debris Field (${fieldRock[i]} rocks) must be rockier than the same board plain (${plainRock[i]})`
+      );
+    }
+    const plainFog = terrainAt("none", "scrambler");
+    const nebulaFog = terrainAt("nebula", "scrambler");
+    assert.ok(plainFog.every((n) => n === 0), "an ordinary sector carries no scrambler fog");
+    assert.ok(nebulaFog.every((n) => n > 0), "an Ion Nebula must actually put fog on the board");
+  }
+}
+
 console.log("All golden-path assertions passed.");
