@@ -681,14 +681,25 @@
     // Never wider than tall: the game is a portrait cockpit, and a board
     // that runs wide shrinks every hex to fit the screen's width while
     // leaving vertical room unused. Growth goes downrange, not sideways.
+    // Two rows deeper than the boards were. A phone is a tall window and
+    // the grid was filling about half its height and four fifths of its
+    // width — the fit is min(width, height), so on a board wider than it
+    // is tall the width binds and the rest of the screen is wasted. Growth
+    // goes downrange, not sideways: the column counts are unchanged.
+    // NARROW AND DEEP. A phone is a tall window, and the board is fitted
+    // by whichever of width or height binds first — so a board wider than
+    // it is tall wastes the screen twice over: the width decides the hex
+    // size, and then half the height goes empty. These are all taller than
+    // they are wide, which is also what "growth goes downrange, not
+    // sideways" was always supposed to mean.
     const SIZE_FOR_ROSTER = {
-      1: [{ cols: 7, rows: 7 }, { cols: 7, rows: 7 }],
-      2: [{ cols: 7, rows: 7 }, { cols: 7, rows: 8 }],
-      3: [{ cols: 7, rows: 8 }, { cols: 7, rows: 9 }],
-      4: [{ cols: 9, rows: 8 }, { cols: 9, rows: 9 }],
-      5: [{ cols: 9, rows: 9 }, { cols: 9, rows: 10 }],
-      6: [{ cols: 9, rows: 10 }, { cols: 9, rows: 10 }],
-      7: [{ cols: 9, rows: 10 }, { cols: 9, rows: 10 }],
+      1: [{ cols: 5, rows: 7 }, { cols: 5, rows: 7 }],
+      2: [{ cols: 5, rows: 7 }, { cols: 5, rows: 8 }],
+      3: [{ cols: 5, rows: 8 }, { cols: 7, rows: 8 }],
+      4: [{ cols: 7, rows: 8 }, { cols: 7, rows: 9 }],
+      5: [{ cols: 7, rows: 9 }, { cols: 7, rows: 10 }],
+      6: [{ cols: 7, rows: 10 }, { cols: 7, rows: 10 }],
+      7: [{ cols: 7, rows: 10 }, { cols: 7, rows: 10 }],
     };
     const sizes = SIZE_FOR_ROSTER[roster];
     const shape = sizes[Math.floor(rng() * sizes.length)];
@@ -714,7 +725,12 @@
     // mixing is what makes the chart read as a maze instead of a ladder.
     // A fork is the whole point of a chart. Two ways out is the floor,
     // three is the common case — a sector with one exit is a corridor.
-    if (rng() < 0.8) exits.push({ q: 2, r: -1, variantId: "drift" });
+    // Column DERIVED, not typed: one left of the centre gate, and never
+    // column 0 (the Outpost's fixed berth). Hard-coded to 2, it landed on
+    // top of the centre gate the moment a board was five columns wide,
+    // and the level failed to build at all.
+    const driftCol = Math.max(1, startCol - 1);
+    if (rng() < 0.8) exits.push({ q: driftCol, r: -Math.floor(driftCol / 2), variantId: "drift" });
     const exit = exits[0]; // primary/first gate — every non-branching call site reads this
     // Not every sector gets an Outpost — a guaranteed safe restock every
     // Not every sector trades. Somebody has to actually be out here, and

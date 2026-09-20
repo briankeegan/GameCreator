@@ -2643,7 +2643,18 @@ assert.strictEqual(Engine.ENEMY_TYPES.bulwark.startsEmpty, true, "and it charges
       const level = generateLevel(depth, variant);
       if (level.isBoss) continue;
       const { cols, rows } = level.board;
-      assert.ok(cols <= 9 && rows <= 11, `depth ${depth} never deals a board bigger than the old fixed one`);
+      // AREA, not shape. The rule is "never bigger than the old fixed 9x11
+      // board", and that board held 99 hexes; a deeper, narrower one of 84
+      // obeys it while failing a rows<=11 spelling of it.
+      assert.ok(
+        cols * rows <= 99,
+        `depth ${depth} deals ${cols}x${rows} — bigger than the old fixed board's 99 hexes`
+      );
+      // And never wider than tall, which every comment about board growth
+      // in levels.js claims and nothing checked: the screen is a portrait
+      // window, and a board wider than it is tall wastes the height twice
+      // over — the width sets the hex size and the rest is left empty.
+      assert.ok(rows > cols, `depth ${depth} deals ${cols}x${rows} — growth goes downrange, not sideways`);
       assert.ok(rows >= 7, `depth ${depth} is still big enough that a gate isn't on the doorstep`);
       shapes.set(`${cols}x${rows}`, (shapes.get(`${cols}x${rows}`) || 0) + 1);
       const n = level.enemies.length;
