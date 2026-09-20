@@ -28,6 +28,7 @@ var fs = require('fs');
 var path = require('path');
 var cp = require('child_process');
 var os = require('os');
+var crypto = require('crypto');
 
 var registry = require('./registry.js');
 var SEEDS = require('./seeds.js');
@@ -112,6 +113,88 @@ for (var i = 0; i < ISLANDS; i++) {
     }));
 }
 if (resumed) console.log('resumed ' + resumed + ' of ' + ISLANDS + ' islands');
+
+// DROP A GENOME INTO EVERY POOL, ONCE, AND LET IT TAKE ITS CHANCES.
+//
+// inject.json (absent = this does nothing) names a weight set that each
+// island adopts as ORDINARY MEMBERS: they duel, they are scored, exploit and
+// explore may copy them across the island or overwrite them, and a better
+// vector replaces them like any other. Nothing is pinned and nothing is held
+// outside the population as a fixed opponent — the search has to be able to
+// SURPASS it, which it cannot do against something that never dies.
+//
+// WHY A FILE AND NOT AN ENV VAR. A leg dispatches its own continuation with
+// a fixed input list, so a variable set on one dispatch does not reach the
+// next one; a file in the checkout reaches every leg of every chain. It is
+// also the one place to look to answer "is anything being injected", and
+// deleting it stops it.
+//
+// ONCE PER ISLAND, not once per leg. A leg re-runs this file, so re-reading
+// the genome every time would reinstate it after the search had killed it —
+// a fixed target wearing a member's clothes, and the island would converge
+// on beating that one vector instead of playing the game. Each island
+// records the hash of what it has taken and skips it thereafter.
+//
+// COPIES, NOT ONE. A single vector is one sample of an idea and the island
+// can lose it to a bad early draw. The donor goes in as itself plus jogged
+// variants, at the explore step's own scale, so the idea gets a few
+// independent chances.
+//
+// THEY TAKE THE WORST SLOTS, by the island's own win rate, so the cost is
+// the vectors the island was about to discard anyway.
+//
+// NOT IN THE FINGERPRINT, deliberately. The fingerprint decides whether a
+// saved population may be RESUMED, and a chain with 12,000 generations
+// behind it must not read its own islands as foreign and restart from random
+// vectors. Nothing about how the island searches has changed; some of its
+// members arrived from somewhere else, which is what migration already does.
+var INJECT = path.join(__dirname, 'inject.json');
+if (fs.existsSync(INJECT)) {
+    var donorFile = JSON.parse(fs.readFileSync(INJECT, 'utf8'));
+    var donor = donorFile.weights || donorFile;
+    var copies = Math.max(1, Math.min(POP, Number(donorFile.copies) || 4));
+    var seedGenome = {};
+    KEYS.forEach(function (k) { seedGenome[k] = Number(donor[k]) || 0; });
+    var mark = crypto.createHash('sha1')
+        .update(KEYS.map(function (k) { return k + '=' + seedGenome[k]; }).join('|'))
+        .digest('hex').slice(0, 12);
+
+    // The donor itself first, then jogs of it at widening strengths — the
+    // explore step's own MUTATE, and multiples of it.
+    function variantOf(strength) {
+        var g = {};
+        KEYS.forEach(function (k) {
+            var v = seedGenome[k] + (rng() * 2 - 1) * strength * MAX_WEIGHT;
+            g[k] = Math.max(MIN_WEIGHT, Math.min(MAX_WEIGHT, v));
+        });
+        return g;
+    }
+
+    for (var q = 0; q < ISLANDS; q++) {
+        var st = readIsland(q);
+        st.injected = st.injected || [];
+        if (st.injected.indexOf(mark) >= 0) continue;
+        var taken = [];
+        for (var c = 0; c < copies; c++) {
+            var worst = -1, worstRate = Infinity;
+            for (var m = 0; m < st.population.length; m++) {
+                if (taken.indexOf(m) >= 0) continue;
+                var pl = st.played[m] || 0;
+                var rt = pl ? (st.wins[m] || 0) / pl : 0;
+                if (rt < worstRate) { worstRate = rt; worst = m; }
+            }
+            if (worst < 0) break;
+            st.population[worst] = c === 0 ? seedGenome : variantOf(MUTATE * (1 + c * 2));
+            st.wins[worst] = 0;
+            st.played[worst] = 0;
+            taken.push(worst);
+        }
+        st.injected.push(mark);
+        fs.writeFileSync(islandFile(q), JSON.stringify(st));
+        console.log('island ' + q + ': injected ' + mark + ' into slots ' + taken.join(',') +
+                    ' (1 donor + ' + (taken.length - 1) + ' jogged), as ordinary members');
+    }
+}
 
 // Decide the islands and stop, without duelling. The resume decision above is
 // the difference between continuing a five-hour search and silently restarting
