@@ -1700,16 +1700,26 @@ function drawMissile(center, missile, now) {
     // cold engine — the same picture that sits in a launcher's bay — and
     // the exhaust is added here, in flight only, so one image serves both
     // states and the flame animates instead of being a frozen decal.
-    ctx.fillStyle = `rgba(255,196,90,${0.5 + 0.4 * pulse})`;
+    //
+    // A soft taper, not a flat wedge: a solid tan triangle read as a
+    // piece of cardboard stuck to the back of the missile. And the round
+    // is drawn smaller than the hex it is crossing — at s*3 it was bigger
+    // than the ships shooting at it.
+    const tail = s * (1.5 + 0.45 * pulse);
+    const plume = ctx.createLinearGradient(-s * 0.7, 0, -s * 0.7 - tail, 0);
+    plume.addColorStop(0, `rgba(255,214,150,${0.85 * pulse})`);
+    plume.addColorStop(0.45, `rgba(255,150,60,${0.45 * pulse})`);
+    plume.addColorStop(1, "rgba(255,110,40,0)");
+    ctx.fillStyle = plume;
     ctx.beginPath();
-    ctx.moveTo(-s * 0.9, 0);
-    ctx.lineTo(-s * 2.0 - s * pulse, -s * 0.3);
-    ctx.lineTo(-s * 2.0 - s * pulse, s * 0.3);
+    ctx.moveTo(-s * 0.7, -s * 0.22);
+    ctx.lineTo(-s * 0.7 - tail, 0);
+    ctx.lineTo(-s * 0.7, s * 0.22);
     ctx.closePath();
     ctx.fill();
     ctx.save();
     ctx.rotate(Math.PI / 2);
-    ctx.drawImage(art, -s * 1.5, -s * 1.5, s * 3, s * 3);
+    ctx.drawImage(art, -s * 1.05, -s * 1.05, s * 2.1, s * 2.1);
     ctx.restore();
     ctx.restore();
     return;
