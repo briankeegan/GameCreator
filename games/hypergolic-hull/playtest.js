@@ -241,7 +241,27 @@ function wantList(state) {
   const dearestShot = Math.max(1, ...armedWeapons(state).map((w) => w.energyCost || 1));
   const energyShort = (state.maxEnergy || 0) < dearestShot * 2;
   const power = energyShort ? ["reactor", "chargeBank"] : [];
-  return [...guns, "shield", "screenArray", "hardpoint", "reinforce", ...power];
+  // Mobility sits with the other upkeep, not with the guns: it is bought to
+  // reach a fight and to leave one, which is the same reason a hull point
+  // is. Leaving it off the list entirely meant the pilot never once bought
+  // one across 60 runs, so every number measured with it on the shelf was
+  // measuring a part nobody owned.
+  // Mobility only once there is room to spare. Two cells is cheap on a Line
+  // Ship with fourteen free and ruinous on a Screen Ship with ten: bought
+  // unconditionally it cost the Screen Ship six wins in sixty, because the
+  // booster went in where a gun had to go. The test is the same one the
+  // hulls are held to — after fitting it, can this hold still take the
+  // biggest crate on the shelf.
+  const BIGGEST_CRATE = 4;
+  const freeCells =
+    state.hold.cols * state.hold.rows -
+    (state.hold.blocked || []).length -
+    state.hold.items.reduce((n, it) => {
+      const eq = Engine.EQUIPMENT[it.id];
+      return n + (eq ? eq.w * eq.h : 0);
+    }, 0);
+  const mobility = freeCells >= 2 + BIGGEST_CRATE ? ["afterburner"] : [];
+  return [...guns, "shield", "screenArray", "hardpoint", "reinforce", ...mobility, ...power];
 }
 
 // Shopping policy. A dock is the only place capability comes from, and
