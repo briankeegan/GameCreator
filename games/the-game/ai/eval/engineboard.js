@@ -1,26 +1,26 @@
 // THINK WITH THE ENGINE, NOT WITH A COPY OF IT.
 //
-// panel-engine.js runs the game. panel-cpu.js's LogicalBoard is a second,
-// faster implementation of the same rules that the search clones a few
-// hundred times a decision — and the two disagree. Measured against the
-// fork's chip library, 372 templates fire correctly on a live Stack and come
-// out wrong in LogicalBoard, EVERY one of them by the same amount: the right
-// panels clear, in one round fewer. The engine lands groups that fell
-// different distances a couple of frames apart and counts two chain links;
-// LogicalBoard settles the whole board before matching and merges them.
+// panel-engine.js runs the game. panel-cpu.js's LogicalBoard is a second
+// implementation of the same rules that the search clones a few hundred
+// times a decision. This module runs a candidate on a REAL Stack instead:
+// one scratch Stack, built once and repainted per candidate.
 //
-// So the bot prices a real 3-chain as a 2-chain, on exactly the deep-chain
-// shapes it is supposed to be learning to build.
+// WHAT IT COSTS, measured at depth 2 on a real duel: 3,168us a resolve
+// against LogicalBoard's 209us, which is 1,904ms a decision against 87ms.
+// The budget is 85ms. So this is the referee, not the thinker — PuyoCpu's
+// `engine` option switches _resolveCandidate over to it, and nothing in
+// training or the shipped bot sets it.
 //
-// This module is the other answer: run the candidate on a REAL Stack. One
-// scratch Stack is built once and repainted per candidate, which is what
-// makes it affordable — measured 1.27ms a candidate against LogicalBoard's
-// 0.017ms, so 30 candidates at depth 1 is 38ms of an 85ms budget.
+// WHERE THE TWO STAND TODAY, both re-measured rather than recalled:
+//   verify_chips_engine.js with GC_COMPARE_SIM=1 — 6,228 chips, 0 differ.
+//   live_fidelity.js — 272 swaps in live play, 0 differ.
+// Deep cascade shapes and live unsettled boards. Neither covers a deep
+// cascade ON an unsettled board, which is the gap that remains.
 //
 // ONE IMPLEMENTATION, USED BY BOTH. The chip verifier had its own copy of
 // paint-and-settle and the bot would have grown another; two copies of this
-// drift exactly the way LogicalBoard drifted from the engine, and then
-// "verified against the engine" stops meaning what it says.
+// drift exactly the way a copy drifts, and then "verified against the
+// engine" stops meaning what it says.
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) module.exports = factory();
     else root.PanelEval = root.PanelEval || {}, root.PanelEval.engineBoard = factory();

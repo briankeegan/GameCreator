@@ -266,6 +266,18 @@ set and the field is inert. The genome is 29 weights, not 58.
 Last. Per-mode weights on modes that do not fire is three ways to be wrong
 instead of one, and FORCED is 13 decisions in 480.
 
+## Plumbed but supplied by nothing
+
+Two switches reach PuyoCpu and no caller sets them, so both are inert in
+every run. Neither is a defect; both read as working from anywhere else,
+which is the reason they are written down.
+
+- `dangerWeights` — a second weight set for FORCED. Step 4.
+- `engine` — swaps `_resolveCandidate` from LogicalBoard to a real Stack.
+  Measured at depth 2 in a real duel: 3,168us a resolve against 209us, so
+  1,904ms a decision against 87ms, on an 85ms budget. It is the referee,
+  not the thinker.
+
 ## What this drops
 
 Every remaining attempt to make one weighted sum hold a plan. The
