@@ -67,7 +67,11 @@ function makeCpu(stack, weights, opts) {
         alsoTake: opts.alsoTake,
         buildToward: opts.buildToward,
         stopFloor: opts.stopFloor,
-        dangerWeights: opts.dangerWeights
+        dangerWeights: opts.dangerWeights,
+        // THINK WITH THE ENGINE. _resolveCandidate then runs a real Stack
+        // instead of LogicalBoard, which is the only way the bot and the game
+        // cannot disagree: there is no second implementation left to drift.
+        engine: opts.engine === true
     });
 }
 

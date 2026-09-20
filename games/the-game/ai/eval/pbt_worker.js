@@ -38,6 +38,7 @@ var OPTS = {
     // fit weights for a bot with the filter off, and the champion then plays
     // a different game from the one it was scored on.
     modes: flag('GC_MODES'),
+    engine: flag('GC_ENGINE'),
     goal: process.env.GC_GOAL || undefined,
     alsoTake: process.env.GC_ALSO_TAKE ? Number(process.env.GC_ALSO_TAKE) : undefined,
     buildToward: process.env.GC_BUILD_TOWARD ? Number(process.env.GC_BUILD_TOWARD) : undefined,
