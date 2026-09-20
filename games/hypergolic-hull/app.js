@@ -944,6 +944,9 @@ interceptorImg.onload = () => draw();
 // Lancer were both rendering as Interceptors, byte for byte, while
 // finished art for them sat unreferenced in icons/. A lookup can't drift
 // like that: a class either has a sprite here or it visibly has none.
+// Which sprite file each class draws with — the bay table is keyed by
+// that file's name, so this is the bridge between a class and its art.
+const SPRITE_NAMES = {};
 const ENEMY_SPRITES = {};
 for (const [type, file] of Object.entries({
   interceptor: "icons/interceptor.png",
@@ -981,6 +984,32 @@ for (const [type, file] of Object.entries({
   img.src = file;
   img.onload = () => draw();
   ENEMY_SPRITES[type] = img;
+  SPRITE_NAMES[type] = file.replace(/^icons\//, "").replace(/\.png$/, "");
+}
+
+// THE ROUND IN THE TUBE IS THE ROUND IN THE AIR. One sprite, drawn into
+// the bay while it is loaded and flying once it launches — so the two can
+// never drift apart, and "is that thing loaded" is something you read off
+// the board instead of off a charge counter. Same idea as a charge
+// printing its own fuse: a launcher that cannot be seen to be armed is
+// just an ambush.
+//
+// Called from inside the same rotated space the hull was drawn in, so the
+// bay's normalised coordinates land where the art puts them at any size.
+function drawLoadedRound(spriteName, roundName, s) {
+  const bay = LAUNCHER_BAYS[spriteName];
+  const round = ORDNANCE_SPRITES[roundName];
+  if (!bay || !round || !round.complete || !round.naturalWidth) return;
+  const span = s * 2.2; // drawShipImage's own footprint
+  const left = -s * 1.1;
+  const side = bay.h * span * 1.08; // the round fills the bay's length
+  ctx.drawImage(
+    round,
+    left + bay.cx * span - side / 2,
+    left + bay.cy * span - side / 2,
+    side,
+    side
+  );
 }
 
 function drawShipImage(img, s) {
@@ -1621,6 +1650,20 @@ function drawCharge(charge, now) {
 // it; a Seeker's routes around the boulder, so the answer is a gun. A
 // player who cannot tell them apart in the air cannot make that call, and
 // both used to draw as the same white dart.
+// WHERE EACH LAUNCHER'S BAY IS, measured off the shipped art by
+// .github/art/cut_launcher_bay.py rather than typed here as a pixel
+// offset. Regenerate a launcher and the anchor moves with it; nobody has
+// to remember to come and edit a number.
+let LAUNCHER_BAYS = {};
+fetch("icons/launcher-bays.json")
+  .then((r) => (r.ok ? r.json() : {}))
+  .then((bays) => {
+    LAUNCHER_BAYS = bays || {};
+  })
+  .catch(() => {
+    LAUNCHER_BAYS = {}; // no table, no round drawn in a tube — never a broken frame
+  });
+
 const ORDNANCE_SPRITES = {};
 for (const [kind, file] of Object.entries({
   missile: "icons/ordnance-missile.png",
@@ -1653,6 +1696,17 @@ function drawMissile(center, missile, now) {
   // while the image is still loading, so a round is never invisible.
   const art = ORDNANCE_SPRITES[missile.seeks ? "seeker" : "missile"];
   if (art && art.complete && art.naturalWidth) {
+    // THE PLUME IS DRAWN, NOT PAINTED IN. The sprite is the round with a
+    // cold engine — the same picture that sits in a launcher's bay — and
+    // the exhaust is added here, in flight only, so one image serves both
+    // states and the flame animates instead of being a frozen decal.
+    ctx.fillStyle = `rgba(255,196,90,${0.5 + 0.4 * pulse})`;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.9, 0);
+    ctx.lineTo(-s * 2.0 - s * pulse, -s * 0.3);
+    ctx.lineTo(-s * 2.0 - s * pulse, s * 0.3);
+    ctx.closePath();
+    ctx.fill();
     ctx.save();
     ctx.rotate(Math.PI / 2);
     ctx.drawImage(art, -s * 1.5, -s * 1.5, s * 3, s * 3);
@@ -1683,6 +1737,17 @@ function drawMissile(center, missile, now) {
   ctx.restore();
 }
 
+// The round a contact is visibly holding, or null for an empty tube and
+// for everything that is not a launcher at all.
+function loadedRoundFor(enemy) {
+  const ship = Engine.ENEMY_TYPES[enemy.type];
+  if (!ship) return null;
+  const launcher = Engine.deriveShip(ship.hold).weapons.find((w) => w.launches);
+  if (!launcher) return null;
+  if (enemy.energy < launcher.energyCost) return null; // spent, and cycling
+  return launcher.seeks ? "seeker" : "missile";
+}
+
 function nearestLivingEnemy(from) {
   return Engine.livingEnemies(state).reduce(
     (best, e) => (!best || Engine.hexDistance(from, e) < Engine.hexDistance(from, best) ? e : best),
@@ -1690,7 +1755,7 @@ function nearestLivingEnemy(from) {
   );
 }
 
-function drawEnemyShip(size, hpFrac, crackSeed, type, shielded) {
+function drawEnemyShip(size, hpFrac, crackSeed, type, shielded, loadedRound) {
   size *= SHIP_SCALE[type] || 1;
   ctx.save();
   // High-contrast hostile halo, color-coded per enemy class so each one reads
@@ -1739,6 +1804,13 @@ function drawEnemyShip(size, hpFrac, crackSeed, type, shielded) {
     else if (type === "sentry" || type === "picket") drawSentry(size * 1.05);
     else if (type === "railgun") drawRailgun(size * 1.1);
     else if (!drawShipImage(interceptorImg, size)) drawEnemyFighter(size, 0);
+  } else if (loadedRound) {
+    // Drawn in the hull's own rotated frame, the same 90 degrees
+    // drawShipImage reconciles, so the round sits nose-forward in its bay.
+    ctx.save();
+    ctx.rotate(Math.PI / 2);
+    drawLoadedRound(SPRITE_NAMES[type], loadedRound, size);
+    ctx.restore();
   }
   drawCracks(size, hpFrac, crackSeed);
   // A raised hostile screen is drawn, because it changes what your next
@@ -3184,7 +3256,18 @@ function draw() {
     if (!def || def.ship.hasDrive) {
       ctx.rotate((angleToward(enemy, state.playerPos) * Math.PI) / 180);
     }
-    drawEnemyShip(geom.sx * 0.46, enemy.hp / enemy.maxHp, enemy.id, enemy.type, enemy.shieldCharges > 0);
+    // IS IT LOADED? A launcher that can pay for its round is holding one,
+    // and you can see it sitting in the bay; one that has just fired shows
+    // an empty tube until its reactor catches up. The charge counter was
+    // always there — this is the same fact, stated as a thing on the board.
+    drawEnemyShip(
+      geom.sx * 0.46,
+      enemy.hp / enemy.maxHp,
+      enemy.id,
+      enemy.type,
+      enemy.shieldCharges > 0,
+      loadedRoundFor(enemy)
+    );
     ctx.restore();
     drawChargePips(center, enemy);
   }
