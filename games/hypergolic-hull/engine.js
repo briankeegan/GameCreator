@@ -3851,6 +3851,54 @@
     // charging Railgun holds fire; a cost-1 chaser always affords it.
     // With several guns aboard it takes the cheapest that bears, which is
     // exactly what applyFire does for you when you don't name one.
+    // GET OFF YOUR OWN MINE. A Sapper lays its charge on the hex it is
+    // standing on, and every other branch in here is about the flagship —
+    // so it dropped one, stayed put because the charge still "bore" on a
+    // nearby target, and blew itself up. Nothing in the AI knew a live
+    // charge existed: the move filter below rejects rock and black holes
+    // and nothing else. chargedHexes() had been written for exactly this
+    // and never once called.
+    //
+    // Standing in a blast outranks every other consideration, including a
+    // shot that bears. Nothing it could do from in there is worth the hull
+    // it is about to lose.
+    //
+    // IT TAKES TWO STEPS FROM THE MIDDLE, and that is the whole reason a
+    // first attempt at this changed nothing. A blast of 1 covers the hex
+    // and ALL SIX of its neighbours, so a ship standing at the centre —
+    // which is exactly where a Sapper stands, having laid the thing on
+    // itself — has no clear hex one move away. Requiring one meant it
+    // found no escape and stayed put, which is what it did before. The
+    // fuse is three rounds, so the move is: out to the rim, then out.
+    // Ranked by how far the step gets from the charge, not by whether it
+    // is clear yet.
+    const burning = chargedHexes(state);
+    if (burning.has(hexKey(enemy)) && ship.hasDrive) {
+      const fromBlast = (hex) => {
+        let best = Infinity;
+        for (const charge of liveCharges(state)) {
+          if (charge.spent) continue;
+          best = Math.min(best, hexDistance(hex, charge));
+        }
+        return best;
+      };
+      const here = fromBlast(enemy);
+      const out = [];
+      for (let i = 0; i < 6; i++) {
+        const to = neighbor(enemy, i);
+        if (!canFlyInto(state, to, enemy) || hazardAt(state, to)) continue;
+        const gap = fromBlast(to);
+        if (gap <= here) continue; // sideways inside the blast is not an escape
+        out.push({ to, gap, clear: !burning.has(hexKey(to)), dist: hexDistance(to, state.playerPos) });
+      }
+      if (out.length) {
+        // Clear ground first; failing that the step that gets furthest
+        // out; and among equals the one that gives up the least ground,
+        // because it is retreating from ordnance, not from you.
+        out.sort((a, b) => Number(b.clear) - Number(a.clear) || b.gap - a.gap || a.dist - b.dist);
+        return { enemyId: enemy.id, type: "move", to: out[0].to };
+      }
+    }
     const bearing = enemyWeaponsBearing(state, enemy).filter((w) => !inhibited(state, enemy, w));
     const affordable = bearing.filter((w) => enemy.energy >= w.energyCost);
     if (affordable.length) {
@@ -3890,6 +3938,10 @@
         // flagship may (it's your funeral); an AI throwing itself down
         // one would be a free kill, not terrain.
         if (hazardAt(state, to)) continue;
+        // Nor does anything fly into a burning charge on purpose. Same
+        // reasoning as the black hole above: an AI walking into ordnance
+        // it can see is a free kill, not terrain.
+        if (burning.has(hexKey(to))) continue;
         candidates.push({ to, dist: hexDistance(to, state.playerPos), dir: i });
       }
       if (candidates.length === 0) return { enemyId: enemy.id, type: "wait" };
