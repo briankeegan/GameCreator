@@ -9,6 +9,7 @@
 // Every knob comes from the environment, so an island cannot quietly search a
 // different configuration from its siblings.
 var fs = require('fs');
+var path = require('path');
 var versus = require('./versus.js');
 var registry = require('./registry.js');
 
@@ -49,11 +50,48 @@ var pop = state.population;
 var wins = state.wins || pop.map(function () { return 0; });
 var played = state.played || pop.map(function () { return 0; });
 
+// WHAT THE LEG IS DOING, WHILE IT DOES IT, AND FOR NOTHING.
+//
+// Every update already plays a full duel and versus.duel already returns
+// the frames, the garbage each side sent and the exact chain and combo
+// histograms. The loop kept `winner` and dropped the rest, so a leg was
+// silent until it ended — and the only moment anything became visible was a
+// snapshot. None of this costs a duel; it reads what the duel returned.
+var TICK = Number(process.env.GC_PBT_TICK || 10);
+var tick = { duels: 0, frames: 0, sent: 0, deaths: 0, deep: 0, wide: 0 };
+
+function tally(d) {
+    tick.duels++;
+    tick.frames += d.frames;
+    tick.sent += (d.sent[0] || 0) + (d.sent[1] || 0);
+    if (d.reason !== 'ceiling') tick.deaths++;
+    for (var side = 0; side < 2; side++) {
+        var ex = d.exact[side];
+        for (var k in ex.chain) if (Number(k) >= 4) tick.deep += ex.chain[k];
+        for (var j in ex.combo) if (Number(j) >= 4) tick.wide += ex.combo[j];
+    }
+}
+
+function report(done) {
+    if (!tick.duels) return;
+    var mins = tick.frames / 60 / 60;
+    var secs = tick.frames / 60 / tick.duels;
+    console.log('  island ' + path.basename(file, '.json') + '  ' + done + '/' + UPDATES +
+        '  game ' + Math.floor(secs / 60) + ':' + ('0' + Math.round(secs % 60)).slice(-2) +
+        '  garbage ' + (tick.sent / Math.max(mins, 0.001)).toFixed(0) + '/min' +
+        '  4+links ' + (tick.deep / Math.max(mins, 0.001)).toFixed(2) + '/min' +
+        '  4+wide ' + (tick.wide / Math.max(mins, 0.001)).toFixed(1) + '/min' +
+        '  ' + tick.deaths + '/' + tick.duels + ' by death');
+    tick = { duels: 0, frames: 0, sent: 0, deaths: 0, deep: 0, wide: 0 };
+}
+
 for (var u = 0; u < UPDATES; u++) {
     var a = pick(pop.length), b = a;
     while (b === a) b = pick(pop.length);
     var sd = SEEDS.TRAIN[pick(SEEDS.TRAIN.length)];
     var d = versus.duel(pop[a], pop[b], sd, OPTS);
+    tally(d);
+    if (TICK > 0 && (u + 1) % TICK === 0) report(u + 1);
     played[a]++; played[b]++;
     if (d.winner !== null) {
         var w = d.winner === 0 ? a : b, l = d.winner === 0 ? b : a;
@@ -64,6 +102,8 @@ for (var u = 0; u < UPDATES; u++) {
         wins[l] = 0; played[l] = 0;
     }
 }
+
+report(UPDATES);
 
 state.population = pop; state.wins = wins; state.played = played;
 state.updates = (state.updates || 0) + UPDATES;
