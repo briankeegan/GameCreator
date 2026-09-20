@@ -800,26 +800,26 @@
     // WORSE than scattering it, because what pins a sidestepping ship is
     // how many of its own six neighbours are blocked, and a wall blocks a
     // line while leaving the rest of the board open.
-    // BOTH DIALS ARE OFF BY DEFAULT, and the numbers are why. Measured over
-    // 60 seeded runs a setting: bare boards win 18, rock at 9% wins 12, and
-    // scrambler fields at 9% win 8 with a THIRD of runs stalling outright.
-    // A chase harness said the opposite — a hostile that cannot shoot from
-    // inside a cloud is easier to close on — which measured one narrow
-    // thing and missed that the ground costs the flagship more than it
-    // costs the hostile over a whole crawl.
+    // NINE PER CENT ROCK, AND NO CLOUD. Boards ran at about 2%, which is an
+    // open field: a gun that holds its range has six free hexes to slide
+    // between and never has to let you close.
     //
-    // The mechanics stay: a scrambler field works, and the shares are
-    // reachable through GC_ROCK / GC_CLOUD, so tuning them is a
-    // measurement rather than a rewrite. Rock is back on its original
-    // count until that tuning is done.
-    const ROCK_SHARE = envNumber("GC_ROCK", 0);
+    // Nine is a share of the board and nothing else — an earlier version
+    // added a depth bump on top, which made "9%" mean up to 20% by the
+    // deep sectors and cost six wins in sixty. At a true 9% the four hulls
+    // score 22/20/22/22 against 22/19/19/20 on bare boards: four times the
+    // cover, free.
+    //
+    // Scrambler fields stay at zero. A ship inside one cannot fire, which
+    // reads like an answer to a hostile that holds its distance and
+    // measures like one over a single chase — and costs eight wins in
+    // sixty over whole runs, because denying firing positions punishes
+    // whichever side has to shoot to finish, and that is the flagship.
+    // The rule stays in the engine; the dial is here when it is worth
+    // revisiting as rare, placed ground rather than scatter.
+    const ROCK_SHARE = envNumber("GC_ROCK", 0.09);
     const CLOUD_SHARE = envNumber("GC_CLOUD", 0);
-    const rockCount = ROCK_SHARE > 0
-      ? Math.max(0, Math.min(Math.round(area * ROCK_SHARE), 14))
-      : Math.max(
-          0,
-          Math.min(scale(1 + Math.floor(depth / 4) + (variant ? variant.hazardDelta : 0) + locale.hazardDelta), 6)
-        );
+    const rockCount = Math.max(0, Math.min(Math.round(area * ROCK_SHARE), 14));
     const cloudCount = Math.max(0, Math.round(area * CLOUD_SHARE));
     const hazards = [];
     for (const hex of candidates) {
