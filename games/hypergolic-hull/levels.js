@@ -831,13 +831,33 @@
     // Cloud goes down after the rock and may sit beside itself — a field of
     // ionised dust is a field, not a scatter of boulders. It never blocks
     // anything, so it is allowed nearer the furniture than rock is.
+    // PATCHES, not a sprinkle. A field of ionised dust is a place on the
+    // board you can duck into, which is how the games that use this kind of
+    // ground use it; scattering the same number of hexes evenly is just a
+    // tax on everyone's firing positions. GC_CLOUD_PATCH sets how many
+    // hexes one patch is.
+    const PATCH = Math.max(1, Math.round(envNumber("GC_CLOUD_PATCH", 4)));
     let clouds = 0;
     for (const hex of candidates) {
       if (clouds >= cloudCount) break;
       if (hazards.some((h) => h.q === hex.q && h.r === hex.r)) continue;
-      if (exits.some((ex) => hexDist(hex, ex) < 1) || (outpost && hexDist(hex, outpost) < 1)) continue;
-      hazards.push({ type: "scrambler", q: hex.q, r: hex.r });
-      clouds++;
+      if (exits.some((ex) => hexDist(hex, ex) < 2) || (outpost && hexDist(hex, outpost) < 2)) continue;
+      // Grow one patch from here, so the cloud is somewhere rather than
+      // everywhere.
+      const seedHex = hex;
+      for (let dq = -1; dq <= 1 && clouds < cloudCount; dq++) {
+        for (let dr = -1; dr <= 1 && clouds < cloudCount; dr++) {
+          if (Math.abs(dq + dr) > 1) continue; // stay on the hex ring
+          const at = { q: seedHex.q + dq, r: seedHex.r + dr };
+          if (!candidates.some((c) => c.q === at.q && c.r === at.r)) continue;
+          if (hazards.some((h) => h.q === at.q && h.r === at.r)) continue;
+          if (exits.some((ex) => hexDist(at, ex) < 2) || (outpost && hexDist(at, outpost) < 2)) continue;
+          hazards.push({ type: "scrambler", q: at.q, r: at.r });
+          clouds++;
+          if (clouds % PATCH === 0) break;
+        }
+        if (clouds % PATCH === 0) break;
+      }
     }
     const hazardKeys = new Set(hazards.map((h) => `${h.q},${h.r}`));
 
