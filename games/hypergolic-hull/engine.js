@@ -2667,6 +2667,12 @@
   //
   // Seven at depth 1, against six Manifest slots, so the Manifest is a
   // choice from the first run rather than a list of everything you have.
+  // ONE THING PER DEPTH, and never two. There are eleven sectors between
+  // the first and the Bulwark and eleven things left to earn, so the drip
+  // is exactly one a sector — a run that reaches five used to hand over
+  // eight at once, which is a delivery rather than a reward.
+  //
+  // Hulls sit in the gaps between guns (see STARTING_LOADOUTS): 2, 5 and 8.
   const WEAPON_UNLOCK_DEPTH = {
     prowCannon: 1,
     beamLanceShort: 1,
@@ -2675,14 +2681,14 @@
     siegeMaul: 1,
     beamLance: 1,
     autocannonMk2: 1,
-    mortar: 3,
-    flankTubes: 3,
     railgunLight: 3,
-    missilePod: 5,
-    demolitionCharge: 5,
-    arcProjector: 5,
-    railgun: 7,
-    flakBurstHeavy: 7,
+    mortar: 4,
+    flankTubes: 6,
+    demolitionCharge: 7,
+    missilePod: 9,
+    arcProjector: 10,
+    flakBurstHeavy: 11,
+    railgun: 12,
   };
 
   function weaponUnlockDepth(weaponId) {
@@ -2762,7 +2768,7 @@
       label: "Screen Ship",
       blurb: "Screen up and still shoot, every cycle. Fast little reactor — cheap guns forever, heavy guns never.",
       kit: ["sublightDrive", "pulseReactor", "shieldGenerator", "scanner"],
-      unlockDepth: 3,
+      unlockDepth: 2,
     },
     salvager: {
       label: "Hauler",
@@ -2774,7 +2780,7 @@
       label: "Skirmisher",
       blurb: "Two hexes a burn — nothing else in the sky moves like that. Stay at reach, chip, never get caught.",
       kit: ["ionDrive", "reactorCore", "scanner"],
-      unlockDepth: 7,
+      unlockDepth: 8,
     },
   };
 
