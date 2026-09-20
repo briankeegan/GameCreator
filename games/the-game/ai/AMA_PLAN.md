@@ -46,9 +46,38 @@ that survives a decision, `mode`:
 - **FIRE** — play the swap with the biggest resolve. Entered when the board
   reaches `T` on `chainPotential` or `S` on `comboPotential`, left when the
   cascade is spent.
-- **FORCED** — overrides BUILD: no build candidate survives the filter,
-  `maxHeight` past a line, or garbage about to land. Scores the unfiltered
-  pool, which is today's bot.
+- **FORCED** — overrides BUILD. Two triggers, and only two: the bot is
+  about to die, or the plan broke. Scores the unfiltered pool, which is
+  today's bot.
+
+### What FORCED is, and what it is not
+
+FORCED is not a pressure valve. A height threshold is the obvious version
+and it is wrong both ways: set low the bot lives in FORCED, which is today's
+bot with machinery around it; set high it dies at row 11 holding a five-chain
+it never had time to fire. Nothing else gets to open it — not "nothing
+survived the filter", which is a reason to hold or keep building, and not a
+deep stack on its own.
+
+**About to die** is a deadline, not a height. Runway is rows to the ceiling
+over the rise rate, minus the garbage already queued — frames, not rows.
+Execution is how long the payoff being saved takes to cash in: the walk
+(`travelCost`) plus the cascade (the resolve knows it). FORCED when runway
+drops below execution. Out of time, not high.
+
+**The plan broke** means what BUILD was saving for is gone — garbage landed
+on it, a rise buried it, `chainPotential` collapsed. It is a real state and
+it has to be handled, but it is a DEFECT, not a branch: a broken plan is
+work already spent that paid nothing. Count it per game and drive it down.
+A build that keeps breaking is a build that was never safe to start.
+
+Which is the real job of step 2. The opponent model is not there so the bot
+can flee; it is there so BUILD picks a plan that survives what is already in
+the air. Garbage queued against this board is known before it lands, and a
+chain that completes before it lands, or sits where it will not be buried,
+is the one to build.
+
+### Thresholds
 
 `T` starts at 4 links, `S` at 4 wide — `comboGarbage()` sends nothing below
 4, so a 3 is the thing BUILD is there to refuse. Both arms read the same
@@ -69,6 +98,13 @@ scorer runs, so resolve once per candidate and cache, never twice.
 `4+ wide/min` above 1.5. If both sit still the modes never fired and
 nothing below is worth building.
 
+**The diagnostic that says why.** The bot reports the share of decisions
+spent in each mode and the count of broken plans per game. Those are what
+separate "the filter is wrong" from "the escape hatch is too wide", which
+the two bench numbers cannot tell apart. FORCED at 85% of decisions and a
+flat bench is a hatch problem. Broken plans climbing is step 2's problem,
+not the filter's.
+
 ## Step 2 — the opponent
 
 ama's `gaze` tracks the opponent's attack, its chain and the frame it
@@ -84,7 +120,11 @@ sum cannot express.
 A mode switch IS that interaction. Under modes `incomingGarbage` is not a
 term, it is the mode input:
 
-- garbage landing within N frames → FORCED, whatever the chain potential
+- garbage in the air → BUILD prefers a plan that completes before it lands
+  or sits where it will not be buried. This is the one that matters: it is
+  how broken plans get driven down.
+- garbage that cannot be outrun → the runway shrinks, so the about-to-die
+  deadline arrives on its own. No separate rule.
 - opponent mid-chain → fire now or bank, decided from our own resolve
 - opponent's stack already high → keep building, the pressure is on them
 
@@ -92,8 +132,9 @@ The duel holds both boards (`eval/duels.js`, `eval/duel_worker.js`) and the
 bot is handed `board.incoming` today (`eval/puyocpu.js:316`) and reads
 nothing else about the other side. This is wiring, not engine work.
 
-**Gate:** garbage sent per minute while under attack, and win rate against
-a peer that dumps garbage — the thing that beats these bots by hand.
+**Gate:** broken plans per game, down. Then garbage sent per minute while
+under attack, and win rate against a peer that dumps garbage — the thing
+that beats these bots by hand.
 
 ## Step 3 — depth
 
