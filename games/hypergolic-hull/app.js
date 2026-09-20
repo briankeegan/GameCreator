@@ -1889,6 +1889,40 @@ function drawWormhole(center, r, now) {
   ctx.restore();
 }
 
+// A scrambler field: ionised dust you can fly straight through. It takes
+// nothing off your hull — it takes your guns while you are inside it, and
+// it does the same to anything else standing in one. Drawn as drifting
+// static rather than as an object, because the hex is empty: the thing in
+// it is the interference.
+function drawScramblerField(center, radius, now, seed) {
+  const rng = seededRandom(`scrambler-${seed}`);
+  const motes = 14;
+  ctx.save();
+  ctx.translate(center.x, center.y);
+  for (let i = 0; i < motes; i++) {
+    const a = rng() * Math.PI * 2;
+    const d = radius * (0.2 + 0.75 * rng());
+    const drift = Math.sin(now / (520 + rng() * 700) + i) * radius * 0.12;
+    const x = Math.cos(a) * d + drift;
+    const y = Math.sin(a) * d + drift * 0.6;
+    ctx.globalAlpha = 0.25 + 0.4 * rng();
+    ctx.fillStyle = i % 3 === 0 ? "#9fe8ff" : "#4fb6d6";
+    ctx.fillRect(x, y, 1.6, 1.6);
+  }
+  // A couple of arcs so it reads as interference and not as snow.
+  ctx.globalAlpha = 0.3 + 0.15 * Math.sin(now / 340);
+  ctx.strokeStyle = "#7fd6f0";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 2; i++) {
+    const a = (now / 900 + i * 2.1) % (Math.PI * 2);
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * (0.45 + 0.22 * i), a, a + 1.1);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
 // An asteroid field: genuinely impassable terrain (see engine.js's
 // isBlockingHazard), not just a colored hex — a small cluster of jagged
 // dark rocks reads as "a wall," distinct from the smooth circular Outpost/
@@ -2914,8 +2948,11 @@ function draw() {
     let fill = null;
     let fillAlpha = 0;
     if (isHazard) {
-      fill = isHazard.type === "asteroid" ? "#38302b" : "#3a1030";
-      fillAlpha = 0.8;
+      fill =
+        isHazard.type === "asteroid" ? "#38302b" : isHazard.type === "scrambler" ? "#16303a" : "#3a1030";
+      // A scrambler is flown through, not avoided, so it does not get the
+      // near-opaque wash the two lethal kinds do.
+      fillAlpha = isHazard.type === "scrambler" ? 0.55 : 0.8;
     } else if (isExit) {
       fill = state.exitUnlocked ? "#1f4d3a" : "#2a2f45";
       fillAlpha = 0.8;
@@ -2977,7 +3014,12 @@ function draw() {
       // most of the maw and the shoals. It wears a bright warm rim now, on
       // every sky, because "can I fly through this" is the single most
       // consequential thing a hex says.
-      stroke = isHazard.type === "asteroid" ? "rgba(255,214,168,0.72)" : "rgba(255,150,235,0.72)";
+      stroke =
+        isHazard.type === "asteroid"
+          ? "rgba(255,214,168,0.72)"
+          : isHazard.type === "scrambler"
+            ? "rgba(120,220,245,0.55)"
+            : "rgba(255,150,235,0.72)";
       strokeWidth = 2;
     } else {
       // The grid belongs to the PLACE, not to the game engine. One fixed
@@ -3007,6 +3049,8 @@ function draw() {
       drawDiscovery(center, geom.sx * 0.56, now, state.discoveryFlavor, `${state.levelId}-${k}`);
     } else if (isHazard && isHazard.type === "asteroid") {
       drawAsteroidField(center, geom.sx * 0.56, k);
+    } else if (isHazard && isHazard.type === "scrambler") {
+      drawScramblerField(center, geom.sx * 0.58, now, k);
     }
   }
 

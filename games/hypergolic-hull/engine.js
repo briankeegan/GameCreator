@@ -738,6 +738,12 @@
     // only dials a hull had were hull, energy and shields — and two of
     // those are the same dial.
     ionDrive: { id: "ionDrive", label: "Ion Drive", kind: "engine", moveRange: 2, w: 1, h: 4 },
+    // Adds a hex to whatever drive is already fitted, rather than being a
+    // drive itself: a hull with no engine is still going nowhere, and the
+    // Ion Drive stays worth its four cells because this stacks on top of
+    // it. This is the answer to a gun that holds its range — you stop
+    // being the slower ship.
+    afterburner: { id: "afterburner", label: "Afterburner", kind: "booster", moveBonus: 1, w: 1, h: 2 },
     // Cutting gear. Every wreck pays one more. Lets a hull be poor and
     // fragile at depth 1 and the best-equipped thing on the board at
     // depth 8 — a shape the roster had no way to express.
@@ -833,7 +839,10 @@
       // stack because two crates of each are two crates of each; two
       // drives are not a faster drive, they are a spare. Zero with no
       // engine fitted, which is the same thing hasDrive says.
-      moveRange: items.reduce((best, it) => Math.max(best, eq(it).kind === "engine" ? (eq(it).moveRange || 1) : 0), 0),
+      moveRange: (() => {
+        const best = items.reduce((b, it) => Math.max(b, eq(it).kind === "engine" ? (eq(it).moveRange || 1) : 0), 0);
+        return best > 0 ? best + sum("moveBonus") : 0; // a booster with no drive boosts nothing
+      })(),
       salvageBonus: sum("salvageBonus"),
     };
   }
@@ -1570,7 +1579,19 @@
   // round and having it silently dropped on the way out: the decision had
   // been taught about placesSelf and the execution had not. One predicate,
   // both callers, so they cannot drift apart again.
+  // SCRAMBLER CLOUD. Ionised dust: a ship sitting in it cannot get a
+  // firing solution out. It does not block movement and it does not block
+  // anyone else's shot passing over it — an earlier draft did exactly that
+  // and measured WORSE than open space, because denying shots in both
+  // directions helps whichever side is happy for the turn to pass, which
+  // is always the one holding its range.
+  function inScrambler(state, pos) {
+    const h = hazardAt(state, pos);
+    return Boolean(h) && h.type === "scrambler";
+  }
+
   function weaponBearsOn(state, enemy, weapon, facing, at) {
+    if (inScrambler(state, enemy)) return false;
     // A charge dropped on the dropper's OWN hex has nothing to aim at, so
     // "is the flagship inside this weapon's footprint" is the wrong
     // question — a range-0 footprint is its own hex, somewhere the
@@ -1750,6 +1771,7 @@
     tractorBeam: "tractorBeam",
     scuttlingCharge: "scuttlingCharge",
     chargeBank: "chargeBank",
+    afterburner: "afterburner",
     flakBurst: "flakBurst",
     arcBeam: "arcBeam",
     mortar: "mortar",
@@ -2831,6 +2853,20 @@
   // instant-destruction trap: a legal (if suicidal) destination. Clubhouse
   // feedback: "places you can't hit... not every square is always the
   // same... asteroid fields" — real obstacles, not just more damage.
+  // Tunables read from the environment when there IS one. `process` does
+  // not exist in a browser, and an unguarded read of it throws a
+  // ReferenceError in the middle of a round — which is how a "measurement
+  // only, default unchanged" line broke the live game.
+  function envNumber(name, fallback) {
+    try {
+      if (typeof process === "undefined" || !process.env) return fallback;
+      const raw = process.env[name];
+      return raw === undefined || raw === "" ? fallback : Number(raw);
+    } catch (err) {
+      return fallback;
+    }
+  }
+
   function isBlockingHazard(hazard) {
     return Boolean(hazard) && hazard.type === "asteroid";
   }
@@ -2887,7 +2923,7 @@
     const steps = Math.floor(rng() * (DRIFT_MAX + 1)); // 0, 1 or 2, this ship's own roll
     for (let i = 0; i < steps; i++) {
       const options = neighbors(enemy).filter(
-        (to) => canFlyInto(state, to, enemy) && !hazardAt(state, to)
+        (to) => canFlyInto(state, to, enemy) && (!hazardAt(state, to) || inScrambler(state, to))
       );
       if (!options.length) return;
       const pick = options[Math.floor(rng() * options.length)];
@@ -3259,6 +3295,10 @@
     for (const enemy of livingEnemies(state)) {
       const ship = enemyShip(enemy);
       if (!ship) continue;
+      // Sitting in a scrambler field, it has no firing solution at all, so
+      // none of its ground is dangerous. Painting it red would be a lie the
+      // player then routes around for nothing.
+      if (inScrambler(state, enemy)) continue;
       // A weapon its reactor can't afford this coming enemy phase is no
       // threat yet — a charging Railgun's board-spanning line only lights
       // up on the turn it can actually fire. (Regen happens AFTER the
@@ -3692,7 +3732,7 @@
       // PATIENCE RUNS OUT. Past the limit a hostile stops holding out for
       // the good angle and just closes, dead zone included. Default 99 =
       // the behaviour before this line existed, while it is measured.
-      const OUT_OF_PATIENCE = Number(process.env.GC_PATIENCE || 99);
+      const OUT_OF_PATIENCE = envNumber("GC_PATIENCE", 99);
       if ((enemy.idleRounds || 0) >= OUT_OF_PATIENCE && closers.length) {
         const nearest = Math.min(...closers.map((c) => c.dist));
         return { enemyId: enemy.id, type: "move", to: closers.find((c) => c.dist === nearest).to };
@@ -3737,6 +3777,7 @@
   }
 
   function checkPlayerHazard(state) {
+    if (inScrambler(state, state.playerPos)) return; // it takes your guns, not your hull
     if (hazardAt(state, state.playerPos)) {
       state.hull = 0;
       state.status = "lost";
@@ -4309,6 +4350,7 @@
 
   function applyFire(state, targetEnemyId, weaponKey) {
     assertPlaying(state);
+    if (inScrambler(state, state.playerPos)) throw new Error("Systems scrambled — no firing solution from in here");
     const bearing = weaponsWithTargets(state);
     if (!bearing.length) throw new Error("Nothing in arc");
     let firing;
@@ -4638,6 +4680,7 @@
     livingEnemies,
     enemyAt,
     hazardAt,
+    inScrambler,
     WEAPONS,
     ENEMY_TYPES,
     STARTING_LOADOUTS,

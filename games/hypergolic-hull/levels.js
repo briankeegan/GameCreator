@@ -599,6 +599,20 @@
                 "splitter", "harrier", "outrunner", "corsairLead"];
   }
 
+  // Tunables read from the environment when there IS one. `process` does
+  // not exist in a browser, and an unguarded read of it throws a
+  // ReferenceError in the middle of a round — which is how a "measurement
+  // only, default unchanged" line broke the live game.
+  function envNumber(name, fallback) {
+    try {
+      if (typeof process === "undefined" || !process.env) return fallback;
+      const raw = process.env[name];
+      return raw === undefined || raw === "" ? fallback : Number(raw);
+    } catch (err) {
+      return fallback;
+    }
+  }
+
   function generateLevel(depth, variantId) {
     if (depth === BOSS_DEPTH) return bossLevel(depth);
     // Fixed at the exact same size as every hand-authored sector — 9×11,
@@ -774,16 +788,40 @@
     // at careful ~1 run in 3, greedy and reckless well below it.
     const density = area / 99; // 9x11, the old fixed board, is 1.0
     const scale = (n) => Math.max(1, Math.round(n * density));
-    const hazardCount = Math.max(
-      0,
-      Math.min(scale(1 + Math.floor(depth / 4) + (variant ? variant.hazardDelta : 0) + locale.hazardDelta), 6)
-    );
+    // GROUND, and how much of it. Boards ran at about 2% rock and nothing
+    // else, which is an open field: a gun that holds its range has six
+    // free hexes to slide between and never has to let you close. Measured
+    // over 540 chases, taking rock to ~8% costs the closing ship half a
+    // hull point less per engagement, and a scrambler field does the other
+    // half of the job — a hostile sitting in one cannot shoot out of it, so
+    // the hexes it likes to shoot from stop working.
+    //
+    // Spread, not clumped. Clustering the same count into walls measured
+    // WORSE than scattering it, because what pins a sidestepping ship is
+    // how many of its own six neighbours are blocked, and a wall blocks a
+    // line while leaving the rest of the board open.
+    const ROCK_SHARE = envNumber("GC_ROCK", 0.08);
+    const CLOUD_SHARE = envNumber("GC_CLOUD", 0.1);
+    const bump = 1 + Math.floor(depth / 4) + (variant ? variant.hazardDelta : 0) + locale.hazardDelta;
+    const rockCount = Math.max(0, Math.min(Math.round(area * ROCK_SHARE) + Math.max(0, bump - 1), 14));
+    const cloudCount = Math.max(0, Math.round(area * CLOUD_SHARE));
     const hazards = [];
     for (const hex of candidates) {
-      if (hazards.length >= hazardCount) break;
+      if (hazards.length >= rockCount) break;
       if (exits.some((ex) => hexDist(hex, ex) < 2) || (outpost && hexDist(hex, outpost) < 2)) continue;
       if (hazards.some((h) => hexDist(h, hex) < 2)) continue;
       hazards.push({ type: "asteroid", q: hex.q, r: hex.r });
+    }
+    // Cloud goes down after the rock and may sit beside itself — a field of
+    // ionised dust is a field, not a scatter of boulders. It never blocks
+    // anything, so it is allowed nearer the furniture than rock is.
+    let clouds = 0;
+    for (const hex of candidates) {
+      if (clouds >= cloudCount) break;
+      if (hazards.some((h) => h.q === hex.q && h.r === hex.r)) continue;
+      if (exits.some((ex) => hexDist(hex, ex) < 1) || (outpost && hexDist(hex, outpost) < 1)) continue;
+      hazards.push({ type: "scrambler", q: hex.q, r: hex.r });
+      clouds++;
     }
     const hazardKeys = new Set(hazards.map((h) => `${h.q},${h.r}`));
 

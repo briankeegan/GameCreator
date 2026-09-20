@@ -27,6 +27,11 @@ const BOSS_DEPTH = Levels.BOSS_DEPTH;
 // avoiding hexes that end the round inside a threat.
 
 function armedWeapons(state) {
+  // Nothing is armed while sitting in a scrambler field — the guns are
+  // fitted, they just have no solution from in there. Asking the engine
+  // to fire anyway throws, which would end a run as an error rather than
+  // as a measurement.
+  if (Engine.inScrambler(state, state.playerPos)) return [];
   return Engine.WEAPON_SYSTEM_KEYS.filter((k) => state.actions.includes(k) && state.systems[k]).map(
     (k) => Engine.WEAPONS[k]
   );
