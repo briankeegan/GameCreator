@@ -77,6 +77,40 @@ the air. Garbage queued against this board is known before it lands, and a
 chain that completes before it lands, or sits where it will not be buried,
 is the one to build.
 
+### Chains and combos are different weapons
+
+The engine makes the difference, not a convention. `pushGarbage` sends a
+chain as ONE piece, full width, height growing a row per link, held until
+the cascade ends (`finalized: false`). It sends a combo as SEVERAL pieces,
+each one row tall, widths from `COMBO_GARBAGE` — a 6 sends `[5]`, an 8
+sends `[3, 4]`, a 12 sends `[6, 6]` — and each leaves immediately.
+
+So they differ in shape (a slab keeps the far surface flat, narrow pieces
+make it jagged), in timing (combo pieces land while the chain is still
+being built), and in how they are dug out (one object versus several that
+break independently).
+
+Which one to fire depends on the opponent: a slab against a healthy board,
+a fast combo against one that is nearly out of room. That is opponent-state
+crossed with attack-type — an interaction, so it belongs in the mode
+selector and not in a weight, and it is NOT written here as a rule.
+
+What the bot needs is to see it. FIRE already has both arms; step 2 adds
+the opponent's HEADROOM — rows to their ceiling, plus what is already in
+the air at them — as an input to which arm FIRE picks. Training finds the
+crossover. It cannot today because the bot sees nothing about the other
+board.
+
+### Not yet: the ceiling on a useful attack
+
+Past the garbage it takes to finish them, a bigger attack is worse than
+wasted. Garbage on a board is MATERIAL: a clear next to it converts it to
+panels, which can cascade. Over-sending hands the opponent a bigger
+counter-chain.
+
+That is a cap on the FIRE threshold once headroom is visible — not new
+machinery. Deliberately deferred; noted here so it is not re-derived.
+
 ### Thresholds
 
 `T` starts at 4 links, `S` at 4 wide — `comboGarbage()` sends nothing below
