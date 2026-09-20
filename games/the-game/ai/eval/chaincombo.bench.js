@@ -56,11 +56,12 @@ console.log('switches: depth ' + loaded.switches.depth + '  beam ' + loaded.swit
             '  density ' + (loaded.switches.density ? 'on' : 'off') +
             '  modes ' + (loaded.switches.modes
                 ? 'ON (' + loaded.switches.fireLinks + ' links / ' + loaded.switches.fireWide +
-                  ' wide / margin ' + loaded.switches.forcedMargin + ')'
+                  ' wide / margin ' + loaded.switches.forcedMargin +
+                  (loaded.switches.riseAware ? ' / rise-aware' : ' / rise-BLIND') + ')'
                 : 'off'));
 console.log('playing ' + GAMES + ' games x ' + SCENARIOS.length + ' scenario(s): ' + SCENARIOS.join(', '));
 
-var modeTotals = { BUILD: 0, FIRE: 0, FORCED: 0 }, broken = 0, payless = 0;
+var modeTotals = { BUILD: 0, FIRE: 0, FORCED: 0 }, broken = 0, payless = 0, riseUn = 0;
 SCENARIOS.forEach(function (sc) {
     for (var seed = 1; seed <= GAMES; seed++) {
         var r = bench.run(loaded.weights, seed, {
@@ -68,7 +69,8 @@ SCENARIOS.forEach(function (sc) {
             depth: loaded.switches.depth, beam: loaded.switches.beam,
             rise: loaded.switches.rise, density: loaded.switches.density,
             modes: loaded.switches.modes, fireLinks: loaded.switches.fireLinks,
-            fireWide: loaded.switches.fireWide, forcedMargin: loaded.switches.forcedMargin
+            fireWide: loaded.switches.fireWide, forcedMargin: loaded.switches.forcedMargin,
+            riseAware: loaded.switches.riseAware
         });
         add(chain, r.chain); add(combo, r.combo);
         minutes += r.frames / 60 / 60;
@@ -78,6 +80,7 @@ SCENARIOS.forEach(function (sc) {
         modeTotals.FORCED += r.modeCounts.FORCED;
         broken += r.brokenPlans;
         payless += r.payless;
+        riseUn += r.riseUnavoidable;
         if (r.died) deaths++;
         games++;
     }
@@ -128,6 +131,7 @@ if (modeSum) {
                 '   fire ' + share(modeTotals.FIRE) +
                 '   forced ' + share(modeTotals.FORCED) +
                 '   (' + modeSum + ' decisions)');
+    console.log('rise forced    : ' + riseUn + ' decisions where every build move rose into a bare 3');
     console.log('broken plans   : ' + broken + '   ' + (broken / Math.max(1, games)).toFixed(1) + ' per game');
 }
 var pts = pointsFor(chain, combo);

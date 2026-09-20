@@ -166,6 +166,28 @@ test('a widening plan is not a broken one', function () {
     assert.strictEqual(modes.planBroke({ links: 4, wide: 3 }, { links: 6, wide: 3 }, false, T, S), false);
 });
 
+// ------------------------------------- 5b. what the RISE is about to do
+
+test('a move that clears nothing but rises into a bare 3 does not pay', function () {
+    // The stack rises whether or not the bot acts, and the row that is
+    // coming is known BEFORE the move is chosen. So a three the board makes
+    // by itself is not unavoidable: it is a move the bot should have
+    // declined. The merged resolve carries the rise's own clears, so this is
+    // the same predicate reading a longer list — nothing new decides it.
+    assert.strictEqual(modes.pays(res({ chainLength: 1, comboSizes: [3] }), T, S), false);
+});
+
+test('a paying move that also rises into a 3 still pays', function () {
+    // The rise's bare 3 rides along in comboSizes; the 6 is why the move is
+    // worth making. Dropping it because of the 3 would be the filter eating
+    // the moves it exists to keep.
+    assert.strictEqual(modes.pays(res({ chainLength: 1, comboSizes: [6, 3] }), T, S), true);
+});
+
+test('the widest link decides, wherever in the cascade it sits', function () {
+    assert.strictEqual(modes.payout(res({ chainLength: 1, comboSizes: [3, 3, 7, 3] })).wide, 7);
+});
+
 // ------------------------------------------------- 6. wired into the bot
 
 // THESE USE THE SHIPPED WEIGHTS, and the unit tests above do not.
@@ -332,6 +354,20 @@ test('the ply-2 filter bites, and FORCED lifts it at both plies', function () {
     var always = playGame(shipped(Object.assign({ modes: true, forcedMargin: 99 }, d2)), 101, 2500);
     assert.deepStrictEqual(always.moves, off.moves,
         'FORCED is not lifting the filter at ply 2');
+});
+
+test('a candidate is judged on what the RISE leaves, not on the instant it popped', function () {
+    // THE BUG THIS EXISTS FOR. _score already rises every candidate and
+    // merges the second resolve, and then returned only a number — so the
+    // resolve the filter read was the PRE-rise one and could not see a three
+    // the rise was about to make. Measured on the engine's own events.
+    var seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], before = 0, after = 0;
+    seeds.forEach(function (seed) {
+        before += playGame(shipped({ modes: true, forcedMargin: -1, riseAware: false }), seed, 9000).payless;
+        after  += playGame(shipped({ modes: true, forcedMargin: -1 }), seed, 9000).payless;
+    });
+    assert.ok(after < before,
+        'bare 3s ' + after + ' rise-aware vs ' + before + ' blind — the filter still cannot see the rise');
 });
 
 tests.forEach(function (t) {

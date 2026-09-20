@@ -77,7 +77,8 @@ function load(file) {
         modes: sw.modes === true,
         fireLinks: sw.fireLinks === undefined ? 4 : Number(sw.fireLinks),
         fireWide: sw.fireWide === undefined ? 4 : Number(sw.fireWide),
-        forcedMargin: sw.forcedMargin === undefined ? 2 : Number(sw.forcedMargin)
+        forcedMargin: sw.forcedMargin === undefined ? 2 : Number(sw.forcedMargin),
+        riseAware: sw.riseAware !== false
     };
 
     var forced = [];
@@ -90,6 +91,7 @@ function load(file) {
     if ((e = envNum('GC_FIRE_LINKS')) !== undefined) { out.fireLinks = e; forced.push('fireLinks'); }
     if ((e = envNum('GC_FIRE_WIDE')) !== undefined) { out.fireWide = e; forced.push('fireWide'); }
     if ((e = envNum('GC_FORCED_MARGIN')) !== undefined) { out.forcedMargin = e; forced.push('forcedMargin'); }
+    if ((e = envFlag('GC_RISE_AWARE')) !== undefined) { out.riseAware = e; forced.push('riseAware'); }
 
     return { weights: weights, switches: out, source: source, forced: forced };
 }
@@ -106,7 +108,7 @@ function describe(loaded) {
         // said "modes off" on every one of this repo's existing outputs would
         // be noise, and one that said "modes ON" without the thresholds would
         // not identify the bot.
-        (s.modes ? ' modes ON(' + s.fireLinks + 'L/' + s.fireWide + 'W/m' + s.forcedMargin + ')' : '') + ']' +
+        (s.modes ? ' modes ON(' + s.fireLinks + 'L/' + s.fireWide + 'W/m' + s.forcedMargin + (s.riseAware ? '' : ' rise-blind') + ')' : '') + ']' +
         (loaded.forced.length ? '  (forced by env: ' + loaded.forced.join(', ') + ')' : '');
 }
 

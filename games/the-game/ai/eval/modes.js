@@ -64,6 +64,29 @@
     return fires(resolved, T, S);
   }
 
+  // DID THE RISING ROW MAKE A CLEAR THAT PAID NOTHING.
+  //
+  // The stack comes up whether or not the bot acts, and the row that is
+  // coming is known before the move is chosen — so a three the board makes
+  // by itself is a move the bot should have declined, not something
+  // unavoidable. `risen` is the resolve of the board after the rows that
+  // land during this move actually land; `own` is what the move itself
+  // fires. A rise that only extends what the move already paid for is not a
+  // payless rise.
+  //
+  // THIS IS A PREFERENCE, NOT A VETO, and its caller must treat it as one.
+  // Applied as a hard filter it empties the pool — every candidate rises
+  // into something once enough rows land — and an empty pool falls through
+  // to the unfiltered bot, which fires MORE bare threes than no filter at
+  // all. Measured: 239 against 205 over ten games.
+  function risesIntoPayless(risen, own, T, S) {
+    if (!risen) return false;
+    if (pays(risen, T, S)) return false;
+    // The move already paid; the rise riding along on top of it is not a
+    // reason to decline a move that was worth making.
+    return pays(own, T, S);
+  }
+
   // Rows before this board tops out. Garbage already queued has spent its
   // rows the moment it is sent, not when it lands — a board with four rows
   // in the air is four rows nearer the ceiling than it looks, and that is
@@ -121,5 +144,6 @@
   }
 
   return { payout: payout, fires: fires, pays: pays, runway: runway,
+           risesIntoPayless: risesIntoPayless,
            forced: forced, planBroke: planBroke, bestPayout: bestPayout };
 }));

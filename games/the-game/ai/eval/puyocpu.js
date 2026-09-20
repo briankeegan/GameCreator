@@ -115,11 +115,28 @@
     this.fireWide = opts.fireWide === undefined ? 4 : opts.fireWide;
     // Rows of runway at which about-to-die opens. See modes.forced.
     this.forcedMargin = opts.forcedMargin === undefined ? 2 : opts.forcedMargin;
+    // JUDGE A CANDIDATE ON WHAT THE RISE LEAVES. The stack comes up whether
+    // or not the bot acts and the row that is coming is known before the
+    // move is chosen, so a three the board makes by itself is a move the bot
+    // should have declined rather than something unavoidable.
+    //
+    // It costs nothing: _score already rises every candidate and merges that
+    // resolve when rise is on, so this reads a number that was computed
+    // either way. With rise off there is no second resolve and this is the
+    // pre-rise one, which is all there is.
+    //
+    // The switch exists so the two can be measured against each other.
+    this._riseAware = opts.riseAware !== false;
     // Instrumentation, and load-bearing: a flat bench with FORCED at 85% of
     // decisions and a flat bench with FORCED at 5% are opposite bugs, and
     // nothing else in the output tells them apart.
     this.modeCounts = { BUILD: 0, FIRE: 0, FORCED: 0 };
     this.brokenPlans = 0;
+    // Decisions where every build move rose into a clear that paid nothing.
+    // Not a defect of the filter — the board genuinely offered no clean
+    // move — but it has to be visible, because a preference that never
+    // applies and a preference that always applies look the same from here.
+    this.riseUnavoidable = 0;
     // The best payout the board offered last decision, and whether we spent
     // it. Together they are the only state that survives a decision.
     this._plan = null;
@@ -316,6 +333,12 @@
       input.clock.stopTime = plyClock.stopTime;
       input.clock.toppedOut = plyClock.toppedOut;
     }
+    // WHAT THIS ACTUALLY SCORED, published the same way _scoredBoard is and
+    // for the same reason. With rise on, the loop above merged the clears
+    // the RISING ROW sets off into `resolved`; the caller's copy is the
+    // pre-rise one. A filter reading the caller's copy cannot see a three
+    // the rise is about to make, which is most of the threes.
+    this._scoredResolved = resolved;
     return evaluator.evaluate(input, this.weights, { density: this.density }).score;
   };
 
@@ -353,6 +376,7 @@
                    score: this._score(holdBoard, holdResolved, null),
                    board: this._scoredBoard,
                    resolved: holdResolved,
+                   risen: this._scoredResolved,
                    earnedStop: holdResolved.stopTimeEarned || 0 }];
 
     if (this._canRaise()) {
@@ -364,6 +388,7 @@
                    score: this._score(raiseBoard, raiseResolved, null),
                    board: this._scoredBoard,
                    resolved: raiseResolved,
+                   risen: this._scoredResolved,
                    earnedStop: raiseResolved.stopTimeEarned || 0 });
     }
 
@@ -378,6 +403,7 @@
                    move: [r, c],
                    board: this._scoredBoard,
                    resolved: resolved,
+                   risen: this._scoredResolved,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
     return cands;
@@ -430,6 +456,17 @@
     } else {
       pool = cands.filter(function (c) { return modes.pays(c.resolved, T, S); });
       mode = 'BUILD';
+      // SECOND STAGE, AND IT YIELDS. Among the moves that are not a cheap
+      // cash-in, prefer the ones the RISING ROW does not turn into one. When
+      // every one of them rises into something, the preference is dropped
+      // rather than emptying the pool — an empty pool falls through to the
+      // unfiltered bot, which fires more bare threes than no filter at all.
+      if (this._riseAware && pool.length) {
+        var clean = pool.filter(function (c) {
+          return !modes.risesIntoPayless(c.risen, c.resolved, T, S);
+        });
+        if (clean.length) pool = clean; else this.riseUnavoidable++;
+      }
     }
 
     // AN EMPTY POOL IS A BROKEN PLAN, NOT A THIRD TRIGGER. It means every

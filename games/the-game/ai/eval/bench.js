@@ -294,7 +294,7 @@ exports.run = function (weights, seed, opts) {
     var KNOWN_OPTS = ['allowRaise', 'arena', 'beam', 'brain', 'checkTiming',
                       'density', 'depth', 'objective', 'rise', 'scenario',
                       'mode',
-                      'modes', 'fireLinks', 'fireWide', 'forcedMargin'];
+                      'modes', 'fireLinks', 'fireWide', 'forcedMargin', 'riseAware'];
     for (var opt in opts) {
         if (opts.hasOwnProperty(opt) && KNOWN_OPTS.indexOf(opt) === -1) {
             throw new Error('bench.run: unknown option "' + opt + '". Known options are ' +
@@ -354,7 +354,8 @@ exports.run = function (weights, seed, opts) {
             modes: opts.modes === true,
             fireLinks: opts.fireLinks,
             fireWide: opts.fireWide,
-            forcedMargin: opts.forcedMargin
+            forcedMargin: opts.forcedMargin,
+            riseAware: opts.riseAware
         });
     }
 
@@ -491,6 +492,7 @@ exports.run = function (weights, seed, opts) {
              // off, which is what "no mode ever ran" should look like.
              modeCounts: cpu.modeCounts || { BUILD: 0, FIRE: 0, FORCED: 0 },
              brokenPlans: cpu.brokenPlans || 0, payless: payless,
+             riseUnavoidable: cpu.riseUnavoidable || 0,
              localMax: localMax, unsafe: checkTiming && localMax > TIMING_MARGIN_MS };
 };
 
