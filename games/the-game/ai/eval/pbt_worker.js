@@ -52,37 +52,33 @@ var played = state.played || pop.map(function () { return 0; });
 
 // WHAT THE LEG IS DOING, WHILE IT DOES IT, AND FOR NOTHING.
 //
-// Every update already plays a full duel and versus.duel already returns
-// the frames, the garbage each side sent and the exact chain and combo
-// histograms. The loop kept `winner` and dropped the rest, so a leg was
-// silent until it ended — and the only moment anything became visible was a
-// snapshot. None of this costs a duel; it reads what the duel returned.
-var TICK = Number(process.env.GC_PBT_TICK || 10);
-var tick = { duels: 0, frames: 0, sent: 0, deaths: 0, deep: 0, wide: 0 };
+// Every update already plays a full duel, and versus.duel already returns
+// the frames, who died, what each side sent and scored, and the exact chain
+// and combo histograms. The loop kept `winner` and dropped the rest, so a
+// leg was silent until it ended and a snapshot was the only moment anything
+// became visible.
+//
+// EMITTED RAW, AND NOTHING IS DERIVED. No sums across duels, no rates, no
+// buckets — a line is one duel's own result, exactly as the duel reported
+// it, and whoever reads it does the arithmetic. "4+ links" hides whether
+// that was a 4 or a 9, and a mean hides the spread it came from.
+//
+// AND AS DATA, NOT PROSE. One JSON object a line, so a consumer parses it
+// instead of a regex over a sentence.
+//
+// GC_PBT_TICK is a SAMPLE RATE, not a summary window: 1 emits every duel, 5
+// emits every fifth, 0 emits none.
+var TICK = Number(process.env.GC_PBT_TICK === undefined ? 1 : process.env.GC_PBT_TICK);
+var ISLAND = path.basename(file, '.json');
 
-function tally(d) {
-    tick.duels++;
-    tick.frames += d.frames;
-    tick.sent += (d.sent[0] || 0) + (d.sent[1] || 0);
-    if (d.reason !== 'ceiling') tick.deaths++;
-    for (var side = 0; side < 2; side++) {
-        var ex = d.exact[side];
-        for (var k in ex.chain) if (Number(k) >= 4) tick.deep += ex.chain[k];
-        for (var j in ex.combo) if (Number(j) >= 4) tick.wide += ex.combo[j];
-    }
-}
-
-function report(done) {
-    if (!tick.duels) return;
-    var mins = tick.frames / 60 / 60;
-    var secs = tick.frames / 60 / tick.duels;
-    console.log('  island ' + path.basename(file, '.json') + '  ' + done + '/' + UPDATES +
-        '  game ' + Math.floor(secs / 60) + ':' + ('0' + Math.round(secs % 60)).slice(-2) +
-        '  garbage ' + (tick.sent / Math.max(mins, 0.001)).toFixed(0) + '/min' +
-        '  4+links ' + (tick.deep / Math.max(mins, 0.001)).toFixed(2) + '/min' +
-        '  4+wide ' + (tick.wide / Math.max(mins, 0.001)).toFixed(1) + '/min' +
-        '  ' + tick.deaths + '/' + tick.duels + ' by death');
-    tick = { duels: 0, frames: 0, sent: 0, deaths: 0, deep: 0, wide: 0 };
+function emit(u, sd, a, b, d) {
+    console.log(JSON.stringify({
+        island: ISLAND, update: u, seed: sd, pair: [a, b],
+        winner: d.winner, reason: d.reason, frames: d.frames,
+        sent: d.sent, scores: d.scores,
+        chains: [d.exact[0].chain, d.exact[1].chain],
+        combos: [d.exact[0].combo, d.exact[1].combo]
+    }));
 }
 
 for (var u = 0; u < UPDATES; u++) {
@@ -90,8 +86,7 @@ for (var u = 0; u < UPDATES; u++) {
     while (b === a) b = pick(pop.length);
     var sd = SEEDS.TRAIN[pick(SEEDS.TRAIN.length)];
     var d = versus.duel(pop[a], pop[b], sd, OPTS);
-    tally(d);
-    if (TICK > 0 && (u + 1) % TICK === 0) report(u + 1);
+    if (TICK > 0 && (u + 1) % TICK === 0) emit(u + 1, sd, a, b, d);
     played[a]++; played[b]++;
     if (d.winner !== null) {
         var w = d.winner === 0 ? a : b, l = d.winner === 0 ? b : a;
@@ -102,8 +97,6 @@ for (var u = 0; u < UPDATES; u++) {
         wins[l] = 0; played[l] = 0;
     }
 }
-
-report(UPDATES);
 
 state.population = pop; state.wins = wins; state.played = played;
 state.updates = (state.updates || 0) + UPDATES;
