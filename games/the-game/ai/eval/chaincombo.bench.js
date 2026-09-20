@@ -63,7 +63,20 @@ console.log('switches: depth ' + loaded.switches.depth + '  beam ' + loaded.swit
                 : 'off'));
 console.log('playing ' + GAMES + ' games x ' + SCENARIOS.length + ' scenario(s): ' + SCENARIOS.join(', '));
 
+function pointsFor(chainHist, comboHist) {
+    var engine = G.PanelEngine, total = 0, k;
+    if (!engine || !engine.moveScore) return null;
+    for (k in comboHist) total += engine.moveScore([Number(k)]) * comboHist[k];
+    for (k in chainHist) {
+        var links = Number(k), sizes = [];
+        for (var i = 0; i < links; i++) sizes.push(3);   // the minimum clear per link
+        total += engine.moveScore(sizes) * chainHist[k];
+    }
+    return total;
+}
+
 var modeTotals = { BUILD: 0, FIRE: 0, FORCED: 0 }, broken = 0, payless = 0, riseUn = 0;
+var perGame = [];
 SCENARIOS.forEach(function (sc) {
     for (var seed = 1; seed <= GAMES; seed++) {
         var r = bench.run(loaded.weights, seed, {
@@ -78,6 +91,14 @@ SCENARIOS.forEach(function (sc) {
         });
         add(chain, r.chain); add(combo, r.combo);
         minutes += r.frames / 60 / 60;
+        // PER-GAME, so the summary can say how far it wobbles. Every sweep
+        // in this file's history was read off one number a condition with no
+        // sense of its spread, and this bot is chaotic — one different move
+        // in the opening reshuffles the whole game, so two settings diverge
+        // completely within seconds. A difference smaller than this spread
+        // is not a result.
+        perGame.push({ minutes: r.frames / 60 / 60, sent: r.sent,
+                       points: pointsFor(r.chain, r.combo) });
         sent += r.sent;
         modeTotals.BUILD += r.modeCounts.BUILD;
         modeTotals.FIRE += r.modeCounts.FIRE;
@@ -93,17 +114,6 @@ SCENARIOS.forEach(function (sc) {
 // The game's own valuation of what it fired. moveScore takes the sizes of
 // one move's clears; a chain of N links is N clears that chained, so it is
 // priced as the chain it was rather than as N separate combos.
-function pointsFor(chainHist, comboHist) {
-    var engine = G.PanelEngine, total = 0, k;
-    if (!engine || !engine.moveScore) return null;
-    for (k in comboHist) total += engine.moveScore([Number(k)]) * comboHist[k];
-    for (k in chainHist) {
-        var links = Number(k), sizes = [];
-        for (var i = 0; i < links; i++) sizes.push(3);   // the minimum clear per link
-        total += engine.moveScore(sizes) * chainHist[k];
-    }
-    return total;
-}
 
 var per = function (n) { return (n / minutes).toFixed(1); };
 var chainFired = 0, comboFired = 0, deepFired = 0, bigFired = 0, k;
@@ -139,5 +149,22 @@ if (modeSum) {
     console.log('broken plans   : ' + broken + '   ' + (broken / Math.max(1, games)).toFixed(1) + ' per game');
 }
 var pts = pointsFor(chain, combo);
+// HOW FAR IT WOBBLES. A mean with no spread beside it invites reading a
+// difference that is one unlucky game wide. Reported as the standard
+// deviation of per-game points a minute, and as the standard error of the
+// mean — two conditions whose means are inside a couple of standard errors
+// of each other have not been told apart by this many games.
+(function () {
+    var n = perGame.length;
+    if (n < 2) return;
+    var rates = perGame.map(function (g) { return g.minutes > 0 ? g.points / g.minutes : 0; });
+    var mean = rates.reduce(function (a, b) { return a + b; }, 0) / n;
+    var varc = rates.reduce(function (a, b) { return a + (b - mean) * (b - mean); }, 0) / (n - 1);
+    var sd = Math.sqrt(varc), sem = sd / Math.sqrt(n);
+    console.log('points/game    : mean ' + mean.toFixed(0) + '/min   sd ' + sd.toFixed(0) +
+                '   sem ' + sem.toFixed(0) + '   (' + n + ' games)');
+    console.log('                 a gap under ' + (2 * sem).toFixed(0) +
+                '/min is inside this run\'s own noise');
+}());
 console.log('game points/min: ' + (pts === null ? '(engine not loaded)' : per(pts)) +
             '   <- the number to move');
