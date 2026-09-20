@@ -81,7 +81,8 @@ function load(file) {
         riseAware: sw.riseAware !== false,
         fireTarget: sw.fireTarget === undefined ? 'either' : String(sw.fireTarget),
         fireWideOff: sw.fireWideOff === undefined ? 6 : Number(sw.fireWideOff),
-        fireLinksOff: sw.fireLinksOff === undefined ? 5 : Number(sw.fireLinksOff)
+        fireLinksOff: sw.fireLinksOff === undefined ? 5 : Number(sw.fireLinksOff),
+        buildToward: sw.buildToward === undefined ? 0 : Number(sw.buildToward)
     };
 
     var forced = [];
@@ -98,6 +99,7 @@ function load(file) {
     if (process.env.GC_FIRE_TARGET) { out.fireTarget = process.env.GC_FIRE_TARGET; forced.push('fireTarget'); }
     if ((e = envNum('GC_FIRE_WIDE_OFF')) !== undefined) { out.fireWideOff = e; forced.push('fireWideOff'); }
     if ((e = envNum('GC_FIRE_LINKS_OFF')) !== undefined) { out.fireLinksOff = e; forced.push('fireLinksOff'); }
+    if ((e = envNum('GC_BUILD_TOWARD')) !== undefined) { out.buildToward = e; forced.push('buildToward'); }
 
     return { weights: weights, switches: out, source: source, forced: forced };
 }
@@ -115,7 +117,7 @@ function describe(loaded) {
         // be noise, and one that said "modes ON" without the thresholds would
         // not identify the bot.
         (s.modes ? ' modes ON(' + s.fireLinks + 'L/' + s.fireWide + 'W/m' + s.forcedMargin + (s.riseAware ? '' : ' rise-blind') +
-          ' ' + s.fireTarget + ')' : '') + ']' +
+          ' ' + s.fireTarget + (s.buildToward ? ' toward ' + s.buildToward : '') + ')' : '') + ']' +
         (loaded.forced.length ? '  (forced by env: ' + loaded.forced.join(', ') + ')' : '');
 }
 

@@ -21,7 +21,10 @@
     opts = opts || {};
     var PanelCpu = (typeof window !== 'undefined' ? window : globalThis).PanelCpu;
     this.stack = stack;
-    this.weights = opts.weights || {};
+    // A COPY, because the target's potential term is added to it below. A
+    // trainer scoring many genomes from one object would otherwise
+    // accumulate that term every time it built a bot.
+    this.weights = Object.assign({}, opts.weights || {});
     // Borrowed rather than reimplemented: the cursor walk and the board
     // snapshot are how the game works, not part of what is being tested,
     // and a second copy of either would drift from the first.
@@ -119,6 +122,14 @@
     this.fireTarget = opts.fireTarget === undefined ? 'either' : opts.fireTarget;
     this.fireWideOff = opts.fireWideOff === undefined ? 6 : opts.fireWideOff;
     this.fireLinksOff = opts.fireLinksOff === undefined ? 5 : opts.fireLinksOff;
+    // HOW HARD IT WALKS TOWARD THE TARGET. The bars say what not to sell;
+    // this says what to move toward, by giving the target's potential
+    // feature a weight the bot does not otherwise have. See modes.toward.
+    //
+    // 0 by default, and that costs nothing rather than merely meaning
+    // nothing: evaluate() skips a zero-weight feature, and chainPotential is
+    // the most expensive one in the registry.
+    this.buildToward = opts.buildToward === undefined ? 0 : opts.buildToward;
     // Rows of runway at which about-to-die opens. See modes.forced.
     this.forcedMargin = opts.forcedMargin === undefined ? 2 : opts.forcedMargin;
     // JUDGE A CANDIDATE ON WHAT THE RISE LEAVES. The stack comes up whether
@@ -147,6 +158,15 @@
     // it. Together they are the only state that survives a decision.
     this._plan = null;
     this._firedLast = false;
+
+    // No modes means no target, so there is nothing to build toward and
+    // every number taken without modes is untouched.
+    if (this.modes) {
+      var climb = modes.toward(this.fireTarget, this.buildToward);
+      for (var k in climb) {
+        if (climb.hasOwnProperty(k)) this.weights[k] = (this.weights[k] || 0) + climb[k];
+      }
+    }
   }
 
   // Settle a candidate board: gravity, matches, cascades. Returns what the

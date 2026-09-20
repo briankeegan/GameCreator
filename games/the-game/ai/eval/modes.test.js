@@ -145,6 +145,42 @@ test('an unknown target is refused rather than silently meaning either', functio
     assert.throws(function () { modes.bars('chian', 4, 4, 6, 5); }, /chian/);
 });
 
+// ------------------------------------------- 3d. building TOWARD the target
+
+test('the target picks which potential the bot climbs', function () {
+    // The floor says what not to sell. This says what to walk toward.
+    // chainPotential and comboPotential are the resolve asked one move
+    // further out — the deepest cascade, and the biggest single clear, any
+    // one swap could make from the board a move LEAVES. Without one of them
+    // weighted, the bot scores tidiness and a six-wide only ever turns up by
+    // accident; the filter can refuse a cheap sale but cannot aim.
+    assert.deepStrictEqual(modes.toward('chain', 120), { chainPotential: 120 });
+    assert.deepStrictEqual(modes.toward('combo', 120), { comboPotential: 120 });
+});
+
+test('either climbs both, so no target is not no ambition', function () {
+    assert.deepStrictEqual(modes.toward('either', 120),
+        { chainPotential: 120, comboPotential: 120 });
+});
+
+test('strength 0 adds nothing at all', function () {
+    // Load-bearing: evaluate() skips a feature whose weight is 0, and
+    // chainPotential costs 14.9ms of an 85ms budget. Off has to be free,
+    // not merely neutral.
+    assert.deepStrictEqual(modes.toward('chain', 0), {});
+    assert.deepStrictEqual(modes.toward('either', 0), {});
+});
+
+test('a negative strength is refused', function () {
+    assert.throws(function () { modes.toward('chain', -50); }, /negative/);
+});
+
+test('an unknown target is refused here too', function () {
+    assert.throws(function () { modes.toward('combos', 120); }, /combos/);
+});
+
+// ----------------------------------------------------------------- 4. FORCED
+
 test('FORCED opens when the runway is gone', function () {
     assert.strictEqual(modes.forced({ runway: 1, margin: 2, broke: false }), true);
 });
@@ -460,6 +496,52 @@ test('a bad target name stops the run rather than quietly meaning either', funct
     assert.throws(function () {
         playGame(shipped({ modes: true, fireTarget: 'chains' }), 101, 500);
     }, /chains/);
+});
+
+test('buildToward reaches the evaluator and changes how it plays', function () {
+    // The claim is that the bot WALKS TOWARD the target rather than waiting
+    // for it, so the test is that its play changes.
+    var off = playGame(shipped({ modes: true, forcedMargin: -1, fireWide: 6 }), 101, 4000);
+    var on  = playGame(shipped({ modes: true, forcedMargin: -1, fireWide: 6,
+                                 buildToward: 120 }), 101, 4000);
+    assert.notDeepStrictEqual(on.moves, off.moves, 'buildToward changed nothing');
+});
+
+test('buildToward 0 is exactly the bot without it', function () {
+    // Off has to be free: evaluate() skips a zero-weight feature, and
+    // chainPotential is the most expensive one there is.
+    var off  = playGame(shipped({ modes: true, forcedMargin: -1, fireWide: 6 }), 101, 4000);
+    var zero = playGame(shipped({ modes: true, forcedMargin: -1, fireWide: 6,
+                                   buildToward: 0 }), 101, 4000);
+    assert.deepStrictEqual(zero.moves, off.moves);
+});
+
+test('the target decides WHICH potential is climbed', function () {
+    var chain = playGame(shipped({ modes: true, forcedMargin: -1,
+                                    fireTarget: 'chain', buildToward: 120 }), 101, 4000);
+    var combo = playGame(shipped({ modes: true, forcedMargin: -1,
+                                    fireTarget: 'combo', buildToward: 120 }), 101, 4000);
+    assert.notDeepStrictEqual(chain.moves, combo.moves,
+        'both targets climb the same thing');
+});
+
+test('buildToward does nothing to a bot with modes off', function () {
+    // No modes means no target, so there is nothing to build toward, and
+    // every number this repo already has must be untouched.
+    var a = playGame(shipped({}), 101, 3000);
+    var b = playGame(shipped({ buildToward: 200 }), 101, 3000);
+    assert.deepStrictEqual(b.moves, a.moves);
+});
+
+test('the bot does not mutate the weight set it was handed', function () {
+    // It adds the target's potential to its OWN copy. A trainer scoring many
+    // genomes from one object would otherwise accumulate the term every time
+    // it built a bot, and the weights would drift without anything saying so.
+    var w = { links: 25, maxHeight: 30 };
+    var before = JSON.stringify(w);
+    new PuyoCpu(new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false }),
+                { weights: w, modes: true, buildToward: 120 });
+    assert.strictEqual(JSON.stringify(w), before, 'the caller\'s weights were modified');
 });
 
 tests.forEach(function (t) {
