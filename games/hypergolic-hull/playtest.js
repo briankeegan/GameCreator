@@ -534,6 +534,11 @@ function playSector(state, report) {
   const MAX_ROUNDS = 220;
   let visitedOutpost = false;
   let repositions = 0;
+  // WHAT THE SHIP CARRIED VERSUS WHAT IT USED. A gun bought fourteen times
+  // and fired zero is dead weight on the shelf, and the purchase count
+  // alone cannot tell that apart from a gun nobody buys. Count the sectors
+  // each weapon was armed for; the shots table is the other half.
+  for (const w of armedWeapons(state)) report.armed[w.id] = (report.armed[w.id] || 0) + 1;
   for (let round = 0; round < MAX_ROUNDS; round++) {
     if (state.status !== "playing") return state.status;
 
@@ -619,6 +624,22 @@ function playSector(state, report) {
     const nearestChaser = chasers.reduce((best, e) =>
       !best || Engine.hexDistance(state.playerPos, e) < Engine.hexDistance(state.playerPos, best) ? e : best
     , null);
+
+    // A MINE IS NOT A SHOT, and bestShot cannot see one. Every gun it
+    // scores has to have the target inside its reach; a charge dropped
+    // where you stand has a reach of your own hex, so a purchased
+    // Scuttling Charge sat armed for forty-three sectors across sixty runs
+    // and was never once fired — which reads as "nobody wants it" when
+    // what it means is "this pilot cannot use it". It is laid the way a
+    // player lays one: something is closing, it is two hexes out, and the
+    // charge goes off in two rounds with a hex of blast.
+    const charge = armedWeapons(state).find((w) => w.placesSelf && w.energyCost <= state.energy);
+    if (charge && nearestChaser && Engine.hexDistance(state.playerPos, nearestChaser) === 2 && !state.charges?.some((c) => Engine.posEq(c, state.playerPos))) {
+      Engine.applyFire(state, nearestChaser.id, charge.id);
+      report.kills[charge.id] = report.kills[charge.id] || { shots: 0, kills: 0 };
+      report.kills[charge.id].shots++;
+      continue;
+    }
     // Don't take a fight standing inside a fixed gun's ring. Chasers come
     // to you wherever you are, so pick the ground: step clear first, THEN
     // let them arrive. This is most of what separates a run that ends at
@@ -764,6 +785,16 @@ function playRun(seed, report) {
       return { depth, outcome: "error" };
     }
     report.depthReached[depth] = (report.depthReached[depth] || 0) + 1;
+    // THE CURVE THE PLAYER FEELS. Win rate says whether a run is winnable;
+    // it says nothing about whether the twelve sectors feel like twelve
+    // different problems. These four numbers are the shape of the ship the
+    // player is flying, sampled once a sector.
+    (report.shape[depth] = report.shape[depth] || []).push({
+      maxHull: state.maxHull,
+      maxEnergy: state.maxEnergy,
+      guns: armedWeapons(state).length,
+      dearest: armedWeapons(state).reduce((m, w) => Math.max(m, w.energyCost), 0),
+    });
     if (process.env.ECON) report.econ.arrive.push({ depth, bank: salvageIn, out: state.salvage });
     if (process.env.ECON) econMark(state, report, depth);
     if (process.env.VERBOSE) {
@@ -824,6 +855,8 @@ function main() {
     purchases: {},
     fitted: {},
     kills: {},
+    armed: {},
+    shape: {},
     depthReached: {},
     hullAtDepth: {},
     recharges: 0,
@@ -855,8 +888,26 @@ function main() {
     const bar = "#".repeat(Math.round((reached / runs) * 40));
     console.log(`  ${String(d).padStart(2)} ${String(reached).padStart(3)} ${bar} hull avg ${avg(report.hullAtDepth[d] || [])}`);
   }
-  console.log("\nweapon usage (shots → kills):");
-  for (const [id, s] of Object.entries(report.kills)) console.log(`  ${id.padEnd(12)} ${s.shots} shots, ${s.kills} kills`);
+  console.log("\nthe ship, sector by sector (what the player is flying):");
+  for (let d = 1; d <= BOSS_DEPTH; d++) {
+    const rows = report.shape[d];
+    if (!rows) continue;
+    console.log(
+      `  ${String(d).padStart(2)}  maxHull ${avg(rows.map((r) => r.maxHull))}` +
+        `  maxEnergy ${avg(rows.map((r) => r.maxEnergy))}` +
+        `  guns ${avg(rows.map((r) => r.guns))}` +
+        `  dearest gun ${avg(rows.map((r) => r.dearest))} energy`
+    );
+  }
+  console.log("\nweapon usage (sectors armed → shots → kills):");
+  const armedIds = new Set([...Object.keys(report.armed), ...Object.keys(report.kills)]);
+  const armedRows = [...armedIds].map((id) => ({ id, armed: report.armed[id] || 0, ...(report.kills[id] || { shots: 0, kills: 0 }) }));
+  armedRows.sort((a, b) => b.armed - a.armed);
+  for (const r of armedRows) {
+    const per = r.armed ? (r.shots / r.armed).toFixed(2) : "-";
+    const dead = r.armed >= 10 && r.shots === 0 ? "   <- CARRIED, NEVER FIRED" : "";
+    console.log(`  ${r.id.padEnd(14)} armed ${String(r.armed).padStart(4)} sectors  ${String(r.shots).padStart(4)} shots (${per}/sector)  ${String(r.kills).padStart(4)} kills${dead}`);
+  }
   console.log("\npurchases:", report.purchases);
   console.log("fitted from cargo:", report.fitted);
   console.log(`recharges: ${report.recharges}, shields raised: ${report.shieldsRaised}`);
