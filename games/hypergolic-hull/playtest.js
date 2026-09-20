@@ -600,6 +600,15 @@ function playSector(state, report) {
   // route is a loop, and the pilot stops being careful about it.
   const standCount = new Map();
   let lastHex = null;
+  // HOW MANY TIMES IT WILL PUT THE SCREEN BACK UP. A screen costs three
+  // charge and the Screen Ship's bus holds exactly three, so maintaining
+  // one is the ship's ENTIRE turn economy: raise, get hit, spend the next
+  // round recharging, raise again. Against a one-damage attacker that is a
+  // perfect block and an infinite one — measured, a Screen Ship stood on
+  // the same hex at full hull for 220 rounds trading with a Picket and
+  // never took a point or made any progress. Generous enough for real
+  // defensive play, bounded so the sector always ends.
+  let raises = 0;
   // WHAT THE SHIP CARRIED VERSUS WHAT IT USED. A gun bought fourteen times
   // and fired zero is dead weight on the shelf, and the purchase count
   // alone cannot tell that apart from a gun nobody buys. Count the sectors
@@ -686,6 +695,7 @@ function playSector(state, report) {
     const canAffordRaise = state.energy >= raiseCost + Math.min(...armedWeapons(state).map((w) => w.energyCost));
     if (
       state.maxShields > 0 &&
+      raises < 12 &&
       // An ion storm takes the screen away for the sector, and asking for
       // it anyway throws — which would end the run as an error rather than
       // as a measurement. Same reason the shield price is read from the
@@ -695,6 +705,7 @@ function playSector(state, report) {
       (canAffordRaise || threatened) &&
       state.energy >= raiseCost
     ) {
+      raises++;
       Engine.applyRaiseShields(state);
       report.shieldsRaised++;
       continue;

@@ -404,7 +404,13 @@ async function freshPage(browser, url, errors) {
   const enemyBox = await page.evaluate(({ q, r }) => window.__hhHexCenter(q, r), scanTargetPos);
   await page.mouse.click(scanBoardBox.x + enemyBox.x, scanBoardBox.y + enemyBox.y);
   assert.strictEqual(await page.locator("#enemyInfo").isVisible(), true, "tapping an enemy in Scan mode shows its info card");
-  assert.ok((await page.locator("#enemyInfo").textContent()).includes("INTERCEPTOR"), "the card names the inspected enemy");
+  // Whatever was tapped, not a class named here: sector 1 deals this
+  // run's contact now, so a hardcoded INTERCEPTOR is a test that passes
+  // on some runs and not others.
+  assert.ok(
+    (await page.locator("#enemyInfo").textContent()).includes(scanTargetPos.type.toUpperCase()),
+    `the card names the inspected enemy (a ${scanTargetPos.type})`
+  );
   // The card is the SAME dashboard component as the flagship's, with the
   // enemy passed through: hull/energy gauges + salvage, nothing bespoke.
   const cardLabels = await page.locator("#enemyInfo .enemy-info-dash .stat-label").allTextContents();
@@ -428,7 +434,7 @@ async function freshPage(browser, url, errors) {
   await page.locator("#enemySystemsBtn").click();
   assert.strictEqual(await page.locator("#shipOverlay").isVisible(), true, "the card's SYSTEMS button expands the full overlay");
   assert.ok(
-    (await page.locator("#shipOverlay h2").textContent()).includes("INTERCEPTOR"),
+    (await page.locator("#shipOverlay h2").textContent()).includes(scanTargetPos.type.toUpperCase()),
     "the overlay is titled for the scanned contact, not the flagship"
   );
   const enemyRows = await page.locator("#shipStats .ship-stat-row .stat-label").allTextContents();

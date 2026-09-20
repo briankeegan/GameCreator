@@ -767,8 +767,17 @@
     // of them now.
     const startCol = Math.floor(cols / 2);
     const playerStart = { q: startCol, r: rows - 1 - Math.floor(startCol / 2) };
+    // NOT THE TRUE CORNER. The top of the rightmost column is a corner of
+    // the board and has exactly TWO hexes touching it, which makes it a
+    // gate a single ship can stand in front of. Measured on a 5x7 with one
+    // Salvager and nothing else: the contact patrolled the two approaches,
+    // whichever one was headed for was the one it was standing in, and the
+    // sector could not be finished. The drift gate has always been inset
+    // by a column for this reason; the aggressive one now is too, so every
+    // gate in the game has at least three ways into it.
+    const rightCol = Math.max(0, cols - 2);
     const exits = [
-      { q: cols - 1, r: -Math.floor((cols - 1) / 2), variantId: "aggressive" }, // top-right
+      { q: rightCol, r: -Math.floor(rightCol / 2), variantId: "aggressive" }, // top-right, inset
       { q: startCol, r: -Math.floor(startCol / 2), variantId: "quiet" }, // straight up
     ];
     // Some sectors (deterministically, ~half) deal a THIRD gate toward the
