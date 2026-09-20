@@ -105,7 +105,7 @@ test('a move that clears nothing has no payout and does not count as firing', fu
 
 test('fires is the payout arms only — breaking garbage is not firing', function () {
     // Breaking garbage keeps a move in the pool. It is not a payout, so it
-    // is not what records the decision as OFFERED.
+    // is not what records the decision as ATTACK.
     assert.strictEqual(modes.fires(res({ chainLength: 1, comboSizes: [3], brokeGarbage: 4 }), T, S), false);
     assert.strictEqual(modes.pays(res({ chainLength: 1, comboSizes: [3], brokeGarbage: 4 }), T, S), true);
 });
@@ -347,8 +347,8 @@ test('the bot reports its mode shares, and they account for every decision', fun
     var g = playGame(shipped({ modes: true }), 101, 6000);
     var m = g.cpu.modeCounts;
     assert.ok(m, 'no modeCounts on the bot at all');
-    assert.strictEqual(m.BUILD + m.OFFERED + m.FORCED, g.cpu.decisions,
-        'modes account for ' + (m.BUILD + m.OFFERED + m.FORCED) + ' of ' + g.cpu.decisions + ' decisions');
+    assert.strictEqual(m.BUILD + m.ATTACK + m.FORCED, g.cpu.decisions,
+        'modes account for ' + (m.BUILD + m.ATTACK + m.FORCED) + ' of ' + g.cpu.decisions + ' decisions');
     assert.ok(m.BUILD > 0, 'never once in BUILD — the mode does not engage');
 });
 
@@ -359,7 +359,7 @@ test('FORCED is the exception, not the bot', function () {
     var worst = 0;
     [101, 102, 103].forEach(function (seed) {
         var g = playGame(shipped({ modes: true }), seed, 6000);
-        var m = g.cpu.modeCounts, t = m.BUILD + m.OFFERED + m.FORCED;
+        var m = g.cpu.modeCounts, t = m.BUILD + m.ATTACK + m.FORCED;
         worst = Math.max(worst, m.FORCED / t);
     });
     assert.ok(worst < 0.5, 'FORCED on ' + (100 * worst).toFixed(0) + '% of decisions at worst');
@@ -373,7 +373,7 @@ test('broken plans are counted', function () {
 
 test('modes OFF counts nothing, so the instrumentation cannot cost anything', function () {
     var g = playGame(shipped({ modes: false }), 101, 3000);
-    assert.strictEqual(g.cpu.modeCounts.BUILD + g.cpu.modeCounts.OFFERED + g.cpu.modeCounts.FORCED, 0);
+    assert.strictEqual(g.cpu.modeCounts.BUILD + g.cpu.modeCounts.ATTACK + g.cpu.modeCounts.FORCED, 0);
     assert.strictEqual(g.cpu.brokenPlans, 0);
 });
 
@@ -481,42 +481,63 @@ test('the climb changes play at depth 2, where it is free', function () {
     assert.notDeepStrictEqual(on.moves, off.moves, 'the free climb changed nothing');
 });
 
-test('HOLD SURVIVES A CASH-IN ON OFFER: it does not take waiting off the list', function () {
-    // The rule this exists for: when something reached the bar, the pool was
-    // narrowed to the moves that fire. Hold clears nothing, so hold was
-    // removed and the bot could not decline the sale — it took the smallest
-    // chain on the board every time one existed.
-    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false });
-    var cpu = new PuyoCpu(stack, shipped({ depth: 1, modes: true }));
-
-    function cand(kind, resolved) {
-        return { kind: kind, score: 0, travel: 0, resolved: resolved, risen: null };
-    }
-    var hold = cand('hold', res({}));
-    var twoChain = cand('swap', res({ chainLength: 2, comboSizes: [3] }));
-    var bareThree = cand('swap', res({ chainLength: 1, comboSizes: [3] }));
-
-    var pool = cpu._applyModes([hold, twoChain, bareThree]);
-
-    assert.strictEqual(cpu._mode, 'OFFERED', 'a 2-chain available is what OFFERED records');
-    assert.ok(pool.indexOf(hold) >= 0, 'HOLD was taken off the list');
-    assert.ok(pool.indexOf(twoChain) >= 0, 'the cash-in must still be offered');
-    assert.strictEqual(pool.indexOf(bareThree), -1, 'the worthless clear is still refused');
+test('THE AIM IS READ OFF THE WEIGHTS, not set by hand', function () {
+    assert.deepStrictEqual(modes.aim({ reach5chain: 120, reach3chain: 36,
+                                       reach6combo: 50, reach4combo: 10 }),
+                           { links: 5, wide: 6 });
+    assert.deepStrictEqual(modes.aim({}), { links: 2, wide: 4 },
+                           'wanting nothing yet aims at the floor the engine pays for');
+    assert.deepStrictEqual(modes.aim({ reach8chain: -5, reach9combo: 0 }), { links: 2, wide: 4 });
 });
 
-test('and the worthless clear is refused whether or not anything is on offer', function () {
+function poolFor(weights, cands) {
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false });
-    var cpu = new PuyoCpu(stack, shipped({ depth: 1, modes: true }));
-    function cand(kind, resolved) {
-        return { kind: kind, score: 0, travel: 0, resolved: resolved, risen: null };
-    }
+    var cpu = new PuyoCpu(stack, { weights: weights, depth: 1, beam: 0, rise: true, modes: true });
+    return { pool: cpu._applyModes(cands), cpu: cpu };
+}
+function cand(kind, resolved) {
+    return { kind: kind, score: 0, travel: 0, resolved: resolved, risen: null };
+}
+
+test('BELOW THE AIM IT KEEPS BUILDING: a 2-chain does not open ATTACK at aim 5', function () {
+    // The rule this exists for: the bar used to be the floor, so any payout
+    // opened the attack and the only attacks available were scraps. The bot
+    // sold the smallest chain that existed, every time one existed.
+    var w = { reach5chain: 120 };
     var hold = cand('hold', res({}));
+    var twoChain = cand('swap', res({ chainLength: 2, comboSizes: [3] }));
+
+    var r = poolFor(w, [hold, twoChain]);
+    assert.strictEqual(r.cpu._mode, 'BUILD', 'a 2-chain is below an aim of 5');
+    assert.ok(r.pool.indexOf(hold) >= 0, 'it must still be allowed to wait');
+    assert.ok(r.pool.indexOf(twoChain) >= 0,
+        'and the 2-chain stays on the list — under the aim is the weights\' call, ' +
+        'not the pool\'s. Refusing it here is what suffocated the bot: at an aim ' +
+        'of 9-wide it held 159 of 163 decisions.');
+});
+
+test('AT THE AIM IT ATTACKS, and the weights pick which attack', function () {
+    var w = { reach5chain: 120, reach6combo: 50 };
+    var hold = cand('hold', res({}));
+    var fiveChain = cand('swap', res({ chainLength: 5, comboSizes: [3, 3, 3, 3, 3] }));
+    var sixWide = cand('swap', res({ chainLength: 1, comboSizes: [6] }));
     var bareThree = cand('swap', res({ chainLength: 1, comboSizes: [3] }));
 
-    var pool = cpu._applyModes([hold, bareThree]);
-    assert.strictEqual(cpu._mode, 'BUILD', 'nothing reached the bar');
-    assert.ok(pool.indexOf(hold) >= 0);
-    assert.strictEqual(pool.indexOf(bareThree), -1);
+    var r = poolFor(w, [hold, fiveChain, sixWide, bareThree]);
+    assert.strictEqual(r.cpu._mode, 'ATTACK');
+    assert.strictEqual(r.pool.indexOf(hold), -1, 'the aim is on the board — this is the moment');
+    assert.ok(r.pool.indexOf(fiveChain) >= 0, 'the chain it aimed at');
+    assert.ok(r.pool.indexOf(sixWide) >= 0, 'AND the combo, so the weights choose between them');
+    assert.strictEqual(r.pool.indexOf(bareThree), -1);
+});
+
+test('the worthless clear is refused while building', function () {
+    var hold = cand('hold', res({}));
+    var bareThree = cand('swap', res({ chainLength: 1, comboSizes: [3] }));
+    var r = poolFor({ reach5chain: 120 }, [hold, bareThree]);
+    assert.strictEqual(r.cpu._mode, 'BUILD');
+    assert.ok(r.pool.indexOf(hold) >= 0);
+    assert.strictEqual(r.pool.indexOf(bareThree), -1);
 });
 
 test('FORCED lifts the filter at both plies and the climb with it', function () {
@@ -529,8 +550,8 @@ test('FORCED lifts the filter at both plies and the climb with it', function () 
 
     cpu._mode = 'BUILD';
     assert.strictEqual(cpu._filtering(), true, 'BUILD must filter');
-    cpu._mode = 'OFFERED';
-    assert.strictEqual(cpu._filtering(), true, 'OFFERED must filter');
+    cpu._mode = 'ATTACK';
+    assert.strictEqual(cpu._filtering(), true, 'ATTACK must filter');
     cpu._mode = 'FORCED';
     assert.strictEqual(cpu._filtering(), false, 'FORCED must not filter, at either ply');
 });

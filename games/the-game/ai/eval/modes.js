@@ -289,7 +289,35 @@
     return best;
   }
 
-  return { payout: payout, fires: fires, pays: pays,
+  // WHAT THIS WEIGHT SET IS BUILDING TOWARD, read off the weights themselves.
+  //
+  // The bar is not a setting and it is not a constant. A bot that has learned
+  // to value a 5-chain above every other chain size is a bot aiming at a
+  // 5-chain, and that is the payout it should hold out for — so the size it
+  // weights highest in each family IS the aim. Nothing here decides for it.
+  //
+  // FLOOR WHEN IT WANTS NOTHING. Every size at or below zero means no target
+  // has been learned yet, which is where a random vector starts. The floor is
+  // what the engine pays anything at all for: 2 links, 4 wide.
+  //
+  // Ties keep the SMALLER size. An aim it reaches often teaches the weights
+  // more per leg than one it reaches never, and a tie means it likes both.
+  function aim(weights) {
+    var w = weights || {};
+    function bestOf(sizes, suffix) {
+      var at = 0, best = 0;
+      for (var i = 0; i < sizes.length; i++) {
+        var v = w['reach' + sizes[i] + suffix] || 0;
+        if (v > best) { best = v; at = sizes[i]; }
+      }
+      return at;
+    }
+    var links = bestOf(CHAIN_SIZES, 'chain');
+    var wide = bestOf(COMBO_SIZES, 'combo');
+    return { links: links || 2, wide: wide || 4 };
+  }
+
+  return { payout: payout, fires: fires, pays: pays, aim: aim,
            REACH: REACH, reach: reach,
            COMBO_SIZES: COMBO_SIZES, CHAIN_SIZES: CHAIN_SIZES,
            GOALS: GOALS, goal: goal, climbTo: climbTo, survivable: survivable,

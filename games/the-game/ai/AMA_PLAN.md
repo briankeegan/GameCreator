@@ -33,28 +33,38 @@ rather than swept a second time.
 The shape features stay cut. We never tell the bot what a chain looks like;
 we ask the engine what a swap would do.
 
-## Step 1 — the pool refuses the worthless clear
+## Step 1 — build to an aim, attack when it arrives
 
 `PuyoCpu` carries one field that survives a decision, `mode`. It is a
 filter on the candidate pool, and the evaluator always picks from what is
 left.
 
-- **BUILD** — a candidate is dropped before scoring unless its resolve does
-  one of three things: clears nothing, breaks garbage, or meets the bar
-  (`T` links or `S` wide). Hold clears nothing, so hold always survives.
-- **FIRE** — the same pool. It records that something reached the bar; it
-  does not change which moves are on the list. Narrowing to the moves that
-  fire took hold off the list, so a bot with a two-chain available could not
-  decline it and grow the material — it sold the smallest chain that
-  existed, every time one existed.
+- **BUILD** — a candidate is dropped before scoring unless its resolve
+  clears nothing, breaks garbage, or meets the FLOOR. Hold clears nothing,
+  so hold always survives, and a payout under the aim stays on the list —
+  taking it early is the weights' call, not the pool's.
+- **ATTACK** — what it was building for is on the board. The pool becomes
+  the moves that cash in and the weights pick WHICH: a 4-combo over a
+  6-combo if that is what they say. Nothing ranks them; taking the biggest
+  would be the bot's choice made for it.
 - **FORCED** — overrides both. Two triggers and only two: the bot is about
   to die, or the plan broke. Narrows to the moves that survive and lets the
   weights pick among them; with no survivor the unfiltered pool stands.
 
-WHEN TO FIRE IS NOT IN HERE. It is carried by the weights, one per payout
-size — `reach4combo`..`reach10combo` and `reach2chain`..`reach8chain`. A bot
-that has learned a 5-chain is worth waiting for declines the 2-chain by
-scoring the hold higher.
+TWO NUMBERS, AND THEY ARE NOT THE SAME NUMBER. The FLOOR is what building
+refuses — a clear the engine pays nothing and sends nothing for, so 2 links
+or 4 wide, from its tables rather than from a preference. The AIM is what
+opens ATTACK, and it is read off the weights: the size each family weights
+highest, `reach2chain`..`reach8chain` and `reach4combo`..`reach10combo`,
+falling back to the floor when nothing is wanted yet.
+
+Making the aim do both jobs makes building refuse every clear below it. At
+an aim of 9 wide the bot held 159 of 163 decisions and suffocated.
+
+Opening ATTACK at the floor is the other failure: every turn is an attack
+turn and the only attacks available are scraps. Measured on one bot over
+three seeds, moving the trigger from the floor to its own aim took cash-ins
+from 45 to 15 and two-link chains from 16 to 5.
 
 ### What FORCED is, and what it is not
 

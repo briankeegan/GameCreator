@@ -202,7 +202,7 @@
     // Instrumentation, and load-bearing: a flat bench with FORCED at 85% of
     // decisions and a flat bench with FORCED at 5% are opposite bugs, and
     // nothing else in the output tells them apart.
-    this.modeCounts = { BUILD: 0, OFFERED: 0, FORCED: 0 };
+    this.modeCounts = { BUILD: 0, ATTACK: 0, FORCED: 0 };
     this.brokenPlans = 0;
     // Decisions where every build move rose into a clear that paid nothing.
     // Not a defect of the filter — the board genuinely offered no clean
@@ -531,13 +531,13 @@
   // and record which mode did it. The evaluator still picks from what is
   // left — see the header of modes.js for why that is the whole design.
   //
-  // FORCED is the only mode that changes the pool. BUILD and OFFERED take
-  // the same one and differ only in what they record: whether anything on
-  // the board had reached the bar. When to cash in is a weights question, so no
+  // Three pools. BUILD may hold and may dig, and refuses a clear below the
+  // aim. ATTACK is the aim being available: cash-ins only, the weights pick
+  // which. FORCED is the aim being irrelevant: whatever survives. When to cash in is a weights question, so no
   // mode answers it.
   PuyoCpu.prototype._applyModes = function (cands) {
     if (!this.modes) return cands;
-    var bar = this._bar();
+    var bar = this._bar(), F = this._floor();
     var T = bar.links, S = bar.wide, i;
 
     var resolveds = new Array(cands.length);
@@ -579,20 +579,24 @@
       // does, and then the ordinary ranking stands, because no move here
       // saves it anyway.
       pool = modes.survivable(cands);
-    } else {
-      // THE CASH-IN IS OFFERED, NEVER IMPOSED. One pool whether or not
-      // something has reached the bar: every move that pays, and HOLD, which
-      // pays by clearing nothing. Narrowing to the moves that fire takes hold
-      // off the list, and a bot that may not wait cannot grow a two-chain
-      // into a five — it sells the smallest chain that exists, every time one
-      // exists. The weights already carry which payout is worth waiting for,
-      // one weight per size; the mode's job is to refuse the worthless clear,
-      // not to pick the moment.
+    } else if (avail.links >= T || avail.wide >= S) {
+      // WHAT IT WAS BUILDING FOR IS ON THE BOARD. The pool becomes the moves
+      // that cash in, and the weights pick WHICH — a 4-combo over a 6-combo
+      // if that is what they say. Nothing here ranks them; taking the biggest
+      // would be the bot's choice made for it.
       //
-      // The mode is still recorded, because what was on offer at each
-      // decision is worth counting even when it does not change the pool.
-      pool = cands.filter(function (c) { return modes.pays(c.resolved, T, S); });
-      mode = (avail.links >= T || avail.wide >= S) ? 'OFFERED' : 'BUILD';
+      // The bar is the aim, never the floor. Opening this at the smallest
+      // payout the engine pays for makes every turn an attack turn, and the
+      // only attacks available are scraps: it sells the smallest chain that
+      // exists, every time one exists.
+      pool = cands.filter(function (c) { return modes.fires(c.resolved, T, S); });
+      mode = 'ATTACK';
+    } else {
+      // BUILDING. Every move that pays, and HOLD, which pays by clearing
+      // nothing. Only the clear that sends nothing is refused; a payout under
+      // the aim stays on the list and the weights say whether to take it.
+      pool = cands.filter(function (c) { return modes.pays(c.resolved, F.links, F.wide); });
+      mode = 'BUILD';
       // SECOND STAGE, AND IT YIELDS. Among the moves that are not a cheap
       // cash-in, prefer the ones the RISING ROW does not turn into one. When
       // every one of them rises into something, the preference is dropped
@@ -600,7 +604,7 @@
       // unfiltered bot, which fires more bare threes than no filter at all.
       if (this._riseAware && pool.length) {
         var clean = pool.filter(function (c) {
-          return !modes.risesIntoPayless(c.risen, c.resolved, T, S);
+          return !modes.risesIntoPayless(c.risen, c.resolved, F.links, F.wide);
         });
         if (clean.length) pool = clean; else this.riseUnavoidable++;
       }
@@ -715,8 +719,23 @@
     this._firedLast = !!cand && modes.fires(cand.resolved, bar.links, bar.wide);
   };
 
+  // TWO NUMBERS, AND THEY ARE NOT THE SAME NUMBER.
+  //
+  // The FLOOR is what building refuses: a clear the engine pays nothing for
+  // and sends nothing for. It is the engine's tables, not a preference, so
+  // it never moves. Everything at or above it stays in the pool and the
+  // weights decide whether this is the moment.
+  //
+  // The AIM is what opens the attack, read off the weights. Making the aim
+  // do both jobs makes building refuse every clear below it: at an aim of
+  // 9-wide the bot held 159 of 163 decisions and suffocated.
+  PuyoCpu.prototype._floor = function () {
+    return { links: 2, wide: 4 };
+  };
   PuyoCpu.prototype._bar = function () {
-    return this.goal ? this.goal : { links: 2, wide: 4 };
+    if (this.goal) return this.goal;
+    if (!this._aim) this._aim = modes.aim(this.weights);
+    return this._aim;
   };
 
   // The engine's own HOVER for this level: the frames a panel spends falling
@@ -773,7 +792,7 @@
       // below: a move the bot cannot make at ply 1 must not be what ply 2
       // values a candidate for, or the imagined future is a different game
       // from the real one.
-      if (this._filtering() && !modes.pays(childResolved, this._bar().links, this._bar().wide)) continue;
+      if (this._filtering() && !modes.pays(childResolved, this._floor().links, this._floor().wide)) continue;
       f = this._score(child, childResolved, next[j], from, clock, cand.board);
       if (f > v) v = f;
     }
