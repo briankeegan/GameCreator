@@ -486,9 +486,25 @@ test('GC_EXCLUDE drops a feature from the genome instead of pinning it at zero',
     // the first draft of this test did exactly that, launched a full
     // training run inside the test suite, and had to be killed.
     var code = fs.readFileSync(path.join(DIR, 'train.js'), 'utf8');
-    assert.ok(/KEYS = registry\.keys\.filter\(function \(k\) \{ return EXCLUDE\.indexOf\(k\) < 0; \}\)/.test(code),
-        'KEYS must be registry.keys minus EXCLUDE — a genome dimension that is merely ' +
-        'zeroed is still searched and still reported');
+
+    // ONE BUILDER, NOT FOUR FILTERS. train.js, train_pbt.js,
+    // train_versus.js and pbt_worker.js each built this list by hand, and
+    // pbt_worker has to agree with train_pbt exactly or the workers score a
+    // different genome than the parent thinks it dealt them.
+    ['train.js', 'train_pbt.js', 'train_versus.js', 'pbt_worker.js'].forEach(function (f) {
+        var src = fs.readFileSync(path.join(DIR, f), 'utf8');
+        assert.ok(/registry\.genomeKeys\(process\.env\.GC_EXCLUDE, process\.env\.GC_INCLUDE\)/.test(src),
+            f + ' does not build KEYS through registry.genomeKeys, so it can drift from the rest');
+    });
+
+    // And the property itself, asked of the builder rather than of the
+    // source text: an excluded feature is GONE, not present-and-zero.
+    var reg = require('./registry.js');
+    var dropped = reg.genomeKeys('staircase,flatTop', '');
+    assert.strictEqual(dropped.indexOf('staircase'), -1, 'an excluded feature is still in the genome');
+    assert.strictEqual(dropped.indexOf('flatTop'), -1, 'an excluded feature is still in the genome');
+    assert.strictEqual(dropped.length, reg.keys.length - 2,
+        'excluding two features did not make the genome two smaller');
     assert.ok(/if \(!KEYS\.length\) throw/.test(code),
         'excluding everything must fail rather than search an empty genome');
     assert.ok(/EXCLUDE\.length\) console\.log\('excluding '/.test(code),
@@ -582,6 +598,21 @@ test('the training workflow exposes exclude, variant and ga_seed, and wires each
     assert.ok(/process\.env\.GC_DENSITY === '1'/.test(train));
     var crank = fs.readFileSync(path.join(DIR, 'crank.sh'), 'utf8');
     assert.ok(/VARIANT=\$\{GC_VARIANT:-\}/.test(crank));
+});
+
+test('the workflow carries GC_INCLUDE to the runner AND to its next leg', function () {
+    // A leg dispatches its continuation with an explicit input list. A flag
+    // that reaches the runner but not that payload is dropped after the
+    // first leg, so the chain trains a genome one feature smaller than the
+    // one it resumed -- and KEYS is in the island fingerprint, so it would
+    // then read its own population as foreign.
+    var wf = fs.readFileSync(path.join(DIR, '..', '..', '..', '..',
+                                       '.github/workflows/ai-train-pbt.yml'), 'utf8');
+    assert.ok(/GC_INCLUDE: \$\{\{ github\.event\.inputs\.include/.test(wf),
+        'the workflow does not wire its include input to GC_INCLUDE');
+    var dispatch = wf.slice(wf.indexOf('"ref":"main"'));
+    assert.ok(/"include":"\$\{\{ github\.event\.inputs\.include \}\}"/.test(dispatch),
+        'the continuation payload drops include, so the chain loses the feature after one leg');
 });
 
 test('the workflow runs one experiment per concurrency group, not one in total', function () {
