@@ -84,4 +84,24 @@ check('a peer fitted under different switches is not a peer', function () {
     });
 });
 
+check('a peer fitted under different RULES is not a peer', function () {
+    // The switches describe the run; RULES describes the decision procedure,
+    // which is code. Changing what the candidate pool contains makes every
+    // earlier weight set a bot that played a different game while every
+    // switch still matches — which is how a run came to measure itself
+    // against a bot fitted before the attack mode existed.
+    var modes = require('./modes.js');
+    assert.strictEqual(typeof modes.RULES, 'number', 'modes must publish a RULES version');
+
+    var src = fs.readFileSync(path.join(__dirname, 'train_pbt.js'), 'utf8');
+    var fn = /function bestCommittedChampion\(\)[\s\S]*?\n}/.exec(src);
+    assert.ok(fn, 'bestCommittedChampion is gone');
+    assert.ok(/j\.rules !== modes\.RULES/.test(fn[0]),
+              'a peer is chosen without comparing the rules it was fitted under');
+
+    // and every snapshot this run writes has to carry it, or the comparison
+    // above silently rejects everything including its own successors.
+    assert.ok(/rules: modes\.RULES/.test(src), 'the snapshot does not record RULES');
+});
+
 console.log('\n' + pass + '/' + pass + ' passed');

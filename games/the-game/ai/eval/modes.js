@@ -317,7 +317,22 @@
     return { links: links || 2, wide: wide || 4 };
   }
 
-  return { payout: payout, fires: fires, pays: pays, aim: aim,
+  // WHICH DECISION PROCEDURE THESE WEIGHTS WERE FITTED UNDER.
+  //
+  // The switches a snapshot records — rise, depth, beam, density, level —
+  // describe the run. They do not describe THE RULES, which live in code: a
+  // change to what the pool contains makes every earlier weight set a bot
+  // that played a different game, while every switch still matches.
+  //
+  // BUMP THIS WHENEVER THE POOL OR THE BAR CHANGES. A peer that does not
+  // match is skipped, so a run cannot measure itself against a bot whose
+  // moves were chosen by rules it no longer plays by.
+  //
+  //   1  the floor opened the attack; the attack removed hold
+  //   2  the aim opens the attack, the floor is what building refuses
+  var RULES = 2;
+
+  return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
            COMBO_SIZES: COMBO_SIZES, CHAIN_SIZES: CHAIN_SIZES,
            GOALS: GOALS, goal: goal, climbTo: climbTo, survivable: survivable,

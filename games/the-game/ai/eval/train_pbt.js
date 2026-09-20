@@ -33,6 +33,7 @@ var crypto = require('crypto');
 var registry = require('./registry.js');
 var SEEDS = require('./seeds.js');
 var switches = require('./switches.js');
+var modes = require('./modes.js');
 var versus = require('./versus.js');
 var duels = require('./duels.js');
 
@@ -332,6 +333,10 @@ function bestCommittedChampion() {
             // are not a peer for one that can, however good its record looked
             // against its own opponents. Same test the island fingerprint
             // makes for a population.
+            // AND THE SAME RULES. The switches describe the run; RULES
+            // describes the decision procedure, which is code and changes
+            // without any switch moving.
+            if (j.rules !== modes.RULES) return;
             if (!!j.rise !== !!OPTS.rise || !!j.density !== !!OPTS.density ||
                 !!j.allowRaise !== !!OPTS.allowRaise ||
                 Number(j.depth || 1) !== Number(OPTS.depth) ||
@@ -422,7 +427,7 @@ function writeSnapshot(best, report, totalUpdates, diversity) {
         selection: 'champion of ' + ISLANDS + ' islands after ' + totalUpdates + ' updates',
         updates: totalUpdates, islands: ISLANDS, population: POP, leg: LEG,
         depth: OPTS.depth, beam: OPTS.beam, rise: OPTS.rise, density: OPTS.density,
-        allowRaise: OPTS.allowRaise, diversity: diversity,
+        allowRaise: OPTS.allowRaise, diversity: diversity, rules: modes.RULES,
         features: KEYS.slice(), excluded: EXCLUDE.slice(),
         holdoutSeeds: SEEDS.HOLDOUT, holdout: report, weights: best
     };
