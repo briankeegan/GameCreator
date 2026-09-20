@@ -327,6 +327,16 @@ function bestCommittedChampion() {
             // does not have, so it is skipped rather than silently zero-filled.
             if (!j.weights || !j.features) return;
             if (j.features.join(',') !== KEYS.join(',')) return;
+            // AND THE SAME BOT. A snapshot carries the switches it was fitted
+            // under; weights found for a bot that cannot see the stack rising
+            // are not a peer for one that can, however good its record looked
+            // against its own opponents. Same test the island fingerprint
+            // makes for a population.
+            if (!!j.rise !== !!OPTS.rise || !!j.density !== !!OPTS.density ||
+                !!j.allowRaise !== !!OPTS.allowRaise ||
+                Number(j.depth || 1) !== Number(OPTS.depth) ||
+                Number(j.beam || 0) !== Number(OPTS.beam) ||
+                Number(j.level || 10) !== Number(OPTS.level)) return;
             var fit = (j.holdout && j.holdout.learned && j.holdout.learned.fitness) || 0;
             var rank = fit * 1e9 + (j.updates || 0);
             if (rank > bestAt) { bestAt = rank; best = { weights: j.weights, from: f }; }

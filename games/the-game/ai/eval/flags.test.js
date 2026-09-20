@@ -71,4 +71,17 @@ check('the workflow passes a value envFlag accepts', function () {
     delete process.env.GC_TEST_FLAG;
 });
 
+check('a peer fitted under different switches is not a peer', function () {
+    // The held-out record is measured against the best committed champion.
+    // It is picked out of the snapshot archive by feature set, and a snapshot
+    // also records the switches it was fitted under.
+    var src = fs.readFileSync(path.join(__dirname, 'train_pbt.js'), 'utf8');
+    var fn = /function bestCommittedChampion\(\)[\s\S]*?\n}/.exec(src);
+    assert.ok(fn, 'bestCommittedChampion is gone');
+    ['rise', 'density', 'allowRaise', 'depth', 'beam', 'level'].forEach(function (k) {
+        assert.ok(new RegExp('j\\.' + k).test(fn[0]),
+                  'a peer is chosen without comparing ' + k);
+    });
+});
+
 console.log('\n' + pass + '/' + pass + ' passed');
