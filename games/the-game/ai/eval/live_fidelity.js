@@ -67,7 +67,7 @@ seeds.forEach(function (seed) {
         else {
             var b = cpus[0]._snapshot().clone();
             b.swap(row, col);
-            b.resolve();
+            var pred = b.resolve();
             var states = [];
             for (var rr = 1; rr <= this.height; rr++) {
                 var cells = [];
@@ -78,7 +78,8 @@ seeds.forEach(function (seed) {
                 }
                 states.push(cells.join(' '));
             }
-            open = { predicted: gridOf(b), dirty: false, since: 0,
+            open = { predicted: gridOf(b), predLinks: pred.chainLength || 0,
+                     engLinks: 0, dirty: false, since: 0,
                      before: gridOf(cpus[0]._snapshot()), swap: row + ',' + col,
                      states: states, chain: !!this.currentChain };
         }
@@ -97,6 +98,11 @@ seeds.forEach(function (seed) {
         if (open) {
             for (var q = 0; q < evs.length; q++) {
                 var t = evs[q].type;
+                // THE CASCADE'S OWN LENGTH, from the engine. The grid says
+                // which panels went; this says what the engine PAID for them,
+                // and the reach measurements are built on it.
+                if (t === 'chainEnd') open.engLinks = evs[q].length;
+                else if (t === 'match' && !evs[q].chain && !open.engLinks) open.engLinks = 1;
                 // The simulation was told about none of these.
                 if (t === 'newRow' || t === 'garbageDrop' || t === 'garbageLand') open.dirty = true;
             }
@@ -118,9 +124,13 @@ seeds.forEach(function (seed) {
                 else {
                     R.compared++;
                     var actual = gridOf(cpus[0]._snapshot());
-                    if (actual === open.predicted) R.agree++;
+                    var sameGrid = actual === open.predicted;
+                    var sameLinks = (open.predLinks || 0) === (open.engLinks || 0);
+                    if (!sameLinks) R.linksDiffer = (R.linksDiffer || 0) + 1;
+                    if (sameGrid && sameLinks) R.agree++;
                     else {
                         R.disagree++;
+                        open.why = (sameGrid ? '' : 'grid ') + (sameLinks ? '' : 'links');
                         if (R.examples.length < 3) {
                             R.examples.push(open), open.actual = actual;
                         }
@@ -137,6 +147,7 @@ console.log('compared   ' + R.compared);
 console.log('agree      ' + R.agree);
 console.log('disagree   ' + R.disagree +
             (R.compared ? '   (' + (100 * R.disagree / R.compared).toFixed(1) + '%)' : ''));
+console.log('  of which chain length ' + (R.linksDiffer || 0));
 console.log('skipped    ' + R.skipped + '   (a row rose, garbage arrived, or the bot swapped again mid-settle)');
 process.exitCode = R.disagree ? 1 : 0;
 R.examples.slice(0, 1).forEach(function (e, i) {
