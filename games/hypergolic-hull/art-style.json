@@ -2,8 +2,9 @@
   "camera": "Straight top-down (bird's-eye) view, ship's nose pointing up toward the top of the frame, centered and filling most of the frame.",
   "style": "Detailed 16-bit-era pixel art, in the style of classic top-down shoot-'em-up sprites (Ikaruga, Raiden). Crisp hard-edged shapes, no soft gradients or airbrushed shading — use simple banded/dithered shading for depth instead. Limited, deliberate color palette (roughly 8-16 colors per ship). Strong, clean, iconic silhouette that reads instantly even at small size.",
   "palette": "Exact colors vary per ship/faction — always specified in the asset description below, not fixed here. Keep each faction's colors saturated and high-contrast against the dark background.",
-  "background": "Simple, smooth radial gradient from dark navy (#2f3b52) to near-black — no stars, no nebula, no other objects — so the asset reads clearly as a sprite at small sizes.",
+  "background": "NO BACKGROUND AT ALL. Fully transparent behind and around the ship — the sprite is dropped straight onto the playfield, which the game draws itself in the sector's own colours. No tile, no panel, no card, no radial gradient, no vignette, no glow halo, no drop shadow: nothing but the ship, cut out to its silhouette.",
   "constraints": "Square 1:1 composition. No text, no logos, no watermarks, no UI elements, no drop shadow outside the subject.",
   "pixelArt": true,
-  "pixelGrid": 128
+  "pixelGrid": 128,
+  "_backgroundNote": "This asked for a radial gradient from dark navy (#2f3b52) to near-black, and every sprite generated through generate-game-asset.yml duly baked one in — eighteen of the game's fifty-three icons, ten of them ships that draw on the board, each one a picture of a ship sitting on a dark tile sitting on a hex. A sprite carries no background. The dark field behind the fleet is the BOARD, and the renderer owns it."
 }

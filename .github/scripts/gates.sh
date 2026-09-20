@@ -83,6 +83,16 @@ gate_art_refs() {
   node .github/scripts/check_art_refs.mjs
 }
 
+# A SPRITE CARRIES NO BACKGROUND. Shipped broken twice for the same reason —
+# nothing said what an icon was supposed to look like, so nothing caught one
+# that drifted. See check_icon_cutout.mjs.
+# NOT IN THE GATE LIST YET. It fails today: 29 icons across two games carry a
+# backdrop, and they have to be regenerated before this can block a push.
+# Wire it into the list below the moment they are.
+gate_icon_cutout() {
+  node .github/scripts/check_icon_cutout.mjs
+}
+
 gate_sprite_scale_consistency() {
   node games/the-game/sprite-scale.test.mjs
 }
