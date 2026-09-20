@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // DOES THE SIMULATION RESOLVE LIKE THE GAME DOES?
 //
-//   node resolve_fidelity.js [boards|chips|both] [limit]
+//   node resolve_fidelity.js [boards|chips|both|fuzz] [limit]
 //
 // panel-cpu.js's LogicalBoard is a second implementation of Panel Attack's
 // rules, and the bot plans with it: every candidate the search scores is a
@@ -199,8 +199,13 @@ function compare(grid, r, c, blocks) {
 var cases = 0, agree = 0, chainDiff = {}, clearedDiff = {}, gridOnly = 0, blockOnly = 0, anyDiff = 0;
 var stopOnly = 0, stopExamples = [];
 var truncatedCases = 0, badPrefix = 0;
+var depthSeen = {};
 function note(res) {
     cases++;
+    // WHAT THE CORPUS ACTUALLY REACHED. A run of cases that never produces a
+    // deep cascade proves nothing about deep cascades, and every corpus here
+    // before the fuzz one was a sample of what a weak bot happened to play.
+    if (res.engChain !== undefined) depthSeen[res.engChain] = (depthSeen[res.engChain] || 0) + 1;
     if (res.truncated) {
         truncatedCases++;
         if (res.prefixOk) { agree++; return; }
@@ -231,6 +236,60 @@ function note(res) {
     if (dc === 0 && dp === 0 && !res.gridSame) gridOnly++;
 }
 
+// FUZZ: BOARDS NOBODY HAS PLAYED.
+//
+// realboards.json is 3,320 positions the shipped bot reached, and the chip
+// library is shapes someone thought to write down. Both are a sample of what
+// a weak bot produces, and the two implementations differ in KIND — the
+// engine counts a chain link when a panel that fell from an earlier clear is
+// matched, which depends on landing times, while LogicalBoard settles the
+// whole board and then matches. Where that difference can bite is deep,
+// staggered cascades, and those are exactly what live play almost never
+// throws up.
+//
+// So they are generated instead. Columns of uneven height with repeated
+// colours stacked above each other is the shape that cascades: a clear low
+// down drops several columns different distances, which is where landing
+// order decides the count.
+function fuzzBoard(rnd, colours) {
+    var grid = [];
+    for (var r = 0; r <= H; r++) { grid[r] = []; for (var c = 1; c <= W; c++) grid[r][c] = 0; }
+    for (var c2 = 1; c2 <= W; c2++) {
+        var h = 1 + Math.floor(rnd() * Math.min(H - 1, 9));
+        var run = 0, last = 0;
+        for (var r2 = 1; r2 <= h; r2++) {
+            // A BIAS TOWARD REPEATS, or a uniform board is nearly all singles
+            // and cascades never form. Capped at two in a row so the starting
+            // position is not already matched.
+            var v;
+            if (last && run < 2 && rnd() < 0.45) v = last;
+            else v = 1 + Math.floor(rnd() * colours);
+            run = (v === last) ? run + 1 : 1;
+            last = v;
+            grid[r2][c2] = v;
+        }
+    }
+    return grid;
+}
+
+if (MODE === 'fuzz') {
+    var seed = Number(process.env.GC_FUZZ_SEED || 1) >>> 0;
+    function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+    var COLOURS = Number(process.env.GC_FUZZ_COLOURS || 5);
+    var made = 0;
+    for (var fb = 0; fb < LIMIT; fb++) {
+        var fgrid = fuzzBoard(rnd, COLOURS);
+        var flb = new LogicalBoard(W, H, 9, cloneGrid(fgrid), {});
+        flb.legalSwaps().forEach(function (sw) {
+            var fres = compare(fgrid, sw[0], sw[1], {});
+            if (fres) { note(fres); made++; }
+        });
+    }
+    console.log('fuzz boards generated: ' + LIMIT + '   colours ' + COLOURS +
+                '   seed ' + (process.env.GC_FUZZ_SEED || 1));
+    console.log('decidable cases      : ' + made);
+}
+
 if (MODE === 'boards' || MODE === 'both') {
     var fx = JSON.parse(fs.readFileSync(path.join(__dirname, 'realboards.json'), 'utf8'));
     var n = Math.min(LIMIT, fx.boards.length);
@@ -256,6 +315,9 @@ if (MODE === 'chips' || MODE === 'both') {
 }
 
 console.log('');
+console.log('engine chain depth reached: ' +
+            Object.keys(depthSeen).sort(function (a, b) { return a - b; })
+                  .map(function (k) { return k + 'x' + depthSeen[k]; }).join('  '));
 console.log('cases compared      : ' + cases);
 console.log('identical           : ' + agree + '  (' + (100 * agree / cases).toFixed(2) + '%)');
 console.log('differ in any way   : ' + anyDiff + '  (' + (100 * anyDiff / cases).toFixed(2) + '%)');
