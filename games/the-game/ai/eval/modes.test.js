@@ -174,34 +174,94 @@ test('no strength, no climb, and nothing to climb is no climb', function () {
 
 // ----------------------------------------------------------------- 4. FORCED
 
-test('FORCED opens when the runway is gone', function () {
-    assert.strictEqual(modes.forced({ runway: 1, margin: 2, broke: false }), true);
+test('about to die is TOPPED OUT with the clock running out', function () {
+    // THE ENGINE'S OWN CONDITION, not a proxy for it. advancePassiveRaise:
+    //
+    //   if (!riseLock && stopTime === 0) {
+    //     if (isToppedOut()) health--;   else { rise }
+    //   }
+    //
+    // Stop time freezes everything — the stack does not rise and health does
+    // not drain while it runs. So danger is exactly those two together, and
+    // at level 10 maxHealth is 1, so one frame of it is death.
+    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 0, stopFloor: 30 }), true);
 });
 
-test('FORCED opens when the plan broke', function () {
-    assert.strictEqual(modes.forced({ runway: 99, margin: 2, broke: true }), true);
+test('topped out with the clock banked is NOT about to die', function () {
+    // The whole point of stop time: you are standing at the ceiling and
+    // perfectly safe, with frames to dig out in. Treating height alone as
+    // danger throws that away — and throwing it away is what a rows-to-the-
+    // ceiling margin did, firing FORCED on 47% of decisions while buying
+    // zero extra survival.
+    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 120, stopFloor: 30 }), false);
 });
 
-test('a deep stack alone does NOT open FORCED', function () {
-    // The whole point: room left is room left. Height is not the trigger.
-    assert.strictEqual(modes.forced({ runway: 3, margin: 2, broke: false }), false);
+test('a full board that is not topped out is not about to die either', function () {
+    assert.strictEqual(modes.forced({ toppedOut: false, stopTime: 0, stopFloor: 30 }), false);
 });
 
-test('the margin is read, not assumed', function () {
-    assert.strictEqual(modes.forced({ runway: 3, margin: 2, broke: false }), false);
-    assert.strictEqual(modes.forced({ runway: 3, margin: 4, broke: false }), true);
+test('the stop floor is read, not assumed', function () {
+    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 20, stopFloor: 10 }), false);
+    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 20, stopFloor: 30 }), true);
 });
 
-test('runway is rows to the ceiling MINUS the garbage already in the air', function () {
-    var open = modes.runway({ height: 12, top: 4 }, 0);
-    var underAttack = modes.runway({ height: 12, top: 4 }, 3);
-    assert.strictEqual(open, 8);
-    assert.strictEqual(underAttack, 5,
-        'three rows queued against this board have already spent three rows of runway');
+test('pre-stop time counts toward the clock', function () {
+    // decrementTimers drains preStopTime FIRST and only then stopTime, and
+    // the rise gate reads stopTime alone — so pre-stop does not protect on
+    // its own, it postpones the drain. Frames of safety are the sum.
+    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 20, preStopTime: 40,
+                                      stopFloor: 30 }), false);
+    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 20, preStopTime: 0,
+                                      stopFloor: 30 }), true);
 });
 
-test('runway never goes below zero', function () {
-    assert.strictEqual(modes.runway({ height: 12, top: 11 }, 9), 0);
+test('an escape is a move that BANKS TIME, not just one that clears', function () {
+    // awardStopTime is gated on `comboSize > 3 || isChain`, so a bare three
+    // clears panels and banks nothing. It is not a way out. The two that are:
+    // break something, or make a combo — plus a chain, which is the biggest
+    // payer of all at the ceiling.
+    assert.strictEqual(modes.banksTime(res({ chainLength: 1, comboSizes: [3] })), false);
+    assert.strictEqual(modes.banksTime(res({ chainLength: 1, comboSizes: [4] })), true);
+    assert.strictEqual(modes.banksTime(res({ chainLength: 2, comboSizes: [3, 3] })), true);
+});
+
+test('breaking garbage banks time even on a three', function () {
+    // The popping garbage extends preStopTime (FLASH + FACE + POP per panel
+    // INCLUDING the garbage cells), which postpones the stop-time drain. It
+    // is time, so it is an escape.
+    assert.strictEqual(modes.banksTime(res({ chainLength: 1, comboSizes: [3], brokeGarbage: 3 })), true);
+});
+
+test('a move that clears nothing banks nothing', function () {
+    assert.strictEqual(modes.banksTime(res({})), false);
+});
+
+test('the floor is DERIVED from what it takes to act, not guessed', function () {
+    // The bot is a computer; it can be exact. What it needs to escape is
+    // one more decision (reaction), the walk to the move (travel.cost), and
+    // the frames panels take to fall before they match (HOVER). Below that
+    // sum it physically cannot reach anything that banks stop time before
+    // the stack unfreezes, and at level 10 unfreezing at the ceiling is
+    // death in one frame.
+    assert.strictEqual(modes.escapeFrames({ reaction: 12, travel: 9, hover: 6 }), 27);
+    assert.strictEqual(modes.escapeFrames({ reaction: 12, travel: 0, hover: 6 }), 18);
+});
+
+test('no reachable escape means the floor is infinite', function () {
+    // Nothing clears from here, so no move banks stop time and no clock is
+    // enough. Danger, whatever the number says.
+    assert.strictEqual(modes.escapeFrames({ reaction: 12, travel: null, hover: 6 }), Infinity);
+});
+
+test('a derived floor fires exactly at the frame it must', function () {
+    var need = modes.escapeFrames({ reaction: 12, travel: 9, hover: 6 });   // 27
+    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 27, stopFloor: need }), false);
+    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 26, stopFloor: need }), true);
+});
+
+test('FORCED opens when the plan broke, whatever the clock says', function () {
+    assert.strictEqual(modes.forced({ toppedOut: false, stopTime: 999, stopFloor: 30,
+                                      broke: true }), true);
 });
 
 // ------------------------------------------------------------- 5. broken plans
@@ -388,36 +448,6 @@ test('the fire thresholds reach the filter', function () {
     assert.notDeepStrictEqual(low.moves, high.moves, 'the fire thresholds are not reaching the filter');
 });
 
-test('the forced margin reaches the filter', function () {
-    // A margin as tall as the board makes every decision about-to-die, which
-    // is today's bot. If that plays the same game as margin 2, the option is
-    // not arriving.
-    var tight = playGame(shipped({ modes: true, forcedMargin: 2 }), 101, 4000);
-    var always = playGame(shipped({ modes: true, forcedMargin: 99 }), 101, 4000);
-    var off = playGame(shipped({}), 101, 4000);
-    assert.notDeepStrictEqual(always.moves, tight.moves, 'the forced margin is not reaching the filter');
-    assert.deepStrictEqual(always.moves, off.moves,
-        'margin 99 means FORCED every decision, which must be exactly the unfiltered bot');
-});
-
-test('the ply-2 filter bites, and FORCED lifts it at both plies', function () {
-    // _value's own invariant: a move the bot cannot make at ply 1 must not be
-    // what ply 2 values a candidate for, or the imagined future is a different
-    // game from the real one. Only depth 2 can make this claim, so it is the
-    // one test here that pays for depth 2.
-    var d2 = { depth: 2, beam: 6 };
-    var off = playGame(shipped(d2), 101, 2500);
-    var on = playGame(shipped(Object.assign({ modes: true }, d2)), 101, 2500);
-    assert.notDeepStrictEqual(on.moves, off.moves, 'modes changed nothing at depth 2');
-
-    // FORCED every decision must be EXACTLY the unfiltered bot. It was not:
-    // ply 1 took every move and ply 2 still valued them through the filter,
-    // which is neither bot.
-    var always = playGame(shipped(Object.assign({ modes: true, forcedMargin: 99 }, d2)), 101, 2500);
-    assert.deepStrictEqual(always.moves, off.moves,
-        'FORCED is not lifting the filter at ply 2');
-});
-
 test('a candidate is judged on what the RISE leaves, not on the instant it popped', function () {
     // THE BUG THIS EXISTS FOR. _score already rises every candidate and
     // merges the second resolve, and then returned only a number — so the
@@ -425,8 +455,8 @@ test('a candidate is judged on what the RISE leaves, not on the instant it poppe
     // the rise was about to make. Measured on the engine's own events.
     var seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], before = 0, after = 0;
     seeds.forEach(function (seed) {
-        before += playGame(shipped({ modes: true, forcedMargin: -1, riseAware: false }), seed, 9000).payless;
-        after  += playGame(shipped({ modes: true, forcedMargin: -1 }), seed, 9000).payless;
+        before += playGame(shipped({ modes: true, stopFloor: 0, riseAware: false }), seed, 9000).payless;
+        after  += playGame(shipped({ modes: true, stopFloor: 0 }), seed, 9000).payless;
     });
     assert.ok(after < before,
         'bare 3s ' + after + ' rise-aware vs ' + before + ' blind — the filter still cannot see the rise');
@@ -457,7 +487,7 @@ test('every fire knob reaches the filter', function () {
         }
         return { cut: cut, seen: seen };
     }
-    var base = removed({ modes: true, forcedMargin: -1 });
+    var base = removed({ modes: true, stopFloor: 0 });
     assert.ok(base.seen > 500, 'only ' + base.seen + ' candidates seen — too few to call anything dead');
 
     var knobs = {
@@ -468,11 +498,11 @@ test('every fire knob reaches the filter', function () {
     };
     var dead = [];
     Object.keys(knobs).forEach(function (k) {
-        var o = { modes: true, forcedMargin: -1 };
+        var o = { modes: true, stopFloor: 0 };
         for (var kk in knobs[k]) o[kk] = knobs[k][kk];
         // fireWideOff is measured against the target it modifies, not
         // against `either`, where it is correctly inert.
-        var ref = (k === 'fireWideOff') ? removed({ modes: true, forcedMargin: -1, fireTarget: 'chain' }) : base;
+        var ref = (k === 'fireWideOff') ? removed({ modes: true, stopFloor: 0, fireTarget: 'chain' }) : base;
         if (removed(o).cut === ref.cut) dead.push(k);
     });
     assert.deepStrictEqual(dead, [], 'these knobs removed exactly as many candidates as the baseline: ' +
@@ -480,8 +510,8 @@ test('every fire knob reaches the filter', function () {
 });
 
 test('target combo is not target chain', function () {
-    var chain = playGame(shipped({ modes: true, forcedMargin: -1, fireTarget: 'chain' }), 101, 4000);
-    var combo = playGame(shipped({ modes: true, forcedMargin: -1, fireTarget: 'combo' }), 101, 4000);
+    var chain = playGame(shipped({ modes: true, stopFloor: 0, fireTarget: 'chain' }), 101, 4000);
+    var combo = playGame(shipped({ modes: true, stopFloor: 0, fireTarget: 'combo' }), 101, 4000);
     assert.notDeepStrictEqual(chain.moves, combo.moves, 'both targets play the same game');
 });
 
@@ -495,9 +525,9 @@ test('buildToward reaches the evaluator and changes how it plays', function () {
     // The claim is that the bot WALKS TOWARD the target rather than waiting
     // for it, so the test is that its play changes.
     var d2 = { depth: 2, beam: 6 };
-    var off = playGame(shipped(Object.assign({ modes: true, forcedMargin: -1, fireWide: 6,
+    var off = playGame(shipped(Object.assign({ modes: true, stopFloor: 0, fireWide: 6,
                                                buildToward: 0 }, d2)), 101, 2500);
-    var on  = playGame(shipped(Object.assign({ modes: true, forcedMargin: -1, fireWide: 6,
+    var on  = playGame(shipped(Object.assign({ modes: true, stopFloor: 0, fireWide: 6,
                                                buildToward: 20 }, d2)), 101, 2500);
     assert.notDeepStrictEqual(on.moves, off.moves, 'buildToward changed nothing');
 });
@@ -505,16 +535,16 @@ test('buildToward reaches the evaluator and changes how it plays', function () {
 test('buildToward 0 turns the climb off completely', function () {
     // The default is 20, from measurement — see PuyoCpu's constructor.
     var d2 = { depth: 2, beam: 6 };
-    var on   = playGame(shipped(Object.assign({ modes: true, forcedMargin: -1, fireWide: 6 }, d2)), 101, 2500);
-    var zero = playGame(shipped(Object.assign({ modes: true, forcedMargin: -1, fireWide: 6,
+    var on   = playGame(shipped(Object.assign({ modes: true, stopFloor: 0, fireWide: 6 }, d2)), 101, 2500);
+    var zero = playGame(shipped(Object.assign({ modes: true, stopFloor: 0, fireWide: 6,
                                                 buildToward: 0 }, d2)), 101, 2500);
     assert.notDeepStrictEqual(zero.moves, on.moves, '0 played the same game as the default 20');
 });
 test('the target decides WHICH potential is climbed', function () {
     var d2 = { depth: 2, beam: 6 };
-    var chain = playGame(shipped(Object.assign({ modes: true, forcedMargin: -1,
+    var chain = playGame(shipped(Object.assign({ modes: true, stopFloor: 0,
                                     fireTarget: 'chain', buildToward: 20 }, d2)), 101, 2500);
-    var combo = playGame(shipped(Object.assign({ modes: true, forcedMargin: -1,
+    var combo = playGame(shipped(Object.assign({ modes: true, stopFloor: 0,
                                     fireTarget: 'combo', buildToward: 20 }, d2)), 101, 2500);
     assert.notDeepStrictEqual(chain.moves, combo.moves,
         'both targets climb the same thing');
@@ -564,10 +594,34 @@ test('the climb needs a lookahead, and says so rather than doing nothing', funct
     });
 });
 test('the climb changes play at depth 2, where it is free', function () {
-    var off = playGame(shipped({ depth: 2, beam: 6, modes: true, forcedMargin: -1, fireWide: 6 }), 101, 2500);
-    var on  = playGame(shipped({ depth: 2, beam: 6, modes: true, forcedMargin: -1, fireWide: 6,
+    var off = playGame(shipped({ depth: 2, beam: 6, modes: true, stopFloor: 0, fireWide: 6 }), 101, 2500);
+    var on  = playGame(shipped({ depth: 2, beam: 6, modes: true, stopFloor: 0, fireWide: 6,
                                   buildToward: 120 }), 101, 2500);
     assert.notDeepStrictEqual(on.moves, off.moves, 'the free climb changed nothing');
+});
+
+test('FORCED lifts the filter at both plies and the climb with it', function () {
+    // The invariant, asserted directly rather than through a game: FORCED
+    // means play like the bot with no modes at all. It was not true twice —
+    // ply 1 took every move while ply 2 still valued them through the
+    // filter, and later the climb kept pulling while FORCED was open.
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false });
+    var cpu = new PuyoCpu(stack, shipped({ depth: 2, modes: true, buildToward: 20 }));
+
+    cpu._mode = 'BUILD';
+    assert.strictEqual(cpu._filtering(), true, 'BUILD must filter');
+    cpu._mode = 'FIRE';
+    assert.strictEqual(cpu._filtering(), true, 'FIRE must filter');
+    cpu._mode = 'FORCED';
+    assert.strictEqual(cpu._filtering(), false, 'FORCED must not filter, at either ply');
+});
+
+test('modes off is still swap-for-swap the old bot', function () {
+    [101, 102].forEach(function (seed) {
+        var a = playGame(shipped({}), seed, 3000);
+        var b = playGame(shipped({ modes: false }), seed, 3000);
+        assert.deepStrictEqual(b.moves, a.moves, 'seed ' + seed);
+    });
 });
 
 tests.forEach(function (t) {

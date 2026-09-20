@@ -294,7 +294,7 @@ exports.run = function (weights, seed, opts) {
     var KNOWN_OPTS = ['allowRaise', 'arena', 'beam', 'brain', 'checkTiming',
                       'density', 'depth', 'objective', 'rise', 'scenario',
                       'mode',
-                      'modes', 'fireLinks', 'fireWide', 'forcedMargin', 'riseAware',
+                      'modes', 'fireLinks', 'fireWide', 'stopFloor', 'riseAware',
                       'fireTarget', 'fireWideOff', 'fireLinksOff', 'buildToward'];
     for (var opt in opts) {
         if (opts.hasOwnProperty(opt) && KNOWN_OPTS.indexOf(opt) === -1) {
@@ -355,7 +355,7 @@ exports.run = function (weights, seed, opts) {
             modes: opts.modes === true,
             fireLinks: opts.fireLinks,
             fireWide: opts.fireWide,
-            forcedMargin: opts.forcedMargin,
+            stopFloor: opts.stopFloor,
             riseAware: opts.riseAware,
             fireTarget: opts.fireTarget, fireWideOff: opts.fireWideOff,
             fireLinksOff: opts.fireLinksOff, buildToward: opts.buildToward

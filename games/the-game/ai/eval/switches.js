@@ -77,7 +77,7 @@ function load(file) {
         modes: sw.modes === true,
         fireLinks: sw.fireLinks === undefined ? 4 : Number(sw.fireLinks),
         fireWide: sw.fireWide === undefined ? 4 : Number(sw.fireWide),
-        forcedMargin: sw.forcedMargin === undefined ? 2 : Number(sw.forcedMargin),
+        stopFloor: sw.stopFloor === undefined ? 30 : Number(sw.stopFloor),
         riseAware: sw.riseAware !== false,
         fireTarget: sw.fireTarget === undefined ? 'either' : String(sw.fireTarget),
         fireWideOff: sw.fireWideOff === undefined ? 6 : Number(sw.fireWideOff),
@@ -94,7 +94,7 @@ function load(file) {
     if ((e = envFlag('GC_MODES')) !== undefined) { out.modes = e; forced.push('modes'); }
     if ((e = envNum('GC_FIRE_LINKS')) !== undefined) { out.fireLinks = e; forced.push('fireLinks'); }
     if ((e = envNum('GC_FIRE_WIDE')) !== undefined) { out.fireWide = e; forced.push('fireWide'); }
-    if ((e = envNum('GC_FORCED_MARGIN')) !== undefined) { out.forcedMargin = e; forced.push('forcedMargin'); }
+    if ((e = envNum('GC_STOP_FLOOR')) !== undefined) { out.stopFloor = e; forced.push('stopFloor'); }
     if ((e = envFlag('GC_RISE_AWARE')) !== undefined) { out.riseAware = e; forced.push('riseAware'); }
     if (process.env.GC_FIRE_TARGET) { out.fireTarget = process.env.GC_FIRE_TARGET; forced.push('fireTarget'); }
     if ((e = envNum('GC_FIRE_WIDE_OFF')) !== undefined) { out.fireWideOff = e; forced.push('fireWideOff'); }
@@ -116,7 +116,7 @@ function describe(loaded) {
         // said "modes off" on every one of this repo's existing outputs would
         // be noise, and one that said "modes ON" without the thresholds would
         // not identify the bot.
-        (s.modes ? ' modes ON(' + s.fireLinks + 'L/' + s.fireWide + 'W/m' + s.forcedMargin + (s.riseAware ? '' : ' rise-blind') +
+        (s.modes ? ' modes ON(' + s.fireLinks + 'L/' + s.fireWide + 'W/stop' + s.stopFloor + (s.riseAware ? '' : ' rise-blind') +
           ' ' + s.fireTarget + (s.buildToward ? ' toward ' + s.buildToward : '') + ')' : '') + ']' +
         (loaded.forced.length ? '  (forced by env: ' + loaded.forced.join(', ') + ')' : '');
 }

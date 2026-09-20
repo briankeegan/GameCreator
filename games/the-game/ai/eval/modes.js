@@ -149,28 +149,73 @@
     return pays(own, T, S);
   }
 
-  // Rows before this board tops out. Garbage already queued has spent its
-  // rows the moment it is sent, not when it lands — a board with four rows
-  // in the air is four rows nearer the ceiling than it looks, and that is
-  // the case a height check misses.
-  function runway(board, incomingRows) {
-    var left = (board.height || 0) - (board.top || 0) - (incomingRows || 0);
-    return left > 0 ? left : 0;
+  // ABOUT TO DIE, AS THE ENGINE DEFINES IT.
+  //
+  // advancePassiveRaise is the whole rule:
+  //
+  //   if (!riseLock && stopTime === 0) {
+  //     if (isToppedOut()) health--;   else { riseTimer--; ... }
+  //   }
+  //
+  // Stop time freezes everything — the stack does not rise and health does
+  // not drain while it runs. So danger is those two conditions together and
+  // nothing else: at the ceiling AND out of clock. At level 10 maxHealth is
+  // 1, so one frame of that is death; there is no grace period to leave
+  // margin for.
+  //
+  // ROWS TO THE CEILING WAS THE WRONG MEASURE and is gone. It treated a
+  // deep stack as danger when a deep stack with stop time banked is safe and
+  // is where chains get built — firing FORCED on 47% of decisions while
+  // buying no extra survival at all.
+  //
+  // PRE-STOP COUNTS. decrementTimers drains preStopTime first and only then
+  // stopTime, while the rise gate reads stopTime alone. Pre-stop does not
+  // protect by itself; it postpones the drain. Frames of safety are the sum.
+  function clock(o) {
+    return (o.stopTime || 0) + (o.preStopTime || 0);
+  }
+
+  // DOES THIS MOVE BANK TIME — the only kind of move that is a way out.
+  //
+  // awardStopTime is gated on `comboSize > 3 || isChain`, so a bare three
+  // clears panels and banks nothing at all. Breaking garbage counts even on
+  // a three: the popping garbage cells extend preStopTime (FLASH + FACE +
+  // POP per panel, garbage included), which postpones the stop-time drain.
+  //
+  // So the two ways out are the owner's two: break something, or make a
+  // combo — with a chain the biggest payer of all, since at the ceiling it
+  // draws the danger bonus instead of the ordinary formula.
+  function banksTime(resolved) {
+    var p = payout(resolved);
+    return p.links >= 2 || p.wide > 3 || p.breaks > 0;
+  }
+
+  // FRAMES TO REACH AN ESCAPE, exactly, rather than a round number.
+  //
+  // What it takes to bank stop time from here: one more decision, because
+  // the bot only acts every `reaction` frames; the walk to the move, which
+  // travel.cost already prices at the cursor's real cadence; and HOVER,
+  // the frames panels spend falling before they can match. Below that sum
+  // the bot cannot reach anything that banks stop time before the stack
+  // unfreezes — and at level 10, unfreezing at the ceiling is death in one
+  // frame, because maxHealth is 1.
+  //
+  // travel null means NO CANDIDATE CLEARS ANYTHING. No move banks stop
+  // time, so no clock is long enough and the answer is not a big number, it
+  // is Infinity.
+  function escapeFrames(o) {
+    if (o.travel === null || o.travel === undefined) return Infinity;
+    return (o.reaction || 0) + o.travel + (o.hover || 0);
   }
 
   // TWO TRIGGERS, AND ONLY TWO.
   //
-  // Not a deep stack: room left is room left. Not an empty pool for its own
-  // sake — that is a broken plan, and it is counted as one.
-  //
-  // `runway` here is rows rather than frames against the time the held
-  // payoff takes to cash in. Frame costs are not in the resolve, so rows is
-  // what can be measured honestly today and `margin` is the tunable. The
-  // frame version belongs with the opponent model, which needs a clock
-  // anyway.
+  // Not a deep stack: room left is room left, and a stack at the ceiling
+  // with the clock banked is safe. Not an empty pool for its own sake —
+  // that is a broken plan, and it is counted as one.
   function forced(o) {
     if (o.broke) return true;
-    return o.runway <= o.margin;
+    return !!o.toppedOut && clock(o) < o.stopFloor;
   }
 
   // Did what BUILD was saving for disappear without being spent.
@@ -207,7 +252,7 @@
 
   return { payout: payout, fires: fires, pays: pays, bars: bars,
            climb: climb, CHAIN_NORM: CHAIN_NORM, COMBO_NORM: COMBO_NORM,
-           runway: runway,
+           clock: clock, escapeFrames: escapeFrames, banksTime: banksTime,
            risesIntoPayless: risesIntoPayless,
            forced: forced, planBroke: planBroke, bestPayout: bestPayout };
 }));

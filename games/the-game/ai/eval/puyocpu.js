@@ -149,8 +149,22 @@
     // the registry.
     var towardGiven = opts.buildToward !== undefined;
     this.buildToward = towardGiven ? opts.buildToward : 20;
-    // Rows of runway at which about-to-die opens. See modes.forced.
-    this.forcedMargin = opts.forcedMargin === undefined ? 2 : opts.forcedMargin;
+    // FRAMES OF STOP TIME BELOW WHICH, WHILE TOPPED OUT, the bot is about to
+    // die. See modes.forced: stop time freezes the stack entirely, so danger
+    // is the ceiling AND an empty clock, never height on its own.
+    //
+    // 0 MEANS DERIVE IT, and that is the default. The bot is a computer, so
+    // the floor is not a round number: it is reaction + the walk to the
+    // nearest move that clears anything + HOVER, which is exactly the point
+    // below which it cannot bank stop time before the stack unfreezes. See
+    // modes.escapeFrames. A positive number overrides it with a fixed floor,
+    // which is for experiments.
+    //
+    // For scale at level 10: a 6-wide combo banks 34 frames of stop time, a
+    // 4-link chain 64, and a 4-link chain fired WHILE TOPPED OUT banks 94 —
+    // the danger bonus is the designed way out, so the bot must still be
+    // free to take it rather than thrashing below the floor.
+    this.stopFloor = opts.stopFloor === undefined ? 0 : opts.stopFloor;
     // JUDGE A CANDIDATE ON WHAT THE RISE LEAVES. The stack comes up whether
     // or not the bot acts and the row that is coming is known before the
     // move is chosen, so a three the board makes by itself is a move the bot
@@ -407,6 +421,11 @@
     // pre-rise one. A filter reading the caller's copy cannot see a three
     // the rise is about to make, which is most of the threes.
     this._scoredResolved = resolved;
+    // What reaching this move costs, published for the same reason the board
+    // and the resolve are: the escape-frame floor needs it and recomputing a
+    // walk the scorer already priced would be a second answer to one
+    // question.
+    this._scoredTravel = frames;
     return evaluator.evaluate(input, this.weights, { density: this.density }).score;
   };
 
@@ -445,6 +464,7 @@
                    board: this._scoredBoard,
                    resolved: holdResolved,
                    risen: this._scoredResolved,
+                   travel: this._scoredTravel,
                    earnedStop: holdResolved.stopTimeEarned || 0 }];
 
     if (this._canRaise()) {
@@ -457,6 +477,7 @@
                    board: this._scoredBoard,
                    resolved: raiseResolved,
                    risen: this._scoredResolved,
+                   travel: this._scoredTravel,
                    earnedStop: raiseResolved.stopTimeEarned || 0 });
     }
 
@@ -472,25 +493,10 @@
                    board: this._scoredBoard,
                    resolved: resolved,
                    risen: this._scoredResolved,
+                   travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
     return cands;
-  };
-
-  // Rows this board has left before it tops out, counting garbage already
-  // queued against it as rows already spent. Garbage in the air has taken
-  // that room whether or not it has landed, which is the case a height
-  // threshold misses and the one that kills this bot.
-  PuyoCpu.prototype._runway = function () {
-    var board = this._board, grid = board.grid, top = 0, r, c;
-    for (c = 1; c <= board.width; c++) {
-      for (r = board.height; r >= 1; r--) {
-        if (grid[r][c] !== 0) { if (r > top) top = r; break; }
-      }
-    }
-    var queued = 0, q = this.stack.incoming || [];
-    for (var i = 0; i < q.length; i++) queued += q[i].height || 0;
-    return modes.runway({ height: board.height, top: top }, queued);
   };
 
   // Narrow the pool to the moves this decision is allowed to choose between,
@@ -517,7 +523,26 @@
     if (broke) this.brokenPlans++;
 
     var pool, mode;
-    if (modes.forced({ runway: this._runway(), margin: this.forcedMargin, broke: broke })) {
+    var stack = this.stack;
+    // THE CHEAPEST WAY OUT, in frames. Only a move that BANKS TIME is a way
+    // out — a bare three clears panels and awards nothing, so it is not an
+    // escape however near the cursor it sits. None at all leaves the floor
+    // at Infinity, which is the honest answer: no clock is long enough when
+    // nothing pays.
+    var nearest = null;
+    for (i = 0; i < cands.length; i++) {
+      if (!modes.banksTime(cands[i].resolved)) continue;
+      var t = cands[i].travel || 0;
+      if (nearest === null || t < nearest) nearest = t;
+    }
+    var floor = this.stopFloor > 0 ? this.stopFloor : modes.escapeFrames({
+      reaction: this.reaction, travel: nearest, hover: this._hoverFrames()
+    });
+    this._lastFloor = floor;
+    if (modes.forced({ toppedOut: this._boardToppedOut(this._board) || !!stack.wasToppedOut,
+                       stopTime: stack.stopTime || 0,
+                       preStopTime: stack.preStopTime || 0,
+                       stopFloor: floor, broke: broke })) {
       pool = cands;
       mode = 'FORCED';
     } else if (avail.links >= T || avail.wide >= S) {
@@ -636,6 +661,13 @@
   PuyoCpu.prototype._bar = function () {
     return modes.bars(this.fireTarget, this.fireLinks, this.fireWide,
                       this.fireWideOff, this.fireLinksOff);
+  };
+
+  // The engine's own HOVER for this level: the frames a panel spends falling
+  // before it can match. Read from the level table, never restated here.
+  PuyoCpu.prototype._hoverFrames = function () {
+    var lvl = this.stack && this.stack.levelData;
+    return (lvl && lvl.frames && lvl.frames.HOVER) || 0;
   };
 
   PuyoCpu.prototype._filtering = function () {

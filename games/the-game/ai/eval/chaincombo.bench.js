@@ -56,7 +56,7 @@ console.log('switches: depth ' + loaded.switches.depth + '  beam ' + loaded.swit
             '  density ' + (loaded.switches.density ? 'on' : 'off') +
             '  modes ' + (loaded.switches.modes
                 ? 'ON (' + loaded.switches.fireLinks + ' links / ' + loaded.switches.fireWide +
-                  ' wide / margin ' + loaded.switches.forcedMargin +
+                  ' wide / stopFloor ' + loaded.switches.stopFloor +
                   (loaded.switches.riseAware ? ' / rise-aware' : ' / rise-BLIND') +
                   ' / target ' + loaded.switches.fireTarget +
                   (loaded.switches.buildToward ? ' / toward ' + loaded.switches.buildToward : '') + ')'
@@ -84,7 +84,7 @@ SCENARIOS.forEach(function (sc) {
             depth: loaded.switches.depth, beam: loaded.switches.beam,
             rise: loaded.switches.rise, density: loaded.switches.density,
             modes: loaded.switches.modes, fireLinks: loaded.switches.fireLinks,
-            fireWide: loaded.switches.fireWide, forcedMargin: loaded.switches.forcedMargin,
+            fireWide: loaded.switches.fireWide, stopFloor: loaded.switches.stopFloor,
             riseAware: loaded.switches.riseAware,
             fireTarget: loaded.switches.fireTarget, fireWideOff: loaded.switches.fireWideOff,
             fireLinksOff: loaded.switches.fireLinksOff, buildToward: loaded.switches.buildToward
