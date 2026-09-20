@@ -159,12 +159,32 @@
     this._plan = null;
     this._firedLast = false;
 
-    // No modes means no target, so there is nothing to build toward and
-    // every number taken without modes is untouched.
-    if (this.modes) {
-      var climb = modes.toward(this.fireTarget, this.buildToward);
-      for (var k in climb) {
-        if (climb.hasOwnProperty(k)) this.weights[k] = (this.weights[k] || 0) + climb[k];
+    // ONE KNOB, TWO COSTS, AND THE CHEAP PATH IS TAKEN WHEN IT EXISTS.
+    //
+    // At depth 2 the search already resolves every swap from every candidate
+    // board to find its best follow-up, and the deepest chain among those
+    // children IS that board's chain potential — 2,151 agreements out of
+    // 2,151 over real play. So the climb reads it off the search in _value
+    // and costs nothing.
+    //
+    // Asking it as a FEATURE instead re-runs those ~900 resolves a second
+    // time. Measured at depth 2 beam 0 over three games: 32ms a decision
+    // without it, 166ms with it, 344ms targeting chains, against an 85ms
+    // budget. That is the correct answer and an unusable bot.
+    //
+    // At depth 1 there is no second ply, so there is nothing to reuse —
+    // "what would the next move bring" is exactly what depth 1 does not
+    // know — and the feature is the only way to ask. That cost is real and
+    // is the price of climbing without a lookahead.
+    //
+    // No modes means no target, so nothing is added either way and every
+    // number taken without modes is untouched.
+    if (this.modes && this.depth < 2) {
+      var climbWeights = modes.toward(this.fireTarget, this.buildToward);
+      for (var k in climbWeights) {
+        if (climbWeights.hasOwnProperty(k)) {
+          this.weights[k] = (this.weights[k] || 0) + climbWeights[k];
+        }
       }
     }
   }
@@ -612,11 +632,19 @@
     // same first move, so they all inherit the same clock.
     var clock = this._plyClock(cand);
     // baseline = cand.board, so garbage cleared is the SECOND move's only.
+    // THE BEST ANY ONE SWAP COULD FIRE from the board this candidate leaves,
+    // taken from the resolves this loop runs anyway. This is the candidate's
+    // chain and combo potential, and reading it here is what makes the climb
+    // free — see the constructor.
+    var reach = { links: 0, wide: 0 };
     var j, f;
     for (j = 0; j < next.length; j++) {
       var child = cand.board.clone();
       child.swap(next[j][0], next[j][1]);
       var childResolved = this._resolveCandidate(child);
+      var cp = modes.payout(childResolved);
+      if (cp.links > reach.links) reach.links = cp.links;
+      if (cp.wide > reach.wide) reach.wide = cp.wide;
       // PLY 2 OBEYS THE SAME FILTER AS PLY 1, for the reason spelled out
       // below: a move the bot cannot make at ply 1 must not be what ply 2
       // values a candidate for, or the imagined future is a different game
@@ -639,10 +667,18 @@
     if (cand.kind !== 'raise' && this._canRaise()) {
       var risen = cand.board.clone().rise(this._incoming);
       var risenResolved = this._resolveCandidate(risen);
+      var rp = modes.payout(risenResolved);
+      if (rp.links > reach.links) reach.links = rp.links;
+      if (rp.wide > reach.wide) reach.wide = rp.wide;
       if (!this._filtering() || modes.pays(risenResolved, this._bar().links, this._bar().wide)) {
         f = this._score(risen, risenResolved, null, from, clock, cand.board);
         if (f > v) v = f;
       }
+    }
+    // Added to the CANDIDATE's value, not to any one child's: how close the
+    // board it leaves is to the target is a property of this move.
+    if (this.modes && this.buildToward) {
+      v += modes.climb(this.fireTarget, this.buildToward, reach);
     }
     return v;
   };

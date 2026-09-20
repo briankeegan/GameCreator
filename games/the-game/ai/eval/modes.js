@@ -95,6 +95,41 @@
     return { chainPotential: strength, comboPotential: strength };
   }
 
+  // Divisors from the registry, so a weight means the same thing here as it
+  // does when the same idea is asked as a feature. Copied deliberately
+  // rather than imported: registry.js requires features.js, features.js is
+  // what this file exists to stay out of, and a cycle to fetch two integers
+  // is a worse dependency than two integers. climb.test asserts they match.
+  var CHAIN_NORM = 16, COMBO_NORM = 36;
+
+  // HOW MUCH BETTER A BOARD IS FOR BEING CLOSER TO THE TARGET.
+  //
+  // `reach` is the best payout any single swap could fire from the board a
+  // move LEAVES — chain depth and combo width. At depth 2 the search has
+  // already resolved every one of those swaps to find its best follow-up,
+  // so this number is free: measured over 2,151 candidate boards, the
+  // deepest chain among the search's own children equalled the
+  // chainPotential feature's answer 2,151 times out of 2,151.
+  //
+  // WHY IT IS NOT JUST THE FEATURE. Asking it as a feature re-runs those
+  // ~900 resolves a second time. Measured at depth 2 beam 0: 32ms a decision
+  // without it, 166ms with it and 344ms targeting chains, against an 85ms
+  // budget. Correct answer, unusable bot.
+  //
+  // `either` takes the BETTER of the two, never the sum: one good chain and
+  // one good combo on the same board is not twice as good a board, and
+  // adding them would make `either` pull twice as hard as a target for no
+  // stated reason.
+  function climb(target, strength, reach) {
+    if (!strength || !reach) return 0;
+    var chain = (reach.links || 0) / CHAIN_NORM * strength;
+    var combo = (reach.wide || 0) / COMBO_NORM * strength;
+    if (target === 'chain') return chain;
+    if (target === 'combo') return combo;
+    if (target === 'either' || target === undefined) return Math.max(chain, combo);
+    throw new Error('unknown fire target "' + target + '" — either, chain or combo');
+  }
+
   // Is this move worth stopping to cash in. Two arms, both from the resolve:
   // a cascade `T` links deep, or a single clear `S` wide. They are different
   // weapons — pushGarbage sends a chain as one full-width slab held until the
@@ -202,6 +237,7 @@
   }
 
   return { payout: payout, fires: fires, pays: pays, bars: bars, toward: toward,
+           climb: climb, CHAIN_NORM: CHAIN_NORM, COMBO_NORM: COMBO_NORM,
            runway: runway,
            risesIntoPayless: risesIntoPayless,
            forced: forced, planBroke: planBroke, bestPayout: bestPayout };

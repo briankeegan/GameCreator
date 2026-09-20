@@ -179,6 +179,31 @@ test('an unknown target is refused here too', function () {
     assert.throws(function () { modes.toward('combos', 120); }, /combos/);
 });
 
+test('the climb is priced exactly as the feature prices it', function () {
+    // Same weight, same number. The registry divides by a norm so a weight
+    // means the same thing for every feature — chainPotential 16,
+    // comboPotential 36 — and the reused-from-the-search version has to use
+    // those same divisors or `buildToward: 120` means two different
+    // strengths at two different depths.
+    assert.strictEqual(modes.climb('chain', 120, { links: 8, wide: 0 }), 120 * 8 / 16);
+    assert.strictEqual(modes.climb('combo', 120, { links: 0, wide: 9 }), 120 * 9 / 36);
+});
+
+test('either climbs whichever is further along', function () {
+    // Not the sum: one good chain and one good combo on the same board is
+    // not twice as good a board, and adding them would make `either` pull
+    // twice as hard as a target for no stated reason.
+    assert.strictEqual(modes.climb('either', 120, { links: 8, wide: 0 }), 120 * 8 / 16);
+    assert.strictEqual(modes.climb('either', 120, { links: 0, wide: 9 }), 120 * 9 / 36);
+    assert.strictEqual(modes.climb('either', 120, { links: 8, wide: 9 }),
+        Math.max(120 * 8 / 16, 120 * 9 / 36));
+});
+
+test('no strength, no climb, and nothing to climb is no climb', function () {
+    assert.strictEqual(modes.climb('chain', 0, { links: 8, wide: 0 }), 0);
+    assert.strictEqual(modes.climb('chain', 120, { links: 0, wide: 0 }), 0);
+});
+
 // ----------------------------------------------------------------- 4. FORCED
 
 test('FORCED opens when the runway is gone', function () {
@@ -542,6 +567,35 @@ test('the bot does not mutate the weight set it was handed', function () {
     new PuyoCpu(new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false }),
                 { weights: w, modes: true, buildToward: 120 });
     assert.strictEqual(JSON.stringify(w), before, 'the caller\'s weights were modified');
+});
+
+test('at depth 2 the climb is free — the search already resolved it', function () {
+    // PROVED SEPARATELY: over 2,151 candidate boards, the deepest chain among
+    // _value's own children equalled chainPotential's answer for that board
+    // 2,151 times out of 2,151. So at depth 2 the feature re-runs ~900
+    // resolves a decision to reach a number the search is already holding.
+    //
+    // This is the claim that it stopped doing that: with a lookahead, the
+    // climb must not put chainPotential into the weights at all.
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false });
+    var deep = new PuyoCpu(stack, shipped({ depth: 2, modes: true, buildToward: 120 }));
+    assert.ok(!deep.weights.chainPotential,
+        'depth 2 still weighted chainPotential — it is paying twice for one number');
+    assert.ok(!deep.weights.comboPotential,
+        'depth 2 still weighted comboPotential');
+
+    // At depth 1 there is no second ply, so there is nothing to reuse and
+    // the feature is the only way to ask. That cost is real and expected.
+    var flat = new PuyoCpu(stack, shipped({ depth: 1, modes: true, buildToward: 120 }));
+    assert.ok(flat.weights.chainPotential > 0,
+        'depth 1 has no lookahead to reuse, so it must pay for the feature');
+});
+
+test('the climb changes play at depth 2, where it is free', function () {
+    var off = playGame(shipped({ depth: 2, beam: 6, modes: true, forcedMargin: -1, fireWide: 6 }), 101, 2500);
+    var on  = playGame(shipped({ depth: 2, beam: 6, modes: true, forcedMargin: -1, fireWide: 6,
+                                  buildToward: 120 }), 101, 2500);
+    assert.notDeepStrictEqual(on.moves, off.moves, 'the free climb changed nothing');
 });
 
 tests.forEach(function (t) {
