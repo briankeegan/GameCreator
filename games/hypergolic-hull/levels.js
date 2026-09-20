@@ -544,9 +544,18 @@
     // never the range that did that, it was the range plus a drive.
     // So the Picket carries the long gun early, and the Scout — the same
     // gun that can also reposition — still waits for the shelf.
-    return depth < 5
-      ? // Only reachable if something ever generates a shallow sector;
-          // depths 1-4 are hand-authored. Kept in step with them anyway.
+    return depth < 3
+      ? // THE SHALLOW END, and it is real now — every sector is generated,
+        // including the first, so this pool is what a new player meets
+        // rather than dead code kept in step with a hand-authored ladder.
+        // Chasers only. A Picket here is a two-hex gun against a ship
+        // carrying nothing but a contact-range Autocannon, which is not a
+        // puzzle at depth 1, it is a stalemate you cannot answer.
+        ["interceptor", "interceptor", "interceptor", "cruiser"]
+      : depth < 5
+        ? // The cruiser's weight comes up, and the first anchored long gun
+          // arrives — by now a shelf has had two chances to sell reach or
+          // an Afterburner to close with.
           ["interceptor", "interceptor", "cruiser", "picket", "salvager"]
         : depth < 8
           ? // The campaign's shapes about GROUND, dealt in any combination

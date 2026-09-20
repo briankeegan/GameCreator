@@ -90,8 +90,15 @@ const LEVELS = HypergolicLevels.LEVELS;
 // to know or care which kind a given sector is. `variantId` picks which of
 // a branching sector's Warp Gates you came through — see BRANCH_TINTS and
 // the "Branching Warp Gates" note near drawWarpGate's call site below.
+// EVERY sector is generated, including the first. The four hand-authored
+// ones were a tutorial ladder, and they were also the only boards in the
+// game with no ground on them — a player met asteroids for the first time
+// at sector 5, after the shape of the game had already been learned on
+// open fields. The generator deals the same action set at those depths and
+// brings cover with it, so the ladder survives and the boards stop being
+// empty.
 function levelForIndex(index, variantId) {
-  return index < LEVELS.length ? LEVELS[index] : HypergolicLevels.generateLevel(index + 1, variantId);
+  return HypergolicLevels.generateLevel(index + 1, variantId);
 }
 let levelIndex = 0;
 

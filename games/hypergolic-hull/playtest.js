@@ -738,7 +738,7 @@ function playRun(seed, report) {
   let depth = 1;
   let variantId = null;
   for (; depth <= BOSS_DEPTH; depth++) {
-    const level = depth <= LEVELS.length ? LEVELS[depth - 1] : Levels.generateLevel(depth, variantId);
+    const level = Levels.generateLevel(depth, variantId); // every sector is generated now
     let state;
     try {
       // Feeds the playtest's own per-run seed through as the ship's luck
