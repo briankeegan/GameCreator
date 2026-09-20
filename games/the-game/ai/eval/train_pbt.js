@@ -433,8 +433,17 @@ var started = Date.now();
 // The first leg has nothing measured yet, so it uses a deliberately pessimistic
 // guess; after that the last leg's own duration decides, with a fifth added
 // because legs lengthen as the populations converge.
-var FIRST_LEG_GUESS = Number(process.env.GC_PBT_LEG_GUESS_MIN || 60) * 60;
+// THE GUESS IS PER UPDATE, NOT PER LEG. Legs measured 47-52 minutes at 250
+// updates, so 15 seconds an update reproduces the 60 that was hardcoded for
+// that size and scales to any other. A flat per-leg number refuses to start a
+// leg a fifth as long, and stopping before the first leg is still a clean
+// stop, so the chain re-dispatches and spins without training.
+var GUESS_PER_UPDATE = Number(process.env.GC_PBT_UPDATE_GUESS_SEC || 15);
+var FIRST_LEG_GUESS = process.env.GC_PBT_LEG_GUESS_MIN
+    ? Number(process.env.GC_PBT_LEG_GUESS_MIN) * 60
+    : LEG * GUESS_PER_UPDATE;
 var lastLeg = null;
+var legsDone = 0;
 function timeForAnotherLeg() {
     if (!DEADLINE) return true;
     var need = (lastLeg === null ? FIRST_LEG_GUESS : lastLeg * 1.2);
@@ -448,9 +457,23 @@ function timeForAnotherLeg() {
     // early, because that is what a crash loop looks like, and without this it
     // cannot tell the two apart. It killed islands-d2-c for being 7 minutes
     // under the floor after a single 158-minute leg.
-    try { fs.writeFileSync(CLEAN_STOP, String(Date.now())); }
+    // THE LEG COUNT GOES IN THE MARKER. A clean stop after work done is a
+    // handover; a clean stop before the first leg is a run that changed
+    // nothing, and continuing it dispatches a run that will do the same.
+    try { fs.writeFileSync(CLEAN_STOP, 'legs=' + legsDone + ' at=' + Date.now()); }
     catch (e) { console.log('  (could not mark the clean stop: ' + e.message + ')'); }
     return false;
+}
+
+// WHAT THE RULE WOULD DECIDE, WITHOUT SPENDING A RUNNER TO FIND OUT. The
+// estimate is the only thing standing between a deadline and a run that does
+// nothing, so it is answerable from a shell and from a test.
+if (process.env.GC_PBT_PLAN_ONLY) {
+    var planLeft = DEADLINE ? Math.round(DEADLINE - Date.now() / 1000) : Infinity;
+    console.log('leg estimate: ' + Math.round(FIRST_LEG_GUESS) + 's for ' + LEG +
+                ' updates; budget leaves ' + planLeft + 's; fits: ' +
+                (planLeft >= FIRST_LEG_GUESS));
+    process.exit(0);
 }
 
 (function leg() {
@@ -511,6 +534,7 @@ function timeForAnotherLeg() {
                     peerLine + '   spread ' + div.join('/'));
         writeSnapshot(champs[bestI].weights, rec, total, div);
         lastLeg = (Date.now() - legStarted) / 1000;
+        legsDone++;
         leg();
         });
         });
