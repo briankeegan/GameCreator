@@ -254,8 +254,18 @@ function note(res) {
 function fuzzBoard(rnd, colours) {
     var grid = [];
     for (var r = 0; r <= H; r++) { grid[r] = []; for (var c = 1; c <= W; c++) grid[r][c] = 0; }
+    // STAGGER: the one shape where the two models can differ. The engine
+    // counts a chain link from a panel that was still flagged chaining when
+    // it was matched, and that flag rides upward through hover — so a clear
+    // low down under columns of very different heights drops panels that
+    // land frames apart. LogicalBoard settles the whole board and then
+    // matches, which cannot see that gap. Alternating near-empty and tall
+    // columns is what makes the falls long and uneven.
+    var stagger = process.env.GC_FUZZ_STAGGER === '1';
     for (var c2 = 1; c2 <= W; c2++) {
-        var h = 1 + Math.floor(rnd() * Math.min(H - 1, 9));
+        var h = stagger
+            ? (c2 % 2 ? 1 + Math.floor(rnd() * 2) : 7 + Math.floor(rnd() * (Math.min(H, 12) - 7)))
+            : 1 + Math.floor(rnd() * Math.min(H - 1, 9));
         var run = 0, last = 0;
         for (var r2 = 1; r2 <= h; r2++) {
             // A BIAS TOWARD REPEATS, or a uniform board is nearly all singles
