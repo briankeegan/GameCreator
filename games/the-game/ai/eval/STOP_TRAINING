@@ -1,4 +1,0 @@
-Training is stopped on purpose.
-
-The chain checks for this file on main before dispatching its next leg. Delete
-it to let training continue.
