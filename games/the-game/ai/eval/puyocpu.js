@@ -539,7 +539,15 @@
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
       var trial = board.clone();
-      var delay = this.reaction + travel.cost(this.stack.curRow, this.stack.curCol, r, c);
+      // THE WALK ONLY. reaction is already spent when this runs: update()
+      // decrements cooldown and returns while it is above zero, so a decision
+      // happens on the frame the wait ENDS, and a swap goes straight from
+      // _decide into _beginWalk. Charging it again resolved every candidate
+      // against a board `reaction` frames further into the future than the
+      // one the swap lands on -- measured at exactly -12 frames on 205 of 281
+      // swaps, with reaction 12. A hold still pays it, because after a hold
+      // the bot really does wait that long before acting again.
+      var delay = travel.cost(this.stack.curRow, this.stack.curCol, r, c);
       var resolved;
       if (this.engine) {
         // The engine ages the board and makes the swap itself.
