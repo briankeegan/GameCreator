@@ -25,3 +25,19 @@ var rows = Object.keys(by).map(function (v) {
 rows.sort(function (a, b) { return b.r - a.r; });
 rows.slice(0, 8).forEach(function (r) { console.log(r.v, 'n=' + r.k, 'medrank', r.r.toFixed(1)); });
 console.log('DONOR', rows[0].v, rows[0].top.f);
+
+// SAY WHETHER THIS IS A NEW GENOME. The top-ranked champion is often the
+// donor already in inject.json -- migration works, so the donor becomes
+// champion in several variants and then wins the ranking as itself.
+// Re-broadcasting it is a no-op (each island records the hash it took and
+// skips it), and broadcasting anything worse would be wrong, so the right
+// move is to leave inject.json alone.
+var crypto2 = require('crypto');
+function hw(w) {
+  return crypto2.createHash('sha1')
+    .update(Object.keys(w).sort().map(function (k) { return k + '=' + w[k]; }).join('|'))
+    .digest('hex').slice(0, 10);
+}
+var pickW = JSON.parse(fs.readFileSync(rows[0].top.f, 'utf8')).weights;
+var live = fs.existsSync('inject.json') ? hw(JSON.parse(fs.readFileSync('inject.json', 'utf8')).weights) : null;
+console.log(hw(pickW) === live ? 'UNCHANGED — top rank is already the donor' : 'NEW DONOR — rewrite inject.json');
