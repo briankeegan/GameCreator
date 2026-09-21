@@ -94,11 +94,25 @@ fi
 # of snapshots would be committed locally and lost when the machine is
 # recycled. Champion commits are independent files that cannot conflict, so
 # replaying them on top is safe and keeps the branch linear.
+#
+# AND RETRY, BECAUSE THE RACE IS THE NORMAL CASE WHEN SEARCHES FAN OUT. One
+# fetch-rebase-push is enough while a single chain is running: nothing else is
+# pushing. Run thirty-five searches at once, each snapshotting every ten
+# minutes, and two of them rebase inside the same window routinely -- one
+# wins, the other is rejected, prints a line and gives up, and that champion
+# exists only on a container that gets recycled. Losing a snapshot is losing
+# the hours that made it.
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-if [ -n "$branch" ] && [ "$branch" != "HEAD" ]; then
-  git fetch -q origin "$branch" 2>/dev/null && \
-    git rebase -q "origin/$branch" 2>/dev/null || git rebase --abort 2>/dev/null
-fi
-git push -q origin HEAD 2>/dev/null || \
-  echo "    (snapshot committed but NOT pushed — it survives a restart, not a lost container)"
+pushed=""
+for attempt in 1 2 3 4 5; do
+  if [ -n "$branch" ] && [ "$branch" != "HEAD" ]; then
+    git fetch -q origin "$branch" 2>/dev/null && \
+      git rebase -q "origin/$branch" 2>/dev/null || git rebase --abort 2>/dev/null
+  fi
+  if git push -q origin HEAD 2>/dev/null; then pushed="yes"; break; fi
+  # Jittered, so two losers of the same race do not collide again in step.
+  sleep $(( attempt * 2 + (RANDOM % 4) ))
+done
+[ -n "$pushed" ] || \
+  echo "    (snapshot committed but NOT pushed after 5 tries — it survives a restart, not a lost container)"
 exit 0
