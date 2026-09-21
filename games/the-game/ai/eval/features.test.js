@@ -176,7 +176,7 @@ function gAdj(rows) { return F.garbageAdjacency(inputMod.normalize({ board: boar
 
 function edge(rows) { return F.edgePenalty(inputMod.normalize({ board: board(rows) })); }
 function maxH(rows, disp) { return F.maxHeight(inputMod.normalize({ board: board(rows), displacement: disp || 0 })); }
-function fill(rows) { return F.fillRatio(inputMod.normalize({ board: board(rows) })); }
+function mat(rows) { return F.material(inputMod.normalize({ board: board(rows) })); }
 
 function variance(rows) {
     return F.colourVariance(inputMod.normalize({ board: board(rows) }));
@@ -534,37 +534,48 @@ test('maxHeight: displacement makes a rising board score above a still one', fun
         'a whole row of displacement would double-count the row it is about to become');
 });
 
-// ---- fillRatio ----
-// Occupied cells over total. NOT LogicalBoard.fillRatio, which is
-// maxHeight/height and is therefore a second copy of maxHeight.
+// ---- material ----
+// Colour panels over total cells: the stock a move leaves to build with.
+// NOT occupancy -- garbage and the dimmed incoming row take up space without
+// being usable, and counting them is what made one term answer both "have I
+// got stock" and "am I near the ceiling" with a single weight.
 
-test('fillRatio: empty is 0 and full is 1', function () {
-    assert.strictEqual(fill(['......', '......']), 0);
-    assert.strictEqual(fill(['111111', '111111']), 1);
+test('material: empty is 0 and a full board of colour is 1', function () {
+    assert.strictEqual(mat(['......', '......']), 0);
+    assert.strictEqual(mat(['111111', '111111']), 1);
 });
 
-test('fillRatio: half the cells occupied is 0.5 wherever they are', function () {
-    assert.strictEqual(fill(['......', '111111']), 0.5);
-    assert.strictEqual(fill(['111...', '111...']), 0.5);
+test('material: half the cells is 0.5 wherever they are', function () {
+    assert.strictEqual(mat(['......', '111111']), 0.5);
+    assert.strictEqual(mat(['111...', '111...']), 0.5);
 });
 
-test('fillRatio: NOT A DUPLICATE OF maxHeight', function () {
-    // Same panel count, one stacked tall and one spread flat. maxHeight
-    // must separate them; fillRatio must not. If either fails, the two
-    // features are measuring one thing and one should be cut — the same
-    // call already made against consecutiveColours.
+test('material: NOT A DUPLICATE OF maxHeight', function () {
+    // Same panel count, one stacked tall and one spread flat. maxHeight must
+    // separate them; material must not. If either fails the two are measuring
+    // one thing and one should be cut.
     var tall = ['1.....', '1.....', '1.....', '1.....'];
     var flat = ['......', '......', '......', '1111..'];
-    assert.strictEqual(fill(tall), fill(flat), 'fillRatio must ignore shape');
+    assert.strictEqual(mat(tall), mat(flat), 'material must ignore shape');
     assert.notStrictEqual(maxH(tall), maxH(flat), 'maxHeight must not');
 });
 
-test('fillRatio: garbage occupies space', function () {
-    assert.strictEqual(fill(['######']), 1);
+test('material: garbage is not material', function () {
+    // The case the split exists for. Both boards are full to the same
+    // height, so maxHeight cannot tell them apart -- one is all stock and
+    // the other is all slab, and nothing in a colour-blind occupancy count
+    // can say so.
+    assert.strictEqual(mat(['######']), 0);
+    assert.strictEqual(mat(['111111']), 1);
+    assert.strictEqual(maxH(['######']), maxH(['111111']));
 });
 
-test('fillRatio: a busy cell is occupied — a panel mid-animation is still there', function () {
-    assert.strictEqual(fill(['xxxxxx']), 1);
+test('material: the dimmed incoming row is not stock until it rises', function () {
+    assert.strictEqual(mat(['xxxxxx']), 0);
+});
+
+test('material: a mixed board counts only the colour', function () {
+    assert.strictEqual(mat(['###...', '111...']), 3 / 12);
 });
 
 // ---- roughness ----

@@ -117,8 +117,8 @@
     { key: 'maxHeight',        group: 'board',  sign: -1, norm: 13, fn: null,
       what: 'Highest occupied row, plus displacement.' },
 
-    { key: 'fillRatio',        group: 'board',  sign: -1, norm: 1, fn: null,
-      what: 'Occupied over total. Overlaps maxHeight — first candidate to cut if it earns nothing.' },
+    { key: 'material',         group: 'board',  sign: +1, norm: 1, fn: null,
+      what: 'Colour panels over total cells — the stock a move leaves to build with. Garbage and the dimmed incoming row are not material. Already a share, so the divisor is 1. Held apart from maxHeight so depth of stock and nearness to the ceiling carry their own weights.' },
 
 
     { key: 'garbageAdjacency', group: 'board',  sign: +1, norm: 24, fn: null,

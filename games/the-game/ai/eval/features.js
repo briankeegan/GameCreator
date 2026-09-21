@@ -360,13 +360,23 @@ var MOVE_FRAMES = 4;
     return top + (input.displacement || 0) / 16;
   }
 
-  // Occupied cells over total. Counts garbage as occupied.
-  function fillRatio(input) {
+  // PANELS THERE ARE TO WORK WITH, over total cells.
+  //
+  // Colour cells only. Garbage (-2) is not material -- it cannot be matched
+  // and only leaves when something beside it clears -- and neither is the
+  // dimmed incoming row (-1), which is not playable until it rises.
+  //
+  // SEPARATE FROM maxHeight ON PURPOSE. How much stock is on the board and
+  // how close the stack is to the ceiling are different questions with
+  // opposite answers, and a single occupancy term has to answer both with
+  // one weight. Split, the weights can want a deep stack with room above it;
+  // conflated, they cannot say it at any value.
+  function material(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
     if (!W || !H) return 0;
     var used = 0;
     for (var r = 1; r <= H; r++) {
-      for (var c = 1; c <= W; c++) if (grid[r][c] !== 0) used++;
+      for (var c = 1; c <= W; c++) if (grid[r][c] > 0) used++;
     }
     return used / (W * H);
   }
@@ -724,7 +734,7 @@ var MOVE_FRAMES = 4;
     garbageAdjacency: garbageAdjacency,
     edgePenalty: edgePenalty,
     maxHeight: maxHeight,
-    fillRatio: fillRatio,
+    material: material,
     colourVariance: colourVariance,
     linksH: linksH,
     linksV: linksV,
