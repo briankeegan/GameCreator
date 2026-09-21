@@ -839,12 +839,26 @@ test('a run really does move a weight below zero', function () {
     // which passed over 34 features — reaches none over 29. Measured across
     // seeds at 29: 4242 gives 7 negatives, 7 gives 8, 11 gives 7, 90210
     // gives 0. The property is real; that one seed was the accident.
-    var r = run();
-    var w = r.result.weights || {};
-    var negative = Object.keys(w).filter(function (k) { return w[k] < 0; });
-    assert.ok(negative.length > 0,
-        'no weight went negative in a real run over ' + Object.keys(w).length +
-        ' features. Either the clamp is back, or the initial population and the ' +
+    //
+    // NOT ONE DRAW, EITHER. Whether a given seed reaches below zero in a
+    // two-generation run is luck, and it moves whenever the bot's play
+    // changes — which is not a regression in the clamp. So the shared run is
+    // tried first and a second seed only if it found none: the property is
+    // "a run CAN get there", not "this seed does".
+    function negativesIn(r) {
+        var w = (r.result && r.result.weights) || {};
+        return Object.keys(w).filter(function (k) { return w[k] < 0; });
+    }
+    var found = negativesIn(run());
+    var tried = ['4242'];
+    ['7', '11'].forEach(function (seed) {
+        if (found.length) return;
+        tried.push(seed);
+        found = negativesIn(tinyRun({ GC_GA_SEED: seed }));
+    });
+    assert.ok(found.length > 0,
+        'no weight went negative in a real run over seeds ' + tried.join(', ') +
+        '. Either the clamp is back, or the initial population and the ' +
         'mutation together cannot reach below zero — in which case sign is still ' +
         'a verdict however the clamp is written.');
 });

@@ -249,12 +249,37 @@
 
   // Settle a candidate board: gravity, matches, cascades. Returns what the
   // move earned — chain length, combo sizes, garbage sent, stop time.
-  PuyoCpu.prototype._resolveCandidate = function (board) {
-    if (!this.engine) return board.resolve();
+  // THE SWAP HAPPENS WHEN THE CURSOR ARRIVES, NOT WHEN THE BOT DECIDES.
+  //
+  // `move` and `delay` are the engine path only: the board is painted as it
+  // stands, run forward `delay` frames — the reaction plus the walk — and
+  // the swap is then made on whatever board is there, which is what the game
+  // does. Resolving a swap against the board at the moment of DECIDING is
+  // resolving it against a board that will not exist by the time it happens:
+  // panels land in those frames, and a move that cleared nothing then clears
+  // three now.
+  //
+  // A swap the aged board refuses is a swap that will really be refused —
+  // canSwap is the engine's own — and it resolves to nothing, which is the
+  // honest answer rather than a prediction made on a board that is gone.
+  PuyoCpu.prototype._resolveCandidate = function (board, move, delay) {
+    if (!this.engine) {
+      // LogicalBoard cannot be aged cheaply, so this path keeps the old
+      // behaviour: the caller has already applied the swap.
+      return board.resolve();
+    }
     if (!this._scratch) this._scratch = engineBoard.scratch(10);
-    engineBoard.paint(this._scratch, board.grid, board.height, board.width);
-    var out = engineBoard.settle(this._scratch, 900);
-    var settled = engineBoard.readGrid(this._scratch, board.height, board.width);
+    var st = this._scratch;
+    engineBoard.paint(st, board.grid, board.height, board.width);
+    var wait = Math.max(0, delay || 0);
+    for (var f = 0; f < wait; f++) {
+      st.events.length = 0;
+      st.run();
+      if (st.gameOver) break;
+    }
+    if (move && st.canSwap(move[0], move[1])) st.doSwap(move[0], move[1]);
+    var out = engineBoard.settle(st, 900);
+    var settled = engineBoard.readGrid(st, board.height, board.width);
     for (var r = 0; r <= board.height; r++) {
       for (var c = 1; c <= board.width; c++) board.grid[r][c] = settled[r][c];
     }
@@ -486,7 +511,7 @@
     this._incoming = board.incoming || null;
 
     var holdBoard = board.clone();
-    var holdResolved = this._resolveCandidate(holdBoard);
+    var holdResolved = this._resolveCandidate(holdBoard, null, this.reaction);
     var cands = [{ kind: 'hold',
                    score: this._score(holdBoard, holdResolved, null),
                    board: this._scoredBoard,
@@ -513,8 +538,15 @@
     for (var i = 0; i < swaps.length; i++) {
       var r = swaps[i][0], c = swaps[i][1];
       var trial = board.clone();
-      trial.swap(r, c);
-      var resolved = this._resolveCandidate(trial);
+      var delay = this.reaction + travel.cost(this.stack.curRow, this.stack.curCol, r, c);
+      var resolved;
+      if (this.engine) {
+        // The engine ages the board and makes the swap itself.
+        resolved = this._resolveCandidate(trial, [r, c], delay);
+      } else {
+        trial.swap(r, c);
+        resolved = this._resolveCandidate(trial);
+      }
       cands.push({ kind: 'swap',
                    score: this._score(trial, resolved, [r, c]),
                    move: [r, c],
