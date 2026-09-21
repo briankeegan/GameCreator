@@ -162,13 +162,17 @@
     function settle(stack, budget) {
         var chain = 0, comboSizes = [], garbage = [], cleared = 0;
         var cap = budget || 900;
+        var quiet = false;
         for (var f = 0; f < cap; f++) {
+            // ONLY ATTEMPT THE JUMP AFTER A SILENT FRAME. idleSkip walks the
+            // board to find the soonest timer, and on a busy frame it pays
+            // for that walk and then refuses — measured slower in real duels
+            // than not trying at all. A frame that emitted nothing is the
+            // cheap signal that a countdown is what is left.
+            if (quiet) stack.idleSkip();
             stack.events.length = 0;
-            // The countdown frames between transitions are arithmetic. The
-            // engine does them in one step and refuses whenever anything
-            // could change that a timer does not predict.
-            stack.idleSkip();
             stack.run();
+            quiet = stack.events.length === 0;
             for (var i = 0; i < stack.events.length; i++) {
                 var e = stack.events[i];
                 if (e.type !== 'match') continue;
