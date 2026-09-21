@@ -99,8 +99,11 @@
     this.reaction = opts.reaction === undefined ? 12 : opts.reaction;
     this.cooldown = Math.floor(this.reaction / 2);
     this.raiseFrames = 0;
-    // See _canRaise: raising is an action, so it is opt-in per instance.
-    this.allowRaise = opts.allowRaise === true;
+    // Raising is a CONTROL, like swapping and moving the cursor, so it is on
+    // unless a caller takes it away. A bot that cannot raise cannot play the
+    // build the rise exists for: shape the board, then push it up and let the
+    // arriving row complete what was already there.
+    this.allowRaise = opts.allowRaise !== false;
     // THE OTHER BOARD, when there is one. Optional: solo play has none, and
     // every number this repo has was taken without one.
     this.opponent = opts.opponent || null;
@@ -484,11 +487,9 @@
 
   // Whether the engine will serve a manual raise this frame.
   PuyoCpu.prototype._canRaise = function () {
-    // OPT-IN, like depth, beam, rise and density before it. Raising is a
-    // new ACTION, not a new preference: it changes the choice set, so every
-    // result taken without it describes a different bot and every run in
-    // flight would change meaning mid-search. Off is the bot every existing
-    // number describes.
+    // Off only when a caller asks for it off -- a harness pinning the old
+    // choice set to compare against it. It changes what the bot may do, so
+    // it changes the fingerprint.
     if (!this.allowRaise) return false;
     var stack = this.stack;
     if (stack.preventManualRaise) return false;

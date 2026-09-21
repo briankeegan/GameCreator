@@ -76,8 +76,14 @@ test('every decision goes through the evaluator', function () {
 
 test('it scores EVERY legal move, not a shortlist', function () {
     // The count per decision must equal the legal swaps on that board plus
-    // one for hold. Checked against the board's own legalSwaps(), so a
-    // shortlist, a cap, or an early exit all fail.
+    // the non-swap actions available on it — hold always, and raise when the
+    // bot may raise and the stack will serve one. Checked against the board's
+    // own legalSwaps(), so a shortlist, a cap, or an early exit all fail.
+    //
+    // ASKS THE BOT WHICH ACTIONS IT HAS rather than naming them. Hardcoding
+    // "+ 1 for hold" is what made this fail the day raise became a control:
+    // it reported a shortlist where the bot had in fact scored one move MORE
+    // than expected, which is the opposite complaint.
     var stack = new PanelEngine.Stack({ level: LEVEL, seed: 7, countdown: false });
     var cpu = new PuyoCpu(stack, { weights: sample() });
     var mismatches = [], checked = 0, widths = {};
@@ -85,7 +91,9 @@ test('it scores EVERY legal move, not a shortlist', function () {
         if (f > 120 && f % 120 === 0) stack.receiveGarbage([{ width: 6, height: 3, isChain: false }]);
         var before = cpu.evaluations;
         var willDecide = !cpu._walk && cpu.cooldown === 0;
-        var expected = willDecide ? cpu._snapshot().legalSwaps().length + 1 : 0;
+        var expected = willDecide
+            ? cpu._snapshot().legalSwaps().length + 1 + (cpu._canRaise() ? 1 : 0)
+            : 0;
         cpu.update();
         var spent = cpu.evaluations - before;
         if (willDecide) {
