@@ -111,9 +111,14 @@ test('the weights decide: changing them changes the game', function () {
     // Two different weight sets must play differently on the same seed. If
     // they do not, the GA is turning knobs attached to nothing — the exact
     // failure that made this repo's first evaluator worthless.
+    // NAMES NOTHING. Which features exist is the registry's business and it
+    // changes; a test that hardcodes three of them fails on the day one is
+    // renamed and says "the weights do not reach the scoring", which is a lie
+    // about the thing under test. Every other key gets a weight instead, so
+    // the two sets disagree about every candidate whatever the set is.
     var a = play(sample(), 3).frames;
     var flipped = zeros();
-    flipped.garbageAdjacency = 40; flipped.fillRatio = 60; flipped.chainLength = 20;
+    registry.keys.forEach(function (k, i) { if (i % 2 === 0) flipped[k] = 40; });
     var b = play(flipped, 3).frames;
     assert.notStrictEqual(a, b,
         'two very different weight sets played identically (' + a + ' frames each). ' +
