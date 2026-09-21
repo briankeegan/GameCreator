@@ -925,7 +925,25 @@
           blocks[id].cells.push([r, c]);
         }
         else if (p.color === 0) v = 0;
-        else if (p.state !== "normal" && p.state !== "landing") v = -1;
+        // A PANEL IN THE AIR IS STILL A PANEL. Every unsettled state used to
+        // collapse to -1, and paint() writes -1 onto the scratch Stack as an
+        // EMPTY CELL — so a panel mid-fall was erased from the board the bot
+        // reasons about. It would resolve a swap as clearing nothing, walk
+        // over, and by the time the swap happened the panel had landed and
+        // the swap made a three. The rules were the engine's; the board was
+        // not the game's.
+        //
+        // Falling, hovering and mid-swap panels keep their colour, at the
+        // cell they currently occupy: the engine's own gravity then drops
+        // them where they will actually land.
+        //
+        // Matched and popping panels are leaving, so their cells read empty —
+        // which is what they will be by the end of the cascade being
+        // resolved. Row 0 is the incoming row and stays out of the grid; it
+        // reaches the search through board.incoming and rise().
+        else if (p.state === "matched" || p.state === "popping" ||
+                 p.state === "popped") v = 0;
+        else if (p.state === "dimmed") v = -1;
         else v = p.color;
         grid[r][c] = v;
       }

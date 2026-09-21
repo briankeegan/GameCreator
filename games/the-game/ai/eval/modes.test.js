@@ -378,12 +378,29 @@ test('modes OFF counts nothing, so the instrumentation cannot cost anything', fu
 });
 
 test('the goal reaches the filter', function () {
-    // A goal says what to refuse as well as what to build, so two different
-    // goals must play two different games. If they do not, the setting is
-    // stopping somewhere short of modes.js.
-    var small = playGame(shipped({ modes: true, stopFloor: 0, goal: '4-combo' }), 101, 4000);
-    var big   = playGame(shipped({ modes: true, stopFloor: 0, goal: '7-combo' }), 101, 4000);
-    assert.notDeepStrictEqual(small.moves, big.moves, 'the goal is not reaching the filter');
+    // A goal says what to refuse as well as what to build, so two goals must
+    // reach modes.js and produce different pools. Asserted on the POOL, not
+    // on a game: whether two bots diverge within N frames of one seed is a
+    // proxy, and a proxy that happens to coincide reports a wiring failure
+    // that is not there.
+    function poolAt(goal) {
+        var stack = new PanelEngine.Stack({ level: LEVEL, seed: 1, countdown: false });
+        var cpu = new PuyoCpu(stack, shipped({ depth: 1, modes: true, goal: goal }));
+        var hold = { kind: 'hold', score: 0, travel: 0, resolved: res({}), risen: null };
+        var five = { kind: 'swap', score: 0, travel: 0,
+                     resolved: res({ chainLength: 1, comboSizes: [5] }), risen: null };
+        var pool = cpu._applyModes([hold, five]);
+        return { bar: cpu._bar(), mode: cpu._mode, holdKept: pool.indexOf(hold) >= 0 };
+    }
+    var small = poolAt('4-combo'), big = poolAt('7-combo');
+    assert.strictEqual(small.bar.wide, 4, 'the 4-combo goal did not reach the bar');
+    assert.strictEqual(big.bar.wide, 7, 'the 7-combo goal did not reach the bar');
+    // A five is at or over the small goal and under the big one, so one
+    // cashes in and the other keeps building.
+    assert.strictEqual(small.mode, 'ATTACK', 'a 5-wide did not reach the 4-combo goal');
+    assert.strictEqual(big.mode, 'BUILD', 'a 5-wide already satisfied the 7-combo goal');
+    assert.strictEqual(small.holdKept, false, 'ATTACK kept hold on the list');
+    assert.strictEqual(big.holdKept, true, 'BUILD took hold off the list');
 });
 
 test('a chain goal and a combo goal are different bots', function () {
