@@ -109,6 +109,15 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
     // is links minus one, and reported every chain one link short.
     var exact = [zeroExact(), zeroExact()];
 
+    // A match that opened a cascade, waiting to learn what the cascade became.
+    var pendingOpen = [null, null];
+    function settleOpener(side) {
+        var open = pendingOpen[side];
+        if (!open) return;
+        if (open.size <= 3 && !open.garbage) exact[side].payless++;
+        pendingOpen[side] = null;
+    }
+
     var ceiling = opts.ceiling || CEILING;
     var f = 0;
     for (; f < ceiling; f++) {
@@ -136,12 +145,30 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
                     exact[e].chain[ev.length] = (exact[e].chain[ev.length] || 0) + 1;
                 } else if (ev.type === 'match') {
                     if (!ev.chain) exact[e].combo[ev.size] = (exact[e].combo[ev.size] || 0) + 1;
-                    // DID IT PAY. The engine's own rule, not a second copy of
-                    // it: pushGarbage fires iff isChainLink || size > 3, and
-                    // the event carries both, plus how many garbage panels
-                    // the clear broke. A clear that satisfies neither sent
-                    // nothing and scored nothing, whatever it later becomes.
-                    if (!ev.chain && ev.size <= 3 && !ev.garbage) exact[e].payless++;
+                    // DID IT PAY, JUDGED BY WHAT THE CASCADE BECAME.
+                    //
+                    // The opening match of a chain carries chain=false --  it
+                    // is what STARTS the chain, not a link in it -- so asking
+                    // at the moment it fires calls the first move of every
+                    // chain a worthless three. It also counts it a second
+                    // time under combo[3]. A five-chain opened by a three is
+                    // the best move in the game and was being scored as the
+                    // worst, in the number we read to decide whether the bot
+                    // is improving.
+                    //
+                    // So an opener is HELD. A chaining match settles it as
+                    // paid; the next opener settles the one before it as
+                    // alone, since the engine emits chainEnd only when a
+                    // chain actually formed and a lone match announces
+                    // nothing at all. Anything still held when the duel ends
+                    // is flushed below.
+                    if (!ev.chain) {
+                        settleOpener(e);
+                        pendingOpen[e] = { size: ev.size, garbage: !!ev.garbage };
+                    } else if (pendingOpen[e]) {
+                        exact[e].openedChain++;
+                        pendingOpen[e] = null;
+                    }
                     if (ev.garbage) exact[e].broke++;
                 }
             }
@@ -149,6 +176,9 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
 
         if (stacks[0].gameOver || stacks[1].gameOver) break;
     }
+
+    settleOpener(0);
+    settleOpener(1);
 
     var aDead = !!stacks[0].gameOver, bDead = !!stacks[1].gameOver;
     var scores = [stacks[0].score, stacks[1].score];
@@ -174,7 +204,7 @@ exports.addDepth = function (into, from) {
 };
 exports.zeroDepth = zeroDepth;
 
-function zeroExact() { return { combo: {}, chain: {}, payless: 0, broke: 0 }; }
+function zeroExact() { return { combo: {}, chain: {}, payless: 0, openedChain: 0, broke: 0 }; }
 
 // Sum one side's exact histogram across several duels.
 exports.addExact = function (into, from) {
@@ -184,6 +214,7 @@ exports.addExact = function (into, from) {
         });
     });
     into.payless = (into.payless || 0) + (from.payless || 0);
+    into.openedChain = (into.openedChain || 0) + (from.openedChain || 0);
     into.broke = (into.broke || 0) + (from.broke || 0);
     return into;
 };

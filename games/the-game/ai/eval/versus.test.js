@@ -287,6 +287,47 @@ check('runPhysics CAPTURES the chain length before it clears the counter', funct
         'cleared on the line above and every chain reports 0 links');
 });
 
+check('a chain\'s OPENING match is not counted as a worthless clear', function () {
+    // THE DEFECT THIS EXISTS FOR. The match that starts a chain carries
+    // chain=false, so asking "did it pay" as it fires calls the first move of
+    // every chain a payless three -- the number we read to decide whether the
+    // bot is learning to chain went UP each time it chained.
+    //
+    // The invariant is exact and needs no threshold: every finished chain was
+    // opened by exactly one match, so openedChain must equal the number of
+    // chainEnd events. Under the old rule openedChain is 0 and each of those
+    // openers sits in payless instead.
+    var r = versus.duel(TRAINED, TRAINED, 7, { level: 10, depth: 2, beam: 0,
+                                               rise: true, modes: true, engine: true });
+    for (var side = 0; side < 2; side++) {
+        var ex = r.exact[side];
+        var chains = 0;
+        for (var k in ex.chain) chains += ex.chain[k];
+        assert.strictEqual(ex.openedChain, chains,
+            'side ' + side + ' finished ' + chains + ' chains but credited ' +
+            ex.openedChain + ' openers — an opener was settled as payless, or ' +
+            'settled twice');
+    }
+});
+
+check('a clear that really does stand alone IS still counted', function () {
+    // The correct-but-awkward case: deferring the verdict must not lose it.
+    // A duel that clears anything at all must report some payless threes --
+    // if holding the opener made every one of them vanish, the counter would
+    // read 0 forever and look like a cured bot.
+    var r = versus.duel(TRAINED, TRAINED, 7, { level: 10, depth: 2, beam: 0,
+                                               rise: true, modes: true, engine: true });
+    var anyCleared = 0, anyPayless = 0;
+    for (var side = 0; side < 2; side++) {
+        for (var k in r.exact[side].combo) anyCleared += r.exact[side].combo[k];
+        anyPayless += r.exact[side].payless;
+    }
+    assert.ok(anyCleared > 0, 'the duel cleared nothing at all, so this proves nothing');
+    assert.ok(anyPayless > 0,
+        anyCleared + ' clears and not one payless three: the held opener is ' +
+        'never being settled');
+});
+
 console.log('');
 console.log(pass + '/' + (pass + fail) + ' passed');
 process.exit(fail ? 1 : 0);
