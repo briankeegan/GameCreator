@@ -71,37 +71,19 @@ check('the workflow passes a value envFlag accepts', function () {
     delete process.env.GC_TEST_FLAG;
 });
 
-check('a peer fitted under different switches is not a peer', function () {
-    // The held-out record is measured against the best committed champion.
-    // It is picked out of the snapshot archive by feature set, and a snapshot
-    // also records the switches it was fitted under.
+check('nothing saved is duelled at all', function () {
+    // These two checks used to make sure a PEER was chosen carefully: same
+    // feature set, same switches, same rules. The peer is gone. A record
+    // against a saved weight set measures that set as much as the champion,
+    // and across a change of measurement set — 11 features against 29 — it
+    // measures nothing whatever, which is the state the archive is in.
     var src = fs.readFileSync(path.join(__dirname, 'train_pbt.js'), 'utf8');
-    var fn = /function bestCommittedChampion\(\)[\s\S]*?\n}/.exec(src);
-    assert.ok(fn, 'bestCommittedChampion is gone');
-    ['rise', 'density', 'allowRaise', 'depth', 'beam', 'level'].forEach(function (k) {
-        assert.ok(new RegExp('j\\.' + k).test(fn[0]),
-                  'a peer is chosen without comparing ' + k);
-    });
-});
-
-check('a peer fitted under different RULES is not a peer', function () {
-    // The switches describe the run; RULES describes the decision procedure,
-    // which is code. Changing what the candidate pool contains makes every
-    // earlier weight set a bot that played a different game while every
-    // switch still matches — which is how a run came to measure itself
-    // against a bot fitted before the attack mode existed.
-    var modes = require('./modes.js');
-    assert.strictEqual(typeof modes.RULES, 'number', 'modes must publish a RULES version');
-
-    var src = fs.readFileSync(path.join(__dirname, 'train_pbt.js'), 'utf8');
-    var fn = /function bestCommittedChampion\(\)[\s\S]*?\n}/.exec(src);
-    assert.ok(fn, 'bestCommittedChampion is gone');
-    assert.ok(/j\.rules !== modes\.RULES/.test(fn[0]),
-              'a peer is chosen without comparing the rules it was fitted under');
-
-    // and every snapshot this run writes has to carry it, or the comparison
-    // above silently rejects everything including its own successors.
-    assert.ok(/rules: modes\.RULES/.test(src), 'the snapshot does not record RULES');
+    assert.ok(!/function bestCommittedChampion/.test(src),
+              'the best-committed peer is back');
+    assert.ok(!/trained-weights/.test(src),
+              'the shipped bot is being loaded to duel again');
+    assert.ok(/duelJobs\(genome, genome\)/.test(src),
+              'the held-out set is not a mirror, so something else is on the other side');
 });
 
 console.log('\n' + pass + '/' + pass + ' passed');

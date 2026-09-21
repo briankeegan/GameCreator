@@ -66,21 +66,31 @@ test('a leg RUNS TO THE END and says so', function () {
     assert.ok(!ran, 'train_pbt did not finish: ' + (ran && (ran.stdout || ran.message)));
     assert.ok(/wins the face-off/.test(out),
         'no face-off line, so the leg never got past the islands:\n' + out);
-    assert.ok(/held-out \d+W/.test(out),
-        'no held-out line, so the fanned-out duels never came back:\n' + out);
+    assert.ok(/chains .*combos /.test(out),
+        'no counts line, so the fanned-out duels never came back:\n' + out);
     assert.ok(/written to trained\.pbt\.json/.test(out),
         'no snapshot was written, so the leg ended before its payload:\n' + out);
 });
 
-test('the snapshot carries a held-out report with BOTH halves', function () {
+test('the snapshot reports what the champion FIRED, and duels nothing saved', function () {
     var file = path.join(__dirname, 'trained.pbt.json');
     assert.ok(fs.existsSync(file), 'trained.pbt.json is missing');
     var snap = JSON.parse(fs.readFileSync(file, 'utf8'));
     assert.ok(snap.holdout, 'the snapshot has no held-out report, which the gates reject');
-    assert.ok(snap.holdout.learned, 'the learned half is missing');
-    assert.ok(snap.holdout.shipped, 'the shipped half is missing — the only figure comparable across the run');
-    assert.strictEqual(typeof snap.holdout.learned.winRate, 'number', 'the win rate is not a number');
-    assert.ok(snap.holdout.learned.duels > 0, 'it reports zero duels, so nothing was actually played');
+    var m = snap.holdout.mirror;
+    assert.ok(m, 'the mirror report is missing');
+    assert.ok(m.duels > 0, 'it reports zero duels, so nothing was actually played');
+    assert.ok(m.chainByLinks && m.comboBySize, 'the raw counts are missing');
+    assert.strictEqual(typeof m.paylessClears, 'number', 'paylessClears is not a number');
+
+    // NOTHING SAVED IS ON THE OTHER SIDE. A record against a shipped bot or
+    // a previous snapshot measures that bot as much as this one, and across
+    // a change of measurement set it does not measure anything at all.
+    assert.ok(!snap.holdout.peer, 'the report duels a previous snapshot again');
+    assert.ok(!snap.holdout.shipped, 'the report duels the shipped bot again');
+    var src = fs.readFileSync(path.join(__dirname, 'train_pbt.js'), 'utf8');
+    assert.ok(!/function bestCommittedChampion/.test(src),
+              'bestCommittedChampion is back');
 });
 
 test('the fanned-out duels leave no scratch files behind', function () {

@@ -300,58 +300,12 @@ function faceOff(champs, cb) {
 }
 
 // ------------------------------------------------------------- held out
-var shipped = null;
-try {
-    require(path.join(__dirname, '..', 'trained-weights.js'));
-    var t = (globalThis.PanelEval || {}).trained;
-    shipped = (t && t.weights) || null;
-} catch (e) { /* no shipped bot: the record is against zero weights */ }
-
-// THE SHIPPED BOT IS A FLOOR, NOT A RANKING. Every chain beats it 12-0 and a
-// record pinned at its ceiling cannot say which champion is stronger — 12-0
-// and 12-0 are the same number whatever the gap behind them. So each check
-// also duels the best champion any chain has committed, which moves as the
-// search improves and therefore keeps discriminating.
 //
-// BOTH, never one. The shipped record stays because it is the only figure
-// comparable across the whole run; the peer record is the one that still has
-// somewhere to go. A peer that does not exist yet (the first checks of a fresh
-// repo) simply leaves the peer half absent.
-function bestCommittedChampion() {
-    var best = null, bestAt = -1;
-    var files;
-    try { files = fs.readdirSync(__dirname); } catch (e) { return null; }
-    files.forEach(function (f) {
-        if (!/^trained\.pbt\..*\.g\d+\.json$/.test(f) || /\.smoke\.json$/.test(f)) return;
-        try {
-            var j = JSON.parse(fs.readFileSync(path.join(__dirname, f), 'utf8'));
-            // Rank by the record it earned, then by how far it got. A champion
-            // from a different feature set would be scored on weights this run
-            // does not have, so it is skipped rather than silently zero-filled.
-            if (!j.weights || !j.features) return;
-            if (j.features.join(',') !== KEYS.join(',')) return;
-            // AND THE SAME BOT. A snapshot carries the switches it was fitted
-            // under; weights found for a bot that cannot see the stack rising
-            // are not a peer for one that can, however good its record looked
-            // against its own opponents. Same test the island fingerprint
-            // makes for a population.
-            // AND THE SAME RULES. The switches describe the run; RULES
-            // describes the decision procedure, which is code and changes
-            // without any switch moving.
-            if (j.rules !== modes.RULES) return;
-            if (!!j.engine !== !!OPTS.engine) return;
-            if (!!j.rise !== !!OPTS.rise || !!j.density !== !!OPTS.density ||
-                !!j.allowRaise !== !!OPTS.allowRaise ||
-                Number(j.depth || 1) !== Number(OPTS.depth) ||
-                Number(j.beam || 0) !== Number(OPTS.beam) ||
-                Number(j.level || 10) !== Number(OPTS.level)) return;
-            var fit = (j.holdout && j.holdout.learned && j.holdout.learned.fitness) || 0;
-            var rank = fit * 1e9 + (j.updates || 0);
-            if (rank > bestAt) { bestAt = rank; best = { weights: j.weights, from: f }; }
-        } catch (e) { /* unreadable snapshot, skip */ }
-    });
-    return best;
-}
+// NOTHING SAVED IS DUELLED. The champion is measured by what it does, not by
+// what it beats: no shipped bot, no previous snapshot. A record against a
+// saved weight set says as much about that set as about this champion, and
+// the best-committed one moves every leg, so the figure is not even
+// comparable with itself.
 
 // The duels of one held-out set, as jobs. Kept separate from the tally so
 // every set in a leg can go out in ONE fan-out rather than one per opponent.
@@ -382,46 +336,32 @@ function tally(out) {
              depthUs: depthUs, depthThem: depthThem, exactUs: exactUs };
 }
 
-// BOTH OPPONENTS IN ONE FAN-OUT. The shipped-bot set and the peer set are
-// independent duels known up front, so they go out together — 24 duels over
-// the cores instead of 12 then 12 on one.
+// WHAT THE CHAMPION DOES, NOT WHO IT BEAT. It plays the held-out seeds
+// against ITSELF, and what is reported is the raw count of what fired:
+// chains by link, combos by size, clears that paid nothing, garbage broken,
+// how long the games ran.
+//
+// NO SAVED BOT ON THE OTHER SIDE. A record against a snapshot says as much
+// about that snapshot as about this champion, and it moves under you — the
+// peer changes every leg, so the number is not comparable with itself from
+// one leg to the next. A mirror is the same bot on both sides, so the
+// record is 50% by construction and carries no information; the counts
+// carry all of it.
 function heldOut(genome, cb) {
-    var peer = bestCommittedChampion();
-    var shippedJobs = duelJobs(genome, shipped);
-    var peerJobs = peer ? duelJobs(genome, peer.weights) : [];
-    duels.runDuels(shippedJobs.concat(peerJobs), OPTS, ISLANDS, function (err, res) {
+    duels.runDuels(duelJobs(genome, genome), OPTS, ISLANDS, function (err, res) {
         if (err) return cb(err);
-        cb(null, buildReport(genome, tally(res.slice(0, shippedJobs.length)),
-                             peer, peerJobs.length ? tally(res.slice(shippedJobs.length)) : null));
+        cb(null, buildReport(genome, tally(res)));
     });
 }
 
-function buildReport(genome, r, peer, p) {
+function buildReport(genome, r) {
     var n = r.n;
-    var out = {
+    return {
         avgFrames: r.frames / n, longestFrames: r.longest,
-        learned: { fitness: (r.wins + 0.5 * r.draws) / n, winRate: r.wins / n, draws: r.draws,
-                   avgSent: r.sentUs / n, duels: n, chainDepth: r.depthUs,
-                   comboBySize: r.exactUs.combo, chainByLinks: r.exactUs.chain,
-                   paylessClears: r.exactUs.payless, brokeGarbage: r.exactUs.broke,
-                   versus: true },
-        shipped: { fitness: (n - r.wins - r.draws + 0.5 * r.draws) / n,
-                   label: shipped ? 'shipped weights' : 'zero weights',
-                   avgSent: r.sentThem / n, chainDepth: r.depthThem, versus: true }
+        mirror: { duels: n, avgSent: r.sentUs / n, chainDepth: r.depthUs,
+                  comboBySize: r.exactUs.combo, chainByLinks: r.exactUs.chain,
+                  paylessClears: r.exactUs.payless, brokeGarbage: r.exactUs.broke }
     };
-
-    if (peer && p) {
-        out.peer = {
-            opponent: peer.from,
-            fitness: (p.wins + 0.5 * p.draws) / p.n,
-            winRate: p.wins / p.n, draws: p.draws, duels: p.n,
-            avgSent: p.sentUs / p.n, opponentAvgSent: p.sentThem / p.n,
-            avgFrames: p.frames / p.n, longestFrames: p.longest,
-            comboBySize: p.exactUs.combo, chainByLinks: p.exactUs.chain,
-            paylessClears: p.exactUs.payless, brokeGarbage: p.exactUs.broke
-        };
-    }
-    return out;
 }
 
 function writeSnapshot(best, report, totalUpdates, diversity) {
@@ -467,12 +407,13 @@ var started = Date.now();
 // leg a fifth as long, and stopping before the first leg is still a clean
 // stop, so the chain re-dispatches and spins without training.
 // AND THE ENGINE PATH IS NOT THE SAME UPDATE. Resolving candidates on a real
-// Stack measured 46.81ms a frame against LogicalBoard's 4.79ms in whole
-// duels, so a leg takes about ten times as long. Guessing the LogicalBoard
-// number there refuses no leg and starts one that runs past the job's own
-// timeout, which loses everything since the last snapshot.
+// Stack costs 3.6x LogicalBoard on identical candidates, measured after
+// idleSkip. 60 seconds an update is that with room over it. The 150 this
+// carried before was calibrated when the engine path was ten times slower,
+// and a guess that large refuses to start a leg inside a short job — which
+// is how the jobs grew to five hours and snapshots stopped being frequent.
 var GUESS_PER_UPDATE = Number(process.env.GC_PBT_UPDATE_GUESS_SEC ||
-                              (process.env.GC_ENGINE && flag('GC_ENGINE') ? 150 : 15));
+                              (process.env.GC_ENGINE && flag('GC_ENGINE') ? 60 : 15));
 var FIRST_LEG_GUESS = process.env.GC_PBT_LEG_GUESS_MIN
     ? Number(process.env.GC_PBT_LEG_GUESS_MIN) * 60
     : LEG * GUESS_PER_UPDATE;
@@ -558,17 +499,19 @@ if (process.env.GC_PBT_PLAN_ONLY) {
 
         heldOut(champs[bestI].weights, function (hoErr, rec) {
         if (hoErr) { console.error(hoErr); process.exit(1); }
-        var n2 = rec.learned.duels, w2 = Math.round(rec.learned.winRate * n2), dr = rec.learned.draws;
-        var peerLine = '';
-        if (rec.peer) {
-            var pw = Math.round(rec.peer.winRate * rec.peer.duels);
-            peerLine = '   vs best ' + pw + 'W ' + (rec.peer.duels - pw - rec.peer.draws) +
-                       'L ' + rec.peer.draws + 'D';
+        // WHAT IT FIRED, not what it beat. Chains by link and combos by
+        // size, straight from the engine's own match events.
+        var m = rec.mirror;
+        function hist(o) {
+            var k = Object.keys(o).sort(function (a, b) { return a - b; });
+            return k.length ? k.map(function (x) { return x + 'x' + o[x]; }).join(' ') : 'none';
         }
         console.log('updates ' + total + '  [' + ((Date.now() - started) / 60000).toFixed(1) + ' min]' +
                     '  island ' + bestI + ' wins the face-off (' + score.join('/') + ')' +
-                    '   held-out ' + w2 + 'W ' + (n2 - w2 - dr) + 'L ' + dr + 'D of ' + n2 +
-                    peerLine + '   spread ' + div.join('/'));
+                    '   chains ' + hist(m.chainByLinks) + '   combos ' + hist(m.comboBySize) +
+                    '   payless ' + m.paylessClears + '   broke ' + m.brokeGarbage +
+                    '   avg ' + Math.round(rec.avgFrames / 60) + 's' +
+                    '   spread ' + div.join('/'));
         writeSnapshot(champs[bestI].weights, rec, total, div);
         lastLeg = (Date.now() - legStarted) / 1000;
         legsDone++;
