@@ -354,12 +354,32 @@ function heldOut(genome, cb) {
     });
 }
 
+function comboFour(combo) {
+    var out = {};
+    for (var k in combo) if (Number(k) > 3) out[k] = combo[k];
+    return out;
+}
+
+function threeCount(combo) {
+    var n = 0;
+    for (var k in combo) if (Number(k) <= 3) n += combo[k];
+    return n;
+}
+
 function buildReport(genome, r) {
     var n = r.n;
     return {
         avgFrames: r.frames / n, longestFrames: r.longest,
         mirror: { duels: n, avgSent: r.sentUs / n, chainDepth: r.depthUs,
-                  comboBySize: r.exactUs.combo, chainByLinks: r.exactUs.chain,
+                  // A COMBO IS FOUR OR MORE. Three is the minimum match, the
+                  // size the engine pays nothing for -- pushGarbage fires iff
+                  // isChainLink || comboSize > 3 -- so listing it as
+                  // "combos 3x15" puts the floor in the same row as the
+                  // payouts and makes the row unreadable. The threes are still
+                  // reported, under their own name and split by what they did.
+                  comboBySize: comboFour(r.exactUs.combo),
+                  threes: threeCount(r.exactUs.combo),
+                  chainByLinks: r.exactUs.chain,
                   paylessClears: r.exactUs.payless,
                   // Threes that OPENED a chain, held apart from the ones that
                   // cleared alone. Without it a rise in payless cannot be told
@@ -515,8 +535,8 @@ if (process.env.GC_PBT_PLAN_ONLY) {
         console.log('updates ' + total + '  [' + ((Date.now() - started) / 60000).toFixed(1) + ' min]' +
                     '  island ' + bestI + ' wins the face-off (' + score.join('/') + ')' +
                     '   chains ' + hist(m.chainByLinks) + '   combos ' + hist(m.comboBySize) +
-                    '   payless ' + m.paylessClears +
-                    '   opened ' + m.openedChain + '   broke ' + m.brokeGarbage +
+                    '   threes ' + m.threes + ' (payless ' + m.paylessClears +
+                    ', opened ' + m.openedChain + ')   broke ' + m.brokeGarbage +
                     '   avg ' + Math.round(rec.avgFrames / 60) + 's' +
                     '   spread ' + div.join('/'));
         writeSnapshot(champs[bestI].weights, rec, total, div);
