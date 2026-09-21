@@ -360,7 +360,13 @@ function buildReport(genome, r) {
         avgFrames: r.frames / n, longestFrames: r.longest,
         mirror: { duels: n, avgSent: r.sentUs / n, chainDepth: r.depthUs,
                   comboBySize: r.exactUs.combo, chainByLinks: r.exactUs.chain,
-                  paylessClears: r.exactUs.payless, brokeGarbage: r.exactUs.broke }
+                  paylessClears: r.exactUs.payless,
+                  // Threes that OPENED a chain, held apart from the ones that
+                  // cleared alone. Without it a rise in payless cannot be told
+                  // from a rise in chain building, because a chain starts with
+                  // exactly the match that used to be counted against it.
+                  openedChain: r.exactUs.openedChain,
+                  brokeGarbage: r.exactUs.broke }
     };
 }
 
@@ -509,7 +515,8 @@ if (process.env.GC_PBT_PLAN_ONLY) {
         console.log('updates ' + total + '  [' + ((Date.now() - started) / 60000).toFixed(1) + ' min]' +
                     '  island ' + bestI + ' wins the face-off (' + score.join('/') + ')' +
                     '   chains ' + hist(m.chainByLinks) + '   combos ' + hist(m.comboBySize) +
-                    '   payless ' + m.paylessClears + '   broke ' + m.brokeGarbage +
+                    '   payless ' + m.paylessClears +
+                    '   opened ' + m.openedChain + '   broke ' + m.brokeGarbage +
                     '   avg ' + Math.round(rec.avgFrames / 60) + 's' +
                     '   spread ' + div.join('/'));
         writeSnapshot(champs[bestI].weights, rec, total, div);
