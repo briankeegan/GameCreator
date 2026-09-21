@@ -104,8 +104,18 @@ check('a real duel that reaches the ceiling alive has a winner', function () {
     // 1330 against 1180, and both sides send.
     var other = JSON.parse(JSON.stringify(TRAINED));
     other.maxHeight = -(other.maxHeight || 50);
-    var r = versus.duel(TRAINED, other, 1, { ceiling: 3600 });
-    assert.strictEqual(r.reason, 'ceiling', 'this duel was meant to run out the ceiling');
+
+    // FIND A CEILING DUEL, DO NOT PIN ONE. Whether a given seed survives to a
+    // given ceiling is a property of how the bot plays, and that moves every
+    // time the bot changes — a pinned seed reports "the ceiling is broken"
+    // when all that happened is that someone died sooner. What is under test
+    // is what happens AT the ceiling.
+    var r = null, seed = 0;
+    for (var sd = 1; sd <= 12 && !r; sd++) {
+        var d = versus.duel(TRAINED, other, sd, { ceiling: 1800 });
+        if (d.reason === 'ceiling') { r = d; seed = sd; }
+    }
+    assert.ok(r, 'no seed of 12 kept both sides alive to the ceiling');
     assert.notStrictEqual(r.winner, null,
         'a ceiling duel with scores ' + JSON.stringify(r.scores) + ' was still called a draw');
     assert.strictEqual(r.winner, r.scores[0] > r.scores[1] ? 0 : 1,
@@ -113,7 +123,7 @@ check('a real duel that reaches the ceiling alive has a winner', function () {
 
     // The awkward correct case: a mirror reaches the same ceiling with the
     // same score and must still draw.
-    var m = versus.duel(TRAINED, TRAINED, 1, { ceiling: 3600 });
+    var m = versus.duel(TRAINED, TRAINED, seed, { ceiling: 1800 });
     assert.strictEqual(m.scores[0], m.scores[1], 'a mirror scored differently on each side');
     assert.strictEqual(m.winner, null, 'a mirror match at the ceiling produced a winner');
 });
