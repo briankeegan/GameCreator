@@ -339,6 +339,15 @@ gate_flags() {
 # cascade is running, garbage is breaking — and nothing asked there until
 # this. It plays real duels, and at every swap compares the board the
 # simulation predicts against the board the engine settles on, cell by cell.
+# THE SKIP CHANGES NOTHING BUT THE TIME IT TAKES. Stack.idleSkip jumps the
+# frames where only timers count down, which is most of a cascade. Three
+# separate couplings made it wrong before it was right — a clamp that
+# collapsed two matches into one, the stack counters running in sequence,
+# and matches firing on geometry that no timer predicts.
+gate_idle_skip() {
+  node games/the-game/ai/eval/idleskip.test.js
+}
+
 gate_live_fidelity() {
   node games/the-game/ai/eval/live_fidelity.js \
     games/the-game/ai/eval/trained.pbt.pbt-m29-s301-s301.0920-205538.g01000.json 3
@@ -664,6 +673,7 @@ GATES=(
   "a slow run stops before the job kills it:gate_deadline_stop:games/the-game/ai/"
   "a run that trained nothing does not chain:gate_pbt_stop:games/the-game/ai/"
   "a switch means the same thing everywhere:gate_flags:games/the-game/ai/"
+  "the idle skip changes nothing:gate_idle_skip:games/the-game/ai/"
   "the simulation is the engine mid-play:gate_live_fidelity:games/the-game/ai/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"

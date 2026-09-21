@@ -36,6 +36,11 @@
         var stack = new PanelEngine.Stack({ level: level || 10, seed: 7 });
         var guard = 0;
         while (!stack.stopWatchIsRunning && guard++ < 1000) stack.run();
+        // ONLY THIS STACK SKIPS. It exists to answer "what would this move
+        // do", never to be played, so jumping the frames where nothing can
+        // change costs a player nothing and saves the search most of its
+        // time. A Stack a person is playing never sets this.
+        stack.allowIdleSkip = true;
         return stack;
     }
 
@@ -159,6 +164,10 @@
         var cap = budget || 900;
         for (var f = 0; f < cap; f++) {
             stack.events.length = 0;
+            // The countdown frames between transitions are arithmetic. The
+            // engine does them in one step and refuses whenever anything
+            // could change that a timer does not predict.
+            stack.idleSkip();
             stack.run();
             for (var i = 0; i < stack.events.length; i++) {
                 var e = stack.events[i];

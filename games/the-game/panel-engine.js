@@ -1644,6 +1644,111 @@
   };
 
   // One frame. Call at a fixed 60 Hz.
+  function pressed(i) {
+    return !!i && (i.left || i.right || i.up || i.down || i.swap || i.raise);
+  }
+
+  // EXPERIMENTAL AND OFF. Jump the frames where only timers are counting
+  // down. A clearing settle runs ~73 frames and 95% of them emit nothing.
+  // Enabled per-Stack with allowIdleSkip, and only the bot's scratch Stack
+  // would ever set it — never the one a person is playing.
+  //
+  // IT IS NOT YET EQUIVALENT: with it on, 2,176 of 6,228 chips resolve
+  // differently. Do not wire it into anything until that is 0.
+  // IS A MATCH AVAILABLE RIGHT NOW, without marking anything. checkMatches
+  // fires on geometry, which no timer predicts, so a skip taken while one is
+  // pending lands it frames late against everything already counting down —
+  // and that gap is what separates one chain link from the next.
+  Stack.prototype.hasPendingMatch = function () {
+    var H = this.height, stride = W + 2, need = (H + 2) * stride;
+    if (!MATCH_EFF || MATCH_EFF.length < need) MATCH_EFF = new Int8Array(need);
+    var eff = MATCH_EFF, row, col, p;
+    for (row = 1; row <= H; row++) {
+      var base = row * stride;
+      for (col = 1; col <= W; col++) {
+        p = this.panels[row][col];
+        eff[base + col] = (p && canMatch(p)) ? p.color : 0;
+      }
+    }
+    var any = false;
+    rules().scanRuns(eff, W, H, stride, function () { any = true; });
+    return any;
+  };
+
+  Stack.prototype.idleSkip = function () {
+    if (!this.allowIdleSkip) return 0;
+    if (this.gameOver || !this.stopWatchIsRunning) return 0;
+    if (this.doCountdown && this.clock <= COUNTDOWN_TOTAL) return 0;
+    if (this.swapQueued() || this.shakeTime > 0 || this.manualRaise) return 0;
+    if (this.incoming && this.incoming.length) return 0;
+    if (pressed(this.input) || pressed(this.prevInput)) return 0;
+
+    // THE SOONEST TRANSITION ON THE BOARD, over EVERY timer there is —
+    // not only the states this function thought to enumerate. Taking the
+    // minimum of a chosen few and then clamping the rest is what broke it:
+    // a panel whose timer was smaller than the skip got clamped to zero
+    // instead of staying ahead, so two groups two frames apart fired
+    // together and a 3-chain resolved as a 2-chain.
+    var soonest = Infinity, r, c, p;
+    for (r = 1; r < this.panels.length; r++) {
+      for (c = 1; c <= W; c++) {
+        p = this.panels[r][c];
+        if (!p) continue;
+        // Anything that moves by POSITION cannot be recovered by subtracting
+        // from a counter.
+        if (p.state === "falling") return 0;
+        if (p.fellFromGarbage) return 0;
+        if (p.state === "hovering" && p.matchAnyway) return 0;
+        // A SWAP COMPLETING CHANGES GEOMETRY, and geometry creates matches
+        // that no timer predicts. Advancing the swap relative to a match
+        // already counting down moves the two apart in time, which is the
+        // difference between a 3-chain and a 2-chain.
+        if (p.state === "swapping") return 0;
+        if (p.timer > 0 && p.timer < soonest) soonest = p.timer;
+        // A matched panel also does something at popTime, before it hits 0.
+        if (p.state === "matched" && p.timer > p.popTime &&
+            (p.timer - p.popTime) < soonest) soonest = p.timer - p.popTime;
+      }
+    }
+    // The stack's own counters are timers too, and they decide when the
+    // board may rise again. Skipping past one would let the stack rise a row
+    // it had not earned.
+    // The stack's own counters are timers too, and they run in SEQUENCE:
+    // decrementTimers only ticks stopTime once preStopTime has reached zero.
+    if (this.preStopTime > 0) {
+      if (this.preStopTime < soonest) soonest = this.preStopTime;
+    } else if (this.stopTime > 0 && this.stopTime < soonest) {
+      soonest = this.stopTime;
+    }
+    // updateSpeed fires on an EXACT clock equality, so a jump past it loses
+    // the speed increase altogether.
+    if (this.nextSpeedIncreaseClock > this.clock) {
+      var toSpeed = this.nextSpeedIncreaseClock - this.clock;
+      if (toSpeed < soonest) soonest = toSpeed;
+    }
+    if (!isFinite(soonest) || soonest <= 1) return 0;
+
+    // LAST, BECAUSE IT IS THE EXPENSIVE ONE. A full match scan on every frame
+    // costs more than the frames it saves: most frames are refused by the
+    // cheap guards above, and only a frame that is genuinely about to skip
+    // needs to know whether geometry is about to fire.
+    if (this.hasPendingMatch()) return 0;
+
+    // No clamp: every positive timer is >= soonest > skip, so none can cross
+    // zero during the jump and every gap between them is preserved exactly.
+    var skip = soonest - 1;
+    for (r = 1; r < this.panels.length; r++) {
+      for (c = 1; c <= W; c++) {
+        p = this.panels[r][c];
+        if (p && p.timer > 0) p.timer -= skip;
+      }
+    }
+    if (this.preStopTime > 0) this.preStopTime -= skip;
+    else if (this.stopTime > 0) this.stopTime -= skip;
+    this.clock += skip;
+    return skip;
+  };
+
   Stack.prototype.run = function () {
     if (this.gameOver) return;
     if (this.doCountdown && this.clock <= COUNTDOWN_TOTAL) {
