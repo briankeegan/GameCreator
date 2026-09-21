@@ -57,6 +57,9 @@ on:
       beam:
         description: 'Candidates expanded at depth > 1. 0 = all of them'
         default: '0'
+      engine:
+        description: 'Resolve candidates on a REAL Stack instead of LogicalBoard. One implementation, so the bot cannot plan on a board the game disagrees with. ~10x slower (measured 46.81ms a frame against 4.79ms)'
+        default: '1'
       rise:
         description: 'Rise-adjusted scoring (1 = on)'
         default: '1'
@@ -142,6 +145,7 @@ jobs:
           GC_GA_SEED: ${{ github.event.inputs.ga_seed || '11' }}
           GC_DEPTH: ${{ github.event.inputs.depth || '1' }}
           GC_BEAM: ${{ github.event.inputs.beam || '0' }}
+          GC_ENGINE: ${{ github.event.inputs.engine || '1' }}
           GC_RISE: ${{ github.event.inputs.rise || '1' }}
           GC_DENSITY: ${{ github.event.inputs.density || '' }}
           GC_PBT_ISLANDS: ${{ github.event.inputs.islands || '4' }}
@@ -216,7 +220,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/ai-train-pbt.yml/dispatches" \
-            -d '{"ref":"main","inputs":{"variant":"${{ github.event.inputs.variant }}","level":"${{ github.event.inputs.level }}","exclude":"${{ github.event.inputs.exclude }}","include":"${{ github.event.inputs.include }}","islands":"${{ github.event.inputs.islands }}","population":"${{ github.event.inputs.population }}","leg":"${{ github.event.inputs.leg }}","modes":"${{ github.event.inputs.modes }}","faceoff":"${{ github.event.inputs.faceoff }}","migrate":"${{ github.event.inputs.migrate }}","ga_seed":"${{ github.event.inputs.ga_seed }}","depth":"${{ github.event.inputs.depth }}","beam":"${{ github.event.inputs.beam }}","rise":"${{ github.event.inputs.rise }}","density":"${{ github.event.inputs.density }}","minutes":"${{ github.event.inputs.minutes }}","chain":"true"}}')
+            -d '{"ref":"main","inputs":{"variant":"${{ github.event.inputs.variant }}","level":"${{ github.event.inputs.level }}","exclude":"${{ github.event.inputs.exclude }}","include":"${{ github.event.inputs.include }}","islands":"${{ github.event.inputs.islands }}","population":"${{ github.event.inputs.population }}","leg":"${{ github.event.inputs.leg }}","modes":"${{ github.event.inputs.modes }}","faceoff":"${{ github.event.inputs.faceoff }}","migrate":"${{ github.event.inputs.migrate }}","ga_seed":"${{ github.event.inputs.ga_seed }}","depth":"${{ github.event.inputs.depth }}","beam":"${{ github.event.inputs.beam }}","engine":"${{ github.event.inputs.engine }}","rise":"${{ github.event.inputs.rise }}","density":"${{ github.event.inputs.density }}","minutes":"${{ github.event.inputs.minutes }}","chain":"true"}}')
           if [ "$code" != "204" ]; then
             echo "the continuation was REFUSED (HTTP $code) — this chain ends here:"
             cat /tmp/dispatch.out

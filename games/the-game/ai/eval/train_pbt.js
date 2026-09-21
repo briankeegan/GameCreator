@@ -104,6 +104,7 @@ function fingerprint() {
     return ['pbt', MIGRATE ? 'migrate' : 'nomigrate', ISLANDS, POP, MUTATE, OPTS.level, baseSeed,
             String(OPTS.depth), String(OPTS.beam), OPTS.rise ? 'rise' : '',
             OPTS.density ? 'density' : '', OPTS.allowRaise ? 'allowRaise' : '',
+            OPTS.engine ? 'engine' : '',
             KEYS.join(',')].join('|');
 }
 var FP = fingerprint();
@@ -338,6 +339,7 @@ function bestCommittedChampion() {
             // describes the decision procedure, which is code and changes
             // without any switch moving.
             if (j.rules !== modes.RULES) return;
+            if (!!j.engine !== !!OPTS.engine) return;
             if (!!j.rise !== !!OPTS.rise || !!j.density !== !!OPTS.density ||
                 !!j.allowRaise !== !!OPTS.allowRaise ||
                 Number(j.depth || 1) !== Number(OPTS.depth) ||
@@ -428,7 +430,8 @@ function writeSnapshot(best, report, totalUpdates, diversity) {
         selection: 'champion of ' + ISLANDS + ' islands after ' + totalUpdates + ' updates',
         updates: totalUpdates, islands: ISLANDS, population: POP, leg: LEG,
         depth: OPTS.depth, beam: OPTS.beam, rise: OPTS.rise, density: OPTS.density,
-        allowRaise: OPTS.allowRaise, diversity: diversity, rules: modes.RULES,
+        allowRaise: OPTS.allowRaise, engine: OPTS.engine,
+        diversity: diversity, rules: modes.RULES,
         features: KEYS.slice(), excluded: EXCLUDE.slice(),
         holdoutSeeds: SEEDS.HOLDOUT, holdout: report, weights: best
     };
@@ -463,7 +466,13 @@ var started = Date.now();
 // that size and scales to any other. A flat per-leg number refuses to start a
 // leg a fifth as long, and stopping before the first leg is still a clean
 // stop, so the chain re-dispatches and spins without training.
-var GUESS_PER_UPDATE = Number(process.env.GC_PBT_UPDATE_GUESS_SEC || 15);
+// AND THE ENGINE PATH IS NOT THE SAME UPDATE. Resolving candidates on a real
+// Stack measured 46.81ms a frame against LogicalBoard's 4.79ms in whole
+// duels, so a leg takes about ten times as long. Guessing the LogicalBoard
+// number there refuses no leg and starts one that runs past the job's own
+// timeout, which loses everything since the last snapshot.
+var GUESS_PER_UPDATE = Number(process.env.GC_PBT_UPDATE_GUESS_SEC ||
+                              (process.env.GC_ENGINE && flag('GC_ENGINE') ? 150 : 15));
 var FIRST_LEG_GUESS = process.env.GC_PBT_LEG_GUESS_MIN
     ? Number(process.env.GC_PBT_LEG_GUESS_MIN) * 60
     : LEG * GUESS_PER_UPDATE;
@@ -499,7 +508,8 @@ if (process.env.GC_PBT_PLAN_ONLY) {
                 ' updates; budget leaves ' + planLeft + 's; fits: ' +
                 (planLeft >= FIRST_LEG_GUESS));
     console.log('switches: rise=' + OPTS.rise + ' modes=' + OPTS.modes +
-                ' density=' + OPTS.density + ' depth=' + OPTS.depth);
+                ' density=' + OPTS.density + ' depth=' + OPTS.depth +
+                ' engine=' + OPTS.engine);
     process.exit(0);
 }
 
