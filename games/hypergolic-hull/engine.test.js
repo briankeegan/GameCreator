@@ -3890,12 +3890,21 @@ assert.deepStrictEqual(
     level.playerStart = { q: 2, r: 3 };
     const state = Engine.createGameState(level, { runSeed: 1 });
     state.playerPos = { q: 2, r: 3 };
+    // A COLD TARGET. What is under test here is whether a round finds its
+    // way around a wall, and a hostile with charge in the bus will shoot
+    // the round out of the sky instead — correctly, since that rule runs
+    // both ways now, but it answers a different question than this one.
+    for (const foe of state.enemies) foe.energy = 0;
     return state;
   };
   const flyAt = (weaponId) => {
     const state = wall();
     Engine.launchMissile(state, state.playerPos, Engine.WEAPONS[weaponId], null);
     for (let round = 1; round <= 12; round++) {
+      // Held cold every round, not just at the start: a reactor cycles
+      // while it waits, and a Sentry with charge in the bus shoots the
+      // round down — correctly, but that is the other test.
+      for (const foe of state.enemies) foe.energy = 0;
       Engine.applyEndTurn(state);
       if (!state.enemies[0].alive) return { hit: true, round };
       if (!Engine.liveMissiles(state).length) return { hit: false, round };
@@ -3937,6 +3946,65 @@ assert.deepStrictEqual(
       Engine.liveMissiles(state).filter((m) => !m.spent).length,
       0,
       "a shot covering a round's hex takes it out of the sky"
+    );
+  }
+}
+
+// ---- and the rule runs BOTH ways ----------------------------------------
+//
+// A weapon that ignores cover cannot have cover as its answer, so a gun
+// pointed at the round has to be — and that has to be true of the
+// flagship's Seeker as well as a Hound's, or the game is cheating in the
+// player's favour. Two halves to it, and the second was missing: a
+// hostile could swat ordnance INCIDENTALLY, for free, on any round it was
+// already firing (the same free defence measured at four wins in sixty
+// and taken off the player's side), but could never CHOOSE to spend a
+// shot on an incoming round, because enemy fire only ever targeted the
+// flagship.
+{
+  const board = () => {
+    const level = JSON.parse(JSON.stringify(generateLevel(6, "quiet", 11)));
+    level.enemies = [{ type: "sentry", q: 2, r: 0 }];
+    level.hazards = [];
+    level.playerStart = { q: 2, r: 4 };
+    const state = Engine.createGameState(level, { runSeed: 1 });
+    state.playerPos = { q: 2, r: 4 };
+    return state;
+  };
+
+  // A hostile with charge and a clear shot at the round takes it.
+  {
+    const state = board();
+    const foe = state.enemies[0];
+    foe.energy = foe.maxEnergy;
+    Engine.launchMissile(state, { q: 2, r: 1 }, Engine.WEAPONS.seeker, null);
+    assert.strictEqual(Engine.liveMissiles(state).length, 1, "a round is in the air");
+    Engine.applyEndTurn(state);
+    assert.strictEqual(
+      Engine.liveMissiles(state).filter((m) => !m.spent).length,
+      0,
+      "a hostile that can pay for the shot answers an incoming round — the player's Seeker is not unanswerable"
+    );
+  }
+
+  // And it costs it the shot: a hostile whose gun is on the flagship is
+  // shooting the flagship, not clearing ordnance for free on the way.
+  {
+    const state = board();
+    const foe = state.enemies[0];
+    foe.energy = foe.maxEnergy;
+    // Stand the flagship where the Sentry's ring falls, and put a round
+    // on that same ring.
+    state.playerPos = { q: 2, r: 2 };
+    const hullBefore = state.hull;
+    Engine.launchMissile(state, { q: 2, r: 2 }, Engine.WEAPONS.seeker, null);
+    const round = Engine.liveMissiles(state)[0];
+    round.q = 3;
+    round.r = 1;
+    Engine.applyEndTurn(state);
+    assert.ok(
+      state.hull < hullBefore || Engine.liveMissiles(state).some((m) => !m.spent),
+      "a hostile spends its shot on ONE of the two — it never gets the flagship and the ordnance with one round"
     );
   }
 }

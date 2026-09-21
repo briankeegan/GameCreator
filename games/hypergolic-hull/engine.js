@@ -4025,6 +4025,28 @@
       const pick = affordable.slice().sort((a, b) => a.energyCost - b.energyCost || b.damage - a.damage)[0];
       return { enemyId: enemy.id, type: "attack", weaponKey: pick.id };
     }
+    // SHOOT THE INCOMING ROUND. Nothing bears on the flagship this turn,
+    // so the shot is going spare — and a Seeker the player launched routes
+    // around cover, which means cover cannot be the answer to it and a gun
+    // has to be. Without this the flagship's Seeker is unanswerable in a
+    // way the hostiles' is not, which is the game cheating in the player's
+    // favour; the rule is supposed to run both ways.
+    //
+    // Deliberately AFTER the attack branch: killing the flagship always
+    // beats swatting its ordnance, and this costs the same shot it costs
+    // the player.
+    {
+      const facing = enemyFacing(state, enemy);
+      const inbound = liveMissiles(state).filter((m) => !m.spent && !m.ownerId);
+      for (const weapon of enemyShip(enemy).weapons) {
+        if (enemy.energy < weapon.energyCost || weapon.launches || weapon.places) continue;
+        if (inhibited(state, enemy, weapon)) continue;
+        const covers = new Set(weaponHexes(enemy, facing, weapon, state, HYPOTHETICAL).map(hexKey));
+        if (covers.has(hexKey(state.playerPos))) continue; // that is an attack, not an intercept
+        const round = inbound.find((m) => covers.has(hexKey(m)));
+        if (round) return { enemyId: enemy.id, type: "intercept", weaponKey: weapon.id };
+      }
+    }
     // In reach, but the reactor can't pay for the shot yet — hold and let
     // the bus climb, drive or no drive. This USED to be drive-gated only
     // (an emplacement has no other option; anything that could fly always
@@ -4361,6 +4383,19 @@
       for (const { enemy, intent } of intents) {
         if (intent.type === "wait") waitedThisPhase.add(enemy.id);
       }
+      // Intercepts resolve first: a round taken out of the sky before the
+      // shooting starts is the whole point of spending a turn on it.
+      for (const { enemy, intent } of intents.filter(({ intent: i }) => i.type === "intercept")) {
+        if (!enemy.alive) continue;
+        const weapon = WEAPONS[intent.weaponKey];
+        if (!weapon || enemy.energy < weapon.energyCost) continue;
+        const covers = new Set(weaponHexes(enemy, enemyFacing(state, enemy), weapon, state).map(hexKey));
+        if (covers.has(hexKey(state.playerPos))) continue; // the board moved; that is an attack now
+        if (!liveMissiles(state).some((m) => !m.spent && !m.ownerId && covers.has(hexKey(m)))) continue;
+        enemy.energy -= weapon.energyCost; // paid for, same as any other shot
+        firedThisPhase.add(enemy.id);
+        shootDownMissiles(state, covers, enemy.type.toUpperCase());
+      }
       const attackers = intents
         .filter(({ intent }) => intent.type === "attack")
         .sort((a, b) => (WEAPONS[b.intent.weaponKey].speed || 0) - (WEAPONS[a.intent.weaponKey].speed || 0));
@@ -4409,11 +4444,22 @@
         // the board edge: you brace against it. Only the free hex actually
         // moves you, and that is the interesting case anyway — off your
         // ground, out of your gun's arc, into somebody else's.
-        // Whatever a hostile just fired into, it clears ordnance out of
-        // too. Same rule as the flagship's guns: a shot does not ask whose
-        // missile it is passing through, and a Seeker the player launches
-        // has to be answerable the same way theirs is.
-        shootDownMissiles(state, new Set(weaponHexes(enemy, enemyFacing(state, enemy), weapon, state).map(hexKey)), enemy.type.toUpperCase());
+        // SWATTING COSTS A HOSTILE THE SHOT TOO. The flagship only clears
+        // ordnance with a round that had nothing else to hit — spending
+        // the turn on the thing in the air instead of the thing that
+        // launched it. This did it unconditionally: a hostile firing at
+        // the flagship ALSO took out any of the player's rounds in its
+        // footprint, for free, every round it was going to fire anyway.
+        // That is precisely the free defence that was measured at four
+        // wins in sixty and taken off the player's side, left running on
+        // this one. A rule that applies to one side is the game cheating.
+        //
+        // So: only when the shot is not also hitting the flagship — which
+        // is the same test, read from the other direction.
+        const fired = new Set(weaponHexes(enemy, enemyFacing(state, enemy), weapon, state).map(hexKey));
+        if (!fired.has(hexKey(state.playerPos))) {
+          shootDownMissiles(state, fired, enemy.type.toUpperCase());
+        }
         if (weapon.pushes || weapon.pulls) {
           const dir = shoveDirection(enemy, state.playerPos, weapon);
           const dest = dir < 0 ? null : neighbor(state.playerPos, dir);
