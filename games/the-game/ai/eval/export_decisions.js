@@ -28,7 +28,23 @@ var OUT = process.argv[2] || path.join(PG, 'bot', 'fixtures', 'decision_referenc
 var PROFILE = process.env.GC_PROFILE || path.join(PG, 'bot', 'profiles', 'plamp.json');
 
 var prof = JSON.parse(fs.readFileSync(PROFILE, 'utf8'));
-var W = prof.weights;
+// A PROFILE IS A SHIPPED BOT, AND THE REGISTRY MOVES UNDER IT. What this
+// fixture pins is that both languages pick the SAME MOVE, so any weight set
+// that drives the bot will do; a key the registry has since dropped is pruned
+// rather than fatal. The evaluator's refusal of unknown keys is right for a
+// genome being trained and wrong for a profile nobody is training. Said out
+// loud, because a fixture that quietly measures a different bot is worse.
+var registryMod = require('./registry.js');
+var knownKeys = {};
+registryMod.all.forEach(function (f) { knownKeys[f.key] = true; });
+var W = {}, droppedKeys = [];
+Object.keys(prof.weights || {}).forEach(function (k) {
+    if (knownKeys[k]) W[k] = prof.weights[k]; else droppedKeys.push(k);
+});
+if (droppedKeys.length) {
+    console.log('dropped ' + droppedKeys.length + ' weight(s) the registry no longer has: ' +
+                droppedKeys.join(', '));
+}
 var DEPTH = prof.depth || 1, BEAM = prof.beam || 0;
 // RISE IS A SWITCH OF THE BOT, NOT OF THE EXPORT. It comes off the profile
 // like depth and beam, and the fixture records it, so decisionVerify runs the

@@ -26,6 +26,12 @@ var evaluator = require('./evaluator.js');
 
 var SEEDS = Number(process.argv[2] || 2);
 var WHICH = process.argv[3] || 'all';
+// DEPTH 2 BY DEFAULT, because that is what training runs and because the
+// reach* family exists only there -- PuyoCpu._value is what puts reach on the
+// input, and a depth-1 bench never calls it. Run at depth 1 and all fourteen
+// read a flat 0, which is indistinguishable from "not wired" and has already
+// cost one feature its life.
+var DEPTH = Number(process.argv[4] || process.env.GC_DEPTH || 2);
 var arena = WHICH === 'all' ? bench.ARENA : [WHICH];
 
 var live = registry.all.filter(function (f) { return typeof f.fn === 'function'; });
@@ -59,10 +65,11 @@ registry.genomeKeys('', process.env.GC_INCLUDE).forEach(function (k) { weights[k
 
 var seeds = [];
 for (var s = 1; s <= SEEDS; s++) seeds.push(s);
-console.log('playing ' + seeds.length + ' seeds x ' + arena.length + ' scenario(s): ' + arena.join(', '));
+console.log('playing ' + seeds.length + ' seeds x ' + arena.length + ' scenario(s) at depth ' + DEPTH + ': ' + arena.join(', '));
 arena.forEach(function (sc) {
     seeds.forEach(function (seed) {
-        bench.run(weights, seed, { brain: "puyo", scenario: sc, checkTiming: false });
+        bench.run(weights, seed, { brain: "puyo", scenario: sc, checkTiming: false,
+                                   depth: DEPTH, modes: true, rise: true });
     });
 });
 

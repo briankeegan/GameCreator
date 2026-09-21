@@ -53,7 +53,7 @@ on:
         default: '11'
       depth:
         description: 'Lookahead depth. 1 = greedy, 2 = beam search'
-        default: '1'
+        default: '2'
       beam:
         description: 'Candidates expanded at depth > 1. 0 = all of them'
         default: '0'
@@ -143,7 +143,7 @@ jobs:
           GC_INCLUDE: ${{ github.event.inputs.include || '' }}
           GC_VARIANT: ${{ github.event.inputs.variant || '' }}
           GC_GA_SEED: ${{ github.event.inputs.ga_seed || '11' }}
-          GC_DEPTH: ${{ github.event.inputs.depth || '1' }}
+          GC_DEPTH: ${{ github.event.inputs.depth || '2' }}
           GC_BEAM: ${{ github.event.inputs.beam || '0' }}
           GC_ENGINE: ${{ github.event.inputs.engine || '1' }}
           GC_RISE: ${{ github.event.inputs.rise || '1' }}

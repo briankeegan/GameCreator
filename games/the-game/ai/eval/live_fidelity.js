@@ -23,7 +23,26 @@ var PanelEngine = globalThis.PanelEngine;
 var PuyoCpu = require(path.join(DIR, 'puyocpu.js'));
 var SEEDS = require(path.join(DIR, 'seeds.js'));
 var arg = process.argv[2];
-var snapWeights = arg ? (require(path.resolve(arg)).weights || {}) : {};
+// WHAT IS UNDER TEST IS THE SIMULATION, NOT A PARTICULAR WEIGHT SET. The
+// weights exist only to make the bot play a plausible game; any set that
+// drives it will do. So a snapshot naming a feature the registry has since
+// dropped is pruned rather than fatal -- the evaluator refuses unknown keys,
+// which is right for a genome and wrong for a fixture nobody is training.
+// Silently would be worse than fatal, so it says what it dropped.
+var registry = require(path.join(DIR, 'registry.js'));
+var known = {};
+registry.all.forEach(function (f) { known[f.key] = true; });
+var snapWeights = {};
+if (arg) {
+    var raw = require(path.resolve(arg)).weights || {}, dropped = [];
+    Object.keys(raw).forEach(function (k) {
+        if (known[k]) snapWeights[k] = raw[k]; else dropped.push(k);
+    });
+    if (dropped.length) {
+        console.log('dropped ' + dropped.length + ' weight(s) the registry no longer has: ' +
+                    dropped.join(', '));
+    }
+}
 
 var R = { compared: 0, agree: 0, disagree: 0, skipped: 0, cells: 0, examples: [] };
 

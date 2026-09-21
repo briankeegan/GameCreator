@@ -46,7 +46,6 @@
       edgePenalty: 53,
       garbageOnBoard: 150,
       maxHeight: 39,
-      fillRatio: 179,
       garbageAdjacency: 5,
       stopTimeEarned: 60
     }
