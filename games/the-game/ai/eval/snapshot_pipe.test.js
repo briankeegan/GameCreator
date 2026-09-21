@@ -276,33 +276,30 @@ test('a stop for lack of room leaves the marker, and a normal exit does not', fu
 // features this run does not have. The shipped record is a FLOOR every chain
 // now clears 12-0, so without a moving opponent the report cannot rank two
 // champions at all.
-test('the peer opponent is the best matching champion, and a foreign one is ignored', function () {
+test('the held-out set duels NOTHING SAVED, and a failed shard stops the leg', function () {
     var src = fs.readFileSync(path.join(__dirname, 'train_pbt.js'), 'utf8');
-    var m = /function bestCommittedChampion\(\)[\s\S]*?\n}/.exec(src);
-    assert.ok(m, 'bestCommittedChampion is gone, so the peer record cannot be built');
-    var body = m[0];
-    assert.ok(/features\.join\(','\) !== KEYS\.join\(','\)/.test(body),
-        'it no longer skips a champion whose feature set differs, so it can duel weights ' +
-        'scored on features this run does not have');
-    assert.ok(/smoke/.test(body),
-        'it no longer skips .smoke.json, so a population-4 test run can become the bar');
-    assert.ok(/fitness[\s\S]{0,120}updates/.test(body),
-        'it no longer ranks by the record earned and then by updates');
 
-    // The report carries BOTH, and the shipped half never goes away. It is
-    // assembled by buildReport, which heldOut calls once its duels are back.
+    // This used to check that the peer was chosen carefully — same features,
+    // same switches, not a smoke file. There is no peer. A record against a
+    // saved weight set measures that set as much as this champion, and
+    // across a change of measurement set it measures nothing at all.
+    assert.ok(!/function bestCommittedChampion/.test(src), 'the peer picker is back');
+    assert.ok(!/trained-weights/.test(src), 'the shipped bot is loaded to duel again');
+
     var ho = /function buildReport\([\s\S]*?\n}/.exec(src);
     assert.ok(ho, 'buildReport is gone, so nothing assembles the held-out report');
-    assert.ok(/out\.peer = \{/.test(ho[0]),
-        'the report no longer carries a peer record');
-    assert.ok(/shipped: \{/.test(ho[0]),
-        'the report dropped the shipped record, which is the only figure comparable across ' +
-        'the whole run');
+    assert.ok(!/out\.peer = \{/.test(ho[0]), 'the report carries a peer record again');
+    assert.ok(!/shipped: \{/.test(ho[0]), 'the report carries a shipped record again');
+    assert.ok(/mirror: \{/.test(ho[0]), 'the report no longer carries the mirror counts');
+    assert.ok(/paylessClears/.test(ho[0]) && /chainByLinks/.test(ho[0]),
+        'the raw counts are missing, which are the whole of the report now');
 
-    // BOTH OPPONENTS GO OUT IN ONE FAN-OUT, and a failed shard must stop the
-    // leg rather than let a short result set be tallied as a record.
+    // A FAILED SHARD MUST STOP THE LEG rather than let a short result set be
+    // tallied as if it were the full one.
     var hof = /function heldOut\([\s\S]*?\n}/.exec(src);
     assert.ok(hof, 'heldOut is gone');
+    assert.ok(/duelJobs\(genome, genome\)/.test(hof[0]),
+        'the held-out set is not a mirror, so something else is on the other side');
     assert.ok(/runDuels\(/.test(hof[0]),
         'heldOut runs its duels inline again — that is half a leg on one core');
     assert.ok(/if \(err\) return cb\(err\)/.test(hof[0]),
