@@ -357,7 +357,9 @@
   //   2  the aim opens the attack, the floor is what building refuses
   //   3  FORCED opens on topped out alone, with no clock condition
   //   4  FORCED's escape counts the board a move LEAVES, not only what it clears
-  var RULES = 4;
+  //   5  a candidate is aged with the floor moving, so the board it is scored
+  //      on is the one the cursor arrives at
+  var RULES = 5;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
