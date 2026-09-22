@@ -41,3 +41,15 @@ function hw(w) {
 var pickW = JSON.parse(fs.readFileSync(rows[0].top.f, 'utf8')).weights;
 var live = fs.existsSync('inject.json') ? hw(JSON.parse(fs.readFileSync('inject.json', 'utf8')).weights) : null;
 console.log(hw(pickW) === live ? 'UNCHANGED — top rank is already the donor' : 'NEW DONOR — rewrite inject.json');
+
+// AND THE BEST THING THAT ISN'T THE DONOR. Once a donor has spread, it is
+// champion in several variants and wins the ranking as itself every round,
+// so "UNCHANGED" alone does not say whether anything is closing in on it.
+var runner = null;
+for (var ri = 0; ri < rows.length; ri++) {
+  var w = JSON.parse(fs.readFileSync(rows[ri].top.f, 'utf8')).weights;
+  if (hw(w) !== live) { runner = rows[ri]; break; }
+}
+console.log(runner ? 'runner-up ' + runner.v + ' medrank ' + runner.r.toFixed(1) +
+                     ' vs donor ' + rows[0].r.toFixed(1)
+                   : 'runner-up none — every variant champions the donor');
