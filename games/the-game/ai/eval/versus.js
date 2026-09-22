@@ -42,8 +42,15 @@ var CEILING = Number(process.env.GC_VERSUS_CEILING || 21600);   // 6 minutes at 
 // stays a draw, because there the bit would be a coin flip and noise in the
 // training signal.
 //
-// Score is the game's own: combo and chain bonuses via Stack.addScore, capped
-// at 99999. A bare three earns nothing under that table, which is the point.
+// Score is the game's own, capped at 99999: the combo and chain tables, which
+// pay nothing for a bare three, PLUS a flat +10 for every panel that finishes
+// popping, which pays 30 for one. So the score does reward a payless clear,
+// and on a ceiling duel the fitness would pay for grinding threes.
+//
+// It does not bite at the settings trained at. The ceiling is 21600 frames
+// and duels run about 1,100, topping out around 2,700, so every duel is
+// decided by who died. If the ceiling is ever reached, this tie-break stops
+// meaning what it says.
 exports.decideWinner = function (aDead, bDead, scores) {
     if (aDead && !bDead) return 1;
     if (bDead && !aDead) return 0;
