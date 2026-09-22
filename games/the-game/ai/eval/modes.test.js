@@ -198,6 +198,22 @@ test('no reachable escape means the floor is infinite', function () {
     assert.strictEqual(modes.escapeFrames({ reaction: 12, travel: null, hover: 6 }), Infinity);
 });
 
+test('an escape can be one move further out than the swap being judged', function () {
+    // A swap that SETS UP a four clears nothing, so its resolved is empty and
+    // banksTime rightly says no. The board it LEAVES is where the four is.
+    assert.strictEqual(modes.banksTime(res({ chainLength: 0, comboSizes: [] })), false);
+    assert.strictEqual(modes.reachesEscape(modes.reach({ links: 0, wide: 4 })), true);
+    assert.strictEqual(modes.reachesEscape(modes.reach({ links: 2, wide: 0 })), true);
+});
+
+test('reaching only a bare three is not an escape', function () {
+    // The thing the bot already does too much of. A three banks no time
+    // whether it is played now or set up for next move.
+    assert.strictEqual(modes.reachesEscape(modes.reach({ links: 0, wide: 3 })), false);
+    assert.strictEqual(modes.reachesEscape(modes.reach({ links: 0, wide: 0 })), false);
+    assert.strictEqual(modes.reachesEscape(null), false);
+});
+
 test('escapeFrames is still what it takes to act, and is still reported', function () {
     // It no longer gates FORCED, but it is the honest measure of whether a
     // move is reachable in time and the survivable() ranking is built on it.

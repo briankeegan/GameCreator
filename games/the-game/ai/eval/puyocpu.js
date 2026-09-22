@@ -899,10 +899,28 @@
       expand = cands.filter(function (c) { return c._keep; });
     }
 
-    var chosen = expand[0], bestValue = this._value(expand[0]);
-    for (i = 1; i < expand.length; i++) {
-      var v = this._value(expand[i]);
-      if (v > bestValue) { bestValue = v; chosen = expand[i]; }
+    var values = new Array(expand.length);
+    for (i = 0; i < expand.length; i++) values[i] = this._value(expand[i]);
+
+    // THE ESCAPE IS PICKED HERE, NOT AT FILTER TIME. _value is what attaches
+    // `reach` to a candidate, so the board a move leaves is unknown until
+    // this loop has run — _applyModes cannot see it and neither can
+    // survivable(). While FORCED, a move that banks time now or leaves a
+    // board holding a four or a chain outranks every move that does neither,
+    // and the ordinary values still choose among those.
+    var tier = null;
+    if (this._mode === 'FORCED') {
+      tier = [];
+      for (i = 0; i < expand.length; i++) {
+        if (modes.banksTime(expand[i].resolved) || modes.reachesEscape(expand[i].reach)) tier.push(i);
+      }
+      if (!tier.length) tier = null;
+    }
+
+    var order = tier || expand.map(function (c, k) { return k; });
+    var chosen = expand[order[0]], bestValue = values[order[0]];
+    for (i = 1; i < order.length; i++) {
+      if (values[order[i]] > bestValue) { bestValue = values[order[i]]; chosen = expand[order[i]]; }
     }
     this._took(chosen);
     return chosen.kind === 'swap' ? { kind: 'swap', move: chosen.move } : { kind: chosen.kind };

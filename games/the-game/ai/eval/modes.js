@@ -186,6 +186,29 @@
     return out.length ? out : cands;
   }
 
+  // AN ESCAPE ONE MOVE FURTHER OUT.
+  //
+  // banksTime reads `resolved`, which is what a swap does when it is played
+  // and the board settles. A swap that SETS UP a four clears nothing, so its
+  // resolved is empty and honest, and the escape is invisible. Measured on
+  // two real topped-out boards: 36 and 31 legal swaps, not one of them a four
+  // or a garbage break, while two-swap sequences held three and nine fours
+  // and, on the second board, a break worth eight garbage cells.
+  //
+  // `reach` is the board the move LEAVES, which is where that four lives. It
+  // is computed from the second ply, so it exists only after _lookahead has
+  // valued the candidate — never at filter time.
+  function reachesEscape(reach) {
+    if (!reach) return false;
+    for (var i = 0; i < COMBO_SIZES.length; i++) {
+      if (COMBO_SIZES[i] > 3 && reach['reach' + COMBO_SIZES[i] + 'combo']) return true;
+    }
+    for (var j = 0; j < CHAIN_SIZES.length; j++) {
+      if (CHAIN_SIZES[j] >= 2 && reach['reach' + CHAIN_SIZES[j] + 'chain']) return true;
+    }
+    return false;
+  }
+
   // DOES THIS MOVE BANK TIME — the only kind of move that is a way out.
   //
   // awardStopTime is gated on `comboSize > 3 || isChain`, so a bare three
@@ -333,12 +356,14 @@
   //   1  the floor opened the attack; the attack removed hold
   //   2  the aim opens the attack, the floor is what building refuses
   //   3  FORCED opens on topped out alone, with no clock condition
-  var RULES = 3;
+  //   4  FORCED's escape counts the board a move LEAVES, not only what it clears
+  var RULES = 4;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
            COMBO_SIZES: COMBO_SIZES, CHAIN_SIZES: CHAIN_SIZES,
            GOALS: GOALS, goal: goal, climbTo: climbTo, survivable: survivable,
+           reachesEscape: reachesEscape,
            clock: clock, escapeFrames: escapeFrames, banksTime: banksTime,
            risesIntoPayless: risesIntoPayless,
            forced: forced, planBroke: planBroke, bestPayout: bestPayout };
