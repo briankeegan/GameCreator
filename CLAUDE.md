@@ -201,6 +201,13 @@ ways: a tool not listed, or a path listed that doesn't exist.
 - **One run per condition measures nothing.** The seed-to-seed noise floor
   is ~911 points; ignore any smaller gap. `GC_GA_SEED` makes repeats
   possible.
+- **A fan-out dispatch carries BOTH `variant` and `ga_seed`.** The workflow's
+  concurrency key is built from them, so a dispatch missing either shares a
+  group with every other one and is cancelled seconds after it starts. A 204
+  from the dispatch API means the request was accepted, not that a job is
+  running — verify by listing runs with `status: in_progress` and counting,
+  not by counting 204s. `GC_TAG` is `pbt-<variant>-s<ga_seed>`, so a snapshot
+  named `pbt-default-…` is the tell that `variant` was dropped.
 - **Shipping a trained bot is one command: `ship.sh`.** It picks the newest
   real snapshot, prints what it scored, exports `ai/trained-weights.js`, and
   runs `gate_all`. It does not commit — look at the diff.

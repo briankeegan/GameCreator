@@ -82,8 +82,15 @@ on:
 
 # One run per experiment, and never two of the same. cancel-in-progress stays
 # FALSE — a run that has done four hours of updates has earned them.
+#
+# THE SEED IS IN THE KEY, not just the variant. A fan-out that sets ga_seed
+# and leaves variant empty puts every job in one group named `default`, where
+# only one can be pending — so 34 of 35 are cancelled within seconds of being
+# dispatched and the fan-out silently becomes a single run. Twice in one day,
+# and it reads from outside as chains dying rather than as jobs never starting.
+# Two seeds are two searches whatever they are labelled, so the key says so.
 concurrency:
-  group: ai-train-pbt-${{ github.event.inputs.variant || 'default' }}
+  group: ai-train-pbt-${{ github.event.inputs.variant || 'default' }}-s${{ github.event.inputs.ga_seed || '11' }}
   cancel-in-progress: false
 
 permissions:
