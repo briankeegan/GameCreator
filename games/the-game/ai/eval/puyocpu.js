@@ -297,6 +297,25 @@
       st.speed = this.stack.speed;
       st.stopTime = this.stack.stopTime || 0;
       st.preStopTime = this.stack.preStopTime || 0;
+      // AND THE ROW THAT IS ABOUT TO ARRIVE, not one the scratch invents.
+      // paint() reseeds the scratch's RNG, so a rise during the wait fills
+      // row 0 from that seed and deals panels the match will never see. The
+      // row entering play is the dimmed one the player can already look at,
+      // which snapshot() publishes as board.incoming; painted here, the rise
+      // brings in the real panels and only the row BEHIND it is invented —
+      // one further out than any walk reaches.
+      var inc = board.incoming;
+      if (inc && st.panels[0]) {
+        for (var ic = 1; ic <= board.width; ic++) {
+          var ip = st.panels[0][ic];
+          if (!ip) continue;
+          var col = inc[ic];
+          ip.color = (col && col > 0) ? col : 0;
+          ip.isGarbage = false; ip.state = 'normal';
+          ip.timer = 0; ip.chaining = false; ip.matching = false;
+          ip.gWidth = 0; ip.gHeight = 0; ip.xOffset = null; ip.yOffset = null;
+        }
+      }
     }
     for (var f = 0; f < wait; f++) {
       st.events.length = 0;
