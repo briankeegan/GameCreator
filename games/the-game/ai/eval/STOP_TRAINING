@@ -1,0 +1,14 @@
+Stop every PBT chain.
+
+The chain step checks `git cat-file -e origin/main:games/the-game/ai/eval/STOP_TRAINING`
+before dispatching the next leg. While this file exists on main, no leg
+dispatches a successor, so the 35 fan-out variants wind down as each
+in-flight leg finishes. Deleting it lets them continue.
+
+Stopped to change when FORCED fires. The danger trigger requires a panel
+already in the top row with the banked clock below the escape floor, which
+is not an early warning; until then BUILD refuses the bare threes that
+would lower the stack. Changing that changes how the bot plays, and the
+mode logic is not in the island fingerprint, so the populations would not
+restart on their own — they would carry on fitted to a bot that no longer
+exists.
