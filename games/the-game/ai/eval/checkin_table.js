@@ -28,9 +28,11 @@ rows.forEach(function (r) {
                (r.thr + '(' + r.pay + '/' + r.oc + ')').padStart(12),
                String(r.br).padStart(4), r.sent.toFixed(1).padStart(6)].join(' '));
 });
-var bo = rows.slice().sort(function (a, b) { return b.oc - a.oc; })[0];
+// NO "BEST openedChain". One variant topping that column across 35 noisy
+// 12-duel holdouts is a draw, not a result. The per-row count stays, since
+// it is what separates a three that started a chain from a wasted one.
 var bc = rows.slice().sort(function (a, b) { return b.c6 - a.c6; })[0];
-console.log('best openedChain ' + bo.oc + ' (' + bo.v + ')   best 6+ combos ' + bc.c6 + ' (' + bc.v + ')');
+console.log('best 6+ combos ' + bc.c6 + ' (' + bc.v + ')');
 
 // LIVENESS WITHOUT THE ACTIONS API. A leg is 30 minutes and ends by
 // committing a snapshot, so a variant whose newest snapshot is much older
