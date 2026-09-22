@@ -304,7 +304,10 @@
       // which snapshot() publishes as board.incoming; painted here, the rise
       // brings in the real panels and only the row BEHIND it is invented —
       // one further out than any walk reaches.
-      var inc = board.incoming;
+      // clone() does not carry `incoming` — it rebuilds a LogicalBoard from
+      // grid, blocks and chaining only — so a candidate's trial board has
+      // none and this read must fall back to the live snapshot.
+      var inc = board.incoming || (this._board && this._board.incoming);
       if (inc && st.panels[0]) {
         for (var ic = 1; ic <= board.width; ic++) {
           var ip = st.panels[0][ic];
