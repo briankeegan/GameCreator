@@ -112,7 +112,7 @@ test('fires is the payout arms only — breaking garbage is not firing', functio
 
 // --------------------------------------------- 3b. target, and the bar it sets
 
-test('about to die is TOPPED OUT with the clock running out', function () {
+test('about to die is TOPPED OUT', function () {
     // THE ENGINE'S OWN CONDITION, not a proxy for it. advancePassiveRaise:
     //
     //   if (!riseLock && stopTime === 0) {
@@ -125,32 +125,39 @@ test('about to die is TOPPED OUT with the clock running out', function () {
     assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 0, stopFloor: 30 }), true);
 });
 
-test('topped out with the clock banked is NOT about to die', function () {
-    // The whole point of stop time: you are standing at the ceiling and
-    // perfectly safe, with frames to dig out in. Treating height alone as
-    // danger throws that away — and throwing it away is what a rows-to-the-
-    // ceiling margin did, firing FORCED on 47% of decisions while buying
-    // zero extra survival.
-    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 120, stopFloor: 30 }), false);
+test('topped out fires whatever the clock says', function () {
+    // The clock used to gate this. It never bit: over 12 duels only 14 of
+    // 1,370 decisions were topped out at all, and on every one of them no
+    // candidate banked time, so escapeFrames returned Infinity and the
+    // comparison was true by construction. The condition described a
+    // behaviour the bot did not have.
+    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 120, stopFloor: 30 }), true);
+    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 0, stopFloor: 30 }), true);
+});
+
+test('height alone is still NOT the trigger', function () {
+    // A rows-to-the-ceiling margin was tried and fired FORCED on 47% of
+    // decisions while buying zero extra survival. Topped out means a panel
+    // in the top row, not a tall stack.
+    assert.strictEqual(modes.forced({ toppedOut: false, stopTime: 0, stopFloor: 30 }), false);
 });
 
 test('a full board that is not topped out is not about to die either', function () {
     assert.strictEqual(modes.forced({ toppedOut: false, stopTime: 0, stopFloor: 30 }), false);
 });
 
-test('the stop floor is read, not assumed', function () {
-    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 20, stopFloor: 10 }), false);
+test('the stop floor no longer decides anything', function () {
+    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 20, stopFloor: 10 }), true);
     assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 20, stopFloor: 30 }), true);
 });
 
 test('pre-stop time counts toward the clock', function () {
     // decrementTimers drains preStopTime FIRST and only then stopTime, and
     // the rise gate reads stopTime alone — so pre-stop does not protect on
-    // its own, it postpones the drain. Frames of safety are the sum.
-    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 20, preStopTime: 40,
-                                      stopFloor: 30 }), false);
-    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 20, preStopTime: 0,
-                                      stopFloor: 30 }), true);
+    // its own, it postpones the drain. Frames of safety are the sum. Still
+    // measured, and still reported; it just does not gate FORCED.
+    assert.strictEqual(modes.clock({ stopTime: 20, preStopTime: 40 }), 60);
+    assert.strictEqual(modes.clock({ stopTime: 20, preStopTime: 0 }), 20);
 });
 
 test('an escape is a move that BANKS TIME, not just one that clears', function () {
@@ -191,10 +198,10 @@ test('no reachable escape means the floor is infinite', function () {
     assert.strictEqual(modes.escapeFrames({ reaction: 12, travel: null, hover: 6 }), Infinity);
 });
 
-test('a derived floor fires exactly at the frame it must', function () {
-    var need = modes.escapeFrames({ reaction: 12, travel: 9, hover: 6 });   // 27
-    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 27, stopFloor: need }), false);
-    assert.strictEqual(modes.forced({ toppedOut: true, stopTime: 26, stopFloor: need }), true);
+test('escapeFrames is still what it takes to act, and is still reported', function () {
+    // It no longer gates FORCED, but it is the honest measure of whether a
+    // move is reachable in time and the survivable() ranking is built on it.
+    assert.strictEqual(modes.escapeFrames({ reaction: 12, travel: 9, hover: 6 }), 27);
 });
 
 test('FORCED opens when the plan broke, whatever the clock says', function () {

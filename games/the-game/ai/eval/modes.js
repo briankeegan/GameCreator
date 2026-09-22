@@ -249,12 +249,14 @@
 
   // TWO TRIGGERS, AND ONLY TWO.
   //
-  // Not a deep stack: room left is room left, and a stack at the ceiling
-  // with the clock banked is safe. Not an empty pool for its own sake —
-  // that is a broken plan, and it is counted as one.
+  // Topped out is the whole test. Not a deep stack — room left is room left.
+  // Not an empty pool for its own sake, which is a broken plan and is counted
+  // as one. The clock does not gate it: banked stop time postpones the rise,
+  // it does not undo a panel already in the top row, and a floor set to the
+  // frames one swap costs leaves nothing to act with.
   function forced(o) {
     if (o.broke) return true;
-    return !!o.toppedOut && clock(o) < o.stopFloor;
+    return !!o.toppedOut;
   }
 
   // Did what BUILD was saving for disappear without being spent.
@@ -330,7 +332,8 @@
   //
   //   1  the floor opened the attack; the attack removed hold
   //   2  the aim opens the attack, the floor is what building refuses
-  var RULES = 2;
+  //   3  FORCED opens on topped out alone, with no clock condition
+  var RULES = 3;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

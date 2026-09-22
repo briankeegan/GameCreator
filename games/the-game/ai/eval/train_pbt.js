@@ -105,6 +105,11 @@ function fingerprint() {
             String(OPTS.depth), String(OPTS.beam), OPTS.rise ? 'rise' : '',
             OPTS.density ? 'density' : '', OPTS.allowRaise ? 'allowRaise' : '',
             OPTS.engine ? 'engine' : '',
+            // THE RULES, NOT JUST THE SWITCHES. modes.RULES names the decision
+            // procedure; a population fitted under one plays a different game
+            // from a population fitted under the next, so they must not resume
+            // each other.
+            'rules' + modes.RULES,
             KEYS.join(',')].join('|');
 }
 var FP = fingerprint();
