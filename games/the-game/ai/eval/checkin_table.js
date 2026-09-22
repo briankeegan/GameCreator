@@ -34,15 +34,47 @@ rows.forEach(function (r) {
 var bc = rows.slice().sort(function (a, b) { return b.c6 - a.c6; })[0];
 console.log('best 6+ combos ' + bc.c6 + ' (' + bc.v + ')');
 
-// LIVENESS WITHOUT THE ACTIONS API. A leg is 30 minutes and ends by
-// committing a snapshot, so a variant whose newest snapshot is much older
-// than that has a chain that stopped. Cheaper and just as decisive as
-// listing 100 workflow runs, and it reads the thing that actually matters:
-// whether work is still landing.
-var now = Date.now(), stale = [];
-Object.keys(best).forEach(function (v) {
-  var t = fs.statSync(path.join(dir, best[v].file || '')).mtimeMs;
-  if (now - t > 45 * 60 * 1000) stale.push(v + ' ' + Math.round((now - t) / 60000) + 'm');
-});
-console.log(stale.length ? 'STALE (>45m since last snapshot): ' + stale.join(', ')
-                         : 'all ' + Object.keys(best).length + ' variants landed a snapshot within 45m');
+// LIVENESS FROM COMMIT TIMES, NOT FILE TIMES. A leg is 30 minutes and ends by
+// committing a snapshot, so a variant with no snapshot commit in that window
+// has a chain that stopped.
+//
+// A file's mtime is when THIS CHECKOUT wrote it, which a fetch-and-reset
+// refreshes wholesale. Read that way, thirty-three dead chains reported as
+// live for three hours: every snapshot file was present and every mtime was
+// minutes old, because the sync had just rewritten them. The commit date is
+// the only clock here that belongs to the run rather than to the reader.
+//
+// EXPECTED is stated, not inferred from what is on disk. Counting the
+// variants that have a file cannot see the ones that never started, and a
+// chain that died leaves its last file sitting there looking like a member
+// in good standing.
+var EXPECTED = Number(process.env.GC_VARIANTS || 35);
+var WINDOW = 45 * 60 * 1000;
+var cp = require('child_process');
+var seen = {};
+try {
+  var log = cp.execSync('git log origin/main --since="6 hours ago" --format="%ct %s"',
+                        { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  log.split('\n').forEach(function (line) {
+    var m = line.match(/^(\d+) .*\bof pbt-(r\d+|default|raise)-s\d+/);
+    if (!m) return;
+    var t = Number(m[1]) * 1000;
+    if (!seen[m[2]] || t > seen[m[2]]) seen[m[2]] = t;
+  });
+} catch (e) {
+  console.log('LIVENESS UNKNOWN — could not read git log: ' + e.message);
+  seen = null;
+}
+if (seen) {
+  var now = Date.now(), live = [], stale = [];
+  Object.keys(seen).forEach(function (v) {
+    var age = Math.round((now - seen[v]) / 60000);
+    if (now - seen[v] > WINDOW) stale.push(v + ' ' + age + 'm'); else live.push(v);
+  });
+  console.log('LIVE ' + live.length + '/' + EXPECTED + ' variants committed a snapshot within 45m');
+  if (stale.length) console.log('  STALE: ' + stale.join(', '));
+  if (live.length < EXPECTED) {
+    console.log('  MISSING ' + (EXPECTED - live.length) +
+                ' — re-dispatch them; a variant with no recent commit is not training.');
+  }
+}
