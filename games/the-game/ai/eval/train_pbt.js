@@ -528,6 +528,66 @@ if (process.env.GC_PBT_PLAN_ONLY) {
             fs.writeFileSync(islandFile(i2), JSON.stringify(st2));
         }
 
+        // AND ONE IMMIGRANT FROM ANOTHER JOB.
+        //
+        // The four islands in this process already trade champions every leg.
+        // The thirty-five JOBS did not trade anything, so each was a search on
+        // its own and a discovery in one never reached the others. The repo is
+        // the channel: every job commits its champion, so every job can read
+        // everyone else's.
+        //
+        // A RANDOM OTHER VARIANT, NOT THE BEST ONE. Taking the field's leader
+        // every leg is how thirty-five searches become one — the same genome
+        // arrives everywhere and the islands converge on it. A random source
+        // is the standard topology and it keeps the field a field.
+        //
+        // ONE immigrant, into ONE island's worst slot, jogged, with its record
+        // cleared. Same treatment as a champion that loses the face-off: it has
+        // to win here to stay.
+        if (MIGRATE) {
+            var pool = [];
+            fs.readdirSync(__dirname).forEach(function (n) {
+                var mm = n.match(/^trained\.pbt\.pbt-([A-Za-z0-9]+)-s(\d+)\.(\d{4}-\d{6})\.g\d+\.json$/);
+                if (!mm || Number(mm[2]) === baseSeed) return;   // never our own
+                var snap;
+                try { snap = JSON.parse(fs.readFileSync(path.join(__dirname, n), 'utf8')); }
+                catch (e) { return; }
+                // A GENOME FROM ANOTHER RULES VERSION IS NOT A PEER. It played a
+                // different game, and it arrives with thousands of updates of
+                // tuning behind it against populations that are new.
+                if (snap.rules !== modes.RULES || !snap.weights) return;
+                for (var ki = 0; ki < KEYS.length; ki++) {
+                    if (typeof snap.weights[KEYS[ki]] !== 'number') return;
+                }
+                var seen = pool.find(function (p2) { return p2.seed === mm[2]; });
+                if (!seen) pool.push({ seed: mm[2], stamp: mm[3], w: snap.weights });
+                else if (mm[3] > seen.stamp) { seen.stamp = mm[3]; seen.w = snap.weights; }
+            });
+            if (pool.length) {
+                var src = pool[Math.floor(rng() * pool.length) % pool.length];
+                var into = Math.floor(rng() * ISLANDS) % ISLANDS;
+                var st3 = states[into];
+                var w3 = 0, w3rate = Infinity;
+                for (var k3 = 0; k3 < st3.population.length; k3++) {
+                    var n3 = st3.played[k3] || 0;
+                    var r3 = n3 ? (st3.wins[k3] || 0) / n3 : 0;
+                    if (r3 < w3rate) { w3rate = r3; w3 = k3; }
+                }
+                var imm = {};
+                KEYS.forEach(function (k4) {
+                    var v4 = (src.w[k4] || 0) + (rng() * 2 - 1) * MUTATE * MAX_WEIGHT;
+                    imm[k4] = Math.max(MIN_WEIGHT, Math.min(MAX_WEIGHT, v4));
+                });
+                st3.population[w3] = imm;
+                st3.wins[w3] = 0; st3.played[w3] = 0;
+                fs.writeFileSync(islandFile(into), JSON.stringify(st3));
+                console.log('immigrant from s' + src.seed + ' into island ' + into +
+                            ' slot ' + w3 + ' (' + pool.length + ' peers available)');
+            } else {
+                console.log('no peer snapshots to migrate from yet');
+            }
+        }
+
         heldOut(champs[bestI].weights, function (hoErr, rec) {
         if (hoErr) { console.error(hoErr); process.exit(1); }
         // WHAT IT FIRED, not what it beat. Chains by link and combos by
