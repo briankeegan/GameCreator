@@ -275,11 +275,37 @@
     var st = this._scratch;
     engineBoard.paint(st, board.grid, board.height, board.width);
     var wait = Math.max(0, delay || 0);
+    // AGE IT WITH THE FLOOR MOVING. paint() parks the rise — riseLock true and
+    // riseTimer at 1e9 — because a rise DURING THE SETTLE shifts the board out
+    // from under the read. But the wait below is not a settle: it is the walk
+    // to the square, and the rise is the one thing that moves the board while
+    // the cursor is travelling. Frozen, the search ages the board with nothing
+    // changing, so a three it lined up is still lined up when it swaps —
+    // in the scratch. On the real board it has climbed.
+    //
+    // Measured before this: of 980 swaps, 256 did not do what the search said,
+    // and the largest class by far was an attack that vanished — 88 swaps
+    // predicted a 4-combo and cleared nothing.
+    //
+    // The real stack's rise state is copied so the wait ages at the speed and
+    // phase the match is actually at, then the floor is parked again for the
+    // swap and the settle.
+    if (wait > 0 && this.stack) {
+      st.riseLock = false;
+      st.riseTimer = this.stack.riseTimer;
+      st.displacement = this.stack.displacement;
+      st.speed = this.stack.speed;
+      st.stopTime = this.stack.stopTime || 0;
+      st.preStopTime = this.stack.preStopTime || 0;
+    }
     for (var f = 0; f < wait; f++) {
       st.events.length = 0;
       st.run();
       if (st.gameOver) break;
     }
+    st.riseLock = true;
+    st.riseTimer = 1e9;
+    st.stopTime = 0; st.preStopTime = 0;
     if (move && st.canSwap(move[0], move[1])) st.doSwap(move[0], move[1]);
     var out = engineBoard.settle(st, 900);
     var settled = engineBoard.readGrid(st, board.height, board.width);
