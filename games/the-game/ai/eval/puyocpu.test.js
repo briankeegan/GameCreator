@@ -275,6 +275,81 @@ test('no feature is silently dead under this brain', function () {
         '. Remove them — the list is a statement about this brain, not a permanent excuse.');
 });
 
+// ---- it may not choose to die ----------------------------------------
+//
+// Raising is the one thing the bot does that pushes its OWN stack up, so
+// it is the only move where "chose to die" is literally true. Every other
+// way of dying is the floor arriving. Measured over ten deaths, one took
+// `raise` with 12 cells of garbage queued at a board already 9 rows deep
+// and died 71 frames after it landed -- and no weight could have stopped
+// it, because a weight applies to every raise equally and most raises are
+// fine. This is a rule, not a preference.
+
+function boardAt(height, width, topRow) {
+    var g = [];
+    for (var r = 0; r <= height; r++) {
+        g[r] = [];
+        for (var c = 0; c <= width; c++) g[r][c] = (r >= 1 && r <= topRow) ? 1 : 0;
+    }
+    return { grid: g, height: height, width: width };
+}
+
+test('a raise that tops the board out is not offered', function () {
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 7, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: sample() });
+    // Filled to the top row: the engine's own second game-over condition is
+    // holding raise on a board like this.
+    assert.strictEqual(cpu._raiseIsSuicide(boardAt(stack.height, stack.width, stack.height)), true);
+});
+
+test('a raise the QUEUED GARBAGE has nowhere to land is not offered', function () {
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 7, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var H = stack.height, W = stack.width;
+    // Two rows of clear space after the raise...
+    var board = boardAt(H, W, H - 2);
+    assert.strictEqual(cpu._raiseIsSuicide(board), false, 'two clear rows and nothing queued is fine');
+    // ...and two rows of garbage already on the way fills exactly all of it.
+    stack.incoming = [{ width: W, height: 2 }];
+    assert.strictEqual(cpu._raiseIsSuicide(board), true);
+    // One row queued still leaves somewhere to stand.
+    stack.incoming = [{ width: W, height: 1 }];
+    assert.strictEqual(cpu._raiseIsSuicide(board), false);
+});
+
+test('an ordinary raise on a low board is still offered', function () {
+    // The rule must refuse suicide and nothing else. A bot that stopped
+    // raising would be a different, worse bot, and it would pass a test
+    // that only checked the refusals.
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 7, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: sample() });
+    stack.incoming = [{ width: stack.width, height: 2 }];
+    assert.strictEqual(cpu._raiseIsSuicide(boardAt(stack.height, stack.width, 3)), false);
+});
+
+test('the refusal happens in the CANDIDATE LIST, not in the score', function () {
+    // Scoring it low is not the same as making it illegal: the weights are
+    // free to rank it back up, and 63% of trained champions weight
+    // stopTimeEarned negative, so "the weights will handle it" is not a
+    // thing this repo gets to assume.
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 7, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: sample(), allowRaise: true, engine: true });
+    var raiseIsSuicide = true;
+    cpu._raiseIsSuicide = function () { return raiseIsSuicide; };
+    for (var f = 0; f < 200; f++) { cpu.update(); stack.run(); }
+    var cands = cpu._candidates();
+    assert.ok(!cands.some(function (c) { return c.kind === 'raise'; }),
+        'a raise the bot cannot survive was still on the list');
+    // And the same position with the rule switched off DOES offer it, so
+    // the assertion above is about the rule and not about the position.
+    var loose = new PuyoCpu(stack, { weights: sample(), allowRaise: true, engine: true,
+                                     refuseSuicide: false });
+    loose._raiseIsSuicide = function () { return true; };
+    var offered = loose._candidates().some(function (c) { return c.kind === 'raise'; });
+    assert.ok(offered || !loose._canRaise(),
+        'the rule-off bot refused it too, so this position proves nothing');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }

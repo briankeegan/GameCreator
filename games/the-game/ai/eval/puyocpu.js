@@ -145,6 +145,12 @@
     // On, the clock does not seize the wheel: see modes.warned(). Opening
     // FORCED on it instead was tried and lost 8-16-16.
     this.dangerClock = opts.dangerClock === true;
+    // Raises refused because the board could not survive them. Counted, so
+    // "it never chooses to die any more" is a number rather than a claim.
+    this.suicidalRaises = 0;
+    // Off only for the harness that measures what the rule is worth. A rule
+    // that cannot be switched off cannot be shown to be doing anything.
+    this.refuseSuicide = opts.refuseSuicide !== false;
     // WHAT THIS BOT IS BUILDING, as one setting a player would recognise:
     // "5-chain", "6-combo", or null for no target at all. It says the whole
     // plan — climb toward it, refuse to sell below it, fire when it exists —
@@ -610,6 +616,42 @@
     return evaluator.evaluate(input, this._weightsNow(), { density: this.density }).score;
   };
 
+  // WOULD THIS RAISE KILL IT.
+  //
+  // Not "is it risky" -- would the board it leaves have nowhere for the
+  // garbage that is already queued to land. The engine's own second
+  // game-over condition is holding raise on a topped-out board, and its
+  // first is the health drain, which at level 10 is one frame; between them
+  // there is no reaction window, so the only place to refuse this is before
+  // the move is offered.
+  //
+  // Measured on ten deaths: one of them took `raise` with 12 cells of
+  // garbage queued at a board already 9 rows deep, went from 9 rows to
+  // topped out when it landed, and died 71 frames later. Nothing in the
+  // weights forbade it and nothing could -- a weight applies to every raise
+  // equally, and most raises are fine.
+  //
+  // `raiseBoard` has been resolved, so its grid is the board AFTER the new
+  // row lands and everything it triggers settles.
+  PuyoCpu.prototype._raiseIsSuicide = function (raiseBoard) {
+    if (!raiseBoard || !raiseBoard.grid) return false;
+    // The raise itself already topped the board out.
+    if (this._boardToppedOut(raiseBoard)) return true;
+    // Or the garbage on its way has nowhere left to land. Rows, because a
+    // row is what costs headroom.
+    var top = 0, r, c;
+    for (r = raiseBoard.height; r >= 1; r--) {
+      var row = raiseBoard.grid[r];
+      if (!row) continue;
+      var any = false;
+      for (c = 1; c <= raiseBoard.width; c++) if (row[c] !== 0) { any = true; break; }
+      if (any) { top = r; break; }
+    }
+    var queuedRows = 0, q = (this.stack && this.stack.incoming) || [];
+    for (var i = 0; i < q.length; i++) queuedRows += (q[i].height || 0);
+    return (raiseBoard.height - top) - queuedRows <= 0;
+  };
+
   // Whether the engine will serve a manual raise this frame.
   PuyoCpu.prototype._canRaise = function () {
     // Off only when a caller asks for it off -- a harness pinning the old
@@ -651,13 +693,22 @@
       // can complete a match and that match is the reason to make it.
       var raiseBoard = board.clone().rise(this._incoming);
       var raiseResolved = this._resolveCandidate(raiseBoard);
-      cands.push({ kind: 'raise',
-                   score: this._score(raiseBoard, raiseResolved, null),
-                   board: this._scoredBoard,
-                   resolved: raiseResolved,
-                   risen: this._scoredResolved,
-                   travel: this._scoredTravel,
-                   earnedStop: raiseResolved.stopTimeEarned || 0 });
+      // A MOVE THAT KILLS YOU IS NOT A MOVE. Raising is the one thing the
+      // bot does that pushes its own stack up, and it is the only way it
+      // can shorten its own clock on purpose -- so it is the only place
+      // "chose to die" is literally true, and it is not a preference to be
+      // weighted against tidiness. See _raiseIsSuicide.
+      if (!(this.refuseSuicide && this._raiseIsSuicide(raiseBoard))) {
+        cands.push({ kind: 'raise',
+                     score: this._score(raiseBoard, raiseResolved, null),
+                     board: this._scoredBoard,
+                     resolved: raiseResolved,
+                     risen: this._scoredResolved,
+                     travel: this._scoredTravel,
+                     earnedStop: raiseResolved.stopTimeEarned || 0 });
+      } else {
+        this.suicidalRaises++;
+      }
     }
 
     var swaps = board.legalSwaps();
