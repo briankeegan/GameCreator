@@ -289,7 +289,11 @@
         if (cells && cells.length) slabs[bid] = cells;
       }
     }
-    engineBoard.paint(st, board.grid, board.height, board.width, slabs);
+    // AND THE CHAINING FLAGS. A clear is a chain LINK because the panels
+    // carry the flag, not because of anything in the grid, so a board painted
+    // without them resolves a chain as a plain combo.
+    engineBoard.paint(st, board.grid, board.height, board.width, slabs,
+                      board.chaining || null);
     var wait = Math.max(0, delay || 0);
     // AGE IT WITH THE FLOOR MOVING. paint() parks the rise — riseLock true and
     // riseTimer at 1e9 — because a rise DURING THE SETTLE shifts the board out
@@ -349,6 +353,17 @@
     var settled = engineBoard.readGrid(st, board.height, board.width);
     for (var r = 0; r <= board.height; r++) {
       for (var c = 1; c <= board.width; c++) board.grid[r][c] = settled[r][c];
+    }
+    // AND THE SLABS THE SETTLE LEFT. The grid goes back and the blocks did
+    // not, so the board handed to the second ply carried the garbage
+    // structure from BEFORE the swap — a slab that has just been broken, or
+    // fallen, or split, still described as it was. readBlocks exists for
+    // this and nothing called it, which is the same defect as painting
+    // without slabs, one ply deeper.
+    board.blocks = {};
+    var after = engineBoard.readBlocks(st, board.height, board.width);
+    for (var bk in after) {
+      if (after.hasOwnProperty(bk)) board.blocks[bk] = { cells: after[bk] };
     }
     return out;
   };

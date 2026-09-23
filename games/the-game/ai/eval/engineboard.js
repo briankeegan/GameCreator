@@ -56,7 +56,12 @@
     // pop it as a unit. Painting isGarbage alone and zeroing the rest leaves a
     // slab the engine cannot reason about, so every garbage comparison was
     // measuring the harness.
-    function paint(stack, grid, height, width, blocks) {
+    // chaining: [row][col] booleans, the engine's own per-PANEL chaining flag.
+    // It is what makes a clear a chain LINK rather than a fresh combo, and it
+    // lives on the panel, so a board painted without it cannot produce a chain
+    // the game would produce. snapshot() collects it; nothing passed it here
+    // and the loop below zeroed it on every cell.
+    function paint(stack, grid, height, width, blocks, chaining) {
         for (var r = 0; r < stack.panels.length; r++) {
             for (var c = 1; c <= width; c++) {
                 var p = stack.panels[r][c];
@@ -66,7 +71,8 @@
                 p.isGarbage = v === -2;
                 p.state = 'normal';
                 p.timer = 0; p.initialTime = 0; p.popTime = 0; p.popIndex = 0;
-                p.chaining = false; p.matching = false;
+                p.chaining = !!(chaining && chaining[r] && chaining[r][c]);
+                p.matching = false;
                 p.fellFromGarbage = 0; p.stateChanged = false;
                 p.propagatesChaining = false; p.matchAnyway = false;
                 p.xOffset = null; p.yOffset = null;

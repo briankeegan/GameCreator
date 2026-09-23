@@ -59,19 +59,54 @@ function settled(stack) {
     }
     return true;
 }
+// THE WHOLE POSITION, NOT THE CELL VALUES.
+//
+// Every garbage cell reads -2 whatever its slab is, so two boards can agree
+// cell for cell while one holds a 6x2 and the other two 6x1s — which fall and
+// pop differently on the very next move. The chaining flag lives on the panel
+// and is what makes a clear a chain LINK rather than a fresh combo. Comparing
+// grids alone was blind to both, and both were wrong in paint() for as long
+// as this check has been reporting "0 differ".
 function gridOf(board) {
     var out = [];
     for (var r = 1; r <= board.height; r++) out.push(board.grid[r].slice(1).join(','));
-    return out.join('|');
+    // Slabs by shape and position, in a stable order.
+    var slabs = [];
+    var bl = board.blocks || {};
+    for (var id in bl) {
+        if (!bl.hasOwnProperty(id)) continue;
+        var cells = bl[id].cells || bl[id];
+        if (!cells || !cells.length) continue;
+        var key = cells.map(function (rc) { return rc[0] + ':' + rc[1]; }).sort().join(' ');
+        slabs.push(key);
+    }
+    slabs.sort();
+    // Chaining, cell by cell.
+    var ch = [];
+    if (board.chaining) {
+        for (var r2 = 1; r2 <= board.height; r2++) {
+            var row = board.chaining[r2] || [];
+            var acc = '';
+            for (var c2 = 1; c2 <= board.width; c2++) acc += row[c2] ? '1' : '0';
+            ch.push(acc);
+        }
+    }
+    return out.join('|') + ' #SLABS ' + slabs.join('/') + ' #CHAIN ' + ch.join('|');
 }
 
 var seeds = SEEDS.HOLDOUT.slice(0, Number(process.argv[3] || 3));
 seeds.forEach(function (seed) {
     var stacks = [ new PanelEngine.Stack({ level: 10, seed: seed, countdown: false }),
                    new PanelEngine.Stack({ level: 10, seed: seed, countdown: false }) ];
+    // THE PATH TRAINING ACTUALLY RUNS. Without `engine` the bot resolves through
+    // LogicalBoard, so this checked a second implementation while every run
+    // since GC_ENGINE=1 has used engineboard — and every engine-side defect
+    // (slabs never painted, chaining flags zeroed, blocks never written back)
+    // sat under a green "0 differ" because the check never touched that code.
+    var ENGINE = process.env.GC_FIDELITY_ENGINE !== '0';
     function mk(st) {
         return new PuyoCpu(st, { weights: snapWeights, reaction: 12, depth: 2, beam: 0,
-                                 rise: true, density: false, modes: true });
+                                 rise: true, density: false, modes: true, engine: ENGINE });
     }
     var cpus = [ mk(stacks[0]), mk(stacks[1]) ];
     cpus[0].opponent = stacks[1]; cpus[1].opponent = stacks[0];
@@ -85,8 +120,11 @@ seeds.forEach(function (seed) {
         if (open) { open.dirty = true; }
         else {
             var b = cpus[0]._snapshot().clone();
-            b.swap(row, col);
-            var pred = b.resolve();
+            // The engine path applies the swap itself, after ageing by `delay`;
+            // here the swap is happening NOW, so the delay is zero.
+            var pred;
+            if (ENGINE) pred = cpus[0]._resolveCandidate(b, [row, col], 0);
+            else { b.swap(row, col); pred = b.resolve(); }
             var states = [];
             for (var rr = 1; rr <= this.height; rr++) {
                 var cells = [];
