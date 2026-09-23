@@ -273,7 +273,23 @@
     }
     if (!this._scratch) this._scratch = engineBoard.scratch(10);
     var st = this._scratch;
-    engineBoard.paint(st, board.grid, board.height, board.width);
+    // WITH THE SLABS, not just the cells that read -2. The engine walks
+    // gWidth, gHeight and each cell's offset to decide whether a garbage block
+    // is supported and to pop it as a unit; painted without them it is a
+    // rectangle the engine cannot reason about, so every resolve involving
+    // garbage was answering about a board the game will never have. The board
+    // carries them from snapshot(); paint wants cells per id, not {cells}.
+    var slabs = null;
+    if (board.blocks) {
+      slabs = {};
+      for (var bid in board.blocks) {
+        if (!board.blocks.hasOwnProperty(bid)) continue;
+        var bc = board.blocks[bid];
+        var cells = bc && bc.cells ? bc.cells : bc;
+        if (cells && cells.length) slabs[bid] = cells;
+      }
+    }
+    engineBoard.paint(st, board.grid, board.height, board.width, slabs);
     var wait = Math.max(0, delay || 0);
     // AGE IT WITH THE FLOOR MOVING. paint() parks the rise — riseLock true and
     // riseTimer at 1e9 — because a rise DURING THE SETTLE shifts the board out
