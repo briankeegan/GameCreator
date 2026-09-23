@@ -64,7 +64,13 @@ SEEDS.HOLDOUT.slice(0, NSEEDS).forEach(function (seed) {
     cpus[0].opponent = stacks[1]; cpus[1].opponent = stacks[0];
     var open = null;
     var origQueue = PanelEngine.Stack.prototype.tryQueueSwap;
+    // ONE KIND PER PASS. A swap window stays open until the board has been
+    // still for eight frames, which is most of the time the board is moving —
+    // so an air window competing with it never opens. GC_CORPUS_MODE=air turns
+    // the swap capture off and takes mid-flight positions instead.
+    var MODE = process.env.GC_CORPUS_MODE || 'swap';
     stacks[0].tryQueueSwap = function (row, col) {
+        if (MODE === 'air') { if (air) air.dirty = true; return origQueue.call(this, row, col); }
         if (!open && this.canSwap(row, col)) {
             var b = cpus[0]._snapshot();
             open = {
@@ -81,9 +87,46 @@ SEEDS.HOLDOUT.slice(0, NSEEDS).forEach(function (seed) {
             };
         }
         else if (open) open.dirty = true;
+        if (air) air.dirty = true;
         return origQueue.call(this, row, col);
     };
     function settled(s) { return !s.hasActivePanels() && !s.hasChainingPanels(); }
+
+    // AND POSITIONS WITH PANELS STILL IN THE AIR.
+    //
+    // Every entry above is captured at the instant of a swap, when the board
+    // is quiet — a swap made mid-cascade opens no window because one is
+    // already open. So nothing in the corpus exercised the part of paint()
+    // that places falling and hovering panels, which is most of what the
+    // resolve is handed in real play. These take no swap at all: snapshot a
+    // board mid-flight, ask the resolve what it settles to, and let the engine
+    // answer the same question.
+    var air = null, airCooldown = 0;
+    function tryOpenAir(stack, cpu) {
+        if (MODE !== 'air') return;
+        if (air || airCooldown > 0) return;
+        if (settled(stack)) return;
+        var inFlight = 0;
+        for (var r = 1; r <= stack.height; r++) {
+            for (var c = 1; c <= 6; c++) {
+                var p = stack.panelAt(r, c);
+                if (p && !p.isGarbage && p.color &&
+                    (p.state === 'hovering' || p.state === 'falling')) inFlight++;
+            }
+        }
+        if (!inFlight) return;
+        var b = cpu._snapshot();
+        air = { seed: seed, swap: null, inFlight: inFlight,
+                board: { grid: gridOf(b), blocks: slabsOf(b), chaining: b.chaining,
+                         motion: b.motion, incoming: b.incoming,
+                         width: b.width, height: b.height },
+                stack: { riseTimer: stack.riseTimer, displacement: stack.displacement,
+                         speed: stack.speed, stopTime: stack.stopTime,
+                         preStopTime: stack.preStopTime,
+                         incoming: (stack.incoming || []).map(function (g) {
+                             return { width: g.width, height: g.height, isChain: g.isChain }; }) },
+                since: 0, stable: 0, dirty: false, links: 0 };
+    }
     for (var f = 0; f < 21600; f++) {
         cpus[0].update(); cpus[1].update();
         stacks[0].run(); stacks[1].run();
@@ -93,6 +136,27 @@ SEEDS.HOLDOUT.slice(0, NSEEDS).forEach(function (seed) {
         }
         var evs = stacks[0].drainEvents();
         stacks[1].drainEvents();
+        tryOpenAir(stacks[0], cpus[0]);
+        if (air) {
+            for (var aq = 0; aq < evs.length; aq++) {
+                var at = evs[aq].type;
+                if (at === 'chainEnd') air.links = evs[aq].length;
+                else if (at === 'match' && !evs[aq].chain && !air.links) air.links = 1;
+                if (at === 'garbageDrop') air.dirty = true;
+            }
+            air.since++;
+            air.stable = settled(stacks[0]) ? air.stable + 1 : 0;
+            if (air.since > 2 && air.stable >= 8) {
+                if (!air.dirty) {
+                    var afterAir = cpus[0]._snapshot();
+                    air.truth = { key: key(gridOf(afterAir), slabsOf(afterAir)), links: air.links };
+                    delete air.since; delete air.stable; delete air.dirty;
+                    corpus.push(air);
+                }
+                air = null; airCooldown = 120;
+            }
+        }
+        if (airCooldown > 0) airCooldown--;
         if (open) {
             for (var q = 0; q < evs.length; q++) {
                 var t = evs[q].type;

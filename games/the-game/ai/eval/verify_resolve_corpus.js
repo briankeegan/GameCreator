@@ -38,7 +38,8 @@ function alignedMatch(mine, truth) {
     return -1;
 }
 
-var R = { n: 0, exact: 0, aligned: 0, wrong: 0, linksWrong: 0, examples: [] };
+var R = { n: 0, exact: 0, aligned: 0, wrong: 0, linksWrong: 0, examples: [],
+          bySwap: { n: 0, wrong: 0 }, byAir: { n: 0, wrong: 0 } };
 entries.forEach(function (e) {
     // A stack that answers only what the resolve reads off it.
     var fakeStack = {
@@ -55,11 +56,14 @@ entries.forEach(function (e) {
                   motion: e.board.motion || null,
                   incoming: e.board.incoming, width: e.board.width, height: e.board.height };
     var out;
-    try { out = cpu._resolveCandidate(board, e.swap, 0); }
+    try { out = cpu._resolveCandidate(board, e.swap || null, 0); }
     catch (err) { R.wrong++; R.n++; return; }
     var mine = keyOf(board.grid, board.blocks, board.height, board.width);
     var sh = alignedMatch(mine, e.truth.key);
     R.n++;
+    var bucket = e.swap ? R.bySwap : R.byAir;
+    bucket.n++;
+    if (sh < 0) bucket.wrong++;
     if (sh === 0) R.exact++;
     else if (sh > 0) R.aligned++;
     else {
@@ -75,6 +79,8 @@ console.log('  exact match      ' + R.exact + '   (' + (100 * R.exact / Math.max
 console.log('  matched shifted  ' + R.aligned + '   (engine rose inside the sampling window)');
 console.log('  WRONG            ' + R.wrong + '   (' + (100 * R.wrong / Math.max(1, R.n)).toFixed(1) + '%)');
 console.log('  chain length off ' + R.linksWrong);
+console.log('  at a swap, board quiet   ' + R.bySwap.n + ' positions, ' + R.bySwap.wrong + ' wrong');
+console.log('  mid-flight, no swap      ' + R.byAir.n + ' positions, ' + R.byAir.wrong + ' wrong');
 R.examples.forEach(function (x, i) {
     console.log('\n--- wrong ' + (i + 1) + '  entry ' + x.idx + '  seed ' + x.seed + '  swap at ' + x.swap.join(',') + ' ---');
     var A = x.mine.split(' #'), B = x.truth.split(' #');
