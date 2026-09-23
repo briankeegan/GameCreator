@@ -293,7 +293,7 @@
     // carry the flag, not because of anything in the grid, so a board painted
     // without them resolves a chain as a plain combo.
     engineBoard.paint(st, board.grid, board.height, board.width, slabs,
-                      board.chaining || null);
+                      board.chaining || null, board.motion || null);
     var wait = Math.max(0, delay || 0);
     // AGE IT WITH THE FLOOR MOVING. paint() parks the rise — riseLock true and
     // riseTimer at 1e9 — because a rise DURING THE SETTLE shifts the board out

@@ -70,7 +70,8 @@ SEEDS.HOLDOUT.slice(0, NSEEDS).forEach(function (seed) {
             open = {
                 seed: seed, swap: [row, col],
                 board: { grid: gridOf(b), blocks: slabsOf(b), chaining: b.chaining,
-                         incoming: b.incoming, width: b.width, height: b.height },
+                         motion: b.motion, incoming: b.incoming,
+                         width: b.width, height: b.height },
                 stack: { riseTimer: this.riseTimer, displacement: this.displacement,
                          speed: this.speed, stopTime: this.stopTime,
                          preStopTime: this.preStopTime,

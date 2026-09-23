@@ -52,6 +52,7 @@ entries.forEach(function (e) {
     for (var id in e.board.blocks) blocks[id] = { cells: e.board.blocks[id].map(function (rc) { return [rc[0], rc[1]]; }) };
     var board = { grid: e.board.grid.map(function (row) { return (row || []).slice(); }),
                   blocks: blocks, chaining: e.board.chaining,
+                  motion: e.board.motion || null,
                   incoming: e.board.incoming, width: e.board.width, height: e.board.height };
     var out;
     try { out = cpu._resolveCandidate(board, e.swap, 0); }
@@ -63,7 +64,7 @@ entries.forEach(function (e) {
     else if (sh > 0) R.aligned++;
     else {
         R.wrong++;
-        if (R.examples.length < 3) R.examples.push({ swap: e.swap, mine: mine, truth: e.truth.key });
+        if (R.examples.length < 3) R.examples.push({ idx: R.n - 1, seed: e.seed, swap: e.swap, mine: mine, truth: e.truth.key });
     }
     var links = out && out.chainLength ? out.chainLength : 0;
     if (links !== e.truth.links) R.linksWrong++;
@@ -75,7 +76,7 @@ console.log('  matched shifted  ' + R.aligned + '   (engine rose inside the samp
 console.log('  WRONG            ' + R.wrong + '   (' + (100 * R.wrong / Math.max(1, R.n)).toFixed(1) + '%)');
 console.log('  chain length off ' + R.linksWrong);
 R.examples.forEach(function (x, i) {
-    console.log('\n--- wrong ' + (i + 1) + '  swap at ' + x.swap.join(',') + ' ---');
+    console.log('\n--- wrong ' + (i + 1) + '  entry ' + x.idx + '  seed ' + x.seed + '  swap at ' + x.swap.join(',') + ' ---');
     var A = x.mine.split(' #'), B = x.truth.split(' #');
     var ar = A[0].split('|'), br = B[0].split('|');
     for (var r = 0; r < Math.max(ar.length, br.length); r++) {

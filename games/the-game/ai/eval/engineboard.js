@@ -61,7 +61,11 @@
     // lives on the panel, so a board painted without it cannot produce a chain
     // the game would produce. snapshot() collects it; nothing passed it here
     // and the loop below zeroed it on every cell.
-    function paint(stack, grid, height, width, blocks, chaining) {
+    // motion: [row][col] -> {state, timer} for panels the engine has in flight.
+    // Giving every floating panel a fresh full hover lands it late, and a panel
+    // that lands late can come to rest a row above where it belongs because
+    // something settled under it first.
+    function paint(stack, grid, height, width, blocks, chaining, motion) {
         for (var r = 0; r < stack.panels.length; r++) {
             for (var c = 1; c <= width; c++) {
                 var p = stack.panels[r][c];
@@ -141,8 +145,11 @@
                 if (!gp || gp.isGarbage || gp.color === 0) continue;
                 var under = stack.panels[gr - 1][gc];
                 if (!under || under.isGarbage || under.color !== 0) continue;
-                gp.state = 'hovering';
-                gp.timer = stack.frames.HOVER;
+                // The engine's own state where it had one, so a panel already
+                // falling keeps falling instead of restarting its hover.
+                var mv = motion && motion[gr] && motion[gr][gc];
+                if (mv) { gp.state = mv.state; gp.timer = mv.timer; }
+                else { gp.state = 'hovering'; gp.timer = stack.frames.HOVER; }
             }
         }
         stack.riseLock = true;

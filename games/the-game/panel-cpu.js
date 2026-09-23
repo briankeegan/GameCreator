@@ -910,12 +910,22 @@
     // The engine's chaining flag, panel by panel. It belongs to the PANEL,
     // not the cell, so it is read off the same object the colour comes from.
     var chaining = [];
+    // MID-FLIGHT IS A STATE, NOT JUST A PLACE. A panel already falling lands
+    // sooner than one that has yet to start hovering, and the grid records
+    // only where each sits. Painted without this every floating panel gets a
+    // fresh full hover, lands late, and can come to rest a row high because
+    // something settled underneath it first. State and timer, for the panels
+    // that have one.
+    var motion = [];
     for (var r = 0; r <= stack.height; r++) {
       grid[r] = [];
       chaining[r] = [];
+      motion[r] = [];
       for (var c = 1; c <= width; c++) {
         var p = stack.panelAt(r, c);
         chaining[r][c] = !!(p && p.chaining);
+        motion[r][c] = (p && (p.state === 'hovering' || p.state === 'falling'))
+                       ? { state: p.state, timer: p.timer || 0 } : null;
         var v;
         if (!p) v = -1;
         else if (p.isGarbage) {
@@ -956,6 +966,7 @@
     // frames (see ai/eval/travel.js, measured). topCurRow rides along
     // because clampCursor caps the cursor there — cells above the stack top
     // are unreachable rather than expensive.
+    board.motion = motion;
     board.cursor = { row: stack.curRow, col: stack.curCol, topRow: stack.topCurRow };
     // THE INCOMING ROW IS VISIBLE INFORMATION, and the grid above threw it
     // away: row 0's panels are state "dimmed", which the loop maps to -1
