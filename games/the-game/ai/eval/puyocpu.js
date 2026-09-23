@@ -310,6 +310,35 @@
     // The real stack's rise state is copied so the wait ages at the speed and
     // phase the match is actually at, then the floor is parked again for the
     // swap and the settle.
+    // THE GARBAGE ALREADY QUEUED. paint() clears stack.incoming as part of
+    // resetting the scratch, which is right for a board built from nothing and
+    // wrong for a board copied from a live match: that queue is garbage that
+    // has ALREADY ARRIVED and is waiting for a gap to drop into. The bot can
+    // see it coming and the resolve was throwing it away, so a slab that lands
+    // during the settle was a surprise to the simulation and not to the game.
+    if (this.stack && this.stack.incoming && this.stack.incoming.length && st.incoming) {
+      for (var q0 = 0; q0 < this.stack.incoming.length; q0++) {
+        var gq = this.stack.incoming[q0];
+        st.incoming.push({ width: gq.width, height: gq.height, isChain: gq.isChain });
+      }
+    }
+
+    // THE ROW THAT IS ARRIVING, painted whatever happens next. A rise can
+    // land during the wait OR during the settle, and either way the row that
+    // enters play is the dimmed one already on screen. Only the row BEHIND it
+    // is the game's own RNG, which nothing can know.
+    var inc0 = board.incoming || (this._board && this._board.incoming);
+    if (inc0 && st.panels[0]) {
+      for (var i0 = 1; i0 <= board.width; i0++) {
+        var p0 = st.panels[0][i0];
+        if (!p0) continue;
+        var c0 = inc0[i0];
+        p0.color = (c0 && c0 > 0) ? c0 : 0;
+        p0.isGarbage = false; p0.state = 'normal'; p0.timer = 0;
+        p0.chaining = false; p0.matching = false; p0.dontSwap = false;
+        p0.gWidth = 0; p0.gHeight = 0; p0.xOffset = null; p0.yOffset = null;
+      }
+    }
     if (wait > 0 && this.stack) {
       st.riseLock = false;
       st.riseTimer = this.stack.riseTimer;
@@ -317,37 +346,33 @@
       st.speed = this.stack.speed;
       st.stopTime = this.stack.stopTime || 0;
       st.preStopTime = this.stack.preStopTime || 0;
-      // AND THE ROW THAT IS ABOUT TO ARRIVE, not one the scratch invents.
-      // paint() reseeds the scratch's RNG, so a rise during the wait fills
-      // row 0 from that seed and deals panels the match will never see. The
-      // row entering play is the dimmed one the player can already look at,
-      // which snapshot() publishes as board.incoming; painted here, the rise
-      // brings in the real panels and only the row BEHIND it is invented —
-      // one further out than any walk reaches.
-      // clone() does not carry `incoming` — it rebuilds a LogicalBoard from
-      // grid, blocks and chaining only — so a candidate's trial board has
-      // none and this read must fall back to the live snapshot.
-      var inc = board.incoming || (this._board && this._board.incoming);
-      if (inc && st.panels[0]) {
-        for (var ic = 1; ic <= board.width; ic++) {
-          var ip = st.panels[0][ic];
-          if (!ip) continue;
-          var col = inc[ic];
-          ip.color = (col && col > 0) ? col : 0;
-          ip.isGarbage = false; ip.state = 'normal';
-          ip.timer = 0; ip.chaining = false; ip.matching = false;
-          ip.gWidth = 0; ip.gHeight = 0; ip.xOffset = null; ip.yOffset = null;
-        }
-      }
     }
     for (var f = 0; f < wait; f++) {
       st.events.length = 0;
       st.run();
       if (st.gameOver) break;
     }
-    st.riseLock = true;
-    st.riseTimer = 1e9;
-    st.stopTime = 0; st.preStopTime = 0;
+    // THE FLOOR KEEPS MOVING THROUGH THE SETTLE TOO.
+    //
+    // A settle runs 60 to 90 frames and the stack climbs during them, so
+    // parking the rise here answers "what settles if the floor never moves" —
+    // a board the game never has. Eight of every fifteen positions the
+    // fidelity check threw away were thrown away for exactly this: a row rose
+    // and the simulation had not been told it could.
+    //
+    // Everything needed is on the stack: riseTimer, displacement and speed say
+    // when the next row lands, and board.incoming says what is in it.
+    if (this.stack) {
+      st.riseLock = false;
+      st.riseTimer = this.stack.riseTimer;
+      st.displacement = this.stack.displacement;
+      st.speed = this.stack.speed;
+      st.stopTime = this.stack.stopTime || 0;
+      st.preStopTime = this.stack.preStopTime || 0;
+    } else {
+      st.riseLock = true; st.riseTimer = 1e9;
+      st.stopTime = 0; st.preStopTime = 0;
+    }
     // A REFUSED SWAP IS NOT A QUIET NO-OP. canSwap and LogicalBoard.legalSwaps
     // disagree on 3.5% of the moves the search is handed, and resolving the
     // UNMOVED board scores the candidate as "this move changes nothing" —

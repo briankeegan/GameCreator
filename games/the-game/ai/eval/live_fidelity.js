@@ -117,7 +117,7 @@ seeds.forEach(function (seed) {
         // A SECOND SWAP INSIDE THE WINDOW IS NOT WHAT WAS PREDICTED. The bot
         // keeps playing while the engine settles, and the simulation was
         // asked about one swap on one board.
-        if (open) { open.dirty = true; }
+        if (open) { open.dirty = true; open.why = open.why || 'swapped again mid-settle'; }
         else {
             var b = cpus[0]._snapshot().clone();
             // The engine path applies the swap itself, after ageing by `delay`;
@@ -160,8 +160,28 @@ seeds.forEach(function (seed) {
                 // and the reach measurements are built on it.
                 if (t === 'chainEnd') open.engLinks = evs[q].length;
                 else if (t === 'match' && !evs[q].chain && !open.engLinks) open.engLinks = 1;
-                // The simulation was told about none of these.
-                if (t === 'newRow' || t === 'garbageDrop' || t === 'garbageLand') open.dirty = true;
+                // WHAT THE SIMULATION COULD NOT HAVE KNOWN — and only that.
+                //
+                // A row rising and the opponent dropping garbage are time and
+                // another player; the resolve is never told either, so those
+                // cases are not its fault. Garbage LANDING is different: a
+                // slab already on the board finishing its fall is a
+                // consequence of the position the resolve was handed, and it
+                // is supposed to predict it. Discarding those was discarding
+                // every case that exercises garbage — which is how paint()
+                // ran without slabs under a green "0 differ".
+                //
+                // It is only unknowable when the slab arrived during this same
+                // window, so a land is excused only after a drop.
+                // A ROW RISING IS NOT A SURPRISE. riseTimer, displacement and
+                // speed say when it lands and board.incoming says what is in
+                // it — all of it on the stack the snapshot came from — and the
+                // resolve now carries the floor through the settle. So a
+                // newRow is something it is expected to get right, not an
+                // excuse. Only the opponent's garbage is genuinely unknowable.
+                if (t === 'garbageDrop') { open.dirty = true; open.why = t; }
+                if (t === 'garbageDrop') open.sawDrop = true;
+                if (t === 'garbageLand' && open.sawDrop) { open.dirty = true; open.why = 'garbageLand after a drop'; }
             }
             open.since++;
             // SETTLED FOR A WHILE, NOT SETTLED FOR AN INSTANT.
@@ -177,11 +197,37 @@ seeds.forEach(function (seed) {
             // leaving three in a column, which it never does.
             open.stable = settled(stacks[0]) ? (open.stable || 0) + 1 : 0;
             if (open.since > 2 && open.stable >= 8) {
-                if (open.dirty) R.skipped++;
+                if (open.dirty) {
+                    R.skipped++;
+                    var wk = open.why || 'unknown';
+                    R.skipWhy = R.skipWhy || {};
+                    R.skipWhy[wk] = (R.skipWhy[wk] || 0) + 1;
+                }
                 else {
                     R.compared++;
                     var actual = gridOf(cpus[0]._snapshot());
-                    var sameGrid = actual === open.predicted;
+                    // SAME BOARD, SAMPLED A MOMENT LATER.
+                    //
+                    // The engine is read after 8 settled frames, and now that
+                    // the resolve lets the floor move, the stack can climb one
+                    // more row inside that window. The result is the sim's
+                    // board shifted up a row — the same position at a later
+                    // instant, not a wrong answer. Try realigning by a row or
+                    // two and record when it was needed, so a genuine
+                    // disagreement is still a disagreement.
+                    var sameGrid = actual === open.predicted, shifted = 0;
+                    if (!sameGrid) {
+                        var PA = open.predicted.split(' #')[0].split('|');
+                        var AA = actual.split(' #')[0].split('|');
+                        for (var sh = 1; sh <= 2 && !sameGrid; sh++) {
+                            var ok = AA.length > sh;
+                            for (var rr2 = 0; ok && rr2 + sh < AA.length; rr2++) {
+                                if (AA[rr2 + sh] !== PA[rr2]) ok = false;
+                            }
+                            if (ok) { sameGrid = true; shifted = sh; }
+                        }
+                        if (shifted) R.realigned = (R.realigned || 0) + 1;
+                    }
                     var sameLinks = (open.predLinks || 0) === (open.engLinks || 0);
                     if (!sameLinks) R.linksDiffer = (R.linksDiffer || 0) + 1;
                     if (sameGrid && sameLinks) R.agree++;
@@ -216,7 +262,10 @@ console.log('agree      ' + R.agree);
 console.log('disagree   ' + R.disagree +
             (R.compared ? '   (' + (100 * R.disagree / R.compared).toFixed(1) + '%)' : ''));
 console.log('  of which chain length ' + (R.linksDiffer || 0));
-console.log('skipped    ' + R.skipped + '   (a row rose, garbage arrived, or the bot swapped again mid-settle)');
+if (R.realigned) console.log('  (' + R.realigned + ' agreed once realigned by a row — the engine rose inside the 8-frame settle window)');
+console.log('skipped    ' + R.skipped);
+Object.keys(R.skipWhy || {}).sort(function (a, b) { return R.skipWhy[b] - R.skipWhy[a]; })
+    .forEach(function (k) { console.log('    x' + R.skipWhy[k] + '  ' + k); });
 process.exitCode = R.disagree ? 1 : 0;
 R.examples.slice(0, 1).forEach(function (e, i) {
     console.log('\n--- disagreement ' + (i + 1) + '   swap at ' + e.swap +
