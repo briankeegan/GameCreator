@@ -348,6 +348,18 @@ gate_idle_skip() {
   node games/the-game/ai/eval/idleskip.test.js
 }
 
+# THE RESOLVE AGAINST A FIXED SET OF REAL POSITIONS.
+#
+# live_fidelity measures against live play, so the sample moves whenever the
+# resolve changes: the bot plays differently and reaches different boards, and
+# two runs are not comparable. This replays positions whose answers the ENGINE
+# gave once, so a number from it means the same thing tomorrow. Regenerate with
+# capture_resolve_corpus.js only when the corpus is genuinely stale — a corpus
+# that moves is the thing this exists to avoid.
+gate_resolve_corpus() {
+  node games/the-game/ai/eval/verify_resolve_corpus.js
+}
+
 gate_live_fidelity() {
   node games/the-game/ai/eval/live_fidelity.js \
     games/the-game/ai/eval/trained.pbt.pbt-m29-s301-s301.0920-205538.g01000.json 3
@@ -675,6 +687,7 @@ GATES=(
   "a switch means the same thing everywhere:gate_flags:games/the-game/ai/"
   "the idle skip changes nothing:gate_idle_skip:games/the-game/ai/"
   "the simulation is the engine mid-play:gate_live_fidelity:games/the-game/ai/"
+  "the resolve answers what the engine answered:gate_resolve_corpus:games/the-game/ai/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"
   "rise-adjusted scoring:gate_rise_scoring:games/the-game/ai/"

@@ -363,7 +363,9 @@
   //      supported and what pops as a unit
   //   7  painted panels fall, chaining flags survive the paint, a refused swap
   //      is dropped instead of scored as a no-op, and the settled slabs go back
-  var RULES = 7;
+  //   8  the floor moves through the settle and the garbage already queued
+  //      comes with it
+  var RULES = 8;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
