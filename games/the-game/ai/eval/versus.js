@@ -116,13 +116,26 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
     // is links minus one, and reported every chain one link short.
     var exact = [zeroExact(), zeroExact()];
 
-    // A match that opened a cascade, waiting to learn what the cascade became.
-    var pendingOpen = [null, null];
-    function settleOpener(side) {
-        var open = pendingOpen[side];
-        if (!open) return;
+    // Matches that opened a cascade, waiting to learn what the cascade became.
+    //
+    // A LIST, AND EACH ONE REMEMBERS ITS OWN CHAIN COUNTER. Holding a single
+    // opener and crediting it to the next chaining match that arrives credits
+    // the wrong one whenever a fresh match fires while a cascade is still
+    // running: the new opener takes the credit for the old chain's next link,
+    // and openedChain comes out ahead of the chains that actually finished.
+    // The engine stamps every match with chainCounter, so a link belongs to
+    // the opener one below it and to no other.
+    var pendingOpen = [[], []];
+    function settleOne(side, open) {
         if (open.size <= 3 && !open.garbage) exact[side].payless++;
-        pendingOpen[side] = null;
+    }
+    // Everything still held is alone: called when a fresh cascade begins,
+    // because the engine's counter has gone back to 0 and nothing older can
+    // be extended, and again at the end of the duel.
+    function settleOpener(side) {
+        var list = pendingOpen[side];
+        for (var i = 0; i < list.length; i++) settleOne(side, list[i]);
+        pendingOpen[side] = [];
     }
 
     var ceiling = opts.ceiling || CEILING;
@@ -170,11 +183,31 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
                     // nothing at all. Anything still held when the duel ends
                     // is flushed below.
                     if (!ev.chain) {
-                        settleOpener(e);
-                        pendingOpen[e] = { size: ev.size, garbage: !!ev.garbage };
-                    } else if (pendingOpen[e]) {
-                        exact[e].openedChain++;
-                        pendingOpen[e] = null;
+                        // A MATCH OUTSIDE A CASCADE ENDS THE LAST ONE'S STORY.
+                        // Inside one (counter above 0) it is a separate combo
+                        // that the running chain's links must not be able to
+                        // claim, so it is held apart.
+                        if (!ev.chainCounter) settleOpener(e);
+                        pendingOpen[e].push({ size: ev.size, garbage: !!ev.garbage,
+                                              counter: ev.chainCounter });
+                    } else if (ev.chainCounter === 2) {
+                        // THE SECOND LINK, AND ONLY THE SECOND LINK.
+                        // chainCounter goes 0 at the opener and straight to 2
+                        // on the first link that chains -- it is never 1 --
+                        // and every later link is 3, 4, 5. So counter 2 marks
+                        // exactly one moment per chain, which is what makes
+                        // openedChain equal the number of chainEnd events
+                        // rather than the number of links.
+                        // THE MOST RECENT ONE, whatever counter it carried.
+                        // An opener can fire while the previous cascade is
+                        // still finishing, so it is held at that cascade's
+                        // counter rather than at 0; requiring 0 loses it and
+                        // the chain it went on to open goes uncredited.
+                        var list = pendingOpen[e];
+                        if (list.length) {
+                            exact[e].openedChain++;
+                            list.pop();
+                        }
                     }
                     if (ev.garbage) exact[e].broke++;
                 }

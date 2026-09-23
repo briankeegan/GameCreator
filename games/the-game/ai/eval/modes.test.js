@@ -525,9 +525,13 @@ test('THE AIM IS READ OFF THE WEIGHTS, not set by hand', function () {
     assert.deepStrictEqual(modes.aim({ reach5chain: 120, reach3chain: 36,
                                        reach6combo: 50, reach4combo: 10 }),
                            { links: 5, wide: 6 });
-    assert.deepStrictEqual(modes.aim({}), { links: 2, wide: 4 },
-                           'wanting nothing yet aims at the floor the engine pays for');
-    assert.deepStrictEqual(modes.aim({ reach8chain: -5, reach9combo: 0 }), { links: 2, wide: 4 });
+    // WANTING NOTHING YET IS NOT THE FLOOR ANY MORE. It used to be, and
+    // that is the hole the trained field walked through: aiming at the
+    // floor makes ATTACK open on any payout at all, and ATTACK drops hold,
+    // so the bot must sell the smallest clear that exists every time one
+    // exists. One above the floor is the least that still means something.
+    assert.deepStrictEqual(modes.aim({}), { links: 3, wide: 5 });
+    assert.deepStrictEqual(modes.aim({ reach8chain: -5, reach9combo: 0 }), { links: 3, wide: 5 });
 });
 
 function poolFor(weights, cands) {
@@ -816,6 +820,37 @@ test('with nothing that banks time the budget is measured against the reserve', 
     // admit every candidate.
     assert.strictEqual(modes.escapeNeeded({
         headroom: 400, escape: Infinity, framesPerRow: 120 }), 0);
+});
+
+// ---- the aim is never the floor --------------------------------------
+
+test('the AIM may not collapse onto the FLOOR', function () {
+    // ATTACK narrows the pool to moves that fire and drops hold, so an aim
+    // equal to the floor means "sell any clear the engine pays for, every
+    // time one exists" and nothing can ever be held long enough to become a
+    // chain. Across 2,872 trained champions 96% weighted reach2chain above
+    // every other chain and 75% reach4combo above every other combo, so 73%
+    // of the field aimed at exactly the floor.
+    var floorish = {};
+    modes.CHAIN_SIZES.forEach(function (n) { floorish['reach' + n + 'chain'] = n === 2 ? 200 : 1; });
+    modes.COMBO_SIZES.forEach(function (n) { floorish['reach' + n + 'combo'] = n === 4 ? 200 : 1; });
+    var a = modes.aim(floorish);
+    assert.ok(a.links > modes.FLOOR.links, 'aim links ' + a.links + ' is not above the floor');
+    assert.ok(a.wide > modes.FLOOR.wide, 'aim wide ' + a.wide + ' is not above the floor');
+});
+
+test('the weights still choose WHICH size, above that bar', function () {
+    // The clamp must not flatten the aim into a constant. What it forbids is
+    // aiming at nothing; it does not decide what to aim at.
+    var big = {};
+    modes.CHAIN_SIZES.forEach(function (n) { big['reach' + n + 'chain'] = n === 5 ? 200 : 1; });
+    modes.COMBO_SIZES.forEach(function (n) { big['reach' + n + 'combo'] = n === 8 ? 200 : 1; });
+    assert.deepStrictEqual(modes.aim(big), { links: 5, wide: 8 });
+});
+
+test('no weights at all still gives a usable aim', function () {
+    var a = modes.aim({});
+    assert.ok(a.links > modes.FLOOR.links && a.wide > modes.FLOOR.wide);
 });
 
 tests.forEach(function (t) {

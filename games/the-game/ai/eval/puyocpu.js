@@ -965,7 +965,7 @@
   // do both jobs makes building refuse every clear below it: at an aim of
   // 9-wide the bot held 159 of 163 decisions and suffocated.
   PuyoCpu.prototype._floor = function () {
-    return { links: 2, wide: 4 };
+    return modes.FLOOR;
   };
   PuyoCpu.prototype._bar = function () {
     if (this.goal) return this.goal;

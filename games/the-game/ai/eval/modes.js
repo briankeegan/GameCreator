@@ -435,6 +435,34 @@
   //
   // Ties keep the SMALLER size. An aim it reaches often teaches the weights
   // more per leg than one it reaches never, and a tie means it likes both.
+  // THE ENGINE'S FLOOR: two links or four wide, the smallest clear it pays
+  // anything at all for. Stated once, here, because the aim is defined
+  // against it and two copies of it would let them drift apart.
+  var FLOOR = { links: 2, wide: 4 };
+
+  // THE AIM IS WHAT IS WORTH CASHING IN, AND IT IS NEVER THE FLOOR.
+  //
+  // ATTACK narrows the pool to moves that fire and DROPS HOLD, so whatever
+  // the aim is, the bot must sell the moment the board offers it. An aim
+  // equal to the floor therefore means "sell any clear the engine pays for,
+  // every time one exists", and the bot can never hold anything long enough
+  // to become a chain.
+  //
+  // That is what happened. The size each family weights highest is the
+  // aim, and across 2,872 trained champions 96% weight reach2chain above
+  // every other chain and 75% weight reach4combo above every other combo,
+  // so 73% of the field aimed at exactly 2 links / 4 wide. Not because
+  // small payouts are good: a reach flag that is 1 on most boards is a
+  // near-constant bonus, and the search takes the cheap signal over the
+  // discriminating one. reach6chain, reach7chain and reach8chain are
+  // constant 0 across 214,921 candidates, so their weights are noise
+  // competing against it.
+  //
+  // So the weights still choose WHICH size is worth waiting for. They do
+  // not get to choose that nothing is. One above the floor is the mildest
+  // bar that still means something -- an aim set far above it starves the
+  // bot instead, which is its own documented failure: at 9 wide it held
+  // 159 of 163 decisions and suffocated.
   function aim(weights) {
     var w = weights || {};
     function bestOf(sizes, suffix) {
@@ -445,9 +473,10 @@
       }
       return at;
     }
-    var links = bestOf(CHAIN_SIZES, 'chain');
-    var wide = bestOf(COMBO_SIZES, 'combo');
-    return { links: links || 2, wide: wide || 4 };
+    var links = bestOf(CHAIN_SIZES, 'chain') || FLOOR.links;
+    var wide = bestOf(COMBO_SIZES, 'combo') || FLOOR.wide;
+    return { links: Math.max(links, FLOOR.links + 1),
+             wide: Math.max(wide, FLOOR.wide + 1) };
   }
 
   // WHICH DECISION PROCEDURE THESE WEIGHTS WERE FITTED UNDER.
@@ -474,14 +503,16 @@
   //   8  the floor moves through the settle and the garbage already queued
   //      comes with it
   //   9  the scratch survives its own answer, and everything unsupported falls
-  var RULES = 9;
+  //  10  the aim may not be the floor, so ATTACK is no longer "sell anything
+  //      the engine pays for"; a raise the board cannot survive is not a move
+  var RULES = 10;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
            COMBO_SIZES: COMBO_SIZES, CHAIN_SIZES: CHAIN_SIZES,
            GOALS: GOALS, goal: goal, climbTo: climbTo, survivable: survivable,
            reachesEscape: reachesEscape,
-           headroomFrames: headroomFrames, warned: warned,
+           headroomFrames: headroomFrames, warned: warned, FLOOR: FLOOR,
            escapeValue: escapeValue, escapeNeeded: escapeNeeded,
            ESCAPE_RESERVE_ROWS: ESCAPE_RESERVE_ROWS,
            clock: clock, escapeFrames: escapeFrames, banksTime: banksTime,
