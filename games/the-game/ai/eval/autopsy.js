@@ -100,6 +100,17 @@ function watch(cpu, log, frameOf) {
             links: best ? best.links : 0, wide: best ? best.wide : 0,
             top: s.top, panels: s.panels, garbage: s.garbage,
             curRow: cpu.stack.curRow, curCol: cpu.stack.curCol,
+            // The bot ALREADY computes this every decision and then ignores
+            // it: frames to reach a move that banks stop time.
+            floor: cpu._lastFloor,
+            riseTimer: cpu.stack.riseTimer, speed: cpu.stack.speed,
+            displacement: cpu.stack.displacement,
+            // Rows of garbage queued, not cells -- a row is what costs headroom.
+            queuedRows: (function () {
+                var q = cpu.stack.incoming || [], n = 0;
+                for (var i = 0; i < q.length; i++) n += (q[i].height || 0);
+                return n;
+            })(),
             queued: queued(cpu.stack), stop: cpu.stack.stopTime || 0,
             health: cpu.stack.health
         });
