@@ -348,8 +348,17 @@
     st.riseLock = true;
     st.riseTimer = 1e9;
     st.stopTime = 0; st.preStopTime = 0;
-    if (move && st.canSwap(move[0], move[1])) st.doSwap(move[0], move[1]);
+    // A REFUSED SWAP IS NOT A QUIET NO-OP. canSwap and LogicalBoard.legalSwaps
+    // disagree on 3.5% of the moves the search is handed, and resolving the
+    // UNMOVED board scores the candidate as "this move changes nothing" —
+    // a phantom the bot then reasons about and sometimes plays.
+    var refused = false;
+    if (move) {
+      if (st.canSwap(move[0], move[1])) st.doSwap(move[0], move[1]);
+      else refused = true;
+    }
     var out = engineBoard.settle(st, 900);
+    if (refused) out.refused = true;
     var settled = engineBoard.readGrid(st, board.height, board.width);
     for (var r = 0; r <= board.height; r++) {
       for (var c = 1; c <= board.width; c++) board.grid[r][c] = settled[r][c];
@@ -635,6 +644,9 @@
         trial.swap(r, c);
         resolved = this._resolveCandidate(trial);
       }
+      // The engine would not make this swap on the board the cursor arrives
+      // at, so there is no honest score for it.
+      if (resolved && resolved.refused) continue;
       cands.push({ kind: 'swap',
                    score: this._score(trial, resolved, [r, c]),
                    move: [r, c],
