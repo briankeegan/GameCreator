@@ -361,7 +361,9 @@
   //      on is the one the cursor arrives at
   //   6  the garbage slabs are painted with it, so the engine can tell what is
   //      supported and what pops as a unit
-  var RULES = 6;
+  //   7  painted panels fall, chaining flags survive the paint, a refused swap
+  //      is dropped instead of scored as a no-op, and the settled slabs go back
+  var RULES = 7;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
