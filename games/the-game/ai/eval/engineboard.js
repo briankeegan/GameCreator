@@ -117,6 +117,34 @@
             }
             stack.garbageIdCounter = Math.max(stack.garbageIdCounter || 0, gid);
         }
+        // GRAVITY NEEDS A STATE IT CAN ACT ON.
+        //
+        // updateNormal only asks whether a panel should fall when the panel
+        // BELOW changed state THIS FRAME, and updatePanel clears that flag at
+        // the top of every panel's turn. In a real game the check is free: a
+        // hole only ever opens because something below just moved. A board
+        // painted wholesale has holes nobody opened, so a panel left hanging
+        // over one is never examined and stays there for the entire settle —
+        // measured directly: a panel painted at row 6 over an empty column is
+        // still at row 6 after 900 frames.
+        //
+        // snapshot() keeps falling and hovering panels at the cell they
+        // occupy so that "the engine's own gravity then drops them where they
+        // will actually land". This is what lets it. A colour panel with an
+        // empty cell under it is exactly a panel entering hover, so it is
+        // painted as one and the engine does the rest. Garbage needs nothing:
+        // updateNormal checks supportedFromBelow before the stateChanged
+        // guard and falls on its own.
+        for (var gr = 2; gr <= height; gr++) {
+            for (var gc = 1; gc <= width; gc++) {
+                var gp = stack.panels[gr] && stack.panels[gr][gc];
+                if (!gp || gp.isGarbage || gp.color === 0) continue;
+                var under = stack.panels[gr - 1][gc];
+                if (!under || under.isGarbage || under.color !== 0) continue;
+                gp.state = 'hovering';
+                gp.timer = stack.frames.HOVER;
+            }
+        }
         stack.riseLock = true;
         // AND RESET THE STACK ITSELF, not just its panels. This module exists
         // so ONE Stack can be repainted per candidate instead of built each

@@ -188,6 +188,17 @@ seeds.forEach(function (seed) {
                     else {
                         R.disagree++;
                         open.why = (sameGrid ? '' : 'grid ') + (sameLinks ? '' : 'links');
+                        // WHERE they differ, not just that they do.
+                        var P = open.predicted.split(' #'), A = actual.split(' #');
+                        var pr = P[0].split('|'), ar = A[0].split('|');
+                        var rows = [];
+                        for (var dr = 0; dr < Math.max(pr.length, ar.length); dr++) {
+                            if (pr[dr] !== ar[dr]) rows.push('    row ' + (dr + 1) +
+                                '   sim ' + (pr[dr] || '-') + '   engine ' + (ar[dr] || '-'));
+                        }
+                        open.rowDiff = rows;
+                        open.slabDiff = (P[1] !== A[1]) ? ('    SLABS sim ' + P[1] + '\n    SLABS eng ' + A[1]) : '';
+                        open.chainDiff = (P[2] !== A[2]) ? ('    CHAIN sim ' + P[2] + '\n    CHAIN eng ' + A[2]) : '';
                         if (R.examples.length < 3) {
                             R.examples.push(open), open.actual = actual;
                         }
@@ -211,6 +222,12 @@ R.examples.slice(0, 1).forEach(function (e, i) {
     console.log('\n--- disagreement ' + (i + 1) + '   swap at ' + e.swap +
                 '   cascade already running: ' + e.chain + ' ---');
     var B = e.before.split('|'), P = e.predicted.split('|'), A = e.actual.split('|');
+    if (e.rowDiff && e.rowDiff.length) {
+        console.log('  WHERE THEY DIFFER:');
+        e.rowDiff.forEach(function (l) { console.log(l); });
+    }
+    if (e.slabDiff) console.log(e.slabDiff);
+    if (e.chainDiff) console.log(e.chainDiff);
     console.log('row   board the sim was given      panel states                    sim predicts        engine settled');
     for (var r = B.length - 1; r >= 0; r--) {
         console.log(String(r + 1).padStart(3) + '   ' + B[r].padEnd(24) + '  ' +
