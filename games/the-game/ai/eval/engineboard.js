@@ -73,6 +73,13 @@
                 p.timer = 0; p.initialTime = 0; p.popTime = 0; p.popIndex = 0;
                 p.chaining = !!(chaining && chaining[r] && chaining[r][c]);
                 p.matching = false;
+                // dontSwap IS PANEL STATE TOO. The engine sets it when a swap
+                // would leave a panel unsupported, and it lives on the Panel
+                // object this module reuses candidate after candidate. Left
+                // standing, canSwap refuses a move on a board where it is
+                // legal, _resolveCandidate settles the UNMOVED board, and the
+                // candidate is scored as a move that changes nothing.
+                p.dontSwap = false;
                 p.fellFromGarbage = 0; p.stateChanged = false;
                 p.propagatesChaining = false; p.matchAnyway = false;
                 p.xOffset = null; p.yOffset = null;
