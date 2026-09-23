@@ -79,7 +79,21 @@ var baseSeed = Number(process.env.GC_GA_SEED || 11) >>> 0;
 var rngState = baseSeed;
 function rng() { rngState = (rngState * 1103515245 + 12345) & 0x7fffffff; return rngState / 0x7fffffff; }
 
-var DIR = path.join(__dirname, '.pbt-' + baseSeed);
+// THE ISLAND FILES BELONG TO THE RUN, NOT TO THE SEED.
+//
+// Keyed by seed alone, two variants dispatched on the same ga_seed share
+// one directory: every leg of each loads a population the other has just
+// overwritten, and both keep committing snapshots, so from outside both
+// chains look healthy. `default` and `r17` did exactly this on seed 317
+// for a whole day -- 211 island writes from one, 109 from the other, into
+// the same four files -- and nothing reported anything, because nobody was
+// counting the writers.
+//
+// GC_TAG is the run's identity (pbt-<variant>-s<seed>) and already names
+// every snapshot. A local run with no tag falls back to the seed.
+function dirSlug(s) { return String(s).replace(/[^A-Za-z0-9_-]/g, '-'); }
+var DIR = path.join(__dirname,
+    process.env.GC_TAG ? '.' + dirSlug(process.env.GC_TAG) : '.pbt-' + baseSeed);
 if (!fs.existsSync(DIR)) fs.mkdirSync(DIR);
 function islandFile(i) { return path.join(DIR, 'island' + i + '.json'); }
 
@@ -110,6 +124,11 @@ function fingerprint() {
             // from a population fitted under the next, so they must not resume
             // each other.
             'rules' + modes.RULES,
+            // THE RUN'S OWN NAME. The per-tag directory already keeps two
+            // variants apart; this keeps them apart a second time, so a
+            // stray island file copied or committed into the wrong place
+            // is refused rather than resumed.
+            process.env.GC_TAG || ('seed' + baseSeed),
             KEYS.join(',')].join('|');
 }
 var FP = fingerprint();
@@ -222,6 +241,11 @@ if (fs.existsSync(INJECT)) {
 // the difference between continuing a five-hour search and silently restarting
 // it, and it is the one part of this file that can be checked in milliseconds.
 if (flag('GC_PBT_INIT_ONLY')) {
+    // WHERE, as well as how many. Which directory this run opened is the
+    // thing that went wrong on seed 317, so it has to be visible from the
+    // one path that answers in milliseconds rather than only from the path
+    // that takes five hours.
+    console.log('state in ' + path.basename(DIR));
     console.log('islands ready: ' + ISLANDS + ', resumed ' + resumed +
                 (MIGRATE ? '' : ', MIGRATION OFF'));
     process.exit(0);

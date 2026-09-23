@@ -76,9 +76,16 @@ fi
 # The Puyo loop names its resume point .versus-checkpoint.<hash>.json rather
 # than .train-checkpoint.<mode>.<hash>.json, so it needs its own glob or the
 # loop's population never leaves the runner.
-# The islands keep a file per island under .pbt-<seed>/; all of them together
-# are the resume point, so all of them ride along.
-for ckpt in .train-checkpoint.${GC_MODE:-replace}.*.json .versus-checkpoint.*.json .pbt-*/island*.json; do
+# The islands keep a file per island under this run's own .<GC_TAG>/; all of
+# them together are the resume point, so all of them ride along.
+#
+# THIS RUN'S DIRECTORY, NOT EVERY DIRECTORY. A glob over .pbt-*/ adds every
+# other run's island files as well, so a checkout holding a stale copy of a
+# sibling's population commits it back over the newer one -- the same
+# clobbering the per-tag directories exist to stop, arriving by a different
+# door. A run commits what it wrote and nothing else.
+island_dir=".${GC_TAG:-pbt-${GC_GA_SEED:-11}}"
+for ckpt in .train-checkpoint.${GC_MODE:-replace}.*.json .versus-checkpoint.*.json "$island_dir"/island*.json; do
   [ -f "$ckpt" ] && git add -f "$ckpt" 2>/dev/null
 done
 
