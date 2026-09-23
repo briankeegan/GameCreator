@@ -86,13 +86,17 @@ function watch(cpu, log, frameOf) {
             if (rv && rv.clearedPanels) clears++;
         }
         best = modes.bestPayout(all.map(function (c) { return c.resolved; }));
-        var tookEscape = false;
-        if (cpu._lastTaken && modes.banksTime(cpu._lastTaken.resolved)) tookEscape = true;
+        var tookEscape = false, tookClear = false, tookBreak = false;
+        var tk = cpu._lastTaken && cpu._lastTaken.resolved;
+        if (tk && modes.banksTime(tk)) tookEscape = true;
+        if (tk && tk.clearedPanels) tookClear = true;
+        if (tk && tk.garbage && tk.garbage.length) tookBreak = true;
         var s = survey(cpu.stack);
         log.push({
             f: frameOf(), mode: cpu._mode || '-', cands: all.length,
             escapes: escapes, breaks: breaks, clears: clears,
-            tookEscape: tookEscape, took: picked && picked.kind,
+            tookEscape: tookEscape, tookClear: tookClear, tookBreak: tookBreak,
+            took: picked && picked.kind,
             links: best ? best.links : 0, wide: best ? best.wide : 0,
             top: s.top, panels: s.panels, garbage: s.garbage,
             curRow: cpu.stack.curRow, curCol: cpu.stack.curCol,
@@ -120,6 +124,19 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
     watch(cpus[0], logs[0], function () { return f; });
     watch(cpus[1], logs[1], function () { return f; });
 
+    // PER FRAME, not per decision. The two death conditions are engine state
+    // (health, riseLock, wasToppedOut, manualRaise) and they move between
+    // decisions, so sampling them when the bot thinks cannot see the death.
+    var ring = [[], []];
+    function sample(i) {
+        var st = stacks[i];
+        ring[i].push({ f: f, health: st.health, riseLock: !!st.riseLock,
+                       toppedOut: !!st.wasToppedOut, manualRaise: !!st.manualRaise,
+                       stop: st.stopTime || 0, shake: st.shakeTime || 0,
+                       active: st.hasActivePanels ? !!st.hasActivePanels() : null });
+        if (ring[i].length > 400) ring[i].shift();
+    }
+
     var received = [0, 0];
     var ceiling = opts.ceiling || CEILING;
     for (; f < ceiling; f++) {
@@ -133,6 +150,7 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
             }
             stacks[i].drainEvents();
         }
+        sample(0); sample(1);
         if (stacks[0].gameOver || stacks[1].gameOver) break;
     }
     var dead = stacks[0].gameOver ? 0 : (stacks[1].gameOver ? 1 : null);
@@ -140,5 +158,6 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
              survey: [survey(stacks[0]), survey(stacks[1])],
              picture: [picture(stacks[0]), picture(stacks[1])],
              cursor: [{ row: stacks[0].curRow, col: stacks[0].curCol },
-                      { row: stacks[1].curRow, col: stacks[1].curCol }] };
+                      { row: stacks[1].curRow, col: stacks[1].curCol }],
+             ring: ring };
 };
