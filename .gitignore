@@ -52,3 +52,7 @@ games/the-game/ai/eval/.pbt-clean-stop
 # Scratch from the duel fan-out (duels.js). Cleaned up on exit; a killed
 # run leaks them, and a leaked one must never be committable.
 .duels.*.json
+
+# The tournament's standings: a measurement, rewritten by every run. The
+# corpus beside it IS committed, because a fixed benchmark is the point of it.
+games/the-game/ai/eval/tournament.json
