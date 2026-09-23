@@ -133,6 +133,18 @@
     // are: it is a different bot, so weights trained without it describe
     // something else.
     this.modes = opts.modes === true;
+    // THE DANGER CLOCK, OFF UNTIL IT HAS BEATEN THE BOT WITHOUT IT.
+    //
+    // It is built, tested and wired; what it is not is proven. Played against
+    // the same weights with the clock off it stands at 3-7-30 over 40 seeds,
+    // which is ten decided duels and therefore nothing, and the weights it
+    // was measured with were fitted under the decision procedure it changes,
+    // which biases the comparison against it. Both are reasons to keep
+    // measuring, neither is a reason to turn it on for a training run.
+    //
+    // On, the clock does not seize the wheel: see modes.warned(). Opening
+    // FORCED on it instead was tried and lost 8-16-16.
+    this.dangerClock = opts.dangerClock === true;
     // WHAT THIS BOT IS BUILDING, as one setting a player would recognise:
     // "5-chain", "6-combo", or null for no target at all. It says the whole
     // plan — climb toward it, refuse to sell below it, fire when it exists —
@@ -724,6 +736,17 @@
       reaction: this.reaction, travel: nearest, hover: this._hoverFrames()
     });
     this._lastFloor = floor;
+    // THE CLOCK, NOT JUST THE CEILING. floor above is how long it takes to
+    // REACH an escape; this is how long there is before the floor arrives.
+    // Both were already computable here and only the first was computed.
+    var clockNow = this.dangerClock ? this._dangerClock()
+                                    : { headroom: null, framesPerRow: 0 };
+    this._lastHeadroom = clockNow.headroom;
+    // WARNED IS NOT FORCED. It leaves the pool and the ranking exactly as
+    // they were and only changes what _lookahead prefers among them.
+    this._warned = modes.warned({ headroom: clockNow.headroom,
+                                  framesPerRow: clockNow.framesPerRow,
+                                  escape: floor });
     if (modes.forced({ toppedOut: this._boardToppedOut(this._board) || !!stack.wasToppedOut,
                        stopTime: stack.stopTime || 0,
                        preStopTime: stack.preStopTime || 0,
@@ -895,6 +918,53 @@
     return this._aim;
   };
 
+  // HOW LONG BEFORE THE FLOOR REACHES THE CEILING.
+  //
+  // Every term is the engine's own and every one of them was already in
+  // reach of this function: the rows of empty space above the stack, the
+  // pixels left of the row currently rising, the level's rise rate, the
+  // stop clock, and the garbage sitting in `incoming` waiting to land.
+  // Nothing here estimates anything -- it is arithmetic on state the bot
+  // was already holding and never subtracted.
+  //
+  // Queued garbage is counted in ROWS, because a row is what costs
+  // headroom. A 12-cell delivery is two rows and erases 240 frames at
+  // level 10, and it is visible in `incoming` before it lands.
+  PuyoCpu.prototype._dangerClock = function () {
+    var stack = this.stack;
+    if (!stack) return { headroom: null, framesPerRow: 0 };
+    var engine = (typeof window !== 'undefined' ? window : globalThis).PanelEngine;
+    var perPixel = engine && engine.riseTime ? engine.riseTime(stack.speed) : 0;
+    var framesPerRow = perPixel * 16;
+    // displacement counts the pixels left before the next row lands.
+    var toNextRow = (stack.displacement === undefined || stack.displacement === null)
+        ? framesPerRow : stack.displacement * perPixel;
+
+    var top = 0, r, c;
+    for (r = stack.height; r >= 1; r--) {
+      var row = stack.panels[r];
+      if (!row) continue;
+      var filled = false;
+      for (c = 1; c <= stack.width; c++) {
+        var p = row[c];
+        if (p && p.color !== 0) { filled = true; break; }
+      }
+      if (filled) { top = r; break; }
+    }
+
+    var queuedRows = 0, q = stack.incoming || [];
+    for (var i = 0; i < q.length; i++) queuedRows += (q[i].height || 0);
+
+    return {
+      framesPerRow: framesPerRow,
+      headroom: modes.headroomFrames({
+        rows: stack.height - top, queuedRows: queuedRows,
+        framesPerRow: framesPerRow, framesToNextRow: toNextRow,
+        stopTime: stack.stopTime || 0, preStopTime: stack.preStopTime || 0
+      })
+    };
+  };
+
   // The engine's own HOVER for this level: the frames a panel spends falling
   // before it can match. Read from the level table, never restated here.
   PuyoCpu.prototype._hoverFrames = function () {
@@ -1021,11 +1091,16 @@
     // THE ESCAPE IS PICKED HERE, NOT AT FILTER TIME. _value is what attaches
     // `reach` to a candidate, so the board a move leaves is unknown until
     // this loop has run — _applyModes cannot see it and neither can
-    // survivable(). While FORCED, a move that banks time now or leaves a
-    // board holding a four or a chain outranks every move that does neither,
-    // and the ordinary values still choose among those.
+    // survivable(). While FORCED, or merely WARNED by the danger clock, a
+    // move that banks time now or leaves a board holding a four or a chain
+    // outranks every move that does neither, and the ordinary values still
+    // choose among those.
+    //
+    // Warned, this is the ONLY thing that changes: the pool is still BUILD's
+    // and the weights still rank it. Opening FORCED on the clock instead was
+    // tried and lost 8-16-16, because FORCED discards BUILD.
     var tier = null;
-    if (this._mode === 'FORCED') {
+    if (this._mode === 'FORCED' || this._warned) {
       tier = [];
       for (i = 0; i < expand.length; i++) {
         if (modes.banksTime(expand[i].resolved) || modes.reachesEscape(expand[i].reach)) tier.push(i);

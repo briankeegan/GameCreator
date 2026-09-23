@@ -270,16 +270,81 @@
     return (o.reaction || 0) + o.travel + (o.hover || 0);
   }
 
-  // TWO TRIGGERS, AND ONLY TWO.
+  // FRAMES BEFORE THE FLOOR REACHES THE CEILING.
   //
-  // Topped out is the whole test. Not a deep stack — room left is room left.
-  // Not an empty pool for its own sake, which is a broken plan and is counted
-  // as one. The clock does not gate it: banked stop time postpones the rise,
-  // it does not undo a panel already in the top row, and a floor set to the
-  // frames one swap costs leaves nothing to act with.
+  // The rows of empty space above the stack, priced at the level's own rise
+  // rate, plus the stop clock, which postpones all of it. Garbage already
+  // queued is headroom already spent — it has not landed yet, but nothing
+  // the bot does will stop it landing, so a queued row is a row gone.
+  //
+  // THIS IS THE ONLY CLOCK THAT KILLS, and health is not it.
+  // advancePassiveRaise decrements health only when riseLock is clear AND
+  // stopTime is 0, so banked stop time is literal invulnerability; and at
+  // level 10 maxHealth is 1, one frame, so once the stack is actually at the
+  // top there is no reaction window left to use. Measured over ten deaths,
+  // the board was topped out for between 0.0 and 1.7 seconds before dying
+  // and six of the ten died on the first frame they topped out. The whole
+  // window is here, before.
+  function headroomFrames(o) {
+    var rows = (o.rows || 0) - (o.queuedRows || 0);
+    var stop = (o.stopTime || 0) + (o.preStopTime || 0);
+    if (rows <= 0) return stop;
+    // The stack sits part-way into its next row, so the first row costs what
+    // is left of it rather than a whole period.
+    var first = (o.framesToNextRow === undefined || o.framesToNextRow === null)
+        ? (o.framesPerRow || 0) : o.framesToNextRow;
+    return (rows - 1) * (o.framesPerRow || 0) + first + stop;
+  }
+
+  // WITH NOTHING ON THE BOARD THAT BANKS TIME, the escape clock is Infinity
+  // and "could I reach an escape in time" can only answer no. The question
+  // then is not whether one is reachable but whether there is room left to
+  // MAKE one, and the unit for that is rows: one row is a full rise period,
+  // and garbage arrives one or two rows at a time. Under two rows the next
+  // delivery tops the stack out before the bot gets another decision.
+  //
+  // Banked stop time counts, because headroomFrames already includes it: two
+  // rows plus a second of stop is not an emergency, and stops reading as one
+  // the moment the bot banks something.
+  var ESCAPE_RESERVE_ROWS = 2;
+
+  // TWO TRIGGERS, AND ONLY TWO. FORCED IS STILL THE EMERGENCY.
+  //
+  // It is tempting to open this on the danger clock as well, because the
+  // clock sees the death coming seconds earlier and this does not. It was
+  // tried: FORCED went from 0.8% of decisions to 23.3%, and the bot lost
+  // 8-16-16 to the same weights without it. FORCED does not merely prefer
+  // an escape, it DISCARDS BUILD -- survivable() narrows the pool to moves
+  // that bank time and the weights never see the rest -- and doing that on
+  // a quarter of all decisions throws away the policy that was trained.
+  //
+  // So the clock does not come in here. It comes in as warned(), which
+  // changes what is preferred without changing what is allowed.
   function forced(o) {
     if (o.broke) return true;
     return !!o.toppedOut;
+  }
+
+  // THE WARNING: the floor will arrive before an escape can be reached.
+  //
+  // Same clock, no emergency. BUILD keeps its pool and the weights keep
+  // their ranking; all this does is tell _lookahead to prefer, among moves
+  // the weights already allow, the ones that LEAVE a four or a chain on the
+  // board. That is the difference between "get out now" and "make sure you
+  // have a way out" -- and having a way out is the thing the bot never had:
+  // over the final fifteen seconds of ten deaths, 84% of decisions had no
+  // move on the board that banked any stop time at all, while the median
+  // headroom was 6.5 seconds. The time was always there. The out was not.
+  //
+  // A caller that cannot supply the clock passes no headroom and is never
+  // warned, rather than being warned on a guess.
+  function warned(o) {
+    if (!o || o.headroom === undefined || o.headroom === null) return false;
+    if (isFinite(o.escape)) return o.headroom <= o.escape;
+    // Nothing on the board banks time, so the escape clock is Infinity and
+    // "could I reach one in time" can only answer no. The question is then
+    // whether there is room left to MAKE one, and the unit is rows.
+    return o.headroom <= ESCAPE_RESERVE_ROWS * (o.framesPerRow || 0);
   }
 
   // Did what BUILD was saving for disappear without being spent.
@@ -373,6 +438,8 @@
            COMBO_SIZES: COMBO_SIZES, CHAIN_SIZES: CHAIN_SIZES,
            GOALS: GOALS, goal: goal, climbTo: climbTo, survivable: survivable,
            reachesEscape: reachesEscape,
+           headroomFrames: headroomFrames, warned: warned,
+           ESCAPE_RESERVE_ROWS: ESCAPE_RESERVE_ROWS,
            clock: clock, escapeFrames: escapeFrames, banksTime: banksTime,
            risesIntoPayless: risesIntoPayless,
            forced: forced, planBroke: planBroke, bestPayout: bestPayout };

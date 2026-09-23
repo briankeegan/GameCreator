@@ -655,6 +655,98 @@ test('no danger set means the ordinary weights, so off is free', function () {
     assert.deepStrictEqual(cpu._weightsNow(), cpu.weights);
 });
 
+// ---- the danger clock -------------------------------------------------
+//
+// A rows-to-the-ceiling margin was tried before and rejected: it fired on
+// 47% of decisions and bought nothing (see 'height alone is still NOT the
+// trigger'). What is tested here is NOT that. Rows are a board shape; this
+// is a comparison of two clocks in the same unit -- frames before the floor
+// arrives against frames needed to reach a move that banks stop time -- and
+// it prices the garbage already queued, which a height margin cannot see.
+
+test('headroom is rows at the level rate, plus the stop clock', function () {
+    // Three clear rows at 120 frames a row, sitting at the start of the
+    // fourth, with no stop time: 360 frames.
+    assert.strictEqual(modes.headroomFrames({
+        rows: 3, framesPerRow: 120, framesToNextRow: 120, stopTime: 0 }), 360);
+    // Banked stop time postpones all of it.
+    assert.strictEqual(modes.headroomFrames({
+        rows: 3, framesPerRow: 120, framesToNextRow: 120, stopTime: 60 }), 420);
+});
+
+test('a part-risen row costs what is LEFT of it, not a whole period', function () {
+    // Two rows of space and the current one is 30 frames from landing:
+    // 120 + 30, not 240. Charging a full period here reads the board as
+    // safer than it is exactly when the margin is thinnest.
+    assert.strictEqual(modes.headroomFrames({
+        rows: 2, framesPerRow: 120, framesToNextRow: 30, stopTime: 0 }), 150);
+});
+
+test('QUEUED GARBAGE IS HEADROOM ALREADY SPENT', function () {
+    // Four rows of space with two rows of garbage on the way is two rows of
+    // space. Nothing the bot does stops it landing, so counting it only when
+    // it arrives is counting it too late -- which is the whole complaint.
+    assert.strictEqual(modes.headroomFrames({
+        rows: 4, queuedRows: 2, framesPerRow: 120, framesToNextRow: 120, stopTime: 0 }), 240);
+    // More queued than there is room for is not negative time; it is
+    // whatever the stop clock still holds and nothing else.
+    assert.strictEqual(modes.headroomFrames({
+        rows: 1, queuedRows: 3, framesPerRow: 120, framesToNextRow: 120, stopTime: 45 }), 45);
+});
+
+test('the WARNING opens when the floor arrives before an escape can be reached', function () {
+    // 90 frames of headroom, 120 frames to reach the nearest move that banks
+    // time: it is already lost and has not noticed.
+    assert.strictEqual(modes.warned({
+        headroom: 90, escape: 120, framesPerRow: 120 }), true);
+    // The same board with room to get there is not a warning.
+    assert.strictEqual(modes.warned({
+        headroom: 600, escape: 120, framesPerRow: 120 }), false);
+});
+
+test('the clock does NOT open FORCED, however short it is', function () {
+    // Opening FORCED on the clock took it from 0.8% of decisions to 23.3%
+    // and the bot lost 8-16-16 to the same weights without it. FORCED
+    // discards BUILD -- survivable() narrows the pool to moves that bank
+    // time -- so firing it on a quarter of decisions throws away the trained
+    // policy. The clock warns; it does not seize the wheel.
+    assert.strictEqual(modes.forced({
+        toppedOut: false, headroom: 1, escape: Infinity, framesPerRow: 120 }), false);
+});
+
+test('with NOTHING that banks time, the reserve decides and not Infinity', function () {
+    // escape is Infinity when no candidate banks stop time, so the
+    // comparison above can only say yes. Falling through to it would leave
+    // the warning on from the first move of the game, which is the same
+    // as never warning at all.
+    // Two rows of room and no payout on the board is the warning; six rows
+    // and no payout is an ordinary early board.
+    assert.strictEqual(modes.warned({
+        headroom: 240, escape: Infinity, framesPerRow: 120 }), true);
+    assert.strictEqual(modes.warned({
+        headroom: 720, escape: Infinity, framesPerRow: 120 }), false);
+});
+
+test('banked stop time lifts the board OUT of the warning', function () {
+    // Two rows with a second of stop banked is not two rows of danger. This
+    // is the behaviour the whole change exists for: stop time is the real
+    // health, so buying some has to visibly buy safety.
+    var rows2 = modes.headroomFrames({
+        rows: 2, framesPerRow: 120, framesToNextRow: 120, stopTime: 0 });
+    var rows2stopped = modes.headroomFrames({
+        rows: 2, framesPerRow: 120, framesToNextRow: 120, stopTime: 60 });
+    assert.strictEqual(modes.warned({
+        headroom: rows2, escape: Infinity, framesPerRow: 120 }), true);
+    assert.strictEqual(modes.warned({
+        headroom: rows2stopped, escape: Infinity, framesPerRow: 120 }), false);
+});
+
+test('a caller with no clock is never warned, rather than warned on a guess', function () {
+    assert.strictEqual(modes.warned({ escape: 30 }), false);
+    assert.strictEqual(modes.warned({ headroom: null, escape: 30 }), false);
+    assert.strictEqual(modes.warned(null), false);
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }
