@@ -138,11 +138,16 @@ test("the loop's checkpoint is committed alongside the snapshot", function () {
 
 // The islands keep one file per island; all of them together are the resume
 // point, so all of them have to ride along with the champion.
+//
+// THE DIRECTORY IS THE RUN'S TAG. Keyed by ga_seed instead, two variants
+// dispatched on one seed share a population and quietly overwrite each
+// other, which is what default and r17 did on seed 317 for a day.
 test("the islands' state is committed alongside the snapshot", function () {
     var src = stage({ mode: 'pbt', population: 16, updates: 250, weights: { maxHeight: 1 } });
-    fs.mkdirSync(path.join(SCRATCH, '.pbt-11'));
+    var dir = '.islands-test';
+    fs.mkdirSync(path.join(SCRATCH, dir));
     ['island0.json', 'island1.json'].forEach(function (f) {
-        fs.writeFileSync(path.join(SCRATCH, '.pbt-11', f),
+        fs.writeFileSync(path.join(SCRATCH, dir, f),
             JSON.stringify({ fingerprint: 'x', population: [], updates: 250 }));
     });
     var r = runHook(src, 250, { GC_MODE: 'pbt', GC_TAG: 'islands-test',
@@ -150,10 +155,32 @@ test("the islands' state is committed alongside the snapshot", function () {
     var tracked = cp.execSync('git show --name-only --format= HEAD',
         { cwd: SCRATCH, encoding: 'utf8' });
     ['island0.json', 'island1.json'].forEach(function (f) {
-        assert.ok(tracked.indexOf('.pbt-11/' + f) >= 0,
-            '.pbt-11/' + f + ' was not committed, so a later job restarts the search ' +
+        assert.ok(tracked.indexOf(dir + '/' + f) >= 0,
+            dir + '/' + f + ' was not committed, so a later job restarts the search ' +
             'from random weights:\n' + tracked);
     });
+});
+
+// AND ONLY ITS OWN. The hook used to glob every .pbt-*/ in the checkout, so a
+// run committed its siblings' island files as well -- a stale copy landing
+// back over a newer one, which is the same clobbering the per-tag directory
+// exists to stop, arriving by a different door.
+test("a run commits ITS islands and not another run's", function () {
+    var src = stage({ mode: 'pbt', population: 16, updates: 250, weights: { maxHeight: 1 } });
+    fs.mkdirSync(path.join(SCRATCH, '.islands-mine'));
+    fs.writeFileSync(path.join(SCRATCH, '.islands-mine', 'island0.json'),
+        JSON.stringify({ fingerprint: 'x', population: [], updates: 250 }));
+    fs.mkdirSync(path.join(SCRATCH, '.islands-theirs'));
+    fs.writeFileSync(path.join(SCRATCH, '.islands-theirs', 'island0.json'),
+        JSON.stringify({ fingerprint: 'y', population: [], updates: 999 }));
+    runHook(src, 250, { GC_MODE: 'pbt', GC_TAG: 'islands-mine',
+                        GC_MIN_POP: '16', GC_RUN_ID: 'testrun' });
+    var tracked = cp.execSync('git show --name-only --format= HEAD',
+        { cwd: SCRATCH, encoding: 'utf8' });
+    assert.ok(tracked.indexOf('.islands-mine/island0.json') >= 0,
+        'its own island was not committed:\n' + tracked);
+    assert.ok(tracked.indexOf('.islands-theirs/island0.json') < 0,
+        "another run's island rode along:\n" + tracked);
 });
 
 // AND THE RESUME ITSELF. Committing the files is half of it; the other half is
