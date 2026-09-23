@@ -365,7 +365,8 @@
   //      is dropped instead of scored as a no-op, and the settled slabs go back
   //   8  the floor moves through the settle and the garbage already queued
   //      comes with it
-  var RULES = 8;
+  //   9  the scratch survives its own answer, and everything unsupported falls
+  var RULES = 9;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

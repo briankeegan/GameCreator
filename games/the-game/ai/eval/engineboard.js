@@ -139,17 +139,42 @@
         // painted as one and the engine does the rest. Garbage needs nothing:
         // updateNormal checks supportedFromBelow before the stateChanged
         // guard and falls on its own.
-        for (var gr = 2; gr <= height; gr++) {
-            for (var gc = 1; gc <= width; gc++) {
+        // NOT SUPPORTED IS NOT THE SAME AS "THE CELL BELOW IS EMPTY". A panel
+        // resting on a panel that is itself about to fall is going down too,
+        // and giving a state only to the lowest one leaves the rest `normal`,
+        // where updateNormal never re-examines them. Measured: a column of
+        // four left five rows above where the engine settles it.
+        //
+        // Walked per column from the floor up, tracking where the next panel
+        // actually comes to rest. Garbage is skipped — it spans columns and
+        // the engine's supportedFromBelow handles it before the stateChanged
+        // guard.
+        for (var gc = 1; gc <= width; gc++) {
+            var rest = 1;
+            for (var gr = 1; gr <= height; gr++) {
                 var gp = stack.panels[gr] && stack.panels[gr][gc];
-                if (!gp || gp.isGarbage || gp.color === 0) continue;
-                var under = stack.panels[gr - 1][gc];
-                if (!under || under.isGarbage || under.color !== 0) continue;
-                // The engine's own state where it had one, so a panel already
-                // falling keeps falling instead of restarting its hover.
-                var mv = motion && motion[gr] && motion[gr][gc];
-                if (mv) { gp.state = mv.state; gp.timer = mv.timer; }
-                else { gp.state = 'hovering'; gp.timer = stack.frames.HOVER; }
+                if (!gp || gp.color === 0) continue;
+                // GARBAGE IS NOT A FLOOR. A slab with a gap under it falls, and
+                // everything resting on it falls the same distance. Treating
+                // it as fixed left the colour panels above a sinking slab
+                // marked normal, where updateNormal never looks at them again.
+                if (gp.isGarbage) { rest = gr + 1; continue; }
+                // Anything with an empty cell somewhere below it in this column
+                // is going down, whether the gap is directly beneath or under a
+                // slab that is itself about to sink.
+                var gap = gr > rest;
+                if (!gap) {
+                    for (var gb = gr - 1; gb >= 1; gb--) {
+                        var bp = stack.panels[gb] && stack.panels[gb][gc];
+                        if (!bp || bp.color === 0) { gap = true; break; }
+                    }
+                }
+                if (gap) {
+                    var mv = motion && motion[gr] && motion[gr][gc];
+                    if (mv) { gp.state = mv.state; gp.timer = mv.timer; }
+                    else { gp.state = 'hovering'; gp.timer = stack.frames.HOVER; }
+                }
+                rest++;
             }
         }
         stack.riseLock = true;
@@ -179,6 +204,15 @@
         stack.queuedSwapRow = 0; stack.queuedSwapCol = 0;
         stack.manualRaise = false; stack.preventManualRaise = false;
         stack.wasToppedOut = false; stack.gameOver = false;
+        // AND THE HEALTH, WHICH IS WHY A TALL BOARD RESOLVED TO NOTHING.
+        //
+        // A board painted near the ceiling reads topped out, and at level 10
+        // maxHealth is 1 — so one frame drains it to zero, checkGameOver
+        // fires, and run() returns early for the rest of the settle. The
+        // scratch dies on frame 1 and the resolve hands back the board it was
+        // given, unchanged. That is the answer the bot got for every candidate
+        // on a tall board: the moment it most needs to know what a move does.
+        stack.health = stack.maxHealth;
         if (stack.incoming) stack.incoming.length = 0;
         if (stack.garbageLandedThisFrame) stack.garbageLandedThisFrame.length = 0;
         if (stack.swapStallBacklog) stack.swapStallBacklog.length = 0;
@@ -212,6 +246,20 @@
         var cap = budget || 900;
         var quiet = false;
         for (var f = 0; f < cap; f++) {
+            // THE SCRATCH IS NOT PLAYING, IT IS ANSWERING A QUESTION.
+            //
+            // A board painted near the ceiling reads topped out, and the
+            // engine drains health whenever a topped-out stack is not locked
+            // — updateRiseLock re-decides that flag every frame, so it cannot
+            // be held off from outside. At level 10 maxHealth is 1: the
+            // scratch dies on the first frame, run() returns early, and the
+            // resolve hands back the board it was given, unchanged. That was
+            // the answer for every candidate on a tall board, which is exactly
+            // when the bot needs a real one.
+            //
+            // Dying is the match's business. What settles is this module's.
+            stack.health = stack.maxHealth;
+            stack.gameOver = false;
             // ONLY ATTEMPT THE JUMP AFTER A SILENT FRAME. idleSkip walks the
             // board to find the soonest timer, and on a busy frame it pays
             // for that walk and then refuses — measured slower in real duels

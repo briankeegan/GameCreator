@@ -357,7 +357,10 @@ gate_idle_skip() {
 # capture_resolve_corpus.js only when the corpus is genuinely stale — a corpus
 # that moves is the thing this exists to avoid.
 gate_resolve_corpus() {
-  node games/the-game/ai/eval/verify_resolve_corpus.js
+  # ZERO, and it stays zero. The resolve agrees with the engine on every
+  # position in the corpus, at a swap and mid-flight alike. A budget above 0
+  # here would only be somewhere for a regression to hide.
+  GC_RESOLVE_WRONG_BUDGET=0 node games/the-game/ai/eval/verify_resolve_corpus.js
 }
 
 gate_live_fidelity() {
