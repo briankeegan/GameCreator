@@ -744,9 +744,13 @@
     this._lastHeadroom = clockNow.headroom;
     // WARNED IS NOT FORCED. It leaves the pool and the ranking exactly as
     // they were and only changes what _lookahead prefers among them.
-    this._warned = modes.warned({ headroom: clockNow.headroom,
-                                  framesPerRow: clockNow.framesPerRow,
-                                  escape: floor });
+    var clockArgs = { headroom: clockNow.headroom,
+                      framesPerRow: clockNow.framesPerRow,
+                      escape: floor };
+    this._warned = modes.warned(clockArgs);
+    // AND HOW BIG AN ESCAPE HAS TO BE TO COUNT AS ONE. A move that reaches
+    // a four when the bot needs 90 frames is not a way out of this board.
+    this._escapeNeeded = this._warned ? modes.escapeNeeded(clockArgs) : 0;
     if (modes.forced({ toppedOut: this._boardToppedOut(this._board) || !!stack.wasToppedOut,
                        stopTime: stack.stopTime || 0,
                        preStopTime: stack.preStopTime || 0,
@@ -1101,10 +1105,26 @@
     // tried and lost 8-16-16, because FORCED discards BUILD.
     var tier = null;
     if (this._mode === 'FORCED' || this._warned) {
+      // FORCED is the emergency and takes anything that is a way out at all.
+      // WARNED is a preference and has a budget: the escape has to be worth
+      // enough stop time to actually clear the danger. Without that the bar
+      // is "can reach a four or a two-chain", which two thirds of every
+      // board clears, and the tier keeps almost the whole pool and decides
+      // nothing -- measured at 11.2 of 17.6 candidates.
+      var stopTable = this.stack && this.stack.levelData && this.stack.levelData.stop;
+      var toppedOut = !!(this.stack && this.stack.wasToppedOut);
+      var need = this._mode === 'FORCED' ? 0 : (this._escapeNeeded || 0);
       tier = [];
       for (i = 0; i < expand.length; i++) {
-        if (modes.banksTime(expand[i].resolved) || modes.reachesEscape(expand[i].reach)) tier.push(i);
+        if (modes.banksTime(expand[i].resolved)) { tier.push(i); continue; }
+        if (need <= 0) {
+          if (modes.reachesEscape(expand[i].reach)) tier.push(i);
+        } else if (modes.escapeValue(expand[i].reach, stopTable, toppedOut) >= need) {
+          tier.push(i);
+        }
       }
+      // AN EMPTY TIER IS NOT A VETO. Nothing on the board is big enough, so
+      // the ordinary ranking stands rather than the pool collapsing.
       if (!tier.length) tier = null;
     }
 

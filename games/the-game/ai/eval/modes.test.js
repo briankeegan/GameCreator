@@ -747,6 +747,57 @@ test('a caller with no clock is never warned, rather than warned on a guess', fu
     assert.strictEqual(modes.warned(null), false);
 });
 
+// ---- what an escape is WORTH ------------------------------------------
+
+var L10 = { comboConstant: 22, chainConstant: 56, dangerConstant: 88,
+            coefficient: 2, dangerCoefficient: 2 };
+
+test('an escape is priced in frames, from the engine table, not as a yes', function () {
+    // reachesEscape says yes to both of these. They are not the same move:
+    // at level 10 a four buys half a second and a five-chain buys more than
+    // a second, and the whole failure of the first attempt was treating them
+    // alike -- the tier kept 11.2 of 17.6 candidates and decided nothing.
+    assert.strictEqual(modes.escapeValue({ reach4combo: 1 }, L10, false), 30);
+    assert.strictEqual(modes.escapeValue({ reach2chain: 1 }, L10, false), 60);
+    assert.strictEqual(modes.escapeValue({ reach5chain: 1 }, L10, false), 66);
+    // Both reachable: the best one is what the board is worth.
+    assert.strictEqual(modes.escapeValue({ reach4combo: 1, reach5chain: 1 }, L10, false), 66);
+    assert.strictEqual(modes.escapeValue({}, L10, false), 0);
+    assert.strictEqual(modes.escapeValue(null, L10, false), 0);
+});
+
+test('at the ceiling the DANGER formula pays, exactly as the engine does', function () {
+    // awardStopTime: topped out and chaining draws dangerConstant plus the
+    // length, with the length capped at 6. Reading the ordinary formula here
+    // would under-price the one move that saves a topped-out board.
+    assert.strictEqual(modes.escapeValue({ reach2chain: 1 }, L10, true), 90);
+    assert.strictEqual(modes.escapeValue({ reach5chain: 1 }, L10, true), 98);
+    assert.strictEqual(modes.escapeValue({ reach8chain: 1 }, L10, true), 98);
+    // A combo at the ceiling is the flat branch, not the per-size one.
+    assert.strictEqual(modes.escapeValue({ reach4combo: 1 }, L10, true), 60);
+});
+
+test('the budget is what it takes to CLEAR the warning, not a constant', function () {
+    // 200 frames of headroom against a 260-frame escape clock: 61 frames of
+    // stop time puts it back over. A four (30) does not get the bot out of
+    // this board; a two-chain (60) does not quite; a five-chain does.
+    var need = modes.escapeNeeded({ headroom: 200, escape: 260, framesPerRow: 120 });
+    assert.strictEqual(need, 61);
+    assert.ok(modes.escapeValue({ reach4combo: 1 }, L10, false) < need);
+    assert.ok(modes.escapeValue({ reach5chain: 1 }, L10, false) >= need);
+});
+
+test('with nothing that banks time the budget is measured against the reserve', function () {
+    // escape is Infinity, so the bar is the two-row reserve and the budget
+    // is what closes the gap to it.
+    assert.strictEqual(modes.escapeNeeded({
+        headroom: 200, escape: Infinity, framesPerRow: 120 }), 41);
+    // Already above the bar: nothing is needed, and a negative budget would
+    // admit every candidate.
+    assert.strictEqual(modes.escapeNeeded({
+        headroom: 400, escape: Infinity, framesPerRow: 120 }), 0);
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }

@@ -209,6 +209,49 @@
     return false;
   }
 
+  // WHAT AN ESCAPE IS ACTUALLY WORTH, IN FRAMES.
+  //
+  // reachesEscape answers yes for a four and yes for an eight-chain. At
+  // level 10 those are 30 frames and 72, and treating them as the same
+  // thing is why a tier built on it kept 11.2 of 17.6 candidates and
+  // changed almost nothing: two thirds of every board clears a bar set at
+  // "can reach a four OR a two-chain".
+  //
+  // The engine's own awardStopTime says what each size is worth, so this
+  // reads the same level table and the same four branches rather than
+  // restating a number that would then drift.
+  function escapeValue(reach, stop, toppedOut) {
+    if (!reach || !stop) return 0;
+    var best = 0, i, v, n;
+    for (i = 0; i < COMBO_SIZES.length; i++) {
+      n = COMBO_SIZES[i];
+      if (n <= 3 || !reach['reach' + n + 'combo']) continue;
+      v = toppedOut ? stop.coefficient * (n < 9 ? 2 : 3) + stop.chainConstant
+                    : stop.coefficient * n + stop.comboConstant;
+      if (v > best) best = v;
+    }
+    for (i = 0; i < CHAIN_SIZES.length; i++) {
+      n = CHAIN_SIZES[i];
+      if (n < 2 || !reach['reach' + n + 'chain']) continue;
+      v = toppedOut ? stop.dangerConstant + ((n > 4 ? 6 : n) - 1) * stop.dangerCoefficient
+                    : stop.coefficient * Math.min(n, 13) + stop.chainConstant;
+      if (v > best) best = v;
+    }
+    return best;
+  }
+
+  // HOW MUCH STOP TIME WOULD CLEAR THE WARNING.
+  //
+  // The warning is headroom against a bar. Enough stop time to put headroom
+  // back over that bar is what "a way out" has to mean here — an escape
+  // worth less than this does not get the bot out of the danger it is in,
+  // it just looks like an escape.
+  function escapeNeeded(o) {
+    var bar = isFinite(o.escape) ? o.escape
+                                 : ESCAPE_RESERVE_ROWS * (o.framesPerRow || 0);
+    return Math.max(0, bar - (o.headroom || 0) + 1);
+  }
+
   // DOES THIS MOVE BANK TIME — the only kind of move that is a way out.
   //
   // awardStopTime is gated on `comboSize > 3 || isChain`, so a bare three
@@ -439,6 +482,7 @@
            GOALS: GOALS, goal: goal, climbTo: climbTo, survivable: survivable,
            reachesEscape: reachesEscape,
            headroomFrames: headroomFrames, warned: warned,
+           escapeValue: escapeValue, escapeNeeded: escapeNeeded,
            ESCAPE_RESERVE_ROWS: ESCAPE_RESERVE_ROWS,
            clock: clock, escapeFrames: escapeFrames, banksTime: banksTime,
            risesIntoPayless: risesIntoPayless,
