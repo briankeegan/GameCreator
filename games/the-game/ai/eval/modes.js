@@ -359,7 +359,9 @@
   //   4  FORCED's escape counts the board a move LEAVES, not only what it clears
   //   5  a candidate is aged with the floor moving, so the board it is scored
   //      on is the one the cursor arrives at
-  var RULES = 5;
+  //   6  the garbage slabs are painted with it, so the engine can tell what is
+  //      supported and what pops as a unit
+  var RULES = 6;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
