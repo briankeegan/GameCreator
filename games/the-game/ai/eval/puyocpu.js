@@ -1156,26 +1156,40 @@
     // tried and lost 8-16-16, because FORCED discards BUILD.
     var tier = null;
     if (this._mode === 'FORCED' || this._warned) {
-      // FORCED is the emergency and takes anything that is a way out at all.
-      // WARNED is a preference and has a budget: the escape has to be worth
-      // enough stop time to actually clear the danger. Without that the bar
-      // is "can reach a four or a two-chain", which two thirds of every
-      // board clears, and the tier keeps almost the whole pool and decides
-      // nothing -- measured at 11.2 of 17.6 candidates.
+      // THE BIGGEST WAY OUT THERE IS, NOT ONLY ONE BIG ENOUGH TO SAVE IT.
+      //
+      // A threshold was tried -- admit an escape only if it banks enough to
+      // clear the danger outright -- and it refuses the escapes that
+      // actually exist. In the last five seconds before death 72% of
+      // decisions hold a two-swap escape and the median one is worth 60
+      // frames, a two-chain, while the frames needed to clear the danger
+      // are usually more than that. The threshold took qualifying escapes
+      // from 81% of warned decisions to 22%: it was throwing away real
+      // outs for not being complete rescues. Sixty frames is sixty frames.
+      //
+      // So the tier is the BEST escape on offer and everything tied with
+      // it. A bare "can reach a four or a two-chain" bar is no good either
+      // -- two thirds of every board clears it, and the tier kept 11.2 of
+      // 17.6 candidates and decided nothing. Ranking by what the engine
+      // would actually pay separates them.
       var stopTable = this.stack && this.stack.levelData && this.stack.levelData.stop;
       var toppedOut = !!(this.stack && this.stack.wasToppedOut);
-      var need = this._mode === 'FORCED' ? 0 : (this._escapeNeeded || 0);
-      tier = [];
+      var worth = new Array(expand.length), bestWorth = 0;
       for (i = 0; i < expand.length; i++) {
-        if (modes.banksTime(expand[i].resolved)) { tier.push(i); continue; }
-        if (need <= 0) {
-          if (modes.reachesEscape(expand[i].reach)) tier.push(i);
-        } else if (modes.escapeValue(expand[i].reach, stopTable, toppedOut) >= need) {
-          tier.push(i);
-        }
+        // A move that banks time NOW is a real escape, not a promised one,
+        // so it is worth what it actually earned.
+        worth[i] = modes.banksTime(expand[i].resolved)
+            ? Math.max(expand[i].earnedStop || 0,
+                       modes.escapeValue(expand[i].reach, stopTable, toppedOut))
+            : modes.escapeValue(expand[i].reach, stopTable, toppedOut);
+        if (worth[i] > bestWorth) bestWorth = worth[i];
       }
-      // AN EMPTY TIER IS NOT A VETO. Nothing on the board is big enough, so
-      // the ordinary ranking stands rather than the pool collapsing.
+      tier = [];
+      if (bestWorth > 0) {
+        for (i = 0; i < expand.length; i++) if (worth[i] === bestWorth) tier.push(i);
+      }
+      // AN EMPTY TIER IS NOT A VETO. Nothing on this board is a way out at
+      // all, so the ordinary ranking stands rather than the pool collapsing.
       if (!tier.length) tier = null;
     }
 

@@ -79,6 +79,19 @@ function watch(cpu, log, frameOf) {
         var picked = origDecide();
         var all = cpu.__all || [];
         var escapes = 0, best = null, breaks = 0, clears = 0;
+        // AND THE ESCAPE ONE MOVE FURTHER OUT. `resolved` is what a single
+        // swap does; `reach` is what the board that swap LEAVES can fire,
+        // which is where a four that needs setting up actually lives. The
+        // bot searches two plies, so counting only one-swap escapes counts
+        // the wrong thing.
+        var reachEsc = 0, reachBest = 0;
+        var stopTable = cpu.stack && cpu.stack.levelData && cpu.stack.levelData.stop;
+        var TO = !!(cpu.stack && cpu.stack.wasToppedOut);
+        for (var j = 0; j < all.length; j++) {
+            if (modes.reachesEscape(all[j].reach)) reachEsc++;
+            var v = modes.escapeValue(all[j].reach, stopTable, TO);
+            if (v > reachBest) reachBest = v;
+        }
         for (var i = 0; i < all.length; i++) {
             if (modes.banksTime(all[i].resolved)) escapes++;
             var rv = all[i].resolved;
@@ -95,6 +108,7 @@ function watch(cpu, log, frameOf) {
         log.push({
             f: frameOf(), mode: cpu._mode || '-', cands: all.length,
             escapes: escapes, breaks: breaks, clears: clears,
+            reachEsc: reachEsc, reachBest: reachBest,
             tookEscape: tookEscape, tookClear: tookClear, tookBreak: tookBreak,
             took: picked && picked.kind,
             links: best ? best.links : 0, wide: best ? best.wide : 0,

@@ -781,10 +781,30 @@ test('the budget is what it takes to CLEAR the warning, not a constant', functio
     // 200 frames of headroom against a 260-frame escape clock: 61 frames of
     // stop time puts it back over. A four (30) does not get the bot out of
     // this board; a two-chain (60) does not quite; a five-chain does.
+    //
+    // KEPT, BUT NOT USED AS A BAR. Admitting only escapes that clear the
+    // danger outright refuses the escapes that exist: in the last five
+    // seconds before death 72% of decisions hold a two-swap escape and the
+    // median one is worth 60 frames, while the need is usually more. The
+    // tier ranks by escapeValue instead and takes the best on offer. This
+    // stays because "how short am I" is still the right question to be able
+    // to ask; it is just not the right way to answer it.
     var need = modes.escapeNeeded({ headroom: 200, escape: 260, framesPerRow: 120 });
     assert.strictEqual(need, 61);
     assert.ok(modes.escapeValue({ reach4combo: 1 }, L10, false) < need);
     assert.ok(modes.escapeValue({ reach5chain: 1 }, L10, false) >= need);
+});
+
+test('a smaller way out beats no way out', function () {
+    // The rule the threshold got wrong. Sixty frames is sixty frames: a
+    // two-chain that does not fully clear the danger still outranks a move
+    // that banks nothing, and ranking by what the engine pays puts them in
+    // the right order without a bar to fall short of.
+    var four = modes.escapeValue({ reach4combo: 1 }, L10, false);
+    var twoChain = modes.escapeValue({ reach2chain: 1 }, L10, false);
+    var nothing = modes.escapeValue({}, L10, false);
+    assert.ok(twoChain > four && four > nothing,
+        'escapes must order by what they are worth: ' + [nothing, four, twoChain]);
 });
 
 test('with nothing that banks time the budget is measured against the reserve', function () {
