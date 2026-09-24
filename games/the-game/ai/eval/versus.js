@@ -78,6 +78,7 @@ function makeCpu(stack, weights, opts) {
         rules14: opts.rules14 !== false,
         sinkingEscape: opts.sinkingEscape,
         refuseBrokeRaise: opts.refuseBrokeRaise,
+        deepSurvival: opts.deepSurvival,
         goal: opts.goal,
         alsoTake: opts.alsoTake,
         buildToward: opts.buildToward,
@@ -279,6 +280,7 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
             // At the decision it died on: was every move fatal, and did every
             // move lead to a board with nowhere to stand.
             forcedAtDeath: !!cpu.allFatalNow, corneredAtDeath: !!cpu.allCorneredNow,
+            doomedAtDeath: !!cpu.allDoomedNow,
             selfInflicted: cpu.selfInflicted || 0,
             forced: cpu.forcedDecisions || 0, cornered: cpu.corneredDecisions || 0,
             refusedFatal: cpu.fatalMovesDropped || 0,
