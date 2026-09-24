@@ -172,6 +172,11 @@
     // hold and is the alarm if one ever stops holding.
     this.selfInflicted = 0;
     this.hadSurvivorNow = false;
+    // Refusing a move that no line of play survives once the stack rises.
+    this.deepSurvival = opts.deepSurvival !== false;
+    this.doomedDecisions = 0;
+    this.doomedMovesDropped = 0;
+    this.allDoomedNow = false;
     // Off only for the harness that measures what the rule is worth. A rule
     // that cannot be switched off cannot be shown to be doing anything.
     this.refuseSuicide = opts.refuseSuicide !== false;
@@ -743,6 +748,59 @@
     return top > 0 && top > (raiseBoard.height - this.BROKE_RAISE_ROWS);
   };
 
+  // IS THERE A LINE OUT OF HERE, ONCE THE STACK ACTUALLY RISES.
+  //
+  // _standing asks whether any REPLY to a move survives, but it asks it of
+  // the board the move leaves -- which never rises. In the real game a row
+  // arrives between every pair of decisions, so a move can pass that check
+  // and be dead on arrival. That is the whole of the `toRise` column: 5518
+  // of 9480 deaths took a move that was safe when it was played.
+  //
+  // So this rises the board first, then asks. Depth is in RISES, not plies:
+  // depth 2 means "and still alive after the row after that".
+  //
+  // ONLY CLEARING SWAPS ARE FOLLOWED past the first rise. A swap that clears
+  // nothing cannot lower the stack, so it cannot answer a rise -- following
+  // them multiplies the work by ten and cannot change the answer.
+  PuyoCpu.prototype._survivesRise = function (board, depth) {
+    if (this._boardToppedOut(board)) return false;
+    if (depth <= 0) return true;
+    var risen = board.clone().rise(this._incoming);
+    this._resolveCandidate(risen);
+    // Standing still is a line if the rise alone does not kill.
+    if (!this._boardToppedOut(risen) && this._survivesRise(risen, depth - 1)) return true;
+    var swaps = risen.legalSwaps(), i, t, r;
+    for (i = 0; i < swaps.length; i++) {
+      t = risen.clone();
+      t.swap(swaps[i][0], swaps[i][1]);
+      r = this._resolveCandidate(t);
+      if (!r || !r.clearedPanels) continue;
+      if (this._boardToppedOut(t)) continue;
+      if (this._survivesRise(t, depth - 1)) return true;
+    }
+    return false;
+  };
+
+  // Only worth asking when the stack is high enough for a rise to matter.
+  // On a low board every move survives every rise and the answer is always
+  // yes, bought at ten times the price.
+  PuyoCpu.prototype.DOOMED_ROWS = 4;
+  PuyoCpu.prototype.DOOMED_DEPTH = 2;
+  PuyoCpu.prototype._doomed = function (cands) {
+    if (!this.refuseSuicide || !this.deepSurvival || !cands || cands.length < 2) return cands;
+    var top = this._board ? this._topRowOf(this._board) : 0;
+    if (!top || top <= (this._board.height - this.DOOMED_ROWS)) return cands;
+    var live = [], i;
+    for (i = 0; i < cands.length; i++) {
+      if (this._survivesRise(cands[i].board, this.DOOMED_DEPTH)) live.push(cands[i]);
+    }
+    this.allDoomedNow = !live.length;
+    if (!live.length) { this.doomedDecisions++; return cands; }
+    if (live.length === cands.length) return cands;
+    this.doomedMovesDropped += cands.length - live.length;
+    return live;
+  };
+
   // THE MOVES THAT LEAVE A LOWER, LIVING BOARD.
   //
   // Only consulted when no candidate banks any stop time. `drop` is rows
@@ -912,7 +970,7 @@
                    travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
-    return this._survivors(cands);
+    return this._doomed(this._survivors(cands));
   };
 
   // Narrow the pool to the moves this decision is allowed to choose between,

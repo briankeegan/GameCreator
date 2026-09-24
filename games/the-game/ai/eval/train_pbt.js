@@ -439,13 +439,14 @@ function buildReport(genome, r) {
 
 function deathReport(ds) {
     if (!ds || !ds.length) return { n: 0 };
-    var forced = 0, cornered = 0, toRise = 0, selfInflicted = 0, warns = [], sum = {
+    var forced = 0, cornered = 0, doomed = 0, toRise = 0, selfInflicted = 0, warns = [], sum = {
         top: 0, panels: 0, garbage: 0, queuedRows: 0, stop: 0,
         refusedFatal: 0, refusedCornering: 0, refusedRaises: 0 };
     ds.forEach(function (d) {
         if (d.forcedAtDeath) forced++;
         if (d.corneredAtDeath) cornered++;
-        if (!d.forcedAtDeath && !d.corneredAtDeath) toRise++;
+        if (d.doomedAtDeath) doomed++;
+        if (!d.forcedAtDeath && !d.corneredAtDeath && !d.doomedAtDeath) toRise++;
         selfInflicted += d.selfInflicted || 0;
         if (d.warning !== null && d.warning !== undefined) warns.push(d.warning);
         for (var k in sum) sum[k] += d[k] || 0;
@@ -458,7 +459,8 @@ function deathReport(ds) {
     var avg = {};
     for (var k in sum) avg[k] = sum[k] / ds.length;
     return { n: ds.length, selfInflicted: selfInflicted, forced: forced,
-             cornered: cornered, toRise: toRise, warningFrames: med, avg: avg };
+             cornered: cornered, doomed: doomed, toRise: toRise,
+             warningFrames: med, avg: avg };
 }
 
 function writeSnapshot(best, report, totalUpdates, diversity) {
