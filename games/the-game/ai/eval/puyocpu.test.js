@@ -399,6 +399,52 @@ test('the rule can be switched off, so it can be shown to do something', functio
     assert.strictEqual(cpu._survivors(mixed), mixed);
 });
 
+// ---- and a move into a corner is a move into death -------------------
+
+function cornerCpu(opts) {
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
+    return new PuyoCpu(stack, Object.assign({ weights: sample() }, opts || {}));
+}
+
+test('a move whose every reply is topped out is dropped', function () {
+    var cpu = cornerCpu();
+    var expand = [{ cornered: true }, { cornered: false }, { cornered: true }];
+    assert.deepStrictEqual(cpu._standing(expand, null), [1]);
+    assert.strictEqual(cpu.corneringMovesDropped, 2);
+});
+
+test('when EVERY move is a corner the filter lifts', function () {
+    var cpu = cornerCpu();
+    var all = [{ cornered: true }, { cornered: true }];
+    assert.strictEqual(cpu._standing(all, null), null, 'no tier, so nothing is imposed');
+    assert.strictEqual(cpu.corneringMovesDropped, 0);
+});
+
+test('it NARROWS the escape tier rather than replacing it', function () {
+    // _lookahead may already have picked a tier of moves that reach a way
+    // out. Replacing it would throw that away; ignoring it would walk into
+    // a corner for the sake of an escape that arrives after the death.
+    var cpu = cornerCpu();
+    var expand = [{ cornered: false }, { cornered: true }, { cornered: false }];
+    assert.deepStrictEqual(cpu._standing(expand, [1, 2]), [2]);
+});
+
+test('a tier that narrowing would EMPTY is left alone', function () {
+    // Every move the escape tier picked is also a corner. Emptying the tier
+    // would fall through to the whole pool, which is a different bot; the
+    // tier stands and the corner is the lesser of the two.
+    var cpu = cornerCpu();
+    var expand = [{ cornered: false }, { cornered: true }, { cornered: true }];
+    assert.deepStrictEqual(cpu._standing(expand, [1, 2]), [1, 2]);
+});
+
+test('cornering is refused only while the rule is on', function () {
+    var cpu = cornerCpu({ refuseSuicide: false });
+    var expand = [{ cornered: true }, { cornered: false }];
+    assert.strictEqual(cpu._standing(expand, null), null);
+    assert.strictEqual(cpu.corneringMovesDropped, 0);
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }

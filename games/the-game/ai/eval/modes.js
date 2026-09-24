@@ -509,7 +509,9 @@
   //  12  a move that leaves the board topped out is not offered while one
   //      that does not exists. Topping out and dying are the same frame at
   //      level 10, so the decision before is the only one that can refuse it
-  var RULES = 12;
+  //  13  nor is a move after which EVERY reply is topped out -- the corner
+  //      is entered long before it kills anything
+  var RULES = 13;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
