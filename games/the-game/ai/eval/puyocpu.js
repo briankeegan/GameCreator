@@ -175,6 +175,14 @@
     // Off only for the harness that measures what the rule is worth. A rule
     // that cannot be switched off cannot be shown to be doing anything.
     this.refuseSuicide = opts.refuseSuicide !== false;
+    // RULES 14's two rules, behind one switch so the pair can be measured
+    // against the procedure they changed. A rule that cannot be switched off
+    // cannot be shown to be doing anything.
+    this.rules14 = opts.rules14 !== false;
+    // The two separately, so each can be measured on its own rather than as
+    // a pair whose halves might cancel.
+    this.sinkingEscape = opts.sinkingEscape === undefined ? this.rules14 : opts.sinkingEscape !== false;
+    this.refuseBrokeRaise = opts.refuseBrokeRaise === undefined ? this.rules14 : opts.refuseBrokeRaise !== false;
     // WHAT THIS BOT IS BUILDING, as one setting a player would recognise:
     // "5-chain", "6-combo", or null for no target at all. It says the whole
     // plan — climb toward it, refuse to sell below it, fire when it exists —
@@ -708,6 +716,68 @@
     return keep.length ? keep : tier;
   };
 
+  // DON'T PUSH THE STACK UP WHEN YOU CANNOT PAY FOR IT.
+  //
+  // _raiseIsSuicide refuses a raise that kills on the spot. This refuses the
+  // one that is plainly a step toward it: the stack is already in the top
+  // rows, no stop time is banked, nothing is shaking, and the raise itself
+  // earns nothing. In the death this was written for the bot raised four
+  // times in a row in that state with its stop time running 48 -> 40 -> 0,
+  // and every one of those raises was legal by the on-the-spot rule.
+  //
+  // THE HEIGHT CONDITION IS THE WHOLE RULE. Without it this refuses an
+  // ordinary raise on a quiet low board, which is how the bot gets panels
+  // to work with at all -- it dropped one legal move from every decision of
+  // a calm game.
+  //
+  // A raise that completes a match is not this: that match is the reason to
+  // raise, and it pays.
+  PuyoCpu.prototype.BROKE_RAISE_ROWS = 3;
+  PuyoCpu.prototype._raiseWhileBroke = function (raiseBoard, raiseResolved) {
+    var stack = this.stack;
+    if (!this.refuseBrokeRaise || !stack) return false;
+    if ((stack.stopTime || 0) > 0) return false;
+    if ((stack.shakeTime || 0) > 0) return false;
+    if (raiseResolved && raiseResolved.clearedPanels) return false;
+    var top = this._topRowOf(raiseBoard);
+    return top > 0 && top > (raiseBoard.height - this.BROKE_RAISE_ROWS);
+  };
+
+  // THE MOVES THAT LEAVE A LOWER, LIVING BOARD.
+  //
+  // Only consulted when no candidate banks any stop time. `drop` is rows
+  // taken off the top; a move that clears without lowering the stack is not
+  // a way out of a board that is too tall.
+  PuyoCpu.prototype._sinking = function (expand) {
+    var best = 0, i, drop, tops = new Array(expand.length);
+    var now = this._board ? this._topRowOf(this._board) : 0;
+    for (i = 0; i < expand.length; i++) {
+      tops[i] = 0;
+      var c = expand[i];
+      if (!c.resolved || !c.resolved.clearedPanels) continue;
+      if (this._boardToppedOut(c.board)) continue;
+      drop = now - this._topRowOf(c.board);
+      if (drop <= 0) continue;
+      tops[i] = drop;
+      if (drop > best) best = drop;
+    }
+    if (!best) return null;
+    var out = [];
+    for (i = 0; i < expand.length; i++) if (tops[i] === best) out.push(i);
+    return out;
+  };
+
+  // The highest row holding anything, on a candidate board.
+  PuyoCpu.prototype._topRowOf = function (board) {
+    if (!board || !board.grid) return 0;
+    for (var r = board.height; r >= 1; r--) {
+      var row = board.grid[r];
+      if (!row) continue;
+      for (var c = 1; c <= board.width; c++) if (row[c] !== 0) return r;
+    }
+    return 0;
+  };
+
   // WOULD THIS RAISE KILL IT.
   //
   // Not "is it risky" -- would the board it leaves have nowhere for the
@@ -790,9 +860,15 @@
       // can shorten its own clock on purpose -- so it is the only place
       // "chose to die" is literally true, and it is not a preference to be
       // weighted against tidiness. See _raiseIsSuicide.
-      if (!(this.refuseSuicide && this._raiseIsSuicide(raiseBoard))) {
+      // SCORED FIRST, REFUSED SECOND. Every legal move goes through the
+      // evaluator -- puyocpu.test.js checks that count against the board's
+      // own legalSwaps() -- and a refusal decides whether the scored move is
+      // offered, not whether it is looked at.
+      var raiseScore = this._score(raiseBoard, raiseResolved, null);
+      if (!(this.refuseSuicide && (this._raiseIsSuicide(raiseBoard) ||
+                                   this._raiseWhileBroke(raiseBoard, raiseResolved)))) {
         cands.push({ kind: 'raise',
-                     score: this._score(raiseBoard, raiseResolved, null),
+                     score: raiseScore,
                      board: this._scoredBoard,
                      resolved: raiseResolved,
                      risen: this._scoredResolved,
@@ -1291,9 +1367,23 @@
       if (bestWorth > 0) {
         for (i = 0; i < expand.length; i++) if (worth[i] === bestWorth) tier.push(i);
       }
-      // AN EMPTY TIER IS NOT A VETO. Nothing on this board is a way out at
-      // all, so the ordinary ranking stands rather than the pool collapsing.
-      if (!tier.length) tier = null;
+      // STAYING ALIVE IS AN ESCAPE TOO.
+      //
+      // Everything above is denominated in stop-time frames, and a bare
+      // three earns none -- so escapeValue reads 0 for it, bestWorth reads
+      // 0, and the escape ranking switched itself OFF on exactly the boards
+      // where nothing pays. In a real death the last nine decisions had no
+      // banking move anywhere while two moves still cleared, and the bot
+      // spent them on ordinary scoring.
+      //
+      // A three does not buy frames but it takes panels off the stack, and
+      // a lower stack is the other way to still be here next decision. So
+      // when nothing on the board pays, rank by what survives: clears
+      // something and leaves a board that is not topped out, best first by
+      // how far it drops the top row. It cannot outrank a real escape
+      // because it is only consulted when there is none.
+      if (!tier.length && this.sinkingEscape) tier = this._sinking(expand);
+      if (!tier || !tier.length) tier = null;
     }
 
     tier = this._standing(expand, tier);
