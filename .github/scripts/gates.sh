@@ -370,6 +370,14 @@ gate_resolve_corpus() {
 # just wrote, and both keep committing snapshots, so nothing looks wrong from
 # outside: `default` and `r17` did it on seed 317 for a day. The test asks the
 # trainer itself, via GC_PBT_INIT_ONLY, and takes about a second.
+# THE BOT MAY NOT KILL ITSELF: no move it cannot survive while one it can is
+# on the list, seconds of warning before a death rather than frames, and the
+# refusals measurably lengthen the game. Real duels with trained weights, so
+# it is slow; GC_SELFDEATH_DUELS trades runtime for confidence.
+gate_no_self_death() {
+  node games/the-game/ai/eval/no_self_death.test.js
+}
+
 gate_pbt_dirs() {
   node games/the-game/ai/eval/pbt_dirs.test.js
 }
@@ -703,6 +711,7 @@ GATES=(
   "the simulation is the engine mid-play:gate_live_fidelity:games/the-game/ai/"
   "the resolve answers what the engine answered:gate_resolve_corpus:games/the-game/ai/"
   "two variants on one seed keep separate islands:gate_pbt_dirs:games/the-game/ai/"
+  "the bot may not kill itself:gate_no_self_death:games/the-game/ai/"
   "the puyo brain:gate_puyo_cpu:games/the-game/ai/"
   "the training harness:gate_training_harness:games/the-game/ai/"
   "rise-adjusted scoring:gate_rise_scoring:games/the-game/ai/"
