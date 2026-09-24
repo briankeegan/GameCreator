@@ -200,6 +200,38 @@ test('AND THE SAVING WORKS: refusing fatal moves buys real time', function () {
         's without them — under a tenth longer is not a save');
 });
 
+test('THE SNAPSHOT CARRIES WHY IT DIED, and the number can see a self-death', function () {
+    // versus.duel records the death so nothing has to replay the duel to
+    // learn the cause. The count is only worth reading if it goes up when the
+    // refusals come off, so both sides are checked here.
+    var versus = require('./versus.js');
+    var p = ready[0], a = weightsOf(p[0]), b = weightsOf(p[1]);
+    var opts = { depth: 2, beam: 0, rise: true, allowRaise: true, modes: true, engine: true, level: LEVEL };
+    function run(refuse) {
+        var on = 0, n = 0, causes = 0;
+        for (var s = 0; s < DUELS; s++) {
+            var r = versus.duel(a, b, 700 + s, Object.assign({ refuseSuicide: refuse }, opts));
+            assert.ok(Array.isArray(r.deaths), 'the duel returned no deaths array');
+            r.deaths.forEach(function (d) {
+                n++;
+                on += d.selfInflicted;
+                if (d.forcedAtDeath || d.corneredAtDeath || d.selfInflicted === 0) causes++;
+            });
+        }
+        return { deaths: n, selfInflicted: on, causes: causes };
+    }
+    var off = run(false), refused = run(true);
+    assert.ok(refused.deaths > 0, 'no deaths recorded at all, so nothing was measured');
+    assert.ok(refused.deaths === refused.causes,
+        'a death was recorded with no cause attached');
+    assert.ok(off.selfInflicted > 0,
+        'with the refusals OFF the recorded selfInflicted count stayed at 0, so a ' +
+        'reported 0 with them on means nothing');
+    assert.strictEqual(refused.selfInflicted, 0,
+        'the snapshot recorded ' + refused.selfInflicted + ' self-inflicted deaths ' +
+        'with the refusals on');
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }

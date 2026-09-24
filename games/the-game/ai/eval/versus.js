@@ -125,6 +125,21 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
     // and openedChain comes out ahead of the chains that actually finished.
     // The engine stamps every match with chainCounter, so a link belongs to
     // the opener one below it and to no other.
+    // HOW LONG THE BOARD WAS IN TROUBLE BEFORE IT DIED. A board that goes
+    // from safe to dead inside one decision cannot be played out of; one
+    // that sits in the top three rows for seconds could have been. Reset
+    // whenever the stack drops back out of the top rows, so this is the
+    // length of the LAST run of danger, not the total.
+    var dangerFrom = [null, null];
+    function inDanger(st) {
+        for (var r = st.height; r > st.height - 3; r--) {
+            var row = st.panels[r];
+            if (!row) continue;
+            for (var c = 1; c <= st.width; c++) if (row[c] && row[c].color !== 0) return true;
+        }
+        return false;
+    }
+
     var pendingOpen = [[], []];
     function settleOne(side, open) {
         if (open.size <= 3 && !open.garbage) exact[side].payless++;
@@ -145,6 +160,10 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
         cpus[1].update();
         stacks[0].run();
         stacks[1].run();
+        for (var dg = 0; dg < 2; dg++) {
+            if (inDanger(stacks[dg])) { if (dangerFrom[dg] === null) dangerFrom[dg] = f; }
+            else dangerFrom[dg] = null;
+        }
 
         // Garbage crosses, exactly as duel.js does it.
         for (var i = 0; i < 2; i++) {
@@ -221,13 +240,52 @@ exports.duel = function (weightsA, weightsB, seed, opts) {
     settleOpener(1);
 
     var aDead = !!stacks[0].gameOver, bDead = !!stacks[1].gameOver;
+
+    // WHY THE LOSER DIED, recorded here so nothing has to replay the duel to
+    // find out. `forced` and `cornered` are decisions where every move on the
+    // board was fatal, so the refusals lifted and the board decided; a death
+    // with both at zero and `refusedFatal` above zero is one the refusals
+    // steered away from and something else finished. `warning` is how long the
+    // stack sat in the top three rows before the end.
+    var deaths = [];
+    [aDead, bDead].forEach(function (isDead, sd) {
+        if (!isDead) return;
+        var st = stacks[sd], cpu = cpus[sd], q = st.incoming || [], rows = 0;
+        for (var i = 0; i < q.length; i++) rows += (q[i].height || 0);
+        var garbage = 0, panels = 0, top = 0;
+        for (var r = 1; r <= st.height; r++) {
+            var row = st.panels[r];
+            if (!row) continue;
+            for (var c = 1; c <= st.width; c++) {
+                var p = row[c];
+                if (!p || p.color === 0) continue;
+                if (r > top) top = r;
+                if (p.isGarbage) garbage++; else panels++;
+            }
+        }
+        deaths.push({
+            side: sd, frame: f,
+            warning: dangerFrom[sd] === null ? null : f - dangerFrom[sd],
+            top: top, panels: panels, garbage: garbage, queuedRows: rows,
+            stop: st.stopTime || 0, shake: st.shakeTime || 0,
+            // At the decision it died on: was every move fatal, and did every
+            // move lead to a board with nowhere to stand.
+            forcedAtDeath: !!cpu.allFatalNow, corneredAtDeath: !!cpu.allCorneredNow,
+            selfInflicted: cpu.selfInflicted || 0,
+            forced: cpu.forcedDecisions || 0, cornered: cpu.corneredDecisions || 0,
+            refusedFatal: cpu.fatalMovesDropped || 0,
+            refusedCornering: cpu.corneringMovesDropped || 0,
+            refusedRaises: cpu.suicidalRaises || 0
+        });
+    });
+
     var scores = [stacks[0].score, stacks[1].score];
     var winner = exports.decideWinner(aDead, bDead, scores);
 
     // `reason` says HOW the duel ended, not who won it: a duel that reaches
     // the ceiling reads 'ceiling' whether or not the score decided it.
     return { winner: winner, frames: f, sent: sent, chainDepth: chainDepth, exact: exact,
-             scores: scores, draw: winner === null,
+             scores: scores, draw: winner === null, deaths: deaths,
              reason: (!aDead && !bDead) ? 'ceiling' : (aDead && bDead ? 'both' : 'death') };
 };
 

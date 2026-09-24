@@ -348,7 +348,9 @@ function tally(out) {
     var wins = 0, draws = 0, sentUs = 0, sentThem = 0, frames = 0, longest = 0;
     var depthUs = versus.zeroDepth(), depthThem = versus.zeroDepth();
     var exactUs = versus.zeroExact();
+    var deaths = [];
     out.forEach(function (d) {
+        if (d.deaths) for (var z = 0; z < d.deaths.length; z++) deaths.push(d.deaths[z]);
         if (d.winner === 0) wins++; else if (d.winner === null) draws++;
         sentUs += d.sent[0]; sentThem += d.sent[1];
         // HOW LONG THE GAMES ACTUALLY RAN. A record read without it cannot
@@ -361,7 +363,7 @@ function tally(out) {
         versus.addExact(exactUs, d.exact[0]);
     });
     return { wins: wins, draws: draws, n: out.length, frames: frames, longest: longest,
-             sentUs: sentUs, sentThem: sentThem,
+             sentUs: sentUs, sentThem: sentThem, deaths: deaths,
              depthUs: depthUs, depthThem: depthThem, exactUs: exactUs };
 }
 
@@ -415,8 +417,48 @@ function buildReport(genome, r) {
                   // from a rise in chain building, because a chain starts with
                   // exactly the match that used to be counted against it.
                   openedChain: r.exactUs.openedChain,
-                  brokeGarbage: r.exactUs.broke }
+                  brokeGarbage: r.exactUs.broke },
+        // WHY THE DEAD SIDE DIED, over the same holdout duels.
+        //
+        // `selfInflicted` is the number that matters: moves played whose
+        // board was topped out while a move whose board was not was on the
+        // list. The refusals in puyocpu.js make that unreachable, so it reads
+        // 0 while they hold and is the alarm if one ever stops.
+        //
+        // The rest say what DID end the game. `forced` is a death at a
+        // decision where every move was fatal and `cornered` one where every
+        // move led to a board with nowhere to stand -- the board decided, not
+        // the bot. `toRise` is the remainder: it had a move it could survive
+        // and played one, and the stack rose into the ceiling between
+        // decisions anyway. A move that survives is not a promise the next
+        // frame does. `warningFrames` is the median time the stack spent in
+        // the top three rows before the end: how long there was to act.
+        deaths: deathReport(r.deaths)
     };
+}
+
+function deathReport(ds) {
+    if (!ds || !ds.length) return { n: 0 };
+    var forced = 0, cornered = 0, toRise = 0, selfInflicted = 0, warns = [], sum = {
+        top: 0, panels: 0, garbage: 0, queuedRows: 0, stop: 0,
+        refusedFatal: 0, refusedCornering: 0, refusedRaises: 0 };
+    ds.forEach(function (d) {
+        if (d.forcedAtDeath) forced++;
+        if (d.corneredAtDeath) cornered++;
+        if (!d.forcedAtDeath && !d.corneredAtDeath) toRise++;
+        selfInflicted += d.selfInflicted || 0;
+        if (d.warning !== null && d.warning !== undefined) warns.push(d.warning);
+        for (var k in sum) sum[k] += d[k] || 0;
+    });
+    var med = null;
+    if (warns.length) {
+        warns.sort(function (a, b) { return a - b; });
+        med = warns[Math.floor(warns.length / 2)];
+    }
+    var avg = {};
+    for (var k in sum) avg[k] = sum[k] / ds.length;
+    return { n: ds.length, selfInflicted: selfInflicted, forced: forced,
+             cornered: cornered, toRise: toRise, warningFrames: med, avg: avg };
 }
 
 function writeSnapshot(best, report, totalUpdates, diversity) {

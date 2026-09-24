@@ -153,6 +153,25 @@
     this.fatalMovesDropped = 0;
     // Moves refused because every reply to them is topped out.
     this.corneringMovesDropped = 0;
+    // Decisions where EVERY move left the board topped out, and every move
+    // led to a board with nowhere to stand. The filters lift here because
+    // there is nothing to choose between, so these are the decisions where
+    // the board, not the bot, decided. A death with these above zero was
+    // forced; a death with both at zero was not.
+    this.forcedDecisions = 0;
+    this.corneredDecisions = 0;
+    // THE STATE OF THE LAST DECISION, not a total over the duel. Whether a
+    // death was forced is a fact about the decision the bot died on; a duel
+    // that passed through one forced decision forty seconds earlier and then
+    // recovered says nothing about how it ended.
+    this.allFatalNow = false;
+    this.allCorneredNow = false;
+    // THE ONE NUMBER THAT SAYS THE BOT KILLED ITSELF: it played a move whose
+    // board is topped out while a move whose board is not was on the list.
+    // _survivors makes that unreachable, so this reads 0 while the refusals
+    // hold and is the alarm if one ever stops holding.
+    this.selfInflicted = 0;
+    this.hadSurvivorNow = false;
     // Off only for the harness that measures what the rule is worth. A rule
     // that cannot be switched off cannot be shown to be doing anything.
     this.refuseSuicide = opts.refuseSuicide !== false;
@@ -640,12 +659,18 @@
   // WHEN EVERY MOVE IS FATAL THE FILTER LIFTS, because then it is not a
   // choice and an empty pool would fall through to no bot at all.
   PuyoCpu.prototype._survivors = function (cands) {
-    if (!this.refuseSuicide || !cands || cands.length < 2) return cands;
+    if (!this.refuseSuicide || !cands || !cands.length) return cands;
     var live = [], i;
     for (i = 0; i < cands.length; i++) {
       if (!this._boardToppedOut(cands[i].board)) live.push(cands[i]);
     }
-    if (!live.length || live.length === cands.length) return cands;
+    // A ONE-MOVE BOARD IS STILL A FORCED BOARD. This ran `cands.length < 2`
+    // as an early exit, which skipped the count for exactly the decisions
+    // where the bot had no choice at all.
+    this.allFatalNow = !live.length;
+    this.hadSurvivorNow = live.length > 0;
+    if (!live.length) { this.forcedDecisions++; return cands; }
+    if (live.length === cands.length) return cands;
     this.fatalMovesDropped += cands.length - live.length;
     return live;
   };
@@ -671,7 +696,9 @@
     if (!this.refuseSuicide || !expand || expand.length < 2) return tier;
     var standing = [], i;
     for (i = 0; i < expand.length; i++) if (!expand[i].cornered) standing.push(i);
-    if (!standing.length || standing.length === expand.length) return tier;
+    this.allCorneredNow = !standing.length;
+    if (!standing.length) { this.corneredDecisions++; return tier; }
+    if (standing.length === expand.length) return tier;
     this.corneringMovesDropped += expand.length - standing.length;
     if (!tier) return standing;
     var keep = [];
@@ -1015,6 +1042,7 @@
   PuyoCpu.prototype._took = function (cand) {
     var bar = this._bar();
     this._firedLast = !!cand && modes.fires(cand.resolved, bar.links, bar.wide);
+    if (cand && this.hadSurvivorNow && this._boardToppedOut(cand.board)) this.selfInflicted++;
   };
 
   // TWO NUMBERS, AND THEY ARE NOT THE SAME NUMBER.
