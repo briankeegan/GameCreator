@@ -440,29 +440,28 @@
   // against it and two copies of it would let them drift apart.
   var FLOOR = { links: 2, wide: 4 };
 
-  // THE AIM IS WHAT IS WORTH CASHING IN, AND IT IS NEVER THE FLOOR.
+  // THE AIM IS WHAT IS WORTH CASHING IN, READ OFF THE WEIGHTS.
   //
-  // ATTACK narrows the pool to moves that fire and DROPS HOLD, so whatever
-  // the aim is, the bot must sell the moment the board offers it. An aim
-  // equal to the floor therefore means "sell any clear the engine pays for,
-  // every time one exists", and the bot can never hold anything long enough
-  // to become a chain.
+  // IT MAY BE THE FLOOR, AND FORBIDDING THAT MADE THE BOT WORSE.
   //
-  // That is what happened. The size each family weights highest is the
-  // aim, and across 2,872 trained champions 96% weight reach2chain above
-  // every other chain and 75% weight reach4combo above every other combo,
-  // so 73% of the field aimed at exactly 2 links / 4 wide. Not because
-  // small payouts are good: a reach flag that is 1 on most boards is a
-  // near-constant bonus, and the search takes the cheap signal over the
-  // discriminating one. reach6chain, reach7chain and reach8chain are
-  // constant 0 across 214,921 candidates, so their weights are noise
-  // competing against it.
+  // 73% of trained champions aim at exactly 2 links / 4 wide, which is the
+  // floor, because 96% weight reach2chain above every other chain and 75%
+  // weight reach4combo above every other combo. Since ATTACK drops hold,
+  // that reads as "sell any clear the engine pays for, every time one
+  // exists" -- so it looks like the reason the bot never builds.
   //
-  // So the weights still choose WHICH size is worth waiting for. They do
-  // not get to choose that nothing is. One above the floor is the mildest
-  // bar that still means something -- an aim set far above it starves the
-  // bot instead, which is its own documented failure: at 9 wide it held
-  // 159 of 163 decisions and suffocated.
+  // It is not. Clamping the aim one above the floor did exactly what it was
+  // designed to do -- 4-combo cash-ins fell 69%, 2-chain sales 59% -- and
+  // the bot got worse at everything else, with the gap WIDENING as the
+  // populations matured rather than closing. At generations 3640-5000,
+  // against RULES 9 at the same age: game 35.0s -> 23.8s, 3-link chains
+  // 8.87 -> 7.20, 4-link 2.58 -> 2.28, 6-link 0.54 -> 0.28, payless share
+  // 40% -> 45%.
+  //
+  // Suppressing the cheap sale does not produce a builder. The bot has no
+  // way to assemble a chain across moves -- the search is two plies and no
+  // feature measures chain structure -- so a rule that stops it selling
+  // just leaves it holding a board it cannot improve.
   function aim(weights) {
     var w = weights || {};
     function bestOf(sizes, suffix) {
@@ -473,10 +472,9 @@
       }
       return at;
     }
-    var links = bestOf(CHAIN_SIZES, 'chain') || FLOOR.links;
-    var wide = bestOf(COMBO_SIZES, 'combo') || FLOOR.wide;
-    return { links: Math.max(links, FLOOR.links + 1),
-             wide: Math.max(wide, FLOOR.wide + 1) };
+    var links = bestOf(CHAIN_SIZES, 'chain');
+    var wide = bestOf(COMBO_SIZES, 'combo');
+    return { links: links || FLOOR.links, wide: wide || FLOOR.wide };
   }
 
   // WHICH DECISION PROCEDURE THESE WEIGHTS WERE FITTED UNDER.
@@ -505,7 +503,10 @@
   //   9  the scratch survives its own answer, and everything unsupported falls
   //  10  the aim may not be the floor, so ATTACK is no longer "sell anything
   //      the engine pays for"; a raise the board cannot survive is not a move
-  var RULES = 10;
+  //  11  the aim may be the floor again -- clamping it above the floor was
+  //      measured worse at every matched age and the gap widened. The raise
+  //      rule stays: it was measured on its own and it holds.
+  var RULES = 11;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,
