@@ -511,7 +511,12 @@
   //      level 10, so the decision before is the only one that can refuse it
   //  13  nor is a move after which EVERY reply is topped out -- the corner
   //      is entered long before it kills anything
-  var RULES = 13;
+  //  14  staying alive counts as an escape, and a raise with nothing banked
+  //      and nothing earned is not a move. Every escape used to be priced in
+  //      stop-time frames, so a bare three scored 0, the whole tier scored 0
+  //      and the escape ranking switched itself off on the boards where
+  //      nothing pays -- which is the state a death is reached in
+  var RULES = 14;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

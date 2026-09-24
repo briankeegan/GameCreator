@@ -75,6 +75,9 @@ function makeCpu(stack, weights, opts) {
         // without them ran with them, so the measurement that proves the
         // self-death counters can move compared a run against itself.
         refuseSuicide: opts.refuseSuicide !== false,
+        rules14: opts.rules14 !== false,
+        sinkingEscape: opts.sinkingEscape,
+        refuseBrokeRaise: opts.refuseBrokeRaise,
         goal: opts.goal,
         alsoTake: opts.alsoTake,
         buildToward: opts.buildToward,
