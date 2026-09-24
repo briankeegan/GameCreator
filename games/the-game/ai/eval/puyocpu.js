@@ -659,18 +659,20 @@
   // WHEN EVERY MOVE IS FATAL THE FILTER LIFTS, because then it is not a
   // choice and an empty pool would fall through to no bot at all.
   PuyoCpu.prototype._survivors = function (cands) {
-    if (!this.refuseSuicide || !cands || !cands.length) return cands;
+    if (!cands || !cands.length) return cands;
     var live = [], i;
     for (i = 0; i < cands.length; i++) {
       if (!this._boardToppedOut(cands[i].board)) live.push(cands[i]);
     }
-    // A ONE-MOVE BOARD IS STILL A FORCED BOARD. This ran `cands.length < 2`
-    // as an early exit, which skipped the count for exactly the decisions
-    // where the bot had no choice at all.
+    // MEASURED ALWAYS, REFUSED ONLY WHEN THE RULE IS ON. These read the board,
+    // they do not change the move, and the harness that switches the refusals
+    // off is the only thing that can show the count works -- so gating them on
+    // refuseSuicide left selfInflicted pinned at 0 in the one mode where it
+    // had to rise.
     this.allFatalNow = !live.length;
     this.hadSurvivorNow = live.length > 0;
-    if (!live.length) { this.forcedDecisions++; return cands; }
-    if (live.length === cands.length) return cands;
+    if (!live.length) this.forcedDecisions++;
+    if (!this.refuseSuicide || !live.length || live.length === cands.length) return cands;
     this.fatalMovesDropped += cands.length - live.length;
     return live;
   };
@@ -693,12 +695,12 @@
   // narrows it rather than replacing it, and leaves it alone if narrowing
   // would empty it.
   PuyoCpu.prototype._standing = function (expand, tier) {
-    if (!this.refuseSuicide || !expand || expand.length < 2) return tier;
+    if (!expand || !expand.length) return tier;
     var standing = [], i;
     for (i = 0; i < expand.length; i++) if (!expand[i].cornered) standing.push(i);
     this.allCorneredNow = !standing.length;
-    if (!standing.length) { this.corneredDecisions++; return tier; }
-    if (standing.length === expand.length) return tier;
+    if (!standing.length) this.corneredDecisions++;
+    if (!this.refuseSuicide || !standing.length || standing.length === expand.length) return tier;
     this.corneringMovesDropped += expand.length - standing.length;
     if (!tier) return standing;
     var keep = [];

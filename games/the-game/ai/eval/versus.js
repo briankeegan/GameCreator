@@ -70,6 +70,11 @@ function makeCpu(stack, weights, opts) {
         allowRaise: opts.allowRaise === true,
         density: opts.density === true,
         modes: opts.modes === true,
+        // OFF ONLY FOR THE HARNESS THAT MEASURES WHAT THE REFUSALS ARE WORTH,
+        // and absent means on. Not forwarding it meant a duel asked to run
+        // without them ran with them, so the measurement that proves the
+        // self-death counters can move compared a run against itself.
+        refuseSuicide: opts.refuseSuicide !== false,
         goal: opts.goal,
         alsoTake: opts.alsoTake,
         buildToward: opts.buildToward,
