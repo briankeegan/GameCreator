@@ -114,6 +114,16 @@ function watch(cpu, log, frameOf) {
             links: best ? best.links : 0, wide: best ? best.wide : 0,
             top: s.top, panels: s.panels, garbage: s.garbage,
             curRow: cpu.stack.curRow, curCol: cpu.stack.curCol,
+            // THE ENGINE'S OWN FLAG, not a guess from the grid: the health
+            // drain and the stop-time award both read wasToppedOut.
+            toppedOut: !!cpu.stack.wasToppedOut,
+            riseLock: !!cpu.stack.riseLock,
+            active: cpu.stack.hasActivePanels ? !!cpu.stack.hasActivePanels() : null,
+            swaps: (function () {
+                var n = 0;
+                for (var i = 0; i < all.length; i++) if (all[i].kind === 'swap') n++;
+                return n;
+            })(),
             // The bot ALREADY computes this every decision and then ignores
             // it: frames to reach a move that banks stop time.
             floor: cpu._lastFloor,

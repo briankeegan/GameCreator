@@ -506,7 +506,10 @@
   //  11  the aim may be the floor again -- clamping it above the floor was
   //      measured worse at every matched age and the gap widened. The raise
   //      rule stays: it was measured on its own and it holds.
-  var RULES = 11;
+  //  12  a move that leaves the board topped out is not offered while one
+  //      that does not exists. Topping out and dying are the same frame at
+  //      level 10, so the decision before is the only one that can refuse it
+  var RULES = 12;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
            REACH: REACH, reach: reach,

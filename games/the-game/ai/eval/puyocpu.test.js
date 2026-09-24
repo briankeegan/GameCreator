@@ -350,6 +350,55 @@ test('the refusal happens in the CANDIDATE LIST, not in the score', function () 
         'the rule-off bot refused it too, so this position proves nothing');
 });
 
+// ---- a move that leaves you topped out is not a move -----------------
+
+test('a fatal move is dropped when a survivable one exists', function () {
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var H = stack.height, W = stack.width;
+    var cands = [
+        { kind: 'hold', board: boardAt(H, W, H) },      // topped out
+        { kind: 'swap', board: boardAt(H, W, H - 1) },  // not
+        { kind: 'swap', board: boardAt(H, W, H) }       // topped out
+    ];
+    var live = cpu._survivors(cands);
+    assert.strictEqual(live.length, 1);
+    assert.strictEqual(live[0].board.grid[H][1], 0, 'the survivor is the one that is not topped out');
+    assert.strictEqual(cpu.fatalMovesDropped, 2);
+});
+
+test('WHEN EVERY MOVE IS FATAL THE FILTER LIFTS', function () {
+    // Then it is not a choice, and an empty pool falls through to no bot at
+    // all. Seven of twenty deaths had no survivable move by the last
+    // decision -- those were lost earlier, not chosen here.
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var H = stack.height, W = stack.width;
+    var all = [{ kind: 'hold', board: boardAt(H, W, H) },
+               { kind: 'swap', board: boardAt(H, W, H) }];
+    assert.strictEqual(cpu._survivors(all).length, 2);
+    assert.strictEqual(cpu.fatalMovesDropped, 0, 'nothing was dropped, so nothing is counted');
+});
+
+test('a board nobody is near the top of is left alone', function () {
+    // The filter must bite only where it matters. Dropping nothing has to
+    // return the SAME list, or every decision pays for a copy.
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: sample() });
+    var low = [{ kind: 'hold', board: boardAt(stack.height, stack.width, 3) },
+               { kind: 'swap', board: boardAt(stack.height, stack.width, 4) }];
+    assert.strictEqual(cpu._survivors(low), low);
+});
+
+test('the rule can be switched off, so it can be shown to do something', function () {
+    var stack = new PanelEngine.Stack({ level: LEVEL, seed: 11, countdown: false });
+    var cpu = new PuyoCpu(stack, { weights: sample(), refuseSuicide: false });
+    var H = stack.height, W = stack.width;
+    var mixed = [{ kind: 'hold', board: boardAt(H, W, H) },
+                 { kind: 'swap', board: boardAt(H, W, H - 1) }];
+    assert.strictEqual(cpu._survivors(mixed), mixed);
+});
+
 tests.forEach(function (t) {
     try { t.fn(); console.log('ok   ' + t.name); }
     catch (e) { failures.push(t.name); console.log('FAIL ' + t.name + '\n     ' + e.message); }

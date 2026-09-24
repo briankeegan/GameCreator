@@ -148,6 +148,9 @@
     // Raises refused because the board could not survive them. Counted, so
     // "it never chooses to die any more" is a number rather than a claim.
     this.suicidalRaises = 0;
+    // Moves refused because the board they leave is topped out, which at
+    // level 10 is the same thing as dead.
+    this.fatalMovesDropped = 0;
     // Off only for the harness that measures what the rule is worth. A rule
     // that cannot be switched off cannot be shown to be doing anything.
     this.refuseSuicide = opts.refuseSuicide !== false;
@@ -616,6 +619,35 @@
     return evaluator.evaluate(input, this._weightsNow(), { density: this.density }).score;
   };
 
+  // A MOVE THAT LEAVES THE BOARD TOPPED OUT IS NOT A MOVE.
+  //
+  // Not a preference, and not about the last second: at level 10 maxHealth
+  // is 1 and the health drain runs the FIRST frame the board reads topped
+  // out, so topping out and dying are the same event. Over twenty deaths
+  // the board was never topped out on the frame before -- it went from
+  // clear to topped out to dead, in that order, on consecutive frames.
+  //
+  // So the only moment that decides it is the decision before, and there
+  // the bot already knows: `board` here is the board the move leaves AFTER
+  // the rows arriving during it have landed, which is the thing that tops
+  // it out. Of those twenty deaths, twelve had a candidate whose risen
+  // board was not topped out and the bot took one in four of them. Eight
+  // died with a safe move in hand -- on one board 23 of 32 candidates were
+  // safe and it picked a fatal one.
+  //
+  // WHEN EVERY MOVE IS FATAL THE FILTER LIFTS, because then it is not a
+  // choice and an empty pool would fall through to no bot at all.
+  PuyoCpu.prototype._survivors = function (cands) {
+    if (!this.refuseSuicide || !cands || cands.length < 2) return cands;
+    var live = [], i;
+    for (i = 0; i < cands.length; i++) {
+      if (!this._boardToppedOut(cands[i].board)) live.push(cands[i]);
+    }
+    if (!live.length || live.length === cands.length) return cands;
+    this.fatalMovesDropped += cands.length - live.length;
+    return live;
+  };
+
   // WOULD THIS RAISE KILL IT.
   //
   // Not "is it risky" -- would the board it leaves have nowhere for the
@@ -744,7 +776,7 @@
                    travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
-    return cands;
+    return this._survivors(cands);
   };
 
   // Narrow the pool to the moves this decision is allowed to choose between,
