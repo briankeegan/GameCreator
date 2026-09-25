@@ -176,6 +176,14 @@
     this.deepSurvival = opts.deepSurvival !== false;
     this.doomedDecisions = 0;
     this.doomedMovesDropped = 0;
+    // RULES 15, off until it has earned its cost: a rollout per candidate.
+    this.ownPlay = opts.ownPlay === true;
+    this.ownPlayDoomedDecisions = 0;
+    this.ownPlayMovesDropped = 0;
+    this.ownPlayRollouts = 0;
+    this.heightCap = opts.heightCap === true;
+    this.cappedDecisions = 0;
+    this.cappedMovesDropped = 0;
     this.allDoomedNow = false;
     // Off only for the harness that measures what the rule is worth. A rule
     // that cannot be switched off cannot be shown to be doing anything.
@@ -792,6 +800,48 @@
     return false;
   };
 
+  // WILL THE BOT ITSELF DIE FROM HERE.
+  //
+  // _survivesRise asks whether a survivable line EXISTS, which assumes
+  // perfect play afterwards. This bot does not play perfectly -- it follows
+  // its score -- so that question passed 16 of 20.5 moves on positions its
+  // own play then lost, measured over 48 deaths at 25 to 40 decisions out.
+  // Proving something true of a player that is not this one is not a
+  // requirement, it is a formality.
+  //
+  // So roll THIS bot forward instead: greedy on the same weights, one row of
+  // rise between decisions, and report whether it is still standing. A move
+  // that leads somewhere its own play dies is not a move.
+  PuyoCpu.prototype._survivesOwnPlay = function (board, steps) {
+    var b = board, i, j, sw, best, bestScore, cand, r, t;
+    for (i = 0; i < steps; i++) {
+      if (this._boardToppedOut(b)) return false;
+      b = b.clone().rise(this._incoming);
+      if (this._boardToppedOut(b)) return false;
+      this._resolveCandidate(b);
+      if (this._boardToppedOut(b)) return false;
+      // Greedy on the same evaluator the real decision uses. Hold is
+      // candidate zero here as well, so standing still can win the step.
+      best = null; bestScore = -Infinity;
+      cand = b.clone();
+      r = this._resolveCandidate(cand);
+      if (!this._boardToppedOut(cand)) { best = cand; bestScore = this._score(cand, r, null); }
+      sw = b.legalSwaps();
+      for (j = 0; j < sw.length; j++) {
+        t = b.clone();
+        t.swap(sw[j][0], sw[j][1]);
+        r = this._resolveCandidate(t);
+        if (this._boardToppedOut(t)) continue;
+        var sc = this._score(t, r, sw[j]);
+        if (sc > bestScore) { bestScore = sc; best = t; }
+      }
+      // Nothing it would play leaves it standing: this line is lost.
+      if (!best) return false;
+      b = best;
+    }
+    return true;
+  };
+
   // Only worth asking when the stack is high enough for a rise to matter.
   // On a low board every move survives every rise and the answer is always
   // yes, bought at ten times the price.
@@ -809,6 +859,86 @@
     if (!live.length) { this.doomedDecisions++; return cands; }
     if (live.length === cands.length) return cands;
     this.doomedMovesDropped += cands.length - live.length;
+    return live;
+  };
+
+  // THE STACK DOES NOT GO ABOVE THE CAP WHILE A MOVE EXISTS THAT KEEPS IT
+  // BELOW. An invariant on the board, with no horizon at all.
+  //
+  // Every lookahead refusal in this file answers a question about the next
+  // two to five decisions. The option set that ends a game drains over
+  // TWENTY-FIVE TO FORTY of them -- moves that survive fall 89% to 43% while
+  // the bot picks a surviving move every single time one exists -- so no
+  // reachable horizon sees the loss coming. A cap does not need to see it:
+  // it binds on the first decision of the drift and on every one after.
+  //
+  // It is satisfiable where it matters. With the stack at or below row 7,
+  // which is where it sits eighty decisions before a death, a move leaving
+  // it at 8 or lower exists on 100% of decisions. By row 11 one exists on
+  // 23% and the game is already decided.
+  //
+  // WHEN NO MOVE KEEPS IT UNDER, THE CAP LIFTS. Building needs height and a
+  // bot that may never exceed row 8 can never hold a chain; the rule is that
+  // it may not CHOOSE to go higher while a way down is on the table.
+  PuyoCpu.prototype.HEIGHT_CAP = 8;
+  PuyoCpu.prototype._heightCap = function (cands) {
+    if (!this.heightCap || !cands || cands.length < 2) return cands;
+    var live = [], i, t;
+    for (i = 0; i < cands.length; i++) {
+      t = this._topRowOf(cands[i].board);
+      if (t <= this.HEIGHT_CAP) live.push(cands[i]);
+    }
+    this.allAboveCapNow = !live.length;
+    if (!live.length) { this.cappedDecisions++; return cands; }
+    if (live.length === cands.length) return cands;
+    this.cappedMovesDropped += cands.length - live.length;
+    return live;
+  };
+
+  // RULES 15. THE CHOICE SET IS LIMITED TO MOVES ITS OWN PLAY SURVIVES.
+  //
+  // _doomed above is an existence check and it does not bind: 16 of 20.5
+  // moves pass it at 25 to 40 decisions before a death, so it drops four
+  // options and the score picks freely among the rest while the position
+  // rots. This one rolls the bot's own greedy play forward instead, so a
+  // move is kept only if THIS bot, choosing the way it actually chooses,
+  // is still standing afterwards.
+  //
+  // WHEN EVERY MOVE FAILS IT, THE FILTER LIFTS and the board decides. That
+  // is the only death this rule permits: one where nothing it could have
+  // done would have helped.
+  //
+  // Gated on height because on a low board every rollout survives and the
+  // answer is bought at the price of a rollout per candidate.
+  // IN SCORE ORDER, AND IT STOPS EARLY. A rollout costs three steps of
+  // legalSwaps against every candidate, so testing all twenty is ~1,200
+  // extra resolves a decision and the trainer cannot afford it. The move
+  // finally played is near the top of the ply-1 order, so walking down that
+  // order and keeping the first OWNPLAY_TRIES survivors buys the same
+  // decision for a handful of rollouts. If none of them survives it keeps
+  // walking -- the guarantee is not traded for the saving.
+  PuyoCpu.prototype.OWNPLAY_ROWS = 6;
+  PuyoCpu.prototype.OWNPLAY_STEPS = 3;
+  PuyoCpu.prototype.OWNPLAY_TRIES = 6;
+  PuyoCpu.prototype._ownPlay = function (cands) {
+    if (!this.refuseSuicide || !this.ownPlay || !cands || cands.length < 2) return cands;
+    var top = this._board ? this._topRowOf(this._board) : 0;
+    if (!top || top <= (this._board.height - this.OWNPLAY_ROWS)) return cands;
+    var order = cands.slice().sort(function (a, b) { return b.score - a.score; });
+    var live = [], i;
+    for (i = 0; i < order.length; i++) {
+      if (this._survivesOwnPlay(order[i].board, this.OWNPLAY_STEPS)) {
+        live.push(order[i]);
+        if (live.length >= this.OWNPLAY_TRIES) break;
+      }
+      this.ownPlayRollouts++;
+    }
+    this.allOwnPlayDoomedNow = !live.length;
+    // NOTHING IT WOULD PLAY SURVIVES. The filter lifts and the board decides:
+    // the one death this rule permits.
+    if (!live.length) { this.ownPlayDoomedDecisions++; return cands; }
+    if (live.length === cands.length) return cands;
+    this.ownPlayMovesDropped += cands.length - live.length;
     return live;
   };
 
@@ -981,7 +1111,7 @@
                    travel: this._scoredTravel,
                    earnedStop: resolved.stopTimeEarned || 0 });
     }
-    return this._doomed(this._survivors(cands));
+    return this._heightCap(this._ownPlay(this._doomed(this._survivors(cands))));
   };
 
   // Narrow the pool to the moves this decision is allowed to choose between,
