@@ -1313,6 +1313,7 @@
       child.swap(next[j][0], next[j][1]);
       var childResolved = this._resolveCandidate(child);
       if (!this._boardToppedOut(child)) anyReplyLives = true;
+      if (childResolved && childResolved.garbage && childResolved.garbage.length) reach.breaks = 1;
       var cp = modes.payout(childResolved);
       if (cp.links > reach.links) reach.links = cp.links;
       if (cp.wide > reach.wide) reach.wide = cp.wide;
@@ -1338,6 +1339,7 @@
       var risen = cand.board.clone().rise(this._incoming);
       var risenResolved = this._resolveCandidate(risen);
       if (!this._boardToppedOut(risen)) anyReplyLives = true;
+      if (risenResolved && risenResolved.garbage && risenResolved.garbage.length) reach.breaks = 1;
       var rp = modes.payout(risenResolved);
       if (rp.links > reach.links) reach.links = rp.links;
       if (rp.wide > reach.wide) reach.wide = rp.wide;
