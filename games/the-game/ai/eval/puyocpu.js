@@ -880,13 +880,44 @@
   // WHEN NO MOVE KEEPS IT UNDER, THE CAP LIFTS. Building needs height and a
   // bot that may never exceed row 8 can never hold a chain; the rule is that
   // it may not CHOOSE to go higher while a way down is on the table.
+  // ROOM FOR WHAT IS ALREADY COMING. The cap is not a number, it is the
+  // ceiling minus the rows queued against this board minus a margin.
+  //
+  // registry.js records why this cannot be a feature: the queue is a
+  // property of the BOARD, not of the move, so it contributes the identical
+  // number to every candidate and cancels out of the ranking -- it varied in
+  // 0 of 179 decisions and was removed. features.js records that the same
+  // queue is the mechanism behind the worst deaths: the danger is real the
+  // instant the queue fills and invisible until each piece lands.
+  //
+  // A RULE CAN USE WHAT A SCORE CANNOT. Being identical across candidates is
+  // exactly what makes it useless as a ranking term and right as a
+  // threshold: the cap moves with the queue, and candidates are filtered by
+  // their own height, which does vary.
+  //
+  // Read off a real death: six rows queued against a twelve-row board, so
+  // the stack had to be at row 5. It was at row 8 with a surviving line
+  // still available, the slab landed, and from the next decision no line
+  // survived -- fourteen decisions of a game that was already over.
   PuyoCpu.prototype.HEIGHT_CAP = 8;
+  PuyoCpu.prototype.HEIGHT_MARGIN = 1;
+  PuyoCpu.prototype._queuedRows = function () {
+    var st = this.stack, w = this._board ? this._board.width : 6;
+    if (!st || !st.incoming || !st.incoming.length || !w) return 0;
+    var cells = 0, i;
+    for (i = 0; i < st.incoming.length; i++) {
+      cells += (st.incoming[i].width || 0) * (st.incoming[i].height || 0);
+    }
+    return Math.ceil(cells / w);
+  };
   PuyoCpu.prototype._heightCap = function (cands) {
     if (!this.heightCap || !cands || cands.length < 2) return cands;
+    var h = this._board ? this._board.height : 12;
+    var cap = Math.min(this.HEIGHT_CAP, h - this._queuedRows() - this.HEIGHT_MARGIN);
     var live = [], i, t;
     for (i = 0; i < cands.length; i++) {
       t = this._topRowOf(cands[i].board);
-      if (t <= this.HEIGHT_CAP) live.push(cands[i]);
+      if (t <= cap) live.push(cands[i]);
     }
     this.allAboveCapNow = !live.length;
     if (!live.length) { this.cappedDecisions++; return cands; }
