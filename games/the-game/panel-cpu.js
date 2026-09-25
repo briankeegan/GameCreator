@@ -628,6 +628,15 @@
   // per-candidate path. stopTime is zeroed first because awardStopTime only
   // ever RAISES it — leaving a previous candidate's award in place would make
   // every later one read at least as large.
+  // Anything standing in the top row. Same test as the bot's own
+  // _boardToppedOut and the engine's isToppedOut.
+  LogicalBoard.prototype._toppedOutNow = function () {
+    var row = this.grid && this.grid[this.height];
+    if (!row) return false;
+    for (var c = 1; c <= this.width; c++) if (row[c] !== 0) return true;
+    return false;
+  };
+
   LogicalBoard.prototype._stopTimeFor = function (isChain, comboSize, chainCounter, toppedOut) {
     if (!LogicalBoard._stopStack) {
       try {
@@ -787,7 +796,14 @@
       // rarely break garbage. A search dimension attached to nothing, which
       // the GA still assigns weight to. Caught by the pre-flight gate before
       // it could waste a five-hour run, which is what that gate is for.
-      var st = this._stopTimeFor(isChainLink, keys.length, counter);
+      // TOPPED OUT IS THE BRANCH THAT PAYS MOST, and it was never reached:
+      // the fourth argument was left off, so every clear was valued as if the
+      // stack were safe. At level 10 a chain while topped out banks 88 frames
+      // against 58, and a combo 60 against 30 -- the bot undervalued its own
+      // lifeline by half in the only position where the lifeline decides the
+      // game. Sampled per link off the live grid, which is what the engine
+      // does: wasToppedOut is isToppedOut() re-read every physics frame.
+      var st = this._stopTimeFor(isChainLink, keys.length, counter, this._toppedOutNow());
       if (st > stopTimeEarned) stopTimeEarned = st;
       if (poppedGarbage) {
         brokeGarbage += poppedGarbage;
