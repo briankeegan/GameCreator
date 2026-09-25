@@ -413,10 +413,22 @@
       st.stopTime = this.stack.stopTime || 0;
       st.preStopTime = this.stack.preStopTime || 0;
     }
+    // DEAD BEFORE THE CURSOR ARRIVES IS NOT A MOVE IT CAN PLAY.
+    //
+    // The loop already knew: it breaks on gameOver. What followed did the
+    // swap anyway -- doSwap writes to the grid directly, not through run(),
+    // so the panels move on a stack whose game is over -- and readGrid handed
+    // back a board that cannot exist, with nothing on the result to say so.
+    // Three deaths read off the boards were this: the bot predicted a garbage
+    // break worth ten panels, walked to a square it never reached, and the
+    // engine's board was the live one shifted up a row with the swap never
+    // made. The score had picked the prettiest board in a future it died on
+    // the way to.
+    var diedInWalk = false;
     for (var f = 0; f < wait; f++) {
       st.events.length = 0;
       st.run();
-      if (st.gameOver) break;
+      if (st.gameOver) { diedInWalk = true; break; }
     }
     // THE FLOOR KEEPS MOVING THROUGH THE SETTLE TOO.
     //
@@ -450,6 +462,7 @@
     }
     var out = engineBoard.settle(st, 900);
     if (refused) out.refused = true;
+    if (diedInWalk) out.diedInWalk = true;
     var settled = engineBoard.readGrid(st, board.height, board.width);
     for (var r = 0; r <= board.height; r++) {
       for (var c = 1; c <= board.width; c++) board.grid[r][c] = settled[r][c];
@@ -688,6 +701,8 @@
     for (i = 0; i < cands.length; i++) {
       if (this._boardToppedOut(cands[i].board)) continue;
       if (this._diesToQueue(cands[i].board)) continue;
+      // The walk to this square ends in a game over.
+      if (cands[i].resolved && cands[i].resolved.diedInWalk) continue;
       live.push(cands[i]);
     }
     // MEASURED ALWAYS, REFUSED ONLY WHEN THE RULE IS ON. These read the board,
