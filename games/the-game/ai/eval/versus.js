@@ -63,7 +63,10 @@ exports.decideWinner = function (aDead, bDead, scores) {
 function makeCpu(stack, weights, opts) {
     return new PuyoCpu(stack, {
         weights: weights || {},
-        reaction: 12,
+        // FRAMES BETWEEN DECISIONS. 12 is the human-paced default every
+        // trained weight set was fitted under; a run that changes it is
+        // measuring a different bot, so it is passed in rather than edited.
+        reaction: opts.reaction || 12,
         depth: opts.depth || 1,
         beam: opts.beam || 0,
         rise: opts.rise === true,
