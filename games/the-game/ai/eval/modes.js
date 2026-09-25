@@ -98,7 +98,8 @@
   var COMBO_SIZES = [4, 5, 6, 7, 8, 9, 10];
   var CHAIN_SIZES = [2, 3, 4, 5, 6, 7, 8];
   var REACH = ['reach4combo', 'reach5combo', 'reach6combo', 'reach7combo', 'reach8combo', 'reach9combo', 'reach10combo',
-               'reach2chain', 'reach3chain', 'reach4chain', 'reach5chain', 'reach6chain', 'reach7chain', 'reach8chain'];
+               'reach2chain', 'reach3chain', 'reach4chain', 'reach5chain', 'reach6chain', 'reach7chain', 'reach8chain',
+               'reachBreak'];
 
   function reach(r) {
     var links = (r && r.links) || 0, wide = (r && r.wide) || 0;

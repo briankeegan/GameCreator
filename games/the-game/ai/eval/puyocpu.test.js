@@ -229,6 +229,7 @@ var UNREACHABLE = {
     reach6chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
     reach7chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
     reach8chain: 'needs the second ply; these games are depth 1. See reach.test.js.',
+    reachBreak: 'needs the second ply; these games are depth 1. See reach.test.js.',
 
     // AND THE TWO OPPONENT FEATURES NEED AN OPPONENT. These games are solo,
     // so input.opponent is null and both read 0 by definition. In a duel

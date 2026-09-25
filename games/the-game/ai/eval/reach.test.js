@@ -22,7 +22,7 @@ function test(name, fn) { tests.push({ name: name, fn: fn }); }
 test('the targets are the ones a player would name', function () {
     assert.deepStrictEqual(modes.COMBO_SIZES, [4, 5, 6, 7, 8, 9, 10]);
     assert.deepStrictEqual(modes.CHAIN_SIZES, [2, 3, 4, 5, 6, 7, 8]);
-    assert.strictEqual(modes.REACH.length, 14);
+    assert.strictEqual(modes.REACH.length, 15);
 });
 
 test('the floors come from the engine, and they are not the same floor', function () {
@@ -58,6 +58,15 @@ test('chains and combos are counted separately', function () {
     var r = modes.reach({ links: 6, wide: 0 });
     assert.strictEqual(r.reach6chain, 1);
     assert.strictEqual(r.reach4combo, 0);
+});
+
+test('breaking garbage is its own reach, not a size', function () {
+    // Garbage clears only when a match touches it, so what a board can BREAK
+    // is a separate question from how wide or how deep it can fire. A board
+    // that can fire a 6 next move need not be able to reach the garbage.
+    assert.strictEqual(modes.reach({ links: 0, wide: 6 }).reachBreak, 0);
+    assert.strictEqual(modes.reach({ links: 0, wide: 0, breaks: 1 }).reachBreak, 1);
+    assert.strictEqual(modes.reach({ links: 4, wide: 0, breaks: 1 }).reach4chain, 1);
 });
 
 test('an empty board reaches nothing', function () {
