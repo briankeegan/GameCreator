@@ -767,8 +767,14 @@
     if (depth <= 0) return true;
     var risen = board.clone().rise(this._incoming);
     this._resolveCandidate(risen);
-    // Standing still is a line if the rise alone does not kill.
-    if (!this._boardToppedOut(risen) && this._survivesRise(risen, depth - 1)) return true;
+    // A TOPPED-OUT BOARD HAS NO NEXT MOVE. maxHealth is 1 at level 10, so the
+    // drain runs the first frame the board reads topped out and the game is
+    // over on it -- there is no turn afterwards in which to play the clearing
+    // swap that would have saved it. Searching for one anyway is what made
+    // this report survival on 14 of 36 deaths: row 11 full, row 12 empty, the
+    // rise pushes it over, and a swap on the dead board answered yes.
+    if (this._boardToppedOut(risen)) return false;
+    if (this._survivesRise(risen, depth - 1)) return true;
     var swaps = risen.legalSwaps(), i, t, r;
     for (i = 0; i < swaps.length; i++) {
       t = risen.clone();
