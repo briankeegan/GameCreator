@@ -84,6 +84,9 @@
       what: 'Same-coloured panels STACKED. The half of links that finishes by a panel FALLING into place, which needs something below to clear first — cascade fuel, not a decision. Split from linksH because a broken garbage row takes its colours from garbageRowColors, which refuses to repeat left to right, so a freshly converted row can never hold a horizontal pair and all of its value is vertical. linksH + linksV equals links on every board.' },
 
 
+    { key: 'chainLayers',      group: 'board',  sign: +1, norm: 12, fn: F.chainLayers,
+      what: 'Distinct ROWS holding at least one same-coloured adjacent pair. linksV calls stacked pairs cascade fuel and is right, but counts six pairs gathered in one place the same as six spread up the board -- the first is one combo, the second is the shape a long chain is made of. Rows rather than pairs: a second pair on a row already counted fires WITH the first, not after it. Divisor is the board height, the analytic bound, since at most one row can be counted per row. NOT chainPotential UNDER A NEW NAME: reach* asks whether ONE SWAP from here fires an N-chain, which is a trigger already loaded, and chainPotential was removed as its duplicate. This asks what STRUCTURE is stacked up whether or not any trigger exists yet, which is where the middle of a multi-move build lives -- the moves reach* scores as worthless because nothing fires at the end of them.' },
+
     { key: 'colourVariance',   group: 'board',  sign: -1, norm: 32, fn: null,
       what: 'Per colour, the mean position of its panels and the deviation from it. Low variance means that colour is gathered rather than scattered.' },
 
