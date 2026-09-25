@@ -186,7 +186,12 @@
     this.rules14 = opts.rules14 !== false;
     // The two separately, so each can be measured on its own rather than as
     // a pair whose halves might cancel.
-    this.sinkingEscape = opts.sinkingEscape === undefined ? this.rules14 : opts.sinkingEscape !== false;
+    // OFF BY DEFAULT, AND MEASURED THAT WAY. Counting a stack-lowering clear
+    // as an escape did nothing on its own (39.7s -> 39.5s) and CANCELLED the
+    // broke-raise rule's gain when both ran: raise alone 44.9s, the pair
+    // 39.2s. It stays in the file behind an opt-in because the idea is sound
+    // and the implementation is the part that failed; it does not ship on.
+    this.sinkingEscape = opts.sinkingEscape === true;
     this.refuseBrokeRaise = opts.refuseBrokeRaise === undefined ? this.rules14 : opts.refuseBrokeRaise !== false;
     // WHAT THIS BOT IS BUILDING, as one setting a player would recognise:
     // "5-chain", "6-combo", or null for no target at all. It says the whole

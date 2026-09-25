@@ -511,11 +511,13 @@
   //      level 10, so the decision before is the only one that can refuse it
   //  13  nor is a move after which EVERY reply is topped out -- the corner
   //      is entered long before it kills anything
-  //  14  staying alive counts as an escape, and a raise with nothing banked
-  //      and nothing earned is not a move. Every escape used to be priced in
-  //      stop-time frames, so a bare three scored 0, the whole tier scored 0
-  //      and the escape ranking switched itself off on the boards where
-  //      nothing pays -- which is the state a death is reached in
+  //  14  a raise made with the stack in the top three rows, nothing banked
+  //      and nothing earned by the raise is not a move; survival is asked of
+  //      the board the RISE leaves rather than the one the move leaves; and
+  //      a topped-out board is not searched for a way out, because at level
+  //      10 there is no turn after topping out. Counting a stack-lowering
+  //      clear as an escape is in the file but OFF: it measured nothing
+  //      alone and cancelled the raise rule's gain when both ran
   var RULES = 14;
 
   return { payout: payout, fires: fires, pays: pays, aim: aim, RULES: RULES,
