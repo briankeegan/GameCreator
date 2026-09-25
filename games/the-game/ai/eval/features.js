@@ -339,6 +339,26 @@ var MOVE_FRAMES = 4;
     return rows;
   }
 
+  // Colour panels that touch garbage AND already have a same-coloured
+  // neighbour: one panel short of a match that pops the lid. Garbage clears
+  // only when a match touches it, so these are the only panels on the board
+  // that can remove any of it.
+  function breakPairs(input) {
+    var board = input.board, grid = board.grid, W = board.width, H = board.height;
+    var n = 0, r, c, v;
+    for (r = 1; r <= H; r++) {
+      for (c = 1; c <= W; c++) {
+        v = grid[r][c];
+        if (v <= 0) continue;
+        if (!((r < H && grid[r + 1][c] === -2) || (r > 1 && grid[r - 1][c] === -2) ||
+              (c < W && grid[r][c + 1] === -2) || (c > 1 && grid[r][c - 1] === -2))) continue;
+        if ((c < W && grid[r][c + 1] === v) || (c > 1 && grid[r][c - 1] === v) ||
+            (r < H && grid[r + 1][c] === v) || (r > 1 && grid[r - 1][c] === v)) n++;
+      }
+    }
+    return n;
+  }
+
   // Per colour: the mean Manhattan distance of its panels from their centroid, summed over colours. Colours with one panel are skipped.
   function colourVariance(input) {
     var board = input.board, grid = board.grid, W = board.width, H = board.height;
@@ -746,6 +766,7 @@ var MOVE_FRAMES = 4;
     garbageCleared: garbageCleared,
     stopTimeEarned: stopTimeEarned,
     brokeGarbage: brokeGarbage,
+    breakPairs: breakPairs,
     reachBreak: function (i) { return reachOf(i, 'reachBreak'); },
     reach4combo: function (i) { return reachOf(i, 'reach4combo'); },
     reach5combo: function (i) { return reachOf(i, 'reach5combo'); },
